@@ -776,7 +776,11 @@ Klagefristen, Anforderungs-Fälligkeiten und Wiedervorlagen.
   Rückschau im gewählten Fenster (7/30/90 Tage)
 - Gruppierung nach Dringlichkeit (Überfällig / Heute / Diese Woche /
   Später), Filter „Meine" (Verantwortlicher = Hauptbearbeiter des
-  Mandanten, bei Wiedervorlagen die Zuweisung)
+  Mandanten, bei Wiedervorlagen die Zuweisung; bei mehreren jeweils die erste
+  Zuordnung)
+- Offene Einträge seitenweise (200 je Seite, dringlichste zuerst); Gesamtzahl
+  und Überfällige im Kopf gelten für alle Seiten, Erledigte der Rückschau
+  stehen ungeblättert darunter
 - Aktuelle Wahrheitstabellen verlangen mehr als einen Status: Steuertermine
   schließen nur mit `DONE` samt Zeit/Person, Einspruchs- und Klagefristen nur
   mit dokumentierter Einlegung oder Bestandskraft-Disposition, Anforderungen

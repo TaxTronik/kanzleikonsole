@@ -220,6 +220,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Fristen-Kontrollbuch: Die Fristenseite lädt offene Einträge seitenweise
+  (200 je Seite, dringendste zuerst); Zähler und Tagesabschluss-Vorschau
+  kommen ohne zweiten Volllauf aus. CSV-Export und Tagesabschluss-Protokoll
+  bleiben vollständig. Bei mehreren Hauptbearbeitern bzw. Zuständigen einer
+  Wiedervorlage gilt einheitlich die erste Zuweisung als verantwortlich
+  (vorher je Ansicht zufällig) (`TAX-CONTROL-STATUS-001`,
+  `FK-EXC-20261006-010`).
 - Die Feiertagsprüfung der Fristberechnung ist je Jahr, Region und
   Bayern-Annahme zwischengespeichert. Der veraltete, nicht exportierte
   Einspruchs- und Klagefristen-Rechenkern ist entfernt; Fristen berechnen

@@ -234,6 +234,12 @@ Auslandsfälle, Rechtsbehelfsbelehrung und nachträglich erfasste Altbescheide.
 TaxTronik ersetzt keine rechtliche Einzelfallprüfung und keine
 Fristenkontrollorganisation der Kanzlei.
 
+Das zentrale Fristenkontrollbuch zeigt offene Fristen seitenweise, je Seite
+200 und die dringlichsten zuerst; die Zahlen im Kopf (offen, davon überfällig)
+gelten für alle Seiten. Als verantwortlich nennt es den Hauptbearbeiter des
+Mandanten, bei Wiedervorlagen die Zuweisung, bei mehreren jeweils die erste
+Zuordnung.
+
 Das zentrale Fristenkontrollbuch besitzt keinen eigenen Erledigt-Schalter,
 sondern leitet die aktuelle Sicht aus den Fachmodulen ab. Das vermeidet eine
 zweite manuelle Statuspflege, garantiert aber nicht automatisch die fachliche

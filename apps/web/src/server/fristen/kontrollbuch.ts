@@ -5,7 +5,8 @@
 // fälle/Einspruchsfristen, Klagefristen, Anforderungen, Wiedervorlagen) zu
 // einer Kontrollsicht. Eigener Zustand entsteht hier NICHT (siehe eintrag.ts)
 // — Erledigung wird aus den Quellmodulen abgelesen, wo sie auditiert geführt
-// wird.
+// wird. Jede Quelle ist ein Adapter in quellen/ (Fenster, Abfrage, Abbildung);
+// dieser Orchestrator lädt, löst Personen auf und ordnet.
 //
 // Fensterlogik: OFFENE Fristen erscheinen bis zum Horizont (heute + tage)
 // OHNE untere Grenze — eine überfällige Frist verschwindet nie durch
@@ -16,39 +17,22 @@
 // Zugriffsmodell: RESTRICTED-/vertrauliche Mandanten werden über die
 // Sichtbarkeitsregel (Relationsfilter) ausgeblendet (identisch zu
 // Kalender/Exporten).
+//
+// `loadKontrollbuch` liefert die vollständige Sicht (CSV-Export,
+// Tagesabschluss). `loadKontrollbuchSeite` blättert für die Seite nur in den
+// offenen Einträgen; alle Seiten zusammen ergeben dieselben Einträge in
+// derselben Reihenfolge.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
-import { SCHEDULE_LABELS } from '@taxtronik/tax';
 import type { StaffSession } from '@/server/auth/staff';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { berlinTodayUtcMidnight } from '@/lib/fmt';
-import { NOTICE_KIND_LABELS } from '@/lib/domain-labels';
-import {
-  type FristEintrag,
-  filingWithinDeadline,
-  taxDeadlineErledigt,
-  taxNoticeFristErledigt,
-  taxNoticeKlageFristErledigt,
-  requestErledigt,
-  sortEintraege,
-} from './eintrag';
-
-const KONTROLLBUCH_NOTICE_KIND_LABELS: Readonly<Record<string, string>> = {
-  ...NOTICE_KIND_LABELS,
-  USTA: 'USt-VA',
-  UST_JAHR: 'USt-Jahr',
-  EST: 'ESt',
-  KST: 'KSt',
-  GEWST_MESSBESCHEID: 'GewSt-Mess',
-  GEWST: 'GewSt',
-  LSTA: 'LSt-Anm.',
-  FESTSTELLUNG: 'Feststellung',
-  ZERLEGUNG: 'Zerlegung',
-  SONSTIGE: 'Bescheid',
-};
+import { type FristEintrag, sortEintraege } from './eintrag';
+import { type AnyKontrollbuchQuelle, KONTROLLBUCH_QUELLEN } from './quellen';
+import type { KontrollbuchKontext, Personen, QuellFilter } from './quellen/typen';
 
 export interface KontrollbuchOptions {
   /** Horizont in Tagen (Zukunft) und Rückschau für Erledigte. */
@@ -66,401 +50,90 @@ export interface KontrollbuchOptions {
   referenceDate?: Date;
 }
 
-function queryWhenEnabled<T>(enabled: boolean, query: () => Promise<T[]>): Promise<T[]> {
-  return enabled ? query() : Promise.resolve([]);
+const TAG_MS = 86_400_000;
+
+interface Quelllauf {
+  quelle: AnyKontrollbuchQuelle;
+  filter: QuellFilter<unknown>;
 }
 
-export async function loadKontrollbuch(
+interface Kandidat {
+  quelle: AnyKontrollbuchQuelle;
+  row: unknown;
+}
+
+interface Geordnet {
+  kandidat: Kandidat;
+  rang: number;
+  eintrag: FristEintrag;
+}
+
+async function vorbereiten(
   tx: TxClient,
   session: StaffSession,
   opts: KontrollbuchOptions,
-): Promise<FristEintrag[]> {
+): Promise<{ kontext: KontrollbuchKontext; laeufe: Quelllauf[] }> {
   const heute = opts.referenceDate ?? berlinTodayUtcMidnight();
-  const horizont = new Date(heute.getTime() + opts.tage * 86400000);
-  const rueckschau = new Date(heute.getTime() - opts.tage * 86400000);
-  const sources = { taxNotices: true, reminders: true, ...opts.sources };
-
+  const quellen = { taxNotices: true, reminders: true, ...opts.sources };
   const clientAccess = await accessibleClientsWhereFor(tx, session);
   const responsibleClient: Prisma.ClientWhereInput | undefined = opts.nurStaffId
-    ? {
-        responsibilities: {
-          some: { role: 'HAUPTBEARBEITER', staffId: opts.nurStaffId },
-        },
-      }
+    ? { responsibilities: { some: { role: 'HAUPTBEARBEITER', staffId: opts.nurStaffId } } }
     : undefined;
-  // Sichtbarkeitsregel und optionale Zuständigkeit in EINEM `client`-Filter: ein
-  // zweiter `client`-Schlüssel im Objekt-Spread würde die Regel überschreiben.
-  const visibleClient = clientAccessFilter(clientAccess, responsibleClient);
+  const kontext: KontrollbuchKontext = {
+    heute,
+    horizont: new Date(heute.getTime() + opts.tage * TAG_MS),
+    rueckschau: new Date(heute.getTime() - opts.tage * TAG_MS),
+    nurOffene: Boolean(opts.nurOffene),
+    nurStaffId: opts.nurStaffId ?? null,
+    clientAccess,
+    responsibleClient,
+    visibleClient: clientAccessFilter(clientAccess, responsibleClient),
+  };
+  const aktiv = KONTROLLBUCH_QUELLEN.filter((quelle) => quelle.aktiv(quellen));
+  // Vorabfragen (z. B. verspätete Einlegungen) laufen vor allen Hauptabfragen
+  // derselben REPEATABLE-READ-Transaktion.
+  const vorab = await Promise.all(aktiv.map((quelle) => quelle.vorab?.(tx, kontext)));
+  return {
+    kontext,
+    laeufe: aktiv.map((quelle, i) => ({ quelle, filter: quelle.where(kontext, vorab[i]) })),
+  };
+}
 
-  // Prisma kann zwei Spalten in einem normalen Where-Objekt nicht portabel
-  // gegeneinander vergleichen. Die tenant-/RLS-gebundenen Vorabfragen liefern
-  // deshalb nur die IDs tatsächlich nach Fristende dokumentierter Einlegungen.
-  // Diese Vorgänge müssen im Kontrollbuch offen bleiben, bis eine fachliche
-  // Wiedereinsetzungs-/Dispositionsentscheidung dokumentiert ist.
-  const [lateAppealRows, lateKlageRows] = await Promise.all([
-    queryWhenEnabled(
-      sources.taxNotices,
-      () =>
-        tx.$queryRaw<Array<{ id: string }>>`
-        SELECT "id"
-          FROM public."tax_notice"
-         WHERE "appeal_deadline" IS NOT NULL
-           AND "appeal_deadline" <= ${horizont}
-           AND "appeal_filed_at" IS NOT NULL
-           AND ("appeal_filed_at" AT TIME ZONE 'UTC')::date > "appeal_deadline"
-      `,
-    ),
-    queryWhenEnabled(
-      sources.taxNotices,
-      () =>
-        tx.$queryRaw<Array<{ id: string }>>`
-        SELECT "id"
-          FROM public."tax_notice"
-         WHERE "klage_deadline" IS NOT NULL
-           AND "klage_deadline" <= ${horizont}
-           AND "klage_filed_at" IS NOT NULL
-           AND ("klage_filed_at" AT TIME ZONE 'UTC')::date > "klage_deadline"
-      `,
-    ),
-  ]);
-  const lateAppealIds = lateAppealRows.map((row) => row.id);
-  const lateKlageIds = lateKlageRows.map((row) => row.id);
-
-  const deadlineOpen: Prisma.TaxDeadlineWhereInput = {
-    dueDate: { lte: horizont },
-    OR: [
-      { status: { not: 'DONE' } },
-      { status: 'DONE', completedAt: null },
-      { status: 'DONE', completedByStaff: null },
-    ],
-  };
-  const deadlineClosed: Prisma.TaxDeadlineWhereInput = {
-    status: 'DONE',
-    completedAt: { not: null },
-    completedByStaff: { not: null },
-    dueDate: { gte: rueckschau, lte: horizont },
-  };
-  const deadlineWindow: Prisma.TaxDeadlineWhereInput = opts.nurOffene
-    ? deadlineOpen
-    : {
-        OR: [deadlineOpen, deadlineClosed],
-      };
-  const appealFilingMissing: Prisma.TaxNoticeWhereInput = {
-    OR: [{ appealFiledAt: null }, { appealFiledBy: null }],
-  };
-  const appealFilingMissingOrLate: Prisma.TaxNoticeWhereInput = lateAppealIds.length
-    ? { OR: [appealFilingMissing, { id: { in: lateAppealIds } }] }
-    : appealFilingMissing;
-  const appealDispositionMissing: Prisma.TaxNoticeWhereInput = {
-    OR: [
-      { status: { not: 'BESTANDSKRAEFTIG' } },
-      { legalFinalAt: null },
-      { legalFinalBy: null },
-      { legalFinalReason: null },
-    ],
-  };
-  const noticeOpen: Prisma.TaxNoticeWhereInput = {
-    appealDeadline: { lte: horizont },
-    AND: [appealFilingMissingOrLate, appealDispositionMissing],
-  };
-  const timelyAppealFiling: Prisma.TaxNoticeWhereInput = {
-    appealFiledAt: { not: null },
-    appealFiledBy: { not: null },
-    ...(lateAppealIds.length ? { id: { notIn: lateAppealIds } } : {}),
-  };
-  const noticeClosed: Prisma.TaxNoticeWhereInput = {
-    appealDeadline: { gte: rueckschau, lte: horizont },
-    OR: [
-      timelyAppealFiling,
-      {
-        status: 'BESTANDSKRAEFTIG',
-        legalFinalAt: { not: null },
-        legalFinalBy: { not: null },
-        legalFinalReason: { not: null },
-      },
-    ],
-  };
-  const noticeWindow: Prisma.TaxNoticeWhereInput = opts.nurOffene
-    ? noticeOpen
-    : {
-        OR: [noticeOpen, noticeClosed],
-      };
-  // TAX-NOTICE-APPEAL-001 / TAX-CONTROL-STATUS-001: Wenn die
-  // Bekanntgabe-/Fristgrundlage keine belastbare Rechtsbehelfsfrist erlaubt,
-  // darf ein gespeicherter interner Risikotermin nicht aus der Kontrolle
-  // verschwinden. Er ist ausdrücklich KEINE Einspruchsfrist und bleibt bis zu
-  // einer echten Frist offen. Das Produkt besitzt hierfür noch keinen eigenen
-  // strukturierten Abschlussgrund; ein generischer BESTANDSKRAEFTIG-Satz darf
-  // deshalb auch bei Legacy-/Importdaten nicht als Erledigung fehlgedeutet
-  // werden.
-  const noticeRiskWindow: Prisma.TaxNoticeWhereInput = {
-    appealDeadline: null,
-    internalRiskDeadline: { lte: horizont },
-    deadlineCalculationStatus: { in: ['MANUAL_REVIEW', 'RISK_ONLY'] },
-  };
-  const klageFilingMissing: Prisma.TaxNoticeWhereInput = {
-    OR: [{ klageFiledAt: null }, { klageFiledBy: null }],
-  };
-  const klageFilingMissingOrLate: Prisma.TaxNoticeWhereInput = lateKlageIds.length
-    ? { OR: [klageFilingMissing, { id: { in: lateKlageIds } }] }
-    : klageFilingMissing;
-  const klageDispositionMissing: Prisma.TaxNoticeWhereInput = {
-    OR: [
-      { status: { not: 'BESTANDSKRAEFTIG' } },
-      { legalFinalAt: null },
-      { legalFinalBy: null },
-      { legalFinalReason: null },
-    ],
-  };
-  const klageOpen: Prisma.TaxNoticeWhereInput = {
-    status: {
-      in: [
-        'TEILEINSPRUCHSENTSCHEIDUNG',
-        'ZURUECKGEWIESEN',
-        // TAX-CONTROL-STATUS-001: Ein spaeterer ABGEHOLFEN-Status beseitigt
-        // eine bereits persistierte Klagefrist nicht. Bis ein fristwahrender
-        // Einreichungs- oder Bestandskraft-/Dispositionsnachweis vorliegt,
-        // bleibt sie fail-closed in der Kontrollsicht offen.
-        'ABGEHOLFEN',
-        'KLAGE',
-        'BESTANDSKRAEFTIG',
-      ],
-    },
-    klageDeadline: { lte: horizont },
-    AND: [klageFilingMissingOrLate, klageDispositionMissing],
-  };
-  const timelyKlageFiling: Prisma.TaxNoticeWhereInput = {
-    klageFiledAt: { not: null },
-    klageFiledBy: { not: null },
-    ...(lateKlageIds.length ? { id: { notIn: lateKlageIds } } : {}),
-  };
-  const klageClosed: Prisma.TaxNoticeWhereInput = {
-    klageDeadline: { gte: rueckschau, lte: horizont },
-    OR: [
-      timelyKlageFiling,
-      {
-        status: 'BESTANDSKRAEFTIG',
-        legalFinalAt: { not: null },
-        legalFinalBy: { not: null },
-        legalFinalReason: { not: null },
-      },
-    ],
-  };
-  const klageWindow: Prisma.TaxNoticeWhereInput = opts.nurOffene
-    ? klageOpen
-    : {
-        OR: [klageOpen, klageClosed],
-      };
-  const requestOpen: Prisma.RequestWhereInput = {
-    dueAt: { lte: horizont },
-    OR: [
-      { status: { not: 'CLOSED' } },
-      { status: 'CLOSED', closedAt: null },
-      { status: 'CLOSED', closedByStaff: null },
-    ],
-  };
-  const requestClosed: Prisma.RequestWhereInput = {
-    status: 'CLOSED',
-    closedAt: { not: null },
-    closedByStaff: { not: null },
-    dueAt: { gte: rueckschau, lte: horizont },
-  };
-  const requestWindow: Prisma.RequestWhereInput = opts.nurOffene
-    ? requestOpen
-    : {
-        OR: [requestOpen, requestClosed],
-      };
-  const reminderOpen: Prisma.ClientReminderWhereInput = {
-    dueDate: { lte: horizont },
-    OR: [{ doneAt: null }, { doneByStaff: null }],
-  };
-  const reminderClosed: Prisma.ClientReminderWhereInput = {
-    doneAt: { not: null },
-    doneByStaff: { not: null },
-    dueDate: { gte: rueckschau, lte: horizont },
-  };
-  const reminderWindow: Prisma.ClientReminderWhereInput = opts.nurOffene
-    ? reminderOpen
-    : {
-        OR: [reminderOpen, reminderClosed],
-      };
-  const reminderStaff: Prisma.ClientReminderWhereInput | undefined = opts.nurStaffId
-    ? {
-        OR: [
-          { assignees: { some: { staffId: opts.nurStaffId } } },
-          { assignees: { none: {} }, client: responsibleClient },
-        ],
-      }
-    : undefined;
-
-  // Offen ohne untere Grenze ODER erledigt im Fenster — je Quelle als OR
-  // ausgedrückt, da „erledigt" quellspezifisch ist.
-  const [deadlines, notices, klagen, riskNotices, requests, reminders] = await Promise.all([
-    queryWhenEnabled(sources.taxNotices, () =>
-      tx.taxDeadline.findMany({
-        where: {
-          ...deadlineWindow,
-          ...visibleClient,
-        },
-        select: {
-          id: true,
-          clientId: true,
-          kind: true,
-          period: true,
-          dueDate: true,
-          status: true,
-          completedAt: true,
-          completedByStaff: true,
-          client: { select: { name: true } },
-        },
-      }),
-    ),
-    queryWhenEnabled(sources.taxNotices, () =>
-      tx.taxNotice.findMany({
-        where: {
-          appealDeadline: { not: null },
-          ...noticeWindow,
-          ...visibleClient,
-        },
-        select: {
-          id: true,
-          clientId: true,
-          kind: true,
-          period: true,
-          appealDeadline: true,
-          manualReviewRequired: true,
-          status: true,
-          reviewedAt: true,
-          reviewedBy: true,
-          appealFiledAt: true,
-          appealFiledBy: true,
-          legalFinalAt: true,
-          legalFinalBy: true,
-          legalFinalReason: true,
-          client: { select: { name: true } },
-        },
-      }),
-    ),
-    // TAX-CONTROL-STATUS-001: Klagefristen sind erst nach einer
-    // Einspruchs- oder Teil-Einspruchsentscheidung offen, nicht bereits bei
-    // TEILABHILFE. Im Rückschau-Fenster auch nachgewiesene Abschlüsse.
-    queryWhenEnabled(sources.taxNotices, () =>
-      tx.taxNotice.findMany({
-        where: {
-          klageDeadline: { not: null },
-          ...klageWindow,
-          ...visibleClient,
-        },
-        select: {
-          id: true,
-          clientId: true,
-          kind: true,
-          period: true,
-          klageDeadline: true,
-          manualReviewRequired: true,
-          status: true,
-          appealResolvedAt: true,
-          klageFiledAt: true,
-          klageFiledBy: true,
-          legalFinalAt: true,
-          legalFinalBy: true,
-          legalFinalReason: true,
-          client: { select: { name: true } },
-        },
-      }),
-    ),
-    queryWhenEnabled(sources.taxNotices, () =>
-      tx.taxNotice.findMany({
-        where: {
-          ...noticeRiskWindow,
-          ...visibleClient,
-        },
-        select: {
-          id: true,
-          clientId: true,
-          kind: true,
-          period: true,
-          internalRiskDeadline: true,
-          deadlineCalculationStatus: true,
-          client: { select: { name: true } },
-        },
-      }),
-    ),
-    tx.request.findMany({
-      where: {
-        dueAt: { not: null },
-        ...requestWindow,
-        ...visibleClient,
-      },
-      select: {
-        id: true,
-        clientId: true,
-        title: true,
-        dueAt: true,
-        status: true,
-        closedAt: true,
-        closedByStaff: true,
-        client: { select: { name: true } },
-      },
-    }),
-    queryWhenEnabled(sources.reminders, () =>
-      tx.clientReminder.findMany({
-        where: {
-          ...clientAccessFilter(clientAccess),
-          AND: [
-            // Das Fristenbuch fuehrt MANDANTEN-Fristen. Interne Aufgaben ohne
-            // Mandantenbezug haben darin nichts zu suchen (und keinen Platz: der
-            // Eintrag verlangt Mandant + Name). Fuer Admin/Partner (Regel `{}`)
-            // setzt der Relationsfilter keine Bedingung, daher explizit.
-            { NOT: { clientId: null } },
-            reminderWindow,
-            ...(reminderStaff ? [reminderStaff] : []),
-          ],
-        },
-        select: {
-          id: true,
-          clientId: true,
-          subject: true,
-          dueDate: true,
-          assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
-          doneAt: true,
-          doneByStaff: true,
-          client: { select: { name: true } },
-        },
-      }),
-    ),
-  ]);
-
-  // Verantwortliche: Hauptbearbeiter je Mandant (eine Query) — Wiedervorlagen
-  // mit eigener Zuweisung überschreiben das. Namen in einer zweiten Query.
+/**
+ * Verantwortliche: Hauptbearbeiter je Mandant (eine Query) — Wiedervorlagen mit
+ * eigener Zuweisung überschreiben das. Namen in einer zweiten Query.
+ *
+ * Hat ein Mandant mehrere Hauptbearbeiter, führt die erste Zuordnung (wie bei
+ * Wiedervorlagen die erste Zuweisung). Früher gewann die zuletzt gelieferte
+ * Zeile; deren Reihenfolge hing vom Abfrageplan ab, sodass Seite, CSV und
+ * Tagesabschluss verschiedene Personen nennen konnten.
+ */
+async function ladePersonen(
+  tx: TxClient,
+  kandidaten: readonly Kandidat[],
+  nurStaffId: string | null,
+): Promise<Personen> {
+  const bezuege = kandidaten.map(({ quelle, row }) => quelle.bezug(row));
   const clientIds = new Set<string>();
-  for (const r of [...deadlines, ...notices, ...klagen, ...riskNotices, ...requests, ...reminders])
-    if (r.clientId) clientIds.add(r.clientId);
+  for (const bezug of bezuege) if (bezug.clientId) clientIds.add(bezug.clientId);
   const responsibilities = clientIds.size
     ? await tx.clientResponsibility.findMany({
         where: {
           clientId: { in: [...clientIds] },
           role: 'HAUPTBEARBEITER',
-          ...(opts.nurStaffId ? { staffId: opts.nurStaffId } : {}),
+          ...(nurStaffId ? { staffId: nurStaffId } : {}),
         },
+        orderBy: [{ createdAt: 'asc' }, { staffId: 'asc' }],
         select: { clientId: true, staffId: true },
       })
     : [];
-  const hauptbearbeiter = new Map(responsibilities.map((r) => [r.clientId, r.staffId]));
-
-  const staffIds = new Set<string>();
-  for (const sid of hauptbearbeiter.values()) staffIds.add(sid);
-  for (const d of deadlines) if (d.completedByStaff) staffIds.add(d.completedByStaff);
-  for (const n of notices) if (n.reviewedBy) staffIds.add(n.reviewedBy);
-  for (const n of notices) if (n.appealFiledBy) staffIds.add(n.appealFiledBy);
-  for (const n of notices) if (n.legalFinalBy) staffIds.add(n.legalFinalBy);
-  for (const k of klagen) if (k.klageFiledBy) staffIds.add(k.klageFiledBy);
-  for (const k of klagen) if (k.legalFinalBy) staffIds.add(k.legalFinalBy);
-  for (const r of reminders) {
-    for (const a of r.assignees) staffIds.add(a.staffId);
-    if (r.doneByStaff) staffIds.add(r.doneByStaff);
+  const hauptbearbeiter = new Map<string, string>();
+  for (const r of responsibilities) {
+    if (!hauptbearbeiter.has(r.clientId)) hauptbearbeiter.set(r.clientId, r.staffId);
   }
-  for (const r of requests) if (r.closedByStaff) staffIds.add(r.closedByStaff);
+
+  const staffIds = new Set<string>(hauptbearbeiter.values());
+  for (const bezug of bezuege) for (const id of bezug.staffIds) if (id) staffIds.add(id);
   const staff = staffIds.size
     ? await tx.staffUser.findMany({
         where: { id: { in: [...staffIds] } },
@@ -468,277 +141,213 @@ export async function loadKontrollbuch(
       })
     : [];
   const staffName = new Map(staff.map((s) => [s.id, s.fullName]));
+  return {
+    name: (staffId) => (staffId ? (staffName.get(staffId) ?? null) : null),
+    hauptbearbeiter: (clientId) => hauptbearbeiter.get(clientId) ?? null,
+  };
+}
 
-  const eintraege: FristEintrag[] = [];
+function abbilden(kandidaten: readonly Kandidat[], personen: Personen): Geordnet[] {
+  return kandidaten.flatMap((kandidat) => {
+    const eintrag = kandidat.quelle.toEintrag(kandidat.row, personen);
+    return eintrag ? [{ kandidat, rang: kandidat.quelle.rang, eintrag }] : [];
+  });
+}
 
-  type NoticeRow = (typeof notices)[number];
-  type KlageRow = (typeof klagen)[number];
+function vergleicheId(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
 
-  function personName(staffId: string | null): string | null {
-    return staffId ? (staffName.get(staffId) ?? null) : null;
-  }
+/**
+ * Ordnung von `sortEintraege` (offene nach Fälligkeit aufsteigend, erledigte
+ * absteigend). Gleichstände ordnet die bisherige Quellreihenfolge (`rang`), dann
+ * die ID — stabil, statt von der Zeilenfolge der Datenbank abzuhängen.
+ */
+function ordnen(liste: readonly Geordnet[]): Geordnet[] {
+  const vorsortiert = [...liste].sort(
+    (a, b) => a.rang - b.rang || vergleicheId(a.eintrag.id, b.eintrag.id),
+  );
+  const element = new Map(vorsortiert.map((g) => [g.eintrag, g]));
+  return sortEintraege(vorsortiert.map((g) => g.eintrag)).map((e) => element.get(e)!);
+}
 
-  function verantwortung(clientId: string): { id: string | null; name: string | null } {
-    const id = hauptbearbeiter.get(clientId) ?? null;
-    return { id, name: personName(id) };
-  }
+/** Vollständige Kontrollsicht (CSV-Export, Tagesabschluss). */
+export async function loadKontrollbuch(
+  tx: TxClient,
+  session: StaffSession,
+  opts: KontrollbuchOptions,
+): Promise<FristEintrag[]> {
+  const { kontext, laeufe } = await vorbereiten(tx, session, opts);
+  // Offen ohne untere Grenze ODER erledigt im Fenster — je Quelle als OR
+  // ausgedrückt, da „erledigt" quellspezifisch ist.
+  const zeilen = await Promise.all(
+    laeufe.map(({ quelle, filter }) => quelle.query(tx, filter.fenster)),
+  );
+  const kandidaten = laeufe.flatMap(({ quelle }, i) => zeilen[i]!.map((row) => ({ quelle, row })));
+  const personen = await ladePersonen(tx, kandidaten, kontext.nurStaffId);
+  return ordnen(abbilden(kandidaten, personen)).map((g) => g.eintrag);
+}
 
-  function noticeFilingOutcome(n: NoticeRow) {
-    const filingTimely = filingWithinDeadline(n.appealFiledAt, n.appealFiledBy, n.appealDeadline);
-    return {
-      filingTimely,
-      filingLate: Boolean(n.appealFiledAt && n.appealFiledBy && !filingTimely),
-      disposition:
-        !filingTimely &&
-        n.status === 'BESTANDSKRAEFTIG' &&
-        Boolean(n.legalFinalAt && n.legalFinalBy && n.legalFinalReason?.trim()),
-    };
-  }
+// --- Seitenansicht ------------------------------------------------------------
 
-  function noticeControlHint(
-    n: NoticeRow,
-    erledigt: boolean,
-    filingLate: boolean,
-    disposition: boolean,
-  ): string | null {
-    if (filingLate && !disposition) {
-      return 'Einspruch wurde erst nach dem dokumentierten Fristende eingelegt; Wiedereinsetzung oder fachliche Disposition ist offen.';
-    }
-    if (!erledigt && n.manualReviewRequired) {
-      return 'Frist ist ein technischer Kontrollvorschlag; die fachliche Freigabe ist noch offen.';
-    }
-    if (!erledigt && !['NEU', 'GEPRUEFT'].includes(n.status)) {
-      return 'Verfahrensstatus vorhanden, aber Einlegungs- oder Dispositionsnachweis unvollständig.';
-    }
-    return null;
-  }
+export interface KontrollbuchSeitenOptionen extends KontrollbuchOptions {
+  /** Angefragte Seite der offenen Einträge (1-basiert, auf die letzte Seite begrenzt). */
+  seite: number;
+  /** Offene Einträge je Seite; 0 lädt nur die Zählwerte. */
+  seitenGroesse: number;
+  /** Zählwerte des Tagesabschlusses mitliefern, soweit der Umfang sie abdeckt. */
+  tagesabschluss?: boolean;
+}
 
-  function klageFilingOutcome(k: KlageRow) {
-    const filingTimely = filingWithinDeadline(k.klageFiledAt, k.klageFiledBy, k.klageDeadline);
-    return {
-      filingTimely,
-      filingLate: Boolean(k.klageFiledAt && k.klageFiledBy && !filingTimely),
-      disposition:
-        !filingTimely &&
-        k.status === 'BESTANDSKRAEFTIG' &&
-        Boolean(k.legalFinalAt && k.legalFinalBy && k.legalFinalReason?.trim()),
-    };
-  }
+/** Offene Einträge bis einschließlich Stichtag und davon überfällige. */
+export interface Stichtagszaehler {
+  offen: number;
+  ueberfaellig: number;
+}
 
-  function klageControlHint(
-    k: KlageRow,
-    erledigt: boolean,
-    filingLate: boolean,
-    disposition: boolean,
-  ): string | null {
-    if (filingLate && !disposition) {
-      return 'Klage wurde erst nach dem dokumentierten Fristende eingereicht; Wiedereinsetzung oder fachliche Disposition ist offen.';
-    }
-    if (!erledigt && k.status === 'ABGEHOLFEN') {
-      return 'Die bereits dokumentierte Klagefrist bleibt trotz Abhilfe-Status bis zum Einreichungs- oder Dispositionsnachweis in Kontrolle.';
-    }
-    if (!erledigt && ['KLAGE', 'BESTANDSKRAEFTIG'].includes(k.status)) {
-      return 'Abschlussstatus vorhanden, aber Klage- oder Dispositionsnachweis unvollständig.';
-    }
-    return null;
-  }
+export interface KontrollbuchSeite {
+  /** Stichtag der Abfrage (UTC-Mitternacht des Berlin-Kalendertags). */
+  heute: Date;
+  /** Offene Einträge der Seite, dringlichste zuerst. */
+  offen: FristEintrag[];
+  /** Als erledigt abgeleitete Einträge, neueste zuerst; nicht geblättert. */
+  erledigt: FristEintrag[];
+  offenGesamt: number;
+  /** Offene Einträge mit Fälligkeit vor dem Stichtag (gesamt, nicht nur die Seite). */
+  ueberfaellig: number;
+  seite: number;
+  seitenGroesse: number;
+  /**
+   * Zählwerte des Tagesabschlusses (offener Quellzweig bis einschließlich
+   * Stichtag), wenn angefordert und die Seite alle Quellen ohne
+   * Zuständigkeitsfilter umfasst; sonst null.
+   */
+  tagesabschluss: Stichtagszaehler | null;
+}
 
-  function appendTaxDeadlineEntries(): void {
-    for (const d of deadlines) {
-      const verantwortlich = verantwortung(d.clientId);
-      const erledigt = taxDeadlineErledigt(d.status, d.completedAt, d.completedByStaff);
-      eintraege.push({
-        quelle: 'STEUERTERMIN',
-        kontrollart: 'OPERATIONAL_DUE_DATE',
-        id: d.id,
-        titel: `${SCHEDULE_LABELS[d.kind] ?? d.kind} ${d.period}`,
-        clientId: d.clientId,
-        clientName: d.client.name,
-        faelligAm: d.dueDate,
-        erledigt,
-        kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
-        kontrollhinweis:
-          d.status === 'SKIPPED'
-            ? 'Übersprungen ohne strukturierten Grund und fachliche Freigabe.'
-            : d.status === 'DONE' && !erledigt
-              ? 'Erledigungszeit oder handelnde Person fehlt.'
-              : null,
-        erledigtAm: d.completedAt,
-        erledigtVon: personName(d.completedByStaff),
-        verantwortlich: verantwortlich.name,
-        verantwortlichId: verantwortlich.id,
-        href: `/staff/tax-deadlines/group?kind=${d.kind}&period=${encodeURIComponent(d.period)}&scope=all`,
-      });
-    }
-  }
+interface Teilergebnis {
+  /** Sicher offene Zeilen (`offen`) gesamt, vor dem Stichtag und bis einschließlich Stichtag. */
+  gesamt: number;
+  vorStichtag: number;
+  bisStichtag: number;
+  /** Vollständig geladene Zeilen, deren Zustand erst `toEintrag` entscheidet. */
+  zusatz: Array<Geordnet & { vorbehalt: boolean }>;
+}
 
-  function appendNoticeEntries(): void {
-    for (const n of notices) {
-      const verantwortlich = verantwortung(n.clientId);
-      const erledigt = taxNoticeFristErledigt(n.status, n);
-      const { filingTimely, filingLate, disposition } = noticeFilingOutcome(n);
-      eintraege.push({
-        quelle: 'EINSPRUCHSFRIST',
-        kontrollart: n.manualReviewRequired
-          ? 'REVIEW_PENDING_CONTROL_PROPOSAL'
-          : 'CALCULATED_CONTROL_PROPOSAL',
-        id: n.id,
-        titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`,
-        clientId: n.clientId,
-        clientName: n.client.name,
-        faelligAm: n.appealDeadline!,
-        erledigt,
-        kontrollzustand: disposition
-          ? 'CLOSED_DISPOSITION'
-          : erledigt
-            ? 'CLOSED_FULFILLED'
-            : 'OPEN',
-        kontrollhinweis: noticeControlHint(n, erledigt, filingLate, disposition),
-        erledigtAm: filingTimely ? n.appealFiledAt : disposition ? n.legalFinalAt : null,
-        erledigtVon: filingTimely
-          ? personName(n.appealFiledBy)
-          : disposition
-            ? personName(n.legalFinalBy)
-            : null,
-        verantwortlich: verantwortlich.name,
-        verantwortlichId: verantwortlich.id,
-        href: `/staff/clients/${n.clientId}/notices`,
-      });
-    }
-  }
+/** Vorläufige Abbildung ohne Personen: genügt für Zustand, Fälligkeit und Ordnung. */
+const OHNE_PERSONEN: Personen = { name: () => null, hauptbearbeiter: () => null };
 
-  function appendRiskNoticeEntries(): void {
-    for (const n of riskNotices) {
-      if (!n.internalRiskDeadline) continue;
-      const verantwortlich = verantwortung(n.clientId);
-      const noticeTitle = `${KONTROLLBUCH_NOTICE_KIND_LABELS[n.kind] ?? n.kind} ${n.period}`;
-      eintraege.push({
-        // Technisch dieselbe Bescheidquelle, aber mit eigener Anzeigeart: weder
-        // UI noch CSV dürfen aus dem Risikotermin eine Einspruchsfrist machen.
-        quelle: 'EINSPRUCHSFRIST',
-        kontrollart: 'INTERNAL_RISK',
-        artLabel: 'Interner Prüftermin',
-        id: n.id,
-        titel: `Interner Prüftermin: ${noticeTitle} (keine Rechtsbehelfsfrist)`,
-        clientId: n.clientId,
-        clientName: n.client.name,
-        faelligAm: n.internalRiskDeadline,
-        erledigt: false,
-        kontrollzustand: 'OPEN',
-        kontrollhinweis:
-          'Interner Risikotermin ohne berechnete Rechtsbehelfsfrist. Bekanntgabe und Fristgrundlage fachlich prüfen; ein eigener strukturierter Abschlussgrund ist noch nicht implementiert.',
-        erledigtAm: null,
-        erledigtVon: null,
-        verantwortlich: verantwortlich.name,
-        verantwortlichId: verantwortlich.id,
-        href: `/staff/clients/${n.clientId}/notices`,
-      });
-    }
-  }
+async function ladeTeile(
+  tx: TxClient,
+  { quelle, filter }: Quelllauf,
+  heute: Date,
+  stichtag: boolean,
+): Promise<Teilergebnis> {
+  const [gesamt, vorStichtag, bisStichtag, vorbehalt, erledigt] = await Promise.all([
+    quelle.count(tx, filter.offen),
+    quelle.count(tx, filter.offen, { lt: heute }),
+    stichtag ? quelle.count(tx, filter.offen, { lte: heute }) : 0,
+    filter.offenVorbehalt ? quelle.query(tx, filter.offenVorbehalt) : [],
+    filter.erledigt ? quelle.query(tx, filter.erledigt) : [],
+  ]);
+  const vorlauf = (rows: unknown[], istVorbehalt: boolean) =>
+    abbilden(
+      rows.map((row) => ({ quelle, row })),
+      OHNE_PERSONEN,
+    ).map((g) => ({ ...g, vorbehalt: istVorbehalt }));
+  return {
+    gesamt,
+    vorStichtag,
+    bisStichtag,
+    zusatz: [...vorlauf(vorbehalt, true), ...vorlauf(erledigt, false)],
+  };
+}
 
-  function appendKlageEntries(): void {
-    for (const k of klagen) {
-      if (!k.klageDeadline) continue;
-      const verantwortlich = verantwortung(k.clientId);
-      const erledigt = taxNoticeKlageFristErledigt(k.status, k);
-      const { filingTimely, filingLate, disposition } = klageFilingOutcome(k);
-      eintraege.push({
-        quelle: 'KLAGEFRIST',
-        kontrollart: k.manualReviewRequired
-          ? 'REVIEW_PENDING_CONTROL_PROPOSAL'
-          : 'CALCULATED_CONTROL_PROPOSAL',
-        id: k.id,
-        titel: `${KONTROLLBUCH_NOTICE_KIND_LABELS[k.kind] ?? k.kind} ${k.period} (Klage FG)`,
-        clientId: k.clientId,
-        clientName: k.client.name,
-        faelligAm: k.klageDeadline,
-        erledigt,
-        kontrollzustand: disposition
-          ? 'CLOSED_DISPOSITION'
-          : erledigt
-            ? 'CLOSED_FULFILLED'
-            : 'OPEN',
-        kontrollhinweis: klageControlHint(k, erledigt, filingLate, disposition),
-        // #11: Erledigung = tatsächliche Klageeinreichung (wer/wann), nicht die
-        // Einspruchsentscheidung (= Fristbeginn) bzw. der Bescheidprüfer. Fallback
-        // auf Abschluss-/Entscheidungsdaten nur für Altbestand ohne die
-        // belastbaren klageFiled*-Felder.
-        erledigtAm: filingTimely ? k.klageFiledAt : disposition ? k.legalFinalAt : null,
-        erledigtVon: filingTimely
-          ? personName(k.klageFiledBy)
-          : disposition
-            ? personName(k.legalFinalBy)
-            : null,
-        verantwortlich: verantwortlich.name,
-        verantwortlichId: verantwortlich.id,
-        href: `/staff/clients/${k.clientId}/notices`,
-      });
-    }
-  }
+function summe(teile: readonly Teilergebnis[], feld: 'gesamt' | 'vorStichtag' | 'bisStichtag') {
+  return teile.reduce((total, teil) => total + teil[feld], 0);
+}
 
-  function appendRequestEntries(): void {
-    for (const r of requests) {
-      const verantwortlich = verantwortung(r.clientId);
-      const erledigt = requestErledigt(r.status, r.closedAt, r.closedByStaff);
-      eintraege.push({
-        quelle: 'ANFORDERUNG',
-        kontrollart: 'OPERATIONAL_DUE_DATE',
-        id: r.id,
-        titel: r.title,
-        clientId: r.clientId,
-        clientName: r.client.name,
-        faelligAm: r.dueAt!,
-        erledigt,
-        kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
-        kontrollhinweis:
-          r.status === 'CANCELLED'
-            ? 'Storniert ohne strukturierten Abschlussgrund.'
-            : r.status === 'CLOSED' && !erledigt
-              ? 'Abschlusszeit oder handelnde Person fehlt.'
-              : null,
-        erledigtAm: erledigt ? r.closedAt : null,
-        erledigtVon: erledigt ? personName(r.closedByStaff) : null,
-        verantwortlich: verantwortlich.name,
-        verantwortlichId: verantwortlich.id,
-        href: `/staff/requests/${r.id}`,
-      });
-    }
-  }
+function zaehle(
+  teile: readonly Teilergebnis[],
+  zusatzOffen: ReadonlyArray<Geordnet & { vorbehalt: boolean }>,
+  heute: Date,
+  stichtag: boolean,
+) {
+  const vor = (g: Geordnet) => g.eintrag.faelligAm.getTime() < heute.getTime();
+  const bis = (g: Geordnet) => g.eintrag.faelligAm.getTime() <= heute.getTime();
+  // Der Tagesabschluss liest nur den offenen Quellzweig: Zusatzzeilen aus dem
+  // Rückschau-Zweig zählen für die Seite, aber nicht für den Abschluss.
+  const vorbehalt = zusatzOffen.filter((g) => g.vorbehalt);
+  const ueberfaellig = summe(teile, 'vorStichtag');
+  return {
+    offenGesamt: summe(teile, 'gesamt') + zusatzOffen.length,
+    ueberfaellig: ueberfaellig + zusatzOffen.filter(vor).length,
+    tagesabschluss: stichtag
+      ? {
+          offen: summe(teile, 'bisStichtag') + vorbehalt.filter(bis).length,
+          ueberfaellig: ueberfaellig + vorbehalt.filter(vor).length,
+        }
+      : null,
+  };
+}
 
-  function appendReminderEntries(): void {
-    for (const w of reminders) {
-      // Bei mehreren Zustaendigen fuehrt die erste Zuweisung — das Fristenbuch
-      // kennt genau eine verantwortliche Person je Eintrag.
-      const clientId = w.clientId!;
-      const verantwortlichId = w.assignees[0]?.staffId ?? hauptbearbeiter.get(clientId) ?? null;
-      const erledigt = Boolean(w.doneAt && w.doneByStaff);
-      eintraege.push({
-        quelle: 'WIEDERVORLAGE',
-        kontrollart: 'OPERATIONAL_DUE_DATE',
-        id: w.id,
-        titel: w.subject,
-        clientId,
-        clientName: w.client!.name,
-        faelligAm: w.dueDate,
-        erledigt,
-        kontrollzustand: erledigt ? 'CLOSED_FULFILLED' : 'OPEN',
-        kontrollhinweis:
-          w.doneAt && !w.doneByStaff ? 'Erledigungszeit vorhanden, handelnde Person fehlt.' : null,
-        erledigtAm: w.doneAt,
-        erledigtVon: personName(w.doneByStaff),
-        verantwortlich: personName(verantwortlichId),
-        verantwortlichId,
-        href: `/staff/clients/${clientId}`,
-      });
-    }
-  }
+function begrenzeSeite(angefragt: number, gesamt: number, seitenGroesse: number): number {
+  const letzte = seitenGroesse > 0 ? Math.max(1, Math.ceil(gesamt / seitenGroesse)) : 1;
+  const seite = Number.isSafeInteger(angefragt) && angefragt >= 1 ? angefragt : 1;
+  return Math.min(seite, letzte);
+}
 
-  appendTaxDeadlineEntries();
-  appendNoticeEntries();
-  appendRiskNoticeEntries();
-  appendKlageEntries();
-  appendRequestEntries();
-  appendReminderEntries();
+/**
+ * Seitenansicht der offenen Einträge. Je Quelle werden nur die ersten
+ * `seite × seitenGroesse` sicher offenen Zeilen nach Fälligkeit geladen; der
+ * kleine Vorbehalt (verspätete Einlegungen) und der zeitlich begrenzte
+ * Rückschau-Zweig werden vollständig geladen und nach ihrem abgeleiteten Zustand
+ * eingeordnet. Gesamtzahlen kommen aus `count`-Abfragen mit demselben Filter.
+ */
+export async function loadKontrollbuchSeite(
+  tx: TxClient,
+  session: StaffSession,
+  opts: KontrollbuchSeitenOptionen,
+): Promise<KontrollbuchSeite> {
+  const { kontext, laeufe } = await vorbereiten(tx, session, opts);
+  const { heute } = kontext;
+  const stichtag =
+    Boolean(opts.tagesabschluss) &&
+    kontext.nurStaffId === null &&
+    laeufe.length === KONTROLLBUCH_QUELLEN.length;
+  const teile = await Promise.all(laeufe.map((lauf) => ladeTeile(tx, lauf, heute, stichtag)));
+  const zusatz = teile.flatMap((teil) => teil.zusatz);
+  const zusatzOffen = zusatz.filter((g) => !g.eintrag.erledigt);
+  const zaehler = zaehle(teile, zusatzOffen, heute, stichtag);
+  const seitenGroesse = Math.max(0, opts.seitenGroesse);
+  const seite = begrenzeSeite(opts.seite, zaehler.offenGesamt, seitenGroesse);
+  const ergebnis = { heute, ...zaehler, seite, seitenGroesse };
+  if (seitenGroesse === 0) return { ...ergebnis, offen: [], erledigt: [] };
 
-  return sortEintraege(eintraege);
+  const bis = seite * seitenGroesse;
+  const sicher = await Promise.all(
+    laeufe.map(({ quelle, filter }, i) =>
+      teile[i]!.gesamt > 0 ? quelle.query(tx, filter.offen, { take: bis }) : [],
+    ),
+  );
+  const sicherOffen = laeufe.flatMap(({ quelle }, i) =>
+    abbilden(
+      sicher[i]!.map((row) => ({ quelle, row })),
+      OHNE_PERSONEN,
+    ),
+  );
+  const seitenOffen = ordnen([...sicherOffen, ...zusatzOffen]).slice(bis - seitenGroesse, bis);
+  const erledigt = ordnen(zusatz.filter((g) => g.eintrag.erledigt));
+  const personen = await ladePersonen(
+    tx,
+    [...seitenOffen, ...erledigt].map((g) => g.kandidat),
+    kontext.nurStaffId,
+  );
+  const endgueltig = (liste: readonly Geordnet[]) =>
+    abbilden(
+      liste.map((g) => g.kandidat),
+      personen,
+    ).map((g) => g.eintrag);
+  return { ...ergebnis, offen: endgueltig(seitenOffen), erledigt: endgueltig(erledigt) };
 }

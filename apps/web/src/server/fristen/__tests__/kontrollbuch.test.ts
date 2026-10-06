@@ -16,7 +16,7 @@ vi.mock('@/server/container', () => ({
   evidenceService: { record: vi.fn() },
 }));
 
-import { loadKontrollbuch } from '../kontrollbuch';
+import { loadKontrollbuch, loadKontrollbuchSeite } from '../kontrollbuch';
 import { prepareDailyReview } from '../tagesabschluss';
 
 // OPEN-Regel eines Nicht-Admins (Form wie accessibleClientsWhereFor).
@@ -25,12 +25,16 @@ const clientAccess = {
 };
 
 function createTx() {
+  const model = () => ({
+    findMany: vi.fn().mockResolvedValue([]),
+    count: vi.fn().mockResolvedValue(0),
+  });
   return {
     $queryRaw: vi.fn().mockResolvedValue([]),
-    taxDeadline: { findMany: vi.fn().mockResolvedValue([]) },
-    taxNotice: { findMany: vi.fn().mockResolvedValue([]) },
-    request: { findMany: vi.fn().mockResolvedValue([]) },
-    clientReminder: { findMany: vi.fn().mockResolvedValue([]) },
+    taxDeadline: model(),
+    taxNotice: model(),
+    request: model(),
+    clientReminder: model(),
     clientResponsibility: { findMany: vi.fn().mockResolvedValue([]) },
     staffUser: { findMany: vi.fn().mockResolvedValue([]) },
   };
@@ -231,7 +235,11 @@ describe('loadKontrollbuch query bounds', () => {
         clientId: true,
         subject: true,
         dueDate: true,
-        assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
+        // Gleichzeitig angelegte Zuweisungen: die Personen-ID entscheidet stabil.
+        assignees: {
+          select: { staffId: true },
+          orderBy: [{ createdAt: 'asc' }, { staffId: 'asc' }],
+        },
         doneAt: true,
         doneByStaff: true,
         client: { select: { name: true } },
@@ -522,5 +530,119 @@ describe('loadKontrollbuch query bounds', () => {
         { id: { in: ['notice-late'] } },
       ],
     });
+  });
+});
+
+describe('loadKontrollbuchSeite Abfragen', () => {
+  // Fachkatalog: TAX-CONTROL-STATUS-001 — Review-Befund K-05: Die Seite blättert
+  // nur im sicher offenen Zweig; verspätete Einlegungen (Status erst nach
+  // toEintrag) werden vollständig geladen, Zählwerte nutzen denselben Filter.
+  const heute = new Date('2026-07-16T00:00:00.000Z');
+  const horizont = new Date('2026-08-15T00:00:00.000Z');
+  const visible = { client: clientAccess };
+  const filingMissing = { OR: [{ appealFiledAt: null }, { appealFiledBy: null }] };
+  const dispositionMissing = {
+    OR: [
+      { status: { not: 'BESTANDSKRAEFTIG' } },
+      { legalFinalAt: null },
+      { legalFinalBy: null },
+      { legalFinalReason: null },
+    ],
+  };
+  const appealOffen = {
+    appealDeadline: { lte: horizont },
+    AND: [{ OR: [filingMissing, { id: { in: ['notice-late'] } }] }, dispositionMissing],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.accessibleClientsWhereFor.mockResolvedValue(clientAccess);
+  });
+
+  it('zählt und blättert den sicher offenen Zweig, verspätete Einlegungen vollständig', async () => {
+    const tx = createTx();
+    tx.$queryRaw.mockResolvedValueOnce([{ id: 'notice-late' }]).mockResolvedValueOnce([]);
+    tx.taxNotice.count.mockResolvedValue(12);
+    tx.taxDeadline.count.mockResolvedValue(12);
+
+    const seite = await loadKontrollbuchSeite(tx as never, {} as never, {
+      tage: 30,
+      nurOffene: true,
+      seite: 2,
+      seitenGroesse: 5,
+      tagesabschluss: true,
+    });
+
+    const sicher = { ...appealOffen, id: { notIn: ['notice-late'] }, ...visible };
+    expect(tx.taxNotice.count.mock.calls.slice(0, 3)).toEqual([
+      [{ where: sicher }],
+      [{ where: { AND: [sicher, { appealDeadline: { lt: heute } }] } }],
+      [{ where: { AND: [sicher, { appealDeadline: { lte: heute } }] } }],
+    ]);
+    // [0] Vorbehalt vollständig, danach die Seitenabfragen je Bescheidquelle.
+    expect(tx.taxNotice.findMany.mock.calls[0]![0]).toEqual({
+      where: { ...appealOffen, id: { in: ['notice-late'] }, ...visible },
+      select: expect.any(Object),
+    });
+    expect(tx.taxNotice.findMany.mock.calls[1]![0]).toEqual({
+      where: sicher,
+      orderBy: [{ appealDeadline: 'asc' }, { id: 'asc' }],
+      take: 10,
+      select: expect.any(Object),
+    });
+    expect(tx.taxNotice.findMany.mock.calls[2]![0]).toMatchObject({
+      orderBy: [{ klageDeadline: 'asc' }, { id: 'asc' }],
+      take: 10,
+    });
+    expect(tx.taxNotice.findMany.mock.calls[3]![0]).toMatchObject({
+      orderBy: [{ internalRiskDeadline: 'asc' }, { id: 'asc' }],
+      take: 10,
+    });
+    expect(tx.taxNotice.findMany).toHaveBeenCalledTimes(4);
+    expect(tx.taxDeadline.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ dueDate: 'asc' }, { id: 'asc' }], take: 10 }),
+    );
+    // Quellen ohne offene Zeilen werden nicht abgefragt; ohne Rückschau kein Erledigt-Zweig.
+    expect(tx.request.findMany).not.toHaveBeenCalled();
+    expect(tx.clientReminder.findMany).not.toHaveBeenCalled();
+    // 12 je Steuertermine + drei Bescheidquellen; Vorbehalt und Seite selbst sind leer.
+    expect(seite).toMatchObject({
+      heute,
+      offenGesamt: 48,
+      seite: 2,
+      seitenGroesse: 5,
+      tagesabschluss: { offen: 48, ueberfaellig: 48 },
+    });
+  });
+
+  it('lädt mit Erledigten den Rückschau-Zweig je Quelle vollständig', async () => {
+    const tx = createTx();
+
+    await loadKontrollbuchSeite(tx as never, {} as never, {
+      tage: 30,
+      seite: 1,
+      seitenGroesse: 200,
+    });
+
+    expect(tx.taxDeadline.findMany).toHaveBeenCalledWith({
+      where: {
+        status: 'DONE',
+        completedAt: { not: null },
+        completedByStaff: { not: null },
+        dueDate: { gte: new Date('2026-06-16T00:00:00.000Z'), lte: horizont },
+        ...visible,
+      },
+      select: expect.any(Object),
+    });
+    expect(tx.request.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ status: 'CLOSED', closedByStaff: { not: null } }),
+      }),
+    );
+    // Klagefrist-Rückschau ohne Statusfilter; interne Prüftermine haben keinen.
+    expect(tx.taxNotice.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.clientReminder.findMany).toHaveBeenCalledTimes(1);
+    // Ohne Anforderung keine Abschluss-Zählung.
+    expect(tx.taxDeadline.count).toHaveBeenCalledTimes(2);
   });
 });

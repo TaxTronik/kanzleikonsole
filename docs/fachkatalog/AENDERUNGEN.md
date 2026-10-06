@@ -1,5 +1,45 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-010
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/fristen/page.tsx
+      - apps/web/src/server/fristen/__tests__/kontrollbuch-seite.test.ts
+      - apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts
+      - apps/web/src/server/fristen/__tests__/tagesabschluss.test.ts
+      - apps/web/src/server/fristen/kontrollbuch.ts
+      - apps/web/src/server/fristen/quellen/anforderungen.ts
+      - apps/web/src/server/fristen/quellen/bescheid.ts
+      - apps/web/src/server/fristen/quellen/einspruchsfristen.ts
+      - apps/web/src/server/fristen/quellen/index.ts
+      - apps/web/src/server/fristen/quellen/interne-prueftermine.ts
+      - apps/web/src/server/fristen/quellen/klagefristen.ts
+      - apps/web/src/server/fristen/quellen/steuertermine.ts
+      - apps/web/src/server/fristen/quellen/typen.ts
+      - apps/web/src/server/fristen/quellen/wiedervorlagen.ts
+      - apps/web/src/server/fristen/tagesabschluss.ts
+    rule_ids:
+      - TAX-CONTROL-STATUS-001
+    reason: >-
+      Das Fristen-Kontrollbuch ist in je einen Adapter pro Fristquelle
+      (Bescheide, Steuertermine, Einspruchs- und Klagefristen, interne
+      Prüftermine, Anforderungen, Wiedervorlagen) und einen Orchestrator
+      zerlegt. Die Fristenseite lädt offene Einträge seitenweise (200 je Seite,
+      dringendste zuerst) mit Zählern aus count-Abfragen; die
+      Tagesabschluss-Vorschau entsteht aus dem geladenen Ergebnis statt aus einem
+      zweiten Volllauf. CSV-Export und Tagesabschluss-Protokoll nutzen weiter den
+      vollständigen Lader. Ein einmaliger Differenzvergleich gegen den alten Lader
+      auf PostgreSQL (1.152 Kombinationen, rund 132.000 Einträge) ergab gleiche
+      Einträge, Reihenfolge, Zähler und Tagesabschlüsse. Bei mehreren
+      Hauptbearbeitern oder Zuständigen gilt jetzt einheitlich die erste
+      Zuweisung als verantwortlich statt einer von der Zeilenreihenfolge
+      abhängigen. Fristberechnung, Status und Kontrollpflichten bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts
+      - apps/web/src/server/fristen/__tests__/kontrollbuch-seite.test.ts
+      - apps/web/src/server/fristen/__tests__/tagesabschluss.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-009
     date: '2026-10-06'
     paths:
@@ -2874,6 +2914,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-010` dokumentiert das in Quell-Adapter zerlegte
+  Kontrollbuch mit seitenweiser Fristenseite. Fristberechnung und
+  Kontrollpflichten bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-009` dokumentiert den entfernten veralteten
   Fristen-Rechenkern und den Feiertags-Cache. Fristergebnisse bleiben

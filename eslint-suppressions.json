@@ -234,11 +234,6 @@
       "count": 1
     }
   },
-  "apps/web/src/server/fristen/kontrollbuch.ts": {
-    "complexity": {
-      "count": 1
-    }
-  },
   "apps/web/src/server/risk/research.ts": {
     "complexity": {
       "count": 1

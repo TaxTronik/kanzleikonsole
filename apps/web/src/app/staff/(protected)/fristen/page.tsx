@@ -7,20 +7,21 @@
 // Haftungsrelevanz: offene Fristen verschwinden NIE durch Zeitablauf. Der
 // auditierte CSV-Export ist ein Kontrollauszug, aber kein Nachweis der
 // fristwahrenden Handlung. Erledigt wird im jeweiligen Quellmodul — dieses
-// Buch hält bewusst keinen eigenen Zustand.
+// Buch hält bewusst keinen eigenen Zustand. Offene Einträge werden seitenweise
+// geladen (dringlichste zuerst); Gesamt- und Überfälligenzahl gelten für alle
+// Seiten.
 // =============================================================================
 
 import Link from 'next/link';
 import { AlarmClock, CheckCircle2, FileDown, ExternalLink, ShieldAlert } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { loadKontrollbuch } from '@/server/fristen/kontrollbuch';
+import { loadKontrollbuchSeite } from '@/server/fristen/kontrollbuch';
 import {
+  loadDailyReviewPreview,
   loadDailyReviewSummary,
-  loadOpenDueForDailyReview,
-  prepareDailyReview,
+  type DailyReviewCounts,
   type DailyReviewSummary,
-  type PreparedDailyReview,
 } from '@/server/fristen/tagesabschluss';
 import {
   bucketFor,
@@ -29,17 +30,26 @@ import {
   type FristBucket,
   type FristEintrag,
 } from '@/server/fristen/eintrag';
-import { fmtDateShort, fmtDateTimeMedium, berlinTodayUtcMidnight } from '@/lib/fmt';
+import { fmtDateShort, fmtDateTimeMedium } from '@/lib/fmt';
 import { readModules } from '@/server/settings/modules';
 import { isStaffAdmin } from '@/server/auth/rbac';
+import { OffsetPagination } from '@/components/offset-pagination';
 import { DailyReviewForm } from './daily-review-form';
 
 const RANGES = [7, 30, 90] as const;
+/** Offene Einträge je Seite. */
+const SEITENGROESSE = 200;
 
 interface Search {
   tage?: string;
   filter?: string; // 'offen' (default) | 'alle'
   wer?: string; // 'alle' (default) | 'meine'
+  seite?: string; // offene Einträge, 1-basiert
+}
+
+/** `?seite=`: positive Ganzzahl, sonst Seite 1 (der Loader begrenzt auf die letzte Seite). */
+function parseSeite(value: string | undefined): number {
+  return value && /^\d{1,6}$/.test(value) ? Math.max(1, Number(value)) : 1;
 }
 
 export default async function FristenPage({ searchParams }: { searchParams: Promise<Search> }) {
@@ -54,21 +64,25 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
   const nurOffene = sp.filter !== 'alle';
   const nurMeine = sp.wer === 'meine';
 
-  const { eintraege, dailyReview, dailyPreview } = await withTenantContext(
+  const { kontrollbuch, dailyReview, dailyPreview } = await withTenantContext(
     ctx,
     async (tx) => {
-      const entries = await loadKontrollbuch(tx, session, {
+      const review = await loadDailyReviewSummary(tx, tenantId);
+      const mitVorschau = !review && canCompleteDailyReview;
+      const seite = await loadKontrollbuchSeite(tx, session, {
         tage,
         nurOffene,
         nurStaffId: nurMeine ? staffId : null,
         sources: { taxNotices: modules.taxNotices, reminders: modules.reminders },
+        seite: parseSeite(sp.seite),
+        seitenGroesse: SEITENGROESSE,
+        tagesabschluss: mitVorschau,
       });
-      const review = await loadDailyReviewSummary(tx, tenantId);
-      const preview =
-        !review && canCompleteDailyReview
-          ? prepareDailyReview(await loadOpenDueForDailyReview(tx, session))
-          : null;
-      return { eintraege: entries, dailyReview: review, dailyPreview: preview };
+      // Die Abschlussvorschau stammt aus der geladenen Seite, wenn sie den
+      // tenantweiten Umfang abdeckt; sonst aus Zählabfragen, nie aus einem
+      // zweiten vollständigen Laden.
+      const preview = mitVorschau ? await loadDailyReviewPreview(tx, session, seite) : null;
+      return { kontrollbuch: seite, dailyReview: review, dailyPreview: preview };
     },
     // TAX-CONTROL-STATUS-001: Late-ID-Vorabqueries und Hauptabfragen müssen
     // denselben Datenstand sehen. Ein paralleler Commit darf eine verspätete
@@ -84,33 +98,31 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
   ];
 
   // bucketFor arbeitet in UTC-Tagesgrenzen (passend zu @db.Date = UTC-Mitternacht).
-  // „Heute" muss daher der Berlin-Kalendertag als UTC-Mitternacht sein — sonst
-  // landet eine Frist zwischen 00:00–02:00 Berlin im falschen Bucket.
-  const heute = berlinTodayUtcMidnight();
+  // „Heute" ist der Stichtag des Loaders: der Berlin-Kalendertag als
+  // UTC-Mitternacht — sonst landet eine Frist zwischen 00:00–02:00 Berlin im
+  // falschen Bucket.
+  const { heute, erledigt: erledigte } = kontrollbuch;
 
-  // Offene nach Dringlichkeit gruppieren; Erledigte (falls eingeblendet) separat.
+  // Offene der Seite nach Dringlichkeit gruppieren; Erledigte separat.
   const gruppen = new Map<FristBucket, FristEintrag[]>();
-  const erledigte: FristEintrag[] = [];
-  for (const e of eintraege) {
-    if (e.erledigt) {
-      erledigte.push(e);
-      continue;
-    }
+  for (const e of kontrollbuch.offen) {
     const b = bucketFor(e.faelligAm, heute);
     if (!gruppen.has(b)) gruppen.set(b, []);
     gruppen.get(b)!.push(e);
   }
-  const offeneCount = eintraege.length - erledigte.length;
-  const ueberfaellig = gruppen.get('UEBERFAELLIG')?.length ?? 0;
+  const offeneCount = kontrollbuch.offenGesamt;
+  const ueberfaellig = kontrollbuch.ueberfaellig;
+  const mehrereSeiten = offeneCount > kontrollbuch.seitenGroesse;
 
-  const qs = (over: Partial<Record<string, string>>) => {
+  const filterQs = (over: Partial<Record<string, string>> = {}) => {
     const p = new URLSearchParams();
     p.set('tage', String(tage));
     p.set('filter', nurOffene ? 'offen' : 'alle');
     p.set('wer', nurMeine ? 'meine' : 'alle');
     for (const [k, v] of Object.entries(over)) if (v !== undefined) p.set(k, v);
-    return `/staff/fristen?${p.toString()}`;
+    return p;
   };
+  const qs = (over: Partial<Record<string, string>>) => `/staff/fristen?${filterQs(over)}`;
 
   const bucketOrder: FristBucket[] = ['UEBERFAELLIG', 'HEUTE', 'DIESE_WOCHE', 'SPAETER'];
 
@@ -208,7 +220,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
         </div>
       </div>
 
-      {eintraege.length === 0 ? (
+      {offeneCount === 0 && erledigte.length === 0 ? (
         <div className="card p-10 text-center text-sm text-muted">
           Keine Fristen im gewählten Zeitraum.
         </div>
@@ -220,12 +232,24 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
             return (
               <FristenTabelle
                 key={bucket}
-                titel={`${BUCKET_LABELS[bucket]} (${rows.length})`}
+                titel={`${BUCKET_LABELS[bucket]} (${rows.length}${mehrereSeiten ? ' auf dieser Seite' : ''})`}
                 rows={rows}
                 akzent={bucket === 'UEBERFAELLIG' ? 'rot' : bucket === 'HEUTE' ? 'gelb' : null}
               />
             );
           })}
+          {mehrereSeiten && (
+            <div className="card overflow-hidden mb-6">
+              <OffsetPagination
+                basePath="/staff/fristen"
+                baseQs={filterQs()}
+                page={kontrollbuch.seite}
+                pageSize={kontrollbuch.seitenGroesse}
+                totalCount={offeneCount}
+                pageParam="seite"
+              />
+            </div>
+          )}
           {erledigte.length > 0 && (
             <FristenTabelle
               titel={`Erledigt — letzte ${tage} Tage (${erledigte.length})`}
@@ -245,7 +269,7 @@ function DailyReviewCard({
   canComplete,
 }: {
   review: DailyReviewSummary | null;
-  preview: PreparedDailyReview | null;
+  preview: DailyReviewCounts | null;
   canComplete: boolean;
 }) {
   return (

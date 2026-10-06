@@ -16,7 +16,13 @@ import type { StaffSession } from '@/server/auth/staff';
 import { ActionError } from '@/server/actions/action-error';
 import { berlinTodayUtcMidnight } from '@/lib/fmt';
 import { evidenceService } from '@/server/container';
-import { loadKontrollbuch } from './kontrollbuch';
+import {
+  type KontrollbuchOptions,
+  type KontrollbuchSeite,
+  type Stichtagszaehler,
+  loadKontrollbuch,
+  loadKontrollbuchSeite,
+} from './kontrollbuch';
 import type { FristEintrag, FristKontrollart, FristQuelle } from './eintrag';
 
 const SNAPSHOT_VERSION = 1;
@@ -103,13 +109,9 @@ export function prepareDailyReview(
   };
 }
 
-/** Lädt für den Abschluss alle Fristquellen bis heute, ohne Zuständigkeitsfilter. */
-export async function loadOpenDueForDailyReview(
-  tx: TxClient,
-  session: StaffSession,
-  reviewDate = berlinTodayUtcMidnight(),
-): Promise<FristEintrag[]> {
-  return loadKontrollbuch(tx, session, {
+/** Umfang des Abschlusses: alle Fristquellen bis heute, ohne Zuständigkeitsfilter. */
+function dailyReviewScope(reviewDate: Date): KontrollbuchOptions {
+  return {
     tage: 0,
     nurOffene: true,
     nurStaffId: null,
@@ -117,7 +119,46 @@ export async function loadOpenDueForDailyReview(
     // auslassen, weil das zugehörige UI-Modul inzwischen ausgeblendet wurde.
     sources: { taxNotices: true, reminders: true },
     referenceDate: reviewDate,
+  };
+}
+
+/** Lädt für den Abschluss alle Fristquellen bis heute, ohne Zuständigkeitsfilter. */
+export async function loadOpenDueForDailyReview(
+  tx: TxClient,
+  session: StaffSession,
+  reviewDate = berlinTodayUtcMidnight(),
+): Promise<FristEintrag[]> {
+  return loadKontrollbuch(tx, session, dailyReviewScope(reviewDate));
+}
+
+/**
+ * Zählwerte der Abschlussvorschau auf der Fristen-Seite, ohne die Einträge ein
+ * zweites Mal zu laden: aus der geladenen Seite, wenn sie den tenantweiten
+ * Umfang abdeckt (alle Quellen, keine Zuständigkeitsfilterung), sonst aus
+ * Zählabfragen im Abschlussumfang. Dieselben Werte wie `prepareDailyReview`
+ * über `loadOpenDueForDailyReview` zum Stichtag der Seite.
+ */
+export async function loadDailyReviewPreview(
+  tx: TxClient,
+  session: StaffSession,
+  seite: Pick<KontrollbuchSeite, 'heute' | 'tagesabschluss'>,
+): Promise<DailyReviewCounts> {
+  const { offen, ueberfaellig } =
+    seite.tagesabschluss ?? (await zaehleAbschlussumfang(tx, session, seite.heute));
+  return { openCount: offen, overdueCount: ueberfaellig, dueTodayCount: offen - ueberfaellig };
+}
+
+async function zaehleAbschlussumfang(
+  tx: TxClient,
+  session: StaffSession,
+  reviewDate: Date,
+): Promise<Stichtagszaehler> {
+  const { offenGesamt, ueberfaellig } = await loadKontrollbuchSeite(tx, session, {
+    ...dailyReviewScope(reviewDate),
+    seite: 1,
+    seitenGroesse: 0,
   });
+  return { offen: offenGesamt, ueberfaellig };
 }
 
 async function loadDatabaseReviewDate(tx: TxClient): Promise<Date> {

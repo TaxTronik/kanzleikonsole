@@ -4,18 +4,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   loadKontrollbuch: vi.fn(),
+  loadKontrollbuchSeite: vi.fn(),
   record: vi.fn(),
 }));
 
 vi.mock('../kontrollbuch', () => ({
   loadKontrollbuch: mocks.loadKontrollbuch,
+  loadKontrollbuchSeite: mocks.loadKontrollbuchSeite,
 }));
 
 vi.mock('@/server/container', () => ({
   evidenceService: { record: mocks.record },
 }));
 
-import { createDailyReviewTx, loadDailyReviewSummary, prepareDailyReview } from '../tagesabschluss';
+import {
+  createDailyReviewTx,
+  loadDailyReviewPreview,
+  loadDailyReviewSummary,
+  prepareDailyReview,
+} from '../tagesabschluss';
 import type { FristEintrag } from '../eintrag';
 
 const REVIEW_DATE = new Date('2026-08-23T00:00:00.000Z');
@@ -271,5 +278,45 @@ describe('loadDailyReviewSummary', () => {
         where: { tenantId_reviewDate: { tenantId: 'tenant-1', reviewDate: REVIEW_DATE } },
       }),
     );
+  });
+});
+
+describe('loadDailyReviewPreview', () => {
+  // Review-Befund K-05: Die Fristen-Seite lädt die Einträge nicht ein zweites Mal.
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('übernimmt die aus der geladenen Seite abgeleiteten Zähler', async () => {
+    await expect(
+      loadDailyReviewPreview(createTx() as never, {} as never, {
+        heute: REVIEW_DATE,
+        tagesabschluss: { offen: 5, ueberfaellig: 3 },
+      }),
+    ).resolves.toEqual({ openCount: 5, overdueCount: 3, dueTodayCount: 2 });
+    expect(mocks.loadKontrollbuch).not.toHaveBeenCalled();
+    expect(mocks.loadKontrollbuchSeite).not.toHaveBeenCalled();
+  });
+
+  it('zählt sonst im Abschlussumfang, ohne Einträge zu laden', async () => {
+    const tx = createTx();
+    mocks.loadKontrollbuchSeite.mockResolvedValue({ offenGesamt: 4, ueberfaellig: 1 });
+
+    await expect(
+      loadDailyReviewPreview(tx as never, {} as never, {
+        heute: REVIEW_DATE,
+        tagesabschluss: null,
+      }),
+    ).resolves.toEqual({ openCount: 4, overdueCount: 1, dueTodayCount: 3 });
+    expect(mocks.loadKontrollbuchSeite).toHaveBeenCalledWith(tx, expect.anything(), {
+      tage: 0,
+      nurOffene: true,
+      nurStaffId: null,
+      sources: { taxNotices: true, reminders: true },
+      referenceDate: REVIEW_DATE,
+      seite: 1,
+      seitenGroesse: 0,
+    });
+    expect(mocks.loadKontrollbuch).not.toHaveBeenCalled();
   });
 });
