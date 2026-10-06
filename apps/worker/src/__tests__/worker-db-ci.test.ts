@@ -26,6 +26,7 @@ const flag = 'WORKER_DB_TEST';
 const specs = [
   'src/jobs/__tests__/workflow-n8n-dispatch-db.test.ts',
   'src/jobs/__tests__/reminders-daily-db.test.ts',
+  'src/jobs/__tests__/mail-outbox-db.test.ts',
 ];
 const log = 'testbericht-worker-db.log';
 

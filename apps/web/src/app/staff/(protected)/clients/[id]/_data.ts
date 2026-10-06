@@ -7,6 +7,7 @@ import { buildFolderDocumentCounts } from '@/components/document-explorer-perfor
 import { isUuid } from '@/lib/uuid';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 import type { ModuleConfig } from '@/server/settings/modules';
+import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
 
 export const CLIENT_REQUESTS_CAP = 50;
 export const CLIENT_DOCUMENTS_PAGE_SIZE = 50;
@@ -256,6 +257,11 @@ export async function loadClientCockpitBlocks(
           })
         : Promise.resolve([]),
     ]);
+    // F-08: Zustellstatus der Abhol-Mail je Anlieferung.
+    const handoverMail = await loadMailDeliveryTx(tx, {
+      resourceType: 'client_handover',
+      resourceIds: handovers.map((handover) => handover.id),
+    });
 
     return {
       requests,
@@ -267,7 +273,10 @@ export async function loadClientCockpitBlocks(
       reminders,
       phoneNotes,
       binders,
-      handovers,
+      handovers: handovers.map((handover) => ({
+        ...handover,
+        mailDelivery: handoverMail.get(handover.id) ?? [],
+      })),
     };
   });
 }

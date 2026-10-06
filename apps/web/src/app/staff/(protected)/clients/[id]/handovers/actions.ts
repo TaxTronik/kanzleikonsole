@@ -3,10 +3,9 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import type { Prisma } from '@prisma/client';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { sendTemplateMail } from '@/server/mail/dispatch';
-import { fireAndForget } from '@/server/util/fire-and-forget';
+import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import {
@@ -66,12 +65,63 @@ export async function createHandoverAction(
   );
 }
 
+interface HandoverReadyMail {
+  clientId: string;
+  label: string;
+  contactEmail: string;
+  contactName: string | null;
+}
+
+/**
+ * Mail an Mandanten bei READY — F-08: im Status-Commit als Versandauftrag, den
+ * der Worker mit Retry zustellt (n8n-Event via Dispatch-Mode BOTH wie bisher).
+ */
+async function enqueueHandoverReadyMailTx(
+  tx: TxClient,
+  input: { tenantId: string; handoverId: string; mail: HandoverReadyMail },
+): Promise<void> {
+  const { tenantId, handoverId, mail: p } = input;
+  await enqueueDirectMailTx(
+    tx,
+    {
+      tenantId,
+      clientId: p.clientId,
+      purpose: 'handover-ready',
+      resource: { type: 'client_handover', id: handoverId },
+      staffHref: `/staff/clients/${p.clientId}`,
+    },
+    {
+      slug: 'handover-ready',
+      to: p.contactEmail,
+      vars: {
+        contact: { fullName: p.contactName ?? '', email: p.contactEmail },
+        label: p.label,
+        handoverId,
+      },
+      n8nEvent: 'client.handover.ready',
+      n8nPayload: {
+        tenantId,
+        clientId: p.clientId,
+        handoverId,
+        label: p.label,
+        contactEmail: p.contactEmail,
+        contactName: p.contactName,
+      },
+      fallback: {
+        subject: 'Ihre Unterlagen können abgeholt werden — {{label}}',
+        bodyMd:
+          'Sehr geehrte/r {{contact.fullName}},\n\nIhre bei uns hinterlegten Unterlagen ({{label}}) sind fertig bearbeitet und können in unseren Geschäftsräumen abgeholt werden.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
+      },
+    },
+  );
+}
+
 export async function updateHandoverStatusAction(input: {
   id: string;
   status: 'RECEIVED' | 'IN_PROGRESS' | 'READY' | 'PICKED_UP';
 }): Promise<ActionResult> {
-  // staffActionGuard (Gate-only): die READY-Mail ist ein Post-Commit-Side-Effect
-  // und braucht tenantId außerhalb der Tx.
+  // staffActionGuard (Gate-only): die READY-Mail wird im Commit als
+  // Versandauftrag abgelegt und danach angestoßen (F-08).
   const g = await staffActionGuard({ module: 'handovers' });
   if (!g.ok) return g;
   const { tenantId, ctx, session } = g;
@@ -79,12 +129,7 @@ export async function updateHandoverStatusAction(input: {
   const parsed = z.object({ id: z.string().uuid(), status: StatusEnum }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  let notifyPayload: {
-    clientId: string;
-    label: string;
-    contactEmail: string | null;
-    contactName: string | null;
-  } | null = null;
+  let notifyPayload: HandoverReadyMail | null = null;
   let affectedClientId: string | null = null;
 
   try {
@@ -159,52 +204,19 @@ export async function updateHandoverStatusAction(input: {
         before: { status: before.status },
         after: { status: parsed.data.status, notifiedEmail: notifyPayload?.contactEmail ?? null },
       });
+      if (notifyPayload) {
+        await enqueueHandoverReadyMailTx(tx, {
+          tenantId,
+          handoverId: parsed.data.id,
+          mail: notifyPayload,
+        });
+      }
     });
   } catch (e) {
     return toActionError(e);
   }
 
-  // Mail an Mandanten bei READY — App-Versand via Template (n8n-Event
-  // automatisch via Dispatch-Mode BOTH dazugeschickt, falls aktiv).
-  if (notifyPayload) {
-    const p = notifyPayload as {
-      clientId: string;
-      label: string;
-      contactEmail: string | null;
-      contactName: string | null;
-    };
-    if (p.contactEmail) {
-      // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`.
-      fireAndForget(
-        'sendTemplateMail (handover-ready)',
-        sendTemplateMail({
-          tenantId,
-          clientId: p.clientId,
-          slug: 'handover-ready',
-          to: p.contactEmail,
-          vars: {
-            contact: { fullName: p.contactName ?? '', email: p.contactEmail },
-            label: p.label,
-            handoverId: parsed.data.id,
-          },
-          n8nEvent: 'client.handover.ready',
-          n8nPayload: {
-            tenantId,
-            clientId: p.clientId,
-            handoverId: parsed.data.id,
-            label: p.label,
-            contactEmail: p.contactEmail,
-            contactName: p.contactName,
-          },
-          fallback: {
-            subject: 'Ihre Unterlagen können abgeholt werden — {{label}}',
-            bodyMd:
-              'Sehr geehrte/r {{contact.fullName}},\n\nIhre bei uns hinterlegten Unterlagen ({{label}}) sind fertig bearbeitet und können in unseren Geschäftsräumen abgeholt werden.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
-          },
-        }),
-      );
-    }
-  }
+  if (notifyPayload) kickMailOutboxDelivery();
 
   if (affectedClientId) revalidatePath(`/staff/clients/${affectedClientId}`);
   revalidatePath('/portal/handovers');

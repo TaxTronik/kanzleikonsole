@@ -11,7 +11,9 @@
     "./bounded-worker": "./src/bounded-worker.ts",
     ".": "./src/index.ts",
     "./markdown": "./src/markdown.ts",
-    "./markdown-safety": "./src/markdown-safety.ts"
+    "./markdown-safety": "./src/markdown-safety.ts",
+    "./outbox": "./src/outbox.ts",
+    "./outbox-purposes": "./src/outbox-purposes.ts"
   },
   "scripts": {
     "build": "tsc --noEmit",

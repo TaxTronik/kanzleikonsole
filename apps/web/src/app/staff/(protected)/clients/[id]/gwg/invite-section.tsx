@@ -5,6 +5,8 @@ import { Copy, Check, X } from 'lucide-react';
 import { sendInviteAction, cancelInviteAction } from './invite-actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { GWG_INVITE_STATUS_LABELS } from '@/lib/domain-labels';
+import type { MailDeliverySummary } from '@/lib/mail-delivery-status';
+import { MailDeliveryStatus } from '@/components/mail-delivery-status';
 import { confirmDialog } from '@/components/ui/modal';
 
 interface Contact {
@@ -20,6 +22,8 @@ interface Invite {
   createdAt: string;
   expiresAt: string;
   submittedAt: string | null;
+  /** F-08: Zustellstatus der Einladungsmail aus der Mail-Outbox. */
+  mailDelivery?: MailDeliverySummary[];
 }
 
 function CreatedInviteLink({
@@ -241,6 +245,11 @@ export function InviteSection({
                 <p className="text-xs text-muted">
                   {i.inviteEmail} · gültig bis {fmtDateTimeShort(new Date(i.expiresAt))}
                 </p>
+                {i.mailDelivery?.map((summary) => (
+                  <p key={summary.purpose} className="text-xs">
+                    <MailDeliveryStatus summary={summary} />
+                  </p>
+                ))}
               </div>
               <div className="flex items-center gap-3">
                 <span className={i.status === 'STARTED' ? 'badge-yellow' : 'badge-gray'}>

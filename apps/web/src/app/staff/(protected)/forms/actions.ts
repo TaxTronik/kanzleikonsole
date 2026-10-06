@@ -5,8 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import type { FormFieldType, Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
-import { notifyClientContacts } from '@/server/mail/dispatch';
-import { fireAndForget } from '@/server/util/fire-and-forget';
+import { enqueueClientContactsMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { portalBaseUrl } from '@taxtronik/config';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
@@ -264,36 +263,42 @@ export async function createSubmissionAction(
         resourceId: sub.id,
         after: { templateName: tpl.name, clientId: parsed.data.clientId },
       });
+      // F-08: Mandanten-Mail im selben Commit als Versandauftrag.
+      await enqueueClientContactsMailTx(
+        tx,
+        {
+          tenantId,
+          clientId: parsed.data.clientId,
+          purpose: 'form-sent',
+          resource: { type: 'form_submission', id: sub.id },
+          staffHref: `/staff/forms/submissions/${sub.id}`,
+        },
+        {
+          slug: 'request-opened',
+          vars: {
+            request: { id: sub.id, title: 'Neues Formular zum Ausfüllen', description: '' },
+            portalUrl: `${portalBaseUrl}/portal/forms/${sub.id}`,
+          },
+          n8nEvent: 'request.opened',
+          n8nPayload: {
+            tenantId,
+            formSubmissionId: sub.id,
+            clientId: parsed.data.clientId,
+          },
+          fallback: {
+            subject: 'Neues Formular von Ihrer Kanzlei',
+            bodyMd:
+              'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt ein neues Formular zum Ausfüllen bereit.\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
+          },
+        },
+      );
       return sub.id;
     });
   } catch (e) {
     return toActionError(e);
   }
 
-  // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
-  fireAndForget(
-    'notifyClientContacts (form-sent)',
-    notifyClientContacts({
-      tenantId,
-      clientId: parsed.data.clientId,
-      slug: 'request-opened',
-      vars: {
-        request: { id, title: 'Neues Formular zum Ausfüllen', description: '' },
-        portalUrl: `${portalBaseUrl}/portal/forms/${id}`,
-      },
-      n8nEvent: 'request.opened',
-      n8nPayload: {
-        tenantId,
-        formSubmissionId: id,
-        clientId: parsed.data.clientId,
-      },
-      fallback: {
-        subject: 'Neues Formular von Ihrer Kanzlei',
-        bodyMd:
-          'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt ein neues Formular zum Ausfüllen bereit.\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
-      },
-    }),
-  );
+  kickMailOutboxDelivery();
 
   revalidatePath(`/staff/clients/${parsed.data.clientId}`);
   revalidatePath('/staff/forms');

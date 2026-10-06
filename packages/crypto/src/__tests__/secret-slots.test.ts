@@ -21,6 +21,7 @@ describe('Secret-Box-Ablageorte', () => {
     ['n8nSigningSecret', `${TENANT}|n8n_connection|signing_secret_encrypted`],
     ['mailboxSecret', `${TENANT}|inbound_mailbox/${ROW}|secret_enc`],
     ['mailboxOauthCache', `${TENANT}|inbound_mailbox/${ROW}|oauth_cache_enc`],
+    ['mailOutboxSecretVars', `${TENANT}|mail_outbox/${ROW}|secret_vars_enc`],
   ] as const)('%s → %s', (name, expected) => {
     const context = secretSlotContext(SECRET_SLOTS[name], { tenantId: TENANT, rowId: ROW });
     expect(canonicalSecretContext(context)).toBe(expected);
@@ -30,6 +31,9 @@ describe('Secret-Box-Ablageorte', () => {
     expect(() => secretSlotContext(SECRET_SLOTS.mailboxSecret, { tenantId: TENANT })).toThrow(
       /Secret-Box-Kontext/,
     );
+    expect(() =>
+      secretSlotContext(SECRET_SLOTS.mailOutboxSecretVars, { tenantId: TENANT }),
+    ).toThrow(/Secret-Box-Kontext/);
   });
 
   it('der OAuth-State-Cookie ist an Tenant und anfordernde Person gebunden', () => {

@@ -26,10 +26,12 @@ export {
   type TemplateFallback,
   type TemplateMailResult,
   type ContactNotificationResult,
+  type ContactDispatchOptions,
   type DispatchOptions,
 } from './dispatch';
 export {
   notifyRequestOpened,
+  requestOpenedMail,
   notifyAutomaticTaxRequestOpened,
   REQUEST_OPENED_FALLBACK,
   AUTOMATIC_TAX_REQUEST_OPENED_FALLBACK,
@@ -59,4 +61,4 @@ export {
 export { renderSafeMarkdown, escapeMarkdownVariable } from './markdown';
 export { escapeHtml, safeHref } from './markdown-safety';
 export { setMailLogger, mailLog, type MailLogger } from './logger';
-export { setN8nEmitter, type MailN8nEmitter } from './n8n-emitter';
+export { setN8nEmitter, type MailN8nEmitter, type MailN8nEmitOptions } from './n8n-emitter';

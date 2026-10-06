@@ -12,6 +12,8 @@ import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { KnowledgeContext } from '@/components/knowledge-context';
 import { loadKnowledgeContextAction } from '../../knowledge/context/actions';
 import { REQUEST_STATUS_LABELS } from '@/lib/domain-labels';
+import { MailDeliveryStatusList } from '@/components/mail-delivery-status';
+import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
 
 export default async function RequestDetailPage({
   params,
@@ -44,7 +46,10 @@ export default async function RequestDetailPage({
       // gesperrten Mandanten verhält sich wie nicht vorhanden (kein
       // Existenz-Leak per direkter URL).
       if (row && !(await canAccessClientTx(tx, session, row.clientId))) return null;
-      return row;
+      if (!row) return null;
+      // F-08: Zustellstatus der Mandanten-Mails (neue Anforderung, Antworten).
+      const mail = await loadMailDeliveryTx(tx, { resourceType: 'request', resourceIds: [row.id] });
+      return { ...row, mailDelivery: mail.get(row.id) };
     },
   );
 
@@ -91,6 +96,7 @@ export default async function RequestDetailPage({
           <p className="mt-1 text-xs text-disabled">
             Erstellt am {fmtDateTimeShort(reqRow.createdAt)}
           </p>
+          <MailDeliveryStatusList summaries={reqRow.mailDelivery} className="mt-1 text-xs" />
         </div>
       </div>
 

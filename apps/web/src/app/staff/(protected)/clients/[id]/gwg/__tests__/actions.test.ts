@@ -9,9 +9,9 @@ const m = vi.hoisted(() => ({
   isStaffAdmin: vi.fn(),
   evidenceRecord: vi.fn(),
   revalidatePath: vi.fn(),
-  notifyClientContacts: vi.fn(),
+  enqueueClientContactsMailTx: vi.fn(),
+  kickMailOutboxDelivery: vi.fn(),
   notifyMany: vi.fn(),
-  fireAndForget: vi.fn(),
   emitN8nEvent: vi.fn(),
   cancelOpenGwgInvites: vi.fn(),
   findCleanGwgDocuments: vi.fn(),
@@ -40,9 +40,11 @@ vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: m.emitN8nEvent }));
 vi.mock('@/server/gwg-onboarding/invite-lifecycle', () => ({
   cancelOpenGwgInvitesTx: m.cancelOpenGwgInvites,
 }));
-vi.mock('@/server/mail/dispatch', () => ({ notifyClientContacts: m.notifyClientContacts }));
+vi.mock('@/server/mail/outbox', () => ({
+  enqueueClientContactsMailTx: m.enqueueClientContactsMailTx,
+  kickMailOutboxDelivery: m.kickMailOutboxDelivery,
+}));
 vi.mock('@/server/notifications/service', () => ({ notifyMany: m.notifyMany }));
-vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: m.fireAndForget }));
 vi.mock('@/server/logger', () => ({ log: m.log }));
 vi.mock('@/server/gwg/evidence-documents', () => ({
   findCleanGwgEvidenceDocumentsTx: m.findCleanGwgDocuments,
@@ -310,7 +312,7 @@ beforeEach(() => {
   });
   m.isStaffAdmin.mockReturnValue(true);
   m.evidenceRecord.mockResolvedValue({});
-  m.notifyClientContacts.mockResolvedValue(undefined);
+  m.enqueueClientContactsMailTx.mockResolvedValue('outbox-1');
   m.notifyMany.mockResolvedValue(undefined);
   m.findCleanGwgDocuments.mockResolvedValue([]);
   m.lockCleanGwgDocuments.mockResolvedValue(true);
@@ -3258,9 +3260,23 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
       }),
       { tenantId: 'tenant-1' },
     );
-    expect(m.notifyClientContacts).toHaveBeenCalledWith(
+    // F-08: Begrüßungsmail im Freigabe-Commit als Versandauftrag, weiterhin
+    // ohne eigenes n8n-Ereignis (gwg.verified kommt aus der Action).
+    expect(m.enqueueClientContactsMailTx).toHaveBeenCalledWith(
+      tx,
+      {
+        tenantId: 'tenant-1',
+        clientId: CLIENT_ID,
+        purpose: 'gwg-activated',
+        resource: { type: 'gwg_check', id: CHECK_ID },
+        staffHref: `/staff/clients/${CLIENT_ID}/gwg`,
+      },
       expect.not.objectContaining({ n8nEvent: expect.anything() }),
     );
+    expect(m.enqueueClientContactsMailTx.mock.invocationCallOrder[0]).toBeGreaterThan(
+      tx.client.update.mock.invocationCallOrder[0]!,
+    );
+    expect(m.kickMailOutboxDelivery).toHaveBeenCalledOnce();
     expect(tx.gwgCheck.count).toHaveBeenCalledWith({
       where: {
         tenantId: 'tenant-1',
@@ -3304,8 +3320,8 @@ describe('verifyCheckAction – Rechtsträger-Gate', () => {
       where: { id: CLIENT_ID },
       data: { allowActive: true },
     });
-    expect(m.notifyClientContacts).not.toHaveBeenCalled();
-    expect(m.fireAndForget).not.toHaveBeenCalled();
+    expect(m.enqueueClientContactsMailTx).not.toHaveBeenCalled();
+    expect(m.kickMailOutboxDelivery).not.toHaveBeenCalled();
     expect(m.emitN8nEvent).toHaveBeenCalledWith(
       'gwg.verified',
       expect.objectContaining({ gwgCheckId: CHECK_ID }),

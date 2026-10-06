@@ -26,6 +26,7 @@ import { dsgvoRetentionWorker } from './jobs/dsgvo-retention';
 import { poaExpiryWorker } from './jobs/poa-expiry-check';
 import { riskAnalyseLlmWorker } from './jobs/risk-analyse-llm';
 import { reminderDoneNotifyWorker } from './jobs/reminder-done-notify';
+import { mailOutboxDeliverWorker } from './jobs/mail-outbox-deliver';
 import { backupDrillWorker } from './jobs/backup-drill';
 import { backupRunWorker } from './jobs/backup-run';
 import { healthAlertWorker } from './jobs/health-alert';
@@ -73,6 +74,7 @@ const WORKERS_BY_QUEUE = {
   n8nRetention: n8nRetentionWorker,
   riskAnalyseLlm: riskAnalyseLlmWorker,
   reminderDoneNotify: reminderDoneNotifyWorker,
+  mailOutboxDeliver: mailOutboxDeliverWorker,
 } satisfies Record<JobQueueKey, Worker>;
 
 /**

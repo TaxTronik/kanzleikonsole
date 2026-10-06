@@ -10,9 +10,8 @@ const mocks = vi.hoisted(() => ({
   accessibleClientsWhereFor: vi.fn(),
   evidenceRecord: vi.fn(),
   resolveNotificationsTx: vi.fn(),
-  notifyClientContacts: vi.fn(),
-  notifyRequestOpened: vi.fn(),
-  fireAndForget: vi.fn(),
+  enqueueClientContactsMailTx: vi.fn(),
+  kickMailOutboxDelivery: vi.fn(),
   emitN8nEvent: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
@@ -30,11 +29,15 @@ vi.mock('@/server/logger', () => ({
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: mocks.emitN8nEvent }));
-vi.mock('@/server/mail/dispatch', () => ({
-  notifyClientContacts: mocks.notifyClientContacts,
-  notifyRequestOpened: mocks.notifyRequestOpened,
+// F-08: echter Optionsbau der Mail „Anforderung eröffnet" (identisch zum
+// Worker-Pfad), der Versandauftrag selbst ist eine Attrappe.
+vi.mock('@/server/mail/dispatch', async () => ({
+  requestOpenedMail: (await import('@taxtronik/mail')).requestOpenedMail,
 }));
-vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: mocks.fireAndForget }));
+vi.mock('@/server/mail/outbox', () => ({
+  enqueueClientContactsMailTx: mocks.enqueueClientContactsMailTx,
+  kickMailOutboxDelivery: mocks.kickMailOutboxDelivery,
+}));
 vi.mock('@/server/auth/rbac', async () => ({
   // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
   ...(await import('@/server/actions/to-action-error')),
@@ -127,8 +130,7 @@ beforeEach(() => {
     session: { user: { tenantId: 'tenant-1', staffId: 'staff-1' } },
   });
   mocks.evidenceRecord.mockResolvedValue({});
-  mocks.notifyClientContacts.mockResolvedValue(undefined);
-  mocks.notifyRequestOpened.mockResolvedValue(undefined);
+  mocks.enqueueClientContactsMailTx.mockResolvedValue('outbox-1');
   mocks.accessibleClientsWhereFor.mockResolvedValue({});
   mocks.resolveNotificationsTx.mockResolvedValue(undefined);
 });
@@ -167,8 +169,8 @@ describe('sichtbare Antworten und interne Kanzlei-Kommentare', () => {
         tx,
         expect.objectContaining({ action: 'request.internal_comment.create' }),
       );
-      expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
-      expect(mocks.fireAndForget).not.toHaveBeenCalled();
+      expect(mocks.enqueueClientContactsMailTx).not.toHaveBeenCalled();
+      expect(mocks.kickMailOutboxDelivery).not.toHaveBeenCalled();
     },
   );
 
@@ -188,8 +190,8 @@ describe('sichtbare Antworten und interne Kanzlei-Kommentare', () => {
         error: 'Der Portal-Vorgang ist abgeschlossen. Bitte eine interne Kanzlei-Notiz verwenden.',
       });
       expect(tx.requestResponse.create).not.toHaveBeenCalled();
-      expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
-      expect(mocks.fireAndForget).not.toHaveBeenCalled();
+      expect(mocks.enqueueClientContactsMailTx).not.toHaveBeenCalled();
+      expect(mocks.kickMailOutboxDelivery).not.toHaveBeenCalled();
     },
   );
 
@@ -206,7 +208,44 @@ describe('sichtbare Antworten und interne Kanzlei-Kommentare', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toContain('zwischenzeitlich abgeschlossen');
     expect(tx.requestResponse.create).not.toHaveBeenCalled();
-    expect(mocks.notifyClientContacts).not.toHaveBeenCalled();
+    expect(mocks.enqueueClientContactsMailTx).not.toHaveBeenCalled();
+  });
+
+  it('legt die Antwort-Mail im Antwort-Commit als Versandauftrag an (F-08)', async () => {
+    const tx = makeTx();
+    tx.request.findUnique
+      .mockResolvedValueOnce({ clientId: CLIENT_ID, status: 'OPEN' })
+      .mockResolvedValueOnce({ clientId: CLIENT_ID, title: 'Belege Juli' });
+    tx.request.updateMany.mockResolvedValue({ count: 1 });
+    tx.requestResponse.create.mockResolvedValue({ id: 'response-1' });
+    mocks.withTenantContext.mockImplementation(
+      async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
+    );
+
+    await expect(addStaffResponseAction(commentData('Sichtbare Antwort'))).resolves.toEqual({
+      ok: true,
+    });
+
+    expect(mocks.enqueueClientContactsMailTx).toHaveBeenCalledWith(
+      tx,
+      {
+        tenantId: 'tenant-1',
+        clientId: CLIENT_ID,
+        purpose: 'request-staff-replied',
+        resource: { type: 'request', id: REQUEST_ID },
+        staffHref: `/staff/requests/${REQUEST_ID}`,
+      },
+      expect.objectContaining({
+        slug: 'request-staff-replied',
+        vars: {
+          request: { id: REQUEST_ID, title: 'Belege Juli' },
+          portalUrl: `https://portal.example.test/portal/requests/${REQUEST_ID}`,
+        },
+        n8nEvent: 'request.responded',
+        n8nPayload: { tenantId: 'tenant-1', requestId: REQUEST_ID, by: 'STAFF' },
+      }),
+    );
+    expect(mocks.kickMailOutboxDelivery).toHaveBeenCalledOnce();
   });
 });
 
@@ -470,17 +509,37 @@ describe('Quick-Anforderung', () => {
       tx,
       expect.objectContaining({ action: 'request.create', resourceId: REQUEST_ID }),
     );
-    expect(mocks.notifyRequestOpened).toHaveBeenCalledWith(
-      expect.objectContaining({
+    // F-08: Versandauftrag im Anlage-Commit mit genau den Optionen der
+    // bisherigen notifyRequestOpened-Mail.
+    expect(mocks.enqueueClientContactsMailTx).toHaveBeenCalledWith(
+      tx,
+      {
+        tenantId: 'tenant-1',
         clientId: CLIENT_ID,
-        requestId: REQUEST_ID,
-        title: 'Belege Juli',
-        priority: 'HIGH',
-        // 10:00 Berlin-Sommerzeit = 08:00 UTC (berlinWallClockToUtc)
-        dueAtIso: '2026-07-31T08:00:00.000Z',
+        purpose: 'request-opened',
+        resource: { type: 'request', id: REQUEST_ID },
+        staffHref: `/staff/requests/${REQUEST_ID}`,
+      },
+      expect.objectContaining({
+        slug: 'request-opened',
+        vars: {
+          request: {
+            id: REQUEST_ID,
+            title: 'Belege Juli',
+            description: 'Bitte die Belege für Juli bereitstellen.',
+            priority: 'HIGH',
+          },
+          portalUrl: `https://portal.example.test/portal/requests/${REQUEST_ID}`,
+        },
+        n8nEvent: 'request.opened',
+        n8nPayload: expect.objectContaining({
+          requestId: REQUEST_ID,
+          // 10:00 Berlin-Sommerzeit = 08:00 UTC (berlinWallClockToUtc)
+          dueAt: '2026-07-31T08:00:00.000Z',
+        }),
       }),
     );
-    expect(mocks.fireAndForget).toHaveBeenCalledOnce();
+    expect(mocks.kickMailOutboxDelivery).toHaveBeenCalledOnce();
     expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
@@ -510,7 +569,7 @@ describe('Quick-Anforderung', () => {
     expect(tx.request.create).not.toHaveBeenCalled();
     expect(tx.formSubmission.create).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
-    expect(mocks.notifyRequestOpened).not.toHaveBeenCalled();
+    expect(mocks.enqueueClientContactsMailTx).not.toHaveBeenCalled();
   });
 
   it('weist eine Wiederholung derselben ID mit abweichender Payload als Konflikt ab', async () => {
@@ -543,7 +602,7 @@ describe('Quick-Anforderung', () => {
     });
     expect(tx.request.create).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
-    expect(mocks.notifyRequestOpened).not.toHaveBeenCalled();
+    expect(mocks.enqueueClientContactsMailTx).not.toHaveBeenCalled();
   });
 
   it('weist ein inzwischen deaktiviertes Formular klar und ohne Teilanlage ab', async () => {
@@ -617,7 +676,7 @@ describe('Quick-Anforderung', () => {
       ok: false,
       error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).',
     });
-    expect(mocks.notifyRequestOpened).not.toHaveBeenCalled();
+    expect(mocks.enqueueClientContactsMailTx).not.toHaveBeenCalled();
     expect(mocks.revalidatePath).not.toHaveBeenCalled();
   });
 

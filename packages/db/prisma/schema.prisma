@@ -94,6 +94,7 @@ model Tenant {
   n8nConnection                  N8nConnection?
   n8nCallbackReceipts            N8nCallbackReceipt[]
   n8nDeliveries                  N8nDelivery[]
+  mailOutbox                     MailOutbox[]
   n8nEventSubscriptions          N8nEventSubscription[]
   n8nOutbox                      N8nOutbox[]
   n8nWebhookEndpoints            N8nWebhookEndpoint[]
@@ -1063,6 +1064,41 @@ model PowerOfAttorney {
   @@map("power_of_attorney")
 }
 
+/// Review-Befund F-08: Versandauftrag einer Mandanten-Mail, geschrieben im
+/// fachlichen Commit und vom Worker (mail-outbox-deliver) zugestellt.
+/// payload (Empfänger, Variablen, Anhangsverweise) und secret_vars_enc leben
+/// nur bis zum Terminalstatus; danach bleiben Status, Zähler und Verweise.
+model MailOutbox {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId            String           @map("tenant_id") @db.Uuid
+  clientId            String           @map("client_id") @db.Uuid
+  kind                MailOutboxKind
+  purpose             String
+  resourceType        String           @map("resource_type")
+  resourceId          String           @map("resource_id") @db.Uuid
+  staffHref           String           @map("staff_href")
+  payload             Json
+  secretVarsEnc       String?          @map("secret_vars_enc")
+  status              MailOutboxStatus @default(QUEUED)
+  attemptCount        Int              @default(0) @map("attempt_count")
+  nextAttemptAt       DateTime?        @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  lastAttemptAt       DateTime?        @map("last_attempt_at") @db.Timestamptz(6)
+  acceptedAt          DateTime?        @map("accepted_at") @db.Timestamptz(6)
+  recipientsAttempted Int?             @map("recipients_attempted")
+  recipientsAccepted  Int?             @map("recipients_accepted")
+  lastError           String?          @map("last_error")
+  escalatedAt         DateTime?        @map("escalated_at") @db.Timestamptz(6)
+  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant              Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "mail_outbox_tenant_fkey")
+  client              Client           @relation(fields: [tenantId, clientId], references: [tenantId, id], onDelete: Cascade, onUpdate: NoAction, map: "mail_outbox_client_fkey")
+
+  @@index([status, nextAttemptAt], map: "mail_outbox_status_next_attempt_idx")
+  @@index([tenantId, resourceType, resourceId, createdAt], map: "mail_outbox_resource_idx")
+  @@index([tenantId, clientId, createdAt], map: "mail_outbox_client_created_idx")
+  @@map("mail_outbox")
+}
+
 model N8nOutbox {
   id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId    String?         @map("tenant_id") @db.Uuid
@@ -1922,6 +1958,7 @@ model Client {
   contacts                 ClientContact[]
   customFieldValues        ClientCustomFieldValue[]
   handovers                ClientHandover[]
+  mailOutbox               MailOutbox[]
   masterChangeRequests     ClientMasterChangeRequest[]
   reminders                ClientReminder[]
   responsibilities         ClientResponsibility[]
@@ -4180,6 +4217,29 @@ enum N8nEndpointSource {
   DISCOVERED
   CUSTOM
   LEGACY
+}
+
+enum MailOutboxKind {
+  /// Eine Template-Mail an genau eine Adresse.
+  DIRECT
+  /// Template-Mail an alle bestätigten Kontakte mit Benachrichtigungen (Auflösung beim Versand).
+  CLIENT_CONTACTS
+
+  @@map("mail_outbox_kind")
+}
+
+enum MailOutboxStatus {
+  QUEUED
+  /// In-Flight-Claim; ein abgebrochener Versuch wird nie blind wiederholt.
+  SENDING
+  RETRY_PENDING
+  PROVIDER_ACCEPTED
+  PARTIAL_FAILURE
+  NO_RECIPIENT
+  FAILED
+  UNKNOWN
+
+  @@map("mail_outbox_status")
 }
 
 enum N8nDeliveryStatus {

@@ -71,6 +71,8 @@ const LEGACY_CONCURRENCY: Record<string, number | undefined> = {
   'n8n-retention': 1,
   'risk-analyse-llm': 1,
   'reminder-done-notify': 4,
+  // F-08: new queue.
+  'mail-outbox-deliver': 1,
 };
 
 describe('R-13 worker registry', () => {

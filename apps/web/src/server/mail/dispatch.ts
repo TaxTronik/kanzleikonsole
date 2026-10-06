@@ -24,6 +24,7 @@ export {
   renderTemplate,
   plainTextBody,
   notifyRequestOpened,
+  requestOpenedMail,
   REQUEST_OPENED_FALLBACK,
   type TemplateFallback,
   type DispatchOptions,

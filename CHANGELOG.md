@@ -23,6 +23,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- Mandanten-Mails (neue Anforderung, Kanzlei-Antwort, Formular, GwG-Einladung
+  und -Freischaltung, Terminentscheidung, Rechnungsversand, Abholbereitschaft)
+  werden im fachlichen Commit als Versandauftrag gespeichert und vom Worker
+  zugestellt; eindeutig fehlgeschlagene Versuche werden bis zu sechsmal mit
+  wachsendem Abstand wiederholt, bei endgültigem Fehlschlag, Teilzustellung
+  oder unklarem Ausgang wird die Kanzlei benachrichtigt (Migration
+  `20261006120000`, `FK-EXC-20261006-014`).
 - CI-Prüfung `pnpm verify:fk-indexes` meldet Fremdschlüssel ohne führenden
   Index; bestehende Ausnahmen stehen in einer begründeten Allowlist
   (`FK-EXC-20261005-008`).
@@ -220,6 +227,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Rechnung, Anforderung, Anlieferung, GwG-Einladung, Onboarding-Übersicht und
+  Formular zeigen den Zustellstatus der Mandanten-Mail statt eines pauschalen
+  Versandhinweises.
 - ENV-Prüfung je Prozess: Der Worker verlangt keine Web-Werte mehr
   (`NEXTAUTH_URL` nur als Rückfall für `PORTAL_PUBLIC_URL`; `NEXTAUTH_TRUST_HOST`,
   `TRUST_PROXY_*`, Cookie-Domains, ELSTER und Lizenz entfallen),
@@ -1195,6 +1205,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Der GwG-Einladungslink liegt bis zur Zustellung nur verschlüsselt im
+  Versandauftrag und wird danach gelöscht; `pnpm secret-box:rewrap` erfasst
+  den neuen Ablageort.
 - Server-Actions ordnen Fehler zentral nach Fehlerklasse bzw. SQLSTATE ein;
   fachliche Meldungen (z. B. GwG-Schranke, Virenscan, nicht gefundene
   Datensätze) erscheinen statt „Unerwarteter Fehler“, rohe Datenbank- und

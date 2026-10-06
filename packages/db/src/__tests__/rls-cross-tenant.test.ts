@@ -65,6 +65,7 @@ const TENANT_CLIENT_PAIR_TABLES = [
   'gwg_person_anchor',
   'gwg_structure_binding',
   'invoice',
+  'mail_outbox',
   'mandate_artifact',
   'mandate_offboarding',
   'mandate_structure_version',

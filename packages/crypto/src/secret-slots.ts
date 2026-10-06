@@ -10,7 +10,8 @@
 // Wortlaut je Ablageort (`<tenantId>|<scope>|<field>`):
 //   tenant_setting      <tenantId>|tenant_setting/<key>|<JSON-Feld>
 //   eine Zeile je Tenant <tenantId>|<tabelle>|<spalte>   (n8n_connection)
-//   mehrere Zeilen      <tenantId>|<tabelle>/<id>|<spalte> (inbound_mailbox)
+//   mehrere Zeilen      <tenantId>|<tabelle>/<id>|<spalte> (inbound_mailbox,
+//                                                           mail_outbox)
 // =============================================================================
 
 /** Bindung eines verschlüsselten Werts an seinen Ablageort (AAD). */
@@ -70,6 +71,13 @@ export type SecretSlot =
       readonly column: 'secret_enc' | 'oauth_cache_enc';
       /** Mehrere Zeilen je Tenant: die Zeilen-ID gehört zum Kontext. */
       readonly row: 'id';
+    }
+  | {
+      readonly kind: 'column';
+      readonly table: 'mail_outbox';
+      readonly column: 'secret_vars_enc';
+      /** Ein Versandauftrag je Zeile: die Zeilen-ID gehört zum Kontext. */
+      readonly row: 'id';
     };
 
 /**
@@ -99,6 +107,16 @@ export const SECRET_SLOTS = {
     kind: 'column',
     table: 'inbound_mailbox',
     column: 'oauth_cache_enc',
+    row: 'id',
+  },
+  /**
+   * F-08: geheime Template-Variablen eines wartenden Mail-Versandauftrags
+   * (z. B. GwG-Einladungslink mit Token); mit dem Terminalstatus entfernt.
+   */
+  mailOutboxSecretVars: {
+    kind: 'column',
+    table: 'mail_outbox',
+    column: 'secret_vars_enc',
     row: 'id',
   },
 } as const satisfies Record<string, SecretSlot>;

@@ -2,11 +2,15 @@
 
 import { z } from 'zod';
 import type { Prisma } from '@prisma/client';
+import type { TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
-import { sendTemplateMail, type DispatchOptions } from '@/server/mail/dispatch';
-import { fireAndForget } from '@/server/util/fire-and-forget';
+import {
+  enqueueDirectMailTx,
+  kickMailOutboxDelivery,
+  type OutboxDirectMail,
+} from '@/server/mail/outbox';
 import {
   assertClientInTenant,
   assertStaffInTenant,
@@ -328,6 +332,45 @@ export async function deleteAppointmentAction(input: {
 // Termin-Anfragen entscheiden
 // -------------------------------------------------------------------------
 
+interface DecisionContact {
+  fullName: string;
+  email: string;
+  notificationsEnabled: boolean;
+  active: boolean;
+}
+
+/**
+ * Entscheidungs-Mail an den anfragenden Mandanten-Kontakt (nur aktiv und mit
+ * Benachrichtigungen). F-08: im Entscheidungs-Commit als Versandauftrag; der
+ * Worker stellt mit Retry zu. Liefert, ob ein Auftrag angelegt wurde.
+ */
+async function enqueueAppointmentDecisionMailTx(
+  tx: TxClient,
+  input: {
+    tenantId: string;
+    clientId: string;
+    requestId: string;
+    purpose: 'appointment-confirmed' | 'appointment-rejected';
+    contact: DecisionContact | null;
+    mail: (contact: { fullName: string; email: string }) => Omit<OutboxDirectMail, 'to'>;
+  },
+): Promise<boolean> {
+  const contact = input.contact;
+  if (!contact || !contact.active || !contact.notificationsEnabled) return false;
+  await enqueueDirectMailTx(
+    tx,
+    {
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      purpose: input.purpose,
+      resource: { type: 'appointment_request', id: input.requestId },
+      staffHref: '/staff/calendar',
+    },
+    { ...input.mail(contact), to: contact.email },
+  );
+  return true;
+}
+
 const AcceptSchema = z.object({
   requestId: z.string().uuid(),
   slotIndex: z.number().int().min(0).max(10),
@@ -344,9 +387,9 @@ export async function acceptAppointmentRequestAction(input: {
     return { ok: false, error: 'Ungültige Terminauswahl.', errorCode: 'VALIDATION_ERROR' };
 
   // Befund 4: SMTP-Versand nicht innerhalb der Tx (Timeout-/Doppelversand-
-  // Risiko bei Rollback nach Versand). Mail-Parameter in der Tx einsammeln,
-  // Versand nach dem Commit (Muster uploadExternalInvoiceAction).
-  let confirmMail: DispatchOptions | null = null;
+  // Risiko bei Rollback nach Versand). F-08: Der Versandauftrag entsteht im
+  // Commit, der Worker versendet danach.
+  let mailQueued = false;
 
   const r = await withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -464,14 +507,15 @@ export async function acceptAppointmentRequestAction(input: {
       }
 
       // Bestätigungs-Mail an den Mandanten-Kontakt — Empfänger sehen wir nur
-      // hier in der Tx, der Versand selbst passiert nach dem Commit (Befund 4).
-      const contact = req.createdByContactRel;
-      if (contact && contact.active && contact.notificationsEnabled) {
-        confirmMail = {
-          tenantId,
-          clientId: req.clientId,
+      // hier in der Tx; versendet wird nach dem Commit (Befund 4, F-08).
+      mailQueued = await enqueueAppointmentDecisionMailTx(tx, {
+        tenantId,
+        clientId: req.clientId,
+        requestId: req.id,
+        purpose: 'appointment-confirmed',
+        contact: req.createdByContactRel,
+        mail: (contact) => ({
           slug: 'appointment-confirmed',
-          to: contact.email,
           vars: {
             contact: { fullName: contact.fullName, email: contact.email },
             appointment: {
@@ -494,17 +538,14 @@ export async function acceptAppointmentRequestAction(input: {
             bodyMd:
               'Sehr geehrte/r {{contact.fullName}},\n\nwir bestätigen Ihren Termin:\n\n**{{appointment.title}}**\n{{appointment.startsAt}}',
           },
-        };
-      }
+        }),
+      });
     },
     { revalidate: ['/staff/calendar', '/staff/tax-deadlines', '/portal/appointments'] },
   );
 
-  if (r.ok && confirmMail) {
-    // Befund 3/4: fire-and-forget mit catch+Log — Mail-Fehler kippen die
-    // bereits committete Entscheidung nicht.
-    fireAndForget('sendTemplateMail (appointment-confirmed)', sendTemplateMail(confirmMail));
-  }
+  // Mail-Fehler kippen die bereits committete Entscheidung nicht (Befund 3/4).
+  if (r.ok && mailQueued) kickMailOutboxDelivery();
   return r;
 }
 
@@ -521,8 +562,8 @@ export async function rejectAppointmentRequestAction(input: {
   if (!parsed.success)
     return { ok: false, error: 'Ungültige Ablehnung.', errorCode: 'VALIDATION_ERROR' };
 
-  // Befund 4: Mail-Parameter in der Tx einsammeln, Versand nach dem Commit.
-  let rejectMail: DispatchOptions | null = null;
+  // Befund 4: Versandauftrag in der Tx, Versand nach dem Commit (F-08).
+  let mailQueued = false;
 
   const r = await withAppointmentsStaff(
     async (tx, { tenantId, staffId, session }) => {
@@ -567,13 +608,14 @@ export async function rejectAppointmentRequestAction(input: {
         after: { reason: parsed.data.reason ?? null },
       });
 
-      const contact = req.createdByContactRel;
-      if (contact && contact.active && contact.notificationsEnabled) {
-        rejectMail = {
-          tenantId,
-          clientId: req.clientId,
+      mailQueued = await enqueueAppointmentDecisionMailTx(tx, {
+        tenantId,
+        clientId: req.clientId,
+        requestId: req.id,
+        purpose: 'appointment-rejected',
+        contact: req.createdByContactRel,
+        mail: (contact) => ({
           slug: 'appointment-rejected',
-          to: contact.email,
           vars: {
             contact: { fullName: contact.fullName, email: contact.email },
             request: { subject: req.subject },
@@ -593,15 +635,13 @@ export async function rejectAppointmentRequestAction(input: {
             bodyMd:
               'Sehr geehrte/r {{contact.fullName}},\n\nleider können wir Ihre Termin-Anfrage „{{request.subject}}" nicht annehmen.\n\n{{rejectionReason}}',
           },
-        };
-      }
+        }),
+      });
     },
     { revalidate: ['/staff/calendar', '/portal/appointments'] },
   );
 
-  if (r.ok && rejectMail) {
-    // Befund 3/4: fire-and-forget mit catch+Log — Versand nach der Tx.
-    fireAndForget('sendTemplateMail (appointment-rejected)', sendTemplateMail(rejectMail));
-  }
+  // Befund 3/4: Mail-Fehler kippen die committete Entscheidung nicht.
+  if (r.ok && mailQueued) kickMailOutboxDelivery();
   return r;
 }

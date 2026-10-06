@@ -4,6 +4,7 @@ import {
   JOB_QUEUES,
   JOB_QUEUE_KEYS,
   QUEUE_HEALTH,
+  MAIL_OUTBOX_KICK_JOB_OPTIONS,
   QUEUE_STATUS_HISTORY_RETENTION_SECONDS,
   REMINDER_DONE_NOTIFY_JOB_OPTIONS,
   RISK_ANALYSE_LLM_JOB_OPTIONS,
@@ -44,6 +45,7 @@ describe('shared BullMQ metadata', () => {
     expect(health.get(JOB_QUEUES.workflowN8nDispatch.name)?.staleAfterMs).toBe(1.5 * 60 * 1_000);
     expect(health.get(JOB_QUEUES.n8nDeliver.name)?.staleAfterMs).toBeNull();
     expect(health.get(JOB_QUEUES.riskAnalyseLlm.name)?.staleAfterMs).toBeNull();
+    expect(health.get(JOB_QUEUES.mailOutboxDeliver.name)?.staleAfterMs).toBe(1.5 * 60 * 1_000);
   });
 
   it('retains a success marker beyond the longest stale window', () => {
@@ -124,6 +126,7 @@ describe('shared BullMQ metadata', () => {
       'storage-orphan-cleanup @ every 6 h',
       'portal-inbox-cleanup @ every 6 h',
       'n8n-retention @ 03:45 UTC daily',
+      'mail-outbox-deliver @ every 1 min',
     ]);
 
     const schedule = (repeat: QueueScheduleDefinition['repeat']): QueueScheduleDefinition => ({
@@ -152,6 +155,21 @@ describe('shared BullMQ metadata', () => {
       backoff: { type: 'exponential', delay: 5_000 },
       removeOnComplete: { age: 24 * 60 * 60, count: 100 },
       removeOnFail: { age: 7 * 24 * 60 * 60, count: 200 },
+    });
+  });
+
+  it('F-08 nudges mail-outbox-deliver without data and without BullMQ retries', () => {
+    const kick: QueueJobDataByName[typeof JOB_QUEUES.mailOutboxDeliver.name] = {};
+    expect(kick).toEqual({});
+    expect(JOB_QUEUES.mailOutboxDeliver.schedule).toEqual({
+      schedulerId: 'mail-outbox-deliver',
+      repeat: { every: 60_000 },
+      expectedMaxGapMs: 60_000,
+    });
+    expect(MAIL_OUTBOX_KICK_JOB_OPTIONS).toEqual({
+      attempts: 1,
+      removeOnComplete: { age: 24 * 60 * 60, count: 100 },
+      removeOnFail: { age: 7 * 24 * 60 * 60, count: 100 },
     });
   });
 

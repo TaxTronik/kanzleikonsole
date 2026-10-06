@@ -9,8 +9,7 @@ import { emitN8nEvent } from '@/server/n8n/emit';
 import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { compensateStorageCommit } from '@/server/documents/storage-compensation';
-import { sendTemplateMail } from '@/server/mail/dispatch';
-import { fireAndForget } from '@/server/util/fire-and-forget';
+import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { portalBaseUrl } from '@taxtronik/config';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
@@ -345,27 +344,26 @@ function markSentCasResult(result: NonSentInvoiceResult): ActionResult {
   }
 }
 
-async function notifyInvoiceRecipients(
-  ctx: TenantContext,
+async function enqueueInvoiceSentMailsTx(
+  tx: TxClient,
   tenantId: string,
   sent: Extract<Awaited<ReturnType<typeof finalizeInvoiceSendTx>>, { outcome: 'sent' }>['invoice'],
 ): Promise<void> {
   // Mandant über den Versand informieren. Template-Slug 'invoice-sent' — falls
-  // im ACP keines definiert ist, greift der Fallback (hartcodiert). Fire-and-
-  // forget: ein Mail-Versand-Fehler scheitert nicht den Rechnungs-Versand.
-  const client = await withTenantContext(ctx, (tx) =>
-    tx.client.findUnique({
-      where: { id: sent.clientId },
-      select: {
-        name: true,
-        invoiceEmail: true,
-        contacts: {
-          where: { active: true, notificationsEnabled: true },
-          select: { email: true, fullName: true },
-        },
+  // im ACP keines definiert ist, greift der Fallback (hartcodiert). F-08: im
+  // Festschreibungs-Commit als Versandauftrag je Empfänger; der Worker stellt
+  // mit Retry zu, ein Mail-Fehler scheitert den Rechnungs-Versand weiterhin nicht.
+  const client = await tx.client.findUnique({
+    where: { id: sent.clientId },
+    select: {
+      name: true,
+      invoiceEmail: true,
+      contacts: {
+        where: { active: true, notificationsEnabled: true },
+        select: { email: true, fullName: true },
       },
-    }),
-  );
+    },
+  });
   const recipients = new Map<string, { email: string; fullName: string }>();
   if (client?.invoiceEmail) {
     recipients.set(client.invoiceEmail.toLowerCase(), {
@@ -377,11 +375,16 @@ async function notifyInvoiceRecipients(
     recipients.set(contact.email.toLowerCase(), contact);
   }
   for (const recipient of recipients.values()) {
-    fireAndForget(
-      'sendTemplateMail (invoice-sent)',
-      sendTemplateMail({
+    await enqueueDirectMailTx(
+      tx,
+      {
         tenantId,
         clientId: sent.clientId,
+        purpose: 'invoice-sent',
+        resource: { type: 'invoice', id: sent.id },
+        staffHref: `/staff/invoices/${sent.id}`,
+      },
+      {
         slug: 'invoice-sent',
         to: recipient.email,
         vars: {
@@ -402,7 +405,7 @@ async function notifyInvoiceRecipients(
             'Fälligkeit: {{invoice.dueDate}}\n\n' +
             'Zur Übersicht: {{link}}',
         },
-      }),
+      },
     );
   }
 }
@@ -492,17 +495,22 @@ export async function markSentAction(
   // TOCTOU-Schutz gegen Doppel-Submit (zwei Tabs / zwei Bearbeiter): beide
   // passieren den Precheck oben, aber der atomare DRAFT→SENT-Claim im Helfer
   // trifft nur beim ersten status=DRAFT — der zweite läuft ins Leere (null).
-  const sendResult = await withTenantContext(ctx, (tx) =>
-    finalizeInvoiceSendTx(tx, { invoiceId: parsed.data.invoiceId, staffId, tenantId }),
-  );
+  const sendResult = await withTenantContext(ctx, async (tx) => {
+    const result = await finalizeInvoiceSendTx(tx, {
+      invoiceId: parsed.data.invoiceId,
+      staffId,
+      tenantId,
+    });
+    if (result.outcome === 'sent') await enqueueInvoiceSentMailsTx(tx, tenantId, result.invoice);
+    return result;
+  });
 
   // Nur ein tatsächlich bereits ausgelieferter Zustand ist idempotenter Erfolg.
   // Hat parallel ein Storno gewonnen, darf weder Erfolg noch Zustellung/N8N
   // gemeldet werden.
   if (sendResult.outcome !== 'sent') return markSentCasResult(sendResult);
   const sent = sendResult.invoice;
-
-  await notifyInvoiceRecipients(ctx, tenantId, sent);
+  kickMailOutboxDelivery();
 
   // Korrekturbelege dürfen niemals den normalen Fälligkeits-/Mahnworkflow
   // starten. finalizeInvoiceSendTx hat das Original bereits atomar storniert.
@@ -888,11 +896,8 @@ export async function uploadExternalInvoiceAction(
     return { ok: false, error: `Storage-Fehler: ${toActionError(e).error}` };
   }
 
-  // 2) Document + Invoice + Audit in einer Transaktion
+  // 2) Document + Invoice + Audit + Versandaufträge in einer Transaktion
   let invoiceId: string;
-  let recipients: { email: string; fullName: string }[] = [];
-  let mailTemplateSlug: string | null = null;
-  let clientName = '';
   try {
     invoiceId = await withTenantContext(ctx, async (tx) => {
       const cat = data.categoryId
@@ -901,7 +906,7 @@ export async function uploadExternalInvoiceAction(
             select: { id: true, emailTemplateSlug: true, name: true },
           })
         : null;
-      mailTemplateSlug = cat?.emailTemplateSlug ?? null;
+      const mailTemplateSlug = cat?.emailTemplateSlug ?? null;
 
       await assertClientAccessTx(tx, g.session, data.clientId);
       const cli = await tx.client.findUnique({
@@ -915,11 +920,9 @@ export async function uploadExternalInvoiceAction(
         },
       });
       if (!cli) throw new ActionError('Mandant nicht gefunden.');
-      clientName = cli.name;
-      recipients = cli.contacts;
 
       // Befund 12: Document+Version-Insert zentral (upload-helpers).
-      const { document: doc } = await createDocumentWithVersion(tx, {
+      const { document: doc, version } = await createDocumentWithVersion(tx, {
         documentData: {
           tenantId,
           clientId: data.clientId,
@@ -976,6 +979,50 @@ export async function uploadExternalInvoiceAction(
         },
       });
 
+      // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in — F-08: als
+      // Versandauftrag je Empfänger; der Anhang ist die eben gespeicherte,
+      // hashgebundene Fassung.
+      for (const r of cli.contacts) {
+        await enqueueDirectMailTx(
+          tx,
+          {
+            tenantId,
+            clientId: input.clientId,
+            purpose: 'invoice-external',
+            resource: { type: 'invoice', id: inv.id },
+            staffHref: `/staff/invoices/${inv.id}`,
+          },
+          {
+            slug: mailTemplateSlug ?? 'invoice-sent',
+            to: r.email,
+            vars: {
+              contact: { fullName: r.fullName, email: r.email },
+              client: { name: cli.name },
+              invoice: {
+                number: input.number,
+                subject: input.subject,
+                totalAmount: input.totalAmount,
+                dueDate: input.dueDate,
+              },
+            },
+            n8nEvent: 'invoice.due',
+            n8nPayload: { tenantId, invoiceId: inv.id },
+            fallback: {
+              subject: 'Ihre Rechnung {{invoice.number}}',
+              bodyMd:
+                'Sehr geehrte/r {{contact.fullName}},\n\nanbei senden wir Ihnen unsere Rechnung Nr. {{invoice.number}} über {{invoice.totalAmount}} €.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
+            },
+            attachments: [
+              {
+                documentVersionId: version.id,
+                filename: `Rechnung-${input.number}.pdf`,
+                contentType: 'application/pdf',
+              },
+            ],
+          },
+        );
+      }
+
       return inv.id;
     });
   } catch (e) {
@@ -991,43 +1038,7 @@ export async function uploadExternalInvoiceAction(
     return toActionError(e);
   }
 
-  // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in.
-  // fireAndForget (catch + Log) statt still verschlucktem `.catch(() => void 0)`.
-  for (const r of recipients) {
-    fireAndForget(
-      'sendTemplateMail (external invoice)',
-      sendTemplateMail({
-        tenantId,
-        clientId: input.clientId,
-        slug: mailTemplateSlug ?? 'invoice-sent',
-        to: r.email,
-        vars: {
-          contact: { fullName: r.fullName, email: r.email },
-          client: { name: clientName },
-          invoice: {
-            number: input.number,
-            subject: input.subject,
-            totalAmount: input.totalAmount,
-            dueDate: input.dueDate,
-          },
-        },
-        n8nEvent: 'invoice.due',
-        n8nPayload: { tenantId, invoiceId },
-        fallback: {
-          subject: 'Ihre Rechnung {{invoice.number}}',
-          bodyMd:
-            'Sehr geehrte/r {{contact.fullName}},\n\nanbei senden wir Ihnen unsere Rechnung Nr. {{invoice.number}} über {{invoice.totalAmount}} €.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
-        },
-        attachments: [
-          {
-            filename: `Rechnung-${input.number}.pdf`,
-            content: pdfBytes,
-            contentType: 'application/pdf',
-          },
-        ],
-      }),
-    );
-  }
+  kickMailOutboxDelivery();
 
   revalidatePath('/staff/invoices');
   revalidatePath(`/portal/invoices`);

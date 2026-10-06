@@ -363,6 +363,18 @@ export const JOB_QUEUES = {
   },
   riskAnalyseLlm: { name: 'risk-analyse-llm', schedule: null },
   reminderDoneNotify: { name: 'reminder-done-notify', schedule: null },
+  mailOutboxDeliver: {
+    name: 'mail-outbox-deliver',
+    schedule: {
+      // F-08: Mandanten-Mails aus der Mail-Outbox. Die Web-App stößt den Job
+      // nach jedem fachlichen Commit an; der Minutentakt holt verlorene
+      // Anstöße, fällige Wiederholungen und hängende Versandversuche nach.
+      // Kein BullMQ-Retry: der Versandzustand liegt in der Datenbank.
+      schedulerId: 'mail-outbox-deliver',
+      repeat: { every: MINUTE },
+      expectedMaxGapMs: MINUTE,
+    },
+  },
 } as const satisfies Record<string, QueueDefinition>;
 
 export type JobQueueKey = keyof typeof JOB_QUEUES;
@@ -470,6 +482,17 @@ export const RISK_ANALYSE_LLM_JOB_OPTIONS = {
   removeOnFail: { age: (7 * DAY) / SECOND, count: 200 },
 } as const;
 
+/**
+ * F-08: job options of the post-commit nudge of mail-outbox-deliver. The job
+ * carries no data (the outbox rows are the state) and is never retried by
+ * BullMQ; the per-minute scheduler run picks up anything a lost nudge missed.
+ */
+export const MAIL_OUTBOX_KICK_JOB_OPTIONS = {
+  attempts: 1,
+  removeOnComplete: { age: DAY / SECOND, count: 100 },
+  removeOnFail: { age: (7 * DAY) / SECOND, count: 100 },
+} as const;
+
 type EmptyJob = Record<string, never>;
 
 /** Compile-time mapping used by typed producer/consumer factories. */
@@ -503,6 +526,7 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.n8nRetention.name]: EmptyJob;
   [JOB_QUEUES.riskAnalyseLlm.name]: RiskAnalyseLlmJob;
   [JOB_QUEUES.reminderDoneNotify.name]: ReminderDoneNotifyJob;
+  [JOB_QUEUES.mailOutboxDeliver.name]: EmptyJob;
 };
 
 type AssertTrue<T extends true> = T;

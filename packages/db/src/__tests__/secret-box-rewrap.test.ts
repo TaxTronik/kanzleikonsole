@@ -79,6 +79,9 @@ const tenantB = randomUUID();
 const mailbox1 = randomUUID();
 const mailbox2 = randomUUID();
 const mailboxB = randomUUID();
+const clientA = randomUUID();
+const outbox1 = randomUUID();
+const OUTBOX_SECRET = '{"link":"https://portal.example.test/gwg-onboarding?token=t0k3n"}';
 
 /** Key-ID des aktuell aktiven Schlüssels (aus einem frisch verschlüsselten Wert). */
 function activeKeyId(): string | null {
@@ -154,6 +157,11 @@ async function storedFixtures(): Promise<
       blob: await column('inbound_mailbox', 'secret_enc', mailboxB),
       ctx: context('mailboxSecret', tenantB, mailboxB),
       plain: 'imap-b',
+    },
+    {
+      blob: await column('mail_outbox', 'secret_vars_enc', outbox1),
+      ctx: context('mailOutboxSecretVars', tenantA, outbox1),
+      plain: OUTBOX_SECRET,
     },
   ];
 }
@@ -232,6 +240,27 @@ async function insertFixtures(): Promise<void> {
       encryptSecret('imap-b', context('mailboxSecret', tenantB, mailboxB)),
     ],
   );
+  // F-08: wartender Mail-Versandauftrag mit verschlüsseltem Einladungslink;
+  // ein terminaler Auftrag trägt kein Secret mehr und wird übersprungen.
+  await owner.query(
+    `INSERT INTO public.client (id, tenant_id, kind, name, updated_at)
+     VALUES ($1, $2, 'NATPERS', 'Re-Wrap Mandant', now())`,
+    [clientA, tenantA],
+  );
+  await owner.query(
+    `INSERT INTO public.mail_outbox
+       (id, tenant_id, client_id, kind, purpose, resource_type, resource_id, staff_href,
+        payload, secret_vars_enc)
+     VALUES ($1, $2, $3, 'DIRECT', 'gwg-invite', 'client', $3, '/staff/clients', '{}'::jsonb, $4),
+            (gen_random_uuid(), $2, $3, 'DIRECT', 'gwg-invite', 'client', $3, '/staff/clients',
+             '{}'::jsonb, NULL)`,
+    [
+      outbox1,
+      tenantA,
+      clientA,
+      encryptSecret(OUTBOX_SECRET, context('mailOutboxSecretVars', tenantA, outbox1)),
+    ],
+  );
 }
 
 describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
@@ -265,6 +294,7 @@ describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
         'n8nSigningSecret',
         'mailboxSecret',
         'mailboxOauthCache',
+        'mailOutboxSecretVars',
       ]),
     );
   });
@@ -273,8 +303,8 @@ describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
     const before = await storedFixtures();
     const report = await rewrapStoredSecrets(scopedExecutor(), SLOTS, ops, { dryRun: true });
     const total = report.reduce((sum, stats) => sum + stats.total, 0);
-    expect(total).toBe(10);
-    expect(report.reduce((sum, stats) => sum + stats.pending, 0)).toBe(10);
+    expect(total).toBe(11);
+    expect(report.reduce((sum, stats) => sum + stats.pending, 0)).toBe(11);
     expect(report.every((stats) => stats.rewrapped === 0 && stats.failed === 0)).toBe(true);
     expect(await storedFixtures()).toEqual(before);
   });
@@ -318,7 +348,7 @@ describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
     const before = await storedFixtures();
     const report = await rewrapStoredSecrets(scopedExecutor(), SLOTS, ops);
     expect(report.reduce((sum, stats) => sum + stats.rewrapped, 0)).toBe(0);
-    expect(report.reduce((sum, stats) => sum + stats.current, 0)).toBe(10);
+    expect(report.reduce((sum, stats) => sum + stats.current, 0)).toBe(11);
     expect(await storedFixtures()).toEqual(before);
   });
 
@@ -345,6 +375,10 @@ describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
     expect(() => decryptSecret(secret1, context('mailboxOauthCache', tenantA, mailbox1))).toThrow();
     const n8nApi = await column('n8n_connection', 'api_key_encrypted', await n8nConnectionId());
     expect(() => decryptSecret(n8nApi, context('n8nSigningSecret', tenantA))).toThrow();
+    const outboxSecret = await column('mail_outbox', 'secret_vars_enc', outbox1);
+    expect(() =>
+      decryptSecret(outboxSecret, context('mailOutboxSecretVars', tenantA, mailbox1)),
+    ).toThrow();
 
     // Der Re-Wrap meldet den kopierten Wert und lässt ihn unverändert.
     const failures: Array<{ slot: string; tenantId: string }> = [];

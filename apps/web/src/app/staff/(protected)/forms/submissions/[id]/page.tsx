@@ -15,6 +15,8 @@ import { FormRevisionHistory } from '@/components/form-revision-history';
 import { ReviewForm } from './review-form';
 import { fmtDateShort, fmtDateTimeMedium, fmtEUR } from '@/lib/fmt';
 import { FORM_SUBMISSION_STATUS_LABELS } from '@/lib/domain-labels';
+import { MailDeliveryStatusList } from '@/components/mail-delivery-status';
+import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
 
 function renderValue(type: FormFieldType, value: unknown, fieldOptions: unknown): ReactNode {
   if (value === null || value === undefined || value === '') {
@@ -78,19 +80,30 @@ export default async function SubmissionDetailPage({
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 
-  const sub = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
-    tx.formSubmission.findUnique({
-      where: { id },
-      include: {
-        revisions: { include: { files: true }, orderBy: { sequence: 'desc' } },
-        client: { select: { id: true, name: true } },
-        template: {
-          include: { fields: { orderBy: { position: 'asc' } } },
+  const data = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    async (tx) => {
+      const row = await tx.formSubmission.findUnique({
+        where: { id },
+        include: {
+          revisions: { include: { files: true }, orderBy: { sequence: 'desc' } },
+          client: { select: { id: true, name: true } },
+          template: {
+            include: { fields: { orderBy: { position: 'asc' } } },
+          },
         },
-      },
-    }),
+      });
+      if (!row) return null;
+      // F-08: Zustellstatus der Mandanten-Mail zum Formular.
+      const mail = await loadMailDeliveryTx(tx, {
+        resourceType: 'form_submission',
+        resourceIds: [row.id],
+      });
+      return { sub: row, mailDelivery: mail.get(row.id) };
+    },
   );
-  if (!sub) notFound();
+  if (!data) notFound();
+  const { sub, mailDelivery } = data;
   const formSchema = readFormSchema(sub.schemaSnapshot, sub.template);
 
   const answers = (sub.answers as Record<string, unknown>) ?? {};
@@ -107,6 +120,7 @@ export default async function SubmissionDetailPage({
           {sub.client.name} · versendet {fmtDateTimeMedium(sub.createdAt)}
           {sub.submittedAt && ` · eingegangen ${fmtDateTimeMedium(sub.submittedAt)}`}
         </p>
+        <MailDeliveryStatusList summaries={mailDelivery} className="mt-1 text-xs" />
         <div className="mt-2">
           {sub.status === 'PENDING' && (
             <span className="badge-yellow">{FORM_SUBMISSION_STATUS_LABELS[sub.status]}</span>

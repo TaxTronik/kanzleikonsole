@@ -4,6 +4,8 @@ import { useActionState } from 'react';
 import { Inbox, Mail } from 'lucide-react';
 
 import { fmtDateShort } from '@/lib/fmt';
+import type { MailDeliverySummary } from '@/lib/mail-delivery-status';
+import { MailDeliveryStatus } from '@/components/mail-delivery-status';
 import { confirmDialog } from '@/components/ui/modal';
 import type { ActionResult } from '@/server/actions/staff-action';
 
@@ -22,6 +24,8 @@ interface Handover {
   readyAt: string | null;
   pickedUpAt: string | null;
   notifiedContactEmail: string | null;
+  /** F-08: Zustellstatus der Abhol-Mail aus der Mail-Outbox. */
+  mailDelivery?: MailDeliverySummary[];
 }
 
 const HANDOVER_FLOW = {
@@ -133,6 +137,9 @@ export function HandoversBlock({ clientId, initial }: { clientId: string; initia
               )}
             </span>
           )}
+          {handover.mailDelivery?.map((summary) => (
+            <MailDeliveryStatus key={summary.purpose} summary={summary} />
+          ))}
         </p>
       )}
       completedSummary={(count) => `${count} abgeholt`}

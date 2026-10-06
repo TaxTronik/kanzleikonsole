@@ -18,7 +18,7 @@ import type { N8nEventName } from '@taxtronik/n8n-shared';
 import { sendMail, type MailAttachment } from './send';
 import { readMailDispatch } from './dispatch-settings';
 import { mailLog } from './logger';
-import { emitViaConfiguredN8n } from './n8n-emitter';
+import { emitViaConfiguredN8n, type MailN8nEmitOptions } from './n8n-emitter';
 import { renderSafeMarkdown, escapeMarkdownVariable } from './markdown';
 
 export interface TemplateFallback {
@@ -44,6 +44,12 @@ export interface DispatchOptions {
   n8nEvent?: N8nEventName;
   /** n8n-Payload (zusätzlich zu vars; falls n8n eine andere Struktur erwartet) */
   n8nPayload?: Record<string, unknown>;
+  /**
+   * F-08: Dedupe-Schlüssel des n8n-Ereignisses. Der Mail-Outbox-Worker setzt
+   * ihn je Versandauftrag, damit ein erneuter Versuch kein zweites Ereignis
+   * erzeugt.
+   */
+  n8nDedupeKey?: string;
   /** Fallback wenn Template nicht in DB ist */
   fallback?: TemplateFallback;
   /** Optionale Datei-Anhänge (z. B. PDF-Rechnung) */
@@ -78,7 +84,7 @@ export interface TemplateMailResult {
   uncertainFailure: boolean;
 }
 
-type ContactDispatchOptions = Omit<DispatchOptions, 'to'> & {
+export type ContactDispatchOptions = Omit<DispatchOptions, 'to'> & {
   clientId: string;
 };
 
@@ -155,6 +161,14 @@ export function plainTextBody(bodyMd: string): string {
   return bodyMd.replace(/[-]/g, '').replace(/\\([\\*_[\]])/g, '$1');
 }
 
+function n8nEmitOptions(
+  opts: Pick<DispatchOptions, 'tenantId' | 'n8nDedupeKey'>,
+): MailN8nEmitOptions {
+  return opts.n8nDedupeKey
+    ? { tenantId: opts.tenantId, dedupeKey: opts.n8nDedupeKey }
+    : { tenantId: opts.tenantId };
+}
+
 // W-4: markdownToHtml + safeHref sind in @/server/markdown ausgelagert, weil
 // auch die UI (z. B. Form-Template-Intro) den safe Renderer benutzt. Lokal
 // referenzieren wir nur das Re-Export.
@@ -220,9 +234,7 @@ export async function sendTemplateMail(opts: DispatchOptions): Promise<TemplateM
     // Weder Template noch Fallback — Mail nicht versendet, n8n trotzdem
     // ansprechen falls aktiv (nutzt bestehende Workflows).
     if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
-      await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
-        tenantId: opts.tenantId,
-      });
+      await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, n8nEmitOptions(opts));
     }
     return { ok: false, sentViaTemplate: false, uncertainFailure: false };
   }
@@ -251,9 +263,7 @@ export async function sendTemplateMail(opts: DispatchOptions): Promise<TemplateM
     mailLog().error({ slug: opts.slug, err: (err as Error).message }, 'mail: template send failed');
     // n8n trotzdem ansprechen — der könnte Slack-Ping o.ä. auslösen
     if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
-      await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
-        tenantId: opts.tenantId,
-      });
+      await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, n8nEmitOptions(opts));
     }
     return {
       ok: false,
@@ -267,9 +277,7 @@ export async function sendTemplateMail(opts: DispatchOptions): Promise<TemplateM
   }
 
   if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
-    await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
-      tenantId: opts.tenantId,
-    });
+    await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, n8nEmitOptions(opts));
   }
   return { ok: true, sentViaTemplate, uncertainFailure: false };
 }
@@ -351,6 +359,7 @@ async function sendContactTemplateMails(
       // ausgelöst; sendTemplateMail darf ihn nicht je Kontakt emittieren.
       n8nEvent: undefined,
       n8nPayload: undefined,
+      n8nDedupeKey: undefined,
       to: contact.email,
       subjectSuffix: opts.subjectSuffix ?? (hasMultipleProfiles ? context.clientName : ''),
       vars: {
@@ -371,9 +380,7 @@ async function emitAggregateContactEvent(
   aggregateDispatch: Awaited<ReturnType<typeof readMailDispatch>> | null,
 ): Promise<boolean> {
   if (aggregateDispatch?.mode !== 'BOTH' || !opts.n8nEvent) return false;
-  await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, {
-    tenantId: opts.tenantId,
-  });
+  await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, n8nEmitOptions(opts));
   return true;
 }
 

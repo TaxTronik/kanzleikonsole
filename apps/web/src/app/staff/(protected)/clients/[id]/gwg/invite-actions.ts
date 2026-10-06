@@ -5,8 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { portalBaseUrl } from '@taxtronik/config';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { sendTemplateMail } from '@/server/mail/dispatch';
-import { fireAndForget } from '@/server/util/fire-and-forget';
+import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
 import { prepareGwgInviteIssueTx } from '@/server/gwg-onboarding/invite-lifecycle';
@@ -46,6 +45,7 @@ export async function sendInviteAction(input: {
 
   const { raw, hash } = generateInviteToken();
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
 
   let issuedInvite: { id: string; gwgCheckId: string | null };
   try {
@@ -111,13 +111,36 @@ export async function sendInviteAction(input: {
           supersededInviteCount: issue.supersededInviteCount,
         },
       });
+      // F-08: Einladungsmail im selben Commit als Versandauftrag; der Link mit
+      // Token liegt nur Secret-Box-verschlüsselt im Auftrag.
+      await enqueueDirectMailTx(
+        tx,
+        {
+          tenantId,
+          clientId,
+          purpose: 'gwg-invite',
+          resource: { type: 'gwg_onboarding_invite', id: inv.id },
+          staffHref: `/staff/clients/${clientId}/gwg`,
+        },
+        {
+          slug: 'gwg-onboarding',
+          to: inviteEmail,
+          vars: { inviteName, inviteEmail, clientId, gwgInviteId: inv.id },
+          secretVars: { link },
+          fallback: {
+            subject: 'Identifizierung für Ihre Mandantschaft',
+            bodyMd:
+              'Sehr geehrte/r {{inviteName}},\n\num Sie als Mandant aufzunehmen, sind wir gesetzlich verpflichtet, Ihre Identität nach dem Geldwäschegesetz zu prüfen.\n\nBitte füllen Sie das kurze Online-Formular über folgenden Link aus:\n\n{{link}}\n\nDer Link ist 14 Tage gültig.',
+          },
+        },
+      );
       return { id: inv.id, gwgCheckId: binding.gwgCheckId };
     });
   } catch (e) {
     return toActionError(e);
   }
 
-  const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
+  kickMailOutboxDelivery();
   await emitN8nEvent(
     'gwg.invite.created',
     {
@@ -127,24 +150,6 @@ export async function sendInviteAction(input: {
       gwgCheckId: issuedInvite.gwgCheckId,
     },
     { tenantId },
-  );
-
-  // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`
-  // (Fehler wurden vorher stillschweigend verschluckt).
-  fireAndForget(
-    'sendTemplateMail (gwg-onboarding invite)',
-    sendTemplateMail({
-      tenantId,
-      clientId,
-      slug: 'gwg-onboarding',
-      to: inviteEmail,
-      vars: { inviteName, inviteEmail, link, clientId, gwgInviteId: issuedInvite.id },
-      fallback: {
-        subject: 'Identifizierung für Ihre Mandantschaft',
-        bodyMd:
-          'Sehr geehrte/r {{inviteName}},\n\num Sie als Mandant aufzunehmen, sind wir gesetzlich verpflichtet, Ihre Identität nach dem Geldwäschegesetz zu prüfen.\n\nBitte füllen Sie das kurze Online-Formular über folgenden Link aus:\n\n{{link}}\n\nDer Link ist 14 Tage gültig.',
-      },
-    }),
   );
 
   revalidatePath(`/staff/clients/${clientId}/gwg`);

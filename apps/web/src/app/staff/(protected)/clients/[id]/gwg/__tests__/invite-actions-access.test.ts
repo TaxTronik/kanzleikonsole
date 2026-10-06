@@ -17,8 +17,8 @@ const m = vi.hoisted(() => {
     evidenceRecord: vi.fn(),
     revalidatePath: vi.fn(),
     emitN8nEvent: vi.fn(),
-    sendTemplateMail: vi.fn(),
-    fireAndForget: vi.fn(),
+    enqueueDirectMailTx: vi.fn(),
+    kickMailOutboxDelivery: vi.fn(),
   };
 });
 
@@ -29,8 +29,10 @@ vi.mock('@/server/logger', () => ({
 }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
-vi.mock('@/server/mail/dispatch', () => ({ sendTemplateMail: m.sendTemplateMail }));
-vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: m.fireAndForget }));
+vi.mock('@/server/mail/outbox', () => ({
+  enqueueDirectMailTx: m.enqueueDirectMailTx,
+  kickMailOutboxDelivery: m.kickMailOutboxDelivery,
+}));
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: m.emitN8nEvent }));
 vi.mock('@/server/gwg-onboarding/service', () => ({
   generateInviteToken: () => ({ raw: 'raw-token', hash: 'token-hash' }),
@@ -99,6 +101,8 @@ describe('GwG-Einladungen — mandanteninterne Zugriffskontrolle', () => {
     expect(m.assertClientInTenant).not.toHaveBeenCalled();
     expect(m.prepareBinding).not.toHaveBeenCalled();
     expect(tx.gwgOnboardingInvite.create).not.toHaveBeenCalled();
+    expect(m.enqueueDirectMailTx).not.toHaveBeenCalled();
+    expect(m.kickMailOutboxDelivery).not.toHaveBeenCalled();
   });
 
   it('zieht bei gleichem Tenant ohne Mandantenzugriff keine Einladung zurück', async () => {
@@ -158,7 +162,7 @@ describe('GwG-Einladungen — mandanteninterne Zugriffskontrolle', () => {
     expect(tx.gwgOnboardingInvite.create).not.toHaveBeenCalled();
   });
 
-  it('wartet den Outbox-Write ab und koppelt ihn nicht an den best-effort Mailversand', async () => {
+  it('legt die Einladungsmail im Commit als Versandauftrag an und wartet den n8n-Outbox-Write ab', async () => {
     let resolveOutbox!: (value: {
       eventId: string;
       status: 'PENDING';
@@ -172,7 +176,7 @@ describe('GwG-Einladungen — mandanteninterne Zugriffskontrolle', () => {
       resolveOutbox = resolve;
     });
     m.emitN8nEvent.mockReturnValue(outboxPending);
-    m.sendTemplateMail.mockResolvedValue({ ok: false, sentViaTemplate: false });
+    m.enqueueDirectMailTx.mockResolvedValue('outbox-1');
     m.prepareBinding.mockResolvedValue({
       ok: true,
       gwgCheckId: null,
@@ -200,7 +204,32 @@ describe('GwG-Einladungen — mandanteninterne Zugriffskontrolle', () => {
     });
     await vi.waitFor(() => expect(m.emitN8nEvent).toHaveBeenCalledOnce());
     expect(settled).toBe(false);
-    expect(m.sendTemplateMail).not.toHaveBeenCalled();
+    // F-08: Der Versandauftrag entsteht in derselben Transaktion wie die
+    // Einladung; der Link mit Token steht nur in den geheimen Variablen.
+    expect(m.enqueueDirectMailTx).toHaveBeenCalledWith(
+      tx,
+      {
+        tenantId: 'tenant-1',
+        clientId: CLIENT_ID,
+        purpose: 'gwg-invite',
+        resource: { type: 'gwg_onboarding_invite', id: INVITE_ID },
+        staffHref: `/staff/clients/${CLIENT_ID}/gwg`,
+      },
+      expect.objectContaining({
+        slug: 'gwg-onboarding',
+        to: 'rey@example.test',
+        vars: {
+          inviteName: 'Rey Koxha',
+          inviteEmail: 'rey@example.test',
+          clientId: CLIENT_ID,
+          gwgInviteId: INVITE_ID,
+        },
+        secretVars: { link: 'https://portal.example.test/gwg-onboarding?token=raw-token' },
+      }),
+    );
+    expect(m.enqueueDirectMailTx.mock.invocationCallOrder[0]).toBeLessThan(
+      m.emitN8nEvent.mock.invocationCallOrder[0]!,
+    );
 
     resolveOutbox({ eventId: 'event-1', status: 'PENDING', deliveryCount: 1 });
     await expect(action).resolves.toEqual({
@@ -217,6 +246,6 @@ describe('GwG-Einladungen — mandanteninterne Zugriffskontrolle', () => {
       },
       { tenantId: 'tenant-1' },
     );
-    expect(m.fireAndForget).toHaveBeenCalledOnce();
+    expect(m.kickMailOutboxDelivery).toHaveBeenCalledOnce();
   });
 });

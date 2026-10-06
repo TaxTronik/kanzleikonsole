@@ -13,8 +13,7 @@ import { Prisma } from '@prisma/client';
 import { evidenceService } from '@/server/container';
 import { computeRiskScore, riskValidForDays, DEFAULT_FACTORS } from '@/server/gwg/risk-score';
 import { emitN8nEvent } from '@/server/n8n/emit';
-import { notifyClientContacts } from '@/server/mail/dispatch';
-import { fireAndForget } from '@/server/util/fire-and-forget';
+import { enqueueClientContactsMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { portalBaseUrl } from '@taxtronik/config';
 import { gwgDecisionGateErrors } from '@/server/gwg/verification';
 import {
@@ -1034,12 +1033,18 @@ export async function verifyCheckAction(
           reviewSubmittedBy: check.reviewSubmittedBy,
         },
       });
+      await enqueueActivationWelcomeMailTx(tx, {
+        tenantId,
+        clientId,
+        checkId,
+        enabled: sendActivationWelcome,
+      });
     });
   } catch (e) {
     return toActionError(e);
   }
 
-  scheduleActivationWelcomeEmail({ tenantId, clientId, enabled: sendActivationWelcome });
+  if (sendActivationWelcome) kickMailOutboxDelivery();
   if (verifiedValidUntil) {
     // Awaited (Guardrail: Outbox-Write muss dauerhaft sein, bevor die Action
     // zurückkehrt). Der früher unbegrenzt hängende Redis-Queue-Handoff ist in
@@ -1056,20 +1061,24 @@ export async function verifyCheckAction(
   return { ok: true };
 }
 
-function scheduleActivationWelcomeEmail(input: {
-  tenantId: string;
-  clientId: string;
-  enabled: boolean;
-}) {
+async function enqueueActivationWelcomeMailTx(
+  tx: TxClient,
+  input: { tenantId: string; clientId: string; checkId: string; enabled: boolean },
+): Promise<void> {
   if (!input.enabled) return;
 
-  // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in (nach Commit).
-  // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
-  fireAndForget(
-    'notifyClientContacts (gwg-activated)',
-    notifyClientContacts({
+  // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in. F-08: im
+  // Freigabe-Commit als Versandauftrag; der Worker stellt mit Retry zu.
+  await enqueueClientContactsMailTx(
+    tx,
+    {
       tenantId: input.tenantId,
       clientId: input.clientId,
+      purpose: 'gwg-activated',
+      resource: { type: 'gwg_check', id: input.checkId },
+      staffHref: `/staff/clients/${input.clientId}/gwg`,
+    },
+    {
       slug: 'gwg-activated',
       vars: {
         portalUrl: `${portalBaseUrl}/portal/dashboard`,
@@ -1079,7 +1088,7 @@ function scheduleActivationWelcomeEmail(input: {
         bodyMd:
           'Sehr geehrte/r {{contact.fullName}},\n\nIhre Mandantschaft ist jetzt vollständig eingerichtet. Loggen Sie sich gerne in Ihr Mandantenportal ein:\n\n{{portalUrl}}',
       },
-    }),
+    },
   );
 }
 

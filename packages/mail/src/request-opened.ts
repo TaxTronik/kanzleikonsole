@@ -10,6 +10,7 @@
 import { portalBaseUrl } from '@taxtronik/config';
 import {
   notifyClientContacts,
+  type ContactDispatchOptions,
   type ContactNotificationResult,
   type TemplateFallback,
 } from './dispatch';
@@ -52,11 +53,14 @@ export interface AutomaticTaxRequestOpenedInput {
   dueAtIso: string | null;
 }
 
-export async function notifyRequestOpened(
-  input: RequestOpenedInput,
-): Promise<ContactNotificationResult> {
+/**
+ * Versandoptionen der Mail „Anforderung eröffnet". F-08: Die Web-App legt sie
+ * im fachlichen Commit als Versandauftrag ab (mail_outbox); der Worker
+ * versendet sie mit genau diesen Optionen.
+ */
+export function requestOpenedMail(input: RequestOpenedInput): ContactDispatchOptions {
   const portalUrl = `${portalBaseUrl}/portal/requests/${input.requestId}`;
-  return notifyClientContacts({
+  return {
     tenantId: input.tenantId,
     clientId: input.clientId,
     slug: 'request-opened',
@@ -78,7 +82,13 @@ export async function notifyRequestOpened(
       dueAt: input.dueAtIso,
     },
     fallback: REQUEST_OPENED_FALLBACK,
-  });
+  };
+}
+
+export async function notifyRequestOpened(
+  input: RequestOpenedInput,
+): Promise<ContactNotificationResult> {
+  return notifyClientContacts(requestOpenedMail(input));
 }
 
 export async function notifyAutomaticTaxRequestOpened(

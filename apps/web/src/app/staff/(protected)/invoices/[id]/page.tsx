@@ -10,6 +10,8 @@ import { MarkSentForm } from './mark-sent-form';
 import { DocumentActions } from '@/components/document-actions';
 import { InvoiceFormatDownload } from './invoice-format-download';
 import { InvoiceStatusActions } from './invoice-status-actions';
+import { MailDeliveryStatusList } from '@/components/mail-delivery-status';
+import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { INVOICE_STATUS_LABELS } from '@/lib/domain-labels';
@@ -74,8 +76,10 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         },
         orderBy: { createdAt: 'desc' },
       });
+      // F-08: Zustellstatus der Rechnungsmail(s) statt pauschal „versendet".
+      const mail = await loadMailDeliveryTx(tx, { resourceType: 'invoice', resourceIds: [row.id] });
 
-      return { invoice: row, artifacts };
+      return { invoice: row, artifacts, mail: mail.get(row.id) };
     },
   );
 
@@ -156,6 +160,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             {' · '}
             {formatLabels[inv.format]}
           </p>
+          <MailDeliveryStatusList summaries={data.mail} className="text-xs mt-1" />
         </div>
       </div>
 

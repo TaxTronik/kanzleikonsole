@@ -7,8 +7,7 @@ import { portalBaseUrl } from '@taxtronik/config';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { requestMagicLink } from '@/server/auth/magic-link';
-import { sendTemplateMail } from '@/server/mail/dispatch';
-import { fireAndForget } from '@/server/util/fire-and-forget';
+import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
 import { prepareGwgInviteIssueTx } from '@/server/gwg-onboarding/invite-lifecycle';
@@ -169,6 +168,7 @@ export async function onboardingSendGwgAction(
 
   const { raw, hash } = generateInviteToken();
   const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+  const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
 
   let issuedInvite: { id: string; gwgCheckId: string | null };
   try {
@@ -228,6 +228,34 @@ export async function onboardingSendGwgAction(
           supersededInviteCount: issue.supersededInviteCount,
         },
       });
+      // F-08: Einladungsmail im selben Commit als Versandauftrag; der Link mit
+      // Token liegt nur Secret-Box-verschlüsselt im Auftrag.
+      await enqueueDirectMailTx(
+        tx,
+        {
+          tenantId,
+          clientId: parsed.data.clientId,
+          purpose: 'gwg-invite',
+          resource: { type: 'gwg_onboarding_invite', id: inv.id },
+          staffHref: `/staff/clients/onboarding/${parsed.data.clientId}`,
+        },
+        {
+          slug: 'gwg-onboarding',
+          to: parsed.data.inviteEmail,
+          vars: {
+            inviteName: parsed.data.inviteName,
+            inviteEmail: parsed.data.inviteEmail,
+            clientId: parsed.data.clientId,
+            gwgInviteId: inv.id,
+          },
+          secretVars: { link },
+          fallback: {
+            subject: 'Identifizierung für Ihre Mandantschaft',
+            bodyMd:
+              'Sehr geehrte/r {{inviteName}},\n\nbitte identifizieren Sie sich über folgenden Link: {{link}}',
+          },
+        },
+      );
       return { id: inv.id, gwgCheckId: binding.gwgCheckId };
     });
   } catch (e) {
@@ -235,7 +263,7 @@ export async function onboardingSendGwgAction(
   }
   const inviteId = issuedInvite.id;
 
-  const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
+  kickMailOutboxDelivery();
   await emitN8nEvent(
     'gwg.invite.created',
     {
@@ -246,29 +274,6 @@ export async function onboardingSendGwgAction(
     },
     { tenantId },
   );
-  // Befund 3: fire-and-forget mit catch+Log statt `void ….catch(() => void 0)`.
-  fireAndForget(
-    'sendTemplateMail (gwg-onboarding wizard)',
-    sendTemplateMail({
-      tenantId,
-      clientId: parsed.data.clientId,
-      slug: 'gwg-onboarding',
-      to: parsed.data.inviteEmail,
-      vars: {
-        inviteName: parsed.data.inviteName,
-        inviteEmail: parsed.data.inviteEmail,
-        link,
-        clientId: parsed.data.clientId,
-        gwgInviteId: inviteId,
-      },
-      fallback: {
-        subject: 'Identifizierung für Ihre Mandantschaft',
-        bodyMd:
-          'Sehr geehrte/r {{inviteName}},\n\nbitte identifizieren Sie sich über folgenden Link: {{link}}',
-      },
-    }),
-  );
-
   redirect(`/staff/clients/onboarding/${parsed.data.clientId}?step=poa`);
 }
 

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { canAccessClient } from '@/server/auth/rbac';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
 import { loadInviteUploadedDocumentsTx } from '@/server/gwg-onboarding/invite-uploads';
@@ -40,6 +40,9 @@ import {
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
 import { ActionForm } from '@/components/action-form';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
+import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
+import { MailDeliveryStatusList } from '@/components/mail-delivery-status';
+import type { MailDeliverySummary } from '@/lib/mail-delivery-status';
 import type {
   RequestFormTemplateOption,
   RequestTemplateOption,
@@ -62,6 +65,19 @@ const GWG_INVITE_FIELD_IDS: Record<string, string> = {
   inviteName: 'inviteName',
   inviteEmail: 'inviteEmail',
 };
+
+/** F-08: Zustellstatus der Einladungsmail statt pauschal „versendet". */
+async function loadInviteMailTx(
+  tx: TxClient,
+  invite: { id: string } | null,
+): Promise<MailDeliverySummary[]> {
+  if (!invite) return [];
+  const mail = await loadMailDeliveryTx(tx, {
+    resourceType: 'gwg_onboarding_invite',
+    resourceIds: [invite.id],
+  });
+  return mail.get(invite.id) ?? [];
+}
 
 function parseStep(s: string | undefined): StepKey {
   if (s && (VALID_STEPS as string[]).includes(s)) return s as StepKey;
@@ -150,10 +166,12 @@ export default async function OnboardingStepPage({
         orderBy: { createdAt: 'asc' },
         select: { fullName: true, email: true },
       });
+      const gwgInviteMail = await loadInviteMailTx(tx, gwgInvite);
       return {
         client,
         contactCount,
         gwgInvite,
+        gwgInviteMail,
         gwgCheck,
         poaCount,
         requestCount,
@@ -169,6 +187,7 @@ export default async function OnboardingStepPage({
     client,
     contactCount,
     gwgInvite,
+    gwgInviteMail,
     gwgCheck,
     poaCount,
     requestCount,
@@ -328,6 +347,7 @@ export default async function OnboardingStepPage({
           summary={{
             contactCount,
             hasGwgInvite: Boolean(gwgInvite),
+            gwgInviteMail,
             poaCount,
             requestCount,
             allowActive: client.allowActive,
@@ -727,6 +747,7 @@ function DoneStep({
   summary: {
     contactCount: number;
     hasGwgInvite: boolean;
+    gwgInviteMail: MailDeliverySummary[];
     poaCount: number;
     requestCount: number;
     allowActive: boolean;
@@ -757,7 +778,10 @@ function DoneStep({
         </li>
         <li className="flex items-center justify-between">
           <span>GwG-Einladung versendet</span>
-          <span className="text-secondary">{summary.hasGwgInvite ? 'Ja' : 'Nein'}</span>
+          <div className="text-secondary text-right">
+            {summary.hasGwgInvite ? 'Ja' : 'Nein'}
+            <MailDeliveryStatusList summaries={summary.gwgInviteMail} />
+          </div>
         </li>
         <li className="flex items-center justify-between">
           <span>Vollmachten angelegt</span>

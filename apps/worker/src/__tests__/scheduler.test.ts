@@ -70,6 +70,8 @@ const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
   storageOrphanCleanup: ['storage-orphan-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
   portalInboxCleanup: ['portal-inbox-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
   n8nRetention: ['daily-n8n-retention', { pattern: '45 3 * * *', tz: UTC }, DAILY_RETRY],
+  // F-08: new scheduler, no retry (state lives in mail_outbox; runs every minute).
+  mailOutboxDeliver: ['mail-outbox-deliver', { every: MINUTE }, undefined],
 };
 
 describe('R-13 generated repeat schedulers', () => {

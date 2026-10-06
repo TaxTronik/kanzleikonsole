@@ -30,7 +30,10 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: m.record } }))
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: vi.fn() }));
 vi.mock('@/server/documents/upload-helpers', () => ({ createDocumentWithVersion: vi.fn() }));
 vi.mock('@/server/documents/storage-compensation', () => ({ compensateStorageCommit: vi.fn() }));
-vi.mock('@/server/mail/dispatch', () => ({ sendTemplateMail: vi.fn() }));
+vi.mock('@/server/mail/outbox', () => ({
+  enqueueDirectMailTx: vi.fn(),
+  kickMailOutboxDelivery: vi.fn(),
+}));
 vi.mock('@/server/invoicing/archive', () => ({ ensureZugferdArchive: vi.fn() }));
 vi.mock('@/server/settings/modules', () => ({ readModules: m.modules }));
 vi.mock('@/server/settings/tenant-settings', () => ({ readSellerInfo: vi.fn() }));

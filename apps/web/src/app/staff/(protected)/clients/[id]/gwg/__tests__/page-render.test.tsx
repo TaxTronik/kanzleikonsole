@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   assignment: vi.fn(),
   documents: vi.fn(),
   uploads: vi.fn(),
+  mail: vi.fn(),
 }));
 vi.mock('@/server/auth/client-page-access', () => ({ requireClientPageAccess: mocks.access }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.context }));
@@ -178,6 +179,7 @@ beforeEach(() => {
   mocks.contacts.mockResolvedValue([]);
   mocks.documents.mockResolvedValue([]);
   mocks.uploads.mockResolvedValue([]);
+  mocks.mail.mockResolvedValue([]);
   mocks.assignment.mockResolvedValue({ id: 'assignment' });
   mocks.context.mockImplementation(async (_context, run) =>
     run({
@@ -187,6 +189,7 @@ beforeEach(() => {
       clientContact: { findMany: mocks.contacts },
       clientResponsibility: { findFirst: mocks.assignment },
       document: { findMany: mocks.uploads },
+      mailOutbox: { findMany: mocks.mail },
     }),
   );
 });
@@ -331,6 +334,37 @@ describe('GWG-RISK-REVIEW-001 / GWG-SELF-ONBOARDING-001: page workflow and revie
     expect(html).toContain('Testkontakt');
     expect(html).toContain('test@example.test');
     expect(mocks.uploads).not.toHaveBeenCalled();
+  });
+  it('F-08: zeigt den Zustellstatus der Einladungsmail statt eines pauschalen Versands', async () => {
+    mocks.invites.mockResolvedValue([
+      {
+        id: 'invite-open',
+        status: 'PENDING',
+        inviteName: 'Offen',
+        inviteEmail: 'offen@example.test',
+        createdAt: now,
+        expiresAt: new Date(now.getTime() + 86_400_000),
+        submittedAt: null,
+      },
+    ]);
+    mocks.mail.mockResolvedValue([
+      {
+        resourceId: 'invite-open',
+        purpose: 'gwg-invite',
+        kind: 'DIRECT',
+        status: 'FAILED',
+        recipientsAttempted: 1,
+        recipientsAccepted: 0,
+        createdAt: now,
+      },
+    ]);
+    const html = await renderPage();
+    expect(mocks.mail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { resourceType: 'gwg_onboarding_invite', resourceId: { in: ['invite-open'] } },
+      }),
+    );
+    expect(html).toContain('GwG-Einladung: Versand fehlgeschlagen – bitte prüfen');
   });
 });
 

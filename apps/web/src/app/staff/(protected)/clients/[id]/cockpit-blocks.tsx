@@ -379,6 +379,7 @@ export async function HandoversCockpitBlock({
         readyAt: h.readyAt ? h.readyAt.toISOString() : null,
         pickedUpAt: h.pickedUpAt ? h.pickedUpAt.toISOString() : null,
         notifiedContactEmail: h.notifiedContactEmail,
+        mailDelivery: h.mailDelivery,
       }))}
     />
   );

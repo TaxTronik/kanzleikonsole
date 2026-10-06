@@ -29,7 +29,12 @@ vi.mock('@/server/container', () => ({
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: vi.fn() }));
 vi.mock('@/server/documents/upload-helpers', () => ({ createDocumentWithVersion: vi.fn() }));
 vi.mock('@/server/documents/storage-compensation', () => ({ compensateStorageCommit: vi.fn() }));
-vi.mock('@/server/mail/dispatch', () => ({ sendTemplateMail: vi.fn() }));
+// F-08: Versandaufträge entstehen echt in der App-Rollen-Transaktion; nur der
+// Anstoß des Workers (BullMQ) bleibt isoliert.
+vi.mock('@/server/mail/outbox', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/mail/outbox')>()),
+  kickMailOutboxDelivery: vi.fn(),
+}));
 vi.mock('@/server/invoicing/archive', () => ({
   ensureZugferdArchive: async () => ({ ok: true }),
 }));
@@ -145,6 +150,7 @@ function form(invoiceId: string) {
             kind: 'JURPERS',
             name: 'Synthetic client',
             allowActive: false,
+            invoiceEmail: `invoices-${suffix}@example.test`,
           },
         })
       ).id;
@@ -268,6 +274,13 @@ function form(invoiceId: string) {
         'invoice.cancel',
       ]);
       expect(audit.at(-1)?.after).toMatchObject({ refundDue: true });
+      // F-08: die Rechnungsmail liegt als Versandauftrag im Festschreibungs-Commit.
+      expect(
+        await owner.mailOutbox.findMany({
+          where: { tenantId: h.tenantId, resourceType: 'invoice', resourceId: correction.id },
+          select: { kind: true, purpose: true, status: true, clientId: true },
+        }),
+      ).toEqual([{ kind: 'DIRECT', purpose: 'invoice-sent', status: 'QUEUED', clientId }]);
       expect(await owner.$transaction((tx) => evidence.verifyChain(tx, h.tenantId))).toMatchObject({
         ok: true,
         checked: await owner.auditLog.count({ where: { tenantId: h.tenantId } }),

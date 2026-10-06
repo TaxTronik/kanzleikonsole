@@ -5,7 +5,7 @@ import type { GwgPageModel } from './gwg-page-model';
 import type { GwgPageData } from './gwg-page-data';
 export function GwgInvitation({ model, data }: { model: GwgPageModel; data: GwgPageData }) {
   const { client, check, gwgSteps, eingereicht, openInvites, latestInvite } = model;
-  const { contacts, invites } = data;
+  const { contacts, invites, inviteMail } = data;
   return (
     <div className="mb-6">
       <Stage
@@ -69,6 +69,7 @@ export function GwgInvitation({ model, data }: { model: GwgPageModel; data: GwgP
             createdAt: i.createdAt.toISOString(),
             expiresAt: i.expiresAt.toISOString(),
             submittedAt: i.submittedAt?.toISOString() ?? null,
+            mailDelivery: inviteMail.get(i.id) ?? [],
           }))}
         />
       </Stage>

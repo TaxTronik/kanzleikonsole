@@ -81,6 +81,7 @@ export interface RewrapOptions {
 const SUPPORTED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
   n8n_connection: ['api_key_encrypted', 'signing_secret_encrypted'],
   inbound_mailbox: ['secret_enc', 'oauth_cache_enc'],
+  mail_outbox: ['secret_vars_enc'],
 };
 
 interface StoredValue {

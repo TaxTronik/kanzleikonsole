@@ -4,12 +4,12 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
-import { notifyClientContacts, notifyRequestOpened } from '@/server/mail/dispatch';
-import { fireAndForget } from '@/server/util/fire-and-forget';
+import { requestOpenedMail } from '@/server/mail/dispatch';
+import { enqueueClientContactsMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { portalBaseUrl } from '@taxtronik/config';
 import { berlinWallClockToUtc } from '@/lib/fmt';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
@@ -59,6 +59,37 @@ function isActiveGwgRequestConflict(error: unknown): boolean {
   const info = databaseErrorInfo(error);
   if (info?.kind !== 'UNIQUE_VIOLATION') return false;
   return [info.constraint ?? []].flat().some((name) => ACTIVE_GWG_REQUEST_CONSTRAINT.has(name));
+}
+
+/**
+ * F-08: Mandanten-Mail „Anforderung eröffnet" im Anlage-Commit als
+ * Versandauftrag. Mail, Portal-URL und n8n-Payload zentral in requestOpenedMail
+ * — identisch zum Auto-Anforderungs-Pfad des Workers (Steuertermine).
+ */
+async function enqueueRequestOpenedMailTx(
+  tx: TxClient,
+  input: { tenantId: string; requestId: string; data: z.infer<typeof CreateSchema> },
+): Promise<void> {
+  const { tenantId, requestId, data } = input;
+  await enqueueClientContactsMailTx(
+    tx,
+    {
+      tenantId,
+      clientId: data.clientId,
+      purpose: 'request-opened',
+      resource: { type: 'request', id: requestId },
+      staffHref: `/staff/requests/${requestId}`,
+    },
+    requestOpenedMail({
+      tenantId,
+      clientId: data.clientId,
+      requestId,
+      title: data.title,
+      description: data.description,
+      priority: data.priority,
+      dueAtIso: data.dueAt ? (berlinWallClockToUtc(data.dueAt)?.toISOString() ?? null) : null,
+    }),
+  );
 }
 
 async function createRequestCore(formData: FormData): Promise<RequestActionResult> {
@@ -229,6 +260,7 @@ async function createRequestCore(formData: FormData): Promise<RequestActionResul
           formSubmissionId,
         },
       });
+      await enqueueRequestOpenedMailTx(tx, { tenantId, requestId: req.id, data });
       return { id: req.id, created: true };
     });
     createdId = result.id;
@@ -238,23 +270,8 @@ async function createRequestCore(formData: FormData): Promise<RequestActionResul
     return toActionError(e);
   }
 
-  if (createdFresh) {
-    // Befund 3: fire-and-forget mit catch+Log statt `void` (unhandled rejection).
-    // Mail/Portal-URL/n8n-Payload zentral in notifyRequestOpened — identisch
-    // zum Auto-Anforderungs-Pfad des Workers (Steuertermine).
-    fireAndForget(
-      'notifyClientContacts (request-opened)',
-      notifyRequestOpened({
-        tenantId,
-        clientId: data.clientId,
-        requestId: createdId,
-        title: data.title,
-        description: data.description,
-        priority: data.priority,
-        dueAtIso: data.dueAt ? (berlinWallClockToUtc(data.dueAt)?.toISOString() ?? null) : null,
-      }),
-    );
-  }
+  // Die Mandanten-Mail liegt seit dem Commit als Versandauftrag vor.
+  if (createdFresh) kickMailOutboxDelivery();
 
   revalidatePath(`/staff/clients/${data.clientId}`);
   revalidatePath('/staff/requests');
@@ -447,6 +464,38 @@ const StaffResponseSchema = z.object({
   message: z.string().min(1).max(5000),
 });
 
+/** F-08: Mail „Kanzlei hat geantwortet" im Antwort-Commit als Versandauftrag. */
+async function enqueueStaffReplyMailTx(
+  tx: TxClient,
+  input: { tenantId: string; requestId: string; clientId: string; title: string },
+): Promise<void> {
+  const { tenantId, requestId } = input;
+  await enqueueClientContactsMailTx(
+    tx,
+    {
+      tenantId,
+      clientId: input.clientId,
+      purpose: 'request-staff-replied',
+      resource: { type: 'request', id: requestId },
+      staffHref: `/staff/requests/${requestId}`,
+    },
+    {
+      slug: 'request-staff-replied',
+      vars: {
+        request: { id: requestId, title: input.title },
+        portalUrl: `${portalBaseUrl}/portal/requests/${requestId}`,
+      },
+      n8nEvent: 'request.responded',
+      n8nPayload: { tenantId, requestId, by: 'STAFF' },
+      fallback: {
+        subject: 'Antwort von Ihrer Kanzlei: {{request.title}}',
+        bodyMd:
+          'Sehr geehrte/r {{contact.fullName}},\n\nIhre Kanzlei hat auf Ihre Anforderung „{{request.title}}" geantwortet.\n\nDie Antwort können Sie im Mandantenportal einsehen:\n{{portalUrl}}',
+      },
+    },
+  );
+}
+
 export async function addStaffResponseAction(formData: FormData): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
@@ -495,38 +544,18 @@ export async function addStaffResponseAction(formData: FormData): Promise<Action
         resourceId: resp.id,
         after: { requestId, length: message.length },
       });
-      return tx.request.findUnique({
+      const info = await tx.request.findUnique({
         where: { id: requestId },
         select: { clientId: true, title: true },
       });
+      if (info) await enqueueStaffReplyMailTx(tx, { tenantId, requestId, ...info });
+      return info;
     });
   } catch (e) {
     return toActionError(e);
   }
 
-  if (reqInfo) {
-    const portalUrl = `${portalBaseUrl}/portal/requests/${requestId}`;
-    // Befund 3: fire-and-forget mit catch+Log statt `void`.
-    fireAndForget(
-      'notifyClientContacts (request-staff-replied)',
-      notifyClientContacts({
-        tenantId,
-        clientId: reqInfo.clientId,
-        slug: 'request-staff-replied',
-        vars: {
-          request: { id: requestId, title: reqInfo.title },
-          portalUrl,
-        },
-        n8nEvent: 'request.responded',
-        n8nPayload: { tenantId, requestId, by: 'STAFF' },
-        fallback: {
-          subject: 'Antwort von Ihrer Kanzlei: {{request.title}}',
-          bodyMd:
-            'Sehr geehrte/r {{contact.fullName}},\n\nIhre Kanzlei hat auf Ihre Anforderung „{{request.title}}" geantwortet.\n\nDie Antwort können Sie im Mandantenportal einsehen:\n{{portalUrl}}',
-        },
-      }),
-    );
-  }
+  if (reqInfo) kickMailOutboxDelivery();
   revalidatePath('/staff/requests');
   return { ok: true };
 }

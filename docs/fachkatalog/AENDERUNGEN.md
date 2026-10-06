@@ -1,5 +1,59 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-014
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/staff/(protected)/clients/[id]/_data.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/invite-actions-access.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-invitation.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/invite-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/invite-section.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/onboarding/[id]/actions.ts
+      - apps/web/src/app/staff/(protected)/forms/submissions/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/invoices/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/app/staff/(protected)/requests/[id]/page.tsx
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts
+      - packages/db/prisma/migrations/20261006120000_mail_outbox/migration.sql
+      - packages/db/prisma/schema.prisma
+      - packages/mail/src/dispatch.ts
+      - packages/mail/src/index.ts
+      - packages/mail/src/request-opened.ts
+    rule_ids:
+      - GWG-SELF-ONBOARDING-001
+      - GWG-ACTIVATION-GATE-001
+      - REQ-LIFECYCLE-001
+      - INV-LIFECYCLE-FREEZE-001
+      - ACCESS-TENANT-RLS-001
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+    reason: >-
+      Elf Mandanten-Mails (neue Anforderung, Kanzlei-Antwort, Formular,
+      GwG-Einladung und -Freischaltung, Terminentscheidung, Rechnungsversand,
+      externe Rechnung, Abholbereitschaft) werden nicht mehr nach dem Commit per
+      nicht abgewartetem Promise versendet, sondern im fachlichen Commit als
+      Versandauftrag in mail_outbox gespeichert (Migration 20261006120000, RLS wie
+      die n8n-Outbox, App-Rolle nur SELECT/INSERT) und vom Worker zugestellt:
+      eindeutige Fehlschläge bis zu sechsmal mit wachsendem Abstand, unklarer
+      Ausgang ohne Wiederholung, Benachrichtigung der Kanzlei bei endgültigem
+      Fehlschlag. Inhalte, Empfänger und Abmeldungen bleiben gleich; Empfänger
+      werden wie bisher beim Versand aufgelöst. Der GwG-Einladungslink liegt nur
+      verschlüsselt im Auftrag und wird nach Abschluss gelöscht. Keine fachliche
+      Freigabe; die Aufbewahrungsdauer der Auftragsmetadaten ist offen.
+    tests:
+      - apps/web/src/server/mail/__tests__/outbox.test.ts
+      - apps/worker/src/jobs/__tests__/mail-outbox.test.ts
+      - packages/db/src/__tests__/mail-outbox-rls.test.ts
+      - packages/mail/src/__tests__/outbox.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-013
     date: '2026-10-06'
     paths:
@@ -3084,6 +3138,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-014` dokumentiert den Versand der
+  Mandanten-Mails über eine Outbox mit Wiederholung und Zustellstatus.
+  Inhalte und Empfänger bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-013` dokumentiert zentrale Bezeichnungen, eine
   gemeinsame Schutzstufen-Regel und die korrigierte GwG-Kennzeichnung der

@@ -11,10 +11,19 @@
 import type { N8nEventName } from '@taxtronik/n8n-shared';
 import { mailLog } from './logger';
 
+export interface MailN8nEmitOptions {
+  tenantId?: string;
+  /**
+   * F-08: stabiler Schlüssel je Versandauftrag (mail_outbox). Ein Retry des
+   * Workers löst das n8n-Ereignis damit nicht ein zweites Mal aus.
+   */
+  dedupeKey?: string;
+}
+
 export type MailN8nEmitter = (
   event: N8nEventName,
   payload: Record<string, unknown>,
-  opts: { tenantId?: string },
+  opts: MailN8nEmitOptions,
 ) => Promise<unknown>;
 
 let emitter: MailN8nEmitter | null = null;
@@ -31,7 +40,7 @@ export function setN8nEmitter(e: MailN8nEmitter): void {
 export async function emitViaConfiguredN8n(
   event: N8nEventName,
   payload: Record<string, unknown>,
-  opts: { tenantId?: string },
+  opts: MailN8nEmitOptions,
 ): Promise<void> {
   if (!emitter) {
     mailLog().warn(

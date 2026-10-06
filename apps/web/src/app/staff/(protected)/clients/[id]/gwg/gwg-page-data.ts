@@ -1,6 +1,7 @@
 import { withTenantContext } from '@taxtronik/db';
 import { canStaffReviewGwgTx } from '@/server/gwg/professional-review';
 import { findCleanGwgEvidenceDocumentsTx } from '@/server/gwg/evidence-documents';
+import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
 
 export async function loadGwgPageData({
   tenantId,
@@ -80,12 +81,18 @@ export async function loadGwgPageData({
         },
       }),
     ]);
+    // F-08: Zustellstatus der Einladungsmail je Einladung.
+    const inviteMail = await loadMailDeliveryTx(tx, {
+      resourceType: 'gwg_onboarding_invite',
+      resourceIds: invites.map((invite) => invite.id),
+    });
     return {
       tenantId,
       client,
       check,
       clientDocuments,
       invites,
+      inviteMail,
       contacts,
       canVerify,
       checkHistory,
