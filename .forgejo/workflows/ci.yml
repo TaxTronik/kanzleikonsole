@@ -280,6 +280,16 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/invoicing/__tests__/invoice-concurrency-db.test.ts 2>&1 | tee testbericht-invoice-concurrency.log
 
+      # DOC-PORTAL-SHARING-001 / DOC-VERSION-IMMUTABILITY-001: Bulk-Actions der
+      # Dokumentenverwaltung (P-18) — eine Transaktion je Auswahl, Zugriff und
+      # Audit je Dokument, Einzel-Rückfall bei Triggerfehlern.
+      - name: Document bulk actions against the PostgreSQL app role
+        env:
+          DOCUMENT_BULK_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run "src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts" 2>&1 | tee testbericht-document-bulk.log
+
       # AUDIT-VERIFY-ALERT-001 / AUDIT-RFC3161-ANCHOR-001: checkpointgestützte
       # Kettenprüfung (P-04) und Rolling-Anchor-Takt (P-05) gegen echtes
       # PostgreSQL; alle Fixtures werden zurückgerollt.
@@ -352,6 +362,7 @@ jobs:
             testbericht-tax-deadline-day-groups.log
             testbericht-settings-atomicity.log
             testbericht-invoice-concurrency.log
+            testbericht-document-bulk.log
             testbericht-evidence-db.log
             testbericht-worker-db.log
             testbericht-mandate-services.log

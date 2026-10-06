@@ -32,21 +32,20 @@ import {
 } from 'lucide-react';
 import { DocumentUploadButton } from '@/components/document-upload-button';
 import { MoveTargetDialog } from '@/components/document-dialogs';
-import { setDocumentShareAction } from '@/app/staff/(protected)/documents/actions';
+import { setDocumentsShareAction } from '@/app/staff/(protected)/documents/actions';
 import {
   deleteFolderAction,
-  moveFolderAction,
-  setDocumentFolderAction,
+  moveDocumentItemsAction,
 } from '@/app/staff/(protected)/documents/folder-actions';
 import {
   TIER_BADGE,
+  bulkResultMessage,
   descendants,
   entryLabel,
   fileIcon,
   fmtBytes,
   fmtDate,
   navIcon,
-  runChunked,
   type Entry,
 } from '@/components/document-browser-utils';
 
@@ -124,27 +123,35 @@ export function BrowserView({
   }
 
   // ---- Verschieben (eine Menge → Ziel-Ordner-ID | null=Wurzel) ----
-  // Begrenzt parallel (Chunks), Fehler gesammelt anzeigen.
+  // P-18: eine Action für die ganze Auswahl; ihre Antwort rendert die Liste
+  // neu (kein zusätzlicher Router-Refresh). Ablehnungen gesammelt anzeigen.
   function moveSet(items: Sel[], target: string | null) {
     if (items.length === 0) return;
+    // Ordner nicht in sich/Teilbaum (der Server prüft erneut).
+    const intoOwnSubtree = (it: Sel) =>
+      it.kind === 'folder' && target !== null && descendants(folders, it.id).has(target);
+    const blocked = items
+      .filter(intoOwnSubtree)
+      .map((it) => ({ id: it.id, error: 'Ordner kann nicht in seinen eigenen Unterbaum.' }));
+    const movable = items.filter((it) => !intoOwnSubtree(it));
     start(async () => {
       ops.setOpError(null);
-      const errs = await runChunked(items, async (it) => {
-        if (it.kind === 'file') {
-          const r = await setDocumentFolderAction({ documentId: it.id, folderId: target });
-          return r.ok ? null : (r.error ?? 'Fehler');
-        }
-        // Ordner nicht in sich/Teilbaum
-        if (target && descendants(folders, it.id).has(target)) {
-          return 'Ordner kann nicht in seinen eigenen Unterbaum.';
-        }
-        const r = await moveFolderAction({ folderId: it.id, newParentId: target });
-        return r.ok ? null : (r.error ?? 'Fehler');
-      });
-      if (errs.length) ops.setOpError([...new Set(errs)].join('\n'));
+      const result =
+        movable.length > 0
+          ? await moveDocumentItemsAction({
+              documentIds: movable.filter((it) => it.kind === 'file').map((it) => it.id),
+              folderIds: movable.filter((it) => it.kind === 'folder').map((it) => it.id),
+              targetFolderId: target,
+            })
+          : { done: 0, rejected: [] };
+      const message = bulkResultMessage(
+        { ...result, rejected: [...blocked, ...result.rejected] },
+        items.length,
+        'verschoben',
+      );
+      if (message) ops.setOpError(message);
       clearSel();
       setMoveOpen(false);
-      router.refresh();
     });
   }
 
@@ -172,18 +179,20 @@ export function BrowserView({
   }
   const selectedFiles = (): FileEntry[] =>
     entries.filter((e): e is FileEntry => e.kind === 'file' && isSel('file', e.id));
-  // Bulk-Freigabe/-Entzug: begrenzt parallel, Fehler gesammelt anzeigen.
+  // Bulk-Freigabe/-Entzug: eine Action, Ablehnungen gesammelt anzeigen.
   function bulkShare(share: boolean) {
     const ids = sel.filter((s) => s.kind === 'file').map((s) => s.id);
+    if (ids.length === 0) return;
     start(async () => {
       ops.setOpError(null);
-      const errs = await runChunked(ids, async (id) => {
-        const r = await setDocumentShareAction({ documentId: id, share });
-        return r.ok ? null : (r.error ?? 'Fehler');
-      });
-      if (errs.length) ops.setOpError([...new Set(errs)].join('\n'));
+      const result = await setDocumentsShareAction({ documentIds: ids, share });
+      const message = bulkResultMessage(
+        result,
+        ids.length,
+        share ? 'freigegeben' : 'auf privat gesetzt',
+      );
+      if (message) ops.setOpError(message);
       clearSel();
-      router.refresh();
     });
   }
   function deleteFolder(id: string, name: string) {
@@ -193,11 +202,8 @@ export function BrowserView({
       confirmLabel: 'Löschen',
       busyLabel: 'Löscht…',
       danger: true,
-      action: async () => {
-        const r = await deleteFolderAction({ folderId: id });
-        if (r.ok) router.refresh();
-        return r;
-      },
+      // Die Action revalidiert; ihre Antwort rendert die Liste neu.
+      action: () => deleteFolderAction({ folderId: id }),
     });
   }
   function dlUrl(fileIds: string[], folderIds: string[]) {
@@ -789,9 +795,7 @@ export function BrowserView({
           onDone={() => {
             setDeleteDocs(null);
             clearSel();
-            router.refresh();
           }}
-          onChanged={() => router.refresh()}
         />
       )}
       {moveOpen && (

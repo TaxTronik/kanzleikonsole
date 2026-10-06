@@ -1,7 +1,6 @@
 ﻿'use client';
 
 import { useState, useTransition, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { CheckSquare, Square, X, Lock } from 'lucide-react';
 import { bulkCloseRequestsAction, type BulkFailure } from './bulk-actions';
 import { confirmDialog } from '@/components/ui/modal';
@@ -18,7 +17,6 @@ interface Props {
  * `data-bulk-select-id` Checkboxen, die in der Tabelle sind.
  */
 export function BulkToolbar({ closableIds }: Props) {
-  const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +63,8 @@ export function BulkToolbar({ closableIds }: Props) {
       ))
     )
       return;
+    // P-18: Die Bulk-Action revalidiert die Liste; ihre Antwort rendert die
+    // Seite bereits neu — ein zusätzlicher Router-Refresh wäre ein zweiter Render.
     startTransition(async () => {
       const r = await bulkCloseRequestsAction({ ids: Array.from(selected) });
       if (!r.ok) {
@@ -79,11 +79,9 @@ export function BulkToolbar({ closableIds }: Props) {
             el.checked = failedIds.has(el.dataset['bulkId']!);
           });
         }
-        if (r.affected > 0) router.refresh();
         return;
       }
       clearSelection();
-      router.refresh();
     });
   }
 

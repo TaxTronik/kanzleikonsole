@@ -3,13 +3,15 @@
 // Gemeinsamer Lösch-Dialog des DocumentExplorer (Browser- und Embedded-
 // Variante, Einzel- und Mehrfachauswahl): Soft-Delete MIT optionalem Grund und
 // GoBD-/GwG-Aufklärung. Zugriffsprüfung, GwG-Sperre und Audit-Event
-// `document.delete` (inkl. Grund) bleiben in softDeleteDocumentAction.
+// `document.delete` (inkl. Grund) je Dokument bleiben serverseitig in
+// softDeleteDocumentsAction (P-18: eine Action für die ganze Auswahl).
 // =============================================================================
 
 import { useState, useTransition } from 'react';
-import { softDeleteDocumentAction } from '@/app/staff/(protected)/documents/actions';
+import { softDeleteDocumentsAction } from '@/app/staff/(protected)/documents/actions';
 import { Modal } from '@/components/ui/modal';
-import { runChunked } from '@/components/document-browser-utils';
+import { bulkResultMessage } from '@/components/document-browser-utils';
+import type { DocumentBulkResult } from '@/server/documents/document-bulk';
 
 export interface DeletableDocument {
   id: string;
@@ -17,28 +19,23 @@ export interface DeletableDocument {
   classification: string;
 }
 
-type SoftDelete = (input: {
-  documentId: string;
+type SoftDeleteMany = (input: {
+  documentIds: string[];
   reason?: string;
-}) => Promise<{ ok: boolean; error?: string }>;
+}) => Promise<DocumentBulkResult>;
 
-/** Löscht die Auswahl begrenzt parallel mit demselben Grund; Fehler gesammelt. */
+/** Löscht die Auswahl mit einem Aufruf und demselben Grund; Ablehnungen gesammelt. */
 export async function softDeleteDocuments(
   docs: readonly DeletableDocument[],
   reason: string,
-  softDelete: SoftDelete = softDeleteDocumentAction,
+  softDeleteMany: SoftDeleteMany = softDeleteDocumentsAction,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const trimmed = reason.trim() || undefined;
-  const errors = await runChunked([...docs], async (doc) => {
-    const result = await softDelete({ documentId: doc.id, reason: trimmed });
-    return result.ok ? null : (result.error ?? 'Fehler.');
+  const result = await softDeleteMany({
+    documentIds: docs.map((doc) => doc.id),
+    reason: reason.trim() || undefined,
   });
-  if (errors.length === 0) return { ok: true };
-  if (docs.length === 1) return { ok: false, error: errors[0] ?? 'Fehler.' };
-  return {
-    ok: false,
-    error: `${docs.length - errors.length} gelöscht, ${errors.length} abgelehnt:\n${[...new Set(errors)].join('\n')}`,
-  };
+  const error = bulkResultMessage(result, docs.length, 'gelöscht');
+  return error ? { ok: false, error } : { ok: true };
 }
 
 /** Aufbewahrungshinweis passend zu den Klassifikationen der Auswahl. */
@@ -57,14 +54,15 @@ export function retentionNotes(docs: readonly DeletableDocument[]): string[] {
 interface DeleteDocumentsProps {
   docs: readonly DeletableDocument[];
   onClose: () => void;
-  /** Alles gelöscht: Dialog schließen, Liste neu laden. */
+  /**
+   * Alles gelöscht: Dialog schließen. Die Liste lädt die Action-Antwort neu
+   * (Revalidierung, auch bei Teilerfolg) — kein zusätzlicher Router-Refresh.
+   */
   onDone: () => void;
-  /** Teilweise gelöscht (Mehrfachauswahl): Liste neu laden, Fehler bleibt sichtbar. */
-  onChanged?: () => void;
 }
 
 /** Dialoginhalt (ohne Modal-Portal, damit serverseitig renderbar und testbar). */
-export function DeleteDocumentsPanel({ docs, onClose, onDone, onChanged }: DeleteDocumentsProps) {
+export function DeleteDocumentsPanel({ docs, onClose, onDone }: DeleteDocumentsProps) {
   const [reason, setReason] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
@@ -113,7 +111,6 @@ export function DeleteDocumentsPanel({ docs, onClose, onDone, onChanged }: Delet
                 return;
               }
               setErr(result.error);
-              if (docs.length > 1) onChanged?.();
             })
           }
           className="btn-primary flex-1 !bg-red-600 hover:!bg-red-700"

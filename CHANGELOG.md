@@ -227,6 +227,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Verschieben, Freigeben, Löschen und Umtypisieren mehrerer
+  Dokumente im Dokumenten-Explorer laufen als eine Server-Anfrage je Auswahl
+  statt einer je Dokument; die Liste wird einmal statt je Dokument neu
+  gerendert (100 Dokumente: 1 statt 101 Seiten-Renderings). Zugriffsprüfung und
+  Audit-Event je Dokument bleiben, abgelehnte Dokumente werden einzeln
+  gemeldet (`DOC-PORTAL-SHARING-001`, `FK-EXC-20261006-018`).
 - Das Body-Limit für Server Actions leitet sich aus den Upload-Grenzen je
   Upload-Art ab und steigt von 10 MB auf 26 MiB, passend zu nginx
   (`client_max_body_size 26M`) und Traefik.

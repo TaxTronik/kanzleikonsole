@@ -2,12 +2,53 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { setDocumentFolderAction } from '@/app/staff/(protected)/documents/folder-actions';
-import { retagDocumentAction } from '@/app/staff/(protected)/documents/actions';
+import { retagDocumentsAction } from '@/app/staff/(protected)/documents/actions';
 import { Modal } from '@/components/ui/modal';
 import { FolderTreePicker } from '@/components/folder-tree-picker';
-import { descendants, runChunked, type FolderNode } from '@/components/document-browser-utils';
+import {
+  bulkResultMessage,
+  descendants,
+  type FolderNode,
+} from '@/components/document-browser-utils';
+import type { DocumentBulkResult } from '@/server/documents/document-bulk';
 
 export type { FolderNode };
+
+type RetagMany = (input: {
+  documentIds: string[];
+  documentTypeId: string;
+}) => Promise<DocumentBulkResult>;
+
+/**
+ * P-18: Umklassifizierung einer Auswahl als eine Bulk-Action. Höherstufungen
+ * mit Re-Store, die das Zeitbudget eines Aufrufs übersteigen, meldet der
+ * Server als `pending`; sie werden mit dem nächsten Aufruf nachgereicht.
+ */
+export async function retagDocuments(
+  documentIds: readonly string[],
+  documentTypeId: string,
+  retagMany: RetagMany = retagDocumentsAction,
+): Promise<DocumentBulkResult> {
+  const total: DocumentBulkResult = { ok: true, done: 0, rejected: [] };
+  let remaining = [...documentIds];
+  while (remaining.length > 0) {
+    const result = await retagMany({ documentIds: remaining, documentTypeId });
+    if (result.error) return { ...total, ok: false, error: result.error };
+    total.done += result.done;
+    total.rejected.push(...result.rejected);
+    const pending = result.pending ?? [];
+    // Der Server bearbeitet je Aufruf mindestens einen Re-Store; ohne
+    // Fortschritt (unerwartet) nicht endlos wiederholen.
+    if (pending.length >= remaining.length) {
+      total.rejected.push(
+        ...pending.map((id) => ({ id, error: 'Nicht verarbeitet. Bitte erneut versuchen.' })),
+      );
+      break;
+    }
+    remaining = pending;
+  }
+  return { ...total, ok: total.rejected.length === 0 };
+}
 
 // ===========================================================================
 // MoveDialog — Ordner-Picker (Baum). Ersetzt das unintuitive Dropdown.
@@ -208,19 +249,10 @@ export function RetagDialog({
           onClick={() =>
             start(async () => {
               setErr(null);
-              const errs = await runChunked(documentIds, async (id) => {
-                const r = await retagDocumentAction({ documentId: id, documentTypeId: sel });
-                return r.ok ? null : (r.error ?? 'Fehler');
-              });
-              if (errs.length === 0) {
-                onDone();
-              } else if (documentIds.length === 1) {
-                setErr(errs[0] ?? 'Fehler.');
-              } else {
-                setErr(
-                  `${documentIds.length - errs.length} geändert, ${errs.length} abgelehnt:\n${[...new Set(errs)].join('\n')}`,
-                );
-              }
+              const result = await retagDocuments(documentIds, sel);
+              const message = bulkResultMessage(result, documentIds.length, 'geändert');
+              if (message) setErr(message);
+              else onDone();
             })
           }
           className="btn-primary flex-1"

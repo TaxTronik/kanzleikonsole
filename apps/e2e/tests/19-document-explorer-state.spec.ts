@@ -21,14 +21,66 @@ test.describe('Dokumentenansichten: isolierte echte Komponenten ohne App-/DB-Die
       const dialog = page.getByRole('dialog', { name: 'Verschieben nach…', exact: true });
       await dialog.getByText(folderB.name, { exact: true }).click();
       await dialog.getByRole('button', { name: 'Hierher verschieben' }).click();
+      // P-18: eine Bulk-Action für die Auswahl, kein router.refresh() danach.
       await expect
         .poll(() => page.evaluate('globalThis.__documentActions'))
         .toEqual([
-          { action: 'setDocumentFolder', input: { documentId: fileA.id, folderId: folderB.id } },
+          {
+            action: 'moveDocumentItems',
+            input: { documentIds: [fileA.id], folderIds: [], targetFolderId: folderB.id },
+          },
         ]);
       await expect(dialog).toHaveCount(0);
+      expect(await page.evaluate('globalThis.__routerRefreshes')).toBe(0);
     });
   }
+
+  test('Mehrfachauswahl: Freigeben und Löschen laufen je als EINE Bulk-Action mit Teilfehlermeldung', async ({
+    page,
+  }) => {
+    const files = [fileA, fileB].map((file) => ({
+      ...file,
+      title: file.name,
+      classification: 'GENERAL',
+    }));
+    await mountDocumentExplorer(page, { ...browserProps, entries: files });
+    const selectBoth = async () => {
+      for (const file of files) {
+        await page.locator(`[data-document-id="${file.id}"]`).getByRole('checkbox').check();
+      }
+      await expect(page.getByText('2 ausgewählt', { exact: true })).toBeVisible();
+    };
+
+    await page.evaluate(() => {
+      (globalThis as { __bulkRejections?: Record<string, string> }).__bulkRejections = {
+        'file-b': 'Kein Zugriff auf diesen Mandanten.',
+      };
+    });
+    await selectBoth();
+    await page.getByRole('button', { name: 'Freigeben', exact: true }).click();
+    await expect(page.getByText('1 freigegeben, 1 abgelehnt:')).toBeVisible();
+    await expect(page.getByText('Kein Zugriff auf diesen Mandanten.')).toBeVisible();
+
+    await page.evaluate(() => {
+      (globalThis as { __bulkRejections?: Record<string, string> }).__bulkRejections = {};
+    });
+    await selectBoth();
+    // Toolbar-Schaltfläche (die Zeilenschaltflächen tragen nur ein Icon).
+    await page
+      .getByRole('button', { name: 'Löschen', exact: true })
+      .filter({ hasText: 'Löschen' })
+      .click();
+    const dialog = page.getByRole('dialog', { name: 'Dokument löschen', exact: true });
+    await expect(dialog.getByText('2 Dokumente löschen')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Löschen', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+
+    expect(await page.evaluate('globalThis.__documentActions')).toEqual([
+      { action: 'setDocumentsShare', input: { documentIds: [fileA.id, fileB.id], share: true } },
+      { action: 'softDeleteDocuments', input: { documentIds: [fileA.id, fileB.id] } },
+    ]);
+    expect(await page.evaluate('globalThis.__routerRefreshes')).toBe(0);
+  });
 
   test('Ordner- und URL-Suchwechsel entfernen alte Auswahl und übernehmen den neuen Suchtext', async ({
     page,

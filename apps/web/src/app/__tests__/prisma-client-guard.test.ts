@@ -77,6 +77,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // ACCESS-CLIENT-MODE-001 (P-20): Owner-Fixtures in einem frischen Tenant; die App-Rolle
   // vergleicht Monats-groupBy und frühere Zählung über findMany unter echter RLS.
   'apps/web/src/server/tax-deadlines/__tests__/day-groups-db.test.ts',
+  // DOC-PORTAL-SHARING-001 (P-18): Owner-Fixtures in einem frischen Tenant; die App-Rolle
+  // führt die Dokument-Bulk-Actions unter RLS, Triggern und Audit-Lock aus.
+  'apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts',
   // Fachkatalog: REMINDER-TICKET-001. Isolierte Owner-Fixtures und eine
   // separate App-Verbindung belegen Nummernvergabe, RLS, FK- und Archivrennen.
   'packages/db/src/__tests__/reminder-tickets.test.ts',

@@ -42,7 +42,8 @@ function explorerBundle(): Promise<string> {
 import {createRoot} from 'react-dom/client';
 import {DocumentExplorer} from './src/components/document-explorer';
 globalThis.__documentActions=[];
-globalThis.__router={push:()=>{},refresh:()=>{}};
+globalThis.__routerRefreshes=0;
+globalThis.__router={push:()=>{},refresh:()=>{globalThis.__routerRefreshes+=1;}};
 function Fixture(){
  const [props,setProps]=useState(globalThis.__explorerProps);
  useEffect(()=>{
@@ -89,15 +90,26 @@ export default function Link({href,children,scroll,prefetch,...props}){
               actions: `const action=name=>async input=>{
  globalThis.__documentActions.push({action:name,input});return {ok:true};
 };
+const bulkAction=name=>async input=>{
+ globalThis.__documentActions.push({action:name,input});
+ const ids=[...(input.documentIds??[]),...(input.folderIds??[])];
+ const reasons=globalThis.__bulkRejections??{};
+ const rejected=ids.filter(id=>reasons[id]).map(id=>({id,error:reasons[id]}));
+ return {ok:rejected.length===0,done:ids.length-rejected.length,rejected};
+};
 export const setDocumentFolderAction=action('setDocumentFolder');
 export const moveFolderAction=action('moveFolder');
+export const moveDocumentItemsAction=bulkAction('moveDocumentItems');
 export const deleteFolderAction=action('deleteFolder');
 export const createFolderAction=action('createFolder');
 export const renameFolderAction=action('renameFolder');
 export const softDeleteDocumentAction=action('softDeleteDocument');
+export const softDeleteDocumentsAction=bulkAction('softDeleteDocuments');
 export const restoreDocumentAction=action('restoreDocument');
 export const setDocumentShareAction=action('setDocumentShare');
-export const retagDocumentAction=action('retagDocument');`,
+export const setDocumentsShareAction=bulkAction('setDocumentsShare');
+export const retagDocumentAction=action('retagDocument');
+export const retagDocumentsAction=bulkAction('retagDocuments');`,
               '@/components/document-upload-button': `import React from 'react';
 export const DocumentUploadButton=({folderId})=><button type="button" data-upload-folder={folderId??''}>Hochladen</button>;`,
               '@/components/document-preview': 'export const DocumentPreviewModal=()=>null;',

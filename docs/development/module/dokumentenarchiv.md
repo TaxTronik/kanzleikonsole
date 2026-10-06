@@ -39,6 +39,24 @@ erhalten. Archivierte Dokumentnamen, Originalbytes, Auswahl und Zugriffsprüfung
 werden nicht verändert. Der Routentest `bulk-download-filenames.test.ts`
 prüft die tatsächlichen ZIP-Einträge und deren entpackte Inhalte.
 
+Mehrfachauswahl im Explorer (Verschieben, Freigeben/Entziehen, Löschen, Typ
+ändern) läuft als eine Server Action mit ID-Liste (`server/documents/document-bulk.ts`,
+Review-Finding P-18): je bis zu 200 Einträge eine Transaktion, die zuerst alle
+betroffenen Zeilen sperrt und erst danach Audit-Events schreibt (dieselbe
+Sperrreihenfolge wie die Einzelaktionen, kein Deadlock mit dem tenantweiten
+Audit-Lock), Zugriffsprüfung (je Mandant einmal je Transaktion) und Audit-Event
+je Dokument wie bei der Einzelaktion, eine Revalidierung ohne zusätzlichen
+Router-Refresh. Fachliche
+Ablehnungen betreffen nur ihren Eintrag; scheitert die Transaktion an der
+Datenbank (z. B. Freigabesperre für Lohnarchive), wird je Eintrag einzeln
+wiederholt und die Meldung „N erledigt, M abgelehnt“ bleibt genau.
+Reine Metadaten-Umklassifizierungen laufen gemeinsam in einer Transaktion;
+Höherstufungen mit Re-Store bleiben je Dokument journal-first
+(DOC-UPLOAD-JOURNAL-001) und laufen in einem Zeitbudget je Aufruf, offene
+Einträge reicht der Client nach. Nachweise: `bulk-actions.test.ts`,
+`bulk-actions-db.test.ts` (CI-db-Job), `document-bulk.test.ts` und
+`apps/e2e/tests/19-document-explorer-state.spec.ts`.
+
 ## Upload-Wege (alle über die zentrale Pipeline)
 
 DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001 /

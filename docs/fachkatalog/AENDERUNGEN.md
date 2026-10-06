@@ -1,5 +1,39 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-018
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-ci.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions.test.ts
+      - apps/web/src/app/staff/(protected)/documents/actions.ts
+      - apps/web/src/app/staff/(protected)/documents/folder-actions.ts
+      - apps/web/src/server/documents/__tests__/document-bulk.test.ts
+      - apps/web/src/server/documents/document-bulk.ts
+    rule_ids:
+      - DOC-PORTAL-SHARING-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - DOC-UPLOAD-JOURNAL-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Verschieben, Freigeben, Löschen und Umtypisieren einer Auswahl im
+      Dokumenten-Explorer laufen als eine Server Action mit ID-Liste (höchstens
+      1.000) statt als eine Action je Dokument. Je Block von 200 Dokumenten läuft
+      eine Transaktion; Zugriffsprüfung, Freigabe-, Lösch-, Verschiebe- und
+      Umtypisierungslogik sowie das Audit-Event je Dokument sind dieselben
+      Funktionen wie bei der Einzelaktion. Eine fachliche Ablehnung betrifft nur das
+      einzelne Dokument; ein Datenbankfehler (etwa der Trigger der Lohn-Freigabesperre)
+      rollt den Block zurück, der dann dokumentweise wiederholt wird. Umtypisieren
+      mit Anhebung der Schutzstufe behält den journalisierten Re-Store je Dokument.
+      Freigaberegeln, Versionsschutz, Aufbewahrung und RLS bleiben unverändert. Neuer
+      CI-Schritt prüft die Bulk-Actions gegen PostgreSQL mit der App-Rolle. Keine
+      fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions.test.ts
+      - apps/web/src/server/documents/__tests__/document-bulk.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-017
     date: '2026-10-06'
     paths:
@@ -3268,6 +3302,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-018` dokumentiert Bulk-Aktionen des
+  Dokumenten-Explorers als eine Server Action je Auswahl. Zugriffsprüfung,
+  Freigaberegeln und Audit je Dokument bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-017` dokumentiert binäre Uploads über Server
   Actions mit zentralen Grenzen je Upload-Art. Prüfungen und Aufbewahrung

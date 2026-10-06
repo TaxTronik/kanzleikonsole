@@ -163,11 +163,9 @@ export function EmbeddedView({
       busyLabel: 'Löscht…',
       danger: true,
       action: async () => {
+        // Die Action revalidiert; ihre Antwort rendert die Liste neu (P-18).
         const r = await deleteFolderAction({ folderId: f.id });
-        if (r.ok) {
-          if (sel === f.id) setSel('all');
-          router.refresh();
-        }
+        if (r.ok && sel === f.id) setSel('all');
         return r;
       },
     });
@@ -481,10 +479,7 @@ export function EmbeddedView({
         <DeleteDocumentsDialog
           docs={[confirmDelDoc]}
           onClose={() => setConfirmDelDoc(null)}
-          onDone={() => {
-            setConfirmDelDoc(null);
-            router.refresh();
-          }}
+          onDone={() => setConfirmDelDoc(null)}
         />
       )}
       {moveDoc && (
@@ -494,10 +489,7 @@ export function EmbeddedView({
           currentFolderId={moveDoc.folderId}
           folders={folders}
           onClose={() => setMoveDoc(null)}
-          onDone={() => {
-            setMoveDoc(null);
-            router.refresh();
-          }}
+          onDone={() => setMoveDoc(null)}
         />
       )}
     </div>

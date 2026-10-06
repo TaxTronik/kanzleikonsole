@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/app/staff/(protected)/documents/actions', () => ({
-  softDeleteDocumentAction: vi.fn(),
+  softDeleteDocumentsAction: vi.fn(),
 }));
 vi.mock('@/components/ui/modal', () => ({
   Modal: ({ children }: { children: unknown }) => children,
@@ -16,27 +16,43 @@ const GWG = { id: 'doc-2', title: 'Ausweis', classification: 'GWG_EVIDENCE' };
 const NOTE = { id: 'doc-3', title: 'Notiz', classification: 'GENERAL' };
 const noop = () => undefined;
 
-describe('gemeinsamer Lösch-Dialog (mit Grund)', () => {
-  it('löscht jedes Dokument der Auswahl mit demselben gekürzten Grund', async () => {
-    const softDelete = vi.fn(async () => ({ ok: true }));
+/** Bulk-Action-Attrappe: lehnt die übergebenen IDs mit `reason` ab. */
+function bulkDelete(rejections: Record<string, string> = {}) {
+  return vi.fn(async ({ documentIds }: { documentIds: string[]; reason?: string }) => {
+    const rejected = documentIds
+      .filter((id) => rejections[id])
+      .map((id) => ({ id, error: rejections[id]! }));
+    return {
+      ok: rejected.length === 0,
+      done: documentIds.length - rejected.length,
+      rejected,
+    };
+  });
+}
 
-    await expect(softDeleteDocuments([GOBD, NOTE], '  Dublette  ', softDelete)).resolves.toEqual({
-      ok: true,
+describe('gemeinsamer Lösch-Dialog (mit Grund)', () => {
+  // P-18: eine Bulk-Action für die ganze Auswahl statt einer Action je Dokument.
+  it('löscht die Auswahl mit einem Aufruf und demselben gekürzten Grund', async () => {
+    const softDeleteMany = bulkDelete();
+
+    await expect(
+      softDeleteDocuments([GOBD, NOTE], '  Dublette  ', softDeleteMany),
+    ).resolves.toEqual({ ok: true });
+    expect(softDeleteMany).toHaveBeenCalledTimes(1);
+    expect(softDeleteMany).toHaveBeenCalledWith({
+      documentIds: ['doc-1', 'doc-3'],
+      reason: 'Dublette',
     });
-    expect(softDelete).toHaveBeenCalledWith({ documentId: 'doc-1', reason: 'Dublette' });
-    expect(softDelete).toHaveBeenCalledWith({ documentId: 'doc-3', reason: 'Dublette' });
   });
 
   it('sendet keinen leeren Grund', async () => {
-    const softDelete = vi.fn(async () => ({ ok: true }));
-    await softDeleteDocuments([NOTE], '   ', softDelete);
-    expect(softDelete).toHaveBeenCalledWith({ documentId: 'doc-3', reason: undefined });
+    const softDeleteMany = bulkDelete();
+    await softDeleteDocuments([NOTE], '   ', softDeleteMany);
+    expect(softDeleteMany).toHaveBeenCalledWith({ documentIds: ['doc-3'], reason: undefined });
   });
 
   it('meldet Einzel- und Teilfehler verständlich', async () => {
-    const failing = vi.fn(async ({ documentId }: { documentId: string }) =>
-      documentId === 'doc-2' ? { ok: false, error: 'GwG-Nachweis ist zugeordnet.' } : { ok: true },
-    );
+    const failing = bulkDelete({ 'doc-2': 'GwG-Nachweis ist zugeordnet.' });
     await expect(softDeleteDocuments([GWG], '', failing)).resolves.toEqual({
       ok: false,
       error: 'GwG-Nachweis ist zugeordnet.',
@@ -44,6 +60,19 @@ describe('gemeinsamer Lösch-Dialog (mit Grund)', () => {
     await expect(softDeleteDocuments([GOBD, GWG, NOTE], '', failing)).resolves.toEqual({
       ok: false,
       error: '2 gelöscht, 1 abgelehnt:\nGwG-Nachweis ist zugeordnet.',
+    });
+  });
+
+  it('zeigt einen Fehler vor jeder Verarbeitung unverändert an', async () => {
+    const expired = vi.fn(async () => ({
+      ok: false,
+      done: 0,
+      rejected: [],
+      error: 'Nicht eingeloggt.',
+    }));
+    await expect(softDeleteDocuments([GOBD, NOTE], '', expired)).resolves.toEqual({
+      ok: false,
+      error: 'Nicht eingeloggt.',
     });
   });
 

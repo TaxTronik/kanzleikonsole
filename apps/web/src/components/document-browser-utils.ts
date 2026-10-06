@@ -1,4 +1,5 @@
 import { fmtDateMedium } from '@/lib/fmt';
+import type { DocumentBulkResult } from '@/server/documents/document-bulk';
 import type { ManagedDoc } from '@/server/documents/managed-docs';
 export { fmtBytes } from '@/lib/fmt';
 import {
@@ -51,23 +52,20 @@ export const navIcon = (icon: 'kind' | 'internal' | 'client'): LucideIcon =>
   icon === 'internal' ? Lock : icon === 'client' ? Building2 : Users;
 
 /**
- * Bulk-Operationen begrenzt parallel ausführen (Chunks à `size`), Fehler
- * einsammeln statt abzubrechen. `fn` liefert eine Fehlermeldung oder null.
+ * Meldung zum Ergebnis einer Bulk-Action (P-18: eine Action je Auswahl);
+ * null, wenn alles erledigt ist. Bei einem Eintrag die Ablehnung selbst, sonst
+ * „N <verb>, M abgelehnt" mit den unterschiedlichen Gründen.
  */
-export async function runChunked<T>(
-  items: T[],
-  fn: (item: T) => Promise<string | null>,
-  size = 4,
-): Promise<string[]> {
-  const errs: string[] = [];
-  for (let i = 0; i < items.length; i += size) {
-    const settled = await Promise.allSettled(items.slice(i, i + size).map(fn));
-    for (const r of settled) {
-      if (r.status === 'rejected') errs.push('Netzwerkfehler.');
-      else if (r.value) errs.push(r.value);
-    }
-  }
-  return errs;
+export function bulkResultMessage(
+  result: Pick<DocumentBulkResult, 'done' | 'rejected' | 'error'>,
+  total: number,
+  verb: string,
+): string | null {
+  if (result.error) return result.error;
+  if (result.rejected.length === 0) return null;
+  const reasons = [...new Set(result.rejected.map((rejection) => rejection.error))];
+  if (total === 1) return reasons[0]!;
+  return `${result.done} ${verb}, ${result.rejected.length} abgelehnt:\n${reasons.join('\n')}`;
 }
 
 /** Nachfahren (inkl. self) — Cycle-Schutz beim Ordner-Verschieben. */

@@ -60,12 +60,13 @@ export function useDocumentOps() {
   const [createFolder, setCreateFolder] = useState<CreateFolderState | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
 
+  // Die Actions revalidieren; ihre Antwort rendert die Seite bereits neu
+  // (P-18: kein zusätzlicher Router-Refresh).
   function toggleShare(id: string, share: boolean) {
     start(async () => {
       setOpError(null);
       const r = await setDocumentShareAction({ documentId: id, share });
       if (!r.ok) setOpError(r.error ?? 'Fehler.');
-      else router.refresh();
     });
   }
   function restoreDoc(id: string) {
@@ -73,7 +74,6 @@ export function useDocumentOps() {
       setOpError(null);
       const r = await restoreDocumentAction({ documentId: id });
       if (!r.ok) setOpError(r.error ?? 'Fehler.');
-      else router.refresh();
     });
   }
 
@@ -140,7 +140,7 @@ export function SharedDialogs({
   ops: DocumentOps;
   scopeClientId: string | null;
 }) {
-  const { router } = ops;
+  // Alle Dialog-Actions revalidieren selbst; kein Router-Refresh (P-18).
   return (
     <>
       {ops.retag && (
@@ -154,7 +154,6 @@ export function SharedDialogs({
             const cb = ops.retag?.onDone;
             ops.setRetag(null);
             cb?.();
-            router.refresh();
           }}
         />
       )}
@@ -171,15 +170,13 @@ export function SharedDialogs({
           placeholder={ops.createFolder.placeholder}
           confirmLabel="Anlegen"
           busyLabel="Legt an…"
-          onSubmit={async (name) => {
-            const r = await createFolderAction({
+          onSubmit={(name) =>
+            createFolderAction({
               clientId: scopeClientId,
               parentId: ops.createFolder!.parentId,
               name,
-            });
-            if (r.ok) router.refresh();
-            return r;
-          }}
+            })
+          }
           onClose={() => ops.setCreateFolder(null)}
         />
       )}
@@ -187,11 +184,7 @@ export function SharedDialogs({
         <InputModal
           title="Ordner umbenennen"
           initialValue={ops.renameTarget.name}
-          onSubmit={async (name) => {
-            const r = await renameFolderAction({ folderId: ops.renameTarget!.id, name });
-            if (r.ok) router.refresh();
-            return r;
-          }}
+          onSubmit={(name) => renameFolderAction({ folderId: ops.renameTarget!.id, name })}
           onClose={() => ops.setRenameTarget(null)}
         />
       )}
