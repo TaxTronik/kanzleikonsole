@@ -86,6 +86,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // POA-LIFECYCLE-001 (K-03): Owner-Fixtures in einem frischen Tenant; die App-Rolle führt
   // Anlage, Versand und Widerruf der Vollmachten-Services unter RLS und PoA-Triggern aus.
   'apps/web/src/server/poa/__tests__/poa-services-db.test.ts',
+  // AUDIT-HASH-CHAIN-001 (K-03): Owner-Fixtures in einem frischen Tenant; die App-Rolle führt
+  // Routen-, Zustellungs- und Reset-Services der n8n-Einstellungen unter RLS aus.
+  'apps/web/src/server/n8n-settings/__tests__/n8n-settings-db.test.ts',
   // Fachkatalog: REMINDER-TICKET-001. Isolierte Owner-Fixtures und eine
   // separate App-Verbindung belegen Nummernvergabe, RLS, FK- und Archivrennen.
   'packages/db/src/__tests__/reminder-tickets.test.ts',

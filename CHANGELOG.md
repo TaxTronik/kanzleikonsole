@@ -227,6 +227,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die n8n-Administration ist in Server-Services je Aufgabe aufgeteilt;
+  Eingabeprüfung und Normalisierung sind reine, eigens getestete Funktionen.
+  SSRF-Prüfung, Secret-Behandlung, Audit-Events und Meldungen bleiben
+  unverändert; neue PostgreSQL-Testsuite im CI-db-Job.
 - Anlage, Versand und Widerruf von Vollmachten laufen über eigene
   Server-Services; Prüfungen, Schreibvorgänge, Versandsnapshot und Hash,
   Audit-Events und Meldungen bleiben unverändert. Neue PostgreSQL-Testsuite

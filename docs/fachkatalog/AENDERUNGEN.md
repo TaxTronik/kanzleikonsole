@@ -1,5 +1,20 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-022
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Die n8n-Administration (Verbindung, API-Test, Endpunkte, Zustellungen,
+      Workflow-Import) ist in Server-Services je Aufgabe aufgeteilt; die CI erhält
+      einen eigenen Schritt für die neue PostgreSQL-Testsuite der n8n-Einstellungen
+      samt Testbericht. Freigabe-, Audit- und Release-Nachweise bleiben unverändert.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/n8n-settings/__tests__/n8n-settings-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-021
     date: '2026-10-06'
     paths:
@@ -3372,6 +3387,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-022` dokumentiert den CI-Schritt für die
+  aufgeteilten n8n-Einstellungen. Release-Nachweise bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-021` dokumentiert eigene Server-Services für
   Anlage, Versand und Widerruf von Vollmachten. Prüfungen, Snapshot und Audit

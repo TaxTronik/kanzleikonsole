@@ -49,11 +49,6 @@
       "count": 1
     }
   },
-  "apps/web/src/app/staff/(protected)/admin/settings/n8n-actions.ts": {
-    "complexity": {
-      "count": 4
-    }
-  },
   "apps/web/src/app/staff/(protected)/admin/settings/smtp-form.tsx": {
     "complexity": {
       "count": 1

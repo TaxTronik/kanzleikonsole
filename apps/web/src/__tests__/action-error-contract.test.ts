@@ -24,13 +24,21 @@ import { hasUseServerDirective, parseSource, walkProductSources } from './use-se
 
 const SRC_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 
-/** Helfer, deren Fehler direkt in Action-Ergebnisse laufen (zusätzlich zu 'use server'). */
-const ACTION_HELPER_PREFIXES = ['server/actions/', 'server/risk/'];
+/**
+ * Helfer, deren Fehler direkt in Action-Ergebnisse laufen (zusätzlich zu 'use server').
+ * K-03: dazu die aus Action-Dateien herausgelösten Services (n8n-Einstellungen,
+ * Retag, Vollmachten) — ihr Code war vorher als 'use server' erfasst.
+ */
+const ACTION_HELPER_PREFIXES = ['server/actions/', 'server/risk/', 'server/n8n-settings/'];
 const ACTION_HELPER_FILES = new Set([
   'server/db/assert-tenant.ts',
+  'server/documents/retag.ts',
   'server/forms/validate-answers.ts',
   'server/gwg-onboarding/submission-transaction.ts',
   'server/n8n/client.ts',
+  'server/poa/create-poa.ts',
+  'server/poa/revoke-poa.ts',
+  'server/poa/send-for-signature.ts',
   'server/privacy/consent-catalog.ts',
   'server/settings/modules.ts',
   'server/settings/portal-features.ts',

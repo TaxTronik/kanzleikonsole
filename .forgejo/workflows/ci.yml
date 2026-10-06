@@ -311,6 +311,16 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/poa/__tests__/poa-services-db.test.ts 2>&1 | tee testbericht-poa-services.log
 
+      # AUDIT-HASH-CHAIN-001: n8n-Einstellungs-Services (K-03) — Routen,
+      # Retry/Replay/Abschluss von Zustellungen und Zurücksetzen gegen RLS,
+      # Constraints und Outbox-Aggregation; Queue und SSRF-DNS sind Attrappen.
+      - name: n8n settings services against the PostgreSQL app role
+        env:
+          N8N_SETTINGS_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run src/server/n8n-settings/__tests__/n8n-settings-db.test.ts 2>&1 | tee testbericht-n8n-settings.log
+
       # AUDIT-VERIFY-ALERT-001 / AUDIT-RFC3161-ANCHOR-001: checkpointgestützte
       # Kettenprüfung (P-04) und Rolling-Anchor-Takt (P-05) gegen echtes
       # PostgreSQL; alle Fixtures werden zurückgerollt.
@@ -386,6 +396,7 @@ jobs:
             testbericht-document-bulk.log
             testbericht-document-retag.log
             testbericht-poa-services.log
+            testbericht-n8n-settings.log
             testbericht-evidence-db.log
             testbericht-worker-db.log
             testbericht-mandate-services.log
