@@ -10,6 +10,8 @@ const fixture = vi.hoisted(() => ({
 }));
 
 vi.mock('@/server/auth/staff-page', () => ({ requireStaffPage: fixture.requireStaffPage }));
+// Modul-Gate der Seite (requireModulePage) ist separat getestet; hier aktiv.
+vi.mock('@/server/settings/module-page', () => ({ requireModulePage: vi.fn(async () => ({})) }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: fixture.withTenantContext }));
 vi.mock('@/server/auth/rbac', () => ({
   accessibleClientsWhereFor: vi.fn(async () => ({})),

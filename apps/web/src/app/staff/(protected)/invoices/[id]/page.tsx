@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { canAccessClientTx, hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext, type InvoiceStatus } from '@taxtronik/db';
 import { computeVatTotals } from '@/server/invoicing/vat';
@@ -32,6 +33,7 @@ const statusBadges: Record<InvoiceStatus, string> = {
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'invoices');
 
   const { id } = await params;
   const { tenantId, staffId } = session.user;

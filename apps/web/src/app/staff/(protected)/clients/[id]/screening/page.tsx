@@ -5,7 +5,7 @@ import { sourceIsFresh } from '@taxtronik/tax';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { latestScreeningContextTx } from '@/server/screening/gwg-gate';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { ScreeningForms, ScreeningReviewForm } from './forms';
 export default async function ScreeningPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -15,7 +15,7 @@ export default async function ScreeningPage({ params }: { params: Promise<{ id: 
     actorId: session.user.staffId,
     actorType: 'STAFF',
   };
-  await assertModuleEnabled(ctx, 'sanctionsScreening');
+  await requireModulePage('staff', 'sanctionsScreening');
   const data = await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, session, id);
     return {

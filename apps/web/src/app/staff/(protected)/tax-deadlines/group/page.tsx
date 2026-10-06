@@ -10,6 +10,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, CalendarDays, CheckCheck, OctagonPause } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
@@ -79,6 +80,7 @@ export default async function TaxDeadlineGroupPage({
   searchParams: Promise<{ kind?: string; period?: string; scope?: string; q?: string }>;
 }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'taxNotices');
   const sp = await searchParams;
 
   if (!sp.kind || !sp.period) notFound();

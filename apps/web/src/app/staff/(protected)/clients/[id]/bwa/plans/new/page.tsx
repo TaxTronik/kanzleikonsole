@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { computeBwaPlanBasis } from '@/server/bwa/plan-basis';
 import { PlanWizard } from '@/app/portal/(protected)/bwa/plan/plan-wizard';
@@ -10,6 +11,7 @@ import { createStaffPlanAction } from '../actions';
 export default async function StaffNewPlanPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = await params;
   const session = await requireClientPageAccess(clientId);
+  await requireModulePage('staff', 'bwa');
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

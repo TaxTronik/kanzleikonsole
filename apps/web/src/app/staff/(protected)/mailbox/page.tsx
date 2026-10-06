@@ -3,6 +3,7 @@ import { ChevronDown, Download, FileText, Inbox, Mail, Paperclip, Plus } from 'l
 import { withTenantContext } from '@taxtronik/db';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { accessibleClientsWhereFor, isStaffAdmin } from '@/server/auth/rbac';
 import { connectMicrosoft, importAttachment, saveMailbox, setMailboxEnabled } from './actions';
 import { ActionForm } from '@/components/action-form';
@@ -35,6 +36,7 @@ export default async function MailboxPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   await requireStaffPage();
+  await requireModulePage('staff', 'smartMailbox');
   const g = await staffActionGuard({
     requirePermission: 'INBOUND_MAIL_MANAGE',
     module: 'smartMailbox',

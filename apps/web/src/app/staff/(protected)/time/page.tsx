@@ -1,5 +1,6 @@
 ﻿import { Clock, Trash2, Square } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { StartTimerForm } from './start-form';
 import { stopTimerAction, deleteTimeEntryAction } from './actions';
@@ -10,6 +11,7 @@ import { buildTimePageClientQueries, withoutHiddenClients } from './access';
 
 export default async function TimeTrackingPage() {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'timeTracking');
 
   const { tenantId, staffId } = session.user;
 

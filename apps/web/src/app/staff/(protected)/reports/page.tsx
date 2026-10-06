@@ -9,6 +9,7 @@ import type { ComponentType } from 'react';
 import Link from 'next/link';
 import { Inbox, Clock, Receipt, TrendingUp, AlertCircle } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 
@@ -18,6 +19,7 @@ import { loadReports } from './data';
 
 export default async function ReportsPage() {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'bwa');
   const canViewBilling = isStaffAdmin(session);
 
   const { tenantId, staffId } = session.user;

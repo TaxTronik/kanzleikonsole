@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { loadReminderDetail } from '@/server/reminders/detail';
@@ -24,6 +25,7 @@ export default async function ReminderDetailPage({
 }) {
   const { id } = await params;
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'reminders');
   const { tenantId, staffId } = session.user;
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
 

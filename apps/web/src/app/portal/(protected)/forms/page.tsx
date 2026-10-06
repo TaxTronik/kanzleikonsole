@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ClipboardList } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateNumeric } from '@/lib/fmt';
 import { FORM_SUBMISSION_STATUS_LABELS } from '@/lib/domain-labels';
@@ -20,6 +21,7 @@ const PORTAL_FORM_STATUS_LABELS: Readonly<Record<string, string>> = {
 export default async function PortalFormsPage() {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
+  await requireModulePage('portal', 'forms');
   const { tenantId, contactId, clientId } = session.user;
 
   const submissions = await withTenantContext(

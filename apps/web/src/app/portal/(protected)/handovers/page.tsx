@@ -10,6 +10,7 @@
 import { redirect } from 'next/navigation';
 import { Inbox, CheckCircle2, Clock } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { fmtDateShort } from '@/lib/fmt';
@@ -24,6 +25,7 @@ const STATUS_LABELS = {
 export default async function PortalHandoversPage() {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
+  await requireModulePage('portal', 'handovers');
 
   const { tenantId, contactId, clientId } = session.user;
   const features = await readPortalFeatures({

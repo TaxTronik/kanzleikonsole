@@ -1,15 +1,11 @@
 import Link from 'next/link';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
-import { readModules } from '@/server/settings/modules';
 import { resolveMandateExpansionItems } from '@/lib/navigation-registry';
 export default async function MandateExpansionPage() {
   const s = await requireStaffPage();
-  const m = await readModules({
-    tenantId: s.user.tenantId,
-    actorId: s.user.staffId,
-    actorType: 'STAFF',
-  });
+  const m = await requireModulePage('staff', 'mandateExpansion');
   const items = resolveMandateExpansionItems(m, isStaffAdmin(s));
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6">

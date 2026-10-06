@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { FileText, Info, CheckCircle2, AlertCircle } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
@@ -31,6 +32,7 @@ const NOTICE_DATE_BASIS_LABELS: Record<string, string> = {
 export default async function PortalSteuerPage() {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
+  await requireModulePage('portal', 'taxNotices');
   const { tenantId, contactId, clientId } = session.user;
 
   const filings = await withTenantContext(

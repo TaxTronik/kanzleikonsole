@@ -603,6 +603,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Deaktivierte Module sind auch bei Navigation innerhalb der App gesperrt
+  (404); Navigation und Zugriffsprüfung nutzen eine gemeinsame
+  Modul-Registry. Der Kanzleikalender erscheint, sobald Termine oder
+  Steuertermine aktiv sind, und zeigt nur Inhalte aktiver Module; „Stunden
+  abrechnen“ erscheint nur mit aktivem Rechnungsmodul, „Vollmachten“ nur mit
+  aktivem Vollmachtsmodul (`FK-EXC-20261006-005`).
 - Rechnungen aus Zeiterfassung und StBVV-Kostenvoranschlägen durchlaufen
   dieselben Prüfungen wie manuelle Rechnungen: Reverse-Charge ohne
   USt-IdNr der Kanzlei (§ 13b UStG), Beträge über den Datenbankgrenzen und

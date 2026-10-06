@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { ExpansionForm } from '@/components/expansion-form';
 import { ClientMultiPicker } from '@/components/ui/client-multi-picker';
 import { OffsetPagination } from '@/components/offset-pagination';
@@ -49,8 +49,7 @@ export default async function YearEndPage({
   const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
-  await assertModuleEnabled(ctx, 'yearEndCampaigns');
-  await assertModuleEnabled(ctx, 'forms');
+  await requireModulePage('staff', 'yearEndCampaigns');
   const sp = await searchParams;
   // P-19: Kampagnen und Einträge seitenweise, Status per groupBy (Server-Modul).
   const data = await withTenantContext(ctx, (tx) =>

@@ -1,5 +1,76 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-005
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/portal/(protected)/bwa/page.tsx
+      - apps/web/src/app/portal/(protected)/bwa/plan/new/page.tsx
+      - apps/web/src/app/portal/(protected)/forms/[id]/page.tsx
+      - apps/web/src/app/portal/(protected)/forms/page.tsx
+      - apps/web/src/app/portal/(protected)/invoices/page.tsx
+      - apps/web/src/app/portal/(protected)/steuer/page.tsx
+      - apps/web/src/app/staff/(protected)/admin/quantenlos/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/bwa/[periodId]/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/new/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/_guard.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/page.tsx
+      - apps/web/src/app/staff/(protected)/forms/submissions/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/interactions/page.tsx
+      - apps/web/src/app/staff/(protected)/invoices/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/invoices/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
+      - apps/web/src/app/staff/(protected)/invoices/new/page.tsx
+      - apps/web/src/app/staff/(protected)/invoices/page.tsx
+      - apps/web/src/app/staff/(protected)/mailbox/page.tsx
+      - apps/web/src/app/staff/(protected)/payroll/page.tsx
+      - apps/web/src/app/staff/(protected)/poa/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.ts
+      - apps/web/src/app/staff/(protected)/poa/new/page.tsx
+      - apps/web/src/app/staff/(protected)/poa/page.tsx
+      - apps/web/src/app/staff/(protected)/reminders/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/reminders/page.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/group/page.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx
+      - apps/web/src/app/staff/(protected)/year-end/page.tsx
+    rule_ids:
+      - ACCESS-SEARCH-SCOPE-001
+      - ACCESS-CLIENT-MODE-001
+      - REMINDER-TICKET-001
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-CONTROL-STATUS-001
+      - BWA-IMPORT-MAPPING-001
+      - BWA-PROJECTION-001
+      - BWA-TAX-ESTIMATE-001
+      - FORM-SCHEMA-SNAPSHOT-001
+      - YEAR-END-CAMPAIGN-001
+      - INV-PORTAL-SHARING-001
+      - INV-DUE-OVERDUE-001
+      - MAIL-INBOX-001
+      - PAYROLL-INTAKE-001
+      - CLIENT-FEEDBACK-001
+      - TCMS-SAMPLE-PROOF-001
+    reason: >-
+      Navigation, Routen-Gate und Seitenprüfung lesen die Zuordnung Pfad → Modul
+      aus einer gemeinsamen Registry (lib/module-registry.ts); jede Modulseite
+      prüft ihr Modul zusätzlich selbst über requireModulePage() und antwortet
+      bei abgeschaltetem Modul mit 404, auch bei Navigation innerhalb der App.
+      Es werden nur Einstiegsprüfungen der Seiten ergänzt; Fachlogik,
+      Zugriffsregeln, Fristen, Bescheid-, BWA-, Rechnungs-, Formular- und
+      Jahreswechsel-Abläufe bleiben unverändert. Der Kanzleikalender erscheint,
+      sobald Termine oder Steuertermine aktiv sind, und zeigt nur Inhalte
+      aktiver Module. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/lib/__tests__/module-registry.test.ts
+      - apps/web/src/server/settings/__tests__/module-page.test.ts
+      - apps/web/src/__tests__/module-page-guard.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-004
     date: '2026-10-06'
     paths:
@@ -2702,6 +2773,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-005` dokumentiert die gemeinsame
+  Modul-Registry und die Modulprüfung je Seite. Fachabläufe und
+  Zugriffsregeln bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-004` dokumentiert den gemeinsamen Dienst für
   Rechnungsentwürfe aller drei Pfade. Gültige Rechnungen bleiben unverändert;

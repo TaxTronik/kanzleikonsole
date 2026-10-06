@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_MODULES } from '@/server/settings/modules';
+import { resolveClientNavigation } from '@/lib/navigation-registry';
 
 const poaRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const srcRoot = resolve(poaRoot, '..', '..', '..', '..');
@@ -36,7 +38,14 @@ describe('Vollmachten im Mandantenkontext', () => {
     const clientPage = readSrc('app/staff/(protected)/clients/[id]/page.tsx');
     const listPage = readPoa('page.tsx');
 
-    expect(clientPage).toContain('href={`/staff/poa?clientId=${client.id}`}');
+    // Der Reiter kommt aus der Modul-Registry (sichtbar nur bei aktivem Vollmachtenmodul).
+    expect(clientPage).toContain('href={clientNav.poa}');
+    expect(
+      resolveClientNavigation({ ...DEFAULT_MODULES, poaMode: 'MARKDOWN_OTP' }, 'client-1').poa,
+    ).toBe('/staff/poa?clientId=client-1');
+    expect(resolveClientNavigation({ ...DEFAULT_MODULES, poaMode: 'OFF' }, 'client-1').poa).toBe(
+      undefined,
+    );
     expect(listPage).toContain('where: clientId');
     expect(listPage).toContain('take: clientId ? undefined : 200');
     expect(listPage).toContain('`Alle Vollmachten für ${filteredClient.name}`');

@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft, BarChart3, Trash2 } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { computeBwaKpis } from '@/server/bwa/addison-parser';
 import { BwaImportForm } from './import-form';
@@ -12,6 +13,7 @@ import { fmtDateShort, fmtEURRound } from '@/lib/fmt';
 export default async function ClientBwaPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = await params;
   const session = await requireClientPageAccess(clientId);
+  await requireModulePage('staff', 'bwa');
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

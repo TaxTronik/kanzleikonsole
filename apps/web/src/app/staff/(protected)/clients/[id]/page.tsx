@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { ArrowLeft, Wand2 } from 'lucide-react';
 import { computeOnboardingStatus, resumeStep } from '@/server/onboarding/status';
 import { readModules } from '@/server/settings/modules';
+import { resolveClientNavigation } from '@/lib/navigation-registry';
 import { isRiskLayerAvailable } from '@/server/risk/availability';
 import { readClientLayout, type ClientBlockKey } from '@/server/settings/client-layout';
 import { CockpitGrid } from './cockpit-grid';
@@ -88,6 +89,7 @@ export default async function ClientDetailPage({
 
   // Module stammen aus den request-scoped Layout-Einstellungen (meist schon geladen).
   const modules = await readModules(settingsCtx);
+  const clientNav = resolveClientNavigation(modules, id);
   // P-07: Die Blockdaten laufen in eigener Tenant-Transaktion (mit eigenem
   // Zugriffs-Backstop) parallel zum Kopf und streamen in <Suspense>. Fehler
   // erreichen die Blöcke; das catch verhindert nur einen unbehandelten Reject,
@@ -223,18 +225,20 @@ export default async function ClientDetailPage({
         );
       })()}
 
-      {/* Navigation als horizontale Pill-Leiste — spart vertikalen Platz */}
+      {/* Navigation als horizontale Pill-Leiste — spart vertikalen Platz.
+          Modulabhängige Reiter kommen aus der Modul-Registry (wie Route-Gate
+          und Seiten-Gate der Zielseiten). */}
       <nav className="flex flex-wrap gap-2 mb-6">
         <Link href={`/staff/clients/${client.id}/timeline`} className="btn-secondary text-xs py-1">
           Aktivitätsstrom
         </Link>
-        {modules.timeTracking && (
-          <Link href={`/staff/clients/${client.id}/billing`} className="btn-secondary text-xs py-1">
+        {clientNav.billing && (
+          <Link href={clientNav.billing} className="btn-secondary text-xs py-1">
             Stunden abrechnen
           </Link>
         )}
-        {modules.bwa && (
-          <Link href={`/staff/clients/${client.id}/bwa`} className="btn-secondary text-xs py-1">
+        {clientNav.bwa && (
+          <Link href={clientNav.bwa} className="btn-secondary text-xs py-1">
             BWA & Auswertungen
           </Link>
         )}
@@ -244,51 +248,42 @@ export default async function ClientDetailPage({
         <Link href={`/staff/clients/${client.id}/privacy`} className="btn-secondary text-xs py-1">
           Datenschutz
         </Link>
-        {(modules.poaMode !== 'OFF' || client._count.poas > 0) && (
-          <Link href={`/staff/poa?clientId=${client.id}`} className="btn-secondary text-xs py-1">
+        {clientNav.poa && (
+          <Link href={clientNav.poa} className="btn-secondary text-xs py-1">
             Vollmachten
             {client._count.poas > 0 && (
               <span className="badge-gray ml-2">{client._count.poas}</span>
             )}
           </Link>
         )}
-        {modules.risk && canSubsumtion && (
+        {clientNav.subsumtion && canSubsumtion && (
           // Der Engine-Healthcheck (HTTP) hält nur diese Pill auf, nicht die Seite.
           <Suspense fallback={null}>
             <SubsumtionNavLink clientId={client.id} />
           </Suspense>
         )}
-        {modules.taxNotices && (
-          <>
-            <Link
-              href={`/staff/clients/${client.id}/tax-schedule`}
-              className="btn-secondary text-xs py-1"
-            >
-              Steuertermine
-            </Link>
-            <Link
-              href={`/staff/clients/${client.id}/notices`}
-              className="btn-secondary text-xs py-1"
-            >
-              Bescheide
-            </Link>
-          </>
+        {clientNav['tax-schedule'] && (
+          <Link href={clientNav['tax-schedule']} className="btn-secondary text-xs py-1">
+            Steuertermine
+          </Link>
+        )}
+        {clientNav.notices && (
+          <Link href={clientNav.notices} className="btn-secondary text-xs py-1">
+            Bescheide
+          </Link>
         )}
         {isElsterConfigured() && (
           <Link href={`/staff/clients/${client.id}/elster`} className="btn-secondary text-xs py-1">
             Steuerkonto (ELSTER)
           </Link>
         )}
-        {modules.workflows && (
-          <Link
-            href={`/staff/clients/${client.id}/workflows`}
-            className="btn-secondary text-xs py-1"
-          >
+        {clientNav.workflows && (
+          <Link href={clientNav.workflows} className="btn-secondary text-xs py-1">
             Workflows
           </Link>
         )}
-        {modules.forms && (
-          <Link href={`/staff/clients/${client.id}/forms`} className="btn-secondary text-xs py-1">
+        {clientNav.forms && (
+          <Link href={clientNav.forms} className="btn-secondary text-xs py-1">
             Formulare
           </Link>
         )}

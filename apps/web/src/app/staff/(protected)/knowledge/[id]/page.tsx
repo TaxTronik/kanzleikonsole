@@ -12,6 +12,7 @@ import {
   UserRound,
 } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteArticleAction } from '../actions';
 import { ActionForm } from '@/components/action-form';
@@ -20,6 +21,7 @@ import { fmtDateShort } from '@/lib/fmt';
 
 export default async function KbArticlePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'knowledge');
 
   const { id } = await params;
   const { tenantId, staffId } = session.user;

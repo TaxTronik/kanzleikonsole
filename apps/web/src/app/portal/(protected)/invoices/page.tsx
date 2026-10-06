@@ -9,6 +9,7 @@ import { OffsetPagination } from '@/components/offset-pagination';
 import { INVOICE_STATUS_LABELS } from '@/lib/domain-labels';
 import { berlinTodayUtcMidnight, fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { portalAuth } from '@/server/auth/portal';
+import { requireModulePage } from '@/server/settings/module-page';
 import { portalInvoiceVisibilityWhere } from '@/server/invoicing/portal-visibility';
 import {
   PORTAL_LIST_PAGE_SIZE,
@@ -48,6 +49,7 @@ export default async function PortalInvoicesPage({
 }) {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
+  await requireModulePage('portal', 'invoices');
 
   const { tenantId, contactId, clientId } = session.user;
   const sp = await searchParams;

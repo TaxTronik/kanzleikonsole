@@ -23,6 +23,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { SkillBadge } from '@/components/skill-badge';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -52,6 +53,7 @@ export default async function WorkflowInstanceDetail({
 }) {
   const { id: clientId, instanceId } = await params;
   const session = await requireClientPageAccess(clientId);
+  await requireModulePage('staff', 'workflows');
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

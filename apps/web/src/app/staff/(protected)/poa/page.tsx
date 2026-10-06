@@ -2,6 +2,7 @@
 import { notFound } from 'next/navigation';
 import { ArrowLeft, ScrollText, Plus } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { accessibleClientsWhereFor, isStaffAdmin } from '@/server/auth/rbac';
 import { clientAccessFilter } from '@/server/auth/client-access-filter';
@@ -22,6 +23,7 @@ export default async function PoaListPage({
   searchParams: Promise<{ clientId?: string }>;
 }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'poa');
 
   const query = await searchParams;
   if (query.clientId && !isUuid(query.clientId)) notFound();

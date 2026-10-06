@@ -16,7 +16,7 @@ import { redirect } from 'next/navigation';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { canAccessClientTx, filterStaffAccessClientTx } from '@/server/auth/rbac';
 import { loadSubsumtionRights, type SubsumtionRights } from '@/server/risk/rights';
-import { readModules } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { isRiskLayerAvailable } from '@/server/risk/availability';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 
@@ -55,8 +55,8 @@ export async function guardSubsumtionPage(
   const { tenantId, staffId, fullName } = session.user;
   const ctx: TenantContext = { tenantId, actorId: staffId, actorType: 'STAFF' };
 
-  const modules = await readModules(ctx);
-  if (!modules.risk) redirect(`/staff/clients/${clientId}`);
+  // Registry-Bereich `risk` (wie Navigation und Layout-Gate): deaktiviert → 404.
+  const modules = await requireModulePage('staff', 'risk');
   if (!(await isRiskLayerAvailable())) redirect(`/staff/clients/${clientId}`);
 
   const wantStaffOptions = options?.staffOptions !== false;

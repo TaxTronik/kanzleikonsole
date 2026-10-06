@@ -1,6 +1,7 @@
 ﻿import Link from 'next/link';
 import { BookOpen, CalendarDays, Plus, UserRound } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { searchArticles, type SearchHit } from './actions';
 import { fmtDateShort } from '@/lib/fmt';
@@ -12,6 +13,7 @@ export default async function KnowledgePage({
   searchParams: Promise<{ q?: string; cat?: string }>;
 }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'knowledge');
 
   const sp = await searchParams;
   const query = sp.q?.trim() ?? '';

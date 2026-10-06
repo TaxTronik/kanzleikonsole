@@ -6,6 +6,7 @@ import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { renderSafeMarkdown } from '@/server/markdown';
 import { PortalFormFiller } from './filler';
@@ -19,6 +20,7 @@ export default async function PortalFormFillerPage({
 }) {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
+  await requireModulePage('portal', 'forms');
   const { id } = await params;
   const { tenantId, contactId, clientId } = session.user;
 

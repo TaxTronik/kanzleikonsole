@@ -1,6 +1,6 @@
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { RefreshScreeningForm } from './refresh-form';
 import { ScreeningSourceState } from './source-state';
 export default async function ScreeningAdminPage() {
@@ -10,7 +10,7 @@ export default async function ScreeningAdminPage() {
     actorId: session.user.staffId,
     actorType: 'STAFF',
   };
-  await assertModuleEnabled(ctx, 'sanctionsScreening');
+  await requireModulePage('staff', 'sanctionsScreening');
   const state = await withTenantContext(ctx, (tx) =>
     tx.sanctionsSourceState.findUnique({
       where: { tenantId: ctx.tenantId },

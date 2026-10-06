@@ -7,6 +7,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, FileText } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import type { FormFieldType } from '@prisma/client';
 import { readFormSchema } from '@/server/forms/schema-snapshot';
@@ -73,6 +74,7 @@ export default async function SubmissionDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'forms');
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 

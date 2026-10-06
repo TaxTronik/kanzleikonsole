@@ -11,6 +11,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Workflow } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { StartWorkflowForm } from './start-form';
 import { WorkflowSection } from './workflow-section';
@@ -25,6 +26,7 @@ export default async function ClientWorkflowsPage({
 }) {
   const { id: clientId } = await params;
   const session = await requireClientPageAccess(clientId);
+  await requireModulePage('staff', 'workflows');
   const { tenantId, staffId } = session.user;
   const sp = await searchParams;
   const filter = (sp.filter ?? 'all') as 'all' | 'mine';

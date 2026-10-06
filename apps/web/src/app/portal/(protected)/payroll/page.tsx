@@ -1,5 +1,6 @@
 import { withTenantContext } from '@taxtronik/db';
 import { payrollGuard } from '@/server/payroll/service';
+import { requireModulePage } from '@/server/settings/module-page';
 import { PAYROLL_SCHEMA, DATEV_GATE_MESSAGE } from '@/server/payroll/definition';
 import { PayrollFields } from '@/components/payroll-fields';
 import { PayrollUploadResume } from '@/components/payroll-upload-resume';
@@ -10,6 +11,7 @@ import {
   uploadEmployerPayrollAction,
 } from './actions';
 export default async function EmployerPayrollPage() {
+  await requireModulePage('portal', 'payrollIntake');
   const g = await payrollGuard('portal');
   const data = await withTenantContext(g.ctx, async (tx) => {
     const rows = await tx.payrollIntake.findMany({ orderBy: { createdAt: 'desc' }, take: 100 });

@@ -8,6 +8,7 @@ import { PayrollEmployerFields } from './employer-fields';
 import { PAYROLL_SCHEMA, DATEV_GATE_MESSAGE } from '@/server/payroll/definition';
 import { isUuid } from '@/lib/uuid';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import {
   createPayrollAction,
   saveEmployerDraftAction,
@@ -53,6 +54,7 @@ export default async function PayrollPage({
   searchParams: Promise<{ id?: string }>;
 }) {
   await requireStaffPage();
+  await requireModulePage('staff', 'payrollIntake');
   const g = await payrollGuard('staff');
   if (!('staffId' in g)) return null;
   const data = await withTenantContext(g.ctx, async (tx) => ({

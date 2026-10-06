@@ -8,6 +8,7 @@
 import Link from 'next/link';
 import { Workflow, Plus, FileText, ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { CreateTemplateForm } from './create-form';
 import { ToggleActiveForm, DeleteTemplateForm } from './row-forms';
@@ -15,6 +16,7 @@ import { QuickStartButton } from '../quick-start-button';
 
 export default async function WorkflowsPage() {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'workflows');
   const { tenantId, staffId } = session.user;
 
   // Die Mandantenauswahl im Startdialog sucht serverseitig (mit Zugriffsregel);

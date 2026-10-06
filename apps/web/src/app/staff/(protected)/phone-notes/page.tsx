@@ -1,4 +1,5 @@
 ﻿import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 
 import { Phone } from 'lucide-react';
@@ -10,6 +11,7 @@ import { berlinYmd } from '@/lib/fmt';
 
 export default async function PhoneNotesPage() {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'phoneNotes');
 
   const { tenantId, staffId } = session.user;
 

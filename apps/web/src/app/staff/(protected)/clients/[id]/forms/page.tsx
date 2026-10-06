@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ClipboardList } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { SendFormButton } from './send-form';
 import { fmtDateTimeShort } from '@/lib/fmt';
@@ -14,6 +15,7 @@ import { FORM_SUBMISSION_STATUS_LABELS } from '@/lib/domain-labels';
 export default async function ClientFormsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = await params;
   const session = await requireClientPageAccess(clientId);
+  await requireModulePage('staff', 'forms');
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { CalendarClock, Search } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import {
@@ -32,6 +33,7 @@ export default async function RemindersPage({
   searchParams: Promise<SearchParams>;
 }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'reminders');
   const { tenantId, staffId } = session.user;
   const sp = await searchParams;
   const scope: ReminderScope = sp.scope === 'vonmir' || sp.scope === 'alle' ? sp.scope : 'mir';

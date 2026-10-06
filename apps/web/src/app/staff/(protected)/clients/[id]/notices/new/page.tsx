@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { REGION_LABELS } from '@taxtronik/tax';
 import { ActionForm } from '@/components/action-form';
@@ -69,6 +70,7 @@ const KIND_OPTIONS: Array<[string, string]> = [
 export default async function NewNoticePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = await params;
   const session = await requireClientPageAccess(clientId);
+  await requireModulePage('staff', 'taxNotices');
   const { tenantId, staffId } = session.user;
 
   const client = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>

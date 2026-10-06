@@ -21,6 +21,7 @@ import { CalendarMonthGrid, MoreEntries, TaxDeadlinePills } from '@/components/c
 import { CalendarDays, AlertTriangle, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { StaffSession } from '@/server/auth/staff';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { loadTaxDeadlineDayGroupsTx } from '@/server/tax-deadlines/day-groups';
@@ -56,6 +57,7 @@ export default async function TaxDeadlinesPage({
   searchParams: Promise<Search>;
 }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'taxNotices');
   const sp = await searchParams;
   const view = sp.view === 'list' ? 'list' : 'month';
   const scope = sp.scope === 'mine' ? 'mine' : 'all';

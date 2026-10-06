@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { PlanEditor } from './editor';
 import { updatePlanAction, deletePlanAction } from '../actions';
@@ -13,6 +14,7 @@ export default async function PortalPlanDetailPage({
 }) {
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
+  await requireModulePage('portal', 'bwa');
   const { id } = await params;
   const { tenantId, contactId, clientId } = session.user;
 

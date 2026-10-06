@@ -1,16 +1,10 @@
-import type { TenantContext } from '@taxtronik/db';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { hasStaffPermission } from '@/server/auth/rbac';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { FeeCalculatorForm } from './calculator-form';
 export default async function StbvvPage() {
   const session = await requireStaffPage();
-  const ctx: TenantContext = {
-    tenantId: session.user.tenantId,
-    actorId: session.user.staffId,
-    actorType: 'STAFF',
-  };
-  await assertModuleEnabled(ctx, 'feeCalculator');
+  await requireModulePage('staff', 'feeCalculator');
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
       <h1 className="text-2xl font-bold">StBVV-Gebührenkalkulation</h1>

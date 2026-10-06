@@ -115,6 +115,8 @@ vi.mock('@/server/auth/staff-page', () => ({
     user: { tenantId: 'tenant-1', staffId: 'staff-1', roles: ['STAFF'] },
   })),
 }));
+// Modul-Gate der Seite (requireModulePage) ist separat getestet; hier aktiv.
+vi.mock('@/server/settings/module-page', () => ({ requireModulePage: vi.fn(async () => ({})) }));
 vi.mock('@/server/auth/rbac', () => ({
   accessibleClientsWhereFor: vi.fn(async () => ({ OR: [{ vertraulich: false }] })),
 }));

@@ -6,11 +6,13 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { FormEditor } from './editor';
 
 export default async function FormEditorPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'forms');
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 

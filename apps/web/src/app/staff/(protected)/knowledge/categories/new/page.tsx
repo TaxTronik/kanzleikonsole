@@ -1,11 +1,13 @@
 ﻿import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { CategoryForm } from './form';
 
 export default async function NewCategoryPage() {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'knowledge');
 
   const { tenantId, staffId } = session.user;
   const categories = await withTenantContext(

@@ -30,6 +30,8 @@ vi.mock('@/server/settings/portal-features', () => ({
   readPortalFeatures: async () => ({ bwaPlanning: true }),
 }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: fixture.withTenantContext }));
+// Modul-Gate der Seiten (requireModulePage) ist separat getestet; hier aktiv.
+vi.mock('@/server/settings/module-page', () => ({ requireModulePage: vi.fn(async () => ({})) }));
 vi.mock('@/app/portal/(protected)/bwa/plan/actions', () => ({ createPlanAction: vi.fn() }));
 vi.mock('@/app/staff/(protected)/clients/[id]/bwa/plans/actions', () => ({
   createStaffPlanAction: vi.fn(),

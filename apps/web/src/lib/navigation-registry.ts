@@ -1,23 +1,29 @@
-import type { BooleanModuleKey, ModuleConfig, ModeModuleKey } from '@/server/settings/modules';
+import type { ModuleConfig } from '@/server/settings/modules';
 import type { PortalFeatures } from '@/server/settings/portal-features';
 import type { NavGroup, NavIcon, NavItem } from '@/components/sidebar-nav';
+import { isModuleAreaEnabled, type ModuleAreaKey } from '@/lib/module-registry';
 
 type Surface = 'staff' | 'portal';
 type PortalFeatureKey = keyof PortalFeatures | 'clientInbox';
 
+/**
+ * Nicht-modulare Sichtbarkeitsbedingungen. Modulanforderungen stehen
+ * ausschließlich in der Modul-Registry (`module`); `anyArea` verfeinert nur
+ * (schränkt weiter ein), erweitert aber nie, was das Route-Gate erlaubt.
+ */
 interface AvailabilityClause {
-  allModules?: readonly BooleanModuleKey[];
-  anyModules?: readonly BooleanModuleKey[];
-  modeModule?: ModeModuleKey;
   permission?: string;
   admin?: boolean;
   portalFeature?: PortalFeatureKey;
+  anyArea?: readonly ModuleAreaKey[];
 }
 
 export interface NavDefinition extends NavItem {
   id: string;
   surface: Surface;
   groupId: string;
+  /** Registry-Bereich der Zielseite (dieselbe Anforderung wie Route-Gate und Seite). */
+  module?: ModuleAreaKey;
   /** OR-Verknuepfte Alternativen; innerhalb einer Klausel gilt AND. */
   availableWhen?: readonly AvailabilityClause[];
   searchAliases?: readonly string[];
@@ -111,7 +117,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     label: 'Workflows',
     icon: 'Workflow',
     exact: true,
-    availableWhen: one({ allModules: ['workflows'] }),
+    module: 'workflows',
   },
   {
     id: 'staff-calendar',
@@ -121,7 +127,8 @@ const NAVIGATION: readonly NavDefinition[] = [
     label: 'Kanzleikalender',
     icon: 'CalendarDays',
     altPaths: ['/staff/tax-deadlines'],
-    availableWhen: one({ allModules: ['taxNotices'] }),
+    // Kalender zeigt Steuertermine UND Termine (Registry: appointments ODER taxNotices).
+    module: 'officeCalendar',
   },
   {
     id: 'staff-reminders',
@@ -130,7 +137,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/reminders',
     label: 'Wiedervorlagen',
     icon: 'CalendarClock',
-    availableWhen: one({ allModules: ['reminders'] }),
+    module: 'reminders',
   },
   {
     id: 'staff-deadlines',
@@ -161,7 +168,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/phone-notes',
     label: 'Telefonzettel',
     icon: 'Phone',
-    availableWhen: one({ allModules: ['phoneNotes'] }),
+    module: 'phoneNotes',
   },
 
   // Staff: Kanzleiorganisation
@@ -172,7 +179,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/invoices',
     label: 'Rechnungen',
     icon: 'Receipt',
-    availableWhen: one({ modeModule: 'invoices' }),
+    module: 'invoices',
   },
   {
     id: 'staff-poa',
@@ -181,7 +188,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/poa',
     label: 'Vollmachten',
     icon: 'ScrollText',
-    availableWhen: one({ modeModule: 'poa' }),
+    module: 'poa',
   },
   {
     id: 'staff-documents',
@@ -198,7 +205,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/time',
     label: 'Zeiterfassung',
     icon: 'Clock',
-    availableWhen: one({ allModules: ['timeTracking'] }),
+    module: 'timeTracking',
   },
   {
     id: 'staff-absences',
@@ -215,7 +222,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/knowledge',
     label: 'Wissen',
     icon: 'BookOpen',
-    availableWhen: one({ allModules: ['knowledge'] }),
+    module: 'knowledge',
   },
   {
     id: 'staff-reports',
@@ -224,7 +231,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/reports',
     label: 'Auswertungen',
     icon: 'BarChart3',
-    availableWhen: one({ allModules: ['bwa'] }),
+    module: 'bwa',
   },
 
   // Staff: Erweiterungen. Geteilte Ziele tragen absichtlich EIN kanonisches Label.
@@ -236,7 +243,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     label: 'Wissen im Kontext',
     searchAliases: ['Wiki im Bearbeitungskontext', 'Kanzleileitfäden'],
     icon: 'BookOpen',
-    availableWhen: one({ allModules: ['knowledge', 'knowledgeContext'] }),
+    module: 'knowledgeContext',
   },
   {
     id: 'staff-year-end',
@@ -246,7 +253,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     label: 'Jahreswechsel',
     searchAliases: ['Jahreswechselkampagnen'],
     icon: 'ClipboardList',
-    availableWhen: one({ allModules: ['yearEndCampaigns'] }),
+    module: 'yearEndCampaigns',
   },
   {
     id: 'staff-interactions',
@@ -256,7 +263,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     label: 'Rückmeldungen',
     searchAliases: ['Mandantenentscheidungen und Feedback', 'Bescheidentscheidungen', 'Feedback'],
     icon: 'Inbox',
-    availableWhen: one({ anyModules: ['noticeDecisions', 'feedbackSurveys'] }),
+    module: 'interactions',
   },
   {
     id: 'staff-mailbox',
@@ -265,7 +272,8 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/mailbox',
     label: 'Smart-Mailbox',
     icon: 'Mail',
-    availableWhen: one({ allModules: ['smartMailbox'], permission: 'INBOUND_MAIL_MANAGE' }),
+    module: 'smartMailbox',
+    availableWhen: one({ permission: 'INBOUND_MAIL_MANAGE' }),
   },
   {
     id: 'staff-payroll',
@@ -274,7 +282,8 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/payroll',
     label: 'Personalfragebogen',
     icon: 'ClipboardList',
-    availableWhen: one({ allModules: ['payrollIntake'], permission: 'PAYROLL_MANAGE' }),
+    module: 'payrollIntake',
+    availableWhen: one({ permission: 'PAYROLL_MANAGE' }),
   },
   {
     id: 'staff-client-assistance',
@@ -283,7 +292,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/client-assistance',
     label: 'Mandanten-Assistenten',
     icon: 'ClipboardList',
-    availableWhen: one({ anyModules: ['expenseAssistance', 'clientProcedures'] }),
+    module: 'clientAssistance',
   },
   {
     id: 'staff-mandate-expansion',
@@ -292,11 +301,12 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/mandate-expansion',
     label: 'Mandatsorganisation',
     icon: 'Workflow',
+    module: 'mandateExpansion',
+    // Mandatsübergabe ist Admin-only: Nicht-Admins sehen den Hub nur mit einem
+    // weiteren aktiven Unterbereich.
     availableWhen: [
-      { allModules: ['mandateStructure'] },
-      { allModules: ['workflowDependencies'] },
-      { allModules: ['vdbPreparation'] },
-      { allModules: ['mandateOffboarding'], admin: true },
+      { admin: true },
+      { anyArea: ['mandateStructure', 'workflowDependencies', 'vdbPreparation'] },
     ],
   },
   {
@@ -307,7 +317,8 @@ const NAVIGATION: readonly NavDefinition[] = [
     label: 'Sanktionen & PEP',
     searchAliases: ['Sanktions- und PEP-Prüfung'],
     icon: 'Shield',
-    availableWhen: one({ allModules: ['sanctionsScreening'], admin: true }),
+    module: 'sanctionsScreening',
+    availableWhen: one({ admin: true }),
   },
   {
     id: 'staff-stbvv',
@@ -317,7 +328,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     label: 'Honorarvorschläge',
     searchAliases: ['StBVV-Honorarvorschläge', 'Gebührenkalkulation'],
     icon: 'Receipt',
-    availableWhen: one({ allModules: ['feeCalculator'] }),
+    module: 'feeCalculator',
   },
 
   // Staff: Administration
@@ -366,14 +377,8 @@ const NAVIGATION: readonly NavDefinition[] = [
       id === 'staff-admin-privacy'
         ? ['/staff/admin/dsgvo', '/staff/admin/dsgvo-retention', '/staff/service-providers']
         : undefined,
-    availableWhen: one({
-      admin: true,
-      ...(module === 'invoices'
-        ? { modeModule: 'invoices' as const }
-        : module
-          ? { allModules: [module] as BooleanModuleKey[] }
-          : {}),
-    }),
+    module: module as ModuleAreaKey | undefined,
+    availableWhen: one({ admin: true }),
   })),
 
   // Portal
@@ -409,7 +414,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/portal/forms',
     label: 'Formulare',
     icon: 'ClipboardList',
-    availableWhen: one({ allModules: ['forms'] }),
+    module: 'forms',
   },
   {
     id: 'portal-appointments',
@@ -418,7 +423,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/portal/appointments',
     label: 'Termine',
     icon: 'CalendarDays',
-    availableWhen: one({ allModules: ['appointments'] }),
+    module: 'appointments',
   },
   {
     id: 'portal-client-assistance',
@@ -427,7 +432,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/portal/client-assistance',
     label: 'Belege und Verfahren',
     icon: 'ClipboardList',
-    availableWhen: one({ anyModules: ['expenseAssistance', 'clientProcedures'] }),
+    module: 'clientAssistance',
   },
   {
     id: 'portal-interactions',
@@ -437,7 +442,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     label: 'Rückmeldungen',
     searchAliases: ['Entscheidungen und Feedback', 'Bescheidentscheidungen', 'Feedback'],
     icon: 'Inbox',
-    availableWhen: one({ anyModules: ['noticeDecisions', 'feedbackSurveys'] }),
+    module: 'interactions',
   },
   {
     id: 'portal-payroll',
@@ -446,7 +451,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/portal/payroll',
     label: 'Personalvorgänge',
     icon: 'ClipboardList',
-    availableWhen: one({ allModules: ['payrollIntake'] }),
+    module: 'payrollIntake',
   },
   {
     id: 'portal-handovers',
@@ -455,7 +460,8 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/portal/handovers',
     label: 'Hinterlegt',
     icon: 'Inbox',
-    availableWhen: one({ allModules: ['handovers'], portalFeature: 'handoversView' }),
+    module: 'handovers',
+    availableWhen: one({ portalFeature: 'handoversView' }),
   },
   {
     id: 'portal-bwa',
@@ -464,7 +470,8 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/portal/bwa',
     label: 'Auswertungen',
     icon: 'BarChart3',
-    availableWhen: one({ allModules: ['bwa'], portalFeature: 'bwaView' }),
+    module: 'bwa',
+    availableWhen: one({ portalFeature: 'bwaView' }),
   },
   {
     id: 'portal-tax',
@@ -473,7 +480,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/portal/steuer',
     label: 'Steuererklärungen',
     icon: 'ScrollText',
-    availableWhen: one({ allModules: ['taxNotices'] }),
+    module: 'taxNotices',
   },
   {
     id: 'portal-invoices',
@@ -482,7 +489,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/portal/invoices',
     label: 'Rechnungen',
     icon: 'Receipt',
-    availableWhen: one({ modeModule: 'invoices' }),
+    module: 'invoices',
   },
   {
     id: 'portal-documents',
@@ -515,19 +522,25 @@ function clauseMatches(clause: AvailabilityClause, access: NavigationAccess): bo
   if (clause.admin && !access.isAdmin) return false;
   if (clause.permission && !access.isAdmin && !access.permissions?.includes(clause.permission))
     return false;
-  if (clause.allModules?.some((key) => !access.modules[key])) return false;
-  if (clause.anyModules && !clause.anyModules.some((key) => access.modules[key])) return false;
-  if (clause.modeModule === 'poa' && access.modules.poaMode === 'OFF') return false;
-  if (clause.modeModule === 'invoices' && access.modules.invoiceMode === 'OFF') return false;
   if (clause.portalFeature && access.portalFeatures?.[clause.portalFeature] !== true) return false;
+  if (clause.anyArea && !clause.anyArea.some((area) => isModuleAreaEnabled(access.modules, area)))
+    return false;
   return true;
+}
+
+function isNavItemAvailable(item: NavDefinition, access: NavigationAccess): boolean {
+  if (item.module && !isModuleAreaEnabled(access.modules, item.module)) return false;
+  return !item.availableWhen || item.availableWhen.some((clause) => clauseMatches(clause, access));
+}
+
+/** Alle Navigationsdefinitionen (Registry-Konsistenztests). */
+export function navigationDefinitions(): readonly NavDefinition[] {
+  return NAVIGATION;
 }
 
 function resolveNavigation(surface: Surface, access: NavigationAccess): ResolvedNavGroup[] {
   const definitions = NAVIGATION.filter(
-    (item) =>
-      item.surface === surface &&
-      (!item.availableWhen || item.availableWhen.some((clause) => clauseMatches(clause, access))),
+    (item) => item.surface === surface && isNavItemAvailable(item, access),
   );
   return GROUPS[surface]
     .map((group) => ({
@@ -601,13 +614,69 @@ const MANDATE_EXPANSION_ITEMS = [
     description:
       'Externe Meldeschritte mit Dokumentnachweis festhalten. Kein ungeprüfter VDB-Importexport.',
   },
-] as const;
+] as const satisfies ReadonlyArray<{
+  id: string;
+  module: ModuleAreaKey;
+  admin?: boolean;
+  href: string;
+  label: string;
+  title: string;
+  description: string;
+}>;
+
+/** Unternavigation der Mandatsorganisation (Registry-Konsistenztests). */
+export function mandateExpansionDefinitions(): ReadonlyArray<{
+  module: ModuleAreaKey;
+  href: string;
+}> {
+  return MANDATE_EXPANSION_ITEMS;
+}
 
 export function resolveMandateExpansionItems(
   modules: ModuleConfig,
   isAdmin: boolean,
 ): MandateExpansionItem[] {
   return MANDATE_EXPANSION_ITEMS.filter(
-    (item) => modules[item.module] && (!('admin' in item) || !item.admin || isAdmin),
+    (item) =>
+      isModuleAreaEnabled(modules, item.module) && (!('admin' in item) || !item.admin || isAdmin),
   ).map(({ id, href, label, title, description }) => ({ id, href, label, title, description }));
+}
+
+/**
+ * Modulabhängige Reiter der Mandantenakte (/staff/clients/[id]). `[id]` wird
+ * durch die Mandanten-ID ersetzt; die Sichtbarkeit kommt aus der Registry.
+ */
+const CLIENT_NAVIGATION = [
+  { id: 'billing', href: '/staff/clients/[id]/billing', module: 'timeBilling' },
+  { id: 'bwa', href: '/staff/clients/[id]/bwa', module: 'bwa' },
+  { id: 'poa', href: '/staff/poa?clientId=[id]', module: 'poa' },
+  { id: 'subsumtion', href: '/staff/clients/[id]/subsumtion', module: 'risk' },
+  { id: 'tax-schedule', href: '/staff/clients/[id]/tax-schedule', module: 'taxNotices' },
+  { id: 'notices', href: '/staff/clients/[id]/notices', module: 'taxNotices' },
+  { id: 'workflows', href: '/staff/clients/[id]/workflows', module: 'workflows' },
+  { id: 'forms', href: '/staff/clients/[id]/forms', module: 'forms' },
+] as const satisfies ReadonlyArray<{ id: string; href: string; module: ModuleAreaKey }>;
+
+export type ClientNavigationId = (typeof CLIENT_NAVIGATION)[number]['id'];
+
+/** Reiter der Mandantenakte (Registry-Konsistenztests). */
+export function clientNavigationDefinitions(): ReadonlyArray<{
+  id: ClientNavigationId;
+  href: string;
+  module: ModuleAreaKey;
+}> {
+  return CLIENT_NAVIGATION;
+}
+
+export function resolveClientNavigation(
+  modules: ModuleConfig,
+  clientId: string,
+): Partial<Record<ClientNavigationId, string>> {
+  const resolved: Partial<Record<ClientNavigationId, string>> = {};
+  for (const item of CLIENT_NAVIGATION) {
+    if (isModuleAreaEnabled(modules, item.module)) {
+      resolved[item.id] = item.href.replace('[id]', encodeURIComponent(clientId));
+    }
+  }
+  return resolved;
 }

@@ -1,12 +1,14 @@
 ﻿import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 
 import { withTenantContext } from '@taxtronik/db';
 import { InvoiceCategoryEditor } from './editor';
 
 export default async function InvoiceCategoriesPage() {
   const session = await requireStaffPage({ admin: true });
+  await requireModulePage('staff', 'invoices');
   const { tenantId, staffId } = session.user;
 
   const [categories, templates] = await withTenantContext(

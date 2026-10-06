@@ -13,6 +13,7 @@
 import Link from 'next/link';
 import { Workflow, Activity, User as UserIcon, AlertCircle, Plus } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter } from '@/server/auth/client-access-filter';
@@ -31,6 +32,7 @@ export default async function ActiveWorkflowsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'workflows');
   const { tenantId, staffId } = session.user;
   const sp = await searchParams;
   const filter = (sp.filter ?? 'all') as 'all' | 'mine' | 'mineStart';

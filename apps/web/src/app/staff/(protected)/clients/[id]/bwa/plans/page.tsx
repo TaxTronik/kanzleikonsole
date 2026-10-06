@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { BwaDashboard } from '@/components/bwa/bwa-dashboard';
 
@@ -12,6 +13,7 @@ export default async function StaffClientBwaDashboardPage({
 }) {
   const { id: clientId } = await params;
   const session = await requireClientPageAccess(clientId);
+  await requireModulePage('staff', 'bwa');
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

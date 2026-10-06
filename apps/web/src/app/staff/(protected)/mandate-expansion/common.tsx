@@ -1,19 +1,22 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { isStaffAdmin } from '@/server/auth/rbac';
-import { readModules, type BooleanModuleKey } from '@/server/settings/modules';
+import { readModules } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { resolveMandateExpansionItems } from '@/lib/navigation-registry';
 import { ClientCombobox } from '@/components/ui/client-combobox';
-export async function expansionPage(module: BooleanModuleKey, admin = false) {
+/** Seiten-Gate der Unterseiten: Registry-Bereich je Unterseite (requireModulePage). */
+export async function expansionPage(
+  area: 'mandateStructure' | 'workflowDependencies' | 'mandateOffboarding' | 'vdbPreparation',
+  admin = false,
+) {
   const session = await requireStaffPage({ admin });
   const ctx = {
     tenantId: session.user.tenantId,
     actorId: session.user.staffId,
     actorType: 'STAFF' as const,
   };
-  const modules = await readModules(ctx);
-  if (!modules[module]) notFound();
+  const modules = await requireModulePage('staff', area);
   return { session, ctx, modules };
 }
 export async function ExpansionNavigation() {

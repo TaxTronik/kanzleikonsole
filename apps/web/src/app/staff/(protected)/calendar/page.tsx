@@ -2,9 +2,13 @@
 // /staff/calendar — Kanzleikalender
 //
 // Zeigt im Monatsraster:
-//   - Steuertermine (aus tax_deadline)
-//   - Termine (aus appointment)
-// Über dem Raster: Liste der offenen Terminanfragen (appointment_request).
+//   - Steuertermine (aus tax_deadline) — Modul taxNotices
+//   - Termine (aus appointment) — Modul appointments
+//   - Abwesenheiten (ohne Modul)
+// Über dem Raster: Liste der offenen Terminanfragen (appointment_request) —
+// Modul appointments.
+// Registry-Bereich officeCalendar: nutzbar, sobald eines der beiden Module
+// aktiv ist; Inhalte des inaktiven Moduls werden weder geladen noch gezeigt.
 //
 // Die fokussierte Route /staff/tax-deadlines bleibt über denselben
 // Ansichts-Schalter in beiden Kalendern direkt erreichbar.
@@ -14,6 +18,7 @@ import { berlinMonthBoundsUtc, buildMonthGridCells, parseMonth } from '@/lib/tax
 import Link from 'next/link';
 import { CalendarDays, ChevronLeft, ChevronRight, Inbox, AlertTriangle } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { loadTaxDeadlineDayGroupsTx } from '@/server/tax-deadlines/day-groups';
@@ -28,8 +33,22 @@ interface Search {
   month?: string;
 }
 
+const NO_TAX_DEADLINES: Awaited<ReturnType<typeof loadTaxDeadlineDayGroupsTx>> = new Map();
+
+function calendarDescription(showTax: boolean, showAppointments: boolean): string {
+  const parts = [
+    ...(showTax ? ['Steuertermine'] : []),
+    ...(showAppointments ? ['Termine'] : []),
+    'Abwesenheiten',
+  ];
+  return `${parts.slice(0, -1).join(', ')} und ${parts.at(-1)} — alle Mandanten der Kanzlei.`;
+}
+
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<Search> }) {
   const session = await requireStaffPage();
+  const modules = await requireModulePage('staff', 'officeCalendar');
+  const showTax = modules.taxNotices;
+  const showAppointments = modules.appointments;
 
   const sp = await searchParams;
   const { year, month0 } = parseMonth(sp.month);
@@ -61,37 +80,46 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         absences,
       ] = await Promise.all([
         // P-20: dieselbe DB-Aggregation wie /staff/tax-deadlines (Monatsansicht).
-        loadTaxDeadlineDayGroupsTx(tx, {
-          dueDate: { gte: dateStart, lte: dateEnd },
-          ...viaVisibleClient,
-        }),
-        tx.appointment.findMany({
-          where: {
-            startsAt: { lt: appointmentEndExclusive },
-            endsAt: { gte: appointmentStart },
-            status: { not: 'CANCELLED' },
-            // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
-            ...optionalClientAccessFilter(clientAccess),
-          },
-          orderBy: { startsAt: 'asc' },
-          include: {
-            owner: { select: { id: true, fullName: true } },
-            client: { select: { id: true, name: true } },
-          },
-        }),
-        tx.appointmentRequest.findMany({
-          where: { status: 'PENDING', ...viaVisibleClient },
-          orderBy: { createdAt: 'desc' },
-          include: {
-            client: { select: { id: true, name: true } },
-            createdByContactRel: { select: { fullName: true } },
-          },
-        }),
-        tx.staffUser.findMany({
-          where: { active: true },
-          orderBy: { fullName: 'asc' },
-          select: { id: true, fullName: true },
-        }),
+        showTax
+          ? loadTaxDeadlineDayGroupsTx(tx, {
+              dueDate: { gte: dateStart, lte: dateEnd },
+              ...viaVisibleClient,
+            })
+          : Promise.resolve(NO_TAX_DEADLINES),
+        showAppointments
+          ? tx.appointment.findMany({
+              where: {
+                startsAt: { lt: appointmentEndExclusive },
+                endsAt: { gte: appointmentStart },
+                status: { not: 'CANCELLED' },
+                // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
+                ...optionalClientAccessFilter(clientAccess),
+              },
+              orderBy: { startsAt: 'asc' },
+              include: {
+                owner: { select: { id: true, fullName: true } },
+                client: { select: { id: true, name: true } },
+              },
+            })
+          : Promise.resolve([]),
+        showAppointments
+          ? tx.appointmentRequest.findMany({
+              where: { status: 'PENDING', ...viaVisibleClient },
+              orderBy: { createdAt: 'desc' },
+              include: {
+                client: { select: { id: true, name: true } },
+                createdByContactRel: { select: { fullName: true } },
+              },
+            })
+          : Promise.resolve([]),
+        // Bearbeiterauswahl nur für Terminanlage und Terminanfragen.
+        showAppointments
+          ? tx.staffUser.findMany({
+              where: { active: true },
+              orderBy: { fullName: 'asc' },
+              select: { id: true, fullName: true },
+            })
+          : Promise.resolve([]),
         // iter87: Abwesenheiten im Kanzleikalender — nur Name + „Urlaub"/„abw.",
         // ohne Art/Grund (vertraulich, siehe Absence-Modell).
         tx.vacationRequest.findMany({
@@ -206,13 +234,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
             <CalendarDays className="h-6 w-6 text-brand-600" />
             Kanzleikalender
           </h1>
-          <p className="text-muted text-sm">
-            Steuertermine, Termine und Abwesenheiten — alle Mandanten der Kanzlei.
-          </p>
+          <p className="text-muted text-sm">{calendarDescription(showTax, showAppointments)}</p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <CalendarModeSwitch active="calendar" month={currentMonthQs} />
-          <NewAppointmentDialog staffOptions={data.staffList} currentStaffId={staffId} />
+          {showTax && <CalendarModeSwitch active="calendar" month={currentMonthQs} />}
+          {showAppointments && (
+            <NewAppointmentDialog staffOptions={data.staffList} currentStaffId={staffId} />
+          )}
         </div>
       </div>
 

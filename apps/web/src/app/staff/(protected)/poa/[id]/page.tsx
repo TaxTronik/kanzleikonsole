@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { renderMarkdown } from '@/lib/markdown';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
@@ -20,6 +21,7 @@ const statusLabels: Record<string, string> = {
 
 export default async function PoaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'poa');
 
   const { id } = await params;
   const { tenantId, staffId } = session.user;

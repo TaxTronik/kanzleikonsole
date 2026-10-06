@@ -8,6 +8,7 @@
 import { redirect } from 'next/navigation';
 import { CalendarDays, Check, Clock } from 'lucide-react';
 import { portalAuth } from '@/server/auth/portal';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { portalBaseUrl } from '@taxtronik/config';
@@ -29,6 +30,7 @@ export default async function PortalAppointmentsPage() {
   const now = new Date();
   const session = await portalAuth();
   if (!session?.user) redirect('/portal/login');
+  await requireModulePage('portal', 'appointments');
 
   const { tenantId, contactId, clientId } = session.user;
   const features = await readPortalFeatures({

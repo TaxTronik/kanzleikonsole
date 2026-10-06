@@ -6,7 +6,7 @@ import { hasStaffPermission } from '@/server/auth/rbac';
 import { hasClientPickerOptionTx } from '@/server/clients/picker';
 import { ClientPrerequisiteEmptyState } from '@/components/client-prerequisite-empty-state';
 import { withTenantContext } from '@taxtronik/db';
-import { readModules } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { NewInvoiceForm } from './form';
 import { ExternalInvoiceForm } from './external-form';
 
@@ -14,8 +14,7 @@ export default async function NewInvoicePage() {
   const session = await requireStaffPage();
 
   const { tenantId, staffId } = session.user;
-  const modules = await readModules({ tenantId, actorId: staffId, actorType: 'STAFF' });
-  if (modules.invoiceMode === 'OFF') redirect('/staff/dashboard');
+  const modules = await requireModulePage('staff', 'invoices');
 
   // iter87: EXTERNAL-Upload = Ausstellen+Zustellen (INVOICE_SEND), In-App-
   // Anlage = Entwurf (INVOICE_MANAGE). Die Actions prüfen dieselbe Regel.

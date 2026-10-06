@@ -16,8 +16,8 @@ vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/server/settings/access-policy', () => ({
   readAccessPolicyTx: async () => ({ clientAccessMode: fixture.accessMode }),
 }));
-vi.mock('@/server/settings/modules', () => ({
-  readModules: async () => ({ invoiceMode: fixture.mode }),
+vi.mock('@/server/settings/module-page', () => ({
+  requireModulePage: async () => ({ invoiceMode: fixture.mode }),
 }));
 vi.mock('@taxtronik/db', () => ({
   withTenantContext: async (_ctx: unknown, run: (tx: unknown) => unknown) =>

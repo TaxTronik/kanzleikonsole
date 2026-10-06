@@ -5,12 +5,14 @@
 import Link from 'next/link';
 import { ClipboardList, Plus, FileText } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { CreateFormForm } from './create-form';
 import { FormRowActions } from './row-forms';
 
 export default async function FormsListPage() {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'forms');
   const { tenantId, staffId } = session.user;
 
   const templates = await withTenantContext(

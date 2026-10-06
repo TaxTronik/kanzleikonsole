@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { randomUUID } from 'node:crypto';
 import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { readModules } from '@/server/settings/modules';
 import { NewPoaForm } from './form';
@@ -30,6 +31,7 @@ export default async function NewPoaPage({
   searchParams: Promise<SearchParams>;
 }) {
   const session = await requireStaffPage({ admin: true, deniedRedirect: '/staff/poa' });
+  await requireModulePage('staff', 'poa');
 
   const query = await searchParams;
   const returnContext = parsePoaCreateReturnContext(query.from);

@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
-import { readModules } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { ExpansionForm } from '@/components/expansion-form';
 import { respondInteractionAction } from './actions';
 import { noticeDecisionSnapshot } from '@/server/workflows/interactions';
@@ -12,8 +12,7 @@ export default async function PortalInteractionsPage() {
   if (!session?.user) redirect('/portal/login');
   const { tenantId, contactId, clientId } = session.user;
   const ctx = { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' as const };
-  const modules = await readModules(ctx);
-  if (!modules.noticeDecisions && !modules.feedbackSurveys) redirect('/portal');
+  const modules = await requireModulePage('portal', 'interactions');
   const rows = await withTenantContext(ctx, (tx) =>
     tx.clientInteraction.findMany({
       where: {

@@ -21,6 +21,8 @@ vi.mock('next/link', () => ({
   ),
 }));
 vi.mock('@/server/auth/staff-page', () => ({ requireStaffPage: async () => ({}) }));
+// Modul-Gate der Seite (requireModulePage) ist separat getestet; hier aktiv.
+vi.mock('@/server/settings/module-page', () => ({ requireModulePage: vi.fn(async () => ({})) }));
 vi.mock('@/server/auth/staff', () => ({ staffAuth: vi.fn() }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/server/actions/staff-action', () => ({

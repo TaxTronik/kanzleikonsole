@@ -11,6 +11,7 @@
 import Link from 'next/link';
 import { AlertTriangle } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
 import { readModules } from '@/server/settings/modules';
@@ -24,6 +25,7 @@ function ymd(d: Date): string {
 
 export default async function QuantenlosPage() {
   const session = await requireStaffPage({ admin: true });
+  await requireModulePage('staff', 'risk');
 
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };

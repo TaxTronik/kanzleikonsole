@@ -9,6 +9,8 @@ const m = vi.hoisted(() => ({
   session: { user: { tenantId: 'tenant-a', staffId: 'staff-a' } },
 }));
 vi.mock('@/server/auth/staff-page', () => ({ requireStaffPage: async () => m.session }));
+// Modul-Gate der Seite (requireModulePage) ist separat getestet; hier aktiv.
+vi.mock('@/server/settings/module-page', () => ({ requireModulePage: vi.fn(async () => ({})) }));
 vi.mock('@/server/auth/rbac', () => ({
   isStaffAdmin: () => false,
   accessibleClientsWhereFor: async () => ({}),

@@ -1,13 +1,12 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { assertModuleEnabled } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { ContextEditor } from './editor';
 export default async function ContextPage() {
   const session = await requireStaffPage({ admin: true });
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
-  await assertModuleEnabled(ctx, 'knowledgeContext');
-  await assertModuleEnabled(ctx, 'knowledge');
+  await requireModulePage('staff', 'knowledgeContext');
   const [steps, templates, articles] = await withTenantContext(ctx, (tx) =>
     Promise.all([
       tx.workflowStep.findMany({

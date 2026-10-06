@@ -2,6 +2,7 @@
 
 import { Receipt, Plus, FileDown } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { accessibleClientsWhereFor, hasStaffPermission } from '@/server/auth/rbac';
 import { clientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
@@ -18,6 +19,7 @@ export default async function InvoicesPage({
   searchParams: Promise<{ status?: string; cursor?: string }>;
 }) {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'invoices');
 
   const sp = await searchParams;
   const filterStatus =

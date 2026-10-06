@@ -2,12 +2,14 @@
 import { ArrowLeft } from 'lucide-react';
 import { randomUUID } from 'node:crypto';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { ArticleEditor } from '../article-editor';
 import { createArticleAction } from '../actions';
 
 export default async function NewArticlePage() {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'knowledge');
 
   const { tenantId, staffId } = session.user;
   const categories = await withTenantContext(

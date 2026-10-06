@@ -4,7 +4,7 @@ import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import type { FeeCalculation } from '@taxtronik/tax';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { assertClientAccessTx, hasStaffPermission } from '@/server/auth/rbac';
-import { assertModuleEnabled, readModules } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { FeeCalculatorForm, FeeDraftForm } from '../../../stbvv/calculator-form';
 export default async function ClientStbvvPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params,
@@ -14,7 +14,7 @@ export default async function ClientStbvvPage({ params }: { params: Promise<{ id
     actorId: session.user.staffId,
     actorType: 'STAFF',
   };
-  await assertModuleEnabled(ctx, 'feeCalculator');
+  const modules = await requireModulePage('staff', 'feeCalculator');
   const data = await withTenantContext(ctx, async (tx) => {
     await assertClientAccessTx(tx, session, id);
     return {
@@ -28,8 +28,7 @@ export default async function ClientStbvvPage({ params }: { params: Promise<{ id
     };
   });
   if (!data.client) notFound();
-  const modules = await readModules(ctx),
-    canSave = hasStaffPermission(session, 'INVOICE_MANAGE');
+  const canSave = hasStaffPermission(session, 'INVOICE_MANAGE');
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-6xl space-y-6">
       <Link className="back-link" href={`/staff/clients/${id}`}>

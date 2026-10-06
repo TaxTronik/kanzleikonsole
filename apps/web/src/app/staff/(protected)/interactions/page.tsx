@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { readModules } from '@/server/settings/modules';
+import { requireModulePage } from '@/server/settings/module-page';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { ExpansionForm } from '@/components/expansion-form';
 import {
@@ -17,10 +16,9 @@ export default async function InteractionsPage() {
   const session = await requireStaffPage();
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
-  const modules = await readModules(ctx);
+  const modules = await requireModulePage('staff', 'interactions');
   const trendNow = new Date();
   const trendWindow = feedbackMonthWindow(trendNow);
-  if (!modules.noticeDecisions && !modules.feedbackSurveys) redirect('/staff/dashboard');
   const data = await withTenantContext(ctx, async (tx) => {
     const clients = await tx.client.findMany({
       where: await accessibleClientsWhereFor(tx, session),

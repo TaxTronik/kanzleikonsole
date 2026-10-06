@@ -10,6 +10,7 @@
 import Link from 'next/link';
 import { ArrowLeft, Workflow, Clock, AlertTriangle } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireModulePage } from '@/server/settings/module-page';
 import { Prisma, withTenantContext } from '@taxtronik/db';
 import { fmtDecimal } from '@/lib/fmt';
 
@@ -27,6 +28,7 @@ interface WorkflowBottleneckAggregate {
 
 export default async function WorkflowStatsPage() {
   const session = await requireStaffPage();
+  await requireModulePage('staff', 'workflows');
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(

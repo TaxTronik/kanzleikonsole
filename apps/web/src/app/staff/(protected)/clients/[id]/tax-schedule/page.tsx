@@ -9,6 +9,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
+import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { TaxScheduleForm, type ScheduleConfigDto } from './tax-schedule-form';
 
@@ -19,6 +20,7 @@ export default async function ClientTaxSchedulePage({
 }) {
   const { id: clientId } = await params;
   const session = await requireClientPageAccess(clientId);
+  await requireModulePage('staff', 'taxNotices');
   const { tenantId, staffId } = session.user;
 
   const data = await withTenantContext(
