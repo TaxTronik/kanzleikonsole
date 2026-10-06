@@ -257,16 +257,17 @@ describe('n8n-Verbindungsformular (saveN8nAction, testN8nApiAction)', () => {
     },
   );
 
-  it('antwortet bei einer URL ohne Schema mit der zentralen Meldung statt einer Fehlerseite', async () => {
-    // Das Service-Schema (HttpUrl) ruft `new URL` auch nach gescheiterter
-    // URL-Prüfung auf und wirft dabei; früher endete das als Fehlerseite.
+  it('meldet eine URL ohne Schema als Feldfehler statt einer Fehlerseite', async () => {
+    // Das Service-Schema (HttpUrl) rief `new URL` auch nach gescheiterter
+    // URL-Prüfung auf und warf dabei einen TypeError (früher eine Fehlerseite,
+    // nach K-02 die zentrale Meldung); jetzt ist es ein Feldfehler.
     const entries: Entries = [['uiBaseUrl', 'n8n.example']];
-    expect(() => legacyConnection(form(entries))).toThrow('Invalid URL');
+    const before = legacyConnection(form(entries));
+    expect(before.success).toBe(false);
 
-    expect(await saveN8nAction(null, form(entries))).toEqual({
-      ok: false,
-      error: UNEXPECTED_ACTION_ERROR,
-    });
+    const saved = await saveN8nAction(null, form(entries));
+    expect(saved).toMatchObject({ ok: false, errorCode: 'VALIDATION_ERROR' });
+    expect(fieldNames(saved)).toContain('uiBaseUrl');
     expect(h.saveN8nConnection).not.toHaveBeenCalled();
   });
 });
@@ -279,8 +280,8 @@ describe('n8n-Routenformular (saveN8nEndpointAction)', () => {
       try {
         before = legacyEndpoint(form(entries));
       } catch {
-        // Leere oder schemalose Produktions-URL: HttpUrl wirft (siehe oben) —
-        // früher eine Fehlerseite, jetzt die zentrale Meldung.
+        // Vor der Korrektur von HttpUrl warf eine leere oder schemalose
+        // Produktions-URL hier; der Zweig bleibt als Absicherung.
       }
       const result = await saveN8nEndpointAction(null, form(entries));
 

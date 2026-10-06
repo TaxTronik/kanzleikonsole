@@ -100,6 +100,16 @@ describe('ConnectionSchema', () => {
       'Es sind nur HTTP- und HTTPS-Adressen erlaubt.',
     ]);
   });
+
+  // zod 4 führt die Protokoll-Prüfung auch nach einem gescheiterten .url() aus;
+  // eine unparsbare Adresse darf dort nicht als TypeError durchschlagen.
+  it('meldet eine Adresse ohne Schema als Validierungsfehler statt zu werfen', () => {
+    for (const webhookBaseUrl of ['n8n.local/webhook', 'http//kaputt', ' ']) {
+      const parsed = ConnectionSchema.safeParse(connection({ webhookBaseUrl }));
+      expect(parsed.success).toBe(false);
+      expect(issues(parsed).map((issue) => issue.path.join('.'))).toContain('webhookBaseUrl');
+    }
+  });
 });
 
 describe('EndpointSchema', () => {

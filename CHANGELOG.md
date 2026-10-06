@@ -768,6 +768,8 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- n8n-Einstellungen: Eine Adresse ohne Schema (z. B. `n8n.example`) wird als
+  Feldfehler gemeldet statt mit einer allgemeinen Fehlermeldung abzubrechen.
 - **[Scope]** `./taxtronik deploy` migriert nicht mehr ohne Pflichtbackup, wenn
   die Schema-Prüfung vor der Migration scheitert: Ein psql- oder
   Verbindungsfehler galt bisher still als Erstinstallation, das Backup entfiel.

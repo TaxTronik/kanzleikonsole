@@ -19,13 +19,22 @@ import {
 import type { N8nTargetKind } from '@/server/http/ssrf-guard';
 import type { N8nConfig } from '@/server/settings/n8n';
 
+// zod 4 führt die Protokoll-Prüfung auch nach einem gescheiterten .url() aus:
+// eine unparsbare Adresse ergibt hier `false` statt eines TypeErrors.
 const HttpUrl = z
   .string()
   .url()
   .max(1_000)
-  .refine((value) => ['http:', 'https:'].includes(new URL(value).protocol), {
-    message: 'Es sind nur HTTP- und HTTPS-Adressen erlaubt.',
-  });
+  .refine(
+    (value) => {
+      try {
+        return ['http:', 'https:'].includes(new URL(value).protocol);
+      } catch {
+        return false;
+      }
+    },
+    { message: 'Es sind nur HTTP- und HTTPS-Adressen erlaubt.' },
+  );
 const OptionalUrl = z.union([z.literal(''), HttpUrl]);
 const ProductionWebhookUrl = HttpUrl.refine((value) => {
   try {
