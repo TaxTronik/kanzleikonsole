@@ -1,10 +1,12 @@
 // Dev-only: erzeugt einen Magic-Link für einen Mandanten-Kontakt und gibt
 // die URL in der Konsole aus. NUR im Dev-Modus benutzen — in Produktion
 // muss der Link über Mail/SMS zugestellt werden.
+//
+// DATABASE_URL = Owner-Rolle: Der Kontakt wird ohne Tenant-Kontext gesucht.
 
-import prismaClientPkg from '@prisma/client';
-const { PrismaClient } = prismaClientPkg;
 import { createHash, randomBytes } from 'node:crypto';
+import { PrismaClient } from '../packages/db/src/prisma-client';
+import { createPostgresAdapter, requireDatabaseUrl } from '../packages/db/src/prisma-adapter';
 
 const TTL_MIN = 30;
 
@@ -14,7 +16,10 @@ async function main() {
     console.error('Usage: pnpm tsx scripts/dev-magic-link.ts <email>');
     process.exit(1);
   }
-  const prisma = new PrismaClient({ datasourceUrl: process.env['DATABASE_URL'] });
+  // Prisma 7 verbindet ausschließlich über einen Driver-Adapter.
+  const prisma = new PrismaClient({
+    adapter: createPostgresAdapter(requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL')),
+  });
   const contact = await prisma.clientContact.findFirst({
     where: { email: email.toLowerCase(), active: true },
     include: { tenant: { select: { slug: true } }, client: { select: { name: true } } },

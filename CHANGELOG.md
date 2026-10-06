@@ -638,6 +638,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- `scripts/dev-magic-link.ts` funktioniert wieder mit Prisma 7. `pnpm typecheck`
+  prüft zusätzlich `packages/db/scripts` und die TypeScript-Skripte unter
+  `scripts/`; das seit dem Wegfall von `rawResult` nicht mehr lauffähige
+  Backfill-Skript `backfill-norm-refs.ts` ist entfernt (Fachkatalog-Verweis
+  in `RISK-ARCHIVE-SNAPSHOT-001` entsprechend bereinigt).
 - Setup- und Startskripte (`setup.sh`, `setup.ps1`, `Start-TaxTronik.ps1`,
   `Start-SignalDev.ps1`) schreiben die `.env` über eine gemeinsame Hilfe
   (`scripts/env-tool.mjs`): Werte mit Sonderzeichen wie `|` oder `$` werden

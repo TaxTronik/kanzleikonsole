@@ -4768,7 +4768,6 @@
         "apps/web/src/server/risk/markings.ts",
         "apps/web/src/server/risk/norms.ts",
         "apps/web/src/server/risk/reformat.ts",
-        "packages/db/scripts/backfill-norm-refs.ts",
         "apps/worker/src/jobs/risk-analyse-llm.ts",
         "apps/web/src/server/dsgvo/anonymize-client-data.ts",
         "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts",
