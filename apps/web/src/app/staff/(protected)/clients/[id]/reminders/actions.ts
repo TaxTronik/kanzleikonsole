@@ -27,38 +27,45 @@ import {
   cancelReminderDoneNotification,
 } from '@/server/jobs/reminder-done-queue';
 import { audit } from '@/server/actions/audit';
+import { formDefault, parseFormData } from '@/server/actions/form-data';
 
 const withRemindersStaff = withStaffModule('reminders');
 
 const CreateSchema = z.object({
   // null/leer = interne Aufgabe ohne Mandantenbezug.
-  clientId: z.string().uuid().nullable(),
+  clientId: z.preprocess((value) => {
+    const roh = String(value ?? '').trim();
+    return roh === '' || roh === 'intern' ? null : roh;
+  }, z.string().uuid().nullable()),
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum YYYY-MM-DD'),
   subject: z.string().min(1).max(200),
-  notes: z.string().max(2000).optional().or(z.literal('')),
-  assigneeStaffIds: z.array(z.string().uuid()).max(20),
-  priority: z.enum(REMINDER_PRIORITIES).default('NORMAL'),
+  notes: formDefault('', z.string().max(2000).optional().or(z.literal(''))),
+  // Mehrfachauswahl (repeatable): sonst käme nur die erste Person an.
+  assigneeStaffIds: z.preprocess(
+    (value) => (Array.isArray(value) ? value.map(String).filter(Boolean) : value),
+    z.array(z.string().uuid()).max(20),
+  ),
+  priority: z.preprocess(
+    (value) => String(value ?? 'NORMAL'),
+    z.enum(REMINDER_PRIORITIES).default('NORMAL'),
+  ),
   /** Gesetzt, wenn dies eine Nachfrage zu einer bestehenden Aufgabe ist. */
-  predecessorId: z.string().uuid().nullable().optional(),
+  predecessorId: z.preprocess(
+    (value) => String(value ?? '') || null,
+    z.string().uuid().nullable().optional(),
+  ),
 });
 
 export async function createReminderAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const rohClient = String(formData.get('clientId') ?? '').trim();
-  const parsed = CreateSchema.safeParse({
-    clientId: rohClient === '' || rohClient === 'intern' ? null : rohClient,
-    dueDate: formData.get('dueDate'),
-    subject: formData.get('subject'),
-    notes: formData.get('notes') ?? '',
-    // Mehrfachauswahl: getAll statt get — sonst kaeme nur die erste Person an.
-    assigneeStaffIds: formData.getAll('assigneeStaffIds').map(String).filter(Boolean),
-    priority: String(formData.get('priority') ?? 'NORMAL'),
-    predecessorId: String(formData.get('predecessorId') ?? '') || null,
+  const parsed = parseFormData(CreateSchema, formData, {
+    repeatable: ['assigneeStaffIds'],
+    absentAsNull: true,
+    errorMessage: (issues) => issues[0]?.message ?? 'Validierungsfehler.',
   });
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.ok) return parsed;
 
   const clientId = parsed.data.clientId;
   return withRemindersStaff(

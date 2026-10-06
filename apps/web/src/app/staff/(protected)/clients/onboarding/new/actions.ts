@@ -6,21 +6,26 @@ import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
 import { staffAction, ActionError, type ActionResult } from '@/server/actions/staff-action';
-import { validationFailure } from '@/server/actions/form-data';
+import { formDefault, formList, parseFormData } from '@/server/actions/form-data';
 import { audit } from '@/server/actions/audit';
 
 const Schema = z.object({
   name: z.string().min(1, 'Name ist Pflichtfeld').max(200),
   kind: z.enum(['NATPERS', 'JURPERS', 'PERSGES']),
-  datevNo: z.string().max(40).optional().or(z.literal('')),
-  addisonNo: z.string().max(40).optional().or(z.literal('')),
-  street: z.string().max(200).optional().or(z.literal('')),
-  postalCode: z.string().max(20).optional().or(z.literal('')),
-  city: z.string().max(100).optional().or(z.literal('')),
-  countryIso: z.string().length(2).optional().or(z.literal('')),
-  invoiceEmail: z.string().email().max(255).optional().or(z.literal('')),
-  berufstraegerIds: z.array(z.string().uuid()).min(1, 'Mindestens ein Berufsträger ist Pflicht.'),
-  hauptbearbeiterIds: z.array(z.string().uuid()),
+  datevNo: formDefault('', z.string().max(40).optional().or(z.literal(''))),
+  addisonNo: formDefault('', z.string().max(40).optional().or(z.literal(''))),
+  street: formDefault('', z.string().max(200).optional().or(z.literal(''))),
+  postalCode: formDefault('', z.string().max(20).optional().or(z.literal(''))),
+  city: formDefault('', z.string().max(100).optional().or(z.literal(''))),
+  countryIso: z.preprocess(
+    (value) => ((value as string) ?? '').toUpperCase(),
+    z.string().length(2).optional().or(z.literal('')),
+  ),
+  invoiceEmail: formDefault('', z.string().email().max(255).optional().or(z.literal(''))),
+  berufstraegerIds: formList(
+    z.array(z.string().uuid()).min(1, 'Mindestens ein Berufsträger ist Pflicht.'),
+  ),
+  hauptbearbeiterIds: formList(z.array(z.string().uuid())),
 });
 
 export async function createOnboardingClientAction(
@@ -33,25 +38,12 @@ export async function createOnboardingClientAction(
   const result = await staffAction({
     guard: { requirePermission: 'CLIENT_CREATE' },
     run: async ({ tenantId, ctx }) => {
-      const parsed = Schema.safeParse({
-        name: formData.get('name'),
-        kind: formData.get('kind'),
-        datevNo: formData.get('datevNo') ?? '',
-        addisonNo: formData.get('addisonNo') ?? '',
-        street: formData.get('street') ?? '',
-        postalCode: formData.get('postalCode') ?? '',
-        city: formData.get('city') ?? '',
-        countryIso: ((formData.get('countryIso') as string) ?? '').toUpperCase(),
-        invoiceEmail: formData.get('invoiceEmail') ?? '',
-        berufstraegerIds: formData.getAll('berufstraegerIds').map(String),
-        hauptbearbeiterIds: formData.getAll('hauptbearbeiterIds').map(String),
+      const parsed = parseFormData(Schema, formData, {
+        repeatable: ['berufstraegerIds', 'hauptbearbeiterIds'],
+        absentAsNull: true,
+        errorMessage: (issues) => issues.map((i) => i.message).join(', '),
       });
-      if (!parsed.success) {
-        return validationFailure(
-          parsed.error.issues,
-          parsed.error.issues.map((i) => i.message).join(', '),
-        );
-      }
+      if (!parsed.ok) return parsed;
       const berufstraegerIds = Array.from(new Set(parsed.data.berufstraegerIds));
       const hauptbearbeiterIds = Array.from(new Set(parsed.data.hauptbearbeiterIds));
 

@@ -59,15 +59,12 @@ vi.mock('@/server/actions/staff-action', async () => {
         '@/server/actions/action-runner',
       )
     ).createActionRunner(h.staffActionGuard),
+    // R-12: echtes parseFormData (absentAsNull, Feldfehler) statt einer Attrappe.
     parseFormData: (
-      schema: { safeParse(value: unknown): { success: boolean; data?: unknown } },
-      formData: FormData,
-    ) => {
-      const parsed = schema.safeParse(Object.fromEntries(formData));
-      return parsed.success
-        ? { ok: true, data: parsed.data }
-        : { ok: false, error: 'Validierungsfehler.' };
-    },
+      await vi.importActual<typeof import('@/server/actions/form-data')>(
+        '@/server/actions/form-data',
+      )
+    ).parseFormData,
   };
 });
 

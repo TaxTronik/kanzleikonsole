@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { isStaffAdmin, assertClientAccessTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { staffAction, ActionError } from '@/server/actions/staff-action';
+import { formFlag, formList, parseFormData } from '@/server/actions/form-data';
 import { lockGwgCheckLifecycleTx, requireGwgReverificationTx } from '@/server/gwg/reverification';
 import { audit } from '@/server/actions/audit';
 
@@ -28,7 +29,7 @@ const AdminSchema = z.object({
   priority: z.enum(['A', 'B', 'C']).nullable().optional().or(z.literal('')),
   internalNotes: z.string().max(10_000).optional().nullable(),
   // Zugriffs-Ventil (vertraulicher Mandant). Wird nur von Admin/Partner übernommen.
-  vertraulich: z.boolean().optional(),
+  vertraulich: formFlag('on', z.boolean().optional()),
 });
 
 function emptyToNull(v: unknown): string | null {
@@ -43,17 +44,11 @@ export async function saveAdminFieldsAction(
 ): Promise<ActionResult> {
   return staffAction({
     run: async ({ ctx, session }) => {
-      const parsed = AdminSchema.safeParse({
-        clientId: formData.get('clientId'),
-        datevNo: formData.get('datevNo'),
-        addisonNo: formData.get('addisonNo'),
-        invoiceEmail: formData.get('invoiceEmail'),
-        priority: formData.get('priority'),
-        internalNotes: formData.get('internalNotes'),
-        vertraulich: formData.get('vertraulich') === 'on',
+      const parsed = parseFormData(AdminSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler — bitte Eingaben prüfen.',
       });
-      if (!parsed.success)
-        return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
+      if (!parsed.ok) return parsed;
       const { clientId } = parsed.data;
       // Die Vertraulich-Markierung ist eine Zugriffssteuerung → nur Admin/Partner.
       const isAdmin = isStaffAdmin(session);
@@ -129,17 +124,11 @@ export async function saveGwgFieldsAction(
 ): Promise<ActionResult> {
   return staffAction({
     run: async ({ tenantId, ctx, session }) => {
-      const parsed = GwgSchema.safeParse({
-        clientId: formData.get('clientId'),
-        name: formData.get('name'),
-        kind: formData.get('kind'),
-        street: formData.get('street'),
-        postalCode: formData.get('postalCode'),
-        city: formData.get('city'),
-        countryIso: formData.get('countryIso'),
+      const parsed = parseFormData(GwgSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler — bitte Eingaben prüfen.',
       });
-      if (!parsed.success)
-        return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
+      if (!parsed.ok) return parsed;
       const { clientId } = parsed.data;
 
       await withTenantContext(ctx, async (tx) => {
@@ -215,8 +204,8 @@ export async function saveGwgFieldsAction(
 
 const RespSchema = z.object({
   clientId: z.string().uuid(),
-  berufstraegerIds: z.array(z.string().uuid()),
-  hauptbearbeiterIds: z.array(z.string().uuid()),
+  berufstraegerIds: formList(z.array(z.string().uuid())),
+  hauptbearbeiterIds: formList(z.array(z.string().uuid())),
 });
 
 export async function setResponsibilitiesAction(
@@ -231,15 +220,12 @@ export async function setResponsibilitiesAction(
       deniedMessage: 'Nur ADMIN/PARTNER darf Bearbeiter-Zuordnungen ändern.',
     },
     run: async ({ tenantId, ctx, session }) => {
-      const berufstraegerIds = formData.getAll('berufstraegerIds').map((v) => String(v));
-      const hauptIds = formData.getAll('hauptbearbeiterIds').map((v) => String(v));
-      const parsed = RespSchema.safeParse({
-        clientId: formData.get('clientId'),
-        berufstraegerIds,
-        hauptbearbeiterIds: hauptIds,
+      const parsed = parseFormData(RespSchema, formData, {
+        repeatable: ['berufstraegerIds', 'hauptbearbeiterIds'],
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler — bitte Eingaben prüfen.',
       });
-      if (!parsed.success)
-        return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
+      if (!parsed.ok) return parsed;
       const { clientId } = parsed.data;
       // Mehrfachwerte aus manipulierten/dupliziert abgesendeten Formularfeldern
       // dürfen nicht zu doppelten CREATEs und einem künstlichen Unique-Konflikt führen.
@@ -344,7 +330,7 @@ export async function setResponsibilitiesAction(
 
 const MandateEndSchema = z.object({
   clientId: z.string().uuid(),
-  ended: z.boolean(),
+  ended: formFlag(['on', '1']),
 });
 
 export async function setMandateEndAction(
@@ -354,11 +340,11 @@ export async function setMandateEndAction(
   return staffAction({
     guard: { requireAdmin: true, deniedMessage: 'Nur ADMIN/PARTNER darf das Mandatsende setzen.' },
     run: async ({ ctx, session }) => {
-      const parsed = MandateEndSchema.safeParse({
-        clientId: formData.get('clientId'),
-        ended: formData.get('ended') === 'on' || formData.get('ended') === '1',
+      const parsed = parseFormData(MandateEndSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
       });
-      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      if (!parsed.ok) return parsed;
       const { clientId, ended } = parsed.data;
 
       await withTenantContext(ctx, async (tx) => {

@@ -9,7 +9,7 @@ import { berlinCalendarDate } from '@taxtronik/tax';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx, isStaffAdmin } from '@/server/auth/rbac';
 import { ActionError, staffAction, type ActionResult } from '@/server/actions/staff-action';
-import { validationFailure, type FormDataParseResult } from '@/server/actions/form-data';
+import { formFlag, parseFormData, type FormDataParseResult } from '@/server/actions/form-data';
 import type { StaffSession } from '@/server/auth/staff';
 import { planNoticeTransition } from './notice-transition';
 import {
@@ -139,7 +139,7 @@ const Schema = z.object({
   holidayContextNote: z.string().max(2_000).optional(),
   retrievalIssuedAt: OptionalYmdSchema,
   retrievalNotificationDate: OptionalYmdSchema,
-  retrievalNotificationDisputedOrLate: z.boolean(),
+  retrievalNotificationDisputedOrLate: formFlag(),
   retrievedAt: OptionalYmdSchema,
   retrievalConsentStatus: z.enum(['NOT_APPLICABLE', 'CONFIRMED', 'NOT_GIVEN', 'UNKNOWN']),
   retrievalEligibility2027Status: z.enum(['NOT_APPLICABLE', 'CONFIRMED', 'NOT_MET', 'UNKNOWN']),
@@ -219,60 +219,13 @@ function localHolidayDates(value: string | null | undefined, label: string): Dat
 }
 
 function parseCreateNoticeInput(formData: FormData): FormDataParseResult<CreateNoticeInput> {
-  const parsed = Schema.safeParse({
-    clientId: formData.get('clientId'),
-    kind: formData.get('kind'),
-    period: formData.get('period'),
-    noticeDate: formData.get('noticeDate'),
-    dateBasis: formData.get('dateBasis'),
-    deliveryMethod: formData.get('deliveryMethod'),
-    deliveryEvidenceStatus: formData.get('deliveryEvidenceStatus'),
-    deliveryEvidenceNote: formData.get('deliveryEvidenceNote'),
-    legalRemedyInstruction: formData.get('legalRemedyInstruction'),
-    legalRemedyInstructionNote: formData.get('legalRemedyInstructionNote'),
-    receivedAt: formData.get('receivedAt'),
-    accessStatus: formData.get('accessStatus'),
-    accessEvidenceStatus: formData.get('accessEvidenceStatus'),
-    accessEvidenceNote: formData.get('accessEvidenceNote'),
-    recipientName: formData.get('recipientName'),
-    recipientCountryCode: formData.get('recipientCountryCode'),
-    recipientRegion: formData.get('recipientRegion'),
-    recipientLocality: formData.get('recipientLocality'),
-    recipientLocalHolidayDates: formData.get('recipientLocalHolidayDates'),
-    recipientHolidayContextStatus: formData.get('recipientHolidayContextStatus'),
-    recipientBavariaAssumption: formData.get('recipientBavariaAssumption'),
-    authorityName: formData.get('authorityName'),
-    authorityCountryCode: formData.get('authorityCountryCode'),
-    authorityRegion: formData.get('authorityRegion'),
-    authorityLocality: formData.get('authorityLocality'),
-    authorityLocalHolidayDates: formData.get('authorityLocalHolidayDates'),
-    authorityHolidayContextStatus: formData.get('authorityHolidayContextStatus'),
-    authorityBavariaAssumption: formData.get('authorityBavariaAssumption'),
-    holidayContextNote: formData.get('holidayContextNote'),
-    retrievalIssuedAt: formData.get('retrievalIssuedAt'),
-    retrievalNotificationDate: formData.get('retrievalNotificationDate'),
-    retrievalNotificationDisputedOrLate:
-      formData.get('retrievalNotificationDisputedOrLate') === 'on',
-    retrievedAt: formData.get('retrievedAt'),
-    retrievalConsentStatus: formData.get('retrievalConsentStatus'),
-    retrievalEligibility2027Status: formData.get('retrievalEligibility2027Status'),
-    retrievalPostalRequestStatus: formData.get('retrievalPostalRequestStatus'),
-    retrievalPostalRequestReceivedAt: formData.get('retrievalPostalRequestReceivedAt'),
-    retrievalNotificationStatus: formData.get('retrievalNotificationStatus'),
-    fileNumber: formData.get('fileNumber'),
-    assessedAmount: formData.get('assessedAmount'),
-    expectedAmount: formData.get('expectedAmount'),
-    prepaidAmount: formData.get('prepaidAmount'),
-    payAmount: formData.get('payAmount'),
-    reviewNotes: formData.get('reviewNotes'),
+  // R-12: jedes Formularfeld heißt wie sein Schema-Feld; fehlende Felder wie
+  // bisher formData.get als null, der Haken als Schalter.
+  return parseFormData(Schema, formData, {
+    absentAsNull: true,
+    errorMessage: (issues) =>
+      'Validierungsfehler: ' + issues.map((issue) => issue.message).join('; '),
   });
-  if (!parsed.success) {
-    return validationFailure(
-      parsed.error.issues,
-      'Validierungsfehler: ' + parsed.error.issues.map((issue) => issue.message).join('; '),
-    );
-  }
-  return { ok: true, data: parsed.data };
 }
 
 function validateDeliveryDatesAndEvidence(

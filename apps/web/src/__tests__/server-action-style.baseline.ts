@@ -143,86 +143,108 @@ export const HAND_FILLED_AUDIT_BASELINE: Readonly<
   },
 };
 
-const FORM_DATA_OPEN =
-  'R-12: FormData wird Feld für Feld gelesen; Umstellung auf parseFormData (Feldfehler) offen.';
-
 // R-12 (FormData Feld für Feld): formData.get/getAll auf FormData-Parametern.
-// Neue Form-Actions lesen über parseFormData(schema, formData).
+// Neue Form-Actions lesen über parseFormData(schema, formData). Was bleibt,
+// prüft hier nicht selbst (Adapter auf einen Service mit eigener zod-Prüfung,
+// Datei-Eintrag, tolerante Schalter/Navigation) oder gehört zu einer Oberfläche
+// mit eigenem Ergebnisvertrag (Login, Lohn).
+const SERVICE_INPUT =
+  'Adapter auf die Service-Eingabe (raw: unknown): die Action ordnet nur Formularnamen zu, die ' +
+  'zod-Prüfung liegt im Service (auch für andere Aufrufer); parseFormData würde doppelt prüfen.';
+const UPLOAD_FILE =
+  'F-09-Upload: die Eingaben kommen typisiert als Objekt, FormData trägt nur die Datei; Name, ' +
+  'Typ und Größe prüfen das Upload-Schema bzw. readUploadFile.';
+const PAYROLL_UPLOAD =
+  'Lohn-Upload mit eigenem Ergebnisvertrag (payrollActionError: ZodError → „Eingaben und ' +
+  'Pflichtfelder prüfen.“, Upload-ID zur Fortsetzung); Vorgang, Fortsetzungs-ID und Datei.';
+
 export const FORM_DATA_READ_BASELINE: Readonly<Record<string, { reads: number; reason: string }>> =
   {
-    'app/gwg-onboarding/actions.ts': { reads: 1, reason: FORM_DATA_OPEN },
-    'app/payroll/employee/actions.ts': { reads: 6, reason: FORM_DATA_OPEN },
-    'app/portal/(auth)/login/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/portal/(protected)/appointments/actions.ts': { reads: 5, reason: FORM_DATA_OPEN },
-    'app/portal/(protected)/client-assistance/actions.ts': { reads: 11, reason: FORM_DATA_OPEN },
-    'app/portal/(protected)/forms/[id]/actions.ts': { reads: 1, reason: FORM_DATA_OPEN },
-    'app/portal/(protected)/payroll/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/portal/(protected)/profile-actions.ts': { reads: 2, reason: FORM_DATA_OPEN },
-    'app/portal/(protected)/requests/[id]/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/portal/(protected)/settings/actions.ts': { reads: 1, reason: FORM_DATA_OPEN },
-    'app/staff/(auth)/login/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/absences/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/admin/audit/actions.ts': { reads: 1, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/admin/dsgvo/actions.ts': { reads: 17, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/admin/privacy/actions.ts': { reads: 5, reason: FORM_DATA_OPEN },
+    'app/gwg-onboarding/actions.ts': { reads: 1, reason: UPLOAD_FILE },
+    'app/payroll/employee/actions.ts': {
+      reads: 6,
+      reason:
+        'Gastzugang des Lohn-Einzelvorgangs (Capability-Session): Token, Revision, Abgabe, dynamische ' +
+        'Antworten (payrollAnswers) und Datei; Fehler über payrollActionError.',
+    },
+    'app/portal/(auth)/login/actions.ts': {
+      reads: 3,
+      reason:
+        'Magic-Link-Bestätigung: Token und Kontakt gehen unverändert an verifyMagicLinkAction (prüft ' +
+        'selbst), returnTo über safePortalReturnTo; Ergebnis ist eine Weiterleitung.',
+    },
+    'app/portal/(protected)/appointments/actions.ts': {
+      reads: 5,
+      reason:
+        'Bis zu drei Slot-Paare aus nummerierten Feldern mit eigener Feldfehler-Zuordnung ' +
+        '(slotN_starts/-ends); Prüfung bewusst nach Feature-Gate und Rate-Limit.',
+    },
+    'app/portal/(protected)/client-assistance/actions.ts': { reads: 11, reason: SERVICE_INPUT },
+    'app/portal/(protected)/forms/[id]/actions.ts': { reads: 1, reason: UPLOAD_FILE },
+    'app/portal/(protected)/payroll/actions.ts': { reads: 3, reason: PAYROLL_UPLOAD },
+    'app/portal/(protected)/profile-actions.ts': {
+      reads: 2,
+      reason:
+        'Profilwechsel als Navigation: eine ungültige Kontakt-ID leitet aufs Dashboard (kein ' +
+        'Ergebnis, keine Feldfehler), returnTo über safePortalReturnTo.',
+    },
+    'app/portal/(protected)/settings/actions.ts': {
+      reads: 1,
+      reason: "Einzelner Schalter (enabled === 'on') ohne Prüfung, die fehlschlagen kann.",
+    },
+    'app/staff/(auth)/login/actions.ts': {
+      reads: 3,
+      reason:
+        'TOTP-Schritt des Logins: Einmal-Ticket und Code gehen unverändert an signIn ' +
+        '(Credentials-Provider prüft), returnTo über safeStaffReturnTo; bewusst ohne Feldfehler.',
+    },
+    'app/staff/(protected)/admin/audit/actions.ts': {
+      reads: 1,
+      reason:
+        'Optionaler Freitext (getrimmt, auf 500 Zeichen gekürzt, leer → null) ohne Prüfung, die ' +
+        'fehlschlagen kann.',
+    },
     'app/staff/(protected)/admin/settings/branding-actions.ts': { reads: 23, reason: EXCLUDED },
     'app/staff/(protected)/admin/settings/infra-actions.ts': { reads: 6, reason: EXCLUDED },
     'app/staff/(protected)/admin/settings/mail-actions.ts': { reads: 18, reason: EXCLUDED },
     'app/staff/(protected)/admin/settings/modules-actions.ts': { reads: 47, reason: EXCLUDED },
     'app/staff/(protected)/admin/settings/n8n-actions.ts': { reads: 23, reason: EXCLUDED },
-    'app/staff/(protected)/admin/skills/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/admin/users/actions.ts': { reads: 8, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/client-assistance/actions.ts': { reads: 19, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/clients/[id]/binders/actions.ts': { reads: 4, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/clients/[id]/bwa/actions.ts': { reads: 1, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/clients/[id]/edit/actions.ts': { reads: 20, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/clients/[id]/elster/actions.ts': { reads: 10, reason: FORM_DATA_OPEN },
+    'app/staff/(protected)/client-assistance/actions.ts': { reads: 19, reason: SERVICE_INPUT },
+    'app/staff/(protected)/clients/[id]/bwa/actions.ts': { reads: 1, reason: UPLOAD_FILE },
     'app/staff/(protected)/clients/[id]/gwg/actions.ts': { reads: 13, reason: EXCLUDED },
     'app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts': {
       reads: 28,
       reason: EXCLUDED,
     },
     'app/staff/(protected)/clients/[id]/gwg/owner-actions.ts': { reads: 11, reason: EXCLUDED },
-    'app/staff/(protected)/clients/[id]/handovers/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/clients/[id]/notices/actions.ts': { reads: 44, reason: FORM_DATA_OPEN },
     'app/staff/(protected)/clients/[id]/notices/filings/actions.ts': {
       reads: 1,
-      reason: FORM_DATA_OPEN,
+      reason: UPLOAD_FILE,
     },
-    'app/staff/(protected)/clients/[id]/privacy/actions.ts': { reads: 8, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/clients/[id]/reminders/actions.ts': { reads: 7, reason: FORM_DATA_OPEN },
     'app/staff/(protected)/clients/[id]/subsumtion/actions.ts': {
       reads: 1,
-      reason: FORM_DATA_OPEN,
+      reason:
+        'importDocTextAction: clientId geht an guardWrite (Zugriff und Schreibrecht) vor dem ' +
+        'Datei-Upload; Subsumtions-Familie mit eigenem Ergebnisvertrag (OkActionResult).',
     },
     'app/staff/(protected)/clients/[id]/tax-schedule/actions.ts': {
-      reads: 7,
-      reason: FORM_DATA_OPEN,
-    },
-    'app/staff/(protected)/clients/new/actions.ts': { reads: 11, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/clients/onboarding/[id]/actions.ts': {
-      reads: 13,
-      reason: FORM_DATA_OPEN,
-    },
-    'app/staff/(protected)/clients/onboarding/new/actions.ts': {
-      reads: 11,
-      reason: FORM_DATA_OPEN,
-    },
-    'app/staff/(protected)/dashboard/rss-feed-actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/gwg/actions.ts': { reads: 4, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/interactions/actions.ts': { reads: 2, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/mailbox/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/mandate-expansion/actions.ts': { reads: 30, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/mandate-expansion/structure/gwg-actions.ts': {
       reads: 6,
-      reason: FORM_DATA_OPEN,
+      reason:
+        'Schalter und Fristen je Steuerart mit dynamischen Feldnamen (ALL_KINDS × 6), tolerant: ' +
+        'fehlend → aus bzw. Default/gespeicherter Wert, nie Ablehnung; clientId über parseFormData.',
     },
-    'app/staff/(protected)/payroll/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/phone-notes/actions.ts': { reads: 6, reason: FORM_DATA_OPEN },
+    'app/staff/(protected)/mandate-expansion/actions.ts': {
+      reads: 5,
+      reason:
+        'saveStructureAction: JSON-Strukturdaten (Prüfung in saveStructureTx); ' +
+        'archiveStructure/archiveOffboarding: Services mit eigener zod-Prüfung (raw: unknown).',
+    },
+    'app/staff/(protected)/payroll/actions.ts': { reads: 3, reason: PAYROLL_UPLOAD },
     'app/staff/(protected)/poa/actions.ts': { reads: 12, reason: EXCLUDED },
-    'app/staff/(protected)/profile/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/service-providers/actions.ts': { reads: 7, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/tax-deadlines/actions.ts': { reads: 7, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/time/actions.ts': { reads: 3, reason: FORM_DATA_OPEN },
-    'app/staff/(protected)/year-end/actions.ts': { reads: 2, reason: FORM_DATA_OPEN },
+    'app/staff/(protected)/tax-deadlines/actions.ts': {
+      reads: 3,
+      reason:
+        'rematerializeAction: Ansicht (view/scope/q) für die Weiterleitung nach dem Anstoßen; ' +
+        'ungültige Werte entfallen still, keine Eingabeprüfung.',
+    },
   };

@@ -11,6 +11,7 @@ import {
   ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { formDefault, parseFormData } from '@/server/actions/form-data';
 import { audit } from '@/server/actions/audit';
 
 const withRssReaderStaff = withStaffModule('rssReader');
@@ -32,7 +33,7 @@ const MAX_FEEDS_PER_STAFF = 10;
 const AddSchema = z.object({
   name: z.string().min(1).max(80),
   url: UrlSchema,
-  color: z.string().max(20).optional().or(z.literal('')),
+  color: formDefault('', z.string().max(20).optional().or(z.literal(''))),
 });
 
 export async function addRssFeedAction(
@@ -42,13 +43,11 @@ export async function addRssFeedAction(
   return staffAction({
     guard: { module: 'rssReader' },
     run: async ({ tenantId, staffId, ctx, session }) => {
-      const parsed = AddSchema.safeParse({
-        name: formData.get('name'),
-        url: formData.get('url'),
-        color: formData.get('color') ?? '',
+      const parsed = parseFormData(AddSchema, formData, {
+        absentAsNull: true,
+        errorMessage: (issues) => issues[0]?.message ?? 'Validierungsfehler.',
       });
-      if (!parsed.success)
-        return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+      if (!parsed.ok) return parsed;
       const urlClean = parsed.data.url.trim();
 
       // R-1: SSRF-Guard schon beim Speichern. Vorher prüfte nur der Worker beim

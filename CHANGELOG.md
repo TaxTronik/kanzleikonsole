@@ -227,6 +227,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Server-Actions: Audit-Einträge übernehmen Mandant und Akteur aus dem
+  Gate-Kontext (`audit(tx, g, …)`) statt sie an 193 Stellen von Hand zu setzen;
+  Inhalt und Hash-Kette der Einträge bleiben gleich. Formular-Actions lesen ihre
+  Felder über `parseFormData` und melden Eingabefehler zusätzlich je Feld
+  (`fieldErrors`); akzeptierte Eingaben, Standardwerte und Meldungstexte
+  bleiben gleich. Neue handgefüllte Audit-Akteure und neue
+  Feld-für-Feld-Zugriffe auf FormData schlagen in einem Architekturtest an
+  (`FK-EXC-20261006-033`, `FK-EXC-20261006-034`).
 - Server-Actions: Ein gemeinsamer Baustein (`staffAction`/`portalAction`)
   führt mehrphasige Actions einheitlich durch Gate, Eingabeprüfung, Arbeit,
   zentrales Fehler-Mapping und Revalidierung. 142 bisher handgeschriebene

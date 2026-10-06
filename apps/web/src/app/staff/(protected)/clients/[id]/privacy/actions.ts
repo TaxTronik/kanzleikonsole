@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { ActionError, staffAction, type ActionResult } from '@/server/actions/staff-action';
-import { validationFailure } from '@/server/actions/form-data';
+import { formDefault, parseFormData } from '@/server/actions/form-data';
 import {
   ConsentSelectionsSchema,
   countGranted,
@@ -25,8 +25,8 @@ const SaveSchema = z.object({
   clientId: z.string().uuid(),
   consentsJson: z.string().min(2).max(50_000),
   signedByName: z.string().min(1).max(300),
-  signedByContact: z.string().uuid().optional().or(z.literal('')),
-  note: z.string().max(2000).optional().or(z.literal('')),
+  signedByContact: formDefault('', z.string().uuid().optional().or(z.literal(''))),
+  note: formDefault('', z.string().max(2000).optional().or(z.literal(''))),
 });
 
 export async function saveConsentAction(
@@ -35,15 +35,11 @@ export async function saveConsentAction(
 ): Promise<ActionResult> {
   return staffAction({
     run: async ({ tenantId, staffId, ctx, session }) => {
-      const parsed = SaveSchema.safeParse({
-        clientId: formData.get('clientId'),
-        consentsJson: formData.get('consentsJson'),
-        signedByName: formData.get('signedByName'),
-        signedByContact: formData.get('signedByContact') ?? '',
-        note: formData.get('note') ?? '',
+      const parsed = parseFormData(SaveSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler — bitte Eingaben prüfen.',
       });
-      if (!parsed.success)
-        return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
+      if (!parsed.ok) return parsed;
       const d = parsed.data;
 
       let rawConsents: unknown;
@@ -131,7 +127,7 @@ export async function saveConsentAction(
 const RevokeSchema = z.object({
   clientId: z.string().uuid(),
   signedByName: z.string().min(1).max(300),
-  note: z.string().max(2000).optional().or(z.literal('')),
+  note: formDefault('', z.string().max(2000).optional().or(z.literal(''))),
 });
 
 export async function revokeAllConsentAction(
@@ -140,12 +136,11 @@ export async function revokeAllConsentAction(
 ): Promise<ActionResult> {
   return staffAction({
     run: async ({ tenantId, staffId, ctx, session }) => {
-      const parsed = RevokeSchema.safeParse({
-        clientId: formData.get('clientId'),
-        signedByName: formData.get('signedByName'),
-        note: formData.get('note') ?? '',
+      const parsed = parseFormData(RevokeSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
       });
-      if (!parsed.success) return validationFailure(parsed.error.issues, 'Validierungsfehler.');
+      if (!parsed.ok) return parsed;
       const d = parsed.data;
 
       await withTenantContext(ctx, async (tx) => {

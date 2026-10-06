@@ -10,6 +10,7 @@ import {
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { audit } from '@/server/actions/audit';
+import { formDefault, formOptional } from '@/server/actions/form-data';
 
 const withTimeTrackingStaff = withStaffModule('timeTracking');
 
@@ -17,20 +18,19 @@ export type ActionResult = BaseActionResult;
 
 const StartSchema = z.object({
   description: z.string().min(1).max(500),
-  clientId: z.string().uuid().optional().or(z.literal('')),
-  billable: z.enum(['1', 'on', 'true']).optional(),
+  clientId: formDefault('', z.string().uuid().optional().or(z.literal(''))),
+  billable: formOptional(z.enum(['1', 'on', 'true']).optional()),
 });
 
 export async function startTimerAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = StartSchema.safeParse({
-    description: formData.get('description'),
-    clientId: formData.get('clientId') ?? '',
-    billable: formData.get('billable') ?? undefined,
+  const parsed = parseFormData(StartSchema, formData, {
+    absentAsNull: true,
+    errorMessage: 'Validierungsfehler.',
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.ok) return parsed;
 
   return withTimeTrackingStaff(
     async (tx, { tenantId, staffId, session, ctx }) => {

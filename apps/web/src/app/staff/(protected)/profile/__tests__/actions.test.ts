@@ -576,6 +576,55 @@ describe('changeOwnPasswordAction', () => {
     expect(mocks.hash).not.toHaveBeenCalled();
   });
 
+  // R-12: Formularprüfung über parseFormData — Meldungen und Reihenfolge wie
+  // bisher (Richtlinie vor fehlendem aktuellem Passwort), dazu die Feldzuordnung.
+  it.each([
+    {
+      fall: 'zu kurzes neues Passwort',
+      form: passwordForm('Bisheriges-Passwort!', 'kurz'),
+      error: 'Das Passwort muss mindestens 12 Zeichen lang sein.',
+      field: 'newPassword',
+    },
+    {
+      fall: 'abweichende Wiederholung',
+      form: (() => {
+        const form = passwordForm();
+        form.set('confirmPassword', 'Anderes-Passwort-2026!');
+        return form;
+      })(),
+      error: 'Die Passwörter stimmen nicht überein.',
+      field: 'newPassword',
+    },
+    {
+      fall: 'fehlendes aktuelles Passwort',
+      form: (() => {
+        const form = passwordForm();
+        form.delete('currentPassword');
+        return form;
+      })(),
+      error: 'Das aktuelle Passwort fehlt.',
+      field: 'currentPassword',
+    },
+    {
+      fall: 'Richtlinie vor fehlendem aktuellem Passwort',
+      form: passwordForm('', 'kurz'),
+      error: 'Das Passwort muss mindestens 12 Zeichen lang sein.',
+      field: 'newPassword',
+    },
+  ])('meldet $fall vor Rate-Limit und bcrypt', async ({ form, error, field }) => {
+    const result = await changeOwnPasswordAction(null, form);
+
+    expect(result).toEqual({
+      ok: false,
+      error,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { [field]: [error] },
+    });
+    expect(mocks.checkRateLimit).not.toHaveBeenCalled();
+    expect(mocks.compare).not.toHaveBeenCalled();
+    expect(mocks.hash).not.toHaveBeenCalled();
+  });
+
   it('weist ein falsches aktuelles Passwort zurück und verändert nichts', async () => {
     const tx = {
       staffUser: {

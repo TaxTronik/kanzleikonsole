@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
 import { assertClientAccessTx } from '@/server/auth/rbac';
+import { formList, parseFormData } from '@/server/actions/form-data';
 import {
   staffAction,
   withStaffModule,
@@ -20,13 +21,23 @@ function hasBlockingAutoRequest(request: { status: string } | null): boolean {
   return request?.status === 'OPEN' || request?.status === 'IN_PROGRESS';
 }
 
-const IdSchema = z.string().uuid();
-const IdsSchema = z.array(z.string().uuid());
-const INVALID_ID: ActionResult = { ok: false, error: 'Ungültige Termin-ID.' };
+const INVALID_ID_MESSAGE = 'Ungültige Termin-ID.';
 const NO_SELECTION: ActionResult = { ok: false, error: 'Bitte mindestens einen Termin auswählen.' };
 
+/** Ein Termin (`id`) bzw. die Mehrfachauswahl (`ids`) aus dem Formular. */
+function selectedId(formData: FormData) {
+  return parseFormData(z.object({ id: z.string().uuid() }), formData, {
+    absentAsNull: true,
+    errorMessage: INVALID_ID_MESSAGE,
+  });
+}
+
 function selectedIds(formData: FormData) {
-  return IdsSchema.safeParse(formData.getAll('ids').map((v) => String(v)));
+  return parseFormData(z.object({ ids: formList(z.array(z.string().uuid())) }), formData, {
+    repeatable: ['ids'],
+    absentAsNull: true,
+    errorMessage: INVALID_ID_MESSAGE,
+  });
 }
 
 function noBlockingAutoRequestWhere() {
@@ -42,9 +53,9 @@ export async function markDeadlineDoneAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsedId = IdSchema.safeParse(formData.get('id'));
-  if (!parsedId.success) return INVALID_ID;
-  const id = parsedId.data;
+  const parsedId = selectedId(formData);
+  if (!parsedId.ok) return parsedId;
+  const { id } = parsedId.data;
 
   return withTaxNoticesStaff(
     async (tx, { tenantId, staffId, session, ctx }) => {
@@ -94,8 +105,8 @@ export async function markDeadlinesDoneAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const parsedIds = selectedIds(formData);
-  if (!parsedIds.success) return INVALID_ID;
-  const ids = parsedIds.data;
+  if (!parsedIds.ok) return parsedIds;
+  const { ids } = parsedIds.data;
   if (ids.length === 0) return NO_SELECTION;
 
   return withTaxNoticesStaff(
@@ -222,9 +233,9 @@ export async function suppressAutoRequestAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsedId = IdSchema.safeParse(formData.get('id'));
-  if (!parsedId.success) return INVALID_ID;
-  return suppressDeadlines([parsedId.data]);
+  const parsedId = selectedId(formData);
+  if (!parsedId.ok) return parsedId;
+  return suppressDeadlines([parsedId.data.id]);
 }
 
 export async function suppressDeadlinesAction(
@@ -232,17 +243,17 @@ export async function suppressDeadlinesAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const parsedIds = selectedIds(formData);
-  if (!parsedIds.success) return INVALID_ID;
-  return suppressDeadlines(parsedIds.data);
+  if (!parsedIds.ok) return parsedIds;
+  return suppressDeadlines(parsedIds.data.ids);
 }
 
 export async function unsuppressAutoRequestAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsedId = IdSchema.safeParse(formData.get('id'));
-  if (!parsedId.success) return INVALID_ID;
-  const id = parsedId.data;
+  const parsedId = selectedId(formData);
+  if (!parsedId.ok) return parsedId;
+  const { id } = parsedId.data;
   return withTaxNoticesStaff(
     async (tx, { session, ctx }) => {
       const before = await tx.taxDeadline.findUnique({

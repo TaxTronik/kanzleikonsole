@@ -13,6 +13,7 @@ import {
   ActionError,
   type ActionResult,
 } from '@/server/actions/staff-action';
+import { formDefault, parseFormData } from '@/server/actions/form-data';
 import { audit } from '@/server/actions/audit';
 
 const withHandoversStaff = withStaffModule('handovers');
@@ -22,20 +23,18 @@ const StatusEnum = z.enum(['RECEIVED', 'IN_PROGRESS', 'READY', 'PICKED_UP']);
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
   label: z.string().min(1).max(200),
-  contents: z.string().max(4000).optional().or(z.literal('')),
+  contents: formDefault('', z.string().max(4000).optional().or(z.literal(''))),
 });
 
 export async function createHandoverAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = CreateSchema.safeParse({
-    clientId: formData.get('clientId'),
-    label: formData.get('label'),
-    contents: formData.get('contents') ?? '',
+  const parsed = parseFormData(CreateSchema, formData, {
+    absentAsNull: true,
+    errorMessage: (issues) => issues[0]?.message ?? 'Validierungsfehler.',
   });
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+  if (!parsed.ok) return parsed;
 
   return withHandoversStaff(
     async (tx, { tenantId, staffId, session, ctx }) => {

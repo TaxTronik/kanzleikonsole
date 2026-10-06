@@ -1,6 +1,7 @@
 'use server';
 import { z } from 'zod';
 import { withStaff, staffAction, type ActionResult } from '@/server/actions/staff-action';
+import { formDefault, formEmpty, formFlag, parseFormData } from '@/server/actions/form-data';
 import { withTenantContext } from '@taxtronik/db';
 import { revalidatePath } from 'next/cache';
 import { revokeAllSessions } from '@/server/auth/revocation';
@@ -15,18 +16,16 @@ export async function assignWorkflowYearAction(
   _previous: ActionResult | null,
   form: FormData,
 ): Promise<ActionResult> {
-  const parsed = z
-    .object({
+  const parsed = parseFormData(
+    z.object({
       instanceId: z.string().uuid(),
       year: z.coerce.number().int().min(1900).max(2200),
-      expectedYear: z.coerce.number().int().nullable(),
-    })
-    .safeParse({
-      instanceId: form.get('instanceId'),
-      year: form.get('year'),
-      expectedYear: form.get('expectedYear') || null,
-    });
-  if (!parsed.success) return { ok: false, error: 'Workflow und Veranlagungsjahr angeben.' };
+      expectedYear: formEmpty(null, z.coerce.number().int().nullable()),
+    }),
+    form,
+    { absentAsNull: true, errorMessage: 'Workflow und Veranlagungsjahr angeben.' },
+  );
+  if (!parsed.ok) return parsed;
   return withStaff(
     async (tx, { session }) => {
       await assignWorkflowYearTx(
@@ -62,14 +61,12 @@ export async function changeDependencyAction(
   _previous: ActionResult | null,
   form: FormData,
 ): Promise<ActionResult> {
-  const parsed = z
-    .object({ from: z.string().uuid(), to: z.string().uuid(), remove: z.boolean() })
-    .safeParse({
-      from: form.get('from'),
-      to: form.get('to'),
-      remove: form.get('remove') === 'true',
-    });
-  if (!parsed.success) return { ok: false, error: 'Zwei Workflow-Schritte auswählen.' };
+  const parsed = parseFormData(
+    z.object({ from: z.string().uuid(), to: z.string().uuid(), remove: formFlag('true') }),
+    form,
+    { absentAsNull: true, errorMessage: 'Zwei Workflow-Schritte auswählen.' },
+  );
+  if (!parsed.ok) return parsed;
   return withStaff(
     async (tx, { session }) => {
       await changeDependencyTx(tx, session, parsed.data.from, parsed.data.to, parsed.data.remove);
@@ -81,8 +78,8 @@ export async function prepareOffboardingAction(
   _previous: ActionResult | null,
   form: FormData,
 ): Promise<ActionResult> {
-  const parsed = z
-    .object({
+  const parsed = parseFormData(
+    z.object({
       clientId: z.string().uuid(),
       expectedHash: z.string().regex(/^[a-f0-9]{64}$/),
       endDate: z.string(),
@@ -91,25 +88,17 @@ export async function prepareOffboardingAction(
       recipient: z.string().trim().min(10).max(800),
       handoverNote: z.string().trim().min(10).max(6000),
       retentionNote: z.string().trim().min(10).max(6000),
-      confirmed: z.literal(true),
-    })
-    .safeParse({
-      clientId: form.get('clientId'),
-      expectedHash: form.get('expectedHash'),
-      endDate: form.get('endDate'),
-      versionIds: form.getAll('versionIds'),
-      sensitiveVersionIds: form.getAll('sensitiveVersionIds'),
-      recipient: form.get('recipient'),
-      handoverNote: form.get('handoverNote'),
-      retentionNote: form.get('retentionNote'),
-      confirmed: form.get('confirmed') === 'on',
-    });
-  if (!parsed.success)
-    return {
-      ok: false,
-      error:
+      confirmed: formFlag('on', z.literal(true)),
+    }),
+    form,
+    {
+      repeatable: ['versionIds', 'sensitiveVersionIds'],
+      absentAsNull: true,
+      errorMessage:
         'Datum, Übergabe- und Aufbewahrungsvermerk sowie ausdrückliche Prüfung sind erforderlich.',
-    };
+    },
+  );
+  if (!parsed.ok) return parsed;
   return withStaff(
     async (tx, { session }) => {
       await prepareOffboardingTx(tx, session, parsed.data);
@@ -127,25 +116,20 @@ export async function finishOffboardingAction(
 ): Promise<ActionResult> {
   return staffAction({
     guard: { module: 'mandateOffboarding', requireAdmin: true },
-    parse: () => {
-      const parsed = z
-        .object({
+    parse: () =>
+      parseFormData(
+        z.object({
           id: z.string().uuid(),
           expectedHash: z.string().regex(/^[a-f0-9]{64}$/),
-          confirmed: z.literal(true),
-        })
-        .safeParse({
-          id: form.get('id'),
-          expectedHash: form.get('expectedHash'),
-          confirmed: form.get('confirmed') === 'on',
-        });
-      if (!parsed.success)
-        return {
-          ok: false,
-          error: 'Aktuellen Freigabestand, Beendigung und Zugangssperre ausdrücklich bestätigen.',
-        };
-      return { ok: true, data: parsed.data };
-    },
+          confirmed: formFlag('on', z.literal(true)),
+        }),
+        form,
+        {
+          absentAsNull: true,
+          errorMessage:
+            'Aktuellen Freigabestand, Beendigung und Zugangssperre ausdrücklich bestätigen.',
+        },
+      ),
     run: async (guard, data) => {
       const result = await withTenantContext(guard.ctx, (tx) =>
         finishOffboardingTx(tx, guard.session, data.id, data.expectedHash),
@@ -171,30 +155,23 @@ export async function recordVdbStateAction(
   _previous: ActionResult | null,
   form: FormData,
 ): Promise<ActionResult> {
-  const parsed = z
-    .object({
+  const parsed = parseFormData(
+    z.object({
       poaId: z.string().uuid(),
       expectedRevision: z.coerce.number().int().min(0),
       status: z.enum(VDB_STATES),
       recordedAt: z.string(),
-      externalReference: z.string().trim().max(300),
-      evidenceVersionId: z.string().uuid().nullable(),
+      externalReference: formDefault('', z.string().trim().max(300)),
+      evidenceVersionId: formEmpty(null, z.string().uuid().nullable()),
       note: z.string().trim().min(10).max(3000),
-    })
-    .safeParse({
-      poaId: form.get('poaId'),
-      expectedRevision: form.get('expectedRevision'),
-      status: form.get('status'),
-      recordedAt: form.get('recordedAt'),
-      externalReference: form.get('externalReference') ?? '',
-      evidenceVersionId: form.get('evidenceVersionId') || null,
-      note: form.get('note'),
-    });
-  if (!parsed.success)
-    return {
-      ok: false,
-      error: 'Status, Nachweisdatum und eine Erläuterung (mindestens 10 Zeichen) angeben.',
-    };
+    }),
+    form,
+    {
+      absentAsNull: true,
+      errorMessage: 'Status, Nachweisdatum und eine Erläuterung (mindestens 10 Zeichen) angeben.',
+    },
+  );
+  if (!parsed.ok) return parsed;
   return withStaff(
     async (tx, { session }) => {
       await recordVdbStateTx(tx, session, parsed.data);

@@ -255,9 +255,12 @@ describe('Steuertermin-Actions — Rückkanal (Review-Befund F-01)', () => {
     const form = new FormData();
     form.set('id', 'keine-uuid');
 
+    // R-12: dieselbe Meldung, dazu die Feldzuordnung aus parseFormData.
     await expect(action(null, form)).resolves.toEqual({
       ok: false,
       error: 'Ungültige Termin-ID.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { id: ['Invalid UUID'] },
     });
     expect(h.withStaff).not.toHaveBeenCalled();
   });

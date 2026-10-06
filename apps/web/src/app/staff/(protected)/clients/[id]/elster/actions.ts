@@ -28,6 +28,7 @@ import { assertClientAccessTx } from '@/server/auth/rbac';
 import { checkRateLimit } from '@/server/rate-limit';
 import { staffAction, type ActionResult } from '@/server/actions/staff-action';
 import { audit } from '@/server/actions/audit';
+import { formDefault, formFlag, parseFormData } from '@/server/actions/form-data';
 
 const STEUERARTEN = ['ESt', 'KSt', 'USt', 'LSt', 'GewSt', 'ZaSt', 'KapESt'] as const;
 
@@ -35,25 +36,31 @@ const Schema = z.object({
   clientId: z.string().uuid(),
   taxRegistrationId: z.string().uuid(),
   art: z.enum(['I', 'O', 'ZS']),
-  steuerart: z.enum(STEUERARTEN).optional().or(z.literal('')),
+  steuerart: formDefault('', z.enum(STEUERARTEN).optional().or(z.literal(''))),
   /** ZS: vierstelliges Jahr. */
-  jahr: z
-    .string()
-    .regex(/^[0-9]{4}$/)
-    .optional()
-    .or(z.literal('')),
+  jahr: formDefault(
+    '',
+    z
+      .string()
+      .regex(/^[0-9]{4}$/)
+      .optional()
+      .or(z.literal('')),
+  ),
   /** I: Wertstellungsdatum TTMMJJJJ. */
-  wertstellungsdatum: z
-    .string()
-    .regex(/^[0-9]{8}$/)
-    .optional()
-    .or(z.literal('')),
-  wertstellungsdatumOption: z.enum(['J', 'V']).optional().or(z.literal('')),
+  wertstellungsdatum: formDefault(
+    '',
+    z
+      .string()
+      .regex(/^[0-9]{8}$/)
+      .optional()
+      .or(z.literal('')),
+  ),
+  wertstellungsdatumOption: formDefault('', z.enum(['J', 'V']).optional().or(z.literal(''))),
   /** PIN des Portalzertifikats — nur durchgereicht, nie gespeichert. */
   pin: z.string().min(1).max(200),
-  echtfall: z.boolean(),
+  echtfall: formFlag(),
   /** Test-Übertragung: Testmerker gemäß ERiC-/Bridge-Doku. */
-  testmerker: z.string().max(20).optional().or(z.literal('')),
+  testmerker: formDefault('', z.string().max(20).optional().or(z.literal(''))),
 });
 
 export async function kontoabfrageAction(
@@ -80,20 +87,11 @@ export async function kontoabfrageAction(
         };
       }
 
-      const parsed = Schema.safeParse({
-        clientId: formData.get('clientId'),
-        taxRegistrationId: formData.get('taxRegistrationId'),
-        art: formData.get('art'),
-        steuerart: formData.get('steuerart') ?? '',
-        jahr: formData.get('jahr') ?? '',
-        wertstellungsdatum: formData.get('wertstellungsdatum') ?? '',
-        wertstellungsdatumOption: formData.get('wertstellungsdatumOption') ?? '',
-        pin: formData.get('pin'),
-        echtfall: formData.get('echtfall') === 'on',
-        testmerker: formData.get('testmerker') ?? '',
+      const parsed = parseFormData(Schema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler — bitte Eingaben prüfen.',
       });
-      if (!parsed.success)
-        return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
+      if (!parsed.ok) return parsed;
       const d = parsed.data;
 
       if (!d.echtfall && !d.testmerker) {

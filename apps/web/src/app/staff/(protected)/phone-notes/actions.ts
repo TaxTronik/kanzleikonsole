@@ -21,6 +21,7 @@ import {
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { formDefault } from '@/server/actions/form-data';
 import { fmtDateShort } from '@/lib/fmt';
 import { createReminderTx } from '@/server/reminders/service';
 import { audit } from '@/server/actions/audit';
@@ -48,11 +49,11 @@ async function assertPhoneNoteRecipientAccessTx(
 
 const CreateSchema = z.object({
   callerName: z.string().min(1).max(200),
-  callerPhone: z.string().max(50).optional().or(z.literal('')),
+  callerPhone: formDefault('', z.string().max(50).optional().or(z.literal(''))),
   subject: z.string().min(1).max(200),
   body: z.string().min(1).max(5000),
-  clientId: z.string().uuid().optional().or(z.literal('')),
-  forwardToStaff: z.string().uuid().optional().or(z.literal('')),
+  clientId: formDefault('', z.string().uuid().optional().or(z.literal(''))),
+  forwardToStaff: formDefault('', z.string().uuid().optional().or(z.literal(''))),
 });
 
 export async function createPhoneNoteAction(
@@ -61,20 +62,11 @@ export async function createPhoneNoteAction(
 ): Promise<ActionResult> {
   return staffAction({
     guard: { module: 'phoneNotes' },
-    parse: () => {
-      const parsed = CreateSchema.safeParse({
-        callerName: formData.get('callerName'),
-        callerPhone: formData.get('callerPhone') ?? '',
-        subject: formData.get('subject'),
-        body: formData.get('body'),
-        clientId: formData.get('clientId') ?? '',
-        forwardToStaff: formData.get('forwardToStaff') ?? '',
-      });
-      if (!parsed.success) {
-        return { ok: false, error: 'Validierungsfehler.' };
-      }
-      return { ok: true, data: parsed.data };
-    },
+    parse: () =>
+      parseFormData(CreateSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
+      }),
     run: async (g, data) => {
       const { tenantId, staffId, ctx } = g;
 

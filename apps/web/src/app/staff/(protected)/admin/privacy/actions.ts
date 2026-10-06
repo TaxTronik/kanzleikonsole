@@ -20,13 +20,14 @@ import {
 } from '@/server/privacy/consent-catalog';
 import { lockConsentCatalogTx } from '@/server/privacy/catalog-lock';
 import { audit } from '@/server/actions/audit';
+import { formDefault } from '@/server/actions/form-data';
 
 const Schema = z.object({
-  responsibleBody: z.string().max(2000).default(''),
-  dpoContact: z.string().max(1000).default(''),
-  supervisoryAuthority: z.string().max(1000).default(''),
-  privacyContact: z.string().max(1000).default(''),
-  drittlandServices: z.string().max(2000).default(''),
+  responsibleBody: formDefault('', z.string().max(2000).default('')),
+  dpoContact: formDefault('', z.string().max(1000).default('')),
+  supervisoryAuthority: formDefault('', z.string().max(1000).default('')),
+  privacyContact: formDefault('', z.string().max(1000).default('')),
+  drittlandServices: formDefault('', z.string().max(2000).default('')),
 });
 
 export async function savePrivacyConfigAction(
@@ -37,14 +38,11 @@ export async function savePrivacyConfigAction(
   return staffAction({
     guard: { requireAdmin: true },
     run: async ({ tenantId, staffId, ctx }) => {
-      const parsed = Schema.safeParse({
-        responsibleBody: formData.get('responsibleBody') ?? '',
-        dpoContact: formData.get('dpoContact') ?? '',
-        supervisoryAuthority: formData.get('supervisoryAuthority') ?? '',
-        privacyContact: formData.get('privacyContact') ?? '',
-        drittlandServices: formData.get('drittlandServices') ?? '',
+      const parsed = parseFormData(Schema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
       });
-      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      if (!parsed.ok) return parsed;
 
       const cfg: PrivacyConfig = {
         responsibleBody: parsed.data.responsibleBody.trim(),

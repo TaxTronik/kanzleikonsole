@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { assertStaffInTenant } from '@/server/db/assert-tenant';
 import { withStaff, ActionError, type ActionResult } from '@/server/actions/staff-action';
+import { formDefault, parseFormData } from '@/server/actions/form-data';
 import { audit } from '@/server/actions/audit';
 
 const REVALIDATE = '/staff/admin/skills';
@@ -21,20 +22,18 @@ const COLOR_VALUES = [
 const CreateSchema = z.object({
   slug: z.string().min(2).max(40).regex(SLUG_RE),
   label: z.string().min(2).max(100),
-  color: z.string().optional(),
+  color: formDefault('', z.string().optional()),
 });
 
 export async function createSkillAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = CreateSchema.safeParse({
-    slug: formData.get('slug'),
-    label: formData.get('label'),
-    color: formData.get('color') ?? '',
+  const parsed = parseFormData(CreateSchema, formData, {
+    absentAsNull: true,
+    errorMessage: (issues) => issues.map((i) => i.message).join('; '),
   });
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
+  if (!parsed.ok) return parsed;
   const color =
     parsed.data.color && (COLOR_VALUES as readonly string[]).includes(parsed.data.color)
       ? parsed.data.color

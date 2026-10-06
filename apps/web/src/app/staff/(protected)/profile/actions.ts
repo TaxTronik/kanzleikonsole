@@ -17,6 +17,7 @@ import {
   type ActionFailure,
   type ActionResult,
 } from '@/server/actions/staff-action';
+import { parseFormData } from '@/server/actions/form-data';
 import { validateStaffPasswordPair } from '@/lib/staff-password-policy';
 import { lockStaffHardwareAuthState } from '@/server/auth/staff-account-recovery-lock';
 import {
@@ -122,21 +123,42 @@ function assertHardwareMetadataUnchanged(
   }
 }
 
+/** Passwortfeld wie bisher als Text (fehlend → ''). */
+const passwordText = z.preprocess((value) => String(value ?? ''), z.string());
+
+// Reihenfolge wie bisher: erst Richtlinie und Wiederholung des neuen Passworts,
+// dann das aktuelle Passwort — genau eine Meldung, vor Rate-Limit und bcrypt.
+const ChangeOwnPasswordForm = z
+  .object({
+    currentPassword: passwordText,
+    newPassword: passwordText,
+    confirmPassword: passwordText,
+  })
+  .superRefine(({ currentPassword, newPassword, confirmPassword }, ctx) => {
+    const policyError = validateStaffPasswordPair(newPassword, confirmPassword);
+    if (policyError) {
+      ctx.addIssue({ code: 'custom', path: ['newPassword'], message: policyError });
+    } else if (!currentPassword) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['currentPassword'],
+        message: 'Das aktuelle Passwort fehlt.',
+      });
+    }
+  });
+
 export async function changeOwnPasswordAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
   return staffAction({
-    run: async ({ tenantId, staffId, ctx, session }) => {
+    parse: () =>
+      parseFormData(ChangeOwnPasswordForm, formData, {
+        absentAsNull: true,
+        errorMessage: (issues) => issues.map((issue) => issue.message).join(' '),
+      }),
+    run: async ({ tenantId, staffId, ctx, session }, { currentPassword, newPassword }) => {
       const authRevision = session.user.authRevision ?? 0;
-
-      const currentPassword = String(formData.get('currentPassword') ?? '');
-      const newPassword = String(formData.get('newPassword') ?? '');
-      const confirmPassword = String(formData.get('confirmPassword') ?? '');
-      const validationError = validateStaffPasswordPair(newPassword, confirmPassword);
-      if (!currentPassword || validationError) {
-        return { ok: false, error: validationError ?? 'Das aktuelle Passwort fehlt.' };
-      }
 
       const limit = await checkRateLimit(`staff-password-change:${staffId}`, PASSWORD_CHANGE_LIMIT);
       if (!limit.ok) {

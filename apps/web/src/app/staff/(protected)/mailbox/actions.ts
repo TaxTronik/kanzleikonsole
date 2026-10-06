@@ -17,11 +17,10 @@ import { fetchObjectBytes, getBucketForTier } from '@taxtronik/storage';
 import {
   staffAction,
   ActionError,
-  type ActionFailure,
   type ActionResult,
   type StaffCtx,
 } from '@/server/actions/staff-action';
-import { validationFailure } from '@/server/actions/form-data';
+import { formFlag, parseFormData, validationFailure } from '@/server/actions/form-data';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
 import { persistResumableDocumentUpload } from '@/server/documents/resumable-upload';
@@ -29,7 +28,8 @@ import { carrierClassification } from '@/server/storage/document-type';
 import type { DocumentClassification } from '@prisma/client';
 import { audit } from '@/server/actions/audit';
 
-const INVALID_MAILBOX_ID: ActionFailure = { ok: false, error: 'Ungültige Postfach-ID.' };
+/** Postfach-ID aus dem Formular; ungültig → „Ungültige Postfach-ID.“ samt Feldfehler. */
+const MAILBOX_FORM = { absentAsNull: true, errorMessage: 'Ungültige Postfach-ID.' } as const;
 
 export async function saveMailbox(
   _prev: ActionResult | null,
@@ -106,11 +106,8 @@ export async function setMailboxEnabled(
 ): Promise<ActionResult> {
   return staffAction({
     guard: { requireAdmin: true, module: 'smartMailbox' },
-    parse: () => {
-      const parsedId = z.uuid().safeParse(form.get('id'));
-      if (!parsedId.success) return INVALID_MAILBOX_ID;
-      return { ok: true, data: { id: parsedId.data, enabled: form.get('enabled') === 'true' } };
-    },
+    parse: () =>
+      parseFormData(z.object({ id: z.uuid(), enabled: formFlag('true') }), form, MAILBOX_FORM),
     run: async (g, { id, enabled }) => {
       await withTenantContext(g.ctx, async (tx) => {
         const account = await tx.inboundMailbox.findFirst({ where: { id, tenantId: g.tenantId } });
@@ -139,11 +136,8 @@ export async function connectMicrosoft(
 ): Promise<ActionResult> {
   const result = await staffAction({
     guard: { requireAdmin: true, module: 'smartMailbox' },
-    parse: () => {
-      const parsedId = z.uuid().safeParse(form.get('id'));
-      return parsedId.success ? { ok: true, data: parsedId.data } : INVALID_MAILBOX_ID;
-    },
-    run: async (g, id) => ({ url: await prepareMicrosoftConnect(g, id) }),
+    parse: () => parseFormData(z.object({ id: z.uuid() }), form, MAILBOX_FORM),
+    run: async (g, { id }) => ({ url: await prepareMicrosoftConnect(g, id) }),
   });
   if (!result.ok) return result;
   // Erfolg: Weiterleitung zur Microsoft-Anmeldung (außerhalb des Fehler-Mappings).

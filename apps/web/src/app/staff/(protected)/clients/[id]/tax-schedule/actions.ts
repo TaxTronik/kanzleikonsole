@@ -11,6 +11,7 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffAction } from '@/server/actions/staff-action';
+import { parseFormData } from '@/server/actions/form-data';
 import { berlinTodayUtcMidnight, lockTaxScheduleTx } from '@taxtronik/tax';
 import { audit } from '@/server/actions/audit';
 
@@ -54,11 +55,12 @@ export async function saveScheduleConfigAction(
 ): Promise<ActionResult> {
   return staffAction({
     guard: { module: 'taxNotices' },
-    run: async ({ tenantId, staffId, ctx, session }) => {
-      const parsed = z.string().uuid().safeParse(formData.get('clientId'));
-      if (!parsed.success) return { ok: false, error: 'Ungültige Mandanten-ID.' };
-      const clientId = parsed.data;
-
+    parse: () =>
+      parseFormData(z.object({ clientId: z.string().uuid() }), formData, {
+        absentAsNull: true,
+        errorMessage: 'Ungültige Mandanten-ID.',
+      }),
+    run: async ({ tenantId, staffId, ctx, session }, { clientId }) => {
       // Pro Kind die Felder einsammeln. Dauerfrist/advised werden serverseitig
       // auf die fachlich zulässigen Arten begrenzt (Whitelists oben).
       // reminder/lead: bei abgeschalteter Auto-Anforderung sind die Zahlenfelder

@@ -37,6 +37,7 @@ import {
   verifyHardwareAssertion,
 } from '@/server/auth/webauthn';
 import { audit } from '@/server/actions/audit';
+import { formFlag, parseFormData } from '@/server/actions/form-data';
 
 const LIST = '/staff/admin/users';
 const ROLE_VALUES = ['EMPLOYEE', 'PARTNER', 'ADMIN'] as const;
@@ -96,21 +97,28 @@ function accountRecoveryProtectedRoles(actorRoles: readonly string[]): StaffRole
 // Anlegen
 // ----------------------------------------------------------------------------
 
+// Formularfelder heißen wie im Formular (Rollen-Haken `role.*`); die Umformung
+// liefert die bisherigen Namen `partner`/`admin`.
 const CreateSchema = z
   .object({
     fullName: z.string().min(2).max(200),
     email: z.string().email().max(255),
     password: z.string(),
     confirmPassword: z.string(),
-    partner: z.boolean(),
-    admin: z.boolean(),
-    isProfessional: z.boolean(),
-    datevAdvisorNumber: z.string().trim().max(40),
+    'role.PARTNER': formFlag(),
+    'role.ADMIN': formFlag(),
+    isProfessional: formFlag(),
+    datevAdvisorNumber: z.preprocess((value) => String(value ?? ''), z.string().trim().max(40)),
   })
   .superRefine((data, ctx) => {
     const error = validateStaffPasswordPair(data.password, data.confirmPassword);
     if (error) ctx.addIssue({ code: 'custom', path: ['confirmPassword'], message: error });
-  });
+  })
+  .transform(({ 'role.PARTNER': partner, 'role.ADMIN': admin, ...fields }) => ({
+    ...fields,
+    partner,
+    admin,
+  }));
 
 export async function createUserAction(
   _prev: ActionResult | null,
@@ -120,19 +128,11 @@ export async function createUserAction(
   return staffAction({
     guard: { requireAdmin: true },
     run: async ({ tenantId, ctx, session }) => {
-      const parsed = CreateSchema.safeParse({
-        fullName: formData.get('fullName'),
-        email: formData.get('email'),
-        password: formData.get('password'),
-        confirmPassword: formData.get('confirmPassword'),
-        partner: formData.get('role.PARTNER') === 'on',
-        admin: formData.get('role.ADMIN') === 'on',
-        isProfessional: formData.get('isProfessional') === 'on',
-        datevAdvisorNumber: String(formData.get('datevAdvisorNumber') ?? ''),
+      const parsed = parseFormData(CreateSchema, formData, {
+        absentAsNull: true,
+        errorMessage: (issues) => issues.map((i) => i.message).join('; '),
       });
-      if (!parsed.success) {
-        return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
-      }
+      if (!parsed.ok) return parsed;
       if (parsed.data.admin && !isActualAdmin(session.user.roles)) {
         return { ok: false, error: 'Die ADMIN-Rolle kann nur durch einen ADMIN vergeben werden.' };
       }

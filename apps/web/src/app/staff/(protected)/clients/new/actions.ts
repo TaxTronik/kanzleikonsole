@@ -6,21 +6,34 @@ import { redirect } from 'next/navigation';
 import { withTenantContext } from '@taxtronik/db';
 import { z } from 'zod';
 import { staffAction, ActionError, type ActionResult } from '@/server/actions/staff-action';
-import { validationFailure } from '@/server/actions/form-data';
+import {
+  formDefault,
+  formEmpty,
+  formFlag,
+  formList,
+  parseFormData,
+} from '@/server/actions/form-data';
 import { audit } from '@/server/actions/audit';
 
 const createClientSchema = z
   .object({
     name: z.string().min(1, 'Name ist Pflichtfeld'),
     kind: z.enum(['NATPERS', 'JURPERS', 'PERSGES']),
-    datevNo: z.string().optional(),
-    street: z.string().max(200).optional().or(z.literal('')),
-    postalCode: z.string().max(20).optional().or(z.literal('')),
-    city: z.string().max(100).optional().or(z.literal('')),
-    countryIso: z.string().length(2).optional().or(z.literal('')),
-    invoiceEmail: z.string().email().max(255).optional().or(z.literal('')),
-    berufstraegerIds: z.array(z.string().uuid()).min(1, 'Mindestens ein Berufsträger ist Pflicht.'),
-    hauptbearbeiterIds: z.array(z.string().uuid()),
+    datevNo: formEmpty(undefined, z.string().optional()),
+    street: formDefault('', z.string().max(200).optional().or(z.literal(''))),
+    postalCode: formDefault('', z.string().max(20).optional().or(z.literal(''))),
+    city: formDefault('', z.string().max(100).optional().or(z.literal(''))),
+    countryIso: z.preprocess(
+      (value) => ((value as string) ?? '').toUpperCase(),
+      z.string().length(2).optional().or(z.literal('')),
+    ),
+    invoiceEmail: formDefault('', z.string().email().max(255).optional().or(z.literal(''))),
+    berufstraegerIds: formList(
+      z.array(z.string().uuid()).min(1, 'Mindestens ein Berufsträger ist Pflicht.'),
+    ),
+    hauptbearbeiterIds: formList(z.array(z.string().uuid())),
+    // „Trotzdem anlegen“ nach der Doppel-Warnung.
+    confirmDuplicate: formFlag('1'),
   })
   // P2-22: Formatprüfungen für deutsche Mandanten.
   .superRefine((d, ctx) => {
@@ -48,26 +61,12 @@ export async function createClientAction(
   const result = await staffAction({
     guard: { requirePermission: 'CLIENT_CREATE' },
     run: async ({ tenantId, ctx }) => {
-      const confirmDuplicate = formData.get('confirmDuplicate') === '1';
-      const parsed = createClientSchema.safeParse({
-        name: formData.get('name'),
-        kind: formData.get('kind'),
-        datevNo: formData.get('datevNo') || undefined,
-        street: formData.get('street') ?? '',
-        postalCode: formData.get('postalCode') ?? '',
-        city: formData.get('city') ?? '',
-        countryIso: ((formData.get('countryIso') as string) ?? '').toUpperCase(),
-        invoiceEmail: formData.get('invoiceEmail') ?? '',
-        berufstraegerIds: formData.getAll('berufstraegerIds').map(String),
-        hauptbearbeiterIds: formData.getAll('hauptbearbeiterIds').map(String),
+      const parsed = parseFormData(createClientSchema, formData, {
+        repeatable: ['berufstraegerIds', 'hauptbearbeiterIds'],
+        absentAsNull: true,
+        errorMessage: (issues) => issues.map((i) => i.message).join(', '),
       });
-
-      if (!parsed.success) {
-        return validationFailure(
-          parsed.error.issues,
-          parsed.error.issues.map((i) => i.message).join(', '),
-        );
-      }
+      if (!parsed.ok) return parsed;
 
       const {
         name,
@@ -80,6 +79,7 @@ export async function createClientAction(
         invoiceEmail,
         berufstraegerIds,
         hauptbearbeiterIds,
+        confirmDuplicate,
       } = parsed.data;
       const uniqueBerufstraegerIds = Array.from(new Set(berufstraegerIds));
       const uniqueHauptbearbeiterIds = Array.from(new Set(hauptbearbeiterIds));

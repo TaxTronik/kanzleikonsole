@@ -518,7 +518,13 @@ describe('createUserAction', () => {
 
     const result = await createUserAction(null, formData);
 
-    expect(result).toEqual({ ok: false, error: 'Die Passwörter stimmen nicht überein.' });
+    // R-12: dieselbe Meldung, dazu die Feldzuordnung aus parseFormData.
+    expect(result).toEqual({
+      ok: false,
+      error: 'Die Passwörter stimmen nicht überein.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { confirmPassword: ['Die Passwörter stimmen nicht überein.'] },
+    });
     expect(mocks.hash).not.toHaveBeenCalled();
     expect(mocks.withTenantContext).not.toHaveBeenCalled();
   });

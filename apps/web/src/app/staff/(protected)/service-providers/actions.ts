@@ -10,33 +10,29 @@ import {
 import { readConsentOptionsCatalogTx } from '@/server/privacy/consent-catalog';
 import { lockConsentCatalogTx } from '@/server/privacy/catalog-lock';
 import { audit } from '@/server/actions/audit';
+import { formDefault, formOptional } from '@/server/actions/form-data';
 
 export type ActionResult = BaseActionResult;
 
 const Schema = z.object({
   name: z.string().min(1).max(200),
   category: z.string().min(1).max(100),
-  hasDataAccess: z.enum(['1', 'on', 'true']).optional(),
-  contactEmail: z.string().email().max(255).optional().or(z.literal('')),
-  contractFromDate: z.string().date().optional().or(z.literal('')),
-  contractToDate: z.string().date().optional().or(z.literal('')),
-  notes: z.string().max(5000).optional().or(z.literal('')),
+  hasDataAccess: formOptional(z.enum(['1', 'on', 'true']).optional()),
+  contactEmail: formDefault('', z.string().email().max(255).optional().or(z.literal(''))),
+  contractFromDate: formDefault('', z.string().date().optional().or(z.literal(''))),
+  contractToDate: formDefault('', z.string().date().optional().or(z.literal(''))),
+  notes: formDefault('', z.string().max(5000).optional().or(z.literal(''))),
 });
 
 export async function createServiceProviderAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const parsed = Schema.safeParse({
-    name: formData.get('name'),
-    category: formData.get('category'),
-    hasDataAccess: formData.get('hasDataAccess') ?? undefined,
-    contactEmail: formData.get('contactEmail') ?? '',
-    contractFromDate: formData.get('contractFromDate') ?? '',
-    contractToDate: formData.get('contractToDate') ?? '',
-    notes: formData.get('notes') ?? '',
+  const parsed = parseFormData(Schema, formData, {
+    absentAsNull: true,
+    errorMessage: 'Validierungsfehler.',
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.ok) return parsed;
   const data = parsed.data;
 
   // Dienstleister-Verzeichnis ist DSGVO/AVV-Compliance — nur ADMIN/PARTNER.

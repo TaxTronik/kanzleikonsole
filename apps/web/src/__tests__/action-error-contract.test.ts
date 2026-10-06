@@ -68,6 +68,10 @@ const INVARIANT_THROWS: Readonly<Record<string, Allowance>> = {
       n: 1,
       why: 'Mandantenbezug der DB-Funktion widerspricht dem Check; Rollback, das UI zeigt eine feste Meldung.',
     },
+  'server/actions/form-data.ts::parseFormData: absentAsNull braucht ein z.object': {
+    n: 1,
+    why: 'Programmierfehler beim Aufruf (absentAsNull nur mit Objekt-Schema); fällt im ersten Test der Action auf.',
+  },
   'server/risk/los.ts::Quantenlos erfordert einen Staff-Kontext (actorI': {
     n: 2,
     why: 'Die Actions laufen ausschließlich mit Staff-Guard; ein fehlender Akteur ist ein Programmierfehler.',

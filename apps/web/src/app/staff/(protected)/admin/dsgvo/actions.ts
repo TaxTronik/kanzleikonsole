@@ -18,7 +18,7 @@ import {
   type ActionResult,
   type StaffGuardOptions,
 } from '@/server/actions/staff-action';
-import { validationFailure } from '@/server/actions/form-data';
+import { formDefault, formOptional, parseFormData } from '@/server/actions/form-data';
 import { audit } from '@/server/actions/audit';
 
 // DSGVO-Anträge sind eine Compliance-Hoheit (Art. 12 ff.) — durchweg
@@ -39,7 +39,7 @@ const YmdSchema = z
 const CreateSchema = z.object({
   type: z.enum(['ACCESS', 'RECTIFICATION', 'ERASURE', 'RESTRICTION', 'PORTABILITY', 'OBJECTION']),
   subjectType: z.enum(['CLIENT_CONTACT', 'STAFF_USER', 'CLIENT', 'EXTERNAL']),
-  subjectRefId: z.string().uuid().optional().or(z.literal('')),
+  subjectRefId: formDefault('', z.string().uuid().optional().or(z.literal(''))),
   subjectEmail: z.string().email().max(255),
   subjectName: z.string().min(1).max(200),
   description: z.string().min(1).max(5000),
@@ -53,16 +53,11 @@ export async function createDsgvoRequestAction(
   const result = await staffAction({
     guard: DSGVO_ADMIN,
     run: async ({ tenantId, staffId, ctx }) => {
-      const parsed = CreateSchema.safeParse({
-        type: formData.get('type'),
-        subjectType: formData.get('subjectType'),
-        subjectRefId: formData.get('subjectRefId') ?? '',
-        subjectEmail: formData.get('subjectEmail'),
-        subjectName: formData.get('subjectName'),
-        description: formData.get('description'),
-        receivedAt: formData.get('receivedAt'),
+      const parsed = parseFormData(CreateSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
       });
-      if (!parsed.success) return validationFailure(parsed.error.issues, 'Validierungsfehler.');
+      if (!parsed.ok) return parsed;
 
       const data = parsed.data;
       // Frist nach Art. 12 Abs. 3 DSGVO: 1 Monat. Monatsende-sicher (§ 188 Abs. 3
@@ -150,13 +145,13 @@ export async function createDsgvoRequestAction(
 const UpdateStatusSchema = z.object({
   requestId: z.string().uuid(),
   status: z.enum(['RECEIVED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED']),
-  notes: z.string().max(5000).optional().or(z.literal('')),
-  resultDocumentId: z.string().uuid().optional().or(z.literal('')),
-  responseSentAt: YmdSchema.optional().or(z.literal('')),
-  responseMethod: z.string().max(200).optional().or(z.literal('')),
-  rejectionReason: z.string().max(5000).optional().or(z.literal('')),
-  resultReviewConfirmed: z.literal('on').optional(),
-  rejectionNoticeComplete: z.literal('on').optional(),
+  notes: formDefault('', z.string().max(5000).optional().or(z.literal(''))),
+  resultDocumentId: formDefault('', z.string().uuid().optional().or(z.literal(''))),
+  responseSentAt: formDefault('', YmdSchema.optional().or(z.literal(''))),
+  responseMethod: formDefault('', z.string().max(200).optional().or(z.literal(''))),
+  rejectionReason: formDefault('', z.string().max(5000).optional().or(z.literal(''))),
+  resultReviewConfirmed: formOptional(z.literal('on').optional()),
+  rejectionNoticeComplete: formOptional(z.literal('on').optional()),
 });
 
 export async function updateStatusAction(
@@ -166,18 +161,11 @@ export async function updateStatusAction(
   return staffAction({
     guard: DSGVO_ADMIN,
     run: async ({ tenantId, staffId, ctx }) => {
-      const parsed = UpdateStatusSchema.safeParse({
-        requestId: formData.get('requestId'),
-        status: formData.get('status'),
-        notes: formData.get('notes') ?? '',
-        resultDocumentId: formData.get('resultDocumentId') ?? '',
-        responseSentAt: formData.get('responseSentAt') ?? '',
-        responseMethod: formData.get('responseMethod') ?? '',
-        rejectionReason: formData.get('rejectionReason') ?? '',
-        resultReviewConfirmed: formData.get('resultReviewConfirmed') ?? undefined,
-        rejectionNoticeComplete: formData.get('rejectionNoticeComplete') ?? undefined,
+      const parsed = parseFormData(UpdateStatusSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
       });
-      if (!parsed.success) return validationFailure(parsed.error.issues, 'Validierungsfehler.');
+      if (!parsed.ok) return parsed;
       const data = parsed.data;
 
       // Workflow-Nachweise (validateDsgvoStatusEvidence) melden sich als
@@ -662,13 +650,13 @@ export async function anonymizeContactAction(
   return staffAction({
     guard: DSGVO_ADMIN,
     run: async ({ tenantId, staffId, ctx }) => {
-      const contactIdRaw = formData.get('contactId');
       // NEW5: Input via Zod statt nur typeof — Prisma akzeptiert sonst beliebige
       // Strings für UUID-Spalten und wirft erst zur Laufzeit.
-      const parsed = z
-        .object({ contactId: z.string().uuid() })
-        .safeParse({ contactId: contactIdRaw });
-      if (!parsed.success) return { ok: false, error: 'Ungültige Kontakt-ID.' };
+      const parsed = parseFormData(z.object({ contactId: z.string().uuid() }), formData, {
+        absentAsNull: true,
+        errorMessage: 'Ungültige Kontakt-ID.',
+      });
+      if (!parsed.ok) return parsed;
       const { contactId } = parsed.data;
 
       // Geteilte Anonymisierungs-Logik (auch von der Mandanten-Anonymisierung in

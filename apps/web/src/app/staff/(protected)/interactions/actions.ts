@@ -11,6 +11,7 @@ import {
 import { berlinWallClockToUtc } from '@/lib/fmt';
 import { validWorkflowCalendarDate } from '@/server/workflows/interaction-policy';
 import { audit } from '@/server/actions/audit';
+import { formFlag, parseFormData } from '@/server/actions/form-data';
 
 type NoticeDeadlineState = {
   status: string;
@@ -198,11 +199,15 @@ export async function configureFeedbackAction(data: FormData) {
 }
 
 export async function reviewInteractionAction(data: FormData) {
-  const id = z.string().uuid().safeParse(data.get('id'));
-  if (!id.success) return { ok: false, error: 'Ungültiger Vorgang.' };
+  const parsed = parseFormData(z.object({ id: z.string().uuid(), revoke: formFlag('1') }), data, {
+    absentAsNull: true,
+    errorMessage: 'Ungültiger Vorgang.',
+  });
+  if (!parsed.ok) return parsed;
+  const { revoke } = parsed.data;
   return withStaff(
     async (tx, g) => {
-      const row = await tx.clientInteraction.findUnique({ where: { id: id.data } });
+      const row = await tx.clientInteraction.findUnique({ where: { id: parsed.data.id } });
       if (!row) throw new ActionError('Vorgang nicht gefunden.');
       await assertModuleEnabledTx(
         tx,
@@ -210,7 +215,6 @@ export async function reviewInteractionAction(data: FormData) {
         row.kind === 'NOTICE' ? 'noticeDecisions' : 'feedbackSurveys',
       );
       await assertClientAccessTx(tx, g.session, row.clientId);
-      const revoke = data.get('revoke') === '1';
       if (revoke && row.status !== 'OPEN')
         throw new ActionError('Nur offene Anfragen können zurückgezogen werden.');
       if (!revoke && row.status !== 'RESPONDED')

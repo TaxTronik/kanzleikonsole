@@ -108,8 +108,6 @@ describe('parseFormData-Migrationsrest', () => {
         'staff/(protected)/admin/settings/branding-actions.ts::LetterheadSchema',
         'staff/(protected)/admin/settings/mail-actions.ts::MailDispatchSchema',
         'staff/(protected)/admin/settings/modules-actions.ts::AccessPolicySchema',
-        'staff/(protected)/clients/[id]/edit/actions.ts::GwgSchema',
-        'staff/(protected)/clients/onboarding/[id]/actions.ts::GwgSchema',
       ].sort(),
     );
   });
@@ -123,8 +121,12 @@ describe('parseFormData-Migrationsrest', () => {
     // Beginn an. Die Direkt-Restbaseline wird deshalb ausschließlich abgesenkt;
     // die sechs bewusst klassifizierten exakten Sonderfälle bleiben unverändert.
     // T-03 hat die tote addBeneficialOwner-Action (AddOwnerSchema) entfernt.
-    expect(direct).toHaveLength(50);
-    expect(direct.filter((call) => !call.exact)).toHaveLength(44);
-    expect(shared).toBe(56);
+    // R-12 hat die übrigen Direkt-Parses der nicht ausgeschlossenen Dateien auf
+    // parseFormData umgestellt (absentAsNull + Feldschemas aus form-data.ts);
+    // der Rest liegt in den ausgeschlossenen Dateien und den Portal-Terminen
+    // (Slot-Paare mit eigener Feldfehler-Zuordnung, siehe FORM_DATA_READ_BASELINE).
+    expect(direct).toHaveLength(24);
+    expect(direct.filter((call) => !call.exact)).toHaveLength(20);
+    expect(shared).toBe(100);
   });
 });

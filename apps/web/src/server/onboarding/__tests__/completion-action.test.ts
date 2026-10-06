@@ -284,9 +284,12 @@ describe('Review-Befund F-01: Wizard-Schritte melden Fehler im Formular', () => 
     const data = formData();
     data.set('next', '../gwg');
 
+    // R-12: dieselbe Meldung, zusätzlich mit Feldzuordnung (parseFormData).
     await expect(onboardingSkipAction(null, data)).resolves.toEqual({
       ok: false,
       error: 'Ungültige Parameter.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { next: ['Invalid string: must match pattern /^[a-z_]+$/'] },
     });
     expect(mocks.redirect).not.toHaveBeenCalled();
   });

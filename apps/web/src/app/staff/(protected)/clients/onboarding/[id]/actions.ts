@@ -14,7 +14,7 @@ import { prepareGwgInviteBindingTx } from '@/server/gwg-onboarding/invite-bindin
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { staffAction, ActionError, type ActionResult } from '@/server/actions/staff-action';
-import { parseFormData, validationFailure } from '@/server/actions/form-data';
+import { formDefault, parseFormData } from '@/server/actions/form-data';
 import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
 import { startManualGwgCaptureTx } from '@/server/gwg-onboarding/manual-capture';
 import { audit } from '@/server/actions/audit';
@@ -24,9 +24,18 @@ export interface WizardResult {
   error?: string;
 }
 
-function invalidInput(issues: readonly { path: readonly PropertyKey[]; message: string }[]) {
-  return validationFailure(issues, issues.map((i) => i.message).join(', '));
-}
+/** Wie bisher: Gesamtmeldung aus allen Feldmeldungen, fehlende Felder als null. */
+const ONBOARDING_FORM = {
+  absentAsNull: true,
+  errorMessage: (issues: readonly { message: string }[]) => issues.map((i) => i.message).join(', '),
+} as const;
+
+/** Navigationsparameter der Wizard-Schritte (Mandanten-ID, Schrittname). */
+const SKIP_PARAMS = {
+  absentAsNull: true,
+  errorMessage: 'Ungültige Parameter.',
+} as const;
+const WIZARD_CLIENT_ID = z.string().regex(/^[a-f0-9-]{36}$/);
 
 // ---------------------------------------------------------------------------
 // Schritt 2: Ansprechpartner + (optional) Portal-Magic-Link
@@ -36,9 +45,9 @@ const ContactSchema = z.object({
   clientId: z.string().uuid(),
   email: z.string().email().max(255),
   fullName: z.string().min(2).max(200),
-  phone: z.string().max(50).optional().or(z.literal('')),
-  role: z.string().max(80).optional().or(z.literal('')),
-  sendPortalInvite: z.string().optional(),
+  phone: formDefault('', z.string().max(50).optional().or(z.literal(''))),
+  role: formDefault('', z.string().max(80).optional().or(z.literal(''))),
+  sendPortalInvite: formDefault('', z.string().optional()),
 });
 
 export async function onboardingAddContactAction(
@@ -49,15 +58,8 @@ export async function onboardingAddContactAction(
     run: async (g) => {
       const { tenantId, ctx } = g;
 
-      const parsed = ContactSchema.safeParse({
-        clientId: formData.get('clientId'),
-        email: formData.get('email'),
-        fullName: formData.get('fullName'),
-        phone: formData.get('phone') ?? '',
-        role: formData.get('role') ?? '',
-        sendPortalInvite: formData.get('sendPortalInvite') ?? '',
-      });
-      if (!parsed.success) return invalidInput(parsed.error.issues);
+      const parsed = parseFormData(ContactSchema, formData, ONBOARDING_FORM);
+      if (!parsed.ok) return parsed;
 
       const sendInvite =
         parsed.data.sendPortalInvite === 'on' || parsed.data.sendPortalInvite === '1';
@@ -153,13 +155,8 @@ export async function onboardingSendGwgAction(
     run: async (g) => {
       const { tenantId, staffId, ctx } = g;
 
-      const parsed = GwgSchema.safeParse({
-        clientId: formData.get('clientId'),
-        inviteName: formData.get('inviteName'),
-        inviteEmail: formData.get('inviteEmail'),
-        expectedLatestInviteId: formData.get('expectedLatestInviteId'),
-      });
-      if (!parsed.success) return invalidInput(parsed.error.issues);
+      const parsed = parseFormData(GwgSchema, formData, ONBOARDING_FORM);
+      if (!parsed.ok) return parsed;
 
       const { raw, hash } = generateInviteToken();
       const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
@@ -304,15 +301,13 @@ export async function onboardingSkipAction(
 ): Promise<ActionResult> {
   const outcome = await staffAction({
     run: async () => {
-      const clientId = formData.get('clientId');
-      const next = formData.get('next');
-      if (typeof clientId !== 'string' || typeof next !== 'string') {
-        return { ok: false, error: 'Ungültige Parameter.' };
-      }
-      if (!/^[a-f0-9-]{36}$/.test(clientId) || !/^[a-z_]+$/.test(next)) {
-        return { ok: false, error: 'Ungültige Parameter.' };
-      }
-      return { clientId, next };
+      const parsed = parseFormData(
+        z.object({ clientId: WIZARD_CLIENT_ID, next: z.string().regex(/^[a-z_]+$/) }),
+        formData,
+        SKIP_PARAMS,
+      );
+      if (!parsed.ok) return parsed;
+      return { clientId: parsed.data.clientId, next: parsed.data.next };
     },
   });
   if (!outcome.ok) return outcome;
@@ -330,10 +325,9 @@ export async function onboardingCompleteAction(
   const outcome = await staffAction({
     run: async (g) => {
       const { staffId, ctx } = g;
-      const clientId = formData.get('clientId');
-      if (typeof clientId !== 'string' || !/^[a-f0-9-]{36}$/.test(clientId)) {
-        return { ok: false, error: 'Ungültige Parameter.' };
-      }
+      const parsed = parseFormData(z.object({ clientId: WIZARD_CLIENT_ID }), formData, SKIP_PARAMS);
+      if (!parsed.ok) return parsed;
+      const { clientId } = parsed.data;
 
       await withTenantContext(ctx, async (tx) => {
         await assertClientAccessTx(tx, g.session, clientId);

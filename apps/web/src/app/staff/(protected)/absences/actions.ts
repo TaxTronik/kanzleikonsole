@@ -14,7 +14,7 @@ import {
   ActionError,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
-import { validationFailure } from '@/server/actions/form-data';
+import { formDefault, formOptional } from '@/server/actions/form-data';
 import { audit } from '@/server/actions/audit';
 
 export type ActionResult = BaseActionResult;
@@ -128,8 +128,8 @@ export async function createVacationRequestAction(
 
 const DecideSchema = z.object({
   requestId: z.string().uuid(),
-  approve: z.enum(['1', 'true']).optional(),
-  note: z.string().max(1000).optional().or(z.literal('')),
+  approve: formOptional(z.enum(['1', 'true']).optional()),
+  note: formDefault('', z.string().max(1000).optional().or(z.literal(''))),
 });
 
 export async function decideVacationAction(
@@ -139,12 +139,8 @@ export async function decideVacationAction(
   // iter87: Entscheiden braucht ABSENCE_DECIDE (ADMIN/PARTNER implizit —
   // entspricht dem bisherigen requireAdmin; zusätzlich delegierbar an
   // einzelne Mitarbeiter, z. B. Personalverantwortliche).
-  const parsed = DecideSchema.safeParse({
-    requestId: formData.get('requestId'),
-    approve: formData.get('approve') ?? undefined,
-    note: formData.get('note') ?? '',
-  });
-  if (!parsed.success) return validationFailure(parsed.error.issues);
+  const parsed = parseFormData(DecideSchema, formData, { absentAsNull: true });
+  if (!parsed.ok) return parsed;
 
   const status = parsed.data.approve ? 'APPROVED' : 'REJECTED';
 

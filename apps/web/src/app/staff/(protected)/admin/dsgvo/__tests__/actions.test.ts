@@ -240,9 +240,12 @@ describe('DSGVO-Actions — Rückkanal statt Wurf', () => {
   });
 
   it('meldet eine ungültige Kontakt-ID beim Anonymisieren, statt still abzubrechen', async () => {
+    // R-12: dieselbe Meldung, zusätzlich mit Feldzuordnung (parseFormData).
     await expect(anonymizeContactAction(null, form({ contactId: 'keine-uuid' }))).resolves.toEqual({
       ok: false,
       error: 'Ungültige Kontakt-ID.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { contactId: ['Invalid UUID'] },
     });
     expect(h.withTenantContext).not.toHaveBeenCalled();
     expect(h.revokeAllSessions).not.toHaveBeenCalled();

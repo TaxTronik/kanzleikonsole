@@ -1,5 +1,65 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-034
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/portal/(protected)/requests/[id]/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/privacy/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/users/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/elster/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/onboarding/[id]/actions.ts
+      - apps/web/src/app/staff/(protected)/dashboard/rss-feed-actions.ts
+      - apps/web/src/app/staff/(protected)/gwg/actions.ts
+      - apps/web/src/app/staff/(protected)/interactions/actions.ts
+      - apps/web/src/app/staff/(protected)/mailbox/actions.ts
+      - apps/web/src/app/staff/(protected)/profile/actions.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/actions.ts
+      - apps/web/src/app/staff/(protected)/year-end/actions.ts
+    rule_ids:
+      - ACCESS-STAFF-PERMISSION-001
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-HASH-CHAIN-001
+      - CLIENT-FEEDBACK-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - DSGVO-CONSENT-SNAPSHOT-001
+      - DSGVO-CONTACT-EXPORT-001
+      - DSGVO-REQUEST-DEADLINE-001
+      - DSGVO-REQUEST-EVIDENCE-001
+      - GWG-PERSON-LINKS-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - MAIL-INBOX-001
+      - REMINDER-TICKET-001
+      - REQ-LIFECYCLE-001
+      - TAX-CONTROL-STATUS-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-MASTER-DATA-001
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+      - TAX-NOTICE-DECISION-001
+      - WORKFLOW-LIFECYCLE-001
+      - YEAR-END-CAMPAIGN-001
+    reason: >-
+      Formular-Actions lesen ihre Felder über parseFormData (mit absentAsNull und
+      Feld-Schemas für Checkbox-, Optional-, Default- und Listenfelder, die die
+      bisherigen Umwandlungen exakt nachbilden) statt Feld für Feld über
+      formData.get; Eingabefehler tragen zusätzlich errorCode VALIDATION_ERROR und
+      fieldErrors je Formularfeld. Akzeptierte Eingaben, Standardwerte,
+      Meldungstexte und deren Reihenfolge bleiben gleich (Differenztests gegen die
+      alten get-Ketten über sechs FormData-Varianten); Transaktionskörper sind
+      tokenidentisch. Ein Architekturtest verhindert neue Feld-für-Feld-Zugriffe.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/actions/__tests__/form-data.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-033
     date: '2026-10-06'
     paths:
@@ -3833,6 +3893,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-034` dokumentiert das Einlesen der
+  Formular-Actions über parseFormData mit unveränderten Eingaben und
+  Meldungen.
 
 - 2026-10-06: `FK-EXC-20261006-033` dokumentiert den Audit-Helfer, der
   Mandant und Akteur aus dem Gate-Kontext übernimmt. Ereignisse und

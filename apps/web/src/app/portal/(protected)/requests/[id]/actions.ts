@@ -8,11 +8,12 @@ import { notify } from '@/server/notifications/service';
 import { checkPortalWriteLimit } from '@/server/rate-limit';
 import { portalAction, ActionError, type ActionResult } from '@/server/actions/portal-action';
 import { audit } from '@/server/actions/audit';
+import { formDefault, parseFormData } from '@/server/actions/form-data';
 
 const ResponseSchema = z.object({
   requestId: z.string().uuid(),
   message: z.string().min(1).max(5000),
-  documentId: z.string().uuid().optional().or(z.literal('')),
+  documentId: formDefault('', z.string().uuid().optional().or(z.literal(''))),
 });
 
 export async function addPortalResponseAction(formData: FormData): Promise<ActionResult> {
@@ -30,12 +31,11 @@ export async function addPortalResponseAction(formData: FormData): Promise<Actio
         };
       }
 
-      const parsed = ResponseSchema.safeParse({
-        requestId: formData.get('requestId'),
-        message: formData.get('message'),
-        documentId: formData.get('documentId') ?? '',
+      const parsed = parseFormData(ResponseSchema, formData, {
+        absentAsNull: true,
+        errorMessage: 'Validierungsfehler.',
       });
-      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      if (!parsed.ok) return parsed;
       const { requestId, message, documentId } = parsed.data;
 
       await withTenantContext(ctx, async (tx) => {

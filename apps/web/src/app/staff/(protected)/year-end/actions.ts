@@ -11,6 +11,7 @@ import {
   YEAR_END_ROLLOUT_MAX_CLIENTS,
 } from '@/server/workflows/year-end-rollout';
 import { audit } from '@/server/actions/audit';
+import { parseFormData } from '@/server/actions/form-data';
 
 export async function returnCampaignSubmissionAction(data: FormData) {
   const parsed = z
@@ -77,17 +78,22 @@ export async function createCampaignAction(data: FormData) {
 }
 
 export async function rolloutCampaignAction(data: FormData) {
-  const parsed = z
-    .object({
-      campaignId: z.string().uuid(),
-      clientIds: z.array(z.string().uuid()).min(1).max(YEAR_END_ROLLOUT_MAX_CLIENTS),
-    })
-    .safeParse({ campaignId: data.get('campaignId'), clientIds: data.getAll('clientId') });
-  if (!parsed.success)
-    return {
-      ok: false,
-      error: `Kampagne und 1–${YEAR_END_ROLLOUT_MAX_CLIENTS} Mandanten auswählen.`,
-    };
+  // Mehrfachauswahl `clientId` (repeatable) → clientIds.
+  const parsed = parseFormData(
+    z
+      .object({
+        campaignId: z.string().uuid(),
+        clientId: z.array(z.string().uuid()).min(1).max(YEAR_END_ROLLOUT_MAX_CLIENTS),
+      })
+      .transform(({ campaignId, clientId }) => ({ campaignId, clientIds: clientId })),
+    data,
+    {
+      repeatable: ['clientId'],
+      absentAsNull: true,
+      errorMessage: `Kampagne und 1–${YEAR_END_ROLLOUT_MAX_CLIENTS} Mandanten auswählen.`,
+    },
+  );
+  if (!parsed.ok) return parsed;
   return withStaff(
     async (tx, g) => {
       await assertModuleEnabledTx(tx, g.tenantId, 'forms');
