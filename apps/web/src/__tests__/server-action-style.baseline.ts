@@ -27,8 +27,9 @@ export const PUBLIC_ACTION_ENTRY_POINTS: Readonly<Record<string, string>> = {
 };
 
 const EXCLUDED =
-  'Ausgeschlossen aus K-02 (wird parallel umgebaut): Stand bei Einführung des Guards eingefroren, ' +
-  'Re-Baseline nach der Integration.';
+  'Nicht in K-02 umgestellt (bei Einführung parallel durch K-03/K-04 umgebaut; GwG-, Vollmachts-, ' +
+  'Retag- und n8n-Logik liegt seitdem in Services unter server/): Stand nach der Integration ' +
+  'eingefroren, Umstellung der dünnen Actions auf staffAction steht aus.';
 const SUBSUMTION =
   'Subsumtion: eigene Guard-Familie (requireStaffSession + Ressourcen-Guards in _guards.ts mit ' +
   'Modulmeldung als ForbiddenError; Zugriff und Rechtestufe in EINER Transaktion). Fehler ' +
@@ -59,7 +60,7 @@ export const HANDWRITTEN_ACTION_BASELINE: Readonly<
   },
   'app/staff/(protected)/admin/settings/mail-actions.ts': { actions: 4, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/modules-actions.ts': { actions: 5, reason: EXCLUDED },
-  'app/staff/(protected)/admin/settings/n8n-actions.ts': { actions: 16, reason: EXCLUDED },
+  'app/staff/(protected)/admin/settings/n8n-actions.ts': { actions: 14, reason: EXCLUDED },
   'app/staff/(protected)/clients/[id]/gwg/actions.ts': { actions: 3, reason: EXCLUDED },
   'app/staff/(protected)/clients/[id]/gwg/invite-actions.ts': { actions: 1, reason: EXCLUDED },
   'app/staff/(protected)/clients/[id]/subsumtion/actions.ts': { actions: 14, reason: SUBSUMTION },
@@ -123,18 +124,13 @@ export const HAND_FILLED_AUDIT_BASELINE: Readonly<
   },
   'app/staff/(protected)/admin/settings/mail-actions.ts': { calls: 3, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/modules-actions.ts': { calls: 5, reason: EXCLUDED },
-  'app/staff/(protected)/admin/settings/n8n-actions.ts': { calls: 9, reason: EXCLUDED },
-  'app/staff/(protected)/clients/[id]/gwg/actions.ts': { calls: 6, reason: EXCLUDED },
-  'app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts': { calls: 5, reason: EXCLUDED },
   'app/staff/(protected)/clients/[id]/gwg/invite-actions.ts': { calls: 2, reason: EXCLUDED },
-  'app/staff/(protected)/clients/[id]/gwg/owner-actions.ts': { calls: 5, reason: EXCLUDED },
-  'app/staff/(protected)/documents/actions.ts': { calls: 5, reason: EXCLUDED },
+  'app/staff/(protected)/documents/actions.ts': { calls: 3, reason: EXCLUDED },
   'app/staff/(protected)/invoices/actions.ts': {
     calls: 2,
     reason:
       'finalizeInvoiceSendTx/cancelOriginalAfterDeliveredStornoTx: Helfer erhalten Mandant und Mitarbeiter als Parameter.',
   },
-  'app/staff/(protected)/poa/actions.ts': { calls: 5, reason: EXCLUDED },
   'app/staff/(protected)/poa/sign-actions.ts': { calls: 1, reason: EXCLUDED },
   'server/actions/accessible-display.ts': {
     calls: 1,
@@ -240,7 +236,7 @@ export const FORM_DATA_READ_BASELINE: Readonly<Record<string, { reads: number; r
         'archiveStructure/archiveOffboarding: Services mit eigener zod-Prüfung (raw: unknown).',
     },
     'app/staff/(protected)/payroll/actions.ts': { reads: 3, reason: PAYROLL_UPLOAD },
-    'app/staff/(protected)/poa/actions.ts': { reads: 12, reason: EXCLUDED },
+    'app/staff/(protected)/poa/actions.ts': { reads: 11, reason: EXCLUDED },
     'app/staff/(protected)/tax-deadlines/actions.ts': {
       reads: 3,
       reason:
