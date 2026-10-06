@@ -1,5 +1,34 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-021
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/staff/(protected)/poa/_signing-shared.ts
+      - apps/web/src/app/staff/(protected)/poa/actions.ts
+      - apps/web/src/server/poa/__tests__/poa-services-db-ci.test.ts
+      - apps/web/src/server/poa/__tests__/poa-services-db.test.ts
+      - apps/web/src/server/poa/create-poa.ts
+      - apps/web/src/server/poa/revoke-poa.ts
+      - apps/web/src/server/poa/send-for-signature.ts
+      - apps/web/src/server/poa/signing-token.ts
+    rule_ids:
+      - POA-LIFECYCLE-001
+      - POA-SIGNING-CONFIRMATION-001
+      - POA-SIGNING-SNAPSHOT-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Anlage, Versand zur Signatur und Widerruf von Vollmachten laufen über eigene
+      Server-Services (apps/web/src/server/poa/create-poa.ts,
+      send-for-signature.ts, revoke-poa.ts, signing-token.ts); die Actions behalten
+      ADMIN/PARTNER-Gate, Eingabeprüfung, Fehlerabbildung und Revalidierung.
+      Abfragen, Schreibvorgänge, Versandsnapshot und Hash, Token-Hash, DB-Uhrzeit,
+      Audit-Events und Meldungen bleiben unverändert. Neue PostgreSQL-Testsuite gegen
+      die PoA-Integritätstrigger im CI-db-Job. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/poa/__tests__/poa-services-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-020
     date: '2026-10-06'
     paths:
@@ -3343,6 +3372,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-021` dokumentiert eigene Server-Services für
+  Anlage, Versand und Widerruf von Vollmachten. Prüfungen, Snapshot und Audit
+  bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-020` dokumentiert die Umklassifizierung über
   einen gemeinsamen Dokument-Service. Sperren, Re-Store und Audit bleiben

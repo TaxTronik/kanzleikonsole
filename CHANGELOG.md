@@ -227,6 +227,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Anlage, Versand und Widerruf von Vollmachten laufen über eigene
+  Server-Services; Prüfungen, Schreibvorgänge, Versandsnapshot und Hash,
+  Audit-Events und Meldungen bleiben unverändert. Neue PostgreSQL-Testsuite
+  gegen die PoA-Integritätstrigger (`POA-LIFECYCLE-001`,
+  `POA-SIGNING-SNAPSHOT-001`, `POA-SIGNING-CONFIRMATION-001`,
+  `FK-EXC-20261006-021`).
 - **[Scope]** Die Umklassifizierung von Dokumenten (einzeln und als Auswahl)
   läuft über einen gemeinsamen Dokument-Service; Sperren, journal-first
   Re-Store, Meldungen und Audit-Events bleiben unverändert. Neue

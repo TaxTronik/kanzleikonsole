@@ -83,6 +83,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // DOC-VERSION-IMMUTABILITY-001 (K-03): Owner-Fixtures und Upload-Journal in einem frischen
   // Tenant; die App-Rolle führt den Retag-Service unter RLS, Triggern und Audit-Lock aus.
   'apps/web/src/server/documents/__tests__/retag-db.test.ts',
+  // POA-LIFECYCLE-001 (K-03): Owner-Fixtures in einem frischen Tenant; die App-Rolle führt
+  // Anlage, Versand und Widerruf der Vollmachten-Services unter RLS und PoA-Triggern aus.
+  'apps/web/src/server/poa/__tests__/poa-services-db.test.ts',
   // Fachkatalog: REMINDER-TICKET-001. Isolierte Owner-Fixtures und eine
   // separate App-Verbindung belegen Nummernvergabe, RLS, FK- und Archivrennen.
   'packages/db/src/__tests__/reminder-tickets.test.ts',
@@ -331,9 +334,6 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/app/poa/sign/document/route.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/portal/(auth)/login/actions.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/staff/(auth)/login/actions.ts <- @/server/db/prisma-owner',
-  // Staff-Seite: nur noch typeof-Bezug (Rueckgabetyp von sendForSignature) —
-  // kein Laufzeit-Bypass, der Import bleibt aber ein Wert-Import fuers typeof.
-  'apps/web/src/app/staff/(protected)/poa/actions.ts <- @/server/db/prisma-owner',
   // Oeffentlicher Token-Sign-Flow (aus poa/actions.ts herausgeloest): kein
   // Session-/Tenant-Kontext, Lookup ausschliesslich ueber den Token-Hash —
   // dieselbe Begruendung wie zuvor fuer poa/actions.ts.

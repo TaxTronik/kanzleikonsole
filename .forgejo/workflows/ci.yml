@@ -301,6 +301,16 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/web exec vitest run src/server/documents/__tests__/retag-db.test.ts 2>&1 | tee testbericht-document-retag.log
 
+      # POA-LIFECYCLE-001 / POA-SIGNING-SNAPSHOT-001: Vollmachten-Services (K-03)
+      # — Anlage (In-App und zweiphasiges Extern-PDF), Versand mit gebundenem
+      # Snapshot und DB-Versandzeit, Widerruf mit der Datenbank-Uhr.
+      - name: Power of attorney services against the PostgreSQL app role
+        env:
+          POA_SERVICE_DB_TEST: '1'
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/web exec vitest run src/server/poa/__tests__/poa-services-db.test.ts 2>&1 | tee testbericht-poa-services.log
+
       # AUDIT-VERIFY-ALERT-001 / AUDIT-RFC3161-ANCHOR-001: checkpointgestützte
       # Kettenprüfung (P-04) und Rolling-Anchor-Takt (P-05) gegen echtes
       # PostgreSQL; alle Fixtures werden zurückgerollt.
@@ -375,6 +385,7 @@ jobs:
             testbericht-invoice-concurrency.log
             testbericht-document-bulk.log
             testbericht-document-retag.log
+            testbericht-poa-services.log
             testbericht-evidence-db.log
             testbericht-worker-db.log
             testbericht-mandate-services.log

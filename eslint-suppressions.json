@@ -169,11 +169,6 @@
       "count": 1
     }
   },
-  "apps/web/src/app/staff/(protected)/poa/actions.ts": {
-    "complexity": {
-      "count": 1
-    }
-  },
   "apps/web/src/app/staff/(protected)/poa/sign-actions.ts": {
     "complexity": {
       "count": 2
