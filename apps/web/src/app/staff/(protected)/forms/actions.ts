@@ -8,9 +8,9 @@ import { evidenceService } from '@/server/container';
 import { enqueueClientContactsMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { portalBaseUrl } from '@taxtronik/config';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
-  staffActionGuard,
+  staffAction,
   withStaffModule,
   ActionError,
   parseFormData,
@@ -225,84 +225,82 @@ const CreateSubmissionSchema = z.object({
 export async function createSubmissionAction(
   input: z.infer<typeof CreateSubmissionSchema>,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'forms' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  return staffAction({
+    guard: { module: 'forms' },
+    run: async (g) => {
+      const { tenantId, staffId, ctx } = g;
 
-  const parsed = CreateSubmissionSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const parsed = CreateSubmissionSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  let id: string;
-  try {
-    id = await withTenantContext(ctx, async (tx) => {
-      // R-2: clientId-Tenant-Sanity + Vertraulich-/RESTRICTED-Ventil
-      await assertClientInTenant(tx, parsed.data.clientId);
-      await assertClientAccessTx(tx, g.session, parsed.data.clientId);
-      const tpl = await tx.formTemplate.findUnique({
-        where: { id: parsed.data.templateId },
-        include: { _count: { select: { fields: true } } },
-      });
-      if (!tpl) throw new ActionError('Vorlage nicht gefunden.');
-      if (!tpl.active) throw new ActionError('Vorlage ist deaktiviert.');
-      if (tpl._count.fields === 0) throw new ActionError('Vorlage hat keine Felder.');
-      const sub = await tx.formSubmission.create({
-        data: {
-          tenantId,
-          templateId: tpl.id,
-          clientId: parsed.data.clientId,
-          name: tpl.name,
-          createdByStaff: staffId,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'form.submission.create',
-        resourceType: 'form_submission',
-        resourceId: sub.id,
-        after: { templateName: tpl.name, clientId: parsed.data.clientId },
-      });
-      // F-08: Mandanten-Mail im selben Commit als Versandauftrag.
-      await enqueueClientContactsMailTx(
-        tx,
-        {
-          tenantId,
-          clientId: parsed.data.clientId,
-          purpose: 'form-sent',
-          resource: { type: 'form_submission', id: sub.id },
-          staffHref: `/staff/forms/submissions/${sub.id}`,
-        },
-        {
-          slug: 'request-opened',
-          vars: {
-            request: { id: sub.id, title: 'Neues Formular zum Ausfüllen', description: '' },
-            portalUrl: `${portalBaseUrl}/portal/forms/${sub.id}`,
-          },
-          n8nEvent: 'request.opened',
-          n8nPayload: {
+      const id = await withTenantContext(ctx, async (tx) => {
+        // R-2: clientId-Tenant-Sanity + Vertraulich-/RESTRICTED-Ventil
+        await assertClientInTenant(tx, parsed.data.clientId);
+        await assertClientAccessTx(tx, g.session, parsed.data.clientId);
+        const tpl = await tx.formTemplate.findUnique({
+          where: { id: parsed.data.templateId },
+          include: { _count: { select: { fields: true } } },
+        });
+        if (!tpl) throw new ActionError('Vorlage nicht gefunden.');
+        if (!tpl.active) throw new ActionError('Vorlage ist deaktiviert.');
+        if (tpl._count.fields === 0) throw new ActionError('Vorlage hat keine Felder.');
+        const sub = await tx.formSubmission.create({
+          data: {
             tenantId,
-            formSubmissionId: sub.id,
+            templateId: tpl.id,
             clientId: parsed.data.clientId,
+            name: tpl.name,
+            createdByStaff: staffId,
           },
-          fallback: {
-            subject: 'Neues Formular von Ihrer Kanzlei',
-            bodyMd:
-              'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt ein neues Formular zum Ausfüllen bereit.\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'form.submission.create',
+          resourceType: 'form_submission',
+          resourceId: sub.id,
+          after: { templateName: tpl.name, clientId: parsed.data.clientId },
+        });
+        // F-08: Mandanten-Mail im selben Commit als Versandauftrag.
+        await enqueueClientContactsMailTx(
+          tx,
+          {
+            tenantId,
+            clientId: parsed.data.clientId,
+            purpose: 'form-sent',
+            resource: { type: 'form_submission', id: sub.id },
+            staffHref: `/staff/forms/submissions/${sub.id}`,
           },
-        },
-      );
-      return sub.id;
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
+          {
+            slug: 'request-opened',
+            vars: {
+              request: { id: sub.id, title: 'Neues Formular zum Ausfüllen', description: '' },
+              portalUrl: `${portalBaseUrl}/portal/forms/${sub.id}`,
+            },
+            n8nEvent: 'request.opened',
+            n8nPayload: {
+              tenantId,
+              formSubmissionId: sub.id,
+              clientId: parsed.data.clientId,
+            },
+            fallback: {
+              subject: 'Neues Formular von Ihrer Kanzlei',
+              bodyMd:
+                'Sehr geehrte/r {{contact.fullName}},\n\nin Ihrem Mandantenportal liegt ein neues Formular zum Ausfüllen bereit.\n\nBitte öffnen Sie das Portal:\n{{portalUrl}}',
+            },
+          },
+        );
+        return sub.id;
+      });
 
-  kickMailOutboxDelivery();
+      kickMailOutboxDelivery();
 
-  revalidatePath(`/staff/clients/${parsed.data.clientId}`);
-  revalidatePath('/staff/forms');
-  return { ok: true, id };
+      revalidatePath(`/staff/clients/${parsed.data.clientId}`);
+      revalidatePath('/staff/forms');
+      return { id };
+    },
+  });
 }
 
 // ----------------------------------------------------------------------------

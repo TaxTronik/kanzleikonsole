@@ -61,6 +61,22 @@ describe('createActionRunner — Ablauf', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it('meldet eine Gate-Ablehnung an onDenied, ohne run zu erreichen', async () => {
+    guard.mockResolvedValueOnce({ ok: false, error: 'Keine Berechtigung (INVOICE_SEND).' });
+    const onDenied = vi.fn();
+    const run = vi.fn();
+
+    await expect(runAction({ onDenied, run })).resolves.toEqual({
+      ok: false,
+      error: 'Keine Berechtigung (INVOICE_SEND).',
+    });
+    expect(onDenied).toHaveBeenCalledWith('Keine Berechtigung (INVOICE_SEND).');
+    expect(run).not.toHaveBeenCalled();
+
+    await runAction({ onDenied, run: async () => undefined });
+    expect(onDenied).toHaveBeenCalledOnce();
+  });
+
   it('prüft die Eingabe nach dem Gate und gibt Feldfehler unverändert zurück', async () => {
     const order: string[] = [];
     guard.mockImplementationOnce(async () => {

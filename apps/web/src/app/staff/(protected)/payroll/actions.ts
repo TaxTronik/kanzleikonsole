@@ -1,6 +1,6 @@
 'use server';
 import { z } from 'zod';
-import { staffActionGuard } from '@/server/actions/staff-action';
+import { staffAction, staffActionGuard } from '@/server/actions/staff-action';
 async function guardPayrollStaff(work: Parameters<typeof payrollAction>[0]) {
   const g = await staffActionGuard({
     module: 'payrollIntake',
@@ -23,7 +23,7 @@ import { persistPayrollFile } from '@/server/payroll/storage';
 import { createPayrollExport } from '@/server/payroll/export';
 import { ActionError } from '@/server/actions/action-error';
 import { withTenantContext } from '@taxtronik/db';
-import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 export interface PayrollEmployerContactsResult {
   ok: boolean;
   error?: string;
@@ -41,28 +41,24 @@ export async function loadPayrollEmployerContactsAction(
 ): Promise<PayrollEmployerContactsResult> {
   const parsedClientId = z.uuid().safeParse(clientId);
   if (!parsedClientId.success) return { ok: false, error: 'Ungültiges Mandat.' };
-  const g = await staffActionGuard({
-    module: 'payrollIntake',
-    requirePermission: 'PAYROLL_MANAGE',
-  });
-  if (!g.ok) return { ok: false, error: g.error };
-  try {
-    const contacts = await withTenantContext(g.ctx, async (tx) => {
-      await assertClientAccessTx(tx, g.session, parsedClientId.data);
-      return tx.clientContact.findMany({
-        where: {
-          active: true,
-          clientId: parsedClientId.data,
-          client: { allowActive: true, mandateEndedAt: null },
-        },
-        select: { id: true, fullName: true },
-        orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+  return staffAction({
+    guard: { module: 'payrollIntake', requirePermission: 'PAYROLL_MANAGE' },
+    run: async (g) => {
+      const contacts = await withTenantContext(g.ctx, async (tx) => {
+        await assertClientAccessTx(tx, g.session, parsedClientId.data);
+        return tx.clientContact.findMany({
+          where: {
+            active: true,
+            clientId: parsedClientId.data,
+            client: { allowActive: true, mandateEndedAt: null },
+          },
+          select: { id: true, fullName: true },
+          orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+        });
       });
-    });
-    return { ok: true, contacts };
-  } catch (e) {
-    return toActionError(e);
-  }
+      return { contacts };
+    },
+  });
 }
 export async function createPayrollAction(data: FormData) {
   return guardPayrollStaff(async () => ({

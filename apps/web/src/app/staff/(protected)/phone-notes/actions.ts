@@ -8,7 +8,6 @@ import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify } from '@/server/notifications/service';
 import {
-  toActionError,
   assertClientAccessTx,
   canOtherStaffAccessClientTx,
   ForbiddenError,
@@ -16,6 +15,7 @@ import {
 import type { StaffSession } from '@/server/auth/staff';
 import { assertStaffInTenant, TenantScopeError } from '@/server/db/assert-tenant';
 import {
+  staffAction,
   staffActionGuard,
   withStaffModule,
   ActionError,
@@ -59,109 +59,115 @@ export async function createPhoneNoteAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'phoneNotes' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
-
-  const parsed = CreateSchema.safeParse({
-    callerName: formData.get('callerName'),
-    callerPhone: formData.get('callerPhone') ?? '',
-    subject: formData.get('subject'),
-    body: formData.get('body'),
-    clientId: formData.get('clientId') ?? '',
-    forwardToStaff: formData.get('forwardToStaff') ?? '',
-  });
-  if (!parsed.success) {
-    return { ok: false, error: 'Validierungsfehler.' };
-  }
-  const data = parsed.data;
-
-  let noteId: string;
-  try {
-    noteId = await withTenantContext(ctx, async (tx) => {
-      // P-7: Sanity-Check innerhalb des Tenants. RLS schützt cross-tenant;
-      // FK-Constraints prüfen nur Existenz im DB-Cluster. Innerhalb des
-      // Tenants kann ein Bug/UI-Fehler sonst eine clientId/forwardToStaff
-      // aus einem anderen Datenkontext persistieren. Symmetrisch zu M-1.
-      if (data.clientId) {
-        const c = await tx.client.findFirst({ where: { id: data.clientId }, select: { id: true } });
-        if (!c) throw new TenantScopeError('CLIENT');
-        // Vertraulich-/RESTRICTED-Ventil bei Mandantenbezug.
-        await assertClientAccessTx(tx, g.session, data.clientId);
+  return staffAction({
+    guard: { module: 'phoneNotes' },
+    parse: () => {
+      const parsed = CreateSchema.safeParse({
+        callerName: formData.get('callerName'),
+        callerPhone: formData.get('callerPhone') ?? '',
+        subject: formData.get('subject'),
+        body: formData.get('body'),
+        clientId: formData.get('clientId') ?? '',
+        forwardToStaff: formData.get('forwardToStaff') ?? '',
+      });
+      if (!parsed.success) {
+        return { ok: false, error: 'Validierungsfehler.' };
       }
-      if (data.forwardToStaff) {
-        const s = await tx.staffUser.findFirst({
-          where: { id: data.forwardToStaff },
-          select: { id: true },
-        });
-        if (!s) throw new TenantScopeError('STAFF');
+      return { ok: true, data: parsed.data };
+    },
+    run: async (g, data) => {
+      const { tenantId, staffId, ctx } = g;
+
+      const noteId = await withTenantContext(ctx, async (tx) => {
+        // P-7: Sanity-Check innerhalb des Tenants. RLS schützt cross-tenant;
+        // FK-Constraints prüfen nur Existenz im DB-Cluster. Innerhalb des
+        // Tenants kann ein Bug/UI-Fehler sonst eine clientId/forwardToStaff
+        // aus einem anderen Datenkontext persistieren. Symmetrisch zu M-1.
         if (data.clientId) {
-          await assertPhoneNoteRecipientAccessTx(tx, tenantId, data.forwardToStaff, data.clientId);
+          const c = await tx.client.findFirst({
+            where: { id: data.clientId },
+            select: { id: true },
+          });
+          if (!c) throw new TenantScopeError('CLIENT');
+          // Vertraulich-/RESTRICTED-Ventil bei Mandantenbezug.
+          await assertClientAccessTx(tx, g.session, data.clientId);
         }
-      }
-      const note = await tx.phoneNote.create({
-        data: {
+        if (data.forwardToStaff) {
+          const s = await tx.staffUser.findFirst({
+            where: { id: data.forwardToStaff },
+            select: { id: true },
+          });
+          if (!s) throw new TenantScopeError('STAFF');
+          if (data.clientId) {
+            await assertPhoneNoteRecipientAccessTx(
+              tx,
+              tenantId,
+              data.forwardToStaff,
+              data.clientId,
+            );
+          }
+        }
+        const note = await tx.phoneNote.create({
+          data: {
+            tenantId,
+            callerName: data.callerName,
+            callerPhone: data.callerPhone || null,
+            subject: data.subject,
+            body: data.body,
+            clientId: data.clientId || null,
+            forwardToStaff: data.forwardToStaff || null,
+            takenByStaff: staffId,
+          },
+        });
+        await evidenceService.record(tx, {
           tenantId,
-          callerName: data.callerName,
-          callerPhone: data.callerPhone || null,
-          subject: data.subject,
-          body: data.body,
-          clientId: data.clientId || null,
-          forwardToStaff: data.forwardToStaff || null,
-          takenByStaff: staffId,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'phone_note.create',
-        resourceType: 'phone_note',
-        resourceId: note.id,
-        after: {
-          callerName: data.callerName,
-          subject: data.subject,
-          forwardToStaff: data.forwardToStaff || null,
-          clientId: data.clientId || null,
-        },
-      });
-
-      // Notification an Empfänger (außer wenn an sich selbst weitergeleitet)
-      if (data.forwardToStaff && data.forwardToStaff !== staffId) {
-        await notify(tx, {
-          tenantId,
-          staffId: data.forwardToStaff,
-          kind: 'PHONE_NOTE_FORWARDED',
-          title: `Telefonnotiz: ${data.subject}`,
-          body: `Anrufer: ${data.callerName}${data.callerPhone ? ' · ' + data.callerPhone : ''}`,
-          href: `/staff/phone-notes`,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'phone_note.create',
           resourceType: 'phone_note',
           resourceId: note.id,
+          after: {
+            callerName: data.callerName,
+            subject: data.subject,
+            forwardToStaff: data.forwardToStaff || null,
+            clientId: data.clientId || null,
+          },
         });
+
+        // Notification an Empfänger (außer wenn an sich selbst weitergeleitet)
+        if (data.forwardToStaff && data.forwardToStaff !== staffId) {
+          await notify(tx, {
+            tenantId,
+            staffId: data.forwardToStaff,
+            kind: 'PHONE_NOTE_FORWARDED',
+            title: `Telefonnotiz: ${data.subject}`,
+            body: `Anrufer: ${data.callerName}${data.callerPhone ? ' · ' + data.callerPhone : ''}`,
+            href: `/staff/phone-notes`,
+            resourceType: 'phone_note',
+            resourceId: note.id,
+          });
+        }
+
+        return note.id;
+      });
+
+      if (data.forwardToStaff) {
+        await emitN8nEvent(
+          'phone_note.created',
+          {
+            tenantId,
+            noteId,
+            forwardToStaff: data.forwardToStaff,
+            subject: data.subject,
+          },
+          { tenantId },
+        );
       }
 
-      return note.id;
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
-
-  if (data.forwardToStaff) {
-    await emitN8nEvent(
-      'phone_note.created',
-      {
-        tenantId,
-        noteId,
-        forwardToStaff: data.forwardToStaff,
-        subject: data.subject,
-      },
-      { tenantId },
-    );
-  }
-
-  revalidatePath('/staff/phone-notes');
-  if (data.clientId) revalidatePath(`/staff/clients/${data.clientId}`);
-  return { ok: true };
+      if (data.clientId) revalidatePath(`/staff/clients/${data.clientId}`);
+    },
+    revalidate: '/staff/phone-notes',
+  });
 }
 
 const PHONE_NOTE_NOT_FOUND = 'Telefonnotiz nicht gefunden.';
@@ -170,26 +176,22 @@ export async function markNoteReadAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'phoneNotes' });
-  if (!g.ok) return g;
-  // S2: UUID-Validation (symmetrisch zu markNotificationReadAction).
-  const parsed = parseFormData(z.object({ noteId: z.string().uuid() }), formData);
-  if (!parsed.ok) return parsed;
-  try {
-    const found = await markPhoneNoteRead(parsed.data.noteId, g.tenantId, g.staffId, g.session);
-    if (!found) return { ok: false, error: PHONE_NOTE_NOT_FOUND };
-  } catch (error) {
+  return staffAction({
+    guard: { module: 'phoneNotes' },
+    // S2: UUID-Validation (symmetrisch zu markNotificationReadAction).
+    parse: () => parseFormData(z.object({ noteId: z.string().uuid() }), formData),
+    run: async (g, { noteId }) => {
+      const found = await markPhoneNoteRead(noteId, g.tenantId, g.staffId, g.session);
+      if (!found) return { ok: false, error: PHONE_NOTE_NOT_FOUND };
+    },
+    revalidate: '/staff/phone-notes',
     // Fremde/vertrauliche IDs werden wie nicht vorhandene IDs gemeldet, damit
     // die Rückmeldung nichts über fremde Mandanten verrät (Review-Befund F-01).
     // Insbesondere darf dabei keine Notification aufgelöst und kein readAt
     // gesetzt werden: assertClientAccessTx wirft vor jedem Schreibzugriff.
-    if (error instanceof ForbiddenError) {
-      return { ok: false, error: PHONE_NOTE_NOT_FOUND };
-    }
-    return toActionError(error);
-  }
-  revalidatePath('/staff/phone-notes');
-  return { ok: true };
+    onError: (error) =>
+      error instanceof ForbiddenError ? { ok: false, error: PHONE_NOTE_NOT_FOUND } : undefined,
+  });
 }
 
 // Interner Helfer (kein UI-Action): erhält bereits autorisierten Kontext.

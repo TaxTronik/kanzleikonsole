@@ -17,6 +17,7 @@ const m = vi.hoisted(() => ({
   storage: vi.fn(),
   modules: vi.fn(),
   context: vi.fn(),
+  guard: vi.fn(),
 }));
 const tenantId = '00000000-0000-4000-8000-000000000001';
 const clientId = '00000000-0000-4000-8000-000000000002';
@@ -47,32 +48,44 @@ vi.mock('@/server/invoicing/number', async (original) => ({
   ...(await original<typeof import('../number')>()),
   allocateInvoiceNumber: vi.fn().mockResolvedValue('2026-0001'),
 }));
-vi.mock('@/server/actions/staff-action', async () => ({
-  ActionError: (await import('@/server/actions/action-error')).ActionError,
-  staffActionGuard: async () => ({ ok: true, tenantId, staffId: 'staff', ctx: {}, session: {} }),
-  withStaff: async (fn: (tx: unknown, ctx: unknown) => Promise<void>) => {
-    try {
-      await fn(m.tx, { tenantId, staffId: 'staff', session: {} });
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: (e as Error).message };
-    }
-  },
-  parseFormData: (schema: { parse(input: unknown): unknown }, data: FormData) => ({
-    ok: true,
-    data: schema.parse(Object.fromEntries(data)),
-  }),
-}));
+vi.mock('@/server/actions/staff-action', async () => {
+  const staffActionGuard = (options?: unknown) => m.guard(options);
+  return {
+    ActionError: (await import('@/server/actions/action-error')).ActionError,
+    staffActionGuard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(staffActionGuard),
+    withStaff: async (fn: (tx: unknown, ctx: unknown) => Promise<void>) => {
+      try {
+        await fn(m.tx, { tenantId, staffId: 'staff', session: {} });
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: (e as Error).message };
+      }
+    },
+    parseFormData: (schema: { parse(input: unknown): unknown }, data: FormData) => ({
+      ok: true,
+      data: schema.parse(Object.fromEntries(data)),
+    }),
+  };
+});
 
 import {
   cancelInvoiceAction,
   createInvoiceAction,
   markPaidAction,
+  markSentAction,
   uploadExternalInvoiceAction,
 } from '@/app/staff/(protected)/invoices/actions';
+import { log } from '@/server/logger';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  m.guard.mockResolvedValue({ ok: true, tenantId, staffId: 'staff', ctx: {}, session: {} });
   m.modules.mockResolvedValue({ invoiceMode: 'IN_APP' });
   m.context.mockImplementation(async (_ctx, fn) => fn(m.tx));
   m.tx.invoice.create.mockResolvedValue({ id: invoiceId });
@@ -231,5 +244,27 @@ describe('Review-Befund F-01: Rechnungsstatus meldet Ablehnungen als Ergebnis', 
     expect(executeRaw).toHaveBeenCalled();
     expect(m.tx.invoice.create).not.toHaveBeenCalled();
     expect(m.record).not.toHaveBeenCalled();
+  });
+});
+
+describe('Befund 9: Versand meldet eine Guard-Ablehnung als Ergebnis', () => {
+  it('gibt die Ablehnung zurück und loggt sie strukturiert, ohne die Rechnung zu lesen', async () => {
+    m.guard.mockResolvedValueOnce({ ok: false, error: 'Keine Berechtigung (INVOICE_SEND).' });
+    const form = new FormData();
+    form.set('invoiceId', invoiceId);
+
+    await expect(markSentAction(null, form)).resolves.toEqual({
+      ok: false,
+      error: 'Keine Berechtigung (INVOICE_SEND).',
+    });
+    expect(m.guard).toHaveBeenCalledWith({
+      requirePermission: 'INVOICE_SEND',
+      modeModule: 'invoices',
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      { component: 'invoices', action: 'markSent', err: 'Keine Berechtigung (INVOICE_SEND).' },
+      'markSentAction: Guard abgelehnt',
+    );
+    expect(m.tx.invoice.findUnique).not.toHaveBeenCalled();
   });
 });

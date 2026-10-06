@@ -35,10 +35,11 @@ import { round2, fmtEUR, fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt'
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { log } from '@/server/logger';
 import {
-  staffActionGuard,
+  staffAction,
   withStaff,
   ActionError,
   parseFormData,
+  type ActionFailure,
   type ActionResult as BaseActionResult,
   type StaffCtx,
 } from '@/server/actions/staff-action';
@@ -52,7 +53,7 @@ export type ActionResult = BaseActionResult;
 async function requireInvoiceMode(
   ctx: TenantContext,
   mode: InvoiceMode,
-): Promise<ActionResult | null> {
+): Promise<ActionFailure | null> {
   const modules = await readModules(ctx);
   if (modules.invoiceMode !== mode) {
     return { ok: false, error: 'Das Rechnungsmodul ist für diesen Vorgang nicht aktiviert.' };
@@ -143,51 +144,47 @@ export async function createInvoiceAction(input: {
   }>;
 }): Promise<ActionResult & { invoiceId?: string; number?: string }> {
   // iter87: Anlegen braucht das Einzelrecht (ADMIN/PARTNER implizit).
-  const g = await staffActionGuard({
-    requirePermission: 'INVOICE_MANAGE',
-    modeModule: 'invoices',
-  });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  // Nummernkonflikt und GwG-Schranke bildet createDraftInvoiceTx ab.
+  return staffAction({
+    guard: { requirePermission: 'INVOICE_MANAGE', modeModule: 'invoices' },
+    run: async (g) => {
+      const { tenantId, staffId, ctx } = g;
 
-  const gate = await requireInvoiceMode(ctx, 'IN_APP');
-  if (gate) return gate;
+      const gate = await requireInvoiceMode(ctx, 'IN_APP');
+      if (gate) return gate;
 
-  const parsed = CreateSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
-  }
-  const data = parsed.data;
-  const header: DraftInvoiceHeader = {
-    clientId: data.clientId,
-    subject: data.subject,
-    issueDate: new Date(data.issueDate),
-    dueDate: new Date(data.dueDate),
-    servicePeriodStart: data.servicePeriodStart ? new Date(data.servicePeriodStart) : null,
-    servicePeriodEnd: data.servicePeriodEnd ? new Date(data.servicePeriodEnd) : null,
-    vatExemptionReason: data.vatExemptionReason || null,
-    reverseCharge: data.reverseCharge,
-    format: data.format,
-    notes: data.notes || null,
-  };
+      const parsed = CreateSchema.safeParse(input);
+      if (!parsed.success) {
+        return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
+      }
+      const data = parsed.data;
+      const header: DraftInvoiceHeader = {
+        clientId: data.clientId,
+        subject: data.subject,
+        issueDate: new Date(data.issueDate),
+        dueDate: new Date(data.dueDate),
+        servicePeriodStart: data.servicePeriodStart ? new Date(data.servicePeriodStart) : null,
+        servicePeriodEnd: data.servicePeriodEnd ? new Date(data.servicePeriodEnd) : null,
+        vatExemptionReason: data.vatExemptionReason || null,
+        reverseCharge: data.reverseCharge,
+        format: data.format,
+        notes: data.notes || null,
+      };
 
-  // Reine Prüfungen schon vor der Transaktion (der Service wiederholt sie).
-  const checked = checkDraftInvoice(header, data.positions);
-  if (!checked.ok) return { ok: false, error: checked.error };
+      // Reine Prüfungen schon vor der Transaktion (der Service wiederholt sie).
+      const checked = checkDraftInvoice(header, data.positions);
+      if (!checked.ok) return { ok: false, error: checked.error };
 
-  try {
-    const invoice = await withTenantContext(ctx, async (tx) => {
-      // Vertraulich-/RESTRICTED-Ventil (Gegenstück in clients/[id]/billing).
-      await assertClientAccessTx(tx, g.session, data.clientId);
-      return createDraftInvoiceTx(tx, { tenantId, staffId }, header, data.positions, {
-        kind: 'manual',
+      const invoice = await withTenantContext(ctx, async (tx) => {
+        // Vertraulich-/RESTRICTED-Ventil (Gegenstück in clients/[id]/billing).
+        await assertClientAccessTx(tx, g.session, data.clientId);
+        return createDraftInvoiceTx(tx, { tenantId, staffId }, header, data.positions, {
+          kind: 'manual',
+        });
       });
-    });
-    return { ok: true, invoiceId: invoice.id, number: invoice.number };
-  } catch (e) {
-    // Nummernkonflikt und GwG-Schranke bildet createDraftInvoiceTx ab.
-    return toActionError(e);
-  }
+      return { invoiceId: invoice.id, number: invoice.number };
+    },
+  });
 }
 
 const StatusSchema = z.object({
@@ -419,116 +416,117 @@ export async function markSentAction(
   formData: FormData,
 ): Promise<ActionResult> {
   // iter87: Versenden = GoB-Festschreibung — eigenes Einzelrecht INVOICE_SEND.
-  const g = await staffActionGuard({ requirePermission: 'INVOICE_SEND', modeModule: 'invoices' });
-  if (!g.ok) {
+  return staffAction({
+    guard: { requirePermission: 'INVOICE_SEND', modeModule: 'invoices' },
     // Befund 9: Guard-Ablehnung strukturiert loggen UND an die UI zurückmelden
     // (früher Form-Action ohne Result-Channel → kommentarlos verschluckt).
-    log.warn(
-      { component: 'invoices', action: 'markSent', err: g.error },
-      'markSentAction: Guard abgelehnt',
-    );
-    return { ok: false, error: g.error };
-  }
-  const { tenantId, staffId, ctx } = g;
-  const parsed = parseFormData(StatusSchema, formData);
-  if (!parsed.ok) {
-    log.warn({ component: 'invoices', action: 'markSent' }, 'markSentAction: ungültige invoiceId');
-    return { ok: false, error: 'Ungültige Rechnungs-ID.' };
-  }
-
-  // iter85 (GoB): Precondition + Archiv-PFLICHT vor dem Versand.
-  // Nur DRAFT → SENT; und die byte-stabile GoBD-Archivkopie muss VOR der
-  // Festschreibung existieren — vorher war das Archiv best-effort und eine
-  // SENT-Rechnung konnte ohne revisionssichere Kopie existieren (Befund 8).
-  // PDF-/EXTERNAL-Formate haben kein Generat (not_applicable) und passieren.
-  let current;
-  try {
-    current = await withTenantContext(ctx, async (tx) => {
-      const inv = await tx.invoice.findUnique({
-        where: { id: parsed.data.invoiceId },
-        select: { status: true, clientId: true, documentId: true, format: true },
-      });
-      // Vertraulich-/RESTRICTED-Ventil.
-      if (inv) await assertClientAccessTx(tx, g.session, inv.clientId);
-      return inv;
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
-  if (!current) return { ok: false, error: 'Rechnung nicht gefunden.' };
-  if (!isValidInvoiceTransition(current.status, 'SENT')) {
-    return { ok: false, error: `Statuswechsel ${current.status} → SENT ist nicht zulässig.` };
-  }
-
-  let archive;
-  try {
-    archive = await withTimeout(
-      ensureZugferdArchive(ctx, parsed.data.invoiceId, { purpose: 'ISSUE' }),
-      45_000,
-    );
-  } catch (err) {
-    return {
-      ok: false,
-      error:
-        err instanceof TimeoutError
-          ? 'ZUGFeRD-Archiv konnte nicht rechtzeitig erzeugt werden — bitte erneut versuchen.'
-          : `ZUGFeRD-Archiv konnte nicht erzeugt werden: ${toActionError(err).error}`,
-    };
-  }
-  if (!archive.ok) {
-    if (archive.code !== 'not_applicable') {
-      return {
-        ok: false,
-        error: `Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: ${archiveFailureMessage(archive.code)}`,
-      };
-    }
-    // H-4: `not_applicable` ist nur für EXTERNAL-Uploads zulässig (deren
-    // documentId IST die Rechnung). Eine IN_APP-Rechnung mit Format „PDF" hat
-    // KEIN Generat und KEIN Dokument — sie darf nicht ohne Rechnungsbeleg
-    // versendet werden (§ 14 Abs. 1 UStG, keine GoBD-Archivkopie).
-    if (!current.documentId) {
-      return {
-        ok: false,
-        error:
-          'Diese Rechnung hat kein Rechnungsdokument (Format „PDF" ohne Beleg). ' +
-          'Bitte als XRechnung oder ZUGFeRD neu anlegen.',
-      };
-    }
-  }
-
-  // TOCTOU-Schutz gegen Doppel-Submit (zwei Tabs / zwei Bearbeiter): beide
-  // passieren den Precheck oben, aber der atomare DRAFT→SENT-Claim im Helfer
-  // trifft nur beim ersten status=DRAFT — der zweite läuft ins Leere (null).
-  const sendResult = await withTenantContext(ctx, async (tx) => {
-    const result = await finalizeInvoiceSendTx(tx, {
-      invoiceId: parsed.data.invoiceId,
-      staffId,
-      tenantId,
-    });
-    if (result.outcome === 'sent') await enqueueInvoiceSentMailsTx(tx, tenantId, result.invoice);
-    return result;
-  });
-
-  // Nur ein tatsächlich bereits ausgelieferter Zustand ist idempotenter Erfolg.
-  // Hat parallel ein Storno gewonnen, darf weder Erfolg noch Zustellung/N8N
-  // gemeldet werden.
-  if (sendResult.outcome !== 'sent') return markSentCasResult(sendResult);
-  const sent = sendResult.invoice;
-  kickMailOutboxDelivery();
-
-  // Korrekturbelege dürfen niemals den normalen Fälligkeits-/Mahnworkflow
-  // starten. finalizeInvoiceSendTx hat das Original bereits atomar storniert.
-  await emitN8nEvent(
-    sent.stornoOfId ? 'invoice.storno' : 'invoice.due',
-    {
-      tenantId,
-      invoiceId: parsed.data.invoiceId,
+    onDenied: (error) =>
+      log.warn(
+        { component: 'invoices', action: 'markSent', err: error },
+        'markSentAction: Guard abgelehnt',
+      ),
+    parse: () => {
+      const parsed = parseFormData(StatusSchema, formData);
+      if (parsed.ok) return parsed;
+      log.warn(
+        { component: 'invoices', action: 'markSent' },
+        'markSentAction: ungültige invoiceId',
+      );
+      return { ok: false, error: 'Ungültige Rechnungs-ID.' };
     },
-    { tenantId },
-  );
-  revalidatePath('/staff/invoices');
-  revalidatePath(`/staff/invoices/${parsed.data.invoiceId}`);
-  return { ok: true };
+    run: async (g, { invoiceId }) => {
+      const { tenantId, staffId, ctx } = g;
+
+      // iter85 (GoB): Precondition + Archiv-PFLICHT vor dem Versand.
+      // Nur DRAFT → SENT; und die byte-stabile GoBD-Archivkopie muss VOR der
+      // Festschreibung existieren — vorher war das Archiv best-effort und eine
+      // SENT-Rechnung konnte ohne revisionssichere Kopie existieren (Befund 8).
+      // PDF-/EXTERNAL-Formate haben kein Generat (not_applicable) und passieren.
+      const current = await withTenantContext(ctx, async (tx) => {
+        const inv = await tx.invoice.findUnique({
+          where: { id: invoiceId },
+          select: { status: true, clientId: true, documentId: true, format: true },
+        });
+        // Vertraulich-/RESTRICTED-Ventil.
+        if (inv) await assertClientAccessTx(tx, g.session, inv.clientId);
+        return inv;
+      });
+      if (!current) return { ok: false, error: 'Rechnung nicht gefunden.' };
+      if (!isValidInvoiceTransition(current.status, 'SENT')) {
+        return { ok: false, error: `Statuswechsel ${current.status} → SENT ist nicht zulässig.` };
+      }
+
+      let archive;
+      try {
+        archive = await withTimeout(
+          ensureZugferdArchive(ctx, invoiceId, { purpose: 'ISSUE' }),
+          45_000,
+        );
+      } catch (err) {
+        return {
+          ok: false,
+          error:
+            err instanceof TimeoutError
+              ? 'ZUGFeRD-Archiv konnte nicht rechtzeitig erzeugt werden — bitte erneut versuchen.'
+              : `ZUGFeRD-Archiv konnte nicht erzeugt werden: ${toActionError(err).error}`,
+        };
+      }
+      if (!archive.ok) {
+        if (archive.code !== 'not_applicable') {
+          return {
+            ok: false,
+            error: `Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: ${archiveFailureMessage(archive.code)}`,
+          };
+        }
+        // H-4: `not_applicable` ist nur für EXTERNAL-Uploads zulässig (deren
+        // documentId IST die Rechnung). Eine IN_APP-Rechnung mit Format „PDF" hat
+        // KEIN Generat und KEIN Dokument — sie darf nicht ohne Rechnungsbeleg
+        // versendet werden (§ 14 Abs. 1 UStG, keine GoBD-Archivkopie).
+        if (!current.documentId) {
+          return {
+            ok: false,
+            error:
+              'Diese Rechnung hat kein Rechnungsdokument (Format „PDF" ohne Beleg). ' +
+              'Bitte als XRechnung oder ZUGFeRD neu anlegen.',
+          };
+        }
+      }
+
+      // TOCTOU-Schutz gegen Doppel-Submit (zwei Tabs / zwei Bearbeiter): beide
+      // passieren den Precheck oben, aber der atomare DRAFT→SENT-Claim im Helfer
+      // trifft nur beim ersten status=DRAFT — der zweite läuft ins Leere (null).
+      const sendResult = await withTenantContext(ctx, async (tx) => {
+        const result = await finalizeInvoiceSendTx(tx, {
+          invoiceId,
+          staffId,
+          tenantId,
+        });
+        if (result.outcome === 'sent')
+          await enqueueInvoiceSentMailsTx(tx, tenantId, result.invoice);
+        return result;
+      });
+
+      // Nur ein tatsächlich bereits ausgelieferter Zustand ist idempotenter Erfolg.
+      // Hat parallel ein Storno gewonnen, darf weder Erfolg noch Zustellung/N8N
+      // gemeldet werden.
+      if (sendResult.outcome !== 'sent') return markSentCasResult(sendResult);
+      const sent = sendResult.invoice;
+      kickMailOutboxDelivery();
+
+      // Korrekturbelege dürfen niemals den normalen Fälligkeits-/Mahnworkflow
+      // starten. finalizeInvoiceSendTx hat das Original bereits atomar storniert.
+      await emitN8nEvent(
+        sent.stornoOfId ? 'invoice.storno' : 'invoice.due',
+        {
+          tenantId,
+          invoiceId,
+        },
+        { tenantId },
+      );
+      revalidatePath('/staff/invoices');
+      revalidatePath(`/staff/invoices/${invoiceId}`);
+    },
+  });
 }
 
 export async function markPaidAction(
@@ -585,19 +583,14 @@ export async function cancelInvoiceAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({
-    requirePermission: 'INVOICE_MANAGE',
-    modeModule: 'invoices',
+  return staffAction({
+    guard: { requirePermission: 'INVOICE_MANAGE', modeModule: 'invoices' },
+    parse: () => {
+      const parsed = parseFormData(StatusSchema, formData);
+      return parsed.ok ? parsed : { ok: false, error: 'Ungültige Rechnungs-ID.' };
+    },
+    run: (g, { invoiceId }) => cancelInvoice(g, invoiceId),
   });
-  if (!g.ok) return { ok: false, error: g.error ?? 'Nicht berechtigt.' };
-  const parsed = parseFormData(StatusSchema, formData);
-  if (!parsed.ok) return { ok: false, error: 'Ungültige Rechnungs-ID.' };
-  try {
-    await cancelInvoice(g, parsed.data.invoiceId);
-  } catch (e) {
-    return toActionError(e);
-  }
-  return { ok: true };
 }
 
 /** Storno-Ablauf; Fachfehler werfen ActionError und kommen über cancelInvoiceAction zurück. */
@@ -912,179 +905,177 @@ export async function uploadExternalInvoiceAction(
 }> {
   // iter87: EXTERNAL-Upload stellt aus UND stellt zu (Mail an Mandanten) —
   // das ist der Versand-Akt, daher INVOICE_SEND statt INVOICE_MANAGE.
-  const g = await staffActionGuard({ requirePermission: 'INVOICE_SEND', modeModule: 'invoices' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  return staffAction({
+    guard: { requirePermission: 'INVOICE_SEND', modeModule: 'invoices' },
+    run: async (g) => {
+      const { tenantId, staffId, ctx } = g;
 
-  const gate = await requireInvoiceMode(ctx, 'EXTERNAL');
-  if (gate) return gate;
+      const gate = await requireInvoiceMode(ctx, 'EXTERNAL');
+      if (gate) return gate;
 
-  const parsed = UploadExternalSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
-  }
-  const data = parsed.data;
+      const parsed = UploadExternalSchema.safeParse(input);
+      if (!parsed.success) {
+        return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+      }
+      const data = parsed.data;
 
-  // EXTERNAL: erfasst wird der Brutto-Gesamtbetrag + der USt-Satz der Fremd-PDF.
-  // Netto/USt daraus ableiten, damit die Umsatz-KPIs (netto) nicht den Brutto-
-  // betrag als Netto zählen. USt = Brutto − Netto → summiert exakt auf Brutto.
-  // Bei 0 % (steuerfrei/Reverse-Charge) ist Netto = Brutto, USt = 0.
-  const grossAmount = data.totalAmount;
-  const netAmount = Math.round((grossAmount / (1 + data.vatRatePct / 100)) * 100) / 100;
-  const vatAmount = Math.round((grossAmount - netAmount) * 100) / 100;
+      // EXTERNAL: erfasst wird der Brutto-Gesamtbetrag + der USt-Satz der Fremd-PDF.
+      // Netto/USt daraus ableiten, damit die Umsatz-KPIs (netto) nicht den Brutto-
+      // betrag als Netto zählen. USt = Brutto − Netto → summiert exakt auf Brutto.
+      // Bei 0 % (steuerfrei/Reverse-Charge) ist Netto = Brutto, USt = 0.
+      const grossAmount = data.totalAmount;
+      const netAmount = Math.round((grossAmount / (1 + data.vatRatePct / 100)) * 100) / 100;
+      const vatAmount = Math.round((grossAmount - netAmount) * 100) / 100;
 
-  const pdf = await readUploadFile(upload, 'pdf', 'externalInvoicePdf', {
-    missing: 'Bitte eine PDF-Datei auswählen.',
-    empty: 'PDF-Daten leer.',
-    tooLarge: 'PDF zu groß',
-  });
-  if (!pdf.ok) return { ok: false, error: pdf.error };
-  const pdfMeta = ExternalPdfMetaSchema.safeParse({
-    fileName: pdf.fileName,
-    mimeType: pdf.mimeType || 'application/pdf',
-  });
-  if (!pdfMeta.success)
-    return { ok: false, error: 'Dateiname oder Dateityp der PDF ist ungültig.' };
-  const pdfBytes = pdf.bytes;
+      const pdf = await readUploadFile(upload, 'pdf', 'externalInvoicePdf', {
+        missing: 'Bitte eine PDF-Datei auswählen.',
+        empty: 'PDF-Daten leer.',
+        tooLarge: 'PDF zu groß',
+      });
+      if (!pdf.ok) return { ok: false, error: pdf.error };
+      const pdfMeta = ExternalPdfMetaSchema.safeParse({
+        fileName: pdf.fileName,
+        mimeType: pdf.mimeType || 'application/pdf',
+      });
+      if (!pdfMeta.success)
+        return { ok: false, error: 'Dateiname oder Dateityp der PDF ist ungültig.' };
+      const pdfBytes = pdf.bytes;
 
-  // 1) Vorprüfung, PDF als Speicherabsicht journalisieren und in Object-Lock
-  //    (Rechnungs-Aufbewahrung 8 J.) ablegen; 2) Nachprüfung + Document +
-  //    Invoice + Audit + Versandaufträge + Abschluss der Absicht in einer
-  //    Transaktion (K-06, F-08).
-  let invoiceId: string;
-  try {
-    const { result } = await runJournaledUpload({
-      context: ctx,
-      source: 'staff.external_invoice.pdf',
-      check: (tx) => checkExternalInvoiceTx(tx, g.session, tenantId, data),
-      readBytes: async () => pdfBytes,
-      storage: () => ({ tier: 'GOBD', classification: 'GOBD_INVOICE' }),
-      commitTx: async (tx, { commit: stored, checked }) => {
-        // Befund 12: Document+Version-Insert zentral (upload-helpers).
-        const { document: doc, version } = await createDocumentWithVersion(tx, {
-          documentData: {
-            tenantId,
-            clientId: data.clientId,
-            title: `Rechnung ${data.number}: ${data.subject}`,
-            classification: 'GOBD_INVOICE',
-            // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-            mimeType: stored.detectedMime ?? pdfMeta.data.mimeType,
-            // iter85 (Befund 7): Rechnungs-PDFs sind FÜR den Mandanten bestimmt —
-            // ohne Freigabe lief der „Öffnen"-Link im Portal auf 404 (die
-            // Portal-Download-Route filtert auf sharedWithClientAt).
-            sharedWithClientAt: new Date(),
-            sharedByStaff: staffId,
-          },
-          commit: stored,
-          createdById: staffId,
-        });
-
-        const inv = await tx.invoice.create({
-          data: {
-            tenantId,
-            clientId: data.clientId,
-            categoryId: data.categoryId ?? null,
-            number: data.number,
-            subject: data.subject,
-            issueDate: new Date(data.issueDate),
-            dueDate: new Date(data.dueDate),
-            status: 'SENT',
-            format: 'PDF',
-            netAmount,
-            vatAmount,
-            totalAmount: grossAmount,
-            // Aus Brutto + erfasstem USt-Satz abgeleitet (siehe oben).
-            vatRate: data.vatRatePct,
-            notes: data.notes ?? null,
-            documentId: doc.id,
-            createdByStaff: staffId,
-            sentAt: new Date(),
-          },
-        });
-
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'invoice.upload',
-          resourceType: 'invoice',
-          resourceId: inv.id,
-          after: {
-            clientId: data.clientId,
-            number: data.number,
-            totalAmount: data.totalAmount,
-            categoryId: data.categoryId ?? null,
-            documentId: doc.id,
-          },
-        });
-
-        // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in — F-08: als
-        // Versandauftrag je Empfänger; der Anhang ist die eben gespeicherte,
-        // hashgebundene Fassung.
-        for (const r of checked.recipients) {
-          await enqueueDirectMailTx(
-            tx,
-            {
+      // 1) Vorprüfung, PDF als Speicherabsicht journalisieren und in Object-Lock
+      //    (Rechnungs-Aufbewahrung 8 J.) ablegen; 2) Nachprüfung + Document +
+      //    Invoice + Audit + Versandaufträge + Abschluss der Absicht in einer
+      //    Transaktion (K-06, F-08).
+      const { result: invoiceId } = await runJournaledUpload({
+        context: ctx,
+        source: 'staff.external_invoice.pdf',
+        check: (tx) => checkExternalInvoiceTx(tx, g.session, tenantId, data),
+        readBytes: async () => pdfBytes,
+        storage: () => ({ tier: 'GOBD', classification: 'GOBD_INVOICE' }),
+        commitTx: async (tx, { commit: stored, checked }) => {
+          // Befund 12: Document+Version-Insert zentral (upload-helpers).
+          const { document: doc, version } = await createDocumentWithVersion(tx, {
+            documentData: {
               tenantId,
-              clientId: input.clientId,
-              purpose: 'invoice-external',
-              resource: { type: 'invoice', id: inv.id },
-              staffHref: `/staff/invoices/${inv.id}`,
+              clientId: data.clientId,
+              title: `Rechnung ${data.number}: ${data.subject}`,
+              classification: 'GOBD_INVOICE',
+              // P-3: Magic-Bytes statt Client-Header — siehe M-2.
+              mimeType: stored.detectedMime ?? pdfMeta.data.mimeType,
+              // iter85 (Befund 7): Rechnungs-PDFs sind FÜR den Mandanten bestimmt —
+              // ohne Freigabe lief der „Öffnen"-Link im Portal auf 404 (die
+              // Portal-Download-Route filtert auf sharedWithClientAt).
+              sharedWithClientAt: new Date(),
+              sharedByStaff: staffId,
             },
-            {
-              slug: checked.mailTemplateSlug ?? 'invoice-sent',
-              to: r.email,
-              vars: {
-                contact: { fullName: r.fullName, email: r.email },
-                client: { name: checked.clientName },
-                invoice: {
-                  number: input.number,
-                  subject: input.subject,
-                  totalAmount: input.totalAmount,
-                  dueDate: input.dueDate,
-                },
-              },
-              n8nEvent: 'invoice.due',
-              n8nPayload: { tenantId, invoiceId: inv.id },
-              fallback: {
-                subject: 'Ihre Rechnung {{invoice.number}}',
-                bodyMd:
-                  'Sehr geehrte/r {{contact.fullName}},\n\nanbei senden wir Ihnen unsere Rechnung Nr. {{invoice.number}} über {{invoice.totalAmount}} €.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
-              },
-              attachments: [
-                {
-                  documentVersionId: version.id,
-                  filename: `Rechnung-${input.number}.pdf`,
-                  contentType: 'application/pdf',
-                },
-              ],
-            },
-          );
-        }
+            commit: stored,
+            createdById: staffId,
+          });
 
-        return inv.id;
-      },
-    });
-    invoiceId = result;
-  } catch (error) {
+          const inv = await tx.invoice.create({
+            data: {
+              tenantId,
+              clientId: data.clientId,
+              categoryId: data.categoryId ?? null,
+              number: data.number,
+              subject: data.subject,
+              issueDate: new Date(data.issueDate),
+              dueDate: new Date(data.dueDate),
+              status: 'SENT',
+              format: 'PDF',
+              netAmount,
+              vatAmount,
+              totalAmount: grossAmount,
+              // Aus Brutto + erfasstem USt-Satz abgeleitet (siehe oben).
+              vatRate: data.vatRatePct,
+              notes: data.notes ?? null,
+              documentId: doc.id,
+              createdByStaff: staffId,
+              sentAt: new Date(),
+            },
+          });
+
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'invoice.upload',
+            resourceType: 'invoice',
+            resourceId: inv.id,
+            after: {
+              clientId: data.clientId,
+              number: data.number,
+              totalAmount: data.totalAmount,
+              categoryId: data.categoryId ?? null,
+              documentId: doc.id,
+            },
+          });
+
+          // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in — F-08: als
+          // Versandauftrag je Empfänger; der Anhang ist die eben gespeicherte,
+          // hashgebundene Fassung.
+          for (const r of checked.recipients) {
+            await enqueueDirectMailTx(
+              tx,
+              {
+                tenantId,
+                clientId: input.clientId,
+                purpose: 'invoice-external',
+                resource: { type: 'invoice', id: inv.id },
+                staffHref: `/staff/invoices/${inv.id}`,
+              },
+              {
+                slug: checked.mailTemplateSlug ?? 'invoice-sent',
+                to: r.email,
+                vars: {
+                  contact: { fullName: r.fullName, email: r.email },
+                  client: { name: checked.clientName },
+                  invoice: {
+                    number: input.number,
+                    subject: input.subject,
+                    totalAmount: input.totalAmount,
+                    dueDate: input.dueDate,
+                  },
+                },
+                n8nEvent: 'invoice.due',
+                n8nPayload: { tenantId, invoiceId: inv.id },
+                fallback: {
+                  subject: 'Ihre Rechnung {{invoice.number}}',
+                  bodyMd:
+                    'Sehr geehrte/r {{contact.fullName}},\n\nanbei senden wir Ihnen unsere Rechnung Nr. {{invoice.number}} über {{invoice.totalAmount}} €.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
+                },
+                attachments: [
+                  {
+                    documentVersionId: version.id,
+                    filename: `Rechnung-${input.number}.pdf`,
+                    contentType: 'application/pdf',
+                  },
+                ],
+              },
+            );
+          }
+
+          return inv.id;
+        },
+      });
+
+      kickMailOutboxDelivery();
+      return { id: invoiceId };
+    },
+    revalidate: ['/staff/invoices', '/portal/invoices'],
     // Nach dem Object-Write bleibt die Speicherabsicht offen; der Cleanup-Worker
     // räumt das Objekt nach der Sicherheitsfrist versionsgenau auf.
-    const e = uploadFailureCause(error);
-    if (
-      error instanceof JournaledUploadError &&
-      (error.phase === 'prepare' || error.phase === 'store')
-    ) {
-      return { ok: false, error: `Storage-Fehler: ${toActionError(e).error}` };
-    }
-    if ((e as { code?: string }).code === 'P2002') {
-      return { ok: false, error: 'Rechnungsnummer bereits vergeben.' };
-    }
-    return toActionError(e);
-  }
-
-  kickMailOutboxDelivery();
-
-  revalidatePath('/staff/invoices');
-  revalidatePath(`/portal/invoices`);
-  return { ok: true, id: invoiceId };
+    onError: (error) => {
+      const e = uploadFailureCause(error);
+      if (
+        error instanceof JournaledUploadError &&
+        (error.phase === 'prepare' || error.phase === 'store')
+      ) {
+        return { ok: false, error: `Storage-Fehler: ${toActionError(e).error}` };
+      }
+      if ((e as { code?: string }).code === 'P2002') {
+        return { ok: false, error: 'Rechnungsnummer bereits vergeben.' };
+      }
+      return toActionError(e);
+    },
+  });
 }

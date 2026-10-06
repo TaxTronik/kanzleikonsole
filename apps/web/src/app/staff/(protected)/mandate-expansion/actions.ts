@@ -1,8 +1,7 @@
 'use server';
 import { z } from 'zod';
-import { withStaff, staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { withStaff, staffAction, type ActionResult } from '@/server/actions/staff-action';
 import { withTenantContext } from '@taxtronik/db';
-import { toActionError } from '@/server/auth/rbac';
 import { revalidatePath } from 'next/cache';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { saveStructureTx, changeDependencyTx } from '@/server/mandate-expansion/service';
@@ -126,44 +125,47 @@ export async function finishOffboardingAction(
   _previous: ActionResult | null,
   form: FormData,
 ): Promise<ActionResult> {
-  const guard = await staffActionGuard({ module: 'mandateOffboarding', requireAdmin: true });
-  if (!guard.ok) return guard;
-  const parsed = z
-    .object({
-      id: z.string().uuid(),
-      expectedHash: z.string().regex(/^[a-f0-9]{64}$/),
-      confirmed: z.literal(true),
-    })
-    .safeParse({
-      id: form.get('id'),
-      expectedHash: form.get('expectedHash'),
-      confirmed: form.get('confirmed') === 'on',
-    });
-  if (!parsed.success)
-    return {
-      ok: false,
-      error: 'Aktuellen Freigabestand, Beendigung und Zugangssperre ausdrücklich bestätigen.',
-    };
-  try {
-    const result = await withTenantContext(guard.ctx, (tx) =>
-      finishOffboardingTx(tx, guard.session, parsed.data.id, parsed.data.expectedHash),
-    );
-    // Persistent mandate-state checks already block every portal request. Redis also invalidates old tokens after any later reopening.
-    const revoked = await Promise.allSettled(
-      result.contactIds.map((id) => revokeAllSessions('portal', id)),
-    );
-    revalidatePath('/staff/mandate-expansion/offboarding');
-    revalidatePath(`/staff/clients/${result.clientId}`);
-    if (revoked.some((r) => r.status === 'rejected'))
-      return {
-        ok: false,
-        error:
-          'Mandat wurde beendet und Portalzugriff ist gesperrt. Einzelne zusätzliche Token-Widerrufe konnten nicht bestätigt werden; vor Wiederaufnahme administrativ prüfen.',
-      };
-    return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  return staffAction({
+    guard: { module: 'mandateOffboarding', requireAdmin: true },
+    parse: () => {
+      const parsed = z
+        .object({
+          id: z.string().uuid(),
+          expectedHash: z.string().regex(/^[a-f0-9]{64}$/),
+          confirmed: z.literal(true),
+        })
+        .safeParse({
+          id: form.get('id'),
+          expectedHash: form.get('expectedHash'),
+          confirmed: form.get('confirmed') === 'on',
+        });
+      if (!parsed.success)
+        return {
+          ok: false,
+          error: 'Aktuellen Freigabestand, Beendigung und Zugangssperre ausdrücklich bestätigen.',
+        };
+      return { ok: true, data: parsed.data };
+    },
+    run: async (guard, data) => {
+      const result = await withTenantContext(guard.ctx, (tx) =>
+        finishOffboardingTx(tx, guard.session, data.id, data.expectedHash),
+      );
+      // Persistent mandate-state checks already block every portal request. Redis also invalidates old tokens after any later reopening.
+      const revoked = await Promise.allSettled(
+        result.contactIds.map((id) => revokeAllSessions('portal', id)),
+      );
+      // Auch bei einem unbestätigten Token-Widerruf ist das Mandat beendet: die
+      // Pfade werden vor der Teilerfolgs-Meldung revalidiert.
+      revalidatePath('/staff/mandate-expansion/offboarding');
+      revalidatePath(`/staff/clients/${result.clientId}`);
+      if (revoked.some((r) => r.status === 'rejected'))
+        return {
+          ok: false,
+          error:
+            'Mandat wurde beendet und Portalzugriff ist gesperrt. Einzelne zusätzliche Token-Widerrufe konnten nicht bestätigt werden; vor Wiederaufnahme administrativ prüfen.',
+        };
+    },
+  });
 }
 export async function recordVdbStateAction(
   _previous: ActionResult | null,
@@ -204,33 +206,29 @@ export async function archiveStructureAction(
   _previous: ActionResult | null,
   form: FormData,
 ): Promise<ActionResult> {
-  const guard = await staffActionGuard({ module: 'mandateStructure' });
-  if (!guard.ok) return guard;
-  try {
-    await archiveStructure({
-      clientId: String(form.get('clientId')),
-      versionId: String(form.get('versionId')),
-    });
-    revalidatePath('/staff/mandate-expansion/structure');
-    return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  return staffAction({
+    guard: { module: 'mandateStructure' },
+    run: async () => {
+      await archiveStructure({
+        clientId: String(form.get('clientId')),
+        versionId: String(form.get('versionId')),
+      });
+    },
+    revalidate: '/staff/mandate-expansion/structure',
+  });
 }
 export async function archiveOffboardingAction(
   _previous: ActionResult | null,
   form: FormData,
 ): Promise<ActionResult> {
-  const guard = await staffActionGuard({ module: 'mandateOffboarding', requireAdmin: true });
-  if (!guard.ok) return guard;
-  try {
-    await archiveOffboarding({
-      id: String(form.get('id')),
-      expectedHash: String(form.get('expectedHash')),
-    });
-    revalidatePath('/staff/mandate-expansion/offboarding');
-    return { ok: true };
-  } catch (error) {
-    return toActionError(error);
-  }
+  return staffAction({
+    guard: { module: 'mandateOffboarding', requireAdmin: true },
+    run: async () => {
+      await archiveOffboarding({
+        id: String(form.get('id')),
+        expectedHash: String(form.get('expectedHash')),
+      });
+    },
+    revalidate: '/staff/mandate-expansion/offboarding',
+  });
 }

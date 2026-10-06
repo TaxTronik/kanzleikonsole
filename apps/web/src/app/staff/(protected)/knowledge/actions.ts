@@ -9,13 +9,13 @@ import { Prisma } from '@taxtronik/db/prisma-client';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import {
+  staffAction,
   staffActionGuard,
   withStaffModule,
   ActionError,
   parseFormData,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
-import { toActionError } from '@/server/auth/rbac';
 
 const withKnowledgeStaff = withStaffModule('knowledge');
 
@@ -115,98 +115,96 @@ export async function createArticleAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'knowledge' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
-
-  const parsed = parseFormData(ArticleSchema, formData);
-  if (!parsed.ok) return parsed;
-  const attachmentDraftToken = parsed.data.attachmentDraftToken;
-  if (parsed.data.attachmentIds.length > 0 && !attachmentDraftToken) {
-    return { ok: false, error: 'Anhangszuordnung fehlt. Bitte Seite neu laden.' };
-  }
-
-  const baseSlug = slugify(parsed.data.title);
-  let slug = baseSlug;
-
-  // Q-6: Optimistischer Insert mit Suffix-Retry bei P2002. Vorher: bis zu 50
-  // sequenzielle findUnique-Roundtrips + Race-Lücke zwischen findUnique und
-  // create (zwei parallele Creates für denselben Title konnten denselben
-  // Suffix picken und einer crashte ungefangen).
-  let id: string;
-  try {
-    id = await withTenantContext(ctx, async (tx) => {
-      // categoryId Tenant-Sanity, falls gesetzt (symmetrisch zu Q-4).
-      if (parsed.data.categoryId) {
-        const cat = await tx.kbCategory.findFirst({
-          where: { id: parsed.data.categoryId },
-          select: { id: true },
-        });
-        if (!cat) throw new ActionError('Kategorie nicht in diesem Tenant.');
+  const result = await staffAction({
+    guard: { module: 'knowledge' },
+    parse: () => parseFormData(ArticleSchema, formData),
+    run: async ({ tenantId, staffId, ctx }, data) => {
+      const attachmentDraftToken = data.attachmentDraftToken;
+      if (data.attachmentIds.length > 0 && !attachmentDraftToken) {
+        return { ok: false, error: 'Anhangszuordnung fehlt. Bitte Seite neu laden.' };
       }
-      for (let attempt = 0; attempt < 5; attempt++) {
-        try {
-          const article = await tx.kbArticle.create({
-            data: {
-              tenantId,
-              title: parsed.data.title,
-              slug,
-              body: parsed.data.body,
-              categoryId: parsed.data.categoryId || null,
-              published: !!parsed.data.published,
-              authorId: staffId,
-            },
+
+      const baseSlug = slugify(data.title);
+      let slug = baseSlug;
+
+      // Q-6: Optimistischer Insert mit Suffix-Retry bei P2002. Vorher: bis zu 50
+      // sequenzielle findUnique-Roundtrips + Race-Lücke zwischen findUnique und
+      // create (zwei parallele Creates für denselben Title konnten denselben
+      // Suffix picken und einer crashte ungefangen).
+      const id = await withTenantContext(ctx, async (tx) => {
+        // categoryId Tenant-Sanity, falls gesetzt (symmetrisch zu Q-4).
+        if (data.categoryId) {
+          const cat = await tx.kbCategory.findFirst({
+            where: { id: data.categoryId },
+            select: { id: true },
           });
-          if (parsed.data.attachmentIds.length > 0) {
-            const claimed = await tx.kbAttachment.updateMany({
-              where: {
-                id: { in: parsed.data.attachmentIds },
-                tenantId,
-                articleId: null,
-                draftToken: attachmentDraftToken,
-                uploadedBy: staffId,
-              },
-              data: { articleId: article.id },
-            });
-            if (claimed.count !== parsed.data.attachmentIds.length) {
-              throw new ActionError(
-                'Mindestens ein Anhang gehört nicht zu diesem Artikelentwurf. Bitte Seite neu laden.',
-              );
-            }
-          }
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'kb.article.create',
-            resourceType: 'kb_article',
-            resourceId: article.id,
-            after: {
-              title: parsed.data.title,
-              slug,
-              published: !!parsed.data.published,
-              attachmentCount: parsed.data.attachmentIds.length,
-            },
-          });
-          return article.id;
-        } catch (err) {
-          // P2002 = unique-Constraint. Slug ist hier der einzige unique-Index
-          // mit user-input, also kein Mehrdeutigkeits-Problem.
-          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-            slug = `${baseSlug}-${randomBytes(2).toString('hex')}`;
-            continue;
-          }
-          throw err;
+          if (!cat) throw new ActionError('Kategorie nicht in diesem Tenant.');
         }
-      }
-      throw new ActionError('Slug konnte nach mehreren Versuchen nicht eindeutig gemacht werden.');
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
-
-  revalidatePath('/staff/knowledge');
-  redirect(`/staff/knowledge/${id}`); // wirft (never) — NACH der Tx
+        for (let attempt = 0; attempt < 5; attempt++) {
+          try {
+            const article = await tx.kbArticle.create({
+              data: {
+                tenantId,
+                title: data.title,
+                slug,
+                body: data.body,
+                categoryId: data.categoryId || null,
+                published: !!data.published,
+                authorId: staffId,
+              },
+            });
+            if (data.attachmentIds.length > 0) {
+              const claimed = await tx.kbAttachment.updateMany({
+                where: {
+                  id: { in: data.attachmentIds },
+                  tenantId,
+                  articleId: null,
+                  draftToken: attachmentDraftToken,
+                  uploadedBy: staffId,
+                },
+                data: { articleId: article.id },
+              });
+              if (claimed.count !== data.attachmentIds.length) {
+                throw new ActionError(
+                  'Mindestens ein Anhang gehört nicht zu diesem Artikelentwurf. Bitte Seite neu laden.',
+                );
+              }
+            }
+            await evidenceService.record(tx, {
+              tenantId,
+              actorType: 'STAFF',
+              actorId: staffId,
+              action: 'kb.article.create',
+              resourceType: 'kb_article',
+              resourceId: article.id,
+              after: {
+                title: data.title,
+                slug,
+                published: !!data.published,
+                attachmentCount: data.attachmentIds.length,
+              },
+            });
+            return article.id;
+          } catch (err) {
+            // P2002 = unique-Constraint. Slug ist hier der einzige unique-Index
+            // mit user-input, also kein Mehrdeutigkeits-Problem.
+            if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+              slug = `${baseSlug}-${randomBytes(2).toString('hex')}`;
+              continue;
+            }
+            throw err;
+          }
+        }
+        throw new ActionError(
+          'Slug konnte nach mehreren Versuchen nicht eindeutig gemacht werden.',
+        );
+      });
+      return { id };
+    },
+    revalidate: '/staff/knowledge',
+  });
+  if (!result.ok) return result;
+  redirect(`/staff/knowledge/${result.id}`); // wirft (never) — NACH der Tx
 }
 
 const UpdateArticleSchema = ArticleSchema.extend({ id: z.string().uuid() });
@@ -215,115 +213,106 @@ export async function updateArticleAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'knowledge' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
-
-  const parsed = parseFormData(UpdateArticleSchema, formData);
-  if (!parsed.ok) return parsed;
-  const data = parsed.data;
-  const attachmentDraftToken = data.attachmentDraftToken;
-  if (data.attachmentIds.length > 0 && !attachmentDraftToken) {
-    return { ok: false, error: 'Anhangszuordnung fehlt. Bitte Seite neu laden.' };
-  }
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      const before = await tx.kbArticle.findUnique({ where: { id: data.id } });
-      if (!before) throw new ActionError('Artikel nicht gefunden.');
-      if (data.attachmentIds.length > 0) {
-        const attachments = await tx.kbAttachment.findMany({
-          where: { id: { in: data.attachmentIds }, tenantId },
-          select: { id: true, articleId: true, draftToken: true, uploadedBy: true },
-        });
-        const valid = attachments.every(
-          (attachment) =>
-            attachment.articleId === data.id ||
-            (attachment.articleId === null &&
-              attachment.uploadedBy === staffId &&
-              attachment.draftToken === attachmentDraftToken),
-        );
-        if (attachments.length !== data.attachmentIds.length || !valid) {
-          throw new ActionError(
-            'Mindestens ein Anhang gehört nicht zu diesem Artikel. Bitte Seite neu laden.',
-          );
-        }
-        await tx.kbAttachment.updateMany({
-          where: {
-            id: { in: data.attachmentIds },
-            tenantId,
-            articleId: null,
-            draftToken: attachmentDraftToken,
-            uploadedBy: staffId,
-          },
-          data: { articleId: data.id },
-        });
+  const result = await staffAction({
+    guard: { module: 'knowledge' },
+    parse: () => parseFormData(UpdateArticleSchema, formData),
+    run: async ({ tenantId, staffId, ctx }, data) => {
+      const attachmentDraftToken = data.attachmentDraftToken;
+      if (data.attachmentIds.length > 0 && !attachmentDraftToken) {
+        return { ok: false, error: 'Anhangszuordnung fehlt. Bitte Seite neu laden.' };
       }
-      const updated = await tx.kbArticle.update({
-        where: { id: data.id },
-        data: {
-          title: data.title,
-          body: data.body,
-          categoryId: data.categoryId || null,
-          published: !!data.published,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'kb.article.update',
-        resourceType: 'kb_article',
-        resourceId: updated.id,
-        before: { title: before.title, published: before.published },
-        after: {
-          title: updated.title,
-          published: updated.published,
-          attachmentCount: data.attachmentIds.length,
-        },
-      });
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
 
-  revalidatePath('/staff/knowledge');
-  revalidatePath(`/staff/knowledge/${data.id}`);
-  redirect(`/staff/knowledge/${data.id}`); // wirft (never) — NACH der Tx
+      await withTenantContext(ctx, async (tx) => {
+        const before = await tx.kbArticle.findUnique({ where: { id: data.id } });
+        if (!before) throw new ActionError('Artikel nicht gefunden.');
+        if (data.attachmentIds.length > 0) {
+          const attachments = await tx.kbAttachment.findMany({
+            where: { id: { in: data.attachmentIds }, tenantId },
+            select: { id: true, articleId: true, draftToken: true, uploadedBy: true },
+          });
+          const valid = attachments.every(
+            (attachment) =>
+              attachment.articleId === data.id ||
+              (attachment.articleId === null &&
+                attachment.uploadedBy === staffId &&
+                attachment.draftToken === attachmentDraftToken),
+          );
+          if (attachments.length !== data.attachmentIds.length || !valid) {
+            throw new ActionError(
+              'Mindestens ein Anhang gehört nicht zu diesem Artikel. Bitte Seite neu laden.',
+            );
+          }
+          await tx.kbAttachment.updateMany({
+            where: {
+              id: { in: data.attachmentIds },
+              tenantId,
+              articleId: null,
+              draftToken: attachmentDraftToken,
+              uploadedBy: staffId,
+            },
+            data: { articleId: data.id },
+          });
+        }
+        const updated = await tx.kbArticle.update({
+          where: { id: data.id },
+          data: {
+            title: data.title,
+            body: data.body,
+            categoryId: data.categoryId || null,
+            published: !!data.published,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'kb.article.update',
+          resourceType: 'kb_article',
+          resourceId: updated.id,
+          before: { title: before.title, published: before.published },
+          after: {
+            title: updated.title,
+            published: updated.published,
+            attachmentCount: data.attachmentIds.length,
+          },
+        });
+      });
+      revalidatePath(`/staff/knowledge/${data.id}`);
+      return { id: data.id };
+    },
+    revalidate: '/staff/knowledge',
+  });
+  if (!result.ok) return result;
+  redirect(`/staff/knowledge/${result.id}`); // wirft (never) — NACH der Tx
 }
 
 export async function deleteArticleAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true, module: 'knowledge' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
-  // S2: UUID-Validation.
-  const parsed = parseFormData(z.object({ id: z.string().uuid() }), formData);
-  if (!parsed.ok) return parsed;
-  const { id } = parsed.data;
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      const before = await tx.kbArticle.findUnique({ where: { id } });
-      if (!before) throw new ActionError('Artikel nicht gefunden.');
-      await tx.kbArticle.delete({ where: { id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'kb.article.delete',
-        resourceType: 'kb_article',
-        resourceId: id,
-        before: { title: before.title },
+  const result = await staffAction({
+    guard: { requireAdmin: true, module: 'knowledge' },
+    // S2: UUID-Validation.
+    parse: () => parseFormData(z.object({ id: z.string().uuid() }), formData),
+    run: async ({ tenantId, staffId, ctx }, { id }) => {
+      await withTenantContext(ctx, async (tx) => {
+        const before = await tx.kbArticle.findUnique({ where: { id } });
+        if (!before) throw new ActionError('Artikel nicht gefunden.');
+        await tx.kbArticle.delete({ where: { id } });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'kb.article.delete',
+          resourceType: 'kb_article',
+          resourceId: id,
+          before: { title: before.title },
+        });
       });
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
-
-  revalidatePath('/staff/knowledge');
+    },
+    revalidate: '/staff/knowledge',
+  });
+  if (!result.ok) return result;
   redirect('/staff/knowledge'); // wirft (never) — NACH der Tx
 }
 

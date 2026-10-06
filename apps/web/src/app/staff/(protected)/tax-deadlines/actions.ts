@@ -5,9 +5,9 @@ import { redirect } from 'next/navigation';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materialize-queue';
-import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
-  staffActionGuard,
+  staffAction,
   withStaffModule,
   ActionError,
   type ActionResult,
@@ -297,17 +297,16 @@ export async function rematerializeAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'taxNotices' });
-  if (!g.ok) return g;
-
   // P-4: tenant-weite Materialisierung gehört nicht in eine interaktive
   // 15-s-Server-Action-Tx (P2028 bei vielen Mandanten) → BullMQ-Job; der
   // Worker (tax-deadline-materialize) übernimmt nur diesen Tenant.
-  try {
-    await enqueueTaxDeadlineMaterialize(g.tenantId);
-  } catch (error) {
-    return toActionError(error);
-  }
+  const result = await staffAction({
+    guard: { module: 'taxNotices' },
+    run: async (g) => {
+      await enqueueTaxDeadlineMaterialize(g.tenantId);
+    },
+  });
+  if (!result.ok) return result;
 
   // UI-Feedback „Berechnung angestoßen" + aktuelle Ansicht beibehalten.
   const qs = new URLSearchParams({ queued: '1' });

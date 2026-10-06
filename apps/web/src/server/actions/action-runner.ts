@@ -97,6 +97,11 @@ export interface ActionSpec<TCtx, TGuardOptions, TData, TRun> extends ActionErro
   /** Optionen des Gates (Admin, Einzelrecht, Modul …); läuft immer zuerst. */
   guard?: TGuardOptions;
   /**
+   * Beobachtet eine Ablehnung durch das Gate (z. B. strukturiertes Log), bevor
+   * sie unverändert zurückgeht.
+   */
+  onDenied?: (error: string) => void;
+  /**
    * Eingabeprüfung NACH dem Gate. Ein Fehlerergebnis (etwa mit `fieldErrors`)
    * geht unverändert zurück; `run` erhält die geprüften Daten.
    */
@@ -138,7 +143,10 @@ export function createActionRunner<TCtx extends object, TGuardOptions>(
     type R = ActionOutcome<TRun>;
     try {
       const g = await guard(spec.guard);
-      if (!g.ok) return g as R;
+      if (!g.ok) {
+        spec.onDenied?.(g.error);
+        return g as R;
+      }
       let data = undefined as TData;
       if (spec.parse) {
         const parsed = spec.parse();

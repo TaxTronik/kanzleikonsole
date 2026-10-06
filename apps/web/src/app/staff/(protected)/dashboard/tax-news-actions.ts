@@ -1,11 +1,9 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
-import { toActionError } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import {
-  staffActionGuard,
+  staffAction,
   withStaffModule,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
@@ -44,22 +42,20 @@ export async function toggleTaxNewsNotifyAction(input: {
 export async function triggerTaxNewsFetchAction(): Promise<
   ActionResult & { inserted?: number; fetched?: number; errors?: string[] }
 > {
-  const g = await staffActionGuard({ module: 'rssReader' });
-  if (!g.ok) return g;
-  try {
-    const mod = await import('@/server/tax-news/fetcher');
-    const result = await mod.fetchAndPersistTaxNews({
-      tenantId: g.tenantId,
-      staffId: g.staffId,
-    });
-    revalidatePath('/staff/dashboard');
-    return {
-      ok: true,
-      inserted: result.inserted,
-      fetched: result.fetched,
-      errors: result.errors,
-    };
-  } catch (e) {
-    return toActionError(e);
-  }
+  return staffAction({
+    guard: { module: 'rssReader' },
+    run: async (g) => {
+      const mod = await import('@/server/tax-news/fetcher');
+      const result = await mod.fetchAndPersistTaxNews({
+        tenantId: g.tenantId,
+        staffId: g.staffId,
+      });
+      return {
+        inserted: result.inserted,
+        fetched: result.fetched,
+        errors: result.errors,
+      };
+    },
+    revalidate: '/staff/dashboard',
+  });
 }

@@ -26,16 +26,25 @@ vi.mock('@taxtronik/db', () => ({
 vi.mock('@taxtronik/db/tenant-modules', () => ({
   readBooleanTenantModules: async () => ({ smartMailbox: m.enabled }),
 }));
-vi.mock('@/server/actions/staff-action', async () => ({
-  ActionError: (await import('@/server/actions/action-error')).ActionError,
-  staffActionGuard: async () => ({
-    ok: true,
+vi.mock('@/server/actions/staff-action', async () => {
+  const staffActionGuard = async () => ({
+    ok: true as const,
     tenantId: 'tenant',
     staffId: 'staff',
     ctx: {},
     session: {},
-  }),
-}));
+  });
+  return {
+    ActionError: (await import('@/server/actions/action-error')).ActionError,
+    staffActionGuard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(staffActionGuard),
+  };
+});
 vi.mock('@/server/auth/rbac', async () => ({
   // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
   ...(await import('@/server/actions/to-action-error')),

@@ -1,5 +1,44 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-031
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/dashboard/rss-feed-actions.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/folder-actions-access.test.ts
+      - apps/web/src/app/staff/(protected)/documents/folder-actions.ts
+      - apps/web/src/app/staff/(protected)/inbox/actions.ts
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/app/staff/(protected)/mailbox/actions.ts
+      - apps/web/src/app/staff/(protected)/payroll/actions.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/actions.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - INV-LIFECYCLE-FREEZE-001
+      - INV-STORNO-REFERENCE-001
+      - INV-VAT-TOTALS-001
+      - MAIL-INBOX-001
+      - PAYROLL-INTAKE-001
+      - PORTAL-INBOX-SUBMISSION-001
+      - TAX-CONTROL-STATUS-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+    reason: >-
+      Die übrigen handgeschriebenen Staff-Actions (Ordner, Posteingang, Rechnungen,
+      Postfach, Lohn, Steuerfristen, RSS) laufen über den gemeinsamen
+      Action-Baustein (staffAction bzw. payrollStaffAction mit unverändertem
+      Lohn-Fehlertext und Revalidierungspfaden). Gates, Transaktionskörper
+      (tokenidentisch je Datei geprüft), Rechnungsfestschreibung und Storno,
+      Audit-Ereignisse, revalidierte Pfade und Meldungen bleiben unverändert;
+      technische Fehler außerhalb der bisherigen try-Blöcke (etwa beim
+      Rechnungsversand oder bei Folgeaufrufen nach dem Speichern) erscheinen als
+      Fehlermeldung statt als Fehlerseite. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/inbox/__tests__/actions.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-030
     date: '2026-10-06'
     paths:
@@ -3672,6 +3711,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-031` dokumentiert die übrigen Staff-Actions
+  auf dem gemeinsamen Action-Baustein. Rechnungs- und Lohnlogik bleiben
+  unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-030` dokumentiert die Mandanten-, Onboarding-
   und Anforderungs-Actions auf dem gemeinsamen Action-Baustein.

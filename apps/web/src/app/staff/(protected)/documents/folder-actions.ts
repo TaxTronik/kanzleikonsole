@@ -5,7 +5,12 @@ import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
-import { staffActionGuard, ActionError, type StaffCtx } from '@/server/actions/staff-action';
+import {
+  staffAction,
+  staffActionGuard,
+  ActionError,
+  type StaffCtx,
+} from '@/server/actions/staff-action';
 import { isUniqueViolation } from '@/server/actions/database-error';
 import {
   DOCUMENT_BULK_MAX,
@@ -29,6 +34,11 @@ export interface FolderActionResult {
 
 const NAME = z.string().trim().min(1, 'Name fehlt.').max(120);
 
+// Unique-Index-Verletzung (gleicher Ordnername auf einer Ebene) → verständliche
+// Meldung. Eingeordnet über P2002 bzw. SQLSTATE 23505 (F-03), nicht über Text;
+// Domänen-Fehler (ActionError) reicht das zentrale Mapping UI-sicher durch.
+const FOLDER_NAME_TAKEN = 'Auf dieser Ebene gibt es bereits einen Ordner mit diesem Namen.';
+
 function revalidate(clientId: string | null) {
   revalidatePath('/staff/documents');
   if (clientId) revalidatePath(`/staff/clients/${clientId}`);
@@ -46,49 +56,48 @@ const CreateSchema = z.object({
 export async function createFolderAction(
   input: z.infer<typeof CreateSchema>,
 ): Promise<FolderActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const parsed = CreateSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
-  }
-  const { tenantId, staffId, ctx } = g;
-  const { parentId } = parsed.data;
-  const name = parsed.data.name.trim();
-
-  try {
-    const id = await withTenantContext(ctx, async (tx) => {
-      // clientId aus dem Parent ableiten (ein Unterordner liegt zwingend
-      // im selben Bereich wie sein Parent) — sonst der übergebene Wert.
-      let clientId = parsed.data.clientId;
-      if (parentId) {
-        const parent = await tx.documentFolder.findFirst({
-          where: { id: parentId, tenantId },
-          select: { clientId: true },
-        });
-        if (!parent) throw new ActionError('Übergeordneter Ordner nicht gefunden.');
-        clientId = parent.clientId;
+  return staffAction({
+    run: async (g) => {
+      const parsed = CreateSchema.safeParse(input);
+      if (!parsed.success) {
+        return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
       }
-      if (clientId) await assertClientAccessTx(tx, g.session, clientId);
-      const folder = await tx.documentFolder.create({
-        data: { tenantId, clientId, parentId, name, createdByStaff: staffId },
+      const { tenantId, staffId, ctx } = g;
+      const { parentId } = parsed.data;
+      const name = parsed.data.name.trim();
+
+      const id = await withTenantContext(ctx, async (tx) => {
+        // clientId aus dem Parent ableiten (ein Unterordner liegt zwingend
+        // im selben Bereich wie sein Parent) — sonst der übergebene Wert.
+        let clientId = parsed.data.clientId;
+        if (parentId) {
+          const parent = await tx.documentFolder.findFirst({
+            where: { id: parentId, tenantId },
+            select: { clientId: true },
+          });
+          if (!parent) throw new ActionError('Übergeordneter Ordner nicht gefunden.');
+          clientId = parent.clientId;
+        }
+        if (clientId) await assertClientAccessTx(tx, g.session, clientId);
+        const folder = await tx.documentFolder.create({
+          data: { tenantId, clientId, parentId, name, createdByStaff: staffId },
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'document_folder.create',
+          resourceType: 'document_folder',
+          resourceId: folder.id,
+          after: { name, clientId, parentId },
+        });
+        return folder.id;
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'document_folder.create',
-        resourceType: 'document_folder',
-        resourceId: folder.id,
-        after: { name, clientId, parentId },
-      });
-      return folder.id;
-    });
-    revalidate(parsed.data.clientId);
-    return { ok: true, folderId: id };
-  } catch (e) {
-    return mapFolderError(e);
-  }
+      revalidate(parsed.data.clientId);
+      return { folderId: id };
+    },
+    uniqueError: FOLDER_NAME_TAKEN,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -99,42 +108,40 @@ const RenameSchema = z.object({ folderId: z.string().uuid(), name: NAME });
 export async function renameFolderAction(
   input: z.infer<typeof RenameSchema>,
 ): Promise<FolderActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const parsed = RenameSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
-  }
-  const { tenantId, staffId, ctx } = g;
-  const { folderId } = parsed.data;
-  const name = parsed.data.name.trim();
+  return staffAction({
+    run: async (g) => {
+      const parsed = RenameSchema.safeParse(input);
+      if (!parsed.success) {
+        return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+      }
+      const { tenantId, staffId, ctx } = g;
+      const { folderId } = parsed.data;
+      const name = parsed.data.name.trim();
 
-  try {
-    const clientId = await withTenantContext(ctx, async (tx) => {
-      const f = await tx.documentFolder.findFirst({
-        where: { id: folderId, tenantId },
-        select: { name: true, clientId: true },
+      const clientId = await withTenantContext(ctx, async (tx) => {
+        const f = await tx.documentFolder.findFirst({
+          where: { id: folderId, tenantId },
+          select: { name: true, clientId: true },
+        });
+        if (!f) throw new ActionError('Ordner nicht gefunden.');
+        if (f.clientId) await assertClientAccessTx(tx, g.session, f.clientId);
+        await tx.documentFolder.update({ where: { id: folderId }, data: { name } });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'document_folder.rename',
+          resourceType: 'document_folder',
+          resourceId: folderId,
+          before: { name: f.name },
+          after: { name },
+        });
+        return f.clientId;
       });
-      if (!f) throw new ActionError('Ordner nicht gefunden.');
-      if (f.clientId) await assertClientAccessTx(tx, g.session, f.clientId);
-      await tx.documentFolder.update({ where: { id: folderId }, data: { name } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'document_folder.rename',
-        resourceType: 'document_folder',
-        resourceId: folderId,
-        before: { name: f.name },
-        after: { name },
-      });
-      return f.clientId;
-    });
-    revalidate(clientId);
-    return { ok: true };
-  } catch (e) {
-    return mapFolderError(e);
-  }
+      revalidate(clientId);
+    },
+    uniqueError: FOLDER_NAME_TAKEN,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -146,48 +153,46 @@ const DeleteSchema = z.object({ folderId: z.string().uuid() });
 export async function deleteFolderAction(
   input: z.infer<typeof DeleteSchema>,
 ): Promise<FolderActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const parsed = DeleteSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { tenantId, staffId, ctx } = g;
-  const { folderId } = parsed.data;
+  return staffAction({
+    run: async (g) => {
+      const parsed = DeleteSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const { tenantId, staffId, ctx } = g;
+      const { folderId } = parsed.data;
 
-  try {
-    const clientId = await withTenantContext(ctx, async (tx) => {
-      const f = await tx.documentFolder.findFirst({
-        where: { id: folderId, tenantId },
-        select: { name: true, parentId: true, clientId: true },
+      const clientId = await withTenantContext(ctx, async (tx) => {
+        const f = await tx.documentFolder.findFirst({
+          where: { id: folderId, tenantId },
+          select: { name: true, parentId: true, clientId: true },
+        });
+        if (!f) throw new ActionError('Ordner nicht gefunden.');
+        if (f.clientId) await assertClientAccessTx(tx, g.session, f.clientId);
+        // Inhalte in den Parent reparentieren — Dokumente bleiben erhalten.
+        await tx.document.updateMany({
+          where: { folderId, tenantId },
+          data: { folderId: f.parentId },
+        });
+        await tx.documentFolder.updateMany({
+          where: { parentId: folderId, tenantId },
+          data: { parentId: f.parentId },
+        });
+        await tx.documentFolder.delete({ where: { id: folderId } });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'document_folder.delete',
+          resourceType: 'document_folder',
+          resourceId: folderId,
+          before: { name: f.name, parentId: f.parentId, clientId: f.clientId },
+          after: { reparentedTo: f.parentId },
+        });
+        return f.clientId;
       });
-      if (!f) throw new ActionError('Ordner nicht gefunden.');
-      if (f.clientId) await assertClientAccessTx(tx, g.session, f.clientId);
-      // Inhalte in den Parent reparentieren — Dokumente bleiben erhalten.
-      await tx.document.updateMany({
-        where: { folderId, tenantId },
-        data: { folderId: f.parentId },
-      });
-      await tx.documentFolder.updateMany({
-        where: { parentId: folderId, tenantId },
-        data: { parentId: f.parentId },
-      });
-      await tx.documentFolder.delete({ where: { id: folderId } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'document_folder.delete',
-        resourceType: 'document_folder',
-        resourceId: folderId,
-        before: { name: f.name, parentId: f.parentId, clientId: f.clientId },
-        after: { reparentedTo: f.parentId },
-      });
-      return f.clientId;
-    });
-    revalidate(clientId);
-    return { ok: true };
-  } catch (e) {
-    return mapFolderError(e);
-  }
+      revalidate(clientId);
+    },
+    uniqueError: FOLDER_NAME_TAKEN,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -261,23 +266,22 @@ async function moveFolderTx(
 export async function moveFolderAction(
   input: z.infer<typeof MoveSchema>,
 ): Promise<FolderActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const parsed = MoveSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { ctx } = g;
-  const { folderId, newParentId } = parsed.data;
-  if (folderId === newParentId) return { ok: false, error: 'Ordner kann nicht in sich selbst.' };
+  return staffAction({
+    run: async (g) => {
+      const parsed = MoveSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const { ctx } = g;
+      const { folderId, newParentId } = parsed.data;
+      if (folderId === newParentId)
+        return { ok: false, error: 'Ordner kann nicht in sich selbst.' };
 
-  try {
-    const { clientId } = await withTenantContext(ctx, (tx) =>
-      moveFolderTx(tx, g, clientAccessCheck(tx, g.session), folderId, newParentId),
-    );
-    revalidate(clientId);
-    return { ok: true };
-  } catch (e) {
-    return mapFolderError(e);
-  }
+      const { clientId } = await withTenantContext(ctx, (tx) =>
+        moveFolderTx(tx, g, clientAccessCheck(tx, g.session), folderId, newParentId),
+      );
+      revalidate(clientId);
+    },
+    uniqueError: FOLDER_NAME_TAKEN,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -334,22 +338,20 @@ async function setDocumentFolderTx(
 export async function setDocumentFolderAction(
   input: z.infer<typeof SetDocSchema>,
 ): Promise<FolderActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const parsed = SetDocSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { ctx } = g;
-  const { documentId, folderId } = parsed.data;
+  return staffAction({
+    run: async (g) => {
+      const parsed = SetDocSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const { ctx } = g;
+      const { documentId, folderId } = parsed.data;
 
-  try {
-    const { clientId } = await withTenantContext(ctx, (tx) =>
-      setDocumentFolderTx(tx, g, clientAccessCheck(tx, g.session), documentId, folderId),
-    );
-    revalidate(clientId);
-    return { ok: true };
-  } catch (e) {
-    return mapFolderError(e);
-  }
+      const { clientId } = await withTenantContext(ctx, (tx) =>
+        setDocumentFolderTx(tx, g, clientAccessCheck(tx, g.session), documentId, folderId),
+      );
+      revalidate(clientId);
+    },
+    uniqueError: FOLDER_NAME_TAKEN,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -370,6 +372,8 @@ const BulkMoveSchema = z
 export async function moveDocumentItemsAction(
   input: z.infer<typeof BulkMoveSchema>,
 ): Promise<DocumentBulkResult> {
+  // Bulk-Vertrag (done/rejected je Eintrag) wie die Explorer-Bulk-Actions in
+  // documents/actions.ts: Gate und Fehler je Block laufen über runDocumentBulk.
   const g = await staffActionGuard();
   if (!g.ok) return bulkActionError(g.error);
   const parsed = BulkMoveSchema.safeParse(input);
@@ -423,12 +427,7 @@ export async function moveDocumentItemsAction(
 }
 
 function mapFolderError(e: unknown): FolderActionResult {
-  // Unique-Index-Verletzung (gleicher Ordnername auf einer Ebene) → verständliche
-  // Meldung. Eingeordnet über P2002 bzw. SQLSTATE 23505 (F-03), nicht über Text.
-  if (isUniqueViolation(e)) {
-    return { ok: false, error: 'Auf dieser Ebene gibt es bereits einen Ordner mit diesem Namen.' };
-  }
-  // Domänen-Fehler (ActionError) reicht toActionError UI-sicher durch; alles
-  // andere wird generisch — kein Leak roher Prisma-Internals mehr.
+  // Dieselbe Einordnung wie `uniqueError: FOLDER_NAME_TAKEN` der Einzel-Actions.
+  if (isUniqueViolation(e)) return { ok: false, error: FOLDER_NAME_TAKEN };
   return toActionError(e);
 }

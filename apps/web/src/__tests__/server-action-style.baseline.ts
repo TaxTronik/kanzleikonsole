@@ -54,7 +54,6 @@ export const HANDWRITTEN_ACTION_BASELINE: Readonly<
   'app/portal/(protected)/requests/[id]/actions.ts': { actions: 1, reason: OPEN },
   'app/portal/(protected)/stammdaten/actions.ts': { actions: 1, reason: OPEN },
   'app/portal/(protected)/stammdaten/tax-actions.ts': { actions: 1, reason: OPEN },
-  'app/staff/(protected)/absences/actions.ts': { actions: 1, reason: OPEN },
   'app/staff/(protected)/admin/settings/branding-actions.ts': { actions: 4, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/infra-actions.ts': { actions: 3, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/integrations/signal-embedding-actions.ts': {
@@ -64,7 +63,6 @@ export const HANDWRITTEN_ACTION_BASELINE: Readonly<
   'app/staff/(protected)/admin/settings/mail-actions.ts': { actions: 4, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/modules-actions.ts': { actions: 5, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/n8n-actions.ts': { actions: 16, reason: EXCLUDED },
-  'app/staff/(protected)/client-assistance/actions.ts': { actions: 4, reason: OPEN },
   'app/staff/(protected)/clients/[id]/gwg/actions.ts': { actions: 3, reason: EXCLUDED },
   'app/staff/(protected)/clients/[id]/gwg/invite-actions.ts': { actions: 1, reason: EXCLUDED },
   'app/staff/(protected)/clients/[id]/subsumtion/actions.ts': { actions: 14, reason: SUBSUMTION },
@@ -76,18 +74,21 @@ export const HANDWRITTEN_ACTION_BASELINE: Readonly<
     actions: 10,
     reason: SUBSUMTION,
   },
-  'app/staff/(protected)/dashboard/rss-feed-actions.ts': { actions: 1, reason: OPEN },
-  'app/staff/(protected)/dashboard/tax-news-actions.ts': { actions: 1, reason: OPEN },
   'app/staff/(protected)/documents/actions.ts': { actions: 4, reason: EXCLUDED },
-  'app/staff/(protected)/documents/folder-actions.ts': { actions: 6, reason: OPEN },
-  'app/staff/(protected)/forms/actions.ts': { actions: 1, reason: OPEN },
-  'app/staff/(protected)/inbox/actions.ts': { actions: 8, reason: OPEN },
-  'app/staff/(protected)/invoices/actions.ts': { actions: 4, reason: OPEN },
-  'app/staff/(protected)/knowledge/actions.ts': { actions: 4, reason: OPEN },
-  'app/staff/(protected)/mailbox/actions.ts': { actions: 4, reason: OPEN },
-  'app/staff/(protected)/mandate-expansion/actions.ts': { actions: 3, reason: OPEN },
-  'app/staff/(protected)/payroll/actions.ts': { actions: 10, reason: PAYROLL },
-  'app/staff/(protected)/phone-notes/actions.ts': { actions: 2, reason: OPEN },
+  'app/staff/(protected)/documents/folder-actions.ts': {
+    actions: 1,
+    reason:
+      'moveDocumentItemsAction: Bulk-Vertrag DocumentBulkResult — auch Ablehnung und ' +
+      'Auswahlfehler kommen in Bulk-Form (bulkActionError: done/rejected), Gate und Fehler je ' +
+      'Block über runDocumentBulk wie die Explorer-Bulk-Actions in documents/actions.ts.',
+  },
+  'app/staff/(protected)/knowledge/actions.ts': {
+    actions: 1,
+    reason:
+      'searchArticles: Lese-Abfrage der Server-Komponente knowledge/page.tsx — liefert die ' +
+      'Trefferliste (Ablehnung = leere Liste, technische Fehler erreichen die Fehlerseite), ' +
+      'kein ActionResult-Vertrag.',
+  },
+  'app/staff/(protected)/payroll/actions.ts': { actions: 9, reason: PAYROLL },
   'app/staff/(protected)/poa/actions.ts': { actions: 3, reason: EXCLUDED },
-  'app/staff/(protected)/tax-deadlines/actions.ts': { actions: 1, reason: OPEN },
 };

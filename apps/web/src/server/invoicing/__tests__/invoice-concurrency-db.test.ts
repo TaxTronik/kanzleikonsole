@@ -48,34 +48,43 @@ vi.mock('@/server/auth/rbac', async () => ({
   ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: vi.fn(),
 }));
-vi.mock('@/server/actions/staff-action', async () => ({
-  ActionError: (await import('@/server/actions/action-error')).ActionError,
-  staffActionGuard: async () => ({
-    ok: true,
+vi.mock('@/server/actions/staff-action', async () => {
+  const staffActionGuard = async () => ({
+    ok: true as const,
     tenantId: h.tenantId,
     staffId: h.staffId,
     ctx: h.context,
     session: {},
-  }),
-  withStaff: async (run: (tx: TxClient, ctx: unknown) => unknown) => {
-    try {
-      await h.run(h.context, (tx) =>
-        run(tx, {
-          tenantId: h.tenantId,
-          staffId: h.staffId,
-          session: {},
-        }),
-      );
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, error: (error as Error).message };
-    }
-  },
-  parseFormData: (schema: { parse(input: unknown): unknown }, data: FormData) => ({
-    ok: true,
-    data: schema.parse(Object.fromEntries(data)),
-  }),
-}));
+  });
+  return {
+    ActionError: (await import('@/server/actions/action-error')).ActionError,
+    staffActionGuard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(staffActionGuard),
+    withStaff: async (run: (tx: TxClient, ctx: unknown) => unknown) => {
+      try {
+        await h.run(h.context, (tx) =>
+          run(tx, {
+            tenantId: h.tenantId,
+            staffId: h.staffId,
+            session: {},
+          }),
+        );
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: (error as Error).message };
+      }
+    },
+    parseFormData: (schema: { parse(input: unknown): unknown }, data: FormData) => ({
+      ok: true,
+      data: schema.parse(Object.fromEntries(data)),
+    }),
+  };
+});
 
 import { markPaidAction, markSentAction } from '@/app/staff/(protected)/invoices/actions';
 

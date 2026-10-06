@@ -1,8 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
-import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
+import { isStaffAdmin } from '@/server/auth/rbac';
 import type { TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
@@ -10,7 +9,7 @@ import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { notify, notifyMany } from '@/server/notifications/service';
 import {
-  staffActionGuard,
+  staffAction,
   parseFormData,
   withStaff,
   ActionError,
@@ -66,72 +65,68 @@ export async function createVacationRequestAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  return staffAction({
+    run: async (g) => {
+      const { tenantId, staffId, ctx } = g;
 
-  const parsed = parseFormData(VacationRequestSchema, formData);
-  if (!parsed.ok) return parsed;
+      const parsed = parseFormData(VacationRequestSchema, formData);
+      if (!parsed.ok) return parsed;
 
-  const startDate = new Date(parsed.data.startDate);
-  const endDate = new Date(parsed.data.endDate);
-  if (endDate < startDate) return { ok: false, error: 'Enddatum muss nach Startdatum liegen.' };
+      const startDate = new Date(parsed.data.startDate);
+      const endDate = new Date(parsed.data.endDate);
+      if (endDate < startDate) return { ok: false, error: 'Enddatum muss nach Startdatum liegen.' };
 
-  const workdays = countWorkdays(startDate, endDate);
+      const workdays = countWorkdays(startDate, endDate);
 
-  let id: string;
-  try {
-    id = await withTenantContext(ctx, async (tx) => {
-      const req = await tx.vacationRequest.create({
-        data: {
+      const id = await withTenantContext(ctx, async (tx) => {
+        const req = await tx.vacationRequest.create({
+          data: {
+            tenantId,
+            staffId,
+            startDate,
+            endDate,
+            workdays,
+            reason: parsed.data.reason || null,
+          },
+        });
+        await evidenceService.record(tx, {
           tenantId,
-          staffId,
-          startDate,
-          endDate,
-          workdays,
-          reason: parsed.data.reason || null,
-        },
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'vacation.request',
+          resourceType: 'vacation_request',
+          resourceId: req.id,
+          after: { startDate: parsed.data.startDate, endDate: parsed.data.endDate, workdays },
+        });
+        // iter87: Entscheidungsträger informieren (gezielt, kein Broadcast).
+        await notifyMany(tx, await absenceDeciderIds(tx, tenantId, staffId), {
+          tenantId,
+          kind: 'VACATION_REQUESTED',
+          title: `Urlaubsantrag: ${g.session.user.fullName}`,
+          body: `${parsed.data.startDate} – ${parsed.data.endDate} (${workdays} Werktage)`,
+          href: '/staff/absences',
+          resourceType: 'vacation_request',
+          resourceId: req.id,
+        });
+        return req.id;
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'vacation.request',
-        resourceType: 'vacation_request',
-        resourceId: req.id,
-        after: { startDate: parsed.data.startDate, endDate: parsed.data.endDate, workdays },
-      });
-      // iter87: Entscheidungsträger informieren (gezielt, kein Broadcast).
-      await notifyMany(tx, await absenceDeciderIds(tx, tenantId, staffId), {
-        tenantId,
-        kind: 'VACATION_REQUESTED',
-        title: `Urlaubsantrag: ${g.session.user.fullName}`,
-        body: `${parsed.data.startDate} – ${parsed.data.endDate} (${workdays} Werktage)`,
-        href: '/staff/absences',
-        resourceType: 'vacation_request',
-        resourceId: req.id,
-      });
-      return req.id;
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  // R-5: dediziertes Event. Vorher als staff.locked → n8n-Workflows mit
-  // „Account-gesperrt"-Reflex (Slack-Alert etc.) wären hier fälschlich
-  // ausgelöst.
-  await emitN8nEvent(
-    'staff.vacation_requested',
-    {
-      tenantId,
-      requestId: id,
-      staffId,
-      workdays,
+      // R-5: dediziertes Event. Vorher als staff.locked → n8n-Workflows mit
+      // „Account-gesperrt"-Reflex (Slack-Alert etc.) wären hier fälschlich
+      // ausgelöst.
+      await emitN8nEvent(
+        'staff.vacation_requested',
+        {
+          tenantId,
+          requestId: id,
+          staffId,
+          workdays,
+        },
+        { tenantId },
+      );
     },
-    { tenantId },
-  );
-  revalidatePath('/staff/absences');
-  return { ok: true };
+    revalidate: '/staff/absences',
+  });
 }
 
 const DecideSchema = z.object({
