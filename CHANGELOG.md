@@ -227,6 +227,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Die Umklassifizierung von Dokumenten (einzeln und als Auswahl)
+  läuft über einen gemeinsamen Dokument-Service; Sperren, journal-first
+  Re-Store, Meldungen und Audit-Events bleiben unverändert. Neue
+  PostgreSQL-Testsuite im CI-db-Job (`DOC-VERSION-IMMUTABILITY-001`,
+  `DOC-UPLOAD-JOURNAL-001`, `FK-EXC-20261006-020`).
 - **[Scope]** Verschieben, Freigeben, Löschen und Umtypisieren mehrerer
   Dokumente im Dokumenten-Explorer laufen als eine Server-Anfrage je Auswahl
   statt einer je Dokument; die Liste wird einmal statt je Dokument neu

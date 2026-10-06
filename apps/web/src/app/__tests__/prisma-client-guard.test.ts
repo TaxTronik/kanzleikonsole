@@ -80,6 +80,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // DOC-PORTAL-SHARING-001 (P-18): Owner-Fixtures in einem frischen Tenant; die App-Rolle
   // führt die Dokument-Bulk-Actions unter RLS, Triggern und Audit-Lock aus.
   'apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts',
+  // DOC-VERSION-IMMUTABILITY-001 (K-03): Owner-Fixtures und Upload-Journal in einem frischen
+  // Tenant; die App-Rolle führt den Retag-Service unter RLS, Triggern und Audit-Lock aus.
+  'apps/web/src/server/documents/__tests__/retag-db.test.ts',
   // Fachkatalog: REMINDER-TICKET-001. Isolierte Owner-Fixtures und eine
   // separate App-Verbindung belegen Nummernvergabe, RLS, FK- und Archivrennen.
   'packages/db/src/__tests__/reminder-tickets.test.ts',

@@ -1,5 +1,31 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-020
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/staff/(protected)/documents/actions.ts
+      - apps/web/src/server/documents/__tests__/retag-db-ci.test.ts
+      - apps/web/src/server/documents/__tests__/retag-db.test.ts
+      - apps/web/src/server/documents/retag.ts
+    rule_ids:
+      - DOC-VERSION-IMMUTABILITY-001
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-PORTAL-SHARING-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Die Umklassifizierung von Dokumenten (Einzelaktion und Auswahl) läuft über
+      einen gemeinsamen Dokument-Service (apps/web/src/server/documents/retag.ts);
+      die bisher in der Action-Datei liegenden Schritte (Ziel auflösen, Sperre,
+      Metadaten-Retag, journal-first Re-Store, Fehlermeldung) wurden unverändert
+      verschoben. Sperrreihenfolge, Transaktionen, Journalquelle, Audit-Events,
+      Meldungen und revalidierte Pfade bleiben gleich; geschützte Versionen werden
+      weiterhin durch eine neue Version ergänzt statt geändert. Neue PostgreSQL-
+      Testsuite im CI-db-Job. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/documents/__tests__/retag-db.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-019
     date: '2026-10-06'
     paths:
@@ -3317,6 +3343,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-020` dokumentiert die Umklassifizierung über
+  einen gemeinsamen Dokument-Service. Sperren, Re-Store und Audit bleiben
+  unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-019` dokumentiert die plattformunabhängige
   Zeilenenden-Normalisierung im Quelltext-Test des GwG-Einladungs-Lifecycles.
