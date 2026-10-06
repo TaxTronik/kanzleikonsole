@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ActionError } from '@/server/actions/action-error';
 
 const h = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     withPortal: vi.fn(),
     resolveNotifications: vi.fn(),
     evidence: vi.fn(),
@@ -19,12 +18,13 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidence } }
 vi.mock('@/server/notifications/service', () => ({ notify: vi.fn() }));
 vi.mock('@/server/settings/portal-features', () => ({ assertPortalFeature: vi.fn() }));
 vi.mock('@/server/rate-limit', () => ({ checkRateLimit: vi.fn() }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   canOtherStaffAccessClientTx: vi.fn(),
-  toActionError: vi.fn(),
 }));
-vi.mock('@/server/actions/portal-action', () => ({
-  ActionError: h.ActionError,
+vi.mock('@/server/actions/portal-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   portalActionGuard: vi.fn(),
   withPortalModule: () => h.withPortal,
 }));
@@ -87,7 +87,7 @@ describe('Portal-Terminanfrage: überlappender Abbruch', () => {
         await run(tx, context);
         return { ok: true };
       } catch (error) {
-        if (error instanceof h.ActionError) return { ok: false, error: error.message };
+        if (error instanceof ActionError) return { ok: false, error: error.message };
         throw error;
       }
     });

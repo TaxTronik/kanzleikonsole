@@ -11,11 +11,9 @@ vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: mocks.staffActionGuard }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
-  }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
 }));
 
 import {

@@ -12,6 +12,7 @@ import {
   deleteObjectVersion,
   classificationToTier,
   gobdRetentionYears,
+  UploadRejectedError,
   type CommitDocumentResult,
   type ProtectionTier,
 } from '@taxtronik/storage';
@@ -620,11 +621,10 @@ export async function retagDocumentAction(
         cause: e,
       });
     }
-    const msg = (e as Error).message;
-    if (msg.startsWith('INFECTED')) {
+    if (e instanceof UploadRejectedError && e.reason === 'INFECTED') {
       return { ok: false, error: 'Datei als infiziert markiert — Retag abgebrochen.' };
     }
-    if (msg.startsWith('SCAN_ERROR')) {
+    if (e instanceof UploadRejectedError && e.reason === 'SCAN_ERROR') {
       return { ok: false, error: 'Virus-Scan fehlgeschlagen — Retag abgebrochen.' };
     }
     return toActionError(e);

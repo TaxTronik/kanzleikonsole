@@ -28,6 +28,7 @@ import {
   type N8nCallbackReceiptKey,
 } from '@/server/n8n/callback-receipts';
 import { evidenceService } from '@/server/container';
+import { ActionError } from '@/server/actions/action-error';
 import { notify } from '@/server/notifications/service';
 import { createAnonymizer, deanonymize } from './anonymize';
 import { reflowProse } from './reflow';
@@ -107,9 +108,9 @@ async function buildRaw(
       vertraulich: true,
     },
   });
-  if (!analysis) throw new Error('Analyse nicht gefunden.');
+  if (!analysis) throw new ActionError('Analyse nicht gefunden.');
   const clientId = analysis.clientId;
-  if (!clientId) throw new Error('Recherche erfordert einen Mandantenbezug der Analyse.');
+  if (!clientId) throw new ActionError('Recherche erfordert einen Mandantenbezug der Analyse.');
 
   const client = await tx.client.findFirst({
     where: { id: clientId, tenantId },
@@ -123,7 +124,7 @@ async function buildRaw(
       city: true,
     },
   });
-  if (!client) throw new Error('Mandant nicht gefunden.');
+  if (!client) throw new ActionError('Mandant nicht gefunden.');
   const contacts = await tx.clientContact.findMany({
     where: { clientId, active: true },
     orderBy: { id: 'asc' },
@@ -150,7 +151,7 @@ async function buildRaw(
         end: true,
       },
     });
-    if (!marking) throw new Error('Markierung nicht gefunden.');
+    if (!marking) throw new ActionError('Markierung nicht gefunden.');
   }
 
   const parts: string[] = [];

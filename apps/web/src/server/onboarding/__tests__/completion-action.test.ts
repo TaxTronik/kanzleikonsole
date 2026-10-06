@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenError } from '@/server/actions/action-error';
 
 const mocks = vi.hoisted(() => ({
   staffActionGuard: vi.fn(),
@@ -14,6 +15,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.test' }));
+vi.mock('@/server/logger', () => ({
+  log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/gwg-onboarding/manual-capture', () => ({
@@ -27,15 +31,13 @@ vi.mock('@/server/gwg-onboarding/service', () => ({
   generateInviteToken: vi.fn(() => ({ raw: 'raw', hash: 'hash' })),
   INVITE_TTL_DAYS: 7,
 }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: mocks.assertClientAccessTx,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
-  }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: class ActionError extends Error {},
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: mocks.staffActionGuard,
 }));
 
@@ -206,7 +208,7 @@ describe('GWG-SELF-ONBOARDING-001: manual collection action', () => {
     mocks.withTenantContext.mockImplementation(
       async (_ctx: unknown, fn: (value: typeof tx) => unknown) => fn(tx),
     );
-    mocks.assertClientAccessTx.mockRejectedValueOnce(new Error('forbidden'));
+    mocks.assertClientAccessTx.mockRejectedValueOnce(new ForbiddenError('forbidden'));
     await expect(onboardingCaptureGwgInOfficeAction(null, formData())).resolves.toEqual({
       ok: false,
       error: 'forbidden',

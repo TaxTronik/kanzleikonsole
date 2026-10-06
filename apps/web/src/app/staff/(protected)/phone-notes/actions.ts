@@ -11,9 +11,10 @@ import {
   toActionError,
   assertClientAccessTx,
   canOtherStaffAccessClientTx,
+  ForbiddenError,
 } from '@/server/auth/rbac';
 import type { StaffSession } from '@/server/auth/staff';
-import { assertStaffInTenant } from '@/server/db/assert-tenant';
+import { assertStaffInTenant, TenantScopeError } from '@/server/db/assert-tenant';
 import {
   staffActionGuard,
   withStaffModule,
@@ -84,7 +85,7 @@ export async function createPhoneNoteAction(
       // aus einem anderen Datenkontext persistieren. Symmetrisch zu M-1.
       if (data.clientId) {
         const c = await tx.client.findFirst({ where: { id: data.clientId }, select: { id: true } });
-        if (!c) throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
+        if (!c) throw new TenantScopeError('CLIENT');
         // Vertraulich-/RESTRICTED-Ventil bei Mandantenbezug.
         await assertClientAccessTx(tx, g.session, data.clientId);
       }
@@ -93,7 +94,7 @@ export async function createPhoneNoteAction(
           where: { id: data.forwardToStaff },
           select: { id: true },
         });
-        if (!s) throw new Error('STAFF_NOT_FOUND: forwardToStaff nicht in diesem Tenant.');
+        if (!s) throw new TenantScopeError('STAFF');
         if (data.clientId) {
           await assertPhoneNoteRecipientAccessTx(tx, tenantId, data.forwardToStaff, data.clientId);
         }
@@ -182,7 +183,7 @@ export async function markNoteReadAction(
     // die Rückmeldung nichts über fremde Mandanten verrät (Review-Befund F-01).
     // Insbesondere darf dabei keine Notification aufgelöst und kein readAt
     // gesetzt werden: assertClientAccessTx wirft vor jedem Schreibzugriff.
-    if ((error as Error)?.name === 'ForbiddenError') {
+    if (error instanceof ForbiddenError) {
       return { ok: false, error: PHONE_NOTE_NOT_FOUND };
     }
     return toActionError(error);

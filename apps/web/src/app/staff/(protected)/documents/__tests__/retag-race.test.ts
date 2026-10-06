@@ -2,9 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     staffActionGuard: vi.fn(),
     withTenantContext: vi.fn(),
     fetchObjectBytes: vi.fn(),
@@ -31,7 +29,8 @@ const m = vi.hoisted(() => {
 
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
-vi.mock('@taxtronik/storage', () => ({
+vi.mock('@taxtronik/storage', async () => ({
+  UploadRejectedError: (await import('@taxtronik/storage/errors')).UploadRejectedError,
   fetchObjectBytes: m.fetchObjectBytes,
   commitBytesWithTier: m.commitBytesWithTier,
   deleteObject: m.deleteObject,
@@ -51,15 +50,13 @@ vi.mock('@/server/storage/document-type', () => ({
 vi.mock('@/server/storage/retag-policy', () => ({
   documentRetagDecision: vi.fn(() => 'RESTORE_WITH_LOCK'),
 }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: m.assertClientAccessTx,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Fehler.',
-  }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: m.ActionError,
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: m.staffActionGuard,
   withStaff: vi.fn(),
 }));

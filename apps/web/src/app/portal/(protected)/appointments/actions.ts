@@ -109,7 +109,7 @@ export async function createAppointmentRequestAction(
   try {
     await assertPortalFeature(ctx, 'appointmentRequests');
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
 
   // NEW4: Rate-Limit gegen Notification-Spam. resourceId pro Anfrage neu —

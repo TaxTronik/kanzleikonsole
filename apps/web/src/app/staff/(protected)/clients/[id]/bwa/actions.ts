@@ -7,6 +7,7 @@ import { evidenceService } from '@/server/container';
 import { parseAddisonBwaCsv, parseAddisonBwaCompactCsv } from '@/server/bwa/addison-parser';
 import { parseDatevBwaXlsx } from '@/server/bwa/datev-parser';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { XlsxReadError } from '@/lib/xlsx/read-xlsx';
 import {
   staffActionGuard,
   ActionError,
@@ -187,7 +188,9 @@ export async function importDatevXlsxAction(input: {
   } catch (e) {
     return {
       ok: false,
-      error: `XLSX konnte nicht gelesen werden: ${e instanceof Error ? e.message : 'unbekannter Fehler'}`,
+      // F-03: nur die bewusst formulierten Lesefehler durchreichen; alles andere
+      // ordnet toActionError ein (Original nur im Server-Log).
+      error: `XLSX konnte nicht gelesen werden: ${e instanceof XlsxReadError ? e.message : toActionError(e).error}`,
     };
   }
   if (result.periods.length === 0) {

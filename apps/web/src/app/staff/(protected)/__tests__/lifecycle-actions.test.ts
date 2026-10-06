@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenError } from '@/server/actions/action-error';
+import { toActionError } from '@/server/actions/to-action-error';
 
 const h = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     currentTx: null as unknown,
     withStaff: vi.fn(),
     staffActionGuard: vi.fn(),
@@ -39,19 +39,17 @@ vi.mock('@/server/db/assert-tenant', () => ({
   assertClientInTenant: h.assertClientInTenant,
   assertStaffInTenant: h.assertStaffInTenant,
 }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   isStaffAdmin: () => true,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Fehler.',
-  }),
   assertClientAccessTx: h.assertClientAccessTx,
   canOtherStaffAccessClientTx: h.canOtherStaffAccessClientTx,
   filterStaffAccessClientTx: h.filterStaffAccessClientTx,
 }));
-vi.mock('@/server/actions/staff-action', () => {
+vi.mock('@/server/actions/staff-action', async () => {
   return {
-    ActionError: h.ActionError,
+    ActionError: (await import('@/server/actions/action-error')).ActionError,
     withStaff: h.withStaff,
     withStaffModule: () => h.withStaff,
     staffActionGuard: h.staffActionGuard,
@@ -103,7 +101,7 @@ describe('fachliche Lifecycle-Guards', () => {
         const data = await run(h.currentTx, staffContext());
         return { ok: true, ...(data ?? {}) };
       } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : 'Fehler.' };
+        return toActionError(error);
       }
     });
     h.staffActionGuard.mockResolvedValue({ ok: true, ...staffContext() });
@@ -264,7 +262,9 @@ describe('fachliche Lifecycle-Guards', () => {
       },
     };
     h.currentTx = tx;
-    h.assertClientAccessTx.mockRejectedValue(new Error('Kein Zugriff auf diesen Mandanten.'));
+    h.assertClientAccessTx.mockRejectedValue(
+      new ForbiddenError('Kein Zugriff auf diesen Mandanten.'),
+    );
 
     const result = await markPhoneNoteDoneAction({ id: UUID });
 
@@ -285,7 +285,7 @@ describe('fachliche Lifecycle-Guards', () => {
     };
     h.currentTx = tx;
     h.assertClientAccessTx.mockRejectedValue(
-      Object.assign(new Error('Kein Zugriff auf diesen Mandanten.'), { name: 'ForbiddenError' }),
+      new ForbiddenError('Kein Zugriff auf diesen Mandanten.'),
     );
     const formData = new FormData();
     formData.set('noteId', UUID);

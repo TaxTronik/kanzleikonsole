@@ -1,6 +1,6 @@
 'use server';
 import { z } from 'zod';
-import { withStaff, ActionError } from '@/server/actions/staff-action';
+import { withStaff, ActionError, requireUuidParam } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { readModulesTx } from '@/server/settings/modules';
 import { createFeeInvoice, validateFeeCalculation, feeJson } from '@/server/stbvv/service';
@@ -8,7 +8,11 @@ import { evidenceService } from '@/server/container';
 export async function saveStbvvQuoteAction(clientId: string, title: string, raw: unknown) {
   return withStaff(
     async (tx, g) => {
-      await assertClientAccessTx(tx, g.session, z.uuid().parse(clientId));
+      await assertClientAccessTx(
+        tx,
+        g.session,
+        requireUuidParam(clientId, 'Mandant nicht gefunden.'),
+      );
       const client = await tx.client.findFirst({
         where: { id: clientId, tenantId: g.tenantId, anonymizedAt: null, mandateEndedAt: null },
         select: { id: true },
@@ -54,7 +58,11 @@ export async function createStbvvDraftAction(
 ) {
   return withStaff(
     async (tx, g) => {
-      await assertClientAccessTx(tx, g.session, z.uuid().parse(clientId));
+      await assertClientAccessTx(
+        tx,
+        g.session,
+        requireUuidParam(clientId, 'Mandant nicht gefunden.'),
+      );
       const modules = await readModulesTx(tx, g.tenantId);
       if (modules.invoiceMode !== 'IN_APP')
         throw new ActionError('Übernahme ist nur im Rechnungsmodus IN_APP verfügbar.');
@@ -68,7 +76,7 @@ export async function createStbvvDraftAction(
         g.tenantId,
         g.staffId,
         clientId,
-        z.uuid().parse(quoteId),
+        requireUuidParam(quoteId, 'Honorarangebot nicht gefunden.'),
         issueDate,
         dueDate,
       );

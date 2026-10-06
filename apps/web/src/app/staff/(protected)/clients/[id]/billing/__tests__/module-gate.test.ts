@@ -10,12 +10,13 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 vi.mock('@/server/settings/modules', () => ({ readModules: m.readModules }));
-vi.mock('@/server/actions/staff-action', () => ({
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: m.staffActionGuard,
-  ActionError: class ActionError extends Error {},
 }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: () => ({ ok: false, error: 'Fehler.' }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: vi.fn(),
 }));
 vi.mock('@/server/invoicing/number', () => ({ allocateInvoiceNumber: vi.fn() }));

@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { ActionError, staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
 import { validationFailure } from '@/server/actions/form-data';
 import {
   ConsentSelectionsSchema,
@@ -47,12 +47,17 @@ export async function saveConsentAction(
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
   const d = parsed.data;
 
-  let submittedConsents: ConsentSelections;
+  let rawConsents: unknown;
   try {
-    submittedConsents = ConsentSelectionsSchema.parse(JSON.parse(d.consentsJson));
+    rawConsents = JSON.parse(d.consentsJson);
   } catch {
+    rawConsents = undefined;
+  }
+  const consentsInput = ConsentSelectionsSchema.safeParse(rawConsents);
+  if (!consentsInput.success) {
     return { ok: false, error: 'Einwilligungsdaten konnten nicht gelesen werden.' };
   }
+  const submittedConsents: ConsentSelections = consentsInput.data;
 
   try {
     await withTenantContext(ctx, async (tx) => {
@@ -67,13 +72,13 @@ export async function saveConsentAction(
           select: { id: true },
         });
         if (!contact)
-          throw new Error('Ausgewählte Kontaktperson gehört nicht zu diesem Mandanten.');
+          throw new ActionError('Ausgewählte Kontaktperson gehört nicht zu diesem Mandanten.');
         signedByContact = contact.id;
       }
 
       const privacyConfig = await readPrivacyConfigTx(tx, tenantId);
       if (!isPrivacyConfigComplete(privacyConfig)) {
-        throw new Error(
+        throw new ActionError(
           'Datenschutzhinweis unvollständig: Verantwortliche Stelle, Datenschutzkontakt und Aufsichtsbehörde müssen zuerst konfiguriert werden.',
         );
       }
@@ -123,7 +128,7 @@ export async function saveConsentAction(
       });
     });
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Fehler beim Speichern.' };
+    return toActionError(e);
   }
 
   revalidatePath(`/staff/clients/${d.clientId}/privacy`);

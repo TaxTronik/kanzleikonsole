@@ -24,11 +24,11 @@ vi.mock('@taxtronik/db/tenant-context', () => ({
 }));
 vi.mock('@/server/auth/staff', () => ({ staffAuth: h.staffAuth }));
 vi.mock('@/server/auth/portal', () => ({ portalAuth: h.portalAuth }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   isStaffAdmin: () => false,
   hasStaffPermission: () => true,
-  toActionError: () => ({ ok: false, error: 'Fehler.' }),
-  ActionError: class ActionError extends Error {},
 }));
 vi.mock('@/server/settings/modules', () => ({
   assertModuleEnabled: h.assertModuleEnabled,

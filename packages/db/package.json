@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./client": "./src/client.ts",
     "./prisma-client": "./src/prisma-client.ts",
+    "./database-error": "./src/database-error.ts",
     "./prisma-adapter": "./src/prisma-adapter.ts",
     "./tenant-context": "./src/tenant-context.ts",
     "./risk-analysis": "./src/risk-analysis.ts",

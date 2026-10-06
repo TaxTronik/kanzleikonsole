@@ -15,22 +15,12 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }))
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/actions/staff-action', async () => {
   const { parseFormData } = await import('@/server/actions/form-data');
-  class ActionError extends Error {
-    constructor(message: string) {
-      super(message);
-      this.name = 'ActionError';
-    }
-  }
+  const { ActionError } = await import('@/server/actions/action-error');
   return { ActionError, parseFormData, staffActionGuard: mocks.staffActionGuard };
 });
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error:
-      error instanceof Error && error.name === 'ActionError'
-        ? error.message
-        : 'Aktion fehlgeschlagen. Bitte erneut versuchen.',
-  }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
 }));
 vi.mock('@/server/privacy/notice', () => ({ writePrivacyConfigTx: mocks.writePrivacyConfigTx }));
 

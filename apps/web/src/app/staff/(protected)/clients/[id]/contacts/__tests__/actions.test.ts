@@ -16,9 +16,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const m = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     withTenantContext: vi.fn(),
     evidenceRecord: vi.fn(),
     staffActionGuard: vi.fn(),
@@ -37,16 +35,14 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@/server/auth/magic-link', () => ({ requestMagicLink: m.requestMagicLink }));
 vi.mock('@/server/auth/revocation', () => ({ revokeAllSessions: m.revokeAllSessions }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (e: unknown) => ({
-    ok: false,
-    error: e instanceof Error ? e.message : 'Fehler.',
-  }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   // Vertraulich-/RESTRICTED-Ventil (M-1): im Unit-Test No-op = Zugriff gewährt.
   assertClientAccessTx: vi.fn(),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: m.ActionError,
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: m.staffActionGuard,
   withStaff: m.withStaff,
 }));

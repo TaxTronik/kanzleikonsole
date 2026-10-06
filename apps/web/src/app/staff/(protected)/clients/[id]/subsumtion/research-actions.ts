@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { ActionError, toActionError } from '@/server/auth/rbac';
+import { parseActionInput } from '@/server/actions/form-data';
 import {
   previewResearch,
   sendResearchToN8n,
@@ -60,7 +61,9 @@ export async function previewResearchAction(
   input: z.infer<typeof ResearchSchema>,
 ): Promise<OkActionResult<ResearchPreview>> {
   try {
-    const parsed = ResearchSchema.parse(input);
+    const checked = parseActionInput(ResearchSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, scope } = await guardResearch(parsed);
     const preview = await previewResearch(ctx, parsed, scope);
     return { ok: true, ...preview };
@@ -95,7 +98,9 @@ export async function createPromptTemplateAction(
   input: z.infer<typeof CreatePromptTemplateSchema>,
 ): Promise<OkActionResult<{ template: PromptTemplateDTO }>> {
   try {
-    const parsed = CreatePromptTemplateSchema.parse(input);
+    const checked = parseActionInput(CreatePromptTemplateSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx } = await guardWrite(parsed.clientId);
     const template = await createPromptTemplate(ctx, {
       title: parsed.title.trim(),
@@ -131,7 +136,9 @@ export async function sendResearchAction(
   input: z.infer<typeof SendResearchSchema>,
 ): Promise<OkActionResult<{ requestId: string; eventId: string; deliveryStatus: 'PENDING' }>> {
   try {
-    const parsed = SendResearchSchema.parse(input);
+    const checked = parseActionInput(SendResearchSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, clientId, scope } = await guardResearch(parsed);
     const res = await sendResearchToN8n(ctx, parsed, scope);
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${parsed.analysisId}`);

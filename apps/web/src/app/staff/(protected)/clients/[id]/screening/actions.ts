@@ -1,6 +1,6 @@
 'use server';
 import { z } from 'zod';
-import { withStaff, ActionError } from '@/server/actions/staff-action';
+import { withStaff, ActionError, requireUuidParam } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { bindScreeningSubjectTx } from '@/server/screening/gwg-gate';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
@@ -8,7 +8,6 @@ import { createEuRun } from '@/server/screening/service';
 import { evidenceService } from '@/server/container';
 import { screeningJson } from '@taxtronik/tax/screening/persistence';
 import { validateScreeningSubject } from '@taxtronik/tax';
-const uuid = z.uuid();
 const subjectSchema = z.object({
   name: z.string().trim().min(2).max(250),
   role: z.string().trim().min(1).max(160),
@@ -32,7 +31,11 @@ const reviewSchema = z.object({
 export async function runEuScreeningAction(clientId: string, raw: unknown) {
   return withStaff(
     async (tx, g) => {
-      await assertClientAccessTx(tx, g.session, uuid.parse(clientId));
+      await assertClientAccessTx(
+        tx,
+        g.session,
+        requireUuidParam(clientId, 'Mandant nicht gefunden.'),
+      );
       const parsed = subjectSchema.safeParse(raw);
       if (!parsed.success) throw new ActionError('Name, Rolle oder Geburtsdatum unvollständig.');
       const run = await createEuRun(tx, g.tenantId, g.staffId, clientId, parsed.data);
@@ -48,7 +51,11 @@ export async function recordPepResearchAction(
 ) {
   return withStaff(
     async (tx, g) => {
-      await assertClientAccessTx(tx, g.session, uuid.parse(clientId));
+      await assertClientAccessTx(
+        tx,
+        g.session,
+        requireUuidParam(clientId, 'Mandant nicht gefunden.'),
+      );
       const parsed = subjectSchema.safeParse(rawSubject),
         review = reviewSchema.safeParse(rawReview);
       if (
@@ -116,13 +123,21 @@ export async function recordPepResearchAction(
 export async function reviewScreeningAction(clientId: string, runId: string, raw: unknown) {
   return withStaff(
     async (tx, g) => {
-      await assertClientAccessTx(tx, g.session, uuid.parse(clientId));
+      await assertClientAccessTx(
+        tx,
+        g.session,
+        requireUuidParam(clientId, 'Mandant nicht gefunden.'),
+      );
       await lockGwgCheckLifecycleTx(tx, { tenantId: g.tenantId, clientId });
       const review = reviewSchema.safeParse(raw);
       if (!review.success)
         throw new ActionError('Ergebnis, Begründung (mind. 10 Zeichen) und Quellen-URL fehlen.');
       const run = await tx.screeningRun.findFirst({
-        where: { id: uuid.parse(runId), tenantId: g.tenantId, clientId },
+        where: {
+          id: requireUuidParam(runId, 'Prüflauf nicht gefunden.'),
+          tenantId: g.tenantId,
+          clientId,
+        },
       });
       if (!run) throw new ActionError('Prüflauf nicht gefunden.');
       const allowed =

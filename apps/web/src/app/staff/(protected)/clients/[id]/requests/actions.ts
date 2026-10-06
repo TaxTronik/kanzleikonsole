@@ -13,6 +13,7 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { berlinWallClockToUtc } from '@/lib/fmt';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { databaseErrorInfo } from '@/server/actions/database-error';
 import {
   staffActionGuard,
   ActionError,
@@ -47,17 +48,17 @@ export type RequestActionResult = ActionResult & {
 
 const ACTIVE_GWG_REQUEST_STATUSES = ['OPEN', 'IN_PROGRESS', 'RESPONDED'] as const;
 
+const ACTIVE_GWG_REQUEST_CONSTRAINT = new Set([
+  'request_gwg_id_doc_open_unique',
+  'linked_gwg_id_document_id',
+  'linkedGwgIdDocumentId',
+]);
+
+/** Unique-Konflikt des offenen GwG-Ausweis-Requests — über Constraint statt Meldungstext (F-03). */
 function isActiveGwgRequestConflict(error: unknown): boolean {
-  if (!error || typeof error !== 'object' || (error as { code?: unknown }).code !== 'P2002') {
-    return false;
-  }
-  const meta = (error as { meta?: unknown }).meta;
-  const detail = JSON.stringify(meta ?? '');
-  return (
-    detail.includes('request_gwg_id_doc_open_unique') ||
-    detail.includes('linked_gwg_id_document_id') ||
-    detail.includes('linkedGwgIdDocumentId')
-  );
+  const info = databaseErrorInfo(error);
+  if (info?.kind !== 'UNIQUE_VIOLATION') return false;
+  return [info.constraint ?? []].flat().some((name) => ACTIVE_GWG_REQUEST_CONSTRAINT.has(name));
 }
 
 async function createRequestCore(formData: FormData): Promise<RequestActionResult> {
@@ -233,10 +234,7 @@ async function createRequestCore(formData: FormData): Promise<RequestActionResul
     createdId = result.id;
     createdFresh = result.created;
   } catch (e) {
-    // GwG-Schranke (DB-Trigger) → eigene, klare Meldung; sonst generisch.
-    if (e instanceof Error && e.message.includes('GwG-Schranke')) {
-      return { ok: false, error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).' };
-    }
+    // GwG-Schranke (DB-Trigger) ordnet toActionError über SQLSTATE + Marker ein.
     return toActionError(e);
   }
 

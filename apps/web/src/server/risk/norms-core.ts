@@ -8,6 +8,8 @@
 // `norms.ts` (zieht den DB-Barrel); hier nur die testbare Transformation.
 // =============================================================================
 
+import { ActionError } from '@/server/actions/action-error';
+
 export type NormQuelle = 'ENGINE' | 'BERATER';
 
 /** Kuratierte Norm-Referenz — die persistierte (volle) Form je normRefs-Eintrag. */
@@ -26,14 +28,15 @@ export interface NormTarget {
   zitat: string;
 }
 
-export class NormListChangedError extends Error {
+// Fachfehler mit UI-tauglicher Meldung (F-03): toActionError reicht sie durch.
+export class NormListChangedError extends ActionError {
   constructor() {
     super('Die Normliste hat sich geändert — bitte die Markierung neu laden.');
     this.name = 'NormListChangedError';
   }
 }
 
-export class InvalidNormError extends Error {
+export class InvalidNormError extends ActionError {
   constructor(message = 'Ungültige Norm.') {
     super(message);
     this.name = 'InvalidNormError';

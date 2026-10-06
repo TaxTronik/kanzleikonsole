@@ -158,15 +158,9 @@ export async function saveConsentOptionsAction(
         options: [...submitted.options, ...removedCustom],
       });
 
-      try {
-        await assertConsentCatalogProviderLinksTx(tx, tenantId, next);
-      } catch (error) {
-        throw new ActionError(
-          error instanceof Error
-            ? error.message
-            : 'Dienstleister-Verknüpfungen konnten nicht validiert werden.',
-        );
-      }
+      // Wirft ActionError mit UI-tauglicher Meldung; andere Fehler ordnet das
+      // zentrale toActionError ein (keine rohen Fehlertexte, F-03).
+      await assertConsentCatalogProviderLinksTx(tx, tenantId, next);
       if (stored) {
         const updated = await tx.tenantSetting.updateMany({
           where: {

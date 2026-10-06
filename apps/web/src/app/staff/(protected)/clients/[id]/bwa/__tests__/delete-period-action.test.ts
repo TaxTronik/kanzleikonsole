@@ -20,15 +20,10 @@ vi.mock('@/server/bwa/addison-parser', () => ({
 }));
 vi.mock('@/server/bwa/datev-parser', () => ({ parseDatevBwaXlsx: vi.fn() }));
 vi.mock('@/server/auth/rbac', async () => {
-  const { ActionError } = await vi.importActual<typeof import('@/server/actions/action-error')>(
-    '@/server/actions/action-error',
-  );
   return {
     assertClientAccessTx: h.assertClientAccessTx,
-    toActionError: (error: unknown) => ({
-      ok: false,
-      error: error instanceof ActionError ? error.message : 'Unerwarteter Fehler.',
-    }),
+    // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+    ...(await import('@/server/actions/to-action-error')),
   };
 });
 vi.mock('@/server/actions/staff-action', async () => {

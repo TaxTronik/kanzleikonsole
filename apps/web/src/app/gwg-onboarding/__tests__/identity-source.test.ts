@@ -34,7 +34,10 @@ vi.mock('@/server/gwg-onboarding/document-folders', () => ({
   ensureGwgRootFolderTx: vi.fn(),
   ensureGwgPersonFolderTx: vi.fn(),
 }));
-vi.mock('@/server/auth/rbac', () => ({ toActionError: vi.fn() }));
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
+}));
 vi.mock('@/server/db/prisma-owner', () => ({
   prismaOwner: { gwgOnboardingInvite: { findFirst: m.findInvite, updateMany: m.expireInvite } },
 }));

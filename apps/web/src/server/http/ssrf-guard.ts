@@ -9,6 +9,7 @@
 import {
   assertPublicHost as sharedAssertPublicHost,
   safeFetch as sharedSafeFetch,
+  SsrfGuardError,
 } from '@taxtronik/http-utils';
 export { SsrfGuardError } from '@taxtronik/http-utils';
 
@@ -45,4 +46,21 @@ export async function assertN8nUrl(url: string, kind: N8nTargetKind) {
 
 export async function safeFetchN8n(url: string, kind: N8nTargetKind, init?: RequestInit) {
   return await fetchWithPolicy(url, init, { mode: 'n8n', kind });
+}
+
+const UNRESOLVABLE_HOST_CODES: ReadonlySet<string> = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ENODATA']);
+
+/**
+ * F-03: UI-taugliche Meldung für eine abgewiesene oder nicht auflösbare
+ * Ziel-URL — eingeordnet über Fehlerklasse bzw. DNS-Fehlercode, nie über den
+ * Meldungstext. `null`, wenn der Fehler keine Ziel-URL-Prüfung betrifft.
+ */
+export function urlTargetErrorMessage(error: unknown): string | null {
+  if (error instanceof SsrfGuardError) return error.message;
+  const code =
+    error !== null && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
+  if (typeof code === 'string' && UNRESOLVABLE_HOST_CODES.has(code)) {
+    return 'Hostname ist nicht auflösbar.';
+  }
+  return null;
 }

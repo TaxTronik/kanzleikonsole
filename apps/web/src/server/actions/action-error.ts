@@ -5,3 +5,19 @@ export class ActionError extends Error {
     this.name = 'ActionError';
   }
 }
+
+/** Keine (gültige) Sitzung — die Meldung ist UI-tauglich. */
+export class UnauthorizedError extends Error {
+  constructor(message = 'Nicht eingeloggt.') {
+    super(message);
+    this.name = 'UnauthorizedError';
+  }
+}
+
+/** Fehlende Berechtigung — die Meldung ist UI-tauglich. */
+export class ForbiddenError extends Error {
+  constructor(message = 'Nur ADMIN/PARTNER.') {
+    super(message);
+    this.name = 'ForbiddenError';
+  }
+}

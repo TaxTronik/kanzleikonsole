@@ -1,5 +1,6 @@
 // Fachkatalog: ACCESS-TENANT-RLS-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@taxtronik/db/prisma-client';
 
 const h = vi.hoisted(() => ({
   staffAuth: vi.fn(),
@@ -12,11 +13,11 @@ const h = vi.hoisted(() => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@/server/auth/staff', () => ({ staffAuth: h.staffAuth }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   isStaffAdmin: () => false,
   hasStaffPermission: () => false,
-  toActionError: () => ({ ok: false, error: 'Nicht verfügbar.' }),
-  ActionError: class ActionError extends Error {},
 }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: h.tenantContext }));
 vi.mock('@taxtronik/db/tenant-context', () => ({ withTenantContext: h.tenantContext }));
@@ -77,13 +78,21 @@ beforeEach(() => {
   h.findFirst.mockImplementation(async ({ where }) => matching(where));
   h.update.mockImplementation(async ({ where, data }) => {
     const feed = matching(where);
-    if (!feed) throw new Error('Record not found');
+    if (!feed)
+      throw new Prisma.PrismaClientKnownRequestError('Record not found', {
+        code: 'P2025',
+        clientVersion: 'test',
+      });
     Object.assign(feed, data);
     return feed;
   });
   h.delete.mockImplementation(async ({ where }) => {
     const feed = matching(where);
-    if (!feed) throw new Error('Record not found');
+    if (!feed)
+      throw new Prisma.PrismaClientKnownRequestError('Record not found', {
+        code: 'P2025',
+        clientVersion: 'test',
+      });
     feeds.delete(feed.id);
     return feed;
   });

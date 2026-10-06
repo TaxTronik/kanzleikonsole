@@ -6,7 +6,7 @@ import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { seedDefaultRssFeeds } from '@/server/rss/defaults';
-import { assertPublicUrl } from '@/server/http/ssrf-guard';
+import { assertPublicUrl, urlTargetErrorMessage } from '@/server/http/ssrf-guard';
 import {
   staffActionGuard,
   withStaffModule,
@@ -61,7 +61,10 @@ export async function addRssFeedAction(
   try {
     await assertPublicUrl(urlClean);
   } catch (e) {
-    return { ok: false, error: `URL nicht zulässig: ${(e as Error).message}` };
+    return {
+      ok: false,
+      error: `URL nicht zulässig: ${urlTargetErrorMessage(e) ?? toActionError(e).error}`,
+    };
   }
 
   // R-7: Nur ADMIN/PARTNER darf Feeds für den Tenant anlegen; reguläre Staff

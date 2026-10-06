@@ -44,7 +44,7 @@ export async function submitMasterChangeAction(
   try {
     await assertPortalFeature(ctx, 'stammdatenSelfService');
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
 
   const fieldEntries = Object.entries(parsed.data.fields).filter(

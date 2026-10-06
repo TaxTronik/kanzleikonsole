@@ -2,6 +2,7 @@
 // Real contact actions, HMAC tokens and HTTP feed handler; only persistence,
 // authenticated staff context and external side effects are simulated.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenError } from '@/server/actions/action-error';
 import type { NextRequest } from 'next/server';
 
 const CONTACT_ID = '0b1f6a2e-3c4d-4e5f-8a9b-0c1d2e3f4a5b';
@@ -62,8 +63,9 @@ vi.mock('@/server/gwg-onboarding/invite-binding', () => ({ prepareGwgInviteBindi
 vi.mock('@/server/gwg/reverification', () => ({ lockGwgCheckLifecycleTx: vi.fn() }));
 vi.mock('@/server/gwg/professional-review', () => ({ isGwgProfessionallyReviewed: vi.fn() }));
 vi.mock('@/server/gwg-onboarding/manual-capture', () => ({ startManualGwgCaptureTx: vi.fn() }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (e: Error) => ({ ok: false, error: e.message }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: m.assertClientAccessTx,
 }));
 vi.mock('@/server/actions/staff-action', async () => {
@@ -76,7 +78,7 @@ vi.mock('@/server/actions/staff-action', async () => {
     session: {},
   };
   return {
-    ActionError: class extends Error {},
+    ActionError: (await import('@/server/actions/action-error')).ActionError,
     parseFormData,
     staffActionGuard: async () => staff,
     withStaff: async (fn: (tx: unknown, ctx: unknown) => Promise<unknown>) => {
@@ -84,7 +86,8 @@ vi.mock('@/server/actions/staff-action', async () => {
         await m.withTenantContext(staff.ctx, (tx: unknown) => fn(tx, staff));
         return { ok: true };
       } catch (error) {
-        return { ok: false, error: (error as Error).message };
+        const { toActionError } = await import('@/server/actions/to-action-error');
+        return toActionError(error);
       }
     },
   };
@@ -269,7 +272,9 @@ describe('contact identity changes revoke independent iCal capabilities', () => 
   );
 
   it('does not change identity or revoke a feed when the client authorization fails', async () => {
-    m.assertClientAccessTx.mockRejectedValueOnce(new Error('Kein Zugriff auf diesen Mandanten.'));
+    m.assertClientAccessTx.mockRejectedValueOnce(
+      new ForbiddenError('Kein Zugriff auf diesen Mandanten.'),
+    );
     expect(await update('new@example.test')).toEqual({
       ok: false,
       error: 'Kein Zugriff auf diesen Mandanten.',

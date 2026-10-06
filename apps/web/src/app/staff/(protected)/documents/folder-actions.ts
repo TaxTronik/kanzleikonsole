@@ -6,6 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { isUniqueViolation } from '@/server/actions/database-error';
 
 export interface FolderActionResult {
   ok: boolean;
@@ -315,14 +316,8 @@ export async function setDocumentFolderAction(
 
 function mapFolderError(e: unknown): FolderActionResult {
   // Unique-Index-Verletzung (gleicher Ordnername auf einer Ebene) → verständliche
-  // Meldung. P2002-Code ODER der konkrete Constraint-/Prisma-Text.
-  const code = (e as { code?: string }).code;
-  const msg = (e as Error)?.message ?? '';
-  if (
-    code === 'P2002' ||
-    msg.includes('document_folder_level_name_uniq') ||
-    msg.includes('Unique constraint')
-  ) {
+  // Meldung. Eingeordnet über P2002 bzw. SQLSTATE 23505 (F-03), nicht über Text.
+  if (isUniqueViolation(e)) {
     return { ok: false, error: 'Auf dieser Ebene gibt es bereits einen Ordner mit diesem Namen.' };
   }
   // Domänen-Fehler (ActionError) reicht toActionError UI-sicher durch; alles

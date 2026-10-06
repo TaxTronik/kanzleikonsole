@@ -16,6 +16,7 @@ import { createHash } from 'node:crypto';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { evidenceService } from '@/server/container';
+import { ActionError } from '@/server/actions/action-error';
 
 export interface ReformatInput {
   analysisId: string;
@@ -46,9 +47,10 @@ export async function reformatSourceDoc(
       where: { id: input.analysisId },
       select: { sourceText: true, sourceDoc: true, archivedAt: true },
     });
-    if (!analysis) throw new Error('Analyse nicht gefunden.');
+    if (!analysis) throw new ActionError('Analyse nicht gefunden.');
     // Defense in depth — guardAnalysis wirft bereits bei archivierten Analysen.
-    if (analysis.archivedAt) throw new Error('Diese Subsumtion ist archiviert (schreibgeschützt).');
+    if (analysis.archivedAt)
+      throw new ActionError('Diese Subsumtion ist archiviert (schreibgeschützt).');
 
     // Inhaltliche Änderung? Dann NICHT speichern — die Offsets der Markierungen
     // hängen am exakt analysierten Text; in diesem Modus darf sich nur die

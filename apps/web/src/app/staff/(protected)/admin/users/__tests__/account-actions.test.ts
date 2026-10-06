@@ -7,10 +7,8 @@ const USER_ID = '33333333-3333-4333-8333-333333333333';
 const RECOVERY_STEP_UP_FAILED =
   'Die zusätzliche Identitätsbestätigung ist ungültig oder abgelaufen.';
 const mocks = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
     dbNull: Symbol('DbNull'),
-    ActionError,
     staffActionGuard: vi.fn(),
     withTenantContext: vi.fn(),
     hash: vi.fn(),
@@ -67,15 +65,13 @@ vi.mock('@/server/auth/webauthn', () => {
     verifyHardwareAssertion: mocks.verifyHardwareAssertion,
   };
 });
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: mocks.ActionError,
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: mocks.staffActionGuard,
 }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Aktion fehlgeschlagen.',
-  }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
 }));
 
 import {

@@ -12,6 +12,18 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
+import { ActionError } from '@/server/actions/action-error';
+
+/**
+ * Referenz liegt nicht im aktuellen Tenant (oder existiert nicht). Fachfehler
+ * mit UI-tauglicher Meldung (F-03); `entity` erlaubt die Einordnung ohne Text.
+ */
+export class TenantScopeError extends ActionError {
+  constructor(readonly entity: 'CLIENT' | 'STAFF') {
+    super(entity === 'CLIENT' ? 'Mandant nicht gefunden.' : 'Mitarbeiter:in nicht gefunden.');
+    this.name = 'TenantScopeError';
+  }
+}
 
 /**
  * Wirft, wenn `clientId` im aktuellen Tenant-Kontext nicht existiert.
@@ -21,9 +33,7 @@ import type { TxClient } from '@taxtronik/db';
  */
 export async function assertClientInTenant(tx: TxClient, clientId: string): Promise<void> {
   const c = await tx.client.findFirst({ where: { id: clientId }, select: { id: true } });
-  if (!c) {
-    throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
-  }
+  if (!c) throw new TenantScopeError('CLIENT');
 }
 
 /**
@@ -32,7 +42,5 @@ export async function assertClientInTenant(tx: TxClient, clientId: string): Prom
  */
 export async function assertStaffInTenant(tx: TxClient, staffId: string): Promise<void> {
   const s = await tx.staffUser.findFirst({ where: { id: staffId }, select: { id: true } });
-  if (!s) {
-    throw new Error('STAFF_NOT_FOUND: staffId nicht in diesem Tenant.');
-  }
+  if (!s) throw new TenantScopeError('STAFF');
 }

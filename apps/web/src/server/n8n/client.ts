@@ -18,6 +18,21 @@ import { safeFetchN8n } from '@/server/http/ssrf-guard';
 
 const TIMEOUT_MS = 10_000;
 
+/**
+ * Fehler der n8n-Public-API (HTTP-Status oder Vertragsverletzung der Antwort).
+ * Die Meldung stammt aus diesem Client und dient der Admin-Diagnose; Aufrufer
+ * ordnen den Fehler über die Klasse ein statt über den Text (F-03).
+ */
+export class N8nApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null = null,
+  ) {
+    super(message);
+    this.name = 'N8nApiError';
+  }
+}
+
 export interface N8nWorkflowSummary {
   id: string;
   name: string;
@@ -73,8 +88,8 @@ export class N8nApiClient {
     private readonly baseUrl: string,
     private readonly apiKey: string,
   ) {
-    if (!baseUrl) throw new Error('n8n-API-URL fehlt');
-    if (!apiKey) throw new Error('n8n-API-Key fehlt');
+    if (!baseUrl) throw new N8nApiError('n8n-API-URL fehlt');
+    if (!apiKey) throw new N8nApiError('n8n-API-Key fehlt');
   }
 
   private url(path: string): string {
@@ -100,7 +115,10 @@ export class N8nApiClient {
       });
       const text = await res.text();
       if (!res.ok) {
-        throw new Error(`n8n ${method} ${path} → ${res.status}: ${text.slice(0, 200)}`);
+        throw new N8nApiError(
+          `n8n ${method} ${path} → ${res.status}: ${text.slice(0, 200)}`,
+          res.status,
+        );
       }
       if (!text) return undefined as T;
       return JSON.parse(text) as T;
@@ -127,9 +145,10 @@ export class N8nApiClient {
       workflows.push(...(data.data ?? []));
       cursor = data.nextCursor ?? undefined;
       pages += 1;
-      if (pages > 100) throw new Error('n8n-Workflow-Liste überschreitet das sichere Seitenlimit.');
+      if (pages > 100)
+        throw new N8nApiError('n8n-Workflow-Liste überschreitet das sichere Seitenlimit.');
       if (cursor && seenCursors.has(cursor)) {
-        throw new Error('n8n-API lieferte einen wiederholten Pagination-Cursor.');
+        throw new N8nApiError('n8n-API lieferte einen wiederholten Pagination-Cursor.');
       }
       if (cursor) seenCursors.add(cursor);
     } while (cursor);
@@ -205,11 +224,11 @@ export class N8nApiClient {
       credentials.push(...(page.data ?? []));
       cursor = page.nextCursor ?? undefined;
       if (cursor && seenCursors.has(cursor)) {
-        throw new Error('n8n-API lieferte einen wiederholten Credential-Cursor.');
+        throw new N8nApiError('n8n-API lieferte einen wiederholten Credential-Cursor.');
       }
       if (cursor) seenCursors.add(cursor);
       if (seenCursors.size > 100) {
-        throw new Error('n8n-Credential-Liste überschreitet das sichere Seitenlimit.');
+        throw new N8nApiError('n8n-Credential-Liste überschreitet das sichere Seitenlimit.');
       }
     } while (cursor);
     return credentials;
@@ -226,7 +245,7 @@ export class N8nApiClient {
   }): Promise<N8nCredentialBinding> {
     const created = await this.request<N8nCredentialSummary>('POST', '/credentials', input);
     if (!created.id || !created.name || created.type !== input.type) {
-      throw new Error('n8n-API lieferte keine gültige Credential-Referenz.');
+      throw new N8nApiError('n8n-API lieferte keine gültige Credential-Referenz.');
     }
     return { id: created.id, name: created.name, type: created.type };
   }

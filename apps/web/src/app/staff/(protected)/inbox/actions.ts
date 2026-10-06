@@ -3,7 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { withTenantContext } from '@taxtronik/db';
-import { staffActionGuard, parseFormData, type ActionResult } from '@/server/actions/staff-action';
+import {
+  ActionError,
+  staffActionGuard,
+  parseFormData,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 import { toActionError } from '@/server/auth/rbac';
 import { log } from '@/server/logger';
 import { INBOX_MESSAGE_MAX_LENGTH, INBOX_SUBJECT_MAX_LENGTH } from '@/server/inbox/constants';
@@ -282,7 +287,7 @@ export async function retryInboxClientNotificationAction(
         },
         select: { id: true, clientId: true, threadId: true },
       });
-      if (!row) throw new Error('MESSAGE_NOT_FOUND');
+      if (!row) throw new ActionError('Nachricht nicht gefunden.');
       await assertStaffInboxClientTx(tx, guard.session, row.clientId);
       return row;
     });

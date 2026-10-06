@@ -12,6 +12,7 @@ import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
+import { ActionError } from '@/server/actions/action-error';
 import { log } from '@/server/logger';
 import { markingKey, markingCreateFields } from './marking-data';
 
@@ -33,7 +34,7 @@ export async function reanalyzeAnalysis(
   const analysis = await withTenantContext(ctx, (tx) =>
     requireWritableRiskAnalysisTx(tx, ctx.tenantId, analysisId),
   );
-  if (!analysis) throw new Error('Analyse nicht gefunden.');
+  if (!analysis) throw new ActionError('Analyse nicht gefunden.');
 
   const c = client ?? new RiskLayerClient();
   const result = await c.analyse({ text: analysis.sourceText, mitLLM: false });

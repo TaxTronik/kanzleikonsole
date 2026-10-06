@@ -1,11 +1,14 @@
 import type { TxClient } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
+// Relativ statt '@/…': packages/db (los-state-consistency.test.ts) lädt dieses
+// Modul direkt und kennt den Web-Alias nicht.
+import { ActionError } from '../actions/action-error';
 
 export const LOS_PENDING_KEY = 'quantenlos.pending';
 export const LOS_START_KEY = 'quantenlos.start';
 
-export class LosStateConflictError extends Error {
+export class LosStateConflictError extends ActionError {
   constructor() {
     super(
       'Der Quantenlos-Auftrag wurde bereits bearbeitet oder ein anderer Auftrag ist offen. Bitte die Seite neu laden.',

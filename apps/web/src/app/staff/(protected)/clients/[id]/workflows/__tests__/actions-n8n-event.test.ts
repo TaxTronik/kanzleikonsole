@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     withStaff: vi.fn(),
     revalidatePath: vi.fn(),
   };
@@ -17,12 +15,13 @@ vi.mock('@/server/db/assert-tenant', () => ({
   assertClientInTenant: vi.fn(),
   assertStaffInTenant: vi.fn(),
 }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: vi.fn(),
-  toActionError: vi.fn(),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: h.ActionError,
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: vi.fn(),
   withStaffModule: () => h.withStaff,
 }));

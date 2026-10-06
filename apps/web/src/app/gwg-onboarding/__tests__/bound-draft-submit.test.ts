@@ -37,11 +37,9 @@ vi.mock('@/server/documents/upload-helpers', () => ({
   createPendingDocumentWithVersion: vi.fn(),
   finalizePendingDocumentVersion: vi.fn(),
 }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Interner Fehler.',
-  }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
 }));
 vi.mock('@/server/gwg-onboarding/service', () => ({
   expireOpenInviteIfDue: vi.fn(),

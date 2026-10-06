@@ -20,6 +20,7 @@
 import type { TxClient } from '@taxtronik/db';
 import { round2 } from '@/lib/fmt';
 import { ActionError } from '@/server/actions/staff-action';
+import { isDatabaseError, isUniqueViolation } from '@/server/actions/database-error';
 import { evidenceService } from '@/server/container';
 import { archiveFailureMessage } from '@/server/invoicing/archive-failure';
 import { allocateInvoiceNumber } from '@/server/invoicing/number';
@@ -201,16 +202,16 @@ async function assertReverseChargeVatIdsTx(
 }
 
 /**
- * Einheitliche Fehlerabbildung der Anlage: Prisma-Code statt fragiler
- * Message-Substrings (P2002 = Nummernkonflikt); die GwG-Schranke ist ein
- * BEFORE-INSERT-Trigger (SQLSTATE check_violation), dessen Marker
- * „GwG-Schranke" der stabile Vertrag der Migrationen (init/iter2/iter5) ist.
+ * Einheitliche Fehlerabbildung der Anlage über die zentrale Einordnung
+ * (F-03): Eindeutigkeitskonflikt (P2002/SQLSTATE 23505) = Nummernkonflikt; die
+ * GwG-Schranke ist ein BEFORE-INSERT-Trigger (SQLSTATE check_violation mit dem
+ * Migrationsmarker „GwG-Schranke“).
  */
 export function draftInvoiceDbError(error: unknown): unknown {
-  if ((error as { code?: string }).code === 'P2002') {
+  if (isUniqueViolation(error)) {
     return new ActionError('Rechnungsnummer existiert bereits.');
   }
-  if ((error as Error).message?.includes('GwG-Schranke')) {
+  if (isDatabaseError(error, 'GWG_CLIENT_INACTIVE')) {
     return new ActionError('Mandant ist nicht aktiv (GwG-Prüfung ausstehend).');
   }
   return error;

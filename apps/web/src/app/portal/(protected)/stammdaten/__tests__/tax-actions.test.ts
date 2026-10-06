@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ActionError } from '@/server/actions/action-error';
 
 const m = vi.hoisted(() => ({
   guard: vi.fn(),
@@ -10,12 +11,13 @@ const m = vi.hoisted(() => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.context }));
-vi.mock('@/server/actions/portal-action', () => ({
+vi.mock('@/server/actions/portal-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   portalActionGuard: m.guard,
-  ActionError: class extends Error {},
 }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (error: Error) => ({ ok: false, error: error.message }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
 }));
 vi.mock('@/server/settings/portal-features', () => ({ assertPortalFeature: m.feature }));
 vi.mock('@/server/tax-master-data/service', () => ({ loadTaxMasterDataTx: m.load }));
@@ -117,7 +119,9 @@ describe('TAX-MASTER-DATA-001 portal proposals', () => {
     expect(tx.clientMasterChangeRequest.create).not.toHaveBeenCalled();
   });
   it('honors the portal feature flag and an existing pending request', async () => {
-    m.feature.mockRejectedValueOnce(new Error('Deaktiviert'));
+    m.feature.mockRejectedValueOnce(
+      new ActionError('Diese Funktion ist im Mandantenportal nicht aktiviert.'),
+    );
     expect((await submitTaxChangeAction({ clientId, expectedRevision: revision, draft })).ok).toBe(
       false,
     );

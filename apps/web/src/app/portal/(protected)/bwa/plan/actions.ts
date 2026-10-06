@@ -42,7 +42,7 @@ export async function createPlanAction(input: CreateBwaPlanInput): Promise<Actio
   try {
     await assertPortalFeature(ctx, 'bwaPlanning');
   } catch (error) {
-    return { ok: false, error: (error as Error).message };
+    return toActionError(error);
   }
 
   let planId: string;

@@ -29,13 +29,11 @@ vi.mock('@taxtronik/storage', () => ({
   StoredObjectError: class StoredObjectError extends Error {},
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   isStaffAdmin: m.isStaffAdmin,
   assertClientAccessTx: vi.fn(),
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Fehler',
-  }),
 }));
 vi.mock('@/server/auth/revocation', () => ({ revokeAllSessions: vi.fn() }));
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: m.emitN8nEvent }));
@@ -56,7 +54,7 @@ vi.mock('@/server/gwg-onboarding/document-folders', () => ({
 vi.mock('@/server/actions/staff-action', async () => {
   const { parseFormData } = await import('@/server/actions/form-data');
   return {
-    ActionError: class ActionError extends Error {},
+    ActionError: (await import('@/server/actions/action-error')).ActionError,
     staffActionGuard: m.staffActionGuard,
     withStaff: m.withStaff,
     parseFormData,

@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenError } from '@/server/actions/action-error';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 
 const m = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     staffActionGuard: vi.fn(),
     withTenantContext: vi.fn(),
     assertClientAccessTx: vi.fn(),
@@ -17,16 +16,14 @@ const m = vi.hoisted(() => {
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: m.assertClientAccessTx,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Fehler.',
-  }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: m.staffActionGuard,
-  ActionError: m.ActionError,
 }));
 
 import { createFolderAction, renameFolderAction } from '../folder-actions';
@@ -77,7 +74,9 @@ describe('Dokumentordner — RESTRICTED-Gate', () => {
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (arg: unknown) => unknown) =>
       fn(tx),
     );
-    m.assertClientAccessTx.mockRejectedValueOnce(new Error('Kein Zugriff auf diesen Mandanten.'));
+    m.assertClientAccessTx.mockRejectedValueOnce(
+      new ForbiddenError('Kein Zugriff auf diesen Mandanten.'),
+    );
 
     const result = await renameFolderAction({
       folderId: '22222222-2222-4222-8222-222222222222',

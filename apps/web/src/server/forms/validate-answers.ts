@@ -1,4 +1,13 @@
 import type { FormFieldType } from '@prisma/client';
+import { ActionError } from '@/server/actions/action-error';
+
+/** Ungültige oder unvollständige Formularantwort — Meldung ist UI-tauglich (F-03). */
+export class FormAnswersError extends ActionError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'FormAnswersError';
+  }
+}
 
 export interface FormFieldForAnswerValidation {
   key: string;
@@ -30,7 +39,7 @@ const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const PHONE_RE = /^[+()\d\s./-]+$/;
 
 function invalid(field: FormFieldForAnswerValidation, detail: string): never {
-  throw new Error(`Ungültiger Wert für „${field.label}": ${detail}`);
+  throw new FormAnswersError(`Ungültiger Wert für „${field.label}": ${detail}`);
 }
 
 function isEmpty(value: unknown): boolean {
@@ -59,7 +68,7 @@ function parseConfiguredNumber(
   if (raw === null || raw.trim() === '') return null;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) {
-    throw new Error(`Formularfeld „${field.label}" hat ein ungültiges ${boundary}.`);
+    throw new FormAnswersError(`Formularfeld „${field.label}" hat ein ungültiges ${boundary}.`);
   }
   return parsed;
 }
@@ -83,7 +92,7 @@ function assertDate(field: FormFieldForAnswerValidation, value: unknown): assert
 
 function optionValues(field: FormFieldForAnswerValidation): Set<string> {
   if (!Array.isArray(field.options)) {
-    throw new Error(`Auswahlfeld „${field.label}" ist nicht vollständig konfiguriert.`);
+    throw new FormAnswersError(`Auswahlfeld „${field.label}" ist nicht vollständig konfiguriert.`);
   }
   const values = new Set<string>();
   for (const option of field.options) {
@@ -92,7 +101,9 @@ function optionValues(field: FormFieldForAnswerValidation): Set<string> {
       typeof option !== 'object' ||
       typeof (option as Record<string, unknown>)['value'] !== 'string'
     ) {
-      throw new Error(`Auswahlfeld „${field.label}" ist nicht vollständig konfiguriert.`);
+      throw new FormAnswersError(
+        `Auswahlfeld „${field.label}" ist nicht vollständig konfiguriert.`,
+      );
     }
     values.add((option as { value: string }).value);
   }
@@ -179,7 +190,7 @@ function validateCheckboxValue(
 ): null {
   if (typeof value !== 'boolean') invalid(field, 'Ja/Nein-Wert erwartet.');
   if (options.requireRequired && field.required && value !== true) {
-    throw new Error(`Pflichtfeld nicht bestätigt: ${field.label}`);
+    throw new FormAnswersError(`Pflichtfeld nicht bestätigt: ${field.label}`);
   }
   return null;
 }
@@ -231,7 +242,7 @@ export function validateFormAnswers(
   for (const key of Object.keys(answers)) {
     const field = fieldsByKey.get(key);
     if (!field || field.type === 'INFO_TEXT') {
-      throw new Error(`Unbekanntes Formularfeld: ${key.slice(0, 60)}`);
+      throw new FormAnswersError(`Unbekanntes Formularfeld: ${key.slice(0, 60)}`);
     }
   }
 
@@ -242,7 +253,7 @@ export function validateFormAnswers(
     const value = answers[field.key];
     if (isEmpty(value)) {
       if (options.requireRequired && field.required) {
-        throw new Error(`Pflichtfeld nicht ausgefüllt: ${field.label}`);
+        throw new FormAnswersError(`Pflichtfeld nicht ausgefüllt: ${field.label}`);
       }
       continue;
     }

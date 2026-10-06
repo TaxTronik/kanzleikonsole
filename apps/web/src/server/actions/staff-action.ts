@@ -29,6 +29,7 @@ import {
   type StaffPermissionName,
 } from '@/server/auth/rbac';
 import { decideStaffGuard } from './staff-action-policy';
+import { isUniqueViolation } from './database-error';
 import type { ActionResult } from './types';
 import {
   assertModuleEnabled,
@@ -43,7 +44,7 @@ import {
 // werfen, um eine konkrete Meldung an den Client zu geben (statt generisch).
 export { ActionError };
 export { decideStaffGuard };
-export { parseFormData } from './form-data';
+export { parseActionInput, parseFormData, requireUuidParam } from './form-data';
 
 // Einheitliches Action-Ergebnis liegt neutral in ./types — hier re-exportiert,
 // damit der bestehende Import-Pfad '@/server/actions/staff-action' stabil bleibt.
@@ -117,7 +118,8 @@ export async function staffActionGuard(opts: StaffGuardOptions = {}): Promise<St
  * Voll-Wrapper: Gate → Tenant-Tx → `fn(tx, ctx)` → Fehler→ActionResult
  * (toActionError, kein Leak roher Messages) → optional Revalidate. Die Nutzlast
  * von `fn` wird flach ins Ergebnis gemischt (`{ ok: true, ...payload }`).
- * `uniqueError`: freundliche Meldung für P2002 (Eindeutigkeits-Konflikt).
+ * `uniqueError`: freundliche Meldung für Eindeutigkeits-Konflikte (P2002 bzw.
+ * SQLSTATE 23505 aus Raw-SQL).
  */
 export async function withStaff<T extends Record<string, unknown> = Record<string, never>>(
   fn: (tx: TxClient, ctx: StaffCtx) => Promise<T | void>,
@@ -139,7 +141,7 @@ export async function withStaff<T extends Record<string, unknown> = Record<strin
       for (const p of ([] as string[]).concat(opts.revalidate)) revalidatePath(p);
     return { ok: true, ...(data ?? {}) } as R;
   } catch (e) {
-    if (opts.uniqueError && (e as { code?: string }).code === 'P2002') {
+    if (opts.uniqueError && isUniqueViolation(e)) {
       return { ok: false, error: opts.uniqueError } as R;
     }
     return toActionError(e) as R;

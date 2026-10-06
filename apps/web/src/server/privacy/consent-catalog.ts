@@ -9,6 +9,7 @@
 
 import type { TxClient } from '@taxtronik/db';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
+import { ActionError } from '@/server/actions/action-error';
 import {
   ConsentSelectionsSchema,
   defaultConsentOptionsCatalog,
@@ -31,7 +32,8 @@ import {
 
 export const CONSENT_OPTIONS_SETTING_KEY = 'privacy.consent_options';
 
-export class RequiredConsentOptionsError extends Error {
+// Fachfehler mit UI-tauglicher Meldung (F-03): toActionError reicht sie durch.
+export class RequiredConsentOptionsError extends ActionError {
   readonly labels: string[];
 
   constructor(labels: string[]) {
@@ -41,10 +43,20 @@ export class RequiredConsentOptionsError extends Error {
   }
 }
 
-export class ConsentDisplayChangedError extends Error {
+export class ConsentDisplayChangedError extends ActionError {
   constructor() {
     super(CONSENT_DISPLAY_CHANGED_MESSAGE);
     this.name = 'ConsentDisplayChangedError';
+  }
+}
+
+/** Gespeicherter Katalog nicht lesbar — Erfassung stoppt fail-closed (UI-taugliche Meldung). */
+export class ConsentCatalogInvalidError extends ActionError {
+  constructor() {
+    super(
+      'Der Einwilligungskatalog der Kanzlei ist ungültig. Bitte durch ADMIN/PARTNER prüfen lassen.',
+    );
+    this.name = 'ConsentCatalogInvalidError';
   }
 }
 
@@ -69,9 +81,7 @@ export async function readConsentOptionsCatalogTx(
   } catch {
     // Ein korrupter Katalog darf nicht stillschweigend Defaults reaktivieren
     // (z. B. ein bewusst deaktiviertes Fax). Der Erfassungsflow stoppt daher.
-    throw new Error(
-      'Der Einwilligungskatalog der Kanzlei ist ungültig. Bitte durch ADMIN/PARTNER prüfen lassen.',
-    );
+    throw new ConsentCatalogInvalidError();
   }
 }
 
@@ -147,7 +157,7 @@ export async function assertConsentCatalogProviderLinksTx(
     (option) => option.serviceProviderId !== null && !providers.has(option.serviceProviderId),
   );
   if (missing) {
-    throw new Error(
+    throw new ActionError(
       `Dienstleister der Einwilligungsoption „${missing.label}“ ist nicht verfügbar.`,
     );
   }
@@ -177,7 +187,7 @@ export async function resolveConsentSelectionsTx(
   // Abschlussvorgabe verlieren noch einen unvollständigen Katalog bestätigen.
   const unavailable = options.find((option) => option.active && option.providerMissing);
   if (unavailable) {
-    throw new Error(
+    throw new ActionError(
       `Der Dienstleister der Einwilligungsoption „${unavailable.label}“ ist nicht mehr verfügbar.`,
     );
   }
@@ -205,10 +215,10 @@ export async function resolveConsentSelectionsTx(
   for (const optionId of selectedIds) {
     const option = byId.get(optionId);
     if (!option) {
-      throw new Error('Eine ausgewählte Einwilligungsoption gehört nicht zu dieser Kanzlei.');
+      throw new ActionError('Eine ausgewählte Einwilligungsoption gehört nicht zu dieser Kanzlei.');
     }
     if (!option.active) {
-      throw new Error(`Die Einwilligungsoption „${option.label}“ ist nicht mehr aktiv.`);
+      throw new ActionError(`Die Einwilligungsoption „${option.label}“ ist nicht mehr aktiv.`);
     }
     canonicalSelections.push({
       optionId: option.id,

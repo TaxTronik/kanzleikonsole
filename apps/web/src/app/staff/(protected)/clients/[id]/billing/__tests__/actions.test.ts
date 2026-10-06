@@ -9,17 +9,18 @@ vi.mock('@taxtronik/db', () => ({
   ),
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: vi.fn(),
-  toActionError: (error: Error) => ({ ok: false, error: error.message }),
 }));
 vi.mock('@/server/invoicing/number', () => ({
   allocateInvoiceNumber: vi.fn(async () => '2026-0001'),
 }));
 vi.mock('@/server/settings/modules', () => ({ readModules: h.modules }));
-vi.mock('@/server/actions/staff-action', () => ({
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: h.guard,
-  ActionError: class extends Error {},
 }));
 
 import { createInvoiceFromTimeEntriesAction } from '../actions';

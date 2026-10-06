@@ -24,8 +24,13 @@ import {
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { SsrfGuardError } from '@taxtronik/http-utils';
-import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import {
+  parseActionInput,
+  staffActionGuard,
+  type ActionResult,
+} from '@/server/actions/staff-action';
 import { toActionError, ForbiddenError } from '@/server/auth/rbac';
+import { networkFailure } from '@/server/http/network-error';
 import { readModules } from '@/server/settings/modules';
 import {
   readIbmToken,
@@ -43,12 +48,9 @@ import {
   resumeLosStartProof,
   releaseLosStart,
   pruefeLosNachweis,
-  LosRahmenLeerError,
-  LosNachweisInkonsistentError,
   type LosZiehungErgebnis,
   type LosPruefErgebnis,
 } from '@/server/risk';
-import { LosStateConflictError } from '@/server/risk/los-state';
 
 const PFAD = '/staff/admin/quantenlos';
 
@@ -63,23 +65,9 @@ function engineMessage(e: RiskLayerHttpError): string {
   return `Risk-Engine antwortete mit HTTP ${e.status}.`;
 }
 
-function errorCauseCode(e: Error): string | null {
-  const cause = (e as Error & { cause?: unknown }).cause;
-  if (cause && typeof cause === 'object' && 'code' in cause) {
-    const code = (cause as { code?: unknown }).code;
-    if (typeof code === 'string' && code.trim()) return code;
-  }
-  return null;
-}
-
-function isLosConsistencyError(e: unknown): e is Error {
-  return e instanceof LosNachweisInkonsistentError || e instanceof LosStateConflictError;
-}
-
 function toQuantenlosActionError(e: unknown): ActionResult {
-  if (e instanceof LosRahmenLeerError || isLosConsistencyError(e)) {
-    return { ok: false, error: e.message };
-  }
+  // LosRahmenLeerError, LosNachweisInkonsistentError und LosStateConflictError
+  // sind ActionErrors: toActionError (unten) reicht ihre Meldung durch.
   if (e instanceof RiskLayerNotConfiguredError) {
     return {
       ok: false,
@@ -120,36 +108,22 @@ function toQuantenlosActionError(e: unknown): ActionResult {
       error: `Datenbankfehler beim Quantenlos (${e.code}). Bitte Server-Log prüfen.`,
     };
   }
-  if (e instanceof Error) {
-    const msg = e.message;
-    const code = errorCauseCode(e);
-    if (
-      e.name === 'AbortError' ||
-      msg.includes('timed out') ||
-      msg.includes('The operation was aborted')
-    ) {
-      return {
-        ok: false,
-        error:
-          'Risk-Engine hat nicht rechtzeitig geantwortet. Bitte Engine-Status und Logs prüfen.',
-      };
-    }
-    if (msg === 'fetch failed' || code) {
-      return {
-        ok: false,
-        error:
-          `Risk-Engine nicht erreichbar${code ? ` (${code})` : ''}. ` +
-          'Prüfe Container, RISK_LAYER_URL und Bearer-Token.',
-      };
-    }
-    if (
-      msg.startsWith('k muss zwischen ') ||
-      msg.startsWith('Der Audit-Rahmen ') ||
-      msg.startsWith('Kein wartender Quantenlos-Job ') ||
-      msg.startsWith('Ziehung nicht gefunden.')
-    ) {
-      return { ok: false, error: msg };
-    }
+  // F-03: Netzwerkfehler über Fehlername bzw. Fehlercode; fachliche Fehler aus
+  // @/server/risk/los sind ActionErrors und laufen über toActionError.
+  const network = networkFailure(e);
+  if (network?.kind === 'timeout') {
+    return {
+      ok: false,
+      error: 'Risk-Engine hat nicht rechtzeitig geantwortet. Bitte Engine-Status und Logs prüfen.',
+    };
+  }
+  if (network) {
+    return {
+      ok: false,
+      error:
+        `Risk-Engine nicht erreichbar${network.code ? ` (${network.code})` : ''}. ` +
+        'Prüfe Container, RISK_LAYER_URL und Bearer-Token.',
+    };
   }
   return toActionError(e);
 }
@@ -182,7 +156,12 @@ export async function rahmenVorschauAction(
   input: z.infer<typeof ZeitraumSchema> & { rahmenTyp?: z.infer<typeof RahmenTypSchema> },
 ): Promise<ActionResult & { n?: number }> {
   try {
-    const parsed = ZeitraumSchema.extend({ rahmenTyp: RahmenTypSchema.optional() }).parse(input);
+    const checked = parseActionInput(
+      ZeitraumSchema.extend({ rahmenTyp: RahmenTypSchema.optional() }),
+      input,
+    );
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const g = await guard();
     if (!g.ok) return g;
     const rahmen = await buildLosRahmen(g.ctx, parsed, parsed.rahmenTyp ?? 'subsumtion');
@@ -202,7 +181,9 @@ export async function losZiehenAction(
   input: z.infer<typeof ZiehenSchema>,
 ): Promise<ActionResult & { ergebnis?: LosZiehungErgebnis }> {
   try {
-    const parsed = ZiehenSchema.parse(input);
+    const checked = parseActionInput(ZiehenSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const g = await guard();
     if (!g.ok) return g;
     // Token nur lesen, wenn die IBM-Seite ihn überhaupt braucht (qpu).
@@ -242,22 +223,25 @@ const PruefenSchema = z.object({
   online: z.boolean().optional(),
 });
 
+const ResumeSchema = z
+  .object({
+    attemptId: z.string().uuid(),
+    jobId: z.string().trim().max(200),
+    proofJson: z.string().max(1_000_000).optional(),
+  })
+  .refine((v) => Boolean(v.jobId) !== Boolean(v.proofJson?.trim()), {
+    message: 'Job-ID oder gespeicherten Nachweis angeben.',
+  });
+
 export async function losStartWiederaufnehmenAction(input: {
   attemptId: string;
   jobId: string;
   proofJson?: string;
 }): Promise<ActionResult & { ergebnis?: LosZiehungErgebnis }> {
   try {
-    const parsed = z
-      .object({
-        attemptId: z.string().uuid(),
-        jobId: z.string().trim().max(200),
-        proofJson: z.string().max(1_000_000).optional(),
-      })
-      .refine((v) => Boolean(v.jobId) !== Boolean(v.proofJson?.trim()), {
-        message: 'Job-ID oder gespeicherten Nachweis angeben.',
-      })
-      .parse(input);
+    const checked = parseActionInput(ResumeSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const g = await guard();
     if (!g.ok) return g;
     const ergebnis = parsed.proofJson?.trim()
@@ -276,19 +260,21 @@ export async function losStartWiederaufnehmenAction(input: {
   }
 }
 
+const ReleaseSchema = z.object({
+  attemptId: z.string().uuid(),
+  reason: z.string().trim().min(30).max(2000),
+  confirmedNotExecuted: z.literal(true),
+});
+
 export async function losStartFreigebenAction(input: {
   attemptId: string;
   reason: string;
   confirmedNotExecuted: boolean;
 }): Promise<ActionResult> {
   try {
-    const parsed = z
-      .object({
-        attemptId: z.string().uuid(),
-        reason: z.string().trim().min(30).max(2000),
-        confirmedNotExecuted: z.literal(true),
-      })
-      .parse(input);
+    const checked = parseActionInput(ReleaseSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const g = await guard();
     if (!g.ok) return g;
     await releaseLosStart(g.ctx, parsed);
@@ -303,7 +289,9 @@ export async function losPruefenAction(
   input: z.infer<typeof PruefenSchema>,
 ): Promise<ActionResult & { ergebnis?: LosPruefErgebnis }> {
   try {
-    const parsed = PruefenSchema.parse(input);
+    const checked = parseActionInput(PruefenSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const g = await guard();
     if (!g.ok) return g;
     const ibmToken = parsed.online ? ((await readIbmToken(g.ctx)) ?? undefined) : undefined;
@@ -329,7 +317,9 @@ export async function ibmTokenSpeichernAction(
   input: z.infer<typeof TokenSchema>,
 ): Promise<ActionResult & { status?: IbmTokenStatus }> {
   try {
-    const parsed = TokenSchema.parse(input);
+    const checked = parseActionInput(TokenSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const g = await guard();
     if (!g.ok) return g;
     await withTenantContext(g.ctx, async (tx) => {

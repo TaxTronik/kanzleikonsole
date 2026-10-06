@@ -10,6 +10,7 @@ import { evidenceService } from '@/server/container';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { gwgDocumentEffectiveStart, isGwgDeletionDue } from '@/server/gwg/retention';
 import {
+  ActionError,
   staffActionGuard,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
@@ -315,7 +316,7 @@ export async function confirmGwgCheckDeletionAction(input: {
       where: { id: checkId, tenantId },
       select: { clientId: true },
     });
-    if (!scopedCheck) throw new Error('GwG-Prüfung nicht gefunden.');
+    if (!scopedCheck) throw new ActionError('GwG-Prüfung nicht gefunden.');
 
     // Dieselbe Lock-Reihenfolge wie Create/Onboarding/Review: erst der
     // mandantenbezogene Lifecycle-Lock, danach die Zeilensperren innerhalb

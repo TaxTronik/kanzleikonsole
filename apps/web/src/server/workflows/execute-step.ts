@@ -32,6 +32,9 @@ import { sendMail } from '@/server/mail/send';
 import { log } from '@/server/logger';
 
 const EMAIL_CLAIM_STALE_MS = 30 * 60 * 1000;
+
+/** CAS-Konflikt beim Abschluss eines n8n-Schritts — Rollback-Signal statt Fehlertext (F-03). */
+class N8nTriggerFinalizeConflictError extends Error {}
 const N8N_CLAIM_STALE_MS = 30 * 60 * 1000;
 
 export interface ExecuteResult {
@@ -887,7 +890,7 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
           select: { doneAt: true },
         });
         if (current?.doneAt) return true;
-        throw new Error('N8N_TRIGGER_FINALIZE_CAS_CONFLICT');
+        throw new N8nTriggerFinalizeConflictError();
       }
       await evidenceService.record(tx, {
         tenantId,
@@ -906,9 +909,7 @@ export async function executeWorkflowStep(opts: ExecuteOpts): Promise<ExecuteRes
       });
       return true;
     }).catch((error: unknown) => {
-      if (error instanceof Error && error.message === 'N8N_TRIGGER_FINALIZE_CAS_CONFLICT') {
-        return false;
-      }
+      if (error instanceof N8nTriggerFinalizeConflictError) return false;
       throw error;
     });
     if (!completed) {

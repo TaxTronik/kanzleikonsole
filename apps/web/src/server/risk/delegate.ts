@@ -12,6 +12,7 @@
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { requireWritableRiskMarkingTx } from '@taxtronik/db/risk-analysis';
 import { evidenceService } from '@/server/container';
+import { ActionError } from '@/server/actions/action-error';
 import { canOtherStaffAccessClientTx } from '@/server/auth/rbac';
 import { notify } from '@/server/notifications/service';
 import { buildDelegationNotes } from './delegate-notes';
@@ -58,16 +59,16 @@ export async function delegateMarking(
         reminder: { select: { id: true, doneAt: true } },
       },
     });
-    if (!marking) throw new Error('Markierung nicht gefunden.');
+    if (!marking) throw new ActionError('Markierung nicht gefunden.');
     if (marking.reminder && !marking.reminder.doneAt) {
-      throw new Error('Für diese Markierung ist bereits eine Delegation offen.');
+      throw new ActionError('Für diese Markierung ist bereits eine Delegation offen.');
     }
 
     const clientId = marking.analysis.clientId;
     if (!clientId) {
       // Eine Wiedervorlage hängt immer an einem Mandanten; eine Analyse ohne
       // Mandantenbezug (z. B. Probe-Text) lässt sich nicht delegieren.
-      throw new Error('Delegation erfordert einen Mandantenbezug der Analyse.');
+      throw new ActionError('Delegation erfordert einen Mandantenbezug der Analyse.');
     }
 
     // „an" MUSS ein aktiver Mitarbeiter DIESES Tenants sein — sonst entstünde eine
@@ -76,14 +77,15 @@ export async function delegateMarking(
       where: { id: input.assigneeStaffId, tenantId: ctx.tenantId, active: true },
       select: { id: true },
     });
-    if (!assignee) throw new Error('Zuständige:r Mitarbeiter:in nicht gefunden oder inaktiv.');
+    if (!assignee)
+      throw new ActionError('Zuständige:r Mitarbeiter:in nicht gefunden oder inaktiv.');
 
     // …und er muss den Mandanten auch sehen dürfen. Vorher wurde das nicht
     // geprüft: bei einem vertraulichen Mandanten liess sich an Unbefugte
     // delegieren, die dann über die Wiedervorlage-Notiz sogar ein wörtliches
     // Zitat aus dem Sachverhalt erhielten.
     if (!(await canOtherStaffAccessClientTx(tx, ctx.tenantId, input.assigneeStaffId, clientId))) {
-      throw new Error('Zuständige:r Mitarbeiter:in hat keinen Zugriff auf diesen Mandanten.');
+      throw new ActionError('Zuständige:r Mitarbeiter:in hat keinen Zugriff auf diesen Mandanten.');
     }
 
     const dueDate = input.dueDate ?? new Date(Date.now() + DEFAULT_DUE_DAYS * 86_400_000);

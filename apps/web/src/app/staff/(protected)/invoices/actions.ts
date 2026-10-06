@@ -465,7 +465,7 @@ export async function markSentAction(
       error:
         err instanceof TimeoutError
           ? 'ZUGFeRD-Archiv konnte nicht rechtzeitig erzeugt werden — bitte erneut versuchen.'
-          : `ZUGFeRD-Archiv konnte nicht erzeugt werden: ${err instanceof Error ? err.message : String(err)}`,
+          : `ZUGFeRD-Archiv konnte nicht erzeugt werden: ${toActionError(err).error}`,
     };
   }
   if (!archive.ok) {
@@ -885,7 +885,7 @@ export async function uploadExternalInvoiceAction(
       tenantId,
     });
   } catch (e) {
-    return { ok: false, error: `Storage-Fehler: ${(e as Error).message}` };
+    return { ok: false, error: `Storage-Fehler: ${toActionError(e).error}` };
   }
 
   // 2) Document + Invoice + Audit in einer Transaktion

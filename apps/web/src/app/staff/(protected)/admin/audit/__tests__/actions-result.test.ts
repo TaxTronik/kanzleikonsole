@@ -4,6 +4,7 @@
 // Ablehnungen als `{ ok: false, error }`, statt in error.tsx zu werfen.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { UNEXPECTED_ACTION_ERROR } from '@/server/actions/to-action-error';
 
 const h = vi.hoisted(() => ({
   staffActionGuard: vi.fn(),
@@ -33,14 +34,9 @@ vi.mock('@taxtronik/evidence', () => ({
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
 vi.mock('@/server/jobs/audit-verify-queue', () => ({ enqueueAuditVerify: h.enqueueAuditVerify }));
 vi.mock('@/server/auth/rbac', async () => {
-  const { ActionError } = await vi.importActual<typeof import('@/server/actions/action-error')>(
-    '@/server/actions/action-error',
-  );
   return {
-    toActionError: (error: unknown) => ({
-      ok: false,
-      error: error instanceof ActionError ? error.message : 'Unerwarteter Fehler.',
-    }),
+    // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+    ...(await import('@/server/actions/to-action-error')),
   };
 });
 vi.mock('@/server/actions/staff-action', async () => {
@@ -96,7 +92,7 @@ describe('Audit-Actions — Rückkanal statt Wurf', () => {
 
     await expect(triggerAuditVerifyAction(null, new FormData())).resolves.toEqual({
       ok: false,
-      error: 'Unerwarteter Fehler.',
+      error: UNEXPECTED_ACTION_ERROR,
     });
     expect(h.evidenceRecord).not.toHaveBeenCalled();
     expect(h.redirect).not.toHaveBeenCalled();

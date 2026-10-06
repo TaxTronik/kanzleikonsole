@@ -16,7 +16,7 @@ import {
   createPendingDocumentWithVersion,
   finalizePendingDocumentVersion,
 } from '@/server/documents/upload-helpers';
-import { toActionError } from '@/server/auth/rbac';
+import { ActionError, toActionError } from '@/server/auth/rbac';
 import {
   expireOpenInviteIfDue,
   GENERIC_TOKEN_ERROR,
@@ -37,10 +37,6 @@ import {
 import { identityPdfPageCountForUpload } from '@/server/gwg/identity-pdf-pages';
 import { log } from '@/server/logger';
 import { PortalConsentSelectionsSchema } from '@/server/privacy/consent';
-import {
-  ConsentDisplayChangedError,
-  RequiredConsentOptionsError,
-} from '@/server/privacy/consent-catalog';
 import { CONSENT_DISPLAY_CHANGED_MESSAGE } from '@/server/privacy/consent-display';
 import { revalidateOpenGwgInviteRevisionTx } from '@/server/gwg-onboarding/invite-lifecycle';
 import { GwgOnboardingOwnerSchema } from '@/server/gwg-onboarding/owner-submission';
@@ -106,40 +102,25 @@ class InviteUploadStateChangedError extends Error {}
 class InviteSupersededError extends Error {}
 class OnboardingDocumentDiscardError extends Error {}
 
+/** S-5: ein Fehler für alle nicht nutzbaren Token-Zustände (kein Lifecycle-Orakel). */
+class InviteUnavailableError extends ActionError {
+  constructor() {
+    super(GENERIC_TOKEN_ERROR);
+    this.name = 'InviteUnavailableError';
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Befund 6: Fehler-Mapping für diesen anonymen (Token-)Endpoint. Rohe Prisma-/
 // Storage-Meldungen dürfen nicht an Unauthentifizierte durchgereicht werden.
 // Bekannte fachliche Fehler → verständliche deutsche Meldung; alles andere
-// läuft durch das zentrale toActionError (generische Meldung + strukturiertes
-// Server-Log).
+// läuft durch das zentrale toActionError, das Virenscan-, Größen-, Speicher- und
+// Datenbankfehler über Fehlerklasse bzw. SQLSTATE einordnet (generische Meldung
+// + strukturiertes Server-Log, F-03).
 // ----------------------------------------------------------------------------
 function toAnonymousActionError(e: unknown): ActionResult {
-  const msg = (e as Error)?.message ?? '';
-  if (msg.startsWith('INFECTED')) {
-    return { ok: false, error: 'Die Datei wurde vom Virenscanner abgewiesen.' };
-  }
-  if (msg.startsWith('TOO_LARGE')) {
-    return { ok: false, error: 'Die Datei ist zu groß.' };
-  }
-  if (msg.startsWith('SCAN_ERROR')) {
-    return {
-      ok: false,
-      error: 'Der Virenscan ist derzeit nicht verfügbar. Bitte versuchen Sie es später erneut.',
-    };
-  }
-  if (msg === 'PRIVACY_CONFIG_INCOMPLETE') {
-    return {
-      ok: false,
-      error:
-        'Die Datenschutzhinweise der Kanzlei sind noch unvollständig. Bitte wenden Sie sich an die Kanzlei.',
-    };
-  }
-  if (e instanceof RequiredConsentOptionsError) {
-    return { ok: false, error: e.message };
-  }
-  if (e instanceof ConsentDisplayChangedError) {
-    return { ok: false, error: e.message };
-  }
+  // RequiredConsentOptionsError und ConsentDisplayChangedError sind ActionErrors:
+  // ihre UI-Meldungen reicht toActionError unverändert durch.
   if (e instanceof InviteUploadStateChangedError) {
     return {
       ok: false,
@@ -199,17 +180,17 @@ async function loadInviteForWrite(rawToken: string) {
       uploadedDocuments: FINALIZED_INVITE_UPLOAD_IDS,
     },
   });
-  if (!inv) throw new Error(GENERIC_TOKEN_ERROR);
+  if (!inv) throw new InviteUnavailableError();
   if (inv.status === 'CANCELLED' || inv.status === 'EXPIRED') {
-    throw new Error(GENERIC_TOKEN_ERROR);
+    throw new InviteUnavailableError();
   }
   if (inv.status === 'SUBMITTED') {
-    throw new Error(GENERIC_TOKEN_ERROR);
+    throw new InviteUnavailableError();
   }
   const now = new Date();
   if (inv.expiresAt.getTime() <= now.getTime()) {
     await expireOpenInviteIfDue(inv.id, now);
-    throw new Error(GENERIC_TOKEN_ERROR);
+    throw new InviteUnavailableError();
   }
   return inv;
 }
@@ -683,7 +664,7 @@ export async function loadOnboardingIdentitySourceAction(input: {
       return { ok: false, error: IDENTITY_SOURCE_STORAGE_ERROR };
     }
     // Geschlossene/abgelaufene Einladungen sind erwartbar; alles andere loggen.
-    if (!(error instanceof Error && error.message === GENERIC_TOKEN_ERROR)) {
+    if (!(error instanceof InviteUnavailableError)) {
       log.error(
         {
           component: 'gwg-onboarding',
@@ -1012,7 +993,20 @@ export async function submitOnboardingAction(
   try {
     invite = await loadInviteForWrite(token);
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    // Wie Upload und Verwerfen: weder Lifecycle-Zustände noch rohe
+    // Datenbankfehler dürfen für den anonymen Token-Pfad unterscheidbar sein.
+    if (!(e instanceof InviteUnavailableError)) {
+      log.error(
+        {
+          component: 'gwg-onboarding',
+          action: 'submit',
+          errName: e instanceof Error ? e.name : typeof e,
+          err: e instanceof Error ? e.message : String(e),
+        },
+        'gwg-onboarding: Einladung für Submit nicht ladbar',
+      );
+    }
+    return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
 
   const preflight = validateOnboardingSubmission({
@@ -1059,7 +1053,7 @@ export async function submitOnboardingAction(
     if (!submitResult.ok) {
       if (submitResult.reason === 'SUPERSEDED') throw new InviteSupersededError();
       if (submitResult.reason === 'STALE') throw new BoundInviteDraftChangedError();
-      throw new Error(
+      throw new ActionError(
         'Einladung wurde bereits abgeschickt, ist abgelaufen oder nicht mehr gültig.',
       );
     }

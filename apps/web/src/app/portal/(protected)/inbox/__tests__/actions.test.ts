@@ -21,11 +21,9 @@ vi.mock('@/server/rate-limit', () => ({
   checkPortalWriteLimit: h.writeLimit,
   checkPortalInboxThreadLimit: h.threadLimit,
 }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Fehler',
-  }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
 }));
 vi.mock('@/server/inbox/portal-mutations', () => ({
   createPortalInboxThreadTx: h.createThread,

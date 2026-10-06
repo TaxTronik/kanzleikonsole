@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { UNEXPECTED_ACTION_ERROR } from '@/server/actions/to-action-error';
 
 // Fachkatalog: TAX-DEADLINE-AUTOREQUEST-001, TAX-CONTROL-STATUS-001
 
 const h = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     currentTx: null as unknown,
     withStaff: vi.fn(),
     staffActionGuard: vi.fn(),
@@ -25,15 +24,13 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceReco
 vi.mock('@/server/jobs/tax-deadline-materialize-queue', () => ({
   enqueueTaxDeadlineMaterialize: h.enqueueMaterialize,
 }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: h.assertClientAccessTx,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
-  }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: h.ActionError,
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: h.staffActionGuard,
   withStaffModule: () => h.withStaff,
 }));
@@ -325,7 +322,8 @@ describe('Steuertermin-Actions — Rückkanal (Review-Befund F-01)', () => {
 
     await expect(rematerializeAction(null, new FormData())).resolves.toEqual({
       ok: false,
-      error: 'Redis nicht erreichbar.',
+      // F-03: Infrastrukturfehler erreichen das UI nur generisch (Original im Log).
+      error: UNEXPECTED_ACTION_ERROR,
     });
     expect(h.redirect).not.toHaveBeenCalled();
   });

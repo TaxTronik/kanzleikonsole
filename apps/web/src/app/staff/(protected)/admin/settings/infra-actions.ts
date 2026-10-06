@@ -9,12 +9,41 @@ import { randomBytes } from 'node:crypto';
 import { withTenantContext } from '@taxtronik/db';
 import { env } from '@taxtronik/config';
 import { evidenceService } from '@/server/container';
-import { assertPublicUrl } from '@/server/http/ssrf-guard';
+import { assertPublicUrl, urlTargetErrorMessage } from '@/server/http/ssrf-guard';
+import { networkFailure } from '@/server/http/network-error';
+import { toActionError } from '@/server/actions/to-action-error';
+import { log } from '@/server/logger';
 import { writeTaxRegionTx } from '@/server/settings/tax-region';
 import { writeTsaConfigTx, type TsaConfig } from '@/server/settings/tsa';
 import { createRfc3161Adapter, getTsaProvider } from '@taxtronik/evidence';
 import type { GermanRegion } from '@taxtronik/tax';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+
+/** F-03: abgewiesene TSA-URL ohne rohen Fehlertext; Unbekanntes nur ins Log. */
+function tsaUrlErrorMessage(error: unknown): string {
+  return urlTargetErrorMessage(error) ?? toActionError(error).error;
+}
+
+/**
+ * F-03: Ergebnis des TSA-Verbindungstests über Fehlerklasse/-code eingeordnet.
+ * Die Detailursache (HTTP-Status, PKIStatus) steht im Server-Log.
+ */
+function tsaTestErrorMessage(error: unknown): string {
+  const target = urlTargetErrorMessage(error);
+  if (target) return target;
+  const network = networkFailure(error);
+  if (network?.kind === 'timeout') return 'Die TSA hat nicht rechtzeitig geantwortet.';
+  if (network) return `Die TSA ist nicht erreichbar${network.code ? ` (${network.code})` : ''}.`;
+  log.warn(
+    {
+      component: 'tsa-test',
+      errName: error instanceof Error ? error.name : typeof error,
+      err: error instanceof Error ? error.message : String(error),
+    },
+    'TSA-Test fehlgeschlagen',
+  );
+  return 'Der TSA-Test ist fehlgeschlagen (keine gültige RFC-3161-Antwort). Details stehen im Server-Log.';
+}
 
 // ----------------------------------------------------------------------------
 // Bundesland (für Steuertermin-Feiertage)
@@ -123,7 +152,7 @@ export async function saveTsaAction(
     try {
       await assertPublicUrl(parsed.data.customUrl!.trim());
     } catch (e) {
-      return { ok: false, error: (e as Error).message };
+      return { ok: false, error: tsaUrlErrorMessage(e) };
     }
   }
 
@@ -172,7 +201,7 @@ export async function testTsaAction(
   try {
     await assertPublicUrl(url);
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: tsaUrlErrorMessage(e) };
   }
 
   try {
@@ -194,6 +223,6 @@ export async function testTsaAction(
       error: `Antwort ${response?.byteLength ?? 0} Bytes — Status granted und trust-verifiziert (${result.timestampedAt}).`,
     };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: tsaTestErrorMessage(e) };
   }
 }

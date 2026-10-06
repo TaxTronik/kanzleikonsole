@@ -23,6 +23,7 @@ import {
 } from '@taxtronik/db/tenant-modules';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { readLayoutSettingsSource, SETTING_KEY_MODULES } from './layout-settings';
+import { ActionError } from '@/server/actions/action-error';
 
 export type PoaMode = 'OFF' | 'MARKDOWN_OTP' | 'PDF_TEMPLATE';
 export type InvoiceMode = 'OFF' | 'IN_APP' | 'EXTERNAL';
@@ -138,7 +139,8 @@ export async function writeModulesTx(
  */
 export type BooleanModuleKey = BooleanTenantModuleKey;
 
-export class ModuleDisabledError extends Error {
+// Fachfehler mit UI-tauglicher Meldung (F-03): toActionError reicht sie durch.
+export class ModuleDisabledError extends ActionError {
   constructor(public readonly module: BooleanModuleKey) {
     super(`Modul ${module} ist deaktiviert.`);
     this.name = 'ModuleDisabledError';

@@ -1,6 +1,7 @@
 // Fachkatalog: INV-NUMBER-ALLOCATION-001, INV-VAT-TOTALS-001, INV-TIME-ENTRY-CLAIM-001
 // Fachkatalog: STBVV-CALCULATION-001, INV-ARCHIVE-EINVOICE-001
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@taxtronik/db/prisma-client';
 import { STBVV_VERSION } from '@taxtronik/tax';
 
 const h = vi.hoisted(() => ({
@@ -31,18 +32,19 @@ vi.mock('@/server/settings/tenant-settings', () => ({
   readSellerInfoTx: vi.fn(async () => h.seller),
 }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: vi.fn(async () => {
     h.events.push(['access', null]);
   }),
-  toActionError: (e: Error) => ({ ok: false, error: e.message }),
 }));
 vi.mock('@/server/invoicing/number', async (original) => ({
   ...(await original<typeof import('../number')>()),
   allocateInvoiceNumber: h.allocate,
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: class ActionError extends Error {},
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: async () => ({
     ok: true,
     tenantId: 'tenant-1',
@@ -250,13 +252,31 @@ describe('createDraftInvoiceTx – Prüfungen vor der Nummernvergabe', () => {
 });
 
 describe('createDraftInvoiceTx – einheitliche Fehlerabbildung', () => {
+  // F-03: echte Prisma-Fehlerformen (Unique-Konflikt bzw. Trigger mit SQLSTATE).
   it.each([
     [
-      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
       'Rechnungsnummer existiert bereits.',
     ],
     [
-      new Error('Mandant 1 ist nicht aktiv (GwG-Schranke). Rechnungsanlage abgewiesen.'),
+      new Prisma.PrismaClientKnownRequestError('Database error. Code: `23514`.', {
+        code: 'P2039',
+        clientVersion: 'test',
+        meta: {
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: {
+              originalCode: '23514',
+              originalMessage:
+                'Mandant 1 ist nicht aktiv (GwG-Schranke). Rechnungsanlage abgewiesen.',
+              kind: 'postgres',
+            },
+          },
+        },
+      }),
       'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).',
     ],
   ])('bildet %s ab', async (dbError, message) => {

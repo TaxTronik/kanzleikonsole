@@ -16,6 +16,7 @@
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { requireWritableRiskMarkingTx } from '@taxtronik/db/risk-analysis';
 import { evidenceService } from '@/server/container';
+import { ActionError } from '@/server/actions/action-error';
 import {
   type CuratedNormRef,
   type NormTarget,
@@ -42,7 +43,7 @@ async function persistNorms(
       where: { id: markingId },
       select: { normRefs: true, normAnker: true },
     });
-    if (!before) throw new Error('Markierung nicht gefunden.');
+    if (!before) throw new ActionError('Markierung nicht gefunden.');
 
     const current = readNormRefs(before.normRefs, before.normAnker);
     const next = mutate(current);

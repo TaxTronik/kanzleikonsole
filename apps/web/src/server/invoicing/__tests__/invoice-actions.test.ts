@@ -35,16 +35,17 @@ vi.mock('@/server/invoicing/archive', () => ({ ensureZugferdArchive: vi.fn() }))
 vi.mock('@/server/settings/modules', () => ({ readModules: m.modules }));
 vi.mock('@/server/settings/tenant-settings', () => ({ readSellerInfo: vi.fn() }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: vi.fn(),
-  toActionError: (e: Error) => ({ ok: false, error: e.message }),
 }));
 vi.mock('@/server/invoicing/number', async (original) => ({
   ...(await original<typeof import('../number')>()),
   allocateInvoiceNumber: vi.fn().mockResolvedValue('2026-0001'),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: class extends Error {},
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: async () => ({ ok: true, tenantId, staffId: 'staff', ctx: {}, session: {} }),
   withStaff: async (fn: (tx: unknown, ctx: unknown) => Promise<void>) => {
     try {

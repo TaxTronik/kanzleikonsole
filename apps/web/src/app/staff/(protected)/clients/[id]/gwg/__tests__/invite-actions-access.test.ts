@@ -1,12 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenError } from '@/server/actions/action-error';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 const INVITE_ID = '22222222-2222-4222-8222-222222222222';
 
 const m = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     staffActionGuard: vi.fn(),
     withStaff: vi.fn(),
     withTenantContext: vi.fn(),
@@ -25,6 +24,9 @@ const m = vi.hoisted(() => {
 
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.test' }));
+vi.mock('@/server/logger', () => ({
+  log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@/server/mail/dispatch', () => ({ sendTemplateMail: m.sendTemplateMail }));
@@ -46,17 +48,15 @@ vi.mock('@/server/gwg/reverification', () => ({
 vi.mock('@/server/db/assert-tenant', () => ({
   assertClientInTenant: m.assertClientInTenant,
 }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: m.assertClientAccessTx,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Fehler.',
-  }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: m.staffActionGuard,
   withStaff: m.withStaff,
-  ActionError: m.ActionError,
 }));
 
 import { cancelInviteAction, sendInviteAction } from '../invite-actions';
@@ -84,7 +84,9 @@ describe('GwG-Einladungen — mandanteninterne Zugriffskontrolle', () => {
     m.withTenantContext.mockImplementation(
       async (_ctx: unknown, callback: (transaction: typeof tx) => unknown) => callback(tx),
     );
-    m.assertClientAccessTx.mockRejectedValueOnce(new Error('Kein Zugriff auf diesen Mandanten.'));
+    m.assertClientAccessTx.mockRejectedValueOnce(
+      new ForbiddenError('Kein Zugriff auf diesen Mandanten.'),
+    );
 
     const result = await sendInviteAction({
       clientId: CLIENT_ID,
@@ -116,7 +118,9 @@ describe('GwG-Einladungen — mandanteninterne Zugriffskontrolle', () => {
         }
       },
     );
-    m.assertClientAccessTx.mockRejectedValueOnce(new Error('Kein Zugriff auf diesen Mandanten.'));
+    m.assertClientAccessTx.mockRejectedValueOnce(
+      new ForbiddenError('Kein Zugriff auf diesen Mandanten.'),
+    );
 
     const result = await cancelInviteAction({ id: INVITE_ID });
 

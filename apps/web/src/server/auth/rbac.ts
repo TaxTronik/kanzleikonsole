@@ -15,7 +15,6 @@
 // können sie zu 401/403 mappen.
 // =============================================================================
 
-import { Prisma } from '@taxtronik/db/prisma-client';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 // Subpath statt Barrel: vermeidet, dass owner-client (verlangt DATABASE_URL beim
 // Import) in reine Unit-Tests gezogen wird, die rbac.ts transitiv importieren.
@@ -23,25 +22,20 @@ import { withTenantContext } from '@taxtronik/db/tenant-context';
 // type-only: wird zur Compile-Zeit gelöscht, zieht den Owner-Client NICHT rein.
 import type { TxClient } from '@taxtronik/db';
 import { filterStaffAccessClientTx as filterStaffAccessClientSharedTx } from '@taxtronik/db/staff-client-access';
-import { ActionError } from '@/server/actions/action-error';
+import { ForbiddenError, UnauthorizedError } from '@/server/actions/action-error';
 import { readAccessPolicyTx, decideClientAccess } from '@/server/settings/access-policy';
 import type { ClientAccessWhere } from './client-access-filter';
 import { staffAuth, type StaffSession } from './staff';
-import { log } from '@/server/logger';
 
-export class UnauthorizedError extends Error {
-  constructor(message = 'Nicht eingeloggt.') {
-    super(message);
-    this.name = 'UnauthorizedError';
-  }
-}
-
-export class ForbiddenError extends Error {
-  constructor(message = 'Nur ADMIN/PARTNER.') {
-    super(message);
-    this.name = 'ForbiddenError';
-  }
-}
+// Fehlerklassen und Fehler-Mapping liegen ohne Auth-/Session-Imports in
+// server/actions (testbar mit dem echten Mapping); hier re-exportiert, damit
+// bestehende Importpfade stabil bleiben.
+export { ForbiddenError, UnauthorizedError } from '@/server/actions/action-error';
+export {
+  toActionError,
+  UNEXPECTED_ACTION_ERROR,
+  type ActionErrorResult,
+} from '@/server/actions/to-action-error';
 
 /**
  * Bewusst UI-taugliche Domänen-Fehlermeldung (z. B. „Name bereits vergeben.").
@@ -315,113 +309,4 @@ export async function canStaffWriteClientTx(
       select: { id: true },
     })) !== null
   );
-}
-
-export interface ActionErrorResult {
-  ok: false;
-  error: string;
-}
-
-function stringOrStringList(value: unknown): string | string[] | undefined {
-  if (typeof value === 'string') return value;
-  if (Array.isArray(value) && value.every((item) => typeof item === 'string')) return value;
-  return undefined;
-}
-
-function objectField(source: unknown, key: string): Record<string, unknown> | undefined {
-  if (source === null || typeof source !== 'object') return undefined;
-  const value = (source as Record<string, unknown>)[key];
-  return value !== null && typeof value === 'object'
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-/**
- * Log-Felder für bekannte Prisma-Fehler. `meta` wird bewusst nicht roh
- * geloggt: Bei Driver-Adapter-Fehlern kann es die DETAIL-Zeile von Postgres
- * und damit Zeilenwerte enthalten („Failing row contains …“). Die Fehlerstelle
- * in der Action steht in Message und Stack.
- */
-function prismaErrorLogFields(e: InstanceType<typeof Prisma.PrismaClientKnownRequestError>) {
-  const modelName = e.meta?.['modelName'];
-  const cause = objectField(objectField(e.meta, 'driverAdapterError'), 'cause');
-  const sqlState = cause?.['originalCode'];
-  const constraint = objectField(cause, 'constraint');
-  return {
-    component: 'action-error',
-    prismaCode: e.code,
-    modelName: typeof modelName === 'string' ? modelName : undefined,
-    sqlState: typeof sqlState === 'string' ? sqlState : undefined,
-    constraint:
-      stringOrStringList(constraint?.['fields']) ??
-      stringOrStringList(constraint?.['index']) ??
-      stringOrStringList(e.meta?.['target']),
-    err: e.message,
-    stack: e.stack,
-  };
-}
-
-/**
- * Wrapper für Server-Actions, die `{ ok, error }` zurückgeben: fängt
- * `UnauthorizedError`, `ForbiddenError` und Prisma-Errors und mappt sie auf
- * das `ActionResult`-Pattern.
- *
- * R-6: Prisma wirft P2025 für "Record to update/delete not found" — kommt
- * regelmäßig vor wenn ein Action ohne vorheriges findFirst direkt update/
- * delete ruft und die ID nicht existiert oder Cross-Tenant ist. Vorher:
- * 500-Stack-Trace im Log + generischer Fehler im UI. Jetzt: sauberes
- * { ok: false, error: 'Datensatz nicht gefunden' }. Auch P2002 (unique)
- * und P2003 (FK) bekommen menschenlesbare Meldungen.
- *
- * Bekannte Prisma-Fehler werden zusätzlich geloggt: P2025 und P2002 sind
- * erwartbare Konflikte (warn). Alles andere, etwa Transaktions-Timeout
- * (P2028), Serialisierungskonflikt (P2034) oder erschöpfter Pool (P2024),
- * landet als error im Log, statt nur als „Datenbankfehler.“ im UI.
- */
-export function toActionError(e: unknown): ActionErrorResult {
-  if (
-    e instanceof UnauthorizedError ||
-    e instanceof ForbiddenError ||
-    e instanceof ActionError ||
-    (e instanceof Error && e.name === 'SessionRevocationUnavailableError')
-  ) {
-    return {
-      ok: false,
-      error:
-        e.name === 'SessionRevocationUnavailableError'
-          ? 'Session-Widerruf ist derzeit nicht verfügbar.'
-          : e.message,
-    };
-  }
-  if (e instanceof Prisma.PrismaClientKnownRequestError) {
-    if (e.code === 'P2025' || e.code === 'P2002') {
-      log.warn(prismaErrorLogFields(e), 'toActionError: erwartbarer Prisma-Konflikt');
-    } else {
-      log.error(prismaErrorLogFields(e), 'toActionError: Prisma-Fehler');
-    }
-    switch (e.code) {
-      case 'P2025':
-        return { ok: false, error: 'Datensatz nicht gefunden oder bereits geändert.' };
-      case 'P2002':
-        return { ok: false, error: 'Eintrag existiert bereits (Eindeutigkeits-Konflikt).' };
-      case 'P2003':
-        return { ok: false, error: 'Referenz auf nicht existierenden Datensatz.' };
-      default:
-        // Andere Prisma-Fehler nicht durchreichen — könnten DB-internals leaken
-        return { ok: false, error: 'Datenbankfehler.' };
-    }
-  }
-  // Audit Round 14, Finding 3: Unbekannte Errors NIE direkt ans UI durch-
-  // reichen — könnten Stacktraces, native Driver-Fehler, Pfad-Fragmente oder
-  // sonstige Internals enthalten. Original ins Server-Log für Ops; UI sieht
-  // nur eine generische Meldung.
-  const err = e as Error;
-  log.error(
-    { component: 'action-error', name: err?.name, err: err?.message, stack: err?.stack },
-    'toActionError: unbehandelte Exception',
-  );
-  return {
-    ok: false,
-    error: 'Unerwarteter Fehler. Bitte erneut versuchen oder Admin kontaktieren.',
-  };
 }

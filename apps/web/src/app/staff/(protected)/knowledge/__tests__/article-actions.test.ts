@@ -22,14 +22,9 @@ vi.mock('@taxtronik/db/prisma-client', () => ({
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
 vi.mock('@/server/auth/rbac', async () => {
-  const { ActionError } = await vi.importActual<typeof import('@/server/actions/action-error')>(
-    '@/server/actions/action-error',
-  );
   return {
-    toActionError: (error: unknown) => ({
-      ok: false,
-      error: error instanceof ActionError ? error.message : 'Unerwarteter Fehler.',
-    }),
+    // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+    ...(await import('@/server/actions/to-action-error')),
   };
 });
 vi.mock('@/server/actions/staff-action', async () => {

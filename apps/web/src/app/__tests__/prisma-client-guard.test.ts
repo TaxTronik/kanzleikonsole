@@ -203,6 +203,8 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // RLS-Ressourcensuche per UUID: Owner legt Fixtures an und liest die
   // aktuellen Funktionsdefinitionen; die App-Rolle prüft die Treffer.
   'packages/db/src/__tests__/rls-resource-uuid-lookup.test.ts',
+  // F-03: echte Trigger-/Constraint-Fehler in einem frischen Tenant belegen die Fehlerklassen.
+  'packages/db/src/__tests__/database-error-classification.test.ts',
   // ACCESS-SEARCH-SCOPE-001 / ACCESS-TENANT-RLS-001: Owner-Fixtures in zwei frischen
   // Tenants; die App-Rolle prüft Tenantgrenze und Indexnutzung der Kandidatensuche (P-10).
   'packages/db/src/__tests__/staff-search-candidates.test.ts',

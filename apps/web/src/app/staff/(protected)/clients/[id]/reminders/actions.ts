@@ -518,11 +518,11 @@ export async function submitResearchResultAction(input: {
       },
     });
     if (!reminder || reminder.clientId !== parsed.data.clientId)
-      throw new Error('Wiedervorlage nicht gefunden.');
+      throw new ActionError('Wiedervorlage nicht gefunden.');
     assertReminderNotArchived(reminder);
     const markingId = reminder.riskMarkings[0]?.id ?? null;
     const analysisId = reminder.riskMarkings[0]?.analysisId ?? null;
-    if (!markingId) throw new Error('Diese Wiedervorlage ist kein Rechercheauftrag.');
+    if (!markingId) throw new ActionError('Diese Wiedervorlage ist kein Rechercheauftrag.');
 
     const me = await tx.staffUser.findUnique({
       where: { id: staffId },

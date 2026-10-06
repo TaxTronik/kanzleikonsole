@@ -19,13 +19,14 @@ vi.mock('@/server/db/assert-tenant', () => ({
   assertClientInTenant: vi.fn(),
   assertStaffInTenant: vi.fn(),
 }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: h.access,
   filterStaffAccessClientTx: vi.fn(),
-  toActionError: vi.fn(),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: class extends Error {},
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: vi.fn(),
   withStaffModule: () => async (fn: (tx: unknown, ctx: unknown) => Promise<object>) => {
     try {

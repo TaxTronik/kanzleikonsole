@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     tx: {
       $queryRaw: vi.fn(),
       document: {
@@ -33,15 +31,13 @@ vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: vi.fn() }));
 vi.mock('@/server/storage/document-type', () => ({ carrierClassification: vi.fn() }));
 vi.mock('@/server/storage/retag-policy', () => ({ documentRetagDecision: vi.fn() }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn() } }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: h.assertClientAccessTx,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Fehler',
-  }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: h.ActionError,
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: vi.fn(),
   withStaff: async (fn: (tx: typeof h.tx, ctx: unknown) => Promise<unknown>) => {
     try {

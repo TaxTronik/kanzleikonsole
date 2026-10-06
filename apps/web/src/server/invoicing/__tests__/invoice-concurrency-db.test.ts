@@ -38,12 +38,13 @@ vi.mock('@/server/settings/modules', () => ({
 }));
 vi.mock('@/server/settings/tenant-settings', () => ({ readSellerInfo: vi.fn() }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: vi.fn(),
-  toActionError: (error: Error) => ({ ok: false, error: error.message }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: class extends Error {},
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: async () => ({
     ok: true,
     tenantId: h.tenantId,

@@ -20,9 +20,17 @@ import {
   n8nRoutingState,
   readN8nDeliveryConfig,
 } from '@taxtronik/n8n-shared/outbox-enqueue';
-import { staffActionGuard } from '@/server/actions/staff-action';
+import { ActionError, staffActionGuard } from '@/server/actions/staff-action';
+import { isUniqueViolation } from '@/server/actions/database-error';
+import { toActionError } from '@/server/actions/to-action-error';
 import { evidenceService } from '@/server/container';
-import { assertN8nUrl, safeFetchN8n, type N8nTargetKind } from '@/server/http/ssrf-guard';
+import {
+  assertN8nUrl,
+  safeFetchN8n,
+  urlTargetErrorMessage,
+  type N8nTargetKind,
+} from '@/server/http/ssrf-guard';
+import { networkFailure } from '@/server/http/network-error';
 import {
   BUNDLED_N8N_WORKFLOWS,
   bindN8nHeaderCredential,
@@ -30,7 +38,7 @@ import {
   materializeBundledN8nWorkflow,
   unresolvedBundledN8nPlaceholders,
 } from '@/server/n8n/bundled-workflows';
-import { N8nApiClient } from '@/server/n8n/client';
+import { N8nApiClient, N8nApiError } from '@/server/n8n/client';
 import { prepareN8nCallbackImport } from '@/server/n8n/callback-import-setup';
 import { getN8nDeliverQueue } from '@/server/n8n/queue';
 import {
@@ -207,6 +215,22 @@ async function validateStoredUrl(url: string, kind: N8nTargetKind): Promise<void
   if (url) await assertN8nUrl(url, kind);
 }
 
+/**
+ * F-03: Fehler der n8n-Administration als Meldung — eingeordnet über
+ * Fehlerklasse bzw. Fehlercode statt rohem `error.message`. API- und Zieladress-
+ * fehler bleiben als Admin-Diagnose sichtbar; Datenbank- und unbekannte Fehler
+ * ordnet toActionError ein (generische Meldung, Original nur im Server-Log).
+ */
+function n8nAdminErrorMessage(error: unknown): string {
+  if (error instanceof N8nApiError) return error.message;
+  const target = urlTargetErrorMessage(error);
+  if (target) return target;
+  const network = networkFailure(error);
+  if (network?.kind === 'timeout') return 'n8n hat nicht rechtzeitig geantwortet.';
+  if (network) return `n8n ist nicht erreichbar${network.code ? ` (${network.code})` : ''}.`;
+  return toActionError(error).error;
+}
+
 function webhookTargetKind(useTestUrl: boolean): N8nTargetKind {
   return useTestUrl ? 'webhook-test' : 'webhook';
 }
@@ -277,7 +301,7 @@ export async function saveN8nAction(
   } catch (error) {
     return {
       ok: false,
-      error: `Nicht gespeichert — Produktions-Webhook-Präfix: ${(error as Error).message} Tipp: Verwenden Sie die öffentliche n8n-Adresse hinter dem Reverse-Proxy — nie localhost oder den internen Compose-Service.`,
+      error: `Nicht gespeichert — Produktions-Webhook-Präfix: ${n8nAdminErrorMessage(error)} Tipp: Verwenden Sie die öffentliche n8n-Adresse hinter dem Reverse-Proxy — nie localhost oder den internen Compose-Service.`,
     };
   }
   try {
@@ -285,7 +309,7 @@ export async function saveN8nAction(
   } catch (error) {
     return {
       ok: false,
-      error: `Nicht gespeichert — Public API: ${(error as Error).message}`,
+      error: `Nicht gespeichert — Public API: ${n8nAdminErrorMessage(error)}`,
     };
   }
 
@@ -482,6 +506,7 @@ export async function testN8nApiAction(
       message: `API erreichbar (${result.latencyMs} ms, authentifiziert).`,
     };
   } catch (error) {
+    const message = n8nAdminErrorMessage(error);
     if (previous.connectionId && testingStoredConfig) {
       await withTenantContext(ctx, (tx) =>
         tx.n8nConnection.updateMany({
@@ -489,13 +514,13 @@ export async function testN8nApiAction(
           data: {
             healthCheckedAt: new Date(),
             healthOk: false,
-            healthError: (error as Error).message.slice(0, 500),
+            healthError: message.slice(0, 500),
           },
         }),
       );
     }
     revalidateN8n();
-    return { ok: false, error: (error as Error).message };
+    return { ok: false, error: message };
   }
 }
 
@@ -569,13 +594,13 @@ export async function saveN8nEndpointAction(
       data.testUrl ? validateStoredUrl(data.testUrl, 'webhook-test') : Promise.resolve(),
     ]);
   } catch (error) {
-    return { ok: false, error: (error as Error).message };
+    return { ok: false, error: n8nAdminErrorMessage(error) };
   }
 
   try {
     const endpoint = await withTenantContext(ctx, async (tx) => {
       const connection = await tx.n8nConnection.findUnique({ where: { tenantId: ctx.tenantId } });
-      if (!connection) throw new Error('Bitte zuerst die n8n-Verbindung speichern.');
+      if (!connection) throw new ActionError('Bitte zuerst die n8n-Verbindung speichern.');
 
       let endpointId = data.id;
       let cancelledPendingDeliveries = 0;
@@ -592,7 +617,7 @@ export async function saveN8nEndpointAction(
             subscriptions: { select: { event: true } },
           },
         });
-        if (!exists) throw new Error('Webhook-Route nicht gefunden.');
+        if (!exists) throw new ActionError('Webhook-Route nicht gefunden.');
         const previousEvents = exists.subscriptions
           .map((item) => item.event)
           .sort()
@@ -639,7 +664,7 @@ export async function saveN8nEndpointAction(
           },
         });
         if (!updated.count) {
-          throw new Error(
+          throw new ActionError(
             'Die Route wurde parallel geändert. Bitte aktuellen Stand laden und erneut speichern.',
           );
         }
@@ -720,12 +745,11 @@ export async function saveN8nEndpointAction(
         : 'Workflow-Route gespeichert.',
     };
   } catch (error) {
-    const message = (error as Error).message;
     return {
       ok: false,
-      error: message.includes('Unique constraint')
+      error: isUniqueViolation(error)
         ? 'Eine Route mit diesem Namen existiert bereits.'
-        : message,
+        : n8nAdminErrorMessage(error),
     };
   }
 }
@@ -928,7 +952,7 @@ export async function retryN8nDeliveryAction(deliveryId: string): Promise<Action
         where: { id: reset.id, tenantId: ctx.tenantId, status: 'PENDING' },
         data: {
           status: 'FAILED',
-          lastError: `Retry konnte nicht eingeplant werden: ${(error as Error).message}`.slice(
+          lastError: `Retry konnte nicht eingeplant werden: ${n8nAdminErrorMessage(error)}`.slice(
             0,
             1_000,
           ),
@@ -1162,7 +1186,7 @@ export async function discoverN8nWebhooksAction(): Promise<
         })),
     };
   } catch (error) {
-    return { ok: false, error: (error as Error).message };
+    return { ok: false, error: n8nAdminErrorMessage(error) };
   }
 }
 
@@ -1291,7 +1315,7 @@ export async function testN8nEndpointAction(
       ? { ok: true, message: `Webhook bestätigt (${latency} ms, HTTP ${response.status}).` }
       : { ok: false, error: verificationError ?? 'Webhook-Prüfung fehlgeschlagen.' };
   } catch (error) {
-    const message = (error as Error).message;
+    const message = n8nAdminErrorMessage(error);
     const verificationRecorded = await withTenantContext(ctx, async (tx) => {
       const route = await tx.n8nWebhookEndpoint.updateMany({
         where: { id: endpoint.id, tenantId: ctx.tenantId, updatedAt: endpoint.updatedAt },
@@ -1403,7 +1427,7 @@ export async function listWorkflowsAction(): Promise<
       })),
     };
   } catch (error) {
-    return { ok: false, error: (error as Error).message };
+    return { ok: false, error: n8nAdminErrorMessage(error) };
   }
 }
 
@@ -1475,18 +1499,18 @@ export async function importWorkflowsAction(
           ) &&
           !smtpFrom
         ) {
-          throw new Error('Mail-Absender für n8n fehlt');
+          throw new ActionError('Mail-Absender für n8n fehlt');
         }
         const materialized = materializeBundledN8nWorkflow(template.workflow, importValues);
         const unresolved = unresolvedBundledN8nPlaceholders(materialized);
         if (unresolved.length) {
-          throw new Error(`Einrichtungswert fehlt: ${unresolved.join(', ')}`);
+          throw new ActionError(`Einrichtungswert fehlt: ${unresolved.join(', ')}`);
         }
         await client.createWorkflow(bindN8nHeaderCredential(materialized, callbackSetup.binding));
         imported.push(workflowName);
         existingNames.add(workflowName);
       } catch (error) {
-        errors.push(`${workflowName}: ${(error as Error).message}`);
+        errors.push(`${workflowName}: ${n8nAdminErrorMessage(error)}`);
       }
     }
 
@@ -1516,6 +1540,6 @@ export async function importWorkflowsAction(
       credential: callbackSetup.credential,
     };
   } catch (error) {
-    return { ok: false, error: (error as Error).message };
+    return { ok: false, error: n8nAdminErrorMessage(error) };
   }
 }

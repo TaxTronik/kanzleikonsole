@@ -15,6 +15,7 @@ import { createRfc3161Adapter, resolveTsaUrl } from '@taxtronik/evidence';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { randomBytes } from 'node:crypto';
 import { safeFetchN8n } from '@/server/http/ssrf-guard';
+import { networkFailure } from '@/server/http/network-error';
 
 export interface ServiceStatus {
   ok: boolean;
@@ -243,19 +244,15 @@ export async function checkSignalEngine(): Promise<ServiceStatus | null> {
 
 function formatSignalEngineError(e: unknown): string {
   if (!(e instanceof Error)) return String(e);
-  const code = errorCauseCode(e);
+  // F-03: über Fehlername bzw. Fehlercode eingeordnet, nicht über den Text.
+  const network = networkFailure(e);
 
-  if (
-    e.name === 'AbortError' ||
-    e.name === 'TimeoutError' ||
-    e.message.includes('timed out') ||
-    e.message.includes('The operation was aborted')
-  ) {
+  if (network?.kind === 'timeout') {
     return 'Signal-Engine hat nicht rechtzeitig geantwortet. Bitte Engine-Status und Logs pruefen.';
   }
 
-  if (e.message === 'fetch failed' || code) {
-    const codeSuffix = code ? ` (${code})` : '';
+  if (network) {
+    const codeSuffix = network.code ? ` (${network.code})` : '';
     if (riskLayerConfig && isLoopbackUrl(riskLayerConfig.url)) {
       const host = new URL(riskLayerConfig.url).host;
       return (
@@ -271,13 +268,6 @@ function formatSignalEngineError(e: unknown): string {
   }
 
   return e.message;
-}
-
-function errorCauseCode(e: Error): string | null {
-  const cause = (e as { cause?: unknown }).cause;
-  if (!cause || typeof cause !== 'object') return null;
-  const code = (cause as { code?: unknown }).code;
-  return typeof code === 'string' ? code : null;
 }
 
 function isLoopbackUrl(rawUrl: string): boolean {

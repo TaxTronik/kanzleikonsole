@@ -15,9 +15,11 @@ import {
   redactClientPoaPersonalDataInTx,
 } from '@/server/dsgvo/anonymize-client-data';
 import {
+  ActionError,
   staffActionGuard,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
+import { toActionError } from '@/server/actions/to-action-error';
 
 export type ActionResult = BaseActionResult;
 
@@ -278,7 +280,10 @@ export async function confirmPoaSignerAnonymizationAction(input: {
     });
     const poasRedacted = await redactClientPoaPersonalDataInTx(tx, clientId);
     if (poasRedacted !== remaining) {
-      throw new Error('POA_RETENTION_RECHECK_CHANGED');
+      // Rollback der gesamten Redaktion; der Zähler hat sich parallel geändert.
+      throw new ActionError(
+        'Die Vollmachtsdaten wurden zwischenzeitlich geändert. Bitte die Redaktion erneut ausführen.',
+      );
     }
 
     await evidenceService.record(tx, {
@@ -299,7 +304,7 @@ export async function confirmPoaSignerAnonymizationAction(input: {
       },
     });
     return { ok: true };
-  });
+  }).catch(toActionError);
 
   if (result.ok) {
     revalidatePath('/staff/admin/dsgvo-retention');

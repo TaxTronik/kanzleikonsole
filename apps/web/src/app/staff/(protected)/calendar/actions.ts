@@ -7,7 +7,11 @@ import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
 import { sendTemplateMail, type DispatchOptions } from '@/server/mail/dispatch';
 import { fireAndForget } from '@/server/util/fire-and-forget';
-import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
+import {
+  assertClientInTenant,
+  assertStaffInTenant,
+  TenantScopeError,
+} from '@/server/db/assert-tenant';
 import { assertClientAccessTx, canOtherStaffAccessClientTx } from '@/server/auth/rbac';
 import {
   withStaffModule,
@@ -85,13 +89,13 @@ export async function createAppointmentAction(
         where: { id: parsed.data.ownerStaffId },
         select: { id: true },
       });
-      if (!owner) throw new Error('STAFF_NOT_FOUND: ownerStaffId nicht in diesem Tenant.');
+      if (!owner) throw new TenantScopeError('STAFF');
       if (parsed.data.clientId) {
         const cli = await tx.client.findFirst({
           where: { id: parsed.data.clientId },
           select: { id: true },
         });
-        if (!cli) throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
+        if (!cli) throw new TenantScopeError('CLIENT');
         // Vertraulich-/RESTRICTED-Ventil bei Mandantenbezug.
         await assertClientAccessTx(tx, session, parsed.data.clientId);
         if (

@@ -21,7 +21,10 @@ import {
   readPrivacyConfig,
   PRIVACY_NOTICE_VERSION,
 } from '@/server/privacy/notice';
-import { readResolvedConsentOptionsTx } from '@/server/privacy/consent-catalog';
+import {
+  ConsentCatalogInvalidError,
+  readResolvedConsentOptionsTx,
+} from '@/server/privacy/consent-catalog';
 import { defaultConsentOptionsCatalog, type ResolvedConsentOption } from '@/server/privacy/consent';
 import { readLegal } from '@/server/settings/legal';
 import { LegalForm } from '../settings/legal-form';
@@ -59,12 +62,7 @@ export default async function AdminPrivacyPage() {
       try {
         options = await readResolvedConsentOptionsTx(tx, tenantId);
       } catch (error) {
-        if (
-          !(error instanceof Error) ||
-          !error.message.includes('Einwilligungskatalog der Kanzlei ist ungültig')
-        ) {
-          throw error;
-        }
+        if (!(error instanceof ConsentCatalogInvalidError)) throw error;
         catalogRepairRequired = true;
         options = defaultConsentOptionsCatalog().options.map((option) => ({
           ...option,

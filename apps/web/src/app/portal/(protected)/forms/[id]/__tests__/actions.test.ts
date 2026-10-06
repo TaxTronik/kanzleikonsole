@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     portalActionGuard: vi.fn(),
     withTenantContext: vi.fn(),
     checkPortalWriteLimit: vi.fn(),
@@ -39,15 +37,13 @@ vi.mock('@/server/settings/portal-features', () => ({
 vi.mock('@/server/documents/storage-compensation', () => ({
   compensateStorageCommit: h.compensateStorageCommit,
 }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Fehler.',
-  }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
 }));
-vi.mock('@/server/actions/portal-action', () => ({
+vi.mock('@/server/actions/portal-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   portalActionGuard: h.portalActionGuard,
-  ActionError: h.ActionError,
 }));
 
 import {

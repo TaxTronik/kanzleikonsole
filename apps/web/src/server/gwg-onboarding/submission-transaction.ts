@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma, type ClientKind } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 
+import { ActionError } from '@/server/actions/action-error';
 import { evidenceService } from '@/server/container';
 import type { IdentityPdfPageCounts } from '@/server/gwg/identity-source';
 import { startFreshGwgReviewTx } from '@/server/gwg/reverification';
@@ -36,6 +37,16 @@ import type { OnboardingExtraDocument, OnboardingSubmissionOwner } from './submi
 import { ensureGwgPersonFolderTx, ensureGwgRootFolderTx } from './document-folders';
 
 export class BoundInviteDraftChangedError extends Error {}
+
+/** Datenschutzhinweise der Kanzlei unvollständig — UI-taugliche Meldung (F-03). */
+export class PrivacyConfigIncompleteError extends ActionError {
+  constructor() {
+    super(
+      'Die Datenschutzhinweise der Kanzlei sind noch unvollständig. Bitte wenden Sie sich an die Kanzlei.',
+    );
+    this.name = 'PrivacyConfigIncompleteError';
+  }
+}
 
 export interface OnboardingSubmissionInviteContext {
   id: string;
@@ -603,7 +614,7 @@ async function persistSubmissionConsentFinalizationTx(
 ): Promise<void> {
   await lockConsentCatalogTx(tx, input.invite.tenantId);
   const notice = await renderNoticeForTenantTx(tx, input.invite.tenantId);
-  if (!notice.complete) throw new Error('PRIVACY_CONFIG_INCOMPLETE');
+  if (!notice.complete) throw new PrivacyConfigIncompleteError();
 
   const selections = await resolveConsentSelectionsTx(
     tx,

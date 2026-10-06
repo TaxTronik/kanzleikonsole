@@ -1191,6 +1191,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Server-Actions ordnen Fehler zentral nach Fehlerklasse bzw. SQLSTATE ein;
+  fachliche Meldungen (z. B. GwG-Schranke, Virenscan, nicht gefundene
+  Datensätze) erscheinen statt „Unerwarteter Fehler“, rohe Datenbank- und
+  Systemmeldungen erreichen die Oberfläche nicht mehr, auch nicht im
+  anonymen GwG-Onboarding (`GWG-ACTIVATION-GATE-001`,
+  `GWG-SELF-ONBOARDING-001`, `FK-EXC-20261006-012`).
 - Dokument-Download und -Vorschau prüfen Größe und SHA-256 der gebundenen
   Fassung beim Ausliefern; abweichende Bytes werden nicht mehr vollständig
   ausgeliefert. Postfach-Anhänge und Bescheid-Dokumente prüfen zusätzlich die

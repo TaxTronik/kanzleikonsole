@@ -1,5 +1,7 @@
 // Fachkatalog: REQ-LIFECYCLE-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@taxtronik/db/prisma-client';
+import { ForbiddenError } from '@/server/actions/action-error';
 
 const mocks = vi.hoisted(() => ({
   staffActionGuard: vi.fn(),
@@ -23,6 +25,9 @@ vi.mock('@taxtronik/db/notification', () => ({
   resolveNotificationsTx: mocks.resolveNotificationsTx,
 }));
 vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.test' }));
+vi.mock('@/server/logger', () => ({
+  log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: mocks.emitN8nEvent }));
 vi.mock('@/server/mail/dispatch', () => ({
@@ -30,16 +35,14 @@ vi.mock('@/server/mail/dispatch', () => ({
   notifyRequestOpened: mocks.notifyRequestOpened,
 }));
 vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: mocks.fireAndForget }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: mocks.assertClientAccessTx,
   accessibleClientsWhereFor: mocks.accessibleClientsWhereFor,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Fehler',
-  }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: class ActionError extends Error {},
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: mocks.staffActionGuard,
   parseFormData: (
     schema: {
@@ -372,7 +375,7 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
     mocks.assertClientAccessTx.mockRejectedValueOnce(
-      new Error('Kein Zugriff auf diesen Mandanten.'),
+      new ForbiddenError('Kein Zugriff auf diesen Mandanten.'),
     );
 
     await expect(closeRequestAction(null, lifecycleData())).resolves.toEqual({
@@ -412,10 +415,22 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
       linkedGwgIdDocumentId: '44444444-4444-4444-8444-444444444444',
     });
     tx.request.findFirst.mockResolvedValue(null);
-    tx.request.updateMany.mockRejectedValue({
-      code: 'P2002',
-      meta: { constraint: 'request_gwg_id_doc_open_unique' },
-    });
+    tx.request.updateMany.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+        meta: {
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: {
+              originalCode: '23505',
+              kind: 'UniqueConstraintViolation',
+              constraint: { fields: ['linked_gwg_id_document_id'] },
+            },
+          },
+        },
+      }),
+    );
     mocks.withTenantContext.mockImplementation(
       async (_ctx: unknown, fn: (transaction: ReturnType<typeof makeTx>) => unknown) => fn(tx),
     );
@@ -578,7 +593,23 @@ describe('Quick-Anforderung', () => {
   });
 
   it('liefert das bestehende GwG-Gate als Dialogfehler zurück und benachrichtigt niemanden', async () => {
-    mocks.withTenantContext.mockRejectedValue(new Error('GwG-Schranke: Mandant inaktiv'));
+    // F-03: echte Trigger-Fehlerform (SQLSTATE check_violation + Migrationsmarker).
+    mocks.withTenantContext.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Database error. Code: `23514`.', {
+        code: 'P2039',
+        clientVersion: 'test',
+        meta: {
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: {
+              originalCode: '23514',
+              originalMessage: 'Mandant 1 ist nicht aktiv (GwG-Schranke). Anforderung abgewiesen.',
+              kind: 'postgres',
+            },
+          },
+        },
+      }),
+    );
 
     const result = await createQuickRequestAction(null, requestData());
 

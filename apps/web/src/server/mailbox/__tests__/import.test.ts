@@ -26,7 +26,8 @@ vi.mock('@taxtronik/db', () => ({
 vi.mock('@taxtronik/db/tenant-modules', () => ({
   readBooleanTenantModules: async () => ({ smartMailbox: m.enabled }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: async () => ({
     ok: true,
     tenantId: 'tenant',
@@ -34,14 +35,11 @@ vi.mock('@/server/actions/staff-action', () => ({
     ctx: {},
     session: {},
   }),
-  ActionError: class extends Error {},
 }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: async () => undefined,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
-  }),
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.audit } }));
 vi.mock('@/server/documents/resumable-upload', () => ({

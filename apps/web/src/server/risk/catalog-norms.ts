@@ -13,6 +13,7 @@
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
+import { ActionError } from '@/server/actions/action-error';
 
 export type NormKuratierAktion = 'verwerfen' | 'ergaenzen' | 'zuruecksetzen';
 export type NormKuratierScope = 'personal' | 'geteilt';
@@ -50,7 +51,7 @@ export async function readKatalogKuratierung(
   };
 }
 
-export class NotACatalogMarkingError extends Error {
+export class NotACatalogMarkingError extends ActionError {
   constructor() {
     super(
       'Katalog-Kuratierung ist nur für Begriffs-Karten möglich (Trigger-/LLM-/eigene Markierungen werden pro Fall kuratiert).',
@@ -88,7 +89,7 @@ export async function kuratiereKatalogNorm(
   const marking = await withTenantContext(ctx, (tx) =>
     tx.riskMarking.findUnique({ where: { id: input.markingId }, select: { begriffId: true } }),
   );
-  if (!marking) throw new Error('Markierung nicht gefunden.');
+  if (!marking) throw new ActionError('Markierung nicht gefunden.');
   if (!marking.begriffId) throw new NotACatalogMarkingError();
   const katalogId = marking.begriffId;
 

@@ -10,6 +10,14 @@ import { createConnection } from 'node:net';
 import { Readable } from 'node:stream';
 import { env } from '@taxtronik/config';
 import { s3, classificationToTier, getBucketForTier, type ProtectionTier } from './client';
+import { StoredObjectError, UploadRejectedError } from './errors';
+
+export {
+  StoredObjectError,
+  UploadRejectedError,
+  type StoredObjectErrorReason,
+  type UploadRejectionReason,
+} from './errors';
 
 /**
  * § 147 AO Aufbewahrungsfristen: „Die Aufbewahrungsfrist beginnt mit dem
@@ -452,37 +460,6 @@ export interface StoredObjectReadOptions {
   maxBytes?: number;
 }
 
-export type StoredObjectErrorReason =
-  | 'MISSING_BODY'
-  | 'TOO_LARGE'
-  | 'LENGTH_MISMATCH'
-  | 'OVERFLOW'
-  | 'SIZE_MISMATCH'
-  | 'HASH_MISMATCH';
-
-const INTEGRITY_REASONS: ReadonlySet<StoredObjectErrorReason> = new Set([
-  'LENGTH_MISMATCH',
-  'OVERFLOW',
-  'SIZE_MISMATCH',
-  'HASH_MISMATCH',
-]);
-
-/** Lesefehler mit Ursache; Meldungen beginnen mit dem Code (z. B. `TOO_LARGE: …`). */
-export class StoredObjectError extends Error {
-  constructor(
-    readonly reason: StoredObjectErrorReason,
-    message: string,
-  ) {
-    super(`${reason}: ${message}`);
-    this.name = 'StoredObjectError';
-  }
-
-  /** Inhalt weicht von der gebundenen Fassung ab — im Gegensatz zu Speicher-/Limitfehlern. */
-  get integrityViolation(): boolean {
-    return INTEGRITY_REASONS.has(this.reason);
-  }
-}
-
 function expectedObjectSize(integrity: StoredObjectIntegrity): number | null {
   if (integrity.sizeBytes == null) return null;
   const size = Number(integrity.sizeBytes);
@@ -839,7 +816,10 @@ export async function streamObject(
     // ueberfuehrt und niemand konsumiert ihn — die Verbindung bliebe sonst bis
     // zum Socket-Timeout stehen.
     (result.Body as Readable | undefined)?.destroy?.();
-    throw new Error(`TOO_LARGE: Objekt (${contentLength} B) überschreitet das Limit.`);
+    throw new StoredObjectError(
+      'TOO_LARGE',
+      `Objekt (${contentLength} B) überschreitet das Limit.`,
+    );
   }
   const body = Readable.toWeb(result.Body as Readable) as ReadableStream<Uint8Array>;
   return { body, contentLength, contentType: result.ContentType ?? null };
@@ -867,7 +847,10 @@ export async function putObjectBytes(
   opts: { contentType?: string; retainUntil?: Date | null; tier?: ProtectionTier } = {},
 ): Promise<void> {
   if (bytes.length > MAX_UPLOAD_BYTES) {
-    throw new Error(`TOO_LARGE: Objekt (${bytes.length} B) überschreitet das Limit.`);
+    throw new UploadRejectedError(
+      'TOO_LARGE',
+      `Objekt (${bytes.length} B) überschreitet das Limit.`,
+    );
   }
   await s3.send(
     new PutObjectCommand({
@@ -907,24 +890,33 @@ export async function prepareBytesCommitWithTier(input: {
   const { fileData, tier, tenantId, skipScan, classification, retentionYears, retentionAnchor } =
     input;
   if (fileData.length > MAX_UPLOAD_BYTES) {
-    throw new Error(`TOO_LARGE: Datei überschreitet das Limit von ${MAX_UPLOAD_BYTES} Bytes.`);
+    throw new UploadRejectedError(
+      'TOO_LARGE',
+      `Datei überschreitet das Limit von ${MAX_UPLOAD_BYTES} Bytes.`,
+    );
   }
   if (retentionYears !== undefined) {
     if (tier === 'GOBD' && ![6, 8, 10].includes(retentionYears)) {
-      throw new Error('INVALID_RETENTION_YEARS: GOBD erlaubt nur 6, 8 oder 10 Jahre.');
+      throw new UploadRejectedError(
+        'INVALID_RETENTION_YEARS',
+        'GOBD erlaubt nur 6, 8 oder 10 Jahre.',
+      );
     }
     if (tier !== 'GOBD') {
-      throw new Error('INVALID_RETENTION_YEARS: Individuelle Jahre sind nur für GOBD zulässig.');
+      throw new UploadRejectedError(
+        'INVALID_RETENTION_YEARS',
+        'Individuelle Jahre sind nur für GOBD zulässig.',
+      );
     }
   }
 
   if (!skipScan) {
     const scanResult = await scanWithClamAV(fileData);
     if (scanResult === 'INFECTED') {
-      throw new Error('INFECTED: Datei wurde von ClamAV als infiziert markiert.');
+      throw new UploadRejectedError('INFECTED', 'Datei wurde von ClamAV als infiziert markiert.');
     }
     if (scanResult === 'ERROR') {
-      throw new Error('SCAN_ERROR: ClamAV-Scan fehlgeschlagen.');
+      throw new UploadRejectedError('SCAN_ERROR', 'ClamAV-Scan fehlgeschlagen.');
     }
   }
 

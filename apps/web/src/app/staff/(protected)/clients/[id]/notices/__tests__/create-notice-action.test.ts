@@ -26,16 +26,11 @@ vi.mock('@taxtronik/db/notification', () => ({ resolveNotificationsTx: vi.fn() }
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
 vi.mock('@/server/db/assert-tenant', () => ({ assertClientInTenant: h.assertClientInTenant }));
 vi.mock('@/server/auth/rbac', async () => {
-  const { ActionError } = await vi.importActual<typeof import('@/server/actions/action-error')>(
-    '@/server/actions/action-error',
-  );
   return {
     assertClientAccessTx: h.assertClientAccessTx,
     isStaffAdmin: () => false,
-    toActionError: (error: unknown) => ({
-      ok: false,
-      error: error instanceof ActionError ? error.message : 'Unerwarteter Fehler.',
-    }),
+    // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+    ...(await import('@/server/actions/to-action-error')),
   };
 });
 vi.mock('@/server/actions/staff-action', async () => {

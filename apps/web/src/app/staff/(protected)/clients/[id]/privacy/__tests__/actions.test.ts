@@ -1,6 +1,7 @@
 // Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ForbiddenError } from '@/server/actions/action-error';
 import { emptyConsent } from '@/server/privacy/consent';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -24,12 +25,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: mocks.staffActionGuard }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   assertClientAccessTx: mocks.assertClientAccessTx,
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Unerwarteter Fehler.',
-  }),
 }));
 vi.mock('@/server/db/assert-tenant', () => ({ assertClientInTenant: mocks.assertClientInTenant }));
 vi.mock('@/server/privacy/service', () => ({ renderNoticeForTenantTx: mocks.renderNotice }));
@@ -153,7 +152,7 @@ describe('revokeAllConsentAction', () => {
 
   it('meldet einen verweigerten Mandantenzugriff, statt zu werfen', async () => {
     mocks.assertClientAccessTx.mockRejectedValueOnce(
-      new Error('Kein Zugriff auf diesen Mandanten.'),
+      new ForbiddenError('Kein Zugriff auf diesen Mandanten.'),
     );
 
     await expect(revokeAllConsentAction(null, formData())).resolves.toEqual({

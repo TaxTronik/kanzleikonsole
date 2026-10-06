@@ -20,12 +20,11 @@
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ActionError } from '@/server/actions/action-error';
 import { createHash } from 'node:crypto';
 
 const m = vi.hoisted(() => {
-  class ActionError extends Error {}
   return {
-    ActionError,
     sendTemplateMail: vi.fn(),
     checkRateLimit: vi.fn(),
     checkIpOrGlobalLimit: vi.fn(),
@@ -86,18 +85,16 @@ vi.mock('@/server/rate-limit', () => ({
   checkIpOrGlobalLimit: m.checkIpOrGlobalLimit,
   getClientIp: m.getClientIp,
 }));
-vi.mock('@/server/auth/rbac', () => ({
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
   isStaffAdmin: m.isStaffAdmin,
   assertClientAccessTx: m.assertClientAccessTx,
-  toActionError: (e: unknown) => ({
-    ok: false,
-    error: e instanceof Error ? e.message : 'Fehler.',
-  }),
 }));
 vi.mock('@/server/actions/staff-action', async () => {
   const { parseFormData } = await import('@/server/actions/form-data');
   return {
-    ActionError: m.ActionError,
+    ActionError: (await import('@/server/actions/action-error')).ActionError,
     staffActionGuard: m.staffActionGuard,
     withStaff: m.withStaff,
     parseFormData,
@@ -925,7 +922,7 @@ describe('createPoaAction — Datumsintervall', () => {
       async (_ctx: unknown, run: (client: typeof tx) => unknown) => run(tx),
     );
     m.readModules.mockResolvedValue({ poaMode: 'PDF_TEMPLATE' });
-    m.assertClientAccessTx.mockRejectedValueOnce(new m.ActionError('Kein Zugriff.'));
+    m.assertClientAccessTx.mockRejectedValueOnce(new ActionError('Kein Zugriff.'));
     const fd = new FormData();
     fd.set('clientId', '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f');
     fd.set('uploadIntentId', UPLOAD_INTENT_ID);

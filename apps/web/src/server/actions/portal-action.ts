@@ -26,7 +26,7 @@ import {
 
 // Domänen-Fehler mit UI-tauglicher Message — im withPortalContext-Callback werfen.
 export { ActionError };
-export { parseFormData } from './form-data';
+export { parseActionInput, parseFormData, requireUuidParam } from './form-data';
 // Einheitliches Ergebnis (eine Import-Quelle für Portal-Actions).
 export type { ActionResult } from './types';
 

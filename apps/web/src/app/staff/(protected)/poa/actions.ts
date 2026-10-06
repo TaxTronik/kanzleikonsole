@@ -158,7 +158,7 @@ function poaUploadErrorResult(error: unknown): ActionResult {
   switch (error.phase) {
     case 'prepare':
       if (cause instanceof ActionError) return toActionError(cause);
-      return { ok: false, error: `Upload-Prüfung fehlgeschlagen: ${(cause as Error).message}` };
+      return { ok: false, error: `Upload-Prüfung fehlgeschlagen: ${toActionError(cause).error}` };
     case 'resume':
       return { ...toActionError(cause), pendingDocumentId: error.pendingDocumentId };
     case 'journal':

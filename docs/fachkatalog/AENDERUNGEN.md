@@ -1,5 +1,98 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-012
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/identity-source.test.ts
+      - apps/web/src/app/gwg-onboarding/actions.ts
+      - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
+      - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/actions-result.test.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/privacy/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/privacy/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/privacy/page.tsx
+      - apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/settings/infra-actions.ts
+      - apps/web/src/app/staff/(protected)/admin/settings/mail-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/invite-actions-access.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/create-notice-action.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/screening/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/norm-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-actions.ts
+      - apps/web/src/app/staff/(protected)/dashboard/rss-feed-actions.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/folder-actions-access.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/restore-gwg.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
+      - apps/web/src/app/staff/(protected)/documents/actions.ts
+      - apps/web/src/app/staff/(protected)/documents/folder-actions.ts
+      - apps/web/src/app/staff/(protected)/inbox/actions.ts
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/poa/actions.ts
+      - apps/web/src/app/staff/(protected)/stbvv/actions.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+      - apps/web/src/server/actions/staff-action.ts
+      - apps/web/src/server/auth/rbac.ts
+      - apps/web/src/server/gwg-onboarding/submission-transaction.ts
+      - apps/web/src/server/invoicing/__tests__/create-draft.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts
+      - apps/web/src/server/invoicing/create-draft.ts
+      - apps/web/src/server/privacy/consent-catalog.ts
+      - apps/web/src/server/risk/catalog-norms.ts
+      - apps/web/src/server/risk/delegate.ts
+      - apps/web/src/server/risk/los-state.ts
+      - apps/web/src/server/risk/los.ts
+      - apps/web/src/server/risk/markings.ts
+      - apps/web/src/server/risk/norms-core.ts
+      - apps/web/src/server/risk/norms.ts
+      - apps/web/src/server/risk/reanalyze.ts
+      - apps/web/src/server/risk/reformat.ts
+      - apps/web/src/server/risk/research.ts
+      - apps/web/src/server/settings/modules.ts
+      - apps/web/src/server/settings/portal-features.ts
+      - apps/web/src/server/workflows/execute-step.ts
+      - packages/storage/src/errors.ts
+      - packages/storage/src/index.ts
+      - packages/storage/src/service.ts
+    rule_ids:
+      - GWG-ACTIVATION-GATE-001
+      - GWG-SELF-ONBOARDING-001
+      - DOC-UPLOAD-JOURNAL-001
+      - INV-ARCHIVE-EINVOICE-001
+      - REQ-LIFECYCLE-001
+      - POA-LIFECYCLE-001
+      - RISK-AI-SUGGESTION-001
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Server-Actions ordnen Fehler zentral in einem Fehler-Mapper ein: fachliche
+      Fehler als ActionError, Datenbankfehler nach Prisma-Code und SQLSTATE
+      (einschließlich der GwG-Schranke 23514 mit Marker), Speicherfehler nach
+      Fehlerklasse, Netzwerkfehler nach Name/Code; Eingaben werden mit safeParse
+      statt parse geprüft. Bisher als „Unerwarteter Fehler“ endende Fälle zeigen
+      ihre vorgesehene deutsche Meldung, rohe Datenbank- und Systemmeldungen
+      erreichen die Oberfläche nicht mehr, auch nicht im anonymen
+      GwG-Onboarding. Ein AST-Guard verbietet neue Fehlertexte per throw new
+      Error in Server-Actions. Prüfungen, Berechtigungen, Trigger und
+      Audit-Ereignisse bleiben unverändert; nur der Rückkanal der Fehler ändert
+      sich. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/__tests__/action-error-contract.test.ts
+      - apps/web/src/server/actions/__tests__/to-action-error.test.ts
+      - packages/db/src/__tests__/database-error-classification.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-011
     date: '2026-10-06'
     paths:
@@ -2957,6 +3050,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-012` dokumentiert die zentrale Einordnung von
+  Action-Fehlern. Prüfungen, Berechtigungen und Audit-Ereignisse bleiben
+  unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-011` dokumentiert verschobene UI-Module und
   die abgesicherten Schichtgrenzen der Web-App. Fachlogik bleibt

@@ -18,6 +18,7 @@ import {
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import type { GovernanceTyp, RiskStufe, RiskWk } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
+import { ActionError } from '@/server/actions/action-error';
 import { canOtherStaffAccessClientTx } from '@/server/auth/rbac';
 import { notify } from '@/server/notifications/service';
 import { subsumtionMarkingHref } from './links';
@@ -64,7 +65,7 @@ export async function updateMarking(
       where: { id: markingId },
       select: { ...DECISION_SELECT, begriff: true, normAnker: true, analysisId: true },
     });
-    if (!before) throw new Error('Markierung nicht gefunden.');
+    if (!before) throw new ActionError('Markierung nicht gefunden.');
     // Verantwortliche:r muss aktiver Mitarbeiter DIESES Tenants sein (keine
     // hängende Zuweisung an fremde/ungültige Staff-IDs).
     const analysis = await tx.riskAnalysis.findUnique({
@@ -76,7 +77,7 @@ export async function updateMarking(
         where: { id: fields.verantwortlichId, tenantId: ctx.tenantId, active: true },
         select: { id: true },
       });
-      if (!ok) throw new Error('Verantwortliche:r nicht gefunden oder inaktiv.');
+      if (!ok) throw new ActionError('Verantwortliche:r nicht gefunden oder inaktiv.');
       // Wie bei der Delegation: nicht an jemanden zuweisen, der den Mandanten
       // nicht sehen darf.
       if (
@@ -88,7 +89,7 @@ export async function updateMarking(
           analysis.clientId,
         ))
       ) {
-        throw new Error('Verantwortliche:r hat keinen Zugriff auf diesen Mandanten.');
+        throw new ActionError('Verantwortliche:r hat keinen Zugriff auf diesen Mandanten.');
       }
     }
     await tx.riskMarking.update({ where: { id: markingId }, data: fields });
@@ -150,7 +151,7 @@ export interface AddManualMarkingInput {
   notiz?: string | null;
 }
 
-export class InvalidMarkingRangeError extends Error {
+export class InvalidMarkingRangeError extends ActionError {
   constructor() {
     super('Die Markierung liegt außerhalb des Sachverhalts.');
     this.name = 'InvalidMarkingRangeError';
@@ -171,7 +172,7 @@ export async function addManualMarking(
       where: { id: input.analysisId },
       select: { sourceText: true },
     });
-    if (!analysis) throw new Error('Analyse nicht gefunden.');
+    if (!analysis) throw new ActionError('Analyse nicht gefunden.');
     const len = analysis.sourceText.length;
     if (!Number.isInteger(input.start) || !Number.isInteger(input.end))
       throw new InvalidMarkingRangeError();
@@ -227,7 +228,7 @@ export async function deleteMarking(ctx: TenantContext, markingId: string): Prom
       where: { id: markingId },
       select: { analysisId: true, herkunft: true, begriff: true, start: true, end: true },
     });
-    if (!before) throw new Error('Markierung nicht gefunden.');
+    if (!before) throw new ActionError('Markierung nicht gefunden.');
     await resolveNotificationsTx(tx, {
       tenantId: ctx.tenantId,
       resources: [{ resourceType: 'risk_marking', resourceId: markingId }],

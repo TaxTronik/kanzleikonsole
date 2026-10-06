@@ -18,6 +18,15 @@
 
 import type { TenantContext, TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
+import { ActionError } from '@/server/actions/action-error';
+
+/** Feature im Mandantenportal deaktiviert — UI-taugliche Meldung (F-03). */
+export class PortalFeatureDisabledError extends ActionError {
+  constructor(readonly feature: string) {
+    super('Diese Funktion ist im Mandantenportal nicht aktiviert.');
+    this.name = 'PortalFeatureDisabledError';
+  }
+}
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { readLayoutSettingsSource, SETTING_KEY_PORTAL_FEATURES } from './layout-settings';
 
@@ -110,6 +119,6 @@ export async function assertPortalFeature(
 ): Promise<void> {
   const cfg = await readPortalFeatures(ctx);
   if (!cfg[feature]) {
-    throw new Error(`Diese Funktion ist im Mandantenportal nicht aktiviert.`);
+    throw new PortalFeatureDisabledError(feature);
   }
 }

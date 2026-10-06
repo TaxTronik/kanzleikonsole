@@ -46,6 +46,7 @@ import {
   type LosNachweis,
 } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
+import { ActionError } from '@/server/actions/action-error';
 import { ACTION_LABELS } from '@/server/audit/labels';
 import { log } from '@/server/logger';
 import {
@@ -181,7 +182,7 @@ export type LosZiehungErgebnis =
   | { status: 'fertig'; ziehung: LosZiehung }
   | { status: 'wartet'; pending: PendingLos };
 
-export class LosRahmenLeerError extends Error {
+export class LosRahmenLeerError extends ActionError {
   constructor(typ: LosRahmenTyp = 'subsumtion') {
     super(
       typ === 'audit'
@@ -192,7 +193,7 @@ export class LosRahmenLeerError extends Error {
   }
 }
 
-export class LosNachweisInkonsistentError extends Error {
+export class LosNachweisInkonsistentError extends ActionError {
   constructor(detail: string) {
     super(`Der Engine-Nachweis ist inkonsistent: ${detail}`);
     this.name = 'LosNachweisInkonsistentError';
@@ -225,7 +226,7 @@ export async function buildLosRahmen(
       }),
     );
     if (rows.length > MAX_AUDIT_RAHMEN) {
-      throw new Error(
+      throw new ActionError(
         `Der Audit-Rahmen übersteigt ${MAX_AUDIT_RAHMEN.toLocaleString('de-DE')} Ereignisse — bitte den Zeitraum verkürzen.`,
       );
     }
@@ -262,7 +263,7 @@ export async function zieheLosStichprobe(
   const rahmen = await buildLosRahmen(ctx, input.zeitraum, rahmenTyp);
   if (rahmen.length === 0) throw new LosRahmenLeerError(rahmenTyp);
   if (input.k < 1 || input.k > rahmen.length) {
-    throw new Error(`k muss zwischen 1 und ${rahmen.length} (Rahmengröße) liegen.`);
+    throw new ActionError(`k muss zwischen 1 und ${rahmen.length} (Rahmengröße) liegen.`);
   }
 
   if (!ctx.actorId) throw new Error('Quantenlos erfordert einen Staff-Kontext (actorId).');
@@ -375,7 +376,7 @@ export async function holeLosAb(
   opts: { ibmToken?: string } = {},
 ): Promise<LosZiehungErgebnis> {
   const pending = await getPendingLos(ctx);
-  if (!pending) throw new Error('Kein wartender Quantenlos-Job vorhanden.');
+  if (!pending) throw new ActionError('Kein wartender Quantenlos-Job vorhanden.');
 
   const c = client ?? new RiskLayerClient();
   const res = await c.losAbholen({
@@ -474,7 +475,7 @@ export async function releaseLosStart(
   input: { attemptId: string; reason: string; confirmedNotExecuted: true },
 ): Promise<void> {
   if (input.confirmedNotExecuted !== true || input.reason.trim().length < 30)
-    throw new Error('Nichtausführung bestätigen und mit mindestens 30 Zeichen begründen.');
+    throw new ActionError('Nichtausführung bestätigen und mit mindestens 30 Zeichen begründen.');
   const start = await getLosStart(ctx);
   if (!start || start.attemptId !== input.attemptId) throw new LosStateConflictError();
   if (start.engineResponse !== undefined) {
@@ -813,7 +814,7 @@ export async function pruefeLosNachweis(
       select: { after: true },
     }),
   );
-  if (!row) throw new Error('Ziehung nicht gefunden.');
+  if (!row) throw new ActionError('Ziehung nicht gefunden.');
 
   const after = row.after as { nachweis?: unknown; rahmen?: unknown } | null;
   const nachweis = LosNachweisSchema.parse(after?.nachweis);

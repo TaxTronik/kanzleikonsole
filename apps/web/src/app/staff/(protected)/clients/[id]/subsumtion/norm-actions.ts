@@ -3,6 +3,7 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { toActionError } from '@/server/auth/rbac';
+import { parseActionInput } from '@/server/actions/form-data';
 import {
   pushDefinitionToCatalog,
   resolveNorm,
@@ -36,7 +37,9 @@ export async function resolveNormAction(
   input: z.infer<typeof ResolveNormSchema>,
 ): Promise<OkActionResult<{ norm: ResolvedNorm }>> {
   try {
-    const parsed = ResolveNormSchema.parse(input);
+    const checked = parseActionInput(ResolveNormSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     await guard(parsed.clientId);
     requireEngine();
     const norm = await resolveNorm(parsed.normId);
@@ -59,7 +62,9 @@ export async function resolveNormByZitatAction(
   input: z.infer<typeof ResolveByZitatSchema>,
 ): Promise<OkActionResult<{ norm: ResolvedNorm | null; matchedZitat: string | null }>> {
   try {
-    const parsed = ResolveByZitatSchema.parse(input);
+    const checked = parseActionInput(ResolveByZitatSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     await guard(parsed.clientId);
     requireEngine();
     const hits = await searchNorm(parsed.zitat);
@@ -85,7 +90,9 @@ export async function searchNormAction(
   input: z.infer<typeof SearchNormSchema>,
 ): Promise<OkActionResult<{ hits: NormHit[] }>> {
   try {
-    const parsed = SearchNormSchema.parse(input);
+    const checked = parseActionInput(SearchNormSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     await guard(parsed.clientId);
     requireEngine();
     const hits = await searchNorm(parsed.query);
@@ -107,7 +114,9 @@ export async function addBeraterNormAction(
   input: z.infer<typeof AddNormSchema>,
 ): Promise<OkActionResult> {
   try {
-    const parsed = AddNormSchema.parse(input);
+    const checked = parseActionInput(AddNormSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     await addBeraterNorm(ctx, parsed.markingId, {
       zitat: parsed.zitat,
@@ -133,7 +142,9 @@ export async function setNormVerworfenAction(
   input: z.infer<typeof VerwerfNormSchema>,
 ): Promise<OkActionResult> {
   try {
-    const parsed = VerwerfNormSchema.parse(input);
+    const checked = parseActionInput(VerwerfNormSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     await setNormVerworfen(
       ctx,
@@ -159,7 +170,9 @@ export async function removeBeraterNormAction(
   input: z.infer<typeof RemoveNormSchema>,
 ): Promise<OkActionResult> {
   try {
-    const parsed = RemoveNormSchema.parse(input);
+    const checked = parseActionInput(RemoveNormSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     await removeBeraterNorm(ctx, parsed.markingId, { index: parsed.index, zitat: parsed.zitat });
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
@@ -183,7 +196,9 @@ export async function kuratiereKatalogNormAction(
   input: z.infer<typeof KuratiereKatalogNormSchema>,
 ): Promise<OkActionResult> {
   try {
-    const parsed = KuratiereKatalogNormSchema.parse(input);
+    const checked = parseActionInput(KuratiereKatalogNormSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, staffId } = await guardMarkingWrite(parsed.markingId);
     requireEngine();
     await kuratiereKatalogNorm(ctx, {
@@ -213,7 +228,9 @@ export async function katalogKuratierungAction(
   OkActionResult<{ verworfen: string[]; ergaenzt: { zitat: string; id: string | null }[] }>
 > {
   try {
-    const parsed = KatalogKuratierungSchema.parse(input);
+    const checked = parseActionInput(KatalogKuratierungSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { staffId } = await guard(parsed.clientId);
     requireEngine();
     const view = await readKatalogKuratierung(parsed.katalogId, staffId);
@@ -239,7 +256,9 @@ export async function reviewKatalogBegriffAction(
   input: z.infer<typeof ReviewKatalogBegriffSchema>,
 ): Promise<OkActionResult<{ alterStatus: string; neuerStatus: string }>> {
   try {
-    const parsed = ReviewKatalogBegriffSchema.parse(input);
+    const checked = parseActionInput(ReviewKatalogBegriffSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx } = await guardWrite(parsed.clientId);
     requireEngine();
     const res = await setKatalogReviewStatus(ctx, {
@@ -266,7 +285,9 @@ export async function pushDefinitionAction(
   input: z.infer<typeof PushDefinitionSchema>,
 ): Promise<OkActionResult<{ begriffId: string }>> {
   try {
-    const parsed = PushDefinitionSchema.parse(input);
+    const checked = parseActionInput(PushDefinitionSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     requireEngine();
     const res = await pushDefinitionToCatalog(ctx, parsed);

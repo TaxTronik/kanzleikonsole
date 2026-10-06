@@ -3,7 +3,13 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { headers } from 'next/headers';
-import { ForbiddenError, requireStaffSession, toActionError } from '@/server/auth/rbac';
+import {
+  ActionError,
+  ForbiddenError,
+  requireStaffSession,
+  toActionError,
+} from '@/server/auth/rbac';
+import { parseActionInput } from '@/server/actions/form-data';
 import { withTenantContext } from '@taxtronik/db';
 import { lockRiskAnalysisTx, requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { fetchObjectBytes } from '@taxtronik/storage';
@@ -52,7 +58,9 @@ export async function analyzeAction(
   input: z.infer<typeof AnalyzeSchema>,
 ): Promise<OkActionResult<{ analysisId: string; markingCount: number }>> {
   try {
-    const parsed = AnalyzeSchema.parse(input);
+    const checked = parseActionInput(AnalyzeSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, staffId } = await guardWrite(parsed.clientId);
     requireEngine();
     const res = await runDeterministicAnalysis(ctx, {
@@ -80,7 +88,9 @@ export async function updateAnalysisAction(
   input: z.infer<typeof UpdateAnalysisSchema>,
 ): Promise<OkActionResult<{ title: string | null }>> {
   try {
-    const parsed = UpdateAnalysisSchema.parse(input);
+    const checked = parseActionInput(UpdateAnalysisSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, clientId } = await guardAnalysisWrite(parsed.analysisId);
     const title = parsed.title?.trim() || null;
     await withTenantContext(ctx, async (tx) => {
@@ -109,7 +119,9 @@ export async function reformatAnalysisAction(
   input: z.infer<typeof ReformatSchema>,
 ): Promise<OkActionResult> {
   try {
-    const parsed = ReformatSchema.parse(input);
+    const checked = parseActionInput(ReformatSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, staffId, clientId } = await guardAnalysisWrite(parsed.analysisId);
     // Plaintext über DIESELBE Serialisierung wie beim Anlegen/Review berechnen,
     // damit der Vergleich gegen den gespeicherten sourceText deckungsgleich ist.
@@ -172,7 +184,7 @@ export async function setAnalysisVertraulichAction(input: {
 
     await withTenantContext(ctx, async (tx) => {
       const current = await lockRiskAnalysisTx(tx, ctx.tenantId, input.analysisId);
-      if (!current) throw new Error('Analyse nicht gefunden.');
+      if (!current) throw new ActionError('Analyse nicht gefunden.');
       if (current.vertraulich !== input.vertraulich) {
         await tx.riskAnalysis.update({
           where: { id: input.analysisId },
@@ -377,7 +389,9 @@ export async function addManualMarkingAction(
   input: z.infer<typeof ManualMarkingSchema>,
 ): Promise<OkActionResult<{ markingId: string }>> {
   try {
-    const parsed = ManualMarkingSchema.parse(input);
+    const checked = parseActionInput(ManualMarkingSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     if (parsed.end <= parsed.start) return { ok: false, error: 'Ungültige Markierung.' };
     const { ctx, clientId } = await guardAnalysisWrite(parsed.analysisId);
     const res = await addManualMarking(ctx, parsed);
@@ -420,7 +434,9 @@ export async function updateMarkingAction(
   try {
     // clientId/analysisId aus dem Payload nur Routing — Autorisierung + echte IDs
     // kommen aus guardMarking; sie dürfen NICHT als Markierungsfelder durchsickern.
-    const { markingId, clientId: _c, analysisId: _a, ...fields } = UpdateMarkingSchema.parse(input);
+    const checked = parseActionInput(UpdateMarkingSchema, input);
+    if (!checked.ok) return checked;
+    const { markingId, clientId: _c, analysisId: _a, ...fields } = checked.data;
     const { ctx, clientId, analysisId } = await guardMarkingWrite(markingId);
     await updateMarking(ctx, markingId, fields as { status?: RiskStatus });
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId}`);
@@ -458,7 +474,9 @@ export async function delegateAction(
   input: z.infer<typeof DelegateSchema>,
 ): Promise<OkActionResult<{ reminderId: string }>> {
   try {
-    const parsed = DelegateSchema.parse(input);
+    const checked = parseActionInput(DelegateSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, staffId, clientId, analysisId } = await guardMarkingWrite(parsed.markingId);
     const session = await requireStaffSession();
     if (!(await readModules(ctx)).reminders) {
@@ -490,7 +508,9 @@ export async function importClientDocAction(
   input: z.infer<typeof ImportDocSchema>,
 ): Promise<OkActionResult<{ text: string; suggestedTitle: string | null }>> {
   try {
-    const parsed = ImportDocSchema.parse(input);
+    const checked = parseActionInput(ImportDocSchema, input);
+    if (!checked.ok) return checked;
+    const parsed = checked.data;
     const { ctx, staffId } = await guardWrite(parsed.clientId);
     const h = await headers();
     const ip = getClientIp(h);

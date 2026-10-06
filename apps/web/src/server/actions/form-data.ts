@@ -1,4 +1,5 @@
-import type { output, ZodType } from 'zod';
+import { z, type output, type ZodType } from 'zod';
+import { ActionError } from './action-error';
 
 export type ValidationFailure = {
   ok: false;
@@ -25,6 +26,22 @@ export function validationFailure(
     (fieldErrors[key] ??= []).push(issue.message);
   }
   return { ok: false, error, errorCode: 'VALIDATION_ERROR', fieldErrors };
+}
+
+/**
+ * Zod-Prüfung typisierter Action-Eingaben (Objekt statt FormData) als
+ * Ergebnis-Union: Validierungsfehler werden zum Feld-/Action-Fehler statt zu
+ * einer ZodError-Exception, die toActionError nur generisch beantworten kann
+ * (Review-Befund F-03: `safeParse` statt `parse`).
+ */
+export function parseActionInput<TSchema extends ZodType>(
+  schema: TSchema,
+  input: unknown,
+  errorMessage?: string,
+): FormDataParseResult<output<TSchema>> {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) return validationFailure(parsed.error.issues, errorMessage);
+  return { ok: true, data: parsed.data };
 }
 
 /**
@@ -56,4 +73,14 @@ export function parseFormData<TSchema extends ZodType>(
     return validationFailure(parsed.error.issues, options.errorMessage);
   }
   return { ok: true, data: parsed.data };
+}
+
+/**
+ * UUID-Parameter einer Action (z. B. aus einer gebundenen Action-Signatur):
+ * ungültig → ActionError mit UI-tauglicher Meldung statt ZodError (F-03).
+ */
+export function requireUuidParam(value: unknown, message = 'Ungültige Kennung.'): string {
+  const parsed = z.uuid().safeParse(value);
+  if (!parsed.success) throw new ActionError(message);
+  return parsed.data;
 }

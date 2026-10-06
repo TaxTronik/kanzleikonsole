@@ -94,12 +94,8 @@ async function validateAnswersTx(
   clientId: string,
   requireRequired: boolean,
 ): Promise<void> {
-  let validated: ReturnType<typeof validateFormAnswers>;
-  try {
-    validated = validateFormAnswers(sub.template.fields, answers, { requireRequired });
-  } catch (error) {
-    throw new ActionError(error instanceof Error ? error.message : 'Ungültige Formularantworten.');
-  }
+  // Wirft FormAnswersError (ActionError) mit UI-tauglicher Meldung.
+  const validated = validateFormAnswers(sub.template.fields, answers, { requireRequired });
   // Nicht nur die vom Browser gelieferten Referenzen prüfen: Ein staler Tab
   // könnte sonst einen bereits gebundenen Upload aus `answers` weglassen und
   // damit ein nach Submit dauerhaft unerreichbares Dokument hinterlassen.
@@ -337,7 +333,7 @@ export async function uploadFormFileAction(input: {
   try {
     await assertPortalFeature(ctx, 'documentUpload');
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return toActionError(e);
   }
 
   // NEW2: Rate-Limit pro Contact + pro Submission. Schließt Storage-/ClamAV-

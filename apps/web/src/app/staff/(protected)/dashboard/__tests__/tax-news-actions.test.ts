@@ -12,8 +12,9 @@ vi.mock('@/server/actions/staff-action', () => ({
   withStaff: m.withStaff,
   withStaffModule: () => m.withStaff,
 }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (error: Error) => ({ ok: false, error: error.message }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 vi.mock('@/server/tax-news/fetcher', () => ({

@@ -4,11 +4,9 @@ const STAFF_ID = '22222222-2222-4222-8222-222222222222';
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 
 const mocks = vi.hoisted(() => {
-  class ActionError extends Error {}
   class HardwareAccessUnavailableError extends Error {}
   class HardwareAccessVerificationError extends Error {}
   return {
-    ActionError,
     HardwareAccessUnavailableError,
     HardwareAccessVerificationError,
     staffActionGuard: vi.fn(),
@@ -41,15 +39,13 @@ vi.mock('@/server/auth/revocation', () => ({ revokeAllSessions: mocks.revokeAllS
 vi.mock('@/server/auth/staff-account-recovery-lock', () => ({
   lockStaffHardwareAuthState: mocks.lockStaffHardwareAuthState,
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: mocks.ActionError,
+vi.mock('@/server/actions/staff-action', async () => ({
+  ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: mocks.staffActionGuard,
 }));
-vi.mock('@/server/auth/rbac', () => ({
-  toActionError: (error: unknown) => ({
-    ok: false,
-    error: error instanceof Error ? error.message : 'Aktion fehlgeschlagen.',
-  }),
+vi.mock('@/server/auth/rbac', async () => ({
+  // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
+  ...(await import('@/server/actions/to-action-error')),
 }));
 vi.mock('@/server/auth/webauthn', () => ({
   HARDWARE_KEY_LIMIT: 10,

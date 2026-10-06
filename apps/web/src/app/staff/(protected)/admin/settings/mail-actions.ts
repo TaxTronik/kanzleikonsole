@@ -16,6 +16,40 @@ import {
 import { sendTestMail } from '@/server/mail/send';
 import { writeMailDispatchTx, type MailDispatchConfig } from '@/server/settings/mail-dispatch';
 import { staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { log } from '@/server/logger';
+
+/** Bekannte Nodemailer-Fehlercodes des SMTP-Tests. */
+const SMTP_TEST_MESSAGES: Readonly<Record<string, string>> = {
+  EAUTH: 'Anmeldung am SMTP-Server abgelehnt — Benutzer und Passwort prüfen.',
+  ECONNECTION: 'SMTP-Server nicht erreichbar — Host und Port prüfen.',
+  ETIMEDOUT: 'SMTP-Server hat nicht rechtzeitig geantwortet.',
+  EDNS: 'SMTP-Host ist nicht auflösbar.',
+  ETLS: 'TLS-Verbindung zum SMTP-Server fehlgeschlagen — Verschlüsselung prüfen.',
+  EENVELOPE: 'Absender oder Empfänger wurde vom SMTP-Server abgelehnt.',
+};
+
+/**
+ * F-03: SMTP-Testfehler über Fehlercode und SMTP-Antwortcode statt Rohtext
+ * (der Server-Text kann interne Hosts enthalten); Details im Server-Log.
+ */
+function smtpTestErrorMessage(error: unknown): string {
+  const fields = (error ?? {}) as { code?: unknown; responseCode?: unknown };
+  const code = typeof fields.code === 'string' ? fields.code : null;
+  const responseCode = typeof fields.responseCode === 'number' ? fields.responseCode : null;
+  log.warn(
+    {
+      component: 'smtp-test',
+      code,
+      responseCode,
+      err: error instanceof Error ? error.message : String(error),
+    },
+    'SMTP-Test fehlgeschlagen',
+  );
+  const smtpStatus = responseCode ? ` (SMTP ${responseCode})` : '';
+  const known = code ? SMTP_TEST_MESSAGES[code] : undefined;
+  if (known) return `${known}${smtpStatus}`;
+  return `unbekannter Fehler${smtpStatus || (code ? ` (${code})` : '')}. Details stehen im Server-Log.`;
+}
 
 const SmtpSchema = z.object({
   host: z.string().min(1).max(255),
@@ -160,7 +194,7 @@ export async function sendTestMailAction(
   try {
     await sendTestMail(cfg, parsed.data.testTo);
   } catch (e) {
-    return { ok: false, error: `Versand fehlgeschlagen: ${(e as Error).message}` };
+    return { ok: false, error: `Versand fehlgeschlagen: ${smtpTestErrorMessage(e)}` };
   }
   return { ok: true };
 }
