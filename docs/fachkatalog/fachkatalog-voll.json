@@ -553,7 +553,11 @@
         "scripts/check-pnpm-supply-chain.sh",
         "apps/web/src/app/staff/(protected)/profile/actions.ts",
         "apps/web/src/app/staff/(protected)/admin/users/actions.ts",
-        "packages/db/scripts/verify-rls.ts"
+        "packages/db/scripts/verify-rls.ts",
+        "packages/db/prisma/migrations/20261006160000_owner_role_least_privilege/migration.sql",
+        "packages/crypto/src/certificate-path.ts",
+        "apps/web/src/server/auth/webauthn-attestation.ts",
+        "apps/worker/src/jobs/fido-mds-trust-anchors.ts"
       ],
       "test_refs": [
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
@@ -594,7 +598,12 @@
         "apps/web/src/server/auth/__tests__/simplewebauthn-crl-hardening.test.ts",
         "apps/web/src/lib/__tests__/webauthn-browser-error.test.ts",
         "apps/web/src/app/staff/(protected)/profile/__tests__/actions.test.ts",
-        "apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts"
+        "apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts",
+        "packages/db/src/__tests__/owner-role-privileges.test.ts",
+        "packages/crypto/src/__tests__/certificate-path.test.ts",
+        "apps/web/src/server/auth/__tests__/webauthn-attestation.test.ts",
+        "apps/web/src/server/auth/__tests__/webauthn-library-contract.test.ts",
+        "apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",
@@ -5200,7 +5209,9 @@
         "apps/worker/src/jobs/reminders-daily.ts",
         "packages/db/prisma/migrations/20260823200000_tax_notice_status_terms/migration.sql",
         "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql",
-        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts",
+        "packages/db/prisma/migrations/20261006170000_tax_notice_legal_final_reason_whitespace/migration.sql",
+        "packages/db/prisma/sql/functions/app.legal_final_reason_sufficient(text).sql"
       ],
       "test_refs": [
         "apps/e2e/tests/12-accessibility.spec.ts",
@@ -5214,7 +5225,8 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-transition.test.ts",
         "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
         "packages/db/src/__tests__/deadline-daily-review.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts",
+        "apps/web/src/server/fristen/__tests__/bescheid-vorab-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
       "related_rules": [

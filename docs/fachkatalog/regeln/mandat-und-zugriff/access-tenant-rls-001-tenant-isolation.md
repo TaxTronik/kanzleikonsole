@@ -103,6 +103,10 @@ code_refs:
   - apps/web/src/app/staff/(protected)/profile/actions.ts
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - packages/db/scripts/verify-rls.ts
+  - packages/db/prisma/migrations/20261006160000_owner_role_least_privilege/migration.sql
+  - packages/crypto/src/certificate-path.ts
+  - apps/web/src/server/auth/webauthn-attestation.ts
+  - apps/worker/src/jobs/fido-mds-trust-anchors.ts
 test_refs:
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts
@@ -143,6 +147,11 @@ test_refs:
   - apps/web/src/lib/__tests__/webauthn-browser-error.test.ts
   - apps/web/src/app/staff/(protected)/profile/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts
+  - packages/db/src/__tests__/owner-role-privileges.test.ts
+  - packages/crypto/src/__tests__/certificate-path.test.ts
+  - apps/web/src/server/auth/__tests__/webauthn-attestation.test.ts
+  - apps/web/src/server/auth/__tests__/webauthn-library-contract.test.ts
+  - apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
