@@ -5,12 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
-import {
-  staffActionGuard,
-  withStaffModule,
-  type ActionResult,
-} from '@/server/actions/staff-action';
-import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
+import { staffAction, withStaffModule, type ActionResult } from '@/server/actions/staff-action';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
   CreateBwaPlanSchema,
   DeleteBwaPlanSchema,
@@ -33,29 +29,28 @@ export async function createStaffPlanAction(
   clientId: string,
   input: CreateBwaPlanInput,
 ): Promise<ActionResult> {
-  const guard = await staffActionGuard({ module: 'bwa' });
-  if (!guard.ok) return guard;
-  const { tenantId, staffId, ctx, session } = guard;
-  if (!validClientId(clientId)) return { ok: false, error: 'Mandant ungültig.' };
-  const parsed = CreateBwaPlanSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  const result = await staffAction({
+    guard: { module: 'bwa' },
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      if (!validClientId(clientId)) return { ok: false, error: 'Mandant ungültig.' };
+      const parsed = CreateBwaPlanSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  let planId: string;
-  try {
-    planId = await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      return createBwaPlanTx(tx, {
-        tenantId,
-        clientId,
-        actor: { id: staffId, type: 'STAFF' },
-        data: parsed.data,
+      const planId = await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, clientId);
+        return createBwaPlanTx(tx, {
+          tenantId,
+          clientId,
+          actor: { id: staffId, type: 'STAFF' },
+          data: parsed.data,
+        });
       });
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
-  revalidatePath(`/staff/clients/${clientId}/bwa/plans`);
-  redirect(`/staff/clients/${clientId}/bwa/plans/${planId}`);
+      revalidatePath(`/staff/clients/${clientId}/bwa/plans`);
+      return { planId };
+    },
+  });
+  if (!result.ok) return result;
+  redirect(`/staff/clients/${clientId}/bwa/plans/${result.planId}`);
 }
 
 export async function updateStaffPlanAction(

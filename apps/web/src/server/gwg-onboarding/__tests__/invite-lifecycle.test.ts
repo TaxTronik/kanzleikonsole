@@ -34,8 +34,10 @@ describe('GwG-Einladungs-Lifecycle', () => {
     expect(onboardingInvite).toContain('bindLatestDraft: true');
     expect(onboardingInvite).toContain('gwgCheckId: binding.gwgCheckId');
     expect(onboardingInvite).toContain('boundCheckRevision: binding.boundCheckRevision');
-    expect(directInvite).toContain("await emitN8nEvent(\n    'gwg.invite.created'");
-    expect(onboardingInvite).toContain("await emitN8nEvent(\n    'gwg.invite.created'");
+    // Direkt nach dem Commit emittiert (nicht über das Outbox-Feld n8nEvent);
+    // unabhängig von der Einrückung des Aufrufs.
+    expect(directInvite).toMatch(/await emitN8nEvent\(\s*'gwg\.invite\.created'/);
+    expect(onboardingInvite).toMatch(/await emitN8nEvent\(\s*'gwg\.invite\.created'/);
     expect(directInvite).not.toContain("n8nEvent: 'gwg.invite.created'");
     expect(onboardingInvite).not.toContain("n8nEvent: 'gwg.invite.created'");
     expect(directInvite).not.toContain("n8nEvent: 'client.created'");

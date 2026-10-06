@@ -14,14 +14,19 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: h.revalidatePath }));
-vi.mock('@/server/actions/staff-action', () => ({
-  staffActionGuard: vi.fn(async () => ({
-    ok: true,
+vi.mock('@/server/actions/staff-action', async () => {
+  const staffActionGuard = vi.fn(async () => ({
+    ok: true as const,
     tenantId: 'tenant-1',
     staffId: 'staff-1',
     ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
-  })),
-}));
+  }));
+  const { createActionRunner } = await vi.importActual<
+    typeof import('@/server/actions/action-runner')
+  >('@/server/actions/action-runner');
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  return { staffActionGuard, staffAction: createActionRunner(staffActionGuard) };
+});
 vi.mock('@taxtronik/db', () => ({
   withTenantContext: async (_ctx: unknown, fn: (tx: unknown) => Promise<unknown>) => {
     const tx = {

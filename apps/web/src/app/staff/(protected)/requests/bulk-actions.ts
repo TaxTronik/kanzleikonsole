@@ -8,7 +8,7 @@ import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
 import { emitN8nEvent } from '@/server/n8n/emit';
-import { staffActionGuard } from '@/server/actions/staff-action';
+import { staffAction } from '@/server/actions/staff-action';
 
 const BulkSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(200),
@@ -103,146 +103,149 @@ function failureSummary(failures: BulkFailure[], closed: number): string {
 }
 
 export async function bulkCloseRequestsAction(input: { ids: string[] }): Promise<BulkResult> {
-  // Massenoperationen über mehrere Mandanten hinweg — nur ADMIN/PARTNER.
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return { ok: false, affected: 0, error: g.error };
-  const { tenantId, staffId, ctx } = g;
+  const result = await staffAction({
+    // Massenoperationen über mehrere Mandanten hinweg — nur ADMIN/PARTNER.
+    guard: { requireAdmin: true },
+    run: async ({ tenantId, staffId, ctx }) => {
+      const parsed = BulkSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, affected: 0, error: 'Validierungsfehler.' };
 
-  const parsed = BulkSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, affected: 0, error: 'Validierungsfehler.' };
+      const closeRequests = (ids: string[]) =>
+        withTenantContext(ctx, async (tx) => {
+          const before = await tx.request.findMany({
+            where: { id: { in: ids }, status: { notIn: ['CLOSED', 'CANCELLED'] } },
+            select: { id: true, status: true },
+          });
+          if (before.length === 0) return [] as string[];
 
-  const closeRequests = (ids: string[]) =>
-    withTenantContext(ctx, async (tx) => {
-      const before = await tx.request.findMany({
-        where: { id: { in: ids }, status: { notIn: ['CLOSED', 'CANCELLED'] } },
-        select: { id: true, status: true },
-      });
-      if (before.length === 0) return [] as string[];
-
-      await tx.request.updateMany({
-        where: { id: { in: before.map((b) => b.id) } },
-        data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
-      });
-      await resolveNotificationsTx(tx, {
-        tenantId,
-        resources: before.map((request) => ({
-          resourceType: 'request',
-          resourceId: request.id,
-        })),
-      });
-
-      // Pro Eintrag ein Audit-Log
-      for (const b of before) {
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'request.close',
-          resourceType: 'request',
-          resourceId: b.id,
-          before: { status: b.status },
-          after: { status: 'CLOSED', bulk: true },
-        });
-      }
-
-      return before.map((b) => b.id);
-    });
-
-  const closedIds: string[] = [];
-  const failures: Array<{ id: string; reason: string }> = [];
-  let aborted = false;
-  let consecutiveFailures = 0;
-
-  for (let i = 0; i < parsed.data.ids.length; i += BULK_CHUNK) {
-    const chunkIds = parsed.data.ids.slice(i, i + BULK_CHUNK);
-    if (aborted) {
-      failures.push(...chunkIds.map((id) => ({ id, reason: NOT_ATTEMPTED_REASON })));
-      continue;
-    }
-    try {
-      closedIds.push(...(await closeRequests(chunkIds)));
-      consecutiveFailures = 0;
-      continue;
-    } catch (chunkError) {
-      // Bereits committete Chunks bleiben gültig; dieser wurde zurückgerollt.
-      log.warn(
-        {
-          component: 'bulk-close',
-          tenantId,
-          staffId,
-          chunkSize: chunkIds.length,
-          ...errorLogFields(chunkError),
-        },
-        'bulk-close: Chunk fehlgeschlagen — Anforderungen werden einzeln geschlossen',
-      );
-    }
-    for (const id of chunkIds) {
-      if (aborted) {
-        failures.push({ id, reason: NOT_ATTEMPTED_REASON });
-        continue;
-      }
-      try {
-        closedIds.push(...(await closeRequests([id])));
-        consecutiveFailures = 0;
-      } catch (itemError) {
-        log.error(
-          {
-            component: 'bulk-close',
+          await tx.request.updateMany({
+            where: { id: { in: before.map((b) => b.id) } },
+            data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
+          });
+          await resolveNotificationsTx(tx, {
             tenantId,
-            staffId,
-            requestId: id,
-            ...errorLogFields(itemError),
-          },
-          'bulk-close: Anforderung nicht geschlossen',
-        );
-        failures.push({ id, reason: bulkCloseFailureReason(itemError) });
-        consecutiveFailures += 1;
-        aborted = consecutiveFailures >= MAX_CONSECUTIVE_ITEM_FAILURES;
+            resources: before.map((request) => ({
+              resourceType: 'request',
+              resourceId: request.id,
+            })),
+          });
+
+          // Pro Eintrag ein Audit-Log
+          for (const b of before) {
+            await evidenceService.record(tx, {
+              tenantId,
+              actorType: 'STAFF',
+              actorId: staffId,
+              action: 'request.close',
+              resourceType: 'request',
+              resourceId: b.id,
+              before: { status: b.status },
+              after: { status: 'CLOSED', bulk: true },
+            });
+          }
+
+          return before.map((b) => b.id);
+        });
+
+      const closedIds: string[] = [];
+      const failures: Array<{ id: string; reason: string }> = [];
+      let aborted = false;
+      let consecutiveFailures = 0;
+
+      for (let i = 0; i < parsed.data.ids.length; i += BULK_CHUNK) {
+        const chunkIds = parsed.data.ids.slice(i, i + BULK_CHUNK);
+        if (aborted) {
+          failures.push(...chunkIds.map((id) => ({ id, reason: NOT_ATTEMPTED_REASON })));
+          continue;
+        }
+        try {
+          closedIds.push(...(await closeRequests(chunkIds)));
+          consecutiveFailures = 0;
+          continue;
+        } catch (chunkError) {
+          // Bereits committete Chunks bleiben gültig; dieser wurde zurückgerollt.
+          log.warn(
+            {
+              component: 'bulk-close',
+              tenantId,
+              staffId,
+              chunkSize: chunkIds.length,
+              ...errorLogFields(chunkError),
+            },
+            'bulk-close: Chunk fehlgeschlagen — Anforderungen werden einzeln geschlossen',
+          );
+        }
+        for (const id of chunkIds) {
+          if (aborted) {
+            failures.push({ id, reason: NOT_ATTEMPTED_REASON });
+            continue;
+          }
+          try {
+            closedIds.push(...(await closeRequests([id])));
+            consecutiveFailures = 0;
+          } catch (itemError) {
+            log.error(
+              {
+                component: 'bulk-close',
+                tenantId,
+                staffId,
+                requestId: id,
+                ...errorLogFields(itemError),
+              },
+              'bulk-close: Anforderung nicht geschlossen',
+            );
+            failures.push({ id, reason: bulkCloseFailureReason(itemError) });
+            consecutiveFailures += 1;
+            aborted = consecutiveFailures >= MAX_CONSECUTIVE_ITEM_FAILURES;
+          }
+        }
       }
-    }
-  }
 
-  // n8n-Events fire-and-forget — NUR über die tatsächlich geschlossenen Requests.
-  // Über die rohe Eingabe (parsed.data.ids) zu feuern würde request.closed auch
-  // für bereits geschlossene, nicht existierende oder RLS-gefilterte IDs auslösen
-  // → spurious, client-wirksame Downstream-Notifications.
-  // Der Bulk-Endpunkt verarbeitet bis zu 200 Anforderungen. Kleine Batches
-  // begrenzen gleichzeitige Outbox-Transaktionen und damit den DB-Pool-Druck.
-  for (let offset = 0; offset < closedIds.length; offset += 10) {
-    await Promise.all(
-      closedIds
-        .slice(offset, offset + 10)
-        .map((id) => emitN8nEvent('request.closed', { tenantId, requestId: id }, { tenantId })),
-    );
-  }
-  revalidatePath('/staff/requests');
-  if (failures.length === 0) return { ok: true, affected: closedIds.length };
+      // n8n-Events fire-and-forget — NUR über die tatsächlich geschlossenen Requests.
+      // Über die rohe Eingabe (parsed.data.ids) zu feuern würde request.closed auch
+      // für bereits geschlossene, nicht existierende oder RLS-gefilterte IDs auslösen
+      // → spurious, client-wirksame Downstream-Notifications.
+      // Der Bulk-Endpunkt verarbeitet bis zu 200 Anforderungen. Kleine Batches
+      // begrenzen gleichzeitige Outbox-Transaktionen und damit den DB-Pool-Druck.
+      for (let offset = 0; offset < closedIds.length; offset += 10) {
+        await Promise.all(
+          closedIds
+            .slice(offset, offset + 10)
+            .map((id) => emitN8nEvent('request.closed', { tenantId, requestId: id }, { tenantId })),
+        );
+      }
+      revalidatePath('/staff/requests');
+      if (failures.length === 0) return { affected: closedIds.length };
 
-  // Titel nur zur Anzeige; ist die DB gerade weg, bleibt es bei den IDs.
-  const titles = new Map<string, string>();
-  try {
-    const rows = await withTenantContext(ctx, (tx) =>
-      tx.request.findMany({
-        where: { id: { in: failures.map((failure) => failure.id) } },
-        select: { id: true, title: true },
-      }),
-    );
-    for (const row of rows) titles.set(row.id, row.title);
-  } catch (titleError) {
-    log.warn(
-      { component: 'bulk-close', tenantId, staffId, ...errorLogFields(titleError) },
-      'bulk-close: Titel der nicht geschlossenen Anforderungen nicht lesbar',
-    );
-  }
-  const failed = failures.map((failure) => ({
-    id: failure.id,
-    title: titles.get(failure.id) ?? null,
-    reason: failure.reason,
-  }));
-  return {
-    ok: false,
-    affected: closedIds.length,
-    error: failureSummary(failed, closedIds.length),
-    failed,
-  };
+      // Titel nur zur Anzeige; ist die DB gerade weg, bleibt es bei den IDs.
+      const titles = new Map<string, string>();
+      try {
+        const rows = await withTenantContext(ctx, (tx) =>
+          tx.request.findMany({
+            where: { id: { in: failures.map((failure) => failure.id) } },
+            select: { id: true, title: true },
+          }),
+        );
+        for (const row of rows) titles.set(row.id, row.title);
+      } catch (titleError) {
+        log.warn(
+          { component: 'bulk-close', tenantId, staffId, ...errorLogFields(titleError) },
+          'bulk-close: Titel der nicht geschlossenen Anforderungen nicht lesbar',
+        );
+      }
+      const failed = failures.map((failure) => ({
+        id: failure.id,
+        title: titles.get(failure.id) ?? null,
+        reason: failure.reason,
+      }));
+      return {
+        ok: false,
+        affected: closedIds.length,
+        error: failureSummary(failed, closedIds.length),
+        failed,
+      };
+    },
+  });
+  // BulkResult trägt `affected` auch bei Ablehnung des Gates und Fehlern.
+  return result.ok ? result : { affected: 0, ...result };
 }

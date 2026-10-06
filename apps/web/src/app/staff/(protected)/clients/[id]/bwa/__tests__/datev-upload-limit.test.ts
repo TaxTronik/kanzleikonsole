@@ -40,7 +40,17 @@ vi.mock('@/server/actions/staff-action', async () => {
   const { parseFormData } = await vi.importActual<typeof import('@/server/actions/form-data')>(
     '@/server/actions/form-data',
   );
-  return { ActionError, parseFormData, staffActionGuard: h.staffActionGuard };
+  return {
+    ActionError,
+    parseFormData,
+    staffActionGuard: h.staffActionGuard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(h.staffActionGuard),
+  };
 });
 
 import { importDatevXlsxAction } from '../actions';

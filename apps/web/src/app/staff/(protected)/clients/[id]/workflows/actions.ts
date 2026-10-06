@@ -8,9 +8,9 @@ import { evidenceService } from '@/server/container';
 import { executeWorkflowStep, type ExecuteResult } from '@/server/workflows/execute-step';
 import { parseStepConfig, WorkflowN8nEventSchema } from '@/server/workflows/step-config';
 import { assertClientInTenant, assertStaffInTenant } from '@/server/db/assert-tenant';
-import { assertClientAccessTx, filterStaffAccessClientTx, toActionError } from '@/server/auth/rbac';
+import { assertClientAccessTx, filterStaffAccessClientTx } from '@/server/auth/rbac';
 import {
-  staffActionGuard,
+  staffAction,
   withStaffModule,
   ActionError,
   type ActionResult as BaseActionResult,
@@ -858,35 +858,33 @@ export async function deleteCancelledInstanceAction(input: { instanceId: string 
 export async function executeItemAction(input: {
   id: string;
 }): Promise<ActionResult & ExecuteResult> {
-  const g = await staffActionGuard({ module: 'workflows' });
-  if (!g.ok) return g;
-  const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  return staffAction({
+    guard: { module: 'workflows' },
+    run: async (g) => {
+      const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  // Vertraulich-/RESTRICTED-Ventil: executeWorkflowStep prüft den Mandanten-
-  // Zugriff selbst NICHT — daher hier vor der Delegation über die Instanz des
-  // Items den Zugriff sicherstellen.
-  let clientId: string;
-  try {
-    clientId = await withTenantContext(g.ctx, async (tx) => {
-      const item = await tx.workflowItem.findUnique({
-        where: { id: parsed.data.id },
-        select: { instance: { select: { clientId: true } } },
+      // Vertraulich-/RESTRICTED-Ventil: executeWorkflowStep prüft den Mandanten-
+      // Zugriff selbst NICHT — daher hier vor der Delegation über die Instanz des
+      // Items den Zugriff sicherstellen.
+      const clientId = await withTenantContext(g.ctx, async (tx) => {
+        const item = await tx.workflowItem.findUnique({
+          where: { id: parsed.data.id },
+          select: { instance: { select: { clientId: true } } },
+        });
+        if (!item) throw new ActionError('Schritt nicht gefunden.');
+        await assertClientAccessTx(tx, g.session, item.instance.clientId);
+        return item.instance.clientId;
       });
-      if (!item) throw new ActionError('Schritt nicht gefunden.');
-      await assertClientAccessTx(tx, g.session, item.instance.clientId);
-      return item.instance.clientId;
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  const result = await executeWorkflowStep({
-    tenantId: g.tenantId,
-    staffId: g.staffId,
-    itemId: parsed.data.id,
+      const result = await executeWorkflowStep({
+        tenantId: g.tenantId,
+        staffId: g.staffId,
+        itemId: parsed.data.id,
+      });
+
+      revalidateClientWorkflow(clientId);
+      return result;
+    },
   });
-
-  revalidateClientWorkflow(clientId);
-  return result;
 }

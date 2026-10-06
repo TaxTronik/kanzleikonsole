@@ -11,7 +11,7 @@ import { enqueueTaxDeadlineMaterialize } from '@/server/jobs/tax-deadline-materi
 import { fireAndForget } from '@/server/util/fire-and-forget';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { staffActionGuard } from '@/server/actions/staff-action';
+import { staffAction } from '@/server/actions/staff-action';
 import { berlinTodayUtcMidnight, lockTaxScheduleTx } from '@taxtronik/tax';
 
 const ALL_KINDS: TaxScheduleKind[] = [
@@ -52,197 +52,200 @@ export async function saveScheduleConfigAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'taxNotices' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    guard: { module: 'taxNotices' },
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = z.string().uuid().safeParse(formData.get('clientId'));
+      if (!parsed.success) return { ok: false, error: 'Ungültige Mandanten-ID.' };
+      const clientId = parsed.data;
 
-  const parsed = z.string().uuid().safeParse(formData.get('clientId'));
-  if (!parsed.success) return { ok: false, error: 'Ungültige Mandanten-ID.' };
-  const clientId = parsed.data;
+      // Pro Kind die Felder einsammeln. Dauerfrist/advised werden serverseitig
+      // auf die fachlich zulässigen Arten begrenzt (Whitelists oben).
+      // reminder/lead: bei abgeschalteter Auto-Anforderung sind die Zahlenfelder
+      // im Formular disabled (nicht submitted) — dann bleiben unten die
+      // gespeicherten Werte erhalten statt auf die Defaults zurückzufallen.
+      const updates = ALL_KINDS.map((kind) => ({
+        kind,
+        active: formData.get(`active.${kind}`) === 'on',
+        hasDauerfrist: DAUERFRIST_KINDS.has(kind) && formData.get(`dauerfrist.${kind}`) === 'on',
+        advised: ADVISED_KINDS.has(kind) && formData.get(`advised.${kind}`) === 'on',
+        autoRequest: formData.get(`autoRequest.${kind}`) === 'on',
+        reminderDaysBefore: clampInt(formData.get(`reminder.${kind}`), 1, 90, 10),
+        staffLeadDays: clampInt(formData.get(`lead.${kind}`), 0, 30, 3),
+      }));
 
-  // Pro Kind die Felder einsammeln. Dauerfrist/advised werden serverseitig
-  // auf die fachlich zulässigen Arten begrenzt (Whitelists oben).
-  // reminder/lead: bei abgeschalteter Auto-Anforderung sind die Zahlenfelder
-  // im Formular disabled (nicht submitted) — dann bleiben unten die
-  // gespeicherten Werte erhalten statt auf die Defaults zurückzufallen.
-  const updates = ALL_KINDS.map((kind) => ({
-    kind,
-    active: formData.get(`active.${kind}`) === 'on',
-    hasDauerfrist: DAUERFRIST_KINDS.has(kind) && formData.get(`dauerfrist.${kind}`) === 'on',
-    advised: ADVISED_KINDS.has(kind) && formData.get(`advised.${kind}`) === 'on',
-    autoRequest: formData.get(`autoRequest.${kind}`) === 'on',
-    reminderDaysBefore: clampInt(formData.get(`reminder.${kind}`), 1, 90, 10),
-    staffLeadDays: clampInt(formData.get(`lead.${kind}`), 0, 30, 3),
-  }));
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, clientId);
+        // R-2: clientId Tenant-Sanity vor allen taxScheduleConfig-Mutationen.
+        await assertClientInTenant(tx, clientId);
+        // Same order as candidate creation: schedule gate -> config/deadline -> audit.
+        // Acquire before reading the old config or deleting any future deadlines.
+        await lockTaxScheduleTx(tx, tenantId);
+        const now = new Date();
+        // Bestehende laden für Diff
+        const existing = await tx.taxScheduleConfig.findMany({ where: { clientId } });
+        const byKind = new Map(existing.map((c) => [c.kind, c]));
 
-  await withTenantContext(ctx, async (tx) => {
-    await assertClientAccessTx(tx, session, clientId);
-    // R-2: clientId Tenant-Sanity vor allen taxScheduleConfig-Mutationen.
-    await assertClientInTenant(tx, clientId);
-    // Same order as candidate creation: schedule gate -> config/deadline -> audit.
-    // Acquire before reading the old config or deleting any future deadlines.
-    await lockTaxScheduleTx(tx, tenantId);
-    const now = new Date();
-    // Bestehende laden für Diff
-    const existing = await tx.taxScheduleConfig.findMany({ where: { clientId } });
-    const byKind = new Map(existing.map((c) => [c.kind, c]));
+        for (const u of updates) {
+          const old = byKind.get(u.kind);
 
-    for (const u of updates) {
-      const old = byKind.get(u.kind);
+          if (!u.active) {
+            // Inaktiv: Wenn Eintrag existiert → auf active=false setzen UND
+            // alle noch nicht erledigten Termine wegputzen, damit der Kalender
+            // sauber ist. Erledigte Termine bleiben (Audit-relevant).
+            if (old && old.active) {
+              const removedCount = await removeReschedulableDeadlines(
+                tx,
+                tenantId,
+                clientId,
+                u.kind,
+                now,
+              );
+              await tx.taxScheduleConfig.update({
+                where: { id: old.id },
+                data: { active: false },
+              });
+              await evidenceService.record(tx, {
+                tenantId,
+                actorType: 'STAFF',
+                actorId: staffId,
+                action: 'tax_schedule.deactivate',
+                resourceType: 'tax_schedule_config',
+                resourceId: old.id,
+                before: { active: true },
+                after: { active: false, removedDeadlines: removedCount },
+              });
+            }
+            continue;
+          }
 
-      if (!u.active) {
-        // Inaktiv: Wenn Eintrag existiert → auf active=false setzen UND
-        // alle noch nicht erledigten Termine wegputzen, damit der Kalender
-        // sauber ist. Erledigte Termine bleiben (Audit-relevant).
-        if (old && old.active) {
-          const removedCount = await removeReschedulableDeadlines(
-            tx,
-            tenantId,
-            clientId,
-            u.kind,
-            now,
-          );
-          await tx.taxScheduleConfig.update({
-            where: { id: old.id },
-            data: { active: false },
-          });
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'tax_schedule.deactivate',
-            resourceType: 'tax_schedule_config',
-            resourceId: old.id,
-            before: { active: true },
-            after: { active: false, removedDeadlines: removedCount },
-          });
+          // Aktiv: Upsert
+          if (old) {
+            // Fristrelevante Änderung (Dauerfrist/advised)? Dann müssen die noch
+            // offenen Termine dieses Kinds WEG, bevor neu materialisiert wird:
+            // materialize nutzt createMany(skipDuplicates) über (tenant, client,
+            // kind, period) — ein bestehender Termin derselben Periode bliebe
+            // sonst mit dem ALTEN Fälligkeitsdatum stehen und das neue würde nie
+            // geschrieben. Erledigte Termine bleiben (Audit-relevant), analog
+            // zum Deactivate-Pfad oben.
+            const datesChanged = old.hasDauerfrist !== u.hasDauerfrist || old.advised !== u.advised;
+            let removedCount = 0;
+            if (old.active && datesChanged) {
+              // Fristverschiebende Änderung → auch laufende (IN_PROGRESS) Zukunfts-
+              // termine neu datieren, damit keiner mit veraltetem Fälligkeitsdatum
+              // stehen bleibt. Sie kommen korrekt neu materialisiert zurück.
+              removedCount = await removeReschedulableDeadlines(
+                tx,
+                tenantId,
+                clientId,
+                u.kind,
+                now,
+                true,
+              );
+            }
+            // Bei abgeschalteter Auto-Anforderung sind die Tage-Felder im Formular
+            // disabled (nicht submitted) — gespeicherte Werte NICHT überschreiben,
+            // damit ein Wiedereinschalten die alte Konfiguration vorfindet.
+            const reminderDaysBefore = u.autoRequest
+              ? u.reminderDaysBefore
+              : old.reminderDaysBefore;
+            const staffLeadDays = u.autoRequest ? u.staffLeadDays : old.staffLeadDays;
+            const pipelineChanged =
+              old.autoRequest !== u.autoRequest ||
+              old.reminderDaysBefore !== reminderDaysBefore ||
+              old.staffLeadDays !== staffLeadDays;
+            await tx.taxScheduleConfig.update({
+              where: { id: old.id },
+              data: {
+                active: true,
+                hasDauerfrist: u.hasDauerfrist,
+                advised: u.advised,
+                autoRequest: u.autoRequest,
+                reminderDaysBefore,
+                staffLeadDays,
+              },
+            });
+            if (datesChanged || pipelineChanged) {
+              await evidenceService.record(tx, {
+                tenantId,
+                actorType: 'STAFF',
+                actorId: staffId,
+                action: 'tax_schedule.update',
+                resourceType: 'tax_schedule_config',
+                resourceId: old.id,
+                before: {
+                  hasDauerfrist: old.hasDauerfrist,
+                  advised: old.advised,
+                  autoRequest: old.autoRequest,
+                  reminderDaysBefore: old.reminderDaysBefore,
+                  staffLeadDays: old.staffLeadDays,
+                },
+                after: {
+                  hasDauerfrist: u.hasDauerfrist,
+                  advised: u.advised,
+                  autoRequest: u.autoRequest,
+                  reminderDaysBefore,
+                  staffLeadDays,
+                  rematerializedDeadlines: removedCount,
+                },
+              });
+            }
+          } else {
+            const created = await tx.taxScheduleConfig.create({
+              data: {
+                tenantId,
+                clientId,
+                kind: u.kind,
+                active: true,
+                hasDauerfrist: u.hasDauerfrist,
+                advised: u.advised,
+                autoRequest: u.autoRequest,
+                reminderDaysBefore: u.reminderDaysBefore,
+                staffLeadDays: u.staffLeadDays,
+                createdByStaff: staffId,
+              },
+            });
+            await evidenceService.record(tx, {
+              tenantId,
+              actorType: 'STAFF',
+              actorId: staffId,
+              action: 'tax_schedule.create',
+              resourceType: 'tax_schedule_config',
+              resourceId: created.id,
+              after: {
+                kind: u.kind,
+                hasDauerfrist: u.hasDauerfrist,
+                advised: u.advised,
+                autoRequest: u.autoRequest,
+                reminderDaysBefore: u.reminderDaysBefore,
+                staffLeadDays: u.staffLeadDays,
+              },
+            });
+          }
         }
-        continue;
+      });
+
+      // Direkt materialisieren, damit die neuen aktiven Termine sofort sichtbar sind.
+      // P-14: nur DIESER Mandant; vorher lief hier der ganze Tenant (alle Configs,
+      // Vorwarnungen, Anforderungen, OVERDUE) in einer 15-s-Web-Transaktion.
+      await materializeClientTaxDeadlines(ctx, { clientId, systemStaffId: staffId });
+
+      // TAX-DEADLINE-AUTOREQUEST-001: Vorwarnung, atomare Request-Anlage samt
+      // QUEUED-Benachrichtigung und Versand macht ausschließlich der Worker. Bei
+      // aktiver Automatik wird sein Lauf sofort angestoßen (idempotent über die
+      // jobId), damit fällige Schritte nicht bis zum Tageslauf warten.
+      if (updates.some((u) => u.active && u.autoRequest)) {
+        fireAndForget(
+          'tax-deadline materialize worker (tax-schedule save)',
+          enqueueTaxDeadlineMaterialize(tenantId),
+        );
       }
 
-      // Aktiv: Upsert
-      if (old) {
-        // Fristrelevante Änderung (Dauerfrist/advised)? Dann müssen die noch
-        // offenen Termine dieses Kinds WEG, bevor neu materialisiert wird:
-        // materialize nutzt createMany(skipDuplicates) über (tenant, client,
-        // kind, period) — ein bestehender Termin derselben Periode bliebe
-        // sonst mit dem ALTEN Fälligkeitsdatum stehen und das neue würde nie
-        // geschrieben. Erledigte Termine bleiben (Audit-relevant), analog
-        // zum Deactivate-Pfad oben.
-        const datesChanged = old.hasDauerfrist !== u.hasDauerfrist || old.advised !== u.advised;
-        let removedCount = 0;
-        if (old.active && datesChanged) {
-          // Fristverschiebende Änderung → auch laufende (IN_PROGRESS) Zukunfts-
-          // termine neu datieren, damit keiner mit veraltetem Fälligkeitsdatum
-          // stehen bleibt. Sie kommen korrekt neu materialisiert zurück.
-          removedCount = await removeReschedulableDeadlines(
-            tx,
-            tenantId,
-            clientId,
-            u.kind,
-            now,
-            true,
-          );
-        }
-        // Bei abgeschalteter Auto-Anforderung sind die Tage-Felder im Formular
-        // disabled (nicht submitted) — gespeicherte Werte NICHT überschreiben,
-        // damit ein Wiedereinschalten die alte Konfiguration vorfindet.
-        const reminderDaysBefore = u.autoRequest ? u.reminderDaysBefore : old.reminderDaysBefore;
-        const staffLeadDays = u.autoRequest ? u.staffLeadDays : old.staffLeadDays;
-        const pipelineChanged =
-          old.autoRequest !== u.autoRequest ||
-          old.reminderDaysBefore !== reminderDaysBefore ||
-          old.staffLeadDays !== staffLeadDays;
-        await tx.taxScheduleConfig.update({
-          where: { id: old.id },
-          data: {
-            active: true,
-            hasDauerfrist: u.hasDauerfrist,
-            advised: u.advised,
-            autoRequest: u.autoRequest,
-            reminderDaysBefore,
-            staffLeadDays,
-          },
-        });
-        if (datesChanged || pipelineChanged) {
-          await evidenceService.record(tx, {
-            tenantId,
-            actorType: 'STAFF',
-            actorId: staffId,
-            action: 'tax_schedule.update',
-            resourceType: 'tax_schedule_config',
-            resourceId: old.id,
-            before: {
-              hasDauerfrist: old.hasDauerfrist,
-              advised: old.advised,
-              autoRequest: old.autoRequest,
-              reminderDaysBefore: old.reminderDaysBefore,
-              staffLeadDays: old.staffLeadDays,
-            },
-            after: {
-              hasDauerfrist: u.hasDauerfrist,
-              advised: u.advised,
-              autoRequest: u.autoRequest,
-              reminderDaysBefore,
-              staffLeadDays,
-              rematerializedDeadlines: removedCount,
-            },
-          });
-        }
-      } else {
-        const created = await tx.taxScheduleConfig.create({
-          data: {
-            tenantId,
-            clientId,
-            kind: u.kind,
-            active: true,
-            hasDauerfrist: u.hasDauerfrist,
-            advised: u.advised,
-            autoRequest: u.autoRequest,
-            reminderDaysBefore: u.reminderDaysBefore,
-            staffLeadDays: u.staffLeadDays,
-            createdByStaff: staffId,
-          },
-        });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'tax_schedule.create',
-          resourceType: 'tax_schedule_config',
-          resourceId: created.id,
-          after: {
-            kind: u.kind,
-            hasDauerfrist: u.hasDauerfrist,
-            advised: u.advised,
-            autoRequest: u.autoRequest,
-            reminderDaysBefore: u.reminderDaysBefore,
-            staffLeadDays: u.staffLeadDays,
-          },
-        });
-      }
-    }
+      revalidatePath(`/staff/clients/${clientId}/tax-schedule`);
+      revalidatePath('/staff/tax-deadlines');
+      return { savedAt: new Date().toISOString() };
+    },
   });
-
-  // Direkt materialisieren, damit die neuen aktiven Termine sofort sichtbar sind.
-  // P-14: nur DIESER Mandant; vorher lief hier der ganze Tenant (alle Configs,
-  // Vorwarnungen, Anforderungen, OVERDUE) in einer 15-s-Web-Transaktion.
-  await materializeClientTaxDeadlines(ctx, { clientId, systemStaffId: staffId });
-
-  // TAX-DEADLINE-AUTOREQUEST-001: Vorwarnung, atomare Request-Anlage samt
-  // QUEUED-Benachrichtigung und Versand macht ausschließlich der Worker. Bei
-  // aktiver Automatik wird sein Lauf sofort angestoßen (idempotent über die
-  // jobId), damit fällige Schritte nicht bis zum Tageslauf warten.
-  if (updates.some((u) => u.active && u.autoRequest)) {
-    fireAndForget(
-      'tax-deadline materialize worker (tax-schedule save)',
-      enqueueTaxDeadlineMaterialize(tenantId),
-    );
-  }
-
-  revalidatePath(`/staff/clients/${clientId}/tax-schedule`);
-  revalidatePath('/staff/tax-deadlines');
-  return { ok: true, savedAt: new Date().toISOString() };
 }
 
 // #10 (Fristen-Schutz): nur NICHT fällige, noch nicht versäumte Termine

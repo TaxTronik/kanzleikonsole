@@ -12,9 +12,10 @@ import { requestOpenedMail } from '@/server/mail/dispatch';
 import { enqueueClientContactsMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { portalBaseUrl } from '@taxtronik/config';
 import { berlinWallClockToUtc } from '@/lib/fmt';
-import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { databaseErrorInfo } from '@/server/actions/database-error';
 import {
+  staffAction,
   staffActionGuard,
   ActionError,
   parseFormData,
@@ -93,189 +94,181 @@ async function enqueueRequestOpenedMailTx(
 }
 
 async function createRequestCore(formData: FormData): Promise<RequestActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = parseFormData(CreateSchema, formData);
+      if (!parsed.ok) return parsed;
 
-  const parsed = parseFormData(CreateSchema, formData);
-  if (!parsed.ok) return parsed;
+      const data = parsed.data;
 
-  const data = parsed.data;
-
-  // Anforderungen sind ein Kernfeature; sobald dieser Einstieg jedoch eine
-  // FormSubmission erzeugt, muss zusätzlich der Formular-Schalter gelten.
-  if (data.formTemplateId) {
-    const formsGate = await staffActionGuard({ module: 'forms' });
-    if (!formsGate.ok) return formsGate;
-  }
-
-  let createdId: string;
-  let createdFresh: boolean;
-  try {
-    const result = await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, data.clientId);
-
-      // Eine Server-Action kann nach einem unklaren Netzwerkabbruch erneut
-      // zugestellt werden. Der transaktionsweite Advisory Lock serialisiert
-      // exakt dieselbe, vom Server erzeugte Request-ID; dadurch entstehen
-      // weder doppelte Anforderungen noch doppelte Formulare/Audit-Eintraege.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${data.requestId}::text, 0))`;
-      const replay = await tx.request.findFirst({
-        where: { id: data.requestId, tenantId },
-        select: {
-          id: true,
-          tenantId: true,
-          clientId: true,
-          createdByStaff: true,
-          title: true,
-          description: true,
-          priority: true,
-          dueAt: true,
-          formSubmission: { select: { templateId: true } },
-        },
-      });
-      if (replay) {
-        const creationAudit = await tx.auditLog.findFirst({
-          where: {
-            tenantId,
-            action: 'request.create',
-            resourceType: 'request',
-            resourceId: replay.id,
-          },
-          orderBy: { id: 'asc' },
-          select: { after: true },
-        });
-        const auditAfter =
-          creationAudit?.after &&
-          typeof creationAudit.after === 'object' &&
-          !Array.isArray(creationAudit.after)
-            ? (creationAudit.after as Record<string, unknown>)
-            : null;
-        const requestedDueAt = data.dueAt ? berlinWallClockToUtc(data.dueAt) : null;
-        const replayDueAtMatches =
-          replay.dueAt === null
-            ? requestedDueAt === null
-            : requestedDueAt !== null && replay.dueAt.getTime() === requestedDueAt.getTime();
-        const replayFormTemplateId = replay.formSubmission?.templateId ?? '';
-        const replayRequestTemplateId =
-          typeof auditAfter?.['templateId'] === 'string' ? auditAfter['templateId'] : '';
-        if (
-          replay.tenantId !== tenantId ||
-          replay.clientId !== data.clientId ||
-          replay.createdByStaff !== staffId ||
-          replay.title !== data.title ||
-          replay.description !== data.description ||
-          replay.priority !== data.priority ||
-          !replayDueAtMatches ||
-          replayFormTemplateId !== (data.formTemplateId || '') ||
-          replayRequestTemplateId !== (data.templateId || '')
-        ) {
-          throw new ActionError(
-            'Diese Erstellungs-ID wurde bereits mit anderen Angaben verwendet. Bitte Formular neu laden.',
-          );
-        }
-        return { id: replay.id, created: false };
-      }
-
-      let wikiArticleIds: string[] = [];
-      if (data.templateId) {
-        const requestTemplate = await tx.requestTemplate.findFirst({
-          where: {
-            id: data.templateId,
-            tenantId,
-            active: true,
-            OR: [{ formTemplateId: null }, { formTemplate: { active: true } }],
-          },
-          select: { id: true, wikiArticleIds: true },
-        });
-        if (!requestTemplate) {
-          throw new ActionError(
-            'Die ausgewählte Anforderungsvorlage ist nicht mehr aktiv. Bitte Auswahl aktualisieren.',
-          );
-        }
-        wikiArticleIds = requestTemplate.wikiArticleIds;
-      }
-
-      // Optional: Formular-Submission vorab anlegen — die Submission ist
-      // im DRAFT-Status und wird mit der Request verknüpft.
-      let formSubmissionId: string | null = null;
+      // Anforderungen sind ein Kernfeature; sobald dieser Einstieg jedoch eine
+      // FormSubmission erzeugt, muss zusätzlich der Formular-Schalter gelten.
       if (data.formTemplateId) {
-        const formTpl = await tx.formTemplate.findFirst({
-          where: { id: data.formTemplateId, tenantId },
-          select: { id: true, name: true, active: true },
+        const formsGate = await staffActionGuard({ module: 'forms' });
+        if (!formsGate.ok) return formsGate;
+      }
+
+      // GwG-Schranke (DB-Trigger) ordnet toActionError über SQLSTATE + Marker ein.
+      const result = await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, data.clientId);
+
+        // Eine Server-Action kann nach einem unklaren Netzwerkabbruch erneut
+        // zugestellt werden. Der transaktionsweite Advisory Lock serialisiert
+        // exakt dieselbe, vom Server erzeugte Request-ID; dadurch entstehen
+        // weder doppelte Anforderungen noch doppelte Formulare/Audit-Eintraege.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${data.requestId}::text, 0))`;
+        const replay = await tx.request.findFirst({
+          where: { id: data.requestId, tenantId },
+          select: {
+            id: true,
+            tenantId: true,
+            clientId: true,
+            createdByStaff: true,
+            title: true,
+            description: true,
+            priority: true,
+            dueAt: true,
+            formSubmission: { select: { templateId: true } },
+          },
         });
-        if (!formTpl?.active) {
-          throw new ActionError(
-            'Das ausgewählte Formular ist nicht mehr aktiv. Bitte Auswahl aktualisieren.',
-          );
+        if (replay) {
+          const creationAudit = await tx.auditLog.findFirst({
+            where: {
+              tenantId,
+              action: 'request.create',
+              resourceType: 'request',
+              resourceId: replay.id,
+            },
+            orderBy: { id: 'asc' },
+            select: { after: true },
+          });
+          const auditAfter =
+            creationAudit?.after &&
+            typeof creationAudit.after === 'object' &&
+            !Array.isArray(creationAudit.after)
+              ? (creationAudit.after as Record<string, unknown>)
+              : null;
+          const requestedDueAt = data.dueAt ? berlinWallClockToUtc(data.dueAt) : null;
+          const replayDueAtMatches =
+            replay.dueAt === null
+              ? requestedDueAt === null
+              : requestedDueAt !== null && replay.dueAt.getTime() === requestedDueAt.getTime();
+          const replayFormTemplateId = replay.formSubmission?.templateId ?? '';
+          const replayRequestTemplateId =
+            typeof auditAfter?.['templateId'] === 'string' ? auditAfter['templateId'] : '';
+          if (
+            replay.tenantId !== tenantId ||
+            replay.clientId !== data.clientId ||
+            replay.createdByStaff !== staffId ||
+            replay.title !== data.title ||
+            replay.description !== data.description ||
+            replay.priority !== data.priority ||
+            !replayDueAtMatches ||
+            replayFormTemplateId !== (data.formTemplateId || '') ||
+            replayRequestTemplateId !== (data.templateId || '')
+          ) {
+            throw new ActionError(
+              'Diese Erstellungs-ID wurde bereits mit anderen Angaben verwendet. Bitte Formular neu laden.',
+            );
+          }
+          return { id: replay.id, created: false };
         }
-        const sub = await tx.formSubmission.create({
+
+        let wikiArticleIds: string[] = [];
+        if (data.templateId) {
+          const requestTemplate = await tx.requestTemplate.findFirst({
+            where: {
+              id: data.templateId,
+              tenantId,
+              active: true,
+              OR: [{ formTemplateId: null }, { formTemplate: { active: true } }],
+            },
+            select: { id: true, wikiArticleIds: true },
+          });
+          if (!requestTemplate) {
+            throw new ActionError(
+              'Die ausgewählte Anforderungsvorlage ist nicht mehr aktiv. Bitte Auswahl aktualisieren.',
+            );
+          }
+          wikiArticleIds = requestTemplate.wikiArticleIds;
+        }
+
+        // Optional: Formular-Submission vorab anlegen — die Submission ist
+        // im DRAFT-Status und wird mit der Request verknüpft.
+        let formSubmissionId: string | null = null;
+        if (data.formTemplateId) {
+          const formTpl = await tx.formTemplate.findFirst({
+            where: { id: data.formTemplateId, tenantId },
+            select: { id: true, name: true, active: true },
+          });
+          if (!formTpl?.active) {
+            throw new ActionError(
+              'Das ausgewählte Formular ist nicht mehr aktiv. Bitte Auswahl aktualisieren.',
+            );
+          }
+          const sub = await tx.formSubmission.create({
+            data: {
+              tenantId,
+              templateId: formTpl.id,
+              clientId: data.clientId,
+              name: formTpl.name,
+              status: 'PENDING',
+              createdByStaff: staffId,
+            },
+          });
+          formSubmissionId = sub.id;
+        }
+
+        const req = await tx.request.create({
           data: {
+            id: data.requestId,
             tenantId,
-            templateId: formTpl.id,
             clientId: data.clientId,
-            name: formTpl.name,
-            status: 'PENDING',
+            title: data.title,
+            wikiArticleIds,
+            description: data.description,
+            priority: data.priority,
+            dueAt: data.dueAt ? berlinWallClockToUtc(data.dueAt) : null,
+            formSubmissionId,
             createdByStaff: staffId,
           },
         });
-        formSubmissionId = sub.id;
-      }
 
-      const req = await tx.request.create({
-        data: {
-          id: data.requestId,
+        // Submission jetzt nachträglich auf den Request verlinken (für UI-Lookup)
+        if (formSubmissionId) {
+          await tx.formSubmission.update({
+            where: { id: formSubmissionId },
+            data: { requestId: req.id },
+          });
+        }
+
+        await evidenceService.record(tx, {
           tenantId,
-          clientId: data.clientId,
-          title: data.title,
-          wikiArticleIds,
-          description: data.description,
-          priority: data.priority,
-          dueAt: data.dueAt ? berlinWallClockToUtc(data.dueAt) : null,
-          formSubmissionId,
-          createdByStaff: staffId,
-        },
-      });
-
-      // Submission jetzt nachträglich auf den Request verlinken (für UI-Lookup)
-      if (formSubmissionId) {
-        await tx.formSubmission.update({
-          where: { id: formSubmissionId },
-          data: { requestId: req.id },
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'request.create',
+          resourceType: 'request',
+          resourceId: req.id,
+          after: {
+            clientId: data.clientId,
+            title: data.title,
+            priority: data.priority,
+            templateId: data.templateId || null,
+            formSubmissionId,
+          },
         });
-      }
-
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'request.create',
-        resourceType: 'request',
-        resourceId: req.id,
-        after: {
-          clientId: data.clientId,
-          title: data.title,
-          priority: data.priority,
-          templateId: data.templateId || null,
-          formSubmissionId,
-        },
+        await enqueueRequestOpenedMailTx(tx, { tenantId, requestId: req.id, data });
+        return { id: req.id, created: true };
       });
-      await enqueueRequestOpenedMailTx(tx, { tenantId, requestId: req.id, data });
-      return { id: req.id, created: true };
-    });
-    createdId = result.id;
-    createdFresh = result.created;
-  } catch (e) {
-    // GwG-Schranke (DB-Trigger) ordnet toActionError über SQLSTATE + Marker ein.
-    return toActionError(e);
-  }
 
-  // Die Mandanten-Mail liegt seit dem Commit als Versandauftrag vor.
-  if (createdFresh) kickMailOutboxDelivery();
+      // Die Mandanten-Mail liegt seit dem Commit als Versandauftrag vor.
+      if (result.created) kickMailOutboxDelivery();
 
-  revalidatePath(`/staff/clients/${data.clientId}`);
-  revalidatePath('/staff/requests');
-  return { ok: true, requestId: createdId, clientId: data.clientId };
+      revalidatePath(`/staff/clients/${data.clientId}`);
+      revalidatePath('/staff/requests');
+      return { requestId: result.id, clientId: data.clientId };
+    },
+  });
 }
 
 /**
@@ -309,59 +302,54 @@ export async function closeRequestAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = parseFormData(CloseSchema, formData);
+      if (!parsed.ok) return parsed;
+      const { requestId } = parsed.data;
 
-  const parsed = parseFormData(CloseSchema, formData);
-  if (!parsed.ok) return parsed;
-  const { requestId } = parsed.data;
+      const closed = await withTenantContext(ctx, async (tx) => {
+        const before = await tx.request.findUnique({ where: { id: requestId } });
+        if (!before) throw new ActionError('Anforderung nicht gefunden.');
+        await assertClientAccessTx(tx, session, before.clientId);
+        if (!['OPEN', 'IN_PROGRESS', 'RESPONDED'].includes(before.status)) {
+          return { closed: false, formSubmissionId: before.formSubmissionId };
+        }
+        const claimed = await tx.request.updateMany({
+          // Exakter Status-CAS statt nur "nicht terminal": gewinnt parallel z. B.
+          // OPEN -> RESPONDED, darf dieser Aufruf weder dessen neuen Zustand mit
+          // einem stale `before: OPEN` schließen noch ein falsches Audit schreiben.
+          where: { id: requestId, status: before.status },
+          data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
+        });
+        if (claimed.count !== 1) {
+          return { closed: false, formSubmissionId: before.formSubmissionId };
+        }
+        await resolveNotificationsTx(tx, {
+          tenantId,
+          resources: [{ resourceType: 'request', resourceId: requestId }],
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'request.close',
+          resourceType: 'request',
+          resourceId: requestId,
+          before: { status: before.status },
+          after: { status: 'CLOSED' },
+        });
+        return { closed: true, formSubmissionId: before.formSubmissionId };
+      });
 
-  let closed: { closed: boolean; formSubmissionId: string | null };
-  try {
-    closed = await withTenantContext(ctx, async (tx) => {
-      const before = await tx.request.findUnique({ where: { id: requestId } });
-      if (!before) throw new ActionError('Anforderung nicht gefunden.');
-      await assertClientAccessTx(tx, session, before.clientId);
-      if (!['OPEN', 'IN_PROGRESS', 'RESPONDED'].includes(before.status)) {
-        return { closed: false, formSubmissionId: before.formSubmissionId };
-      }
-      const claimed = await tx.request.updateMany({
-        // Exakter Status-CAS statt nur "nicht terminal": gewinnt parallel z. B.
-        // OPEN -> RESPONDED, darf dieser Aufruf weder dessen neuen Zustand mit
-        // einem stale `before: OPEN` schließen noch ein falsches Audit schreiben.
-        where: { id: requestId, status: before.status },
-        data: { status: 'CLOSED', closedAt: new Date(), closedByStaff: staffId },
-      });
-      if (claimed.count !== 1) {
-        return { closed: false, formSubmissionId: before.formSubmissionId };
-      }
-      await resolveNotificationsTx(tx, {
-        tenantId,
-        resources: [{ resourceType: 'request', resourceId: requestId }],
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'request.close',
-        resourceType: 'request',
-        resourceId: requestId,
-        before: { status: before.status },
-        after: { status: 'CLOSED' },
-      });
-      return { closed: true, formSubmissionId: before.formSubmissionId };
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
-
-  if (closed.closed) await emitN8nEvent('request.closed', { tenantId, requestId }, { tenantId });
-  revalidatePath(`/staff/requests/${requestId}`);
-  revalidatePath('/staff/requests');
-  revalidatePath('/portal/forms');
-  if (closed.formSubmissionId) revalidatePath(`/portal/forms/${closed.formSubmissionId}`);
-  return { ok: true };
+      if (closed.closed)
+        await emitN8nEvent('request.closed', { tenantId, requestId }, { tenantId });
+      revalidatePath(`/staff/requests/${requestId}`);
+      revalidatePath('/staff/requests');
+      revalidatePath('/portal/forms');
+      if (closed.formSubmissionId) revalidatePath(`/portal/forms/${closed.formSubmissionId}`);
+    },
+  });
 }
 
 /**
@@ -374,88 +362,87 @@ export async function reopenRequestAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  const outcome = await staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = parseFormData(CloseSchema, formData);
+      if (!parsed.ok) return parsed;
+      const { requestId } = parsed.data;
 
-  const parsed = parseFormData(CloseSchema, formData);
-  if (!parsed.ok) return parsed;
-  const { requestId } = parsed.data;
+      let result: { formSubmissionId: string | null; conflict: boolean };
+      try {
+        result = await withTenantContext(ctx, async (tx) => {
+          const before = await tx.request.findUnique({
+            where: { id: requestId },
+            select: {
+              clientId: true,
+              status: true,
+              closedAt: true,
+              formSubmissionId: true,
+              linkedGwgIdDocumentId: true,
+            },
+          });
+          if (!before) throw new ActionError('Anforderung nicht gefunden.');
+          await assertClientAccessTx(tx, session, before.clientId);
 
-  let result: { formSubmissionId: string | null; conflict: boolean };
-  try {
-    result = await withTenantContext(ctx, async (tx) => {
-      const before = await tx.request.findUnique({
-        where: { id: requestId },
-        select: {
-          clientId: true,
-          status: true,
-          closedAt: true,
-          formSubmissionId: true,
-          linkedGwgIdDocumentId: true,
-        },
-      });
-      if (!before) throw new ActionError('Anforderung nicht gefunden.');
-      await assertClientAccessTx(tx, session, before.clientId);
+          if (before.status !== 'CLOSED' && before.status !== 'RESPONDED') {
+            return { formSubmissionId: before.formSubmissionId, conflict: false };
+          }
 
-      if (before.status !== 'CLOSED' && before.status !== 'RESPONDED') {
-        return { formSubmissionId: before.formSubmissionId, conflict: false };
-      }
+          if (before.linkedGwgIdDocumentId) {
+            const activeSuccessor = await tx.request.findFirst({
+              where: {
+                id: { not: requestId },
+                linkedGwgIdDocumentId: before.linkedGwgIdDocumentId,
+                status: { in: [...ACTIVE_GWG_REQUEST_STATUSES] },
+              },
+              select: { id: true },
+            });
+            if (activeSuccessor) {
+              return { formSubmissionId: before.formSubmissionId, conflict: true };
+            }
+          }
 
-      if (before.linkedGwgIdDocumentId) {
-        const activeSuccessor = await tx.request.findFirst({
-          where: {
-            id: { not: requestId },
-            linkedGwgIdDocumentId: before.linkedGwgIdDocumentId,
-            status: { in: [...ACTIVE_GWG_REQUEST_STATUSES] },
-          },
-          select: { id: true },
+          const reopened = await tx.request.updateMany({
+            // CAS auf den eben gelesenen, fachlich erlaubten Ausgangsstatus. So
+            // beschreibt das Audit auch bei parallelen Lifecycle-Aktionen exakt
+            // den Status, den dieser Aufruf tatsächlich nach OPEN überführt hat.
+            where: { id: requestId, status: before.status },
+            data: { status: 'OPEN', closedAt: null, closedByStaff: null },
+          });
+          if (reopened.count !== 1) {
+            return { formSubmissionId: before.formSubmissionId, conflict: false };
+          }
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'request.reopen',
+            resourceType: 'request',
+            resourceId: requestId,
+            before: { status: before.status, closedAt: before.closedAt },
+            after: { status: 'OPEN', closedAt: null },
+          });
+          return { formSubmissionId: before.formSubmissionId, conflict: false };
         });
-        if (activeSuccessor) {
-          return { formSubmissionId: before.formSubmissionId, conflict: true };
-        }
+      } catch (error) {
+        // Die partielle DB-Unique ist der Race-Backstop, falls zwischen Vorpruefung
+        // und Statuswechsel parallel der Ablauf-Worker eine neue Anforderung anlegt.
+        if (isActiveGwgRequestConflict(error)) return { requestId, conflict: true };
+        throw error;
       }
 
-      const reopened = await tx.request.updateMany({
-        // CAS auf den eben gelesenen, fachlich erlaubten Ausgangsstatus. So
-        // beschreibt das Audit auch bei parallelen Lifecycle-Aktionen exakt
-        // den Status, den dieser Aufruf tatsächlich nach OPEN überführt hat.
-        where: { id: requestId, status: before.status },
-        data: { status: 'OPEN', closedAt: null, closedByStaff: null },
-      });
-      if (reopened.count !== 1) {
-        return { formSubmissionId: before.formSubmissionId, conflict: false };
-      }
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'request.reopen',
-        resourceType: 'request',
-        resourceId: requestId,
-        before: { status: before.status, closedAt: before.closedAt },
-        after: { status: 'OPEN', closedAt: null },
-      });
-      return { formSubmissionId: before.formSubmissionId, conflict: false };
-    });
-  } catch (error) {
-    // Die partielle DB-Unique ist der Race-Backstop, falls zwischen Vorpruefung
-    // und Statuswechsel parallel der Ablauf-Worker eine neue Anforderung anlegt.
-    // Der Konflikt bleibt beim etablierten Seitenhinweis (?reopenConflict=1).
-    if (isActiveGwgRequestConflict(error)) {
-      return redirect(`/staff/requests/${requestId}?reopenConflict=1`);
-    }
-    return toActionError(error);
-  }
+      if (result.conflict) return { requestId, conflict: true };
 
-  if (result.conflict) {
-    return redirect(`/staff/requests/${requestId}?reopenConflict=1`);
-  }
-
-  revalidatePath(`/staff/requests/${requestId}`);
-  revalidatePath('/staff/requests');
-  revalidatePath('/portal/forms');
-  if (result.formSubmissionId) revalidatePath(`/portal/forms/${result.formSubmissionId}`);
+      revalidatePath(`/staff/requests/${requestId}`);
+      revalidatePath('/staff/requests');
+      revalidatePath('/portal/forms');
+      if (result.formSubmissionId) revalidatePath(`/portal/forms/${result.formSubmissionId}`);
+      return { requestId, conflict: false };
+    },
+  });
+  if (!outcome.ok) return outcome;
+  // Der Konflikt bleibt beim etablierten Seitenhinweis (?reopenConflict=1).
+  if (outcome.conflict) redirect(`/staff/requests/${outcome.requestId}?reopenConflict=1`);
   return { ok: true };
 }
 
@@ -497,67 +484,61 @@ async function enqueueStaffReplyMailTx(
 }
 
 export async function addStaffResponseAction(formData: FormData): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = parseFormData(StaffResponseSchema, formData);
+      if (!parsed.ok) return parsed;
+      const { requestId, message } = parsed.data;
 
-  const parsed = parseFormData(StaffResponseSchema, formData);
-  if (!parsed.ok) return parsed;
-  const { requestId, message } = parsed.data;
+      const reqInfo = await withTenantContext(ctx, async (tx) => {
+        const req = await tx.request.findUnique({
+          where: { id: requestId },
+          select: { clientId: true, status: true },
+        });
+        if (!req) throw new ActionError('Anforderung nicht gefunden.');
+        await assertClientAccessTx(tx, session, req.clientId);
+        if (req.status !== 'OPEN' && req.status !== 'IN_PROGRESS') {
+          throw new ActionError(
+            'Der Portal-Vorgang ist abgeschlossen. Bitte eine interne Kanzlei-Notiz verwenden.',
+          );
+        }
+        const claimed = await tx.request.updateMany({
+          where: { id: requestId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
+          data: { status: 'IN_PROGRESS' },
+        });
+        if (claimed.count === 0) {
+          throw new ActionError(
+            'Der Portal-Vorgang wurde zwischenzeitlich abgeschlossen. Bitte eine interne Kanzlei-Notiz verwenden.',
+          );
+        }
+        const resp = await tx.requestResponse.create({
+          data: { requestId, authorType: 'STAFF', authorId: staffId, message },
+        });
+        await resolveNotificationsTx(tx, {
+          tenantId,
+          resources: [{ resourceType: 'request', resourceId: requestId }],
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'request.response',
+          resourceType: 'request_response',
+          resourceId: resp.id,
+          after: { requestId, length: message.length },
+        });
+        const info = await tx.request.findUnique({
+          where: { id: requestId },
+          select: { clientId: true, title: true },
+        });
+        if (info) await enqueueStaffReplyMailTx(tx, { tenantId, requestId, ...info });
+        return info;
+      });
 
-  let reqInfo: { clientId: string; title: string } | null;
-  try {
-    reqInfo = await withTenantContext(ctx, async (tx) => {
-      const req = await tx.request.findUnique({
-        where: { id: requestId },
-        select: { clientId: true, status: true },
-      });
-      if (!req) throw new ActionError('Anforderung nicht gefunden.');
-      await assertClientAccessTx(tx, session, req.clientId);
-      if (req.status !== 'OPEN' && req.status !== 'IN_PROGRESS') {
-        throw new ActionError(
-          'Der Portal-Vorgang ist abgeschlossen. Bitte eine interne Kanzlei-Notiz verwenden.',
-        );
-      }
-      const claimed = await tx.request.updateMany({
-        where: { id: requestId, status: { in: ['OPEN', 'IN_PROGRESS'] } },
-        data: { status: 'IN_PROGRESS' },
-      });
-      if (claimed.count === 0) {
-        throw new ActionError(
-          'Der Portal-Vorgang wurde zwischenzeitlich abgeschlossen. Bitte eine interne Kanzlei-Notiz verwenden.',
-        );
-      }
-      const resp = await tx.requestResponse.create({
-        data: { requestId, authorType: 'STAFF', authorId: staffId, message },
-      });
-      await resolveNotificationsTx(tx, {
-        tenantId,
-        resources: [{ resourceType: 'request', resourceId: requestId }],
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'request.response',
-        resourceType: 'request_response',
-        resourceId: resp.id,
-        after: { requestId, length: message.length },
-      });
-      const info = await tx.request.findUnique({
-        where: { id: requestId },
-        select: { clientId: true, title: true },
-      });
-      if (info) await enqueueStaffReplyMailTx(tx, { tenantId, requestId, ...info });
-      return info;
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
-
-  if (reqInfo) kickMailOutboxDelivery();
-  revalidatePath('/staff/requests');
-  return { ok: true };
+      if (reqInfo) kickMailOutboxDelivery();
+    },
+    revalidate: '/staff/requests',
+  });
 }
 
 const InternalCommentSchema = z.object({
@@ -572,50 +553,45 @@ const InternalCommentSchema = z.object({
  * Formularabgabe (RESPONDED) und auch nach formellem Abschluss möglich bleibt.
  */
 export async function addRequestInternalCommentAction(formData: FormData): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = parseFormData(InternalCommentSchema, formData);
+      if (!parsed.ok) return parsed;
+      const { requestId, body } = parsed.data;
 
-  const parsed = parseFormData(InternalCommentSchema, formData);
-  if (!parsed.ok) return parsed;
-  const { requestId, body } = parsed.data;
+      await withTenantContext(ctx, async (tx) => {
+        const req = await tx.request.findUnique({
+          where: { id: requestId },
+          select: { clientId: true },
+        });
+        if (!req) throw new ActionError('Anforderung nicht gefunden.');
+        await assertClientAccessTx(tx, session, req.clientId);
+        const author = await tx.staffUser.findFirst({
+          where: { id: staffId, tenantId },
+          select: { fullName: true },
+        });
+        if (!author) throw new ActionError('Mitarbeiter nicht gefunden.');
 
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      const req = await tx.request.findUnique({
-        where: { id: requestId },
-        select: { clientId: true },
+        const comment = await tx.requestInternalComment.create({
+          data: {
+            requestId,
+            authorStaffId: staffId,
+            authorName: author.fullName,
+            body,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'request.internal_comment.create',
+          resourceType: 'request_internal_comment',
+          resourceId: comment.id,
+          after: { requestId, length: body.length },
+        });
       });
-      if (!req) throw new ActionError('Anforderung nicht gefunden.');
-      await assertClientAccessTx(tx, session, req.clientId);
-      const author = await tx.staffUser.findFirst({
-        where: { id: staffId, tenantId },
-        select: { fullName: true },
-      });
-      if (!author) throw new ActionError('Mitarbeiter nicht gefunden.');
 
-      const comment = await tx.requestInternalComment.create({
-        data: {
-          requestId,
-          authorStaffId: staffId,
-          authorName: author.fullName,
-          body,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'request.internal_comment.create',
-        resourceType: 'request_internal_comment',
-        resourceId: comment.id,
-        after: { requestId, length: body.length },
-      });
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
-
-  revalidatePath(`/staff/requests/${requestId}`);
-  return { ok: true };
+      revalidatePath(`/staff/requests/${requestId}`);
+    },
+  });
 }

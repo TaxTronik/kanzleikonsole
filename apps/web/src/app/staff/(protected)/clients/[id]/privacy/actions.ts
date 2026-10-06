@@ -4,9 +4,9 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { ActionError, staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { ActionError, staffAction, type ActionResult } from '@/server/actions/staff-action';
 import { validationFailure } from '@/server/actions/form-data';
 import {
   ConsentSelectionsSchema,
@@ -33,106 +33,102 @@ export async function saveConsentAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = SaveSchema.safeParse({
+        clientId: formData.get('clientId'),
+        consentsJson: formData.get('consentsJson'),
+        signedByName: formData.get('signedByName'),
+        signedByContact: formData.get('signedByContact') ?? '',
+        note: formData.get('note') ?? '',
+      });
+      if (!parsed.success)
+        return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
+      const d = parsed.data;
 
-  const parsed = SaveSchema.safeParse({
-    clientId: formData.get('clientId'),
-    consentsJson: formData.get('consentsJson'),
-    signedByName: formData.get('signedByName'),
-    signedByContact: formData.get('signedByContact') ?? '',
-    note: formData.get('note') ?? '',
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
-  const d = parsed.data;
+      let rawConsents: unknown;
+      try {
+        rawConsents = JSON.parse(d.consentsJson);
+      } catch {
+        rawConsents = undefined;
+      }
+      const consentsInput = ConsentSelectionsSchema.safeParse(rawConsents);
+      if (!consentsInput.success) {
+        return { ok: false, error: 'Einwilligungsdaten konnten nicht gelesen werden.' };
+      }
+      const submittedConsents: ConsentSelections = consentsInput.data;
 
-  let rawConsents: unknown;
-  try {
-    rawConsents = JSON.parse(d.consentsJson);
-  } catch {
-    rawConsents = undefined;
-  }
-  const consentsInput = ConsentSelectionsSchema.safeParse(rawConsents);
-  if (!consentsInput.success) {
-    return { ok: false, error: 'Einwilligungsdaten konnten nicht gelesen werden.' };
-  }
-  const submittedConsents: ConsentSelections = consentsInput.data;
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, d.clientId);
+        await assertClientInTenant(tx, d.clientId);
+        const consents = await resolveConsentSelectionsTx(tx, tenantId, submittedConsents);
+        // Optionaler Kontakt muss zum Mandanten gehören.
+        let signedByContact: string | null = null;
+        if (d.signedByContact && d.signedByContact !== '') {
+          const contact = await tx.clientContact.findFirst({
+            where: { id: d.signedByContact, clientId: d.clientId },
+            select: { id: true },
+          });
+          if (!contact)
+            throw new ActionError('Ausgewählte Kontaktperson gehört nicht zu diesem Mandanten.');
+          signedByContact = contact.id;
+        }
 
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, d.clientId);
-      await assertClientInTenant(tx, d.clientId);
-      const consents = await resolveConsentSelectionsTx(tx, tenantId, submittedConsents);
-      // Optionaler Kontakt muss zum Mandanten gehören.
-      let signedByContact: string | null = null;
-      if (d.signedByContact && d.signedByContact !== '') {
-        const contact = await tx.clientContact.findFirst({
-          where: { id: d.signedByContact, clientId: d.clientId },
-          select: { id: true },
+        const privacyConfig = await readPrivacyConfigTx(tx, tenantId);
+        if (!isPrivacyConfigComplete(privacyConfig)) {
+          throw new ActionError(
+            'Datenschutzhinweis unvollständig: Verantwortliche Stelle, Datenschutzkontakt und Aufsichtsbehörde müssen zuerst konfiguriert werden.',
+          );
+        }
+
+        const previous = await tx.clientConsent.findFirst({
+          where: { clientId: d.clientId },
+          select: { consents: true },
+          orderBy: { createdAt: 'desc' },
         });
-        if (!contact)
-          throw new ActionError('Ausgewählte Kontaktperson gehört nicht zu diesem Mandanten.');
-        signedByContact = contact.id;
-      }
+        const isRevocation = previous
+          ? hasConsentRevocation(parseConsent(previous.consents), consents)
+          : false;
 
-      const privacyConfig = await readPrivacyConfigTx(tx, tenantId);
-      if (!isPrivacyConfigComplete(privacyConfig)) {
-        throw new ActionError(
-          'Datenschutzhinweis unvollständig: Verantwortliche Stelle, Datenschutzkontakt und Aufsichtsbehörde müssen zuerst konfiguriert werden.',
-        );
-      }
+        // Volltext-Snapshot einfrieren (Nachweis der akzeptierten Fassung).
+        const notice = await renderNoticeForTenantTx(tx, tenantId);
 
-      const previous = await tx.clientConsent.findFirst({
-        where: { clientId: d.clientId },
-        select: { consents: true },
-        orderBy: { createdAt: 'desc' },
-      });
-      const isRevocation = previous
-        ? hasConsentRevocation(parseConsent(previous.consents), consents)
-        : false;
-
-      // Volltext-Snapshot einfrieren (Nachweis der akzeptierten Fassung).
-      const notice = await renderNoticeForTenantTx(tx, tenantId);
-
-      const row = await tx.clientConsent.create({
-        data: {
+        const row = await tx.clientConsent.create({
+          data: {
+            tenantId,
+            clientId: d.clientId,
+            noticeVersion: notice.version,
+            noticeSnapshot: notice.body,
+            consents: consents as object,
+            source: 'STAFF',
+            signedByName: d.signedByName.trim(),
+            signedByContact,
+            isRevocation,
+            note: d.note && d.note !== '' ? d.note : null,
+            createdBy: staffId,
+          },
+        });
+        await evidenceService.record(tx, {
           tenantId,
-          clientId: d.clientId,
-          noticeVersion: notice.version,
-          noticeSnapshot: notice.body,
-          consents: consents as object,
-          source: 'STAFF',
-          signedByName: d.signedByName.trim(),
-          signedByContact,
-          isRevocation,
-          note: d.note && d.note !== '' ? d.note : null,
-          createdBy: staffId,
-        },
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: isRevocation ? 'privacy.consent.revoke' : 'privacy.consent.grant',
+          resourceType: 'client_consent',
+          resourceId: row.id,
+          after: {
+            clientId: d.clientId,
+            noticeVersion: notice.version,
+            grantedCount: countGranted(consents),
+            signedByName: d.signedByName.trim(),
+            source: 'STAFF',
+            isRevocation,
+          },
+        });
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: isRevocation ? 'privacy.consent.revoke' : 'privacy.consent.grant',
-        resourceType: 'client_consent',
-        resourceId: row.id,
-        after: {
-          clientId: d.clientId,
-          noticeVersion: notice.version,
-          grantedCount: countGranted(consents),
-          signedByName: d.signedByName.trim(),
-          source: 'STAFF',
-          isRevocation,
-        },
-      });
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  revalidatePath(`/staff/clients/${d.clientId}/privacy`);
-  return { ok: true };
+      revalidatePath(`/staff/clients/${d.clientId}/privacy`);
+    },
+  });
 }
 
 const RevokeSchema = z.object({
@@ -145,60 +141,55 @@ export async function revokeAllConsentAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
-
-  const parsed = RevokeSchema.safeParse({
-    clientId: formData.get('clientId'),
-    signedByName: formData.get('signedByName'),
-    note: formData.get('note') ?? '',
-  });
-  if (!parsed.success) return validationFailure(parsed.error.issues, 'Validierungsfehler.');
-  const d = parsed.data;
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, d.clientId);
-      await assertClientInTenant(tx, d.clientId);
-      const previous = await tx.clientConsent.findFirst({
-        where: { clientId: d.clientId },
-        select: { consents: true },
-        orderBy: { createdAt: 'desc' },
+  return staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = RevokeSchema.safeParse({
+        clientId: formData.get('clientId'),
+        signedByName: formData.get('signedByName'),
+        note: formData.get('note') ?? '',
       });
-      if (!previous) return;
-      const previousConsent = parseConsent(previous.consents);
-      const revokedCount = countRevocableGranted(previousConsent);
-      if (revokedCount === 0) return;
-      const notice = await renderNoticeForTenantTx(tx, tenantId);
-      const row = await tx.clientConsent.create({
-        data: {
+      if (!parsed.success) return validationFailure(parsed.error.issues, 'Validierungsfehler.');
+      const d = parsed.data;
+
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, d.clientId);
+        await assertClientInTenant(tx, d.clientId);
+        const previous = await tx.clientConsent.findFirst({
+          where: { clientId: d.clientId },
+          select: { consents: true },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (!previous) return;
+        const previousConsent = parseConsent(previous.consents);
+        const revokedCount = countRevocableGranted(previousConsent);
+        if (revokedCount === 0) return;
+        const notice = await renderNoticeForTenantTx(tx, tenantId);
+        const row = await tx.clientConsent.create({
+          data: {
+            tenantId,
+            clientId: d.clientId,
+            noticeVersion: notice.version,
+            noticeSnapshot: notice.body,
+            consents: revokeVoluntaryConsent(previousConsent) as object,
+            source: 'STAFF',
+            signedByName: d.signedByName.trim(),
+            isRevocation: true,
+            note: d.note && d.note !== '' ? d.note : 'Widerruf freiwilliger Einwilligungen',
+            createdBy: staffId,
+          },
+        });
+        await evidenceService.record(tx, {
           tenantId,
-          clientId: d.clientId,
-          noticeVersion: notice.version,
-          noticeSnapshot: notice.body,
-          consents: revokeVoluntaryConsent(previousConsent) as object,
-          source: 'STAFF',
-          signedByName: d.signedByName.trim(),
-          isRevocation: true,
-          note: d.note && d.note !== '' ? d.note : 'Widerruf freiwilliger Einwilligungen',
-          createdBy: staffId,
-        },
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'privacy.consent.revoke',
+          resourceType: 'client_consent',
+          resourceId: row.id,
+          after: { clientId: d.clientId, signedByName: d.signedByName.trim(), revokedCount },
+        });
       });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'privacy.consent.revoke',
-        resourceType: 'client_consent',
-        resourceId: row.id,
-        after: { clientId: d.clientId, signedByName: d.signedByName.trim(), revokedCount },
-      });
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  revalidatePath(`/staff/clients/${d.clientId}/privacy`);
-  return { ok: true };
+      revalidatePath(`/staff/clients/${d.clientId}/privacy`);
+    },
+  });
 }

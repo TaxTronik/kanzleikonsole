@@ -43,18 +43,27 @@ vi.mock('@/server/invoicing/number', async (original) => ({
   ...(await original<typeof import('../number')>()),
   allocateInvoiceNumber: h.allocate,
 }));
-vi.mock('@/server/actions/staff-action', async () => ({
-  ActionError: (await import('@/server/actions/action-error')).ActionError,
-  staffActionGuard: async () => ({
-    ok: true,
+vi.mock('@/server/actions/staff-action', async () => {
+  const staffActionGuard = async () => ({
+    ok: true as const,
     tenantId: 'tenant-1',
     staffId: 'staff-1',
     ctx: {},
     session: {},
-  }),
-  withStaff: vi.fn(),
-  parseFormData: vi.fn(),
-}));
+  });
+  return {
+    ActionError: (await import('@/server/actions/action-error')).ActionError,
+    staffActionGuard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(staffActionGuard),
+    withStaff: vi.fn(),
+    parseFormData: vi.fn(),
+  };
+});
 
 import { round2 } from '@/lib/fmt';
 import { createInvoiceAction } from '@/app/staff/(protected)/invoices/actions';

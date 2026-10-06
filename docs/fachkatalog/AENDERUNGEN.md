@@ -1,5 +1,54 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-030
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/billing/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/contacts/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/elster/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/create-notice-action.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/__tests__/actions-journal.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/workflows/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/onboarding/[id]/actions.ts
+      - apps/web/src/server/gwg-onboarding/__tests__/invite-lifecycle.test.ts
+      - apps/web/src/server/invoicing/__tests__/create-draft.test.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - DSGVO-CONSENT-SNAPSHOT-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-SELF-ONBOARDING-001
+      - INV-TIME-ENTRY-CLAIM-001
+      - REQ-INTERNAL-COMMENT-001
+      - REQ-LIFECYCLE-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-MASTER-DATA-001
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+      - WORKFLOW-LIFECYCLE-001
+    reason: >-
+      Die bisher handgeschriebenen Mandanten-, Onboarding- und Anforderungs-Actions
+      (Abrechnung, Kontakte, Stammdaten, ELSTER, Bescheide und Einreichungen,
+      Datenschutz, Anforderungen, Steuerplan, Workflows, Onboarding) laufen über den
+      gemeinsamen Action-Baustein (staffAction). Gates, Transaktionskörper
+      (tokenidentisch je Datei geprüft), Audit-Ereignisse, revalidierte Pfade und
+      Meldungen bleiben unverändert; technische Fehler außerhalb der bisherigen
+      try-Blöcke (etwa ELSTER-Transaktionen, Steuerplan, Workflow-Schritte)
+      erscheinen als Fehlermeldung statt als Fehlerseite. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/create-notice-action.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/__tests__/actions.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-029
     date: '2026-10-06'
     paths:
@@ -3623,6 +3672,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-030` dokumentiert die Mandanten-, Onboarding-
+  und Anforderungs-Actions auf dem gemeinsamen Action-Baustein.
 
 - 2026-10-06: `FK-EXC-20261006-029` dokumentiert die Admin- und
   Profil-Actions auf dem gemeinsamen Action-Baustein. Gates und Audit bleiben

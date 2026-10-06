@@ -17,7 +17,15 @@ vi.mock('@taxtronik/elster', () => ({
   ElsterKontoabfrageInputError: class extends Error {},
   ElsterBridgeHttpError: class extends Error {},
 }));
-vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: m.guard }));
+vi.mock('@/server/actions/staff-action', async () => ({
+  staffActionGuard: m.guard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(m.guard),
+}));
 vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: m.access }));
 vi.mock('@/server/rate-limit', () => ({ checkRateLimit: m.rate }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.record } }));

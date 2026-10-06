@@ -6,10 +6,10 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { requestMagicLink } from '@/server/auth/magic-link';
 import { revokeAllSessions } from '@/server/auth/revocation';
-import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
   withStaff,
-  staffActionGuard,
+  staffAction,
   ActionError,
   parseFormData,
   type ActionResult,
@@ -28,85 +28,78 @@ export async function inviteContactAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  // staffActionGuard: Magic-Link-Versand ist ein Post-Commit-Side-Effect
+  // staffAction: Magic-Link-Versand ist ein Post-Commit-Side-Effect
   // (braucht tenantId + die im Tx ermittelte E-Mail).
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = parseFormData(InviteSchema, formData);
+      if (!parsed.ok) return parsed;
 
-  const parsed = parseFormData(InviteSchema, formData);
-  if (!parsed.ok) return parsed;
+      const { clientId, email, fullName, phone, role, sendInvite } = parsed.data;
+      const phoneClean = phone?.trim() || null;
+      const roleClean = role?.trim() || null;
 
-  const { clientId, email, fullName, phone, role, sendInvite } = parsed.data;
-  const phoneClean = phone?.trim() || null;
-  const roleClean = role?.trim() || null;
-
-  let contactEmail: string;
-  let contactId: string;
-  try {
-    const result = await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      // existiert dieser Kontakt bei diesem Mandanten schon?
-      const existing = await tx.clientContact.findFirst({
-        where: { tenantId, clientId, email: email.toLowerCase() },
-      });
-      if (existing) {
-        await tx.clientContact.update({
-          where: { id: existing.id },
+      const result = await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, clientId);
+        // existiert dieser Kontakt bei diesem Mandanten schon?
+        const existing = await tx.clientContact.findFirst({
+          where: { tenantId, clientId, email: email.toLowerCase() },
+        });
+        if (existing) {
+          await tx.clientContact.update({
+            where: { id: existing.id },
+            data: {
+              fullName,
+              phone: phoneClean,
+              role: roleClean,
+              active: true,
+              // ACCESS-TENANT-RLS-001: Reactivating a previously disabled contact
+              // must not restore calendar capabilities issued before revocation.
+              ...(!existing.active ? { icalTokenVersion: { increment: 1 } } : {}),
+            },
+          });
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'client_contact.update',
+            resourceType: 'client_contact',
+            resourceId: existing.id,
+            after: { email, fullName, phone: phoneClean, role: roleClean, clientId },
+          });
+          return { id: existing.id, email: existing.email };
+        }
+        const contact = await tx.clientContact.create({
           data: {
+            tenantId,
+            clientId,
+            email: email.toLowerCase(),
             fullName,
             phone: phoneClean,
             role: roleClean,
-            active: true,
-            // ACCESS-TENANT-RLS-001: Reactivating a previously disabled contact
-            // must not restore calendar capabilities issued before revocation.
-            ...(!existing.active ? { icalTokenVersion: { increment: 1 } } : {}),
           },
         });
         await evidenceService.record(tx, {
           tenantId,
           actorType: 'STAFF',
           actorId: staffId,
-          action: 'client_contact.update',
+          action: 'client_contact.create',
           resourceType: 'client_contact',
-          resourceId: existing.id,
-          after: { email, fullName, phone: phoneClean, role: roleClean, clientId },
+          resourceId: contact.id,
+          after: { email: contact.email, fullName, phone: phoneClean, role: roleClean, clientId },
         });
-        return { id: existing.id, email: existing.email };
+        return { id: contact.id, email: contact.email };
+      });
+      const contactId = result.id;
+      const contactEmail = result.email;
+
+      if (sendInvite) {
+        await requestMagicLink({ tenantId, email: contactEmail, contactId });
       }
-      const contact = await tx.clientContact.create({
-        data: {
-          tenantId,
-          clientId,
-          email: email.toLowerCase(),
-          fullName,
-          phone: phoneClean,
-          role: roleClean,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'client_contact.create',
-        resourceType: 'client_contact',
-        resourceId: contact.id,
-        after: { email: contact.email, fullName, phone: phoneClean, role: roleClean, clientId },
-      });
-      return { id: contact.id, email: contact.email };
-    });
-    contactId = result.id;
-    contactEmail = result.email;
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  if (sendInvite) {
-    await requestMagicLink({ tenantId, email: contactEmail, contactId });
-  }
-
-  revalidatePath(`/staff/clients/${clientId}`);
-  return { ok: true };
+      revalidatePath(`/staff/clients/${clientId}`);
+    },
+  });
 }
 
 const UpdateSchema = z.object({
@@ -212,90 +205,84 @@ const RotateIcalSchema = z.object({
 export async function rotateIcalTokenAction(
   input: z.infer<typeof RotateIcalSchema>,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { ctx, session } = g;
+  return staffAction({
+    run: async (g) => {
+      const { ctx, session } = g;
 
-  const parsed = RotateIcalSchema.safeParse(input);
-  if (!parsed.success)
-    return { ok: false, error: 'Ungültiger Kontakt.', errorCode: 'VALIDATION_ERROR' };
-  const { contactId, clientId } = parsed.data;
+      const parsed = RotateIcalSchema.safeParse(input);
+      if (!parsed.success)
+        return { ok: false, error: 'Ungültiger Kontakt.', errorCode: 'VALIDATION_ERROR' };
+      const { contactId, clientId } = parsed.data;
 
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      const contact = await tx.clientContact.findUnique({
-        where: { id: contactId },
-        select: { clientId: true },
+      await withTenantContext(ctx, async (tx) => {
+        const contact = await tx.clientContact.findUnique({
+          where: { id: contactId },
+          select: { clientId: true },
+        });
+        if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
+        if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
+        await assertClientAccessTx(tx, session, contact.clientId);
+        const updated = await tx.clientContact.update({
+          where: { id: contactId },
+          data: { icalTokenVersion: { increment: 1 } },
+          select: { icalTokenVersion: true },
+        });
+        await evidenceService.record(tx, {
+          tenantId: g.tenantId,
+          actorType: 'STAFF',
+          actorId: g.staffId,
+          action: 'client_contact.ical_rotate',
+          resourceType: 'client_contact',
+          resourceId: contactId,
+          after: { icalTokenVersion: updated.icalTokenVersion },
+        });
       });
-      if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
-      if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
-      await assertClientAccessTx(tx, session, contact.clientId);
-      const updated = await tx.clientContact.update({
-        where: { id: contactId },
-        data: { icalTokenVersion: { increment: 1 } },
-        select: { icalTokenVersion: true },
-      });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorType: 'STAFF',
-        actorId: g.staffId,
-        action: 'client_contact.ical_rotate',
-        resourceType: 'client_contact',
-        resourceId: contactId,
-        after: { icalTokenVersion: updated.icalTokenVersion },
-      });
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  revalidatePath(`/staff/clients/${clientId}`);
-  return { ok: true };
+      revalidatePath(`/staff/clients/${clientId}`);
+    },
+  });
 }
 
 export async function deactivateContactAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { ctx, session } = g;
+  return staffAction({
+    run: async (g) => {
+      const { ctx, session } = g;
 
-  // S2: UUID-Validation für beide IDs.
-  const parsed = parseFormData(
-    z.object({ contactId: z.string().uuid(), clientId: z.string().uuid() }),
-    formData,
-  );
-  if (!parsed.ok) return parsed;
-  const { contactId, clientId } = parsed.data;
+      // S2: UUID-Validation für beide IDs.
+      const parsed = parseFormData(
+        z.object({ contactId: z.string().uuid(), clientId: z.string().uuid() }),
+        formData,
+      );
+      if (!parsed.ok) return parsed;
+      const { contactId, clientId } = parsed.data;
 
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      const contact = await tx.clientContact.findUnique({
-        where: { id: contactId },
-        select: { clientId: true },
+      await withTenantContext(ctx, async (tx) => {
+        const contact = await tx.clientContact.findUnique({
+          where: { id: contactId },
+          select: { clientId: true },
+        });
+        if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
+        if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
+        await assertClientAccessTx(tx, session, contact.clientId);
+        await revokeAllSessions('portal', contactId);
+        await tx.clientContact.update({
+          where: { id: contactId },
+          data: { active: false, icalTokenVersion: { increment: 1 } },
+        });
+        await evidenceService.record(tx, {
+          tenantId: g.tenantId,
+          actorType: 'STAFF',
+          actorId: g.staffId,
+          action: 'client_contact.deactivate',
+          resourceType: 'client_contact',
+          resourceId: contactId,
+        });
       });
-      if (!contact) throw new ActionError('Ansprechpartner nicht gefunden.');
-      if (contact.clientId !== clientId) throw new ActionError('Mandant stimmt nicht überein.');
-      await assertClientAccessTx(tx, session, contact.clientId);
-      await revokeAllSessions('portal', contactId);
-      await tx.clientContact.update({
-        where: { id: contactId },
-        data: { active: false, icalTokenVersion: { increment: 1 } },
-      });
-      await evidenceService.record(tx, {
-        tenantId: g.tenantId,
-        actorType: 'STAFF',
-        actorId: g.staffId,
-        action: 'client_contact.deactivate',
-        resourceType: 'client_contact',
-        resourceId: contactId,
-      });
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  revalidatePath(`/staff/clients/${clientId}`);
-  return { ok: true };
+      revalidatePath(`/staff/clients/${clientId}`);
+    },
+  });
 }

@@ -71,7 +71,7 @@ vi.mock('@/server/auth/rbac', async () => ({
 vi.mock('@/server/actions/staff-action', async () => {
   const { parseFormData } = await import('@/server/actions/form-data');
   const staff = {
-    ok: true,
+    ok: true as const,
     tenantId: 'tenant-1',
     staffId: 'staff-1',
     ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
@@ -81,6 +81,12 @@ vi.mock('@/server/actions/staff-action', async () => {
     ActionError: (await import('@/server/actions/action-error')).ActionError,
     parseFormData,
     staffActionGuard: async () => staff,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(async () => staff),
     withStaff: async (fn: (tx: unknown, ctx: unknown) => Promise<unknown>) => {
       try {
         await m.withTenantContext(staff.ctx, (tx: unknown) => fn(tx, staff));

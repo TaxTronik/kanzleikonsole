@@ -30,7 +30,15 @@ vi.mock('@/server/jobs/tax-deadline-materialize-queue', () => ({
 vi.mock('@/server/util/fire-and-forget', () => ({ fireAndForget: h.fireAndForget }));
 vi.mock('@/server/db/assert-tenant', () => ({ assertClientInTenant: h.assertClientInTenant }));
 vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: h.assertClientAccessTx }));
-vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: h.staffActionGuard }));
+vi.mock('@/server/actions/staff-action', async () => ({
+  staffActionGuard: h.staffActionGuard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(h.staffActionGuard),
+}));
 
 import { saveScheduleConfigAction } from '../actions';
 

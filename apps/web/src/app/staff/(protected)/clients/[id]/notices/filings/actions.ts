@@ -7,7 +7,7 @@ import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import {
-  staffActionGuard,
+  staffAction,
   withStaffModule,
   ActionError,
   type ActionResult as BaseActionResult,
@@ -104,159 +104,160 @@ export async function saveTaxFilingAction(
   input: z.infer<typeof SaveSchema>,
   upload?: FormData | null,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'taxNotices' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    guard: { module: 'taxNotices' },
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = SaveSchema.safeParse(input);
+      if (!parsed.success)
+        return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
+      const data = parsed.data;
 
-  const parsed = SaveSchema.safeParse(input);
-  if (!parsed.success)
-    return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
-  const data = parsed.data;
+      let pdf: z.infer<typeof FilingPdfMetaSchema> | null = null;
+      let fileData: Buffer | null = null;
+      if (upload?.get('pdf') != null) {
+        const read = await readUploadFile(upload, 'pdf', 'taxFilingPdf', {
+          tooLarge: 'PDF zu groß',
+        });
+        if (!read.ok) return { ok: false, error: read.error };
+        const meta = FilingPdfMetaSchema.safeParse({
+          fileName: read.fileName,
+          mimeType: read.mimeType || 'application/pdf',
+        });
+        if (!meta.success)
+          return { ok: false, error: 'Dateiname oder Dateityp der PDF ist ungültig.' };
+        pdf = meta.data;
+        fileData = read.bytes;
+      }
 
-  let pdf: z.infer<typeof FilingPdfMetaSchema> | null = null;
-  let fileData: Buffer | null = null;
-  if (upload?.get('pdf') != null) {
-    const read = await readUploadFile(upload, 'pdf', 'taxFilingPdf', { tooLarge: 'PDF zu groß' });
-    if (!read.ok) return { ok: false, error: read.error };
-    const meta = FilingPdfMetaSchema.safeParse({
-      fileName: read.fileName,
-      mimeType: read.mimeType || 'application/pdf',
-    });
-    if (!meta.success) return { ok: false, error: 'Dateiname oder Dateityp der PDF ist ungültig.' };
-    pdf = meta.data;
-    fileData = read.bytes;
-  }
-
-  const saveFilingTx = async (tx: TxClient, documentId?: string): Promise<string> => {
-    const baseData = {
-      kind: data.kind,
-      period: data.period,
-      filingDate: data.filingDate ? new Date(data.filingDate) : null,
-      expectedAssessed: data.expectedAssessed,
-      expectedPrepaid: data.expectedPrepaid,
-      expectedRefund: data.expectedRefund,
-      expectedPay: data.expectedPay,
-      clientNote: data.clientNote?.trim() || null,
-      internalNote: data.internalNote?.trim() || null,
-    };
-
-    if (data.filingId) {
-      const before = await tx.taxFiling.findUnique({ where: { id: data.filingId } });
-      if (!before) throw new ActionError('Erklärung nicht gefunden.');
-      // Mandantenbindung: assertClientAccessTx (oben) autorisiert die
-      // MITGESENDETE data.clientId, das Update greift aber allein über
-      // data.filingId. Ohne diesen Abgleich könnte ein Mitarbeiter mit
-      // Zugriff auf Mandant A per bekannter filingId die Erklärung eines
-      // fremden Mandanten B überschreiben (RLS trennt nur Tenants, nicht
-      // Mandanten). Vgl. shareTaxFilingAction, die genau so bindet.
-      if (before.clientId !== data.clientId) throw new ActionError('Mandant stimmt nicht.');
-      await tx.taxFiling.update({
-        where: { id: data.filingId },
-        data: { ...baseData, ...(documentId ? { documentId } : {}) },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'tax_filing.update',
-        resourceType: 'tax_filing',
-        resourceId: data.filingId,
-        before,
-        after: baseData,
-      });
-      return data.filingId;
-    }
-
-    // Auf vorhandene Erklärung für (client, kind, period) prüfen
-    const existing = await tx.taxFiling.findUnique({
-      where: {
-        tenantId_clientId_kind_period: {
-          tenantId,
-          clientId: data.clientId,
+      const saveFilingTx = async (tx: TxClient, documentId?: string): Promise<string> => {
+        const baseData = {
           kind: data.kind,
           period: data.period,
-        },
-      },
-    });
-    if (existing) {
-      throw new ActionError('Es gibt bereits eine Erklärung für diesen Zeitraum.');
-    }
+          filingDate: data.filingDate ? new Date(data.filingDate) : null,
+          expectedAssessed: data.expectedAssessed,
+          expectedPrepaid: data.expectedPrepaid,
+          expectedRefund: data.expectedRefund,
+          expectedPay: data.expectedPay,
+          clientNote: data.clientNote?.trim() || null,
+          internalNote: data.internalNote?.trim() || null,
+        };
 
-    const created = await tx.taxFiling.create({
-      data: {
-        tenantId,
-        clientId: data.clientId,
-        ...baseData,
-        documentId: documentId ?? null,
-        createdByStaff: staffId,
-      },
-    });
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'tax_filing.create',
-      resourceType: 'tax_filing',
-      resourceId: created.id,
-      after: { ...baseData, clientId: data.clientId },
-    });
-    return created.id;
-  };
+        if (data.filingId) {
+          const before = await tx.taxFiling.findUnique({ where: { id: data.filingId } });
+          if (!before) throw new ActionError('Erklärung nicht gefunden.');
+          // Mandantenbindung: assertClientAccessTx (oben) autorisiert die
+          // MITGESENDETE data.clientId, das Update greift aber allein über
+          // data.filingId. Ohne diesen Abgleich könnte ein Mitarbeiter mit
+          // Zugriff auf Mandant A per bekannter filingId die Erklärung eines
+          // fremden Mandanten B überschreiben (RLS trennt nur Tenants, nicht
+          // Mandanten). Vgl. shareTaxFilingAction, die genau so bindet.
+          if (before.clientId !== data.clientId) throw new ActionError('Mandant stimmt nicht.');
+          await tx.taxFiling.update({
+            where: { id: data.filingId },
+            data: { ...baseData, ...(documentId ? { documentId } : {}) },
+          });
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'tax_filing.update',
+            resourceType: 'tax_filing',
+            resourceId: data.filingId,
+            before,
+            after: baseData,
+          });
+          return data.filingId;
+        }
 
-  let resultId: string;
-  try {
-    if (pdf && fileData) {
-      const pdfBytes = fileData;
-      const { result } = await runJournaledUpload({
-        context: ctx,
-        source: 'staff.tax_filing.pdf',
-        check: (tx) => checkTaxFilingTx(tx, session, tenantId, data),
-        readBytes: async () => pdfBytes,
-        storage: () => ({ tier: 'GOBD', classification: 'GOBD_TAX' }),
-        commitTx: async (tx, { commit: committed }) => {
-          const doc = await tx.document.create({
-            data: {
+        // Auf vorhandene Erklärung für (client, kind, period) prüfen
+        const existing = await tx.taxFiling.findUnique({
+          where: {
+            tenantId_clientId_kind_period: {
               tenantId,
               clientId: data.clientId,
-              title: pdf.fileName,
-              classification: 'GOBD_TAX',
-              mimeType: committed.detectedMime ?? pdf.mimeType,
-              retentionUntil: committed.retentionUntil,
+              kind: data.kind,
+              period: data.period,
             },
-          });
-          await tx.documentVersion.create({
-            data: {
-              documentId: doc.id,
-              versionNo: 1,
-              storageBucket: committed.targetBucket,
-              storageKey: committed.targetKey,
-              storageVersionId: committed.storageVersionId,
-              sha256: prismaBytes(committed.sha256),
-              sizeBytes: committed.sizeBytes,
-              immutable: committed.immutable,
-              scanStatus: 'CLEAN',
-              scanCompletedAt: new Date(),
-              createdById: staffId,
-            },
-          });
-          return saveFilingTx(tx, doc.id);
-        },
-      });
-      resultId = result;
-    } else {
-      resultId = await withTenantContext(ctx, async (tx) => {
-        await checkTaxFilingTx(tx, session, tenantId, data);
-        return saveFilingTx(tx);
-      });
-    }
-  } catch (e) {
+          },
+        });
+        if (existing) {
+          throw new ActionError('Es gibt bereits eine Erklärung für diesen Zeitraum.');
+        }
+
+        const created = await tx.taxFiling.create({
+          data: {
+            tenantId,
+            clientId: data.clientId,
+            ...baseData,
+            documentId: documentId ?? null,
+            createdByStaff: staffId,
+          },
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'tax_filing.create',
+          resourceType: 'tax_filing',
+          resourceId: created.id,
+          after: { ...baseData, clientId: data.clientId },
+        });
+        return created.id;
+      };
+
+      let resultId: string;
+      if (pdf && fileData) {
+        const pdfBytes = fileData;
+        const { result } = await runJournaledUpload({
+          context: ctx,
+          source: 'staff.tax_filing.pdf',
+          check: (tx) => checkTaxFilingTx(tx, session, tenantId, data),
+          readBytes: async () => pdfBytes,
+          storage: () => ({ tier: 'GOBD', classification: 'GOBD_TAX' }),
+          commitTx: async (tx, { commit: committed }) => {
+            const doc = await tx.document.create({
+              data: {
+                tenantId,
+                clientId: data.clientId,
+                title: pdf.fileName,
+                classification: 'GOBD_TAX',
+                mimeType: committed.detectedMime ?? pdf.mimeType,
+                retentionUntil: committed.retentionUntil,
+              },
+            });
+            await tx.documentVersion.create({
+              data: {
+                documentId: doc.id,
+                versionNo: 1,
+                storageBucket: committed.targetBucket,
+                storageKey: committed.targetKey,
+                storageVersionId: committed.storageVersionId,
+                sha256: prismaBytes(committed.sha256),
+                sizeBytes: committed.sizeBytes,
+                immutable: committed.immutable,
+                scanStatus: 'CLEAN',
+                scanCompletedAt: new Date(),
+                createdById: staffId,
+              },
+            });
+            return saveFilingTx(tx, doc.id);
+          },
+        });
+        resultId = result;
+      } else {
+        resultId = await withTenantContext(ctx, async (tx) => {
+          await checkTaxFilingTx(tx, session, tenantId, data);
+          return saveFilingTx(tx);
+        });
+      }
+
+      revalidatePath(`/staff/clients/${data.clientId}/notices`);
+      return { id: resultId };
+    },
     // Nach dem Object-Write bleibt die Speicherabsicht offen; der Cleanup-Worker
     // räumt das Objekt nach der Sicherheitsfrist versionsgenau auf.
-    return toActionError(uploadFailureCause(e));
-  }
-
-  revalidatePath(`/staff/clients/${data.clientId}/notices`);
-  return { ok: true, id: resultId };
+    onError: (e) => toActionError(uploadFailureCause(e)),
+  });
 }
 
 const ShareSchema = z.object({

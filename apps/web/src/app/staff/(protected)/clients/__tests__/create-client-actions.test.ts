@@ -33,7 +33,16 @@ vi.mock('@/server/actions/staff-action', async () => {
   const { ActionError } = await vi.importActual<typeof import('@/server/actions/action-error')>(
     '@/server/actions/action-error',
   );
-  return { ActionError, staffActionGuard: h.staffActionGuard };
+  return {
+    ActionError,
+    staffActionGuard: h.staffActionGuard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(h.staffActionGuard),
+  };
 });
 
 import { createClientAction } from '../new/actions';

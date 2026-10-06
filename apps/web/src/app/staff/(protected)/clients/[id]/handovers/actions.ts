@@ -7,10 +7,10 @@ import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
   withStaffModule,
-  staffActionGuard,
+  staffAction,
   ActionError,
   type ActionResult,
 } from '@/server/actions/staff-action';
@@ -120,107 +120,105 @@ export async function updateHandoverStatusAction(input: {
   id: string;
   status: 'RECEIVED' | 'IN_PROGRESS' | 'READY' | 'PICKED_UP';
 }): Promise<ActionResult> {
-  // staffActionGuard (Gate-only): die READY-Mail wird im Commit als
+  // staffAction (mehrphasig): die READY-Mail wird im Commit als
   // Versandauftrag abgelegt und danach angestoßen (F-08).
-  const g = await staffActionGuard({ module: 'handovers' });
-  if (!g.ok) return g;
-  const { tenantId, ctx, session } = g;
+  return staffAction({
+    guard: { module: 'handovers' },
+    run: async (g) => {
+      const { tenantId, ctx, session } = g;
 
-  const parsed = z.object({ id: z.string().uuid(), status: StatusEnum }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const parsed = z.object({ id: z.string().uuid(), status: StatusEnum }).safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  let notifyPayload: HandoverReadyMail | null = null;
-  let affectedClientId: string | null = null;
+      let notifyPayload: HandoverReadyMail | null = null;
+      let affectedClientId: string | null = null;
 
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      const before = await tx.clientHandover.findUnique({
-        where: { id: parsed.data.id },
-        select: {
-          status: true,
-          clientId: true,
-          label: true,
-          notifiedContactEmail: true,
-          client: {
-            select: {
-              name: true,
-              contacts: {
-                where: { active: true, notificationsEnabled: true },
-                orderBy: { createdAt: 'asc' },
-                take: 1,
-                select: { fullName: true, email: true },
+      await withTenantContext(ctx, async (tx) => {
+        const before = await tx.clientHandover.findUnique({
+          where: { id: parsed.data.id },
+          select: {
+            status: true,
+            clientId: true,
+            label: true,
+            notifiedContactEmail: true,
+            client: {
+              select: {
+                name: true,
+                contacts: {
+                  where: { active: true, notificationsEnabled: true },
+                  orderBy: { createdAt: 'asc' },
+                  take: 1,
+                  select: { fullName: true, email: true },
+                },
               },
             },
           },
-        },
-      });
-      if (!before) throw new ActionError('Anlieferung nicht gefunden.');
-      await assertClientAccessTx(tx, session, before.clientId);
-      affectedClientId = before.clientId;
-      if (before.status === parsed.data.status) return;
-
-      const now = new Date();
-      const data: Prisma.ClientHandoverUpdateInput = { status: parsed.data.status };
-      if (parsed.data.status === 'IN_PROGRESS') data.startedAt = now;
-      if (parsed.data.status === 'READY') data.readyAt = now;
-      if (parsed.data.status === 'PICKED_UP') data.pickedUpAt = now;
-
-      // Wenn READY: ersten aktiven Kontakt als Empfänger merken
-      const primary = before.client.contacts[0];
-      if (parsed.data.status === 'READY' && primary && !before.notifiedContactEmail) {
-        data.notifiedContactEmail = primary.email;
-        notifyPayload = {
-          clientId: before.clientId,
-          label: before.label,
-          contactEmail: primary.email,
-          contactName: primary.fullName,
-        };
-      }
-
-      const changed = await tx.clientHandover.updateMany({
-        where: { id: parsed.data.id, status: before.status },
-        data,
-      });
-      if (changed.count === 0) {
-        throw new ActionError('Status wurde parallel geändert. Bitte Seite neu laden.');
-      }
-
-      const auditAction =
-        parsed.data.status === 'IN_PROGRESS'
-          ? 'client_handover.start'
-          : parsed.data.status === 'READY'
-            ? 'client_handover.ready'
-            : parsed.data.status === 'PICKED_UP'
-              ? 'client_handover.picked_up'
-              : 'client_handover.status_change';
-
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: g.staffId,
-        action: auditAction,
-        resourceType: 'client_handover',
-        resourceId: parsed.data.id,
-        before: { status: before.status },
-        after: { status: parsed.data.status, notifiedEmail: notifyPayload?.contactEmail ?? null },
-      });
-      if (notifyPayload) {
-        await enqueueHandoverReadyMailTx(tx, {
-          tenantId,
-          handoverId: parsed.data.id,
-          mail: notifyPayload,
         });
-      }
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
+        if (!before) throw new ActionError('Anlieferung nicht gefunden.');
+        await assertClientAccessTx(tx, session, before.clientId);
+        affectedClientId = before.clientId;
+        if (before.status === parsed.data.status) return;
 
-  if (notifyPayload) kickMailOutboxDelivery();
+        const now = new Date();
+        const data: Prisma.ClientHandoverUpdateInput = { status: parsed.data.status };
+        if (parsed.data.status === 'IN_PROGRESS') data.startedAt = now;
+        if (parsed.data.status === 'READY') data.readyAt = now;
+        if (parsed.data.status === 'PICKED_UP') data.pickedUpAt = now;
 
-  if (affectedClientId) revalidatePath(`/staff/clients/${affectedClientId}`);
-  revalidatePath('/portal/handovers');
-  return { ok: true };
+        // Wenn READY: ersten aktiven Kontakt als Empfänger merken
+        const primary = before.client.contacts[0];
+        if (parsed.data.status === 'READY' && primary && !before.notifiedContactEmail) {
+          data.notifiedContactEmail = primary.email;
+          notifyPayload = {
+            clientId: before.clientId,
+            label: before.label,
+            contactEmail: primary.email,
+            contactName: primary.fullName,
+          };
+        }
+
+        const changed = await tx.clientHandover.updateMany({
+          where: { id: parsed.data.id, status: before.status },
+          data,
+        });
+        if (changed.count === 0) {
+          throw new ActionError('Status wurde parallel geändert. Bitte Seite neu laden.');
+        }
+
+        const auditAction =
+          parsed.data.status === 'IN_PROGRESS'
+            ? 'client_handover.start'
+            : parsed.data.status === 'READY'
+              ? 'client_handover.ready'
+              : parsed.data.status === 'PICKED_UP'
+                ? 'client_handover.picked_up'
+                : 'client_handover.status_change';
+
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: g.staffId,
+          action: auditAction,
+          resourceType: 'client_handover',
+          resourceId: parsed.data.id,
+          before: { status: before.status },
+          after: { status: parsed.data.status, notifiedEmail: notifyPayload?.contactEmail ?? null },
+        });
+        if (notifyPayload) {
+          await enqueueHandoverReadyMailTx(tx, {
+            tenantId,
+            handoverId: parsed.data.id,
+            mail: notifyPayload,
+          });
+        }
+      });
+
+      if (notifyPayload) kickMailOutboxDelivery();
+
+      if (affectedClientId) revalidatePath(`/staff/clients/${affectedClientId}`);
+    },
+    revalidate: '/portal/handovers',
+  });
 }
 
 export async function deleteHandoverAction(input: { id: string }): Promise<ActionResult> {

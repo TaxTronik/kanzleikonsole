@@ -4,10 +4,10 @@ import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-re
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { isStaffAdmin, toActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { isStaffAdmin, assertClientAccessTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
+import { staffAction, ActionError } from '@/server/actions/staff-action';
 import { lockGwgCheckLifecycleTx, requireGwgReverificationTx } from '@/server/gwg/reverification';
 
 export interface ActionResult {
@@ -41,76 +41,73 @@ export async function saveAdminFieldsAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = AdminSchema.safeParse({
+        clientId: formData.get('clientId'),
+        datevNo: formData.get('datevNo'),
+        addisonNo: formData.get('addisonNo'),
+        invoiceEmail: formData.get('invoiceEmail'),
+        priority: formData.get('priority'),
+        internalNotes: formData.get('internalNotes'),
+        vertraulich: formData.get('vertraulich') === 'on',
+      });
+      if (!parsed.success)
+        return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
+      const { clientId } = parsed.data;
+      // Die Vertraulich-Markierung ist eine Zugriffssteuerung → nur Admin/Partner.
+      const isAdmin = isStaffAdmin(session);
 
-  const parsed = AdminSchema.safeParse({
-    clientId: formData.get('clientId'),
-    datevNo: formData.get('datevNo'),
-    addisonNo: formData.get('addisonNo'),
-    invoiceEmail: formData.get('invoiceEmail'),
-    priority: formData.get('priority'),
-    internalNotes: formData.get('internalNotes'),
-    vertraulich: formData.get('vertraulich') === 'on',
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, clientId);
+        const before = await tx.client.findUnique({
+          where: { id: clientId },
+          select: {
+            datevNo: true,
+            addisonNo: true,
+            invoiceEmail: true,
+            priority: true,
+            internalNotes: true,
+            vertraulich: true,
+          },
+        });
+        if (!before) throw new ActionError('Mandant nicht gefunden.');
+
+        const prio = parsed.data.priority;
+        const after = {
+          datevNo: emptyToNull(parsed.data.datevNo),
+          addisonNo: emptyToNull(parsed.data.addisonNo),
+          invoiceEmail: emptyToNull(parsed.data.invoiceEmail),
+          priority: prio === 'A' || prio === 'B' || prio === 'C' ? prio : null,
+          internalNotes: emptyToNull(parsed.data.internalNotes),
+          // Nicht-Admins können das Flag nicht ändern → Bestand behalten (die
+          // Checkbox ist für sie ohnehin deaktiviert und sendet nichts).
+          vertraulich: isAdmin ? (parsed.data.vertraulich ?? false) : before.vertraulich,
+        };
+
+        await tx.client.update({ where: { id: clientId }, data: after });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'client.update.administrative',
+          resourceType: 'client',
+          resourceId: clientId,
+          before,
+          after: {
+            ...after,
+            // Steuerliche/organisatorische Verwaltungswerte sind ausdrücklich
+            // kein Anlass für eine erneute Identifizierung nach GwG.
+            _gwgReverificationTriggered: false,
+          },
+        });
+      });
+
+      revalidatePath(`/staff/clients/${clientId}`);
+      revalidatePath(`/staff/clients/${clientId}/edit`);
+      return { savedAt: new Date().toISOString() };
+    },
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
-  const { clientId } = parsed.data;
-  // Die Vertraulich-Markierung ist eine Zugriffssteuerung → nur Admin/Partner.
-  const isAdmin = isStaffAdmin(session);
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      const before = await tx.client.findUnique({
-        where: { id: clientId },
-        select: {
-          datevNo: true,
-          addisonNo: true,
-          invoiceEmail: true,
-          priority: true,
-          internalNotes: true,
-          vertraulich: true,
-        },
-      });
-      if (!before) throw new ActionError('Mandant nicht gefunden.');
-
-      const prio = parsed.data.priority;
-      const after = {
-        datevNo: emptyToNull(parsed.data.datevNo),
-        addisonNo: emptyToNull(parsed.data.addisonNo),
-        invoiceEmail: emptyToNull(parsed.data.invoiceEmail),
-        priority: prio === 'A' || prio === 'B' || prio === 'C' ? prio : null,
-        internalNotes: emptyToNull(parsed.data.internalNotes),
-        // Nicht-Admins können das Flag nicht ändern → Bestand behalten (die
-        // Checkbox ist für sie ohnehin deaktiviert und sendet nichts).
-        vertraulich: isAdmin ? (parsed.data.vertraulich ?? false) : before.vertraulich,
-      };
-
-      await tx.client.update({ where: { id: clientId }, data: after });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'client.update.administrative',
-        resourceType: 'client',
-        resourceId: clientId,
-        before,
-        after: {
-          ...after,
-          // Steuerliche/organisatorische Verwaltungswerte sind ausdrücklich
-          // kein Anlass für eine erneute Identifizierung nach GwG.
-          _gwgReverificationTriggered: false,
-        },
-      });
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
-
-  revalidatePath(`/staff/clients/${clientId}`);
-  revalidatePath(`/staff/clients/${clientId}/edit`);
-  return { ok: true, savedAt: new Date().toISOString() };
 }
 
 // ----------------------------------------------------------------------------
@@ -133,92 +130,89 @@ export async function saveGwgFieldsAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = GwgSchema.safeParse({
+        clientId: formData.get('clientId'),
+        name: formData.get('name'),
+        kind: formData.get('kind'),
+        street: formData.get('street'),
+        postalCode: formData.get('postalCode'),
+        city: formData.get('city'),
+        countryIso: formData.get('countryIso'),
+      });
+      if (!parsed.success)
+        return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
+      const { clientId } = parsed.data;
 
-  const parsed = GwgSchema.safeParse({
-    clientId: formData.get('clientId'),
-    name: formData.get('name'),
-    kind: formData.get('kind'),
-    street: formData.get('street'),
-    postalCode: formData.get('postalCode'),
-    city: formData.get('city'),
-    countryIso: formData.get('countryIso'),
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, clientId);
+        await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
+        const before = await tx.client.findUnique({
+          where: { id: clientId },
+          select: {
+            name: true,
+            kind: true,
+            street: true,
+            postalCode: true,
+            city: true,
+            countryIso: true,
+          },
+        });
+        if (!before) throw new ActionError('Mandant nicht gefunden.');
+
+        const after = {
+          name: parsed.data.name.trim(),
+          kind: parsed.data.kind,
+          street: emptyToNull(parsed.data.street),
+          postalCode: emptyToNull(parsed.data.postalCode),
+          city: emptyToNull(parsed.data.city),
+          countryIso: emptyToNull(parsed.data.countryIso),
+        };
+
+        // Diff: Was hat sich tatsächlich geändert? Wenn nichts → kein Re-Trigger.
+        const changed: string[] = [];
+        for (const k of ['name', 'kind', 'street', 'postalCode', 'city', 'countryIso'] as const) {
+          if (before[k] !== after[k]) changed.push(k);
+        }
+
+        await tx.client.update({ where: { id: clientId }, data: after });
+
+        let gwgReset = false;
+        let gwgReviewCheckId: string | null = null;
+        let gwgInvalidatedIdentityDocuments = 0;
+        if (changed.length > 0) {
+          // Bestehenden VERIFIED-Check auf IN_REVIEW zurücksetzen
+          const reset = await requireGwgReverificationTx(tx, { tenantId, clientId });
+          gwgReset = reset.reviewCheckId !== null;
+          gwgReviewCheckId = reset.reviewCheckId;
+          gwgInvalidatedIdentityDocuments = reset.invalidatedIdentityDocuments;
+        }
+
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'client.update.gwg_relevant',
+          resourceType: 'client',
+          resourceId: clientId,
+          before,
+          after: {
+            ...after,
+            _changedFields: changed,
+            _gwgReverificationTriggered: gwgReset,
+            _gwgReviewCheckId: gwgReviewCheckId,
+            _gwgInvalidatedIdentityDocuments: gwgInvalidatedIdentityDocuments,
+          },
+        });
+      });
+
+      revalidatePath(`/staff/clients/${clientId}`);
+      revalidatePath(`/staff/clients/${clientId}/edit`);
+      revalidatePath(`/staff/clients/${clientId}/gwg`);
+      return { savedAt: new Date().toISOString() };
+    },
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
-  const { clientId } = parsed.data;
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
-      const before = await tx.client.findUnique({
-        where: { id: clientId },
-        select: {
-          name: true,
-          kind: true,
-          street: true,
-          postalCode: true,
-          city: true,
-          countryIso: true,
-        },
-      });
-      if (!before) throw new ActionError('Mandant nicht gefunden.');
-
-      const after = {
-        name: parsed.data.name.trim(),
-        kind: parsed.data.kind,
-        street: emptyToNull(parsed.data.street),
-        postalCode: emptyToNull(parsed.data.postalCode),
-        city: emptyToNull(parsed.data.city),
-        countryIso: emptyToNull(parsed.data.countryIso),
-      };
-
-      // Diff: Was hat sich tatsächlich geändert? Wenn nichts → kein Re-Trigger.
-      const changed: string[] = [];
-      for (const k of ['name', 'kind', 'street', 'postalCode', 'city', 'countryIso'] as const) {
-        if (before[k] !== after[k]) changed.push(k);
-      }
-
-      await tx.client.update({ where: { id: clientId }, data: after });
-
-      let gwgReset = false;
-      let gwgReviewCheckId: string | null = null;
-      let gwgInvalidatedIdentityDocuments = 0;
-      if (changed.length > 0) {
-        // Bestehenden VERIFIED-Check auf IN_REVIEW zurücksetzen
-        const reset = await requireGwgReverificationTx(tx, { tenantId, clientId });
-        gwgReset = reset.reviewCheckId !== null;
-        gwgReviewCheckId = reset.reviewCheckId;
-        gwgInvalidatedIdentityDocuments = reset.invalidatedIdentityDocuments;
-      }
-
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'client.update.gwg_relevant',
-        resourceType: 'client',
-        resourceId: clientId,
-        before,
-        after: {
-          ...after,
-          _changedFields: changed,
-          _gwgReverificationTriggered: gwgReset,
-          _gwgReviewCheckId: gwgReviewCheckId,
-          _gwgInvalidatedIdentityDocuments: gwgInvalidatedIdentityDocuments,
-        },
-      });
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
-
-  revalidatePath(`/staff/clients/${clientId}`);
-  revalidatePath(`/staff/clients/${clientId}/edit`);
-  revalidatePath(`/staff/clients/${clientId}/gwg`);
-  return { ok: true, savedAt: new Date().toISOString() };
 }
 
 // ----------------------------------------------------------------------------
@@ -235,122 +229,121 @@ export async function setResponsibilitiesAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId: actorId, ctx, session } = g;
-  // Berufsträger-Zuordnung bestimmt GwG-Verantwortung — nur ADMIN/PARTNER
-  // (eigene, präzisere Meldung als der Standard-Gate).
-  if (!isStaffAdmin(session)) {
-    return { ok: false, error: 'Nur ADMIN/PARTNER darf Bearbeiter-Zuordnungen ändern.' };
-  }
-  const berufstraegerIds = formData.getAll('berufstraegerIds').map((v) => String(v));
-  const hauptIds = formData.getAll('hauptbearbeiterIds').map((v) => String(v));
-  const parsed = RespSchema.safeParse({
-    clientId: formData.get('clientId'),
-    berufstraegerIds,
-    hauptbearbeiterIds: hauptIds,
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
-  const { clientId } = parsed.data;
-  // Mehrfachwerte aus manipulierten/dupliziert abgesendeten Formularfeldern
-  // dürfen nicht zu doppelten CREATEs und einem künstlichen Unique-Konflikt führen.
-  const berufIds = Array.from(new Set(parsed.data.berufstraegerIds));
-  const hauptbearbeiterIds = Array.from(new Set(parsed.data.hauptbearbeiterIds));
-
-  // Praxis-Check: mind. ein Berufsträger erforderlich (sonst kein GwG-Verifier
-  // mehr). Wenn alle Berufsträger entfernt werden sollen → explizit ablehnen,
-  // damit kein Mandant in einen broken state läuft.
-  if (berufIds.length === 0) {
-    return { ok: false, error: 'Mindestens ein Berufsträger muss zugeordnet sein.' };
-  }
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      const assignedStaffIds = Array.from(new Set([...berufIds, ...hauptbearbeiterIds]));
-      const eligibleStaffCount = await tx.staffUser.count({
-        where: {
-          tenantId,
-          id: { in: assignedStaffIds },
-          active: true,
-          roles: { some: {} },
-        },
+  return staffAction({
+    // Berufsträger-Zuordnung bestimmt GwG-Verantwortung — nur ADMIN/PARTNER
+    // (eigene, präzisere Meldung als der Standard-Gate).
+    guard: {
+      requireAdmin: true,
+      deniedMessage: 'Nur ADMIN/PARTNER darf Bearbeiter-Zuordnungen ändern.',
+    },
+    run: async ({ tenantId, staffId: actorId, ctx, session }) => {
+      const berufstraegerIds = formData.getAll('berufstraegerIds').map((v) => String(v));
+      const hauptIds = formData.getAll('hauptbearbeiterIds').map((v) => String(v));
+      const parsed = RespSchema.safeParse({
+        clientId: formData.get('clientId'),
+        berufstraegerIds,
+        hauptbearbeiterIds: hauptIds,
       });
-      if (eligibleStaffCount !== assignedStaffIds.length) {
-        throw new ActionError(
-          'Eine gewählte Zuständigkeit ist nicht mehr aktiv oder hat keine gültige Staff-Rolle.',
-        );
-      }
-      if (!(await areProfessionalAssigneesEligibleTx(tx, tenantId, berufIds))) {
-        throw new ActionError(
-          'Als Berufsträger sind nur aktive, als Berufsträger qualifizierte Mitarbeiter zulässig.',
-        );
-      }
-      const before = await tx.clientResponsibility.findMany({ where: { clientId } });
+      if (!parsed.success)
+        return { ok: false, error: 'Validierungsfehler — bitte Eingaben prüfen.' };
+      const { clientId } = parsed.data;
+      // Mehrfachwerte aus manipulierten/dupliziert abgesendeten Formularfeldern
+      // dürfen nicht zu doppelten CREATEs und einem künstlichen Unique-Konflikt führen.
+      const berufIds = Array.from(new Set(parsed.data.berufstraegerIds));
+      const hauptbearbeiterIds = Array.from(new Set(parsed.data.hauptbearbeiterIds));
 
-      // 1. Berufsträger — Diff. Mehrere möglich (Gesellschafter-Konstellationen,
-      //    fachlich geteilte Mandate). Schema-unique ist (clientId, staffId, role),
-      //    also pro Staff genau 1 Eintrag — beliebig viele Staffs.
-      const oldBeruf = before.filter((b) => b.role === 'BERUFSTRAEGER').map((b) => b.staffId);
-      const oldBerufSet = new Set(oldBeruf);
-      const newBerufSet = new Set(berufIds);
-      const berufToRemove = oldBeruf.filter((id) => !newBerufSet.has(id));
-      const berufToAdd = berufIds.filter((id) => !oldBerufSet.has(id));
+      // Praxis-Check: mind. ein Berufsträger erforderlich (sonst kein GwG-Verifier
+      // mehr). Wenn alle Berufsträger entfernt werden sollen → explizit ablehnen,
+      // damit kein Mandant in einen broken state läuft.
+      if (berufIds.length === 0) {
+        return { ok: false, error: 'Mindestens ein Berufsträger muss zugeordnet sein.' };
+      }
 
-      if (berufToRemove.length > 0) {
-        await tx.clientResponsibility.deleteMany({
-          where: { clientId, role: 'BERUFSTRAEGER', staffId: { in: berufToRemove } },
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, clientId);
+        const assignedStaffIds = Array.from(new Set([...berufIds, ...hauptbearbeiterIds]));
+        const eligibleStaffCount = await tx.staffUser.count({
+          where: {
+            tenantId,
+            id: { in: assignedStaffIds },
+            active: true,
+            roles: { some: {} },
+          },
         });
-      }
-      for (const sid of berufToAdd) {
-        await tx.clientResponsibility.create({
-          data: { tenantId, clientId, staffId: sid, role: 'BERUFSTRAEGER' },
-        });
-      }
+        if (eligibleStaffCount !== assignedStaffIds.length) {
+          throw new ActionError(
+            'Eine gewählte Zuständigkeit ist nicht mehr aktiv oder hat keine gültige Staff-Rolle.',
+          );
+        }
+        if (!(await areProfessionalAssigneesEligibleTx(tx, tenantId, berufIds))) {
+          throw new ActionError(
+            'Als Berufsträger sind nur aktive, als Berufsträger qualifizierte Mitarbeiter zulässig.',
+          );
+        }
+        const before = await tx.clientResponsibility.findMany({ where: { clientId } });
 
-      // 2. Hauptbearbeiter — Diff
-      const oldHaupt = before.filter((b) => b.role === 'HAUPTBEARBEITER').map((b) => b.staffId);
-      const oldHauptSet = new Set(oldHaupt);
-      const newHauptSet = new Set(hauptbearbeiterIds);
-      const toRemove = oldHaupt.filter((id) => !newHauptSet.has(id));
-      const toAdd = hauptbearbeiterIds.filter((id) => !oldHauptSet.has(id));
+        // 1. Berufsträger — Diff. Mehrere möglich (Gesellschafter-Konstellationen,
+        //    fachlich geteilte Mandate). Schema-unique ist (clientId, staffId, role),
+        //    also pro Staff genau 1 Eintrag — beliebig viele Staffs.
+        const oldBeruf = before.filter((b) => b.role === 'BERUFSTRAEGER').map((b) => b.staffId);
+        const oldBerufSet = new Set(oldBeruf);
+        const newBerufSet = new Set(berufIds);
+        const berufToRemove = oldBeruf.filter((id) => !newBerufSet.has(id));
+        const berufToAdd = berufIds.filter((id) => !oldBerufSet.has(id));
 
-      if (toRemove.length > 0) {
-        await tx.clientResponsibility.deleteMany({
-          where: { clientId, role: 'HAUPTBEARBEITER', staffId: { in: toRemove } },
-        });
-      }
-      for (const sid of toAdd) {
-        await tx.clientResponsibility.create({
-          data: { tenantId, clientId, staffId: sid, role: 'HAUPTBEARBEITER' },
-        });
-      }
+        if (berufToRemove.length > 0) {
+          await tx.clientResponsibility.deleteMany({
+            where: { clientId, role: 'BERUFSTRAEGER', staffId: { in: berufToRemove } },
+          });
+        }
+        for (const sid of berufToAdd) {
+          await tx.clientResponsibility.create({
+            data: { tenantId, clientId, staffId: sid, role: 'BERUFSTRAEGER' },
+          });
+        }
 
-      const changed =
-        berufToAdd.length > 0 ||
-        berufToRemove.length > 0 ||
-        toAdd.length > 0 ||
-        toRemove.length > 0;
-      if (changed) {
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId,
-          action: 'client.responsibilities.update',
-          resourceType: 'client',
-          resourceId: clientId,
-          before: { berufstraegerIds: oldBeruf, hauptbearbeiterIds: oldHaupt },
-          after: { berufstraegerIds: berufIds, hauptbearbeiterIds },
-        });
-      }
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
+        // 2. Hauptbearbeiter — Diff
+        const oldHaupt = before.filter((b) => b.role === 'HAUPTBEARBEITER').map((b) => b.staffId);
+        const oldHauptSet = new Set(oldHaupt);
+        const newHauptSet = new Set(hauptbearbeiterIds);
+        const toRemove = oldHaupt.filter((id) => !newHauptSet.has(id));
+        const toAdd = hauptbearbeiterIds.filter((id) => !oldHauptSet.has(id));
 
-  revalidatePath(`/staff/clients/${clientId}`);
-  revalidatePath(`/staff/clients/${clientId}/edit`);
-  return { ok: true, savedAt: new Date().toISOString() };
+        if (toRemove.length > 0) {
+          await tx.clientResponsibility.deleteMany({
+            where: { clientId, role: 'HAUPTBEARBEITER', staffId: { in: toRemove } },
+          });
+        }
+        for (const sid of toAdd) {
+          await tx.clientResponsibility.create({
+            data: { tenantId, clientId, staffId: sid, role: 'HAUPTBEARBEITER' },
+          });
+        }
+
+        const changed =
+          berufToAdd.length > 0 ||
+          berufToRemove.length > 0 ||
+          toAdd.length > 0 ||
+          toRemove.length > 0;
+        if (changed) {
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId,
+            action: 'client.responsibilities.update',
+            resourceType: 'client',
+            resourceId: clientId,
+            before: { berufstraegerIds: oldBeruf, hauptbearbeiterIds: oldHaupt },
+            after: { berufstraegerIds: berufIds, hauptbearbeiterIds },
+          });
+        }
+      });
+
+      revalidatePath(`/staff/clients/${clientId}`);
+      revalidatePath(`/staff/clients/${clientId}/edit`);
+      return { savedAt: new Date().toISOString() };
+    },
+  });
 }
 
 // ----------------------------------------------------------------------------
@@ -367,50 +360,44 @@ export async function setMandateEndAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
-  if (!isStaffAdmin(session)) {
-    return { ok: false, error: 'Nur ADMIN/PARTNER darf das Mandatsende setzen.' };
-  }
+  return staffAction({
+    guard: { requireAdmin: true, deniedMessage: 'Nur ADMIN/PARTNER darf das Mandatsende setzen.' },
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = MandateEndSchema.safeParse({
+        clientId: formData.get('clientId'),
+        ended: formData.get('ended') === 'on' || formData.get('ended') === '1',
+      });
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const { clientId, ended } = parsed.data;
 
-  const parsed = MandateEndSchema.safeParse({
-    clientId: formData.get('clientId'),
-    ended: formData.get('ended') === 'on' || formData.get('ended') === '1',
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, clientId);
+        const before = await tx.client.findUnique({
+          where: { id: clientId },
+          select: { mandateEndedAt: true },
+        });
+        if (!before) throw new ActionError('Mandant nicht gefunden.');
+        // Setzen = jetzt (Mandatsende-Datum); Zurücknehmen = null. Ein bereits
+        // gesetztes Datum NICHT überschreiben (die Frist soll am ursprünglichen
+        // Ende hängen), wenn erneut „beendet" geklickt wird.
+        const next = ended ? (before.mandateEndedAt ?? new Date()) : null;
+        await tx.client.update({ where: { id: clientId }, data: { mandateEndedAt: next } });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: ended ? 'client.mandate.end' : 'client.mandate.reopen',
+          resourceType: 'client',
+          resourceId: clientId,
+          before: { mandateEndedAt: before.mandateEndedAt?.toISOString() ?? null },
+          after: { mandateEndedAt: next?.toISOString() ?? null },
+        });
+      });
+
+      revalidatePath(`/staff/clients/${clientId}`);
+      revalidatePath(`/staff/clients/${clientId}/edit`);
+      revalidatePath('/staff/admin/gwg-retention');
+      return { savedAt: new Date().toISOString() };
+    },
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId, ended } = parsed.data;
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      const before = await tx.client.findUnique({
-        where: { id: clientId },
-        select: { mandateEndedAt: true },
-      });
-      if (!before) throw new ActionError('Mandant nicht gefunden.');
-      // Setzen = jetzt (Mandatsende-Datum); Zurücknehmen = null. Ein bereits
-      // gesetztes Datum NICHT überschreiben (die Frist soll am ursprünglichen
-      // Ende hängen), wenn erneut „beendet" geklickt wird.
-      const next = ended ? (before.mandateEndedAt ?? new Date()) : null;
-      await tx.client.update({ where: { id: clientId }, data: { mandateEndedAt: next } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: ended ? 'client.mandate.end' : 'client.mandate.reopen',
-        resourceType: 'client',
-        resourceId: clientId,
-        before: { mandateEndedAt: before.mandateEndedAt?.toISOString() ?? null },
-        after: { mandateEndedAt: next?.toISOString() ?? null },
-      });
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
-
-  revalidatePath(`/staff/clients/${clientId}`);
-  revalidatePath(`/staff/clients/${clientId}/edit`);
-  revalidatePath('/staff/admin/gwg-retention');
-  return { ok: true, savedAt: new Date().toISOString() };
 }

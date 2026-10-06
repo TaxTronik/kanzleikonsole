@@ -38,17 +38,25 @@ vi.mock('@/server/auth/rbac', () => ({
     error: error instanceof m.ActionError ? error.message : 'Interner Fehler.',
   }),
 }));
-vi.mock('@/server/actions/staff-action', () => ({
-  ActionError: m.ActionError,
-  staffActionGuard: async () => ({
-    ok: true,
+vi.mock('@/server/actions/staff-action', async () => {
+  const staffActionGuard = async () => ({
+    ok: true as const,
     tenantId: 'tenant-1',
     staffId: 'staff-1',
     session: { user: { tenantId: 'tenant-1', staffId: 'staff-1' } },
     ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
-  }),
-  withStaffModule: () => vi.fn(),
-}));
+  });
+  const { createActionRunner } = await vi.importActual<
+    typeof import('@/server/actions/action-runner')
+  >('@/server/actions/action-runner');
+  return {
+    ActionError: m.ActionError,
+    staffActionGuard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: createActionRunner(staffActionGuard),
+    withStaffModule: () => vi.fn(),
+  };
+});
 
 import { saveTaxFilingAction } from '../actions';
 import { MAX_UPLOAD_BYTES_BY_KIND } from '@/lib/upload-limits.mjs';

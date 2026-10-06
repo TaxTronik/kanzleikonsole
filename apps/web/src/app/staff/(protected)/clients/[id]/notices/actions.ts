@@ -8,8 +8,8 @@ import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { berlinCalendarDate } from '@taxtronik/tax';
 import { evidenceService } from '@/server/container';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { assertClientAccessTx, isStaffAdmin, toActionError } from '@/server/auth/rbac';
-import { ActionError, staffActionGuard, type ActionResult } from '@/server/actions/staff-action';
+import { assertClientAccessTx, isStaffAdmin } from '@/server/auth/rbac';
+import { ActionError, staffAction, type ActionResult } from '@/server/actions/staff-action';
 import { validationFailure, type FormDataParseResult } from '@/server/actions/form-data';
 import type { StaffSession } from '@/server/auth/staff';
 import { planNoticeTransition } from './notice-transition';
@@ -594,29 +594,23 @@ export async function createNoticeAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'taxNotices' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
-  const parsed = parseCreateNoticeInput(formData);
-  if (!parsed.ok) return parsed;
-  let prepared: PreparedCreateNotice;
-  try {
-    prepared = prepareCreateNotice(parsed.data);
-  } catch (error) {
-    // Plausibilitätsregeln kommen als ActionError ins Formular zurück; die
-    // Eingaben bleiben dort stehen (vorher: error.tsx, Eingaben verloren).
-    return toActionError(error);
-  }
+  const result = await staffAction({
+    guard: { module: 'taxNotices' },
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = parseCreateNoticeInput(formData);
+      if (!parsed.ok) return parsed;
+      // Plausibilitätsregeln kommen als ActionError ins Formular zurück; die
+      // Eingaben bleiben dort stehen (vorher: error.tsx, Eingaben verloren).
+      const prepared = prepareCreateNotice(parsed.data);
+      await createNoticeTx(ctx, session, { tenantId, staffId }, prepared);
 
-  try {
-    await createNoticeTx(ctx, session, { tenantId, staffId }, prepared);
-  } catch (error) {
-    return toActionError(error);
-  }
-
-  const { clientId } = prepared.data;
-  revalidatePath(`/staff/clients/${clientId}/notices`);
-  redirect(`/staff/clients/${clientId}/notices`);
+      const { clientId } = prepared.data;
+      revalidatePath(`/staff/clients/${clientId}/notices`);
+      return { clientId };
+    },
+  });
+  if (!result.ok) return result;
+  redirect(`/staff/clients/${result.clientId}/notices`);
 }
 
 async function createNoticeTx(
@@ -772,197 +766,201 @@ export async function updateNoticeStatusAction(input: {
     klageFiledDate?: string;
   };
 }): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'taxNotices' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
-
-  const parsed = z
-    .object({
-      noticeId: z.string().uuid(),
-      status: z.enum(NOTICE_STATUS_VALUES),
-      eventDate: YmdSchema.optional(),
-      decisionLegalRemedyInstruction: z.enum(['VALID', 'MISSING_OR_INVALID']).optional(),
-      legalFinalReason: z.string().trim().min(10).max(2_000).optional(),
-      legacyEvidence: z
+  return staffAction({
+    guard: { module: 'taxNotices' },
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = z
         .object({
-          appealFiledDate: YmdSchema.optional(),
-          appealResolvedDate: YmdSchema.optional(),
-          partialReliefReceivedDate: YmdSchema.optional(),
-          appealDecisionReceivedDate: YmdSchema.optional(),
-          klageFiledDate: YmdSchema.optional(),
+          noticeId: z.string().uuid(),
+          status: z.enum(NOTICE_STATUS_VALUES),
+          eventDate: YmdSchema.optional(),
+          decisionLegalRemedyInstruction: z.enum(['VALID', 'MISSING_OR_INVALID']).optional(),
+          legalFinalReason: z.string().trim().min(10).max(2_000).optional(),
+          legacyEvidence: z
+            .object({
+              appealFiledDate: YmdSchema.optional(),
+              appealResolvedDate: YmdSchema.optional(),
+              partialReliefReceivedDate: YmdSchema.optional(),
+              appealDecisionReceivedDate: YmdSchema.optional(),
+              klageFiledDate: YmdSchema.optional(),
+            })
+            .strict()
+            .optional(),
         })
-        .strict()
-        .optional(),
-    })
-    .safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const {
-    noticeId,
-    status,
-    eventDate: eventDateInput,
-    decisionLegalRemedyInstruction,
-    legalFinalReason,
-    legacyEvidence,
-  } = parsed.data;
+        .safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const {
+        noticeId,
+        status,
+        eventDate: eventDateInput,
+        decisionLegalRemedyInstruction,
+        legalFinalReason,
+        legacyEvidence,
+      } = parsed.data;
 
-  const needsEventDate =
-    status === 'EINSPRUCH' ||
-    status === 'ABGEHOLFEN' ||
-    status === 'TEILABHILFE' ||
-    status === 'TEILEINSPRUCHSENTSCHEIDUNG' ||
-    status === 'ZURUECKGEWIESEN' ||
-    status === 'KLAGE' ||
-    status === 'BESTANDSKRAEFTIG';
-  if (needsEventDate && !eventDateInput) {
-    return { ok: false, error: 'Der tatsächliche Ereignistag ist für diesen Status erforderlich.' };
-  }
-  const isDecisionStatus = status === 'TEILEINSPRUCHSENTSCHEIDUNG' || status === 'ZURUECKGEWIESEN';
-  const suppliesLegacyDecision = Boolean(legacyEvidence?.appealDecisionReceivedDate);
-  if ((isDecisionStatus || suppliesLegacyDecision) && !decisionLegalRemedyInstruction) {
-    return {
-      ok: false,
-      error: 'Die Rechtsbehelfsbelehrung der Einspruchsentscheidung muss geprüft werden.',
-    };
-  }
-  const decisionLegalRemedyInstructionValid =
-    isDecisionStatus || suppliesLegacyDecision ? decisionLegalRemedyInstruction === 'VALID' : null;
-  const eventDate = optionalYmdToDate(eventDateInput);
-  if (status === 'BESTANDSKRAEFTIG') {
-    if (!isStaffAdmin(session)) {
-      return {
-        ok: false,
-        error:
-          'Die Bestandskraft kann nur durch Partner oder Administration fachlich festgestellt werden.',
-      };
-    }
-    if (!legalFinalReason) {
-      return {
-        ok: false,
-        error: 'Die fachliche Abschlussentscheidung muss begründet werden.',
-      };
-    }
-  }
-  const legacyAppealFiledAt = optionalYmdToDate(legacyEvidence?.appealFiledDate);
-  const legacyAppealResolvedAt = optionalYmdToDate(legacyEvidence?.appealResolvedDate);
-  const legacyPartialReliefReceivedAt = optionalYmdToDate(
-    legacyEvidence?.partialReliefReceivedDate,
-  );
-  const legacyDecisionReceivedAt = optionalYmdToDate(legacyEvidence?.appealDecisionReceivedDate);
-  const legacyKlageFiledAt = optionalYmdToDate(legacyEvidence?.klageFiledDate);
-  const submittedDates = [
-    eventDate,
-    legacyAppealFiledAt,
-    legacyAppealResolvedAt,
-    legacyPartialReliefReceivedAt,
-    legacyDecisionReceivedAt,
-    legacyKlageFiledAt,
-  ].filter((date): date is Date => date !== null);
-  const today = berlinCalendarDate(new Date());
-  if (submittedDates.some((date) => date.getTime() > today.getTime())) {
-    return { ok: false, error: 'Der Ereignistag darf nicht in der Zukunft liegen.' };
-  }
-
-  let clientId: string | null = null;
-  let result: ActionResult;
-  try {
-    result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
-      const before = await tx.taxNotice.findFirst({
-        where: { id: noticeId, tenantId },
-        select: {
-          id: true,
-          status: true,
-          clientId: true,
-          noticeDate: true,
-          appealDeadline: true,
-          deadlineCalculationStatus: true,
-          manualReviewRequired: true,
-          reviewedAt: true,
-          appealFiledAt: true,
-          appealFiledBy: true,
-          partialReliefReceivedAt: true,
-          partialReliefReceivedBy: true,
-          appealResolvedAt: true,
-          appealDecisionReceivedAt: true,
-          appealDecisionLegalRemedyInstructionValid: true,
-          klageDeadline: true,
-          klageFiledAt: true,
-          klageFiledBy: true,
-          authorityRegion: true,
-          authorityCountryCode: true,
-          authorityLocality: true,
-          authorityLocalHolidayDates: true,
-          authorityBavariaAssumptionApplies: true,
-          authorityHolidayContextStatus: true,
-        },
-      });
-      if (!before) return { ok: false, error: 'Bescheid nicht gefunden.' };
-      clientId = before.clientId;
-      await assertClientAccessTx(tx, session, before.clientId);
-
-      const plan = planNoticeTransition({
-        before,
-        request: {
-          status,
-          eventDateInput,
-          eventDate,
-          decisionLegalRemedyInstructionValid,
-          legalFinalReason: legalFinalReason ?? null,
-          legacyEvidence,
-          legacyAppealFiledAt,
-          legacyAppealResolvedAt,
-          legacyPartialReliefReceivedAt,
-          legacyDecisionReceivedAt,
-          legacyKlageFiledAt,
-        },
-        staffId,
-        now: new Date(),
-        // TAX-DEADLINE-WORKDAY-001: Für die Klagefrist zählt ausschließlich
-        // der am Bescheid dokumentierte und geprüfte Behördensitz. Örtliche
-        // Ausnahmen bleiben Teil der reproduzierbaren Berechnungsgrundlage.
-        deadlineHolidayContext: holidayContext({
-          countryCode: before.authorityCountryCode,
-          region: before.authorityRegion,
-          locality: before.authorityLocality,
-          calendarStatus: before.authorityHolidayContextStatus,
-          bavariaAssumptionApplies: before.authorityBavariaAssumptionApplies,
-          localHolidays: before.authorityLocalHolidayDates,
-        }),
-      });
-      if (!plan.ok) return plan;
-
-      // TOCTOU-Schutz: nur aus dem gelesenen Ausgangsstatus heraus wechseln.
-      // Zwei parallele, einzeln gültige Übergänge aus demselben Status würden
-      // sonst appealFiledAt/reviewedAt überschreiben (§ 122 (2)-Nachweis).
-      const claim = await tx.taxNotice.updateMany({
-        where: { id: noticeId, status: before.status },
-        data: plan.data,
-      });
-      if (claim.count === 0) {
+      const needsEventDate =
+        status === 'EINSPRUCH' ||
+        status === 'ABGEHOLFEN' ||
+        status === 'TEILABHILFE' ||
+        status === 'TEILEINSPRUCHSENTSCHEIDUNG' ||
+        status === 'ZURUECKGEWIESEN' ||
+        status === 'KLAGE' ||
+        status === 'BESTANDSKRAEFTIG';
+      if (needsEventDate && !eventDateInput) {
         return {
           ok: false,
-          error: 'Status wurde zwischenzeitlich geändert — bitte Seite neu laden.',
+          error: 'Der tatsächliche Ereignistag ist für diesen Status erforderlich.',
         };
       }
-      await resolveNotificationsTx(tx, {
-        tenantId,
-        resources: [{ resourceType: 'tax_notice', resourceId: noticeId }],
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'tax_notice.status',
-        resourceType: 'tax_notice',
-        resourceId: noticeId,
-        before: taxNoticeStatusBeforeAudit(before),
-        after: taxNoticeStatusAfterAudit(noticeId, plan.auditAfter, plan.data),
-      });
-      return { ok: true };
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
+      const isDecisionStatus =
+        status === 'TEILEINSPRUCHSENTSCHEIDUNG' || status === 'ZURUECKGEWIESEN';
+      const suppliesLegacyDecision = Boolean(legacyEvidence?.appealDecisionReceivedDate);
+      if ((isDecisionStatus || suppliesLegacyDecision) && !decisionLegalRemedyInstruction) {
+        return {
+          ok: false,
+          error: 'Die Rechtsbehelfsbelehrung der Einspruchsentscheidung muss geprüft werden.',
+        };
+      }
+      const decisionLegalRemedyInstructionValid =
+        isDecisionStatus || suppliesLegacyDecision
+          ? decisionLegalRemedyInstruction === 'VALID'
+          : null;
+      const eventDate = optionalYmdToDate(eventDateInput);
+      if (status === 'BESTANDSKRAEFTIG') {
+        if (!isStaffAdmin(session)) {
+          return {
+            ok: false,
+            error:
+              'Die Bestandskraft kann nur durch Partner oder Administration fachlich festgestellt werden.',
+          };
+        }
+        if (!legalFinalReason) {
+          return {
+            ok: false,
+            error: 'Die fachliche Abschlussentscheidung muss begründet werden.',
+          };
+        }
+      }
+      const legacyAppealFiledAt = optionalYmdToDate(legacyEvidence?.appealFiledDate);
+      const legacyAppealResolvedAt = optionalYmdToDate(legacyEvidence?.appealResolvedDate);
+      const legacyPartialReliefReceivedAt = optionalYmdToDate(
+        legacyEvidence?.partialReliefReceivedDate,
+      );
+      const legacyDecisionReceivedAt = optionalYmdToDate(
+        legacyEvidence?.appealDecisionReceivedDate,
+      );
+      const legacyKlageFiledAt = optionalYmdToDate(legacyEvidence?.klageFiledDate);
+      const submittedDates = [
+        eventDate,
+        legacyAppealFiledAt,
+        legacyAppealResolvedAt,
+        legacyPartialReliefReceivedAt,
+        legacyDecisionReceivedAt,
+        legacyKlageFiledAt,
+      ].filter((date): date is Date => date !== null);
+      const today = berlinCalendarDate(new Date());
+      if (submittedDates.some((date) => date.getTime() > today.getTime())) {
+        return { ok: false, error: 'Der Ereignistag darf nicht in der Zukunft liegen.' };
+      }
 
-  if (result.ok && clientId) revalidatePath(`/staff/clients/${clientId}/notices`);
-  return result;
+      let clientId: string | null = null;
+      const result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
+        const before = await tx.taxNotice.findFirst({
+          where: { id: noticeId, tenantId },
+          select: {
+            id: true,
+            status: true,
+            clientId: true,
+            noticeDate: true,
+            appealDeadline: true,
+            deadlineCalculationStatus: true,
+            manualReviewRequired: true,
+            reviewedAt: true,
+            appealFiledAt: true,
+            appealFiledBy: true,
+            partialReliefReceivedAt: true,
+            partialReliefReceivedBy: true,
+            appealResolvedAt: true,
+            appealDecisionReceivedAt: true,
+            appealDecisionLegalRemedyInstructionValid: true,
+            klageDeadline: true,
+            klageFiledAt: true,
+            klageFiledBy: true,
+            authorityRegion: true,
+            authorityCountryCode: true,
+            authorityLocality: true,
+            authorityLocalHolidayDates: true,
+            authorityBavariaAssumptionApplies: true,
+            authorityHolidayContextStatus: true,
+          },
+        });
+        if (!before) return { ok: false, error: 'Bescheid nicht gefunden.' };
+        clientId = before.clientId;
+        await assertClientAccessTx(tx, session, before.clientId);
+
+        const plan = planNoticeTransition({
+          before,
+          request: {
+            status,
+            eventDateInput,
+            eventDate,
+            decisionLegalRemedyInstructionValid,
+            legalFinalReason: legalFinalReason ?? null,
+            legacyEvidence,
+            legacyAppealFiledAt,
+            legacyAppealResolvedAt,
+            legacyPartialReliefReceivedAt,
+            legacyDecisionReceivedAt,
+            legacyKlageFiledAt,
+          },
+          staffId,
+          now: new Date(),
+          // TAX-DEADLINE-WORKDAY-001: Für die Klagefrist zählt ausschließlich
+          // der am Bescheid dokumentierte und geprüfte Behördensitz. Örtliche
+          // Ausnahmen bleiben Teil der reproduzierbaren Berechnungsgrundlage.
+          deadlineHolidayContext: holidayContext({
+            countryCode: before.authorityCountryCode,
+            region: before.authorityRegion,
+            locality: before.authorityLocality,
+            calendarStatus: before.authorityHolidayContextStatus,
+            bavariaAssumptionApplies: before.authorityBavariaAssumptionApplies,
+            localHolidays: before.authorityLocalHolidayDates,
+          }),
+        });
+        if (!plan.ok) return plan;
+
+        // TOCTOU-Schutz: nur aus dem gelesenen Ausgangsstatus heraus wechseln.
+        // Zwei parallele, einzeln gültige Übergänge aus demselben Status würden
+        // sonst appealFiledAt/reviewedAt überschreiben (§ 122 (2)-Nachweis).
+        const claim = await tx.taxNotice.updateMany({
+          where: { id: noticeId, status: before.status },
+          data: plan.data,
+        });
+        if (claim.count === 0) {
+          return {
+            ok: false,
+            error: 'Status wurde zwischenzeitlich geändert — bitte Seite neu laden.',
+          };
+        }
+        await resolveNotificationsTx(tx, {
+          tenantId,
+          resources: [{ resourceType: 'tax_notice', resourceId: noticeId }],
+        });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'tax_notice.status',
+          resourceType: 'tax_notice',
+          resourceId: noticeId,
+          before: taxNoticeStatusBeforeAudit(before),
+          after: taxNoticeStatusAfterAudit(noticeId, plan.auditAfter, plan.data),
+        });
+        return { ok: true };
+      });
+
+      if (result.ok && clientId) revalidatePath(`/staff/clients/${clientId}/notices`);
+      return result;
+    },
+  });
 }

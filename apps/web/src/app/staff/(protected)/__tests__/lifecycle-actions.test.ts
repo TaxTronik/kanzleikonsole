@@ -53,6 +53,12 @@ vi.mock('@/server/actions/staff-action', async () => {
     withStaff: h.withStaff,
     withStaffModule: () => h.withStaff,
     staffActionGuard: h.staffActionGuard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(h.staffActionGuard),
     parseFormData: (
       schema: { safeParse(value: unknown): { success: boolean; data?: unknown } },
       formData: FormData,

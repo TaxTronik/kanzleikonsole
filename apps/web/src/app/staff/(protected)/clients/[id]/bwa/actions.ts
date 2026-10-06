@@ -10,7 +10,7 @@ import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { XlsxReadError } from '@/lib/xlsx/read-xlsx';
 import { readUploadFile } from '@/server/documents/upload-file';
 import {
-  staffActionGuard,
+  staffAction,
   ActionError,
   parseFormData,
   type ActionResult,
@@ -61,90 +61,91 @@ export async function importAddisonCsvAction(input: {
   fileName: string;
   csv: string;
 }): Promise<ImportResult> {
-  const g = await staffActionGuard({ module: 'bwa' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    guard: { module: 'bwa' },
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = ImportSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const { clientId, fileName, csv } = parsed.data;
 
-  const parsed = ImportSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId, fileName, csv } = parsed.data;
+      const denied = await denyIfNoClientAccess(ctx, session, clientId);
+      if (denied) return denied;
 
-  const denied = await denyIfNoClientAccess(ctx, session, clientId);
-  if (denied) return denied;
-
-  // Auto-Detect: Langform (a*.csv) beginnt mit `Nummer;…`; Kompaktform (s*.csv)
-  // beginnt mit einer Mandantennummer + Titel-Zeile.
-  const firstLine = csv.split(/\r?\n/, 1)[0] ?? '';
-  const isCompact = !/^\s*Nummer;/.test(firstLine);
-  const result = isCompact ? parseAddisonBwaCompactCsv(csv) : parseAddisonBwaCsv(csv);
-  if (result.periods.length === 0) {
-    return { ok: false, error: 'Keine BWA-Perioden im CSV erkannt.', warnings: result.warnings };
-  }
-
-  let imported = 0;
-  let skipped = 0;
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      // Sicherheits-Check: Mandant existiert in diesem Tenant
-      const client = await tx.client.findUnique({ where: { id: clientId } });
-      if (!client) throw new ActionError('Mandant nicht gefunden.');
-
-      for (const period of result.periods) {
-        // Existiert die Periode bereits? → Skip (idempotenter Re-Import nicht überschreibend)
-        const existing = await tx.bwaPeriod.findFirst({
-          where: { tenantId, clientId, periodKey: period.periodKey },
-        });
-        if (existing) {
-          skipped++;
-          continue;
-        }
-        const bp = await tx.bwaPeriod.create({
-          data: {
-            tenantId,
-            clientId,
-            periodType: period.type,
-            periodKey: period.periodKey,
-            fromDate: period.fromDate,
-            toDate: period.toDate,
-            source: 'ADDISON',
-            sourceRef: fileName,
-            importedById: staffId,
-            positions: {
-              create: period.positions.map((p) => ({
-                number: p.number,
-                label: p.label,
-                amount: p.amount,
-                sharePct: p.sharePct,
-              })),
-            },
-          },
-        });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'bwa.import',
-          resourceType: 'bwa_period',
-          resourceId: bp.id,
-          after: {
-            clientId,
-            periodKey: period.periodKey,
-            source: 'ADDISON',
-            fileName,
-            positionCount: period.positions.length,
-          },
-        });
-        imported++;
+      // Auto-Detect: Langform (a*.csv) beginnt mit `Nummer;…`; Kompaktform (s*.csv)
+      // beginnt mit einer Mandantennummer + Titel-Zeile.
+      const firstLine = csv.split(/\r?\n/, 1)[0] ?? '';
+      const isCompact = !/^\s*Nummer;/.test(firstLine);
+      const result = isCompact ? parseAddisonBwaCompactCsv(csv) : parseAddisonBwaCsv(csv);
+      if (result.periods.length === 0) {
+        return {
+          ok: false,
+          error: 'Keine BWA-Perioden im CSV erkannt.',
+          warnings: result.warnings,
+        };
       }
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  revalidatePath(`/staff/clients/${clientId}/bwa`);
-  return { ok: true, imported, skipped, warnings: result.warnings };
+      let imported = 0;
+      let skipped = 0;
+
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, clientId);
+        // Sicherheits-Check: Mandant existiert in diesem Tenant
+        const client = await tx.client.findUnique({ where: { id: clientId } });
+        if (!client) throw new ActionError('Mandant nicht gefunden.');
+
+        for (const period of result.periods) {
+          // Existiert die Periode bereits? → Skip (idempotenter Re-Import nicht überschreibend)
+          const existing = await tx.bwaPeriod.findFirst({
+            where: { tenantId, clientId, periodKey: period.periodKey },
+          });
+          if (existing) {
+            skipped++;
+            continue;
+          }
+          const bp = await tx.bwaPeriod.create({
+            data: {
+              tenantId,
+              clientId,
+              periodType: period.type,
+              periodKey: period.periodKey,
+              fromDate: period.fromDate,
+              toDate: period.toDate,
+              source: 'ADDISON',
+              sourceRef: fileName,
+              importedById: staffId,
+              positions: {
+                create: period.positions.map((p) => ({
+                  number: p.number,
+                  label: p.label,
+                  amount: p.amount,
+                  sharePct: p.sharePct,
+                })),
+              },
+            },
+          });
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'bwa.import',
+            resourceType: 'bwa_period',
+            resourceId: bp.id,
+            after: {
+              clientId,
+              periodKey: period.periodKey,
+              source: 'ADDISON',
+              fileName,
+              positionCount: period.positions.length,
+            },
+          });
+          imported++;
+        }
+      });
+
+      revalidatePath(`/staff/clients/${clientId}/bwa`);
+      return { imported, skipped, warnings: result.warnings };
+    },
+  });
 }
 
 const DatevImportSchema = z.object({
@@ -160,107 +161,108 @@ export async function importDatevXlsxAction(
   input: { clientId: string },
   upload: FormData,
 ): Promise<ImportResult> {
-  const g = await staffActionGuard({ module: 'bwa' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    guard: { module: 'bwa' },
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const entry = upload?.get('file');
+      const parsed = DatevImportSchema.safeParse({
+        clientId: input?.clientId,
+        fileName: entry instanceof File ? entry.name : undefined,
+      });
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const { clientId, fileName } = parsed.data;
 
-  const entry = upload?.get('file');
-  const parsed = DatevImportSchema.safeParse({
-    clientId: input?.clientId,
-    fileName: entry instanceof File ? entry.name : undefined,
-  });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId, fileName } = parsed.data;
+      const file = await readUploadFile(upload, 'file', 'bwaXlsx', {
+        missing: 'Bitte Datei auswählen.',
+      });
+      if (!file.ok) return { ok: false, error: file.error };
+      const buffer = file.bytes;
 
-  const file = await readUploadFile(upload, 'file', 'bwaXlsx', {
-    missing: 'Bitte Datei auswählen.',
-  });
-  if (!file.ok) return { ok: false, error: file.error };
-  const buffer = file.bytes;
+      const denied = await denyIfNoClientAccess(ctx, session, clientId);
+      if (denied) return denied;
 
-  const denied = await denyIfNoClientAccess(ctx, session, clientId);
-  if (denied) return denied;
-
-  // Der Reader wirft bei defektem Container, fehlender Arbeitsmappe (z. B. eine
-  // in .xlsx umbenannte .xls) oder gesprengtem Zellbudget. Ungeklammert kaeme
-  // das als generischer Server-Action-Fehler an statt als lesbarer Hinweis.
-  let result: Awaited<ReturnType<typeof parseDatevBwaXlsx>>;
-  try {
-    result = await parseDatevBwaXlsx(buffer);
-  } catch (e) {
-    return {
-      ok: false,
-      // F-03: nur die bewusst formulierten Lesefehler durchreichen; alles andere
-      // ordnet toActionError ein (Original nur im Server-Log).
-      error: `XLSX konnte nicht gelesen werden: ${e instanceof XlsxReadError ? e.message : toActionError(e).error}`,
-    };
-  }
-  if (result.periods.length === 0) {
-    return { ok: false, error: 'Keine BWA-Perioden im XLSX erkannt.', warnings: result.warnings };
-  }
-
-  let imported = 0;
-  let skipped = 0;
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      const client = await tx.client.findUnique({ where: { id: clientId } });
-      if (!client) throw new ActionError('Mandant nicht gefunden.');
-
-      for (const period of result.periods) {
-        const existing = await tx.bwaPeriod.findFirst({
-          where: { tenantId, clientId, periodKey: period.periodKey },
-        });
-        if (existing) {
-          skipped++;
-          continue;
-        }
-        const bp = await tx.bwaPeriod.create({
-          data: {
-            tenantId,
-            clientId,
-            periodType: period.type,
-            periodKey: period.periodKey,
-            fromDate: period.fromDate,
-            toDate: period.toDate,
-            source: 'DATEV',
-            sourceRef: fileName,
-            importedById: staffId,
-            positions: {
-              create: period.positions.map((p) => ({
-                number: p.number,
-                label: p.label,
-                amount: p.amount,
-                sharePct: null,
-              })),
-            },
-          },
-        });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'bwa.import',
-          resourceType: 'bwa_period',
-          resourceId: bp.id,
-          after: {
-            clientId,
-            periodKey: period.periodKey,
-            source: 'DATEV',
-            fileName,
-            positionCount: period.positions.length,
-          },
-        });
-        imported++;
+      // Der Reader wirft bei defektem Container, fehlender Arbeitsmappe (z. B. eine
+      // in .xlsx umbenannte .xls) oder gesprengtem Zellbudget. Ungeklammert kaeme
+      // das als generischer Server-Action-Fehler an statt als lesbarer Hinweis.
+      let result: Awaited<ReturnType<typeof parseDatevBwaXlsx>>;
+      try {
+        result = await parseDatevBwaXlsx(buffer);
+      } catch (e) {
+        return {
+          ok: false,
+          // F-03: nur die bewusst formulierten Lesefehler durchreichen; alles andere
+          // ordnet toActionError ein (Original nur im Server-Log).
+          error: `XLSX konnte nicht gelesen werden: ${e instanceof XlsxReadError ? e.message : toActionError(e).error}`,
+        };
       }
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
+      if (result.periods.length === 0) {
+        return {
+          ok: false,
+          error: 'Keine BWA-Perioden im XLSX erkannt.',
+          warnings: result.warnings,
+        };
+      }
 
-  revalidatePath(`/staff/clients/${clientId}/bwa`);
-  return { ok: true, imported, skipped, warnings: result.warnings };
+      let imported = 0;
+      let skipped = 0;
+
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, clientId);
+        const client = await tx.client.findUnique({ where: { id: clientId } });
+        if (!client) throw new ActionError('Mandant nicht gefunden.');
+
+        for (const period of result.periods) {
+          const existing = await tx.bwaPeriod.findFirst({
+            where: { tenantId, clientId, periodKey: period.periodKey },
+          });
+          if (existing) {
+            skipped++;
+            continue;
+          }
+          const bp = await tx.bwaPeriod.create({
+            data: {
+              tenantId,
+              clientId,
+              periodType: period.type,
+              periodKey: period.periodKey,
+              fromDate: period.fromDate,
+              toDate: period.toDate,
+              source: 'DATEV',
+              sourceRef: fileName,
+              importedById: staffId,
+              positions: {
+                create: period.positions.map((p) => ({
+                  number: p.number,
+                  label: p.label,
+                  amount: p.amount,
+                  sharePct: null,
+                })),
+              },
+            },
+          });
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'bwa.import',
+            resourceType: 'bwa_period',
+            resourceId: bp.id,
+            after: {
+              clientId,
+              periodKey: period.periodKey,
+              source: 'DATEV',
+              fileName,
+              positionCount: period.positions.length,
+            },
+          });
+          imported++;
+        }
+      });
+
+      revalidatePath(`/staff/clients/${clientId}/bwa`);
+      return { imported, skipped, warnings: result.warnings };
+    },
+  });
 }
 
 const DeleteSchema = z.object({
@@ -272,35 +274,31 @@ export async function deleteBwaPeriodAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ module: 'bwa' });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  return staffAction({
+    guard: { module: 'bwa' },
+    run: async ({ tenantId, staffId, ctx, session }) => {
+      const parsed = parseFormData(DeleteSchema, formData);
+      if (!parsed.ok) return parsed;
 
-  const parsed = parseFormData(DeleteSchema, formData);
-  if (!parsed.ok) return parsed;
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, parsed.data.clientId);
-      const before = await tx.bwaPeriod.findFirst({
-        where: { id: parsed.data.periodId, clientId: parsed.data.clientId },
+      await withTenantContext(ctx, async (tx) => {
+        await assertClientAccessTx(tx, session, parsed.data.clientId);
+        const before = await tx.bwaPeriod.findFirst({
+          where: { id: parsed.data.periodId, clientId: parsed.data.clientId },
+        });
+        if (!before) throw new ActionError('BWA-Zeitraum nicht gefunden.');
+        await tx.bwaPeriod.delete({ where: { id: before.id } });
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'bwa.delete',
+          resourceType: 'bwa_period',
+          resourceId: before.id,
+          before: { periodKey: before.periodKey, source: before.source },
+        });
       });
-      if (!before) throw new ActionError('BWA-Zeitraum nicht gefunden.');
-      await tx.bwaPeriod.delete({ where: { id: before.id } });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'bwa.delete',
-        resourceType: 'bwa_period',
-        resourceId: before.id,
-        before: { periodKey: before.periodKey, source: before.source },
-      });
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
 
-  revalidatePath(`/staff/clients/${parsed.data.clientId}/bwa`);
-  return { ok: true };
+      revalidatePath(`/staff/clients/${parsed.data.clientId}/bwa`);
+    },
+  });
 }

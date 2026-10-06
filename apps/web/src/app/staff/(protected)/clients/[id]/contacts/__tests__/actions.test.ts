@@ -44,6 +44,12 @@ vi.mock('@/server/auth/rbac', async () => ({
 vi.mock('@/server/actions/staff-action', async () => ({
   ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: m.staffActionGuard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(m.staffActionGuard),
   withStaff: m.withStaff,
 }));
 
