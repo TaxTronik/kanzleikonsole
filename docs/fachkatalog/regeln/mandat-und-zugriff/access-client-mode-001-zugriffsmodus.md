@@ -53,6 +53,8 @@ code_refs:
   - apps/web/src/server/auth/rbac.ts
   - apps/web/src/app/staff/(protected)/invoices/new/page.tsx
   - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts
+  - apps/web/src/server/auth/client-page-access.ts
+  - apps/web/src/server/auth/client-access-filter.ts
 test_refs:
   - apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts
   - apps/web/src/server/settings/__tests__/settings-atomicity-ci.test.ts

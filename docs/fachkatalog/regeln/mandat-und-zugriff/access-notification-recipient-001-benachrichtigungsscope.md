@@ -65,6 +65,7 @@ code_refs:
   - packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql
   - apps/web/src/server/inbox/client-notification.ts
   - packages/mail/src/dispatch.ts
+  - apps/worker/src/notification-recipients.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts
   - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts

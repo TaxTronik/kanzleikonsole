@@ -80,6 +80,15 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts
   - packages/db/prisma/migrations/20261006170000_tax_notice_legal_final_reason_whitespace/migration.sql
   - packages/db/prisma/sql/functions/app.legal_final_reason_sufficient(text).sql
+  - apps/web/src/server/fristen/quellen/anforderungen.ts
+  - apps/web/src/server/fristen/quellen/bescheid.ts
+  - apps/web/src/server/fristen/quellen/einspruchsfristen.ts
+  - apps/web/src/server/fristen/quellen/index.ts
+  - apps/web/src/server/fristen/quellen/interne-prueftermine.ts
+  - apps/web/src/server/fristen/quellen/klagefristen.ts
+  - apps/web/src/server/fristen/quellen/steuertermine.ts
+  - apps/web/src/server/fristen/quellen/typen.ts
+  - apps/web/src/server/fristen/quellen/wiedervorlagen.ts
 test_refs:
   - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/tax-notice-evidence.test.ts

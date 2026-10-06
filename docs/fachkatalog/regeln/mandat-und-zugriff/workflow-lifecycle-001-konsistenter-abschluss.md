@@ -34,6 +34,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/workflows/actions.ts
   - apps/web/src/app/staff/(protected)/interactions/actions.ts
   - apps/worker/src/jobs/workflow-feedback.ts
+  - apps/worker/src/jobs/workflow-auto-resume.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/interactions/__tests__/feedback-configure.test.ts
   - packages/db/src/__tests__/workflow-lifecycle.test.ts

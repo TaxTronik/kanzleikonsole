@@ -90,6 +90,7 @@ code_refs:
   - apps/web/src/server/gwg/persons.ts
   - apps/web/src/server/gwg/editable-check.ts
   - packages/gwg/src/check-lifecycle.ts
+  - apps/web/src/server/gwg/identity-pdf-pages.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/identity-document-review-state.test.ts

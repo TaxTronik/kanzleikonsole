@@ -107,6 +107,13 @@ code_refs:
   - packages/crypto/src/certificate-path.ts
   - apps/web/src/server/auth/webauthn-attestation.ts
   - apps/worker/src/jobs/fido-mds-trust-anchors.ts
+  - apps/web/src/server/auth/session-factory.ts
+  - apps/web/src/server/auth/staff-session.ts
+  - apps/web/src/server/auth/staff-login.ts
+  - apps/web/src/server/auth/staff-login-ticket.ts
+  - apps/web/src/server/auth/staff-password.ts
+  - apps/web/src/server/auth/password-hash-pool.ts
+  - apps/worker/src/jobs/fido-mds-refresh.ts
 test_refs:
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts

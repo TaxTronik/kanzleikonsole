@@ -50,6 +50,7 @@ test_refs:
   - packages/evidence/src/__tests__/chain-walk.test.ts
   - packages/db/src/__tests__/audit-verify-checkpoint.test.ts
   - packages/crypto/src/__tests__/audit-checkpoint-key.test.ts
+  - apps/web/src/app/staff/(protected)/admin/audit/__tests__/actions-result.test.ts
 feature_refs:
   - docs/development/module/audit-protokollierung.md
   - docs/assurance/assurance-model.md

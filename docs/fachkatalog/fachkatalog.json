@@ -169,7 +169,9 @@
         "apps/web/src/app/staff/(protected)/admin/settings/modules-actions.ts",
         "apps/web/src/server/auth/rbac.ts",
         "apps/web/src/app/staff/(protected)/invoices/new/page.tsx",
-        "apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts"
+        "apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts",
+        "apps/web/src/server/auth/client-page-access.ts",
+        "apps/web/src/server/auth/client-access-filter.ts"
       ],
       "test_refs": [
         "apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts",
@@ -262,7 +264,8 @@
         "packages/db/prisma/migrations/20260901004000_portal_inbox_scope_forward/migration.sql",
         "packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql",
         "apps/web/src/server/inbox/client-notification.ts",
-        "packages/mail/src/dispatch.ts"
+        "packages/mail/src/dispatch.ts",
+        "apps/worker/src/notification-recipients.ts"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts",
@@ -552,7 +555,14 @@
         "packages/db/prisma/migrations/20261006160000_owner_role_least_privilege/migration.sql",
         "packages/crypto/src/certificate-path.ts",
         "apps/web/src/server/auth/webauthn-attestation.ts",
-        "apps/worker/src/jobs/fido-mds-trust-anchors.ts"
+        "apps/worker/src/jobs/fido-mds-trust-anchors.ts",
+        "apps/web/src/server/auth/session-factory.ts",
+        "apps/web/src/server/auth/staff-session.ts",
+        "apps/web/src/server/auth/staff-login.ts",
+        "apps/web/src/server/auth/staff-login-ticket.ts",
+        "apps/web/src/server/auth/staff-password.ts",
+        "apps/web/src/server/auth/password-hash-pool.ts",
+        "apps/worker/src/jobs/fido-mds-refresh.ts"
       ],
       "test_refs": [
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
@@ -1050,7 +1060,8 @@
         "packages/evidence/src/__tests__/evidence-db-ci.test.ts",
         "packages/evidence/src/__tests__/chain-walk.test.ts",
         "packages/db/src/__tests__/audit-verify-checkpoint.test.ts",
-        "packages/crypto/src/__tests__/audit-checkpoint-key.test.ts"
+        "packages/crypto/src/__tests__/audit-checkpoint-key.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/audit/__tests__/actions-result.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/audit-protokollierung.md",
@@ -2748,7 +2759,8 @@
         "apps/web/src/server/gwg/invalidated-identity-sets.ts",
         "apps/web/src/server/gwg/persons.ts",
         "apps/web/src/server/gwg/editable-check.ts",
-        "packages/gwg/src/check-lifecycle.ts"
+        "packages/gwg/src/check-lifecycle.ts",
+        "apps/web/src/server/gwg/identity-pdf-pages.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -5140,7 +5152,16 @@
         "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts",
         "packages/db/prisma/migrations/20261006170000_tax_notice_legal_final_reason_whitespace/migration.sql",
-        "packages/db/prisma/sql/functions/app.legal_final_reason_sufficient(text).sql"
+        "packages/db/prisma/sql/functions/app.legal_final_reason_sufficient(text).sql",
+        "apps/web/src/server/fristen/quellen/anforderungen.ts",
+        "apps/web/src/server/fristen/quellen/bescheid.ts",
+        "apps/web/src/server/fristen/quellen/einspruchsfristen.ts",
+        "apps/web/src/server/fristen/quellen/index.ts",
+        "apps/web/src/server/fristen/quellen/interne-prueftermine.ts",
+        "apps/web/src/server/fristen/quellen/klagefristen.ts",
+        "apps/web/src/server/fristen/quellen/steuertermine.ts",
+        "apps/web/src/server/fristen/quellen/typen.ts",
+        "apps/web/src/server/fristen/quellen/wiedervorlagen.ts"
       ],
       "test_refs": [
         "apps/e2e/tests/12-accessibility.spec.ts",
@@ -5908,7 +5929,8 @@
         "apps/web/src/server/workflows/auto-resume.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/workflows/actions.ts",
         "apps/web/src/app/staff/(protected)/interactions/actions.ts",
-        "apps/worker/src/jobs/workflow-feedback.ts"
+        "apps/worker/src/jobs/workflow-feedback.ts",
+        "apps/worker/src/jobs/workflow-auto-resume.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/interactions/__tests__/feedback-configure.test.ts",
