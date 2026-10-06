@@ -245,6 +245,7 @@ function main() {
         ...readdirSync('infra/compose').map((name) => `infra/compose/${name}`),
         ...readdirSync('scripts/release').map((name) => `scripts/release/${name}`),
         'scripts/ops-lib.sh',
+        ...readdirSync('scripts/ops').map((name) => `scripts/ops/${name}`),
       ]
         .filter((name) => /\.(?:ya?ml|sh)$/.test(name))
         .map((name) => ({ name, source: readFileSync(name, 'utf8') })),

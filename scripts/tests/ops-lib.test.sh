@@ -9,6 +9,11 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 source "$REPO_ROOT/scripts/ops-lib.sh"
 NODE_BIN="$(command -v node 2>/dev/null || command -v node.exe)"
 
+# Quelltext der Operator-CLI fuer Inhaltspruefungen: ops-lib.sh und die von ihr
+# gesourcten Domaenendateien unter scripts/ops/.
+OPS_SOURCES="$TMP_DIR/ops-sources.sh"
+cat "$REPO_ROOT/scripts/ops-lib.sh" "$REPO_ROOT"/scripts/ops/*.sh >"$OPS_SOURCES"
+
 node_host() {
   local args=() arg
   for arg in "$@"; do
@@ -748,7 +753,7 @@ test_deployment_channel_is_explicit_with_legacy_prefix_fallback() {
 }
 
 test_cli_presents_deploy_as_primary_path() {
-  local cli="$REPO_ROOT/taxtronik" source="$REPO_ROOT/scripts/ops-lib.sh" help="$TMP_DIR/cli-help.out"
+  local cli="$REPO_ROOT/taxtronik" source="$OPS_SOURCES" help="$TMP_DIR/cli-help.out"
   bash "$cli" >"$help"
   assert_before "$help" "./taxtronik deploy" "./taxtronik bootstrap"
   assert_contains "$help" "./taxtronik config"
@@ -881,7 +886,7 @@ test_interrupted_one_click_deploy_still_rejects_foreign_containers() {
 }
 
 test_one_click_runtime_install_contract_is_pinned_and_official() {
-  local source="$REPO_ROOT/scripts/ops-lib.sh" package_manager
+  local source="$OPS_SOURCES" package_manager
   [[ "$HOST_NODE_VERSION" =~ ^24\.[0-9]+\.[0-9]+$ ]] || test_fail "managed Node version is not pinned to Node 24"
   # CI (node-version-file) und Host-Setup muessen dieselbe exakte Node-Version nutzen.
   [[ "$HOST_NODE_VERSION" == "$(tr -d '[:space:]' < "$REPO_ROOT/.nvmrc")" ]] || \
@@ -3594,7 +3599,7 @@ test_gwg_invariants_are_versioned_single_source() {
   # prueft genau diese Dateien mit packages/db/scripts/check-db-invariants.mjs.
   for file in "$GWG_INVARIANT_DIR"/*.sql; do
     name="${file##*/}"
-    grep -Fq "=\"$name\"" "$REPO_ROOT/scripts/ops-lib.sh" || \
+    grep -Fq "=\"$name\"" "$OPS_SOURCES" || \
       test_fail "versioned GwG invariant $name is not wired into ops-lib.sh"
   done
   for name in "$GWG_INVARIANTS_034" "$GWG_INVARIANTS_IDENTITY" "$GWG_INVARIANTS_044"; do
@@ -3605,7 +3610,7 @@ test_gwg_invariants_are_versioned_single_source() {
               gwg_document_set_consistency authorized_delete; do
     grep -Fq -- "$name" "$GWG_INVARIANT_DIR"/*.sql || \
       test_fail "versioned GwG invariants no longer check $name"
-    assert_not_contains "$REPO_ROOT/scripts/ops-lib.sh" "$name"
+    assert_not_contains "$OPS_SOURCES" "$name"
   done
   pass "GwG invariants live only in versioned SQL files wired into the deploy gate"
 }

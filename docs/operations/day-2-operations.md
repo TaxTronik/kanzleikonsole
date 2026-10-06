@@ -317,7 +317,8 @@ abgeschlossen ist. Zusätzliche Migrationen eines nachweislichen
 Vorwärts-Commits dürfen danach unter derselben, niemals abgeschwächten
 DB-Restore-Pflicht angewendet werden.
 
-Die Operator-CLI lädt ihre Funktionen beim Prozessstart. Sobald ein Update den
+Die Operator-CLI (`./taxtronik` mit `scripts/ops-lib.sh` und den Domänendateien
+unter `scripts/ops/`) lädt ihre Funktionen beim Prozessstart. Sobald ein Update den
 Checkout per Fast-forward verändert hat, schreibt sie deshalb nach dem
 erfolgreichen Pflichtbackup einen atomaren, auf Checkout, Installations-State
 und Migrationsmarker gebundenen Handoff und startet sich einmal aus dem neuen

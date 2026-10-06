@@ -33,6 +33,8 @@ const repositoryRoot = fileURLToPath(new URL('../../../../', import.meta.url));
 const invariantsDir = join(repositoryRoot, 'packages/db/invariants/gwg');
 const checker = join(repositoryRoot, 'packages/db/scripts/check-db-invariants.mjs');
 const opsLib = join(repositoryRoot, 'scripts/ops-lib.sh');
+// ops-lib.sh laedt die Domaenendateien der Operator-CLI aus scripts/ops/.
+const opsDir = join(repositoryRoot, 'scripts/ops');
 const invariantFiles = readdirSync(invariantsDir)
   .filter((name) => name.endsWith('.sql'))
   .sort();
@@ -59,7 +61,13 @@ describe('Versionierte GwG-Invarianten', () => {
       '043-identity-subjects-and-document-sets.sql',
       '044-legacy-guard-recovery.sql',
     ]);
-    const opsLibSource = readFileSync(opsLib, 'utf8');
+    const opsSources = [
+      opsLib,
+      ...readdirSync(opsDir)
+        .filter((name) => name.endsWith('.sh'))
+        .map((name) => join(opsDir, name)),
+    ];
+    const opsLibSource = opsSources.map((file) => readFileSync(file, 'utf8')).join('\n');
     for (const file of invariantFiles) expect(opsLibSource).toContain(`="${file}"`);
   });
 });
