@@ -86,7 +86,8 @@ function isExplicitConnectionActive(
   return connection.enabled && connection.routingMode === 'EXPLICIT';
 }
 
-function discoveredRouteDraft(
+/** Routenentwurf aus einem erkannten Webhook; Events nur aus dem bekannten Katalog. */
+export function discoveredRouteDraft(
   item: N8nDiscoveredWebhookView,
   bundledWorkflows: BundledWorkflowSummary[],
   events: readonly N8nEventCatalogEntry[],

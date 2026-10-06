@@ -14,7 +14,11 @@ const h = vi.hoisted(() => ({
   },
   modules: {} as Record<string, unknown>,
   header: null as unknown,
+  loadHeader: vi.fn(),
   blocks: vi.fn(),
+  withTenantContext: vi.fn(async () => {
+    throw new Error('Die Cockpit-Seite darf keine eigene Tenant-Transaktion öffnen.');
+  }),
   riskAvailable: vi.fn(async () => true),
   isAdmin: false,
 }));
@@ -28,6 +32,10 @@ vi.mock('next/navigation', () => ({
   },
 }));
 vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => null }));
+vi.mock('@taxtronik/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@taxtronik/db')>()),
+  withTenantContext: h.withTenantContext,
+}));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 vi.mock('@/server/auth/client-page-access', () => ({
   requireClientPageAccess: vi.fn(async () => h.session),
@@ -48,7 +56,7 @@ vi.mock('@/components/client-contacts-panel', () => ({
 }));
 vi.mock('../_data', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../_data')>()),
-  loadClientCockpitHeader: vi.fn(async () => h.header),
+  loadClientCockpitHeader: h.loadHeader,
   loadClientCockpitBlocks: h.blocks,
   loadClientDocumentsPage: vi.fn(() => new Promise(() => {})),
 }));
@@ -119,6 +127,7 @@ beforeEach(() => {
   h.modules = { ...ALL_MODULES };
   h.header = headerData();
   h.isAdmin = false;
+  h.loadHeader.mockImplementation(async () => h.header);
   h.blocks.mockReturnValue(new Promise(() => {}));
 });
 
@@ -147,6 +156,30 @@ describe('Mandanten-Cockpit streamt die Blöcke', () => {
     // Blockdaten laufen in EINER zusätzlichen Transaktion mit den Modulen der Seite.
     expect(h.blocks).toHaveBeenCalledTimes(1);
     expect(h.blocks.mock.calls[0]![3]).toBe(h.modules);
+    // Die Seite selbst lädt nur über die Loader und öffnet keine eigene Transaktion.
+    expect(h.loadHeader).toHaveBeenCalledWith(
+      { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      h.session,
+      'client-1',
+    );
+    expect(h.withTenantContext).not.toHaveBeenCalled();
+  });
+
+  it('startet die Blockdaten, bevor der Kopf geladen ist', async () => {
+    let resolveHeader: ((value: unknown) => void) | undefined;
+    h.loadHeader.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveHeader = resolve;
+        }),
+    );
+
+    const pending = render();
+    await vi.waitFor(() => expect(resolveHeader).toBeDefined());
+    expect(h.blocks).toHaveBeenCalledTimes(1);
+
+    resolveHeader!(h.header);
+    expect(await pending).toContain('Muster GmbH');
   });
 
   it('zeigt keine Platzhalter für abgeschaltete Module', async () => {
