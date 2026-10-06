@@ -14,14 +14,23 @@ export const CLIENT_DOCUMENTS_PAGE_SIZE = 50;
 export const CLIENT_DOCUMENTS_SEARCH_MAX = 200;
 
 // =============================================================================
-// Mandanten-Cockpit in drei Transaktionen (Review-Befund P-07):
+// Mandanten-Cockpit in drei Transaktionen (Review-Befunde P-07 und K-04):
 //   1. Kopf (blockierend): Mandant, Zuständige, Ansprechpartner, GwG-Status,
 //      Zähler für Navigation/Onboarding, Custom-Felder und Anforderungsvorlagen.
-//   2. Blöcke (gestreamt): Termine, Anforderungen, Wiedervorlagen, Workflows,
-//      Telefonnotizen, Ordner und Übergaben — startet parallel zum Kopf.
+//   2. Blöcke (gestreamt): Jeder Block hat einen eigenen Loader (load*BlockTx)
+//      und ein eigenes Promise (startClientCockpitBlocks). Alle laufen in EINER
+//      Tenant-Transaktion, die parallel zum Kopf startet; ein Block erscheint,
+//      sobald SEINE Abfragen fertig sind, nicht erst nach allen anderen.
 //   3. Dokumente (gestreamt, loadClientDocumentsPage) — nach dem Kopf.
 // Vorher liefen alle Abfragen nacheinander in EINER Transaktion, bevor das
 // erste Byte kam. Jede Transaktion prüft den Zugriff selbst (Backstop).
+//
+// Bewusst keine eigene Transaktion je Block: Eine Transaktion hält eine
+// Pool-Verbindung (App-Pool standardmäßig 10 je Prozess, DEFAULT_POOL_MAX);
+// sieben Blocktransaktionen neben Kopf und Dokumenten belegten pro
+// Cockpit-Aufruf fast den ganzen Pool. Die Abfragen einer Transaktion laufen
+// ohnehin nacheinander (serializeTx), daher verliert das gemeinsame Streaming
+// nichts gegenüber getrennten Loadern auf derselben Verbindung.
 // =============================================================================
 
 /** Module, nach denen die Blockabfragen gewählt werden (abgeschaltet = keine Abfrage). */
@@ -108,180 +117,300 @@ export async function loadClientCockpitHeader(
   });
 }
 
+/** Kopfdaten eines zugänglichen Mandanten (Status `ok` von loadClientCockpitHeader). */
+export type ClientCockpitHeaderData = Extract<
+  Awaited<ReturnType<typeof loadClientCockpitHeader>>,
+  { status: 'ok' }
+>['data'];
+export type ClientCockpitClient = ClientCockpitHeaderData['client'];
+
 const STAFF_OPTION_QUERY = {
   where: { active: true },
   orderBy: { fullName: 'asc' },
   select: { id: true, fullName: true },
 } as const;
 
+// -----------------------------------------------------------------------------
+// Loader je Block. Sie bekommen die Transaktion des Cockpits und laden nur die
+// Daten IHRES Blocks; startClientCockpitBlocks setzt sie zusammen.
+// -----------------------------------------------------------------------------
+
+/** Anforderungen (immer, unabhängig von Modulen), höchstens CLIENT_REQUESTS_CAP. */
+export function loadRequestsBlockTx(tx: TxClient, clientId: string) {
+  return tx.request.findMany({
+    where: { clientId },
+    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    take: CLIENT_REQUESTS_CAP,
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      priority: true,
+      dueAt: true,
+      responses: {
+        take: 1,
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true },
+      },
+    },
+  });
+}
+
+/** Steuertermine (Bescheide-Modul) und Termine samt offener Terminanfragen (Termin-Modul). */
+export async function loadUpcomingBlockTx(
+  tx: TxClient,
+  clientId: string,
+  modules: Pick<CockpitModules, 'taxNotices' | 'appointments'>,
+  now: Date,
+) {
+  const [taxDeadlines, upcomingAppointments, pendingAppointmentRequests] = await Promise.all([
+    modules.taxNotices
+      ? tx.taxDeadline.findMany({
+          where: {
+            clientId,
+            status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
+          },
+          orderBy: { dueDate: 'asc' },
+          take: 12,
+        })
+      : Promise.resolve([]),
+    modules.appointments
+      ? tx.appointment.findMany({
+          where: { clientId, status: { not: 'CANCELLED' }, endsAt: { gte: now } },
+          orderBy: { startsAt: 'asc' },
+          take: 5,
+          select: {
+            id: true,
+            title: true,
+            startsAt: true,
+            endsAt: true,
+            location: true,
+            status: true,
+            owner: { select: { id: true, fullName: true } },
+          },
+        })
+      : Promise.resolve([]),
+    modules.appointments
+      ? tx.appointmentRequest.findMany({
+          where: { clientId, status: 'PENDING' },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          select: {
+            id: true,
+            subject: true,
+            notes: true,
+            createdAt: true,
+            preferredStaffId: true,
+            proposedSlots: true,
+            createdByContactRel: { select: { fullName: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  return { taxDeadlines, upcomingAppointments, pendingAppointmentRequests };
+}
+
+/** Mitarbeiterauswahl für Terminanfragen, Wiedervorlagen und Telefonnotizen. */
+export function loadStaffOptionsTx(tx: TxClient) {
+  return tx.staffUser.findMany(STAFF_OPTION_QUERY);
+}
+
+export function loadWorkflowsBlockTx(tx: TxClient, clientId: string) {
+  return tx.workflowInstance.findMany({
+    where: { clientId, status: 'ACTIVE' },
+    orderBy: { startedAt: 'desc' },
+    take: 6,
+    include: {
+      items: { select: { id: true, doneAt: true, dueDate: true } },
+    },
+  });
+}
+
+/** Nicht archivierte Wiedervorlagen; offene zuerst, dann nach Fälligkeit. */
+export function loadRemindersBlockTx(tx: TxClient, clientId: string) {
+  return tx.clientReminder.findMany({
+    where: { clientId, archivedAt: null },
+    orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
+    take: 50,
+    include: {
+      riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
+      assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
+    },
+  });
+}
+
+export function loadPhoneNotesBlockTx(tx: TxClient, clientId: string) {
+  return tx.phoneNote.findMany({
+    where: { clientId },
+    orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }],
+    take: 20,
+    include: {
+      reminders: {
+        orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
+        select: { id: true, subject: true, dueDate: true, doneAt: true },
+      },
+    },
+  });
+}
+
+export function loadBindersBlockTx(tx: TxClient, clientId: string) {
+  return tx.pendingBinder.findMany({
+    where: { clientId },
+    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    take: 50,
+  });
+}
+
+/** Anlieferungen samt Zustellstatus der Abhol-Mail (F-08). */
+export async function loadHandoversBlockTx(tx: TxClient, clientId: string) {
+  const handovers = await tx.clientHandover.findMany({
+    where: { clientId },
+    orderBy: [{ status: 'asc' }, { receivedAt: 'desc' }],
+    take: 50,
+  });
+  const handoverMail = await loadMailDeliveryTx(tx, {
+    resourceType: 'client_handover',
+    resourceIds: handovers.map((handover) => handover.id),
+  });
+  return handovers.map((handover) => ({
+    ...handover,
+    mailDelivery: handoverMail.get(handover.id) ?? [],
+  }));
+}
+
+export type RequestsBlockData = Awaited<ReturnType<typeof loadRequestsBlockTx>>;
+export type StaffOptions = Awaited<ReturnType<typeof loadStaffOptionsTx>>;
+export type UpcomingBlockData = Awaited<ReturnType<typeof loadUpcomingBlockTx>> & {
+  staffList: StaffOptions;
+};
+export type WorkflowsBlockData = Awaited<ReturnType<typeof loadWorkflowsBlockTx>>;
+export interface RemindersBlockData {
+  reminders: Awaited<ReturnType<typeof loadRemindersBlockTx>>;
+  staffList: StaffOptions;
+}
+export interface PhoneNotesBlockData {
+  phoneNotes: Awaited<ReturnType<typeof loadPhoneNotesBlockTx>>;
+  staffList: StaffOptions;
+}
+export type BindersBlockData = Awaited<ReturnType<typeof loadBindersBlockTx>>;
+export type HandoversBlockData = Awaited<ReturnType<typeof loadHandoversBlockTx>>;
+
+interface CockpitBlockData {
+  requests: RequestsBlockData;
+  upcoming: UpcomingBlockData;
+  workflows: WorkflowsBlockData;
+  reminders: RemindersBlockData;
+  phoneNotes: PhoneNotesBlockData;
+  binders: BindersBlockData;
+  handovers: HandoversBlockData;
+}
+
 /**
- * Daten der gestreamten Blöcke in EINER Transaktion. `null`, wenn der Zugriff
- * (inzwischen) fehlt — die Blöcke rendern dann nichts. Abfragen abgeschalteter
- * Module entfallen.
+ * Ein Promise je gestreamtem Block. `null`, wenn der Zugriff (inzwischen)
+ * fehlt — der Block rendert dann nichts. Blöcke abgeschalteter Module laden
+ * nichts und liefern leere Listen.
  */
-export async function loadClientCockpitBlocks(
+export type ClientCockpitBlockLoads = {
+  [K in keyof CockpitBlockData]: Promise<CockpitBlockData[K] | null>;
+};
+
+/** Startet die Blockabfragen in fester Reihenfolge (so laufen sie auch nacheinander). */
+function startBlockQueries(
+  tx: TxClient,
+  clientId: string,
+  modules: CockpitModules,
+  now: Date,
+): { [K in keyof CockpitBlockData]: Promise<CockpitBlockData[K]> } {
+  const requests = loadRequestsBlockTx(tx, clientId);
+  const upcoming =
+    modules.taxNotices || modules.appointments
+      ? loadUpcomingBlockTx(tx, clientId, modules, now)
+      : Promise.resolve({
+          taxDeadlines: [],
+          upcomingAppointments: [],
+          pendingAppointmentRequests: [],
+        });
+  const staffList: Promise<StaffOptions> =
+    modules.appointments || modules.reminders || modules.phoneNotes
+      ? loadStaffOptionsTx(tx)
+      : Promise.resolve([]);
+  const workflows = modules.workflows ? loadWorkflowsBlockTx(tx, clientId) : Promise.resolve([]);
+  const reminders = modules.reminders ? loadRemindersBlockTx(tx, clientId) : Promise.resolve([]);
+  const phoneNotes = modules.phoneNotes ? loadPhoneNotesBlockTx(tx, clientId) : Promise.resolve([]);
+  const binders = modules.binders ? loadBindersBlockTx(tx, clientId) : Promise.resolve([]);
+  const handovers = modules.handovers ? loadHandoversBlockTx(tx, clientId) : Promise.resolve([]);
+  return {
+    requests,
+    upcoming: Promise.all([upcoming, staffList]).then(([data, staff]) => ({
+      ...data,
+      staffList: staff,
+    })),
+    workflows,
+    reminders: Promise.all([reminders, staffList]).then(([rows, staff]) => ({
+      reminders: rows,
+      staffList: staff,
+    })),
+    phoneNotes: Promise.all([phoneNotes, staffList]).then(([rows, staff]) => ({
+      phoneNotes: rows,
+      staffList: staff,
+    })),
+    binders,
+    handovers,
+  };
+}
+
+/**
+ * Startet die Daten aller gestreamten Blöcke in EINER Tenant-Transaktion mit
+ * eigenem Zugriffs-Backstop und liefert sofort ein Promise je Block. Die
+ * Transaktion bleibt offen, bis jeder Block seine Daten hat; ein Fehler rollt
+ * sie zurück und erreicht die betroffenen Blöcke über ihr eigenes Promise.
+ */
+export function startClientCockpitBlocks(
   ctx: TenantContext,
   session: StaffSession,
   clientId: string,
   modules: CockpitModules,
   now: Date = new Date(),
-) {
-  return withTenantContext(ctx, async (tx) => {
+): ClientCockpitBlockLoads {
+  let started: (queries: ReturnType<typeof startBlockQueries> | null) => void = () => undefined;
+  let failed: (error: unknown) => void = () => undefined;
+  const queries = new Promise<ReturnType<typeof startBlockQueries> | null>((resolve, reject) => {
+    started = resolve;
+    failed = reject;
+  });
+  void withTenantContext(ctx, async (tx) => {
     const accessible = await tx.client.findFirst({
       where: await accessibleClientWhereTx(tx, ctx, session, clientId),
       select: { id: true },
     });
-    if (!accessible) return null;
+    if (!accessible) {
+      started(null);
+      return;
+    }
+    const running = startBlockQueries(tx, clientId, modules, now);
+    started(running);
+    const outcomes = await Promise.allSettled(Object.values(running));
+    const failure = outcomes.find((outcome) => outcome.status === 'rejected');
+    if (failure) throw failure.reason;
+  }).catch((error: unknown) => failed(error));
 
-    const [
-      requests,
-      taxDeadlines,
-      upcomingAppointments,
-      pendingAppointmentRequests,
-      staffList,
-      workflowInstances,
-      reminders,
-      phoneNotes,
-      binders,
-      handovers,
-    ] = await Promise.all([
-      tx.request.findMany({
-        where: { clientId },
-        orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-        take: CLIENT_REQUESTS_CAP,
-        select: {
-          id: true,
-          title: true,
-          status: true,
-          priority: true,
-          dueAt: true,
-          responses: {
-            take: 1,
-            orderBy: { createdAt: 'desc' },
-            select: { createdAt: true },
-          },
-        },
-      }),
-      modules.taxNotices
-        ? tx.taxDeadline.findMany({
-            where: {
-              clientId,
-              status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
-            },
-            orderBy: { dueDate: 'asc' },
-            take: 12,
-          })
-        : Promise.resolve([]),
-      modules.appointments
-        ? tx.appointment.findMany({
-            where: { clientId, status: { not: 'CANCELLED' }, endsAt: { gte: now } },
-            orderBy: { startsAt: 'asc' },
-            take: 5,
-            select: {
-              id: true,
-              title: true,
-              startsAt: true,
-              endsAt: true,
-              location: true,
-              status: true,
-              owner: { select: { id: true, fullName: true } },
-            },
-          })
-        : Promise.resolve([]),
-      modules.appointments
-        ? tx.appointmentRequest.findMany({
-            where: { clientId, status: 'PENDING' },
-            orderBy: { createdAt: 'desc' },
-            take: 10,
-            select: {
-              id: true,
-              subject: true,
-              notes: true,
-              createdAt: true,
-              preferredStaffId: true,
-              proposedSlots: true,
-              createdByContactRel: { select: { fullName: true } },
-            },
-          })
-        : Promise.resolve([]),
-      // Mitarbeiterauswahl für Terminanfragen, Wiedervorlagen und Telefonnotizen.
-      modules.appointments || modules.reminders || modules.phoneNotes
-        ? tx.staffUser.findMany(STAFF_OPTION_QUERY)
-        : Promise.resolve([]),
-      modules.workflows
-        ? tx.workflowInstance.findMany({
-            where: { clientId, status: 'ACTIVE' },
-            orderBy: { startedAt: 'desc' },
-            take: 6,
-            include: {
-              items: { select: { id: true, doneAt: true, dueDate: true } },
-            },
-          })
-        : Promise.resolve([]),
-      modules.reminders
-        ? tx.clientReminder.findMany({
-            where: { clientId, archivedAt: null },
-            orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
-            take: 50,
-            include: {
-              riskMarkings: { select: { id: true, analysisId: true }, take: 1 },
-              assignees: { select: { staffId: true }, orderBy: { createdAt: 'asc' } },
-            },
-          })
-        : Promise.resolve([]),
-      modules.phoneNotes
-        ? tx.phoneNote.findMany({
-            where: { clientId },
-            orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { createdAt: 'desc' }],
-            take: 20,
-            include: {
-              reminders: {
-                orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
-                select: { id: true, subject: true, dueDate: true, doneAt: true },
-              },
-            },
-          })
-        : Promise.resolve([]),
-      modules.binders
-        ? tx.pendingBinder.findMany({
-            where: { clientId },
-            orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
-            take: 50,
-          })
-        : Promise.resolve([]),
-      modules.handovers
-        ? tx.clientHandover.findMany({
-            where: { clientId },
-            orderBy: [{ status: 'asc' }, { receivedAt: 'desc' }],
-            take: 50,
-          })
-        : Promise.resolve([]),
-    ]);
-    // F-08: Zustellstatus der Abhol-Mail je Anlieferung.
-    const handoverMail = await loadMailDeliveryTx(tx, {
-      resourceType: 'client_handover',
-      resourceIds: handovers.map((handover) => handover.id),
-    });
-
-    return {
-      requests,
-      taxDeadlines,
-      upcomingAppointments,
-      pendingAppointmentRequests,
-      staffList,
-      workflowInstances,
-      reminders,
-      phoneNotes,
-      binders,
-      handovers: handovers.map((handover) => ({
-        ...handover,
-        mailDelivery: handoverMail.get(handover.id) ?? [],
-      })),
-    };
-  });
+  function load<K extends keyof CockpitBlockData>(key: K): Promise<CockpitBlockData[K] | null> {
+    const promise = queries.then((running) => (running ? running[key] : null));
+    // Gerenderte Blöcke sehen einen Fehler über ihr eigenes await; für Blöcke,
+    // die nicht gerendert werden (abgeschaltetes Modul), bleibt er unbehandelt.
+    promise.catch(() => undefined);
+    return promise;
+  }
+  return {
+    requests: load('requests'),
+    upcoming: load('upcoming'),
+    workflows: load('workflows'),
+    reminders: load('reminders'),
+    phoneNotes: load('phoneNotes'),
+    binders: load('binders'),
+    handovers: load('handovers'),
+  };
 }
-
-export type ClientCockpitBlocks = NonNullable<Awaited<ReturnType<typeof loadClientCockpitBlocks>>>;
 
 export function parseClientDocumentsPage(value: string | string[] | undefined): number {
   const raw = Array.isArray(value) ? value[0] : value;

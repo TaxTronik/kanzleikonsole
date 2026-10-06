@@ -227,6 +227,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Mandanten-Cockpit: Jeder Block lädt über einen eigenen Loader und erscheint
+  unabhängig in seiner Suspense-Grenze; die Blöcke teilen weiterhin eine
+  Mandanten-Transaktion. Schlägt eine Abfrage fehl, zeigen nur der betroffene
+  und die danach eingeplanten Blöcke den Fehler statt aller Blöcke
+  (`FK-EXC-20261006-025`).
 - Neues Workspace-Paket `@taxtronik/gwg` mit den GwG-Regeln für Web-App und
   Worker (Transaktions-Signatur, ohne Next.js-Abhängigkeit): Lebenszyklus der
   GwG-Prüfung, Aufbewahrungs- und Löschfristen samt Review-Queue nach § 8

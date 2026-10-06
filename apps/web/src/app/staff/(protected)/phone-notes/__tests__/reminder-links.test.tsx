@@ -170,7 +170,7 @@ describe('Wiedervorlagen an Telefonnotizen', () => {
     const html = renderToStaticMarkup(
       <>
         {await PhoneNotesCockpitBlock({
-          blocks: Promise.resolve({
+          data: Promise.resolve({
             staffList: [],
             phoneNotes: [
               {

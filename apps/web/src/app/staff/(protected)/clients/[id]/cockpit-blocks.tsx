@@ -1,11 +1,12 @@
 // =============================================================================
-// Gestreamte Blöcke des Mandanten-Cockpits (Review-Befund P-07).
+// Gestreamte Blöcke des Mandanten-Cockpits (Review-Befunde P-07 und K-04).
 //
 // Jeder Block ist eine async Server-Komponente in einer eigenen <Suspense>-
-// Grenze an seiner Grid-Position. Alle teilen sich EIN Daten-Promise
-// (loadClientCockpitBlocks, eine Tenant-Transaktion), das die Seite parallel
-// zum Kopf startet: Kopf und Navigation erscheinen, bevor diese Abfragen fertig
-// sind. Liefert der Loader `null` (Zugriff fehlt), rendern die Blöcke nichts.
+// Grenze an seiner Grid-Position und wartet nur auf SEIN Daten-Promise
+// (startClientCockpitBlocks: ein Loader je Block, gemeinsame Tenant-
+// Transaktion, parallel zum Kopf gestartet). Kopf und Navigation erscheinen,
+// bevor diese Abfragen fertig sind; jeder Block erscheint, sobald seine Daten
+// da sind. Liefert sein Loader `null` (Zugriff fehlt), rendert er nichts.
 // =============================================================================
 
 import Link from 'next/link';
@@ -21,10 +22,20 @@ import { BindersBlock } from './binders/binders-block';
 import { HandoversBlock } from './handovers/handovers-block';
 import { PhoneNotesList } from './phone-notes-list';
 import { QuickPhoneNote } from './quick-phone-note';
-import { CLIENT_REQUESTS_CAP, type ClientCockpitBlocks } from './_data';
+import {
+  CLIENT_REQUESTS_CAP,
+  type BindersBlockData,
+  type HandoversBlockData,
+  type PhoneNotesBlockData,
+  type RemindersBlockData,
+  type RequestsBlockData,
+  type UpcomingBlockData,
+  type WorkflowsBlockData,
+} from './_data';
 import { REQUEST_STATUS_LABELS, PRIORITY_LABELS } from '@/lib/domain-labels';
 
-type BlocksData = Promise<ClientCockpitBlocks | null>;
+/** Daten eines Blocks aus seinem eigenen Loader; `null` = Zugriffs-Backstop griff. */
+type BlockData<T> = Promise<T | null>;
 
 /** Platzhalter einer Karte, solange ihre Daten noch laden. */
 export function CockpitBlockSkeleton({ title }: { title: string }) {
@@ -62,21 +73,21 @@ type UpcomingRow =
     };
 
 export async function UpcomingCockpitBlock({
-  blocks,
+  data: load,
   client,
   showTax,
   showAppts,
   staffId,
   now,
 }: {
-  blocks: BlocksData;
+  data: BlockData<UpcomingBlockData>;
   client: { id: string; name: string };
   showTax: boolean;
   showAppts: boolean;
   staffId: string;
   now: Date;
 }) {
-  const data = await blocks;
+  const data = await load;
   if (!data) return null;
   const { taxDeadlines, upcomingAppointments, pendingAppointmentRequests, staffList } = data;
   // Vereinigt Steuertermine (modul-gated) + Appointments (modul-gated).
@@ -206,17 +217,16 @@ function UpcomingRowItem({ row: r, now }: { row: UpcomingRow; now: Date }) {
 }
 
 export async function WorkflowsCockpitBlock({
-  blocks,
+  data,
   clientId,
   now,
 }: {
-  blocks: BlocksData;
+  data: BlockData<WorkflowsBlockData>;
   clientId: string;
   now: Date;
 }) {
-  const data = await blocks;
-  if (!data) return null;
-  const { workflowInstances } = data;
+  const workflowInstances = await data;
+  if (!workflowInstances) return null;
   return (
     <div key="workflows" className="card overflow-hidden">
       <div className="card-header">
@@ -283,17 +293,17 @@ export async function WorkflowsCockpitBlock({
 }
 
 export async function RemindersCockpitBlock({
-  blocks,
+  data: load,
   clientId,
   staffId,
   isAdmin,
 }: {
-  blocks: BlocksData;
+  data: BlockData<RemindersBlockData>;
   clientId: string;
   staffId: string;
   isAdmin: boolean;
 }) {
-  const data = await blocks;
+  const data = await load;
   if (!data) return null;
   const { reminders, staffList } = data;
   const staffNameById = new Map(staffList.map((s) => [s.id, s.fullName]));
@@ -331,19 +341,19 @@ export async function RemindersCockpitBlock({
 }
 
 export async function BindersCockpitBlock({
-  blocks,
+  data,
   clientId,
 }: {
-  blocks: BlocksData;
+  data: BlockData<BindersBlockData>;
   clientId: string;
 }) {
-  const data = await blocks;
-  if (!data) return null;
+  const binders = await data;
+  if (!binders) return null;
   return (
     <BindersBlock
       key="binders"
       clientId={clientId}
-      initial={data.binders.map((b) => ({
+      initial={binders.map((b) => ({
         id: b.id,
         label: b.label,
         contents: b.contents,
@@ -357,19 +367,19 @@ export async function BindersCockpitBlock({
 }
 
 export async function HandoversCockpitBlock({
-  blocks,
+  data,
   clientId,
 }: {
-  blocks: BlocksData;
+  data: BlockData<HandoversBlockData>;
   clientId: string;
 }) {
-  const data = await blocks;
-  if (!data) return null;
+  const handovers = await data;
+  if (!handovers) return null;
   return (
     <HandoversBlock
       key="handovers"
       clientId={clientId}
-      initial={data.handovers.map((h) => ({
+      initial={handovers.map((h) => ({
         id: h.id,
         label: h.label,
         contents: h.contents,
@@ -386,17 +396,17 @@ export async function HandoversCockpitBlock({
 }
 
 export async function PhoneNotesCockpitBlock({
-  blocks,
+  data: load,
   clientId,
   contacts,
   staffId,
 }: {
-  blocks: BlocksData;
+  data: BlockData<PhoneNotesBlockData>;
   clientId: string;
   contacts: Array<{ fullName: string; phone: string | null }>;
   staffId: string;
 }) {
-  const data = await blocks;
+  const data = await load;
   if (!data) return null;
   const { phoneNotes, staffList } = data;
   return (
@@ -436,15 +446,14 @@ export async function PhoneNotesCockpitBlock({
 }
 
 export async function RequestsCockpitBlock({
-  blocks,
+  data,
   client,
 }: {
-  blocks: BlocksData;
+  data: BlockData<RequestsBlockData>;
   client: { id: string; name: string };
 }) {
-  const data = await blocks;
-  if (!data) return null;
-  const { requests } = data;
+  const requests = await data;
+  if (!requests) return null;
   return (
     <div key="requests" className="card overflow-hidden">
       <div className="flex items-center justify-between px-6 py-4 border-b border-default">
@@ -492,7 +501,7 @@ export async function RequestsCockpitBlock({
   );
 }
 
-function RequestRowItem({ request: req }: { request: ClientCockpitBlocks['requests'][number] }) {
+function RequestRowItem({ request: req }: { request: RequestsBlockData[number] }) {
   const last = req.responses[0];
   return (
     <tr className="hover:bg-gray-50">

@@ -22,7 +22,8 @@ const h = vi.hoisted(() => {
   };
   const readRequestCreationOptionsTx = vi.fn();
   const accessibleClientsWhereFor = vi.fn();
-  return { tx, readRequestCreationOptionsTx, accessibleClientsWhereFor };
+  const loadMailDeliveryTx = vi.fn(async () => new Map());
+  return { tx, readRequestCreationOptionsTx, accessibleClientsWhereFor, loadMailDeliveryTx };
 });
 
 vi.mock('@taxtronik/db', () => ({
@@ -39,16 +40,26 @@ vi.mock('@/server/auth/rbac', () => ({
   accessibleClientsWhereFor: h.accessibleClientsWhereFor,
 }));
 
+vi.mock('@/server/mail/delivery-status', () => ({
+  loadMailDeliveryTx: h.loadMailDeliveryTx,
+}));
+
+import { withTenantContext } from '@taxtronik/db';
 import {
   CLIENT_DOCUMENTS_PAGE_SIZE,
   CLIENT_REQUESTS_CAP,
-  loadClientCockpitBlocks,
   loadClientCockpitHeader,
   loadClientDocumentsPage,
+  loadHandoversBlockTx,
+  loadPhoneNotesBlockTx,
+  loadRemindersBlockTx,
+  loadRequestsBlockTx,
+  loadUpcomingBlockTx,
   parseClientDocumentsDeleted,
   parseClientDocumentsFolder,
   parseClientDocumentsPage,
   parseClientDocumentsSearch,
+  startClientCockpitBlocks,
   type ClientDocumentsQuery,
   type CockpitModules,
 } from '../_data';
@@ -132,8 +143,12 @@ function prepareBlockRows() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   h.accessibleClientsWhereFor.mockResolvedValue({ vertraulich: false });
+  h.loadMailDeliveryTx.mockResolvedValue(new Map());
+  vi.mocked(withTenantContext).mockImplementation(async (_ctx, callback) =>
+    callback(h.tx as never),
+  );
 });
 
 describe('loadClientCockpitHeader', () => {
@@ -182,32 +197,27 @@ describe('loadClientCockpitHeader', () => {
   });
 });
 
-describe('loadClientCockpitBlocks', () => {
-  it('prüft den Zugriff in der eigenen Transaktion und lädt ohne Zugriff nichts', async () => {
-    h.tx.client.findFirst.mockResolvedValue(null);
-
-    const result = await loadClientCockpitBlocks(ctx, session, 'client-restricted', ALL_MODULES);
-
-    expect(result).toBeNull();
-    expect(h.tx.client.findFirst).toHaveBeenCalledWith({
-      where: { id: 'client-restricted', tenantId: 'tenant-1', vertraulich: false },
-      select: { id: true },
-    });
-    for (const query of BLOCK_QUERIES) expect(query).not.toHaveBeenCalled();
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  let reject: (error: unknown) => void = () => undefined;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
   });
+  return { promise, resolve, reject };
+}
 
-  it('lädt Anforderungen mit Cap/Select und die Blocklisten aktiver Module', async () => {
-    prepareBlockRows();
+/** Ergebnis der (gemockten) Tenant-Transaktion des letzten startClientCockpitBlocks-Aufrufs. */
+function lastTransaction(): Promise<unknown> {
+  const results = vi.mocked(withTenantContext).mock.results;
+  return results.at(-1)!.value as Promise<unknown>;
+}
 
-    const result = await loadClientCockpitBlocks(
-      ctx,
-      session,
-      'client-1',
-      ALL_MODULES,
-      new Date('2026-07-16T10:00:00.000Z'),
-    );
+describe('Loader je Cockpit-Block', () => {
+  it('lädt Anforderungen mit Cap und schmalem Select', async () => {
+    h.tx.request.findMany.mockResolvedValue([{ id: 'r1' }]);
 
-    expect(result).not.toBeNull();
+    await expect(loadRequestsBlockTx(h.tx as never, 'client-1')).resolves.toEqual([{ id: 'r1' }]);
     expect(h.tx.request.findMany).toHaveBeenCalledWith({
       where: { clientId: 'client-1' },
       orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
@@ -221,8 +231,77 @@ describe('loadClientCockpitBlocks', () => {
         responses: { take: 1, orderBy: { createdAt: 'desc' }, select: { createdAt: true } },
       },
     });
+  });
+
+  it('fragt Steuertermine und Termine nur für aktive Module ab', async () => {
+    const now = new Date('2026-07-16T10:00:00.000Z');
+    for (const query of BLOCK_QUERIES) query.mockResolvedValue([]);
+
+    await expect(
+      loadUpcomingBlockTx(
+        h.tx as never,
+        'client-1',
+        { taxNotices: true, appointments: false },
+        now,
+      ),
+    ).resolves.toEqual({
+      taxDeadlines: [],
+      upcomingAppointments: [],
+      pendingAppointmentRequests: [],
+    });
+    expect(h.tx.taxDeadline.findMany).toHaveBeenCalledWith({
+      where: {
+        clientId: 'client-1',
+        status: { in: ['PLANNED', 'REMINDED', 'IN_PROGRESS', 'OVERDUE'] },
+      },
+      orderBy: { dueDate: 'asc' },
+      take: 12,
+    });
+    expect(h.tx.appointment.findMany).not.toHaveBeenCalled();
+    expect(h.tx.appointmentRequest.findMany).not.toHaveBeenCalled();
+
+    await loadUpcomingBlockTx(
+      h.tx as never,
+      'client-1',
+      { taxNotices: false, appointments: true },
+      now,
+    );
+    expect(h.tx.taxDeadline.findMany).toHaveBeenCalledTimes(1);
+    expect(h.tx.appointment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { clientId: 'client-1', status: { not: 'CANCELLED' }, endsAt: { gte: now } },
+        take: 5,
+      }),
+    );
+    expect(h.tx.appointmentRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { clientId: 'client-1', status: 'PENDING' }, take: 10 }),
+    );
+  });
+
+  // Fachkatalog: REMINDER-TICKET-001
+  it('zeigt nur nicht archivierte Wiedervorlagen, offene zuerst', async () => {
+    h.tx.clientReminder.findMany.mockResolvedValue([]);
+
+    await loadRemindersBlockTx(h.tx as never, 'client-1');
+
+    expect(h.tx.clientReminder.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { clientId: 'client-1', archivedAt: null },
+        orderBy: [{ doneAt: { sort: 'asc', nulls: 'first' } }, { dueDate: 'asc' }],
+        take: 50,
+      }),
+    );
+  });
+
+  it('lädt Telefonnotizen mit ihren Wiedervorlagen', async () => {
+    h.tx.phoneNote.findMany.mockResolvedValue([]);
+
+    await loadPhoneNotesBlockTx(h.tx as never, 'client-1');
+
     expect(h.tx.phoneNote.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: { clientId: 'client-1' },
+        take: 20,
         include: {
           reminders: expect.objectContaining({
             select: { id: true, subject: true, dueDate: true, doneAt: true },
@@ -230,29 +309,164 @@ describe('loadClientCockpitBlocks', () => {
         },
       }),
     );
-    expect(h.tx.appointment.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          clientId: 'client-1',
-          status: { not: 'CANCELLED' },
-          endsAt: { gte: new Date('2026-07-16T10:00:00.000Z') },
-        },
-      }),
+  });
+
+  it('hängt jeder Anlieferung den Zustellstatus ihrer Abhol-Mail an (F-08)', async () => {
+    h.tx.clientHandover.findMany.mockResolvedValue([{ id: 'ho-1' }, { id: 'ho-2' }]);
+    const delivered = [{ purpose: 'pickup', status: 'SENT' }];
+    h.loadMailDeliveryTx.mockResolvedValue(new Map([['ho-1', delivered]]));
+
+    await expect(loadHandoversBlockTx(h.tx as never, 'client-1')).resolves.toEqual([
+      { id: 'ho-1', mailDelivery: delivered },
+      { id: 'ho-2', mailDelivery: [] },
+    ]);
+    expect(h.loadMailDeliveryTx).toHaveBeenCalledWith(h.tx, {
+      resourceType: 'client_handover',
+      resourceIds: ['ho-1', 'ho-2'],
+    });
+  });
+});
+
+describe('startClientCockpitBlocks', () => {
+  it('prüft den Zugriff in der eigenen Transaktion und lädt ohne Zugriff nichts', async () => {
+    h.tx.client.findFirst.mockResolvedValue(null);
+
+    const loads = startClientCockpitBlocks(ctx, session, 'client-restricted', ALL_MODULES);
+
+    for (const load of Object.values(loads)) await expect(load).resolves.toBeNull();
+    expect(h.tx.client.findFirst).toHaveBeenCalledWith({
+      where: { id: 'client-restricted', tenantId: 'tenant-1', vertraulich: false },
+      select: { id: true },
+    });
+    for (const query of BLOCK_QUERIES) expect(query).not.toHaveBeenCalled();
+    await expect(lastTransaction()).resolves.toBeUndefined();
+  });
+
+  it('liefert jedem Block seine eigenen Daten und lädt die Mitarbeiterauswahl einmal', async () => {
+    prepareBlockRows();
+    const staff = [{ id: 'staff-1', fullName: 'Anna' }];
+    h.tx.request.findMany.mockResolvedValue([{ id: 'r1' }]);
+    h.tx.staffUser.findMany.mockResolvedValue(staff);
+    h.tx.clientReminder.findMany.mockResolvedValue([{ id: 'rem-1' }]);
+    h.tx.phoneNote.findMany.mockResolvedValue([{ id: 'note-1' }]);
+    h.tx.workflowInstance.findMany.mockResolvedValue([{ id: 'wf-1' }]);
+    h.tx.pendingBinder.findMany.mockResolvedValue([{ id: 'binder-1' }]);
+    h.tx.taxDeadline.findMany.mockResolvedValue([{ id: 'deadline-1' }]);
+
+    const loads = startClientCockpitBlocks(
+      ctx,
+      session,
+      'client-1',
+      ALL_MODULES,
+      new Date('2026-07-16T10:00:00.000Z'),
     );
+
+    await expect(loads.requests).resolves.toEqual([{ id: 'r1' }]);
+    await expect(loads.upcoming).resolves.toEqual({
+      taxDeadlines: [{ id: 'deadline-1' }],
+      upcomingAppointments: [],
+      pendingAppointmentRequests: [],
+      staffList: staff,
+    });
+    await expect(loads.workflows).resolves.toEqual([{ id: 'wf-1' }]);
+    await expect(loads.reminders).resolves.toEqual({
+      reminders: [{ id: 'rem-1' }],
+      staffList: staff,
+    });
+    await expect(loads.phoneNotes).resolves.toEqual({
+      phoneNotes: [{ id: 'note-1' }],
+      staffList: staff,
+    });
+    await expect(loads.binders).resolves.toEqual([{ id: 'binder-1' }]);
+    await expect(loads.handovers).resolves.toEqual([]);
     for (const query of BLOCK_QUERIES) expect(query).toHaveBeenCalledTimes(1);
     expect(h.tx.document.findMany).not.toHaveBeenCalled();
+    await expect(lastTransaction()).resolves.toBeUndefined();
+  });
+
+  it('stellt die Abfragen in fester Reihenfolge an (Anforderungen zuerst, Anlieferungen zuletzt)', async () => {
+    prepareBlockRows();
+
+    const loads = startClientCockpitBlocks(ctx, session, 'client-1', ALL_MODULES);
+    await Promise.all(Object.values(loads));
+
+    const order = [
+      h.tx.request.findMany,
+      h.tx.taxDeadline.findMany,
+      h.tx.appointment.findMany,
+      h.tx.appointmentRequest.findMany,
+      h.tx.staffUser.findMany,
+      h.tx.workflowInstance.findMany,
+      h.tx.clientReminder.findMany,
+      h.tx.phoneNote.findMany,
+      h.tx.pendingBinder.findMany,
+      h.tx.clientHandover.findMany,
+    ].map((query) => query.mock.invocationCallOrder[0]!);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
   it('fragt abgeschaltete Module nicht ab (Anforderungen immer)', async () => {
     prepareBlockRows();
 
-    const result = await loadClientCockpitBlocks(ctx, session, 'client-1', NO_MODULES);
+    const loads = startClientCockpitBlocks(ctx, session, 'client-1', NO_MODULES);
 
-    expect(result).toMatchObject({ requests: [], reminders: [], staffList: [] });
+    await expect(loads.requests).resolves.toEqual([]);
+    await expect(loads.reminders).resolves.toEqual({ reminders: [], staffList: [] });
+    await expect(loads.upcoming).resolves.toEqual({
+      taxDeadlines: [],
+      upcomingAppointments: [],
+      pendingAppointmentRequests: [],
+      staffList: [],
+    });
     expect(h.tx.request.findMany).toHaveBeenCalledTimes(1);
     for (const query of BLOCK_QUERIES.filter((q) => q !== h.tx.request.findMany)) {
       expect(query).not.toHaveBeenCalled();
     }
+  });
+
+  it('streamt einen Block, sobald SEINE Daten da sind, auch wenn andere noch laden', async () => {
+    prepareBlockRows();
+    const reminders = deferred<unknown[]>();
+    h.tx.clientReminder.findMany.mockReturnValue(reminders.promise);
+    h.tx.request.findMany.mockResolvedValue([{ id: 'r1' }]);
+
+    const loads = startClientCockpitBlocks(ctx, session, 'client-1', ALL_MODULES);
+    let remindersDone = false;
+    void loads.reminders.then(() => {
+      remindersDone = true;
+    });
+
+    await expect(loads.requests).resolves.toEqual([{ id: 'r1' }]);
+    await expect(loads.workflows).resolves.toEqual([]);
+    expect(remindersDone).toBe(false);
+
+    reminders.resolve([{ id: 'rem-1' }]);
+    await expect(loads.reminders).resolves.toEqual({ reminders: [{ id: 'rem-1' }], staffList: [] });
+    await expect(lastTransaction()).resolves.toBeUndefined();
+  });
+
+  it('meldet einen Abfragefehler nur dem betroffenen Block und rollt die Transaktion zurück', async () => {
+    prepareBlockRows();
+    const failure = new Error('Abfrage fehlgeschlagen');
+    h.tx.clientReminder.findMany.mockRejectedValue(failure);
+
+    const loads = startClientCockpitBlocks(ctx, session, 'client-1', ALL_MODULES);
+
+    await expect(loads.reminders).rejects.toBe(failure);
+    await expect(loads.requests).resolves.toEqual([]);
+    await expect(loads.binders).resolves.toEqual([]);
+    // Der Callback wirft den Fehler weiter, damit withTenantContext zurückrollt.
+    await expect(lastTransaction()).rejects.toBe(failure);
+  });
+
+  it('lässt alle Blöcke scheitern, wenn schon die Zugriffsprüfung scheitert', async () => {
+    const failure = new Error('Verbindung verloren');
+    h.tx.client.findFirst.mockRejectedValue(failure);
+
+    const loads = startClientCockpitBlocks(ctx, session, 'client-1', ALL_MODULES);
+
+    for (const load of Object.values(loads)) await expect(load).rejects.toBe(failure);
+    for (const query of BLOCK_QUERIES) expect(query).not.toHaveBeenCalled();
   });
 });
 

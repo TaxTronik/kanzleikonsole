@@ -46,7 +46,8 @@ describe('Quick-Anforderungsdialog', () => {
   it('bindet den Dialog direkt an Anforderungen, Mandanten und Onboarding ein', () => {
     const overview = read('app/staff/(protected)/requests/page.tsx');
     const clientsPage = read('app/staff/(protected)/clients/page.tsx');
-    const clientPage = read('app/staff/(protected)/clients/[id]/page.tsx');
+    // Kopf des Mandanten-Cockpits (K-04: aus page.tsx herausgelöst).
+    const clientPage = read('app/staff/(protected)/clients/[id]/cockpit-header.tsx');
     const onboarding = read('app/staff/(protected)/clients/onboarding/[id]/page.tsx');
 
     expect(overview).toContain('<QuickRequestDialog');

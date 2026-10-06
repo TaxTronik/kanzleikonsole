@@ -35,7 +35,8 @@ describe('Vollmachten im Mandantenkontext', () => {
   });
 
   it('öffnet vom Mandanten aus eine vollständig gefilterte Vollmachtenliste', () => {
-    const clientPage = readSrc('app/staff/(protected)/clients/[id]/page.tsx');
+    // Reiterleiste des Mandanten-Cockpits (K-04: aus page.tsx herausgelöst).
+    const clientPage = readSrc('app/staff/(protected)/clients/[id]/cockpit-header.tsx');
     const listPage = readPoa('page.tsx');
 
     // Der Reiter kommt aus der Modul-Registry (sichtbar nur bei aktivem Vollmachtenmodul).

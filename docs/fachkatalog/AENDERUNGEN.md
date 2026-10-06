@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-025
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/_data.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.ts
+    rule_ids:
+      - ACCESS-SEARCH-SCOPE-001
+      - REMINDER-TICKET-001
+    reason: >-
+      Das Mandanten-Cockpit lädt jeden Block über einen eigenen Loader
+      (clients/[id]/_data.ts) und rendert ihn als eigene Server-Komponente in
+      seiner Suspense-Grenze; die Blöcke teilen weiterhin eine Mandanten-Transaktion.
+      Suchumfang, Zugriffsprüfung, Modul-Gates, Reihenfolge der Blöcke und
+      Wiedervorlage-Links bleiben unverändert. Nur der Fehlerpfad ändert sich:
+      schlägt eine Abfrage fehl, zeigen der betroffene Block und die danach
+      eingeplanten Blöcke den Fehler statt aller Blöcke. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-024
     date: '2026-10-06'
     paths:
@@ -3493,6 +3513,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-025` dokumentiert eigene Loader je
+  Cockpit-Block. Zugriff, Suchumfang und Wiedervorlagen bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-024` dokumentiert das Paket `@taxtronik/gwg`
   mit unverändert verschobenen GwG-Regeln und dessen Überwachung im Diff-Gate.
