@@ -1,5 +1,37 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-002
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/restore-gwg.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
+      - apps/web/src/app/staff/(protected)/documents/actions.ts
+      - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/poa/__tests__/create-form.test.ts
+      - apps/web/src/app/staff/(protected)/poa/actions.ts
+    rule_ids:
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - DOC-PORTAL-SHARING-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - POA-LIFECYCLE-001
+      - POA-SIGNING-CONFIRMATION-001
+      - POA-SIGNING-SNAPSHOT-001
+    reason: >-
+      Umklassifizierung einzelner Dokumente sowie Vorbelegen, Anlegen und Versenden
+      von Vollmachten laufen über den gemeinsamen Action-Baustein (staffAction) mit
+      unveränderten Gates (Modul poa, ADMIN/PARTNER mit eigener Meldung nach dem
+      Gate); Lösch-, Wiederherstellungs- und Freigabe-Ereignisse der Dokumente über
+      audit(tx, g, …); das Vollmachtsformular liest über parseFormData (gleiche
+      Gesamtmeldung, zusätzlich fieldErrors). Transaktionen, Audit-Inhalte,
+      Versandsnapshot, Meldungen und revalidierte Pfade bleiben unverändert;
+      technische Fehler der Zugriffsprüfung erscheinen als Fehlermeldung statt als
+      Fehlerseite. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/poa/__tests__/create-form.test.ts
+      - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-001
     date: '2026-10-07'
     paths:
@@ -4093,6 +4125,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-002` dokumentiert Dokument- und
+  Vollmachts-Actions auf dem gemeinsamen Action-Baustein.
 
 - 2026-10-07: `FK-EXC-20261007-001` dokumentiert die übrigen GwG-Actions auf
   dem gemeinsamen Action-Baustein. Gates, Transaktionen und Meldungen bleiben

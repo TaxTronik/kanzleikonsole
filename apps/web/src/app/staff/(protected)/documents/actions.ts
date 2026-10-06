@@ -3,14 +3,15 @@
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import type { TxClient } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
+  staffAction,
   staffActionGuard,
   withStaff,
   ActionError,
   type StaffCtx,
 } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 import {
   DOCUMENT_BULK_MAX,
   INVALID_DOCUMENT_SELECTION,
@@ -30,7 +31,7 @@ export interface DocActionResult {
   error?: string;
 }
 
-type StaffActor = Pick<StaffCtx, 'tenantId' | 'staffId'>;
+type StaffActor = Pick<StaffCtx, 'tenantId' | 'staffId' | 'ctx'>;
 
 const GWG_ASSOCIATED_VISIBILITY_ERROR =
   'Dieser Nachweis ist bereits einer GwG-Prüfung zugeordnet und unveränderlich. ' +
@@ -101,11 +102,12 @@ const DeleteSchema = z.object({
  */
 async function softDeleteDocumentTx(
   tx: TxClient,
-  { tenantId, staffId }: StaffActor,
+  actor: StaffActor,
   assertAccess: AssertClientAccess,
   documentId: string,
   reason: string | null,
 ): Promise<{ clientId: string | null }> {
+  const { tenantId, staffId } = actor;
   // Expliziter Tenant-Filter plus Zeilensperre: GwG-Zuordnung und
   // Soft-Delete werden atomar gegeneinander serialisiert.
   const doc = await lockDocumentVisibility(tx, documentId, tenantId);
@@ -125,10 +127,7 @@ async function softDeleteDocumentTx(
     where: { shelfDocumentId: documentId },
     data: { shelfDocumentId: null },
   });
-  await evidenceService.record(tx, {
-    tenantId,
-    actorType: 'STAFF',
-    actorId: staffId,
+  await audit(tx, actor, {
     action: 'document.delete',
     resourceType: 'document',
     resourceId: documentId,
@@ -217,7 +216,7 @@ export async function restoreDocumentAction(
   const { documentId } = parsed.data;
 
   return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
+    async (tx, { tenantId, session, ctx }) => {
       const doc = await lockDocumentVisibility(tx, documentId, tenantId);
       if (!doc || !doc.deletedAt) {
         throw new ActionError('Dokument nicht gefunden oder nicht gelöscht.');
@@ -235,10 +234,7 @@ export async function restoreDocumentAction(
       if (restored.count !== 1) {
         throw new ActionError('Dokument konnte nicht wiederhergestellt werden.');
       }
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
+      await audit(tx, ctx, {
         action: 'document.restore',
         resourceType: 'document',
         resourceId: documentId,
@@ -268,19 +264,20 @@ const RetagSchema = z
 export async function retagDocumentAction(
   input: z.infer<typeof RetagSchema>,
 ): Promise<DocActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const parsed = RetagSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  return staffAction({
+    run: async (g) => {
+      const parsed = RetagSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const result = await retagDocument(g, parsed.data.documentId, parsed.data);
-  if (!result.ok) return result;
-  // Unverändert (Ziel-Typ schon gesetzt): nichts geschrieben, nichts revalidiert.
-  if (result.changed) {
-    revalidatePath('/staff/documents');
-    if (result.clientId) revalidatePath(`/staff/clients/${result.clientId}`);
-  }
-  return { ok: true };
+      const result = await retagDocument(g, parsed.data.documentId, parsed.data);
+      if (!result.ok) return result;
+      // Unverändert (Ziel-Typ schon gesetzt): nichts geschrieben, nichts revalidiert.
+      if (result.changed) {
+        revalidatePath('/staff/documents');
+        if (result.clientId) revalidatePath(`/staff/clients/${result.clientId}`);
+      }
+    },
+  });
 }
 
 const BulkRetagSchema = z
@@ -327,11 +324,12 @@ const ShareSchema = z.object({
  */
 async function setDocumentShareTx(
   tx: TxClient,
-  { tenantId, staffId }: StaffActor,
+  actor: StaffActor,
   assertAccess: AssertClientAccess,
   documentId: string,
   share: boolean,
 ): Promise<{ clientId: string }> {
+  const { tenantId, staffId } = actor;
   const d = await tx.document.findFirst({
     where: { id: documentId, tenantId, deletedAt: null },
     select: { clientId: true, sharedWithClientAt: true },
@@ -349,10 +347,7 @@ async function setDocumentShareTx(
       sharedByStaff: share ? staffId : null,
     },
   });
-  await evidenceService.record(tx, {
-    tenantId,
-    actorType: 'STAFF',
-    actorId: staffId,
+  await audit(tx, actor, {
     action: share ? 'document.share' : 'document.unshare',
     resourceType: 'document',
     resourceId: documentId,

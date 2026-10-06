@@ -45,6 +45,7 @@ vi.mock('@/server/actions/staff-action', async () => ({
         tenantId: 'tenant-1',
         staffId: 'staff-1',
         session: {},
+        ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
       });
       return { ok: true };
     } catch (error) {
@@ -181,7 +182,14 @@ describe('Dokument-Sichtbarkeit – GwG-Schutz', () => {
     });
     expect(h.evidenceRecord).toHaveBeenCalledWith(
       h.tx,
-      expect.objectContaining({ action: 'document.restore', resourceId: DOCUMENT_ID }),
+      expect.objectContaining({
+        action: 'document.restore',
+        resourceId: DOCUMENT_ID,
+        // R-12: Mandant und Akteur aus dem Gate-Kontext (audit(tx, g, …)).
+        tenantId: 'tenant-1',
+        actorType: 'STAFF',
+        actorId: 'staff-1',
+      }),
     );
   });
 });

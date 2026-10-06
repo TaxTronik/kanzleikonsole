@@ -70,7 +70,14 @@ export const HANDWRITTEN_ACTION_BASELINE: Readonly<
     actions: 10,
     reason: SUBSUMTION,
   },
-  'app/staff/(protected)/documents/actions.ts': { actions: 4, reason: EXCLUDED },
+  'app/staff/(protected)/documents/actions.ts': {
+    actions: 3,
+    reason:
+      'softDeleteDocumentsAction, retagDocumentsAction, setDocumentsShareAction: Bulk-Vertrag ' +
+      'DocumentBulkResult — auch Gate-Ablehnung und Auswahlfehler kommen in Bulk-Form ' +
+      '(bulkActionError: done 0, rejected []), Gate und Fehler je Block über runDocumentBulk bzw. ' +
+      'retagDocuments (Re-Store-Budget ab Aktionsbeginn) wie moveDocumentItemsAction.',
+  },
   'app/staff/(protected)/documents/folder-actions.ts': {
     actions: 1,
     reason:
@@ -85,7 +92,6 @@ export const HANDWRITTEN_ACTION_BASELINE: Readonly<
       'Trefferliste (Ablehnung = leere Liste, technische Fehler erreichen die Fehlerseite), ' +
       'kein ActionResult-Vertrag.',
   },
-  'app/staff/(protected)/poa/actions.ts': { actions: 3, reason: EXCLUDED },
 };
 
 // R-12 (Audit-Akteur von Hand): evidenceService.record mit tenantId/actorType/
@@ -122,7 +128,6 @@ export const HAND_FILLED_AUDIT_BASELINE: Readonly<
   },
   'app/staff/(protected)/admin/settings/mail-actions.ts': { calls: 3, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/modules-actions.ts': { calls: 5, reason: EXCLUDED },
-  'app/staff/(protected)/documents/actions.ts': { calls: 3, reason: EXCLUDED },
   'app/staff/(protected)/invoices/actions.ts': {
     calls: 2,
     reason:
@@ -227,7 +232,6 @@ export const FORM_DATA_READ_BASELINE: Readonly<Record<string, { reads: number; r
         'archiveStructure/archiveOffboarding: Services mit eigener zod-Prüfung (raw: unknown).',
     },
     'app/staff/(protected)/payroll/actions.ts': { reads: 3, reason: PAYROLL_UPLOAD },
-    'app/staff/(protected)/poa/actions.ts': { reads: 11, reason: EXCLUDED },
     'app/staff/(protected)/tax-deadlines/actions.ts': {
       reads: 3,
       reason:

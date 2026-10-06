@@ -437,6 +437,10 @@ describe('softDeleteDocumentsAction', () => {
       expect.objectContaining({
         resourceId: A,
         after: expect.objectContaining({ reason: 'Dublette' }),
+        // R-12: Mandant und Akteur aus dem Gate-Kontext (audit(tx, g, …)).
+        tenantId: 'tenant-1',
+        actorType: 'STAFF',
+        actorId: 'staff-1',
       }),
       expect.objectContaining({
         resourceId: C,
