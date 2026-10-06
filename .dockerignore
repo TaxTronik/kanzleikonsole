@@ -86,3 +86,22 @@ install.log
 .claude
 # Lokale QA-Zustände, Zugangsdaten, Logs und Test-Fixtures.
 .codex-run
+
+# Nicht build-relevant: Doku, Markdown im Root, E2E-Suite, Unit-Tests sowie
+# CI-, Betriebs- und Infra-Dateien. `COPY . .` im Builder soll durch deren
+# Aenderung nicht invalidiert werden (sonst kalter Install + Build).
+# infra/n8n/workflows bleibt drin: apps/web buendelt die Workflow-JSONs.
+/docs
+/*.md
+/apps/e2e
+**/__tests__
+**/*.test.ts
+**/*.test.tsx
+/.forgejo
+/scripts
+/infra/clamav
+/infra/compose
+/infra/docker
+/infra/nginx
+/infra/scripts
+/renovate.json

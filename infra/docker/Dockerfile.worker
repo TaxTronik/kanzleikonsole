@@ -4,9 +4,12 @@
 #
 # Build: docker build -f infra/docker/Dockerfile.worker -t taxtronik/worker:latest .
 #
-# Wie Dockerfile.web: im Builder ZUERST die Quelle kopieren, DANN installieren —
-# so entstehen die pnpm-Workspace-Symlinks gegen vorhandene Quellen (deps-first
-# erzeugt Symlinks auf quell-lose Pakete; siehe Dockerfile.web).
+# Der Builder laedt die Pakete zuerst nur anhand von Lockfile, Workspace-
+# Konfiguration und Patches (`pnpm fetch`); Quell- und Doku-Aenderungen
+# invalidieren diese Schicht nicht. Danach Quelle kopieren, offline
+# installieren, den Worker nach dist buendeln (apps/worker/scripts/build.mjs)
+# und die Laufzeit per `pnpm deploy --prod` befuellen. Das Runtime-Image
+# enthaelt weder Quellbaum noch devDependencies und startet ohne tsx.
 # =============================================================================
 
 # Gemeinsame, digest-gepinnte Basis fuer Builder und Runtime von Web UND
@@ -22,7 +25,14 @@ WORKDIR /repo
 COPY package.json ./
 RUN corepack enable && corepack install && pnpm --version
 
-# Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
+# Paket-Store als eigene Schicht (statt Cache-Mount), damit auch ein
+# exportierter Layer-Cache die Downloads enthaelt. fetch prueft den Lockfile
+# bereits gegen die Supply-Chain-Regeln aus pnpm-workspace.yaml.
+COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
+RUN pnpm fetch --store-dir /pnpm-store
+
+# Quelle (node_modules, Doku, E2E und Tests via .dockerignore ausgeschlossen).
 COPY . .
 # Defense-in-depth gegen abweichende Host-Modi nach einem Operator-Update:
 # Runtime-COPYs muessen fuer `node` lesbar, aber nie gruppen-/welt-schreibbar sein.
@@ -30,25 +40,33 @@ RUN chmod -R u=rwX,go=rX /repo
 
 # Install mit Hooks: nur die in allowBuilds freigegebenen Install-Skripte
 # laufen, strictDepBuilds bricht bei ungeprueften Hooks ab (wie Quality-Job und
-# Host-Setup, siehe Dockerfile.web). `--filter @taxtronik/db`,
-# damit dessen devDep prisma (+ transitiv dotenv)
-# für den Migrate-Service (prisma.config.ts) von packages/db auflösbar ist.
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter @taxtronik/worker... --filter @taxtronik/db
+# Host-Setup, siehe Dockerfile.web).
+RUN pnpm install --frozen-lockfile --offline --store-dir /pnpm-store \
+      --filter @taxtronik/worker...
 
-# Prisma direkt aufrufen — siehe Dockerfile.web. cd packages/db: @prisma/client
-# (Generate-Ziel) + prisma/config (für prisma.config.ts) dort auflösbar.
-# Dummy-DATABASE_URL, weil der Config-Load datasource.url=env('DATABASE_URL')
-# auswertet (generate verbindet nicht).
-RUN cd packages/db && \
-    PRISMA=$(find /repo -path "*/prisma/build/index.js" -not -path "*/cache/*" 2>/dev/null | head -1) && \
-    test -n "$PRISMA" && \
-    DATABASE_URL=postgresql://build:build@build/build node "$PRISMA" generate
+# Bundle: Workspace-Pakete eingebunden, Drittpakete extern, Source Maps.
+RUN pnpm --filter @taxtronik/worker build
+
+# Laufzeitbaum: nur Produktionsabhaengigkeiten, flach (nodeLinker=hoisted),
+# mit denselben Install-Hooks. Prisma-CLI und Schema-Engine kommen als Peer
+# von @prisma/client mit; der migrate-Service (docker-compose.app.yml) nutzt
+# sie. Den Prisma-Client fuer genau diesen Baum generieren (Dummy-URL: der
+# Config-Load wertet datasource.url=env('DATABASE_URL') aus, generate
+# verbindet nicht). Danach entfallen die Workspace-Kopien (im Bundle
+# enthalten) und der optionale typescript-Peer von Prisma (nur fuer dessen
+# Versionsanzeige); verify-runtime.mjs prueft die externen Importe des
+# Bundles gegen diesen Baum.
+RUN pnpm --filter @taxtronik/worker deploy --prod --offline --store-dir /pnpm-store /deploy && \
+    cd /deploy/node_modules/@taxtronik/db && \
+    DATABASE_URL=postgresql://build:build@build/build node /deploy/node_modules/prisma/build/index.js generate && \
+    rm -rf /deploy/node_modules/@taxtronik /deploy/node_modules/typescript \
+      /deploy/node_modules/.bin/tsc /deploy/node_modules/.bin/tsserver && \
+    chmod -R u=rwX,go=rX /deploy/node_modules && \
+    node /repo/apps/worker/scripts/verify-runtime.mjs /deploy
 
 # ----- Runtime ---------------------------------------------------------------
 # P-10: Kein corepack/pnpm in der Runtime-Stage. Reduziert Image-Größe und
-# verkleinert den Angriffsvektor. tsx wird zur Laufzeit per find lokalisiert
-# (pnpm-Store-Layout legt es nicht unter node_modules/.bin/ ab).
+# verkleinert den Angriffsvektor.
 # Runner explizit auf Alpine 3.23 gepinnt (NODE_BASE_IMAGE oben):
 # postgresql18-client liegt erst ab 3.23 in main (v3.22 hat nur 17) — ein
 # floatendes node:24-alpine könnte je nach Upstream-Stand ohne pg18 dastehen
@@ -74,10 +92,14 @@ ENV NODE_ENV=production \
     APP_VERSION=${APP_VERSION} \
     GIT_SHA=${GIT_SHA}
 
-COPY --from=builder /repo/node_modules ./node_modules
-COPY --from=builder /repo/apps/worker ./apps/worker
-COPY --from=builder /repo/packages ./packages
-COPY --from=builder /repo/package.json ./
+COPY --from=builder /deploy/node_modules ./node_modules
+# package.json traegt "type": "module" fuer das ESM-Bundle.
+COPY --from=builder /repo/apps/worker/package.json ./apps/worker/
+COPY --from=builder /repo/apps/worker/dist/index.js /repo/apps/worker/dist/index.js.map ./apps/worker/dist/
+# Migrate-Service: Prisma-Konfiguration, Schema, Migrationen und Skripte.
+COPY --from=builder /repo/packages/db/package.json /repo/packages/db/prisma.config.ts ./packages/db/
+COPY --from=builder /repo/packages/db/prisma ./packages/db/prisma
+COPY --from=builder /repo/packages/db/scripts ./packages/db/scripts
 
 USER node
 WORKDIR /app/apps/worker
@@ -98,7 +120,9 @@ RUN set -eux; \
     test ! -w /app/packages/db/scripts/inspect-migration-recovery.mjs && \
     test ! -w /app/packages/db/scripts/verify-migration-ledger.mjs && \
     test ! -w /app/packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql && \
-    sh -n /app/packages/db/scripts/migrate-deploy.sh
+    sh -n /app/packages/db/scripts/migrate-deploy.sh && \
+    test -r /app/node_modules/prisma/build/index.js && \
+    test -r dist/index.js && test ! -e /app/node_modules/typescript
 
 # Q-9: HEALTHCHECK auf den Heartbeat-File-Touch (siehe apps/worker/src/index.ts).
 # Worker schreibt alle 30 s nach /tmp/worker-alive; HEALTHCHECK schlägt fehl,
@@ -108,6 +132,5 @@ RUN set -eux; \
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "const s=require('node:fs').statSync('/tmp/worker-alive'); if (Date.now()-s.mtimeMs > 90000) process.exit(1)" || exit 1
 
-# tsx-CLI im pnpm-Store lokalisieren (Pfad enthält Versions-Hash, daher
-# find statt hardcoded). WORKDIR ist /app/apps/worker, src/index.ts relativ.
-CMD ["sh", "-c", "TSX=$(find /app -path '*/tsx/dist/cli.mjs' -not -path '*/cache/*' 2>/dev/null | head -1); test -n \"$TSX\" || { echo 'FATAL: tsx CLI nicht im Image gefunden'; exit 1; }; exec node \"$TSX\" src/index.ts"]
+# Gebuendelter Worker; Source Maps halten Stack-Traces auf die TS-Quellen lesbar.
+CMD ["node", "--enable-source-maps", "dist/index.js"]

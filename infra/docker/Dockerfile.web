@@ -5,11 +5,12 @@
 # Build: docker build -f infra/docker/Dockerfile.web -t taxtronik/web:latest .
 #   (vom Repo-Root!)
 #
-# WICHTIG (gelernt 2026-06-07): im Builder ZUERST die Quelle kopieren, DANN
-# `pnpm install` — so entstehen die Workspace-Symlinks gegen VORHANDENE Quellen.
-# Der frühere „deps-first" (nur package.json kopieren, installieren, dann Quelle
-# nachkopieren) erzeugte Symlinks auf quell-lose Pakete; im Builder fand Turbopack
-# dann @taxtronik/* (und transitiv zod) nicht („Module not found").
+# Reihenfolge im Builder: `pnpm fetch` laedt die Pakete nur anhand von
+# Lockfile, Workspace-Konfiguration und Patches in den Store (eigene Schicht;
+# Quell- und Doku-Aenderungen invalidieren sie nicht). Erst danach die Quelle
+# kopieren und offline installieren: die Workspace-Symlinks entstehen so gegen
+# VORHANDENE Quellen (gelernt 2026-06-07: ein Install vor dem Quell-COPY liess
+# Turbopack @taxtronik/* und transitiv zod nicht finden).
 # pnpm-workspace.yaml liefert nodeLinker=hoisted; Workspace-Pakete sind Symlinks.
 # =============================================================================
 
@@ -27,6 +28,13 @@ WORKDIR /repo
 COPY package.json ./
 RUN corepack enable && corepack install && pnpm --version
 
+# Paket-Store als eigene Schicht (statt Cache-Mount), damit auch ein
+# exportierter Layer-Cache die Downloads enthaelt. fetch prueft den Lockfile
+# bereits gegen die Supply-Chain-Regeln aus pnpm-workspace.yaml.
+COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
+RUN pnpm fetch --store-dir /pnpm-store
+
 # Build-Time-Dummies für ENV-Validierung (@taxtronik/config wirft beim Modul-Load,
 # wenn ENV-Vars fehlen — Next evaluiert Server-Components bei der Page-Data-
 # Collection; prisma generate wertet datasource.url=env('DATABASE_URL') aus).
@@ -42,7 +50,7 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
     SMTP_PORT=587 \
     SMTP_FROM=build@build.local
 
-# Quelle zuerst (node_modules via .dockerignore ausgeschlossen), dann install.
+# Quelle (node_modules, Doku, E2E und Tests via .dockerignore ausgeschlossen).
 COPY . .
 # Die Operator-CLI schuetzt Secrets mit umask 077. Falls ein Git-Update dadurch
 # getrackte Quellen als 0600/Verzeichnisse als 0700 anlegt oder der Checkout
@@ -56,8 +64,7 @@ RUN chmod -R u=rwX,go=rX /repo
 # Host-Setup, ohne zweite, handgepflegte rebuild-Liste. --filter @taxtronik/db,
 # damit dessen devDep prisma (+ transitiv dotenv)
 # für prisma generate/migrate von packages/db auflösbar ist.
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile \
+RUN pnpm install --frozen-lockfile --offline --store-dir /pnpm-store \
       --filter @taxtronik/web... --filter @taxtronik/web --filter @taxtronik/db
 
 # Prisma direkt aus dem gefilterten Build-Workspace aufrufen.

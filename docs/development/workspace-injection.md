@@ -42,5 +42,19 @@ Symlinks. Das gilt auch für die Host-Werkzeuge der Betriebs-CLI: deren
 
 ## Produktions-Images
 
-Das Web-Image enthält keine Workspace-Pakete: Next.js transpiliert und bündelt
-sie (`transpilePackages`) in den Standalone-Server.
+Beide Dockerfiles laden die Pakete per `pnpm fetch` nur anhand von Lockfile,
+`pnpm-workspace.yaml` und `patches/` in eine eigene Store-Schicht; Quell- und
+Doku-Änderungen invalidieren sie nicht. Danach folgen Quell-COPY und
+`pnpm install --offline`.
+
+- Web: Next.js transpiliert und bündelt die Workspace-Pakete
+  (`transpilePackages`) in den Standalone-Server; das Image enthält keine
+  Workspace-Quellen.
+- Worker: `apps/worker/scripts/build.mjs` bündelt `src/index.ts` samt
+  Workspace-Paketen per esbuild nach `dist/index.js` (Source Maps ohne
+  Quelltext); Drittpakete bleiben extern. `pnpm deploy --prod` befüllt das
+  Laufzeit-`node_modules` ohne devDependencies, `scripts/verify-runtime.mjs`
+  prüft, dass jeder externe Import dort zur beim Bündeln gesehenen Version
+  auflöst. Löst ein Workspace-Paket ein Drittpaket in einer anderen Version
+  auf als das Bundle (im flachen Baum verschachtelt, z. B. `fast-xml-parser`
+  von `@taxtronik/tax`), wird es eingebunden statt extern geladen.

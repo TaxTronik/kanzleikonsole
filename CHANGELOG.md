@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Das Worker-Image startet einen gebündelten Worker
+  (`node --enable-source-maps dist/index.js`) statt `tsx src/index.ts` und
+  enthält nur Produktionsabhängigkeiten (Laufzeitbaum 422 MB statt 1,2 GB, ohne
+  TypeScript, Vitest, Vite, tsx und esbuild). Image-Builds laden Pakete in
+  einer von Quell- und Doku-Änderungen unabhängigen Schicht.
 - Workspace-Pakete werden per Symlink statt als injizierte Kopie eingebunden;
   Quelländerungen wirken ohne Neuinstallation, und Host-Werkzeuge nutzen nach
   Updates keinen veralteten Paketstand mehr. Fehlende und ungenutzte

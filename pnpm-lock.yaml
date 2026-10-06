@@ -551,6 +551,9 @@ importers:
       '@types/nodemailer':
         specifier: ^8.0.0
         version: 8.0.0
+      esbuild:
+        specifier: 0.28.1
+        version: 0.28.1
       tsx:
         specifier: ^4.22.3
         version: 4.22.3
