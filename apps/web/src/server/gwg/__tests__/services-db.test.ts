@@ -587,11 +587,9 @@ const IDENTITY_SET_REVISION_SELECT = {
       invalidatedIdentitySets: [
         {
           documentSetId: identity!.documentSetId,
-          // Bestehendes Verhalten (unverändert übernommen): invalidatedIdentitySetRevisions
-          // liest viewports nicht mit; die Revision bildet sie deshalb als null ab.
-          revision: gwgIdentityDocumentSetRevision(
-            identityAfter.map(({ viewports: _viewports, ...row }) => row),
-          ),
+          // Dieselbe Revision wie die CAS-Prüfung beim nächsten Speichern
+          // (inklusive viewports); vorher fehlten sie und das Speichern scheiterte.
+          revision: gwgIdentityDocumentSetRevision(identityAfter),
         },
       ],
       revision: expect.any(String),

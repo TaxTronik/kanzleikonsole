@@ -35,6 +35,9 @@ export async function invalidatedIdentitySetRevisions(
       gwgCheckId: true,
       documentSetId: true,
       documentId: true,
+      // Teil der Satz-Revision (gwgIdentityDocumentSetRevision): ohne viewports
+      // wich die zurückgegebene Revision von der CAS-Prüfung beim Speichern ab.
+      viewports: true,
       type: true,
       ownerName: true,
       number: true,

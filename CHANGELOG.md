@@ -768,6 +768,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- GwG-Identifizierung: Nach dem Ändern einer Person, eines wirtschaftlich
+  Berechtigten oder der Angaben zum Rechtsträger lässt sich ein betroffener
+  Ausweissatz wieder ohne Neuladen speichern; bisher scheiterte das Speichern
+  mit „parallel geändert“ (`GWG-IDENTIFICATION-EVIDENCE-001`,
+  `FK-EXC-20261007-004`).
 - n8n-Einstellungen: Eine Adresse ohne Schema (z. B. `n8n.example`) wird als
   Feldfehler gemeldet statt mit einer allgemeinen Fehlermeldung abzubrechen.
 - **[Scope]** `./taxtronik deploy` migriert nicht mehr ohne Pflichtbackup, wenn

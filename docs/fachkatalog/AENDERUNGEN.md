@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-004
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/server/gwg/__tests__/services-db.test.ts
+      - apps/web/src/server/gwg/invalidated-identity-sets.ts
+    rule_ids:
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-RISK-REVIEW-001
+      - GWG-ACTIVATION-GATE-001
+    reason: >-
+      Nach dem Ändern einer Person, eines wirtschaftlich Berechtigten oder der
+      Angaben zum Rechtsträger gibt der Service die neuen Revisionen der
+      entwerteten Ausweissätze zurück. Die Abfrage las die Dokumente ohne
+      viewports, obwohl die Satz-Revision sie enthält und die
+      Compare-and-set-Prüfung beim Speichern sie lädt; das nächste Speichern des
+      Satzes scheiterte deshalb mit „parallel geändert“. Die Abfrage liest viewports
+      jetzt mit. Identitätsprüfung, Entwertung und Bestätigungspflicht bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/gwg/__tests__/services-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-003
     date: '2026-10-07'
     paths:
@@ -4149,6 +4171,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-004` dokumentiert die vollständige Revision
+  entwerteter Ausweissätze nach Personenänderungen.
 
 - 2026-10-07: `FK-EXC-20261007-003` dokumentiert die Einstellungs-Actions
   auf dem gemeinsamen Action-Baustein. Audit-Kette und Rollback bleiben
