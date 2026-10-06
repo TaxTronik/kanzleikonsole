@@ -45,21 +45,33 @@ export type ActionGuardResult<TCtx> = ({ ok: true } & TCtx) | { ok: false; error
 
 /**
  * Nutzlast aus dem, was `run` zurückgibt: Fehlerergebnisse (`ok: false`) und
- * die Ergebnisfelder selbst gehören nicht dazu. Ohne diese Filterung zöge die
- * Typinferenz frühe `return { ok: false, … }`-Zweige in die Nutzlast.
+ * die Ergebnisfelder selbst gehören nicht dazu; kein Rückgabewert ist eine
+ * leere Nutzlast. Ohne diese Filterung zöge die Typinferenz frühe
+ * `return { ok: false, … }`-Zweige in die Nutzlast.
  */
 type SuccessPayload<T> = T extends { ok: false }
   ? never
   : T extends object
     ? Omit<T, keyof ActionResult>
-    : never;
+    : Record<never, never>;
 
 /** Was `run` zurückgeben darf: nichts, eine Nutzlast oder ein Fehlerergebnis. */
 export type ActionRunResult = ActionFailure | object | void | undefined;
 
-/** Ergebnis eines Bausteins: ActionResult plus (optional) die Nutzlast von `run`. */
-export type ActionOutcome<TRun> = ActionResult &
-  ([SuccessPayload<TRun>] extends [never] ? unknown : Partial<SuccessPayload<TRun>>);
+/** Erfolgsergebnis mit Nutzlast; die Fehlerfelder sind ausdrücklich leer. */
+export type ActionSuccess<TPayload> = {
+  ok: true;
+  error?: undefined;
+  errorCode?: undefined;
+  fieldErrors?: undefined;
+} & TPayload;
+
+/**
+ * Ergebnis eines Bausteins als unterscheidbare Union: nach
+ * `if (!result.ok) return result;` ist die Nutzlast von `run` vollständig
+ * typisiert (etwa für eine Weiterleitung nach Erfolg).
+ */
+export type ActionOutcome<TRun> = ActionSuccess<SuccessPayload<TRun>> | ActionFailure;
 
 export interface ActionErrorMapping {
   /** Freundliche Meldung für Eindeutigkeits-Konflikte (P2002 bzw. SQLSTATE 23505). */
@@ -111,9 +123,10 @@ function isFailure(value: unknown): value is ActionFailure {
 }
 
 /**
- * Bindet den Ablauf an ein Gate. Das Gate liegt bewusst außerhalb des
- * Fehler-Mappings (wie bei withStaff); alles danach — Prüfung, Arbeit,
- * Revalidate — läuft darin.
+ * Bindet den Ablauf an ein Gate. Auch das Gate läuft im Fehler-Mapping: fällt
+ * dort Infrastruktur aus (Session-Widerruf, Modulstatus), antwortet die Action
+ * mit einem Ergebnis statt einer Fehlerseite. Eine Ablehnung des Gates geht
+ * unverändert zurück.
  */
 export function createActionRunner<TCtx extends object, TGuardOptions>(
   guard: (options?: TGuardOptions) => Promise<ActionGuardResult<TCtx>>,
@@ -123,9 +136,9 @@ export function createActionRunner<TCtx extends object, TGuardOptions>(
   ): Promise<ActionOutcome<TRun>> {
     // Fehlerpfade tragen keine Nutzlast → der Cast nach ActionOutcome ist korrekt.
     type R = ActionOutcome<TRun>;
-    const g = await guard(spec.guard);
-    if (!g.ok) return g as R;
     try {
+      const g = await guard(spec.guard);
+      if (!g.ok) return g as R;
       let data = undefined as TData;
       if (spec.parse) {
         const parsed = spec.parse();

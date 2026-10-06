@@ -1,5 +1,45 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-029
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/actions-result.test.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/poa-signer-actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/tax-data-actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/privacy/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/privacy/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts
+      - apps/web/src/app/staff/(protected)/admin/users/actions.ts
+      - apps/web/src/app/staff/(protected)/profile/actions.ts
+    rule_ids:
+      - ACCESS-STAFF-PERMISSION-001
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-HASH-CHAIN-001
+      - AUDIT-VERIFY-ALERT-001
+      - DSGVO-CONSENT-SNAPSHOT-001
+      - DSGVO-MANDATE-ANONYMIZATION-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - POA-SIGNER-RETENTION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+      - TAX-MASTER-DATA-001
+      - TCMS-SAMPLE-PROOF-001
+    reason: >-
+      Die bisher handgeschriebenen Admin- und Profil-Actions (Audit, DSGVO- und
+      GwG-Aufbewahrung, Datenschutz, Quantenlos, Benutzer, Profil, Einrichtung,
+      Screening) laufen über den gemeinsamen Action-Baustein (staffAction). Gates,
+      Transaktionskörper (tokenidentisch je Datei geprüft), Audit-Ereignisse,
+      revalidierte Pfade und Meldungen bleiben unverändert; technische Fehler
+      außerhalb der bisherigen try-Blöcke erscheinen als Fehlermeldung statt als
+      Fehlerseite. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/privacy/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/actions-result.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-028
     date: '2026-10-06'
     paths:
@@ -3583,6 +3623,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-029` dokumentiert die Admin- und
+  Profil-Actions auf dem gemeinsamen Action-Baustein. Gates und Audit bleiben
+  unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-028` dokumentiert den gemeinsamen
   Action-Baustein mit unveränderter Gate-Entscheidung (Pilot DSGVO-Anfragen).

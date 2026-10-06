@@ -16,10 +16,9 @@ import {
 } from '@/server/dsgvo/anonymize-client-data';
 import {
   ActionError,
-  staffActionGuard,
+  staffAction,
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
-import { toActionError } from '@/server/actions/to-action-error';
 
 export type ActionResult = BaseActionResult;
 
@@ -40,182 +39,185 @@ export async function confirmClientAnonymizationAction(input: {
   clientId: string;
 }): Promise<ActionResult> {
   // DSGVO-Anonymisierung ist Compliance-Hoheit → ADMIN/PARTNER.
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async ({ tenantId, staffId, ctx }) => {
+      const parsed = z.object({ clientId: z.string().uuid() }).safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const { clientId } = parsed.data;
 
-  const parsed = z.object({ clientId: z.string().uuid() }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId } = parsed.data;
+      // Fuer Audit-Zähler der in dieser Transaktion neu anonymisierten Kontakte.
+      const anonymizedContactIds: string[] = [];
 
-  // Fuer Audit-Zähler der in dieser Transaktion neu anonymisierten Kontakte.
-  const anonymizedContactIds: string[] = [];
-
-  const result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
-    // Serialisiert die finale Retention-Prüfung/Redaktion mit dem BEFORE-
-    // Trigger jeder PoA-Neuanlage. Der Lock muss vor dem ersten Client-Read
-    // liegen, damit ein paralleler Insert keinen veralteten Marker verwenden kann.
-    await tx.$queryRaw(
-      Prisma.sql`SELECT "id" FROM "client"
+      const result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
+        // Serialisiert die finale Retention-Prüfung/Redaktion mit dem BEFORE-
+        // Trigger jeder PoA-Neuanlage. Der Lock muss vor dem ersten Client-Read
+        // liegen, damit ein paralleler Insert keinen veralteten Marker verwenden kann.
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "client"
                  WHERE "id" = ${clientId}::uuid AND "tenant_id" = ${tenantId}::uuid
                  FOR UPDATE`,
-    );
+        );
 
-    // 1. Mandant laden (+ Frist- und Vorbedingungs-Daten).
-    const client = await tx.client.findFirst({
-      where: { id: clientId, tenantId },
-      select: {
-        id: true,
-        kind: true,
-        mandateEndedAt: true,
-        anonymizedAt: true,
-        contacts: { select: { id: true, email: true } },
-        _count: {
+        // 1. Mandant laden (+ Frist- und Vorbedingungs-Daten).
+        const client = await tx.client.findFirst({
+          where: { id: clientId, tenantId },
           select: {
-            documents: { where: { classification: 'GWG_EVIDENCE', deletedAt: null } },
-            gwgChecks: { where: { destroyedAt: null } },
+            id: true,
+            kind: true,
+            mandateEndedAt: true,
+            anonymizedAt: true,
+            contacts: { select: { id: true, email: true } },
+            _count: {
+              select: {
+                documents: { where: { classification: 'GWG_EVIDENCE', deletedAt: null } },
+                gwgChecks: { where: { destroyedAt: null } },
+              },
+            },
           },
-        },
-      },
-    });
-    if (!client) return { ok: false, error: 'Mandant nicht gefunden.' };
-    if (client.kind !== 'NATPERS') {
-      return { ok: false, error: 'Anonymisierung gilt nur für natürliche Personen (NATPERS).' };
-    }
-    if (client.anonymizedAt) return { ok: false, error: 'Mandant wurde bereits anonymisiert.' };
+        });
+        if (!client) return { ok: false, error: 'Mandant nicht gefunden.' };
+        if (client.kind !== 'NATPERS') {
+          return { ok: false, error: 'Anonymisierung gilt nur für natürliche Personen (NATPERS).' };
+        }
+        if (client.anonymizedAt) return { ok: false, error: 'Mandant wurde bereits anonymisiert.' };
 
-    // 2. Gesetzliche Frist abgelaufen? (Mandatsende-Jahresende + 10 J. — die
-    //    längste Aufbewahrungsfrist, GoBD § 147 AO > GwG § 8 Abs. 4.)
-    if (!isClientAnonymizationDue(client.mandateEndedAt)) {
-      return {
-        ok: false,
-        error: 'Aufbewahrungsfristen noch nicht abgelaufen — Anonymisierung nicht zulässig.',
-      };
-    }
+        // 2. Gesetzliche Frist abgelaufen? (Mandatsende-Jahresende + 10 J. — die
+        //    längste Aufbewahrungsfrist, GoBD § 147 AO > GwG § 8 Abs. 4.)
+        if (!isClientAnonymizationDue(client.mandateEndedAt)) {
+          return {
+            ok: false,
+            error: 'Aufbewahrungsfristen noch nicht abgelaufen — Anonymisierung nicht zulässig.',
+          };
+        }
 
-    // 3. GwG-Vernichtung zuerst: solange GwG-Belege oder -Aufzeichnungen des
-    //    Mandanten existieren, ist die Stammdaten-Anonymisierung nicht dran
-    //    (die GwG-Queue hat ihre eigene Vernichtungs-Semantik + Nachweise).
-    if (client._count.documents > 0 || client._count.gwgChecks > 0) {
-      return {
-        ok: false,
-        error:
-          'Es existieren noch GwG-Belege/-Aufzeichnungen — bitte zuerst über die GwG-Pflichtlöschung vernichten.',
-      };
-    }
+        // 3. GwG-Vernichtung zuerst: solange GwG-Belege oder -Aufzeichnungen des
+        //    Mandanten existieren, ist die Stammdaten-Anonymisierung nicht dran
+        //    (die GwG-Queue hat ihre eigene Vernichtungs-Semantik + Nachweise).
+        if (client._count.documents > 0 || client._count.gwgChecks > 0) {
+          return {
+            ok: false,
+            error:
+              'Es existieren noch GwG-Belege/-Aufzeichnungen — bitte zuerst über die GwG-Pflichtlöschung vernichten.',
+          };
+        }
 
-    // RISK-ARCHIVE-SNAPSHOT-001: Client -> Risk -> Audit. Contacts below write
-    // evidence before the side-table redaction; acquiring risk locks only there
-    // could deadlock with an archiver already holding Risk and awaiting Audit.
-    await lockClientRiskAnalysesTx(tx, clientId);
+        // RISK-ARCHIVE-SNAPSHOT-001: Client -> Risk -> Audit. Contacts below write
+        // evidence before the side-table redaction; acquiring risk locks only there
+        // could deadlock with an archiver already holding Risk and awaiting Audit.
+        await lockClientRiskAnalysesTx(tx, clientId);
 
-    // Redis-Widerruf vor jeder irreversiblen Anonymisierung bestaetigen. Ein
-    // spaeterer SQL-Fehler fuehrt damit hoechstens zu einem vorzeitigen Logout.
-    for (const contact of client.contacts) {
-      if (!isAnonymizedContactEmail(contact.email)) {
-        await revokeAllSessions('portal', contact.id);
-      }
-    }
+        // Redis-Widerruf vor jeder irreversiblen Anonymisierung bestaetigen. Ein
+        // spaeterer SQL-Fehler fuehrt damit hoechstens zu einem vorzeitigen Logout.
+        for (const contact of client.contacts) {
+          if (!isAnonymizedContactEmail(contact.email)) {
+            await revokeAllSessions('portal', contact.id);
+          }
+        }
 
-    // 4. Stammdaten anonymisieren — Skelett bleibt (id, kind, Mandatsende,
-    //    Vernichtungsvermerk). datevNo/addisonNo ebenfalls nullen: als
-    //    Fremdsystem-Schlüssel wären die Daten sonst re-identifizierbar.
-    const anonymizedAt = new Date();
-    await tx.client.update({
-      where: { id: clientId },
-      data: {
-        name: 'Anonymisiert',
-        street: null,
-        postalCode: null,
-        city: null,
-        countryIso: null,
-        vatId: null,
-        steuernummer: null,
-        invoiceEmail: null,
-        internalNotes: null,
-        datevNo: null,
-        addisonNo: null,
-        allowActive: false,
-        anonymizedAt,
-      },
-    });
-    // TAX-MASTER-DATA-001 / DSGVO-MANDATE-ANONYMIZATION-001: retain relation
-    // skeletons for separately retained ELSTER evidence, redact active AND archived tax data.
-    const taxRegistrationsRedacted = await tx.clientTaxRegistration.updateMany({
-      where: { tenantId, clientId },
-      data: {
-        label: 'Anonymisiert',
-        stateCode: null,
-        numberElster: null,
-        taxOfficeName: '',
-        taxOfficeCode: null,
-        isPrimary: false,
-        archivedAt: anonymizedAt,
-      },
-    });
-    // Custom-Feld-Werte sind freie personenbezogene Stammdaten → löschen.
-    const deletedCustomValues = await tx.clientCustomFieldValue.deleteMany({ where: { clientId } });
-    // Stammdaten-Änderungsanträge tragen die ALTEN Stammdaten im fields-Json
-    // (Name, Adresse, …) — sie würden die Anonymisierung sonst unterlaufen.
-    const deletedChangeRequests = await tx.clientMasterChangeRequest.deleteMany({
-      where: { clientId },
-    });
+        // 4. Stammdaten anonymisieren — Skelett bleibt (id, kind, Mandatsende,
+        //    Vernichtungsvermerk). datevNo/addisonNo ebenfalls nullen: als
+        //    Fremdsystem-Schlüssel wären die Daten sonst re-identifizierbar.
+        const anonymizedAt = new Date();
+        await tx.client.update({
+          where: { id: clientId },
+          data: {
+            name: 'Anonymisiert',
+            street: null,
+            postalCode: null,
+            city: null,
+            countryIso: null,
+            vatId: null,
+            steuernummer: null,
+            invoiceEmail: null,
+            internalNotes: null,
+            datevNo: null,
+            addisonNo: null,
+            allowActive: false,
+            anonymizedAt,
+          },
+        });
+        // TAX-MASTER-DATA-001 / DSGVO-MANDATE-ANONYMIZATION-001: retain relation
+        // skeletons for separately retained ELSTER evidence, redact active AND archived tax data.
+        const taxRegistrationsRedacted = await tx.clientTaxRegistration.updateMany({
+          where: { tenantId, clientId },
+          data: {
+            label: 'Anonymisiert',
+            stateCode: null,
+            numberElster: null,
+            taxOfficeName: '',
+            taxOfficeCode: null,
+            isPrimary: false,
+            archivedAt: anonymizedAt,
+          },
+        });
+        // Custom-Feld-Werte sind freie personenbezogene Stammdaten → löschen.
+        const deletedCustomValues = await tx.clientCustomFieldValue.deleteMany({
+          where: { clientId },
+        });
+        // Stammdaten-Änderungsanträge tragen die ALTEN Stammdaten im fields-Json
+        // (Name, Adresse, …) — sie würden die Anonymisierung sonst unterlaufen.
+        const deletedChangeRequests = await tx.clientMasterChangeRequest.deleteMany({
+          where: { clientId },
+        });
 
-    // 5. Verknüpfte Kontakte mit-anonymisieren (geteilte Logik mit admin/dsgvo).
-    //    Bereits anonymisierte Kontakte überspringen (idempotent, kein
-    //    Doppel-Audit). personalDataInAudit: false — nach Fristablauf keine
-    //    Personendaten erneut in die insert-only Hash-Chain schreiben.
-    for (const contact of client.contacts) {
-      if (isAnonymizedContactEmail(contact.email)) continue;
-      const r = await anonymizeContactInTx(tx, {
-        tenantId,
-        staffId,
-        contactId: contact.id,
-        personalDataInAudit: false,
+        // 5. Verknüpfte Kontakte mit-anonymisieren (geteilte Logik mit admin/dsgvo).
+        //    Bereits anonymisierte Kontakte überspringen (idempotent, kein
+        //    Doppel-Audit). personalDataInAudit: false — nach Fristablauf keine
+        //    Personendaten erneut in die insert-only Hash-Chain schreiben.
+        for (const contact of client.contacts) {
+          if (isAnonymizedContactEmail(contact.email)) continue;
+          const r = await anonymizeContactInTx(tx, {
+            tenantId,
+            staffId,
+            contactId: contact.id,
+            personalDataInAudit: false,
+          });
+          if (r) anonymizedContactIds.push(r.contactId);
+        }
+
+        // 6. Personentragende Nebentabellen in derselben Tx mitbehandeln
+        //    (Vollmacht-Signer, GwG-Invites, Formular-Antworten, Termine/-Anfragen,
+        //    Wiedervorlagen, Pendelordner, Übergaben, Risiko-Sachverhalte) —
+        //    Zähler je Klasse landen im Audit-Event.
+        const sideTables = await anonymizeClientSideTablesInTx(tx, {
+          clientId,
+          contactIds: client.contacts.map((c) => c.id),
+        });
+
+        // 7. Anonymisierung auditieren (audit_log ist insert-only → der Nachweis
+        //    bleibt dauerhaft; bewusst nur Zähler, keine Personendaten im Event).
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'client.anonymize',
+          resourceType: 'client',
+          resourceId: clientId,
+          before: {
+            kind: client.kind,
+            mandateEndedAt: client.mandateEndedAt?.toISOString() ?? null,
+          },
+          after: {
+            anonymized: true,
+            anonymizedAt: anonymizedAt.toISOString(),
+            contactsAnonymized: anonymizedContactIds.length,
+            customFieldValuesDeleted: deletedCustomValues.count,
+            masterChangeRequestsDeleted: deletedChangeRequests.count,
+            taxRegistrationsRedacted: taxRegistrationsRedacted.count,
+            ...sideTables,
+          },
+        });
+        return { ok: true };
       });
-      if (r) anonymizedContactIds.push(r.contactId);
-    }
 
-    // 6. Personentragende Nebentabellen in derselben Tx mitbehandeln
-    //    (Vollmacht-Signer, GwG-Invites, Formular-Antworten, Termine/-Anfragen,
-    //    Wiedervorlagen, Pendelordner, Übergaben, Risiko-Sachverhalte) —
-    //    Zähler je Klasse landen im Audit-Event.
-    const sideTables = await anonymizeClientSideTablesInTx(tx, {
-      clientId,
-      contactIds: client.contacts.map((c) => c.id),
-    });
-
-    // 7. Anonymisierung auditieren (audit_log ist insert-only → der Nachweis
-    //    bleibt dauerhaft; bewusst nur Zähler, keine Personendaten im Event).
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'client.anonymize',
-      resourceType: 'client',
-      resourceId: clientId,
-      before: {
-        kind: client.kind,
-        mandateEndedAt: client.mandateEndedAt?.toISOString() ?? null,
-      },
-      after: {
-        anonymized: true,
-        anonymizedAt: anonymizedAt.toISOString(),
-        contactsAnonymized: anonymizedContactIds.length,
-        customFieldValuesDeleted: deletedCustomValues.count,
-        masterChangeRequestsDeleted: deletedChangeRequests.count,
-        taxRegistrationsRedacted: taxRegistrationsRedacted.count,
-        ...sideTables,
-      },
-    });
-    return { ok: true };
+      if (result.ok) {
+        revalidatePath('/staff/admin/dsgvo-retention');
+        revalidatePath(`/staff/clients/${clientId}`);
+      }
+      return result;
+    },
   });
-
-  if (result.ok) {
-    revalidatePath('/staff/admin/dsgvo-retention');
-    revalidatePath(`/staff/clients/${clientId}`);
-  }
-  return result;
 }
 
 /**
@@ -227,88 +229,89 @@ export async function confirmClientAnonymizationAction(input: {
 export async function confirmPoaSignerAnonymizationAction(input: {
   clientId: string;
 }): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async ({ tenantId, staffId, ctx }) => {
+      const parsed = z.object({ clientId: z.string().uuid() }).safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const { clientId } = parsed.data;
 
-  const parsed = z.object({ clientId: z.string().uuid() }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId } = parsed.data;
-
-  const result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
-    // Der Lock serialisiert Mandatsende-Korrekturen und PoA-FK-Inserts mit der
-    // finalen Eligibility-Prüfung und Redaktion.
-    await tx.$queryRaw(
-      Prisma.sql`SELECT "id" FROM "client"
+      const result = await withTenantContext(ctx, async (tx): Promise<ActionResult> => {
+        // Der Lock serialisiert Mandatsende-Korrekturen und PoA-FK-Inserts mit der
+        // finalen Eligibility-Prüfung und Redaktion.
+        await tx.$queryRaw(
+          Prisma.sql`SELECT "id" FROM "client"
                  WHERE "id" = ${clientId}::uuid AND "tenant_id" = ${tenantId}::uuid
                  FOR UPDATE`,
-    );
-    const client = await tx.client.findFirst({
-      where: { id: clientId, tenantId },
-      select: {
-        id: true,
-        kind: true,
-        mandateEndedAt: true,
-        poaSignerDataRedactedAt: true,
-      },
-    });
-    if (!client) return { ok: false, error: 'Mandant nicht gefunden.' };
-    if (client.kind !== 'JURPERS' && client.kind !== 'PERSGES') {
-      return {
-        ok: false,
-        error: 'Dieser Pfad gilt nur für Unterzeichner von JURPERS/PERSGES.',
-      };
-    }
-    if (!isClientAnonymizationDue(client.mandateEndedAt)) {
-      return {
-        ok: false,
-        error: 'Aufbewahrungsfristen noch nicht abgelaufen — Redaktion nicht zulässig.',
-      };
-    }
+        );
+        const client = await tx.client.findFirst({
+          where: { id: clientId, tenantId },
+          select: {
+            id: true,
+            kind: true,
+            mandateEndedAt: true,
+            poaSignerDataRedactedAt: true,
+          },
+        });
+        if (!client) return { ok: false, error: 'Mandant nicht gefunden.' };
+        if (client.kind !== 'JURPERS' && client.kind !== 'PERSGES') {
+          return {
+            ok: false,
+            error: 'Dieser Pfad gilt nur für Unterzeichner von JURPERS/PERSGES.',
+          };
+        }
+        if (!isClientAnonymizationDue(client.mandateEndedAt)) {
+          return {
+            ok: false,
+            error: 'Aufbewahrungsfristen noch nicht abgelaufen — Redaktion nicht zulässig.',
+          };
+        }
 
-    const remaining = await tx.powerOfAttorney.count({
-      where: { clientId, AND: [POA_PERSONAL_DATA_PRESENT_WHERE] },
-    });
-    if (remaining === 0) {
-      return { ok: false, error: 'Keine redaktionspflichtigen Vollmachtsdaten vorhanden.' };
-    }
+        const remaining = await tx.powerOfAttorney.count({
+          where: { clientId, AND: [POA_PERSONAL_DATA_PRESENT_WHERE] },
+        });
+        if (remaining === 0) {
+          return { ok: false, error: 'Keine redaktionspflichtigen Vollmachtsdaten vorhanden.' };
+        }
 
-    const redactedAt = new Date();
-    await tx.client.update({
-      where: { id: clientId },
-      data: { poaSignerDataRedactedAt: redactedAt },
-    });
-    const poasRedacted = await redactClientPoaPersonalDataInTx(tx, clientId);
-    if (poasRedacted !== remaining) {
-      // Rollback der gesamten Redaktion; der Zähler hat sich parallel geändert.
-      throw new ActionError(
-        'Die Vollmachtsdaten wurden zwischenzeitlich geändert. Bitte die Redaktion erneut ausführen.',
-      );
-    }
+        const redactedAt = new Date();
+        await tx.client.update({
+          where: { id: clientId },
+          data: { poaSignerDataRedactedAt: redactedAt },
+        });
+        const poasRedacted = await redactClientPoaPersonalDataInTx(tx, clientId);
+        if (poasRedacted !== remaining) {
+          // Rollback der gesamten Redaktion; der Zähler hat sich parallel geändert.
+          throw new ActionError(
+            'Die Vollmachtsdaten wurden zwischenzeitlich geändert. Bitte die Redaktion erneut ausführen.',
+          );
+        }
 
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'poa.signer.anonymize',
-      resourceType: 'client',
-      resourceId: clientId,
-      before: {
-        kind: client.kind,
-        mandateEndedAt: client.mandateEndedAt?.toISOString() ?? null,
-        previousRedactionAt: client.poaSignerDataRedactedAt?.toISOString() ?? null,
-      },
-      after: {
-        poasRedacted,
-        redactedAt: redactedAt.toISOString(),
-      },
-    });
-    return { ok: true };
-  }).catch(toActionError);
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'poa.signer.anonymize',
+          resourceType: 'client',
+          resourceId: clientId,
+          before: {
+            kind: client.kind,
+            mandateEndedAt: client.mandateEndedAt?.toISOString() ?? null,
+            previousRedactionAt: client.poaSignerDataRedactedAt?.toISOString() ?? null,
+          },
+          after: {
+            poasRedacted,
+            redactedAt: redactedAt.toISOString(),
+          },
+        });
+        return { ok: true };
+      });
 
-  if (result.ok) {
-    revalidatePath('/staff/admin/dsgvo-retention');
-    revalidatePath(`/staff/clients/${clientId}`);
-  }
-  return result;
+      if (result.ok) {
+        revalidatePath('/staff/admin/dsgvo-retention');
+        revalidatePath(`/staff/clients/${clientId}`);
+      }
+      return result;
+    },
+  });
 }

@@ -9,7 +9,15 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
-vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: mocks.staffActionGuard }));
+vi.mock('@/server/actions/staff-action', async () => ({
+  staffActionGuard: mocks.staffActionGuard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(mocks.staffActionGuard),
+}));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/auth/rbac', async () => ({
   // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).

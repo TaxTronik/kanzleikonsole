@@ -26,8 +26,10 @@ import { Prisma } from '@taxtronik/db/prisma-client';
 import { SsrfGuardError } from '@taxtronik/http-utils';
 import {
   parseActionInput,
-  staffActionGuard,
+  staffAction,
+  type ActionFailure,
   type ActionResult,
+  type StaffGuardOptions,
 } from '@/server/actions/staff-action';
 import { toActionError, ForbiddenError } from '@/server/auth/rbac';
 import { networkFailure } from '@/server/http/network-error';
@@ -65,7 +67,7 @@ function engineMessage(e: RiskLayerHttpError): string {
   return `Risk-Engine antwortete mit HTTP ${e.status}.`;
 }
 
-function toQuantenlosActionError(e: unknown): ActionResult {
+function toQuantenlosActionError(e: unknown): ActionFailure {
   // LosRahmenLeerError, LosNachweisInkonsistentError und LosStateConflictError
   // sind ActionErrors: toActionError (unten) reicht ihre Meldung durch.
   if (e instanceof RiskLayerNotConfiguredError) {
@@ -128,12 +130,12 @@ function toQuantenlosActionError(e: unknown): ActionResult {
   return toActionError(e);
 }
 
-async function guard(): Promise<
-  { ok: true; ctx: TenantContext } | ({ ok: false } & { error: string })
-> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const modules = await readModules(g.ctx);
+/** Ziehung ist Compliance-Hoheit → ADMIN/PARTNER (Gate von staffAction). */
+const LOS_GATE: StaffGuardOptions = { requireAdmin: true };
+
+/** Nach dem Gate: Subsumtions-Modul aktiv und Risk-Engine konfiguriert. */
+async function assertLosVerfuegbar(ctx: TenantContext): Promise<void> {
+  const modules = await readModules(ctx);
   if (!modules.risk)
     throw new ForbiddenError('Das Subsumtions-Modul ist für diese Kanzlei deaktiviert.');
   if (!isRiskLayerConfigured()) {
@@ -141,7 +143,6 @@ async function guard(): Promise<
       'Die Risk-Engine ist nicht konfiguriert — Quantenlos derzeit nicht möglich.',
     );
   }
-  return { ok: true, ctx: g.ctx };
 }
 
 const ZeitraumSchema = z.object({
@@ -155,20 +156,21 @@ const RahmenTypSchema = z.enum(['subsumtion', 'audit']);
 export async function rahmenVorschauAction(
   input: z.infer<typeof ZeitraumSchema> & { rahmenTyp?: z.infer<typeof RahmenTypSchema> },
 ): Promise<ActionResult & { n?: number }> {
-  try {
-    const checked = parseActionInput(
-      ZeitraumSchema.extend({ rahmenTyp: RahmenTypSchema.optional() }),
-      input,
-    );
-    if (!checked.ok) return checked;
-    const parsed = checked.data;
-    const g = await guard();
-    if (!g.ok) return g;
-    const rahmen = await buildLosRahmen(g.ctx, parsed, parsed.rahmenTyp ?? 'subsumtion');
-    return { ok: true, n: rahmen.length };
-  } catch (e) {
-    return toQuantenlosActionError(e);
-  }
+  const checked = parseActionInput(
+    ZeitraumSchema.extend({ rahmenTyp: RahmenTypSchema.optional() }),
+    input,
+  );
+  if (!checked.ok) return checked;
+  const parsed = checked.data;
+  return staffAction({
+    guard: LOS_GATE,
+    run: async (g) => {
+      await assertLosVerfuegbar(g.ctx);
+      const rahmen = await buildLosRahmen(g.ctx, parsed, parsed.rahmenTyp ?? 'subsumtion');
+      return { n: rahmen.length };
+    },
+    onError: toQuantenlosActionError,
+  });
 }
 
 const ZiehenSchema = ZeitraumSchema.extend({
@@ -180,42 +182,44 @@ const ZiehenSchema = ZeitraumSchema.extend({
 export async function losZiehenAction(
   input: z.infer<typeof ZiehenSchema>,
 ): Promise<ActionResult & { ergebnis?: LosZiehungErgebnis }> {
-  try {
-    const checked = parseActionInput(ZiehenSchema, input);
-    if (!checked.ok) return checked;
-    const parsed = checked.data;
-    const g = await guard();
-    if (!g.ok) return g;
-    // Token nur lesen, wenn die IBM-Seite ihn überhaupt braucht (qpu).
-    const ibmToken =
-      parsed.backend === 'qpu' ? ((await readIbmToken(g.ctx)) ?? undefined) : undefined;
-    const ergebnis = await zieheLosStichprobe(g.ctx, {
-      zeitraum: { von: parsed.von, bis: parsed.bis },
-      k: parsed.k,
-      backend: parsed.backend,
-      rahmenTyp: parsed.rahmenTyp ?? 'subsumtion',
-      ibmToken,
-    });
-    revalidatePath(PFAD);
-    return { ok: true, ergebnis };
-  } catch (e) {
-    return toQuantenlosActionError(e);
-  }
+  const checked = parseActionInput(ZiehenSchema, input);
+  if (!checked.ok) return checked;
+  const parsed = checked.data;
+  return staffAction({
+    guard: LOS_GATE,
+    run: async (g) => {
+      await assertLosVerfuegbar(g.ctx);
+      // Token nur lesen, wenn die IBM-Seite ihn überhaupt braucht (qpu).
+      const ibmToken =
+        parsed.backend === 'qpu' ? ((await readIbmToken(g.ctx)) ?? undefined) : undefined;
+      const ergebnis = await zieheLosStichprobe(g.ctx, {
+        zeitraum: { von: parsed.von, bis: parsed.bis },
+        k: parsed.k,
+        backend: parsed.backend,
+        rahmenTyp: parsed.rahmenTyp ?? 'subsumtion',
+        ibmToken,
+      });
+      return { ergebnis };
+    },
+    revalidate: PFAD,
+    onError: toQuantenlosActionError,
+  });
 }
 
 export async function losAbholenAction(): Promise<
   ActionResult & { ergebnis?: LosZiehungErgebnis }
 > {
-  try {
-    const g = await guard();
-    if (!g.ok) return g;
-    const ibmToken = (await readIbmToken(g.ctx)) ?? undefined;
-    const ergebnis = await holeLosAb(g.ctx, undefined, { ibmToken });
-    revalidatePath(PFAD);
-    return { ok: true, ergebnis };
-  } catch (e) {
-    return toQuantenlosActionError(e);
-  }
+  return staffAction({
+    guard: LOS_GATE,
+    run: async (g) => {
+      await assertLosVerfuegbar(g.ctx);
+      const ibmToken = (await readIbmToken(g.ctx)) ?? undefined;
+      const ergebnis = await holeLosAb(g.ctx, undefined, { ibmToken });
+      return { ergebnis };
+    },
+    revalidate: PFAD,
+    onError: toQuantenlosActionError,
+  });
 }
 
 const PruefenSchema = z.object({
@@ -238,26 +242,27 @@ export async function losStartWiederaufnehmenAction(input: {
   jobId: string;
   proofJson?: string;
 }): Promise<ActionResult & { ergebnis?: LosZiehungErgebnis }> {
-  try {
-    const checked = parseActionInput(ResumeSchema, input);
-    if (!checked.ok) return checked;
-    const parsed = checked.data;
-    const g = await guard();
-    if (!g.ok) return g;
-    const ergebnis = parsed.proofJson?.trim()
-      ? await resumeLosStartProof(g.ctx, {
-          attemptId: parsed.attemptId,
-          proof: JSON.parse(parsed.proofJson),
-        })
-      : await resumeLosStart(g.ctx, {
-          ...parsed,
-          ibmToken: (await readIbmToken(g.ctx)) ?? undefined,
-        });
-    revalidatePath(PFAD);
-    return { ok: true, ergebnis };
-  } catch (e) {
-    return toQuantenlosActionError(e);
-  }
+  const checked = parseActionInput(ResumeSchema, input);
+  if (!checked.ok) return checked;
+  const parsed = checked.data;
+  return staffAction({
+    guard: LOS_GATE,
+    run: async (g) => {
+      await assertLosVerfuegbar(g.ctx);
+      const ergebnis = parsed.proofJson?.trim()
+        ? await resumeLosStartProof(g.ctx, {
+            attemptId: parsed.attemptId,
+            proof: JSON.parse(parsed.proofJson),
+          })
+        : await resumeLosStart(g.ctx, {
+            ...parsed,
+            ibmToken: (await readIbmToken(g.ctx)) ?? undefined,
+          });
+      return { ergebnis };
+    },
+    revalidate: PFAD,
+    onError: toQuantenlosActionError,
+  });
 }
 
 const ReleaseSchema = z.object({
@@ -271,38 +276,39 @@ export async function losStartFreigebenAction(input: {
   reason: string;
   confirmedNotExecuted: boolean;
 }): Promise<ActionResult> {
-  try {
-    const checked = parseActionInput(ReleaseSchema, input);
-    if (!checked.ok) return checked;
-    const parsed = checked.data;
-    const g = await guard();
-    if (!g.ok) return g;
-    await releaseLosStart(g.ctx, parsed);
-    revalidatePath(PFAD);
-    return { ok: true };
-  } catch (e) {
-    return toQuantenlosActionError(e);
-  }
+  const checked = parseActionInput(ReleaseSchema, input);
+  if (!checked.ok) return checked;
+  const parsed = checked.data;
+  return staffAction({
+    guard: LOS_GATE,
+    run: async (g) => {
+      await assertLosVerfuegbar(g.ctx);
+      await releaseLosStart(g.ctx, parsed);
+    },
+    revalidate: PFAD,
+    onError: toQuantenlosActionError,
+  });
 }
 
 export async function losPruefenAction(
   input: z.infer<typeof PruefenSchema>,
 ): Promise<ActionResult & { ergebnis?: LosPruefErgebnis }> {
-  try {
-    const checked = parseActionInput(PruefenSchema, input);
-    if (!checked.ok) return checked;
-    const parsed = checked.data;
-    const g = await guard();
-    if (!g.ok) return g;
-    const ibmToken = parsed.online ? ((await readIbmToken(g.ctx)) ?? undefined) : undefined;
-    const ergebnis = await pruefeLosNachweis(g.ctx, parsed.auditId, {
-      online: parsed.online,
-      ibmToken,
-    });
-    return { ok: true, ergebnis };
-  } catch (e) {
-    return toQuantenlosActionError(e);
-  }
+  const checked = parseActionInput(PruefenSchema, input);
+  if (!checked.ok) return checked;
+  const parsed = checked.data;
+  return staffAction({
+    guard: LOS_GATE,
+    run: async (g) => {
+      await assertLosVerfuegbar(g.ctx);
+      const ibmToken = parsed.online ? ((await readIbmToken(g.ctx)) ?? undefined) : undefined;
+      const ergebnis = await pruefeLosNachweis(g.ctx, parsed.auditId, {
+        online: parsed.online,
+        ibmToken,
+      });
+      return { ergebnis };
+    },
+    onError: toQuantenlosActionError,
+  });
 }
 
 // --- IBM-Quantum-Zugang (zentrale Config) ------------------------------------
@@ -316,53 +322,53 @@ const TokenSchema = z.object({
 export async function ibmTokenSpeichernAction(
   input: z.infer<typeof TokenSchema>,
 ): Promise<ActionResult & { status?: IbmTokenStatus }> {
-  try {
-    const checked = parseActionInput(TokenSchema, input);
-    if (!checked.ok) return checked;
-    const parsed = checked.data;
-    const g = await guard();
-    if (!g.ok) return g;
-    await withTenantContext(g.ctx, async (tx) => {
-      await writeIbmTokenTx(tx, g.ctx, parsed.token);
-      await evidenceService.record(tx, {
-        tenantId: g.ctx.tenantId,
-        actorType: g.ctx.actorType,
-        actorId: g.ctx.actorId,
-        action: 'tenant.settings.quantenlos_ibm.update',
-        resourceType: 'tenant_setting',
-        resourceId: 'quantenlos.ibm',
-        // NIE den Token in die Chain — nur der maskierte Suffix.
-        after: { token: `***${parsed.token.slice(-4)}` },
+  const checked = parseActionInput(TokenSchema, input);
+  if (!checked.ok) return checked;
+  const parsed = checked.data;
+  return staffAction({
+    guard: LOS_GATE,
+    run: async (g) => {
+      await assertLosVerfuegbar(g.ctx);
+      await withTenantContext(g.ctx, async (tx) => {
+        await writeIbmTokenTx(tx, g.ctx, parsed.token);
+        await evidenceService.record(tx, {
+          tenantId: g.ctx.tenantId,
+          actorType: g.ctx.actorType,
+          actorId: g.ctx.actorId,
+          action: 'tenant.settings.quantenlos_ibm.update',
+          resourceType: 'tenant_setting',
+          resourceId: 'quantenlos.ibm',
+          // NIE den Token in die Chain — nur der maskierte Suffix.
+          after: { token: `***${parsed.token.slice(-4)}` },
+        });
       });
-    });
-    revalidatePath(PFAD);
-    return { ok: true, status: await getIbmTokenStatus(g.ctx) };
-  } catch (e) {
-    return toActionError(e);
-  }
+      revalidatePath(PFAD);
+      return { status: await getIbmTokenStatus(g.ctx) };
+    },
+  });
 }
 
 export async function ibmTokenEntfernenAction(): Promise<
   ActionResult & { status?: IbmTokenStatus }
 > {
-  try {
-    const g = await guard();
-    if (!g.ok) return g;
-    await withTenantContext(g.ctx, async (tx) => {
-      await deleteIbmTokenTx(tx, g.ctx);
-      await evidenceService.record(tx, {
-        tenantId: g.ctx.tenantId,
-        actorType: g.ctx.actorType,
-        actorId: g.ctx.actorId,
-        action: 'tenant.settings.quantenlos_ibm.reset',
-        resourceType: 'tenant_setting',
-        resourceId: 'quantenlos.ibm',
-        after: { token: null },
+  return staffAction({
+    guard: LOS_GATE,
+    run: async (g) => {
+      await assertLosVerfuegbar(g.ctx);
+      await withTenantContext(g.ctx, async (tx) => {
+        await deleteIbmTokenTx(tx, g.ctx);
+        await evidenceService.record(tx, {
+          tenantId: g.ctx.tenantId,
+          actorType: g.ctx.actorType,
+          actorId: g.ctx.actorId,
+          action: 'tenant.settings.quantenlos_ibm.reset',
+          resourceType: 'tenant_setting',
+          resourceId: 'quantenlos.ibm',
+          after: { token: null },
+        });
       });
-    });
-    revalidatePath(PFAD);
-    return { ok: true, status: { hinterlegt: false, suffix: null, gesetztAm: null } };
-  } catch (e) {
-    return toActionError(e);
-  }
+      return { status: { hinterlegt: false, suffix: null, gesetztAm: null } };
+    },
+    revalidate: PFAD,
+  });
 }

@@ -11,12 +11,11 @@ import {
   type PersistedVerifyResult,
 } from '@taxtronik/evidence';
 import {
-  staffActionGuard,
+  staffAction,
   withStaff,
   ActionError,
   type ActionResult,
 } from '@/server/actions/staff-action';
-import { toActionError } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import { enqueueAuditVerify } from '@/server/jobs/audit-verify-queue';
 
@@ -48,37 +47,34 @@ export async function triggerAuditVerifyAction(
   _previous: ActionResult | null,
   _formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const result = await staffAction({
+    guard: { requireAdmin: true },
+    run: async ({ tenantId, staffId, ctx }) => {
+      // Zeitstempel VOR dem Enqueue: das Polling gilt als fertig, sobald ein
+      // persistiertes Ergebnis NEUER als dieser Moment vorliegt (unabhängig von der
+      // requestId). Das überlebt ein Überschreiben durch den nächtlichen Lauf oder
+      // einen parallelen zweiten Trigger — sonst würde `done` nie true.
+      const queuedAt = new Date().toISOString();
+      const requestId = await enqueueAuditVerify(tenantId, staffId);
 
-  // Zeitstempel VOR dem Enqueue: das Polling gilt als fertig, sobald ein
-  // persistiertes Ergebnis NEUER als dieser Moment vorliegt (unabhängig von der
-  // requestId). Das überlebt ein Überschreiben durch den nächtlichen Lauf oder
-  // einen parallelen zweiten Trigger — sonst würde `done` nie true.
-  const queuedAt = new Date().toISOString();
-  let requestId: string;
-  try {
-    requestId = await enqueueAuditVerify(tenantId, staffId);
-
-    // Manueller Trigger gehört in die Chain (analog audit.rotate.trigger) —
-    // WER die Verifikation angestoßen hat, ist Teil der Rechenschaft.
-    await withTenantContext(ctx, async (tx) => {
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'audit.verify.trigger',
-        resourceType: 'audit_log',
-        after: { triggeredManually: true },
+      // Manueller Trigger gehört in die Chain (analog audit.rotate.trigger) —
+      // WER die Verifikation angestoßen hat, ist Teil der Rechenschaft.
+      await withTenantContext(ctx, async (tx) => {
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'audit.verify.trigger',
+          resourceType: 'audit_log',
+          after: { triggeredManually: true },
+        });
       });
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
-
+      return { requestId, queuedAt };
+    },
+  });
+  if (!result.ok) return result;
   redirect(
-    `/staff/admin/audit?verify=queued&requestId=${requestId}&queuedAt=${encodeURIComponent(queuedAt)}`,
+    `/staff/admin/audit?verify=queued&requestId=${result.requestId}&queuedAt=${encodeURIComponent(result.queuedAt)}`,
   );
 }
 
@@ -93,77 +89,72 @@ export async function createAuditRecoveryCheckpointAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
-  const reason =
-    String(formData.get('reason') ?? '')
-      .trim()
-      .slice(0, 500) || null;
+  const result = await staffAction({
+    guard: { requireAdmin: true },
+    run: async ({ tenantId, staffId, ctx }) => {
+      const reason =
+        String(formData.get('reason') ?? '')
+          .trim()
+          .slice(0, 500) || null;
 
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      const verifyResult = (await readTenantSettingValue(
-        tx,
-        tenantId,
-        AUDIT_VERIFY_RESULT_SETTING_KEY,
-      )) as PersistedVerifyResult | undefined;
-      if (!verifyResult) {
-        throw new ActionError('Noch kein Audit-Prüfergebnis vorhanden. Bitte zuerst prüfen.');
-      }
-      if (verifyResult.ok) {
-        throw new ActionError(
-          'Die Hash-Chain ist aktuell intakt; ein Recovery-Checkpoint ist nicht nötig.',
-        );
-      }
+      await withTenantContext(ctx, async (tx) => {
+        const verifyResult = (await readTenantSettingValue(
+          tx,
+          tenantId,
+          AUDIT_VERIFY_RESULT_SETTING_KEY,
+        )) as PersistedVerifyResult | undefined;
+        if (!verifyResult) {
+          throw new ActionError('Noch kein Audit-Prüfergebnis vorhanden. Bitte zuerst prüfen.');
+        }
+        if (verifyResult.ok) {
+          throw new ActionError(
+            'Die Hash-Chain ist aktuell intakt; ein Recovery-Checkpoint ist nicht nötig.',
+          );
+        }
 
-      const ev = await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'audit.recovery.checkpoint',
-        resourceType: 'audit_log',
-        resourceId: verifyResult.firstBreak?.auditId ?? 'recovery',
-        after: {
+        const ev = await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'audit.recovery.checkpoint',
+          resourceType: 'audit_log',
+          resourceId: verifyResult.firstBreak?.auditId ?? 'recovery',
+          after: {
+            reason,
+            firstBreak: verifyResult.firstBreak,
+            sealBreaks: verifyResult.sealBreaks,
+            policyBreaks: verifyResult.policyBreaks,
+            error: verifyResult.error,
+            statement:
+              'Historischer Bruch bleibt bestehen; ab diesem Audit-Eintrag wird die Recovery-Teilkette separat geprüft.',
+          },
+        });
+
+        const checkpoint: PersistedRecoveryCheckpoint = {
+          auditId: String(ev.id),
+          createdAt: ev.occurredAt.toISOString(),
+          createdBy: staffId,
           reason,
           firstBreak: verifyResult.firstBreak,
-          sealBreaks: verifyResult.sealBreaks,
-          policyBreaks: verifyResult.policyBreaks,
-          error: verifyResult.error,
-          statement:
-            'Historischer Bruch bleibt bestehen; ab diesem Audit-Eintrag wird die Recovery-Teilkette separat geprüft.',
-        },
+          trustedPrevHash: ev.prevHash.toString('hex'),
+          trustedThisHash: ev.thisHash.toString('hex'),
+        };
+
+        await writeTenantSettingValue(tx, {
+          tenantId,
+          key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
+          value: checkpoint as object,
+          updatedBy: staffId,
+        });
       });
 
-      const checkpoint: PersistedRecoveryCheckpoint = {
-        auditId: String(ev.id),
-        createdAt: ev.occurredAt.toISOString(),
-        createdBy: staffId,
-        reason,
-        firstBreak: verifyResult.firstBreak,
-        trustedPrevHash: ev.prevHash.toString('hex'),
-        trustedThisHash: ev.thisHash.toString('hex'),
-      };
-
-      await writeTenantSettingValue(tx, {
-        tenantId,
-        key: AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY,
-        value: checkpoint as object,
-        updatedBy: staffId,
-      });
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
-
-  const queuedAt = new Date().toISOString();
-  let requestId: string;
-  try {
-    requestId = await enqueueAuditVerify(tenantId, staffId);
-  } catch (error) {
-    return toActionError(error);
-  }
+      const queuedAt = new Date().toISOString();
+      const requestId = await enqueueAuditVerify(tenantId, staffId);
+      return { requestId, queuedAt };
+    },
+  });
+  if (!result.ok) return result;
   redirect(
-    `/staff/admin/audit?checkpoint=created&verify=queued&requestId=${requestId}&queuedAt=${encodeURIComponent(queuedAt)}`,
+    `/staff/admin/audit?checkpoint=created&verify=queued&requestId=${result.requestId}&queuedAt=${encodeURIComponent(result.queuedAt)}`,
   );
 }

@@ -19,6 +19,7 @@ import {
   mapActionError,
   type ActionFailure,
   type ActionGuardResult,
+  type ActionSuccess,
 } from '../action-runner';
 import type { ActionResult } from '../types';
 import { ActionError } from '../action-error';
@@ -201,10 +202,22 @@ describe('createActionRunner — zentrales Fehler-Mapping', () => {
     expect(h.logError).toHaveBeenCalledOnce();
   });
 
-  it('lässt Fehler des Gates selbst durch (wie withStaff)', async () => {
-    guard.mockRejectedValueOnce(new Error('Session-Store nicht erreichbar'));
+  it('ordnet Ausfälle des Gates selbst zentral ein, statt zu werfen', async () => {
+    const run = vi.fn();
+    guard.mockRejectedValueOnce(
+      Object.assign(new Error('Redis down'), { name: 'SessionRevocationUnavailableError' }),
+    );
+    await expect(runAction({ run })).resolves.toEqual({
+      ok: false,
+      error: 'Session-Widerruf ist derzeit nicht verfügbar.',
+    });
 
-    await expect(runAction({ run: vi.fn() })).rejects.toThrow('Session-Store nicht erreichbar');
+    guard.mockRejectedValueOnce(new Error('Session-Store nicht erreichbar'));
+    await expect(runAction({ run })).resolves.toEqual({
+      ok: false,
+      error: UNEXPECTED_ACTION_ERROR,
+    });
+    expect(run).not.toHaveBeenCalled();
   });
 
   it('mapActionError bündelt uniqueError und toActionError für alle Bausteine', () => {
@@ -227,17 +240,28 @@ describe('createActionRunner — Typinferenz (tsc prüft diese Datei mit)', () =
         return { id: 'akte-1' };
       },
     });
-    expectTypeOf(withPayload.id).toEqualTypeOf<string | undefined>();
     expectTypeOf(withPayload.error).toEqualTypeOf<string | undefined>();
     expectTypeOf(withPayload.ok).toEqualTypeOf<boolean>();
-
-    const voidRun = await runAction({ run: async () => undefined });
-    expectTypeOf(voidRun).toEqualTypeOf<ActionResult>();
-
-    const failureOnly = await runAction({
-      run: async (): Promise<ActionFailure | void> => undefined,
-    });
-    expectTypeOf(failureOnly).toEqualTypeOf<ActionResult>();
+    if (!withPayload.ok) throw new Error('unerwartet');
+    // Nach der Unterscheidung ist die Nutzlast vollständig (z. B. für redirect()).
+    expectTypeOf(withPayload.id).toEqualTypeOf<string>();
     expect(withPayload).toEqual({ ok: true, id: 'akte-1' });
+  });
+
+  it('typisiert Läufe ohne Nutzlast als schlichtes Ergebnis', async () => {
+    const voidRun = await runAction({ run: async () => undefined });
+    expectTypeOf(voidRun).toExtend<ActionResult>();
+    if (voidRun.ok) expectTypeOf(voidRun).toEqualTypeOf<ActionSuccess<Record<never, never>>>();
+
+    const optionalPayload = await runAction({
+      run: async (): Promise<{ id: string } | ActionFailure | void> => undefined,
+    });
+    // Ein Zweig ohne Rückgabewert macht die Nutzlast nicht verbindlich.
+    if (optionalPayload.ok) {
+      expectTypeOf(optionalPayload).toEqualTypeOf<
+        | ActionSuccess<Omit<{ id: string }, keyof ActionResult>>
+        | ActionSuccess<Record<never, never>>
+      >();
+    }
   });
 });

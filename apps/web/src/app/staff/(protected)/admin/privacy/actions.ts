@@ -1,16 +1,14 @@
 'use server';
 
 import { z } from 'zod';
-import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import {
   ActionError,
   parseFormData,
-  staffActionGuard,
+  staffAction,
   type ActionResult,
 } from '@/server/actions/staff-action';
-import { toActionError } from '@/server/auth/rbac';
 import { writePrivacyConfigTx, type PrivacyConfig } from '@/server/privacy/notice';
 import {
   defaultConsentOptionsCatalog,
@@ -36,46 +34,45 @@ export async function savePrivacyConfigAction(
   formData: FormData,
 ): Promise<ActionResult> {
   // Kanzlei-weite Datenschutzangaben → nur ADMIN/PARTNER.
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async ({ tenantId, staffId, ctx }) => {
+      const parsed = Schema.safeParse({
+        responsibleBody: formData.get('responsibleBody') ?? '',
+        dpoContact: formData.get('dpoContact') ?? '',
+        supervisoryAuthority: formData.get('supervisoryAuthority') ?? '',
+        privacyContact: formData.get('privacyContact') ?? '',
+        drittlandServices: formData.get('drittlandServices') ?? '',
+      });
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const parsed = Schema.safeParse({
-    responsibleBody: formData.get('responsibleBody') ?? '',
-    dpoContact: formData.get('dpoContact') ?? '',
-    supervisoryAuthority: formData.get('supervisoryAuthority') ?? '',
-    privacyContact: formData.get('privacyContact') ?? '',
-    drittlandServices: formData.get('drittlandServices') ?? '',
+      const cfg: PrivacyConfig = {
+        responsibleBody: parsed.data.responsibleBody.trim(),
+        dpoContact: parsed.data.dpoContact.trim() || 'nicht benannt',
+        supervisoryAuthority: parsed.data.supervisoryAuthority.trim(),
+        privacyContact: parsed.data.privacyContact.trim(),
+        drittlandServices: parsed.data.drittlandServices.trim() || 'keine',
+      };
+
+      await withTenantContext(ctx, async (tx) => {
+        await lockConsentCatalogTx(tx, tenantId);
+        await writePrivacyConfigTx(tx, tenantId, staffId, cfg);
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'privacy.config.update',
+          resourceType: 'tenant_setting',
+          after: {
+            hasResponsibleBody: cfg.responsibleBody !== '',
+            hasSupervisoryAuthority: cfg.supervisoryAuthority !== '',
+            hasPrivacyContact: cfg.privacyContact !== '',
+          },
+        });
+      });
+    },
+    revalidate: '/staff/admin/privacy',
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-
-  const cfg: PrivacyConfig = {
-    responsibleBody: parsed.data.responsibleBody.trim(),
-    dpoContact: parsed.data.dpoContact.trim() || 'nicht benannt',
-    supervisoryAuthority: parsed.data.supervisoryAuthority.trim(),
-    privacyContact: parsed.data.privacyContact.trim(),
-    drittlandServices: parsed.data.drittlandServices.trim() || 'keine',
-  };
-
-  await withTenantContext(ctx, async (tx) => {
-    await lockConsentCatalogTx(tx, tenantId);
-    await writePrivacyConfigTx(tx, tenantId, staffId, cfg);
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'privacy.config.update',
-      resourceType: 'tenant_setting',
-      after: {
-        hasResponsibleBody: cfg.responsibleBody !== '',
-        hasSupervisoryAuthority: cfg.supervisoryAuthority !== '',
-        hasPrivacyContact: cfg.privacyContact !== '',
-      },
-    });
-  });
-
-  revalidatePath('/staff/admin/privacy');
-  return { ok: true };
 }
 
 const CatalogFormSchema = z.object({
@@ -103,114 +100,109 @@ export async function saveConsentOptionsAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard({ requireAdmin: true });
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  return staffAction({
+    guard: { requireAdmin: true },
+    run: async ({ tenantId, staffId, ctx }) => {
+      const form = parseFormData(CatalogFormSchema, formData);
+      if (!form.ok) return { ok: false, error: 'Einwilligungskatalog ist zu groß oder fehlt.' };
 
-  const form = parseFormData(CatalogFormSchema, formData);
-  if (!form.ok) return { ok: false, error: 'Einwilligungskatalog ist zu groß oder fehlt.' };
-
-  let submitted: ConsentOptionsCatalog;
-  try {
-    submitted = normalizeConsentOptionsCatalog(JSON.parse(form.data.catalogJson));
-  } catch {
-    return { ok: false, error: 'Einwilligungskatalog enthält ungültige Angaben.' };
-  }
-
-  try {
-    await withTenantContext(ctx, async (tx) => {
-      await lockConsentCatalogTx(tx, tenantId);
-      const stored = await tx.tenantSetting.findUnique({
-        where: { tenantId_key: { tenantId, key: CONSENT_OPTIONS_SETTING_KEY } },
-        select: { value: true, updatedAt: true },
-      });
-      const currentRevision = stored?.updatedAt.toISOString() ?? 'missing';
-      if (currentRevision !== form.data.expectedRevision) {
-        throw new ActionError(
-          'Der Einwilligungskatalog wurde zwischenzeitlich geändert. Bitte Seite neu laden und Änderungen erneut prüfen.',
-        );
+      let submitted: ConsentOptionsCatalog;
+      try {
+        submitted = normalizeConsentOptionsCatalog(JSON.parse(form.data.catalogJson));
+      } catch {
+        return { ok: false, error: 'Einwilligungskatalog enthält ungültige Angaben.' };
       }
-      let before = defaultConsentOptionsCatalog();
-      let invalidStoredCatalog = false;
-      if (stored) {
-        try {
-          before = normalizeConsentOptionsCatalog(stored.value);
-        } catch {
-          // Das ACP ist der explizite Reparaturpfad. Laufende Erfassungen
-          // bleiben bei einem korrupten Katalog fail-closed, Admins dürfen ihn
-          // aber durch einen erneut vollständig validierten Katalog ersetzen.
-          invalidStoredCatalog = true;
-        }
-      }
-      // Ein Browser darf Definitionen nicht physisch aus der Historie entfernen.
-      // Fehlende bestehende Custom-Optionen werden als inaktiv fortgeschrieben.
-      const submittedIds = new Set(submitted.options.map((option) => option.id));
-      const removedCustom = before.options
-        .filter((option) => !option.builtin && !submittedIds.has(option.id))
-        .map((option) => ({
-          ...option,
-          active: false,
-          required: false,
-          recommended: false,
-        }));
-      const next = normalizeConsentOptionsCatalog({
-        version: 2,
-        options: [...submitted.options, ...removedCustom],
-      });
 
-      // Wirft ActionError mit UI-tauglicher Meldung; andere Fehler ordnet das
-      // zentrale toActionError ein (keine rohen Fehlertexte, F-03).
-      await assertConsentCatalogProviderLinksTx(tx, tenantId, next);
-      if (stored) {
-        const updated = await tx.tenantSetting.updateMany({
-          where: {
-            tenantId,
-            key: CONSENT_OPTIONS_SETTING_KEY,
-            updatedAt: stored.updatedAt,
-          },
-          data: { value: next as object, updatedBy: staffId },
+      await withTenantContext(ctx, async (tx) => {
+        await lockConsentCatalogTx(tx, tenantId);
+        const stored = await tx.tenantSetting.findUnique({
+          where: { tenantId_key: { tenantId, key: CONSENT_OPTIONS_SETTING_KEY } },
+          select: { value: true, updatedAt: true },
         });
-        if (updated.count === 0) {
+        const currentRevision = stored?.updatedAt.toISOString() ?? 'missing';
+        if (currentRevision !== form.data.expectedRevision) {
           throw new ActionError(
-            'Der Einwilligungskatalog wurde parallel geändert. Bitte Seite neu laden.',
+            'Der Einwilligungskatalog wurde zwischenzeitlich geändert. Bitte Seite neu laden und Änderungen erneut prüfen.',
           );
         }
-      } else {
-        try {
-          await tx.tenantSetting.create({
-            data: {
+        let before = defaultConsentOptionsCatalog();
+        let invalidStoredCatalog = false;
+        if (stored) {
+          try {
+            before = normalizeConsentOptionsCatalog(stored.value);
+          } catch {
+            // Das ACP ist der explizite Reparaturpfad. Laufende Erfassungen
+            // bleiben bei einem korrupten Katalog fail-closed, Admins dürfen ihn
+            // aber durch einen erneut vollständig validierten Katalog ersetzen.
+            invalidStoredCatalog = true;
+          }
+        }
+        // Ein Browser darf Definitionen nicht physisch aus der Historie entfernen.
+        // Fehlende bestehende Custom-Optionen werden als inaktiv fortgeschrieben.
+        const submittedIds = new Set(submitted.options.map((option) => option.id));
+        const removedCustom = before.options
+          .filter((option) => !option.builtin && !submittedIds.has(option.id))
+          .map((option) => ({
+            ...option,
+            active: false,
+            required: false,
+            recommended: false,
+          }));
+        const next = normalizeConsentOptionsCatalog({
+          version: 2,
+          options: [...submitted.options, ...removedCustom],
+        });
+
+        // Wirft ActionError mit UI-tauglicher Meldung; andere Fehler ordnet das
+        // zentrale toActionError ein (keine rohen Fehlertexte, F-03).
+        await assertConsentCatalogProviderLinksTx(tx, tenantId, next);
+        if (stored) {
+          const updated = await tx.tenantSetting.updateMany({
+            where: {
               tenantId,
               key: CONSENT_OPTIONS_SETTING_KEY,
-              value: next as object,
-              updatedBy: staffId,
+              updatedAt: stored.updatedAt,
             },
+            data: { value: next as object, updatedBy: staffId },
           });
-        } catch (error) {
-          if ((error as { code?: string }).code === 'P2002') {
+          if (updated.count === 0) {
             throw new ActionError(
-              'Der Einwilligungskatalog wurde parallel angelegt. Bitte Seite neu laden.',
+              'Der Einwilligungskatalog wurde parallel geändert. Bitte Seite neu laden.',
             );
           }
-          throw error;
+        } else {
+          try {
+            await tx.tenantSetting.create({
+              data: {
+                tenantId,
+                key: CONSENT_OPTIONS_SETTING_KEY,
+                value: next as object,
+                updatedBy: staffId,
+              },
+            });
+          } catch (error) {
+            if ((error as { code?: string }).code === 'P2002') {
+              throw new ActionError(
+                'Der Einwilligungskatalog wurde parallel angelegt. Bitte Seite neu laden.',
+              );
+            }
+            throw error;
+          }
         }
-      }
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'privacy.consent_options.update',
-        resourceType: 'tenant_setting',
-        resourceId: CONSENT_OPTIONS_SETTING_KEY,
-        before: invalidStoredCatalog
-          ? { invalidStoredCatalog: true, storedValue: stored?.value ?? null }
-          : { version: before.version, options: catalogAuditView(before) },
-        after: { version: next.version, options: catalogAuditView(next) },
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'privacy.consent_options.update',
+          resourceType: 'tenant_setting',
+          resourceId: CONSENT_OPTIONS_SETTING_KEY,
+          before: invalidStoredCatalog
+            ? { invalidStoredCatalog: true, storedValue: stored?.value ?? null }
+            : { version: before.version, options: catalogAuditView(before) },
+          after: { version: next.version, options: catalogAuditView(next) },
+        });
       });
-    });
-  } catch (error) {
-    return toActionError(error);
-  }
-
-  revalidatePath('/staff/admin/privacy');
-  return { ok: true };
+    },
+    revalidate: '/staff/admin/privacy',
+  });
 }

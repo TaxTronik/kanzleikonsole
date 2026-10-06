@@ -42,6 +42,12 @@ vi.mock('@/server/auth/staff-account-recovery-lock', () => ({
 vi.mock('@/server/actions/staff-action', async () => ({
   ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: mocks.staffActionGuard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(mocks.staffActionGuard),
 }));
 vi.mock('@/server/auth/rbac', async () => ({
   // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
@@ -132,7 +138,11 @@ describe('Hardware-Schluesselregistrierung', () => {
         label: 'USB-Schluessel',
         currentPassword: 'Aktuelles-Passwort!',
       }),
-    ).resolves.toEqual({ ceremonyId: 'a'.repeat(32), options: { challenge: 'challenge' } });
+    ).resolves.toEqual({
+      ok: true,
+      ceremonyId: 'a'.repeat(32),
+      options: { challenge: 'challenge' },
+    });
     expect(tx.staffUser.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ authRevision: 7 }),
@@ -176,7 +186,7 @@ describe('Hardware-Schluesselregistrierung', () => {
       response: { id: 'registered-credential-id' } as never,
     });
 
-    expect(result).toEqual({ success: 'Sicherheitsschlüssel wurde hinzugefügt.' });
+    expect(result).toEqual({ ok: true, success: 'Sicherheitsschlüssel wurde hinzugefügt.' });
     expect(tx.staffWebAuthnCredential.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         credentialId: 'registered-credential-id',
@@ -232,6 +242,7 @@ describe('Hardware-Schluesselregistrierung', () => {
         response: { id: 'registered-credential-id' } as never,
       }),
     ).resolves.toEqual({
+      ok: false,
       error: 'Das Konto wurde zwischenzeitlich geändert. Bitte neu laden.',
     });
     expect(tx.staffUser.findFirst).toHaveBeenCalledWith(
@@ -261,7 +272,7 @@ describe('Hardware-Schlüsselwiderruf', () => {
 
     const result = await removeHardwareKeyAction({ credentialId });
 
-    expect(result).toEqual({ success: 'Sicherheitsschlüssel wurde entfernt.' });
+    expect(result).toEqual({ ok: true, success: 'Sicherheitsschlüssel wurde entfernt.' });
     expect(mocks.lockStaffHardwareAuthState).toHaveBeenCalledWith(tx, TENANT_ID, STAFF_ID);
     expect(mocks.lockStaffHardwareAuthState.mock.invocationCallOrder[0]!).toBeLessThan(
       tx.staffUser.findFirst.mock.invocationCallOrder[0]!,
@@ -302,6 +313,7 @@ describe('Hardware-only-Moduswechsel', () => {
     });
 
     await expect(beginHardwareModeChangeAction({ enable: true })).resolves.toEqual({
+      ok: true,
       ceremonyId: 'a'.repeat(32),
       options: { challenge: 'challenge' },
     });
@@ -331,6 +343,7 @@ describe('Hardware-only-Moduswechsel', () => {
     const result = await beginHardwareModeChangeAction({ enable: true });
 
     expect(result).toEqual({
+      ok: false,
       error: 'Hinterlegen Sie zuerst mindestens 2 physische Sicherheitsschlüssel.',
     });
     expect(mocks.beginHardwareModeAssertion).not.toHaveBeenCalled();
@@ -353,6 +366,7 @@ describe('Hardware-only-Moduswechsel', () => {
     );
 
     await expect(beginHardwareModeChangeAction({ enable: true })).resolves.toEqual({
+      ok: false,
       error: 'Vor dem Hardware-Opt-in muss Passwort + 2FA vollständig eingerichtet sein.',
     });
     expect(mocks.beginHardwareModeAssertion).not.toHaveBeenCalled();
@@ -405,6 +419,7 @@ describe('Hardware-only-Moduswechsel', () => {
     });
 
     expect(result).toEqual({
+      ok: true,
       success: 'Nur-Sicherheitsschlüssel-Modus wurde aktiviert.',
       forceLogout: true,
     });
@@ -491,6 +506,7 @@ describe('Hardware-only-Moduswechsel', () => {
     const result = await beginHardwareModeChangeAction({ enable: true });
 
     expect(result).toEqual({
+      ok: false,
       error: 'Mindestens 2 aktuell vertrauenswürdige Sicherheitsschlüssel sind erforderlich.',
     });
     expect(mocks.beginHardwareModeAssertion).not.toHaveBeenCalled();
@@ -538,6 +554,7 @@ describe('Hardware-only-Moduswechsel', () => {
     });
 
     expect(result).toEqual({
+      ok: false,
       error: 'Es sind nicht mehr genügend aktive Sicherheitsschlüssel vorhanden.',
     });
     expect(mocks.lockStaffHardwareAuthState).toHaveBeenCalledWith(tx, TENANT_ID, STAFF_ID);

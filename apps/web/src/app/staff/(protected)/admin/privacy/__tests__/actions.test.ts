@@ -16,7 +16,17 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidence
 vi.mock('@/server/actions/staff-action', async () => {
   const { parseFormData } = await import('@/server/actions/form-data');
   const { ActionError } = await import('@/server/actions/action-error');
-  return { ActionError, parseFormData, staffActionGuard: mocks.staffActionGuard };
+  return {
+    ActionError,
+    parseFormData,
+    staffActionGuard: mocks.staffActionGuard,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(mocks.staffActionGuard),
+  };
 });
 vi.mock('@/server/auth/rbac', async () => ({
   // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).

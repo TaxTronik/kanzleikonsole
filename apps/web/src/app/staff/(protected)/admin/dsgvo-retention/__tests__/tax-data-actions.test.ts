@@ -8,7 +8,15 @@ const m = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.context }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.record } }));
-vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: m.guard }));
+vi.mock('@/server/actions/staff-action', async () => ({
+  staffActionGuard: m.guard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(m.guard),
+}));
 vi.mock('@/server/auth/revocation', () => ({ revokeAllSessions: vi.fn() }));
 vi.mock('@/server/dsgvo/anonymize-contact', () => ({
   anonymizeContactInTx: m.anonymizeContact,

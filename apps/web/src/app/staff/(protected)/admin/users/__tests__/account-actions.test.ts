@@ -68,6 +68,12 @@ vi.mock('@/server/auth/webauthn', () => {
 vi.mock('@/server/actions/staff-action', async () => ({
   ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: mocks.staffActionGuard,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(mocks.staffActionGuard),
 }));
 vi.mock('@/server/auth/rbac', async () => ({
   // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
@@ -758,7 +764,11 @@ describe('Hardware-Zugang-Recovery', () => {
 
     const result = await beginHardwareRecoveryStepUpAction({ targetUserId: USER_ID });
 
-    expect(result).toEqual({ ceremonyId: 'a'.repeat(32), options: { challenge: 'challenge' } });
+    expect(result).toEqual({
+      ok: true,
+      ceremonyId: 'a'.repeat(32),
+      options: { challenge: 'challenge' },
+    });
     expect(mocks.beginHardwareModeAssertion).toHaveBeenCalledWith({
       purpose: 'admin-recovery',
       staffId: ADMIN_ID,
