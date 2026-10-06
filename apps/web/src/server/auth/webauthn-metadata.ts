@@ -30,6 +30,7 @@ import type { TxClient } from '@taxtronik/db';
 import { readFidoMdsSnapshotEntries, readFidoMdsTrustState } from '@taxtronik/db/fido-mds-snapshot';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
+import { libraryAttestationStatement } from './webauthn-attestation';
 import { HardwareAccessUnavailableError, HardwareAccessVerificationError } from './webauthn-shared';
 
 const ZERO_AAGUID = '00000000-0000-0000-0000-000000000000';
@@ -180,6 +181,26 @@ function assertTrustedHardwareStatement(aaguid: string, statement: MetadataState
   );
 }
 
+/**
+ * Die Statement-Kopie im MetadataService von SimpleWebAuthn muss bis auf die
+ * Wurzeln der vertrauenswürdigen entsprechen. Trüge sie Wurzeln, prüfte die
+ * Bibliothek die Kette selbst und lüde Sperrlisten ungehärtet vor dem
+ * Kettenaufbau (T-02); die Kette prüft webauthn-attestation.ts.
+ */
+function assertLibraryAttestationStatement(
+  aaguid: string,
+  statement: MetadataStatement,
+  trusted: MetadataStatement,
+): void {
+  if (statement.attestationRootCertificates.length !== 0) {
+    throw new Error(`AAGUID ${aaguid}: SimpleWebAuthn darf keine Attestationswurzeln erhalten`);
+  }
+  assertTrustedHardwareStatement(aaguid, {
+    ...statement,
+    attestationRootCertificates: trusted.attestationRootCertificates,
+  });
+}
+
 function parseMdsCalendarDate(value: unknown, field: 'effectiveDate' | 'sunsetDate'): number {
   const match = typeof value === 'string' ? MDS_CALENDAR_DATE_PATTERN.exec(value) : null;
   if (!match) {
@@ -305,10 +326,11 @@ export async function lockMatchingHardwareMetadataSerial(
 
 /**
  * Wertet den vom Worker signaturgeprüft gespeicherten Snapshot gegen die
- * lokale Allowlist aus. SimpleWebAuthn erhält wie bisher ausschließlich die
- * positiv geprüften Statements für seine Attestationsketten-Prüfung, weil
- * dessen getStatement() nur das Statement, nicht aber den übergeordneten
- * Zertifizierungs-/Sperrstatus liefert.
+ * lokale Allowlist aus. SimpleWebAuthn erhält ausschließlich die positiv
+ * geprüften Statements, weil dessen getStatement() nur das Statement, nicht
+ * aber den übergeordneten Zertifizierungs-/Sperrstatus liefert, und zwar ohne
+ * attestationRootCertificates: Die Attestationskette prüft
+ * webauthn-attestation.ts gegen die Wurzeln des gespeicherten Statements.
  */
 async function loadStoredHardwareMetadataSnapshot(
   state: StoredTrustState,
@@ -354,14 +376,14 @@ async function loadStoredHardwareMetadataSnapshot(
 
   await MetadataService.initialize({
     mdsServers: [],
-    statements,
+    statements: statements.map(libraryAttestationStatement),
     verificationMode: 'strict',
   });
   for (const aaguid of entries.keys()) {
     try {
       const statement = await MetadataService.getStatement(aaguid);
       if (!statement) throw new Error(`Keine prüfbare FIDO-Attestation für AAGUID ${aaguid}`);
-      assertTrustedHardwareStatement(aaguid, statement);
+      assertLibraryAttestationStatement(aaguid, statement, entries.get(aaguid)!.metadataStatement!);
     } catch (error) {
       entries.delete(aaguid);
       log.warn(
@@ -484,10 +506,12 @@ export async function currentTrustedHardwareStatement(
     const entry = snapshot.entries.get(normalized);
     if (!entry) throw new Error(`Keine FIDO-Metadaten für AAGUID ${normalized}`);
     assertTrustedMetadataEntry(normalized, entry, authenticatorVersion);
+    const trusted = entry.metadataStatement!;
     const statement = await MetadataService.getStatement(normalized);
     if (!statement) throw new Error(`Keine FIDO-Metadaten für AAGUID ${normalized}`);
-    assertTrustedHardwareStatement(normalized, statement);
-    return { statement, metadataSerial: BigInt(snapshot.serial) };
+    assertLibraryAttestationStatement(normalized, statement, trusted);
+    // Das gespeicherte Statement samt Wurzeln: Grundlage der eigenen Kettenprüfung.
+    return { statement: trusted, metadataSerial: BigInt(snapshot.serial) };
   } catch (error) {
     log.warn(
       { component: 'staff-webauthn', aaguid: normalized, err: (error as Error).message },

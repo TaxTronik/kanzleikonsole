@@ -57,40 +57,54 @@ require_line pnpm-workspace.yaml '^pmOnFail:[[:space:]]*download$' \
 require_line pnpm-workspace.yaml "^savePrefix:[[:space:]]*''$" \
   "savePrefix muss leer sein, damit neu hinzugefuegte Dependencies exakt gepinnt werden."
 
-WEBAUTHN_CRL_PATCH='patches/@simplewebauthn__server@13.3.3.patch'
+# T-02: Die CRL- und Kettenhaertung liegt nicht mehr in einem Patch auf
+# @simplewebauthn/server, sondern in @taxtronik/crypto/certificate-path. Web und
+# Worker uebergeben der Bibliothek keine Wurzelzertifikate; nur so fuehrt 13.3.3
+# selbst keine (upstream fail-open) Ketten- und CRL-Pruefung aus. Das belegen
+# webauthn-library-contract.test.ts und fido-mds-library-contract.test.ts fuer
+# genau diese Version, daher bleibt sie exakt gepinnt.
+WEBAUTHN_PATH_CHECK='packages/crypto/src/certificate-path.ts'
+WEBAUTHN_ATTESTATION='apps/web/src/server/auth/webauthn-attestation.ts'
+WEBAUTHN_MDS_VERIFY='apps/worker/src/jobs/fido-mds-verify.ts'
 require_line apps/web/package.json '"@simplewebauthn/server"[[:space:]]*:[[:space:]]*"13\.3\.3"' \
-  "SimpleWebAuthn Server muss fuer den geprueften CRL-Patch exakt auf 13.3.3 gepinnt bleiben."
+  "SimpleWebAuthn Server muss exakt auf 13.3.3 gepinnt bleiben (Vertrag der vorgeschalteten Ketten-/CRL-Pruefung)."
 # P-23: Der Worker-Job fido-mds-refresh prueft den FIDO-MDS-BLOB mit derselben
-# gepatchten Version (fail-closed CRL-Pruefung).
+# Version und derselben Ketten-/CRL-Pruefung (fail-closed).
 require_line apps/worker/package.json '"@simplewebauthn/server"[[:space:]]*:[[:space:]]*"13\.3\.3"' \
-  "SimpleWebAuthn Server muss auch im Worker exakt auf die gepatchte 13.3.3 gepinnt bleiben."
-require_line pnpm-workspace.yaml "^[[:space:]]*'@simplewebauthn/server@13\.3\.3':[[:space:]]*patches/@simplewebauthn__server@13\.3\.3\.patch$" \
-  "Der versionsgebundene SimpleWebAuthn-CRL-Patch fehlt in pnpm-workspace.yaml."
-require_line pnpm-lock.yaml "^[[:space:]]*'@simplewebauthn/server@13\.3\.3':[[:space:]]*[0-9a-f]{64}$" \
-  "Der SimpleWebAuthn-CRL-Patch ist nicht mit Hash im Lockfile gebunden."
-if [ ! -f "$WEBAUTHN_CRL_PATCH" ]; then
-  error "Der SimpleWebAuthn-CRL-Patch fehlt."
-elif [ "$(grep -Fc "throw new Error('Certificate revocation list could not be downloaded'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc "throw new Error('Certificate revocation list could not be parsed'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
-  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS bei Download-/Parsefehlern fail-closed absichern."
-elif [ "$(grep -Fc "throw new Error('Certificate revocation list could not be verified'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc "throw new Error('Certificate issuer is required to verify its revocation list'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc "redirect: 'error'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc 'const MAX_CACHE_ENTRIES = 256' "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
-  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS an Aussteller, Signatur, Freshness, Redirect-Sperre und begrenzten Cache binden."
-elif [ "$(grep -Fc "throw new Error('Certificate issuer is not an authorized certificate authority'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc "throw new Error('Certificate path did not terminate at the selected trust anchor'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
-  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS mit strikter CA- und Trust-Anchor-Pruefung ausliefern."
-elif [ "$(grep -Fc 'data.verify({ publicKey: issuer.publicKey })' "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc 'distributionPoints.length !== 1' "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc 'point.reasons !== undefined' "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc "const DELTA_CRL_INDICATOR_OID = '2.5.29.27'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc "const ISSUING_DISTRIBUTION_POINT_OID = '2.5.29.28'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ] || \
-     [ "$(grep -Fc "const FRESHEST_CRL_OID = '2.5.29.46'" "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
-  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS an den CRL-Signaturalgorithmus sowie genau eine unpartitionierte Voll-CRL binden."
-elif [ "$(grep -Fc 'was missing`)' "$WEBAUTHN_CRL_PATCH")" -ne 4 ] || \
-     [ "$(grep -Fc 'must not be critical`)' "$WEBAUTHN_CRL_PATCH")" -ne 2 ]; then
-  error "Der SimpleWebAuthn-CRL-Patch muss ESM und CommonJS an die nichtkritische Zertifikat-AAGUID binden."
+  "SimpleWebAuthn Server muss auch im Worker exakt auf 13.3.3 gepinnt bleiben."
+
+fixed_count() {
+  grep -Fc "$2" "$1" 2>/dev/null || true
+}
+
+if [ ! -f "$WEBAUTHN_PATH_CHECK" ] || [ ! -f "$WEBAUTHN_ATTESTATION" ] || [ ! -f "$WEBAUTHN_MDS_VERIFY" ]; then
+  error "Die WebAuthn-Ketten-/CRL-Pruefung ($WEBAUTHN_PATH_CHECK, $WEBAUTHN_ATTESTATION, $WEBAUTHN_MDS_VERIFY) fehlt."
+elif [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "throw new Error('Certificate revocation list could not be downloaded'")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "throw new Error('Certificate revocation list could not be parsed'")" -ne 1 ]; then
+  error "Die CRL-Pruefung muss Download- und Parsefehler fail-closed behandeln."
+elif [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "throw new Error('Certificate revocation list could not be verified'")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "throw new Error('Certificate issuer is required to verify its revocation list'")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "redirect: 'error'")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" 'const MAX_CACHE_ENTRIES = 256')" -ne 1 ]; then
+  error "Die CRL-Pruefung muss an Aussteller, Signatur, Freshness, Redirect-Sperre und begrenzten Cache gebunden sein."
+elif [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "throw new Error('Certificate issuer is not an authorized certificate authority'")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "throw new Error('Certificate path did not terminate at the selected trust anchor'")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "throw new InvalidCertificatePathError('Certificate path has no trust anchor')")" -ne 1 ]; then
+  error "Die Kettenpruefung muss strikte CA-Constraints, eine exakte Trust Anchor und mindestens eine Trust Anchor verlangen."
+elif [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" 'data.verify({ publicKey: issuer.publicKey })')" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" 'distributionPoints.length !== 1')" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" 'point.reasons !== undefined')" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "const DELTA_CRL_INDICATOR_OID = '2.5.29.27'")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "const ISSUING_DISTRIBUTION_POINT_OID = '2.5.29.28'")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "const FRESHEST_CRL_OID = '2.5.29.46'")" -ne 1 ]; then
+  error "Die CRL-Pruefung muss an den CRL-Signaturalgorithmus sowie genau eine unpartitionierte Voll-CRL gebunden sein."
+elif [ "$(fixed_count "$WEBAUTHN_ATTESTATION" 'if (!extension || extension.critical) {')" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_ATTESTATION" 'return { ...statement, attestationRootCertificates: [] };')" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_ATTESTATION" 'await validateCertificatePath(chain, roots, { signal: input.signal });')" -ne 1 ]; then
+  error "Die Attestationspruefung muss die nichtkritische Zertifikat-AAGUID verlangen, SimpleWebAuthn ohne Wurzeln aufrufen und die Kette selbst pruefen."
+elif [ "$(fixed_count "$WEBAUTHN_MDS_VERIFY" "SettingsService.setRootCertificates({ identifier: 'mds', certificates: [] });")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_MDS_VERIFY" 'await validateCertificatePath(signerChain, FIDO_MDS_TRUST_ANCHORS, { signal });')" -ne 1 ]; then
+  error "Der MDS-Abruf muss SimpleWebAuthn ohne MDS-Wurzeln aufrufen und die Signaturkette selbst gegen die gepinnten Anker pruefen."
 fi
 
 awk '

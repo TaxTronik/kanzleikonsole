@@ -111,9 +111,18 @@ Parse-, Signatur-, Issuer-, AKI- und Freshness-Fehlern. Er prüft außerdem
 gemischte RSA-Hashalgorithmen von Issuer-Zertifikat und CRL sowie die
 fail-closed Ablehnung mehrerer/partitionierter Distribution Points,
 Reason-/Issuer-Scope, Zertifikat-seitiger Freshest-CRL-Verweise sowie
-Delta-/IDP-/Freshest- und unbekannter kritischer CRL-Extensions. Der
-Supply-Chain-Guard bindet dafür Paketversion, Patchdatei, die zentralen
-Semantikmarker in ESM/CommonJS und den Lockfile-Hash.
+Delta-/IDP-/Freshest- und unbekannter kritischer CRL-Extensions; seit T-02
+gegen den Repository-Code `@taxtronik/crypto/certificate-path`, dessen
+Kettenfälle `packages/crypto/src/__tests__/certificate-path.test.ts` mit echten
+Zertifikaten belegt. `webauthn-attestation.test.ts` prüft die
+Attestationskette (Statement-Wurzel, Selbstbezug, Sperrung, Abruffehler,
+Zeitlimit) und die AAGUID-Bindung mit echten Zertifikaten;
+`webauthn-library-contract.test.ts` und `fido-mds-library-contract.test.ts`
+belegen gegen das ungepatchte SimpleWebAuthn 13.3.3, dass die Bibliothek ohne
+Wurzelzertifikate keinen Netzzugriff ausführt, warum die eigene Kettenprüfung
+verbindlich ist und dass die gepinnten MDS-Wurzeln der Bibliotheksvoreinstellung
+entsprechen. Der Supply-Chain-Guard bindet die exakte Paketversion und die
+zentralen Semantikmarker der eigenen Prüfung.
 `webauthn-browser-error.test.ts` belegt die Abbrucherkennung auch für den von
 SimpleWebAuthn umschlossenen Browserfehler; der Ops-Test prüft, dass die
 AAGUID-Allowlist im produktiven Compose-Stack an den App- und den

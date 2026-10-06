@@ -4,18 +4,30 @@
 // den BLOB noch selbst lud: Streaming-Limit, Signer-Identität, Kettenlänge vor
 // jedem Netzzugriff, 30-Sekunden-Zeitlimit bis in die Signatur-/CRL-Prüfung,
 // fortlaufende Serie und nextUpdate.
+// T-02: Kette und CRLs prüft @taxtronik/crypto/certificate-path gegen die
+// gepinnten Anker (hier gemockt; echte Zertifikate:
+// fido-mds-library-contract.test.ts), SimpleWebAuthn nur Signatur und Inhalt.
+import { SettingsService } from '@simplewebauthn/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   verifyMDSBlob: vi.fn(),
+  convertCertBufferToPEM: vi.fn(),
+  validateCertificatePath: vi.fn(),
   mdsSignerHostname: 'mds.fidoalliance.org',
   mdsSignerOrganization: 'Fido Alliance, Inc.',
   mdsSignerIntermediateCn: 'GlobalSign GCC R46 EV TLS CA 2025',
   leafIsCa: false,
 }));
 
-vi.mock('@simplewebauthn/server/helpers', () => ({ verifyMDSBlob: mocks.verifyMDSBlob }));
+vi.mock('@simplewebauthn/server/helpers', () => ({
+  convertCertBufferToPEM: mocks.convertCertBufferToPEM,
+  verifyMDSBlob: mocks.verifyMDSBlob,
+}));
+vi.mock('@taxtronik/crypto/certificate-path', () => ({
+  validateCertificatePath: mocks.validateCertificatePath,
+}));
 vi.mock('@peculiar/x509', () => {
   class BasicConstraintsExtension {
     static kind = 'basic-constraints';
@@ -78,6 +90,7 @@ vi.mock('@peculiar/x509', () => {
 });
 
 import { downloadVerifiedFidoMetadata, FIDO_MDS_URL } from '../fido-mds-verify';
+import { FIDO_MDS_TRUST_ANCHORS } from '../fido-mds-trust-anchors';
 
 function mdsBlob(x5c: string[] = ['mds-leaf', 'mds-intermediate']): string {
   const header = { alg: 'RS256', x5c: x5c.map((marker) => Buffer.from(marker).toString('base64')) };
@@ -85,6 +98,9 @@ function mdsBlob(x5c: string[] = ['mds-leaf', 'mds-intermediate']): string {
 }
 
 const MDS_BLOB = mdsBlob();
+const SIGNER_CHAIN_PEM = ['mds-leaf', 'mds-intermediate'].map(
+  (marker) => `PEM:${Buffer.from(marker).toString('base64')}`,
+);
 const fido2Entry = {
   aaguid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   metadataStatement: { aaguid: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
@@ -115,6 +131,8 @@ beforeEach(() => {
   mocks.leafIsCa = false;
   vi.stubGlobal('fetch', mocks.fetch);
   mocks.fetch.mockResolvedValue(bufferedResponse(MDS_BLOB));
+  mocks.convertCertBufferToPEM.mockImplementation((encoded: string) => `PEM:${encoded}`);
+  mocks.validateCertificatePath.mockResolvedValue(true);
   mocks.verifyMDSBlob.mockResolvedValue({
     statements: [fido2Entry.metadataStatement],
     parsedNextUpdate: new Date('2099-01-01T00:00:00.000Z'),
@@ -140,9 +158,51 @@ describe('fido-mds-verify: Abruf und Prüfung des MDS-BLOBs', () => {
       headers: { accept: 'application/jwt' },
       signal: expect.any(AbortSignal),
     });
-    expect(mocks.verifyMDSBlob).toHaveBeenCalledWith(MDS_BLOB, {
-      signal: expect.any(AbortSignal),
+    // T-02: Bibliothek ohne eigene Kettenprüfung, danach die gepinnte Kette samt CRLs.
+    expect(mocks.verifyMDSBlob).toHaveBeenCalledWith(MDS_BLOB);
+    expect(mocks.validateCertificatePath).toHaveBeenCalledWith(
+      SIGNER_CHAIN_PEM,
+      FIDO_MDS_TRUST_ANCHORS,
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(mocks.verifyMDSBlob.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.validateCertificatePath.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('übergibt SimpleWebAuthn keine MDS-Wurzeln, damit es keine eigene CRL-Prüfung ausführt', async () => {
+    let rootsDuringVerification: string[] | undefined;
+    mocks.verifyMDSBlob.mockImplementationOnce(async () => {
+      rootsDuringVerification = SettingsService.getRootCertificates({ identifier: 'mds' });
+      return {
+        statements: [],
+        parsedNextUpdate: new Date('2099-01-01T00:00:00.000Z'),
+        payload: { no: 7, nextUpdate: '2099-01-01', entries: [] },
+      };
     });
+    SettingsService.setRootCertificates({ identifier: 'mds', certificates: ['vorbelegt'] });
+
+    await downloadVerifiedFidoMetadata();
+    expect(rootsDuringVerification).toEqual([]);
+  });
+
+  it('weist eine nicht vertrauenswürdige oder gesperrte Signaturkette fail-closed ab', async () => {
+    const cause = new Error('x5c could not be chained to any specified trust anchor');
+    mocks.validateCertificatePath.mockRejectedValueOnce(cause);
+
+    await expect(downloadVerifiedFidoMetadata()).rejects.toMatchObject({
+      message: 'BLOB certificate path could not be validated',
+      cause,
+    });
+  });
+
+  it('prüft eine Kette nur nach gültiger BLOB-Signatur (kein CRL-Abruf vorher)', async () => {
+    mocks.verifyMDSBlob.mockRejectedValueOnce(new Error('BLOB signature could not be verified'));
+
+    await expect(downloadVerifiedFidoMetadata()).rejects.toThrow(
+      'BLOB signature could not be verified',
+    );
+    expect(mocks.validateCertificatePath).not.toHaveBeenCalled();
   });
 
   it('bricht bei einem HTTP-Fehler ohne Signaturprüfung ab', async () => {
@@ -200,6 +260,7 @@ describe('fido-mds-verify: Abruf und Prüfung des MDS-BLOBs', () => {
         'Die Identität des FIDO-MDS-Signers ist nicht freigegeben',
       );
       expect(mocks.verifyMDSBlob).not.toHaveBeenCalled();
+      expect(mocks.validateCertificatePath).not.toHaveBeenCalled();
     },
   );
 
@@ -217,6 +278,7 @@ describe('fido-mds-verify: Abruf und Prüfung des MDS-BLOBs', () => {
       mocks.fetch.mockResolvedValueOnce(bufferedResponse(blob));
       await expect(downloadVerifiedFidoMetadata()).rejects.toThrow(/FIDO-MDS-BLOB besitzt/);
       expect(mocks.verifyMDSBlob).not.toHaveBeenCalled();
+      expect(mocks.validateCertificatePath).not.toHaveBeenCalled();
     },
   );
 
@@ -257,7 +319,7 @@ describe('fido-mds-verify: Abruf und Prüfung des MDS-BLOBs', () => {
       serial: 7,
     });
     expect(releaseLock).toHaveBeenCalledOnce();
-    expect(mocks.verifyMDSBlob).toHaveBeenCalledWith(MDS_BLOB, expect.anything());
+    expect(mocks.verifyMDSBlob).toHaveBeenCalledWith(MDS_BLOB);
   });
 
   it('begrenzt auch eine Antwort ohne Längenangabe und ohne Stream', async () => {
@@ -345,8 +407,9 @@ describe('fido-mds-verify: Abruf und Prüfung des MDS-BLOBs', () => {
   it('begrenzt eine hängende Signatur-/CRL-Prüfung auf 30 Sekunden und bricht sie ab', async () => {
     vi.useFakeTimers();
     let signal: AbortSignal | undefined;
-    mocks.verifyMDSBlob.mockImplementationOnce(
-      (_blob: string, options: { signal: AbortSignal }) => {
+    // T-02: Die CRL-Abrufe laufen in der eigenen Kettenprüfung; deren Signal bricht ab.
+    mocks.validateCertificatePath.mockImplementationOnce(
+      (_chain: string[], _anchors: string[], options: { signal: AbortSignal }) => {
         signal = options.signal;
         return new Promise(() => undefined);
       },

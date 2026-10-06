@@ -8,6 +8,11 @@
 // Firmware-Version, physische Transporte, gerätegebundene nicht gesicherte
 // Credentials, User Verification. Der Vertrauensstand des Modells stammt aus
 // dem gespeicherten, signaturgeprüften MDS-Snapshot (webauthn-metadata.ts).
+//
+// T-02: SimpleWebAuthn prüft die Registrierung ohne Netzzugriff (Statements
+// ohne Wurzeln). Danach folgen AAGUID-, Firmware- und Statusbindung und erst
+// zuletzt die eigene Ketten- und Sperrlistenprüfung (webauthn-attestation.ts);
+// alles zusammen unter einem 30-Sekunden-Zeitlimit mit Abbruchsignal.
 // =============================================================================
 
 import { X509Certificate } from '@peculiar/x509';
@@ -16,10 +21,14 @@ import {
   verifyRegistrationResponse,
   type AuthenticationResponseJSON,
   type AuthenticatorTransportFuture,
+  type MetadataStatement,
   type RegistrationResponseJSON,
+  type Uint8Array_,
+  type VerifiedRegistrationResponse,
 } from '@simplewebauthn/server';
 import { decodeAttestationObject } from '@simplewebauthn/server/helpers';
 import { log } from '@/server/logger';
+import { assertTrustedAttestationPath, extractAttestedAaguid } from './webauthn-attestation';
 import { parseTransports, type HardwareCeremony } from './webauthn-ceremony';
 import {
   MAX_AUTHENTICATOR_VERSION,
@@ -34,7 +43,6 @@ const ATTESTATION_OBJECT_MAX_CHARS = 512 * 1024;
 const ATTESTATION_CERTIFICATE_MAX_BYTES = 64 * 1024;
 const ATTESTATION_CERTIFICATE_CHAIN_MAX = 5;
 const FIDO_ATTESTATION_TIMEOUT_MS = 30_000;
-const FIDO_AAGUID_OID = '1.3.6.1.4.1.45724.1.1.4';
 const FIDO_FIRMWARE_VERSION_OID = '1.3.6.1.4.1.45724.1.1.5';
 
 export type StoredHardwareCredential = {
@@ -75,6 +83,19 @@ export type VerifiedHardwareAssertion = {
   metadataSerial: bigint;
 };
 
+type VerifiedRegistrationInfo = Extract<
+  VerifiedRegistrationResponse,
+  { verified: true }
+>['registrationInfo'];
+
+/** Ergebnis der Attestationsprüfung, bevor Transporte und Gerätebindung folgen. */
+type AttestedRegistration = {
+  registrationInfo: VerifiedRegistrationInfo;
+  aaguid: string;
+  authenticatorVersion: number;
+  metadataSerial: bigint;
+};
+
 function parseAttestationCertificate(attestationCertificate: unknown): X509Certificate {
   if (
     !(attestationCertificate instanceof Uint8Array) &&
@@ -97,23 +118,6 @@ function parseAttestationCertificate(attestationCertificate: unknown): X509Certi
     );
   }
   return new X509Certificate(certificateBytes);
-}
-
-function extractAttestedAaguid(certificate: X509Certificate): string {
-  const extension = certificate.getExtension(FIDO_AAGUID_OID);
-  if (!extension || extension.critical) {
-    throw new HardwareAccessVerificationError(
-      'Der Sicherheitsschlüssel bindet seine AAGUID nicht an das Attestationszertifikat.',
-    );
-  }
-  const encoded = new Uint8Array(extension.value);
-  if (encoded.length !== 18 || encoded[0] !== 0x04 || encoded[1] !== 0x10) {
-    throw new HardwareAccessVerificationError(
-      'Die attestierte AAGUID des Sicherheitsschlüssels ist ungültig.',
-    );
-  }
-  const hex = Buffer.from(encoded.subarray(2)).toString('hex');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function extractAttestedAuthenticatorVersion(attestationCertificate: unknown): number {
@@ -186,7 +190,8 @@ function assertPhysicalAuthenticator(
   }
 }
 
-function preflightPackedAttestation(response: RegistrationResponseJSON): unknown {
+/** Lokale Vorprüfung ohne Netzzugriff; liefert die x5c-Kette (Blatt zuerst) als Kopie. */
+function preflightPackedAttestation(response: RegistrationResponseJSON): Uint8Array_[] {
   let serializedLength: number;
   try {
     serializedLength = Buffer.byteLength(JSON.stringify(response), 'utf8');
@@ -250,13 +255,36 @@ function preflightPackedAttestation(response: RegistrationResponseJSON): unknown
   ) {
     throw new HardwareAccessVerificationError('Die Attestationszertifikatskette ist zu groß.');
   }
-  return certificateChain[0];
+  return (certificateChain as Array<Uint8Array | ArrayBuffer>).map(
+    (certificate) => new Uint8Array(certificate),
+  );
 }
 
-async function verifyRegistrationBeforeDeadline(input: {
-  response: RegistrationResponseJSON;
-  ceremony: HardwareCeremony;
-}) {
+/**
+ * Die eigene Kettenprüfung muss genau die Zertifikate prüfen, deren Blatt
+ * SimpleWebAuthn für die Attestationssignatur verwendet hat.
+ */
+function assertLibraryVerifiedChain(
+  attestationObject: Uint8Array_,
+  certificateChain: readonly Uint8Array_[],
+): void {
+  const verifiedChain = decodeAttestationObject(attestationObject).get('attStmt')?.get('x5c');
+  if (
+    !Array.isArray(verifiedChain) ||
+    verifiedChain.length !== certificateChain.length ||
+    verifiedChain.some(
+      (certificate, index) =>
+        !Buffer.from(certificate).equals(Buffer.from(certificateChain[index]!)),
+    )
+  ) {
+    throw new Error('Die verifizierte Attestationskette weicht von der Vorprüfung ab');
+  }
+}
+
+/** Ein Zeitlimit und Abbruchsignal für Bibliotheks-, Bindungs- und Kettenprüfung. */
+async function beforeAttestationDeadline<T>(
+  verify: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<never>((_resolve, reject) => {
@@ -267,60 +295,48 @@ async function verifyRegistrationBeforeDeadline(input: {
     }, FIDO_ATTESTATION_TIMEOUT_MS);
   });
   try {
-    return await Promise.race([
-      verifyRegistrationResponse({
-        response: input.response,
-        expectedChallenge: input.ceremony.challenge,
-        expectedOrigin: input.ceremony.origin,
-        expectedRPID: input.ceremony.rpID,
-        requireUserPresence: true,
-        requireUserVerification: true,
-        signal: controller.signal,
-      }),
-      deadline,
-    ]);
+    return await Promise.race([verify(controller.signal), deadline]);
   } finally {
     if (timeout) clearTimeout(timeout);
   }
 }
 
-export async function verifyHardwareRegistration(input: {
-  response: RegistrationResponseJSON;
-  ceremony: HardwareCeremony;
-}): Promise<VerifiedHardwareRegistration> {
-  const attestationCertificateBytes = preflightPackedAttestation(input.response);
-  const attestationSnapshot = await ensureHardwareMetadataReady();
-  let result;
-  try {
-    result = await verifyRegistrationBeforeDeadline(input);
-  } catch (error) {
-    log.warn(
-      { component: 'staff-webauthn', err: (error as Error).message },
-      'WebAuthn-Registrierung abgewiesen',
-    );
-    throw new HardwareAccessVerificationError();
-  }
+async function verifyPackedAttestation(
+  input: { response: RegistrationResponseJSON; ceremony: HardwareCeremony },
+  certificateChain: readonly Uint8Array_[],
+  snapshotSerial: number,
+  signal: AbortSignal,
+): Promise<AttestedRegistration> {
+  // Ohne Netzzugriff: Die Statements im MetadataService tragen keine Wurzeln.
+  const result = await verifyRegistrationResponse({
+    response: input.response,
+    expectedChallenge: input.ceremony.challenge,
+    expectedOrigin: input.ceremony.origin,
+    expectedRPID: input.ceremony.rpID,
+    requireUserPresence: true,
+    requireUserVerification: true,
+  });
   if (!result.verified || !result.registrationInfo.userVerified) {
     throw new HardwareAccessVerificationError();
   }
   const aaguid = result.registrationInfo.aaguid.toLowerCase();
   let authenticatorVersion: number;
-  let metadataSerial: bigint;
+  let trusted: { statement: MetadataStatement; metadataSerial: bigint };
   try {
     if (result.registrationInfo.fmt !== 'packed') {
       throw new HardwareAccessVerificationError(
         'Der Schlüssel liefert keine vollständige freigegebene Hardware-Attestation.',
       );
     }
-    const certificate = parseAttestationCertificate(attestationCertificateBytes);
+    const certificate = parseAttestationCertificate(certificateChain[0]);
     if (extractAttestedAaguid(certificate) !== aaguid) {
       throw new HardwareAccessVerificationError(
         'Die AAGUID des Schlüssels passt nicht zu seinem Attestationszertifikat.',
       );
     }
     authenticatorVersion = extractAttestedAuthenticatorVersion(certificate);
-    ({ metadataSerial } = await currentTrustedHardwareStatement(aaguid, authenticatorVersion));
-    if (metadataSerial !== BigInt(attestationSnapshot.serial)) {
+    trusted = await currentTrustedHardwareStatement(aaguid, authenticatorVersion);
+    if (trusted.metadataSerial !== BigInt(snapshotSerial)) {
       throw new HardwareAccessUnavailableError(
         'Der FIDO-Vertrauensstand wurde während der Attestationsprüfung aktualisiert. Bitte wiederholen Sie den Vorgang.',
       );
@@ -338,26 +354,67 @@ export async function verifyHardwareRegistration(input: {
     );
     throw new HardwareAccessVerificationError();
   }
+  // Erst nach AAGUID-, Firmware- und Statusbindung: Kette und Sperrlisten (Netz).
+  assertLibraryVerifiedChain(result.registrationInfo.attestationObject, certificateChain);
+  await assertTrustedAttestationPath({
+    certificateChain,
+    attestationRootCertificates: trusted.statement.attestationRootCertificates,
+    signal,
+  });
+  return {
+    registrationInfo: result.registrationInfo,
+    aaguid,
+    authenticatorVersion,
+    metadataSerial: trusted.metadataSerial,
+  };
+}
+
+export async function verifyHardwareRegistration(input: {
+  response: RegistrationResponseJSON;
+  ceremony: HardwareCeremony;
+}): Promise<VerifiedHardwareRegistration> {
+  const certificateChain = preflightPackedAttestation(input.response);
+  const attestationSnapshot = await ensureHardwareMetadataReady();
+  let attested: AttestedRegistration;
+  try {
+    attested = await beforeAttestationDeadline((signal) =>
+      verifyPackedAttestation(input, certificateChain, attestationSnapshot.serial, signal),
+    );
+  } catch (error) {
+    if (
+      error instanceof HardwareAccessUnavailableError ||
+      error instanceof HardwareAccessVerificationError
+    ) {
+      throw error;
+    }
+    // Bibliotheks-, Ketten-, Sperrlisten- und Zeitlimitfehler: generisch abweisen.
+    log.warn(
+      { component: 'staff-webauthn', err: (error as Error).message },
+      'WebAuthn-Registrierung abgewiesen',
+    );
+    throw new HardwareAccessVerificationError();
+  }
+  const { registrationInfo } = attested;
   const transports = parseTransports(input.response.response.transports ?? []);
   assertPhysicalAuthenticator(
     input.response.authenticatorAttachment,
     transports,
-    result.registrationInfo.credentialDeviceType,
-    result.registrationInfo.credentialBackedUp,
+    registrationInfo.credentialDeviceType,
+    registrationInfo.credentialBackedUp,
     true,
   );
   return {
-    credentialId: result.registrationInfo.credential.id,
-    publicKey: result.registrationInfo.credential.publicKey,
-    signCount: BigInt(result.registrationInfo.credential.counter),
+    credentialId: registrationInfo.credential.id,
+    publicKey: registrationInfo.credential.publicKey,
+    signCount: BigInt(registrationInfo.credential.counter),
     transports,
     deviceType: 'singleDevice',
     backedUp: false,
     attestationFormat: 'packed',
     attestationVerifiedAt: new Date(),
-    aaguid,
-    authenticatorVersion: BigInt(authenticatorVersion),
-    metadataSerial,
+    aaguid: attested.aaguid,
+    authenticatorVersion: BigInt(attested.authenticatorVersion),
+    metadataSerial: attested.metadataSerial,
   };
 }
 

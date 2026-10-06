@@ -133,12 +133,21 @@ Signeridentität blockiert dagegen bewusst fail-closed und erfordert vorab eine
 geprüfte Codeänderung mit Release.
 
 Das Zeitlimit von 30 Sekunden umfasst die gesamte BLOB-, Signatur-,
-Zertifikatsketten- und CRL-Prüfung. Die exakt gepinnte
-`@simplewebauthn/server`-Version trägt einen im pnpm-Lockfile gehashten Patch:
-HTTP-, Netzwerk- oder Parsefehler beim Abruf einer in der Zertifikatskette
-angegebenen Certificate Revocation List werden nicht als „nicht widerrufen“
-behandelt, sondern blockieren fail-closed. Zuerst muss die Kette ohne
-Netzzugriff bis zu exakt einer freigegebenen Trust Anchor aufgebaut werden.
+Zertifikatsketten- und CRL-Prüfung. Ketten und Sperrlisten prüft TaxTronik
+selbst (`@taxtronik/crypto/certificate-path`), für Attestationsketten wie für
+die MDS-Signaturkette: SimpleWebAuthn behandelt CRL-Fehler upstream als „nicht
+widerrufen“ und lädt CRLs schon vor dem Kettenaufbau. Die exakt gepinnte
+`@simplewebauthn/server`-Version erhält deshalb keine Wurzelzertifikate
+(Metadata Statements ohne `attestationRootCertificates`, keine `mds`-Wurzeln)
+und prüft nur noch Challenge, Origin, RP-ID, Flags, Algorithmen,
+Zertifikatsfelder sowie Attestations- und JWT-Signatur, ohne eigenen
+Netzzugriff. Die MDS-Signaturkette endet an den im Worker gepinnten Wurzeln
+GlobalSign Root CA - R3 und GlobalSign Root R46 (inhaltsgleich mit der
+Voreinstellung von SimpleWebAuthn 13.3.3). HTTP-, Netzwerk- oder Parsefehler
+beim Abruf einer in der Zertifikatskette angegebenen Certificate Revocation
+List blockieren fail-closed. Zuerst muss die Kette ohne Netzzugriff bis zu
+exakt einer freigegebenen Trust Anchor aufgebaut werden; ohne Trust Anchor wird
+abgewiesen.
 Doppelte Zertifikate, fehlende oder nichtkritische
 `CA=true`-BasicConstraints, fehlendes `keyCertSign`, verletzte
 `pathLenConstraint`, unbekannte kritische Extensions sowie nicht unterstützte
@@ -158,10 +167,15 @@ CRL ist beim Streaming auf 5 MiB begrenzt und der authentisierte
 Widerrufsstatus-Cache umfasst höchstens 256 Kombinationen aus
 Issuer-Fingerprint, Zertifikatsseriennummer und CRL-URL. Ein Eintrag gilt
 höchstens bis zum signierten `nextUpdate` der CRL. Der MDS-Gesamt-BLOB wird
-ebenfalls streamend auf 20 MiB begrenzt. Bei einem
-Dependency-Upgrade muss dieses Upstream-Verhalten erneut geprüft und der Patch
-bewusst angepasst oder entfernt werden; `pnpm guard:supply-chain` schützt die
-Versions-/Patchbindung.
+ebenfalls streamend auf 20 MiB begrenzt. CRLs werden erst geladen, nachdem
+SimpleWebAuthn die Signatur und TaxTronik AAGUID-, Firmware- und Statusbindung
+geprüft haben. Bei einem Dependency-Upgrade müssen die Vertragstests
+`webauthn-library-contract.test.ts` und `fido-mds-library-contract.test.ts`
+weiterhin belegen, dass die Bibliothek ohne Wurzeln keinen Netzzugriff ausführt
+und die gepinnten MDS-Wurzeln ihrer Voreinstellung entsprechen;
+`pnpm guard:supply-chain` schützt die exakte Versionsbindung und die
+Kernmerkmale der eigenen Prüfung. Der Vorschlag, die Härtung upstream
+anzubieten, steht in `docs/development/simplewebauthn-upstream.md`.
 
 Beim Produktionsstart bindet jede App-Replica ausschließlich Revision und Hash
 der lokalen Hardware-Policy an den zentralen Datenbankzustand. Dieser

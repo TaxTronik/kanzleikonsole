@@ -1,5 +1,30 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-040
+    date: '2026-10-06'
+    paths:
+      - scripts/check-pnpm-supply-chain.sh
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Die CRL- und Zertifikatskettenhärtung der Hardware-Anmeldung liegt nicht mehr
+      als versionsgebundener Patch auf @simplewebauthn/server, sondern als eigener
+      Code (@taxtronik/crypto/certificate-path; Attestationsketten in der Web-App,
+      MDS-Signaturkette im Worker gegen gepinnte GlobalSign-Wurzeln). Die
+      Bibliothek läuft ungepatcht in der weiterhin exakt gepinnten Version 13.3.3,
+      erhält keine Wurzelzertifikate mehr und greift nicht selbst aufs Netz zu.
+      Das Supply-Chain-Gate prüft weiter die exakte Version und statt der
+      Patch-Marker die Härtungs-Marker im Repository-Code. Prüfsemantik
+      (fail-closed, Ausstellerbindung, Pfadlänge, Sperrlisten) unverändert;
+      Sperrlisten werden erst nach erfolgreicher Signaturprüfung geladen. Der
+      Umsetzungstext von ACCESS-TENANT-RLS-001 nennt noch Patch- und
+      Patch-Hash-Prüfungen und ist vom Regelverantwortlichen nachzuziehen. Keine
+      fachliche Freigabe.
+    tests:
+      - packages/crypto/src/__tests__/certificate-path.test.ts
+      - apps/web/src/server/auth/__tests__/webauthn-attestation.test.ts
+      - apps/web/src/server/auth/__tests__/webauthn-library-contract.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-039
     date: '2026-10-06'
     paths:
@@ -4019,6 +4044,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-040` dokumentiert die Härtung der
+  Hardware-Anmeldung als eigenen Code statt Patch; der Umsetzungstext von
+  ACCESS-TENANT-RLS-001 ist nachzuziehen.
 
 - 2026-10-06: `FK-EXC-20261006-039` dokumentiert die Installation von
   ssh-keygen vor den Operator-CLI-Tests.

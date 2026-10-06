@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
   metadataInitialize: vi.fn(),
   metadataGetStatement: vi.fn(),
   verifyMDSBlob: vi.fn(),
+  // T-02: eigene Ketten- und CRL-Prüfung (webauthn-attestation.ts).
+  assertTrustedAttestationPath: vi.fn(async (_input: unknown) => undefined),
   fetch: vi.fn(),
   decodeAttestationObject: vi.fn(),
   redisSet: vi.fn(),
@@ -107,6 +109,12 @@ vi.mock('@/server/db/prisma-owner', () => ({
 }));
 vi.mock('@/server/logger', () => ({ log: { warn: mocks.logWarn } }));
 vi.mock('../login-audit', () => ({ auditIp: (ip: string | null) => ip }));
+// T-02: Nur die netzwerkgebundene Kettenprüfung wird ersetzt; AAGUID-Bindung
+// und Statement-Kopie laufen echt (Kettenfälle: webauthn-attestation.test.ts).
+vi.mock('../webauthn-attestation', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../webauthn-attestation')>()),
+  assertTrustedAttestationPath: mocks.assertTrustedAttestationPath,
+}));
 
 import { env } from '@taxtronik/config';
 import {
@@ -184,7 +192,8 @@ function setMetadataReports(
     statusReports: reports,
     timeOfLastStatusChange: '2020-01-01',
   });
-  mocks.metadataGetStatement.mockResolvedValue(statement);
+  // SimpleWebAuthn erhält das Statement ohne Wurzeln (T-02).
+  mocks.metadataGetStatement.mockResolvedValue({ ...statement, attestationRootCertificates: [] });
 }
 
 function ceremony(purpose: HardwareCeremony['purpose'] = 'login'): HardwareCeremony {
@@ -560,11 +569,13 @@ describe('Policy für physische Sicherheitsschlüssel', () => {
     expect(mocks.fetch).not.toHaveBeenCalled();
     expect(mocks.verifyMDSBlob).not.toHaveBeenCalled();
     expect(snapshotReads()).toBe(1);
+    // T-02: Ohne Wurzeln baut SimpleWebAuthn keine eigene Kette und lädt keine CRL.
     expect(mocks.metadataInitialize).toHaveBeenCalledWith({
       mdsServers: [],
-      statements: [metadataEntry.metadataStatement],
+      statements: [{ ...metadataEntry.metadataStatement, attestationRootCertificates: [] }],
       verificationMode: 'strict',
     });
+    expect(metadataEntry.metadataStatement.attestationRootCertificates).toEqual(['trusted-root']);
     expect(mocks.metadataGetStatement).toHaveBeenCalledWith(HARDWARE_AAGUID);
     expect(mocks.generateRegistrationOptions).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -654,6 +665,8 @@ describe('Policy für physische Sicherheitsschlüssel', () => {
           ceremony: ceremony('register'),
         }),
       ).rejects.toThrow(expectedMessage);
+      // T-02: AAGUID-Bindung vor jedem CRL-Netzzugriff der Kettenprüfung.
+      expect(mocks.assertTrustedAttestationPath).not.toHaveBeenCalled();
     },
   );
 
@@ -691,6 +704,32 @@ describe('Policy für physische Sicherheitsschlüssel', () => {
   it('bricht eine hängende Registration-Verifikation nach 30 Sekunden bis in die Dependency ab', async () => {
     vi.useFakeTimers();
     try {
+      // T-02: Die CRL-Abrufe laufen in der eigenen Kettenprüfung; deren Signal bricht ab.
+      mocks.assertTrustedAttestationPath.mockImplementationOnce(
+        () => new Promise<undefined>(() => undefined),
+      );
+      const attempt = verifyHardwareRegistration({
+        response: registrationResponse(),
+        ceremony: ceremony('register'),
+      });
+      const rejected = expect(attempt).rejects.toThrow(/konnte nicht verifiziert/i);
+      await vi.waitFor(() => expect(mocks.assertTrustedAttestationPath).toHaveBeenCalledOnce());
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      await rejected;
+      const options = mocks.assertTrustedAttestationPath.mock.calls[0]?.[0] as {
+        signal?: AbortSignal;
+      };
+      expect(options.signal).toBeInstanceOf(AbortSignal);
+      expect(options.signal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('begrenzt auch eine hängende Bibliotheksprüfung auf 30 Sekunden', async () => {
+    vi.useFakeTimers();
+    try {
       mocks.verifyRegistrationResponse.mockImplementationOnce(() => new Promise(() => undefined));
       const attempt = verifyHardwareRegistration({
         response: registrationResponse(),
@@ -701,14 +740,97 @@ describe('Policy für physische Sicherheitsschlüssel', () => {
 
       await vi.advanceTimersByTimeAsync(30_000);
       await rejected;
-      const options = mocks.verifyRegistrationResponse.mock.calls[0]?.[0] as {
-        signal?: AbortSignal;
-      };
-      expect(options.signal).toBeInstanceOf(AbortSignal);
-      expect(options.signal?.aborted).toBe(true);
+      expect(mocks.assertTrustedAttestationPath).not.toHaveBeenCalled();
+      expect(mocks.logWarn).toHaveBeenCalledWith(
+        {
+          component: 'staff-webauthn',
+          err: 'Zeitlimit der Hardware-Attestationsprüfung überschritten',
+        },
+        'WebAuthn-Registrierung abgewiesen',
+      );
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('prüft die x5c-Kette erst nach Bibliothek und Modellbindung gegen die gespeicherten Wurzeln', async () => {
+    await expect(
+      verifyHardwareRegistration({
+        response: registrationResponse(),
+        ceremony: ceremony('register'),
+      }),
+    ).resolves.toEqual(expect.objectContaining({ metadataSerial: 7n }));
+
+    expect(mocks.assertTrustedAttestationPath).toHaveBeenCalledOnce();
+    expect(mocks.assertTrustedAttestationPath).toHaveBeenCalledWith({
+      certificateChain: [new Uint8Array([1])],
+      attestationRootCertificates: ['trusted-root'],
+      signal: expect.any(AbortSignal),
+    });
+    expect(mocks.verifyRegistrationResponse.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.assertTrustedAttestationPath.mock.invocationCallOrder[0]!,
+    );
+    // SimpleWebAuthn führt ohne Wurzeln keinen Netzzugriff aus und erhält kein Signal.
+    expect(mocks.verifyRegistrationResponse.mock.calls[0]?.[0]).not.toHaveProperty('signal');
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it('weist eine nicht vertrauenswürdige oder gesperrte Attestationskette generisch ab', async () => {
+    mocks.assertTrustedAttestationPath.mockRejectedValueOnce(
+      new Error('x5c could not be chained to any specified trust anchor'),
+    );
+
+    await expect(
+      verifyHardwareRegistration({
+        response: registrationResponse(),
+        ceremony: ceremony('register'),
+      }),
+    ).rejects.toThrow('Der Sicherheitsschlüssel konnte nicht verifiziert werden.');
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      {
+        component: 'staff-webauthn',
+        err: 'x5c could not be chained to any specified trust anchor',
+      },
+      'WebAuthn-Registrierung abgewiesen',
+    );
+  });
+
+  it('prüft genau die Kette, deren Blatt SimpleWebAuthn verifiziert hat', async () => {
+    const preflight: unknown = mocks.decodeAttestationObject();
+    mocks.decodeAttestationObject.mockReturnValueOnce(preflight).mockReturnValueOnce({
+      get: (key: string) => (key === 'attStmt' ? { get: () => [new Uint8Array([2])] } : undefined),
+    });
+
+    await expect(
+      verifyHardwareRegistration({
+        response: registrationResponse(),
+        ceremony: ceremony('register'),
+      }),
+    ).rejects.toThrow('Der Sicherheitsschlüssel konnte nicht verifiziert werden.');
+    expect(mocks.assertTrustedAttestationPath).not.toHaveBeenCalled();
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      {
+        component: 'staff-webauthn',
+        err: 'Die verifizierte Attestationskette weicht von der Vorprüfung ab',
+      },
+      'WebAuthn-Registrierung abgewiesen',
+    );
+  });
+
+  it('schließt ein Modell aus, sobald SimpleWebAuthn selbst Attestationswurzeln erhielte', async () => {
+    mocks.metadataGetStatement.mockResolvedValue(trustedMetadataStatement());
+
+    await expect(beginHardwareLogin()).rejects.toThrow(
+      /keines der freigegebenen Sicherheitsschlüssel-Modelle kann aktuell verifiziert werden/i,
+    );
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      {
+        component: 'staff-webauthn',
+        aaguid: HARDWARE_AAGUID,
+        err: `AAGUID ${HARDWARE_AAGUID}: SimpleWebAuthn darf keine Attestationswurzeln erhalten`,
+      },
+      'FIDO-Schlüsselmodell konnte nicht in den Attestationsspeicher übernommen werden',
+    );
   });
 
   it.each([
@@ -782,6 +904,7 @@ describe('Policy für physische Sicherheitsschlüssel', () => {
 
     mocks.metadataGetStatement.mockResolvedValueOnce({
       ...trustedMetadataStatement(),
+      attestationRootCertificates: [],
       keyProtection: ['software'],
     });
     await expect(
@@ -1131,7 +1254,7 @@ describe('Policy für physische Sicherheitsschlüssel', () => {
     expect(snapshotQuery?.slice(1)).toEqual([[HARDWARE_AAGUID], 7n]);
     expect(mocks.metadataInitialize).toHaveBeenCalledWith({
       mdsServers: [],
-      statements: [metadataEntry.metadataStatement],
+      statements: [{ ...metadataEntry.metadataStatement, attestationRootCertificates: [] }],
       verificationMode: 'strict',
     });
   });
@@ -1225,7 +1348,7 @@ describe('Policy für physische Sicherheitsschlüssel', () => {
     ).resolves.toBeDefined();
     expect(mocks.metadataInitialize).toHaveBeenCalledWith({
       mdsServers: [],
-      statements: [metadataEntry.metadataStatement],
+      statements: [{ ...metadataEntry.metadataStatement, attestationRootCertificates: [] }],
       verificationMode: 'strict',
     });
 

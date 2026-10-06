@@ -1,4 +1,7 @@
 // Fachkatalog: ACCESS-TENANT-RLS-001
+// T-02: Die Härtung lag bis dahin als Patch in @simplewebauthn/server 13.3.3 und
+// ist jetzt Repository-Code (@taxtronik/crypto/certificate-path); nur Import und
+// Titel haben sich geändert.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   AuthorityKeyIdentifierExtension,
@@ -13,7 +16,7 @@ import {
   type X509Certificate,
   type X509Crl,
 } from '@peculiar/x509';
-import { isCertRevoked, validateCertificatePath } from '@simplewebauthn/server/helpers';
+import { isCertRevoked, validateCertificatePath } from '@taxtronik/crypto/certificate-path';
 
 const SIGNING_ALGORITHM: EcdsaParams = { name: 'ECDSA', hash: 'SHA-256' };
 const KEY_ALGORITHM: EcKeyGenParams = { name: 'ECDSA', namedCurve: 'P-256' };
@@ -154,7 +157,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('versionsgebundener SimpleWebAuthn-CRL-Patch', () => {
+describe('gehärtete CRL- und Kettenprüfung (früher SimpleWebAuthn-CRL-Patch)', () => {
   it('behandelt Netzwerk-, HTTP- und Parsefehler fail-closed', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValueOnce(new Error('network unavailable')));
     await expect(

@@ -6,10 +6,12 @@
 // Unverändert aus apps/web/src/server/auth/webauthn.ts übernommen: Abruf von
 // https://mds.fidoalliance.org/ mit 20-MiB-Streaminggrenze, Bindung des
 // geschützten JWT-Headers an die freigegebene Signer-/Intermediate-Identität,
-// danach Signatur-, Zertifikatsketten- und CRL-Prüfung durch die exakt
-// gepinnte, gepatchte SimpleWebAuthn-Version (fail-closed) sowie Prüfung von
-// fortlaufender Serie und nextUpdate. Das 30-Sekunden-Zeitlimit umfasst Abruf
-// und gesamte Prüfung; das Abbruchsignal reicht bis zu den CRL-Abrufen.
+// danach JWT-Signatur und Inhalt durch die exakt gepinnte SimpleWebAuthn-
+// Version, Zertifikatskette und CRLs durch @taxtronik/crypto/certificate-path
+// gegen die gepinnten Anker (fido-mds-trust-anchors.ts, fail-closed) sowie
+// Prüfung von fortlaufender Serie und nextUpdate. Das 30-Sekunden-Zeitlimit
+// umfasst Abruf und gesamte Prüfung; das Abbruchsignal reicht bis zu den
+// CRL-Abrufen.
 // =============================================================================
 
 import {
@@ -21,8 +23,10 @@ import {
   SubjectAlternativeNameExtension,
   X509Certificate,
 } from '@peculiar/x509';
-import type { MetadataBLOBPayloadEntry } from '@simplewebauthn/server';
-import { verifyMDSBlob } from '@simplewebauthn/server/helpers';
+import { SettingsService, type MetadataBLOBPayloadEntry } from '@simplewebauthn/server';
+import { convertCertBufferToPEM, verifyMDSBlob } from '@simplewebauthn/server/helpers';
+import { validateCertificatePath } from '@taxtronik/crypto/certificate-path';
+import { FIDO_MDS_TRUST_ANCHORS } from './fido-mds-trust-anchors';
 
 export const FIDO_MDS_URL = 'https://mds.fidoalliance.org/';
 const FIDO_MDS_SIGNER_HOSTNAME = 'mds.fidoalliance.org';
@@ -72,7 +76,13 @@ function hasExactSubjectField(
   return values.length === 1 && values[0] === expected;
 }
 
-function parseFidoMdsSignerCertificates(blob: string): X509Certificate[] {
+type SignerCertificate = {
+  /** Kanonisches Base64 aus dem geschützten x5c-Header. */
+  encoded: string;
+  certificate: X509Certificate;
+};
+
+function parseFidoMdsSignerCertificates(blob: string): SignerCertificate[] {
   const parts = blob.split('.');
   const encodedHeader = parts[0];
   if (
@@ -101,9 +111,13 @@ function parseFidoMdsSignerCertificates(blob: string): X509Certificate[] {
   ) {
     throw new Error('Der FIDO-MDS-BLOB besitzt keine zulässige Signatur-Zertifikatskette');
   }
-  return protectedHeader.x5c.map((encoded) => {
+  return protectedHeader.x5c.map((encoded: unknown) => {
     const bytes = decodeCanonicalBase64Certificate(encoded);
-    return new X509Certificate(Uint8Array.from(bytes).buffer);
+    return {
+      // decodeCanonicalBase64Certificate hat eine nichtleere Zeichenkette verlangt.
+      encoded: encoded as string,
+      certificate: new X509Certificate(Uint8Array.from(bytes).buffer),
+    };
   });
 }
 
@@ -144,10 +158,29 @@ function assertFidoMdsIntermediateSignerIdentity(intermediate: X509Certificate):
   }
 }
 
-function assertFidoMdsSignerIdentity(blob: string): void {
+/** Prüft die Signer-Identität und liefert die x5c-Kette (Blatt zuerst) als PEM. */
+function assertFidoMdsSignerIdentity(blob: string): string[] {
   const certificates = parseFidoMdsSignerCertificates(blob);
-  assertFidoMdsLeafSignerIdentity(certificates[0]!);
-  assertFidoMdsIntermediateSignerIdentity(certificates[1]!);
+  assertFidoMdsLeafSignerIdentity(certificates[0]!.certificate);
+  assertFidoMdsIntermediateSignerIdentity(certificates[1]!.certificate);
+  // PEM-Umwandlung wie in verifyMDSBlob von SimpleWebAuthn.
+  return certificates.map(({ encoded }) => convertCertBufferToPEM(encoded));
+}
+
+/**
+ * Kette des BLOBs bis zu einem gepinnten Anker, danach die Sperrlisten jedes
+ * Nicht-Wurzel-Zertifikats (fail-closed, mit dem Abbruchsignal des Zeitlimits).
+ * Fehlermeldung wie bisher in verifyMDSBlob.
+ */
+async function assertFidoMdsCertificatePath(
+  signerChain: readonly string[],
+  signal: AbortSignal,
+): Promise<void> {
+  try {
+    await validateCertificatePath(signerChain, FIDO_MDS_TRUST_ANCHORS, { signal });
+  } catch (error) {
+    throw new Error('BLOB certificate path could not be validated', { cause: error });
+  }
 }
 
 async function readLimitedMdsBlob(response: Response): Promise<string> {
@@ -216,8 +249,13 @@ async function downloadVerifiedFidoMetadataBeforeDeadline(
   });
   if (!response.ok) throw new Error(`FIDO MDS antwortet mit HTTP ${response.status}`);
   const blob = await readLimitedMdsBlob(response);
-  assertFidoMdsSignerIdentity(blob);
-  const verified = await verifyMDSBlob(blob, { signal });
+  const signerChain = assertFidoMdsSignerIdentity(blob);
+  // T-02: Ohne MDS-Wurzeln prüft verifyMDSBlob nur JWT-Signatur und Inhalt und
+  // überspringt die eigene, upstream fail-open Ketten- und CRL-Prüfung.
+  SettingsService.setRootCertificates({ identifier: 'mds', certificates: [] });
+  const verified = await verifyMDSBlob(blob);
+  // Netzzugriff (CRLs) erst nach der Signaturprüfung.
+  await assertFidoMdsCertificatePath(signerChain, signal);
   if (!Number.isSafeInteger(verified.payload.no) || verified.payload.no <= 0) {
     throw new Error('Der signierte FIDO-MDS-BLOB besitzt keine gültige fortlaufende Version');
   }

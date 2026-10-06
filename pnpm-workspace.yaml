@@ -2,12 +2,6 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
-# SimpleWebAuthn 13.3.3 behandelt CRL-Netzwerk-/Parsefehler upstream als
-# "nicht gesperrt". Für Hardware-only muss die Attestationskette fail-closed
-# bleiben; der versionsgebundene Patch wird im Lockfile gehasht.
-patchedDependencies:
-  '@simplewebauthn/server@13.3.3': patches/@simplewebauthn__server@13.3.3.patch
-
 # pnpm >=11 reads project settings from pnpm-workspace.yaml instead of
 # package.json#pnpm or non-auth .npmrc entries.
 # Flaches node_modules: Host-Tools (ops-lib.sh), Image-Builds und der

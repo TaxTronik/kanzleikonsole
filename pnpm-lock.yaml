@@ -188,9 +188,6 @@ overrides:
   brace-expansion@1: 1.1.21
   brace-expansion@5: 5.0.12
 
-patchedDependencies:
-  '@simplewebauthn/server@13.3.3': 0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573
-
 importers:
 
   .:
@@ -278,7 +275,7 @@ importers:
         version: 13.3.0
       '@simplewebauthn/server':
         specifier: 13.3.3
-        version: 13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573)
+        version: 13.3.3
       '@taxtronik/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -377,7 +374,7 @@ importers:
         version: 16.3.6(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.13.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       next-auth:
         specifier: 5.0.0-beta.32
-        version: 5.0.0-beta.32(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573))(next@16.3.6(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.13.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(nodemailer@10.0.10)(react@19.2.6)
+        version: 5.0.0-beta.32(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3)(next@16.3.6(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.13.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(nodemailer@10.0.10)(react@19.2.6)
       otplib:
         specifier: ^13.4.0
         version: 13.4.0
@@ -429,7 +426,7 @@ importers:
     devDependencies:
       '@auth/core':
         specifier: 0.41.3
-        version: 0.41.3(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573))(nodemailer@10.0.10)
+        version: 0.41.3(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3)(nodemailer@10.0.10)
       '@prisma/adapter-pg':
         specifier: ^7.9.1
         version: 7.9.1
@@ -495,7 +492,7 @@ importers:
         version: 7.9.1(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
       '@simplewebauthn/server':
         specifier: 13.3.3
-        version: 13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573)
+        version: 13.3.3
       '@taxtronik/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -5478,7 +5475,7 @@ snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
 
-  '@auth/core@0.41.3(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573))(nodemailer@10.0.10)':
+  '@auth/core@0.41.3(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3)(nodemailer@10.0.10)':
     dependencies:
       '@panva/hkdf': 1.2.1
       jose: 6.2.3
@@ -5487,7 +5484,7 @@ snapshots:
       preact-render-to-string: 6.5.11(preact@10.24.3)
     optionalDependencies:
       '@simplewebauthn/browser': 13.3.0
-      '@simplewebauthn/server': 13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573)
+      '@simplewebauthn/server': 13.3.3
       nodemailer: 10.0.10
 
   '@aws-crypto/crc32@5.2.0':
@@ -6969,7 +6966,7 @@ snapshots:
 
   '@simplewebauthn/browser@13.3.0': {}
 
-  '@simplewebauthn/server@13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573)':
+  '@simplewebauthn/server@13.3.3':
     dependencies:
       '@hexagon/base64': 1.1.28
       '@levischuck/tiny-cbor': 0.2.11
@@ -9046,14 +9043,14 @@ snapshots:
 
   natural-compare@1.4.0: {}
 
-  next-auth@5.0.0-beta.32(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573))(next@16.3.6(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.13.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(nodemailer@10.0.10)(react@19.2.6):
+  next-auth@5.0.0-beta.32(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3)(next@16.3.6(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.13.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(nodemailer@10.0.10)(react@19.2.6):
     dependencies:
-      '@auth/core': 0.41.3(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573))(nodemailer@10.0.10)
+      '@auth/core': 0.41.3(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3)(nodemailer@10.0.10)
       next: 16.3.6(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.13.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       react: 19.2.6
     optionalDependencies:
       '@simplewebauthn/browser': 13.3.0
-      '@simplewebauthn/server': 13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573)
+      '@simplewebauthn/server': 13.3.3
       nodemailer: 10.0.10
 
   next@16.3.6(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.13.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6):

@@ -1322,6 +1322,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Die CRL- und Zertifikatskettenhärtung der Hardware-Anmeldung
+  liegt nicht mehr als versionsgebundener Patch auf `@simplewebauthn/server`
+  (69 KB, 14 Dateien je ESM/CommonJS), sondern als eigener Code in
+  `@taxtronik/crypto/certificate-path`. Die Bibliothek läuft ungepatcht in der
+  weiterhin exakt gepinnten Version 13.3.3, erhält keine Wurzelzertifikate mehr
+  und greift nicht mehr selbst aufs Netz zu. Attestationsketten (App) und die
+  MDS-Signaturkette (Worker, gegen die gepinnten GlobalSign-Wurzeln) werden mit
+  unveränderter Semantik fail-closed geprüft; Sperrlisten werden erst nach
+  erfolgreicher Signaturprüfung geladen. Upstream-Vorschlag:
+  `docs/development/simplewebauthn-upstream.md` (`ACCESS-TENANT-RLS-001`,
+  `FK-EXC-20261006-040`).
 - `./taxtronik update` übernimmt im Source-Kanal nur noch einen Ziel-Commit,
   der selbst oder über einen annotierten Tag auf genau diesen Commit mit einem
   Schlüssel aus einer gepinnten `allowed_signers`-Datei außerhalb des Checkouts

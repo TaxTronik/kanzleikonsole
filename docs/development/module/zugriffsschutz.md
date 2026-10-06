@@ -106,8 +106,10 @@ bleibt erreichbar; „Mandant aufnehmen“ wird nur mit `CLIENT_CREATE` angebote
   Authenticator-AAGUID passen.
 - **Signer- und Firmware-Bindung:** Der geschützte MDS-JWT-Header muss `RS256`
   und eine eng freigegebene Blatt-/Intermediate-Identität für
-  `mds.fidoalliance.org` enthalten, bevor SimpleWebAuthn Signatur, Kette und
-  Sperrlisten prüft. Eine Kette muss vor jedem CRL-Abruf exakt an einer
+  `mds.fidoalliance.org` enthalten, bevor SimpleWebAuthn die Signatur prüft.
+  Ketten und Sperrlisten prüft TaxTronik selbst (`@taxtronik/crypto/certificate-path`);
+  SimpleWebAuthn erhält dafür keine Wurzelzertifikate und greift nicht aufs
+  Netz zu. Eine Kette muss vor jedem CRL-Abruf exakt an einer
   freigegebenen Root enden; CA-BasicConstraints, KeyUsage, Pfadlänge und
   kritische Extensions werden fail-closed validiert. CRLs werden an den
   tatsächlichen Issuer, Signatur, AKI/SKI und Gültigkeitszeitraum gebunden;
@@ -306,7 +308,7 @@ Rollenmodell implizit.
 | TOTP-Helfer                                       | auth/totp                                  | `totp.test.ts`                                                                                                    |
 | TOTP-Setup und Reset-Rennen                       | login/actions.ts                           | `totp-setup-race.test.ts` + `totp-enrollment.test.ts`                                                             |
 | Passwort-/2FA-Kontowiederherstellung              | profile + admin/users actions              | `profile/__tests__/actions.test.ts` + `admin/users/__tests__/account-actions.test.ts`                             |
-| Physische WebAuthn-/MDS-Policy                    | auth/webauthn + DB-Policyanker + CRL-Patch | `webauthn.test.ts` + `simplewebauthn-crl-hardening.test.ts` + Config-/DB-/Supply-Chain-Tests                      |
+| Physische WebAuthn-/MDS-Policy                    | auth/webauthn + DB-Policyanker + crypto    | `webauthn*.test.ts` + `simplewebauthn-crl-hardening.test.ts` + Config-/DB-/Supply-Chain-Tests                     |
 | MDS-Abruf und gespeicherter Stand (P-23)          | Worker-Job fido-mds-refresh + DB-Snapshot  | `fido-mds-verify.test.ts` + `fido-mds-refresh.test.ts` + `fido-mds-snapshot.test.ts`                              |
 | Hardware-Modus, Fallback und Recovery             | staff auth + profile/admin/Owner-CLI       | `staff-auth-state.test.ts` + `totp-enrollment.test.ts` + Profil-/Admin-Action-Tests + `admin-break-glass.test.ts` |
 | Credential-Tenantgrenze (`ACCESS-TENANT-RLS-001`) | WebAuthn-Migration + FORCE RLS             | `staff-webauthn-migration.test.ts` + `staff-webauthn-rls.test.ts`                                                 |
