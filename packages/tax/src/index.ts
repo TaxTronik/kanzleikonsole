@@ -11,6 +11,8 @@
 export * from './stbvv/catalog';
 export * from './stbvv/calculator';
 export * from './screening/core';
+// R-02: GwG-Löschfristen (§ 8 Abs. 4 GwG) — gemeinsam für Web und Worker.
+export * from './gwg-retention';
 
 export {
   generateDeadlines,

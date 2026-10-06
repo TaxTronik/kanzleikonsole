@@ -3,7 +3,12 @@
 // (dueGwgDeletionDocsWhere). Der Filter muss für jeden Fristzweig genau die
 // Belege treffen, die findDueGwgDeletionDocs (JS-Fristlogik) liefert; geprüft
 // unter der App-Rolle (RLS) zu mehreren Stichtagen.
+// R-02: Der Worker (gwg-expiry-check) zählt mit denselben Filtern aus
+// @taxtronik/tax. Geprüft wird zusätzlich, dass der Prüfungsfilter
+// dueGwgCheckDeletionsWhere genau die Review-Queue findDueGwgCheckDeletions
+// trifft und die frühere Worker-Kopie des Belegfilters dasselbe zählte.
 import { randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
@@ -26,7 +31,43 @@ const app = new PrismaClient({
 type Retention = {
   findDueGwgDeletionDocs: (tx: TxClient, now: Date) => Promise<Array<{ documentId: string }>>;
   countDueGwgDeletionDocs: (tx: TxClient, now: Date) => Promise<number>;
+  findDueGwgCheckDeletions: (
+    tx: TxClient,
+    now: Date,
+  ) => Promise<Array<{ checkId: string; clientName: string }>>;
+  dueGwgDeletionDocsWhere: (now: Date) => Prisma.DocumentWhereInput;
+  dueGwgCheckDeletionsWhere: (now: Date) => Prisma.GwgCheckWhereInput;
 };
+
+const STICHTAGE = [
+  '2026-10-05T12:00:00Z',
+  '2031-12-31T23:59:59Z',
+  '2032-01-01T00:00:00Z',
+  '2037-06-01T00:00:00Z',
+  '2045-01-01T00:00:00Z',
+];
+
+const VERIFIED = { OR: [{ status: 'VERIFIED' as const }, { verifiedAt: { not: null } }] };
+
+/** R-02: frühere Worker-Kopie des Belegfilters (gwg-expiry-check), eingefroren als Nachweis. */
+function formerWorkerDocumentWhere(now: Date): Prisma.DocumentWhereInput {
+  const gwgDeletionCutoff = new Date(Date.UTC(now.getUTCFullYear() - 5, 0, 1));
+  return {
+    classification: 'GWG_EVIDENCE',
+    deletedAt: null,
+    OR: [
+      { client: { mandateEndedAt: { lt: gwgDeletionCutoff } } },
+      {
+        createdAt: { lt: gwgDeletionCutoff },
+        client: { mandateEndedAt: null, allowActive: false, onboardingCompletedAt: null },
+        NOT: [
+          { gwgIdDocuments: { some: { check: VERIFIED } } },
+          { gwgOnboardingInvite: { is: { gwgCheck: { is: VERIFIED } } } },
+        ],
+      },
+    ],
+  };
+}
 let retention: Retention;
 let tenantId = '';
 let staffId = '';
@@ -160,6 +201,19 @@ describeWithDatabase('GwG-Löschreife: COUNT-Filter = Fristlogik (P-21)', () => 
       },
     });
     await evidence(open, { gwgOnboardingInviteId: pendingInvite.id });
+
+    // R-02: nie zustande gekommene Erstprüfung, festgestellt 2019 — ab 2026 löschreif …
+    const backdate = new Date('2019-06-01T00:00:00Z');
+    const stale = await draftCheck(await client('Alte Erstprüfung'));
+    // … und eine ebenso alte, deren später erfasster wirtschaftlich Berechtigter
+    // (heutige Feststellung) die Frist neu beginnen lässt.
+    const refreshed = await draftCheck(await client('Erstprüfung mit neuer Feststellung'));
+    await owner.gwgBeneficialOwner.create({
+      data: { gwgCheckId: refreshed.id, fullName: 'Synthetische Person' },
+    });
+    for (const check of [stale, refreshed]) {
+      await owner.$executeRaw`UPDATE "gwg_check" SET "updated_at" = ${backdate} WHERE "id" = ${check.id}::uuid`;
+    }
   }, 60_000);
 
   afterAll(async () => {
@@ -170,13 +224,7 @@ describeWithDatabase('GwG-Löschreife: COUNT-Filter = Fristlogik (P-21)', () => 
     }
   });
 
-  it.each([
-    '2026-10-05T12:00:00Z',
-    '2031-12-31T23:59:59Z',
-    '2032-01-01T00:00:00Z',
-    '2037-06-01T00:00:00Z',
-    '2045-01-01T00:00:00Z',
-  ])('zählt zum Stichtag %s genau die Belege der Review-Queue', async (iso) => {
+  it.each(STICHTAGE)('zählt zum Stichtag %s genau die Belege der Review-Queue', async (iso) => {
     const now = new Date(iso);
     const [due, count] = await inTenant(async (tx) => [
       await retention.findDueGwgDeletionDocs(tx, now),
@@ -196,4 +244,38 @@ describeWithDatabase('GwG-Löschreife: COUNT-Filter = Fristlogik (P-21)', () => 
     expect(atRegularDeadline).toBe(4);
     expect(beforeDeadline).toBe(0);
   });
+
+  it.each(STICHTAGE)(
+    'zählt zum Stichtag %s genau die GwG-Prüfungen der Review-Queue (R-02)',
+    async (iso) => {
+      const now = new Date(iso);
+      const [due, count] = await inTenant(async (tx) => [
+        await retention.findDueGwgCheckDeletions(tx, now),
+        await tx.gwgCheck.count({ where: retention.dueGwgCheckDeletionsWhere(now) }),
+      ]);
+      expect(count).toBe(due.length);
+    },
+  );
+
+  it('lässt eine spätere Feststellung die Frist einer alten Erstprüfung neu beginnen (R-02)', async () => {
+    const now = new Date('2026-10-05T12:00:00Z');
+    const [due, count] = await inTenant(async (tx) => [
+      await retention.findDueGwgCheckDeletions(tx, now),
+      await tx.gwgCheck.count({ where: retention.dueGwgCheckDeletionsWhere(now) }),
+    ]);
+    expect(due.map((item) => item.clientName)).toEqual(['Alte Erstprüfung']);
+    expect(count).toBe(1);
+  });
+
+  it.each(STICHTAGE)(
+    'zählt mit der früheren Worker-Kopie zum Stichtag %s dieselben Belege (R-02)',
+    async (iso) => {
+      const now = new Date(iso);
+      const [shared, former] = await inTenant(async (tx) => [
+        await tx.document.count({ where: retention.dueGwgDeletionDocsWhere(now) }),
+        await tx.document.count({ where: formerWorkerDocumentWhere(now) }),
+      ]);
+      expect(former).toBe(shared);
+    },
+  );
 });

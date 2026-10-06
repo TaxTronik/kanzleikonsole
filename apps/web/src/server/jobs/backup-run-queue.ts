@@ -14,7 +14,11 @@ import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { withTimeout } from '@/lib/with-timeout';
 import { getWebQueue, WEB_QUEUE_TIMEOUT_MS } from './bullmq';
 
-/** Wie STALE_RUNNING_MS im Worker: ältere RUNNING-Records gelten als verwaist. */
+/**
+ * Wie BACKUP_STALE_RUNNING_MS des gemeinsamen Backup-Runners (@taxtronik/db/pg-tools):
+ * ältere RUNNING-Records gelten als verwaist. Bewusst nicht importiert — der
+ * Request-Pfad lädt den pg_dump-Runner nicht (siehe Route-Test).
+ */
 export const BACKUP_RUNNING_STALE_MS = 6 * 60 * 60 * 1000;
 
 const PENDING_STATES = new Set(['waiting', 'delayed', 'prioritized', 'waiting-children', 'active']);

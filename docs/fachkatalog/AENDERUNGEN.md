@@ -1,5 +1,41 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-001
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/server/auth/revocation.ts
+      - apps/web/src/server/backup/restore.ts
+      - apps/web/src/server/gwg/retention.ts
+      - apps/worker/src/jobs/backup-drill.ts
+      - apps/worker/src/jobs/gwg-expiry-check.ts
+      - packages/tax/src/__tests__/gwg-retention.test.ts
+      - packages/tax/src/gwg-retention.ts
+      - packages/tax/src/index.ts
+    rule_ids:
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - BACKUP-DRILL-INTEGRITY-001
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-HASH-CHAIN-001
+    reason: >-
+      Web und Worker nutzen für den Widerruf von Portal-Sitzungen, die Prädikate
+      der GwG-Löschfrist (§ 8 Abs. 4 GwG), die pg_restore-Argumente und den
+      Backup-Lauf jeweils eine gemeinsame Implementierung in @taxtronik/crypto,
+      @taxtronik/tax und @taxtronik/db/pg-tools statt synchron gehaltener
+      Kopien. Referenz ist jeweils die Web-Fassung: Fristbeginn, Löschfrist und
+      Höchstfrist sowie die Review-Queue bleiben unverändert; ein
+      PostgreSQL-Test belegt die Gleichheit der Filter. Der Worker widerruft
+      Sitzungen jetzt wie das Web monoton und fail-closed, der Operator-Backup
+      schließt wie der Worker verwaiste RUNNING-Einträge. Keine fachliche
+      Freigabe.
+    tests:
+      - packages/tax/src/__tests__/gwg-retention.test.ts
+      - packages/crypto/src/__tests__/session-revocation.test.ts
+      - packages/db/src/__tests__/pg-tools.test.ts
+      - packages/db/src/__tests__/gwg-retention-count.test.ts
+      - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
+      - apps/web/src/server/backup/__tests__/runner.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-044
     date: '2026-10-05'
     paths:
@@ -2544,6 +2580,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-001` dokumentiert gemeinsame Implementierungen
+  für Sitzungswiderruf, GwG-Löschfristen und Backup-Lauf in Web und Worker.
+  Fristlogik und Review-Queue bleiben unverändert.
 
 - 2026-10-05: `FK-EXC-20261005-044` dokumentiert die gemeinsame Regel für
   offene Portal-Formulare und die Startseite ohne Rückfrage-Anforderungen.

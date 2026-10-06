@@ -46,6 +46,8 @@ import { env } from '@taxtronik/config';
 import { canonicalSecretContext, type SecretContext } from './secret-slots';
 
 export * from './secret-slots';
+// R-02: Session-Widerruf (S11) — gemeinsamer Kern für Web und Worker.
+export * from './session-revocation';
 
 const CURRENT_VERSION = 'v3';
 const IV_LEN = 12; // GCM standard

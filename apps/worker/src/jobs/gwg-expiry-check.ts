@@ -31,6 +31,8 @@ import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { type NotificationKind } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
+import { advanceSessionRevocation } from '@taxtronik/crypto';
+import { dueGwgCheckDeletionsWhere, dueGwgDeletionDocsWhere } from '@taxtronik/tax';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
@@ -223,6 +225,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
     let idDocReminders = 0;
     let idDocRequests = 0;
     let deletionDueNotices = 0;
+    let portalRevocationFailures = 0;
 
     for (const tenantId of tenantIds) {
       const now = new Date();
@@ -374,7 +377,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
               where: { clientId: check.clientId, active: true },
               select: { id: true },
             });
-            await revokePortalSessions(contacts.map((c) => c.id));
+            portalRevocationFailures += await revokePortalSessions(contacts.map((c) => c.id));
           }
         }
 
@@ -422,79 +425,15 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       // 3. GwG-Lösch-Queue (§ 8 Abs. 1 und 4, DSGVO-Speicherbegrenzung) — tägliche Notification an
       //    ADMIN/PARTNER, sobald Einträge löschreif sind.
       //
-      //    Fristlogik wie apps/web/src/server/gwg/retention.ts: fünf Jahre ab
-      //    Mandatsende bzw. Feststellung bei nie zustande gekommener Beziehung.
-      //    Auch die Höchstfrist beginnt erst an diesem fachlichen Startpunkt;
-      //    das bloße Belegalter beendet keine laufende Geschäftsbeziehung.
+      //    Fristlogik und Filter gemeinsam mit der Web-Review-Queue
+      //    (R-02, @taxtronik/tax): fünf Jahre ab Mandatsende bzw. Feststellung
+      //    bei nie zustande gekommener Beziehung. Auch die Höchstfrist beginnt
+      //    erst an diesem fachlichen Startpunkt; das bloße Belegalter beendet
+      //    keine laufende Geschäftsbeziehung.
       // ----------------------------------------------------------------------
-      const gwgDeletionCutoff = new Date(Date.UTC(now.getUTCFullYear() - 5, 0, 1));
       const [dueDocs, dueChecks] = await Promise.all([
-        prismaOwner.document.count({
-          where: {
-            tenantId,
-            classification: 'GWG_EVIDENCE',
-            deletedAt: null,
-            OR: [
-              { client: { mandateEndedAt: { lt: gwgDeletionCutoff } } },
-              {
-                createdAt: { lt: gwgDeletionCutoff },
-                client: {
-                  mandateEndedAt: null,
-                  allowActive: false,
-                  onboardingCompletedAt: null,
-                },
-                // Parität zur echten Review-Queue: Ein jemals verifizierter
-                // verknüpfter Check belegt eine zustande gekommene Beziehung.
-                // Deren Frist darf nicht allein durch spätere Deaktivierung
-                // oder das Belegalter starten.
-                NOT: [
-                  {
-                    gwgIdDocuments: {
-                      some: {
-                        check: {
-                          OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }],
-                        },
-                      },
-                    },
-                  },
-                  {
-                    gwgOnboardingInvite: {
-                      is: {
-                        gwgCheck: {
-                          is: {
-                            OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }],
-                          },
-                        },
-                      },
-                    },
-                  },
-                ],
-              },
-            ],
-          },
-        }),
-        prismaOwner.gwgCheck.count({
-          where: {
-            tenantId,
-            destroyedAt: null,
-            OR: [
-              { client: { mandateEndedAt: { lt: gwgDeletionCutoff } } },
-              {
-                client: {
-                  mandateEndedAt: null,
-                  allowActive: false,
-                  onboardingCompletedAt: null,
-                },
-                verifiedAt: null,
-                updatedAt: { lt: gwgDeletionCutoff },
-                idDocuments: { none: { createdAt: { gte: gwgDeletionCutoff } } },
-                beneficialOwners: { none: { createdAt: { gte: gwgDeletionCutoff } } },
-                onboardingInvites: { none: { updatedAt: { gte: gwgDeletionCutoff } } },
-                status: { in: ['DRAFT', 'IN_REVIEW', 'REJECTED', 'EXPIRED'] },
-              },
-            ],
-          },
-        }),
+        prismaOwner.document.count({ where: { tenantId, ...dueGwgDeletionDocsWhere(now) } }),
+        prismaOwner.gwgCheck.count({ where: { tenantId, ...dueGwgCheckDeletionsWhere(now) } }),
       ]);
       const dueTotal = dueDocs + dueChecks;
       if (dueTotal > 0) {
@@ -535,6 +474,14 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       { stage1, stage2, stage3, idDocReminders, idDocRequests, deletionDueNotices },
       'gwg-expiry: done',
     );
+    // Fail-closed (R-02): Ein nicht bestätigter Widerruf darf den Lauf nicht als
+    // erfolgreich abschließen. Alle Tenants sind zu diesem Zeitpunkt bearbeitet;
+    // der Fehler macht den Lauf in Queue-Status und Logs sichtbar.
+    if (portalRevocationFailures > 0) {
+      throw new Error(
+        `gwg-expiry: ${portalRevocationFailures} Portal-Session-Widerruf(e) nicht bestätigt`,
+      );
+    }
     return { stage1, stage2, stage3, idDocReminders, idDocRequests, deletionDueNotices };
   },
   { connection, concurrency: 1 },
@@ -544,38 +491,32 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Portal-Session-Revocation (S11) — Worker-Seite.
+// Portal-Session-Widerruf (S11) — derselbe Kern wie die Web-App
+// (`advanceSessionRevocation` aus @taxtronik/crypto, R-02): Key-Schema
+// `revoke:portal:<contactId>`, monotones Lua-Skript (ein älterer Zeitstempel
+// schiebt den Cutoff nie zurück, ACCESS-TENANT-RLS-001) und fail-closed. Der
+// Worker schreibt über seine BullMQ-Redis-Verbindung (gleiche REDIS_URL, kein
+// Key-Prefix). Vorher: eigene Kopie per `SET … EX`, Fehler nur geloggt.
 //
-// KOPPLUNG: Key-Schema und Semantik stammen aus
-// apps/web/src/server/auth/revocation.ts — `revoke:portal:<contactId>` →
-// ms-Timestamp; Tokens mit `iat` davor gelten als revoked; TTL 30 Tage
-// (länger als die 24-h-JWT-TTL, damit auch noch nicht abgelaufene Tokens
-// erfasst werden). Das Web-Modul ist nicht importierbar (`@/`-Alias,
-// Web-Logger/Singleton) — der Worker schreibt deshalb über seine bestehende
-// BullMQ-Redis-Verbindung (gleiche REDIS_URL, kein Key-Prefix) dieselben
-// Keys. Schema-Änderungen in revocation.ts MÜSSEN hier nachgezogen werden.
-//
-// Fail-Mode: fail-open mit Log (analog revocation.ts) — der Session-Callback
-// in apps/web/src/server/auth/portal.ts prüft client.allowActive zusätzlich
-// bei jedem Request (Defense in Depth).
-const PORTAL_REVOKE_TTL_SEC = 30 * 24 * 60 * 60;
-
-async function revokePortalSessions(contactIds: string[]): Promise<void> {
+// Ein Fehlschlag wird gezählt und lässt den Lauf nach allen Tenants
+// fehlschlagen. Die Deaktivierung bleibt committed: Der Session-Callback in
+// apps/web/src/server/auth/portal.ts prüft client.allowActive zusätzlich bei
+// jedem Request (Defense in Depth).
+async function revokePortalSessions(contactIds: string[]): Promise<number> {
+  let failed = 0;
   for (const contactId of contactIds) {
     try {
-      await connection.set(
-        `revoke:portal:${contactId}`,
-        String(Date.now()),
-        'EX',
-        PORTAL_REVOKE_TTL_SEC,
-      );
+      await advanceSessionRevocation(connection, 'portal', contactId);
     } catch (e) {
-      log.warn(
-        { contactId, err: (e as Error).message },
-        'gwg-expiry: Portal-Session-Revocation fehlgeschlagen (fail-open)',
+      failed += 1;
+      const cause = (e as Error).cause as Error | undefined;
+      log.error(
+        { contactId, err: (cause ?? (e as Error)).message },
+        'gwg-expiry: Portal-Session-Widerruf nicht bestätigt (fail-closed)',
       );
     }
   }
+  return failed;
 }
 
 function stageForDaysLeft(daysLeft: number): Stage | null {

@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { pgRestoreArgs } from '@taxtronik/db/pg-tools';
 
 const h = vi.hoisted(() => ({
   send: vi.fn(),
@@ -132,6 +133,16 @@ describe('BACKUP-DRILL-INTEGRITY-001: real job rejects altered S3 bytes before p
     expect(result).toMatchObject({ ok: true });
     expect(restoredBytes).toEqual(original);
     expect(h.spawn).toHaveBeenCalledTimes(1);
+    // R-02: exakt die Flag-Liste des Produktiv-Restores (pgRestoreArgs, @taxtronik/db/pg-tools).
+    const restoreArgs = h.spawn.mock.calls[0]![1] as string[];
+    expect(restoreArgs.slice(0, 5)).toEqual([
+      '--clean',
+      '--if-exists',
+      '--no-owner',
+      '--single-transaction',
+      '--exit-on-error',
+    ]);
+    expect(restoreArgs).toEqual(pgRestoreArgs(restoreArgs.slice(5, -1), restoredPath));
     expect(h.send).toHaveBeenCalledTimes(1);
     expect(h.verify).toHaveBeenCalledTimes(1);
     expect(h.ddl.mock.calls[0]?.[0]).toMatch(/^CREATE DATABASE taxtronik_drill_[0-9a-f]{24}$/);

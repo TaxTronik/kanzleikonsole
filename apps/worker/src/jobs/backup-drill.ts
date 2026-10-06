@@ -43,7 +43,7 @@ import {
 } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
-import { pgConnArgs } from '../pg-conn';
+import { pgConnArgs, pgRestoreArgs } from '../pg-conn';
 import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { log } from '../logger';
@@ -144,20 +144,13 @@ async function restoreVerifiedFile(path: string, database: string): Promise<void
   const pgRestorePath = process.env['PG_RESTORE_PATH'] ?? 'pg_restore';
   const child = spawn(
     pgRestorePath,
-    // Identische Flags wie der Produktiv-Restore (restore.ts), einschließlich
-    // der bereits vollständig gegen den BackupRecord geprüften Datei.
-    // ACLs/REVOKEs gehoeren zum wiederhergestellten Sicherheitszustand. Die
-    // clusterweite Rolle taxtronik_app existiert in der Produktivinstanz und
-    // muss deshalb auch im Drill-Ziel die archivierten Grants erhalten.
-    [
-      '--clean',
-      '--if-exists',
-      '--no-owner',
-      '--single-transaction',
-      '--exit-on-error',
-      ...conn.args,
-      path,
-    ],
+    // R-02: dieselbe Flag-Liste wie der Produktiv-Restore (pgRestoreArgs aus
+    // @taxtronik/db/pg-tools), angewendet auf die bereits vollständig gegen den
+    // BackupRecord geprüfte Datei. ACLs/REVOKEs gehoeren zum wiederhergestellten
+    // Sicherheitszustand. Die clusterweite Rolle taxtronik_app existiert in der
+    // Produktivinstanz und muss deshalb auch im Drill-Ziel die archivierten
+    // Grants erhalten.
+    pgRestoreArgs(conn.args, path),
     { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ...conn.env } },
   );
   let stderr = '';

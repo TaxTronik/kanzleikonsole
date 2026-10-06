@@ -7,7 +7,7 @@
 // einen uralten Stand. Dieser Job schließt die Lücke; der Staleness-Alarm in
 // health-alert schlägt an, falls er ausfällt.
 //
-// Technik (spiegelt apps/web/src/server/backup/runner.ts):
+// Technik (gemeinsamer Runner mit dem Betreiber-Lauf, R-02: runPgBackup):
 //   - pg_dump kommt aus dem Worker-Image (postgresql18-client, Dockerfile).
 //   - pg_dump-stdout wird DIREKT als Multipart-Upload nach S3 gestreamt — KEINE
 //     lokale Kopie: der Worker ist read_only, /tmp ist ein 64-MB-tmpfs (reale
@@ -18,14 +18,13 @@
 //     Audit-Hash-Chain.
 // =============================================================================
 
-import { randomBytes } from 'node:crypto';
 import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { createWorker } from '../worker-factory';
 import { env } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter, createRfc3161Adapter } from '@taxtronik/evidence';
-import { pgConnArgs, pgDumpArgs, prismaBytes, spawnPgDump } from '@taxtronik/db/pg-tools';
+import { runPgBackup, streamingBackupSink } from '@taxtronik/db/pg-tools';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
 import { log } from '../logger';
@@ -44,153 +43,53 @@ const timestampPort = env.TIMESTAMP_AUTHORITY_URL
   : new LocalTimestampAdapter();
 const evidenceService = new EvidenceService(timestampPort);
 
-interface BackupRecordRef {
-  id: string;
-  tenantId: string;
-}
-
-async function markAll(
-  records: BackupRecordRef[],
-  data: Parameters<typeof prismaOwner.backupRecord.update>[0]['data'],
-  after: Record<string, unknown>,
-): Promise<void> {
-  await Promise.all(
-    records.map((r) =>
-      prismaOwner.$transaction(async (tx) => {
-        await tx.backupRecord.update({ where: { id: r.id }, data });
-        await evidenceService.record(tx, {
-          tenantId: r.tenantId,
-          actorType: 'SYSTEM',
-          actorId: null,
-          action: 'backup.run',
-          resourceType: 'backup_record',
-          resourceId: r.id,
-          after,
-        });
-      }),
-    ),
-  );
-}
-
-/** Ab diesem Alter gilt ein RUNNING-Record als verwaist (Hard-Crash/OOM). */
-const STALE_RUNNING_MS = 6 * 60 * 60 * 1000;
-
+/**
+ * R-02: derselbe Runner wie der Betreiber-Lauf (`runPgBackup` aus
+ * @taxtronik/db/pg-tools) — einschließlich des Zombie-Reconciles verwaister
+ * RUNNING-Records (> 6 h). Der Worker streamt ohne lokale Kopie direkt nach S3.
+ */
 export async function runScheduledBackup(
   now: Date = new Date(),
 ): Promise<{ ok: boolean; key?: string; error?: string }> {
-  const dumpUrl = env.DATABASE_URL;
-  const tenants = await prismaOwner.tenant.findMany({ select: { id: true } });
-  if (tenants.length === 0) return { ok: true }; // nichts zu sichern
-
-  // Zombie-Reconcile: bei SIGKILL/OOM/Stromausfall mitten im Dump bleibt ein
-  // BackupRecord ewig auf RUNNING (kein markAll-Pfad greift mehr). Vor dem
-  // neuen Lauf alte RUNNING-Zeilen auf FAILED setzen, damit das Admin-UI kein
-  // dauerhaft „laufendes" Backup zeigt und der Zombie nicht neben dem frischen
-  // Record stehen bleibt.
-  const staleBefore = new Date(now.getTime() - STALE_RUNNING_MS);
-  const reconciled = await prismaOwner.backupRecord.updateMany({
-    where: { status: 'RUNNING', startedAt: { lt: staleBefore } },
-    data: {
-      status: 'FAILED',
-      finishedAt: now,
-      errorMsg: 'Abgebrochen (verwaister RUNNING-Record, vermutlich Prozess-Crash).',
-    },
-  });
-  if (reconciled.count > 0) {
-    log.warn(
-      { count: reconciled.count },
-      'backup-run: verwaiste RUNNING-Records auf FAILED gesetzt',
-    );
-  }
-
-  const records: BackupRecordRef[] = await Promise.all(
-    tenants.map((t) =>
-      prismaOwner.backupRecord.create({
-        data: { tenantId: t.id, status: 'RUNNING' },
-      }),
-    ),
-  );
-
-  const yyyy = now.getUTCFullYear();
-  const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(now.getUTCDate()).padStart(2, '0');
-  const hh = String(now.getUTCHours()).padStart(2, '0');
-  const mi = String(now.getUTCMinutes()).padStart(2, '0');
-  const ss = String(now.getUTCSeconds()).padStart(2, '0');
-  // Sekunden + Zufallssuffix: der manuelle Web-Trigger und dieser Worker-Job
-  // laufen prozessübergreifend; bei Minutengranularität könnten sich zwei
-  // parallele Läufe denselben S3-Key/Pfad überschreiben (ein Dump ginge
-  // verloren, während beide Records SUCCESS meldeten).
-  const rnd = randomBytes(3).toString('hex');
-  const key = `pgdump/${yyyy}/${mm}/${dd}/taxtronik-${yyyy}${mm}${dd}-${hh}${mi}${ss}-${rnd}.sql.gz`;
-
-  let conn: { args: string[]; env: Record<string, string> };
-  try {
-    conn = pgConnArgs(dumpUrl);
-  } catch (e) {
-    const err = `DATABASE_URL nicht parsebar: ${(e as Error).message}`;
-    await markAll(
-      records,
-      { status: 'FAILED', finishedAt: new Date(), errorMsg: err },
-      { status: 'FAILED', error: err },
-    );
-    return { ok: false, error: err };
-  }
-
-  // ACLs sind Teil des sicherheitsrelevanten Datenbankzustands: insbesondere
-  // REVOKEs auf Audit-Tabellen und SECURITY-DEFINER-Funktionen sowie die
-  // gezielten Grants an taxtronik_app. Nur Ownership wird portabel gemacht;
-  // Privilegien muessen im Dump erhalten bleiben.
-  const dump = spawnPgDump(conn.env, pgDumpArgs(conn.args));
-  let sha: Buffer;
-  let sizeBytes: number;
-
-  try {
-    const upload = new Upload({
-      client: s3,
-      params: {
-        Bucket: BACKUP_BUCKET,
-        Key: key,
-        Body: dump.stream,
-        ContentType: 'application/octet-stream',
+  const result = await runPgBackup({
+    db: prismaOwner,
+    recordAudit: (tx, entry) => evidenceService.record(tx, entry),
+    sink: streamingBackupSink({
+      upload: async (body, key) => {
+        await new Upload({
+          client: s3,
+          params: {
+            Bucket: BACKUP_BUCKET,
+            Key: key,
+            Body: body,
+            ContentType: 'application/octet-stream',
+          },
+          queueSize: 4,
+          partSize: 5 * 1024 * 1024,
+        }).done();
       },
-      queueSize: 4,
-      partSize: 5 * 1024 * 1024,
-    });
-    await upload.done();
-    ({ sha, sizeBytes } = await dump.result());
-  } catch (e) {
-    const err = `Backup fehlgeschlagen: ${(e as Error).message}`;
-    // pg_dump-Prozess beenden, falls er noch läuft (z.B. Upload-Init-Fehler):
-    // sonst bleibt er als Zombie hängen und hält eine DB-Connection. body
-    // ebenfalls schließen, damit child.stdout nicht im Backpressure blockiert.
-    dump.abort();
-    // Verwaistes (evtl. unvollständiges) Objekt best-effort entfernen.
-    await s3
-      .send(new DeleteObjectCommand({ Bucket: BACKUP_BUCKET, Key: key }))
-      .catch(() => undefined);
-    await markAll(
-      records,
-      { status: 'FAILED', finishedAt: new Date(), errorMsg: err },
-      { status: 'FAILED', error: err },
+      remove: async (key) => {
+        await s3.send(new DeleteObjectCommand({ Bucket: BACKUP_BUCKET, Key: key }));
+      },
+    }),
+    databaseUrl: env.DATABASE_URL,
+    bucket: BACKUP_BUCKET,
+    now,
+    // Ohne Tenant gibt es nichts zu sichern (kein Record, kein Upload).
+    skipWithoutTenants: true,
+    log,
+  });
+  if (result.ok && result.key) {
+    log.info(
+      { key: result.key, sizeBytes: result.sizeBytes },
+      'backup-run: Backup erfolgreich nach S3 gestreamt',
     );
-    return { ok: false, error: err };
   }
-
-  await markAll(
-    records,
-    {
-      status: 'SUCCESS',
-      finishedAt: new Date(),
-      sizeBytes: BigInt(sizeBytes),
-      bucket: BACKUP_BUCKET,
-      key,
-      sha256: prismaBytes(sha),
-    },
-    { status: 'SUCCESS', sizeBytes, bucket: BACKUP_BUCKET, key, sha256: sha.toString('hex') },
-  );
-  log.info({ key, sizeBytes }, 'backup-run: Backup erfolgreich nach S3 gestreamt');
-  return { ok: true, key };
+  return {
+    ok: result.ok,
+    ...(result.key ? { key: result.key } : {}),
+    ...(result.error ? { error: result.error } : {}),
+  };
 }
 
 export const backupRunWorker = createWorker<ChecksJob>(

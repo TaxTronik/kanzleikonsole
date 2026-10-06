@@ -34,7 +34,7 @@ import type { Readable } from 'node:stream';
 import { PrismaClient } from '@taxtronik/db/prisma-client';
 import { env } from '@taxtronik/config';
 import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
-import { pgConnArgs } from '@taxtronik/db/pg-tools';
+import { pgConnArgs, pgRestoreArgs } from '@taxtronik/db/pg-tools';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { assertRestoreTargetSecurity } from '@taxtronik/db/restore-security';
 
@@ -370,17 +370,8 @@ async function runPgRestore(filePath: string, targetUrl: string): Promise<void> 
   // P-9: --single-transaction → ganz oder gar nicht. Fehler in einer Tabelle
   // rollt den gesamten Restore zurück, statt einen halb-konsistenten Zustand
   // zu hinterlassen. Bei Compliance-Software die einzig richtige Strategie.
-  // --exit-on-error doppelt sicher (single-transaction macht das implizit,
-  // aber explizit dokumentiert die Intention).
-  const args = [
-    '--clean',
-    '--if-exists',
-    '--no-owner',
-    '--single-transaction',
-    '--exit-on-error',
-    ...connArgs.args,
-    filePath,
-  ];
+  // R-02: dieselbe Flag-Liste wie der Restore-Drill des Workers (pgRestoreArgs).
+  const args = pgRestoreArgs(connArgs.args, filePath);
   const path = process.env['PG_RESTORE_PATH'] ?? 'pg_restore';
   const child = spawn(path, args, {
     stdio: ['ignore', 'pipe', 'pipe'],

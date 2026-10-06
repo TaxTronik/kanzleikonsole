@@ -220,6 +220,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- `pnpm backup:run` bzw. `./taxtronik backup` nutzen denselben Backup-Runner
+  wie der nächtliche Worker-Job und schließen verwaiste RUNNING-Einträge
+  (älter als 6 Stunden) ab.
 - CI: DB-, Restore-, Upgrade- und E2E-Job laufen parallel nach dem
   Quality-Job auf eigenen PostgreSQL-Ports (kritischer Pfad 60 statt 140
   Minuten Timeout); der separate E2E-Smoke-Job ist in `e2e-paranoid`
@@ -1100,6 +1103,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Der GwG-Fristjob widerruft Portal-Sitzungen wie das Web monoton und
+  fail-closed; ein nicht bestätigter Widerruf lässt den Lauf fehlschlagen.
+  Löschfristen, `pg_restore`-Argumente und Backup-Lauf haben je eine
+  gemeinsame Implementierung für Web und Worker
+  (`GWG-RETENTION-DESTRUCTION-001`, `BACKUP-DRILL-INTEGRITY-001`,
+  `FK-EXC-20261006-001`).
 - n8n: Ein nicht entschlüsselbares Legacy-Signaturgeheimnis fällt im Worker
   nicht mehr auf Klartext oder Umgebungsvariablen zurück; der Worker meldet
   nur den Feldnamen.

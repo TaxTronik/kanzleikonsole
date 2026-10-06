@@ -7,4 +7,4 @@
 // EINER Stelle liegt und nicht driftet.
 // =============================================================================
 
-export { pgConnArgs, prismaBytes } from '@taxtronik/db/pg-tools';
+export { pgConnArgs, pgRestoreArgs, prismaBytes } from '@taxtronik/db/pg-tools';

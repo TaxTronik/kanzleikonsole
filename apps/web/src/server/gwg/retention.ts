@@ -17,152 +17,32 @@
 // bestätigt der Berufsträger (kein stilles Auto-Delete von Rechtsbelegen).
 // =============================================================================
 
-import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
+import {
+  dueGwgDeletionDocsWhere,
+  GWG_UNESTABLISHED_CHECK_STATUSES,
+  gwgDeletionDeadline,
+  gwgDeletionDueStartCutoff,
+  gwgDocumentEffectiveStart,
+  gwgEffectiveStart,
+  gwgMaximumDeletionDeadline,
+} from '@taxtronik/tax';
 
-export const GWG_RETENTION_YEARS = 5;
-export const GWG_MAX_RETENTION_YEARS = 10;
-
-/**
- * Stichtag, ab dem die GwG-Belege eines beendeten Mandats zu löschen sind.
- * Frist beginnt am Jahresende des Mandatsende-Jahres + 5 Jahre → fällig ab dem
- * 1. Januar des Jahres danach (analog gobdRetentionUntil).
- * mandateEnd 2026-03-15 → Frist 2026-12-31 … 2031-12-31 → fällig ab 2032-01-01.
- */
-export function gwgDeletionDeadline(mandateEndedAt: Date): Date {
-  return new Date(Date.UTC(mandateEndedAt.getUTCFullYear() + GWG_RETENTION_YEARS + 1, 0, 1));
-}
-
-/** Absolute Vernichtungsgrenze ab dem maßgeblichen Fristbeginn (§ 8 Abs. 4 GwG). */
-export function gwgMaximumDeletionDeadline(retentionStartedAt: Date): Date {
-  return new Date(
-    Date.UTC(retentionStartedAt.getUTCFullYear() + GWG_MAX_RETENTION_YEARS + 1, 0, 1),
-  );
-}
-
-/** True, wenn die GwG-Belege des Mandats (zum Zeitpunkt `now`) löschreif sind. */
-export function isGwgDeletionDue(
-  mandateEndedAt: Date | null | undefined,
-  now: Date = new Date(),
-): boolean {
-  if (!mandateEndedAt) return false;
-  return now.getTime() >= gwgDeletionDeadline(mandateEndedAt).getTime();
-}
-
-/**
- * § 8 Abs. 4 S. 2 GwG: Der Fristbeginn ist das Ende der Geschäftsbeziehung.
- * Kam KEINE Geschäftsbeziehung zustande (Onboarding abgelehnt/abgelaufen,
- * Mandat nie aktiviert), beginnt die Frist mit dem Schluss des Kalenderjahres
- * der FESTSTELLUNG (Erfassung der Identifizierungsdaten). Sonst würden abgelehnte
- * Onboardings mit Ausweiskopien unbegrenzt gespeichert (DSGVO Art. 5 Abs. 1
- * lit. e). Liefert das maßgebliche Startdatum oder null (Frist läuft noch nicht:
- * aktives/offenes Mandat ohne Ende).
- */
-export function gwgEffectiveStart(
-  mandateEndedAt: Date | null | undefined,
-  checkStatus: string,
-  feststellungAt: Date | null | undefined,
-  verifiedAt: Date | null | undefined = null,
-  relationshipEstablished = false,
-): Date | null {
-  if (mandateEndedAt) return mandateEndedAt;
-  // Bei einer bereits zustande gekommenen Geschäftsbeziehung beginnt die
-  // reguläre Fünfjahresfrist erst mit deren Ende. Für eine nie abgeschlossene
-  // Erstprüfung greift dagegen der „übrige Fall": Ende des Jahres der
-  // Feststellung — auch wenn ein DRAFT/IN_REVIEW fachlich liegen blieb.
-  if (relationshipEstablished || verifiedAt) return null;
-  if (['DRAFT', 'IN_REVIEW', 'REJECTED', 'EXPIRED'].includes(checkStatus) && feststellungAt) {
-    return feststellungAt;
-  }
-  return null;
-}
-
-interface GwgRetentionCheckContext {
-  status: string;
-  createdAt: Date;
-  verifiedAt: Date | null;
-}
-
-export interface GwgDocumentRetentionContext {
-  createdAt: Date;
-  mandateEndedAt: Date | null;
-  relationshipEstablished?: boolean;
-  linkedChecks: GwgRetentionCheckContext[];
-  invite: {
-    status: string;
-    expiresAt: Date;
-    cancelledAt: Date | null;
-    gwgCheck: GwgRetentionCheckContext | null;
-  } | null;
-}
-
-/**
- * Fristbeginn eines GwG-Dateibelegs. Neben dem normalen Mandatsende werden
- * auch Onboardings erfasst, bei denen nie eine Geschäftsbeziehung zustande kam:
- * abgebrochen, abgelaufen oder fachlich abgelehnt. Ein lediglich abgelaufener,
- * zuvor VERIFIED Check einer laufenden Beziehung ist dagegen KEIN Löschgrund.
- */
-export function gwgDocumentEffectiveStart(
-  context: GwgDocumentRetentionContext,
-  now: Date = new Date(),
-): Date | null {
-  if (context.mandateEndedAt) return context.mandateEndedAt;
-  if (context.relationshipEstablished) return null;
-  const invite = context.invite;
-  const referencedChecks = [
-    ...context.linkedChecks,
-    ...(invite?.gwgCheck ? [invite.gwgCheck] : []),
-  ];
-  // Derselbe Beleg kann in einer späteren Wiederholungsprüfung erneut genutzt
-  // werden. Sobald ein verknüpfter Check verifiziert wurde, gehört er zu einer
-  // zustande gekommenen Beziehung; deren reguläre Frist wartet auf das Ende.
-  if (referencedChecks.some((check) => check.status === 'VERIFIED' || check.verifiedAt !== null)) {
-    return null;
-  }
-  // Ohne jemals verifizierte Beziehung beginnt die Frist mit der Feststellung,
-  // nicht erst mit einem späteren Statuswechsel. `now` bleibt aus API-
-  // Kompatibilität Teil der Signatur; der absolute Ablauf wird unten separat
-  // berücksichtigt.
-  void now;
-  return context.createdAt;
-}
-
-/**
- * Erster Fristbeginn, der zum Zeitpunkt `now` NICHT mehr löschreif ist:
- * gwgDeletionDeadline(start) <= now  ⇔  start < 1.1.(Jahr(now) − 5) (UTC).
- */
-function gwgDueStartCutoff(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear() - GWG_RETENTION_YEARS, 0, 1));
-}
-
-const VERIFIED_GWG_CHECK: Prisma.GwgCheckWhereInput = {
-  OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }],
-};
-
-/**
- * P-21: dieselbe Auswahl wie findDueGwgDeletionDocs als Datenbankfilter, damit
- * Kacheln zählen können, ohne alle Belege zu laden. Bildet
- * gwgDocumentEffectiveStart + gwgDeletionDeadline exakt nach (Gleichheit prüft
- * gwg-retention-count.test.ts gegen PostgreSQL): Fristbeginn ist das
- * Mandatsende, sonst — ohne zustande gekommene Beziehung und ohne verifizierten
- * verknüpften Check — die Erfassung des Belegs.
- */
-export function dueGwgDeletionDocsWhere(now: Date = new Date()): Prisma.DocumentWhereInput {
-  const cutoff = gwgDueStartCutoff(now);
-  return {
-    classification: 'GWG_EVIDENCE',
-    deletedAt: null,
-    OR: [
-      { client: { is: { mandateEndedAt: { lt: cutoff } } } },
-      {
-        createdAt: { lt: cutoff },
-        client: { is: { mandateEndedAt: null, allowActive: false, onboardingCompletedAt: null } },
-        gwgIdDocuments: { none: { check: { is: VERIFIED_GWG_CHECK } } },
-        NOT: { gwgOnboardingInvite: { is: { gwgCheck: { is: VERIFIED_GWG_CHECK } } } },
-      },
-    ],
-  };
-}
+// R-02: Die reinen Fristprädikate und Datenbankfilter liegen in @taxtronik/tax
+// (gemeinsam mit dem Worker-Job gwg-expiry-check); dieses Modul behält die
+// Review-Queue-Abfragen und exportiert die Prädikate für bestehende Aufrufer.
+export {
+  dueGwgCheckDeletionsWhere,
+  dueGwgDeletionDocsWhere,
+  GWG_MAX_RETENTION_YEARS,
+  GWG_RETENTION_YEARS,
+  gwgDeletionDeadline,
+  gwgDocumentEffectiveStart,
+  gwgEffectiveStart,
+  gwgMaximumDeletionDeadline,
+  isGwgDeletionDue,
+  type GwgDocumentRetentionContext,
+} from '@taxtronik/tax';
 
 /** Anzahl der löschreifen GwG-Belege (Admin-Kachel) per COUNT statt Volllast. */
 export async function countDueGwgDeletionDocs(
@@ -296,7 +176,7 @@ export async function findDueGwgCheckDeletions(
   tx: TxClient,
   now: Date = new Date(),
 ): Promise<GwgCheckDeletionItem[]> {
-  const cutoff = new Date(Date.UTC(now.getUTCFullYear() - GWG_RETENTION_YEARS, 0, 1));
+  const cutoff = gwgDeletionDueStartCutoff(now);
   const checks = await tx.gwgCheck.findMany({
     where: {
       destroyedAt: null,
@@ -312,7 +192,7 @@ export async function findDueGwgCheckDeletions(
             onboardingCompletedAt: null,
           },
           verifiedAt: null,
-          status: { in: ['DRAFT', 'IN_REVIEW', 'REJECTED', 'EXPIRED'] },
+          status: { in: [...GWG_UNESTABLISHED_CHECK_STATUSES] },
           updatedAt: { lt: cutoff },
         },
       ],

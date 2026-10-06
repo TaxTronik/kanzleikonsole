@@ -11,7 +11,12 @@ vi.mock('../bullmq', () => ({
   getWebQueue: () => ({ getJob: m.getJob, remove: m.remove, add: m.add }),
 }));
 
-import { enqueueManualBackup, getManualBackupJobState } from '../backup-run-queue';
+import { BACKUP_STALE_RUNNING_MS } from '@taxtronik/db/pg-tools';
+import {
+  BACKUP_RUNNING_STALE_MS,
+  enqueueManualBackup,
+  getManualBackupJobState,
+} from '../backup-run-queue';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -53,5 +58,13 @@ describe('getManualBackupJobState', () => {
   it('liefert null ohne bekannten Lauf', async () => {
     m.getJob.mockResolvedValue(undefined);
     expect(await getManualBackupJobState('tenant-1')).toBeNull();
+  });
+});
+
+// R-02: Die Sperre gegen Doppelstarts nutzt dieselbe Verwaist-Grenze wie der
+// gemeinsame Backup-Runner (vorher nur per Kommentar synchron).
+describe('BACKUP_RUNNING_STALE_MS', () => {
+  it('entspricht der Verwaist-Grenze des Backup-Runners', () => {
+    expect(BACKUP_RUNNING_STALE_MS).toBe(BACKUP_STALE_RUNNING_MS);
   });
 });

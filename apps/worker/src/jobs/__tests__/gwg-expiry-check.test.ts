@@ -8,16 +8,19 @@
 //   - RF-8: STAGE3-Statuswechsel (Check EXPIRED + Mandant deaktiviert) und
 //     die zugehörigen Audit-Records laufen in EINER Tenant-Context-Tx
 //   - GwG-Schranke: bei STAGE3-Deaktivierung werden Portal-Sessions aller
-//     aktiven Kontakte revoziert (revoke:portal:<contactId> via Redis)
+//     aktiven Kontakte revoziert (revoke:portal:<contactId> via Redis) — R-02:
+//     derselbe monotone, fail-closed Kern wie die Web-App (@taxtronik/crypto)
 //   - Idempotenz: bereits umgestellte Checks erzeugen keinen Audit-Eintrag
 //     und keine erneute Session-Revocation
 //   - U-5: Auto-Anforderung für ablaufende Ausweise idempotent per FK
 //     (linkedGwgIdDocumentId), HIGH/7-Tage-Frist wenn bereits abgelaufen
 //   - GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE an ADMIN/PARTNER,
-//     sobald löschreife Belege/Aufzeichnungen existieren (resource_id = Tenant)
+//     sobald löschreife Belege/Aufzeichnungen existieren (resource_id = Tenant);
+//     R-02: Filter aus @taxtronik/tax, identisch zur Web-Review-Queue
 //   - F-10: Zuständige nur, solange aktiv und zugriffsberechtigt; sonst
 //     aktive ADMIN/PARTNER (gemeinsamer Empfängerfilter)
-// Fachkatalog: GWG-REVERIFICATION-VALIDITY-001, ACCESS-NOTIFICATION-RECIPIENT-001
+// Fachkatalog: GWG-REVERIFICATION-VALIDITY-001, ACCESS-NOTIFICATION-RECIPIENT-001,
+// GWG-RETENTION-DESTRUCTION-001, ACCESS-TENANT-RLS-001
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -51,9 +54,9 @@ const h = vi.hoisted(() => {
   const notify = vi.fn();
   const resolveNotificationsTx = vi.fn();
   // Portal-Session-Revocation: der Worker schreibt `revoke:portal:<contactId>`
-  // direkt über die BullMQ-Redis-Verbindung (Key-Schema aus
-  // apps/web/src/server/auth/revocation.ts).
-  const redisSet = vi.fn();
+  // über die BullMQ-Redis-Verbindung mit dem gemeinsamen Lua-Skript
+  // (advanceSessionRevocation aus @taxtronik/crypto, R-02).
+  const redisEval = vi.fn();
   return {
     prismaOwner,
     tx,
@@ -63,12 +66,12 @@ const h = vi.hoisted(() => {
     record,
     notify,
     resolveNotificationsTx,
-    redisSet,
+    redisEval,
   };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
-vi.mock('../../queues', () => ({ connection: { set: h.redisSet } }));
+vi.mock('../../queues', () => ({ connection: { eval: h.redisEval, get: vi.fn() } }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -88,6 +91,7 @@ vi.mock('@taxtronik/evidence', () => ({
   LocalTimestampAdapter: class {},
 }));
 
+import { dueGwgCheckDeletionsWhere, dueGwgDeletionDocsWhere } from '@taxtronik/tax';
 import { processors } from './mocks/bullmq';
 import '../gwg-expiry-check';
 
@@ -195,7 +199,7 @@ beforeEach(() => {
     created: [input].flat().length,
     updated: 0,
   }));
-  h.redisSet.mockResolvedValue('OK');
+  h.redisEval.mockResolvedValue('OK');
 });
 
 afterEach(() => {
@@ -424,18 +428,39 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     expect(result.stage3).toBe(3);
 
     // GwG-Schranke (§ 11 GwG): Portal-Sessions ALLER aktiven Kontakte des
-    // deaktivierten Mandanten werden sofort revoziert — Key-Schema wie in
-    // apps/web/src/server/auth/revocation.ts (revoke:portal:<contactId>).
+    // deaktivierten Mandanten werden sofort revoziert — Key-Schema und
+    // monotones Lua-Skript wie in der Web-App (revoke:portal:<contactId>).
     expect(h.prismaOwner.clientContact.findMany).toHaveBeenCalledWith({
       where: { clientId: 'client-1', active: true },
       select: { id: true },
     });
-    expect(h.redisSet).toHaveBeenCalledWith(
+    expect(h.redisEval).toHaveBeenCalledWith(
+      expect.stringContaining('if current > incoming then'),
+      1,
       'revoke:portal:contact-1',
       String(FIXED_NOW.getTime()),
-      'EX',
       30 * 24 * 60 * 60,
     );
+  });
+
+  it('fail-closed: ein nicht bestätigter Widerruf lässt den Lauf nach allen Tenants scheitern', async () => {
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() - 5 * DAY)),
+    ]);
+    h.redisEval.mockRejectedValue(
+      new Error("READONLY You can't write against a read only replica."),
+    );
+
+    await expect(run()).rejects.toThrow('1 Portal-Session-Widerruf(e) nicht bestätigt');
+
+    // Die Deaktivierung bleibt committed und die Eskalation geht trotzdem raus;
+    // der Fehler wird erst nach der vollständigen Bearbeitung gemeldet.
+    expect(h.tx.client.updateMany).toHaveBeenCalled();
+    expect(
+      upsertCalls()
+        .map((c) => c[1])
+        .sort(),
+    ).toEqual(['admin-1', 'bt-1', 'hb-1']);
   });
 
   it('idempotent: Check/Mandant bereits umgestellt (count=0) → KEIN Audit-Eintrag', async () => {
@@ -450,7 +475,7 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     expect(h.record).not.toHaveBeenCalled();
     // keine erneute Session-Revocation — der Mandant war schon deaktiviert
     // (Revocation lief beim tatsächlichen Übergang bzw. in rejectCheckAction)
-    expect(h.redisSet).not.toHaveBeenCalled();
+    expect(h.redisEval).not.toHaveBeenCalled();
     // die (idempotente) Notification geht trotzdem raus
     expect(upsertCalls().length).toBeGreaterThan(0);
   });
@@ -476,7 +501,7 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     expect(h.record.mock.calls[0]![1]).toMatchObject({ action: 'gwg.check.expire' });
     // Keine STAGE3-Eskalations-Notification, keine Session-Revocation.
     expect(upsertCalls()).toEqual([]);
-    expect(h.redisSet).not.toHaveBeenCalled();
+    expect(h.redisEval).not.toHaveBeenCalled();
     expect(result.stage3).toBe(0);
   });
 });
@@ -638,29 +663,25 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
 
     const result = await run();
 
-    // Frist-Cutoff: Mandatsende vor dem 1.1.(Jahr(now) − 5) — exakt, kein Grobfilter
-    const cutoff = new Date(Date.UTC(2021, 0, 1));
+    // R-02: exakt die Filter der Web-Review-Queue (@taxtronik/tax), je Tenant.
     expect(h.prismaOwner.document.count).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        tenantId: TENANT,
-        classification: 'GWG_EVIDENCE',
-        deletedAt: null,
-        OR: expect.arrayContaining([{ client: { mandateEndedAt: { lt: cutoff } } }]),
-      }),
+      where: { tenantId: TENANT, ...dueGwgDeletionDocsWhere(FIXED_NOW) },
     });
     expect(h.prismaOwner.gwgCheck.count).toHaveBeenCalledWith({
-      where: expect.objectContaining({
-        tenantId: TENANT,
-        destroyedAt: null,
-        OR: expect.arrayContaining([{ client: { mandateEndedAt: { lt: cutoff } } }]),
-      }),
+      where: { tenantId: TENANT, ...dueGwgCheckDeletionsWhere(FIXED_NOW) },
     });
+    // Frist-Cutoff: Fristbeginn vor dem 1.1.(Jahr(now) − 5) — exakt, kein Grobfilter
+    const cutoff = new Date(Date.UTC(2021, 0, 1));
     const documentQuery = h.prismaOwner.document.count.mock.calls[0]?.[0] as {
       where: { OR: Array<Record<string, unknown>> };
     };
     const checkQuery = h.prismaOwner.gwgCheck.count.mock.calls[0]?.[0] as {
       where: { OR: Array<Record<string, unknown>> };
     };
+    expect(documentQuery.where.OR).toContainEqual({
+      client: { is: { mandateEndedAt: { lt: cutoff } } },
+    });
+    expect(checkQuery.where.OR).toContainEqual({ client: { mandateEndedAt: { lt: cutoff } } });
     // Das reine Alter darf bei einer laufenden Geschäftsbeziehung weder Beleg
     // noch Check in die Lösch-Notification aufnehmen.
     expect(
@@ -671,24 +692,18 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
       (branch) => 'createdAt' in branch,
     );
     expect(neverEstablishedDocumentBranch).toMatchObject({
-      NOT: [
-        {
-          gwgIdDocuments: {
-            some: {
-              check: { OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }] },
-            },
+      createdAt: { lt: cutoff },
+      client: { is: { mandateEndedAt: null, allowActive: false, onboardingCompletedAt: null } },
+      gwgIdDocuments: {
+        none: { check: { is: { OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }] } } },
+      },
+      NOT: {
+        gwgOnboardingInvite: {
+          is: {
+            gwgCheck: { is: { OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }] } },
           },
         },
-        {
-          gwgOnboardingInvite: {
-            is: {
-              gwgCheck: {
-                is: { OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }] },
-              },
-            },
-          },
-        },
-      ],
+      },
     });
     const neverEstablishedCheckBranch = checkQuery.where.OR.find(
       (branch) => 'verifiedAt' in branch,
