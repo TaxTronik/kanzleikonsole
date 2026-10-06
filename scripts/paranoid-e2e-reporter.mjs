@@ -12,6 +12,7 @@ export default class ParanoidDiscoveryReporter {
         maxFailures: config.maxFailures,
         projects: config.projects.map((project) => ({
           name: project.name,
+          retries: project.retries,
           testDir: project.testDir,
           testMatch: project.testMatch,
           testIgnore: project.testIgnore,

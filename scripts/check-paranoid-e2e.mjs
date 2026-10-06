@@ -121,6 +121,10 @@ export function checkDiscovery(report, specs, testDir) {
     'Playwright darf die vollständige Suite nicht durch shard/maxFailures beschränken.',
   );
   requireThat(
+    config.projects?.every((project) => project.retries === 0),
+    'Playwright darf in CI nicht wiederholen: ein Retry würde einen fehlgeschlagenen Test grün melden.',
+  );
+  requireThat(
     resolve(config.rootDir) === resolve(testDir),
     'Playwright rootDir muss die vollständige E2E-Testsammlung erfassen.',
   );

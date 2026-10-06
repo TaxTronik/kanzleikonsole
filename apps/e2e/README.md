@@ -87,6 +87,13 @@ Der Discovery-Check benötigt installierte Workspace-Abhängigkeiten, aber keine
 Browser, Datenbank oder laufende App. Er führt die Tests nicht aus und ersetzt
 keinen echten E2E-Lauf.
 
+In CI prüft die Suite das ausgelieferte Artefakt: Produktions-Build wie im
+Web-Image und der Standalone-Server (`apps/web/.next/standalone/apps/web/server.js`)
+mit `NODE_ENV=production`; PostgreSQL und Redis laufen mit den Images aus
+`infra/compose/docker-compose.yml`. Playwright wiederholt keine Tests
+(`retries: 0`, vom Guard geprüft), damit ein erst im Retry bestandener Test den
+Lauf nicht grün meldet.
+
 ## Reports
 
 Nach einem Lauf:

@@ -220,6 +220,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die E2E-Suite prüft den Produktions-Build über den ausgelieferten
+  Standalone-Server mit `NODE_ENV=production` und den Produktions-Images von
+  PostgreSQL und Redis; fehlgeschlagene Tests werden nicht mehr wiederholt
+  (`ASSURANCE-RELEASE-EVIDENCE-001`, `FK-EXC-20261006-007`).
 - Das Worker-Image startet einen gebündelten Worker
   (`node --enable-source-maps dist/index.js`) statt `tsx src/index.ts` und
   enthält nur Produktionsabhängigkeiten (Laufzeitbaum 422 MB statt 1,2 GB, ohne

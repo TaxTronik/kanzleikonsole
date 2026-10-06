@@ -64,7 +64,13 @@ function report(testDir, files) {
       shard: null,
       maxFailures: 0,
       projects: [
-        { name: 'chromium', testDir, grep: { source: '.*', flags: '' }, grepInvert: null },
+        {
+          name: 'chromium',
+          testDir,
+          retries: 0,
+          grep: { source: '.*', flags: '' },
+          grepInvert: null,
+        },
       ],
     },
     tests: files.map((file) => ({
@@ -228,6 +234,9 @@ test('rejects empty suites, filtered configuration and runtime skip annotations'
       value.config.maxFailures = 1;
     },
     (value) => {
+      value.config.projects[0].retries = 2;
+    },
+    (value) => {
       value.config.projects[0].grep.source = 'selected';
     },
     (value) => {
@@ -265,6 +274,8 @@ test('real Playwright discovery covers future nested specs and exposes config fi
     specs: 2,
     tests: 4,
   });
+  writeFileSync(configPath, `${config}, retries: 1 };`);
+  assert.throws(() => checkDiscovery(list(), scanTestSources(f.tests), f.tests), /Retry/);
   writeFileSync(configPath, `${config}, grep: /one/ };`);
   assert.throws(() => checkDiscovery(list(), scanTestSources(f.tests), f.tests), /grep/);
   writeFileSync(configPath, `${config}, testIgnore: '**/nested/**' };`);

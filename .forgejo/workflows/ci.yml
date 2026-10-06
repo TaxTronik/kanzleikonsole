@@ -636,6 +636,9 @@ jobs:
   # Smoke-Job ist hier aufgegangen: tests/01-smoke.spec.ts läuft als Teil der
   # vollständigen Suite, ein zweites `next build` und eine zweite Spec-Liste
   # entfallen.
+  # Geprüft wird das ausgelieferte Artefakt: Produktions-Build und derselbe
+  # Standalone-Server wie im Web-Image (NODE_ENV=production), PostgreSQL und
+  # Redis mit den digest-gepinnten Images aus infra/compose/docker-compose.yml.
   # ===========================================================================
   e2e-paranoid:
     name: E2E Paranoid (Rate-Limit, Actions, Compliance)
@@ -644,7 +647,8 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
+        # Wie in Produktion (Alpine/musl, gleiche Kollation) statt Debian.
+        image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -660,7 +664,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
       redis:
-        image: redis:7-alpine@sha256:b1addbe72465a718643cff9e60a58e6df1841e29d6d7d60c9a85d8d72f08d1a7
+        image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
         ports:
           - 6379:6379
         options: >-
@@ -705,8 +709,10 @@ jobs:
       SMTP_FROM: 'TaxTronik <noreply@example.de>'
       S3_ENDPOINT: http://localhost:8333
       S3_REGION: us-east-1
-      S3_ACCESS_KEY: ci
-      S3_SECRET_KEY: ci-secret-plus-thirtytwo-chars
+      # Ausdrückliche CI-Werte: das Prod-Gate des Servers (NODE_ENV=production)
+      # lehnt die Dev-Defaults ci/ci-secret* ab (dev-default-secrets.json).
+      S3_ACCESS_KEY: e2e-access-key
+      S3_SECRET_KEY: e2e-s3-secret-with-more-than-32-chars
       S3_BUCKET_GOBD: gobd
       S3_BUCKET_GWG: gwg
       S3_BUCKET_GENERAL: general
@@ -739,15 +745,14 @@ jobs:
 
       - name: Start SeaweedFS (same S3 engine as production)
         run: |
-          # S3-Config aus Template rendern
-          S3_ACCESS_KEY=ci S3_SECRET_KEY=ci-secret-plus-thirtytwo-chars
-          cat > /tmp/seaweedfs-s3.json << 'S3JSON'
+          # S3-Config aus Template rendern (Zugang aus dem Job-env)
+          cat > /tmp/seaweedfs-s3.json << S3JSON
           {
             "identities": [
               {
                 "name": "taxtronik",
                 "credentials": [
-                  { "accessKey": "ci", "secretKey": "ci-secret-plus-thirtytwo-chars" }
+                  { "accessKey": "${S3_ACCESS_KEY}", "secretKey": "${S3_SECRET_KEY}" }
                 ],
                 "actions": ["Admin","Read","Write","List","Tagging",
                   "GetBucketAcl","PutBucketAcl","GetObjectAcl","PutObjectAcl",
@@ -826,8 +831,8 @@ jobs:
             exit 1
           fi
           docker run --rm -i --network host \
-            -e AWS_ACCESS_KEY_ID=ci \
-            -e AWS_SECRET_ACCESS_KEY=ci-secret-plus-thirtytwo-chars \
+            -e AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" \
+            -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
             -e AWS_DEFAULT_REGION=us-east-1 \
             -e S3_ENDPOINT=http://localhost:8333 \
             --entrypoint /bin/sh \
@@ -836,8 +841,8 @@ jobs:
       - name: Verify S3 buckets and Object-Lock
         run: |
           docker run --rm --network host \
-            -e AWS_ACCESS_KEY_ID=ci \
-            -e AWS_SECRET_ACCESS_KEY=ci-secret-plus-thirtytwo-chars \
+            -e AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" \
+            -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
             -e AWS_DEFAULT_REGION=us-east-1 \
             --entrypoint /bin/sh \
             amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 -ec '
@@ -868,15 +873,39 @@ jobs:
               assert_lock gwg GOVERNANCE 5
             '
 
-      - name: Build web app
+      # Wie Dockerfile.web als Produktions-Build: NODE_ENV=production bindet
+      # HSTS und das Prod-Gate in das Artefakt; NEXTAUTH_URL muss dort https sein.
+      - name: Build web app (Produktion)
+        env:
+          NODE_ENV: production
+          NEXTAUTH_URL: https://localhost:3000
         run: pnpm --filter @taxtronik/web build
 
       - name: Install Playwright browser
         run: pnpm --filter @taxtronik/e2e exec playwright install chromium --with-deps
 
-      - name: Start web app
+      # Ausgeliefertes Artefakt statt `next start`: Standalone-Server mit der
+      # Verzeichnisstruktur des Web-Images (static/public wie dessen COPYs),
+      # NODE_ENV=production und HOSTNAME=0.0.0.0 wie im Container. Nur für
+      # lokales HTTP ohne TLS-Proxy: NEXTAUTH_URL zeigt per https auf localhost
+      # (Prod-Gate), E2E_BASE_URL bleibt http; erst CI=true, DEV_SKIP_TOTP und
+      # E2E_ALLOW_DEV_SKIP_TOTP_IN_PRODUCTION erlauben dann unpräfixierte
+      # Session-Cookies und den TOTP-Bypass (server/auth/session-cookie.ts,
+      # server/auth/staff-login.ts). TRUST_PROXY_REQUIRED=true wie hinter dem
+      # mitgelieferten Proxy: Next setzt X-Forwarded-For, IP-Limits greifen.
+      - name: Start web app (Standalone-Server, NODE_ENV=production)
+        env:
+          NODE_ENV: production
+          CI: 'true'
+          NEXTAUTH_URL: https://localhost:3000
+          TRUST_PROXY_REQUIRED: 'true'
+          HOSTNAME: 0.0.0.0
+          PORT: '3000'
         run: |
-          pnpm --filter @taxtronik/web start > web.log 2>&1 &
+          standalone=apps/web/.next/standalone
+          cp -R apps/web/.next/static "$standalone/apps/web/.next/static"
+          cp -R apps/web/public "$standalone/apps/web/public"
+          node "$standalone/apps/web/server.js" > web.log 2>&1 &
           echo $! > web.pid
 
           for i in {1..60}; do

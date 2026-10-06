@@ -46,12 +46,16 @@ export default defineConfig({
   expect: { timeout: 10_000 }, // Increased from 5s for CI stability
   fullyParallel: false, // Auth-Tests sequenziell (nur 1 Admin-Account)
   forbidOnly: !!process.env['CI'],
-  retries: process.env['CI'] ? 2 : 0,
+  // Keine Wiederholungen: ein erst im zweiten oder dritten Versuch bestandener
+  // Test darf den Lauf nicht grün melden (Guard: scripts/check-paranoid-e2e.mjs).
+  // failOnFlakyTests wäre gleichwertig, ist für den Discovery-Guard aber nicht
+  // sichtbar (Playwright 1.60 reicht es nicht an Reporter weiter).
+  retries: 0,
   workers: 1,
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   use: {
     baseURL: BASE_URL,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     actionTimeout: 15_000, // Increased from 10s for CI stability

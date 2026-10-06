@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-007
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Der CI-Job e2e-paranoid baut die Web-App mit NODE_ENV=production und startet
+      für die Playwright-Suite den ausgelieferten Standalone-Server statt
+      next start, mit expliziten Nicht-Default-Zugangsdaten für S3 und den
+      digest-gepinnten Produktions-Images von PostgreSQL (18-alpine) und Redis.
+      Playwright wiederholt fehlgeschlagene Tests nicht mehr (retries: 0); der
+      Paranoid-Guard lehnt Wiederholungen ab. Umfang der Suite, Release-Gates und
+      der Testnachweis „E2E Paranoid“ bleiben unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - scripts/tests/check-paranoid-e2e.test.mjs
+      - scripts/release/tests/check-release-gates.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-006
     date: '2026-10-06'
     paths:
@@ -2797,6 +2818,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-007` dokumentiert die E2E-Suite gegen den
+  Standalone-Produktionsserver ohne Testwiederholungen. Umfang und Nachweis
+  der Suite bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-006` dokumentiert das gemeinsame Dokument-DTO,
   serverseitige Ordner- und Suchfilter und den gemeinsamen Löschdialog.
