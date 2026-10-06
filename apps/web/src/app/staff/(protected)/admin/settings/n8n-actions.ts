@@ -3,7 +3,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { env, n8nDeliveryMode } from '@taxtronik/config';
+import { env } from '@taxtronik/config';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
@@ -12,6 +12,14 @@ import {
   requiresSeparateTestWebhook,
   signOutboundN8n,
 } from '@taxtronik/n8n-shared';
+import {
+  checkPlannedN8nRoute,
+  createPlannedN8nDeliveriesTx,
+  findActiveN8nRouteEndpointsTx,
+  n8nDeliveryJob,
+  n8nRoutingState,
+  readN8nDeliveryConfig,
+} from '@taxtronik/n8n-shared/outbox-enqueue';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { evidenceService } from '@/server/container';
 import { assertN8nUrl, safeFetchN8n, type N8nTargetKind } from '@/server/http/ssrf-guard';
@@ -847,6 +855,7 @@ export async function retryN8nDeliveryAction(deliveryId: string): Promise<Action
             connectionId: true,
             productionUrl: true,
             testUrl: true,
+            testMode: true,
             subscriptions: {
               where: { enabled: true },
               select: { event: true },
@@ -856,26 +865,22 @@ export async function retryN8nDeliveryAction(deliveryId: string): Promise<Action
       },
     });
     if (!delivery) return { kind: 'missing' as const };
-    const connection = await tx.n8nConnection.findUnique({
-      where: { tenantId: ctx.tenantId },
-      select: { id: true, enabled: true, routingMode: true, signingSecretEncrypted: true },
-    });
-    const currentTarget =
-      n8nDeliveryMode === 'test' ? delivery.endpoint?.testUrl : delivery.endpoint?.productionUrl;
-    const routeIsCurrent = Boolean(
-      delivery.endpoint?.enabled &&
-      delivery.endpoint.connectionId === connection?.id &&
-      delivery.connectionIdSnapshot === connection?.id &&
-      connection.enabled &&
-      connection.routingMode === 'EXPLICIT' &&
-      connection.signingSecretEncrypted &&
-      currentTarget &&
-      currentTarget === delivery.targetUrl &&
-      delivery.endpoint.subscriptions.some(
-        (subscription) => subscription.event === delivery.outbox.event,
-      ),
-    );
-    if (!routeIsCurrent) return { kind: 'stale' as const };
+    // R-01: dieselbe Snapshot-Prüfung wie der Worker unmittelbar vor dem
+    // Versand — Zielauswahl über plannedN8nTarget, also auch für Routen im
+    // testMode. Manuell wiederholt werden nur explizite Routen.
+    const routing = n8nRoutingState(await readN8nDeliveryConfig(tx, ctx.tenantId));
+    const route = delivery.endpoint
+      ? checkPlannedN8nRoute(
+          {
+            targetUrl: delivery.targetUrl,
+            connectionIdSnapshot: delivery.connectionIdSnapshot,
+            event: delivery.outbox.event,
+            endpoint: delivery.endpoint,
+          },
+          routing,
+        )
+      : null;
+    if (!route?.ok) return { kind: 'stale' as const };
     await tx.n8nDelivery.update({
       where: { id: delivery.id },
       data: {
@@ -915,17 +920,8 @@ export async function retryN8nDeliveryAction(deliveryId: string): Promise<Action
   }
 
   try {
-    await getN8nDeliverQueue().add(
-      'deliver',
-      { deliveryId: reset.id },
-      {
-        jobId: `manual-retry-${reset.id}-${randomUUID()}`,
-        attempts: 6,
-        backoff: { type: 'exponential', delay: 60_000 },
-        removeOnComplete: { age: 24 * 60 * 60 },
-        removeOnFail: { age: 7 * 24 * 60 * 60 },
-      },
-    );
+    const job = n8nDeliveryJob(reset.id, { kind: 'manual-retry', nonce: randomUUID() });
+    await getN8nDeliverQueue().add(job.name, job.data, job.opts);
   } catch (error) {
     await withTenantContext(ctx, async (tx) => {
       await tx.n8nDelivery.updateMany({
@@ -963,37 +959,24 @@ export async function replayUnroutedN8nEventAction(outboxId: string): Promise<Ac
     });
     if (!outbox) return { kind: 'missing' as const };
 
-    const connection = await tx.n8nConnection.findUnique({
-      where: { tenantId: ctx.tenantId },
-      select: {
-        id: true,
-        enabled: true,
-        routingMode: true,
-        signingSecretEncrypted: true,
-      },
-    });
+    const config = await readN8nDeliveryConfig(tx, ctx.tenantId);
+    const routing = n8nRoutingState(config);
+    const connection = config.connection;
     if (
-      !connection?.enabled ||
-      connection.routingMode !== 'EXPLICIT' ||
-      !connection.signingSecretEncrypted
+      !connection ||
+      routing.disabled ||
+      routing.routingMode !== 'EXPLICIT' ||
+      !routing.signingSecretAvailable
     ) {
       return { kind: 'configuration' as const };
     }
 
-    const subscriptions = await tx.n8nEventSubscription.findMany({
-      where: {
-        tenantId: ctx.tenantId,
-        event: outbox.event,
-        enabled: true,
-        endpoint: { connectionId: connection.id, enabled: true },
-      },
-      select: {
-        endpoint: {
-          select: { id: true, name: true, productionUrl: true, testUrl: true },
-        },
-      },
+    const endpoints = await findActiveN8nRouteEndpointsTx(tx, {
+      tenantId: ctx.tenantId,
+      event: outbox.event,
+      connectionId: connection.id,
     });
-    if (subscriptions.length === 0) return { kind: 'routes' as const };
+    if (endpoints.length === 0) return { kind: 'routes' as const };
 
     // Claim innerhalb derselben Transaktion: parallele Klicks dürfen nie zwei
     // Delivery-Sätze für dasselbe historische Event erzeugen.
@@ -1003,30 +986,16 @@ export async function replayUnroutedN8nEventAction(outboxId: string): Promise<Ac
     });
     if (!claimed.count) return { kind: 'missing' as const };
 
-    const pendingIds: string[] = [];
-    let skipped = 0;
-    for (const { endpoint } of subscriptions) {
-      const targetUrl = n8nDeliveryMode === 'test' ? endpoint.testUrl : endpoint.productionUrl;
-      const skipReason =
-        n8nDeliveryMode === 'test' && !targetUrl
-          ? 'Kein sicherer n8n-Test-Webhook für diesen Endpoint konfiguriert'
-          : null;
-      const delivery = await tx.n8nDelivery.create({
-        data: {
-          tenantId: ctx.tenantId,
-          outboxId: outbox.id,
-          endpointId: endpoint.id,
-          connectionIdSnapshot: connection.id,
-          endpointNameSnapshot: endpoint.name,
-          targetUrl: targetUrl ?? null,
-          status: skipReason ? 'SKIPPED' : 'PENDING',
-          lastError: skipReason,
-        },
-        select: { id: true },
-      });
-      if (skipReason) skipped += 1;
-      else pendingIds.push(delivery.id);
-    }
+    // R-01: dieselbe Zielauswahl wie bei der Erstplanung (plannedN8nTarget) —
+    // eine Route im testMode erhält ihre Test-URL. Vorher entstand hier eine
+    // Delivery mit Produktions-URL, die der Worker als „Ziel geändert" verwarf.
+    const { pendingIds, skipped } = await createPlannedN8nDeliveriesTx(tx, {
+      tenantId: ctx.tenantId,
+      outboxId: outbox.id,
+      connectionId: connection.id,
+      endpoints,
+      signingSecretAvailable: routing.signingSecretAvailable,
+    });
 
     if (pendingIds.length === 0) {
       await tx.n8nOutbox.update({
@@ -1046,11 +1015,11 @@ export async function replayUnroutedN8nEventAction(outboxId: string): Promise<Ac
       resourceId: outbox.id,
       after: {
         event: outbox.event,
-        deliveriesCreated: subscriptions.length,
+        deliveriesCreated: endpoints.length,
         skipped,
       },
     });
-    return { kind: 'replayed' as const, pendingIds, total: subscriptions.length, skipped };
+    return { kind: 'replayed' as const, pendingIds, total: endpoints.length, skipped };
   });
 
   if (replay.kind === 'missing') {
@@ -1069,17 +1038,8 @@ export async function replayUnroutedN8nEventAction(outboxId: string): Promise<Ac
   let queueFailures = 0;
   for (const deliveryId of replay.pendingIds) {
     try {
-      await getN8nDeliverQueue().add(
-        'deliver',
-        { deliveryId },
-        {
-          jobId: `delivery-${deliveryId}`,
-          attempts: 6,
-          backoff: { type: 'exponential', delay: 60_000 },
-          removeOnComplete: { age: 24 * 60 * 60 },
-          removeOnFail: { age: 7 * 24 * 60 * 60 },
-        },
-      );
+      const job = n8nDeliveryJob(deliveryId);
+      await getN8nDeliverQueue().add(job.name, job.data, job.opts);
     } catch {
       // Der Reconcile-Job nimmt persistierte PENDING-Deliveries wieder auf.
       queueFailures += 1;

@@ -263,6 +263,53 @@ describe('enqueueN8nEvent routing', () => {
     expect(h.queueAdd).toHaveBeenCalledTimes(1);
   });
 
+  it('plant eine Route im testMode an ihre Test-URL (plannedN8nTarget, R-01)', async () => {
+    h.tx.n8nEventSubscription.findMany.mockResolvedValue([
+      {
+        endpoint: {
+          id: 'endpoint-debug',
+          name: 'Debug',
+          productionUrl: 'https://n8n.example/webhook/debug',
+          testUrl: 'https://n8n.example/webhook-test/debug',
+          testMode: true,
+        },
+      },
+    ]);
+
+    await enqueueN8nEvent('request.opened', { requestId: 'request-1' }, { tenantId: 'tenant-1' });
+
+    expect(h.tx.n8nDelivery.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        endpointId: 'endpoint-debug',
+        targetUrl: 'https://n8n.example/webhook-test/debug',
+        status: 'PENDING',
+      }),
+      select: { id: true },
+    });
+  });
+
+  it('ergänzt einen Legacy-Eintrag ohne Secret nicht feldweise aus ENV (R-01)', async () => {
+    h.tx.n8nConnection.findUnique.mockResolvedValue(null);
+    h.tx.tenantSetting.findUnique.mockResolvedValue({
+      value: { webhookBaseUrl: 'https://n8n.example/hooks' },
+    });
+    h.env.N8N_HMAC_SECRET = 'globales-secret';
+
+    const result = await enqueueN8nEvent(
+      'request.opened',
+      { requestId: 'request-1' },
+      { tenantId: 'tenant-1' },
+    );
+
+    expect(result).toEqual({
+      eventId: 'outbox-1',
+      status: 'SKIPPED',
+      deliveryCount: 1,
+      error: 'n8n nicht vollständig konfiguriert',
+    });
+    expect(h.queueAdd).not.toHaveBeenCalled();
+  });
+
   it('markiert fehlende Legacy-Konfiguration als SKIPPED, niemals DELIVERED', async () => {
     h.tx.n8nConnection.findUnique.mockResolvedValue(null);
 

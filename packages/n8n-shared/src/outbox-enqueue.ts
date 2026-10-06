@@ -16,18 +16,28 @@
 // env/deliveryMode kommen direkt aus @taxtronik/config (in beiden Prozessen
 // vorhanden). WICHTIG: Subpath-Import (`@taxtronik/n8n-shared/outbox-enqueue`)
 // verwenden — bestehende Tests mocken den Paket-Index.
+//
+// R-01: Zielauswahl, Secret-Vorrang, Job-Optionen, Routenprüfung und
+// Aggregation leben in routing.ts/deliveries.ts und werden hier für Web-Actions
+// und Worker mit exportiert — eine API statt drei Kopien.
 // =============================================================================
 
-import { env, n8nDeliveryMode } from '@taxtronik/config';
 import type { Prisma } from '@prisma/client';
 import { isAllowedN8nEvent, type N8nEventName } from './index';
+import {
+  createPlannedN8nDeliveriesTx,
+  findActiveN8nRouteEndpointsTx,
+  readN8nDeliveryConfig,
+} from './deliveries';
+import {
+  hasN8nSigningSecret,
+  isN8nConnectionDisabled,
+  legacyN8nTargetUrl,
+  type N8nRoutingConnection,
+} from './routing';
 
-export const DELIVERY_JOB_OPTIONS = {
-  attempts: 6,
-  backoff: { type: 'exponential' as const, delay: 60_000 },
-  removeOnComplete: { age: 24 * 60 * 60 },
-  removeOnFail: { age: 7 * 24 * 60 * 60 },
-};
+export * from './routing';
+export * from './deliveries';
 
 export interface OutboxLogger {
   error(obj: Record<string, unknown>, msg: string): void;
@@ -37,23 +47,13 @@ export interface OutboxEnqueueDeps {
   /** Owner-Client (BYPASSRLS) — die Zielauflösung läuft in EINER Transaktion. */
   db: { $transaction<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> };
   /**
-   * Reiht den BullMQ-Job für eine Delivery ein (jobId `delivery-<id>` +
-   * DELIVERY_JOB_OPTIONS setzt der Adapter). Wirft bei Fehlern — der Kern
-   * loggt und zählt sie; der Reconcile-Job sammelt stuck PENDING später ein.
+   * Reiht den BullMQ-Job für eine Delivery ein (`n8nDeliveryJob(id)`: jobId
+   * `delivery-<id>` + DELIVERY_JOB_OPTIONS setzt der Adapter). Wirft bei
+   * Fehlern — der Kern loggt und zählt sie; der Reconcile-Job sammelt stuck
+   * PENDING später ein.
    */
   enqueueDelivery: (deliveryId: string) => Promise<unknown>;
   log: OutboxLogger;
-}
-
-interface LegacyStoredConfig {
-  webhookBaseUrl?: string;
-  hmacEncrypted?: string;
-  hmacSecret?: string;
-}
-
-interface LegacyConfigHint {
-  webhookBaseUrl: string;
-  secretConfigured: boolean;
 }
 
 export type N8nEnqueueStatus =
@@ -79,30 +79,6 @@ interface RoutingPlan {
   deliveryCount: number;
   deliveryIds: string[];
   error?: string;
-}
-
-function legacyTargetUrl(baseUrl: string, event: string): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  const modeBase = n8nDeliveryMode === 'test' ? base.replace(/\/webhook$/, '/webhook-test') : base;
-  return `${modeBase}/${encodeURIComponent(event)}`;
-}
-
-async function readLegacyConfigHint(
-  tx: Prisma.TransactionClient,
-  tenantId: string | null,
-): Promise<LegacyConfigHint> {
-  let stored: LegacyStoredConfig | null = null;
-  if (tenantId) {
-    const row = await tx.tenantSetting.findUnique({
-      where: { tenantId_key: { tenantId, key: 'integrations.n8n' } },
-      select: { value: true },
-    });
-    stored = row ? (row.value as LegacyStoredConfig) : null;
-  }
-  return {
-    webhookBaseUrl: stored?.webhookBaseUrl?.trim() || env.N8N_WEBHOOK_BASE_URL || '',
-    secretConfigured: Boolean(stored?.hmacEncrypted || stored?.hmacSecret || env.N8N_HMAC_SECRET),
-  };
 }
 
 async function readExistingDedupeResult(
@@ -141,28 +117,13 @@ async function readExistingDedupeResult(
   };
 }
 
-async function readRoutingConnectionTx(tx: Prisma.TransactionClient, tenantId: string | null) {
-  return tenantId
-    ? await tx.n8nConnection.findUnique({
-        where: { tenantId },
-        select: {
-          id: true,
-          name: true,
-          enabled: true,
-          routingMode: true,
-          webhookBaseUrl: true,
-          signingSecretEncrypted: true,
-        },
-      })
-    : null;
-}
-
 async function planExplicitDeliveriesTx(
   tx: Prisma.TransactionClient,
   input: {
     tenantId: string;
     event: N8nEventName;
-    connection: NonNullable<Awaited<ReturnType<typeof readRoutingConnectionTx>>>;
+    connection: N8nRoutingConnection;
+    signingSecretAvailable: boolean;
     outboxId: string;
   },
   markWithoutDelivery: (
@@ -172,20 +133,12 @@ async function planExplicitDeliveriesTx(
   ) => Promise<RoutingPlan>,
 ): Promise<RoutingPlan> {
   const { tenantId, event, connection, outboxId } = input;
-  const subscriptions = await tx.n8nEventSubscription.findMany({
-    where: {
-      tenantId,
-      event,
-      enabled: true,
-      endpoint: { connectionId: connection.id, enabled: true },
-    },
-    select: {
-      endpoint: {
-        select: { id: true, name: true, productionUrl: true, testUrl: true, testMode: true },
-      },
-    },
+  const endpoints = await findActiveN8nRouteEndpointsTx(tx, {
+    tenantId,
+    event,
+    connectionId: connection.id,
   });
-  if (subscriptions.length === 0) {
+  if (endpoints.length === 0) {
     const configuredSubscriptions = await tx.n8nEventSubscription.count({
       where: {
         tenantId,
@@ -206,41 +159,18 @@ async function planExplicitDeliveriesTx(
   }
 
   // Sobald eine normalisierte Connection existiert, ist sie alleinige
-  // Secret-Quelle. Ein stiller Fallback auf tenant_setting/ENV würde ein
-  // bewusst gelöschtes oder rotiertes Secret wieder aktivieren.
-  const secretConfigured = Boolean(connection.signingSecretEncrypted);
-  const deliveryIds: string[] = [];
-  let pending = 0;
-  for (const { endpoint } of subscriptions) {
-    // Test-Ziel entweder global (N8N_DELIVERY_MODE=test) oder pro Route
-    // über den Debug-Schalter testMode — beides liefert an /webhook-test.
-    const useTestUrl = n8nDeliveryMode === 'test' || endpoint.testMode;
-    const targetUrl = useTestUrl ? endpoint.testUrl : endpoint.productionUrl;
-    const skipReason = !secretConfigured
-      ? 'n8n-Signatur-Secret fehlt'
-      : useTestUrl && !targetUrl
-        ? 'Kein sicherer n8n-Test-Webhook für diesen Endpoint konfiguriert'
-        : null;
-    const delivery = await tx.n8nDelivery.create({
-      data: {
-        tenantId,
-        outboxId,
-        endpointId: endpoint.id,
-        connectionIdSnapshot: connection.id,
-        endpointNameSnapshot: endpoint.name,
-        targetUrl: targetUrl ?? null,
-        status: skipReason ? 'SKIPPED' : 'PENDING',
-        lastError: skipReason,
-      },
-      select: { id: true },
-    });
-    if (!skipReason) {
-      pending += 1;
-      deliveryIds.push(delivery.id);
-    }
-  }
+  // Secret-Quelle (n8nDeliveryConfigFrom). Test-Ziel global
+  // (N8N_DELIVERY_MODE=test) oder per Route-Debug-Schalter testMode
+  // (plannedN8nTarget) — beides liefert an /webhook-test.
+  const planned = await createPlannedN8nDeliveriesTx(tx, {
+    tenantId,
+    outboxId,
+    connectionId: connection.id,
+    endpoints,
+    signingSecretAvailable: input.signingSecretAvailable,
+  });
 
-  const allSkipped = pending === 0;
+  const allSkipped = planned.pendingIds.length === 0;
   if (allSkipped) {
     await tx.n8nOutbox.update({
       where: { id: outboxId },
@@ -250,8 +180,8 @@ async function planExplicitDeliveriesTx(
   return {
     outboxId,
     status: allSkipped ? 'SKIPPED' : 'PENDING',
-    deliveryCount: subscriptions.length,
-    deliveryIds,
+    deliveryCount: endpoints.length,
+    deliveryIds: planned.pendingIds,
     ...(allSkipped ? { error: 'Alle n8n-Zustellungen wurden übersprungen' } : {}),
   } satisfies RoutingPlan;
 }
@@ -293,11 +223,13 @@ export async function enqueueN8nEventCore(
         data: { tenantId, event, payload: payload as object, dedupeKey },
         select: { id: true },
       });
-      const connection = await readRoutingConnectionTx(tx, tenantId);
       // Legacy-Konfiguration wird nur gelesen, wenn noch keine normalisierte
-      // Connection existiert. So kann weder eine alte Tenant-Einstellung noch
-      // ENV eine unvollständige/rotierte Connection unbemerkt ergänzen.
-      const legacy = connection ? null : await readLegacyConfigHint(tx, tenantId);
+      // Connection existiert; ENV gilt nur ohne Connection UND ohne Legacy-
+      // Eintrag. So kann weder eine alte Tenant-Einstellung noch ENV eine
+      // unvollständige/rotierte Konfiguration unbemerkt ergänzen.
+      const config = await readN8nDeliveryConfig(tx, tenantId);
+      const connection = config.connection;
+      const signingSecretAvailable = hasN8nSigningSecret(config.secretSource);
 
       const markWithoutDelivery = async (
         status: 'UNROUTED' | 'SKIPPED',
@@ -330,7 +262,7 @@ export async function enqueueN8nEventCore(
         } satisfies RoutingPlan;
       };
 
-      if (connection && (!connection.enabled || connection.routingMode === 'DISABLED')) {
+      if (connection && isN8nConnectionDisabled(connection)) {
         return markWithoutDelivery('SKIPPED', 'n8n-Integration bewusst deaktiviert', true);
       }
 
@@ -338,20 +270,21 @@ export async function enqueueN8nEventCore(
         // Eine Connection kann nur bei vorhandenem Tenant geladen werden.
         return planExplicitDeliveriesTx(
           tx,
-          { tenantId: tenantId as string, event, connection, outboxId: outbox.id },
+          {
+            tenantId: tenantId as string,
+            event,
+            connection,
+            signingSecretAvailable,
+            outboxId: outbox.id,
+          },
           markWithoutDelivery,
         );
       }
 
       // Eine normalisierte LEGACY-Connection verwendet ebenfalls ausschließlich
       // ihre eigenen Felder. tenant_setting/ENV gelten nur ohne Connection.
-      const legacyBase = connection
-        ? connection.webhookBaseUrl?.trim() || ''
-        : legacy?.webhookBaseUrl || '';
-      const secretConfigured = connection
-        ? Boolean(connection.signingSecretEncrypted)
-        : Boolean(legacy?.secretConfigured);
-      if (!legacyBase || !secretConfigured) {
+      const legacyBase = config.legacyWebhookBaseUrl;
+      if (!legacyBase || !signingSecretAvailable) {
         return markWithoutDelivery('SKIPPED', 'n8n nicht vollständig konfiguriert', true);
       }
 
@@ -363,7 +296,7 @@ export async function enqueueN8nEventCore(
           endpointNameSnapshot: connection?.name
             ? `${connection.name} (Legacy)`
             : `Legacy: ${event}`,
-          targetUrl: legacyTargetUrl(legacyBase, event),
+          targetUrl: legacyN8nTargetUrl(legacyBase, event),
         },
         select: { id: true },
       });

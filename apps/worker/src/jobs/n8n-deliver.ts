@@ -8,41 +8,32 @@
 // =============================================================================
 
 import { randomUUID } from 'node:crypto';
-import { Queue } from 'bullmq';
 import { createWorker } from '../worker-factory';
-import type { Prisma } from '@prisma/client';
-import { env, n8nDeliveryMode } from '@taxtronik/config';
+import { n8nDeliveryMode } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
-import {
-  decryptSecret,
-  looksEncrypted,
-  SECRET_SLOTS,
-  secretSlotContext,
-  type SecretContext,
-} from '@taxtronik/crypto';
-import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
+import { readEncryptedSetting, SECRET_SLOTS, secretSlotContext } from '@taxtronik/crypto';
 import { safeFetch, SsrfGuardError } from '@taxtronik/http-utils';
 import { isAllowedN8nEvent, signOutboundN8n } from '@taxtronik/n8n-shared';
-import { connection, type N8nDeliverJob } from '../queues';
+import {
+  aggregateN8nOutboxTx,
+  checkPlannedN8nRoute,
+  legacyN8nTargetUrl,
+  n8nDeliveryJob,
+  n8nLegacyOutboxJob,
+  n8nRoutingState,
+  readN8nDeliveryConfig,
+  resolveN8nSigningSecret,
+  type N8nRoutingState,
+  type N8nSecretFieldReader,
+} from '@taxtronik/n8n-shared/outbox-enqueue';
+import { connection, queues, type N8nDeliverJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
-
-const DELIVERY_JOB_OPTIONS = {
-  attempts: 6,
-  backoff: { type: 'exponential' as const, delay: 60_000 },
-  removeOnComplete: { age: 24 * 60 * 60 },
-  removeOnFail: { age: 7 * 24 * 60 * 60 },
-};
 
 // Deutlich länger als der 15-s-HTTP-Timeout. Ein zweiter Worker darf eine
 // Delivery erst nach diesem Lease übernehmen; Terminal-Updates sind zusätzlich
 // an das zufällige Token gebunden.
 const DELIVERY_LEASE_MS = 2 * 60_000;
-// Reconcile läuft alle fünf Minuten. Nur eine Delivery mit abgelaufenem
-// PROCESSING-Lease erhält einen zeitgebundenen Job-Key: Er umgeht den completed
-// Tombstone des ursprünglichen Jobs, dedupliziert aber parallele Reconcile-
-// Läufe desselben Fensters. PENDING-Jobs behalten ihren BullMQ-Backoff.
-const RECONCILE_JOB_BUCKET_MS = 5 * 60_000;
 
 /** Only a short diagnostic is persisted; never buffer a complete webhook error body. */
 async function readErrorPrefix(response: Response): Promise<string> {
@@ -65,140 +56,42 @@ async function readErrorPrefix(response: Response): Promise<string> {
   }
 }
 
-function deliveryRecoveryJobId(id: string, now: Date): string {
-  return `recovery-delivery-${id}-${Math.floor(now.getTime() / RECONCILE_JOB_BUCKET_MS)}`;
-}
+/**
+ * S-08: Entschlüsselung ausschließlich im Kontext von Tenant und Ablageort
+ * (`SECRET_SLOTS[slot]`, unverändert). Ein nicht entschlüsselbarer Wert ergibt
+ * '' — kein Rückfall auf Klartext-Altwerte oder ENV (Vorrangregel in
+ * @taxtronik/n8n-shared, gleich wie in der Web-App).
+ */
+const readN8nSecretField: N8nSecretFieldReader = ({
+  slot,
+  fieldName,
+  tenantId,
+  encrypted,
+  legacyPlain,
+}) =>
+  readEncryptedSetting(
+    encrypted,
+    legacyPlain,
+    fieldName,
+    secretSlotContext(SECRET_SLOTS[slot], { tenantId }),
+    (field, err) =>
+      log.warn(
+        { field, err: err.message },
+        'n8n-deliver: Signatur-Secret nicht entschlüsselbar (Key-Rotation ohne Re-Wrap?)',
+      ),
+  );
 
-interface LegacyStored {
-  webhookBaseUrl?: string;
-  hmacEncrypted?: string;
-  hmacSecret?: string;
-}
-
-function decryptIfUsable(value: string | null | undefined, context: SecretContext): string {
-  if (!value) return '';
-  if (!looksEncrypted(value)) return '';
-  try {
-    return decryptSecret(value, context);
-  } catch {
-    return '';
-  }
-}
-
-async function readLegacyStored(tenantId: string | null): Promise<LegacyStored | null> {
-  if (!tenantId) return null;
-  const stored = await readTenantSettingValue(prismaOwner, tenantId, 'integrations.n8n');
-  return stored === undefined ? null : (stored as LegacyStored);
-}
-
-interface SigningState {
+interface SigningState extends N8nRoutingState {
   secret: string;
-  disabled: boolean;
-  connectionId: string | null;
-  legacyBaseUrl: string;
-  routingMode: 'DISABLED' | 'LEGACY' | 'EXPLICIT' | null;
 }
 
 async function resolveSigningState(tenantId: string | null): Promise<SigningState> {
-  const connectionRow = tenantId
-    ? await prismaOwner.n8nConnection.findUnique({
-        where: { tenantId },
-        select: {
-          id: true,
-          enabled: true,
-          routingMode: true,
-          webhookBaseUrl: true,
-          signingSecretEncrypted: true,
-        },
-      })
-    : null;
-  // Normalisierte Connection = alleinige Secret-/URL-Quelle. Legacy und ENV
-  // gelten nur für Tenants, die noch gar keine Connection-Reihe besitzen.
-  if (connectionRow && tenantId) {
-    return {
-      secret: decryptIfUsable(
-        connectionRow.signingSecretEncrypted,
-        secretSlotContext(SECRET_SLOTS.n8nSigningSecret, { tenantId }),
-      ),
-      connectionId: connectionRow.id,
-      routingMode: connectionRow.routingMode,
-      disabled: !connectionRow.enabled || connectionRow.routingMode === 'DISABLED',
-      legacyBaseUrl: connectionRow.webhookBaseUrl?.trim() || '',
-    };
-  }
-  const stored = await readLegacyStored(tenantId);
-  return {
-    secret:
-      (tenantId
-        ? decryptIfUsable(
-            stored?.hmacEncrypted,
-            secretSlotContext(SECRET_SLOTS.legacyN8nHmacSecret, { tenantId }),
-          )
-        : '') ||
-      stored?.hmacSecret ||
-      env.N8N_HMAC_SECRET ||
-      '',
-    connectionId: null,
-    routingMode: null,
-    disabled: false,
-    legacyBaseUrl: stored?.webhookBaseUrl?.trim() || env.N8N_WEBHOOK_BASE_URL || '',
-  };
-}
-
-function legacyTargetUrl(baseUrl: string, event: string): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  const targetBase =
-    n8nDeliveryMode === 'test' ? base.replace(/\/webhook$/, '/webhook-test') : base;
-  return `${targetBase}/${encodeURIComponent(event)}`;
-}
-
-async function lockAndAggregateOutbox(
-  tx: Prisma.TransactionClient,
-  outboxId: string,
-): Promise<void> {
-  // Serialisiert konkurrierende Terminal-Updates verschiedener Fan-out-
-  // Deliveries. Ohne Parent-Lock kann ein älterer PENDING-Snapshot nach einem
-  // neueren DELIVERED-Update gewinnen.
-  await tx.$queryRaw`SELECT "id" FROM "n8n_outbox" WHERE "id" = ${outboxId}::uuid FOR UPDATE`;
-  const deliveries = await tx.n8nDelivery.findMany({
-    where: { outboxId },
-    select: { status: true, lastError: true, deliveredAt: true },
-  });
-  if (deliveries.length === 0) return;
-
-  const pending = deliveries.some(
-    (delivery) => delivery.status === 'PENDING' || delivery.status === 'PROCESSING',
-  );
-  const allDelivered = deliveries.every((d) => d.status === 'DELIVERED');
-  const allFailed = deliveries.every((d) => d.status === 'FAILED');
-  const allSkipped = deliveries.every((d) => d.status === 'SKIPPED');
-  const status = pending
-    ? 'PENDING'
-    : allDelivered
-      ? 'DELIVERED'
-      : allFailed
-        ? 'FAILED'
-        : allSkipped
-          ? 'SKIPPED'
-          : 'PARTIAL';
-  const deliveredAt = allDelivered
-    ? deliveries.reduce<Date | null>(
-        (latest, d) =>
-          d.deliveredAt && (!latest || d.deliveredAt > latest) ? d.deliveredAt : latest,
-        null,
-      )
-    : null;
-  const lastError =
-    status === 'DELIVERED'
-      ? null
-      : (deliveries.find((d) => d.status === 'FAILED')?.lastError ??
-        deliveries.find((d) => d.status === 'SKIPPED')?.lastError ??
-        null);
-
-  await tx.n8nOutbox.update({
-    where: { id: outboxId },
-    data: { status, deliveredAt, lastError },
-  });
+  // Normalisierte Connection = alleinige Secret-/URL-Quelle; ein vorhandener
+  // Legacy-Eintrag gilt als Ganzes; ENV nur ohne beides (R-01: eine Regel für
+  // Outbox-Planung, Admin-Actions, Einstellungen und Worker).
+  const config = await readN8nDeliveryConfig(prismaOwner, tenantId);
+  const secret = resolveN8nSigningSecret(config.secretSource, readN8nSecretField);
+  return { ...n8nRoutingState(config, Boolean(secret)), secret };
 }
 
 async function claimDelivery(deliveryId: string, leaseToken: string): Promise<boolean> {
@@ -261,7 +154,7 @@ async function failClaimedDelivery(
       },
     });
     if (updated.count === 0) return false;
-    await lockAndAggregateOutbox(tx, delivery.outboxId);
+    await aggregateN8nOutboxTx(tx, delivery.outboxId);
     return true;
   });
 }
@@ -287,7 +180,7 @@ async function markDeliveryTerminal(
       },
     });
     if (updated.count === 0) return false;
-    await lockAndAggregateOutbox(tx, outboxId);
+    await aggregateN8nOutboxTx(tx, outboxId);
     return true;
   });
 }
@@ -318,7 +211,7 @@ async function ensureLegacyDelivery(outboxId: string): Promise<string | null> {
     if (!outbox || outbox.status === 'DELIVERED' || outbox.status === 'SKIPPED') return null;
 
     const state = await resolveSigningState(outbox.tenantId);
-    if (state.disabled || !state.legacyBaseUrl || !state.secret) {
+    if (state.disabled || !state.legacyWebhookBaseUrl || !state.secret) {
       const reason = state.disabled
         ? 'n8n-Integration bewusst deaktiviert'
         : 'n8n nicht vollständig konfiguriert';
@@ -346,7 +239,7 @@ async function ensureLegacyDelivery(outboxId: string): Promise<string | null> {
         outboxId,
         connectionIdSnapshot: state.connectionId,
         endpointNameSnapshot: `Legacy: ${outbox.event}`,
-        targetUrl: legacyTargetUrl(state.legacyBaseUrl, outbox.event),
+        targetUrl: legacyN8nTargetUrl(state.legacyWebhookBaseUrl, outbox.event),
       },
       select: { id: true },
     });
@@ -469,51 +362,6 @@ async function readDelivery(deliveryId: string) {
   });
 }
 
-type PlannedDelivery = NonNullable<Awaited<ReturnType<typeof readDelivery>>>;
-
-function routeChanges(delivery: PlannedDelivery, state: SigningState) {
-  // Exakter Snapshot-Abgleich in beide Richtungen. Auch eine alte Legacy-
-  // Delivery (null) darf nach dem Anlegen einer Connection nicht plötzlich
-  // mit deren neuem Secret zugestellt werden.
-  const plannedConnectionMissing = delivery.connectionIdSnapshot !== state.connectionId;
-  // Spiegelt die Zielwahl aus der Outbox-Planung: global test ODER
-  // Route-Debug-Schalter testMode → Test-URL, sonst Produktions-URL.
-  const expectedExplicitTarget =
-    n8nDeliveryMode === 'test' || delivery.endpoint?.testMode
-      ? delivery.endpoint?.testUrl
-      : delivery.endpoint?.productionUrl;
-  const explicitRouteChanged = delivery.endpoint
-    ? !delivery.endpoint.enabled ||
-      delivery.endpoint.connectionId !== state.connectionId ||
-      expectedExplicitTarget !== delivery.targetUrl ||
-      !delivery.endpoint.subscriptions.some(
-        (subscription) => subscription.event === delivery.outbox.event,
-      )
-    : state.routingMode === 'EXPLICIT';
-  const legacyRouteChanged =
-    !delivery.endpoint &&
-    state.routingMode !== 'EXPLICIT' &&
-    (!state.legacyBaseUrl ||
-      delivery.targetUrl !== legacyTargetUrl(state.legacyBaseUrl, delivery.outbox.event));
-  return { plannedConnectionMissing, explicitRouteChanged, legacyRouteChanged };
-}
-
-function deliveryTarget(
-  delivery: PlannedDelivery,
-  state: SigningState,
-): { ok: true; targetUrl: string } | { ok: false; reason: string } {
-  const changes = routeChanges(delivery, state);
-  if (state.disabled) return { ok: false, reason: 'n8n-Integration bewusst deaktiviert' };
-  if (changes.plannedConnectionMissing)
-    return { ok: false, reason: 'n8n-Connection der geplanten Route wurde entfernt oder ersetzt' };
-  if (changes.explicitRouteChanged)
-    return { ok: false, reason: 'n8n-Route, Ziel-URL oder Event-Zuordnung wurde geändert' };
-  if (changes.legacyRouteChanged) return { ok: false, reason: 'n8n-Legacy-Ziel wurde geändert' };
-  if (!delivery.targetUrl) return { ok: false, reason: 'n8n-Ziel-URL fehlt' };
-  if (!state.secret) return { ok: false, reason: 'n8n-Signatur-Secret fehlt' };
-  return { ok: true, targetUrl: delivery.targetUrl };
-}
-
 async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
   const delivery = await readDelivery(deliveryId);
   if (!delivery) {
@@ -540,7 +388,17 @@ async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
   }
 
   const state = await resolveSigningState(outbox.tenantId);
-  const target = deliveryTarget(delivery, state);
+  // Dieselbe Snapshot-Prüfung wie die Retry-Action (R-01): Zielauswahl über
+  // plannedN8nTarget, also auch für Routen im testMode.
+  const target = checkPlannedN8nRoute(
+    {
+      targetUrl: delivery.targetUrl,
+      connectionIdSnapshot: delivery.connectionIdSnapshot,
+      event: outbox.event,
+      endpoint: delivery.endpoint,
+    },
+    state,
+  );
   if (!target.ok) {
     await markDeliveryTerminal(delivery.id, outbox.id, leaseToken, 'SKIPPED', {
       lastError: target.reason,
@@ -595,7 +453,7 @@ async function deliver(deliveryId: string, leaseToken: string): Promise<void> {
     outboxId: outbox.id,
     event: outbox.event,
     targetUrl: target.targetUrl,
-    testMode: n8nDeliveryMode === 'test' || delivery.endpoint?.testMode === true,
+    testMode: target.useTestUrl,
     leaseToken,
     signature,
     timestamp,
@@ -672,26 +530,22 @@ export const n8nOutboxReconcileWorker = createWorker(
     ]);
     if (stuckDeliveries.length === 0 && legacyOutboxes.length === 0) return;
 
-    const queue = new Queue<N8nDeliverJob>(JOB_QUEUES.n8nDeliver.name, { connection });
+    // R-01: die langlebige Producer-Queue des Workers statt einer je Lauf neu
+    // erzeugten und wieder geschlossenen Queue-Instanz.
+    const queue = queues.n8nDeliver;
     for (const row of stuckDeliveries) {
-      await queue.add(
-        'deliver',
-        { deliveryId: row.id },
-        {
-          ...DELIVERY_JOB_OPTIONS,
-          jobId:
-            row.status === 'PROCESSING' ? deliveryRecoveryJobId(row.id, now) : `delivery-${row.id}`,
-        },
+      // PENDING behält den deduplizierenden Key (und damit seinen BullMQ-
+      // Backoff); ein abgelaufener PROCESSING-Lease erhält einen Fenster-Key.
+      const job = n8nDeliveryJob(
+        row.id,
+        row.status === 'PROCESSING' ? { kind: 'recovery', now } : { kind: 'initial' },
       );
+      await queue.add(job.name, job.data, job.opts);
     }
     for (const row of legacyOutboxes) {
-      await queue.add(
-        'deliver',
-        { outboxId: row.id },
-        { ...DELIVERY_JOB_OPTIONS, jobId: `outbox-${row.id}` },
-      );
+      const job = n8nLegacyOutboxJob(row.id);
+      await queue.add(job.name, job.data, job.opts);
     }
-    await queue.close();
     log.info(
       {
         deliveriesRequeued: stuckDeliveries.length,

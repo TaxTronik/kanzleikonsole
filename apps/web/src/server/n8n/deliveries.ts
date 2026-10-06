@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { aggregateN8nOutboxTx } from '@taxtronik/n8n-shared/outbox-enqueue';
 
 export interface CancelPendingN8nDeliveriesInput {
   tenantId: string;
@@ -18,53 +19,11 @@ export interface AcknowledgedN8nDelivery {
   targetUrl: string | null;
 }
 
-export async function aggregateN8nOutbox(
-  tx: Prisma.TransactionClient,
-  outboxId: string,
-): Promise<void> {
-  await tx.$queryRaw`SELECT "id" FROM "n8n_outbox" WHERE "id" = ${outboxId}::uuid FOR UPDATE`;
-  const deliveries = await tx.n8nDelivery.findMany({
-    where: { outboxId },
-    select: { status: true, lastError: true, deliveredAt: true },
-  });
-  if (deliveries.length === 0) return;
-
-  const pending = deliveries.some(
-    (delivery) => delivery.status === 'PENDING' || delivery.status === 'PROCESSING',
-  );
-  const allDelivered = deliveries.every((delivery) => delivery.status === 'DELIVERED');
-  const allFailed = deliveries.every((delivery) => delivery.status === 'FAILED');
-  const allSkipped = deliveries.every((delivery) => delivery.status === 'SKIPPED');
-  const status = pending
-    ? 'PENDING'
-    : allDelivered
-      ? 'DELIVERED'
-      : allFailed
-        ? 'FAILED'
-        : allSkipped
-          ? 'SKIPPED'
-          : 'PARTIAL';
-  const deliveredAt = allDelivered
-    ? deliveries.reduce<Date | null>(
-        (latest, delivery) =>
-          delivery.deliveredAt && (!latest || delivery.deliveredAt > latest)
-            ? delivery.deliveredAt
-            : latest,
-        null,
-      )
-    : null;
-  const lastError =
-    status === 'DELIVERED'
-      ? null
-      : (deliveries.find((delivery) => delivery.status === 'FAILED')?.lastError ??
-        deliveries.find((delivery) => delivery.status === 'SKIPPED')?.lastError ??
-        null);
-
-  await tx.n8nOutbox.update({
-    where: { id: outboxId },
-    data: { status, deliveredAt, lastError },
-  });
-}
+/**
+ * Outbox-Status unter Parent-Lock aus den Deliveries ableiten. R-01: dieselbe
+ * Implementierung wie im Worker (@taxtronik/n8n-shared), keine eigene Kopie.
+ */
+export const aggregateN8nOutbox = aggregateN8nOutboxTx;
 
 /**
  * Bricht noch nicht gestartete Zustellungen vor dem Löschen einer Route oder

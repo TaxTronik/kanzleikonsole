@@ -597,6 +597,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- n8n: Erneut senden und Replay einer Zustellung an einen Endpunkt im
+  Testmodus nutzen wieder die Test-URL, statt vom Worker als „Route geändert“
+  verworfen zu werden. Ziel, Vorrang des Signaturgeheimnisses und
+  Job-Optionen kommen für Web und Worker aus `@taxtronik/n8n-shared`.
 - „Erneut versuchen“ auf Fehlerseiten lädt die Serverdaten neu, statt nur die
   Oberfläche neu zu zeichnen. Deutsche 404-Seiten für Kanzleibereich, Portal
   und unbekannte Adressen sowie eine eigene Seite für Fehler im Grundlayout
@@ -1096,6 +1100,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- n8n: Ein nicht entschlüsselbares Legacy-Signaturgeheimnis fällt im Worker
+  nicht mehr auf Klartext oder Umgebungsvariablen zurück; der Worker meldet
+  nur den Feldnamen.
 - Portal-Startseite: An persönliche Bescheid- oder Feedback-Rückfragen
   gebundene Anforderungen erscheinen wie unter „Anforderungen“ nicht mehr als
   allgemeine Anforderung, sodass andere Kontakte desselben Mandats Titel und

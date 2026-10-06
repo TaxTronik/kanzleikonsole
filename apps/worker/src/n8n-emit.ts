@@ -10,7 +10,7 @@
 import type { N8nEventName } from '@taxtronik/n8n-shared';
 import {
   enqueueN8nEventCore,
-  DELIVERY_JOB_OPTIONS,
+  n8nDeliveryJob,
   type N8nEnqueueResult,
 } from '@taxtronik/n8n-shared/outbox-enqueue';
 import { prismaOwner } from './prisma-owner';
@@ -26,12 +26,10 @@ export async function emitN8nEventFromWorker(
     {
       db: prismaOwner,
       log,
-      enqueueDelivery: (deliveryId) =>
-        queues.n8nDeliver.add(
-          'deliver',
-          { deliveryId },
-          { ...DELIVERY_JOB_OPTIONS, jobId: `delivery-${deliveryId}` },
-        ),
+      enqueueDelivery: (deliveryId) => {
+        const job = n8nDeliveryJob(deliveryId);
+        return queues.n8nDeliver.add(job.name, job.data, job.opts);
+      },
     },
     event,
     payload,

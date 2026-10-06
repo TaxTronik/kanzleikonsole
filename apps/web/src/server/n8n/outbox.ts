@@ -11,7 +11,7 @@
 import type { N8nEventName } from '@taxtronik/n8n-shared';
 import {
   enqueueN8nEventCore,
-  DELIVERY_JOB_OPTIONS,
+  n8nDeliveryJob,
   type N8nEnqueueResult,
   type N8nEnqueueStatus,
 } from '@taxtronik/n8n-shared/outbox-enqueue';
@@ -36,15 +36,10 @@ export async function enqueueN8nEvent(
       // NIE — Server Actions (z. B. GwG-Verifikation) hingen dadurch
       // minutenlang nach bereits committeter Transaktion. Der Reconcile-Job
       // sammelt stuck PENDING-Deliveries ohnehin alle 5 Minuten ein.
-      enqueueDelivery: (deliveryId) =>
-        withTimeout(
-          getN8nDeliverQueue().add(
-            'deliver',
-            { deliveryId },
-            { ...DELIVERY_JOB_OPTIONS, jobId: `delivery-${deliveryId}` },
-          ),
-          2_000,
-        ),
+      enqueueDelivery: (deliveryId) => {
+        const job = n8nDeliveryJob(deliveryId);
+        return withTimeout(getN8nDeliverQueue().add(job.name, job.data, job.opts), 2_000);
+      },
     },
     event,
     payload,

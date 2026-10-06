@@ -31,13 +31,16 @@ const h = vi.hoisted(() => {
   };
   return {
     tx,
-    env: { N8N_WEBHOOK_BASE_URL: '', N8N_HMAC_SECRET: '' },
+    env: {
+      N8N_WEBHOOK_BASE_URL: '',
+      N8N_HMAC_SECRET: '',
+      // Echte Secret-Box (S-08): Wurzelschlüssel für encrypt/decrypt im Test.
+      AUTH_SECRET: 'unit-test-auth-secret-with-at-least-32-chars',
+    },
     SsrfGuardError,
     safeFetch: vi.fn(),
     isAllowedN8nEvent: vi.fn(),
     signOutboundN8n: vi.fn(),
-    decryptSecret: vi.fn(),
-    looksEncrypted: vi.fn(),
     responseCancel: vi.fn(),
     deliveryMode: 'production',
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -53,7 +56,11 @@ vi.mock('node:crypto', async (importOriginal) => ({
   randomUUID: () => '00000000-0000-4000-8000-000000000099',
 }));
 vi.mock('bullmq', () => import('./mocks/bullmq'));
-vi.mock('../../queues', () => ({ connection: {} }));
+// R-01: Der Reconciler nutzt die langlebige Producer-Queue des Workers.
+vi.mock('../../queues', async () => {
+  const { Queue } = await import('./mocks/bullmq');
+  return { connection: {}, queues: { n8nDeliver: new Queue('n8n-deliver') } };
+});
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('../../logger', () => ({ log: h.log }));
 vi.mock('@taxtronik/config', () => ({
@@ -66,22 +73,28 @@ vi.mock('@taxtronik/n8n-shared', () => ({
   isAllowedN8nEvent: h.isAllowedN8nEvent,
   signOutboundN8n: h.signOutboundN8n,
 }));
-vi.mock('@taxtronik/crypto', async (importOriginal) => ({
-  // Echte Ablageort-Kontexte (S-08), Ver-/Entschlüsselung gemockt.
-  ...(await importOriginal<typeof import('@taxtronik/crypto')>()),
-  decryptSecret: h.decryptSecret,
-  looksEncrypted: h.looksEncrypted,
-}));
 vi.mock('@taxtronik/http-utils', () => ({
   safeFetch: h.safeFetch,
   SsrfGuardError: h.SsrfGuardError,
 }));
 
+import { encryptSecret, SECRET_SLOTS, secretSlotContext } from '@taxtronik/crypto';
 import { processors, queueAdds, queueCloses, resetQueueRecords } from './mocks/bullmq';
 import '../n8n-deliver';
 
 const NOW = new Date('2026-07-14T12:00:00.000Z');
 const CONNECTION_ID = '00000000-0000-4000-8000-000000000010';
+// S-08: echte v3-Blobs, gebunden an Tenant + Ablageort. Der Worker kann sie
+// nur mit exakt diesem Kontext entschlüsseln — ein geänderter Kontext ließe
+// jede Zustellung mit „Signatur-Secret fehlt" scheitern.
+const CONNECTION_SECRET_BLOB = encryptSecret(
+  'connection-secret',
+  secretSlotContext(SECRET_SLOTS.n8nSigningSecret, { tenantId: 'tenant-1' }),
+);
+const LEGACY_SECRET_BLOB = encryptSecret(
+  'legacy-encrypted-secret',
+  secretSlotContext(SECRET_SLOTS.legacyN8nHmacSecret, { tenantId: 'tenant-1' }),
+);
 const DELIVERY = {
   id: 'delivery-1',
   tenantId: 'tenant-1',
@@ -148,14 +161,12 @@ beforeEach(() => {
     timestamp: '1784030400000',
     nonce: 'nonce-1',
   });
-  h.looksEncrypted.mockImplementation((value) => String(value).startsWith('enc:'));
-  h.decryptSecret.mockReturnValue('connection-secret');
   h.tx.n8nConnection.findUnique.mockResolvedValue({
     id: CONNECTION_ID,
     enabled: true,
     routingMode: 'EXPLICIT',
     webhookBaseUrl: null,
-    signingSecretEncrypted: 'enc:v2:connection-secret',
+    signingSecretEncrypted: CONNECTION_SECRET_BLOB,
   });
   h.tx.tenantSetting.findUnique.mockResolvedValue({
     value: {
@@ -228,17 +239,13 @@ describe('n8n delivery worker', () => {
       occurredAt: '2026-07-14T11:55:00.000Z',
       payload: { requestId: 'request-1' },
     });
+    // S-08: Der echte v3-Blob ist nur im Kontext tenant-1|n8n_connection|
+    // signing_secret_encrypted entschlüsselbar — signiert wird mit dem Klartext.
     expect(h.signOutboundN8n).toHaveBeenCalledWith(
       'request.opened',
       init.body,
       'connection-secret',
     );
-    // S-08: Das Signatur-Secret wird nur im Kontext seines Tenants entschlüsselt.
-    expect(h.decryptSecret).toHaveBeenCalledWith('enc:v2:connection-secret', {
-      tenantId: 'tenant-1',
-      scope: 'n8n_connection',
-      field: 'signing_secret_encrypted',
-    });
     expect(h.responseCancel).toHaveBeenCalledTimes(1);
     expect(h.tx.n8nDelivery.updateMany).toHaveBeenCalledWith({
       where: { id: 'delivery-1', status: 'PROCESSING', leaseToken: LEASE_TOKEN },
@@ -599,6 +606,160 @@ describe('n8n delivery worker', () => {
   });
 });
 
+describe('R-01: Zielauswahl und Secret-Vorrang wie in Outbox und Admin-Actions', () => {
+  const LEGACY_DELIVERY = {
+    ...DELIVERY,
+    endpointId: null,
+    connectionIdSnapshot: null,
+    targetUrl: 'https://n8n.example.com/webhook/request.opened',
+    endpoint: null,
+  };
+
+  function expectSkipped(reason: string) {
+    expect(h.safeFetch).not.toHaveBeenCalled();
+    expect(h.tx.n8nDelivery.updateMany).toHaveBeenCalledWith({
+      where: { id: 'delivery-1', status: 'PROCESSING', leaseToken: LEASE_TOKEN },
+      data: expect.objectContaining({ status: 'SKIPPED', lastError: reason }),
+    });
+  }
+
+  it('stellt eine im testMode geplante Delivery an die Test-URL mit Test-Policy zu', async () => {
+    h.tx.n8nDelivery.findUnique.mockResolvedValue({
+      ...DELIVERY,
+      targetUrl: DELIVERY.endpoint.testUrl,
+      endpoint: { ...DELIVERY.endpoint, testMode: true },
+    });
+
+    await runDelivery();
+
+    expect(h.safeFetch).toHaveBeenCalledWith(DELIVERY.endpoint.testUrl, expect.anything(), {
+      mode: 'n8n',
+      kind: 'webhook-test',
+    });
+  });
+
+  it('verwirft einen Produktions-Snapshot, sobald die Route im testMode ist', async () => {
+    h.tx.n8nDelivery.findUnique.mockResolvedValue({
+      ...DELIVERY,
+      endpoint: { ...DELIVERY.endpoint, testMode: true },
+    });
+
+    await runDelivery();
+
+    expectSkipped('n8n-Route, Ziel-URL oder Event-Zuordnung wurde geändert');
+  });
+
+  it('stellt eine explizite Delivery nach Wechsel in den LEGACY-Modus nicht mehr zu', async () => {
+    h.tx.n8nConnection.findUnique.mockResolvedValue({
+      id: CONNECTION_ID,
+      enabled: true,
+      routingMode: 'LEGACY',
+      webhookBaseUrl: 'https://n8n.example.com/webhook',
+      signingSecretEncrypted: CONNECTION_SECRET_BLOB,
+    });
+
+    await runDelivery();
+
+    expectSkipped('n8n-Route, Ziel-URL oder Event-Zuordnung wurde geändert');
+  });
+
+  it('signiert nicht mit einem an einen anderen Tenant gebundenen Blob (S-08)', async () => {
+    h.tx.n8nConnection.findUnique.mockResolvedValue({
+      id: CONNECTION_ID,
+      enabled: true,
+      routingMode: 'EXPLICIT',
+      webhookBaseUrl: null,
+      signingSecretEncrypted: encryptSecret(
+        'fremdes-secret',
+        secretSlotContext(SECRET_SLOTS.n8nSigningSecret, { tenantId: 'tenant-2' }),
+      ),
+    });
+
+    await runDelivery();
+
+    expectSkipped('n8n-Signatur-Secret fehlt');
+    expect(h.signOutboundN8n).not.toHaveBeenCalled();
+    expect(h.log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ field: 'n8n.signingSecret' }),
+      expect.stringContaining('nicht entschlüsselbar'),
+    );
+    expect(JSON.stringify(h.log.warn.mock.calls)).not.toContain('fremdes-secret');
+  });
+
+  it('entschlüsselt das Legacy-Secret im Legacy-Slot seines Tenants', async () => {
+    h.tx.n8nConnection.findUnique.mockResolvedValue(null);
+    h.tx.tenantSetting.findUnique.mockResolvedValue({
+      value: {
+        webhookBaseUrl: 'https://n8n.example.com/webhook',
+        hmacEncrypted: LEGACY_SECRET_BLOB,
+      },
+    });
+    h.tx.n8nDelivery.findUnique.mockResolvedValue({ ...LEGACY_DELIVERY });
+
+    await runDelivery();
+
+    expect(h.safeFetch).toHaveBeenCalledTimes(1);
+    expect(h.signOutboundN8n).toHaveBeenCalledWith(
+      'request.opened',
+      expect.any(String),
+      'legacy-encrypted-secret',
+    );
+  });
+
+  it('ergänzt einen Legacy-Eintrag ohne Secret nicht aus ENV', async () => {
+    h.tx.n8nConnection.findUnique.mockResolvedValue(null);
+    h.tx.tenantSetting.findUnique.mockResolvedValue({
+      value: { webhookBaseUrl: 'https://n8n.example.com/webhook' },
+    });
+    h.env.N8N_HMAC_SECRET = 'global-secret';
+    h.tx.n8nDelivery.findUnique.mockResolvedValue({ ...LEGACY_DELIVERY });
+
+    await runDelivery();
+
+    expectSkipped('n8n-Signatur-Secret fehlt');
+  });
+
+  it('fällt bei nicht entschlüsselbarem Legacy-Secret weder auf Klartext noch auf ENV zurück', async () => {
+    h.tx.n8nConnection.findUnique.mockResolvedValue(null);
+    h.tx.tenantSetting.findUnique.mockResolvedValue({
+      value: {
+        webhookBaseUrl: 'https://n8n.example.com/webhook',
+        hmacEncrypted: encryptSecret(
+          'rotiertes-secret',
+          secretSlotContext(SECRET_SLOTS.legacyN8nHmacSecret, { tenantId: 'tenant-2' }),
+        ),
+        hmacSecret: 'veralteter-klartext',
+      },
+    });
+    h.env.N8N_HMAC_SECRET = 'global-secret';
+    h.tx.n8nDelivery.findUnique.mockResolvedValue({ ...LEGACY_DELIVERY });
+
+    await runDelivery();
+
+    expectSkipped('n8n-Signatur-Secret fehlt');
+  });
+
+  it('verwendet ENV nur ohne Connection und ohne Legacy-Eintrag', async () => {
+    h.tx.n8nConnection.findUnique.mockResolvedValue(null);
+    h.tx.tenantSetting.findUnique.mockResolvedValue(null);
+    h.env.N8N_HMAC_SECRET = 'global-secret';
+    h.env.N8N_WEBHOOK_BASE_URL = 'https://n8n.example.com/webhook';
+    h.tx.n8nDelivery.findUnique.mockResolvedValue({ ...LEGACY_DELIVERY });
+
+    await runDelivery();
+
+    expect(h.signOutboundN8n).toHaveBeenCalledWith(
+      'request.opened',
+      expect.any(String),
+      'global-secret',
+    );
+    expect(h.safeFetch).toHaveBeenCalledWith(LEGACY_DELIVERY.targetUrl, expect.anything(), {
+      mode: 'n8n',
+      kind: 'webhook',
+    });
+  });
+});
+
 describe('n8n delivery reconciliation', () => {
   it('reiht alte PENDING- und abgelaufene PROCESSING-Deliveries neu ein', async () => {
     h.tx.n8nDelivery.findMany.mockResolvedValue([
@@ -630,7 +791,8 @@ describe('n8n delivery reconciliation', () => {
       'delivery-d-pending',
       `recovery-delivery-d-processing-${bucket}`,
     ]);
-    expect(queueCloses).toEqual(['n8n-deliver']);
+    // Die langlebige Worker-Queue wird nicht je Lauf geschlossen (R-01).
+    expect(queueCloses).toEqual([]);
   });
 
   it('behält für alte PENDING-Deliveries die ursprüngliche Job-ID über Reconcile-Fenster', async () => {
@@ -673,7 +835,8 @@ describe('n8n delivery reconciliation', () => {
         }),
       }),
     ]);
-    expect(queueCloses).toEqual(['n8n-deliver']);
+    // Die langlebige Worker-Queue wird nicht je Lauf geschlossen (R-01).
+    expect(queueCloses).toEqual([]);
   });
 
   it('umgeht nach Claim-Crash den completed Tombstone des ursprünglichen Jobs', async () => {

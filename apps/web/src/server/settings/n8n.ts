@@ -10,6 +10,12 @@
 import { env } from '@taxtronik/config';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { deleteTenantSettingValue, readTenantSettingValue } from '@taxtronik/db/tenant-settings';
+import {
+  LEGACY_N8N_SETTING_KEY,
+  n8nDeliveryConfigFrom,
+  resolveN8nSigningSecret,
+  type N8nSecretFieldReader,
+} from '@taxtronik/n8n-shared/outbox-enqueue';
 import type { Prisma } from '@prisma/client';
 import {
   encryptSecret,
@@ -18,7 +24,7 @@ import {
   secretSlotContext,
 } from '@/server/crypto/secret-box';
 
-const LEGACY_KEY = 'integrations.n8n';
+const LEGACY_KEY = LEGACY_N8N_SETTING_KEY;
 
 export const N8N_CALLBACK_SCOPES = [
   'requests:read',
@@ -110,18 +116,38 @@ export interface N8nStatus {
   fromDb: boolean;
 }
 
-function fromLegacy(
-  tenantId: string,
-  value: LegacyN8nStored,
-  source: 'LEGACY_SETTING' | 'ENV',
-): N8nConfig {
-  const webhookBaseUrl = value.webhookBaseUrl?.trim() ?? '';
-  const hmacSecret = readEncryptedSetting(
-    value.hmacEncrypted,
-    value.hmacSecret,
-    'n8n.hmacSecret',
-    secretSlotContext(SECRET_SLOTS.legacyN8nHmacSecret, { tenantId }),
+/**
+ * S-08: Signatur-Secret ausschließlich im Kontext von Tenant und Ablageort
+ * lesen. Welche Quelle gilt (Connection → Legacy-Eintrag → ENV), entscheidet
+ * @taxtronik/n8n-shared — dieselbe Regel wie Outbox-Planung und Worker (R-01).
+ */
+const readN8nSecretField: N8nSecretFieldReader = ({
+  slot,
+  fieldName,
+  tenantId,
+  encrypted,
+  legacyPlain,
+}) =>
+  readEncryptedSetting(
+    encrypted,
+    legacyPlain,
+    fieldName,
+    secretSlotContext(SECRET_SLOTS[slot], { tenantId }),
   );
+
+/**
+ * Konfiguration ohne normalisierte Connection: ein vorhandener Legacy-Eintrag
+ * gilt als Ganzes (`legacySetting`), ohne Eintrag (`undefined`) gilt ENV.
+ */
+function fromLegacy(tenantId: string, legacySetting: unknown): N8nConfig {
+  const delivery = n8nDeliveryConfigFrom({ tenantId, connection: null, legacySetting });
+  const source = delivery.secretSource.kind === 'ENV' ? 'ENV' : 'LEGACY_SETTING';
+  const value: LegacyN8nStored =
+    source === 'LEGACY_SETTING' && legacySetting !== null && typeof legacySetting === 'object'
+      ? (legacySetting as LegacyN8nStored)
+      : {};
+  const webhookBaseUrl = delivery.legacyWebhookBaseUrl;
+  const hmacSecret = resolveN8nSigningSecret(delivery.secretSource, readN8nSecretField);
   const apiKey = readEncryptedSetting(
     value.apiKeyEncrypted,
     value.apiKey,
@@ -158,11 +184,10 @@ export async function readN8nConfig(ctx: TenantContext): Promise<N8nConfig | nul
         uiBaseUrl: connection.uiBaseUrl ?? '',
         callbackBaseUrl: connection.callbackBaseUrl ?? '',
         webhookBaseUrl: connection.webhookBaseUrl ?? '',
-        hmacSecret: readEncryptedSetting(
-          connection.signingSecretEncrypted,
-          undefined,
-          'n8n.signingSecret',
-          connectionSecretContext(ctx.tenantId, SECRET_SLOTS.n8nSigningSecret),
+        // Normalisierte Connection = alleinige Secret-Quelle (kein Legacy/ENV).
+        hmacSecret: resolveN8nSigningSecret(
+          n8nDeliveryConfigFrom({ tenantId: ctx.tenantId, connection }).secretSource,
+          readN8nSecretField,
         ),
         apiBaseUrl: connection.apiBaseUrl ?? '',
         apiKey: readEncryptedSetting(
@@ -182,9 +207,7 @@ export async function readN8nConfig(ctx: TenantContext): Promise<N8nConfig | nul
     }
 
     const value = await readTenantSettingValue(tx, ctx.tenantId, LEGACY_KEY);
-    return value === undefined
-      ? null
-      : fromLegacy(ctx.tenantId, value as LegacyN8nStored, 'LEGACY_SETTING');
+    return value === undefined ? null : fromLegacy(ctx.tenantId, value);
   });
 }
 
@@ -257,14 +280,8 @@ export async function deleteN8nConfig(ctx: TenantContext): Promise<void> {
 export async function resolveN8nConfig(ctx: TenantContext): Promise<N8nConfig> {
   const db = await readN8nConfig(ctx);
   if (db) return db;
-  return fromLegacy(
-    ctx.tenantId,
-    {
-      webhookBaseUrl: env.N8N_WEBHOOK_BASE_URL ?? '',
-      hmacSecret: env.N8N_HMAC_SECRET ?? '',
-    },
-    'ENV',
-  );
+  // Weder Connection noch Legacy-Eintrag: ENV (N8N_WEBHOOK_BASE_URL/N8N_HMAC_SECRET).
+  return fromLegacy(ctx.tenantId, undefined);
 }
 
 export async function getN8nStatus(ctx: TenantContext): Promise<N8nStatus> {
