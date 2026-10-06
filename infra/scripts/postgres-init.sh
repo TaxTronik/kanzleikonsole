@@ -8,6 +8,8 @@
 #   POSTGRES_USER          (default: 'taxtronik', vom docker-Image gesetzt)
 #   POSTGRES_DB            (default: 'taxtronik')
 #   TAXTRONIK_APP_PASSWORD  — Passwort für die eingeschränkte App-Rolle
+#   TAXTRONIK_OWNER_PASSWORD — Owner-Verbindung von app/worker (S-01), optional
+#   TAXTRONIK_DRILL_PASSWORD — Restore-Drill-Rolle des Workers (S-01), optional
 #   N8N_DB_PASSWORD        — Passwort für n8n's eigene DB (nur produktiv aktiv)
 #
 # Werte werden vom Setup-Skript zufällig generiert und in `.env` persistiert.
@@ -54,6 +56,40 @@ psql -v ON_ERROR_STOP=1 \
 
   -- App-Role darf KEINE Tabellen umgehen (BYPASSRLS bleibt absichtlich aus).
 EOSQL
+
+# S-01: Die Owner-Verbindung der Container app/worker ist NICHT der Superuser.
+# taxtronik_owner umgeht RLS (BYPASSRLS), darf aber nur Daten lesen/schreiben;
+# die Grants vergibt die Migration 20261006160000_owner_role_least_privilege.
+# taxtronik_drill legt fuer den monatlichen Restore-Drill des Workers eine
+# Wegwerf-DB an (CREATEDB) und hat in der Produktiv-DB keine Rechte. Ohne
+# Passwort entsteht hier keine Rolle: ./taxtronik setzt Rolle, LOGIN und
+# Passwort vor jedem Start (sync_postgres_roles_from_env), die Migration legt
+# die Owner-Rolle notfalls ohne LOGIN an.
+if [[ -n "${TAXTRONIK_OWNER_PASSWORD:-}" ]]; then
+  psql -v ON_ERROR_STOP=1 \
+       -v pw="$TAXTRONIK_OWNER_PASSWORD" \
+       --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
+    SELECT format('CREATE ROLE taxtronik_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD %L', :'pw')
+    WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_owner')
+    \gexec
+    SELECT format('ALTER ROLE taxtronik_owner WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD %L', :'pw')
+    WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_owner')
+    \gexec
+EOSQL
+fi
+
+if [[ -n "${TAXTRONIK_DRILL_PASSWORD:-}" ]]; then
+  psql -v ON_ERROR_STOP=1 \
+       -v pw="$TAXTRONIK_DRILL_PASSWORD" \
+       --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-'EOSQL'
+    SELECT format('CREATE ROLE taxtronik_drill LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD %L', :'pw')
+    WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_drill')
+    \gexec
+    SELECT format('ALTER ROLE taxtronik_drill WITH LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD %L', :'pw')
+    WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_drill')
+    \gexec
+EOSQL
+fi
 
 # n8n: eigene DB + User (nur produktiv aktiv; in dev nutzt n8n SQLite)
 if [[ -n "${N8N_DB_PASSWORD:-}" ]]; then

@@ -10,6 +10,12 @@
 -- `taxtronik_app` und MUSS zur DATABASE_APP_URL in .forgejo/workflows/ci.yml
 -- passen (postgresql://taxtronik_app:taxtronik_app@localhost:5432/taxtronik).
 --
+-- S-01: Owner-Verbindung der Container (`taxtronik_owner`, BYPASSRLS ohne
+-- Superuser) und Restore-Drill-Rolle (`taxtronik_drill`, CREATEDB für die
+-- Wegwerf-DB) mit fixen Testpasswörtern = Rollenname. Grants vergibt die
+-- Migration 20261006160000_owner_role_least_privilege; sie legt die
+-- Owner-Rolle notfalls selbst NOLOGIN an.
+--
 -- NICHT für Produktion — dort macht infra/scripts/postgres-init.sh das mit
 -- einem zufälligen Passwort aus der .env.
 -- =============================================================================
@@ -24,6 +30,24 @@ BEGIN
     CREATE ROLE taxtronik_app LOGIN PASSWORD 'taxtronik_app';
   ELSE
     ALTER ROLE taxtronik_app WITH PASSWORD 'taxtronik_app';
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_owner') THEN
+    CREATE ROLE taxtronik_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+      BYPASSRLS PASSWORD 'taxtronik_owner';
+  ELSE
+    ALTER ROLE taxtronik_owner WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+      BYPASSRLS PASSWORD 'taxtronik_owner';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_drill') THEN
+    CREATE ROLE taxtronik_drill LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION
+      BYPASSRLS PASSWORD 'taxtronik_drill';
+  ELSE
+    ALTER ROLE taxtronik_drill WITH LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION
+      BYPASSRLS PASSWORD 'taxtronik_drill';
   END IF;
 END $$;
 

@@ -27,7 +27,8 @@ export interface AppDatasourceEnv {
  * Wählt die Datasource-URL für den App-Prisma-Client (Request-Pfad).
  *
  * Fail-closed RLS-Backstop: In Produktion MUSS die App über DATABASE_APP_URL
- * (eingeschränkte Role, RLS greift) verbinden. Der Owner `taxtronik` hat
+ * (eingeschränkte Role, RLS greift) verbinden. Die Owner-Verbindung
+ * (`taxtronik_owner`, in Dev/CI teils der Superuser `taxtronik`) hat
  * BYPASSRLS — ein stiller Fallback auf DATABASE_URL würde die komplette
  * Mandantentrennung aushebeln (§ 203 StGB). @taxtronik/config validiert das
  * zwar beim Boot, aber client.ts liest process.env direkt und darf sich nicht

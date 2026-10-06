@@ -151,7 +151,7 @@ const TEN_YEAR_BUCKET: Prisma.RequestWhereInput = {
  * erscheinen. Portal, Actions und SQL-Discard behandeln den fehlenden
  * expliziten Request deshalb einheitlich fail-closed.
  */
-async function purgeRequests(where: Prisma.RequestWhereInput): Promise<number> {
+async function purgeRequests(tenantId: string, where: Prisma.RequestWhereInput): Promise<number> {
   let total = 0;
   for (;;) {
     const batch = await prismaOwner.request.findMany({
@@ -234,48 +234,29 @@ async function purgeRequests(where: Prisma.RequestWhereInput): Promise<number> {
         `,
       );
 
-      // Der Unlink-Trigger akzeptiert eine vollständige Neutralisierung nur
-      // mit dieser transaktionslokalen, expliziten Purge-Freigabe. Ein
-      // laufender UNKNOWN-Versandclaim bleibt auch dann fail-closed gesperrt.
-      await tx.$queryRaw(
-        Prisma.sql`SELECT set_config('app.tax_deadline_notification_purge', 'on', true)`,
+      // TAX-DEADLINE-AUTOREQUEST-001: Beim DSGVO-Purge verschwindet die
+      // fachliche Request-Verknuepfung. Der davon getrennte technische
+      // Benachrichtigungszustand muss in derselben Transaktion neutralisiert
+      // werden; sonst bliebe eine Provider-Aussage ohne Bezugsobjekt stehen.
+      // Neutralisiert werden noch bestehende technische Pointer und bereits
+      // terminal nach ORPHANED gelöste Ursprungszeilen: Request.taxDeadlineId
+      // bewahrt bis zum Purge die stabile Herkunft; nur dieser explizite
+      // Zustand wird über die asymmetrische Relation neutralisiert.
+      // Der Unlink-Trigger akzeptiert die vollständige Neutralisierung nur mit
+      // expliziter Purge-Freigabe unter dem Tabellen-Owner. Die Worker-
+      // Verbindung ist seit S-01 kein Superuser mehr; die SECURITY-DEFINER-
+      // Funktion setzt Freigabe und Identität nur für genau dieses UPDATE.
+      // Ein laufender UNKNOWN-Versandclaim bleibt auch dann fail-closed gesperrt.
+      const [neutralizedDeadlines] = await tx.$queryRaw<Array<{ count: number }>>(
+        Prisma.sql`
+          SELECT app.purge_tax_deadline_request_links(
+                   ${tenantId}::uuid,
+                   ${eligibleIds}::uuid[],
+                   ${eligibleTaxDeadlineIds}::uuid[]
+                 ) AS "count"
+        `,
       );
-      const neutralizedDeadlines = await tx.taxDeadline.updateMany({
-        where: {
-          OR: [
-            // Noch bestehender technischer Pointer.
-            { requestId: { in: eligibleIds } },
-            // Der Worker kann den Pointer bereits terminal nach ORPHANED
-            // gelöst haben. Request.taxDeadlineId bewahrt bis zum Purge die
-            // stabile Herkunft; nur dieser explizite Zustand wird hier über
-            // die asymmetrische Relation neutralisiert.
-            ...(eligibleTaxDeadlineIds.length > 0
-              ? [
-                  {
-                    id: { in: eligibleTaxDeadlineIds },
-                    requestId: null,
-                    autoRequestNotificationStatus: 'ORPHANED' as const,
-                  },
-                ]
-              : []),
-          ],
-        },
-        data: {
-          // TAX-DEADLINE-AUTOREQUEST-001: Beim DSGVO-Purge verschwindet die
-          // fachliche Request-Verknuepfung. Der davon getrennte technische
-          // Benachrichtigungszustand muss in derselben Transaktion neutralisiert
-          // werden; sonst bliebe eine Provider-Aussage ohne Bezugsobjekt stehen.
-          requestId: null,
-          autoRequestNotificationStatus: 'NOT_REQUIRED',
-          autoRequestNotificationAttemptCount: 0,
-          autoRequestNotificationLastAttemptAt: null,
-          autoRequestNotificationNextAttemptAt: null,
-          autoRequestNotificationAcceptedAt: null,
-          autoRequestNotificationLastError: null,
-          autoRequestNotificationEscalatedAt: null,
-        },
-      });
-      if (neutralizedDeadlines.count < eligibleTaxDeadlineIds.length) {
+      if ((neutralizedDeadlines?.count ?? 0) < eligibleTaxDeadlineIds.length) {
         // Jede stabile Auto-Request-Herkunft muss vor dem Delete entweder als
         // Pointer- oder als ORPHANED-Zeile vollständig neutralisiert worden
         // sein. Bei inkonsistentem Altbestand wird der gesamte Batch
@@ -395,15 +376,15 @@ export const dsgvoRetentionWorker = createWorker<ChecksJob>(
       // Requests werden nach der längsten Frist ihrer verknüpften Datei-Typen
       // klassifiziert. Der Response-Cutoff verhindert, dass eine jüngere
       // Antwort zusammen mit einem alten Request vorzeitig gelöscht wird.
-      const requestsDeletedSixYear = await purgeRequests({
+      const requestsDeletedSixYear = await purgeRequests(tenantId, {
         tenantId,
         AND: [terminalRequestAndResponsesBefore(requestCutoff), SIX_YEAR_BUCKET],
       });
-      const requestsDeletedEightYear = await purgeRequests({
+      const requestsDeletedEightYear = await purgeRequests(tenantId, {
         tenantId,
         AND: [terminalRequestAndResponsesBefore(requestGobdInvoiceCutoff), EIGHT_YEAR_BUCKET],
       });
-      const requestsDeletedTenYear = await purgeRequests({
+      const requestsDeletedTenYear = await purgeRequests(tenantId, {
         tenantId,
         AND: [terminalRequestAndResponsesBefore(requestGobdLongCutoff), TEN_YEAR_BUCKET],
       });

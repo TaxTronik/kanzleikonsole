@@ -3,7 +3,7 @@
 // GoBD: „regelmäßige Überprüfung der Wirksamkeit der Maßnahmen").
 //
 // Monatlich: das letzte ERFOLGREICHE Backup aus dem Object-Store wird in eine
-// Wegwerf-DB (`taxtronik_drill`) eingespielt (pg_restore mit exakt den Flags
+// Wegwerf-DB (`taxtronik_drill_<zufall>`) eingespielt (pg_restore mit exakt den Flags
 // des Produktiv-Restores, restore.ts) und dort pro Tenant die Audit-Hash-Chain
 // verifiziert. Damit ist nicht nur „Backup existiert", sondern „Backup ist
 // wiederherstellbar UND inhaltlich intakt" nachgewiesen — verankert als
@@ -20,12 +20,21 @@
 //     gestreamt und VOR pg_restore gegen BackupRecord.sha256/sizeBytes geprüft.
 //     Dumps enthalten ausführbares SQL; eine Prüfung nach Restore wäre zu spät.
 //     /tmp bleibt ein 64-MB-tmpfs, der Spool liegt unter BACKUP_DRILL_TMP_DIR.
-//   - DROP/CREATE DATABASE laufen als Owner-Rolle über prismaOwner
-//     ($executeRawUnsafe, statische Statements — kein User-Input im SQL).
+//   - S-01: Die Owner-Verbindung (DATABASE_URL) ist kein Superuser und hat
+//     bewusst kein CREATEDB. CREATE/DROP DATABASE, pg_restore und die Prüfung
+//     der Wegwerf-DB laufen unter der eigenen Drill-Rolle (DATABASE_DRILL_URL,
+//     taxtronik_drill: CREATEDB + BYPASSRLS, keine Rechte in der Produktiv-DB;
+//     $executeRawUnsafe nur mit statischen Statements — kein User-Input).
+//   - Default-ACLs (`ALTER DEFAULT PRIVILEGES FOR ROLE <Migrationsrolle>`) darf
+//     nur diese Rolle selbst setzen; sie betreffen nur künftig angelegte
+//     Objekte der Wegwerf-DB. Der Drill lässt genau diese TOC-Einträge aus
+//     (pg_restore --list/--use-list) und spielt alle übrigen, inklusive
+//     GRANT/REVOKE, mit den Flags des Produktiv-Restores ein.
 // =============================================================================
 
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
 import type { Readable } from 'node:stream';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createWorker } from '../worker-factory';
@@ -106,20 +115,62 @@ export function missingTenantResult(
   return { ok: false, error: 'Tenant fehlt im wiederhergestellten Backup (Backup lückenhaft?)' };
 }
 
-async function recreateDrillDb(database: string): Promise<void> {
-  await prismaOwner.$executeRawUnsafe(`CREATE DATABASE ${database}`);
+/**
+ * S-01: Verbindung der Drill-Rolle (Wartungs-DB). Ohne DATABASE_DRILL_URL
+ * fallen nur Dev/Test auf DATABASE_URL zurück; in Produktion ist das die
+ * Owner-Rolle ohne CREATEDB, der Drill scheitert dann mit klarer Meldung.
+ */
+export function drillDatabaseUrl(
+  source: { NODE_ENV?: string; DATABASE_URL: string },
+  drillUrl: string | undefined = process.env['DATABASE_DRILL_URL'],
+): string {
+  if (drillUrl) return drillUrl;
+  if (source.NODE_ENV === 'production') {
+    throw new Error(
+      'DATABASE_DRILL_URL fehlt: Der Restore-Drill braucht die Drill-Rolle taxtronik_drill.',
+    );
+  }
+  return source.DATABASE_URL;
 }
 
-async function dropDrillDb(database: string): Promise<void> {
-  await prismaOwner
-    .$executeRawUnsafe(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`)
-    .catch((e: unknown) =>
-      log.warn({ err: (e as Error).message }, 'backup-drill: drop drill db failed'),
-    );
+/**
+ * TOC-Liste für den Drill-Restore ohne DEFAULT-ACL-Einträge (siehe Kopf).
+ * Exportiert für den Unit-Test.
+ */
+export function drillRestoreList(toc: string): string {
+  return toc
+    .split(/\r?\n/)
+    .filter((line) => !/^\d+; \d+ \d+ DEFAULT ACL /.test(line))
+    .join('\n');
+}
+
+/** CREATE/DROP DATABASE dürfen nicht in einem Transaktionsblock laufen. */
+async function onDrillServer(drillUrl: string, statement: string): Promise<void> {
+  const admin = new PrismaClient({ adapter: createPostgresAdapter(drillUrl) });
+  try {
+    await admin.$executeRawUnsafe(statement);
+  } finally {
+    await admin
+      .$disconnect()
+      .catch((e: unknown) =>
+        log.warn({ err: (e as Error).message }, 'backup-drill: drill connection close failed'),
+      );
+  }
+}
+
+async function recreateDrillDb(drillUrl: string, database: string): Promise<void> {
+  await onDrillServer(drillUrl, `CREATE DATABASE ${database}`);
+}
+
+async function dropDrillDb(drillUrl: string, database: string): Promise<void> {
+  await onDrillServer(drillUrl, `DROP DATABASE IF EXISTS ${database} WITH (FORCE)`).catch(
+    (e: unknown) => log.warn({ err: (e as Error).message }, 'backup-drill: drop drill db failed'),
+  );
 }
 
 /** BACKUP-DRILL-INTEGRITY-001: verify an exclusive local copy before invoking pg_restore. */
 async function restoreIntoDrill(
+  drillUrl: string,
   bucket: string,
   key: string,
   expectedSha: Uint8Array | null,
@@ -133,28 +184,54 @@ async function restoreIntoDrill(
     expectedSha,
     expectedSize,
     restore: async (path) => {
-      await recreateDrillDb(database);
-      await restoreVerifiedFile(path, database);
+      await recreateDrillDb(drillUrl, database);
+      await restoreVerifiedFile(drillUrl, path, database);
     },
   });
 }
 
-async function restoreVerifiedFile(path: string, database: string): Promise<void> {
-  const conn = pgConnArgs(withDbName(env.DATABASE_URL, database));
+async function restoreVerifiedFile(
+  drillUrl: string,
+  path: string,
+  database: string,
+): Promise<void> {
+  const conn = pgConnArgs(withDbName(drillUrl, database));
   const pgRestorePath = process.env['PG_RESTORE_PATH'] ?? 'pg_restore';
-  const child = spawn(
+  // Liste und Restore lesen dieselbe, bereits gegen den BackupRecord geprüfte
+  // Datei; die Liste liegt im selben privaten Laufordner (wird mit entfernt).
+  const toc = await runPgRestore(pgRestorePath, ['--list', path], process.env, true);
+  const listPath = `${path}.list`;
+  await writeFile(listPath, drillRestoreList(toc), { flag: 'wx', mode: 0o600 });
+  await runPgRestore(
     pgRestorePath,
     // R-02: dieselbe Flag-Liste wie der Produktiv-Restore (pgRestoreArgs aus
     // @taxtronik/db/pg-tools), angewendet auf die bereits vollständig gegen den
     // BackupRecord geprüfte Datei. ACLs/REVOKEs gehoeren zum wiederhergestellten
-    // Sicherheitszustand. Die clusterweite Rolle taxtronik_app existiert in der
-    // Produktivinstanz und muss deshalb auch im Drill-Ziel die archivierten
-    // Grants erhalten.
-    pgRestoreArgs(conn.args, path),
-    { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, ...conn.env } },
+    // Sicherheitszustand. Die clusterweiten Rollen taxtronik_app und
+    // taxtronik_owner existieren in der Produktivinstanz und muessen deshalb
+    // auch im Drill-Ziel die archivierten Grants erhalten.
+    [`--use-list=${listPath}`, ...pgRestoreArgs(conn.args, path)],
+    { ...process.env, ...conn.env },
+    false,
   );
+}
+
+async function runPgRestore(
+  pgRestorePath: string,
+  args: string[],
+  childEnv: NodeJS.ProcessEnv,
+  captureStdout: boolean,
+): Promise<string> {
+  const child = spawn(pgRestorePath, args, {
+    stdio: ['ignore', captureStdout ? 'pipe' : 'ignore', 'pipe'],
+    env: childEnv,
+  });
+  let stdout = '';
+  child.stdout?.on('data', (c: Buffer) => {
+    stdout += c.toString('utf8');
+  });
   let stderr = '';
-  child.stderr.on('data', (c: Buffer) => {
+  child.stderr?.on('data', (c: Buffer) => {
     if (stderr.length < 1500) stderr += c.toString('utf8').slice(0, 1500 - stderr.length);
   });
   // Spawn-Fehler (ENOENT: pg_restore nicht im PATH / falscher PG_RESTORE_PATH)
@@ -175,6 +252,7 @@ async function restoreVerifiedFile(path: string, database: string): Promise<void
     throw new Error(`pg_restore konnte nicht gestartet werden: ${spawnState.error.message}`);
   }
   if (code !== 0) throw new Error(`pg_restore exit ${code}: ${stderr.slice(0, 1500)}`);
+  return stdout;
 }
 
 /** Ergebnis persistieren + in der Produktiv-Chain verankern + ggf. alarmieren. */
@@ -258,9 +336,12 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
   };
 
   let drillPrisma: InstanceType<typeof PrismaClient> | undefined;
+  let drillUrl: string | undefined;
   try {
     try {
+      drillUrl = drillDatabaseUrl(env);
       await restoreIntoDrill(
+        drillUrl,
         latest.bucket,
         latest.key,
         latest.sha256 ?? null,
@@ -279,9 +360,10 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
       return { ok: false, tenants: tenants.length };
     }
 
-    // Verifikation auf der WIEDERHERGESTELLTEN DB (eigener Prisma-Client).
+    // Verifikation auf der WIEDERHERGESTELLTEN DB (eigener Prisma-Client der
+    // Drill-Rolle: Owner aller wiederhergestellten Objekte, BYPASSRLS).
     drillPrisma = new PrismaClient({
-      adapter: createPostgresAdapter(withDbName(env.DATABASE_URL, database)),
+      adapter: createPostgresAdapter(withDbName(drillUrl, database)),
     });
     let allOk = true;
     for (const t of tenants) {
@@ -329,7 +411,8 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
     try {
       await drillPrisma?.$disconnect();
     } finally {
-      await dropDrillDb(database);
+      // Ohne Drill-URL wurde keine Wegwerf-DB angelegt.
+      if (drillUrl) await dropDrillDb(drillUrl, database);
     }
   }
 }

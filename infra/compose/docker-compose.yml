@@ -92,6 +92,12 @@ services:
       POSTGRES_DB: taxtronik
       # Werden vom Init-Skript zum Anlegen der Anwendungs-Rollen verwendet
       TAXTRONIK_APP_PASSWORD: ${TAXTRONIK_APP_PASSWORD:?TAXTRONIK_APP_PASSWORD nicht gesetzt}
+      # S-01: Owner-Verbindung von app/worker (taxtronik_owner, BYPASSRLS ohne
+      # Superuser) und Restore-Drill-Rolle des Workers (taxtronik_drill). Leer
+      # → keine Rolle im Init-Skript; ./taxtronik synchronisiert beide vor
+      # jedem Start (sync_postgres_roles_from_env).
+      TAXTRONIK_OWNER_PASSWORD: ${TAXTRONIK_OWNER_PASSWORD:-}
+      TAXTRONIK_DRILL_PASSWORD: ${TAXTRONIK_DRILL_PASSWORD:-}
       N8N_DB_PASSWORD: ${N8N_DB_PASSWORD:-n8n}
     ports:
       - '127.0.0.1:5432:5432'

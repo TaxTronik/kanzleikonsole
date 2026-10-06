@@ -11,6 +11,11 @@
 // zum Web-App-Pattern, wo alle Mutationen über `withTenantContext` laufen.
 // Inkonsistenz ist Defense-in-Depth-Schwäche: wer später RLS-Read/Write-
 // Policies enger zieht, würde die Worker-Pfade stillschweigend brechen.
+//
+// Achtung: Der Owner-Client verbindet als `taxtronik_owner` (BYPASSRLS, seit
+// S-01 kein Superuser). RLS wirkt hier also nicht; die gesetzten Variablen
+// dienen Audit-Triggern, die Tenant-Filter muss der Job selbst setzen.
+// Echte RLS-Bindung bietet `withSystemContext` aus @taxtronik/db (App-Rolle).
 // =============================================================================
 
 import type { PrismaClient } from '@prisma/client';

@@ -1,3 +1,4 @@
+// Fachkatalog: BACKUP-DRILL-INTEGRITY-001
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -46,6 +47,8 @@ import {
   missingTenantResult,
   restoreEvidenceServiceFor,
   restoreRequiresExternalTsa,
+  drillDatabaseUrl,
+  drillRestoreList,
 } from '../backup-drill';
 
 beforeEach(() => vi.clearAllMocks());
@@ -62,6 +65,42 @@ describe('withDbName', () => {
 
   it('funktioniert ohne Query und ohne Port', () => {
     expect(withDbName('postgresql://u:p@host/db', 'drill')).toBe('postgresql://u:p@host/drill');
+  });
+});
+
+describe('S-01: Drill-Rolle', () => {
+  const owner = 'postgresql://taxtronik_owner:pw@postgres:5432/taxtronik?schema=public';
+  const drill = 'postgresql://taxtronik_drill:pw@postgres:5432/postgres?schema=public';
+
+  it('nutzt DATABASE_DRILL_URL statt der Owner-Verbindung ohne CREATEDB', () => {
+    expect(drillDatabaseUrl({ NODE_ENV: 'production', DATABASE_URL: owner }, drill)).toBe(drill);
+    expect(drillDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: owner }, drill)).toBe(drill);
+  });
+
+  it('fällt nur außerhalb von Produktion auf DATABASE_URL zurück', () => {
+    expect(drillDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: owner }, undefined)).toBe(
+      owner,
+    );
+    expect(() => drillDatabaseUrl({ NODE_ENV: 'production', DATABASE_URL: owner }, '')).toThrow(
+      /DATABASE_DRILL_URL fehlt/,
+    );
+  });
+
+  it('lässt nur die DEFAULT-ACL-Einträge der TOC aus', () => {
+    const toc = [
+      '; Archive created at 2026-10-06',
+      '3200; 1259 614000 TABLE public tenant taxtronik',
+      '3202; 826 614572 DEFAULT ACL public DEFAULT PRIVILEGES FOR TABLES taxtronik',
+      '3203; 826 614573 DEFAULT ACL public DEFAULT PRIVILEGES FOR SEQUENCES taxtronik',
+      '3204; 0 0 ACL public TABLE tenant taxtronik',
+      '3205; 0 0 COMMENT - EXTENSION pgcrypto ',
+    ].join('\r\n');
+    expect(drillRestoreList(toc).split('\n')).toEqual([
+      '; Archive created at 2026-10-06',
+      '3200; 1259 614000 TABLE public tenant taxtronik',
+      '3204; 0 0 ACL public TABLE tenant taxtronik',
+      '3205; 0 0 COMMENT - EXTENSION pgcrypto ',
+    ]);
   });
 });
 

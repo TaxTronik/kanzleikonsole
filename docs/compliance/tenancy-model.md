@@ -1,6 +1,6 @@
 # Tenancy-Modell und Tenant-Isolation
 
-Stand: 2026-07-14
+Stand: 2026-10-06
 
 Dieses Dokument klärt die Tenant-Trennung in taxtronik — was die DB-Schicht
 garantiert, was die App-Schicht beitragen muss und welche Designkompromisse
@@ -59,8 +59,21 @@ gedacht, die RLS nicht sinnvoll nutzen können:
 2. **Cross-Tenant-Verifikation** — z. B. `pnpm verify:chain`.
 3. **System-Wartung** — Backup-Runner, Reconcile-Worker.
 
-**Aktuelle Verwendung**: ~17 Stellen. Jede ist ein expliziter Code-Pfad
-ohne RLS-Schutz und muss eigenverantwortlich tenantId-filtern.
+**Aktuelle Verwendung** (Stand 2026-10-06): 34 Dateien in `apps/web` und 33 in
+`apps/worker` (ohne Tests). Jede ist ein expliziter Code-Pfad ohne RLS-Schutz
+und muss eigenverantwortlich tenantId-filtern.
+
+**Datenbankrolle** (S-01, [ADR 0002](../adr/0002-rls-und-app-level-tenancy.md)):
+In app und worker verbindet `prismaOwner` als `taxtronik_owner` — BYPASSRLS,
+aber kein Superuser. Die Rolle darf nur Daten lesen und schreiben; DDL,
+TRUNCATE, `COPY … PROGRAM`, Rollenverwaltung und das Abschalten von Triggern
+sind ihr verwehrt, die Hash-Chain-Tabellen sind für sie append-only. Den
+Superuser `taxtronik` nutzen nur der `migrate`-Container und die
+Host-Werkzeuge der Operator-CLI (Backup vor Migrationen, Restore). Braucht ein
+neuer Owner-Pfad mehr als DML, gehört das Recht als gezielter Grant oder als
+SECURITY-DEFINER-Funktion in eine Migration; der Rechtetest
+`packages/db/src/__tests__/owner-role-privileges.test.ts` hält die Grenzen
+fest.
 
 ### Code-Review-Checkliste für neue prismaOwner-Nutzung
 

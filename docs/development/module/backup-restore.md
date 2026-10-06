@@ -21,7 +21,9 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   streamt denselben vollständigen Datenbank-Dump direkt nach S3 und erzeugt
   bewusst keine lokale Kopie im read-only Worker-Container. PostgreSQL-ACLs
   und sicherheitsrelevante REVOKEs sind Teil des Dumps; nur Ownership wird für
-  die portable Wiederherstellung ausgelassen.
+  die portable Wiederherstellung ausgelassen. Der Dump läuft als
+  `taxtronik_owner` (S-01): `pg_dump` braucht nur SELECT und BYPASSRLS, kein
+  Superuser-Recht; der Dump ist mit dem des Superusers identisch.
 - **Admin-Button** (`/api/staff/admin/backups/run`): prüft Admin-Recht,
   Single-Tenant-Installation und laufende Sicherungen, protokolliert
   `backup.trigger` und reiht den Tagesjob `backup-run` ein (HTTP 202, feste
@@ -55,15 +57,26 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   `--confirm-overwrite`; Produktionsrestore quiesziert App/Worker/n8n und lässt
   sie gestoppt;
   `pg_restore --single-transaction --exit-on-error` (ganz oder gar nicht);
-  setzt die vorab aus der Betreiberkonfiguration angelegte Cluster-Rolle
-  `taxtronik_app` voraus; verbindliche Rollen-/ACL-/RLS-Abnahme vor jeder
+  läuft als Superuser aus der Host-`.env` des Operators und setzt die vorab
+  aus der Betreiberkonfiguration angelegten Cluster-Rollen `taxtronik_app`
+  und — für Dumps ab Migration `20261006160000` — `taxtronik_owner` voraus
+  (`./taxtronik restore` synchronisiert beide; `restore.ts` prüft vorab nur
+  `taxtronik_app`, fehlt `taxtronik_owner`, bricht `pg_restore` an dessen
+  GRANT-Einträgen ab); verbindliche Rollen-/ACL-/RLS-Abnahme vor jeder
   Erfolgsmeldung, zusätzlich optionaler Smoke-Test (Tenants/Audit-Zählung).
 - **Restore-Drill** (Worker, monatlich 1., 05:00 UTC): letztes
   SUCCESS-Backup → private lokale Kopie unter `BACKUP_DRILL_TMP_DIR`
   (Compose: `/app/backups/restore-drill`, gemeinsamer Backup-Hostmount) →
   vollständiger SHA-256- und Größenvergleich mit `BackupRecord` →
   `pg_restore` genau dieser Datei in eine je Lauf zufällig benannte Wegwerf-DB →
-  `verifyChain` je Tenant auf der **wiederhergestellten** DB; Ergebnis als
+  `verifyChain` je Tenant auf der **wiederhergestellten** DB. Anlegen,
+  Einspielen, Prüfen und Löschen der Wegwerf-DB laufen als eigene Rolle
+  `taxtronik_drill` (`DATABASE_DRILL_URL`: CREATEDB + BYPASSRLS, keine Rechte
+  in der Produktiv-DB, S-01); die Owner-Verbindung hat kein CREATEDB. Weil nur
+  der Superuser Default-Privilegien der Migrationsrolle setzen darf, lässt der
+  Drill genau diese `DEFAULT ACL`-Einträge des Dumps aus (`pg_restore --list`/
+  `--use-list`); alle übrigen Einträge einschließlich GRANT/REVOKE spielt er
+  mit den Flags des Produktiv-Restores ein. Ergebnis als
   `tenant_setting` (Admin-Karte) + Audit `backup.drill.*` in der
   Produktiv-Chain; Fehlschlag → Admin-Notification. Fehlende Hash-/Größenwerte,
   zu große oder abgebrochene Streams und unzureichender freier Plattenplatz
@@ -91,6 +104,7 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
 | Wiederherstellbarkeit je Software-Stand | restore-selftest.sh                                                                  | CI-Job `restore` (Artefakt `testbericht-restore`)                                                                                                        |
 | Wiederherstellbarkeit je Installation   | backup-drill-Worker; `BACKUP-DRILL-INTEGRITY-001`                                    | `backup-drill.test.ts` (Helfer), `backup-drill-file.test.ts` (echte Streams/Dateien, Manipulation, Cleanup); vollständiger Queue-/Image-Nachweis separat |
 | Ganz-oder-gar-nicht-Restore             | --single-transaction                                                                 | CI-Roundtrip                                                                                                                                             |
+| Backup und Drill ohne Superuser (S-01)  | `pg_dump` als `taxtronik_owner`, Drill als `taxtronik_drill` ohne `DEFAULT ACL`      | `owner-role-privileges.test.ts`, `backup-drill*.test.ts`                                                                                                 |
 | Migration nie ohne Backup               | ops-lib `backup_before_migrations`                                                   | ./taxtronik deploy/update                                                                                                                                |
 | Vollständiger Recovery Point sicherbar  | quiesziertes, age-verschlüsseltes `backup-full` + Cold-Volumes + signiertes Inventar | Manipulationstest; Betreiber-Vollsystem-Drill                                                                                                            |
 | Sichtbarkeit ohne Dump-Zugriff          | Admin-Backup-Karte + Drill-Ergebnis; Trigger und Download nur durch Operator         | Route-Tests + manuelle Abnahme                                                                                                                           |

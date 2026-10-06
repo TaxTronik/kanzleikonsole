@@ -221,6 +221,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // RLS-Ressourcensuche per UUID: Owner legt Fixtures an und liest die
   // aktuellen Funktionsdefinitionen; die App-Rolle prüft die Treffer.
   'packages/db/src/__tests__/rls-resource-uuid-lookup.test.ts',
+  // S-01 / ACCESS-TENANT-RLS-001: echte Anmeldungen als taxtronik_owner,
+  // taxtronik_drill und App-Rolle belegen Rollenattribute, Rechte und Sperren.
+  'packages/db/src/__tests__/owner-role-privileges.test.ts',
   // F-03: echte Trigger-/Constraint-Fehler in einem frischen Tenant belegen die Fehlerklassen.
   'packages/db/src/__tests__/database-error-classification.test.ts',
   // F-08 / ACCESS-TENANT-RLS-001: Owner-Fixtures in zwei frischen Tenants; die App-Rolle
@@ -249,9 +252,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/src/__tests__/tenant-client-pair-lock.test.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
-  // Restore-Drill: eigener Client gegen die WEGWERF-DB taxtronik_drill
-  // (Chain-Verifikation auf dem wiederhergestellten Stand) — bewusst kein
-  // App-/Owner-Client, die zeigen auf die Produktiv-DB.
+  // Restore-Drill: eigene Clients der Drill-Rolle (S-01) für CREATE/DROP der
+  // WEGWERF-DB und die Chain-Verifikation auf dem wiederhergestellten Stand —
+  // bewusst kein App-/Owner-Client, die zeigen auf die Produktiv-DB.
   'apps/worker/src/jobs/backup-drill.ts',
   // RLS-Drift-Gate: introspectiert pg_catalog für ENABLE/FORCE RLS + Policies.
   // Owner-Verbindung (BYPASSRLS), bewusst kein App-Request-Pfad.

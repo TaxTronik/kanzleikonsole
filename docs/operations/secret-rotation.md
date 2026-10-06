@@ -28,8 +28,10 @@ Dieses Runbook beschreibt die Rotation produktiver Geheimnisse. Für
 | `AUTH_SECRET`                                             | Session-Signing, TOTP-Encryption  | nur nach Auth-Runbook          | Sessions ungültig, TOTP betroffen      |
 | `SECRET_BOX_KEY`                                          | Wurzel der Secret-Box             | nur bei Kompromittierung       | Checkpoints einmalig ungültig          |
 | `SECRET_BOX_KEYRING`                                      | Tenant-/Integrations-Secrets      | ohne Ausfallzeit mit Re-Wrap   | gespeicherte Secrets sonst unlesbar    |
-| `POSTGRES_PASSWORD`                                       | DB-Owner/Migrationen              | Wartungsfenster                | App-Owner-Tools, Migrationen           |
+| `POSTGRES_PASSWORD`                                       | DB-Superuser (Migration/Restore)  | Wartungsfenster                | Migrationen, Operator-Werkzeuge        |
 | `TAXTRONIK_APP_PASSWORD`                                  | App-DB-Rolle mit RLS              | Wartungsfenster                | App/Worker DB-Zugriff                  |
+| `TAXTRONIK_OWNER_PASSWORD`                                | Owner-Rolle App/Worker (S-01)     | Wartungsfenster                | Login, Callbacks, Worker-Jobs          |
+| `TAXTRONIK_DRILL_PASSWORD`                                | Restore-Drill-Rolle (S-01)        | Wartungsfenster                | monatlicher Restore-Drill              |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY`                         | SeaweedFS S3                      | Wartungsfenster                | Uploads, Backups, Restore              |
 | Outbound-HMAC je Tenant; `N8N_HMAC_SECRET` nur Legacy     | TaxTronik→n8n Event-Signaturen    | koordiniert App/Worker+n8n     | Event-Webhooks schlagen sonst fehl     |
 | n8n Callback-Key/-Token                                   | n8n→TaxTronik Scoped Callback     | ohne Dual-Token-Fenster        | Callbacks schlagen sonst fehl          |
@@ -100,6 +102,22 @@ Reihenfolge:
 2. `.env` aktualisieren.
 3. `./taxtronik deploy`.
 4. App-/Worker-Logs prüfen.
+
+`./taxtronik deploy`/`update` synchronisiert die Passwörter von `taxtronik`,
+`taxtronik_app`, `taxtronik_owner`, `taxtronik_drill` und `n8n` ohnehin aus
+`.env` (`sync_postgres_roles_from_env`); Schritt 1 ist damit nur für einen
+Wechsel ohne CLI nötig. Zwischen Synchronisation und Neustart scheitern neue
+Verbindungen der alten Container, deshalb gilt das Wartungsfenster.
+
+Seit S-01 hält jedes Secret genau eine Rolle: `POSTGRES_PASSWORD` den
+Superuser `taxtronik` (nur `migrate`-Container und Operator-Werkzeuge),
+`TAXTRONIK_APP_PASSWORD` die RLS-gebundene App-Rolle,
+`TAXTRONIK_OWNER_PASSWORD` die Owner-Verbindung `taxtronik_owner` von app und
+worker und `TAXTRONIK_DRILL_PASSWORD` die Drill-Rolle `taxtronik_drill` des
+Workers. Owner- und Drill-Passwort müssen sich vom Superuser-, vom App- und
+vom jeweils anderen Passwort unterscheiden, sonst meldet `./taxtronik doctor`
+`DB_ROLE_SECRETS`: Wer das Superuser-Passwort kennt, verbindet über das
+Docker-Netz auch als Superuser.
 
 Bei externer Datenbank ist der Betreiber-DBA verantwortlich; TaxTronik darf
 dann nur `.env` und Health prüfen.
@@ -351,7 +369,8 @@ vorab vermerken.
    der Wert bleibt unverändert), `2` = parallel geänderte Werte (erneut
    ausführen). Voraussetzung auf dem Host sind die Host-Tool-Abhängigkeiten,
    wie sie `./taxtronik reset-admin-password` installiert, und die
-   Owner-Verbindung `DATABASE_URL` aus `.env`.
+   Host-Verbindung `DATABASE_URL` aus `.env` (Superuser `taxtronik`; die
+   Container nutzen seit S-01 `taxtronik_owner`).
 
 6. Alte Einträge aus `SECRET_BOX_KEYRING` entfernen und `./taxtronik deploy`.
    Die Wurzel bleibt implizit Teil des Schlüsselbunds.

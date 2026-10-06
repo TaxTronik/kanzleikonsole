@@ -1,5 +1,38 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-037
+    date: '2026-10-06'
+    paths:
+      - apps/worker/src/jobs/backup-drill.ts
+      - apps/worker/src/jobs/dsgvo-retention.ts
+      - packages/db/prisma/migrations/20261006160000_owner_role_least_privilege/migration.sql
+      - scripts/release/smoke-release-images.sh
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-HASH-CHAIN-001
+      - AUDIT-ARCHIVE-001
+      - BACKUP-DRILL-INTEGRITY-001
+      - DSGVO-OPERATIONAL-RETENTION-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Web-App und Worker verbinden sich nicht mehr als PostgreSQL-Superuser, sondern
+      als neue Rolle taxtronik_owner (NOSUPERUSER, NOCREATEDB, NOCREATEROLE,
+      NOREPLICATION, BYPASSRLS; Migration 20261006160000): Sie umgeht RLS wie
+      bisher, darf aber nur Daten lesen und schreiben; Audit-Tabellen sind für sie
+      nur anfügbar. Die Bereinigung der Steuerfrist-Anforderungsverweise im
+      DSGVO-Lauf passierte bisher einen Trigger nur, weil die Verbindung
+      Tabelleneigentümer war; sie nutzt jetzt die mandantengebundene Funktion
+      app.purge_tax_deadline_request_links mit denselben Zeilen und Ergebnissen.
+      Der Restore-Drill läuft als eigene Rolle taxtronik_drill und lässt nur die
+      DEFAULT-ACL-Einträge des Dumps aus. RLS-Semantik, Aufbewahrungsfristen,
+      Drill-Integritätsprüfung und Release-Smoke-Ablauf bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/owner-role-privileges.test.ts
+      - apps/worker/src/jobs/__tests__/backup-drill.test.ts
+      - apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-036
     date: '2026-10-06'
     paths:
@@ -3944,6 +3977,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-037` dokumentiert die Owner-Rolle ohne
+  Superuser-Rechte für App und Worker und die eigene Drill-Rolle.
 
 - 2026-10-06: `FK-EXC-20261006-036` dokumentiert die einheitliche Prüfung der
   Bestandskraft-Begründung und die sitzungsunabhängige Erkennung verspäteter

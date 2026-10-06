@@ -272,8 +272,14 @@ Rollenmodell implizit.
   Relationsfilter (`client-access-filter.ts`, keine NOT-IN-Listen).
 - **RLS-Backstop:** App-Rolle `taxtronik_app` ohne BYPASSRLS; jede Query
   via `withTenantContext` (`set_config('app.current_tenant_id', …)`) gegen
-  FORCE-RLS-Policies; Owner-Verbindung nur Migration/CLI/Worker; App-Client
-  fail-closed ohne Owner-Fallback.
+  FORCE-RLS-Policies; Owner-Verbindung (`prismaOwner`) nur für Auth vor dem
+  Tenant-Kontext, Callbacks, CLI und Worker; App-Client fail-closed ohne
+  Owner-Fallback.
+- **Owner ohne Superuser (S-01):** app und worker verbinden für den
+  Owner-Client als `taxtronik_owner` (BYPASSRLS, nur DML, Audit-Tabellen
+  append-only); der Superuser `taxtronik` bleibt Migrationen und der
+  Operator-CLI vorbehalten, der Restore-Drill nutzt `taxtronik_drill`
+  ([ADR 0002](../../adr/0002-rls-und-app-level-tenancy.md)).
 - Maschinelle Guards: alle ~225 Server-Actions müssen ein Auth-Primitiv
   referenzieren (AST-Test), jede `new PrismaClient`-Stelle steht auf einer
   begründeten Allowlist.
@@ -294,6 +300,7 @@ Rollenmodell implizit.
 | ------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
 | Cross-Tenant unmöglich (DB-Ebene)                 | RLS-Policies                               | `rls-cross-tenant.test.ts` (CI-Pflicht)                                                                           |
 | Kein Owner-Fallback                               | db/client fail-closed                      | `client-fail-closed.test.ts`                                                                                      |
+| Owner-Verbindung ohne Superuser (S-01)            | Rolle `taxtronik_owner` + Migration        | `owner-role-privileges.test.ts` + ops-Tests (`./taxtronik doctor`)                                                |
 | Magic-Link-Lebenszyklus                           | auth/magic-link                            | `magic-link.test.ts` + Security-Audit 2026-06 (One-Time/Replay/Prefetch verifiziert)                              |
 | Lockout ohne Fremd-Aussperrung                    | auth/lockout                               | `lockout.test.ts`                                                                                                 |
 | TOTP-Helfer                                       | auth/totp                                  | `totp.test.ts`                                                                                                    |

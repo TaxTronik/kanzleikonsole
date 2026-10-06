@@ -1,7 +1,7 @@
 # ADR 0002 — Doppelte Verteidigung: RLS + App-Level-Tenancy
 
-**Status**: Akzeptiert
-**Datum**: 2026-05-10
+**Status**: Akzeptiert; Rollenmodell am 2026-10-06 präzisiert (Review-Befund S-01)
+**Datum**: 2026-05-10 · aktualisiert 2026-10-06
 
 ## Kontext
 
@@ -32,9 +32,33 @@ Reine Postgres-RLS ist robuster, aber:
    plus eine Policy `tenant_id = app.current_tenant_id()`. Die Funktion
    liegt im Schema `app` und liest die Session-Variable.
 
-3. **Owner vs App-Role**: Migrationen laufen als `taxtronik` (Owner mit
-   BYPASSRLS); die App verbindet als `taxtronik_app` (eingeschränkt, RLS
-   greift). Beide URLs in ENV (`DATABASE_URL`, `DATABASE_APP_URL`).
+3. **Rollenmodell** (präzisiert 2026-10-06, Review-Befund S-01):
+   - `taxtronik` ist Superuser und Eigentümer aller Objekte. Ihn nutzen nur
+     die Postgres-Initialisierung, der `migrate`-Container (DDL, Grants) und
+     die Host-Werkzeuge der Operator-CLI (Backup vor Migrationen, Restore,
+     `psql`).
+   - `taxtronik_app` (`DATABASE_APP_URL`, ohne BYPASSRLS) bedient den
+     App-Client: `withTenantContext`/`withSystemContext`, RLS greift.
+   - `taxtronik_owner` (`DATABASE_URL` von app und worker) bedient den
+     Owner-Client `prismaOwner`: BYPASSRLS für Pfade ohne Tenant-Kontext, aber
+     ohne SUPERUSER, CREATEDB, CREATEROLE und REPLICATION. Die Rolle darf Daten
+     lesen und schreiben (SELECT/INSERT/UPDATE/DELETE, Sequenzen, dieselben
+     EXECUTE-Rechte wie die App-Rolle), aber keine DDL, kein TRUNCATE, kein
+     `COPY … PROGRAM` und keine Trigger abschalten. `audit_log`, `audit_seal`
+     und `audit_anchor` darf sie nur lesen und anfügen, `audit_archive` nicht
+     löschen, `_prisma_migrations` nur lesen. Was bisher stillschweigend am
+     Superuser hing, kapselt eine SECURITY-DEFINER-Funktion mit festem
+     `search_path` (`app.purge_tax_deadline_request_links`).
+   - `taxtronik_drill` (`DATABASE_DRILL_URL`, nur worker) legt für den
+     monatlichen Restore-Drill Wegwerf-Datenbanken an (CREATEDB + BYPASSRLS)
+     und hat in der Produktiv-DB keine Tabellenrechte.
+
+   Rechte und Default-Privilegien vergibt die Migration
+   `20261006160000_owner_role_least_privilege`; LOGIN und Passwörter setzt die
+   Operator-CLI aus `.env` (`TAXTRONIK_OWNER_PASSWORD`,
+   `TAXTRONIK_DRILL_PASSWORD`). `./taxtronik doctor` meldet eine fehlende oder
+   falsch konfigurierte Rolle und einen Superuser in der Verbindung von app
+   oder worker als Fehler.
 
 ## Konsequenzen
 
@@ -44,10 +68,21 @@ Reine Postgres-RLS ist robuster, aber:
   wenn Tenant-Kontext fehlt (statt fremder Daten zu leaken).
 - Vergessene RLS-Policy auf neuer Tabelle wird durch CI-Cross-Tenant-Test
   erkannt (siehe Verifikation).
-- CLI/Worker-System-Jobs nutzen `withSystemContext(tenantId, ...)` — derselbe
-  Mechanismus, dokumentiert.
+- System-Pfade mit bekanntem Tenant können `withSystemContext(tenantId, ...)`
+  nutzen — derselbe Mechanismus über die App-Rolle (z. B. GwG-Onboarding,
+  Worker-Job `expansion`).
+- Codeausführung oder SQL-Injection auf einem Owner-Pfad führt nicht mehr zur
+  Kontrolle über den Datenbankcluster: keine Schemaänderung, keine
+  Rechteausweitung, keine Shell auf dem DB-Server (`COPY … PROGRAM`), keine
+  Abschaltung der Audit-Trigger.
 
 **Negativ**
+
+- Login, n8n-Callbacks, der iCal-Feed und die meisten Worker-Jobs laufen über
+  den Owner-Client; `withWorkerTenantContext` setzt dort nur den
+  Audit-Kontext, RLS wirkt nicht. Über diese Pfade erreicht ein Angreifer
+  weiterhin alle Mandantendaten (BYPASSRLS); vor fehlenden Tenant-Filtern
+  schützt hier nur der Code.
 
 - Jede DB-Operation MUSS durch den Wrapper. Direkter `prisma.x.findMany()`
   ohne Wrapper liefert leeres Ergebnis (für die App-Role) — anfangs irritierend,
@@ -62,6 +97,18 @@ Reine Postgres-RLS ist robuster, aber:
   Schutz vor falschem Cross-Tenant-Lookup.
 - **Schema pro Mandant**: verworfen — Migrations-Hölle, skaliert nicht;
   unsere Multi-Tenancy ist ohnehin meist 1:1 (On-Prem pro Kanzlei).
+- **Owner-Verbindung als Superuser** (Stand bis 2026-10-06): verworfen nach
+  Review-Befund S-01 — eine Lücke auf einem Owner-Pfad bedeutete volle
+  Kontrolle über den Cluster.
+- **Alle Owner-Pfade sofort auf die App-Rolle**: nicht in einem Schritt
+  möglich (Login vor dem Tenant-Kontext, mandantenübergreifende Wartung);
+  mandantenbezogene Worker-Jobs und Callbacks schrittweise auf
+  `withSystemContext` umzustellen bleibt ein Folgepunkt.
+- **Eigene Backup-Rolle für `pg_dump`**: verworfen — `pg_dump` braucht nur
+  SELECT und BYPASSRLS, beides hat `taxtronik_owner`; der Dump ist mit dem des
+  Superusers identisch.
+- **CREATEDB für die Owner-Rolle** (Restore-Drill): verworfen — die eigene
+  Rolle `taxtronik_drill` hat keine Rechte in der Produktiv-DB.
 
 ## Verifikation
 

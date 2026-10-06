@@ -231,6 +231,59 @@ abweichenden Datei mit stabilem Namen, z. B.
 Verbindungsfehler wird getrennt davon mit der psql-Meldung ausgegeben und sagt
 nichts über den Schutz aus; auch dann starten keine Writer.
 
+### Datenbankrollen von app und worker (S-01)
+
+Ab Migration `20261006160000_owner_role_least_privilege` verbinden app und
+worker ihren Owner-Client nicht mehr als Superuser `taxtronik`, sondern als
+`taxtronik_owner`: BYPASSRLS wie bisher, aber nur Daten lesen und schreiben
+(keine DDL, kein TRUNCATE, kein `COPY … PROGRAM`, keine Rollenverwaltung,
+Audit-Tabellen append-only). Der monatliche Restore-Drill des Workers nutzt
+`taxtronik_drill` (CREATEDB + BYPASSRLS, keine Rechte in der Produktiv-DB).
+`taxtronik` bleibt dem `migrate`-Container und den Host-Werkzeugen der CLI
+vorbehalten (Backup vor Migrationen, Restore, `psql`).
+
+Das erste `./taxtronik update` auf diesen Stand stellt ohne Handarbeit um:
+
+1. Der aktualisierte Operator ergänzt die Secrets `TAXTRONIK_OWNER_PASSWORD`
+   und `TAXTRONIK_DRILL_PASSWORD` in `.env` (wie `doctor --fix`).
+2. Der Postgres-Container wird einmalig neu erstellt, weil er beide Werte für
+   sein Init-Skript erhält (kurzer DB-Neustart, die Daten bleiben im Volume).
+3. Die Rollensynchronisation legt beide Rollen mit Passwort an bzw. zieht ihre
+   Attribute nach.
+4. Die Migration vergibt Grants und Default-Privilegien und legt die
+   SECURITY-DEFINER-Funktion `app.purge_tax_deadline_request_links` für den
+   DSGVO-Purge an.
+5. app und worker starten mit der neuen `DATABASE_URL` (worker zusätzlich mit
+   `DATABASE_DRILL_URL`).
+
+Wiederholte Läufe sind idempotent. `./taxtronik doctor` prüft danach
+`DB_ROLE_SECRETS` (Passwörter getrennt), `DB_ROLE_APP`, `DB_ROLE_WORKER` und
+`DB_ROLE_DRILL` (Rollen der Compose-Definition) sowie bei laufendem Stack
+`DB_ROLE_LIVE_owner`/`DB_ROLE_LIVE_drill` (Attribute und Grants in Postgres)
+und `DB_ROLE_RUN_app`/`DB_ROLE_RUN_worker` (Rolle der laufenden Container).
+Jede Abweichung ist ein Fehler, insbesondere ein Superuser in der Verbindung
+von app oder worker.
+
+**„permission denied“ nach dem Update:** Ein Owner-Pfad braucht ein Recht, das
+die Migration nicht vergibt — ein Release-Fehler, kein Konfigurationsfehler.
+Sofortmaßnahme ohne Rollback ist ein gezielter Grant als Superuser, z. B.
+
+```bash
+docker exec -it taxtronik-postgres psql -U taxtronik -d taxtronik \
+  -c 'GRANT SELECT ON public.<tabelle> TO taxtronik_owner;'
+```
+
+Fehlermeldung und Grant melden; das Recht gehört in eine Migration. Die
+Superuser-URL für app oder worker ist keine zulässige Sofortmaßnahme.
+
+**Rollback:** Die Migration ist additiv (Rollen, Grants, eine neue Funktion);
+der vorherige Release läuft technisch auf dem neuen Schema. Weil das Update
+eine Migration angewendet hat, verlangt `./taxtronik rollback` wie nach jeder
+Migration das Vor-Migrations-Backup (Disaster-Recovery-Runbook, Abschnitt
+9.2). Danach verbinden app und worker wieder als `taxtronik`. Die Rollen
+`taxtronik_owner`/`taxtronik_drill` und die beiden `.env`-Werte dürfen
+bleiben; ein späteres Update nutzt sie wieder.
+
 ### Recovery des GwG-Migrationsfehlers `03400` (P3018/42883)
 
 Eine vor dem ersten Release kurzzeitig auf `main` vorhandene Fassung von
@@ -303,9 +356,12 @@ Dateieigentümer des Deployment-Checkouts ausgeführt werden.
 ## Datenbankverbindungen
 
 Jeder Prozess von `app` und `worker` hat zwei Verbindungs-Pools: den App-Pool
-(`DATABASE_APP_URL`, RLS, Request-Transaktionen) und den Owner-Pool
-(`DATABASE_URL`, Login/Auth bzw. Worker-Jobs). Eine Transaktion hält ihre
-Verbindung bis zu 15 s. Die Obergrenzen setzt Compose je Dienst:
+(`DATABASE_APP_URL`, Rolle `taxtronik_app`, RLS, Request-Transaktionen) und
+den Owner-Pool (`DATABASE_URL`, Rolle `taxtronik_owner`, Login/Auth bzw.
+Worker-Jobs). Keiner der beiden verbindet als Superuser (S-01); die
+`superuser_reserved_connections` bleiben damit auch bei ausgeschöpften Pools
+für `psql` des Operators frei. Eine Transaktion hält ihre Verbindung bis zu
+15 s. Die Obergrenzen setzt Compose je Dienst:
 
 | `.env`-Variable            | Compose-Default | Pool                       |
 | -------------------------- | --------------- | -------------------------- |

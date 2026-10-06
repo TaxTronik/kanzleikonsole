@@ -8,6 +8,8 @@
 //
 // `Owner` heißt: BYPASSRLS — direkter DB-Zugriff ohne Tenant-Kontext.
 // Für mandantenbezogene Reads/Writes immer `withTenantContext` verwenden.
+// Im Container verbindet der Client als `taxtronik_owner` (S-01): kein
+// Superuser, nur Daten lesen/schreiben; Details in packages/db/src/owner-client.ts.
 // =============================================================================
 
 export { prismaOwner } from '@taxtronik/db';

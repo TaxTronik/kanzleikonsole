@@ -14,6 +14,15 @@
 // Diese Datei spiegelt das Pattern aus apps/web/src/server/db/prisma-owner.ts,
 // damit auch Package-interne Tools (CLI) den Owner-Client ohne web-Import
 // nutzen können.
+//
+// S-01 (ADR 0002): In den Containern app und worker ist `DATABASE_URL` die
+// Rolle `taxtronik_owner` — BYPASSRLS, aber kein Superuser. Sie darf nur
+// Daten lesen und schreiben (Grants aus Migration 20261006160000); DDL,
+// TRUNCATE, Rollen, Trigger-Abschaltung und Änderungen an audit_log/
+// audit_seal/audit_anchor scheitern. Was ein Owner-Pfad darüber hinaus
+// braucht, gehört als gezielter Grant oder SECURITY-DEFINER-Funktion in eine
+// Migration (Rechtetest: __tests__/owner-role-privileges.test.ts). Nur
+// Host-Werkzeuge der Operator-CLI verbinden über diese Variable als Superuser.
 // =============================================================================
 
 import { PrismaClient as PrismaClientCtor, type PrismaClientInstance } from './prisma-client';

@@ -27,6 +27,16 @@ einschließlich `-d`; Ausgaben werden angezeigt, während der Rückgabewert alle
 der Exitcode ist. Image-Referenzen werden als Argument übergeben, ohne sie durch
 eine zusätzliche Shell auszuwerten.
 
+Seit S-01 verbinden app und worker als `taxtronik_owner`, der Restore-Drill des
+Workers als `taxtronik_drill`. Der Launcher erzeugt dafür
+`TAXTRONIK_OWNER_PASSWORD` und `TAXTRONIK_DRILL_PASSWORD`, startet Postgres
+vorab und führt das idempotente Init-Skript (`infra/scripts/postgres-init.sh`)
+im Container erneut aus, damit auch ein bestehendes Volume beide Rollen
+erhält. Die Grants vergibt danach der `migrate`-Service. Manuelle Abnahme auf
+Windows: zweiter Start mit vorhandenem Volume, danach meldet
+`docker exec taxtronik-postgres psql -U taxtronik -d taxtronik -c "\du"` beide
+Rollen ohne Superuser-Attribut, und der Login funktioniert.
+
 Die Regressionstests laufen ohne Docker-Zugriff mit simulierten Befehlen. Der
 Reset-Test kopiert das Setup in ein eigenes temporäres Verzeichnis und prüft
 einen fehlgeschlagenen Reset mit einer synthetischen Konfiguration. Beide Tests

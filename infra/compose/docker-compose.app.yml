@@ -65,7 +65,11 @@ services:
       # für jede Stelle, die doch server-lokale Zeit nutzt (z. B. DOS-Timestamps
       # im ZIP-Writer). Ohne TZ läuft Node in UTC.
       TZ: Europe/Berlin
-      DATABASE_URL: postgresql://taxtronik:${POSTGRES_PASSWORD}@postgres:5432/taxtronik?schema=public
+      # S-01: Owner-Client (Login, Auth, Callbacks vor dem Tenant-Kontext) als
+      # taxtronik_owner: BYPASSRLS, aber kein Superuser — nur Daten lesen/
+      # schreiben, keine DDL, kein COPY ... PROGRAM, Audit-Trigger bleiben aktiv.
+      # Der Superuser taxtronik bleibt migrate und dem Operator vorbehalten.
+      DATABASE_URL: postgresql://taxtronik_owner:${TAXTRONIK_OWNER_PASSWORD:?TAXTRONIK_OWNER_PASSWORD nicht gesetzt - ./taxtronik doctor --fix}@postgres:5432/taxtronik?schema=public
       DATABASE_APP_URL: postgresql://taxtronik_app:${TAXTRONIK_APP_PASSWORD}@postgres:5432/taxtronik?schema=public
       REDIS_URL: redis://redis:6379
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET nicht gesetzt}
@@ -145,7 +149,7 @@ services:
       # AUTH_SECRET; ein später gesetzter Wert darf nicht still ignoriert werden.
       SECRET_BOX_KEY: ${SECRET_BOX_KEY:-}
       # P-06: Pool-Obergrenzen je Pool. App-Pool = Request-Transaktionen (RLS),
-      # Owner-Pool = Auth/Login. Summe aller Dienste prüft `./taxtronik doctor`
+      # Owner-Pool (taxtronik_owner) = Auth/Login. Summe aller Dienste prüft `./taxtronik doctor`
       # gegen POSTGRES_MAX_CONNECTIONS (Richtwerte: docs/operations/day-2-operations.md).
       DATABASE_APP_POOL_MAX: ${APP_DB_POOL_MAX:-20}
       DATABASE_OWNER_POOL_MAX: ${APP_DB_OWNER_POOL_MAX:-5}
@@ -229,10 +233,18 @@ services:
       # (packages/config/src/job-queues.ts, nächtliche Wartung in UTC).
       TZ: Europe/Berlin
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      DATABASE_URL: postgresql://taxtronik:${POSTGRES_PASSWORD}@postgres:5432/taxtronik?schema=public
-      # Production-Pflicht laut @taxtronik/config (RLS-Backstop): der Worker
-      # nutzt ebenfalls die eingeschränkte App-Rolle, nicht den DB-Owner.
+      # S-01: Die meisten Worker-Jobs laufen über den Owner-Client (BYPASSRLS,
+      # mandantenübergreifende Wartung, n8n-Zustellung, Backup per pg_dump).
+      # Er verbindet als taxtronik_owner: kein Superuser, nur Daten lesen/
+      # schreiben; Ausnahmen kapseln SECURITY-DEFINER-Funktionen der Migration.
+      DATABASE_URL: postgresql://taxtronik_owner:${TAXTRONIK_OWNER_PASSWORD:?TAXTRONIK_OWNER_PASSWORD nicht gesetzt - ./taxtronik doctor --fix}@postgres:5432/taxtronik?schema=public
+      # Production-Pflicht laut @taxtronik/config (RLS-Backstop): SYSTEM-Kontexte
+      # (withSystemContext) laufen über die eingeschränkte App-Rolle.
       DATABASE_APP_URL: postgresql://taxtronik_app:${TAXTRONIK_APP_PASSWORD}@postgres:5432/taxtronik?schema=public
+      # S-01: Monatlicher Restore-Drill: Wegwerf-DB anlegen/löschen, pg_restore
+      # und Prüfung als taxtronik_drill (CREATEDB + BYPASSRLS, ohne Rechte in
+      # der Produktiv-DB); verbindet zur Wartungs-DB postgres.
+      DATABASE_DRILL_URL: postgresql://taxtronik_drill:${TAXTRONIK_DRILL_PASSWORD:?TAXTRONIK_DRILL_PASSWORD nicht gesetzt - ./taxtronik doctor --fix}@postgres:5432/postgres?schema=public
       # Mandanten-Links in Worker-Mails (z. B. Anforderungen aus Steuerfristen)
       # zeigen wie im app-Service auf PORTAL_PUBLIC_URL; leer → Fallback auf
       # NEXTAUTH_URL (Single-Host-Deploy). Web-Auth-Werte (NEXTAUTH_TRUST_HOST,
@@ -284,8 +296,8 @@ services:
       # dauerhaft „nicht konfiguriert" — der Betreiber erführe nie von Updates.
       UPDATE_MANIFEST_URL: ${UPDATE_MANIFEST_URL:-}
       UPDATE_PUBLIC_KEY: ${UPDATE_PUBLIC_KEY:-}
-      # P-06: Worker-Jobs laufen überwiegend über den Owner-Pool; der App-Pool
-      # bedient nur SYSTEM-Kontexte. Summe prüft `./taxtronik doctor`.
+      # P-06: Worker-Jobs laufen überwiegend über den Owner-Pool (taxtronik_owner);
+      # der App-Pool bedient nur SYSTEM-Kontexte. Summe prüft `./taxtronik doctor`.
       DATABASE_APP_POOL_MAX: ${WORKER_DB_POOL_MAX:-5}
       DATABASE_OWNER_POOL_MAX: ${WORKER_DB_OWNER_POOL_MAX:-10}
       SECRET_BOX_KEYRING: ${SECRET_BOX_KEYRING:-}
@@ -323,7 +335,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      # Migrationen brauchen DDL → Owner-Rolle (taxtronik), nicht die App-Rolle.
+      # Migrationen brauchen DDL und Rollenrechte → Superuser taxtronik (S-01:
+      # nur hier im Container; app und worker nutzen taxtronik_owner).
       DATABASE_URL: postgresql://taxtronik:${POSTGRES_PASSWORD}@postgres:5432/taxtronik?schema=public
     command:
       - sh

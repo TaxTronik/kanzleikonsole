@@ -61,10 +61,20 @@ den gesondert bestätigten `--production-target`-Pfad. Einen impliziten Fallback
 auf die produktive `DATABASE_URL` aus `.env` gibt es nicht.
 
 Der Dump enthält PostgreSQL-ACLs und sicherheitsrelevante REVOKEs. Die
-clusterweite Rolle `taxtronik_app` muss deshalb **vor** `pg_restore` aus der
-gesicherten `.env` angelegt/synchronisiert sein. Der Operator-Wrapper
-`./taxtronik restore` erledigt dies; ein direkter Aufruf von `restore.ts`
-bricht ohne die Rolle ab.
+clusterweiten Rollen `taxtronik_app` und — für Dumps ab Migration
+`20261006160000` (S-01) — `taxtronik_owner` müssen deshalb **vor**
+`pg_restore` aus der gesicherten `.env` angelegt/synchronisiert sein. Der
+Operator-Wrapper `./taxtronik restore` erledigt dies für alle Rollen
+einschließlich `taxtronik_drill`; ein direkter Aufruf von `restore.ts` bricht
+ohne `taxtronik_app` vorab ab, ohne `taxtronik_owner` erst in `pg_restore`
+(ganz oder gar nicht, die Ziel-DB bleibt unverändert). Der Restore selbst läuft
+als Superuser `taxtronik` mit der `DATABASE_URL` der Host-`.env`; app und
+worker verbinden danach als `taxtronik_owner` und benötigen die im Dump
+enthaltenen Grants. Ein Dump von vor S-01 enthält diese Grants nicht; er ist
+wie andere ältere Dumps mit dem passenden alten Release wiederherzustellen und
+anschließend per `./taxtronik update` kontrolliert zu aktualisieren (die
+Migration vergibt die Grants). `./taxtronik doctor` meldet fehlende Grants als
+`DB_ROLE_LIVE_owner`.
 
 Die S3-CLI vergleicht den Dump-Hash mit `BackupRecord`, solange die bisherige
 Produktiv-DB noch lesbar ist. Nach vollständigem DB-Verlust ist genau diese

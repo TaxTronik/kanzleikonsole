@@ -94,6 +94,9 @@ Ensure-Secret 'N8N_HMAC_SECRET'       32 -ReplaceWeak
 Ensure-Secret 'N8N_ENCRYPTION_KEY'    24 -ReplaceWeak
 Ensure-Secret 'POSTGRES_PASSWORD'     24
 Ensure-Secret 'TAXTRONIK_APP_PASSWORD' 24
+# S-01: Owner-Verbindung von app/worker (kein Superuser) und Restore-Drill-Rolle.
+Ensure-Secret 'TAXTRONIK_OWNER_PASSWORD' 24
+Ensure-Secret 'TAXTRONIK_DRILL_PASSWORD' 24
 Ensure-Secret 'S3_ACCESS_KEY'         16
 Ensure-Secret 'S3_SECRET_KEY'         32
 Ensure-Secret 'N8N_DB_PASSWORD'       24
@@ -128,6 +131,14 @@ if ($Build -or -not (Image-Exists $webImg) -or -not (Image-Exists $workerImg)) {
 if (-not (Get-EnvVal 'SEAWEED_S3_PORT'))     { $env:SEAWEED_S3_PORT     = '38333' }
 if (-not (Get-EnvVal 'SEAWEED_MASTER_PORT')) { $env:SEAWEED_MASTER_PORT = '39333' }
 if (-not (Get-EnvVal 'SEAWEED_FILER_PORT'))  { $env:SEAWEED_FILER_PORT  = '38888' }
+
+# S-01: Das Init-Skript legt die Datenbankrollen nur beim ersten Start eines
+# Volumes an. Für bestehende Volumes wird es nach dem Postgres-Start erneut
+# ausgeführt (idempotent, Passwörter bleiben in der Container-Umgebung), damit
+# app und worker als taxtronik_owner verbinden können.
+Info "Postgres starten und Datenbankrollen synchronisieren"
+if ((Run-Docker compose --env-file '.env' -f $Base -f $App up -d --wait postgres) -ne 0) { Die "Postgres-Start fehlgeschlagen." }
+if ((Run-Docker exec taxtronik-postgres bash /docker-entrypoint-initdb.d/01-init.sh) -ne 0) { Die "Synchronisierung der Datenbankrollen fehlgeschlagen." }
 
 Info "Stack starten (Infra + App + Worker + n8n; Migrationen via migrate-Service)"
 if ((Run-Docker compose --env-file '.env' -f $Base -f $App up -d) -ne 0) { Die "docker compose up fehlgeschlagen." }

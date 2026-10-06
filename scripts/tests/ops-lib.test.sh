@@ -170,6 +170,8 @@ N8N_HMAC_SECRET=n8n-hmac-secret-with-at-least-thirty-two-chars
 N8N_ENCRYPTION_KEY=aaaaaaaaaaaaaaaaaaaaaaaa
 POSTGRES_PASSWORD=postgres-password-24chars
 TAXTRONIK_APP_PASSWORD=app-password-24chars-long
+TAXTRONIK_OWNER_PASSWORD=owner-password-24chars-x
+TAXTRONIK_DRILL_PASSWORD=drill-password-24chars-x
 S3_ACCESS_KEY=prod-access-key
 S3_SECRET_KEY=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 N8N_DB_PASSWORD=n8n-db-password-24chars
@@ -193,6 +195,7 @@ run_doctor_with_env() {
   (
     unset AUTH_SECRET SECRET_BOX_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY POSTGRES_PASSWORD
     unset TAXTRONIK_APP_PASSWORD S3_ACCESS_KEY S3_SECRET_KEY N8N_DB_PASSWORD
+    unset TAXTRONIK_OWNER_PASSWORD TAXTRONIK_DRILL_PASSWORD
     unset DATABASE_URL DATABASE_APP_URL NODE_ENV TAXTRONIK_DEPLOY_CHANNEL TAXTRONIK_IMAGE_PREFIX TAXTRONIK_VERSION NEXTAUTH_URL
     unset NEXTAUTH_TRUST_HOST TRUST_PROXY_REQUIRED TRUST_PROXY_HOPS SIGNAL_DEPLOYMENT SIGNAL_DEPLOY_CHANNEL SIGNAL_IMAGE
     unset SIGNAL_GIT_URL SIGNAL_GIT_REF SIGNAL_GIT_DIR SIGNAL_BUILD_MEMORY_LIMIT SIGNAL_BUILD_MEMORY_RESERVE SIGNAL_BUILD_CPUS SIGNAL_LLM_DIR
@@ -205,7 +208,9 @@ run_doctor_with_env() {
     # Unit-Test darf nicht vom zufällig vorhandenen lokalen Docker-Volume
     # beziehungsweise dessen echtem n8n-Key abhängen.
     _doctor_n8n_volume_key() { :; }
-    doctor
+    # Ebenso nicht von lokal laufenden TaxTronik-Containern (S-01-Live-Abgleich).
+    [[ "${DOCTOR_TEST_LIVE_DB:-0}" == "1" ]] || _doctor_db_roles_live() { :; }
+    doctor "${@:3}"
   ) >"$output" 2>&1
 }
 
@@ -375,6 +380,184 @@ test_doctor_rejects_n8n_on_an_application_domain() {
   fi
   assert_contains "$out" "eigene HTTPS-Domain"
   pass "doctor requires a dedicated public n8n domain"
+}
+
+# S-01: Owner-Verbindung von app/worker und Restore-Drill-Rolle.
+test_doctor_fix_provisions_db_role_secrets() {
+  local env_file="$TMP_DIR/db-role-secrets.env" out="$TMP_DIR/db-role-secrets.out"
+  local owner drill
+  write_prod_env "$env_file"
+  sed -i -E '/^TAXTRONIK_(OWNER|DRILL)_PASSWORD=/d' "$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted missing DB role secrets"
+  fi
+  assert_contains "$out" "FEHLT    TAXTRONIK_OWNER_PASSWORD leer -> './taxtronik doctor --fix'"
+  assert_contains "$out" "FEHLT    TAXTRONIK_DRILL_PASSWORD leer -> './taxtronik doctor --fix'"
+
+  run_doctor_with_env "$env_file" "$out" --fix || {
+    cat "$out" >&2
+    test_fail "doctor --fix did not provision the DB role secrets"
+  }
+  owner="$(grep -E '^TAXTRONIK_OWNER_PASSWORD=' "$env_file" | cut -d= -f2-)"
+  drill="$(grep -E '^TAXTRONIK_DRILL_PASSWORD=' "$env_file" | cut -d= -f2-)"
+  [[ "$owner" =~ ^[A-Za-z0-9_-]{32}$ && "$drill" =~ ^[A-Za-z0-9_-]{32}$ && "$owner" != "$drill" ]] || \
+    test_fail "doctor --fix did not generate distinct base64url DB role secrets"
+  assert_contains "$out" "OK       DB_ROLE_SECRETS        Superuser, App, Owner und Drill getrennt"
+
+  # Bestehende Werte bleiben unverändert (dieselbe Rolle hat sie bereits).
+  run_doctor_with_env "$env_file" "$out" --fix || test_fail "repeated doctor --fix failed"
+  assert_key_equals "$env_file" TAXTRONIK_OWNER_PASSWORD "$owner"
+  assert_key_equals "$env_file" TAXTRONIK_DRILL_PASSWORD "$drill"
+  pass "doctor --fix provisions owner and drill role secrets once"
+}
+
+test_doctor_requires_distinct_db_role_secrets() {
+  local env_file="$TMP_DIR/db-role-reuse.env" out="$TMP_DIR/db-role-reuse.out"
+  write_prod_env "$env_file"
+  set_env_file_value "$env_file" TAXTRONIK_OWNER_PASSWORD postgres-password-24chars
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted the superuser password for the container owner role"
+  fi
+  assert_contains "$out" "FEHLT    DB_ROLE_SECRETS        Owner-/Drill-Passwort muss sich"
+  pass "doctor rejects a container role password equal to the superuser password"
+}
+
+test_doctor_rejects_superuser_in_container_db_urls() {
+  local env_file="$TMP_DIR/db-role-urls.env" out="$TMP_DIR/db-role-urls.out"
+  local app_copy="$TMP_DIR/superuser-app.yml"
+  write_prod_env "$env_file"
+  run_doctor_with_env "$env_file" "$out" || {
+    cat "$out" >&2
+    test_fail "doctor rejected the shipped compose role contract"
+  }
+  assert_contains "$out" "OK       DB_ROLE_APP            DATABASE_URL als taxtronik_owner (kein Superuser)"
+  assert_contains "$out" "OK       DB_ROLE_WORKER         DATABASE_URL als taxtronik_owner (kein Superuser)"
+  assert_contains "$out" "OK       DB_ROLE_DRILL          Restore-Drill als taxtronik_drill"
+  # Migrationen behalten den Superuser.
+  [[ "$(compose_service_db_user "$APP" migrate DATABASE_URL)" == "taxtronik" ]] || \
+    test_fail "migrate must keep the superuser connection"
+
+  sed -E 's|postgresql://taxtronik_owner:\$\{TAXTRONIK_OWNER_PASSWORD[^}]*\}|postgresql://taxtronik:${POSTGRES_PASSWORD}|' \
+    "$APP" >"$app_copy"
+  if (APP="$app_copy" run_doctor_with_env "$env_file" "$out"); then
+    test_fail "doctor accepted the superuser in the app/worker DATABASE_URL"
+  fi
+  assert_contains "$out" "FEHLT    DB_ROLE_APP            DATABASE_URL nutzt den Superuser taxtronik statt taxtronik_owner"
+  assert_contains "$out" "FEHLT    DB_ROLE_WORKER         DATABASE_URL nutzt den Superuser taxtronik statt taxtronik_owner"
+  pass "doctor rejects the superuser in the app/worker DATABASE_URL"
+}
+
+test_doctor_reports_live_db_role_state() {
+  local env_file="$TMP_DIR/db-role-live.env" out="$TMP_DIR/db-role-live.out"
+  write_prod_env "$env_file"
+  live_docker() {
+    case "$1 ${2:-} ${3:-}" in
+      'inspect --format {{.State.Running}}') printf 'true\n' ;;
+      'inspect --format {{range .Config.Env}}{{println .}}{{end}}')
+        if [[ "$4" == taxtronik-app ]]; then
+          printf 'NODE_ENV=production\nDATABASE_URL=postgresql://taxtronik:secret@postgres:5432/taxtronik\n'
+        else
+          printf 'DATABASE_URL=postgresql://taxtronik_owner:secret@postgres:5432/taxtronik\n'
+        fi
+        ;;
+      'exec -i taxtronik-postgres')
+        cat >/dev/null
+        # Drill-Rolle fehlt, Owner-Rolle wie vorgesehen.
+        printf 'taxtronik_owner t f f f f t f t\n'
+        ;;
+      *) return 1 ;;
+    esac
+  }
+  if (docker() { live_docker "$@"; }; DOCTOR_TEST_LIVE_DB=1 run_doctor_with_env "$env_file" "$out"); then
+    test_fail "doctor accepted a missing drill role and a superuser app container"
+  fi
+  assert_contains "$out" "OK       DB_ROLE_LIVE_owner     taxtronik_owner wie vorgesehen (kein Superuser)"
+  assert_contains "$out" "FEHLT    DB_ROLE_LIVE_drill     Rolle taxtronik_drill fehlt in Postgres"
+  assert_contains "$out" "FEHLT    DB_ROLE_RUN_app        laeuft als 'taxtronik' statt taxtronik_owner"
+  assert_contains "$out" "OK       DB_ROLE_RUN_worker     laeuft als taxtronik_owner"
+  assert_not_contains "$out" "secret"
+
+  # Fehlkonfiguration (Superuser-Attribut) wird benannt.
+  live_docker() {
+    case "$1 ${2:-} ${3:-}" in
+      'inspect --format {{.State.Running}}') [[ "$4" == taxtronik-postgres ]] && printf 'true\n' ;;
+      'exec -i taxtronik-postgres')
+        cat >/dev/null
+        printf 'taxtronik_owner t t f f f t f t\ntaxtronik_drill t f t f f t f t\n'
+        ;;
+      *) return 1 ;;
+    esac
+  }
+  if (docker() { live_docker "$@"; }; DOCTOR_TEST_LIVE_DB=1 run_doctor_with_env "$env_file" "$out"); then
+    test_fail "doctor accepted a superuser owner role"
+  fi
+  assert_contains "$out" "FEHLT    DB_ROLE_LIVE_owner     taxtronik_owner falsch konfiguriert (login/super/createdb/createrole/replication/bypassrls/member/grants=t/t/f/f/f/t/f/t, erwartet t/f/f/f/f/t/f/t)"
+  assert_contains "$out" "OK       DB_ROLE_LIVE_drill     taxtronik_drill wie vorgesehen (kein Superuser)"
+
+  # Rolle synchronisiert, Migration aber noch nicht angewendet.
+  live_docker() {
+    case "$1 ${2:-} ${3:-}" in
+      'inspect --format {{.State.Running}}') [[ "$4" == taxtronik-postgres ]] && printf 'true\n' ;;
+      'exec -i taxtronik-postgres')
+        cat >/dev/null
+        printf 'taxtronik_owner t f f f f t f f\ntaxtronik_drill t f t f f t f t\n'
+        ;;
+      *) return 1 ;;
+    esac
+  }
+  if (docker() { live_docker "$@"; }; DOCTOR_TEST_LIVE_DB=1 run_doctor_with_env "$env_file" "$out"); then
+    test_fail "doctor accepted an owner role without the migration grants"
+  fi
+  assert_contains "$out" "FEHLT    DB_ROLE_LIVE_owner     taxtronik_owner ohne Grants: Migration 20261006160000_owner_role_least_privilege fehlt"
+
+  # Das Konfigurations-Gate von deploy/update prüft keinen Live-Zustand: Rollen
+  # synchronisiert der Ablauf erst danach, alte Container ersetzt die Aktivierung.
+  (
+    docker() { live_docker "$@"; }
+    _TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1
+    DOCTOR_TEST_LIVE_DB=1 run_doctor_with_env "$env_file" "$out"
+  ) || {
+    cat "$out" >&2
+    test_fail "config-only doctor gate evaluated the live DB role state"
+  }
+  assert_not_contains "$out" "DB_ROLE_LIVE_"
+  pass "doctor reports live DB role and container state outside the deploy gate"
+}
+
+test_sync_postgres_roles_provisions_owner_and_drill_roles() {
+  local sql="$TMP_DIR/sync-roles.sql" args="$TMP_DIR/sync-roles.args" out="$TMP_DIR/sync-roles.out"
+  (
+    docker() { printf '%s\n' "$*" >"$args"; cat >"$sql"; }
+    POSTGRES_PASSWORD=super-pw-value TAXTRONIK_APP_PASSWORD=app-pw-value
+    TAXTRONIK_OWNER_PASSWORD="own'er-pw-value" TAXTRONIK_DRILL_PASSWORD=drill-pw-value
+    N8N_DB_PASSWORD=n8n-pw-value
+    sync_postgres_roles_from_env
+  ) >"$out" 2>&1 || {
+    cat "$out" >&2
+    test_fail "sync_postgres_roles_from_env failed"
+  }
+  assert_contains "$sql" "ALTER ROLE taxtronik WITH PASSWORD 'super-pw-value';"
+  assert_contains "$sql" "ALTER ROLE taxtronik_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L', 'app-pw-value')"
+  assert_contains "$sql" "CREATE ROLE taxtronik_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L', 'app-pw-value')"
+  assert_contains "$sql" "ALTER ROLE taxtronik_owner WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD %L', 'own''er-pw-value')"
+  assert_contains "$sql" "CREATE ROLE taxtronik_owner LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD %L', 'own''er-pw-value')"
+  assert_contains "$sql" "ALTER ROLE taxtronik_drill WITH LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD %L', 'drill-pw-value')"
+  assert_contains "$sql" "CREATE ROLE taxtronik_drill LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS PASSWORD %L', 'drill-pw-value')"
+  assert_file_equals "$args" "exec -i taxtronik-postgres psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1"
+
+  # Ohne neues Secret (Altinstallation ohne doctor --fix) bricht die
+  # Synchronisierung ab, bevor docker aufgerufen wird.
+  if (
+    docker() { test_fail "sync must not reach docker without the owner secret"; }
+    POSTGRES_PASSWORD=super-pw-value TAXTRONIK_APP_PASSWORD=app-pw-value
+    unset TAXTRONIK_OWNER_PASSWORD
+    TAXTRONIK_DRILL_PASSWORD=drill-pw-value N8N_DB_PASSWORD=n8n-pw-value
+    sync_postgres_roles_from_env
+  ) >"$out" 2>&1; then
+    test_fail "sync accepted a missing TAXTRONIK_OWNER_PASSWORD"
+  fi
+  assert_contains "$out" "Pflichtwerte fehlen in .env: TAXTRONIK_OWNER_PASSWORD"
+  pass "role sync provisions owner and drill roles with fixed attributes"
 }
 
 test_initial_setup_confirmation_and_atomic_plan_application() {
@@ -3371,6 +3554,11 @@ test_ensure_secret_reports_known_dev_defaults() {
 
 test_doctor_accepts_prod_smtp
 test_doctor_checks_db_pool_sum_against_max_connections
+test_doctor_fix_provisions_db_role_secrets
+test_doctor_requires_distinct_db_role_secrets
+test_doctor_rejects_superuser_in_container_db_urls
+test_doctor_reports_live_db_role_state
+test_sync_postgres_roles_provisions_owner_and_drill_roles
 test_doctor_rejects_mailhog
 test_doctor_rejects_loopback_mailhog_port
 test_doctor_rejects_disabled_auth_host_trust

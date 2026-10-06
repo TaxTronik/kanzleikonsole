@@ -82,6 +82,8 @@ NODE_ENV=production
 TAXTRONIK_VERSION=0.0.0-smoke
 POSTGRES_PASSWORD=smoke-owner-password-32-characters-long
 TAXTRONIK_APP_PASSWORD=smoke-app-password-32-characters-long
+TAXTRONIK_OWNER_PASSWORD=smoke-container-owner-password-32-chars
+TAXTRONIK_DRILL_PASSWORD=smoke-drill-password-32-characters-long
 N8N_DB_PASSWORD=smoke-n8n-db-password-32-characters
 DATABASE_URL=postgresql://taxtronik:smoke-owner-password-32-characters-long@localhost:5432/taxtronik?schema=public
 DATABASE_APP_URL=postgresql://taxtronik_app:smoke-app-password-32-characters-long@localhost:5432/taxtronik?schema=public

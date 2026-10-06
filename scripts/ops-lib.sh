@@ -1205,6 +1205,140 @@ _doctor_db_connections() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# S-01: Datenbankrollen der Container. app und worker verbinden als
+# taxtronik_owner (BYPASSRLS, aber kein Superuser: nur Daten lesen/schreiben;
+# Grants aus der Migration 20261006160000_owner_role_least_privilege), der
+# Restore-Drill des Workers als taxtronik_drill (CREATEDB + BYPASSRLS fuer die
+# Wegwerf-DB, keine Rechte in der Produktiv-DB). Den Superuser taxtronik nutzen
+# nur Postgres-Init, der migrate-Container und die Operator-Werkzeuge.
+# ---------------------------------------------------------------------------
+DB_SUPERUSER_ROLE="taxtronik"
+DB_OWNER_ROLE="taxtronik_owner"
+DB_DRILL_ROLE="taxtronik_drill"
+
+# Rolle einer postgresql://-URL im environment-Block eines Compose-Dienstes.
+# Liest nur die statische Datei (ohne Interpolation) und gibt nie ein
+# Passwort aus.
+compose_service_db_user() {
+  local file="$1" service="$2" key="$3"
+  awk -v service="$service" -v key="${key}:" '
+    /^[^[:space:]#]/ { current = ""; next }
+    /^  [A-Za-z0-9_.-]+:[[:space:]]*$/ { current = $1; sub(/:$/, "", current); next }
+    current == service && $1 == key {
+      url = $2
+      if (sub(/^postgres(ql)?:\/\//, "", url)) { sub(/[:@\/].*$/, "", url); print url }
+      exit
+    }
+  ' "$file"
+}
+
+# Rolle aus DATABASE_URL eines laufenden Containers (ohne Passwort).
+_container_db_user() {
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$1" 2>/dev/null | \
+    sed -n "s|^$2=postgres\(ql\)\{0,1\}://\([^:@/]*\).*|\2|p" | head -n1 || true
+}
+
+_doctor_db_role_row() {
+  local status="$1" key="$2" detail="$3"
+  _dr_row "$status" "$key" "$detail"
+  [[ "$status" == "FEHLT" ]] && _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  [[ "$status" == "WARN" ]] && _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  return 0
+}
+
+# Konfiguration: getrennte Secrets und die Rollen der Compose-URLs.
+_doctor_db_roles() {
+  local owner_pw="${TAXTRONIK_OWNER_PASSWORD:-}" drill_pw="${TAXTRONIK_DRILL_PASSWORD:-}"
+  local service user
+  if [[ -n "$owner_pw" && -n "$drill_pw" ]]; then
+    # Die Container kennen Owner- bzw. Drill-Passwort; ein gleiches Superuser-
+    # Passwort gaebe ihnen ueber das Docker-Netz doch wieder volle DB-Kontrolle.
+    if [[ "$owner_pw" == "${POSTGRES_PASSWORD:-}" || "$drill_pw" == "${POSTGRES_PASSWORD:-}" || \
+          "$owner_pw" == "${TAXTRONIK_APP_PASSWORD:-}" || "$drill_pw" == "${TAXTRONIK_APP_PASSWORD:-}" || \
+          "$owner_pw" == "$drill_pw" ]]; then
+      _doctor_db_role_row "FEHLT" "DB_ROLE_SECRETS" "Owner-/Drill-Passwort muss sich von Superuser-, App- und dem jeweils anderen Passwort unterscheiden"
+    else
+      _doctor_db_role_row "OK" "DB_ROLE_SECRETS" "Superuser, App, Owner und Drill getrennt"
+    fi
+  fi
+  for service in app worker; do
+    user="$(compose_service_db_user "$APP" "$service" DATABASE_URL)"
+    if [[ "$user" == "$DB_OWNER_ROLE" ]]; then
+      _doctor_db_role_row "OK" "DB_ROLE_${service^^}" "DATABASE_URL als $user (kein Superuser)"
+    elif [[ "$user" == "$DB_SUPERUSER_ROLE" ]]; then
+      _doctor_db_role_row "FEHLT" "DB_ROLE_${service^^}" "DATABASE_URL nutzt den Superuser $user statt $DB_OWNER_ROLE"
+    else
+      _doctor_db_role_row "FEHLT" "DB_ROLE_${service^^}" "DATABASE_URL nutzt '${user:-?}' statt $DB_OWNER_ROLE"
+    fi
+  done
+  user="$(compose_service_db_user "$APP" worker DATABASE_DRILL_URL)"
+  if [[ "$user" == "$DB_DRILL_ROLE" ]]; then
+    _doctor_db_role_row "OK" "DB_ROLE_DRILL" "Restore-Drill als $user"
+  else
+    _doctor_db_role_row "FEHLT" "DB_ROLE_DRILL" "worker-DATABASE_DRILL_URL nutzt '${user:-?}' statt $DB_DRILL_ROLE"
+  fi
+  _doctor_db_roles_live
+}
+
+# Laufender Stack: Rollenattribute in Postgres und Rolle der Container. Gehoert
+# nicht zum Konfigurations-Gate von deploy/update: Rollen synchronisiert der
+# Ablauf erst danach, alte Container ersetzt erst die Aktivierung.
+_doctor_db_roles_live() {
+  [[ "${_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY:-0}" == "1" ]] && return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  [[ "$(docker inspect --format '{{.State.Running}}' taxtronik-postgres 2>/dev/null || true)" == "true" ]] || return 0
+  local rows row name expected actual container user
+  rows="$(docker exec -i taxtronik-postgres \
+    psql -X -U "$DB_SUPERUSER_ROLE" -d taxtronik -v ON_ERROR_STOP=1 -At -F ' ' 2>/dev/null <<'SQL'
+SELECT r.rolname,
+       r.rolcanlogin, r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolreplication, r.rolbypassrls,
+       EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid),
+       CASE
+         WHEN r.rolname = 'taxtronik_drill' THEN NOT EXISTS (
+           SELECT 1
+             FROM pg_catalog.pg_class c
+             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+              AND pg_catalog.has_table_privilege(r.oid, c.oid, 'SELECT'))
+         WHEN pg_catalog.to_regclass('public.tenant') IS NULL THEN false
+         ELSE pg_catalog.has_table_privilege(r.oid, 'public.tenant', 'SELECT')
+          AND pg_catalog.has_table_privilege(r.oid, 'public.tenant', 'DELETE')
+          AND NOT pg_catalog.has_table_privilege(r.oid, 'public.audit_log', 'UPDATE')
+       END
+  FROM pg_catalog.pg_roles r
+ WHERE r.rolname IN ('taxtronik_owner', 'taxtronik_drill');
+SQL
+  )" || {
+    _doctor_db_role_row "WARN" "DB_ROLES_LIVE" "Rollen in Postgres nicht pruefbar"
+    return 0
+  }
+  for name in "$DB_OWNER_ROLE" "$DB_DRILL_ROLE"; do
+    # login super createdb createrole replication bypassrls member grants
+    if [[ "$name" == "$DB_OWNER_ROLE" ]]; then expected="t f f f f t f t"; else expected="t f t f f t f t"; fi
+    row="$(printf '%s\n' "$rows" | awk -v name="$name" '$1 == name { $1 = ""; sub(/^ /, ""); print }')"
+    if [[ -z "$row" ]]; then
+      _doctor_db_role_row "FEHLT" "DB_ROLE_LIVE_${name#taxtronik_}" "Rolle $name fehlt in Postgres (./taxtronik update/deploy legt sie an)"
+    elif [[ "$name" == "$DB_OWNER_ROLE" && "$row" == "${expected% t} f" ]]; then
+      _doctor_db_role_row "FEHLT" "DB_ROLE_LIVE_${name#taxtronik_}" "$name ohne Grants: Migration 20261006160000_owner_role_least_privilege fehlt (./taxtronik update)"
+    elif [[ "$row" != "$expected" ]]; then
+      actual="login/super/createdb/createrole/replication/bypassrls/member/grants=${row// //}"
+      _doctor_db_role_row "FEHLT" "DB_ROLE_LIVE_${name#taxtronik_}" "$name falsch konfiguriert ($actual, erwartet ${expected// //})"
+    else
+      _doctor_db_role_row "OK" "DB_ROLE_LIVE_${name#taxtronik_}" "$name wie vorgesehen (kein Superuser)"
+    fi
+  done
+  for container in taxtronik-app taxtronik-worker; do
+    [[ "$(docker inspect --format '{{.State.Running}}' "$container" 2>/dev/null || true)" == "true" ]] || continue
+    user="$(_container_db_user "$container" DATABASE_URL)"
+    if [[ "$user" == "$DB_OWNER_ROLE" ]]; then
+      _doctor_db_role_row "OK" "DB_ROLE_RUN_${container#taxtronik-}" "laeuft als $user"
+    else
+      _doctor_db_role_row "FEHLT" "DB_ROLE_RUN_${container#taxtronik-}" "laeuft als '${user:-?}' statt $DB_OWNER_ROLE (./taxtronik update erstellt den Container neu)"
+    fi
+  done
+}
+
 doctor() {
   local fix=0 deploy_channel=""
   [[ "${1:-}" == "--fix" ]] && fix=1
@@ -1232,6 +1366,10 @@ doctor() {
     ensure_secret N8N_ENCRYPTION_KEY 24
     ensure_secret POSTGRES_PASSWORD 24
     ensure_secret TAXTRONIK_APP_PASSWORD 24
+    # S-01: Owner-Verbindung von app/worker und Restore-Drill-Rolle; bestehende
+    # Installationen erhalten beide beim naechsten deploy/update.
+    ensure_secret TAXTRONIK_OWNER_PASSWORD 24
+    ensure_secret TAXTRONIK_DRILL_PASSWORD 24
     ensure_secret S3_SECRET_KEY 32
     ensure_secret N8N_DB_PASSWORD 24
   fi
@@ -1252,6 +1390,8 @@ doctor() {
   _doctor_n8n_volume_key
   _dr_secret POSTGRES_PASSWORD 24
   _dr_secret TAXTRONIK_APP_PASSWORD 24
+  _dr_secret TAXTRONIK_OWNER_PASSWORD 24
+  _dr_secret TAXTRONIK_DRILL_PASSWORD 24
   _dr_secret S3_SECRET_KEY 32
   _dr_secret N8N_DB_PASSWORD 24
   if [[ -z "${S3_ACCESS_KEY:-}" ]]; then _dr_row "FEHLT" "S3_ACCESS_KEY" "leer"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1)); else _dr_row "OK" "S3_ACCESS_KEY" "$S3_ACCESS_KEY"; fi
@@ -1266,6 +1406,7 @@ doctor() {
     _dr_row "FEHLT" "DATABASE_URL" "== DATABASE_APP_URL (RLS-Backstop!)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   else _dr_row "OK" "DATABASE_URL/APP_URL" "unterschiedlich (ok)"; fi
   _doctor_db_connections
+  _doctor_db_roles
 
   deploy_channel="$(deployment_channel 2>/dev/null || true)"
   if [[ "$deploy_channel" == "source" ]]; then
@@ -2633,18 +2774,37 @@ sql_literal() {
   printf "'%s'" "$value"
 }
 
+# Idempotentes CREATE/ALTER einer Login-Rolle mit festen Attributen. Das
+# Passwort steht nur als SQL-Literal im stdin von psql, nie in Argumenten.
+_sync_login_role_sql() {
+  local role="$1" attributes="$2" password_literal="$3"
+  printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '%s') THEN EXECUTE format('ALTER ROLE %s WITH LOGIN %s PASSWORD %%L', %s); ELSE EXECUTE format('CREATE ROLE %s LOGIN %s PASSWORD %%L', %s); END IF; END \$\$;\n" \
+    "$role" "$role" "$attributes" "$password_literal" "$role" "$attributes" "$password_literal"
+}
+
 sync_postgres_roles_from_env() {
   require_cmd docker
-  require_env POSTGRES_PASSWORD TAXTRONIK_APP_PASSWORD N8N_DB_PASSWORD
-  local pg_pw app_pw n8n_pw
+  require_env POSTGRES_PASSWORD TAXTRONIK_APP_PASSWORD TAXTRONIK_OWNER_PASSWORD \
+    TAXTRONIK_DRILL_PASSWORD N8N_DB_PASSWORD
+  local pg_pw app_pw owner_pw drill_pw n8n_pw
   pg_pw="$(sql_literal "$POSTGRES_PASSWORD")"
   app_pw="$(sql_literal "$TAXTRONIK_APP_PASSWORD")"
+  owner_pw="$(sql_literal "$TAXTRONIK_OWNER_PASSWORD")"
+  drill_pw="$(sql_literal "$TAXTRONIK_DRILL_PASSWORD")"
   n8n_pw="$(sql_literal "$N8N_DB_PASSWORD")"
 
   info "Postgres-Rollenpasswoerter mit .env synchronisieren"
   {
     printf 'ALTER ROLE taxtronik WITH PASSWORD %s;\n' "$pg_pw"
-    printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxtronik_app') THEN EXECUTE format('ALTER ROLE taxtronik_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %%L', %s); ELSE EXECUTE format('CREATE ROLE taxtronik_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %%L', %s); END IF; END \$\$;\n" "$app_pw" "$app_pw"
+    _sync_login_role_sql taxtronik_app \
+      "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS" "$app_pw"
+    # S-01: Owner-Verbindung von app/worker. BYPASSRLS wie bisher, aber kein
+    # Superuser; Grants vergibt die Migration 20261006160000.
+    _sync_login_role_sql taxtronik_owner \
+      "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS" "$owner_pw"
+    # S-01: Restore-Drill des Workers: nur eigene Wegwerf-DBs (CREATEDB).
+    _sync_login_role_sql taxtronik_drill \
+      "NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS" "$drill_pw"
     printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n') THEN EXECUTE format('ALTER ROLE n8n WITH PASSWORD %%L', %s); END IF; END \$\$;\n" "$n8n_pw"
   } | docker exec -i taxtronik-postgres psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1
 }
@@ -4069,6 +4229,9 @@ bake_db_urls_into_env() {
 # Interaktive .env-Vorbereitung fuer deploy/update.
 prepare_env_interactive() {
   local env_created="${_TAXTRONIK_ENV_CREATED_THIS_RUN:-0}" deploy_channel=""
+  # Das doctor-Gate prueft hier nur die Konfiguration. Den Live-Zustand der
+  # DB-Rollen und Container (S-01) stellt der Ablauf erst danach her.
+  local _TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1
   if [[ ! -f "$ENVFILE" ]]; then
     info ".env fehlt — aus Vorlage anlegen"
     [[ -f "$ROOT/.env.example" ]] || die ".env.example fehlt."

@@ -1322,6 +1322,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** App und Worker verbinden sich nicht mehr als
+  PostgreSQL-Superuser. Die Owner-Verbindung nutzt die neue Rolle
+  `taxtronik_owner`: Sie umgeht RLS wie bisher, darf aber nur Daten lesen und
+  schreiben (keine Schemaänderungen, kein `COPY … PROGRAM`, keine
+  Rollenverwaltung, Audit-Tabellen nur anfügbar). Der monatliche Restore-Drill
+  läuft als eigene Rolle `taxtronik_drill`. `./taxtronik update` erzeugt die
+  neuen Secrets `TAXTRONIK_OWNER_PASSWORD` und `TAXTRONIK_DRILL_PASSWORD`, legt
+  die Rollen an und startet den Postgres-Container dabei einmalig neu;
+  `./taxtronik doctor` meldet fehlende oder falsch konfigurierte Rollen als
+  Fehler (Migration `20261006160000`, `ACCESS-TENANT-RLS-001`,
+  `FK-EXC-20261006-037`).
 - Der GwG-Einladungslink liegt bis zur Zustellung nur verschlüsselt im
   Versandauftrag und wird danach gelöscht; `pnpm secret-box:rewrap` erfasst
   den neuen Ablageort.

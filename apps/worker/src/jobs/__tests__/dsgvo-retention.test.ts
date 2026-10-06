@@ -13,6 +13,9 @@
 //   - Idempotenz: Lauf ohne Treffer schreibt KEIN Event (kein Chain-Rauschen)
 //   - Request-Purge nullt lose Rückverweise (tax_deadline/form_submission)
 //     vor dem deleteMany in derselben Batch-Tx und revalidiert unter Row-Lock
+//   - S-01: die Deadline-Neutralisierung läuft tenantgebunden über
+//     app.purge_tax_deadline_request_links (Tabellen-Owner), nicht mehr über
+//     set_config + updateMany der Worker-Verbindung
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -90,6 +93,22 @@ function cutoff(years: number): Date {
  */
 function reqCutoff(years: number): Date {
   return new Date(Date.UTC(FIXED_NOW.getUTCFullYear() - years, 0, 1));
+}
+
+const PURGE_FUNCTION = 'app.purge_tax_deadline_request_links';
+type RawQuery = { sql: string; values: unknown[] };
+
+/** $queryRaw-Attrappe der Batch-Tx: nur der Purge-Aufruf liefert einen Zähler. */
+function purgeNeutralizes(count: number | ((values: unknown[]) => number)): void {
+  h.retentionTx.$queryRaw.mockImplementation(async (query: RawQuery) =>
+    query.sql.includes(PURGE_FUNCTION)
+      ? [{ count: typeof count === 'function' ? count(query.values) : count }]
+      : [],
+  );
+}
+
+function rawQueries(): RawQuery[] {
+  return h.retentionTx.$queryRaw.mock.calls.map(([query]) => query as RawQuery);
 }
 
 function run(data: { tenantId?: string } = { tenantId: TENANT }): Promise<unknown> {
@@ -339,7 +358,7 @@ describe('Request-Purge', () => {
       ])
       .mockResolvedValue([]);
     h.prismaOwner.request.deleteMany.mockResolvedValue({ count: 2 });
-    h.prismaOwner.taxDeadline.updateMany.mockResolvedValue({ count: 1 });
+    purgeNeutralizes(1);
     h.prismaOwner.taxDeadline.findMany.mockResolvedValue([
       {
         id: 'deadline-1',
@@ -358,28 +377,9 @@ describe('Request-Purge', () => {
 
     expect(h.prismaOwner.$transaction).toHaveBeenCalledTimes(1);
     expect(h.retentionTx.$queryRaw).toHaveBeenCalledTimes(5);
-    expect(h.prismaOwner.taxDeadline.updateMany).toHaveBeenCalledWith({
-      where: {
-        OR: [
-          { requestId: { in: ['req-1', 'req-2'] } },
-          {
-            id: { in: ['deadline-1'] },
-            requestId: null,
-            autoRequestNotificationStatus: 'ORPHANED',
-          },
-        ],
-      },
-      data: {
-        requestId: null,
-        autoRequestNotificationStatus: 'NOT_REQUIRED',
-        autoRequestNotificationAttemptCount: 0,
-        autoRequestNotificationLastAttemptAt: null,
-        autoRequestNotificationNextAttemptAt: null,
-        autoRequestNotificationAcceptedAt: null,
-        autoRequestNotificationLastError: null,
-        autoRequestNotificationEscalatedAt: null,
-      },
-    });
+    // Pointer- und ORPHANED-Ursprungszeilen werden tenantgebunden in der
+    // SECURITY-DEFINER-Funktion neutralisiert (Zielzustand: migration.sql).
+    expect(h.prismaOwner.taxDeadline.updateMany).not.toHaveBeenCalled();
     expect(h.prismaOwner.formSubmission.updateMany).not.toHaveBeenCalled();
     const submissionLockSql = h.retentionTx.$queryRaw.mock.calls[0]?.[0] as { sql: string };
     expect(submissionLockSql.sql).toContain('ORDER BY submission."id"');
@@ -392,10 +392,10 @@ describe('Request-Purge', () => {
     expect(deadlineLockSql.sql).toContain('ORDER BY deadline."id"');
     expect(deadlineLockSql.sql).toContain('FOR UPDATE');
     expect(deadlineLockSql.values).toContain('deadline-1');
-    const purgeAuthorizationSql = h.retentionTx.$queryRaw.mock.calls[3]?.[0] as { sql: string };
-    expect(purgeAuthorizationSql.sql).toContain(
-      "set_config('app.tax_deadline_notification_purge', 'on', true)",
-    );
+    const purgeSql = rawQueries()[3]!;
+    expect(purgeSql.sql).toContain(`SELECT ${PURGE_FUNCTION}(`);
+    expect(purgeSql.sql).not.toContain('set_config');
+    expect(purgeSql.values).toEqual([TENANT, ['req-1', 'req-2'], ['deadline-1']]);
     const tombstoneSql = h.retentionTx.$queryRaw.mock.calls[4]?.[0] as { sql: string };
     expect(tombstoneSql.sql).toContain('purged_form_links');
     expect(tombstoneSql.sql).toContain('submission."request_id" IS NULL');
@@ -430,32 +430,38 @@ describe('Request-Purge', () => {
       autoRequestNotificationLastError: 'Request terminal; Versandhistorie erhalten.',
       autoRequestNotificationEscalatedAt: null as Date | null,
     };
-    h.prismaOwner.taxDeadline.updateMany.mockImplementation(async ({ where, data }) => {
-      const orphanedOrigin = where.OR.find((part: { id?: { in?: string[] } }) =>
-        part.id?.in?.includes(persistedDeadline.id),
-      );
-      if (!orphanedOrigin) return { count: 0 };
-      Object.assign(persistedDeadline, data);
-      return { count: 1 };
+    // Funktion wie migration.sql: ORPHANED-Ursprung ohne Pointer wird über
+    // die mitgegebene stabile Herkunft vollständig neutralisiert.
+    purgeNeutralizes((values) => {
+      const [, , originIds] = values as [string, string[], string[]];
+      if (
+        !originIds.includes(persistedDeadline.id) ||
+        persistedDeadline.requestId !== null ||
+        persistedDeadline.autoRequestNotificationStatus !== 'ORPHANED'
+      ) {
+        return 0;
+      }
+      Object.assign(persistedDeadline, {
+        autoRequestNotificationStatus: 'NOT_REQUIRED',
+        autoRequestNotificationAttemptCount: 0,
+        autoRequestNotificationLastAttemptAt: null,
+        autoRequestNotificationNextAttemptAt: null,
+        autoRequestNotificationAcceptedAt: null,
+        autoRequestNotificationLastError: null,
+        autoRequestNotificationEscalatedAt: null,
+      });
+      return 1;
     });
     h.prismaOwner.taxDeadline.findMany.mockImplementation(async () => [persistedDeadline]);
 
     await run();
 
-    expect(h.prismaOwner.taxDeadline.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          OR: [
-            { requestId: { in: ['req-orphaned'] } },
-            {
-              id: { in: ['deadline-orphaned'] },
-              requestId: null,
-              autoRequestNotificationStatus: 'ORPHANED',
-            },
-          ],
-        },
-      }),
-    );
+    expect(rawQueries().find((query) => query.sql.includes(PURGE_FUNCTION))?.values).toEqual([
+      TENANT,
+      ['req-orphaned'],
+      ['deadline-orphaned'],
+    ]);
+    expect(h.prismaOwner.taxDeadline.updateMany).not.toHaveBeenCalled();
     expect(persistedDeadline).toMatchObject({
       requestId: null,
       autoRequestNotificationStatus: 'NOT_REQUIRED',
@@ -483,7 +489,7 @@ describe('Request-Purge', () => {
     // Nur die andere Pointer-Zeile wurde aktualisiert. Der Count entspricht
     // trotzdem der Anzahl stabiler Origins und hätte den alten Mengencheck
     // allein passiert.
-    h.prismaOwner.taxDeadline.updateMany.mockResolvedValue({ count: 1 });
+    purgeNeutralizes(1);
     h.prismaOwner.taxDeadline.findMany.mockResolvedValue([
       {
         id: 'deadline-origin',
