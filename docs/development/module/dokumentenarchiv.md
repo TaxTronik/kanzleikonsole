@@ -92,12 +92,20 @@ GwG-Onboarding (anonym per Token, GWG-Bucket), Rechnungs-PDFs
 
 - Magic-Bytes überschreiben den Client-MIME, lehnen unbekannte Formate aber
   nicht ab (Preview-Whitelist mildert).
-- Bei DB-Fehlern nach Storage-Commit werden mutable Objekte kompensierend
-  gelöscht. Nicht löschbare oder unveränderliche Objekte werden als
-  `StorageOrphan` journalisiert und vom sechsstündlichen
-  `storage-orphan-cleanup` nach Ablauf der jeweiligen Retention erneut geprüft.
-  Schlägt zusätzlich das Journalisieren fehl, bleibt nur das strukturierte Log
-  für einen manuellen Abgleich. Kein Streaming-Multipart (RAM-Puffer bis Cap).
+- K-06: Direkte Upload-Pfade (Staff-/Portal-Upload, neue Version,
+  Wissensanhang, Umklassifizierung, Fremdrechnung, Erklärungs-PDF,
+  Formular-Upload, Rechercheablage, Rechnungsarchiv) laufen über
+  `server/documents/journaled-upload.ts`: gemeinsame Vorprüfung vor Scan und
+  Write, Speicherabsicht (`storage_orphan.intent`) vor dem PUT, Nachprüfung und
+  atomarer Abschluss (`app.settle_storage_intent`) in der Commit-Transaktion.
+  Offene Absichten (Prozessabbruch, gescheiterter Commit, verlorenes Race)
+  prüft der sechsstündliche `storage-orphan-cleanup` nach der Sicherheitsfrist
+  bzw. dem Retention-Ende: referenziert, versionsgenau gelöscht oder — nie
+  geschrieben — `ABSENT`. `compensateStorageCommit` bleibt Rückfallebene; schlägt
+  auch sie fehl, bleibt nur das strukturierte Log für einen manuellen Abgleich.
+  Nicht dokumentgebundene Ablagen (Risiko-Archiv/-Rohdaten, IMAP-Anhänge)
+  schreiben weiterhin ohne Vorab-Journal. Kein Streaming-Multipart (RAM-Puffer
+  bis Cap).
 - GwG-Frühvernichtung vor Lock-Ablauf (GOVERNANCE-Bypass) nicht implementiert.
 
 ## Fortschritt trotz fehlerhafter Orphans

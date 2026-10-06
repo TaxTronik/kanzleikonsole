@@ -7,13 +7,11 @@ import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import {
   fetchObjectBytes,
-  commitBytesWithTier,
   deleteObject,
   deleteObjectVersion,
   classificationToTier,
   gobdRetentionYears,
   UploadRejectedError,
-  type CommitDocumentResult,
   type ProtectionTier,
 } from '@taxtronik/storage';
 import { carrierClassification } from '@/server/storage/document-type';
@@ -21,7 +19,7 @@ import { documentRetagDecision } from '@/server/storage/retag-policy';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
 import { log } from '@/server/logger';
-import { compensateStorageCommit } from '@/server/documents/storage-compensation';
+import { runJournaledUpload, uploadFailureCause } from '@/server/documents/journaled-upload';
 
 export interface DocActionResult {
   ok: boolean;
@@ -484,7 +482,6 @@ export async function retagDocumentAction(
     return latest;
   };
 
-  let restagedCommit: CommitDocumentResult | null = null;
   try {
     if (retagDecision === 'METADATA_ONLY') {
       // Gleiche Stufe → reine Metadatenänderung (Bucket/Lock bleiben).
@@ -511,80 +508,88 @@ export async function retagDocumentAction(
     } else {
       // Höherstufung → Re-Store: Bytes holen und tier-getrieben mit
       // Object-Lock + Retention neu schreiben. Storage AUSSERHALB der DB-Tx.
-      const bytes = await fetchObjectBytes(ctx.bucket, ctx.key, ctx.storageVersionId);
-      const commit = await commitBytesWithTier({
-        fileData: bytes,
-        tier: ctx.newTier,
-        tenantId,
-        classification: ctx.newClassification,
-        ...(ctx.newTier === 'GOBD' && ctx.newRetentionYears
-          ? { retentionYears: ctx.newRetentionYears }
-          : {}),
-        retentionAnchor: ctx.createdAt,
-      });
-      restagedCommit = commit;
-      await withTenantContext(g.ctx, async (tx) => {
+      // K-06 / DOC-UPLOAD-JOURNAL-001: dieselbe Dokumentprüfung vor und nach
+      // dem Write; die Speicherabsicht steht vor dem PUT im Journal und wird
+      // mit dem Versionsbezug atomar abgeschlossen.
+      const checkCurrentVersion = async (tx: TxClient) => {
         const latest = await lockAndValidateCurrentDocument(tx, true);
         if (!latest) {
           throw new ActionError('Dokumentversion nicht mehr vorhanden. Bitte erneut versuchen.');
         }
-        if (ctx!.immutable) {
-          // Bereits geschützte Versionen (z. B. GWG → GoBD) sind DB-seitig
-          // unveränderbar. Die höher geschützte Kopie wird deshalb als neue
-          // Version appendiert; die alte geschützte Historie bleibt erhalten.
-          await tx.documentVersion.create({
+        return latest;
+      };
+      await runJournaledUpload({
+        context: g.ctx,
+        source: 'staff.document.retag',
+        check: checkCurrentVersion,
+        readBytes: () => fetchObjectBytes(ctx!.bucket, ctx!.key, ctx!.storageVersionId),
+        storage: () => ({
+          tier: ctx!.newTier,
+          classification: ctx!.newClassification,
+          ...(ctx!.newTier === 'GOBD' && ctx!.newRetentionYears
+            ? { retentionYears: ctx!.newRetentionYears }
+            : {}),
+          retentionAnchor: ctx!.createdAt,
+        }),
+        commitTx: async (tx, { commit, checked: latest }) => {
+          if (ctx!.immutable) {
+            // Bereits geschützte Versionen (z. B. GWG → GoBD) sind DB-seitig
+            // unveränderbar. Die höher geschützte Kopie wird deshalb als neue
+            // Version appendiert; die alte geschützte Historie bleibt erhalten.
+            await tx.documentVersion.create({
+              data: {
+                documentId,
+                versionNo: latest.versionNo + 1,
+                storageBucket: commit.targetBucket,
+                storageKey: commit.targetKey,
+                storageVersionId: commit.storageVersionId,
+                immutable: commit.immutable,
+                sha256: prismaBytes(commit.sha256),
+                sizeBytes: commit.sizeBytes,
+                scanStatus: 'CLEAN',
+                scanCompletedAt: new Date(),
+                createdById: staffId,
+              },
+            });
+          } else {
+            await tx.documentVersion.update({
+              where: { id: ctx!.versionId },
+              data: {
+                storageBucket: commit.targetBucket,
+                storageKey: commit.targetKey,
+                storageVersionId: commit.storageVersionId,
+                immutable: commit.immutable,
+                sha256: prismaBytes(commit.sha256),
+                sizeBytes: commit.sizeBytes,
+              },
+            });
+          }
+          await tx.document.update({
+            where: { id: documentId },
             data: {
-              documentId,
-              versionNo: latest.versionNo + 1,
-              storageBucket: commit.targetBucket,
-              storageKey: commit.targetKey,
-              storageVersionId: commit.storageVersionId,
-              immutable: commit.immutable,
-              sha256: prismaBytes(commit.sha256),
-              sizeBytes: commit.sizeBytes,
-              scanStatus: 'CLEAN',
-              scanCompletedAt: new Date(),
-              createdById: staffId,
+              classification: ctx!.newClassification as never,
+              documentTypeId: ctx!.newTypeId,
+              retentionUntil: commit.retentionUntil,
             },
           });
-        } else {
-          await tx.documentVersion.update({
-            where: { id: ctx!.versionId },
-            data: {
+          await evidenceService.record(tx, {
+            tenantId,
+            actorType: 'STAFF',
+            actorId: staffId,
+            action: 'document.retag',
+            resourceType: 'document',
+            resourceId: documentId,
+            before: { classification: ctx!.oldClassification, tier: ctx!.oldTier },
+            after: {
+              classification: ctx!.newClassification,
+              tier: ctx!.newTier,
+              reStored: true,
+              retentionYears: ctx!.newRetentionYears,
               storageBucket: commit.targetBucket,
-              storageKey: commit.targetKey,
-              storageVersionId: commit.storageVersionId,
-              immutable: commit.immutable,
-              sha256: prismaBytes(commit.sha256),
-              sizeBytes: commit.sizeBytes,
+              appendedVersion: ctx!.immutable,
             },
           });
-        }
-        await tx.document.update({
-          where: { id: documentId },
-          data: {
-            classification: ctx!.newClassification as never,
-            documentTypeId: ctx!.newTypeId,
-            retentionUntil: commit.retentionUntil,
-          },
-        });
-        await evidenceService.record(tx, {
-          tenantId,
-          actorType: 'STAFF',
-          actorId: staffId,
-          action: 'document.retag',
-          resourceType: 'document',
-          resourceId: documentId,
-          before: { classification: ctx!.oldClassification, tier: ctx!.oldTier },
-          after: {
-            classification: ctx!.newClassification,
-            tier: ctx!.newTier,
-            reStored: true,
-            retentionYears: ctx!.newRetentionYears,
-            storageBucket: commit.targetBucket,
-            appendedVersion: ctx!.immutable,
-          },
-        });
+        },
       });
 
       // Bei NONE → geschützte Stufe zeigt die bestehende Versionszeile nach
@@ -612,15 +617,10 @@ export async function retagDocumentAction(
         }
       }
     }
-  } catch (e) {
-    if (restagedCommit) {
-      await compensateStorageCommit({
-        tenantId,
-        source: 'staff.document.retag',
-        commit: restagedCommit,
-        cause: e,
-      });
-    }
+  } catch (error) {
+    // Nach dem Object-Write bleibt die Speicherabsicht offen; der Cleanup-Worker
+    // räumt das Objekt nach der Sicherheitsfrist versionsgenau auf.
+    const e = uploadFailureCause(error);
     if (e instanceof UploadRejectedError && e.reason === 'INFECTED') {
       return { ok: false, error: 'Datei als infiziert markiert — Retag abgebrochen.' };
     }

@@ -1,4 +1,5 @@
 // Fachkatalog: DOC-VERSION-IMMUTABILITY-001
+// Fachkatalog: DOC-UPLOAD-JOURNAL-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => {
@@ -6,20 +7,20 @@ const m = vi.hoisted(() => {
     staffActionGuard: vi.fn(),
     withTenantContext: vi.fn(),
     fetchObjectBytes: vi.fn(),
-    commitBytesWithTier: vi.fn(),
+    prepare: vi.fn(),
     deleteObject: vi.fn(),
     deleteObjectVersion: vi.fn(),
     evidenceRecord: vi.fn(),
     assertClientAccessTx: vi.fn(),
     revalidatePath: vi.fn(),
     logError: vi.fn(),
-    compensateStorageCommit: vi.fn(),
     txInitial: {
       document: { findFirst: vi.fn() },
       documentType: { findFirst: vi.fn() },
     },
     txCommit: {
       $queryRaw: vi.fn(),
+      $executeRaw: vi.fn(),
       documentType: { findFirst: vi.fn() },
       documentVersion: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
       document: { update: vi.fn() },
@@ -29,19 +30,27 @@ const m = vi.hoisted(() => {
 
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
-vi.mock('@taxtronik/storage', async () => ({
-  UploadRejectedError: (await import('@taxtronik/storage/errors')).UploadRejectedError,
-  fetchObjectBytes: m.fetchObjectBytes,
-  commitBytesWithTier: m.commitBytesWithTier,
-  deleteObject: m.deleteObject,
-  deleteObjectVersion: m.deleteObjectVersion,
-  classificationToTier: (classification: string) => {
-    if (classification.startsWith('GOBD_')) return 'GOBD';
-    if (classification === 'GWG_EVIDENCE') return 'GWG';
-    return 'NONE';
-  },
-  gobdRetentionYears: vi.fn(() => 8),
-}));
+vi.mock('@taxtronik/storage', async () => {
+  const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
+  return {
+    UploadRejectedError: (await import('@taxtronik/storage/errors')).UploadRejectedError,
+    fetchObjectBytes: m.fetchObjectBytes,
+    prepareBytesCommitWithTier: m.prepare,
+    commitPreparedBytes: storageJournal.commit,
+    deleteObject: m.deleteObject,
+    deleteObjectVersion: m.deleteObjectVersion,
+    classificationToTier: (classification: string) => {
+      if (classification.startsWith('GOBD_')) return 'GOBD';
+      if (classification === 'GWG_EVIDENCE') return 'GWG';
+      return 'NONE';
+    },
+    gobdRetentionYears: vi.fn(() => 8),
+  };
+});
+vi.mock('@/server/db/prisma-owner', async () => {
+  const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
+  return { prismaOwner: storageJournal.owner };
+});
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: (value: unknown) => value }));
 vi.mock('@/server/storage/document-type', () => ({
@@ -60,12 +69,10 @@ vi.mock('@/server/actions/staff-action', async () => ({
   staffActionGuard: m.staffActionGuard,
   withStaff: vi.fn(),
 }));
-vi.mock('@/server/logger', () => ({ log: { error: m.logError } }));
-vi.mock('@/server/documents/storage-compensation', () => ({
-  compensateStorageCommit: m.compensateStorageCommit,
-}));
+vi.mock('@/server/logger', () => ({ log: { error: m.logError, warn: vi.fn() } }));
 
 import { retagDocumentAction } from '../actions';
+import { storageJournal } from '@/server/documents/__tests__/storage-journal-fake';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const VERSION_ID = '22222222-2222-4222-8222-222222222222';
@@ -106,6 +113,9 @@ function matchingLatest(immutable: boolean) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  storageJournal.reset();
+  m.prepare.mockImplementation(storageJournal.prepare);
+  m.txCommit.$executeRaw.mockImplementation(storageJournal.executeRaw);
   m.staffActionGuard.mockResolvedValue({
     ok: true,
     tenantId: 'tenant-1',
@@ -128,23 +138,13 @@ beforeEach(() => {
     },
   ]);
   m.fetchObjectBytes.mockResolvedValue(Buffer.from('document bytes'));
-  m.commitBytesWithTier.mockResolvedValue({
-    targetBucket: 'gobd',
-    targetKey: 'new-key',
-    storageVersionId: 'new-version-id',
-    immutable: true,
-    sha256: Buffer.alloc(32, 7),
-    sizeBytes: 14n,
-    retentionUntil: new Date('2035-01-01T00:00:00.000Z'),
-  });
   m.txCommit.documentVersion.create.mockResolvedValue({ id: 'new-db-version' });
   m.txCommit.document.update.mockResolvedValue({});
   m.evidenceRecord.mockResolvedValue({});
-  m.compensateStorageCommit.mockResolvedValue('JOURNALED');
 });
 
 describe('retagDocumentAction concurrency and immutable history', () => {
-  it('aborts on latest-version drift before any DB mutation', async () => {
+  it('aborts on latest-version drift before any DB mutation or object write', async () => {
     m.txInitial.document.findFirst.mockResolvedValue(initialDocument(true));
     m.txCommit.documentVersion.findFirst.mockResolvedValue({
       ...matchingLatest(true),
@@ -170,17 +170,40 @@ describe('retagDocumentAction concurrency and immutable history', () => {
     expect(m.evidenceRecord).not.toHaveBeenCalled();
     expect(m.deleteObject).not.toHaveBeenCalled();
     expect(m.deleteObjectVersion).not.toHaveBeenCalled();
-    expect(m.compensateStorageCommit).toHaveBeenCalledWith(
+    // K-06: Die gemeinsame Vorpruefung erkennt die Drift vor Scan, Journal und
+    // Object-Write; es entsteht kein (unter Object Lock unloeschbares) Objekt.
+    expect(m.fetchObjectBytes).not.toHaveBeenCalled();
+    expect(storageJournal.events).toEqual([]);
+  });
+
+  it('keeps the journaled intent open when the version drifts after the object write', async () => {
+    m.txInitial.document.findFirst.mockResolvedValue(initialDocument(true));
+    m.txCommit.documentVersion.findFirst.mockResolvedValueOnce(matchingLatest(true));
+    m.txCommit.documentVersion.findFirst.mockResolvedValueOnce({
+      ...matchingLatest(true),
+      id: '33333333-3333-4333-8333-333333333333',
+      versionNo: 2,
+    });
+
+    const result = await retagDocumentAction({
+      documentId: DOCUMENT_ID,
+      classification: 'GOBD_INVOICE',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: 'Neue Dokumentversion während der Umklassifizierung erkannt. Bitte erneut versuchen.',
+    });
+    expect(m.txCommit.documentVersion.create).not.toHaveBeenCalled();
+    expect(storageJournal.openIntents()).toEqual([
       expect.objectContaining({
         tenantId: 'tenant-1',
         source: 'staff.document.retag',
-        commit: expect.objectContaining({
-          targetBucket: 'gobd',
-          targetKey: 'new-key',
-          storageVersionId: 'new-version-id',
-        }),
+        storageKey: storageJournal.objects[0]!.key,
+        storageVersionId: storageJournal.objects[0]!.versionId,
+        immutable: true,
       }),
-    );
+    ]);
   });
 
   it('appends a protected version instead of updating an immutable old version', async () => {
@@ -194,21 +217,33 @@ describe('retagDocumentAction concurrency and immutable history', () => {
 
     expect(result).toEqual({ ok: true });
     expect(m.txCommit.documentVersion.update).not.toHaveBeenCalled();
+    const stored = storageJournal.objects[0]!;
+    expect(m.prepare).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tier: 'GOBD',
+        classification: 'GOBD_INVOICE',
+        retentionYears: 8,
+        retentionAnchor: CREATED_AT,
+      }),
+    );
     expect(m.txCommit.documentVersion.create).toHaveBeenCalledWith({
       data: {
         documentId: DOCUMENT_ID,
         versionNo: 2,
-        storageBucket: 'gobd',
-        storageKey: 'new-key',
-        storageVersionId: 'new-version-id',
+        storageBucket: stored.bucket,
+        storageKey: stored.key,
+        storageVersionId: stored.versionId,
         immutable: true,
-        sha256: Buffer.alloc(32, 7),
+        sha256: stored.sha256,
         sizeBytes: 14n,
         scanStatus: 'CLEAN',
         scanCompletedAt: expect.any(Date),
         createdById: 'staff-1',
       },
     });
+    expect(storageJournal.rows).toEqual([
+      expect.objectContaining({ source: 'staff.document.retag', resolution: 'REFERENCED' }),
+    ]);
     expect(m.txCommit.document.update).toHaveBeenCalledTimes(1);
     expect(m.evidenceRecord).toHaveBeenCalledTimes(1);
     expect(m.deleteObject).not.toHaveBeenCalled();

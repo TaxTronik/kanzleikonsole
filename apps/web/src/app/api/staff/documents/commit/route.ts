@@ -6,12 +6,14 @@
 // zu SeaweedFS — der Object-Store ist NIE öffentlich erreichbar (§ 203 StGB:
 // minimale Angriffsfläche on-prem).
 //
-// Schritte:
-//   1. multipart-Body → Buffer
-//   2. commitDocumentFromBytes: ClamAV-Scan + SHA-256 + Object-Lock-Upload
-//   3. Document + DocumentVersion in DB (Tenant-Kontext via RLS)
-//   4. Audit-Eintrag (hash-chained) via EvidenceService
-//   5. n8n-Webhook `document.uploaded` (fire-and-forget)
+// Schritte (Journal-first, K-06 / DOC-UPLOAD-JOURNAL-001):
+//   1. multipart-Body (zentral am Stream begrenzt)
+//   2. Vorprüfung (Typ → Schutzstufe, Mandant, Analyse, Workflow-Schritt,
+//      Wiedervorlage, Ordner) — vor Scan, Journal und Object-Write
+//   3. ClamAV-Scan + SHA-256 + fester Schlüssel, Speicherabsicht journalisieren
+//   4. Object-Lock-Upload genau dieser Absicht
+//   5. dieselbe Prüfung erneut + Document/DocumentVersion + Audit in einer Tx
+//   6. n8n-Webhook `document.uploaded` (fire-and-forget)
 //
 // FormData-Felder: file (Blob), classification, title, mimeType?,
 //                   clientId? (UUID), workflowItemId? (UUID)
@@ -21,16 +23,15 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { env } from '@taxtronik/config';
 import { getClientIp } from '@/server/rate-limit';
 import { z } from 'zod';
-import { staffAuth } from '@/server/auth/staff';
+import { staffAuth, type StaffSession } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import {
-  commitBytesWithTier,
   classificationToTier,
   isGobdClassification,
   type ProtectionTier,
 } from '@taxtronik/storage';
-import { withTenantContext } from '@taxtronik/db';
+import type { TxClient } from '@taxtronik/db';
 import { notifyReminderAttachmentTx } from '@/server/reminders/service';
 import {
   assertReminderUploadTx,
@@ -41,12 +42,12 @@ import {
   storageCommitErrorResponse,
   createDocumentWithVersion,
 } from '@/server/documents/upload-helpers';
+import { JournaledUploadError, runJournaledUpload } from '@/server/documents/journaled-upload';
 import { carrierClassification } from '@/server/storage/document-type';
 import { identityPdfPageCountForUpload } from '@/server/gwg/identity-pdf-pages';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { log } from '@/server/logger';
-import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 
 // iter55: bevorzugt documentTypeId (trägt die Schutzstufe). classification
 // bleibt als Back-Compat erlaubt (Altpfade / Kern-Typ direkt). Mindestens
@@ -77,14 +78,140 @@ const FieldsSchema = z
     message: 'classification oder documentTypeId erforderlich',
   });
 
-const REFERENCE_CHANGED = 'REFERENCE_CHANGED';
+type UploadFields = z.infer<typeof FieldsSchema>;
 
-function referenceChanged(message: string): Error {
-  return new Error(`${REFERENCE_CHANGED}: ${message}`);
+/** Ergebnis der gemeinsamen Vor- und Nachprüfung eines Staff-Uploads. */
+interface StaffUploadCheck {
+  tier: ProtectionTier;
+  classification: string;
+  retentionYears?: number;
+  resolvedTypeId: string | null;
+  folderId: string | null;
 }
 
-function isReferenceChanged(e: unknown): boolean {
-  return ((e as Error).message ?? '').startsWith(REFERENCE_CHANGED);
+class ReferenceChangedError extends Error {
+  constructor(message: string) {
+    super(`REFERENCE_CHANGED: ${message}`);
+  }
+}
+
+/** Typ → Schutzstufe + Carrier-Klassifikation + finale documentTypeId. */
+async function resolveUploadTypeTx(
+  tx: TxClient,
+  tenantId: string,
+  fields: UploadFields,
+): Promise<Omit<StaffUploadCheck, 'folderId'>> {
+  if (fields.documentTypeId) {
+    const t = await tx.documentType.findFirst({
+      where: { id: fields.documentTypeId, tenantId, active: true },
+      select: { id: true, tier: true, classificationKey: true, retentionYears: true },
+    });
+    if (!t) throw new Error('TYPE_NOT_FOUND: Datei-Typ nicht gefunden.');
+    return {
+      tier: t.tier as ProtectionTier,
+      classification: carrierClassification(t.tier as ProtectionTier, t.classificationKey),
+      retentionYears: t.retentionYears ?? undefined,
+      resolvedTypeId: t.id,
+    };
+  }
+  // Back-Compat: Klassifikation gegeben → aktiven Kern-Typ desselben
+  // Tenants verknüpfen und dessen Schutzstufe/Frist verwenden.
+  const cls = fields.classification!;
+  const builtin = await tx.documentType.findFirst({
+    where: { tenantId, classificationKey: cls, builtin: true, active: true },
+    select: { id: true, tier: true, retentionYears: true },
+  });
+  return {
+    // Der Kern-Typ ist die fachliche Quelle fuer Schutzstufe und Frist.
+    // Nur bei noch nicht provisionierten Alt-Tenants ohne Kern-Typ auf
+    // die konservative Classification-Ableitung zurueckfallen.
+    tier: builtin ? (builtin.tier as ProtectionTier) : classificationToTier(cls),
+    classification: cls,
+    retentionYears: builtin?.retentionYears ?? undefined,
+    resolvedTypeId: builtin?.id ?? null,
+  };
+}
+
+/**
+ * Gemeinsame Vor- und Nachprüfung (K-06). Befund 1a: Die Referenzen werden vor
+ * dem Store-Write geprüft — ein object-locked Objekt ist nicht mehr löschbar.
+ * Dieselbe Prüfung läuft erneut in der Commit-Transaktion; dort muss die
+ * Typauflösung unverändert sein, sonst passen Lock und Metadaten nicht mehr.
+ */
+async function checkStaffUploadTx(
+  tx: TxClient,
+  session: StaffSession,
+  fields: UploadFields,
+  pre?: StaffUploadCheck,
+): Promise<StaffUploadCheck> {
+  const tenantId = session.user.tenantId;
+  const { clientId, analysisId, workflowItemId, reminderId, folderId } = fields;
+  const resolved = await resolveUploadTypeTx(tx, tenantId, fields);
+  if (
+    pre &&
+    (resolved.tier !== pre.tier ||
+      resolved.classification !== pre.classification ||
+      resolved.retentionYears !== pre.retentionYears ||
+      resolved.resolvedTypeId !== pre.resolvedTypeId)
+  ) {
+    throw new ReferenceChangedError('Datei-Typ wurde während des Uploads geändert.');
+  }
+
+  // M-1: Tenant-Sanity-Check für clientId — FK greift nur auf Existenz,
+  // nicht auf Tenant-Match. Zugriffsmodell (vertraulich-Flag /
+  // RESTRICTED): gesperrte Mandanten wie „nicht gefunden" behandeln
+  // (kein Existenz-Leak) — kein Upload in fremde Mandanten-Akten.
+  if (clientId) {
+    const c = await tx.client.findFirst({ where: { id: clientId }, select: { id: true } });
+    if (!c || !(await canAccessClientTx(tx, session, clientId))) {
+      throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
+    }
+  }
+  // Tenant-Sanity für analysisId (analog clientId — der FK prüft nur Existenz,
+  // unter RLS sieht findFirst nur Analysen DIESES Tenants).
+  if (analysisId) {
+    const a = await tx.riskAnalysis.findFirst({ where: { id: analysisId }, select: { id: true } });
+    if (!a) throw new Error('ANALYSIS_NOT_FOUND: analysisId nicht in diesem Tenant.');
+  }
+  // HIGH: Tenant-/Mandanten-Sanity für workflowItemId. Der FK prüft nur
+  // Existenz (workflow_item.id), nicht Tenant/Mandant — und workflow_item
+  // trägt selbst keine tenant_id. Ohne diesen Check ließe sich mit bekannter
+  // UUID ein Dokument an einen fremden Workflow-Schritt hängen, innerhalb
+  // desselben Tenants auch mandantenübergreifend. Über die instance-Relation
+  // (trägt tenantId + clientId) scopen und Mandanten-Gleichheit erzwingen.
+  if (workflowItemId) {
+    const wi = await tx.workflowItem.findFirst({
+      where: { id: workflowItemId, instance: { tenantId } },
+      select: { instance: { select: { clientId: true } } },
+    });
+    if (!wi) throw new Error('WORKFLOW_ITEM_NOT_FOUND: workflowItemId nicht in diesem Tenant.');
+    if ((wi.instance.clientId ?? null) !== (clientId ?? null)) {
+      throw new Error(
+        'WORKFLOW_ITEM_CLIENT_MISMATCH: Workflow-Schritt gehört zu einem anderen Mandanten.',
+      );
+    }
+  }
+  // Tenant- und Mandanten-Sanity für reminderId (analog workflowItemId).
+  // Der FK prüft nur Existenz; unter RLS sieht findFirst nur Aufgaben
+  // DIESES Tenants. Der Mandanten-Abgleich verhindert, dass ein Beleg
+  // über eine bekannte UUID an eine Aufgabe eines anderen Mandanten
+  // gehängt wird — eine interne Aufgabe (clientId null) nimmt
+  // entsprechend nur kanzlei-interne Dateien auf.
+  if (reminderId) {
+    await assertReminderUploadTx(tx, session, reminderId, clientId ?? null);
+  }
+  // Ordner muss zum Tenant gehören und im selben Bereich liegen wie das
+  // Dokument (Mandant ↔ Mandant, bzw. beide kanzlei-intern). Sonst
+  // ignorieren (Dokument landet ohne Ordner) statt hart abzubrechen.
+  let folder: string | null = null;
+  if (folderId) {
+    const f = await tx.documentFolder.findFirst({
+      where: { id: folderId, tenantId },
+      select: { clientId: true },
+    });
+    if (f && (f.clientId ?? null) === (clientId ?? null)) folder = folderId;
+  }
+  return { ...resolved, folderId: folder };
 }
 
 export async function POST(req: NextRequest) {
@@ -120,213 +247,37 @@ export async function POST(req: NextRequest) {
   }
 
   const { tenantId, staffId } = session.user;
-  const { title, mimeType, clientId, folderId, workflowItemId, analysisId, reminderId } =
-    parsed.data;
-
-  // Typ → Schutzstufe + Carrier-Klassifikation + finale documentTypeId
-  // auflösen (vor dem Storage-Commit, weil die Stufe Bucket/Lock bestimmt).
-  // Befund 1a: auch die rein lesenden Referenz-Validierungen (clientId,
-  // analysisId, workflowItemId, folderId) laufen HIER — vor dem Storage-
-  // Commit. Ein object-locked Objekt kann nicht mehr gelöscht werden;
-  // scheiterte die Validierung erst danach, blieb ein verwaistes Objekt.
-  let tier: ProtectionTier;
-  let classification: string;
-  let retentionYears: number | undefined;
-  let resolvedTypeId: string | null;
-  let effectiveFolderId: string | null;
-  try {
-    const r = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        let resolved: {
-          tier: ProtectionTier;
-          classification: string;
-          retentionYears?: number;
-          resolvedTypeId: string | null;
-        };
-        if (parsed.data.documentTypeId) {
-          const t = await tx.documentType.findFirst({
-            where: { id: parsed.data.documentTypeId, tenantId, active: true },
-            select: { id: true, tier: true, classificationKey: true, retentionYears: true },
-          });
-          if (!t) throw new Error('TYPE_NOT_FOUND: Datei-Typ nicht gefunden.');
-          resolved = {
-            tier: t.tier as ProtectionTier,
-            classification: carrierClassification(t.tier as ProtectionTier, t.classificationKey),
-            retentionYears: t.retentionYears ?? undefined,
-            resolvedTypeId: t.id,
-          };
-        } else {
-          // Back-Compat: Klassifikation gegeben → aktiven Kern-Typ desselben
-          // Tenants verknüpfen und dessen Schutzstufe/Frist verwenden.
-          const cls = parsed.data.classification!;
-          const builtin = await tx.documentType.findFirst({
-            where: { tenantId, classificationKey: cls, builtin: true, active: true },
-            select: { id: true, tier: true, retentionYears: true },
-          });
-          resolved = {
-            // Der Kern-Typ ist die fachliche Quelle fuer Schutzstufe und Frist.
-            // Nur bei noch nicht provisionierten Alt-Tenants ohne Kern-Typ auf
-            // die konservative Classification-Ableitung zurueckfallen.
-            tier: builtin ? (builtin.tier as ProtectionTier) : classificationToTier(cls),
-            classification: cls,
-            retentionYears: builtin?.retentionYears ?? undefined,
-            resolvedTypeId: builtin?.id ?? null,
-          };
-        }
-
-        // M-1: Tenant-Sanity-Check für clientId — FK greift nur auf Existenz,
-        // nicht auf Tenant-Match. Zugriffsmodell (vertraulich-Flag /
-        // RESTRICTED): gesperrte Mandanten wie „nicht gefunden" behandeln
-        // (kein Existenz-Leak) — kein Upload in fremde Mandanten-Akten.
-        if (clientId) {
-          const c = await tx.client.findFirst({ where: { id: clientId }, select: { id: true } });
-          if (!c || !(await canAccessClientTx(tx, session, clientId))) {
-            throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
-          }
-        }
-        // Tenant-Sanity für analysisId (analog clientId — der FK prüft nur Existenz,
-        // unter RLS sieht findFirst nur Analysen DIESES Tenants).
-        if (analysisId) {
-          const a = await tx.riskAnalysis.findFirst({
-            where: { id: analysisId },
-            select: { id: true },
-          });
-          if (!a) {
-            throw new Error('ANALYSIS_NOT_FOUND: analysisId nicht in diesem Tenant.');
-          }
-        }
-        // HIGH: Tenant-/Mandanten-Sanity für workflowItemId. Der FK prüft nur
-        // Existenz (workflow_item.id), nicht Tenant/Mandant — und workflow_item
-        // trägt selbst keine tenant_id. Ohne diesen Check ließe sich mit bekannter
-        // UUID ein Dokument an einen fremden Workflow-Schritt hängen, innerhalb
-        // desselben Tenants auch mandantenübergreifend. Über die instance-Relation
-        // (trägt tenantId + clientId) scopen und Mandanten-Gleichheit erzwingen.
-        if (workflowItemId) {
-          const wi = await tx.workflowItem.findFirst({
-            where: { id: workflowItemId, instance: { tenantId } },
-            select: { instance: { select: { clientId: true } } },
-          });
-          if (!wi) {
-            throw new Error('WORKFLOW_ITEM_NOT_FOUND: workflowItemId nicht in diesem Tenant.');
-          }
-          if ((wi.instance.clientId ?? null) !== (clientId ?? null)) {
-            throw new Error(
-              'WORKFLOW_ITEM_CLIENT_MISMATCH: Workflow-Schritt gehört zu einem anderen Mandanten.',
-            );
-          }
-        }
-        // Tenant- und Mandanten-Sanity für reminderId (analog workflowItemId).
-        // Der FK prüft nur Existenz; unter RLS sieht findFirst nur Aufgaben
-        // DIESES Tenants. Der Mandanten-Abgleich verhindert, dass ein Beleg
-        // über eine bekannte UUID an eine Aufgabe eines anderen Mandanten
-        // gehängt wird — eine interne Aufgabe (clientId null) nimmt
-        // entsprechend nur kanzlei-interne Dateien auf.
-        if (reminderId) {
-          await assertReminderUploadTx(tx, session, reminderId, clientId ?? null);
-        }
-        // Ordner muss zum Tenant gehören und im selben Bereich liegen wie das
-        // Dokument (Mandant ↔ Mandant, bzw. beide kanzlei-intern). Sonst
-        // ignorieren (Dokument landet ohne Ordner) statt hart abzubrechen.
-        let folder: string | null = null;
-        if (folderId) {
-          const f = await tx.documentFolder.findFirst({
-            where: { id: folderId, tenantId },
-            select: { clientId: true },
-          });
-          if (f && (f.clientId ?? null) === (clientId ?? null)) {
-            folder = folderId;
-          }
-        }
-        return { ...resolved, effectiveFolderId: folder };
-      },
-    );
-    tier = r.tier;
-    classification = r.classification;
-    retentionYears = r.retentionYears;
-    resolvedTypeId = r.resolvedTypeId;
-    effectiveFolderId = r.effectiveFolderId;
-  } catch (e) {
-    return preflightErrorResponse(e, tenantId);
-  }
-
-  const fileData = Buffer.from(await file.arrayBuffer());
+  const fields = parsed.data;
+  const { title, mimeType, clientId, workflowItemId, analysisId, reminderId } = fields;
   // P-13: Seitenzahl einer PDF-Ausweisquelle einmalig aus genau diesen Bytes
-  // (begrenzter Worker-Thread, nur GWG_EVIDENCE). Vor dem Storage-Commit, damit
-  // das Fenster zwischen Object-Write und DB-Insert nicht wächst.
-  const pdfPageCount = await identityPdfPageCountForUpload({
-    classification,
-    mimeType,
-    bytes: fileData,
-  });
+  // (begrenzter Worker-Thread, nur GWG_EVIDENCE) — nach dem Scan, vor dem
+  // Object-Write, damit das Fenster zwischen Write und DB-Insert nicht wächst.
+  let pdfPageCount: number | null = null;
 
-  // 1. Storage-Commit (Scan + Object-Lock-Upload, intern zu SeaweedFS) —
-  // tier-getrieben (Bucket/Lock/Frist hängen an der Schutzstufe).
-  let commit;
+  let stored;
   try {
-    commit = await commitBytesWithTier({
-      fileData,
-      tier,
-      tenantId,
-      classification,
-      ...(tier === 'GOBD' && retentionYears ? { retentionYears } : {}),
-    });
-  } catch (e) {
-    // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
-    return storageCommitErrorResponse(e);
-  }
-
-  // 2. DB-Records + Audit in derselben Tx (Konsistenzgarantie). Die
-  // Referenz-Validierungen liefen bereits VOR dem Storage-Commit (Befund 1a) —
-  // hier nur noch Insert + Audit.
-  let docRow;
-  try {
-    docRow = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        let finalFolderId = effectiveFolderId;
-
-        if (clientId) {
-          const c = await tx.client.findFirst({ where: { id: clientId }, select: { id: true } });
-          if (!c || !(await canAccessClientTx(tx, session, clientId))) {
-            throw referenceChanged('clientId nicht mehr gueltig oder nicht mehr zugaenglich.');
-          }
-        }
-        if (analysisId) {
-          const a = await tx.riskAnalysis.findFirst({
-            where: { id: analysisId },
-            select: { id: true },
-          });
-          if (!a) {
-            throw referenceChanged('analysisId nicht mehr gueltig.');
-          }
-        }
-        if (workflowItemId) {
-          const wi = await tx.workflowItem.findFirst({
-            where: { id: workflowItemId, instance: { tenantId } },
-            select: { instance: { select: { clientId: true } } },
-          });
-          if (!wi || (wi.instance.clientId ?? null) !== (clientId ?? null)) {
-            throw referenceChanged('workflowItemId nicht mehr gueltig oder Mandant geaendert.');
-          }
-        }
-        if (reminderId) {
-          try {
-            await assertReminderUploadTx(tx, session, reminderId, clientId ?? null);
-          } catch (error) {
-            if (!(error instanceof ReminderUploadError)) throw error;
-            throw referenceChanged('Wiedervorlage nicht mehr verfügbar oder bereits archiviert.');
-          }
-        }
-        if (effectiveFolderId) {
-          const f = await tx.documentFolder.findFirst({
-            where: { id: effectiveFolderId, tenantId },
-            select: { clientId: true },
-          });
-          finalFolderId =
-            f && (f.clientId ?? null) === (clientId ?? null) ? effectiveFolderId : null;
-        }
-
+    stored = await runJournaledUpload({
+      context: { tenantId, actorId: staffId, actorType: 'STAFF' },
+      source: 'staff.document.commit',
+      readBytes: async () => Buffer.from(await file.arrayBuffer()),
+      check: (tx: TxClient, _phase: 'pre' | 'post', pre?: StaffUploadCheck) =>
+        checkStaffUploadTx(tx, session, fields, pre),
+      // tier-getrieben: Bucket/Lock/Frist hängen an der Schutzstufe.
+      storage: (checked) => ({
+        tier: checked.tier,
+        classification: checked.classification,
+        ...(checked.tier === 'GOBD' && checked.retentionYears
+          ? { retentionYears: checked.retentionYears }
+          : {}),
+      }),
+      afterPrepare: async ({ bytes, checked }) => {
+        pdfPageCount = await identityPdfPageCountForUpload({
+          classification: checked.classification,
+          mimeType,
+          bytes,
+        });
+      },
+      commitTx: async (tx, { commit, checked }) => {
         // M-2: detectedMime aus Magic-Bytes hat Vorrang vor Client-gemeldetem Wert.
         const effectiveMime = commit.detectedMime ?? mimeType;
         // Befund 12: Document+Version-Insert zentral (upload-helpers).
@@ -336,14 +287,14 @@ export async function POST(req: NextRequest) {
             clientId: clientId ?? null,
             ownerStaffId: staffId,
             title,
-            classification: classification as never,
-            documentTypeId: resolvedTypeId,
+            classification: checked.classification as never,
+            documentTypeId: checked.resolvedTypeId,
             mimeType: effectiveMime,
             retentionUntil: commit.retentionUntil,
             workflowItemId: workflowItemId ?? null,
             analysisId: analysisId ?? null,
             reminderId: reminderId ?? null,
-            folderId: finalFolderId,
+            folderId: checked.folderId,
           },
           commit,
           createdById: staffId,
@@ -369,7 +320,7 @@ export async function POST(req: NextRequest) {
           resourceId: document.id,
           after: {
             title,
-            classification,
+            classification: checked.classification,
             clientId: clientId ?? null,
             sha256: commit.sha256.toString('hex'),
             immutable: commit.immutable,
@@ -377,47 +328,85 @@ export async function POST(req: NextRequest) {
           ip: getClientIp(req.headers),
           userAgent: req.headers.get('user-agent'),
         });
-        return document;
+        return { documentId: document.id, classification: checked.classification };
       },
-    );
-  } catch (e) {
-    await compensateStorageCommit({
-      tenantId,
-      source: 'staff.document.commit',
-      commit,
-      cause: e,
     });
-    if (isReferenceChanged(e)) {
-      return NextResponse.json(
-        {
-          error: 'reference_changed',
-          message: 'Referenz hat sich waehrend des Uploads geaendert.',
-        },
-        { status: 409 },
-      );
-    }
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+  } catch (e) {
+    return uploadErrorResponse(e, tenantId);
   }
 
-  // 3. n8n-Event (fire-and-forget)
+  // 6. n8n-Event (fire-and-forget)
+  const { result, commit } = stored;
   await emitN8nEvent(
     'document.uploaded',
     {
       tenantId,
-      documentId: docRow.id,
-      classification,
+      documentId: result.documentId,
+      classification: result.classification,
       clientId: clientId ?? null,
-      isGobd: isGobdClassification(classification),
+      isGobd: isGobdClassification(result.classification),
     },
     { tenantId },
   );
 
   return NextResponse.json({
     ok: true,
-    documentId: docRow.id,
+    documentId: result.documentId,
     sha256: commit.sha256.toString('hex'),
     immutable: commit.immutable,
   });
+}
+
+function uploadErrorResponse(error: unknown, tenantId: string): NextResponse {
+  if (!(error instanceof JournaledUploadError)) {
+    log.error(
+      { component: 'documents-commit', tenantId, err: (error as Error)?.message ?? null },
+      'documents-commit: unerwarteter Upload-Fehler',
+    );
+    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+  }
+  switch (error.phase) {
+    case 'check':
+      return preflightErrorResponse(error.cause, tenantId);
+    case 'prepare':
+    case 'store':
+      // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
+      return storageCommitErrorResponse(error.cause);
+    case 'journal':
+      log.error(
+        { component: 'documents-commit', tenantId, err: error.message },
+        'documents-commit: Speicherabsicht konnte nicht journalisiert werden',
+      );
+      return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+    case 'commit':
+      // Die Speicherabsicht bleibt offen; der Cleanup-Worker räumt das Objekt
+      // nach der Sicherheitsfrist versionsgenau auf.
+      if (isReferenceChange(error.cause)) {
+        return NextResponse.json(
+          {
+            error: 'reference_changed',
+            message: 'Referenz hat sich waehrend des Uploads geaendert.',
+          },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+  }
+}
+
+const VALIDATION_PREFIXES = [
+  'TYPE_NOT_FOUND',
+  'CLIENT_NOT_FOUND',
+  'ANALYSIS_NOT_FOUND',
+  'WORKFLOW_ITEM_NOT_FOUND',
+  'WORKFLOW_ITEM_CLIENT_MISMATCH',
+];
+
+/** In der Commit-Transaktion bedeutet jeder Prüfungsfehler: Referenz geändert. */
+function isReferenceChange(error: unknown): boolean {
+  if (error instanceof ReferenceChangedError || error instanceof ReminderUploadError) return true;
+  const message = error instanceof Error ? error.message : '';
+  return VALIDATION_PREFIXES.some((prefix) => message.startsWith(prefix));
 }
 
 /** Nur bekannte Validierungsfehler dürfen vor dem Store-Write ins UI gelangen. */
@@ -426,14 +415,7 @@ function preflightErrorResponse(error: unknown, tenantId: string): NextResponse 
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
   const message = error instanceof Error ? error.message : '';
-  const validationPrefixes = [
-    'TYPE_NOT_FOUND',
-    'CLIENT_NOT_FOUND',
-    'ANALYSIS_NOT_FOUND',
-    'WORKFLOW_ITEM_NOT_FOUND',
-    'WORKFLOW_ITEM_CLIENT_MISMATCH',
-  ];
-  if (validationPrefixes.some((prefix) => message.startsWith(prefix))) {
+  if (VALIDATION_PREFIXES.some((prefix) => message.startsWith(prefix))) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
   log.error(

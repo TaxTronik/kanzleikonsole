@@ -1,3 +1,4 @@
+// Fachkatalog: DOC-UPLOAD-JOURNAL-001
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 import { PDFDocument } from 'pdf-lib';
@@ -7,13 +8,12 @@ const m = vi.hoisted(() => ({
   canAccessClientTx: vi.fn(),
   withTenantContext: vi.fn(),
   classificationToTier: vi.fn(),
-  commitBytesWithTier: vi.fn(),
+  prepare: vi.fn(),
   createDocumentWithVersion: vi.fn(),
   evidenceRecord: vi.fn(),
   emitN8nEvent: vi.fn(),
   getClientIp: vi.fn(),
   log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
-  compensateStorageCommit: vi.fn(),
 }));
 
 vi.mock('@taxtronik/config', () => ({
@@ -30,12 +30,21 @@ vi.mock('@taxtronik/db', () => ({
   DEFAULT_BOOLEAN_TENANT_MODULES: {},
   parseBooleanTenantModules: () => ({}),
 }));
-vi.mock('@taxtronik/storage', () => ({
-  MAX_UPLOAD_BYTES: 10 * 1024 * 1024,
-  classificationToTier: m.classificationToTier,
-  isGobdClassification: () => false,
-  commitBytesWithTier: m.commitBytesWithTier,
-}));
+vi.mock('@taxtronik/storage', async () => {
+  const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
+  return {
+    MAX_UPLOAD_BYTES: 10 * 1024 * 1024,
+    classificationToTier: m.classificationToTier,
+    isGobdClassification: () => false,
+    prepareBytesCommitWithTier: m.prepare,
+    commitPreparedBytes: storageJournal.commit,
+  };
+});
+vi.mock('@/server/db/prisma-owner', async () => {
+  const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
+  return { prismaOwner: storageJournal.owner };
+});
+vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: (value: Uint8Array) => value }));
 vi.mock('@/server/documents/upload-helpers', () => ({
   parseMultipartUpload: async (req: NextRequest) => {
     const form = await req.formData();
@@ -60,11 +69,13 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceReco
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: m.emitN8nEvent }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: m.getClientIp }));
 vi.mock('@/server/logger', () => ({ log: m.log }));
-vi.mock('@/server/documents/storage-compensation', () => ({
-  compensateStorageCommit: m.compensateStorageCommit,
-}));
 
 import { POST } from '../route';
+import {
+  processCrash,
+  storageJournal,
+  waitForEvent,
+} from '@/server/documents/__tests__/storage-journal-fake';
 
 const SESSION = {
   user: {
@@ -104,21 +115,36 @@ function makeClassificationRequest() {
   });
 }
 
+/** Commit-Transaktion: schliesst die Speicherabsicht ueber das Journal-Double ab. */
+function commitTx(extra: Record<string, unknown> = {}) {
+  return { $executeRaw: storageJournal.executeRaw, ...extra };
+}
+
+function gobdTypeTx() {
+  return {
+    documentType: {
+      findFirst: vi.fn().mockResolvedValue({
+        id: DOCUMENT_TYPE_ID,
+        tier: 'GOBD',
+        classificationKey: 'GOBD_INVOICE',
+        retentionYears: 8,
+      }),
+    },
+    client: { findFirst: vi.fn().mockResolvedValue({ id: CLIENT_ID }) },
+    riskAnalysis: { findFirst: vi.fn() },
+    workflowItem: { findFirst: vi.fn() },
+    documentFolder: { findFirst: vi.fn() },
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
+  storageJournal.reset();
+  m.prepare.mockImplementation(storageJournal.prepare);
   m.staffAuth.mockResolvedValue(SESSION);
   m.canAccessClientTx.mockResolvedValue(true);
   m.classificationToTier.mockReturnValue('NONE');
   m.getClientIp.mockReturnValue('127.0.0.1');
-  m.commitBytesWithTier.mockResolvedValue({
-    targetBucket: 'docs-retain-none',
-    targetKey: 'tenant-1/documents/raced.txt',
-    sha256: Buffer.from('00'.repeat(32), 'hex'),
-    sizeBytes: 7,
-    immutable: true,
-    retentionUntil: null,
-    detectedMime: 'text/plain',
-  });
 });
 
 describe('POST /api/staff/documents/commit - TOCTOU', () => {
@@ -127,7 +153,7 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
     const res = await POST(makeRequest());
     expect(res.status).toBe(500);
     await expect(res.json()).resolves.toEqual({ error: 'internal_error' });
-    expect(m.commitBytesWithTier).not.toHaveBeenCalled();
+    expect(storageJournal.events).toEqual([]);
   });
 
   // Fachkatalog: REMINDER-TICKET-001
@@ -135,7 +161,7 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
     'archiviertes Ticket erhält keinen Anhang: %s',
     async (phase) => {
       const reminderId = '44444444-4444-4444-8444-444444444444';
-      const tx = {
+      const tx = commitTx({
         $queryRaw: vi.fn().mockResolvedValue([{ id: reminderId }]),
         documentType: {
           findFirst: vi.fn().mockResolvedValue({
@@ -147,15 +173,18 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
         },
         client: { findFirst: vi.fn().mockResolvedValue({ id: CLIENT_ID }) },
         clientReminder: { findFirst: vi.fn() },
-      };
+      });
       const reminder = {
         clientId: CLIENT_ID,
         createdByStaff: 'staff-1',
         assignees: [],
         archivedAt: null,
       };
-      tx.clientReminder.findFirst.mockResolvedValue({ ...reminder, archivedAt: new Date() });
-      if (phase === 'during-storage') tx.clientReminder.findFirst.mockResolvedValueOnce(reminder);
+      const findReminder = (
+        tx as unknown as { clientReminder: { findFirst: ReturnType<typeof vi.fn> } }
+      ).clientReminder.findFirst;
+      findReminder.mockResolvedValue({ ...reminder, archivedAt: new Date() });
+      if (phase === 'during-storage') findReminder.mockResolvedValueOnce(reminder);
       m.withTenantContext.mockImplementation(
         async (_ctx: unknown, fn: (value: unknown) => unknown) => fn(tx),
       );
@@ -166,9 +195,14 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
       expect(m.createDocumentWithVersion).not.toHaveBeenCalled();
       expect(m.evidenceRecord).not.toHaveBeenCalled();
       expect(m.emitN8nEvent).not.toHaveBeenCalled();
-      expect(m.commitBytesWithTier).toHaveBeenCalledTimes(phase === 'before-storage' ? 0 : 1);
-      expect(m.compensateStorageCommit).toHaveBeenCalledTimes(phase === 'before-storage' ? 0 : 1);
-      expect(tx.$queryRaw).toHaveBeenCalledTimes(phase === 'before-storage' ? 1 : 2);
+      expect(storageJournal.objects).toHaveLength(phase === 'before-storage' ? 0 : 1);
+      // Kein nachgelagertes Orphan-Journal mehr: die Vorab-Absicht bleibt offen
+      // und traegt die gebundene Objektversion fuer den Cleanup-Worker.
+      expect(storageJournal.events).not.toContain('compensate');
+      expect(storageJournal.openIntents()).toHaveLength(phase === 'before-storage' ? 0 : 1);
+      expect(
+        (tx as unknown as { $queryRaw: ReturnType<typeof vi.fn> }).$queryRaw,
+      ).toHaveBeenCalledTimes(phase === 'before-storage' ? 1 : 2);
     },
   );
 
@@ -178,11 +212,9 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
       tier: 'GOBD',
       retentionYears: 8,
     });
-    m.withTenantContext
-      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
-        fn({ documentType: { findFirst: findBuiltin } }),
-      )
-      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({}));
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(commitTx({ documentType: { findFirst: findBuiltin } })),
+    );
     m.createDocumentWithVersion.mockResolvedValue({
       document: { id: '33333333-3333-4333-8333-333333333333' },
     });
@@ -201,7 +233,7 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
       select: { id: true, tier: true, retentionYears: true },
     });
     expect(m.classificationToTier).not.toHaveBeenCalled();
-    expect(m.commitBytesWithTier).toHaveBeenCalledWith(
+    expect(m.prepare).toHaveBeenCalledWith(
       expect.objectContaining({
         tier: 'GOBD',
         classification: 'GOBD_INVOICE',
@@ -217,6 +249,9 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
         }),
       }),
     );
+    expect(storageJournal.rows).toEqual([
+      expect.objectContaining({ intent: true, resolution: 'REFERENCED', immutable: true }),
+    ]);
   });
 
   // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
@@ -226,17 +261,17 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
     pdf.addPage();
     pdf.addPage();
     const pdfBytes = new Uint8Array(await pdf.save());
-    m.withTenantContext
-      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
-        fn({
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(
+        commitTx({
           documentType: {
             findFirst: vi
               .fn()
               .mockResolvedValue({ id: DOCUMENT_TYPE_ID, tier: 'GWG', retentionYears: 5 }),
           },
         }),
-      )
-      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({}));
+      ),
+    );
     m.createDocumentWithVersion.mockResolvedValue({
       document: { id: '33333333-3333-4333-8333-333333333333' },
     });
@@ -266,17 +301,17 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
   });
 
   it('P-13: zählt keine Seiten außerhalb von GwG-Belegen', async () => {
-    m.withTenantContext
-      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
-        fn({
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(
+        commitTx({
           documentType: {
             findFirst: vi
               .fn()
               .mockResolvedValue({ id: DOCUMENT_TYPE_ID, tier: 'GOBD', retentionYears: 8 }),
           },
         }),
-      )
-      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn({}));
+      ),
+    );
     m.createDocumentWithVersion.mockResolvedValue({
       document: { id: '33333333-3333-4333-8333-333333333333' },
     });
@@ -290,26 +325,11 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
   });
 
   it('liefert 409, wenn eine Referenz nach Vorpruefung und Storage-Commit verschwindet', async () => {
-    const preStorageTx = {
-      documentType: {
-        findFirst: vi.fn().mockResolvedValue({
-          id: DOCUMENT_TYPE_ID,
-          tier: 'GOBD',
-          classificationKey: 'GOBD_INVOICE',
-          retentionYears: 8,
-        }),
-      },
-      client: { findFirst: vi.fn().mockResolvedValue({ id: CLIENT_ID }) },
-      riskAnalysis: { findFirst: vi.fn() },
-      workflowItem: { findFirst: vi.fn() },
-      documentFolder: { findFirst: vi.fn() },
-    };
-    const finalTx = {
+    const preStorageTx = gobdTypeTx();
+    const finalTx = commitTx({
+      ...gobdTypeTx(),
       client: { findFirst: vi.fn().mockResolvedValue(null) },
-      riskAnalysis: { findFirst: vi.fn() },
-      workflowItem: { findFirst: vi.fn() },
-      documentFolder: { findFirst: vi.fn() },
-    };
+    });
 
     m.withTenantContext
       .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
@@ -324,8 +344,8 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
       error: 'reference_changed',
       message: 'Referenz hat sich waehrend des Uploads geaendert.',
     });
-    expect(m.commitBytesWithTier).toHaveBeenCalledTimes(1);
-    expect(m.commitBytesWithTier).toHaveBeenCalledWith(
+    expect(m.prepare).toHaveBeenCalledTimes(1);
+    expect(m.prepare).toHaveBeenCalledWith(
       expect.objectContaining({
         tier: 'GOBD',
         classification: 'GOBD_INVOICE',
@@ -335,15 +355,69 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
     expect(m.createDocumentWithVersion).not.toHaveBeenCalled();
     expect(m.evidenceRecord).not.toHaveBeenCalled();
     expect(m.emitN8nEvent).not.toHaveBeenCalled();
-    expect(m.compensateStorageCommit).toHaveBeenCalledWith(
+    expect(storageJournal.openIntents()).toEqual([
       expect.objectContaining({
         tenantId: 'tenant-1',
         source: 'staff.document.commit',
-        commit: expect.objectContaining({
-          targetBucket: 'docs-retain-none',
-          targetKey: 'tenant-1/documents/raced.txt',
-        }),
+        storageKey: storageJournal.objects[0]!.key,
+        storageVersionId: storageJournal.objects[0]!.versionId,
+        immutable: true,
       }),
+    ]);
+  });
+
+  it('liefert 409, wenn sich der Datei-Typ zwischen Vorpruefung und Commit aendert', async () => {
+    const finalTx = commitTx({
+      ...gobdTypeTx(),
+      documentType: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: DOCUMENT_TYPE_ID,
+          tier: 'GOBD',
+          classificationKey: 'GOBD_INVOICE',
+          retentionYears: 10,
+        }),
+      },
+    });
+    m.withTenantContext
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn(gobdTypeTx()),
+      )
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(finalTx));
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(409);
+    expect(m.createDocumentWithVersion).not.toHaveBeenCalled();
+    expect(storageJournal.openIntents()).toHaveLength(1);
+  });
+
+  // K-06: Prozessabbruch (OOM, Deploy-Neustart) zwischen Object-Write und DB-Commit.
+  it('hinterlaesst nach einem Abbruch zwischen PUT und DB-Commit eine aufloesbare Speicherabsicht', async () => {
+    m.withTenantContext
+      .mockImplementationOnce(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+        fn(gobdTypeTx()),
+      )
+      .mockImplementationOnce(() => processCrash());
+
+    void POST(makeRequest());
+    await waitForEvent('put:');
+
+    const [intent] = storageJournal.openIntents();
+    expect(storageJournal.events.indexOf('journal')).toBeLessThan(
+      storageJournal.events.findIndex((event) => event.startsWith('put:')),
     );
+    expect(intent).toMatchObject({
+      tenantId: 'tenant-1',
+      source: 'staff.document.commit',
+      storageKey: storageJournal.objects[0]!.key,
+      immutable: true,
+      retentionUntil: storageJournal.objects[0]!.retainUntil,
+    });
+    expect(storageJournal.workerContract(intent!)).toEqual({
+      selectable: true,
+      tenantPrefix: true,
+      objectVersions: 1,
+      retentionGated: true,
+    });
   });
 });

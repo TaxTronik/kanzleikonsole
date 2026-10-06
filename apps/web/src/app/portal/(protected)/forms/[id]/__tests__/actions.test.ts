@@ -7,8 +7,6 @@ const h = vi.hoisted(() => {
     checkPortalWriteLimit: vi.fn(),
     checkRateLimit: vi.fn(),
     assertPortalFeature: vi.fn(),
-    commitDocumentFromBytes: vi.fn(),
-    compensateStorageCommit: vi.fn(),
     deleteObject: vi.fn(),
     deleteObjectVersion: vi.fn(),
     evidenceRecord: vi.fn(),
@@ -19,11 +17,20 @@ const h = vi.hoisted(() => {
 
 vi.mock('next/cache', () => ({ revalidatePath: h.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: h.withTenantContext }));
-vi.mock('@taxtronik/storage', () => ({
-  commitDocumentFromBytes: h.commitDocumentFromBytes,
-  deleteObject: h.deleteObject,
-  deleteObjectVersion: h.deleteObjectVersion,
-}));
+vi.mock('@taxtronik/storage', async () => {
+  const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
+  return {
+    prepareBytesCommitWithTier: storageJournal.prepare,
+    commitPreparedBytes: storageJournal.commit,
+    deleteObject: h.deleteObject,
+    deleteObjectVersion: h.deleteObjectVersion,
+  };
+});
+vi.mock('@/server/db/prisma-owner', async () => {
+  const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
+  return { prismaOwner: storageJournal.owner };
+});
+vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: (value: unknown) => value }));
 vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: h.emitN8nEvent }));
@@ -33,9 +40,6 @@ vi.mock('@/server/rate-limit', () => ({
 }));
 vi.mock('@/server/settings/portal-features', () => ({
   assertPortalFeature: h.assertPortalFeature,
-}));
-vi.mock('@/server/documents/storage-compensation', () => ({
-  compensateStorageCommit: h.compensateStorageCommit,
 }));
 vi.mock('@/server/auth/rbac', async () => ({
   // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
@@ -52,6 +56,7 @@ import {
   submitSubmissionAction,
   uploadFormFileAction,
 } from '../actions';
+import { storageJournal } from '@/server/documents/__tests__/storage-journal-fake';
 
 const SUBMISSION_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -91,6 +96,7 @@ function fileSubmission(answers: Record<string, unknown> = {}) {
 function mockTx(updateCount = 1) {
   const tx = {
     $queryRaw: vi.fn().mockResolvedValue([{ id: 'request-1' }]),
+    $executeRaw: storageJournal.executeRaw,
     formSubmission: {
       findUnique: vi.fn().mockResolvedValue(submission()),
       updateMany: vi.fn().mockResolvedValue({ count: updateCount }),
@@ -129,17 +135,7 @@ describe('Formular-Lifecycle', () => {
     h.checkPortalWriteLimit.mockResolvedValue({ ok: true });
     h.checkRateLimit.mockResolvedValue({ ok: true });
     h.assertPortalFeature.mockResolvedValue(undefined);
-    h.commitDocumentFromBytes.mockResolvedValue({
-      targetBucket: 'general',
-      targetKey: 'tenant-1/form-upload.bin',
-      storageVersionId: 'version-1',
-      sha256: Buffer.alloc(32, 1),
-      sizeBytes: 4n,
-      immutable: false,
-      retentionUntil: null,
-      detectedMime: 'application/pdf',
-    });
-    h.compensateStorageCommit.mockResolvedValue('JOURNALED');
+    storageJournal.reset();
     h.deleteObject.mockResolvedValue(undefined);
     h.deleteObjectVersion.mockResolvedValue(undefined);
     h.evidenceRecord.mockResolvedValue(undefined);
@@ -384,7 +380,8 @@ describe('Formular-Lifecycle', () => {
     expect(tx.formSubmission.updateMany).not.toHaveBeenCalled();
   });
 
-  it('lehnt Folgeupload im belegten FILE-Feld ab und journalisiert dessen Storage-Commit', async () => {
+  // Fachkatalog: DOC-UPLOAD-JOURNAL-001
+  it('lehnt Folgeupload im belegten FILE-Feld vor Scan, Journal und Object-Write ab', async () => {
     const tx = mockTx();
     tx.formSubmission.findUnique.mockResolvedValue(fileSubmission());
     tx.document.findFirst.mockResolvedValue({ id: 'document-existing' });
@@ -405,9 +402,8 @@ describe('Formular-Lifecycle', () => {
         'Für dieses Feld wurde bereits eine Datei hochgeladen. Bitte entfernen Sie diese zuerst.',
     });
     expect(documentCreate).not.toHaveBeenCalled();
-    expect(h.compensateStorageCommit).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-1', source: 'portal.form.file' }),
-    );
+    // K-06: Die gemeinsame Vorpruefung erkennt das belegte Feld vor dem Write.
+    expect(storageJournal.events).toEqual([]);
   });
   it.each([null, undefined])(
     'YEAR-END-CAMPAIGN-001 appends replacement bytes after explicitly detaching a historical source (%s)',
@@ -448,7 +444,7 @@ describe('Formular-Lifecycle', () => {
         data: expect.objectContaining({
           documentId: 'document-existing',
           versionNo: 3,
-          storageVersionId: 'version-1',
+          storageVersionId: storageJournal.objects[0]!.versionId,
         }),
       });
       expect(tx.formSubmission.updateMany).toHaveBeenCalledWith(
@@ -535,9 +531,15 @@ describe('Formular-Lifecycle', () => {
         },
       ]),
     );
-    expect(h.commitDocumentFromBytes).toHaveBeenCalledTimes(2);
+    // Beide Vorpruefungen sehen das Feld noch frei; der Verlierer scheitert in
+    // der Nachpruefung, seine Speicherabsicht bleibt fuer den Worker offen.
+    expect(storageJournal.objects).toHaveLength(2);
     expect(documentCreate).toHaveBeenCalledTimes(1);
-    expect(h.compensateStorageCommit).toHaveBeenCalledTimes(1);
+    expect(storageJournal.openIntents()).toEqual([
+      expect.objectContaining({ source: 'portal.form.file', storageVersionId: expect.any(String) }),
+    ]);
+    expect(storageJournal.rows.filter((row) => row.resolution === 'REFERENCED')).toHaveLength(1);
+    expect(storageJournal.events).not.toContain('compensate');
     expect(currentAnswers).toEqual({
       beleg: { documentId: 'document-winner', fileName: 'beleg.pdf' },
     });
@@ -572,7 +574,7 @@ describe('Formular-Lifecycle', () => {
       fieldKey: 'beleg',
       fileName: 'beleg.pdf',
       mimeType: 'application/octet-stream',
-      base64: Buffer.from('test').toString('base64'),
+      base64: Buffer.from('%PDF-1.7 test').toString('base64'),
     });
 
     expect(result).toEqual({ ok: true, documentId: 'document-1' });

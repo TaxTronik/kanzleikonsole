@@ -100,6 +100,7 @@ describe('storage orphan cleanup', () => {
       deleted: 1,
       referenced: 0,
       incidents: 0,
+      absent: 0,
       failed: 100,
       backlog: 100,
       budgetExhausted: false,
@@ -153,6 +154,7 @@ describe('storage orphan cleanup', () => {
         deleted: 250,
         referenced: 0,
         incidents: 0,
+        absent: 0,
         failed: 0,
         backlog: 0,
         budgetExhausted: false,
@@ -180,6 +182,7 @@ describe('storage orphan cleanup', () => {
         deleted: 150,
         referenced: 0,
         incidents: 0,
+        absent: 0,
         failed: 0,
         backlog: 100,
         budgetExhausted: true,
@@ -228,6 +231,7 @@ describe('storage orphan cleanup', () => {
       deleted: 1,
       referenced: 0,
       incidents: 0,
+      absent: 0,
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
@@ -315,6 +319,7 @@ describe('storage orphan cleanup', () => {
       deleted: 0,
       referenced: 0,
       incidents: 0,
+      absent: 0,
       failed: 1,
       backlog: 0,
       budgetExhausted: false,
@@ -352,6 +357,7 @@ describe('storage orphan cleanup', () => {
       deleted: 0,
       referenced: 0,
       incidents: 0,
+      absent: 0,
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
@@ -380,6 +386,7 @@ describe('storage orphan cleanup', () => {
       deleted: 0,
       referenced: 1,
       incidents: 0,
+      absent: 0,
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
@@ -418,6 +425,7 @@ describe('storage orphan cleanup', () => {
       deleted: 0,
       referenced: 0,
       incidents: 0,
+      absent: 0,
       failed: 1,
       backlog: 0,
       budgetExhausted: false,
@@ -453,6 +461,7 @@ describe('storage orphan cleanup', () => {
       deleted: 0,
       referenced: 0,
       incidents: 1,
+      absent: 0,
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
@@ -488,6 +497,7 @@ describe('storage orphan cleanup', () => {
       deleted: 0,
       referenced: 0,
       incidents: 1,
+      absent: 0,
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
@@ -535,6 +545,7 @@ describe('storage orphan cleanup', () => {
       deleted: 1,
       referenced: 0,
       incidents: 0,
+      absent: 0,
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
@@ -561,6 +572,116 @@ describe('storage orphan cleanup', () => {
     );
   });
 
+  describe('K-06: vor dem Object-Write journalisierte Speicherabsichten', () => {
+    const intentRow = (overrides: Record<string, unknown> = {}) => ({
+      id: 'intent-1',
+      tenantId: 't-1',
+      storageBucket: 'general',
+      storageKey: 'tenants/t-1/none/2026/10/upload.bin',
+      storageVersionId: '',
+      sha256: Buffer.alloc(32, 0x61),
+      sizeBytes: 12n,
+      immutable: false,
+      retentionUntil: null,
+      intent: true,
+      cleanupAttempts: 0,
+      ...overrides,
+    });
+
+    it('schliesst eine nie geschriebene Absicht als ABSENT ab, ohne zu loeschen', async () => {
+      h.findMany.mockResolvedValue([intentRow()]);
+      h.recoverPreparedBytesCommit.mockResolvedValue(null);
+
+      await expect(runStorageOrphanCleanup(NOW)).resolves.toEqual({
+        claimed: 1,
+        deleted: 0,
+        referenced: 0,
+        incidents: 0,
+        absent: 1,
+        failed: 0,
+        backlog: 0,
+        budgetExhausted: false,
+      });
+      expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+      expect(h.updateMany).toHaveBeenLastCalledWith({
+        where: {
+          id: 'intent-1',
+          intent: true,
+          storageVersionId: '',
+          cleanedAt: null,
+          cleanupClaimedAt: expect.any(Date),
+        },
+        data: expect.objectContaining({ resolution: 'ABSENT', cleanedAt: expect.any(Date) }),
+      });
+    });
+
+    it('loescht das nach einem Abbruch unreferenzierte Objekt versionsgenau', async () => {
+      h.findMany.mockResolvedValue([intentRow()]);
+      h.recoverPreparedBytesCommit.mockResolvedValue({
+        targetBucket: 'general',
+        targetKey: 'tenants/t-1/none/2026/10/upload.bin',
+        storageVersionId: 'crash-version',
+      });
+
+      expect((await runStorageOrphanCleanup(NOW)).deleted).toBe(1);
+      expect(h.recoverPreparedBytesCommit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: 't-1',
+          targetKey: 'tenants/t-1/none/2026/10/upload.bin',
+          sha256: Buffer.alloc(32, 0x61),
+          sizeBytes: 12n,
+        }),
+      );
+      expect(h.deleteObjectVersion).toHaveBeenCalledWith(
+        'general',
+        'tenants/t-1/none/2026/10/upload.bin',
+        'crash-version',
+      );
+    });
+
+    it('erkennt den nach einem verlorenen Abschluss bereits committeten Bezug als REFERENCED', async () => {
+      h.findMany.mockResolvedValue([intentRow()]);
+      h.documentVersionFindFirst.mockResolvedValue({
+        id: 'version-1',
+        document: { tenantId: 't-1' },
+      });
+
+      expect((await runStorageOrphanCleanup(NOW)).referenced).toBe(1);
+      expect(h.recoverPreparedBytesCommit).not.toHaveBeenCalled();
+      expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+    });
+
+    it('wertet fehlende Bytes eines nachgelagerten Orphans weiterhin als Fehler', async () => {
+      h.findMany.mockResolvedValue([intentRow({ id: 'orphan-1', intent: false })]);
+      h.recoverPreparedBytesCommit.mockResolvedValue(null);
+
+      const result = await runStorageOrphanCleanup(NOW);
+
+      expect(result).toMatchObject({ absent: 0, failed: 1 });
+      expect(h.updateMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ cleanupError: 'STORAGE_ORPHAN_VERSION_NOT_RECOVERED' }),
+        }),
+      );
+    });
+
+    it('waehlt Absichten nach demselben Retention-Gate wie Orphans aus', async () => {
+      await runStorageOrphanCleanup(NOW);
+
+      expect(h.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            cleanedAt: null,
+            AND: expect.arrayContaining([
+              { OR: [{ immutable: false }, { retentionUntil: { lte: NOW } }] },
+            ]),
+          }),
+          select: expect.objectContaining({ intent: true }),
+        }),
+      );
+    });
+  });
+
   it('DOC-VERSION-IMMUTABILITY-001 löscht bei mehrdeutiger Recovery keine Version', async () => {
     h.findMany.mockResolvedValue([
       {
@@ -582,6 +703,7 @@ describe('storage orphan cleanup', () => {
       deleted: 0,
       referenced: 0,
       incidents: 0,
+      absent: 0,
       failed: 1,
       backlog: 0,
       budgetExhausted: false,

@@ -65,12 +65,11 @@ describe('Wissensdatenbank UI', () => {
 });
 
 describe('Wissensanhänge', () => {
-  it('nutzt die begrenzte, geprüfte Dokumentablage und kompensiert Fehler', () => {
+  it('nutzt die begrenzte, geprüfte Dokumentablage mit Vorab-Journal', () => {
     expect(uploadRoute).toContain('parseMultipartUpload(req)');
     expect(uploadRoute).toContain("staffActionGuard({ module: 'knowledge' })");
-    expect(uploadRoute).toContain('commitBytesWithTier({');
+    expect(uploadRoute).toContain('runJournaledUpload({');
     expect(uploadRoute).toContain("classification: 'GENERAL'");
-    expect(uploadRoute).toContain('compensateStorageCommit({');
   });
 
   it('liefert nur saubere Anhänge mandanten- und entwurfsgebunden aus', () => {

@@ -3847,9 +3847,11 @@ model FormSubmissionRevisionFile {
 }
 
 /// Journal für Storage-Objekte, deren nachgelagerter DB-Commit scheiterte oder
-/// mehrdeutig quittiert wurde. Der Worker prueft nach einer Sicherheitsfrist
-/// zuerst auf persistierte DocumentVersion-Referenzen. Nur echte Orphans werden
-/// geloescht; Object-Lock-Objekte zudem erst nach Ablauf der Retention.
+/// mehrdeutig quittiert wurde, sowie (K-06, `intent`) Speicherabsichten, die
+/// Upload-Pfade vor dem Object-Write journalisieren. Der Worker prueft nach
+/// einer Sicherheitsfrist zuerst auf persistierte DocumentVersion-Referenzen.
+/// Nur echte Orphans werden geloescht; Object-Lock-Objekte zudem erst nach
+/// Ablauf der Retention.
 model StorageOrphan {
   id               String                   @id(map: "storage_orphan_pk") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId         String                   @map("tenant_id") @db.Uuid
@@ -3860,6 +3862,9 @@ model StorageOrphan {
   sha256           Bytes
   sizeBytes        BigInt                   @map("size_bytes")
   immutable        Boolean
+  /// K-06: TRUE = vor dem Object-Write journalisierte Speicherabsicht
+  /// (DOC-UPLOAD-JOURNAL-001); das Objekt kann fehlen (Ergebnis ABSENT).
+  intent           Boolean                  @default(false)
   retentionUntil   DateTime?                @map("retention_until") @db.Timestamptz(6)
   failure          String?
   cleanupClaimedAt DateTime?                @map("cleanup_claimed_at") @db.Timestamptz(6)
@@ -3873,6 +3878,7 @@ model StorageOrphan {
 
   @@unique([storageBucket, storageKey, storageVersionId], map: "storage_orphan_object_uq")
   @@index([tenantId, cleanedAt, cleanupClaimedAt, createdAt], map: "storage_orphan_cleanup_idx")
+  // K-06: storage_orphan_open_idx ist ein Teilindex auf offene Eintraege (nur in der Migration).
   @@map("storage_orphan")
 }
 
@@ -4491,6 +4497,8 @@ enum StorageOrphanResolution {
   DELETED
   REFERENCED
   INTEGRITY_INCIDENT
+  /// K-06: Vorab-Absicht, unter deren Schlüssel nie ein Objekt geschrieben wurde.
+  ABSENT
 
   @@map("storage_orphan_resolution")
 }

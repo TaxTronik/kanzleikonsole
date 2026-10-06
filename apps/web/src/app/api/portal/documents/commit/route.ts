@@ -1,26 +1,41 @@
 // App-proxied Upload (kein presigned-direct): Browser POSTet multipart,
 // die App streamt intern zu SeaweedFS. Object-Store nie öffentlich.
+//
+// Journal-first (K-06 / DOC-UPLOAD-JOURNAL-001): Feature-Freigabe vor Scan,
+// Journal und Object-Write und erneut in der Commit-Transaktion; die
+// Speicherabsicht steht vor dem PUT im Journal und wird mit dem
+// Dokument-Insert atomar abgeschlossen (auch im Portal-Kontext, der das
+// Journal per RLS nicht sieht).
 import { NextResponse, type NextRequest } from 'next/server';
 import { portalBaseUrl } from '@taxtronik/config';
 import { getClientIp, checkPortalWriteLimit } from '@/server/rate-limit';
 import { z } from 'zod';
+import type { TxClient } from '@taxtronik/db';
 import { portalAuth } from '@/server/auth/portal';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
-import { commitDocumentFromBytes } from '@taxtronik/storage';
-import { withTenantContext } from '@taxtronik/db';
 import {
   parseMultipartUpload,
   storageCommitErrorResponse,
   createDocumentWithVersion,
 } from '@/server/documents/upload-helpers';
+import { JournaledUploadError, runJournaledUpload } from '@/server/documents/journaled-upload';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
-import { compensateStorageCommit } from '@/server/documents/storage-compensation';
+import { readPortalFeaturesTx } from '@/server/settings/portal-features';
+import { log } from '@/server/logger';
 
 const Schema = z.object({
   title: z.string().min(1).max(500),
   mimeType: z.string().min(1).max(255).default('application/octet-stream'),
 });
+
+class PortalUploadDisabledError extends Error {}
+
+/** Gemeinsame Vor- und Nachprüfung (K-06): F2-Feature-Flag für Portal-Uploads. */
+async function checkPortalUploadTx(tx: TxClient, tenantId: string): Promise<void> {
+  const features = await readPortalFeaturesTx(tx, tenantId);
+  if (!features.documentUpload) throw new PortalUploadDisabledError();
+}
 
 export async function POST(req: NextRequest) {
   // CSRF-Defense-in-Depth (zusätzlich zu SameSite=lax): Cross-Origin-POSTs
@@ -58,40 +73,22 @@ export async function POST(req: NextRequest) {
   const { tenantId, contactId, clientId } = session.user;
   const { title, mimeType } = parsed.data;
 
-  // F2: Feature-Flag-Guard für Portal-Document-Upload.
-  const { assertPortalFeature } = await import('@/server/settings/portal-features');
+  let stored;
   try {
-    await assertPortalFeature(
-      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-      'documentUpload',
-    );
-  } catch {
-    // Kein Roh-Message-Leak: assertPortalFeature wirft bei deaktiviertem
-    // Feature — generische, stabile Antwort statt interner Exception-Message.
-    return NextResponse.json({ error: 'feature_disabled' }, { status: 403 });
-  }
-
-  const fileData = Buffer.from(await file.arrayBuffer());
-
-  let commit;
-  try {
-    commit = await commitDocumentFromBytes({ fileData, classification: 'GENERAL', tenantId });
-  } catch (e) {
-    // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
-    return storageCommitErrorResponse(e);
-  }
-
-  // M-2: Magic-Bytes-Detection schlägt Client-gemeldete mimeType, wenn ein
-  // bekanntes Format erkannt wurde. Ein User, der text/html als image/jpeg
-  // deklariert, bekommt jetzt die echte MIME gespeichert; Preview-Route
-  // serviert dann mit dem echten Type (preview-mime-Whitelist greift trotzdem).
-  const effectiveMime = commit.detectedMime ?? mimeType;
-
-  let docRow: { id: string };
-  try {
-    docRow = await withTenantContext(
-      { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
-      async (tx) => {
+    stored = await runJournaledUpload({
+      context: { tenantId, actorId: contactId, actorType: 'CLIENT_CONTACT' },
+      source: 'portal.document.commit',
+      // F2: Feature-Flag-Guard für Portal-Document-Upload.
+      check: (tx) => checkPortalUploadTx(tx, tenantId),
+      readBytes: async () => Buffer.from(await file.arrayBuffer()),
+      storage: () => ({ tier: 'NONE', classification: 'GENERAL' }),
+      commitTx: async (tx, { commit }) => {
+        // M-2: Magic-Bytes-Detection schlägt Client-gemeldete mimeType, wenn
+        // ein bekanntes Format erkannt wurde. Ein User, der text/html als
+        // image/jpeg deklariert, bekommt jetzt die echte MIME gespeichert;
+        // Preview-Route serviert dann mit dem echten Type (preview-mime-
+        // Whitelist greift trotzdem).
+        const effectiveMime = commit.detectedMime ?? mimeType;
         // Befund 12: Document+Version-Insert zentral (upload-helpers).
         const { document } = await createDocumentWithVersion(tx, {
           documentData: {
@@ -127,24 +124,18 @@ export async function POST(req: NextRequest) {
           ip: getClientIp(req.headers),
           userAgent: req.headers.get('user-agent'),
         });
-        return document;
+        return { id: document.id };
       },
-    );
-  } catch (error) {
-    await compensateStorageCommit({
-      tenantId,
-      source: 'portal.document.commit',
-      commit,
-      cause: error,
     });
-    return NextResponse.json({ error: 'database_commit_failed' }, { status: 500 });
+  } catch (error) {
+    return uploadErrorResponse(error, tenantId);
   }
 
   await emitN8nEvent(
     'document.uploaded',
     {
       tenantId,
-      documentId: docRow.id,
+      documentId: stored.result.id,
       classification: 'GENERAL',
       clientId,
       isGobd: false,
@@ -155,6 +146,32 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
-    documentId: docRow.id,
+    documentId: stored.result.id,
   });
+}
+
+function uploadErrorResponse(error: unknown, tenantId: string): NextResponse {
+  const phase = error instanceof JournaledUploadError ? error.phase : null;
+  const cause = error instanceof JournaledUploadError ? error.cause : error;
+  // Kein Roh-Message-Leak: ein deaktiviertes Feature (oder ein Fehler beim
+  // Lesen der Freigabe) liefert eine generische, stabile Antwort.
+  if (phase === 'check' || cause instanceof PortalUploadDisabledError) {
+    return NextResponse.json({ error: 'feature_disabled' }, { status: 403 });
+  }
+  if (phase === 'prepare' || phase === 'store') {
+    // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
+    return storageCommitErrorResponse(cause);
+  }
+  // Nach dem Object-Write bleibt die Speicherabsicht offen; der Cleanup-Worker
+  // räumt das Objekt nach der Sicherheitsfrist versionsgenau auf.
+  log.error(
+    {
+      component: 'portal-documents-commit',
+      tenantId,
+      phase,
+      err: (cause as Error)?.message ?? null,
+    },
+    'portal-documents-commit: Upload fehlgeschlagen',
+  );
+  return NextResponse.json({ error: 'database_commit_failed' }, { status: 500 });
 }

@@ -1,12 +1,7 @@
 {
-  "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts": {
-    "complexity": {
-      "count": 2
-    }
-  },
   "apps/web/src/app/api/staff/documents/commit/route.ts": {
     "complexity": {
-      "count": 3
+      "count": 1
     }
   },
   "apps/web/src/app/api/staff/documents/download/route.ts": {
@@ -155,11 +150,6 @@
     }
   },
   "apps/web/src/app/staff/(protected)/clients/page.tsx": {
-    "complexity": {
-      "count": 1
-    }
-  },
-  "apps/web/src/app/staff/(protected)/documents/actions.ts": {
     "complexity": {
       "count": 1
     }

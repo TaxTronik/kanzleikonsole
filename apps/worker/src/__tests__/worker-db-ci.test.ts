@@ -1,4 +1,4 @@
-// Fachkatalog: WORKFLOW-LIFECYCLE-001, TAX-CONTROL-STATUS-001
+// Fachkatalog: WORKFLOW-LIFECYCLE-001, TAX-CONTROL-STATUS-001, DOC-UPLOAD-JOURNAL-001
 // Die PostgreSQL-Suiten der Worker-Jobs sind nur mit ausdrücklichem Opt-in
 // aktiv (WORKER_DB_TEST=1). Dieser Test stellt sicher, dass der blockierende
 // db-Job sie nach den Migrationen ausführt und der Quality-Job sie nicht
@@ -27,6 +27,8 @@ const specs = [
   'src/jobs/__tests__/workflow-n8n-dispatch-db.test.ts',
   'src/jobs/__tests__/reminders-daily-db.test.ts',
   'src/jobs/__tests__/mail-outbox-db.test.ts',
+  // K-06: offene Upload-Absichten nach Prozessabbruch werden aufgelöst.
+  'src/jobs/__tests__/storage-orphan-cleanup-db.test.ts',
 ];
 const log = 'testbericht-worker-db.log';
 

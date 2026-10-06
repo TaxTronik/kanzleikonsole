@@ -126,6 +126,7 @@ async function findDueCandidates(now: Date, retryLater: readonly string[]) {
       sizeBytes: true,
       immutable: true,
       retentionUntil: true,
+      intent: true,
       cleanupAttempts: true,
     },
     // DOC-UPLOAD-JOURNAL-001: Missing/ambiguous versions can remain unresolved.
@@ -137,7 +138,7 @@ async function findDueCandidates(now: Date, retryLater: readonly string[]) {
 }
 
 type Candidate = Awaited<ReturnType<typeof findDueCandidates>>[number];
-type Settlement = 'deleted' | 'referenced' | 'incident' | 'unsettled';
+type Settlement = 'deleted' | 'referenced' | 'incident' | 'absent' | 'unsettled';
 type Outcome = Settlement | 'failed' | 'claim-lost';
 
 /**
@@ -200,6 +201,7 @@ async function settleClaimedCandidate(candidate: Candidate, claimedAt: Date): Pr
       retentionUntil: candidate.retentionUntil,
       detectedMime: null,
     });
+    if (!recovered && candidate.intent) return settleAbsentIntent(candidate, claimedAt);
     if (!recovered?.storageVersionId) {
       throw new Error('STORAGE_ORPHAN_VERSION_NOT_RECOVERED');
     }
@@ -248,6 +250,35 @@ async function settleClaimedCandidate(candidate: Candidate, claimedAt: Date): Pr
   return updated.count === 1 ? 'deleted' : 'unsettled';
 }
 
+/**
+ * K-06 / DOC-UPLOAD-JOURNAL-001: Eine vor dem Object-Write journalisierte
+ * Absicht, unter deren festem Schluessel nach der Sicherheitsfrist weder eine
+ * Version noch ein Delete-Marker existiert, wurde nie geschrieben (Abbruch vor
+ * dem PUT oder gescheiterter PUT). Nichts ist zu loeschen; die Absicht wird
+ * nachvollziehbar als ABSENT abgeschlossen. Nachtraeglich journalisierte
+ * Orphans (intent = false) belegten dagegen bereits ein Objekt; ihr Fehlen
+ * bleibt ein wiederholbarer Fehler zur Klaerung.
+ */
+async function settleAbsentIntent(candidate: Candidate, claimedAt: Date): Promise<Settlement> {
+  const updated = await prismaOwner.storageOrphan.updateMany({
+    where: {
+      id: candidate.id,
+      intent: true,
+      storageVersionId: '',
+      cleanedAt: null,
+      cleanupClaimedAt: claimedAt,
+    },
+    data: {
+      cleanupClaimedAt: null,
+      cleanedAt: new Date(),
+      resolution: 'ABSENT',
+      cleanupAttempts: { increment: 1 },
+      cleanupError: null,
+    },
+  });
+  return updated.count === 1 ? 'absent' : 'unsettled';
+}
+
 /** Claimt einen Kandidaten atomar und bewertet ihn; Fehler geben den Claim frei. */
 async function processCandidate(candidate: Candidate, now: Date): Promise<Outcome> {
   const claimedAt = new Date();
@@ -289,6 +320,8 @@ export interface StorageOrphanCleanupResult {
   deleted: number;
   referenced: number;
   incidents: number;
+  /** K-06: Vorab-Absichten ohne je geschriebenes Objekt. */
+  absent: number;
   failed: number;
   /** P-17: nach dem Lauf weiterhin fällige, unaufgelöste Kandidaten. */
   backlog: number;
@@ -298,13 +331,14 @@ export interface StorageOrphanCleanupResult {
 
 type Totals = Pick<
   StorageOrphanCleanupResult,
-  'claimed' | 'deleted' | 'referenced' | 'incidents' | 'failed'
+  'claimed' | 'deleted' | 'referenced' | 'incidents' | 'absent' | 'failed'
 >;
 
 const OUTCOME_TOTAL: Partial<Record<Outcome, keyof Totals>> = {
   deleted: 'deleted',
   referenced: 'referenced',
   incident: 'incidents',
+  absent: 'absent',
   failed: 'failed',
 };
 
@@ -334,6 +368,8 @@ async function processBatch(
  * Referenzierte Objekte werden nur als aufgeloest markiert, nie geloescht.
  * Echte Orphans werden versionsgenau entfernt; Object-Lock-Objekte erst nach
  * dem gespeicherten Retention-Ende. Der Claim verhindert parallele Versuche.
+ * K-06: Kandidaten sind auch offene Vorab-Absichten der Upload-Pfade; nie
+ * geschriebene Absichten werden als ABSENT abgeschlossen.
  *
  * P-17: Ein Lauf zieht Batch um Batch, bis kein fälliger Kandidat mehr übrig
  * ist oder das Zeitbudget endet. Kandidaten, die in diesem Lauf scheiterten,
@@ -344,7 +380,14 @@ export async function runStorageOrphanCleanup(
   now = new Date(),
   budget: RunBudget = startRunBudget(),
 ): Promise<StorageOrphanCleanupResult> {
-  const totals: Totals = { claimed: 0, deleted: 0, referenced: 0, incidents: 0, failed: 0 };
+  const totals: Totals = {
+    claimed: 0,
+    deleted: 0,
+    referenced: 0,
+    incidents: 0,
+    absent: 0,
+    failed: 0,
+  };
   const retryLater: string[] = [];
   let candidates = 0;
   let budgetExhausted = false;

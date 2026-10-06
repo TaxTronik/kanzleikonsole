@@ -56,6 +56,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // RISK-ARCHIVE-SNAPSHOT-001: isolated owner fixtures and two app connections
   // exercise actual concurrent archive writers, RLS and transaction rollback.
   'packages/db/src/__tests__/risk-archive-consistency.test.ts',
+  // DOC-UPLOAD-JOURNAL-001 (K-06): owner journals synthetic upload intents; app
+  // transactions settle them per actor context and race a worker-style claim.
+  'packages/db/src/__tests__/storage-upload-intent.test.ts',
   // TAX-DEADLINE-AUTOREQUEST-001: isolated owner fixtures plus competing app
   // transactions prove materialization/configuration ordering against PostgreSQL.
   'packages/db/src/__tests__/tax-deadline-materialize-consistency.test.ts',
@@ -355,6 +358,12 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   // sein. Der Owner-Pfad schreibt ausschliesslich den tenantgebundenen
   // StorageOrphan-Recoverydatensatz; er liest oder liefert keine Mandantendaten.
   'apps/web/src/server/documents/storage-compensation.ts <- @/server/db/prisma-owner',
+  // K-06 / DOC-UPLOAD-JOURNAL-001: Vorab-Journal der Speicherabsicht. Es muss
+  // einen Rollback der Fachtransaktion überleben und auch für Portal-/GwG-
+  // Akteure schreibbar sein, die storage_orphan per RLS nicht sehen. Der
+  // Owner-Pfad schreibt nur die tenantgebundene, tenant-präfixgeprüfte Absicht
+  // und bindet bei Fehlschlag die Objektversion; er liest keine Mandantendaten.
+  'apps/web/src/server/documents/storage-intent.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/gwg-onboarding/service.ts <- @/server/db/prisma-owner',
   // Einmaliger Operator-Cutover: SQL-Migrationsmarker tenantübergreifend lesen
   // und idempotent auditieren. Kein Request-Import, keine externen Nachrichten.

@@ -14,6 +14,12 @@ function errorMessage(error: unknown): string {
  * Journalisiert einen bereits erfolgreichen Storage-Commit, wenn der
  * nachgelagerte DB-Commit scheitert oder sein ACK mehrdeutig bleibt.
  *
+ * K-06: Upload-Pfade journalisieren ihre Speicherabsicht inzwischen vor dem
+ * Object-Write (storage-intent.ts / journaled-upload.ts). Diese Funktion ist
+ * dort nur noch Rückfallebene, wenn die Absicht nicht mehr offen ist; direkt
+ * nutzen sie die Inbox-Pfade, die bereits gespeicherte Staging-Objekte nach
+ * Annahme oder Verwerfen zur verzögerten Löschung vormerken.
+ *
  * Auch mutable Objekte werden hier bewusst NICHT sofort geloescht: Ein
  * geworfener Commit kann serverseitig bereits erfolgreich gewesen sein. Erst
  * der verzoegerte Cleanup-Worker prueft auf einer frischen Owner-Verbindung,

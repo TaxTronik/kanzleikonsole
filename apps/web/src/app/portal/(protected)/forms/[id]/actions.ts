@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
 import type { Prisma } from '@prisma/client';
-import { commitDocumentFromBytes, deleteObject, deleteObjectVersion } from '@taxtronik/storage';
+import { deleteObject, deleteObjectVersion } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { emitN8nEvent } from '@/server/n8n/emit';
@@ -12,7 +12,7 @@ import { checkRateLimit, checkPortalWriteLimit } from '@/server/rate-limit';
 import { assertPortalFeature } from '@/server/settings/portal-features';
 import { toActionError } from '@/server/auth/rbac';
 import { portalActionGuard, ActionError, type ActionResult } from '@/server/actions/portal-action';
-import { compensateStorageCommit } from '@/server/documents/storage-compensation';
+import { runJournaledUpload, uploadFailureCause } from '@/server/documents/journaled-upload';
 import { validateFormAnswers } from '@/server/forms/validate-answers';
 import { readFormSchema } from '@/server/forms/schema-snapshot';
 
@@ -314,6 +314,52 @@ const UploadSchema = z.object({
     .max(20 * 1024 * 1024),
 });
 
+interface FormFileCheck {
+  sub: Awaited<ReturnType<typeof loadSubmissionAndCheckTx>>;
+  field: Awaited<ReturnType<typeof loadSubmissionAndCheckTx>>['template']['fields'][number];
+  existingDocumentId: string | null;
+}
+
+/**
+ * Gemeinsame Vor- und Nachprüfung eines Formular-Uploads (K-06 /
+ * DOC-UPLOAD-JOURNAL-001): offene Submission/Anforderung, FILE-Feld und ein
+ * nicht belegtes Feld werden vor Scan, Journal und Object-Write und erneut in
+ * der Commit-Transaktion unter dem Submission-Lock geprüft.
+ */
+async function checkFormFileTx(
+  tx: TxClient,
+  input: { tenantId: string; clientId: string; submissionId: string; fieldKey: string },
+): Promise<FormFileCheck> {
+  const sub = await loadSubmissionAndCheckTx(tx, input.submissionId, input.clientId);
+  const field = sub.template.fields.find((f) => f.key === input.fieldKey);
+  if (!field) throw new ActionError('Unbekanntes Feld.');
+  if (field.type !== 'FILE') throw new ActionError('Feld erwartet keinen Datei-Upload.');
+  const existingFieldUpload = await tx.document.findFirst({
+    where: {
+      tenantId: input.tenantId,
+      clientId: input.clientId,
+      formSubmissionId: sub.id,
+      formFieldKey: field.key,
+      deletedAt: null,
+    },
+    select: { id: true },
+  });
+  if (existingFieldUpload) {
+    const currentValue = answerRecord(sub.answers)[field.key];
+    const archived =
+      (currentValue === null || currentValue === undefined) &&
+      (await tx.formSubmissionRevisionFile.findFirst({
+        where: { documentVersion: { documentId: existingFieldUpload.id } },
+        select: { id: true },
+      }));
+    if (!archived)
+      throw new ActionError(
+        'Für dieses Feld wurde bereits eine Datei hochgeladen. Bitte entfernen Sie diese zuerst.',
+      );
+  }
+  return { sub, field, existingDocumentId: existingFieldUpload?.id ?? null };
+}
+
 export async function uploadFormFileAction(input: {
   submissionId: string;
   fieldKey: string;
@@ -357,170 +403,133 @@ export async function uploadFormFileAction(input: {
     return { ok: false, error: 'Zu viele Uploads für dieses Formular.' };
   }
 
+  const fileData = Buffer.from(parsed.data.base64, 'base64');
+  if (fileData.length > 10 * 1024 * 1024) {
+    return { ok: false, error: 'Datei zu groß (max. 10 MB).' };
+  }
+
   let documentId: string;
-  let stored: Awaited<ReturnType<typeof commitDocumentFromBytes>> | null = null;
   try {
-    const sub = await withTenantContext(ctx, (tx) =>
-      loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId),
-    );
-    // Prüfen, dass das Feld existiert und vom Typ FILE ist
-    const field = sub.template.fields.find((f) => f.key === parsed.data.fieldKey);
-    if (!field) return { ok: false, error: 'Unbekanntes Feld.' };
-    if (field.type !== 'FILE') return { ok: false, error: 'Feld erwartet keinen Datei-Upload.' };
-
-    const fileData = Buffer.from(parsed.data.base64, 'base64');
-    if (fileData.length > 10 * 1024 * 1024) {
-      return { ok: false, error: 'Datei zu groß (max. 10 MB).' };
-    }
-
-    const committed = await commitDocumentFromBytes({
-      fileData,
-      classification: 'GENERAL',
-      tenantId,
-    });
-    stored = committed;
-
-    documentId = await withTenantContext(ctx, async (tx) => {
+    const { result } = await runJournaledUpload({
+      context: ctx,
+      source: 'portal.form.file',
       // Storage liegt bewusst außerhalb der DB-Transaktion. Deshalb Status und
       // Feld nach dem Upload noch einmal prüfen; bei zwischenzeitigem Close
-      // greift unten die Storage-Kompensation.
-      const currentSub = await loadSubmissionAndCheckTx(tx, parsed.data.submissionId, clientId);
-      const currentField = currentSub.template.fields.find(
-        (field) => field.key === parsed.data.fieldKey,
-      );
-      if (currentField?.type !== 'FILE') {
-        throw new ActionError('Feld erwartet keinen Datei-Upload.');
-      }
-      const existingFieldUpload = await tx.document.findFirst({
-        where: {
+      // bleibt die Speicherabsicht für den Cleanup-Worker offen.
+      check: (tx) =>
+        checkFormFileTx(tx, {
           tenantId,
           clientId,
-          formSubmissionId: currentSub.id,
-          formFieldKey: currentField.key,
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-      let nextVersionNo = 1;
-      let doc: { id: string };
-      if (existingFieldUpload) {
-        const currentValue = answerRecord(currentSub.answers)[currentField.key];
-        const archived =
-          (currentValue === null || currentValue === undefined) &&
-          (await tx.formSubmissionRevisionFile.findFirst({
-            where: { documentVersion: { documentId: existingFieldUpload.id } },
-            select: { id: true },
-          }));
-        if (!archived)
-          throw new ActionError(
-            'Für dieses Feld wurde bereits eine Datei hochgeladen. Bitte entfernen Sie diese zuerst.',
-          );
-        // The unique field binding remains. Replacement after an explicit
-        // detach appends bytes; every earlier captured version stays intact.
-        await tx.$queryRaw`SELECT id FROM document WHERE id=${existingFieldUpload.id}::uuid FOR UPDATE`;
-        const existing = await tx.document.findUnique({
-          where: { id: existingFieldUpload.id },
-          include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
-        });
-        if (
-          !existing ||
-          existing.deletedAt ||
-          existing.classification !== 'GENERAL' ||
-          existing.tenantId !== tenantId ||
-          existing.clientId !== clientId ||
-          existing.formSubmissionId !== currentSub.id ||
-          existing.formFieldKey !== currentField.key ||
-          !existing.sharedWithClientAt ||
-          !existing.versions[0]
-        )
-          throw new ActionError('Dateistand wurde geändert. Bitte neu laden.');
-        nextVersionNo = existing.versions[0].versionNo + 1;
-        doc = await tx.document.update({
-          where: { id: existing.id },
-          data: {
-            title: parsed.data.fileName,
-            mimeType: committed.detectedMime ?? parsed.data.mimeType,
-          },
-          select: { id: true },
-        });
-      } else
-        doc = await tx.document.create({
-          data: {
-            tenantId,
-            clientId,
-            title: parsed.data.fileName,
-            classification: 'GENERAL',
-            // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-            mimeType: committed.detectedMime ?? parsed.data.mimeType,
-            // Mandant-originierter Formular-Upload: wie beim allgemeinen
-            // Portal-Upload automatisch für denselben Mandanten freigeben,
-            // damit der unmittelbar gerenderte Download-Link nicht 404 liefert.
-            // sharedByStaff bleibt bewusst null.
-            sharedWithClientAt: new Date(),
-            formSubmissionId: currentSub.id,
-            formFieldKey: currentField.key,
-          },
-        });
-      await tx.documentVersion.create({
-        data: {
-          documentId: doc.id,
-          versionNo: nextVersionNo,
-          storageBucket: committed.targetBucket,
-          storageKey: committed.targetKey,
-          storageVersionId: committed.storageVersionId,
-          sha256: prismaBytes(committed.sha256),
-          sizeBytes: committed.sizeBytes,
-          immutable: committed.immutable,
-          scanStatus: 'CLEAN',
-          scanCompletedAt: new Date(),
-          createdById: contactId,
-        },
-      });
-      // Die Referenz gehört bereits mit dem erfolgreichen Upload zum Draft.
-      // Ohne dieses atomare Mitspeichern wäre die Datei nach einem Reload zwar
-      // als Document vorhanden, im Formular aber nicht mehr sichtbar und damit
-      // für den Mandanten auch nicht mehr verwerfbar.
-      const currentAnswers = answerRecord(currentSub.answers);
-      const attached = await tx.formSubmission.updateMany({
-        where: {
-          id: currentSub.id,
-          clientId,
-          status: { in: ['PENDING', 'DRAFT'] },
-        },
-        data: {
-          status: 'DRAFT',
-          answers: {
-            ...currentAnswers,
-            [currentField.key]: { documentId: doc.id, fileName: parsed.data.fileName },
-          } as Prisma.InputJsonValue,
-        },
-      });
-      if (attached.count !== 1) throw new ActionError('Formular wurde bereits übermittelt.');
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'CLIENT_CONTACT',
-        actorId: contactId,
-        action: 'form.submission.upload',
-        resourceType: 'document',
-        resourceId: doc.id,
-        after: {
           submissionId: parsed.data.submissionId,
           fieldKey: parsed.data.fieldKey,
-          fileName: parsed.data.fileName,
-        },
-      });
-      return doc.id;
+        }),
+      readBytes: async () => fileData,
+      storage: () => ({ tier: 'NONE', classification: 'GENERAL' }),
+      commitTx: async (tx, { commit: committed, checked }) => {
+        const { sub: currentSub, field: currentField } = checked;
+        let nextVersionNo = 1;
+        let doc: { id: string };
+        if (checked.existingDocumentId) {
+          // The unique field binding remains. Replacement after an explicit
+          // detach appends bytes; every earlier captured version stays intact.
+          await tx.$queryRaw`SELECT id FROM document WHERE id=${checked.existingDocumentId}::uuid FOR UPDATE`;
+          const existing = await tx.document.findUnique({
+            where: { id: checked.existingDocumentId },
+            include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
+          });
+          if (
+            !existing ||
+            existing.deletedAt ||
+            existing.classification !== 'GENERAL' ||
+            existing.tenantId !== tenantId ||
+            existing.clientId !== clientId ||
+            existing.formSubmissionId !== currentSub.id ||
+            existing.formFieldKey !== currentField.key ||
+            !existing.sharedWithClientAt ||
+            !existing.versions[0]
+          )
+            throw new ActionError('Dateistand wurde geändert. Bitte neu laden.');
+          nextVersionNo = existing.versions[0].versionNo + 1;
+          doc = await tx.document.update({
+            where: { id: existing.id },
+            data: {
+              title: parsed.data.fileName,
+              mimeType: committed.detectedMime ?? parsed.data.mimeType,
+            },
+            select: { id: true },
+          });
+        } else
+          doc = await tx.document.create({
+            data: {
+              tenantId,
+              clientId,
+              title: parsed.data.fileName,
+              classification: 'GENERAL',
+              // P-3: Magic-Bytes statt Client-Header — siehe M-2.
+              mimeType: committed.detectedMime ?? parsed.data.mimeType,
+              // Mandant-originierter Formular-Upload: wie beim allgemeinen
+              // Portal-Upload automatisch für denselben Mandanten freigeben,
+              // damit der unmittelbar gerenderte Download-Link nicht 404 liefert.
+              // sharedByStaff bleibt bewusst null.
+              sharedWithClientAt: new Date(),
+              formSubmissionId: currentSub.id,
+              formFieldKey: currentField.key,
+            },
+          });
+        await tx.documentVersion.create({
+          data: {
+            documentId: doc.id,
+            versionNo: nextVersionNo,
+            storageBucket: committed.targetBucket,
+            storageKey: committed.targetKey,
+            storageVersionId: committed.storageVersionId,
+            sha256: prismaBytes(committed.sha256),
+            sizeBytes: committed.sizeBytes,
+            immutable: committed.immutable,
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+            createdById: contactId,
+          },
+        });
+        // Die Referenz gehört bereits mit dem erfolgreichen Upload zum Draft.
+        // Ohne dieses atomare Mitspeichern wäre die Datei nach einem Reload zwar
+        // als Document vorhanden, im Formular aber nicht mehr sichtbar und damit
+        // für den Mandanten auch nicht mehr verwerfbar.
+        const currentAnswers = answerRecord(currentSub.answers);
+        const attached = await tx.formSubmission.updateMany({
+          where: {
+            id: currentSub.id,
+            clientId,
+            status: { in: ['PENDING', 'DRAFT'] },
+          },
+          data: {
+            status: 'DRAFT',
+            answers: {
+              ...currentAnswers,
+              [currentField.key]: { documentId: doc.id, fileName: parsed.data.fileName },
+            } as Prisma.InputJsonValue,
+          },
+        });
+        if (attached.count !== 1) throw new ActionError('Formular wurde bereits übermittelt.');
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'CLIENT_CONTACT',
+          actorId: contactId,
+          action: 'form.submission.upload',
+          resourceType: 'document',
+          resourceId: doc.id,
+          after: {
+            submissionId: parsed.data.submissionId,
+            fieldKey: parsed.data.fieldKey,
+            fileName: parsed.data.fileName,
+          },
+        });
+        return doc.id;
+      },
     });
+    documentId = result;
   } catch (e) {
-    if (stored) {
-      await compensateStorageCommit({
-        tenantId,
-        source: 'portal.form.file',
-        commit: stored,
-        cause: e,
-      });
-    }
-    return toActionError(e);
+    return toActionError(uploadFailureCause(e));
   }
 
   return { ok: true, documentId };

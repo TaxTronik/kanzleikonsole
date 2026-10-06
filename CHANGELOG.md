@@ -668,6 +668,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Direkte Uploads (Staff- und Portal-Upload, neue Version,
+  Wissensanhänge, Umklassifizierung mit Re-Store, externe Rechnungen,
+  Steuererklärungs-PDF, Formular-Uploads, Aktenregal, E-Rechnungsarchiv)
+  halten die Speicherabsicht vor dem Schreiben in den Object Store fest und
+  schließen sie mit dem Datenbank-Commit ab. Nach einem Abbruch dazwischen
+  räumt der Cleanup-Worker das Objekt nach der Sicherheitsfrist versionsgenau
+  auf (unter Object Lock nach Ablauf der Aufbewahrung) (Migrationen
+  `20261006130000`, `20261006130100`, `DOC-UPLOAD-JOURNAL-001`,
+  `FK-EXC-20261006-016`).
 - Die Dokument-Detailseite kennzeichnet GwG-Nachweise nicht mehr als
   „GoBD-immutable“ mit COMPLIANCE-Hinweis; Schutzstufe, Status- und
   Typbezeichnungen kommen aus einer gemeinsamen Quelle

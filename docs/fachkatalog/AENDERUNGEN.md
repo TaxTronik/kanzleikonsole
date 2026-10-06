@@ -1,5 +1,65 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-016
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/api/portal/documents/__tests__/commit-journal.test.ts
+      - apps/web/src/app/api/portal/documents/commit/route.ts
+      - apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts
+      - apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts
+      - apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts
+      - apps/web/src/app/api/staff/documents/commit/route.ts
+      - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
+      - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/__tests__/actions-journal.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/actions.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
+      - apps/web/src/app/staff/(protected)/documents/actions.ts
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/server/documents/__tests__/journaled-upload.test.ts
+      - apps/web/src/server/documents/__tests__/storage-intent.test.ts
+      - apps/web/src/server/documents/__tests__/storage-journal-fake.ts
+      - apps/web/src/server/documents/journaled-upload.ts
+      - apps/web/src/server/documents/storage-compensation.ts
+      - apps/web/src/server/documents/storage-intent.ts
+      - apps/web/src/server/invoicing/__tests__/archive.test.ts
+      - apps/web/src/server/invoicing/archive.ts
+      - apps/web/src/server/risk/__tests__/research-shelf.test.ts
+      - apps/web/src/server/risk/research-shelf.ts
+      - apps/worker/src/jobs/storage-orphan-cleanup.ts
+      - packages/db/prisma/migrations/20261006130000_storage_orphan_absent_resolution/migration.sql
+      - packages/db/prisma/migrations/20261006130100_storage_upload_intent/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-OBJECT-LOCK-001
+      - DOC-RETENTION-CLASS-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - INV-ARCHIVE-EINVOICE-001
+      - FORM-PRESUBMIT-UPLOAD-001
+      - DSGVO-OPERATIONAL-RETENTION-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Alle direkten Upload-Pfade (Staff- und Portal-Upload, neue Version,
+      Wissensanhänge, Umklassifizierung mit Re-Store, externe Rechnung,
+      Steuererklärungs-PDF, Formular-Datei, Aktenregal, E-Rechnungsarchiv)
+      journalisieren die Speicherabsicht (storage_orphan.intent) vor dem
+      Object-Store-Write und schließen sie in der Commit-Transaktion per
+      app.settle_storage_intent ab (Migrationen 20261006130000 und
+      20261006130100). Nach einem Abbruch zwischen Write und Commit löst der
+      Cleanup-Worker die offene Absicht auf (referenziert, versionsgenau löschen
+      nach Sicherheitsfrist bzw. nach Ablauf der Aufbewahrung, nie geschrieben).
+      Virenscan, MIME-Prüfung, Größengrenzen, Schutzstufen, Aufbewahrung und RLS
+      bleiben unverändert; vorhersehbare Ablehnungen greifen jetzt vor dem Write.
+      Keine fachliche Freigabe; der Umsetzungstext von DOC-UPLOAD-JOURNAL-001
+      beschreibt noch das bisherige Store-first-Verfahren und ist vom
+      Regelverantwortlichen nachzuziehen.
+    tests:
+      - packages/db/src/__tests__/storage-upload-intent.test.ts
+      - apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts
+      - apps/web/src/server/documents/__tests__/journaled-upload.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-015
     date: '2026-10-06'
     paths:
@@ -3166,6 +3226,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-016` dokumentiert journalisierte Speicherabsichten
+  vor jedem direkten Upload. Prüfungen und Aufbewahrung bleiben unverändert;
+  der Umsetzungstext von DOC-UPLOAD-JOURNAL-001 ist nachzuziehen.
 
 - 2026-10-06: `FK-EXC-20261006-015` dokumentiert die ausdrückliche
   Registrierung der Mail-Integrationen und die typisierte SSRF-Grenze.

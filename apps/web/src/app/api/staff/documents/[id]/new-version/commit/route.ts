@@ -1,34 +1,36 @@
 // Commit für eine neue Version eines existierenden Dokuments.
 
 // App-proxied Upload (kein presigned-direct): Browser POSTet multipart.
+//
+// Journal-first (K-06 / DOC-UPLOAD-JOURNAL-001): dieselbe Prüfung des
+// Zieldokuments läuft vor Scan, Journal und Object-Write und erneut unter
+// Zeilensperre in der Commit-Transaktion. Die Speicherabsicht steht vor dem
+// PUT im Journal und wird mit dem Versionsinsert atomar abgeschlossen.
 import { NextResponse, type NextRequest } from 'next/server';
 import { env } from '@taxtronik/config';
 import { getClientIp } from '@/server/rate-limit';
 import { z } from 'zod';
-import { staffAuth } from '@/server/auth/staff';
+import { staffAuth, type StaffSession } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
-import {
-  classificationToTier,
-  commitBytesWithTier,
-  gobdRetentionYears,
-  type ProtectionTier,
-} from '@taxtronik/storage';
-import { withTenantContext } from '@taxtronik/db';
+import { classificationToTier, gobdRetentionYears, type ProtectionTier } from '@taxtronik/storage';
+import type { TxClient } from '@taxtronik/db';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import {
   parseMultipartUpload,
   storageCommitErrorResponse,
 } from '@/server/documents/upload-helpers';
+import { JournaledUploadError, runJournaledUpload } from '@/server/documents/journaled-upload';
 import { evidenceService } from '@/server/container';
-import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 import { identityPdfPageCountForUpload } from '@/server/gwg/identity-pdf-pages';
+import { log } from '@/server/logger';
 
 const Schema = z.object({
   mimeType: z.string().min(1).max(255).default('application/octet-stream'),
   changeNote: z.string().max(500).optional().or(z.literal('')),
 });
 
+class DocumentNotFoundError extends Error {}
 class PoaDocumentLockedError extends Error {}
 class GwgEvidenceLockedError extends Error {}
 class DocumentReferenceChangedError extends Error {}
@@ -52,6 +54,137 @@ const lockedByGwgResponse = () =>
     },
     { status: 409 },
   );
+
+/** Geprüfter Stand des Zieldokuments (Vor- und Nachprüfung). */
+interface NewVersionCheck {
+  clientId: string | null;
+  classification: string;
+  documentTypeId: string | null;
+  typeTier: string | null;
+  typeRetentionYears: number | null;
+}
+
+/**
+ * Gemeinsame Vor- und Nachprüfung (K-06). Die Dokumentzeilensperre
+ * stabilisiert Soft-Delete, Retagging und Tenant/Client-Paarung; der Typ ist
+ * Teil der Storage-/Retention-Entscheidung und wird FOR SHARE gelesen. In der
+ * Commit-Transaktion muss der Stand der Vorprüfung unverändert sein — ein
+ * Versand kann zwischen Upload und DB-Insert stattfinden.
+ */
+async function checkNewVersionTx(
+  tx: TxClient,
+  session: StaffSession,
+  documentId: string,
+  pre?: NewVersionCheck,
+): Promise<NewVersionCheck> {
+  const tenantId = session.user.tenantId;
+  // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Dokumente gesperrter
+  // Mandanten wie „nicht gefunden" behandeln (kein Existenz-Leak); nach der
+  // Vorprüfung gilt jede Abweichung als geänderte Referenz.
+  const unavailable = () =>
+    pre ? new DocumentReferenceChangedError() : new DocumentNotFoundError();
+  const lockedDocuments = await tx.$queryRaw<
+    Array<{
+      id: string;
+      tenantId: string;
+      clientId: string | null;
+      classification: string;
+      documentTypeId: string | null;
+      lockedByGwg: boolean;
+    }>
+  >`
+    SELECT
+      d.id,
+      d.tenant_id AS "tenantId",
+      d.client_id AS "clientId",
+      d.classification::text AS classification,
+      d.document_type_id AS "documentTypeId",
+      EXISTS (
+        SELECT 1
+          FROM gwg_id_document gid
+         WHERE gid.document_id = d.id
+      ) AS "lockedByGwg"
+    FROM document d
+    WHERE d.id = ${documentId}::uuid
+      AND d.tenant_id = ${tenantId}::uuid
+      AND d.deleted_at IS NULL
+    FOR UPDATE OF d
+  `;
+  const locked = lockedDocuments[0];
+  if (!locked || locked.tenantId !== tenantId) throw unavailable();
+  if (
+    pre &&
+    (locked.clientId !== pre.clientId ||
+      locked.classification !== pre.classification ||
+      locked.documentTypeId !== pre.documentTypeId)
+  ) {
+    throw new DocumentReferenceChangedError();
+  }
+  // Der vertrauliche/RESTRICTED-Zugriff kann waehrend des Storage-Uploads
+  // entzogen worden sein; deshalb in beiden Phasen im aktuellen Zustand.
+  if (locked.clientId && !(await canAccessClientTx(tx, session, locked.clientId))) {
+    throw unavailable();
+  }
+  if (locked.lockedByGwg) throw new GwgEvidenceLockedError();
+
+  let typeTier: string | null = null;
+  let typeRetentionYears: number | null = null;
+  if (locked.documentTypeId) {
+    const lockedTypes = await tx.$queryRaw<
+      Array<{ id: string; tier: string; retentionYears: number | null }>
+    >`
+      SELECT
+        id,
+        tier::text AS tier,
+        retention_years AS "retentionYears"
+      FROM document_type
+      WHERE id = ${locked.documentTypeId}::uuid
+        AND tenant_id = ${tenantId}::uuid
+      FOR SHARE
+    `;
+    const lockedType = lockedTypes[0];
+    if (
+      !lockedType ||
+      (pre &&
+        (lockedType.tier !== pre.typeTier || lockedType.retentionYears !== pre.typeRetentionYears))
+    ) {
+      throw new DocumentReferenceChangedError();
+    }
+    typeTier = lockedType.tier;
+    typeRetentionYears = lockedType.retentionYears;
+  }
+
+  // Ab Versand ist die konkrete Dokumentversion Bestandteil des
+  // Signatur-Snapshots. Neue Versionen sind deshalb ab SENT gesperrt.
+  const boundPoa = await tx.powerOfAttorney.findFirst({
+    where: {
+      documentId,
+      OR: [{ status: { in: ['SENT', 'SIGNED'] } }, { signingContentSnapshot: { not: null } }],
+    },
+    select: { id: true },
+  });
+  if (boundPoa) throw new PoaDocumentLockedError();
+
+  return {
+    clientId: locked.clientId,
+    classification: locked.classification,
+    documentTypeId: locked.documentTypeId,
+    typeTier,
+    typeRetentionYears,
+  };
+}
+
+function storageFor(checked: NewVersionCheck) {
+  const tier = (checked.typeTier ?? classificationToTier(checked.classification)) as ProtectionTier;
+  const retentionYears =
+    checked.typeRetentionYears ??
+    (tier === 'GOBD' ? gobdRetentionYears(checked.classification) : null);
+  return {
+    tier,
+    classification: checked.classification,
+    ...(tier === 'GOBD' && retentionYears ? { retentionYears } : {}),
+  };
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // CSRF-Defense-in-Depth (zusätzlich zu SameSite=lax): Cross-Origin-POSTs
@@ -80,171 +213,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { tenantId, staffId } = session.user;
   const { changeNote } = parsed.data;
-
-  // Existierendes Dokument lesen — Audit 4: expliziter Tenant-Filter.
-  // (versionNo wird hier NICHT mehr ermittelt — siehe Befund 2 unten.)
-  // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Dokumente gesperrter
-  // Mandanten wie „nicht gefunden" behandeln (kein Existenz-Leak).
-  const loaded = await withTenantContext(
-    { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const d = await tx.document.findFirst({
-        where: { id: documentId, tenantId, deletedAt: null },
-        select: {
-          id: true,
-          clientId: true,
-          classification: true,
-          documentTypeId: true,
-          documentType: { select: { tier: true, retentionYears: true } },
-          gwgIdDocuments: {
-            take: 1,
-            select: { id: true },
-          },
-        },
-      });
-      if (!d) return null;
-      if (d.clientId && !(await canAccessClientTx(tx, session, d.clientId))) return null;
-      // Ab Versand ist die konkrete Dokumentversion Bestandteil des
-      // Signatur-Snapshots. Neue Versionen sind deshalb ab SENT gesperrt.
-      const boundPoa = await tx.powerOfAttorney.findFirst({
-        where: {
-          documentId,
-          OR: [{ status: { in: ['SENT', 'SIGNED'] } }, { signingContentSnapshot: { not: null } }],
-        },
-        select: { id: true },
-      });
-      return {
-        doc: d,
-        lockedByPoa: !!boundPoa,
-        lockedByGwg: !!d.gwgIdDocuments?.length,
-      };
-    },
-  );
-  if (!loaded) return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  if (loaded.lockedByPoa) return lockedByPoaResponse();
-  if (loaded.lockedByGwg) return lockedByGwgResponse();
-  const doc = loaded.doc;
-
-  // Storage-Commit (Scan + Upload, intern zu SeaweedFS)
-  const fileData = Buffer.from(await file.arrayBuffer());
   // P-13: Seitenzahl einer noch nicht zugeordneten PDF-Ausweisquelle (nur
-  // GWG_EVIDENCE) einmalig aus genau diesen Bytes, vor dem Storage-Commit.
-  const pdfPageCount = await identityPdfPageCountForUpload({
-    classification: doc.classification,
-    mimeType: parsed.data.mimeType,
-    bytes: fileData,
-  });
-  let commit;
-  try {
-    const tier = (doc.documentType?.tier ??
-      classificationToTier(doc.classification)) as ProtectionTier;
-    const retentionYears =
-      doc.documentType?.retentionYears ??
-      (tier === 'GOBD' ? gobdRetentionYears(doc.classification) : null);
-    commit = await commitBytesWithTier({
-      fileData,
-      tier,
-      classification: doc.classification,
-      tenantId,
-      ...(tier === 'GOBD' && retentionYears ? { retentionYears } : {}),
-    });
-  } catch (e) {
-    // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
-    return storageCommitErrorResponse(e);
-  }
+  // GWG_EVIDENCE) einmalig aus genau diesen Bytes — nach dem Scan, vor dem
+  // Object-Write.
+  let pdfPageCount: number | null = null;
 
-  // Befund 2: versionNo in DERSELBEN Tx ermitteln wie der Insert. Vorher lag
-  // der Storage-Commit zwischen Read (eigene Tx) und Insert — zwei parallele
-  // Uploads lasen dasselbe max(versionNo) und der zweite Insert starb mit
-  // P2002 → 500. Das Restrace (zwei Tx lesen unter Read Committed dasselbe
-  // Maximum) fängt der P2002-Handler unten als 409 ab.
-  let versionNo: number;
+  let stored;
   try {
-    versionNo = await withTenantContext(
-      { tenantId, actorId: staffId, actorType: 'STAFF' },
-      async (tx) => {
-        // TOCTOU-Gegenstück zur Vorprüfung: Ein Versand kann zwischen Upload
-        // und DB-Insert stattfinden. Dann bleibt das Storage-Objekt verwaist,
-        // die gebundene Dokumenthistorie aber unverändert.
-        const lockedDocuments = await tx.$queryRaw<
-          Array<{
-            id: string;
-            tenantId: string;
-            clientId: string | null;
-            classification: string;
-            documentTypeId: string | null;
-            lockedByGwg: boolean;
-          }>
-        >`
-          SELECT
-            d.id,
-            d.tenant_id AS "tenantId",
-            d.client_id AS "clientId",
-            d.classification::text AS classification,
-            d.document_type_id AS "documentTypeId",
-            EXISTS (
-              SELECT 1
-                FROM gwg_id_document gid
-               WHERE gid.document_id = d.id
-            ) AS "lockedByGwg"
-          FROM document d
-          WHERE d.id = ${documentId}::uuid
-            AND d.tenant_id = ${tenantId}::uuid
-            AND d.deleted_at IS NULL
-          FOR UPDATE OF d
-        `;
-        const lockedDocument = lockedDocuments[0];
-        if (
-          !lockedDocument ||
-          lockedDocument.tenantId !== tenantId ||
-          lockedDocument.clientId !== (doc.clientId ?? null) ||
-          lockedDocument.classification !== doc.classification ||
-          lockedDocument.documentTypeId !== (doc.documentTypeId ?? null)
-        ) {
-          throw new DocumentReferenceChangedError();
-        }
-        if (lockedDocument.lockedByGwg) throw new GwgEvidenceLockedError();
-        if (lockedDocument.documentTypeId) {
-          const lockedTypes = await tx.$queryRaw<
-            Array<{ id: string; tier: string; retentionYears: number | null }>
-          >`
-            SELECT
-              id,
-              tier::text AS tier,
-              retention_years AS "retentionYears"
-            FROM document_type
-            WHERE id = ${lockedDocument.documentTypeId}::uuid
-              AND tenant_id = ${tenantId}::uuid
-            FOR SHARE
-          `;
-          const lockedType = lockedTypes[0];
-          if (
-            !lockedType ||
-            !doc.documentType ||
-            lockedType.tier !== doc.documentType.tier ||
-            lockedType.retentionYears !== doc.documentType.retentionYears
-          ) {
-            throw new DocumentReferenceChangedError();
-          }
-        }
-        // Der vertrauliche/RESTRICTED-Zugriff kann waehrend des Storage-
-        // Uploads entzogen worden sein. Vor dem Insert im aktuellen Zustand
-        // erneut pruefen; die Dokumentzeilensperre stabilisiert zugleich
-        // Soft-Delete, Retagging und Tenant/Client-Paarung.
-        if (
-          lockedDocument.clientId &&
-          !(await canAccessClientTx(tx, session, lockedDocument.clientId))
-        ) {
-          throw new DocumentReferenceChangedError();
-        }
-        const boundPoa = await tx.powerOfAttorney.findFirst({
-          where: {
-            documentId,
-            OR: [{ status: { in: ['SENT', 'SIGNED'] } }, { signingContentSnapshot: { not: null } }],
-          },
-          select: { id: true },
+    stored = await runJournaledUpload({
+      context: { tenantId, actorId: staffId, actorType: 'STAFF' },
+      source: 'staff.document.new_version',
+      check: (tx: TxClient, _phase: 'pre' | 'post', pre?: NewVersionCheck) =>
+        checkNewVersionTx(tx, session, documentId, pre),
+      readBytes: async () => Buffer.from(await file.arrayBuffer()),
+      storage: storageFor,
+      afterPrepare: async ({ bytes, checked }) => {
+        pdfPageCount = await identityPdfPageCountForUpload({
+          classification: checked.classification,
+          mimeType: parsed.data.mimeType,
+          bytes,
         });
-        if (boundPoa) throw new PoaDocumentLockedError();
+      },
+      commitTx: async (tx, { commit }) => {
+        // Befund 2: versionNo in DERSELBEN Tx ermitteln wie der Insert. Das
+        // Restrace (zwei Tx lesen unter Read Committed dasselbe Maximum) fängt
+        // der P2002-Handler als 409 ab; die Dokumentzeilensperre der
+        // Nachprüfung serialisiert parallele Uploads zusätzlich.
         const latest = await tx.documentVersion.findFirst({
           where: { documentId },
           orderBy: { versionNo: 'desc' },
@@ -299,43 +293,56 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         });
         return nextVersionNo;
       },
-    );
-  } catch (e) {
-    await compensateStorageCommit({
-      tenantId,
-      source: 'staff.document.new_version',
-      commit,
-      cause: e,
     });
-    const gwgEvidenceLocked =
-      e instanceof GwgEvidenceLockedError ||
-      (e instanceof Error && e.message.includes('Zugeordneter GwG-Beweisinhalt'));
-    if (e instanceof PoaDocumentLockedError) return lockedByPoaResponse();
-    if (gwgEvidenceLocked) return lockedByGwgResponse();
-    if (e instanceof DocumentReferenceChangedError) {
-      return NextResponse.json(
-        {
-          error: 'reference_changed',
-          message: 'Dokument oder Zugriffsberechtigung hat sich waehrend des Uploads geaendert.',
-        },
-        { status: 409 },
-      );
-    }
-    if ((e as { code?: string }).code === 'P2002') {
-      return NextResponse.json(
-        {
-          error: 'version_conflict',
-          message: 'Gleichzeitiger Upload einer neuen Version erkannt. Bitte erneut versuchen.',
-        },
-        { status: 409 },
-      );
-    }
-    return NextResponse.json({ error: 'internal_error' }, { status: 500 });
+  } catch (e) {
+    return uploadErrorResponse(e, tenantId);
   }
 
   return NextResponse.json({
     ok: true,
-    versionNo,
-    sha256: commit.sha256.toString('hex'),
+    versionNo: stored.result,
+    sha256: stored.commit.sha256.toString('hex'),
   });
+}
+
+function uploadErrorResponse(error: unknown, tenantId: string): NextResponse {
+  const phase = error instanceof JournaledUploadError ? error.phase : null;
+  const cause = error instanceof JournaledUploadError ? error.cause : error;
+  if (phase === 'prepare' || phase === 'store') {
+    // Befund 12: Mapping zentral (war 3× wortgleich kopiert).
+    return storageCommitErrorResponse(cause);
+  }
+  if (cause instanceof DocumentNotFoundError) {
+    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  }
+  if (cause instanceof PoaDocumentLockedError) return lockedByPoaResponse();
+  const gwgEvidenceLocked =
+    cause instanceof GwgEvidenceLockedError ||
+    (cause instanceof Error && cause.message.includes('Zugeordneter GwG-Beweisinhalt'));
+  if (gwgEvidenceLocked) return lockedByGwgResponse();
+  if (cause instanceof DocumentReferenceChangedError) {
+    return NextResponse.json(
+      {
+        error: 'reference_changed',
+        message: 'Dokument oder Zugriffsberechtigung hat sich waehrend des Uploads geaendert.',
+      },
+      { status: 409 },
+    );
+  }
+  if (phase === 'commit' && (cause as { code?: string }).code === 'P2002') {
+    return NextResponse.json(
+      {
+        error: 'version_conflict',
+        message: 'Gleichzeitiger Upload einer neuen Version erkannt. Bitte erneut versuchen.',
+      },
+      { status: 409 },
+    );
+  }
+  // Nach dem Object-Write bleibt die Speicherabsicht offen; der Cleanup-Worker
+  // räumt das Objekt nach der Sicherheitsfrist versionsgenau auf.
+  log.error(
+    { component: 'documents-new-version', tenantId, phase, err: (cause as Error)?.message ?? null },
+    'documents-new-version: Upload fehlgeschlagen',
+  );
+  return NextResponse.json({ error: 'internal_error' }, { status: 500 });
 }

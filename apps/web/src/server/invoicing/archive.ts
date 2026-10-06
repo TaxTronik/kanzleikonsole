@@ -12,13 +12,19 @@
 // Verknüpfung über invoice.documentId (für IN-APP-Rechnungen sonst ungenutzt;
 // EXTERNAL/PDF-Rechnungen tragen dort ihren Upload und werden hier ausgeschlossen).
 // Die schwere Generierung läuft AUSSERHALB jeder DB-Tx (kein Tx hält die CPU-Last).
+//
+// K-06 / DOC-UPLOAD-JOURNAL-001: PDF und XML werden vor dem Object-Write als
+// Speicherabsichten journalisiert; die Verknüpfungstransaktion schließt genau
+// die übernommenen Absichten atomar ab. Nicht übernommene (Race-Verlierer) und
+// nach einem Abbruch offene Absichten löst der Cleanup-Worker nach dem
+// Retention-Ende versionsgenau auf.
 // =============================================================================
 
 import type { TenantContext, TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import {
-  commitBytesWithTier,
   fetchObjectBytes,
+  prepareBytesCommitWithTier,
   type CommitDocumentResult,
 } from '@taxtronik/storage';
 import { prismaBytes } from '@/server/db/prisma-bytes';
@@ -33,7 +39,13 @@ import { extractFacturXXml, generateZugferdPdf } from '@/server/invoicing/zugfer
 import { readSellerInfo, type SellerInfo } from '@/server/settings/tenant-settings';
 import { readBranding } from '@/server/settings/branding';
 import { readLetterhead } from '@/server/settings/letterhead';
-import { compensateStorageCommit } from '@/server/documents/storage-compensation';
+import {
+  journalStorageIntents,
+  releaseStorageIntent,
+  settleStorageIntentTx,
+  storeStorageIntent,
+  type StorageIntent,
+} from '@/server/documents/storage-intent';
 import { lockInvoiceArchiveTx } from '@/server/invoicing/archive-lock';
 import { discardNeverSentDraftArchiveTx } from '@/server/invoicing/draft-archive';
 
@@ -347,12 +359,33 @@ async function refreshDraftArchive(
   });
 }
 
+/** Von der App selbst erzeugte GoBD-Rechnungsbytes (kein Nutzer-Upload, kein Scan). */
+function prepareInvoiceArtifact(ctx: TenantContext, fileData: Buffer) {
+  return prepareBytesCommitWithTier({
+    fileData,
+    tier: 'GOBD',
+    tenantId: ctx.tenantId,
+    skipScan: true,
+    classification: 'GOBD_INVOICE',
+  });
+}
+
+/** Lässt eine nicht übernommene Absicht für den Cleanup-Worker offen (Grund im Journal). */
+async function releaseUnusedArtifact(
+  intent: StorageIntent,
+  stored: CommitDocumentResult,
+  reason: string,
+): Promise<void> {
+  await releaseStorageIntent({ intent, commit: stored, cause: new Error(reason) });
+}
+
 async function commitLazyXrechnungDocument(input: {
   ctx: TenantContext;
   invoiceId: string;
   actorId: string;
   title: string;
   storedXml: CommitDocumentResult;
+  xmlIntent: StorageIntent;
 }): Promise<void> {
   let outcome: 'created' | 'existing' | 'not_found' | 'status_conflict';
   try {
@@ -455,25 +488,20 @@ async function commitLazyXrechnungDocument(input: {
         resourceId: input.invoiceId,
         after: { documentId: xmlDoc.id, source: 'EMBEDDED_FACTUR_X' },
       });
+      await settleStorageIntentTx(tx, input.xmlIntent, input.storedXml);
       return 'created';
     });
   } catch (error) {
-    await compensateStorageCommit({
-      tenantId: input.ctx.tenantId,
-      source: 'invoice.archive.lazy_xrechnung',
-      commit: input.storedXml,
-      cause: error,
-    });
+    await releaseStorageIntent({ intent: input.xmlIntent, commit: input.storedXml, cause: error });
     throw error;
   }
 
   if (outcome !== 'created') {
-    await compensateStorageCommit({
-      tenantId: input.ctx.tenantId,
-      source: `invoice.archive.lazy_xrechnung_${outcome}`,
-      commit: input.storedXml,
-      cause: new Error(`Stored lazy XRechnung was not linked: ${outcome}.`),
-    });
+    await releaseUnusedArtifact(
+      input.xmlIntent,
+      input.storedXml,
+      `invoice.archive.lazy_xrechnung_${outcome}: Stored lazy XRechnung was not linked.`,
+    );
   }
 }
 
@@ -551,19 +579,23 @@ async function reuseExistingArchive(
       existing.storageVersionId,
     );
     const cii = await extractFacturXXml(archivedPdf);
-    const storedXml = await commitBytesWithTier({
-      fileData: cii,
-      tier: 'GOBD',
+    const [xmlIntent] = await journalStorageIntents({
       tenantId: ctx.tenantId,
-      skipScan: true,
-      classification: 'GOBD_INVOICE',
+      intents: [
+        {
+          source: 'invoice.archive.lazy_xrechnung',
+          prepared: await prepareInvoiceArtifact(ctx, cii),
+        },
+      ],
     });
+    const storedXml = await storeStorageIntent(xmlIntent!, cii);
     await commitLazyXrechnungDocument({
       ctx,
       invoiceId,
       actorId,
       title: `Rechnung ${loaded.number} (XRechnung)`,
       storedXml,
+      xmlIntent: xmlIntent!,
     });
   }
 
@@ -579,6 +611,8 @@ async function reuseExistingArchive(
 interface StoredInvoiceArtifacts {
   stored: CommitDocumentResult;
   storedXml: CommitDocumentResult;
+  pdfIntent: StorageIntent;
+  xmlIntent: StorageIntent;
 }
 
 async function storeInvoiceArtifacts(
@@ -586,15 +620,27 @@ async function storeInvoiceArtifacts(
   pdfBytes: Uint8Array,
   cii: string,
 ): Promise<StoredInvoiceArtifacts> {
+  const pdfData = Buffer.from(pdfBytes);
+  const xmlData = Buffer.from(cii, 'utf8');
+  // Beide Absichten werden gemeinsam vor dem ersten PUT journalisiert.
+  let pdfIntent: StorageIntent;
+  let xmlIntent: StorageIntent;
   let stored: CommitDocumentResult;
   try {
-    stored = await commitBytesWithTier({
-      fileData: Buffer.from(pdfBytes),
-      tier: 'GOBD',
+    [pdfIntent, xmlIntent] = (await journalStorageIntents({
       tenantId: ctx.tenantId,
-      skipScan: true,
-      classification: 'GOBD_INVOICE',
-    });
+      intents: [
+        {
+          source: 'invoice.archive.zugferd_pdf',
+          prepared: await prepareInvoiceArtifact(ctx, pdfData),
+        },
+        {
+          source: 'invoice.archive.xrechnung_xml',
+          prepared: await prepareInvoiceArtifact(ctx, xmlData),
+        },
+      ],
+    })) as [StorageIntent, StorageIntent];
+    stored = await storeStorageIntent(pdfIntent, pdfData);
   } catch (error) {
     throw new Error(
       `ZUGFeRD-Ablage im GOBD-Object-Store fehlgeschlagen: ${(error as Error).message}`,
@@ -603,21 +649,12 @@ async function storeInvoiceArtifacts(
   }
 
   try {
-    const storedXml = await commitBytesWithTier({
-      fileData: Buffer.from(cii, 'utf8'),
-      tier: 'GOBD',
-      tenantId: ctx.tenantId,
-      skipScan: true,
-      classification: 'GOBD_INVOICE',
-    });
-    return { stored, storedXml };
+    const storedXml = await storeStorageIntent(xmlIntent, xmlData);
+    return { stored, storedXml, pdfIntent, xmlIntent };
   } catch (error) {
-    await compensateStorageCommit({
-      tenantId: ctx.tenantId,
-      source: 'invoice.archive.zugferd_without_xml',
-      commit: stored,
-      cause: error,
-    });
+    // Die PDF-Absicht bleibt mit gebundener Version offen; die XML-Absicht hat
+    // ihren Fehler vermerkt. Der Worker löst beide nach dem Retention-Ende auf.
+    await releaseStorageIntent({ intent: pdfIntent, commit: stored, cause: error });
     throw new Error(
       `XRechnung-Ablage im GOBD-Object-Store fehlgeschlagen: ${(error as Error).message}`,
       { cause: error },
@@ -780,7 +817,11 @@ async function linkGeneratedArchiveTx(
     },
   });
 
+  await settleStorageIntentTx(tx, input.pdfIntent, input.stored);
   const canonicalXml = await ensureCanonicalXmlDocumentTx(tx, input, fresh, shareable);
+  if (canonicalXml.usedStoredXml) {
+    await settleStorageIntentTx(tx, input.xmlIntent, input.storedXml);
+  }
   await tx.invoice.update({
     where: { id: input.invoiceId },
     data: {
@@ -819,20 +860,8 @@ async function commitGeneratedArchiveLink(
   try {
     return await withTenantContext(input.ctx, (tx) => linkGeneratedArchiveTx(tx, input));
   } catch (error) {
-    await Promise.all([
-      compensateStorageCommit({
-        tenantId: input.ctx.tenantId,
-        source: 'invoice.archive.zugferd_pdf',
-        commit: input.stored,
-        cause: error,
-      }),
-      compensateStorageCommit({
-        tenantId: input.ctx.tenantId,
-        source: 'invoice.archive.xrechnung_xml',
-        commit: input.storedXml,
-        cause: error,
-      }),
-    ]);
+    await releaseStorageIntent({ intent: input.pdfIntent, commit: input.stored, cause: error });
+    await releaseStorageIntent({ intent: input.xmlIntent, commit: input.storedXml, cause: error });
     throw error;
   }
 }
@@ -843,45 +872,39 @@ async function finalizeGeneratedArchive(
   options: ArchiveOptions,
 ): Promise<ArchiveResult> {
   if (result.outcome !== 'ready') {
-    const cause = new Error(
+    const reason =
       result.outcome === 'status_conflict'
         ? 'Invoice was cancelled before archive linkage.'
-        : 'Invoice disappeared before archive linkage.',
+        : 'Invoice disappeared before archive linkage.';
+    await releaseUnusedArtifact(
+      input.pdfIntent,
+      input.stored,
+      `invoice.archive.zugferd_unlinked: ${reason}`,
     );
-    await Promise.all([
-      compensateStorageCommit({
-        tenantId: input.ctx.tenantId,
-        source: 'invoice.archive.zugferd_unlinked',
-        commit: input.stored,
-        cause,
-      }),
-      compensateStorageCommit({
-        tenantId: input.ctx.tenantId,
-        source: 'invoice.archive.xrechnung_unlinked',
-        commit: input.storedXml,
-        cause,
-      }),
-    ]);
+    await releaseUnusedArtifact(
+      input.xmlIntent,
+      input.storedXml,
+      `invoice.archive.xrechnung_unlinked: ${reason}`,
+    );
     return { ok: false, code: result.outcome };
   }
 
   if (!result.usedStoredPdf) {
-    await compensateStorageCommit({
-      tenantId: input.ctx.tenantId,
-      source: 'invoice.archive.zugferd_race',
-      commit: input.stored,
-      cause: new Error('Concurrent archive creation won before database commit.'),
-    });
+    await releaseUnusedArtifact(
+      input.pdfIntent,
+      input.stored,
+      'invoice.archive.zugferd_race: Concurrent archive creation won before database commit.',
+    );
   }
   if (!result.usedStoredXml) {
-    await compensateStorageCommit({
-      tenantId: input.ctx.tenantId,
-      source: result.usedStoredPdf
-        ? 'invoice.archive.xrechnung_already_exists'
-        : 'invoice.archive.xrechnung_race',
-      commit: input.storedXml,
-      cause: new Error('Stored XRechnung object was not referenced by the database transaction.'),
-    });
+    const source = result.usedStoredPdf
+      ? 'invoice.archive.xrechnung_already_exists'
+      : 'invoice.archive.xrechnung_race';
+    await releaseUnusedArtifact(
+      input.xmlIntent,
+      input.storedXml,
+      `${source}: Stored XRechnung object was not referenced by the database transaction.`,
+    );
   }
   if (result.needsCanonicalXml) {
     // Niemals das XML unseres möglicherweise abweichenden Snapshots anbinden;
@@ -950,10 +973,12 @@ export async function ensureZugferdArchive(
   // 4. Revisionssicher ablegen (GOBD-Tier, Object-Lock COMPLIANCE im GOBD-Bucket)
   //    — ebenfalls ausserhalb Tx. skipScan: App-eigene PDF (kein Nutzer-Upload),
   //    ClamAV ist hier sinnlos; die documentVersion wird mit scanStatus 'CLEAN' angelegt.
+  //    K-06: PDF und XML stehen vor dem ersten PUT als Speicherabsichten im Journal.
   const artifacts = await storeInvoiceArtifacts(ctx, pdfBytes, cii);
 
   // 5. Die transaktionsgebundene Advisory-Sperre serialisiert Archivierung,
-  // Versand und Storno. Verlierende Storage-Commits werden kompensiert.
+  // Versand und Storno. Übernommene Absichten werden in derselben Transaktion
+  // abgeschlossen; verlierende bleiben für den Cleanup-Worker offen.
   const linkInput: GeneratedArchiveLinkInput = {
     ctx,
     invoiceId,

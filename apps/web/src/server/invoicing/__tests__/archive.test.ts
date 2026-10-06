@@ -3,15 +3,25 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Fachkatalog: INV-ARCHIVE-EINVOICE-001
 // Fachkatalog: INV-PORTAL-SHARING-001
 // Fachkatalog: INV-STORNO-REFERENCE-001, STBVV-CALCULATION-001
+// Fachkatalog: DOC-UPLOAD-JOURNAL-001
 
 // IO-Abhängigkeiten mocken (DB/Storage/Generatoren) — wir testen die
 // Idempotenz-/Race-/Validierungs-Logik von ensureZugferdArchive, nicht die
 // PDF-Erzeugung oder den Object-Store.
 vi.mock('@taxtronik/db', () => ({ withTenantContext: vi.fn() }));
-vi.mock('@taxtronik/storage', () => ({
-  commitBytesWithTier: vi.fn(),
-  fetchObjectBytes: vi.fn(async () => Buffer.from('archived-pdf')),
-}));
+vi.mock('@taxtronik/storage', async () => {
+  const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
+  return {
+    prepareBytesCommitWithTier: vi.fn(storageJournal.prepare),
+    commitPreparedBytes: vi.fn(storageJournal.commit),
+    fetchObjectBytes: vi.fn(async () => Buffer.from('archived-pdf')),
+  };
+});
+vi.mock('@/server/db/prisma-owner', async () => {
+  const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
+  return { prismaOwner: storageJournal.owner };
+});
+vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: (b: unknown) => b }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 vi.mock('@/server/actions/staff-action', () => ({ ActionError: class extends Error {} }));
@@ -52,7 +62,7 @@ import {
   xrechnungBuyer,
 } from '../archive';
 import { withTenantContext } from '@taxtronik/db';
-import { commitBytesWithTier, fetchObjectBytes } from '@taxtronik/storage';
+import { commitPreparedBytes, fetchObjectBytes } from '@taxtronik/storage';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { extractFacturXXml, generateZugferdPdf } from '@/server/invoicing/zugferd';
 import { evidenceService } from '@/server/container';
@@ -60,9 +70,20 @@ import { compensateStorageCommit } from '@/server/documents/storage-compensation
 import { createFeeInvoice, validateFeeCalculation } from '@/server/stbvv/service';
 import { STBVV_VERSION } from '@taxtronik/tax';
 import { generateXRechnungCii } from '../xrechnung';
+import {
+  FAKE_RETENTION_UNTIL,
+  storageJournal,
+} from '@/server/documents/__tests__/storage-journal-fake';
 
 const ctx = { tenantId: 't1', actorId: 's1', actorType: 'STAFF' as const };
-const RETENTION_UNTIL = new Date('2035-01-01T00:00:00.000Z');
+const RETENTION_UNTIL = FAKE_RETENTION_UNTIL;
+/** Erstes geschriebenes Objekt eines Generierungslaufs ist die ZUGFeRD-PDF. */
+const storedPdf = () => {
+  const pdf = storageJournal.objects[0]!;
+  return { bucket: pdf.bucket, key: pdf.key, storageVersionId: pdf.versionId };
+};
+const openIntent = (source: string) =>
+  storageJournal.openIntents().find((intent) => intent.source === source);
 
 const COMPLETE_SELLER = {
   name: 'Kanzlei',
@@ -116,9 +137,15 @@ function baseInvoice(overrides: Record<string, unknown> = {}) {
 let tx: any;
 beforeEach(() => {
   vi.clearAllMocks();
+  storageJournal.reset();
   tx = {
-    // Advisory-Lock zur Race-Serialisierung (archive.ts).
-    $executeRaw: vi.fn().mockResolvedValue(0),
+    // Advisory-Lock zur Race-Serialisierung (archive.ts) und atomarer
+    // Abschluss der Speicherabsichten (K-06).
+    $executeRaw: vi.fn(async (strings: TemplateStringsArray, ...values: unknown[]) =>
+      strings.join('?').includes('settle_storage_intent')
+        ? storageJournal.executeRaw(strings, ...values)
+        : 0,
+    ),
     invoice: {
       findFirst: vi.fn(),
       update: vi.fn().mockResolvedValue({}),
@@ -138,15 +165,6 @@ beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   vi.mocked(withTenantContext).mockImplementation(((_c: any, cb: any) => cb(tx)) as any);
   vi.mocked(readSellerInfo).mockResolvedValue(COMPLETE_SELLER as never);
-  vi.mocked(commitBytesWithTier).mockResolvedValue({
-    targetBucket: 'gobd',
-    targetKey: 'k-new',
-    storageVersionId: 's3-version-1',
-    sha256: Buffer.from([9]),
-    sizeBytes: 3,
-    immutable: true,
-    retentionUntil: RETENTION_UNTIL,
-  } as never);
 });
 
 afterEach(() => {
@@ -209,15 +227,11 @@ describe('ensureZugferdArchive', () => {
     );
     expect(exported).toEqual({ invoiceId: 'inv1', existing: false });
     const archive = await ensureZugferdArchive(ctx, exported.invoiceId, { purpose: 'ISSUE' });
-    expect(archive).toEqual({
-      ok: true,
-      bucket: 'gobd',
-      key: 'k-new',
-      storageVersionId: 's3-version-1',
-      number: '2026-0001',
-    });
+    expect(archive).toEqual({ ok: true, ...storedPdf(), number: '2026-0001' });
     expect(generateZugferdPdf).toHaveBeenCalledOnce();
-    expect(commitBytesWithTier).toHaveBeenCalledTimes(2);
+    expect(commitPreparedBytes).toHaveBeenCalledTimes(2);
+    // Beide Absichten sind in der Verknuepfungstransaktion abgeschlossen.
+    expect(storageJournal.openIntents()).toEqual([]);
     expect(tx.invoice.update).toHaveBeenCalledWith({
       where: { id: 'inv1' },
       data: { documentId: 'pdf-doc-new', xrechnungDocumentId: 'xml-doc-new' },
@@ -253,7 +267,7 @@ describe('ensureZugferdArchive', () => {
     });
     expect(generateXRechnungCii).not.toHaveBeenCalled();
     expect(generateZugferdPdf).not.toHaveBeenCalled();
-    expect(commitBytesWithTier).not.toHaveBeenCalled();
+    expect(commitPreparedBytes).not.toHaveBeenCalled();
     expect(tx.invoice.update).not.toHaveBeenCalled();
   });
 
@@ -277,7 +291,7 @@ describe('ensureZugferdArchive', () => {
     const res = await ensureZugferdArchive(ctx, 'inv1');
     expect(res).toEqual({ ok: true, bucket: 'gobd', key: 'k-existing', number: 'R-001' });
     expect(generateZugferdPdf).not.toHaveBeenCalled();
-    expect(commitBytesWithTier).not.toHaveBeenCalled();
+    expect(commitPreparedBytes).not.toHaveBeenCalled();
     expect(tx.document.create).not.toHaveBeenCalled();
     // bereits freigegeben → keine erneute Freigabe
     expect(tx.document.updateMany).not.toHaveBeenCalled();
@@ -393,7 +407,7 @@ describe('ensureZugferdArchive', () => {
     expect(result).toEqual({ ok: true, bytes: Buffer.from([1, 2, 3]), number: 'R-001' });
     expect(tx.document.updateMany).not.toHaveBeenCalled();
     expect(tx.document.create).not.toHaveBeenCalled();
-    expect(commitBytesWithTier).not.toHaveBeenCalled();
+    expect(commitPreparedBytes).not.toHaveBeenCalled();
   });
 
   it('liefert nach einem parallelen DRAFT→SENT während des Renderns nur kanonische Archivbytes', async () => {
@@ -428,7 +442,7 @@ describe('ensureZugferdArchive', () => {
       number: 'R-001',
     });
     expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
-    expect(commitBytesWithTier).not.toHaveBeenCalled();
+    expect(commitPreparedBytes).not.toHaveBeenCalled();
   });
 
   it('verwendet nach parallelem Draft-Refresh keinen vor dem Lock geladenen Archivpointer', async () => {
@@ -452,13 +466,7 @@ describe('ensureZugferdArchive', () => {
 
     const result = await ensureZugferdArchive(ctx, 'inv1', { purpose: 'ISSUE' });
 
-    expect(result).toEqual({
-      ok: true,
-      bucket: 'gobd',
-      key: 'k-new',
-      storageVersionId: 's3-version-1',
-      number: 'R-001',
-    });
+    expect(result).toEqual({ ok: true, ...storedPdf(), number: 'R-001' });
     expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
     expect(fetchObjectBytes).not.toHaveBeenCalled();
     expect(tx.invoice.update).toHaveBeenCalledWith({
@@ -488,6 +496,7 @@ describe('ensureZugferdArchive', () => {
     expect(tx.document.create).not.toHaveBeenCalled();
     expect(tx.documentVersion.create).not.toHaveBeenCalled();
     expect(compensateStorageCommit).not.toHaveBeenCalled();
+    expect(commitPreparedBytes).not.toHaveBeenCalled();
   });
 
   it('not_applicable für EXTERNAL/PDF-Rechnung (deren documentId ist der Upload)', async () => {
@@ -574,7 +583,7 @@ describe('ensureZugferdArchive', () => {
 
       expect(res).toEqual({ ok: false, code: 'reverse_charge_seller_no_vatid' });
       expect(generateZugferdPdf).not.toHaveBeenCalled();
-      expect(commitBytesWithTier).not.toHaveBeenCalled();
+      expect(commitPreparedBytes).not.toHaveBeenCalled();
     },
   );
 
@@ -583,13 +592,7 @@ describe('ensureZugferdArchive', () => {
       .mockResolvedValueOnce(baseInvoice()) // load: kein documentId
       .mockResolvedValueOnce(baseInvoice()); // write-tx Re-Check: immer noch keins
     const res = await ensureZugferdArchive(ctx, 'inv1');
-    expect(res).toEqual({
-      ok: true,
-      bucket: 'gobd',
-      key: 'k-new',
-      storageVersionId: 's3-version-1',
-      number: 'R-001',
-    });
+    expect(res).toEqual({ ok: true, ...storedPdf(), number: 'R-001' });
     expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
     expect(generateZugferdPdf).toHaveBeenCalledWith(
       expect.anything(),
@@ -601,7 +604,17 @@ describe('ensureZugferdArchive', () => {
         letterhead: expect.objectContaining({ organisationName: 'Briefkopf-Kanzlei' }),
       }),
     );
-    expect(commitBytesWithTier).toHaveBeenCalledTimes(2);
+    expect(commitPreparedBytes).toHaveBeenCalledTimes(2);
+    // K-06: Beide Absichten standen vor dem ersten PUT im Journal und wurden
+    // in der Verknuepfungstransaktion abgeschlossen.
+    expect(storageJournal.events.slice(0, 3)).toEqual(['prepare', 'prepare', 'journal']);
+    expect(storageJournal.rows).toEqual([
+      expect.objectContaining({ source: 'invoice.archive.zugferd_pdf', resolution: 'REFERENCED' }),
+      expect.objectContaining({
+        source: 'invoice.archive.xrechnung_xml',
+        resolution: 'REFERENCED',
+      }),
+    ]);
     expect(tx.document.create).toHaveBeenCalledTimes(2);
     expect(tx.document.create.mock.calls[0]![0]!.data.retentionUntil).toEqual(RETENTION_UNTIL);
     expect(tx.document.create.mock.calls[1]![0]!.data.retentionUntil).toEqual(RETENTION_UNTIL);
@@ -663,13 +676,17 @@ describe('ensureZugferdArchive', () => {
     expect(tx.document.create).not.toHaveBeenCalled();
     expect(tx.documentVersion.create).not.toHaveBeenCalled();
     expect(tx.invoice.update).not.toHaveBeenCalled();
-    expect(compensateStorageCommit).toHaveBeenCalledTimes(2);
-    expect(compensateStorageCommit).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'invoice.archive.zugferd_race' }),
-    );
-    expect(compensateStorageCommit).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'invoice.archive.xrechnung_race' }),
-    );
+    // K-06: Die nicht uebernommenen Objekte bleiben als offene Absichten mit
+    // gebundener Version fuer den Cleanup-Worker (Object Lock: nach Retention).
+    expect(compensateStorageCommit).not.toHaveBeenCalled();
+    expect(openIntent('invoice.archive.zugferd_pdf')).toMatchObject({
+      failure: expect.stringContaining('invoice.archive.zugferd_race'),
+      storageVersionId: storageJournal.objects[0]!.versionId,
+    });
+    expect(openIntent('invoice.archive.xrechnung_xml')).toMatchObject({
+      failure: expect.stringContaining('invoice.archive.xrechnung_race'),
+      storageVersionId: storageJournal.objects[1]!.versionId,
+    });
   });
 
   it('materialisiert nach einem PDF-only Race-Gewinner XML exakt aus dessen Hybrid-PDF', async () => {
@@ -696,11 +713,19 @@ describe('ensureZugferdArchive', () => {
       where: { id: 'inv1' },
       data: { xrechnungDocumentId: 'xml-doc-new' },
     });
-    expect(compensateStorageCommit).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'invoice.archive.zugferd_race' }),
+    expect(compensateStorageCommit).not.toHaveBeenCalled();
+    expect(openIntent('invoice.archive.zugferd_pdf')?.failure).toContain(
+      'invoice.archive.zugferd_race',
     );
-    expect(compensateStorageCommit).toHaveBeenCalledWith(
-      expect.objectContaining({ source: 'invoice.archive.xrechnung_race' }),
+    expect(openIntent('invoice.archive.xrechnung_xml')?.failure).toContain(
+      'invoice.archive.xrechnung_race',
+    );
+    // Die aus der Gewinner-PDF extrahierte XML wurde abgeschlossen.
+    expect(storageJournal.rows).toContainEqual(
+      expect.objectContaining({
+        source: 'invoice.archive.lazy_xrechnung',
+        resolution: 'REFERENCED',
+      }),
     );
   });
 
@@ -715,31 +740,70 @@ describe('ensureZugferdArchive', () => {
     expect(tx.document.create).not.toHaveBeenCalled();
     expect(tx.invoice.update).not.toHaveBeenCalled();
     expect(compensateStorageCommit).not.toHaveBeenCalled();
+    expect(storageJournal.events).toEqual([]);
   });
 
-  it('journalisiert die bereits gespeicherte PDF, wenn der XML-Storage-Commit scheitert', async () => {
+  it('haelt beide Absichten offen, wenn die Rechnung vor der Verknuepfung storniert wird', async () => {
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(baseInvoice()) // load: SENT, kein Archiv
+      .mockResolvedValueOnce(baseInvoice({ status: 'CANCELLED', sentAt: null }));
+
+    const res = await ensureZugferdArchive(ctx, 'inv1');
+
+    expect(res).toEqual({ ok: false, code: 'status_conflict' });
+    expect(tx.document.create).not.toHaveBeenCalled();
+    expect(compensateStorageCommit).not.toHaveBeenCalled();
+    expect(storageJournal.openIntents().map((intent) => intent.failure)).toEqual([
+      expect.stringContaining('invoice.archive.zugferd_unlinked'),
+      expect.stringContaining('invoice.archive.xrechnung_unlinked'),
+    ]);
+  });
+
+  it('haelt die bereits gespeicherte PDF offen, wenn der XML-Storage-Commit scheitert', async () => {
     tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
-    vi.mocked(commitBytesWithTier)
-      .mockResolvedValueOnce({
-        targetBucket: 'gobd',
-        targetKey: 'pdf-key',
-        storageVersionId: 'pdf-version',
-        sha256: Buffer.from([1]),
-        sizeBytes: 3n,
-        immutable: true,
-        retentionUntil: RETENTION_UNTIL,
-        detectedMime: 'application/pdf',
-      })
+    vi.mocked(commitPreparedBytes)
+      .mockImplementationOnce(storageJournal.commit)
       .mockRejectedValueOnce(new Error('xml storage unavailable'));
 
     await expect(ensureZugferdArchive(ctx, 'inv1')).rejects.toThrow('XRechnung-Ablage');
 
-    expect(compensateStorageCommit).toHaveBeenCalledWith({
+    expect(compensateStorageCommit).not.toHaveBeenCalled();
+    expect(openIntent('invoice.archive.zugferd_pdf')).toMatchObject({
       tenantId: 't1',
-      source: 'invoice.archive.zugferd_without_xml',
-      commit: expect.objectContaining({ targetKey: 'pdf-key' }),
-      cause: expect.any(Error),
+      storageVersionId: storageJournal.objects[0]!.versionId,
+      failure: 'xml storage unavailable',
+      immutable: true,
     });
+    // Die XML-Absicht ohne Objekt schliesst der Worker spaeter als ABSENT ab.
+    expect(openIntent('invoice.archive.xrechnung_xml')).toMatchObject({
+      storageVersionId: '',
+      failure: 'xml storage unavailable',
+    });
+  });
+
+  // K-06: Prozessabbruch zwischen Object-Write und Verknuepfung (erzeugte Archive).
+  it('hinterlaesst nach einem Abbruch vor der Verknuepfung zwei aufloesbare Absichten', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
+    vi.mocked(withTenantContext)
+      .mockImplementationOnce(((_c: unknown, cb: (t: unknown) => unknown) => cb(tx)) as never)
+      .mockImplementationOnce((() => new Promise(() => undefined)) as never);
+
+    void ensureZugferdArchive(ctx, 'inv1');
+    await vi.waitFor(() => expect(storageJournal.objects).toHaveLength(2));
+
+    const intents = storageJournal.openIntents();
+    expect(intents.map((intent) => intent.source)).toEqual([
+      'invoice.archive.zugferd_pdf',
+      'invoice.archive.xrechnung_xml',
+    ]);
+    for (const intent of intents) {
+      expect(storageJournal.workerContract(intent)).toEqual({
+        selectable: true,
+        tenantPrefix: true,
+        objectVersions: 1,
+        retentionGated: true,
+      });
+    }
   });
 });
 

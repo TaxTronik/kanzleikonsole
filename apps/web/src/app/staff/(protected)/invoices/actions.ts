@@ -6,10 +6,13 @@ import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
-import { commitDocumentFromBytes } from '@taxtronik/storage';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
-import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
+import {
+  JournaledUploadError,
+  runJournaledUpload,
+  uploadFailureCause,
+} from '@/server/documents/journaled-upload';
 import { portalBaseUrl } from '@taxtronik/config';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
@@ -850,6 +853,49 @@ const UploadExternalSchema = z.object({
   }),
 });
 
+/**
+ * Gemeinsame Vor- und Nachprüfung des Fremdrechnungs-Uploads (K-06 /
+ * DOC-UPLOAD-JOURNAL-001): Mandantenzugriff, Mandant, Kategorie und freie
+ * Rechnungsnummer vor dem GoBD-Object-Write (achtjährig unlöschbar) und erneut
+ * in der Commit-Transaktion.
+ */
+async function checkExternalInvoiceTx(
+  tx: TxClient,
+  session: StaffCtx['session'],
+  tenantId: string,
+  data: z.infer<typeof UploadExternalSchema>,
+) {
+  const cat = data.categoryId
+    ? await tx.invoiceCategory.findUnique({
+        where: { id: data.categoryId },
+        select: { id: true, emailTemplateSlug: true, name: true },
+      })
+    : null;
+
+  await assertClientAccessTx(tx, session, data.clientId);
+  const cli = await tx.client.findUnique({
+    where: { id: data.clientId },
+    select: {
+      name: true,
+      contacts: {
+        where: { active: true, notificationsEnabled: true },
+        select: { email: true, fullName: true },
+      },
+    },
+  });
+  if (!cli) throw new ActionError('Mandant nicht gefunden.');
+  const taken = await tx.invoice.findFirst({
+    where: { tenantId, number: data.number },
+    select: { id: true },
+  });
+  if (taken) throw new ActionError('Rechnungsnummer bereits vergeben.');
+  return {
+    mailTemplateSlug: cat?.emailTemplateSlug ?? null,
+    clientName: cli.name,
+    recipients: cli.contacts,
+  };
+}
+
 export async function uploadExternalInvoiceAction(
   input: z.infer<typeof UploadExternalSchema>,
 ): Promise<{
@@ -884,154 +930,135 @@ export async function uploadExternalInvoiceAction(
   if (pdfBytes.length === 0) return { ok: false, error: 'PDF-Daten leer.' };
   if (pdfBytes.length > 10 * 1024 * 1024) return { ok: false, error: 'PDF zu groß (max. 10 MB).' };
 
-  // 1) PDF in Object-Lock (Rechnungs-Aufbewahrung 8 J.) ablegen
-  let stored: Awaited<ReturnType<typeof commitDocumentFromBytes>>;
-  try {
-    stored = await commitDocumentFromBytes({
-      fileData: pdfBytes,
-      classification: 'GOBD_INVOICE',
-      tenantId,
-    });
-  } catch (e) {
-    return { ok: false, error: `Storage-Fehler: ${toActionError(e).error}` };
-  }
-
-  // 2) Document + Invoice + Audit + Versandaufträge in einer Transaktion
+  // 1) Vorprüfung, PDF als Speicherabsicht journalisieren und in Object-Lock
+  //    (Rechnungs-Aufbewahrung 8 J.) ablegen; 2) Nachprüfung + Document +
+  //    Invoice + Audit + Versandaufträge + Abschluss der Absicht in einer
+  //    Transaktion (K-06, F-08).
   let invoiceId: string;
   try {
-    invoiceId = await withTenantContext(ctx, async (tx) => {
-      const cat = data.categoryId
-        ? await tx.invoiceCategory.findUnique({
-            where: { id: data.categoryId },
-            select: { id: true, emailTemplateSlug: true, name: true },
-          })
-        : null;
-      const mailTemplateSlug = cat?.emailTemplateSlug ?? null;
-
-      await assertClientAccessTx(tx, g.session, data.clientId);
-      const cli = await tx.client.findUnique({
-        where: { id: data.clientId },
-        select: {
-          name: true,
-          contacts: {
-            where: { active: true, notificationsEnabled: true },
-            select: { email: true, fullName: true },
-          },
-        },
-      });
-      if (!cli) throw new ActionError('Mandant nicht gefunden.');
-
-      // Befund 12: Document+Version-Insert zentral (upload-helpers).
-      const { document: doc, version } = await createDocumentWithVersion(tx, {
-        documentData: {
-          tenantId,
-          clientId: data.clientId,
-          title: `Rechnung ${data.number}: ${data.subject}`,
-          classification: 'GOBD_INVOICE',
-          // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-          mimeType: stored.detectedMime ?? data.pdf.mimeType ?? 'application/pdf',
-          // iter85 (Befund 7): Rechnungs-PDFs sind FÜR den Mandanten bestimmt —
-          // ohne Freigabe lief der „Öffnen"-Link im Portal auf 404 (die
-          // Portal-Download-Route filtert auf sharedWithClientAt).
-          sharedWithClientAt: new Date(),
-          sharedByStaff: staffId,
-        },
-        commit: stored,
-        createdById: staffId,
-      });
-
-      const inv = await tx.invoice.create({
-        data: {
-          tenantId,
-          clientId: data.clientId,
-          categoryId: data.categoryId ?? null,
-          number: data.number,
-          subject: data.subject,
-          issueDate: new Date(data.issueDate),
-          dueDate: new Date(data.dueDate),
-          status: 'SENT',
-          format: 'PDF',
-          netAmount,
-          vatAmount,
-          totalAmount: grossAmount,
-          // Aus Brutto + erfasstem USt-Satz abgeleitet (siehe oben).
-          vatRate: data.vatRatePct,
-          notes: data.notes ?? null,
-          documentId: doc.id,
-          createdByStaff: staffId,
-          sentAt: new Date(),
-        },
-      });
-
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'invoice.upload',
-        resourceType: 'invoice',
-        resourceId: inv.id,
-        after: {
-          clientId: data.clientId,
-          number: data.number,
-          totalAmount: data.totalAmount,
-          categoryId: data.categoryId ?? null,
-          documentId: doc.id,
-        },
-      });
-
-      // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in — F-08: als
-      // Versandauftrag je Empfänger; der Anhang ist die eben gespeicherte,
-      // hashgebundene Fassung.
-      for (const r of cli.contacts) {
-        await enqueueDirectMailTx(
-          tx,
-          {
-            tenantId,
-            clientId: input.clientId,
-            purpose: 'invoice-external',
-            resource: { type: 'invoice', id: inv.id },
-            staffHref: `/staff/invoices/${inv.id}`,
-          },
-          {
-            slug: mailTemplateSlug ?? 'invoice-sent',
-            to: r.email,
-            vars: {
-              contact: { fullName: r.fullName, email: r.email },
-              client: { name: cli.name },
-              invoice: {
-                number: input.number,
-                subject: input.subject,
-                totalAmount: input.totalAmount,
-                dueDate: input.dueDate,
-              },
-            },
-            n8nEvent: 'invoice.due',
-            n8nPayload: { tenantId, invoiceId: inv.id },
-            fallback: {
-              subject: 'Ihre Rechnung {{invoice.number}}',
-              bodyMd:
-                'Sehr geehrte/r {{contact.fullName}},\n\nanbei senden wir Ihnen unsere Rechnung Nr. {{invoice.number}} über {{invoice.totalAmount}} €.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
-            },
-            attachments: [
-              {
-                documentVersionId: version.id,
-                filename: `Rechnung-${input.number}.pdf`,
-                contentType: 'application/pdf',
-              },
-            ],
-          },
-        );
-      }
-
-      return inv.id;
-    });
-  } catch (e) {
-    await compensateStorageCommit({
-      tenantId,
+    const { result } = await runJournaledUpload({
+      context: ctx,
       source: 'staff.external_invoice.pdf',
-      commit: stored,
-      cause: e,
+      check: (tx) => checkExternalInvoiceTx(tx, g.session, tenantId, data),
+      readBytes: async () => pdfBytes,
+      storage: () => ({ tier: 'GOBD', classification: 'GOBD_INVOICE' }),
+      commitTx: async (tx, { commit: stored, checked }) => {
+        // Befund 12: Document+Version-Insert zentral (upload-helpers).
+        const { document: doc, version } = await createDocumentWithVersion(tx, {
+          documentData: {
+            tenantId,
+            clientId: data.clientId,
+            title: `Rechnung ${data.number}: ${data.subject}`,
+            classification: 'GOBD_INVOICE',
+            // P-3: Magic-Bytes statt Client-Header — siehe M-2.
+            mimeType: stored.detectedMime ?? data.pdf.mimeType ?? 'application/pdf',
+            // iter85 (Befund 7): Rechnungs-PDFs sind FÜR den Mandanten bestimmt —
+            // ohne Freigabe lief der „Öffnen"-Link im Portal auf 404 (die
+            // Portal-Download-Route filtert auf sharedWithClientAt).
+            sharedWithClientAt: new Date(),
+            sharedByStaff: staffId,
+          },
+          commit: stored,
+          createdById: staffId,
+        });
+
+        const inv = await tx.invoice.create({
+          data: {
+            tenantId,
+            clientId: data.clientId,
+            categoryId: data.categoryId ?? null,
+            number: data.number,
+            subject: data.subject,
+            issueDate: new Date(data.issueDate),
+            dueDate: new Date(data.dueDate),
+            status: 'SENT',
+            format: 'PDF',
+            netAmount,
+            vatAmount,
+            totalAmount: grossAmount,
+            // Aus Brutto + erfasstem USt-Satz abgeleitet (siehe oben).
+            vatRate: data.vatRatePct,
+            notes: data.notes ?? null,
+            documentId: doc.id,
+            createdByStaff: staffId,
+            sentAt: new Date(),
+          },
+        });
+
+        await evidenceService.record(tx, {
+          tenantId,
+          actorType: 'STAFF',
+          actorId: staffId,
+          action: 'invoice.upload',
+          resourceType: 'invoice',
+          resourceId: inv.id,
+          after: {
+            clientId: data.clientId,
+            number: data.number,
+            totalAmount: data.totalAmount,
+            categoryId: data.categoryId ?? null,
+            documentId: doc.id,
+          },
+        });
+
+        // 3) Mail mit PDF-Anhang an aktive Kontakte mit Opt-in — F-08: als
+        // Versandauftrag je Empfänger; der Anhang ist die eben gespeicherte,
+        // hashgebundene Fassung.
+        for (const r of checked.recipients) {
+          await enqueueDirectMailTx(
+            tx,
+            {
+              tenantId,
+              clientId: input.clientId,
+              purpose: 'invoice-external',
+              resource: { type: 'invoice', id: inv.id },
+              staffHref: `/staff/invoices/${inv.id}`,
+            },
+            {
+              slug: checked.mailTemplateSlug ?? 'invoice-sent',
+              to: r.email,
+              vars: {
+                contact: { fullName: r.fullName, email: r.email },
+                client: { name: checked.clientName },
+                invoice: {
+                  number: input.number,
+                  subject: input.subject,
+                  totalAmount: input.totalAmount,
+                  dueDate: input.dueDate,
+                },
+              },
+              n8nEvent: 'invoice.due',
+              n8nPayload: { tenantId, invoiceId: inv.id },
+              fallback: {
+                subject: 'Ihre Rechnung {{invoice.number}}',
+                bodyMd:
+                  'Sehr geehrte/r {{contact.fullName}},\n\nanbei senden wir Ihnen unsere Rechnung Nr. {{invoice.number}} über {{invoice.totalAmount}} €.\n\nMit freundlichen Grüßen\nIhre Steuerkanzlei',
+              },
+              attachments: [
+                {
+                  documentVersionId: version.id,
+                  filename: `Rechnung-${input.number}.pdf`,
+                  contentType: 'application/pdf',
+                },
+              ],
+            },
+          );
+        }
+
+        return inv.id;
+      },
     });
+    invoiceId = result;
+  } catch (error) {
+    // Nach dem Object-Write bleibt die Speicherabsicht offen; der Cleanup-Worker
+    // räumt das Objekt nach der Sicherheitsfrist versionsgenau auf.
+    const e = uploadFailureCause(error);
+    if (
+      error instanceof JournaledUploadError &&
+      (error.phase === 'prepare' || error.phase === 'store')
+    ) {
+      return { ok: false, error: `Storage-Fehler: ${toActionError(e).error}` };
+    }
     if ((e as { code?: string }).code === 'P2002') {
       return { ok: false, error: 'Rechnungsnummer bereits vergeben.' };
     }
