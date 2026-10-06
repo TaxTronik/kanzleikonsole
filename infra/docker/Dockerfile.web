@@ -32,7 +32,6 @@ RUN corepack enable && corepack install && pnpm --version
 # exportierter Layer-Cache die Downloads enthaelt. fetch prueft den Lockfile
 # bereits gegen die Supply-Chain-Regeln aus pnpm-workspace.yaml.
 COPY pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY patches ./patches
 RUN pnpm fetch --store-dir /pnpm-store
 
 # Build-Time-Dummies für ENV-Validierung (@taxtronik/config wirft beim Modul-Load,

@@ -768,6 +768,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Image-Builds für Web und Worker brachen ab, weil beide Dockerfiles noch den
+  seit dem Wegfall des SimpleWebAuthn-Patches (T-02) nicht mehr vorhandenen
+  Ordner `patches/` kopierten. Die Zeilen und der Pfadfilter in
+  `build-images.yml` sind entfernt; `pnpm guard:docker-bases` prüft jetzt, dass
+  jede Quelle eines COPY/ADD aus dem Build-Kontext existiert und nicht per
+  `.dockerignore` ausgeschlossen ist.
 - Bescheide: Eine zu kurze Bestandskraft-Begründung aus Sonderzeichen wie Emoji
   erhält die reguläre Meldung statt eines Datenbankfehlers; Formular und
   Datenbank zählen einheitlich Zeichen (`TAX-CONTROL-STATUS-001`,

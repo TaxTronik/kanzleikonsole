@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import {
+  buildContextCopySources,
+  checkBuildContextCopySources,
   checkBuilderSourcePermissions,
   checkDockerfiles,
   checkDockerignore,
@@ -8,6 +10,7 @@ import {
   checkSharedBaseNotOverridden,
   checkSharedNodeBase,
   checkWebRuntimeDockerfile,
+  ignoredByDockerignore,
   REQUIRED_COMPOSE_SECRETS,
   REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS,
   unpinnedFromLines,
@@ -198,4 +201,66 @@ assert.throws(
   /N8N_WEBHOOK_BASE_URL.*default-leeren/,
 );
 
-process.stdout.write('28 Docker base/context/runtime/compose tests passed.\n');
+// Build-Kontext-Quellen: nach T-02 brach `COPY patches ./patches` beide
+// Image-Builds, weil der Ordner nicht mehr existierte.
+const present = new Set(['package.json', 'pnpm-lock.yaml', '.npmrc', 'docs/guide.md', 'apps/web']);
+const exists = (path) => present.has(path);
+const contextDockerfile = [
+  `FROM node:24-alpine@sha256:${digest} AS builder`,
+  'COPY package.json ./',
+  'COPY pnpm-lock.yaml ./.npmrc ./',
+  'COPY . .',
+  `FROM node:24-alpine@sha256:${digest} AS runner`,
+  'COPY --from=builder /repo/apps/web/.next/standalone ./',
+  'COPY --chown=node:node ["apps/web", "/app/web"]',
+  'COPY <<EOF /etc/motd',
+].join('\n');
+assert.deepEqual(
+  buildContextCopySources(contextDockerfile).map(({ line, path }) => `${line}:${path}`),
+  ['2:package.json', '3:pnpm-lock.yaml', '3:.npmrc', '4:.', '7:apps/web'],
+);
+assert.equal(
+  checkBuildContextCopySources([{ name: 'Dockerfile', source: contextDockerfile }], {
+    exists,
+    dockerignore: '',
+  }),
+  true,
+);
+assert.throws(
+  () =>
+    checkBuildContextCopySources([{ name: 'Dockerfile.web', source: 'COPY patches ./patches' }], {
+      exists,
+      dockerignore: '',
+    }),
+  /Dockerfile\.web:1: patches fehlt im Repository/,
+);
+assert.throws(
+  () =>
+    checkBuildContextCopySources([{ name: 'Dockerfile', source: 'COPY docs/guide.md ./' }], {
+      exists,
+      dockerignore: '# Doku\n/docs\n',
+    }),
+  /Dockerfile:1: docs\/guide\.md ist per \.dockerignore ausgeschlossen/,
+);
+// Fortsetzungszeilen zaehlen ab der COPY-Zeile; `!` nimmt einen Ausschluss zurueck.
+assert.equal(
+  checkBuildContextCopySources(
+    [{ name: 'Dockerfile', source: 'RUN true\nCOPY package.json \\\n  docs/guide.md ./' }],
+    { exists, dockerignore: '/docs\n!docs/guide.md\n' },
+  ),
+  true,
+);
+assert.throws(
+  () =>
+    checkBuildContextCopySources(
+      [{ name: 'Dockerfile', source: 'RUN true\nCOPY package.json \\\n  missing.txt ./' }],
+      { exists, dockerignore: '' },
+    ),
+  /Dockerfile:2: missing\.txt fehlt im Repository/,
+);
+assert.equal(ignoredByDockerignore('apps/web/node_modules/x', ['**/node_modules']), true);
+assert.equal(ignoredByDockerignore('node_modules', ['**/node_modules']), true);
+assert.equal(ignoredByDockerignore('apps/web/install.log', ['*.log']), false);
+assert.equal(ignoredByDockerignore('install.log', ['*.log']), true);
+
+process.stdout.write('36 Docker base/context/runtime/compose tests passed.\n');

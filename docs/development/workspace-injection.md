@@ -43,8 +43,10 @@ Symlinks. Das gilt auch für die Host-Werkzeuge der Betriebs-CLI: deren
 ## Produktions-Images
 
 Beide Dockerfiles laden die Pakete per `pnpm fetch` nur anhand von Lockfile,
-`pnpm-workspace.yaml` und `patches/` in eine eigene Store-Schicht; Quell- und
-Doku-Änderungen invalidieren sie nicht. Danach folgen Quell-COPY und
+`pnpm-workspace.yaml` und `.npmrc` in eine eigene Store-Schicht; Quell- und
+Doku-Änderungen invalidieren sie nicht. `pnpm guard:docker-bases` prüft, dass
+jede Quelle dieser COPY-Schritte im Repository existiert und nicht per
+`.dockerignore` ausgeschlossen ist. Danach folgen Quell-COPY und
 `pnpm install --offline`.
 
 - Web: Next.js transpiliert und bündelt die Workspace-Pakete

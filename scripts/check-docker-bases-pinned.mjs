@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 const DIGEST = /@sha256:[0-9a-f]{64}(?:\s|$)/;
@@ -226,6 +226,109 @@ export function checkBuilderSourcePermissions(source, fileName = '<Dockerfile>')
   return true;
 }
 
+// Build-Kontext-Quellen: Ein COPY/ADD auf einen nicht (mehr) vorhandenen oder
+// per .dockerignore ausgeschlossenen Pfad faellt sonst erst im Image-Build auf
+// (nach T-02: `COPY patches ./patches` -> "/patches": not found). Stage-Kopien
+// (--from=), Heredocs, URLs und ARG-Ausdruecke liegen nicht im Build-Kontext.
+export function dockerignorePatterns(source) {
+  return source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith('#'));
+}
+
+function dockerignoreRegExp(pattern) {
+  let expression = '';
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index];
+    if (char === '*' && pattern[index + 1] === '*') {
+      const slash = pattern[index + 2] === '/';
+      expression += slash ? '(?:.*/)?' : '.*';
+      index += slash ? 2 : 1;
+    } else if (char === '*') {
+      expression += '[^/]*';
+    } else if (char === '?') {
+      expression += '[^/]';
+    } else {
+      expression += char.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+    }
+  }
+  // Ein Treffer auf ein Verzeichnis schliesst auch dessen Inhalt aus.
+  return new RegExp(`^${expression}(?:/.*)?$`);
+}
+
+// Docker-Semantik: Muster gelten relativ zur Kontextwurzel, die letzte
+// passende Zeile entscheidet, `!` nimmt einen Ausschluss zurueck.
+export function ignoredByDockerignore(path, patterns) {
+  let ignored = false;
+  for (const raw of patterns) {
+    const negated = raw.startsWith('!');
+    const pattern = (negated ? raw.slice(1) : raw).trim().replace(/^\/+|\/+$/g, '');
+    if (pattern && dockerignoreRegExp(pattern).test(path)) ignored = !negated;
+  }
+  return ignored;
+}
+
+export function buildContextCopySources(source) {
+  const lines = source.split(/\r?\n/);
+  const sources = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const number = index + 1;
+    let instruction = lines[index];
+    while (/\\\s*$/.test(instruction) && index + 1 < lines.length) {
+      index += 1;
+      instruction = `${instruction.replace(/\\\s*$/, ' ')}${lines[index]}`;
+    }
+    const match = /^\s*(?:COPY|ADD)\s+(.*)$/i.exec(instruction);
+    if (!match) continue;
+    let rest = match[1].trim();
+    const flags = [];
+    while (rest.startsWith('--')) {
+      const [flag] = rest.split(/\s+/, 1);
+      flags.push(flag);
+      rest = rest.slice(flag.length).trim();
+    }
+    if (flags.some((flag) => /^--from=/i.test(flag)) || rest.startsWith('<<')) continue;
+    const args = rest.startsWith('[') ? JSON.parse(rest) : rest.split(/\s+/);
+    for (const raw of args.slice(0, -1)) {
+      if (raw.includes('$') || /^(?:https?:\/\/|git@)/i.test(raw)) continue;
+      const path =
+        raw
+          .replace(/^(?:\.\/)+/, '')
+          .replace(/^\/+/, '')
+          .replace(/\/+$/, '') || '.';
+      sources.push({ line: number, path });
+    }
+  }
+  return sources;
+}
+
+export function checkBuildContextCopySources(files, { exists, dockerignore }) {
+  const patterns = dockerignorePatterns(dockerignore);
+  const findings = [];
+  for (const { name, source } of files) {
+    for (const { line, path } of buildContextCopySources(source)) {
+      if (path === '.') continue;
+      // Bei Glob-Quellen muss mindestens das feste Verzeichnis-Praefix existieren.
+      const fixed = path
+        .split('/')
+        .filter((_, i, parts) => !/[*?[]/.test(parts.slice(0, i + 1).join('/')));
+      const probe = fixed.join('/') || '.';
+      if (!exists(probe)) {
+        findings.push(`${name}:${line}: ${path} fehlt im Repository`);
+      } else if (ignoredByDockerignore(path, patterns)) {
+        findings.push(`${name}:${line}: ${path} ist per .dockerignore ausgeschlossen`);
+      }
+    }
+  }
+  if (findings.length > 0) {
+    throw new Error(
+      `COPY/ADD-Quellen muessen im Docker-Build-Kontext vorhanden sein:\n${findings.join('\n')}`,
+    );
+  }
+  return true;
+}
+
 function main() {
   try {
     const directory = 'infra/docker';
@@ -255,10 +358,12 @@ function main() {
       checkBuilderSourcePermissions(file.source, file.name);
     }
     checkWebRuntimeDockerfile(readFileSync(`${directory}/Dockerfile.web`, 'utf8'));
-    checkDockerignore(readFileSync('.dockerignore', 'utf8'));
+    const dockerignore = readFileSync('.dockerignore', 'utf8');
+    checkDockerignore(dockerignore);
+    checkBuildContextCopySources(files, { exists: (path) => existsSync(path), dockerignore });
     checkRequiredComposeSecrets(readFileSync('infra/compose/docker-compose.app.yml', 'utf8'));
     process.stdout.write(
-      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases (Web und Worker gemeinsam ueber ${SHARED_BASE_ARG}), normalisieren Builder-Quellmodi und entfernen Runtime-Paketmanager; Web-Liveness ist erreichbar, lokale Betriebsdaten sind ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
+      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases (Web und Worker gemeinsam ueber ${SHARED_BASE_ARG}), kopieren nur vorhandene Build-Kontext-Quellen, normalisieren Builder-Quellmodi und entfernen Runtime-Paketmanager; Web-Liveness ist erreichbar, lokale Betriebsdaten sind ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
     );
   } catch (error) {
     process.stderr.write(`FEHLER: ${error.message}\n`);
