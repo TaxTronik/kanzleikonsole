@@ -227,6 +227,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Dokumenten-Explorer und Benachrichtigungsglocke sind nach Aufgaben
+  aufgeteilt (Auswahl, Dateioperationen, Navigation, Dialoge, Werkzeugleiste,
+  Liste und Kontextmenü bzw. Abfrage, Ton, Hinweis, Dropdown und Quittierung);
+  Verhalten einschließlich Mehrfachaktionen unverändert.
 - Bescheidliste: Fristen-, Status- und Abweichungsanzeige jeder Zeile entsteht
   aus einem reinen, getesteten View-Model; Darstellung unverändert
   (`TAX-NOTICE-APPEAL-001`, `TAX-NOTICE-DATARETRIEVAL-001`,
