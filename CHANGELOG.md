@@ -23,6 +23,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- ADR 0014 (Vorschlag): Verfahrensschritte von Steuerbescheiden künftig als
+  Ereigniszeilen (`tax_notice_event`) statt Spaltengruppen, Feiertagskontext je
+  Partei; mit Zuordnung aller CHECKs und Trigger und Migrationsplan.
 - Kanonische SQL-Quellen: Funktionen, Trigger und RLS-Policies stehen je
   Objekt unter `packages/db/prisma/sql/`; `pnpm db:sql:dump` schreibt sie aus
   einer migrierten Datenbank, `pnpm db:sql:check` vergleicht sie im CI-Job `db`

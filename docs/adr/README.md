@@ -21,6 +21,7 @@ getroffen haben. Format inspiriert von Michael Nygard.
 | [0011](./0011-n8n-fire-and-forget-statt-outbox.md)    | n8n-Events: Outbox statt fire-and-forget                    | Aktualisiert | 45      |
 | [0012](./0012-prisma-migration-drift-check.md)        | Prisma-Migration vs. Hand-SQL: Drift-Check                  | Akzeptiert   | 2, 46   |
 | [0013](./0013-workflow-spezifische-n8n-ziele.md)      | Workflow-spezifische n8n-Ziele und explizites Routing       | Akzeptiert   | Release |
+| [0014](./0014-tax-notice-verfahrensereignisse.md)     | TaxNotice: Verfahrensereignisse statt Spaltengruppen        | Vorschlag    | D-02    |
 
 ## Wann ein ADR?
 
