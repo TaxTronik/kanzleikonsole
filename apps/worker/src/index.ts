@@ -21,6 +21,7 @@ import { log } from './logger';
 // leitet sich aus JOB_QUEUES ab; `.name` ist der Queue-Name.
 import { ALL_WORKERS } from './worker-registry';
 import { trimReminderDoneJobHistory, trimRiskAnalyseJobHistory } from './job-retention';
+import { registerWorkerMailIntegrations } from './mail';
 
 // Q-9: Heartbeat-File für Docker-HEALTHCHECK. Worker schreibt alle 30 s ins
 // plattformgerechte Temp-Verzeichnis; im Container bleibt das /tmp, lokal unter
@@ -57,6 +58,8 @@ function startHeartbeat(): void {
 }
 
 async function main() {
+  // K-10: vor dem ersten Job (Jobs laufen erst nach diesem synchronen Start an).
+  registerWorkerMailIntegrations();
   log.info('worker: starting');
   startHeartbeat();
   await setupSchedules();

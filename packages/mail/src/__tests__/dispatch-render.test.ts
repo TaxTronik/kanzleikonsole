@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 // Render-Helfer werden die Modul-Seiteneffekte weggemockt (wie im
 // Nachbar-Test dispatch-profile-context.test.ts).
 vi.mock('../send', () => ({ sendMail: vi.fn() }));
-vi.mock('../n8n-emitter', () => ({ emitViaConfiguredN8n: vi.fn() }));
+vi.mock('../n8n-emitter', () => ({
+  emitViaConfiguredN8n: vi.fn(),
+  assertN8nEmitterRegistered: vi.fn(),
+}));
 vi.mock('../dispatch-settings', () => ({ readMailDispatch: vi.fn() }));
 vi.mock('@taxtronik/db', () => ({ prismaOwner: {} }));
 

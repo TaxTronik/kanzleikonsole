@@ -10,13 +10,10 @@
 // Konsolidierung Round 12: dieses Package ist Single Source of Truth.
 // =============================================================================
 
-import { safeFetch } from '@taxtronik/http-utils';
+import { safeFetch, type HttpTargetPolicy } from '@taxtronik/http-utils';
 
-const safeFetchPublic = safeFetch as unknown as (
-  url: string,
-  init: RequestInit,
-  policy: { mode: 'public' },
-) => Promise<Response>;
+// K-10: typisierte Policy aus @taxtronik/http-utils statt eines Signatur-Casts.
+const PUBLIC_TARGET: HttpTargetPolicy = { mode: 'public' };
 
 export interface FetchedRssItem {
   source: string; // = feed URL
@@ -143,7 +140,7 @@ export async function fetchRssFeed(
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const userAgent = opts.userAgent ?? DEFAULT_USER_AGENT;
 
-  const res = await safeFetchPublic(
+  const res = await safeFetch(
     url,
     {
       headers: {
@@ -153,7 +150,7 @@ export async function fetchRssFeed(
       signal: AbortSignal.timeout(timeoutMs),
       // redirect: 'error' ist Default in safeFetch (Round 12).
     },
-    { mode: 'public' },
+    PUBLIC_TARGET,
   );
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);

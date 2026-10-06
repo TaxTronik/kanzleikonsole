@@ -227,6 +227,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die n8n-Anbindung des Mail-Versands wird beim Start von Web-App und Worker
+  ausdrücklich registriert; fehlt sie, bricht ein Versand im Modus „App + n8n“
+  vor dem Mailversand mit klarer Fehlermeldung ab, statt das n8n-Ereignis
+  still auszulassen (`FK-EXC-20261006-015`).
 - Rechnung, Anforderung, Anlieferung, GwG-Einladung, Onboarding-Übersicht und
   Formular zeigen den Zustellstatus der Mandanten-Mail statt eines pauschalen
   Versandhinweises.

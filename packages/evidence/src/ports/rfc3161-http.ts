@@ -22,17 +22,14 @@
 // =============================================================================
 
 import { createHash } from 'node:crypto';
-import { safeFetch } from '@taxtronik/http-utils';
+import { safeFetch, type HttpTargetPolicy } from '@taxtronik/http-utils';
 import type { TimestampPort, TimestampResult } from './timestamp';
 import { verifyTimestampResponse, extractTsaMeta } from './rfc3161-verify';
 import { DEFAULT_TSA_TRUSTED_ROOTS } from './globalsign-roots';
 import { resolveTsaTrustedRoots } from './resolve-roots';
 
-const safeFetchPublic = safeFetch as unknown as (
-  url: string,
-  init: RequestInit,
-  policy: { mode: 'public' },
-) => Promise<Response>;
+// K-10: typisierte Policy aus @taxtronik/http-utils statt eines Signatur-Casts.
+const PUBLIC_TARGET: HttpTargetPolicy = { mode: 'public' };
 
 // Eine RFC-3161-Antwort liegt üblicherweise im einstelligen KiB-Bereich. Der
 // großzügige Cap verhindert, dass eine kompromittierte/fehlkonfigurierte TSA
@@ -207,7 +204,7 @@ export class Rfc3161HttpAdapter implements TimestampPort {
       // beim eigentlichen Request (TOCTOU gegen interne Dienste, § 203).
       // safeFetch reicht binären Body durch; `signal` überschreibt den
       // safeFetch-Default-Timeout mit unserem TSA-Timeout.
-      const res = await safeFetchPublic(
+      const res = await safeFetch(
         this.tsaUrl,
         {
           method: 'POST',
@@ -218,7 +215,7 @@ export class Rfc3161HttpAdapter implements TimestampPort {
           body: tsr.buffer.slice(tsr.byteOffset, tsr.byteOffset + tsr.byteLength) as ArrayBuffer,
           signal: ctrl.signal,
         },
-        { mode: 'public' },
+        PUBLIC_TARGET,
       );
       if (!res.ok) {
         throw new Error(`TSA HTTP ${res.status} ${res.statusText} @ ${this.tsaUrl}`);

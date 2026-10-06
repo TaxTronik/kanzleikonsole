@@ -14,7 +14,10 @@ const m = vi.hoisted(() => ({
 }));
 
 vi.mock('../send', () => ({ sendMail: m.sendMail }));
-vi.mock('../n8n-emitter', () => ({ emitViaConfiguredN8n: m.emit }));
+vi.mock('../n8n-emitter', () => ({
+  emitViaConfiguredN8n: m.emit,
+  assertN8nEmitterRegistered: vi.fn(),
+}));
 vi.mock('../dispatch-settings', () => ({ readMailDispatch: m.readMailDispatch }));
 vi.mock('@taxtronik/db', () => ({
   prismaOwner: {

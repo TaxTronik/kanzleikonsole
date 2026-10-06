@@ -4,11 +4,13 @@
 // Extrahierter Mail-Stack (vormals apps/web/src/server/mail + settings), damit
 // Web UND Worker mandantengerichtete Template-Mails über EINE Implementierung
 // versenden. Die Web-Dateien bleiben als Re-Exports erhalten (Muster M-7,
-// secret-box.ts) und registrieren beim Laden Logger + n8n-Emitter.
+// secret-box.ts).
 //
-// KONVENTION (Web): immer über die Re-Export-Pfade importieren
-// (@/server/mail/dispatch usw.) — ein Direktimport aus @taxtronik/mail würde
-// die Registrierung des n8n-Emitters umgehen (Mode BOTH bliebe ohne Event).
+// K-10: Logger und n8n-Emitter registriert jeder Prozess explizit beim Start
+// (Web: instrumentation.ts → registerMailIntegrations, Worker: index.ts →
+// registerWorkerMailIntegrations) — nicht mehr als Import-Seiteneffekt. Fehlt
+// die Registrierung, bricht ein Versand im Modus BOTH vor dem SMTP-Kontakt mit
+// MailN8nEmitterMissingError ab, statt das Ereignis still auszulassen.
 // =============================================================================
 
 export {
@@ -61,4 +63,11 @@ export {
 export { renderSafeMarkdown, escapeMarkdownVariable } from './markdown';
 export { escapeHtml, safeHref } from './markdown-safety';
 export { setMailLogger, mailLog, type MailLogger } from './logger';
-export { setN8nEmitter, type MailN8nEmitter, type MailN8nEmitOptions } from './n8n-emitter';
+export {
+  setN8nEmitter,
+  hasN8nEmitter,
+  resetN8nEmitterForTests,
+  MailN8nEmitterMissingError,
+  type MailN8nEmitter,
+  type MailN8nEmitOptions,
+} from './n8n-emitter';

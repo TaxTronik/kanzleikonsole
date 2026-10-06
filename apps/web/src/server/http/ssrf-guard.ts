@@ -6,46 +6,44 @@
 // Single Source of Truth eliminiert die Drift-Klasse von Findings.
 // =============================================================================
 
+// K-10: Die Policy-Varianten nutzen die typisierten Signaturen des Pakets
+// (HttpTargetPolicy) direkt; die früheren Signatur-Casts an der SSRF-Grenze
+// sind entfallen.
 import {
-  assertPublicHost as sharedAssertPublicHost,
-  safeFetch as sharedSafeFetch,
+  assertPublicHost,
+  safeFetch,
   SsrfGuardError,
+  type HttpTargetPolicy,
+  type N8nTargetKind,
 } from '@taxtronik/http-utils';
-export { SsrfGuardError } from '@taxtronik/http-utils';
+export {
+  assertPublicHost,
+  safeFetch,
+  SsrfGuardError,
+  type HttpTargetPolicy,
+  type N8nTargetKind,
+} from '@taxtronik/http-utils';
 
-export type N8nTargetKind = 'api' | 'webhook' | 'webhook-test' | 'health';
-type TargetPolicy =
-  | { mode: 'trusted-internal' }
-  | { mode: 'public' }
-  | { mode: 'n8n'; kind: N8nTargetKind };
+const PUBLIC_TARGET: HttpTargetPolicy = { mode: 'public' };
 
-const assertWithPolicy = sharedAssertPublicHost as unknown as (
-  url: string,
-  policy?: TargetPolicy,
-) => Promise<Array<{ address: string; family: number }>>;
-const fetchWithPolicy = sharedSafeFetch as unknown as (
-  url: string,
-  init?: RequestInit,
-  policy?: TargetPolicy,
-) => Promise<Response>;
-
-export const assertPublicHost = sharedAssertPublicHost;
-export const safeFetch = sharedSafeFetch;
+function n8nTarget(kind: N8nTargetKind): HttpTargetPolicy {
+  return { mode: 'n8n', kind };
+}
 
 export async function assertPublicUrl(url: string) {
-  return await assertWithPolicy(url, { mode: 'public' });
+  return await assertPublicHost(url, PUBLIC_TARGET);
 }
 
 export async function safeFetchPublic(url: string, init?: RequestInit) {
-  return await fetchWithPolicy(url, init, { mode: 'public' });
+  return await safeFetch(url, init, PUBLIC_TARGET);
 }
 
 export async function assertN8nUrl(url: string, kind: N8nTargetKind) {
-  return await assertWithPolicy(url, { mode: 'n8n', kind });
+  return await assertPublicHost(url, n8nTarget(kind));
 }
 
 export async function safeFetchN8n(url: string, kind: N8nTargetKind, init?: RequestInit) {
-  return await fetchWithPolicy(url, init, { mode: 'n8n', kind });
+  return await safeFetch(url, init, n8nTarget(kind));
 }
 
 const UNRESOLVABLE_HOST_CODES: ReadonlySet<string> = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ENODATA']);

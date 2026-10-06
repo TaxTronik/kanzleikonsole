@@ -1,5 +1,33 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-015
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/instrumentation.ts
+      - packages/evidence/src/ports/rfc3161-http.ts
+      - packages/mail/src/dispatch.ts
+      - packages/mail/src/index.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - AUDIT-HASH-CHAIN-001
+    reason: >-
+      Die n8n-Anbindung des Mail-Pakets wird beim Start von Web-App
+      (instrumentation.ts) und Worker ausdrücklich genau einmal registriert statt
+      als Seiteneffekt eines Imports; fehlt die Registrierung, bricht ein Versand
+      im Modus „App + n8n“ vor dem SMTP-Kontakt mit klarer Meldung ab, statt das
+      Ereignis still auszulassen. Die SSRF-Grenze in ssrf-guard.ts, rss und dem
+      RFC-3161-Port nutzt die typisierte HttpTargetPolicy aus
+      @taxtronik/http-utils statt Casts; die Richtlinie selbst ist unverändert.
+      Versandinhalte, Empfängerauflösung, Zeitstempelstelle und
+      Hardware-Richtlinie bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/mail/src/__tests__/n8n-emitter.test.ts
+      - apps/web/src/__tests__/instrumentation.test.ts
+      - apps/web/src/server/http/__tests__/ssrf-guard-policy.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-014
     date: '2026-10-06'
     paths:
@@ -3138,6 +3166,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-015` dokumentiert die ausdrückliche
+  Registrierung der Mail-Integrationen und die typisierte SSRF-Grenze.
+  Versand und Zeitstempelung bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-014` dokumentiert den Versand der
   Mandanten-Mails über eine Outbox mit Wiederholung und Zustellstatus.

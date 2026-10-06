@@ -18,7 +18,11 @@ import type { N8nEventName } from '@taxtronik/n8n-shared';
 import { sendMail, type MailAttachment } from './send';
 import { readMailDispatch } from './dispatch-settings';
 import { mailLog } from './logger';
-import { emitViaConfiguredN8n, type MailN8nEmitOptions } from './n8n-emitter';
+import {
+  assertN8nEmitterRegistered,
+  emitViaConfiguredN8n,
+  type MailN8nEmitOptions,
+} from './n8n-emitter';
 import { renderSafeMarkdown, escapeMarkdownVariable } from './markdown';
 
 export interface TemplateFallback {
@@ -207,6 +211,9 @@ export async function sendTemplateMail(opts: DispatchOptions): Promise<TemplateM
     actorId: null,
     actorType: 'SYSTEM',
   });
+  // K-10: ohne registrierten Emitter vor jedem externen Versand abbrechen,
+  // statt das n8n-Ereignis nach dem SMTP-Versand still auszulassen.
+  if (dispatch.mode === 'BOTH' && opts.n8nEvent) assertN8nEmitterRegistered(opts.n8nEvent);
 
   const tpl = await prismaOwner.emailTemplate.findFirst({
     where: { tenantId: opts.tenantId, slug: opts.slug, active: true },
@@ -421,6 +428,10 @@ export async function notifyClientContacts(
         actorType: 'SYSTEM',
       })
     : null;
+  // K-10: vor dem ersten Kontaktversand prüfen (siehe sendTemplateMail).
+  if (aggregateDispatch?.mode === 'BOTH' && opts.n8nEvent) {
+    assertN8nEmitterRegistered(opts.n8nEvent);
+  }
   if (contacts.length === 0) {
     const externalSideEffectOccurred = await emitAggregateContactEvent(opts, aggregateDispatch);
     return {
