@@ -588,6 +588,9 @@ importers:
 
   packages/crypto:
     dependencies:
+      '@peculiar/x509':
+        specifier: 1.14.3
+        version: 1.14.3
       '@taxtronik/config':
         specifier: workspace:*
         version: link:../config

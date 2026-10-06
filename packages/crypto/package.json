@@ -8,6 +8,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./certificate-path": "./src/certificate-path.ts",
     "./secret-slots": "./src/secret-slots.ts"
   },
   "scripts": {
@@ -15,6 +16,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@peculiar/x509": "1.14.3",
     "@taxtronik/config": "workspace:*"
   },
   "devDependencies": {
