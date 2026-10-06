@@ -619,6 +619,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Setup- und Startskripte (`setup.sh`, `setup.ps1`, `Start-TaxTronik.ps1`,
+  `Start-SignalDev.ps1`) schreiben die `.env` über eine gemeinsame Hilfe
+  (`scripts/env-tool.mjs`): Werte mit Sonderzeichen wie `|` oder `$` werden
+  nicht mehr abgeschnitten oder ersetzt, Secrets entstehen auch bei
+  CRLF-Vorlagen, bekannte Dev-Defaults werden einheitlich erkannt und die
+  `.env` erhält Modus 0600.
 - Deaktivierte Module sind auch bei Navigation innerhalb der App gesperrt
   (404); Navigation und Zugriffsprüfung nutzen eine gemeinsame
   Modul-Registry. Der Kanzleikalender erscheint, sobald Termine oder

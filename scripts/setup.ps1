@@ -29,16 +29,6 @@ function Write-Warn($msg) {
   Write-Host "    !! $msg" -ForegroundColor Yellow
 }
 
-function New-RandomSecret([int]$bytes = 32) {
-  # N-1: base64url (RFC 4648 §5) statt Standard-Base64. Die generierten Werte
-  # landen u. a. in DATABASE_URL=postgresql://user:${pw}@host/db — ein '/' im
-  # Passwort würde den Password-Teil der URL terminieren und ~40% der Setups
-  # zerschneiden. base64url tauscht '+/' gegen '-_', '=' wird ohnehin gestrippt.
-  $arr = New-Object byte[] $bytes
-  [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($arr)
-  return [Convert]::ToBase64String($arr).TrimEnd('=').Replace('+', '-').Replace('/', '_')
-}
-
 # -------------------------------------------------------------------- Vorprüfungen
 Write-Step "Vorprüfungen"
 
@@ -87,23 +77,37 @@ if (-not (Test-Path .env)) {
   Write-Done ".env aus .env.example angelegt."
 }
 
-$envContent = Get-Content .env -Raw
-
-function Set-EnvVar([string]$key, [string]$value) {
-  if ($script:envContent -match "(?m)^$key=") {
-    $script:envContent = $script:envContent -replace "(?m)^$key=.*$", "$key=$value"
-  } else {
-    $script:envContent = $script:envContent.TrimEnd() + "`n$key=$value`n"
+# .env lesen/schreiben und Secrets erzeugen ueber die gemeinsame Hilfe
+# scripts/env-tool.mjs (wie setup.sh): Werte werden woertlich geschrieben (keine
+# Regex-Ersatzzeichen), nie per Kommandozeile uebergeben, UTF-8 ohne BOM.
+# Secrets sind base64url (N-1: '/' oder '+' wuerden DATABASE_URL zerschneiden).
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  Write-Host "Node.js nicht gefunden. Bitte Node.js 24 installieren (siehe .nvmrc)." -ForegroundColor Red
+  exit 1
+}
+$EnvTool = Join-Path $RepoRoot 'scripts\env-tool.mjs'
+$EnvPath = Join-Path $RepoRoot '.env'
+function Invoke-EnvTool {
+  $output = & node $EnvTool @args
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "env-tool $($args[0]) fehlgeschlagen (Exit $LASTEXITCODE)." -ForegroundColor Red
+    exit 1
   }
+  return [string]$output
+}
+function Set-EnvVar([string]$key, [string]$value) {
+  $env:ENV_TOOL_VALUE = $value
+  try { $null = Invoke-EnvTool set $EnvPath $key } finally { Remove-Item Env:ENV_TOOL_VALUE -ErrorAction SilentlyContinue }
 }
 function Get-EnvVar([string]$key) {
-  if ($script:envContent -match "(?m)^$key=(.*)$") { return $Matches[1].Trim('"') } else { return "" }
+  return (Invoke-EnvTool get $EnvPath $key)
 }
 function Ensure-Secret([string]$key, [int]$bytes) {
-  $current = Get-EnvVar $key
-  if (-not $current) {
-    Set-EnvVar $key (New-RandomSecret $bytes)
+  $result = Invoke-EnvTool ensure $EnvPath $key $bytes
+  if ($result -eq 'generated') {
     Write-Done "$key generiert."
+  } elseif ($result -eq 'weak') {
+    Write-Warn "$key ist ein bekannter Dev-/CI-Default (Prod-Gate lehnt ihn ab); vor Produktivbetrieb neu erzeugen (docs/operations/secret-rotation.md)."
   }
 }
 
@@ -157,8 +161,6 @@ $appUrl = "postgresql://taxtronik_app:$appPw@localhost:5432/taxtronik?schema=pub
 Set-EnvVar 'DATABASE_URL' $dbUrl
 Set-EnvVar 'DATABASE_APP_URL' $appUrl
 Write-Done "DATABASE_URL und DATABASE_APP_URL gesetzt."
-
-Set-Content .env -Value $envContent -Encoding utf8 -NoNewline
 
 # SeaweedFS rendert die S3-Konfiguration beim Containerstart fluechtig nach
 # /run. Historische Secret-Kopie aus dem Checkout entfernen.

@@ -10,6 +10,17 @@
 // =============================================================================
 
 import { z } from 'zod';
+import devDefaultSecrets from './dev-default-secrets.json';
+
+// Bekannte Dev-/CI-Defaults und Wörterbuch-/Wiederholungsmuster für
+// AUTH_SECRET. Die Daten stehen in dev-default-secrets.json, damit
+// scripts/env-tool.mjs in den Setup- und Startskripten dieselben Werte erkennt.
+const DEV_DEFAULT_DENYLIST: ReadonlyArray<{ key: string; value: string }> = Object.entries(
+  devDefaultSecrets.values,
+).flatMap(([key, values]) => values.map((value) => ({ key, value })));
+const WEAK_AUTH_SECRET_PATTERNS = devDefaultSecrets.authSecretPatterns.map(
+  ({ source, flags }) => new RegExp(source, flags),
+);
 
 const NodeEnv = z.enum(['development', 'test', 'production']);
 
@@ -359,20 +370,6 @@ function parseEnv(): Env {
     // sonst eine vorhersagbare Schlüssel-Material-Wurzel haben.
     // N8N_ENCRYPTION_KEY ist nicht im Zod-Schema (wird nur an den n8n-
     // Container durchgereicht), wir prüfen die Rohwerte aus process.env.
-    const DEV_DEFAULT_DENYLIST: Array<{ key: string; value: string }> = [
-      { key: 'AUTH_SECRET', value: 'taxtronik-dev-auth-secret-change-in-production-please' },
-      { key: 'AUTH_SECRET', value: 'changeme' },
-      { key: 'AUTH_SECRET', value: 'secret' },
-      { key: 'N8N_HMAC_SECRET', value: 'dev-only-hmac-secret-min-32-chars-long-xxx' },
-      { key: 'N8N_ENCRYPTION_KEY', value: 'dev-only-n8n-encryption-key-xxxxxxxx' },
-      { key: 'POSTGRES_PASSWORD', value: 'taxtronik' },
-      { key: 'TAXTRONIK_APP_PASSWORD', value: 'taxtronik_app' },
-      { key: 'S3_ACCESS_KEY', value: 'seaweedfs' },
-      { key: 'S3_ACCESS_KEY', value: 'ci' },
-      { key: 'S3_SECRET_KEY', value: 'seaweedfs12345' },
-      { key: 'S3_SECRET_KEY', value: 'ci-secret' },
-      { key: 'S3_SECRET_KEY', value: 'ci-secret-plus-thirtytwo-chars' },
-    ];
     for (const { key, value } of DEV_DEFAULT_DENYLIST) {
       const actual = (parsed.data as Record<string, unknown>)[key] ?? process.env[key];
       if (actual === value) {
@@ -387,7 +384,7 @@ function parseEnv(): Env {
     // Entropie — z. B. Passwortmanager-Default „password1234password1234…").
     // Wir matchen einfache Wiederholungsmuster.
     const authSecret = parsed.data.AUTH_SECRET;
-    if (/^(.)\1{8,}/.test(authSecret) || /^(password|secret|admin|test)/i.test(authSecret)) {
+    if (WEAK_AUTH_SECRET_PATTERNS.some((pattern) => pattern.test(authSecret))) {
       throw new Error(
         '[config] AUTH_SECRET wirkt wie ein Wörterbuch- oder Wiederholungs-Wert. ' +
           'Bitte mit `openssl rand -base64 32` oder via scripts/setup.sh neu generieren.',

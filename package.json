@@ -15,7 +15,7 @@
     "lint:prune-suppressions": "eslint . --prune-suppressions",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "test:ops": "bash scripts/tests/ops-lib.test.sh && bash scripts/tests/migrate-deploy-recovery.test.sh && pnpm --filter @taxtronik/db test:migrate-deploy",
+    "test:ops": "bash scripts/tests/ops-lib.test.sh && node --test scripts/tests/env-tool.test.mjs && bash scripts/tests/migrate-deploy-recovery.test.sh && pnpm --filter @taxtronik/db test:migrate-deploy",
     "e2e": "pnpm --filter @taxtronik/e2e e2e",
     "e2e:ui": "pnpm --filter @taxtronik/e2e e2e:ui",
     "e2e:headed": "pnpm --filter @taxtronik/e2e e2e:headed",

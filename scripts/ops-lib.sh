@@ -392,6 +392,10 @@ require_env() {
 }
 
 # Wert aus .env lesen OHNE shell-Variablen (für Render/Checks vor load_env).
+# get_env/set_env bleiben Bash: `./taxtronik deploy` schreibt die .env
+# (Initialplan) bereits, bevor der 1-Klick-Pfad Node.js installiert. Setup- und
+# Startskripte nutzen scripts/env-tool.mjs mit demselben Verhalten
+# (Paritaetstest in scripts/tests/env-tool.test.mjs).
 get_env() {
   local key="$1"
   [[ -f "$ENVFILE" ]] || return 0
@@ -428,11 +432,18 @@ set_env() {
   chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
 }
 
+# Fuellt nur leere Secrets. Bekannte Dev-/CI-Defaults (dieselbe Liste wie das
+# Prod-Gate in @taxtronik/config, via scripts/env-tool.mjs) werden gemeldet,
+# aber nicht ersetzt: DB-/n8n-Zugaenge liegen auch in bestehenden Volumes und
+# AUTH_SECRET kann Legacy-Secret-Box-Ciphertexte schuetzen.
 ensure_secret() {
   local key="$1" bytes="$2"
   if [[ -z "$(get_env "$key")" ]]; then
     set_env "$key" "$(rand_b64 "$bytes")"
     info "$key generiert."
+  elif command -v node >/dev/null 2>&1 && \
+      [[ "$(node "$ROOT/scripts/env-tool.mjs" weak "$ENVFILE" "$key" 2>/dev/null || true)" == "weak" ]]; then
+    warn "$key ist ein bekannter Dev-/CI-Default, den die App in Produktion ablehnt; kontrolliert rotieren (docs/operations/secret-rotation.md)."
   fi
 }
 

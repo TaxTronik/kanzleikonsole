@@ -3353,6 +3353,22 @@ test_secret_files_are_mode_0600() {
   pass "operator secrets use mode 0600/umask 077 without host-side S3 copy"
 }
 
+test_ensure_secret_reports_known_dev_defaults() {
+  local env_file="$TMP_DIR/weak-defaults.env" out="$TMP_DIR/weak-defaults.out"
+  printf 'N8N_HMAC_SECRET=dev-only-hmac-secret-min-32-chars-long-xxx\nAUTH_SECRET=\n' >"$env_file"
+  (
+    ENVFILE="$env_file"
+    ensure_secret N8N_HMAC_SECRET 32
+    ensure_secret AUTH_SECRET 32
+  ) >"$out" 2>&1
+  assert_contains "$out" "N8N_HMAC_SECRET ist ein bekannter Dev-/CI-Default"
+  assert_contains "$out" "AUTH_SECRET generiert."
+  assert_key_equals "$env_file" N8N_HMAC_SECRET dev-only-hmac-secret-min-32-chars-long-xxx
+  [[ "$(grep -E '^AUTH_SECRET=' "$env_file" | cut -d= -f2-)" =~ ^[A-Za-z0-9_-]{43}$ ]] || \
+    test_fail "empty AUTH_SECRET was not generated"
+  pass "ensure_secret fills empty secrets and reports known dev defaults without rotating them"
+}
+
 test_doctor_accepts_prod_smtp
 test_doctor_checks_db_pool_sum_against_max_connections
 test_doctor_rejects_mailhog
@@ -3466,5 +3482,6 @@ test_inherited_internal_authorization_is_sanitized
 test_identical_redeploy_preserves_previous_state
 test_min_previous_without_state_fails_for_existing_installation
 test_secret_files_are_mode_0600
+test_ensure_secret_reports_known_dev_defaults
 
 printf '\n%s ops-lib tests passed.\n' "$TESTS_RUN"

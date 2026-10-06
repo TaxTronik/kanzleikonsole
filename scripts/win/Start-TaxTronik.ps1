@@ -40,56 +40,32 @@ function Die($m) { Write-Host $m -ForegroundColor Red; exit 1 }
 # Native Ausgabe und Exitstatus dürfen nicht im selben Rückgabewert landen.
 . (Join-Path $PSScriptRoot 'docker-commands.ps1')
 
-# base64url-Secret (RFC 4648 §5) — '+/=' würden in DATABASE_URL/JSON Probleme machen.
-function New-Secret([int]$bytes){
-  $b = New-Object byte[] $bytes
-  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-  try { $rng.GetBytes($b) } finally { $rng.Dispose() }
-  ([Convert]::ToBase64String($b)) -replace '\+','-' -replace '/','_' -replace '=',''
-}
-
 # --- .env lesen/schreiben ----------------------------------------------------
-function Read-EnvMap {
-  $map = @{}
-  if (Test-Path -LiteralPath $EnvFile) {
-    foreach($line in @(Get-Content -LiteralPath $EnvFile)){
-      if ($line -match '^\s*#' -or $line -notmatch '=') { continue }
-      $parts = $line -split '=',2
-      $k = $parts[0].Trim()
-      if ($k) { $map[$k] = $parts[1] }
-    }
-  }
-  return $map
+# Gemeinsame Hilfe scripts/env-tool.mjs (wie setup.sh/setup.ps1): Werte werden
+# woertlich geschrieben, nie per Kommandozeile uebergeben, UTF-8 ohne BOM.
+# Secrets sind base64url. Bekannte Dev-/CI-Defaults kommen aus
+# packages/config/src/dev-default-secrets.json, derselben Liste wie das
+# Prod-Gate: Im Container laeuft NODE_ENV=production und lehnt solche Werte ab.
+$EnvTool = Join-Path $Root 'scripts\env-tool.mjs'
+function Invoke-EnvTool {
+  $output = & node $EnvTool @args
+  if ($LASTEXITCODE -ne 0) { Die "env-tool $($args[0]) fehlgeschlagen (Exit $LASTEXITCODE)." }
+  return [string]$output
 }
-function Get-EnvVal($map,$key){ if($map.ContainsKey($key)){ return $map[$key] } else { return '' } }
+function Get-EnvVal($key){ return (Invoke-EnvTool get $EnvFile $key) }
 function Set-EnvVal($key,$value){
-  $lines = @()
-  if (Test-Path -LiteralPath $EnvFile) { $lines = @(Get-Content -LiteralPath $EnvFile) }
-  $found = $false
-  for($i=0; $i -lt $lines.Count; $i++){
-    if ($lines[$i] -match "^\s*$([regex]::Escape($key))\s*="){ $lines[$i] = "$key=$value"; $found = $true; break }
-  }
-  if (-not $found){ $lines += "$key=$value" }
-  $enc = New-Object System.Text.UTF8Encoding($false)   # UTF-8 OHNE BOM (sonst bricht die 1. Zeile)
-  [System.IO.File]::WriteAllLines($EnvFile, [string[]]$lines, $enc)
+  $env:ENV_TOOL_VALUE = $value
+  try { $null = Invoke-EnvTool set $EnvFile $key } finally { Remove-Item Env:ENV_TOOL_VALUE -ErrorAction SilentlyContinue }
 }
-# Bekannte Dev-Default-Werte (Spiegel der Denylist in packages/config/src/env.ts).
-# Im Container läuft NODE_ENV=production → das Prod-Gate LEHNT solche Werte ab.
-# Daher ersetzen, nicht nur leere Felder füllen (sonst bootet app/worker nicht).
-$DevDefaults = @{
-  'AUTH_SECRET'        = @('taxtronik-dev-auth-secret-change-in-production-please','changeme','secret')
-  'N8N_HMAC_SECRET'    = @('dev-only-hmac-secret-min-32-chars-long-xxx')
-  'N8N_ENCRYPTION_KEY' = @('dev-only-n8n-encryption-key-xxxxxxxx')
-}
-function Test-WeakSecret($key,$val){
-  if (-not $val) { return $true }
-  if ($DevDefaults.ContainsKey($key) -and ($DevDefaults[$key] -contains $val)) { return $true }
-  if ($key -eq 'AUTH_SECRET' -and ($val -match '^(password|secret|admin|test)' -or $val -match '^(.)\1{8,}')) { return $true }
-  return $false
-}
-function Ensure-Secret($key,$bytes){
-  $m = Read-EnvMap
-  if (Test-WeakSecret $key (Get-EnvVal $m $key)) { Set-EnvVal $key (New-Secret $bytes); Ok "$key generiert/ersetzt." }
+# Leere Werte fuellen; mit -ReplaceWeak auch bekannte Defaults ersetzen (sonst
+# bootet app/worker nicht). Ohne -ReplaceWeak nur warnen: Datenbank-, S3- und
+# n8n-DB-Zugaenge sind in bestehenden Volumes hinterlegt.
+function Ensure-Secret($key,$bytes,[switch]$ReplaceWeak){
+  $toolArgs = @('ensure', $EnvFile, $key, $bytes)
+  if ($ReplaceWeak) { $toolArgs += '--replace-weak' }
+  $result = Invoke-EnvTool @toolArgs
+  if ($result -eq 'generated' -or $result -eq 'replaced') { Ok "$key generiert/ersetzt." }
+  elseif ($result -eq 'weak') { Warn "$key ist ein bekannter Dev-/CI-Default; das Prod-Gate im Container lehnt ihn ab (docs/operations/secret-rotation.md)." }
 }
 
 # --- 1. Docker ---------------------------------------------------------------
@@ -108,22 +84,22 @@ Ok "Docker laeuft."
 
 # --- 2. .env + Secrets -------------------------------------------------------
 Info ".env vorbereiten"
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Die "Node.js fehlt. Bitte Node.js 24 installieren (siehe .nvmrc)." }
 if (-not (Test-Path -LiteralPath $EnvFile)) {
   Copy-Item -LiteralPath (Join-Path $Root '.env.example') -Destination $EnvFile
   Ok ".env aus .env.example angelegt."
 }
-Ensure-Secret 'AUTH_SECRET'           32
-Ensure-Secret 'N8N_HMAC_SECRET'       32
-Ensure-Secret 'N8N_ENCRYPTION_KEY'    24
+Ensure-Secret 'AUTH_SECRET'           32 -ReplaceWeak
+Ensure-Secret 'N8N_HMAC_SECRET'       32 -ReplaceWeak
+Ensure-Secret 'N8N_ENCRYPTION_KEY'    24 -ReplaceWeak
 Ensure-Secret 'POSTGRES_PASSWORD'     24
 Ensure-Secret 'TAXTRONIK_APP_PASSWORD' 24
 Ensure-Secret 'S3_ACCESS_KEY'         16
 Ensure-Secret 'S3_SECRET_KEY'         32
 Ensure-Secret 'N8N_DB_PASSWORD'       24
 # DB-URLs für Host-Werkzeuge (die Container bekommen ihre URLs aus der Compose).
-$m = Read-EnvMap
-$pgpw = Get-EnvVal $m 'POSTGRES_PASSWORD'
-$apw  = Get-EnvVal $m 'TAXTRONIK_APP_PASSWORD'
+$pgpw = Get-EnvVal 'POSTGRES_PASSWORD'
+$apw  = Get-EnvVal 'TAXTRONIK_APP_PASSWORD'
 Set-EnvVal 'DATABASE_URL'     "postgresql://taxtronik:$pgpw@localhost:5432/taxtronik?schema=public"
 Set-EnvVal 'DATABASE_APP_URL' "postgresql://taxtronik_app:$apw@localhost:5432/taxtronik?schema=public"
 Ok ".env bereit."
@@ -133,9 +109,8 @@ Ok ".env bereit."
 if (Test-Path -LiteralPath $S3Generated) { Remove-Item -LiteralPath $S3Generated -Force }
 
 # --- 4. Images sicherstellen -------------------------------------------------
-$m = Read-EnvMap
-$prefix = Get-EnvVal $m 'TAXTRONIK_IMAGE_PREFIX'; if (-not $prefix) { $prefix = 'taxtronik' }
-$ver    = Get-EnvVal $m 'TAXTRONIK_VERSION';      if (-not $ver)    { $ver = 'dev' }
+$prefix = Get-EnvVal 'TAXTRONIK_IMAGE_PREFIX'; if (-not $prefix) { $prefix = 'taxtronik' }
+$ver    = Get-EnvVal 'TAXTRONIK_VERSION';      if (-not $ver)    { $ver = 'dev' }
 $webImg = "$prefix/web:$ver"; $workerImg = "$prefix/worker:$ver"
 if ($Build -or -not (Image-Exists $webImg) -or -not (Image-Exists $workerImg)) {
   Info "Images bauen ($webImg, $workerImg) — erster Lauf dauert einige Minuten"
@@ -150,18 +125,16 @@ if ($Build -or -not (Image-Exists $webImg) -or -not (Image-Exists $workerImg)) {
 # SeaweedFS-Host-Ports: Windows (Hyper-V/WSL) reserviert oft 8333/9333 → freie
 # Defaults setzen, falls in der .env nicht überschrieben. Nur für Host-Zugriff;
 # die App nutzt seaweedfs:8333 intern (Container-Netz), unabhängig davon.
-$m = Read-EnvMap
-if (-not (Get-EnvVal $m 'SEAWEED_S3_PORT'))     { $env:SEAWEED_S3_PORT     = '38333' }
-if (-not (Get-EnvVal $m 'SEAWEED_MASTER_PORT')) { $env:SEAWEED_MASTER_PORT = '39333' }
-if (-not (Get-EnvVal $m 'SEAWEED_FILER_PORT'))  { $env:SEAWEED_FILER_PORT  = '38888' }
+if (-not (Get-EnvVal 'SEAWEED_S3_PORT'))     { $env:SEAWEED_S3_PORT     = '38333' }
+if (-not (Get-EnvVal 'SEAWEED_MASTER_PORT')) { $env:SEAWEED_MASTER_PORT = '39333' }
+if (-not (Get-EnvVal 'SEAWEED_FILER_PORT'))  { $env:SEAWEED_FILER_PORT  = '38888' }
 
 Info "Stack starten (Infra + App + Worker + n8n; Migrationen via migrate-Service)"
 if ((Run-Docker compose --env-file '.env' -f $Base -f $App up -d) -ne 0) { Die "docker compose up fehlgeschlagen." }
 Ok "Container laufen."
 
 # --- 6. Health abwarten ------------------------------------------------------
-$m = Read-EnvMap
-$port = Get-EnvVal $m 'APP_BIND_PORT'; if (-not $port) { $port = '3000' }
+$port = Get-EnvVal 'APP_BIND_PORT'; if (-not $port) { $port = '3000' }
 $url  = "http://127.0.0.1:$port/api/health"
 Info "Warte auf App-Health ($url)"
 $ready = $false

@@ -30,25 +30,13 @@ done_() { printf "    ${green}ok: %s${reset}\n" "$1"; }
 warn()  { printf "    ${yellow}!! %s${reset}\n" "$1"; }
 fail()  { printf "${red}%s${reset}\n" "$1"; exit 1; }
 
-rand_b64() {
-  # N-1: base64url (RFC 4648 §5) statt Standard-Base64. Die generierten Werte
-  # landen u. a. in DATABASE_URL=postgresql://user:${pw}@host/db — ein '/' im
-  # Passwort würde den Password-Teil der URL terminieren und ~40% der Setups
-  # zerschneiden. base64url tauscht '+/' gegen '-_', '=' wird ohnehin gestrippt.
-  local bytes="${1:-32}"
-  if command -v openssl >/dev/null 2>&1; then
-    openssl rand -base64 "$bytes" | tr -d '=\n' | tr '+/' '-_'
-  else
-    head -c "$bytes" /dev/urandom | base64 | tr -d '=\n' | tr '+/' '-_'
-  fi
-}
-
 # -------------------------------------------------------------------- Vorprüfungen
 step "Vorprüfungen"
 docker info >/dev/null 2>&1 || fail "Docker ist nicht erreichbar. Bitte Docker starten und erneut ausführen."
 done_ "Docker läuft."
 command -v pnpm >/dev/null 2>&1 || fail "pnpm fehlt. Bitte installieren: npm install -g pnpm"
 done_ "pnpm verfügbar."
+command -v node >/dev/null 2>&1 || fail "Node.js fehlt. Bitte Node.js 24 installieren (siehe .nvmrc)."
 
 # -------------------------------------------------------------------- Reset
 if [[ $RESET -eq 1 ]]; then
@@ -67,30 +55,24 @@ if [[ ! -f .env ]]; then
   done_ ".env aus .env.example angelegt."
 fi
 
+# .env lesen/schreiben und Secrets erzeugen ueber die gemeinsame Hilfe
+# scripts/env-tool.mjs (auch setup.ps1 und scripts/win/*.ps1): Werte werden
+# woertlich geschrieben (kein sed-Escaping), nie per Kommandozeile uebergeben,
+# die .env behaelt Modus 0600. Secrets sind base64url (N-1: '/' oder '+' wuerden
+# DATABASE_URL zerschneiden).
 set_env() {
-  local key="$1" value="$2"
-  # Slashes/Ampersands im Wert für sed escapen
-  local esc=$(printf '%s\n' "$value" | sed -e 's/[\/&]/\\&/g')
-  if grep -qE "^${key}=" .env; then
-    if sed --version >/dev/null 2>&1; then
-      sed -i -E "s|^${key}=.*$|${key}=${esc}|" .env
-    else
-      sed -i '' -E "s|^${key}=.*$|${key}=${esc}|" .env
-    fi
-  else
-    printf '%s=%s\n' "$key" "$value" >> .env
-  fi
+  ENV_TOOL_VALUE="$2" node scripts/env-tool.mjs set .env "$1" >/dev/null
 }
 get_env() {
-  local key="$1"
-  grep -E "^${key}=" .env | head -n1 | cut -d= -f2- | tr -d '"'
+  node scripts/env-tool.mjs get .env "$1"
 }
 ensure_secret() {
-  local key="$1" bytes="$2"
-  if [[ -z "$(get_env "$key")" ]]; then
-    set_env "$key" "$(rand_b64 "$bytes")"
-    done_ "$key generiert."
-  fi
+  local key="$1" bytes="$2" result
+  result="$(node scripts/env-tool.mjs ensure .env "$key" "$bytes")"
+  case "$result" in
+    generated) done_ "$key generiert." ;;
+    weak) warn "$key ist ein bekannter Dev-/CI-Default (Prod-Gate lehnt ihn ab); vor Produktivbetrieb neu erzeugen (docs/operations/secret-rotation.md)." ;;
+  esac
 }
 
 # Auth / HMAC / Verschlüsselung
@@ -186,7 +168,7 @@ if [[ $SKIP_SEED -eq 0 ]]; then
   # ein Fehler. Der Seed selbst lehnt das jetzt zwar ab (process.exit(1)),
   # aber wir wollen den Operator vorher klar warnen statt einer kryptischen
   # Failure-Meldung mitten im Setup.
-  detected_env=$(grep -E '^NODE_ENV=' .env 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '"' || true)
+  detected_env="$(get_env NODE_ENV)"
   if [[ "$detected_env" == "production" ]]; then
     warn "Demo-Seed übersprungen: NODE_ENV=production in .env erkannt."
     warn "Production-Provisionierung (Tenant + Admin, KEINE Demodaten):"

@@ -31,65 +31,29 @@ function Ok([string]$Message) { Write-Host "    ok: $Message" -ForegroundColor G
 function Warn([string]$Message) { Write-Host "    !! $Message" -ForegroundColor Yellow }
 function Fail([string]$Message) { throw $Message }
 
+# .env lesen/schreiben und Secrets erzeugen ueber die gemeinsame Hilfe
+# scripts/env-tool.mjs (wie setup.sh/setup.ps1): Werte werden woertlich
+# geschrieben, nie per Kommandozeile uebergeben, UTF-8 ohne BOM; Secrets sind
+# base64url.
+$EnvTool = Join-Path $Root 'scripts\env-tool.mjs'
+function Invoke-EnvTool {
+  $output = & node $EnvTool @args
+  if ($LASTEXITCODE -ne 0) { Fail "env-tool $($args[0]) failed (exit $LASTEXITCODE)." }
+  return [string]$output
+}
+
 function New-Secret([int]$Bytes) {
-  $buffer = New-Object byte[] $Bytes
-  $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
-  try { $rng.GetBytes($buffer) } finally { $rng.Dispose() }
-  return (([Convert]::ToBase64String($buffer)) -replace '\+','-' -replace '/','_' -replace '=','')
+  return (Invoke-EnvTool secret $Bytes)
 }
 
-function Read-EnvMap {
-  $map = @{}
-  if (Test-Path -LiteralPath $EnvFile) {
-    foreach ($line in @(Get-Content -LiteralPath $EnvFile)) {
-      if ($line -match '^\s*#' -or $line -notmatch '=') { continue }
-      $parts = $line -split '=', 2
-      $key = $parts[0].Trim()
-      if ($key) { $map[$key] = $parts[1].Trim() }
-    }
-  }
-  return $map
-}
-
-function Get-EnvValue($Map, [string]$Key) {
-  if (-not $Map.ContainsKey($Key)) { return '' }
-  $value = [string]$Map[$Key]
-  if ($value.Length -ge 2) {
-    if (($value.StartsWith('"') -and $value.EndsWith('"')) -or
-        ($value.StartsWith("'") -and $value.EndsWith("'"))) {
-      return $value.Substring(1, $value.Length - 2)
-    }
-  }
-  return $value
+function Get-EnvValue([string]$Key) {
+  return (Invoke-EnvTool get $EnvFile $Key)
 }
 
 function Set-EnvValue([string]$Key, [string]$Value) {
-  $lines = @()
-  if (Test-Path -LiteralPath $EnvFile) {
-    $lines = @(Get-Content -LiteralPath $EnvFile)
-  }
-  $found = $false
-  $changed = $false
-  for ($index = 0; $index -lt $lines.Count; $index++) {
-    if ($lines[$index] -match "^\s*$([regex]::Escape($Key))\s*=") {
-      $replacement = "$Key=$Value"
-      if ($lines[$index] -cne $replacement) {
-        $lines[$index] = $replacement
-        $changed = $true
-      }
-      $found = $true
-      break
-    }
-  }
-  if (-not $found) {
-    $lines += "$Key=$Value"
-    $changed = $true
-  }
-  if ($changed) {
-    $encoding = New-Object Text.UTF8Encoding($false)
-    [IO.File]::WriteAllLines($EnvFile, [string[]]$lines, $encoding)
-    $script:EnvChanged = $true
-  }
+  $env:ENV_TOOL_VALUE = $Value
+  try { $result = Invoke-EnvTool set $EnvFile $Key } finally { Remove-Item Env:ENV_TOOL_VALUE -ErrorAction SilentlyContinue }
+  if ($result -eq 'changed') { $script:EnvChanged = $true }
 }
 
 function Test-Token([string]$Value) {
@@ -140,14 +104,13 @@ if ($embeddingRuntimeName -eq 'amd') {
 }
 
 Info 'TaxTronik development credentials'
-$values = Read-EnvMap
-$bearerToken = Get-EnvValue $values 'RISK_LAYER_TOKEN'
+$bearerToken = Get-EnvValue 'RISK_LAYER_TOKEN'
 if (-not (Test-Token $bearerToken)) {
   $bearerToken = New-Secret 32
   Set-EnvValue 'RISK_LAYER_TOKEN' $bearerToken
   Ok 'RISK_LAYER_TOKEN generated (not displayed).'
 }
-$operatorToken = Get-EnvValue $values 'RISK_LAYER_OPERATOR_TOKEN'
+$operatorToken = Get-EnvValue 'RISK_LAYER_OPERATOR_TOKEN'
 if (-not (Test-Token $operatorToken) -or $operatorToken -ceq $bearerToken) {
   $operatorToken = New-Secret 32
   Set-EnvValue 'RISK_LAYER_OPERATOR_TOKEN' $operatorToken
