@@ -227,6 +227,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Bescheidliste: Fristen-, Status- und Abweichungsanzeige jeder Zeile entsteht
+  aus einem reinen, getesteten View-Model; Darstellung unverändert
+  (`TAX-NOTICE-APPEAL-001`, `TAX-NOTICE-DATARETRIEVAL-001`,
+  `TAX-CONTROL-STATUS-001`, `FK-EXC-20261006-026`).
 - Mandanten-Cockpit: Jeder Block lädt über einen eigenen Loader und erscheint
   unabhängig in seiner Suspense-Grenze; die Blöcke teilen weiterhin eine
   Mandanten-Transaktion. Schlägt eine Abfrage fehl, zeigen nur der betroffene

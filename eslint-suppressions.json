@@ -89,11 +89,6 @@
       "count": 1
     }
   },
-  "apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx": {
-    "complexity": {
-      "count": 1
-    }
-  },
   "apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx": {
     "complexity": {
       "count": 1

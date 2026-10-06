@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-026
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx
+    rule_ids:
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+      - TAX-CONTROL-STATUS-001
+    reason: >-
+      Die Bescheidliste berechnet Fristen-, Status- und Abweichungsanzeige jeder
+      Zeile in einem reinen View-Model (notices/notice-row-vm.ts, toNoticeRowVm)
+      statt im JSX-Callback der Seite; eine Zeilenkomponente rendert es. Die
+      Darstellung ist unverändert (Differenzvergleich über 54 Tabellenfälle und
+      4000 Zufallslisten mit identischem Markup); Fristberechnung, Statuslogik und
+      Datenabruf sind nicht betroffen. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-025
     date: '2026-10-06'
     paths:
@@ -3513,6 +3536,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-026` dokumentiert das View-Model der
+  Bescheidliste. Fristen- und Statuslogik bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-025` dokumentiert eigene Loader je
   Cockpit-Block. Zugriff, Suchumfang und Wiedervorlagen bleiben unverändert.
