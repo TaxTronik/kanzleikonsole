@@ -10,6 +10,7 @@ import {
   type CommitDocumentResult,
   type PreparedBytesCommit,
 } from '@taxtronik/storage';
+import { readUploadFile } from '@/server/documents/upload-file';
 import { evidenceService } from '@/server/container';
 import { withSystemContext, type TxClient } from '@taxtronik/db';
 import {
@@ -66,12 +67,9 @@ import {
 
 // M4: GwG-Uploads sind enger gecappt als der globale MAX_UPLOAD_BYTES (25 MiB).
 // Ausweis-Scans sind typischerweise ≤5 MB; 10 MB ist großzügig für hochauflösende
-// PDFs. Das base64-Limit entspricht binär ~7.5 MB; binäre Prüfung darunter
-// erzwingt die echte Grenze.
-const GWG_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
-// base64-overhead: 4 chars pro 3 bytes → 10 MB binär = ~13.4 MB base64.
-// 14 MB Schema-Limit schützt vor Memory-DOS durch Parsing übergroßer base64.
-const GWG_BASE64_MAX_CHARS = 14 * 1024 * 1024;
+// PDFs. F-09: Die Datei kommt binär als File in FormData; die Grenze
+// (gwgOnboardingFile) steht mit Anzeige und Server-Action-Body-Limit in
+// src/lib/upload-limits.mjs.
 
 export interface ActionResult {
   ok: boolean;
@@ -203,7 +201,6 @@ const UploadSchema = z.object({
   token: z.string().min(10),
   fileName: z.string().min(1).max(200),
   mimeType: z.string().min(1).max(100),
-  base64: z.string().min(1).max(GWG_BASE64_MAX_CHARS),
   kind: z.enum(['ID_DOCUMENT', 'EXTRA']),
   personName: z.string().max(200).optional(),
 });
@@ -248,17 +245,26 @@ function classifyFailedUploadRecovery(input: {
   return finalizationCallbackCompleted ? 'RETAIN_AMBIGUOUS' : 'DELETE_OBJECT';
 }
 
-export async function uploadIdImageAction(input: {
-  token: string;
-  fileName: string;
-  mimeType: string;
-  base64: string;
-  kind: 'ID_DOCUMENT' | 'EXTRA';
-  personName?: string;
-}): Promise<ActionResult> {
-  const parsed = UploadSchema.safeParse(input);
+/**
+ * F-09: Die Datei kommt als `File` in `upload` (FormData-Feld `file`), nicht
+ * mehr als base64-String im Action-Body.
+ */
+export async function uploadIdImageAction(
+  input: {
+    token: string;
+    kind: 'ID_DOCUMENT' | 'EXTRA';
+    personName?: string;
+  },
+  upload: FormData,
+): Promise<ActionResult> {
+  const entry = upload?.get('file');
+  const parsed = UploadSchema.safeParse({
+    ...input,
+    fileName: entry instanceof File ? entry.name : undefined,
+    mimeType: entry instanceof File ? entry.type || 'application/octet-stream' : undefined,
+  });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { token, fileName, mimeType, base64, kind, personName } = parsed.data;
+  const { token, fileName, mimeType, kind, personName } = parsed.data;
 
   // H2: Rate-Limit gegen Sättigung von Storage + ClamAV-Backend. Pro IP
   // und pro Token getrennt — ein böser Token-Inhaber soll andere Mandanten
@@ -304,10 +310,9 @@ export async function uploadIdImageAction(input: {
   );
   if (!revisionCurrent) return { ok: false, error: GENERIC_TOKEN_ERROR };
 
-  const fileData = Buffer.from(base64, 'base64');
-  if (fileData.length > GWG_UPLOAD_MAX_BYTES) {
-    return { ok: false, error: `Datei zu groß (max. ${GWG_UPLOAD_MAX_BYTES / (1024 * 1024)} MB).` };
-  }
+  const read = await readUploadFile(upload, 'file', 'gwgOnboardingFile');
+  if (!read.ok) return { ok: false, error: read.error };
+  const fileData = read.bytes;
   // Defense in Depth: globaler Cap aus dem Storage-Service spiegelt das
   // Limit von commitDocumentFromBytes. Sollte beim GwG-Pfad nie greifen
   // (GwG-Cap ist enger), aber falls jemand das GwG-Limit hochsetzt ohne

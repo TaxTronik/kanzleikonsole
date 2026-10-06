@@ -8,6 +8,11 @@ import { saveTaxFilingAction, shareTaxFilingAction, deleteTaxFilingAction } from
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { NOTICE_KIND_LABELS } from '@/lib/domain-labels';
 import { confirmDialog, noticeDialog } from '@/components/ui/modal';
+import { MAX_UPLOAD_BYTES_BY_KIND, formatUploadLimit } from '@/lib/upload-limits.mjs';
+
+// F-09: dieselbe Grenze wie die serverseitige Prüfung (binärer FormData-Upload).
+const MAX_PDF_BYTES = MAX_UPLOAD_BYTES_BY_KIND.taxFilingPdf;
+const MAX_PDF_LABEL = formatUploadLimit(MAX_PDF_BYTES);
 const KIND_KEYS = [
   'USTA',
   'UST_JAHR',
@@ -255,39 +260,34 @@ function FilingForm({
 
   async function save() {
     setError(null);
-    let pdf: { fileName: string; mimeType: string; base64: string } | null = null;
+    // Die PDF geht binär als File mit; kein base64-Aufschlag im Action-Body.
+    let upload: FormData | null = null;
     if (pdfFile) {
-      if (pdfFile.size > 10 * 1024 * 1024) {
-        setError('PDF zu groß (max. 10 MB).');
+      if (pdfFile.size > MAX_PDF_BYTES) {
+        setError(`PDF zu groß (max. ${MAX_PDF_LABEL}).`);
         return;
       }
-      try {
-        pdf = {
-          fileName: pdfFile.name,
-          mimeType: pdfFile.type || 'application/pdf',
-          base64: await fileToBase64(pdfFile),
-        };
-      } catch (e) {
-        setError((e as Error).message);
-        return;
-      }
+      upload = new FormData();
+      upload.set('pdf', pdfFile);
     }
 
     start(async () => {
-      const r = await saveTaxFilingAction({
-        filingId: initial?.id ?? null,
-        clientId,
-        kind,
-        period: period.trim(),
-        filingDate: filingDate || null,
-        expectedAssessed: strToNum(expectedAssessed),
-        expectedPrepaid: strToNum(expectedPrepaid),
-        expectedRefund: strToNum(expectedRefund),
-        expectedPay: strToNum(expectedPay),
-        clientNote: clientNote.trim() || null,
-        internalNote: internalNote.trim() || null,
-        pdf,
-      });
+      const r = await saveTaxFilingAction(
+        {
+          filingId: initial?.id ?? null,
+          clientId,
+          kind,
+          period: period.trim(),
+          filingDate: filingDate || null,
+          expectedAssessed: strToNum(expectedAssessed),
+          expectedPrepaid: strToNum(expectedPrepaid),
+          expectedRefund: strToNum(expectedRefund),
+          expectedPay: strToNum(expectedPay),
+          clientNote: clientNote.trim() || null,
+          internalNote: internalNote.trim() || null,
+        },
+        upload,
+      );
       if (!r.ok) {
         setError(r.error ?? 'Fehler beim Speichern.');
         return;
@@ -404,7 +404,7 @@ function FilingForm({
 
       <div>
         <label className="label" htmlFor="tax-filing-pdf">
-          Berechnungs-PDF (optional, max. 10 MB)
+          Berechnungs-PDF (optional, max. {MAX_PDF_LABEL})
         </label>
         <input
           id="tax-filing-pdf"
@@ -483,17 +483,4 @@ function strToNum(s: string): number | null {
   if (s.trim() === '') return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result);
-      const idx = result.indexOf(',');
-      resolve(idx >= 0 ? result.slice(idx + 1) : result);
-    };
-    reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
-    reader.readAsDataURL(file);
-  });
 }

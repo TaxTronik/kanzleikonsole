@@ -5,6 +5,11 @@ import { useRouter } from 'next/navigation';
 import { Upload, FileText, Send } from 'lucide-react';
 import { uploadExternalInvoiceAction } from '../actions';
 import { ClientCombobox } from '@/components/ui/client-combobox';
+import { MAX_UPLOAD_BYTES_BY_KIND, formatUploadLimit } from '@/lib/upload-limits.mjs';
+
+// F-09: dieselbe Grenze wie die serverseitige Prüfung (binärer FormData-Upload).
+const MAX_PDF_BYTES = MAX_UPLOAD_BYTES_BY_KIND.externalInvoicePdf;
+const MAX_PDF_LABEL = formatUploadLimit(MAX_PDF_BYTES);
 
 interface CategoryOption {
   id: string;
@@ -18,15 +23,6 @@ export function ExternalInvoiceForm({ categories }: { categories: CategoryOption
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  function readBase64(f: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve((r.result as string).split(',')[1] ?? '');
-      r.onerror = () => reject(r.error);
-      r.readAsDataURL(f);
-    });
-  }
-
   function submit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -34,25 +30,29 @@ export function ExternalInvoiceForm({ categories }: { categories: CategoryOption
       setError('Bitte eine PDF-Datei auswählen.');
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setError('PDF zu groß (max. 10 MB).');
+    if (file.size > MAX_PDF_BYTES) {
+      setError(`PDF zu groß (max. ${MAX_PDF_LABEL}).`);
       return;
     }
     const fd = new FormData(e.currentTarget);
+    // Die PDF geht binär als File mit; kein base64-Aufschlag im Action-Body.
+    const upload = new FormData();
+    upload.set('pdf', file);
     start(async () => {
-      const base64 = await readBase64(file);
-      const res = await uploadExternalInvoiceAction({
-        clientId: String(fd.get('clientId') ?? ''),
-        categoryId: String(fd.get('categoryId') ?? '') || null,
-        number: String(fd.get('number') ?? ''),
-        issueDate: String(fd.get('issueDate') ?? ''),
-        dueDate: String(fd.get('dueDate') ?? ''),
-        totalAmount: Number(fd.get('totalAmount') ?? 0),
-        vatRatePct: Number(fd.get('vatRatePct') ?? 19),
-        subject: String(fd.get('subject') ?? ''),
-        notes: String(fd.get('notes') ?? '') || null,
-        pdf: { fileName: file.name, mimeType: file.type || 'application/pdf', base64 },
-      });
+      const res = await uploadExternalInvoiceAction(
+        {
+          clientId: String(fd.get('clientId') ?? ''),
+          categoryId: String(fd.get('categoryId') ?? '') || null,
+          number: String(fd.get('number') ?? ''),
+          issueDate: String(fd.get('issueDate') ?? ''),
+          dueDate: String(fd.get('dueDate') ?? ''),
+          totalAmount: Number(fd.get('totalAmount') ?? 0),
+          vatRatePct: Number(fd.get('vatRatePct') ?? 19),
+          subject: String(fd.get('subject') ?? ''),
+          notes: String(fd.get('notes') ?? '') || null,
+        },
+        upload,
+      );
       if (!res.ok) {
         setError(res.error ?? 'Upload fehlgeschlagen.');
         return;
@@ -181,7 +181,7 @@ export function ExternalInvoiceForm({ categories }: { categories: CategoryOption
 
       <div>
         <label className="label" htmlFor="pdf">
-          PDF-Datei <span className="text-red-600">*</span>
+          PDF-Datei (max. {MAX_PDF_LABEL}) <span className="text-red-600">*</span>
         </label>
         <input
           ref={fileInputRef}

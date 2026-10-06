@@ -4,6 +4,11 @@ import { useState, useTransition, type SubmitEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Upload } from 'lucide-react';
 import { importAddisonCsvAction, importDatevXlsxAction, type ImportResult } from './actions';
+import { MAX_UPLOAD_BYTES_BY_KIND, formatUploadLimit } from '@/lib/upload-limits.mjs';
+
+// F-09: dieselbe Grenze wie die serverseitige Prüfung (binärer FormData-Upload).
+const MAX_XLSX_BYTES = MAX_UPLOAD_BYTES_BY_KIND.bwaXlsx;
+const MAX_XLSX_LABEL = formatUploadLimit(MAX_XLSX_BYTES);
 
 type Source = 'ADDISON' | 'DATEV';
 
@@ -22,7 +27,7 @@ export function BwaImportForm({ clientId }: { clientId: string }) {
   const hint =
     source === 'ADDISON'
       ? 'Addison-CSV mit Semikolon, deutsche Dezimalkommas, z. B. a<MandantenNr>.csv'
-      : 'DATEV-XLSX-Vorjahresvergleich, z. B. <Berater>_<Mandant>_<Jahr>_Vorjahresvergleich.xlsx';
+      : `DATEV-XLSX-Vorjahresvergleich (max. ${MAX_XLSX_LABEL}), z. B. <Berater>_<Mandant>_<Jahr>_Vorjahresvergleich.xlsx`;
 
   function handleSubmit(e: SubmitEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -30,6 +35,10 @@ export function BwaImportForm({ clientId }: { clientId: string }) {
     setResult(null);
     if (!file) {
       setError('Bitte Datei auswählen.');
+      return;
+    }
+    if (source === 'DATEV' && file.size > MAX_XLSX_BYTES) {
+      setError(`Datei zu groß (max. ${MAX_XLSX_LABEL}).`);
       return;
     }
 
@@ -44,18 +53,10 @@ export function BwaImportForm({ clientId }: { clientId: string }) {
             csv: text,
           });
         } else {
-          const arrayBuffer = await file.arrayBuffer();
-          const bytes = new Uint8Array(arrayBuffer);
-          let binary = '';
-          for (let i = 0; i < bytes.length; i++) {
-            binary += String.fromCharCode(bytes[i] as number);
-          }
-          const xlsxBase64 = btoa(binary);
-          r = await importDatevXlsxAction({
-            clientId,
-            fileName: file.name,
-            xlsxBase64,
-          });
+          // Binär als File in FormData statt base64 im Action-Body (F-09).
+          const upload = new FormData();
+          upload.set('file', file);
+          r = await importDatevXlsxAction({ clientId }, upload);
         }
         setResult(r);
         if (r.error) setError(r.error);

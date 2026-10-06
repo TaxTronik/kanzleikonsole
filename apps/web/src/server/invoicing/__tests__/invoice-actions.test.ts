@@ -85,6 +85,12 @@ beforeEach(() => {
   });
   m.tx.invoice.update.mockResolvedValue({ id: invoiceId, number: '2026-0001', paidAt: new Date() });
 });
+/** F-09: Fremdrechnungs-PDF binär als File in FormData. */
+function pdfUpload() {
+  const upload = new FormData();
+  upload.set('pdf', new File(['%PDF-'], 'r.pdf', { type: 'application/pdf' }));
+  return upload;
+}
 function input(quantity = 1.23, unitPrice = 100) {
   return {
     clientId,
@@ -142,16 +148,18 @@ describe('INV-VAT-TOTALS-001: Eingabe und gespeicherte Dezimalpräzision', () =>
   it('weist einen externen Bruttobetrag mit Subcent-Präzision vor dem Object-Lock-Upload zurück', async () => {
     m.modules.mockResolvedValue({ invoiceMode: 'EXTERNAL' });
     await expect(
-      uploadExternalInvoiceAction({
-        clientId,
-        number: 'EXT-1',
-        subject: 'Import',
-        issueDate: '2026-06-01',
-        dueDate: '2026-07-01',
-        totalAmount: 1.234,
-        vatRatePct: 19,
-        pdf: { fileName: 'r.pdf', mimeType: 'application/pdf', base64: 'JVBERg==' },
-      }),
+      uploadExternalInvoiceAction(
+        {
+          clientId,
+          number: 'EXT-1',
+          subject: 'Import',
+          issueDate: '2026-06-01',
+          dueDate: '2026-07-01',
+          totalAmount: 1.234,
+          vatRatePct: 19,
+        },
+        pdfUpload(),
+      ),
     ).resolves.toMatchObject({ ok: false, error: expect.stringContaining('Nachkommastellen') });
     expect(m.storage).not.toHaveBeenCalled();
   });

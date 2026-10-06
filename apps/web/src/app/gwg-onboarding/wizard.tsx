@@ -22,6 +22,7 @@ import {
 import {
   DocumentsStep,
   MasterDataStep,
+  MAX_UPLOAD_BYTES,
   MAX_UPLOAD_LABEL,
   ONBOARDING_STEPS,
   OnboardingSubmitted,
@@ -37,30 +38,11 @@ import {
   type Representative,
 } from './wizard-steps';
 
-// Client-seitiges Upload-Limit: Die Datei wird Base64-kodiert an die Server-
-// Action geschickt (+33 % Overhead). Damit eine Datei knapp unter dem Limit
-// das Server-Action-bodySizeLimit von 10 MB (next.config.mjs) nicht sprengt,
-// liegt die effektive Grenze bei 7 MB (7 MB × 4/3 ≈ 9,3 MB + JSON-Overhead).
-const MAX_UPLOAD_BYTES = 7 * 1024 * 1024;
-
 // Stabile React-Keys für Owner-Cards (Add/Remove) — kein key={index}.
 let ownerIdSeq = 0;
 const nextOwnerId = () => `owner-${++ownerIdSeq}`;
 let representativeIdSeq = 0;
 const nextRepresentativeId = () => `representative-${++representativeIdSeq}`;
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(reader.error ?? new Error('Datei konnte nicht gelesen werden.'));
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      const comma = result.indexOf(',');
-      resolve(comma >= 0 ? result.slice(comma + 1) : result);
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
 type OnboardingUploadResult =
   | { ok: true; documentId: string; versionId?: string }
@@ -76,15 +58,10 @@ async function uploadOnboardingFile(
     return { ok: false, error: `Datei zu groß (max. ${MAX_UPLOAD_LABEL}).` };
   }
   try {
-    const base64 = await fileToBase64(file);
-    const result = await uploadIdImageAction({
-      token,
-      fileName: file.name,
-      mimeType: file.type || 'application/octet-stream',
-      base64,
-      kind,
-      personName,
-    });
+    // F-09: binär als File in FormData statt base64 im Action-Body.
+    const upload = new FormData();
+    upload.set('file', file);
+    const result = await uploadIdImageAction({ token, kind, personName }, upload);
     if (!result.ok || !result.documentId) {
       return { ok: false, error: result.error ?? 'Upload fehlgeschlagen.' };
     }

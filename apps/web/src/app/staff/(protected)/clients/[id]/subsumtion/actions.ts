@@ -14,6 +14,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { lockRiskAnalysisTx, requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { fetchObjectBytes } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
+import { readUploadFile } from '@/server/documents/upload-file';
 import { getClientIp } from '@/server/rate-limit';
 import {
   runDeterministicAnalysis,
@@ -568,9 +569,12 @@ export async function importDocTextAction(
   try {
     const clientId = String(formData.get('clientId') ?? '');
     await guardWrite(clientId);
-    const file = formData.get('file');
-    if (!(file instanceof File)) return { ok: false, error: 'Keine Datei übergeben.' };
-    const bytes = Buffer.from(await file.arrayBuffer());
+    // F-09: Grenze aus src/lib/upload-limits.mjs (wie das Server-Action-Body-Limit).
+    const read = await readUploadFile(formData, 'file', 'subsumtionImport', {
+      missing: 'Keine Datei übergeben.',
+    });
+    if (!read.ok) return { ok: false, error: read.error };
+    const { file, bytes } = read;
     const text = await extractText(bytes, file.type || 'application/octet-stream');
     if (!text.trim())
       return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };

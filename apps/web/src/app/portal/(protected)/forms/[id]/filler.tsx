@@ -5,6 +5,7 @@ import { FileText, Upload, X } from 'lucide-react';
 import type { FormFieldType } from '@prisma/client';
 import { fmtTimeMedium } from '@/lib/fmt';
 import { confirmDialog } from '@/components/ui/modal';
+import { MAX_UPLOAD_BYTES_BY_KIND, formatUploadLimit } from '@/lib/upload-limits.mjs';
 import {
   discardFormFileAction,
   saveSubmissionDraftAction,
@@ -327,7 +328,9 @@ function renderField(
   }
 }
 
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
+// F-09: dieselbe Grenze wie die serverseitige Prüfung (binärer FormData-Upload).
+const MAX_FILE_BYTES = MAX_UPLOAD_BYTES_BY_KIND.portalFormFile;
+const MAX_FILE_LABEL = formatUploadLimit(MAX_FILE_BYTES);
 
 function FileUploadField({
   fieldKey,
@@ -352,19 +355,15 @@ function FileUploadField({
     e.target.value = '';
     if (!file) return;
     if (file.size > MAX_FILE_BYTES) {
-      setUploadError(`Datei zu groß (max. ${Math.round(MAX_FILE_BYTES / 1024 / 1024)} MB).`);
+      setUploadError(`Datei zu groß (max. ${MAX_FILE_LABEL}).`);
       return;
     }
     setUploading(true);
     try {
-      const base64 = await fileToBase64(file);
-      const r = await uploadFormFileAction({
-        submissionId,
-        fieldKey,
-        fileName: file.name,
-        mimeType: file.type || 'application/octet-stream',
-        base64,
-      });
+      // Binär als File in FormData statt base64 im Action-Body.
+      const upload = new FormData();
+      upload.set('file', file);
+      const r = await uploadFormFileAction({ submissionId, fieldKey }, upload);
       if (!r.ok || !r.documentId) {
         setUploadError(r.error ?? 'Upload fehlgeschlagen.');
         return;
@@ -444,20 +443,7 @@ function FileUploadField({
         <input type="file" className="hidden" onChange={onPick} disabled={disabled || uploading} />
       </label>
       {uploadError && <div className="text-xs text-red-700">{uploadError}</div>}
-      <p className="text-xs text-muted">Max. 10 MB.</p>
+      <p className="text-xs text-muted">Max. {MAX_FILE_LABEL}.</p>
     </div>
   );
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = String(reader.result);
-      const idx = result.indexOf(',');
-      resolve(idx >= 0 ? result.slice(idx + 1) : result);
-    };
-    reader.onerror = () => reject(new Error('Datei konnte nicht gelesen werden.'));
-    reader.readAsDataURL(file);
-  });
 }

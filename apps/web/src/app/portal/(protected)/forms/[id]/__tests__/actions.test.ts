@@ -57,6 +57,26 @@ import {
   uploadFormFileAction,
 } from '../actions';
 import { storageJournal } from '@/server/documents/__tests__/storage-journal-fake';
+import { MAX_UPLOAD_BYTES_BY_KIND } from '@/lib/upload-limits.mjs';
+
+/** F-09: Datei binär als File in FormData; Metadaten vom File. */
+function uploadFile(input: {
+  submissionId: string;
+  fieldKey: string;
+  fileName: string;
+  mimeType: string;
+  base64: string;
+}) {
+  const upload = new FormData();
+  upload.set(
+    'file',
+    new File([Buffer.from(input.base64, 'base64')], input.fileName, { type: input.mimeType }),
+  );
+  return uploadFormFileAction(
+    { submissionId: input.submissionId, fieldKey: input.fieldKey },
+    upload,
+  );
+}
 
 const SUBMISSION_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -388,7 +408,7 @@ describe('Formular-Lifecycle', () => {
     const documentCreate = vi.fn();
     Object.assign(tx.document, { create: documentCreate });
 
-    const result = await uploadFormFileAction({
+    const result = await uploadFile({
       submissionId: SUBMISSION_ID,
       fieldKey: 'beleg',
       fileName: 'zweiter-beleg.pdf',
@@ -431,7 +451,7 @@ describe('Formular-Lifecycle', () => {
       const versionCreate = vi.fn().mockResolvedValue({});
       Object.assign(tx, { documentVersion: { create: versionCreate } });
       expect(
-        await uploadFormFileAction({
+        await uploadFile({
           submissionId: SUBMISSION_ID,
           fieldKey: 'beleg',
           fileName: 'correction.pdf',
@@ -474,6 +494,30 @@ describe('Formular-Lifecycle', () => {
       }),
     );
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+  });
+
+  // F-09: binärer FormData-Upload bis exakt zur Formular-Grenze; ein Byte mehr
+  // scheitert vor Scan, Journal und Object-Write.
+  it('F-09: nimmt eine Datei genau an der Grenze an und lehnt ein Byte mehr vor dem Scan ab', async () => {
+    const tx = mockTx();
+    tx.formSubmission.findUnique.mockResolvedValue(fileSubmission());
+    Object.assign(tx.document, { create: vi.fn().mockResolvedValue({ id: 'document-1' }) });
+    Object.assign(tx, { documentVersion: { create: vi.fn().mockResolvedValue({}) } });
+    const limit = MAX_UPLOAD_BYTES_BY_KIND.portalFormFile;
+    const send = (size: number) => {
+      const upload = new FormData();
+      upload.set('file', new File([new Uint8Array(size)], 'scan.pdf', { type: 'application/pdf' }));
+      return uploadFormFileAction({ submissionId: SUBMISSION_ID, fieldKey: 'beleg' }, upload);
+    };
+
+    await expect(send(limit + 1)).resolves.toEqual({
+      ok: false,
+      error: 'Datei zu groß (max. 10 MB).',
+    });
+    expect(storageJournal.events).toEqual([]);
+
+    await expect(send(limit)).resolves.toEqual({ ok: true, documentId: 'document-1' });
+    expect(storageJournal.objects).toEqual([expect.objectContaining({ sizeBytes: BigInt(limit) })]);
   });
 
   it('serialisiert parallele Uploads desselben Felds auf genau ein Dokument', async () => {
@@ -519,7 +563,7 @@ describe('Formular-Lifecycle', () => {
       mimeType: 'application/pdf',
       base64: Buffer.from('test').toString('base64'),
     };
-    const results = await Promise.all([uploadFormFileAction(input), uploadFormFileAction(input)]);
+    const results = await Promise.all([uploadFile(input), uploadFile(input)]);
 
     expect(results).toEqual(
       expect.arrayContaining([
@@ -569,7 +613,7 @@ describe('Formular-Lifecycle', () => {
     Object.assign(tx.document, { create: documentCreate });
     Object.assign(tx, { documentVersion: { create: versionCreate } });
 
-    const result = await uploadFormFileAction({
+    const result = await uploadFile({
       submissionId: SUBMISSION_ID,
       fieldKey: 'beleg',
       fileName: 'beleg.pdf',

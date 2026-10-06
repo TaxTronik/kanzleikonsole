@@ -8,6 +8,7 @@ import { parseAddisonBwaCsv, parseAddisonBwaCompactCsv } from '@/server/bwa/addi
 import { parseDatevBwaXlsx } from '@/server/bwa/datev-parser';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { XlsxReadError } from '@/lib/xlsx/read-xlsx';
+import { readUploadFile } from '@/server/documents/upload-file';
 import {
   staffActionGuard,
   ActionError,
@@ -149,32 +150,33 @@ export async function importAddisonCsvAction(input: {
 const DatevImportSchema = z.object({
   clientId: z.string().uuid(),
   fileName: z.string().min(1).max(255),
-  // Base64-kodierter XLSX-Inhalt (binär muss durch das JSON-Server-Action-Bridge)
-  xlsxBase64: z.string().min(1),
 });
 
-export async function importDatevXlsxAction(input: {
-  clientId: string;
-  fileName: string;
-  xlsxBase64: string;
-}): Promise<ImportResult> {
+/**
+ * F-09: Die XLSX kommt als `File` in `upload` (FormData-Feld `file`), nicht
+ * mehr als base64-String im Action-Body; Grenze aus src/lib/upload-limits.mjs.
+ */
+export async function importDatevXlsxAction(
+  input: { clientId: string },
+  upload: FormData,
+): Promise<ImportResult> {
   const g = await staffActionGuard({ module: 'bwa' });
   if (!g.ok) return g;
   const { tenantId, staffId, ctx, session } = g;
 
-  const parsed = DatevImportSchema.safeParse(input);
+  const entry = upload?.get('file');
+  const parsed = DatevImportSchema.safeParse({
+    clientId: input?.clientId,
+    fileName: entry instanceof File ? entry.name : undefined,
+  });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId, fileName, xlsxBase64 } = parsed.data;
+  const { clientId, fileName } = parsed.data;
 
-  let buffer: Buffer;
-  try {
-    buffer = Buffer.from(xlsxBase64, 'base64');
-  } catch {
-    return { ok: false, error: 'XLSX-Daten konnten nicht decodiert werden.' };
-  }
-  if (buffer.length === 0 || buffer.length > 20 * 1024 * 1024) {
-    return { ok: false, error: 'Datei leer oder größer als 20 MB.' };
-  }
+  const file = await readUploadFile(upload, 'file', 'bwaXlsx', {
+    missing: 'Bitte Datei auswählen.',
+  });
+  if (!file.ok) return { ok: false, error: file.error };
+  const buffer = file.bytes;
 
   const denied = await denyIfNoClientAccess(ctx, session, clientId);
   if (denied) return denied;

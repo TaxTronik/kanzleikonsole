@@ -14,6 +14,7 @@ import {
   type StaffCtx,
 } from '@/server/actions/staff-action';
 import { runJournaledUpload, uploadFailureCause } from '@/server/documents/journaled-upload';
+import { readUploadFile } from '@/server/documents/upload-file';
 
 const withTaxNoticesStaff = withStaffModule('taxNotices');
 
@@ -49,17 +50,12 @@ const SaveSchema = z.object({
   expectedPay: z.number().nullable(),
   clientNote: z.string().max(5000).nullable(),
   internalNote: z.string().max(5000).nullable(),
-  pdf: z
-    .object({
-      fileName: z.string().min(1).max(200),
-      mimeType: z.string().min(1).max(100),
-      base64: z
-        .string()
-        .min(1)
-        .max(20 * 1024 * 1024),
-    })
-    .nullable()
-    .optional(),
+});
+
+/** Metadaten der Berechnungs-PDF (vom File, F-09). */
+const FilingPdfMetaSchema = z.object({
+  fileName: z.string().min(1).max(200),
+  mimeType: z.string().min(1).max(100),
 });
 
 type SaveInput = z.infer<typeof SaveSchema>;
@@ -100,8 +96,13 @@ async function checkTaxFilingTx(
   if (existing) throw new ActionError('Es gibt bereits eine Erklärung für diesen Zeitraum.');
 }
 
+/**
+ * F-09: Die optionale Berechnungs-PDF kommt als `File` in `upload`
+ * (FormData-Feld `pdf`), nicht als base64-String im Action-Body.
+ */
 export async function saveTaxFilingAction(
   input: z.infer<typeof SaveSchema>,
+  upload?: FormData | null,
 ): Promise<ActionResult> {
   const g = await staffActionGuard({ module: 'taxNotices' });
   if (!g.ok) return g;
@@ -112,13 +113,18 @@ export async function saveTaxFilingAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
   const data = parsed.data;
 
-  const pdf = data.pdf;
+  let pdf: z.infer<typeof FilingPdfMetaSchema> | null = null;
   let fileData: Buffer | null = null;
-  if (pdf) {
-    fileData = Buffer.from(pdf.base64, 'base64');
-    if (fileData.length > 10 * 1024 * 1024) {
-      return { ok: false, error: 'PDF zu groß (max. 10 MB).' };
-    }
+  if (upload?.get('pdf') != null) {
+    const read = await readUploadFile(upload, 'pdf', 'taxFilingPdf', { tooLarge: 'PDF zu groß' });
+    if (!read.ok) return { ok: false, error: read.error };
+    const meta = FilingPdfMetaSchema.safeParse({
+      fileName: read.fileName,
+      mimeType: read.mimeType || 'application/pdf',
+    });
+    if (!meta.success) return { ok: false, error: 'Dateiname oder Dateityp der PDF ist ungültig.' };
+    pdf = meta.data;
+    fileData = read.bytes;
   }
 
   const saveFilingTx = async (tx: TxClient, documentId?: string): Promise<string> => {

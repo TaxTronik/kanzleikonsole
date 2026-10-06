@@ -13,6 +13,7 @@ import { assertPortalFeature } from '@/server/settings/portal-features';
 import { toActionError } from '@/server/auth/rbac';
 import { portalActionGuard, ActionError, type ActionResult } from '@/server/actions/portal-action';
 import { runJournaledUpload, uploadFailureCause } from '@/server/documents/journaled-upload';
+import { readUploadFile } from '@/server/documents/upload-file';
 import { validateFormAnswers } from '@/server/forms/validate-answers';
 import { readFormSchema } from '@/server/forms/schema-snapshot';
 
@@ -308,10 +309,6 @@ const UploadSchema = z.object({
   fieldKey: z.string().min(1).max(60),
   fileName: z.string().min(1).max(200),
   mimeType: z.string().min(1).max(100),
-  base64: z
-    .string()
-    .min(1)
-    .max(20 * 1024 * 1024),
 });
 
 interface FormFileCheck {
@@ -360,18 +357,25 @@ async function checkFormFileTx(
   return { sub, field, existingDocumentId: existingFieldUpload?.id ?? null };
 }
 
-export async function uploadFormFileAction(input: {
-  submissionId: string;
-  fieldKey: string;
-  fileName: string;
-  mimeType: string;
-  base64: string;
-}): Promise<ActionResult & { documentId?: string }> {
+/**
+ * F-09: Die Datei kommt als `File` in `upload` (FormData-Feld `file`), nicht
+ * mehr als base64-String im Action-Body; Grenze aus src/lib/upload-limits.mjs.
+ */
+export async function uploadFormFileAction(
+  input: { submissionId: string; fieldKey: string },
+  upload: FormData,
+): Promise<ActionResult & { documentId?: string }> {
   const g = await portalActionGuard({ module: 'forms' });
   if (!g.ok) return g;
   const { tenantId, contactId, clientId, ctx } = g;
 
-  const parsed = UploadSchema.safeParse(input);
+  const entry = upload?.get('file');
+  const parsed = UploadSchema.safeParse({
+    submissionId: input?.submissionId,
+    fieldKey: input?.fieldKey,
+    fileName: entry instanceof File ? entry.name : undefined,
+    mimeType: entry instanceof File ? entry.type || 'application/octet-stream' : undefined,
+  });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
   // F2: Feature-Flag-Guard — Form-Datei-Uploads erzeugen Document-Reihen wie
@@ -403,10 +407,9 @@ export async function uploadFormFileAction(input: {
     return { ok: false, error: 'Zu viele Uploads für dieses Formular.' };
   }
 
-  const fileData = Buffer.from(parsed.data.base64, 'base64');
-  if (fileData.length > 10 * 1024 * 1024) {
-    return { ok: false, error: 'Datei zu groß (max. 10 MB).' };
-  }
+  const file = await readUploadFile(upload, 'file', 'portalFormFile');
+  if (!file.ok) return { ok: false, error: file.error };
+  const fileData = file.bytes;
 
   let documentId: string;
   try {

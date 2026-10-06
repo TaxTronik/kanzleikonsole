@@ -179,6 +179,16 @@ und Parallelitätsgrenzen setzen. Für größere Dateien oder höhere parallele 
 ist vor einer Kapazitätsfreigabe ein Streaming-Multipart-Parser beziehungsweise
 ein isolierter Import-Job erforderlich.
 
+Datei-Uploads über Server-Actions (Fremdrechnung, Erklärungs-PDF, DATEV-BWA,
+Portal-Formular, GwG-Onboarding, Vollmacht, Lohn-Anlagen, Subsumtions-Import)
+senden die Datei binär als `File` in FormData. Die Grenze je Upload-Art steht
+in `apps/web/src/lib/upload-limits.mjs`; daraus leitet `next.config.mjs` das
+Server-Action-Body-Limit ab (größte Art 25 MiB plus 1 MiB, also 26 MiB wie
+`client_max_body_size 26M` bzw. Traefik `maxRequestBodyBytes`). Next.js puffert
+diese Bodies vor der Action im Web-Prozess. Die Parallelitätsgrenzen des
+nginx-Beispiels gelten nur für die API-Upload-Routen, nicht für Server-Action-
+POSTs auf Seitenpfade.
+
 ## 14. SMTP-Übergabe und Versandstatus sind keine gemeinsame Transaktion
 
 E-Mail-Schritte speichern den erfolgreichen Status je Empfänger erst nach der

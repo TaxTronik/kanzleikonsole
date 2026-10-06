@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
+import { SERVER_ACTION_BODY_LIMIT_BYTES } from './src/lib/upload-limits.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -198,7 +199,12 @@ const nextConfig = {
 
   experimental: {
     serverActions: {
-      bodySizeLimit: '10mb',
+      // F-09: Upload-Actions erhalten Dateien als File in FormData. Das Limit
+      // ist die größte Upload-Art plus Multipart-Overhead (26 MiB) und kommt
+      // aus derselben Quelle wie die serverseitigen Prüfungen und die
+      // UI-Anzeige (src/lib/upload-limits.mjs). Reverse-Proxys (nginx
+      // client_max_body_size 26M, Traefik maxRequestBodyBytes 26 MiB) passen.
+      bodySizeLimit: SERVER_ACTION_BODY_LIMIT_BYTES,
     },
   },
 };

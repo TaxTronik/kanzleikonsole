@@ -227,6 +227,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Das Body-Limit für Server Actions leitet sich aus den Upload-Grenzen je
+  Upload-Art ab und steigt von 10 MB auf 26 MiB, passend zu nginx
+  (`client_max_body_size 26M`) und Traefik.
 - Die n8n-Anbindung des Mail-Versands wird beim Start von Web-App und Worker
   ausdrücklich registriert; fehlt sie, bricht ein Versand im Modus „App + n8n“
   vor dem Mailversand mit klarer Fehlermeldung ab, statt das n8n-Ereignis
@@ -668,6 +671,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Uploads über Server Actions (externe Rechnungs-PDF, Steuererklärungs-PDF,
+  DATEV-BWA-XLSX, Formular-Datei im Mandantenportal, GwG-Onboarding) werden
+  binär statt als base64 übertragen; die angezeigten Grenzen von 10 bzw. 20 MB
+  gelten jetzt tatsächlich (bisher Abbruch ab rund 7,5 MB). Vollmachts-,
+  Lohn- und Subsumtions-Importe erreichen die vollen 25 MiB
+  (`FK-EXC-20261006-017`).
 - **[Scope]** Direkte Uploads (Staff- und Portal-Upload, neue Version,
   Wissensanhänge, Umklassifizierung mit Re-Store, externe Rechnungen,
   Steuererklärungs-PDF, Formular-Uploads, Aktenregal, E-Rechnungsarchiv)

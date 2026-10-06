@@ -8,6 +8,7 @@ import { evidenceService } from '@/server/container';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
+import { readUploadFile } from '@/server/documents/upload-file';
 import {
   JournaledUploadError,
   runJournaledUpload,
@@ -846,11 +847,12 @@ const UploadExternalSchema = z.object({
     message: 'USt-Satz muss 0, 7 oder 19 % sein.',
   }),
   notes: z.string().max(1000).nullable().optional(),
-  pdf: z.object({
-    fileName: z.string().max(255),
-    mimeType: z.string().max(100),
-    base64: z.string().min(1),
-  }),
+});
+
+/** Metadaten der hochgeladenen PDF (vom File, F-09). */
+const ExternalPdfMetaSchema = z.object({
+  fileName: z.string().max(255),
+  mimeType: z.string().max(100),
 });
 
 /**
@@ -896,8 +898,13 @@ async function checkExternalInvoiceTx(
   };
 }
 
+/**
+ * F-09: Die PDF kommt als `File` in `upload` (FormData-Feld `pdf`), nicht mehr
+ * als base64-String im Action-Body; Grenze aus src/lib/upload-limits.mjs.
+ */
 export async function uploadExternalInvoiceAction(
   input: z.infer<typeof UploadExternalSchema>,
+  upload: FormData,
 ): Promise<{
   ok: boolean;
   error?: string;
@@ -926,9 +933,19 @@ export async function uploadExternalInvoiceAction(
   const netAmount = Math.round((grossAmount / (1 + data.vatRatePct / 100)) * 100) / 100;
   const vatAmount = Math.round((grossAmount - netAmount) * 100) / 100;
 
-  const pdfBytes = Buffer.from(data.pdf.base64, 'base64');
-  if (pdfBytes.length === 0) return { ok: false, error: 'PDF-Daten leer.' };
-  if (pdfBytes.length > 10 * 1024 * 1024) return { ok: false, error: 'PDF zu groß (max. 10 MB).' };
+  const pdf = await readUploadFile(upload, 'pdf', 'externalInvoicePdf', {
+    missing: 'Bitte eine PDF-Datei auswählen.',
+    empty: 'PDF-Daten leer.',
+    tooLarge: 'PDF zu groß',
+  });
+  if (!pdf.ok) return { ok: false, error: pdf.error };
+  const pdfMeta = ExternalPdfMetaSchema.safeParse({
+    fileName: pdf.fileName,
+    mimeType: pdf.mimeType || 'application/pdf',
+  });
+  if (!pdfMeta.success)
+    return { ok: false, error: 'Dateiname oder Dateityp der PDF ist ungültig.' };
+  const pdfBytes = pdf.bytes;
 
   // 1) Vorprüfung, PDF als Speicherabsicht journalisieren und in Object-Lock
   //    (Rechnungs-Aufbewahrung 8 J.) ablegen; 2) Nachprüfung + Document +
@@ -951,7 +968,7 @@ export async function uploadExternalInvoiceAction(
             title: `Rechnung ${data.number}: ${data.subject}`,
             classification: 'GOBD_INVOICE',
             // P-3: Magic-Bytes statt Client-Header — siehe M-2.
-            mimeType: stored.detectedMime ?? data.pdf.mimeType ?? 'application/pdf',
+            mimeType: stored.detectedMime ?? pdfMeta.data.mimeType,
             // iter85 (Befund 7): Rechnungs-PDFs sind FÜR den Mandanten bestimmt —
             // ohne Freigabe lief der „Öffnen"-Link im Portal auf 404 (die
             // Portal-Download-Route filtert auf sharedWithClientAt).

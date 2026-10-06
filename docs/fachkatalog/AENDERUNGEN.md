@@ -1,5 +1,47 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-017
+    date: '2026-10-06'
+    paths:
+      - apps/web/next.config.mjs
+      - apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts
+      - apps/web/src/app/gwg-onboarding/actions.ts
+      - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
+      - apps/web/src/app/gwg-onboarding/wizard.tsx
+      - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
+      - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
+      - apps/web/src/app/portal/(protected)/forms/[id]/filler.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/__tests__/actions-journal.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/filings-section.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/app/staff/(protected)/invoices/new/external-form.tsx
+      - apps/web/src/server/documents/__tests__/upload-file.test.ts
+      - apps/web/src/server/documents/upload-file.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+    rule_ids:
+      - GWG-SELF-ONBOARDING-001
+      - FORM-PRESUBMIT-UPLOAD-001
+      - DOC-UPLOAD-JOURNAL-001
+      - INV-LIFECYCLE-FREEZE-001
+      - INV-VAT-TOTALS-001
+      - MAIL-INBOX-001
+    reason: >-
+      Uploads über Server Actions (externe Rechnungs-PDF, Steuererklärungs-PDF,
+      DATEV-BWA-XLSX, Formular-Datei im Mandantenportal, GwG-Onboarding) werden
+      als binäre Datei in FormData statt als base64-String übertragen; die
+      Grenzen je Upload-Art kommen aus einer Quelle (src/lib/upload-limits.mjs),
+      aus der auch die Anzeige und das bodySizeLimit in next.config.mjs (26 MiB)
+      abgeleitet sind. Die angezeigten Grenzen von 10 bzw. 20 MB gelten damit
+      tatsächlich (bisher Abbruch ab rund 7,5 MB). Virenscan, Typprüfung,
+      Aufbewahrung, Formular- und Rechnungslogik bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - apps/web/src/server/documents/__tests__/upload-file.test.ts
+      - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-016
     date: '2026-10-06'
     paths:
@@ -3226,6 +3268,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-017` dokumentiert binäre Uploads über Server
+  Actions mit zentralen Grenzen je Upload-Art. Prüfungen und Aufbewahrung
+  bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-016` dokumentiert journalisierte Speicherabsichten
   vor jedem direkten Upload. Prüfungen und Aufbewahrung bleiben unverändert;

@@ -51,6 +51,7 @@ vi.mock('@/server/actions/staff-action', () => ({
 }));
 
 import { saveTaxFilingAction } from '../actions';
+import { MAX_UPLOAD_BYTES_BY_KIND } from '@/lib/upload-limits.mjs';
 import {
   processCrash,
   storageJournal,
@@ -59,7 +60,7 @@ import {
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 
-function input(pdf = true) {
+function input() {
   return {
     filingId: null,
     clientId: CLIENT_ID,
@@ -72,14 +73,16 @@ function input(pdf = true) {
     expectedPay: null,
     clientNote: null,
     internalNote: null,
-    pdf: pdf
-      ? {
-          fileName: 'est-2025.pdf',
-          mimeType: 'application/pdf',
-          base64: Buffer.from('%PDF-1.7 Erklaerung').toString('base64'),
-        }
-      : null,
   };
+}
+
+/** F-09: Berechnungs-PDF binär als File in FormData. */
+function pdfUpload(
+  bytes: Uint8Array<ArrayBuffer> = new Uint8Array(Buffer.from('%PDF-1.7 Erklaerung')),
+) {
+  const upload = new FormData();
+  upload.set('pdf', new File([bytes], 'est-2025.pdf', { type: 'application/pdf' }));
+  return upload;
 }
 
 function tx(existingFiling: { id: string } | null = null) {
@@ -108,7 +111,7 @@ describe('saveTaxFilingAction — Erklaerungs-PDF journal-first', () => {
       fn(existing),
     );
 
-    await expect(saveTaxFilingAction(input())).resolves.toEqual({
+    await expect(saveTaxFilingAction(input(), pdfUpload())).resolves.toEqual({
       ok: false,
       error: 'Es gibt bereits eine Erklärung für diesen Zeitraum.',
     });
@@ -122,7 +125,10 @@ describe('saveTaxFilingAction — Erklaerungs-PDF journal-first', () => {
       fn(commitTx),
     );
 
-    await expect(saveTaxFilingAction(input())).resolves.toEqual({ ok: true, id: 'filing-1' });
+    await expect(saveTaxFilingAction(input(), pdfUpload())).resolves.toEqual({
+      ok: true,
+      id: 'filing-1',
+    });
     expect(commitTx.documentVersion.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         storageKey: storageJournal.objects[0]!.key,
@@ -147,8 +153,34 @@ describe('saveTaxFilingAction — Erklaerungs-PDF journal-first', () => {
       fn(tx()),
     );
 
-    await expect(saveTaxFilingAction(input(false))).resolves.toEqual({ ok: true, id: 'filing-1' });
+    await expect(saveTaxFilingAction(input(), null)).resolves.toEqual({ ok: true, id: 'filing-1' });
     expect(storageJournal.events).toEqual([]);
+  });
+
+  // F-09: binärer FormData-Upload bis exakt zur Grenze; ein Byte mehr scheitert
+  // vor Scan, Journal und Object-Lock-Write.
+  it('F-09: nimmt eine PDF genau an der Grenze an und lehnt ein Byte mehr ab', async () => {
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (value: unknown) => unknown) =>
+      fn(tx()),
+    );
+    const limit = MAX_UPLOAD_BYTES_BY_KIND.taxFilingPdf;
+    const pdfOfSize = (size: number) => {
+      const bytes = new Uint8Array(size);
+      bytes.set(Buffer.from('%PDF-1.7'));
+      return pdfUpload(bytes);
+    };
+
+    await expect(saveTaxFilingAction(input(), pdfOfSize(limit + 1))).resolves.toEqual({
+      ok: false,
+      error: 'PDF zu groß (max. 10 MB).',
+    });
+    expect(storageJournal.events).toEqual([]);
+
+    await expect(saveTaxFilingAction(input(), pdfOfSize(limit))).resolves.toEqual({
+      ok: true,
+      id: 'filing-1',
+    });
+    expect(storageJournal.objects).toEqual([expect.objectContaining({ sizeBytes: BigInt(limit) })]);
   });
 
   // K-06: Prozessabbruch zwischen Object-Write und DB-Commit (Fachbeleg-Familie).
@@ -157,7 +189,7 @@ describe('saveTaxFilingAction — Erklaerungs-PDF journal-first', () => {
       .mockImplementationOnce(async (_ctx: unknown, fn: (value: unknown) => unknown) => fn(tx()))
       .mockImplementationOnce(() => processCrash());
 
-    void saveTaxFilingAction(input());
+    void saveTaxFilingAction(input(), pdfUpload());
     await waitForEvent('put:');
 
     const [intent] = storageJournal.openIntents();

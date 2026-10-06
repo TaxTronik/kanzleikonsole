@@ -67,6 +67,27 @@ vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/server/notifications/service', () => ({ notifyMany: vi.fn() }));
 
 import { discardOnboardingUploadAction, uploadIdImageAction } from '../actions';
+import { MAX_UPLOAD_BYTES_BY_KIND } from '@/lib/upload-limits.mjs';
+
+/** F-09: Datei binär als File in FormData; Metadaten vom File. */
+function uploadFile(input: {
+  token: string;
+  fileName: string;
+  mimeType: string;
+  base64: string;
+  kind: 'ID_DOCUMENT' | 'EXTRA';
+  personName?: string;
+}) {
+  const upload = new FormData();
+  upload.set(
+    'file',
+    new File([Buffer.from(input.base64, 'base64')], input.fileName, { type: input.mimeType }),
+  );
+  return uploadIdImageAction(
+    { token: input.token, kind: input.kind, personName: input.personName },
+    upload,
+  );
+}
 import { GENERIC_TOKEN_ERROR } from '@/server/gwg-onboarding/service';
 
 describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
@@ -134,7 +155,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
     m.updateMany.mockResolvedValueOnce({ count: 0 });
 
     await expect(
-      uploadIdImageAction({
+      uploadFile({
         token: 'valid-looking-raw-token',
         fileName: 'ausweis.pdf',
         mimeType: 'application/pdf',
@@ -156,7 +177,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
     m.findFirst.mockRejectedValueOnce(new Error('password authentication failed for db-user'));
 
     await expect(
-      uploadIdImageAction({
+      uploadFile({
         token: 'valid-looking-raw-token',
         fileName: 'ausweis.pdf',
         mimeType: 'application/pdf',
@@ -190,7 +211,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
     });
 
     await expect(
-      uploadIdImageAction({
+      uploadFile({
         token: 'valid-looking-raw-token',
         fileName: 'ausweis.pdf',
         mimeType: 'application/pdf',
@@ -213,6 +234,51 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
         documentData: expect.objectContaining({ folderId: 'gwg-person-folder-1' }),
       }),
     );
+  });
+
+  // F-09: binärer FormData-Upload bis exakt zur GwG-Grenze (10 MB statt
+  // effektiv ~7,5 MB über base64); ein Byte mehr scheitert vor jedem Storage-Zugriff.
+  it('F-09: nimmt eine Datei genau an der Grenze an und lehnt ein Byte mehr vor dem Scan ab', async () => {
+    const invite = {
+      id: 'invite-1',
+      tokenHash: 'token-hash',
+      status: 'PENDING',
+      expiresAt: new Date('2099-01-01T00:00:00.000Z'),
+      tenantId: 'tenant-1',
+      clientId: 'client-1',
+      createdByStaff: 'staff-1',
+      client: { id: 'client-1', kind: 'JURPERS' },
+    };
+    m.findFirst.mockResolvedValue(invite);
+    m.revalidateInvite.mockResolvedValue(true);
+    m.commitPreparedBytes.mockResolvedValue({
+      targetBucket: 'taxtronik-gwg',
+      targetKey: 'tenant-1/evidence.bin',
+      storageVersionId: 'version-123',
+      sha256: Buffer.alloc(32),
+      sizeBytes: 1n,
+      immutable: true,
+      retentionUntil: new Date('2099-01-01T00:00:00.000Z'),
+      detectedMime: 'image/jpeg',
+    });
+    const limit = MAX_UPLOAD_BYTES_BY_KIND.gwgOnboardingFile;
+    const send = (size: number) => {
+      const upload = new FormData();
+      upload.set('file', new File([new Uint8Array(size)], 'scan.jpg', { type: 'image/jpeg' }));
+      return uploadIdImageAction({ token: 'valid-looking-raw-token', kind: 'EXTRA' }, upload);
+    };
+
+    await expect(send(limit + 1)).resolves.toEqual({
+      ok: false,
+      error: 'Datei zu groß (max. 10 MB).',
+    });
+    expect(m.prepareBytesCommitWithTier).not.toHaveBeenCalled();
+
+    await expect(send(limit)).resolves.toMatchObject({ ok: true });
+    expect(m.prepareBytesCommitWithTier).toHaveBeenCalledWith(
+      expect.objectContaining({ fileData: expect.any(Buffer) }),
+    );
+    expect(m.prepareBytesCommitWithTier.mock.calls[0]![0].fileData.length).toBe(limit);
   });
 
   it('P-13 GWG-SELF-ONBOARDING-001: speichert die Seitenzahl einer hochgeladenen Ausweis-PDF an der Version', async () => {
@@ -243,7 +309,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
       detectedMime: 'application/pdf',
     });
     const upload = (mimeType: string, data: string) =>
-      uploadIdImageAction({
+      uploadFile({
         token: 'valid-looking-raw-token',
         fileName: 'ausweis',
         mimeType,
@@ -295,7 +361,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
       detectedMime: 'application/pdf',
     });
 
-    const result = await uploadIdImageAction({
+    const result = await uploadFile({
       token: 'valid-looking-raw-token',
       fileName: 'ausweis.pdf',
       mimeType: 'application/pdf',
@@ -341,7 +407,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
     });
     m.finalizePendingDocumentVersion.mockRejectedValueOnce(new Error('DB unavailable'));
 
-    const result = await uploadIdImageAction({
+    const result = await uploadFile({
       token: 'valid-looking-raw-token',
       fileName: 'ausweis.pdf',
       mimeType: 'application/pdf',
@@ -404,7 +470,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
     );
 
     await expect(
-      uploadIdImageAction({
+      uploadFile({
         token: 'valid-looking-raw-token',
         fileName: 'ausweis.pdf',
         mimeType: 'application/pdf',
@@ -453,7 +519,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
       },
     );
 
-    const result = await uploadIdImageAction({
+    const result = await uploadFile({
       token: 'valid-looking-raw-token',
       fileName: 'ausweis.pdf',
       mimeType: 'application/pdf',
@@ -483,7 +549,7 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
       new Error('object persisted, but version inventory response failed'),
     );
 
-    const result = await uploadIdImageAction({
+    const result = await uploadFile({
       token: 'valid-looking-raw-token',
       fileName: 'ausweis.pdf',
       mimeType: 'application/pdf',

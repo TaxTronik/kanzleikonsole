@@ -8,8 +8,11 @@ import { IdentityCapture } from '@/components/gwg/identity-capture';
 import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
 import type { IdentitySuggestions } from '@/lib/gwg/identity-ocr';
 import { loadOnboardingIdentitySourceAction } from './actions';
+import { MAX_UPLOAD_BYTES_BY_KIND, formatUploadLimit } from '@/lib/upload-limits.mjs';
 
-export const MAX_UPLOAD_LABEL = '7 MB';
+// F-09: dieselbe Grenze wie die serverseitige Prüfung (binärer FormData-Upload).
+export const MAX_UPLOAD_BYTES = MAX_UPLOAD_BYTES_BY_KIND.gwgOnboardingFile;
+export const MAX_UPLOAD_LABEL = formatUploadLimit(MAX_UPLOAD_BYTES);
 
 export const ONBOARDING_STEPS = [
   { key: 'master', label: 'Stammdaten' },
