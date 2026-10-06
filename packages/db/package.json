@@ -45,6 +45,9 @@
     "verify:schema-drift": "tsx --env-file-if-exists=../../.env scripts/verify-drift.ts",
     "verify:rls": "tsx --env-file-if-exists=../../.env scripts/verify-rls.ts",
     "verify:fk-indexes": "tsx --env-file-if-exists=../../.env scripts/verify-fk-indexes.ts",
+    "sql:dump": "tsx --env-file-if-exists=../../.env scripts/sql-sources-cli.ts dump",
+    "sql:check": "tsx --env-file-if-exists=../../.env scripts/sql-sources-cli.ts check",
+    "sql:migration": "tsx --env-file-if-exists=../../.env scripts/sql-sources-cli.ts migration",
     "secret-box:rewrap": "tsx --env-file-if-exists=../../.env scripts/rewrap-secret-box.ts"
   },
   "dependencies": {

@@ -1,0 +1,1 @@
+CREATE TRIGGER deadline_daily_review_validate_insert_trigger BEFORE INSERT ON public.deadline_daily_review FOR EACH ROW EXECUTE FUNCTION app.deadline_daily_review_validate_insert();

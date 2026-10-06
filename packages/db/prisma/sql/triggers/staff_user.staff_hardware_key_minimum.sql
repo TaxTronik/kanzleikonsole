@@ -1,0 +1,1 @@
+CREATE CONSTRAINT TRIGGER staff_hardware_key_minimum AFTER INSERT OR UPDATE OF hardware_only_enabled_at ON public.staff_user DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.enforce_staff_hardware_key_minimum();

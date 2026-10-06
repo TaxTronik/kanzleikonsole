@@ -1,0 +1,1 @@
+CREATE TRIGGER gwg_check_purge_representatives_after_destruction AFTER UPDATE OF destroyed_at ON public.gwg_check FOR EACH ROW WHEN (((old.destroyed_at IS NULL) AND (new.destroyed_at IS NOT NULL))) EXECUTE FUNCTION app.purge_gwg_representatives_after_destruction();

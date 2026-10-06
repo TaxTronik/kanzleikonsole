@@ -1,0 +1,1 @@
+CREATE TRIGGER gwg_check_fail_closed_client AFTER DELETE OR UPDATE OF status, valid_until, client_id, destroyed_at, legal_form, register_number, register_authority, no_register_entry, representative_names, ownership_structure_notes ON public.gwg_check FOR EACH ROW EXECUTE FUNCTION app.gwg_deactivate_client_without_valid_check();

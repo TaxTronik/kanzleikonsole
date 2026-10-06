@@ -1,0 +1,1 @@
+CREATE TRIGGER zz_client_person_anchors_purge AFTER UPDATE OF anonymized_at ON public.client FOR EACH ROW WHEN (((old.anonymized_at IS NULL) AND (new.anonymized_at IS NOT NULL))) EXECUTE FUNCTION app.purge_gwg_person_anchors();

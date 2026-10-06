@@ -1,0 +1,1 @@
+CREATE TRIGGER tax_notice_partial_relief_evidence_guard BEFORE INSERT OR UPDATE OF status, partial_relief_received_at, partial_relief_received_by ON public.tax_notice FOR EACH ROW EXECUTE FUNCTION app.tax_notice_guard_partial_relief_evidence();

@@ -1,0 +1,1 @@
+CREATE TRIGGER gwg_check_lineage_snapshot_immutable BEFORE UPDATE OF tenant_id, client_id, change_scope, predecessor_check_id, created_at ON public.gwg_check FOR EACH ROW EXECUTE FUNCTION app.protect_gwg_check_lineage_snapshot();

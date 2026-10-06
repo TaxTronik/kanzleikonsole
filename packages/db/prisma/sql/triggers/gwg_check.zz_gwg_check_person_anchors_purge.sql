@@ -1,0 +1,1 @@
+CREATE TRIGGER zz_gwg_check_person_anchors_purge AFTER UPDATE OF destroyed_at ON public.gwg_check FOR EACH ROW WHEN (((old.destroyed_at IS NULL) AND (new.destroyed_at IS NOT NULL))) EXECUTE FUNCTION app.purge_gwg_person_anchors();

@@ -84,6 +84,10 @@ Jede Änderung — Feature, Fehlerbehebung, Härtung — folgt demselben Weg:
    Migration liegen. Historische, bereits applizierte Migrationen werden auch
    bei unglücklicher Benennung niemals umbenannt oder nachträglich geändert.
    Ledger-, Line-Ending-, Deploy- und Drift-Prüfungen sind vor Freigabe Pflicht.
+   Funktionen, Trigger und RLS-Policies werden in ihrer
+   [kanonischen Quelldatei](kanonische-sql-quellen.md) geändert; die Migration
+   entsteht daraus mit `pnpm db:sql:migration`, und `pnpm db:sql:check` hält
+   beide im CI gleich.
 3. **Tests zuerst dort, wo der Fehler war:** Fehlerbehebungen erhalten einen
    Regressionstest, der den Fehler vor dem Fix nachweisbar reproduziert.
 4. **Review:** Code-Review durch den Verantwortlichen; bei sicherheits- oder
@@ -114,7 +118,7 @@ CI-Pipeline (`.forgejo/workflows/ci.yml`), läuft bei Pull Requests, Pushes auf
 | Gate               | Inhalt                                                                                                                                                                                                                           |
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `quality`          | Lint, Typecheck, vollständige Unit-/Komponententests aller Pakete (außer DB-gebundenen), Operator-CLI-Tests (`pnpm test:ops`), Schutzprüfung gegen reale DATEV-Kennungen in Testdaten                                            |
-| `db`               | Migrationen auf frischer DB, RLS-Cross-Tenant-Tests, Schema-Drift-Check (Schema ↔ Migrationshistorie), Audit-Chain-CLI                                                                                                           |
+| `db`               | Migrationen auf frischer DB, RLS-Cross-Tenant-Tests, Schema-Drift-Check (Schema ↔ Migrationshistorie), kanonische SQL-Quellen, Audit-Chain-CLI                                                                                   |
 | `restore`          | echter Backup→Restore-Roundtrip mit Zeilenzahl-Assertions und Chain-Verifikation auf der wiederhergestellten DB                                                                                                                  |
 | `upgrade-path`     | Migrationsstand des letzten Releases → aktuelle Migrationen → RLS-Tests (simuliert das Kunden-Update); unabhängig vom Tag Altbestandstests vor Datenmigrationen (`scripts/ci/migration-cutoff.sh`)                               |
 | `e2e-paranoid`     | vollständige Playwright-Suite (inkl. Smoke) gegen die gebaute App: Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency und Upload-Fuzz                                                                            |

@@ -1,0 +1,1 @@
+CREATE TRIGGER gwg_representative_cross_role_identity_guard BEFORE INSERT OR UPDATE OF gwg_check_id, linked_beneficial_owner_id ON public.gwg_representative FOR EACH ROW EXECUTE FUNCTION app.guard_gwg_cross_role_person_identity();

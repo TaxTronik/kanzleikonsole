@@ -1,0 +1,1 @@
+CREATE CONSTRAINT TRIGGER gwg_document_set_consistency AFTER INSERT OR UPDATE ON public.gwg_id_document DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.enforce_gwg_document_set_consistency();

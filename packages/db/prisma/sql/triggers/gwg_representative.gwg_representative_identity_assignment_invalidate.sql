@@ -1,0 +1,1 @@
+CREATE TRIGGER gwg_representative_identity_assignment_invalidate AFTER UPDATE OF full_name, birth_date, birth_place, residence, nationality, linked_beneficial_owner_id ON public.gwg_representative FOR EACH ROW EXECUTE FUNCTION app.invalidate_gwg_representative_identity_assignment();

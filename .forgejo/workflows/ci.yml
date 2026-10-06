@@ -220,6 +220,13 @@ jobs:
       - name: GwG-DB-Invarianten gegen die migrierte DB prüfen
         run: pnpm --filter @taxtronik/db verify:invariants
 
+      # D-01: Funktionen, Trigger und RLS-Policies der frisch migrierten DB
+      # muessen den kanonischen Quellen unter packages/db/prisma/sql entsprechen.
+      # Abweichungen erscheinen als Diff im Log; Ablauf und Behebung stehen in
+      # docs/development/kanonische-sql-quellen.md.
+      - name: Kanonische SQL-Quellen gegen die migrierte DB prüfen
+        run: pnpm db:sql:check
+
       - name: RLS tests
         run: |
           set -o pipefail

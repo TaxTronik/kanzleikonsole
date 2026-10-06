@@ -1,0 +1,1 @@
+CREATE TRIGGER client_reminder_ticket_identity BEFORE UPDATE OF id, tenant_id, ticket_number, origin_risk_marking_id ON public.client_reminder FOR EACH ROW EXECUTE FUNCTION app.guard_reminder_ticket_identity();

@@ -1,0 +1,1 @@
+CREATE CONSTRAINT TRIGGER staff_webauthn_key_minimum AFTER INSERT OR DELETE OR UPDATE ON public.staff_webauthn_credential DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION app.enforce_staff_hardware_key_minimum();

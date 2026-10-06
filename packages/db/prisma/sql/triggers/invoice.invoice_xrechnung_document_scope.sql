@@ -1,0 +1,1 @@
+CREATE TRIGGER invoice_xrechnung_document_scope BEFORE INSERT OR UPDATE OF tenant_id, client_id, xrechnung_document_id ON public.invoice FOR EACH ROW EXECUTE FUNCTION app.enforce_invoice_xrechnung_document_scope();

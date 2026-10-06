@@ -23,6 +23,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- Kanonische SQL-Quellen: Funktionen, Trigger und RLS-Policies stehen je
+  Objekt unter `packages/db/prisma/sql/`; `pnpm db:sql:dump` schreibt sie aus
+  einer migrierten Datenbank, `pnpm db:sql:check` vergleicht sie im CI-Job `db`
+  und zeigt Abweichungen als Diff, `pnpm db:sql:migration` erzeugt aus
+  geänderten Dateien ein Migrationsgerüst (`FK-EXC-20261006-035`).
 - Mandanten-Mails (neue Anforderung, Kanzlei-Antwort, Formular, GwG-Einladung
   und -Freischaltung, Terminentscheidung, Rechnungsversand, Abholbereitschaft)
   werden im fachlichen Commit als Versandauftrag gespeichert und vom Worker

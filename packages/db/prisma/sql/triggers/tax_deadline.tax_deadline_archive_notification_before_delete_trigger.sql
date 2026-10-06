@@ -1,0 +1,1 @@
+CREATE TRIGGER tax_deadline_archive_notification_before_delete_trigger BEFORE DELETE ON public.tax_deadline FOR EACH ROW EXECUTE FUNCTION app.tax_deadline_archive_notification_before_delete();

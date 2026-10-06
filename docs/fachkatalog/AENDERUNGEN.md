@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-035
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Neuer CI-Schritt im Job db: Nach den Migrationen vergleicht
+      pnpm db:sql:check die kanonischen SQL-Quellen (Funktionen, Trigger und
+      RLS-Policies je Objekt unter packages/db/prisma/sql/) mit der migrierten
+      Datenbank und zeigt Abweichungen als Diff. Migrationen, Release-Nachweise,
+      Audit-Prüfungen und Anker bleiben unverändert; die Quelldateien werden nicht
+      ausgeführt. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/sql-sources.test.ts
+      - packages/db/src/__tests__/sql-sources-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-034
     date: '2026-10-06'
     paths:
@@ -3892,6 +3909,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-035` dokumentiert den CI-Schritt für die
+  kanonischen SQL-Quellen. Migrationen und Nachweise bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-034` dokumentiert das Einlesen der
   Formular-Actions über parseFormData mit unveränderten Eingaben und

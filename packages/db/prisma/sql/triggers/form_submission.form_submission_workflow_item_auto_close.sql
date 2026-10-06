@@ -1,0 +1,1 @@
+CREATE TRIGGER form_submission_workflow_item_auto_close AFTER UPDATE OF submitted_at, workflow_item_id ON public.form_submission FOR EACH ROW EXECUTE FUNCTION public.trg_submission_submitted_complete_workflow_item();

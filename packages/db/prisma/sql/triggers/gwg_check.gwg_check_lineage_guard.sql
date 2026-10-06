@@ -1,0 +1,1 @@
+CREATE TRIGGER gwg_check_lineage_guard BEFORE INSERT OR UPDATE OF tenant_id, client_id, created_at, predecessor_check_id ON public.gwg_check FOR EACH ROW EXECUTE FUNCTION app.guard_gwg_check_lineage();

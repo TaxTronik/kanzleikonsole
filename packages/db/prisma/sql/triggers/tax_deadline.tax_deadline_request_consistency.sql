@@ -1,0 +1,1 @@
+CREATE CONSTRAINT TRIGGER tax_deadline_request_consistency AFTER INSERT OR UPDATE OF request_id, tenant_id, client_id, auto_request_notification_status ON public.tax_deadline DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.enforce_tax_deadline_request_link();

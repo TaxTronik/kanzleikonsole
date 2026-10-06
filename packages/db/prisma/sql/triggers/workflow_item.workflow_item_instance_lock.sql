@@ -1,0 +1,1 @@
+CREATE TRIGGER workflow_item_instance_lock BEFORE INSERT OR DELETE OR UPDATE OF done_at, started_at, instance_id ON public.workflow_item FOR EACH ROW EXECUTE FUNCTION app.lock_workflow_item_instance();

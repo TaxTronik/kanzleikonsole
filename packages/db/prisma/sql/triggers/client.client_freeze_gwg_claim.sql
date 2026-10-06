@@ -1,0 +1,1 @@
+CREATE TRIGGER client_freeze_gwg_claim BEFORE UPDATE OF mandate_ended_at, allow_active ON public.client FOR EACH ROW WHEN (((old.mandate_ended_at IS DISTINCT FROM new.mandate_ended_at) OR (old.allow_active IS DISTINCT FROM new.allow_active))) EXECUTE FUNCTION app.freeze_gwg_claim_references();

@@ -1,0 +1,1 @@
+CREATE TRIGGER "00_notification_derive_portal_inbox_scope" BEFORE INSERT OR UPDATE OF tenant_id, client_id, resource_type, resource_id, staff_id ON public.notification FOR EACH ROW WHEN ((NOT (new.resource_type IS DISTINCT FROM 'portal_inbox_thread'::text))) EXECUTE FUNCTION app.notification_derive_portal_inbox_scope();

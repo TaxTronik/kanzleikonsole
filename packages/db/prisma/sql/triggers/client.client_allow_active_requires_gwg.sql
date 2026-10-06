@@ -1,0 +1,1 @@
+CREATE TRIGGER client_allow_active_requires_gwg BEFORE UPDATE OF allow_active ON public.client FOR EACH ROW WHEN (((new.allow_active = true) AND (old.allow_active IS DISTINCT FROM new.allow_active))) EXECUTE FUNCTION app.enforce_client_allow_active_requires_gwg();

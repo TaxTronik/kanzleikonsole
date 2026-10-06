@@ -1,0 +1,1 @@
+CREATE TRIGGER "00_gwg_check_identity_verification_guard" BEFORE INSERT OR UPDATE OF status, verified_at, identity_assignment_required ON public.gwg_check FOR EACH ROW EXECUTE FUNCTION app.enforce_gwg_identity_assignment_on_verification();

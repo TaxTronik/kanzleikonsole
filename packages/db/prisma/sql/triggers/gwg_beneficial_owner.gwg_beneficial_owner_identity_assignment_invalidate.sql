@@ -1,0 +1,1 @@
+CREATE TRIGGER gwg_beneficial_owner_identity_assignment_invalidate AFTER UPDATE OF full_name, birth_date, birth_place, residence, nationality ON public.gwg_beneficial_owner FOR EACH ROW EXECUTE FUNCTION app.invalidate_gwg_beneficial_owner_identity_assignment();
