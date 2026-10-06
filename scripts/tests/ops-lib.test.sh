@@ -1123,7 +1123,27 @@ test_doctor_accepts_managed_signal_source_checkout() {
   }
   assert_contains "$out" "OK       SIGNAL_SOURCE"
   assert_not_contains "$out" "FEHLT    SIGNAL_IMAGE"
-  pass "doctor accepts managed Signal from a controlled Git checkout"
+  # Bestandswert main bleibt lauffaehig, wird aber als beweglich gemeldet.
+  assert_contains "$out" "WARN     SIGNAL_GIT_REF         'main' ist beweglich"
+
+  set_env_file_value "$env_file" SIGNAL_GIT_REF "$(printf 'a%.0s' {1..40})"
+  run_doctor_with_env "$env_file" "$out" || {
+    cat "$out" >&2
+    test_fail "doctor rejected a Signal source checkout pinned to a commit"
+  }
+  assert_contains "$out" "OK       SIGNAL_GIT_REF         fester Commit aaaaaaaaaaaa"
+  assert_not_contains "$out" "ist beweglich"
+
+  set_env_file_value "$env_file" SIGNAL_GIT_REF refs/tags/v1.2.3
+  run_doctor_with_env "$env_file" "$out" || test_fail "doctor rejected an explicit Signal tag ref"
+  assert_contains "$out" "OK       SIGNAL_GIT_REF         refs/tags/v1.2.3 (Tag serverseitig schuetzen"
+
+  set_env_file_value "$env_file" SIGNAL_GIT_REF ""
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted managed Signal source without an explicit Git ref"
+  fi
+  assert_contains "$out" "FEHLT    SIGNAL_GIT_REF         fehlt/ungueltig: vollstaendigen Commit-SHA"
+  pass "doctor accepts managed Signal from a controlled Git checkout and flags moving refs"
 }
 
 test_signal_source_identifiers_are_shell_safe_and_secret_free() {
@@ -2747,6 +2767,88 @@ test_doctor_reports_source_update_signature_state() {
   pass "doctor shows the source-update signature state only for the source channel"
 }
 
+test_managed_signal_source_build_pins_commits_and_flags_moving_refs() {
+  local origin="$TMP_DIR/signal-pin-origin" checkout="$TMP_DIR/signal-pin-checkout"
+  local build_root="$TMP_DIR/signal-pin-build-root" out="$TMP_DIR/signal-pin.out" first second
+  s04_git_fixtures
+  mkdir -p "$origin/scripts" "$build_root"
+  s04_git -C "$origin" init -q -b main
+  printf 'first\n' >"$origin/README.md"
+  printf '#!/bin/sh\nexit 0\n' >"$origin/scripts/build-managed-image.sh"
+  s04_git -C "$origin" add README.md scripts/build-managed-image.sh
+  s04_git -C "$origin" commit -qm first
+  first="$(s04_git -C "$origin" rev-parse HEAD)"
+  printf 'second\n' >"$origin/README.md"
+  s04_git -C "$origin" commit -qam second
+  second="$(s04_git -C "$origin" rev-parse HEAD)"
+
+  run_signal_pin_build() (
+    ROOT="$build_root"
+    export GIT_CONFIG_GLOBAL="$S04_DIR/gitconfig" GIT_CONFIG_NOSYSTEM=1
+    SIGNAL_GIT_URL="$origin"
+    SIGNAL_GIT_REF="$1"
+    SIGNAL_GIT_DIR="$checkout"
+    SIGNAL_IMAGE=""
+    valid_signal_git_url() { return 0; }
+    require_safe_build_resources() { return 0; }
+    docker() { return 1; }
+    build_signal_from_source update
+    printf 'image=%s\n' "$SIGNAL_IMAGE"
+  )
+
+  run_signal_pin_build "$first" >"$out" 2>&1 || { cat "$out" >&2; test_fail "pinned Signal commit build failed"; }
+  assert_contains "$out" "image=taxtronik/risk-layer-engine:source-${first:0:12}"
+  assert_not_contains "$out" "ist beweglich"
+  assert_file_equals "$checkout/README.md" "first"
+
+  run_signal_pin_build main >"$out" 2>&1 || { cat "$out" >&2; test_fail "moving Signal ref build failed"; }
+  assert_contains "$out" "SIGNAL_GIT_REF 'main' ist beweglich; gebaut wird der aktuelle Stand ${second:0:12}"
+  assert_contains "$out" "image=taxtronik/risk-layer-engine:source-${second:0:12}"
+
+  if run_signal_pin_build "" >"$out" 2>&1; then
+    test_fail "Signal source build ran without an explicit Git ref"
+  fi
+  assert_contains "$out" "SIGNAL_GIT_REF fehlt oder ist ungueltig"
+  pass "managed Signal builds exactly a pinned commit and warns for moving refs"
+}
+
+test_signal_source_ref_has_no_implicit_moving_default() {
+  local env_file="$TMP_DIR/signal-ref-default.env" out="$TMP_DIR/signal-ref-default.out" sha
+  [[ -z "$SIGNAL_GIT_REF_DEFAULT" ]] || test_fail "SIGNAL_GIT_REF_DEFAULT still selects '$SIGNAL_GIT_REF_DEFAULT'"
+  [[ "$(grep -E '^SIGNAL_GIT_REF=' "$REPO_ROOT/.env.example" | tr -d '\r')" == "SIGNAL_GIT_REF=" ]] || \
+    test_fail ".env.example still presets a Signal Git ref"
+
+  : >"$env_file"
+  if (
+    ENVFILE="$env_file"
+    SIGNAL_DEPLOYMENT=managed
+    SIGNAL_DEPLOY_CHANNEL=source
+    SIGNAL_GIT_URL=https://git.example/taxtronik/signal.git
+    SIGNAL_GIT_REF=""
+    SIGNAL_GIT_DIR=/opt/signal
+    SIGNAL_LLM_DIR="$TMP_DIR/signal-ref-default-llm"
+    configure_risk_layer_interactive
+  ) </dev/null >"$out" 2>&1; then
+    test_fail "managed Signal source setup silently chose a Git ref"
+  fi
+  assert_contains "$out" "SIGNAL_GIT_REF fehlt oder ist ungueltig"
+  assert_not_contains "$env_file" "SIGNAL_GIT_REF=main"
+
+  sha="$(printf 'b%.0s' {1..40})"
+  (
+    ENVFILE="$env_file"
+    SIGNAL_DEPLOYMENT=managed
+    SIGNAL_DEPLOY_CHANNEL=source
+    SIGNAL_GIT_URL=https://git.example/taxtronik/signal.git
+    SIGNAL_GIT_REF="$sha"
+    SIGNAL_GIT_DIR=/opt/signal
+    SIGNAL_LLM_DIR="$TMP_DIR/signal-ref-default-llm"
+    configure_risk_layer_interactive
+  ) </dev/null >"$out" 2>&1 || { cat "$out" >&2; test_fail "pinned Signal commit was rejected by setup"; }
+  assert_key_equals "$env_file" SIGNAL_GIT_REF "$sha"
+  pass "managed Signal source has no implicit moving default ref"
+}
+
 write_release_env() {
   local file="$1" version="$2" web_suffix="$3" worker_suffix="$4" commit="$5"
   cat >"$file" <<EOF
@@ -4111,6 +4213,8 @@ test_managed_signal_source_build_skips_registry_pull
 test_managed_signal_source_build_accepts_fresh_no_checkout_clone
 test_managed_signal_source_update_skips_unchanged_image_unless_requested
 test_managed_signal_source_update_honors_interactive_rebuild_choice
+test_managed_signal_source_build_pins_commits_and_flags_moving_refs
+test_signal_source_ref_has_no_implicit_moving_default
 test_signal_embedding_compose_contract_is_self_contained_and_offline
 test_hardware_aaguid_allowlist_is_forwarded_to_app
 test_hardware_aaguid_allowlist_is_forwarded_to_worker

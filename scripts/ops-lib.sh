@@ -44,7 +44,12 @@ ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.24@sha256:294b683cb724975bec92580e1e685676
 # dagegen niemals ueber diesen Pfad angefasst.
 SIGNAL_MANAGED_IMAGE_DEFAULT="git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0"
 SIGNAL_GIT_URL_DEFAULT="https://git.hirschmann-koxha.de/TaxTronik/signal.git"
-SIGNAL_GIT_REF_DEFAULT="main"
+# Bewusst leer: Ein Signal-Source-Build fuehrt Skripte aus dem Signal-Checkout
+# auf dem Host aus. Ohne ausdrueckliche Wahl wird daher kein beweglicher Branch
+# (frueher `main`) gebaut. Im Repository ist kein getesteter Signal-Commit
+# gepinnt; Betreiber setzen SIGNAL_GIT_REF auf einen vollstaendigen Commit-SHA
+# (empfohlen) oder ein explizites refs/tags/<Tag>.
+SIGNAL_GIT_REF_DEFAULT=""
 # Vertrauensanker fuer Source-Kanal-Updates (S-04). Liegt ausserhalb jedes
 # Checkouts; Signer-Konfiguration aus dem geholten Baum oder der Repo-Config
 # wird nie verwendet. TAXTRONIK_SOURCE_ALLOWED_SIGNERS ueberschreibt den Pfad.
@@ -507,6 +512,16 @@ valid_git_ref() {
 }
 
 valid_signal_git_ref() { valid_git_ref "$@"; }
+
+# commit = unveraenderlicher, vollstaendiger Commit-SHA; tag = explizites
+# refs/tags/<Tag> (nur so fest wie der Tag-Schutz auf dem Server); moving =
+# Branch oder mehrdeutiger Kurzname, der bei jedem Update weiterwandern kann.
+signal_git_ref_kind() {
+  local value="${1:-}"
+  if [[ "$value" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then printf 'commit'
+  elif [[ "$value" == refs/tags/?* ]]; then printf 'tag'
+  else printf 'moving'; fi
+}
 
 signal_source_dir() {
   local configured="${SIGNAL_GIT_DIR:-$(get_env SIGNAL_GIT_DIR)}"
@@ -1219,6 +1234,22 @@ _doctor_source_update_trust() {
   esac
 }
 
+# Signal-Source-Builds fuehren Skripte aus dem Signal-Checkout auf dem Host aus.
+# Ein beweglicher Ref ist WARN statt FEHLT, weil Bestandsinstallationen den
+# frueheren Default `main` persistiert haben und doctor deploy/update hart
+# blockiert; neue Installationen muessen den Ref ausdruecklich waehlen.
+_doctor_signal_git_ref() {
+  local ref="$1"
+  case "$(signal_git_ref_kind "$ref")" in
+    commit) _dr_row "OK" "SIGNAL_GIT_REF" "fester Commit ${ref:0:12}" ;;
+    tag) _dr_row "OK" "SIGNAL_GIT_REF" "$ref (Tag serverseitig schuetzen; nur ein Commit-SHA ist unveraenderlich)" ;;
+    *)
+      _dr_row "WARN" "SIGNAL_GIT_REF" "'$ref' ist beweglich: jedes Update baut den neuesten Stand; Commit-SHA setzen"
+      _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+      ;;
+  esac
+}
+
 pull_release_images_direct() {
   local prefix="${TAXTRONIK_IMAGE_PREFIX%/}" version
   version="$(image_tag)"
@@ -1821,12 +1852,13 @@ doctor() {
       if ! valid_signal_git_url "$signal_git_url"; then
         _dr_row "FEHLT" "SIGNAL_GIT_URL" "nur HTTPS- oder SSH-Git-URL erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
       elif ! valid_signal_git_ref "$signal_git_ref"; then
-        _dr_row "FEHLT" "SIGNAL_GIT_REF" "ungueltiger Branch, Tag oder Commit"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+        _dr_row "FEHLT" "SIGNAL_GIT_REF" "fehlt/ungueltig: vollstaendigen Commit-SHA (empfohlen) oder refs/tags/<Tag> setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
       elif [[ "$signal_git_dir" != /* || "$signal_git_dir" == "/" || \
               "$signal_git_dir" == "$ROOT" || "$signal_git_dir" == "$ROOT/"* ]]; then
         _dr_row "FEHLT" "SIGNAL_GIT_DIR" "absoluter eigener Checkout-Pfad erforderlich"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
       else
         _dr_row "OK" "SIGNAL_SOURCE" "$signal_git_url @ $signal_git_ref"
+        _doctor_signal_git_ref "$signal_git_ref"
       fi
     elif [[ "$signal_channel" == "image" ]]; then
       resolved_signal_image="$(signal_managed_image)"
@@ -2110,7 +2142,8 @@ build_signal_from_source() {
   cpus="${SIGNAL_BUILD_CPUS:-2}"
 
   valid_signal_git_url "$url" || die "SIGNAL_GIT_URL muss eine HTTPS- oder SSH-Git-URL ohne eingebettete Zugangsdaten sein."
-  valid_signal_git_ref "$ref" || die "SIGNAL_GIT_REF ist ungueltig. Branch, Tag oder Commit ohne Shell-Sonderzeichen angeben."
+  valid_signal_git_ref "$ref" || \
+    die "SIGNAL_GIT_REF fehlt oder ist ungueltig. Vollstaendigen Signal-Commit-SHA (empfohlen) oder refs/tags/<Tag> setzen; ein beweglicher Branch wird nicht mehr implizit gebaut."
   [[ "$dir" == /* && "$dir" != "/" && "$dir" != "$ROOT" && "$dir" != "$ROOT/"* ]] || \
     die "SIGNAL_GIT_DIR muss ein absoluter eigener Checkout-Pfad ausserhalb des TaxTronik-Repos sein."
   [[ "$cpus" =~ ^[1-9][0-9]?$ ]] || die "SIGNAL_BUILD_CPUS muss eine ganze Zahl zwischen 1 und 99 sein."
@@ -2147,6 +2180,14 @@ build_signal_from_source() {
     die "Signal-Git-Ref konnte nicht bezogen werden: $ref"
   sha="$(git -C "$dir" rev-parse --verify FETCH_HEAD 2>/dev/null || true)"
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "Signal-Git-Ref wurde nicht zu einem eindeutigen Commit aufgeloest."
+  case "$(signal_git_ref_kind "$ref")" in
+    commit)
+      [[ "$sha" == "$ref" ]] || die "Signal-Checkout entspricht nicht dem gepinnten Commit $ref."
+      ;;
+    moving)
+      warn "SIGNAL_GIT_REF '$ref' ist beweglich; gebaut wird der aktuelle Stand ${sha:0:12}. Fuer kontrollierte Updates einen vollstaendigen Commit-SHA setzen."
+      ;;
+  esac
   (umask 022; git -C "$dir" checkout --detach "$sha") || \
     die "Signal-Checkout konnte nicht auf $sha gesetzt werden."
   status="$(git -C "$dir" status --porcelain --untracked-files=normal 2>/dev/null || true)"
@@ -3373,8 +3414,8 @@ configure_initial_deployment_interactive() {
     1|managed)
       _SETUP_SIGNAL_MODE="managed"
       printf '\nWie soll das von TaxTronik verwaltete Signal bereitgestellt werden?\n'
-      printf '  1) Aktuellen Git-Stand lokal bauen (derzeit empfohlen)\n'
-      printf '     Klont/aktualisiert Signal und baut ein CPU-Image ohne automatischen Indexaufbau.\n'
+      printf '  1) Festen Signal-Git-Stand lokal bauen (derzeit empfohlen)\n'
+      printf '     Klont Signal auf den gewaehlten Commit und baut ein CPU-Image ohne automatischen Indexaufbau.\n'
       printf '     Enthalten: Signal-Kern, Embeddings, Quantenextras und lokale LLM-Vertiefung.\n'
       printf '     CPU-Hinweis: Das gepinnte 8B-Modell (~6,25 GB) ist ein deutlicher Performance-Bottleneck.\n'
       printf '  2) Veroeffentlichtes Container-Image aus einer Registry\n'
@@ -3386,9 +3427,17 @@ configure_initial_deployment_interactive() {
           read -rp "Signal-Git-Repository [$_SETUP_SIGNAL_GIT_URL]: " input || true
           _SETUP_SIGNAL_GIT_URL="${input:-$_SETUP_SIGNAL_GIT_URL}"
           valid_signal_git_url "$_SETUP_SIGNAL_GIT_URL" || die "Signal-Git-URL ist ungueltig oder enthaelt Zugangsdaten."
-          read -rp "Signal-Git-Ref (Branch, Tag oder Commit) [$_SETUP_SIGNAL_GIT_REF]: " input || true
-          _SETUP_SIGNAL_GIT_REF="${input:-$_SETUP_SIGNAL_GIT_REF}"
-          valid_signal_git_ref "$_SETUP_SIGNAL_GIT_REF" || die "Signal-Git-Ref ist ungueltig."
+          # Kein impliziter beweglicher Branch: Der Ref muss ausdruecklich
+          # gewaehlt werden (Commit-SHA empfohlen, siehe SIGNAL_GIT_REF_DEFAULT).
+          while :; do
+            read -rp "Signal-Git-Ref (vollstaendiger Commit-SHA empfohlen, alternativ refs/tags/<Tag>)${_SETUP_SIGNAL_GIT_REF:+ [$_SETUP_SIGNAL_GIT_REF]}: " input || \
+              die "Initialsetup ohne Signal-Git-Ref abgebrochen."
+            input="${input:-$_SETUP_SIGNAL_GIT_REF}"
+            if valid_signal_git_ref "$input"; then _SETUP_SIGNAL_GIT_REF="$input"; break; fi
+            warn "Signal-Git-Ref fehlt oder ist ungueltig; bitte einen vollstaendigen Commit-SHA oder refs/tags/<Tag> angeben."
+          done
+          [[ "$(signal_git_ref_kind "$_SETUP_SIGNAL_GIT_REF")" != "moving" ]] || \
+            warn "'$_SETUP_SIGNAL_GIT_REF' ist beweglich: Jedes Update baut dann den jeweils neuesten Signal-Stand. Commit-SHA empfohlen."
           read -rp "Lokaler Signal-Checkout [$_SETUP_SIGNAL_GIT_DIR]: " input || true
           _SETUP_SIGNAL_GIT_DIR="${input:-$_SETUP_SIGNAL_GIT_DIR}"
           [[ "$_SETUP_SIGNAL_GIT_DIR" == /* && "$_SETUP_SIGNAL_GIT_DIR" != "/" && \
@@ -3540,11 +3589,12 @@ configure_risk_layer_interactive() {
         die "SIGNAL_DEPLOY_CHANNEL muss source oder image sein."
       if [[ "$channel" == "source" ]]; then
         prompt "Signal-Git-Repository" SIGNAL_GIT_URL "$SIGNAL_GIT_URL_DEFAULT"
-        prompt "Signal-Git-Ref (Branch, Tag oder Commit)" SIGNAL_GIT_REF "$SIGNAL_GIT_REF_DEFAULT"
+        prompt "Signal-Git-Ref (vollstaendiger Commit-SHA empfohlen, alternativ refs/tags/<Tag>)" SIGNAL_GIT_REF "$SIGNAL_GIT_REF_DEFAULT"
         prompt "Lokaler Signal-Checkout" SIGNAL_GIT_DIR "$(dirname "$ROOT")/signal"
         valid_signal_git_url "$SIGNAL_GIT_URL" || \
           die "Signal-Git-URL ist ungueltig oder enthaelt eingebettete Zugangsdaten."
-        valid_signal_git_ref "$SIGNAL_GIT_REF" || die "Signal-Git-Ref ist ungueltig."
+        valid_signal_git_ref "$SIGNAL_GIT_REF" || \
+          die "SIGNAL_GIT_REF fehlt oder ist ungueltig; vollstaendigen Signal-Commit-SHA (empfohlen) oder refs/tags/<Tag> in .env setzen."
         [[ "$SIGNAL_GIT_DIR" == /* && "$SIGNAL_GIT_DIR" != "/" && \
            "$SIGNAL_GIT_DIR" != "$ROOT" && "$SIGNAL_GIT_DIR" != "$ROOT/"* ]] || \
           die "Signal-Checkout braucht einen absoluten eigenen Pfad ausserhalb des TaxTronik-Repos."

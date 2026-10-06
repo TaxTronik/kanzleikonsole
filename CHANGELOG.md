@@ -1322,6 +1322,22 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- `./taxtronik update` übernimmt im Source-Kanal nur noch einen Ziel-Commit,
+  der selbst oder über einen annotierten Tag auf genau diesen Commit mit einem
+  Schlüssel aus einer gepinnten `allowed_signers`-Datei außerhalb des Checkouts
+  SSH-signiert ist (`TAXTRONIK_SOURCE_ALLOWED_SIGNERS`, Standard
+  `/etc/taxtronik/allowed_signers`). Die Prüfung läuft vor dem Fast-forward und
+  damit vor dem Neustart des aktualisierten Operators; Signer- und
+  Prüfeinstellungen aus dem geholten Baum oder der Git-Konfiguration werden
+  ignoriert, OpenPGP-/X.509-Signaturen nicht akzeptiert. Ohne Signer verweigert
+  Produktion das Update vor dem Pflichtbackup; das Übergangs-Opt-out
+  `TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1` wird je übernommenem Stand
+  protokolliert. `./taxtronik doctor` zeigt den Zustand
+  (`SOURCE_UPDATE_SIGNERS`). Der Release-Kanal ist unverändert.
+- Der verwaltete Signal-Source-Bezug baut nicht mehr implizit den beweglichen
+  Branch `main`: `SIGNAL_GIT_REF` hat keinen Standardwert mehr, empfohlen ist
+  ein vollständiger Commit-SHA; `./taxtronik doctor` meldet Branches als
+  Warnung, ein gepinnter Commit wird beim Build geprüft.
 - **[Scope]** App und Worker verbinden sich nicht mehr als
   PostgreSQL-Superuser. Die Owner-Verbindung nutzt die neue Rolle
   `taxtronik_owner`: Sie umgeht RLS wie bisher, darf aber nur Daten lesen und

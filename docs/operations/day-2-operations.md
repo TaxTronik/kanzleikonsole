@@ -606,6 +606,15 @@ gewählt:
 
 - `SIGNAL_DEPLOY_CHANNEL=source` aktualisiert `SIGNAL_GIT_DIR` aus
   `SIGNAL_GIT_URL` auf `SIGNAL_GIT_REF` und baut ein lokales CPU-Image. Der
+  Build führt `scripts/build-managed-image.sh` aus dem Signal-Checkout auf dem
+  Host aus. `SIGNAL_GIT_REF` hat deshalb keinen Standardwert mehr und muss
+  ausdrücklich gesetzt werden: empfohlen ist ein vollständiger Commit-SHA
+  (unveränderlich), alternativ ein serverseitig geschütztes
+  `refs/tags/<Tag>`. Ein Branch wie das frühere `main` baut bei jedem Update
+  den jeweils neuesten Stand; `./taxtronik doctor` meldet ihn als WARN, der
+  Build nennt den tatsächlich gebauten Commit. Für einen Commit-SHA muss der
+  Git-Server das Holen eines einzelnen Commits erlauben; sonst bricht der Fetch
+  mit „Signal-Git-Ref konnte nicht bezogen werden“ ab. Der
   Commit steckt im Image-Tag. `./taxtronik update` baut deshalb nur bei einem
   neuen Commit oder fehlenden Image automatisch neu. Ist der Stand identisch,
   kann der Neuaufbau interaktiv bestaetigt werden; unbeaufsichtigt wird er

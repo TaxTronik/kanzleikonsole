@@ -227,6 +227,10 @@ Sobald Signer konfiguriert sind, ist das Opt-out wirkungslos und `doctor`
 empfiehlt, es zu entfernen. Es ist nur für die Umstellung bestehender
 Installationen gedacht.
 
+Der verwaltete Signal-Source-Bezug ist davon getrennt: `SIGNAL_GIT_REF` hat
+keinen Standardwert mehr und sollte auf einen vollständigen Commit-SHA zeigen
+(siehe [day-2-operations.md](day-2-operations.md#signal-risk-layer-api)).
+
 ## 3. Rollback
 
 **App-Rollback (keine neuen Migrationen seit dem letzten Update):**

@@ -371,10 +371,12 @@ N8N_BIND=127.0.0.1
 
 # Optional: Signal / TCMS. Der interaktive Deploy fragt Modus und Bezugsweg ab.
 # managed + source: TaxTronik aktualisiert den Signal-Checkout und baut lokal.
+# SIGNAL_GIT_REF hat keinen Default: vollständiger Commit-SHA empfohlen,
+# ein Branch wie main baut bei jedem Update den neuesten Stand (doctor: WARN).
 SIGNAL_DEPLOYMENT=managed
 SIGNAL_DEPLOY_CHANNEL=source
 SIGNAL_GIT_URL=https://git.hirschmann-koxha.de/TaxTronik/signal.git
-SIGNAL_GIT_REF=main
+SIGNAL_GIT_REF=<vollständiger Signal-Commit-SHA>
 SIGNAL_GIT_DIR=/opt/signal
 # Alternativ ein bereits veröffentlichtes Image beziehen:
 # SIGNAL_DEPLOY_CHANNEL=image
