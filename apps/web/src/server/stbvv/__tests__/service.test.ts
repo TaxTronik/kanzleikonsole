@@ -1,5 +1,5 @@
 // Fachkatalog: STBVV-CALCULATION-001
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
 import { STBVV_VERSION } from '@taxtronik/tax';
 vi.mock('@/server/actions/staff-action', () => ({ ActionError: class extends Error {} }));
@@ -22,7 +22,15 @@ import { SAMPLE_SELLER, SAMPLE_BUYER } from '@/server/invoicing/sample-fixture';
 import { extractText, getDocumentProxy } from 'unpdf';
 
 describe('StBVV draft export and idempotent claim', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Rechnungsjahr muss im laufenden Jahr ± 1 liegen (INV-NUMBER-ALLOCATION-001).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-06T10:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
   it('uses the void-safe transaction lock before reusing an existing invoice without allocation', async () => {
     const events: string[] = [];
     const tx = {

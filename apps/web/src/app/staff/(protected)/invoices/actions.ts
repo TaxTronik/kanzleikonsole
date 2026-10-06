@@ -15,7 +15,12 @@ import { portalBaseUrl } from '@taxtronik/config';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { archiveFailureMessage } from '@/server/invoicing/archive-failure';
-import { computeVatTotals } from '@/server/invoicing/vat';
+import { IN_APP_VAT_RATES } from '@/server/invoicing/vat';
+import {
+  checkDraftInvoice,
+  createDraftInvoiceTx,
+  type DraftInvoiceHeader,
+} from '@/server/invoicing/create-draft';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { toStornoPosition } from '@/server/invoicing/storno';
 import { claimInvoiceDraftForSend } from '@/server/invoicing/send-claim';
@@ -23,7 +28,6 @@ import { claimInvoicePayment } from '@/server/invoicing/payment-claim';
 import { discardNeverSentDraftArchiveTx } from '@/server/invoicing/draft-archive';
 import { lockInvoiceArchiveTx } from '@/server/invoicing/archive-lock';
 import { readModules, type InvoiceMode } from '@/server/settings/modules';
-import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { round2, fmtEUR, fmtDateShort, berlinTodayUtcMidnight } from '@/lib/fmt';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { log } from '@/server/logger';
@@ -53,10 +57,6 @@ async function requireInvoiceMode(
   return null;
 }
 
-// Zulässige deutsche USt-Sätze (Regel- und ermäßigter Satz + Nullsatz).
-// Serverseitige Whitelist statt freiem 0–99-Bereich (die UI bietet nur diese).
-const ALLOWED_VAT_RATES = [0, 7, 19] as const;
-
 const PositionSchema = z
   .object({
     description: z.string().min(1).max(500),
@@ -77,10 +77,11 @@ const PositionSchema = z
         message: 'Einzelpreis darf höchstens zwei Nachkommastellen haben.',
       }),
     unit: z.string().max(50).default('Stück'),
-    // iter86 (§ 14 Abs. 4 Nr. 8 UStG): Steuersatz je Position.
+    // iter86 (§ 14 Abs. 4 Nr. 8 UStG): Steuersatz je Position; serverseitige
+    // Whitelist (IN_APP_VAT_RATES) statt freiem 0–99-Bereich.
     vatRate: z.coerce
       .number()
-      .refine((r) => (ALLOWED_VAT_RATES as readonly number[]).includes(r), {
+      .refine((r) => (IN_APP_VAT_RATES as readonly number[]).includes(r), {
         message: 'Ungültiger USt-Satz (zulässig: 0 %, 7 %, 19 %).',
       })
       .default(19),
@@ -92,25 +93,15 @@ const PositionSchema = z
   });
 
 // iter85 (GoB): KEIN number-Feld mehr — die Rechnungsnummer wird automatisch
-// und lückenlos aus dem Nummernkreis vergeben (allocateInvoiceNumber, in
+// und lückenlos aus dem Nummernkreis vergeben (createDraftInvoiceTx, in
 // derselben Tx wie der INSERT). Manuelle Nummern gibt es nur noch im
-// EXTERNAL-Modus (Nummer des Fremdsystems).
-// Das Rechnungsdatum bestimmt den Jahres-Nummernkreis (allocateInvoiceNumber
-// liest issueDate.getUTCFullYear()). Ein frei rück-/vordatiertes Datum würde
-// sonst einen fremden Jahreskreis öffnen — daher auf das laufende Jahr ± 1
-// begrenzt (deckt die Jahreswechsel-Grenze ab, blockt 2020/2099).
-function issueYearPlausible(dateStr: string): boolean {
-  const year = new Date(dateStr).getUTCFullYear();
-  const now = new Date().getUTCFullYear();
-  return year >= now - 1 && year <= now + 1;
-}
-
+// EXTERNAL-Modus (Nummer des Fremdsystems). Rechnungsjahr (laufendes Jahr
+// ± 1), Leistungszeitraum, Steuer- und Betragsgrenzen prüft der gemeinsame
+// Anlageservice für alle In-App-Pfade.
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
   subject: z.string().min(1).max(500),
-  issueDate: z.string().date().refine(issueYearPlausible, {
-    message: 'Rechnungsdatum liegt außerhalb des plausiblen Bereichs (laufendes Jahr ± 1).',
-  }),
+  issueDate: z.string().date(),
   dueDate: z.string().date(),
   notes: z.string().max(5000).optional().or(z.literal('')),
   // iter98: optionaler Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG). Nur wirksam,
@@ -128,16 +119,6 @@ const CreateSchema = z.object({
   // Aufruf beliebig viele Positionen in einer Tx anlegen.
   positions: z.array(PositionSchema).min(1).max(200),
 });
-
-function servicePeriodError(start: string | null, end: string | null): string | null {
-  if ((start === null) !== (end === null)) {
-    return 'Leistungszeitraum braucht Start UND Ende (oder beides leer).';
-  }
-  if (start && end && start > end) {
-    return 'Leistungszeitraum: Start liegt nach dem Ende.';
-  }
-  return null;
-}
 
 export async function createInvoiceAction(input: {
   clientId: string;
@@ -174,154 +155,36 @@ export async function createInvoiceAction(input: {
     return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
   }
   const data = parsed.data;
+  const header: DraftInvoiceHeader = {
+    clientId: data.clientId,
+    subject: data.subject,
+    issueDate: new Date(data.issueDate),
+    dueDate: new Date(data.dueDate),
+    servicePeriodStart: data.servicePeriodStart ? new Date(data.servicePeriodStart) : null,
+    servicePeriodEnd: data.servicePeriodEnd ? new Date(data.servicePeriodEnd) : null,
+    vatExemptionReason: data.vatExemptionReason || null,
+    reverseCharge: data.reverseCharge,
+    format: data.format,
+    notes: data.notes || null,
+  };
 
-  // Leistungszeitraum: entweder beide leer oder beide gesetzt, Start ≤ Ende.
-  const periodStart = data.servicePeriodStart || null;
-  const periodEnd = data.servicePeriodEnd || null;
-  const periodError = servicePeriodError(periodStart, periodEnd);
-  if (periodError) return { ok: false, error: periodError };
+  // Reine Prüfungen schon vor der Transaktion (der Service wiederholt sie).
+  const checked = checkDraftInvoice(header, data.positions);
+  if (!checked.ok) return { ok: false, error: checked.error };
 
-  // § 14 Abs. 4 Nr. 8 UStG: 0 %-Umsätze brauchen einen Befreiungshinweis.
-  const exemptionReason = data.vatExemptionReason || null;
-  const hasZeroRate = data.positions.some((p) => p.vatRate === 0);
-  // Reverse-Charge (§ 13b): alle Positionen 0 %, eigener Kategorie-Grund (AE) —
-  // kein Befreiungsgrund-Text nötig, dafür MUSS jede Position 0 % sein.
-  if (data.reverseCharge && data.positions.some((p) => p.vatRate !== 0)) {
-    return {
-      ok: false,
-      error: 'Reverse-Charge (§ 13b UStG): alle Positionen müssen 0 % USt haben.',
-    };
-  }
-  if (hasZeroRate && !exemptionReason && !data.reverseCharge) {
-    return {
-      ok: false,
-      error:
-        'Bei 0 %-Positionen ist ein Befreiungsgrund erforderlich (z. B. „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 …").',
-    };
-  }
-
-  // Beträge berechnen — USt je Satz-Gruppe (§ 14 Abs. 4 Nr. 8 UStG, iter86).
-  const positionsWithNet = data.positions.map((p, i) => ({
-    position: i + 1,
-    description: p.description,
-    quantity: p.quantity,
-    unitPrice: p.unitPrice,
-    unit: p.unit,
-    netAmount: round2(p.quantity * p.unitPrice),
-    vatRate: p.vatRate,
-  }));
-  const totals = computeVatTotals(positionsWithNet);
-  // Decimal(12,2) limits apply to the header as well as each individual line.
-  // VAT or several individually valid lines can still overflow those columns.
-  if (
-    [totals.netAmount, totals.vatAmount, totals.totalAmount].some(
-      (amount) => !Number.isFinite(amount) || amount > 9_999_999_999.99,
-    )
-  ) {
-    return {
-      ok: false,
-      error:
-        'Rechnungssumme zu groß: Netto, Umsatzsteuer und Brutto dürfen jeweils höchstens 9.999.999.999,99 € betragen.',
-    };
-  }
-
-  // BR-AE-01: Reverse-Charge braucht auch die USt-IdNr des LEISTENDEN (Kanzlei,
-  // BT-31). Die allgemeine Absender-Vollständigkeit (archive) akzeptiert USt-IdNr
-  // ODER Steuernummer — für die Kategorie AE ist die USt-IdNr zwingend.
-  if (data.reverseCharge) {
-    const seller = await readSellerInfo(ctx);
-    if (!seller.vatId) {
-      return {
-        ok: false,
-        error:
-          'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei (Einstellungen → Rechnungsdaten).',
-      };
-    }
-  }
-
-  let invoiceId: string;
-  let invoiceNumber: string;
   try {
-    [invoiceId, invoiceNumber] = await withTenantContext(ctx, async (tx) => {
+    const invoice = await withTenantContext(ctx, async (tx) => {
       // Vertraulich-/RESTRICTED-Ventil (Gegenstück in clients/[id]/billing).
       await assertClientAccessTx(tx, g.session, data.clientId);
-      // BR-AE (EN16931): Reverse-Charge braucht die USt-IdNr des Leistungs-
-      // empfängers (BT-48) — ohne sie wäre die erzeugte XRechnung nicht valide.
-      if (data.reverseCharge) {
-        const cli = await tx.client.findUnique({
-          where: { id: data.clientId },
-          select: { vatId: true },
-        });
-        if (!cli?.vatId) {
-          throw new ActionError(
-            'Reverse-Charge (§ 13b UStG) erfordert eine hinterlegte USt-IdNr des Mandanten.',
-          );
-        }
-      }
-      // Lückenlose Vergabe in DERSELBEN Tx: scheitert der INSERT, rollt die
-      // Sequenz mit zurück — es entsteht keine Lücke.
-      const number = await allocateInvoiceNumber(tx, tenantId, new Date(data.issueDate));
-      const inv = await tx.invoice.create({
-        data: {
-          tenantId,
-          clientId: data.clientId,
-          number,
-          subject: data.subject,
-          issueDate: new Date(data.issueDate),
-          dueDate: new Date(data.dueDate),
-          servicePeriodStart: periodStart ? new Date(periodStart) : null,
-          servicePeriodEnd: periodEnd ? new Date(periodEnd) : null,
-          vatExemptionReason: exemptionReason,
-          reverseCharge: data.reverseCharge,
-          status: 'DRAFT',
-          format: data.format,
-          netAmount: totals.netAmount,
-          vatAmount: totals.vatAmount,
-          totalAmount: totals.totalAmount,
-          // Kopf-Satz nur bei einheitlichem Satz (Anzeige/CSV); Mischsätze → null.
-          vatRate: totals.uniformRate,
-          notes: data.notes || null,
-          createdByStaff: staffId,
-          positions: { create: positionsWithNet },
-        },
+      return createDraftInvoiceTx(tx, { tenantId, staffId }, header, data.positions, {
+        kind: 'manual',
       });
-
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'invoice.create',
-        resourceType: 'invoice',
-        resourceId: inv.id,
-        after: {
-          number,
-          clientId: data.clientId,
-          totalAmount: totals.totalAmount,
-          format: data.format,
-        },
-      });
-
-      return [inv.id, number] as const;
     });
+    return { ok: true, invoiceId: invoice.id, number: invoice.number };
   } catch (e) {
-    // Befund 8: Klassifikation über Prisma-Error-Code statt fragiler Message-
-    // Substrings (msg.includes('Unique') / includes('nicht aktiv') matchte
-    // z. B. auch „nicht aktiviert"). P2002 = Unique-Violation, symmetrisch zu
-    // uploadExternalInvoiceAction unten.
-    if ((e as { code?: string }).code === 'P2002') {
-      return { ok: false, error: 'Rechnungsnummer existiert bereits.' };
-    }
-    // GwG-Schranke: DB-Trigger (RAISE EXCEPTION … 'GwG-Schranke', SQLSTATE
-    // P0001) — Prisma kennt den Code nicht und reicht den Trigger-Text in der
-    // Message durch. Der Marker „GwG-Schranke" ist der stabile Vertrag aus den
-    // Migrationen (init/iter2/iter5).
-    if ((e as Error).message?.includes('GwG-Schranke')) {
-      return { ok: false, error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).' };
-    }
+    // Nummernkonflikt und GwG-Schranke bildet createDraftInvoiceTx ab.
     return toActionError(e);
   }
-
-  return { ok: true, invoiceId, number: invoiceNumber };
 }
 
 const StatusSchema = z.object({

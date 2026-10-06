@@ -603,6 +603,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Rechnungen aus Zeiterfassung und StBVV-Kostenvoranschlägen durchlaufen
+  dieselben Prüfungen wie manuelle Rechnungen: Reverse-Charge ohne
+  USt-IdNr der Kanzlei (§ 13b UStG), Beträge über den Datenbankgrenzen und
+  Rechnungsdaten außerhalb des laufenden Jahres ±1 werden abgelehnt, bevor
+  eine Rechnungsnummer vergeben wird; bisher scheiterte eine solche
+  Stundenabrechnung erst beim Versand und hinterließ eine vergebene Nummer
+  (`INV-NUMBER-ALLOCATION-001`, `INV-VAT-TOTALS-001`,
+  `STBVV-CALCULATION-001`, `FK-EXC-20261006-004`).
 - E-Rechnungs-Downloads (XRechnung/ZUGFeRD): Reverse-Charge-Rechnungen ohne
   USt-IdNr der Kanzlei liefern in beiden Routen 422 mit Hinweis auf die
   Kanzlei-Stammdaten statt 404 „nicht gefunden“; technische Fehlertexte

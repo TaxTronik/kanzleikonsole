@@ -9,8 +9,11 @@ import {
 } from '@taxtronik/tax';
 import { screeningJson } from '@taxtronik/tax/screening/persistence';
 import { ActionError } from '@/server/actions/staff-action';
-import { computeVatTotals } from '@/server/invoicing/vat';
-import { allocateInvoiceNumber } from '@/server/invoicing/number';
+import {
+  checkDraftInvoice,
+  createDraftInvoiceTx,
+  type DraftInvoiceHeader,
+} from '@/server/invoicing/create-draft';
 import { evidenceService } from '@/server/container';
 import { lockFeeQuoteExportTx } from './lock';
 import { lockInvoiceArchiveTx } from '@/server/invoicing/archive-lock';
@@ -186,50 +189,36 @@ export async function createFeeInvoice(
       description: `Auslagen · ${e.matter} · ${e.description}`,
       net: e.netCents,
     })),
-  ].map((p, i) => ({
-    position: i + 1,
+  ].map((p) => ({
     description: p.description,
     quantity: 1,
     unitPrice: p.net / 100,
     unit: 'Position',
-    netAmount: p.net / 100,
     vatRate: input.vatRate,
   }));
-  const totals = computeVatTotals(positions);
-  if (Math.round(totals.totalAmount * 100) !== result.grossCents)
+  const header: DraftInvoiceHeader = {
+    clientId,
+    subject: quote.title,
+    issueDate: new Date(issueDate),
+    dueDate: new Date(dueDate),
+    servicePeriodStart: null,
+    servicePeriodEnd: null,
+    vatExemptionReason: input.vatExemptionReason || null,
+    reverseCharge: false,
+    // STBVV-CALCULATION-001: Der In-App-Entwurf muss den regulären
+    // Archiv-/Versandpfad nutzen können; PDF ist nur für externe Uploads.
+    format: 'XRECHNUNG',
+    notes: `Kalkulation ${quote.id} · ${quote.lawVersion}. Fachlicher Entwurf; vor Versand Leistungszeitraum, Voraussetzungen, Vorschüsse und Angemessenheit prüfen.`,
+  };
+  const checked = checkDraftInvoice(header, positions);
+  if (!checked.ok) throw new ActionError(checked.error);
+  if (Math.round(checked.totals.totalAmount * 100) !== result.grossCents)
     throw new ActionError('Rechnungssummen weichen vom Nachweis ab. Übernahme gesperrt.');
-  const number = await allocateInvoiceNumber(tx, tenantId, new Date(issueDate));
-  const invoice = await tx.invoice.create({
-    data: {
-      tenantId,
-      clientId,
-      number,
-      subject: quote.title,
-      issueDate: new Date(issueDate),
-      dueDate: new Date(dueDate),
-      status: 'DRAFT',
-      // STBVV-CALCULATION-001: Der In-App-Entwurf muss den regulären
-      // Archiv-/Versandpfad nutzen können; PDF ist nur für externe Uploads.
-      format: 'XRECHNUNG',
-      netAmount: totals.netAmount,
-      vatAmount: totals.vatAmount,
-      totalAmount: totals.totalAmount,
-      vatRate: input.vatRate,
-      vatExemptionReason: input.vatExemptionReason || null,
-      notes: `Kalkulation ${quote.id} · ${quote.lawVersion}. Fachlicher Entwurf; vor Versand Leistungszeitraum, Voraussetzungen, Vorschüsse und Angemessenheit prüfen.`,
-      createdByStaff: staffId,
-      positions: { create: positions },
-    },
-  });
-  await tx.stbvvQuoteExport.create({ data: { tenantId, quoteId, invoiceId: invoice.id } });
-  await evidenceService.record(tx, {
-    tenantId,
-    actorId: staffId,
-    actorType: 'STAFF',
-    action: 'stbvv.invoice.draft',
-    resourceType: 'invoice',
-    resourceId: invoice.id,
-    after: { clientId, quoteId, number, totalAmount: totals.totalAmount },
+  // Gemeinsamer Anlageservice: Nummernkreis, Umsatzsteuerfunktion, Claim der
+  // Kalkulation (stbvvQuoteExport) und Audit wie jede In-App-Rechnung.
+  const invoice = await createDraftInvoiceTx(tx, { tenantId, staffId }, header, positions, {
+    kind: 'stbvv_quote',
+    quoteId,
   });
   return { invoiceId: invoice.id, existing: false };
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Fachkatalog: INV-ARCHIVE-EINVOICE-001
 // Fachkatalog: INV-PORTAL-SHARING-001
@@ -149,8 +149,15 @@ beforeEach(() => {
   } as never);
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('ensureZugferdArchive', () => {
   it('archiviert einen tatsächlich aus StBVV erzeugten In-App-Entwurf vor der Festschreibung', async () => {
+    // Rechnungsjahr muss im laufenden Jahr ± 1 liegen (INV-NUMBER-ALLOCATION-001).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-06T10:00:00.000Z'));
     const { input, result } = validateFeeCalculation({
       lawVersion: STBVV_VERSION,
       currentLawConfirmed: true,

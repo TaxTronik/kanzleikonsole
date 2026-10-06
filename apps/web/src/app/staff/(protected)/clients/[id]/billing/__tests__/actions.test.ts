@@ -1,5 +1,5 @@
 // Fachkatalog: INV-TIME-ENTRY-CLAIM-001
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({ tx: null as unknown, guard: vi.fn(), modules: vi.fn() }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
@@ -31,6 +31,9 @@ const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
 describe('Stundenabrechnung — Berlin-Leistungszeitraum bis zur CII-Ausgabe', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Rechnungsjahr muss im laufenden Jahr ± 1 liegen (INV-NUMBER-ALLOCATION-001).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-26T10:00:00.000Z'));
     h.guard.mockResolvedValue({
       ok: true,
       tenantId: 'tenant',
@@ -39,6 +42,9 @@ describe('Stundenabrechnung — Berlin-Leistungszeitraum bis zur CII-Ausgabe', (
       session: {},
     });
     h.modules.mockResolvedValue({ invoiceMode: 'IN_APP' });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it.each([

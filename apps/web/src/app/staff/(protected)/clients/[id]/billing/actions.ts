@@ -4,20 +4,16 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db';
 import { berlinCalendarDate } from '@taxtronik/tax';
-import { evidenceService } from '@/server/container';
 import { round2 } from '@/lib/fmt';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
-import { allocateInvoiceNumber } from '@/server/invoicing/number';
+import { createDraftInvoiceTx } from '@/server/invoicing/create-draft';
+import { IN_APP_VAT_RATES } from '@/server/invoicing/vat';
 import { readModules } from '@/server/settings/modules';
 import { staffActionGuard, ActionError } from '@/server/actions/staff-action';
-import {
-  buildTimeBillingPositions,
-  claimTimeEntriesForInvoice,
-  validateTimeBillingTax,
-} from '@/server/invoicing/time-billing';
+import { buildTimeBillingPositions, validateTimeBillingTax } from '@/server/invoicing/time-billing';
 
 // iter85 (GoB): kein number-Feld — automatische lückenlose Vergabe aus dem
-// Nummernkreis (siehe invoices/actions.ts).
+// Nummernkreis (createDraftInvoiceTx, gemeinsam mit invoices/actions.ts).
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
   subject: z.string().min(1).max(500),
@@ -25,7 +21,7 @@ const CreateSchema = z.object({
   dueDate: z.string().date(),
   vatRate: z.coerce
     .number()
-    .refine((rate) => [0, 7, 19].includes(rate), {
+    .refine((rate) => (IN_APP_VAT_RATES as readonly number[]).includes(rate), {
       message: 'Ungültiger USt-Satz (zulässig: 0 %, 7 %, 19 %).',
     })
     .default(19),
@@ -85,17 +81,6 @@ export async function createInvoiceFromTimeEntriesAction(
   try {
     invoiceId = await withTenantContext(ctx, async (tx) => {
       await assertClientAccessTx(tx, session, data.clientId);
-      if (data.reverseCharge) {
-        const client = await tx.client.findUnique({
-          where: { id: data.clientId },
-          select: { vatId: true },
-        });
-        if (!client?.vatId) {
-          throw new ActionError(
-            'Reverse-Charge (§ 13b UStG) erfordert eine hinterlegte USt-IdNr des Mandanten.',
-          );
-        }
-      }
       // 1. Sammle abrechenbare, nicht abgerechnete TimeEntries
       const where = {
         tenantId,
@@ -136,10 +121,6 @@ export async function createInvoiceFromTimeEntriesAction(
         return { entry: e, minutes, hours, rate, net: round2(hours * rate) };
       });
 
-      const totalNet = round2(entriesWithMinutes.reduce((s, x) => s + x.net, 0));
-      const vatAmount = round2((totalNet * data.vatRate) / 100);
-      const totalGross = round2(totalNet + vatAmount);
-
       // 3. EN-16931-rechenfeste Positionen. Auch die Detailstrategie nutzt
       // Menge 1 und schreibt Dauer/Satz in den Text, weil Decimal(10,2) z. B.
       // 10 Minuten nicht als exakte Stundenmenge darstellen kann.
@@ -150,13 +131,15 @@ export async function createInvoiceFromTimeEntriesAction(
         data.vatRate,
       );
 
-      // 4. Rechnung anlegen — Nummer lückenlos in derselben Tx vergeben
-      const number = await allocateInvoiceNumber(tx, tenantId, new Date(data.issueDate));
-      const inv = await tx.invoice.create({
-        data: {
-          tenantId,
+      // 4. Entwurf über den gemeinsamen Anlageservice: alle Prüfungen
+      // (u. a. § 13b UStG/BR-AE-01, Decimal-Grenzen) VOR der Nummernvergabe,
+      // dann Nummer, Rechnung, atomarer Claim der Zeiteinträge und Audit in
+      // derselben Tx (INV-TIME-ENTRY-CLAIM-001).
+      const invoice = await createDraftInvoiceTx(
+        tx,
+        { tenantId, staffId },
+        {
           clientId: data.clientId,
-          number,
           subject: data.subject,
           issueDate: new Date(data.issueDate),
           dueDate: new Date(data.dueDate),
@@ -164,60 +147,20 @@ export async function createInvoiceFromTimeEntriesAction(
           servicePeriodEnd,
           vatExemptionReason: exemptionReason,
           reverseCharge: data.reverseCharge,
-          status: 'DRAFT',
           format: data.format,
-          netAmount: totalNet,
-          vatAmount,
-          totalAmount: totalGross,
-          vatRate: data.vatRate,
           notes: data.notes || null,
-          createdByStaff: staffId,
-          positions: { create: positions },
         },
-      });
-
-      // 5. TimeEntries atomar beanspruchen. Ein paralleler Lauf darf den zuvor
-      // gelesenen invoiceId:null-Zustand nicht überschreiben; bei Teil-/Nullclaim
-      // rollt die gesamte Tx inklusive Rechnung und Nummernvergabe zurück.
-      const claimed = await claimTimeEntriesForInvoice(
-        tx,
-        entries.map((entry) => entry.id),
-        inv.id,
-      );
-      if (!claimed) {
-        throw new ActionError(
-          'Mindestens ein Zeiteintrag wurde zwischenzeitlich bereits abgerechnet. Bitte neu laden.',
-        );
-      }
-
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'invoice.create.from_time',
-        resourceType: 'invoice',
-        resourceId: inv.id,
-        after: {
-          number,
-          clientId: data.clientId,
-          timeEntryCount: entries.length,
-          totalAmount: totalGross,
+        positions,
+        {
+          kind: 'time_entries',
+          entryIds: entries.map((entry) => entry.id),
           strategy: data.strategy,
         },
-      });
-
-      return inv.id;
+      );
+      return invoice.id;
     });
   } catch (e) {
-    // Befund 8 (gleiche Bug-Klasse wie invoices/actions.ts): Prisma-Error-Code
-    // statt fragiler Message-Substrings; GwG-Schranke über den stabilen
-    // Trigger-Marker aus den Migrationen matchen.
-    if ((e as { code?: string }).code === 'P2002') {
-      return { ok: false, error: 'Rechnungsnummer existiert bereits.' };
-    }
-    if ((e as Error).message?.includes('GwG-Schranke')) {
-      return { ok: false, error: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).' };
-    }
+    // Nummernkonflikt und GwG-Schranke bildet createDraftInvoiceTx ab.
     return toActionError(e);
   }
 

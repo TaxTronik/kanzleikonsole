@@ -1,5 +1,40 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-004
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/billing/actions.ts
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/server/invoicing/__tests__/archive.test.ts
+      - apps/web/src/server/invoicing/__tests__/create-draft.test.ts
+      - apps/web/src/server/invoicing/create-draft.ts
+      - apps/web/src/server/invoicing/time-billing.ts
+      - apps/web/src/server/invoicing/vat.ts
+      - apps/web/src/server/stbvv/service.ts
+    rule_ids:
+      - INV-NUMBER-ALLOCATION-001
+      - INV-VAT-TOTALS-001
+      - INV-TIME-ENTRY-CLAIM-001
+      - STBVV-CALCULATION-001
+      - INV-ARCHIVE-EINVOICE-001
+    reason: >-
+      Manuelle Rechnung, Stundenabrechnung und StBVV-Rechnung legen Entwürfe über
+      einen gemeinsamen Dienst createDraftInvoiceTx an: dieselben Prüfungen wie
+      bisher der manuelle Pfad (Reverse-Charge nach § 13b UStG nur mit
+      USt-IdNr von Kanzlei und Mandant, BR-AE-01; Beträge innerhalb
+      Decimal(12,2); Rechnungsdatum im laufenden Jahr ±1), danach
+      Nummernvergabe, Kopf, Positionen, Übernahme der Quelle und
+      Audit-Ereignis. Für gültige Rechnungen sind Nummernvergabe, Kopf- und
+      Positionsdaten, Übernahme der Zeiteinträge und Audit-Ereignisse je Pfad
+      unverändert (Tests je Pfad, Differenzvergleich mit 7.000 Zufallsentwürfen).
+      Ungültige Zeit- und StBVV-Rechnungen werden jetzt vor der Nummernvergabe
+      abgelehnt statt erst beim Versand. Keine fachliche Freigabe; die
+      Rückdatierungsgrenze für Zeit- und StBVV-Rechnungen bleibt eine offene
+      Prüffrage zu INV-NUMBER-ALLOCATION-001.
+    tests:
+      - apps/web/src/server/invoicing/__tests__/create-draft.test.ts
+      - apps/web/src/server/invoicing/__tests__/archive.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-003
     date: '2026-10-06'
     paths:
@@ -2667,6 +2702,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-004` dokumentiert den gemeinsamen Dienst für
+  Rechnungsentwürfe aller drei Pfade. Gültige Rechnungen bleiben unverändert;
+  die Rückdatierungsgrenze bleibt Prüffrage.
 
 - 2026-10-06: `FK-EXC-20261006-003` dokumentiert gemeinsame Prüfungen und
   Fehlerantworten der E-Rechnungs-Downloads. Archivierung gültiger

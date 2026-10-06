@@ -67,3 +67,30 @@ export function vatCategory(
   if (rate > 0) return 'S';
   return hasExemptionReason ? 'E' : 'Z';
 }
+
+/** In-App zulässige USt-Sätze (Regel-, ermäßigter und Nullsatz). */
+export const IN_APP_VAT_RATES = [0, 7, 19] as const;
+
+/**
+ * Eingabe-Guard der In-App-Anlage (manuell, Stundenabrechnung, StBVV):
+ * Satz-Whitelist, Reverse-Charge (§ 13b UStG) nur mit 0 %, 0 % ohne
+ * Reverse-Charge nur mit Befreiungsgrund (§ 14 Abs. 4 Nr. 8 UStG).
+ */
+export function vatInputError(input: {
+  vatRates: readonly number[];
+  reverseCharge: boolean;
+  vatExemptionReason: string | null;
+}): string | null {
+  if (input.vatRates.some((rate) => !(IN_APP_VAT_RATES as readonly number[]).includes(rate))) {
+    return 'Ungültiger USt-Satz (zulässig: 0 %, 7 %, 19 %).';
+  }
+  // Reverse-Charge: eigener Kategorie-Grund (AE) — kein Befreiungsgrund-Text
+  // nötig, dafür MUSS jede Position 0 % sein.
+  if (input.reverseCharge && input.vatRates.some((rate) => rate !== 0)) {
+    return 'Reverse-Charge (§ 13b UStG): alle Positionen müssen 0 % USt haben.';
+  }
+  if (!input.reverseCharge && !input.vatExemptionReason && input.vatRates.includes(0)) {
+    return 'Bei 0 %-Positionen ist ein Befreiungsgrund erforderlich (z. B. „§ 19 UStG Kleinunternehmer", „steuerfrei nach § 4 …").';
+  }
+  return null;
+}

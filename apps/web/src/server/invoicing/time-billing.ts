@@ -1,4 +1,5 @@
 import { fmtDateShort, round2 } from '@/lib/fmt';
+import { vatInputError } from '@/server/invoicing/vat';
 
 export interface CalculatedTimeEntry {
   entry: { startedAt: Date; description: string };
@@ -18,21 +19,21 @@ export interface TimeBillingPosition {
   vatRate: number;
 }
 
+/**
+ * Steuer-Vorprüfung vor dem Laden der Zeiteinträge: dieselbe Regel wie jede
+ * In-App-Anlage (vatInputError, INV-VAT-TOTALS-001); alle Positionen tragen
+ * den gewählten Satz.
+ */
 export function validateTimeBillingTax(input: {
   vatRate: number;
   reverseCharge: boolean;
   vatExemptionReason: string | null;
 }): string | null {
-  if (![0, 7, 19].includes(input.vatRate)) {
-    return 'Ungültiger USt-Satz (zulässig: 0 %, 7 %, 19 %).';
-  }
-  if (input.reverseCharge && input.vatRate !== 0) {
-    return 'Reverse-Charge (§ 13b UStG) erfordert 0 % USt.';
-  }
-  if (input.vatRate === 0 && !input.reverseCharge && !input.vatExemptionReason) {
-    return 'Bei 0 % USt ist ein Befreiungsgrund erforderlich (z. B. § 19 oder § 4 UStG).';
-  }
-  return null;
+  return vatInputError({
+    vatRates: [input.vatRate],
+    reverseCharge: input.reverseCharge,
+    vatExemptionReason: input.vatExemptionReason,
+  });
 }
 
 /**
