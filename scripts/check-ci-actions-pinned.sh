@@ -18,6 +18,7 @@ WORKFLOWS="$(find .forgejo/workflows -type f \( -name '*.yml' -o -name '*.yaml' 
 #
 # Ausgenommen bleiben lokale Reusable-Workflows (`uses: ./…`); die tragen
 # systembedingt keinen Commit-SHA.
+# shellcheck disable=SC2086 # Wortzerlegung gewollt: zeilengetrennte Workflow-Liste aus find, Pfade ohne Leerzeichen
 HITS="$(grep -nE '^[[:space:]]+uses:[[:space:]]+' $WORKFLOWS \
   | sed -E 's/[[:space:]]+#.*$//' \
   | grep -vE 'uses:[[:space:]]+\./' \

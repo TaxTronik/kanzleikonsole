@@ -509,6 +509,7 @@ configure_initial_deployment_interactive() {
   done
   read -rp 'SMTP-Port [587]: ' input || true
   _SETUP_SMTP_PORT="${input:-587}"
+  # shellcheck disable=SC2015 # gewollt: die, sobald eine der beiden Pruefungen scheitert
   [[ "$_SETUP_SMTP_PORT" =~ ^[0-9]+$ ]] && (( 10#$_SETUP_SMTP_PORT >= 1 && 10#$_SETUP_SMTP_PORT <= 65535 )) || \
     die "SMTP-Port muss zwischen 1 und 65535 liegen."
   while :; do

@@ -1,0 +1,21 @@
+# ShellCheck-Konfiguration fuer die Shell-Skripte (CI-Job quality, Schritt
+# "shellcheck": taxtronik, scripts/*.sh, scripts/ops/*.sh, infra/scripts/*.sh).
+#
+# Bewusste Abweichungen stehen grundsaetzlich als begruendete
+# `# shellcheck disable=...`-Direktive direkt an der Fundstelle. So bleibt jede
+# Ausnahme an genau einen Befehl gebunden, und neue Funde derselben Art werden
+# weiterhin gemeldet. Einzige globale Ausnahme ist SC1007 (siehe unten).
+
+# `# shellcheck source=...`-Pfade gelten relativ zum geprueften Skript
+# (scripts/ops-lib.sh -> ops/<domaene>.sh), unabhaengig vom Arbeitsverzeichnis.
+source-path=SCRIPTDIR
+
+# Gesourcte Dateien mitlesen, damit Variablen und Funktionen aus ops-lib.sh und
+# den Domaenendateien dateiuebergreifend bekannt sind.
+external-sources=true
+
+# SC1007 ("Remove space after ="): `ROOT="$(CDPATH= cd -- ...)"` ist das
+# einheitliche Idiom der Guard-Skripte unter scripts/; es leert CDPATH nur fuer
+# diesen einen cd-Aufruf. Die Guards bleiben dafuer unveraendert (einige sind
+# Fachkatalog-Pfade).
+disable=SC1007

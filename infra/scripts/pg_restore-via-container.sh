@@ -20,7 +20,9 @@ export PGPASSWORD="${PGPASSWORD:-}"
 argc=$#
 if [ "$argc" -gt 0 ]; then
   eval "dump_file=\${$argc}"
+  # shellcheck disable=SC2154 # dump_file setzt das eval darueber (letztes Argument)
   if [ -f "$dump_file" ]; then
+    # shellcheck disable=SC2004 # reiner Stilhinweis; das Skript hat keinen Test, daher unveraendert
     set -- "${@:1:$(($argc - 1))}"
     exec docker exec -i -e PGPASSWORD taxtronik-postgres pg_restore "$@" < "$dump_file"
   fi

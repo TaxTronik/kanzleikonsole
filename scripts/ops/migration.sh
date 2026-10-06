@@ -29,12 +29,19 @@ run_migrations() {
 backup_before_migrations() {
   # Sicherheitsnetz vor migrate deploy (Prisma ist forward-only). Erst ab dem
   # zweiten Deploy sinnvoll — beim Erstdeploy existiert noch kein Schema.
+  # Nur ein eindeutiges `f` beweist den Erstdeploy. Scheitert die Sonde oder
+  # antwortet sie anders, wird ohne Pflichtbackup nicht migriert; der
+  # psql-Fehler bleibt sichtbar (frueher: still als Erstdeploy gewertet).
   local migrated
   migrated="$(compose --infra exec -T postgres \
     psql -U taxtronik -d taxtronik -tAc \
-    "SELECT to_regclass('public._prisma_migrations') IS NOT NULL" 2>/dev/null || true)"
-  if [[ "$migrated" == "t" ]]; then run_backup
-  else info "Erstdeploy erkannt (keine _prisma_migrations) — Backup vor Migration entfaellt."; fi
+    "SELECT to_regclass('public._prisma_migrations') IS NOT NULL")" || \
+    die "Schema-Pruefung vor der Migration fehlgeschlagen (siehe oben); ohne Pflichtbackup wird nicht migriert."
+  case "$migrated" in
+    t) run_backup ;;
+    f) info "Erstdeploy erkannt (keine _prisma_migrations) — Backup vor Migration entfaellt." ;;
+    *) die "Schema-Pruefung vor der Migration lieferte '$migrated' statt t oder f; ohne Pflichtbackup wird nicht migriert." ;;
+  esac
 }
 
 state_value() {

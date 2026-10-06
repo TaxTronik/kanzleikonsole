@@ -84,6 +84,7 @@ run_backup() {
 run_backup_n8n() {
   local dest="${1:-${BACKUP_LOCAL_DIR:-$ROOT/backups}}"
   mkdir -p "$dest"
+  # shellcheck disable=SC2155 # date ohne Fehlerpfad; run_backup_n8n hat keinen Test, daher unveraendert
   local out="$dest/n8n-db-$(date -u +'%Y%m%dT%H%M%SZ').dump"
   info "n8n-Datenbank sichern -> $out"
   # Secret nur im Prozess-Env (nicht in der Container-argv, vgl. P3-2).
@@ -93,6 +94,7 @@ run_backup_n8n() {
 }
 
 object_store_backup_buckets() {
+  # shellcheck disable=SC2086 # Wortzerlegung gewollt: Leerzeichen-getrennte Bucket-Liste (S3-Namen ohne Glob-Zeichen)
   printf '%s\n' ${BACKUP_OBJECT_BUCKETS:-${S3_BUCKET_GOBD:-gobd} ${S3_BUCKET_GWG:-gwg} ${S3_BUCKET_GENERAL:-general} ${S3_BUCKET_STAFF_PRIVATE:-staff-private}}
 }
 

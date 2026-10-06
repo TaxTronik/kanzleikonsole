@@ -106,6 +106,20 @@ jobs:
       - name: Guard migration line endings
         run: pnpm verify:migration-line-endings
 
+      # B-05: Shell-Skripte der Operator-CLI, der Guards und der Infra-Container
+      # statisch pruefen. Projektoptionen stehen in .shellcheckrc, bewusste
+      # Ausnahmen begruendet als Direktive an der Fundstelle.
+      - name: shellcheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            SUDO=""
+            if command -v sudo >/dev/null 2>&1; then SUDO=sudo; fi
+            $SUDO apt-get update
+            $SUDO apt-get install -y --no-install-recommends shellcheck
+          fi
+          shellcheck --version
+          shellcheck taxtronik scripts/*.sh scripts/ops/*.sh infra/scripts/*.sh
+
       # S-04: Die Signaturtests des Source-Updates brauchen ssh-keygen
       # (openssh-client) und sind in CI Pflicht.
       - name: ssh-keygen installieren

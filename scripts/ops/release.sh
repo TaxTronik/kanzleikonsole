@@ -34,7 +34,9 @@ prepare_source_version_for_checkout() {
   [[ "$(deployment_channel)" == "source" ]] || return 0
   export TAXTRONIK_DEPLOY_CHANNEL=source
   export TAXTRONIK_IMAGE_PREFIX=taxtronik
-  export TAXTRONIK_VERSION="$(source_version_for_checkout)"
+  local version
+  version="$(source_version_for_checkout)"
+  export TAXTRONIK_VERSION="$version"
 }
 
 # ---------------------------------------------------------------------------
@@ -192,6 +194,7 @@ verify_release_checkout() {
   checkout="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
   [[ "$checkout" == "$UPDATE_COMMIT_SHA" ]] || \
     die "Checkout $checkout entspricht nicht dem signierten Release-Commit $UPDATE_COMMIT_SHA."
+  # shellcheck disable=SC2015 # gewollt: die, sobald eine der beiden Pruefungen scheitert
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet || \
     die "Registry-Deploy verweigert: getrackte lokale Aenderungen im Deployment-Checkout."
 }
@@ -222,6 +225,7 @@ fetch_verified_release_tag() {
 }
 
 require_clean_release_checkout() {
+  # shellcheck disable=SC2015 # gewollt: die, sobald eine der beiden Pruefungen scheitert
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet || \
     die "Release-Checkout enthaelt getrackte lokale Aenderungen; sicherer Checkout-Wechsel verweigert."
 }

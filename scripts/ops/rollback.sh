@@ -175,6 +175,7 @@ cmd_rollback() {
   export TAXTRONIK_VERSION="$target"
   if [[ $registry_mode -eq 1 ]]; then
     [[ "$target" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "Registry-Rollback braucht SemVer X.Y.Z: $target"
+    # shellcheck disable=SC2034 # UPDATE_* liest stage_release_contract (release.sh)
     if [[ "$target" == "$state_target" && "$state_web" =~ ^@sha256:[0-9a-f]{64}$ && \
           "$state_worker" =~ ^@sha256:[0-9a-f]{64}$ && \
           "$state_commit" =~ ^([0-9a-f]{40}|[0-9a-f]{64})$ ]]; then

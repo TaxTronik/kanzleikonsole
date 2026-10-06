@@ -235,6 +235,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Operator-CLI: `scripts/ops-lib.sh` setzt nur noch Shell-Optionen, Pfade und
+  Pins und lädt 15 Domänendateien unter `scripts/ops/`; alle Funktionen sind
+  unverändert verschoben (byte-identisch per `declare -f` geprüft).
+  `pnpm test:ops` führt jeden Operator-Test isoliert aus und meldet am Ende alle
+  Fehlschläge mit Anzahl, statt beim ersten abzubrechen. Der CI-Job `quality`
+  prüft `taxtronik`, `scripts/*.sh`, `scripts/ops/*.sh` und `infra/scripts/*.sh`
+  mit shellcheck (`FK-EXC-20261006-041`).
 - Server-Actions: Audit-Einträge übernehmen Mandant und Akteur aus dem
   Gate-Kontext (`audit(tx, g, …)`) statt sie an 193 Stellen von Hand zu setzen;
   Inhalt und Hash-Kette der Einträge bleiben gleich. Formular-Actions lesen ihre
@@ -753,6 +760,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** `./taxtronik deploy` migriert nicht mehr ohne Pflichtbackup, wenn
+  die Schema-Prüfung vor der Migration scheitert: Ein psql- oder
+  Verbindungsfehler galt bisher still als Erstinstallation, das Backup entfiel.
+  Jetzt bricht der Deploy vor der Migration mit sichtbarem Fehler ab. Im
+  Source-Kanal bricht ein Checkout ohne gültigen HEAD-Commit sofort ab, statt
+  `TAXTRONIK_VERSION` leer weiterzugeben.
 - Fristenkontrollbuch: Datenbank und Anwendung verlangen für die
   Bestandskraft-Begründung einheitlich mindestens zehn Zeichen ohne Leerraum am
   Rand; eine nur aus Tabs oder Zeilenumbrüchen bestehende Begründung wird

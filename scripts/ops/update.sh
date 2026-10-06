@@ -375,6 +375,7 @@ continue_update_after_checkout() {
 # ausdruecklich per Opt-out protokollierten Source-Stand.
 reexec_updated_operator() {
   info "Aktualisierten Operator laden und Update automatisch fortsetzen"
+  # shellcheck disable=SC2093 # exec ersetzt den Prozess bewusst; die greift nur bei gesetztem execfail
   exec "$ROOT/taxtronik" update
   die "Aktualisierter Operator konnte nicht gestartet werden."
 }
@@ -433,6 +434,7 @@ cmd_update() {
   run_backup || die "Pflichtbackup fehlgeschlagen — Code und Arbeitsbaum bleiben unveraendert."
 
   info "Code auf den freigegebenen Stand aktualisieren (git ff-only)"
+  # shellcheck disable=SC2164 # ops-lib.sh setzt set -e: ein cd-Fehler beendet das Update
   cd "$ROOT"
   local remote target_ref target_commit=""
   remote="$(deployment_git_remote)"

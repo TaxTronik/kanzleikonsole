@@ -30,6 +30,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENVFILE="$ROOT/.env"
 BASE="$ROOT/infra/compose/docker-compose.yml"
 APP="$ROOT/infra/compose/docker-compose.app.yml"
+# shellcheck disable=SC2034 # seit dem Baseline-Snapshot ungenutzt; Entfernen ist eine eigene Aufraeumentscheidung
 DEV="$ROOT/infra/compose/docker-compose.dev.yml"
 TRAEFIK="$ROOT/infra/compose/docker-compose.traefik.yml"
 TRAEFIK_DYNAMIC="$ROOT/.taxtronik.traefik-dynamic.yml"

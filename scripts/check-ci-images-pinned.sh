@@ -14,6 +14,7 @@ WORKFLOWS="$(find .forgejo/workflows -type f \( -name '*.yml' -o -name '*.yaml' 
 # Kein `…$`-Anker: sonst uebersieht der Guard jede Zeile mit Trailing-Kommentar
 # (`image: postgres:18 # spaeter pinnen`) und meldet trotzdem „OK". Kommentar
 # zuerst abschneiden, dann pruefen.
+# shellcheck disable=SC2086 # Wortzerlegung gewollt: zeilengetrennte Workflow-Liste aus find, Pfade ohne Leerzeichen
 HITS="$(grep -nE '^[[:space:]]+image:[[:space:]]+' $WORKFLOWS \
   | sed -E 's/[[:space:]]+#.*$//' \
   | grep -v '@sha256:' \

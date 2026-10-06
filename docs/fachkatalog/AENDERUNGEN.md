@@ -1,5 +1,19 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-041
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Der Qualitäts-Job der CI installiert bei Bedarf shellcheck und prüft
+      taxtronik, scripts/*.sh, scripts/ops/*.sh und infra/scripts/*.sh
+      (.shellcheckrc, begründete Ausnahmen an der Fundstelle). Release-, Audit- und
+      Anker-Nachweise bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - scripts/tests/fachkatalog.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-040
     date: '2026-10-06'
     paths:
@@ -4044,6 +4058,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-041` dokumentiert den shellcheck-Schritt im
+  Qualitäts-Job der CI.
 
 - 2026-10-06: `FK-EXC-20261006-040` dokumentiert die Härtung der
   Hardware-Anmeldung als eigenen Code statt Patch; der Umsetzungstext von

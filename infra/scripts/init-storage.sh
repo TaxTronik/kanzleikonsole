@@ -1,4 +1,5 @@
 #!/bin/sh
+# shellcheck disable=SC3043 # laeuft im amazon/aws-cli-Image (seaweedfs-init), dessen /bin/sh bash ist und local kennt
 # =============================================================================
 # taxtronik — Object-Store-Bucket-Initialisierung (SeaweedFS / S3-API)
 #

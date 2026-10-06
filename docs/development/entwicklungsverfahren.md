@@ -46,7 +46,8 @@ aktueller Einarbeitungs- und Übergabepfad in
   Workflows. Jedes Update durchläuft dieselben CI-Gates wie andere Änderungen.
 - **Programmierstandards werden maschinell erzwungen**, nicht nur empfohlen:
   TypeScript strict (`tsconfig.base.json`), ESLint (`eslint.config.mjs`),
-  Prettier (`.prettierrc`), EditorConfig. Verstöße brechen die CI.
+  Prettier (`.prettierrc`), EditorConfig und shellcheck (`.shellcheckrc`) für
+  die Shell-Skripte. Verstöße brechen die CI.
 - **Namens-/Strukturkonventionen:** Server-Logik unter `src/server/<domäne>/`,
   Server Actions je Route in `actions.ts` mit zod-validierten Inputs,
   Datenbankzugriff ausschließlich über `withTenantContext` (RLS-Kontext);

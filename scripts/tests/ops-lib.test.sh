@@ -772,6 +772,25 @@ test_source_channel_derives_version_from_checkout_without_semver() {
   pass "source channel uses an automatic commit identity instead of asking for SemVer"
 }
 
+# Ohne gueltigen HEAD-Commit bricht die Source-Kennung sofort ab. Frueher
+# maskierte `export VAR="$(...)"` den Fehler: TAXTRONIK_VERSION wurde leer
+# exportiert, und der Ablauf lief bis zum naechsten Gate weiter (SC2155).
+test_source_version_without_head_stops_immediately() {
+  local out="$TMP_DIR/source-version-no-head.out" checkout="$TMP_DIR/source-version-no-head" status=0
+  mkdir -p "$checkout"
+  GIT_CEILING_DIRECTORIES="$TMP_DIR" bash -c 'set -euo pipefail
+    source "$1"
+    ROOT="$2"
+    TAXTRONIK_DEPLOY_CHANNEL=source
+    prepare_source_version_for_checkout
+    printf "weitergelaufen: TAXTRONIK_VERSION=%s\n" "${TAXTRONIK_VERSION:-}"' \
+    _ "$REPO_ROOT/scripts/ops-lib.sh" "$checkout" >"$out" 2>&1 || status=$?
+  (( status != 0 )) || test_fail "source version without a valid HEAD was exported as an empty value"
+  assert_contains "$out" "Source-Deployment braucht einen gueltigen Git-Checkout mit HEAD-Commit."
+  assert_not_contains "$out" "weitergelaufen"
+  pass "source version without a valid HEAD stops at once instead of exporting an empty version"
+}
+
 test_deployment_channel_is_explicit_with_legacy_prefix_fallback() {
   (
     TAXTRONIK_DEPLOY_CHANNEL=source
@@ -2085,6 +2104,58 @@ test_run_migrations_reports_gwg_sql_error_before_writer_start() {
   assert_not_contains "$out" "GwG-Datenbankschutz ist unvollstaendig"
   assert_not_contains "$out" "GwG-Invariante verletzt"
   pass "migration flow reports an unverifiable GwG schema as SQL error and starts no writer"
+}
+
+# Nur ein eindeutiges `f` der Schema-Sonde gilt als Erstdeploy ohne
+# Pflichtbackup. Eine gescheiterte oder unklare Sonde stoppt vor der Migration
+# und zeigt den psql-Fehler, statt ihn als Erstdeploy zu verschlucken.
+test_pre_migration_backup_requires_a_proven_first_deploy() {
+  local out="$TMP_DIR/pre-migration-backup.out" steps="$TMP_DIR/pre-migration-backup.steps"
+  : >"$steps"
+  (
+    compose() { printf 't\n'; }
+    run_backup() { printf 'backup\n' >>"$steps"; }
+    backup_before_migrations
+    printf 'migrate\n' >>"$steps"
+  ) >"$out" 2>&1 || test_fail "existing schema did not run the pre-migration backup"
+  assert_file_equals "$steps" $'backup\nmigrate'
+
+  : >"$steps"
+  (
+    compose() { printf 'f\n'; }
+    run_backup() { printf 'backup\n' >>"$steps"; }
+    backup_before_migrations
+    printf 'migrate\n' >>"$steps"
+  ) >"$out" 2>&1 || test_fail "proven first deploy was blocked"
+  assert_file_equals "$steps" 'migrate'
+  assert_contains "$out" "Erstdeploy erkannt"
+
+  : >"$steps"
+  if (
+    compose() { printf 'psql: error: connection to server failed\n' >&2; return 2; }
+    run_backup() { printf 'backup\n' >>"$steps"; }
+    backup_before_migrations
+    printf 'migrate\n' >>"$steps"
+  ) >"$out" 2>&1; then
+    test_fail "failed schema probe was treated as a first deploy"
+  fi
+  assert_file_equals "$steps" ''
+  assert_contains "$out" "psql: error: connection to server failed"
+  assert_contains "$out" "ohne Pflichtbackup wird nicht migriert"
+  assert_not_contains "$out" "Erstdeploy erkannt"
+
+  : >"$steps"
+  if (
+    compose() { :; }
+    run_backup() { printf 'backup\n' >>"$steps"; }
+    backup_before_migrations
+    printf 'migrate\n' >>"$steps"
+  ) >"$out" 2>&1; then
+    test_fail "empty schema probe answer was treated as a first deploy"
+  fi
+  assert_file_equals "$steps" ''
+  assert_contains "$out" "lieferte '' statt t oder f"
+  pass "pre-migration backup is skipped only for a proven first deploy and a failed probe stops the migration"
 }
 
 test_backup_manifest_detects_tampering() {
@@ -4224,6 +4295,7 @@ run_test test_one_click_blank_host_guard_rejects_existing_containers
 run_test test_one_click_blank_host_guard_rejects_unreachable_docker
 run_test test_one_click_blank_host_allows_missing_docker_for_deferred_install
 run_test test_source_channel_derives_version_from_checkout_without_semver
+run_test test_source_version_without_head_stops_immediately
 run_test test_deployment_channel_is_explicit_with_legacy_prefix_fallback
 run_test test_cli_presents_deploy_as_primary_path
 run_test test_bootstrap_installs_one_click_requirements_after_configuration
@@ -4283,6 +4355,7 @@ run_test test_deploy_readiness_rejects_gwg_schema_drift
 run_test test_deploy_readiness_reports_gwg_sql_error_separately
 run_test test_run_migrations_blocks_incomplete_gwg_schema_before_writer_start
 run_test test_run_migrations_reports_gwg_sql_error_before_writer_start
+run_test test_pre_migration_backup_requires_a_proven_first_deploy
 run_test test_backup_manifest_detects_tampering
 run_test test_host_tool_deps_refresh_stale_checkout
 run_test test_run_backup_uses_resolved_host_path

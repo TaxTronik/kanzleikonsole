@@ -57,6 +57,7 @@ render_traefik_dynamic_config() {
 
   tmp="$(mktemp "${TRAEFIK_DYNAMIC}.tmp.XXXXXX")" || \
     die "Temp-Datei fuer Traefik-Routen konnte nicht erzeugt werden."
+  # shellcheck disable=SC2016 # Backticks sind Traefik-Regelsyntax, keine Kommandosubstitution
   {
     printf 'http:\n'
     printf '  middlewares:\n'

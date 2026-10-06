@@ -4,6 +4,8 @@
 taxtronik         text eol=lf
 *.sh              text eol=lf
 infra/scripts/*   text eol=lf
+# shellcheck liest seine Konfiguration zeilenweise; CR wuerde sie unbrauchbar machen.
+/.shellcheckrc    text eol=lf
 
 # Normale Quelltexte: LF im Repo, lokale Working-Copy nach Plattform.
 #

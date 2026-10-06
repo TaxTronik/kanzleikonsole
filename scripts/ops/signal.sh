@@ -455,9 +455,8 @@ configure_risk_layer_interactive() {
       RISK_LAYER_URL="http://risk-layer:8000"
       [[ ${#RISK_LAYER_TOKEN} -ge 32 ]] || RISK_LAYER_TOKEN="$(rand_b64 32)"
       if [[ ${#RISK_LAYER_OPERATOR_TOKEN} -lt 32 || "$RISK_LAYER_OPERATOR_TOKEN" == "$RISK_LAYER_TOKEN" ]]; then
-        local token_attempt
         RISK_LAYER_OPERATOR_TOKEN=""
-        for token_attempt in 1 2 3; do
+        for _ in 1 2 3; do
           RISK_LAYER_OPERATOR_TOKEN="$(rand_b64 32)"
           [[ ${#RISK_LAYER_OPERATOR_TOKEN} -ge 32 && "$RISK_LAYER_OPERATOR_TOKEN" != "$RISK_LAYER_TOKEN" ]] && break
         done
