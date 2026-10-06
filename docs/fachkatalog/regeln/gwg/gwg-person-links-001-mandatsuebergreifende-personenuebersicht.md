@@ -33,6 +33,7 @@ code_refs:
   - apps/web/src/server/gwg/reverification.ts
   - apps/web/src/server/gwg-onboarding/submission-transaction.ts
   - apps/web/src/app/staff/(protected)/gwg/actions.ts
+  - packages/gwg/src/check-lifecycle.ts
 test_refs:
   - apps/web/src/server/gwg/__tests__/person-links.test.ts
   - apps/web/src/server/gwg/__tests__/control-list-model.test.ts

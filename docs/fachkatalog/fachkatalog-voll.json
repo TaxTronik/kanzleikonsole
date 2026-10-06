@@ -419,7 +419,8 @@
         "packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql",
         "apps/web/src/app/staff/(protected)/admin/users/actions.ts",
         "apps/web/src/app/staff/(protected)/admin/users/page.tsx",
-        "apps/web/src/server/gwg/professional-review.ts"
+        "apps/web/src/server/gwg/professional-review.ts",
+        "apps/web/src/server/actions/action-runner.ts"
       ],
       "test_refs": [
         "apps/web/src/server/documents/__tests__/delivery.test.ts",
@@ -429,7 +430,8 @@
         "apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts",
         "apps/e2e/tests/12-accessibility.spec.ts",
         "apps/web/src/server/gwg/__tests__/professional-review.test.ts",
-        "packages/db/src/__tests__/portal-inbox-rls.test.ts"
+        "packages/db/src/__tests__/portal-inbox-rls.test.ts",
+        "apps/web/src/server/actions/__tests__/action-runner.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
       "related_rules": [
@@ -871,7 +873,8 @@
         "apps/web/scripts/reset-admin-password.ts",
         "apps/web/src/app/staff/(protected)/profile/actions.ts",
         "apps/web/src/app/staff/(protected)/admin/users/actions.ts",
-        "packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql"
+        "packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql",
+        "apps/web/src/server/actions/audit.ts"
       ],
       "test_refs": [
         "apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts",
@@ -896,7 +899,8 @@
         "apps/web/src/app/staff/(protected)/profile/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts",
         "apps/web/src/server/auth/__tests__/webauthn.test.ts",
-        "apps/web/src/server/auth/__tests__/admin-break-glass.test.ts"
+        "apps/web/src/server/auth/__tests__/admin-break-glass.test.ts",
+        "apps/web/src/server/actions/__tests__/audit.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/audit-protokollierung.md",
@@ -1505,7 +1509,8 @@
         "apps/web/src/app/staff/(protected)/poa/actions.ts",
         "apps/web/src/server/inbox/access.ts",
         "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
-        "packages/db/prisma/migrations/20260723000000_iter73_client_mandate_ended_at/migration.sql"
+        "packages/db/prisma/migrations/20260723000000_iter73_client_mandate_ended_at/migration.sql",
+        "apps/web/src/server/poa/create-poa.ts"
       ],
       "test_refs": [
         "apps/web/src/app/api/portal/ical/[token]/__tests__/route.test.ts",
@@ -1914,7 +1919,8 @@
         "packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql",
         "apps/web/src/server/inbox/accept-attachment.ts",
         "apps/web/src/server/inbox/staff-mutations.ts",
-        "apps/worker/src/jobs/storage-orphan-cleanup.ts"
+        "apps/worker/src/jobs/storage-orphan-cleanup.ts",
+        "apps/web/src/server/documents/retag.ts"
       ],
       "test_refs": [
         "packages/storage/src/__tests__/object-version.test.ts",
@@ -1933,7 +1939,8 @@
         "apps/web/src/server/forms/__tests__/revision-download.test.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "apps/web/src/server/inbox/__tests__/rejection.test.ts",
-        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts"
+        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts",
+        "apps/web/src/server/documents/__tests__/retag-db.test.ts"
       ],
       "feature_refs": [
         "docs/anwenderdoku/dokumente.md",
@@ -2502,11 +2509,13 @@
         "packages/db/prisma/migrations/20260514000000_iter5_invoices/migration.sql",
         "packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql",
         "packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql",
-        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts",
+        "apps/web/src/server/gwg/check-decisions.ts"
       ],
       "test_refs": [
         "packages/db/src/__tests__/gwg-allow-active.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
+        "apps/web/src/server/gwg/__tests__/services-db.test.ts"
       ],
       "feature_refs": [
         "FEATURES.md",
@@ -2599,7 +2608,10 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/person-roles-panel.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx",
         "packages/db/prisma/schema.prisma",
-        "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql"
+        "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql",
+        "apps/web/src/server/gwg/beneficial-owners.ts",
+        "apps/web/src/server/gwg/persons.ts",
+        "apps/web/src/server/gwg/legal-entity.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -2608,7 +2620,8 @@
         "apps/web/src/server/gwg/__tests__/identity-subject.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts",
+        "apps/web/src/server/gwg/__tests__/services-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
       "related_rules": [
@@ -2755,7 +2768,15 @@
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql",
         "packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql",
-        "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql"
+        "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql",
+        "apps/web/src/server/gwg/identity-document-sets.ts",
+        "apps/web/src/server/gwg/identity-document-links.ts",
+        "apps/web/src/server/gwg/identity-document-confirmation.ts",
+        "apps/web/src/server/gwg/identity-document-validation.ts",
+        "apps/web/src/server/gwg/invalidated-identity-sets.ts",
+        "apps/web/src/server/gwg/persons.ts",
+        "apps/web/src/server/gwg/editable-check.ts",
+        "packages/gwg/src/check-lifecycle.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -2771,7 +2792,8 @@
         "apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/evidence-view-state.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts",
+        "apps/web/src/server/gwg/__tests__/services-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md", "docs/anwenderdoku/dokumente.md"],
       "related_rules": [
@@ -2882,7 +2904,8 @@
         "apps/web/src/server/gwg/control-list.ts",
         "apps/web/src/server/gwg/reverification.ts",
         "apps/web/src/server/gwg-onboarding/submission-transaction.ts",
-        "apps/web/src/app/staff/(protected)/gwg/actions.ts"
+        "apps/web/src/app/staff/(protected)/gwg/actions.ts",
+        "packages/gwg/src/check-lifecycle.ts"
       ],
       "test_refs": [
         "apps/web/src/server/gwg/__tests__/person-links.test.ts",
@@ -2966,7 +2989,11 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260801004900_gwg_cross_role_person_identity/migration.sql",
-        "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql"
+        "packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql",
+        "apps/web/src/server/gwg/check-decisions.ts",
+        "apps/web/src/server/gwg/legal-entity.ts",
+        "apps/web/src/server/gwg/persons.ts",
+        "apps/web/src/server/gwg/beneficial-owners.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -3030,7 +3057,10 @@
         "packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql",
         "packages/db/prisma/migrations/20260823170000_gwg_open_first_check_retention/migration.sql",
         "packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql",
-        "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql"
+        "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql",
+        "apps/web/src/server/gwg/identity-document-links.ts",
+        "packages/gwg/src/retention.ts",
+        "packages/gwg/src/review-queue.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -3040,7 +3070,9 @@
         "packages/db/src/__tests__/gwg-person-links.test.ts",
         "apps/web/src/server/gwg/__tests__/retention.test.ts",
         "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts",
-        "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts"
+        "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts",
+        "packages/gwg/src/__tests__/retention.test.ts",
+        "packages/gwg/src/__tests__/review-queue.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md", "docs/anwenderdoku/dokumente.md"],
       "related_rules": [
@@ -3108,7 +3140,11 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/change-requests/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts",
-        "apps/worker/src/jobs/gwg-expiry-check.ts"
+        "apps/worker/src/jobs/gwg-expiry-check.ts",
+        "apps/web/src/server/gwg/check-cycle.ts",
+        "apps/web/src/server/gwg/check-decisions.ts",
+        "packages/gwg/src/check-lifecycle.ts",
+        "packages/gwg/src/expiry.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -3117,7 +3153,8 @@
         "apps/web/src/server/gwg-onboarding/__tests__/invite-draft-revision.test.ts",
         "apps/web/src/server/tax-master-data/__tests__/service.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
-        "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts"
+        "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts",
+        "packages/gwg/src/__tests__/expiry.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
       "related_rules": [
@@ -3190,7 +3227,11 @@
         "apps/web/src/server/gwg/verification.ts",
         "apps/web/src/server/gwg/professional-review.ts",
         "apps/web/src/server/gwg/review-snapshot.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts",
+        "apps/web/src/server/gwg/check-cycle.ts",
+        "apps/web/src/server/gwg/check-decisions.ts",
+        "apps/web/src/server/gwg/editable-check.ts",
+        "packages/gwg/src/check-lifecycle.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -3201,7 +3242,9 @@
         "apps/web/src/server/gwg/__tests__/professional-review.test.ts",
         "apps/web/src/server/gwg/__tests__/lifecycle-lock-call-sites.test.ts",
         "packages/db/src/__tests__/gwg-professional-lock.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
+        "apps/web/src/server/gwg/__tests__/services-db.test.ts",
+        "packages/gwg/src/__tests__/check-lifecycle.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
       "related_rules": [
@@ -3260,7 +3303,8 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/screening/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts",
         "apps/worker/src/jobs/sanctions-refresh.ts",
-        "packages/db/prisma/migrations/20260831130000_screening_fees/migration.sql"
+        "packages/db/prisma/migrations/20260831130000_screening_fees/migration.sql",
+        "apps/web/src/server/gwg/check-decisions.ts"
       ],
       "test_refs": [
         "packages/db/src/__tests__/screening-fees-rls.test.ts",
@@ -3338,7 +3382,8 @@
         "apps/web/src/server/gwg-onboarding/submission-transaction.ts",
         "apps/web/src/server/gwg/reverification.ts",
         "packages/db/prisma/migrations/20260801004100_onboarding_gwg_review_workflow/migration.sql",
-        "packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql"
+        "packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql",
+        "packages/gwg/src/check-lifecycle.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -4169,13 +4214,17 @@
         "apps/web/src/app/staff/(protected)/poa/sign-actions.ts",
         "apps/worker/src/jobs/poa-expiry-check.ts",
         "packages/db/prisma/schema.prisma",
-        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql"
+        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql",
+        "apps/web/src/server/poa/create-poa.ts",
+        "apps/web/src/server/poa/send-for-signature.ts",
+        "apps/web/src/server/poa/revoke-poa.ts"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts",
         "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts",
         "apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts",
-        "packages/db/src/__tests__/poa-signing-integrity.test.ts"
+        "packages/db/src/__tests__/poa-signing-integrity.test.ts",
+        "apps/web/src/server/poa/__tests__/poa-services-db.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/vollmachten-ablauf.md",
@@ -4326,13 +4375,16 @@
         "apps/web/src/app/staff/(protected)/poa/sign-actions.ts",
         "apps/web/src/app/poa/sign/sign-flow.tsx",
         "packages/db/prisma/migrations/20260801002800_iter103_poa_signed_content_binding/migration.sql",
-        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql"
+        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql",
+        "apps/web/src/server/poa/send-for-signature.ts",
+        "apps/web/src/server/poa/signing-token.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/poa/__tests__/otp-concurrency.test.ts",
         "apps/web/src/server/poa/__tests__/signing-snapshot.test.ts",
-        "packages/db/src/__tests__/poa-signing-integrity.test.ts"
+        "packages/db/src/__tests__/poa-signing-integrity.test.ts",
+        "apps/web/src/server/poa/__tests__/poa-services-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/adr/0009-eidas-aes-via-token-und-otp.md"],
       "related_rules": [
@@ -4405,12 +4457,14 @@
         "apps/web/src/app/staff/(protected)/poa/actions.ts",
         "apps/web/src/app/staff/(protected)/poa/sign-actions.ts",
         "apps/web/src/app/poa/sign/document/route.ts",
-        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql"
+        "packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql",
+        "apps/web/src/server/poa/send-for-signature.ts"
       ],
       "test_refs": [
         "apps/web/src/server/poa/__tests__/signing-snapshot.test.ts",
         "apps/web/src/app/poa/sign/document/__tests__/route-snapshot.test.ts",
-        "packages/db/src/__tests__/poa-signing-integrity.test.ts"
+        "packages/db/src/__tests__/poa-signing-integrity.test.ts",
+        "apps/web/src/server/poa/__tests__/poa-services-db.test.ts"
       ],
       "feature_refs": [
         "FEATURES.md",
@@ -5145,7 +5199,8 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-transition.ts",
         "apps/worker/src/jobs/reminders-daily.ts",
         "packages/db/prisma/migrations/20260823200000_tax_notice_status_terms/migration.sql",
-        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
+        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts"
       ],
       "test_refs": [
         "apps/e2e/tests/12-accessibility.spec.ts",
@@ -5158,7 +5213,8 @@
         "apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-transition.test.ts",
         "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
-        "packages/db/src/__tests__/deadline-daily-review.test.ts"
+        "packages/db/src/__tests__/deadline-daily-review.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
       "related_rules": [
@@ -5536,7 +5592,9 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/transitions.ts",
         "apps/worker/src/jobs/reminders-daily.ts",
         "packages/db/prisma/migrations/20260823200000_tax_notice_status_terms/migration.sql",
-        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
+        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row.tsx"
       ],
       "test_refs": [
         "packages/db/src/__tests__/tax-notice-evidence.test.ts",
@@ -5547,7 +5605,9 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-audit.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-transition.test.ts",
         "apps/web/src/app/portal/(protected)/steuer/__tests__/notice-visibility.test.ts",
-        "apps/worker/src/jobs/__tests__/reminders-daily.test.ts"
+        "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row.test.tsx"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
       "related_rules": [
@@ -5647,13 +5707,16 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260823000000_tax_notice_data_retrieval_cutover/migration.sql",
-        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
+        "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row.tsx"
       ],
       "test_refs": [
         "packages/tax/src/__tests__/legal-assessments.test.ts",
         "packages/tax/src/__tests__/plausibility-engine.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/data-retrieval.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-assessment.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-assessment.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
       "related_rules": [
@@ -5765,11 +5828,17 @@
         "apps/web/src/server/audit/labels.ts",
         "apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts",
         "apps/web/src/app/staff/(protected)/admin/quantenlos/page.tsx",
-        "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-panel.tsx"
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-panel.tsx",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-state.ts",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-hooks.ts",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-recovery.tsx",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-ziehungen.tsx"
       ],
       "test_refs": [
         "apps/web/src/server/risk/__tests__/los.test.ts",
-        "packages/db/src/__tests__/los-state-consistency.test.ts"
+        "packages/db/src/__tests__/los-state-consistency.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-state.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-hooks.test.tsx"
       ],
       "feature_refs": [
         "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",

@@ -67,6 +67,9 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
+  - apps/web/src/server/gwg/beneficial-owners.ts
+  - apps/web/src/server/gwg/persons.ts
+  - apps/web/src/server/gwg/legal-entity.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
@@ -75,6 +78,7 @@ test_refs:
   - apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
+  - apps/web/src/server/gwg/__tests__/services-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md

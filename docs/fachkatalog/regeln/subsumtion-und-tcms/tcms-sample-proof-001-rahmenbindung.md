@@ -45,9 +45,15 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts
   - apps/web/src/app/staff/(protected)/admin/quantenlos/page.tsx
   - apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-panel.tsx
+  - apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-state.ts
+  - apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-hooks.ts
+  - apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-recovery.tsx
+  - apps/web/src/app/staff/(protected)/admin/quantenlos/quantenlos-ziehungen.tsx
 test_refs:
   - apps/web/src/server/risk/__tests__/los.test.ts
   - packages/db/src/__tests__/los-state-consistency.test.ts
+  - apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-state.test.ts
+  - apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-hooks.test.tsx
 feature_refs:
   - docs/anwenderdoku/subsumtion-tcms-quantenlos.md
   - docs/assurance/known-limits.md

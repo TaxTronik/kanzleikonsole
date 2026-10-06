@@ -82,6 +82,14 @@ code_refs:
   - packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql
   - packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
+  - apps/web/src/server/gwg/identity-document-sets.ts
+  - apps/web/src/server/gwg/identity-document-links.ts
+  - apps/web/src/server/gwg/identity-document-confirmation.ts
+  - apps/web/src/server/gwg/identity-document-validation.ts
+  - apps/web/src/server/gwg/invalidated-identity-sets.ts
+  - apps/web/src/server/gwg/persons.ts
+  - apps/web/src/server/gwg/editable-check.ts
+  - packages/gwg/src/check-lifecycle.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/identity-document-review-state.test.ts
@@ -97,6 +105,7 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/evidence-view-state.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
+  - apps/web/src/server/gwg/__tests__/services-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md

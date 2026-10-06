@@ -53,11 +53,14 @@ code_refs:
   - apps/web/src/app/poa/sign/sign-flow.tsx
   - packages/db/prisma/migrations/20260801002800_iter103_poa_signed_content_binding/migration.sql
   - packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql
+  - apps/web/src/server/poa/send-for-signature.ts
+  - apps/web/src/server/poa/signing-token.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/poa/__tests__/otp-concurrency.test.ts
   - apps/web/src/server/poa/__tests__/signing-snapshot.test.ts
   - packages/db/src/__tests__/poa-signing-integrity.test.ts
+  - apps/web/src/server/poa/__tests__/poa-services-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/adr/0009-eidas-aes-via-token-und-otp.md

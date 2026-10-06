@@ -52,10 +52,12 @@ code_refs:
   - apps/web/src/app/staff/(protected)/poa/sign-actions.ts
   - apps/web/src/app/poa/sign/document/route.ts
   - packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql
+  - apps/web/src/server/poa/send-for-signature.ts
 test_refs:
   - apps/web/src/server/poa/__tests__/signing-snapshot.test.ts
   - apps/web/src/app/poa/sign/document/__tests__/route-snapshot.test.ts
   - packages/db/src/__tests__/poa-signing-integrity.test.ts
+  - apps/web/src/server/poa/__tests__/poa-services-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/adr/0009-eidas-aes-via-token-und-otp.md

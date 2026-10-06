@@ -77,6 +77,7 @@ code_refs:
   - apps/worker/src/jobs/reminders-daily.ts
   - packages/db/prisma/migrations/20260823200000_tax_notice_status_terms/migration.sql
   - packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql
+  - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts
 test_refs:
   - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/tax-notice-evidence.test.ts
@@ -89,6 +90,7 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-transition.test.ts
   - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
   - packages/db/src/__tests__/deadline-daily-review.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/kalender-fristen-bescheide.md

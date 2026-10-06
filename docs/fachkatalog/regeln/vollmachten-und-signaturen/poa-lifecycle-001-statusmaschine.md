@@ -48,11 +48,15 @@ code_refs:
   - apps/worker/src/jobs/poa-expiry-check.ts
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260801003600_poa_signing_snapshot/migration.sql
+  - apps/web/src/server/poa/create-poa.ts
+  - apps/web/src/server/poa/send-for-signature.ts
+  - apps/web/src/server/poa/revoke-poa.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts
   - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
   - apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts
   - packages/db/src/__tests__/poa-signing-integrity.test.ts
+  - apps/web/src/server/poa/__tests__/poa-services-db.test.ts
 feature_refs:
   - docs/development/module/vollmachten-ablauf.md
   - FEATURES.md

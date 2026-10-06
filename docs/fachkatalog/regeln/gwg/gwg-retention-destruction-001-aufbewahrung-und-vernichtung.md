@@ -41,6 +41,9 @@ code_refs:
   - packages/db/prisma/migrations/20260823170000_gwg_open_first_check_retention/migration.sql
   - packages/db/prisma/migrations/20260824213000_gwg_evidence_supersession/migration.sql
   - packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql
+  - apps/web/src/server/gwg/identity-document-links.ts
+  - packages/gwg/src/retention.ts
+  - packages/gwg/src/review-queue.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
@@ -50,6 +53,8 @@ test_refs:
   - apps/web/src/server/gwg/__tests__/retention.test.ts
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts
   - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
+  - packages/gwg/src/__tests__/retention.test.ts
+  - packages/gwg/src/__tests__/review-queue.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md

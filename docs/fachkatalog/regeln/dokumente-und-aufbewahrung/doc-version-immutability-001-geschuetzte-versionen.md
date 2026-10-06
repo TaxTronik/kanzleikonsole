@@ -53,6 +53,7 @@ code_refs:
   - apps/web/src/server/inbox/accept-attachment.ts
   - apps/web/src/server/inbox/staff-mutations.ts
   - apps/worker/src/jobs/storage-orphan-cleanup.ts
+  - apps/web/src/server/documents/retag.ts
 test_refs:
   - packages/storage/src/__tests__/object-version.test.ts
   - apps/web/src/server/documents/__tests__/delivery.test.ts
@@ -71,6 +72,7 @@ test_refs:
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - apps/web/src/server/inbox/__tests__/rejection.test.ts
   - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
+  - apps/web/src/server/documents/__tests__/retag-db.test.ts
 feature_refs:
   - docs/anwenderdoku/dokumente.md
   - docs/development/module/dokumentenarchiv.md

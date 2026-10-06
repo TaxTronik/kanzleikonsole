@@ -46,6 +46,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - apps/web/src/app/staff/(protected)/admin/users/page.tsx
   - apps/web/src/server/gwg/professional-review.ts
+  - apps/web/src/server/actions/action-runner.ts
 test_refs:
   - apps/web/src/server/documents/__tests__/delivery.test.ts
   - apps/web/src/server/auth/__tests__/rbac.test.ts
@@ -55,6 +56,7 @@ test_refs:
   - apps/e2e/tests/12-accessibility.spec.ts
   - apps/web/src/server/gwg/__tests__/professional-review.test.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
+  - apps/web/src/server/actions/__tests__/action-runner.test.ts
 feature_refs:
   - FEATURES.md
   - docs/development/module/zugriffsschutz.md

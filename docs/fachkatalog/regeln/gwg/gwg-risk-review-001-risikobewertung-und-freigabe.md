@@ -54,6 +54,10 @@ code_refs:
   - apps/web/src/server/gwg/professional-review.ts
   - apps/web/src/server/gwg/review-snapshot.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
+  - apps/web/src/server/gwg/check-cycle.ts
+  - apps/web/src/server/gwg/check-decisions.ts
+  - apps/web/src/server/gwg/editable-check.ts
+  - packages/gwg/src/check-lifecycle.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
@@ -64,6 +68,8 @@ test_refs:
   - apps/web/src/server/gwg/__tests__/lifecycle-lock-call-sites.test.ts
   - packages/db/src/__tests__/gwg-professional-lock.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+  - apps/web/src/server/gwg/__tests__/services-db.test.ts
+  - packages/gwg/src/__tests__/check-lifecycle.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md

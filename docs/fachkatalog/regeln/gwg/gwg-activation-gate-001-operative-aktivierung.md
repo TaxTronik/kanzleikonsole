@@ -47,9 +47,11 @@ code_refs:
   - packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql
   - packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
+  - apps/web/src/server/gwg/check-decisions.ts
 test_refs:
   - packages/db/src/__tests__/gwg-allow-active.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+  - apps/web/src/server/gwg/__tests__/services-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md

@@ -61,6 +61,10 @@ code_refs:
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260801004900_gwg_cross_role_person_identity/migration.sql
   - packages/db/prisma/migrations/20260826010000_gwg_representative_general_person_data/migration.sql
+  - apps/web/src/server/gwg/check-decisions.ts
+  - apps/web/src/server/gwg/legal-entity.ts
+  - apps/web/src/server/gwg/persons.ts
+  - apps/web/src/server/gwg/beneficial-owners.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/gwg/__tests__/representatives.test.ts

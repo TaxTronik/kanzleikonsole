@@ -47,6 +47,7 @@ code_refs:
   - apps/web/src/server/inbox/access.ts
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
   - packages/db/prisma/migrations/20260723000000_iter73_client_mandate_ended_at/migration.sql
+  - apps/web/src/server/poa/create-poa.ts
 test_refs:
   - apps/web/src/app/api/portal/ical/[token]/__tests__/route.test.ts
   - apps/web/src/server/auth/__tests__/session-renewal.test.ts

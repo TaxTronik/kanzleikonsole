@@ -51,6 +51,10 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/change-requests/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
   - apps/worker/src/jobs/gwg-expiry-check.ts
+  - apps/web/src/server/gwg/check-cycle.ts
+  - apps/web/src/server/gwg/check-decisions.ts
+  - packages/gwg/src/check-lifecycle.ts
+  - packages/gwg/src/expiry.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/gwg/__tests__/reverification.test.ts
@@ -59,6 +63,7 @@ test_refs:
   - apps/web/src/server/tax-master-data/__tests__/service.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
   - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
+  - packages/gwg/src/__tests__/expiry.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md

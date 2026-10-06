@@ -72,6 +72,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/profile/actions.ts
   - apps/web/src/app/staff/(protected)/admin/users/actions.ts
   - packages/db/prisma/migrations/20260903010000_staff_security_reset_credential_revocation/migration.sql
+  - apps/web/src/server/actions/audit.ts
 test_refs:
   - apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts
   - apps/web/src/server/settings/__tests__/settings-atomicity-ci.test.ts
@@ -96,6 +97,7 @@ test_refs:
   - apps/web/src/app/staff/(protected)/admin/users/__tests__/account-actions.test.ts
   - apps/web/src/server/auth/__tests__/webauthn.test.ts
   - apps/web/src/server/auth/__tests__/admin-break-glass.test.ts
+  - apps/web/src/server/actions/__tests__/audit.test.ts
 feature_refs:
   - docs/development/module/audit-protokollierung.md
   - docs/adr/0004-evidence-chain-mit-rfc3161.md

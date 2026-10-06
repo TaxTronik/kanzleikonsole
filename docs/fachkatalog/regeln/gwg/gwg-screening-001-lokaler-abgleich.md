@@ -38,6 +38,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
   - apps/worker/src/jobs/sanctions-refresh.ts
   - packages/db/prisma/migrations/20260831130000_screening_fees/migration.sql
+  - apps/web/src/server/gwg/check-decisions.ts
 test_refs:
   - packages/db/src/__tests__/screening-fees-rls.test.ts
   - packages/tax/src/screening/screening.test.ts

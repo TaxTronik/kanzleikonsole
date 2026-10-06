@@ -59,6 +59,7 @@ code_refs:
   - apps/web/src/server/gwg/reverification.ts
   - packages/db/prisma/migrations/20260801004100_onboarding_gwg_review_workflow/migration.sql
   - packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql
+  - packages/gwg/src/check-lifecycle.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts

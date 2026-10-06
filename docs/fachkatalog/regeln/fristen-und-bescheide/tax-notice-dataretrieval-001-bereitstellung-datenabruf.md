@@ -73,11 +73,14 @@ code_refs:
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260823000000_tax_notice_data_retrieval_cutover/migration.sql
   - packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql
+  - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row.tsx
 test_refs:
   - packages/tax/src/__tests__/legal-assessments.test.ts
   - packages/tax/src/__tests__/plausibility-engine.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/data-retrieval.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-assessment.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/kalender-fristen-bescheide.md
