@@ -1342,7 +1342,7 @@ exceptions:
       schließt wie der Worker verwaiste RUNNING-Einträge. Keine fachliche
       Freigabe.
     tests:
-      - packages/tax/src/__tests__/gwg-retention.test.ts
+      - packages/gwg/src/__tests__/retention.test.ts
       - packages/crypto/src/__tests__/session-revocation.test.ts
       - packages/db/src/__tests__/pg-tools.test.ts
       - packages/db/src/__tests__/gwg-retention-count.test.ts
@@ -1518,7 +1518,6 @@ exceptions:
     tests:
       - apps/web/src/app/staff/(protected)/clients/[id]/__tests__/data.test.ts
       - apps/web/src/app/staff/(protected)/clients/[id]/__tests__/page-streaming.test.tsx
-      - apps/web/src/app/staff/(protected)/clients/[id]/__tests__/page-structure.test.ts
     reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261005-036
     date: '2026-10-05'
