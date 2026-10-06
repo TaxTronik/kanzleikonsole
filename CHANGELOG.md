@@ -1365,6 +1365,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Neue Advisories im Produktionsgraphen geschlossen: sharp `0.35.5` samt
+  libvips `1.3.4` (librsvg, GHSA-wq5f-xc86-pv6w), source-map-js `1.2.2`
+  (GHSA-68fv-2mgg-jv7q) und fast-copy `4.1.1` (GHSA-jggr-w7fw-pc2j) als exakte
+  Overrides; source-map-js mit versionsgebundener Release-Age-Ausnahme. Für
+  braces (nur Entwicklung) und sprintf-js (nur mammoth-Kommandozeile) gibt es
+  keinen Fixstand; Bewertung in
+  [`docs/reviews/2026-10-07-dependency-audit-3733.md`](docs/reviews/2026-10-07-dependency-audit-3733.md).
 - **[Scope]** Die CRL- und Zertifikatskettenhärtung der Hardware-Anmeldung
   liegt nicht mehr als versionsgebundener Patch auf `@simplewebauthn/server`
   (69 KB, 14 Dateien je ESM/CommonJS), sondern als eigener Code in

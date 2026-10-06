@@ -1,5 +1,20 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-006
+    date: '2026-10-07'
+    paths:
+      - scripts/check-pnpm-supply-chain.sh
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Die Soll-Liste der Release-Age-Ausnahmen im Supply-Chain-Guard erhält den
+      versionsgebundenen Eintrag source-map-js@1.2.2 (Sicherheitsstand für
+      GHSA-68fv-2mgg-jv7q, jünger als die siebentägige Mindestwartezeit). Die
+      WebAuthn-, Ketten- und CRL-Prüfungen des Guards sowie Zugriffsschutz und RLS
+      bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/crypto/src/__tests__/certificate-path.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-005
     date: '2026-10-07'
     paths:
@@ -4189,6 +4204,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-006` dokumentiert die versionsgebundene
+  Release-Age-Ausnahme für source-map-js 1.2.2 im Supply-Chain-Guard.
 
 - 2026-10-07: `FK-EXC-20261007-005` dokumentiert die zeichengenaue Prüfung
   der Bestandskraft-Begründung im Bescheid-Statuswechsel.

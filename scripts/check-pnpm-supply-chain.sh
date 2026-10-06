@@ -124,6 +124,7 @@ deepmerge-ts@8.0.0
 nanoid@3.3.18
 nodemailer@9.0.1
 postcss@8.5.23
+source-map-js@1.2.2
 undici@8.9.0
 EOF
 sort -o "$TMP_DIR/min-age-exclude-expected" "$TMP_DIR/min-age-exclude-expected"

@@ -25,6 +25,8 @@ minimumReleaseAgeExclude:
   # Beide von ESLint benoetigten Zweige muessen in EINER Regel stehen: pnpm
   # wertet pro Paketname nur die erste passende Ausnahme aus.
   - 'brace-expansion@1.1.18 || 5.0.9'
+  # GHSA-68fv-2mgg-jv7q, veroeffentlicht 2026-09-30; Pin unten unter overrides.
+  - source-map-js@1.2.2
 minimumReleaseAgeStrict: true
 minimumReleaseAgeIgnoreMissingTime: false
 trustLockfile: false
@@ -131,8 +133,18 @@ overrides:
   # aeltere Kopie erzeugt inkompatible nominale Node-/View-Typen im Editor.
   prosemirror-model: '1.25.11'
   prosemirror-view: '1.42.3'
-  # sharp <0.35.4 erbt libheif-Schwachstellen (GHSA-rgj7-g3m4-5g8c).
-  sharp: '0.35.4'
+  # sharp <0.35.4 erbt libheif-Schwachstellen (GHSA-rgj7-g3m4-5g8c), <0.35.5
+  # die librsvg-Schwachstelle CVE-2026-96889 (GHSA-wq5f-xc86-pv6w); Next.js
+  # zieht sharp fuer die Bildoptimierung auch in den Produktionsgraphen.
+  sharp: '0.35.5'
+  # source-map-js <1.2.2 erlaubt Event-Loop-DoS ueber indizierte Source-Map-
+  # Abschnitte (GHSA-68fv-2mgg-jv7q); transitiv ueber postcss in Next.js und
+  # Vite. Exakter Pin wie bei postcss, die Release-Age-Ausnahme ist
+  # versionsgebunden.
+  source-map-js: '1.2.2'
+  # fast-copy 4.0.x erschoepft bei tief verschachtelten Werten den Stack
+  # (GHSA-jggr-w7fw-pc2j); transitiv ueber pino-pretty in Web und Worker.
+  fast-copy: '4.1.1'
   # brace-expansion zweig-genau pinnen: minimatch@3 braucht die Callable-API
   # aus 1.x, minimatch@10 die 5.x-API. Ein pauschaler 5.x-Force bricht ESLint.
   # Beide Fixstaende schliessen Rekursions-/CPU-DoS (u. a.
