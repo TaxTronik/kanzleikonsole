@@ -4,7 +4,7 @@ import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-re
 
 import { z } from 'zod';
 import { redirect } from 'next/navigation';
-import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
+import { toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { staffActionGuard, ActionError, type ActionResult } from '@/server/actions/staff-action';
@@ -28,14 +28,12 @@ export async function createOnboardingClientAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  // Mandanten anlegen ist Admin/Partner vorbehalten; einzelne Mitarbeitende
-  // koennen das Recht CLIENT_CREATE explizit erhalten (Benutzerverwaltung).
+  // ACCESS-STAFF-PERMISSION-001: wie die Schnellanlage nur über das Einzelrecht
+  // CLIENT_CREATE (ADMIN/PARTNER implizit); der Onboarding-Mandant startet mit
+  // allowActive=false.
   const g = await staffActionGuard({ requirePermission: 'CLIENT_CREATE' });
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
-  if (!isStaffAdmin(session)) {
-    return { ok: false, error: 'Nur ADMIN/PARTNER darf neue Mandanten anlegen.' };
-  }
+  const { tenantId, staffId, ctx } = g;
 
   const parsed = Schema.safeParse({
     name: formData.get('name'),

@@ -677,6 +677,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Das Einzelrecht `CLIENT_CREATE` wirkt: Mitarbeitende mit diesem
+  Recht legen Mandanten per Schnellanlage und Onboarding an, wie
+  Benutzerverwaltung, Mandantenliste und Formulare es anbieten; bisher lehnte
+  die Action alle außer ADMIN/PARTNER nach dem Ausfüllen ab
+  (`ACCESS-STAFF-PERMISSION-001`). Neue Mandanten bleiben bis zur GwG-Freigabe
+  gesperrt.
 - Uploads über Server Actions (externe Rechnungs-PDF, Steuererklärungs-PDF,
   DATEV-BWA-XLSX, Formular-Datei im Mandantenportal, GwG-Onboarding) werden
   binär statt als base64 übertragen; die angezeigten Grenzen von 10 bzw. 20 MB

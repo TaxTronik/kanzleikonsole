@@ -3,7 +3,7 @@
 import { areProfessionalAssigneesEligibleTx } from '@/server/gwg/professional-review';
 
 import { redirect } from 'next/navigation';
-import { isStaffAdmin, toActionError } from '@/server/auth/rbac';
+import { toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { z } from 'zod';
@@ -41,15 +41,14 @@ export async function createClientAction(
   _previous: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  // Mandanten anlegen ist Admin/Partner vorbehalten; einzelne Mitarbeitende
-  // koennen das Recht CLIENT_CREATE explizit erhalten (Benutzerverwaltung).
+  // ACCESS-STAFF-PERMISSION-001: Mandanten anlegen verlangt das Einzelrecht
+  // CLIENT_CREATE; ADMIN/PARTNER besitzen es implizit, andere Mitarbeitende per
+  // Grant (Benutzerverwaltung). Dieselbe Prüfung (hasStaffPermission) steuert
+  // Seite, Buttons und Leerzustände. Neue Mandanten starten mit
+  // allowActive=false; die GwG-Schranke bleibt also geschlossen.
   const g = await staffActionGuard({ requirePermission: 'CLIENT_CREATE' });
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
-  // Mandanten-Anlage berührt Stammdaten + GwG-Schranke (allow_active) — nur ADMIN/PARTNER.
-  if (!isStaffAdmin(session)) {
-    return { ok: false, error: 'Nur ADMIN/PARTNER darf neue Mandanten anlegen.' };
-  }
+  const { tenantId, staffId, ctx } = g;
 
   const confirmDuplicate = formData.get('confirmDuplicate') === '1';
   const parsed = createClientSchema.safeParse({

@@ -1,5 +1,6 @@
+// Fachkatalog: ACCESS-STAFF-PERMISSION-001
 // Review-Befund F-01: Mandantenanlage (direkt und im Onboarding) meldet
-// Validierungs-, Rollen- und Fachfehler als `{ ok: false, error }` an das
+// Validierungs-, Rechte- und Fachfehler als `{ ok: false, error }` an das
 // Formular. Vorher: Redirect mit `?error=` (Eingaben verloren) bzw. Wurf in
 // error.tsx. Geprüft wird der Rückkanal und dass bei einem Fehler nichts
 // geschrieben wird; der Erfolgsfall leitet unverändert weiter.
@@ -8,7 +9,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   staffActionGuard: vi.fn(),
-  isStaffAdmin: vi.fn(),
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
   areProfessionalAssigneesEligibleTx: vi.fn(),
@@ -25,7 +25,6 @@ vi.mock('@/server/gwg/professional-review', () => ({
 }));
 vi.mock('@/server/auth/rbac', async () => {
   return {
-    isStaffAdmin: h.isStaffAdmin,
     // F-03: echtes Fehler-Mapping statt Nachbau (toActionError, Fehlerklassen).
     ...(await import('@/server/actions/to-action-error')),
   };
@@ -75,7 +74,6 @@ describe.each(actions)('%s — Rückkanal statt Redirect/Wurf', (_name, action, 
       ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
       session: { user: { id: 'staff-1' } },
     });
-    h.isStaffAdmin.mockReturnValue(true);
     h.areProfessionalAssigneesEligibleTx.mockResolvedValue(true);
   });
 
@@ -92,14 +90,26 @@ describe.each(actions)('%s — Rückkanal statt Redirect/Wurf', (_name, action, 
     expect(h.redirect).not.toHaveBeenCalled();
   });
 
-  it('meldet die fehlende Rolle statt zu werfen', async () => {
-    h.isStaffAdmin.mockReturnValue(false);
+  // Review-Befund F-07: Das Einzelrecht CLIENT_CREATE genügt (ADMIN/PARTNER
+  // implizit); vorher warf die Action alle Nicht-Admins trotz Grant ab.
+  it('verlangt das Einzelrecht CLIENT_CREATE und keine zusätzliche Admin-Rolle', async () => {
+    const tx = {
+      staffUser: { count: vi.fn().mockResolvedValue(1) },
+      client: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn().mockResolvedValue({ id: 'client-2' }),
+      },
+      clientResponsibility: { create: vi.fn() },
+    };
+    h.withTenantContext.mockImplementation(async (_ctx, fn: (txArg: unknown) => unknown) => fn(tx));
 
-    await expect(action(null, clientForm())).resolves.toEqual({
-      ok: false,
-      error: 'Nur ADMIN/PARTNER darf neue Mandanten anlegen.',
-    });
-    expect(h.withTenantContext).not.toHaveBeenCalled();
+    await expect(action(null, clientForm())).rejects.toThrow(
+      `NEXT_REDIRECT:${successPath}client-2`,
+    );
+    expect(h.staffActionGuard).toHaveBeenCalledWith({ requirePermission: 'CLIENT_CREATE' });
+    expect(tx.client.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ allowActive: false }) }),
+    );
   });
 
   it('gibt eine Gate-Ablehnung zurück, statt zum Login umzuleiten', async () => {
@@ -164,7 +174,6 @@ describe('createClientAction — Doppel-Mandant und DATEV-Konflikt', () => {
       ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
       session: { user: { id: 'staff-1' } },
     });
-    h.isStaffAdmin.mockReturnValue(true);
     h.areProfessionalAssigneesEligibleTx.mockResolvedValue(true);
   });
 
