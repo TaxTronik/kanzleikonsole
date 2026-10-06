@@ -1,7 +1,7 @@
 import {
   bekanntgabeFiktionTage,
   BEKANNTGABE_FIKTION_TAGE,
-  germanHolidays,
+  isGermanHoliday,
   startOfUtcDay,
   type GermanRegion,
 } from './engine';
@@ -106,11 +106,7 @@ function workdayCandidate(date: Date, context: HolidayLocationContext): Date {
   while (true) {
     const weekday = candidate.getUTCDay();
     const weekend = weekday === 0 || weekday === 6;
-    const statutoryHoliday = germanHolidays(
-      candidate.getUTCFullYear(),
-      region,
-      bavariaAssumption,
-    ).some((holiday) => dateKey(holiday) === dateKey(candidate));
+    const statutoryHoliday = isGermanHoliday(candidate, region, bavariaAssumption);
     if (!weekend && !statutoryHoliday && !localHolidayKeys.has(dateKey(candidate))) break;
     candidate = new Date(candidate.getTime() + DAY_MS);
   }
@@ -267,6 +263,15 @@ function addCalendarDays(date: Date, days: number): Date {
   );
 }
 
+// Die Monatsfrist wird kalendarisch nach §§ 187 Abs. 1, 188 Abs. 2 BGB gerechnet:
+// der Bekanntgabetag zählt nicht mit, die Frist endet mit Ablauf des Tages des
+// Folgemonats, der dem Bekanntgabetag zahlenmäßig entspricht; existiert dieser
+// Tag im Folgemonat nicht (z. B. 31. → Februar), endet sie am letzten Tag des
+// Folgemonats. Das Fristende verschiebt assessStandardWorkday nach § 108 Abs. 3 AO.
+//
+// NICHT die frühere Näherung „+ 33 Tage": die ist zweifach falsch (3 statt 4
+// Tage Fiktion; 30 Tage statt kalendarischer Monat) und kann eine SPÄTERE Frist
+// ausweisen als die gesetzliche — mit Bestandskraft-/Haftungsrisiko.
 function addCalendarMonth(date: Date): Date {
   const start = startOfUtcDay(date);
   const year = start.getUTCFullYear();

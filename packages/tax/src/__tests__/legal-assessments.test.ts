@@ -291,6 +291,170 @@ describe('TAX-NOTICE-APPEAL-001 — Bekanntgabe und Einspruchsfrist', () => {
   });
 });
 
+// Golden-Fälle mit gesetzlich fixierten Erwartungswerten. Der Feiertagskontext
+// NRW ist bestätigt; keiner der Termine fällt auf einen NRW-Landesfeiertag, die
+// Ergebnisse entsprechen damit dem bundeseinheitlichen Kalender.
+describe('TAX-NOTICE-APPEAL-001 — Golden-Fälle §§ 122, 355, 356 AO und § 47 FGO', () => {
+  function appeal(
+    overrides: Partial<Parameters<typeof assessAppealDeadline>[0]> &
+      Pick<Parameters<typeof assessAppealDeadline>[0], 'deliveryMethod'>,
+  ) {
+    return assessAppealDeadline({
+      legalRemedyInstruction: 'VALID',
+      notificationHolidayContext: confirmedContext(),
+      deadlineHolidayContext: confirmedContext(),
+      ...overrides,
+    });
+  }
+
+  it.each([
+    // Bescheid 01.02.2027 (Mo) → Fiktion 05.02.2027 (Fr) → +1 Monat 05.03.2027 (Fr).
+    // Der frühere „+33 Tage"-Code hätte 06.03.2027 gezeigt — einen Tag zu spät.
+    [
+      'Regelfall: +4 Tage Fiktion, dann kalendarischer Monat',
+      '2027-02-01',
+      '2027-02-05',
+      '2027-03-05',
+    ],
+    // Bescheid 12.01.2026 (Mo): +4 = 16.01.2026 (Fr) → +1 Monat 16.02.2026 (Mo).
+    // Mit alter 3-Tage-Fiktion wäre die Bekanntgabe der 15.01. (Do) gewesen.
+    ['4-Tage-Fiktion ab 2025, nicht 3', '2026-01-12', '2026-01-16', '2026-02-16'],
+    // Bescheid 01.07.2026 (Mi): +4 = 05.07.2026 (So) → Bekanntgabe 06.07.2026 (Mo)
+    // → +1 Monat 06.08.2026 (Do).
+    [
+      'Fiktionstag Sonntag → nächster Werktag (§ 108 Abs. 3 AO)',
+      '2026-07-01',
+      '2026-07-06',
+      '2026-08-06',
+    ],
+    // Bescheid 27.01.2028 (Do): +4 = 31.01.2028 (Mo). 31.02. existiert nicht →
+    // letzter Februartag 2028 (Schaltjahr) = 29.02.2028 (Di).
+    [
+      'Monatsende-Überlauf im Schaltjahr (§ 188 Abs. 3 BGB)',
+      '2028-01-27',
+      '2028-01-31',
+      '2028-02-29',
+    ],
+    // Bescheid 21.11.2026 (Sa): +4 = 25.11.2026 (Mi). +1 Monat: 25.12. (Fr) und
+    // 26.12. (Sa) Feiertage, 27.12. So → Fristende Mo 28.12.2026.
+    ['Fristende über die Weihnachts-Feiertagskette', '2026-11-21', '2026-11-25', '2026-12-28'],
+    // Art. 97 § 1 Abs. 15 EGAO: Aufgabe 10.12.2024 (Di) → +3 = 13.12.2024 (Fr)
+    // → Fristende 13.01.2025 (Mo). Mit 4 Tagen wäre es der 16.01.2025 gewesen.
+    [
+      'Aufgabe bis 31.12.2024: Drei-Tages-Fiktion (§ 122 Abs. 2 AO a.F.)',
+      '2024-12-10',
+      '2024-12-13',
+      '2025-01-13',
+    ],
+  ])('Inlandspost — %s', (_case, dispatch, notification, deadline) => {
+    const result = appeal({ deliveryMethod: 'DOMESTIC_POST', dispatchDate: utc(dispatch) });
+
+    expect(result.status).toBe('CALCULATED');
+    expect(ymd(result.notificationDate)).toBe(notification);
+    expect(ymd(result.deadline)).toBe(deadline);
+  });
+
+  // § 122 Abs. 2 AO: Die Fiktion gilt nicht bei späterem Zugang; ein früherer
+  // Zugang verkürzt sie nicht (Mindestschutz).
+  it('ein festgestellter späterer Zugang ersetzt den Fiktionstag, ein früherer nicht', () => {
+    const later = appeal({
+      deliveryMethod: 'DOMESTIC_POST',
+      dispatchDate: utc('2027-02-01'),
+      access: { kind: 'ACTUAL_ACCESS_DETERMINED', date: utc('2027-02-09') },
+    });
+    expect(later.status).toBe('CALCULATED');
+    expect(ymd(later.notificationDate)).toBe('2027-02-09');
+    expect(ymd(later.deadline)).toBe('2027-03-09');
+
+    const earlier = appeal({
+      deliveryMethod: 'DOMESTIC_POST',
+      dispatchDate: utc('2027-02-01'),
+      access: { kind: 'ACTUAL_ACCESS_DETERMINED', date: utc('2027-02-03') },
+    });
+    expect(earlier.status).toBe('CALCULATED');
+    expect(ymd(earlier.notificationDate)).toBe('2027-02-05');
+    expect(ymd(earlier.deadline)).toBe('2027-03-05');
+  });
+
+  it('verschiebt einen festgestellten Zugang am Samstag nicht', () => {
+    // Fiktion 05.07.2026 (So) → 06.07. Tatsächlich erst Sa 11.07.2026 zugegangen
+    // (Faktum, keine Verschiebung) → Fristende 11.08.2026 (Di).
+    const result = appeal({
+      deliveryMethod: 'DOMESTIC_POST',
+      dispatchDate: utc('2026-07-01'),
+      access: { kind: 'ACTUAL_ACCESS_DETERMINED', date: utc('2026-07-11') },
+    });
+
+    expect(ymd(result.notificationDate)).toBe('2026-07-11');
+    expect(ymd(result.deadline)).toBe('2026-08-11');
+  });
+
+  it('Auslandspost: ein Monat Fiktion plus ein Monat Frist; späterer Zugang geht vor', () => {
+    const regular = appeal({ deliveryMethod: 'POST_ABROAD', dispatchDate: utc('2026-01-10') });
+    expect(regular.status).toBe('CALCULATED');
+    expect(ymd(regular.notificationDate)).toBe('2026-02-10');
+    expect(ymd(regular.deadline)).toBe('2026-03-10');
+
+    const laterAccess = appeal({
+      deliveryMethod: 'POST_ABROAD',
+      dispatchDate: utc('2026-01-10'),
+      access: { kind: 'ACTUAL_ACCESS_DETERMINED', date: utc('2026-03-01') },
+    });
+    expect(ymd(laterAccess.notificationDate)).toBe('2026-03-01');
+    expect(ymd(laterAccess.deadline)).toBe('2026-04-01');
+  });
+
+  it('festgestellter Bekanntgabetag: keine Fiktion; fehlende Belehrung → Jahresfrist', () => {
+    const determined = (date: string, legalRemedyInstruction: 'VALID' | 'INVALID_OR_MISSING') =>
+      appeal({
+        deliveryMethod: 'DETERMINED_NOTIFICATION',
+        determinedNotificationDate: utc(date),
+        legalRemedyInstruction,
+      });
+
+    expect(ymd(determined('2026-07-07', 'VALID').deadline)).toBe('2026-08-07');
+    // § 356 Abs. 2 AO (Einspruch) bzw. § 55 Abs. 2 FGO (Klage): Jahresfrist.
+    expect(ymd(determined('2026-07-07', 'INVALID_OR_MISSING').deadline)).toBe('2027-07-07');
+    // 29.02.2028 + ein Jahr → 28.02.2029 (Mi), keine Verschiebung.
+    expect(ymd(determined('2028-02-29', 'INVALID_OR_MISSING').deadline)).toBe('2029-02-28');
+  });
+
+  // Die Klagefrist (§ 47 Abs. 1 FGO) läuft ab dem bereits festgestellten
+  // Bekanntgabetag der Einspruchsentscheidung; notice-transition.ts rechnet sie
+  // deshalb mit DETERMINED_NOTIFICATION.
+  it('Klagefrist: keine erneute Bekanntgabefiktion auf die Einspruchsentscheidung', () => {
+    const klage = appeal({
+      deliveryMethod: 'DETERMINED_NOTIFICATION',
+      determinedNotificationDate: utc('2026-07-07'),
+    });
+    // Mit Fiktion wäre die Frist knapp eine Woche zu spät: 11.07. (Sa) → 13.07.
+    // → 13.08.2026.
+    const withFiction = appeal({
+      deliveryMethod: 'DOMESTIC_POST',
+      dispatchDate: utc('2026-07-07'),
+    });
+
+    expect(ymd(klage.deadline)).toBe('2026-08-07');
+    expect(ymd(withFiction.deadline)).toBe('2026-08-13');
+  });
+
+  it('Klagefrist: Monatsende-Überlauf mit Werktagsverschiebung und Tagesnormalisierung', () => {
+    // 31.01.2026 (Sa) → 31.02. existiert nicht → 28.02.2026 (Sa) → Mo 02.03.2026.
+    const overflow = appeal({
+      deliveryMethod: 'DETERMINED_NOTIFICATION',
+      determinedNotificationDate: utc('2026-01-31'),
+    });
+    expect(ymd(overflow.deadline)).toBe('2026-03-02');
+
+    // 14:30 UTC am 07.07.2026 → derselbe Fristbeginn wie Mitternacht.
+    const afternoon = appeal({
+      deliveryMethod: 'DETERMINED_NOTIFICATION',
+      determinedNotificationDate: new Date('2026-07-07T14:30:00Z'),
+    });
+    expect(ymd(afternoon.deadline)).toBe('2026-08-07');
+  });
+});
+
 describe('TAX-NOTICE-DATARETRIEVAL-001 — § 122a AO', () => {
   const base = {
     provisionEvidence: 'PROFESSIONALLY_DETERMINED' as const,
@@ -483,5 +647,131 @@ describe('TAX-NOTICE-DATARETRIEVAL-001 — § 122a AO', () => {
       expect(result.deadline).toBeNull();
       expect(result.manualReviewReasons).toContain('LEGACY_NOTIFICATION_OUTCOME_NOT_CONFIRMED');
     }
+  });
+});
+
+describe('TAX-NOTICE-DATARETRIEVAL-001 — Golden-Fälle § 122a AO am Stichtag 01.01.2026', () => {
+  const base = {
+    provisionEvidence: 'PROFESSIONALLY_DETERMINED' as const,
+    legalRemedyInstruction: 'VALID' as const,
+    notificationHolidayContext: confirmedContext(),
+    deadlineHolidayContext: confirmedContext(),
+  };
+
+  it('bleibt ohne Erlassdatum fail-closed', () => {
+    const result = assessDataRetrievalDeadline({
+      ...base,
+      issuedAt: null,
+      provisionDate: utc('2026-01-12'),
+      notificationStatus: 'SAME_DAY_CONFIRMED',
+    });
+
+    expect(result.regime).toBe('UNKNOWN');
+    expect(result.status).toBe('MANUAL_REVIEW');
+    expect(result.deadline).toBeNull();
+    expect(result.manualReviewReasons).toContain('ISSUED_AT_UNKNOWN');
+  });
+
+  it('bleibt im Altfall ohne Versandtag der Benachrichtigung fail-closed', () => {
+    const result = assessDataRetrievalDeadline({
+      ...base,
+      issuedAt: utc('2025-01-09'),
+      provisionDate: utc('2025-01-10'),
+      notificationStatus: 'LATE',
+    });
+
+    expect(result.status).toBe('MANUAL_REVIEW');
+    expect(result.deadline).toBeNull();
+    expect(result.manualReviewReasons).toContain('LEGACY_NOTIFICATION_DATE_UNKNOWN');
+  });
+
+  it.each([
+    // Altfall: Versand der Benachrichtigung 10.12.2024 + 3 = 13.12.2024 (Fr).
+    [
+      'Benachrichtigung 2024 bei Bereitstellung 2024: drei Tage',
+      '2024-12-08',
+      '2024-12-09',
+      '2024-12-10',
+      '2024-12-13',
+      '2025-01-13',
+    ],
+    // Art. 97 § 1 Abs. 15 EGAO: Bereitstellung noch am 31.12.2024, Versand am
+    // 01.01.2025 → noch drei Tage: 04.01.2025 (Sa) → Mo 06.01.2025.
+    [
+      '3→4-Tage-Übergang nach der Bereitstellung',
+      '2024-12-30',
+      '2024-12-31',
+      '2025-01-01',
+      '2025-01-06',
+      '2025-02-06',
+    ],
+    // Erlass 31.12.2025 → Altrecht trotz Bereitstellung 2026; Bereitstellung 2026
+    // → vier Tage ab Versand: 07.01.2026 (Mi); Fristende 07.02. (Sa) → 09.02.2026.
+    [
+      'Erlass 2025, Bereitstellung 2026: Altrecht mit vier Tagen',
+      '2025-12-31',
+      '2026-01-02',
+      '2026-01-03',
+      '2026-01-07',
+      '2026-02-09',
+    ],
+  ])('Altfall — %s', (_case, issued, provision, notificationSent, notification, deadline) => {
+    const result = assessDataRetrievalDeadline({
+      ...base,
+      issuedAt: utc(issued),
+      provisionDate: utc(provision),
+      legacyNotificationDate: utc(notificationSent),
+      notificationStatus: 'LATE',
+    });
+
+    expect(result.regime).toBe('LEGACY_UNTIL_2025');
+    expect(result.status).toBe('CALCULATED');
+    expect(ymd(result.notificationDate)).toBe(notification);
+    expect(ymd(result.deadline)).toBe(deadline);
+  });
+
+  it('verwendet im Altfall bei bestrittener oder verspäteter Benachrichtigung den Abruf', () => {
+    const legacy = {
+      ...base,
+      issuedAt: utc('2025-01-09'),
+      provisionDate: utc('2025-01-10'),
+      legacyNotificationDate: utc('2025-01-13'),
+      legacyNotificationDisputedOrLate: true,
+      notificationStatus: 'LATE' as const,
+    };
+
+    const retrieved = assessDataRetrievalDeadline({
+      ...legacy,
+      legacyRetrievedAt: utc('2025-01-20'),
+    });
+    expect(retrieved.status).toBe('CALCULATED');
+    expect(ymd(retrieved.notificationDate)).toBe('2025-01-20');
+    expect(ymd(retrieved.deadline)).toBe('2025-02-20');
+
+    // Ohne nachgewiesenen Benachrichtigungszugang und ohne Abruf keine Bekanntgabe.
+    const notRetrieved = assessDataRetrievalDeadline(legacy);
+    expect(notRetrieved.status).toBe('MANUAL_REVIEW');
+    expect(notRetrieved.deadline).toBeNull();
+    expect(notRetrieved.manualReviewReasons).toContain('LEGACY_NOTIFICATION_ACCESS_DISPUTED');
+  });
+
+  it('lässt altrechtliche Zusatzangaben die Neufassung nicht verändern', () => {
+    // Erlass 11.01.2026, Bereitstellung 12.01.2026 (Mo) + 4 = 16.01.2026 (Fr)
+    // → Fristende 16.02.2026 (Mo).
+    const result = assessDataRetrievalDeadline({
+      ...base,
+      issuedAt: utc('2026-01-11'),
+      provisionDate: utc('2026-01-12'),
+      consent2026: 'ACTIVE_DOCUMENTED',
+      notificationStatus: 'SAME_DAY_CONFIRMED',
+      legacyNotificationDate: utc('2026-01-20'),
+      legacyNotificationDisputedOrLate: true,
+      legacyRetrievedAt: utc('2026-01-21'),
+    });
+
+    expect(result.regime).toBe('CONSENT_2026');
+    expect(result.status).toBe('CALCULATED');
+    expect(ymd(result.notificationDate)).toBe('2026-01-16');
+    expect(ymd(result.deadline)).toBe('2026-02-16');
   });
 });

@@ -27,12 +27,8 @@ import { describe, it, expect } from 'vitest';
 import {
   generateDeadlines,
   germanHolidays,
+  isGermanHoliday,
   shiftToNextWorkday,
-  appealDeadline,
-  appealDeadlineFromNotification,
-  appealDeadlineForPostAbroad,
-  appealDeadlineForDataRetrieval,
-  klageDeadline,
   bekanntgabeFiktionTage,
   type GermanRegion,
 } from '../engine';
@@ -229,229 +225,37 @@ describe('§ 18 (1)/(2) UStG — USt-VA Q4 über den Jahreswechsel', () => {
   });
 });
 
-describe('Einspruchsfrist § 355 AO + Bekanntgabefiktionen §§ 122, 122a AO', () => {
-  it('Regelfall: +4 Tage Bekanntgabefiktion, dann kalendarischer Monat', () => {
-    // Bescheid 01.02.2027 (Mo) → Fiktion 05.02.2027 (Fr) → +1 Monat 05.03.2027 (Fr).
-    // Der frühere „+33 Tage"-Code hätte 06.03.2027 gezeigt — einen Tag zu spät.
-    expect(ymd(appealDeadline(utc('2027-02-01')))).toBe('2027-03-05');
-  });
-
-  it('4-Tage-Fiktion (§ 122 (2) Nr. 1 AO ab 2025), nicht 3', () => {
-    // Bescheid 12.01.2026 (Mo): +4 = 16.01.2026 (Fr) → +1 Monat 16.02.2026 (Mo).
-    // Mit alter 3-Tage-Fiktion wäre die Bekanntgabe der 15.01. (Do) gewesen.
-    expect(ymd(appealDeadline(utc('2026-01-12')))).toBe('2026-02-16');
-  });
-
-  it('Bekanntgabetag auf Sonntag → nächster Werktag (§ 108 (3) AO)', () => {
-    // Bescheid 01.07.2026 (Mi): +4 = 05.07.2026 (So) → Bekanntgabe 06.07.2026 (Mo)
-    // → +1 Monat 06.08.2026 (Do).
-    expect(ymd(appealDeadline(utc('2026-07-01')))).toBe('2026-08-06');
-  });
-
-  it('Monatsende-Überlauf im Schaltjahr (§ 188 (3) BGB): 31.01. → 29.02.', () => {
-    // Bescheid 27.01.2028 (Mi): +4 = 31.01.2028 (Mo, Werktag) → Bekanntgabe.
-    // +1 Monat: 31.02. existiert nicht → letzter Februartag 2028 (Schaltjahr) =
-    // 29.02.2028 (Di, Werktag).
-    expect(ymd(appealDeadline(utc('2028-01-27')))).toBe('2028-02-29');
-  });
-
-  it('Fristende über Weihnachts-Feiertagskette → nächster Werktag', () => {
-    // Bescheid 21.11.2026 (Sa): +4 = 25.11.2026 (Mi) → Bekanntgabe.
-    // +1 Monat: 25.12.2026 (1. Weihnachtstag, Fr) → 26.12. (2. Weihnachtstag, Sa)
-    // → 27.12. (So) → Fristende Mo 28.12.2026.
-    expect(ymd(appealDeadline(utc('2026-11-21')))).toBe('2026-12-28');
-  });
-
-  // § 122 (2) AO Halbsatz 2: Fiktion gilt NICHT bei späterem tatsächlichem Zugang.
-  it('tatsächlicher Zugang NACH Fiktionstag → Monatsfrist ab echtem Zugang', () => {
-    // Bescheid 01.02.2027 (Mo): Fiktion 05.02.2027 (Fr). Tatsächlich erst
-    // 09.02.2027 (Di) zugegangen → Fristende 09.03.2027 (Di).
-    // Ohne receivedAt wäre es der 05.03.2027.
-    expect(ymd(appealDeadline(utc('2027-02-01'), null, utc('2027-02-09')))).toBe('2027-03-09');
-  });
-
-  it('tatsächlicher Zugang VOR Fiktionstag verkürzt die Frist NICHT', () => {
-    // Bescheid 01.02.2027: Fiktion 05.02.2027 (Fr). Tatsächlich schon am
-    // 03.02.2027 (Mi) im Briefkasten → Fiktion bleibt maßgeblich (Mindestschutz)
-    // → Fristende 05.03.2027, wie ohne receivedAt.
-    expect(ymd(appealDeadline(utc('2027-02-01'), null, utc('2027-02-03')))).toBe('2027-03-05');
-  });
-
-  it('tatsächlicher Zugang am Samstag wird NICHT werktagsverschoben', () => {
-    // Bescheid 01.07.2026 (Mi): Fiktion 05.07. (So) → verschoben Mo 06.07.
-    // Tatsächlich erst Sa 11.07.2026 zugegangen (Faktum, keine Verschiebung)
-    // → +1 Monat = 11.08.2026 (Di) = Fristende.
-    expect(ymd(appealDeadline(utc('2026-07-01'), null, utc('2026-07-11')))).toBe('2026-08-11');
-  });
-
-  // Art. 97 § 1 Abs. 15 EGAO: Die Vier-Tages-Fiktion des PostModG gilt erst
-  // für Verwaltungsakte, die ab dem 01.01.2025 zur Post gegeben wurden.
-  it('Alt-Bescheid (Aufgabe bis 31.12.2024): DREI-Tages-Fiktion (§ 122 (2) AO a.F.)', () => {
-    // Bescheid 10.12.2024 (Di): +3 = 13.12.2024 (Fr, Werktag) → Bekanntgabe.
-    // +1 Monat = 13.01.2025 (Mo) = Fristende. Mit (falscher) 4-Tage-Fiktion
-    // wäre der 14.12. (Sa) → Mo 16.12. → Fristende 16.01.2025 — drei Tage zu spät.
-    expect(ymd(appealDeadline(utc('2024-12-10')))).toBe('2025-01-13');
-  });
-
+// Die Einspruchs- und Klagefrist-Fälle (§§ 122, 122a, 355, 356 AO, § 47 FGO)
+// laufen gegen die produktive Assessment-API in legal-assessments.test.ts.
+describe('Bekanntgabefiktion § 122 Abs. 2 AO — Stichtag des Postrechtsmodernisierungsgesetzes', () => {
   it('bekanntgabeFiktionTage — Stichtagsgrenze 01.01.2025', () => {
     expect(bekanntgabeFiktionTage(utc('2024-12-31'))).toBe(3);
     expect(bekanntgabeFiktionTage(utc('2025-01-01'))).toBe(4);
   });
-
-  it('förmliche/persönliche Bekanntgabe: keine Fiktion aufschlagen', () => {
-    expect(ymd(appealDeadlineFromNotification(utc('2026-07-07')))).toBe('2026-08-07');
-  });
-
-  it('Auslandspost: ein Monat Bekanntgabefiktion plus ein Monat Einspruchsfrist', () => {
-    expect(ymd(appealDeadlineForPostAbroad(utc('2026-01-10')))).toBe('2026-03-10');
-    expect(ymd(appealDeadlineForPostAbroad(utc('2026-01-10'), null, utc('2026-03-01')))).toBe(
-      '2026-04-01',
-    );
-  });
-
-  describe('Datenabruf nach § 122a AO am Stichtag 01.01.2026', () => {
-    it('bleibt ohne Erlassdatum sowie im Altfall ohne Benachrichtigung fail-closed', () => {
-      expect(appealDeadlineForDataRetrieval(utc('2026-01-12'))).toBeNull();
-      expect(
-        appealDeadlineForDataRetrieval(utc('2025-01-10'), null, {
-          issuedAt: utc('2025-01-09'),
-        }),
-      ).toBeNull();
-    });
-
-    it('knüpft im Altfall an den Versand der elektronischen Benachrichtigung an', () => {
-      // Bereitstellung 10.01.2025, Benachrichtigung 13.01.2025. Nach § 122a
-      // Abs. 4 a.F. gilt der Bescheid am 17.01. als bekanntgegeben; nicht schon
-      // vier Tage nach der Bereitstellung.
-      expect(
-        ymd(
-          appealDeadlineForDataRetrieval(utc('2025-01-10'), null, {
-            issuedAt: utc('2025-01-09'),
-            notificationDate: utc('2025-01-13'),
-          })!,
-        ),
-      ).toBe('2025-02-17');
-    });
-
-    it('verwendet im Altfall bei bestrittener/verspäteter Benachrichtigung den Abruf', () => {
-      expect(
-        ymd(
-          appealDeadlineForDataRetrieval(utc('2025-01-10'), null, {
-            issuedAt: utc('2025-01-09'),
-            notificationDate: utc('2025-01-13'),
-            notificationDisputedOrLate: true,
-            retrievedAt: utc('2025-01-20'),
-          })!,
-        ),
-      ).toBe('2025-02-20');
-    });
-
-    it('wendet auf vor 2025 versandte Alt-Benachrichtigungen noch drei Tage an', () => {
-      expect(
-        ymd(
-          appealDeadlineForDataRetrieval(utc('2024-12-09'), null, {
-            issuedAt: utc('2024-12-08'),
-            notificationDate: utc('2024-12-10'),
-          })!,
-        ),
-      ).toBe('2025-01-13');
-    });
-
-    it('leitet den 3→4-Tage-Übergang aus der Bereitstellung ab', () => {
-      // Art. 97 § 1 Abs. 15 EGAO: Bereitstellung noch am 31.12.2024, Versand
-      // der Benachrichtigung am 01.01.2025 → noch Drei-Tages-Fiktion.
-      expect(
-        ymd(
-          appealDeadlineForDataRetrieval(utc('2024-12-31'), null, {
-            issuedAt: utc('2024-12-30'),
-            notificationDate: utc('2025-01-01'),
-          })!,
-        ),
-      ).toBe('2025-02-06');
-    });
-
-    it('wendet trotz Benachrichtigung ab 2025 bei Bereitstellung 2024 drei Tage an', () => {
-      expect(
-        ymd(
-          appealDeadlineForDataRetrieval(utc('2024-12-31'), null, {
-            issuedAt: utc('2024-12-30'),
-            notificationDate: utc('2025-01-03'),
-          })!,
-        ),
-      ).toBe('2025-02-06');
-    });
-
-    it('setzt ohne nachgewiesenen Benachrichtigungszugang und ohne Abruf keine Frist', () => {
-      expect(
-        appealDeadlineForDataRetrieval(utc('2025-01-10'), null, {
-          issuedAt: utc('2025-01-09'),
-          notificationDate: utc('2025-01-13'),
-          notificationDisputedOrLate: true,
-        }),
-      ).toBeNull();
-    });
-
-    it('wendet bei Erlass 2025 trotz Bereitstellung 2026 noch die alte Benachrichtigungslogik an', () => {
-      expect(
-        ymd(
-          appealDeadlineForDataRetrieval(utc('2026-01-02'), null, {
-            issuedAt: utc('2025-12-31'),
-            notificationDate: utc('2026-01-03'),
-          })!,
-        ),
-      ).toBe('2026-02-09');
-    });
-
-    it('knüpft bei Erlass und Bereitstellung ab 2026 unmittelbar an Bereitstellung +4 an', () => {
-      expect(
-        ymd(
-          appealDeadlineForDataRetrieval(utc('2026-01-12'), null, {
-            issuedAt: utc('2026-01-11'),
-            // Altrechtliche Zusatzangaben dürfen die Neufassung nicht verändern.
-            notificationDate: utc('2026-01-20'),
-            notificationDisputedOrLate: true,
-            retrievedAt: utc('2026-01-21'),
-          })!,
-        ),
-      ).toBe('2026-02-16');
-    });
-  });
-
-  it('fehlende oder unrichtige Rechtsbehelfsbelehrung → Jahresfrist (§ 356 Abs. 2 AO)', () => {
-    expect(ymd(appealDeadlineFromNotification(utc('2026-07-07'), null, false))).toBe('2027-07-07');
-    // 29.02.2028 + ein Jahr → 28.02.2029; Mittwoch, keine Verschiebung.
-    expect(ymd(appealDeadlineFromNotification(utc('2028-02-29'), null, false))).toBe('2029-02-28');
-  });
 });
 
-describe('Klagefrist § 47 (1) FGO ab Bekanntgabe der Einspruchsentscheidung', () => {
-  it('schlägt KEINE Bekanntgabefiktion auf (Argument ist bereits die Bekanntgabe)', () => {
-    // Bekanntgabe 07.07.2026 (Di) → +1 Monat 07.08.2026 (Fr), OHNE +4-Tage-
-    // Fiktion. appealDeadline auf denselben Tag ergäbe dagegen 13.08.2026
-    // (Fiktion 11.07. → +1 Monat) — die Klagefrist wäre knapp eine Woche zu spät.
-    expect(ymd(klageDeadline(utc('2026-07-07')))).toBe('2026-08-07');
-    expect(ymd(appealDeadline(utc('2026-07-07')))).toBe('2026-08-13');
+describe('Feiertagsprüfung mit Jahrescache', () => {
+  it('entspricht für jede Region und jeden Tag zweier Jahre germanHolidays', () => {
+    for (const year of [2025, 2026]) {
+      for (const region of [null, ...ALL_REGIONS]) {
+        for (const bavariaAssumption of [true, false]) {
+          const expected = new Set(germanHolidays(year, region, bavariaAssumption).map(ymd));
+          for (let day = new Date(Date.UTC(year, 0, 1)); day.getUTCFullYear() === year; ) {
+            expect(isGermanHoliday(day, region, bavariaAssumption), `${region} ${ymd(day)}`).toBe(
+              expected.has(ymd(day)),
+            );
+            day = new Date(day.getTime() + 24 * 60 * 60 * 1000);
+          }
+        }
+      }
+    }
   });
 
-  it('Fristende-Werktagsverschiebung (§ 108 (3) AO)', () => {
-    // Bekanntgabe 30.06.2026 (Di) → +1 Monat 30.07.2026 (Do, Werktag).
-    expect(ymd(klageDeadline(utc('2026-06-30')))).toBe('2026-07-30');
-    // Bekanntgabe 05.01.2026 (Mo) → +1 Monat 05.02.2026 (Do, Werktag).
-    expect(ymd(klageDeadline(utc('2026-01-05')))).toBe('2026-02-05');
-  });
-
-  it('fehlende/unrichtige Klagebelehrung → Jahresfrist (§ 55 Abs. 2 FGO)', () => {
-    expect(ymd(klageDeadline(utc('2026-07-07'), null, false))).toBe('2027-07-07');
-  });
-
-  it('Monatsende-Überlauf: 31.01. → 28.02. (Nicht-Schaltjahr)', () => {
-    // Bekanntgabe 31.01.2026 (Sa) → +1 Monat: 31.02. existiert nicht →
-    // 28.02.2026 (Sa) → § 108 (3)-Verschiebung auf Mo 02.03.2026.
-    expect(ymd(klageDeadline(utc('2026-01-31')))).toBe('2026-03-02');
-  });
-
-  it('normalisiert eine Nicht-Mitternacht-Zeit auf den UTC-Tag', () => {
-    // 14:30 UTC am 07.07.2026 → derselbe Fristbeginn wie Mitternacht.
-    expect(ymd(klageDeadline(new Date('2026-07-07T14:30:00Z')))).toBe('2026-08-07');
+  it('bleibt von veränderten germanHolidays-Ergebnissen unberührt', () => {
+    expect(ymd(shiftToNextWorkday(utc('2026-12-25')))).toBe('2026-12-28');
+    const holidays = germanHolidays(2026, null);
+    holidays.length = 0;
+    expect(ymd(shiftToNextWorkday(utc('2026-12-25')))).toBe('2026-12-28');
+    expect(germanHolidays(2026, null).map(ymd)).toContain('2026-12-25');
   });
 });

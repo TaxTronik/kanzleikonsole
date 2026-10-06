@@ -220,6 +220,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die Feiertagsprüfung der Fristberechnung ist je Jahr, Region und
+  Bayern-Annahme zwischengespeichert. Der veraltete, nicht exportierte
+  Einspruchs- und Klagefristen-Rechenkern ist entfernt; Fristen berechnen
+  ausschließlich die nachweisorientierten `assess*`-Funktionen, deren Tests nun
+  auch Jahresfrist, Auslandspost und Datenabruf-Altfälle abdecken
+  (`TAX-NOTICE-APPEAL-001`, `TAX-DEADLINE-WORKDAY-001`, `FK-EXC-20261006-009`).
 - Der nie implementierte Sammel-Endpunkt `/api/n8n/*` (antwortete stets 501)
   ist entfernt. Aktivierte Legacy-Callbacks unter `/api/n8n/…` protokollieren
   je Route und Prozess einmal eine Deprecation-Warnung mit dem v1-Nachfolger.

@@ -426,24 +426,14 @@ export function startOfUtcDay(d: Date): Date {
 }
 
 // ---------------------------------------------------------------------------
-// Einspruchsfrist (§ 355 Abs. 1 AO): ein Monat nach Bekanntgabe des Bescheids.
-//
 // Bekanntgabefiktion § 122 Abs. 2 Nr. 1 AO (Fassung ab 01.01.2025,
 // Postrechtsmodernisierungsgesetz): ein schriftlicher Verwaltungsakt gilt am
 // VIERTEN Tag nach Aufgabe zur Post als bekannt gegeben (bis 31.12.2024: dritter
 // Tag). Fällt dieser Tag auf Sa/So/Feiertag, verschiebt er sich auf den nächsten
 // Werktag (§ 108 Abs. 3 AO, st. BFH-Rspr.).
 //
-// Die Monatsfrist wird kalendarisch nach §§ 187 Abs. 1, 188 Abs. 2 BGB gerechnet:
-// der Bekanntgabetag zählt nicht mit, die Frist endet mit Ablauf des Tages des
-// Folgemonats, der dem Bekanntgabetag zahlenmäßig entspricht; existiert dieser
-// Tag im Folgemonat nicht (z. B. 31. → Februar), endet sie am letzten Tag des
-// Folgemonats. Fällt das Fristende auf Sa/So/Feiertag → nächster Werktag
-// (§ 108 Abs. 3 AO).
-//
-// NICHT die frühere Näherung „+ 33 Tage": die ist zweifach falsch (3 statt 4
-// Tage Fiktion; 30 Tage statt kalendarischer Monat) und kann eine SPÄTERE Frist
-// ausweisen als die gesetzliche — mit Bestandskraft-/Haftungsrisiko.
+// Einspruchs- und Klagefristen berechnet ausschließlich die beweisorientierte
+// API in legal-assessments.ts (assessAppealDeadline, assessDataRetrievalDeadline).
 // ---------------------------------------------------------------------------
 
 /** Kalendarische Bekanntgabefiktion ab 01.01.2025: +4 Tage. Davor: +3. */
@@ -459,242 +449,6 @@ export function bekanntgabeFiktionTage(referenceDate: Date): number {
   return referenceDate.getTime() < Date.UTC(2025, 0, 1) ? 3 : BEKANNTGABE_FIKTION_TAGE;
 }
 
-/**
- * Niedrigstufiger Legacy-Helfer für bereits als tatsächlicher Postaufgabetag
- * feststehende Daten. Das Dokument-/Bescheiddatum darf hier nicht eingesetzt
- * werden.
- *
- * `receivedAt` (optional): TATSÄCHLICHER Zugangstag beim Empfänger. § 122
- * Abs. 2 AO: die Fiktion gilt, „außer wenn der Verwaltungsakt nicht oder zu
- * einem SPÄTEREN Zeitpunkt zugegangen ist" — kam der Bescheid später an
- * (Postverzögerung, liegengeblieben), beginnt die Monatsfrist erst mit dem
- * echten Zugang. Ein FRÜHERER tatsächlicher Zugang verkürzt die Frist dagegen
- * NICHT (die Fiktion ist Mindestschutz; st. Rspr.). Der tatsächliche Zugang
- * ist ein Faktum und wird nicht werktagsverschoben — nur Fiktionstag und
- * Fristende unterliegen § 108 Abs. 3 AO.
- *
- * `region`: Standard `null` = nur bundeseinheitliche Feiertage. Bewusst
- * konservativ — würde man Landesfeiertage annehmen, verschöbe sich die Frist
- * eher nach hinten; `null` wahrt die Frist eher zu früh als zu spät.
- *
- * @deprecated Nicht aus neuen Fachpfaden aufrufen. Die öffentliche Paket-API
- * exportiert ausschließlich die beweisorientierten `assess*`-Funktionen.
- */
-export function appealDeadline(
-  dispatchDate: Date,
-  region: GermanRegion | null = null,
-  receivedAt: Date | null = null,
-  legalRemedyInstructionValid = true,
-): Date {
-  // 1. Bekanntgabe: + Fiktionstage (datumsabhängig: 3 bis 2024, 4 ab 2025),
-  //    dann Werktagsverschiebung.
-  const fiktion = new Date(
-    Date.UTC(
-      dispatchDate.getUTCFullYear(),
-      dispatchDate.getUTCMonth(),
-      dispatchDate.getUTCDate() + bekanntgabeFiktionTage(dispatchDate),
-    ),
-  );
-  let bekanntgabe = shiftToNextWorkday(fiktion, region);
-
-  // Tatsächlich SPÄTER zugegangen → echter Zugangstag ist maßgeblich.
-  if (receivedAt) {
-    const received = startOfUtcDay(receivedAt);
-    if (received.getTime() > bekanntgabe.getTime()) bekanntgabe = received;
-  }
-
-  return appealDeadlineFromNotification(bekanntgabe, region, legalRemedyInstructionValid);
-}
-
-/**
- * Einspruchsfrist ab einem bereits feststehenden Bekanntgabetag. Für
- * förmliche, persönliche oder anderweitig nachgewiesene Bekanntgaben darf die
- * Postfiktion nicht aufgeschlagen werden. Bei fehlender/unrichtiger
- * Rechtsbehelfsbelehrung gilt grundsätzlich die Jahresfrist des § 356 Abs. 2 AO.
- *
- * @deprecated Interner Rechenkern ohne Beweis-/Freigabemodell. Neue Fachpfade
- * müssen `assessAppealDeadline` verwenden.
- */
-export function appealDeadlineFromNotification(
-  notificationDate: Date,
-  region: GermanRegion | null = null,
-  legalRemedyInstructionValid = true,
-): Date {
-  const start = startOfUtcDay(notificationDate);
-  return legalRemedyInstructionValid
-    ? addMonthWithWorkdayShift(start, region)
-    : addYearWithWorkdayShift(start, region);
-}
-
-/**
- * Einspruchsfrist bei postalischer Übermittlung ins Ausland (§ 122 Abs. 2
- * Nr. 2 AO): Bekanntgabefiktion einen Monat nach Aufgabe zur Post; ein
- * nachweislich späterer Zugang geht vor.
- *
- * @deprecated Interner Rechenkern ohne Beweis-/Freigabemodell. Neue Fachpfade
- * müssen `assessAppealDeadline` verwenden.
- */
-export function appealDeadlineForPostAbroad(
-  sentAt: Date,
-  region: GermanRegion | null = null,
-  receivedAt: Date | null = null,
-  legalRemedyInstructionValid = true,
-): Date {
-  let notificationDate = addMonthWithWorkdayShift(startOfUtcDay(sentAt), region);
-  if (receivedAt) {
-    const received = startOfUtcDay(receivedAt);
-    if (received > notificationDate) notificationDate = received;
-  }
-  return appealDeadlineFromNotification(notificationDate, region, legalRemedyInstructionValid);
-}
-
-export interface DataRetrievalDeadlineOptions {
-  /**
-   * Erlassdatum des Verwaltungsakts. Art. 97 § 28 Abs. 2 EGAO bestimmt anhand
-   * dieses Datums, ob § 122a AO a.F. oder die Neufassung ab 2026 gilt. Bei
-   * Ohne dieses Datum liefert der Legacy-Helfer fail-closed kein Ergebnis.
-   */
-  issuedAt?: Date | null;
-  /**
-   * Versandtag der elektronischen Benachrichtigung nach § 122a Abs. 4 AO a.F.
-   * Für bis einschließlich 31.12.2025 erlassene Verwaltungsakte ist dieser Tag
-   * der Ausgangspunkt der Bekanntgabefiktion. Ohne diesen Nachweis liefert der
-   * Legacy-Helfer im Altfall fail-closed kein Ergebnis.
-   */
-  notificationDate?: Date | null;
-  /**
-   * Die Benachrichtigung wurde bestritten oder erst nach Ablauf der Fiktion
-   * empfangen. Nur in diesem gesetzlichen Ausnahmefall ist bei Altfällen der
-   * tatsächliche Abruftag maßgeblich.
-   */
-  notificationDisputedOrLate?: boolean;
-  /** Tatsächlicher Abruftag im Ausnahmefall des § 122a Abs. 4 S. 3/4 AO a.F. */
-  retrievedAt?: Date | null;
-  legalRemedyInstructionValid?: boolean;
-}
-
-/**
- * Einspruchsfrist bei Bereitstellung zum Datenabruf (§ 122a AO).
- *
- * Art. 97 § 28 Abs. 2 EGAO stellt für den Wechsel zur Neufassung auf den Erlass
- * nach dem 31.12.2025 ab. In der Neufassung knüpft die Vier-Tages-Fiktion
- * unmittelbar an die Bereitstellung. Für bis 31.12.2025 erlassene Bescheide
- * gilt dagegen § 122a Abs. 4 AO a.F.: Ausgangspunkt ist der Versand der
- * elektronischen Benachrichtigung. Wird deren Zugang bestritten und ist auch
- * kein Abruf nachgewiesen, gilt der Bescheid noch nicht als bekanntgegeben.
- *
- * @deprecated Interner Legacy-Rechenkern ohne vollständiges Beweis- und
- * Freigabemodell. Neue Fachpfade müssen `assessDataRetrievalDeadline` nutzen.
- */
-export function appealDeadlineForDataRetrieval(
-  provisionDate: Date,
-  region: GermanRegion | null = null,
-  options: DataRetrievalDeadlineOptions = {},
-): Date | null {
-  const provision = startOfUtcDay(provisionDate);
-  if (!options.issuedAt) return null;
-  const issuedAt = startOfUtcDay(options.issuedAt);
-  const legalRemedyInstructionValid = options.legalRemedyInstructionValid ?? true;
-
-  // Neufassung für nach dem 31.12.2025 erlassene Verwaltungsakte: vier Tage
-  // unmittelbar nach Bereitstellung.
-  if (issuedAt.getTime() >= Date.UTC(2026, 0, 1)) {
-    const fictionDate = new Date(
-      Date.UTC(
-        provision.getUTCFullYear(),
-        provision.getUTCMonth(),
-        provision.getUTCDate() + BEKANNTGABE_FIKTION_TAGE,
-      ),
-    );
-    return appealDeadlineFromNotification(
-      shiftToNextWorkday(fictionDate, region),
-      region,
-      legalRemedyInstructionValid,
-    );
-  }
-
-  if (options.notificationDisputedOrLate) {
-    // Kein nachgewiesener Benachrichtigungszugang und kein Abruf: nach AEAO
-    // 2025 zu § 122a keine Bekanntgabe; die Behörde muss sie wiederholen.
-    if (!options.retrievedAt) return null;
-    return appealDeadlineFromNotification(options.retrievedAt, region, legalRemedyInstructionValid);
-  }
-
-  if (!options.notificationDate) return null;
-  const sentNotificationAt = startOfUtcDay(options.notificationDate);
-  const fictionDate = new Date(
-    Date.UTC(
-      sentNotificationAt.getUTCFullYear(),
-      sentNotificationAt.getUTCMonth(),
-      // Art. 97 § 1 Abs. 15 EGAO knüpft den 3→4-Tage-Wechsel an die
-      // elektronische Bereitstellung des Verwaltungsakts, nicht an den
-      // gegebenenfalls späteren Versand der Benachrichtigung.
-      sentNotificationAt.getUTCDate() + bekanntgabeFiktionTage(provision),
-    ),
-  );
-  return appealDeadlineFromNotification(
-    shiftToNextWorkday(fictionDate, region),
-    region,
-    legalRemedyInstructionValid,
-  );
-}
-
-/**
- * Addiert einen Monat (kalendarisch nach BGB, monatsende-sicher) auf einen
- * bereits feststehenden Fristbeginn und verschiebt das Fristende nach § 108
- * Abs. 3 AO auf den nächsten Werktag. Gemeinsamer Kern von Einspruchs- und
- * Klagefrist — der Unterschied liegt nur im Fristbeginn (Einspruch: Bescheid +
- * Bekanntgabefiktion; Klage: bereits die Bekanntgabe der Einspruchsentscheidung).
- */
-function addMonthWithWorkdayShift(start: Date, region: GermanRegion | null): Date {
-  const y = start.getUTCFullYear();
-  const m = start.getUTCMonth();
-  const d = start.getUTCDate();
-  let ende = new Date(Date.UTC(y, m + 1, d));
-  // Überlauf: existiert der Tag im Zielmonat nicht (z. B. 31.01. → 31.02.),
-  // rollt JS in den übernächsten Monat — dann auf den letzten Tag des
-  // Zielmonats (m+1) zurücksetzen. `Date.UTC(y, m+2, 0)` = Tag 0 von (m+2) =
-  // letzter Tag von (m+1).
-  if (ende.getUTCMonth() !== (m + 1) % 12) {
-    ende = new Date(Date.UTC(y, m + 2, 0));
-  }
-  return shiftToNextWorkday(ende, region);
-}
-
-function addYearWithWorkdayShift(start: Date, region: GermanRegion | null): Date {
-  const y = start.getUTCFullYear();
-  const m = start.getUTCMonth();
-  const d = start.getUTCDate();
-  let ende = new Date(Date.UTC(y + 1, m, d));
-  // 29.02. → letzter Tag des Februar im Folgejahr.
-  if (ende.getUTCMonth() !== m) {
-    ende = new Date(Date.UTC(y + 1, m + 1, 0));
-  }
-  return shiftToNextWorkday(ende, region);
-}
-
-/**
- * Klagefrist (§ 47 Abs. 1 FGO, 1 Monat) ab BEKANNTGABE der
- * Einspruchsentscheidung.
- *
- * WICHTIG — Unterschied zu {@link appealDeadline}: Das Argument ist hier bereits
- * der Bekanntgabetag der Einspruchsentscheidung, NICHT das Bescheiddatum. Die
- * § 122 Abs. 2 AO-Bekanntgabefiktion darf deshalb NICHT erneut aufgeschlagen
- * werden — sonst liefe die Klagefrist um die Fiktionstage (3–4 Werktage) zu
- * spät, was bei einem Fristenkontrolltool die gefährliche Richtung ist. Nur
- * + 1 Monat + § 108 Abs. 3 AO-Werktagsverschiebung ab dem Bekanntgabetag.
- */
-export function klageDeadline(
-  bekanntgabe: Date,
-  region: GermanRegion | null = null,
-  legalRemedyInstructionValid = true,
-): Date {
-  const start = startOfUtcDay(bekanntgabe);
-  return legalRemedyInstructionValid
-    ? addMonthWithWorkdayShift(start, region)
-    : addYearWithWorkdayShift(start, region);
-}
-
 function isWeekendOrHoliday(
   d: Date,
   region: GermanRegion | null,
@@ -702,12 +456,37 @@ function isWeekendOrHoliday(
 ): boolean {
   const day = d.getUTCDay();
   if (day === 0 || day === 6) return true;
-  return germanHolidays(d.getUTCFullYear(), region, bavariaAssumption).some(
-    (h) =>
-      h.getUTCFullYear() === d.getUTCFullYear() &&
-      h.getUTCMonth() === d.getUTCMonth() &&
-      h.getUTCDate() === d.getUTCDate(),
-  );
+  return isGermanHoliday(d, region, bavariaAssumption);
+}
+
+function utcDayKey(d: Date): string {
+  return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+}
+
+const HOLIDAY_CACHE_MAX_ENTRIES = 512;
+const holidayKeysByYear = new Map<string, ReadonlySet<string>>();
+
+/**
+ * Prüft, ob der UTC-Kalendertag von `d` ein gesetzlicher Feiertag ist.
+ * germanHolidays ist eine reine Funktion von Jahr, Region und Bayern-Annahme;
+ * ihr Ergebnis wird deshalb je Kombination einmal als Menge unveränderlicher
+ * Tagesschlüssel zwischengespeichert, statt es für jeden geprüften Tag neu zu
+ * berechnen. germanHolidays selbst liefert weiterhin frische Date-Objekte.
+ */
+export function isGermanHoliday(
+  d: Date,
+  region: GermanRegion | null,
+  bavariaAssumption = true,
+): boolean {
+  const year = d.getUTCFullYear();
+  const cacheKey = `${year}|${region ?? 'DE'}|${bavariaAssumption}`;
+  let keys = holidayKeysByYear.get(cacheKey);
+  if (!keys) {
+    if (holidayKeysByYear.size >= HOLIDAY_CACHE_MAX_ENTRIES) holidayKeysByYear.clear();
+    keys = new Set(germanHolidays(year, region, bavariaAssumption).map(utcDayKey));
+    holidayKeysByYear.set(cacheKey, keys);
+  }
+  return keys.has(utcDayKey(d));
 }
 
 /**

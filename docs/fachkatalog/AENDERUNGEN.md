@@ -1,5 +1,32 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-009
+    date: '2026-10-06'
+    paths:
+      - packages/tax/src/__tests__/legal-assessments.test.ts
+      - packages/tax/src/__tests__/plausibility-engine.test.ts
+      - packages/tax/src/engine.ts
+      - packages/tax/src/legal-assessments.ts
+    rule_ids:
+      - TAX-NOTICE-APPEAL-001
+      - TAX-DEADLINE-WORKDAY-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+    reason: >-
+      Der als veraltet markierte, nicht exportierte Fristen-Rechenkern in
+      packages/tax/src/engine.ts (appealDeadline, klageDeadline und Hilfen) wurde
+      nur von einem Test aufgerufen und ist entfernt. Dessen Fallbeispiele laufen
+      jetzt gegen die produktiven assess*-Funktionen in legal-assessments.ts, die
+      zusätzlich Jahresfrist, Auslandspost, Datenabruf-Altfall und fehlendes
+      Bescheiddatum abdecken. Die Feiertagsprüfung speichert je Jahr, Region und
+      Bayern-Annahme zwischen; ein Test belegt Gleichheit für jeden Tag 2025/2026
+      in allen Regionen. Fristergebnisse bleiben unverändert. Keine fachliche
+      Freigabe; der Implementierungstext von TAX-NOTICE-APPEAL-001 erwähnt die
+      entfernten Hilfsfunktionen noch und ist vom Regelverantwortlichen
+      nachzuziehen.
+    tests:
+      - packages/tax/src/__tests__/legal-assessments.test.ts
+      - packages/tax/src/__tests__/plausibility-engine.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-008
     date: '2026-10-06'
     paths:
@@ -2847,6 +2874,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-009` dokumentiert den entfernten veralteten
+  Fristen-Rechenkern und den Feiertags-Cache. Fristergebnisse bleiben
+  unverändert; der Regeltext zu TAX-NOTICE-APPEAL-001 ist nachzuziehen.
 
 - 2026-10-06: `FK-EXC-20261006-008` dokumentiert entfernte ungenutzte
   Server-Actions und Komponenten. Erreichbare Abläufe und Audit-Ereignisse
