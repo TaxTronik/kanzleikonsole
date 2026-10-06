@@ -125,8 +125,10 @@ describe('parseFormData-Migrationsrest', () => {
     // parseFormData umgestellt (absentAsNull + Feldschemas aus form-data.ts);
     // der Rest liegt in den ausgeschlossenen Dateien und den Portal-Terminen
     // (Slot-Paare mit eigener Feldfehler-Zuordnung, siehe FORM_DATA_READ_BASELINE).
-    expect(direct).toHaveLength(24);
-    expect(direct.filter((call) => !call.exact)).toHaveLength(20);
-    expect(shared).toBe(100);
+    // R-12 (GwG): Prüfzyklus, Rechtsträger, Ausweissätze und wirtschaftlich
+    // Berechtigte lesen über parseFormData (sechs Direkt-Parses weniger).
+    expect(direct).toHaveLength(18);
+    expect(direct.filter((call) => !call.exact)).toHaveLength(14);
+    expect(shared).toBe(106);
   });
 });

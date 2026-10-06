@@ -59,6 +59,12 @@ vi.mock('@/server/actions/staff-action', async () => {
     ActionError: (await import('@/server/actions/action-error')).ActionError,
     staffActionGuard: m.staffActionGuard,
     withStaff: m.withStaff,
+    // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+    staffAction: (
+      await vi.importActual<typeof import('@/server/actions/action-runner')>(
+        '@/server/actions/action-runner',
+      )
+    ).createActionRunner(m.staffActionGuard),
     parseFormData,
   };
 });
@@ -299,6 +305,10 @@ function runWithStaffOn(tx: unknown) {
       return { ok: false, error: error instanceof Error ? error.message : 'Fehler' };
     }
   });
+  // staffAction-Actions (K-02) öffnen ihre Transaktionen selbst.
+  m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+    fn(tx),
+  );
 }
 
 beforeEach(() => {
@@ -453,9 +463,16 @@ describe('atomare GwG-Bearbeitung', () => {
 
     const result = await saveLegalEntityDetailsAction(null, data);
 
+    // R-12: dieselbe Meldung, zusätzlich am Feld der Vertreterliste.
     expect(result).toEqual({
       ok: false,
       error: 'Gesetzliche Vertreter müssen über erfasste Personen ausgewählt werden.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: {
+        representativesJson: [
+          'Gesetzliche Vertreter müssen über erfasste Personen ausgewählt werden.',
+        ],
+      },
     });
     expect(m.withStaff).not.toHaveBeenCalled();
   });
@@ -1495,8 +1512,12 @@ describe('atomare GwG-Bearbeitung', () => {
 
       expect(await addIdDocumentAction(null, data)).toEqual(expected);
       expect(fetchVerifiedObjectBytes).toHaveBeenCalledOnce();
+      // Kurze Lesetransaktion, Zählung, dann die gesperrte Transaktion (K-02:
+      // beide unter demselben Gate des Bausteins).
+      expect(m.staffActionGuard).toHaveBeenCalledOnce();
+      expect(m.withTenantContext).toHaveBeenCalledTimes(2);
       expect(vi.mocked(fetchVerifiedObjectBytes).mock.invocationCallOrder[0]).toBeLessThan(
-        m.withStaff.mock.invocationCallOrder[0]!,
+        m.withTenantContext.mock.invocationCallOrder[1]!,
       );
       if (expected.ok) {
         expect(tx.gwgIdDocument.create).toHaveBeenCalledWith({
@@ -1797,11 +1818,15 @@ describe('atomare GwG-Bearbeitung', () => {
 
     const result = await addIdDocumentAction(null, data);
 
+    // R-12: dieselbe Meldung, zusätzlich am Feld der Auswahl.
     expect(result).toEqual({
       ok: false,
       error: expect.stringContaining('höchstens zwei Dateien'),
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { documentIds: [expect.stringContaining('höchstens zwei Dateien')] },
     });
-    expect(m.withStaff).not.toHaveBeenCalled();
+    expect(m.staffActionGuard).not.toHaveBeenCalled();
+    expect(m.withTenantContext).not.toHaveBeenCalled();
   });
 
   // Fachkatalog: GWG-IDENTIFICATION-EVIDENCE-001
@@ -2392,8 +2417,10 @@ describe('atomare GwG-Bearbeitung', () => {
     // P-13: Der Objektspeicher wird vor der gesperrten Transaktion gelesen,
     // genau einmal für die gemeinsame Version beider Seiten.
     expect(fetchVerifiedObjectBytes).toHaveBeenCalledOnce();
+    expect(m.staffActionGuard).toHaveBeenCalledOnce();
+    expect(m.withTenantContext).toHaveBeenCalledTimes(2);
     expect(vi.mocked(fetchVerifiedObjectBytes).mock.invocationCallOrder[0]).toBeLessThan(
-      m.withStaff.mock.invocationCallOrder[0]!,
+      m.withTenantContext.mock.invocationCallOrder[1]!,
     );
     expect(m.lockCleanGwgDocuments).toHaveBeenCalled();
   });

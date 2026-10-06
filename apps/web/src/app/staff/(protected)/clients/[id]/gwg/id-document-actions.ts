@@ -32,10 +32,12 @@ import {
 import { updateIdentityDocumentSetTx } from '@/server/gwg/identity-document-confirmation';
 import {
   withStaff,
+  staffAction,
   ActionError,
   parseFormData,
-  staffActionGuard,
+  type StaffCtx,
 } from '@/server/actions/staff-action';
+import { formDefault } from '@/server/actions/form-data';
 
 import { isPersonalIdType, type ActionResult } from './_action-helpers';
 
@@ -128,6 +130,60 @@ const AddIdDocSchema = z
     }
   });
 
+/** Ausgewählte Aktenbelege wie bisher: nur nicht-leere Texteinträge (getAll + filter). */
+function selectedDocumentEntries(value: unknown): unknown {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0)
+    : value;
+}
+
+/** Ausweisausschnitte als JSON; unlesbar → nur diese Meldung, wie bisher vor dem Schema. */
+function parseViewportsJson(value: unknown, ctx: z.RefinementCtx): unknown {
+  try {
+    return JSON.parse(String(value || '[]'));
+  } catch {
+    ctx.addIssue({ code: 'custom', message: 'Ungültiger Ausweisausschnitt.' });
+    return z.NEVER;
+  }
+}
+
+type AddIdDocFields = z.input<typeof AddIdDocSchema>;
+
+/**
+ * Formular → AddIdDocSchema (R-12): Felder wie formData.get (fehlend → null,
+ * optionale Angaben fehlend → '', Ersetzungsmodus fehlend → 'none'). Ohne
+ * Auswahl gilt das ältere Einzelfeld documentId. Ein unlesbarer
+ * Ausweisausschnitt beendet die Prüfung vor dem Schema — wie bisher.
+ */
+const AddIdDocForm = z
+  .object({
+    documentIds: z.preprocess(selectedDocumentEntries, z.array(z.string())),
+    documentId: z.unknown(),
+    viewports: z.preprocess(parseViewportsJson, z.unknown()),
+    checkId: z.unknown(),
+    clientId: z.unknown(),
+    type: z.unknown(),
+    subjectKey: formDefault('', z.unknown()),
+    number: formDefault('', z.unknown()),
+    issuedBy: formDefault('', z.unknown()),
+    issueDate: formDefault('', z.unknown()),
+    expiryDate: formDefault('', z.unknown()),
+    replacementMode: formDefault('none', z.unknown()),
+    replaceDocumentSetId: formDefault('', z.unknown()),
+  })
+  .transform(
+    // Rohwerte wie aus formData.get — erst AddIdDocSchema prüft sie.
+    ({ documentIds, documentId, ...fields }) =>
+      ({
+        ...fields,
+        documentIds:
+          documentIds.length === 0 && typeof documentId === 'string' && documentId
+            ? [documentId]
+            : documentIds,
+      }) as AddIdDocFields,
+  )
+  .pipe(AddIdDocSchema);
+
 const SearchGwgDocumentsSchema = z.object({
   checkId: z.string().uuid(),
   clientId: z.string().uuid(),
@@ -196,24 +252,24 @@ type NewIdDocumentData = z.infer<typeof AddIdDocSchema>;
  * Version-ID und SHA-256.
  */
 function prepareStaffIdentityPageCounts(
+  guard: StaffCtx,
   clientId: string,
   readSelections: (tx: TxClient) => Promise<IdentityViewSelection[]>,
 ): Promise<IdentityPdfPageCounts> {
-  return prepareIdentityPdfPageCounts(async () => {
-    const guard = await staffActionGuard();
-    if (!guard.ok) return [];
-    return withTenantContext(guard.ctx, async (tx) => {
+  return prepareIdentityPdfPageCounts(() =>
+    withTenantContext(guard.ctx, async (tx) => {
       await assertClientAccessTx(tx, guard.session, clientId);
       return loadIdentitySourcesForPageCheckTx(
         tx,
         { tenantId: guard.tenantId, clientId },
         await readSelections(tx),
       );
-    });
-  });
+    }),
+  );
 }
 
 async function prepareNewIdentityPageCounts(
+  guard: StaffCtx,
   data: NewIdDocumentData,
 ): Promise<IdentityPdfPageCounts> {
   const selections = data.documentIds.map((documentId) => ({
@@ -223,56 +279,32 @@ async function prepareNewIdentityPageCounts(
   if (!selections.some((selection) => identityViewsNeedPageCheck(selection.views))) {
     return NO_IDENTITY_PDF_PAGE_COUNTS;
   }
-  return prepareStaffIdentityPageCounts(data.clientId, async () => selections);
+  return prepareStaffIdentityPageCounts(guard, data.clientId, async () => selections);
 }
 
 export async function addIdDocumentAction(
   _prev: { ok: boolean; error?: string } | null,
   formData: FormData,
 ) {
-  const selectedDocumentIds = formData
-    .getAll('documentIds')
-    .filter((value): value is string => typeof value === 'string' && value.length > 0);
-  if (selectedDocumentIds.length === 0) {
-    const legacyDocumentId = formData.get('documentId');
-    if (typeof legacyDocumentId === 'string' && legacyDocumentId) {
-      selectedDocumentIds.push(legacyDocumentId);
-    }
-  }
-  let viewports: unknown;
-  try {
-    viewports = JSON.parse(String(formData.get('viewports') || '[]'));
-  } catch {
-    return { ok: false as const, error: 'Ungültiger Ausweisausschnitt.' };
-  }
-  const parsed = AddIdDocSchema.safeParse({
-    viewports,
-    checkId: formData.get('checkId'),
-    clientId: formData.get('clientId'),
-    type: formData.get('type'),
-    subjectKey: formData.get('subjectKey') ?? '',
-    number: formData.get('number') ?? '',
-    issuedBy: formData.get('issuedBy') ?? '',
-    issueDate: formData.get('issueDate') ?? '',
-    expiryDate: formData.get('expiryDate') ?? '',
-    replacementMode: formData.get('replacementMode') ?? 'none',
-    replaceDocumentSetId: formData.get('replaceDocumentSetId') ?? '',
-    documentIds: selectedDocumentIds,
+  const parsed = parseFormData(AddIdDocForm, formData, {
+    repeatable: ['documentIds'],
+    absentAsNull: true,
+    errorMessage: (issues) => issues.map((issue) => issue.message).join(' '),
   });
-  if (!parsed.success) {
-    return {
-      ok: false as const,
-      error: parsed.error.issues.map((issue) => issue.message).join(' '),
-    };
-  }
+  if (!parsed.ok) return parsed;
   const data = parsed.data;
-  const pageCounts = await prepareNewIdentityPageCounts(data);
 
-  return withStaff(
-    (tx, staff) => addIdentityDocumentSetTx(tx, data, staff, pageCounts),
+  return staffAction({
+    // P-13: Vorabzählung und gesperrte Transaktion unter demselben Gate.
+    run: async (staff) => {
+      const pageCounts = await prepareNewIdentityPageCounts(staff, data);
+      return withTenantContext(staff.ctx, (tx) =>
+        addIdentityDocumentSetTx(tx, data, staff, pageCounts),
+      );
+    },
     // Kein revalidate der aktuellen Route (siehe addGwgPersonAction) —
     // der Client refresht nach dem Erfolg außerhalb der Form-Transition.
-  );
+  });
 }
 
 const ExtendIdentityDocumentSetSchema = z
@@ -280,10 +312,13 @@ const ExtendIdentityDocumentSetSchema = z
     checkId: z.string().uuid(),
     clientId: z.string().uuid(),
     targetDocumentSetId: z.string().uuid(),
-    documentIds: z
-      .array(z.string().uuid())
-      .min(1, 'Mindestens eine Datei ist erforderlich.')
-      .max(2, 'Es können höchstens zwei Dateien auf einmal ergänzt werden.'),
+    documentIds: z.preprocess(
+      selectedDocumentEntries,
+      z
+        .array(z.string().uuid())
+        .min(1, 'Mindestens eine Datei ist erforderlich.')
+        .max(2, 'Es können höchstens zwei Dateien auf einmal ergänzt werden.'),
+    ),
   })
   .superRefine((value, ctx) => {
     if (new Set(value.documentIds).size !== value.documentIds.length) {
@@ -303,21 +338,12 @@ export async function extendIdentityDocumentSetAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult & { reviewReset?: boolean }> {
-  const documentIds = formData
-    .getAll('documentIds')
-    .filter((value): value is string => typeof value === 'string' && value.length > 0);
-  const parsed = ExtendIdentityDocumentSetSchema.safeParse({
-    checkId: formData.get('checkId'),
-    clientId: formData.get('clientId'),
-    targetDocumentSetId: formData.get('targetDocumentSetId'),
-    documentIds,
+  const parsed = parseFormData(ExtendIdentityDocumentSetSchema, formData, {
+    repeatable: ['documentIds'],
+    absentAsNull: true,
+    errorMessage: (issues) => issues.map((issue) => issue.message).join(' '),
   });
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues.map((issue) => issue.message).join(' '),
-    };
-  }
+  if (!parsed.ok) return parsed;
   const data = parsed.data;
 
   return withStaff((tx, staff) => extendIdentityDocumentSetTx(tx, data, staff), {
@@ -329,7 +355,7 @@ export async function extendIdentityDocumentSetAction(
 
 const UpdateIdDocumentsSchema = z
   .object({
-    intent: z.enum(['save', 'confirm']).default('save'),
+    intent: formDefault('save', z.enum(['save', 'confirm']).default('save')),
     checkId: z.string().uuid(),
     clientId: z.string().uuid(),
     documentSetId: z.string().uuid(),
@@ -337,7 +363,7 @@ const UpdateIdDocumentsSchema = z
     subjectKey: z.string().min(1).max(500),
     number: z.string().trim().min(1).max(100),
     issuedBy: z.string().trim().min(1).max(200),
-    issueDate: z.string().date(),
+    issueDate: formDefault('', z.string().date()),
     expiryDate: z.string().date(),
     expectedRevision: z.string().min(2).max(50_000),
   })
@@ -352,10 +378,11 @@ const UpdateIdDocumentsSchema = z
 
 /** P-13: Vorabzählung für die beim Bestätigen erneut geprüften gespeicherten Ansichten. */
 async function prepareSavedIdentityPageCounts(
+  guard: StaffCtx,
   data: z.infer<typeof UpdateIdDocumentsSchema>,
 ): Promise<IdentityPdfPageCounts> {
   if (data.intent !== 'confirm') return NO_IDENTITY_PDF_PAGE_COUNTS;
-  return prepareStaffIdentityPageCounts(data.clientId, async (tx) => {
+  return prepareStaffIdentityPageCounts(guard, data.clientId, async (tx) => {
     const check = await tx.gwgCheck.findFirst({
       where: { id: data.checkId, clientId: data.clientId },
       select: {
@@ -397,29 +424,22 @@ export async function updateIdDocumentsAction(
     revision?: string;
   }
 > {
-  const parsed = UpdateIdDocumentsSchema.safeParse({
-    intent: formData.get('intent') ?? 'save',
-    checkId: formData.get('checkId'),
-    clientId: formData.get('clientId'),
-    documentSetId: formData.get('documentSetId'),
-    type: formData.get('type'),
-    subjectKey: formData.get('subjectKey'),
-    number: formData.get('number'),
-    issuedBy: formData.get('issuedBy'),
-    issueDate: formData.get('issueDate') ?? '',
-    expiryDate: formData.get('expiryDate'),
-    expectedRevision: formData.get('expectedRevision'),
+  const parsed = parseFormData(UpdateIdDocumentsSchema, formData, {
+    absentAsNull: true,
+    errorMessage: (issues) => issues.map((issue) => issue.message).join(' '),
   });
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: parsed.error.issues.map((issue) => issue.message).join(' '),
-    };
-  }
+  if (!parsed.ok) return parsed;
   const data = parsed.data;
-  const pageCounts = await prepareSavedIdentityPageCounts(data);
 
-  return withStaff((tx, staff) => updateIdentityDocumentSetTx(tx, data, staff, pageCounts));
+  return staffAction({
+    // P-13: Vorabzählung und gesperrte Transaktion unter demselben Gate.
+    run: async (staff) => {
+      const pageCounts = await prepareSavedIdentityPageCounts(staff, data);
+      return withTenantContext(staff.ctx, (tx) =>
+        updateIdentityDocumentSetTx(tx, data, staff, pageCounts),
+      );
+    },
+  });
 }
 
 const RemoveGwgEvidenceLinkSchema = z.object({

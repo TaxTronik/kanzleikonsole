@@ -59,6 +59,12 @@ vi.mock('@/server/actions/staff-action', async () => ({
   ActionError: (await import('@/server/actions/action-error')).ActionError,
   staffActionGuard: m.staffActionGuard,
   withStaff: m.withStaff,
+  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
+  staffAction: (
+    await vi.importActual<typeof import('@/server/actions/action-runner')>(
+      '@/server/actions/action-runner',
+    )
+  ).createActionRunner(m.staffActionGuard),
 }));
 
 import { cancelInviteAction, sendInviteAction } from '../invite-actions';
@@ -67,15 +73,12 @@ const staffContext = {
   tenantId: 'tenant-1',
   staffId: 'staff-1',
   session: { user: { tenantId: 'tenant-1', staffId: 'staff-1' } },
+  ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
 };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  m.staffActionGuard.mockResolvedValue({
-    ok: true,
-    ...staffContext,
-    ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
-  });
+  m.staffActionGuard.mockResolvedValue({ ok: true, ...staffContext });
 });
 
 describe('GwG-Einladungen — mandanteninterne Zugriffskontrolle', () => {

@@ -1,5 +1,40 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-001
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/form-parsing.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/invite-actions-access.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/invite-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/owner-actions.ts
+    rule_ids:
+      - GWG-ACTIVATION-GATE-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-OCR-ASSIST-001
+      - GWG-REPRESENTATIVE-AUTHORITY-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-RISK-REVIEW-001
+      - GWG-SCREENING-001
+    reason: >-
+      Die verbliebenen handgeschriebenen GwG-Actions (Einreichen, Freigeben,
+      Zurückweisen, Einladung) laufen über den gemeinsamen Action-Baustein
+      (staffAction); Audit-Ereignisse der Einladung über audit(tx, g, …); die
+      Formulare zu Prüfzyklus, Angaben der juristischen Person, Ausweisdokumenten
+      und wirtschaftlich Berechtigten lesen ihre Felder über parseFormData.
+      Gates, Transaktionskörper (tokenidentisch), n8n-Ereignisse, Meldungen und
+      revalidierte Pfade bleiben unverändert (Differenztests über rund 800
+      FormData-Varianten je Action). Eingabefehler tragen zusätzlich fieldErrors;
+      technische Fehler außerhalb der bisherigen try-Blöcke erscheinen als
+      Fehlermeldung statt als Fehlerseite. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/form-parsing.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-041
     date: '2026-10-06'
     paths:
@@ -4058,6 +4093,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-001` dokumentiert die übrigen GwG-Actions auf
+  dem gemeinsamen Action-Baustein. Gates, Transaktionen und Meldungen bleiben
+  unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-041` dokumentiert den shellcheck-Schritt im
   Qualitäts-Job der CI.

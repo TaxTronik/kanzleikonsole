@@ -17,6 +17,7 @@ import {
   updateBeneficialOwnerTx,
 } from '@/server/gwg/beneficial-owners';
 import { withStaff, parseFormData } from '@/server/actions/staff-action';
+import { formDefault, formEmpty } from '@/server/actions/form-data';
 
 import {
   type ActionResult,
@@ -177,11 +178,11 @@ const UpdateOwnerSchema = z
     checkId: z.string().uuid(),
     clientId: z.string().uuid(),
     fullName: z.string().trim().min(1).max(200),
-    birthDate: z.string().date(),
-    birthPlace: z.string().trim().min(1).max(200),
-    residence: z.string().trim().min(1).max(500),
-    nationality: z.string().trim().min(1).max(100),
-    ownershipPct: z.coerce.number().min(0).max(100).optional(),
+    birthDate: formDefault('', z.string().date()),
+    birthPlace: formDefault('', z.string().trim().min(1).max(200)),
+    residence: formDefault('', z.string().trim().min(1).max(500)),
+    nationality: formDefault('', z.string().trim().min(1).max(100)),
+    ownershipPct: formEmpty(undefined, z.coerce.number().min(0).max(100).optional()),
     isPep: z.enum(['true', 'false']).transform((value) => value === 'true'),
     expectedRevision: z.string().min(2).max(20_000),
   })
@@ -207,20 +208,11 @@ export async function updateBeneficialOwnerAction(
     invalidatedIdentitySets?: InvalidatedIdentitySet[];
   }
 > {
-  const parsed = UpdateOwnerSchema.safeParse({
-    ownerId: formData.get('ownerId'),
-    checkId: formData.get('checkId'),
-    clientId: formData.get('clientId'),
-    fullName: formData.get('fullName'),
-    birthDate: formData.get('birthDate') ?? '',
-    birthPlace: formData.get('birthPlace') ?? '',
-    residence: formData.get('residence') ?? '',
-    nationality: formData.get('nationality') ?? '',
-    ownershipPct: formData.get('ownershipPct') || undefined,
-    isPep: formData.get('isPep'),
-    expectedRevision: formData.get('expectedRevision'),
+  const parsed = parseFormData(UpdateOwnerSchema, formData, {
+    absentAsNull: true,
+    errorMessage: 'Ungültige Angaben zur Person.',
   });
-  if (!parsed.success) return { ok: false, error: 'Ungültige Angaben zur Person.' };
+  if (!parsed.ok) return parsed;
   const data = parsed.data;
 
   return withStaff((tx, staff) => updateBeneficialOwnerTx(tx, data, staff));

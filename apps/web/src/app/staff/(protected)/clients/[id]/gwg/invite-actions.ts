@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { portalBaseUrl } from '@taxtronik/config';
 import { withTenantContext } from '@taxtronik/db';
-import { evidenceService } from '@/server/container';
 import { enqueueDirectMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { generateInviteToken, INVITE_TTL_DAYS } from '@/server/gwg-onboarding/service';
@@ -12,8 +11,9 @@ import { prepareGwgInviteIssueTx } from '@/server/gwg-onboarding/invite-lifecycl
 import { prepareGwgInviteBindingTx } from '@/server/gwg-onboarding/invite-binding';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { assertClientInTenant } from '@/server/db/assert-tenant';
-import { assertClientAccessTx, toActionError } from '@/server/auth/rbac';
-import { staffActionGuard, withStaff, ActionError } from '@/server/actions/staff-action';
+import { assertClientAccessTx } from '@/server/auth/rbac';
+import { staffAction, withStaff, ActionError } from '@/server/actions/staff-action';
+import { audit } from '@/server/actions/audit';
 
 export interface InviteResult {
   ok: boolean;
@@ -36,131 +36,125 @@ export async function sendInviteAction(input: {
   gwgCheckId?: string;
   expectedLatestInviteId?: string | null;
 }): Promise<InviteResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
-  const parsed = SendSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId, inviteName, inviteEmail, gwgCheckId, expectedLatestInviteId } = parsed.data;
+  return staffAction({
+    run: async (g) => {
+      const { tenantId, staffId, ctx, session } = g;
+      const parsed = SendSchema.safeParse(input);
+      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+      const { clientId, inviteName, inviteEmail, gwgCheckId, expectedLatestInviteId } = parsed.data;
 
-  const { raw, hash } = generateInviteToken();
-  const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
-  const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
+      const { raw, hash } = generateInviteToken();
+      const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+      const link = `${portalBaseUrl}/gwg-onboarding?token=${encodeURIComponent(raw)}`;
 
-  let issuedInvite: { id: string; gwgCheckId: string | null };
-  try {
-    issuedInvite = await withTenantContext(ctx, async (tx) => {
-      // U-6: clientId Tenant-Sanity — letzte unverschlossene Stelle aus
-      // R-2 / S-6-Sammelfund.
-      await assertClientAccessTx(tx, session, clientId);
-      await assertClientInTenant(tx, clientId);
-      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
-      if (expectedLatestInviteId !== undefined) {
-        const latestInvite = await tx.gwgOnboardingInvite.findFirst({
-          where: { tenantId, clientId },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          select: { id: true },
-        });
-        if ((latestInvite?.id ?? null) !== expectedLatestInviteId) {
-          throw new ActionError(
-            'Die Einladung wurde bereits geändert oder versendet. Bitte laden Sie die Seite neu.',
-          );
+      const issuedInvite = await withTenantContext(ctx, async (tx) => {
+        // U-6: clientId Tenant-Sanity — letzte unverschlossene Stelle aus
+        // R-2 / S-6-Sammelfund.
+        await assertClientAccessTx(tx, session, clientId);
+        await assertClientInTenant(tx, clientId);
+        await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
+        if (expectedLatestInviteId !== undefined) {
+          const latestInvite = await tx.gwgOnboardingInvite.findFirst({
+            where: { tenantId, clientId },
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            select: { id: true },
+          });
+          if ((latestInvite?.id ?? null) !== expectedLatestInviteId) {
+            throw new ActionError(
+              'Die Einladung wurde bereits geändert oder versendet. Bitte laden Sie die Seite neu.',
+            );
+          }
         }
-      }
-      const binding = await prepareGwgInviteBindingTx(tx, {
-        tenantId,
-        clientId,
-        requestedCheckId: gwgCheckId,
-        bindLatestDraft: false,
-      });
-      if (!binding.ok) throw new ActionError(binding.error);
-      const issue = await prepareGwgInviteIssueTx(tx, {
-        tenantId,
-        clientId,
-        cancelledByStaff: staffId,
-      });
-      const inv = await tx.gwgOnboardingInvite.create({
-        data: {
+        const binding = await prepareGwgInviteBindingTx(tx, {
           tenantId,
           clientId,
-          inviteName,
-          inviteEmail,
-          tokenHash: hash,
-          expiresAt,
-          createdByStaff: staffId,
-          createdAt: issue.createdAt,
-          gwgCheckId: binding.gwgCheckId,
-          boundCheckRevision: binding.boundCheckRevision,
-          boundClientRevision: binding.boundClientRevision,
-        },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'gwg.onboarding.invite',
-        resourceType: 'gwg_onboarding_invite',
-        resourceId: inv.id,
-        after: {
-          inviteName,
-          inviteEmail,
-          expiresAt: expiresAt.toISOString(),
-          gwgCheckId: binding.gwgCheckId,
-          boundCheckRevision: binding.boundCheckRevision,
-          boundClientRevision: binding.boundClientRevision,
-          supersededInviteCount: issue.supersededInviteCount,
-        },
-      });
-      // F-08: Einladungsmail im selben Commit als Versandauftrag; der Link mit
-      // Token liegt nur Secret-Box-verschlüsselt im Auftrag.
-      await enqueueDirectMailTx(
-        tx,
-        {
+          requestedCheckId: gwgCheckId,
+          bindLatestDraft: false,
+        });
+        if (!binding.ok) throw new ActionError(binding.error);
+        const issue = await prepareGwgInviteIssueTx(tx, {
           tenantId,
           clientId,
-          purpose: 'gwg-invite',
-          resource: { type: 'gwg_onboarding_invite', id: inv.id },
-          staffHref: `/staff/clients/${clientId}/gwg`,
-        },
-        {
-          slug: 'gwg-onboarding',
-          to: inviteEmail,
-          vars: { inviteName, inviteEmail, clientId, gwgInviteId: inv.id },
-          secretVars: { link },
-          fallback: {
-            subject: 'Identifizierung für Ihre Mandantschaft',
-            bodyMd:
-              'Sehr geehrte/r {{inviteName}},\n\num Sie als Mandant aufzunehmen, sind wir gesetzlich verpflichtet, Ihre Identität nach dem Geldwäschegesetz zu prüfen.\n\nBitte füllen Sie das kurze Online-Formular über folgenden Link aus:\n\n{{link}}\n\nDer Link ist 14 Tage gültig.',
+          cancelledByStaff: staffId,
+        });
+        const inv = await tx.gwgOnboardingInvite.create({
+          data: {
+            tenantId,
+            clientId,
+            inviteName,
+            inviteEmail,
+            tokenHash: hash,
+            expiresAt,
+            createdByStaff: staffId,
+            createdAt: issue.createdAt,
+            gwgCheckId: binding.gwgCheckId,
+            boundCheckRevision: binding.boundCheckRevision,
+            boundClientRevision: binding.boundClientRevision,
           },
+        });
+        await audit(tx, g, {
+          action: 'gwg.onboarding.invite',
+          resourceType: 'gwg_onboarding_invite',
+          resourceId: inv.id,
+          after: {
+            inviteName,
+            inviteEmail,
+            expiresAt: expiresAt.toISOString(),
+            gwgCheckId: binding.gwgCheckId,
+            boundCheckRevision: binding.boundCheckRevision,
+            boundClientRevision: binding.boundClientRevision,
+            supersededInviteCount: issue.supersededInviteCount,
+          },
+        });
+        // F-08: Einladungsmail im selben Commit als Versandauftrag; der Link mit
+        // Token liegt nur Secret-Box-verschlüsselt im Auftrag.
+        await enqueueDirectMailTx(
+          tx,
+          {
+            tenantId,
+            clientId,
+            purpose: 'gwg-invite',
+            resource: { type: 'gwg_onboarding_invite', id: inv.id },
+            staffHref: `/staff/clients/${clientId}/gwg`,
+          },
+          {
+            slug: 'gwg-onboarding',
+            to: inviteEmail,
+            vars: { inviteName, inviteEmail, clientId, gwgInviteId: inv.id },
+            secretVars: { link },
+            fallback: {
+              subject: 'Identifizierung für Ihre Mandantschaft',
+              bodyMd:
+                'Sehr geehrte/r {{inviteName}},\n\num Sie als Mandant aufzunehmen, sind wir gesetzlich verpflichtet, Ihre Identität nach dem Geldwäschegesetz zu prüfen.\n\nBitte füllen Sie das kurze Online-Formular über folgenden Link aus:\n\n{{link}}\n\nDer Link ist 14 Tage gültig.',
+            },
+          },
+        );
+        return { id: inv.id, gwgCheckId: binding.gwgCheckId };
+      });
+
+      kickMailOutboxDelivery();
+      await emitN8nEvent(
+        'gwg.invite.created',
+        {
+          tenantId,
+          clientId,
+          gwgInviteId: issuedInvite.id,
+          gwgCheckId: issuedInvite.gwgCheckId,
         },
+        { tenantId },
       );
-      return { id: inv.id, gwgCheckId: binding.gwgCheckId };
-    });
-  } catch (e) {
-    return toActionError(e);
-  }
 
-  kickMailOutboxDelivery();
-  await emitN8nEvent(
-    'gwg.invite.created',
-    {
-      tenantId,
-      clientId,
-      gwgInviteId: issuedInvite.id,
-      gwgCheckId: issuedInvite.gwgCheckId,
+      revalidatePath(`/staff/clients/${clientId}/gwg`);
+      return { link };
     },
-    { tenantId },
-  );
-
-  revalidatePath(`/staff/clients/${clientId}/gwg`);
-  return { ok: true, link };
+  });
 }
 
 export async function cancelInviteAction(input: { id: string }): Promise<InviteResult> {
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
 
-  const r = await withStaff(async (tx, { tenantId, staffId, session }) => {
+  const r = await withStaff(async (tx, { tenantId, staffId, session, ctx }) => {
     const inv = await tx.gwgOnboardingInvite.findUnique({ where: { id: parsed.data.id } });
     if (!inv) return;
     await assertClientAccessTx(tx, session, inv.clientId);
@@ -188,10 +182,7 @@ export async function cancelInviteAction(input: { id: string }): Promise<InviteR
     if (cancelled.count === 0) {
       throw new ActionError('Einladungsstatus wurde parallel geändert — bitte Seite neu laden.');
     }
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
+    await audit(tx, ctx, {
       action: 'gwg.onboarding.cancel',
       resourceType: 'gwg_onboarding_invite',
       resourceId: parsed.data.id,

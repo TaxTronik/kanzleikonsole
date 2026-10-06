@@ -69,7 +69,7 @@ const LEGACY_UNMAPPED_VALIDATION_ERRORS: Readonly<Record<string, number>> = {
   'app/staff/(protected)/clients/[id]/bwa/actions.ts': 2,
   'app/staff/(protected)/clients/[id]/bwa/plans/actions.ts': 3,
   'app/staff/(protected)/clients/[id]/change-requests/actions.ts': 1,
-  'app/staff/(protected)/clients/[id]/gwg/actions.ts': 2,
+  'app/staff/(protected)/clients/[id]/gwg/actions.ts': 1,
   'app/staff/(protected)/clients/[id]/gwg/invite-actions.ts': 2,
   'app/staff/(protected)/clients/[id]/handovers/actions.ts': 2,
   'app/staff/(protected)/clients/[id]/notices/actions.ts': 1,

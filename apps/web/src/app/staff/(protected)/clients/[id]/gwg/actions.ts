@@ -7,20 +7,15 @@
 
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { toActionError } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { emitN8nEvent } from '@/server/n8n/emit';
 import { DEFAULT_FACTORS } from '@/server/gwg/risk-score';
 import { saveRiskAnswersTx, startGwgCheckCycleTx } from '@/server/gwg/check-cycle';
-import {
-  rejectCheckTx,
-  submitCheckForReviewTx,
-  verifyCheckTx,
-  type GwgVerificationResult,
-} from '@/server/gwg/check-decisions';
+import { rejectCheckTx, submitCheckForReviewTx, verifyCheckTx } from '@/server/gwg/check-decisions';
 import { saveLegalEntityDetailsTx } from '@/server/gwg/legal-entity';
-import { staffActionGuard, withStaff, parseFormData } from '@/server/actions/staff-action';
+import { staffAction, withStaff, parseFormData } from '@/server/actions/staff-action';
+import { formDefault, formFlag } from '@/server/actions/form-data';
 
 import { type ActionResult, type InvalidatedIdentitySet } from './_action-helpers';
 
@@ -29,19 +24,19 @@ export type { ActionResult, InvalidatedIdentitySet, SavedBeneficialOwner } from 
 
 const OpenSchema = z.object({
   clientId: z.string().uuid(),
-  expectedLatestCheckId: z.union([z.literal(''), z.string().uuid()]).default(''),
-  changeScope: z
-    .enum(['ROUTINE', 'BENEFICIAL_OWNERS', 'REPRESENTATIVES', 'BOTH'])
-    .default('ROUTINE'),
+  expectedLatestCheckId: formDefault('', z.union([z.literal(''), z.string().uuid()]).default('')),
+  changeScope: formDefault(
+    'ROUTINE',
+    z.enum(['ROUTINE', 'BENEFICIAL_OWNERS', 'REPRESENTATIVES', 'BOTH']).default('ROUTINE'),
+  ),
 });
 
 async function startCheckCycle(formData: FormData): Promise<ActionResult & { checkId?: string }> {
-  const parsed = OpenSchema.safeParse({
-    clientId: formData.get('clientId'),
-    expectedLatestCheckId: formData.get('expectedLatestCheckId') ?? '',
-    changeScope: formData.get('changeScope') ?? 'ROUTINE',
+  const parsed = parseFormData(OpenSchema, formData, {
+    absentAsNull: true,
+    errorMessage: 'Validierungsfehler.',
   });
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
+  if (!parsed.ok) return parsed;
   const { clientId } = parsed.data;
 
   return withStaff((tx, staff) => startGwgCheckCycleTx(tx, parsed.data, staff), {
@@ -178,6 +173,49 @@ const LegalEntityDetailsSchema = z
     }
   });
 
+/** Vertreterliste aus dem JSON-Feld; fehlt sie oder ist sie unlesbar, gilt nur diese Meldung. */
+function parseRepresentativesJson(value: unknown, ctx: z.RefinementCtx): unknown {
+  if (typeof value !== 'string' || !value.trim()) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'Gesetzliche Vertreter müssen über erfasste Personen ausgewählt werden.',
+    });
+    return z.NEVER;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    ctx.addIssue({ code: 'custom', message: 'Die Vertreterliste ist ungültig.' });
+    return z.NEVER;
+  }
+}
+
+type LegalEntityDetailsFields = z.input<typeof LegalEntityDetailsSchema>;
+
+/**
+ * Formular → LegalEntityDetailsSchema (R-12): Felder wie formData.get (fehlend
+ * → null, Register fehlend → '', Haken nur bei „on“). Scheitert die
+ * Vertreterliste, endet die Prüfung vor dem Schema — wie bisher.
+ */
+const LegalEntityDetailsForm = z
+  .object({
+    representativesJson: z.preprocess(parseRepresentativesJson, z.unknown()),
+    checkId: z.unknown(),
+    clientId: z.unknown(),
+    legalForm: z.unknown(),
+    registerNumber: formDefault('', z.unknown()),
+    registerAuthority: formDefault('', z.unknown()),
+    noRegisterEntry: formFlag(),
+    ownershipStructureNotes: z.unknown(),
+    expectedRevision: z.unknown(),
+  })
+  .transform(
+    // Rohwerte wie aus formData.get — erst LegalEntityDetailsSchema prüft sie.
+    ({ representativesJson, ...fields }) =>
+      ({ ...fields, representatives: representativesJson }) as LegalEntityDetailsFields,
+  )
+  .pipe(LegalEntityDetailsSchema);
+
 export async function saveLegalEntityDetailsAction(
   _prev: ActionResult | null,
   formData: FormData,
@@ -203,33 +241,11 @@ export async function saveLegalEntityDetailsAction(
     revision?: string;
   }
 > {
-  let representatives: unknown;
-  const representativesJson = formData.get('representativesJson');
-  if (typeof representativesJson !== 'string' || !representativesJson.trim()) {
-    return {
-      ok: false,
-      error: 'Gesetzliche Vertreter müssen über erfasste Personen ausgewählt werden.',
-    };
-  }
-  try {
-    representatives = JSON.parse(representativesJson);
-  } catch {
-    return { ok: false, error: 'Die Vertreterliste ist ungültig.' };
-  }
-  const parsed = LegalEntityDetailsSchema.safeParse({
-    checkId: formData.get('checkId'),
-    clientId: formData.get('clientId'),
-    legalForm: formData.get('legalForm'),
-    registerNumber: formData.get('registerNumber') ?? '',
-    registerAuthority: formData.get('registerAuthority') ?? '',
-    noRegisterEntry: formData.get('noRegisterEntry') === 'on',
-    representatives,
-    ownershipStructureNotes: formData.get('ownershipStructureNotes'),
-    expectedRevision: formData.get('expectedRevision'),
+  const parsed = parseFormData(LegalEntityDetailsForm, formData, {
+    absentAsNull: true,
+    errorMessage: (issues) => issues.map((i) => i.message).join(' '),
   });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues.map((i) => i.message).join(' ') };
-  }
+  if (!parsed.ok) return parsed;
   const data = parsed.data;
 
   return withStaff((tx, staff) => saveLegalEntityDetailsTx(tx, data, staff));
@@ -254,26 +270,23 @@ export async function submitCheckForReviewAction(
   _prev: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { ctx } = g;
-  const parsed = parseFormData(CheckDecisionSchema, formData);
-  if (!parsed.ok) return { ok: false, error: 'Validierungsfehler — ungültige IDs.' };
-  const { checkId, clientId } = parsed.data;
+  return staffAction({
+    run: async (g) => {
+      const { ctx } = g;
+      const parsed = parseFormData(CheckDecisionSchema, formData);
+      if (!parsed.ok) return { ok: false, error: 'Validierungsfehler — ungültige IDs.' };
+      const { checkId, clientId } = parsed.data;
 
-  try {
-    await withTenantContext(ctx, (tx) => submitCheckForReviewTx(tx, { checkId, clientId }, g));
-  } catch (error) {
-    return toActionError(error);
-  }
+      await withTenantContext(ctx, (tx) => submitCheckForReviewTx(tx, { checkId, clientId }, g));
 
-  // Bewusst KEIN revalidatePath der aktuellen GwG-Route: das löste den
-  // In-POST-Re-Render + die hängende Form-Transition aus (UI erst nach
-  // erneutem Klick aktuell). decision-forms ruft nach ok router.refresh()
-  // außerhalb der Transition auf — darüber kommt auch der frische
-  // reviewSnapshotHash an. Fremde Routen nur Cache-Invalidierung (ok).
-  revalidatePath(`/staff/clients/onboarding/${clientId}`);
-  return { ok: true };
+      // Bewusst KEIN revalidatePath der aktuellen GwG-Route: das löste den
+      // In-POST-Re-Render + die hängende Form-Transition aus (UI erst nach
+      // erneutem Klick aktuell). decision-forms ruft nach ok router.refresh()
+      // außerhalb der Transition auf — darüber kommt auch der frische
+      // reviewSnapshotHash an. Fremde Routen nur Cache-Invalidierung (ok).
+      revalidatePath(`/staff/clients/onboarding/${clientId}`);
+    },
+  });
 }
 
 export async function verifyCheckAction(
@@ -283,50 +296,47 @@ export async function verifyCheckAction(
   // GwG-Verifikation ist die zentrale fachliche Compliance-Entscheidung. Die
   // mandatsbezogene BERUFSTRAEGER-Zuordnung ist maßgeblich; ein angestellter
   // Steuerberater benötigt dafür keine globale ADMIN/PARTNER-Rolle.
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, ctx } = g;
+  return staffAction({
+    run: async (g) => {
+      const { tenantId, ctx } = g;
 
-  if (formData.get('reviewSnapshotVersion') !== '2') {
-    return {
-      ok: false,
-      error:
-        'Der Prüfsnapshot verwendet eine ältere Fassung. Bitte Seite neu laden und alle Angaben erneut prüfen.',
-    };
-  }
+      const parsed = parseFormData(VerifyDecisionSchema, formData);
+      // Eine ältere Fassung des Prüfsnapshots (reviewSnapshotVersion ≠ '2')
+      // weist das Formular vor allen übrigen Angaben zum Neuladen zurück.
+      if (!parsed.ok && parsed.fieldErrors.reviewSnapshotVersion) {
+        return {
+          ok: false,
+          error:
+            'Der Prüfsnapshot verwendet eine ältere Fassung. Bitte Seite neu laden und alle Angaben erneut prüfen.',
+        };
+      }
+      if (!parsed.ok) {
+        return {
+          ok: false,
+          error:
+            'Die ausdrückliche Berufsträger-Bestätigung des vollständig angezeigten Prüfsnapshots fehlt.',
+        };
+      }
+      const { checkId, clientId, reviewSnapshotHash } = parsed.data;
 
-  const parsed = parseFormData(VerifyDecisionSchema, formData);
-  if (!parsed.ok) {
-    return {
-      ok: false,
-      error:
-        'Die ausdrückliche Berufsträger-Bestätigung des vollständig angezeigten Prüfsnapshots fehlt.',
-    };
-  }
-  const { checkId, clientId, reviewSnapshotHash } = parsed.data;
-  let verified: GwgVerificationResult;
+      const verified = await withTenantContext(ctx, (tx) =>
+        verifyCheckTx(tx, { checkId, clientId, reviewSnapshotHash }, g),
+      );
 
-  try {
-    verified = await withTenantContext(ctx, (tx) =>
-      verifyCheckTx(tx, { checkId, clientId, reviewSnapshotHash }, g),
-    );
-  } catch (e) {
-    return toActionError(e);
-  }
-
-  if (verified.sendActivationWelcome) kickMailOutboxDelivery();
-  // Awaited (Guardrail: Outbox-Write muss dauerhaft sein, bevor die Action
-  // zurückkehrt). Der früher unbegrenzt hängende Redis-Queue-Handoff ist in
-  // der Outbox selbst per Timeout gedeckelt — siehe server/n8n/outbox.ts.
-  await emitN8nEvent(
-    'gwg.verified',
-    { tenantId, clientId, gwgCheckId: checkId, validUntil: verified.validUntil },
-    { tenantId },
-  );
-  // Nur die Fremd-Route (Cockpit) invalidieren — die aktuelle GwG-Route
-  // refresht der Client nach ok außerhalb der Form-Transition (siehe oben).
-  revalidatePath(`/staff/clients/${clientId}`);
-  return { ok: true };
+      if (verified.sendActivationWelcome) kickMailOutboxDelivery();
+      // Awaited (Guardrail: Outbox-Write muss dauerhaft sein, bevor die Action
+      // zurückkehrt). Der früher unbegrenzt hängende Redis-Queue-Handoff ist in
+      // der Outbox selbst per Timeout gedeckelt — siehe server/n8n/outbox.ts.
+      await emitN8nEvent(
+        'gwg.verified',
+        { tenantId, clientId, gwgCheckId: checkId, validUntil: verified.validUntil },
+        { tenantId },
+      );
+      // Nur die Fremd-Route (Cockpit) invalidieren — die aktuelle GwG-Route
+      // refresht der Client nach ok außerhalb der Form-Transition (siehe oben).
+      revalidatePath(`/staff/clients/${clientId}`);
+    },
+  });
 }
 
 const RejectSchema = z.object({
@@ -339,21 +349,18 @@ export async function rejectCheckAction(
   _prev: { ok: boolean; error?: string } | null,
   formData: FormData,
 ) {
-  const g = await staffActionGuard();
-  if (!g.ok) return g;
-  const { tenantId, ctx } = g;
+  return staffAction({
+    run: async (g) => {
+      const { tenantId, ctx } = g;
 
-  const parsed = parseFormData(RejectSchema, formData);
-  if (!parsed.ok) return { ok: false, error: 'Begründung erforderlich.' };
-  const { clientId } = parsed.data;
+      const parsed = parseFormData(RejectSchema, formData);
+      if (!parsed.ok) return { ok: false, error: 'Begründung erforderlich.' };
+      const { clientId } = parsed.data;
 
-  try {
-    await withTenantContext(ctx, (tx) => rejectCheckTx(tx, parsed.data, g));
-  } catch (e) {
-    return toActionError(e);
-  }
+      await withTenantContext(ctx, (tx) => rejectCheckTx(tx, parsed.data, g));
 
-  await emitN8nEvent('gwg.expired', { tenantId, clientId, reason: 'rejected' }, { tenantId });
-  revalidatePath(`/staff/clients/${clientId}`);
-  return { ok: true };
+      await emitN8nEvent('gwg.expired', { tenantId, clientId, reason: 'rejected' }, { tenantId });
+      revalidatePath(`/staff/clients/${clientId}`);
+    },
+  });
 }

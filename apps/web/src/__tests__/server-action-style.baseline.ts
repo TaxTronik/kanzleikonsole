@@ -61,8 +61,6 @@ export const HANDWRITTEN_ACTION_BASELINE: Readonly<
   'app/staff/(protected)/admin/settings/mail-actions.ts': { actions: 4, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/modules-actions.ts': { actions: 5, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/n8n-actions.ts': { actions: 14, reason: EXCLUDED },
-  'app/staff/(protected)/clients/[id]/gwg/actions.ts': { actions: 3, reason: EXCLUDED },
-  'app/staff/(protected)/clients/[id]/gwg/invite-actions.ts': { actions: 1, reason: EXCLUDED },
   'app/staff/(protected)/clients/[id]/subsumtion/actions.ts': { actions: 14, reason: SUBSUMTION },
   'app/staff/(protected)/clients/[id]/subsumtion/norm-actions.ts': {
     actions: 10,
@@ -124,7 +122,6 @@ export const HAND_FILLED_AUDIT_BASELINE: Readonly<
   },
   'app/staff/(protected)/admin/settings/mail-actions.ts': { calls: 3, reason: EXCLUDED },
   'app/staff/(protected)/admin/settings/modules-actions.ts': { calls: 5, reason: EXCLUDED },
-  'app/staff/(protected)/clients/[id]/gwg/invite-actions.ts': { calls: 2, reason: EXCLUDED },
   'app/staff/(protected)/documents/actions.ts': { calls: 3, reason: EXCLUDED },
   'app/staff/(protected)/invoices/actions.ts': {
     calls: 2,
@@ -207,12 +204,6 @@ export const FORM_DATA_READ_BASELINE: Readonly<Record<string, { reads: number; r
     'app/staff/(protected)/admin/settings/n8n-actions.ts': { reads: 23, reason: EXCLUDED },
     'app/staff/(protected)/client-assistance/actions.ts': { reads: 19, reason: SERVICE_INPUT },
     'app/staff/(protected)/clients/[id]/bwa/actions.ts': { reads: 1, reason: UPLOAD_FILE },
-    'app/staff/(protected)/clients/[id]/gwg/actions.ts': { reads: 13, reason: EXCLUDED },
-    'app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts': {
-      reads: 28,
-      reason: EXCLUDED,
-    },
-    'app/staff/(protected)/clients/[id]/gwg/owner-actions.ts': { reads: 11, reason: EXCLUDED },
     'app/staff/(protected)/clients/[id]/notices/filings/actions.ts': {
       reads: 1,
       reason: UPLOAD_FILE,
