@@ -76,6 +76,13 @@ export const ENV_PROFILE_ENTRIES = [
   { file: 'packages/storage/scripts/deploy-readiness.ts', profile: 'cli-storage' },
 ];
 
+// Paketgrenze (Review-Befund K-01): @taxtronik/gwg enthält GwG-Regeln mit
+// tx-Signatur für Web UND Worker. Next.js, React und Web-Module (`@/`, apps/)
+// bleiben draußen; Autorisierung, Audit/Evidence und Storage verdrahtet der
+// Web-Adapter in apps/web/src/server/gwg.
+const GWG_PACKAGE_MESSAGE =
+  '@taxtronik/gwg importiert weder Next.js/React noch Web-Module (@/, apps/); Autorisierung, Audit und Storage verdrahtet der Adapter in apps/web/src/server/gwg (K-01).';
+
 const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** Regelkonfiguration der Schichtgrenze, ohne die erlaubten Module (`@/app/<modul>`). */
@@ -245,6 +252,21 @@ export default [
     files: ['apps/web/src/server/auth/rbac.ts'],
     rules: {
       'no-restricted-syntax': 'off',
+    },
+  },
+  {
+    files: ['packages/gwg/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { regex: '^(?:next|react|react-dom|server-only)(?:/|$)', message: GWG_PACKAGE_MESSAGE },
+            { regex: '^@/', message: GWG_PACKAGE_MESSAGE },
+            { regex: '^(?:\\.\\./)+apps/', message: GWG_PACKAGE_MESSAGE },
+          ],
+        },
+      ],
     },
   },
   {

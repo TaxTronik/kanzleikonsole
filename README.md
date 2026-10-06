@@ -538,6 +538,7 @@ packages/
   db/          Prisma-Schema, Migrationen, RLS/Tenant-Kontext
   elster/      ERiC-/ELSTER-Integrationsgrenzen und Adapterlogik
   evidence/    Audit-Hash-Chain, Archive, Verify-CLI
+  gwg/         GwG-Regeln mit tx-Signatur (Check-Lebenszyklus, Aufbewahrung, Ablauf) für Web + Worker
   http-utils/  Safe Fetch, SSRF-Guards, Netzwerk-Utilities
   mail/        Template-Mail-Versand (SMTP, Dispatch, Safe-Markdown) für Web + Worker
   n8n-shared/  Eventkatalog, HMAC-Signatur und Outbox-Enqueue-Kern für App/Worker -> n8n

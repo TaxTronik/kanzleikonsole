@@ -17,9 +17,10 @@
 //
 // R-02: Vormals in apps/web/src/server/gwg/retention.ts (Referenz) und als
 // nur per Kommentar synchron gehaltene Zähl-Kopie im Worker
-// (jobs/gwg-expiry-check.ts). Hier liegen die reinen Fristprädikate und die
-// Datenbankfilter; die Review-Queue-Abfragen (Fristlogik in JS) bleiben in der
-// Web-App. Rein funktional, Prisma nur als Typ (Muster dieses Pakets).
+// (jobs/gwg-expiry-check.ts); danach in @taxtronik/tax, seit K-01 in
+// @taxtronik/gwg. Hier liegen die reinen Fristprädikate und die
+// Datenbankfilter; die Review-Queue-Abfragen (Fristlogik in JS) liegen in
+// review-queue.ts. Rein funktional, Prisma nur als Typ.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';

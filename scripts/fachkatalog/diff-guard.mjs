@@ -13,6 +13,9 @@ import {
 
 const FACH_PREFIXES = [
   'packages/tax/',
+  // K-01: GwG-Regeln (Aufbewahrung, Wiederholungsprüfung, Prüfungs-Lifecycle)
+  // liegen seit dem ersten Paketschnitt in @taxtronik/gwg.
+  'packages/gwg/',
   'packages/storage/src/',
   'packages/evidence/src/',
   'packages/db/prisma/migrations/',

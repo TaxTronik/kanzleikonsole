@@ -1,5 +1,59 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-024
+    date: '2026-10-06'
+    paths:
+      - apps/web/next.config.mjs
+      - apps/web/src/server/gwg/__tests__/editable-check.test.ts
+      - apps/web/src/server/gwg/__tests__/lifecycle-lock-call-sites.test.ts
+      - apps/web/src/server/gwg/check-mutation.ts
+      - apps/web/src/server/gwg/editable-check.ts
+      - apps/web/src/server/gwg/retention.ts
+      - apps/web/src/server/gwg/reverification.ts
+      - apps/worker/src/jobs/gwg-expiry-check.ts
+      - packages/gwg/package.json
+      - packages/gwg/src/__tests__/check-lifecycle.test.ts
+      - packages/gwg/src/__tests__/expiry.test.ts
+      - packages/tax/src/__tests__/gwg-retention.test.ts
+      - packages/gwg/src/__tests__/retention.test.ts
+      - packages/gwg/src/__tests__/review-queue.test.ts
+      - packages/gwg/src/check-lifecycle.ts
+      - packages/gwg/src/expiry.ts
+      - packages/gwg/src/index.ts
+      - packages/tax/src/gwg-retention.ts
+      - packages/gwg/src/retention.ts
+      - packages/gwg/src/review-queue.ts
+      - packages/gwg/tsconfig.json
+      - packages/gwg/vitest.config.ts
+      - packages/tax/src/index.ts
+      - scripts/fachkatalog/diff-guard.mjs
+    rule_ids:
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-PERSON-LINKS-001
+      - GWG-RISK-REVIEW-001
+      - GWG-SELF-ONBOARDING-001
+      - ASSURANCE-PROFESSIONAL-REVIEW-001
+    reason: >-
+      Erster Paketschnitt (K-01): Das neue Workspace-Paket @taxtronik/gwg enthält
+      die GwG-Regeln, die Web-App und Worker gemeinsam brauchen, mit
+      Transaktions-Signatur und ohne Next.js-Abhängigkeit: Lebenszyklus der
+      GwG-Prüfung (Lifecycle-Sperre, Bearbeitbarkeit, Status-Claim), die
+      Aufbewahrungs- und Löschfristen samt Review-Queue nach § 8 Abs. 4 GwG
+      (vormals packages/tax/src/gwg-retention.ts bzw. Web-App) und die
+      Eskalationsstufen der Wiederholungsprüfung (vormals nur im Worker-Job
+      gwg-expiry-check). Code wurde unverändert verschoben; SQL, Sperrschlüssel und
+      -reihenfolge, Meldungen, Benachrichtigungsarten und Schwellen bleiben gleich.
+      Die Web-Module re-exportieren die Funktionen, bestehende Importpfade und
+      code_refs bleiben gültig. Das Diff-Gate überwacht packages/gwg/ als Fachpfad.
+      Keine fachliche Freigabe.
+    tests:
+      - packages/gwg/src/__tests__/retention.test.ts
+      - packages/gwg/src/__tests__/check-lifecycle.test.ts
+      - packages/gwg/src/__tests__/expiry.test.ts
+      - scripts/tests/fachkatalog.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-023
     date: '2026-10-06'
     paths:
@@ -3439,6 +3493,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-024` dokumentiert das Paket `@taxtronik/gwg`
+  mit unverändert verschobenen GwG-Regeln und dessen Überwachung im Diff-Gate.
 
 - 2026-10-06: `FK-EXC-20261006-023` dokumentiert die GwG-Services mit
   Transaktions-Signatur und das gemeinsame Prelude. Meldungen, Audit und

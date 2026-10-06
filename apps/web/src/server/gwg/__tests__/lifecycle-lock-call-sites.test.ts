@@ -27,12 +27,18 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
   const checkCycle = source('../check-cycle.ts');
   const checkDecisions = source('../check-decisions.ts');
   const editableCheck = source('../editable-check.ts');
+  // K-01: Lifecycle-Lock und Prelude-Kern liegen in @taxtronik/gwg.
+  const checkLifecycle = source('../../../../../../packages/gwg/src/check-lifecycle.ts');
   const lifecycle = source('../reverification.ts');
 
   it('nimmt im Prelude bearbeitender Operationen Zugriff, Lock und Snapshot in fester Reihenfolge', () => {
     expectOrdered(
       section(editableCheck, 'export async function withEditableGwgCheckTx'),
       'assertClientAccessTx(',
+      'withLockedEditableGwgCheckTx(',
+    );
+    expectOrdered(
+      section(checkLifecycle, 'export async function withLockedEditableGwgCheckTx'),
       'lockGwgCheckLifecycleTx(',
       'tx.gwgCheck.findFirst(',
       'beforeEditable?.(',
@@ -59,7 +65,7 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
       'tx.gwgCheck.updateMany(',
     );
     expectOrdered(
-      section(lifecycle, 'async function createFreshGwgDraftTx', '/**\n * Serialisiert'),
+      section(lifecycle, 'async function createFreshGwgDraftTx', '/**\n * Beansprucht'),
       'nextGwgCheckCreatedAtTx(',
       'tx.gwgCheck.create(',
     );

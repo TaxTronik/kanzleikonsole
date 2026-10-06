@@ -227,6 +227,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Neues Workspace-Paket `@taxtronik/gwg` mit den GwG-Regeln für Web-App und
+  Worker (Transaktions-Signatur, ohne Next.js-Abhängigkeit): Lebenszyklus der
+  GwG-Prüfung, Aufbewahrungs- und Löschfristen samt Review-Queue nach § 8
+  Abs. 4 GwG (vormals `@taxtronik/tax` bzw. Web-App) und die Eskalationsstufen
+  der Wiederholungsprüfung (vormals nur im Worker-Job). Das Fachkatalog-Diff-Gate
+  überwacht das Paket. Verhalten unverändert (`GWG-RETENTION-DESTRUCTION-001`,
+  `GWG-REVERIFICATION-VALIDITY-001`, `FK-EXC-20261006-024`).
 - GwG-Identifizierung: Die bearbeitenden GwG-Aktionen (Personen,
   wirtschaftlich Berechtigte, Angaben zum Rechtsträger, Ausweisnachweise,
   Prüfzyklus, Einreichen, Freigeben, Ablehnen) laufen über Services mit

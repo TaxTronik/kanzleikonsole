@@ -16,7 +16,7 @@
 //     (linkedGwgIdDocumentId), HIGH/7-Tage-Frist wenn bereits abgelaufen
 //   - GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE an ADMIN/PARTNER,
 //     sobald löschreife Belege/Aufzeichnungen existieren (resource_id = Tenant);
-//     R-02: Filter aus @taxtronik/tax, identisch zur Web-Review-Queue
+//     R-02/K-01: Filter aus @taxtronik/gwg, identisch zur Web-Review-Queue
 //   - F-10: Zuständige nur, solange aktiv und zugriffsberechtigt; sonst
 //     aktive ADMIN/PARTNER (gemeinsamer Empfängerfilter)
 // Fachkatalog: GWG-REVERIFICATION-VALIDITY-001, ACCESS-NOTIFICATION-RECIPIENT-001,
@@ -91,7 +91,7 @@ vi.mock('@taxtronik/evidence', () => ({
   LocalTimestampAdapter: class {},
 }));
 
-import { dueGwgCheckDeletionsWhere, dueGwgDeletionDocsWhere } from '@taxtronik/tax';
+import { dueGwgCheckDeletionsWhere, dueGwgDeletionDocsWhere } from '@taxtronik/gwg/retention';
 import { processors } from './mocks/bullmq';
 import '../gwg-expiry-check';
 

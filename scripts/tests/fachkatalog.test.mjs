@@ -623,6 +623,7 @@ test('fordert für Änderungen an Fachpfaden eine Regel oder dokumentierte Ausna
   assert.equal(isFachPath('packages/db/prisma/schema.prisma'), true);
   assert.equal(isFachPath('packages/db/prisma/migrations/neutraler-name/migration.sql'), true);
   assert.equal(isFachPath('apps/web/src/server/gwg/verification.ts'), true);
+  assert.equal(isFachPath('packages/gwg/src/check-lifecycle.ts'), true);
   assert.equal(isFachPath('apps/web/src/server/dsgvo/client-retention.ts'), true);
   assert.equal(isFachPath('packages/storage/src/service.ts'), true);
   assert.equal(isFachPath('packages/evidence/src/chain.ts'), true);

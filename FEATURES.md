@@ -1660,6 +1660,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   HMAC-Sign mit Replay-Nonce),
   `@taxtronik/risk-layer` (zustandsloser §4-Engine-Client: Schema/Mapping/
   Resilienz mit Circuit-Breaker, reiner Transport),
+  `@taxtronik/gwg` (GwG-Regeln mit tx-Signatur für Web und Worker:
+  Check-Lebenszyklus-Sperre, Bearbeitbarkeit und Mutations-Claim,
+  Aufbewahrung/Vernichtungsfristen, Ablaufstufen der Re-Verifizierung),
   `@taxtronik/elster` (typisierter Client zur privaten eric-bridge,
   Feature-Flag-gated — siehe „ELSTER-Anbindung")
 - **Forgejo-Actions-CI** (`.forgejo/workflows/`, self-hosted Runner): `ci.yml`

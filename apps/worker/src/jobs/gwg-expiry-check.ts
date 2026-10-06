@@ -32,7 +32,16 @@ import { type NotificationKind } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { advanceSessionRevocation } from '@taxtronik/crypto';
-import { dueGwgCheckDeletionsWhere, dueGwgDeletionDocsWhere } from '@taxtronik/tax';
+import {
+  GWG_EXPIRY_NOTIFICATION_KIND,
+  gwgCheckDaysLeft,
+  gwgExpiryStage1Cutoff,
+  gwgExpiryStageForDaysLeft,
+  gwgIdDocumentWarnCutoff,
+  responsibleStaffForGwgExpiryStage,
+  type GwgExpiryStage,
+} from '@taxtronik/gwg/expiry';
+import { dueGwgCheckDeletionsWhere, dueGwgDeletionDocsWhere } from '@taxtronik/gwg/retention';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
@@ -45,22 +54,13 @@ import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 // nicht dem Schreiben) — gleiches Muster wie risk-analyse-llm.ts.
 const evidence = new EvidenceService(new LocalTimestampAdapter());
 
-const WARN_DAYS_STAGE1 = 90;
-const WARN_DAYS_STAGE2 = 30;
-const ID_DOC_WARN_DAYS = 60;
-
-type Stage = 'STAGE1' | 'STAGE2' | 'STAGE3';
-
-const NOTIFICATION_KIND_FOR_STAGE: Record<Stage, NotificationKind> = {
-  STAGE1: 'GWG_EXPIRY_90D',
-  STAGE2: 'GWG_EXPIRY_30D',
-  STAGE3: 'GWG_EXPIRED',
-};
+// K-01: Stufengrenzen (90/30/0 Tage), Zuständige je Stufe und das
+// Ausweis-Erinnerungsfenster (60 Tage) liegen als GwG-Regel in @taxtronik/gwg.
 
 async function resolveObsoleteStageNotifications(
   tenantId: string,
   checkId: string,
-  stage: Stage,
+  stage: GwgExpiryStage,
 ): Promise<void> {
   if (stage !== 'STAGE2') return;
   await withWorkerTenantContext(tenantId, (tx) =>
@@ -102,7 +102,7 @@ async function processExpiringIdDocuments(
   let idDocReminders = 0;
   let idDocRequests = 0;
   const berlinToday = berlinTodayUtcMidnight(now);
-  const idDocCutoff = new Date(berlinToday.getTime() + ID_DOC_WARN_DAYS * 24 * 60 * 60 * 1000);
+  const idDocCutoff = gwgIdDocumentWarnCutoff(berlinToday);
   const expiringDocs = await prismaOwner.gwgIdDocument.findMany({
     where: {
       expiryDate: { not: null, lte: idDocCutoff },
@@ -254,7 +254,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       // Stage-1-Grenze). Vorher zog die Query ALLE VERIFIED-Checks mit
       // validUntil und filterte erst im Speicher — unnötige Last, die mit dem
       // Mandantenbestand linear wächst.
-      const stage1Cutoff = new Date(now.getTime() + WARN_DAYS_STAGE1 * 24 * 60 * 60 * 1000);
+      const stage1Cutoff = gwgExpiryStage1Cutoff(now);
       const candidates = await prismaOwner.gwgCheck.findMany({
         where: {
           tenantId,
@@ -276,12 +276,11 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       });
 
       for (const check of candidates) {
-        const due = check.validUntil!.getTime();
-        const daysLeft = Math.ceil((due - now.getTime()) / (24 * 60 * 60 * 1000));
-        const stage = stageForDaysLeft(daysLeft);
+        const daysLeft = gwgCheckDaysLeft(check.validUntil!, now);
+        const stage = gwgExpiryStageForDaysLeft(daysLeft);
         if (!stage) continue;
 
-        const kind = NOTIFICATION_KIND_FOR_STAGE[stage];
+        const kind = GWG_EXPIRY_NOTIFICATION_KIND[stage];
 
         if (stage === 'STAGE3') {
           // Mandant deaktivieren + Check auf EXPIRED. RF-8: läuft jetzt im
@@ -391,7 +390,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
           const staffIds = await resolveClientWarningRecipientsTx(tx, {
             tenantId,
             clientId: check.clientId,
-            staffIds: responsibleStaffForStage(stage, check.client.responsibilities),
+            staffIds: responsibleStaffForGwgExpiryStage(stage, check.client.responsibilities),
             includeAdminPartners: stage === 'STAGE3',
           });
           await notify(
@@ -426,7 +425,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       //    ADMIN/PARTNER, sobald Einträge löschreif sind.
       //
       //    Fristlogik und Filter gemeinsam mit der Web-Review-Queue
-      //    (R-02, @taxtronik/tax): fünf Jahre ab Mandatsende bzw. Feststellung
+      //    (R-02/K-01, @taxtronik/gwg): fünf Jahre ab Mandatsende bzw. Feststellung
       //    bei nie zustande gekommener Beziehung. Auch die Höchstfrist beginnt
       //    erst an diesem fachlichen Startpunkt; das bloße Belegalter beendet
       //    keine laufende Geschäftsbeziehung.
@@ -519,41 +518,14 @@ async function revokePortalSessions(contactIds: string[]): Promise<number> {
   return failed;
 }
 
-function stageForDaysLeft(daysLeft: number): Stage | null {
-  if (daysLeft <= 0) return 'STAGE3';
-  if (daysLeft <= WARN_DAYS_STAGE2) return 'STAGE2';
-  if (daysLeft <= WARN_DAYS_STAGE1) return 'STAGE1';
-  return null;
-}
-
-/**
- * Zuständige je Stufe (GWG-REVERIFICATION-VALIDITY-001): Stufe 1 nur
- * Hauptbearbeiter, ab Stufe 2 zusätzlich Berufsträger. Aktivität, Zugriff und
- * der ADMIN/PARTNER-Fallback bzw. (Stufe 3) die ADMIN/PARTNER-Eskalation folgen
- * in resolveClientWarningRecipientsTx.
- */
-function responsibleStaffForStage(
-  stage: Stage,
-  responsibilities: Array<{ staffId: string; role: string }>,
-): string[] {
-  const bearbeiter = responsibilities
-    .filter((r) => r.role === 'HAUPTBEARBEITER')
-    .map((r) => r.staffId);
-  if (stage === 'STAGE1') return bearbeiter;
-  const berufstraeger = responsibilities
-    .filter((r) => r.role === 'BERUFSTRAEGER')
-    .map((r) => r.staffId);
-  return [...bearbeiter, ...berufstraeger];
-}
-
-function titleForStage(stage: Stage, daysLeft: number, clientName: string): string {
+function titleForStage(stage: GwgExpiryStage, daysLeft: number, clientName: string): string {
   if (stage === 'STAGE3') {
     return `GwG-Prüfung abgelaufen — ${clientName} deaktiviert`;
   }
   return `GwG-Prüfung läuft in ${daysLeft} Tagen ab — ${clientName}`;
 }
 
-function bodyForStage(stage: Stage, risk: string | null): string {
+function bodyForStage(stage: GwgExpiryStage, risk: string | null): string {
   if (stage === 'STAGE3') {
     return 'Mandant kann keine neuen Vorgänge mehr starten. Bitte erneute Identifizierung anstoßen.';
   }

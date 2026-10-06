@@ -106,6 +106,7 @@ const nextConfig = {
     '@taxtronik/db',
     '@taxtronik/elster',
     '@taxtronik/evidence',
+    '@taxtronik/gwg',
     '@taxtronik/http-utils',
     '@taxtronik/mail',
     '@taxtronik/n8n-shared',

@@ -1,9 +1,10 @@
 // Fachkatalog: GWG-RETENTION-DESTRUCTION-001
 // =============================================================================
-// R-02: GwG-Löschfristen (§ 8 Abs. 4 GwG) als gemeinsame Prädikate für die
-// Web-Review-Queue und den Worker-Job gwg-expiry-check. Die Gleichheit der
-// Datenbankfilter mit der JS-Fristlogik prüft zusätzlich
-// packages/db/src/__tests__/gwg-retention-count.test.ts gegen PostgreSQL.
+// R-02/K-01: GwG-Löschfristen (§ 8 Abs. 4 GwG) als gemeinsame Prädikate für die
+// Web-Review-Queue und den Worker-Job gwg-expiry-check (@taxtronik/gwg, vormals
+// @taxtronik/tax). Die Gleichheit der Datenbankfilter mit der JS-Fristlogik
+// prüft zusätzlich packages/db/src/__tests__/gwg-retention-count.test.ts gegen
+// PostgreSQL.
 // =============================================================================
 
 import { describe, expect, it } from 'vitest';
@@ -18,7 +19,7 @@ import {
   gwgMaximumDeletionDeadline,
   isGwgDeletionDue,
   type GwgDocumentRetentionContext,
-} from '../gwg-retention';
+} from '../retention';
 
 const UTC = (iso: string) => new Date(iso);
 

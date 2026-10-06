@@ -3,8 +3,8 @@
 // (dueGwgDeletionDocsWhere). Der Filter muss für jeden Fristzweig genau die
 // Belege treffen, die findDueGwgDeletionDocs (JS-Fristlogik) liefert; geprüft
 // unter der App-Rolle (RLS) zu mehreren Stichtagen.
-// R-02: Der Worker (gwg-expiry-check) zählt mit denselben Filtern aus
-// @taxtronik/tax. Geprüft wird zusätzlich, dass der Prüfungsfilter
+// R-02/K-01: Der Worker (gwg-expiry-check) zählt mit denselben Filtern aus
+// @taxtronik/gwg. Geprüft wird zusätzlich, dass der Prüfungsfilter
 // dueGwgCheckDeletionsWhere genau die Review-Queue findDueGwgCheckDeletions
 // trifft und die frühere Worker-Kopie des Belegfilters dasselbe zählte.
 import { randomUUID } from 'node:crypto';
@@ -120,7 +120,8 @@ async function evidence(clientId: string, extra: Record<string, unknown> = {}) {
 
 describeWithDatabase('GwG-Löschreife: COUNT-Filter = Fristlogik (P-21)', () => {
   beforeAll(async () => {
-    const path = new URL('../../../../apps/web/src/server/gwg/retention.ts', import.meta.url).href;
+    // K-01: Fristlogik, Filter und Review-Queue liegen in @taxtronik/gwg (die Web-App re-exportiert).
+    const path = new URL('../../../gwg/src/index.ts', import.meta.url).href;
     retention = (await import(path)) as Retention;
     const suffix = randomUUID();
     tenantId = (

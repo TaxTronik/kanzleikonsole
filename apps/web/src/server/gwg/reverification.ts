@@ -1,14 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
+import { lockGwgCheckLifecycleTx } from '@taxtronik/gwg/check-lifecycle';
 import { Prisma } from '@prisma/client';
 
-// Derselbe transaktionsgebundene Lifecycle-Lock wird aus mehreren
-// Defense-in-Depth-Schichten angefordert. Ein WeakMap-Eintrag lebt exakt so
-// lange wie der Tx-Client und verhindert den ansonsten redundanten zweiten
-// SQL-Roundtrip, ohne den Lock an einem Aufrufpfad wegzulassen. Auch parallele
-// Aufrufe auf derselben Tx teilen sich dieselbe Acquisition-Promise.
-const lifecycleLockAcquisitions = new WeakMap<object, Map<string, Promise<void>>>();
+// K-01: Der transaktionsgebundene Lifecycle-Lock liegt in @taxtronik/gwg
+// (eine Implementierung, ein Acquisition-Cache je Tx). Der bisherige
+// Importpfad bleibt für die Web-Aufrufer bestehen.
+export { lockGwgCheckLifecycleTx };
 
 export interface ReverificationResult {
   invalidatedChecks: number;
@@ -287,41 +286,6 @@ async function createFreshGwgDraftTx(
     },
     select: { id: true },
   });
-}
-
-/**
- * Serialisiert alle statusentscheidenden GwG-Operationen eines Mandanten.
- *
- * Der Lock ist transaktionsgebunden und umfasst bewusst Tenant und Mandant:
- * Zwischen "ist dies der neueste Check?" und einem Statuswechsel darf kein
- * paralleler Pfad einen neuen Snapshot anlegen oder Stammdaten invalidieren.
- * Alle Aufrufer muessen den Lock vor der ersten Client-/GwG-Mutation nehmen.
- */
-export async function lockGwgCheckLifecycleTx(
-  tx: TxClient,
-  input: { tenantId: string; clientId: string },
-): Promise<void> {
-  const lockKey = `gwg-check-lifecycle:${input.tenantId}:${input.clientId}`;
-  let acquisitions = lifecycleLockAcquisitions.get(tx as object);
-  if (!acquisitions) {
-    acquisitions = new Map();
-    lifecycleLockAcquisitions.set(tx as object, acquisitions);
-  }
-  const existing = acquisitions.get(lockKey);
-  if (existing) return existing;
-
-  const acquisition = (async () => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
-  })();
-  acquisitions.set(lockKey, acquisition);
-  try {
-    await acquisition;
-  } catch (error) {
-    // Ein fehlgeschlagener Versuch darf einen späteren Retry auf derselben Tx
-    // nicht fälschlich als gehaltenen Lock behandeln.
-    if (acquisitions.get(lockKey) === acquisition) acquisitions.delete(lockKey);
-    throw error;
-  }
 }
 
 /**
