@@ -15,7 +15,7 @@ import {
   UnauthorizedError,
 } from '@/server/auth/rbac';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
-import { sanitizeFilenameForHeader } from '@taxtronik/storage';
+import { bytesResponseBody, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { readModules } from '@/server/settings/modules';
 import { buildReportModel, type ReportModel } from '@/server/risk/export/report-model';
@@ -141,7 +141,7 @@ export async function GET(
     });
   });
 
-  return new NextResponse(new Uint8Array(buf), {
+  return new NextResponse(bytesResponseBody(buf), {
     status: 200,
     headers: {
       'content-type': isPdf

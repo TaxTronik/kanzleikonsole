@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withTenantContext } from '@taxtronik/db';
-import { sanitizeFilenameForHeader } from '@taxtronik/storage';
+import { bytesResponseBody, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { ActionError, toActionError } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import { checkStaffExportLimit, checkPortalReadLimit } from '@/server/rate-limit';
@@ -136,7 +136,7 @@ export async function assistanceDownload(surface: Surface, request: Request, id:
     const file = manifest
       ? `vorgang-${id}-v${input.revision}-manifest.json`
       : filenameWithExtension(data.version.document.title, data.version.document.mimeType);
-    return new NextResponse(new Uint8Array(bytes), {
+    return new NextResponse(bytesResponseBody(bytes), {
       headers: {
         'Content-Type': manifest ? 'application/json' : data.version.document.mimeType,
         'Content-Disposition': `attachment; filename="${sanitizeFilenameForHeader(file)}"`,

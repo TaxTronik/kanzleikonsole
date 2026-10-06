@@ -220,6 +220,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die Dokumentvorschau erkennt den Dateityp über die ersten 1 KB
+  (Range-Request), statt die ganze Datei zu laden; Downloads werden ohne
+  zusätzliche Pufferkopie ausgeliefert.
 - `pnpm backup:run` bzw. `./taxtronik backup` nutzen denselben Backup-Runner
   wie der nächtliche Worker-Job und schließen verwaiste RUNNING-Einträge
   (älter als 6 Stunden) ab.
@@ -1103,6 +1106,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Dokument-Download und -Vorschau prüfen Größe und SHA-256 der gebundenen
+  Fassung beim Ausliefern; abweichende Bytes werden nicht mehr vollständig
+  ausgeliefert. Postfach-Anhänge und Bescheid-Dokumente prüfen zusätzlich die
+  angekündigte Größe (`DOC-VERSION-IMMUTABILITY-001`, `FK-EXC-20261006-002`).
 - Der GwG-Fristjob widerruft Portal-Sitzungen wie das Web monoton und
   fail-closed; ein nicht bestätigter Widerruf lässt den Lauf fehlschlagen.
   Löschfristen, `pg_restore`-Argumente und Backup-Lauf haben je eine

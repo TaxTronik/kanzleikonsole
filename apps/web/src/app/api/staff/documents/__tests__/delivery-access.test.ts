@@ -7,8 +7,8 @@ const mocks = vi.hoisted(() => ({
   canAccessClientTx: vi.fn(),
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
-  streamObject: vi.fn(),
-  fetchObjectBytes: vi.fn(),
+  streamVerifiedObject: vi.fn(),
+  fetchObjectHead: vi.fn(),
   tx: {
     document: { findFirst: vi.fn() },
     powerOfAttorney: { findFirst: vi.fn() },
@@ -21,8 +21,8 @@ vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }))
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '127.0.0.1' }));
 vi.mock('@taxtronik/storage', () => ({
-  streamObject: mocks.streamObject,
-  fetchObjectBytes: mocks.fetchObjectBytes,
+  streamVerifiedObject: mocks.streamVerifiedObject,
+  fetchObjectHead: mocks.fetchObjectHead,
   detectMimeFromMagicBytes: () => 'application/pdf',
   sanitizeFilenameForHeader: (value: string) => value,
 }));
@@ -83,6 +83,8 @@ beforeEach(() => {
       {
         storageBucket: 'documents',
         storageKey: 'tenant/document',
+        sha256: new Uint8Array(32).fill(2),
+        sizeBytes: 5n,
         scanStatus: 'CLEAN',
         scanCompletedAt: new Date(),
       },
@@ -93,8 +95,12 @@ beforeEach(() => {
   mocks.withTenantContext.mockImplementation(
     async (_ctx: unknown, callback: (tx: unknown) => unknown) => callback(mocks.tx),
   );
-  mocks.streamObject.mockResolvedValue({ body: 'bytes', contentLength: 5, contentType: null });
-  mocks.fetchObjectBytes.mockResolvedValue(Buffer.from('%PDF-1.7'));
+  mocks.streamVerifiedObject.mockResolvedValue({
+    body: 'bytes',
+    contentLength: 5,
+    contentType: null,
+  });
+  mocks.fetchObjectHead.mockResolvedValue(Buffer.from('%PDF-1.7'));
 });
 
 describe.each(ROUTES)('Staff document delivery: $name', ({ call, audits }) => {
@@ -118,8 +124,8 @@ describe.each(ROUTES)('Staff document delivery: $name', ({ call, audits }) => {
       const response = await call();
       expect(response.status).toBe(404);
       expect(mocks.evidenceRecord).not.toHaveBeenCalled();
-      expect(mocks.streamObject).not.toHaveBeenCalled();
-      expect(mocks.fetchObjectBytes).not.toHaveBeenCalled();
+      expect(mocks.streamVerifiedObject).not.toHaveBeenCalled();
+      expect(mocks.fetchObjectHead).not.toHaveBeenCalled();
     },
   );
   it('bindet Tenant-/Soft-Delete-Filter und das aktuelle Mandantenzugriffsgate ein', async () => {
@@ -143,7 +149,7 @@ describe.each(ROUTES)('Staff document delivery: $name', ({ call, audits }) => {
     expect(response.status).toBe(404);
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();
     expect(mocks.tx.powerOfAttorney.findFirst).not.toHaveBeenCalled();
-    expect(mocks.streamObject).not.toHaveBeenCalled();
-    expect(mocks.fetchObjectBytes).not.toHaveBeenCalled();
+    expect(mocks.streamVerifiedObject).not.toHaveBeenCalled();
+    expect(mocks.fetchObjectHead).not.toHaveBeenCalled();
   });
 });

@@ -11,10 +11,11 @@ const h = vi.hoisted(() => ({
   access: vi.fn(),
 }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: h.context }));
-vi.mock('@taxtronik/storage', () => ({
+// R-05: S3 am Storage-Client mocken — der gemeinsame, prüfende Leseweg
+// (fetchVerifiedObjectBytes) läuft echt mit.
+vi.mock('@taxtronik/storage/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@taxtronik/storage/client')>()),
   s3: { send: h.send },
-  MAX_UPLOAD_BYTES: 16,
-  sanitizeFilenameForHeader: (value: string) => value,
 }));
 vi.mock('@/server/actions/staff-action', () => ({ staffActionGuard: h.guard }));
 vi.mock('@/server/actions/portal-action', () => ({ portalActionGuard: h.guard }));

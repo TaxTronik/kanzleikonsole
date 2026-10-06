@@ -1,7 +1,9 @@
-import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
-import { s3 } from '@taxtronik/storage';
+import {
+  fetchVerifiedObjectBytes,
+  StoredObjectError,
+  type StoredObjectErrorReason,
+} from '@taxtronik/storage';
 import { withTenantContext, type TxClient } from '@taxtronik/db';
 import { PDFDocument } from 'pdf-lib';
 import { ActionError } from '@/server/auth/rbac';
@@ -55,38 +57,43 @@ export async function assistanceVersionTx(
     );
   return version;
 }
+/** Meldungen je Lesefehler — unverändert gegenüber der früheren eigenen Leseschleife. */
+function assistanceReadError(reason: StoredObjectErrorReason): ActionError {
+  switch (reason) {
+    case 'OVERFLOW':
+      return new ActionError('Dateigröße überschritten.');
+    case 'SIZE_MISMATCH':
+    case 'HASH_MISMATCH':
+      return new ActionError('Integritätsprüfung der Dokumentfassung fehlgeschlagen.');
+    default:
+      return new ActionError('Dateigröße stimmt nicht mit der gespeicherten Fassung überein.');
+  }
+}
+
+/** R-05: gebundene Fassung über den gemeinsamen, immer prüfenden Leseweg. */
 export async function readAssistanceBytes(version: {
   storageBucket: string;
   storageKey: string;
   storageVersionId: string | null;
   sizeBytes: bigint;
   sha256: Uint8Array;
-}): Promise<Buffer> {
+}): Promise<Buffer<ArrayBuffer>> {
   if (version.sizeBytes > MAX_SOURCE_BYTES)
     throw new ActionError('Die ausgewählte Datei überschreitet 25 MiB.');
-  const object = await s3.send(
-    new GetObjectCommand({
-      Bucket: version.storageBucket,
-      Key: version.storageKey,
-      ...(version.storageVersionId ? { VersionId: version.storageVersionId } : {}),
-    }),
-  );
-  if (!object.Body || object.ContentLength !== Number(version.sizeBytes))
-    throw new ActionError('Dateigröße stimmt nicht mit der gespeicherten Fassung überein.');
-  const chunks: Buffer[] = [];
-  let size = 0;
-  for await (const chunk of object.Body as AsyncIterable<Uint8Array>) {
-    size += chunk.length;
-    if (size > Number(version.sizeBytes)) throw new ActionError('Dateigröße überschritten.');
-    chunks.push(Buffer.from(chunk));
+  try {
+    return await fetchVerifiedObjectBytes(
+      {
+        bucket: version.storageBucket,
+        key: version.storageKey,
+        versionId: version.storageVersionId,
+      },
+      { sizeBytes: version.sizeBytes, sha256: version.sha256 },
+      { maxBytes: Number(MAX_SOURCE_BYTES) },
+    );
+  } catch (error) {
+    if (error instanceof StoredObjectError) throw assistanceReadError(error.reason);
+    throw error;
   }
-  const bytes = Buffer.concat(chunks);
-  if (
-    size !== Number(version.sizeBytes) ||
-    createHash('sha256').update(bytes).digest('hex') !== Buffer.from(version.sha256).toString('hex')
-  )
-    throw new ActionError('Integritätsprüfung der Dokumentfassung fehlgeschlagen.');
-  return bytes;
 }
 export async function assistanceRevisionTx(
   tx: TxClient,

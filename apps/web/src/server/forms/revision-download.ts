@@ -1,8 +1,10 @@
 import { withTenantContext } from '@taxtronik/db';
 import { NextResponse } from 'next/server';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
-import { createHash } from 'node:crypto';
-import { s3, MAX_UPLOAD_BYTES, sanitizeFilenameForHeader } from '@taxtronik/storage';
+import {
+  bytesResponseBody,
+  fetchVerifiedObjectBytes,
+  sanitizeFilenameForHeader,
+} from '@taxtronik/storage';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { portalActionGuard } from '@/server/actions/portal-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
@@ -66,28 +68,16 @@ export async function formRevisionDownload(surface: 'staff' | 'portal', id: stri
       ).ok
     )
       return new NextResponse(null, { status: 429 });
-    const object = await s3.send(
-      new GetObjectCommand({
-        Bucket: source.version.storageBucket,
-        Key: source.version.storageKey,
-        VersionId: source.version.storageVersionId!,
-      }),
+    // R-05: Größe und SHA-256 der gebundenen Fassung werden vor Audit und
+    // Auslieferung geprüft (gemeinsamer Leseweg mit Größenlimit).
+    const bytes = await fetchVerifiedObjectBytes(
+      {
+        bucket: source.version.storageBucket,
+        key: source.version.storageKey,
+        versionId: source.version.storageVersionId!,
+      },
+      { sizeBytes: source.version.sizeBytes, sha256: source.file.sha256 },
     );
-    if (!object.Body) throw new Error('Unavailable');
-    const chunks: Buffer[] = [];
-    let size = 0;
-    for await (const part of object.Body as AsyncIterable<Uint8Array>) {
-      const chunk = Buffer.from(part);
-      size += chunk.length;
-      if (size > MAX_UPLOAD_BYTES) throw new Error('Unavailable');
-      chunks.push(chunk);
-    }
-    const bytes = Buffer.concat(chunks);
-    if (
-      BigInt(size) !== source.version.sizeBytes ||
-      createHash('sha256').update(bytes).digest('hex') !== source.file.sha256
-    )
-      throw new Error('Unavailable');
     await loadSource(surface, id);
     await withTenantContext(source.g.ctx, (tx) =>
       evidenceService.record(tx, {
@@ -103,7 +93,7 @@ export async function formRevisionDownload(surface: 'staff' | 'portal', id: stri
         },
       }),
     );
-    return new NextResponse(new Uint8Array(bytes), {
+    return new NextResponse(bytesResponseBody(bytes), {
       headers: {
         // Document metadata describes the latest version, not necessarily this
         // historical source. Never label old bytes with a later MIME/name.

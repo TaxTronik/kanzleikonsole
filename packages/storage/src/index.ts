@@ -9,6 +9,12 @@ export {
 } from './client';
 export {
   fetchObjectBytes,
+  fetchVerifiedObjectBytes,
+  streamVerifiedObject,
+  fetchObjectHead,
+  bytesResponseBody,
+  StoredObjectError,
+  OBJECT_HEAD_BYTES,
   streamObject,
   deleteObject,
   deleteObjectVersion,
@@ -31,6 +37,11 @@ export {
   type CommitDocumentResult,
   type PreparedBytesCommit,
   type ObjectStream,
+  type StoredObjectErrorReason,
+  type StoredObjectIntegrity,
+  type StoredObjectReadOptions,
+  type StoredObjectRef,
+  type VerifiedObjectStream,
   type ScanResult,
 } from './service';
 export {

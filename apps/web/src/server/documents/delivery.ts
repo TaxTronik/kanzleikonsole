@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { NextResponse, type NextRequest } from 'next/server';
 
 import { withTenantContext, type ActorType, type TxClient } from '@taxtronik/db';
-import { sanitizeFilenameForHeader, streamObject } from '@taxtronik/storage';
+import { sanitizeFilenameForHeader, streamVerifiedObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { getClientIp } from '@/server/rate-limit';
 import { documentPreviewMetadata, loadDocumentPreview } from '@/server/storage/document-preview';
@@ -17,6 +17,9 @@ export interface DocumentDeliverySource {
   bucket: string;
   key: string;
   storageVersionId?: string | null;
+  /** Gebundene Fassung: wird beim Ausliefern immer gegen den Objektinhalt geprüft (R-05). */
+  sha256: Uint8Array;
+  sizeBytes: bigint;
   isPoaDocument: boolean;
 }
 
@@ -102,6 +105,8 @@ export async function loadDocumentDelivery(
             storageBucket: true,
             storageKey: true,
             storageVersionId: true,
+            sha256: true,
+            sizeBytes: true,
             scanStatus: true,
             scanCompletedAt: true,
           },
@@ -134,6 +139,8 @@ export async function loadDocumentDelivery(
       bucket: version.storageBucket,
       key: version.storageKey,
       storageVersionId: version.storageVersionId,
+      sha256: version.sha256,
+      sizeBytes: version.sizeBytes,
       isPoaDocument: Boolean(powerOfAttorney),
     };
   });
@@ -152,7 +159,12 @@ export async function documentDownloadResponse(
   document: DocumentDeliverySource,
   options: { mimeSource: 'validated-document' | 'storage-when-present' },
 ): Promise<NextResponse> {
-  const object = await streamObject(document.bucket, document.key, document.storageVersionId);
+  // R-05: Größe und SHA-256 der gebundenen Fassung werden beim Streamen geprüft;
+  // eine Abweichung bricht die Antwort ab, statt sie vollständig auszuliefern.
+  const object = await streamVerifiedObject(
+    { bucket: document.bucket, key: document.key, versionId: document.storageVersionId },
+    { sizeBytes: document.sizeBytes, sha256: document.sha256 },
+  );
   const mimeInput =
     options.mimeSource === 'storage-when-present'
       ? { ...document, mimeType: object.contentType ?? document.mimeType }
@@ -174,10 +186,7 @@ export async function documentPreviewResponse(
   if (isPreviewStreamRequest(request)) {
     try {
       const preview = await loadDocumentPreview(document);
-      return new NextResponse(new Uint8Array(preview.bytes), {
-        status: 200,
-        headers: preview.headers,
-      });
+      return new NextResponse(preview.body, { status: 200, headers: preview.headers });
     } catch {
       return NextResponse.json({ error: 'storage_unavailable' }, { status: 502 });
     }

@@ -6,6 +6,7 @@ import { canAccessClientTx } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import { loadIdentitySourceTx, readIdentitySourceBytes } from '@/server/gwg/identity-source';
 import { checkRateLimit } from '@/server/rate-limit';
+import { bytesResponseBody } from '@taxtronik/storage';
 
 const Query = z.object({
   clientId: z.string().uuid(),
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
   );
   if (!source) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   try {
-    return new NextResponse(new Uint8Array(await readIdentitySourceBytes(source)), {
+    return new NextResponse(bytesResponseBody(await readIdentitySourceBytes(source)), {
       headers: {
         'Content-Type': source.mimeType,
         'Cache-Control': 'private, no-store',

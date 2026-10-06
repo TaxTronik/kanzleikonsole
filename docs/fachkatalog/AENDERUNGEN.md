@@ -1,5 +1,58 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-002
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts
+      - apps/web/src/app/api/portal/interactions/[id]/document/route.ts
+      - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts
+      - apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts
+      - apps/web/src/app/api/staff/gwg/export/route.ts
+      - apps/web/src/app/api/staff/gwg/identity-source/route.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+      - apps/web/src/server/client-assistance/download.ts
+      - apps/web/src/server/client-assistance/outputs.ts
+      - apps/web/src/server/documents/__tests__/delivery.test.ts
+      - apps/web/src/server/documents/delivery.ts
+      - apps/web/src/server/forms/revision-download.ts
+      - apps/web/src/server/gwg/__tests__/identity-source.test.ts
+      - apps/web/src/server/gwg/identity-source.ts
+      - apps/web/src/server/payroll/download.ts
+      - apps/web/src/server/payroll/storage.ts
+      - apps/web/src/server/storage/document-preview.ts
+      - packages/storage/src/__tests__/verified-read.test.ts
+      - packages/storage/src/index.ts
+      - packages/storage/src/service.ts
+    rule_ids:
+      - DOC-VERSION-IMMUTABILITY-001
+      - DOC-PORTAL-SHARING-001
+      - DOC-UPLOAD-JOURNAL-001
+      - TAX-NOTICE-DECISION-001
+      - CLIENT-ASSISTANCE-001
+      - PAYROLL-INTAKE-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-OCR-ASSIST-001
+      - GWG-CONTROL-EXPORT-001
+      - ACCESS-CLIENT-MODE-001
+      - FORM-SCHEMA-SNAPSHOT-001
+      - YEAR-END-CAMPAIGN-001
+    reason: >-
+      Alle Lesepfade für gespeicherte Objekte (Dokument-Download und -Vorschau,
+      Bescheid-Rückfrage, Mandantenassistenz, Lohnunterlagen, Formularrevisionen,
+      GwG-Ausweisquelle, Postfach-Anhang) lesen über fetchVerifiedObjectBytes bzw.
+      streamVerifiedObject aus @taxtronik/storage: gebundene Objektversion,
+      Größengrenze und, wo bekannt, Größe und SHA-256 werden immer geprüft;
+      abweichende Bytes werden nicht vollständig ausgeliefert. Die Vorschau
+      erkennt den Dateityp über die ersten 1 KB per Range-Request. Header,
+      Statuscodes, Zugriffsprüfungen, Audit-Ereignisse und ausgelieferte Inhalte
+      konsistenter Daten bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/storage/src/__tests__/verified-read.test.ts
+      - apps/web/src/app/api/portal/interactions/[id]/document/__tests__/route.test.ts
+      - apps/web/src/app/api/staff/mailbox/attachments/[id]/__tests__/route.test.ts
+      - apps/web/src/server/documents/__tests__/delivery.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-001
     date: '2026-10-06'
     paths:
@@ -2580,6 +2633,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-002` dokumentiert den einheitlich geprüften
+  Lesepfad für gespeicherte Objekte. Zugriffsprüfungen und Inhalte
+  konsistenter Daten bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-001` dokumentiert gemeinsame Implementierungen
   für Sitzungswiderruf, GwG-Löschfristen und Backup-Lauf in Web und Worker.

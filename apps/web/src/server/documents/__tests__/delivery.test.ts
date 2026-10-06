@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // Fachkatalog: DOC-PORTAL-SHARING-001
 // Fachkatalog: ACCESS-STAFF-PERMISSION-001
 import { NextRequest } from 'next/server';
-import { streamObject, fetchObjectBytes } from '@taxtronik/storage';
+import { fetchObjectHead, streamVerifiedObject } from '@taxtronik/storage';
 
 const mocks = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
@@ -15,8 +15,8 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidence
 vi.mock('@/server/rate-limit', () => ({ getClientIp: mocks.getClientIp }));
 vi.mock('@taxtronik/storage', () => ({
   sanitizeFilenameForHeader: (value: string) => value,
-  streamObject: vi.fn(),
-  fetchObjectBytes: vi.fn(),
+  streamVerifiedObject: vi.fn(),
+  fetchObjectHead: vi.fn(),
   detectMimeFromMagicBytes: vi.fn(),
 }));
 
@@ -25,6 +25,20 @@ import {
   documentDownloadResponse,
   documentPreviewResponse,
 } from '../delivery';
+
+const BOUND_SHA256 = new Uint8Array(32).fill(7);
+
+function emptyObject(contentLength = 0) {
+  return {
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close();
+      },
+    }),
+    contentLength,
+    contentType: 'application/pdf',
+  };
+}
 
 function transaction() {
   return {
@@ -41,6 +55,8 @@ function transaction() {
             storageBucket: 'documents',
             storageKey: 'tenant/document-1',
             storageVersionId: 'bound-s3-version',
+            sha256: BOUND_SHA256,
+            sizeBytes: 9n,
             scanStatus: 'CLEAN',
             scanCompletedAt: new Date(),
           },
@@ -76,24 +92,50 @@ describe('document delivery pipeline', () => {
     mocks.withTenantContext.mockImplementation(async (_ctx, callback) => callback(tx));
     const document = await loadDocumentDelivery(options());
     expect(document?.storageVersionId).toBe('bound-s3-version');
-    vi.mocked(streamObject).mockResolvedValue({
-      body: new ReadableStream({
-        start(c) {
-          c.close();
-        },
-      }),
-      contentLength: 0,
-      contentType: 'application/pdf',
-    });
+    const bound = { bucket: 'documents', key: 'tenant/document-1', versionId: 'bound-s3-version' };
+    // R-05: Größe und SHA-256 der gebundenen Fassung werden bei jeder Auslieferung geprüft.
+    const integrity = { sizeBytes: 9n, sha256: BOUND_SHA256 };
+    vi.mocked(streamVerifiedObject).mockImplementation(async () => emptyObject(9));
     await documentDownloadResponse(document!, { mimeSource: 'validated-document' });
-    expect(streamObject).toHaveBeenCalledWith('documents', 'tenant/document-1', 'bound-s3-version');
-    vi.mocked(fetchObjectBytes).mockResolvedValue(Buffer.from('%PDF-test'));
+    expect(streamVerifiedObject).toHaveBeenCalledWith(bound, integrity);
+    vi.mocked(fetchObjectHead).mockResolvedValue(Buffer.from('%PDF-test'));
     await documentPreviewResponse(new NextRequest('http://localhost/doc?stream=1'), document!);
-    expect(fetchObjectBytes).toHaveBeenCalledWith(
-      'documents',
-      'tenant/document-1',
-      'bound-s3-version',
+    // Typerkennung nur über die Kopfbytes derselben Fassung, Auslieferung geprüft.
+    expect(fetchObjectHead).toHaveBeenCalledWith(bound);
+    expect(streamVerifiedObject).toHaveBeenCalledTimes(2);
+    expect(streamVerifiedObject).toHaveBeenLastCalledWith(bound, integrity);
+  });
+
+  it('R-05: Download und Vorschau behalten Header und Fehlerantwort', async () => {
+    const tx = transaction();
+    mocks.withTenantContext.mockImplementation(async (_ctx, callback) => callback(tx));
+    const document = (await loadDocumentDelivery(options()))!;
+    vi.mocked(streamVerifiedObject).mockImplementation(async () => emptyObject(9));
+
+    const download = await documentDownloadResponse(document, { mimeSource: 'validated-document' });
+    expect(download.status).toBe(200);
+    expect(download.headers.get('content-type')).toBe('application/pdf');
+    expect(download.headers.get('content-disposition')).toBe('attachment; filename="Dokument.pdf"');
+    expect(download.headers.get('cache-control')).toBe('private, no-store');
+    expect(download.headers.get('content-length')).toBe('9');
+
+    vi.mocked(fetchObjectHead).mockResolvedValue(Buffer.from('%PDF-test'));
+    const preview = await documentPreviewResponse(
+      new NextRequest('http://localhost/doc?stream=1'),
+      document,
     );
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get('cache-control')).toBe('private, no-store');
+    expect(preview.headers.get('content-length')).toBe('9');
+
+    // Eine vor dem ersten Byte erkannte Abweichung bleibt die bisherige 502.
+    vi.mocked(streamVerifiedObject).mockRejectedValue(new Error('LENGTH_MISMATCH: abweichend'));
+    const failed = await documentPreviewResponse(
+      new NextRequest('http://localhost/doc?stream=1'),
+      document,
+    );
+    expect(failed.status).toBe(502);
+    await expect(failed.json()).resolves.toEqual({ error: 'storage_unavailable' });
   });
   it('requires fresh payroll rights even when a generic document lookup returned the artifact', async () => {
     const tx = transaction();

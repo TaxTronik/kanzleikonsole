@@ -19,7 +19,7 @@ const m = vi.hoisted(() => ({
   ensureGwgPersonFolder: vi.fn(),
   lockEvidence: vi.fn(),
   logError: vi.fn(),
-  fetchObjectBytes: vi.fn(),
+  fetchVerifiedObjectBytes: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: vi.fn(async () => new Headers()) }));
@@ -27,7 +27,8 @@ vi.mock('@taxtronik/storage', () => ({
   prepareBytesCommitWithTier: vi.fn(),
   commitPreparedBytes: vi.fn(),
   deleteObjectVersion: vi.fn(),
-  fetchObjectBytes: m.fetchObjectBytes,
+  fetchVerifiedObjectBytes: m.fetchVerifiedObjectBytes,
+  StoredObjectError: class StoredObjectError extends Error {},
   MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
 }));
 vi.mock('@taxtronik/db', () => ({ withSystemContext: m.withSystemContext }));
@@ -453,7 +454,7 @@ describe('gebundener GwG-DRAFT Submit', () => {
           : imageSource({ where }),
       );
       m.withSystemContext.mockImplementation(async (_tenantId, callback) => callback(tx));
-      m.fetchObjectBytes.mockResolvedValueOnce(pdfBytes);
+      m.fetchVerifiedObjectBytes.mockResolvedValueOnce(pdfBytes);
       m.inviteFindFirst.mockResolvedValue({
         id: 'invite-1',
         tenantId: 'tenant-1',
@@ -475,8 +476,8 @@ describe('gebundener GwG-DRAFT Submit', () => {
 
       expect(await submitOnboardingAction(submission)).toEqual(expected);
       // Download und Zählung laufen vor der Transaktion, die die Einladung beansprucht.
-      expect(m.fetchObjectBytes).toHaveBeenCalledOnce();
-      expect(m.fetchObjectBytes.mock.invocationCallOrder[0]).toBeLessThan(
+      expect(m.fetchVerifiedObjectBytes).toHaveBeenCalledOnce();
+      expect(m.fetchVerifiedObjectBytes.mock.invocationCallOrder[0]).toBeLessThan(
         m.claimInvite.mock.invocationCallOrder[0]!,
       );
     },

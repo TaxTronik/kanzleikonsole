@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto';
 import type { TxClient } from '@taxtronik/db';
-import { fetchObjectBytes } from '@taxtronik/storage';
+import { fetchVerifiedObjectBytes, StoredObjectError } from '@taxtronik/storage';
 import { IdentityViewportsSchema, type IdentityViewport } from '@/lib/gwg/identity-viewport';
 import { countIdentityPdfPages } from './identity-pdf-pages';
 
@@ -69,22 +68,31 @@ export async function loadIdentitySourceTx(
 }
 export type IdentitySource = NonNullable<Awaited<ReturnType<typeof loadIdentitySourceTx>>>;
 
-export async function readIdentitySourceBytes(source: IdentitySource): Promise<Buffer> {
-  let bytes: Buffer;
+/**
+ * R-05: gemeinsamer, immer prüfender Leseweg. Abweichende Bytes bleiben ein
+ * geänderter Nachweis; Speicher-, Netz- und Limitfehler bleiben F-05
+ * (IdentitySourceStorageError).
+ */
+export async function readIdentitySourceBytes(
+  source: IdentitySource,
+): Promise<Buffer<ArrayBuffer>> {
   try {
-    bytes = await fetchObjectBytes(
-      source.version.storageBucket,
-      source.version.storageKey,
-      source.version.storageVersionId,
+    return await fetchVerifiedObjectBytes(
+      {
+        bucket: source.version.storageBucket,
+        key: source.version.storageKey,
+        versionId: source.version.storageVersionId,
+      },
+      { sizeBytes: source.version.sizeBytes, sha256: source.version.sha256 },
     );
   } catch (error) {
+    if (error instanceof StoredObjectError && error.integrityViolation) {
+      throw new Error('Die Originaldatei stimmt nicht mit der gebundenen Version überein.', {
+        cause: error,
+      });
+    }
     throw new IdentitySourceStorageError(error);
   }
-  const digest = createHash('sha256').update(bytes).digest();
-  if (BigInt(bytes.length) !== source.version.sizeBytes || !digest.equals(source.version.sha256)) {
-    throw new Error('Die Originaldatei stimmt nicht mit der gebundenen Version überein.');
-  }
-  return bytes;
 }
 
 const SOURCE_CHANGED =

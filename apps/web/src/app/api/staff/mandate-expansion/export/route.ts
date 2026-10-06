@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { sanitizeFilenameForHeader } from '@taxtronik/storage';
+import { bytesResponseBody, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { withTenantContext } from '@taxtronik/db';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { toActionError } from '@/server/auth/rbac';
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     });
     if (!guard.ok) return NextResponse.json({ error: guard.error }, { status: 403 });
     const data = await loadArtifactDownload(guard.session, guard.ctx, parsed.data);
-    return new NextResponse(new Uint8Array(data.bytes), {
+    return new NextResponse(bytesResponseBody(data.bytes), {
       headers: {
         'Content-Type': data.mimeType,
         'Content-Disposition': `attachment; filename="${sanitizeFilenameForHeader(filenameWithExtension(data.title, data.mimeType))}"`,

@@ -1,4 +1,9 @@
-import { detectMimeFromMagicBytes, fetchObjectBytes } from '@taxtronik/storage';
+import {
+  detectMimeFromMagicBytes,
+  fetchObjectHead,
+  streamVerifiedObject,
+  type StoredObjectRef,
+} from '@taxtronik/storage';
 import {
   effectiveDocumentMime,
   previewContentType,
@@ -13,6 +18,9 @@ export interface PreviewDocumentSource {
   bucket: string;
   key: string;
   storageVersionId?: string | null;
+  /** Gebundene Fassung; wird beim Ausliefern immer gegen den Objektinhalt geprüft (R-05). */
+  sha256: Uint8Array;
+  sizeBytes: bigint;
   isPoaDocument: boolean;
 }
 
@@ -34,27 +42,40 @@ export function documentPreviewMetadata(doc: PreviewDocumentSource): {
   };
 }
 
+/**
+ * R-05: Der Dateityp ergibt sich aus den Magic Bytes am Dateianfang — ein
+ * Range-Request auf die ersten KB statt die ganze Datei (bis 25 MiB) zu laden.
+ * Die Bytes selbst werden danach gestreamt und gegen Größe/SHA-256 der
+ * gebundenen Fassung geprüft.
+ */
 export async function loadDocumentPreview(doc: PreviewDocumentSource): Promise<{
-  bytes: Buffer;
+  body: ReadableStream<Uint8Array>;
   headers: Record<string, string>;
 }> {
   const metadataMime = effectiveDocumentMime(doc);
-  const bytes = await fetchObjectBytes(doc.bucket, doc.key, doc.storageVersionId);
-  const detected = detectMimeFromMagicBytes(bytes);
+  const ref: StoredObjectRef = {
+    bucket: doc.bucket,
+    key: doc.key,
+    versionId: doc.storageVersionId,
+  };
+  const head = await fetchObjectHead(ref);
+  const detected = detectMimeFromMagicBytes(head);
   const detectedMime = detected
     ? previewContentType(detected, doc.title)
     : 'application/octet-stream';
   const contentType = detectedMime !== 'application/octet-stream' ? detectedMime : metadataMime;
   const dispositionMime = contentType === 'application/octet-stream' ? doc.mimeType : contentType;
 
+  const object = await streamVerifiedObject(ref, { sizeBytes: doc.sizeBytes, sha256: doc.sha256 });
+
   return {
-    bytes,
+    body: object.body,
     headers: {
       'content-type': contentType,
       'content-disposition': previewDisposition(dispositionMime, doc.title),
       'cache-control': 'private, no-store',
       ...previewSecurityHeaders(dispositionMime, doc.title),
-      'content-length': String(bytes.length),
+      ...(object.contentLength !== null ? { 'content-length': String(object.contentLength) } : {}),
     },
   };
 }

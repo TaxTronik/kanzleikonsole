@@ -1,8 +1,7 @@
-import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withTenantContext } from '@taxtronik/db';
-import { fetchObjectBytes, getBucketForTier } from '@taxtronik/storage';
+import { bytesResponseBody, fetchVerifiedObjectBytes, getBucketForTier } from '@taxtronik/storage';
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
 import { staffAuth } from '@/server/auth/staff';
 import { staffActionGuard } from '@/server/actions/staff-action';
@@ -32,9 +31,11 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         { error: 'Anhang nicht verfügbar oder nicht geprüft.' },
         { status: 404 },
       );
-    const bytes = await fetchObjectBytes(getBucketForTier('NONE'), a.storageKey);
-    if (createHash('sha256').update(bytes).digest('hex') !== a.sha256)
-      throw new Error('Checksum mismatch');
+    // R-05: Größe und SHA-256 des geprüften Anhangs vor Audit und Auslieferung.
+    const bytes = await fetchVerifiedObjectBytes(
+      { bucket: getBucketForTier('NONE'), key: a.storageKey },
+      { sizeBytes: a.sizeBytes, sha256: a.sha256 },
+    );
     await withTenantContext(g.ctx, async (tx) => {
       if (
         !(await readBooleanTenantModules(tx, g.tenantId)).smartMailbox ||
@@ -58,7 +59,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         after: { sha256: a.sha256 },
       });
     });
-    return new NextResponse(new Uint8Array(bytes), {
+    return new NextResponse(bytesResponseBody(bytes), {
       headers: {
         'Content-Type': a.mimeType,
         'Content-Disposition':

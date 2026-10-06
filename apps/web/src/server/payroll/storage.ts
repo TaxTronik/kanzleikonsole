@@ -1,12 +1,11 @@
 import 'server-only';
 import { z } from 'zod';
-import { createHash } from 'node:crypto';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
 import {
   prepareBytesCommitWithTier,
   commitPreparedBytes,
   recoverPreparedBytesCommit,
-  s3,
+  fetchVerifiedObjectBytes,
+  StoredObjectError,
   MAX_UPLOAD_BYTES,
   type PreparedBytesCommit,
 } from '@taxtronik/storage';
@@ -325,30 +324,19 @@ export async function persistPayrollFile(input: PersistPayrollFileInput): Promis
     throw new PayrollUploadError(pending.row.id);
   }
 }
-export async function payrollFileBytes(row: PayrollFile): Promise<Buffer> {
+/** R-05: gebundene Fassung über den gemeinsamen, immer prüfenden Leseweg. */
+export async function payrollFileBytes(row: PayrollFile): Promise<Buffer<ArrayBuffer>> {
   if (row.status !== 'COMPLETE' || !row.storageVersionId)
     throw new ActionError('Anlage noch nicht verfügbar.');
-  const object = await s3.send(
-    new GetObjectCommand({
-      Bucket: row.storageBucket,
-      Key: row.storageKey,
-      VersionId: row.storageVersionId,
-    }),
-  );
-  if (!object.Body) throw new ActionError('Datei nicht verfügbar.');
-  const chunks: Buffer[] = [];
-  let length = 0;
-  for await (const part of object.Body as AsyncIterable<Uint8Array>) {
-    const b = Buffer.from(part);
-    length += b.length;
-    if (length > MAX_UPLOAD_BYTES) throw new ActionError('Datei zu groß.');
-    chunks.push(b);
-  }
-  const bytes = Buffer.concat(chunks);
-  if (
-    BigInt(length) !== row.sizeBytes ||
-    createHash('sha256').update(bytes).digest('hex') !== row.sha256
-  )
+  try {
+    return await fetchVerifiedObjectBytes(
+      { bucket: row.storageBucket, key: row.storageKey, versionId: row.storageVersionId },
+      { sizeBytes: row.sizeBytes, sha256: row.sha256 },
+    );
+  } catch (error) {
+    if (!(error instanceof StoredObjectError)) throw error;
+    if (error.reason === 'MISSING_BODY') throw new ActionError('Datei nicht verfügbar.');
+    if (error.reason === 'TOO_LARGE') throw new ActionError('Datei zu groß.');
     throw new ActionError('Dateiintegrität konnte nicht bestätigt werden.');
-  return bytes;
+  }
 }

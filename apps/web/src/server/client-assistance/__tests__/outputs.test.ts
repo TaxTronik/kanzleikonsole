@@ -10,7 +10,11 @@ const mocks = vi.hoisted(() => ({
   persist: vi.fn(),
   guard: vi.fn(),
 }));
-vi.mock('@taxtronik/storage', () => ({ s3: { send: mocks.send } }));
+// R-05: S3 am Storage-Client mocken — der gemeinsame, prüfende Leseweg läuft echt mit.
+vi.mock('@taxtronik/storage/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@taxtronik/storage/client')>()),
+  s3: { send: mocks.send },
+}));
 vi.mock('@taxtronik/db', () => ({
   withTenantContext: (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(mocks.tx),
 }));

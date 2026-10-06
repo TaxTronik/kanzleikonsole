@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { withTenantContext } from '@taxtronik/db';
+import { bytesResponseBody } from '@taxtronik/storage';
 import { staffAuth } from '@/server/auth/staff';
 import { checkStaffExportLimit, getClientIp } from '@/server/rate-limit';
 import { evidenceService } from '@/server/container';
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
       },
       { isolationLevel: 'RepeatableRead' },
     );
-    return new NextResponse(new Uint8Array(bytes), {
+    return new NextResponse(bytesResponseBody(bytes), {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename="gwg-kontrollliste-${new Date().toISOString().slice(0, 10)}.xlsx"`,

@@ -23,7 +23,11 @@ const m = vi.hoisted(() => ({
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@taxtronik/config', () => ({ portalBaseUrl: 'https://portal.example.test' }));
-vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: vi.fn() }));
+// R-05: Ausweisquellen lesen über den gemeinsamen, prüfenden Leseweg.
+vi.mock('@taxtronik/storage', () => ({
+  fetchVerifiedObjectBytes: vi.fn(),
+  StoredObjectError: class StoredObjectError extends Error {},
+}));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@/server/auth/rbac', () => ({
   isStaffAdmin: m.isStaffAdmin,
@@ -92,7 +96,7 @@ import {
   gwgRiskRevision,
 } from '@/server/gwg/revisions';
 import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
-import { fetchObjectBytes } from '@taxtronik/storage';
+import { fetchVerifiedObjectBytes } from '@taxtronik/storage';
 
 const CHECK_ID = '11111111-1111-4111-8111-111111111111';
 const CLIENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -1460,7 +1464,7 @@ describe('atomare GwG-Bearbeitung', () => {
       m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
         fn(tx),
       );
-      vi.mocked(fetchObjectBytes).mockResolvedValueOnce(pdfBytes);
+      vi.mocked(fetchVerifiedObjectBytes).mockResolvedValueOnce(pdfBytes);
       const crop = { documentId, versionId, x: 0, y: 0, width: 1, height: 0.5, rotation: 0 };
       const data = formData();
       data.set('type', 'PERSONALAUSWEIS');
@@ -1479,8 +1483,8 @@ describe('atomare GwG-Bearbeitung', () => {
       );
 
       expect(await addIdDocumentAction(null, data)).toEqual(expected);
-      expect(fetchObjectBytes).toHaveBeenCalledOnce();
-      expect(vi.mocked(fetchObjectBytes).mock.invocationCallOrder[0]).toBeLessThan(
+      expect(fetchVerifiedObjectBytes).toHaveBeenCalledOnce();
+      expect(vi.mocked(fetchVerifiedObjectBytes).mock.invocationCallOrder[0]).toBeLessThan(
         m.withStaff.mock.invocationCallOrder[0]!,
       );
       if (expected.ok) {
@@ -2343,7 +2347,7 @@ describe('atomare GwG-Bearbeitung', () => {
       fn(tx),
     );
     m.lockCleanGwgDocuments.mockResolvedValue(true);
-    vi.mocked(fetchObjectBytes).mockRejectedValueOnce(
+    vi.mocked(fetchVerifiedObjectBytes).mockRejectedValueOnce(
       Object.assign(new Error('503 SlowDown'), { name: 'SlowDown' }),
     );
     const data = formData();
@@ -2376,8 +2380,8 @@ describe('atomare GwG-Bearbeitung', () => {
     );
     // P-13: Der Objektspeicher wird vor der gesperrten Transaktion gelesen,
     // genau einmal für die gemeinsame Version beider Seiten.
-    expect(fetchObjectBytes).toHaveBeenCalledOnce();
-    expect(vi.mocked(fetchObjectBytes).mock.invocationCallOrder[0]).toBeLessThan(
+    expect(fetchVerifiedObjectBytes).toHaveBeenCalledOnce();
+    expect(vi.mocked(fetchVerifiedObjectBytes).mock.invocationCallOrder[0]).toBeLessThan(
       m.withStaff.mock.invocationCallOrder[0]!,
     );
     expect(m.lockCleanGwgDocuments).toHaveBeenCalled();
@@ -2466,7 +2470,7 @@ describe('atomare GwG-Bearbeitung', () => {
     data.set('intent', 'confirm');
 
     expect(await updateIdDocumentsAction(null, data)).toMatchObject({ ok: true, verified: true });
-    expect(fetchObjectBytes).not.toHaveBeenCalled();
+    expect(fetchVerifiedObjectBytes).not.toHaveBeenCalled();
 
     // Dieselbe Entscheidung wie bisher: Seite 2 einer einseitigen PDF existiert nicht.
     tx.document.findFirst.mockResolvedValue(pdfSource(1));
@@ -2477,7 +2481,7 @@ describe('atomare GwG-Bearbeitung', () => {
         'Die gespeicherte Ausweisansicht passt nicht mehr zur Quelle. Bitte den Nachweis neu erfassen.',
     });
     expect(tx.gwgIdDocument.updateMany).not.toHaveBeenCalled();
-    expect(fetchObjectBytes).not.toHaveBeenCalled();
+    expect(fetchVerifiedObjectBytes).not.toHaveBeenCalled();
   });
   it('speichert die Risikobewertung samt Review-Reset mit genau einem CAS-Update', async () => {
     const tx = {

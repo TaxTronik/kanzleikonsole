@@ -423,47 +423,324 @@ export function sanitizeFilenameForHeader(name: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Direkter Bytes-Download (für Server-side Aggregationen wie ZIP-Exporte)
+// Lesen gespeicherter Objekte (R-05): EIN Leseweg für Bytes und Streams
+//
+// Vorher standen GetObjectCommand, Chunk-Schleife, Buffer.concat und
+// SHA-256-Vergleich viermal im Web-Code, und ob die Integrität geprüft wurde,
+// hing vom Pfad ab. Jetzt prüfen fetchVerifiedObjectBytes und
+// streamVerifiedObject jede bekannte Erwartung (Größe, SHA-256) immer, mit
+// gemeinsamem Größenlimit. fetchObjectBytes bleibt für Aufrufer ohne
+// gebundene Fassung und nutzt denselben Leseweg.
 // ---------------------------------------------------------------------------
 
-async function readObjectBodyWithLimit(
-  body: Readable,
-  contentLength: number | undefined,
-): Promise<Buffer> {
-  if (typeof contentLength === 'number' && contentLength > MAX_UPLOAD_BYTES) {
-    // Stream schliessen, bevor geworfen wird — sonst bleibt die S3-Verbindung
-    // offen, bis GC oder Socket-Timeout greifen. Der Streaming-Zweig unten
-    // macht es bereits richtig; diese Vorab-Pruefung tat es nicht.
-    body.destroy();
-    throw new Error(`TOO_LARGE: Objekt (${contentLength} B) überschreitet das Limit.`);
-  }
-  const chunks: Buffer[] = [];
-  let received = 0;
-  for await (const chunk of body) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as ArrayBuffer);
-    received += buf.length;
-    if (received > MAX_UPLOAD_BYTES) {
-      body.destroy();
-      throw new Error(`TOO_LARGE: Objekt überschreitet das Limit (Streaming).`);
-    }
-    chunks.push(buf);
-  }
-  return Buffer.concat(chunks);
+/** Ort eines gespeicherten Objekts; `versionId` bindet die Fassung (DOC-VERSION-IMMUTABILITY-001). */
+export interface StoredObjectRef {
+  bucket: string;
+  key: string;
+  versionId?: string | null;
 }
 
+/** Erwartete Merkmale der gebundenen Fassung — jeder bekannte Wert wird geprüft. */
+export interface StoredObjectIntegrity {
+  sizeBytes?: bigint | number | null;
+  /** SHA-256 als Hex-String (exakter Vergleich) oder als Rohbytes. */
+  sha256?: string | Uint8Array | null;
+}
+
+export interface StoredObjectReadOptions {
+  /** Obergrenze in Bytes (Default MAX_UPLOAD_BYTES). */
+  maxBytes?: number;
+}
+
+export type StoredObjectErrorReason =
+  | 'MISSING_BODY'
+  | 'TOO_LARGE'
+  | 'LENGTH_MISMATCH'
+  | 'OVERFLOW'
+  | 'SIZE_MISMATCH'
+  | 'HASH_MISMATCH';
+
+const INTEGRITY_REASONS: ReadonlySet<StoredObjectErrorReason> = new Set([
+  'LENGTH_MISMATCH',
+  'OVERFLOW',
+  'SIZE_MISMATCH',
+  'HASH_MISMATCH',
+]);
+
+/** Lesefehler mit Ursache; Meldungen beginnen mit dem Code (z. B. `TOO_LARGE: …`). */
+export class StoredObjectError extends Error {
+  constructor(
+    readonly reason: StoredObjectErrorReason,
+    message: string,
+  ) {
+    super(`${reason}: ${message}`);
+    this.name = 'StoredObjectError';
+  }
+
+  /** Inhalt weicht von der gebundenen Fassung ab — im Gegensatz zu Speicher-/Limitfehlern. */
+  get integrityViolation(): boolean {
+    return INTEGRITY_REASONS.has(this.reason);
+  }
+}
+
+function expectedObjectSize(integrity: StoredObjectIntegrity): number | null {
+  if (integrity.sizeBytes == null) return null;
+  const size = Number(integrity.sizeBytes);
+  // Eine unlesbare Erwartung ist nie erfüllbar: fail-closed statt ungeprüft.
+  if (!Number.isSafeInteger(size) || size < 0) {
+    throw new StoredObjectError('SIZE_MISMATCH', 'Ungültige erwartete Objektgröße.');
+  }
+  return size;
+}
+
+/** Zählt, deckelt und hasht die gelesenen Bytes; `finish` prüft Größe und SHA-256. */
+class StoredObjectVerifier {
+  private readonly hash = createHash('sha256');
+  private received = 0;
+
+  constructor(
+    private readonly maxBytes: number,
+    private readonly size: number | null,
+    private readonly sha256: string | Uint8Array | null,
+  ) {}
+
+  push(chunk: Uint8Array): void {
+    this.received += chunk.byteLength;
+    if (this.size !== null && this.received > this.size) {
+      throw new StoredObjectError('OVERFLOW', 'Objekt ist größer als die gebundene Fassung.');
+    }
+    if (this.received > this.maxBytes) {
+      throw new StoredObjectError('TOO_LARGE', 'Objekt überschreitet das Limit (Streaming).');
+    }
+    this.hash.update(chunk);
+  }
+
+  finish(): void {
+    if (this.size !== null && this.received !== this.size) {
+      throw new StoredObjectError('SIZE_MISMATCH', 'Objektgröße weicht von der Fassung ab.');
+    }
+    if (this.sha256 === null) return;
+    const digest = this.hash.digest();
+    const matches =
+      typeof this.sha256 === 'string'
+        ? digest.toString('hex') === this.sha256
+        : digest.equals(Buffer.from(this.sha256));
+    if (!matches) {
+      throw new StoredObjectError('HASH_MISMATCH', 'SHA-256 weicht von der Fassung ab.');
+    }
+  }
+}
+
+interface OpenedStoredObject {
+  body: Readable;
+  contentLength: number | null;
+  contentType: string | null;
+  size: number | null;
+}
+
+async function openStoredObject(
+  ref: StoredObjectRef,
+  integrity: StoredObjectIntegrity,
+  maxBytes: number,
+): Promise<OpenedStoredObject> {
+  const size = expectedObjectSize(integrity);
+  if (size !== null && size > maxBytes) {
+    throw new StoredObjectError('TOO_LARGE', `Objekt (${size} B) überschreitet das Limit.`);
+  }
+  const result = await s3.send(
+    new GetObjectCommand({ Bucket: ref.bucket, Key: ref.key, ...versionReadInput(ref.versionId) }),
+  );
+  const body = result.Body as Readable | undefined;
+  if (!body) throw new StoredObjectError('MISSING_BODY', 'Objekt ohne lesbaren Inhalt.');
+  const contentLength = typeof result.ContentLength === 'number' ? result.ContentLength : null;
+  // Body vor dem Werfen schliessen — sonst bleibt die S3-Verbindung bis zum
+  // Socket-Timeout offen.
+  if (contentLength !== null && contentLength > maxBytes) {
+    body.destroy?.();
+    throw new StoredObjectError(
+      'TOO_LARGE',
+      `Objekt (${contentLength} B) überschreitet das Limit.`,
+    );
+  }
+  if (contentLength !== null && size !== null && contentLength !== size) {
+    body.destroy?.();
+    throw new StoredObjectError('LENGTH_MISMATCH', 'Objektlänge weicht von der Fassung ab.');
+  }
+  return { body, contentLength, contentType: result.ContentType ?? null, size };
+}
+
+function asBytes(chunk: unknown): Uint8Array {
+  return chunk instanceof Uint8Array ? chunk : Buffer.from(chunk as ArrayBuffer);
+}
+
+/**
+ * Liest ein Objekt vollständig und prüft jede bekannte Erwartung (Größe,
+ * SHA-256) vor der Rückgabe. Für Pfade, die Bytes erst nach bestandener
+ * Prüfung freigeben oder auditieren dürfen. Bei bekannter Größe entsteht der
+ * Zielpuffer genau einmal; das Ergebnis taugt ohne weitere Kopie als
+ * Response-Body (siehe bytesResponseBody).
+ */
+export async function fetchVerifiedObjectBytes(
+  ref: StoredObjectRef,
+  integrity: StoredObjectIntegrity = {},
+  options: StoredObjectReadOptions = {},
+): Promise<Buffer<ArrayBuffer>> {
+  const maxBytes = options.maxBytes ?? MAX_UPLOAD_BYTES;
+  const opened = await openStoredObject(ref, integrity, maxBytes);
+  const verifier = new StoredObjectVerifier(maxBytes, opened.size, integrity.sha256 ?? null);
+  const target = opened.size !== null ? Buffer.from(new ArrayBuffer(opened.size)) : null;
+  const chunks: Uint8Array[] = [];
+  let offset = 0;
+  try {
+    for await (const part of opened.body) {
+      const chunk = asBytes(part);
+      verifier.push(chunk);
+      if (target) target.set(chunk, offset);
+      else chunks.push(chunk);
+      offset += chunk.byteLength;
+    }
+    verifier.finish();
+  } catch (error) {
+    opened.body.destroy?.();
+    throw error;
+  }
+  return target ?? Buffer.concat(chunks, offset);
+}
+
+/** Prüft ein Objekt gegen die Erwartung, ohne es im Speicher zu halten. */
+async function verifyStoredObject(
+  ref: StoredObjectRef,
+  integrity: StoredObjectIntegrity,
+  options: StoredObjectReadOptions = {},
+): Promise<void> {
+  const maxBytes = options.maxBytes ?? MAX_UPLOAD_BYTES;
+  const opened = await openStoredObject(ref, integrity, maxBytes);
+  const verifier = new StoredObjectVerifier(maxBytes, opened.size, integrity.sha256 ?? null);
+  try {
+    for await (const part of opened.body) verifier.push(asBytes(part));
+    verifier.finish();
+  } catch (error) {
+    opened.body.destroy?.();
+    throw error;
+  }
+}
+
+/** Bytes ohne gebundene Erwartung (z. B. interne Rohdaten), mit Größenlimit. */
 export async function fetchObjectBytes(
   bucket: string,
   storageKey: string,
   storageVersionId?: string | null,
 ): Promise<Buffer> {
-  const result = await s3.send(
-    new GetObjectCommand({
-      Bucket: bucket,
-      Key: storageKey,
-      ...versionReadInput(storageVersionId),
+  return fetchVerifiedObjectBytes({ bucket, key: storageKey, versionId: storageVersionId });
+}
+
+export interface VerifiedObjectStream {
+  body: ReadableStream<Uint8Array>;
+  contentLength: number | null;
+  contentType: string | null;
+}
+
+/**
+ * Streamt ein Objekt und prüft dabei jede bekannte Erwartung. Eine Abweichung
+ * lässt den Stream am Ende (bzw. beim ersten überzähligen Byte) mit
+ * StoredObjectError fehlschlagen; die HTTP-Antwort bricht dann ab statt
+ * vollständig zu erscheinen. Das letzte Stück wird erst nach bestandener
+ * Prüfung freigegeben: Sonst hätte der Client bei gesetzter Content-Length
+ * bereits alle (abweichenden) Bytes, bevor der Hash am Ende scheitert. Pfade,
+ * die Bytes erst nach bestandener Prüfung freigeben dürfen, verwenden
+ * fetchVerifiedObjectBytes.
+ */
+export async function streamVerifiedObject(
+  ref: StoredObjectRef,
+  integrity: StoredObjectIntegrity = {},
+  options: StoredObjectReadOptions = {},
+): Promise<VerifiedObjectStream> {
+  const maxBytes = options.maxBytes ?? MAX_UPLOAD_BYTES;
+  const opened = await openStoredObject(ref, integrity, maxBytes);
+  const verifier = new StoredObjectVerifier(maxBytes, opened.size, integrity.sha256 ?? null);
+  const source = Readable.toWeb(opened.body) as ReadableStream<Uint8Array>;
+  let held: Uint8Array | null = null;
+  const body = source.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        verifier.push(chunk);
+        if (chunk.byteLength === 0) return;
+        if (held) controller.enqueue(held);
+        held = chunk;
+      },
+      flush(controller) {
+        verifier.finish();
+        if (held) controller.enqueue(held);
+      },
     }),
   );
-  return readObjectBodyWithLimit(result.Body as Readable, result.ContentLength);
+  return {
+    body,
+    contentLength: opened.contentLength ?? opened.size,
+    contentType: opened.contentType,
+  };
+}
+
+/** Umfang der Typprüfung per Range-Request (Magic Bytes stehen am Dateianfang). */
+export const OBJECT_HEAD_BYTES = 1024;
+
+/**
+ * Liest nur den Anfang eines Objekts per Range-Request — für die
+ * Typerkennung (Magic Bytes) statt die ganze Datei zu laden. Ein Store ohne
+ * Range-Unterstützung wird nach `length` Bytes nicht weitergelesen.
+ */
+export async function fetchObjectHead(
+  ref: StoredObjectRef,
+  length: number = OBJECT_HEAD_BYTES,
+): Promise<Buffer> {
+  if (!Number.isSafeInteger(length) || length <= 0) {
+    throw new RangeError('fetchObjectHead: Länge muss eine positive Ganzzahl sein.');
+  }
+  let body: Readable | undefined;
+  try {
+    const result = await s3.send(
+      new GetObjectCommand({
+        Bucket: ref.bucket,
+        Key: ref.key,
+        ...versionReadInput(ref.versionId),
+        Range: `bytes=0-${length - 1}`,
+      }),
+    );
+    body = result.Body as Readable | undefined;
+  } catch (error) {
+    // 416: Range eines leeren Objekts — es gibt keine Kopfbytes.
+    const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+    if (status === 416 || (error as Error).name === 'InvalidRange') return Buffer.alloc(0);
+    throw error;
+  }
+  if (!body) throw new StoredObjectError('MISSING_BODY', 'Objekt ohne lesbaren Inhalt.');
+  const chunks: Buffer[] = [];
+  let received = 0;
+  try {
+    for await (const part of body) {
+      const chunk = Buffer.from(asBytes(part));
+      chunks.push(chunk.subarray(0, length - received));
+      received += chunk.byteLength;
+      if (received >= length) break;
+    }
+  } finally {
+    body.destroy?.();
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * Response-Body aus einem fertigen Puffer, ohne ihn zu kopieren: ein Stream
+ * mit genau einem Chunk. `new NextResponse(new Uint8Array(buf))` kopierte
+ * zweimal (Konstruktor und Body-Extraktion der Fetch-Implementierung).
+ */
+export function bytesResponseBody(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
 }
 
 /** DOC-VERSION-IMMUTABILITY-001: a known version must never fall back to a mutable key. */
@@ -804,19 +1081,19 @@ export async function recoverPreparedBytesCommit(
   }
 
   const storageVersionId = versions.keys().next().value as string;
-  const object = await s3.send(
-    new GetObjectCommand({
-      Bucket: prepared.targetBucket,
-      Key: prepared.targetKey,
-      VersionId: storageVersionId,
-    }),
-  );
-  const bytes = await readObjectBodyWithLimit(object.Body as Readable, object.ContentLength);
-  const recoveredSha256 = createHash('sha256').update(bytes).digest();
-  if (BigInt(bytes.length) !== prepared.sizeBytes || !recoveredSha256.equals(prepared.sha256)) {
-    throw new Error(
-      'PREPARED_UPLOAD_MISMATCH: Persistiertes Objekt stimmt nicht mit Intent überein.',
+  try {
+    await verifyStoredObject(
+      { bucket: prepared.targetBucket, key: prepared.targetKey, versionId: storageVersionId },
+      { sizeBytes: prepared.sizeBytes, sha256: prepared.sha256 },
     );
+  } catch (error) {
+    if (error instanceof StoredObjectError && error.integrityViolation) {
+      throw new Error(
+        'PREPARED_UPLOAD_MISMATCH: Persistiertes Objekt stimmt nicht mit Intent überein.',
+        { cause: error },
+      );
+    }
+    throw error;
   }
 
   return {

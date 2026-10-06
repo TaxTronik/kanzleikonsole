@@ -3,7 +3,7 @@ import { getPayrollFile, payrollFileBytes } from './storage';
 import { payrollGuard, type PayrollSurface } from './service';
 import { requireGuestHash } from './capability';
 import { checkRateLimit } from '@/server/rate-limit';
-import { sanitizeFilenameForHeader } from '@taxtronik/storage';
+import { bytesResponseBody, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { isUuid } from '@/lib/uuid';
 export async function payrollDownload(
   surface: PayrollSurface | 'employee',
@@ -23,7 +23,7 @@ export async function payrollDownload(
     const bytes = await payrollFileBytes(row);
     // Do not return bytes after a concurrent grant revocation or mandate end.
     await getPayrollFile(surface, attachmentId, intakeId);
-    return new NextResponse(new Uint8Array(bytes), {
+    return new NextResponse(bytesResponseBody(bytes), {
       headers: {
         'content-type': row.mimeType,
         'content-disposition':

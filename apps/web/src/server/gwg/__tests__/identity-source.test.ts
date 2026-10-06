@@ -4,7 +4,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
 import { PDFDocument } from 'pdf-lib';
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }));
-vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: mocks.fetch }));
+// R-05: S3 am Storage-Client mocken, damit der echte, immer prüfende Leseweg
+// (fetchVerifiedObjectBytes) mitläuft. `mocks.fetch` liefert die Objektbytes.
+vi.mock('@taxtronik/storage/client', async (importOriginal) => {
+  const { Readable } = await import('node:stream');
+  return {
+    ...(await importOriginal<typeof import('@taxtronik/storage/client')>()),
+    s3: {
+      send: async () => {
+        const body = (await mocks.fetch()) as Buffer;
+        return { Body: Readable.from([body]), ContentLength: body.length };
+      },
+    },
+  };
+});
 import {
   IdentitySourceStorageError,
   identityViewsNeedPageCheck,

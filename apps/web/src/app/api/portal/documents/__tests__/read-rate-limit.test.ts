@@ -26,8 +26,8 @@ const m = vi.hoisted(() => ({
   getClientIp: vi.fn(),
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
-  streamObject: vi.fn(),
-  fetchObjectBytes: vi.fn(),
+  streamVerifiedObject: vi.fn(),
+  fetchObjectHead: vi.fn(),
   detectMimeFromMagicBytes: vi.fn(),
   tx: {
     document: { findFirst: vi.fn() },
@@ -43,8 +43,8 @@ vi.mock('@/server/rate-limit', () => ({
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
 vi.mock('@taxtronik/storage', () => ({
-  streamObject: m.streamObject,
-  fetchObjectBytes: m.fetchObjectBytes,
+  streamVerifiedObject: m.streamVerifiedObject,
+  fetchObjectHead: m.fetchObjectHead,
   detectMimeFromMagicBytes: m.detectMimeFromMagicBytes,
   sanitizeFilenameForHeader: (s: string) => s,
 }));
@@ -65,6 +65,8 @@ const SESSION = {
   user: { tenantId: 'tenant-1', contactId: 'contact-1', clientId: 'client-1' },
 };
 
+const BOUND_SHA256 = new Uint8Array(32).fill(1);
+
 const DOCUMENT = {
   id: 'doc-1',
   title: 'BWA Mai',
@@ -75,6 +77,8 @@ const DOCUMENT = {
       versionNo: 1,
       storageBucket: 'docs',
       storageKey: 'k/doc-1',
+      sha256: BOUND_SHA256,
+      sizeBytes: 5n,
       scanStatus: 'CLEAN',
       scanCompletedAt: new Date('2026-01-01T00:00:00Z'),
     },
@@ -100,8 +104,8 @@ beforeEach(() => {
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
     fn(m.tx),
   );
-  m.streamObject.mockResolvedValue({ body: 'bytes', contentLength: 5 });
-  m.fetchObjectBytes.mockResolvedValue(Buffer.from('%PDF-1.4'));
+  m.streamVerifiedObject.mockResolvedValue({ body: 'bytes', contentLength: 5, contentType: null });
+  m.fetchObjectHead.mockResolvedValue(Buffer.from('%PDF-1.4'));
   m.detectMimeFromMagicBytes.mockReturnValue('application/pdf');
 });
 
@@ -157,8 +161,8 @@ describe.each(ROUTES)('Portal-Read-Limit: $name-Route', ({ call, audits }) => {
       const response = await call();
       expect(response.status).toBe(404);
       expect(m.evidenceRecord).not.toHaveBeenCalled();
-      expect(m.streamObject).not.toHaveBeenCalled();
-      expect(m.fetchObjectBytes).not.toHaveBeenCalled();
+      expect(m.streamVerifiedObject).not.toHaveBeenCalled();
+      expect(m.fetchObjectHead).not.toHaveBeenCalled();
     },
   );
   it('keine Session → 401, Limiter wird NICHT konsumiert', async () => {
@@ -213,8 +217,16 @@ describe('Preview-Route — Antwortformen unter Limit', () => {
     );
     expect(res.status).toBe(200);
     expect(m.checkPortalReadLimit).toHaveBeenCalledTimes(1);
-    expect(m.fetchObjectBytes).toHaveBeenCalledWith('docs', 'k/doc-1', undefined);
+    // R-05: Typerkennung per Range-Request auf die Kopfbytes; die Bytes werden
+    // gestreamt und gegen Größe/SHA-256 der gebundenen Fassung geprüft.
+    const ref = { bucket: 'docs', key: 'k/doc-1', versionId: undefined };
+    expect(m.fetchObjectHead).toHaveBeenCalledWith(ref);
+    expect(m.streamVerifiedObject).toHaveBeenCalledWith(ref, {
+      sizeBytes: 5n,
+      sha256: BOUND_SHA256,
+    });
     expect(res.headers.get('content-type')).toBe('application/pdf');
+    expect(res.headers.get('content-length')).toBe('5');
   });
 
   // Der komplette Portal-Zugriffsschutz auf das Dokumentenarchiv ist diese
@@ -240,16 +252,16 @@ describe('Preview-Route — Antwortformen unter Limit', () => {
       m.tx.document.findFirst.mockResolvedValue(null);
       const res = await call();
       expect(res.status).toBe(404);
-      expect(m.streamObject).not.toHaveBeenCalled();
-      expect(m.fetchObjectBytes).not.toHaveBeenCalled();
+      expect(m.streamVerifiedObject).not.toHaveBeenCalled();
+      expect(m.fetchObjectHead).not.toHaveBeenCalled();
     });
 
     it('liefert 404, wenn keine Version existiert', async () => {
       m.tx.document.findFirst.mockResolvedValue({ ...DOCUMENT, versions: [] });
       const res = await call();
       expect(res.status).toBe(404);
-      expect(m.streamObject).not.toHaveBeenCalled();
-      expect(m.fetchObjectBytes).not.toHaveBeenCalled();
+      expect(m.streamVerifiedObject).not.toHaveBeenCalled();
+      expect(m.fetchObjectHead).not.toHaveBeenCalled();
     });
   });
 
@@ -260,7 +272,7 @@ describe('Preview-Route — Antwortformen unter Limit', () => {
       mimeType: 'image/jpeg',
       classification: 'GOBD_CONTRACT',
     });
-    m.fetchObjectBytes.mockResolvedValue(Buffer.from('%PDF-1.7'));
+    m.fetchObjectHead.mockResolvedValue(Buffer.from('%PDF-1.7'));
     m.detectMimeFromMagicBytes.mockReturnValue('application/pdf');
 
     const res = await previewGet(
