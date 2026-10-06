@@ -89,6 +89,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // AUDIT-HASH-CHAIN-001 (K-03): Owner-Fixtures in einem frischen Tenant; die App-Rolle führt
   // Routen-, Zustellungs- und Reset-Services der n8n-Einstellungen unter RLS aus.
   'apps/web/src/server/n8n-settings/__tests__/n8n-settings-db.test.ts',
+  // GWG-IDENTIFICATION-EVIDENCE-001 / GWG-RISK-REVIEW-001 (K-03): Owner-Fixtures in einem
+  // frischen Tenant; die App-Rolle führt die GwG-Services unter RLS, Triggern und Lock aus.
+  'apps/web/src/server/gwg/__tests__/services-db.test.ts',
   // Fachkatalog: REMINDER-TICKET-001. Isolierte Owner-Fixtures und eine
   // separate App-Verbindung belegen Nummernvergabe, RLS, FK- und Archivrennen.
   'packages/db/src/__tests__/reminder-tickets.test.ts',

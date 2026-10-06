@@ -23,12 +23,31 @@ function expectOrdered(contents: string, ...needles: string[]): void {
 }
 
 describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
-  const staffActions = source('../../../app/staff/(protected)/clients/[id]/gwg/actions.ts');
+  // K-03: Die Abläufe der Staff-Actions liegen als Services in server/gwg.
+  const checkCycle = source('../check-cycle.ts');
+  const checkDecisions = source('../check-decisions.ts');
+  const editableCheck = source('../editable-check.ts');
   const lifecycle = source('../reverification.ts');
+
+  it('nimmt im Prelude bearbeitender Operationen Zugriff, Lock und Snapshot in fester Reihenfolge', () => {
+    expectOrdered(
+      section(editableCheck, 'export async function withEditableGwgCheckTx'),
+      'assertClientAccessTx(',
+      'lockGwgCheckLifecycleTx(',
+      'tx.gwgCheck.findFirst(',
+      'beforeEditable?.(',
+      'assertGwgEditable(',
+      'claimCheckMutation(',
+    );
+  });
 
   it('serialisiert Create, Submit, Verify und Reject vor Snapshot-Entscheidungen', () => {
     expectOrdered(
-      section(staffActions, 'async function startCheckCycle', 'const AnswersSchema'),
+      section(
+        checkCycle,
+        'export async function startGwgCheckCycleTx',
+        'export interface GwgRiskAnswersInput',
+      ),
       'lockGwgCheckLifecycleTx(',
       'tx.gwgCheck.findFirst(',
       'startFreshGwgReviewTx(',
@@ -46,9 +65,9 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
     );
     expectOrdered(
       section(
-        staffActions,
-        'export async function submitCheckForReviewAction',
-        'export async function verifyCheckAction',
+        checkDecisions,
+        'export async function submitCheckForReviewTx',
+        'export interface GwgVerificationInput',
       ),
       'lockGwgCheckLifecycleTx(',
       'tx.gwgCheck.findFirst(',
@@ -56,7 +75,11 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
       'tx.gwgCheck.updateMany(',
     );
     expectOrdered(
-      section(staffActions, 'export async function verifyCheckAction', 'const RejectSchema'),
+      section(
+        checkDecisions,
+        'export async function verifyCheckTx',
+        'export interface GwgRejectionInput',
+      ),
       'lockGwgCheckLifecycleTx(',
       'lockStaffGwgReviewerTx(',
       'tx.gwgCheck.findFirst(',
@@ -65,7 +88,7 @@ describe('GwG-Lifecycle-Lock – Aufrufer-Reihenfolge', () => {
       'tx.client.update(',
     );
     expectOrdered(
-      section(staffActions, 'export async function rejectCheckAction'),
+      section(checkDecisions, 'export async function rejectCheckTx'),
       'lockGwgCheckLifecycleTx(',
       'lockStaffGwgReviewerTx(',
       'assertLatestCheckForDecision(',

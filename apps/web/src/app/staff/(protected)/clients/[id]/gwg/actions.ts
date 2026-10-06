@@ -1,138 +1,31 @@
 'use server';
 
-import { lockStaffGwgReviewerTx } from '@/server/gwg/professional-review';
+// GwG-Prüfungs-Lebenszyklus: Parsen → Service in der Tenant-Transaktion →
+// Ergebnis/Revalidate. Die Fachlogik liegt in server/gwg (Review-Befund K-03):
+// check-cycle.ts (Zyklus, Risikobewertung), legal-entity.ts (Rechtsträger) und
+// check-decisions.ts (Übergabe, Verifikation, Ablehnung).
 
-import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
-import { revokeAllSessions } from '@/server/auth/revocation';
-import { withTenantContext, type TxClient } from '@taxtronik/db';
-import { resolveNotificationsTx } from '@taxtronik/db/notification';
-import { Prisma } from '@prisma/client';
-import { evidenceService } from '@/server/container';
-import { computeRiskScore, riskValidForDays, DEFAULT_FACTORS } from '@/server/gwg/risk-score';
+import { toActionError } from '@/server/auth/rbac';
+import { withTenantContext } from '@taxtronik/db';
+import { kickMailOutboxDelivery } from '@/server/mail/outbox';
 import { emitN8nEvent } from '@/server/n8n/emit';
-import { enqueueClientContactsMailTx, kickMailOutboxDelivery } from '@/server/mail/outbox';
-import { portalBaseUrl } from '@taxtronik/config';
-import { gwgDecisionGateErrors } from '@/server/gwg/verification';
+import { DEFAULT_FACTORS } from '@/server/gwg/risk-score';
+import { saveRiskAnswersTx, startGwgCheckCycleTx } from '@/server/gwg/check-cycle';
 import {
-  copyGwgSnapshotTx,
-  GWG_SNAPSHOT_COPY_INCLUDE,
-  lockGwgCheckLifecycleTx,
-  startFreshGwgReviewTx,
-} from '@/server/gwg/reverification';
-import { notifyMany } from '@/server/notifications/service';
-import { gwgLegalEntityRevision, gwgRiskRevision } from '@/server/gwg/revisions';
-import { gwgProfessionalReviewSnapshotHash } from '@/server/gwg/review-snapshot';
-import { assertGwgScreeningReadyTx } from '@/server/screening/gwg-gate';
-import { syncGwgRepresentativesTx } from '@/server/gwg/representatives';
-import { cancelOpenGwgInvitesTx } from '@/server/gwg-onboarding/invite-lifecycle';
-import { organizeGwgDocumentsTx } from '@/server/gwg-onboarding/document-folders';
-import {
-  staffActionGuard,
-  withStaff,
-  ActionError,
-  parseFormData,
-} from '@/server/actions/staff-action';
+  rejectCheckTx,
+  submitCheckForReviewTx,
+  verifyCheckTx,
+  type GwgVerificationResult,
+} from '@/server/gwg/check-decisions';
+import { saveLegalEntityDetailsTx } from '@/server/gwg/legal-entity';
+import { staffActionGuard, withStaff, parseFormData } from '@/server/actions/staff-action';
 
-import {
-  invalidatedIdentitySetRevisions,
-  assertGwgEditable,
-  confirmUnchangedCheck,
-  type ActionResult,
-  type InvalidatedIdentitySet,
-} from './_action-helpers';
+import { type ActionResult, type InvalidatedIdentitySet } from './_action-helpers';
 
 // Stabile Typ-Importpfade fuer die Form-Komponenten dieser Route.
 export type { ActionResult, InvalidatedIdentitySet, SavedBeneficialOwner } from './_action-helpers';
-
-async function assertLatestCheckForDecision(
-  tx: TxClient,
-  input: { clientId: string; checkId: string },
-): Promise<void> {
-  const latest = await tx.gwgCheck.findFirst({
-    where: { clientId: input.clientId },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    select: { id: true },
-  });
-  if (!latest || latest.id !== input.checkId) {
-    throw new ActionError(
-      'Für diesen Mandanten existiert bereits eine neuere GwG-Prüfung. Die ältere Prüfung darf nicht mehr entschieden werden; bitte Seite neu laden.',
-    );
-  }
-}
-
-async function resolveGwgCheckNotificationsTx(
-  tx: TxClient,
-  input: { tenantId: string; checkId: string },
-): Promise<void> {
-  const invites = await tx.gwgOnboardingInvite.findMany({
-    where: { tenantId: input.tenantId, gwgCheckId: input.checkId },
-    select: { id: true },
-  });
-  await resolveNotificationsTx(tx, {
-    tenantId: input.tenantId,
-    resources: [
-      { resourceType: 'gwg_check', resourceId: input.checkId },
-      ...invites.map((invite) => ({
-        resourceType: 'gwg_onboarding_invite',
-        resourceId: invite.id,
-      })),
-    ],
-  });
-}
-
-interface LinkedOwnerGeneralData {
-  id: string;
-  fullName: string;
-  birthDate: Date | null;
-  birthPlace: string | null;
-  residence: string | null;
-  nationality: string | null;
-  isPep: boolean;
-}
-
-async function synchronizeLinkedRepresentativeGeneralDataTx(
-  tx: TxClient,
-  input: {
-    enabled: boolean;
-    checkId: string;
-    representatives: Array<{ id: string; linkedBeneficialOwnerId: string | null }>;
-    ownersById: Map<string, LinkedOwnerGeneralData>;
-  },
-): Promise<void> {
-  if (!input.enabled) return;
-  for (const representative of input.representatives) {
-    if (!representative.linkedBeneficialOwnerId) continue;
-    const linkedOwner = input.ownersById.get(representative.linkedBeneficialOwnerId);
-    if (!linkedOwner) {
-      throw new ActionError(
-        'Die verknüpfte wirtschaftlich berechtigte Person gehört nicht mehr zu dieser Prüfung.',
-      );
-    }
-    const synchronized = await tx.gwgRepresentative.updateMany({
-      where: {
-        id: representative.id,
-        gwgCheckId: input.checkId,
-        linkedBeneficialOwnerId: linkedOwner.id,
-      },
-      data: {
-        fullName: linkedOwner.fullName,
-        birthDate: linkedOwner.birthDate,
-        birthPlace: linkedOwner.birthPlace,
-        residence: linkedOwner.residence,
-        nationality: linkedOwner.nationality,
-        isPep: linkedOwner.isPep,
-      },
-    });
-    if (synchronized.count !== 1) {
-      throw new ActionError(
-        'Die Doppelrolle konnte nicht vollständig synchronisiert werden. Bitte erneut versuchen.',
-      );
-    }
-  }
-}
 
 const OpenSchema = z.object({
   clientId: z.string().uuid(),
@@ -142,8 +35,6 @@ const OpenSchema = z.object({
     .default('ROUTINE'),
 });
 
-const TERMINAL_GWG_STATUSES = ['VERIFIED', 'REJECTED', 'EXPIRED'] as const;
-
 async function startCheckCycle(formData: FormData): Promise<ActionResult & { checkId?: string }> {
   const parsed = OpenSchema.safeParse({
     clientId: formData.get('clientId'),
@@ -151,93 +42,15 @@ async function startCheckCycle(formData: FormData): Promise<ActionResult & { che
     changeScope: formData.get('changeScope') ?? 'ROUTINE',
   });
   if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { clientId, expectedLatestCheckId, changeScope } = parsed.data;
+  const { clientId } = parsed.data;
 
-  return withStaff(
-    async (tx, { tenantId, staffId, session }) => {
-      await assertClientAccessTx(tx, session, clientId);
-      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
-      const latest = await tx.gwgCheck.findFirst({
-        where: { clientId },
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        include: GWG_SNAPSHOT_COPY_INCLUDE,
-      });
-
-      if (expectedLatestCheckId) {
-        if (!latest || latest.id !== expectedLatestCheckId) {
-          throw new ActionError(
-            'Der Prüfstatus hat sich zwischenzeitlich geändert. Bitte Seite neu laden.',
-          );
-        }
-        if (!(TERMINAL_GWG_STATUSES as readonly string[]).includes(latest.status)) {
-          throw new ActionError(
-            'Für diesen Mandanten läuft bereits eine bearbeitbare GwG-Prüfung.',
-          );
-        }
-      } else if (latest) {
-        throw new ActionError(
-          'Für diesen Mandanten existiert bereits eine GwG-Prüfung. Bitte Seite neu laden.',
-        );
-      }
-
-      // Immer einen zeitlich neuesten Snapshot erzeugen. Der gemeinsame
-      // Lifecycle-Lock verhindert Doppelklick-Duplikate; ein bisher VERIFIEDer
-      // Check wird dabei fachlich korrekt EXPIRED und der Mandant bis zur neuen
-      // Freigabe fail-closed deaktiviert.
-      const review = await startFreshGwgReviewTx(tx, {
-        tenantId,
-        clientId,
-        predecessorCheckId: latest?.id ?? null,
-        changeScope: latest ? changeScope : 'INITIAL',
-      });
-      const checkId = review.reviewCheckId;
-      if (latest) {
-        await resolveGwgCheckNotificationsTx(tx, {
-          tenantId,
-          checkId: latest.id,
-        });
-      }
-      await cancelOpenGwgInvitesTx(tx, {
-        tenantId,
-        clientId,
-        cancelledByStaff: staffId,
-      });
-
-      const copiedSnapshot = await copyGwgSnapshotTx(tx, {
-        tenantId,
-        clientId,
-        targetCheckId: checkId,
-        source: latest,
-      });
-
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'gwg.check.open',
-        resourceType: 'gwg_check',
-        resourceId: checkId,
-        after: {
-          clientId,
-          previousCheckId: latest?.id ?? null,
-          previousStatus: latest?.status ?? null,
-          sourceDestroyed: latest?.destroyedAt !== null && latest?.destroyedAt !== undefined,
-          ...copiedSnapshot,
-          invalidatedChecks: review.invalidatedChecks,
-          clientDeactivated: review.clientDeactivated,
-          changeScope: latest ? changeScope : 'INITIAL',
-        },
-      });
-      return { checkId };
-    },
-    {
-      // Nur Fremd-Routen invalidieren — die aktuelle GwG-Route refresht
-      // StartCheckCycleForm nach ok außerhalb der Form-Transition (der
-      // In-POST-Re-Render ließ die Transition sonst bis zum nächsten
-      // Klick hängen).
-      revalidate: [`/staff/clients/${clientId}`, `/staff/clients/onboarding/${clientId}`],
-    },
-  );
+  return withStaff((tx, staff) => startGwgCheckCycleTx(tx, parsed.data, staff), {
+    // Nur Fremd-Routen invalidieren — die aktuelle GwG-Route refresht
+    // StartCheckCycleForm nach ok außerhalb der Form-Transition (der
+    // In-POST-Re-Render ließ die Transition sonst bis zum nächsten
+    // Klick hängen).
+    revalidate: [`/staff/clients/${clientId}`, `/staff/clients/onboarding/${clientId}`],
+  });
 }
 
 /**
@@ -302,65 +115,7 @@ export async function saveRiskAnswersAction(input: {
     };
   }
 
-  const { checkId, clientId, answers } = parsed.data;
-  const result = computeRiskScore(answers);
-
-  return withStaff(async (tx, { tenantId, staffId, session }) => {
-    await assertClientAccessTx(tx, session, clientId);
-    await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
-    // Schmaler Select: die Zeile trägt große JSON-Spalten (Snapshots,
-    // Breakdown), gebraucht werden nur Status + Risikofelder für CAS/Evidence.
-    const before = await tx.gwgCheck.findFirst({
-      where: { id: checkId, clientId },
-      select: { status: true, riskAnswers: true, riskScore: true, riskLevel: true },
-    });
-    if (!before) throw new ActionError('GwG-Check nicht gefunden.');
-    assertGwgEditable(before.status);
-    if (gwgRiskRevision(before) !== parsed.data.expectedRevision) {
-      throw new ActionError(
-        'Die Risikobewertung wurde zwischenzeitlich geändert. Bitte Seite neu laden; Ihre Eingabe wurde nicht überschrieben.',
-      );
-    }
-    // Status-CAS und fachliches Update in einem Statement. Der alte Pfad
-    // schrieb zuerst nur den Review-Reset und danach die Bewertung; auf der
-    // bewusst serialisierten Tenant-Tx war das ein kompletter DB-Roundtrip
-    // mehr pro Klick.
-    const updated = await tx.gwgCheck.updateMany({
-      where: { id: checkId, clientId, status: before.status },
-      data: {
-        status: 'DRAFT',
-        reviewSubmittedAt: null,
-        reviewSubmittedBy: null,
-        riskAnswers: answers,
-        riskScore: result.score,
-        riskLevel: result.level,
-        riskBreakdown: { factors: result.breakdown } as unknown as Prisma.InputJsonValue,
-      },
-    });
-    if (updated.count === 0) {
-      throw new ActionError(
-        'Der Pr\u00fcfstatus wurde parallel ge\u00e4ndert. Ihre Eingabe wurde nicht gespeichert; bitte Seite neu laden.',
-      );
-    }
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'gwg.check.assess',
-      resourceType: 'gwg_check',
-      resourceId: checkId,
-      before: { riskScore: before.riskScore, riskLevel: before.riskLevel },
-      after: { riskScore: result.score, riskLevel: result.level },
-    });
-    return {
-      reviewReset: before.status === 'IN_REVIEW',
-      revision: gwgRiskRevision({
-        riskAnswers: answers,
-        riskScore: result.score,
-        riskLevel: result.level,
-      }),
-    };
-  });
+  return withStaff((tx, staff) => saveRiskAnswersTx(tx, parsed.data, staff));
 }
 
 const LegalEntityDetailsSchema = z
@@ -477,210 +232,7 @@ export async function saveLegalEntityDetailsAction(
   }
   const data = parsed.data;
 
-  return withStaff(async (tx, { tenantId, staffId, session }) => {
-    await assertClientAccessTx(tx, session, data.clientId);
-    await lockGwgCheckLifecycleTx(tx, { tenantId, clientId: data.clientId });
-    const check = await tx.gwgCheck.findFirst({
-      where: { id: data.checkId, clientId: data.clientId },
-      select: {
-        status: true,
-        legalForm: true,
-        registerNumber: true,
-        registerAuthority: true,
-        noRegisterEntry: true,
-        representativeNames: true,
-        representatives: {
-          select: { id: true, fullName: true, position: true, linkedBeneficialOwnerId: true },
-          orderBy: [{ position: 'asc' }, { id: 'asc' }],
-        },
-        beneficialOwners: {
-          select: {
-            id: true,
-            fullName: true,
-            birthDate: true,
-            birthPlace: true,
-            residence: true,
-            nationality: true,
-            isPep: true,
-          },
-        },
-        ownershipStructureNotes: true,
-        client: { select: { kind: true } },
-      },
-    });
-    if (!check) throw new ActionError('GwG-Check nicht gefunden.');
-    if (check.client.kind !== 'JURPERS' && check.client.kind !== 'PERSGES') {
-      throw new ActionError(
-        'Rechtsträger-Angaben sind nur bei juristischen Personen/Personengesellschaften erforderlich.',
-      );
-    }
-    assertGwgEditable(check.status);
-    if (gwgLegalEntityRevision(check) !== data.expectedRevision) {
-      throw new ActionError(
-        'Die Rechtsträger-Angaben wurden zwischenzeitlich geändert. Bitte Seite neu laden; Ihre Eingabe wurde nicht überschrieben.',
-      );
-    }
-    const currentById = new Map(
-      check.representatives.map((representative) => [representative.id, representative]),
-    );
-    const ownersById = new Map((check.beneficialOwners ?? []).map((owner) => [owner.id, owner]));
-    const submittedRepresentatives = data.representatives.map((representative, position) => {
-      const legacyMatch = representative.id ? null : (check.representatives[position] ?? null);
-      const id = representative.id ?? legacyMatch?.id ?? randomUUID();
-      const existing = currentById.get(id);
-      if (representative.isNew && existing) {
-        throw new ActionError('Die neue Person ist bereits vorhanden. Bitte Seite neu laden.');
-      }
-      if (!representative.isNew && representative.id && !existing) {
-        throw new ActionError(
-          'Mindestens eine ausgewählte Person gehört nicht mehr zu dieser Prüfung.',
-        );
-      }
-      const linkedBeneficialOwnerId = representative.linkedBeneficialOwnerId ?? null;
-      const linkedOwner = linkedBeneficialOwnerId ? ownersById.get(linkedBeneficialOwnerId) : null;
-      if (linkedBeneficialOwnerId && !linkedOwner) {
-        throw new ActionError(
-          'Die verknüpfte wirtschaftlich berechtigte Person gehört nicht mehr zu dieser Prüfung.',
-        );
-      }
-      return {
-        id,
-        fullName: linkedOwner
-          ? linkedOwner.fullName
-          : representative.fullName.trim().replace(/\s+/g, ' '),
-        position,
-        isNew: !existing,
-        linkedBeneficialOwnerId,
-      };
-    });
-    const representativeNames = submittedRepresentatives.map(
-      (representative) => representative.fullName,
-    );
-    const after = {
-      legalForm: data.legalForm,
-      registerNumber: data.noRegisterEntry ? null : data.registerNumber || null,
-      registerAuthority: data.noRegisterEntry ? null : data.registerAuthority || null,
-      noRegisterEntry: data.noRegisterEntry,
-      representativeNames,
-      ownershipStructureNotes: data.ownershipStructureNotes,
-    };
-    const representativesChanged =
-      check.representatives.length !== submittedRepresentatives.length ||
-      check.representatives.some(
-        (representative, index) =>
-          representative.id !== submittedRepresentatives[index]?.id ||
-          representative.position !== index ||
-          representative.fullName !== submittedRepresentatives[index]?.fullName ||
-          (representative.linkedBeneficialOwnerId ?? null) !==
-            submittedRepresentatives[index]?.linkedBeneficialOwnerId,
-      );
-    const legalDetailsChanged =
-      check.legalForm !== after.legalForm ||
-      check.registerNumber !== after.registerNumber ||
-      check.registerAuthority !== after.registerAuthority ||
-      check.noRegisterEntry !== after.noRegisterEntry ||
-      check.ownershipStructureNotes !== after.ownershipStructureNotes;
-    const savedRepresentatives = submittedRepresentatives.map(
-      ({ id, fullName, position, linkedBeneficialOwnerId }) => ({
-        id,
-        fullName,
-        position,
-        linkedBeneficialOwnerId,
-      }),
-    );
-    if (!legalDetailsChanged && !representativesChanged) {
-      await confirmUnchangedCheck(tx, {
-        checkId: data.checkId,
-        clientId: data.clientId,
-        expectedStatus: check.status,
-      });
-      return {
-        reviewReset: false,
-        representativesChanged: false,
-        representatives: savedRepresentatives,
-        details: after,
-        revision: gwgLegalEntityRevision({ ...after, representatives: savedRepresentatives }),
-      };
-    }
-    // Wie bei der Risikobewertung: Review-Reset + Fachwerte atomar in einem
-    // CAS-Update statt in zwei seriellen Statements speichern.
-    const updated = await tx.gwgCheck.updateMany({
-      where: { id: data.checkId, clientId: data.clientId, status: check.status },
-      data: {
-        status: 'DRAFT',
-        reviewSubmittedAt: null,
-        reviewSubmittedBy: null,
-        riskLevel: null,
-        riskScore: null,
-        riskAnswers: Prisma.DbNull,
-        riskBreakdown: Prisma.DbNull,
-        ...after,
-      },
-    });
-    if (updated.count === 0) {
-      throw new ActionError(
-        'Der Pr\u00fcfstatus wurde parallel ge\u00e4ndert. Ihre Eingabe wurde nicht gespeichert; bitte Seite neu laden.',
-      );
-    }
-    const representativeSync = representativesChanged
-      ? await syncGwgRepresentativesTx(tx, {
-          checkId: data.checkId,
-          currentRepresentatives: check.representatives.map((representative) => ({
-            ...representative,
-            linkedBeneficialOwnerId: representative.linkedBeneficialOwnerId ?? null,
-          })),
-          submittedRepresentatives,
-        })
-      : { invalidatedIdentityDocuments: 0, invalidatedIdentityDocumentSetIds: [] };
-    await synchronizeLinkedRepresentativeGeneralDataTx(tx, {
-      enabled: representativesChanged,
-      checkId: data.checkId,
-      representatives: submittedRepresentatives,
-      ownersById,
-    });
-    const { invalidatedIdentityDocuments, invalidatedIdentityDocumentSetIds } = representativeSync;
-    const invalidatedIdentitySets = await invalidatedIdentitySetRevisions(
-      tx,
-      data.checkId,
-      invalidatedIdentityDocumentSetIds,
-    );
-    await evidenceService.record(tx, {
-      tenantId,
-      actorType: 'STAFF',
-      actorId: staffId,
-      action: 'gwg.legal_entity_details.update',
-      resourceType: 'gwg_check',
-      resourceId: data.checkId,
-      before: {
-        legalForm: check.legalForm,
-        registerNumber: check.registerNumber,
-        registerAuthority: check.registerAuthority,
-        noRegisterEntry: check.noRegisterEntry,
-        representativeNames: check.representativeNames,
-        ownershipStructureNotes: check.ownershipStructureNotes,
-      },
-      after: {
-        ...after,
-        representatives: submittedRepresentatives.map(
-          ({ id, fullName, position, linkedBeneficialOwnerId }) => ({
-            id,
-            fullName,
-            position,
-            linkedBeneficialOwnerId,
-          }),
-        ),
-        invalidatedIdentityDocuments,
-      },
-    });
-    return {
-      reviewReset: check.status === 'IN_REVIEW',
-      representativesChanged,
-      representatives: savedRepresentatives,
-      details: after,
-      ...(invalidatedIdentitySets.length > 0 ? { invalidatedIdentitySets } : {}),
-      revision: gwgLegalEntityRevision({ ...after, representatives: savedRepresentatives }),
-    };
-  });
+  return withStaff((tx, staff) => saveLegalEntityDetailsTx(tx, data, staff));
 }
 
 const CheckDecisionSchema = z.object({
@@ -696,8 +248,7 @@ const VerifyDecisionSchema = CheckDecisionSchema.extend({
 
 /**
  * Explizite Übergabe vom vorbereitenden Mitarbeiter an den verantwortlichen
- * Berufsträger. Anders als der frühere Statuswechsel beim Score-Speichern
- * prüft dieser Übergang den vollständigen, gespeicherten Snapshot.
+ * Berufsträger (server/gwg/check-decisions.ts).
  */
 export async function submitCheckForReviewAction(
   _prev: ActionResult | null,
@@ -705,114 +256,13 @@ export async function submitCheckForReviewAction(
 ): Promise<ActionResult> {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  const { ctx } = g;
   const parsed = parseFormData(CheckDecisionSchema, formData);
   if (!parsed.ok) return { ok: false, error: 'Validierungsfehler — ungültige IDs.' };
   const { checkId, clientId } = parsed.data;
 
   try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
-      const check = await tx.gwgCheck.findFirst({
-        where: { id: checkId, clientId },
-        include: {
-          client: { select: { id: true, kind: true, name: true } },
-          beneficialOwners: true,
-          representatives: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
-          idDocuments: {
-            include: {
-              document: {
-                select: {
-                  id: true,
-                  clientId: true,
-                  classification: true,
-                  deletedAt: true,
-                  gwgDestructionRequestedAt: true,
-                  gwgDestroyedAt: true,
-                  versions: {
-                    orderBy: { versionNo: 'desc' },
-                    take: 1,
-                    select: { scanStatus: true, scanCompletedAt: true },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-      if (!check) throw new ActionError('GwG-Check nicht gefunden.');
-      await assertLatestCheckForDecision(tx, { clientId, checkId });
-      if (check.status === 'IN_REVIEW') return;
-      if (check.status !== 'DRAFT') {
-        throw new ActionError('Nur ein Entwurf kann zur Freigabe eingereicht werden.');
-      }
-      const decisionErrors = gwgDecisionGateErrors(
-        {
-          ...check,
-          checkId,
-          clientId,
-          clientKind: check.client.kind,
-        },
-        DEFAULT_FACTORS.map((factor) => factor.key),
-      );
-      if (decisionErrors.length > 0) throw new ActionError(decisionErrors.join(' '));
-
-      const reviewers = await tx.clientResponsibility.findMany({
-        where: {
-          clientId,
-          role: 'BERUFSTRAEGER',
-          staff: { tenantId, active: true, isProfessional: true, roles: { some: {} } },
-        },
-        select: { staffId: true },
-      });
-      const reviewerIds = Array.from(new Set(reviewers.map((row) => row.staffId)));
-      if (reviewerIds.length === 0) {
-        throw new ActionError(
-          'Bitte zuerst einen verantwortlichen Berufsträger in den Stammdaten zuordnen.',
-        );
-      }
-
-      const submittedAt = new Date();
-      const claim = await tx.gwgCheck.updateMany({
-        where: { id: checkId, clientId, status: 'DRAFT' },
-        data: {
-          status: 'IN_REVIEW',
-          reviewSubmittedAt: submittedAt,
-          reviewSubmittedBy: staffId,
-        },
-      });
-      if (claim.count === 0) {
-        throw new ActionError('Der Prüfstatus hat sich geändert — bitte Seite neu laden.');
-      }
-      await resolveGwgCheckNotificationsTx(tx, {
-        tenantId,
-        checkId,
-      });
-      await cancelOpenGwgInvitesTx(tx, {
-        tenantId,
-        clientId,
-        cancelledByStaff: staffId,
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'gwg.check.submit_for_review',
-        resourceType: 'gwg_check',
-        resourceId: checkId,
-        after: { reviewSubmittedAt: submittedAt.toISOString(), reviewerIds },
-      });
-      await notifyMany(tx, reviewerIds, {
-        tenantId,
-        kind: 'GWG_ONBOARDING_SUBMITTED',
-        title: 'GwG-Prüfung zur Freigabe',
-        body: `${check.client.name} wurde fachlich vorbereitet und wartet auf Ihre Freigabe.`,
-        href: `/staff/clients/${clientId}/gwg`,
-        resourceType: 'gwg_check',
-        resourceId: checkId,
-      });
-    });
+    await withTenantContext(ctx, (tx) => submitCheckForReviewTx(tx, { checkId, clientId }, g));
   } catch (error) {
     return toActionError(error);
   }
@@ -835,7 +285,7 @@ export async function verifyCheckAction(
   // Steuerberater benötigt dafür keine globale ADMIN/PARTNER-Rolle.
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx } = g;
+  const { tenantId, ctx } = g;
 
   if (formData.get('reviewSnapshotVersion') !== '2') {
     return {
@@ -854,242 +304,29 @@ export async function verifyCheckAction(
     };
   }
   const { checkId, clientId, reviewSnapshotHash } = parsed.data;
-  let verifiedValidUntil: string | null = null;
-  let sendActivationWelcome = false;
+  let verified: GwgVerificationResult;
 
   try {
-    await withTenantContext(ctx, async (tx) => {
-      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
-      // Stable ordering: mandate lifecycle, staff, assignment, staff roles.
-      // A concurrent revoke waits until the decision commits or wins before the recheck.
-      const isBerufstraeger = await lockStaffGwgReviewerTx(tx, { tenantId, clientId, staffId });
-      if (!isBerufstraeger) {
-        throw new ActionError(
-          'Nur der für diesen Mandanten zugeordnete Berufsträger darf die GwG-Prüfung verifizieren.',
-        );
-      }
-
-      const check = await tx.gwgCheck.findFirst({
-        where: { id: checkId, clientId },
-        include: {
-          client: {
-            select: {
-              id: true,
-              kind: true,
-              name: true,
-              street: true,
-              postalCode: true,
-              city: true,
-              countryIso: true,
-            },
-          },
-          beneficialOwners: true,
-          representatives: { orderBy: [{ position: 'asc' }, { id: 'asc' }] },
-          idDocuments: {
-            include: {
-              document: {
-                select: {
-                  id: true,
-                  clientId: true,
-                  classification: true,
-                  deletedAt: true,
-                  gwgDestructionRequestedAt: true,
-                  gwgDestroyedAt: true,
-                  versions: {
-                    orderBy: { versionNo: 'desc' },
-                    take: 1,
-                    select: { scanStatus: true, scanCompletedAt: true },
-                  },
-                },
-              },
-            },
-          },
-        },
-      });
-      if (!check) throw new ActionError('GwG-Check nicht gefunden.');
-      await assertLatestCheckForDecision(tx, { clientId, checkId });
-      if (check.status !== 'IN_REVIEW') {
-        throw new ActionError(
-          'GwG-Check ist nicht mehr im Prüfstatus. Bitte den aktuellen Snapshot neu öffnen.',
-        );
-      }
-      if (!check.reviewSubmittedAt || !check.reviewSubmittedBy) {
-        throw new ActionError(
-          'Die dokumentierte Übergabe zur Berufsträger-Prüfung fehlt. Bitte den Entwurf erneut ausdrücklich zur Freigabe einreichen.',
-        );
-      }
-      const currentReviewSnapshotHash = gwgProfessionalReviewSnapshotHash(check);
-      if (currentReviewSnapshotHash !== reviewSnapshotHash) {
-        throw new ActionError(
-          'Der angezeigte GwG-Snapshot ist nicht mehr aktuell. Bitte Seite neu laden und alle Angaben erneut prüfen.',
-        );
-      }
-      const decisionErrors = gwgDecisionGateErrors(
-        {
-          ...check,
-          checkId,
-          clientId,
-          clientKind: check.client.kind,
-        },
-        DEFAULT_FACTORS.map((factor) => factor.key),
-      );
-      if (decisionErrors.length > 0) throw new ActionError(decisionErrors.join(' '));
-      if (check.riskLevel === null) throw new ActionError('Risikobewertung fehlt.');
-      // GWG-SCREENING-001: only the current, fully bound source/person evidence
-      // may support a new decision when the optional module is enabled.
-      await assertGwgScreeningReadyTx(tx, tenantId, check);
-
-      // Die Begrüßung gehört ausschließlich zur ersten erfolgreichen
-      // GwG-Freigabe. Bei einer Wiederholungsprüfung bleibt am Vorgänger der
-      // historische verifiedAt-Nachweis erhalten, auch wenn dessen Status
-      // inzwischen EXPIRED ist.
-      const previousVerificationCount = await tx.gwgCheck.count({
-        where: {
-          tenantId,
-          clientId,
-          id: { not: checkId },
-          verifiedAt: { not: null },
-        },
-      });
-      sendActivationWelcome = previousVerificationCount === 0;
-
-      // Repariert zugleich ältere bzw. noch im GwG-Wurzelordner liegende
-      // Nachweise. Personenbezogene Ausweise werden vor der Freigabe immer in
-      // GwG/[Name der Person] einsortiert; Rechtsträgernachweise bleiben in GwG.
-      await organizeGwgDocumentsTx(tx, {
-        tenantId,
-        clientId,
-        createdByStaff: staffId,
-        documents: check.idDocuments.flatMap((idDocument) =>
-          idDocument.document?.id
-            ? [
-                {
-                  documentId: idDocument.document.id,
-                  personName:
-                    idDocument.type === 'PERSONALAUSWEIS' || idDocument.type === 'REISEPASS'
-                      ? idDocument.ownerName
-                      : null,
-                },
-              ]
-            : [],
-        ),
-      });
-
-      const validForDays = riskValidForDays(check.riskLevel);
-      const validUntil = new Date(Date.now() + validForDays * 24 * 60 * 60 * 1000);
-
-      // TOCTOU-Schutz: nur aus dem Prüfstatus heraus verifizieren. Verhindert,
-      // dass ein bereits REJECTED-Check ohne Neubewertung auf VERIFIED flippt
-      // bzw. eine parallele Reject-Entscheidung überschrieben wird.
-      const claim = await tx.gwgCheck.updateMany({
-        where: { id: checkId, clientId, status: 'IN_REVIEW' },
-        data: {
-          status: 'VERIFIED',
-          verifiedAt: new Date(),
-          verifiedBy: staffId,
-          validUntil,
-          reviewSubmittedAt: check.reviewSubmittedAt,
-          reviewSubmittedBy: check.reviewSubmittedBy,
-        },
-      });
-      if (claim.count === 0) {
-        throw new ActionError('GwG-Check ist nicht mehr im Prüfstatus — bitte Seite neu laden.');
-      }
-      // Die Freigabeanforderung ist mit der Entscheidung für alle zuständigen
-      // Berufsträger erledigt. Im selben Commit schließen, damit Badge und
-      // Dropdown keinen bereits verifizierten Check weiter als offen zeigen.
-      await resolveGwgCheckNotificationsTx(tx, {
-        tenantId,
-        checkId,
-      });
-      verifiedValidUntil = validUntil.toISOString();
-      await cancelOpenGwgInvitesTx(tx, {
-        tenantId,
-        clientId,
-        cancelledByStaff: staffId,
-      });
-
-      // Mandant scharf schalten — der Trigger erlaubt das jetzt
-      await tx.client.update({
-        where: { id: clientId },
-        data: { allowActive: true },
-      });
-
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'gwg.check.verify',
-        resourceType: 'gwg_check',
-        resourceId: checkId,
-        after: {
-          riskLevel: check.riskLevel,
-          riskScore: check.riskScore,
-          validUntil: validUntil.toISOString(),
-          professionalAttestation: true,
-          reviewSnapshotHash: currentReviewSnapshotHash,
-          reviewSnapshotVersion: 2,
-          reviewSubmittedAt: check.reviewSubmittedAt?.toISOString() ?? null,
-          reviewSubmittedBy: check.reviewSubmittedBy,
-        },
-      });
-      await enqueueActivationWelcomeMailTx(tx, {
-        tenantId,
-        clientId,
-        checkId,
-        enabled: sendActivationWelcome,
-      });
-    });
+    verified = await withTenantContext(ctx, (tx) =>
+      verifyCheckTx(tx, { checkId, clientId, reviewSnapshotHash }, g),
+    );
   } catch (e) {
     return toActionError(e);
   }
 
-  if (sendActivationWelcome) kickMailOutboxDelivery();
-  if (verifiedValidUntil) {
-    // Awaited (Guardrail: Outbox-Write muss dauerhaft sein, bevor die Action
-    // zurückkehrt). Der früher unbegrenzt hängende Redis-Queue-Handoff ist in
-    // der Outbox selbst per Timeout gedeckelt — siehe server/n8n/outbox.ts.
-    await emitN8nEvent(
-      'gwg.verified',
-      { tenantId, clientId, gwgCheckId: checkId, validUntil: verifiedValidUntil },
-      { tenantId },
-    );
-  }
+  if (verified.sendActivationWelcome) kickMailOutboxDelivery();
+  // Awaited (Guardrail: Outbox-Write muss dauerhaft sein, bevor die Action
+  // zurückkehrt). Der früher unbegrenzt hängende Redis-Queue-Handoff ist in
+  // der Outbox selbst per Timeout gedeckelt — siehe server/n8n/outbox.ts.
+  await emitN8nEvent(
+    'gwg.verified',
+    { tenantId, clientId, gwgCheckId: checkId, validUntil: verified.validUntil },
+    { tenantId },
+  );
   // Nur die Fremd-Route (Cockpit) invalidieren — die aktuelle GwG-Route
   // refresht der Client nach ok außerhalb der Form-Transition (siehe oben).
   revalidatePath(`/staff/clients/${clientId}`);
   return { ok: true };
-}
-
-async function enqueueActivationWelcomeMailTx(
-  tx: TxClient,
-  input: { tenantId: string; clientId: string; checkId: string; enabled: boolean },
-): Promise<void> {
-  if (!input.enabled) return;
-
-  // Begrüßungs-Mail an alle Mandanten-Kontakte mit Mail-Opt-in. F-08: im
-  // Freigabe-Commit als Versandauftrag; der Worker stellt mit Retry zu.
-  await enqueueClientContactsMailTx(
-    tx,
-    {
-      tenantId: input.tenantId,
-      clientId: input.clientId,
-      purpose: 'gwg-activated',
-      resource: { type: 'gwg_check', id: input.checkId },
-      staffHref: `/staff/clients/${input.clientId}/gwg`,
-    },
-    {
-      slug: 'gwg-activated',
-      vars: {
-        portalUrl: `${portalBaseUrl}/portal/dashboard`,
-      },
-      fallback: {
-        subject: 'Willkommen — Ihre Mandantschaft ist nun aktiv',
-        bodyMd:
-          'Sehr geehrte/r {{contact.fullName}},\n\nIhre Mandantschaft ist jetzt vollständig eingerichtet. Loggen Sie sich gerne in Ihr Mandantenportal ein:\n\n{{portalUrl}}',
-      },
-    },
-  );
 }
 
 const RejectSchema = z.object({
@@ -1104,65 +341,14 @@ export async function rejectCheckAction(
 ) {
   const g = await staffActionGuard();
   if (!g.ok) return g;
-  const { tenantId, staffId, ctx, session } = g;
+  const { tenantId, ctx } = g;
 
   const parsed = parseFormData(RejectSchema, formData);
   if (!parsed.ok) return { ok: false, error: 'Begründung erforderlich.' };
-  const { checkId, clientId, reason } = parsed.data;
+  const { clientId } = parsed.data;
 
-  let contactIds: string[] = [];
   try {
-    await withTenantContext(ctx, async (tx) => {
-      await assertClientAccessTx(tx, session, clientId);
-      await lockGwgCheckLifecycleTx(tx, { tenantId, clientId });
-      const isBerufstraeger = await lockStaffGwgReviewerTx(tx, { tenantId, clientId, staffId });
-      if (!isBerufstraeger) {
-        throw new ActionError(
-          'Nur der für diesen Mandanten zugeordnete Berufsträger darf die GwG-Prüfung ablehnen.',
-        );
-      }
-      await assertLatestCheckForDecision(tx, { clientId, checkId });
-      contactIds = (
-        await tx.clientContact.findMany({
-          where: { clientId, active: true },
-          select: { id: true },
-        })
-      ).map((c) => c.id);
-      for (const contactId of contactIds) {
-        await revokeAllSessions('portal', contactId);
-      }
-      // TOCTOU-Schutz: ein bereits verifizierter Check darf nicht per Race
-      // nachträglich abgelehnt werden (sonst allowActive=true trotz Reject).
-      const claim = await tx.gwgCheck.updateMany({
-        where: { id: checkId, clientId, status: 'IN_REVIEW' },
-        data: { status: 'REJECTED', rejectedReason: reason },
-      });
-      if (claim.count === 0) {
-        throw new ActionError('GwG-Check ist nicht mehr zur Entscheidung eingereicht.');
-      }
-      await resolveGwgCheckNotificationsTx(tx, {
-        tenantId,
-        checkId,
-      });
-      await cancelOpenGwgInvitesTx(tx, {
-        tenantId,
-        clientId,
-        cancelledByStaff: staffId,
-      });
-      await tx.client.updateMany({
-        where: { id: clientId, allowActive: true },
-        data: { allowActive: false },
-      });
-      await evidenceService.record(tx, {
-        tenantId,
-        actorType: 'STAFF',
-        actorId: staffId,
-        action: 'gwg.check.reject',
-        resourceType: 'gwg_check',
-        resourceId: checkId,
-        after: { reason },
-      });
-    });
+    await withTenantContext(ctx, (tx) => rejectCheckTx(tx, parsed.data, g));
   } catch (e) {
     return toActionError(e);
   }

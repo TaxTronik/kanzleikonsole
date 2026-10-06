@@ -1,5 +1,57 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-023
+    date: '2026-10-06'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/_action-helpers.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/owner-actions.ts
+      - apps/web/src/server/gwg-onboarding/__tests__/invite-lifecycle.test.ts
+      - apps/web/src/server/gwg/__tests__/lifecycle-lock-call-sites.test.ts
+      - apps/web/src/server/gwg/__tests__/services-db-ci.test.ts
+      - apps/web/src/server/gwg/__tests__/services-db.test.ts
+      - apps/web/src/server/gwg/beneficial-owners.ts
+      - apps/web/src/server/gwg/check-cycle.ts
+      - apps/web/src/server/gwg/check-decisions.ts
+      - apps/web/src/server/gwg/check-mutation.ts
+      - apps/web/src/server/gwg/editable-check.ts
+      - apps/web/src/server/gwg/identity-document-confirmation.ts
+      - apps/web/src/server/gwg/identity-document-links.ts
+      - apps/web/src/server/gwg/identity-document-sets.ts
+      - apps/web/src/server/gwg/identity-document-validation.ts
+      - apps/web/src/server/gwg/invalidated-identity-sets.ts
+      - apps/web/src/server/gwg/legal-entity.ts
+      - apps/web/src/server/gwg/persons.ts
+    rule_ids:
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-RISK-REVIEW-001
+      - GWG-ACTIVATION-GATE-001
+      - GWG-REPRESENTATIVE-AUTHORITY-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-SCREENING-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-SELF-ONBOARDING-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+    reason: >-
+      Die bearbeitenden GwG-Aktionen (Personen, wirtschaftlich Berechtigte, Angaben
+      zum Rechtsträger, Ausweisnachweise, Prüfzyklus, Einreichen, Freigeben,
+      Ablehnen) laufen über Services mit Transaktions-Signatur unter
+      apps/web/src/server/gwg; das zuvor zwölfmal ausgeschriebene Prelude
+      (Mandantenzugriff, Lifecycle-Sperre, Prüfung laden, Vorbedingung,
+      Bearbeitbarkeit, Status-Claim) liegt einmal in withEditableGwgCheckTx. Namen,
+      Signaturen und Ergebnisse der Actions, Meldungen, Schreibvorgänge,
+      Audit-Ereignisse, revalidierte Pfade und die Sperrreihenfolge bleiben
+      unverändert. Neue PostgreSQL-Tests prüfen die Services unter der App-Rolle im
+      CI-db-Job. Keine fachliche Freigabe; die code_refs der betroffenen Regeln
+      zeigen weiter auf die (jetzt dünnen) Action-Dateien und werden um die
+      Service-Pfade ergänzt.
+    tests:
+      - apps/web/src/server/gwg/__tests__/services-db.test.ts
+      - apps/web/src/server/gwg/__tests__/lifecycle-lock-call-sites.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-022
     date: '2026-10-06'
     paths:
@@ -3387,6 +3439,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-023` dokumentiert die GwG-Services mit
+  Transaktions-Signatur und das gemeinsame Prelude. Meldungen, Audit und
+  Sperrreihenfolge bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-022` dokumentiert den CI-Schritt für die
   aufgeteilten n8n-Einstellungen. Release-Nachweise bleiben unverändert.

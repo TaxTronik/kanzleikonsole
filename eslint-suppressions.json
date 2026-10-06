@@ -74,17 +74,7 @@
       "count": 1
     }
   },
-  "apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts": {
-    "complexity": {
-      "count": 1
-    }
-  },
   "apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-document-review.tsx": {
-    "complexity": {
-      "count": 1
-    }
-  },
-  "apps/web/src/app/staff/(protected)/clients/[id]/gwg/owner-actions.ts": {
     "complexity": {
       "count": 1
     }

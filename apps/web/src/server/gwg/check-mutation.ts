@@ -1,9 +1,9 @@
 // =============================================================================
 // GwG-Prüfung: Bearbeitbarkeit und atomarer Status-Claim vor einer Änderung.
 //
-// Gemeinsam genutzt von den GwG-Actions der Mandantenroute
-// (app/staff/(protected)/clients/[id]/gwg, über _action-helpers.ts) und der
-// Strukturübernahme der Mandatserweiterung (server/mandate-expansion).
+// Gemeinsam genutzt vom Prelude der GwG-Services (server/gwg/editable-check.ts,
+// Review-Befund K-03) und der Strukturübernahme der Mandatserweiterung
+// (server/mandate-expansion).
 // =============================================================================
 
 import { Prisma } from '@prisma/client';
@@ -18,6 +18,9 @@ import { ActionError } from '@/server/actions/action-error';
 // änderung ausgelösten Reset auf IN_REVIEW (clients/[id]/edit/actions.ts).
 const EDITABLE_GWG_STATUSES: readonly string[] = ['DRAFT', 'IN_REVIEW'];
 export type EditableGwgStatus = 'DRAFT' | 'IN_REVIEW';
+
+const PARALLEL_STATUS_CHANGE =
+  'Der Prüfstatus wurde parallel geändert. Ihre Eingabe wurde nicht gespeichert; bitte Seite neu laden.';
 
 export function assertGwgEditable(status: string): asserts status is EditableGwgStatus {
   if (!EDITABLE_GWG_STATUSES.includes(status)) {
@@ -57,8 +60,20 @@ export async function claimCheckMutation(
     },
   });
   if (claim.count === 0) {
-    throw new ActionError(
-      'Der Prüfstatus wurde parallel geändert. Ihre Eingabe wurde nicht gespeichert; bitte Seite neu laden.',
-    );
+    throw new ActionError(PARALLEL_STATUS_CHANGE);
+  }
+}
+
+/** CAS-Prüfung für echte No-op-Saves, ohne eine laufende Freigabe zurückzusetzen. */
+export async function confirmUnchangedCheck(
+  tx: TxClient,
+  input: { checkId: string; clientId: string; expectedStatus: EditableGwgStatus },
+): Promise<void> {
+  const current = await tx.gwgCheck.findFirst({
+    where: { id: input.checkId, clientId: input.clientId, status: input.expectedStatus },
+    select: { id: true },
+  });
+  if (!current) {
+    throw new ActionError(PARALLEL_STATUS_CHANGE);
   }
 }

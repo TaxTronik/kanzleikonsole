@@ -131,24 +131,27 @@ describe('GwG-Einladungs-Lifecycle', () => {
   });
 
   it('entwertet offene Links bei Review-Submit, Verify, Reject und neuem Zyklus', () => {
-    const actions = readFileSync(
-      new URL('../../../app/staff/(protected)/clients/[id]/gwg/actions.ts', import.meta.url),
-      'utf8',
+    // K-03: Die Abläufe der GwG-Staff-Actions liegen als Services in server/gwg.
+    const services = ['../../gwg/check-cycle.ts', '../../gwg/check-decisions.ts'].map((path) =>
+      readFileSync(new URL(path, import.meta.url), 'utf8').replaceAll('\r\n', '\n'),
     );
-    expect(actions.match(/await cancelOpenGwgInvitesTx\(tx,/g)).toHaveLength(4);
-    for (const actionName of [
-      'startCheckCycle',
-      'submitCheckForReviewAction',
-      'verifyCheckAction',
-      'rejectCheckAction',
+    expect(
+      services.flatMap((service) => service.match(/await cancelOpenGwgInvitesTx\(tx,/g) ?? []),
+    ).toHaveLength(4);
+    for (const serviceName of [
+      'startGwgCheckCycleTx',
+      'submitCheckForReviewTx',
+      'verifyCheckTx',
+      'rejectCheckTx',
     ]) {
-      const actionStart = actions.indexOf(`function ${actionName}`);
-      const nextExport = actions.indexOf('\nexport ', actionStart + 1);
-      const actionSource = actions.slice(
-        actionStart,
-        nextExport === -1 ? actions.length : nextExport,
+      const service = services.find((source) => source.includes(`function ${serviceName}(`))!;
+      const serviceStart = service.indexOf(`function ${serviceName}(`);
+      const nextExport = service.indexOf('\nexport ', serviceStart + 1);
+      const serviceSource = service.slice(
+        serviceStart,
+        nextExport === -1 ? service.length : nextExport,
       );
-      expect(actionSource).toContain('await cancelOpenGwgInvitesTx(tx,');
+      expect(serviceSource).toContain('await cancelOpenGwgInvitesTx(tx,');
     }
   });
 

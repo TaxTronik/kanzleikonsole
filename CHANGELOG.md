@@ -227,6 +227,16 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- GwG-Identifizierung: Die bearbeitenden GwG-Aktionen (Personen,
+  wirtschaftlich Berechtigte, Angaben zum Rechtsträger, Ausweisnachweise,
+  Prüfzyklus, Einreichen, Freigeben, Ablehnen) laufen über Services mit
+  Transaktions-Signatur; das zuvor zwölfmal ausgeschriebene Prelude
+  (Mandantenzugriff, Lifecycle-Sperre, Prüfung laden, Bearbeitbarkeit,
+  Status-Claim) liegt einmal in `withEditableGwgCheckTx`. Meldungen,
+  Audit-Ereignisse und Sperrreihenfolge bleiben unverändert; neue
+  PostgreSQL-Tests prüfen die Services unter der App-Rolle
+  (`GWG-IDENTIFICATION-EVIDENCE-001`, `GWG-BENEFICIAL-OWNERS-001`,
+  `GWG-RISK-REVIEW-001`, `FK-EXC-20261006-023`).
 - Die n8n-Administration ist in Server-Services je Aufgabe aufgeteilt;
   Eingabeprüfung und Normalisierung sind reine, eigens getestete Funktionen.
   SSRF-Prüfung, Secret-Behandlung, Audit-Events und Meldungen bleiben
