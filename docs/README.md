@@ -71,7 +71,7 @@ Release-Wegs. Die tatsächliche Durchführung ist jeweils separat zu belegen.
 | [Test- und Abnahmekonzept](development/testkonzept.md)        | Verfahren / Soll       | Teststufen, Scope, Nachweise und bekannte Abdeckungslücken einordnen        |
 | [Barrierefreiheit](assurance/barrierefreiheit.md)             | Ist-/Gap-Dokumentation | WCAG-2.2-AA-Ziel, technische Gates, manuellen Prüfumfang und Grenzen prüfen |
 | [Technische Modulbeschreibungen](development/module/)         | Ist-Dokumentation      | Zugriffsschutz, Archiv, Fakturierung, Audit und Backup im Detail prüfen     |
-| [Workspace-Injektion](development/workspace-injection.md)     | Entwicklerhinweis      | Veraltete pnpm-Workspace-Kopien erkennen und beheben                        |
+| [pnpm-Workspace-Layout](development/workspace-injection.md)   | Entwicklerhinweis      | Symlink-Layout, Deklarationspflicht und Umstellung alter Kopien             |
 
 Die [ERiC-Integrationsregeln](development/eric-integration.md) enthalten
 verbindliche Umgangsregeln und Architekturvorgaben, aber keine Behauptung über

@@ -20,9 +20,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1053.0",
     "@smithy/node-http-handler": "^4.7.0",
-    "@taxtronik/config": "workspace:*",
-    "@taxtronik/db": "workspace:*",
-    "@taxtronik/evidence": "workspace:*"
+    "@taxtronik/config": "workspace:*"
   },
   "devDependencies": {
     "fflate": "^0.8.3",

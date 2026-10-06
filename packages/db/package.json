@@ -52,8 +52,11 @@
     "pg": "^8.21.0"
   },
   "devDependencies": {
+    "@taxtronik/config": "workspace:*",
+    "@taxtronik/crypto": "workspace:*",
     "@types/pg": "^8.20.0",
     "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
     "prisma": "^7.9.1",
     "tsx": "^4.22.3",
     "typescript": "^6.0.3",

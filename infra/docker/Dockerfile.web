@@ -10,7 +10,7 @@
 # Der frühere „deps-first" (nur package.json kopieren, installieren, dann Quelle
 # nachkopieren) erzeugte Symlinks auf quell-lose Pakete; im Builder fand Turbopack
 # dann @taxtronik/* (und transitiv zod) nicht („Module not found").
-# pnpm-workspace.yaml liefert nodeLinker=hoisted + shamefullyHoist=true.
+# pnpm-workspace.yaml liefert nodeLinker=hoisted; Workspace-Pakete sind Symlinks.
 # =============================================================================
 
 # Gemeinsame, digest-gepinnte Basis fuer Builder und Runtime von Web UND

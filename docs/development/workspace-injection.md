@@ -1,62 +1,46 @@
-# Workspace-Injektion: veraltete Klone nach Quelländerung
+# pnpm-Workspace-Layout: Symlinks statt injizierter Kopien
 
-`pnpm-workspace.yaml` setzt `injectWorkspacePackages: true` (zusammen mit
-`nodeLinker: hoisted`). pnpm legt dadurch von jedem workspace-internen Paket,
-das ein anderes workspace-internes Paket als Dependency zieht, eine **echte
-Kopie** (Hardlink-Copy, kein Symlink) unter dessen verschachteltem
-`node_modules/@taxtronik/<pkg>` an — z. B.:
+`pnpm-workspace.yaml` setzt `nodeLinker: hoisted` und
+`injectWorkspacePackages: false`. Workspace-Pakete (`@taxtronik/*`) liegen
+damit nicht mehr als Hardlink-Kopien im Root-`node_modules`, sondern als
+Symlink im `node_modules` jedes Pakets, das sie deklariert, z. B.:
 
 ```
-node_modules/@taxtronik/storage/node_modules/@taxtronik/config
-node_modules/@taxtronik/evidence/node_modules/@taxtronik/http-utils
+apps/web/node_modules/@taxtronik/config -> ../../../../packages/config
+packages/mail/node_modules/@taxtronik/storage -> ../../../storage
 ```
 
-## Die Falle
+## Folgen für die Entwicklung
 
-Ein **inkrementelles** `pnpm install` (auch `--force`) synchronisiert diese
-Klone **nicht** neu, wenn sich nur der Quellcode des Pakets geändert hat (die
-Paket-Version/`package.json` aber gleich blieb). pnpm meldet „Already up to
-date", während der injizierte Klon den **alten** Stand behält.
+- Quelländerungen in `packages/*` wirken sofort in Web, Worker, Vitest und
+  `tsc`. Das frühere `rm -rf node_modules && pnpm install` nach einer
+  Quelländerung, ein Paket-`build` zum Synchronisieren oder ein
+  Abgleichskript für injizierte Kopien entfallen.
+- Vitest sieht jedes Workspace-Paket unter genau einem Pfad. `vi.mock(...)`
+  trifft damit dasselbe Modul wie der Code unter Test.
+- Ein `@taxtronik/*`-Import ohne Eintrag im `package.json` des importierenden
+  Pakets scheitert (Modul nicht gefunden). Fix: das Paket mit `workspace:*`
+  unter `dependencies` (Laufzeit, auch reine Typen in exportierten
+  Signaturen) oder `devDependencies` (Tests, Skripte) eintragen und
+  `pnpm install` ausführen.
 
-Folge lokal: Code, der z. B. `@taxtronik/storage` importiert, sieht eine
-veraltete `@taxtronik/config`-Kopie. Symptome reichen von „ein neu exportiertes
-Symbol fehlt" bis zu unerwartetem ENV-Validierungsverhalten in Vitest, weil der
-Klon ein anderes Modul (anderer Pfad) ist als die Quelle — `vi.mock('@taxtronik/
-config')` greift dann nicht auf den Klon-Pfad.
+## Was der flache Baum weiterhin verdeckt
 
-## Der Fix (lokal)
+Drittpakete werden weiter flach ins Root-`node_modules` gelegt. Ein Import
+eines nicht deklarierten Drittpakets funktioniert deshalb lokal und in CI,
+solange irgendein Workspace-Paket es zieht. Jedes Paket deklariert daher alle
+Pakete, die es selbst importiert, und keine Pakete, die es nicht importiert.
+Eine automatische Prüfung dafür (z. B. knip) gibt es noch nicht.
+`shamefullyHoist` ist entfallen, weil es unter `nodeLinker: hoisted` keine
+Wirkung hat.
 
-Nach einer Quelländerung an einem workspace-internen Paket, das von einem
-anderen konsumiert wird, die Klone erzwungen neu erzeugen:
+## Umstellung bestehender Checkouts
 
-```sh
-rm -rf node_modules && pnpm install
-```
+Ein einmaliges `pnpm install` nach dem Update ersetzt die alten Kopien durch
+Symlinks. Das gilt auch für die Host-Werkzeuge der Betriebs-CLI: deren
+`pnpm install --frozen-lockfile` stellt das Layout ohne Rückfrage um.
 
-Nur ein **sauberer** Install erstellt die injizierten Kopien aus dem aktuellen
-Quellstand neu. `pnpm install --force` allein genügt nicht.
+## Produktions-Images
 
-Zusätzlich synchronisiert pnpm die Kopien nach jedem `build`-Skript eines
-Pakets (`syncInjectedDepsAfterScripts` in `pnpm-workspace.yaml`), z. B. nach
-`pnpm --filter @taxtronik/config build`. `pnpm typecheck` und `pnpm test`
-hängen in Turbo nicht mehr von `^build` ab (die Paket-Builds sind reine
-`tsc --noEmit`-Läufe) und lösen diese Synchronisation deshalb nicht aus. Nach
-neu angelegten, gelöschten oder ersetzten Dateien in einem Workspace-Paket
-vorher dessen `build` oder den sauberen Install ausführen.
-
-## Warum CI nicht betroffen ist
-
-CI läuft auf frischen Runnern immer mit sauberem `pnpm install --frozen-lockfile`
-— dort entstehen die Klone genau einmal aus dem eingecheckten Stand. Das Problem
-ist ausschließlich ein Cache-Artefakt lokaler, inkrementeller Installs.
-
-## Test-Hermetik (Empfehlung)
-
-Damit Unit-Tests unabhängig vom Injektionsstand sind, kann eine `resolve.alias`
-in der jeweiligen `vitest.config.ts` die `@taxtronik/*`-Specifier direkt auf die
-Workspace-`src` mappen (dedupliziert die Modul-Identität). Wo Tests ihre
-Workspace-Abhängigkeiten ohnehin per `vi.mock(...)` ersetzen (Muster in
-`apps/web`), ist das nicht nötig — der Mock hat Vorrang. Für Tests, die ein
-echtes Workspace-Paket transitiv laden (z. B. `poa/actions` → `@taxtronik/
-storage`), sollte die Abhängigkeit gemockt oder per Alias auf `src` gezogen
-werden, statt sich auf den injizierten Klon zu verlassen.
+Das Web-Image enthält keine Workspace-Pakete: Next.js transpiliert und bündelt
+sie (`transpilePackages`) in den Standalone-Server.

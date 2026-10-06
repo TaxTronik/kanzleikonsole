@@ -10,8 +10,12 @@ patchedDependencies:
 
 # pnpm >=11 reads project settings from pnpm-workspace.yaml instead of
 # package.json#pnpm or non-auth .npmrc entries.
+# Flaches node_modules: Host-Tools (ops-lib.sh), Image-Builds und der
+# Migrate-Container erwarten Prisma-CLI, tsx und pg unter node_modules/.
+# shamefullyHoist entfaellt: unter nodeLinker=hoisted wirkt es nicht. Der
+# flache Baum verdeckt weiterhin fehlende Deklarationen von Drittpaketen;
+# siehe docs/development/workspace-injection.md.
 nodeLinker: hoisted
-shamefullyHoist: true
 audit:
   level: high
 
@@ -142,15 +146,8 @@ overrides:
   brace-expansion@1: '1.1.21'
   brace-expansion@5: '5.0.12'
 
-# pnpm 11: Workspace-Pakete in dependents per echtes Link-Hardlink statt
-# Symlink injizieren. Der Wert steht im Lockfile; muss hier gespiegelt werden,
-# sonst meldet `pnpm install --frozen-lockfile` einen Config-Mismatch.
-injectWorkspacePackages: true
-# pnpm 11.20 dedupliziert verschachtelte Injects unter nodeLinker=hoisted sonst
-# auf teils nicht vorhandene Hoist-Ziele. Physische Snapshots behalten daher
-# ihre jeweils eigene, vollstaendige Workspace-Abhaengigkeitsstruktur.
-dedupeInjectedDeps: false
-# Injected workspace packages are physical snapshots. Refresh dependants after
-# a package build so TypeScript/Next never consume stale source copies.
-syncInjectedDepsAfterScripts:
-  - build
+# Workspace-Pakete werden per Symlink nur im node_modules ihrer deklarierten
+# Abhaengigen verlinkt, nicht als Hardlink-Kopie injiziert: Quellaenderungen
+# wirken sofort, ein undeklarierter @taxtronik/*-Import scheitert. Die
+# Worker-Laufzeit entsteht per `pnpm deploy`, das die Pakete dort kopiert.
+injectWorkspacePackages: false

@@ -220,6 +220,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Workspace-Pakete werden per Symlink statt als injizierte Kopie eingebunden;
+  Quelländerungen wirken ohne Neuinstallation, und Host-Werkzeuge nutzen nach
+  Updates keinen veralteten Paketstand mehr. Fehlende und ungenutzte
+  Abhängigkeitsdeklarationen sind bereinigt (keine neuen Pakete oder
+  Versionen). Nach dem Update einmal `pnpm install` ausführen.
 - Dokumente im Mandanten-Tab: Ordnerauswahl und Suche filtern serverseitig
   über alle Dokumente des Mandanten statt nur über die angezeigte Seite;
   Zähler und Blättern beziehen sich auf die Auswahl, die Suche startet mit

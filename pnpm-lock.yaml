@@ -161,7 +161,6 @@ lockfileVersion: '9.0'
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
-  injectWorkspacePackages: true
 
 overrides:
   '@types/node': 24.13.2
@@ -262,9 +261,6 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: ^3.1053.0
         version: 3.1053.0(@aws-sdk/client-s3@3.1053.0)
-      '@azure/msal-node':
-        specifier: 5.6.0
-        version: 5.6.0
       '@pdf-lib/fontkit':
         specifier: 1.1.1
         version: 1.1.1
@@ -285,46 +281,49 @@ importers:
         version: 13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573)
       '@taxtronik/config':
         specifier: workspace:*
-        version: file:packages/config
+        version: link:../../packages/config
       '@taxtronik/crypto':
         specifier: workspace:*
-        version: file:packages/crypto
+        version: link:../../packages/crypto
       '@taxtronik/db':
         specifier: workspace:*
-        version: file:packages/db(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/db
       '@taxtronik/elster':
         specifier: workspace:*
-        version: file:packages/elster
+        version: link:../../packages/elster
       '@taxtronik/evidence':
         specifier: workspace:*
-        version: file:packages/evidence(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/evidence
       '@taxtronik/http-utils':
         specifier: workspace:*
-        version: file:packages/http-utils
+        version: link:../../packages/http-utils
       '@taxtronik/mail':
         specifier: workspace:*
-        version: file:packages/mail(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/mail
       '@taxtronik/n8n-shared':
         specifier: workspace:*
-        version: file:packages/n8n-shared(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/n8n-shared
       '@taxtronik/risk-layer':
         specifier: workspace:*
-        version: file:packages/risk-layer
+        version: link:../../packages/risk-layer
       '@taxtronik/rss':
         specifier: workspace:*
-        version: file:packages/rss
+        version: link:../../packages/rss
       '@taxtronik/storage':
         specifier: workspace:*
-        version: file:packages/storage(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/storage
       '@taxtronik/tax':
         specifier: workspace:*
-        version: file:packages/tax(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/tax
       '@tesseract.js-data/deu':
         specifier: 1.0.0
         version: 1.0.0
       '@tesseract.js-data/eng':
         specifier: 1.0.0
         version: 1.0.0
+      '@tiptap/core':
+        specifier: 3.30.5
+        version: 3.30.5(@tiptap/pm@3.30.5)
       '@tiptap/extension-image':
         specifier: 3.30.5
         version: 3.30.5(@tiptap/core@3.30.5(@tiptap/pm@3.30.5))
@@ -355,15 +354,9 @@ importers:
       docx:
         specifier: ^9.7.1
         version: 9.7.1
-      fast-xml-parser:
-        specifier: 5.11.0
-        version: 5.11.0
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
-      imapflow:
-        specifier: 1.7.2
-        version: 1.7.2
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1
@@ -373,9 +366,6 @@ importers:
       lucide-react:
         specifier: ^1.16.0
         version: 1.16.0(react@19.2.6)
-      mailparser:
-        specifier: 3.9.15
-        version: 3.9.15
       mammoth:
         specifier: ^1.8.0
         version: 1.12.0
@@ -385,9 +375,6 @@ importers:
       next-auth:
         specifier: 5.0.0-beta.32
         version: 5.0.0-beta.32(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573))(next@16.3.6(@babel/core@7.29.7)(@playwright/test@1.60.0)(@types/node@24.13.2)(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(nodemailer@10.0.10)(react@19.2.6)
-      nodemailer:
-        specifier: 10.0.10
-        version: 10.0.10
       otplib:
         specifier: ^13.4.0
         version: 13.4.0
@@ -437,18 +424,18 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@auth/core':
+        specifier: 0.41.3
+        version: 0.41.3(@simplewebauthn/browser@13.3.0)(@simplewebauthn/server@13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573))(nodemailer@10.0.10)
+      '@prisma/adapter-pg':
+        specifier: ^7.9.1
+        version: 7.9.1
       '@tailwindcss/postcss':
         specifier: ^4.3.0
         version: 4.3.0
-      '@types/mailparser':
-        specifier: 3.4.6
-        version: 3.4.6
       '@types/node':
         specifier: 24.13.2
         version: 24.13.2
-      '@types/nodemailer':
-        specifier: ^8.0.0
-        version: 8.0.0
       '@types/pdfkit':
         specifier: ^0.17.6
         version: 0.17.6
@@ -464,6 +451,9 @@ importers:
       autoprefixer:
         specifier: ^10.5.0
         version: 10.5.0(postcss@8.5.23)
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       eslint:
         specifier: ^10.4.0
         version: 10.4.0(jiti@2.7.0)
@@ -497,9 +487,6 @@ importers:
       '@aws-sdk/lib-storage':
         specifier: ^3.1053.0
         version: 3.1053.0(@aws-sdk/client-s3@3.1053.0)
-      '@azure/msal-node':
-        specifier: 5.6.0
-        version: 5.6.0
       '@peculiar/x509':
         specifier: 1.14.3
         version: 1.14.3
@@ -511,49 +498,43 @@ importers:
         version: 13.3.3(patch_hash=0e3deb54fb886b67594b270bf72276d04247d5d590a33fd38e0f73718b2e1573)
       '@taxtronik/config':
         specifier: workspace:*
-        version: file:packages/config
+        version: link:../../packages/config
       '@taxtronik/crypto':
         specifier: workspace:*
-        version: file:packages/crypto
+        version: link:../../packages/crypto
       '@taxtronik/db':
         specifier: workspace:*
-        version: file:packages/db(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/db
       '@taxtronik/evidence':
         specifier: workspace:*
-        version: file:packages/evidence(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/evidence
       '@taxtronik/http-utils':
         specifier: workspace:*
-        version: file:packages/http-utils
+        version: link:../../packages/http-utils
       '@taxtronik/mail':
         specifier: workspace:*
-        version: file:packages/mail(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/mail
       '@taxtronik/n8n-shared':
         specifier: workspace:*
-        version: file:packages/n8n-shared(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/n8n-shared
       '@taxtronik/risk-layer':
         specifier: workspace:*
-        version: file:packages/risk-layer
+        version: link:../../packages/risk-layer
       '@taxtronik/rss':
         specifier: workspace:*
-        version: file:packages/rss
+        version: link:../../packages/rss
       '@taxtronik/storage':
         specifier: workspace:*
-        version: file:packages/storage(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/storage
       '@taxtronik/tax':
         specifier: workspace:*
-        version: file:packages/tax(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../../packages/tax
       bullmq:
         specifier: ^5.81.3
         version: 5.81.3
-      imapflow:
-        specifier: 1.7.2
-        version: 1.7.2
       ioredis:
         specifier: ^5.11.1
         version: 5.11.1
-      mailparser:
-        specifier: 3.9.15
-        version: 3.9.15
       nodemailer:
         specifier: 10.0.10
         version: 10.0.10
@@ -564,9 +545,6 @@ importers:
         specifier: ^13.1.3
         version: 13.1.3
     devDependencies:
-      '@types/mailparser':
-        specifier: 3.4.6
-        version: 3.4.6
       '@types/node':
         specifier: 24.13.2
         version: 24.13.2
@@ -606,7 +584,7 @@ importers:
     dependencies:
       '@taxtronik/config':
         specifier: workspace:*
-        version: file:packages/config
+        version: link:../config
     devDependencies:
       '@types/node':
         specifier: 24.13.2
@@ -633,12 +611,21 @@ importers:
         specifier: ^8.21.0
         version: 8.22.0
     devDependencies:
+      '@taxtronik/config':
+        specifier: workspace:*
+        version: link:../config
+      '@taxtronik/crypto':
+        specifier: workspace:*
+        version: link:../crypto
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
       bcryptjs:
         specifier: ^3.0.3
         version: 3.0.3
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       prisma:
         specifier: ^7.9.1
         version: 7.9.1(@types/node@24.13.2)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3)
@@ -659,7 +646,7 @@ importers:
     dependencies:
       '@taxtronik/config':
         specifier: workspace:*
-        version: file:packages/config
+        version: link:../config
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -687,10 +674,10 @@ importers:
         version: 7.9.1(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
       '@taxtronik/db':
         specifier: workspace:*
-        version: file:packages/db(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../db
       '@taxtronik/http-utils':
         specifier: workspace:*
-        version: file:packages/http-utils
+        version: link:../http-utils
       asn1js:
         specifier: ^3.0.10
         version: 3.0.10
@@ -738,21 +725,24 @@ importers:
       '@azure/msal-node':
         specifier: 5.6.0
         version: 5.6.0
+      '@prisma/client':
+        specifier: 7.9.1
+        version: 7.9.1(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
       '@taxtronik/config':
         specifier: workspace:*
-        version: file:packages/config
+        version: link:../config
       '@taxtronik/crypto':
         specifier: workspace:*
-        version: file:packages/crypto
+        version: link:../crypto
       '@taxtronik/db':
         specifier: workspace:*
-        version: file:packages/db(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../db
       '@taxtronik/n8n-shared':
         specifier: workspace:*
-        version: file:packages/n8n-shared(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../n8n-shared
       '@taxtronik/storage':
         specifier: workspace:*
-        version: file:packages/storage(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../storage
       imapflow:
         specifier: 1.7.2
         version: 1.7.2
@@ -789,7 +779,7 @@ importers:
         version: 7.9.1(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
       '@taxtronik/config':
         specifier: workspace:*
-        version: file:packages/config
+        version: link:../config
     devDependencies:
       '@types/node':
         specifier: 24.13.2
@@ -808,10 +798,7 @@ importers:
     dependencies:
       '@taxtronik/config':
         specifier: workspace:*
-        version: file:packages/config
-      '@taxtronik/http-utils':
-        specifier: workspace:*
-        version: file:packages/http-utils
+        version: link:../config
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -833,7 +820,7 @@ importers:
     dependencies:
       '@taxtronik/http-utils':
         specifier: workspace:*
-        version: file:packages/http-utils
+        version: link:../http-utils
     devDependencies:
       '@types/node':
         specifier: 24.13.2
@@ -858,13 +845,7 @@ importers:
         version: 4.7.4
       '@taxtronik/config':
         specifier: workspace:*
-        version: file:packages/config
-      '@taxtronik/db':
-        specifier: workspace:*
-        version: file:packages/db(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      '@taxtronik/evidence':
-        specifier: workspace:*
-        version: file:packages/evidence(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
+        version: link:../config
     devDependencies:
       fflate:
         specifier: ^0.8.3
@@ -2545,42 +2526,6 @@ packages:
 
   '@tailwindcss/postcss@4.3.0':
     resolution: {integrity: sha512-Jm05Tjx+9yCLGv5qw1c+84Psds8MnyrEQYCB+FFk2lgGiUjlRqdxke4mVTuYrj2xnVZqKim2Apr5ySuQRYAw/w==}
-
-  '@taxtronik/config@file:packages/config':
-    resolution: {directory: packages/config, type: directory}
-
-  '@taxtronik/crypto@file:packages/crypto':
-    resolution: {directory: packages/crypto, type: directory}
-
-  '@taxtronik/db@file:packages/db':
-    resolution: {directory: packages/db, type: directory}
-
-  '@taxtronik/elster@file:packages/elster':
-    resolution: {directory: packages/elster, type: directory}
-
-  '@taxtronik/evidence@file:packages/evidence':
-    resolution: {directory: packages/evidence, type: directory}
-
-  '@taxtronik/http-utils@file:packages/http-utils':
-    resolution: {directory: packages/http-utils, type: directory}
-
-  '@taxtronik/mail@file:packages/mail':
-    resolution: {directory: packages/mail, type: directory}
-
-  '@taxtronik/n8n-shared@file:packages/n8n-shared':
-    resolution: {directory: packages/n8n-shared, type: directory}
-
-  '@taxtronik/risk-layer@file:packages/risk-layer':
-    resolution: {directory: packages/risk-layer, type: directory}
-
-  '@taxtronik/rss@file:packages/rss':
-    resolution: {directory: packages/rss, type: directory}
-
-  '@taxtronik/storage@file:packages/storage':
-    resolution: {directory: packages/storage, type: directory}
-
-  '@taxtronik/tax@file:packages/tax':
-    resolution: {directory: packages/tax, type: directory}
 
   '@tesseract.js-data/deu@1.0.0':
     resolution: {integrity: sha512-3ter1p2gFAiCd5CMC+PodZ9YY2UDomkKj+ytlKeeZqOUmhLx1SDnYPf5zog0g5MBbxYveW+8omI3PUflqHfZ4Q==}
@@ -7149,101 +7094,6 @@ snapshots:
       '@tailwindcss/oxide': 4.3.0
       postcss: 8.5.23
       tailwindcss: 4.3.0
-
-  '@taxtronik/config@file:packages/config':
-    dependencies:
-      zod: 4.4.3
-
-  '@taxtronik/crypto@file:packages/crypto':
-    dependencies:
-      '@taxtronik/config': file:packages/config
-
-  '@taxtronik/db@file:packages/db(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
-    dependencies:
-      '@prisma/adapter-pg': 7.9.1
-      '@prisma/client': 7.9.1(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      pg: 8.22.0
-    transitivePeerDependencies:
-      - pg-native
-      - prisma
-      - typescript
-
-  '@taxtronik/elster@file:packages/elster':
-    dependencies:
-      '@taxtronik/config': file:packages/config
-      zod: 4.4.3
-
-  '@taxtronik/evidence@file:packages/evidence(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
-    dependencies:
-      '@aws-sdk/client-s3': 3.1053.0
-      '@prisma/client': 7.9.1(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      '@taxtronik/db': file:packages/db(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      '@taxtronik/http-utils': file:packages/http-utils
-      asn1js: 3.0.10
-      pkijs: 3.4.0
-    transitivePeerDependencies:
-      - pg-native
-      - prisma
-      - typescript
-
-  '@taxtronik/http-utils@file:packages/http-utils':
-    dependencies:
-      undici: 8.10.2
-
-  '@taxtronik/mail@file:packages/mail(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
-    dependencies:
-      '@azure/msal-node': 5.6.0
-      '@taxtronik/config': file:packages/config
-      '@taxtronik/crypto': file:packages/crypto
-      '@taxtronik/db': file:packages/db(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      '@taxtronik/n8n-shared': file:packages/n8n-shared(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      '@taxtronik/storage': file:packages/storage(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      imapflow: 1.7.2
-      mailparser: 3.9.15
-      nodemailer: 10.0.10
-      pdf-lib: 1.17.1
-    transitivePeerDependencies:
-      - pg-native
-      - prisma
-      - typescript
-
-  '@taxtronik/n8n-shared@file:packages/n8n-shared(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
-    dependencies:
-      '@prisma/client': 7.9.1(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      '@taxtronik/config': file:packages/config
-    transitivePeerDependencies:
-      - prisma
-      - typescript
-
-  '@taxtronik/risk-layer@file:packages/risk-layer':
-    dependencies:
-      '@taxtronik/config': file:packages/config
-      '@taxtronik/http-utils': file:packages/http-utils
-      zod: 4.4.3
-
-  '@taxtronik/rss@file:packages/rss':
-    dependencies:
-      '@taxtronik/http-utils': file:packages/http-utils
-
-  '@taxtronik/storage@file:packages/storage(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
-    dependencies:
-      '@aws-sdk/client-s3': 3.1053.0
-      '@smithy/node-http-handler': 4.7.4
-      '@taxtronik/config': file:packages/config
-      '@taxtronik/db': file:packages/db(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      '@taxtronik/evidence': file:packages/evidence(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-    transitivePeerDependencies:
-      - pg-native
-      - prisma
-      - typescript
-
-  '@taxtronik/tax@file:packages/tax(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)':
-    dependencies:
-      '@prisma/client': 7.9.1(prisma@7.9.1(@types/node@24.13.2)(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@6.0.3))(typescript@6.0.3)
-      fast-xml-parser: 5.11.0
-    transitivePeerDependencies:
-      - prisma
-      - typescript
 
   '@tesseract.js-data/deu@1.0.0': {}
 
