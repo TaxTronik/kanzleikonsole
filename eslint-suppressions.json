@@ -169,11 +169,6 @@
       "count": 1
     }
   },
-  "apps/web/src/components/document-explorer/browser-view.tsx": {
-    "complexity": {
-      "count": 2
-    }
-  },
   "apps/web/src/components/document-explorer/embedded-view.tsx": {
     "complexity": {
       "count": 1
