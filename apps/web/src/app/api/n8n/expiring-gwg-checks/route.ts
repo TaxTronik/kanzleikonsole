@@ -11,7 +11,10 @@ import { z } from 'zod';
 import { n8nRejectResponse, runReservedN8nRequest, verifyN8nSignature } from '@/server/n8n/verify';
 import { getExpiringGwgChecks } from '@/server/n8n/operations';
 import { log } from '@/server/logger';
-import { legacyN8nCallbackDisabledResponse } from '@/server/n8n/legacy-access';
+import {
+  legacyN8nCallbackDisabledResponse,
+  reportLegacyN8nCallbackUse,
+} from '@/server/n8n/legacy-access';
 
 const TenantIdSchema = z.string().uuid();
 
@@ -26,6 +29,7 @@ export async function GET(req: NextRequest) {
     // Befund 10: zentrales Status-Mapping (503/500 retrybar, sonst 401).
     return n8nRejectResponse(ver);
   }
+  reportLegacyN8nCallbackUse('expiring-gwg-checks');
 
   const withinDays = Number(req.nextUrl.searchParams.get('withinDays') ?? '30');
   if (!Number.isFinite(withinDays) || withinDays < 1 || withinDays > 365) {

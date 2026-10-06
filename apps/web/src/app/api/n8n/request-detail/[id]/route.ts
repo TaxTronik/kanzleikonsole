@@ -12,7 +12,10 @@ import { z } from 'zod';
 import { n8nRejectResponse, runReservedN8nRequest, verifyN8nSignature } from '@/server/n8n/verify';
 import { getRequestDetailForTenant } from '@/server/n8n/operations';
 import { log } from '@/server/logger';
-import { legacyN8nCallbackDisabledResponse } from '@/server/n8n/legacy-access';
+import {
+  legacyN8nCallbackDisabledResponse,
+  reportLegacyN8nCallbackUse,
+} from '@/server/n8n/legacy-access';
 
 const TenantIdSchema = z.string().uuid();
 const RequestIdSchema = z.string().uuid();
@@ -27,6 +30,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // Befund 10: zentrales Status-Mapping (503/500 retrybar, sonst 401).
     return n8nRejectResponse(ver);
   }
+  reportLegacyN8nCallbackUse('request-detail');
   const { id } = await params;
 
   const requestId = RequestIdSchema.safeParse(id);

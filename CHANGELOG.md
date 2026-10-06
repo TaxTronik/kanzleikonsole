@@ -220,6 +220,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Der nie implementierte Sammel-Endpunkt `/api/n8n/*` (antwortete stets 501)
+  ist entfernt. Aktivierte Legacy-Callbacks unter `/api/n8n/…` protokollieren
+  je Route und Prozess einmal eine Deprecation-Warnung mit dem v1-Nachfolger.
 - Ungenutzte Server-Actions (u. a. Alias-Actions für das Archivieren von
   Wiedervorlagen und den GwG-Prüfstart, manueller Audit-Rotations-Trigger),
   Komponenten und zehn CSS-Komponentenklassen entfernt. `autoprefixer` ist

@@ -18,6 +18,7 @@ vi.mock('@/server/n8n/verify', () => ({
 vi.mock('@/server/n8n/operations', () => ({ getExpiringGwgChecks: gwgMock }));
 vi.mock('@/server/n8n/legacy-access', () => ({
   legacyN8nCallbackDisabledResponse: () => null,
+  reportLegacyN8nCallbackUse: vi.fn(),
 }));
 vi.mock('@/server/logger', () => ({ log: { warn: vi.fn() } }));
 

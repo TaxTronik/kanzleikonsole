@@ -22,7 +22,6 @@ const ALTERNATIVE_MUTATION_GUARDS: Record<string, string[]> = {
   'api/auth/portal/[...nextauth]/route.ts': ['handlers'],
   'api/auth/staff/[...nextauth]/route.ts': ['handlers'],
   // Externe n8n-Webhooks sind nicht cookie-authentifiziert, sondern HMAC + Replay-Schutz.
-  'api/n8n/[...path]/route.ts': ['verifyN8nSignature'],
   'api/n8n/request-inbound/route.ts': ['verifyN8nSignature'],
   'api/n8n/research-result/route.ts': ['verifyN8nSignature'],
   // Versionierte n8n-Callbacks sind ebenfalls nicht cookie-authentifiziert:

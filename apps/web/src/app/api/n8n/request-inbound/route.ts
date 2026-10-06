@@ -8,7 +8,10 @@ import { z } from 'zod';
 import { n8nRejectResponse, runReservedN8nRequest, verifyN8nSignature } from '@/server/n8n/verify';
 import { handleInboundRequestEmail } from '@/server/n8n/operations';
 import { log } from '@/server/logger';
-import { legacyN8nCallbackDisabledResponse } from '@/server/n8n/legacy-access';
+import {
+  legacyN8nCallbackDisabledResponse,
+  reportLegacyN8nCallbackUse,
+} from '@/server/n8n/legacy-access';
 
 const InboundSchema = z.object({
   tenantId: z.string().uuid(),
@@ -26,6 +29,7 @@ export async function POST(req: NextRequest) {
     log.warn({ component: 'n8n', reason: verification.error }, 'n8n-verify: rejected');
     return n8nRejectResponse(verification);
   }
+  reportLegacyN8nCallbackUse('request-inbound');
 
   let body: unknown;
   try {

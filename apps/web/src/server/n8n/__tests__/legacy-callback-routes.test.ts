@@ -10,6 +10,7 @@ const {
   detailMock,
   inboundMock,
   researchMock,
+  reportMock,
   legacyEnv,
 } = vi.hoisted(() => ({
   verifyMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   detailMock: vi.fn(),
   inboundMock: vi.fn(),
   researchMock: vi.fn(),
+  reportMock: vi.fn(),
   legacyEnv: { N8N_LEGACY_CALLBACKS_ENABLED: true },
 }));
 
@@ -40,8 +42,11 @@ vi.mock('@/server/n8n/operations', () => ({
 
 vi.mock('@/server/risk', () => ({ receiveResearchResult: researchMock }));
 vi.mock('@/server/logger', () => ({ log: { warn: vi.fn() } }));
+vi.mock('@/server/n8n/legacy-access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/server/n8n/legacy-access')>()),
+  reportLegacyN8nCallbackUse: reportMock,
+}));
 
-import { POST as postCatchAll } from '@/app/api/n8n/[...path]/route';
 import { GET as getGwg } from '@/app/api/n8n/expiring-gwg-checks/route';
 import { GET as getOverdue } from '@/app/api/n8n/overdue-requests/route';
 import { GET as getDetail } from '@/app/api/n8n/request-detail/[id]/route';
@@ -98,9 +103,6 @@ describe('Legacy-n8n-Aliase sind default-off', () => {
       ),
       await postInbound(postRequest('/api/n8n/request-inbound', '{not even parsed')),
       await postResearch(postRequest('/api/n8n/research-result', '{not even parsed')),
-      await postCatchAll(postRequest('/api/n8n/custom/action', '{not even parsed'), {
-        params: Promise.resolve({ path: ['custom', 'action'] }),
-      }),
     ];
 
     for (const response of responses) {
@@ -115,6 +117,61 @@ describe('Legacy-n8n-Aliase sind default-off', () => {
     expect(detailMock).not.toHaveBeenCalled();
     expect(inboundMock).not.toHaveBeenCalled();
     expect(researchMock).not.toHaveBeenCalled();
+    expect(reportMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('Legacy-n8n-Aliase melden ihre Nutzung für die Abschaltentscheidung', () => {
+  async function callAllRoutes() {
+    return [
+      await getOverdue(
+        new NextRequest(`http://localhost/api/n8n/overdue-requests?tenantId=${TENANT_ID}`),
+      ),
+      await getGwg(
+        new NextRequest(
+          `http://localhost/api/n8n/expiring-gwg-checks?tenantId=${TENANT_ID}&withinDays=30`,
+        ),
+      ),
+      await getDetail(
+        new NextRequest(
+          `http://localhost/api/n8n/request-detail/${REQUEST_ID}?tenantId=${TENANT_ID}`,
+        ),
+        { params: Promise.resolve({ id: REQUEST_ID }) },
+      ),
+      await postInbound(
+        postRequest('/api/n8n/request-inbound', {
+          tenantId: TENANT_ID,
+          requestId: REQUEST_ID,
+          fromEmail: 'mandant@example.test',
+          message: 'Antwort',
+        }),
+      ),
+      await postResearch(
+        postRequest('/api/n8n/research-result', { tenantId: TENANT_ID, body: 'Ergebnis' }),
+      ),
+    ];
+  }
+
+  it('meldet jede Route nach erfolgreicher Signaturprüfung', async () => {
+    const responses = await callAllRoutes();
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 200, 200]);
+    expect(reportMock.mock.calls).toEqual([
+      ['overdue-requests'],
+      ['expiring-gwg-checks'],
+      ['request-detail'],
+      ['request-inbound'],
+      ['research-result'],
+    ]);
+  });
+
+  it('meldet keine Nutzung, wenn die Signatur abgewiesen wird', async () => {
+    verifyMock.mockResolvedValue({ ok: false, error: 'signature mismatch', status: 401 });
+
+    const responses = await callAllRoutes();
+
+    expect(responses.map((response) => response.status)).toEqual([401, 401, 401, 401, 401]);
+    expect(reportMock).not.toHaveBeenCalled();
   });
 });
 
@@ -213,22 +270,6 @@ describe('Legacy-n8n-Aliase reservieren erst nach Validierung', () => {
     const invalid = await postResearch(
       postRequest('/api/n8n/research-result', { body: 'Korrelation fehlt' }),
     );
-    expect(invalid.status).toBe(400);
-    expect(runReservedMock).not.toHaveBeenCalled();
-  });
-
-  it('deckt den Catch-all-Alias ab', async () => {
-    const valid = await postCatchAll(postRequest('/api/n8n/custom/action', { ok: true }), {
-      params: Promise.resolve({ path: ['custom', 'action'] }),
-    });
-    expect(valid.status).toBe(501);
-    expect(runReservedMock).toHaveBeenCalledOnce();
-
-    vi.clearAllMocks();
-    verifyMock.mockResolvedValue({ ...VERIFIED, body: '{invalid' });
-    const invalid = await postCatchAll(postRequest('/api/n8n/custom/action', '{invalid'), {
-      params: Promise.resolve({ path: ['custom', 'action'] }),
-    });
     expect(invalid.status).toBe(400);
     expect(runReservedMock).not.toHaveBeenCalled();
   });
