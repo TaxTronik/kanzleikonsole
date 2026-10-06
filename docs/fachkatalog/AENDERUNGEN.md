@@ -1,5 +1,39 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-003
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/app/api/staff/invoices/[id]/xrechnung/__tests__/route.test.ts
+      - apps/web/src/app/api/staff/invoices/[id]/xrechnung/route.ts
+      - apps/web/src/app/api/staff/invoices/[id]/zugferd/__tests__/route.test.ts
+      - apps/web/src/app/api/staff/invoices/[id]/zugferd/route.ts
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/server/invoicing/__tests__/archive-failure.test.ts
+      - apps/web/src/server/invoicing/__tests__/archive-lock-call-sites.test.ts
+      - apps/web/src/server/invoicing/__tests__/archive.test.ts
+      - apps/web/src/server/invoicing/archive-failure.ts
+      - apps/web/src/server/invoicing/archive.ts
+    rule_ids:
+      - INV-ARCHIVE-EINVOICE-001
+      - INV-PORTAL-SHARING-001
+      - INV-STORNO-REFERENCE-001
+      - INV-LIFECYCLE-FREEZE-001
+    reason: >-
+      Die Download-Routen für XRechnung und ZUGFeRD nutzen die aus archive.ts
+      exportierten Prüfungen (Freigabe, Stammdaten, Entwurf, Käufer-Mapping,
+      Recheck) statt eigener Kopien und antworten über eine gemeinsame
+      Fehlerzuordnung mit festen deutschen Texten; technische Details stehen nur
+      im Server-Log. Reverse-Charge ohne USt-IdNr der Kanzlei liefert in beiden
+      Routen 422 mit Grund statt 404. Ein Entwurf, dessen Archivverweis während
+      der Vorschau verschwindet, erzeugt kein GoBD-Archiv mehr aus einem GET.
+      Archivierung, Rechnungsinhalt, Freigabe- und Storno-Regeln gültiger
+      Rechnungen bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/api/staff/invoices/[id]/xrechnung/__tests__/route.test.ts
+      - apps/web/src/app/api/staff/invoices/[id]/zugferd/__tests__/route.test.ts
+      - apps/web/src/server/invoicing/__tests__/archive-failure.test.ts
+      - apps/web/src/server/invoicing/__tests__/archive.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-002
     date: '2026-10-06'
     paths:
@@ -2633,6 +2667,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-003` dokumentiert gemeinsame Prüfungen und
+  Fehlerantworten der E-Rechnungs-Downloads. Archivierung gültiger
+  Rechnungen bleibt unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-002` dokumentiert den einheitlich geprüften
   Lesepfad für gespeicherte Objekte. Zugriffsprüfungen und Inhalte

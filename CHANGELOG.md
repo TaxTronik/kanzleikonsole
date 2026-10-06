@@ -603,6 +603,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- E-Rechnungs-Downloads (XRechnung/ZUGFeRD): Reverse-Charge-Rechnungen ohne
+  USt-IdNr der Kanzlei liefern in beiden Routen 422 mit Hinweis auf die
+  Kanzlei-Stammdaten statt 404 „nicht gefunden“; technische Fehlertexte
+  erscheinen nicht mehr in der Antwort, sondern nur im Server-Log
+  (`INV-ARCHIVE-EINVOICE-001`, `FK-EXC-20261006-003`).
 - n8n: Erneut senden und Replay einer Zustellung an einen Endpunkt im
   Testmodus nutzen wieder die Test-URL, statt vom Worker als „Route geändert“
   verworfen zu werden. Ziel, Vorrang des Signaturgeheimnisses und

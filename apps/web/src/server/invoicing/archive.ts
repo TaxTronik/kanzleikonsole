@@ -27,6 +27,7 @@ import {
   generateXRechnungCii,
   toXRechnungInvoice,
   type StoredInvoiceForXRechnung,
+  type XRechnungBuyer,
 } from '@/server/invoicing/xrechnung';
 import { extractFacturXXml, generateZugferdPdf } from '@/server/invoicing/zugferd';
 import { readSellerInfo, type SellerInfo } from '@/server/settings/tenant-settings';
@@ -36,19 +37,23 @@ import { compensateStorageCommit } from '@/server/documents/storage-compensation
 import { lockInvoiceArchiveTx } from '@/server/invoicing/archive-lock';
 import { discardNeverSentDraftArchiveTx } from '@/server/invoicing/draft-archive';
 
+/** Fehlende Pflichtangaben für die Erzeugung von XRechnung/ZUGFeRD. */
+export type ArchiveInputFailure =
+  | 'seller_incomplete'
+  | 'reverse_charge_seller_no_vatid'
+  | 'buyer_incomplete';
+
+/** Alle fachlichen Ablehnungsgründe des Archivpfads (ohne technische Fehler). */
+export type ArchiveFailureCode =
+  | 'not_found'
+  | 'not_applicable'
+  | ArchiveInputFailure
+  | 'status_conflict';
+
 export type ArchiveResult =
   | { ok: true; bucket: string; key: string; storageVersionId?: string | null; number: string }
   | { ok: true; bytes: Buffer; number: string }
-  | {
-      ok: false;
-      code:
-        | 'not_found'
-        | 'not_applicable'
-        | 'seller_incomplete'
-        | 'reverse_charge_seller_no_vatid'
-        | 'buyer_incomplete'
-        | 'status_conflict';
-    };
+  | { ok: false; code: ArchiveFailureCode };
 
 /** Gemeinsame Fail-closed-Prüfung vor jeder XRechnung-/ZUGFeRD-Erzeugung. */
 function isSellerIncomplete(seller: SellerInfo): boolean {
@@ -63,22 +68,57 @@ function isSellerIncomplete(seller: SellerInfo): boolean {
   );
 }
 
-function isInvoiceShareable(invoice: { status: string; sentAt: Date | null }): boolean {
+/**
+ * Freigabeprüfung (INV-PORTAL-SHARING-001): Archivfassungen werden dem
+ * Mandanten erst nach der Ausstellung geteilt.
+ */
+export function isInvoiceShareable(invoice: { status: string; sentAt: Date | null }): boolean {
   // Ein nach Versand storniertes Original bleibt ein ausgestellter Beleg und
   // damit Teil der Mandantenakte. CANCELLED ohne sentAt ist dagegen nur ein
   // nie ausgestellter Entwurf und darf nicht freigegeben werden.
   return invoice.sentAt !== null || ['SENT', 'PAID', 'OVERDUE'].includes(invoice.status);
 }
 
-interface ArtifactInvoice extends StoredInvoiceForXRechnung {
-  client: {
-    name: string;
-    street: string | null;
-    postalCode: string | null;
-    city: string | null;
-    countryIso: string | null;
-    vatId: string | null;
-    invoiceEmail: string | null;
+/**
+ * Entwurfsprüfung: Ein stornierter, nie versendeter Entwurf ist kein Beleg.
+ * Er darf weder freigegeben noch (nachträglich) archiviert werden.
+ */
+export function isCancelledDraft(invoice: { status: string; sentAt: Date | null }): boolean {
+  return invoice.status === 'CANCELLED' && !invoice.sentAt;
+}
+
+/**
+ * EXTERNAL-/PDF-Rechnungen haben kein Generat: Ihr Beleg ist der Upload, eine
+ * XRechnung- oder ZUGFeRD-Fassung gibt es nicht (`not_applicable`).
+ */
+export function hasGeneratedEInvoice(invoice: { format: string }): boolean {
+  return invoice.format !== 'PDF';
+}
+
+export interface ArchiveBuyerClient {
+  name: string;
+  street: string | null;
+  postalCode: string | null;
+  city: string | null;
+  countryIso: string | null;
+  vatId: string | null;
+  invoiceEmail: string | null;
+}
+
+export interface ArtifactInvoice extends StoredInvoiceForXRechnung {
+  client: ArchiveBuyerClient;
+}
+
+/** Käufer-Mapping (BG-7) für XML-Vorschau, Archiv-XML und ZUGFeRD-PDF. */
+export function xrechnungBuyer(client: ArchiveBuyerClient): XRechnungBuyer {
+  return {
+    name: client.name,
+    street: client.street,
+    postalCode: client.postalCode,
+    city: client.city,
+    countryIso: client.countryIso ?? 'DE',
+    vatId: client.vatId,
+    email: client.invoiceEmail,
   };
 }
 
@@ -107,15 +147,7 @@ async function generateInvoiceArtifacts(
   seller: SellerInfo,
 ): Promise<{ cii: string; pdfBytes: Uint8Array }> {
   const xInput = toXRechnungInvoice(invoice);
-  const buyer = {
-    name: invoice.client.name,
-    street: invoice.client.street!,
-    postalCode: invoice.client.postalCode!,
-    city: invoice.client.city!,
-    countryIso: invoice.client.countryIso ?? 'DE',
-    vatId: invoice.client.vatId,
-    email: invoice.client.invoiceEmail,
-  };
+  const buyer = xrechnungBuyer(invoice.client);
   try {
     const [branding, letterhead] = await Promise.all([readBranding(ctx), readLetterhead(ctx)]);
     const cii = generateXRechnungCii(xInput, seller, buyer);
@@ -131,13 +163,18 @@ async function generateInvoiceArtifacts(
   }
 }
 
-type ArchiveInputFailure =
-  | 'seller_incomplete'
-  | 'reverse_charge_seller_no_vatid'
-  | 'buyer_incomplete';
-
-function archiveInputFailure(
-  invoice: ArtifactInvoice,
+/**
+ * Stammdatenprüfung vor jeder XRechnung-/ZUGFeRD-Erzeugung (Vorschau und
+ * Archiv). E-Mail + Telefon sind XRechnung-Pflicht (BG-6 Verkäufer-Kontakt,
+ * BR-DE-2/-6/-7); USt-ID ODER Steuernummer ist bei Standardsatz Pflicht
+ * (EN-16931 BR-S-02/BR-CO-26); Reverse-Charge (Kategorie AE, BR-AE-01)
+ * verlangt zwingend die USt-IdNr der Kanzlei.
+ */
+export function archiveInputFailure(
+  invoice: {
+    reverseCharge: boolean;
+    client: { street: string | null; city: string | null; postalCode: string | null };
+  },
   seller: SellerInfo,
 ): ArchiveInputFailure | null {
   if (isSellerIncomplete(seller)) return 'seller_incomplete';
@@ -159,14 +196,37 @@ async function renderDraftPreview(
   return { ok: true, bytes: Buffer.from(preview.pdfBytes), number: invoice.number };
 }
 
-type DraftPreviewRecheck =
-  | { state: 'not_found' | 'status_conflict' | 'preview' | 'retry' }
-  | { state: 'archived'; bucket: string; key: string; storageVersionId: string | null };
+/** Stand des Entwurfs, aus dem eine Kontrollvorschau gerendert wurde. */
+export interface DraftPreviewSnapshot {
+  updatedAt: Date;
+  documentId: string | null;
+  xrechnungDocumentId: string | null;
+}
 
-async function recheckDraftPreview(
+export type DraftPreviewRecheck =
+  /** Unveränderter Entwurf: die frisch gerenderte Vorschau gilt. */
+  | { state: 'preview' }
+  | { state: 'not_found' | 'status_conflict' }
+  /**
+   * Ausstellung oder Archivverknüpfung hat das Rendern überholt: nie die
+   * transiente Vorschau liefern, sondern die kanonische Archivfassung.
+   * `pdf` ist die bereits verknüpfte ZUGFeRD-Version (falls vorhanden).
+   */
+  | {
+      state: 'issued';
+      pdf: { bucket: string; key: string; storageVersionId: string | null } | null;
+    };
+
+/**
+ * Recheck einer DRAFT-Kontrollvorschau (XRechnung-XML und ZUGFeRD-PDF). Die
+ * Generierung läuft absichtlich ohne lange DB-Transaktion; danach linearisiert
+ * derselbe Archiv-Lock wie Versand/Storno den Snapshot. Normale
+ * DRAFT-Änderungen führen fail-closed zu `status_conflict`.
+ */
+export async function recheckDraftPreview(
   ctx: TenantContext,
   invoiceId: string,
-  loaded: LoadedArchiveInvoice,
+  snapshot: DraftPreviewSnapshot,
 ): Promise<DraftPreviewRecheck> {
   return withTenantContext(ctx, async (tx) => {
     await lockInvoiceArchiveTx(tx, invoiceId);
@@ -177,32 +237,38 @@ async function recheckDraftPreview(
         sentAt: true,
         updatedAt: true,
         documentId: true,
+        xrechnungDocumentId: true,
         document: {
           select: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
         },
       },
     });
     if (!fresh) return { state: 'not_found' };
-    if (fresh.status === 'CANCELLED' && !fresh.sentAt) return { state: 'status_conflict' };
+    if (isCancelledDraft(fresh)) return { state: 'status_conflict' };
 
-    const pointerChanged = fresh.documentId !== loaded.documentId;
-    const archived = fresh.document?.versions[0];
-    if ((fresh.status !== 'DRAFT' || pointerChanged) && fresh.documentId && archived) {
+    const pointerChanged =
+      fresh.documentId !== snapshot.documentId ||
+      fresh.xrechnungDocumentId !== snapshot.xrechnungDocumentId;
+    if (fresh.status === 'DRAFT' && !pointerChanged) {
+      return fresh.updatedAt.getTime() === snapshot.updatedAt.getTime()
+        ? { state: 'preview' }
+        : { state: 'status_conflict' };
+    }
+    const archived = fresh.documentId ? fresh.document?.versions[0] : undefined;
+    if (archived) {
       return {
-        state: 'archived',
-        bucket: archived.storageBucket,
-        key: archived.storageKey,
-        storageVersionId: archived.storageVersionId,
+        state: 'issued',
+        pdf: {
+          bucket: archived.storageBucket,
+          key: archived.storageKey,
+          storageVersionId: archived.storageVersionId,
+        },
       };
     }
-    if (
-      fresh.status === 'DRAFT' &&
-      !pointerChanged &&
-      fresh.updatedAt.getTime() === loaded.updatedAt.getTime()
-    ) {
-      return { state: 'preview' };
-    }
-    return { state: fresh.status === 'DRAFT' ? 'status_conflict' : 'retry' };
+    // Ein Entwurf ohne verknüpfte Archivfassung ist (noch) nicht ausgestellt:
+    // ein paralleler Versand läuft gerade. Kein Archiv aus dem GET erzeugen.
+    if (fresh.status === 'DRAFT') return { state: 'status_conflict' };
+    return { state: 'issued', pdf: null };
   });
 }
 
@@ -214,24 +280,14 @@ async function renderConsistentDraftPreview(
   const preview = await renderDraftPreview(ctx, loaded);
   if (!preview.ok) return preview;
 
-  // Die Generierung läuft absichtlich ohne lange DB-Transaktion. Danach
-  // linearisiert derselbe Archiv-Lock wie Versand/Storno den Snapshot:
-  // gewinnt während des Renderns die Ausstellung, liefern wir niemals die
+  // Gewinnt während des Renderns die Ausstellung, liefern wir niemals die
   // transienten Preview-Bytes, sondern exakt die inzwischen verknüpfte
-  // Archivfassung. Normale DRAFT-Änderungen führen fail-closed zum Retry.
+  // Archivfassung.
   const rechecked = await recheckDraftPreview(ctx, invoiceId, loaded);
   if (rechecked.state === 'preview') return preview;
-  if (rechecked.state === 'archived') {
-    return {
-      ok: true,
-      bucket: rechecked.bucket,
-      key: rechecked.key,
-      storageVersionId: rechecked.storageVersionId,
-      number: loaded.number,
-    };
-  }
-  if (rechecked.state === 'retry') {
-    return ensureZugferdArchive(ctx, invoiceId, { purpose: 'ISSUE' });
+  if (rechecked.state === 'issued') {
+    if (!rechecked.pdf) return ensureZugferdArchive(ctx, invoiceId, { purpose: 'ISSUE' });
+    return { ok: true, ...rechecked.pdf, number: loaded.number };
   }
   return { ok: false, code: rechecked.state };
 }
@@ -267,7 +323,7 @@ async function refreshDraftArchive(
       },
     });
     if (!fresh) return { state: 'not_found' };
-    if (fresh.status === 'CANCELLED' && !fresh.sentAt) return { state: 'status_conflict' };
+    if (isCancelledDraft(fresh)) return { state: 'status_conflict' };
     if (fresh.status !== 'DRAFT') return { state: 'changed' };
     const discarded = await discardNeverSentDraftArchiveTx(
       tx,
@@ -319,7 +375,7 @@ async function commitLazyXrechnungDocument(input: {
         },
       });
       if (!fresh) return 'not_found';
-      if (fresh.status === 'CANCELLED' && !fresh.sentAt) return 'status_conflict';
+      if (isCancelledDraft(fresh)) return 'status_conflict';
 
       const shareable = isInvoiceShareable(fresh);
       const existing = fresh.xrechnungDocument;
@@ -679,7 +735,7 @@ async function linkGeneratedArchiveTx(
     },
   });
   if (!fresh) return { outcome: 'not_found' };
-  if (fresh.status === 'CANCELLED' && !fresh.sentAt) return { outcome: 'status_conflict' };
+  if (isCancelledDraft(fresh)) return { outcome: 'status_conflict' };
 
   const freshVersion = fresh.document?.versions[0];
   if (fresh.documentId && freshVersion) {
@@ -860,7 +916,7 @@ export async function ensureZugferdArchive(
   const loaded = await loadArchiveInvoice(ctx, invoiceId);
   if (!loaded) return { ok: false, code: 'not_found' };
   // EXTERNAL (PDF) hat kein ZUGFeRD-Generat — deren documentId ist der Upload.
-  if (loaded.format === 'PDF') return { ok: false, code: 'not_applicable' };
+  if (!hasGeneratedEInvoice(loaded)) return { ok: false, code: 'not_applicable' };
 
   if ((options.purpose ?? 'ISSUE') === 'PREVIEW' && loaded.status === 'DRAFT') {
     return renderConsistentDraftPreview(ctx, invoiceId, loaded);
@@ -880,10 +936,9 @@ export async function ensureZugferdArchive(
   const existing = await reuseExistingArchive(ctx, invoiceId, actorId, loaded);
   if (existing) return existing;
 
-  // 2. Validierung (identisch zur bisherigen Download-Route). E-Mail + Telefon
-  // sind XRechnung-Pflicht (BG-6 Verkäufer-Kontakt, BR-DE-2/-6/-7); USt-ID ODER
-  // Steuernummer ist bei Standardsatz Pflicht (EN-16931 BR-S-02/BR-CO-26) —
-  // ohne sie würde nicht-konformes XML archiviert, daher fail-closed.
+  // 2. Validierung (dieselbe Stammdatenprüfung wie die DRAFT-Vorschau beider
+  // Download-Routen) — ohne sie würde nicht-konformes XML archiviert, daher
+  // fail-closed.
   const seller = await readSellerInfo(ctx);
   const invalid = archiveInputFailure(loaded, seller);
   if (invalid) return { ok: false, code: invalid };

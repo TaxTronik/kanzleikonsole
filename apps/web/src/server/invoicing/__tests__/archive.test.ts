@@ -42,7 +42,15 @@ vi.mock('@/server/documents/storage-compensation', () => ({
   compensateStorageCommit: vi.fn(async () => 'JOURNALED'),
 }));
 
-import { ensureZugferdArchive } from '../archive';
+import {
+  archiveInputFailure,
+  ensureZugferdArchive,
+  hasGeneratedEInvoice,
+  isCancelledDraft,
+  isInvoiceShareable,
+  recheckDraftPreview,
+  xrechnungBuyer,
+} from '../archive';
 import { withTenantContext } from '@taxtronik/db';
 import { commitBytesWithTier, fetchObjectBytes } from '@taxtronik/storage';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
@@ -542,6 +550,27 @@ describe('ensureZugferdArchive', () => {
     expect(res).toEqual({ ok: false, code: 'buyer_incomplete' });
   });
 
+  it.each(['ISSUE', 'PREVIEW'] as const)(
+    'reverse_charge_seller_no_vatid (%s): Reverse-Charge verlangt die USt-IdNr der Kanzlei (BR-AE-01)',
+    async (purpose) => {
+      // ISSUE liest den Entwurf unter dem Lock erneut (Draft-Refresh).
+      tx.invoice.findFirst.mockResolvedValue(
+        baseInvoice({ status: 'DRAFT', sentAt: null, reverseCharge: true }),
+      );
+      vi.mocked(readSellerInfo).mockResolvedValue({
+        ...COMPLETE_SELLER,
+        vatId: null,
+        taxNumber: '12/345/67890',
+      } as never);
+
+      const res = await ensureZugferdArchive(ctx, 'inv1', { purpose });
+
+      expect(res).toEqual({ ok: false, code: 'reverse_charge_seller_no_vatid' });
+      expect(generateZugferdPdf).not.toHaveBeenCalled();
+      expect(commitBytesWithTier).not.toHaveBeenCalled();
+    },
+  );
+
   it('generiert + speichert + verknüpft, wenn kein Archiv existiert', async () => {
     tx.invoice.findFirst
       .mockResolvedValueOnce(baseInvoice()) // load: kein documentId
@@ -704,5 +733,132 @@ describe('ensureZugferdArchive', () => {
       commit: expect.objectContaining({ targetKey: 'pdf-key' }),
       cause: expect.any(Error),
     });
+  });
+});
+
+describe('recheckDraftPreview (gemeinsamer Recheck der XML- und PDF-Vorschau)', () => {
+  const snapshot = {
+    updatedAt: new Date('2026-08-23T12:00:00.000Z'),
+    documentId: null,
+    xrechnungDocumentId: null,
+  };
+  const draft = (overrides: Record<string, unknown> = {}) =>
+    baseInvoice({ status: 'DRAFT', sentAt: null, ...overrides });
+
+  it('preview, solange der Entwurf unverändert ist (unter dem Archiv-Lock)', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(draft());
+    await expect(recheckDraftPreview(ctx, 'inv1', snapshot)).resolves.toEqual({
+      state: 'preview',
+    });
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it('status_conflict bei geändertem oder storniertem Entwurf', async () => {
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(draft({ updatedAt: new Date('2026-08-23T12:00:01.000Z') }))
+      .mockResolvedValueOnce(draft({ status: 'CANCELLED' }));
+    await expect(recheckDraftPreview(ctx, 'inv1', snapshot)).resolves.toEqual({
+      state: 'status_conflict',
+    });
+    await expect(recheckDraftPreview(ctx, 'inv1', snapshot)).resolves.toEqual({
+      state: 'status_conflict',
+    });
+  });
+
+  it('not_found, wenn die Rechnung verschwunden ist', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(null);
+    await expect(recheckDraftPreview(ctx, 'inv1', snapshot)).resolves.toEqual({
+      state: 'not_found',
+    });
+  });
+
+  it('issued mit Archiv-PDF, wenn die Ausstellung das Rendern überholt hat', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(
+      baseInvoice({
+        documentId: 'pdf-doc',
+        xrechnungDocumentId: 'xml-doc',
+        document: {
+          versions: [{ storageBucket: 'gobd', storageKey: 'pdf-key', storageVersionId: 'v1' }],
+        },
+      }),
+    );
+    await expect(recheckDraftPreview(ctx, 'inv1', snapshot)).resolves.toEqual({
+      state: 'issued',
+      pdf: { bucket: 'gobd', key: 'pdf-key', storageVersionId: 'v1' },
+    });
+  });
+
+  it('issued ohne Archiv für eine ausgestellte Rechnung ohne verknüpfte PDF', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
+    await expect(recheckDraftPreview(ctx, 'inv1', snapshot)).resolves.toEqual({
+      state: 'issued',
+      pdf: null,
+    });
+  });
+
+  it('erkennt auch einen geänderten XML-Zeiger als überholten Snapshot', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(
+      draft({
+        documentId: 'pdf-doc',
+        xrechnungDocumentId: 'xml-doc',
+        document: { versions: [{ storageBucket: 'gobd', storageKey: 'pdf-key' }] },
+      }),
+    );
+    const rechecked = await recheckDraftPreview(ctx, 'inv1', {
+      ...snapshot,
+      documentId: 'pdf-doc',
+    });
+    expect(rechecked).toEqual({
+      state: 'issued',
+      pdf: { bucket: 'gobd', key: 'pdf-key', storageVersionId: undefined },
+    });
+  });
+
+  it('erzeugt für einen Entwurf mit gelöstem Archivzeiger kein Archiv (status_conflict)', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(draft());
+    await expect(
+      recheckDraftPreview(ctx, 'inv1', { ...snapshot, documentId: 'stale-draft-pdf' }),
+    ).resolves.toEqual({ state: 'status_conflict' });
+  });
+});
+
+describe('gemeinsame Prüfungen und Käufer-Mapping', () => {
+  it('xrechnungBuyer bildet die Mandantendaten ab (Land default DE)', () => {
+    expect(xrechnungBuyer({ ...COMPLETE_CLIENT, countryIso: null, vatId: 'DE1' })).toEqual({
+      name: 'Mandant',
+      street: 'Gasse 2',
+      postalCode: '54321',
+      city: 'Ort',
+      countryIso: 'DE',
+      vatId: 'DE1',
+      email: null,
+    });
+  });
+
+  it('archiveInputFailure prüft Verkäufer vor Reverse-Charge vor Käufer', () => {
+    const rc = { reverseCharge: true, client: { ...COMPLETE_CLIENT, city: null } };
+    expect(archiveInputFailure(rc, { ...COMPLETE_SELLER, phone: null } as never)).toBe(
+      'seller_incomplete',
+    );
+    expect(
+      archiveInputFailure(rc, { ...COMPLETE_SELLER, vatId: null, taxNumber: '1' } as never),
+    ).toBe('reverse_charge_seller_no_vatid');
+    expect(archiveInputFailure(rc, COMPLETE_SELLER as never)).toBe('buyer_incomplete');
+    expect(
+      archiveInputFailure({ ...rc, client: COMPLETE_CLIENT }, COMPLETE_SELLER as never),
+    ).toBeNull();
+  });
+
+  it('Freigabe- und Entwurfsprüfung', () => {
+    const sentAt = new Date();
+    expect(isInvoiceShareable({ status: 'DRAFT', sentAt: null })).toBe(false);
+    expect(isInvoiceShareable({ status: 'CANCELLED', sentAt: null })).toBe(false);
+    expect(isInvoiceShareable({ status: 'CANCELLED', sentAt })).toBe(true);
+    expect(isInvoiceShareable({ status: 'PAID', sentAt: null })).toBe(true);
+    expect(isCancelledDraft({ status: 'CANCELLED', sentAt: null })).toBe(true);
+    expect(isCancelledDraft({ status: 'CANCELLED', sentAt })).toBe(false);
+    expect(isCancelledDraft({ status: 'DRAFT', sentAt: null })).toBe(false);
+    expect(hasGeneratedEInvoice({ format: 'PDF' })).toBe(false);
+    expect(hasGeneratedEInvoice({ format: 'XRECHNUNG' })).toBe(true);
   });
 });

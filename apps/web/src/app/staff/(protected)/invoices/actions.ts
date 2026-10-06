@@ -14,6 +14,7 @@ import { fireAndForget } from '@/server/util/fire-and-forget';
 import { portalBaseUrl } from '@taxtronik/config';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
+import { archiveFailureMessage } from '@/server/invoicing/archive-failure';
 import { computeVatTotals } from '@/server/invoicing/vat';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
 import { toStornoPosition } from '@/server/invoicing/storno';
@@ -327,16 +328,6 @@ const StatusSchema = z.object({
   invoiceId: z.string().uuid(),
 });
 
-const ARCHIVE_FAIL_TEXT: Record<string, string> = {
-  not_found: 'Rechnung nicht gefunden.',
-  seller_incomplete:
-    'Kanzlei-Rechnungsabsender unvollständig — Name, Anschrift, E-Mail und Telefon sind Pflicht (Einstellungen → Rechnungsdaten).',
-  reverse_charge_seller_no_vatid:
-    'Reverse-Charge (§ 13b UStG) erfordert die USt-IdNr der Kanzlei (Einstellungen → Rechnungsdaten).',
-  buyer_incomplete: 'Mandanten-Anschrift unvollständig (Straße/PLZ/Ort).',
-  status_conflict: 'Die Rechnung wurde zwischenzeitlich geändert oder storniert.',
-};
-
 /**
  * Das Original darf erst dann aus dem Forderungsbestand verschwinden, wenn der
  * Korrekturbeleg in derselben Transaktion auf SENT festgeschrieben wurde.
@@ -618,7 +609,7 @@ export async function markSentAction(
     if (archive.code !== 'not_applicable') {
       return {
         ok: false,
-        error: `Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: ${ARCHIVE_FAIL_TEXT[archive.code] ?? archive.code}`,
+        error: `Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: ${archiveFailureMessage(archive.code)}`,
       };
     }
     // H-4: `not_applicable` ist nur für EXTERNAL-Uploads zulässig (deren
@@ -893,7 +884,7 @@ async function cancelInvoice(
     }
     if (!archive.ok) {
       throw new ActionError(
-        `Korrekturbeleg nicht versendet; Original bleibt aktiv: ${ARCHIVE_FAIL_TEXT[archive.code] ?? archive.code}`,
+        `Korrekturbeleg nicht versendet; Original bleibt aktiv: ${archiveFailureMessage(archive.code)}`,
       );
     }
 

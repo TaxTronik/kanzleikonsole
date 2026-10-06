@@ -5,7 +5,8 @@ import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { streamObject } from '@taxtronik/storage';
-import { ensureZugferdArchive } from '@/server/invoicing/archive';
+import { ensureZugferdArchive, type ArchiveResult } from '@/server/invoicing/archive';
+import { archiveFailureResponse } from '@/server/invoicing/archive-failure';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { isUuid } from '@/lib/uuid';
 import { isModeModuleEnabled, readModules } from '@/server/settings/modules';
@@ -17,13 +18,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
-  if (!isUuid(id)) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  }
+  if (!isUuid(id)) return archiveFailureResponse('not_found');
   const { tenantId, staffId } = session.user;
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   if (!isModeModuleEnabled(await readModules(ctx), 'invoices')) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 });
+    return archiveFailureResponse('not_found');
   }
 
   const rl = await checkStaffExportLimit('zugferd', staffId);
@@ -42,67 +41,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     if (!inv) return false;
     return canAccessClientTx(tx, session, inv.clientId);
   });
-  if (!accessible) {
-    return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  }
+  if (!accessible) return archiveFailureResponse('not_found');
 
   // Option B: byte-stabile ZUGFeRD-Archiv-PDF sicherstellen (einmal generiert +
   // revisionssicher abgelegt). Wurde sie beim Ausstellen (markSent) erzeugt,
   // ist das hier nur ein Lookup. Ein DRAFT wird frisch als nicht archivierte
   // Kontrollfassung gerendert; die Festschreibung erfolgt erst beim Versand.
-  // Validierung (Adresse vollständig) liegt im Helfer.
+  // Validierung (Stammdaten, Reverse-Charge, Adresse) liegt im Helfer; jeder
+  // Ablehnungscode wird mit seinem Grund beantwortet (archiveFailureResponse).
   // Zeitdach: PDF-Gen + Object-Store sind gebunden, damit der Download nie
   // endlos am Browser-Spinner hängen bleibt (früher „lädt ewig").
-  let archive;
+  let archive: ArchiveResult;
   try {
     archive = await withTimeout(ensureZugferdArchive(ctx, id, { purpose: 'PREVIEW' }), 45_000);
-  } catch (err) {
-    if (err instanceof TimeoutError) {
-      return NextResponse.json(
-        {
-          error: 'timeout',
-          message: 'Zeitüberschreitung beim Erzeugen der ZUGFeRD-PDF — bitte erneut versuchen.',
-        },
-        { status: 504 },
-      );
-    }
-    // Echten Fehlertext durchreichen (enthält Schritt-Kontext aus
-    // ensureZugferdArchive: PDF-Generierung vs. GOBD-Ablage) — sonst raten
-    // wir bei „ZUGFeRD geht nicht" nur über die Ursache.
-    const detail = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: 'generation_failed', message: detail }, { status: 502 });
+  } catch (error) {
+    // Der Fehlertext (Schritt-Kontext aus ensureZugferdArchive: PDF-Generierung
+    // vs. GOBD-Ablage) geht nur ins Server-Log, nicht an den Client.
+    return archiveFailureResponse(error instanceof TimeoutError ? 'timeout' : 'generation_failed', {
+      route: 'zugferd',
+      tenantId,
+      invoiceId: id,
+      error,
+    });
   }
-  if (!archive.ok) {
-    if (archive.code === 'seller_incomplete') {
-      return NextResponse.json(
-        {
-          error: 'seller_incomplete',
-          message: 'Verkäufer-Stammdaten unvollständig (Name, Straße, PLZ, Ort, E-Mail, Telefon).',
-        },
-        { status: 422 },
-      );
-    }
-    if (archive.code === 'buyer_incomplete') {
-      return NextResponse.json(
-        {
-          error: 'buyer_incomplete',
-          message: 'Mandanten-Adresse unvollständig (Straße, PLZ, Ort).',
-        },
-        { status: 422 },
-      );
-    }
-    if (archive.code === 'status_conflict') {
-      return NextResponse.json(
-        {
-          error: 'status_conflict',
-          message: 'Die Rechnung wurde während der PDF-Erzeugung geändert oder storniert.',
-        },
-        { status: 409 },
-      );
-    }
-    // not_found | not_applicable (z. B. EXTERNAL/PDF-Rechnung)
-    return NextResponse.json({ error: 'not_found' }, { status: 404 });
-  }
+  if (!archive.ok) return archiveFailureResponse(archive.code);
 
   // Download auditieren (separate Tx, nach Sicherstellung des Archivs).
   await withTenantContext(ctx, async (tx) => {

@@ -54,7 +54,7 @@ describe('Rechnungsarchiv-Lock – Aufrufer-Reihenfolge', () => {
       ),
       'lockInvoiceArchiveTx(',
       'tx.invoice.findFirst(',
-      "fresh.status === 'CANCELLED'",
+      'isCancelledDraft(fresh)',
       'tx.document.create(',
       'tx.invoice.update(',
     );
@@ -62,7 +62,7 @@ describe('Rechnungsarchiv-Lock – Aufrufer-Reihenfolge', () => {
       section(archive, 'async function commitLazyXrechnungDocument', 'type ArchiveOptions'),
       'lockInvoiceArchiveTx(',
       'tx.invoice.findFirst(',
-      "fresh.status === 'CANCELLED'",
+      'isCancelledDraft(fresh)',
       'const existing = fresh.xrechnungDocument',
       'tx.document.create(',
     );
@@ -74,12 +74,20 @@ describe('Rechnungsarchiv-Lock – Aufrufer-Reihenfolge', () => {
   it('liefert DRAFT nur als frische Vorschau und nutzt für ausgestellte XML den kanonischen Archivpfad', () => {
     expectOrdered(
       section(xrechnungRoute, "if (invoice.status === 'DRAFT')", '// Audit-Log'),
-      'const rendered = renderXml(',
-      'recheckDraftXmlPreview(',
-      "rechecked === 'current'",
-      'useArchive = true',
-      'if (useArchive)',
+      'renderDraftXmlPreview(',
+      "preview.state === 'preview'",
+      'draftXml = preview.xml',
+      'if (draftXml === null)',
       'resolveIssuedXmlArchive(',
+    );
+    expectOrdered(
+      section(xrechnungRoute, 'async function renderDraftXmlPreview', 'type ReadyXmlArchive'),
+      'hasGeneratedEInvoice(',
+      'archiveInputFailure(',
+      'generateXRechnungCii(',
+      'xrechnungBuyer(',
+      'recheckDraftPreview(',
+      "rechecked.state === 'preview'",
     );
     expectOrdered(
       section(
@@ -97,16 +105,41 @@ describe('Rechnungsarchiv-Lock – Aufrufer-Reihenfolge', () => {
     );
   });
 
-  it('recheckt eine DRAFT-XRechnung nach dem Rendern unter dem Archiv-Lock', () => {
+  it('recheckt DRAFT-Vorschauen beider Formate nach dem Rendern unter dem Archiv-Lock', () => {
     expectOrdered(
-      section(xrechnungRoute, 'async function recheckDraftXmlPreview', 'type ReadyXmlArchive'),
+      section(
+        archive,
+        'export async function recheckDraftPreview',
+        'async function renderConsistentDraftPreview',
+      ),
       'lockInvoiceArchiveTx(',
       'tx.invoice.findFirst(',
-      "fresh.status === 'CANCELLED'",
-      'archivePointerChanged',
-      "fresh.status !== 'DRAFT'",
+      'isCancelledDraft(fresh)',
+      'const pointerChanged',
+      "fresh.status === 'DRAFT' && !pointerChanged",
       'fresh.updatedAt.getTime()',
     );
+    expectOrdered(
+      section(archive, 'async function renderConsistentDraftPreview', 'type DraftRefreshResult'),
+      'renderDraftPreview(',
+      'recheckDraftPreview(',
+    );
+  });
+
+  it('XRechnung-Route nutzt Prüfungen, Käufer-Mapping und Recheck aus archive.ts statt eigener Kopien', () => {
+    for (const copy of [
+      'function xmlInputError',
+      'function renderXml',
+      'function invoiceStatusAllowsPortalShare',
+      'function recheckDraftXmlPreview',
+      '!seller.',
+      'invoice.client.street',
+      "status === 'CANCELLED'",
+    ]) {
+      expect(xrechnungRoute, copy).not.toContain(copy);
+    }
+    expect(xrechnungRoute).toContain('archiveFailureResponse(');
+    expect(xrechnungRoute).not.toContain("NextResponse.json({ error: 'archive_failed'");
   });
 
   it('serialisiert das Lesen einer ausgestellten XRechnung vor Status und Dokument-Lookup', () => {
@@ -119,9 +152,10 @@ describe('Rechnungsarchiv-Lock – Aufrufer-Reihenfolge', () => {
       archivedRead,
       'lockInvoiceArchiveTx(',
       'tx.invoice.findFirst(',
-      "fresh.status === 'CANCELLED'",
+      'isCancelledDraft(fresh)',
       'const existing = fresh.xrechnungDocument',
       'const version = existing?.versions[0]',
+      'isInvoiceShareable(fresh)',
     );
     expect(archivedRead).not.toContain('tx.document.findFirst(');
     expect(archivedRead).not.toContain('title:');
