@@ -1,5 +1,20 @@
 ---
 exceptions:
+  - id: FK-EXC-20261006-019
+    date: '2026-10-06'
+    paths:
+      - apps/web/src/server/gwg-onboarding/__tests__/invite-lifecycle.test.ts
+    rule_ids:
+      - GWG-SELF-ONBOARDING-001
+    reason: >-
+      Der Quelltext-Test des GwG-Einladungs-Lifecycles normalisiert die
+      Zeilenenden der gelesenen Action-Dateien vor dem Mehrzeilenvergleich, weil die
+      Working-Copy unter Windows CRLF trägt (.gitattributes hält nur das Repository
+      auf LF). Geprüfte Aussagen, Einladungslogik und Supersession bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/gwg-onboarding/__tests__/invite-lifecycle.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261006-018
     date: '2026-10-06'
     paths:
@@ -3302,6 +3317,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-06: `FK-EXC-20261006-019` dokumentiert die plattformunabhängige
+  Zeilenenden-Normalisierung im Quelltext-Test des GwG-Einladungs-Lifecycles.
+  Einladungslogik und Prüfaussagen bleiben unverändert.
 
 - 2026-10-06: `FK-EXC-20261006-018` dokumentiert Bulk-Aktionen des
   Dokumenten-Explorers als eine Server Action je Auswahl. Zugriffsprüfung,

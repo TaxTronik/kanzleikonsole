@@ -5,6 +5,9 @@ import * as ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 const APP_ROOT = fileURLToPath(new URL('../../../app', import.meta.url));
+// Seit K-08 liegen geteilte Actions auch unter server/<feature>/actions.ts
+// (z. B. server/notifications/actions.ts); sie gehören zur selben Inventur.
+const SERVER_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 interface DirectFormDataParse {
   id: string;
@@ -48,10 +51,17 @@ function inventory(): { direct: DirectFormDataParse[]; shared: number } {
   const direct: DirectFormDataParse[] = [];
   let shared = 0;
 
-  for (const file of actionFiles(APP_ROOT)) {
+  const files = [
+    ...actionFiles(APP_ROOT).map((file) => ({ file, id: relative(APP_ROOT, file) })),
+    ...actionFiles(SERVER_ROOT).map((file) => ({
+      file,
+      id: `server/${relative(SERVER_ROOT, file)}`,
+    })),
+  ];
+  for (const { file, id } of files) {
     const source = readFileSync(file, 'utf8');
     const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
-    const fileId = relative(APP_ROOT, file).replaceAll('\\', '/');
+    const fileId = id.replaceAll('\\', '/');
 
     function visit(node: ts.Node): void {
       if (ts.isCallExpression(node)) {
@@ -112,8 +122,9 @@ describe('parseFormData-Migrationsrest', () => {
     // ersetzt. Neue Inbox- und Expansion-Actions nutzen denselben Vertrag von
     // Beginn an. Die Direkt-Restbaseline wird deshalb ausschließlich abgesenkt;
     // die sechs bewusst klassifizierten exakten Sonderfälle bleiben unverändert.
-    expect(direct).toHaveLength(51);
-    expect(direct.filter((call) => !call.exact)).toHaveLength(45);
+    // T-03 hat die tote addBeneficialOwner-Action (AddOwnerSchema) entfernt.
+    expect(direct).toHaveLength(50);
+    expect(direct.filter((call) => !call.exact)).toHaveLength(44);
     expect(shared).toBe(56);
   });
 });

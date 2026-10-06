@@ -14,14 +14,16 @@ afterEach(() => {
 
 describe('GwG-Einladungs-Lifecycle', () => {
   it('führt beide Staff-Ausstellpfade über denselben Supersession-Helper', () => {
+    // Working-Copy-Zeilenenden folgen der Plattform (.gitattributes, autocrlf):
+    // vor dem Mehrzeilenvergleich normalisieren.
     const directInvite = readFileSync(
       new URL('../../../app/staff/(protected)/clients/[id]/gwg/invite-actions.ts', import.meta.url),
       'utf8',
-    );
+    ).replaceAll('\r\n', '\n');
     const onboardingInvite = readFileSync(
       new URL('../../../app/staff/(protected)/clients/onboarding/[id]/actions.ts', import.meta.url),
       'utf8',
-    );
+    ).replaceAll('\r\n', '\n');
 
     expect(directInvite).toContain('await prepareGwgInviteIssueTx(tx,');
     expect(onboardingInvite).toContain('await prepareGwgInviteIssueTx(tx,');
