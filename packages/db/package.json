@@ -22,6 +22,7 @@
     "./workflow-feedback": "./src/workflow-feedback.ts",
     "./pg-tools": "./src/pg-tools.ts",
     "./restore-security": "./src/restore-security.ts",
+    "./portal-session-revocation": "./src/portal-session-revocation.ts",
     "./fido-mds-snapshot": "./src/fido-mds-snapshot.ts"
   },
   "scripts": {

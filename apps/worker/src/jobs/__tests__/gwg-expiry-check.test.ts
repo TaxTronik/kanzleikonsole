@@ -12,6 +12,10 @@
 //     derselbe monotone, fail-closed Kern wie die Web-App (@taxtronik/crypto)
 //   - Idempotenz: bereits umgestellte Checks erzeugen keinen Audit-Eintrag
 //     und keine erneute Session-Revocation
+//   - B7: Die Deaktivierung setzt in ihrer Transaktion einen Widerrufsmarker;
+//     erst ein bestätigter Widerruf löscht ihn. Nach einem Fehlschlag holt die
+//     Wiederholung den Widerruf vor allen anderen Schritten nach (SQL der
+//     Marker: packages/db/src/__tests__/portal-session-revocation-pending.test.ts)
 //   - U-5: Auto-Anforderung für ablaufende Ausweise idempotent per FK
 //     (linkedGwgIdDocumentId), HIGH/7-Tage-Frist wenn bereits abgelaufen
 //   - GwG-Lösch-Queue (§ 8 Abs. 4 S. 4): GWG_DELETION_DUE an ADMIN/PARTNER,
@@ -57,6 +61,10 @@ const h = vi.hoisted(() => {
   // über die BullMQ-Redis-Verbindung mit dem gemeinsamen Lua-Skript
   // (advanceSessionRevocation aus @taxtronik/crypto, R-02).
   const redisEval = vi.fn();
+  // B7: Widerrufsmarker am Mandanten (@taxtronik/db/portal-session-revocation).
+  const markPending = vi.fn();
+  const listPending = vi.fn();
+  const clearPending = vi.fn();
   return {
     prismaOwner,
     tx,
@@ -67,6 +75,9 @@ const h = vi.hoisted(() => {
     notify,
     resolveNotificationsTx,
     redisEval,
+    markPending,
+    listPending,
+    clearPending,
   };
 });
 
@@ -80,6 +91,11 @@ vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTe
 vi.mock('../../notify', () => ({ notify: h.notify }));
 vi.mock('@taxtronik/db/notification', () => ({
   resolveNotificationsTx: h.resolveNotificationsTx,
+}));
+vi.mock('@taxtronik/db/portal-session-revocation', () => ({
+  markPortalSessionRevocationPendingTx: h.markPending,
+  listPendingPortalSessionRevocations: h.listPending,
+  clearPortalSessionRevocationPendingTx: h.clearPending,
 }));
 vi.mock('@taxtronik/db/staff-client-access', () => ({
   filterStaffAccessClientTx: h.filterStaffAccessClientTx,
@@ -108,8 +124,40 @@ interface GwgResult {
   deletionDueNotices: number;
 }
 
-function run(): Promise<GwgResult> {
-  return processors.get('gwg-expiry-check')!({ data: { tenantId: TENANT } }) as Promise<GwgResult>;
+function run(data: { tenantId?: string } = { tenantId: TENANT }): Promise<GwgResult> {
+  return processors.get('gwg-expiry-check')!({ data }) as Promise<GwgResult>;
+}
+
+interface PendingRevocation {
+  tenantId: string;
+  clientId: string;
+  pendingAt: Date;
+}
+
+/**
+ * B7: Marker wie in PostgreSQL — Setzen überschreibt, Löschen nur bei
+ * unverändertem Wert (Compare-and-Set). Das SQL selbst prüft
+ * portal-session-revocation-pending.test.ts gegen die Datenbank.
+ */
+function useMarkerStore(): Map<string, PendingRevocation> {
+  const markers = new Map<string, PendingRevocation>();
+  h.markPending.mockImplementation(
+    async (_tx: unknown, input: { tenantId: string; clientId: string }) => {
+      const pending = { ...input, pendingAt: new Date() };
+      markers.set(input.clientId, pending);
+      return pending;
+    },
+  );
+  h.listPending.mockImplementation(async (_db: unknown, tenantId?: string) =>
+    [...markers.values()].filter((pending) => !tenantId || pending.tenantId === tenantId),
+  );
+  h.clearPending.mockImplementation(async (_tx: unknown, pending: PendingRevocation) => {
+    const current = markers.get(pending.clientId);
+    if (current?.pendingAt.getTime() !== pending.pendingAt.getTime()) return false;
+    markers.delete(pending.clientId);
+    return true;
+  });
+  return markers;
 }
 
 /**
@@ -200,6 +248,14 @@ beforeEach(() => {
     updated: 0,
   }));
   h.redisEval.mockResolvedValue('OK');
+  h.listPending.mockResolvedValue([]);
+  h.markPending.mockImplementation(
+    async (_tx: unknown, input: { tenantId: string; clientId: string }) => ({
+      ...input,
+      pendingAt: FIXED_NOW,
+    }),
+  );
+  h.clearPending.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -384,11 +440,14 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
 
     const result = await run();
 
-    // Ablauf und Notification-Auflösung laufen gemeinsam; die zweite
-    // Tenant-Transaktion ermittelt die aktuellen Empfänger (F-10), die dritte
-    // räumt einen eventuell alten Löschhinweis auf.
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(3);
+    // Ablauf, Widerrufsmarker (B7) und Notification-Auflösung laufen
+    // gemeinsam; die zweite Tenant-Transaktion löscht den Marker nach dem
+    // bestätigten Widerruf, die dritte ermittelt die aktuellen Empfänger
+    // (F-10), die vierte räumt einen eventuell alten Löschhinweis auf.
+    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(4);
     expect(h.withWorkerTenantContext.mock.calls[0]![0]).toBe(TENANT);
+    expect(h.markPending).toHaveBeenCalledTimes(1);
+    expect(h.markPending).toHaveBeenCalledWith(h.tx, { tenantId: TENANT, clientId: 'client-1' });
 
     // Statuswechsel guarded (nur aus VERIFIED) — Race-sicher
     expect(h.tx.gwgCheck.updateMany).toHaveBeenCalledWith({
@@ -431,7 +490,7 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     // deaktivierten Mandanten werden sofort revoziert — Key-Schema und
     // monotones Lua-Skript wie in der Web-App (revoke:portal:<contactId>).
     expect(h.prismaOwner.clientContact.findMany).toHaveBeenCalledWith({
-      where: { clientId: 'client-1', active: true },
+      where: { tenantId: TENANT, clientId: 'client-1', active: true },
       select: { id: true },
     });
     expect(h.redisEval).toHaveBeenCalledWith(
@@ -440,6 +499,17 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
       'revoke:portal:contact-1',
       String(FIXED_NOW.getTime()),
       30 * 24 * 60 * 60,
+    );
+    // B7: erst nach dem bestätigten Widerruf wird der Marker gelöscht, und
+    // zwar genau der in der Deaktivierungs-Transaktion gesetzte Wert.
+    expect(h.clearPending).toHaveBeenCalledWith(h.tx, {
+      tenantId: TENANT,
+      clientId: 'client-1',
+      pendingAt: FIXED_NOW,
+    });
+    expect(h.withWorkerTenantContext.mock.calls[1]![0]).toBe(TENANT);
+    expect(h.redisEval.mock.invocationCallOrder[0]).toBeLessThan(
+      h.clearPending.mock.invocationCallOrder[0]!,
     );
   });
 
@@ -456,6 +526,9 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     // Die Deaktivierung bleibt committed und die Eskalation geht trotzdem raus;
     // der Fehler wird erst nach der vollständigen Bearbeitung gemeldet.
     expect(h.tx.client.updateMany).toHaveBeenCalled();
+    // B7: Der Marker aus der Deaktivierungs-Transaktion bleibt stehen.
+    expect(h.markPending).toHaveBeenCalledWith(h.tx, { tenantId: TENANT, clientId: 'client-1' });
+    expect(h.clearPending).not.toHaveBeenCalled();
     expect(
       upsertCalls()
         .map((c) => c[1])
@@ -476,6 +549,7 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     // keine erneute Session-Revocation — der Mandant war schon deaktiviert
     // (Revocation lief beim tatsächlichen Übergang bzw. in rejectCheckAction)
     expect(h.redisEval).not.toHaveBeenCalled();
+    expect(h.markPending).not.toHaveBeenCalled();
     // die (idempotente) Notification geht trotzdem raus
     expect(upsertCalls().length).toBeGreaterThan(0);
   });
@@ -502,7 +576,132 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
     // Keine STAGE3-Eskalations-Notification, keine Session-Revocation.
     expect(upsertCalls()).toEqual([]);
     expect(h.redisEval).not.toHaveBeenCalled();
+    expect(h.markPending).not.toHaveBeenCalled();
     expect(result.stage3).toBe(0);
+  });
+});
+
+describe('B7: ausstehender Portal-Session-Widerruf (Marker, Nachholen zuerst)', () => {
+  const redisDown = () =>
+    h.redisEval.mockRejectedValue(
+      new Error("READONLY You can't write against a read only replica."),
+    );
+
+  it('Fehlschlag, dann BullMQ-Wiederholung: der Widerruf wird vor allem anderen nachgeholt', async () => {
+    const markers = useMarkerStore();
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() - 5 * DAY)),
+    ]);
+    redisDown();
+
+    await expect(run()).rejects.toThrow('1 Portal-Session-Widerruf(e) nicht bestätigt');
+    // Die Deaktivierung ist committed, ihr Marker steht noch.
+    expect([...markers.values()]).toEqual([
+      { tenantId: TENANT, clientId: 'client-1', pendingAt: FIXED_NOW },
+    ]);
+    expect(h.clearPending).not.toHaveBeenCalled();
+
+    // Wiederholung: Der Check ist jetzt EXPIRED und kein Kandidat mehr; ohne
+    // Marker würde kein Lauf mehr widerrufen.
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([]);
+    h.redisEval.mockReset().mockResolvedValue('OK');
+    const tenantQueries = h.prismaOwner.staffUser.findMany.mock.calls.length;
+
+    await expect(run()).resolves.toMatchObject({ stage3: 0 });
+
+    expect(h.listPending).toHaveBeenLastCalledWith(h.prismaOwner, TENANT);
+    expect(h.redisEval).toHaveBeenCalledTimes(1);
+    expect(h.redisEval).toHaveBeenCalledWith(
+      expect.stringContaining('if current > incoming then'),
+      1,
+      'revoke:portal:contact-1',
+      String(FIXED_NOW.getTime()),
+      30 * 24 * 60 * 60,
+    );
+    // Zuerst: vor der ersten Tenant-Abfrage des Wiederholungslaufs.
+    expect(h.redisEval.mock.invocationCallOrder[0]).toBeLessThan(
+      h.prismaOwner.staffUser.findMany.mock.invocationCallOrder[tenantQueries]!,
+    );
+    expect(markers.size).toBe(0);
+
+    // Danach ist nichts mehr offen.
+    h.redisEval.mockClear();
+    await run();
+    expect(h.redisEval).not.toHaveBeenCalled();
+  });
+
+  it('scheitert auch das Nachholen, bleibt der Marker und die Tenants werden trotzdem bearbeitet', async () => {
+    const markers = useMarkerStore();
+    markers.set('client-9', {
+      tenantId: TENANT,
+      clientId: 'client-9',
+      pendingAt: new Date(FIXED_NOW.getTime() - DAY),
+    });
+    h.prismaOwner.gwgCheck.findMany.mockResolvedValue([
+      gwgCheck(new Date(FIXED_NOW.getTime() + 30 * DAY)),
+    ]);
+    redisDown();
+
+    await expect(run()).rejects.toThrow('1 Portal-Session-Widerruf(e) nicht bestätigt');
+
+    expect(h.prismaOwner.clientContact.findMany).toHaveBeenCalledWith({
+      where: { tenantId: TENANT, clientId: 'client-9', active: true },
+      select: { id: true },
+    });
+    expect(markers.has('client-9')).toBe(true);
+    expect(h.clearPending).not.toHaveBeenCalled();
+    // Die Eskalation des Tenants läuft unabhängig davon.
+    expect(
+      upsertCalls()
+        .map((c) => c[1])
+        .sort(),
+    ).toEqual(['bt-1', 'hb-1']);
+  });
+
+  it('holt Marker auch für Tenants ohne ADMIN/PARTNER und tenantübergreifend nach', async () => {
+    const markers = useMarkerStore();
+    markers.set('client-9', {
+      tenantId: 'tenant-2',
+      clientId: 'client-9',
+      pendingAt: new Date(FIXED_NOW.getTime() - DAY),
+    });
+    h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }, { id: 'tenant-2' }]);
+    h.prismaOwner.staffUser.findMany.mockResolvedValue([]);
+
+    await run({});
+
+    expect(h.listPending).toHaveBeenCalledWith(h.prismaOwner, undefined);
+    expect(h.redisEval).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+      'revoke:portal:contact-1',
+      expect.any(String),
+      expect.any(Number),
+    );
+    expect(h.withWorkerTenantContext).toHaveBeenCalledWith('tenant-2', expect.any(Function));
+    expect(markers.size).toBe(0);
+    // Beide Tenants wurden mangels ADMIN/PARTNER übersprungen.
+    expect(h.prismaOwner.gwgCheck.findMany).not.toHaveBeenCalled();
+  });
+
+  it('ein Fehler beim Löschen des Markers zählt als offen und hält die übrigen Marker nicht auf', async () => {
+    const markers = useMarkerStore();
+    for (const clientId of ['client-8', 'client-9']) {
+      markers.set(clientId, {
+        tenantId: TENANT,
+        clientId,
+        pendingAt: new Date(FIXED_NOW.getTime() - DAY),
+      });
+    }
+    const clear = h.clearPending.getMockImplementation()!;
+    h.clearPending.mockImplementation(async (tx: unknown, pending: PendingRevocation) => {
+      if (pending.clientId === 'client-8') throw new Error('connection terminated');
+      return clear(tx, pending);
+    });
+
+    await expect(run()).rejects.toThrow('1 Portal-Session-Widerruf(e) nicht bestätigt');
+
+    expect([...markers.keys()]).toEqual(['client-8']);
   });
 });
 

@@ -9,6 +9,12 @@
 //   - 30 Tage vor Ablauf:  Stufe 2 — zusätzlich Berufsträger informieren
 //   - Bei/nach Ablauf:     Stufe 3 — alle ADMIN/PARTNER + Mandant deaktivieren
 //
+// Portal-Sessions des deaktivierten Mandanten (B7): Die Deaktivierung setzt in
+// derselben Transaktion einen Widerrufsmarker am Mandanten; erst ein
+// bestätigter Redis-Widerruf löscht ihn. Jeder Lauf, auch die BullMQ-
+// Wiederholung eines fehlgeschlagenen, holt offene Marker vor allen anderen
+// Schritten nach (packages/db/src/portal-session-revocation.ts).
+//
 // Empfänger (F-10, ACCESS-NOTIFICATION-RECIPIENT-001): Zuständige zählen nur,
 // solange sie aktiv sind und den Mandanten aktuell sehen dürfen; bleibt niemand,
 // gehen Stufe 1/2 und Ausweis-Hinweise an die aktiven ADMIN/PARTNER
@@ -31,6 +37,12 @@ import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { type NotificationKind } from '@prisma/client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
+import {
+  clearPortalSessionRevocationPendingTx,
+  listPendingPortalSessionRevocations,
+  markPortalSessionRevocationPendingTx,
+  type PendingPortalSessionRevocation,
+} from '@taxtronik/db/portal-session-revocation';
 import { advanceSessionRevocation } from '@taxtronik/crypto';
 import {
   GWG_EXPIRY_NOTIFICATION_KIND,
@@ -215,6 +227,11 @@ async function processExpiringIdDocuments(
 export const gwgExpiryWorker = createWorker<ChecksJob>(
   JOB_QUEUES.gwgExpiry.name,
   async (job) => {
+    // B7: Offene Portal-Session-Widerrufe früherer Läufe zuerst nachholen, auch
+    // in der Wiederholung eines fehlgeschlagenen Laufs und für Tenants, die
+    // unten mangels ADMIN/PARTNER übersprungen werden.
+    let portalRevocationFailures = await catchUpPendingPortalRevocations(job.data.tenantId);
+
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]
       : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
@@ -225,7 +242,6 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
     let idDocReminders = 0;
     let idDocRequests = 0;
     let deletionDueNotices = 0;
-    let portalRevocationFailures = 0;
 
     for (const tenantId of tenantIds) {
       const now = new Date();
@@ -287,9 +303,8 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
           // Tenant-Context und schreibt die System-Statuswechsel in die
           // Audit-Chain (vorher: nackte prismaOwner-Updates ohne
           // evidence.record) — Muster analog risk-analyse-llm.ts.
-          let clientDeactivated = false;
           let supersededByValid = false;
-          await withWorkerTenantContext(tenantId, async (tx) => {
+          const pendingRevocation = await withWorkerTenantContext(tenantId, async (tx) => {
             const clientBefore = await tx.client.findUnique({
               where: { id: check.clientId },
               select: { allowActive: true },
@@ -298,7 +313,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
               where: { id: check.id, status: 'VERIFIED' },
               data: { status: 'EXPIRED' },
             });
-            if (checkRes.count === 0) return;
+            if (checkRes.count === 0) return null;
             if (checkRes.count > 0) {
               await evidence.record(tx, {
                 tenantId,
@@ -327,7 +342,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
                 tenantId,
                 resources: [{ resourceType: 'gwg_check', resourceId: check.id }],
               });
-              return;
+              return null;
             }
             const clientRes = await tx.client.updateMany({
               where: { id: check.clientId, allowActive: true },
@@ -337,8 +352,13 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
               where: { id: check.clientId },
               select: { allowActive: true },
             });
+            let pending: PendingPortalSessionRevocation | null = null;
             if (clientBefore?.allowActive === true && clientAfter?.allowActive === false) {
-              clientDeactivated = true;
+              // B7: Widerrufsmarker in derselben Transaktion wie die Deaktivierung.
+              pending = await markPortalSessionRevocationPendingTx(tx, {
+                tenantId,
+                clientId: check.clientId,
+              });
               await evidence.record(tx, {
                 tenantId,
                 actorType: 'SYSTEM',
@@ -359,6 +379,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
               resources: [{ resourceType: 'gwg_check', resourceId: check.id }],
               kinds: ['GWG_EXPIRY_SOON', 'GWG_EXPIRY_90D', 'GWG_EXPIRY_30D'],
             });
+            return pending;
           });
           // Durch einen gültigen neueren Check abgelöst: nur Housekeeping
           // (Alt-Check EXPIRED), keine Deaktivierung und keine Eskalations-
@@ -369,14 +390,11 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
           // GwG-Schranke (§ 11 GwG): bestehende Portal-Sessions aller Kontakte
           // sofort beenden — sonst bliebe ein eingeloggter Kontakt bis zum
           // JWT-Ablauf (24 h) handlungsfähig. Nach dem Commit (Redis ist nicht
-          // transaktional); nur beim tatsächlichen Übergang (idempotent, der
-          // Check ist danach EXPIRED und kein Kandidat mehr).
-          if (clientDeactivated) {
-            const contacts = await prismaOwner.clientContact.findMany({
-              where: { clientId: check.clientId, active: true },
-              select: { id: true },
-            });
-            portalRevocationFailures += await revokePortalSessions(contacts.map((c) => c.id));
+          // transaktional); nur beim tatsächlichen Übergang (der Check ist
+          // danach EXPIRED und kein Kandidat mehr). B7: Scheitert der Widerruf,
+          // bleibt der Marker aus der Transaktion für das Nachholen stehen.
+          if (pendingRevocation) {
+            portalRevocationFailures += await revokePendingPortalSessions(pendingRevocation);
           }
         }
 
@@ -500,7 +518,9 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
 // Ein Fehlschlag wird gezählt und lässt den Lauf nach allen Tenants
 // fehlschlagen. Die Deaktivierung bleibt committed: Der Session-Callback in
 // apps/web/src/server/auth/portal.ts prüft client.allowActive zusätzlich bei
-// jedem Request (Defense in Depth).
+// jedem Request (Defense in Depth). Der Widerrufsmarker (B7) sorgt dafür, dass
+// der Widerruf trotzdem nachgeholt wird, bevor eine Reaktivierung vorher
+// ausgestellte Sessions wieder gültig machen könnte.
 async function revokePortalSessions(contactIds: string[]): Promise<number> {
   let failed = 0;
   for (const contactId of contactIds) {
@@ -514,6 +534,52 @@ async function revokePortalSessions(contactIds: string[]): Promise<number> {
         'gwg-expiry: Portal-Session-Widerruf nicht bestätigt (fail-closed)',
       );
     }
+  }
+  return failed;
+}
+
+// B7: Erst ein bestätigter Widerruf aller aktiven Kontakte löscht den Marker
+// der Deaktivierung (Compare-and-Set auf den gelesenen Wert). Scheitert der
+// Widerruf, die Kontaktabfrage oder das Löschen, bleibt der Marker stehen und
+// der Fehlschlag zählt: Der Lauf scheitert am Ende, die BullMQ-Wiederholung und
+// jeder spätere Lauf holen den Widerruf zuerst nach. Der Cutoff ist der
+// Zeitpunkt des Widerrufs, nicht der Deaktivierung, und erfasst damit sicher
+// jede vor dem Commit ausgestellte Session; wer sich nach einer zwischen-
+// zeitlichen Reaktivierung angemeldet hat, meldet sich einmal neu an.
+async function revokePendingPortalSessions(
+  pending: PendingPortalSessionRevocation,
+): Promise<number> {
+  try {
+    const contacts = await prismaOwner.clientContact.findMany({
+      where: { tenantId: pending.tenantId, clientId: pending.clientId, active: true },
+      select: { id: true },
+    });
+    const failed = await revokePortalSessions(contacts.map((c) => c.id));
+    if (failed > 0) return failed;
+    await withWorkerTenantContext(pending.tenantId, (tx) =>
+      clearPortalSessionRevocationPendingTx(tx, pending),
+    );
+    return 0;
+  } catch (e) {
+    log.error(
+      { tenantId: pending.tenantId, clientId: pending.clientId, err: (e as Error).message },
+      'gwg-expiry: Portal-Session-Widerruf nicht abgeschlossen, Marker bleibt (fail-closed)',
+    );
+    return 1;
+  }
+}
+
+async function catchUpPendingPortalRevocations(tenantId: string | undefined): Promise<number> {
+  const pending = await listPendingPortalSessionRevocations(prismaOwner, tenantId);
+  let failed = 0;
+  for (const entry of pending) {
+    failed += await revokePendingPortalSessions(entry);
+  }
+  if (pending.length > 0) {
+    log.info(
+      { pending: pending.length, failed },
+      'gwg-expiry: ausstehende Portal-Session-Widerrufe nachgeholt',
+    );
   }
   return failed;
 }

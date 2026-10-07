@@ -1953,6 +1953,12 @@ model Client {
   // JURPERS/PERSGES. Die Gesellschaft bleibt bestehen; nur die nach Fristablauf
   // nicht mehr erforderlichen Signer-/Snapshotdaten werden redigiert.
   poaSignerDataRedactedAt  DateTime?                   @map("poa_signer_data_redacted_at") @db.Timestamptz(6)
+  /// B7 (GWG-REVERIFICATION-VALIDITY-001): Deaktivierung durch gwg-expiry-check,
+  /// deren Portal-Session-Widerruf noch nicht bestätigt ist; NULL = nichts offen.
+  /// Setzen, Abarbeiten und Compare-and-Set-Löschen nur über
+  /// packages/db/src/portal-session-revocation.ts. Der Teilindex
+  /// client_portal_session_revocation_pending_idx steht nur in der Migration 20261007100300.
+  portalSessionRevocationPendingAt DateTime? @map("portal_session_revocation_pending_at") @db.Timestamptz(3)
   appointments             Appointment[]
   appointmentRequests      AppointmentRequest[]
   clientConsents           ClientConsent[]

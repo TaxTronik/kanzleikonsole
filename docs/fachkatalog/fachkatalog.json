@@ -3156,7 +3156,9 @@
         "apps/web/src/server/gwg/check-cycle.ts",
         "apps/web/src/server/gwg/check-decisions.ts",
         "packages/gwg/src/check-lifecycle.ts",
-        "packages/gwg/src/expiry.ts"
+        "packages/gwg/src/expiry.ts",
+        "packages/db/src/portal-session-revocation.ts",
+        "packages/db/prisma/migrations/20261007100300_client_portal_session_revocation_pending/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -3166,7 +3168,8 @@
         "apps/web/src/server/tax-master-data/__tests__/service.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
         "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts",
-        "packages/gwg/src/__tests__/expiry.test.ts"
+        "packages/gwg/src/__tests__/expiry.test.ts",
+        "packages/db/src/__tests__/portal-session-revocation-pending.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md"],
       "related_rules": [

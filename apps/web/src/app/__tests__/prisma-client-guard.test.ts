@@ -250,6 +250,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Paar-Guard-Sperre: zwei Owner-Verbindungen halten einen Kind-Insert offen
   // und beweisen, welche parallelen Zugriffe auf den Mandanten warten.
   'packages/db/src/__tests__/tenant-client-pair-lock.test.ts',
+  // B7: Owner-Fixtures in zwei Wegwerf-Tenants; Setzen, Auflisten und Compare-and-Set-
+  // Löschen der Widerrufsmarker laufen wie im Worker als Rolle taxtronik_owner.
+  'packages/db/src/__tests__/portal-session-revocation-pending.test.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
   // Restore-Drill: eigene Clients der Drill-Rolle (S-01) für CREATE/DROP der

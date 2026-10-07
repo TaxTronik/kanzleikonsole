@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-009
+    date: '2026-10-07'
+    paths:
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - GWG-REVERIFICATION-VALIDITY-001
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Das Prisma-Schema spiegelt die neue Spalte
+      `client.portal_session_revocation_pending_at` der Migration
+      `20261007100300_client_portal_session_revocation_pending`, mit der der
+      GwG-Ablaufjob einen fehlgeschlagenen Widerruf von Portal-Sessions nachholt
+      (`GWG-REVERIFICATION-VALIDITY-001`, in diesem Commit fortgeschrieben). Andere
+      Modelle, Relationen und Zugriffsregeln des Schemas bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/portal-session-revocation-pending.test.ts
+      - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-008
     date: '2026-10-07'
     paths:
@@ -4239,6 +4258,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-009` dokumentiert die Schema-Spalte für
+  den nachgeholten Widerruf von Portal-Sessions im GwG-Ablaufjob.
 
 - 2026-10-07: `FK-EXC-20261007-008` dokumentiert den CHECK auf den
   Status eingehender E-Mail-Anhänge.

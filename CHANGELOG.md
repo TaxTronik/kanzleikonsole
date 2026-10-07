@@ -1390,6 +1390,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Scheitert nach der GwG-Ablauf-Deaktivierung der Widerruf der Portal-Sessions,
+  bleibt ein in derselben Transaktion gesetzter Marker am Mandanten stehen; der
+  Lauf schlägt fehl, und seine Wiederholung sowie jeder spätere Lauf holen den
+  Widerruf vor allen anderen Schritten nach. Bisher widerrief die Wiederholung
+  nicht erneut (`GWG-REVERIFICATION-VALIDITY-001`).
 - **[Scope]** Die checkpointgestützte Prüfung der Audit-Kette hält im
   persistierten Prüfergebnis einen HMAC-geschützten Fortschrittsanker fest.
   Zwischen zwei Läufen wieder eingespielte ältere Prüf-Checkpoints oder

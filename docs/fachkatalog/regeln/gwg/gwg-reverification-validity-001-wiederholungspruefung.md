@@ -55,6 +55,8 @@ code_refs:
   - apps/web/src/server/gwg/check-decisions.ts
   - packages/gwg/src/check-lifecycle.ts
   - packages/gwg/src/expiry.ts
+  - packages/db/src/portal-session-revocation.ts
+  - packages/db/prisma/migrations/20261007100300_client_portal_session_revocation_pending/migration.sql
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/gwg/__tests__/reverification.test.ts
@@ -64,6 +66,7 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
   - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
   - packages/gwg/src/__tests__/expiry.test.ts
+  - packages/db/src/__tests__/portal-session-revocation-pending.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -121,6 +124,8 @@ stattfinden, werden nicht automatisch erkannt.
 - Anlass des neuen Zyklus und Vorgänger-ID
 - Gültigkeitsdaten vorhandener Identitätsdokumente
 - zuständige Hauptbearbeiter, Berufsträger und Admin-/Partner-Fallbacks
+- aktive Portal-Kontakte des Mandanten und ein noch offener Session-Widerruf
+  aus einer früheren Deaktivierung
 
 ## Entscheidungslogik
 
@@ -143,6 +148,12 @@ stattfinden, werden nicht automatisch erkannt.
   danach wird es als abgelaufen behandelt.
 - Ein alter Check darf beim Ablauf nicht deaktivieren, wenn ein neuerer
   gültiger Check vorhanden ist.
+- Scheitert nach der Deaktivierung der Widerruf bestehender Portal-Sessions,
+  etwa weil Redis nicht erreichbar ist, oder bricht der Lauf davor ab, bleibt
+  ein Widerrufsmarker am Mandanten stehen. Der Lauf schlägt fehl; seine
+  Wiederholung und jeder spätere Lauf holen den Widerruf vor allen anderen
+  Schritten nach. Bis dahin weist das Portal Sessions des deaktivierten
+  Mandanten bei jedem Request ab.
 - Ein neuer Zyklus kopiert Struktur- und Personendaten als Arbeitshilfe, aber
   keine Risikobewertung oder bestätigte Identitätszuordnung.
 - Ein verworfener oder paralleler Prüfzyklus wird durch mandantenbezogene
@@ -177,6 +188,19 @@ Warnungen in 90-, 30- und Ablaufstufe, auditiert Statuswechsel und berücksichti
 neuere gültige Checks. Er überwacht zusätzlich Ausweisabläufe und erzeugt
 idempotente Dokumentanforderungen nur für aktive Mandanten.
 
+Deaktiviert der Worker einen Mandanten, widerruft er nach dem Commit die
+Portal-Sessions aller aktiven Kontakte (Redis, monoton und fail-closed). In
+derselben Transaktion wie die Deaktivierung setzt er
+`client.portal_session_revocation_pending_at`; erst ein bestätigter Widerruf
+löscht diesen Marker, und zwar nur, solange er noch den gelesenen Wert trägt.
+Offene Marker arbeitet jeder Lauf zuerst ab, auch für Tenants ohne Admin oder
+Partner. Ein nicht bestätigter Widerruf lässt den Lauf nach allen Tenants
+scheitern, damit die automatische Wiederholung ihn nachholt; vorher fand die
+Wiederholung den abgelaufenen Check nicht mehr als Kandidaten und widerrief
+nicht erneut. Ein nachgeholter Widerruf erfasst alle bis zu seinem Zeitpunkt
+ausgestellten Sessions: Wer sich nach einer zwischenzeitlichen Reaktivierung
+neu angemeldet hat, muss sich einmal erneut anmelden.
+
 `requireGwgReverificationTx` serialisiert den Mandanten-Lifecycle, setzt
 gültige Checks auf `EXPIRED`, deaktiviert den Mandanten und erstellt oder
 reaktiviert einen `DRAFT`. Vorgängerbezug und Änderungsanlass bleiben erhalten;
@@ -202,9 +226,13 @@ erneut versandt.
 
 ## Bekannte Abweichungen und Grenzen
 
-Innerhalb der beschriebenen Produktpolicy sind keine bekannten technischen
-Abweichungen festgestellt. Die Policy deckt die gesetzliche laufende
-Überwachung jedoch nicht vollständig ab:
+Innerhalb der beschriebenen Produktpolicy ist eine technische Grenze bekannt:
+Bleibt der Session-Widerruf auch in allen automatischen Wiederholungen
+unbestätigt, holt ihn erst der nächste tägliche Lauf nach. Wird der Mandant
+vorher wieder aktiviert, gelten vor der Deaktivierung ausgestellte, noch nicht
+abgelaufene Portal-Sessions (höchstens 24 Stunden ab Anmeldung) bis dahin
+wieder. Die Policy deckt die gesetzliche laufende Überwachung jedoch nicht
+vollständig ab:
 
 - 365 und 1095 Tage sind feste Dauern, keine im Gesetz vorgegebenen
   Kalenderfristen und keine dynamische Einzelfallentscheidung.
@@ -237,6 +265,14 @@ Vorgängerlinie und das Kopieren ohne Bestätigungen. Worker-Tests prüfen
 90-/30-Tage-Stufen, Ablauf, neueren Check, Ausweisdatum und idempotente
 Anforderungen. Diese Tests bestätigen die Produktpolicy, nicht die fachliche
 Angemessenheit des Zeitabstands.
+
+Für den Session-Widerruf belegen die Worker-Tests den Marker aus der
+Deaktivierungs-Transaktion, das Löschen erst nach bestätigtem Widerruf, das
+Scheitern des Laufs und das Nachholen vor allen anderen Schritten in der
+Wiederholung, auch für Tenants ohne Admin/Partner und nach einem Fehler beim
+Löschen. `portal-session-revocation-pending.test.ts` prüft gegen PostgreSQL
+als Worker-Rolle das Setzen in der Transaktion, das Compare-and-Set beim
+Löschen, die Tenant-Bindung und das unveränderte `updated_at`.
 
 Zusätzliche Regressionen belegen die USt-ID-unabhängigen v2-Hashes, die Bindung
 geänderter Dokumentansichten und das Speichern rein steuerlicher Änderungen
