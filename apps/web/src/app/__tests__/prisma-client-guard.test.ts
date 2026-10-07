@@ -398,8 +398,10 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   // Connection/Tenant. Danach lesen Operations und Crash-Recovery (S-01) ueber
   // die App-Rolle im SYSTEM-Kontext des authentifizierten Tenants.
   'apps/web/src/server/n8n/callback-auth.ts <- @/server/db/prisma-owner',
-  'apps/web/src/server/n8n/operations.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/n8n/outbox.ts <- @/server/db/prisma-owner',
+  // Legacy-Recherche-Callback ohne authentifizierten Tenant: nur die
+  // Korrelations-ID -> Tenant-Aufloesung liest der Owner; Modulschalter und
+  // Schreibpfad sowie der v1-Callback laufen im SYSTEM-Kontext (S-01).
   'apps/web/src/server/risk/research.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/settings/legal.ts <- @/server/db/prisma-owner',
   // readBrandingForSlug: oeffentlicher Reader fuer die Login-Seiten (Staff +

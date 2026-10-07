@@ -1,9 +1,8 @@
 import { withSystemContext } from '@taxtronik/db';
-import { prismaOwner } from '@/server/db/prisma-owner';
 import { readModules } from '@/server/settings/modules';
 import { evidenceService } from '@/server/container';
 import { notify } from '@/server/notifications/service';
-import { receiveResearchResult } from '@/server/risk';
+import { receiveTenantResearchResult } from '@/server/risk';
 import {
   claimN8nCallbackReceipt,
   N8N_CALLBACK_OPERATIONS,
@@ -11,9 +10,9 @@ import {
 } from '@/server/n8n/callback-receipts';
 
 // S-01: Die Callback-Operationen laufen nach der Credential-Prüfung mit dem
-// authentifizierten Tenant. Anforderungen, Kontakte und GwG-Prüfungen lesen
-// sie über die App-Rolle im SYSTEM-Kontext dieses Tenants (withSystemContext,
-// RLS), nicht über den Owner-Client.
+// authentifizierten Tenant. Sie lesen und schreiben über die App-Rolle im
+// SYSTEM-Kontext dieses Tenants (withSystemContext, RLS), nicht über den
+// Owner-Client.
 
 export async function getOverdueRequestsForTenant(tenantId: string, now = new Date()) {
   const rows = await withSystemContext(tenantId, (tx) =>
@@ -259,23 +258,16 @@ export interface N8nResearchResultInput {
   source?: string;
 }
 
-/** Erzwingt vor dem Owner-Lookup in receiveResearchResult die Tenant-Bindung
- * der opaken Korrelations-ID. */
+/** Bindet die opake Korrelations-ID an den authentifizierten Tenant: eine
+ * unbekannte oder tenantfremde ID ist nicht zuordenbar (`null`). */
 export async function receiveResearchResultForTenant(
   tenantId: string,
   input: N8nResearchResultInput,
   callbackReceipt?: N8nCallbackReceiptKey,
 ) {
-  if (input.researchRequestId) {
-    const correlated = await prismaOwner.riskResearchRequest.findFirst({
-      where: { id: input.researchRequestId, tenantId },
-      select: { id: true },
-    });
-    if (!correlated) return null;
-  }
-
-  return receiveResearchResult(
-    { ...input, tenantId },
+  return receiveTenantResearchResult(
+    tenantId,
+    input,
     callbackReceipt
       ? {
           ...callbackReceipt,

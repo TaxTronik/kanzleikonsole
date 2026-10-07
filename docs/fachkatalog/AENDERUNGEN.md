@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-034
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/server/risk/index.ts
+      - apps/web/src/server/risk/research.ts
+    rule_ids:
+      - RISK-EXTERNAL-ANONYMIZATION-001
+      - TCMS-SAMPLE-PROOF-001
+    reason: >-
+      Der authentifizierte Recherche-Callback (v1) liest Korrelation,
+      Rechercheanfrage und Modulschalter über die App-Rolle im SYSTEM-Kontext des
+      Tenants (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS,
+      mit expliziter Tenant-Bindung; eine unbekannte oder fremde Korrelations-ID
+      bleibt wie bisher nicht zuordenbar. Nur der Legacy-Callback ohne
+      authentifizierten Tenant löst die Korrelations-ID weiterhin über die
+      Owner-Verbindung auf. Gespeichertes Ergebnis, Anonymisierung, Audit-Ereignis
+      und Benachrichtigung bleiben unverändert; eine PostgreSQL-Suite belegt das und
+      die Idempotenz. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/__tests__/prisma-client-guard.test.ts
+      - apps/web/src/server/n8n/__tests__/operations.test.ts
+      - apps/web/src/server/n8n/__tests__/research-callback-idempotency.test.ts
+      - apps/web/src/server/n8n/__tests__/research-result-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-033
     date: '2026-10-07'
     paths:
@@ -4864,6 +4888,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-034` dokumentiert den Recherche-Callback über
+  die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-033` dokumentiert die Bereinigung des
   Portal-Posteingangs über die App-Rolle.

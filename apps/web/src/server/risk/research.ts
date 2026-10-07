@@ -6,8 +6,9 @@
 // sendResearchToN8n: re-anonymisiert den (ggf. editierten) Text noch einmal als
 //   Sicherheitsnetz, persistiert RiskResearchRequest (mit Mapping für die
 //   spätere De-Anonymisierung) und reiht das n8n-Event ein.
-// receiveResearchResult: Inbound von n8n — Korrelation → automatische Zuordnung
-//   + De-Anonymisierung; sonst NEU in der Ablage.
+// receiveResearchResult / receiveTenantResearchResult: Inbound von n8n —
+//   Korrelation → automatische Zuordnung + De-Anonymisierung; sonst NEU in der
+//   Ablage.
 // suggestMarkingsForResult / assignResultToMarking: intelligente Zuordnung.
 // =============================================================================
 
@@ -332,13 +333,75 @@ export interface InboundResult {
   source?: string | null;
 }
 
+const RESEARCH_CORRELATION_SELECT = {
+  tenantId: true,
+  markingId: true,
+  title: true,
+  mapping: true,
+  createdById: true,
+  analysisId: true,
+  analysis: { select: { clientId: true } },
+} as const;
+
+interface ResearchCorrelation {
+  tenantId: string;
+  markingId: string | null;
+  title: string | null;
+  mapping: unknown;
+  createdById: string;
+  analysisId: string;
+  analysis: { clientId: string | null } | null;
+}
+
 /**
- * Nimmt ein n8n-Ergebnis entgegen. Läuft ohne User-Session (Inbound-Endpoint) →
- * prismaOwner. Korrelation über researchRequestId: automatische Zuordnung +
- * De-Anonymisierung. Ohne Korrelation: NEU in der Ablage (Tenant aus Payload).
+ * Nimmt ein n8n-Ergebnis über den Legacy-Callback entgegen (ohne
+ * authentifizierten Tenant, ohne User-Session). Korrelation über
+ * researchRequestId: automatische Zuordnung + De-Anonymisierung. Ohne
+ * Korrelation: NEU in der Ablage (Tenant aus Payload).
  */
 export async function receiveResearchResult(
   input: InboundResult,
+  callbackReceipt?: N8nCallbackReceiptKey,
+): Promise<{ resultId: string; duplicate: boolean } | null> {
+  // S-01: Der Legacy-Callback kennt den Tenant erst über die Korrelations-ID;
+  // diese mandantenübergreifende Auflösung liest der Owner-Client (BYPASSRLS).
+  const correlation = input.researchRequestId
+    ? await prismaOwner.riskResearchRequest.findUnique({
+        where: { id: input.researchRequestId },
+        select: RESEARCH_CORRELATION_SELECT,
+      })
+    : null;
+  return storeResearchResult(input, correlation, callbackReceipt);
+}
+
+/**
+ * Nimmt ein n8n-Ergebnis für den bereits authentifizierten Tenant entgegen
+ * (v1-Callback). S-01: Die Korrelation liest die App-Rolle im SYSTEM-Kontext
+ * dieses Tenants; eine unbekannte oder tenantfremde Korrelations-ID ist nicht
+ * zuordenbar (`null`).
+ */
+export async function receiveTenantResearchResult(
+  tenantId: string,
+  input: InboundResult,
+  callbackReceipt?: N8nCallbackReceiptKey,
+): Promise<{ resultId: string; duplicate: boolean } | null> {
+  const researchRequestId = input.researchRequestId;
+  let correlation: ResearchCorrelation | null = null;
+  if (researchRequestId) {
+    correlation = await withSystemContext(tenantId, (tx) =>
+      tx.riskResearchRequest.findFirst({
+        where: { id: researchRequestId, tenantId },
+        select: RESEARCH_CORRELATION_SELECT,
+      }),
+    );
+    if (!correlation) return null;
+  }
+  return storeResearchResult({ ...input, tenantId }, correlation, callbackReceipt);
+}
+
+async function storeResearchResult(
+  input: InboundResult,
+  correlation: ResearchCorrelation | null,
   callbackReceipt?: N8nCallbackReceiptKey,
 ): Promise<{ resultId: string; duplicate: boolean } | null> {
   let tenantId = input.tenantId ?? null;
@@ -350,31 +413,16 @@ export async function receiveResearchResult(
   let hrefClientId: string | null = null;
   let hrefAnalysisId: string | null = null;
 
-  // Cross-Tenant-Lookup (wir kennen den Tenant noch nicht) → owner/BYPASSRLS.
-  if (input.researchRequestId) {
-    const req = await prismaOwner.riskResearchRequest.findUnique({
-      where: { id: input.researchRequestId },
-      select: {
-        tenantId: true,
-        markingId: true,
-        title: true,
-        mapping: true,
-        createdById: true,
-        analysisId: true,
-        analysis: { select: { clientId: true } },
-      },
-    });
-    if (req) {
-      tenantId = req.tenantId;
-      markingId = req.markingId;
-      body = deanonymize(input.body, (req.mapping as Record<string, string>) ?? {});
-      recipientStaffId = req.createdById;
-      hrefAnalysisId = req.analysisId;
-      hrefClientId = req.analysis?.clientId ?? null;
-      // Liefert der Workflow keinen eigenen Titel, erbt das Ergebnis den
-      // Recherche-Titel — so bleiben mehrere Einzelrecherchen unterscheidbar.
-      if (!title && req.title) title = req.title;
-    }
+  if (correlation) {
+    tenantId = correlation.tenantId;
+    markingId = correlation.markingId;
+    body = deanonymize(input.body, (correlation.mapping as Record<string, string>) ?? {});
+    recipientStaffId = correlation.createdById;
+    hrefAnalysisId = correlation.analysisId;
+    hrefClientId = correlation.analysis?.clientId ?? null;
+    // Liefert der Workflow keinen eigenen Titel, erbt das Ergebnis den
+    // Recherche-Titel — so bleiben mehrere Einzelrecherchen unterscheidbar.
+    if (!title && correlation.title) title = correlation.title;
   }
 
   if (!tenantId) return null; // ohne Tenant nicht zuordenbar
@@ -383,8 +431,9 @@ export async function receiveResearchResult(
   // Deshalb muss er den tenantweiten Schalter selbst erzwingen; ein versteckter
   // Navigationspunkt oder der Action-Guard der Subsumtions-Seiten reicht hier
   // nicht aus. `null` wird von beiden Callback-Routen als nicht zuordenbar
-  // abgelehnt, ohne Status oder Ergebnis zu persistieren.
-  const modules = await readBooleanTenantModules(prismaOwner, tenantId);
+  // abgelehnt, ohne Status oder Ergebnis zu persistieren. S-01: gelesen über
+  // die App-Rolle im SYSTEM-Kontext des Tenants.
+  const modules = await withSystemContext(tenantId, (tx) => readBooleanTenantModules(tx, tenantId));
   if (!modules.risk) return null;
 
   // Schreiben unter SYSTEM-Kontext → RLS-WITH-CHECK greift (Defense in Depth).

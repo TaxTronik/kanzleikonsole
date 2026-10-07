@@ -1,3 +1,8 @@
+// Fachkatalog: ACCESS-TENANT-RLS-001
+// S-01: the legacy callback resolves the correlation through the owner client
+// (tenant unknown); the v1 callback reads it in the authenticated tenant's
+// SYSTEM context. Module switch and writes always use the SYSTEM context
+// (research-result-db.test.ts proves the app role against PostgreSQL).
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +11,7 @@ const h = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   readBooleanTenantModules: vi.fn(),
   researchRequestFindUnique: vi.fn(),
+  tenantRequestFindFirst: vi.fn(),
   resultCreate: vi.fn(),
   requestUpdateMany: vi.fn(),
   evidenceRecord: vi.fn(),
@@ -34,7 +40,7 @@ vi.mock('@/server/n8n/callback-receipts', () => ({
   setN8nCallbackReceiptResult: h.setReceiptResult,
 }));
 
-import { receiveResearchResult } from '@/server/risk/research';
+import { receiveResearchResult, receiveTenantResearchResult } from '@/server/risk/research';
 
 const TENANT_ID = randomUUID();
 const CONNECTION_ID = randomUUID();
@@ -46,7 +52,7 @@ const callbackReceipt = {
   operation: 'research-result' as const,
 };
 const tx = {
-  riskResearchRequest: { updateMany: h.requestUpdateMany },
+  riskResearchRequest: { updateMany: h.requestUpdateMany, findFirst: h.tenantRequestFindFirst },
   riskResearchResult: { create: h.resultCreate },
 };
 
@@ -79,8 +85,10 @@ describe('research callback transaction idempotency', () => {
       ),
     ).resolves.toBeNull();
 
-    expect(h.readBooleanTenantModules).toHaveBeenCalledWith(expect.any(Object), TENANT_ID);
-    expect(h.withSystemContext).not.toHaveBeenCalled();
+    // S-01: only the module switch is read (SYSTEM context); no write transaction follows.
+    expect(h.readBooleanTenantModules).toHaveBeenCalledWith(tx, TENANT_ID);
+    expect(h.withSystemContext).toHaveBeenCalledTimes(1);
+    expect(h.withSystemContext).toHaveBeenCalledWith(TENANT_ID, expect.any(Function));
     expect(h.resultCreate).not.toHaveBeenCalled();
     expect(h.claimReceipt).not.toHaveBeenCalled();
   });
@@ -225,5 +233,64 @@ describe('research callback transaction idempotency', () => {
         }),
       }),
     );
+  });
+});
+
+describe('tenant-bound research callback (v1)', () => {
+  it('korreliert im SYSTEM-Kontext des authentifizierten Tenants ohne Owner-Lookup', async () => {
+    const requestId = randomUUID();
+    const markingId = randomUUID();
+    h.tenantRequestFindFirst.mockResolvedValue({
+      tenantId: TENANT_ID,
+      markingId,
+      title: 'Gebundene Recherche',
+      mapping: { '[PERSON_1]': 'Erika Muster' },
+      createdById: randomUUID(),
+      analysisId: randomUUID(),
+      analysis: { clientId: randomUUID() },
+    });
+
+    await expect(
+      receiveTenantResearchResult(
+        TENANT_ID,
+        { researchRequestId: requestId, body: 'Antwort an [PERSON_1]' },
+        callbackReceipt,
+      ),
+    ).resolves.toEqual({ resultId: RESULT_ID, duplicate: false });
+
+    expect(h.researchRequestFindUnique).not.toHaveBeenCalled();
+    expect(h.tenantRequestFindFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: requestId, tenantId: TENANT_ID } }),
+    );
+    expect(h.withSystemContext.mock.calls.map(([tenantId]) => tenantId)).toEqual([
+      TENANT_ID,
+      TENANT_ID,
+      TENANT_ID,
+    ]);
+    expect(h.resultCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId: TENANT_ID,
+          researchRequestId: requestId,
+          markingId,
+          title: 'Gebundene Recherche',
+          body: 'Antwort an Erika Muster',
+          status: 'ZUGEORDNET',
+        }),
+      }),
+    );
+  });
+
+  it('lehnt eine unbekannte oder tenantfremde Korrelations-ID ohne Mutation ab', async () => {
+    h.tenantRequestFindFirst.mockResolvedValue(null);
+
+    await expect(
+      receiveTenantResearchResult(TENANT_ID, { researchRequestId: randomUUID(), body: 'x' }),
+    ).resolves.toBeNull();
+
+    expect(h.withSystemContext).toHaveBeenCalledTimes(1);
+    expect(h.readBooleanTenantModules).not.toHaveBeenCalled();
+    expect(h.resultCreate).not.toHaveBeenCalled();
+    expect(h.researchRequestFindUnique).not.toHaveBeenCalled();
   });
 });

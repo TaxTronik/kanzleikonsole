@@ -8,7 +8,6 @@ const h = vi.hoisted(() => ({
   withSystemContext: vi.fn(),
   requestFindMany: vi.fn(),
   gwgCheckFindMany: vi.fn(),
-  riskRequestFindFirst: vi.fn(),
   readModules: vi.fn(),
   evidenceRecord: vi.fn(),
   notify: vi.fn(),
@@ -21,13 +20,10 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock('@taxtronik/db', () => ({ withSystemContext: h.withSystemContext }));
-vi.mock('@/server/db/prisma-owner', () => ({
-  prismaOwner: { riskResearchRequest: { findFirst: h.riskRequestFindFirst } },
-}));
 vi.mock('@/server/settings/modules', () => ({ readModules: h.readModules }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
 vi.mock('@/server/notifications/service', () => ({ notify: h.notify }));
-vi.mock('@/server/risk', () => ({ receiveResearchResult: h.receiveResearchResult }));
+vi.mock('@/server/risk', () => ({ receiveTenantResearchResult: h.receiveResearchResult }));
 vi.mock('@/server/n8n/callback-receipts', () => ({
   claimN8nCallbackReceipt: h.claimReceipt,
   N8N_CALLBACK_OPERATIONS: {
@@ -41,6 +37,7 @@ import {
   getOverdueRequestsForTenant,
   getRequestDetailForTenant,
   handleInboundRequestEmail,
+  receiveResearchResultForTenant,
 } from '../operations';
 
 const TENANT_ID = randomUUID();
@@ -312,5 +309,25 @@ describe('inbound callback transaction idempotency', () => {
     expect(h.responseCreate).not.toHaveBeenCalled();
     expect(h.notify).not.toHaveBeenCalled();
     expect(h.evidenceRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe('research callback tenant binding', () => {
+  it('übergibt den authentifizierten Tenant und die Research-Operation des Receipts', async () => {
+    h.receiveResearchResult.mockResolvedValue({ resultId: 'result-1', duplicate: false });
+    const input = { researchRequestId: randomUUID(), body: 'Ergebnis' };
+
+    await expect(
+      receiveResearchResultForTenant(TENANT_ID, input, {
+        ...callbackReceipt,
+        operation: 'request-inbound',
+      }),
+    ).resolves.toEqual({ resultId: 'result-1', duplicate: false });
+
+    expect(h.receiveResearchResult).toHaveBeenCalledWith(TENANT_ID, input, {
+      ...callbackReceipt,
+      tenantId: TENANT_ID,
+      operation: 'research-result',
+    });
   });
 });

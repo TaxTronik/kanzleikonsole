@@ -108,6 +108,7 @@ export {
   previewResearch,
   sendResearchToN8n,
   receiveResearchResult,
+  receiveTenantResearchResult,
   suggestMarkingsForResult,
   assignResultToMarking,
 } from './research';
