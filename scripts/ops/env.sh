@@ -49,10 +49,21 @@ require_env() {
 # (Initialplan) bereits, bevor der 1-Klick-Pfad Node.js installiert. Setup- und
 # Startskripte nutzen scripts/env-tool.mjs mit demselben Verhalten
 # (Paritaetstest in scripts/tests/env-tool.test.mjs).
+# Ein fehlender Schluessel ist leer (rc 0). Ein Lesefehler erscheint auf stderr
+# und liefert rc 2, statt wie "nicht gesetzt" auszusehen (frueher maskiert).
 get_env() {
-  local key="$1"
+  local key="$1" line="" rc=0
   [[ -f "$ENVFILE" ]] || return 0
-  grep -E "^${key}=" "$ENVFILE" 2>/dev/null | head -n1 | cut -d= -f2- | tr -d '"' || true
+  line="$(grep -m1 -E "^${key}=" "$ENVFILE")" || rc=$?
+  case "$rc" in
+    0) line="${line#*=}"; printf '%s\n' "${line//\"/}" ;;
+    1) return 0 ;;
+    *)
+      printf 'FEHLER: %s konnte nicht gelesen werden (grep-Exit %s); Wert von %s unbekannt.\n' \
+        "$ENVFILE" "$rc" "$key" >&2
+      return 2
+      ;;
+  esac
 }
 
 # N-1: base64url statt Standard-Base64 — Werte landen u. a. in der Postgres-
@@ -72,16 +83,21 @@ set_env() {
   # Delimiter (s|...|...|), daher MUSS `|` mit escaped werden — sonst brechen
   # Werte mit Pipe-Zeichen (z. B. Tokens) das .env-Schreiben (set -e-Abbruch).
   # `&` ist im Replacement special, `/` unschädlich mitzunehmen.
-  local esc; esc="$(printf '%s\n' "$value" | sed -e 's/[\\\/&|]/\\&/g')"
-  if grep -qE "^${key}=" "$ENVFILE"; then
-    if sed --version >/dev/null 2>&1; then
-      sed -i -E "s|^${key}=.*$|${key}=${esc}|" "$ENVFILE"
-    else
-      sed -i '' -E "s|^${key}=.*$|${key}=${esc}|" "$ENVFILE"
-    fi
-  else
-    printf '%s=%s\n' "$key" "$value" >> "$ENVFILE"
-  fi
+  local esc rc=0; esc="$(printf '%s\n' "$value" | sed -e 's/[\\\/&|]/\\&/g')"
+  # Ein Lesefehler ist nicht "Schluessel fehlt": Anhaengen ergaebe ein Duplikat,
+  # dessen neuer Wert beim Laden gewinnt, waehrend get_env den alten liest.
+  grep -qE "^${key}=" "$ENVFILE" || rc=$?
+  case "$rc" in
+    0)
+      if sed --version >/dev/null 2>&1; then
+        sed -i -E "s|^${key}=.*$|${key}=${esc}|" "$ENVFILE"
+      else
+        sed -i '' -E "s|^${key}=.*$|${key}=${esc}|" "$ENVFILE"
+      fi
+      ;;
+    1) printf '%s=%s\n' "$key" "$value" >> "$ENVFILE" ;;
+    *) die "$ENVFILE konnte nicht gelesen werden (grep-Exit $rc); $key wird nicht geschrieben." ;;
+  esac
   chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
 }
 
@@ -90,10 +106,15 @@ set_env() {
 # aber nicht ersetzt: DB-/n8n-Zugaenge liegen auch in bestehenden Volumes und
 # AUTH_SECRET kann Legacy-Secret-Box-Ciphertexte schuetzen.
 ensure_secret() {
-  local key="$1" bytes="$2"
-  if [[ -z "$(get_env "$key")" ]]; then
+  local key="$1" bytes="$2" current=""
+  # Ein Lesefehler darf nie als "leer" gelten: Sonst ersetzte ein neu
+  # generiertes Secret einen vorhandenen Wert (DB-/n8n-Zugaenge, Box-Wurzel).
+  current="$(get_env "$key")" || \
+    die "$key ist in $ENVFILE nicht lesbar; es wird kein neues Secret erzeugt."
+  if [[ -z "$current" ]]; then
     set_env "$key" "$(rand_b64 "$bytes")"
     info "$key generiert."
+  # Optionaler Hinweis: scheitert die Sonde, entfaellt nur die Warnung.
   elif command -v node >/dev/null 2>&1 && \
       [[ "$(node "$ROOT/scripts/env-tool.mjs" weak "$ENVFILE" "$key" 2>/dev/null || true)" == "weak" ]]; then
     warn "$key ist ein bekannter Dev-/CI-Default, den die App in Produktion ablehnt; kontrolliert rotieren (docs/operations/secret-rotation.md)."
@@ -278,8 +299,13 @@ prepare_env_interactive() {
     die "TAXTRONIK_DEPLOY_CHANNEL muss source oder release sein."
   set_env TAXTRONIK_DEPLOY_CHANNEL "$deploy_channel"
   if [[ "$deploy_channel" == "source" ]]; then
+    # Erst bestimmen, dann schreiben: Ohne gueltigen HEAD bleibt die .env
+    # unveraendert, statt TAXTRONIK_VERSION leer zu ueberschreiben.
+    local source_version=""
+    source_version="$(source_version_for_checkout)" || \
+      die "Source-Kennung nicht bestimmbar; TAXTRONIK_VERSION in $ENVFILE bleibt unveraendert."
     set_env TAXTRONIK_IMAGE_PREFIX taxtronik
-    set_env TAXTRONIK_VERSION "$(source_version_for_checkout)"
+    set_env TAXTRONIK_VERSION "$source_version"
   fi
   # Prod-Default (NODE_ENV, TAXTRONIK_VERSION) + fehlende Secrets generieren.
   doctor --fix >/dev/null || true

@@ -699,6 +699,83 @@ test_deploy_checks_app_env_schema_before_backup_and_migration() {
   pass "deploy checks the app env schema in the target image after provide_images and before backup and migration"
 }
 
+# B-05-Nacharbeit: Ein Lesefehler der .env sieht nie wie "nicht gesetzt" aus.
+# Frueher lieferte get_env dann still einen leeren Wert; ensure_secret erzeugte
+# daraufhin ein neues Secret, und set_env haengte ein Duplikat an.
+test_env_read_errors_never_look_like_missing_values() {
+  local env_file="$TMP_DIR/env-read-error.env" out="$TMP_DIR/env-read-error.out" rc value
+  printf 'AUTH_SECRET=existing-secret-value-with-32-chars-x\nN8N_DB_PASSWORD=\n' >"$env_file"
+  cp "$env_file" "$env_file.before"
+  failing_reads() {
+    ENVFILE="$env_file"
+    grep() {
+      if [[ "${!#}" == "$ENVFILE" ]]; then
+        printf 'grep: %s: Eingabe-/Ausgabefehler\n' "$ENVFILE" >&2
+        return 2
+      fi
+      command grep "$@"
+    }
+  }
+
+  rc=0
+  value="$(failing_reads; get_env AUTH_SECRET 2>"$out")" || rc=$?
+  [[ "$rc" == "2" && -z "$value" ]] || test_fail "get_env masked a read error (rc=$rc, value='$value')"
+  assert_contains "$out" "konnte nicht gelesen werden (grep-Exit 2); Wert von AUTH_SECRET unbekannt"
+
+  if ( failing_reads; ensure_secret N8N_DB_PASSWORD 24 ) >"$out" 2>&1; then
+    test_fail "ensure_secret generated a secret although .env was unreadable"
+  fi
+  assert_contains "$out" "N8N_DB_PASSWORD ist in $env_file nicht lesbar; es wird kein neues Secret erzeugt."
+  if ( failing_reads; set_env AUTH_SECRET replaced-value ) >"$out" 2>&1; then
+    test_fail "set_env wrote although .env was unreadable"
+  fi
+  assert_contains "$out" "konnte nicht gelesen werden (grep-Exit 2); AUTH_SECRET wird nicht geschrieben."
+  cmp -s "$env_file" "$env_file.before" || test_fail "a read error changed .env"
+
+  # Normalfall unveraendert: Wert, fehlender Schluessel (leer, rc 0), Anfuegen.
+  [[ "$(ENVFILE="$env_file" get_env AUTH_SECRET)" == "existing-secret-value-with-32-chars-x" ]] || \
+    test_fail "get_env no longer reads values"
+  value="$(ENVFILE="$env_file" get_env MISSING_KEY)" || test_fail "a missing key failed get_env"
+  [[ -z "$value" ]] || test_fail "a missing key returned a value"
+  ( ENVFILE="$env_file"; ensure_secret N8N_DB_PASSWORD 24 ) >/dev/null || test_fail "ensure_secret failed on a readable .env"
+  [[ "$(grep -c '^N8N_DB_PASSWORD=' "$env_file")" == "1" ]] || test_fail "ensure_secret duplicated a key"
+  pass "a .env read error is reported and never regenerates or duplicates a secret"
+}
+
+# B-05-Nacharbeit: Ohne gueltigen HEAD bleibt TAXTRONIK_VERSION in .env
+# unveraendert. Frueher schrieben doctor --fix und prepare_env_interactive den
+# leeren Wert eines gescheiterten source_version_for_checkout.
+test_source_version_is_never_written_empty() {
+  local env_file="$TMP_DIR/source-version-empty.env" out="$TMP_DIR/source-version-empty.out"
+  local no_git="$TMP_DIR/source-version-no-git"
+  mkdir -p "$no_git"
+  write_prod_env "$env_file"
+  set_env_file_value "$env_file" NODE_ENV development
+  set_env_file_value "$env_file" TAXTRONIK_DEPLOY_CHANNEL source
+  set_env_file_value "$env_file" TAXTRONIK_IMAGE_PREFIX taxtronik
+  set_env_file_value "$env_file" TAXTRONIK_VERSION source-deadbeef1234
+
+  if ( ROOT="$no_git"; export GIT_CEILING_DIRECTORIES="$TMP_DIR"; run_doctor_with_env "$env_file" "$out" --fix ); then
+    test_fail "doctor --fix succeeded without a valid HEAD"
+  fi
+  assert_contains "$out" "Source-Kennung nicht bestimmbar; TAXTRONIK_VERSION in $env_file bleibt unveraendert."
+  assert_key_equals "$env_file" TAXTRONIK_VERSION source-deadbeef1234
+
+  if (
+    ROOT="$no_git"
+    ENVFILE="$env_file"
+    export GIT_CEILING_DIRECTORIES="$TMP_DIR"
+    unset TAXTRONIK_DEPLOY_CHANNEL TAXTRONIK_IMAGE_PREFIX
+    doctor() { test_fail "env preparation continued after a failed source version"; }
+    prepare_env_interactive
+  ) </dev/null >"$out" 2>&1; then
+    test_fail "env preparation succeeded without a valid HEAD"
+  fi
+  assert_contains "$out" "Source-Kennung nicht bestimmbar"
+  assert_key_equals "$env_file" TAXTRONIK_VERSION source-deadbeef1234
+  pass "a failed source version never overwrites TAXTRONIK_VERSION with an empty value"
+}
+
 test_doctor_rejects_n8n_on_an_application_domain() {
   local env_file="$TMP_DIR/n8n-domain.env" out="$TMP_DIR/n8n-domain.out"
   write_prod_env "$env_file"
@@ -3463,6 +3540,131 @@ test_managed_signal_source_build_pins_commits_and_flags_moving_refs() {
   pass "managed Signal builds exactly a pinned commit and warns for moving refs"
 }
 
+# B-05-Nacharbeit: Kann der Signal-Checkout nicht geprueft werden (Git-Status
+# oder Verzeichnislesen scheitert), wird nicht gebaut. Frueher galt ein
+# gescheitertes `git status` als sauber und ein gescheitertes `find` als leerer
+# Arbeitsbaum, der die Pruefung auf lokale Aenderungen uebersprang.
+test_signal_checkout_inspection_errors_stop_the_build() {
+  local origin="$TMP_DIR/signal-inspect-origin" checkout="$TMP_DIR/signal-inspect-checkout"
+  local fresh="$TMP_DIR/signal-inspect-fresh" build_root="$TMP_DIR/signal-inspect-build-root"
+  local out="$TMP_DIR/signal-inspect.out" marker="$TMP_DIR/signal-inspect.built"
+  s04_git_fixtures
+  mkdir -p "$origin/scripts" "$build_root"
+  s04_git -C "$origin" init -q -b main
+  printf 'signal\n' >"$origin/README.md"
+  printf '#!/bin/sh\n: >"%s"\n' "$marker" >"$origin/scripts/build-managed-image.sh"
+  s04_git -C "$origin" add README.md scripts/build-managed-image.sh
+  s04_git -C "$origin" commit -qm first
+  s04_git clone -q "$origin" "$checkout"
+
+  run_inspect_build() (
+    ROOT="$build_root"
+    export GIT_CONFIG_GLOBAL="$S04_DIR/gitconfig" GIT_CONFIG_NOSYSTEM=1
+    SIGNAL_GIT_URL="$origin"
+    SIGNAL_GIT_REF=main
+    SIGNAL_GIT_DIR="$1"
+    valid_signal_git_url() { return 0; }
+    require_safe_build_resources() { return 0; }
+    docker() { return 1; }
+    git() {
+      if [[ "$*" == *" status --porcelain"* && "${INSPECT_FAIL:-}" == status ]]; then
+        printf 'fatal: index file corrupt\n' >&2
+        return 128
+      fi
+      command git "$@"
+    }
+    find() {
+      if [[ "${INSPECT_FAIL:-}" == find ]]; then
+        printf "find: '%s': Permission denied\n" "$1" >&2
+        return 1
+      fi
+      command find "$@"
+    }
+    build_signal_from_source
+  )
+
+  # Bestehender Checkout: Status vor dem Fetch nicht ermittelbar.
+  rm -f -- "$marker"
+  if INSPECT_FAIL=status run_inspect_build "$checkout" >"$out" 2>&1; then
+    test_fail "Signal build continued without a checkout status"
+  fi
+  assert_contains "$out" "fatal: index file corrupt"
+  assert_contains "$out" "Status des Signal-Checkouts nicht ermittelbar"
+  [[ ! -e "$marker" ]] || test_fail "Signal was built from an unchecked checkout"
+
+  # Bestehender Checkout mit lokaler Datei: unlesbares Verzeichnis ist kein
+  # leerer Arbeitsbaum; vor Fetch und Checkout wird abgebrochen.
+  printf 'operator-owned file\n' >"$checkout/local-note.txt"
+  if INSPECT_FAIL=find run_inspect_build "$checkout" >"$out" 2>&1; then
+    test_fail "Signal build continued with an unreadable checkout"
+  fi
+  assert_contains "$out" "Permission denied"
+  assert_contains "$out" "nicht vollstaendig lesbar"
+  [[ "$(s04_git -C "$checkout" symbolic-ref -q HEAD || true)" == "refs/heads/main" ]] || \
+    test_fail "unreadable Signal checkout was switched before the refusal"
+  [[ ! -e "$marker" ]] || test_fail "Signal was built from an unreadable checkout"
+  rm -f -- "$checkout/local-note.txt"
+
+  # Frischer Klon: Status nach dem kontrollierten Checkout nicht ermittelbar.
+  if INSPECT_FAIL=status run_inspect_build "$fresh" >"$out" 2>&1; then
+    test_fail "Signal build continued without a post-checkout status"
+  fi
+  assert_contains "$out" "Status des Signal-Checkouts nach dem Checkout nicht ermittelbar"
+  [[ ! -e "$marker" ]] || test_fail "Signal was built from an unverified fresh checkout"
+
+  run_inspect_build "$checkout" >"$out" 2>&1 || { cat "$out" >&2; test_fail "clean Signal build failed"; }
+  [[ -e "$marker" ]] || test_fail "clean Signal checkout was not built"
+  pass "Signal source build stops when the checkout status or contents cannot be read"
+}
+
+# B-05-Nacharbeit: Scheitert nach einem fehlgeschlagenen Rollback das
+# Zuruecksetzen des Checkouts, startet die Recovery keine Last-Good-Container aus
+# dem fremden Checkout (frueher still per 2>/dev/null) und stoppt nur bereits
+# gestartete Writer des gescheiterten Ziels.
+test_rollback_recovery_never_starts_last_good_from_a_foreign_checkout() {
+  local out="$TMP_DIR/rollback-recover.out" calls="$TMP_DIR/rollback-recover.calls" rc
+  run_recover() (
+    _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED=1
+    _TAXTRONIK_ROLLBACK_LAST_GOOD_COMMIT="$(printf 'b%.0s' {1..40})"
+    _TAXTRONIK_ROLLBACK_SOURCE_COMMIT="$(printf 'c%.0s' {1..40})"
+    _TAXTRONIK_ROLLBACK_SOURCE_BRANCH=""
+    _TAXTRONIK_ROLLBACK_LAST_GOOD_VERSION=2.0.0
+    _TAXTRONIK_ROLLBACK_WRITERS_STARTED="${RECOVER_WRITERS:-1}"
+    git() {
+      printf 'git %s\n' "$*" >>"$calls"
+      [[ "${RECOVER_GIT:-fail}" == ok ]] && return 0
+      printf 'error: Your local changes to the following files would be overwritten by checkout\n' >&2
+      return 1
+    }
+    start_apps_for_activation() { printf 'start-apps %s\n' "$*" >>"$calls"; }
+    compose() { printf 'compose %s\n' "$*" >>"$calls"; }
+    rollback_failure_recover 7
+  )
+
+  : >"$calls"; rc=0
+  run_recover >"$out" 2>&1 || rc=$?
+  [[ "$rc" == "7" ]] || test_fail "recovery changed the exit code to $rc"
+  assert_contains "$out" "would be overwritten by checkout"
+  assert_contains "$out" "konnte nicht wiederhergestellt werden"
+  assert_contains "$out" "Manuell: git -C $ROOT switch --detach"
+  assert_not_contains "$calls" "start-apps"
+  assert_contains "$calls" "compose stop app worker n8n"
+
+  # Vor der Aktivierung laufen noch die Last-Good-Container: nichts stoppen.
+  : >"$calls"; rc=0
+  RECOVER_WRITERS=0 run_recover >"$out" 2>&1 || rc=$?
+  [[ "$rc" == "7" ]] || test_fail "recovery changed the exit code to $rc"
+  assert_not_contains "$calls" "start-apps"
+  assert_not_contains "$calls" "compose stop"
+
+  # Erfolgreich zurueckgesetzt: Last-Good-Container wie bisher starten.
+  : >"$calls"; rc=0
+  RECOVER_GIT=ok run_recover >"$out" 2>&1 || rc=$?
+  [[ "$rc" == "7" ]] || test_fail "recovery changed the exit code to $rc"
+  assert_contains "$calls" "start-apps rollback 2.0.0"
+  pass "rollback recovery never starts last-good containers from a checkout it could not restore"
+}
+
 test_signal_source_ref_has_no_implicit_moving_default() {
   local env_file="$TMP_DIR/signal-ref-default.env" out="$TMP_DIR/signal-ref-default.out" sha
   [[ -z "$SIGNAL_GIT_REF_DEFAULT" ]] || test_fail "SIGNAL_GIT_REF_DEFAULT still selects '$SIGNAL_GIT_REF_DEFAULT'"
@@ -4830,6 +5032,8 @@ run_test test_doctor_requires_n8n_hmac_secret_only_when_needed
 run_test test_doctor_requires_https_public_urls
 run_test test_one_sided_cookie_domains_only_warn
 run_test test_doctor_rejects_n8n_on_an_application_domain
+run_test test_env_read_errors_never_look_like_missing_values
+run_test test_source_version_is_never_written_empty
 run_test test_initial_setup_confirmation_and_atomic_plan_application
 run_test test_setup_asks_for_client_ip_trust
 run_test test_client_ip_smoke_verdicts
@@ -4872,6 +5076,8 @@ run_test test_managed_signal_source_update_skips_unchanged_image_unless_requeste
 run_test test_managed_signal_source_update_honors_interactive_rebuild_choice
 run_test test_managed_signal_source_build_pins_commits_and_flags_moving_refs
 run_test test_signal_source_ref_has_no_implicit_moving_default
+run_test test_signal_checkout_inspection_errors_stop_the_build
+run_test test_rollback_recovery_never_starts_last_good_from_a_foreign_checkout
 run_test test_signal_embedding_compose_contract_is_self_contained_and_offline
 run_test test_hardware_aaguid_allowlist_is_forwarded_to_app
 run_test test_hardware_aaguid_allowlist_is_forwarded_to_worker

@@ -167,6 +167,7 @@ signal_rebuild_unchanged_requested() {
 build_signal_from_source() {
   local operation="${1:-deploy}"
   local url ref dir parent origin status sha target configured_image memory_limit memory_reserve cpus newly_cloned=0
+  local worktree_entry=""
   url="${SIGNAL_GIT_URL:-$SIGNAL_GIT_URL_DEFAULT}"
   ref="${SIGNAL_GIT_REF:-$SIGNAL_GIT_REF_DEFAULT}"
   dir="$(signal_source_dir)"
@@ -191,19 +192,24 @@ build_signal_from_source() {
     newly_cloned=1
   fi
   [[ -d "$dir/.git" ]] || die "SIGNAL_GIT_DIR ist kein von TaxTronik nutzbarer Git-Checkout: $dir"
+  # Sonde: ein Git-Fehler ergibt einen leeren origin und damit den Abbruch unten.
   origin="$(git -C "$dir" remote get-url origin 2>/dev/null || true)"
   [[ "$origin" == "$url" ]] || \
     die "Signal-Checkout hat einen anderen origin ($origin). Erwartet: $url"
   # Ein aelterer TaxTronik-Lauf kann nach `clone --no-checkout` genau mit
   # einem leeren Arbeitsbaum und dem vollstaendigen .git-Verzeichnis beendet
   # worden sein. Solange wirklich kein einziges Arbeitsbaumobjekt existiert,
-  # kann der kontrollierte Initial-Checkout gefahrlos nachgeholt werden.
-  if (( newly_cloned == 0 )) && \
-     [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 ! -name .git -print -quit 2>/dev/null)" ]]; then
-    newly_cloned=1
+  # kann der kontrollierte Initial-Checkout gefahrlos nachgeholt werden. Ein
+  # Lesefehler ist kein leerer Arbeitsbaum: Er wuerde die Pruefung auf lokale
+  # Aenderungen ueberspringen (frueher per 2>/dev/null maskiert).
+  if (( newly_cloned == 0 )); then
+    worktree_entry="$(find "$dir" -mindepth 1 -maxdepth 1 ! -name .git -print -quit)" || \
+      die "Signal-Checkout $dir ist nicht vollstaendig lesbar; lokale Aenderungen sind nicht pruefbar, Build verweigert."
+    [[ -n "$worktree_entry" ]] || newly_cloned=1
   fi
   if (( newly_cloned == 0 )); then
-    status="$(git -C "$dir" status --porcelain --untracked-files=normal 2>/dev/null || true)"
+    status="$(git -C "$dir" status --porcelain --untracked-files=normal)" || \
+      die "Status des Signal-Checkouts nicht ermittelbar (Git-Fehler oben); lokale Aenderungen sind nicht pruefbar, Build verweigert."
     [[ -z "$status" ]] || \
       die "Signal-Checkout enthaelt lokale Aenderungen. TaxTronik ueberschreibt sie nicht; bereinigen oder SIGNAL_GIT_DIR wechseln."
   fi
@@ -211,6 +217,7 @@ build_signal_from_source() {
   info "Signal-Git-Ref beziehen: $ref"
   (umask 022; git -C "$dir" fetch --prune origin "$ref") || \
     die "Signal-Git-Ref konnte nicht bezogen werden: $ref"
+  # Sonde: jeder Git-Fehler ergibt keinen gueltigen SHA und damit Abbruch.
   sha="$(git -C "$dir" rev-parse --verify FETCH_HEAD 2>/dev/null || true)"
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || die "Signal-Git-Ref wurde nicht zu einem eindeutigen Commit aufgeloest."
   case "$(signal_git_ref_kind "$ref")" in
@@ -223,7 +230,8 @@ build_signal_from_source() {
   esac
   (umask 022; git -C "$dir" checkout --detach "$sha") || \
     die "Signal-Checkout konnte nicht auf $sha gesetzt werden."
-  status="$(git -C "$dir" status --porcelain --untracked-files=normal 2>/dev/null || true)"
+  status="$(git -C "$dir" status --porcelain --untracked-files=normal)" || \
+    die "Status des Signal-Checkouts nach dem Checkout nicht ermittelbar (Git-Fehler oben); Build wird verweigert."
   [[ -z "$status" ]] || \
     die "Signal-Checkout ist nach dem kontrollierten Checkout nicht sauber; Build wird verweigert."
   [[ -f "$dir/scripts/build-managed-image.sh" ]] || \
@@ -237,7 +245,8 @@ build_signal_from_source() {
   # vorhandenes Ziel-Image beweist daher, dass genau dieser Signal-Stand schon
   # erfolgreich gebaut wurde. Bei einem echten Quell-Update wird ein eventuell
   # bereits vorbereitetes Image wiederverwendet; nur beim identischen, bereits
-  # aktiven Stand bieten wir einen bewussten Rebuild an.
+  # aktiven Stand bieten wir einen bewussten Rebuild an. Scheitert die
+  # Sonde, gilt das Image als fehlend und wird gebaut (sichere Richtung).
   if docker image inspect "$target" >/dev/null 2>&1; then
     if [[ "$configured_image" == "$target" ]]; then
       info "Signal-Quellstand unveraendert: Commit ${sha:0:12}, lokales Image vorhanden."
@@ -266,6 +275,7 @@ build_signal_from_source() {
   SIGNAL_BUILD_MEMORY_LIMIT="$memory_limit" SIGNAL_BUILD_CPUS="$cpus" \
     sh "$dir/scripts/build-managed-image.sh" "$target" || \
     die "Signal-Source-Build fehlgeschlagen; laufender Container bleibt unveraendert."
+  # Freigabe best-effort: Das Prozessende gibt den Lock ohnehin frei.
   if command -v flock >/dev/null 2>&1; then flock -u 7 || true; fi
 }
 

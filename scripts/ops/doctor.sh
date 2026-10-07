@@ -380,9 +380,13 @@ doctor() {
     info "doctor --fix: Secrets + Prod-Defaults ergaenzen"
     deploy_channel="$(deployment_channel 2>/dev/null || true)"
     if [[ "$deploy_channel" == "source" ]]; then
+      # Erst bestimmen, dann schreiben: ohne gueltigen HEAD kein leerer Wert.
+      local source_version=""
+      source_version="$(source_version_for_checkout)" || \
+        die "Source-Kennung nicht bestimmbar; TAXTRONIK_VERSION in $ENVFILE bleibt unveraendert."
       set_env TAXTRONIK_DEPLOY_CHANNEL source
       set_env TAXTRONIK_IMAGE_PREFIX taxtronik
-      set_env TAXTRONIK_VERSION "$(source_version_for_checkout)"
+      set_env TAXTRONIK_VERSION "$source_version"
     elif [[ "$deploy_channel" == "release" ]]; then
       set_env TAXTRONIK_DEPLOY_CHANNEL release
     fi

@@ -24,6 +24,7 @@ deployment_channel() {
 
 source_version_for_checkout() {
   local commit
+  # Sonde: jeder Git-Fehler ergibt keinen gueltigen SHA und damit Abbruch.
   commit="$(git -C "$ROOT" rev-parse --verify HEAD 2>/dev/null || true)"
   [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || \
     die "Source-Deployment braucht einen gueltigen Git-Checkout mit HEAD-Commit."

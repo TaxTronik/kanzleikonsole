@@ -869,6 +869,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Operator-CLI bricht bei Lese- und Git-Fehlern sicher ab: Eine nicht lesbare
+  `.env` gilt nicht mehr als „Wert fehlt“ (kein neues Secret, kein doppelter
+  Schlüssel), `TAXTRONIK_VERSION` wird nie leer überschrieben, der
+  Signal-Source-Build stoppt bei fehlerhaftem `git status`/`find`, und eine
+  fehlgeschlagene Rollback-Wiederherstellung startet keine Container aus dem
+  fremden Checkout mehr, sondern nennt die manuellen Schritte.
 - Darstellung: Klassen ohne CSS (u. a. `bg-subtle`, `text-danger`,
   `text-brand`) sind auf vorhandene Design-Tokens umgestellt, 17 von 34
   `!important` entfernt; Statustexte und ihre hellen Flächen erreichen im Dark

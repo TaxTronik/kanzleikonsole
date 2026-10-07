@@ -14,17 +14,31 @@
 # .env und STATE sind zu diesem Zeitpunkt noch Last-Good; wir stellen zusaetzlich
 # dessen Checkout und Container best-effort wieder her.
 rollback_failure_recover() {
-  local rc="${1:-1}" restore_commit="${_TAXTRONIK_ROLLBACK_LAST_GOOD_COMMIT:-}"
+  local rc="${1:-1}" restore_commit="${_TAXTRONIK_ROLLBACK_LAST_GOOD_COMMIT:-}" restored=0
   trap - EXIT INT TERM
   [[ "${_TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED:-0}" == "1" ]] || exit "$rc"
   set +e
   warn "Rollback-Aktivierung fehlgeschlagen; Last-Good-Checkout und -Container werden wiederhergestellt."
   if [[ -z "$restore_commit" ]]; then restore_commit="${_TAXTRONIK_ROLLBACK_SOURCE_COMMIT:-}"; fi
+  # Git-Fehler bleiben sichtbar (frueher 2>/dev/null): Ohne zurueckgesetzten
+  # Checkout liefen Last-Good-Container mit Compose- und Host-Dateien des
+  # fehlgeschlagenen Ziels.
   if [[ -n "${_TAXTRONIK_ROLLBACK_SOURCE_BRANCH:-}" && \
         "$restore_commit" == "${_TAXTRONIK_ROLLBACK_SOURCE_COMMIT:-}" ]]; then
-    (umask 022; git -C "$ROOT" switch "$_TAXTRONIK_ROLLBACK_SOURCE_BRANCH") >/dev/null 2>&1
+    (umask 022; git -C "$ROOT" switch "$_TAXTRONIK_ROLLBACK_SOURCE_BRANCH") >/dev/null && restored=1
   else
-    (umask 022; git -C "$ROOT" switch --detach "$restore_commit") >/dev/null 2>&1
+    (umask 022; git -C "$ROOT" switch --detach "$restore_commit") >/dev/null && restored=1
+  fi
+  if (( restored == 0 )); then
+    warn "Last-Good-Checkout ${restore_commit:-unbekannt} konnte nicht wiederhergestellt werden (Git-Fehler oben); Last-Good-Container werden nicht aus dem fremden Checkout gestartet. .env und STATE bleiben Last-Good."
+    # Bereits gestartete Writer des fehlgeschlagenen Ziels laufen nicht weiter;
+    # vor der Aktivierung laufen ohnehin noch die Last-Good-Container.
+    if [[ "${_TAXTRONIK_ROLLBACK_WRITERS_STARTED:-0}" == "1" ]]; then
+      compose stop app worker n8n || \
+        warn "Writer konnten nach fehlgeschlagener Rollback-Aktivierung nicht vollstaendig gestoppt werden."
+    fi
+    warn "Manuell: git -C $ROOT switch --detach ${restore_commit:-<Last-Good-Commit>} und danach ./taxtronik rollback ${_TAXTRONIK_ROLLBACK_LAST_GOOD_VERSION:-<Last-Good-Version>}."
+    exit "$rc"
   fi
 
   if [[ -n "${_TAXTRONIK_ROLLBACK_LAST_GOOD_VERSION:-}" ]]; then
@@ -216,7 +230,9 @@ cmd_rollback() {
   export _TAXTRONIK_ROLLBACK_LAST_GOOD_COMMIT="$current_commit"
   export _TAXTRONIK_ROLLBACK_REGISTRY_MODE="$registry_mode"
   export _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED=0
+  export _TAXTRONIK_ROLLBACK_WRITERS_STARTED=0
   _TAXTRONIK_ROLLBACK_SOURCE_COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
+  # Sonde: leer (abgetrennter HEAD oder Fehler) stellt per --detach den Commit her.
   _TAXTRONIK_ROLLBACK_SOURCE_BRANCH="$(git -C "$ROOT" branch --show-current 2>/dev/null || true)"
   trap 'rollback_failure_recover $?' EXIT
   trap 'exit 130' INT TERM
@@ -225,6 +241,7 @@ cmd_rollback() {
   ensure_host_tool_deps
 
   warn "Rollback auf $target — DB-Kompatibilitaet wurde fail-closed aus dem Release-State bestaetigt."
+  export _TAXTRONIK_ROLLBACK_WRITERS_STARTED=1
   start_apps_for_activation rollback "$target"
   smoke_health || die "Rollback-Container sind gestartet, aber nicht healthy."
   smoke_public_frontend || die "Rollback-Container laufen, aber verwaltetes Traefik/TLS ist nicht oeffentlich bereit."
@@ -236,6 +253,6 @@ cmd_rollback() {
   export TAXTRONIK_ROLLBACK_REQUIRES_DB_RESTORE=false
   finalize_release_contract
   unset TAXTRONIK_ROLLBACK_REQUIRES_DB_RESTORE
-  unset _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED
+  unset _TAXTRONIK_ROLLBACK_CHECKOUT_CHANGED _TAXTRONIK_ROLLBACK_WRITERS_STARTED
   info "Rollback fertig. Version: $target"
 }
