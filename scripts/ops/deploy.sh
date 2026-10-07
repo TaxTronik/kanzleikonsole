@@ -218,6 +218,9 @@ cmd_config() {
 
 cmd_deploy() {
   configure_initial_deployment_interactive
+  # Produktion nur ueber den Release-Kanal: vor Host-Installation,
+  # .env-Vorbereitung, Backup, Build und Migration.
+  refuse_source_channel_in_production Deploy
   ensure_bootstrap_host_requirements
   prepare_env_interactive
   _deploy_core

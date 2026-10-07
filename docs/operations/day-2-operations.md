@@ -185,14 +185,16 @@ strikter Health-Smoke (`degraded` ist Fehler) und Deploy-Readiness ohne
 Skip-Pfad. Kein `git reset --hard`: Lokale Abweichungen müssen bewusst
 aufgelöst werden.
 
-Im Source-Modus übernimmt das Update nur einen Ziel-Commit, der selbst oder
-über einen annotierten Tag auf genau diesen Commit mit einem Schlüssel aus der
-gepinnten `allowed_signers`-Datei SSH-signiert ist. Die Prüfung läuft nach dem
-Fetch und vor dem Fast-forward; gemergt wird genau der geprüfte Commit. Ohne
-Signer-Datei verweigert Produktion das Update vor dem Pflichtbackup, außer das
-protokollierte Übergangs-Opt-out `TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1` ist
-gesetzt. `./taxtronik doctor` zeigt den Zustand als `SOURCE_UPDATE_SIGNERS`.
-Einrichtung und Opt-out: [release.md, Abschnitt 2.2](release.md#22-source-kanal-signierte-updates).
+Produktion wird nur über den Release-Kanal aktualisiert: Im Source-Modus
+(`TAXTRONIK_DEPLOY_CHANNEL=source`) brechen `./taxtronik update` und
+`./taxtronik deploy` in Produktion vor `.env`-Vorbereitung, Pflichtbackup,
+Fetch, Build und Migration ab, auch mit SSH-signiertem Ziel-Commit.
+`./taxtronik doctor` meldet den Source-Kanal in Produktion als FEHLT und ein
+noch gesetztes `TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE` als wirkungslos.
+Gesperrter Pfad und Signaturbindung außerhalb von Produktion:
+[release.md, Abschnitt 2.2](release.md#22-source-kanal-signierte-updates);
+Wechsel auf den Release-Kanal:
+[Abschnitt 2.3](release.md#23-wechsel-vom-source--auf-den-release-kanal).
 
 **Lokalbuild-Modus — wenn das Update beim Docker-Build zu „hängen“ scheint:**
 Der längste Schritt ist `next build` inkl. TypeScript im `builder`-Stage

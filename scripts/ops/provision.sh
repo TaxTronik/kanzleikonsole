@@ -439,12 +439,20 @@ configure_initial_deployment_interactive() {
     *) die "Ungueltige Deployment-Auswahl: $choice" ;;
   esac
 
-  printf '\nWelcher TaxTronik-Stand soll installiert werden?\n'
-  printf '  1) Aktueller Git-Stand (empfohlen fuer Entwicklung/Vorabstaende)\n'
-  printf '     Baut den ausgecheckten Commit lokal; keine Versionsangabe noetig.\n'
-  printf '  2) Veroeffentlichtes Release\n'
-  printf '     Zieht signierte Registry-Images; nur waehlen, wenn ein Release vorliegt.\n'
-  read -rp 'Auswahl [1]: ' choice || true
+  # Produktion nur ueber den Release-Kanal (S-04, Entscheidung C): deploy und
+  # update verweigern dort den Source-Kanal, also wird er gar nicht angeboten.
+  if operator_is_production; then
+    printf '\nTaxTronik-Stand: Produktion wird nur aus einem veroeffentlichten Release\n'
+    printf 'installiert (signiertes Update-Manifest, CI-gepruefte Registry-Images).\n'
+    choice="release"
+  else
+    printf '\nWelcher TaxTronik-Stand soll installiert werden?\n'
+    printf '  1) Aktueller Git-Stand (empfohlen fuer Entwicklung/Vorabstaende)\n'
+    printf '     Baut den ausgecheckten Commit lokal; keine Versionsangabe noetig.\n'
+    printf '  2) Veroeffentlichtes Release\n'
+    printf '     Zieht signierte Registry-Images; nur waehlen, wenn ein Release vorliegt.\n'
+    read -rp 'Auswahl [1]: ' choice || true
+  fi
   case "${choice:-1}" in
     1|source)
       _SETUP_DEPLOY_CHANNEL="source"

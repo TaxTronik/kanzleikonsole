@@ -32,6 +32,12 @@ source_version_for_checkout() {
 
 prepare_source_version_for_checkout() {
   [[ "$(deployment_channel)" == "source" ]] || return 0
+  # Zweite Sperre hinter refuse_source_channel_in_production (deploy/update):
+  # Nach load_env baut oder aktiviert kein Pfad einen Source-Stand in
+  # Produktion, auch nicht nach einem Operator-Handoff.
+  if operator_is_production; then
+    die "Source-Kanal in Produktion verweigert. $(production_release_channel_hint)"
+  fi
   export TAXTRONIK_DEPLOY_CHANNEL=source
   export TAXTRONIK_IMAGE_PREFIX=taxtronik
   local version

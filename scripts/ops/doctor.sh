@@ -11,18 +11,13 @@
 # domaenenlokale Konstanten; beim Laden hat die Datei keine Seitenwirkung.
 # =============================================================================
 
-# doctor-Zeilen zum S-04-Zustand. Fehlende Signer sind WARN statt FEHLT: deploy
-# holt keinen fremden Code, und doctor ist ein hartes Gate in deploy/update,
-# auch in dem Update, das diese Pruefung erst ausliefert. Die fail-closed
-# Entscheidung trifft cmd_update vor Pflichtbackup und Fetch. FEHLT gilt nur
-# fuer ausdruecklich falsch gesetzte Werte.
+# doctor-Zeilen zum S-04-Zustand des Source-Kanals ausserhalb von Produktion
+# (in Produktion meldet doctor den Source-Kanal selbst als FEHLT). Fehlende
+# Signer sind dort nur WARN; FEHLT gilt fuer eine konfigurierte, aber
+# unbrauchbare Signer-Datei.
 _doctor_source_update_trust() {
-  local signers="" signers_rc=0 opt_out_rc=0
-  source_unsigned_update_opt_out || opt_out_rc=$?
+  local signers="" signers_rc=0
   signers="$(source_allowed_signers_file)" || signers_rc=$?
-  if (( opt_out_rc == 2 )); then
-    _dr_row "FEHLT" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE" "nur leer, 0 oder 1 erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  fi
   case "$signers_rc" in
     0)
       if command -v ssh-keygen >/dev/null 2>&1; then
@@ -31,25 +26,23 @@ _doctor_source_update_trust() {
         _dr_row "WARN" "SOURCE_UPDATE_SIGNERS" "$signers, aber ssh-keygen fehlt (openssh-client): Update wird verweigert"
         _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
       fi
-      if (( opt_out_rc == 0 )); then
-        _dr_row "WARN" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE" "wirkungslos, weil Signer konfiguriert sind; entfernen"
-        _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
-      fi
       ;;
     2)
       _dr_row "FEHLT" "SOURCE_UPDATE_SIGNERS" "$signers"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
       ;;
     *)
-      if (( opt_out_rc == 0 )); then
-        _dr_row "WARN" "SOURCE_UPDATE_SIGNERS" "Opt-out aktiv: update uebernimmt ungeprueften Code (protokolliert)"
-      elif operator_is_production; then
-        _dr_row "WARN" "SOURCE_UPDATE_SIGNERS" "fehlen ($TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT): ./taxtronik update wird verweigert"
-      else
-        _dr_row "WARN" "SOURCE_UPDATE_SIGNERS" "fehlen; ausserhalb Produktion nur Warnung"
-      fi
+      _dr_row "WARN" "SOURCE_UPDATE_SIGNERS" "fehlen; ausserhalb Produktion nur Warnung"
       _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
       ;;
   esac
+}
+
+# Das fruehere Opt-out fuer ungepruefte Source-Updates wirkt in keinem Kanal
+# mehr. Ein gesetzter Wert ist nur ein Ueberbleibsel: WARN, nie FEHLT.
+_doctor_obsolete_unsigned_opt_out() {
+  [[ -n "${TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE:-}" ]] || return 0
+  _dr_row "WARN" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE" "wirkungslos, entfernen"
+  _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
 }
 
 # Signal-Source-Builds fuehren Skripte aus dem Signal-Checkout auf dem Host aus.
@@ -361,7 +354,12 @@ doctor() {
   _doctor_db_roles
 
   deploy_channel="$(deployment_channel 2>/dev/null || true)"
-  if [[ "$deploy_channel" == "source" ]]; then
+  if [[ "$deploy_channel" == "source" ]] && operator_is_production; then
+    # Gleicher Hinweis wie das Gate in deploy/update (S-04, Entscheidung C).
+    _dr_row "FEHLT" "TAXTRONIK_DEPLOY_CHANNEL" "source ist in Produktion nicht zulaessig"
+    printf '           %s\n' "$(production_release_channel_hint)"
+    _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ "$deploy_channel" == "source" ]]; then
     _dr_row "OK" "TAXTRONIK_DEPLOY_CHANNEL" "source (aktueller Git-Stand, lokaler Build)"
     if [[ "${TAXTRONIK_IMAGE_PREFIX:-taxtronik}" == */* ]]; then
       _dr_row "FEHLT" "TAXTRONIK_IMAGE_PREFIX" "Source-Kanal darf keinen Registry-Prefix verwenden"
@@ -390,6 +388,7 @@ doctor() {
     _dr_row "FEHLT" "TAXTRONIK_DEPLOY_CHANNEL" "muss source oder release sein"
     _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   fi
+  _doctor_obsolete_unsigned_opt_out
 
   local deploy_method="" traefik_staff_host="" traefik_portal_host="" traefik_n8n_host=""
   deploy_method="$(deployment_method 2>/dev/null || true)"

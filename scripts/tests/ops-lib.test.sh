@@ -204,13 +204,15 @@ fake_gwg_invariant_psql() {
   esac
 }
 
+# Produktion laeuft nur im Release-Kanal (S-04, Entscheidung C); Source-Tests
+# setzen den Kanal ausdruecklich.
 write_prod_env() {
   local file="$1"
   cat >"$file" <<'EOF'
 NODE_ENV=production
-TAXTRONIK_DEPLOY_CHANNEL=source
-TAXTRONIK_IMAGE_PREFIX=taxtronik
-TAXTRONIK_VERSION=source-deadbeef1234
+TAXTRONIK_DEPLOY_CHANNEL=release
+TAXTRONIK_IMAGE_PREFIX=registry.example/taxtronik
+TAXTRONIK_VERSION=1.2.3
 AUTH_SECRET=auth-secret-with-at-least-thirty-two-chars
 SECRET_BOX_KEY=secret-box-key-with-at-least-thirty-two-chars
 N8N_HMAC_SECRET=n8n-hmac-secret-with-at-least-thirty-two-chars
@@ -763,6 +765,7 @@ test_source_channel_derives_version_from_checkout_without_semver() {
 
   (
     ROOT="$REPO_ROOT"
+    NODE_ENV=development
     TAXTRONIK_DEPLOY_CHANNEL=source
     TAXTRONIK_IMAGE_PREFIX=taxtronik
     prepare_source_version_for_checkout
@@ -781,6 +784,7 @@ test_source_version_without_head_stops_immediately() {
   GIT_CEILING_DIRECTORIES="$TMP_DIR" bash -c 'set -euo pipefail
     source "$1"
     ROOT="$2"
+    NODE_ENV=development
     TAXTRONIK_DEPLOY_CHANNEL=source
     prepare_source_version_for_checkout
     printf "weitergelaufen: TAXTRONIK_VERSION=%s\n" "${TAXTRONIK_VERSION:-}"' \
@@ -834,6 +838,7 @@ test_bootstrap_installs_one_click_requirements_after_configuration() {
 
   : >"$steps"
   (
+    TAXTRONIK_DEPLOY_CHANNEL=release
     configure_initial_deployment_interactive() { printf 'configure\n' >>"$steps"; }
     ensure_bootstrap_host_requirements() { printf 'host-requirements\n' >>"$steps"; }
     prepare_env_interactive() { printf 'env\n' >>"$steps"; }
@@ -2262,7 +2267,6 @@ stub_update_runtime() {
   MIGRATION_PENDING="$ROOT/.migration-pending"
   DB_RESTORE_AUTHORIZATION="$ROOT/.database-restored"
   UPDATE_HANDOFF="$ROOT/.update-handoff"
-  SOURCE_UPDATE_AUDIT_LOG="$ROOT/.taxtronik.source-update-audit.log"
   TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT="${OPS_SIGNERS_DEFAULT:-$TMP_DIR/absent-default-allowed-signers}"
   mkdir -p "$ROOT"
 
@@ -2275,7 +2279,10 @@ stub_update_runtime() {
   assert_production_env() { record_step assert-production; }
   require_release_version() { record_step require-version; }
   assert_no_database_restore_pending() { :; }
+  # Hermetisch: Ablaufbetrieb kommt ausschliesslich aus OPS_NODE_ENV.
+  NODE_ENV="${OPS_NODE_ENV:-test}"
   if [[ "${OPS_RELEASE_CHANNEL:-0}" == "1" ]]; then
+    TAXTRONIK_DEPLOY_CHANNEL=release
     images_from_registry() { return 0; }
     resolve_release_contract() {
       record_step resolve-release-contract
@@ -2283,6 +2290,7 @@ stub_update_runtime() {
     }
     fetch_verified_release_tag() { record_step "fetch-verified-release-tag $*"; }
   else
+    TAXTRONIK_DEPLOY_CHANNEL=source
     images_from_registry() { return 1; }
   fi
   start_infra() { record_step start-infra; }
@@ -2508,22 +2516,24 @@ s04_repos() {
 s04_head() { s04_git -C "$S04_CHECKOUT" rev-parse HEAD; }
 
 # Echtes `cmd_update` (Git + S-04) gegen S04_CHECKOUT, standardmaessig in
-# Produktion. Signer/Opt-out kommen ausschliesslich aus OPS_SIGNERS/OPS_OPT_OUT.
+# Produktion (dort verweigert); Signaturpfade laufen mit OPS_NODE_ENV=development.
+# Signer/Opt-out kommen ausschliesslich aus OPS_SIGNERS/OPS_OPT_OUT.
 s04_run_update() {
   local sequence="$1" out="$2"
   : >"$sequence"
   GIT_CONFIG_GLOBAL="${OPS_GITCONFIG:-$S04_DIR/gitconfig}" GIT_CONFIG_NOSYSTEM=1 \
-    NODE_ENV="${OPS_NODE_ENV:-production}" TAXTRONIK_GIT_REMOTE="" TAXTRONIK_UPDATE_REF="" \
+    OPS_NODE_ENV="${OPS_NODE_ENV:-production}" TAXTRONIK_GIT_REMOTE="" TAXTRONIK_UPDATE_REF="" \
     TAXTRONIK_SOURCE_ALLOWED_SIGNERS="${OPS_SIGNERS:-}" \
     TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE="${OPS_OPT_OUT:-}" \
     OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$S04_CHECKOUT" run_real_git_update >"$out" 2>&1
 }
 
 test_source_update_accepts_signed_commit_and_signed_tag() {
-  local desc="source update merges and reloads only after a pinned signer verified the exact commit or its annotated tag"
+  local desc="outside production a source update merges and reloads only after a pinned signer verified the exact commit or its annotated tag"
   s04_signature_tools_available || { skip_test "$desc" "ssh-keygen fehlt"; return 0; }
   s04_key_fixtures
   local sequence="$TMP_DIR/s04-signed.seq" out="$TMP_DIR/s04-signed.out" signed tagged
+  local OPS_NODE_ENV=development
   s04_repos signed
   signed="$(s04_commit "$S04_UPSTREAM" trusted "signierter Stand")"
 
@@ -2537,8 +2547,6 @@ test_source_update_accepts_signed_commit_and_signed_tag() {
   assert_contains "$out" 'Good "git" signature for trusted@taxtronik.invalid'
   assert_before "$sequence" "backup-old-checkout" "reexec-updated-operator"
   assert_key_equals "$S04_CHECKOUT/.update-handoff" checkout_target_commit "$signed"
-  [[ ! -e "$S04_CHECKOUT/.taxtronik.source-update-audit.log" ]] || \
-    test_fail "verified update was recorded as unsigned"
 
   # Unsignierter Commit, freigegeben durch einen signierten annotierten Tag mit
   # genau diesem Commit als Ziel.
@@ -2556,10 +2564,11 @@ test_source_update_accepts_signed_commit_and_signed_tag() {
 }
 
 test_source_update_rejects_unsigned_commit_before_merge() {
-  local desc="unsigned source target is rejected before merge and operator reload, also outside production"
+  local desc="outside production an unsigned source target is rejected before merge and operator reload"
   s04_signature_tools_available || { skip_test "$desc" "ssh-keygen fehlt"; return 0; }
   s04_key_fixtures
   local sequence="$TMP_DIR/s04-unsigned.seq" out="$TMP_DIR/s04-unsigned.out" parent unsigned
+  local OPS_NODE_ENV=development
   s04_repos unsigned
   # Ein signierter Tag auf dem Vorgaenger sowie leichte/unsignierte Tags auf dem
   # Ziel duerfen das Ziel nicht freigeben.
@@ -2579,20 +2588,17 @@ test_source_update_rejects_unsigned_commit_before_merge() {
   assert_not_contains "$sequence" "ensure-host-deps"
   [[ ! -e "$S04_CHECKOUT/.update-handoff" ]] || test_fail "rejected update wrote an operator handoff"
 
-  # Das Opt-out kann konfigurierte Signer nicht aushebeln.
+  # Das fruehere Opt-out hebelt konfigurierte Signer nicht aus.
   if OPS_SIGNERS="$S04_DIR/allowed_signers" OPS_OPT_OUT=1 s04_run_update "$sequence" "$out"; then
     test_fail "opt-out overrode configured signers"
   fi
   [[ "$(s04_head)" == "$S04_BASE" ]] || test_fail "opt-out with configured signers changed the checkout"
-  assert_contains "$out" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1 ist wirkungslos"
+  assert_contains "$out" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE ist wirkungslos"
   assert_contains "$out" "Source-Update verweigert: Ziel-Commit $unsigned"
-  [[ ! -e "$S04_CHECKOUT/.taxtronik.source-update-audit.log" ]] || \
-    test_fail "opt-out with configured signers wrote an unsigned-update record"
 
-  # Konfigurierte Signer gelten auch ausserhalb der Produktion.
+  # Direkter Aufruf der Signaturentscheidung mit konfigurierten Signern.
   if (
     ROOT="$S04_CHECKOUT"
-    SOURCE_UPDATE_AUDIT_LOG="$S04_CHECKOUT/.audit"
     ENVFILE="$TMP_DIR/s04-no-such.env"
     export GIT_CONFIG_GLOBAL="$S04_DIR/gitconfig" GIT_CONFIG_NOSYSTEM=1
     NODE_ENV=development
@@ -2611,7 +2617,7 @@ test_source_update_rejects_unknown_signer_despite_ambient_git_config() {
   s04_signature_tools_available || { skip_test "$desc" "ssh-keygen fehlt"; return 0; }
   s04_key_fixtures
   local sequence="$TMP_DIR/s04-rogue.seq" out="$TMP_DIR/s04-rogue.out" rogue hostile="$S04_DIR/hostile-gitconfig"
-  local forged tree
+  local forged tree OPS_NODE_ENV=development
   s04_repos rogue
   rogue="$(s04_commit "$S04_UPSTREAM" rogue "Stand mit fremdem Schluessel")"
 
@@ -2643,10 +2649,9 @@ test_source_update_rejects_unknown_signer_despite_ambient_git_config() {
     "$tree" "$S04_BASE" | s04_git -C "$S04_CHECKOUT" hash-object -t commit -w --stdin)"
   if (
     ROOT="$S04_CHECKOUT"
-    SOURCE_UPDATE_AUDIT_LOG="$S04_CHECKOUT/.audit"
     ENVFILE="$TMP_DIR/s04-no-such.env"
     export GIT_CONFIG_GLOBAL="$hostile" GIT_CONFIG_NOSYSTEM=1
-    NODE_ENV=production
+    NODE_ENV=development
     TAXTRONIK_SOURCE_ALLOWED_SIGNERS="$S04_DIR/allowed_signers"
     TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=""
     git -C "$ROOT" verify-commit "$forged" >/dev/null 2>&1 || \
@@ -2664,6 +2669,7 @@ test_source_update_ignores_signer_files_inside_checkout() {
   s04_signature_tools_available || { skip_test "$desc" "ssh-keygen fehlt"; return 0; }
   s04_key_fixtures
   local sequence="$TMP_DIR/s04-inside.seq" out="$TMP_DIR/s04-inside.out" rogue path
+  local OPS_NODE_ENV=development
   s04_repos inside
   # Der Angreifer liefert seine Signer-Datei im Baum mit und signiert damit.
   cp "$S04_DIR/rogue_signers" "$S04_UPSTREAM/allowed_signers"
@@ -2688,8 +2694,6 @@ test_source_update_ignores_signer_files_inside_checkout() {
     assert_contains "$out" "liegt im TaxTronik-Checkout und wird ignoriert"
     assert_not_contains "$sequence" "backup-old-checkout"
   done
-  [[ ! -e "$S04_CHECKOUT/.taxtronik.source-update-audit.log" ]] || \
-    test_fail "opt-out bypassed a configured but untrusted signer file"
   pass "$desc"
 }
 
@@ -2729,38 +2733,153 @@ test_source_signer_file_must_be_operator_controlled() {
   pass "pinned signer file must be operator-controlled, non-empty and explicitly present"
 }
 
-test_source_update_opt_out_is_explicit_and_logged() {
-  local desc="production refuses unsigned source updates before backup unless the logged opt-out is set"
-  local sequence="$TMP_DIR/s04-optout.seq" out="$TMP_DIR/s04-optout.out" unsigned audit mode
+# Produktion nur ueber den Release-Kanal (S-04, Entscheidung C): ein
+# Source-Update bricht vor .env-Vorbereitung, Pflichtbackup und Fetch ab, egal
+# ob Signer konfiguriert sind oder das fruehere Opt-out gesetzt ist.
+test_production_source_update_is_refused_before_backup() {
+  local desc="production refuses every source update before env preparation, backup and fetch, with or without signers or opt-out"
+  local sequence="$TMP_DIR/s04-prod.seq" out="$TMP_DIR/s04-prod.out" target origin_before signers_dir
+  s04_repos production
+  target="$(s04_commit "$S04_UPSTREAM" "" "neuer Stand")"
+  origin_before="$(s04_git -C "$S04_CHECKOUT" rev-parse origin/main)"
+  signers_dir="$(readlink -f "$TMP_DIR")/s04-prod-signers"
+  mkdir -p "$signers_dir"
+  printf 'ops@taxtronik.invalid namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n' \
+    >"$signers_dir/allowed_signers"
+
+  for variant in none signers opt-out; do
+    local OPS_SIGNERS="" OPS_OPT_OUT=""
+    case "$variant" in
+      signers) OPS_SIGNERS="$signers_dir/allowed_signers" ;;
+      opt-out) OPS_OPT_OUT=1 ;;
+    esac
+    if s04_run_update "$sequence" "$out"; then
+      test_fail "production accepted a source update ($variant)"
+    fi
+    assert_contains "$out" "Update verweigert: TAXTRONIK_DEPLOY_CHANNEL=source ist in Produktion nicht zulaessig"
+    assert_contains "$out" "TAXTRONIK_DEPLOY_CHANNEL=release"
+    assert_contains "$out" "docs/operations/release.md, Abschnitt 2.3"
+    assert_contains "$out" "Es wurde nichts veraendert"
+    assert_not_contains "$sequence" "prepare-env"
+    assert_not_contains "$sequence" "backup-old-checkout"
+    assert_not_contains "$sequence" "reexec-updated-operator"
+    [[ "$(s04_head)" == "$S04_BASE" ]] || test_fail "refused production update changed the checkout ($variant)"
+    [[ "$(s04_git -C "$S04_CHECKOUT" rev-parse origin/main)" == "$origin_before" ]] || \
+      test_fail "refused production update fetched the target ($variant): $target"
+    [[ ! -e "$S04_CHECKOUT/.update-handoff" ]] || test_fail "refused production update wrote a handoff ($variant)"
+    [[ ! -e "$S04_CHECKOUT/.taxtronik.source-update-audit.log" ]] || \
+      test_fail "refused production update wrote an unsigned-update record ($variant)"
+  done
+
+  # Zweite Sperre: Auch direkt aufgerufen schalten Signer in Produktion nichts frei.
+  if (
+    ROOT="$S04_CHECKOUT"
+    ENVFILE="$TMP_DIR/s04-no-such.env"
+    NODE_ENV=production
+    TAXTRONIK_SOURCE_ALLOWED_SIGNERS="$signers_dir/allowed_signers"
+    TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1
+    resolve_source_update_trust
+  ) >"$out" 2>&1; then
+    test_fail "configured signers unlocked a source update in production"
+  fi
+  assert_contains "$out" "Source-Update in Produktion verweigert, auch mit SSH-signiertem Ziel"
+  pass "$desc"
+}
+
+# deploy: dieselbe Sperre vor Host-Installation, .env-Vorbereitung, Build,
+# Backup und Migration; der Release-Kanal laeuft unveraendert weiter.
+test_production_source_deploy_is_refused_before_side_effects() {
+  local root="$TMP_DIR/prod-source-deploy" steps="$TMP_DIR/prod-source-deploy.steps"
+  local out="$TMP_DIR/prod-source-deploy.out"
+  mkdir -p "$root"
+  printf 'NODE_ENV=production\nTAXTRONIK_DEPLOY_CHANNEL=source\nTAXTRONIK_IMAGE_PREFIX=taxtronik\n' >"$root/.env"
+  run_prod_deploy() (
+    ROOT="$root"
+    ENVFILE="$root/.env"
+    unset NODE_ENV TAXTRONIK_DEPLOY_CHANNEL TAXTRONIK_IMAGE_PREFIX
+    configure_initial_deployment_interactive() { printf 'configure\n' >>"$steps"; }
+    ensure_bootstrap_host_requirements() { printf 'host-requirements\n' >>"$steps"; }
+    prepare_env_interactive() { printf 'env\n' >>"$steps"; }
+    load_env() { printf 'load-env\n' >>"$steps"; }
+    preflight_common() { :; }
+    assert_production_env() { :; }
+    require_release_version() { :; }
+    assert_no_database_restore_pending() { :; }
+    ensure_host_tool_deps() { :; }
+    prepare_release_contract() { :; }
+    start_infra() { printf 'start-infra\n' >>"$steps"; }
+    wait_postgres_healthy() { :; }
+    sync_postgres_roles_from_env() { :; }
+    provide_images() { printf 'provide-images\n' >>"$steps"; }
+    provide_traefik_for_deploy() { :; }
+    provide_signal_for_deploy() { :; }
+    backup_before_migrations() { printf 'backup\n' >>"$steps"; }
+    run_migrations() { printf 'migrate\n' >>"$steps"; }
+    ensure_provisioned_interactive() { :; }
+    ensure_managed_n8n_connection() { :; }
+    start_signal_for_deploy() { :; }
+    start_apps_for_activation() { printf 'start-apps\n' >>"$steps"; }
+    smoke_health() { :; }
+    smoke_public_frontend() { :; }
+    deploy_readiness() { :; }
+    finalize_release_contract() { printf 'finalize\n' >>"$steps"; }
+    image_tag() { printf 'test-version'; }
+    cmd_deploy
+  )
+
+  : >"$steps"
+  if run_prod_deploy >"$out" 2>&1; then
+    test_fail "production deploy accepted the source channel"
+  fi
+  assert_file_equals "$steps" "configure"
+  assert_contains "$out" "Deploy verweigert: TAXTRONIK_DEPLOY_CHANNEL=source ist in Produktion nicht zulaessig"
+  assert_contains "$out" "TAXTRONIK_DEPLOY_CHANNEL=release"
+
+  # Die zweite Sperre in prepare_source_version_for_checkout greift nach
+  # load_env auch dann, wenn das Eingangs-Gate nicht durchlaufen wurde.
+  if (
+    ROOT="$root"
+    ENVFILE="$root/.env"
+    NODE_ENV=production
+    TAXTRONIK_DEPLOY_CHANNEL=source
+    prepare_source_version_for_checkout
+  ) >"$out" 2>&1; then
+    test_fail "source version was prepared for a production build"
+  fi
+  assert_contains "$out" "Source-Kanal in Produktion verweigert"
+
+  : >"$steps"
+  printf 'NODE_ENV=production\nTAXTRONIK_DEPLOY_CHANNEL=release\nTAXTRONIK_IMAGE_PREFIX=registry.example/taxtronik\n' \
+    >"$root/.env"
+  run_prod_deploy >"$out" 2>&1 || { cat "$out" >&2; test_fail "release-channel deploy was refused"; }
+  assert_before "$steps" "configure" "host-requirements"
+  assert_before "$steps" "provide-images" "backup"
+  assert_before "$steps" "backup" "migrate"
+  assert_contains "$steps" "finalize"
+  pass "production deploy refuses the source channel before host setup, env preparation, build, backup and migration"
+}
+
+# Das fruehere Opt-out entscheidet nichts mehr: kein Audit-Eintrag, keine
+# Wertepruefung, nur eine Warnung. Ausserhalb von Produktion bleibt es beim
+# unsignierten Warnpfad; in Produktion verweigert das Gate (Test oben).
+test_obsolete_source_update_opt_out_has_no_effect() {
+  local desc="the former unsigned-update opt-out has no effect and is only reported"
+  local sequence="$TMP_DIR/s04-optout.seq" out="$TMP_DIR/s04-optout.out" unsigned
+  local OPS_NODE_ENV=development
   s04_repos optout
   unsigned="$(s04_commit "$S04_UPSTREAM" "" "unsignierter Stand")"
-  audit="$S04_CHECKOUT/.taxtronik.source-update-audit.log"
 
-  if s04_run_update "$sequence" "$out"; then
-    test_fail "production accepted an unsigned source update without signers or opt-out"
-  fi
-  assert_contains "$out" "Source-Update in Produktion verweigert: keine gepinnten Signer"
-  assert_contains "$out" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1"
-  assert_not_contains "$sequence" "backup-old-checkout"
-  [[ "$(s04_head)" == "$S04_BASE" ]] || test_fail "refused unsigned update changed the checkout"
-
-  if OPS_OPT_OUT=yes s04_run_update "$sequence" "$out"; then
-    test_fail "ambiguous opt-out value was accepted"
-  fi
-  assert_contains "$out" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE darf nur leer, 0 oder 1 sein"
-  [[ ! -e "$audit" ]] || test_fail "refused update wrote an audit record"
-
-  OPS_OPT_OUT=1 s04_run_update "$sequence" "$out" || {
+  OPS_OPT_OUT=yes s04_run_update "$sequence" "$out" || {
     cat "$out" >&2
-    test_fail "explicit opt-out did not allow the unsigned source update"
+    test_fail "an obsolete opt-out value blocked the non-production update"
   }
-  [[ "$(s04_head)" == "$unsigned" ]] || test_fail "opt-out update did not merge the target"
-  assert_contains "$out" "SICHERHEITS-OPT-OUT: ungeprueften Source-Stand $unsigned uebernehmen"
-  assert_before "$sequence" "backup-old-checkout" "reexec-updated-operator"
-  [[ -f "$audit" ]] || test_fail "opt-out was not recorded"
-  mode="$(file_mode "$audit")"
-  [[ "$mode" == "600" ]] || test_fail "audit record mode is $mode, not 600"
-  assert_contains "$audit" "event=unsigned-source-update reason=opt-out from=$S04_BASE to=$unsigned uid=$(id -u)"
+  [[ "$(s04_head)" == "$unsigned" ]] || test_fail "non-production update did not merge the target"
+  assert_contains "$out" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE ist wirkungslos und wird ignoriert"
+  assert_contains "$out" "Source-Stand $unsigned wird ohne Signaturpruefung uebernommen"
+  assert_not_contains "$out" "SICHERHEITS-OPT-OUT"
+  assert_not_contains "$out" "darf nur leer, 0 oder 1 sein"
+  [[ ! -e "$S04_CHECKOUT/.taxtronik.source-update-audit.log" ]] || \
+    test_fail "obsolete opt-out still wrote an unsigned-update record"
   pass "$desc"
 }
 
@@ -2771,7 +2890,6 @@ test_source_update_outside_production_only_warns() {
   s04_git -C "$S04_CHECKOUT" fetch -q origin
   (
     ROOT="$S04_CHECKOUT"
-    SOURCE_UPDATE_AUDIT_LOG="$S04_CHECKOUT/.audit"
     ENVFILE="$TMP_DIR/s04-no-such.env"
     TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT="$TMP_DIR/absent-default-allowed-signers"
     export GIT_CONFIG_GLOBAL="$S04_DIR/gitconfig" GIT_CONFIG_NOSYSTEM=1
@@ -2784,7 +2902,6 @@ test_source_update_outside_production_only_warns() {
     test_fail "non-production source update without signers was refused"
   }
   assert_contains "$out" "NODE_ENV=development: Source-Stand $unsigned wird ohne Signaturpruefung uebernommen"
-  [[ ! -e "$S04_CHECKOUT/.audit" ]] || test_fail "non-production warning wrote an opt-out audit record"
 
   if (
     ROOT="$S04_CHECKOUT"
@@ -2798,6 +2915,7 @@ test_source_update_outside_production_only_warns() {
     test_fail "the same configuration was accepted in production"
   fi
   assert_contains "$out" "Source-Update in Produktion verweigert"
+  assert_contains "$out" "TAXTRONIK_DEPLOY_CHANNEL=release"
   pass "outside production a missing signer configuration only warns"
 }
 
@@ -2818,7 +2936,7 @@ test_source_update_target_ref_is_validated() {
 test_release_channel_update_ignores_source_signature_gate() {
   local sequence="$TMP_DIR/s04-release.seq" out="$TMP_DIR/s04-release.out"
   : >"$sequence"
-  NODE_ENV=production TAXTRONIK_VERSION=2.0.0 TAXTRONIK_SOURCE_ALLOWED_SIGNERS="" \
+  OPS_NODE_ENV=production TAXTRONIK_VERSION=2.0.0 TAXTRONIK_SOURCE_ALLOWED_SIGNERS="" \
     TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE="" OPS_RELEASE_CHANNEL=1 OPS_CHECKOUT_CHANGES=1 \
     OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$TMP_DIR/s04-release-root" run_mock_update >"$out" 2>&1 || {
     cat "$out" >&2
@@ -2840,44 +2958,60 @@ test_doctor_reports_source_update_signature_state() {
   mkdir -p "$signers_dir"
   printf 'ops@taxtronik.invalid namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample\n' >"$signers_dir/allowed_signers"
 
+  # Produktion: Source-Kanal ist FEHLT mit dem Wechselhinweis des Gates;
+  # Signer-Zeilen entfallen, weil Signaturen dort nichts freischalten.
   write_prod_env "$env_file"
-  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "missing signers blocked doctor"; }
-  assert_contains "$out" "WARN     SOURCE_UPDATE_SIGNERS  fehlen ($TMP_DIR/absent-default-allowed-signers): ./taxtronik update wird verweigert"
+  set_env_file_value "$env_file" TAXTRONIK_DEPLOY_CHANNEL source
+  set_env_file_value "$env_file" TAXTRONIK_IMAGE_PREFIX taxtronik
+  set_env_file_value "$env_file" TAXTRONIK_VERSION source-deadbeef1234
+  printf 'TAXTRONIK_SOURCE_ALLOWED_SIGNERS=%s\n' "$signers_dir/allowed_signers" >>"$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted the source channel in production"
+  fi
+  assert_contains "$out" "FEHLT    TAXTRONIK_DEPLOY_CHANNEL source ist in Produktion nicht zulaessig"
+  assert_contains "$out" "Wechsel: in .env TAXTRONIK_DEPLOY_CHANNEL=release"
+  assert_contains "$out" "docs/operations/release.md, Abschnitt 2.3"
+  assert_not_contains "$out" "SOURCE_UPDATE_SIGNERS"
+
+  # Das fruehere Opt-out ist ueberall wirkungslos: WARN, nie FEHLT, auch mit
+  # einem frueher ungueltigen Wert.
+  write_prod_env "$env_file"
+  printf 'TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=yes\n' >>"$env_file"
+  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "obsolete opt-out blocked doctor"; }
+  assert_contains "$out" "WARN     TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE wirkungslos, entfernen"
+  assert_not_contains "$out" "FEHLT"
+  assert_not_contains "$out" "SOURCE_UPDATE_SIGNERS"
+
+  # Release-Kanal unveraendert: keine Source-Zeilen, kein Opt-out-Hinweis.
+  set_env_file_value "$env_file" TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE ""
+  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "release doctor failed"; }
+  assert_contains "$out" "OK       TAXTRONIK_DEPLOY_CHANNEL release (signierte Registry-Artefakte)"
+  assert_not_contains "$out" "SOURCE_UPDATE_SIGNERS"
+  assert_not_contains "$out" "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE"
+
+  # Ausserhalb von Produktion bleibt die Signaturanzeige des Source-Kanals
+  # (doctor scheitert dort ohnehin an NODE_ENV).
+  write_prod_env "$env_file"
+  set_env_file_value "$env_file" NODE_ENV development
+  set_env_file_value "$env_file" TAXTRONIK_DEPLOY_CHANNEL source
+  set_env_file_value "$env_file" TAXTRONIK_IMAGE_PREFIX taxtronik
+  set_env_file_value "$env_file" TAXTRONIK_VERSION source-deadbeef1234
+  run_doctor_with_env "$env_file" "$out" || true
+  assert_contains "$out" "OK       TAXTRONIK_DEPLOY_CHANNEL source (aktueller Git-Stand, lokaler Build)"
+  assert_contains "$out" "WARN     SOURCE_UPDATE_SIGNERS  fehlen; ausserhalb Produktion nur Warnung"
 
   printf 'TAXTRONIK_SOURCE_ALLOWED_SIGNERS=%s\n' "$signers_dir/allowed_signers" >>"$env_file"
-  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "configured signers blocked doctor"; }
+  run_doctor_with_env "$env_file" "$out" || true
   if command -v ssh-keygen >/dev/null 2>&1; then
     assert_contains "$out" "OK       SOURCE_UPDATE_SIGNERS  $signers_dir/allowed_signers (SSH-Signatur vor jedem Update Pflicht)"
   else
     assert_contains "$out" "WARN     SOURCE_UPDATE_SIGNERS  $signers_dir/allowed_signers, aber ssh-keygen fehlt"
   fi
-  printf 'TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1\n' >>"$env_file"
-  run_doctor_with_env "$env_file" "$out" || test_fail "ineffective opt-out blocked doctor"
-  assert_contains "$out" "WARN     TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE wirkungslos"
 
   set_env_file_value "$env_file" TAXTRONIK_SOURCE_ALLOWED_SIGNERS "$REPO_ROOT/README.md"
-  if run_doctor_with_env "$env_file" "$out"; then
-    test_fail "doctor accepted a signer file inside the checkout"
-  fi
+  run_doctor_with_env "$env_file" "$out" || true
   assert_contains "$out" "FEHLT    SOURCE_UPDATE_SIGNERS  $REPO_ROOT/README.md liegt im TaxTronik-Checkout und wird ignoriert"
-
-  set_env_file_value "$env_file" TAXTRONIK_SOURCE_ALLOWED_SIGNERS ""
-  run_doctor_with_env "$env_file" "$out" || test_fail "active opt-out blocked doctor"
-  assert_contains "$out" "WARN     SOURCE_UPDATE_SIGNERS  Opt-out aktiv"
-
-  set_env_file_value "$env_file" TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE yes
-  if run_doctor_with_env "$env_file" "$out"; then
-    test_fail "doctor accepted an ambiguous opt-out value"
-  fi
-  assert_contains "$out" "FEHLT    TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE nur leer, 0 oder 1 erlaubt"
-
-  set_env_file_value "$env_file" TAXTRONIK_DEPLOY_CHANNEL release
-  set_env_file_value "$env_file" TAXTRONIK_IMAGE_PREFIX registry.example/taxtronik
-  set_env_file_value "$env_file" TAXTRONIK_VERSION 1.2.3
-  set_env_file_value "$env_file" TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE ""
-  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "release doctor failed"; }
-  assert_not_contains "$out" "SOURCE_UPDATE_SIGNERS"
-  pass "doctor shows the source-update signature state only for the source channel"
+  pass "doctor refuses the source channel in production and shows signer rows only outside it"
 }
 
 test_managed_signal_source_build_pins_commits_and_flags_moving_refs() {
@@ -4369,7 +4503,9 @@ run_test test_source_update_rejects_unsigned_commit_before_merge
 run_test test_source_update_rejects_unknown_signer_despite_ambient_git_config
 run_test test_source_update_ignores_signer_files_inside_checkout
 run_test test_source_signer_file_must_be_operator_controlled
-run_test test_source_update_opt_out_is_explicit_and_logged
+run_test test_production_source_update_is_refused_before_backup
+run_test test_production_source_deploy_is_refused_before_side_effects
+run_test test_obsolete_source_update_opt_out_has_no_effect
 run_test test_source_update_outside_production_only_warns
 run_test test_source_update_target_ref_is_validated
 run_test test_release_channel_update_ignores_source_signature_gate

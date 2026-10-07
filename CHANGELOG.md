@@ -1473,6 +1473,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Produktion nur über den Release-Kanal: `./taxtronik deploy`, `bootstrap` und
+  `update` verweigern in Produktion `TAXTRONIK_DEPLOY_CHANNEL=source` vor
+  `.env`-Vorbereitung, Backup, Fetch, Image-Build und Migration und nennen den
+  Wechsel (`docs/operations/release.md`, Abschnitt 2.3). SSH-Signaturen geben
+  in Produktion keinen Source-Stand mehr frei;
+  `TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE` ist wirkungslos (`doctor`: WARN
+  „wirkungslos, entfernen“; Source-Kanal in Produktion: FEHLT). Das
+  Initialsetup bietet in Produktion nur veröffentlichte Releases an.
 - Scheitert nach der GwG-Ablauf-Deaktivierung der Widerruf der Portal-Sessions,
   bleibt ein in derselben Transaktion gesetzter Marker am Mandanten stehen; der
   Lauf schlägt fehl, und seine Wiederholung sowie jeder spätere Lauf holen den

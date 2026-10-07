@@ -127,7 +127,8 @@ nach erfolgreicher Migration und bestandenem Readiness-Gate entfernt.
 
 Der Assistent validiert und fasst vor der Anwendung zusammen:
 
-- Bezugsweg: aktueller Git-Stand oder veröffentlichtes Release,
+- Bezugsweg: in Produktion ausschließlich ein veröffentlichtes Release; der
+  aktuelle Git-Stand (Source-Kanal) wird nur außerhalb von Produktion angeboten,
 - beim veröffentlichten Release die automatisch gesetzte, signierte
   Update-Manifest-Quelle samt fest eingebautem Ed25519-Public-Key,
 - die drei tatsächlich verwendeten vollständigen Domains: Kanzlei-/Mitarbeiterportal
@@ -160,11 +161,14 @@ folgt einmalig das etwa 6,25 GB große LLM-Artefakt. Der Image-Build ist auf zwe
 CPUs und 3 GiB RAM begrenzt und berechnet ausdrücklich noch keinen
 Embedding-Index; das LLM wird ebenfalls noch nicht in den RAM geladen.
 
-Beim empfohlenen Git-/Source-Weg leitet die CLI die Identität automatisch als
-`source-<12-stelliger Commit>` aus dem ausgecheckten Stand ab. Es wird keine
-SemVer abgefragt. Nur wenn ausdrücklich „Veröffentlichtes Release“ gewählt
-wird, muss der exakte bereits publizierte Tag `X.Y.Z` angegeben werden; dann
-werden signierte Registry-Artefakte statt lokaler Builds verwendet.
+Produktion wird nur aus einem veröffentlichten Release installiert: Der
+Assistent fragt dann den exakten, bereits publizierten Tag `X.Y.Z` ab und
+verwendet signierte Registry-Artefakte statt lokaler Builds. `./taxtronik
+deploy` und `update` verweigern den Source-Kanal in Produktion vor jeder
+Änderung ([release.md, Abschnitt 2.2](release.md#22-source-kanal-signierte-updates)).
+Nur außerhalb von Produktion bietet der Assistent weiterhin den Git-/Source-Weg
+an; die CLI leitet die Identität dann automatisch als
+`source-<12-stelliger Commit>` aus dem ausgecheckten Stand ab.
 
 ## Signal und Embeddings
 

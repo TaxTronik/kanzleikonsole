@@ -53,11 +53,11 @@ SIGNAL_GIT_URL_DEFAULT="https://git.hirschmann-koxha.de/TaxTronik/signal.git"
 # gepinnt; Betreiber setzen SIGNAL_GIT_REF auf einen vollstaendigen Commit-SHA
 # (empfohlen) oder ein explizites refs/tags/<Tag>.
 SIGNAL_GIT_REF_DEFAULT=""
-# Vertrauensanker fuer Source-Kanal-Updates (S-04). Liegt ausserhalb jedes
-# Checkouts; Signer-Konfiguration aus dem geholten Baum oder der Repo-Config
-# wird nie verwendet. TAXTRONIK_SOURCE_ALLOWED_SIGNERS ueberschreibt den Pfad.
+# Vertrauensanker fuer Source-Kanal-Updates ausserhalb von Produktion (S-04;
+# Produktion nur ueber den Release-Kanal). Liegt ausserhalb jedes Checkouts;
+# Signer-Konfiguration aus dem geholten Baum oder der Repo-Config wird nie
+# verwendet. TAXTRONIK_SOURCE_ALLOWED_SIGNERS ueberschreibt den Pfad.
 TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT="/etc/taxtronik/allowed_signers"
-SOURCE_UPDATE_AUDIT_LOG="$ROOT/.taxtronik.source-update-audit.log"
 SIGNAL_MANAGED_LLM_MODEL="granite-4.1-8b"
 SIGNAL_MANAGED_LLM_FILE="granite-4.1-8b-Q5_K_M.gguf"
 SIGNAL_MANAGED_LLM_SIZE_BYTES=6253884064

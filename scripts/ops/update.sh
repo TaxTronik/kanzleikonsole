@@ -2,8 +2,8 @@
 # =============================================================================
 # ./taxtronik update — Teil der Operator-CLI (./taxtronik).
 #
-# Signaturbindung des Source-Kanals (S-04), Update-Handoff zwischen altem und
-# neuem Operator und der Update-Ablauf.
+# Produktionsgate des Source-Kanals und dessen Signaturbindung (S-04),
+# Update-Handoff zwischen altem und neuem Operator und der Update-Ablauf.
 #
 # Wird ausschliesslich von scripts/ops-lib.sh gesourcet und nutzt deren
 # Shell-Optionen, Pfade und Pins. Definiert nur Funktionen und
@@ -11,17 +11,42 @@
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# Source-Kanal: Signaturbindung fuer ./taxtronik update (S-04)
+# Source-Kanal: Produktionsgate und Signaturbindung (S-04)
 #
-# Der Release-Kanal bindet Updates an das Ed25519-signierte Manifest. Der
-# Source-Kanal bindet sie an SSH-Signaturen: Vor dem Fast-forward und damit vor
-# dem ersten Start des aktualisierten Operators muss der exakte Ziel-Commit
-# oder ein annotierter Tag mit genau diesem Commit als Ziel von einem Signer
-# aus einer gepinnten allowed_signers-Datei ausserhalb des Checkouts signiert
-# sein. Konfigurierte Signer werden immer erzwungen; das Opt-out wirkt nur,
-# solange gar keine Signer konfiguriert sind.
+# Produktion wird ausschliesslich ueber den Release-Kanal aktualisiert
+# (Betreiberentscheidung "C"): Er bindet Updates an das Ed25519-signierte
+# Manifest und an CI-gepruefte Registry-Images. deploy und update verweigern
+# den Source-Kanal in Produktion vor jedem Backup, Fetch, Build und jeder
+# Migration; SSH-Signaturen schalten dort nichts mehr frei.
+#
+# Ausserhalb von Produktion bleibt die Signaturbindung: Vor dem Fast-forward
+# und damit vor dem ersten Start des aktualisierten Operators muss der exakte
+# Ziel-Commit oder ein annotierter Tag mit genau diesem Commit als Ziel von
+# einem Signer aus einer gepinnten allowed_signers-Datei ausserhalb des
+# Checkouts signiert sein. Ohne Signer gibt es dort nur eine Warnung. Das
+# fruehere Opt-out TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE ist wirkungslos.
 # ---------------------------------------------------------------------------
 operator_is_production() { [[ "${NODE_ENV:-production}" == "production" ]]; }
+
+# Gemeinsamer Hinweis fuer das Gate und die doctor-Zeile: wie eine Installation
+# auf den Release-Kanal wechselt (docs/operations/release.md, Abschnitt 2.3).
+production_release_channel_hint() {
+  printf '%s' "Produktion wird nur ueber den Release-Kanal mit signiertem Update-Manifest und CI-geprueften Registry-Images aktualisiert. Wechsel: in .env TAXTRONIK_DEPLOY_CHANNEL=release, TAXTRONIK_IMAGE_PREFIX=${TAXTRONIK_RELEASE_IMAGE_PREFIX_DEFAULT}, TAXTRONIK_VERSION=<veroeffentlichtes Release X.Y.Z> sowie UPDATE_MANIFEST_URL/UPDATE_PUBLIC_KEY setzen, danach ./taxtronik update (docs/operations/release.md, Abschnitt 2.3)."
+}
+
+# Gate am Anfang von deploy/update, vor jeder Seitenwirkung (auch vor der
+# .env-Vervollstaendigung). NODE_ENV wird in der Rangfolge gelesen, die
+# load_env anschliessend herstellt: .env vor Prozess-ENV, sonst Produktion.
+# Ein ungueltiger Kanal faellt hier nicht durch, sondern wird von
+# prepare_env_interactive mit eigener Meldung abgewiesen.
+refuse_source_channel_in_production() {
+  local operation="$1" node_env channel
+  node_env="$(get_env NODE_ENV)"
+  [[ "${node_env:-${NODE_ENV:-production}}" == "production" ]] || return 0
+  channel="$(deployment_channel)" || return 0
+  [[ "$channel" == "source" ]] || return 0
+  die "$operation verweigert: TAXTRONIK_DEPLOY_CHANNEL=source ist in Produktion nicht zulaessig. $(production_release_channel_hint) Es wurde nichts veraendert."
+}
 
 # rc 0: Datei nutzbar, Ausgabe = kanonischer Pfad. rc 1: nicht konfiguriert
 # (Variable leer und Default-Datei fehlt). rc 2: konfiguriert, aber
@@ -65,25 +90,23 @@ source_allowed_signers_file() {
   printf '%s' "$canonical"
 }
 
-# rc 0 = Opt-out aktiv (exakt 1), rc 1 = inaktiv (leer oder 0), rc 2 = ungueltig.
-source_unsigned_update_opt_out() {
-  local value="${TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE:-$(get_env TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE)}"
-  case "$value" in
-    1) return 0 ;;
-    ""|0) return 1 ;;
-    *) return 2 ;;
-  esac
+# Das fruehere Opt-out ist ohne Wirkung und wird nur noch gemeldet (rc 0 =
+# irgendein Wert gesetzt). Es entscheidet nichts mehr und wird deshalb auch
+# nicht mehr auf zulaessige Werte geprueft.
+source_unsigned_update_opt_out_set() {
+  [[ -n "${TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE:-$(get_env TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE)}" ]]
 }
 
-# Setzt _SOURCE_UPDATE_TRUST (signed | unsigned-opt-out | unsigned-nonproduction)
-# und _SOURCE_UPDATE_SIGNERS. Bricht ab, wenn in diesem Zustand kein
-# Source-Update zulaessig ist.
+# Setzt _SOURCE_UPDATE_TRUST (signed | unsigned-nonproduction) und
+# _SOURCE_UPDATE_SIGNERS. Bricht ab, wenn in diesem Zustand kein Source-Update
+# zulaessig ist; in Produktion immer, auch mit konfigurierten Signern.
 resolve_source_update_trust() {
-  local signers="" signers_rc=0 opt_out_rc=0
+  local signers="" signers_rc=0
   _SOURCE_UPDATE_TRUST=""
   _SOURCE_UPDATE_SIGNERS=""
-  source_unsigned_update_opt_out || opt_out_rc=$?
-  (( opt_out_rc != 2 )) || die "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE darf nur leer, 0 oder 1 sein."
+  if operator_is_production; then
+    die "Source-Update in Produktion verweigert, auch mit SSH-signiertem Ziel. $(production_release_channel_hint)"
+  fi
   signers="$(source_allowed_signers_file)" || signers_rc=$?
   case "$signers_rc" in
     0)
@@ -96,13 +119,7 @@ resolve_source_update_trust() {
       die "Source-Update verweigert: Signer-Datei unbrauchbar ($signers). TAXTRONIK_SOURCE_ALLOWED_SIGNERS muss auf eine root-/operator-eigene, nicht fremd beschreibbare Datei ausserhalb des Checkouts zeigen (docs/operations/release.md, Abschnitt 2.2)."
       ;;
     *)
-      if ! operator_is_production; then
-        _SOURCE_UPDATE_TRUST="unsigned-nonproduction"
-      elif (( opt_out_rc == 0 )); then
-        _SOURCE_UPDATE_TRUST="unsigned-opt-out"
-      else
-        die "Source-Update in Produktion verweigert: keine gepinnten Signer ($TAXTRONIK_SOURCE_ALLOWED_SIGNERS_DEFAULT fehlt, TAXTRONIK_SOURCE_ALLOWED_SIGNERS ist leer). allowed_signers einrichten (docs/operations/release.md, Abschnitt 2.2), auf den Release-Kanal wechseln oder uebergangsweise bewusst TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1 setzen (wird protokolliert)."
-      fi
+      _SOURCE_UPDATE_TRUST="unsigned-nonproduction"
       ;;
   esac
 }
@@ -113,16 +130,13 @@ assert_source_update_trust_ready() {
   resolve_source_update_trust
   case "$_SOURCE_UPDATE_TRUST" in
     signed)
-      info "Source-Update ist an SSH-Signaturen gebunden (Signer: $_SOURCE_UPDATE_SIGNERS)."
-      if source_unsigned_update_opt_out; then
-        warn "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1 ist wirkungslos, weil Signer konfiguriert sind; die Signaturpruefung bleibt Pflicht."
-      fi
-      ;;
-    unsigned-opt-out)
-      warn "Source-Update OHNE Signaturpruefung (TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1); jeder neue Stand wird in $SOURCE_UPDATE_AUDIT_LOG protokolliert." ;;
+      info "Source-Update ist an SSH-Signaturen gebunden (Signer: $_SOURCE_UPDATE_SIGNERS)." ;;
     unsigned-nonproduction)
       warn "NODE_ENV=${NODE_ENV:-}: keine Signer konfiguriert; Source-Update ausserhalb Produktion nur mit Warnung." ;;
   esac
+  if source_unsigned_update_opt_out_set; then
+    warn "TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE ist wirkungslos und wird ignoriert; aus .env entfernen."
+  fi
 }
 
 # Alle signaturrelevanten Git-Einstellungen werden pro Aufruf fest vorgegeben:
@@ -166,18 +180,6 @@ verify_source_commit_signature() {
   return 1
 }
 
-record_unsigned_source_update() {
-  local current="$1" target="$2" reason="$3"
-  [[ ! -L "$SOURCE_UPDATE_AUDIT_LOG" ]] || \
-    die "Source-Update-Protokoll darf kein Symlink sein: $SOURCE_UPDATE_AUDIT_LOG"
-  printf '%s event=unsigned-source-update reason=%s from=%s to=%s uid=%s\n' \
-    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$reason" "$current" "$target" "$(id -u)" \
-    >>"$SOURCE_UPDATE_AUDIT_LOG" || \
-    die "Opt-out kann nicht protokolliert werden ($SOURCE_UPDATE_AUDIT_LOG); ungepruefter Source-Stand wird nicht uebernommen."
-  chmod 0600 "$SOURCE_UPDATE_AUDIT_LOG" || \
-    die "Source-Update-Protokoll konnte nicht auf 0600 gehaertet werden."
-}
-
 # Gibt den Commit eines Update-Ziels aus (rc 1 bei ungueltigem oder nicht
 # aufloesbarem Ref). TAXTRONIK_UPDATE_REF darf keine Optionen-Syntax tragen.
 source_update_target_commit() {
@@ -208,10 +210,6 @@ authorize_source_update_target() {
       fi
       printf '%s\n' "$result" >&2
       die "Source-Update verweigert: Ziel-Commit $target ist weder selbst noch ueber einen annotierten Tag auf genau diesen Commit von einem Signer aus $_SOURCE_UPDATE_SIGNERS SSH-signiert. Arbeitsbaum und Operator bleiben unveraendert."
-      ;;
-    unsigned-opt-out)
-      record_unsigned_source_update "$current" "$target" opt-out
-      warn "SICHERHEITS-OPT-OUT: ungeprueften Source-Stand $target uebernehmen (TAXTRONIK_ALLOW_UNSIGNED_SOURCE_UPDATE=1, protokolliert in $SOURCE_UPDATE_AUDIT_LOG)."
       ;;
     unsigned-nonproduction)
       warn "NODE_ENV=${NODE_ENV:-}: Source-Stand $target wird ohne Signaturpruefung uebernommen (ausserhalb Produktion nur Warnung)."
@@ -371,8 +369,8 @@ continue_update_after_checkout() {
 }
 
 # Wird erst nach dem Fast-forward erreicht, also nur fuer einen signiert
-# verifizierten Stand (Release-Manifest bzw. S-04-Signaturpruefung) oder einen
-# ausdruecklich per Opt-out protokollierten Source-Stand.
+# verifizierten Stand (Release-Manifest bzw. ausserhalb Produktion die
+# S-04-Signaturpruefung oder ein dort nur gewarnter Source-Stand).
 reexec_updated_operator() {
   info "Aktualisierten Operator laden und Update automatisch fortsetzen"
   # shellcheck disable=SC2093 # exec ersetzt den Prozess bewusst; die greift nur bei gesetztem execfail
@@ -385,6 +383,10 @@ cmd_update() {
   require_cmd sha256sum; require_cmd stat
   local _TAXTRONIK_INTERNAL_UPDATE_SOURCE_COMMIT=""
   local checkout_source_commit checkout_target_commit
+
+  # Produktion nur ueber den Release-Kanal: vor Handoff, .env-Vorbereitung,
+  # Pflichtbackup, Fetch, Build und Migration.
+  refuse_source_channel_in_production Update
 
   # Der alte Prozess hat Backup und Fast-forward bereits sicher abgeschlossen.
   # Nur ein exakt an Checkout, State und Migrationsmarker gebundener 0600-Marker

@@ -16,7 +16,10 @@ ob ein Tag ohne Überraschungen ausgeliefert werden kann.
 - Frischer Server oder Wegwerf-VM mit Docker.
 - DNS/Reverse-Proxy oder lokale Testdomains.
 - Echtes SMTP-Test-Relay, kein Mailhog.
-- Zugriff auf Forgejo-Registry oder bewusster Lokalbuild.
+- Zugriff auf die Forgejo-Registry. Die Operator-CLI installiert Produktion nur
+  aus dem Release-Kanal; ein Lokalbuild (Source-Kanal) wird von
+  `./taxtronik deploy`/`update` verweigert
+  ([release.md, Abschnitt 2.2](release.md#22-source-kanal-signierte-updates)).
 - Leere Ziel-DB/Volumes.
 
 ## Schritt 1: Kandidat einfrieren
@@ -99,10 +102,8 @@ Wenn ein Vor-Release-Stand vorhanden ist:
 
 1. Alten Stand deployen.
 2. Testdaten anlegen.
-3. Kandidat per `./taxtronik update` einspielen. Im Lokalbuild-(Source-)Modus
-   muss der Kandidat dafür SSH-signiert sein und der Rehearsal-Server die
-   gepinnte `allowed_signers`-Datei besitzen
-   ([release.md, Abschnitt 2.2](release.md#22-source-kanal-signierte-updates)).
+3. Kandidat per `./taxtronik update` im Release-Kanal einspielen
+   ([release.md, Abschnitt 2](release.md#2-update-einspielen-betreiber-seite)).
 4. Smoke durchführen.
 5. `./taxtronik rollback <alte-version>` prüfen, sofern keine neue Migration
    den DB-Stand inkompatibel macht.
@@ -117,7 +118,7 @@ Mindestens festhalten:
 - Commit-SHA des Kandidaten.
 - Datum/Uhrzeit.
 - Server/OS/Docker-Version.
-- Registry- oder Lokalbuild-Modus.
+- Release-Version und Registry-Pfad.
 - Ergebnis Bootstrap.
 - Ergebnis Restore-Drill.
 - Ergebnis E2E/CI.
