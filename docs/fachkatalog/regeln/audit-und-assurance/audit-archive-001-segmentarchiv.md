@@ -31,12 +31,14 @@ code_refs:
   - packages/evidence/src/archive.ts
   - packages/evidence/src/canonical-json.ts
   - apps/worker/src/jobs/audit-rotate.ts
+  - apps/worker/src/tsa-port.ts
   - apps/worker/src/run-budget.ts
   - packages/db/prisma/migrations/20261005110100_audit_archive_tsa_status/migration.sql
 test_refs:
   - packages/evidence/src/__tests__/archive.test.ts
   - packages/evidence/src/__tests__/canonical-json-keys.test.ts
   - apps/worker/src/jobs/__tests__/audit-rotate.test.ts
+  - apps/worker/src/__tests__/tsa-port.test.ts
   - apps/worker/src/__tests__/run-budget.test.ts
   - packages/db/src/__tests__/audit-archive-tsa-status.test.ts
 feature_refs:
@@ -128,12 +130,14 @@ das bestehende Objekt größenbegrenzt gestreamt und sein SHA-256 gegen das
 deterministische Segment geprüft; eine reine Head-Erfolgsantwort genügt nicht.
 Erst danach registriert der Job das Segment tenantgebunden.
 
-Die Zeitstempelstelle wählt der Worker wie für Tagessiegel und Rolling
+Die Zeitstempelstelle wählt `tsa-port.ts` wie für Tagessiegel und Rolling
 Anchors: Kanzlei-Einstellung, sonst `TIMESTAMP_AUTHORITY_URL`, sonst die
-verifizierte Standard-TSA. Gespeichert wird nur ein externer RFC-3161-Token,
-der gegen den Datei-Hash und die konfigurierten Trust-Roots verifiziert ist;
-ein lokaler Entwicklungs-Zeitstempel zählt nicht. Ohne solchen Token wird das
-Segment mit `tsa_status = PENDING` archiviert. Jeder Lauf stempelt zuerst die
+verifizierte Standard-TSA; vor dem Stempeln muss sie öffentlich auflösbar sein.
+Gespeichert wird nur ein externer RFC-3161-Token, der gegen den Datei-Hash und
+die konfigurierten Trust-Roots verifiziert ist; ein lokaler
+Entwicklungs-Zeitstempel zählt nicht. Ohne solchen Token, etwa bei TSA-Fehler
+oder nicht auflösbarer TSA, wird das Segment mit `tsa_status = PENDING`
+archiviert. Jeder Lauf stempelt zuerst die
 PENDING-Segmente des Tenants seitenweise nach, nachdem er Größe, SHA-256 und
 Kettenanker des gesperrten Objekts gegen die Archivzeile geprüft hat; ein
 abweichendes Objekt wird protokolliert und nie gestempelt, ein TSA-Fehler
@@ -205,7 +209,9 @@ Nachstempeln nach Objekt- und Kettenprüfung, das Ausbleiben eines Stempels für
 abweichende Objekte, den Abbruch beim ersten TSA-Fehler sowie den Nachlauf bis
 zum Zeitbudget mit gemeldetem Rückstand. Der Datenbanktest belegt, dass der
 Update-Trigger nur den einmaligen Nachstempel eines PENDING-Segments zulässt,
-und die Einordnung von Bestandssegmenten nach vorhandenem Token.
+und die Einordnung von Bestandssegmenten nach vorhandenem Token. Der
+TSA-Port-Test belegt die Auswahlreihenfolge und die Auflösbarkeitsprüfung vor
+dem Stempeln.
 Die Worker-Regressionen zu `AUDIT-ARCHIVE-001` rechnen echte gültige und
 manipulierte Quellzeilen nach. Sie verweigern Recovery bei verändertem Inhalt,
 abweichender Header-Größe oder einem überlangen Stream, ohne einen

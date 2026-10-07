@@ -44,6 +44,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/privacy/consent-options-editor.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/page.tsx
+  - apps/web/src/app/portal/(protected)/settings/actions.ts
 test_refs:
   - apps/web/src/server/privacy/__tests__/consent.test.ts
   - apps/web/src/server/privacy/__tests__/consent-catalog.test.ts
@@ -53,6 +54,7 @@ test_refs:
   - apps/web/src/app/staff/(protected)/admin/privacy/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/page.test.tsx
+  - apps/web/src/app/portal/(protected)/settings/__tests__/actions.test.ts
 feature_refs:
   - docs/anwenderdoku/administration.md
 related_rules:
@@ -186,6 +188,18 @@ wird. Der ergänzte Kommunikationstext
 ist Bestandteil der versionierten und eingefrorenen Hinweisfassung, nicht nur
 ein zusätzlicher Oberflächentext.
 
+Im Mandantenportal widerruft `revokeOwnConsentAction`
+(`portal/(protected)/settings/actions.ts`) im selben Self-Service-Kanal alle
+widerrufbaren Auswahlen des jüngsten Einwilligungsstands des Mandanten. Sie
+legt dafür einen neuen append-only Stand mit unveränderter Hinweisfassung,
+Portalherkunft und `isRevocation` an und auditiert die Zahl der widerrufenen
+Auswahlen; als verpflichtend gespeicherte OTHER-Bestätigungen bleiben
+erhalten. Ohne widerrufbare Auswahl entsteht kein neuer Stand. Einen Stand,
+den nicht der angemeldete Portal-Kontakt abgegeben hat, widerruft die Action
+nicht, sondern verweist dafür an die Kanzlei. Die getrennte Einstellung für
+E-Mail-Benachrichtigungen speichert `saveNotificationSettingAction` mit
+eigenem Audit-Eintrag, ohne einen Einwilligungsstand zu ändern.
+
 ## Bekannte Abweichungen und Grenzen
 
 Keine bekannte technische Abweichung innerhalb des beschriebenen Snapshot-,
@@ -222,3 +236,8 @@ solange widerrufbare Auswahl besteht. Der Zähler umfasst Datenschutzoptionen
 einschließlich erforderlicher Bestätigungen; er zählt nicht ausschließlich
 Einwilligungen. SSR-Tests prüfen die Anzeige bei verbleibender Kommunikations-
 und Marketingauswahl sowie bei ausschließlich erforderlicher OTHER-Bestätigung.
+
+Die Action-Tests des Portals belegen den Widerruf ausschließlich freiwilliger
+Auswahlen aus einem gemischten Stand samt auditierter Anzahl, keinen neuen
+Stand bei ausschließlich verpflichtenden Bestätigungen und keinen Widerruf
+eines Stands, den ein anderer Kontakt abgegeben hat.

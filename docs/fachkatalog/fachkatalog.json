@@ -798,6 +798,7 @@
         "packages/evidence/src/archive.ts",
         "packages/evidence/src/canonical-json.ts",
         "apps/worker/src/jobs/audit-rotate.ts",
+        "apps/worker/src/tsa-port.ts",
         "apps/worker/src/run-budget.ts",
         "packages/db/prisma/migrations/20261005110100_audit_archive_tsa_status/migration.sql"
       ],
@@ -805,6 +806,7 @@
         "packages/evidence/src/__tests__/archive.test.ts",
         "packages/evidence/src/__tests__/canonical-json-keys.test.ts",
         "apps/worker/src/jobs/__tests__/audit-rotate.test.ts",
+        "apps/worker/src/__tests__/tsa-port.test.ts",
         "apps/worker/src/__tests__/run-budget.test.ts",
         "packages/db/src/__tests__/audit-archive-tsa-status.test.ts"
       ],
@@ -2022,7 +2024,8 @@
         "apps/web/src/app/staff/(protected)/admin/privacy/page.tsx",
         "apps/web/src/app/staff/(protected)/admin/privacy/consent-options-editor.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/privacy/actions.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/page.tsx"
+        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/page.tsx",
+        "apps/web/src/app/portal/(protected)/settings/actions.ts"
       ],
       "test_refs": [
         "apps/web/src/server/privacy/__tests__/consent.test.ts",
@@ -2032,7 +2035,8 @@
         "apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts",
         "apps/web/src/app/staff/(protected)/admin/privacy/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/actions.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/page.test.tsx"
+        "apps/web/src/app/staff/(protected)/clients/[id]/privacy/__tests__/page.test.tsx",
+        "apps/web/src/app/portal/(protected)/settings/__tests__/actions.test.ts"
       ],
       "feature_refs": ["docs/anwenderdoku/administration.md"],
       "related_rules": ["DSGVO-OPERATIONAL-RETENTION-001"],

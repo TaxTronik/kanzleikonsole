@@ -235,6 +235,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Fachkatalog: Die Umsetzungstexte von `ACCESS-TENANT-RLS-001`,
+  `DOC-UPLOAD-JOURNAL-001`, `DSGVO-OPERATIONAL-RETENTION-001`,
+  `AUDIT-ARCHIVE-001`, `AUDIT-VERIFY-ALERT-001`,
+  `ACCESS-NOTIFICATION-RECIPIENT-001`, `GWG-SCREENING-001` und
+  `RISK-AI-SUGGESTION-001` beschreiben den aktuellen Code (eigene Ketten-/CRL-
+  Prüfung, Login-Limits und Einmal-Ticket, 24-h-Sitzungsgrenze, Journal-first-
+  Uploads, Zeitbudget der Wartungsjobs, Nachstempeln von Archivsegmenten,
+  Warnung je Bruchstelle, abschnittsweise Erinnerungen, Screening-Hinweise nur
+  bei Treffern, KI-Aufträge ohne Sachverhalt). `tsa-port.ts` ist
+  `AUDIT-ARCHIVE-001`, die Portal-Einstellungsaktionen sind
+  `DSGVO-CONSENT-SNAPSHOT-001` zugeordnet. Regelinhalte und fachliche Freigaben
+  bleiben unverändert.
 - Server-Actions: Auch die GwG-Prüfung (Einreichen, Freigeben, Zurückweisen,
   Einladung), die Umklassifizierung einzelner Dokumente, die Vollmachten und
   alle Einstellungsseiten (Branding, Infrastruktur, E-Mail, Module, n8n,
