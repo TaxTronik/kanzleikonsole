@@ -410,9 +410,13 @@ Dateieigentümer des Deployment-Checkouts ausgeführt werden.
 ## Datenbankverbindungen
 
 Jeder Prozess von `app` und `worker` hat zwei Verbindungs-Pools: den App-Pool
-(`DATABASE_APP_URL`, Rolle `taxtronik_app`, RLS, Request-Transaktionen) und
-den Owner-Pool (`DATABASE_URL`, Rolle `taxtronik_owner`, Login/Auth bzw.
-Worker-Jobs). Keiner der beiden verbindet als Superuser (S-01); die
+(`DATABASE_APP_URL`, Rolle `taxtronik_app`, RLS: Request-Transaktionen bzw.
+mandantenbezogene Worker-Jobs) und den Owner-Pool (`DATABASE_URL`, Rolle
+`taxtronik_owner`: Login/Auth bzw. Outbox-Zustellung, Wartung und
+mandantenübergreifende Listen des Workers). Zeitüberschreitungen beim Start
+von Transaktionen in Worker-Jobs deuten auf einen zu knappen Pool hin
+(`WORKER_DB_POOL_MAX` bzw. `WORKER_DB_OWNER_POOL_MAX`, Summe unten beachten).
+Keiner der beiden Pools verbindet als Superuser (S-01); die
 `superuser_reserved_connections` bleiben damit auch bei ausgeschöpften Pools
 für `psql` des Operators frei. Eine Transaktion hält ihre Verbindung bis zu
 15 s. Die Obergrenzen setzt Compose je Dienst:

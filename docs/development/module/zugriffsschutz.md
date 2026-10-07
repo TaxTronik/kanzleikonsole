@@ -279,9 +279,13 @@ Rollenmodell implizit.
   Relationsfilter (`client-access-filter.ts`, keine NOT-IN-Listen).
 - **RLS-Backstop:** App-Rolle `taxtronik_app` ohne BYPASSRLS; jede Query
   via `withTenantContext` (`set_config('app.current_tenant_id', …)`) gegen
-  FORCE-RLS-Policies; Owner-Verbindung (`prismaOwner`) nur für Auth vor dem
-  Tenant-Kontext, Callbacks, CLI und Worker; App-Client fail-closed ohne
-  Owner-Fallback.
+  FORCE-RLS-Policies; Owner-Verbindung (`prismaOwner`) nur für Auth und
+  Token-Flows vor dem Tenant-Kontext, die Credential-Prüfung der Callbacks,
+  die n8n-Outbox, CLI und Wartungspfade (vollständige Liste im
+  [Threat Model](../../assurance/threat-model.md), Abschnitt
+  Datenbankrollen); mandantenbezogene Worker-Jobs, n8n-Callbacks und der
+  iCal-Feed laufen über die App-Rolle im SYSTEM-Kontext
+  (`withSystemContext`, S-01); App-Client fail-closed ohne Owner-Fallback.
 - **Owner ohne Superuser (S-01):** app und worker verbinden für den
   Owner-Client als `taxtronik_owner` (BYPASSRLS, nur DML, Audit-Tabellen
   append-only); der Superuser `taxtronik` bleibt Migrationen und der
