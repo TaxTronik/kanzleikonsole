@@ -1452,6 +1452,49 @@ test_one_click_runtime_install_contract_is_pinned_and_official() {
   pass "one-click installs only pinned Node/pnpm and the official Docker repository"
 }
 
+# S-04-Nacharbeit: Der 1-Klick-Installer (nur Debian/Ubuntu per apt) bringt
+# ssh-keygen aus openssh-client mit und prueft es nach der Installation wie
+# git und curl.
+test_one_click_installs_openssh_client() {
+  local bin="$TMP_DIR/one-click-base-bin" calls="$TMP_DIR/one-click-base.calls"
+  local out="$TMP_DIR/one-click-base.out" cmd
+  mkdir -p "$bin"
+  for cmd in curl git tar xz sha256sum getent ss openssl flock; do
+    printf '#!/bin/sh\nexit 0\n' >"$bin/$cmd"
+    chmod +x "$bin/$cmd"
+  done
+  ln -sf "$(command -v date)" "$bin/date"
+  base_packages() (
+    PATH="$bin"
+    apt-get() { printf 'apt-get %s\n' "$*" >>"$calls"; }
+    install_one_click_base_packages
+  )
+
+  : >"$calls"
+  base_packages >"$out" 2>&1 || { cat "$out" >&2; test_fail "base package installation failed"; }
+  assert_contains "$out" "Fehlende Host-Basispakete installieren: ssh-keygen"
+  assert_contains "$calls" "apt-get install -y ca-certificates curl git tar xz-utils coreutils libc-bin iproute2 openssl util-linux openssh-client"
+
+  printf '#!/bin/sh\nexit 0\n' >"$bin/ssh-keygen"
+  chmod +x "$bin/ssh-keygen"
+  : >"$calls"
+  base_packages >"$out" 2>&1 || { cat "$out" >&2; test_fail "complete host was not accepted"; }
+  assert_not_exists_or_empty "$calls"
+
+  : >"$calls"
+  (
+    require_root_for_one_click() { :; }
+    install_one_click_base_packages() { :; }
+    install_one_click_docker() { :; }
+    install_one_click_node() { :; }
+    install_one_click_pnpm() { :; }
+    require_cmd() { printf 'require %s\n' "$1" >>"$calls"; }
+    install_one_click_host_requirements
+  ) >"$out" 2>&1 || { cat "$out" >&2; test_fail "one-click host requirements failed"; }
+  assert_contains "$calls" "require ssh-keygen"
+  pass "one-click installer installs openssh-client and verifies ssh-keygen"
+}
+
 test_one_click_replaces_incomplete_docker_only_after_blank_host_gate() {
   local steps="$TMP_DIR/docker-toolchain.steps"
   : >"$steps"
@@ -5051,6 +5094,7 @@ run_test test_interrupted_one_click_deploy_resumes_only_owned_containers
 run_test test_interrupted_one_click_deploy_still_rejects_foreign_containers
 run_test test_one_click_runtime_install_contract_is_pinned_and_official
 run_test test_one_click_replaces_incomplete_docker_only_after_blank_host_gate
+run_test test_one_click_installs_openssh_client
 run_test test_traefik_dynamic_route_and_compose_contract_are_socketless
 run_test test_traefik_lifecycle_is_part_of_activation
 run_test test_full_backup_snapshots_managed_traefik_acme_volume

@@ -27,9 +27,13 @@ require_root_for_one_click() {
     die "Der bestaetigte 1-Klick-Pfad muss als root laufen, um Host-Pakete sicher zu installieren."
 }
 
+# ssh-keygen (openssh-client) prueft die SSH-Signaturen von Source-Updates
+# ausserhalb von Produktion (S-04); Produktion aktualisiert nur den
+# Release-Kanal. Der 1-Klick-Pfad unterstuetzt nur Debian/Ubuntu (apt); dort
+# heisst das Paket auf beiden openssh-client.
 install_one_click_base_packages() {
   local missing=() cmd
-  for cmd in curl git tar xz sha256sum getent ss openssl flock; do
+  for cmd in curl git tar xz sha256sum getent ss openssl flock ssh-keygen; do
     command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
   done
   (( ${#missing[@]} > 0 )) || return 0
@@ -38,7 +42,8 @@ install_one_click_base_packages() {
   info "Fehlende Host-Basispakete installieren: ${missing[*]}"
   apt-get update
   DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    ca-certificates curl git tar xz-utils coreutils libc-bin iproute2 openssl util-linux
+    ca-certificates curl git tar xz-utils coreutils libc-bin iproute2 openssl util-linux \
+    openssh-client
 }
 
 configure_official_docker_apt_repository() {
@@ -195,7 +200,7 @@ install_one_click_host_requirements() {
   install_one_click_docker
   install_one_click_node
   install_one_click_pnpm
-  require_cmd git; require_cmd curl
+  require_cmd git; require_cmd curl; require_cmd ssh-keygen
 }
 
 one_click_public_ports_in_use() {

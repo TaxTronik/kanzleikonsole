@@ -869,6 +869,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- 1-Klick-Installer bringt `openssh-client` mit: Fehlt `ssh-keygen`,
+  installiert der bestätigte 1-Klick-Weg auf Debian/Ubuntu das Paket mit den
+  übrigen Basispaketen und prüft das Werkzeug danach.
 - Operator-CLI bricht bei Lese- und Git-Fehlern sicher ab: Eine nicht lesbare
   `.env` gilt nicht mehr als „Wert fehlt“ (kein neues Secret, kein doppelter
   Schlüssel), `TAXTRONIK_VERSION` wird nie leer überschrieben, der

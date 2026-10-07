@@ -176,7 +176,9 @@ Operator-Benutzer gehören und darf, ebenso wie ihr Verzeichnis, nicht für
 Gruppe oder andere beschreibbar sein. Signer-Dateien im geholten Baum sowie
 `gpg.*`-Einstellungen aus Repository-, globaler oder System-Git-Konfiguration
 werden nie verwendet; OpenPGP- und X.509-Signaturen werden nicht akzeptiert.
-Voraussetzungen: Git ab 2.34 und `ssh-keygen` (Paket `openssh-client`).
+Voraussetzungen: Git ab 2.34 und `ssh-keygen` (Paket `openssh-client`); der
+1-Klick-Weg installiert das Paket mit den übrigen Basispaketen und prüft
+`ssh-keygen` danach.
 
 **Signierschlüssel anlegen** (bei der freigebenden Person; je Person ein
 eigener Schlüssel, möglichst mit Passphrase oder als Hardware-Schlüssel
