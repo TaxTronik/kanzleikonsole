@@ -15,18 +15,23 @@
 //     DUPLICATE und schließt einen n8n-Schritt wie bisher ab.
 //   - WRITE_FAILED: technischer Fehler → erneuter Versuch mit begrenztem
 //     exponentiellem Abstand (nextAttemptAt), ohne Obergrenze der Versuche.
+//
+// S-01: Die mandantenübergreifende Suche fälliger Handoffs (nur ID und Tenant)
+// liest der Owner-Client. Laden, Claim, Verbuchung und Abschluss laufen je
+// Handoff über die App-Rolle im SYSTEM-Kontext des Tenants (withSystemContext,
+// RLS). Die Outbox-Übergabe nutzt den gemeinsamen Enqueue-Kern (n8n-emit.ts).
 // =============================================================================
 
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { N8nEventName } from '@taxtronik/n8n-shared';
 import type { N8nEnqueueStatus } from '@taxtronik/n8n-shared/outbox-enqueue';
+import { withSystemContext } from '@taxtronik/db';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection } from '../queues';
 import { prismaOwner } from '../prisma-owner';
 import { emitN8nEventFromWorker } from '../n8n-emit';
 import { log } from '../logger';
-import { withWorkerTenantContext } from '../tenant-context';
 
 const CLAIM_STALE_MS = 5 * 60_000;
 const BATCH_SIZE = 100;
@@ -70,14 +75,21 @@ interface DispatchCandidate {
   item: { kind: string };
 }
 
+/** Fälliger Handoff aus der mandantenübergreifenden Suche: nur ID und Tenant. */
+interface DueDispatch {
+  id: string;
+  tenantId: string;
+}
+
 /** 'unclaimed': ein anderer Lauf hält die Zeile; 'lost': nach dem Claim überholt. */
 type CandidateOutcome = 'enqueued' | 'settled' | 'failed' | 'lost' | 'unclaimed';
 
-async function loadReplayedUnroutedCandidates(staleBefore: Date): Promise<DispatchCandidate[]> {
+async function loadReplayedUnroutedCandidates(staleBefore: Date): Promise<DueDispatch[]> {
   // Nur UNROUTED-Zeilen, deren Outbox-Ereignis UNROUTED verlassen hat (Replay
   // oder Admin-Abschluss); Teilindex wf_n8n_dispatch_unrouted_idx.
-  const rows = await prismaOwner.$queryRaw<Array<{ id: string }>>`
-    SELECT d."id"
+  // S-01: mandantenübergreifende Suche (nur ID und Tenant) über den Owner-Client.
+  return prismaOwner.$queryRaw<DueDispatch[]>`
+    SELECT d."id", d."tenant_id"::text AS "tenantId"
       FROM "workflow_n8n_dispatch" d
       JOIN "n8n_outbox" o ON o."id" = d."outbox_id"
      WHERE d."enqueued_at" IS NULL
@@ -87,29 +99,30 @@ async function loadReplayedUnroutedCandidates(staleBefore: Date): Promise<Dispat
      ORDER BY d."created_at", d."id"
      LIMIT ${BATCH_SIZE}
   `;
-  if (rows.length === 0) return [];
-  return prismaOwner.workflowN8nDispatch.findMany({
-    where: { id: { in: rows.map((row) => row.id) } },
-    select: CANDIDATE_SELECT,
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-  });
 }
 
 async function processCandidate(
-  candidate: DispatchCandidate,
+  due: DueDispatch,
   staleBefore: Date,
   replay: boolean,
 ): Promise<CandidateOutcome> {
+  const candidate: DispatchCandidate | null = await withSystemContext(due.tenantId, (tx) =>
+    tx.workflowN8nDispatch.findUnique({ where: { id: due.id }, select: CANDIDATE_SELECT }),
+  );
+  if (!candidate) return 'unclaimed';
+
   const claimedAt = new Date();
-  const claim = await prismaOwner.workflowN8nDispatch.updateMany({
-    where: {
-      id: candidate.id,
-      enqueuedAt: null,
-      OR: [{ claimedAt: null }, { claimedAt: { lte: staleBefore } }],
-      ...(replay ? { settledStatus: 'UNROUTED' } : { settledAt: null }),
-    },
-    data: { claimedAt },
-  });
+  const claim = await withSystemContext(candidate.tenantId, (tx) =>
+    tx.workflowN8nDispatch.updateMany({
+      where: {
+        id: candidate.id,
+        enqueuedAt: null,
+        OR: [{ claimedAt: null }, { claimedAt: { lte: staleBefore } }],
+        ...(replay ? { settledStatus: 'UNROUTED' } : { settledAt: null }),
+      },
+      data: { claimedAt },
+    }),
+  );
   if (claim.count !== 1) return 'unclaimed';
 
   const payload =
@@ -123,39 +136,44 @@ async function processCandidate(
   const lastError = (result.error ?? result.status).slice(0, 2000);
 
   if (isSettledHandoff(result.status)) {
-    const settled = await prismaOwner.workflowN8nDispatch.updateMany({
-      where: { id: candidate.id, enqueuedAt: null, claimedAt },
-      data: {
-        claimedAt: null,
-        attemptCount: { increment: 1 },
-        lastError,
-        nextAttemptAt: null,
-        settledStatus: result.status,
-        settledAt: new Date(),
-        ...(result.eventId ? { outboxId: result.eventId } : {}),
-      },
-    });
+    const settledStatus = result.status;
+    const settled = await withSystemContext(candidate.tenantId, (tx) =>
+      tx.workflowN8nDispatch.updateMany({
+        where: { id: candidate.id, enqueuedAt: null, claimedAt },
+        data: {
+          claimedAt: null,
+          attemptCount: { increment: 1 },
+          lastError,
+          nextAttemptAt: null,
+          settledStatus,
+          settledAt: new Date(),
+          ...(result.eventId ? { outboxId: result.eventId } : {}),
+        },
+      }),
+    );
     return settled.count === 1 ? 'settled' : 'lost';
   }
 
   if (result.status !== 'PENDING' && result.status !== 'DUPLICATE') {
     const attempt = candidate.attemptCount + 1;
-    const failed = await prismaOwner.workflowN8nDispatch.updateMany({
-      where: { id: candidate.id, enqueuedAt: null, claimedAt },
-      data: {
-        claimedAt: null,
-        attemptCount: { increment: 1 },
-        lastError,
-        nextAttemptAt: new Date(Date.now() + writeFailedRetryDelayMs(attempt)),
-        // Ein wieder aufgenommenes UNROUTED wird zur normalen offenen Zeile.
-        settledStatus: null,
-        settledAt: null,
-      },
-    });
+    const failed = await withSystemContext(candidate.tenantId, (tx) =>
+      tx.workflowN8nDispatch.updateMany({
+        where: { id: candidate.id, enqueuedAt: null, claimedAt },
+        data: {
+          claimedAt: null,
+          attemptCount: { increment: 1 },
+          lastError,
+          nextAttemptAt: new Date(Date.now() + writeFailedRetryDelayMs(attempt)),
+          // Ein wieder aufgenommenes UNROUTED wird zur normalen offenen Zeile.
+          settledStatus: null,
+          settledAt: null,
+        },
+      }),
+    );
     return failed.count === 1 ? 'failed' : 'lost';
   }
 
-  const done = await withWorkerTenantContext(candidate.tenantId, async (tx) => {
+  const done = await withSystemContext(candidate.tenantId, async (tx) => {
     // Dispatch-Status, fachlicher CAS-Abschluss und Audit sind atomar.
     // Nach einem Crash vor diesem Commit bleibt der Dispatch pending;
     // der nächste Lauf erhält über den stabilen Dedupe-Key DUPLICATE.
@@ -209,7 +227,8 @@ export async function runWorkflowN8nDispatch(now = new Date()): Promise<{
   failed: number;
 }> {
   const staleBefore = new Date(now.getTime() - CLAIM_STALE_MS);
-  const due = await prismaOwner.workflowN8nDispatch.findMany({
+  // S-01: mandantenübergreifende Suche (nur ID und Tenant) über den Owner-Client.
+  const due: DueDispatch[] = await prismaOwner.workflowN8nDispatch.findMany({
     where: {
       enqueuedAt: null,
       settledAt: null,
@@ -225,16 +244,16 @@ export async function runWorkflowN8nDispatch(now = new Date()): Promise<{
         },
       ],
     },
-    select: CANDIDATE_SELECT,
+    select: { id: true, tenantId: true },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: BATCH_SIZE,
   });
   const replayed = await loadReplayedUnroutedCandidates(staleBefore);
 
   const counts = { claimed: 0, enqueued: 0, settled: 0, failed: 0 };
-  const work: Array<[DispatchCandidate, boolean]> = [
-    ...due.map((candidate): [DispatchCandidate, boolean] => [candidate, false]),
-    ...replayed.map((candidate): [DispatchCandidate, boolean] => [candidate, true]),
+  const work: Array<[DueDispatch, boolean]> = [
+    ...due.map((candidate): [DueDispatch, boolean] => [candidate, false]),
+    ...replayed.map((candidate): [DueDispatch, boolean] => [candidate, true]),
   ];
   for (const [candidate, replay] of work) {
     const outcome = await processCandidate(candidate, staleBefore, replay);
