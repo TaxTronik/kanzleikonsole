@@ -164,7 +164,9 @@ Administratoren sehen immer alles.
   (Mitarbeiter/Mandant/System), Ressourcentyp und Zeitraum; die Detailseite
   zeigt Vorher/Nachher-Werte und prüft den Hash des Einzeleintrags live.
 - **CSV-Export:** inklusive der Hash-Werte; mengenbegrenzt (Kürzung wird im
-  Export vermerkt) und ratenlimitiert; jeder Export wird protokolliert.
+  Export vermerkt) und ratenlimitiert; jeder Export wird protokolliert. Die
+  Spalte „Details“ nennt bei ZIP-Downloads und DATEV-Belegexporten Anzahl und
+  IDs der ausgegebenen Dokumente.
 - **Prüfer-Link:** Ein zeitlich begrenzter, signierter Link erlaubt einem
   externen Prüfer die reine Chain-Verifikation **ohne** Datenzugriff.
   Einzel-Widerruf ist nicht möglich (nur über Schlüsselrotation) — Links

@@ -113,6 +113,38 @@ describe('AUDIT-HASH-CHAIN-001 / ACCESS-STAFF-PERMISSION-001: audit export selec
     expect(single!.split(';').at(-1)).toBe('');
     expect(single!.split(';')[7]).toBe(first);
   });
+  // Fachkatalog: DOC-VERSION-IMMUTABILITY-001 — Produktentscheidung A10 (2026-10-07):
+  // Der DATEV-Belegexport weist seine Dokument-IDs wie der Sammel-Download aus.
+  it('A10: weist Anzahl und Dokument-IDs eines DATEV-Belegexports in „Details“ aus', async () => {
+    const client = '00000000-0000-4000-8000-0000000000c1';
+    const first = '00000000-0000-4000-8000-000000000001';
+    const second = '00000000-0000-4000-8000-000000000002';
+    const row = (id: bigint, after: unknown) => ({
+      id,
+      occurredAt: new Date('2026-10-07T10:00:00Z'),
+      actorType: 'STAFF',
+      actorId: 'staff',
+      action: 'client.belege.export',
+      resourceType: 'client',
+      resourceId: client,
+      after,
+      ip: null,
+      thisHash: Buffer.alloc(32, 1),
+      prevHash: Buffer.alloc(32, 2),
+    });
+    mocks.findMany.mockResolvedValue([
+      row(2n, { documents: 2, documentIds: [first, second], from: null, to: null }),
+      // Älterer Export vor A10: nur die Anzahl, keine erfundene ID-Liste.
+      row(1n, { documents: 3, from: '2026-01-01', to: null }),
+    ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/staff/admin/audit/export'));
+
+    const [, current, legacy] = (await response.text()).replace(/^\uFEFF/, '').split('\r\n');
+    expect(current!.split(';').at(-1)).toBe(`2 Dokumente: ${first} ${second}`);
+    expect(current!.split(';')[7]).toBe(client);
+    expect(legacy!.split(';').at(-1)).toBe('3 Dokumente (ohne ID-Liste)');
+  });
   it('rejects invalid filters without reading or exporting the full log', async () => {
     expect(
       (await GET(new NextRequest('http://localhost/api/staff/admin/audit/export?category=invalid')))

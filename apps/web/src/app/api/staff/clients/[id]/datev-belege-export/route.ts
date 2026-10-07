@@ -10,7 +10,9 @@
 // Optional Datumsbereich via Query: ?from=YYYY-MM-DD&to=YYYY-MM-DD
 // (filtert nach Document.createdAt)
 //
-// Audit-Eintrag pro Export-Vorgang (Compliance: wer hat wann was exportiert).
+// Ein Audit-Eintrag pro Export-Vorgang (Compliance: wer hat wann was
+// exportiert): `client.belege.export` mit Anzahl und allen Dokument-IDs in
+// Archivreihenfolge, wie `document.download.bulk` beim Sammeldownload.
 // =============================================================================
 import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
@@ -205,6 +207,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // Schwester-Route api/staff/documents/download). Vorher stand der Eintrag in
     // der Lese-Transaktion — das Prüfprotokoll wies so auch Exporte aus, die
     // anschließend mit 413/429 abgelehnt und nie ausgeliefert wurden.
+    // A10: Der Nachweis trägt wie `document.download.bulk` alle Dokument-IDs in
+    // Archivreihenfolge (laufende Nummer in index.csv). Die Liste wird nicht
+    // gekürzt; die Eintragsprüfung oben begrenzt sie auf ZIP_MAX_ENTRIES − 2.
+    // Ein Beleg, dessen Objekt erst beim Streamen fehlt, bleibt darin und steht
+    // in index.csv als FEHLT.
     await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
       evidenceService.record(tx, {
         tenantId,
@@ -215,6 +222,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         resourceId: clientId,
         after: {
           documents: docs.length,
+          documentIds: docs.map((doc) => doc.id),
           from: parsedQs.data.from ?? null,
           to: parsedQs.data.to ?? null,
         },

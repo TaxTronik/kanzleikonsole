@@ -22,18 +22,27 @@ import {
 
 /**
  * P-12: Ein Sammel-Download trägt seine Dokumente nicht in resource_id, sondern
- * im Nachher-Zustand (`document.download.bulk`: documentCount, documentIds).
- * Weil der Export before/after sonst nicht enthält, fehlten die IDs hier;
- * diese Spalte weist Anzahl und alle IDs aus. Andere Ereignisse bleiben leer.
+ * im Nachher-Zustand (`document.download.bulk`: documentCount, documentIds);
+ * ebenso seit A10 der DATEV-Belegexport (`client.belege.export`: documents,
+ * documentIds). Weil der Export before/after sonst nicht enthält, fehlten die
+ * IDs hier; diese Spalte weist Anzahl und alle IDs aus. Ältere DATEV-Exporte
+ * ohne ID-Liste zeigen nur die Anzahl. Andere Ereignisse bleiben leer.
  */
+const DOCUMENT_LIST_ACTIONS = new Set(['document.download.bulk', 'client.belege.export']);
+
 function auditDetails(row: { action: string; after: Prisma.JsonValue }): string {
   const after = row.after;
-  if (row.action !== 'document.download.bulk') return '';
+  if (!DOCUMENT_LIST_ACTIONS.has(row.action)) return '';
   if (!after || typeof after !== 'object' || Array.isArray(after)) return '';
-  const ids = Array.isArray(after['documentIds'])
-    ? after['documentIds'].filter((id): id is string => typeof id === 'string')
+  const listedIds = after['documentIds'];
+  const ids = Array.isArray(listedIds)
+    ? listedIds.filter((id): id is string => typeof id === 'string')
     : [];
-  const count = typeof after['documentCount'] === 'number' ? after['documentCount'] : ids.length;
+  const recordedCount = after['documentCount'] ?? after['documents'];
+  const count = typeof recordedCount === 'number' ? recordedCount : ids.length;
+  if (!Array.isArray(listedIds) && row.action === 'client.belege.export') {
+    return `${count} Dokumente (ohne ID-Liste)`;
+  }
   return `${count} Dokumente: ${ids.join(' ')}`;
 }
 

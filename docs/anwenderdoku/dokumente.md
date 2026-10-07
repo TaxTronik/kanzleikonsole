@@ -75,6 +75,8 @@ und „Kanzlei-intern") sowie als Tab **Dokumente** in jeder Mandantenakte.
 Mehrere Einträge auswählen (Checkboxen) für: **Freigeben/Privat**,
 **Verschieben**, **Löschen**, **ZIP-Download** (auch ganze Ordner; sehr
 große Auswahlen werden mit Hinweis abgelehnt — in Teilen herunterladen).
+Ein ZIP-Download steht als **ein** Eintrag mit allen enthaltenen Dokumenten im
+Prüfprotokoll; dasselbe gilt für den DATEV-Belegexport eines Mandanten.
 
 ### Dokument-Detailseite
 

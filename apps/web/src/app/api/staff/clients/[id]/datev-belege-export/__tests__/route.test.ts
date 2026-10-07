@@ -173,7 +173,10 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: only completed 
       ]);
       expect(Buffer.from(files['index.csv']!).toString()).not.toContain('Unvollstaendig');
       expect(h.streamObject).toHaveBeenCalledExactlyOnceWith('synthetic', 'ready', undefined);
-      expect(h.evidenceRecord.mock.calls[0]![1].after.documents).toBe(1);
+      expect(h.evidenceRecord.mock.calls[0]![1].after).toMatchObject({
+        documents: 1,
+        documentIds: ['ready-document'],
+      });
     },
   );
 });
@@ -280,7 +283,12 @@ describe('F-18: Audit erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
       action: 'client.belege.export',
       resourceType: 'client',
       resourceId: CLIENT_ID,
-      after: { documents: 1, from: '2026-09-01', to: '2026-09-30' },
+    });
+    expect(h.evidenceRecord.mock.calls[0]![1].after).toEqual({
+      documents: 1,
+      documentIds: ['document-1'],
+      from: '2026-09-01',
+      to: '2026-09-30',
     });
     const [slotOrder] = vi.mocked(acquireZipStreamSlot).mock.invocationCallOrder;
     const [auditOrder] = h.evidenceRecord.mock.invocationCallOrder;
@@ -430,5 +438,69 @@ describe('P-03: DATEV-Belegexport als Stream', () => {
     await expect(pendingRead).rejects.toBeDefined();
     await vi.waitFor(() => expect(cancelled).toBe(1));
     expect(h.streamObject).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Fachkatalog: DOC-VERSION-IMMUTABILITY-001, DOC-UPLOAD-JOURNAL-001 — Produktentscheidung
+// A10 (2026-10-07): Der DATEV-Belegexport weist wie `document.download.bulk` alle
+// exportierten Dokument-IDs in einem Abrufnachweis aus (Archivreihenfolge, keine
+// Kürzung; die Eintragsprüfung vor dem Nachweis begrenzt die Liste).
+describe('A10: Abrufnachweis des DATEV-Belegexports mit Dokument-IDs', () => {
+  const beleg = (index: number) => ({
+    id: `document-${index}`,
+    title: `Beleg ${index}`,
+    mimeType: 'application/pdf',
+    classification: 'GOBD_TAX',
+    createdAt: new Date('2026-09-07T09:00:00Z'),
+    invoiceAttachments: [],
+    versions: [
+      {
+        storageBucket: 'synthetic',
+        storageKey: `beleg-${index}`,
+        storageVersionId: null,
+        sizeBytes: 4n,
+        sha256: new Uint8Array(32),
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+      },
+    ],
+  });
+
+  it('listet alle Belege in Archivreihenfolge, auch einen erst beim Streamen fehlenden', async () => {
+    h.tx.document.findMany.mockResolvedValue([beleg(3), beleg(1), beleg(2)]);
+    h.streamObject.mockImplementation(async (_bucket: string, key: string) => {
+      if (key === 'beleg-1') throw new Error('NoSuchKey');
+      return objectStream(key);
+    });
+
+    const response = await call();
+    const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
+
+    expect(h.evidenceRecord).toHaveBeenCalledTimes(1);
+    expect(h.evidenceRecord.mock.calls[0]![1].after).toEqual({
+      documents: 3,
+      documentIds: ['document-3', 'document-1', 'document-2'],
+      from: null,
+      to: null,
+    });
+    // Die laufende Nummer in index.csv folgt derselben Reihenfolge.
+    const indexRows = Buffer.from(files['index.csv']!).toString('utf8').split('\r\n');
+    expect(indexRows[1]).toMatch(/^0001;.*;belege\/0001_Beleg 3\.pdf;/);
+    expect(indexRows[2]).toMatch(/^0002;.*;FEHLT;$/);
+    expect(indexRows[3]).toMatch(/^0003;.*;belege\/0003_Beleg 2\.pdf;/);
+  });
+
+  it('kürzt die Liste nicht: 2.000 Belege in genau einem Ereignis', async () => {
+    const documents = Array.from({ length: 2000 }, (_, index) => beleg(index + 1));
+    h.tx.document.findMany.mockResolvedValue(documents);
+    h.streamObject.mockImplementation(async (_bucket: string, key: string) => objectStream(key));
+
+    const response = await call();
+    await response.arrayBuffer();
+
+    expect(h.evidenceRecord).toHaveBeenCalledTimes(1);
+    const { after } = h.evidenceRecord.mock.calls[0]![1];
+    expect(after.documents).toBe(2000);
+    expect(after.documentIds).toEqual(documents.map((document) => document.id));
   });
 });

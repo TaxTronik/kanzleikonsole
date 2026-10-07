@@ -54,6 +54,7 @@ code_refs:
   - apps/web/src/server/inbox/staff-mutations.ts
   - apps/worker/src/jobs/storage-orphan-cleanup.ts
   - apps/web/src/server/documents/retag.ts
+  - apps/web/src/app/api/staff/admin/audit/export/route.ts
 test_refs:
   - packages/storage/src/__tests__/object-version.test.ts
   - apps/web/src/server/documents/__tests__/delivery.test.ts
@@ -73,6 +74,8 @@ test_refs:
   - apps/web/src/server/inbox/__tests__/rejection.test.ts
   - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
   - apps/web/src/server/documents/__tests__/retag-db.test.ts
+  - apps/web/src/app/api/staff/documents/__tests__/bulk-download-audit.test.ts
+  - apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts
 feature_refs:
   - docs/anwenderdoku/dokumente.md
   - docs/development/module/dokumentenarchiv.md
@@ -168,6 +171,24 @@ nachträglich erfundene Versionsbindung. Akzeptierte Inbox-Anlagen und
 Wissensanlagen prüfen ebenfalls den Abschlussstatus der tatsächlich
 ausgewählten Dokumentversion.
 
+Welche Dokumente eine Sammelausgabe verlassen haben, belegt genau ein
+Abrufnachweis je Auslieferung; diese Nachweisform hat der Product Owner am
+2026-10-07 bestätigt. Der ZIP-Sammeldownload schreibt `document.download.bulk`
+mit Anzahl, allen ausgelieferten Dokument-IDs in Archivreihenfolge (ein zugleich
+einzeln und per Ordner gewähltes Dokument einmal) und den gewählten Ordnern. Der
+DATEV-Belegexport schreibt `client.belege.export` mit dem Mandanten als
+Ressource, Anzahl, allen exportierten Dokument-IDs in Archivreihenfolge und dem
+Zeitraum. Beide Nachweise entstehen erst nach Größen-, Eintrags- und
+Slot-Prüfung und vor dem ersten Objektabruf; abgelehnte Exporte (413/429)
+erzeugen keinen. Die ID-Liste wird nicht gekürzt; die ZIP-Eintragsgrenze
+begrenzt sie vorab. Ein DATEV-Beleg, dessen Objekt erst beim Streamen fehlt,
+bleibt im Nachweis und erscheint in `index.csv` als FEHLT. Einzelabrufe
+protokollieren `document.download` mit der Dokument-ID, Vorschauen
+`document.preview` nur beim tatsächlichen Byteabruf. Der CSV-Export des
+Prüfprotokolls weist Anzahl und IDs beider Sammelereignisse in der Spalte
+„Details“ aus; DATEV-Exporte vor dieser Ergänzung tragen keine ID-Liste und
+erscheinen dort nur mit ihrer Anzahl.
+
 Die New-Version-Route sperrt Referenzen erneut, bestimmt die nächste Nummer in
 der Commit-Transaktion und fügt die Version an. `retag-policy.ts` entscheidet
 über Metadatenänderung, Re-Store oder Blockade. Die Retag-Action stabilisiert
@@ -226,7 +247,11 @@ Versionsweitergabe und die Sperre eines später infizierten Archivdokuments.
 Download- und Preview-Routentests prüfen Staff-/Portal-Abrufe einschließlich
 des tatsächlichen Preview-Streams. Sammel-/DATEV-Tests entpacken echte ZIPs und
 belegen, dass eine gesperrte neueste Version auch bei vorhandenem älterem
-sauberem Stand weder im Archiv noch in Abrufnachweisen erscheint.
+sauberem Stand weder im Archiv noch in Abrufnachweisen erscheint. Sie prüfen
+außerdem genau ein Ereignis je Sammelausgabe mit allen Dokument-IDs in
+Archivreihenfolge (2.000 Dokumente ohne Kürzung, DATEV einschließlich eines erst
+beim Streamen fehlenden Belegs); der Audit-Exporttest prüft die Spalte
+„Details“ für beide Ereignisse und für DATEV-Altereignisse ohne ID-Liste.
 
 Retag-Race-Tests belegen den Abbruch bei Versionsdrift und das Anfügen statt
 Update einer geschützten Version. Policy-Tests prüfen Höherstufung,

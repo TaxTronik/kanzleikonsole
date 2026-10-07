@@ -235,6 +235,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** DATEV-Belegexport: Der Abrufnachweis enthält neben Anzahl und
+  Zeitraum die vollständige Liste der exportierten Dokument-IDs in
+  Archivreihenfolge wie der Sammeldownload; der CSV-Export des Prüfprotokolls
+  zeigt beide in der Spalte „Details“ (`DOC-VERSION-IMMUTABILITY-001`).
 - **[Scope]** Rechnungen: Die Fälligkeit darf auf keinem Anlageweg (manuell,
   Zeitabrechnung, StBVV-Übernahme, Extern-Upload) vor dem Rechnungsdatum
   liegen; abgelehnt wird mit „Rechnungsdatum und Fälligkeit sind ungültig.“ vor

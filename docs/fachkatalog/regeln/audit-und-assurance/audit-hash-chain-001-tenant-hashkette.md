@@ -266,6 +266,9 @@ zu erfassen, insbesondere nicht generische Dokumentzugriffe. Anzeige und Export
 verwenden denselben Filter und Berliner Tagesgrenzen, mit exklusiver oberer
 Mitternachtsgrenze. Der Prüfstatus betrifft weiterhin die vollständige
 Kanzleikette; ein gefilterter CSV-Auszug ist kein lückenloses Kettenarchiv.
+Der CSV-Export zeigt für `document.download.bulk` und `client.belege.export` in
+der Spalte „Details“ Anzahl und Dokument-IDs; ältere DATEV-Einträge ohne Liste
+erscheinen als „N Dokumente (ohne ID-Liste)“.
 
 Der Treffer- beziehungsweise Gesamtzähler zählt ausschließlich Ereignisse des
 aktuellen Kanzlei-Tenants, auch ohne aktive Filter. Globale PostgreSQL-

@@ -159,7 +159,13 @@ einen vorhandenen `scanCompletedAt`. Die Prüfung liegt vor Abrufnachweis und
 Object-Store-Zugriff. Ein älterer sauberer Stand ersetzt eine nicht
 finalisierte oder gesperrte neueste Version nicht. Einzelabrufe liefern 404;
 Sammelausgaben enthalten und zählen nur auslieferbare Dokumente. Ein reiner
-Sammeldownload ohne auslieferbare Auswahl liefert 404.
+Sammeldownload ohne auslieferbare Auswahl liefert 404. Sammeldownload
+(`document.download.bulk`) und DATEV-Belegexport (`client.belege.export`)
+schreiben je Auslieferung genau einen Abrufnachweis mit Anzahl und
+vollständiger Liste der ausgelieferten Dokument-IDs in Archivreihenfolge, erst
+nach Größen-, Eintrags- und Slot-Prüfung; fehlt beim DATEV-Export ein Objekt
+erst während der Übertragung, bleibt seine ID im Nachweis und `index.csv`
+kennzeichnet es als FEHLT.
 
 Diese Kontrolle schließt insbesondere die Lücke zwischen erfolgreichem
 Object-Write und noch fehlender Finalisierung. Sie ersetzt keinen Virenscan:
