@@ -10,14 +10,47 @@
 // Constraints tax_notice_legal_final_evidence_check und
 // tax_notice_event_sequence_check (Migration 20261007110000); sie werden hier an
 // den Tagesgrenzen geprüft. Die Begründungsprüfung der Datenbank
-// (app.legal_final_reason_sufficient) entspricht begruendungTragfaehig. Fixtures
-// liegen in einem eigenen Tenant; der Test läuft nur mit FRISTEN_DB_TEST=1.
+// (app.legal_final_reason_sufficient) entspricht begruendungTragfaehig. Die
+// Seitenansicht des Kontrollbuchs blättert offene und erledigte Einträge genau
+// wie die vollständige Sicht (Folgepunkt „Mit Erledigten“). Fixtures liegen in
+// einem eigenen Tenant; der Test läuft nur mit FRISTEN_DB_TEST=1.
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { TenantContext } from '@taxtronik/db';
 import { berlinCalendarDate } from '@taxtronik/tax';
-import { begruendungTragfaehig, filingWithinDeadline, RAND_LEERRAUM_CODEPOINTS } from '../eintrag';
+import type { StaffSession } from '@/server/auth/staff';
+import {
+  begruendungTragfaehig,
+  filingWithinDeadline,
+  type FristEintrag,
+  RAND_LEERRAUM_CODEPOINTS,
+} from '../eintrag';
+import { loadKontrollbuch, loadKontrollbuchSeite } from '../kontrollbuch';
 import { einspruchVorab, klageVorab } from '../quellen/bescheid';
+
+// Sichtbarkeitsregel wie accessibleClientsWhereFor (ADMIN ohne Einschränkung,
+// sonst OPEN-Modus); vermeidet den Auth-Stack, die Abfragen laufen echt.
+vi.mock('@/server/auth/rbac', () => ({
+  accessibleClientsWhereFor: async (
+    _tx: unknown,
+    session: { user: { staffId: string; roles: string[] } },
+  ) =>
+    session.user.roles.includes('ADMIN')
+      ? {}
+      : {
+          OR: [
+            { vertraulich: false },
+            {
+              responsibilities: {
+                some: {
+                  staffId: session.user.staffId,
+                  role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] },
+                },
+              },
+            },
+          ],
+        },
+}));
 
 const enabled = process.env['FRISTEN_DB_TEST'] === '1';
 if (enabled) {
@@ -465,4 +498,146 @@ const BEGRUENDUNG = 'Fristablauf und Aktenlage fachlich geprüft.';
       expect(zeile?.ok, JSON.stringify(probe)).toBe(begruendungTragfaehig(probe));
     }
   });
+
+  // Fachkatalog: TAX-CONTROL-STATUS-001 — Review-Befund K-05: Die Seite blättert
+  // offene (aufsteigend) und erledigte Einträge (absteigend) getrennt. Mit den
+  // Bescheiden dieses Tests (verspätete und fristgerechte Einlegungen,
+  // Bestandskraft) sowie Steuerterminen, Anforderungen und Wiedervorlagen mit
+  // vielen gleichen Fälligkeiten ergeben alle Seiten zusammen genau die Einträge
+  // von loadKontrollbuch in derselben Reihenfolge (App-Rolle, REPEATABLE READ).
+  it('blättert offene und erledigte Einträge genau wie die vollständige Sicht', async () => {
+    const { createVerifiedLegalEntityGwgFixture } =
+      await import('../../../../../../packages/db/src/__tests__/gwg-test-fixture');
+    const aktiv = (
+      await db.prismaOwner.client.create({
+        data: { tenantId, kind: 'JURPERS', name: 'Fristen-Seitenmandant GmbH' },
+      })
+    ).id;
+    await createVerifiedLegalEntityGwgFixture(db.prismaOwner as never, {
+      tenantId,
+      clientId: aktiv,
+      verifiedBy: staffId,
+    });
+    await db.prismaOwner.client.update({ where: { id: aktiv }, data: { allowActive: true } });
+    const vertraulich = (
+      await db.prismaOwner.client.create({
+        data: { tenantId, kind: 'NATPERS', name: 'Vertraulicher Mandant', vertraulich: true },
+      })
+    ).id;
+    await db.prismaOwner.clientResponsibility.create({
+      data: { tenantId, clientId: aktiv, staffId, role: 'HAUPTBEARBEITER' },
+    });
+
+    const stichtag = tag('2026-07-16');
+    // Viele Gleichstände um den Stichtag, dazu Fälligkeiten außerhalb von 7/30/90 Tagen.
+    const versatz = [-100, -60, -30, -8, -3, 0, 0, 2, 7, 7, 25, 60, 95];
+    const am = (i: number, stunden = 0) =>
+      new Date(stichtag.getTime() + versatz[i % versatz.length]! * TAG_MS + stunden * 3_600_000);
+    const mandanten = [clientId, aktiv, vertraulich];
+    const erledigtAm = new Date('2026-07-01T09:00:00.000Z');
+    for (let i = 0; i < 39; i++) {
+      const variante = i % 4;
+      await db.prismaOwner.taxDeadline.create({
+        data: {
+          tenantId,
+          clientId: mandanten[i % 3]!,
+          kind: 'USTA_MONATLICH',
+          period: `Seite-${i}`,
+          dueDate: am(i),
+          status: variante === 2 ? 'PLANNED' : variante === 3 ? 'SKIPPED' : 'DONE',
+          completedAt: variante <= 1 ? erledigtAm : null,
+          // Variante 1: DONE ohne handelnde Person bleibt offen.
+          completedByStaff: variante === 0 ? staffId : null,
+        },
+      });
+      await db.prismaOwner.clientReminder.create({
+        data: {
+          tenantId,
+          clientId: mandanten[(i + 1) % 3]!,
+          dueDate: am(i + 5),
+          subject: `Wiedervorlage ${i}`,
+          createdByStaff: staffId,
+          doneAt: variante <= 1 ? erledigtAm : null,
+          doneByStaff: variante === 0 ? staffId : null,
+        },
+      });
+    }
+    for (let i = 0; i < 26; i++) {
+      const status = (['CLOSED', 'OPEN', 'RESPONDED', 'CANCELLED', 'CLOSED'] as const)[i % 5]!;
+      await db.prismaOwner.request.create({
+        data: {
+          tenantId,
+          clientId: aktiv,
+          title: `Anforderung ${i}`,
+          description: 'Kontrollbuch-Seitentest',
+          createdByStaff: staffId,
+          // Gleiche Zeitpunkte paarweise: Gleichstände auch bei Zeitstempeln.
+          dueAt: am(i, i % 2),
+          status,
+          closedAt: status === 'CLOSED' ? erledigtAm : null,
+          // Das zweite CLOSED ohne handelnde Person bleibt offen.
+          closedByStaff: status === 'CLOSED' && i % 5 === 0 ? staffId : null,
+        },
+      });
+    }
+
+    const sessions: Record<string, StaffSession> = {
+      admin: { user: { tenantId, staffId, roles: ['ADMIN'], permissions: [] } },
+      mitarbeiter: { user: { tenantId, staffId, roles: ['EMPLOYEE'], permissions: [] } },
+    } as unknown as Record<string, StaffSession>;
+    let geprueft = 0;
+    let erledigtGesehen = 0;
+    for (const referenceDate of [stichtag, tag('2026-06-04')]) {
+      for (const tage of [7, 30, 90]) {
+        for (const nurOffene of [false, true]) {
+          for (const [rolle, session] of Object.entries(sessions)) {
+            const fall = `${isoTag(referenceDate)} ${tage} ${nurOffene} ${rolle}`;
+            await db.withTenantContext(
+              ctx(),
+              async (tx) => {
+                const opts = { tage, nurOffene, referenceDate };
+                const voll = await loadKontrollbuch(tx, session, opts);
+                const offen = voll.filter((e) => !e.erledigt);
+                const erledigt = voll.filter((e) => e.erledigt);
+                erledigtGesehen += erledigt.length;
+                for (const seitenGroesse of [4, 9]) {
+                  const seiten: FristEintrag[] = [];
+                  for (let seite = 1; ; seite += 1) {
+                    const r = await loadKontrollbuchSeite(tx, session, {
+                      ...opts,
+                      seite,
+                      seitenGroesse,
+                    });
+                    expect(r.offenGesamt, fall).toBe(offen.length);
+                    expect(r.erledigtGesamt, fall).toBe(erledigt.length);
+                    seiten.push(...r.offen);
+                    if (seite * seitenGroesse >= offen.length) break;
+                  }
+                  const erledigtSeiten: FristEintrag[] = [];
+                  for (let erledigtSeite = 1; ; erledigtSeite += 1) {
+                    const r = await loadKontrollbuchSeite(tx, session, {
+                      ...opts,
+                      seite: 1,
+                      erledigtSeite,
+                      seitenGroesse,
+                    });
+                    expect(r.erledigtSeite, fall).toBe(erledigtSeite);
+                    erledigtSeiten.push(...r.erledigt);
+                    if (erledigtSeite * seitenGroesse >= erledigt.length) break;
+                  }
+                  expect(seiten, fall).toEqual(offen);
+                  expect(erledigtSeiten, fall).toEqual(erledigt);
+                  geprueft += 1;
+                }
+              },
+              { isolationLevel: 'RepeatableRead', timeout: 60_000 },
+            );
+          }
+        }
+      }
+    }
+    expect(geprueft).toBe(2 * 3 * 2 * 2 * 2);
+    // Der Bestand enthält tatsächlich mehrseitige Erledigt-Listen.
+    expect(erledigtGesehen).toBeGreaterThan(100);
+  }, 180_000);
 });

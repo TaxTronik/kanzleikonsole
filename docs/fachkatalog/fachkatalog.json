@@ -5255,6 +5255,7 @@
         "packages/db/src/__tests__/tax-notice-partial-relief-migration.test.ts",
         "apps/web/src/server/fristen/__tests__/eintrag.test.ts",
         "apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts",
+        "apps/web/src/server/fristen/__tests__/kontrollbuch-seite.test.ts",
         "apps/web/src/server/fristen/__tests__/tagesabschluss.test.ts",
         "apps/web/src/app/staff/(protected)/fristen/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts",

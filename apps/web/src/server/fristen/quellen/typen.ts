@@ -41,24 +41,42 @@ export interface KontrollbuchKontext {
 }
 
 /**
- * Prisma-Filter einer Quelle. Offener und erledigter Zweig sind disjunkt.
+ * Prisma-Filter einer Quelle. Offener und erledigter Zweig sind disjunkt, ihre
+ * Teile ebenso.
  *
  * - `fenster`: Gesamtabfrage des vollständigen Loaders. Offen ohne untere
  *   Grenze bis zum Horizont, ohne `nurOffene` zusätzlich nachgewiesen Erledigte
  *   im Rückschau-Fenster.
  * - `offen`: Teil des offenen Zweigs, dessen Zeilen nach `toEintrag` immer offen
- *   sind. Nur er wird seitenweise geladen und per `count` gezählt.
+ *   sind. Wird seitenweise (Fälligkeit aufsteigend) geladen und per `count`
+ *   gezählt.
  * - `offenVorbehalt`: Rest des offenen Zweigs, dessen Abschluss erst `toEintrag`
  *   entscheidet (nach Fristende dokumentierte Einlegungen). Kleine Menge, wird
  *   vollständig geladen; `null`, wenn es ihn nicht gibt.
- * - `erledigt`: Rückschau-Zweig, nur ohne `nurOffene` (sonst `null`); wird
- *   vollständig geladen, weil auch er durch `toEintrag` offen bleiben kann.
+ * - `erledigt`: Teil des Rückschau-Zweigs, dessen Zeilen nach `toEintrag` immer
+ *   erledigt sind; nur ohne `nurOffene` (sonst `null`). Wird seitenweise
+ *   (Fälligkeit absteigend) geladen und per `count` gezählt (K-05).
+ * - `erledigtVorbehalt`: Rest des Rückschau-Zweigs, dessen Abschluss erst
+ *   `toEintrag` entscheidet (laut Vorabfrage fristgerechte Einlegungen); kann
+ *   offen bleiben. Kleine Menge, wird vollständig geladen; `null`, wenn es ihn
+ *   nicht gibt oder `nurOffene` gilt.
  */
 export interface QuellFilter<Where> {
   fenster: Where;
   offen: Where;
   offenVorbehalt: Where | null;
   erledigt: Where | null;
+  erledigtVorbehalt: Where | null;
+}
+
+/**
+ * Seitenabfrage: höchstens `take` Zeilen nach Fälligkeit, offene aufsteigend,
+ * erledigte (`absteigend`) neueste zuerst; Gleichstände nach ID aufsteigend.
+ * Das entspricht innerhalb einer Quelle der Ordnung von `sortEintraege`.
+ */
+export interface Seitenabfrage {
+  take: number;
+  absteigend?: boolean;
 }
 
 /** Zusätzliche Grenze auf die Fälligkeitsspalte einer Quelle. */
@@ -89,8 +107,8 @@ export interface KontrollbuchQuelle<Row, Where, Vorab = undefined> {
   /** Optionale Vorabfrage im selben Transaktions-Snapshot wie die Hauptabfragen. */
   vorab?(tx: TxClient, k: KontrollbuchKontext): Promise<Vorab>;
   where(k: KontrollbuchKontext, vorab: Vorab): QuellFilter<Where>;
-  /** Mit `seite`: nach Fälligkeit und ID aufsteigend, höchstens `take` Zeilen. */
-  query(tx: TxClient, where: Where, seite?: { take: number }): Promise<Row[]>;
+  /** Mit `seite`: nach Fälligkeit (siehe `Seitenabfrage`) und ID, höchstens `take` Zeilen. */
+  query(tx: TxClient, where: Where, seite?: Seitenabfrage): Promise<Row[]>;
   count(tx: TxClient, where: Where, faellig?: FaelligGrenze): Promise<number>;
   bezug(row: Row): QuellBezug;
   /** `null` überspringt eine Zeile ohne Fälligkeit. */
@@ -106,10 +124,13 @@ export function verantwortung(
   return { id, name: personen.name(id) };
 }
 
-/** Gemeinsame Sortierung der Seitenabfragen: Fälligkeit, dann ID. */
+/** Gemeinsame Sortierung der Seitenabfragen: Fälligkeit in Seitenrichtung, dann ID aufsteigend. */
 export function seitenAbfrage<OrderBy>(
-  seite: { take: number } | undefined,
-  orderBy: OrderBy[],
+  seite: Seitenabfrage | undefined,
+  faelligkeit: (richtung: 'asc' | 'desc') => OrderBy,
+  id: OrderBy,
 ): { orderBy?: OrderBy[]; take?: number } {
-  return seite ? { orderBy, take: seite.take } : {};
+  return seite
+    ? { orderBy: [faelligkeit(seite.absteigend ? 'desc' : 'asc'), id], take: seite.take }
+    : {};
 }

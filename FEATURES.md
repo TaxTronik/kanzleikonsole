@@ -791,8 +791,9 @@ Klagefristen, Anforderungs-Fälligkeiten und Wiedervorlagen.
   Mandanten, bei Wiedervorlagen die Zuweisung; bei mehreren jeweils die erste
   Zuordnung)
 - Offene Einträge seitenweise (200 je Seite, dringlichste zuerst); Gesamtzahl
-  und Überfällige im Kopf gelten für alle Seiten, Erledigte der Rückschau
-  stehen ungeblättert darunter
+  und Überfällige im Kopf gelten für alle Seiten. Erledigte der Rückschau
+  („Mit Erledigten“) stehen darunter, ebenfalls seitenweise (200 je Seite,
+  neueste Fälligkeit zuerst, eigene Seitenleiste mit Gesamtzahl)
 - Aktuelle Wahrheitstabellen verlangen mehr als einen Status: Steuertermine
   schließen nur mit `DONE` samt Zeit/Person, Einspruchs- und Klagefristen nur
   mit dokumentierter Einlegung oder Bestandskraft-Disposition, Anforderungen

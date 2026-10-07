@@ -19,9 +19,9 @@
 // Kalender/Exporten).
 //
 // `loadKontrollbuch` liefert die vollständige Sicht (CSV-Export,
-// Tagesabschluss). `loadKontrollbuchSeite` blättert für die Seite nur in den
-// offenen Einträgen; alle Seiten zusammen ergeben dieselben Einträge in
-// derselben Reihenfolge.
+// Tagesabschluss). `loadKontrollbuchSeite` blättert für die Seite getrennt in
+// den offenen und den erledigten Einträgen; alle Seiten zusammen ergeben
+// dieselben Einträge in derselben Reihenfolge.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
@@ -194,7 +194,9 @@ export async function loadKontrollbuch(
 export interface KontrollbuchSeitenOptionen extends KontrollbuchOptions {
   /** Angefragte Seite der offenen Einträge (1-basiert, auf die letzte Seite begrenzt). */
   seite: number;
-  /** Offene Einträge je Seite; 0 lädt nur die Zählwerte. */
+  /** Angefragte Seite der erledigten Einträge (1-basiert, auf die letzte Seite begrenzt; Standard 1). */
+  erledigtSeite?: number;
+  /** Einträge je Seite, für offene und erledigte getrennt; 0 lädt nur die Zählwerte. */
   seitenGroesse: number;
   /** Zählwerte des Tagesabschlusses mitliefern, soweit der Umfang sie abdeckt. */
   tagesabschluss?: boolean;
@@ -211,12 +213,15 @@ export interface KontrollbuchSeite {
   heute: Date;
   /** Offene Einträge der Seite, dringlichste zuerst. */
   offen: FristEintrag[];
-  /** Als erledigt abgeleitete Einträge, neueste zuerst; nicht geblättert. */
+  /** Als erledigt abgeleitete Einträge der Seite `erledigtSeite`, neueste Fälligkeit zuerst. */
   erledigt: FristEintrag[];
   offenGesamt: number;
   /** Offene Einträge mit Fälligkeit vor dem Stichtag (gesamt, nicht nur die Seite). */
   ueberfaellig: number;
+  /** Erledigte Einträge über alle Seiten. */
+  erledigtGesamt: number;
   seite: number;
+  erledigtSeite: number;
   seitenGroesse: number;
   /**
    * Zählwerte des Tagesabschlusses (offener Quellzweig bis einschließlich
@@ -231,7 +236,12 @@ interface Teilergebnis {
   gesamt: number;
   vorStichtag: number;
   bisStichtag: number;
-  /** Vollständig geladene Zeilen, deren Zustand erst `toEintrag` entscheidet. */
+  /** Sicher erledigte Zeilen (`erledigt`) gesamt. */
+  erledigtGesamt: number;
+  /**
+   * Vollständig geladene Zeilen, deren Zustand erst `toEintrag` entscheidet;
+   * `vorbehalt` markiert die aus dem offenen Zweig (`offenVorbehalt`).
+   */
   zusatz: Array<Geordnet & { vorbehalt: boolean }>;
 }
 
@@ -244,13 +254,15 @@ async function ladeTeile(
   heute: Date,
   stichtag: boolean,
 ): Promise<Teilergebnis> {
-  const [gesamt, vorStichtag, bisStichtag, vorbehalt, erledigt] = await Promise.all([
-    quelle.count(tx, filter.offen),
-    quelle.count(tx, filter.offen, { lt: heute }),
-    stichtag ? quelle.count(tx, filter.offen, { lte: heute }) : 0,
-    filter.offenVorbehalt ? quelle.query(tx, filter.offenVorbehalt) : [],
-    filter.erledigt ? quelle.query(tx, filter.erledigt) : [],
-  ]);
+  const [gesamt, vorStichtag, bisStichtag, erledigtGesamt, vorbehalt, erledigtVorbehalt] =
+    await Promise.all([
+      quelle.count(tx, filter.offen),
+      quelle.count(tx, filter.offen, { lt: heute }),
+      stichtag ? quelle.count(tx, filter.offen, { lte: heute }) : 0,
+      filter.erledigt ? quelle.count(tx, filter.erledigt) : 0,
+      filter.offenVorbehalt ? quelle.query(tx, filter.offenVorbehalt) : [],
+      filter.erledigtVorbehalt ? quelle.query(tx, filter.erledigtVorbehalt) : [],
+    ]);
   const vorlauf = (rows: unknown[], istVorbehalt: boolean) =>
     abbilden(
       rows.map((row) => ({ quelle, row })),
@@ -260,17 +272,22 @@ async function ladeTeile(
     gesamt,
     vorStichtag,
     bisStichtag,
-    zusatz: [...vorlauf(vorbehalt, true), ...vorlauf(erledigt, false)],
+    erledigtGesamt,
+    zusatz: [...vorlauf(vorbehalt, true), ...vorlauf(erledigtVorbehalt, false)],
   };
 }
 
-function summe(teile: readonly Teilergebnis[], feld: 'gesamt' | 'vorStichtag' | 'bisStichtag') {
+function summe(
+  teile: readonly Teilergebnis[],
+  feld: 'gesamt' | 'vorStichtag' | 'bisStichtag' | 'erledigtGesamt',
+) {
   return teile.reduce((total, teil) => total + teil[feld], 0);
 }
 
 function zaehle(
   teile: readonly Teilergebnis[],
   zusatzOffen: ReadonlyArray<Geordnet & { vorbehalt: boolean }>,
+  zusatzErledigt: readonly Geordnet[],
   heute: Date,
   stichtag: boolean,
 ) {
@@ -283,6 +300,7 @@ function zaehle(
   return {
     offenGesamt: summe(teile, 'gesamt') + zusatzOffen.length,
     ueberfaellig: ueberfaellig + zusatzOffen.filter(vor).length,
+    erledigtGesamt: summe(teile, 'erledigtGesamt') + zusatzErledigt.length,
     tagesabschluss: stichtag
       ? {
           offen: summe(teile, 'bisStichtag') + vorbehalt.filter(bis).length,
@@ -299,11 +317,15 @@ function begrenzeSeite(angefragt: number, gesamt: number, seitenGroesse: number)
 }
 
 /**
- * Seitenansicht der offenen Einträge. Je Quelle werden nur die ersten
- * `seite × seitenGroesse` sicher offenen Zeilen nach Fälligkeit geladen; der
- * kleine Vorbehalt (verspätete Einlegungen) und der zeitlich begrenzte
- * Rückschau-Zweig werden vollständig geladen und nach ihrem abgeleiteten Zustand
- * eingeordnet. Gesamtzahlen kommen aus `count`-Abfragen mit demselben Filter.
+ * Seitenansicht, offene und erledigte Einträge getrennt geblättert. Je Quelle
+ * werden nur die ersten `seite × seitenGroesse` sicher offenen Zeilen nach
+ * Fälligkeit (aufsteigend) und die ersten `erledigtSeite × seitenGroesse`
+ * sicher erledigten Zeilen (Fälligkeit absteigend) geladen. Die kleinen
+ * Vorbehalte, deren Zustand erst `toEintrag` entscheidet (verspätete bzw. laut
+ * Vorabfrage fristgerechte Einlegungen), werden vollständig geladen und nach
+ * ihrem abgeleiteten Zustand eingeordnet. Gesamtzahlen kommen aus
+ * `count`-Abfragen mit demselben Filter. Alle Seiten zusammen ergeben genau die
+ * Einträge von `loadKontrollbuch` in derselben Reihenfolge.
  */
 export async function loadKontrollbuchSeite(
   tx: TxClient,
@@ -319,29 +341,52 @@ export async function loadKontrollbuchSeite(
   const teile = await Promise.all(laeufe.map((lauf) => ladeTeile(tx, lauf, heute, stichtag)));
   const zusatz = teile.flatMap((teil) => teil.zusatz);
   const zusatzOffen = zusatz.filter((g) => !g.eintrag.erledigt);
-  const zaehler = zaehle(teile, zusatzOffen, heute, stichtag);
+  const zusatzErledigt = zusatz.filter((g) => g.eintrag.erledigt);
+  const zaehler = zaehle(teile, zusatzOffen, zusatzErledigt, heute, stichtag);
   const seitenGroesse = Math.max(0, opts.seitenGroesse);
   const seite = begrenzeSeite(opts.seite, zaehler.offenGesamt, seitenGroesse);
-  const ergebnis = { heute, ...zaehler, seite, seitenGroesse };
+  const erledigtSeite = begrenzeSeite(
+    opts.erledigtSeite ?? 1,
+    zaehler.erledigtGesamt,
+    seitenGroesse,
+  );
+  const ergebnis = { heute, ...zaehler, seite, erledigtSeite, seitenGroesse };
   if (seitenGroesse === 0) return { ...ergebnis, offen: [], erledigt: [] };
 
   const bis = seite * seitenGroesse;
-  const sicher = await Promise.all(
-    laeufe.map(({ quelle, filter }, i) =>
-      teile[i]!.gesamt > 0 ? quelle.query(tx, filter.offen, { take: bis }) : [],
+  const erledigtBis = erledigtSeite * seitenGroesse;
+  const [sicherOffen, sicherErledigt] = await Promise.all([
+    Promise.all(
+      laeufe.map(({ quelle, filter }, i) =>
+        teile[i]!.gesamt > 0 ? quelle.query(tx, filter.offen, { take: bis }) : [],
+      ),
     ),
-  );
-  const sicherOffen = laeufe.flatMap(({ quelle }, i) =>
-    abbilden(
-      sicher[i]!.map((row) => ({ quelle, row })),
-      OHNE_PERSONEN,
+    Promise.all(
+      laeufe.map(({ quelle, filter }, i) =>
+        filter.erledigt && teile[i]!.erledigtGesamt > 0
+          ? quelle.query(tx, filter.erledigt, { take: erledigtBis, absteigend: true })
+          : [],
+      ),
     ),
+  ]);
+  const vorlaeufig = (zeilen: readonly unknown[][]) =>
+    laeufe.flatMap(({ quelle }, i) =>
+      abbilden(
+        zeilen[i]!.map((row) => ({ quelle, row })),
+        OHNE_PERSONEN,
+      ),
+    );
+  const seitenOffen = ordnen([...vorlaeufig(sicherOffen), ...zusatzOffen]).slice(
+    bis - seitenGroesse,
+    bis,
   );
-  const seitenOffen = ordnen([...sicherOffen, ...zusatzOffen]).slice(bis - seitenGroesse, bis);
-  const erledigt = ordnen(zusatz.filter((g) => g.eintrag.erledigt));
+  const seitenErledigt = ordnen([...vorlaeufig(sicherErledigt), ...zusatzErledigt]).slice(
+    erledigtBis - seitenGroesse,
+    erledigtBis,
+  );
   const personen = await ladePersonen(
     tx,
-    [...seitenOffen, ...erledigt].map((g) => g.kandidat),
+    [...seitenOffen, ...seitenErledigt].map((g) => g.kandidat),
     kontext.nurStaffId,
   );
   const endgueltig = (liste: readonly Geordnet[]) =>
@@ -349,5 +394,5 @@ export async function loadKontrollbuchSeite(
       liste.map((g) => g.kandidat),
       personen,
     ).map((g) => g.eintrag);
-  return { ...ergebnis, offen: endgueltig(seitenOffen), erledigt: endgueltig(erledigt) };
+  return { ...ergebnis, offen: endgueltig(seitenOffen), erledigt: endgueltig(seitenErledigt) };
 }

@@ -258,6 +258,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Fristenkontrollbuch: „Mit Erledigten“ zeigt erledigte Fristen seitenweise
+  (200 je Seite, jüngste Fälligkeit zuerst, eigene Seitenleiste mit
+  Gesamtzahl), statt alle auf einmal zu laden.
 - Jahreswechsel-Checklisten: Der Bearbeitungsfortschritt wird beim Speichern
   der Antworten mitgespeichert, statt ihn in der Übersicht für jeden Eintrag
   neu zu berechnen.

@@ -58,15 +58,17 @@ export const wiedervorlagen: KontrollbuchQuelle<Row, Prisma.ClientReminderWhereI
       offen: mit(offen),
       offenVorbehalt: null,
       erledigt: k.nurOffene ? null : mit(erledigt),
+      erledigtVorbehalt: null,
     };
   },
   query: (tx, where, seite) =>
     tx.clientReminder.findMany({
       where,
-      ...seitenAbfrage<Prisma.ClientReminderOrderByWithRelationInput>(seite, [
-        { dueDate: 'asc' },
+      ...seitenAbfrage<Prisma.ClientReminderOrderByWithRelationInput>(
+        seite,
+        (richtung) => ({ dueDate: richtung }),
         { id: 'asc' },
-      ]),
+      ),
       select: SELECT,
     }),
   count: (tx, where, faellig) =>

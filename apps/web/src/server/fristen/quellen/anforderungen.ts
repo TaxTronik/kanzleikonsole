@@ -48,15 +48,17 @@ export const anforderungen: KontrollbuchQuelle<Row, Prisma.RequestWhereInput> = 
       offen: { ...basis, ...offen, ...k.visibleClient },
       offenVorbehalt: null,
       erledigt: k.nurOffene ? null : { ...basis, ...erledigt, ...k.visibleClient },
+      erledigtVorbehalt: null,
     };
   },
   query: (tx, where, seite) =>
     tx.request.findMany({
       where,
-      ...seitenAbfrage<Prisma.RequestOrderByWithRelationInput>(seite, [
-        { dueAt: 'asc' },
+      ...seitenAbfrage<Prisma.RequestOrderByWithRelationInput>(
+        seite,
+        (richtung) => ({ dueAt: richtung }),
         { id: 'asc' },
-      ]),
+      ),
       select: SELECT,
     }),
   count: (tx, where, faellig) =>

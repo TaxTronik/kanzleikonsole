@@ -69,23 +69,26 @@ export const einspruchsfristen: Quelle = {
     const filingMissing: Prisma.TaxNoticeWhereInput = {
       OR: [{ appealFiledAt: null }, { appealFiledBy: null }],
     };
+    // Laut Vorabfrage keine fristgerechte Einlegung (fehlt oder verspätet) bzw.
+    // fristgerecht eingelegt; beide Teile ergänzen sich.
+    const ohneFristgerechteEinlegung: Prisma.TaxNoticeWhereInput = lateIds.length
+      ? { OR: [filingMissing, { id: { in: lateIds } }] }
+      : filingMissing;
+    const fristgerechtEingelegt: Prisma.TaxNoticeWhereInput = {
+      appealFiledAt: { not: null },
+      appealFiledBy: { not: null },
+      ...(lateIds.length ? { id: { notIn: lateIds } } : {}),
+    };
     const offen: Prisma.TaxNoticeWhereInput = {
       appealDeadline: { lte: k.horizont },
-      AND: [
-        lateIds.length ? { OR: [filingMissing, { id: { in: lateIds } }] } : filingMissing,
-        dispositionFehlt(vorab.ohneBegruendung),
-      ],
+      AND: [ohneFristgerechteEinlegung, dispositionFehlt(vorab.ohneBegruendung)],
+    };
+    const rueckschau: Prisma.TaxNoticeWhereInput = {
+      appealDeadline: { gte: k.rueckschau, lte: k.horizont },
     };
     const erledigt: Prisma.TaxNoticeWhereInput = {
-      appealDeadline: { gte: k.rueckschau, lte: k.horizont },
-      OR: [
-        {
-          appealFiledAt: { not: null },
-          appealFiledBy: { not: null },
-          ...(lateIds.length ? { id: { notIn: lateIds } } : {}),
-        },
-        dispositionVorhanden(vorab.ohneBegruendung),
-      ],
+      ...rueckschau,
+      OR: [fristgerechtEingelegt, dispositionVorhanden(vorab.ohneBegruendung)],
     };
     const basis: Prisma.TaxNoticeWhereInput = { appealDeadline: { not: null } };
     const fenster = k.nurOffene ? offen : { OR: [offen, erledigt] };
@@ -102,16 +105,31 @@ export const einspruchsfristen: Quelle = {
       offenVorbehalt: lateIds.length
         ? { ...basis, ...offen, id: { in: lateIds }, ...k.visibleClient }
         : null,
-      erledigt: k.nurOffene ? null : { ...basis, ...erledigt, ...k.visibleClient },
+      // Dokumentierte Disposition ohne fristgerechte Einlegung schließt
+      // unabhängig vom Einlegungstag; sicher erledigt, seitenweise geladen.
+      erledigt: k.nurOffene
+        ? null
+        : {
+            ...basis,
+            ...rueckschau,
+            AND: [ohneFristgerechteEinlegung, dispositionVorhanden(vorab.ohneBegruendung)],
+            ...k.visibleClient,
+          },
+      // Ob eine laut Vorabfrage fristgerechte Einlegung die Frist wahrt,
+      // entscheidet toEintrag (wie bei offenVorbehalt); vollständig geladen.
+      erledigtVorbehalt: k.nurOffene
+        ? null
+        : { ...basis, ...rueckschau, ...fristgerechtEingelegt, ...k.visibleClient },
     };
   },
   query: (tx, where, seite) =>
     tx.taxNotice.findMany({
       where,
-      ...seitenAbfrage<Prisma.TaxNoticeOrderByWithRelationInput>(seite, [
-        { appealDeadline: 'asc' },
+      ...seitenAbfrage<Prisma.TaxNoticeOrderByWithRelationInput>(
+        seite,
+        (richtung) => ({ appealDeadline: richtung }),
         { id: 'asc' },
-      ]),
+      ),
       select: SELECT,
     }),
   count: (tx, where, faellig) =>

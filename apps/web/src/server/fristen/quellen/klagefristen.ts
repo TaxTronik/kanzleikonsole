@@ -68,6 +68,16 @@ export const klagefristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInput, B
     const filingMissing: Prisma.TaxNoticeWhereInput = {
       OR: [{ klageFiledAt: null }, { klageFiledBy: null }],
     };
+    // Laut Vorabfrage keine fristgerechte Einreichung (fehlt oder verspätet) bzw.
+    // fristgerecht eingereicht; beide Teile ergänzen sich.
+    const ohneFristgerechteEinlegung: Prisma.TaxNoticeWhereInput = lateIds.length
+      ? { OR: [filingMissing, { id: { in: lateIds } }] }
+      : filingMissing;
+    const fristgerechtEingelegt: Prisma.TaxNoticeWhereInput = {
+      klageFiledAt: { not: null },
+      klageFiledBy: { not: null },
+      ...(lateIds.length ? { id: { notIn: lateIds } } : {}),
+    };
     const offen: Prisma.TaxNoticeWhereInput = {
       status: {
         in: [
@@ -83,21 +93,14 @@ export const klagefristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInput, B
         ],
       },
       klageDeadline: { lte: k.horizont },
-      AND: [
-        lateIds.length ? { OR: [filingMissing, { id: { in: lateIds } }] } : filingMissing,
-        dispositionFehlt(vorab.ohneBegruendung),
-      ],
+      AND: [ohneFristgerechteEinlegung, dispositionFehlt(vorab.ohneBegruendung)],
+    };
+    const rueckschau: Prisma.TaxNoticeWhereInput = {
+      klageDeadline: { gte: k.rueckschau, lte: k.horizont },
     };
     const erledigt: Prisma.TaxNoticeWhereInput = {
-      klageDeadline: { gte: k.rueckschau, lte: k.horizont },
-      OR: [
-        {
-          klageFiledAt: { not: null },
-          klageFiledBy: { not: null },
-          ...(lateIds.length ? { id: { notIn: lateIds } } : {}),
-        },
-        dispositionVorhanden(vorab.ohneBegruendung),
-      ],
+      ...rueckschau,
+      OR: [fristgerechtEingelegt, dispositionVorhanden(vorab.ohneBegruendung)],
     };
     const basis: Prisma.TaxNoticeWhereInput = { klageDeadline: { not: null } };
     const fenster = k.nurOffene ? offen : { OR: [offen, erledigt] };
@@ -112,16 +115,29 @@ export const klagefristen: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereInput, B
       offenVorbehalt: lateIds.length
         ? { ...basis, ...offen, id: { in: lateIds }, ...k.visibleClient }
         : null,
-      erledigt: k.nurOffene ? null : { ...basis, ...erledigt, ...k.visibleClient },
+      // Wie bei den Einspruchsfristen: Disposition ohne fristgerechte Einreichung
+      // ist sicher erledigt; eine laut Vorabfrage fristgerechte entscheidet toEintrag.
+      erledigt: k.nurOffene
+        ? null
+        : {
+            ...basis,
+            ...rueckschau,
+            AND: [ohneFristgerechteEinlegung, dispositionVorhanden(vorab.ohneBegruendung)],
+            ...k.visibleClient,
+          },
+      erledigtVorbehalt: k.nurOffene
+        ? null
+        : { ...basis, ...rueckschau, ...fristgerechtEingelegt, ...k.visibleClient },
     };
   },
   query: (tx, where, seite) =>
     tx.taxNotice.findMany({
       where,
-      ...seitenAbfrage<Prisma.TaxNoticeOrderByWithRelationInput>(seite, [
-        { klageDeadline: 'asc' },
+      ...seitenAbfrage<Prisma.TaxNoticeOrderByWithRelationInput>(
+        seite,
+        (richtung) => ({ klageDeadline: richtung }),
         { id: 'asc' },
-      ]),
+      ),
       select: SELECT,
     }),
   count: (tx, where, faellig) =>

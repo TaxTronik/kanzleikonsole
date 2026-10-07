@@ -537,10 +537,12 @@ describe('loadKontrollbuch query bounds', () => {
 
 describe('loadKontrollbuchSeite Abfragen', () => {
   // Fachkatalog: TAX-CONTROL-STATUS-001 — Review-Befund K-05: Die Seite blättert
-  // nur im sicher offenen Zweig; verspätete Einlegungen (Status erst nach
-  // toEintrag) werden vollständig geladen, Zählwerte nutzen denselben Filter.
+  // im sicher offenen und im sicher erledigten Zweig; Einlegungen, deren Zustand
+  // erst toEintrag entscheidet, werden vollständig geladen, Zählwerte nutzen
+  // denselben Filter.
   const heute = new Date('2026-07-16T00:00:00.000Z');
   const horizont = new Date('2026-08-15T00:00:00.000Z');
+  const rueckschau = new Date('2026-06-16T00:00:00.000Z');
   const visible = { client: clientAccess };
   const filingMissing = { OR: [{ appealFiledAt: null }, { appealFiledBy: null }] };
   const dispositionMissing = {
@@ -619,35 +621,84 @@ describe('loadKontrollbuchSeite Abfragen', () => {
     });
   });
 
-  it('lädt mit Erledigten den Rückschau-Zweig je Quelle vollständig', async () => {
+  it('zählt mit Erledigten den sicher erledigten Zweig und blättert ihn absteigend', async () => {
     const tx = createTx();
+    tx.$queryRaw
+      .mockResolvedValueOnce([{ id: 'notice-late', verspaetet: true, ohneBegruendung: false }])
+      .mockResolvedValueOnce([]);
+    tx.taxDeadline.count.mockResolvedValue(12);
+    tx.request.count.mockResolvedValue(3);
 
-    await loadKontrollbuchSeite(tx as never, {} as never, {
+    const seite = await loadKontrollbuchSeite(tx as never, {} as never, {
       tage: 30,
       seite: 1,
-      seitenGroesse: 200,
+      erledigtSeite: 2,
+      seitenGroesse: 5,
     });
 
+    const steuerErledigt = {
+      status: 'DONE',
+      completedAt: { not: null },
+      completedByStaff: { not: null },
+      dueDate: { gte: rueckschau, lte: horizont },
+      ...visible,
+    };
+    expect(tx.taxDeadline.count).toHaveBeenCalledWith({ where: steuerErledigt });
+    // Seite 2 zu je 5: die ersten 10 je Quelle, neueste Fälligkeit zuerst.
     expect(tx.taxDeadline.findMany).toHaveBeenCalledWith({
-      where: {
-        status: 'DONE',
-        completedAt: { not: null },
-        completedByStaff: { not: null },
-        dueDate: { gte: new Date('2026-06-16T00:00:00.000Z'), lte: horizont },
-        ...visible,
-      },
+      where: steuerErledigt,
+      orderBy: [{ dueDate: 'desc' }, { id: 'asc' }],
+      take: 10,
       select: expect.any(Object),
     });
     expect(tx.request.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ status: 'CLOSED', closedByStaff: { not: null } }),
+        orderBy: [{ dueAt: 'desc' }, { id: 'asc' }],
+        take: 10,
       }),
     );
-    // Klagefrist-Rückschau ohne Statusfilter; interne Prüftermine haben keinen.
-    expect(tx.taxNotice.findMany).toHaveBeenCalledTimes(2);
-    expect(tx.clientReminder.findMany).toHaveBeenCalledTimes(1);
-    // Ohne Anforderung keine Abschluss-Zählung.
-    expect(tx.taxDeadline.count).toHaveBeenCalledTimes(2);
+    // Bescheide: Disposition ohne fristgerechte Einlegung ist sicher erledigt und
+    // wird nur gezählt (hier 0); laut Vorabfrage fristgerechte Einlegungen
+    // entscheidet toEintrag, sie werden vollständig geladen.
+    const dispositionVorhanden = {
+      status: 'BESTANDSKRAEFTIG',
+      legalFinalAt: { not: null },
+      legalFinalBy: { not: null },
+      legalFinalReason: { not: null },
+    };
+    expect(tx.taxNotice.count).toHaveBeenCalledWith({
+      where: {
+        appealDeadline: { gte: rueckschau, lte: horizont },
+        AND: [{ OR: [filingMissing, { id: { in: ['notice-late'] } }] }, dispositionVorhanden],
+        ...visible,
+      },
+    });
+    expect(tx.taxNotice.findMany).toHaveBeenCalledWith({
+      where: {
+        appealDeadline: { gte: rueckschau, lte: horizont },
+        appealFiledAt: { not: null },
+        appealFiledBy: { not: null },
+        id: { notIn: ['notice-late'] },
+        ...visible,
+      },
+      select: expect.any(Object),
+    });
+    expect(tx.taxNotice.findMany).toHaveBeenCalledWith({
+      where: {
+        klageDeadline: { gte: rueckschau, lte: horizont },
+        klageFiledAt: { not: null },
+        klageFiledBy: { not: null },
+        ...visible,
+      },
+      select: expect.any(Object),
+    });
+    // Einspruch: offener Vorbehalt und Rückschau-Vorbehalt; Klage: Rückschau-Vorbehalt.
+    expect(tx.taxNotice.findMany).toHaveBeenCalledTimes(3);
+    expect(tx.clientReminder.findMany).not.toHaveBeenCalled();
+    // Ohne Anforderung keine Abschluss-Zählung: offen, überfällig, erledigt.
+    expect(tx.taxDeadline.count).toHaveBeenCalledTimes(3);
+    expect(seite).toMatchObject({ erledigtGesamt: 15, erledigtSeite: 2, offenGesamt: 15 });
   });
 });
 

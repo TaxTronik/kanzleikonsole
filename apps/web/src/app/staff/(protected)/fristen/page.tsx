@@ -8,8 +8,9 @@
 // auditierte CSV-Export ist ein Kontrollauszug, aber kein Nachweis der
 // fristwahrenden Handlung. Erledigt wird im jeweiligen Quellmodul — dieses
 // Buch hält bewusst keinen eigenen Zustand. Offene Einträge werden seitenweise
-// geladen (dringlichste zuerst); Gesamt- und Überfälligenzahl gelten für alle
-// Seiten.
+// geladen (dringlichste zuerst), erledigte („Mit Erledigten“) getrennt davon
+// ebenso (neueste Fälligkeit zuerst); Gesamt- und Überfälligenzahl gelten für
+// alle Seiten.
 // =============================================================================
 
 import Link from 'next/link';
@@ -37,7 +38,7 @@ import { OffsetPagination } from '@/components/offset-pagination';
 import { DailyReviewForm } from './daily-review-form';
 
 const RANGES = [7, 30, 90] as const;
-/** Offene Einträge je Seite. */
+/** Einträge je Seite, für offene und erledigte getrennt. */
 const SEITENGROESSE = 200;
 
 interface Search {
@@ -45,9 +46,10 @@ interface Search {
   filter?: string; // 'offen' (default) | 'alle'
   wer?: string; // 'alle' (default) | 'meine'
   seite?: string; // offene Einträge, 1-basiert
+  erledigtSeite?: string; // erledigte Einträge, 1-basiert
 }
 
-/** `?seite=`: positive Ganzzahl, sonst Seite 1 (der Loader begrenzt auf die letzte Seite). */
+/** Seitenparameter: positive Ganzzahl, sonst Seite 1 (der Loader begrenzt auf die letzte Seite). */
 function parseSeite(value: string | undefined): number {
   return value && /^\d{1,6}$/.test(value) ? Math.max(1, Number(value)) : 1;
 }
@@ -75,6 +77,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
         nurStaffId: nurMeine ? staffId : null,
         sources: { taxNotices: modules.taxNotices, reminders: modules.reminders },
         seite: parseSeite(sp.seite),
+        erledigtSeite: parseSeite(sp.erledigtSeite),
         seitenGroesse: SEITENGROESSE,
         tagesabschluss: mitVorschau,
       });
@@ -113,6 +116,13 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
   const offeneCount = kontrollbuch.offenGesamt;
   const ueberfaellig = kontrollbuch.ueberfaellig;
   const mehrereSeiten = offeneCount > kontrollbuch.seitenGroesse;
+  const erledigtCount = kontrollbuch.erledigtGesamt;
+  const mehrereErledigtSeiten = erledigtCount > kontrollbuch.seitenGroesse;
+  // Jede Seitennavigation behält die Seite der anderen Liste.
+  const seitenQs = {
+    seite: kontrollbuch.seite > 1 ? String(kontrollbuch.seite) : undefined,
+    erledigtSeite: kontrollbuch.erledigtSeite > 1 ? String(kontrollbuch.erledigtSeite) : undefined,
+  };
 
   const filterQs = (over: Partial<Record<string, string>> = {}) => {
     const p = new URLSearchParams();
@@ -220,7 +230,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
         </div>
       </div>
 
-      {offeneCount === 0 && erledigte.length === 0 ? (
+      {offeneCount === 0 && erledigtCount === 0 ? (
         <div className="card p-10 text-center text-sm text-muted">
           Keine Fristen im gewählten Zeitraum.
         </div>
@@ -242,7 +252,7 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
             <div className="card overflow-hidden mb-6">
               <OffsetPagination
                 basePath="/staff/fristen"
-                baseQs={filterQs()}
+                baseQs={filterQs({ erledigtSeite: seitenQs.erledigtSeite })}
                 page={kontrollbuch.seite}
                 pageSize={kontrollbuch.seitenGroesse}
                 totalCount={offeneCount}
@@ -252,10 +262,22 @@ export default async function FristenPage({ searchParams }: { searchParams: Prom
           )}
           {erledigte.length > 0 && (
             <FristenTabelle
-              titel={`Erledigt — letzte ${tage} Tage (${erledigte.length})`}
+              titel={`Erledigt — letzte ${tage} Tage (${erledigtCount}${mehrereErledigtSeiten ? `, ${erledigte.length} auf dieser Seite` : ''})`}
               rows={erledigte}
               akzent={null}
             />
+          )}
+          {mehrereErledigtSeiten && (
+            <div className="card overflow-hidden mb-6">
+              <OffsetPagination
+                basePath="/staff/fristen"
+                baseQs={filterQs({ seite: seitenQs.seite })}
+                page={kontrollbuch.erledigtSeite}
+                pageSize={kontrollbuch.seitenGroesse}
+                totalCount={erledigtCount}
+                pageParam="erledigtSeite"
+              />
+            </div>
           )}
         </>
       )}

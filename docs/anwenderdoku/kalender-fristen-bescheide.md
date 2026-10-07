@@ -257,7 +257,10 @@ Fristenkontrollorganisation der Kanzlei.
 
 Das zentrale Fristenkontrollbuch zeigt offene Fristen seitenweise, je Seite
 200 und die dringlichsten zuerst; die Zahlen im Kopf (offen, davon überfällig)
-gelten für alle Seiten. Als verantwortlich nennt es den Hauptbearbeiter des
+gelten für alle Seiten. Mit „Mit Erledigten“ folgen darunter die erledigten
+Fristen des gewählten Rückschau-Zeitraums, ebenfalls seitenweise mit je 200
+Einträgen und der jüngsten Fälligkeit zuerst; die Überschrift nennt ihre
+Gesamtzahl, die Seitenleiste blättert unabhängig von den offenen Fristen. Als verantwortlich nennt es den Hauptbearbeiter des
 Mandanten, bei Wiedervorlagen die Zuweisung, bei mehreren jeweils die erste
 Zuordnung.
 

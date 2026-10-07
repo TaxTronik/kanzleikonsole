@@ -107,6 +107,7 @@ test_refs:
   - packages/db/src/__tests__/tax-notice-partial-relief-migration.test.ts
   - apps/web/src/server/fristen/__tests__/eintrag.test.ts
   - apps/web/src/server/fristen/__tests__/kontrollbuch.test.ts
+  - apps/web/src/server/fristen/__tests__/kontrollbuch-seite.test.ts
   - apps/web/src/server/fristen/__tests__/tagesabschluss.test.ts
   - apps/web/src/app/staff/(protected)/fristen/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
@@ -331,7 +332,15 @@ horizontalen Seitenüberlauf erzeugt.
 `eintrag.ts` und `kontrollbuch.ts` leiten den Kontrollzustand aus dem
 Quellvorgang ab; es gibt keinen frei editierbaren Erledigt-Schalter im
 Kontrollbuch. Offene Einträge werden ohne untere Datumsgrenze geladen und nach
-Dringlichkeit sortiert. Die aktuellen Wahrheitstabellen lauten insbesondere:
+Dringlichkeit sortiert. Die Seite blättert offene Einträge (200 je Seite,
+dringlichste zuerst) und mit „Mit Erledigten“ getrennt davon die erledigten
+Einträge des Rückschau-Fensters (200 je Seite, jüngste Fälligkeit zuerst);
+Gesamt- und Überfälligenzahlen stammen aus Zählabfragen mit denselben Filtern.
+Einlegungen, deren Fristwahrung erst die Ableitung entscheidet (verspätete und
+laut Vorabfrage fristgerechte), werden vollständig geladen und eingeordnet.
+Alle Seiten zusammen ergeben dieselben Einträge in derselben Reihenfolge wie
+die vollständige Sicht von CSV-Auszug und Tagesabschluss. Die aktuellen
+Wahrheitstabellen lauten insbesondere:
 
 - Steuertermine schließen nur mit `DONE`, Abschlusszeit und handelnder Person;
   `SKIPPED` bleibt offen.

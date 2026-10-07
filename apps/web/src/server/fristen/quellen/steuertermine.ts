@@ -50,15 +50,17 @@ export const steuertermine: KontrollbuchQuelle<Row, Prisma.TaxDeadlineWhereInput
       offen: { ...offen, ...k.visibleClient },
       offenVorbehalt: null,
       erledigt: k.nurOffene ? null : { ...erledigt, ...k.visibleClient },
+      erledigtVorbehalt: null,
     };
   },
   query: (tx, where, seite) =>
     tx.taxDeadline.findMany({
       where,
-      ...seitenAbfrage<Prisma.TaxDeadlineOrderByWithRelationInput>(seite, [
-        { dueDate: 'asc' },
+      ...seitenAbfrage<Prisma.TaxDeadlineOrderByWithRelationInput>(
+        seite,
+        (richtung) => ({ dueDate: richtung }),
         { id: 'asc' },
-      ]),
+      ),
       select: SELECT,
     }),
   count: (tx, where, faellig) =>

@@ -35,15 +35,16 @@ export const internePrueftermine: KontrollbuchQuelle<Row, Prisma.TaxNoticeWhereI
       deadlineCalculationStatus: { in: ['MANUAL_REVIEW', 'RISK_ONLY'] },
       ...k.visibleClient,
     };
-    return { fenster: offen, offen, offenVorbehalt: null, erledigt: null };
+    return { fenster: offen, offen, offenVorbehalt: null, erledigt: null, erledigtVorbehalt: null };
   },
   query: (tx, where, seite) =>
     tx.taxNotice.findMany({
       where,
-      ...seitenAbfrage<Prisma.TaxNoticeOrderByWithRelationInput>(seite, [
-        { internalRiskDeadline: 'asc' },
+      ...seitenAbfrage<Prisma.TaxNoticeOrderByWithRelationInput>(
+        seite,
+        (richtung) => ({ internalRiskDeadline: richtung }),
         { id: 'asc' },
-      ]),
+      ),
       select: SELECT,
     }),
   count: (tx, where, faellig) =>
