@@ -296,8 +296,10 @@ services:
       # dauerhaft „nicht konfiguriert" — der Betreiber erführe nie von Updates.
       UPDATE_MANIFEST_URL: ${UPDATE_MANIFEST_URL:-}
       UPDATE_PUBLIC_KEY: ${UPDATE_PUBLIC_KEY:-}
-      # P-06: Worker-Jobs laufen überwiegend über den Owner-Pool (taxtronik_owner);
-      # der App-Pool bedient nur SYSTEM-Kontexte. Summe prüft `./taxtronik doctor`.
+      # P-06/S-01: Mandantenbezogene Worker-Jobs laufen über den App-Pool
+      # (taxtronik_app, SYSTEM-Kontext); der Owner-Pool (taxtronik_owner) bedient
+      # Tenant-Listen, Wartung sowie Mail-Outbox- und n8n-Zustellung.
+      # Summe prüft `./taxtronik doctor`.
       DATABASE_APP_POOL_MAX: ${WORKER_DB_POOL_MAX:-5}
       DATABASE_OWNER_POOL_MAX: ${WORKER_DB_OWNER_POOL_MAX:-10}
       SECRET_BOX_KEYRING: ${SECRET_BOX_KEYRING:-}
