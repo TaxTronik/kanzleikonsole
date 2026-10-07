@@ -29,6 +29,7 @@ import {
   SECRET_SLOTS,
   secretSlotContext,
 } from '@/server/crypto/secret-box';
+import { log } from '@/server/logger';
 
 const KEY = 'quantenlos.ibm';
 
@@ -60,7 +61,13 @@ export async function readIbmToken(ctx: TenantContext): Promise<string | null> {
   try {
     const token = decryptSecret(stored.tokenEncrypted, tokenContext(ctx.tenantId));
     return token || null;
-  } catch {
+  } catch (err) {
+    // F-05: Ein nicht entschlüsselbarer Token (z. B. anderer SECRET_BOX_KEY)
+    // gilt wie ein fehlender, gehört aber ins Log — ohne Token-Inhalt.
+    log.warn(
+      { component: 'quantenlos', tenantId: ctx.tenantId, errName: (err as Error).name },
+      'quantenlos: IBM-Token nicht entschlüsselbar',
+    );
     return null;
   }
 }

@@ -24,9 +24,15 @@ vi.mock('@taxtronik/config', () => ({
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: {} }));
 vi.mock('../../mailer', () => ({ sendOpsMail: vi.fn() }));
-vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+const logWarn = vi.hoisted(() => vi.fn());
+vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: logWarn, error: vi.fn() } }));
 
-import { evaluateTransitions, FAIL_THRESHOLD, type HealthState } from '../health-alert';
+import {
+  checkFailed,
+  evaluateTransitions,
+  FAIL_THRESHOLD,
+  type HealthState,
+} from '../health-alert';
 
 const allOk = {
   postgres: true,
@@ -86,5 +92,16 @@ describe('evaluateTransitions', () => {
     const { alerts } = evaluateTransitions(prev, { ...allOk, postgres: false, clamav: false });
     expect(alerts).toHaveLength(2);
     expect(alerts.map((a) => a.kind)).toEqual(['down', 'down']);
+  });
+});
+
+// F-05: Ein gescheiterter Check bleibt „down“, sein Grund steht im Log.
+describe('checkFailed', () => {
+  it('meldet den Check als ausgefallen und loggt die Ursache', () => {
+    expect(checkFailed('postgres', new Error('connect ECONNREFUSED 10.0.0.5:5432'))).toBe(false);
+    expect(logWarn).toHaveBeenCalledWith(
+      { component: 'health-alert', check: 'postgres', err: 'connect ECONNREFUSED 10.0.0.5:5432' },
+      'health-alert: Prüfung fehlgeschlagen',
+    );
   });
 });

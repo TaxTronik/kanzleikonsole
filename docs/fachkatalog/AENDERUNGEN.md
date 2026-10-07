@@ -1,5 +1,69 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-023
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/api/portal/interactions/[id]/document/route.ts
+      - apps/web/src/app/api/portal/logout/route.ts
+      - apps/web/src/app/api/staff/gwg/identity-source/route.ts
+      - apps/web/src/app/api/staff/mailbox/oauth/route.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts
+      - apps/web/src/app/gwg-onboarding/actions.ts
+      - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/elster/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/onboarding/[id]/actions.ts
+      - apps/web/src/app/staff/(protected)/poa/sign-actions.ts
+      - apps/web/src/server/auth/magic-link.ts
+      - apps/web/src/server/compliance/verfahrensdoku.ts
+      - apps/web/src/server/documents/__tests__/delivery.test.ts
+      - apps/web/src/server/documents/delivery.ts
+      - apps/web/src/server/forms/revision-download.ts
+      - apps/web/src/server/gwg-onboarding/service.ts
+      - apps/web/src/server/payroll/download.ts
+      - apps/web/src/server/rate-limit/index.ts
+      - apps/web/src/server/settings/quantenlos.ts
+    rule_ids:
+      - ACCESS-STAFF-PERMISSION-001
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-HASH-CHAIN-001
+      - DOC-PORTAL-SHARING-001
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - FORM-PRESUBMIT-UPLOAD-001
+      - FORM-SCHEMA-SNAPSHOT-001
+      - GOBD-VERFAHRENSDOKU-001
+      - GWG-OCR-ASSIST-001
+      - GWG-SELF-ONBOARDING-001
+      - MAIL-INBOX-001
+      - PAYROLL-INTAKE-001
+      - POA-LIFECYCLE-001
+      - POA-SIGNING-CONFIRMATION-001
+      - POA-SIGNING-SNAPSHOT-001
+      - REMINDER-TICKET-001
+      - REQ-LIFECYCLE-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+      - TAX-MASTER-DATA-001
+      - TAX-NOTICE-DECISION-001
+      - YEAR-END-CAMPAIGN-001
+    reason: >-
+      Bisher stillschweigend verworfene Fehler werden protokolliert, mit Request-ID
+      und ohne personenbezogene Daten (u. a. GwG-Onboarding-Tokenprüfungen,
+      `lastLoginAt`-Update im Portal, Sperrzähler und Rate-Limit, Abmeldung,
+      Zugriffsprotokoll und Vorschau von Dokumenten, Formular-, Lohn-, Bescheid- und
+      Vollmachtsdownloads, Postfach-OAuth). Erwartete 404 bei Formularrevisionen
+      erhalten eine eigene Fehlerklasse und bleiben ohne Log. Nutzerseitige
+      Ergebnisse, Meldungen, Statuscodes und fachliche Abläufe bleiben unverändert.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts
+      - apps/web/src/server/auth/__tests__/lockout.test.ts
+      - apps/web/src/server/auth/__tests__/magic-link.test.ts
+      - apps/web/src/server/documents/__tests__/delivery.test.ts
+      - apps/web/src/server/forms/__tests__/revision-download.test.ts
+      - apps/web/src/server/payroll/__tests__/action-result.test.ts
+      - apps/web/src/server/rate-limit/__tests__/reset-rate-limit.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-022
     date: '2026-10-07'
     paths:
@@ -4593,6 +4657,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-023` dokumentiert die Protokollierung bisher
+  stillschweigend verworfener Fehler.
 
 - 2026-10-07: `FK-EXC-20261007-022` dokumentiert den `lock_timeout` der
   App-Datenbankrolle.

@@ -902,6 +902,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Bisher stillschweigend verworfene Fehler werden protokolliert, mit Request-ID
+  und ohne personenbezogene Daten, u. a. bei GwG-Onboarding-Tokenprüfungen,
+  dem `lastLoginAt`-Update im Portal, Sperrzähler und Rate-Limit, Abmeldung,
+  Zugriffsprotokoll und Vorschau von Dokumenten, Formular-, Lohn- und
+  Bescheid-Downloads sowie den Prüfungen des Health-Alerts; das Verhalten für
+  Nutzer bleibt unverändert.
 - **[Scope]** Risiko-Archiv (Subsumtions-Snapshot) und Engine-Rohergebnisse der
   Risikoanalyse journalisieren ihre Speicherabsicht vor dem Schreiben in den
   GoBD-Bucket und schließen sie mit dem Verweis an der Analyse ab. Objekte aus

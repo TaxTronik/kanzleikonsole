@@ -29,6 +29,7 @@ import { readModules } from '@/server/settings/modules';
 import { SectionCard } from '../section-card';
 import { presentN8nHealth, type AttentionStatus, type IntegrationRowStatus } from './presentation';
 import { SignalEmbeddingCard } from './signal-embedding-card';
+import { log } from '@/server/logger';
 
 interface Row {
   icon: typeof Database;
@@ -90,9 +91,18 @@ export default async function IntegrationsSettingsPage() {
     } else {
       try {
         embeddingStatus = await new RiskLayerClient().embeddingStatus();
-      } catch {
+      } catch (error) {
         // Defensiv: Die Integrationsseite bleibt auch bei einer gestörten oder
-        // älteren Signal-Engine erreichbar und gibt keine Transportdetails aus.
+        // älteren Signal-Engine erreichbar und gibt keine Transportdetails aus;
+        // die stehen nur im Log (F-05).
+        log.warn(
+          {
+            component: 'integrations-page',
+            errName: error instanceof Error ? error.name : typeof error,
+            err: error instanceof Error ? error.message : String(error),
+          },
+          'integrations: Embedding-Status der Signal-Engine nicht lesbar',
+        );
         embeddingStatusUnavailable = true;
       }
     }

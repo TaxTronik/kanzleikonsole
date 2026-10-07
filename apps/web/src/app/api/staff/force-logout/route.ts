@@ -12,6 +12,7 @@ import { staffSessionSubject, staffSignOut } from '@/server/auth/staff';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import { staffSessionFactory } from '@/server/auth/staff-session';
+import { log } from '@/server/logger';
 
 function staffLoginResponse(): NextResponse {
   // Relative Location ist absichtlich host-neutral: req.url kann hinter einem
@@ -33,15 +34,25 @@ async function logout(req: NextRequest, revoke: boolean): Promise<NextResponse> 
       if (staffId) {
         await revokeAllSessions('staff', staffId);
       }
-    } catch {
+    } catch (error) {
       revocationFailed = true;
+      // F-05: Der Widerruf aller Sitzungen ist sicherheitsrelevant; der Client
+      // bekommt 503, das Log den Grund (ohne Staff-ID).
+      log.warn(
+        { component: 'staff-logout', err: (error as Error).message },
+        'staff-logout: Sitzungswiderruf fehlgeschlagen',
+      );
     }
   }
 
   try {
     await staffSignOut({ redirect: false });
-  } catch {
+  } catch (error) {
     // Die explizite Cookie-Loeschung unten bleibt der ausfallsichere Pfad.
+    log.warn(
+      { component: 'staff-logout', err: (error as Error).message },
+      'staff-logout: Auth.js-Abmeldung fehlgeschlagen, Cookies werden direkt gelöscht',
+    );
   }
 
   const response = revocationFailed

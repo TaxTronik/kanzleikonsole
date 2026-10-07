@@ -12,6 +12,7 @@ import { portalSessionSubject, portalSignOut } from '@/server/auth/portal';
 import { revokeAllSessions } from '@/server/auth/revocation';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import { portalSessionFactory } from '@/server/auth/portal-session';
+import { log } from '@/server/logger';
 
 function portalLoginResponse(): NextResponse {
   return new NextResponse(null, {
@@ -33,14 +34,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (contactId) {
       await revokeAllSessions('portal', contactId);
     }
-  } catch {
+  } catch (error) {
     revocationFailed = true;
+    // F-05: Der Widerruf aller Sitzungen ist sicherheitsrelevant; der Client
+    // bekommt 503, das Log den Grund (ohne Kontakt-ID).
+    log.warn(
+      { component: 'portal-logout', err: (error as Error).message },
+      'portal-logout: Sitzungswiderruf fehlgeschlagen',
+    );
   }
 
   try {
     await portalSignOut({ redirect: false });
-  } catch {
+  } catch (error) {
     // Die explizite Cookie-Loeschung unten bleibt der ausfallsichere Pfad.
+    log.warn(
+      { component: 'portal-logout', err: (error as Error).message },
+      'portal-logout: Auth.js-Abmeldung fehlgeschlagen, Cookies werden direkt gelöscht',
+    );
   }
 
   // 303 stellt sicher, dass der Browser dem POST mit einem GET folgt.

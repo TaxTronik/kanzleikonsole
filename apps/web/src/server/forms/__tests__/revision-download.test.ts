@@ -9,6 +9,7 @@ const h = vi.hoisted(() => ({
   rate: vi.fn(),
   evidence: vi.fn(),
   access: vi.fn(),
+  logWarn: vi.fn(),
 }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: h.context }));
 // R-05: S3 am Storage-Client mocken — der gemeinsame, prüfende Leseweg
@@ -22,6 +23,7 @@ vi.mock('@/server/actions/portal-action', () => ({ portalActionGuard: h.guard })
 vi.mock('@/server/auth/rbac', () => ({ assertClientAccessTx: h.access }));
 vi.mock('@/server/rate-limit', () => ({ checkRateLimit: h.rate }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidence } }));
+vi.mock('@/server/logger', () => ({ log: { warn: h.logWarn } }));
 import { formRevisionDownload } from '../revision-download';
 const id = '11111111-1111-4111-8111-111111111111';
 const bytes = Buffer.from('original');
@@ -110,8 +112,28 @@ describe('FORM-SCHEMA-SNAPSHOT-001 historical file delivery', () => {
         );
       expect((await formRevisionDownload('portal', id)).status).toBe(404);
       expect(h.evidence).not.toHaveBeenCalled();
+      // F-05: eine nicht bestätigte Fassung bleibt für den Nutzer ein 404,
+      // steht aber im Log (ohne Dateiname).
+      expect(h.logWarn).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ component: 'form-revision-download', revisionFileId: id }),
+        'form-revision-download: Fassung nicht lesbar',
+      );
+      expect(JSON.stringify(h.logWarn.mock.calls)).not.toContain('old.pdf');
     },
   );
+  it('F-05: loggt einen Speicherausfall, aber keine fehlende Freigabe', async () => {
+    h.send.mockRejectedValueOnce(new Error('connect ECONNREFUSED'));
+    expect((await formRevisionDownload('portal', id)).status).toBe(404);
+    expect(h.logWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ err: 'connect ECONNREFUSED' }),
+      'form-revision-download: Fassung nicht lesbar',
+    );
+
+    h.logWarn.mockClear();
+    h.guard.mockResolvedValueOnce({ ok: false });
+    expect((await formRevisionDownload('portal', id)).status).toBe(404);
+    expect(h.logWarn).not.toHaveBeenCalled();
+  });
   it.each(['unshared', 'deleted', 'quarantined'])(
     'does not fetch an %s historical source',
     async (kind) => {

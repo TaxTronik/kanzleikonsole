@@ -8,11 +8,13 @@ const mocks = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
   getClientIp: vi.fn(() => '127.0.0.1'),
+  log: { error: vi.fn(), warn: vi.fn() },
 }));
 
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: mocks.evidenceRecord } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: mocks.getClientIp }));
+vi.mock('@/server/logger', () => ({ log: mocks.log }));
 vi.mock('@taxtronik/storage', () => ({
   sanitizeFilenameForHeader: (value: string) => value,
   streamVerifiedObject: vi.fn(),
@@ -136,6 +138,14 @@ describe('document delivery pipeline', () => {
     );
     expect(failed.status).toBe(502);
     await expect(failed.json()).resolves.toEqual({ error: 'storage_unavailable' });
+    // F-05: die 502 bleibt nicht ohne Ursache im Log.
+    expect(mocks.log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        component: 'document-delivery',
+        err: 'LENGTH_MISMATCH: abweichend',
+      }),
+      'document-delivery: Vorschau nicht lesbar',
+    );
   });
   it('requires fresh payroll rights even when a generic document lookup returned the artifact', async () => {
     const tx = transaction();
@@ -202,6 +212,15 @@ describe('document delivery pipeline', () => {
     ).resolves.toMatchObject({ title: 'Dokument', clientId: 'client-1' });
     expect(mocks.withTenantContext).toHaveBeenCalledTimes(2);
     expect(mocks.evidenceRecord).toHaveBeenCalledTimes(1);
+    // F-05: Der fehlende Zugriffsnachweis ist ein Fehler im Log, kein Schweigen.
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        component: 'document-delivery',
+        action: 'document.preview',
+        err: 'audit unavailable',
+      }),
+      'document-delivery: Zugriff nicht protokolliert',
+    );
   });
 
   it.each(['reject', 'ignore'] as const)(

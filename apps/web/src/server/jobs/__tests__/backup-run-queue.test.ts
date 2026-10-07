@@ -5,11 +5,13 @@ const m = vi.hoisted(() => ({
   getJob: vi.fn(),
   remove: vi.fn(),
   add: vi.fn(),
+  logWarn: vi.fn(),
 }));
 vi.mock('../bullmq', () => ({
   WEB_QUEUE_TIMEOUT_MS: 2_000,
   getWebQueue: () => ({ getJob: m.getJob, remove: m.remove, add: m.add }),
 }));
+vi.mock('@/server/logger', () => ({ log: { warn: m.logWarn } }));
 
 import { BACKUP_STALE_RUNNING_MS } from '@taxtronik/db/pg-tools';
 import {
@@ -51,6 +53,18 @@ describe('enqueueManualBackup', () => {
 
     expect(await enqueueManualBackup('tenant-1', 'staff-1')).toBe(true);
     expect(m.add).toHaveBeenCalledOnce();
+  });
+
+  it('F-05: loggt ein gescheitertes Entfernen und reiht trotzdem ein', async () => {
+    m.getJob.mockResolvedValue({ getState: async () => 'failed' });
+    m.remove.mockRejectedValue(new Error('Job is locked'));
+
+    expect(await enqueueManualBackup('tenant-1', 'staff-1')).toBe(true);
+    expect(m.add).toHaveBeenCalledOnce();
+    expect(m.logWarn).toHaveBeenCalledExactlyOnceWith(
+      { component: 'backup-run-queue', tenantId: 'tenant-1', err: 'Job is locked' },
+      'backup-run-queue: vorheriger Job nicht entfernt (läuft noch oder Redis langsam)',
+    );
   });
 });
 

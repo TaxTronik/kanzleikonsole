@@ -10,6 +10,7 @@ import { readModules } from '@/server/settings/modules';
 import { noticeDecisionSnapshot } from '@/server/workflows/interactions';
 import { evidenceService } from '@/server/container';
 import { checkPortalReadLimit } from '@/server/rate-limit';
+import { log } from '@/server/logger';
 import { isUuid } from '@/lib/uuid';
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -82,7 +83,18 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
         'x-content-type-options': 'nosniff',
       },
     });
-  } catch {
+  } catch (error) {
+    // F-05: Speicher-, Prüfsummen- oder Audit-Fehler nicht still verschlucken.
+    log.warn(
+      {
+        component: 'notice-decision-document',
+        interactionId: id,
+        documentVersionId: source.version.id,
+        errName: error instanceof Error ? error.name : typeof error,
+        err: error instanceof Error ? error.message : String(error),
+      },
+      'notice-decision-document: Download fehlgeschlagen',
+    );
     return NextResponse.json({ error: 'document_unavailable' }, { status: 502 });
   }
 }

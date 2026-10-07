@@ -94,6 +94,19 @@ export function evaluateTransitions(
   return { next, alerts };
 }
 
+/**
+ * F-05: Ein gescheiterter Check zählt als „down“; der Grund gehört ins Log,
+ * sonst nennt die Alarm-Mail einen Ausfall ohne Ursache. Höchstens eine Zeile
+ * je Check und Lauf (alle 5 min).
+ */
+export function checkFailed(check: ServiceName | 'state', err: unknown): false {
+  log.warn(
+    { component: 'health-alert', check, err: err instanceof Error ? err.message : String(err) },
+    'health-alert: Prüfung fehlgeschlagen',
+  );
+  return false;
+}
+
 function withTimeout<T>(p: Promise<T>, label: string): Promise<T> {
   return Promise.race([
     p,
@@ -117,16 +130,16 @@ async function checkPostgres(): Promise<boolean> {
   try {
     await withTimeout(prismaOwner.$queryRawUnsafe('SELECT 1'), 'postgres');
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    return checkFailed('postgres', err);
   }
 }
 
 async function checkRedis(): Promise<boolean> {
   try {
     return (await withTimeout(connection.ping(), 'redis')) === 'PONG';
-  } catch {
-    return false;
+  } catch (err) {
+    return checkFailed('redis', err);
   }
 }
 
@@ -134,15 +147,15 @@ async function checkObjectStore(): Promise<boolean> {
   try {
     await withTimeout(s3.send(new ListBucketsCommand({})), 's3');
     return true;
-  } catch {
-    return false;
+  } catch (err) {
+    return checkFailed('objectStore', err);
   }
 }
 
 /** HTTP-GET-Healthcheck (2xx = up). Für App- und n8n-Erreichbarkeit im
  *  internen Netz — deckt Crashloop/Hänger ab, die der Prozess-Restart nicht
  *  erkennt (der Prozess lebt, antwortet aber nicht). */
-async function checkHttp(url: string): Promise<boolean> {
+async function checkHttp(service: 'app' | 'n8n', url: string): Promise<boolean> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), CHECK_TIMEOUT_MS);
@@ -152,20 +165,20 @@ async function checkHttp(url: string): Promise<boolean> {
     } finally {
       clearTimeout(t);
     }
-  } catch {
-    return false;
+  } catch (err) {
+    return checkFailed(service, err);
   }
 }
 
 /** App-Healthcheck über das interne Netz (erkennt Crashloop trotz Restart).
  *  Service-Name `app` aus docker-compose.app.yml, Port 3000 (kein Host-Port). */
 function checkApp(): Promise<boolean> {
-  return checkHttp('http://app:3000/api/health');
+  return checkHttp('app', 'http://app:3000/api/health');
 }
 
 /** n8n-Healthcheck (Outbox staut sich sonst still). */
 function checkN8n(): Promise<boolean> {
-  return checkHttp('http://n8n:5678/healthz');
+  return checkHttp('n8n', 'http://n8n:5678/healthz');
 }
 
 /**
@@ -200,8 +213,8 @@ async function checkAuditAnchor(): Promise<boolean> {
       'audit-anchor',
     );
     return rows[0]?.ok ?? false;
-  } catch {
-    return false;
+  } catch (err) {
+    return checkFailed('auditAnchor', err);
   }
 }
 
@@ -217,8 +230,12 @@ function checkClamAV(): Promise<boolean> {
         resolve(ok);
       }
     };
-    sock.setTimeout(CHECK_TIMEOUT_MS, () => done(false));
-    sock.on('error', () => done(false));
+    const fail = (err: unknown) => {
+      if (!answered) checkFailed('clamav', err);
+      done(false);
+    };
+    sock.setTimeout(CHECK_TIMEOUT_MS, () => fail(new Error(`Timeout nach ${CHECK_TIMEOUT_MS} ms`)));
+    sock.on('error', fail);
     sock.connect(env.CLAMAV_PORT, env.CLAMAV_HOST, () => {
       sock.write('zPING\0');
     });
@@ -230,7 +247,9 @@ async function loadState(): Promise<HealthState> {
   try {
     const raw = await connection.get(STATE_KEY);
     return raw ? (JSON.parse(raw) as HealthState) : {};
-  } catch {
+  } catch (err) {
+    // Ohne Vorzustand zählt der Lauf neu; Alarme kommen dann frühestens im nächsten.
+    checkFailed('state', err);
     return {};
   }
 }
@@ -238,7 +257,9 @@ async function loadState(): Promise<HealthState> {
 async function saveState(state: HealthState): Promise<void> {
   // TTL 1 Tag: nach längerem Worker-Stillstand frisch starten statt mit
   // uraltem Zustand sofort zu entwarnen/alarmieren.
-  await connection.set(STATE_KEY, JSON.stringify(state), 'EX', 24 * 60 * 60).catch(() => undefined);
+  await connection
+    .set(STATE_KEY, JSON.stringify(state), 'EX', 24 * 60 * 60)
+    .catch((err: unknown) => checkFailed('state', err));
 }
 
 function alertMail(service: ServiceName, kind: 'down' | 'up'): { subject: string; body: string } {
@@ -288,8 +309,8 @@ async function checkBackupFresh(now: Date = new Date()): Promise<boolean> {
     );
     if (!last?.finishedAt) return false; // noch nie erfolgreich gesichert → Alarm
     return now.getTime() - last.finishedAt.getTime() <= BACKUP_MAX_AGE_MS;
-  } catch {
-    return false; // nicht feststellbar → als "nicht frisch" behandeln, Alarm
+  } catch (err) {
+    return checkFailed('backup', err); // nicht feststellbar → als "nicht frisch" behandeln, Alarm
   }
 }
 

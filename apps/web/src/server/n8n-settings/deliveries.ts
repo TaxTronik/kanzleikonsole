@@ -26,6 +26,7 @@ import {
   type N8nAdminContext,
   type N8nSettingsResult,
 } from './shared';
+import { log } from '@/server/logger';
 
 /** Offene Fehler seitenweise (50 je Seite), unabhängig von neueren Erfolgen. */
 export async function listFailedN8nDeliveries(
@@ -317,14 +318,27 @@ export async function replayUnroutedN8nEvent(
   }
 
   let queueFailures = 0;
+  let lastQueueError: unknown;
   for (const deliveryId of replay.pendingIds) {
     try {
       const job = n8nDeliveryJob(deliveryId);
       await getN8nDeliverQueue().add(job.name, job.data, job.opts);
-    } catch {
+    } catch (error) {
       // Der Reconcile-Job nimmt persistierte PENDING-Deliveries wieder auf.
       queueFailures += 1;
+      lastQueueError = error;
     }
+  }
+  if (queueFailures > 0) {
+    // F-05: einmal je Aktion statt je Zustellung.
+    log.warn(
+      {
+        component: 'n8n-replay',
+        queueFailures,
+        err: lastQueueError instanceof Error ? lastQueueError.message : String(lastQueueError),
+      },
+      'n8n: Zustellungen nicht eingeplant, Reconcile übernimmt',
+    );
   }
   revalidateN8nSettings();
   return {

@@ -13,6 +13,7 @@ import type { TxClient } from '@taxtronik/db';
 import type { BooleanTenantModules } from '@taxtronik/db/tenant-modules';
 import { CountUp } from '@/components/count-up';
 import type { ClientAccessWhere } from '@/server/auth/client-access-filter';
+import { log } from '@/server/logger';
 
 // Prisma-Transaktions-Client aus withTenantContext (RLS-gebunden).
 export type Tx = TxClient;
@@ -99,8 +100,17 @@ export async function kpi(
   let value = 0;
   try {
     value = await count(ctx.tx);
-  } catch {
+  } catch (error) {
     // Bei DB-Fehler den Wert 0 anzeigen, statt das ganze Dashboard zu kippen.
+    // F-05: Die 0 ist dann kein echter Wert; das Log sagt, welche Kachel.
+    log.warn(
+      {
+        component: 'dashboard-kpi',
+        href,
+        err: error instanceof Error ? error.message : String(error),
+      },
+      'dashboard: Kennzahl nicht lesbar, zeige 0',
+    );
   }
   return (
     <Link

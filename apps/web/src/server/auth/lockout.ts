@@ -49,7 +49,13 @@ async function countDistinctFailIps(userId: string, ip: string): Promise<number 
     await r.expire(key, DISTINCT_IP_WINDOW_SEC);
     const count = await r.scard(key);
     return typeof count === 'number' ? count : null;
-  } catch {
+  } catch (err) {
+    // F-05: Ohne Zählung greift nur das kontogebundene Rate-Limit; der
+    // Redis-Ausfall gehört ins Log (ohne Konto-ID und IP).
+    log.warn(
+      { component: 'lockout', err: (err as Error).message },
+      'lockout: Redis-Zählung der Fehlversuchs-IPs fehlgeschlagen',
+    );
     return null;
   }
 }

@@ -10,14 +10,24 @@ import { portalActionGuard } from '@/server/actions/portal-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { checkRateLimit } from '@/server/rate-limit';
 import { evidenceService } from '@/server/container';
+import { ForbiddenError } from '@/server/actions/action-error';
+import { log } from '@/server/logger';
 import { isUuid } from '@/lib/uuid';
+
+/** Fassung fehlt, ist nicht freigegeben oder gehört einem anderen Mandanten (→ 404). */
+class RevisionSourceUnavailableError extends Error {
+  constructor() {
+    super('Unavailable');
+    this.name = 'RevisionSourceUnavailableError';
+  }
+}
 
 async function loadSource(surface: 'staff' | 'portal', id: string) {
   const g =
     surface === 'staff'
       ? await staffActionGuard({ module: 'forms' })
       : await portalActionGuard({ module: 'forms' });
-  if (!g.ok) throw new Error('Unavailable');
+  if (!g.ok) throw new RevisionSourceUnavailableError();
   return withTenantContext(g.ctx, async (tx) => {
     const file = await tx.formSubmissionRevisionFile.findUnique({
       where: { id },
@@ -26,10 +36,10 @@ async function loadSource(surface: 'staff' | 'portal', id: string) {
         documentVersion: { include: { document: true } },
       },
     });
-    if (!file) throw new Error('Unavailable');
+    if (!file) throw new RevisionSourceUnavailableError();
     const clientId = file.revision.submission.clientId;
     if ('staffId' in g) await assertClientAccessTx(tx, g.session, clientId);
-    else if (g.clientId !== clientId) throw new Error('Unavailable');
+    else if (g.clientId !== clientId) throw new RevisionSourceUnavailableError();
     const version = file.documentVersion,
       document = version.document;
     if (
@@ -40,7 +50,7 @@ async function loadSource(surface: 'staff' | 'portal', id: string) {
       !version.storageVersionId ||
       Buffer.from(version.sha256).toString('hex') !== file.sha256
     )
-      throw new Error('Unavailable');
+      throw new RevisionSourceUnavailableError();
     const answers = file.revision.answers as Record<string, unknown>;
     const answer = answers[file.fieldKey];
     const fileName =
@@ -105,7 +115,20 @@ export async function formRevisionDownload(surface: 'staff' | 'portal', id: stri
         'referrer-policy': 'no-referrer',
       },
     });
-  } catch {
+  } catch (error) {
+    // Nicht verfügbare oder fremde Fassungen enden bewusst gleich (404).
+    // F-05: Speicher-, Integritäts- und Datenbankfehler zusätzlich ins Log.
+    if (!(error instanceof RevisionSourceUnavailableError || error instanceof ForbiddenError)) {
+      log.warn(
+        {
+          component: 'form-revision-download',
+          revisionFileId: id,
+          errName: error instanceof Error ? error.name : typeof error,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'form-revision-download: Fassung nicht lesbar',
+      );
+    }
     return new NextResponse(null, { status: 404 });
   }
 }

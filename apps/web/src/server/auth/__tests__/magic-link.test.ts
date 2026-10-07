@@ -575,6 +575,22 @@ describe('verifyMagicLink', () => {
     });
   });
 
+  it('F-05: loggt einen gescheiterten lastLoginAt-Write, ohne den Login zu blockieren', async () => {
+    m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord());
+    m.prismaOwner.clientContact.update.mockRejectedValueOnce(new Error('connection lost'));
+
+    const res = await verifyMagicLink(RAW_TOKEN);
+
+    expect(res?.contact.id).toBe(CONTACT.id);
+    await vi.waitFor(() =>
+      expect(m.log.warn).toHaveBeenCalledWith(
+        { label: 'portal-login: lastLoginAt', err: 'connection lost' },
+        'fire-and-forget failed',
+      ),
+    );
+    expect(JSON.stringify(m.log.warn.mock.calls)).not.toContain(CONTACT.email);
+  });
+
   it('zeigt bei einem E-Mail-Link alle Profile an, ohne den Token zu konsumieren', async () => {
     m.prismaOwner.magicLink.findFirst.mockResolvedValue(linkRecord({ contactId: null }));
     m.prismaOwner.clientContact.findMany.mockResolvedValue([

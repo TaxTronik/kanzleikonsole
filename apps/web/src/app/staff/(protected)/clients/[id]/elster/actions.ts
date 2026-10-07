@@ -29,6 +29,7 @@ import { checkRateLimit } from '@/server/rate-limit';
 import { staffAction, type ActionResult } from '@/server/actions/staff-action';
 import { audit } from '@/server/actions/audit';
 import { formDefault, formFlag, parseFormData } from '@/server/actions/form-data';
+import { log } from '@/server/logger';
 
 const STEUERARTEN = ['ESt', 'KSt', 'USt', 'LSt', 'GewSt', 'ZaSt', 'KapESt'] as const;
 
@@ -194,6 +195,15 @@ export async function kontoabfrageAction(
           // Nutzdaten-frei (nur Status + strukturierter Fehlercode).
           return { ok: false, error: e.message };
         }
+        // F-05: Netz- oder Programmfehler der Bridge ins Log (ohne PIN und Nutzdaten).
+        log.warn(
+          {
+            component: 'elster-kontoabfrage',
+            errName: e instanceof Error ? e.name : typeof e,
+            code: (e as { code?: unknown }).code,
+          },
+          'elster: Bridge nicht erreichbar',
+        );
         return { ok: false, error: 'Bridge nicht erreichbar — Container/URL prüfen.' };
       }
 

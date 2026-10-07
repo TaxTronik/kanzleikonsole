@@ -13,6 +13,7 @@
 
 import { verifyLicense, type LicenseInfo } from './verify';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { log } from '@/server/logger';
 
 let cached: { info: LicenseInfo; until: number } | null = null;
 const TTL_MS = 60 * 60 * 1000;
@@ -24,9 +25,13 @@ async function getInstallationTenantSlug(): Promise<string | null> {
       select: { slug: true },
     });
     return first?.slug ?? null;
-  } catch {
+  } catch (err) {
     // DB nicht erreichbar — Lizenz-Check schlägt nicht fehl, sondern Bindung
-    // wird übersprungen. Der Boot-Check loggt das.
+    // wird für diesen Cache-Zeitraum übersprungen (F-05: mit Log).
+    log.warn(
+      { component: 'license', err: (err as Error).message },
+      'license: Tenant-Bindung nicht prüfbar (Datenbank nicht lesbar)',
+    );
     return null;
   }
 }

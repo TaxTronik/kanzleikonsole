@@ -9,6 +9,22 @@ import { archiveStructureAction } from '../actions';
 import StructureEditor from './editor';
 import { GwgStructurePanel } from '@/server/mandate-expansion/gwg-structure-panel';
 import { bindGwgStructureAction } from './gwg-actions';
+import { ActionError, ForbiddenError } from '@/server/actions/action-error';
+import { log } from '@/server/logger';
+
+/** Unzugängliche Strukturen sind erwartbar; F-05: alles andere ins Log. */
+function logUnexpectedStructureError(error: unknown): void {
+  if (error instanceof ActionError || error instanceof ForbiddenError) return;
+  log.warn(
+    {
+      component: 'mandate-structure',
+      errName: error instanceof Error ? error.name : typeof error,
+      err: error instanceof Error ? error.message : String(error),
+    },
+    'mandate-structure: Struktur nicht ladbar',
+  );
+}
+
 export default async function StructurePage({
   searchParams,
 }: {
@@ -26,8 +42,9 @@ export default async function StructurePage({
   if (client)
     try {
       saved = await withTenantContext(ctx, (tx) => loadStructureTx(tx, session, clientId));
-    } catch {
+    } catch (error) {
       unavailable = true;
+      logUnexpectedStructureError(error);
     }
   const artifacts = client
     ? await withTenantContext(ctx, (tx) =>

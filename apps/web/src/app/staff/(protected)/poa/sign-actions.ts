@@ -20,6 +20,7 @@ import {
 
 import { SIGNING_TOKEN_TTL_HOURS, hashToken } from './_signing-shared';
 import type { ActionResult } from './actions';
+import { log } from '@/server/logger';
 
 // =============================================================================
 // OEFFENTLICHER Sign-Flow (kein Staff-Auth): Autorisierung ueber Besitz des
@@ -473,7 +474,18 @@ export async function signPoaAction(input: {
         return { ok: true };
       },
     );
-  } catch {
+  } catch (error) {
+    // F-05: Der Unterzeichnende sieht eine neutrale Meldung, die Kanzlei im Log
+    // den Grund (Vollmacht-ID und Fehler, keine Unterzeichnerdaten).
+    log.error(
+      {
+        component: 'poa-sign',
+        poaId: lookup.id,
+        errName: error instanceof Error ? error.name : typeof error,
+        err: error instanceof Error ? error.message : String(error),
+      },
+      'poa-sign: Signatur nicht abgeschlossen',
+    );
     return {
       ok: false,
       error: 'Die Signatur konnte nicht sicher abgeschlossen werden. Bitte erneut versuchen.',

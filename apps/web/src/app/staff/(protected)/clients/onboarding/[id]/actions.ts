@@ -18,6 +18,7 @@ import { formDefault, parseFormData } from '@/server/actions/form-data';
 import { isGwgProfessionallyReviewed } from '@/server/gwg/professional-review';
 import { startManualGwgCaptureTx } from '@/server/gwg-onboarding/manual-capture';
 import { audit } from '@/server/actions/audit';
+import { log } from '@/server/logger';
 
 export interface WizardResult {
   ok: boolean;
@@ -125,8 +126,17 @@ export async function onboardingAddContactAction(
       if (sendInvite && clientAllowsPortal) {
         try {
           await requestMagicLink({ tenantId, email: contactEmail, contactId });
-        } catch {
-          // Mailversand-Fehler nicht blockierend — Wizard läuft weiter, Berater kann später nachversenden
+        } catch (error) {
+          // Mailversand-Fehler nicht blockierend — Wizard läuft weiter, Berater kann später nachversenden.
+          // F-05: ins Log mit Kontakt-ID, ohne E-Mail-Adresse.
+          log.warn(
+            {
+              component: 'client-onboarding',
+              contactId,
+              err: error instanceof Error ? error.message : String(error),
+            },
+            'client-onboarding: Portal-Einladung nicht versendet',
+          );
         }
       }
       return { clientId: parsed.data.clientId };

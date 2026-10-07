@@ -339,8 +339,13 @@ export async function resetRateLimit(key: string): Promise<void> {
   if (!r) return;
   try {
     await r.del(`rl:${key}`);
-  } catch {
-    // ignore
+  } catch (err) {
+    // F-05: Ein nicht zurückgesetzter Zähler bremst den nächsten legitimen
+    // Versuch; ins Log nur die Art des Schlüssels, nicht IP oder Konto.
+    log.warn(
+      { component: 'rate-limit', keyKind: key.split(':')[0], err: (err as Error).message },
+      'rate-limit: Zurücksetzen fehlgeschlagen',
+    );
   }
 }
 

@@ -25,6 +25,7 @@ import {
 } from '@taxtronik/evidence';
 import { readModules, type ModuleConfig } from '@/server/settings/modules';
 import { readTsaConfig } from '@/server/settings/tsa';
+import { log } from '@/server/logger';
 import { getTsaProvider } from '@taxtronik/evidence';
 
 export interface VerfahrensdokuData {
@@ -58,7 +59,17 @@ export async function collectVerfahrensdokuData(
       tx.tenant.findUniqueOrThrow({ where: { id: ctx.tenantId }, select: { name: true } }),
     ),
     readModules(ctx),
-    readTsaConfig(ctx).catch(() => null),
+    readTsaConfig(ctx).catch((error: unknown) => {
+      // F-05: Das Dokument nennt dann keine TSA-Konfiguration; warum, steht im Log.
+      log.warn(
+        {
+          component: 'verfahrensdoku',
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'verfahrensdoku: TSA-Konfiguration nicht lesbar',
+      );
+      return null;
+    }),
   ]);
 
   const [lastBackup, drillSetting, verifySetting, ...counts] = await withTenantContext(ctx, (tx) =>

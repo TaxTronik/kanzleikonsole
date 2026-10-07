@@ -12,6 +12,7 @@
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 
 import { withTimeout } from '@/lib/with-timeout';
+import { log } from '@/server/logger';
 import { getWebQueue, WEB_QUEUE_TIMEOUT_MS } from './bullmq';
 
 /**
@@ -64,7 +65,18 @@ export async function enqueueManualBackup(
   if (isPendingBackupJobState(await getManualBackupJobState(tenantId))) return false;
   const queue = getWebQueue(JOB_QUEUES.backupRun.name);
   const jobId = manualBackupJobId(tenantId);
-  await withTimeout(queue.remove(jobId), WEB_QUEUE_TIMEOUT_MS).catch(() => undefined);
+  // F-05: wie bei den übrigen Queues geloggt statt verschluckt; ein noch
+  // gesperrter Vorlauf macht das folgende add ohnehin zum No-op.
+  await withTimeout(queue.remove(jobId), WEB_QUEUE_TIMEOUT_MS).catch((err: unknown) => {
+    log.warn(
+      {
+        component: 'backup-run-queue',
+        tenantId,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      'backup-run-queue: vorheriger Job nicht entfernt (läuft noch oder Redis langsam)',
+    );
+  });
   await withTimeout(
     queue.add(
       JOB_QUEUES.backupRun.name,

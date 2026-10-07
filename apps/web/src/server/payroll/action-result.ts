@@ -4,6 +4,7 @@ import { ActionError } from '@/server/actions/action-error';
 import { PayrollUploadError } from './storage';
 import type { PayrollActionResult } from '@/components/payroll-action-form';
 import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
+import { log } from '@/server/logger';
 
 /** Jede Lohn-Mutation revalidiert alle drei Oberflächen (Kanzlei, Portal, Gastzugang). */
 export const PAYROLL_REVALIDATE_PATHS = [
@@ -28,6 +29,18 @@ export function payrollActionError(error: unknown): PayrollActionResult & {
   if (error instanceof UnsupportedPdfTextError) return { ok: false, error: error.message };
   if (error instanceof z.ZodError)
     return { ok: false, error: 'Eingaben und Pflichtfelder prüfen.' };
+  // F-05: Alles Unerwartete (Datenbank, Speicher, Programmfehler) bleibt für
+  // den Nutzer generisch, steht aber im Log — ohne Formular- oder Dateidaten.
+  const err = error instanceof Error ? error : null;
+  log.error(
+    {
+      component: 'payroll-action',
+      errName: err?.name ?? typeof error,
+      err: err?.message ?? String(error),
+      stack: err?.stack,
+    },
+    'payroll: unbehandelte Exception',
+  );
   return {
     ok: false,
     error:

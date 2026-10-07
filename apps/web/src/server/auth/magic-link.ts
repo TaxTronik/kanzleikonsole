@@ -7,6 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { notifyMany } from '@/server/notifications/service';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { log } from '@/server/logger';
+import { fireAndForget } from '@/server/util/fire-and-forget';
 import { checkRateLimit, emailRateLimitKey, type RateLimitConfig } from '@/server/rate-limit';
 import { filterStaffAccessClientTx } from '@/server/auth/rbac';
 import { findEligiblePortalProfilesByEmail, type PortalProfileOption } from './portal-profiles';
@@ -333,9 +334,15 @@ export async function verifyMagicLink(
   });
   if (!claimed) return null;
 
-  prismaOwner.clientContact
-    .update({ where: { id: contact.contactId }, data: { lastLoginAt: new Date() } })
-    .catch(() => void 0);
+  // F-05: lastLoginAt belegt die benutzte Login-Adresse, blockiert den Login
+  // aber nicht. Ein Fehler beim Schreiben gehört ins Log statt verschluckt.
+  fireAndForget(
+    'portal-login: lastLoginAt',
+    prismaOwner.clientContact.update({
+      where: { id: contact.contactId },
+      data: { lastLoginAt: new Date() },
+    }),
+  );
 
   return {
     contact: {

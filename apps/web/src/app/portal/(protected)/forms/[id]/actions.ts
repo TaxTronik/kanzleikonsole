@@ -18,6 +18,7 @@ import { validateFormAnswers } from '@/server/forms/validate-answers';
 import { readFormSchema } from '@/server/forms/schema-snapshot';
 import { answerProgressColumns } from '@/server/forms/answer-progress';
 import { audit } from '@/server/actions/audit';
+import { log } from '@/server/logger';
 
 const Schema = z.object({
   submissionId: z.string().uuid(),
@@ -764,11 +765,18 @@ export async function discardFormFileAction(input: {
           } else {
             await deleteObject(discarded.storage.bucket, discarded.storage.key);
           }
-        } catch {
+        } catch (error) {
           // Absichtlich Erfolg: Der sichtbare/DB-seitige Delete ist committed und
           // das durable Journal lässt den Worker die Storage-Bereinigung erneut
           // versuchen. Ein technischer Fehler darf den Nutzer nicht zum Upload
-          // einer bereits gelöschten Datei zurücknavigieren lassen.
+          // einer bereits gelöschten Datei zurücknavigieren lassen. F-05: Log.
+          log.warn(
+            {
+              component: 'portal-form-upload-discard',
+              err: error instanceof Error ? error.message : String(error),
+            },
+            'portal-form: Speicherobjekt nicht sofort gelöscht, Worker räumt nach',
+          );
         }
         // Auch bei sofort erfolgreichem Delete bleibt der Journal-Eintrag offen.
         // Der SYSTEM-Worker bestaetigt nach seiner Sicherheitsfrist den fehlenden

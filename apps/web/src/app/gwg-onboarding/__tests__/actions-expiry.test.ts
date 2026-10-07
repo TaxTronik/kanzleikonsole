@@ -21,6 +21,7 @@ const m = vi.hoisted(() => ({
   ensureGwgPersonFolder: vi.fn(),
   queryRaw: vi.fn(),
   countDocument: vi.fn(),
+  logError: vi.fn(),
 }));
 
 vi.mock('next/headers', () => ({ headers: m.headers }));
@@ -63,7 +64,7 @@ vi.mock('@/server/rate-limit', () => ({
   checkIpOrGlobalLimit: m.checkIpOrGlobalLimit,
   getClientIp: vi.fn(() => '192.0.2.1'),
 }));
-vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
+vi.mock('@/server/logger', () => ({ log: { error: m.logError, warn: vi.fn() } }));
 vi.mock('@/server/notifications/service', () => ({ notifyMany: vi.fn() }));
 
 import { discardOnboardingUploadAction, uploadIdImageAction } from '../actions';
@@ -185,6 +186,45 @@ describe('GwG-Onboarding Ablauf-CAS bei Schreibaktionen', () => {
         kind: 'ID_DOCUMENT',
       }),
     ).resolves.toEqual({ ok: false, error: GENERIC_TOKEN_ERROR });
+    // F-05: der Fehler bleibt nicht still, das Log trägt weder Token noch Dateiname.
+    expect(m.logError).toHaveBeenCalledExactlyOnceWith(
+      {
+        component: 'gwg-onboarding',
+        action: 'upload',
+        errName: 'Error',
+        err: 'password authentication failed for db-user',
+      },
+      'gwg-onboarding: Einladung nicht ladbar',
+    );
+    expect(JSON.stringify(m.logError.mock.calls)).not.toMatch(/valid-looking-raw-token|ausweis/);
+  });
+
+  it('F-05: protokolliert einen Lookup-Fehler beim Verwerfen ohne Token', async () => {
+    m.findFirst.mockRejectedValueOnce(new Error('Connection terminated unexpectedly'));
+
+    await expect(
+      discardOnboardingUploadAction({
+        token: 'valid-looking-raw-token',
+        documentId: '00000000-0000-4000-8000-000000000001',
+      }),
+    ).resolves.toEqual({ ok: false, error: GENERIC_TOKEN_ERROR });
+    expect(m.logError).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ action: 'discard', err: 'Connection terminated unexpectedly' }),
+      'gwg-onboarding: Einladung nicht ladbar',
+    );
+    expect(JSON.stringify(m.logError.mock.calls)).not.toContain('valid-looking-raw-token');
+  });
+
+  it('F-05: protokolliert unbekannte oder geschlossene Einladungen nicht', async () => {
+    m.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      discardOnboardingUploadAction({
+        token: 'valid-looking-raw-token',
+        documentId: '00000000-0000-4000-8000-000000000001',
+      }),
+    ).resolves.toEqual({ ok: false, error: GENERIC_TOKEN_ERROR });
+    expect(m.logError).not.toHaveBeenCalled();
   });
 
   it('legt einen benannten Ausweis direkt im Personen-Unterordner an', async () => {

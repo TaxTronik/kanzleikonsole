@@ -163,6 +163,25 @@ function toAnonymousActionError(e: unknown): ActionResult {
 // Token-Lookup (gemeinsam für Upload + Submit)
 // ----------------------------------------------------------------------------
 
+/**
+ * F-05: Ein nicht ladbarer Token-Lookup endet für den anonymen Aufrufer immer
+ * mit derselben Meldung (kein Lifecycle-Orakel). Geschlossene oder abgelaufene
+ * Einladungen sind erwartbar; jeder andere Fehler (Datenbank, Redis) gehört ins
+ * Log — ohne Token, nur Fehlerklasse und -meldung.
+ */
+function logInviteLoadFailure(action: 'upload' | 'discard' | 'submit', error: unknown): void {
+  if (error instanceof InviteUnavailableError) return;
+  log.error(
+    {
+      component: 'gwg-onboarding',
+      action,
+      errName: error instanceof Error ? error.name : typeof error,
+      err: error instanceof Error ? error.message : String(error),
+    },
+    'gwg-onboarding: Einladung nicht ladbar',
+  );
+}
+
 async function loadInviteForWrite(rawToken: string) {
   const tokenHash = hashInviteToken(rawToken);
   const inv = await prismaOwner.gwgOnboardingInvite.findFirst({
@@ -293,9 +312,10 @@ export async function uploadIdImageAction(
   let invite: Awaited<ReturnType<typeof loadInviteForWrite>>;
   try {
     invite = await loadInviteForWrite(token);
-  } catch {
+  } catch (e) {
     // Der anonyme Token-Pfad darf weder Lifecycle-Zustände noch rohe
     // Datenbankfehler unterscheiden lassen.
+    logInviteLoadFailure('upload', e);
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
   const tokenHash = hashInviteToken(token);
@@ -816,7 +836,8 @@ export async function discardOnboardingUploadAction(input: {
   let invite: Awaited<ReturnType<typeof loadInviteForWrite>>;
   try {
     invite = await loadInviteForWrite(token);
-  } catch {
+  } catch (e) {
+    logInviteLoadFailure('discard', e);
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
   const tokenHash = hashInviteToken(token);
@@ -1000,17 +1021,7 @@ export async function submitOnboardingAction(
   } catch (e) {
     // Wie Upload und Verwerfen: weder Lifecycle-Zustände noch rohe
     // Datenbankfehler dürfen für den anonymen Token-Pfad unterscheidbar sein.
-    if (!(e instanceof InviteUnavailableError)) {
-      log.error(
-        {
-          component: 'gwg-onboarding',
-          action: 'submit',
-          errName: e instanceof Error ? e.name : typeof e,
-          err: e instanceof Error ? e.message : String(e),
-        },
-        'gwg-onboarding: Einladung für Submit nicht ladbar',
-      );
-    }
+    logInviteLoadFailure('submit', e);
     return { ok: false, error: GENERIC_TOKEN_ERROR };
   }
 

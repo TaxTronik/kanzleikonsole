@@ -5,6 +5,8 @@ import { requireGuestHash } from './capability';
 import { checkRateLimit } from '@/server/rate-limit';
 import { bytesResponseBody, sanitizeFilenameForHeader } from '@taxtronik/storage';
 import { isUuid } from '@/lib/uuid';
+import { ActionError } from '@/server/actions/action-error';
+import { log } from '@/server/logger';
 export async function payrollDownload(
   surface: PayrollSurface | 'employee',
   attachmentId: string,
@@ -33,7 +35,20 @@ export async function payrollDownload(
         'referrer-policy': 'no-referrer',
       },
     });
-  } catch {
+  } catch (error) {
+    // Nicht verfügbare, gesperrte oder fremde Anlagen enden bewusst gleich
+    // (ActionError → 404). F-05: Speicher- und Datenbankfehler zusätzlich ins Log.
+    if (!(error instanceof ActionError)) {
+      log.warn(
+        {
+          component: 'payroll-download',
+          attachmentId,
+          errName: error instanceof Error ? error.name : typeof error,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'payroll: Anlage nicht lesbar',
+      );
+    }
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 }

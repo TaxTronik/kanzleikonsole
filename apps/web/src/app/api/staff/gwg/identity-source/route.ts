@@ -5,6 +5,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import { loadIdentitySourceTx, readIdentitySourceBytes } from '@/server/gwg/identity-source';
+import { log } from '@/server/logger';
 import { checkRateLimit } from '@/server/rate-limit';
 import { bytesResponseBody } from '@taxtronik/storage';
 
@@ -58,7 +59,19 @@ export async function GET(request: NextRequest) {
         'Content-Security-Policy': "default-src 'none'; sandbox",
       },
     });
-  } catch {
+  } catch (error) {
+    // F-05: Die gespeicherte Ausweisquelle ist nicht lesbar oder bestätigt
+    // ihre Prüfsumme nicht; ins Log nur IDs und Fehlerklasse.
+    log.warn(
+      {
+        component: 'gwg-identity-source',
+        documentId: source.documentId,
+        versionId: source.version.id,
+        errName: error instanceof Error ? error.name : typeof error,
+        err: error instanceof Error ? error.message : String(error),
+      },
+      'gwg-identity-source: Quelle nicht lesbar',
+    );
     return NextResponse.json({ error: 'source_unavailable' }, { status: 409 });
   }
 }

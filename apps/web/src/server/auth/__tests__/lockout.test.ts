@@ -18,13 +18,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 
-const { getRedisMock } = vi.hoisted(() => ({
+const { getRedisMock, logWarn } = vi.hoisted(() => ({
   getRedisMock: vi.fn<() => unknown>(),
+  logWarn: vi.fn(),
 }));
 
 vi.mock('@/server/redis', () => ({
   getRedis: getRedisMock,
 }));
+vi.mock('@/server/logger', () => ({ log: { warn: logWarn } }));
 
 import {
   recordFailedLogin,
@@ -55,6 +57,7 @@ beforeEach(() => {
   vi.setSystemTime(FIXED_NOW);
   getRedisMock.mockReset();
   getRedisMock.mockReturnValue(null);
+  logWarn.mockReset();
 });
 
 afterEach(() => {
@@ -114,6 +117,12 @@ describe('recordFailedLogin — L-4: Distinct-IP-Semantik mit Redis', () => {
       locked: true,
     });
     expect(update).toHaveBeenCalledTimes(2);
+    // F-05: der Redis-Ausfall bleibt nicht still — ohne Konto-ID und IP im Log.
+    expect(logWarn).toHaveBeenCalledExactlyOnceWith(
+      { component: 'lockout', err: 'redis down' },
+      'lockout: Redis-Zählung der Fehlversuchs-IPs fehlgeschlagen',
+    );
+    expect(JSON.stringify(logWarn.mock.calls)).not.toMatch(/staff-user-1|203\.0\.113/);
   });
 
   it('Redis-Fehler beim sadd → Fallback auf Count (Layer bleibt aktiv)', async () => {
@@ -203,5 +212,18 @@ describe('resetFailedLogin', () => {
   it('ohne Redis → kein Fehler', async () => {
     const { prisma } = makePrisma(0);
     await expect(resetFailedLogin(prisma, USER_ID)).resolves.toBeUndefined();
+  });
+
+  it('F-06: ein gescheitertes Leeren des Sets wird geloggt, der Reset gelingt trotzdem', async () => {
+    const redis = makeRedis(0);
+    redis.del.mockRejectedValue(new Error('redis down'));
+    getRedisMock.mockReturnValue(redis);
+    const { prisma, update } = makePrisma(0);
+    await expect(resetFailedLogin(prisma, USER_ID)).resolves.toBeUndefined();
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(logWarn).toHaveBeenCalledExactlyOnceWith(
+      { component: 'lockout', err: 'redis down' },
+      'lockout: Redis-DEL der Fehlversuchs-IPs fehlgeschlagen',
+    );
   });
 });

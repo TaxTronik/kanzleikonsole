@@ -44,6 +44,7 @@ import {
   guardAnalysisVertraulich,
 } from './_guards';
 import { audit } from '@/server/actions/audit';
+import { log } from '@/server/logger';
 // Aufgeteilt aus actions.ts (1272 Zeilen) — Guards in ./_guards.ts.
 
 const AnalyzeSchema = z.object({
@@ -239,7 +240,12 @@ export async function llmStatusAction(input: { clientId: string; analysisId?: st
     let status: LlmStatusDTO | null = null;
     try {
       status = await getLlmStatus();
-    } catch {
+    } catch (error) {
+      // Statusabfrage im Polling: debug statt warn, sonst je Takt eine Zeile.
+      log.debug(
+        { component: 'subsumtion', err: error instanceof Error ? error.message : String(error) },
+        'subsumtion: KI-Status nicht lesbar',
+      );
       status = null;
     }
     let enrichedAt: string | null = null;
@@ -273,8 +279,15 @@ export async function llmStatusAction(input: { clientId: string; analysisId?: st
             jobRunning = true;
             jobState = jobInfo.state;
           }
-        } catch {
-          /* Queue nicht erreichbar → kein Signal, normaler Poll-Lauf */
+        } catch (error) {
+          // Queue nicht erreichbar → kein Signal, normaler Poll-Lauf (debug, s. o.).
+          log.debug(
+            {
+              component: 'subsumtion',
+              err: error instanceof Error ? error.message : String(error),
+            },
+            'subsumtion: Job-Status der KI-Vertiefung nicht lesbar',
+          );
         }
       }
     }
@@ -325,8 +338,17 @@ export async function reanalyzeAction(input: {
           llmQueued = true;
         }
       }
-    } catch {
+    } catch (error) {
       // Die deterministische Neuanalyse bleibt erfolgreich, wenn Schicht 2 fehlt.
+      // F-05: dass die KI-Vertiefung nicht eingereiht wurde, steht im Log.
+      log.warn(
+        {
+          component: 'subsumtion',
+          analysisId: input.analysisId,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'subsumtion: KI-Vertiefung nach Neuanalyse nicht eingereiht',
+      );
     }
     revalidatePath(`/staff/clients/${clientId}/subsumtion/${input.analysisId}`);
     return { ok: true, added: res.added, total: res.total, llmQueued };

@@ -17,6 +17,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { fullIdentityViewport, identityViewports } from '@/lib/gwg/identity-viewport';
 import { type Client, type GwgIdDocumentType, type Tenant } from '@prisma/client';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { log } from '@/server/logger';
 import { revalidateOpenGwgInviteRevisionTx } from './invite-lifecycle';
 import {
   GWG_INVITE_DRAFT_INCLUDE,
@@ -395,9 +396,19 @@ export async function loadInviteByRawToken(
     let draft: LoadedInviteDraft | null;
     try {
       draft = inv.gwgCheck ? loadedDraft(inv.gwgCheck) : null;
-    } catch {
+    } catch (error) {
       // Der Zwei-Seiten-Wizard darf mehrere getrennte Ausweissätze niemals
-      // heuristisch mischen oder beim Submit implizit entfernen.
+      // heuristisch mischen oder beim Submit implizit entfernen. F-05: Die
+      // Kanzlei erfährt über das Log, warum die Einladung nicht öffnet
+      // (Fehlercode, keine Personendaten).
+      log.warn(
+        {
+          component: 'gwg-onboarding',
+          inviteId: inv.id,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'gwg-onboarding: Entwurf der Einladung nicht ladbar',
+      );
       return { ok: false as const, error: GENERIC_TOKEN_ERROR };
     }
 

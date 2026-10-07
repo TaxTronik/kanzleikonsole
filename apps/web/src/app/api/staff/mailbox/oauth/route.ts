@@ -9,6 +9,7 @@ import { microsoftClient, IMAP_SCOPES } from '@taxtronik/mail/imap';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { staffAuth } from '@/server/auth/staff';
 import { persistMicrosoftOauthCacheTx } from '@/server/mailbox/oauth-cache';
+import { log } from '@/server/logger';
 export async function GET(req: NextRequest) {
   if (!(await staffAuth())?.user)
     return NextResponse.json({ error: 'Nicht angemeldet.' }, { status: 401 });
@@ -61,7 +62,18 @@ export async function GET(req: NextRequest) {
     });
     if (!persisted) throw new Error('Token cache not persisted.');
     return NextResponse.redirect(new URL('/staff/mailbox?connected=1', env.NEXTAUTH_URL));
-  } catch {
+  } catch (error) {
+    // F-05: Grund des gescheiterten Verbindens ins Log. Nur Fehlerklasse und
+    // OAuth-Fehlercode: Meldungen des Identity-Providers können Kontonamen tragen.
+    const errorCode = (error as { errorCode?: unknown } | null)?.errorCode;
+    log.warn(
+      {
+        component: 'mailbox-oauth',
+        errName: error instanceof Error ? error.name : typeof error,
+        ...(typeof errorCode === 'string' ? { errorCode } : {}),
+      },
+      'mailbox-oauth: Verbindung nicht hergestellt',
+    );
     return NextResponse.redirect(new URL('/staff/mailbox?connectionError=1', env.NEXTAUTH_URL));
   }
 }

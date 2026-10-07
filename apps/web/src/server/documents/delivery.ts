@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { withTenantContext, type ActorType, type TxClient } from '@taxtronik/db';
 import { sanitizeFilenameForHeader, streamVerifiedObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
+import { log } from '@/server/logger';
 import { getClientIp } from '@/server/rate-limit';
 import { documentPreviewMetadata, loadDocumentPreview } from '@/server/storage/document-preview';
 import { effectiveDocumentMime, filenameWithExtension } from '@/server/storage/preview-mime';
@@ -149,7 +150,20 @@ export async function loadDocumentDelivery(
     // Eigene Transaktion: Ein SQL-Fehler setzt eine Postgres-Transaktion auf
     // aborted. Nur die Trennung macht "Preview trotz Audit-Fehler" wirklich
     // best effort, statt den anschliessenden Commit doch scheitern zu lassen.
-    await withTenantContext(ctx, (tx) => recordAccess(tx, options)).catch(() => undefined);
+    await withTenantContext(ctx, (tx) => recordAccess(tx, options)).catch((error: unknown) => {
+      // F-05: Die Vorschau bleibt verfügbar, der fehlende Zugriffsnachweis
+      // aber nicht unbemerkt (Dokument-ID und Aktion, keine Personendaten).
+      log.error(
+        {
+          component: 'document-delivery',
+          documentId: options.documentId,
+          action: options.action,
+          errName: error instanceof Error ? error.name : typeof error,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'document-delivery: Zugriff nicht protokolliert',
+      );
+    });
   }
 
   return document;
@@ -187,7 +201,15 @@ export async function documentPreviewResponse(
     try {
       const preview = await loadDocumentPreview(document);
       return new NextResponse(preview.body, { status: 200, headers: preview.headers });
-    } catch {
+    } catch (error) {
+      log.warn(
+        {
+          component: 'document-delivery',
+          errName: error instanceof Error ? error.name : typeof error,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        'document-delivery: Vorschau nicht lesbar',
+      );
       return NextResponse.json({ error: 'storage_unavailable' }, { status: 502 });
     }
   }
