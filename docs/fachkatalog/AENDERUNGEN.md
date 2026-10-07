@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-024
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/reminder-done-notify.ts
+    rule_ids:
+      - REMINDER-TICKET-001
+    reason: >-
+      Die Erledigt-Benachrichtigung zu Erinnerungen (`reminder-done-notify`) sperrt
+      und liest die Erinnerung, prüft den Mandantenzugriff des Empfängers und
+      schreibt die Benachrichtigung über die App-Rolle im SYSTEM-Kontext des Tenants
+      (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS. Dieselben
+      Zeilen werden gelesen und dieselbe Benachrichtigung geschrieben; eine
+      PostgreSQL-Suite belegt das und dass Erinnerungen fremder Tenants auch mit
+      ihrer ID im Job unsichtbar bleiben. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/reminder-done-notify-db.test.ts
+      - apps/worker/src/jobs/__tests__/reminder-done-notify.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-023
     date: '2026-10-07'
     paths:
@@ -4657,6 +4675,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-024` dokumentiert die
+  Erledigt-Benachrichtigung zu Erinnerungen über die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-023` dokumentiert die Protokollierung bisher
   stillschweigend verworfener Fehler.

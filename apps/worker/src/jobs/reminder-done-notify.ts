@@ -18,9 +18,9 @@
 
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES, type LegacyReminderDoneNotifyJob } from '@taxtronik/config/job-queues';
+import { withSystemContext } from '@taxtronik/db';
 import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import { connection, type ReminderDoneNotifyJob } from '../queues';
-import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { log } from '../logger';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
@@ -40,7 +40,9 @@ export const reminderDoneNotifyWorker = createWorker<QueuedReminderDoneNotifyJob
       return;
     }
 
-    await withWorkerTenantContext(tenantId, async (tx) => {
+    // S-01: Wiedervorlage, Empfängerprüfung und Hinweis über die App-Rolle im
+    // SYSTEM-Kontext des Tenants (RLS), nicht über den Owner-Client.
+    await withSystemContext(tenantId, async (tx) => {
       // REMINDER-TICKET-001: same lock as archive/reopen; a queued job grants no write window.
       await tx.$queryRaw`SELECT id FROM client_reminder
         WHERE id = ${reminderId}::uuid AND tenant_id = ${tenantId}::uuid FOR NO KEY UPDATE`;

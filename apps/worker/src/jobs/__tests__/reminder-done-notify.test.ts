@@ -32,8 +32,9 @@ vi.mock('../../notify', () => ({ notify: h.notify }));
 vi.mock('@taxtronik/db/staff-client-access', () => ({
   filterStaffAccessClientTx: h.filterStaffAccessClientTx,
 }));
-vi.mock('../../tenant-context', () => ({
-  withWorkerTenantContext: (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) =>
+// S-01: der Job läuft über die App-Rolle (withSystemContext aus @taxtronik/db).
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) =>
     fn({
       $queryRaw: h.lock,
       clientReminder: { findFirst: h.findFirst },
