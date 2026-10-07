@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { withTenantContext, type TenantContext } from '@taxtronik/db';
-import { sanitizeFilenameForHeader, streamObject } from '@taxtronik/storage';
+import { sanitizeFilenameForHeader, streamVerifiedObject } from '@taxtronik/storage';
 import type { PortalSession } from '@/server/auth/portal';
 import type { StaffSession } from '@/server/auth/staff';
 import { evidenceService } from '@/server/container';
@@ -15,6 +15,9 @@ export interface InboxAttachmentObject {
   bucket: string;
   key: string;
   storageVersionId?: string | null;
+  /** R-05: Größe und SHA-256 der ausgelieferten Fassung (Anlage bzw. übernommene Version). */
+  sha256: Uint8Array;
+  sizeBytes: bigint;
   mimeType: string;
   downloadName: string;
   audit: {
@@ -52,6 +55,8 @@ async function loadPortalAttachment(
           storageBucket: true,
           storageKey: true,
           storageVersionId: true,
+          sha256: true,
+          sizeBytes: true,
           decision: true,
           acceptedDocument: {
             select: {
@@ -66,6 +71,8 @@ async function loadPortalAttachment(
                   storageBucket: true,
                   storageKey: true,
                   storageVersionId: true,
+                  sha256: true,
+                  sizeBytes: true,
                   scanStatus: true,
                   scanCompletedAt: true,
                 },
@@ -89,6 +96,8 @@ async function loadPortalAttachment(
             bucket: acceptedVersion!.storageBucket,
             key: acceptedVersion!.storageKey,
             storageVersionId: acceptedVersion!.storageVersionId,
+            sha256: acceptedVersion!.sha256,
+            sizeBytes: acceptedVersion!.sizeBytes,
             mimeType: accepted!.mimeType,
             downloadName: accepted!.title,
           }
@@ -96,6 +105,8 @@ async function loadPortalAttachment(
             bucket: attachment.storageBucket,
             key: attachment.storageKey,
             storageVersionId: attachment.storageVersionId,
+            sha256: attachment.sha256,
+            sizeBytes: attachment.sizeBytes,
             mimeType: attachment.mimeType,
             downloadName: attachment.originalName,
           };
@@ -135,6 +146,8 @@ async function loadStaffAttachment(
         storageBucket: true,
         storageKey: true,
         storageVersionId: true,
+        sha256: true,
+        sizeBytes: true,
         decision: true,
         acceptedDocument: {
           select: {
@@ -148,6 +161,8 @@ async function loadStaffAttachment(
                 storageBucket: true,
                 storageKey: true,
                 storageVersionId: true,
+                sha256: true,
+                sizeBytes: true,
                 scanStatus: true,
                 scanCompletedAt: true,
               },
@@ -171,6 +186,8 @@ async function loadStaffAttachment(
           bucket: acceptedVersion!.storageBucket,
           key: acceptedVersion!.storageKey,
           storageVersionId: acceptedVersion!.storageVersionId,
+          sha256: acceptedVersion!.sha256,
+          sizeBytes: acceptedVersion!.sizeBytes,
           mimeType: accepted!.mimeType,
           downloadName: accepted!.title,
         }
@@ -178,6 +195,8 @@ async function loadStaffAttachment(
           bucket: attachment.storageBucket,
           key: attachment.storageKey,
           storageVersionId: attachment.storageVersionId,
+          sha256: attachment.sha256,
+          sizeBytes: attachment.sizeBytes,
           mimeType: attachment.mimeType,
           downloadName: attachment.originalName,
         };
@@ -220,7 +239,12 @@ export async function buildInboxAttachmentDownloadResponse(
   request: NextRequest,
   source: InboxAttachmentObject,
 ): Promise<NextResponse> {
-  const object = await streamObject(source.bucket, source.key, source.storageVersionId);
+  // R-05: Größe und SHA-256 der Fassung werden beim Streamen geprüft; eine
+  // Abweichung bricht die Antwort ab (wie beim Dokument-Download).
+  const object = await streamVerifiedObject(
+    { bucket: source.bucket, key: source.key, versionId: source.storageVersionId },
+    { sizeBytes: source.sizeBytes, sha256: source.sha256 },
+  );
   // Erst ein erfolgreich geöffnetes Storage-Objekt wird protokolliert. Das
   // Ereignis behauptet bewusst keinen vollständig übertragenen Response-Body.
   await withTenantContext(source.audit.context, (tx) =>

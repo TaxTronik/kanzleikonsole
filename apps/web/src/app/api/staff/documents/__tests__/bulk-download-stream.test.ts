@@ -27,7 +27,7 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '127.0.0.1' }));
 vi.mock('@taxtronik/storage', () => ({
   MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
-  streamObject: h.stream,
+  streamVerifiedObject: h.stream,
   sanitizeFilenameForHeader: (value: string) => value,
 }));
 // Echter Slot; die Release-Funktion wird nur beobachtet.
@@ -63,6 +63,7 @@ const doc = (index: number) => ({
       storageKey: `key-${index}`,
       storageVersionId: `version-${index}`,
       sizeBytes: BigInt(SIZE),
+      sha256: new Uint8Array(32).fill(index),
       scanStatus: 'CLEAN',
       scanCompletedAt: new Date(),
     },
@@ -122,7 +123,7 @@ beforeEach(() => {
   h.releases.length = 0;
   h.folders.mockResolvedValue([{ id: FOLDER_ID, name: 'Belege', parentId: null }]);
   h.audit.mockResolvedValue({});
-  h.stream.mockImplementation(async (_bucket: string, key: string) => ({
+  h.stream.mockImplementation(async ({ key }: { key: string }) => ({
     body: objectBody(Number(key.slice('key-'.length))),
     contentLength: SIZE,
     contentType: 'application/pdf',
@@ -155,12 +156,16 @@ describe('P-03: Sammel-Download als Stream', () => {
       ...documents.flatMap((_, index) => [`open ${index + 1}`, `end ${index + 1}`]),
       'release',
     ]);
-    // DOC-VERSION-IMMUTABILITY-001: gebundene S3-Version je Objekt.
+    // DOC-VERSION-IMMUTABILITY-001: gebundene S3-Version je Objekt; R-05: geprüft
+    // gegen Größe und SHA-256 der Fassung.
     expect(h.stream.mock.calls).toEqual(
       documents.map((document) => [
-        'synthetic',
-        document.versions[0]!.storageKey,
-        document.versions[0]!.storageVersionId,
+        {
+          bucket: 'synthetic',
+          key: document.versions[0]!.storageKey,
+          versionId: document.versions[0]!.storageVersionId,
+        },
+        { sizeBytes: BigInt(SIZE), sha256: document.versions[0]!.sha256 },
       ]),
     );
     const zip = Buffer.concat(chunks);
@@ -181,7 +186,7 @@ describe('P-03: Sammel-Download als Stream', () => {
 
   it('Client-Disconnect (req.signal): Slot frei, offenes Objekt geschlossen, kein weiteres geöffnet', async () => {
     h.read.mockResolvedValue([doc(1), doc(2), doc(3)]);
-    h.stream.mockImplementation(async (_bucket: string, key: string) => ({
+    h.stream.mockImplementation(async ({ key }: { key: string }) => ({
       body: stallingBody(Number(key.slice('key-'.length))),
       contentLength: SIZE,
       contentType: 'application/pdf',
@@ -202,7 +207,7 @@ describe('P-03: Sammel-Download als Stream', () => {
 
   it('Abbruch durch den Konsumenten (Body-Cancel) gibt den Slot frei und schließt das Objekt', async () => {
     h.read.mockResolvedValue([doc(1), doc(2)]);
-    h.stream.mockImplementation(async (_bucket: string, key: string) => ({
+    h.stream.mockImplementation(async ({ key }: { key: string }) => ({
       body: stallingBody(Number(key.slice('key-'.length))),
       contentLength: SIZE,
       contentType: 'application/pdf',
@@ -222,7 +227,7 @@ describe('P-03: Sammel-Download als Stream', () => {
 
   it('nicht abrufbares späteres Objekt: Download bricht ab statt einer stillen Lücke, Slot frei', async () => {
     h.read.mockResolvedValue([doc(1), doc(2)]);
-    h.stream.mockImplementation(async (_bucket: string, key: string) => {
+    h.stream.mockImplementation(async ({ key }: { key: string }) => {
       if (key === 'key-2') throw new Error('NoSuchVersion');
       return { body: objectBody(1), contentLength: SIZE, contentType: 'application/pdf' };
     });

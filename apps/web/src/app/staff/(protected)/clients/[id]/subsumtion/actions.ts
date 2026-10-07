@@ -12,7 +12,7 @@ import {
 import { parseActionInput } from '@/server/actions/form-data';
 import { withTenantContext } from '@taxtronik/db';
 import { lockRiskAnalysisTx, requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
-import { fetchObjectBytes } from '@taxtronik/storage';
+import { fetchVerifiedObjectBytes } from '@taxtronik/storage';
 import { readUploadFile } from '@/server/documents/upload-file';
 import { getClientIp } from '@/server/rate-limit';
 import {
@@ -539,13 +539,20 @@ export async function importClientDocAction(
         bucket: v.storageBucket,
         key: v.storageKey,
         storageVersionId: v.storageVersionId,
+        sha256: v.sha256,
+        sizeBytes: v.sizeBytes,
         title: d.title,
       };
     });
     if (!doc) return { ok: false, error: 'Dokument nicht gefunden.' };
 
     // App-proxied: Bytes intern aus SeaweedFS holen (Store nie öffentlich).
-    const bytes = await fetchObjectBytes(doc.bucket, doc.key, doc.storageVersionId);
+    // R-05: nur nach Größen- und SHA-256-Prüfung der gebundenen Fassung; eine
+    // Abweichung ordnet toActionError zentral ein (StoredObjectError).
+    const bytes = await fetchVerifiedObjectBytes(
+      { bucket: doc.bucket, key: doc.key, versionId: doc.storageVersionId },
+      { sizeBytes: doc.sizeBytes, sha256: doc.sha256 },
+    );
     const text = await extractText(bytes, doc.mimeType || 'application/octet-stream');
     if (!text.trim())
       return { ok: false, error: 'Das Dokument enthält keinen extrahierbaren Text.' };

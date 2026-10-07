@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
-  streamObject: vi.fn(),
+  streamVerifiedObject: vi.fn(),
   withTenant: vi.fn(),
   audit: vi.fn(),
 }));
@@ -21,7 +21,7 @@ vi.mock('next/server', () => ({
 vi.mock('@taxtronik/db', () => ({ withTenantContext: h.withTenant }));
 vi.mock('@taxtronik/storage', () => ({
   sanitizeFilenameForHeader: (name: string) => name,
-  streamObject: h.streamObject,
+  streamVerifiedObject: h.streamVerifiedObject,
 }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '192.0.2.10' }));
@@ -37,11 +37,13 @@ import {
   type InboxAttachmentObject,
 } from '../attachment-delivery';
 
-// Fachkatalog: PORTAL-INBOX-SUBMISSION-001, AUDIT-HASH-CHAIN-001.
+// Fachkatalog: PORTAL-INBOX-SUBMISSION-001, AUDIT-HASH-CHAIN-001, DOC-VERSION-IMMUTABILITY-001.
 
 const source: InboxAttachmentObject = {
   bucket: 'staging',
   key: 'tenants/tenant-1/inbox/object-1',
+  sha256: new Uint8Array(32).fill(1),
+  sizeBytes: 1n,
   mimeType: 'application/pdf',
   downloadName: 'nicht-im-audit.pdf',
   audit: {
@@ -70,6 +72,8 @@ describe('Portal-Inbox Download-Audit', () => {
         storageBucket: 'gobd',
         storageKey: 'bound-key',
         storageVersionId: 'bound-version',
+        sha256: new Uint8Array(32).fill(9),
+        sizeBytes: 1n,
         scanStatus: 'CLEAN',
         scanCompletedAt: new Date(),
       };
@@ -87,7 +91,7 @@ describe('Portal-Inbox Download-Audit', () => {
       };
       const tx = { portalInboxAttachment: { findFirst: vi.fn(async () => attachment) } };
       h.withTenant.mockImplementation(async (_context, callback) => callback(tx));
-      h.streamObject.mockResolvedValue({ body: new Uint8Array([1]), contentLength: 1 });
+      h.streamVerifiedObject.mockResolvedValue({ body: new Uint8Array([1]), contentLength: 1 });
       const session = {
         user: {
           tenantId: 'tenant-1',
@@ -101,19 +105,23 @@ describe('Portal-Inbox Download-Audit', () => {
           ? portalInboxAttachmentDownloadResponse
           : staffInboxAttachmentDownloadResponse;
       await download(request, session, 'attachment-1');
-      expect(h.streamObject).toHaveBeenCalledWith('gobd', 'bound-key', 'bound-version');
-      h.streamObject.mockClear();
+      // R-05: geprüft gegen Größe und SHA-256 der übernommenen Fassung.
+      expect(h.streamVerifiedObject).toHaveBeenCalledWith(
+        { bucket: 'gobd', key: 'bound-key', versionId: 'bound-version' },
+        { sizeBytes: 1n, sha256: version.sha256 },
+      );
+      h.streamVerifiedObject.mockClear();
       h.audit.mockClear();
       version.scanStatus = 'INFECTED';
       const blocked = await download(request, session, 'attachment-1');
       expect(blocked.status).toBe(404);
-      expect(h.streamObject).not.toHaveBeenCalled();
+      expect(h.streamVerifiedObject).not.toHaveBeenCalled();
       expect(h.audit).not.toHaveBeenCalled();
     },
   );
 
   it('schreibt bei fehlendem Object-Open keinen falschen Downloadnachweis', async () => {
-    h.streamObject.mockRejectedValueOnce(new Error('object missing'));
+    h.streamVerifiedObject.mockRejectedValueOnce(new Error('object missing'));
 
     await expect(buildInboxAttachmentDownloadResponse(request, source)).rejects.toThrow(
       'object missing',
@@ -122,7 +130,7 @@ describe('Portal-Inbox Download-Audit', () => {
   });
 
   it('protokolliert erst den erfolgreich geöffneten Stream und keine Inhaltsmetadaten', async () => {
-    h.streamObject.mockResolvedValueOnce({ body: new Uint8Array([1]), contentLength: 1 });
+    h.streamVerifiedObject.mockResolvedValueOnce({ body: new Uint8Array([1]), contentLength: 1 });
 
     await expect(buildInboxAttachmentDownloadResponse(request, source)).resolves.toBeTruthy();
     expect(h.audit).toHaveBeenCalledWith(

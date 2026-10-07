@@ -12,7 +12,11 @@ import { staffAuth } from '@/server/auth/staff';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { withTenantContext } from '@taxtronik/db';
-import { MAX_UPLOAD_BYTES, streamObject, sanitizeFilenameForHeader } from '@taxtronik/storage';
+import {
+  MAX_UPLOAD_BYTES,
+  sanitizeFilenameForHeader,
+  streamVerifiedObject,
+} from '@taxtronik/storage';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
 import {
   acquireZipStreamSlot,
@@ -78,6 +82,7 @@ export async function GET(req: NextRequest) {
             storageKey: true,
             storageVersionId: true,
             sizeBytes: true,
+            sha256: true,
             scanStatus: true,
             scanCompletedAt: true,
           },
@@ -188,7 +193,9 @@ export async function GET(req: NextRequest) {
     const d = usableLoose[0]!;
     const v = d.versions[0]!;
     await recordDownloadAudit('file', [d.id]);
-    const obj = await streamObject(v.storageBucket, v.storageKey, v.storageVersionId);
+    // R-05: Größe und SHA-256 der gebundenen Fassung werden beim Streamen
+    // geprüft; eine Abweichung bricht die Antwort ab (wie der Einzel-Download).
+    const obj = await streamVerifiedObject(storedObjectRef(v), storedObjectIntegrity(v));
     const headers: Record<string, string> = {
       'content-type': d.mimeType || 'application/octet-stream',
       'content-disposition': `attachment; filename="${sanitizeFilenameForHeader(
@@ -273,19 +280,41 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** P-03: Öffnet jedes Objekt erst, wenn der ZIP-Stream den Eintrag tatsächlich schreibt. */
+interface StoredVersion {
+  storageBucket: string;
+  storageKey: string;
+  storageVersionId: string | null;
+  sizeBytes: bigint;
+  sha256: Uint8Array;
+}
+
+/** DOC-VERSION-IMMUTABILITY-001: gebundene S3-Version, kein Key-Fallback. */
+function storedObjectRef(version: StoredVersion) {
+  return {
+    bucket: version.storageBucket,
+    key: version.storageKey,
+    versionId: version.storageVersionId,
+  };
+}
+
+/** R-05: Größe und SHA-256 der gebundenen Fassung. */
+function storedObjectIntegrity(version: StoredVersion) {
+  return { sizeBytes: version.sizeBytes, sha256: version.sha256 };
+}
+
+/**
+ * P-03: Öffnet jedes Objekt erst, wenn der ZIP-Stream den Eintrag tatsächlich
+ * schreibt. R-05: Der Writer schreibt einen Eintrag erst nach dem vollständigen
+ * Lesen; weicht ein Objekt von Größe oder SHA-256 seiner Fassung ab, bricht das
+ * Archiv ab, statt abweichende Bytes auszuliefern.
+ */
 async function* storedObjectEntries(
-  objects: {
-    name: string;
-    version: { storageBucket: string; storageKey: string; storageVersionId: string | null };
-  }[],
+  objects: { name: string; version: StoredVersion }[],
 ): AsyncGenerator<ZipStreamEntry> {
   for (const { name, version } of objects) {
-    // DOC-VERSION-IMMUTABILITY-001: gebundene S3-Version, kein Key-Fallback.
-    const object = await streamObject(
-      version.storageBucket,
-      version.storageKey,
-      version.storageVersionId,
+    const object = await streamVerifiedObject(
+      storedObjectRef(version),
+      storedObjectIntegrity(version),
     );
     yield { name, data: object.body };
   }

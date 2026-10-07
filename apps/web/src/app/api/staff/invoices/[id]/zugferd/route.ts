@@ -4,7 +4,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
-import { streamObject } from '@taxtronik/storage';
+import { bytesResponseBody, streamVerifiedObject } from '@taxtronik/storage';
 import { ensureZugferdArchive, type ArchiveResult } from '@/server/invoicing/archive';
 import {
   archiveFailureResponse,
@@ -90,6 +90,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   // Ausgestellte Rechnungen: archivierte Bytes direkt durchstreamen (O(1)).
   // DRAFT: frisch gerenderte Kontrollfassung; sie wird erst beim Versand
   // gemeinsam mit der separaten XML revisionssicher festgeschrieben.
+  // R-05: beide Wege antworten ohne weitere Pufferkopie; die Archivfassung wird
+  // beim Streamen gegen Größe und SHA-256 ihrer Dokumentversion geprüft (eine
+  // Abweichung bricht die Antwort ab, wie beim Dokument-Download).
   const fileName = `zugferd-${archive.number.replace(/[^A-Za-z0-9_-]/g, '_')}.pdf`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/pdf',
@@ -98,9 +101,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   };
   if ('bytes' in archive) {
     headers['Content-Length'] = String(archive.bytes.length);
-    return new NextResponse(new Uint8Array(archive.bytes), { status: 200, headers });
+    return new NextResponse(bytesResponseBody(archive.bytes), { status: 200, headers });
   }
-  const obj = await streamObject(archive.bucket, archive.key, archive.storageVersionId);
+  const obj = await streamVerifiedObject(
+    { bucket: archive.bucket, key: archive.key, versionId: archive.storageVersionId },
+    { sizeBytes: archive.sizeBytes, sha256: archive.sha256 },
+  );
   if (obj.contentLength !== null) headers['Content-Length'] = String(obj.contentLength);
   return new NextResponse(obj.body, { status: 200, headers });
 }

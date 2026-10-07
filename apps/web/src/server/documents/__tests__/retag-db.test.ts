@@ -79,8 +79,9 @@ vi.mock('@taxtronik/storage', async () => {
     // Wie packages/storage: Vertrag 6, Rechnung 8, Steuer und unbekannt 10 Jahre.
     gobdRetentionYears: (classification?: string) =>
       (classification && retentionYears[classification]) || 10,
-    fetchObjectBytes: async (bucket: string, key: string) =>
-      Buffer.from(`%PDF-1.7 Bestand ${bucket}/${key}`),
+    // R-05: geprüfter Leseweg; Ort und Erwartung prüft der Unit-Test (retag-race).
+    fetchVerifiedObjectBytes: async (ref: { bucket: string; key: string }) =>
+      Buffer.from(`%PDF-1.7 Bestand ${ref.bucket}/${ref.key}`),
     prepareBytesCommitWithTier: async (input: {
       fileData: Buffer;
       tier: 'NONE' | 'GWG' | 'GOBD';

@@ -100,8 +100,12 @@ describe('Rechnungsarchiv-Lock – Aufrufer-Reihenfolge', () => {
       'ensureZugferdArchive(',
       'readArchivedXmlCopy(',
     );
-    expect(xrechnungRoute).toContain(
-      'streamObject(archive.bucket, archive.key, archive.storageVersionId)',
+    // R-05: gebundene Version, geprüft gegen Größe und SHA-256 der Archivfassung.
+    expectOrdered(
+      section(xrechnungRoute, 'export async function GET'),
+      'streamVerifiedObject(',
+      '{ bucket: archive.bucket, key: archive.key, versionId: archive.storageVersionId }',
+      '{ sizeBytes: archive.sizeBytes, sha256: archive.sha256 }',
     );
   });
 

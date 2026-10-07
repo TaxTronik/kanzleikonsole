@@ -332,7 +332,7 @@ export interface ZipStreamOptions {
   /**
    * Obergrenze je gestreamter Quelle (Pflicht): Bis zu dieser Größe wird ein
    * Eintrag gepuffert, sie bestimmt also den Speicherbedarf eines Exports. Die
-   * Routen setzen MAX_UPLOAD_BYTES wie fetchObjectBytes.
+   * Routen setzen MAX_UPLOAD_BYTES wie der geprüfte Leseweg (streamVerifiedObject).
    */
   maxEntryBytes: number;
   /** Backstop für die Summe der gestreamten Quellbytes; Default ZIP_MAX_TOTAL_BYTES. */

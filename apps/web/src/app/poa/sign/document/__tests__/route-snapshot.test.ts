@@ -1,11 +1,15 @@
+// Fachkatalog: POA-SIGNING-SNAPSHOT-001, DOC-VERSION-IMMUTABILITY-001
 import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
+import type { GetObjectCommand } from '@aws-sdk/client-s3';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const TOKEN = 'snapshot-token';
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const VERSION_ID = '22222222-2222-4222-8222-222222222222';
-const DOCUMENT_SHA256 = Buffer.alloc(32, 0xab);
+const DOCUMENT_BYTES = Buffer.from('%PDF-1.7 Vollmacht Finanzamt');
+const DOCUMENT_SHA256 = createHash('sha256').update(DOCUMENT_BYTES).digest();
 
 const snapshot = JSON.stringify({
   schemaVersion: 1,
@@ -27,7 +31,7 @@ const m = vi.hoisted(() => ({
   getClientIp: vi.fn(),
   poaFindFirst: vi.fn(),
   versionFindFirst: vi.fn(),
-  streamObject: vi.fn(),
+  send: vi.fn(),
 }));
 
 vi.mock('@/server/rate-limit', () => ({
@@ -40,9 +44,10 @@ vi.mock('@/server/db/prisma-owner', () => ({
     documentVersion: { findFirst: m.versionFindFirst },
   },
 }));
-vi.mock('@taxtronik/storage', () => ({
-  streamObject: m.streamObject,
-  sanitizeFilenameForHeader: (value: string) => value,
+// R-05: S3 ist am Storage-Client gemockt; der geprüfte Leseweg läuft echt.
+vi.mock('@taxtronik/storage/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@taxtronik/storage/client')>()),
+  s3: { send: m.send },
 }));
 
 import { GET } from '../route';
@@ -65,6 +70,7 @@ beforeEach(() => {
     id: VERSION_ID,
     documentId: DOCUMENT_ID,
     sha256: DOCUMENT_SHA256,
+    sizeBytes: BigInt(DOCUMENT_BYTES.length),
     storageBucket: 'docs-gobd',
     storageKey: 'tenant-1/poa/version-1.pdf',
     storageVersionId: 'bound-s3-version',
@@ -79,16 +85,13 @@ beforeEach(() => {
       deletedAt: null,
     },
   });
-  m.streamObject.mockResolvedValue({
-    body: new ReadableStream({
-      start(controller) {
-        controller.enqueue(new TextEncoder().encode('%PDF-test'));
-        controller.close();
-      },
-    }),
-    contentLength: 9,
-  });
+  m.send.mockImplementation(async () => ({
+    Body: Readable.from([Buffer.from(DOCUMENT_BYTES)]),
+    ContentLength: DOCUMENT_BYTES.length,
+  }));
 });
+
+const call = () => GET(new NextRequest(`http://localhost:3000/poa/sign/document?token=${TOKEN}`));
 
 describe('GET /poa/sign/document — Versand-Snapshot', () => {
   it('liefert ausschließlich die beim Versand gebundene Version', async () => {
@@ -105,11 +108,43 @@ describe('GET /poa/sign/document — Versand-Snapshot', () => {
       },
       include: { document: true },
     });
-    expect(m.streamObject).toHaveBeenCalledWith(
-      'docs-gobd',
-      'tenant-1/poa/version-1.pdf',
-      'bound-s3-version',
-    );
+    expect((m.send.mock.calls[0]![0] as GetObjectCommand).input).toEqual({
+      Bucket: 'docs-gobd',
+      Key: 'tenant-1/poa/version-1.pdf',
+      VersionId: 'bound-s3-version',
+    });
+    expect(response.headers.get('content-length')).toBe(String(DOCUMENT_BYTES.length));
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(DOCUMENT_BYTES);
+  });
+
+  // R-05: Der Unterzeichner erhält nur Bytes, die Größe und SHA-256 der im
+  // Signatur-Snapshot gebundenen Version entsprechen.
+  it('bricht die Auslieferung bei abweichenden Bytes gleicher Länge ab', async () => {
+    const tampered = Buffer.from(DOCUMENT_BYTES);
+    tampered[tampered.length - 1] = 0x21;
+    m.send.mockImplementation(async () => ({
+      Body: Readable.from([tampered]),
+      ContentLength: tampered.length,
+    }));
+
+    const response = await call();
+
+    await expect(response.arrayBuffer()).rejects.toMatchObject({
+      name: 'StoredObjectError',
+      reason: 'HASH_MISMATCH',
+    });
+  });
+
+  it('liefert bei abweichender angekündigter Länge kein Byte aus', async () => {
+    m.send.mockImplementation(async () => ({
+      Body: Readable.from([Buffer.from(DOCUMENT_BYTES)]),
+      ContentLength: DOCUMENT_BYTES.length + 1,
+    }));
+
+    await expect(call()).rejects.toMatchObject({
+      name: 'StoredObjectError',
+      reason: 'LENGTH_MISMATCH',
+    });
   });
 
   it.each(['PENDING', 'INFECTED', 'ERROR', 'UNFINISHED'])(
@@ -125,7 +160,7 @@ describe('GET /poa/sign/document — Versand-Snapshot', () => {
         new NextRequest(`http://localhost:3000/poa/sign/document?token=${TOKEN}`),
       );
       expect(response.status).toBe(404);
-      expect(m.streamObject).not.toHaveBeenCalled();
+      expect(m.send).not.toHaveBeenCalled();
     },
   );
 });

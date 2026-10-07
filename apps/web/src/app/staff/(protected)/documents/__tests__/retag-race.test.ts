@@ -4,11 +4,12 @@
 // Schritte wie in der Bulk-Action retagDocumentsAction). Bis P-18 lief das
 // über die Einzel-Action retagDocumentAction; die entfiel ohne Aufrufer.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { StoredObjectError } from '@taxtronik/storage/errors';
 
 const m = vi.hoisted(() => {
   return {
     withTenantContext: vi.fn(),
-    fetchObjectBytes: vi.fn(),
+    fetchVerifiedObjectBytes: vi.fn(),
     prepare: vi.fn(),
     deleteObject: vi.fn(),
     deleteObjectVersion: vi.fn(),
@@ -36,7 +37,7 @@ vi.mock('@taxtronik/storage', async () => {
   const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
   return {
     UploadRejectedError: (await import('@taxtronik/storage/errors')).UploadRejectedError,
-    fetchObjectBytes: m.fetchObjectBytes,
+    fetchVerifiedObjectBytes: m.fetchVerifiedObjectBytes,
     prepareBytesCommitWithTier: m.prepare,
     commitPreparedBytes: storageJournal.commit,
     deleteObject: m.deleteObject,
@@ -84,6 +85,8 @@ const STAFF = {
   session: {},
   ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
 } as unknown as StaffCtx;
+const SOURCE_SHA256 = new Uint8Array(32).fill(7);
+const SOURCE_SIZE = 14n;
 
 function initialDocument(immutable: boolean) {
   return {
@@ -99,6 +102,8 @@ function initialDocument(immutable: boolean) {
         storageBucket: immutable ? 'gwg' : 'general',
         storageKey: 'old-key',
         storageVersionId: immutable ? 'old-version-id' : null,
+        sha256: SOURCE_SHA256,
+        sizeBytes: SOURCE_SIZE,
         immutable,
         scanStatus: 'CLEAN',
       },
@@ -137,7 +142,7 @@ beforeEach(() => {
       documentTypeId: null,
     },
   ]);
-  m.fetchObjectBytes.mockResolvedValue(Buffer.from('document bytes'));
+  m.fetchVerifiedObjectBytes.mockResolvedValue(Buffer.from('document bytes'));
   m.txCommit.documentVersion.create.mockResolvedValue({ id: 'new-db-version' });
   m.txCommit.document.update.mockResolvedValue({});
   m.evidenceRecord.mockResolvedValue({});
@@ -169,7 +174,7 @@ describe('retagDocument concurrency and immutable history', () => {
     expect(m.deleteObjectVersion).not.toHaveBeenCalled();
     // K-06: Die gemeinsame Vorpruefung erkennt die Drift vor Scan, Journal und
     // Object-Write; es entsteht kein (unter Object Lock unloeschbares) Objekt.
-    expect(m.fetchObjectBytes).not.toHaveBeenCalled();
+    expect(m.fetchVerifiedObjectBytes).not.toHaveBeenCalled();
     expect(storageJournal.events).toEqual([]);
   });
 
@@ -239,5 +244,41 @@ describe('retagDocument concurrency and immutable history', () => {
     expect(m.evidenceRecord).toHaveBeenCalledTimes(1);
     expect(m.deleteObject).not.toHaveBeenCalled();
     expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+  });
+
+  // R-05: Der Re-Store kopiert nur Bytes, die Größe und SHA-256 der gebundenen
+  // Quellfassung entsprechen.
+  it('liest die Quellbytes über den geprüften Leseweg der gebundenen Fassung', async () => {
+    m.txInitial.document.findFirst.mockResolvedValue(initialDocument(true));
+    m.txCommit.documentVersion.findFirst.mockResolvedValue(matchingLatest(true));
+
+    await expect(
+      retagDocument(STAFF, DOCUMENT_ID, { classification: 'GOBD_INVOICE' }),
+    ).resolves.toEqual({ ok: true, changed: true, clientId: null });
+
+    expect(m.fetchVerifiedObjectBytes).toHaveBeenCalledExactlyOnceWith(
+      { bucket: 'gwg', key: 'old-key', versionId: 'old-version-id' },
+      { sizeBytes: SOURCE_SIZE, sha256: SOURCE_SHA256 },
+    );
+  });
+
+  it('bricht bei abweichenden Quellbytes vor Scan, Journal und Object-Write ab', async () => {
+    m.txInitial.document.findFirst.mockResolvedValue(initialDocument(true));
+    m.txCommit.documentVersion.findFirst.mockResolvedValue(matchingLatest(true));
+    m.fetchVerifiedObjectBytes.mockRejectedValueOnce(
+      new StoredObjectError('HASH_MISMATCH', 'SHA-256 weicht von der Fassung ab.'),
+    );
+
+    const result = await retagDocument(STAFF, DOCUMENT_ID, { classification: 'GOBD_INVOICE' });
+
+    // Zentrales Fehler-Mapping (F-03) nach Fehlerklasse, nicht nach Meldungstext.
+    expect(result).toEqual({
+      ok: false,
+      error: 'Dateiintegrität konnte nicht bestätigt werden.',
+    });
+    expect(storageJournal.events).toEqual([]);
+    expect(m.txCommit.documentVersion.create).not.toHaveBeenCalled();
+    expect(m.txCommit.document.update).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 });

@@ -22,7 +22,7 @@ import {
   prepareBytesCommitWithTier,
   recoverPreparedBytesCommit,
   fetchObjectBytes,
-  streamObject,
+  streamVerifiedObject,
 } from '../service';
 
 beforeEach(() => {
@@ -46,7 +46,12 @@ describe('S3-Objektversionen', () => {
           ? await fetchObjectBytes('gobd', 'same-key', 'bound-version')
           : Buffer.from(
               await new Response(
-                (await streamObject('gobd', 'same-key', 'bound-version')).body,
+                (
+                  await streamVerifiedObject(
+                    { bucket: 'gobd', key: 'same-key', versionId: 'bound-version' },
+                    { sizeBytes: original.length },
+                  )
+                ).body,
               ).arrayBuffer(),
             );
       expect(bytes).toEqual(original);
@@ -65,7 +70,7 @@ describe('S3-Objektversionen', () => {
       await expect(
         mode === 'bytes'
           ? fetchObjectBytes('gobd', 'same-key', 'missing-version')
-          : streamObject('gobd', 'same-key', 'missing-version'),
+          : streamVerifiedObject({ bucket: 'gobd', key: 'same-key', versionId: 'missing-version' }),
       ).rejects.toThrow('NoSuchVersion');
       expect(h.send).toHaveBeenCalledTimes(1);
     },

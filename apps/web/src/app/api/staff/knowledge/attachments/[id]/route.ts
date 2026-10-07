@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { withTenantContext } from '@taxtronik/db';
-import { sanitizeFilenameForHeader, streamObject } from '@taxtronik/storage';
+import { sanitizeFilenameForHeader, streamVerifiedObject } from '@taxtronik/storage';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { evidenceService } from '@/server/container';
 import { isUuid } from '@/lib/uuid';
@@ -37,6 +37,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
                 storageBucket: true,
                 storageKey: true,
                 storageVersionId: true,
+                sha256: true,
+                sizeBytes: true,
                 scanStatus: true,
                 scanCompletedAt: true,
               },
@@ -71,10 +73,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
 
-  const object = await streamObject(
-    version.storageBucket,
-    version.storageKey,
-    version.storageVersionId,
+  // R-05: Größe und SHA-256 der Fassung werden beim Streamen geprüft; eine
+  // Abweichung bricht die Antwort ab (wie beim Dokument-Download).
+  const object = await streamVerifiedObject(
+    {
+      bucket: version.storageBucket,
+      key: version.storageKey,
+      versionId: version.storageVersionId,
+    },
+    { sizeBytes: version.sizeBytes, sha256: version.sha256 },
   );
   const mimeType = effectiveDocumentMime(attachment.document);
   const filename = filenameWithExtension(attachment.displayName, mimeType);

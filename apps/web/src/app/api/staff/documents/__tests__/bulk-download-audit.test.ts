@@ -22,7 +22,7 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '127.0.0.1' }));
 vi.mock('@taxtronik/storage', () => ({
   MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
-  streamObject: h.stream,
+  streamVerifiedObject: h.stream,
   sanitizeFilenameForHeader: (value: string) => value,
 }));
 import { GET } from '../download/route';
@@ -55,7 +55,7 @@ beforeEach(() => {
   );
   h.folders.mockResolvedValue([{ id: FOLDER_ID, name: 'Belege', parentId: null }]);
   h.audit.mockResolvedValue({});
-  h.stream.mockImplementation(async (_bucket: string, key: string) => ({
+  h.stream.mockImplementation(async ({ key }: { key: string }) => ({
     body: new Response(key).body,
     contentLength: key.length,
     contentType: 'application/pdf',

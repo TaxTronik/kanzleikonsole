@@ -1525,6 +1525,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Alle verbleibenden Leser gespeicherter Fassungen prüfen Größe und
+  SHA-256 der gebundenen Version: Einzel- und ZIP-Download,
+  DATEV-Belegexport, ZUGFeRD- und XRechnung-Abruf, Abruf und Übernahme von
+  Posteingangsanlagen, Retag, Smart-Postfach-Übernahme,
+  Subsumtions-Textübernahme, Wissensanlagen und das Unterzeichnungsdokument
+  einer Vollmacht. Abweichende Bytes werden weder ausgeliefert noch
+  weiterverarbeitet; der DATEV-Export führt sie als FEHLT. Die ZUGFeRD-Vorschau
+  eines Entwurfs kopiert die PDF nicht mehr (`DOC-VERSION-IMMUTABILITY-001`).
 - **[Scope]** CRL-Abrufe der Hardware-Schlüssel-Prüfung (Attestationskette in
   der App, MDS-Signaturkette im Worker) erreichen nur noch öffentliche
   Adressen: Der Host wird einmal aufgelöst; Loopback-, private, Link-local-,

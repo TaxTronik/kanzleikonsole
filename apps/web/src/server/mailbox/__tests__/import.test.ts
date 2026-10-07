@@ -9,6 +9,7 @@ type Attachment = {
   filename: string;
   mimeType: string;
   sha256: string;
+  sizeBytes: number;
 };
 type DocType = { id: string; tier: string; classificationKey: string; retentionYears: null };
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +19,7 @@ const m = vi.hoisted(() => ({
   finish: vi.fn(),
   persist: vi.fn<(options: ResumableDocumentUploadOptions) => Promise<void>>(),
   audit: vi.fn(),
+  fetchBytes: vi.fn(),
 }));
 vi.mock('@taxtronik/db', () => ({
   withTenantContext: async (_ctx: unknown, fn: (tx: ReturnType<typeof makeTx>) => unknown) =>
@@ -63,7 +65,12 @@ vi.mock('@taxtronik/config', () => ({ env: {} }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 vi.mock('next/headers', () => ({ cookies: vi.fn() }));
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }));
-vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: vi.fn(), getBucketForTier: vi.fn() }));
+vi.mock('@taxtronik/storage', async () => ({
+  fetchVerifiedObjectBytes: m.fetchBytes,
+  getBucketForTier: (tier: string) => `bucket-${tier.toLowerCase()}`,
+  StoredObjectError: (await import('@taxtronik/storage/errors')).StoredObjectError,
+}));
+import { StoredObjectError } from '@taxtronik/storage/errors';
 import {
   importAttachment,
   saveMailbox,
@@ -104,6 +111,7 @@ beforeEach(() => {
     filename: 'receipt.pdf',
     mimeType: 'application/pdf',
     sha256: 'a'.repeat(64),
+    sizeBytes: 11,
   };
   type = { id: uuid, tier: 'NONE', classificationKey: 'GENERAL', retentionYears: null };
   m.tx = makeTx();
@@ -179,6 +187,54 @@ describe('mail archive completion after object-store I/O', () => {
       fieldErrors: { documentTypeId: [expect.any(String)] },
     });
     expect(m.persist).not.toHaveBeenCalled();
+  });
+});
+// R-05: Der Import liest die Anhangbytes über den gemeinsamen, immer prüfenden
+// Leseweg (Größe und SHA-256 des geprüften Anhangs); die Prüfung selbst belegt
+// packages/storage (verified-read.test.ts).
+describe('Anhangbytes für das Archiv (R-05)', () => {
+  async function captureReadBytes(): Promise<() => Promise<Buffer>> {
+    let readBytes: (() => Promise<Buffer>) | undefined;
+    m.persist.mockImplementationOnce(async (options) => {
+      readBytes = options.readBytes;
+    });
+    await expect(importAttachment(null, form())).resolves.toEqual({ ok: true });
+    return readBytes!;
+  }
+
+  it('liest den Anhang gegen Größe und SHA-256 des geprüften Anhangs', async () => {
+    const bytes = Buffer.from('receipt pdf');
+    m.fetchBytes.mockResolvedValue(bytes);
+    const readBytes = await captureReadBytes();
+
+    await expect(readBytes()).resolves.toBe(bytes);
+    expect(m.fetchBytes).toHaveBeenCalledExactlyOnceWith(
+      { bucket: 'bucket-none', key: 'source' },
+      { sizeBytes: 11, sha256: 'a'.repeat(64) },
+    );
+  });
+
+  it.each(['HASH_MISMATCH', 'SIZE_MISMATCH', 'LENGTH_MISMATCH'] as const)(
+    'weist abweichende Bytes (%s) mit der bisherigen Meldung ab',
+    async (reason) => {
+      m.fetchBytes.mockRejectedValue(new StoredObjectError(reason, 'weicht ab'));
+      const readBytes = await captureReadBytes();
+
+      await expect(readBytes()).rejects.toMatchObject({
+        name: 'ActionError',
+        message: 'Anhang-Prüfsumme stimmt nicht.',
+      });
+    },
+  );
+
+  it('reicht Speicher- und Limitfehler unverändert weiter', async () => {
+    m.fetchBytes.mockRejectedValue(new StoredObjectError('MISSING_BODY', 'leer'));
+    const readBytes = await captureReadBytes();
+
+    await expect(readBytes()).rejects.toMatchObject({
+      name: 'StoredObjectError',
+      reason: 'MISSING_BODY',
+    });
   });
 });
 describe('Postfach-Verwaltung — Rückkanal (Review-Befund F-01)', () => {

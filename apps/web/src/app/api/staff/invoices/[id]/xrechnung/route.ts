@@ -3,7 +3,7 @@ import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { streamObject } from '@taxtronik/storage';
+import { streamVerifiedObject } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import { generateXRechnungCii, toXRechnungInvoice } from '@/server/invoicing/xrechnung';
 import { lockInvoiceArchiveTx } from '@/server/invoicing/archive-lock';
@@ -37,7 +37,15 @@ interface ArchiveXmlInput {
 }
 
 type ArchiveXmlState =
-  | { state: 'ready'; bucket: string; key: string; storageVersionId: string | null }
+  | {
+      state: 'ready';
+      bucket: string;
+      key: string;
+      storageVersionId: string | null;
+      /** R-05: Größe und SHA-256 der gebundenen XML-Fassung. */
+      sha256: Uint8Array;
+      sizeBytes: bigint;
+    }
   | { state: 'missing' | 'not_found' | 'status_conflict' };
 
 /**
@@ -78,6 +86,8 @@ async function readArchivedXmlCopy(input: ArchiveXmlInput): Promise<ArchiveXmlSt
       bucket: version.storageBucket,
       key: version.storageKey,
       storageVersionId: version.storageVersionId,
+      sha256: version.sha256,
+      sizeBytes: version.sizeBytes,
     };
   });
 }
@@ -244,7 +254,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   }
   if (!archive) return archiveFailureResponse('archive_failed', detail);
-  const object = await streamObject(archive.bucket, archive.key, archive.storageVersionId);
+  // R-05: Größe und SHA-256 der Archivfassung werden beim Streamen geprüft;
+  // eine Abweichung bricht die Antwort ab (wie beim Dokument-Download).
+  const object = await streamVerifiedObject(
+    { bucket: archive.bucket, key: archive.key, versionId: archive.storageVersionId },
+    { sizeBytes: archive.sizeBytes, sha256: archive.sha256 },
+  );
   const responseHeaders: Record<string, string> = {
     'Content-Type': 'application/xml; charset=utf-8',
     'Content-Disposition': `attachment; filename="${fileName}"`,

@@ -20,7 +20,7 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: () => '127.0.0.1' }));
 vi.mock('@taxtronik/storage', () => ({
   MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
-  streamObject: h.stream,
+  streamVerifiedObject: h.stream,
   sanitizeFilenameForHeader: (value: string) => value,
 }));
 // Echter ZIP-Writer; nur der Build-Slot ist für den 429-Pfad steuerbar.
@@ -88,7 +88,7 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: bulk download r
     expect(response.status).toBe(200);
     const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
     expect(Object.keys(files)).toEqual(['loose.pdf', 'Belege/folder.pdf']);
-    expect(h.stream.mock.calls.map((call) => call[1])).toEqual(['loose', 'folder']);
+    expect(h.stream.mock.calls.map((call) => call[0].key)).toEqual(['loose', 'folder']);
     // P-12: EIN Abrufnachweis mit genau den ausgelieferten Dokumenten.
     expect(h.audit).toHaveBeenCalledTimes(1);
     expect(h.audit.mock.calls[0]![1]).toMatchObject({

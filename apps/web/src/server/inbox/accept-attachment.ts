@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import type { DocumentClassification } from '@prisma/client';
 import type { ProtectionTier } from '@taxtronik/storage';
-import { fetchObjectBytes } from '@taxtronik/storage';
+import { fetchVerifiedObjectBytes, StoredObjectError } from '@taxtronik/storage';
 import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
 import type { StaffSession } from '@/server/auth/staff';
 import { ActionError } from '@/server/actions/action-error';
@@ -156,6 +155,24 @@ async function loadAcceptanceSource(
   });
 }
 
+/**
+ * R-05: Staging-Bytes über den gemeinsamen, immer prüfenden Leseweg; Größe und
+ * SHA-256 der Anlage werden beim Lesen geprüft. Meldung bei Abweichung wie bisher.
+ */
+async function readStagedAttachmentBytes(source: AcceptanceSource): Promise<Buffer> {
+  try {
+    return await fetchVerifiedObjectBytes(
+      { bucket: source.storageBucket, key: source.storageKey, versionId: source.storageVersionId },
+      { sizeBytes: source.sizeBytes, sha256: source.sha256 },
+    );
+  } catch (error) {
+    if (error instanceof StoredObjectError && error.integrityViolation) {
+      throw new ActionError('Die Prüfsumme der Anlage stimmt nicht.');
+    }
+    throw error;
+  }
+}
+
 function isAcceptedResult(
   source: AcceptanceSource | AcceptedInboxAttachment,
 ): source is AcceptedInboxAttachment {
@@ -247,18 +264,7 @@ export async function acceptInboxAttachment(input: {
       expectedMime: source.mimeType,
       retentionYears: source.documentType.retentionYears ?? undefined,
     },
-    readBytes: async () => {
-      const bytes = await fetchObjectBytes(
-        source.storageBucket,
-        source.storageKey,
-        source.storageVersionId,
-      );
-      const actual = createHash('sha256').update(bytes).digest();
-      if (!actual.equals(Buffer.from(source.sha256)) || BigInt(bytes.length) !== source.sizeBytes) {
-        throw new ActionError('Die Prüfsumme der Anlage stimmt nicht.');
-      }
-      return bytes;
-    },
+    readBytes: () => readStagedAttachmentBytes(source),
     guardMutationTx,
     assertDocumentAvailableTx: async (tx, documentId) => {
       const other = await tx.portalInboxAttachment.findFirst({

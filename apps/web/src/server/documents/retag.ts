@@ -34,7 +34,7 @@
 
 import { withTenantContext, type TxClient } from '@taxtronik/db';
 import {
-  fetchObjectBytes,
+  fetchVerifiedObjectBytes,
   deleteObject,
   deleteObjectVersion,
   classificationToTier,
@@ -98,6 +98,9 @@ export interface RetagSnapshot {
   bucket: string;
   key: string;
   storageVersionId: string | null;
+  /** R-05: Größe und SHA-256 der Quellfassung; ein Re-Store liest nur geprüfte Bytes. */
+  sha256: Uint8Array;
+  sizeBytes: bigint;
   immutable: boolean;
   scanStatus: string;
   createdAt: Date;
@@ -162,6 +165,8 @@ export async function loadRetagSnapshot(
           storageBucket: true,
           storageKey: true,
           storageVersionId: true,
+          sha256: true,
+          sizeBytes: true,
           immutable: true,
           scanStatus: true,
         },
@@ -184,6 +189,8 @@ export async function loadRetagSnapshot(
     bucket: d.versions[0].storageBucket,
     key: d.versions[0].storageKey,
     storageVersionId: d.versions[0].storageVersionId,
+    sha256: d.versions[0].sha256,
+    sizeBytes: d.versions[0].sizeBytes,
     immutable: d.versions[0].immutable,
     scanStatus: d.versions[0].scanStatus,
     createdAt: d.createdAt,
@@ -418,7 +425,12 @@ export async function restoreRetagDocument(
     context: g.ctx,
     source: 'staff.document.retag',
     check: checkCurrentVersion,
-    readBytes: () => fetchObjectBytes(plan.bucket, plan.key, plan.storageVersionId),
+    // R-05: Quellbytes nur nach Größen- und SHA-256-Prüfung der gebundenen Fassung.
+    readBytes: () =>
+      fetchVerifiedObjectBytes(
+        { bucket: plan.bucket, key: plan.key, versionId: plan.storageVersionId },
+        { sizeBytes: plan.sizeBytes, sha256: plan.sha256 },
+      ),
     storage: () => ({
       tier: plan.newTier,
       classification: plan.newClassification,

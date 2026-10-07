@@ -13,7 +13,7 @@ import {
 } from '@taxtronik/crypto';
 import { env } from '@taxtronik/config';
 import { microsoftClient, IMAP_SCOPES } from '@taxtronik/mail/imap';
-import { fetchObjectBytes, getBucketForTier } from '@taxtronik/storage';
+import { fetchVerifiedObjectBytes, getBucketForTier, StoredObjectError } from '@taxtronik/storage';
 import {
   staffAction,
   ActionError,
@@ -209,6 +209,28 @@ export async function importAttachment(
   });
 }
 
+/**
+ * R-05: Anhangbytes über den gemeinsamen, immer prüfenden Leseweg; Größe und
+ * SHA-256 des geprüften Anhangs werden beim Lesen verglichen. Meldung bei
+ * Abweichung wie bisher.
+ */
+async function readInboundAttachmentBytes(attachment: {
+  storageKey: string | null;
+  sha256: string;
+  sizeBytes: number;
+}): Promise<Buffer> {
+  try {
+    return await fetchVerifiedObjectBytes(
+      { bucket: getBucketForTier('NONE'), key: attachment.storageKey! },
+      { sizeBytes: attachment.sizeBytes, sha256: attachment.sha256 },
+    );
+  } catch (error) {
+    if (error instanceof StoredObjectError && error.integrityViolation)
+      throw new ActionError('Anhang-Prüfsumme stimmt nicht.');
+    throw error;
+  }
+}
+
 /** Übernimmt einen geprüften Anhang ins Mandantenarchiv; Fachfehler werfen ActionError. */
 async function archiveAttachment(
   g: StaffCtx,
@@ -326,12 +348,7 @@ async function archiveAttachment(
       expectedMime: attachment.mimeType,
       retentionYears: type.retentionYears ?? undefined,
     },
-    readBytes: async () => {
-      const bytes = await fetchObjectBytes(getBucketForTier('NONE'), attachment.storageKey!);
-      if (createHash('sha256').update(bytes).digest('hex') !== attachment.sha256)
-        throw new ActionError('Anhang-Prüfsumme stimmt nicht.');
-      return bytes;
-    },
+    readBytes: () => readInboundAttachmentBytes(attachment),
     guardMutationTx: guardImportTx,
     recordPendingTx: async (tx, upload) => {
       const claim = await tx.inboundAttachment.updateMany({

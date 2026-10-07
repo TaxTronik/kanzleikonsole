@@ -23,7 +23,7 @@
 import type { TenantContext, TxClient } from '@taxtronik/db';
 import { withTenantContext } from '@taxtronik/db';
 import {
-  fetchObjectBytes,
+  fetchVerifiedObjectBytes,
   prepareBytesCommitWithTier,
   type CommitDocumentResult,
 } from '@taxtronik/storage';
@@ -63,8 +63,20 @@ export type ArchiveFailureCode =
   | ArchiveInputFailure
   | 'status_conflict';
 
+/**
+ * Gebundene Archivfassung: Ort plus Größe und SHA-256 der Dokumentversion, gegen
+ * die jeder Abruf die gelesenen Bytes prüft (R-05).
+ */
+export interface ArchivedPdfRef {
+  bucket: string;
+  key: string;
+  storageVersionId?: string | null;
+  sha256: Uint8Array;
+  sizeBytes: bigint;
+}
+
 export type ArchiveResult =
-  | { ok: true; bucket: string; key: string; storageVersionId?: string | null; number: string }
+  | ({ ok: true; number: string } & ArchivedPdfRef)
   | { ok: true; bytes: Buffer; number: string }
   | { ok: false; code: ArchiveFailureCode };
 
@@ -209,7 +221,10 @@ async function renderDraftPreview(
   const invalid = archiveInputFailure(invoice, seller);
   if (invalid) return { ok: false, code: invalid };
   const preview = await generateInvoiceArtifacts(ctx, invoice, seller);
-  return { ok: true, bytes: Buffer.from(preview.pdfBytes), number: invoice.number };
+  // R-05: Sicht auf dieselben Bytes statt einer Kopie (die Route antwortet
+  // ebenfalls ohne weitere Kopie).
+  const { buffer, byteOffset, byteLength } = preview.pdfBytes;
+  return { ok: true, bytes: Buffer.from(buffer, byteOffset, byteLength), number: invoice.number };
 }
 
 /** Stand des Entwurfs, aus dem eine Kontrollvorschau gerendert wurde. */
@@ -230,7 +245,7 @@ export type DraftPreviewRecheck =
    */
   | {
       state: 'issued';
-      pdf: { bucket: string; key: string; storageVersionId: string | null } | null;
+      pdf: (ArchivedPdfRef & { storageVersionId: string | null }) | null;
     };
 
 /**
@@ -278,6 +293,8 @@ export async function recheckDraftPreview(
           bucket: archived.storageBucket,
           key: archived.storageKey,
           storageVersionId: archived.storageVersionId,
+          sha256: archived.sha256,
+          sizeBytes: archived.sizeBytes,
         },
       };
     }
@@ -576,11 +593,15 @@ async function reuseExistingArchive(
     // Legacy-Reparatur: Fehlt zur vorhandenen Hybrid-PDF die separate XML,
     // wird exakt deren eingebettete factur-x.xml extrahiert. Eine heutige
     // Neugenerierung aus inzwischen geänderten Stammdaten könnte sonst von
-    // der bereits ausgestellten PDF abweichen.
-    const archivedPdf = await fetchObjectBytes(
-      existing.storageBucket,
-      existing.storageKey,
-      existing.storageVersionId,
+    // der bereits ausgestellten PDF abweichen. R-05: nur aus Bytes, die Größe
+    // und SHA-256 der archivierten Fassung entsprechen.
+    const archivedPdf = await fetchVerifiedObjectBytes(
+      {
+        bucket: existing.storageBucket,
+        key: existing.storageKey,
+        versionId: existing.storageVersionId,
+      },
+      { sizeBytes: existing.sizeBytes, sha256: existing.sha256 },
     );
     const cii = await extractFacturXXml(archivedPdf);
     const [xmlIntent] = await journalStorageIntents({
@@ -608,6 +629,8 @@ async function reuseExistingArchive(
     bucket: existing.storageBucket,
     key: existing.storageKey,
     storageVersionId: existing.storageVersionId,
+    sha256: existing.sha256,
+    sizeBytes: existing.sizeBytes,
     number: loaded.number,
   };
 }
@@ -667,15 +690,13 @@ async function storeInvoiceArtifacts(
 }
 
 type ArchiveLinkResult =
-  | {
+  | ({
       outcome: 'ready';
-      bucket: string;
-      key: string;
       storageVersionId: string | null;
       usedStoredPdf: boolean;
       usedStoredXml: boolean;
       needsCanonicalXml: boolean;
-    }
+    } & ArchivedPdfRef)
   | { outcome: 'not_found' | 'status_conflict' };
 
 interface GeneratedArchiveLinkInput extends StoredInvoiceArtifacts {
@@ -786,6 +807,8 @@ async function linkGeneratedArchiveTx(
       bucket: freshVersion.storageBucket,
       key: freshVersion.storageKey,
       storageVersionId: freshVersion.storageVersionId,
+      sha256: freshVersion.sha256,
+      sizeBytes: freshVersion.sizeBytes,
       usedStoredPdf: false,
       usedStoredXml: false,
       needsCanonicalXml: !fresh.xrechnungDocumentId || !freshXmlVersion,
@@ -852,6 +875,8 @@ async function linkGeneratedArchiveTx(
     bucket: input.stored.targetBucket,
     key: input.stored.targetKey,
     storageVersionId: input.stored.storageVersionId,
+    sha256: input.stored.sha256,
+    sizeBytes: input.stored.sizeBytes,
     usedStoredPdf: true,
     usedStoredXml: canonicalXml.usedStoredXml,
     needsCanonicalXml: false,
@@ -920,6 +945,8 @@ async function finalizeGeneratedArchive(
     bucket: result.bucket,
     key: result.key,
     storageVersionId: result.storageVersionId,
+    sha256: result.sha256,
+    sizeBytes: result.sizeBytes,
     number: input.number,
   };
 }

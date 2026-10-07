@@ -76,8 +76,9 @@ describe('Wissensanhänge', () => {
     expect(attachmentRoute).toContain('tenantId: guard.tenantId');
     expect(attachmentRoute).toContain('!isDocumentVersionReady(entry.document.versions[0])');
     expect(attachmentRoute).toContain('scanCompletedAt: true');
+    // R-05: gebundene Version, geprüft gegen Größe und SHA-256 der Fassung.
     expect(attachmentRoute).toMatch(
-      /streamObject\(\s*version\.storageBucket,\s*version\.storageKey,\s*version\.storageVersionId,?\s*\)/,
+      /streamVerifiedObject\(\s*\{\s*bucket: version\.storageBucket,\s*key: version\.storageKey,\s*versionId: version\.storageVersionId,?\s*\},\s*\{ sizeBytes: version\.sizeBytes, sha256: version\.sha256 \},?\s*\)/,
     );
     expect(attachmentRoute).toContain(
       'entry.articleId === null && entry.uploadedBy !== guard.staffId',

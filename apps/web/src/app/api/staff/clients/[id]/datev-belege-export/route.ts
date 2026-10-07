@@ -20,7 +20,11 @@ import { z } from 'zod';
 import { staffAuth } from '@/server/auth/staff';
 import { canAccessClientTx } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
-import { MAX_UPLOAD_BYTES, streamObject, type ObjectStream } from '@taxtronik/storage';
+import {
+  MAX_UPLOAD_BYTES,
+  streamVerifiedObject,
+  type VerifiedObjectStream,
+} from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
 import {
   acquireZipStreamSlot,
@@ -284,6 +288,7 @@ interface DatevBelegDocument {
     storageKey: string;
     storageVersionId: string | null;
     sha256: Uint8Array;
+    sizeBytes: bigint;
   }[];
 }
 
@@ -321,7 +326,8 @@ function indexRow(doc: DatevBelegDocument, seq: string, fileName: string, sha256
  * überfluten). Ein nicht abrufbares oder zu großes Objekt wird wie bisher
  * übersprungen und im Index als FEHLT markiert — auch wenn das Lesen erst
  * mittendrin scheitert (onReadError; der Writer schreibt einen Eintrag erst nach
- * dem vollständigen Lesen).
+ * dem vollständigen Lesen). R-05: Dasselbe gilt für Bytes, die von Größe oder
+ * SHA-256 der Fassung abweichen — index.csv weist nur geprüfte Hashes aus.
  */
 async function* datevBelegeEntries(input: {
   docs: DatevBelegDocument[];
@@ -343,10 +349,13 @@ async function* datevBelegeEntries(input: {
     const safeTitle = sanitizeZipFileName(doc.title, 80);
     const fileName = `belege/${seq}_${safeTitle}.${ext}`;
 
-    let object: ObjectStream;
+    let object: VerifiedObjectStream;
     try {
       // DOC-VERSION-IMMUTABILITY-001: gebundene S3-Version, kein Key-Fallback.
-      object = await streamObject(v.storageBucket, v.storageKey, v.storageVersionId);
+      object = await streamVerifiedObject(
+        { bucket: v.storageBucket, key: v.storageKey, versionId: v.storageVersionId },
+        { sizeBytes: v.sizeBytes, sha256: v.sha256 },
+      );
     } catch {
       // Fehlende Datei: Eintrag überspringen, im Index markieren
       indexRows.push(indexRow(doc, seq, 'FEHLT', ''));

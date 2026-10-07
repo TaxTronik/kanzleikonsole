@@ -21,7 +21,7 @@ const m = vi.hoisted(() => {
     staffActionGuard: vi.fn(),
     assertClientAccessTx: vi.fn(),
     revalidatePath: vi.fn(),
-    fetchObjectBytes: vi.fn(),
+    fetchVerifiedObjectBytes: vi.fn(),
     deleteObject: vi.fn(),
     deleteObjectVersion: vi.fn(),
     log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -250,7 +250,7 @@ vi.mock('@taxtronik/db', () => ({
 vi.mock('@taxtronik/storage', async () => {
   const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
   return {
-    fetchObjectBytes: m.fetchObjectBytes,
+    fetchVerifiedObjectBytes: m.fetchVerifiedObjectBytes,
     prepareBytesCommitWithTier: storageJournal.prepare,
     commitPreparedBytes: storageJournal.commit,
     deleteObject: m.deleteObject,
@@ -399,7 +399,7 @@ beforeEach(() => {
     if (clientId === CLIENT_SECRET)
       throw new m.ForbiddenError('Kein Zugriff auf diesen Mandanten.');
   });
-  m.fetchObjectBytes.mockResolvedValue(Buffer.from('%PDF-1.7 Bestand'));
+  m.fetchVerifiedObjectBytes.mockResolvedValue(Buffer.from('%PDF-1.7 Bestand'));
 });
 
 describe('softDeleteDocumentsAction', () => {
@@ -685,7 +685,7 @@ describe('retagDocumentsAction', () => {
     seed([doc(A), doc(B)]);
     let now = 1_000_000;
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
-    m.fetchObjectBytes.mockImplementation(async () => {
+    m.fetchVerifiedObjectBytes.mockImplementation(async () => {
       // Der erste Re-Store verbraucht das ganze Budget des Aufrufs.
       now += 25_000;
       return Buffer.from('%PDF-1.7 Bestand');

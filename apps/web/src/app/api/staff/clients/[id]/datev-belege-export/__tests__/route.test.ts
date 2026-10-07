@@ -8,7 +8,7 @@ const h = vi.hoisted(() => ({
   canAccessClientTx: vi.fn(),
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
-  streamObject: vi.fn(),
+  streamVerifiedObject: vi.fn(),
   checkStaffExportLimit: vi.fn(),
   tx: { client: { findFirst: vi.fn() }, document: { findMany: vi.fn() } },
 }));
@@ -23,7 +23,7 @@ vi.mock('@/server/rate-limit', () => ({
 }));
 vi.mock('@taxtronik/storage', () => ({
   MAX_UPLOAD_BYTES: 25 * 1024 * 1024,
-  streamObject: h.streamObject,
+  streamVerifiedObject: h.streamVerifiedObject,
 }));
 // Echter ZIP-Writer; nur der Build-Slot ist für den 429-Pfad steuerbar.
 vi.mock('@/server/export/zip', async (importOriginal) => {
@@ -40,7 +40,7 @@ import {
 } from '@/server/export/zip';
 
 const CLIENT_ID = '11111111-1111-4111-8111-111111111111';
-/** Frischer S3-Body je Abruf (streamObject liefert einen Web-ReadableStream). */
+/** Frischer S3-Body je Abruf (streamVerifiedObject liefert einen Web-ReadableStream). */
 const objectStream = (bytes: Uint8Array | string) => ({
   body: new Response(typeof bytes === 'string' ? bytes : new Uint8Array(bytes)).body!,
   contentLength: null,
@@ -102,7 +102,7 @@ describe('DATEV-Belege-Export: Dateityp und Originalinhalt', () => {
         ],
       },
     ]);
-    h.streamObject.mockImplementation(async () => objectStream(original));
+    h.streamVerifiedObject.mockImplementation(async () => objectStream(original));
 
     const response = await call();
     expect(response.status).toBe(200);
@@ -119,7 +119,7 @@ describe('DATEV-Belege-Export: Dateityp und Originalinhalt', () => {
     h.canAccessClientTx.mockResolvedValue(false);
     expect((await call()).status).toBe(404);
     expect(h.tx.document.findMany).not.toHaveBeenCalled();
-    expect(h.streamObject).not.toHaveBeenCalled();
+    expect(h.streamVerifiedObject).not.toHaveBeenCalled();
     expect(h.evidenceRecord).not.toHaveBeenCalled();
   });
 });
@@ -162,7 +162,7 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: only completed 
           ],
         },
       ]);
-      h.streamObject.mockImplementation(async () => objectStream('ready'));
+      h.streamVerifiedObject.mockImplementation(async () => objectStream('ready'));
       const response = await call();
       expect(response.status).toBe(200);
       const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
@@ -172,7 +172,10 @@ describe('DOC-UPLOAD-JOURNAL-001 / DOC-VERSION-IMMUTABILITY-001: only completed 
         'manifest.txt',
       ]);
       expect(Buffer.from(files['index.csv']!).toString()).not.toContain('Unvollstaendig');
-      expect(h.streamObject).toHaveBeenCalledExactlyOnceWith('synthetic', 'ready', undefined);
+      expect(h.streamVerifiedObject).toHaveBeenCalledExactlyOnceWith(
+        { bucket: 'synthetic', key: 'ready', versionId: undefined },
+        { sizeBytes: 5n, sha256: version.sha256 },
+      );
       expect(h.evidenceRecord.mock.calls[0]![1].after).toMatchObject({
         documents: 1,
         documentIds: ['ready-document'],
@@ -192,7 +195,7 @@ describe('DATEV-Belege-Export: echte Datumsgrenzen', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: 'invalid_query' });
     expect(h.withTenantContext).not.toHaveBeenCalled();
-    expect(h.streamObject).not.toHaveBeenCalled();
+    expect(h.streamVerifiedObject).not.toHaveBeenCalled();
   });
 
   it('behält gültige inklusive UTC-Filter einschließlich Schalttag bei', async () => {
@@ -246,7 +249,7 @@ describe('F-18: Audit erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
     expect((await response.json()).error).toBe('zip_too_large');
     expect(acquireZipStreamSlot).not.toHaveBeenCalled();
     expect(h.evidenceRecord).not.toHaveBeenCalled();
-    expect(h.streamObject).not.toHaveBeenCalled();
+    expect(h.streamVerifiedObject).not.toHaveBeenCalled();
   });
 
   it('413 zip_too_many_entries vorab statt nach Audit und Objekt-Loads', async () => {
@@ -259,7 +262,7 @@ describe('F-18: Audit erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
     expect((await response.json()).error).toBe('zip_too_many_entries');
     expect(acquireZipStreamSlot).not.toHaveBeenCalled();
     expect(h.evidenceRecord).not.toHaveBeenCalled();
-    expect(h.streamObject).not.toHaveBeenCalled();
+    expect(h.streamVerifiedObject).not.toHaveBeenCalled();
   });
 
   it('429 zip_busy: kein Audit und keine Bytes', async () => {
@@ -269,12 +272,12 @@ describe('F-18: Audit erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
     expect(response.status).toBe(429);
     expect((await response.json()).error).toBe('zip_busy');
     expect(h.evidenceRecord).not.toHaveBeenCalled();
-    expect(h.streamObject).not.toHaveBeenCalled();
+    expect(h.streamVerifiedObject).not.toHaveBeenCalled();
   });
 
   it('auditiert genau einmal nach dem Slot-Erwerb und vor dem ersten Objekt-Load', async () => {
     h.tx.document.findMany.mockResolvedValue([readyDocument(1, 5n)]);
-    h.streamObject.mockImplementation(async () => objectStream('bytes'));
+    h.streamVerifiedObject.mockImplementation(async () => objectStream('bytes'));
     const response = await call('?from=2026-09-01&to=2026-09-30');
     expect(response.status).toBe(200);
     await response.arrayBuffer();
@@ -292,7 +295,7 @@ describe('F-18: Audit erst nach Größen-, Eintrags- und Slot-Prüfung', () => {
     });
     const [slotOrder] = vi.mocked(acquireZipStreamSlot).mock.invocationCallOrder;
     const [auditOrder] = h.evidenceRecord.mock.invocationCallOrder;
-    const [loadOrder] = h.streamObject.mock.invocationCallOrder;
+    const [loadOrder] = h.streamVerifiedObject.mock.invocationCallOrder;
     expect(slotOrder).toBeLessThan(auditOrder!);
     expect(auditOrder).toBeLessThan(loadOrder!);
     // Lesen (mit Zugriffsprüfung) und Audit laufen in getrennten Transaktionen.
@@ -326,7 +329,7 @@ describe('P-03: DATEV-Belegexport als Stream', () => {
     const release = vi.fn();
     vi.mocked(acquireZipStreamSlot).mockResolvedValueOnce(release);
     h.tx.document.findMany.mockResolvedValue([beleg(1), beleg(2), beleg(3)]);
-    h.streamObject.mockImplementation(async (_bucket: string, key: string) => {
+    h.streamVerifiedObject.mockImplementation(async ({ key }: { key: string }) => {
       if (key === 'beleg-2') throw new Error('NoSuchKey');
       return objectStream(`bytes of ${key}`);
     });
@@ -355,14 +358,18 @@ describe('P-03: DATEV-Belegexport als Stream', () => {
     expect(Buffer.from(files['manifest.txt']!).toString()).toContain(
       'Anzahl Belege: 2 (von 3 insgesamt)',
     );
-    expect(h.streamObject.mock.calls).toEqual(
-      [1, 2, 3].map((index) => ['synthetic', `beleg-${index}`, `version-${index}`]),
+    // R-05: gebundene Version, geprüft gegen Größe und SHA-256 der Fassung.
+    expect(h.streamVerifiedObject.mock.calls).toEqual(
+      [1, 2, 3].map((index) => [
+        { bucket: 'synthetic', key: `beleg-${index}`, versionId: `version-${index}` },
+        { sizeBytes: 16n, sha256: new Uint8Array(32).fill(index) },
+      ]),
     );
   });
 
   it('bricht das Lesen eines Belegs mittendrin ab: wie bisher FEHLT im Index, Export läuft weiter', async () => {
     h.tx.document.findMany.mockResolvedValue([beleg(1), beleg(2), beleg(3)]);
-    h.streamObject.mockImplementation(async (_bucket: string, key: string) => {
+    h.streamVerifiedObject.mockImplementation(async ({ key }: { key: string }) => {
       if (key !== 'beleg-2') return objectStream(`bytes of ${key}`);
       let sent = false;
       return {
@@ -401,7 +408,7 @@ describe('P-03: DATEV-Belegexport als Stream', () => {
     h.tx.document.findMany.mockResolvedValue([beleg(1), beleg(2)]);
     let cancelled = 0;
     // Langsames S3: ein Chunk, dann hängt das Objekt, während der Writer puffert.
-    h.streamObject.mockImplementation(async () => {
+    h.streamVerifiedObject.mockImplementation(async () => {
       let sent = false;
       return {
         body: new ReadableStream<Uint8Array>(
@@ -431,13 +438,13 @@ describe('P-03: DATEV-Belegexport als Stream', () => {
     );
     const reader = response.body!.getReader();
     const pendingRead = reader.read();
-    await vi.waitFor(() => expect(h.streamObject).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(h.streamVerifiedObject).toHaveBeenCalledTimes(1));
     disconnect.abort();
 
     expect(release).toHaveBeenCalledExactlyOnceWith('cancelled', expect.anything());
     await expect(pendingRead).rejects.toBeDefined();
     await vi.waitFor(() => expect(cancelled).toBe(1));
-    expect(h.streamObject).toHaveBeenCalledTimes(1);
+    expect(h.streamVerifiedObject).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -468,7 +475,7 @@ describe('A10: Abrufnachweis des DATEV-Belegexports mit Dokument-IDs', () => {
 
   it('listet alle Belege in Archivreihenfolge, auch einen erst beim Streamen fehlenden', async () => {
     h.tx.document.findMany.mockResolvedValue([beleg(3), beleg(1), beleg(2)]);
-    h.streamObject.mockImplementation(async (_bucket: string, key: string) => {
+    h.streamVerifiedObject.mockImplementation(async ({ key }: { key: string }) => {
       if (key === 'beleg-1') throw new Error('NoSuchKey');
       return objectStream(key);
     });
@@ -493,7 +500,9 @@ describe('A10: Abrufnachweis des DATEV-Belegexports mit Dokument-IDs', () => {
   it('kürzt die Liste nicht: 2.000 Belege in genau einem Ereignis', async () => {
     const documents = Array.from({ length: 2000 }, (_, index) => beleg(index + 1));
     h.tx.document.findMany.mockResolvedValue(documents);
-    h.streamObject.mockImplementation(async (_bucket: string, key: string) => objectStream(key));
+    h.streamVerifiedObject.mockImplementation(async ({ key }: { key: string }) =>
+      objectStream(key),
+    );
 
     const response = await call();
     await response.arrayBuffer();

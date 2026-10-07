@@ -18,7 +18,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createHash } from 'node:crypto';
 import { getClientIp, checkIpOrGlobalLimit } from '@/server/rate-limit';
 import { prismaOwner } from '@/server/db/prisma-owner';
-import { streamObject } from '@taxtronik/storage';
+import { streamVerifiedObject } from '@taxtronik/storage';
 import { isDocumentVersionReady } from '@/server/documents/delivery-readiness';
 import {
   effectiveDocumentMime,
@@ -100,10 +100,16 @@ export async function GET(req: NextRequest) {
     classification: doc.classification,
     isPoaDocument: true,
   });
-  const obj = await streamObject(
-    version.storageBucket,
-    version.storageKey,
-    version.storageVersionId,
+  // R-05: Ausgeliefert werden nur Bytes, die Größe und SHA-256 der im
+  // Signatur-Snapshot gebundenen Version entsprechen; eine Abweichung bricht
+  // die Antwort ab (wie beim Dokument-Download).
+  const obj = await streamVerifiedObject(
+    {
+      bucket: version.storageBucket,
+      key: version.storageKey,
+      versionId: version.storageVersionId,
+    },
+    { sizeBytes: version.sizeBytes, sha256: version.sha256 },
   );
   const headers: Record<string, string> = {
     'content-type': previewContentType(mime, doc.title),

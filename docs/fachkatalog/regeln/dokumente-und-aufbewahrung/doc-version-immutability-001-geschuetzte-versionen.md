@@ -55,6 +55,15 @@ code_refs:
   - apps/worker/src/jobs/storage-orphan-cleanup.ts
   - apps/web/src/server/documents/retag.ts
   - apps/web/src/app/api/staff/admin/audit/export/route.ts
+  - packages/storage/src/index.ts
+  - apps/web/src/app/api/staff/invoices/[id]/zugferd/route.ts
+  - apps/web/src/app/api/staff/invoices/[id]/xrechnung/route.ts
+  - apps/web/src/server/invoicing/archive.ts
+  - apps/web/src/server/inbox/attachment-delivery.ts
+  - apps/web/src/app/api/staff/knowledge/attachments/[id]/route.ts
+  - apps/web/src/app/poa/sign/document/route.ts
+  - apps/web/src/app/staff/(protected)/mailbox/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
 test_refs:
   - packages/storage/src/__tests__/object-version.test.ts
   - apps/web/src/server/documents/__tests__/delivery.test.ts
@@ -76,6 +85,21 @@ test_refs:
   - apps/web/src/server/documents/__tests__/retag-db.test.ts
   - apps/web/src/app/api/staff/documents/__tests__/bulk-download-audit.test.ts
   - apps/web/src/app/api/staff/admin/audit/export/__tests__/route.test.ts
+  - packages/storage/src/__tests__/verified-read.test.ts
+  - apps/web/src/app/api/staff/documents/__tests__/bulk-download-integrity.test.ts
+  - apps/web/src/app/api/staff/documents/__tests__/bulk-download-stream.test.ts
+  - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/__tests__/integrity.test.ts
+  - apps/web/src/app/api/staff/invoices/[id]/zugferd/__tests__/route.test.ts
+  - apps/web/src/app/api/staff/invoices/[id]/xrechnung/__tests__/route.test.ts
+  - apps/web/src/server/invoicing/__tests__/archive.test.ts
+  - apps/web/src/server/invoicing/__tests__/archive-lock-call-sites.test.ts
+  - apps/web/src/server/inbox/__tests__/attachment-delivery-integrity.test.ts
+  - apps/web/src/server/inbox/__tests__/accept-attachment.test.ts
+  - apps/web/src/app/api/staff/knowledge/attachments/[id]/__tests__/route.test.ts
+  - apps/web/src/app/poa/sign/document/__tests__/route-snapshot.test.ts
+  - apps/web/src/server/mailbox/__tests__/import.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/import-client-doc.test.ts
+  - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions.test.ts
 feature_refs:
   - docs/anwenderdoku/dokumente.md
   - docs/development/module/dokumentenarchiv.md
@@ -171,6 +195,23 @@ nachträglich erfundene Versionsbindung. Akzeptierte Inbox-Anlagen und
 Wissensanlagen prüfen ebenfalls den Abschlussstatus der tatsächlich
 ausgewählten Dokumentversion.
 
+Jeder Leser einer Dokumentversion oder Anlage mit gespeicherter Fassung prüft
+zusätzlich Größe und SHA-256 der gebundenen Version über den gemeinsamen
+Leseweg von `@taxtronik/storage` (`fetchVerifiedObjectBytes`,
+`streamVerifiedObject`); einen ungeprüften Stream-Leser gibt es nicht mehr. Das
+umfasst Download und Vorschau, Sammel- und DATEV-Export, ZUGFeRD- und
+XRechnung-Abruf, das Nachziehen der XRechnung aus der archivierten Hybrid-PDF,
+Retag-Quellbytes, Abruf und Übernahme von Posteingangsanlagen, die Archivierung
+von Smart-Postfach-Anhängen, Wissensanlagen, die Textübernahme der Subsumtion,
+das Unterzeichnungsdokument einer Vollmacht sowie Lohn-, Formular-, GwG- und
+Mandantenassistenz-Quellen. Abweichende Bytes werden weder ausgeliefert noch
+weiterverarbeitet: Gestreamte Abrufe brechen die Antwort ab, bei abweichender
+angekündigter Länge schon vor dem ersten Byte; gepufferte Pfade lehnen mit
+ihrer bisherigen Meldung ab; der DATEV-Export führt einen solchen Beleg wie ein
+fehlendes Objekt in `index.csv` als FEHLT ohne Hash. Ohne gespeicherte
+Erwartung lesen nur die Bereitschaftsprobe des Speichers und die
+Engine-Rohergebnisse der Risikoanalyse.
+
 Welche Dokumente eine Sammelausgabe verlassen haben, belegt genau ein
 Abrufnachweis je Auslieferung; diese Nachweisform hat der Product Owner am
 2026-10-07 bestätigt. Der ZIP-Sammeldownload schreibt `document.download.bulk`
@@ -245,7 +286,12 @@ aus dem DB-Ladepfad an Download und Preview nach. Inbox-Tests belegen
 Versionsweitergabe und die Sperre eines später infizierten Archivdokuments.
 
 Download- und Preview-Routentests prüfen Staff-/Portal-Abrufe einschließlich
-des tatsächlichen Preview-Streams. Sammel-/DATEV-Tests entpacken echte ZIPs und
+des tatsächlichen Preview-Streams. Die Lesetests der übrigen Pfade lassen die
+Größen- und SHA-256-Prüfung überwiegend echt laufen (S3 am Storage-Client
+gemockt) und belegen identische Bytes bei passender Fassung sowie Abbruch oder
+Ablehnung bei abweichenden Bytes gleicher Länge und abweichender angekündigter
+Länge; Retag-, Rechnungsarchiv- und Postfachtests belegen die Bindung an Größe
+und SHA-256 und die Ablehnung über die Fehlerklasse. Sammel-/DATEV-Tests entpacken echte ZIPs und
 belegen, dass eine gesperrte neueste Version auch bei vorhandenem älterem
 sauberem Stand weder im Archiv noch in Abrufnachweisen erscheint. Sie prüfen
 außerdem genau ein Ereignis je Sammelausgabe mit allen Dokument-IDs in

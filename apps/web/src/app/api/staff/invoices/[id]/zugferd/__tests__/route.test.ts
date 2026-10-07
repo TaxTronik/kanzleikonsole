@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
+import type { GetObjectCommand } from '@aws-sdk/client-s3';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { TimeoutError } from '@/lib/with-timeout';
 
-// Fachkatalog: INV-ARCHIVE-EINVOICE-001
+// Fachkatalog: INV-ARCHIVE-EINVOICE-001, DOC-VERSION-IMMUTABILITY-001
 
 const m = vi.hoisted(() => ({
   staffAuth: vi.fn(),
@@ -11,7 +14,7 @@ const m = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   canAccessClientTx: vi.fn(),
   ensureZugferdArchive: vi.fn(),
-  streamObject: vi.fn(),
+  send: vi.fn(),
   evidenceRecord: vi.fn(),
   logError: vi.fn(),
 }));
@@ -28,10 +31,19 @@ vi.mock('@/server/rate-limit', () => ({
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/auth/rbac', () => ({ canAccessClientTx: m.canAccessClientTx }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
-vi.mock('@taxtronik/storage', () => ({ streamObject: m.streamObject }));
+// R-05: S3 ist am Storage-Client gemockt; der geprüfte Leseweg läuft echt.
+vi.mock('@taxtronik/storage/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@taxtronik/storage/client')>()),
+  s3: { send: m.send },
+}));
+vi.mock('@taxtronik/storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@taxtronik/storage')>();
+  return { ...actual, bytesResponseBody: vi.fn(actual.bytesResponseBody) };
+});
 vi.mock('@/server/invoicing/archive', () => ({ ensureZugferdArchive: m.ensureZugferdArchive }));
 vi.mock('@/server/logger', () => ({ log: { error: m.logError } }));
 
+import { bytesResponseBody } from '@taxtronik/storage';
 import { GET } from '../route';
 import { archiveFailureMessage } from '@/server/invoicing/archive-failure';
 import { UnsupportedInvoiceTextError } from '@/server/invoicing/zugferd';
@@ -179,5 +191,73 @@ describe('GET /api/staff/invoices/[id]/zugferd – Fehlerabbildung', () => {
       expect.anything(),
       expect.objectContaining({ action: 'invoice.zugferd.download', resourceId: INVOICE_ID }),
     );
+  });
+});
+
+describe('GET /api/staff/invoices/[id]/zugferd – geprüfte Bytes ohne Pufferkopie (R-05)', () => {
+  const ARCHIVED = Buffer.from('%PDF-1.7 archivierte ZUGFeRD-Fassung');
+  const archived = () => ({
+    ok: true,
+    bucket: 'gobd',
+    key: 'tenants/tenant-1/gobd/2026/10/archiv.bin',
+    storageVersionId: 'archiv-version',
+    sha256: createHash('sha256').update(ARCHIVED).digest(),
+    sizeBytes: BigInt(ARCHIVED.length),
+    number: 'R-2026/001',
+  });
+  const stored = (bytes: Buffer, contentLength: number = bytes.length) =>
+    m.send.mockResolvedValueOnce({ Body: Readable.from([bytes]), ContentLength: contentLength });
+
+  it('antwortet mit den Bytes der DRAFT-Vorschau ohne weitere Kopie', async () => {
+    const preview = Buffer.from('%PDF-1.7 Kontrollfassung');
+    m.ensureZugferdArchive.mockResolvedValue({ ok: true, bytes: preview, number: 'R-2026/001' });
+
+    const response = await request();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-length')).toBe(String(preview.length));
+    expect(vi.mocked(bytesResponseBody).mock.calls[0]![0]).toBe(preview);
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(preview);
+    expect(m.send).not.toHaveBeenCalled();
+  });
+
+  it('streamt die Archivfassung nach Größen- und SHA-256-Prüfung der gebundenen Version', async () => {
+    m.ensureZugferdArchive.mockResolvedValue(archived());
+    stored(ARCHIVED);
+
+    const response = await request();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-length')).toBe(String(ARCHIVED.length));
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(ARCHIVED);
+    expect((m.send.mock.calls[0]![0] as GetObjectCommand).input).toEqual({
+      Bucket: 'gobd',
+      Key: 'tenants/tenant-1/gobd/2026/10/archiv.bin',
+      VersionId: 'archiv-version',
+    });
+  });
+
+  it('bricht die Antwort bei abweichenden Archivbytes ab (StoredObjectError)', async () => {
+    m.ensureZugferdArchive.mockResolvedValue(archived());
+    const tampered = Buffer.from(ARCHIVED);
+    tampered[tampered.length - 1] = 0x21;
+    stored(tampered);
+
+    const response = await request();
+
+    await expect(response.arrayBuffer()).rejects.toMatchObject({
+      name: 'StoredObjectError',
+      reason: 'HASH_MISMATCH',
+    });
+  });
+
+  it('liefert bei abweichender angekündigter Länge kein Byte aus (wie der Dokument-Download)', async () => {
+    m.ensureZugferdArchive.mockResolvedValue(archived());
+    stored(ARCHIVED, ARCHIVED.length + 1);
+
+    await expect(request()).rejects.toMatchObject({
+      name: 'StoredObjectError',
+      reason: 'LENGTH_MISMATCH',
+    });
   });
 });

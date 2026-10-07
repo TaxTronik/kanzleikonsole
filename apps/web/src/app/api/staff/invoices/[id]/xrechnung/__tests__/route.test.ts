@@ -1,7 +1,10 @@
+import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
+import type { GetObjectCommand } from '@aws-sdk/client-s3';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 
-// Fachkatalog: INV-ARCHIVE-EINVOICE-001, INV-PORTAL-SHARING-001
+// Fachkatalog: INV-ARCHIVE-EINVOICE-001, INV-PORTAL-SHARING-001, DOC-VERSION-IMMUTABILITY-001
 
 const m = vi.hoisted(() => ({
   staffAuth: vi.fn(),
@@ -11,7 +14,7 @@ const m = vi.hoisted(() => ({
   canAccessClientTx: vi.fn(),
   ensureZugferdArchive: vi.fn(),
   readSellerInfo: vi.fn(),
-  streamObject: vi.fn(),
+  send: vi.fn(),
   evidenceRecord: vi.fn(),
   logError: vi.fn(),
 }));
@@ -28,10 +31,10 @@ vi.mock('@/server/rate-limit', () => ({
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@/server/auth/rbac', () => ({ canAccessClientTx: m.canAccessClientTx }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
-vi.mock('@taxtronik/storage', () => ({
-  streamObject: m.streamObject,
-  commitBytesWithTier: vi.fn(),
-  fetchObjectBytes: vi.fn(),
+// R-05: S3 ist am Storage-Client gemockt; der geprüfte Leseweg läuft echt.
+vi.mock('@taxtronik/storage/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@taxtronik/storage/client')>()),
+  s3: { send: m.send },
 }));
 vi.mock('@/server/settings/tenant-settings', () => ({ readSellerInfo: m.readSellerInfo }));
 vi.mock('@/server/logger', () => ({ log: { error: m.logError } }));
@@ -128,11 +131,22 @@ const SENT = {
   sentAt: new Date('2026-09-02T08:00:00.000Z'),
   updatedAt: new Date('2026-09-02T08:00:00.000Z'),
 };
+const ARCHIVED_BYTES = Buffer.from('<archiviert/>');
 const ARCHIVED_XML = {
   id: 'xml-doc',
   sharedWithClientAt: new Date('2026-09-02T08:00:00.000Z'),
-  versions: [{ storageBucket: 'gobd', storageKey: 'xml-key', storageVersionId: 'v1' }],
+  versions: [
+    {
+      storageBucket: 'gobd',
+      storageKey: 'xml-key',
+      storageVersionId: 'v1',
+      sha256: createHash('sha256').update(ARCHIVED_BYTES).digest(),
+      sizeBytes: BigInt(ARCHIVED_BYTES.length),
+    },
+  ],
 };
+/** GetObject des Archivabrufs: gebundener Ort samt Version. */
+const archiveRead = () => (m.send.mock.calls[0]![0] as GetObjectCommand).input;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let tx: any;
@@ -163,7 +177,10 @@ beforeEach(() => {
   m.checkStaffExportLimit.mockResolvedValue({ ok: true });
   m.canAccessClientTx.mockResolvedValue(true);
   m.readSellerInfo.mockResolvedValue(SELLER);
-  m.streamObject.mockResolvedValue({ body: '<archiviert/>', contentLength: 13 });
+  m.send.mockImplementation(async () => ({
+    Body: Readable.from([ARCHIVED_BYTES]),
+    ContentLength: ARCHIVED_BYTES.length,
+  }));
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (client: unknown) => unknown) =>
     fn(tx),
   );
@@ -183,7 +200,7 @@ describe('GET /api/staff/invoices/[id]/xrechnung – DRAFT-Vorschau', () => {
     expect(xml).toContain('DE987654321');
     expect(xml).toContain('rechnung@mandant.example');
     expect(m.ensureZugferdArchive).not.toHaveBeenCalled();
-    expect(m.streamObject).not.toHaveBeenCalled();
+    expect(m.send).not.toHaveBeenCalled();
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(m.evidenceRecord).toHaveBeenCalledWith(
       expect.anything(),
@@ -274,7 +291,7 @@ describe('GET /api/staff/invoices/[id]/xrechnung – DRAFT-Vorschau', () => {
 
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe('<archiviert/>');
-    expect(m.streamObject).toHaveBeenCalledWith('gobd', 'xml-key', 'v1');
+    expect(archiveRead()).toEqual({ Bucket: 'gobd', Key: 'xml-key', VersionId: 'v1' });
     expect(m.ensureZugferdArchive).not.toHaveBeenCalled();
   });
 });
@@ -291,8 +308,27 @@ describe('GET /api/staff/invoices/[id]/xrechnung – ausgestellte Rechnung', () 
     expect(response.headers.get('content-disposition')).toBe(
       'attachment; filename="xrechnung-R-2026_0001.xml"',
     );
-    expect(m.streamObject).toHaveBeenCalledWith('gobd', 'xml-key', 'v1');
+    await expect(response.text()).resolves.toBe('<archiviert/>');
+    expect(archiveRead()).toEqual({ Bucket: 'gobd', Key: 'xml-key', VersionId: 'v1' });
     expect(m.readSellerInfo).not.toHaveBeenCalled();
+  });
+
+  // R-05: Größe und SHA-256 der Archivfassung werden beim Streamen geprüft.
+  it('bricht die Antwort bei abweichenden Archivbytes ab (StoredObjectError)', async () => {
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(invoice(SENT))
+      .mockResolvedValueOnce({ ...SENT, xrechnungDocument: ARCHIVED_XML });
+    m.send.mockImplementation(async () => ({
+      Body: Readable.from([Buffer.from('<manipuli/>!!')]),
+      ContentLength: ARCHIVED_BYTES.length,
+    }));
+
+    const response = await request();
+
+    await expect(response.text()).rejects.toMatchObject({
+      name: 'StoredObjectError',
+      reason: 'HASH_MISMATCH',
+    });
   });
 
   it.each([

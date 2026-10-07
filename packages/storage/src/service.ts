@@ -437,8 +437,10 @@ export function sanitizeFilenameForHeader(name: string): string {
 // SHA-256-Vergleich viermal im Web-Code, und ob die Integrität geprüft wurde,
 // hing vom Pfad ab. Jetzt prüfen fetchVerifiedObjectBytes und
 // streamVerifiedObject jede bekannte Erwartung (Größe, SHA-256) immer, mit
-// gemeinsamem Größenlimit. fetchObjectBytes bleibt für Aufrufer ohne
-// gebundene Fassung und nutzt denselben Leseweg.
+// gemeinsamem Größenlimit. Alle Leser mit gespeicherter Fassung übergeben
+// Größe und SHA-256; den ungeprüften Stream-Leser (streamObject) gibt es nicht
+// mehr. fetchObjectBytes bleibt nur für Objekte ohne gespeicherte Erwartung
+// (Bereitschaftsprobe, Engine-Rohergebnisse) und nutzt denselben Leseweg.
 // ---------------------------------------------------------------------------
 
 /** Ort eines gespeicherten Objekts; `versionId` bindet die Fassung (DOC-VERSION-IMMUTABILITY-001). */
@@ -602,7 +604,11 @@ async function verifyStoredObject(
   }
 }
 
-/** Bytes ohne gebundene Erwartung (z. B. interne Rohdaten), mit Größenlimit. */
+/**
+ * Bytes ohne gespeicherte Erwartung (Bereitschaftsprobe, Engine-Rohergebnisse),
+ * mit Größenlimit. Leser mit gespeicherter Fassung verwenden
+ * fetchVerifiedObjectBytes mit Größe und SHA-256.
+ */
 export async function fetchObjectBytes(
   bucket: string,
   storageKey: string,
@@ -780,49 +786,6 @@ export async function deleteObjectVersion(
       );
     }
   }
-}
-
-export interface ObjectStream {
-  body: ReadableStream<Uint8Array>;
-  contentLength: number | null;
-  contentType: string | null;
-}
-
-/**
- * Streaming-Pendant zu fetchObjectBytes: reicht den S3-Body als Web-
- * ReadableStream durch — O(1)-Speicher statt die ganze Datei in einen Buffer zu
- * sammeln. Für Download-/Preview-Routen, die direkt in die HTTP-Response streamen
- * (App-proxied; der Object-Store bleibt intern, nie öffentlich).
- *
- * Größen-Cap vorab über ContentLength. Anders als fetchObjectBytes wird NICHT
- * pro Chunk nachgedeckelt — die Quelle ist der interne, vertrauenswürdige
- * Object-Store; der Cap ist DoS-Vorsorge, kein Schutz vor manipuliertem Upstream.
- */
-export async function streamObject(
-  bucket: string,
-  storageKey: string,
-  storageVersionId?: string | null,
-): Promise<ObjectStream> {
-  const result = await s3.send(
-    new GetObjectCommand({
-      Bucket: bucket,
-      Key: storageKey,
-      ...versionReadInput(storageVersionId),
-    }),
-  );
-  const contentLength = typeof result.ContentLength === 'number' ? result.ContentLength : null;
-  if (contentLength !== null && contentLength > MAX_UPLOAD_BYTES) {
-    // Body schliessen, bevor geworfen wird: er wurde nie in einen Web-Stream
-    // ueberfuehrt und niemand konsumiert ihn — die Verbindung bliebe sonst bis
-    // zum Socket-Timeout stehen.
-    (result.Body as Readable | undefined)?.destroy?.();
-    throw new StoredObjectError(
-      'TOO_LARGE',
-      `Objekt (${contentLength} B) überschreitet das Limit.`,
-    );
-  }
-  const body = Readable.toWeb(result.Body as Readable) as ReadableStream<Uint8Array>;
-  return { body, contentLength, contentType: result.ContentType ?? null };
 }
 
 /**

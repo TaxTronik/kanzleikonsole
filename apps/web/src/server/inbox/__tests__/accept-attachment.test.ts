@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
+import { Readable } from 'node:stream';
+import type { GetObjectCommand } from '@aws-sdk/client-s3';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
-  fetchBytes: vi.fn(),
+  send: vi.fn(),
   withTenant: vi.fn(),
   persist: vi.fn(),
   assertStaff: vi.fn(),
@@ -15,7 +17,11 @@ const h = vi.hoisted(() => ({
   documentUpdate: vi.fn(),
 }));
 
-vi.mock('@taxtronik/storage', () => ({ fetchObjectBytes: h.fetchBytes }));
+// R-05: S3 ist am Storage-Client gemockt; der geprüfte Leseweg läuft echt.
+vi.mock('@taxtronik/storage/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@taxtronik/storage/client')>()),
+  s3: { send: h.send },
+}));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: h.withTenant }));
 vi.mock('@/server/documents/resumable-upload', () => ({
   persistResumableDocumentUpload: h.persist,
@@ -71,7 +77,10 @@ describe('DOC-PORTAL-SHARING-001 / DOC-UPLOAD-JOURNAL-001 Inbox-Annahme', () => 
     h.attachmentUpdateMany.mockResolvedValue({ count: 1 });
     h.documentTypeFindFirst.mockResolvedValue(documentType);
     h.documentUpdate.mockResolvedValue({ id: 'document-1' });
-    h.fetchBytes.mockResolvedValue(bytes);
+    h.send.mockImplementation(async () => ({
+      Body: Readable.from([Buffer.from(bytes)]),
+      ContentLength: bytes.length,
+    }));
     h.carrier.mockReturnValue('GOBD_TAX');
     h.persist.mockImplementation(async (options) => {
       await options.readBytes();
@@ -134,5 +143,38 @@ describe('DOC-PORTAL-SHARING-001 / DOC-UPLOAD-JOURNAL-001 Inbox-Annahme', () => 
       }),
     );
     expect(JSON.stringify(h.audit.mock.calls)).not.toContain(digest.toString('hex'));
+    // DOC-VERSION-IMMUTABILITY-001 / R-05: gebundene Staging-Version, geprüft gelesen.
+    expect((h.send.mock.calls[0]![0] as GetObjectCommand).input).toEqual({
+      Bucket: 'staging',
+      Key: 'tenants/tenant-1/inbox/key-1',
+      VersionId: 'staging-v1',
+    });
+  });
+
+  it.each([
+    ['abweichende Bytes gleicher Länge', Buffer.from('%PDF-1.7\nCLEAN'), bytes.length],
+    ['eine abweichend angekündigte Länge', bytes, bytes.length + 1],
+  ])('R-05: übernimmt keine Anlage bei %s', async (_case, stored, contentLength) => {
+    h.send.mockImplementation(async () => ({
+      Body: Readable.from([Buffer.from(stored)]),
+      ContentLength: contentLength,
+    }));
+    const context = { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' as const };
+    const session = { user: { tenantId: 'tenant-1', staffId: 'staff-1' } };
+
+    await expect(
+      acceptInboxAttachment({
+        context,
+        session: session as never,
+        attachmentId: 'attachment-1',
+        title: 'Steuerunterlagen 2025',
+        documentTypeId: 'type-1',
+      }),
+    ).rejects.toMatchObject({
+      name: 'ActionError',
+      message: 'Die Prüfsumme der Anlage stimmt nicht.',
+    });
+    expect(h.attachmentUpdateMany).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
   });
 });

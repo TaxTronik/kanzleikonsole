@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Fachkatalog: INV-ARCHIVE-EINVOICE-001
 // Fachkatalog: INV-PORTAL-SHARING-001
 // Fachkatalog: INV-STORNO-REFERENCE-001, STBVV-CALCULATION-001
-// Fachkatalog: DOC-UPLOAD-JOURNAL-001
+// Fachkatalog: DOC-UPLOAD-JOURNAL-001, DOC-VERSION-IMMUTABILITY-001
 
 // IO-Abhängigkeiten mocken (DB/Storage/Generatoren) — wir testen die
 // Idempotenz-/Race-/Validierungs-Logik von ensureZugferdArchive, nicht die
@@ -14,7 +14,7 @@ vi.mock('@taxtronik/storage', async () => {
   return {
     prepareBytesCommitWithTier: vi.fn(storageJournal.prepare),
     commitPreparedBytes: vi.fn(storageJournal.commit),
-    fetchObjectBytes: vi.fn(async () => Buffer.from('archived-pdf')),
+    fetchVerifiedObjectBytes: vi.fn(async () => Buffer.from('archived-pdf')),
   };
 });
 vi.mock('@/server/db/prisma-owner', async () => {
@@ -62,7 +62,8 @@ import {
   xrechnungBuyer,
 } from '../archive';
 import { withTenantContext } from '@taxtronik/db';
-import { commitPreparedBytes, fetchObjectBytes } from '@taxtronik/storage';
+import { commitPreparedBytes, fetchVerifiedObjectBytes } from '@taxtronik/storage';
+import { StoredObjectError } from '@taxtronik/storage/errors';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { extractFacturXXml, generateZugferdPdf } from '@/server/invoicing/zugferd';
 import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
@@ -81,8 +82,18 @@ const RETENTION_UNTIL = FAKE_RETENTION_UNTIL;
 /** Erstes geschriebenes Objekt eines Generierungslaufs ist die ZUGFeRD-PDF. */
 const storedPdf = () => {
   const pdf = storageJournal.objects[0]!;
-  return { bucket: pdf.bucket, key: pdf.key, storageVersionId: pdf.versionId };
+  return {
+    bucket: pdf.bucket,
+    key: pdf.key,
+    storageVersionId: pdf.versionId,
+    // R-05: Größe und SHA-256 der gebundenen Fassung für den geprüften Abruf.
+    sha256: pdf.sha256,
+    sizeBytes: pdf.sizeBytes,
+  };
 };
+/** Archivierte Hybrid-PDF einer Altrechnung (Größe und SHA-256 der Dokumentversion). */
+const ARCHIVED_PDF_SHA256 = new Uint8Array(32).fill(0x5a);
+const ARCHIVED_PDF_SIZE = 12n;
 const openIntent = (source: string) =>
   storageJournal.openIntents().find((intent) => intent.source === source);
 
@@ -332,7 +343,14 @@ describe('ensureZugferdArchive', () => {
       documentId: 'pdf-doc',
       document: {
         sharedWithClientAt: new Date(),
-        versions: [{ storageBucket: 'gobd', storageKey: 'pdf-key' }],
+        versions: [
+          {
+            storageBucket: 'gobd',
+            storageKey: 'pdf-key',
+            sha256: ARCHIVED_PDF_SHA256,
+            sizeBytes: ARCHIVED_PDF_SIZE,
+          },
+        ],
       },
     });
     tx.invoice.findFirst
@@ -349,8 +367,19 @@ describe('ensureZugferdArchive', () => {
 
     const result = await ensureZugferdArchive(ctx, 'inv1');
 
-    expect(result).toEqual({ ok: true, bucket: 'gobd', key: 'pdf-key', number: 'R-001' });
-    expect(fetchObjectBytes).toHaveBeenCalledWith('gobd', 'pdf-key', undefined);
+    expect(result).toEqual({
+      ok: true,
+      bucket: 'gobd',
+      key: 'pdf-key',
+      sha256: ARCHIVED_PDF_SHA256,
+      sizeBytes: ARCHIVED_PDF_SIZE,
+      number: 'R-001',
+    });
+    // R-05: Extraktion nur aus Bytes, die Größe und SHA-256 der Fassung entsprechen.
+    expect(fetchVerifiedObjectBytes).toHaveBeenCalledWith(
+      { bucket: 'gobd', key: 'pdf-key', versionId: undefined },
+      { sizeBytes: ARCHIVED_PDF_SIZE, sha256: ARCHIVED_PDF_SHA256 },
+    );
     expect(extractFacturXXml).toHaveBeenCalledWith(Buffer.from('archived-pdf'));
     expect(tx.document.findFirst).not.toHaveBeenCalled();
     expect(tx.document.create).toHaveBeenCalledWith(
@@ -390,6 +419,39 @@ describe('ensureZugferdArchive', () => {
         }),
       }),
     );
+  });
+
+  it('R-05: rekonstruiert keine XML aus PDF-Bytes, die von der archivierten Fassung abweichen', async () => {
+    const archivedInvoice = baseInvoice({
+      status: 'SENT',
+      sentAt: new Date(),
+      documentId: 'pdf-doc',
+      document: {
+        sharedWithClientAt: new Date(),
+        versions: [
+          {
+            storageBucket: 'gobd',
+            storageKey: 'pdf-key',
+            sha256: ARCHIVED_PDF_SHA256,
+            sizeBytes: ARCHIVED_PDF_SIZE,
+          },
+        ],
+      },
+    });
+    tx.invoice.findFirst.mockResolvedValue(archivedInvoice);
+    vi.mocked(fetchVerifiedObjectBytes).mockRejectedValueOnce(
+      new StoredObjectError('HASH_MISMATCH', 'SHA-256 weicht von der Fassung ab.'),
+    );
+
+    await expect(ensureZugferdArchive(ctx, 'inv1')).rejects.toMatchObject({
+      name: 'StoredObjectError',
+      reason: 'HASH_MISMATCH',
+    });
+    expect(extractFacturXXml).not.toHaveBeenCalled();
+    expect(storageJournal.rows).toEqual([]);
+    expect(storageJournal.objects).toEqual([]);
+    expect(tx.document.create).not.toHaveBeenCalled();
+    expect(tx.invoice.update).not.toHaveBeenCalled();
   });
 
   it('DRAFT-Kontrollvorschau rendert frisch und verändert vorhandene Archive nicht', async () => {
@@ -469,7 +531,7 @@ describe('ensureZugferdArchive', () => {
 
     expect(result).toEqual({ ok: true, ...storedPdf(), number: 'R-001' });
     expect(generateZugferdPdf).toHaveBeenCalledTimes(1);
-    expect(fetchObjectBytes).not.toHaveBeenCalled();
+    expect(fetchVerifiedObjectBytes).not.toHaveBeenCalled();
     expect(tx.invoice.update).toHaveBeenCalledWith({
       where: { id: 'inv1' },
       data: { documentId: 'pdf-doc-new', xrechnungDocumentId: 'xml-doc-new' },
@@ -704,7 +766,10 @@ describe('ensureZugferdArchive', () => {
     const result = await ensureZugferdArchive(ctx, 'inv1');
 
     expect(result).toEqual({ ok: true, bucket: 'gobd', key: 'k-winner', number: 'R-001' });
-    expect(fetchObjectBytes).toHaveBeenCalledWith('gobd', 'k-winner', undefined);
+    expect(fetchVerifiedObjectBytes).toHaveBeenCalledWith(
+      { bucket: 'gobd', key: 'k-winner', versionId: undefined },
+      { sizeBytes: undefined, sha256: undefined },
+    );
     expect(extractFacturXXml).toHaveBeenCalledWith(Buffer.from('archived-pdf'));
     expect(tx.document.create).toHaveBeenCalledTimes(1);
     expect(tx.document.create).toHaveBeenCalledWith(
