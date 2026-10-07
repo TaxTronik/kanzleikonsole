@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-020
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/documents/__tests__/page-labels.test.tsx
+      - apps/web/src/app/staff/(protected)/documents/page.tsx
+    rule_ids:
+      - DOC-RETENTION-CLASS-001
+      - DOC-VERSION-IMMUTABILITY-001
+    reason: >-
+      Die Dokumentablage nutzt für ihre Einstiegsebenen die gemeinsamen
+      Bezeichnungen (`DOCUMENT_SCOPE_LABELS`) statt einer eigenen Tabelle; sichtbare
+      Texte bleiben gleich. Der Löschdialog bestimmt den Aufbewahrungshinweis über
+      `documentTier()` statt über das Namenspräfix der Klassifikation. Löschbarkeit,
+      Aufbewahrung und Zugriffsrechte bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/documents/__tests__/page-labels.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-019
     date: '2026-10-07'
     paths:
@@ -4543,6 +4560,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-020` dokumentiert gemeinsame Bezeichnungen
+  und den stufenbasierten Löschhinweis der Dokumentablage.
 
 - 2026-10-07: `FK-EXC-20261007-019` dokumentiert die Einordnung von
   Upload-Fehlern nach Fehlerklasse statt nach Meldungstext.

@@ -886,6 +886,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Der Löschdialog der Dokumentablage bestimmt den
+  Aufbewahrungshinweis über die Schutzstufe des Dokumenttyps statt über das
+  Namenspräfix der Klassifikation; Dokumente eines GoBD- oder GwG-Typs
+  erhalten so den passenden Hinweis. Die Einstiegsebenen der Dokumentablage
+  nutzen die gemeinsamen Bezeichnungen.
 - **[Scope]** Upload-Fehler bei Staff- und Portal-Upload, neuer Version,
   Wissensanhang und Mandantenposteingang werden nach Fehlerklasse statt nach
   Meldungstext eingeordnet. Fremde Fehler mit passendem Textanfang erscheinen

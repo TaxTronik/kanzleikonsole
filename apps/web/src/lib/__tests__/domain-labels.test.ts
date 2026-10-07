@@ -3,6 +3,7 @@ import { ClientKind, NotificationKind, RequestPriority, RequestStatus } from '@p
 import {
   CLIENT_KIND_LABELS,
   DOCUMENT_CLASSIFICATION_LABELS,
+  DOCUMENT_SCOPE_LABELS,
   domainLabel,
   FORM_SUBMISSION_STATUS_LABELS,
   GWG_CHECK_STATUS_LABELS,
@@ -89,6 +90,19 @@ describe('domain labels', () => {
       NATPERS: 'Natürliche Person',
       JURPERS: 'Juristische Person',
       PERSGES: 'Personengesellschaft',
+    });
+  });
+
+  // R-14: Die Dokumentablage führte eine eigene Tabelle (KIND_LABEL).
+  it('führt die Einstiegsebenen der Dokumentablage für jeden Mandantentyp', () => {
+    expect(Object.keys(DOCUMENT_SCOPE_LABELS).sort()).toEqual(
+      [...Object.values(ClientKind), 'INTERNAL'].sort(),
+    );
+    expect(DOCUMENT_SCOPE_LABELS).toEqual({
+      NATPERS: 'Natürliche Personen',
+      JURPERS: 'Juristische Personen',
+      PERSGES: 'Personengesellschaften',
+      INTERNAL: 'Kanzlei-intern',
     });
   });
 

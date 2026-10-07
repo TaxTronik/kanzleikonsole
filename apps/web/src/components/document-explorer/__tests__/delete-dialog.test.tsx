@@ -9,7 +9,13 @@ vi.mock('@/components/ui/modal', () => ({
   Modal: ({ children }: { children: unknown }) => children,
 }));
 
-import { DeleteDocumentsDialog, DeleteDocumentsPanel, softDeleteDocuments } from '../delete-dialog';
+import { documentTier } from '@taxtronik/storage/tiers';
+import {
+  DeleteDocumentsDialog,
+  DeleteDocumentsPanel,
+  retentionNotes,
+  softDeleteDocuments,
+} from '../delete-dialog';
 
 const GOBD = { id: 'doc-1', title: 'Rechnung 1', classification: 'GOBD_INVOICE' };
 const GWG = { id: 'doc-2', title: 'Ausweis', classification: 'GWG_EVIDENCE' };
@@ -95,6 +101,29 @@ describe('gemeinsamer Lösch-Dialog (mit Grund)', () => {
     expect(html).toContain('COMPLIANCE-Lock');
     expect(html).toContain('GwG-Vernichtung');
     expect(html).toContain('placeholder="Grund (optional)"');
+  });
+
+  // R-14: dieselbe Stufenregel wie Explorer-Badge und Detailseite (documentTier),
+  // nicht der Namenspräfix der Klassifikation.
+  it.each([
+    ['GoBD-Typ mit Allgemein-Klassifikation', { classification: 'GENERAL', tier: 'GOBD' }, 'GOBD'],
+    ['GwG-Typ ohne GwG-Klassifikation', { classification: 'GENERAL', tier: 'GWG' }, 'GWG'],
+    [
+      'ungeschützter Typ trotz GoBD-Klassifikation',
+      { classification: 'GOBD_TAX', tier: 'NONE' },
+      'NONE',
+    ],
+    ['Altbestand ohne Typ (GoBD)', { classification: 'GOBD_INVOICE', tier: null }, 'GOBD'],
+    ['Altbestand ohne Typ (GwG)', { classification: 'GWG_EVIDENCE' }, 'GWG'],
+  ] as const)('leitet den Hinweis aus der Schutzstufe ab: %s', (_case, fields, tier) => {
+    const doc = { id: 'doc-9', title: 'Beleg', ...fields };
+    expect(documentTier(doc.classification, 'tier' in doc ? doc.tier : undefined)).toBe(tier);
+
+    const notes = retentionNotes([doc]).join(' ');
+
+    expect(notes.includes('COMPLIANCE-Lock')).toBe(tier === 'GOBD');
+    expect(notes.includes('GwG-Vernichtung')).toBe(tier === 'GWG');
+    expect(notes.includes('entfernt die gespeicherten Bytes nicht')).toBe(tier === 'NONE');
   });
 
   it('beide Explorer-Varianten löschen nur über diesen Dialog', () => {

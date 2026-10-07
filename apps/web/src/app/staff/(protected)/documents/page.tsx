@@ -5,13 +5,7 @@ import type { ClientKind } from '@prisma/client';
 import { accessibleClientsWhereFor, canAccessClientTx } from '@/server/auth/rbac';
 import { MANAGED_DOC_SELECT, toManagedDoc } from '@/server/documents/managed-docs';
 import { DocumentExplorer, type Entry, type Crumb } from '@/components/document-explorer';
-
-const KIND_LABEL: Record<string, string> = {
-  NATPERS: 'Natürliche Personen',
-  JURPERS: 'Juristische Personen',
-  PERSGES: 'Personengesellschaften',
-  INTERNAL: 'Kanzlei-intern',
-};
+import { DOCUMENT_SCOPE_LABELS } from '@/lib/domain-labels';
 
 interface Search {
   type?: string;
@@ -53,14 +47,14 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
       ...(['NATPERS', 'JURPERS', 'PERSGES'] as const).map((k) => ({
         kind: 'nav' as const,
         id: k,
-        name: KIND_LABEL[k] ?? k,
+        name: DOCUMENT_SCOPE_LABELS[k],
         href: base({ type: k }),
         icon: 'kind' as const,
       })),
       {
         kind: 'nav',
         id: 'INTERNAL',
-        name: KIND_LABEL.INTERNAL ?? 'Kanzlei-intern',
+        name: DOCUMENT_SCOPE_LABELS.INTERNAL,
         href: base({ type: 'INTERNAL' }),
         icon: 'internal',
       },
@@ -106,7 +100,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         variant="browser"
         crumbs={[
           { label: 'Dokumente', href: '/staff/documents' },
-          { label: KIND_LABEL[typeParam] ?? typeParam, href: base({ type: typeParam }) },
+          { label: DOCUMENT_SCOPE_LABELS[typeParam], href: base({ type: typeParam }) },
         ]}
         entries={entries}
         scope={null}
@@ -187,12 +181,12 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
   const crumbs: Crumb[] = [{ label: 'Dokumente', href: '/staff/documents' }];
   if (typeParam === 'INTERNAL') {
     crumbs.push({
-      label: KIND_LABEL.INTERNAL ?? 'Kanzlei-intern',
+      label: DOCUMENT_SCOPE_LABELS.INTERNAL,
       href: base({ type: 'INTERNAL' }),
     });
   } else {
     const kindKey = clientRow?.kind ?? (isKind(typeParam) ? typeParam : 'NATPERS');
-    crumbs.push({ label: KIND_LABEL[kindKey] ?? kindKey, href: base({ type: kindKey }) });
+    crumbs.push({ label: DOCUMENT_SCOPE_LABELS[kindKey], href: base({ type: kindKey }) });
     crumbs.push({
       label: clientRow?.name ?? 'Mandant',
       href: base({ type: kindKey, client: scopeClientId ?? undefined }),

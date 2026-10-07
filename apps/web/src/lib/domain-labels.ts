@@ -30,6 +30,18 @@ export const CLIENT_KIND_LABELS: Readonly<Record<ClientKind, string>> = {
   PERSGES: 'Personengesellschaft',
 };
 
+/**
+ * Einstiegsebenen der Dokumentablage (/staff/documents): je Mandantentyp eine
+ * Gruppe (Plural) und die kanzleiinternen Dokumente ohne Mandantenbezug.
+ * R-14: vorher als eigene KIND_LABEL-Tabelle in der Seite.
+ */
+export const DOCUMENT_SCOPE_LABELS: Readonly<Record<ClientKind | 'INTERNAL', string>> = {
+  NATPERS: 'Natürliche Personen',
+  JURPERS: 'Juristische Personen',
+  PERSGES: 'Personengesellschaften',
+  INTERNAL: 'Kanzlei-intern',
+};
+
 /** Label zu einem rohen Enum-Wert (z. B. aus Query-Strings), sonst der Wert selbst. */
 export function domainLabel(labels: Readonly<Record<string, string>>, value: string): string {
   return labels[value] ?? value;

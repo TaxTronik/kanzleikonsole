@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { useState, useTransition } from 'react';
+import { documentTier, type ProtectionTier } from '@taxtronik/storage/tiers';
 import { softDeleteDocumentsAction } from '@/app/staff/(protected)/documents/actions';
 import { Modal } from '@/components/ui/modal';
 import { bulkResultMessage } from '@/components/document-browser-utils';
@@ -17,6 +18,8 @@ export interface DeletableDocument {
   id: string;
   title: string;
   classification: string;
+  /** Schutzstufe des Dokumenttyps (ManagedDoc.tier); ohne Typ gilt die Klassifikation. */
+  tier?: ProtectionTier | null;
 }
 
 type SoftDeleteMany = (input: {
@@ -38,13 +41,18 @@ export async function softDeleteDocuments(
   return error ? { ok: false, error } : { ok: true };
 }
 
-/** Aufbewahrungshinweis passend zu den Klassifikationen der Auswahl. */
+/**
+ * Aufbewahrungshinweis passend zu den Schutzstufen der Auswahl. R-14: dieselbe
+ * Stufenregel wie Explorer, Detailseite und Storage (documentTier) statt eines
+ * Namenspräfixes der Klassifikation.
+ */
 export function retentionNotes(docs: readonly DeletableDocument[]): string[] {
+  const tiers = new Set(docs.map((doc) => documentTier(doc.classification, doc.tier)));
   const notes: string[] = [];
-  if (docs.some((doc) => doc.classification.startsWith('GOBD_'))) {
+  if (tiers.has('GOBD')) {
     notes.push('Der COMPLIANCE-Lock bewahrt GoBD-Belege bis zum hinterlegten Fristende auf.');
   }
-  if (docs.some((doc) => doc.classification === 'GWG_EVIDENCE')) {
+  if (tiers.has('GWG')) {
     notes.push('Die endgültige GwG-Vernichtung erfolgt ausschließlich über die Fristenprüfung.');
   }
   if (notes.length === 0) notes.push('Dieser Vorgang entfernt die gespeicherten Bytes nicht.');
