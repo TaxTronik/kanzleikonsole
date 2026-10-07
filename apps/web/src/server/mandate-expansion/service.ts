@@ -1,7 +1,8 @@
+import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import type { StaffSession } from '@/server/auth/staff';
-import { ActionError, assertClientAccessTx, accessibleClientsWhereFor } from '@/server/auth/rbac';
-import { loadClientPickerOptionTx } from '@/server/clients/picker';
+import { ActionError, assertClientAccessTx } from '@/server/auth/rbac';
+import { clientPickerWhereTx, loadClientPickerOptionTx } from '@/server/clients/picker';
 import { evidenceService } from '@/server/container';
 import {
   StructureSchema,
@@ -10,10 +11,13 @@ import {
   wouldCreateDependencyCycle,
 } from './model';
 
+/** Neueste Workflow-Schritte, die die Abhängigkeitsübersicht zur Auswahl lädt. */
+export const DEPENDENCY_ITEM_LIMIT = 1000;
+
 /**
  * Ein sichtbarer, nicht anonymisierter Mandant (gleiche Regel wie
- * `visibleMandatesTx`, aber ohne Bestandsdeckel). Die Auswahlseiten laden nur
- * noch den gewählten Mandanten; früher war ab Mandant 1.001 keiner erreichbar.
+ * `visibleMandatesWhereTx`). Die Auswahlseiten laden nur den gewählten
+ * Mandanten; früher war ab Mandant 1.001 keiner erreichbar.
  */
 export async function visibleMandateTx(
   tx: TxClient,
@@ -23,13 +27,20 @@ export async function visibleMandateTx(
   const option = await loadClientPickerOptionTx(tx, session, clientId, ['notAnonymized']);
   return option ? { id: option.id, name: option.name } : null;
 }
-export async function visibleMandatesTx(tx: TxClient, session: StaffSession) {
-  return tx.client.findMany({
-    where: { AND: [await accessibleClientsWhereFor(tx, session), { anonymizedAt: null }] },
-    select: { id: true, name: true },
-    orderBy: { name: 'asc' },
-    take: 1000,
-  });
+
+/**
+ * Sichtbare, nicht anonymisierte Mandanten als Relationsfilter: Tenant der
+ * Session, `accessibleClientsWhereFor` (Admin/Partner, OPEN + vertraulich,
+ * RESTRICTED) und `anonymizedAt: null`. PostgreSQL wertet die Regel über
+ * `client` und `client_responsibility` aus; die App lädt den Bestand nicht.
+ * Früher lud `visibleMandatesTx` die ersten 1.000 Mandanten nach Namen und
+ * hängte ihre IDs als IN-Liste an: Schritte ab Mandant 1.001 fehlten (P-02).
+ */
+export async function visibleMandatesWhereTx(
+  tx: TxClient,
+  session: StaffSession,
+): Promise<Prisma.ClientWhereInput> {
+  return clientPickerWhereTx(tx, session, ['notAnonymized']);
 }
 export async function loadStructureTx(
   tx: TxClient,
@@ -229,16 +240,37 @@ export async function changeDependencyTx(
   });
 }
 export async function loadDependenciesTx(tx: TxClient, session: StaffSession) {
-  const clients = await visibleMandatesTx(tx, session);
-  const ids = clients.map((c) => c.id);
-  const items = await tx.workflowItem.findMany({
-    where: { instance: { tenantId: session.user.tenantId, clientId: { in: ids } } },
+  // Mengenbasiert statt über eine Mandanten-ID-Liste: Schritte aller sichtbaren
+  // Mandanten, unabhängig von deren Anzahl; geladen werden nur die Schritte und
+  // die Namen ihrer Mandanten.
+  const rows = await tx.workflowItem.findMany({
+    where: {
+      instance: {
+        tenantId: session.user.tenantId,
+        client: await visibleMandatesWhereTx(tx, session),
+      },
+    },
     include: {
-      instance: { select: { clientId: true, name: true, status: true, assessmentYear: true } },
+      instance: {
+        select: {
+          clientId: true,
+          name: true,
+          status: true,
+          assessmentYear: true,
+          client: { select: { name: true } },
+        },
+      },
     },
     orderBy: { createdAt: 'desc' },
-    take: 1000,
+    take: DEPENDENCY_ITEM_LIMIT,
   });
+  // Namensverzeichnis der Mandanten dieser Schritte (höchstens so viele wie Schritte).
+  const names = new Map<string, string>();
+  const items = rows.map(({ instance: { client, ...instance }, ...item }) => {
+    names.set(instance.clientId, client.name);
+    return { ...item, instance };
+  });
+  const clients = [...names].map(([id, name]) => ({ id, name }));
   const visibleIds = new Set(items.map((i) => i.id));
   // Never infer readiness by silently dropping a hidden prerequisite.
   const dependencies = await tx.workflowDependency.findMany({

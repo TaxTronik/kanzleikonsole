@@ -873,6 +873,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Workflow-Abhängigkeiten berücksichtigen alle sichtbaren Mandate; ab dem
+  1.001. Mandat fehlten bisher Schritte, und abhängige Schritte galten
+  fälschlich als nicht bestimmbar.
 - 1-Klick-Installer bringt `openssh-client` mit: Fehlt `ssh-keygen`,
   installiert der bestätigte 1-Klick-Weg auf Debian/Ubuntu das Paket mit den
   übrigen Basispaketen und prüft das Werkzeug danach.

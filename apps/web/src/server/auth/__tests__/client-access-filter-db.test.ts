@@ -1,10 +1,12 @@
-// Fachkatalog: ACCESS-CLIENT-MODE-001, ACCESS-TENANT-RLS-001
+// Fachkatalog: ACCESS-CLIENT-MODE-001, ACCESS-TENANT-RLS-001, WORKFLOW-DEPENDENCY-001
 // Gleichwertigkeit der Relationsfilter (accessibleClientsWhereFor +
 // client-access-filter.ts) mit der früheren NOT-IN-Liste gesperrter Mandanten
 // (inaccessibleClientIdsFor, entfernt mit Review-Finding P-09): dieselben
 // Zeilen bleiben sichtbar, für OPEN und RESTRICTED, vertrauliche und
 // zugeordnete Mandanten, Pflicht- und nullable Mandantenbezug. Echtes
 // PostgreSQL über die App-Rolle (RLS); nur die Request-Authentisierung fehlt.
+// P-02: die Abhängigkeitsübersicht der Mandatsorganisation filtert sichtbare
+// Mandanten ebenso als Relationsfilter statt über die ersten 1.000 IDs.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '@taxtronik/db/prisma-client';
@@ -15,10 +17,13 @@ import type { StaffSession } from '@/server/auth/staff';
 
 vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => null }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
+// Die Abhängigkeitsübersicht liest nur; die Audit-Kette ist nicht Gegenstand.
+vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 
 import { accessibleClientsWhereFor, isStaffAdmin } from '@/server/auth/rbac';
 import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { decideClientAccess, readAccessPolicyTx } from '@/server/settings/access-policy';
+import { loadDependenciesTx } from '@/server/mandate-expansion/service';
 
 // Quality hat Platzhalter-URLs, aber keine Datenbank. Der db-Job schaltet den
 // Test ausdrücklich ein; fehlende/ungültige URLs müssen dann scheitern.
@@ -282,5 +287,246 @@ const INTERNAL_NOTE = 'note:internal';
     expect(subjects).toEqual(
       ['ar:confidential-hauptbearbeiter', 'ar:public-berufstraeger', 'ar:public-fachlich'].sort(),
     );
+  });
+});
+
+// Frühere Obergrenze von `visibleMandatesTx` (erste 1.000 Mandanten nach Namen).
+const LEGACY_MANDATE_CAP = 1000;
+// Öffentliche Mandanten m-0001 … m-1003: mehr als der frühere Deckel.
+const PUBLIC_MANDATES = LEGACY_MANDATE_CAP + 3;
+const mandateName = (n: number) => `m-${String(n).padStart(4, '0')}`;
+
+(enabled ? describe : describe.skip)('P-02 Mandats-Abhängigkeiten ohne 1.000er-Deckel', () => {
+  const owner = new PrismaClient({
+    adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
+  });
+  const app = new PrismaClient({
+    adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_APP_URL)),
+  });
+  let tenantId = '';
+  let employeeId = '';
+  let adminId = '';
+  // Mandantenname → ID des einzigen Workflow-Schritts dieses Mandanten.
+  const stepOf = new Map<string, string>();
+
+  beforeAll(async () => {
+    const suffix = randomUUID();
+    tenantId = (
+      await owner.tenant.create({ data: { slug: `p02-${suffix}`, name: 'P-02 Abhängigkeiten' } })
+    ).id;
+    await owner.tenantSetting.create({
+      data: { tenantId, key: 'access', value: { clientAccessMode: 'OPEN' } },
+    });
+    const staff = async (role: 'EMPLOYEE' | 'ADMIN') =>
+      (
+        await owner.staffUser.create({
+          data: {
+            tenantId,
+            email: `p02-${role.toLowerCase()}-${randomUUID()}@example.test`,
+            fullName: role,
+            passwordHash: 'x',
+            roles: { create: { role } },
+          },
+        })
+      ).id;
+    employeeId = await staff('EMPLOYEE');
+    adminId = await staff('ADMIN');
+    await owner.client.createMany({
+      data: Array.from({ length: PUBLIC_MANDATES }, (_, i) => ({
+        tenantId,
+        kind: 'NATPERS' as const,
+        name: mandateName(i + 1),
+      })),
+    });
+    // Nach allen m-… sortiert: zugeordnet-vertraulich (sichtbar), vertraulich
+    // ohne Zuordnung (nur Admin) und anonymisiert (für niemanden).
+    await owner.client.createMany({
+      data: ['z-vertraulich-zugeordnet', 'z-vertraulich', 'z-anonymisiert'].map((name) => ({
+        tenantId,
+        kind: 'NATPERS' as const,
+        name,
+        vertraulich: name.startsWith('z-vertraulich'),
+      })),
+    });
+    const ids = new Map(
+      (await owner.client.findMany({ where: { tenantId }, select: { id: true, name: true } })).map(
+        (row) => [row.name, row.id],
+      ),
+    );
+    await owner.clientResponsibility.create({
+      data: {
+        tenantId,
+        clientId: ids.get('z-vertraulich-zugeordnet')!,
+        staffId: employeeId,
+        role: 'HAUPTBEARBEITER',
+      },
+    });
+    const withSteps = [
+      mandateName(1),
+      mandateName(LEGACY_MANDATE_CAP),
+      mandateName(LEGACY_MANDATE_CAP + 1),
+      mandateName(PUBLIC_MANDATES),
+      'z-vertraulich-zugeordnet',
+      'z-vertraulich',
+      'z-anonymisiert',
+    ];
+    for (const [index, name] of withSteps.entries()) {
+      const instance = await owner.workflowInstance.create({
+        data: {
+          tenantId,
+          clientId: ids.get(name)!,
+          name: `Jahresabschluss ${name}`,
+          assessmentYear: 2026,
+          startedByStaff: adminId,
+        },
+      });
+      const step = await owner.workflowItem.create({
+        data: {
+          instanceId: instance.id,
+          position: 0,
+          title: `Schritt ${name}`,
+          // Eindeutige Reihenfolge der Übersicht (neueste zuerst).
+          createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)),
+        },
+      });
+      stepOf.set(name, step.id);
+    }
+    await owner.client.update({
+      where: { id: ids.get('z-anonymisiert')! },
+      data: { anonymizedAt: new Date() },
+    });
+    // Vorgänger jenseits des früheren Deckels → Nachfolger m-0001; ein für den
+    // Mitarbeiter verborgener Vorgänger → Nachfolger m-1001.
+    for (const [from, to] of [
+      [mandateName(PUBLIC_MANDATES), mandateName(1)],
+      ['z-vertraulich', mandateName(LEGACY_MANDATE_CAP + 1)],
+    ] as const) {
+      await owner.workflowDependency.create({
+        data: {
+          tenantId,
+          predecessorItemId: stepOf.get(from)!,
+          successorItemId: stepOf.get(to)!,
+          createdBy: adminId,
+        },
+      });
+    }
+  });
+
+  afterAll(async () => {
+    try {
+      if (tenantId) await owner.tenant.delete({ where: { id: tenantId } });
+    } finally {
+      await Promise.all([owner.$disconnect(), app.$disconnect()]);
+    }
+  });
+
+  function session(staffId: string, role: 'EMPLOYEE' | 'ADMIN'): StaffSession {
+    return { user: { tenantId, staffId, roles: [role], permissions: [] } } as never;
+  }
+
+  function asStaff<T>(staffId: string, run: (tx: TxClient) => Promise<T>): Promise<T> {
+    return app.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true),
+        set_config('app.current_actor_id', ${staffId}, true),
+        set_config('app.current_actor_type', 'STAFF', true)`;
+      return run(tx as TxClient);
+    });
+  }
+
+  const nameOfStep = (id: string) => [...stepOf].find(([, step]) => step === id)?.[0];
+
+  // Wortgleiche Mandantenabfrage des entfernten `visibleMandatesTx` mit Deckel
+  // (`take`) bzw. ohne Deckel als Referenz derselben Sichtbarkeitsregel.
+  async function legacyVisibleIds(tx: TxClient, s: StaffSession, take?: number) {
+    const rows = await tx.client.findMany({
+      where: { AND: [await accessibleClientsWhereFor(tx, s), { anonymizedAt: null }] },
+      select: { id: true },
+      orderBy: { name: 'asc' },
+      ...(take === undefined ? {} : { take }),
+    });
+    return rows.map((row) => row.id);
+  }
+
+  async function legacyStepNames(tx: TxClient, ids: string[]) {
+    const rows = await tx.workflowItem.findMany({
+      where: { instance: { tenantId, clientId: { in: ids } } },
+      select: { id: true },
+    });
+    return rows.map((row) => nameOfStep(row.id)).sort();
+  }
+
+  it.each([
+    [
+      'EMPLOYEE',
+      [
+        mandateName(1),
+        mandateName(LEGACY_MANDATE_CAP),
+        mandateName(LEGACY_MANDATE_CAP + 1),
+        mandateName(PUBLIC_MANDATES),
+        'z-vertraulich-zugeordnet',
+      ],
+    ],
+    [
+      'ADMIN',
+      [
+        mandateName(1),
+        mandateName(LEGACY_MANDATE_CAP),
+        mandateName(LEGACY_MANDATE_CAP + 1),
+        mandateName(PUBLIC_MANDATES),
+        'z-vertraulich-zugeordnet',
+        'z-vertraulich',
+      ],
+    ],
+  ] as const)(
+    '%s: Schritte aller sichtbaren Mandanten, auch jenseits von 1.000',
+    async (role, expected) => {
+      const staffId = role === 'ADMIN' ? adminId : employeeId;
+      const s = session(staffId, role);
+      const result = await asStaff(staffId, async (tx) => {
+        const all = await legacyVisibleIds(tx, s);
+        const capped = await legacyVisibleIds(tx, s, LEGACY_MANDATE_CAP);
+        return {
+          visibleCount: all.length,
+          reference: await legacyStepNames(tx, all),
+          legacy: await legacyStepNames(tx, capped),
+          data: await loadDependenciesTx(tx, s),
+        };
+      });
+
+      // Mehr sichtbare Mandanten als der frühere Deckel.
+      expect(result.visibleCount).toBeGreaterThan(LEGACY_MANDATE_CAP);
+      const names = result.data.items.map((item) => nameOfStep(item.id)).sort();
+      expect(names).toEqual([...expected].sort());
+      // Dieselbe Sichtbarkeitsregel wie die ungekappte Mandantenabfrage.
+      expect(names).toEqual(result.reference);
+      // Grenze des alten Deckels: Mandant 1.000 war noch enthalten, 1.001 nicht mehr.
+      expect(result.legacy).toEqual([mandateName(1), mandateName(LEGACY_MANDATE_CAP)]);
+      // Neueste zuerst, Namen nur für die Mandanten der geladenen Schritte.
+      expect(result.data.items.map((item) => item.createdAt.getTime())).toEqual(
+        [...result.data.items.map((item) => item.createdAt.getTime())].sort((a, b) => b - a),
+      );
+      expect(result.data.clients.map((client) => client.name).sort()).toEqual([...expected].sort());
+      expect(result.data.items.every((item) => !('client' in item.instance))).toBe(true);
+    },
+  );
+
+  it('bewertet Vorgänger jenseits des früheren Deckels und hält verborgene zurück', async () => {
+    const first = stepOf.get(mandateName(1))!;
+    const beyond = stepOf.get(mandateName(LEGACY_MANDATE_CAP + 1))!;
+    const employee = await asStaff(employeeId, (tx) =>
+      loadDependenciesTx(tx, session(employeeId, 'EMPLOYEE')),
+    );
+    // m-1003 → m-0001: früher fehlte der Vorgänger (Mandant 1.003) und der
+    // Nachfolger galt als „nicht feststellbar“; jetzt zählt der echte Stand.
+    expect(employee.dependencies.map((d) => [d.predecessorItemId, d.successorItemId])).toEqual([
+      [stepOf.get(mandateName(PUBLIC_MANDATES)), first],
+    ]);
+    expect(employee.blockedTargets.has(first)).toBe(false);
+    // Vertraulicher Vorgänger ohne Zuordnung: keine positive Bereitschaft.
+    expect([...employee.blockedTargets]).toEqual([beyond]);
+
+    const admin = await asStaff(adminId, (tx) => loadDependenciesTx(tx, session(adminId, 'ADMIN')));
+    expect(admin.dependencies).toHaveLength(2);
+    expect(admin.blockedTargets.size).toBe(0);
   });
 });

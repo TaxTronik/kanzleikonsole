@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-016
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/server/mandate-expansion/service.ts
+    rule_ids:
+      - MANDATE-STRUCTURE-001
+      - WORKFLOW-DEPENDENCY-001
+    reason: >-
+      Die Abhängigkeitsübersicht der Workflows lädt die sichtbaren Mandate nicht
+      mehr als Liste der ersten 1.000 (nach Name), sondern wendet dieselbe
+      Sichtbarkeitsregel (Tenant, Mandantenzugriff, nicht anonymisiert) als
+      Relationsfilter in der Datenbank an. Sichtbarkeit, Rückgabeform und die
+      Begrenzung auf die jüngsten 1.000 Schritte bleiben unverändert; ab dem
+      1.001. Mandat fehlen keine Schritte mehr. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/client-access-filter-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-015
     date: '2026-10-07'
     paths:
@@ -4445,6 +4462,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-016` dokumentiert die mengenbasierte
+  Sichtbarkeitsprüfung der Mandate in der Workflow-Abhängigkeitsübersicht.
 
 - 2026-10-07: `FK-EXC-20261007-015` dokumentiert deutsche Feldmeldungen
   und Feldfehler in ELSTER-Kontoabfrage und Wiedervorlagen.
