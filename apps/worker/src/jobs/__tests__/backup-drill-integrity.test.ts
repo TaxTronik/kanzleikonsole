@@ -37,7 +37,6 @@ vi.mock('../../prisma-owner', () => ({
   prismaOwner: {
     tenant: { findMany: async () => [{ id: 'tenant-1', createdAt: new Date('2020-01-01') }] },
     backupRecord: { findFirst: h.backup },
-    staffUser: { findMany: async () => [] },
     // S-01: Die Owner-Verbindung darf keine Datenbanken anlegen.
     $executeRawUnsafe: () => {
       throw new Error('owner connection must not run drill DDL');
@@ -72,8 +71,10 @@ vi.mock('@taxtronik/evidence', () => ({
   LocalTimestampAdapter: class {},
   BACKUP_DRILL_RESULT_SETTING_KEY: 'backup_drill_result',
 }));
-vi.mock('../../tenant-context', () => ({
-  withWorkerTenantContext: async (_tenant: string, fn: (tx: object) => unknown) => fn({}),
+// S-01: Ergebnis, Audit und Hinweise im SYSTEM-Kontext des Tenants (App-Rolle).
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: async (_tenant: string, fn: (tx: object) => unknown) =>
+    fn({ staffUser: { findMany: async () => [] } }),
 }));
 vi.mock('../../notify', () => ({ notify: vi.fn() }));
 vi.mock('../../tsa-port', () => ({ timestampPortFor: vi.fn() }));

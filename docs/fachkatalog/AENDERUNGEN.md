@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-038
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/backup-drill.ts
+    rule_ids:
+      - BACKUP-DRILL-INTEGRITY-001
+    reason: >-
+      Der Restore-Drill speichert Ergebnis, Audit-Eintrag `backup.drill.*` und die
+      Auflösung bzw. Meldung von Backup-Fehlerhinweisen über die App-Rolle im
+      SYSTEM-Kontext des Tenants (Row-Level-Security) statt über die
+      Owner-Verbindung mit BYPASSRLS. Tenant-Liste und installationsweite
+      Backup-Historie bleiben auf der Owner-Verbindung, die Scratch-Datenbank prüft
+      weiterhin die Drill-Rolle. Ergebnis, Empfänger und Texte bleiben unverändert;
+      eine PostgreSQL-Suite belegt das und dass fremde Tenants kein Ergebnis
+      erhalten. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/backup-drill-app-role-db.test.ts
+      - apps/worker/src/jobs/__tests__/backup-drill-integrity.test.ts
+      - apps/worker/src/jobs/__tests__/backup-drill.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-037
     date: '2026-10-07'
     paths:
@@ -4946,6 +4966,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-038` dokumentiert die Drill-Ergebnisse über
+  die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-037` dokumentiert Ergebnis und Warnungen der
   Kettenprüfung über die App-Rolle.

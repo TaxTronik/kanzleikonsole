@@ -50,10 +50,10 @@ import {
   BACKUP_DRILL_RESULT_SETTING_KEY,
   type PersistedDrillResult,
 } from '@taxtronik/evidence';
+import { withSystemContext } from '@taxtronik/db';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
 import { pgConnArgs, pgRestoreArgs } from '../pg-conn';
-import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { log } from '../logger';
 import { timestampPortFor } from '../tsa-port';
@@ -259,9 +259,12 @@ async function runPgRestore(
   return stdout;
 }
 
-/** Ergebnis persistieren + in der Produktiv-Chain verankern + ggf. alarmieren. */
+/**
+ * Ergebnis persistieren + in der Produktiv-Chain verankern + ggf. alarmieren.
+ * S-01: über die App-Rolle im SYSTEM-Kontext des Tenants (withSystemContext).
+ */
 async function persistTenantResult(tenantId: string, result: PersistedDrillResult): Promise<void> {
-  await withWorkerTenantContext(tenantId, async (tx) => {
+  await withSystemContext(tenantId, async (tx) => {
     await writeTenantSettingValue(tx, {
       tenantId,
       key: BACKUP_DRILL_RESULT_SETTING_KEY,
@@ -288,12 +291,12 @@ async function persistTenantResult(tenantId: string, result: PersistedDrillResul
   });
 
   if (!result.ok) {
-    const admins = await prismaOwner.staffUser.findMany({
-      where: { tenantId, active: true, roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } } },
-      select: { id: true },
-    });
-    await withWorkerTenantContext(tenantId, (tx) =>
-      notify(
+    await withSystemContext(tenantId, async (tx) => {
+      const admins = await tx.staffUser.findMany({
+        where: { tenantId, active: true, roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } } },
+        select: { id: true },
+      });
+      await notify(
         tx,
         admins.map((a) => ({
           tenantId,
@@ -305,8 +308,8 @@ async function persistTenantResult(tenantId: string, result: PersistedDrillResul
           resourceType: 'backup_drill',
           resourceId: result.backupKey ?? 'none',
         })),
-      ),
-    );
+      );
+    });
   }
 }
 
@@ -315,6 +318,8 @@ async function runDrill(): Promise<{ ok: boolean; tenants: number }> {
   // drill. Only this internally generated ASCII identifier reaches DDL.
   const database = `taxtronik_drill_${randomBytes(12).toString('hex')}`;
   const checkedAt = new Date().toISOString();
+  // S-01: Restore-Drill als Betriebswartung: Tenant-Liste und die
+  // installationsweite Backup-Historie liest der Owner-Client.
   const tenants = await prismaOwner.tenant.findMany({ select: { id: true, createdAt: true } });
 
   const latest = await prismaOwner.backupRecord.findFirst({
