@@ -26,7 +26,9 @@ import {
   ResponsibilitiesForm,
   GwgFieldsForm,
   MandateForm,
+  StammdatenField as Field,
 } from './stammdaten-forms';
+import { ProvidedFieldError } from '@/components/form-errors';
 import { CLIENT_KIND_LABELS } from '@/lib/domain-labels';
 
 export default async function ClientEditPage({ params }: { params: Promise<{ id: string }> }) {
@@ -116,6 +118,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
               <option value="B">B — Standard</option>
               <option value="C">C — nachrangig</option>
             </select>
+            <ProvidedFieldError name="priority" />
           </div>
         </div>
         <div className="mt-4">
@@ -132,6 +135,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
             className="input w-full font-mono text-sm"
             placeholder="Markdown — Hintergrundinformationen, Hinweise zum Mandanten, persönliche Eigenheiten…"
           />
+          <ProvidedFieldError name="internalNotes" />
         </div>
         <div className="mt-4 border-t border-default pt-4">
           <label
@@ -161,6 +165,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
               </span>
             </span>
           </label>
+          <ProvidedFieldError name="vertraulich" />
         </div>
       </AdminFieldsForm>
 
@@ -210,6 +215,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
                 </label>
               ))}
           </div>
+          <ProvidedFieldError name="berufstraegerIds" />
         </div>
         <div>
           <p className="text-xs font-medium text-secondary mb-2">Bearbeiter (Mehrfachauswahl)</p>
@@ -228,6 +234,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
               </label>
             ))}
           </div>
+          <ProvidedFieldError name="hauptbearbeiterIds" />
         </div>
       </ResponsibilitiesForm>
 
@@ -293,6 +300,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
                 </option>
               ))}
             </select>
+            <ProvidedFieldError name="kind" />
           </div>
           <Field label="Straße" name="street" defaultValue={client.street ?? ''} colspan={2} />
           <Field label="PLZ" name="postalCode" defaultValue={client.postalCode ?? ''} />
@@ -307,38 +315,6 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
           mandateEndedAt={client.mandateEndedAt ? client.mandateEndedAt.toISOString() : null}
         />
       )}
-    </div>
-  );
-}
-
-function Field({
-  label,
-  name,
-  defaultValue,
-  type = 'text',
-  required,
-  placeholder,
-  colspan,
-}: {
-  label: string;
-  name: string;
-  defaultValue: string;
-  type?: string;
-  required?: boolean;
-  placeholder?: string;
-  colspan?: 2;
-}) {
-  return (
-    <div className={colspan === 2 ? 'col-span-2' : ''}>
-      <label className="label-sm">{label}</label>
-      <input
-        type={type}
-        name={name}
-        defaultValue={defaultValue}
-        required={required}
-        placeholder={placeholder}
-        className="input w-full"
-      />
     </div>
   );
 }

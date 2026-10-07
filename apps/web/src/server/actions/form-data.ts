@@ -14,6 +14,127 @@ const DEFAULT_VALIDATION_ERROR = 'Bitte prüfen Sie die markierten Angaben.';
 
 type ValidationIssues = readonly { path: readonly PropertyKey[]; message: string }[];
 
+// -----------------------------------------------------------------------------
+// Deutsche Feldmeldungen (Review C7). Zods Standardmeldungen sind englisch
+// („Too small: expected string to have >=1 characters“). Statt einer globalen
+// Zod-Locale (`z.config`) geben parseFormData und parseActionInput diese
+// Fehlerkarte pro Prüfung mit: Nur die Formular- und Action-Schemas dieser
+// Helfer melden deutsch, andere Zod-Prüfungen (Konfiguration, APIs, Worker)
+// bleiben unberührt. Eigene Meldungen am Schema (`.min(1, '…')`, `addIssue`)
+// haben Vorrang. Eigene safeParse-Aufrufe vor `validationFailure` übergeben
+// `{ error: germanFieldError }` selbst.
+// -----------------------------------------------------------------------------
+
+const GERMAN_NUMBER = new Intl.NumberFormat('de-DE');
+const num = (value: number | bigint) => GERMAN_NUMBER.format(value);
+
+function germanTooSmall(issue: z.core.$ZodRawIssue<z.core.$ZodIssueTooSmall>): string {
+  const { minimum } = issue;
+  switch (issue.origin) {
+    case 'string':
+      if (issue.exact) return `Genau ${num(minimum)} Zeichen.`;
+      return Number(minimum) <= 1 ? 'Pflichtfeld.' : `Mindestens ${num(minimum)} Zeichen.`;
+    case 'array':
+    case 'set':
+      return Number(minimum) <= 1
+        ? 'Bitte mindestens einen Eintrag auswählen.'
+        : `Mindestens ${num(minimum)} Einträge.`;
+    case 'date':
+      return 'Das Datum liegt zu früh.';
+    case 'file':
+      return 'Die Datei ist zu klein.';
+    default:
+      return issue.inclusive === false
+        ? `Muss größer als ${num(minimum)} sein.`
+        : `Mindestens ${num(minimum)}.`;
+  }
+}
+
+function germanTooBig(issue: z.core.$ZodRawIssue<z.core.$ZodIssueTooBig>): string {
+  const { maximum } = issue;
+  switch (issue.origin) {
+    case 'string':
+      return issue.exact ? `Genau ${num(maximum)} Zeichen.` : `Höchstens ${num(maximum)} Zeichen.`;
+    case 'array':
+    case 'set':
+      return `Höchstens ${num(maximum)} Einträge.`;
+    case 'date':
+      return 'Das Datum liegt zu spät.';
+    case 'file':
+      return 'Die Datei ist zu groß.';
+    default:
+      return issue.inclusive === false
+        ? `Muss kleiner als ${num(maximum)} sein.`
+        : `Höchstens ${num(maximum)}.`;
+  }
+}
+
+const GERMAN_FORMATS: Readonly<Record<string, string>> = {
+  email: 'Bitte eine gültige E-Mail-Adresse angeben.',
+  url: 'Bitte eine gültige URL angeben.',
+  date: 'Bitte ein gültiges Datum angeben.',
+  datetime: 'Bitte einen gültigen Zeitpunkt angeben.',
+  time: 'Bitte eine gültige Uhrzeit angeben.',
+  uuid: 'Ungültige Auswahl.',
+  guid: 'Ungültige Auswahl.',
+};
+
+/** Datumsfelder prüfen viele Schemas per Muster `^\d{4}-\d{2}-\d{2}$` statt `z.iso.date()`. */
+const ISO_DATE_PATTERN = String.raw`\d{4}-\d{2}-\d{2}`;
+
+function germanInvalidType(issue: z.core.$ZodRawIssue<z.core.$ZodIssueInvalidType>): string {
+  if (issue.input === undefined || issue.input === null) return 'Pflichtfeld.';
+  if (issue.expected === 'int') return 'Bitte eine ganze Zahl angeben.';
+  if (issue.expected === 'number' || issue.expected === 'bigint') return 'Bitte eine Zahl angeben.';
+  if (issue.expected === 'date') return GERMAN_FORMATS.date!;
+  return 'Ungültige Eingabe.';
+}
+
+function germanInvalidFormat(
+  issue: z.core.$ZodRawIssue<z.core.$ZodIssueInvalidStringFormat>,
+): string {
+  if (issue.format === 'regex' && String(issue.pattern ?? '').includes(ISO_DATE_PATTERN)) {
+    return GERMAN_FORMATS.date!;
+  }
+  return GERMAN_FORMATS[issue.format] ?? 'Ungültiges Format.';
+}
+
+/** Auswahl mit leerer Alternative (`z.enum(…).or(z.literal(''))`) bleibt eine Auswahl. */
+function germanInvalidUnion(issue: z.core.$ZodRawIssue<z.core.$ZodIssueInvalidUnion>): string {
+  const onlyValues =
+    issue.errors.length > 0 &&
+    issue.errors.every(
+      (branch) => branch.length > 0 && branch.every((nested) => nested.code === 'invalid_value'),
+    );
+  return onlyValues ? 'Ungültige Auswahl.' : 'Ungültige Eingabe.';
+}
+
+/** Zod-Fehlerkarte mit deutschen Feldmeldungen für Formulare und Action-Eingaben. */
+export const germanFieldError: z.core.$ZodErrorMap = (issue) => {
+  switch (issue.code) {
+    case 'invalid_type':
+      return germanInvalidType(issue);
+    case 'too_small':
+      return germanTooSmall(issue);
+    case 'too_big':
+      return germanTooBig(issue);
+    case 'invalid_format':
+      return germanInvalidFormat(issue);
+    case 'not_multiple_of':
+      return `Muss ein Vielfaches von ${num(issue.divisor)} sein.`;
+    case 'invalid_value':
+      return issue.values.length === 1 && issue.values[0] === true
+        ? 'Bitte bestätigen.'
+        : 'Ungültige Auswahl.';
+    case 'unrecognized_keys':
+      return 'Unbekannte Felder.';
+    case 'invalid_union':
+      return germanInvalidUnion(issue);
+    default:
+      return 'Ungültige Eingabe.';
+  }
+};
+
 /**
  * Zod-Issues → Validierungsfehler mit Feldzuordnung (Pfad `a.b`, ohne Pfad
  * `_form`). Für Actions, die ihr Schema bewusst selbst aus FormData befüllen.
@@ -41,7 +162,7 @@ export function parseActionInput<TSchema extends ZodType>(
   input: unknown,
   errorMessage?: string,
 ): FormDataParseResult<output<TSchema>> {
-  const parsed = schema.safeParse(input);
+  const parsed = schema.safeParse(input, { error: germanFieldError });
   if (!parsed.success) return validationFailure(parsed.error.issues, errorMessage);
   return { ok: true, data: parsed.data };
 }
@@ -83,7 +204,7 @@ export function parseFormData<TSchema extends ZodType>(
     }
   }
 
-  const parsed = schema.safeParse(input);
+  const parsed = schema.safeParse(input, { error: germanFieldError });
   if (!parsed.success) {
     const message =
       typeof options.errorMessage === 'function'

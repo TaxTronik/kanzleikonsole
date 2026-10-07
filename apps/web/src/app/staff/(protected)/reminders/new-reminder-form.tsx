@@ -8,6 +8,10 @@ import { createReminderAction } from '../clients/[id]/reminders/actions';
 import type { ActionResult } from '@/server/actions/staff-action';
 import { StaffPicker } from './staff-picker';
 import { ClientCombobox } from '@/components/ui/client-combobox';
+import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
+
+/** Präfix der Fehler-IDs, eindeutig neben weiteren Formularen der Seite. */
+const PREFIX = 'new-reminder';
 
 /**
  * Neue Wiedervorlage — mandantenbezogen ODER intern, mit mehreren Zuständigen.
@@ -36,6 +40,12 @@ export function NewReminderForm({
     null,
   );
 
+  const fieldErrors = state?.fieldErrors;
+  const errorProps = (name: string) => fieldErrorProps(name, fieldErrors, { prefix: PREFIX });
+  const fieldError = (name: string) => (
+    <FieldError name={name} errors={fieldErrors?.[name]} prefix={PREFIX} />
+  );
+
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="btn-primary text-sm">
@@ -46,6 +56,17 @@ export function NewReminderForm({
 
   return (
     <form action={formAction} className="card p-4 space-y-3">
+      <FormErrorSummary
+        error={state?.ok ? undefined : state?.error}
+        fieldErrors={fieldErrors}
+        fieldIds={{
+          clientId: 'new-reminder-client',
+          dueDate: 'new-reminder-due',
+          subject: 'new-reminder-subject',
+          notes: 'new-reminder-notes',
+          priority: 'new-reminder-priority',
+        }}
+      />
       {/* Mehrfachauswahl kommt über wiederholte Felder — getAll() liest sie. */}
       {staffIds.map((id) => (
         <input key={id} type="hidden" name="assigneeStaffIds" value={id} />
@@ -76,63 +97,96 @@ export function NewReminderForm({
               name="clientId"
               placeholder="Intern (ohne Mandant) — suchen"
               inputClassName="input text-sm w-full pr-9"
+              {...errorProps('clientId')}
             />
           </div>
+          {fieldError('clientId')}
         </div>
-        <label className="text-xs">
-          <span className="text-muted">Fällig</span>
-          <input
-            type="date"
-            name="dueDate"
-            required
-            defaultValue={new Date().toISOString().slice(0, 10)}
-            className="input text-sm w-full mt-0.5"
-          />
-        </label>
+        <div className="text-xs">
+          <label className="block">
+            <span className="text-muted">Fällig</span>
+            <input
+              id="new-reminder-due"
+              type="date"
+              name="dueDate"
+              required
+              defaultValue={new Date().toISOString().slice(0, 10)}
+              className="input text-sm w-full mt-0.5"
+              {...errorProps('dueDate')}
+            />
+          </label>
+          {fieldError('dueDate')}
+        </div>
       </div>
 
-      <label className="block text-xs">
-        <span className="text-muted">Titel</span>
-        <input
-          type="text"
-          name="subject"
-          required
-          maxLength={200}
-          placeholder='z. B. „Belege 2025 nachfordern"'
-          className="input text-sm w-full mt-0.5"
-        />
-      </label>
+      <div className="text-xs">
+        <label className="block">
+          <span className="text-muted">Titel</span>
+          <input
+            id="new-reminder-subject"
+            type="text"
+            name="subject"
+            required
+            maxLength={200}
+            placeholder='z. B. „Belege 2025 nachfordern"'
+            className="input text-sm w-full mt-0.5"
+            {...errorProps('subject')}
+          />
+        </label>
+        {fieldError('subject')}
+      </div>
 
-      <label className="block text-xs">
-        <span className="text-muted">Beschreibung</span>
-        <textarea name="notes" rows={2} maxLength={2000} className="input text-sm w-full mt-0.5" />
-        <span className="text-muted">Mit #123 auf ein zugängliches Ticket verweisen.</span>
-      </label>
+      <div className="text-xs">
+        <label className="block">
+          <span className="text-muted">Beschreibung</span>
+          <textarea
+            id="new-reminder-notes"
+            name="notes"
+            rows={2}
+            maxLength={2000}
+            className="input text-sm w-full mt-0.5"
+            {...errorProps('notes')}
+          />
+          <span className="text-muted">Mit #123 auf ein zugängliches Ticket verweisen.</span>
+        </label>
+        {fieldError('notes')}
+      </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <label className="text-xs">
-          <span className="text-muted">Priorität</span>
-          <select name="priority" defaultValue="NORMAL" className="input text-sm w-full mt-0.5">
-            {REMINDER_PRIORITIES.map((p) => (
-              <option key={p} value={p}>
-                {PRIORITY_LABEL[p]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <StaffPicker
-          label="Zuständig (mehrere möglich)"
-          options={staffOptions}
-          value={staffIds}
-          onChange={setStaffIds}
-        />
+        <div className="text-xs">
+          <label className="block">
+            <span className="text-muted">Priorität</span>
+            <select
+              id="new-reminder-priority"
+              name="priority"
+              defaultValue="NORMAL"
+              className="input text-sm w-full mt-0.5"
+              {...errorProps('priority')}
+            >
+              {REMINDER_PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {PRIORITY_LABEL[p]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {fieldError('priority')}
+        </div>
+        <div>
+          <StaffPicker
+            label="Zuständig (mehrere möglich)"
+            options={staffOptions}
+            value={staffIds}
+            onChange={setStaffIds}
+          />
+          {fieldError('assigneeStaffIds')}
+        </div>
       </div>
       <p className="text-[11px] text-disabled">
         Ohne Auswahl bist du selbst zuständig. Mehrere Personen teilen sich EINE Aufgabe — wer sie
         abhakt, erledigt sie für alle.
       </p>
 
-      {state && !state.ok && <p className="text-xs text-red-700">{state.error}</p>}
       <div className="flex items-center gap-2">
         <button type="submit" disabled={isPending} className="btn-primary text-xs">
           {isPending ? 'Lege an …' : 'Anlegen'}

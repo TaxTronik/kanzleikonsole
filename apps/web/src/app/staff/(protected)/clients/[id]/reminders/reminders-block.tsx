@@ -15,6 +15,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { fmtDateShort } from '@/lib/fmt';
+import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
 import { parseDelegationNotes } from '@/server/risk/delegate-notes';
 import { onNotificationsGrew } from '@/lib/live-events';
 import {
@@ -59,6 +60,9 @@ interface StaffOption {
   fullName: string;
 }
 
+/** Präfix der Feld- und Fehler-IDs im Cockpit (neben Telefonzettel & Co.). */
+const REMINDER_ERROR_PREFIX = 'client-reminder';
+
 export function RemindersBlock({
   clientId,
   initial,
@@ -81,6 +85,13 @@ export function RemindersBlock({
       return result;
     },
     null,
+  );
+  const fieldErrors = state?.fieldErrors;
+  // Eigenes Präfix: Die Cockpit-Seite trägt weitere Formulare mit Betreff/Notiz.
+  const errorProps = (name: string) =>
+    fieldErrorProps(name, fieldErrors, { prefix: REMINDER_ERROR_PREFIX });
+  const fieldError = (name: string) => (
+    <FieldError name={name} errors={fieldErrors?.[name]} prefix={REMINDER_ERROR_PREFIX} />
   );
   const [isMutating, startMut] = useTransition();
   // Nach dem Anlegen schliessen + neu laden. `revalidatePath` allein liess die
@@ -213,35 +224,59 @@ export function RemindersBlock({
           className="p-4 border-b border-default bg-gray-50/50 dark:bg-gray-900/30 space-y-2"
         >
           <input type="hidden" name="clientId" value={clientId} />
+          <FormErrorSummary
+            error={state?.ok ? undefined : state?.error}
+            fieldErrors={fieldErrors}
+            fieldIds={{
+              dueDate: `${REMINDER_ERROR_PREFIX}-due`,
+              subject: `${REMINDER_ERROR_PREFIX}-subject`,
+              notes: `${REMINDER_ERROR_PREFIX}-notes`,
+              assigneeStaffIds: `${REMINDER_ERROR_PREFIX}-assignees`,
+            }}
+          />
           <div className="grid grid-cols-3 gap-2">
-            <input
-              type="date"
-              name="dueDate"
-              aria-label="Fällig"
-              className="input text-sm"
-              min={new Date().toISOString().slice(0, 10)}
-              required
-            />
-            <input
-              type="text"
-              name="subject"
-              aria-label="Titel"
-              placeholder='Titel — z. B. „nach Urlaub anrufen"'
-              className="input text-sm col-span-2"
-              maxLength={200}
-              required
-            />
+            <div>
+              <input
+                id={`${REMINDER_ERROR_PREFIX}-due`}
+                type="date"
+                name="dueDate"
+                aria-label="Fällig"
+                className="input text-sm"
+                min={new Date().toISOString().slice(0, 10)}
+                required
+                {...errorProps('dueDate')}
+              />
+              {fieldError('dueDate')}
+            </div>
+            <div className="col-span-2">
+              <input
+                id={`${REMINDER_ERROR_PREFIX}-subject`}
+                type="text"
+                name="subject"
+                aria-label="Titel"
+                placeholder='Titel — z. B. „nach Urlaub anrufen"'
+                className="input text-sm"
+                maxLength={200}
+                required
+                {...errorProps('subject')}
+              />
+              {fieldError('subject')}
+            </div>
           </div>
           <textarea
+            id={`${REMINDER_ERROR_PREFIX}-notes`}
             name="notes"
             aria-label="Beschreibung"
             placeholder="Beschreibung — mit #123 andere Tickets erwähnen"
             rows={2}
             maxLength={2000}
             className="input text-sm"
+            {...errorProps('notes')}
           />
+          {fieldError('notes')}
           <div className="flex items-center gap-2">
             <select
+              id={`${REMINDER_ERROR_PREFIX}-assignees`}
               multiple
               name="assigneeStaffIds"
               aria-label="Zuständige"
@@ -249,6 +284,7 @@ export function RemindersBlock({
               size={Math.min(4, Math.max(2, staffOptions.length))}
               className="input text-sm flex-1"
               title="Mehrfachauswahl mit Strg/Cmd — alle teilen sich EINE Aufgabe"
+              {...errorProps('assigneeStaffIds')}
             >
               {staffOptions.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -268,7 +304,7 @@ export function RemindersBlock({
               {isPending ? 'Lege an…' : 'Anlegen'}
             </button>
           </div>
-          {state && !state.ok && <p className="text-xs text-red-700">{state.error}</p>}
+          {fieldError('assigneeStaffIds')}
         </form>
       )}
 

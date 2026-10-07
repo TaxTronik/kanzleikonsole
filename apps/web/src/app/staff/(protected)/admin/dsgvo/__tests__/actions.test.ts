@@ -245,7 +245,7 @@ describe('DSGVO-Actions — Rückkanal statt Wurf', () => {
       ok: false,
       error: 'Ungültige Kontakt-ID.',
       errorCode: 'VALIDATION_ERROR',
-      fieldErrors: { contactId: ['Invalid UUID'] },
+      fieldErrors: { contactId: ['Ungültige Auswahl.'] },
     });
     expect(h.withTenantContext).not.toHaveBeenCalled();
     expect(h.revokeAllSessions).not.toHaveBeenCalled();

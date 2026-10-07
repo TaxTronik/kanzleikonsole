@@ -42,7 +42,7 @@ const Schema = z.object({
     '',
     z
       .string()
-      .regex(/^[0-9]{4}$/)
+      .regex(/^[0-9]{4}$/, 'Bitte ein vierstelliges Jahr angeben.')
       .optional()
       .or(z.literal('')),
   ),
@@ -51,7 +51,7 @@ const Schema = z.object({
     '',
     z
       .string()
-      .regex(/^[0-9]{8}$/)
+      .regex(/^[0-9]{8}$/, 'Bitte das Datum als TTMMJJJJ angeben.')
       .optional()
       .or(z.literal('')),
   ),

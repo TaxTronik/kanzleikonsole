@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-015
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/admin/dsgvo/__tests__/actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/elster/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
+    rule_ids:
+      - REMINDER-TICKET-001
+      - TAX-CONTROL-STATUS-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-MASTER-DATA-001
+    reason: >-
+      Reine Meldungsänderung (C7): Die Feldschemata liefern deutsche Standardmeldungen
+      je Parse (kein globaler Zod-Locale); ELSTER-Kontoabfrage und Wiedervorlagen
+      erhalten feldspezifische Meldungen für Jahr, Datum TTMMJJJJ und
+      Fälligkeitsdatum und zeigen Feldfehler am Feld. Akzeptierte Eingaben, Prüfungen,
+      Fristen- und Wiedervorlagelogik bleiben unverändert; zwei Tests erwarten die
+      deutschen statt der englischen Texte. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/actions/__tests__/form-data.test.ts
+      - apps/web/src/app/staff/(protected)/__tests__/form-field-errors.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-014
     date: '2026-10-07'
     paths:
@@ -4422,6 +4445,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-015` dokumentiert deutsche Feldmeldungen
+  und Feldfehler in ELSTER-Kontoabfrage und Wiedervorlagen.
 
 - 2026-10-07: `FK-EXC-20261007-014` dokumentiert die Umstellung
   undefinierter Stilklassen auf Design-Tokens in fachlichen Komponenten.

@@ -197,7 +197,7 @@ describe('Kanzlei-Identität', () => {
   it('meldet Branding-Fehler gesammelt und prüft das Logo-Format danach', async () => {
     expectRejected(
       await saveBrandingAction(null, form([['accentColor', 'blau']])),
-      'Invalid input: expected string, received null; Hex-Farbe wie #2563eb',
+      'Pflichtfeld.; Hex-Farbe wie #2563eb',
       ['displayName', 'accentColor'],
     );
     expect(
@@ -239,7 +239,7 @@ describe('Kanzlei-Identität', () => {
     h.audits.length = 0;
     expectRejected(
       await saveLegalAction(null, form([['impressumUrl', 'keine url']])),
-      'Invalid URL',
+      'Bitte eine gültige URL angeben.',
       ['impressumUrl'],
     );
   });
@@ -318,7 +318,7 @@ describe('E-Mail-Versand', () => {
           ['from', ''],
         ]),
       ),
-      'port: Invalid input: expected number, received NaN; from: Too small: expected string to have >=1 characters',
+      'port: Bitte eine Zahl angeben.; from: Pflichtfeld.',
       ['port', 'from'],
     );
     expectRejected(

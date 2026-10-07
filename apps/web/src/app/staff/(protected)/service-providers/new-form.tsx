@@ -2,6 +2,7 @@
 
 import { useActionState, useRef, useEffect } from 'react';
 import { createServiceProviderAction, type ActionResult } from './actions';
+import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
 
 const categories = [
   'IT / Cloud',
@@ -24,13 +25,36 @@ export function NewProviderForm() {
     if (state?.ok) formRef.current?.reset();
   }, [state]);
 
+  const fieldErrors = state?.fieldErrors;
+
   return (
     <form ref={formRef} action={formAction} className="space-y-3">
+      <FormErrorSummary
+        error={state?.error}
+        fieldErrors={fieldErrors}
+        fieldIds={{
+          name: 'sp-name',
+          category: 'sp-category',
+          contactEmail: 'sp-contactEmail',
+          contractFromDate: 'sp-from',
+          contractToDate: 'sp-to',
+          notes: 'sp-notes',
+        }}
+      />
       <div>
         <label className="label" htmlFor="sp-name">
           Name
         </label>
-        <input id="sp-name" name="name" type="text" className="input" required maxLength={200} />
+        <input
+          id="sp-name"
+          name="name"
+          type="text"
+          className="input"
+          required
+          maxLength={200}
+          {...fieldErrorProps('name', fieldErrors)}
+        />
+        <FieldError name="name" errors={fieldErrors?.name} />
       </div>
 
       <div>
@@ -44,7 +68,9 @@ export function NewProviderForm() {
           className="input"
           required
           maxLength={100}
+          {...fieldErrorProps('category', fieldErrors)}
         />
+        <FieldError name="category" errors={fieldErrors?.category} />
         <datalist id="categories">
           {categories.map((c) => (
             <option key={c} value={c} />
@@ -62,7 +88,9 @@ export function NewProviderForm() {
           type="email"
           className="input"
           maxLength={255}
+          {...fieldErrorProps('contactEmail', fieldErrors)}
         />
+        <FieldError name="contactEmail" errors={fieldErrors?.contactEmail} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -70,13 +98,27 @@ export function NewProviderForm() {
           <label className="label" htmlFor="sp-from">
             Vertrag seit
           </label>
-          <input id="sp-from" name="contractFromDate" type="date" className="input" />
+          <input
+            id="sp-from"
+            name="contractFromDate"
+            type="date"
+            className="input"
+            {...fieldErrorProps('contractFromDate', fieldErrors)}
+          />
+          <FieldError name="contractFromDate" errors={fieldErrors?.contractFromDate} />
         </div>
         <div>
           <label className="label" htmlFor="sp-to">
             bis
           </label>
-          <input id="sp-to" name="contractToDate" type="date" className="input" />
+          <input
+            id="sp-to"
+            name="contractToDate"
+            type="date"
+            className="input"
+            {...fieldErrorProps('contractToDate', fieldErrors)}
+          />
+          <FieldError name="contractToDate" errors={fieldErrors?.contractToDate} />
         </div>
       </div>
 
@@ -89,10 +131,17 @@ export function NewProviderForm() {
         <label className="label" htmlFor="sp-notes">
           Notizen
         </label>
-        <textarea id="sp-notes" name="notes" rows={3} className="input" maxLength={5000} />
+        <textarea
+          id="sp-notes"
+          name="notes"
+          rows={3}
+          className="input"
+          maxLength={5000}
+          {...fieldErrorProps('notes', fieldErrors)}
+        />
+        <FieldError name="notes" errors={fieldErrors?.notes} />
       </div>
 
-      {state?.error && <div className="alert-error-sm">{state.error}</div>}
       {state?.ok && <div className="alert-success-sm">Dienstleister angelegt.</div>}
 
       <button type="submit" className="btn-primary w-full" disabled={isPending}>

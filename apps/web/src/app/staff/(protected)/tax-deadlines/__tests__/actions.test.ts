@@ -260,7 +260,7 @@ describe('Steuertermin-Actions — Rückkanal (Review-Befund F-01)', () => {
       ok: false,
       error: 'Ungültige Termin-ID.',
       errorCode: 'VALIDATION_ERROR',
-      fieldErrors: { id: ['Invalid UUID'] },
+      fieldErrors: { id: ['Ungültige Auswahl.'] },
     });
     expect(h.withStaff).not.toHaveBeenCalled();
   });

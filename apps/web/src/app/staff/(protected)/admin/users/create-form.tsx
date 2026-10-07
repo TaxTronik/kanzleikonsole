@@ -3,7 +3,11 @@
 import { useActionState, useRef, useEffect } from 'react';
 import { createUserAction } from './actions';
 import type { ActionResult } from '@/server/actions/staff-action';
+import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
 import { STAFF_PASSWORD_MAX_LENGTH, STAFF_PASSWORD_MIN_LENGTH } from '@/lib/staff-password-policy';
+
+/** Präfix der Fehler-IDs: Die Benutzerseite trägt weitere Formulare je Zeile. */
+const PREFIX = 'user-create';
 
 export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) {
   const ref = useRef<HTMLFormElement>(null);
@@ -16,8 +20,25 @@ export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) 
     if (state?.ok) ref.current?.reset();
   }, [state]);
 
+  const fieldErrors = state?.fieldErrors;
+  const errorProps = (name: string) => fieldErrorProps(name, fieldErrors, { prefix: PREFIX });
+  const fieldError = (name: string) => (
+    <FieldError name={name} errors={fieldErrors?.[name]} prefix={PREFIX} />
+  );
+
   return (
     <form ref={ref} action={formAction} className="space-y-3">
+      <FormErrorSummary
+        error={state?.error}
+        fieldErrors={fieldErrors}
+        fieldIds={{
+          fullName: 'user-fullName',
+          email: 'user-email',
+          password: 'user-password',
+          confirmPassword: 'user-confirm-password',
+          datevAdvisorNumber: 'user-advisor-number',
+        }}
+      />
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="user-fullName">
@@ -31,13 +52,23 @@ export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) 
             required
             minLength={2}
             maxLength={200}
+            {...errorProps('fullName')}
           />
+          {fieldError('fullName')}
         </div>
         <div>
           <label className="label" htmlFor="user-email">
             E-Mail
           </label>
-          <input id="user-email" name="email" type="email" className="input" required />
+          <input
+            id="user-email"
+            name="email"
+            type="email"
+            className="input"
+            required
+            {...errorProps('email')}
+          />
+          {fieldError('email')}
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -54,7 +85,9 @@ export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) 
             required
             minLength={STAFF_PASSWORD_MIN_LENGTH}
             maxLength={STAFF_PASSWORD_MAX_LENGTH}
+            {...errorProps('password')}
           />
+          {fieldError('password')}
         </div>
         <div>
           <label className="label" htmlFor="user-confirm-password">
@@ -69,7 +102,9 @@ export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) 
             required
             minLength={STAFF_PASSWORD_MIN_LENGTH}
             maxLength={STAFF_PASSWORD_MAX_LENGTH}
+            {...errorProps('confirmPassword')}
           />
+          {fieldError('confirmPassword')}
         </div>
       </div>
       <div>
@@ -109,14 +144,15 @@ export function CreateUserForm({ canAssignAdmin }: { canAssignAdmin: boolean }) 
             name="datevAdvisorNumber"
             maxLength={40}
             className="input"
+            {...errorProps('datevAdvisorNumber')}
           />
+          {fieldError('datevAdvisorNumber')}
         </div>
       </div>
       <p className="text-xs text-muted">
         Die Qualifikation vergibt keine Admin-, Audit- oder Abrechnungsrechte. Eine GwG-Freigabe
         erfordert zusätzlich die Zuordnung zum Mandanten. Kein automatischer DATEV-Abgleich.
       </p>
-      {state?.error && <div className="alert-error-sm">{state.error}</div>}
       {state?.ok && <div className="alert-success-sm">Benutzer angelegt.</div>}
 
       <button type="submit" className="btn-primary" disabled={isPending}>

@@ -2,6 +2,7 @@
 
 import { useActionState, useRef, useState, useId } from 'react';
 import { ClientCombobox, type ClientComboboxValue } from '@/components/ui/client-combobox';
+import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
 import { createPhoneNoteAction, type ActionResult } from './actions';
 
 interface Caller {
@@ -37,6 +38,8 @@ export function NewPhoneNoteForm({ staff, currentStaffId, callers }: Props) {
     null,
   );
 
+  const fieldErrors = state?.fieldErrors;
+
   function onCallerNameChange(value: string) {
     setCallerName(value);
     const match = callers.find((c) => c.name.toLowerCase() === value.trim().toLowerCase());
@@ -48,6 +51,18 @@ export function NewPhoneNoteForm({ staff, currentStaffId, callers }: Props) {
 
   return (
     <form ref={formRef} action={formAction} className="space-y-3">
+      <FormErrorSummary
+        error={state?.error}
+        fieldErrors={fieldErrors}
+        fieldIds={{
+          callerName: 'callerName',
+          callerPhone: 'callerPhone',
+          subject: 'subject',
+          body: 'body',
+          clientId: 'clientId',
+          forwardToStaff: 'forwardToStaff',
+        }}
+      />
       <datalist id={datalistId}>
         {callers.map((c) => (
           <option key={c.name} value={c.name}>
@@ -71,7 +86,9 @@ export function NewPhoneNoteForm({ staff, currentStaffId, callers }: Props) {
           autoComplete="off"
           value={callerName}
           onChange={(e) => onCallerNameChange(e.target.value)}
+          {...fieldErrorProps('callerName', fieldErrors)}
         />
+        <FieldError name="callerName" errors={fieldErrors?.callerName} />
         {callers.length > 0 && (
           <p className="text-xs text-disabled mt-1">
             Tipp: bekannte Anrufer werden vorgeschlagen, Nummer + Mandant werden übernommen.
@@ -91,21 +108,41 @@ export function NewPhoneNoteForm({ staff, currentStaffId, callers }: Props) {
           maxLength={50}
           value={callerPhone}
           onChange={(e) => setCallerPhone(e.target.value)}
+          {...fieldErrorProps('callerPhone', fieldErrors)}
         />
+        <FieldError name="callerPhone" errors={fieldErrors?.callerPhone} />
       </div>
 
       <div>
         <label className="label" htmlFor="subject">
           Betreff
         </label>
-        <input id="subject" name="subject" type="text" className="input" required maxLength={200} />
+        <input
+          id="subject"
+          name="subject"
+          type="text"
+          className="input"
+          required
+          maxLength={200}
+          {...fieldErrorProps('subject', fieldErrors)}
+        />
+        <FieldError name="subject" errors={fieldErrors?.subject} />
       </div>
 
       <div>
         <label className="label" htmlFor="body">
           Notiz
         </label>
-        <textarea id="body" name="body" rows={4} className="input" required maxLength={5000} />
+        <textarea
+          id="body"
+          name="body"
+          rows={4}
+          className="input"
+          required
+          maxLength={5000}
+          {...fieldErrorProps('body', fieldErrors)}
+        />
+        <FieldError name="body" errors={fieldErrors?.body} />
       </div>
 
       <div>
@@ -118,7 +155,9 @@ export function NewPhoneNoteForm({ staff, currentStaffId, callers }: Props) {
           value={client}
           onChange={setClient}
           placeholder="Kein Mandant — Name, DATEV- oder Addison-Nr."
+          {...fieldErrorProps('clientId', fieldErrors)}
         />
+        <FieldError name="clientId" errors={fieldErrors?.clientId} />
       </div>
 
       <div>
@@ -130,6 +169,7 @@ export function NewPhoneNoteForm({ staff, currentStaffId, callers }: Props) {
           name="forwardToStaff"
           className="input"
           defaultValue={currentStaffId}
+          {...fieldErrorProps('forwardToStaff', fieldErrors)}
         >
           <option value="">— niemand —</option>
           {staff.map((s) => (
@@ -138,9 +178,9 @@ export function NewPhoneNoteForm({ staff, currentStaffId, callers }: Props) {
             </option>
           ))}
         </select>
+        <FieldError name="forwardToStaff" errors={fieldErrors?.forwardToStaff} />
       </div>
 
-      {state?.error && <div className="alert-error-sm">{state.error}</div>}
       {state?.ok && <div className="alert-success-sm">Notiz angelegt.</div>}
 
       <button type="submit" className="btn-primary w-full" disabled={isPending}>

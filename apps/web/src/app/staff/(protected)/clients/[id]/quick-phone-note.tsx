@@ -4,6 +4,7 @@ import { useActionState, useRef, useState, useId } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, X, Phone } from 'lucide-react';
+import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
 import {
   createPhoneNoteAction,
   type ActionResult,
@@ -57,6 +58,13 @@ export function QuickPhoneNote({
     null,
   );
 
+  const fieldErrors = state?.fieldErrors;
+  // Eigenes Präfix: Die Cockpit-Seite trägt weitere Formulare mit Betreff/Notiz.
+  const errorProps = (name: string) => fieldErrorProps(name, fieldErrors, { prefix: 'qpn' });
+  const fieldError = (name: string) => (
+    <FieldError name={name} errors={fieldErrors?.[name]} prefix="qpn" />
+  );
+
   function onCallerNameChange(value: string) {
     setCallerName(value);
     const match = contacts.find((c) => c.fullName.toLowerCase() === value.trim().toLowerCase());
@@ -94,6 +102,17 @@ export function QuickPhoneNote({
           className="border-b border-default bg-gray-50/60 px-6 py-4 space-y-3"
         >
           <input type="hidden" name="clientId" value={clientId} />
+          <FormErrorSummary
+            error={state?.error}
+            fieldErrors={fieldErrors}
+            fieldIds={{
+              callerName: 'qpn-caller',
+              callerPhone: 'qpn-phone',
+              subject: 'qpn-subject',
+              body: 'qpn-body',
+              forwardToStaff: 'qpn-forward',
+            }}
+          />
           <datalist id={datalistId}>
             {contacts.map((c) => (
               <option key={c.fullName} value={c.fullName}>
@@ -130,7 +149,9 @@ export function QuickPhoneNote({
                 required
                 maxLength={200}
                 className="input"
+                {...errorProps('callerName')}
               />
+              {fieldError('callerName')}
             </div>
             <div>
               <label className="label" htmlFor="qpn-phone">
@@ -144,7 +165,9 @@ export function QuickPhoneNote({
                 onChange={(e) => setCallerPhone(e.target.value)}
                 maxLength={50}
                 className="input"
+                {...errorProps('callerPhone')}
               />
+              {fieldError('callerPhone')}
             </div>
           </div>
 
@@ -159,7 +182,9 @@ export function QuickPhoneNote({
               required
               maxLength={200}
               className="input"
+              {...errorProps('subject')}
             />
+            {fieldError('subject')}
           </div>
 
           <div>
@@ -173,7 +198,9 @@ export function QuickPhoneNote({
               required
               maxLength={5000}
               className="input text-sm"
+              {...errorProps('body')}
             />
+            {fieldError('body')}
           </div>
 
           <div>
@@ -185,6 +212,7 @@ export function QuickPhoneNote({
               name="forwardToStaff"
               defaultValue={currentStaffId}
               className="input"
+              {...errorProps('forwardToStaff')}
             >
               <option value="">— niemand —</option>
               {staff.map((s) => (
@@ -193,11 +221,8 @@ export function QuickPhoneNote({
                 </option>
               ))}
             </select>
+            {fieldError('forwardToStaff')}
           </div>
-
-          {state?.error && (
-            <div className="rounded-md bg-red-50 p-2 text-xs text-red-700">{state.error}</div>
-          )}
 
           <div className="flex items-center gap-2">
             <button type="submit" disabled={isPending} className="btn-primary text-sm">

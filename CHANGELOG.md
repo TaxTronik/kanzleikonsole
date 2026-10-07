@@ -250,6 +250,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Formulare: Feldfehler erscheinen auf Deutsch statt mit englischen
+  Standardmeldungen und bei Benutzern, Telefonnotizen, Dienstleistern, Mandant
+  bearbeiten, ELSTER-Kontoabfrage und Wiedervorlagen direkt am Feld samt
+  Fehlerübersicht.
 - Mandanten-Cockpit, GwG-Status: Der Hinweis „läuft bald aus“ nutzt dieselbe
   Tagesrechnung wie die 30-Tage-Warnstufe des Workers; bei genau 30 × 24
   Stunden Restlaufzeit erscheint er jetzt ebenfalls.

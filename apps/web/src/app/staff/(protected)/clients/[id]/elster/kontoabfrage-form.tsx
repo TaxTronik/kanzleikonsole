@@ -7,6 +7,7 @@
 
 import { useActionState, useState } from 'react';
 import type { ActionResult } from '@/server/actions/types';
+import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
 import { kontoabfrageAction } from './actions';
 
 const STEUERARTEN = ['ESt', 'KSt', 'USt', 'LSt', 'GewSt', 'ZaSt', 'KapESt'] as const;
@@ -29,10 +30,26 @@ export function KontoabfrageForm({
   );
   const [art, setArt] = useState<'ZS' | 'O' | 'I'>('ZS');
   const [echtfall, setEchtfall] = useState(false);
+  const fieldErrors = state?.fieldErrors;
+  const fieldError = (name: string) => <FieldError name={name} errors={fieldErrors?.[name]} />;
 
   return (
     <form action={formAction} className="card p-6 space-y-4">
       <input type="hidden" name="clientId" value={clientId} />
+      <FormErrorSummary
+        error={state?.ok ? undefined : state?.error}
+        fieldErrors={fieldErrors}
+        fieldIds={{
+          taxRegistrationId: 'elster-tax-registration',
+          art: 'elster-kontoabfrage-art',
+          steuerart: 'elster-kontoabfrage-steuerart',
+          jahr: 'elster-kontoabfrage-jahr',
+          wertstellungsdatum: 'elster-kontoabfrage-wertstellungsdatum',
+          wertstellungsdatumOption: 'elster-kontoabfrage-datumsoption',
+          pin: 'elster-kontoabfrage-pin',
+          testmerker: 'elster-kontoabfrage-testmerker',
+        }}
+      />
       <div>
         <label className="label-sm" htmlFor="elster-tax-registration">
           Steuerverbindung *
@@ -43,6 +60,7 @@ export function KontoabfrageForm({
           className="input w-full"
           required
           defaultValue={registrations.find((row) => row.isPrimary && row.numberElster)?.id ?? ''}
+          {...fieldErrorProps('taxRegistrationId', fieldErrors)}
         >
           <option value="">Bitte wählen</option>
           {registrations.map((row) => (
@@ -52,6 +70,7 @@ export function KontoabfrageForm({
             </option>
           ))}
         </select>
+        {fieldError('taxRegistrationId')}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -65,11 +84,13 @@ export function KontoabfrageForm({
             value={art}
             onChange={(e) => setArt(e.target.value as 'ZS' | 'O' | 'I')}
             className="input w-full"
+            {...fieldErrorProps('art', fieldErrors)}
           >
             <option value="ZS">Sollstellungen (Jahr)</option>
             <option value="O">Offene Beträge</option>
             <option value="I">Istbuchungen (ab Datum)</option>
           </select>
+          {fieldError('art')}
         </div>
 
         {art !== 'O' && (
@@ -83,6 +104,7 @@ export function KontoabfrageForm({
               name="steuerart"
               className="input w-full"
               defaultValue={art === 'ZS' ? 'ESt' : ''}
+              {...fieldErrorProps('steuerart', fieldErrors)}
             >
               {art === 'I' && <option value="">— alle —</option>}
               {STEUERARTEN.map((s) => (
@@ -91,6 +113,7 @@ export function KontoabfrageForm({
                 </option>
               ))}
             </select>
+            {fieldError('steuerart')}
           </div>
         )}
 
@@ -108,7 +131,9 @@ export function KontoabfrageForm({
               placeholder="2026"
               className="input w-full"
               required
+              {...fieldErrorProps('jahr', fieldErrors)}
             />
+            {fieldError('jahr')}
           </div>
         )}
 
@@ -127,7 +152,9 @@ export function KontoabfrageForm({
                 placeholder="01012026"
                 className="input w-full"
                 required
+                {...fieldErrorProps('wertstellungsdatum', fieldErrors)}
               />
+              {fieldError('wertstellungsdatum')}
             </div>
             <div>
               <label className="label-sm" htmlFor="elster-kontoabfrage-datumsoption">
@@ -138,10 +165,12 @@ export function KontoabfrageForm({
                 name="wertstellungsdatumOption"
                 className="input w-full"
                 defaultValue="V"
+                {...fieldErrorProps('wertstellungsdatumOption', fieldErrors)}
               >
                 <option value="V">ab diesem Datum</option>
                 <option value="J">genau dieses Datum</option>
               </select>
+              {fieldError('wertstellungsdatumOption')}
             </div>
           </>
         )}
@@ -159,8 +188,11 @@ export function KontoabfrageForm({
             autoComplete="off"
             className="input w-full"
             required
-            aria-describedby="elster-kontoabfrage-pin-hint"
+            {...fieldErrorProps('pin', fieldErrors, {
+              describedBy: 'elster-kontoabfrage-pin-hint',
+            })}
           />
+          {fieldError('pin')}
           <p id="elster-kontoabfrage-pin-hint" className="text-xs text-muted mt-1">
             Wird nur für diesen Vorgang an die Bridge durchgereicht — nie gespeichert.
           </p>
@@ -177,8 +209,11 @@ export function KontoabfrageForm({
               className="input w-full font-mono"
               placeholder="laut ERiC-/Bridge-Doku"
               required={!echtfall}
-              aria-describedby="elster-kontoabfrage-testmerker-hint"
+              {...fieldErrorProps('testmerker', fieldErrors, {
+                describedBy: 'elster-kontoabfrage-testmerker-hint',
+              })}
             />
+            {fieldError('testmerker')}
             <p id="elster-kontoabfrage-testmerker-hint" className="text-xs text-muted mt-1">
               Test-Übertragung: die Clearingstelle validiert und verwirft.
             </p>
@@ -202,14 +237,6 @@ export function KontoabfrageForm({
         </span>
       </label>
 
-      {state && !state.ok && state.error && (
-        <div
-          className="rounded-md bg-red-50 dark:bg-red-950/40 p-3 text-sm text-red-700 dark:text-red-300"
-          role="alert"
-        >
-          {state.error}
-        </div>
-      )}
       {state?.ok && (
         <div
           className="rounded-md bg-green-50 dark:bg-green-950/40 p-3 text-sm text-green-700 dark:text-green-300"

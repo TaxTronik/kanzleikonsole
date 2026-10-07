@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConnectionSchema, EndpointSchema } from '@/server/n8n-settings/validation';
 import { UNEXPECTED_ACTION_ERROR } from '@/server/actions/to-action-error';
+import { germanFieldError } from '@/server/actions/form-data';
 
 const h = vi.hoisted(() => ({
   staffActionGuard: vi.fn(),
@@ -58,38 +59,47 @@ import { saveN8nAction, saveN8nEndpointAction, testN8nApiAction } from '../n8n-a
 const TENANT = 'tenant-1';
 const CONTEXT = { tenantId: TENANT, actorId: 'staff-1', actorType: 'STAFF' };
 
-/** Bisherige Zuordnung von n8n-actions.ts (parseConnectionForm). */
+/**
+ * Bisherige Zuordnung von n8n-actions.ts (parseConnectionForm) — mit der
+ * deutschen Fehlerkarte von parseFormData (C7), damit Meldungen vergleichbar bleiben.
+ */
 const legacyConnection = (formData: FormData) =>
-  ConnectionSchema.safeParse({
-    name: formData.get('name') ?? 'TaxTronik n8n',
-    kind: formData.get('kind') ?? 'SELF_HOSTED',
-    routingMode: formData.get('routingMode') ?? 'EXPLICIT',
-    enabled: formData.get('enabled') === 'on',
-    uiBaseUrl: formData.get('uiBaseUrl') ?? '',
-    callbackBaseUrl: formData.get('callbackBaseUrl') ?? '',
-    webhookBaseUrl: formData.get('webhookBaseUrl') ?? '',
-    hmacSecret: formData.get('hmacSecret') ?? '',
-    apiBaseUrl: formData.get('apiBaseUrl') ?? '',
-    apiKey: formData.get('apiKey') ?? '',
-    keepHmac: formData.get('keepHmac') === 'on',
-    keepApiKey: formData.get('keepApiKey') === 'on',
-  });
+  ConnectionSchema.safeParse(
+    {
+      name: formData.get('name') ?? 'TaxTronik n8n',
+      kind: formData.get('kind') ?? 'SELF_HOSTED',
+      routingMode: formData.get('routingMode') ?? 'EXPLICIT',
+      enabled: formData.get('enabled') === 'on',
+      uiBaseUrl: formData.get('uiBaseUrl') ?? '',
+      callbackBaseUrl: formData.get('callbackBaseUrl') ?? '',
+      webhookBaseUrl: formData.get('webhookBaseUrl') ?? '',
+      hmacSecret: formData.get('hmacSecret') ?? '',
+      apiBaseUrl: formData.get('apiBaseUrl') ?? '',
+      apiKey: formData.get('apiKey') ?? '',
+      keepHmac: formData.get('keepHmac') === 'on',
+      keepApiKey: formData.get('keepApiKey') === 'on',
+    },
+    { error: germanFieldError },
+  );
 
 /** Bisherige Zuordnung von n8n-actions.ts (parseEndpointForm). */
 const legacyEndpoint = (formData: FormData) =>
-  EndpointSchema.safeParse({
-    id: formData.get('id') ?? '',
-    name: formData.get('name') ?? '',
-    productionUrl: formData.get('productionUrl') ?? '',
-    testUrl: formData.get('testUrl') ?? '',
-    workflowId: formData.get('workflowId') ?? '',
-    workflowName: formData.get('workflowName') ?? '',
-    workflowNodeId: formData.get('workflowNodeId') ?? '',
-    source: formData.get('source') ?? 'CUSTOM',
-    enabled: formData.get('enabled') === 'on',
-    testMode: formData.get('testMode') === 'on',
-    events: formData.getAll('events'),
-  });
+  EndpointSchema.safeParse(
+    {
+      id: formData.get('id') ?? '',
+      name: formData.get('name') ?? '',
+      productionUrl: formData.get('productionUrl') ?? '',
+      testUrl: formData.get('testUrl') ?? '',
+      workflowId: formData.get('workflowId') ?? '',
+      workflowName: formData.get('workflowName') ?? '',
+      workflowNodeId: formData.get('workflowNodeId') ?? '',
+      source: formData.get('source') ?? 'CUSTOM',
+      enabled: formData.get('enabled') === 'on',
+      testMode: formData.get('testMode') === 'on',
+      events: formData.getAll('events'),
+    },
+    { error: germanFieldError },
+  );
 
 const file = () => new File(['x'], 'x.txt', { type: 'text/plain' });
 type Entries = Array<[string, string | File]>;

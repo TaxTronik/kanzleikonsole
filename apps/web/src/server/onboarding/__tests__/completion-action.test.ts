@@ -289,7 +289,7 @@ describe('Review-Befund F-01: Wizard-Schritte melden Fehler im Formular', () => 
       ok: false,
       error: 'Ungültige Parameter.',
       errorCode: 'VALIDATION_ERROR',
-      fieldErrors: { next: ['Invalid string: must match pattern /^[a-z_]+$/'] },
+      fieldErrors: { next: ['Ungültiges Format.'] },
     });
     expect(mocks.redirect).not.toHaveBeenCalled();
   });

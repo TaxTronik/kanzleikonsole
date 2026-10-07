@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef } from 'react';
+import { createContext, useContext, useEffect, useId, useRef, type ReactNode } from 'react';
 
 export type FieldErrors = Record<string, string[] | undefined>;
 
@@ -40,6 +40,32 @@ export function FieldError({
       ))}
     </div>
   );
+}
+
+const FieldErrorsContext = createContext<FieldErrors | undefined>(undefined);
+
+/**
+ * Feldfehler eines Client-Formulars für Felder, die als children aus einer
+ * Server-Component kommen (z. B. Stammdaten bearbeiten). Die Felder lesen sie
+ * mit `useFieldErrors` bzw. `ProvidedFieldError`.
+ */
+export function FieldErrorsProvider({
+  fieldErrors,
+  children,
+}: {
+  fieldErrors?: FieldErrors;
+  children: ReactNode;
+}) {
+  return <FieldErrorsContext.Provider value={fieldErrors}>{children}</FieldErrorsContext.Provider>;
+}
+
+export function useFieldErrors(): FieldErrors | undefined {
+  return useContext(FieldErrorsContext);
+}
+
+/** `FieldError` mit den Fehlern des umgebenden `FieldErrorsProvider`. */
+export function ProvidedFieldError({ name, prefix }: { name: string; prefix?: string }) {
+  return <FieldError name={name} errors={useFieldErrors()?.[name]} prefix={prefix} />;
 }
 
 export function FormErrorSummary({
