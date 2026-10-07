@@ -16,6 +16,7 @@ import { runJournaledUpload, uploadFailureCause } from '@/server/documents/journ
 import { readUploadFile } from '@/server/documents/upload-file';
 import { validateFormAnswers } from '@/server/forms/validate-answers';
 import { readFormSchema } from '@/server/forms/schema-snapshot';
+import { answerProgressColumns } from '@/server/forms/answer-progress';
 import { audit } from '@/server/actions/audit';
 
 const Schema = z.object({
@@ -183,6 +184,8 @@ export async function saveSubmissionDraftAction(
           data: {
             answers: parsed.data.answers as Prisma.InputJsonValue,
             status: 'DRAFT',
+            // P-19: Fortschritt aus genau diesen Antworten, im selben Update.
+            ...answerProgressColumns(sub, parsed.data.answers),
           },
         });
         if (saved.count === 0) {
@@ -220,6 +223,7 @@ export async function submitSubmissionAction(input: z.infer<typeof Schema>): Pro
             status: 'SUBMITTED',
             submittedAt: new Date(),
             submittedByContact: contactId,
+            ...answerProgressColumns(sub, parsed.data.answers),
           },
         });
         if (submitted.count === 0) {
@@ -483,7 +487,10 @@ export async function uploadFormFileAction(
           // Ohne dieses atomare Mitspeichern wäre die Datei nach einem Reload zwar
           // als Document vorhanden, im Formular aber nicht mehr sichtbar und damit
           // für den Mandanten auch nicht mehr verwerfbar.
-          const currentAnswers = answerRecord(currentSub.answers);
+          const answers = {
+            ...answerRecord(currentSub.answers),
+            [currentField.key]: { documentId: doc.id, fileName: parsed.data.fileName },
+          };
           const attached = await tx.formSubmission.updateMany({
             where: {
               id: currentSub.id,
@@ -492,10 +499,8 @@ export async function uploadFormFileAction(
             },
             data: {
               status: 'DRAFT',
-              answers: {
-                ...currentAnswers,
-                [currentField.key]: { documentId: doc.id, fileName: parsed.data.fileName },
-              } as Prisma.InputJsonValue,
+              answers: answers as Prisma.InputJsonValue,
+              ...answerProgressColumns(currentSub, answers),
             },
           });
           if (attached.count !== 1) throw new ActionError('Formular wurde bereits übermittelt.');
@@ -598,9 +603,13 @@ async function discardOpenFormUploadTx(
     const current = answerRecord(sub.answers);
     const value = current[input.fieldKey];
     if (answerReferencesDocument(value, document.id)) {
+      const answers = { ...current, [input.fieldKey]: null };
       const detached = await tx.formSubmission.updateMany({
         where: { id: sub.id, clientId: input.clientId, status: { in: ['PENDING', 'DRAFT'] } },
-        data: { answers: { ...current, [input.fieldKey]: null } as Prisma.InputJsonValue },
+        data: {
+          answers: answers as Prisma.InputJsonValue,
+          ...answerProgressColumns(sub, answers),
+        },
       });
       if (detached.count !== 1) throw new ActionError('Formular wurde bereits übermittelt.');
       await evidenceService.record(tx, {
@@ -631,10 +640,12 @@ async function discardOpenFormUploadTx(
   const currentAnswers = answerRecord(sub.answers);
   const currentFieldAnswer = currentAnswers[input.fieldKey];
   if (answerReferencesDocument(currentFieldAnswer, input.documentId)) {
+    const answers = { ...currentAnswers, [input.fieldKey]: null };
     const detached = await tx.formSubmission.updateMany({
       where: { id: sub.id, clientId: input.clientId, status: { in: ['PENDING', 'DRAFT'] } },
       data: {
-        answers: { ...currentAnswers, [input.fieldKey]: null } as Prisma.InputJsonValue,
+        answers: answers as Prisma.InputJsonValue,
+        ...answerProgressColumns(sub, answers),
       },
     });
     if (detached.count !== 1) throw new ActionError('Formular wurde bereits übermittelt.');

@@ -16,6 +16,7 @@ import type { TxClient } from '@taxtronik/db';
 import type { StaffCtx } from '@/server/actions/staff-action';
 import { ActionError } from '@/server/actions/action-error';
 import { assertClientAccessTx } from '@/server/auth/rbac';
+import { answerProgressColumns } from '@/server/forms/answer-progress';
 
 /** YEAR-END-CAMPAIGN-001: ausdrückliche Auswahl von maximal 200 Mandaten je Lauf. */
 export const YEAR_END_ROLLOUT_MAX_CLIENTS = 200;
@@ -70,6 +71,9 @@ export async function rolloutCampaignTx(
   if (rows.length === 0) return 0;
 
   const title = `${campaign.name} ${campaign.year}`;
+  // P-19: Fortschritt der noch leeren Antworten (für alle Einträge gleich) wird
+  // gleich mitgespeichert; die Übersicht berechnet ihn nicht mehr im Render.
+  const progress = answerProgressColumns({ schemaSnapshot: campaign.schemaSnapshot }, {});
   // form_submission.request_id hat keinen Fremdschlüssel; die vorab vergebene
   // Request-ID ersetzt das frühere Insert-dann-Update je Mandant.
   await tx.formSubmission.createMany({
@@ -82,6 +86,7 @@ export async function rolloutCampaignTx(
       name: title,
       createdByStaff: g.staffId,
       requestId: row.requestId,
+      ...progress,
     })),
   });
   await tx.request.createMany({

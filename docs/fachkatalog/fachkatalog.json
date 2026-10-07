@@ -6078,9 +6078,14 @@
         "apps/web/src/app/staff/(protected)/forms/submissions/[id]/page.tsx",
         "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
         "apps/web/src/app/portal/(protected)/forms/[id]/page.tsx",
+        "apps/web/src/server/forms/answer-progress.ts",
+        "apps/web/src/server/workflows/year-end-overview.ts",
+        "apps/web/src/server/workflows/year-end-rollout.ts",
+        "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql",
         "packages/db/prisma/migrations/20260831280000_form_submission_revisions/migration.sql",
-        "packages/db/prisma/migrations/20260831300000_form_revision_source_guard/migration.sql"
+        "packages/db/prisma/migrations/20260831300000_form_revision_source_guard/migration.sql",
+        "packages/db/prisma/migrations/20261007160100_form_submission_answer_progress/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/server/forms/__tests__/schema-snapshot.test.ts",
@@ -6088,6 +6093,10 @@
         "apps/web/src/server/workflows/__tests__/year-end-return.test.ts",
         "apps/web/src/server/forms/__tests__/revision-download.test.ts",
         "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts",
+        "apps/web/src/server/forms/__tests__/answer-progress.test.ts",
+        "apps/web/src/server/workflows/__tests__/year-end-overview.test.ts",
+        "apps/web/src/server/workflows/__tests__/year-end-rollout.test.ts",
+        "apps/web/src/server/workflows/__tests__/year-end-db.test.ts",
         "packages/db/src/__tests__/workflow-expansion.test.ts"
       ],
       "feature_refs": ["docs/development/module/workflow-expansion.md"],

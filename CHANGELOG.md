@@ -258,6 +258,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Jahreswechsel-Checklisten: Der Bearbeitungsfortschritt wird beim Speichern
+  der Antworten mitgespeichert, statt ihn in der Übersicht für jeden Eintrag
+  neu zu berechnen.
 - Dokumente: Die Empfangsbestätigung lädt die Seite nur noch einmal neu und
   zeigt bei Ablehnung wieder den gespeicherten Stand; nicht mehr genutzte
   Einzelaktionen (Löschen, Umtypisieren, Ordner verschieben) sind entfernt.

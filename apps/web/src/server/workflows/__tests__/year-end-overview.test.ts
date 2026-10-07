@@ -1,6 +1,8 @@
 // Fachkatalog: YEAR-END-CAMPAIGN-001
 // P-19: Die Übersicht zählt Phasen per groupBy und lädt Kampagnen und Einträge
 // seitenweise; die Datenbankfilter müssen exakt campaignSubmissionPhase folgen.
+// Der Fortschritt kommt gespeichert aus der Einreichung; Schema und Antworten
+// werden nur für Einreichungen ohne gespeicherten Wert geladen.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
 
@@ -13,9 +15,28 @@ import {
   ENTRIES_PER_PAGE,
   loadYearEndOverviewTx,
 } from '../year-end-overview';
-import { campaignSubmissionPhase } from '../dashboard-policy';
+import { campaignSubmissionPhase, formAnswerProgress } from '../dashboard-policy';
+import { freezeFormSchema } from '@/server/forms/schema-snapshot';
 
 type Condition = Record<string, unknown>;
+
+const AT = new Date('2026-10-07T08:00:00Z');
+function stored(filled: number, total: number, requiredFilled: number, requiredTotal: number) {
+  return {
+    answerProgressAt: AT,
+    answerProgressFilled: filled,
+    answerProgressTotal: total,
+    answerProgressRequiredFilled: requiredFilled,
+    answerProgressRequiredTotal: requiredTotal,
+  };
+}
+const NOT_STORED = {
+  answerProgressAt: null,
+  answerProgressFilled: null,
+  answerProgressTotal: null,
+  answerProgressRequiredFilled: null,
+  answerProgressRequiredTotal: null,
+};
 
 /** Minimaler Auswerter für die in CAMPAIGN_PHASE_FILTERS genutzten Prisma-Operatoren. */
 function matches(value: unknown, condition: unknown): boolean {
@@ -70,7 +91,16 @@ describe('loadYearEndOverviewTx', () => {
             : [],
         ),
       },
-      formSubmission: { findMany: vi.fn(async () => [{ id: 's1', status: 'SUBMITTED' }]) },
+      formSubmission: {
+        findMany: vi.fn(
+          async ({
+            select,
+          }: {
+            select: Record<string, unknown>;
+          }): Promise<Array<Record<string, unknown>>> =>
+            select['answers'] ? [] : [{ id: 's1', status: 'SUBMITTED', ...stored(1, 1, 1, 1) }],
+        ),
+      },
       request: { findMany: vi.fn(async () => [{ id: 'r1', status: 'OPEN' }]) },
       formTemplate: { findMany: vi.fn(async () => []) },
     };
@@ -134,10 +164,31 @@ describe('loadYearEndOverviewTx', () => {
         ['k2', 1],
       ]),
     );
-    expect(tx.formSubmission.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: { in: ['s1'] } } }),
-    );
+    // Nur die gezeigten Einreichungen, ohne Schema und Antworten (JSON).
+    expect(tx.formSubmission.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.formSubmission.findMany).toHaveBeenCalledWith({
+      where: { id: { in: ['s1'] } },
+      select: {
+        id: true,
+        status: true,
+        submittedAt: true,
+        reviewedAt: true,
+        updatedAt: true,
+        answerProgressAt: true,
+        answerProgressFilled: true,
+        answerProgressTotal: true,
+        answerProgressRequiredFilled: true,
+        answerProgressRequiredTotal: true,
+      },
+    });
     expect(data.submissions.get('s1')).toMatchObject({ status: 'SUBMITTED' });
+    expect(data.progress.get('s1')).toEqual({
+      filled: 1,
+      total: 1,
+      requiredFilled: 1,
+      requiredTotal: 1,
+      percent: 100,
+    });
     expect(data.requestStatus.get('r1')).toBe('OPEN');
     expect(data.page).toBe(2);
   });
@@ -151,5 +202,65 @@ describe('loadYearEndOverviewTx', () => {
 
     expect(data.page).toBe(Math.ceil(12 / CAMPAIGNS_PER_PAGE));
     expect(data.entryPages.get('k1')).toBe(Math.ceil(120 / ENTRIES_PER_PAGE));
+  });
+
+  it('liest gespeicherten Fortschritt und rechnet nur ohne gespeicherten Wert selbst', async () => {
+    const snapshot = freezeFormSchema({
+      name: 'Checkliste',
+      description: null,
+      introMd: null,
+      fields: ['a', 'b'].map((key) => ({
+        id: `field-${key}`,
+        key,
+        label: key,
+        type: 'TEXT' as const,
+        required: key === 'a',
+        options: null,
+        helpText: null,
+        defaultValue: null,
+        minValue: null,
+        maxValue: null,
+      })),
+    });
+    tx.yearEndCampaignEntry.findMany.mockImplementation(async ({ where }) =>
+      where.AND[0]!.campaignId === 'k1'
+        ? ['s1', 's2', 's3'].map((submissionId, i) => ({
+            id: `e${i}`,
+            submissionId,
+            requestId: `r${i}`,
+            client: { name: `Mandant ${i}` },
+          }))
+        : [],
+    );
+    tx.formSubmission.findMany.mockImplementation(async ({ select }) =>
+      select['answers']
+        ? [{ id: 's2', schemaSnapshot: snapshot, answers: { b: 'x' } }]
+        : [
+            { id: 's1', status: 'SUBMITTED', ...stored(2, 2, 1, 1) },
+            { id: 's2', status: 'DRAFT', ...NOT_STORED },
+            // Gespeichert als „nicht berechenbar“: keine Neuberechnung.
+            { id: 's3', status: 'PENDING', ...NOT_STORED, answerProgressAt: AT },
+          ],
+    );
+
+    const data = await loadYearEndOverviewTx(tx as unknown as TxClient, {} as never, {
+      page: 1,
+      campaignId: 'k1',
+      entryPage: 1,
+    });
+
+    expect(tx.formSubmission.findMany).toHaveBeenCalledTimes(2);
+    expect(tx.formSubmission.findMany).toHaveBeenLastCalledWith({
+      where: { id: { in: ['s2'] } },
+      select: { id: true, schemaSnapshot: true, answers: true },
+    });
+    expect(data.progress).toEqual(
+      new Map([
+        ['s1', { filled: 2, total: 2, requiredFilled: 1, requiredTotal: 1, percent: 100 }],
+        ['s2', formAnswerProgress(snapshot, { b: 'x' })],
+        ['s3', null],
+      ]),
+    );
+    expect(data.progress.get('s2')).toMatchObject({ filled: 1, total: 2, requiredFilled: 0 });
   });
 });

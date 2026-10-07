@@ -36,15 +36,24 @@ code_refs:
   - apps/web/src/app/staff/(protected)/forms/submissions/[id]/page.tsx
   - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/page.tsx
+  - apps/web/src/server/forms/answer-progress.ts
+  - apps/web/src/server/workflows/year-end-overview.ts
+  - apps/web/src/server/workflows/year-end-rollout.ts
+  - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql
   - packages/db/prisma/migrations/20260831280000_form_submission_revisions/migration.sql
   - packages/db/prisma/migrations/20260831300000_form_revision_source_guard/migration.sql
+  - packages/db/prisma/migrations/20261007160100_form_submission_answer_progress/migration.sql
 test_refs:
   - apps/web/src/server/forms/__tests__/schema-snapshot.test.ts
   - apps/web/src/server/workflows/__tests__/dashboard-policy.test.ts
   - apps/web/src/server/workflows/__tests__/year-end-return.test.ts
   - apps/web/src/server/forms/__tests__/revision-download.test.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
+  - apps/web/src/server/forms/__tests__/answer-progress.test.ts
+  - apps/web/src/server/workflows/__tests__/year-end-overview.test.ts
+  - apps/web/src/server/workflows/__tests__/year-end-rollout.test.ts
+  - apps/web/src/server/workflows/__tests__/year-end-db.test.ts
   - packages/db/src/__tests__/workflow-expansion.test.ts
 feature_refs:
   - docs/development/module/workflow-expansion.md
@@ -93,6 +102,8 @@ Fehlender Zugriff, ungültiger oder veränderter Quellstand und geschlossene Vor
 Ein berechtigter Mitarbeiter bereitet den beschriebenen Vorgang vor und prüft seine Auswahl. Ein zweiter Kontakt erhält dadurch keine zusätzlichen Rechte; ein später geänderter Quellstand wird nicht still als ursprüngliche Grundlage dargestellt.
 
 ## Umsetzung in TaxTronik
+
+Der angezeigte Fortschritt wird beim Speichern berechnet, nicht bei jeder Anzeige. Jeder Schreibpfad, der Antworten ändert (Rollout mit leeren Antworten, Portal-Entwurf, Abgabe, Datei anfügen oder lösen), speichert ihn mit derselben Zählweise im selben Datenbank-Update wie die Antworten; parallele Speicherungen bleiben dadurch mit dem jeweils gespeicherten Antwortstand konsistent. Ändert ein anderer Pfad die Antworten ohne Neuberechnung, etwa eine Anonymisierung, verwirft ein Datenbanktrigger den gespeicherten Wert. Ohne gespeicherten Wert berechnet die Übersicht ihn für die angezeigte Seite wie bisher aus eingefrorenem Schema und Antworten. Die Migration trägt ihn für Einreichungen mit leeren Antworten nach; beantworteter Altbestand erhält ihn beim nächsten Speichern. Ein nicht lesbares Schema wird als „nicht berechenbar“ gespeichert und erhält weiterhin keine Prozentangabe.
 
 Personenbezogene Fachdaten gehören zum privaten Workflowbestand des bestehenden Löschkonzepts. Verbundene Requests sind gemäß DSGVO-OPERATIONAL-RETENTION-001 vom automatischen Request-Purge ausgenommen, bis der gesamte verbundene Fachvorgang in einem geprüften Löschprozess bewertet wird. Diese Regel begründet keine neue Aufbewahrungsdauer. Unveränderliche Evidenz enthält IDs und knappe Statusmerkmale, keine Nachrichtentexte. Vor einer produktiven Nutzung sind Datenbankmigration, negative Zugriffsprüfungen und organisatorische Zuständigkeiten abzunehmen.
 

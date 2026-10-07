@@ -64,6 +64,19 @@ import {
 } from '../actions';
 import { storageJournal } from '@/server/documents/__tests__/storage-journal-fake';
 import { MAX_UPLOAD_BYTES_BY_KIND } from '@/lib/upload-limits.mjs';
+import { freezeFormSchema } from '@/server/forms/schema-snapshot';
+import { formAnswerProgress } from '@/server/workflows/dashboard-policy';
+
+// P-19: Jeder Schreibpfad, der Antworten ändert, speichert im selben Update den
+// Fortschritt dieser Antworten. Die Altfixtures hier haben keinen eingefrorenen
+// Schema-Snapshot: gespeichert als „nicht berechenbar“.
+const PROGRESS_NOT_COMPUTABLE = {
+  answerProgressAt: expect.any(Date),
+  answerProgressFilled: null,
+  answerProgressTotal: null,
+  answerProgressRequiredFilled: null,
+  answerProgressRequiredTotal: null,
+};
 
 /** F-09: Datei binär als File in FormData; Metadaten vom File. */
 function uploadFile(input: {
@@ -187,6 +200,73 @@ describe('Formular-Lifecycle', () => {
       }),
     );
   });
+
+  // Fachkatalog: YEAR-END-CAMPAIGN-001
+  it('P-19 speichert beim Entwurf und bei der Abgabe den Fortschritt genau dieser Antworten', async () => {
+    const tx = mockTx();
+    const field = {
+      options: null,
+      helpText: null,
+      defaultValue: null,
+      minValue: null,
+      maxValue: null,
+    };
+    const schemaSnapshot = freezeFormSchema({
+      name: 'Checkliste',
+      description: null,
+      introMd: null,
+      fields: [
+        { ...field, id: 'f1', key: 'name', label: 'Name', type: 'TEXT', required: true },
+        { ...field, id: 'f2', key: 'info', label: 'Info', type: 'INFO_TEXT', required: false },
+        { ...field, id: 'f3', key: 'betrag', label: 'Betrag', type: 'MONEY', required: false },
+        { ...field, id: 'f4', key: 'ok', label: 'Bestätigt', type: 'CHECKBOX', required: true },
+      ],
+    });
+    tx.formSubmission.findUnique.mockResolvedValue({
+      ...submission(),
+      answers: {},
+      schemaSnapshot,
+    } as never);
+    const draft = { name: 'Mara', betrag: 0, ok: false };
+    const final = { name: 'Mara', betrag: 0, ok: true };
+
+    expect(
+      await saveSubmissionDraftAction({ submissionId: SUBMISSION_ID, answers: draft }),
+    ).toEqual({ ok: true });
+    expect(await submitSubmissionAction({ submissionId: SUBMISSION_ID, answers: final })).toEqual({
+      ok: true,
+    });
+
+    const [saved, submitted] = tx.formSubmission.updateMany.mock.calls.map(
+      ([args]) => (args as { data: Record<string, unknown> }).data,
+    );
+    // Nullbetrag zählt; die Pflicht-Checkbox erst, wenn sie bestätigt ist.
+    expect(formAnswerProgress(schemaSnapshot, draft)).toMatchObject({
+      filled: 2,
+      total: 3,
+      requiredFilled: 1,
+      requiredTotal: 2,
+    });
+    expect(saved).toEqual({
+      answers: draft,
+      status: 'DRAFT',
+      answerProgressAt: expect.any(Date),
+      answerProgressFilled: 2,
+      answerProgressTotal: 3,
+      answerProgressRequiredFilled: 1,
+      answerProgressRequiredTotal: 2,
+    });
+    expect(submitted).toMatchObject({
+      answers: final,
+      status: 'SUBMITTED',
+      answerProgressAt: expect.any(Date),
+      answerProgressFilled: 3,
+      answerProgressTotal: 3,
+      answerProgressRequiredFilled: 2,
+      answerProgressRequiredTotal: 2,
+    });
+  });
+
   it('YEAR-END-CAMPAIGN-001 detaches an archived source from the current draft without deleting its historical bytes', async () => {
     const tx = mockTx();
     const documentId = '22222222-2222-4222-8222-222222222222';
@@ -206,7 +286,7 @@ describe('Formular-Lifecycle', () => {
     });
     expect(result).toEqual({ ok: true });
     expect(tx.formSubmission.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { answers: { beleg: null } } }),
+      expect.objectContaining({ data: { answers: { beleg: null }, ...PROGRESS_NOT_COMPUTABLE } }),
     );
     expect(h.deleteObject).not.toHaveBeenCalled();
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
@@ -478,6 +558,7 @@ describe('Formular-Lifecycle', () => {
           data: {
             status: 'DRAFT',
             answers: { beleg: { documentId: 'document-existing', fileName: 'correction.pdf' } },
+            ...PROGRESS_NOT_COMPUTABLE,
           },
         }),
       );
@@ -649,6 +730,7 @@ describe('Formular-Lifecycle', () => {
         answers: {
           beleg: { documentId: 'document-1', fileName: 'beleg.pdf' },
         },
+        ...PROGRESS_NOT_COMPUTABLE,
       },
     });
   });
@@ -723,7 +805,7 @@ describe('Formular-Lifecycle', () => {
         clientId: 'client-1',
         status: { in: ['PENDING', 'DRAFT'] },
       },
-      data: { answers: { beleg: null } },
+      data: { answers: { beleg: null }, ...PROGRESS_NOT_COMPUTABLE },
     });
     expect(documentDeleteMany).toHaveBeenCalledWith({
       where: expect.objectContaining({

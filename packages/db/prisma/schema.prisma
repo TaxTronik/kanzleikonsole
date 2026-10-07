@@ -3817,6 +3817,15 @@ model FormSubmission {
   createdAt            DateTime                 @default(now()) @map("created_at")
   updatedAt            DateTime                 @updatedAt @map("updated_at")
   workflowItemId       String?                  @map("workflow_item_id") @db.Uuid
+  /// P-19: beim Speichern der Antworten berechneter technischer Fortschritt
+  /// (formAnswerProgress). answerProgressAt NULL = nicht gespeichert; gesetzt
+  /// mit leeren Zahlen = nicht berechenbar. Ein Trigger setzt ihn zurück, wenn
+  /// Antworten ohne Neuberechnung geändert werden.
+  answerProgressAt             DateTime?                @map("answer_progress_at") @db.Timestamptz(6)
+  answerProgressFilled         Int?                     @map("answer_progress_filled")
+  answerProgressTotal          Int?                     @map("answer_progress_total")
+  answerProgressRequiredFilled Int?                     @map("answer_progress_required_filled")
+  answerProgressRequiredTotal  Int?                     @map("answer_progress_required_total")
   client               Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "form_submission_client_fkey")
   template             FormTemplate             @relation(fields: [templateId], references: [id], onUpdate: NoAction, map: "form_submission_template_fkey")
   tenant               Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "form_submission_tenant_fkey")

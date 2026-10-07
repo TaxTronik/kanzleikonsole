@@ -8,7 +8,11 @@
 //   - Statusverteilung je Kampagne per groupBy in der Datenbank,
 //   - Einträge seitenweise je Kampagne (ENTRIES_PER_PAGE); nur für diese
 //     Einträge werden Einreichung und Anforderungsstatus geladen,
-//   - alle Zuordnungen im Render über Maps.
+//   - alle Zuordnungen im Render über Maps,
+//   - der Bearbeitungsfortschritt kommt gespeichert aus der Einreichung (beim
+//     Speichern der Antworten berechnet, server/forms/answer-progress.ts);
+//     Schema und Antworten (JSON) werden nur noch für Einreichungen ohne
+//     gespeicherten Wert geladen und wie bisher berechnet.
 // Die Phasen entsprechen exakt campaignSubmissionPhase (YEAR-END-CAMPAIGN-001).
 // =============================================================================
 
@@ -16,6 +20,13 @@ import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import type { StaffSession } from '@/server/auth/staff';
+import {
+  ANSWER_PROGRESS_SELECT,
+  storedAnswerProgress,
+  type AnswerProgress,
+  type AnswerProgressColumns,
+} from '@/server/forms/answer-progress';
+import { formAnswerProgress } from './dashboard-policy';
 
 export const CAMPAIGNS_PER_PAGE = 5;
 export const ENTRIES_PER_PAGE = 50;
@@ -161,10 +172,10 @@ export async function loadYearEndOverviewTx(
       submittedAt: true,
       reviewedAt: true,
       updatedAt: true,
-      schemaSnapshot: true,
-      answers: true,
+      ...ANSWER_PROGRESS_SELECT,
     },
   });
+  const progress = await loadAnswerProgressTx(tx, submissions);
   const requests = await tx.request.findMany({
     where: { id: { in: shown.map((entry) => entry.requestId) } },
     select: { id: true, status: true },
@@ -182,9 +193,39 @@ export async function loadYearEndOverviewTx(
     entryPages,
     entriesByCampaign,
     submissions: new Map(submissions.map((submission) => [submission.id, submission])),
+    progress,
     requestStatus: new Map(requests.map((request) => [request.id, request.status])),
     templates,
   };
+}
+
+/**
+ * P-19: Fortschritt je Einreichung (`null` = nicht berechenbar). Gespeicherte
+ * Werte werden übernommen; nur für Einreichungen ohne gespeicherten Wert
+ * (Altbestand, Schreibpfade ohne Neuberechnung) werden eingefrorenes Schema und
+ * Antworten geladen und wie bisher berechnet.
+ */
+async function loadAnswerProgressTx(
+  tx: TxClient,
+  submissions: ReadonlyArray<{ id: string } & AnswerProgressColumns>,
+): Promise<Map<string, AnswerProgress | null>> {
+  const progress = new Map<string, AnswerProgress | null>();
+  const missing: string[] = [];
+  for (const submission of submissions) {
+    const stored = storedAnswerProgress(submission);
+    if (stored === undefined) missing.push(submission.id);
+    else progress.set(submission.id, stored);
+  }
+  if (missing.length > 0) {
+    const legacy = await tx.formSubmission.findMany({
+      where: { id: { in: missing } },
+      select: { id: true, schemaSnapshot: true, answers: true },
+    });
+    for (const row of legacy) {
+      progress.set(row.id, formAnswerProgress(row.schemaSnapshot, row.answers));
+    }
+  }
+  return progress;
 }
 
 export type YearEndOverview = Awaited<ReturnType<typeof loadYearEndOverviewTx>>;

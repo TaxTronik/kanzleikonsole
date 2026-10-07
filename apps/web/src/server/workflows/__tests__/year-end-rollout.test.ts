@@ -1,6 +1,7 @@
 // Fachkatalog: YEAR-END-CAMPAIGN-001
 // P-19: Rollout lädt Freischaltung und vorhandene Zuordnungen vorab und legt
-// Submissions, Requests und Einträge mit je einem createMany an.
+// Submissions, Requests und Einträge mit je einem createMany an; der
+// Fortschritt der noch leeren Antworten wird gleich mitgespeichert.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
 
@@ -14,11 +15,28 @@ import {
   type RolloutCampaign,
 } from '../year-end-rollout';
 import { ActionError } from '@/server/actions/action-error';
+import { freezeFormSchema } from '@/server/forms/schema-snapshot';
 
+const FIELD = {
+  options: null,
+  helpText: null,
+  defaultValue: null,
+  minValue: null,
+  maxValue: null,
+};
 const CAMPAIGN: RolloutCampaign = {
   id: 'campaign-1',
   templateId: 'template-1',
-  schemaSnapshot: { version: 1, fields: [] },
+  schemaSnapshot: freezeFormSchema({
+    name: 'Checkliste',
+    description: null,
+    introMd: null,
+    fields: [
+      { ...FIELD, id: 'f1', key: 'a', label: 'A', type: 'TEXT', required: true },
+      { ...FIELD, id: 'f2', key: 'hinweis', label: 'Hinweis', type: 'INFO_TEXT', required: false },
+      { ...FIELD, id: 'f3', key: 'b', label: 'B', type: 'NUMBER', required: false },
+    ],
+  }) as RolloutCampaign['schemaSnapshot'],
   name: 'Jahreswechsel',
   year: 2026,
   dueAt: new Date('2026-12-31T22:59:00Z'),
@@ -95,6 +113,12 @@ describe('rolloutCampaignTx', () => {
         name: 'Jahreswechsel 2026',
         createdByStaff: 'staff-1',
         requestId: request.id,
+        // 0 von 2 Eingabefeldern (INFO_TEXT zählt nicht), 0 von 1 Pflichtfeld.
+        answerProgressAt: expect.any(Date),
+        answerProgressFilled: 0,
+        answerProgressTotal: 2,
+        answerProgressRequiredFilled: 0,
+        answerProgressRequiredTotal: 1,
       });
       expect(request).toEqual({
         id: expect.any(String),

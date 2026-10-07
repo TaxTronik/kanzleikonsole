@@ -10,7 +10,7 @@ import {
   rolloutCampaignAction,
   returnCampaignSubmissionAction,
 } from './actions';
-import { campaignSubmissionPhase, formAnswerProgress } from '@/server/workflows/dashboard-policy';
+import { campaignSubmissionPhase } from '@/server/workflows/dashboard-policy';
 import {
   CAMPAIGNS_PER_PAGE,
   ENTRIES_PER_PAGE,
@@ -152,7 +152,8 @@ export default async function YearEndPage({
                   submission,
                   data.requestStatus.get(e.requestId),
                 );
-                const progress = formAnswerProgress(submission.schemaSnapshot, submission.answers);
+                // P-19: beim Speichern berechnet (Altbestand: im Loader berechnet).
+                const progress = data.progress.get(e.submissionId) ?? null;
                 const label = PHASE_LABELS[phase];
                 return (
                   <li key={e.id} className="py-3 space-y-2">
