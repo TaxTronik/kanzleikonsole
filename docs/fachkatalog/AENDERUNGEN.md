@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-042
+    date: '2026-10-07'
+    paths:
+      - packages/mail/src/dispatch.ts
+    rule_ids:
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+    reason: >-
+      Der gemeinsame Mail-Versand (`packages/mail/src/dispatch.ts`, Web und Worker
+      einschließlich Mail-Outbox) liest Vorlage, Mandantenname und Mandantenkontakte
+      über die App-Rolle im SYSTEM-Kontext des Tenants (Row-Level-Security) statt
+      über die Owner-Verbindung mit BYPASSRLS; Filter, Empfänger, Vorlagen und der
+      Profilzusatz im Betreff bleiben unverändert. Eine PostgreSQL-Suite belegt das
+      und dass Vorlagen und Kontakte fremder Tenants mit gleichem Slug bzw. gleicher
+      Adresse unsichtbar bleiben. Keine fachliche Freigabe.
+    tests:
+      - packages/mail/src/__tests__/dispatch-db.test.ts
+      - packages/mail/src/__tests__/dispatch-n8n-dedupe.test.ts
+      - packages/mail/src/__tests__/dispatch-profile-context.test.ts
+      - packages/mail/src/__tests__/dispatch-render.test.ts
+      - packages/mail/src/__tests__/n8n-emitter.test.ts
+      - packages/mail/src/__tests__/smtp-config-classification.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-041
     date: '2026-10-07'
     paths:
@@ -5034,6 +5057,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-042` dokumentiert den Mail-Versand über die
+  App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-041` dokumentiert die Begründung der
   verbleibenden Owner-Pfade im Worker.

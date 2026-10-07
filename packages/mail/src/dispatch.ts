@@ -11,9 +11,13 @@
 // wurde, gibt es einen optionalen `fallback` mit hartcodiertem
 // subject + body — keine Verlorene Mail nur weil ein Admin
 // versehentlich gelöscht hat.
+//
+// S-01: Vorlage, Mandant und Kontakte liest der Versand über die App-Rolle im
+// SYSTEM-Kontext des Tenants (withSystemContext, RLS), nicht über den
+// Owner-Client; die Abfragen behalten ihre ausdrücklichen Tenant-Filter.
 // =============================================================================
 
-import { prismaOwner } from '@taxtronik/db';
+import { withSystemContext } from '@taxtronik/db';
 import type { N8nEventName } from '@taxtronik/n8n-shared';
 import { sendMail, type MailAttachment } from './send';
 import { readMailDispatch } from './dispatch-settings';
@@ -188,14 +192,15 @@ function n8nEmitOptions(
 const markdownToHtml = renderSafeMarkdown;
 
 async function resolveProfileSubjectSuffix(opts: DispatchOptions): Promise<string | undefined> {
-  if (!opts.clientId) return undefined;
+  const clientId = opts.clientId;
+  if (!clientId) return undefined;
 
-  const [client, profiles] = await Promise.all([
-    prismaOwner.client.findFirst({
-      where: { id: opts.clientId, tenantId: opts.tenantId },
+  const { client, profiles } = await withSystemContext(opts.tenantId, async (tx) => ({
+    client: await tx.client.findFirst({
+      where: { id: clientId, tenantId: opts.tenantId },
       select: { name: true },
     }),
-    prismaOwner.clientContact.findMany({
+    profiles: await tx.clientContact.findMany({
       where: {
         tenantId: opts.tenantId,
         email: opts.to.toLowerCase(),
@@ -204,13 +209,13 @@ async function resolveProfileSubjectSuffix(opts: DispatchOptions): Promise<strin
       },
       select: { clientId: true },
     }),
-  ]);
+  }));
   if (!client) return undefined;
 
   // Auch Einladungs-/Rechnungsadressen koennen vor dem ersten Kontakt-Datensatz
   // versendet werden. Der aktuelle Mandant zaehlt deshalb explizit mit.
   const clientIds = new Set(profiles.map((profile) => profile.clientId));
-  clientIds.add(opts.clientId);
+  clientIds.add(clientId);
   return clientIds.size > 1 ? client.name : undefined;
 }
 
@@ -224,10 +229,12 @@ export async function sendTemplateMail(opts: DispatchOptions): Promise<TemplateM
   // statt das n8n-Ereignis nach dem SMTP-Versand still auszulassen.
   if (dispatch.mode === 'BOTH' && opts.n8nEvent) assertN8nEmitterRegistered(opts.n8nEvent);
 
-  const tpl = await prismaOwner.emailTemplate.findFirst({
-    where: { tenantId: opts.tenantId, slug: opts.slug, active: true },
-    select: { subject: true, bodyMd: true },
-  });
+  const tpl = await withSystemContext(opts.tenantId, (tx) =>
+    tx.emailTemplate.findFirst({
+      where: { tenantId: opts.tenantId, slug: opts.slug, active: true },
+      select: { subject: true, bodyMd: true },
+    }),
+  );
 
   let subject: string;
   let bodyMd: string;
@@ -359,12 +366,12 @@ async function loadContactProfileContext(
   profileCountByEmail: Map<string, Set<string>>;
 }> {
   const emailKeys = Array.from(new Set(contacts.map((contact) => contact.email.toLowerCase())));
-  const [client, profilesWithSameEmail] = await Promise.all([
-    prismaOwner.client.findFirst({
+  const { client, profilesWithSameEmail } = await withSystemContext(opts.tenantId, async (tx) => ({
+    client: await tx.client.findFirst({
       where: { id: opts.clientId, tenantId: opts.tenantId },
       select: { name: true },
     }),
-    prismaOwner.clientContact.findMany({
+    profilesWithSameEmail: await tx.clientContact.findMany({
       where: {
         tenantId: opts.tenantId,
         email: { in: emailKeys },
@@ -373,7 +380,7 @@ async function loadContactProfileContext(
       },
       select: { email: true, clientId: true },
     }),
-  ]);
+  }));
   return {
     clientName: client?.name,
     profileCountByEmail: profileClientIdsByEmail(profilesWithSameEmail),
@@ -439,17 +446,19 @@ async function emitAggregateContactEvent(
 export async function notifyClientContacts(
   opts: ContactDispatchOptions,
 ): Promise<ContactNotificationResult> {
-  const contacts = await prismaOwner.clientContact.findMany({
-    where: {
-      tenantId: opts.tenantId,
-      clientId: opts.clientId,
-      active: true,
-      notificationsEnabled: true,
-      lastLoginAt: { not: null },
-      client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
-    },
-    select: { fullName: true, email: true },
-  });
+  const contacts = await withSystemContext(opts.tenantId, (tx) =>
+    tx.clientContact.findMany({
+      where: {
+        tenantId: opts.tenantId,
+        clientId: opts.clientId,
+        active: true,
+        notificationsEnabled: true,
+        lastLoginAt: { not: null },
+        client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
+      },
+      select: { fullName: true, email: true },
+    }),
+  );
 
   // Das n8n-Ereignis beschreibt den fachlichen Vorgang, nicht einen einzelnen
   // Empfänger. Es wird deshalb je Aufruf genau einmal emittiert, auch wenn kein

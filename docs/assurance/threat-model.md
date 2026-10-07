@@ -189,7 +189,8 @@ Workflow-Wiederaufnahme und n8n-Übergaben, Update-Prüfung,
 Risikoanreicherung, Ergebnisse und Hinweise von Kettenprüfung und
 Restore-Drill, Anker-Status, Tagessiegel, TSA-Auswahl), die n8n-Callbacks
 (überfällige Anforderungen, Anforderungsdetails, ablaufende GwG-Prüfungen,
-Receipt-Recovery, Rechercheergebnisse) und der iCal-Feed. Je Pfad belegt eine
+Receipt-Recovery, Rechercheergebnisse), der iCal-Feed und die Vorlagen- und
+Empfängerauflösung des gemeinsamen Mail-Versands. Je Pfad belegt eine
 PostgreSQL-Suite mit gesperrtem Owner-Client die App-Rolle, dieselben Zeilen
 wie zuvor und die Unsichtbarkeit fremder Tenants.
 
@@ -210,9 +211,7 @@ der Owner-Allowlist (`prisma-client-guard.test.ts`):
   `mail_outbox` nur anlegen und lesen) sowie n8n-Zustellung und -Enqueue
   (tenantlose Ereignisse, global eindeutige Dedupe-Schlüssel);
 - offen: automatische Feedback-Einladungen (`workflow-feedback`; die Policies
-  von `client_interaction` kennen keinen SYSTEM-Akteur) und die Vorlagen- und
-  Empfängerauflösung des gemeinsamen Mail-Versands
-  (`packages/mail/src/dispatch.ts`).
+  von `client_interaction` kennen keinen SYSTEM-Akteur).
 
 **Restrisiko:** Die Owner-Zugangsdaten liegen weiterhin in den Containern
 `app` und `worker`. Codeausführung oder SQL-Injection auf einem Owner-Pfad

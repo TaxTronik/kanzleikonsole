@@ -202,6 +202,7 @@ test_refs:
   - apps/worker/src/jobs/__tests__/workflow-auto-resume-db.test.ts
   - apps/worker/src/jobs/__tests__/workflow-n8n-dispatch-app-role-db.test.ts
   - apps/worker/src/__tests__/tenant-context.test.ts
+  - packages/mail/src/__tests__/dispatch-db.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -528,7 +529,8 @@ GwG-Prüfungen, Receipt-Recovery, Rechercheergebnisse) lesen und schreiben nach
 der Credential-Prüfung über die App-Rolle im SYSTEM-Kontext des
 authentifizierten Tenants. Die mandantenbezogenen Worker-Jobs tun dasselbe
 (`withSystemContext`; für Kerne mit eigenem DB-Parameter `systemContextClient`,
-je Aufruf eine kurze Transaktion im SYSTEM-Kontext). Beim Owner-Client bleiben
+je Aufruf eine kurze Transaktion im SYSTEM-Kontext), ebenso der gemeinsame
+Mail-Versand für Vorlage, Mandant und Empfänger. Beim Owner-Client bleiben
 mandantenübergreifende Tenant- und Kandidatenlisten (nur IDs), Auflösungen vor
 jedem Tenant-Kontext sowie Wartungspfade mit fehlenden App-Rechten oder
 tenantlosen Daten (Archivierung, Anker-Lease und Anker, Prüf-Checkpoints,

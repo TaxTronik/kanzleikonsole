@@ -24,11 +24,13 @@ vi.mock('@taxtronik/db', () => ({
     _ctx: unknown,
     fn: (tx: { tenantSetting: { findUnique: typeof m.settingFindUnique } }) => unknown,
   ) => fn({ tenantSetting: { findUnique: m.settingFindUnique } }),
-  prismaOwner: {
-    emailTemplate: { findFirst: m.emailTemplateFindFirst },
-    clientContact: { findMany: m.clientContactFindMany },
-    client: { findFirst: m.clientFindFirst },
-  },
+  // S-01: Vorlage, Mandant und Kontakte im SYSTEM-Kontext des Tenants (App-Rolle).
+  withSystemContext: async (_tenantId: string, fn: (tx: unknown) => unknown) =>
+    fn({
+      emailTemplate: { findFirst: m.emailTemplateFindFirst },
+      clientContact: { findMany: m.clientContactFindMany },
+      client: { findFirst: m.clientFindFirst },
+    }),
 }));
 vi.mock('../dispatch-settings', () => ({ readMailDispatch: async () => ({ mode: 'APP' }) }));
 vi.mock('../logger', () => ({ mailLog: () => ({ error: vi.fn(), warn: vi.fn() }) }));

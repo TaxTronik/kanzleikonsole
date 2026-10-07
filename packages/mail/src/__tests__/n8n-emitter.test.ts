@@ -13,13 +13,17 @@ const m = vi.hoisted(() => ({
 
 vi.mock('../send', () => ({ sendMail: m.sendMail }));
 vi.mock('../dispatch-settings', () => ({ readMailDispatch: m.readMailDispatch }));
-vi.mock('@taxtronik/db', () => ({
-  prismaOwner: {
-    emailTemplate: { findFirst: m.emailTemplateFindFirst },
-    clientContact: { findMany: m.clientContactFindMany },
-    client: { findFirst: vi.fn().mockResolvedValue({ name: 'Mandant' }) },
-  },
-}));
+vi.mock('@taxtronik/db', () => {
+  const client = { findFirst: vi.fn().mockResolvedValue({ name: 'Mandant' }) };
+  return {
+    withSystemContext: async (_tenantId: string, fn: (tx: unknown) => unknown) =>
+      fn({
+        emailTemplate: { findFirst: m.emailTemplateFindFirst },
+        clientContact: { findMany: m.clientContactFindMany },
+        client,
+      }),
+  };
+});
 vi.mock('../logger', () => ({ mailLog: () => ({ error: vi.fn(), warn: vi.fn() }) }));
 
 import {

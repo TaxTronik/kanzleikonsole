@@ -1,4 +1,4 @@
-// Fachkatalog: TAX-DEADLINE-AUTOREQUEST-001, ACCESS-NOTIFICATION-RECIPIENT-001
+// Fachkatalog: TAX-DEADLINE-AUTOREQUEST-001, ACCESS-NOTIFICATION-RECIPIENT-001, ACCESS-TENANT-RLS-001
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   emailTemplateFindFirst: vi.fn(),
   clientContactFindMany: vi.fn(),
   clientFindFirst: vi.fn(),
+  contexts: [] as string[],
   log: { error: vi.fn() },
 }));
 
@@ -18,11 +19,16 @@ vi.mock('../n8n-emitter', () => ({
   assertN8nEmitterRegistered: vi.fn(),
 }));
 vi.mock('../dispatch-settings', () => ({ readMailDispatch: m.readMailDispatch }));
+// S-01: Vorlage, Mandant und Kontakte liest der Versand im SYSTEM-Kontext des
+// Tenants (App-Rolle); die Attrappe protokolliert den Tenant jedes Kontexts.
 vi.mock('@taxtronik/db', () => ({
-  prismaOwner: {
-    emailTemplate: { findFirst: m.emailTemplateFindFirst },
-    clientContact: { findMany: m.clientContactFindMany },
-    client: { findFirst: m.clientFindFirst },
+  withSystemContext: async (tenantId: string, fn: (tx: unknown) => unknown) => {
+    m.contexts.push(tenantId);
+    return fn({
+      emailTemplate: { findFirst: m.emailTemplateFindFirst },
+      clientContact: { findMany: m.clientContactFindMany },
+      client: { findFirst: m.clientFindFirst },
+    });
   },
 }));
 vi.mock('../logger', () => ({ mailLog: () => m.log }));
@@ -31,6 +37,7 @@ import { notifyClientContacts, sendTemplateMail } from '../dispatch';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  m.contexts.length = 0;
   m.readMailDispatch.mockResolvedValue({ mode: 'APP' });
   m.emailTemplateFindFirst.mockResolvedValue({
     subject: 'Anforderung {{request.title}}',
@@ -62,6 +69,7 @@ describe('Mandantenkontext im Mail-Betreff', () => {
       },
       select: { fullName: true, email: true },
     });
+    expect(m.contexts).toEqual(['tenant-1']);
   });
 
   it('meldet erfolgreiche und versuchte Empfaenger getrennt', async () => {

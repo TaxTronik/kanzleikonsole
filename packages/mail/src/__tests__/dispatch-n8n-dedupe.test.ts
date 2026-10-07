@@ -20,11 +20,12 @@ vi.mock('../n8n-emitter', () => ({
 }));
 vi.mock('../dispatch-settings', () => ({ readMailDispatch: m.readMailDispatch }));
 vi.mock('@taxtronik/db', () => ({
-  prismaOwner: {
-    emailTemplate: { findFirst: m.emailTemplateFindFirst },
-    clientContact: { findMany: m.clientContactFindMany },
-    client: { findFirst: m.clientFindFirst },
-  },
+  withSystemContext: async (_tenantId: string, fn: (tx: unknown) => unknown) =>
+    fn({
+      emailTemplate: { findFirst: m.emailTemplateFindFirst },
+      clientContact: { findMany: m.clientContactFindMany },
+      client: { findFirst: m.clientFindFirst },
+    }),
 }));
 vi.mock('../logger', () => ({ mailLog: () => ({ error: vi.fn(), warn: vi.fn() }) }));
 

@@ -9,7 +9,7 @@ vi.mock('../n8n-emitter', () => ({
   assertN8nEmitterRegistered: vi.fn(),
 }));
 vi.mock('../dispatch-settings', () => ({ readMailDispatch: vi.fn() }));
-vi.mock('@taxtronik/db', () => ({ prismaOwner: {} }));
+vi.mock('@taxtronik/db', () => ({ withSystemContext: vi.fn() }));
 
 import { plainTextBody, renderTemplate } from '../dispatch';
 import { renderSafeMarkdown } from '../markdown';
