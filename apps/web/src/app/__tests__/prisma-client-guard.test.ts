@@ -129,6 +129,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // PORTAL-INBOX-SUBMISSION-001: Owner erzeugt isolierte Fixtures; die
   // separate App-Verbindung beweist Kontakt-, Staff-, RLS- und Write-only-Grenzen.
   'packages/db/src/__tests__/portal-inbox-rls.test.ts',
+  // ACCESS-SEARCH-SCOPE-001 (P-10): Owner-Fixtures in eigenen Tenants; die App-Rolle
+  // vergleicht die Kandidatenfunktion der Posteingangssuche mit der Prisma-Suche unter RLS.
+  'packages/db/src/__tests__/portal-inbox-staff-search-candidates.test.ts',
   // MAIL-INBOX-001: isolated owner fixtures, real app transaction proves OAuth role/module revocation.
   'packages/db/src/__tests__/mailbox-oauth-cache.test.ts',
   // ACCESS-CLIENT-MODE-001: Owner-Fixtures in eigenen Tenants vergleichen den
