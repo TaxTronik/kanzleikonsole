@@ -250,6 +250,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Mandanten-Cockpit, GwG-Status: Der Hinweis „läuft bald aus“ nutzt dieselbe
+  Tagesrechnung wie die 30-Tage-Warnstufe des Workers; bei genau 30 × 24
+  Stunden Restlaufzeit erscheint er jetzt ebenfalls.
 - Im Portal zeigt eine angenommene Terminanfrage den aktuellen Termin bzw.
   „Termin abgesagt“.
 - **[Scope]** DATEV-Belegexport: Der Abrufnachweis enthält neben Anzahl und

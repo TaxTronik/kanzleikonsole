@@ -9,6 +9,7 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { GWG_EXPIRY_STAGE2_DAYS, gwgCheckDaysLeft } from '@taxtronik/gwg/expiry';
 import { ClientContactsPanel } from '@/components/client-contacts-panel';
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { CLIENT_KIND_LABELS } from '@/lib/domain-labels';
@@ -22,8 +23,6 @@ import type { ClientCockpitClient, ClientCockpitHeaderData } from './_data';
 
 type CustomFieldDef = ClientCockpitHeaderData['customDefs'][number];
 type GwgCheck = ClientCockpitClient['gwgChecks'][number];
-
-const GWG_EXPIRY_WARNING_MS = 30 * 24 * 60 * 60 * 1000;
 
 export function ContactsCockpitCard({
   clientId,
@@ -145,9 +144,13 @@ export function CustomFieldsCockpitCard({
   );
 }
 
-/** Läuft die Gültigkeit der GwG-Prüfung in weniger als 30 Tagen ab (oder ist sie abgelaufen)? */
+/**
+ * Verbleiben höchstens 30 Tage Gültigkeit (oder ist die GwG-Prüfung abgelaufen)?
+ * K-01: dieselbe Tagesrechnung wie der Worker (gwg-expiry-check, Stufe 2 ab
+ * 30 verbleibenden Tagen), damit Cockpit-Hinweis und Warnstufe übereinstimmen.
+ */
 export function gwgCheckExpiresSoon(validUntil: Date | null, now: Date): boolean {
-  return Boolean(validUntil && validUntil.getTime() - now.getTime() < GWG_EXPIRY_WARNING_MS);
+  return validUntil !== null && gwgCheckDaysLeft(validUntil, now) <= GWG_EXPIRY_STAGE2_DAYS;
 }
 
 export function GwgStatusCockpitCard({
