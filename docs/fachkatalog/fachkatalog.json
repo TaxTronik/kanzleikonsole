@@ -5118,7 +5118,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Die zentrale Ableitung verlangt Zeit und handelnde Person, lässt zweifelhafte Quellstatus, interne Risikotermine ohne Rechtsfrist sowie verspätete Einlegungen offen und besitzt einen tenantweiten append-only Tagesabschluss mit konsistentem DB-Snapshot. Strukturierte Belegreferenzen, vollständige Dispositionsgründe, Teilverfahrenszweige und ein organisatorisch erzwungenes Vier-Augen-Prinzip fehlen."
+        "summary": "Die zentrale Ableitung verlangt Zeit und handelnde Person, lässt zweifelhafte Quellstatus, interne Risikotermine ohne Rechtsfrist sowie verspätete Einlegungen (nach Berliner Kalendertag) offen und besitzt einen tenantweiten append-only Tagesabschluss mit konsistentem DB-Snapshot. Strukturierte Belegreferenzen, vollständige Dispositionsgründe, Teilverfahrenszweige und ein organisatorisch erzwungenes Vier-Augen-Prinzip fehlen."
       },
       "sources": [
         {
@@ -5176,6 +5176,20 @@
           "url": "https://ao.bundesfinanzministerium.de/ao/2025/Abgabenordnung/Siebenter-Teil/Zweiter-Abschnitt/Paragraf-367/inhalt.html",
           "checked_at": "2026-08-23",
           "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 108 AO",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__108.html",
+          "checked_at": "2026-10-07",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 188 BGB",
+          "url": "https://www.gesetze-im-internet.de/bgb/__188.html",
+          "checked_at": "2026-10-07",
+          "primary": false
         }
       ],
       "code_refs": [
@@ -5202,7 +5216,9 @@
         "apps/web/src/server/fristen/quellen/klagefristen.ts",
         "apps/web/src/server/fristen/quellen/steuertermine.ts",
         "apps/web/src/server/fristen/quellen/typen.ts",
-        "apps/web/src/server/fristen/quellen/wiedervorlagen.ts"
+        "apps/web/src/server/fristen/quellen/wiedervorlagen.ts",
+        "packages/db/prisma/migrations/20261007110000_tax_notice_berlin_filing_day/migration.sql",
+        "packages/db/prisma/sql/functions/app.tax_notice_require_progress_evidence().sql"
       ],
       "test_refs": [
         "apps/e2e/tests/12-accessibility.spec.ts",
@@ -5479,7 +5495,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Bekanntgabeweg, Drei-/Vier-Tage-Cutover, getrennte Feiertagsorte, Zugangseinwendungen mit Vergleichsszenarien, Risikotermin, dreistufige Belehrungsprüfung und begründete Abschluss-Gates sind beweisorientiert umgesetzt. Es fehlen eine unabhängige fachliche Freigabe, beleggebundene Nachweise und ein verzweigtes Modell für Teilentscheidungen."
+        "summary": "Bekanntgabeweg, Drei-/Vier-Tage-Cutover, getrennte Feiertagsorte, Zugangseinwendungen mit Vergleichsszenarien, Risikotermin, dreistufige Belehrungsprüfung und begründete Abschluss-Gates sind beweisorientiert umgesetzt; gespeicherte Verfahrenszeitpunkte zählen in Anwendung und Datenbank nach Berliner Kalendertag. Es fehlen eine unabhängige fachliche Freigabe, beleggebundene Nachweise und ein verzweigtes Modell für Teilentscheidungen."
       },
       "sources": [
         {
@@ -5593,7 +5609,9 @@
         "packages/db/prisma/migrations/20260823200000_tax_notice_status_terms/migration.sql",
         "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row.tsx"
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row.tsx",
+        "packages/db/prisma/migrations/20261007110000_tax_notice_berlin_filing_day/migration.sql",
+        "packages/db/prisma/sql/functions/app.tax_notice_require_progress_evidence().sql"
       ],
       "test_refs": [
         "packages/db/src/__tests__/tax-notice-evidence.test.ts",
@@ -5606,7 +5624,8 @@
         "apps/web/src/app/portal/(protected)/steuer/__tests__/notice-visibility.test.ts",
         "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row.test.tsx"
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row.test.tsx",
+        "apps/web/src/server/fristen/__tests__/bescheid-vorab-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/kalender-fristen-bescheide.md"],
       "related_rules": [

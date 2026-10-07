@@ -3,6 +3,19 @@ CREATE OR REPLACE FUNCTION app.tax_notice_require_progress_evidence()
  LANGUAGE plpgsql
  SET search_path TO 'pg_catalog', 'public', 'pg_temp'
 AS $function$
+DECLARE
+  -- TAX-NOTICE-APPEAL-001, TAX-CONTROL-STATUS-001: Der Tag eines gespeicherten
+  -- Verfahrenszeitpunkts (timestamp without time zone in UTC) ist der Berliner
+  -- Kalendertag. Eine Frist endet mit Ablauf ihres letzten Tages nach gesetzlicher
+  -- Zeit (§ 108 Abs. 1 AO i. V. m. § 188 BGB); ab 23:00 Uhr UTC (Winterzeit) bzw.
+  -- 22:00 Uhr UTC (Sommerzeit) gilt schon der Folgetag. Die Ableitung hängt nicht
+  -- von der TimeZone der Sitzung ab und entspricht berlinCalendarDate in der App.
+  legal_final_day date :=
+    ((NEW.legal_final_at AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Berlin')::date;
+  appeal_resolved_day date :=
+    ((NEW.appeal_resolved_at AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Berlin')::date;
+  klage_filed_day date :=
+    ((NEW.klage_filed_at AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Berlin')::date;
 BEGIN
   IF NEW.status IS NOT DISTINCT FROM OLD.status THEN
     RETURN NEW;
@@ -24,7 +37,7 @@ BEGIN
       OR NEW.appeal_deadline IS NULL
       OR NEW.appeal_filed_at IS NOT NULL
       OR NEW.legal_final_at IS NULL
-      OR NEW.legal_final_at::date <= NEW.appeal_deadline
+      OR legal_final_day <= NEW.appeal_deadline
     ) THEN
       RAISE EXCEPTION
         'bestandskraft without an appeal requires the elapsed, fully calculated appeal deadline';
@@ -33,7 +46,7 @@ BEGIN
     IF OLD.status = 'ZURUECKGEWIESEN'::public.tax_notice_status AND (
       OLD.klage_deadline IS NULL
       OR NEW.legal_final_at IS NULL
-      OR NEW.legal_final_at::date <= OLD.klage_deadline
+      OR legal_final_day <= OLD.klage_deadline
     ) THEN
       RAISE EXCEPTION
         'bestandskraft after an appeal decision requires the elapsed court deadline';
@@ -67,7 +80,7 @@ BEGIN
   IF NEW.partial_relief_received_at IS NOT NULL AND (
     (
       NEW.appeal_resolved_at IS NOT NULL
-      AND NEW.appeal_resolved_at::date < NEW.partial_relief_received_at
+      AND appeal_resolved_day < NEW.partial_relief_received_at
     )
     OR (
       NEW.appeal_decision_received_at IS NOT NULL
@@ -75,11 +88,11 @@ BEGIN
     )
     OR (
       NEW.klage_filed_at IS NOT NULL
-      AND NEW.klage_filed_at::date < NEW.partial_relief_received_at
+      AND klage_filed_day < NEW.partial_relief_received_at
     )
     OR (
       NEW.legal_final_at IS NOT NULL
-      AND NEW.legal_final_at::date < NEW.partial_relief_received_at
+      AND legal_final_day < NEW.partial_relief_received_at
     )
   ) THEN
     RAISE EXCEPTION 'procedure progress must not predate the partial relief receipt';

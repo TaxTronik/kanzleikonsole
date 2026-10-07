@@ -381,6 +381,104 @@ describe('Bescheid-Statusautomat', () => {
     expect(result.data.klageDeadline).not.toEqual(new Date('2026-03-02T00:00:00.000Z'));
   });
 
+  // Fachkatalog: TAX-NOTICE-APPEAL-001, TAX-CONTROL-STATUS-001 — Produktentscheidung A3
+  // (2026-10-07): Gespeicherte Verfahrenszeitpunkte zählen mit ihrem Berliner
+  // Kalendertag; die Frist endet mit Ablauf ihres letzten Tages (§ 108 Abs. 1 AO
+  // i. V. m. § 188 BGB). Formularwerte (UTC-Mitternacht) behalten ihren Tag.
+  describe('Berliner Kalendertag gespeicherter Verfahrenszeitpunkte', () => {
+    function eingelegt(appealFiledAt: string, appealDeadline: string): NoticeTransitionSource {
+      const before = source('EINSPRUCH');
+      before.appealDeadline = new Date(`${appealDeadline}T00:00:00.000Z`);
+      before.appealFiledAt = new Date(appealFiledAt);
+      before.appealFiledBy = actorId;
+      return before;
+    }
+
+    it.each([
+      ['Winter, 23:30 MEZ am Fristtag', '2026-02-10T22:30:00.000Z', '2026-02-10', 'TIMELY'],
+      ['Winter, 00:30 MEZ am Folgetag', '2026-02-10T23:30:00.000Z', '2026-02-10', 'LATE'],
+      ['Sommer, 23:30 MESZ am Fristtag', '2026-07-15T21:30:00.000Z', '2026-07-15', 'TIMELY'],
+      ['Sommer, 00:30 MESZ am Folgetag', '2026-07-15T22:30:00.000Z', '2026-07-15', 'LATE'],
+      ['00:00 UTC am Fristtag', '2026-07-15T00:00:00.000Z', '2026-07-15', 'TIMELY'],
+      ['00:00 UTC am Folgetag', '2026-07-16T00:00:00.000Z', '2026-07-15', 'LATE'],
+      ['29.03., 23:59 MESZ', '2026-03-29T21:59:59.999Z', '2026-03-29', 'TIMELY'],
+      ['30.03., 00:00 MESZ', '2026-03-29T22:00:00.000Z', '2026-03-29', 'LATE'],
+      ['25.10., 23:59 MEZ', '2026-10-25T22:59:59.999Z', '2026-10-25', 'TIMELY'],
+      ['26.10., 00:00 MEZ', '2026-10-25T23:00:00.000Z', '2026-10-25', 'LATE'],
+    ])('dokumentiert die Einlegung %s als %s', (_name, filedAt, deadline, timeliness) => {
+      const result = plan(eingelegt(filedAt, deadline), request('ABGEHOLFEN', '2026-11-30'));
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.auditAfter.appealFilingTimeliness).toBe(
+        timeliness === 'TIMELY' ? 'TIMELY' : 'LATE_REVIEW_REQUIRED',
+      );
+    });
+
+    it('prüft den bestätigten Altbestandstag gegen den Berliner Tag der Einlegung', () => {
+      // 23:30 Uhr UTC am 20.01. ist 00:30 Uhr MEZ am 21.01.
+      const before = source('EINSPRUCH');
+      before.appealFiledAt = new Date('2026-01-20T23:30:00.000Z');
+      const transition = (appealFiledDate: string) => {
+        const next = request('ABGEHOLFEN', '2026-02-02');
+        next.legacyEvidence = { appealFiledDate };
+        next.legacyAppealFiledAt = new Date(`${appealFiledDate}T00:00:00.000Z`);
+        return next;
+      };
+
+      expect(plan(before, transition('2026-01-20'))).toMatchObject({
+        ok: false,
+        error: 'Der bestätigte Einspruchstag weicht vom Bestandsdatum ab.',
+      });
+      expect(plan(before, transition('2026-01-21'))).toMatchObject({
+        ok: true,
+        data: { status: 'ABGEHOLFEN', appealFiledBy: actorId },
+      });
+    });
+
+    it('ordnet Bescheiddatum und Teilabhilfe nach dem Berliner Tag der Einlegung', () => {
+      const before = eingelegt('2026-02-04T23:30:00.000Z', '2026-03-10'); // 00:30 MEZ am 05.02.
+      before.noticeDate = new Date('2026-02-05T00:00:00.000Z');
+
+      expect(plan(before, request('TEILABHILFE', '2026-02-04'))).toMatchObject({
+        ok: false,
+        error: 'Die Bekanntgabe der Teilabhilfe darf nicht vor der Einspruchseinlegung liegen.',
+      });
+      expect(plan(before, request('TEILABHILFE', '2026-02-05'))).toMatchObject({ ok: true });
+
+      // 23:30 Uhr MEZ am 04.02. liegt vor dem Bescheiddatum.
+      const zuFrueh = eingelegt('2026-02-04T22:30:00.000Z', '2026-03-10');
+      zuFrueh.noticeDate = new Date('2026-02-05T00:00:00.000Z');
+      expect(plan(zuFrueh, request('ABGEHOLFEN', '2026-02-20'))).toMatchObject({
+        ok: false,
+        error: 'Die Einspruchseinlegung darf nicht vor dem Bescheiddatum liegen.',
+      });
+    });
+
+    it('stellt Bestandskraft nicht vor dem Berliner Tag der Klageeinreichung fest', () => {
+      const before = source('KLAGE');
+      before.appealFiledAt = new Date('2026-01-20T00:00:00.000Z');
+      before.appealFiledBy = actorId;
+      before.appealResolvedAt = new Date('2026-02-02T00:00:00.000Z');
+      before.appealDecisionReceivedAt = new Date('2026-02-02T00:00:00.000Z');
+      before.appealDecisionLegalRemedyInstructionValid = true;
+      before.klageDeadline = new Date('2026-03-02T00:00:00.000Z');
+      // 23:30 Uhr UTC am 02.03. ist 00:30 Uhr MEZ am 03.03., nach dem Fristende.
+      before.klageFiledAt = new Date('2026-03-02T23:30:00.000Z');
+      before.klageFiledBy = actorId;
+
+      expect(plan(before, request('BESTANDSKRAEFTIG', '2026-03-02'))).toMatchObject({
+        ok: false,
+        error:
+          'Der Eintritt der Bestandskraft darf nicht vor einem dokumentierten Verfahrensereignis liegen.',
+      });
+      const result = plan(before, request('BESTANDSKRAEFTIG', '2026-03-03'));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.auditAfter.klageFilingTimeliness).toBe('LATE_REVIEW_REQUIRED');
+    });
+  });
+
   it('berechnet die Klagefrist aus bestätigtem Entscheidungszugang', () => {
     const before = source('EINSPRUCH');
     before.appealFiledAt = new Date('2026-01-20T00:00:00.000Z');

@@ -1,5 +1,10 @@
 import type { Prisma, TaxNoticeStatus } from '@prisma/client';
-import { assessAppealDeadline, startOfUtcDay, type HolidayLocationContext } from '@taxtronik/tax';
+import {
+  assessAppealDeadline,
+  berlinCalendarDate,
+  startOfUtcDay,
+  type HolidayLocationContext,
+} from '@taxtronik/tax';
 import { begruendungTragfaehig } from '@/server/fristen/eintrag';
 import { NOTICE_STATUS_TRANSITIONS } from './transitions';
 
@@ -132,6 +137,18 @@ function invalid(error: string): NoticeTransitionFailure {
   return { ok: false, error };
 }
 
+/**
+ * Tag eines gespeicherten Verfahrenszeitpunkts (Einlegung, Abhilfe oder
+ * Entscheidung, Klage): der Berliner Kalendertag wie in filingWithinDeadline und
+ * in der Datenbank (TAX-NOTICE-APPEAL-001, TAX-CONTROL-STATUS-001; § 108 Abs. 1 AO
+ * i. V. m. § 188 BGB). Formularwerte liegen auf UTC-Mitternacht und behalten ihren
+ * Tag; ein Altbestand ab 23:00 Uhr UTC (Winterzeit) bzw. 22:00 Uhr UTC
+ * (Sommerzeit) gehört zum Berliner Folgetag.
+ */
+function eventDay(at: Date | null): Date | null {
+  return at ? berlinCalendarDate(at) : null;
+}
+
 function validateTransition(
   before: NoticeTransitionSource,
   status: TaxNoticeStatus,
@@ -165,12 +182,12 @@ function validateLegacyMatches(
 ): NoticeTransitionFailure | null {
   const comparisons: ReadonlyArray<readonly [Date | null, Date | null, string]> = [
     [
-      before.appealFiledAt ? startOfUtcDay(before.appealFiledAt) : null,
+      eventDay(before.appealFiledAt),
       request.legacyAppealFiledAt,
       'Der bestätigte Einspruchstag weicht vom Bestandsdatum ab.',
     ],
     [
-      before.appealResolvedAt ? startOfUtcDay(before.appealResolvedAt) : null,
+      eventDay(before.appealResolvedAt),
       request.legacyAppealResolvedAt,
       'Der bestätigte Erledigungs- oder Abhilfetag weicht vom Bestandsdatum ab.',
     ],
@@ -185,7 +202,7 @@ function validateLegacyMatches(
       'Der bestätigte Bekanntgabetag weicht vom Bestandsdatum ab.',
     ],
     [
-      before.klageFiledAt ? startOfUtcDay(before.klageFiledAt) : null,
+      eventDay(before.klageFiledAt),
       request.legacyKlageFiledAt,
       'Der bestätigte Klageeinreichungstag weicht vom Bestandsdatum ab.',
     ],
@@ -203,7 +220,7 @@ function filingTimeliness(
 ): 'NOT_APPLICABLE' | 'DEADLINE_UNKNOWN' | 'TIMELY' | 'LATE_REVIEW_REQUIRED' {
   if (!filedAt) return 'NOT_APPLICABLE';
   if (!deadline) return 'DEADLINE_UNKNOWN';
-  return startOfUtcDay(filedAt) <= startOfUtcDay(deadline) ? 'TIMELY' : 'LATE_REVIEW_REQUIRED';
+  return berlinCalendarDate(filedAt) <= startOfUtcDay(deadline) ? 'TIMELY' : 'LATE_REVIEW_REQUIRED';
 }
 
 function deriveAppealDecisionEvidence(
@@ -316,7 +333,8 @@ function validatePartialReliefEventOrder(
 ): NoticeTransitionFailure | null {
   const partialReliefAt = evidence.partialReliefReceivedAt;
   if (!partialReliefAt) return null;
-  if (!evidence.appealFiledAt || partialReliefAt < startOfUtcDay(evidence.appealFiledAt)) {
+  const appealFiledDay = eventDay(evidence.appealFiledAt);
+  if (!appealFiledDay || partialReliefAt < appealFiledDay) {
     return invalid(
       'Die Bekanntgabe der Teilabhilfe darf nicht vor der Einspruchseinlegung liegen.',
     );
@@ -328,11 +346,11 @@ function validatePartialReliefEventOrder(
       'Die Bekanntgabe der Einspruchsentscheidung darf nicht vor der Teilabhilfe liegen.',
     ],
     [
-      evidence.appealResolvedAt ? startOfUtcDay(evidence.appealResolvedAt) : null,
+      eventDay(evidence.appealResolvedAt),
       'Die vollständige Abhilfe darf nicht vor der Teilabhilfe liegen.',
     ],
     [
-      evidence.klageFiledAt ? startOfUtcDay(evidence.klageFiledAt) : null,
+      eventDay(evidence.klageFiledAt),
       'Die Klageeinreichung darf nicht vor der Teilabhilfe liegen.',
     ],
   ];
@@ -344,37 +362,32 @@ function validateProcedureEventOrder(
   before: NoticeTransitionSource,
   evidence: EffectiveEvidence,
 ): NoticeTransitionFailure | null {
-  if (evidence.appealFiledAt && startOfUtcDay(evidence.appealFiledAt) < before.noticeDate) {
+  const appealFiledDay = eventDay(evidence.appealFiledAt);
+  const appealResolvedDay = eventDay(evidence.appealResolvedAt);
+  const klageFiledDay = eventDay(evidence.klageFiledAt);
+  if (appealFiledDay && appealFiledDay < before.noticeDate) {
     return invalid('Die Einspruchseinlegung darf nicht vor dem Bescheiddatum liegen.');
   }
   const partialReliefFailure = validatePartialReliefEventOrder(evidence);
   if (partialReliefFailure) return partialReliefFailure;
-  if (
-    evidence.appealResolvedAt &&
-    evidence.appealFiledAt &&
-    startOfUtcDay(evidence.appealResolvedAt) < startOfUtcDay(evidence.appealFiledAt)
-  ) {
+  if (appealResolvedDay && appealFiledDay && appealResolvedDay < appealFiledDay) {
     return invalid(
       'Die Bekanntgabe der Einspruchsentscheidung darf nicht vor der Einspruchseinlegung liegen.',
     );
   }
   if (
     evidence.decisionReceivedAt &&
-    evidence.appealFiledAt &&
-    evidence.decisionReceivedAt < startOfUtcDay(evidence.appealFiledAt)
+    appealFiledDay &&
+    evidence.decisionReceivedAt < appealFiledDay
   ) {
     return invalid(
       'Die Bekanntgabe der Einspruchsentscheidung darf nicht vor der Einspruchseinlegung liegen.',
     );
   }
-  if (evidence.klageFiledAt && !evidence.decisionReceivedAt) {
+  if (klageFiledDay && !evidence.decisionReceivedAt) {
     return invalid('Der tatsächliche Bekanntgabetag der Einspruchsentscheidung fehlt.');
   }
-  if (
-    evidence.klageFiledAt &&
-    evidence.decisionReceivedAt &&
-    startOfUtcDay(evidence.klageFiledAt) < evidence.decisionReceivedAt
-  ) {
+  if (klageFiledDay && evidence.decisionReceivedAt && klageFiledDay < evidence.decisionReceivedAt) {
     return invalid(
       'Die Klageeinreichung darf nicht vor der Bekanntgabe der Einspruchsentscheidung liegen.',
     );
@@ -390,11 +403,11 @@ function validateLegalFinalOrder(
   if (request.status !== 'BESTANDSKRAEFTIG' || !request.eventDate) return null;
   const priorEvents = [
     before.noticeDate,
-    evidence.appealFiledAt ? startOfUtcDay(evidence.appealFiledAt) : null,
+    eventDay(evidence.appealFiledAt),
     evidence.partialReliefReceivedAt,
-    evidence.appealResolvedAt ? startOfUtcDay(evidence.appealResolvedAt) : null,
+    eventDay(evidence.appealResolvedAt),
     evidence.decisionReceivedAt,
-    evidence.klageFiledAt ? startOfUtcDay(evidence.klageFiledAt) : null,
+    eventDay(evidence.klageFiledAt),
   ].filter((date): date is Date => date !== null);
   const latestPriorEvent = priorEvents.reduce(
     (latest, date) => (date > latest ? date : latest),

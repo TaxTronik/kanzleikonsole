@@ -18,7 +18,7 @@ implementation:
   summary: >-
     Die zentrale Ableitung verlangt Zeit und handelnde Person, lässt zweifelhafte
     Quellstatus, interne Risikotermine ohne Rechtsfrist sowie verspätete
-    Einlegungen offen und besitzt einen
+    Einlegungen (nach Berliner Kalendertag) offen und besitzt einen
     tenantweiten append-only Tagesabschluss mit konsistentem DB-Snapshot.
     Strukturierte Belegreferenzen, vollständige Dispositionsgründe,
     Teilverfahrenszweige und ein organisatorisch erzwungenes Vier-Augen-Prinzip
@@ -64,6 +64,16 @@ sources:
     url: https://ao.bundesfinanzministerium.de/ao/2025/Abgabenordnung/Siebenter-Teil/Zweiter-Abschnitt/Paragraf-367/inhalt.html
     checked_at: '2026-08-23'
     primary: false
+  - kind: official_law
+    citation: § 108 AO
+    url: https://www.gesetze-im-internet.de/ao_1977/__108.html
+    checked_at: '2026-10-07'
+    primary: false
+  - kind: official_law
+    citation: § 188 BGB
+    url: https://www.gesetze-im-internet.de/bgb/__188.html
+    checked_at: '2026-10-07'
+    primary: false
 code_refs:
   - packages/db/prisma/schema.prisma
   - apps/web/src/server/fristen/eintrag.ts
@@ -89,6 +99,8 @@ code_refs:
   - apps/web/src/server/fristen/quellen/steuertermine.ts
   - apps/web/src/server/fristen/quellen/typen.ts
   - apps/web/src/server/fristen/quellen/wiedervorlagen.ts
+  - packages/db/prisma/migrations/20261007110000_tax_notice_berlin_filing_day/migration.sql
+  - packages/db/prisma/sql/functions/app.tax_notice_require_progress_evidence().sql
 test_refs:
   - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/tax-notice-evidence.test.ts
@@ -248,7 +260,7 @@ Die weiteren Gates hängen vom Ausgangsstatus ab: Aus `GEPRUEFT` muss die
 Einspruchsfrist den Status `CALCULATED` haben, ohne offenen manuellen
 Prüfbedarf vorliegen und am dokumentierten Ereignistag abgelaufen sein; ein
 bereits dokumentierter Einspruch sperrt den Abschluss. Der Fristtag selbst ist
-gesperrt; der Übergang ist technisch frühestens am Folgetag möglich. Aus
+gesperrt; der Übergang ist technisch frühestens am Berliner Folgetag möglich. Aus
 `ZURUECKGEWIESEN` gilt dasselbe für die dokumentierte Klagefrist. Für die
 zugelassenen Übergänge aus `ABGEHOLFEN` und `KLAGE` bestehen diese besonderen
 Einspruchs-/Klagefrist-Gates derzeit nicht.
@@ -329,6 +341,18 @@ Dringlichkeit sortiert. Die aktuellen Wahrheitstabellen lauten insbesondere:
   Liegt die dokumentierte Einlegung nach dem Fristende, bleibt die Frist mit
   einem Wiedereinsetzungs-/Dispositionshinweis `OPEN`; der tatsächliche Vorgang
   wird nicht fälschlich als fristgerecht verworfen oder geschlossen.
+- Einlegungstag ist der Berliner Kalendertag (MEZ bzw. MESZ) des gespeicherten
+  Zeitpunkts: Die Frist endet mit Ablauf ihres letzten Tages (§ 108 Abs. 1 AO
+  i. V. m. § 188 BGB; Produktentscheidung vom 2026-10-07). Eine um 00:30 Uhr
+  Berliner Zeit am Folgetag dokumentierte Einlegung ist verspätet, auch wenn ihr
+  UTC-Zeitpunkt noch auf den Fristtag fällt. Die Maske speichert einen gewählten
+  Tag als UTC-Mitternacht, also denselben Berliner Tag; abweichen können nur
+  Altbestände mit einer Uhrzeit ab 23:00 Uhr UTC (Winterzeit) bzw. 22:00 Uhr UTC
+  (Sommerzeit). Dieselbe Ableitung nutzen `filingWithinDeadline`, die
+  Vorabfragen der Bescheidquellen (unabhängig von der Zeitzone der DB-Sitzung),
+  die Bescheid-Statusübergänge sowie in der Datenbank der
+  Statusübergangs-Trigger und die Constraints zu Bestandskraft und
+  Ereignisreihenfolge.
 - Ist die Rechtsfrist wegen ungeklärter Bekanntgabe-/Nachweislage leer, wird ein
   vorhandener `internalRiskDeadline` als eigener, fail-closed offener
   **interner Prüftermin** geführt. Anzeige, CSV und Tagesabschluss bezeichnen
@@ -423,6 +447,10 @@ Der Implementierungsstatus ist deshalb **teilweise**.
 ## Technische Nachweise
 
 Die referenzierten Tests prüfen die Quell-Wahrheitstabellen mit Zeit und Person,
+den Berliner Kalendertag der Einlegung (Sommer und Winter, 22:30/23:30 Uhr und
+00:00 Uhr UTC, beide Umstellungstage, Fristtag fristgerecht und Folgetag
+verspätet) in `filingWithinDeadline`, in den Vorabfragen gegen PostgreSQL in fünf
+Sitzungszeitzonen sowie in Trigger und Constraints (`FRISTEN_DB_TEST=1`),
 Zeitfenster ohne untere Grenze, Zugriffsfilterung, getrennte Einspruchs- und
 Klagefristen, `TEILABHILFE` mit eigenem paarigem Ereignisnachweis und ohne
 Klagefrist, den Erhalt dieses Nachweises im Folgestatus, die fortbestehende

@@ -235,6 +235,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Bescheide und Fristenkontrollbuch: Für die Einlegung von Einspruch und Klage
+  sowie für Abhilfe/Einspruchsentscheidung, Klage und Bestandskraft zählt der
+  Berliner Kalendertag statt des UTC-Tags der Speicherung; eine Frist endet mit
+  Ablauf ihres letzten Tages (§ 108 Abs. 1 AO i. V. m. § 188 BGB). Über die
+  Maske erfasste Tage bleiben unverändert; Altbestände mit Uhrzeit ab 23:00 Uhr
+  UTC (Winter) bzw. 22:00 Uhr UTC (Sommer) zählen zum Folgetag und können als
+  verspätet erscheinen. Anwendung, Statusübergangs-Trigger und Constraints
+  nutzen dieselbe Tagesgrenze; die Migration meldet Altbestände mit unstimmiger
+  Ereignisreihenfolge (`TAX-NOTICE-APPEAL-001`, `TAX-CONTROL-STATUS-001`).
 - **[Scope]** Die RLS-Policy für Dokumente prüft Mandatsartefakte nur noch für
   Dokumente, auf die ein Artefakt verweist (`document.has_mandate_artifact`,
   per Trigger gepflegt, monoton). Mit 20.000 Dokumenten sinkt

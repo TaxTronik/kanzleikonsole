@@ -1,14 +1,17 @@
 // =============================================================================
 // Fristenkontrollbuch — reine Normalisierungs- und Einordnungslogik.
 //
-// Bewusst OHNE jeden Import (kein DB/IO; Muster: staff-action-policy.ts),
-// damit Unit-Tests die Status-Wahrheitstabellen je Quelle ziehen können.
+// Bewusst OHNE DB/IO (Muster: staff-action-policy.ts), damit Unit-Tests die
+// Status-Wahrheitstabellen je Quelle ziehen können. Einziger Import ist die
+// reine Berliner-Kalendertag-Hilfe aus @taxtronik/tax.
 //
 // Designentscheidung: Das Kontrollbuch ist eine KONTROLLSICHT über die fünf
 // fristenführenden Quellen — es hält KEINEN eigenen Zustand. Erledigung
 // passiert im Quellmodul (dort auditiert); hier wird sie nur abgelesen.
 // Dadurch kann das Buch nie vom echten Zustand abweichen.
 // =============================================================================
+
+import { berlinCalendarDate } from '@taxtronik/tax';
 
 export type FristQuelle =
   | 'STEUERTERMIN'
@@ -176,6 +179,15 @@ export function taxNoticeKlageFristErledigt(
  * Verfahrensnachweis, erfüllt die kontrollierte Frist aber nicht rückwirkend.
  * Ohne bekannte Frist oder handelnde Person wird ebenfalls fail-closed nicht
  * als fristgerecht geschlossen.
+ *
+ * Einlegungstag ist der Berliner Kalendertag des gespeicherten Zeitpunkts: Die
+ * Frist endet mit Ablauf ihres letzten Tages nach gesetzlicher Zeit (§ 108 Abs. 1
+ * AO i. V. m. § 188 BGB). Das Formular speichert den gewählten Tag als
+ * UTC-Mitternacht, also denselben Berliner Tag; ein Altbestand ab 23:00 Uhr UTC
+ * (Winterzeit) bzw. 22:00 Uhr UTC (Sommerzeit) gehört zum folgenden Berliner
+ * Tag. Dieselbe Ableitung nutzen die
+ * Vorabfragen (quellen/bescheid.ts), die Bescheid-Übergänge und die Datenbank
+ * (Migration 20261007110000_tax_notice_berlin_filing_day).
  */
 export function filingWithinDeadline(
   filedAt: Date | null | undefined,
@@ -183,7 +195,7 @@ export function filingWithinDeadline(
   deadline: Date | null | undefined,
 ): boolean {
   if (!filedAt || !filedBy || !deadline) return false;
-  const filingDay = Date.UTC(filedAt.getUTCFullYear(), filedAt.getUTCMonth(), filedAt.getUTCDate());
+  const filingDay = berlinCalendarDate(filedAt).getTime();
   const deadlineDay = Date.UTC(
     deadline.getUTCFullYear(),
     deadline.getUTCMonth(),

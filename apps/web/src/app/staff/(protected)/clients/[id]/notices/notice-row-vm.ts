@@ -12,6 +12,7 @@
 // =============================================================================
 
 import type { ComponentProps } from 'react';
+import { berlinCalendarDate } from '@taxtronik/tax';
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { NOTICE_KIND_LABELS, NOTICE_STATUS_LABELS } from '@/lib/domain-labels';
 import { taxNoticeKlageFristErledigt } from '@/server/fristen/eintrag';
@@ -228,8 +229,18 @@ function dateLabel(date: Date | null): string | null {
   return date ? fmtDateShort(date) : null;
 }
 
+/** `YYYY-MM-DD` einer `@db.Date`-Spalte (UTC-Mitternacht). */
 function isoDay(date: Date | null): string | null {
   return date ? date.toISOString().slice(0, 10) : null;
+}
+
+/**
+ * `YYYY-MM-DD` eines gespeicherten Verfahrenszeitpunkts: der Berliner Kalendertag,
+ * gegen den die Status-Übergänge einen bestätigten Altbestandstag prüfen
+ * (TAX-NOTICE-APPEAL-001, TAX-CONTROL-STATUS-001).
+ */
+function eventIsoDay(at: Date | null): string | null {
+  return isoDay(at ? berlinCalendarDate(at) : null);
 }
 
 /** Ganze Tage vom Berliner Kalendertag `today` bis `date` (negativ = abgelaufen). */
@@ -364,9 +375,9 @@ export function noticeStatusVm(n: NoticeRowInput, today: Date): NoticeStatusVm {
 /** Nachweisstände, mit denen die Status-Auswahl Altbestände nachfordert. */
 export function noticeStatusEvidence(n: NoticeRowInput): NoticeStatusSelectProps['evidence'] {
   return {
-    appealFiledAt: isoDay(n.appealFiledAt),
+    appealFiledAt: eventIsoDay(n.appealFiledAt),
     appealFiledComplete: Boolean(n.appealFiledAt && n.appealFiledBy),
-    appealResolvedAt: isoDay(n.appealResolvedAt),
+    appealResolvedAt: eventIsoDay(n.appealResolvedAt),
     partialReliefReceivedAt: isoDay(n.partialReliefReceivedAt),
     partialReliefComplete: Boolean(n.partialReliefReceivedAt && n.partialReliefReceivedBy),
     decisionReceivedAt: isoDay(n.appealDecisionReceivedAt),
@@ -377,7 +388,7 @@ export function noticeStatusEvidence(n: NoticeRowInput): NoticeStatusSelectProps
     ),
     decisionInstruction:
       n.appealDecisionLegalRemedyInstructionValid === false ? 'MISSING_OR_INVALID' : 'VALID',
-    klageFiledAt: isoDay(n.klageFiledAt),
+    klageFiledAt: eventIsoDay(n.klageFiledAt),
     klageFiledComplete: Boolean(n.klageFiledAt && n.klageFiledBy),
   };
 }

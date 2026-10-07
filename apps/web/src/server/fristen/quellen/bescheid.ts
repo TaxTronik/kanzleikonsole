@@ -129,18 +129,23 @@ function vorabListen(rows: VorabZeile[]): BescheidVorab {
  * Verspätet eingelegte Vorgänge bleiben offen, bis eine Wiedereinsetzungs- oder
  * Dispositionsentscheidung dokumentiert ist.
  *
- * Einlegungstag ist `appeal_filed_at::date`: der als UTC gespeicherte Zeitpunkt
- * als UTC-Kalendertag, unabhängig von der Zeitzone der DB-Sitzung und damit wie
- * `filingWithinDeadline`. (`AT TIME ZONE 'UTC'` machte daraus einen Zeitpunkt, den
- * `::date` in der Sitzungszeitzone schnitt.) Die Begründung prüft dieselbe
- * Funktion wie die Datenbank-Constraint.
+ * Einlegungstag ist der Berliner Kalendertag des als UTC gespeicherten Zeitpunkts
+ * (`timestamp without time zone`) wie in `filingWithinDeadline`: `AT TIME ZONE
+ * 'UTC'` macht daraus den Zeitpunkt, `AT TIME ZONE 'Europe/Berlin'` die Berliner
+ * Wanduhrzeit, die `::date` schneidet. Das Ergebnis hängt nicht von der Zeitzone
+ * der DB-Sitzung ab. Die Begründung prüft dieselbe Funktion wie die
+ * Datenbank-Constraint.
  */
 export function einspruchVorab(tx: TxClient, horizont: Date): Promise<BescheidVorab> {
   return tx.$queryRaw<VorabZeile[]>`
         SELECT "id", "verspaetet", "ohneBegruendung"
           FROM (
             SELECT "id",
-                   COALESCE("appeal_filed_at"::date > "appeal_deadline", false) AS "verspaetet",
+                   COALESCE(
+                     (("appeal_filed_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Berlin')::date
+                       > "appeal_deadline",
+                     false
+                   ) AS "verspaetet",
                    ("status" = 'BESTANDSKRAEFTIG'
                      AND "legal_final_reason" IS NOT NULL
                      AND NOT app.legal_final_reason_sufficient("legal_final_reason"))
@@ -154,13 +159,17 @@ export function einspruchVorab(tx: TxClient, horizont: Date): Promise<BescheidVo
       `.then(vorabListen);
 }
 
-/** Vorabfrage der Klagefristen; Einlegungstag wie bei `einspruchVorab`. */
+/** Vorabfrage der Klagefristen; Einlegungstag (Berliner Kalendertag) wie bei `einspruchVorab`. */
 export function klageVorab(tx: TxClient, horizont: Date): Promise<BescheidVorab> {
   return tx.$queryRaw<VorabZeile[]>`
         SELECT "id", "verspaetet", "ohneBegruendung"
           FROM (
             SELECT "id",
-                   COALESCE("klage_filed_at"::date > "klage_deadline", false) AS "verspaetet",
+                   COALESCE(
+                     (("klage_filed_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Berlin')::date
+                       > "klage_deadline",
+                     false
+                   ) AS "verspaetet",
                    ("status" = 'BESTANDSKRAEFTIG'
                      AND "legal_final_reason" IS NOT NULL
                      AND NOT app.legal_final_reason_sufficient("legal_final_reason"))

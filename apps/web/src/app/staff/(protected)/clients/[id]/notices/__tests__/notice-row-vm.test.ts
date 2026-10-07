@@ -283,6 +283,29 @@ describe('Klagefrist', () => {
       false,
       ' · Einreichung dokumentiert, Fristkontrolle offen',
     ],
+    // Produktentscheidung A3: Berliner Kalendertag der Einreichung (TODAY − 10 = 26.09.).
+    [
+      'am Fristtag um 23:30 MESZ erhoben',
+      {
+        status: 'KLAGE',
+        klageDeadline: inDays(-10),
+        klageFiledAt: new Date('2026-09-26T21:30:00.000Z'),
+        ...filed,
+      },
+      false,
+      ' · erledigt',
+    ],
+    [
+      'am Folgetag um 00:30 MESZ erhoben',
+      {
+        status: 'KLAGE',
+        klageDeadline: inDays(-10),
+        klageFiledAt: new Date('2026-09-26T22:30:00.000Z'),
+        ...filed,
+      },
+      false,
+      ' · Einreichung dokumentiert, Fristkontrolle offen',
+    ],
     [
       'Einreichung ohne handelnde Person',
       { status: 'KLAGE', klageDeadline: inDays(-10), klageFiledAt: inDays(-12) },
@@ -374,6 +397,29 @@ describe('Nachweise für die Status-Auswahl', () => {
       decisionInstruction: 'MISSING_OR_INVALID',
       klageFiledAt: '2026-09-15',
       klageFiledComplete: true,
+    });
+  });
+
+  // Produktentscheidung A3: Der vorbelegte Altbestandstag eines gespeicherten
+  // Verfahrenszeitpunkts ist der Berliner Kalendertag, gegen den der Statusübergang
+  // (notice-transition.ts) den bestätigten Tag prüft; Datumsspalten bleiben unverändert.
+  it('belegt gespeicherte Verfahrenszeitpunkte mit dem Berliner Kalendertag vor', () => {
+    expect(
+      noticeStatusEvidence(
+        notice({
+          appealFiledAt: new Date('2026-01-20T23:30:00.000Z'), // 00:30 MEZ am 21.01.
+          appealResolvedAt: new Date('2026-07-14T22:30:00.000Z'), // 00:30 MESZ am 15.07.
+          partialReliefReceivedAt: new Date('2026-07-10T00:00:00.000Z'),
+          appealDecisionReceivedAt: new Date('2026-07-14T00:00:00.000Z'),
+          klageFiledAt: new Date('2026-08-03T21:59:59.999Z'), // 23:59 MESZ am 03.08.
+        }),
+      ),
+    ).toMatchObject({
+      appealFiledAt: '2026-01-21',
+      appealResolvedAt: '2026-07-15',
+      partialReliefReceivedAt: '2026-07-10',
+      decisionReceivedAt: '2026-07-14',
+      klageFiledAt: '2026-08-03',
     });
   });
 

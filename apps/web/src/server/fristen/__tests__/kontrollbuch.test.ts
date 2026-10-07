@@ -687,18 +687,29 @@ describe('Bescheid-Vorabfragen (Review-Finding K-05, Folgepunkte)', () => {
     mocks.accessibleClientsWhereFor.mockResolvedValue(clientAccess);
   });
 
-  it('nutzt den UTC-Kalendertag der Einlegung und die Begründungsprüfung der Datenbank', async () => {
+  // Fachkatalog: TAX-CONTROL-STATUS-001 — Produktentscheidung A3: Einlegungstag ist der
+  // Berliner Kalendertag wie in filingWithinDeadline; das Verhalten gegen PostgreSQL
+  // in fünf Sitzungszeitzonen prüft bescheid-vorab-db.test.ts.
+  it('nutzt den Berliner Kalendertag der Einlegung und die Begründungsprüfung der Datenbank', async () => {
     const tx = createTx();
 
     await loadKontrollbuch(tx as never, {} as never, { tage: 30, nurOffene: true });
 
-    const sql = tx.$queryRaw.mock.calls.map(([strings]) => (strings as string[]).join('?'));
+    const sql = tx.$queryRaw.mock.calls.map(([strings]) =>
+      (strings as string[]).join('?').replace(/\s+/g, ' '),
+    );
     expect(sql).toHaveLength(2);
-    expect(sql[0]).toContain('COALESCE("appeal_filed_at"::date > "appeal_deadline", false)');
-    expect(sql[1]).toContain('COALESCE("klage_filed_at"::date > "klage_deadline", false)');
+    expect(sql[0]).toContain(
+      `COALESCE( (("appeal_filed_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Berlin')::date > "appeal_deadline", false )`,
+    );
+    expect(sql[1]).toContain(
+      `COALESCE( (("klage_filed_at" AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Berlin')::date > "klage_deadline", false )`,
+    );
     for (const text of sql) {
-      // Kein Schnitt in der Zeitzone der DB-Sitzung (früher AT TIME ZONE 'UTC' + ::date).
-      expect(text).not.toMatch(/AT TIME ZONE/i);
+      // Kein UTC-Tag (`col::date`) und kein Schnitt in der Zeitzone der DB-Sitzung
+      // (früher `AT TIME ZONE 'UTC'` + `::date` auf dem timestamptz).
+      expect(text).not.toMatch(/_filed_at"::date/);
+      expect(text).not.toMatch(/AT TIME ZONE 'UTC'\)::date/);
       expect(text).toContain('NOT app.legal_final_reason_sufficient("legal_final_reason")');
     }
   });

@@ -208,7 +208,7 @@ Admin oder Partner gesetzt werden. Aus `GEPRUEFT` lässt die Software den
 Abschluss nur zu, wenn die Einspruchsfrist vollständig berechnet ist, kein
 manueller Prüfbedarf besteht, die Frist abgelaufen und kein Einspruch
 dokumentiert ist. Der Fristtag selbst ist gesperrt; der Abschluss ist technisch
-frühestens am Folgetag möglich. Aus `ZURUECKGEWIESEN` gilt dasselbe für die
+frühestens am Folgetag (Berliner Kalendertag) möglich. Aus `ZURUECKGEWIESEN` gilt dasselbe für die
 dokumentierte Klagefrist. Für die zugelassenen Übergänge aus `ABGEHOLFEN` und
 `KLAGE` gelten diese besonderen Frist-Gates derzeit nicht. Die
 Rollenbeschränkung ist keine Prüfung der Berufsträgerqualifikation und ersetzt
@@ -262,7 +262,12 @@ anwendbar“ ist für diesen Prüffall derzeit nicht vorhanden.
 strukturierter Abschlussgründe offen. Zeit und Person sind noch kein
 verknüpfter Versand-, Eingangs- oder sonstiger Beleg. Eine erst nach Fristende
 dokumentierte Einspruchs- oder Klageeinlegung bleibt als
-Wiedereinsetzungs-/Dispositionsfall ebenfalls offen. Ein eigener strukturierter
+Wiedereinsetzungs-/Dispositionsfall ebenfalls offen. Maßgeblich ist der
+Berliner Kalendertag des dokumentierten Zeitpunkts: Die Frist endet mit Ablauf
+ihres letzten Tages (§ 108 Abs. 1 AO i. V. m. § 188 BGB). Ein in der Maske
+gewählter Ereignistag zählt als dieser Kalendertag; ältere Einträge mit einer
+Uhrzeit nach Mitternacht Berliner Zeit gehören zum Folgetag, auch wenn ihre
+gespeicherte UTC-Zeit noch auf den Vortag fällt. Ein eigener strukturierter
 Wiedereinsetzungsworkflow ist derzeit nicht vorhanden; die fachliche Behandlung
 muss außerhalb dieses Statusmodells nachvollziehbar dokumentiert werden.
 Eine bereits nach einer Teil-Einspruchsentscheidung dokumentierte Klagefrist

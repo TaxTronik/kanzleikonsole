@@ -19,8 +19,10 @@ implementation:
     Bekanntgabeweg, Drei-/Vier-Tage-Cutover, getrennte Feiertagsorte,
     Zugangseinwendungen mit Vergleichsszenarien, Risikotermin, dreistufige
     Belehrungsprüfung und begründete Abschluss-Gates sind beweisorientiert
-    umgesetzt. Es fehlen eine unabhängige fachliche Freigabe, beleggebundene
-    Nachweise und ein verzweigtes Modell für Teilentscheidungen.
+    umgesetzt; gespeicherte Verfahrenszeitpunkte zählen in Anwendung und
+    Datenbank nach Berliner Kalendertag. Es fehlen eine unabhängige fachliche
+    Freigabe, beleggebundene Nachweise und ein verzweigtes Modell für
+    Teilentscheidungen.
 sources:
   - kind: official_law
     citation: § 122 Abs. 1, 2, 2a und 5 AO
@@ -107,6 +109,8 @@ code_refs:
   - packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row-vm.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-row.tsx
+  - packages/db/prisma/migrations/20261007110000_tax_notice_berlin_filing_day/migration.sql
+  - packages/db/prisma/sql/functions/app.tax_notice_require_progress_evidence().sql
 test_refs:
   - packages/db/src/__tests__/tax-notice-evidence.test.ts
   - packages/db/src/__tests__/tax-notice-partial-relief-migration.test.ts
@@ -119,6 +123,7 @@ test_refs:
   - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row-vm.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/notices/__tests__/notice-row.test.tsx
+  - apps/web/src/server/fristen/__tests__/bescheid-vorab-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/kalender-fristen-bescheide.md
@@ -228,6 +233,14 @@ mitgerechnet. Die Frist endet nach § 188 BGB grundsätzlich mit Ablauf des
 Tages, der seiner Zahl nach dem Bekanntgabetag entspricht. Fehlt dieser Tag im
 Ablaufmonat, endet sie mit dessen letztem Tag.
 
+Fristwahrend ist eine Einlegung bis zum Ablauf dieses letzten Tages
+(§ 108 Abs. 1 AO i. V. m. § 188 BGB). Für einen dokumentierten Zeitpunkt zählt
+deshalb der Berliner Kalendertag (MEZ bzw. MESZ), nicht der UTC-Tag seiner
+Speicherung: Eine Einlegung um 00:30 Uhr Berliner Zeit am Folgetag ist
+verspätet, auch wenn der gespeicherte UTC-Zeitpunkt noch auf den Fristtag
+fällt. Dieselbe Tagesgrenze gilt für die weiteren Verfahrenszeitpunkte
+(Abhilfe oder Einspruchsentscheidung, Klageeinreichung, Bestandskraft).
+
 Für das Fristende ist `TAX-DEADLINE-WORKDAY-001` anzuwenden. Der
 Feiertagsort des Fiktionstags und der Feiertagsort des Einspruchsfristendes
 können voneinander abweichen.
@@ -310,10 +323,25 @@ wird das Bescheiddatum nur bei ausdrücklicher Basis
 `DOCUMENT_DATE_RISK_ONLY` für einen getrennt gespeicherten internen
 Risikotermin verwendet; Bekanntgabetag und Einspruchsfrist bleiben dann leer.
 
-Die öffentliche API von `@taxtronik/tax` exportiert für Rechtsbehelfsfristen
-nur die nachweisorientierten `assess*`-Funktionen. Die früheren
-Convenience-Helper bleiben intern und sind als veraltet markiert, damit neue
-Aufrufer die erforderliche Tatsachen- und Nachweislage nicht umgehen.
+Für Rechtsbehelfsfristen enthält `@taxtronik/tax` nur die nachweisorientierten
+`assess*`-Funktionen. Die früheren Convenience-Helper (`appealDeadline`,
+`klageDeadline` samt Hilfen) sind entfernt; ihre Fallbeispiele laufen gegen die
+`assess*`-Funktionen (FK-EXC-20261006-009). Aufrufer müssen damit stets die
+erforderliche Tatsachen- und Nachweislage übergeben.
+
+Gespeicherte Verfahrenszeitpunkte (Einlegung, Abhilfe oder
+Einspruchsentscheidung, Klageeinreichung, Bestandskraft) zählen mit ihrem
+Berliner Kalendertag (Produktentscheidung vom 2026-10-07). Die Maske speichert
+einen gewählten Tag als UTC-Mitternacht und damit denselben Berliner Tag;
+Altbestände mit einer Uhrzeit ab 23:00 Uhr UTC (Winterzeit) bzw. 22:00 Uhr UTC
+(Sommerzeit) gehören zum Berliner Folgetag. Dieselbe Ableitung nutzen die
+Statusübergänge der Anwendung (Ereignisreihenfolge, Abgleich bestätigter
+Altbestandstage, Fristgerechtigkeit im Audit), das Fristenkontrollbuch und die
+Datenbank (Statusübergangs-Trigger sowie die Constraints zu Bestandskraft und
+Ereignisreihenfolge, Migration `20261007110000_tax_notice_berlin_filing_day`).
+Altbestände, deren Ereignisreihenfolge nach Berliner Tag nicht stimmt, meldet die
+Migration als Warnung; ihre nächste Änderung scheitert, bis die Daten fachlich
+berichtigt sind.
 
 Die Maske und Persistenz führen Ausgangsbasis und -nachweis,
 Zugangssituation und -nachweis, Empfänger, Behörde, getrennte
@@ -337,7 +365,7 @@ Abschlussstatus heißt `BESTANDSKRAEFTIG`.
 Dieser Abschluss ist in der Server-Action auf Admin oder Partner beschränkt und
 verlangt eine Begründung von mindestens zehn Zeichen. Aus `GEPRUEFT` wird er
 nur bei berechneter Einspruchsfrist ohne offenen manuellen Prüfbedarf, nach
-deren Ablauf — technisch frühestens am Folgetag des gespeicherten
+deren Ablauf — technisch frühestens am Berliner Folgetag des gespeicherten
 Fristenddatums — und ohne dokumentierten Einspruch zugelassen. Aus
 `ZURUECKGEWIESEN` muss die dokumentierte Klagefrist ebenfalls vollständig
 abgelaufen sein; auch hier ist der Fristtag selbst gesperrt. Für die anderen
@@ -420,7 +448,12 @@ Transitionstests prüfen Ereignisnachweise, `TEILABHILFE` ohne Klagefrist,
 `TEILEINSPRUCHSENTSCHEIDUNG` mit Klagefrist sowie Frist-, Prüf- und
 Begründungs-Gates für `BESTANDSKRAEFTIG`. Der DB-Integrationstest erzwingt für
 die Teilabhilfe das Paar aus Bekanntgabetag und dokumentierender Person, die
-Ereignisreihenfolge und den Erhalt beider Werte im Folgestatus. Der Audit-Test
+Ereignisreihenfolge und den Erhalt beider Werte im Folgestatus. Den Berliner
+Kalendertag gespeicherter Verfahrenszeitpunkte prüfen die Transitionstests
+(Fristgerechtigkeit, Altbestandsabgleich, Ereignisreihenfolge) und der
+Datenbanktest `bescheid-vorab-db.test.ts` (`FRISTEN_DB_TEST=1`) für
+Statusübergangs-Trigger und Constraints, jeweils im Sommer und Winter, um
+22:30/23:30 Uhr und 00:00 Uhr UTC und an beiden Umstellungstagen. Der Audit-Test
 prüft die Positivliste gegen Namen, Orts-/Falldaten und Begründungsfreitext. Der
 Worker-Test prüft das Reminder-Gate für vollständig berechnete Vorschläge, die
 aktuelle Zugriffs-Fallbackkette und das Verbot globaler Empfänger. Nicht belegt
