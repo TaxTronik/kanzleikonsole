@@ -1,5 +1,6 @@
 export {
   s3,
+  getS3Client,
   getBucketForClassification,
   isGobdClassification,
   isGwgClassification,

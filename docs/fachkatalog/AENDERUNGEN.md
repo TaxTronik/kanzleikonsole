@@ -1,5 +1,42 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-051
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/audit-anchor.ts
+      - apps/worker/src/jobs/audit-rotate.ts
+      - apps/worker/src/jobs/audit-verify-check.ts
+      - apps/worker/src/jobs/backup-drill.ts
+      - apps/worker/src/jobs/fido-mds-refresh.ts
+      - apps/worker/src/tsa-port.ts
+      - packages/storage/src/__tests__/lazy-config.test.ts
+      - packages/storage/src/client.ts
+      - packages/storage/src/config.ts
+      - packages/storage/src/deploy-readiness.ts
+      - packages/storage/src/index.ts
+      - packages/storage/src/service.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-ARCHIVE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - BACKUP-DRILL-INTEGRITY-001
+      - DOC-OBJECT-LOCK-001
+      - DOC-RETENTION-CLASS-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - INV-ARCHIVE-EINVOICE-001
+    reason: >-
+      `@taxtronik/storage` validiert Object-Store- und ClamAV-Konfiguration beim
+      ersten Zugriff und erzeugt den S3-Client dann einmalig, mit unveränderten
+      Optionen und Fehlermeldungen; Worker-Module lesen die ENV über
+      `apps/worker/src/env.ts` mit dem Typ des Worker-Profils. Speicherpfade, Object
+      Lock, Aufbewahrung und die Logik der betroffenen Jobs bleiben unverändert.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/__tests__/env.test.ts
+      - packages/storage/src/__tests__/lazy-config.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-050
     date: '2026-10-07'
     paths:
@@ -5266,6 +5303,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-051` dokumentiert die verzögerte
+  Konfigurationsprüfung des Storage-Pakets und die typisierte Worker-ENV.
 
 - 2026-10-07: `FK-EXC-20261007-050` dokumentiert die Verlagerung
   katalog-gepinnter UI-Dateien nach `components/`.

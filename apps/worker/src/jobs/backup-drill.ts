@@ -42,7 +42,7 @@ import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { PrismaClient } from '@taxtronik/db/prisma-client';
 import { writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
-import { env } from '@taxtronik/config';
+import { env } from '../env';
 import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
 import {
   EvidenceService,

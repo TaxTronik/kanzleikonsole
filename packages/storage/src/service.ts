@@ -8,8 +8,8 @@ import {
 import { createHash } from 'node:crypto';
 import { createConnection } from 'node:net';
 import { Readable } from 'node:stream';
-import { env } from '@taxtronik/config';
 import { s3, classificationToTier, getBucketForTier, type ProtectionTier } from './client';
+import { storageConfig } from './config';
 import { StoredObjectError, UploadRejectedError } from './errors';
 
 export {
@@ -293,8 +293,10 @@ export function detectOoxmlMime(data: Buffer): string | null {
 // ---------------------------------------------------------------------------
 
 async function scanWithClamAV(data: Buffer): Promise<ScanResult> {
+  // K-09: Konfiguration beim ersten Scan (./config.ts); ein ENV-Fehler lässt ihn scheitern.
+  const { CLAMAV_HOST, CLAMAV_PORT } = storageConfig();
   return new Promise((resolve) => {
-    const socket = createConnection({ host: env.CLAMAV_HOST, port: env.CLAMAV_PORT }, () => {
+    const socket = createConnection({ host: CLAMAV_HOST, port: CLAMAV_PORT }, () => {
       // INSTREAM-Protokoll: zINSTREAM\0 + <len-prefix><chunk>… + zero-length-chunk.
       //
       // N-6: clamd bricht den Stream mit INSTREAM size limit exceeded ab, sobald

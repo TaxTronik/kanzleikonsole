@@ -51,6 +51,16 @@ Suiten und prüft je Datei Wache, ausführenden Schritt und archiviertes
 Protokoll. Suiten mit eigener Datenbank stehen begründet in
 `scripts/ci/db-suites.mjs` (`ISOLATED_DB_SUITES`) und laufen in einem eigenen
 Schritt.
+
+Pakete lesen ihre Konfiguration beim ersten Zugriff, nicht beim Import:
+`@taxtronik/storage` (Object-Store und ClamAV, `src/config.ts`) sowie die
+Risk-Layer- und ELSTER-Clients. Ihre Unit-Tests brauchen deshalb keine
+Minimal-ENV; `packages/storage/src/__tests__/lazy-config.test.ts` prüft, dass
+der Import keine ENV liest und der erste Zugriff mit denselben Fehlern wie die
+Boot-Validierung scheitert. Worker-Module lesen `env` über
+`apps/worker/src/env.ts` mit dem Typ des ENV-Profils „worker“ (`WorkerEnv`):
+Felder anderer Prozesse lehnt schon der Typecheck ab, und ESLint verbietet im
+Worker `env` aus `@taxtronik/config`.
 Die A11Y-Gates und ihre Grenzen sind in der
 [Ist-/Gap-Dokumentation zur Barrierefreiheit](../assurance/barrierefreiheit.md)
 beschrieben. Insbesondere ersetzt ein bestandener Axe-Lauf keine manuelle

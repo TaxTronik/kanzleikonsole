@@ -23,7 +23,7 @@
 // =============================================================================
 
 import { createHash } from 'node:crypto';
-import { env } from '@taxtronik/config';
+import { env } from '../env';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { storeFidoMdsSnapshot } from '@taxtronik/db/fido-mds-snapshot';
 import { connection } from '../queues';

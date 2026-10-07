@@ -23,8 +23,8 @@
 // Tenants (withSystemContext, RLS), auch für die Owner-Wartungsjobs.
 // =============================================================================
 
-import { env } from '@taxtronik/config';
 import { withSystemContext } from '@taxtronik/db';
+import { env } from './env';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   LocalTimestampAdapter,

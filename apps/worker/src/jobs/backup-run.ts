@@ -23,7 +23,7 @@
 import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { createWorker } from '../worker-factory';
-import { env } from '@taxtronik/config';
+import { env } from '../env';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { EvidenceService, LocalTimestampAdapter, createRfc3161Adapter } from '@taxtronik/evidence';
 import { runPgBackup, streamingBackupSink } from '@taxtronik/db/pg-tools';

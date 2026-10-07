@@ -15,7 +15,14 @@
 // K-09: validiert nur Object-Store und Virenscanner (ENV-Profil „cli-storage“),
 // nicht die Werte von App und Worker. Muss der erste Import bleiben.
 import '@taxtronik/config/profiles/cli-storage';
+import { storageConfig } from '../src/config';
 import { checkDeployReadiness } from '../src/deploy-readiness';
+
+// @taxtronik/storage liest seine Konfiguration erst beim ersten Zugriff. Das
+// Gate validiert sie wie bisher beim Start, vor der ersten Prüfung: eine
+// fehlende oder ungültige Angabe bricht hier mit dem Fehler der
+// ENV-Validierung ab, statt in jeder Einzelprüfung zu erscheinen.
+storageConfig();
 
 const ICON: Record<string, string> = { ok: '✅', warn: '⚠️ ', fail: '❌' };
 

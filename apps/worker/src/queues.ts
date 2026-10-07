@@ -14,7 +14,7 @@
 
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
-import { env } from '@taxtronik/config';
+import { env } from './env';
 import {
   JOB_QUEUES,
   JOB_QUEUE_KEYS,

@@ -54,7 +54,7 @@ import {
   verifyArchiveChain,
   type ArchiveAuditRow,
 } from '@taxtronik/evidence';
-import { env } from '@taxtronik/config';
+import { env } from '../env';
 // RF-11: gemeinsamer S3-Client + Bucket aus @taxtronik/storage/@taxtronik/config
 // statt eigenem Client mit ''-Credential-Fallbacks (lief sonst mit leeren Keys
 // einfach los und scheiterte erst am Request).

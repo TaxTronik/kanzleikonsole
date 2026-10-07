@@ -18,7 +18,7 @@
 // =============================================================================
 
 import { createWorker } from '../worker-factory';
-import { env } from '@taxtronik/config';
+import { env } from '../env';
 import { AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS, JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { withSystemContext } from '@taxtronik/db';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';

@@ -14,7 +14,7 @@
 // =============================================================================
 
 import { createWorker } from '../worker-factory';
-import { env } from '@taxtronik/config';
+import { env } from '../env';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { deriveAuditCheckpointMacKey } from '@taxtronik/crypto';
 import { withSystemContext, type TxClient } from '@taxtronik/db';

@@ -283,6 +283,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- `@taxtronik/storage` validiert Object-Store- und ClamAV-Konfiguration erst
+  beim ersten Zugriff und erzeugt den S3-Client dann einmalig, mit
+  unveränderten Optionen und denselben Fehlermeldungen wie die Startprüfung;
+  Paket-Tests brauchen keine Minimal-ENV mehr. `pnpm verify:deploy` prüft die
+  Konfiguration weiterhin beim Start. Worker-Module lesen die ENV über
+  `apps/worker/src/env.ts` mit dem Typ des Worker-Profils.
 - Interne Struktur: GwG-Strukturpanel, Planungsassistent, Planvergleich,
   Plan↔Hochrechnung und das Anforderungsformular liegen unter `components/`;
   die Ausnahmen der ESLint-Schichtgrenze für katalog-gepinnte Dateien

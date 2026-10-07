@@ -26,7 +26,7 @@
 import { Socket } from 'node:net';
 import { ListBucketsCommand, S3Client } from '@aws-sdk/client-s3';
 import { createWorker } from '../worker-factory';
-import { env } from '@taxtronik/config';
+import { env } from '../env';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { connection, type ChecksJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';

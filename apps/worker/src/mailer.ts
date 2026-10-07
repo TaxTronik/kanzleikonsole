@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { createTransport, type Transporter } from 'nodemailer';
-import { env } from '@taxtronik/config';
+import { env } from './env';
 import { log } from './logger';
 
 let transporter: Transporter | null = null;

@@ -61,6 +61,12 @@ export const ENV_PROFILE_ENTRIES = [
   { file: 'packages/storage/scripts/deploy-readiness.ts', profile: 'cli-storage' },
 ];
 
+// Worker-ENV (Review-Befund K-09): `env` aus @taxtronik/config trägt den Typ des
+// Web-Profils. Worker-Module lesen die ENV über apps/worker/src/env.ts mit dem
+// Typ des Profils „worker“, damit tsc Felder anderer Prozesse ablehnt.
+const WORKER_ENV_MESSAGE =
+  'Worker-Module lesen die ENV über apps/worker/src/env.ts (Typ WorkerEnv, Profil „worker“); `env` aus @taxtronik/config hat den Typ des Web-Profils (K-09).';
+
 // Paketgrenze (Review-Befund K-01): @taxtronik/gwg enthält GwG-Regeln mit
 // tx-Signatur für Web UND Worker. Next.js, React und Web-Module (`@/`, apps/)
 // bleiben draußen; Autorisierung, Audit/Evidence und Storage verdrahtet der
@@ -232,6 +238,22 @@ export default [
     files: ['apps/web/src/server/auth/rbac.ts'],
     rules: {
       'no-restricted-syntax': 'off',
+    },
+  },
+  {
+    files: ['apps/worker/src/**/*.ts'],
+    ignores: ['apps/worker/src/env.ts', '**/__tests__/**', '**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: ['@taxtronik/config', '@taxtronik/config/env'].map((name) => ({
+            name,
+            importNames: ['env'],
+            message: WORKER_ENV_MESSAGE,
+          })),
+        },
+      ],
     },
   },
   {

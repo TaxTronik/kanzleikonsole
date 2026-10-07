@@ -31,8 +31,8 @@ import {
   GetObjectLockConfigurationCommand,
   PutObjectCommand,
 } from '@aws-sdk/client-s3';
-import { env } from '@taxtronik/config';
 import { s3 } from './client';
+import { storageConfig } from './config';
 import { fetchObjectBytes, deleteObject, scanBytes, MAX_UPLOAD_BYTES } from './service';
 import { evaluateObjectLockConfiguration, type RequiredLockMode } from './object-lock-policy';
 
@@ -164,7 +164,7 @@ async function checkClamavEicar(): Promise<ReadinessCheck> {
 
 async function checkStorageRoundtrip(): Promise<ReadinessCheck> {
   return timed('storage:roundtrip', async () => {
-    const bucket = env.S3_BUCKET_GENERAL;
+    const bucket = storageConfig().S3_BUCKET_GENERAL;
     const key = `_deploy-readiness/${randomUUID()}.bin`;
     const payload = Buffer.from(`deploy-readiness ${new Date().toISOString()}`, 'utf8');
     // Bewusst der lock-FREIE general-Bucket: ein Testobjekt in gobd/gwg wäre
@@ -201,18 +201,19 @@ async function checkStorageRoundtrip(): Promise<ReadinessCheck> {
  * Roundtrip, EICAR), zuletzt der teure Größen-Scan.
  */
 export async function checkDeployReadiness(opts: ReadinessOptions = {}): Promise<ReadinessReport> {
+  const config = storageConfig();
   const appBuckets = [
-    env.S3_BUCKET_GOBD,
-    env.S3_BUCKET_GWG,
-    env.S3_BUCKET_GENERAL,
-    env.S3_BUCKET_STAFF_PRIVATE,
+    config.S3_BUCKET_GOBD,
+    config.S3_BUCKET_GWG,
+    config.S3_BUCKET_GENERAL,
+    config.S3_BUCKET_STAFF_PRIVATE,
     backupsBucket(),
   ];
 
   const checks: ReadinessCheck[] = [];
   for (const b of appBuckets) checks.push(await checkBucketExists(b));
-  checks.push(await checkObjectLock(env.S3_BUCKET_GOBD, { mode: 'COMPLIANCE', years: 10 }));
-  checks.push(await checkObjectLock(env.S3_BUCKET_GWG, { mode: 'GOVERNANCE', years: 5 }));
+  checks.push(await checkObjectLock(config.S3_BUCKET_GOBD, { mode: 'COMPLIANCE', years: 10 }));
+  checks.push(await checkObjectLock(config.S3_BUCKET_GWG, { mode: 'GOVERNANCE', years: 5 }));
   checks.push(await checkStorageRoundtrip());
   checks.push(await checkClamavEicar());
   checks.push(await checkClamavSize(opts.clamavScanBytes ?? MAX_UPLOAD_BYTES));
