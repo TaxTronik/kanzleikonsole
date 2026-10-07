@@ -1,8 +1,10 @@
 // Fachkatalog: INV-ARCHIVE-EINVOICE-001
 // Fachkatalog: INV-STORNO-REFERENCE-001
 import { describe, it, expect } from 'vitest';
-import { extractFacturXXml, generateZugferdPdf } from '../zugferd';
-import { generateXRechnungCii } from '../xrechnung';
+import { extractFacturXXml, generateZugferdPdf, UnsupportedInvoiceTextError } from '../zugferd';
+import { generateXRechnungCii, type XRechnungBuyer, type XRechnungInvoice } from '../xrechnung';
+import type { SellerInfo } from '@/server/settings/tenant-settings';
+import type { LetterheadConfig } from '@/server/settings/letterhead';
 import {
   SAMPLE_INVOICE,
   SAMPLE_SELLER,
@@ -128,5 +130,148 @@ describe('generateZugferdPdf — eingebettete Unicode-Schriften (F-02)', () => {
       await expect(pending).rejects.toThrow(UnsupportedPdfTextError);
       await expect(pending).rejects.toThrow(codepoint);
     }
+  });
+});
+
+describe('generateZugferdPdf — Ablehnung nennt Zeichen und Feld (C5)', () => {
+  const E = '😀';
+  const NO_LETTERHEAD: LetterheadConfig = {
+    organisationName: '',
+    addressLines: '',
+    contactLine: '',
+    footnote: '',
+  };
+  const MESSAGE_END =
+    'mit der eingebetteten PDF-Schrift nicht darstellbar (Feld: Mandant – Name). ' +
+    'Zeichen werden nicht still ersetzt; bitte die betroffenen Angaben prüfen.';
+
+  interface Change {
+    invoice?: Partial<XRechnungInvoice>;
+    position?: Partial<XRechnungInvoice['positions'][number]>;
+    seller?: Partial<SellerInfo>;
+    buyer?: Partial<XRechnungBuyer>;
+    letterhead?: Partial<LetterheadConfig>;
+  }
+
+  function render(change: Change, base: XRechnungInvoice = SAMPLE_INVOICE) {
+    const invoice = {
+      ...base,
+      ...change.invoice,
+      positions: base.positions.map((p, i) => (i === 0 ? { ...p, ...change.position } : p)),
+    };
+    const letterhead = change.letterhead ? { ...NO_LETTERHEAD, ...change.letterhead } : null;
+    return generateZugferdPdf(
+      invoice,
+      { ...SAMPLE_SELLER, ...change.seller },
+      { ...SAMPLE_BUYER, ...change.buyer },
+      '<cii/>',
+      { letterhead },
+    );
+  }
+
+  /** Die Vorabprüfung (nicht erst das Zeichnen) muss die Rechnung abweisen. */
+  async function rejection(change: Change, base?: XRechnungInvoice) {
+    const error = await render(change, base).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(error).toBeInstanceOf(UnsupportedInvoiceTextError);
+    expect(error).toBeInstanceOf(UnsupportedPdfTextError);
+    return error as UnsupportedInvoiceTextError;
+  }
+
+  it.each([
+    ['Rechnung', SAMPLE_INVOICE],
+    ['Storno', SAMPLE_STORNO_INVOICE],
+  ])('nennt in der %s jedes betroffene Zeichen einmal mit Feld', async (_kind, base) => {
+    const error = await rejection({ buyer: { name: '李明 GmbH 李' } }, base);
+    expect(error.findings).toEqual([{ field: 'Mandant – Name', characters: ['李', '明'] }]);
+    expect(error.message).toBe(`Die Zeichen „李“ (U+674E), „明“ (U+660E) sind ${MESSAGE_END}`);
+  });
+
+  it('fasst mehrere Felder zusammen und zählt jedes Zeichen nur einmal', async () => {
+    const error = await rejection({
+      buyer: { name: `Mandant ${E} AG` },
+      invoice: { notes: 'Rückfragen an 李' },
+      position: { description: `Beratung ${E} 李 👍🏽` },
+    });
+    expect(error.findings).toEqual([
+      { field: 'Mandant – Name', characters: [E] },
+      { field: 'Position 1 – Beschreibung', characters: [E, '李', '👍🏽'] },
+      { field: 'Notizen', characters: ['李'] },
+    ]);
+    expect(error.message).toBe(
+      'Die Zeichen „😀“ (U+1F600), „李“ (U+674E), „👍🏽“ (U+1F44D U+1F3FD) sind mit der ' +
+        'eingebetteten PDF-Schrift nicht darstellbar (Felder: Mandant – Name, ' +
+        'Position 1 – Beschreibung, Notizen). Zeichen werden nicht still ersetzt; bitte ' +
+        'die betroffenen Angaben prüfen.',
+    );
+  });
+
+  it('begrenzt die Liste auf zehn Zeichen und kürzt den Rest mit „…“', async () => {
+    const characters = [...'一二三四五六七八九十百千'];
+    const error = await rejection({ invoice: { subject: characters.join(' ') } });
+    expect(error.findings).toEqual([{ field: 'Betreff', characters }]);
+    expect(error.message).toContain('„九“ (U+4E5D), „十“ (U+5341), … sind mit der');
+    expect(error.message).not.toContain('百');
+    expect(error.message).toContain('(Feld: Betreff)');
+  });
+
+  it('nennt unsichtbare Zeichen nur mit Codepunkt', async () => {
+    const error = await rejection({ position: { unit: 'Std.\u{E000}' } });
+    expect(error.message).toBe(
+      'Das Zeichen U+E000 ist mit der eingebetteten PDF-Schrift nicht darstellbar ' +
+        '(Feld: Position 1 – Einheit). Zeichen werden nicht still ersetzt; bitte die ' +
+        'betroffenen Angaben prüfen.',
+    );
+  });
+
+  // Jedes aus Daten gezeichnete Feld: Ein Treffer erst beim Zeichnen wäre ein
+  // einfacher UnsupportedPdfTextError ohne Feld und ließe rejection() scheitern.
+  it.each<[string, Change]>([
+    ['Kanzlei-Stammdaten – Kanzlei-Name', { seller: { name: `Kanzlei ${E}` } }],
+    ['Briefkopf – Kanzlei-Name', { letterhead: { organisationName: `Kanzlei ${E}` } }],
+    ['Kanzlei-Stammdaten – Anschrift', { seller: { street: `Weg ${E}` } }],
+    [
+      'Kanzlei-Stammdaten – Anschrift',
+      { seller: { city: `Ort ${E}` }, letterhead: { addressLines: 'Weg 1\n10115 Berlin' } },
+    ],
+    ['Briefkopf – Adresse', { letterhead: { addressLines: `Weg 1\nOrt ${E}` } }],
+    ['Kanzlei-Stammdaten – Telefon/E-Mail', { seller: { phone: `030 ${E}` } }],
+    ['Briefkopf – Kontakt-Zeile', { letterhead: { contactLine: `Tel. ${E}` } }],
+    ['Briefkopf – Fußnote', { letterhead: { footnote: `Kammer ${E}` } }],
+    ['Mandant – Name', { buyer: { name: `Mandant ${E}` } }],
+    ['Mandant – Straße', { buyer: { street: `Gasse ${E}` } }],
+    ['Mandant – PLZ/Ort', { buyer: { city: `Ort ${E}` } }],
+    ['Mandant – Land', { buyer: { countryIso: `A${E}` } }],
+    ['Rechnungsnummer', { invoice: { number: `R-${E}` } }],
+    ['Kanzlei-Stammdaten – USt-ID', { seller: { vatId: `DE${E}` } }],
+    ['Kanzlei-Stammdaten – Steuernummer', { seller: { vatId: null, taxNumber: `12/${E}` } }],
+    ['Betreff', { invoice: { subject: `Betreff ${E}` } }],
+    ['Position 1 – Einheit', { position: { unit: `Std. ${E}` } }],
+    ['Position 1 – Beschreibung', { position: { description: `Beratung\n${E}` } }],
+    ['Notizen', { invoice: { notes: `Hinweis ${E}` } }],
+    ['Kanzlei-Stammdaten – Bankname', { seller: { bankName: `Bank ${E}` } }],
+    ['Kanzlei-Stammdaten – IBAN', { seller: { iban: `DE89 ${E}` } }],
+    ['Kanzlei-Stammdaten – BIC', { seller: { bic: `COBA ${E}` } }],
+  ])('weist %s vor dem Zeichnen mit Feldangabe ab', async (field, change) => {
+    const error = await rejection(change);
+    expect(error.findings).toEqual([{ field, characters: [E] }]);
+  });
+
+  it('prüft nur tatsächlich gezeichnete Angaben', async () => {
+    // Der Briefkopfname ersetzt den Stammdatennamen im PDF, Adresszeilen ab der
+    // siebten entfallen, Leerraum in Beschreibungen wird zu einfachen Leerzeichen.
+    const bytes = await render({
+      seller: { name: `Kanzlei ${E}` },
+      letterhead: {
+        organisationName: 'Briefkopf-Kanzlei',
+        addressLines: ['1', '2', '3', '4', '5', '6', `7 ${E}`].join('\n'),
+      },
+      position: { description: 'Beratung　Steuer' },
+    });
+    const { text } = await extractText(await getDocumentProxy(bytes), { mergePages: true });
+    expect(text).toContain('Briefkopf-Kanzlei');
+    expect(text).toContain('Beratung Steuer');
   });
 });

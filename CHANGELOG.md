@@ -822,6 +822,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Rechnungen: Enthält eine ZUGFeRD-Rechnung oder ein
+  Korrekturbeleg Zeichen, die die eingebettete PDF-Schrift nicht darstellen
+  kann (z. B. Emoji, chinesische Schriftzeichen), nennen Versand, Storno und
+  Kontrollvorschau bis zu zehn betroffene Zeichen mit Unicode-Codepunkt und die
+  Felder (z. B. „Mandant – Name“) statt „Unerwarteter Fehler“, einer
+  allgemeinen Storno-Meldung bzw. „bitte erneut versuchen“ (HTTP 422 statt
+  502). Solche Rechnungen werden weiterhin abgewiesen.
 - Secret Scan auf `main` schlug wegen vier historischer gitleaks-False-Positives
   fehl (Variablenreferenz auf `opts.n8nDedupeKey` im Mail-Versand und der
   synthetische HMAC-Testwert der n8n-Secret-Vorrang-Tests). Die Treffer stehen

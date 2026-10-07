@@ -8,8 +8,10 @@ vi.mock('@/server/logger', () => ({ log: { error: m.logError } }));
 import {
   archiveFailureMessage,
   archiveFailureResponse,
+  unsupportedTextResponse,
   type ArchiveRouteFailureCode,
 } from '../archive-failure';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -67,6 +69,19 @@ describe('archiveFailureResponse', () => {
       route: 'xrechnung',
       tenantId: 't1',
       invoiceId: 'inv1',
+    });
+    expect(m.logError).not.toHaveBeenCalled();
+  });
+
+  it('C5: nicht darstellbare Zeichen → 422 mit der Meldung der Zeichenprüfung, ohne Log', async () => {
+    const error = new UnsupportedPdfTextError([0x1f600]);
+
+    const response = unsupportedTextResponse(error);
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: 'unsupported_text',
+      message: error.message,
     });
     expect(m.logError).not.toHaveBeenCalled();
   });

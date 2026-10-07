@@ -11,7 +11,8 @@
 //
 // Text nutzt eingebettete Noto-Sans-Teilmengen statt Helvetica/WinAnsi, damit
 // Namen wie „Yıldız" oder „Dvořák" darstellbar sind; nicht abgedeckte Zeichen
-// sperren die Erzeugung mit UnsupportedPdfTextError.
+// sperren die Erzeugung. Eine Vorabprüfung aller gezeichneten Angaben wirft
+// UnsupportedInvoiceTextError mit den betroffenen Zeichen und Feldern (C5).
 //
 // Profil: EN 16931 ("Factur-X / ZUGFeRD 2.x — EN 16931")
 //   urn:cen.eu:en16931:2017
@@ -41,7 +42,12 @@ import type { XRechnungInvoice, XRechnungBuyer } from './xrechnung';
 import { computeVatTotals } from './vat';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
 import type { LetterheadConfig } from '@/server/settings/letterhead';
-import { pdfFontBytes, pdfFontRuns, type PdfFontFace } from '@/server/documents/pdf-fonts';
+import {
+  pdfFontBytes,
+  pdfFontRuns,
+  UnsupportedPdfTextError,
+  type PdfFontFace,
+} from '@/server/documents/pdf-fonts';
 
 import { fmtDateShort, fmtDecimal, fmtEUR } from '@/lib/fmt';
 // re-export für External Imports
@@ -77,6 +83,10 @@ interface LetterheadLayout {
   footerSellerY: number;
   footerRuleY: number;
   footerSellerLine: string;
+  /** PLZ und Ort der Kanzlei-Stammdaten (Fußzeile; ohne Briefkopf auch Anschrift). */
+  sellerLocation: string;
+  /** C5: Herkunft der gezeichneten Absenderangaben, wie die Einstellungen sie benennen. */
+  fields: { sender: string; address: string; contact: string };
 }
 
 const FONT_SIZE_NORMAL = 9;
@@ -139,6 +149,102 @@ function drawUnicodeText(
   });
 }
 
+// -----------------------------------------------------------------------------
+// C5: Vorabprüfung aller gezeichneten Angaben. Zeichen außerhalb von Noto Sans
+// (Emoji, CJK) sperren die Rechnung weiterhin; die Ablehnung nennt aber alle
+// betroffenen Zeichen (höchstens zehn) und die Felder, aus denen sie stammen.
+// -----------------------------------------------------------------------------
+
+/** Höchstzahl der in einer Ablehnung genannten Zeichen bzw. Felder. */
+const UNSUPPORTED_LIST_LIMIT = 10;
+
+/** Ein aus Daten gezeichneter Text und das Feld, aus dem er stammt. */
+interface InvoiceTextField {
+  field: string;
+  text: string;
+  bold?: boolean;
+}
+
+/** Nicht darstellbare Zeichen (Grapheme in Reihenfolge des Auftretens) eines Feldes. */
+export interface UnsupportedInvoiceText {
+  field: string;
+  characters: string[];
+}
+
+function isDrawable(text: string, bold: boolean): boolean {
+  try {
+    pdfFontRuns(text, bold, { fallback: false });
+    return true;
+  } catch (error) {
+    if (error instanceof UnsupportedPdfTextError) return false;
+    throw error;
+  }
+}
+
+/** Prüft genau die Zeilen, die drawUnicodeText zeichnen würde, und sammelt je Feld
+ *  die nicht darstellbaren Grapheme; eine darstellbare Zeile kostet eine Prüfung. */
+function findUnsupportedInvoiceText(fields: readonly InvoiceTextField[]): UnsupportedInvoiceText[] {
+  const verdicts = new Map<string, boolean>();
+  const found = new Map<string, Set<string>>();
+  for (const { field, text, bold = false } of fields) {
+    for (const line of lineSplit(cleanText(text))) {
+      if (isDrawable(line, bold)) continue;
+      for (const { segment } of graphemes.segment(line)) {
+        const key = `${bold ? 'b' : 'r'}:${segment}`;
+        const drawable = verdicts.get(key) ?? isDrawable(segment, bold);
+        verdicts.set(key, drawable);
+        if (drawable) continue;
+        const characters = found.get(field) ?? new Set<string>();
+        found.set(field, characters.add(segment));
+      }
+    }
+  }
+  return [...found].map(([field, characters]) => ({ field, characters: [...characters] }));
+}
+
+/** Sichtbare Zeichen in Anführungszeichen mit Codepunkten; Steuer-, Format- und
+ *  Leerzeichen nur als Codepunkt, weil sie im Text unsichtbar wären. */
+function describeCharacter(character: string): string {
+  const codepoints = [...character].map(
+    (c) => `U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}`,
+  );
+  const codes =
+    codepoints.length > 4 ? `${codepoints.slice(0, 4).join(' ')} …` : codepoints.join(' ');
+  const visible = /[^\p{C}\p{Z}]/u.test(character) && codepoints.length <= 8;
+  return visible ? `„${character}“ (${codes})` : codes;
+}
+
+function limitedList(items: readonly string[]): string {
+  const shown = items.slice(0, UNSUPPORTED_LIST_LIMIT).join(', ');
+  return items.length > UNSUPPORTED_LIST_LIMIT ? `${shown}, …` : shown;
+}
+
+/** Deutsche Meldung: unterschiedliche Zeichen (höchstens zehn, dann „…") und Felder. */
+export function unsupportedInvoiceTextMessage(findings: readonly UnsupportedInvoiceText[]): string {
+  const characters = [...new Set(findings.flatMap((finding) => finding.characters))];
+  const fields = findings.map((finding) => finding.field);
+  const single = characters.length === 1;
+  return (
+    `${single ? 'Das Zeichen' : 'Die Zeichen'} ${limitedList(characters.map(describeCharacter))} ` +
+    `${single ? 'ist' : 'sind'} mit der eingebetteten PDF-Schrift nicht darstellbar ` +
+    `(${fields.length === 1 ? 'Feld' : 'Felder'}: ${limitedList(fields)}). ` +
+    'Zeichen werden nicht still ersetzt; bitte die betroffenen Angaben prüfen.'
+  );
+}
+
+/** C5: Ablehnung einer Rechnungs-PDF mit allen nicht darstellbaren Zeichen und ihren
+ *  Feldern. Als UnsupportedPdfTextError (ActionError) ist die Meldung UI-tauglich. */
+export class UnsupportedInvoiceTextError extends UnsupportedPdfTextError {
+  readonly findings: readonly UnsupportedInvoiceText[];
+
+  constructor(findings: readonly UnsupportedInvoiceText[]) {
+    super([...(findings[0]?.characters[0] ?? '')].map((c) => c.codePointAt(0)!));
+    this.name = 'UnsupportedInvoiceTextError';
+    this.message = unsupportedInvoiceTextMessage(findings);
+    this.findings = findings;
+  }
+}
+
 function fmtNum(n: number): string {
   return fmtDecimal(n);
 }
@@ -171,6 +277,16 @@ function wrapText(text: string, maxChars: number): string[] {
   return out.length ? out : [''];
 }
 
+/** P3-26: Hinweiszeilen wort-erhaltend umbrochen; Zeichnen und Zeichenprüfung teilen sie. */
+function noteLines(notes: string | null): string[] {
+  return notes ? notes.split('\n').flatMap((paragraph) => wrapText(paragraph, 100)) : [];
+}
+
+/** Absätze einer Positionsbeschreibung als Wortlisten (Umbruch und Zeichenprüfung). */
+function descriptionWords(text: string): string[][] {
+  return text.split(/\r?\n/).map((paragraph) => paragraph.split(/\s+/).filter(Boolean));
+}
+
 function wrapMultiline(text: string, maxChars: number, maxLines: number): string[] {
   const lines = text
     .split(/\r?\n/)
@@ -187,13 +303,13 @@ function buildLetterheadLayout(
   letterhead: LetterheadConfig | null | undefined,
   seller: SellerInfo,
 ): LetterheadLayout {
-  const senderName = letterhead?.organisationName.trim() || seller.name;
+  const configuredName = letterhead?.organisationName.trim() ?? '';
+  const senderName = configuredName || seller.name;
+  const sellerLocation = `${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim();
   const configuredAddress = letterhead?.addressLines.trim() ?? '';
   const addressLines = configuredAddress
     ? wrapMultiline(configuredAddress, 52, 6)
-    : [seller.street, `${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim()].filter(
-        (line): line is string => Boolean(line),
-      );
+    : [seller.street, sellerLocation].filter((line): line is string => Boolean(line));
   const configuredContact = letterhead?.contactLine.trim() ?? '';
   const contactLine = configuredContact || [seller.phone, seller.email].filter(Boolean).join(' · ');
   const configuredFootnote = letterhead?.footnote.trim() ?? '';
@@ -202,7 +318,6 @@ function buildLetterheadLayout(
   const footerDetailsY = footerMachineY + 11;
   const footerSellerY = footerDetailsY + footerDetailLines.length * 8 + 3;
   const footerRuleY = footerSellerY + 11;
-  const sellerLocation = `${seller.postalCode ?? ''} ${seller.city ?? ''}`.trim();
   const footerSellerLine = [senderName, sellerLocation].filter(Boolean).join(' · ');
 
   return {
@@ -215,6 +330,14 @@ function buildLetterheadLayout(
     footerSellerY,
     footerRuleY,
     footerSellerLine,
+    sellerLocation,
+    fields: {
+      sender: configuredName ? 'Briefkopf – Kanzlei-Name' : 'Kanzlei-Stammdaten – Kanzlei-Name',
+      address: configuredAddress ? 'Briefkopf – Adresse' : 'Kanzlei-Stammdaten – Anschrift',
+      contact: configuredContact
+        ? 'Briefkopf – Kontakt-Zeile'
+        : 'Kanzlei-Stammdaten – Telefon/E-Mail',
+    },
   };
 }
 
@@ -325,9 +448,9 @@ function drawInvoiceBuyer(ctx: PageContext, buyer: XRechnungBuyer): void {
  * measured per font run; overlong words split between graphemes only. */
 function wrapInvoiceDescription(fonts: InvoiceFonts, text: string, width: number): string[] {
   const lines: string[] = [];
-  for (const paragraph of text.split(/\r?\n/)) {
+  for (const words of descriptionWords(text)) {
     let line = '';
-    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+    for (const word of words) {
       const candidate = line ? `${line} ${word}` : word;
       if (textWidth(fonts, candidate, FONT_SIZE_NORMAL) <= width) {
         line = candidate;
@@ -348,6 +471,56 @@ function wrapInvoiceDescription(fonts: InvoiceFonts, text: string, width: number
   return lines;
 }
 
+/** C5: alle aus Daten gezeichneten Texte mit Feldbezeichnung, in Zeichenreihenfolge
+ *  und unter denselben Bedingungen wie unten. Feste Beschriftungen sowie formatierte
+ *  Datums-, Mengen- und Betragsangaben enthalten nur abgedeckte Zeichen. */
+function invoiceTextFields(
+  invoice: XRechnungInvoice,
+  seller: SellerInfo,
+  buyer: XRechnungBuyer,
+  layout: LetterheadLayout,
+): InvoiceTextField[] {
+  const sellerTaxId = seller.vatId
+    ? { field: 'Kanzlei-Stammdaten – USt-ID', text: seller.vatId }
+    : { field: 'Kanzlei-Stammdaten – Steuernummer', text: seller.taxNumber ?? '' };
+  const bank = seller.iban
+    ? [
+        { field: 'Kanzlei-Stammdaten – Bankname', text: seller.bankName ?? '' },
+        { field: 'Kanzlei-Stammdaten – IBAN', text: seller.iban },
+        { field: 'Kanzlei-Stammdaten – BIC', text: seller.bic ?? '' },
+      ]
+    : [];
+  return [
+    { field: layout.fields.sender, text: layout.senderName, bold: true },
+    ...layout.addressLines.map((text) => ({ field: layout.fields.address, text })),
+    ...layout.contactLines.map((text) => ({ field: layout.fields.contact, text })),
+    { field: 'Mandant – Name', text: buyer.name, bold: true },
+    { field: 'Mandant – Straße', text: buyer.street ?? '' },
+    { field: 'Mandant – PLZ/Ort', text: `${buyer.postalCode ?? ''} ${buyer.city ?? ''}` },
+    {
+      field: 'Mandant – Land',
+      text: buyer.countryIso && buyer.countryIso !== 'DE' ? buyer.countryIso : '',
+    },
+    { field: 'Rechnungsnummer', text: invoice.number, bold: true },
+    sellerTaxId,
+    { field: 'Betreff', text: invoice.subject },
+    ...invoice.positions.flatMap((p) => [
+      { field: `Position ${p.position} – Einheit`, text: p.unit },
+      {
+        field: `Position ${p.position} – Beschreibung`,
+        text: descriptionWords(p.description)
+          .map((words) => words.join(' '))
+          .join('\n'),
+      },
+    ]),
+    ...noteLines(invoice.notes).map((text) => ({ field: 'Notizen', text })),
+    ...bank,
+    // Fußzeile jeder Seite: Absendername (oben) · PLZ/Ort aus den Kanzlei-Stammdaten.
+    { field: 'Kanzlei-Stammdaten – Anschrift', text: layout.sellerLocation },
+    ...layout.footerDetailLines.map((text) => ({ field: 'Briefkopf – Fußnote', text })),
+  ];
+}
+
 export async function generateZugferdPdf(
   invoice: XRechnungInvoice,
   seller: SellerInfo,
@@ -355,6 +528,14 @@ export async function generateZugferdPdf(
   ciiXml: string,
   presentation: InvoicePdfPresentation = {},
 ): Promise<Uint8Array> {
+  const letterheadLayout = buildLetterheadLayout(presentation.letterhead, seller);
+  // C5: Vor jedem Zeichnen alle Angaben prüfen, damit die Ablehnung jedes nicht
+  // darstellbare Zeichen samt Feld nennt statt nur des ersten Treffers.
+  const unsupported = findUnsupportedInvoiceText(
+    invoiceTextFields(invoice, seller, buyer, letterheadLayout),
+  );
+  if (unsupported.length > 0) throw new UnsupportedInvoiceTextError(unsupported);
+
   const doc = await PDFDocument.create();
   const fonts = await embedInvoiceFonts(doc);
 
@@ -364,7 +545,6 @@ export async function generateZugferdPdf(
   const pageWidth = 595;
   const pageHeight = 842;
   const margin = 50;
-  const letterheadLayout = buildLetterheadLayout(presentation.letterhead, seller);
   const page = doc.addPage([pageWidth, pageHeight]);
 
   const ctx: PageContext = {
@@ -529,12 +709,10 @@ export async function generateZugferdPdf(
     ctx.y -= 12;
     // P3-26: Wort-erhaltendes Umbrechen statt hartem slice(0,100) — kein
     // Inhaltsverlust in der revisionssicher archivierten PDF.
-    for (const paragraph of invoice.notes.split('\n')) {
-      for (const line of wrapText(paragraph, 100)) {
-        newPageIfNeeded(ctx, 12);
-        drawText(ctx, line, margin, ctx.y);
-        ctx.y -= 11;
-      }
+    for (const line of noteLines(invoice.notes)) {
+      newPageIfNeeded(ctx, 12);
+      drawText(ctx, line, margin, ctx.y);
+      ctx.y -= 11;
     }
     ctx.y -= 10;
   }

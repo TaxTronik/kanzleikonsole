@@ -1,5 +1,39 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-010
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/api/staff/invoices/[id]/xrechnung/__tests__/route.test.ts
+      - apps/web/src/app/api/staff/invoices/[id]/xrechnung/route.ts
+      - apps/web/src/app/api/staff/invoices/[id]/zugferd/__tests__/route.test.ts
+      - apps/web/src/app/api/staff/invoices/[id]/zugferd/route.ts
+      - apps/web/src/app/staff/(protected)/invoices/actions.ts
+      - apps/web/src/server/invoicing/__tests__/archive-failure.test.ts
+      - apps/web/src/server/invoicing/__tests__/archive.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+      - apps/web/src/server/invoicing/__tests__/zugferd.test.ts
+      - apps/web/src/server/invoicing/archive-failure.ts
+      - apps/web/src/server/invoicing/archive.ts
+      - apps/web/src/server/invoicing/zugferd.ts
+    rule_ids:
+      - INV-ARCHIVE-EINVOICE-001
+      - INV-STORNO-REFERENCE-001
+    reason: >-
+      Produktentscheidung C5: ZUGFeRD-Rechnungen und Korrekturbelege weisen Zeichen
+      außerhalb der eingebetteten Noto Sans (Emoji, CJK) weiterhin ab. `zugferd.ts`
+      prüft vor dem Zeichnen genau die gezeichneten Angaben und nennt bis zu zehn
+      Zeichen mit Codepunkt und die Felder; Versand und Storno zeigen diese Meldung,
+      die Downloadrouten antworten mit 422 `unsupported_text` statt 502. Welche
+      Rechnungen abgewiesen werden, Status, Archiv, Nummernvergabe, aktives Original
+      und PDF-Inhalt bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/invoicing/__tests__/zugferd.test.ts
+      - apps/web/src/server/invoicing/__tests__/archive.test.ts
+      - apps/web/src/server/invoicing/__tests__/archive-failure.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+      - apps/web/src/app/api/staff/invoices/[id]/zugferd/__tests__/route.test.ts
+      - apps/web/src/app/api/staff/invoices/[id]/xrechnung/__tests__/route.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-009
     date: '2026-10-07'
     paths:
@@ -4258,6 +4292,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-010` dokumentiert die präzise Meldung für
+  nicht darstellbare Zeichen in ZUGFeRD-Rechnungen und Korrekturbelegen.
 
 - 2026-10-07: `FK-EXC-20261007-009` dokumentiert die Schema-Spalte für
   den nachgeholten Widerruf von Portal-Sessions im GwG-Ablaufjob.

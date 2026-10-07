@@ -6,7 +6,11 @@ import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import { streamObject } from '@taxtronik/storage';
 import { ensureZugferdArchive, type ArchiveResult } from '@/server/invoicing/archive';
-import { archiveFailureResponse } from '@/server/invoicing/archive-failure';
+import {
+  archiveFailureResponse,
+  unsupportedTextResponse,
+} from '@/server/invoicing/archive-failure';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 import { withTimeout, TimeoutError } from '@/lib/with-timeout';
 import { isUuid } from '@/lib/uuid';
 import { isModeModuleEnabled, readModules } from '@/server/settings/modules';
@@ -55,6 +59,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     archive = await withTimeout(ensureZugferdArchive(ctx, id, { purpose: 'PREVIEW' }), 45_000);
   } catch (error) {
+    // C5: Nicht darstellbare Zeichen → 422 mit Zeichen und Feld statt „erneut versuchen“.
+    if (error instanceof UnsupportedPdfTextError) return unsupportedTextResponse(error);
     // Der Fehlertext (Schritt-Kontext aus ensureZugferdArchive: PDF-Generierung
     // vs. GOBD-Ablage) geht nur ins Server-Log, nicht an den Client.
     return archiveFailureResponse(error instanceof TimeoutError ? 'timeout' : 'generation_failed', {

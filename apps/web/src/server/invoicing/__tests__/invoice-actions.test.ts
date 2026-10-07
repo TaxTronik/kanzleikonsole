@@ -1,4 +1,5 @@
 // Fachkatalog: INV-LIFECYCLE-FREEZE-001, INV-VAT-TOTALS-001
+// Fachkatalog: INV-STORNO-REFERENCE-001, INV-ARCHIVE-EINVOICE-001
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +7,7 @@ const m = vi.hoisted(() => ({
   tx: {
     invoice: {
       create: vi.fn(),
+      findFirst: vi.fn(),
       findUnique: vi.fn(),
       update: vi.fn(),
       updateMany: vi.fn(),
@@ -87,6 +89,8 @@ import {
   uploadExternalInvoiceAction,
 } from '@/app/staff/(protected)/invoices/actions';
 import { log } from '@/server/logger';
+import { ensureZugferdArchive } from '@/server/invoicing/archive';
+import { UnsupportedInvoiceTextError } from '@/server/invoicing/zugferd';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -295,6 +299,75 @@ describe('Review-Befund F-01: Rechnungsstatus meldet Ablehnungen als Ergebnis', 
     expect(executeRaw).toHaveBeenCalled();
     expect(m.tx.invoice.create).not.toHaveBeenCalled();
     expect(m.record).not.toHaveBeenCalled();
+  });
+});
+
+describe('C5: Storno und Versand nennen nicht darstellbare Zeichen samt Feld', () => {
+  const stornoId = '00000000-0000-4000-8000-000000000004';
+  const unsupported = () =>
+    new UnsupportedInvoiceTextError([{ field: 'Mandant – Name', characters: ['李', '明'] }]);
+  const DETAIL =
+    'Die Zeichen „李“ (U+674E), „明“ (U+660E) sind mit der eingebetteten PDF-Schrift nicht ' +
+    'darstellbar (Feld: Mandant – Name). Zeichen werden nicht still ersetzt; bitte die ' +
+    'betroffenen Angaben prüfen.';
+  function form(): FormData {
+    const data = new FormData();
+    data.set('invoiceId', invoiceId);
+    return data;
+  }
+  /** Ausgestelltes Original mit bereits angelegtem Korrekturbeleg-Entwurf. */
+  function deliveredOriginalWithStornoDraft() {
+    Object.assign(m.tx, { $executeRaw: vi.fn() });
+    m.tx.invoice.findUnique.mockResolvedValue({
+      id: invoiceId,
+      status: 'SENT',
+      clientId,
+      format: 'XRECHNUNG',
+      positions: [],
+    });
+    m.tx.invoice.findFirst.mockResolvedValue({ id: stornoId, status: 'DRAFT' });
+  }
+
+  it('Storno nennt Zeichen und Feld; das Original bleibt aktiv', async () => {
+    deliveredOriginalWithStornoDraft();
+    vi.mocked(ensureZugferdArchive).mockRejectedValue(unsupported());
+
+    await expect(cancelInvoiceAction(null, form())).resolves.toEqual({
+      ok: false,
+      error: `Korrekturbeleg nicht versendet; Original bleibt aktiv: ${DETAIL}`,
+    });
+    expect(ensureZugferdArchive).toHaveBeenCalledWith(expect.anything(), stornoId, {
+      purpose: 'ISSUE',
+    });
+    expect(m.tx.invoice.update).not.toHaveBeenCalled();
+    expect(m.tx.invoice.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('Storno behält bei technischen Fehlern die allgemeine Meldung', async () => {
+    deliveredOriginalWithStornoDraft();
+    vi.mocked(ensureZugferdArchive).mockRejectedValue(new Error('S3 PutObject failed'));
+
+    await expect(cancelInvoiceAction(null, form())).resolves.toEqual({
+      ok: false,
+      error:
+        'Korrekturbeleg konnte nicht erzeugt werden. Das Original bleibt aktiv; der Entwurf kann erneut versendet werden.',
+    });
+  });
+
+  it('Versand nennt Zeichen und Feld; die Rechnung bleibt Entwurf', async () => {
+    m.tx.invoice.findUnique.mockResolvedValue({
+      status: 'DRAFT',
+      clientId,
+      documentId: null,
+      format: 'XRECHNUNG',
+    });
+    vi.mocked(ensureZugferdArchive).mockRejectedValue(unsupported());
+
+    await expect(markSentAction(null, form())).resolves.toEqual({
+      ok: false,
+      error: `ZUGFeRD-Archiv konnte nicht erzeugt werden: ${DETAIL}`,
+    });
+    expect(m.tx.invoice.updateMany).not.toHaveBeenCalled();
   });
 });
 

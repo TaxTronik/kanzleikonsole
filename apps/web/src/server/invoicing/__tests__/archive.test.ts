@@ -65,6 +65,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { commitPreparedBytes, fetchObjectBytes } from '@taxtronik/storage';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { extractFacturXXml, generateZugferdPdf } from '@/server/invoicing/zugferd';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 import { evidenceService } from '@/server/container';
 import { compensateStorageCommit } from '@/server/documents/storage-compensation';
 import { createFeeInvoice, validateFeeCalculation } from '@/server/stbvv/service';
@@ -779,6 +780,34 @@ describe('ensureZugferdArchive', () => {
       storageVersionId: '',
       failure: 'xml storage unavailable',
     });
+  });
+
+  // C5: Nicht darstellbare Zeichen erreichen Versand, Storno und Downloadrouten
+  // unverpackt (Meldung mit Zeichen und Feld); es wird nichts abgelegt.
+  it.each([
+    ['Ausstellung', 'ISSUE', baseInvoice()],
+    ['Kontrollvorschau', 'PREVIEW', baseInvoice({ status: 'DRAFT', sentAt: null })],
+  ] as const)(
+    'reicht nicht darstellbare Zeichen bei der %s unverpackt durch',
+    async (_name, purpose, invoice) => {
+      const rejected = new UnsupportedPdfTextError([0x674e]);
+      tx.invoice.findFirst.mockResolvedValue(invoice);
+      vi.mocked(generateZugferdPdf).mockRejectedValueOnce(rejected);
+
+      await expect(ensureZugferdArchive(ctx, 'inv1', { purpose })).rejects.toBe(rejected);
+      expect(commitPreparedBytes).not.toHaveBeenCalled();
+      expect(storageJournal.rows).toEqual([]);
+    },
+  );
+
+  it('verpackt technische Erzeugungsfehler weiterhin mit Schrittkontext', async () => {
+    tx.invoice.findFirst.mockResolvedValueOnce(baseInvoice());
+    vi.mocked(generateZugferdPdf).mockRejectedValueOnce(new Error('font missing'));
+
+    await expect(ensureZugferdArchive(ctx, 'inv1')).rejects.toThrow(
+      'ZUGFeRD-PDF-Generierung fehlgeschlagen: font missing',
+    );
+    expect(commitPreparedBytes).not.toHaveBeenCalled();
   });
 
   // K-06: Prozessabbruch zwischen Object-Write und Verknuepfung (erzeugte Archive).

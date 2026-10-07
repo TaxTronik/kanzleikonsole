@@ -36,6 +36,7 @@ import {
   type XRechnungBuyer,
 } from '@/server/invoicing/xrechnung';
 import { extractFacturXXml, generateZugferdPdf } from '@/server/invoicing/zugferd';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 import { readSellerInfo, type SellerInfo } from '@/server/settings/tenant-settings';
 import { readBranding } from '@/server/settings/branding';
 import { readLetterhead } from '@/server/settings/letterhead';
@@ -169,6 +170,9 @@ async function generateInvoiceArtifacts(
     });
     return { cii, pdfBytes };
   } catch (error) {
+    // C5: Nicht darstellbare Zeichen sind eine fachliche Ablehnung mit UI-tauglicher
+    // Meldung (Zeichen und Feld) und bleiben deshalb unverpackt.
+    if (error instanceof UnsupportedPdfTextError) throw error;
     throw new Error(`ZUGFeRD-PDF-Generierung fehlgeschlagen: ${(error as Error).message}`, {
       cause: error,
     });
@@ -924,7 +928,9 @@ async function finalizeGeneratedArchive(
  * Liefert die gespeicherte ZUGFeRD-Archiv-PDF einer Rechnung (idempotent).
  * Existiert noch keine, wird sie einmal generiert + revisionssicher abgelegt +
  * an die Rechnung verknüpft. Validierungsfehler (Adresse unvollständig) kommen
- * als Code zurück — NICHT als Throw (die Aufrufer mappen sie selbst).
+ * als Code zurück — NICHT als Throw (die Aufrufer mappen sie selbst). Nicht
+ * darstellbare Zeichen werfen UnsupportedPdfTextError mit UI-tauglicher Meldung
+ * (Zeichen und Feld, C5); andere Erzeugungsfehler bleiben technische Fehler.
  */
 export async function ensureZugferdArchive(
   ctx: TenantContext,

@@ -18,6 +18,7 @@ import { portalBaseUrl } from '@taxtronik/config';
 import { toActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { ensureZugferdArchive } from '@/server/invoicing/archive';
 import { archiveFailureMessage } from '@/server/invoicing/archive-failure';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 import { IN_APP_VAT_RATES } from '@/server/invoicing/vat';
 import {
   checkDraftInvoice,
@@ -739,6 +740,13 @@ async function cancelInvoice(
         { component: 'invoices', action: 'storno-send', stornoId, err: (error as Error).message },
         'Korrekturbeleg nicht versendet; Original bleibt aktiv',
       );
+      // C5: Nicht darstellbare Zeichen werden weiter abgewiesen; die Meldung nennt
+      // Zeichen und Feld, weil ein bloßer Neuversuch daran nichts ändert.
+      if (error instanceof UnsupportedPdfTextError) {
+        throw new ActionError(
+          `Korrekturbeleg nicht versendet; Original bleibt aktiv: ${error.message}`,
+        );
+      }
       throw new ActionError(
         'Korrekturbeleg konnte nicht erzeugt werden. Das Original bleibt aktiv; der Entwurf kann erneut versendet werden.',
       );

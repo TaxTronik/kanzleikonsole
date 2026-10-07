@@ -4,11 +4,14 @@
 //
 // Technische Fehlertexte (PDF-Generierung, Object-Store, DB) gehen NUR ins
 // Server-Log; der Client erhält ausschließlich die feste Meldung zum Code.
+// Ausnahme C5: nicht darstellbare Zeichen (`unsupported_text`) nennen Zeichen
+// und Feld aus der fachlichen Prüfung.
 // =============================================================================
 
 import { NextResponse } from 'next/server';
 import { log } from '@/server/logger';
 import type { ArchiveFailureCode } from '@/server/invoicing/archive';
+import type { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 
 export type ArchiveRouteFailureCode =
   | ArchiveFailureCode
@@ -68,6 +71,16 @@ export interface ArchiveFailureDetail {
 /** Feste deutsche Meldung zu einem Archiv-Fehlercode (auch für Server Actions). */
 export function archiveFailureMessage(code: ArchiveRouteFailureCode): string {
   return ARCHIVE_FAILURES[code].message;
+}
+
+/**
+ * C5: Nicht darstellbare Zeichen sind eine fachliche Ablehnung (422) wie der
+ * Subsumtions-Export (`unsupported_text`). Die Meldung stammt aus der Zeichen-
+ * prüfung der PDF (Zeichen, Codepunkte, Feld) und enthält keine technischen
+ * Fehlertexte; deshalb kein Server-Log.
+ */
+export function unsupportedTextResponse(error: UnsupportedPdfTextError): NextResponse {
+  return NextResponse.json({ error: 'unsupported_text', message: error.message }, { status: 422 });
 }
 
 /**

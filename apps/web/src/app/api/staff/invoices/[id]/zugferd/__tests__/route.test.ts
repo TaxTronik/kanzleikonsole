@@ -34,6 +34,7 @@ vi.mock('@/server/logger', () => ({ log: { error: m.logError } }));
 
 import { GET } from '../route';
 import { archiveFailureMessage } from '@/server/invoicing/archive-failure';
+import { UnsupportedInvoiceTextError } from '@/server/invoicing/zugferd';
 
 const INVOICE_ID = '3f2a1c88-5d4e-4b0a-9c11-7e6d5a4b3c2d';
 
@@ -109,6 +110,25 @@ describe('GET /api/staff/invoices/[id]/zugferd – Fehlerabbildung', () => {
       }),
       expect.any(String),
     );
+  });
+
+  it('nicht darstellbare Zeichen → 422 unsupported_text mit Zeichen und Feld, ohne Log', async () => {
+    m.ensureZugferdArchive.mockRejectedValue(
+      new UnsupportedInvoiceTextError([{ field: 'Position 1 – Beschreibung', characters: ['😀'] }]),
+    );
+
+    const response = await request();
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: 'unsupported_text',
+      message:
+        'Das Zeichen „😀“ (U+1F600) ist mit der eingebetteten PDF-Schrift nicht darstellbar ' +
+        '(Feld: Position 1 – Beschreibung). Zeichen werden nicht still ersetzt; bitte die ' +
+        'betroffenen Angaben prüfen.',
+    });
+    expect(m.logError).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 
   it('timeout → 504 mit fester Meldung', async () => {

@@ -21,8 +21,10 @@ import {
 } from '@/server/invoicing/archive';
 import {
   archiveFailureResponse,
+  unsupportedTextResponse,
   type ArchiveRouteFailureCode,
 } from '@/server/invoicing/archive-failure';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 import { readSellerInfo } from '@/server/settings/tenant-settings';
 import { isUuid } from '@/lib/uuid';
 import { isModeModuleEnabled, readModules } from '@/server/settings/modules';
@@ -206,6 +208,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       invoiceId: id,
     });
     if (resolved.failure) {
+      // C5: Nicht darstellbare Zeichen beim Nachziehen des Archivs → 422 mit Zeichen und Feld.
+      if (resolved.error instanceof UnsupportedPdfTextError) {
+        return unsupportedTextResponse(resolved.error);
+      }
       return archiveFailureResponse(resolved.failure, { ...detail, error: resolved.error });
     }
     archive = resolved.archive;

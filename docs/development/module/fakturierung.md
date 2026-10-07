@@ -96,6 +96,7 @@ deaktiviert das Modul.
 | Berliner Leistungsdatum aus Zeiteinträgen | `billing/actions.ts` + `berlinCalendarDate`                                      | `billing/__tests__/actions.test.ts`: Sommer, Winter, beide Zeitumstellungen und Jahreswechsel bis zum CII-Datum, mit DB-Double                                                                                                                                                                                                                  |
 | StBVV-Entwurf kann archiviert werden      | `stbvv/service.ts` + `archive.ts`                                                | `archive.test.ts`: tatsächliche Übernahme und Archiv-Orchestrierung mit DB-/Storage-/PDF-Doubles; kein vollständiger Versand-E2E-Test                                                                                                                                                                                                           |
 | Leistungszeitraum/Befreiung/§ 13b         | `actions.ts`, `xrechnung.ts`, `zugferd.ts`                                       | `xrechnung.test.ts` für BG-14, Kategorie E/BT-120 und Kategorie AE; Action-Eingabevalidierung ist nicht als vollständig direkt abgedeckt auszuweisen                                                                                                                                                                                            |
+| Nicht darstellbare Zeichen benannt (C5)   | `zugferd.ts` (Vorabprüfung), `archive.ts`, Storno/Versand, Downloadrouten        | `zugferd.test.ts` (Zeichen, Felder, höchstens zehn, jedes gezeichnete Feld, nur Gezeichnetes), `archive.test.ts` (unverpackt durchgereicht), `invoice-actions.test.ts` (Storno- und Versandmeldung), Routen-Tests (HTTP 422 `unsupported_text`)                                                                                                 |
 
 ## Bekannte Grenzen (dokumentiert, bewusst)
 
@@ -115,6 +116,14 @@ deaktiviert das Modul.
 - Ohne erfassten Leistungszeitraum verwendet die E-Rechnung das
   Rechnungsdatum als Leistungsdatum. Das ist eine bewusste Eingabekonvention,
   keine Behauptung, jeder reale Leistungszeitraum entspreche diesem Datum.
+- ZUGFeRD-PDFs betten nur Noto Sans Regular/Bold ein. Zeichen außerhalb dieser
+  Schrift, etwa Emoji oder CJK, sperren Kontrollvorschau, Versand und Storno
+  weiterhin (Produktentscheidung C5: abweisen, bis Bedarf besteht). `zugferd.ts`
+  prüft vor dem Zeichnen alle gezeichneten Angaben; `UnsupportedInvoiceTextError`
+  nennt bis zu zehn unterschiedliche Zeichen mit Unicode-Codepunkt und die
+  betroffenen Felder (z. B. „Mandant – Name“, „Position 2 – Beschreibung“).
+  Versand und Storno zeigen diese Meldung, die Downloadrouten antworten mit
+  HTTP 422 `unsupported_text`. Zeichen werden nicht still ersetzt.
 
 Seit iter86 entfallen: USt je Position (vorher nur Kopfsatz) und die
 fehlende KoSIT-Prüfung — der CI-Job `e-rechnung` validiert jeden Lauf

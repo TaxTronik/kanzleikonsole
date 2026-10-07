@@ -52,6 +52,7 @@ vi.mock('@/server/invoicing/archive', async (importOriginal) => ({
 
 import { GET } from '../route';
 import { archiveFailureMessage } from '@/server/invoicing/archive-failure';
+import { UnsupportedPdfTextError } from '@/server/documents/pdf-fonts';
 
 const INVOICE_ID = '3f2a1c88-5d4e-4b0a-9c11-7e6d5a4b3c2d';
 const UPDATED_AT = new Date('2026-09-01T10:00:00.000Z');
@@ -341,6 +342,24 @@ describe('GET /api/staff/invoices/[id]/xrechnung – ausgestellte Rechnung', () 
       }),
       expect.any(String),
     );
+  });
+
+  it('unsupported_text: nicht darstellbare Zeichen beim Nachziehen → 422 mit Meldung', async () => {
+    tx.invoice.findFirst
+      .mockResolvedValueOnce(invoice(SENT))
+      .mockResolvedValueOnce({ ...SENT, xrechnungDocument: null });
+    const rejected = new UnsupportedPdfTextError([0x674e]);
+    m.ensureZugferdArchive.mockRejectedValue(rejected);
+
+    const response = await request();
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual({
+      error: 'unsupported_text',
+      message: rejected.message,
+    });
+    expect(m.logError).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
   });
 
   it('archive_failed, wenn die XML nach dem Archivpfad nicht verknüpft ist', async () => {
