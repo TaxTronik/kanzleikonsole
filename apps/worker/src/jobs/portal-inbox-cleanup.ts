@@ -1,15 +1,19 @@
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { withSystemContext } from '@taxtronik/db';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { recoverPreparedBytesCommit, type CommitDocumentResult } from '@taxtronik/storage';
 import { connection } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
 
 // Fachkatalog: DSGVO-OPERATIONAL-RETENTION-001, DOC-UPLOAD-JOURNAL-001,
 // PORTAL-INBOX-SUBMISSION-001 (Entwurf), AUDIT-HASH-CHAIN-001. 24 h / 7 Tage
 // sind technische Betriebsdefaults, keine gesetzlichen Fristen.
+//
+// S-01: Batches, Anhänge und das Orphan-Journal liest und schreibt der Job über
+// die App-Rolle im SYSTEM-Kontext des Tenants (withSystemContext, RLS; die
+// SYSTEM-Policies des Posteingangs und von storage_orphan lassen ihn zu).
 
 const DRAFT_TTL_MS = 24 * 60 * 60_000;
 const QUARANTINE_MS = 7 * 24 * 60 * 60_000;
@@ -64,7 +68,7 @@ async function loadTenantCandidates(input: {
   draftCutoff: Date;
   quarantineCutoff: Date;
 }): Promise<{ expiredBatches: number; candidates: CleanupCandidate[] }> {
-  return withWorkerTenantContext(input.tenantId, async (tx) => {
+  return withSystemContext(input.tenantId, async (tx) => {
     // EXPIRED besitzt absichtlich kein discarded_at: DISCARDED ist eine
     // Kontaktentscheidung, EXPIRED dagegen ein technischer SYSTEM-Uebergang.
     const expired = await tx.portalInboxUploadBatch.updateMany({
@@ -141,7 +145,7 @@ async function removeMissingIntent(
   candidate: CleanupCandidate,
   draftCutoff: Date,
 ): Promise<boolean> {
-  return withWorkerTenantContext(candidate.tenantId, async (tx) => {
+  return withSystemContext(candidate.tenantId, async (tx) => {
     const removed = await tx.portalInboxAttachment.deleteMany({
       where: {
         id: candidate.id,
@@ -183,7 +187,7 @@ async function journalCandidate(
   commit: CommitDocumentResult,
 ): Promise<void> {
   const storageVersionId = commit.storageVersionId ?? '';
-  await withWorkerTenantContext(candidate.tenantId, async (tx) => {
+  await withSystemContext(candidate.tenantId, async (tx) => {
     const journaled = await tx.storageOrphan.upsert({
       where: {
         storageBucket_storageKey_storageVersionId: {
@@ -227,6 +231,7 @@ export async function runPortalInboxCleanup(now = new Date()): Promise<{
 }> {
   const draftCutoff = new Date(now.getTime() - DRAFT_TTL_MS);
   const quarantineCutoff = new Date(now.getTime() - QUARANTINE_MS);
+  // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client.
   const tenantIds = (await prismaOwner.tenant.findMany({ select: { id: true } })).map(
     (tenant) => tenant.id,
   );

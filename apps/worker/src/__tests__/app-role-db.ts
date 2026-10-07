@@ -45,13 +45,19 @@ export function assertLoopbackDatabases(flag: string): void {
   }
 }
 
-type AnyFn = (...args: unknown[]) => unknown;
+export type AnyFn = (...args: unknown[]) => unknown;
 
 /**
  * Owner-Client, der nur `allowed` (z. B. `tenant.findMany`, `$disconnect`)
  * an `real` durchreicht. Alles andere wird protokolliert und wirft.
+ * `overrides` ersetzt einen freigegebenen Aufruf, etwa um die Tenant-Liste
+ * eines Fan-outs auf die Fixture-Tenants der Suite zu begrenzen.
  */
-export function guardOwnerClient<T extends object>(real: T, allowed: readonly string[]): T {
+export function guardOwnerClient<T extends object>(
+  real: T,
+  allowed: readonly string[],
+  overrides: Readonly<Record<string, AnyFn>> = {},
+): T {
   const deny = (path: string): never => {
     ownerAccess.denied.push(path);
     throw new Error(`S-01: Owner-Client für ${path} benutzt`);
@@ -60,6 +66,8 @@ export function guardOwnerClient<T extends object>(real: T, allowed: readonly st
     return (...args: unknown[]) => {
       if (!allowed.includes(path)) return deny(path);
       ownerAccess.allowed.push(path);
+      const override = overrides[path];
+      if (override) return override(...args);
       return (Reflect.get(target, key) as AnyFn).apply(target, args);
     };
   };

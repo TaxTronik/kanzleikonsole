@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-033
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/portal-inbox-cleanup.ts
+    rule_ids:
+      - AUDIT-HASH-CHAIN-001
+      - DOC-UPLOAD-JOURNAL-001
+      - DSGVO-OPERATIONAL-RETENTION-001
+      - PORTAL-INBOX-SUBMISSION-001
+    reason: >-
+      Die Bereinigung des Portal-Posteingangs (`portal-inbox-cleanup`) lässt offene
+      Upload-Stapel ablaufen, wählt Staging-Kandidaten, entfernt fehlende Absichten
+      und schreibt das Speicher-Journal über die App-Rolle im SYSTEM-Kontext des
+      Tenants (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS;
+      nur die Tenant-Liste (IDs) bleibt auf der Owner-Verbindung.
+      Transaktionsgrenzen, Status `EXPIRED`, Audit-Nachweis und Journalzeilen
+      bleiben unverändert; eine PostgreSQL-Suite belegt das und dass Stapel und
+      Anhänge fremder Tenants unsichtbar und unberührt bleiben. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/portal-inbox-cleanup-db.test.ts
+      - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-032
     date: '2026-10-07'
     paths:
@@ -4841,6 +4864,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-033` dokumentiert die Bereinigung des
+  Portal-Posteingangs über die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-032` dokumentiert den Sanktionslistenabgleich
   über die App-Rolle.

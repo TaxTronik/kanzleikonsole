@@ -19,7 +19,7 @@ const h = vi.hoisted(() => {
     upsert,
     recover: vi.fn(),
     record: vi.fn(),
-    withWorkerTenantContext: vi.fn(
+    withSystemContext: vi.fn(
       (_tenantId: string, fn: (transaction: typeof tx) => Promise<unknown>) => fn(tx),
     ),
     tx,
@@ -32,8 +32,9 @@ vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({
   prismaOwner: { tenant: { findMany: h.tenantFindMany } },
 }));
-vi.mock('../../tenant-context', () => ({
-  withWorkerTenantContext: h.withWorkerTenantContext,
+// S-01: Tenant-Transaktionen über die App-Rolle (withSystemContext).
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: h.withSystemContext,
 }));
 vi.mock('../../logger', () => ({ log: h.log }));
 vi.mock('@taxtronik/storage', () => ({ recoverPreparedBytesCommit: h.recover }));
@@ -87,7 +88,7 @@ describe('PORTAL-INBOX-SUBMISSION-001 / DSGVO-OPERATIONAL-RETENTION-001 cleanup'
     h.upsert.mockResolvedValue({ tenantId: TENANT });
     h.recover.mockResolvedValue(null);
     h.record.mockResolvedValue({ id: 1n });
-    h.withWorkerTenantContext.mockImplementation(
+    h.withSystemContext.mockImplementation(
       (_tenantId: string, fn: (transaction: typeof h.tx) => Promise<unknown>) => fn(h.tx),
     );
   });
@@ -104,8 +105,8 @@ describe('PORTAL-INBOX-SUBMISSION-001 / DSGVO-OPERATIONAL-RETENTION-001 cleanup'
     });
 
     expect(h.tenantFindMany).toHaveBeenCalledWith({ select: { id: true } });
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
-    expect(h.withWorkerTenantContext.mock.calls[0]![0]).toBe(TENANT);
+    expect(h.withSystemContext).toHaveBeenCalledTimes(1);
+    expect(h.withSystemContext.mock.calls[0]![0]).toBe(TENANT);
     expect(h.updateMany).toHaveBeenCalledWith({
       where: {
         tenantId: TENANT,
@@ -151,8 +152,8 @@ describe('PORTAL-INBOX-SUBMISSION-001 / DSGVO-OPERATIONAL-RETENTION-001 cleanup'
 
     await expect(runPortalInboxCleanup(NOW)).resolves.toMatchObject({ queuedObjects: 1 });
 
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(2);
-    expect(h.withWorkerTenantContext.mock.calls.map((call) => call[0])).toEqual([TENANT, TENANT]);
+    expect(h.withSystemContext).toHaveBeenCalledTimes(2);
+    expect(h.withSystemContext.mock.calls.map((call) => call[0])).toEqual([TENANT, TENANT]);
     expect(h.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -220,7 +221,7 @@ describe('PORTAL-INBOX-SUBMISSION-001 / DSGVO-OPERATIONAL-RETENTION-001 cleanup'
       }),
     );
     expect(h.upsert).not.toHaveBeenCalled();
-    expect(h.withWorkerTenantContext.mock.calls.map((call) => call[0])).toEqual([TENANT, TENANT]);
+    expect(h.withSystemContext.mock.calls.map((call) => call[0])).toEqual([TENANT, TENANT]);
   });
 
   it('journals a recovered PENDING object and does not remove its intent as missing', async () => {
