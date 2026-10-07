@@ -3,12 +3,12 @@
 
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { withSystemContext } from '@taxtronik/db';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { resolveClientWarningRecipientsTx } from '../notification-recipients';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
@@ -22,7 +22,8 @@ function dateFmt(date: Date): string {
 }
 
 async function processPoa(tenantId: string, poaId: string, todayMidnight: Date) {
-  return withWorkerTenantContext(tenantId, async (tx) => {
+  // S-01: über die App-Rolle im SYSTEM-Kontext des Tenants (RLS).
+  return withSystemContext(tenantId, async (tx) => {
     // Serialize with revocation/other lifecycle changes and re-read after the lock.
     // Status, evidence, warning resolution and every notification commit together.
     await tx.$queryRaw`
@@ -109,6 +110,7 @@ async function processPoa(tenantId: string, poaId: string, todayMidnight: Date) 
 export const poaExpiryWorker = createWorker<ChecksJob>(
   JOB_QUEUES.poaExpiry.name,
   async (job) => {
+    // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client.
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]
       : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((tenant) => tenant.id);
@@ -118,10 +120,12 @@ export const poaExpiryWorker = createWorker<ChecksJob>(
       const now = new Date();
       const todayMidnight = berlinTodayUtcMidnight(now);
       const soonCutoff = new Date(now.getTime() + WARN_DAYS_SOON * 24 * 60 * 60 * 1000);
-      const candidates = await prismaOwner.powerOfAttorney.findMany({
-        where: { tenantId, status: 'SIGNED', validUntil: { not: null, lte: soonCutoff } },
-        select: { id: true },
-      });
+      const candidates = await withSystemContext(tenantId, (tx) =>
+        tx.powerOfAttorney.findMany({
+          where: { tenantId, status: 'SIGNED', validUntil: { not: null, lte: soonCutoff } },
+          select: { id: true },
+        }),
+      );
       for (const candidate of candidates) {
         const result = await processPoa(tenantId, candidate.id, todayMidnight);
         soon += result.soon;

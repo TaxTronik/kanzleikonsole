@@ -17,16 +17,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const h = vi.hoisted(() => {
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
-    staffUser: { findMany: vi.fn() },
-    powerOfAttorney: { findMany: vi.fn() },
   };
+  // S-01: Kandidaten und Ablauf laufen über die App-Rolle (withSystemContext).
   const tx = {
     $queryRaw: vi.fn(),
-    powerOfAttorney: { findFirst: vi.fn(), updateMany: vi.fn() },
-    staffUser: prismaOwner.staffUser,
+    powerOfAttorney: { findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
+    staffUser: { findMany: vi.fn() },
   };
-  const withWorkerTenantContext = vi.fn(
-    async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
+  const withSystemContext = vi.fn(async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) =>
+    fn(tx),
   );
   const record = vi.fn();
   const upsertNotification = vi.fn();
@@ -34,7 +33,7 @@ const h = vi.hoisted(() => {
   return {
     prismaOwner,
     tx,
-    withWorkerTenantContext,
+    withSystemContext,
     record,
     upsertNotification,
     resolveNotificationsTx,
@@ -47,7 +46,7 @@ vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
+vi.mock('@taxtronik/db', () => ({ withSystemContext: h.withSystemContext }));
 vi.mock('@taxtronik/db/notification', () => ({
   resolveNotificationsTx: h.resolveNotificationsTx,
 }));
@@ -104,17 +103,16 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(FIXED_NOW);
   vi.resetAllMocks();
-  h.withWorkerTenantContext.mockImplementation(
+  h.withSystemContext.mockImplementation(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(h.tx),
   );
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
-  h.prismaOwner.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }]);
-  h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([]);
+  h.tx.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }]);
+  h.tx.powerOfAttorney.findMany.mockResolvedValue([]);
   h.tx.powerOfAttorney.updateMany.mockResolvedValue({ count: 1 });
   h.tx.$queryRaw.mockResolvedValue([{ id: 'poa-1' }]);
   h.tx.powerOfAttorney.findFirst.mockImplementation(
-    async () =>
-      (await h.prismaOwner.powerOfAttorney.findMany.mock.results.at(-1)?.value)?.[0] ?? null,
+    async () => (await h.tx.powerOfAttorney.findMany.mock.results.at(-1)?.value)?.[0] ?? null,
   );
   h.record.mockResolvedValue({});
   h.upsertNotification.mockResolvedValue(undefined);
@@ -128,7 +126,7 @@ describe('Schwellenlogik', () => {
   it('RF-14: nur SIGNED-Vollmachten im 30-Tage-Relevanz-Fenster werden geladen', async () => {
     await run();
 
-    expect(h.prismaOwner.powerOfAttorney.findMany).toHaveBeenCalledWith(
+    expect(h.tx.powerOfAttorney.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           tenantId: TENANT,
@@ -140,7 +138,7 @@ describe('Schwellenlogik', () => {
   });
 
   it('> 30 Tage Restlaufzeit → weder Notification noch Statuswechsel', async () => {
-    h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([
+    h.tx.powerOfAttorney.findMany.mockResolvedValue([
       poa(new Date(FIXED_NOW.getTime() + 31 * DAY)),
     ]);
 
@@ -152,13 +150,14 @@ describe('Schwellenlogik', () => {
   });
 
   it('genau 30 Tage → POA_EXPIRY_SOON an den Bearbeiter, KEIN Statuswechsel', async () => {
-    h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([
+    h.tx.powerOfAttorney.findMany.mockResolvedValue([
       poa(new Date(FIXED_NOW.getTime() + 30 * DAY)),
     ]);
 
     const result = await run();
 
-    expect(h.withWorkerTenantContext).toHaveBeenCalledOnce();
+    // Kandidaten-Read und Verarbeitung: je eine Transaktion im Kontext des Tenants.
+    expect(h.withSystemContext).toHaveBeenCalledTimes(2);
     expect(h.record).not.toHaveBeenCalled();
     expect(h.upsertNotification).toHaveBeenCalledTimes(1);
     expect(h.upsertNotification).toHaveBeenCalledWith(
@@ -182,11 +181,12 @@ describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
     // validUntil ist @db.Date (UTC-Mitternacht). Am validUntil-Tag ist die
     // Vollmacht noch gültig — sie läuft erst am Folgetag ab. Kein Statuswechsel.
     const validUntil = new Date('2026-06-09T00:00:00.000Z');
-    h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([poa(validUntil)]);
+    h.tx.powerOfAttorney.findMany.mockResolvedValue([poa(validUntil)]);
 
     const result = await run();
 
-    expect(h.withWorkerTenantContext).toHaveBeenCalledOnce();
+    // Kandidaten-Read und Verarbeitung: je eine Transaktion im Kontext des Tenants.
+    expect(h.withSystemContext).toHaveBeenCalledTimes(2);
     expect(h.record).not.toHaveBeenCalled();
     expect(h.upsertNotification).toHaveBeenCalledWith(
       h.tx,
@@ -202,12 +202,12 @@ describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
 
   it('validUntil == gestern (Datum) → abgelaufen: guarded updateMany + poa.expire im selben Tx', async () => {
     const validUntil = new Date('2026-06-08T00:00:00.000Z');
-    h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([poa(validUntil)]);
+    h.tx.powerOfAttorney.findMany.mockResolvedValue([poa(validUntil)]);
 
     const result = await run();
 
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
-    expect(h.withWorkerTenantContext.mock.calls[0]![0]).toBe(TENANT);
+    // Kandidaten-Read und Verarbeitung: je eine Transaktion im Kontext des Tenants.
+    expect(h.withSystemContext.mock.calls.map((call) => call[0])).toEqual([TENANT, TENANT]);
     // Guarded: nur SIGNED → EXPIRED (paralleler Lauf darf nicht doppelt schreiben)
     expect(h.tx.powerOfAttorney.updateMany).toHaveBeenCalledWith({
       where: {
@@ -244,9 +244,7 @@ describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
   });
 
   it('verlorener Status-Claim → kein Audit-Record und keine veraltete Notification', async () => {
-    h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([
-      poa(new Date(FIXED_NOW.getTime() - 5 * DAY)),
-    ]);
+    h.tx.powerOfAttorney.findMany.mockResolvedValue([poa(new Date(FIXED_NOW.getTime() - 5 * DAY))]);
     h.tx.powerOfAttorney.updateMany.mockResolvedValue({ count: 0 });
 
     await run();
@@ -258,7 +256,7 @@ describe('RF-8: Ablauf — Statuswechsel + Audit-Record in einer Tx', () => {
 
 describe('Empfänger', () => {
   it('ohne Responsibilities → ADMIN/PARTNER-Fallback', async () => {
-    h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([
+    h.tx.powerOfAttorney.findMany.mockResolvedValue([
       poa(new Date(FIXED_NOW.getTime() + 10 * DAY), {
         client: { name: 'Muster GmbH', responsibilities: [] },
       }),
@@ -271,8 +269,8 @@ describe('Empfänger', () => {
   });
 
   it('gar keine Empfänger → Ablaufstatus und Evidence bleiben unabhängig von der Zustellung', async () => {
-    h.prismaOwner.staffUser.findMany.mockResolvedValue([]);
-    h.prismaOwner.powerOfAttorney.findMany.mockResolvedValue([
+    h.tx.staffUser.findMany.mockResolvedValue([]);
+    h.tx.powerOfAttorney.findMany.mockResolvedValue([
       poa(new Date(FIXED_NOW.getTime() - DAY), {
         client: { name: 'Muster GmbH', responsibilities: [] },
       }),
@@ -280,7 +278,8 @@ describe('Empfänger', () => {
 
     const result = await run();
 
-    expect(h.withWorkerTenantContext).toHaveBeenCalledOnce();
+    // Kandidaten-Read und Verarbeitung: je eine Transaktion im Kontext des Tenants.
+    expect(h.withSystemContext).toHaveBeenCalledTimes(2);
     expect(h.tx.powerOfAttorney.updateMany).toHaveBeenCalledOnce();
     expect(h.record).toHaveBeenCalledOnce();
     expect(h.upsertNotification).not.toHaveBeenCalled();

@@ -1,5 +1,26 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-027
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/poa-expiry-check.ts
+    rule_ids:
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - POA-LIFECYCLE-001
+    reason: >-
+      Der Vollmachtsablauf (`poa-expiry-check`) sucht unterschriebene Vollmachten
+      und setzt sie samt Audit-Ereignis, Auflösung der Ablaufwarnung und
+      Benachrichtigungen über die App-Rolle im SYSTEM-Kontext des Tenants
+      (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS auf
+      `EXPIRED` bzw. kündigt den Ablauf an; nur die Tenant-Liste bleibt auf der
+      Owner-Verbindung. Fristen, Statusübergang und Empfänger bleiben unverändert;
+      eine PostgreSQL-Suite belegt das und dass Vollmachten fremder Tenants
+      unsichtbar bleiben. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts
+      - apps/worker/src/jobs/__tests__/poa-expiry-check-db.test.ts
+      - apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-026
     date: '2026-10-07'
     paths:
@@ -4714,6 +4735,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-027` dokumentiert den Vollmachtsablauf über
+  die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-026` dokumentiert die Prüfung überfälliger
   Rechnungen über die App-Rolle.

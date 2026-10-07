@@ -14,23 +14,22 @@ const h = vi.hoisted(() => ({
 }));
 const tx = vi.hoisted(() => ({
   $queryRaw: h.lock,
-  powerOfAttorney: { findFirst: vi.fn(), updateMany: h.update },
+  powerOfAttorney: {
+    findMany: vi.fn(async () => (h.state.status === 'SIGNED' ? [h.candidate] : [])),
+    findFirst: vi.fn(),
+    updateMany: h.update,
+  },
   staffUser: { findMany: vi.fn() },
 }));
 vi.mock('bullmq', () => import('./mocks/bullmq'));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 vi.mock('../../prisma-owner', () => ({
-  prismaOwner: {
-    tenant: { findMany: vi.fn(async () => [{ id: 'tenant-1' }]) },
-    staffUser: { findMany: vi.fn(async () => (h.noRecipients ? [] : [{ id: 'admin-1' }])) },
-    powerOfAttorney: {
-      findMany: vi.fn(async () => (h.state.status === 'SIGNED' ? [h.candidate] : [])),
-    },
-  },
+  prismaOwner: { tenant: { findMany: vi.fn(async () => [{ id: 'tenant-1' }]) } },
 }));
-vi.mock('../../tenant-context', () => ({
-  withWorkerTenantContext: async (_tenant: string, run: (value: typeof tx) => Promise<unknown>) => {
+// S-01: Kandidaten und Ablauf laufen über die App-Rolle (withSystemContext).
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: async (_tenant: string, run: (value: typeof tx) => Promise<unknown>) => {
     const snapshot = structuredClone(h.state);
     try {
       return await run(tx);
