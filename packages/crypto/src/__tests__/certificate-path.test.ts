@@ -4,10 +4,17 @@
 // Detailfälle der CRL-Auswertung (URL-Policy, Distribution Points,
 // CRL-Extensions, Größengrenzen, AKI/cRLSign) belegt zusätzlich
 // apps/web/src/server/auth/__tests__/simplewebauthn-crl-hardening.test.ts.
+// Den SSRF-Schutz des Abrufs (Adressklassen, Pinning, Redirects) belegt
+// crl-fetch.test.ts; hier beantwortet ein Stub des globalen fetch die
+// CRL-URLs mit genau den Argumenten, die certificate-path an fetchCrl gibt.
 // =============================================================================
 
 import type { webcrypto } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../crl-fetch', () => ({
+  fetchCrl: (url: string, init: RequestInit) => globalThis.fetch(url, init),
+}));
 import {
   AuthorityKeyIdentifierExtension,
   BasicConstraintsExtension,

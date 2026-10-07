@@ -115,7 +115,16 @@ aufgebauten Zertifikatskette angegebenen CA-CRL-Endpunkte über HTTP oder HTTPS
 auf den Standardports 80 beziehungsweise 443 erreichbar sein – für die
 MDS-Signaturkette vom Worker, für die Attestationsketten beim Enrollment
 (Abschnitt 2) weiterhin vom App-Container. Redirects sowie URLs mit
-Zugangsdaten oder abweichenden Ports werden abgewiesen. Unterstützt wird bewusst nur genau ein unpartitionierter
+Zugangsdaten oder abweichenden Ports werden abgewiesen. Der CRL-Host muss
+ausschließlich auf öffentliche Adressen auflösen: Loopback-, private
+(RFC 1918, RFC 4193), Link-local-, CGNAT-, Multicast- und unspezifizierte
+Adressen, auch in IPv4-gemappter Form, sowie weitere nicht global erreichbare
+Bereiche werden ohne Verbindungsaufbau abgewiesen. Der Host wird einmal
+aufgelöst und die Verbindung genau zu den geprüften Adressen aufgebaut (kein
+DNS-Rebinding). Eine Egress-Umgebung, die externe Namen auf interne
+Proxy-Adressen auflöst (Split-Horizon-DNS), blockiert die Sperrlistenprüfung
+deshalb fail-closed; eine Ausnahme ist dafür nicht konfigurierbar.
+Unterstützt wird bewusst nur genau ein unpartitionierter
 Distribution Point mit genau einer vollständigen URI. Mehrere Points oder
 Namen, `reasons`, `cRLIssuer` und relative Namen werden vor dem Abruf
 fail-closed abgewiesen. Die Kanzlei muss MDS- und benötigte CA-Ziele in ihrer
@@ -356,7 +365,7 @@ Drittlandsbezug für ihr Deployment selbst bewerten.
       verwenden dieselbe Revision und denselben Hash
 - [ ] Worker erhält dieselbe `WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST` wie die App
 - [ ] Systemzeit, DNS und TLS-Egress des Worker-Containers zu `mds.fidoalliance.org:443` funktionieren
-- [ ] Benötigte CA-CRL-Ziele sind ohne Redirect auf Port 80/443 erreichbar (MDS-Kette vom Worker, Attestationsketten von der App)
+- [ ] Benötigte CA-CRL-Ziele lösen auf öffentliche Adressen auf und sind ohne Redirect auf Port 80/443 erreichbar (MDS-Kette vom Worker, Attestationsketten von der App)
 - [ ] Migration und Owner-Zugriff auf `fido_mds_trust_state` funktionieren; die App-Rolle hat keine Tabellenrechte und nur EXECUTE auf den exakten Serien-/Policy-Lock-Guard
 - [ ] Mindestens ein Lauf von `fido-mds-refresh` war erfolgreich (Admin-Seite „Jobs“ ohne „veraltet“); `snapshot_serial` entspricht der `blob_serial` des Ankers
 - [ ] Geschützte MDS-`x5c`-Kette entspricht der im Release freigegebenen Signeridentität

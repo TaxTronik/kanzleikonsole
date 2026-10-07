@@ -64,6 +64,8 @@ require_line pnpm-workspace.yaml "^savePrefix:[[:space:]]*''$" \
 # webauthn-library-contract.test.ts und fido-mds-library-contract.test.ts fuer
 # genau diese Version, daher bleibt sie exakt gepinnt.
 WEBAUTHN_PATH_CHECK='packages/crypto/src/certificate-path.ts'
+# T-02-Folge: CRL-Abrufe nur an oeffentliche, gepinnte Adressen ohne Redirects.
+WEBAUTHN_CRL_FETCH='packages/crypto/src/crl-fetch.ts'
 WEBAUTHN_ATTESTATION='apps/web/src/server/auth/webauthn-attestation.ts'
 WEBAUTHN_MDS_VERIFY='apps/worker/src/jobs/fido-mds-verify.ts'
 require_line apps/web/package.json '"@simplewebauthn/server"[[:space:]]*:[[:space:]]*"13\.3\.3"' \
@@ -98,6 +100,11 @@ elif [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" 'data.verify({ publicKey: issuer.pu
      [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "const ISSUING_DISTRIBUTION_POINT_OID = '2.5.29.28'")" -ne 1 ] || \
      [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "const FRESHEST_CRL_OID = '2.5.29.46'")" -ne 1 ]; then
   error "Die CRL-Pruefung muss an den CRL-Signaturalgorithmus sowie genau eine unpartitionierte Voll-CRL gebunden sein."
+elif [ ! -f "$WEBAUTHN_CRL_FETCH" ] || \
+     [ "$(fixed_count "$WEBAUTHN_PATH_CHECK" "await fetchCrl(crlURL, { signal, redirect: 'error' })")" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_CRL_FETCH" 'lookup: pinnedLookup(bareHostname(url), addresses),')" -ne 1 ] || \
+     [ "$(fixed_count "$WEBAUTHN_CRL_FETCH" 'if (status >= 300 && status < 400) {')" -ne 1 ]; then
+  error "Der CRL-Abruf muss oeffentliche Adressen erzwingen, die Verbindung pinnen und Redirects abweisen ($WEBAUTHN_CRL_FETCH)."
 elif [ "$(fixed_count "$WEBAUTHN_ATTESTATION" 'if (!extension || extension.critical) {')" -ne 1 ] || \
      [ "$(fixed_count "$WEBAUTHN_ATTESTATION" 'return { ...statement, attestationRootCertificates: [] };')" -ne 1 ] || \
      [ "$(fixed_count "$WEBAUTHN_ATTESTATION" 'await validateCertificatePath(chain, roots, { signal: input.signal });')" -ne 1 ]; then

@@ -5,7 +5,9 @@
 // durch die Bibliothek (ohne deren Ketten-/CRL-Prüfung), danach Kette und CRLs
 // durch @taxtronik/crypto/certificate-path gegen die Anker. Die gepinnten
 // GlobalSign-Anker ersetzt hier eine Test-Wurzel; ein eigener Fall vergleicht
-// die echten Anker mit der Voreinstellung der Bibliothek.
+// die echten Anker mit der Voreinstellung der Bibliothek. Den SSRF-geschützten
+// CRL-Abruf (fetchCrl) ersetzt ein Durchreichen an den gestubbten globalen
+// fetch; seinen Schutz belegt packages/crypto/src/__tests__/crl-fetch.test.ts.
 // =============================================================================
 
 import { webcrypto, X509Certificate as NodeX509Certificate } from 'node:crypto';
@@ -30,6 +32,9 @@ import { SettingsService } from '@simplewebauthn/server';
 const LIBRARY_MDS_ROOTS = SettingsService.getRootCertificates({ identifier: 'mds' });
 
 const anchors = vi.hoisted(() => ({ pem: [] as string[] }));
+vi.mock('@taxtronik/crypto/crl-fetch', () => ({
+  fetchCrl: (url: string, init: RequestInit) => globalThis.fetch(url, init),
+}));
 vi.mock('../fido-mds-trust-anchors', () => ({
   get FIDO_MDS_TRUST_ANCHORS() {
     return anchors.pem;

@@ -12,10 +12,16 @@
 //     Redirect-Sperre und fail-open bei Abruffehlern.
 // Schlägt ein Fall nach einem Upgrade fehl, hat sich das Upstream-Verhalten
 // geändert: Wurzelentzug und Vorprüfung neu bewerten (docs/development/
-// simplewebauthn-upstream.md).
+// simplewebauthn-upstream.md). Der SSRF-geschützte CRL-Abruf der eigenen
+// Prüfung (fetchCrl) reicht hier an denselben gestubbten globalen fetch durch,
+// den auch die Bibliothek nutzt; seinen Schutz belegt crl-fetch.test.ts.
 // =============================================================================
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@taxtronik/crypto/crl-fetch', () => ({
+  fetchCrl: (url: string, init: RequestInit) => globalThis.fetch(url, init),
+}));
 import {
   MetadataService,
   verifyRegistrationResponse,

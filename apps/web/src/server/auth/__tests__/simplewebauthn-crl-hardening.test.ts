@@ -1,8 +1,14 @@
 // Fachkatalog: ACCESS-TENANT-RLS-001
 // T-02: Die Härtung lag bis dahin als Patch in @simplewebauthn/server 13.3.3 und
 // ist jetzt Repository-Code (@taxtronik/crypto/certificate-path); nur Import und
-// Titel haben sich geändert.
+// Titel haben sich geändert. Den SSRF-geschützten Abruf (fetchCrl) ersetzt hier
+// ein Durchreichen an den gestubbten globalen fetch; seinen Schutz belegt
+// packages/crypto/src/__tests__/crl-fetch.test.ts.
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@taxtronik/crypto/crl-fetch', () => ({
+  fetchCrl: (url: string, init: RequestInit) => globalThis.fetch(url, init),
+}));
 import {
   AuthorityKeyIdentifierExtension,
   BasicConstraintsExtension,

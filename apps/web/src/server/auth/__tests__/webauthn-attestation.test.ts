@@ -4,9 +4,15 @@
 // und CRLs: gültige Kette zur Statement-Wurzel, abgelaufenes Zertifikat,
 // falscher Aussteller, Sperrung per CRL, CRL-Abruffehler und -Zeitlimit
 // (fail-closed), Selbstbezug wie in SimpleWebAuthn sowie die AAGUID-Bindung.
+// Den SSRF-geschützten CRL-Abruf (fetchCrl) ersetzt hier ein Durchreichen an
+// den gestubbten globalen fetch; seinen Schutz belegt crl-fetch.test.ts.
 // =============================================================================
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('@taxtronik/crypto/crl-fetch', () => ({
+  fetchCrl: (url: string, init: RequestInit) => globalThis.fetch(url, init),
+}));
 import { Extension } from '@peculiar/x509';
 import type { MetadataStatement } from '@simplewebauthn/server';
 import {

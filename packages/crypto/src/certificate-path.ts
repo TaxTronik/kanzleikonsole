@@ -19,10 +19,13 @@
 //   - Erst danach prüft isCertRevoked jedes Nicht-Wurzel-Zertifikat gegen die
 //     CRL seines tatsächlichen Issuers in dieser Kette: nur http/https auf
 //     Port 80/443, ohne Zugangsdaten und Redirects, mit dem Abbruchsignal des
-//     Aufrufers und höchstens 5 MiB. Abruf-, HTTP-, Parse- und Prüffehler
-//     sperren (fail-closed). Die CRL muss frisch, vom Issuer signiert und
-//     ungeteilt sein: genau ein Distribution Point mit genau einer URI, keine
-//     Delta-/IDP-/Freshest-CRL und keine unbekannten kritischen Extensions.
+//     Aufrufers und höchstens 5 MiB. Der Abruf (crl-fetch.ts) verbindet nur
+//     mit öffentlichen Adressen, die er genau einmal auflöst und prüft, und
+//     pinnt die Verbindung darauf (kein DNS-Rebinding). Abruf-, Adress-,
+//     HTTP-, Parse- und Prüffehler sperren (fail-closed). Die CRL muss
+//     frisch, vom Issuer signiert und ungeteilt sein: genau ein Distribution
+//     Point mit genau einer URI, keine Delta-/IDP-/Freshest-CRL und keine
+//     unbekannten kritischen Extensions.
 //   - Der Sperrstatus wird je Issuer-Fingerprint, Seriennummer und CRL-URL
 //     höchstens bis zum signierten nextUpdate gecacht (max. 256 Einträge).
 //
@@ -42,6 +45,7 @@ import {
   X509Crl,
   type Extension,
 } from '@peculiar/x509';
+import { fetchCrl } from './crl-fetch';
 
 const MAX_PATH_CERTIFICATES = 5;
 const MAX_TRUST_ANCHORS = 64;
@@ -263,8 +267,8 @@ async function readCRLBytes(response: Response): Promise<ArrayBuffer> {
 
 async function downloadCRL(crlURL: string, signal: AbortSignal | undefined): Promise<ArrayBuffer> {
   try {
-    // globalThis.fetch zur Aufrufzeit: Tests ersetzen den globalen Abruf.
-    const response = await globalThis.fetch(crlURL, { signal, redirect: 'error' });
+    // SSRF-Schutz: nur öffentliche, einmal aufgelöste und gepinnte Adressen.
+    const response = await fetchCrl(crlURL, { signal, redirect: 'error' });
     if (!response.ok) {
       throw new Error(`CRL endpoint responded with HTTP ${response.status}`);
     }

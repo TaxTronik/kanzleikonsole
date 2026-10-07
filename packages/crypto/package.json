@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./certificate-path": "./src/certificate-path.ts",
+    "./crl-fetch": "./src/crl-fetch.ts",
     "./secret-slots": "./src/secret-slots.ts"
   },
   "scripts": {

@@ -575,7 +575,8 @@
         "packages/db/prisma/migrations/20261007100400_document_mandate_artifact_flag/migration.sql",
         "apps/web/src/server/auth/authjs-route.ts",
         "apps/web/src/app/api/auth/staff/[...nextauth]/route.ts",
-        "apps/web/src/app/api/auth/portal/[...nextauth]/route.ts"
+        "apps/web/src/app/api/auth/portal/[...nextauth]/route.ts",
+        "packages/crypto/src/crl-fetch.ts"
       ],
       "test_refs": [
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
@@ -629,7 +630,9 @@
         "apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts",
         "packages/db/src/__tests__/document-mandate-artifact-flag.test.ts",
         "apps/web/src/server/auth/__tests__/authjs-route.test.ts",
-        "apps/web/src/server/auth/__tests__/password-hash-pool.test.ts"
+        "apps/web/src/server/auth/__tests__/password-hash-pool.test.ts",
+        "packages/crypto/src/__tests__/crl-fetch.test.ts",
+        "packages/crypto/src/__tests__/crl-fetch-pinning.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",

@@ -120,6 +120,7 @@ code_refs:
   - apps/web/src/server/auth/authjs-route.ts
   - apps/web/src/app/api/auth/staff/[...nextauth]/route.ts
   - apps/web/src/app/api/auth/portal/[...nextauth]/route.ts
+  - packages/crypto/src/crl-fetch.ts
 test_refs:
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts
@@ -173,6 +174,8 @@ test_refs:
   - packages/db/src/__tests__/document-mandate-artifact-flag.test.ts
   - apps/web/src/server/auth/__tests__/authjs-route.test.ts
   - apps/web/src/server/auth/__tests__/password-hash-pool.test.ts
+  - packages/crypto/src/__tests__/crl-fetch.test.ts
+  - packages/crypto/src/__tests__/crl-fetch-pinning.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -561,7 +564,12 @@ gebunden; Sperrlisten müssen frisch und vom tatsächlichen Issuer signiert sein
 Mehrere oder partitionierte Distribution Points, Reason-/Issuer-Scope,
 Zertifikat-seitige Freshest-CRL-Verweise, Delta-/IDP-/Freshest-CRLs und
 unbekannte kritische CRL-Extensions werden fail-closed abgewiesen, damit keine
-partielle Sperrliste als vollständige Negativauskunft gilt.
+partielle Sperrliste als vollständige Negativauskunft gilt. CRL-Abrufe
+erreichen nur öffentliche Adressen: Der Host wird einmal aufgelöst;
+Loopback-, private, Link-local-, CGNAT-, Multicast- und unspezifizierte
+Adressen, auch IPv4-gemappt, werden ohne Verbindungsaufbau abgewiesen. Die
+Verbindung ist auf die geprüften Adressen gepinnt, Redirects werden nicht
+verfolgt; jede Abweisung sperrt wie eine nicht erreichbare Sperrliste.
 Die Zertifikat-AAGUID muss verpflichtend zur signierten Authenticator-AAGUID
 passen. Größen- und 30-Sekunden-Grenzen begrenzen Registrierung und externe
 Prüfung. Nach kryptografischer Prüfung von Signatur, fortlaufender Serie und
@@ -737,7 +745,10 @@ Gesamtzeitlimit. Der direkte CRL-Härtungstest belegt Fail-close bei Netzwerk-,
 HTTP-, Parse-, Signatur-, Issuer- und Freshness-Fehlern, Chain-before-fetch,
 strikte CA-Constraints, gemischte RSA-Signaturhashes, die Ablehnung
 partitionierter/gescopter/Delta-CRLs, die Abbruchweitergabe sowie das
-Größenlimit. Migration und Laufzeittest belegen Singleton-/
+Größenlimit. Der CRL-Abruftest belegt die gesperrten Adressklassen für IPv4
+und IPv6 samt gemappter Formen, die einmalige Auflösung trotz geänderter
+zweiter DNS-Antwort, die gepinnte Verbindung, die Redirect-Sperre und den
+Fail-close der Pfadprüfung. Migration und Laufzeittest belegen Singleton-/
 Initialzustandsconstraints, den Tabellenrechteentzug der App-Rolle, die
 transaktionale Installation des Policy-Guards, den eng gewährten Guard für das
 exakte Tripel aus Serie, Policy-Revision und Policy-Hash sowie dessen

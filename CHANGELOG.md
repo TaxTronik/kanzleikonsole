@@ -1505,6 +1505,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** CRL-Abrufe der Hardware-Schlüssel-Prüfung (Attestationskette in
+  der App, MDS-Signaturkette im Worker) erreichen nur noch öffentliche
+  Adressen: Der Host wird einmal aufgelöst; Loopback-, private, Link-local-,
+  CGNAT-, Multicast- und unspezifizierte Adressen, auch IPv4-gemappt, werden
+  abgewiesen; die Verbindung ist auf die geprüften Adressen gepinnt (kein
+  DNS-Rebinding), Redirects werden nicht verfolgt. Ein abgewiesenes Ziel sperrt
+  wie eine nicht erreichbare Sperrliste (`ACCESS-TENANT-RLS-001`).
 - **[Scope]** Backup-Codes im zweiten Anmeldeschritt werden im
   Worker-Thread-Pool der Passwortprüfung und stets gegen alle gespeicherten
   Hashes verglichen; Antwortzeit und Hauptthread-Last verraten nicht mehr,
