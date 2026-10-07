@@ -17,6 +17,9 @@
 //
 // Ist der Hardware-Zugang zentral deaktiviert (WEBAUTHN_HARDWARE_AAGUID_ALLOWLIST
 // leer oder mit Null-AAGUID), ruft der Job den Metadata Service nicht ab.
+//
+// S-01: Globaler, mandantenfreier Stand ohne App-Tabellenrechte: der Job
+// schreibt ihn über den Owner-Client.
 // =============================================================================
 
 import { createHash } from 'node:crypto';

@@ -28,7 +28,10 @@
 // Fristen leap-year-korrekt über setFullYear (nicht n*365 Tage).
 // Idempotent: doppelte Ausführung pro Tag ist ein no-op (zweiter Lauf findet
 // nichts mehr jenseits des Cutoffs). prismaOwner, weil systemweite Wartung
-// über alle Tenants (wie magic-link-cleanup) — bewusst BYPASSRLS.
+// über alle Tenants (wie magic-link-cleanup) — bewusst BYPASSRLS. S-01: Die
+// Purge-Funktion app.purge_tax_deadline_request_links darf nur der Owner
+// ausführen, und auf tax_deadline_notification_history hat die App-Rolle keine
+// Rechte.
 //
 // Audit-Nachweis: Datenvernichtung braucht einen Vernichtungsvermerk in der
 // Hash-Chain (Art. 5 Abs. 2 — analog gwg.check.destroy: nur Zähler, keine

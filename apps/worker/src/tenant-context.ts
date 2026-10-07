@@ -21,6 +21,8 @@
 // withSystemContext. Für Kerne mit eigenem DB-Parameter (z. B. @taxtronik/tax)
 // stellt `systemContextClient` dieselbe Auto-Commit-Semantik wie der
 // Owner-Client bereit, aber über die App-Rolle im SYSTEM-Kontext des Tenants.
+// withWorkerTenantContext nutzen nur noch Owner-Pfade mit Begründung im Job
+// (mail-outbox-deliver, workflow-feedback, dsgvo-retention).
 // =============================================================================
 
 import type { PrismaClient } from '@prisma/client';

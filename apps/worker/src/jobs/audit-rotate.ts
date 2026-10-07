@@ -36,6 +36,10 @@
 //     anschließend bereinigt
 //
 // Schedule: wöchentlich (siehe scheduler.ts).
+//
+// S-01: Archivierung ist Wartung und bleibt beim Owner-Client: audit_archive
+// fortschreiben und im Modus HARD archivierte audit_log-Zeilen löschen darf die
+// App-Rolle bewusst nicht.
 // =============================================================================
 
 import { createWorker } from '../worker-factory';

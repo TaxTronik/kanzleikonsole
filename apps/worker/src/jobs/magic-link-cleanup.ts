@@ -10,6 +10,9 @@
 // nach 7 Tagen ist der Token in beiden Fällen wertlos.
 //
 // Idempotent: bei doppelter Ausführung pro Tag ist die zweite ein no-op.
+//
+// S-01: Mandantenübergreifende Wartung abgelaufener Tokens über den
+// Owner-Client.
 // =============================================================================
 
 import { createWorker } from '../worker-factory';

@@ -247,6 +247,8 @@ export async function authenticateN8nCallback(
     callbackScopes: string[];
   } | null;
   try {
+    // S-01: Vor der Credential-Prüfung gibt es keinen Tenant-Kontext; nur diese
+    // Auflösung Key-ID → Connection/Tenant liest der Owner-Client.
     connection = await prismaOwner.n8nConnection.findUnique({
       where: { callbackKeyId },
       select: {

@@ -10,6 +10,7 @@ import { runSanctionsRefresh } from './sanctions-refresh';
 export const mailboxPollWorker = createWorker<ChecksJob>(
   JOB_QUEUES.mailboxPoll.name,
   async (job) => {
+    // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client.
     const tenants = job.data.tenantId
       ? [{ id: job.data.tenantId }]
       : await prismaOwner.tenant.findMany({ select: { id: true } });

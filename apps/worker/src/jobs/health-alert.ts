@@ -18,6 +18,9 @@
 //     Neustart bei failing HEALTHCHECK braucht es einen externen Mechanismus
 //     (autoheal-Sidecar oder Host-systemd-Timer) UND einen externen Uptime-
 //     Check auf GET /api/health — siehe docs/operations/day-2-operations.md.
+//
+// S-01: Betriebsüberwachung über alle Tenants (Erreichbarkeit, Aktualität der
+// Anker, Backup-Status) ohne Mandantendaten: liest über den Owner-Client.
 // =============================================================================
 
 import { Socket } from 'node:net';

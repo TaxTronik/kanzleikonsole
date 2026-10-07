@@ -1,5 +1,36 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-041
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/audit-rotate.ts
+      - apps/worker/src/jobs/dsgvo-retention.ts
+      - apps/worker/src/jobs/fido-mds-refresh.ts
+      - apps/worker/src/jobs/magic-link-cleanup.ts
+      - apps/worker/src/jobs/n8n-retention.ts
+      - apps/worker/src/jobs/storage-orphan-cleanup.ts
+      - apps/worker/src/jobs/workflow-feedback.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-ARCHIVE-001
+      - CLIENT-FEEDBACK-001
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - DSGVO-OPERATIONAL-RETENTION-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - WORKFLOW-LIFECYCLE-001
+    reason: >-
+      Die Pfade, die nach S-01 weiter die Owner-Verbindung nutzen (u. a.
+      Audit-Archivierung, DSGVO-Löschläufe, Magic-Link- und n8n-Bereinigung,
+      Bereinigung verwaister Speicherobjekte, FIDO-Metadaten, Workflow-Feedback),
+      nennen ihren Grund in einer Kommentarzeile. Nur Kommentare; Verhalten
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/audit-rotate.test.ts
+      - apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts
+      - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
+      - apps/worker/src/jobs/__tests__/workflow-feedback.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-040
     date: '2026-10-07'
     paths:
@@ -5003,6 +5034,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-041` dokumentiert die Begründung der
+  verbleibenden Owner-Pfade im Worker.
 
 - 2026-10-07: `FK-EXC-20261007-040` dokumentiert das Tagessiegel über die
   App-Rolle.

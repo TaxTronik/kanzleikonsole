@@ -11,6 +11,8 @@ const evidence = new EvidenceService(new LocalTimestampAdapter());
 
 // Fachkatalog: WORKFLOW-LIFECYCLE-001, CLIENT-FEEDBACK-001.
 // The workflow row is the durable completion dispatch; no external delivery occurs.
+// S-01: stays on the owner client: the client_interaction policies admit only
+// STAFF and CLIENT_CONTACT actors, not the SYSTEM context (open decision).
 export async function runWorkflowFeedback(now = new Date()) {
   const candidates = await prismaOwner.workflowInstance.findMany({
     where: {

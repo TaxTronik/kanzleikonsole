@@ -5,6 +5,11 @@
 // mehrere abonnierende Workflows unabhängig voneinander. Bereits liegende
 // Altjobs mit `{ outboxId }` werden beim ersten Lauf in eine Legacy-Delivery
 // materialisiert und bleiben rolling-deploy-kompatibel.
+//
+// S-01: Bleibt beim Owner-Client: Der Job kennt nur die Delivery-ID, und
+// Zustellungen tenantloser Ereignisse (tenant_id NULL) sind unter der
+// Tenant-RLS nicht erreichbar; Zustellung, Retry und Reconcile laufen daher
+// über den Owner-Client.
 // =============================================================================
 
 import { randomUUID } from 'node:crypto';

@@ -6,6 +6,9 @@
 // Gehashte Callback-Idempotenzbelege bleiben 180 Tage erhalten.
 // Kandidatensuche und Delete wiederholen dieselben Terminal-Bedingungen, damit
 // ein paralleler manueller Retry nicht zwischen SELECT und DELETE verloren geht.
+//
+// S-01: Mandantenübergreifende Wartung inklusive tenantloser Outbox-Zeilen
+// über den Owner-Client.
 // =============================================================================
 
 import { createWorker } from '../worker-factory';

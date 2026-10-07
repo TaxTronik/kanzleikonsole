@@ -5,6 +5,10 @@
 // — Pendant zu apps/web/src/server/n8n/outbox.ts. Der Worker BESITZT die
 // n8n-deliver-Queue, deshalb ohne die withTimeout-Deckelung der Web-Server-
 // Actions: Jobs laufen hier nicht in einem interaktiven Request.
+//
+// S-01: Der Enqueue-Kern schreibt auch tenantlose Ereignisse und prüft global
+// eindeutige Dedupe-Schlüssel; beides geht unter der Tenant-RLS nicht, daher
+// Owner-Client.
 // =============================================================================
 
 import type { N8nEventName } from '@taxtronik/n8n-shared';

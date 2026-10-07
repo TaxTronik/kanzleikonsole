@@ -12,6 +12,8 @@ import {
   type TenantBacklog,
 } from '../maintenance-backlog';
 
+// S-01: Systemweite Speicherbereinigung über das gemeinsame Orphan-Journal aller
+// Tenants (Claims, Abgleich mit Dokumentfassungen) bleibt beim Owner-Client.
 const CLAIM_STALE_MS = 30 * 60_000;
 // Ein verlorenes COMMIT-ACK ist zunaechst mehrdeutig. Der Abstand stellt
 // sicher, dass die urspruengliche DB-Transaktion beendet ist, bevor wir ihren

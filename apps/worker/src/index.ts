@@ -85,7 +85,8 @@ async function shutdown(reason: string) {
   try {
     await Promise.all(ALL_WORKERS.map((w) => w.close()));
     // RF-13: auch den Prisma-Pool sauber schließen — vorher blieben offene
-    // Postgres-Connections bis zum Prozess-Ende stehen.
+    // Postgres-Connections bis zum Prozess-Ende stehen. S-01: Der Owner-Pool
+    // dient nur noch Wartung und mandantenübergreifenden Listen.
     await prismaOwner.$disconnect();
     await connection.quit();
     log.info('worker: shutdown complete');

@@ -6,6 +6,10 @@
 // emittieren kann (Auto-Anforderungen aus Steuerterminen). Hier bleibt nur
 // die Web-Infrastruktur: prismaOwner-Singleton, Web-Logger und der
 // withTimeout-gedeckelte BullMQ-Add.
+//
+// S-01: Der Enqueue-Kern schreibt auch tenantlose Ereignisse und prüft global
+// eindeutige Dedupe-Schlüssel; beides geht unter der Tenant-RLS nicht, daher
+// Owner-Client.
 // =============================================================================
 
 import type { N8nEventName } from '@taxtronik/n8n-shared';

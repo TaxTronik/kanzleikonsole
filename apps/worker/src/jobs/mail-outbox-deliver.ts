@@ -6,6 +6,10 @@
 // Transaktionen für Statuswechsel und Kanzlei-Hinweis, Versand über die
 // Worker-Adapter von @taxtronik/mail (registrieren Logger und n8n-Emitter) und
 // Anhänge aus der gebundenen, SHA-256-geprüften Dokumentfassung.
+//
+// S-01: Bleibt beim Owner-Client: Die App-Rolle darf mail_outbox bewusst nur
+// anlegen und lesen; Claims und Statuswechsel des Zustandsautomaten über alle
+// Tenants gehören dem Worker.
 // =============================================================================
 
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';

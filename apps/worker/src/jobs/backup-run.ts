@@ -16,6 +16,8 @@
 //   - SHA-256 + Größe werden beim Streamen mitgerechnet und im BackupRecord
 //     verankert; jeder Lauf (Erfolg wie Fehlschlag) geht als backup.run in die
 //     Audit-Hash-Chain.
+//   - S-01: Installationsweite Sicherung (Wartung): Tenant-Liste,
+//     Backup-Historie und Vermerke laufen über den Owner-Client.
 // =============================================================================
 
 import { DeleteObjectCommand, S3Client } from '@aws-sdk/client-s3';
