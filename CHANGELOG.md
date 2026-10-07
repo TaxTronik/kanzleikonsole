@@ -23,6 +23,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- Client-IP hinter dem Reverse-Proxy: Das Initialsetup fragt bei der
+  Standardmethode, ob ein vorgeschalteter Reverse-Proxy `X-Forwarded-For` setzt
+  und wie viele Proxy-Hops bestehen, und schreibt `TRUST_PROXY_REQUIRED` bzw.
+  `TRUST_PROXY_HOPS` (verwaltetes Traefik unverändert `true`/`1`; eine
+  bestehende `.env` bleibt unberührt). Bei `TRUST_PROXY_REQUIRED=true` prüfen
+  Deploy und Update über den öffentlichen Pfad die von der App ermittelte
+  Client-IP (neu: `GET /api/health/client-ip`) und brechen ab, wenn sie fehlt
+  oder einer Proxy- bzw. Container-Adresse entspricht.
 - Telefonzettel: Ungelesene Notizen lassen sich in der Telefonzettel-Liste und
   im Mandanten-Cockpit direkt „Als gelesen markieren“; der Hinweis „ungelesen“
   verschwindet sofort.

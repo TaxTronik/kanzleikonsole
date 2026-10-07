@@ -54,6 +54,65 @@ smoke_health() {
   return 1
 }
 
+# Adressen, die die App nie als Client-IP sehen darf: Gateways und eigene
+# Adressen der Docker-Netze der App sowie bei verwaltetem Traefik die Adressen
+# des Proxy-Containers. Ermittelt die App eine davon, liest sie die
+# TCP-Gegenstelle (Proxy oder Docker-Bridge) statt des Clients aus
+# X-Forwarded-For; alle Nutzer teilten sich dann eine Adresse.
+client_ip_smoke_proxy_addresses() {
+  local container containers=(taxtronik-app)
+  [[ "$(deployment_method)" == "traefik" ]] && containers+=(taxtronik-traefik)
+  for container in "${containers[@]}"; do
+    docker inspect --format \
+      '{{range .NetworkSettings.Networks}}{{println .Gateway}}{{println .IPAddress}}{{println .IPv6Gateway}}{{println .GlobalIPv6Address}}{{end}}' \
+      "$container" || return 1
+  done
+}
+
+# B3: Mit TRUST_PROXY_REQUIRED=true muss die App hinter dem oeffentlichen Pfad
+# eine echte Client-IP ermitteln (dieselbe Funktion wie Rate-Limits,
+# Kontosperren und Audit-IPs, /api/health/client-ip). Ohne Adresse setzt der
+# Proxy X-Forwarded-For nicht oder TRUST_PROXY_HOPS ist zu gross; die Adresse
+# des Proxys/Docker-Netzes zeigt, dass nur die Gegenstelle ankommt.
+smoke_client_ip() {
+  [[ "${TRUST_PROXY_REQUIRED:-}" == "true" ]] || return 0
+  local url="${NEXTAUTH_URL%/}/api/health/client-ip" body="" ip="" addresses="" address
+  local errors="" attempt reached=0
+  info "Client-IP-Smoke ueber den oeffentlichen Pfad: $url"
+  errors="$(mktemp)" || { warn "Client-IP-Smoke: keine temporaere Fehlerdatei."; return 1; }
+  for attempt in 1 2 3 4 5 6; do
+    if body="$(curl -fsS --max-time 10 "$url" 2>"$errors")"; then reached=1; break; fi
+    if (( attempt < 6 )); then sleep 5; fi
+  done
+  if (( reached == 0 )); then
+    # Diagnose des letzten Versuchs; eine fehlende Ausgabe aendert das Ergebnis nicht.
+    sed 's/^/    /' "$errors" >&2 || true
+    rm -f -- "$errors"
+    warn "Client-IP-Smoke fehlgeschlagen: $url ist ueber den oeffentlichen Pfad nicht erreichbar; die ermittelte Client-IP ist unbekannt."
+    return 1
+  fi
+  rm -f -- "$errors"
+  if ! ip="$(node -e "let s='';process.stdin.on('data',d=>s+=d);process.stdin.on('end',()=>{try{const v=JSON.parse(s).clientIp;if(v!==null&&typeof v!=='string')process.exit(1);console.log(v??'')}catch{process.exit(1)}})" <<<"$body")"; then
+    warn "Client-IP-Smoke fehlgeschlagen: ungueltige Antwort von $url."
+    return 1
+  fi
+  if [[ -z "$ip" ]]; then
+    warn "Client-IP-Smoke fehlgeschlagen: Die App ermittelt hinter dem Reverse-Proxy keine Client-IP (TRUST_PROXY_REQUIRED=true). Der Proxy muss X-Forwarded-For setzen, TRUST_PROXY_HOPS (${TRUST_PROXY_HOPS:-1}) darf nicht groesser sein als die Zahl anhaengender Proxys."
+    return 1
+  fi
+  if ! addresses="$(client_ip_smoke_proxy_addresses)"; then
+    warn "Client-IP-Smoke fehlgeschlagen: Netzadressen von App/Proxy nicht ermittelbar; ermittelte IP $ip kann nicht geprueft werden."
+    return 1
+  fi
+  while IFS= read -r address; do
+    if [[ -n "$address" && "$address" == "$ip" ]]; then
+      warn "Client-IP-Smoke fehlgeschlagen: Die App ermittelt $ip, die Adresse des Proxys bzw. Docker-Netzes, statt der Client-IP. Proxy muss X-Forwarded-For mit der Client-Adresse setzen; TRUST_PROXY_HOPS (${TRUST_PROXY_HOPS:-1}) pruefen. Sonst teilen sich alle Nutzer Limits und Sperren."
+      return 1
+    fi
+  done <<<"$addresses"
+  info "Client-IP-Smoke: Die App ermittelt $ip (nicht Proxy/Docker-Netz)."
+}
+
 # Prod-Konfigurations-Gate NACH dem Deploy. smoke_health prueft nur die
 # ERREICHBARKEIT (der /api/health-Endpoint aus dem Container); dieser Check geht
 # tiefer und faengt prod-spezifische KONFIGURATIONS-Fehler (S3-Buckets fehlen /
@@ -198,6 +257,7 @@ _deploy_core() {
   start_apps_for_activation deploy "$(image_tag)"
   smoke_health || die "Deploy abgebrochen: Anwendung ist nicht vollstaendig healthy."
   smoke_public_frontend || die "Deploy abgebrochen: verwaltetes Traefik/TLS ist nicht oeffentlich bereit."
+  smoke_client_ip || die "Deploy abgebrochen: Client-IP hinter dem Reverse-Proxy nicht verlaesslich ermittelt (siehe oben; TRUST_PROXY_REQUIRED/TRUST_PROXY_HOPS und X-Forwarded-For des Proxys pruefen)."
   deploy_readiness || die "Deploy abgebrochen: Produktivkonfiguration ist nicht bereit."
   finalize_release_contract
 }

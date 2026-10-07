@@ -351,10 +351,15 @@ apply_initial_setup_plan() {
   set_env PORTAL_COOKIE_DOMAIN "$_SETUP_PORTAL_HOST"
   set_env NEXTAUTH_TRUST_HOST true
   if [[ "$_SETUP_METHOD" == "traefik" ]]; then
+    # Das verwaltete Traefik setzt X-Forwarded-For selbst (ein Hop).
     set_env TRUST_PROXY_REQUIRED true
+    set_env TRUST_PROXY_HOPS 1
     set_env TRAEFIK_ACME_EMAIL "$_SETUP_ACME_EMAIL"
   else
-    set_env TRUST_PROXY_REQUIRED false
+    # Antwort aus configure_setup_client_ip_trust; ohne Zusage bleibt der
+    # sichere Default ohne Client-IP.
+    set_env TRUST_PROXY_REQUIRED "${_SETUP_TRUST_PROXY_REQUIRED:-false}"
+    set_env TRUST_PROXY_HOPS "${_SETUP_TRUST_PROXY_HOPS:-1}"
     set_env TRAEFIK_ACME_EMAIL ""
   fi
   set_env SMTP_HOST "$_SETUP_SMTP_HOST"
@@ -389,6 +394,41 @@ apply_initial_setup_plan() {
   export ADMIN_EMAIL="$_SETUP_ADMIN_EMAIL"
 }
 
+# B3: Vertrauen in X-Forwarded-For im Initialsetup festlegen. Verwaltetes
+# Traefik setzt den Header selbst (true, ein Hop). Beim Standardweg entscheidet
+# der Betreiber: Nur wenn JEDER Request ueber den eigenen Reverse-Proxy kommt
+# und dieser X-Forwarded-For setzt, darf die App die Client-IP daraus lesen.
+# deploy/update pruefen die Zusage danach ueber den oeffentlichen Pfad
+# (smoke_client_ip). Liest die Antworten von stdin; den TTY-Zwang hat der
+# Aufrufer (configure_initial_deployment_interactive).
+configure_setup_client_ip_trust() {
+  local answer="" hops=""
+  _SETUP_TRUST_PROXY_REQUIRED="false"
+  _SETUP_TRUST_PROXY_HOPS="1"
+  if [[ "$_SETUP_METHOD" == "traefik" ]]; then
+    _SETUP_TRUST_PROXY_REQUIRED="true"
+    return 0
+  fi
+  printf '\nClient-IP fuer Login-Limits, Kontosperren und Audit-Eintraege:\n'
+  printf 'Erreicht JEDER Request die App nur ueber Ihren Reverse-Proxy, und setzt dieser\n'
+  printf 'X-Forwarded-For (ueberschreibt oder haengt seine Gegenstelle an, wie das\n'
+  printf 'nginx-Beispiel in infra/nginx)? Ohne diese Zusage sieht die App keine Client-IP.\n'
+  read -rp 'Reverse-Proxy setzt X-Forwarded-For? [j/N]: ' answer || true
+  case "${answer,,}" in
+    j|ja|y|yes) ;;
+    *) return 0 ;;
+  esac
+  while :; do
+    read -rp 'Proxy-Hops vor der App, die X-Forwarded-For setzen (1 = nur Ihr Proxy, 2 = z. B. CDN + Proxy) [1]: ' hops || \
+      die "Initialsetup ohne Angabe der Proxy-Hops abgebrochen."
+    hops="${hops:-1}"
+    [[ "$hops" =~ ^[1-9]$ ]] && break
+    warn "Bitte eine ganze Zahl von 1 bis 9 angeben."
+  done
+  _SETUP_TRUST_PROXY_REQUIRED="true"
+  _SETUP_TRUST_PROXY_HOPS="$hops"
+}
+
 configure_initial_deployment_interactive() {
   [[ ! -f "$ENVFILE" && -t 0 ]] || return 0
   [[ ! -e "$STATE" ]] || \
@@ -396,6 +436,8 @@ configure_initial_deployment_interactive() {
 
   local choice="" input="" phrase=""
   _SETUP_METHOD="standard"
+  _SETUP_TRUST_PROXY_REQUIRED="false"
+  _SETUP_TRUST_PROXY_HOPS="1"
   _SETUP_DEPLOY_CHANNEL="source"
   _SETUP_IMAGE_PREFIX="taxtronik"
   _SETUP_RELEASE_VERSION=""
@@ -438,6 +480,7 @@ configure_initial_deployment_interactive() {
       ;;
     *) die "Ungueltige Deployment-Auswahl: $choice" ;;
   esac
+  configure_setup_client_ip_trust
 
   # Produktion nur ueber den Release-Kanal (S-04, Entscheidung C): deploy und
   # update verweigern dort den Source-Kanal, also wird er gar nicht angeboten.
@@ -618,6 +661,12 @@ configure_initial_deployment_interactive() {
 
   printf '\n================ Setup-Zusammenfassung ================\n'
   printf 'Deployment : %s\n' "$([[ "$_SETUP_METHOD" == "traefik" ]] && printf '1-Klick Traefik (leerer Host)' || printf 'Standard / vorhandener Reverse-Proxy')"
+  if [[ "$_SETUP_TRUST_PROXY_REQUIRED" == "true" ]]; then
+    printf 'Client-IP  : aus X-Forwarded-For, %s Proxy-Hop(s); deploy/update pruefen die ermittelte IP\n' \
+      "$_SETUP_TRUST_PROXY_HOPS"
+  else
+    printf 'Client-IP  : nicht ausgewertet (Login-Limits nur pro Konto/E-Mail, keine Kontosperre)\n'
+  fi
   if [[ "$_SETUP_DEPLOY_CHANNEL" == "source" ]]; then
     printf 'Quelle     : Git-Stand %s (lokaler Build)\n' "${_SETUP_RELEASE_VERSION#source-}"
   else

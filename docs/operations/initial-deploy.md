@@ -27,15 +27,23 @@ Firewallregeln und Zertifikate werden nicht übernommen oder verändert.
 Diese Variante ist die richtige Wahl, sobald die Maschine nicht zweifelsfrei
 leer ist.
 
-Das Setup setzt hier `TRUST_PROXY_REQUIRED=false`. Die App sieht dann keine
-Client-IP: Login-Limits greifen nur pro Konto bzw. E-Mail plus einer
-großzügigen globalen Obergrenze, Fehlversuche sperren Konten nicht, und
-Audit-Einträge tragen keine IP. Ist die App ausschließlich über den eigenen
-Proxy erreichbar und setzt dieser `X-Forwarded-For` wie das
-[nginx-Beispiel](../../infra/nginx/taxtronik.conf.example) (überschreiben oder
-die eigene Gegenstelle anhängen), `TRUST_PROXY_REQUIRED=true` und
-`TRUST_PROXY_HOPS` (Anzahl anhängender Proxys vor der App, meist `1`) setzen.
-`./taxtronik doctor` weist bis dahin mit einer Warnung darauf hin.
+Das Setup fragt hier, ob jeder Request die App nur über den eigenen Proxy
+erreicht und dieser `X-Forwarded-For` wie das
+[nginx-Beispiel](../../infra/nginx/taxtronik.conf.example) setzt (überschreiben
+oder die eigene Gegenstelle anhängen), und wie viele Proxys davor anhängen
+(`TRUST_PROXY_HOPS`, meist `1`; CDN plus eigener Proxy: `2`). Mit Zusage
+schreibt es `TRUST_PROXY_REQUIRED=true` und die Hop-Zahl. `./taxtronik deploy`
+und `update` prüfen die Zusage anschließend über den öffentlichen Pfad: Ist die
+ermittelte Client-IP leer oder die Adresse des Proxys bzw. Docker-Netzes,
+bricht der Lauf vor dem Abschluss ab
+([day-2-operations.md](day-2-operations.md#updates)).
+
+Ohne Zusage (Standardantwort) bleibt `TRUST_PROXY_REQUIRED=false`. Die App
+sieht dann keine Client-IP: Login-Limits greifen nur pro Konto bzw. E-Mail plus
+einer großzügigen globalen Obergrenze, Fehlversuche sperren Konten nicht, und
+Audit-Einträge tragen keine IP; `./taxtronik doctor` warnt. Nicht interaktive
+Läufe und bestehende Installationen behalten ihre Werte; ein späterer Wechsel
+auf `true` erfolgt bewusst in der `.env`.
 
 ### 1-Klick mit Traefik
 

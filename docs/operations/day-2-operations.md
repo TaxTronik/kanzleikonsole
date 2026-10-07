@@ -185,6 +185,17 @@ strikter Health-Smoke (`degraded` ist Fehler) und Deploy-Readiness ohne
 Skip-Pfad. Kein `git reset --hard`: Lokale Abweichungen müssen bewusst
 aufgelöst werden.
 
+Mit `TRUST_PROXY_REQUIRED=true` prüfen `./taxtronik deploy` und `update` vor
+der Readiness zusätzlich die Client-IP: Ein Request über den öffentlichen Pfad
+(`NEXTAUTH_URL`, also durch den Reverse-Proxy) an `/api/health/client-ip`
+liefert die Adresse, die die App mit derselben Funktion wie Rate-Limits,
+Kontosperren und Audit-Einträge ermittelt. Ist sie leer oder gleich einer
+Adresse des Proxys bzw. der Docker-Netze von App und verwaltetem Traefik
+(Gateway, Container-IP), bricht der Lauf wie die übrigen Smokes ab, bevor der
+neue Stand als Last-Good gilt; Rückweg über `./taxtronik rollback`. Ursachen:
+Der Proxy setzt `X-Forwarded-For` nicht, `TRUST_PROXY_HOPS` ist zu groß, oder
+der Server erreicht seinen eigenen öffentlichen Pfad nicht.
+
 Produktion wird nur über den Release-Kanal aktualisiert: Im Source-Modus
 (`TAXTRONIK_DEPLOY_CHANNEL=source`) brechen `./taxtronik update` und
 `./taxtronik deploy` in Produktion vor `.env`-Vorbereitung, Pflichtbackup,

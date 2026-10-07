@@ -678,6 +678,143 @@ test_initial_setup_confirmation_and_atomic_plan_application() {
   pass "initial setup applies nothing before exact confirmation and preserves values safely"
 }
 
+# B3: Das Initialsetup fragt beim Standardweg, ob der Reverse-Proxy
+# X-Forwarded-For setzt und wie viele Hops anhaengen; das verwaltete Traefik
+# setzt true/1 ohne Frage. Ohne TTY oder mit bestehender .env fragt nichts.
+test_setup_asks_for_client_ip_trust() {
+  local out="$TMP_DIR/setup-proxy-trust.out" env_file="$TMP_DIR/setup-proxy-trust.env"
+  local plan_root="$TMP_DIR/setup-proxy-trust-root"
+  mkdir -p "$plan_root"
+  : >"$plan_root/.env.example"
+  setup_trust() (
+    _SETUP_METHOD="$1"
+    configure_setup_client_ip_trust >>"$out" 2>&1
+    printf '%s/%s\n' "$_SETUP_TRUST_PROXY_REQUIRED" "$_SETUP_TRUST_PROXY_HOPS"
+  )
+  : >"$out"
+  [[ "$(setup_trust standard <<<'')" == "false/1" ]] || test_fail "Enter did not keep the safe default"
+  [[ "$(setup_trust standard <<<'n')" == "false/1" ]] || test_fail "'n' enabled proxy trust"
+  [[ "$(setup_trust standard <<<$'j\n')" == "true/1" ]] || test_fail "'j' + Enter did not give one hop"
+  [[ "$(setup_trust standard <<<$'ja\n2')" == "true/2" ]] || test_fail "two proxy hops were not taken"
+  [[ "$(setup_trust standard <<<$'Y\n0\n12\n3')" == "true/3" ]] || test_fail "invalid hop counts were accepted"
+  assert_contains "$out" "Bitte eine ganze Zahl von 1 bis 9 angeben."
+  [[ "$(setup_trust traefik </dev/null)" == "true/1" ]] || test_fail "managed Traefik did not trust its own hop"
+  if ( _SETUP_METHOD=standard; configure_setup_client_ip_trust <<<'j' ) >/dev/null 2>"$out"; then
+    test_fail "setup continued without a hop answer"
+  fi
+  assert_contains "$out" "Initialsetup ohne Angabe der Proxy-Hops abgebrochen."
+
+  apply_trust_plan() (
+    ROOT="$plan_root"
+    ENVFILE="$env_file"
+    INSTALL_PENDING="$plan_root/install.pending"
+    rm -f -- "$env_file"
+    _SETUP_METHOD="$1" _SETUP_TRUST_PROXY_REQUIRED="$2" _SETUP_TRUST_PROXY_HOPS="$3"
+    _SETUP_DEPLOY_CHANNEL="release" _SETUP_IMAGE_PREFIX="registry.example/taxtronik"
+    _SETUP_RELEASE_VERSION="1.2.3" _SETUP_STAFF_HOST="staff.example.de"
+    _SETUP_PORTAL_HOST="portal.example.de" _SETUP_N8N_HOST="n8n.example.de"
+    _SETUP_ACME_EMAIL="admin@example.de" _SETUP_SMTP_HOST="smtp.example.de" _SETUP_SMTP_PORT="587"
+    _SETUP_SMTP_FROM="noreply@example.de" _SETUP_SMTP_USER="" _SETUP_SMTP_PASSWORD=""
+    _SETUP_SIGNAL_MODE="disabled" _SETUP_SIGNAL_CHANNEL="" _SETUP_SIGNAL_IMAGE=""
+    _SETUP_SIGNAL_GIT_URL="" _SETUP_SIGNAL_GIT_REF="" _SETUP_SIGNAL_GIT_DIR=""
+    _SETUP_SIGNAL_URL="" _SETUP_SIGNAL_TOKEN="" _SETUP_SIGNAL_OPERATOR_TOKEN=""
+    _SETUP_TENANT_NAME="Testkanzlei" _SETUP_ADMIN_EMAIL="admin@example.de"
+    apply_initial_setup_plan
+  )
+  apply_trust_plan standard true 2
+  assert_key_equals "$env_file" TRUST_PROXY_REQUIRED true
+  assert_key_equals "$env_file" TRUST_PROXY_HOPS 2
+  apply_trust_plan standard false 1
+  assert_key_equals "$env_file" TRUST_PROXY_REQUIRED false
+  assert_key_equals "$env_file" TRUST_PROXY_HOPS 1
+  apply_trust_plan traefik false 3
+  assert_key_equals "$env_file" TRUST_PROXY_REQUIRED true
+  assert_key_equals "$env_file" TRUST_PROXY_HOPS 1
+
+  # Nicht interaktiv oder mit bestehender .env: keine Frage, keine Aenderung.
+  printf 'TRUST_PROXY_REQUIRED=false\nTRUST_PROXY_HOPS=1\n' >"$env_file"
+  (
+    ENVFILE="$env_file"
+    configure_setup_client_ip_trust() { test_fail "existing installation was asked again"; }
+    configure_initial_deployment_interactive
+  ) </dev/null >"$out" 2>&1 || test_fail "non-interactive setup failed"
+  assert_file_equals "$env_file" $'TRUST_PROXY_REQUIRED=false\nTRUST_PROXY_HOPS=1'
+  pass "setup asks for X-Forwarded-For trust and proxy hops on the standard path only"
+}
+
+# B3: Urteile des Client-IP-Smokes mit gefaelschten Antworten der Route und
+# gefaelschten Docker-Netzadressen.
+run_client_ip_smoke() (
+  NEXTAUTH_URL="https://kanzlei.example.de/"
+  TRUST_PROXY_REQUIRED="${SMOKE_TRUST:-true}"
+  TRUST_PROXY_HOPS=1
+  DEPLOYMENT_METHOD="${SMOKE_METHOD:-standard}"
+  sleep() { :; }
+  curl() {
+    printf 'curl %s\n' "$*" >>"$SMOKE_CALLS"
+    if [[ "$SMOKE_BODY" == FAIL ]]; then
+      printf 'curl: (7) Failed to connect to kanzlei.example.de port 443\n' >&2
+      return 7
+    fi
+    printf '%s' "$SMOKE_BODY"
+  }
+  docker() {
+    printf 'docker %s\n' "$*" >>"$SMOKE_CALLS"
+    [[ "${SMOKE_DOCKER_FAIL:-0}" == "0" ]] || return 1
+    case "${!#}" in
+      taxtronik-app) printf '172.18.0.1\n172.18.0.4\nfd00:18::1\nfd00:18::4\n' ;;
+      taxtronik-traefik) printf '172.18.0.1\n172.18.0.9\n\n\n' ;;
+      *) return 1 ;;
+    esac
+  }
+  smoke_client_ip
+)
+
+test_client_ip_smoke_verdicts() {
+  local out="$TMP_DIR/client-ip-smoke.out" calls="$TMP_DIR/client-ip-smoke.calls"
+  export SMOKE_CALLS="$calls"
+  smoke() { : >"$calls"; SMOKE_BODY="$1" run_client_ip_smoke >"$out" 2>&1; }
+
+  : >"$calls"
+  SMOKE_TRUST=false SMOKE_BODY='{"clientIp":null}' run_client_ip_smoke >"$out" 2>&1 || \
+    test_fail "smoke ran without TRUST_PROXY_REQUIRED=true"
+  assert_not_exists_or_empty "$calls"
+
+  smoke '{"clientIp":"203.0.113.9"}' || { cat "$out" >&2; test_fail "a real client IP failed the smoke"; }
+  assert_contains "$calls" "curl -fsS --max-time 10 https://kanzlei.example.de/api/health/client-ip"
+  assert_contains "$out" "Die App ermittelt 203.0.113.9"
+
+  if smoke '{"clientIp":null}'; then test_fail "an empty client IP passed the smoke"; fi
+  assert_contains "$out" "keine Client-IP"
+
+  if smoke '{"clientIp":"172.18.0.1"}'; then test_fail "the Docker gateway passed as client IP"; fi
+  assert_contains "$out" "172.18.0.1, die Adresse des Proxys bzw. Docker-Netzes"
+  if smoke '{"clientIp":"fd00:18::4"}'; then test_fail "the app's own IPv6 address passed as client IP"; fi
+
+  # Die Adresse des verwalteten Traefik zaehlt nur auf dem Traefik-Pfad.
+  smoke '{"clientIp":"172.18.0.9"}' || { cat "$out" >&2; test_fail "standard path rejected a foreign address"; }
+  if SMOKE_METHOD=traefik smoke '{"clientIp":"172.18.0.9"}'; then
+    test_fail "the managed Traefik address passed as client IP"
+  fi
+  assert_contains "$out" "Adresse des Proxys bzw. Docker-Netzes"
+
+  if smoke FAIL; then test_fail "an unreachable public path passed the smoke"; fi
+  assert_contains "$out" "nicht erreichbar"
+  assert_contains "$out" "Failed to connect"
+  [[ "$(grep -c '^curl ' "$calls")" == "6" ]] || test_fail "smoke did not retry the public path"
+
+  if smoke 'kein JSON'; then test_fail "an invalid response passed the smoke"; fi
+  assert_contains "$out" "ungueltige Antwort"
+  if smoke '{"status":"ok"}'; then test_fail "a response without clientIp passed the smoke"; fi
+  assert_contains "$out" "ungueltige Antwort"
+
+  if SMOKE_DOCKER_FAIL=1 smoke '{"clientIp":"203.0.113.9"}'; then
+    test_fail "smoke passed without the proxy/container addresses"
+  fi
+  assert_contains "$out" "Netzadressen von App/Proxy nicht ermittelbar"
+  pass "client IP smoke fails for an empty, proxy or container address and for unverifiable answers"
+}
+
 test_deploy_provisions_managed_n8n_in_acp() {
   local out="$TMP_DIR/n8n-acp-provision.out"
   (
@@ -2307,6 +2444,7 @@ stub_update_runtime() {
   start_apps_for_activation() { record_step "start-apps $*"; }
   smoke_health() { record_step smoke-health; }
   smoke_public_frontend() { record_step smoke-public-frontend; }
+  smoke_client_ip() { record_step smoke-client-ip; }
   deploy_readiness() { record_step deploy-readiness; }
   finalize_release_contract() { record_step finalize-release-contract; }
   reexec_updated_operator() { record_step reexec-updated-operator; }
@@ -2365,6 +2503,11 @@ test_update_backs_up_old_checkout_before_fetch() {
   assert_contains "$sequence" "git-umask 0022 merge --ff-only $MOCK_SOURCE_COMMIT"
   assert_contains "$sequence" "git-umask 0077 fetch origin"
   assert_not_contains "$sequence" "merge --ff-only origin/main"
+  # B3: Client-IP-Smoke nach dem oeffentlichen Smoke, vor Readiness und
+  # Finalisierung des Last-Good-Vertrags.
+  assert_before "$sequence" "smoke-public-frontend" "smoke-client-ip"
+  assert_before "$sequence" "smoke-client-ip" "deploy-readiness"
+  assert_before "$sequence" "smoke-client-ip" "finalize-release-contract"
   pass "update completes mandatory old-checkout backup before fetch and merge"
 }
 
@@ -2821,6 +2964,7 @@ test_production_source_deploy_is_refused_before_side_effects() {
     start_apps_for_activation() { printf 'start-apps\n' >>"$steps"; }
     smoke_health() { :; }
     smoke_public_frontend() { :; }
+    smoke_client_ip() { printf 'client-ip-smoke\n' >>"$steps"; }
     deploy_readiness() { :; }
     finalize_release_contract() { printf 'finalize\n' >>"$steps"; }
     image_tag() { printf 'test-version'; }
@@ -2855,7 +2999,8 @@ test_production_source_deploy_is_refused_before_side_effects() {
   assert_before "$steps" "configure" "host-requirements"
   assert_before "$steps" "provide-images" "backup"
   assert_before "$steps" "backup" "migrate"
-  assert_contains "$steps" "finalize"
+  assert_before "$steps" "start-apps" "client-ip-smoke"
+  assert_before "$steps" "client-ip-smoke" "finalize"
   pass "production deploy refuses the source channel before host setup, env preparation, build, backup and migration"
 }
 
@@ -4424,6 +4569,8 @@ run_test test_doctor_warns_without_proxy_trust
 run_test test_doctor_validates_trust_proxy_hops
 run_test test_doctor_rejects_n8n_on_an_application_domain
 run_test test_initial_setup_confirmation_and_atomic_plan_application
+run_test test_setup_asks_for_client_ip_trust
+run_test test_client_ip_smoke_verdicts
 run_test test_deploy_provisions_managed_n8n_in_acp
 run_test test_one_click_blank_host_guard_rejects_existing_containers
 run_test test_one_click_blank_host_guard_rejects_unreachable_docker

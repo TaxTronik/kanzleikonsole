@@ -363,6 +363,7 @@ continue_update_after_checkout() {
   start_apps_for_activation deploy "$(image_tag)"
   smoke_health || die "Update fehlgeschlagen: Anwendung ist nicht vollstaendig healthy; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
   smoke_public_frontend || die "Update fehlgeschlagen: verwaltetes Traefik/TLS ist nicht oeffentlich bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
+  smoke_client_ip || die "Update fehlgeschlagen: Client-IP hinter dem Reverse-Proxy nicht verlaesslich ermittelt (siehe oben); letzter erfolgreicher Stand bleibt in $STATE vermerkt."
   deploy_readiness || die "Update fehlgeschlagen: Produktivkonfiguration ist nicht bereit; letzter erfolgreicher Stand bleibt in $STATE vermerkt."
   finalize_release_contract
   info "Update fertig. Version: $(image_tag)"
