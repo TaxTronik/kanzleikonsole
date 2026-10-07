@@ -127,7 +127,7 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </div>
         </div>
 
-        <fieldset className="rounded-md border border-border-subtle p-4 space-y-3">
+        <fieldset className="rounded-md border border-subtle p-4 space-y-3">
           <legend className="px-1 text-sm font-medium text-primary">
             Ausgangsdatum und Nachweis
           </legend>
@@ -302,7 +302,7 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </p>
         </div>
 
-        <fieldset className="rounded-md border border-border-subtle p-4 space-y-3">
+        <fieldset className="rounded-md border border-subtle p-4 space-y-3">
           <legend className="px-1 text-sm font-medium text-primary">Datenabruf (§ 122a AO)</legend>
           <p className="text-xs text-muted">
             Nur beim Bekanntgabeweg „Datenabruf“ ausfüllen. Das Erlassdatum wählt das Regime;
@@ -439,7 +439,7 @@ export default async function NewNoticePage({ params }: { params: Promise<{ id: 
           </p>
         </fieldset>
 
-        <fieldset className="rounded-md border border-border-subtle p-4 space-y-3">
+        <fieldset className="rounded-md border border-subtle p-4 space-y-3">
           <legend className="px-1 text-sm font-medium text-primary">
             Tatsächlicher Zugang und Einwendungen
           </legend>
@@ -604,7 +604,7 @@ function HolidayLocationFields({
   defaultName?: string;
 }) {
   return (
-    <fieldset className="rounded-md border border-border-subtle p-4 space-y-3">
+    <fieldset className="rounded-md border border-subtle p-4 space-y-3">
       <legend className="px-1 text-sm font-medium text-primary">{title}</legend>
       <div className="grid grid-cols-2 gap-4">
         <div>

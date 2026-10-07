@@ -1,5 +1,50 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-014
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/beneficial-owner-form.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/evidence-form-toggle.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-evidence.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-overview.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-status.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-document-review.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/invite-section.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/start-check-cycle-form.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/new/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/editor-toolbar.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/new-marking-panel.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/norm-ref-editor.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-results-block.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-view.tsx
+      - apps/web/src/app/staff/(protected)/reminders/[id]/ticket-context.tsx
+      - apps/web/src/components/gwg/identity-capture.tsx
+    rule_ids:
+      - DSGVO-CONSENT-SNAPSHOT-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-OCR-ASSIST-001
+      - GWG-REPRESENTATIVE-AUTHORITY-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-SELF-ONBOARDING-001
+      - REMINDER-TICKET-001
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+    reason: >-
+      Reine Darstellungsänderung (C6): Tailwind-Klassen ohne erzeugtes CSS
+      (`bg-subtle`, `border-border-subtle`, `text-brand`, `text-danger` u. a.) sind
+      auf vorhandene Design-Tokens umgestellt; Statustexte nutzen Tokens mit
+      mindestens 4,5:1 Kontrast im Dark Mode. Betroffen sind nur `className`-Werte in
+      GwG-, Onboarding-, Bescheid-, Subsumtions- und Wiedervorlagen-Komponenten;
+      Daten, Validierung, Aktionen, Zustände und Texte bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - apps/web/src/app/__tests__/tailwind-classes.test.ts
+      - apps/web/src/app/__tests__/dark-mode-tokens.test.ts
+      - apps/web/src/app/__tests__/css-important.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-013
     date: '2026-10-07'
     paths:
@@ -4377,6 +4422,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-014` dokumentiert die Umstellung
+  undefinierter Stilklassen auf Design-Tokens in fachlichen Komponenten.
 
 - 2026-10-07: `FK-EXC-20261007-013` dokumentiert Bearbeiten und Absagen
   von Terminen sowie „Erneut senden“ im Mandantenpost-Thread.

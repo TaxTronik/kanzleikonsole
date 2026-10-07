@@ -165,7 +165,7 @@ export function InviteSection({
       {open && (
         <div
           id={`gwg-invite-${gwgCheckId ?? clientId}-form`}
-          className="mt-3 rounded-md border border-default bg-subtle p-4 space-y-3"
+          className="mt-3 rounded-md border border-default bg-surface-raised p-4 space-y-3"
         >
           {contacts.length > 0 && (
             <div>

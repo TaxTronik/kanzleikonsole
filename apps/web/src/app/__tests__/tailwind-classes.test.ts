@@ -65,46 +65,18 @@ const COLOR_FAMILY =
 /**
  * Bekannte Altlasten außerhalb von F-15: Klassennamen, die nie definiert
  * waren und deshalb bis heute kein CSS erzeugen. Neue Fundstellen (andere
- * Datei oder neue Klasse) lassen den Test scheitern. Die Bereinigung braucht
- * eine Gestaltungsentscheidung (welche Fläche ist "subtle", welches Rot ist
- * "danger"?) und wird separat erledigt; danach den Eintrag hier löschen.
+ * Datei oder neue Klasse) lassen den Test scheitern.
+ *
+ * C6 hat die übrigen auf vorhandene Tokens abgebildet: `bg-subtle` →
+ * `bg-surface-raised`, `border-border-subtle` → `border-subtle`,
+ * `bg-border-subtle` (Trennstrich) → `bg-gray-200` (= `--border-default`),
+ * `border-primary` → `border-current` mit `text-primary`, `text-brand` →
+ * `text-brand-700`, `text-danger` → `text-red-700`. Offen sind nur die
+ * Posteingangs-Dateien (anderer Arbeitsbereich); beim Bereinigen
+ * `border-subtle` bzw. `text-emerald-700` einsetzen und den Eintrag löschen.
  */
 const KNOWN_UNRESOLVED: Record<string, readonly string[]> = {
-  'bg-subtle': [
-    'app/gwg-onboarding/wizard-steps.tsx',
-    'app/staff/(protected)/clients/[id]/gwg/beneficial-owner-form.tsx',
-    'app/staff/(protected)/clients/[id]/gwg/evidence-form-toggle.tsx',
-    'app/staff/(protected)/clients/[id]/gwg/gwg-page-evidence.tsx',
-    'app/staff/(protected)/clients/[id]/gwg/gwg-page-overview.tsx',
-    'app/staff/(protected)/clients/[id]/gwg/gwg-page-status.tsx',
-    'app/staff/(protected)/clients/[id]/gwg/identity-document-review.tsx',
-    'app/staff/(protected)/clients/[id]/gwg/invite-section.tsx',
-    'app/staff/(protected)/clients/[id]/gwg/start-check-cycle-form.tsx',
-    'components/gwg/identity-capture.tsx',
-  ],
-  'border-border-subtle': [
-    'app/staff/(protected)/clients/[id]/notices/new/page.tsx',
-    'app/staff/(protected)/clients/[id]/subsumtion/research-view.tsx',
-    'app/staff/(protected)/inbox/attachment-review.tsx',
-    'app/staff/(protected)/reminders/[id]/ticket-context.tsx',
-  ],
-  '[&_hr]:border-border-subtle': [
-    'app/staff/(protected)/clients/[id]/subsumtion/research-results-block.tsx',
-    'components/document-preview.tsx',
-  ],
-  'bg-border-subtle': [
-    'app/staff/(protected)/clients/[id]/subsumtion/editor-toolbar.tsx',
-    'app/staff/(protected)/knowledge/rich-markdown-editor.tsx',
-  ],
-  'border-primary': ['app/staff/(protected)/clients/[id]/subsumtion/new-marking-panel.tsx'],
-  'text-brand': [
-    'app/staff/(protected)/clients/[id]/subsumtion/norm-ref-editor.tsx',
-    'app/staff/(protected)/clients/[id]/workflows/start-form.tsx',
-    'app/staff/(protected)/dashboard/widgets/personal.tsx',
-  ],
-  'hover:text-brand': ['app/staff/(protected)/clients/[id]/subsumtion/norm-ref-editor.tsx'],
-  'text-danger': ['components/form-errors.tsx'],
-  'hover:text-danger': ['app/staff/(protected)/admin/settings/route-editor-section.tsx'],
+  'border-border-subtle': ['app/staff/(protected)/inbox/attachment-review.tsx'],
   'text-success': ['app/staff/(protected)/inbox/[id]/page.tsx'],
 };
 

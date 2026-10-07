@@ -102,7 +102,7 @@ export function StartCheckCycleForm({
           </div>
         )}
         {status === 'VERIFIED' && contacts.length > 0 && (
-          <div className="rounded-md border border-default bg-subtle p-3">
+          <div className="rounded-md border border-default bg-surface-raised p-3">
             <label className="flex items-start gap-2 text-sm text-secondary">
               <input
                 type="checkbox"

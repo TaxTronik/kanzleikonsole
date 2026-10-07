@@ -1261,7 +1261,7 @@ function IdentityReviewCard({
 
         {editing && !disabled && group.subjectKey && (
           <details
-            className="group/replace rounded-md border border-default bg-subtle"
+            className="group/replace rounded-md border border-default bg-surface-raised"
             open={replacementOpen}
             onToggle={(event) => setReplacementOpen(event.currentTarget.open)}
           >

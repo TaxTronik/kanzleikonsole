@@ -107,8 +107,8 @@ export function NewMarkingPanel(props: {
               type="button"
               onClick={() => setFarbe(c)}
               className={
-                'h-6 w-6 rounded-full border-2 ' +
-                (farbe === c ? 'border-primary' : 'border-transparent')
+                'h-6 w-6 rounded-full border-2 text-primary ' +
+                (farbe === c ? 'border-current' : 'border-transparent')
               }
               style={{ backgroundColor: c }}
               aria-label={c}

@@ -20,7 +20,7 @@ export function GwgCheckStatus({
   return (
     <>
       {availability.destroyed && (
-        <div className="rounded-md border border-default bg-subtle p-4" role="status">
+        <div className="rounded-md border border-default bg-surface-raised p-4" role="status">
           <p className="text-sm font-medium text-primary">Prüfaufzeichnung wurde vernichtet.</p>
           <p className="mt-1 text-xs text-muted">
             Die verbliebenen Status- und Verlaufsdaten dokumentieren ausschließlich die frühere

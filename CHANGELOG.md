@@ -842,6 +842,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Darstellung: Klassen ohne CSS (u. a. `bg-subtle`, `text-danger`,
+  `text-brand`) sind auf vorhandene Design-Tokens umgestellt, 17 von 34
+  `!important` entfernt; Statustexte und ihre hellen Flächen erreichen im Dark
+  Mode mindestens 4,5:1, einige Stufen auch im Light Mode.
 - n8n-Einstellungen: Nach dem Speichern springt die „Betriebsart“ nicht mehr
   auf „Mit TaxTronik Compose betrieben“ zurück; ein weiteres Speichern
   übernimmt nicht mehr versehentlich BUNDLED.

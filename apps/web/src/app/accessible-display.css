@@ -65,7 +65,12 @@ html.dark:has([data-accessible-display='true'][data-accessible-contrast='strong'
 html:has([data-accessible-display='true']) body {
   font-size: 1rem;
   line-height: var(--accessible-line-height);
-  background-image: none !important;
+}
+
+/* Kein Aurora-Verlauf. :root hebt die Spezifität über `.ui-modern.dark body`
+ * (globals.css), ohne !important. */
+html:has([data-accessible-display='true']):root body {
+  background-image: none;
 }
 
 /* Die bestehenden kleinen px-basierten Komponenten wachsen sonst nicht mit
@@ -210,7 +215,9 @@ html:has([data-accessible-display='true'])
 }
 
 /* Zweifarbige Fokusmarkierung funktioniert auch auf individuellen Brand-
- * Hintergründen. Keine Abhängigkeit vom inline gesetzten --brand-focus. */
+ * Hintergründen. Keine Abhängigkeit vom inline gesetzten --brand-focus.
+ * !important bleibt: Der Fokusrahmen muss jede Fokusregel der Komponenten
+ * schlagen (Ringe per box-shadow, `.ui-modern .input:focus`, Inline-Styles). */
 html:has([data-accessible-display='true'])
   :where(
     a,
@@ -227,17 +234,17 @@ html:has([data-accessible-display='true'])
   box-shadow: 0 0 0 3px rgb(var(--surface-card)) !important;
 }
 
-/* Glasflächen werden opak. :root hebt die Spezifität auch über die bestehenden
- * !important-Regeln von .ui-modern.dark (Karten, Sidebar). Status-, Warn- und
- * Erfolgsfarben sowie die Abdunklung hinter Dialogen werden nicht pauschal
- * ersetzt. */
+/* Glasflächen werden opak. :root hebt die Spezifität über die Glasregeln von
+ * .ui-modern und .ui-modern.dark (Karten, Sidebar, auch mobil) — ohne
+ * !important (C6). Status-, Warn- und Erfolgsfarben sowie die Abdunklung
+ * hinter Dialogen werden nicht pauschal ersetzt. */
 html:has([data-accessible-display='true']):root .app-shell,
 html:has([data-accessible-display='true']):root aside.app-sidebar {
-  background-color: rgb(var(--surface-page)) !important;
+  background-color: rgb(var(--surface-page));
 }
 
 html:has([data-accessible-display='true']):root .card {
-  background-color: rgb(var(--surface-card)) !important;
+  background-color: rgb(var(--surface-card));
 }
 
 /* Topbar: ohne !important, die Glas-Regeln für .app-topbar kommen ohne aus
@@ -246,22 +253,27 @@ html:has([data-accessible-display='true']):root .app-topbar {
   background-color: rgb(var(--surface-topbar));
 }
 
+/* Ungeschichtet: schlägt die Pill-Regeln in @layer components (auch die
+ * `.ui-modern`- und `.dark`-Varianten) ohne !important. */
 html:has([data-accessible-display='true']) .settings-pill {
-  background-color: rgb(var(--ink)) !important;
+  background-color: rgb(var(--ink));
 }
 
 html.dark:has([data-accessible-display='true']) .settings-pill {
-  background-color: rgb(var(--surface-raised)) !important;
+  background-color: rgb(var(--surface-raised));
 }
 
-html:has([data-accessible-display='true'])
-  :where(.card, .app-sidebar, .app-topbar, .settings-pill, .modal-backdrop) {
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+/* :root und :is() statt !important: spezifischer als jede Glasregel
+ * (`.ui-modern aside.app-sidebar` ist die stärkste). */
+html:has([data-accessible-display='true']):root
+  :is(.card, .app-sidebar, .app-topbar, .settings-pill, .modal-backdrop) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
+/* Spezifischer als `.ui-modern .card:hover`. */
 html:has([data-accessible-display='true']) .card:hover {
-  transform: none !important;
+  transform: none;
 }
 
 html:has([data-accessible-display='true']) .border-subtle,
@@ -397,7 +409,9 @@ html:has([data-accessible-display='true']) .widget-shell > a.card .truncate {
 
 /* Nicht auf die OS-Einstellung angewiesen: der persönliche Modus reduziert
  * CSS-Bewegung zusätzlich. Funktionale Transforms (Sidebar, Drag, Switch)
- * bleiben bestehen; JavaScript-/Canvas-Animationen sind hiervon nicht erfasst. */
+ * bleiben bestehen; JavaScript-/Canvas-Animationen sind hiervon nicht erfasst.
+ * !important bleibt: muss jede Animation und Transition schlagen, auch
+ * Inline-Styles und den !important-Übergang von `.theme-fade`. */
 html:has([data-accessible-display='true'][data-accessible-reduce-motion='true']),
 html:has([data-accessible-display='true'][data-accessible-reduce-motion='true']) *,
 html:has([data-accessible-display='true'][data-accessible-reduce-motion='true']) *::before,
@@ -410,6 +424,8 @@ html:has([data-accessible-display='true'][data-accessible-reduce-motion='true'])
   scroll-behavior: auto !important;
 }
 
+/* !important bleibt: überstimmt den !important-Fokusrahmen oben mit der
+ * Systemfarbe des Kontrastmodus. */
 @media (forced-colors: active) {
   html:has([data-accessible-display='true'])
     :where(

@@ -122,7 +122,7 @@ export function StartWorkflowForm({
               <p className="text-xs text-muted mt-1">
                 Keine Vorlagen vorhanden — als <strong>eigener Workflow</strong> starten und die
                 Schritte danach hinzufügen.{' '}
-                <Link href="/staff/workflows/templates" className="text-brand hover:underline">
+                <Link href="/staff/workflows/templates" className="text-brand-700 hover:underline">
                   Vorlagen anlegen →
                 </Link>
               </p>

@@ -197,7 +197,7 @@ export function IdentityCapture({
   if (!sources.length) return null;
   return (
     <section
-      className="rounded-md border border-default bg-subtle p-3 space-y-3"
+      className="rounded-md border border-default bg-surface-raised p-3 space-y-3"
       aria-label="Lokale Ausweishilfe"
     >
       <button

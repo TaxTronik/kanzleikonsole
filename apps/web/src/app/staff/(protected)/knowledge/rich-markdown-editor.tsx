@@ -219,7 +219,7 @@ function RichToolbar({ editor }: { editor: Editor }) {
         <LinkIcon className="h-4 w-4" aria-hidden="true" />
       </ToolButton>
 
-      <span aria-hidden="true" className="mx-1 h-5 w-px bg-border-subtle" />
+      <span aria-hidden="true" className="mx-1 h-5 w-px bg-gray-200" />
       <ToolButton
         active={state?.bullet}
         onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -249,7 +249,7 @@ function RichToolbar({ editor }: { editor: Editor }) {
         <Code2 className="h-4 w-4" aria-hidden="true" />
       </ToolButton>
 
-      <span aria-hidden="true" className="mx-1 h-5 w-px bg-border-subtle" />
+      <span aria-hidden="true" className="mx-1 h-5 w-px bg-gray-200" />
       <label
         className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-secondary hover:bg-gray-100"
         title="Textfarbe"

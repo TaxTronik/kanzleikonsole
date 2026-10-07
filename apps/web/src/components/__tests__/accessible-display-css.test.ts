@@ -145,11 +145,22 @@ describe('persönlicher Anzeigemodus: CSS-Vertrag, keine Konformitätsprüfung',
     expect(css).toContain('animation-duration: 0.01ms !important');
     expect(css).toContain('animation-iteration-count: 1 !important');
     expect(css).toContain('transition-duration: 0.01ms !important');
-    expect(css).toContain('backdrop-filter: none !important');
-    expect(css).toContain('background-color: rgb(var(--surface-card)) !important');
-    // :root erhöht die Spezifität über die Glas-Overrides von .ui-modern.dark.
-    expect(css).toContain(`${modeSelector}:root .card`);
+    // :root erhöht die Spezifität über die Glas-Overrides von .ui-modern(.dark);
+    // seit C6 ohne !important (globals.css setzt das Glas ebenfalls ohne).
+    const glass = rules().find(
+      (rule) =>
+        rule.selector.replace(/\s+/g, ' ') ===
+        `${modeSelector}:root :is(.card, .app-sidebar, .app-topbar, .settings-pill, .modal-backdrop)`,
+    );
+    expect(declarations(glass!)).toEqual({
+      'backdrop-filter': 'none',
+      '-webkit-backdrop-filter': 'none',
+    });
+    const card = rules().find((rule) => rule.selector === `${modeSelector}:root .card`);
+    expect(declarations(card!)).toEqual({ 'background-color': 'rgb(var(--surface-card))' });
     expect(css).toContain(`${modeSelector}:root aside.app-sidebar`);
+    const body = rules().find((rule) => rule.selector === `${modeSelector}:root body`);
+    expect(declarations(body!)).toEqual({ 'background-image': 'none' });
     // Die Topbar-Glasregel kommt ohne !important aus; hier genügt die Spezifität.
     const topbar = rules().find((rule) =>
       rule.selectors.includes(`${modeSelector}:root .app-topbar`),

@@ -175,7 +175,7 @@ export function TicketContext({
 
 function ChainRow({ item }: { item: ReminderDetail['vorgaenger'][number] }) {
   return (
-    <li className="pl-3 border-l-2 border-border-subtle">
+    <li className="pl-3 border-l-2 border-subtle">
       <Link
         href={`/staff/reminders/${item.ticketNumber}`}
         className="text-sm text-secondary hover:underline"

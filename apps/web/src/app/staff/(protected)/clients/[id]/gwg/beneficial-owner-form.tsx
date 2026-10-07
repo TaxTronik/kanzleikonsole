@@ -107,7 +107,7 @@ export function BeneficialOwnerForm({
           : 'nicht beziffert'}
       </p>
       <details
-        className="mt-3 rounded-md border border-default bg-subtle px-3 py-2"
+        className="mt-3 rounded-md border border-default bg-surface-raised px-3 py-2"
         open={defaultOpen || undefined}
       >
         <summary className="cursor-pointer text-xs font-medium text-secondary">

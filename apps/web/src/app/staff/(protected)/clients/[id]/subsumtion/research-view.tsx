@@ -32,7 +32,7 @@ function ArchivedResultRow(props: {
 }) {
   const title = props.result.title || props.result.requestTitle || 'Recherche-Ergebnis';
   return (
-    <li className="rounded border border-border-subtle p-2.5 space-y-2">
+    <li className="rounded border border-subtle p-2.5 space-y-2">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <span className="text-xs font-medium text-primary">{title}</span>
         <span className="badge-gray text-[10px]">archiviert</span>
@@ -235,7 +235,7 @@ export function ResearchView(props: {
           </ul>
         )}
         {orphanedArchivedResults.length > 0 && (
-          <div className="mt-3 border-t border-border-subtle pt-3">
+          <div className="mt-3 border-t border-subtle pt-3">
             <p className="text-xs font-medium text-secondary mb-2">
               Weitere archivierte Ergebnisse
             </p>

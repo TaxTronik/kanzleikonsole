@@ -34,7 +34,7 @@ export function FieldError({
 }) {
   if (!errors?.length) return null;
   return (
-    <div id={fieldErrorId(name, prefix)} className="mt-1 text-sm text-danger">
+    <div id={fieldErrorId(name, prefix)} className="mt-1 text-sm text-red-700">
       {errors.map((message, index) => (
         <p key={`${message}-${index}`}>{message}</p>
       ))}

@@ -260,7 +260,7 @@ export async function MyDay({ tx, staffId, clientAccess, modules }: RenderCtx): 
       isEmpty={items.length === 0}
       emptyText="Keine offenen Aufgaben oder anstehenden Termine für Sie."
       footer={
-        <Link href="/staff/work" className="font-medium text-brand hover:underline">
+        <Link href="/staff/work" className="font-medium text-brand-700 hover:underline">
           Vollständigen Arbeitskorb öffnen
         </Link>
       }

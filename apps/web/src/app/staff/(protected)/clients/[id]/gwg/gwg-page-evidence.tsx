@@ -56,7 +56,7 @@ export function GwgEntityEvidence({ model }: { model: GwgPageModel }) {
                     editable={editableCheck}
                   />
                   {oldDocs.length > 0 && (
-                    <details className="mb-4 rounded-md border border-default bg-subtle">
+                    <details className="mb-4 rounded-md border border-default bg-surface-raised">
                       <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary">
                         Alte Nachweise ({oldDocs.length})
                       </summary>
@@ -147,7 +147,7 @@ export function HistoricalIdentityGroups({
   );
   if (!nested) return content;
   return (
-    <details className="rounded-md border border-default bg-subtle">
+    <details className="rounded-md border border-default bg-surface-raised">
       <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-primary">
         Alte Ausweise ({groups.length})
       </summary>

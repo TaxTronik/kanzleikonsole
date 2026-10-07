@@ -24,7 +24,7 @@ export function GwgCheckHistory({ checkHistory }: Pick<GwgPageData, 'checkHistor
         {checkHistory.map((historyCheck, index) => (
           <li
             key={historyCheck.id}
-            className="rounded-md border border-default bg-subtle p-3 text-sm"
+            className="rounded-md border border-default bg-surface-raised p-3 text-sm"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium text-primary">
@@ -120,7 +120,7 @@ export function GwgMasterData({
       )}
 
       {check && (
-        <details className="mt-5 rounded-md border border-default bg-subtle">
+        <details className="mt-5 rounded-md border border-default bg-surface-raised">
           <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-primary">
             Stammdaten bearbeiten
           </summary>

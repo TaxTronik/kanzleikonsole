@@ -137,7 +137,7 @@ export function FormatToolbar({
       >
         <Italic className="h-4 w-4" aria-hidden="true" />
       </Btn>
-      <span aria-hidden="true" className="mx-1 h-5 w-px bg-border-subtle" />
+      <span aria-hidden="true" className="mx-1 h-5 w-px bg-gray-200" />
       <Btn
         active={s?.h2}
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
@@ -168,7 +168,7 @@ export function FormatToolbar({
       </Btn>
       {onReflow && (
         <>
-          <span aria-hidden="true" className="mx-1 h-5 w-px bg-border-subtle" />
+          <span aria-hidden="true" className="mx-1 h-5 w-px bg-gray-200" />
           <Btn
             onClick={onReflow}
             title="Absätze zusammenführen — harte Zeilenumbrüche zu Fließtext glätten (gegen Import-Fragmentierung)"

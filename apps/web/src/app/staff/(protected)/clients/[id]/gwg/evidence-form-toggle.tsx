@@ -23,7 +23,7 @@ export function EvidenceFormToggle({ label, children }: { label: string; childre
         />
       </button>
       {open && (
-        <div id={contentId} className="mt-3 rounded-md border border-default bg-subtle p-3">
+        <div id={contentId} className="mt-3 rounded-md border border-default bg-surface-raised p-3">
           {children}
         </div>
       )}

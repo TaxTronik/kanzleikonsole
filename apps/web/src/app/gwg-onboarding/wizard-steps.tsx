@@ -792,7 +792,7 @@ function OwnerCard({
         />
       </div>
 
-      <div className="rounded-md border border-default bg-subtle p-4 space-y-3">
+      <div className="rounded-md border border-default bg-surface-raised p-4 space-y-3">
         <div>
           <h4 className="text-sm font-medium text-primary">Ausweisdaten</h4>
           <p className="text-xs text-muted mt-0.5">
@@ -945,7 +945,7 @@ function RepresentativeCard({
             onChange={(value) => onPatch({ fullName: value })}
             required
           />
-          <div className="rounded-md border border-default bg-subtle p-4 space-y-3">
+          <div className="rounded-md border border-default bg-surface-raised p-4 space-y-3">
             <div>
               <h4 className="text-sm font-medium text-primary">Ausweisdaten der Vertretung</h4>
               <p className="text-xs text-muted mt-0.5">

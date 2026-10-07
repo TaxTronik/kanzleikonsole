@@ -12,6 +12,8 @@
 //   - jede früher übersteuerte Utility hat ihren Dark-Wert als Token, und
 //     eine explizite dark:-Klasse gewinnt gegen ihn,
 //   - die Dark-Werte bleiben lesbar (kein hell-auf-hell),
+//   - die C6-Erweiterung (Statustexte unter 4,5:1 im Dark) hält hell wie
+//     dunkel 4,5:1 auf den Flächen, auf denen diese Texte stehen,
 //   - der Glas-Selektor der Topbar trifft nur noch `.app-topbar`.
 // =============================================================================
 
@@ -90,6 +92,75 @@ const DARK_SURFACES = [
   [40, 37, 44],
   [13, 11, 15],
 ] as const;
+
+/**
+ * C6: Statustexte, die im Dark unter 4,5:1 lagen (Palettenwert auf
+ * surface-raised: red-500 3,96, red-600 3,16, green-700 3,05, green-800 2,12,
+ * green-900 1,67, emerald-600 4,13, yellow-900 1,74, blue-800 1,71,
+ * blue-900 1,46, purple-800 1,70, pink-800 1,91, indigo-700 1,87,
+ * violet-600 2,56, teal-600 4,11). `light` ist die Palettenstufe des
+ * Fallbacks (≥ 4,5:1 auf card, page und raised), `tints` die Statusflächen,
+ * auf denen der Text im Code steht — hell als Palette, dunkel als Token.
+ */
+const C6_TEXT_TOKENS: Record<string, { light: string; tints: readonly string[] }> = {
+  'red-500': { light: 'red-700', tints: ['red-50', 'red-100'] },
+  'red-600': { light: 'red-700', tints: ['red-50', 'red-100'] },
+  'green-700': { light: 'green-800', tints: ['green-50'] },
+  'green-800': { light: 'green-800', tints: ['green-50'] },
+  'green-900': { light: 'green-900', tints: ['green-50'] },
+  'emerald-600': { light: 'emerald-700', tints: ['emerald-50', 'emerald-100'] },
+  'yellow-900': { light: 'yellow-900', tints: ['yellow-50', 'yellow-100'] },
+  'blue-800': { light: 'blue-800', tints: ['blue-50', 'blue-100'] },
+  'blue-900': { light: 'blue-900', tints: ['blue-50', 'blue-100'] },
+  'purple-800': { light: 'purple-800', tints: ['purple-50', 'purple-100'] },
+  'pink-800': { light: 'pink-800', tints: ['pink-100'] },
+  'indigo-700': { light: 'indigo-700', tints: ['indigo-50'] },
+  'violet-600': { light: 'violet-600', tints: [] },
+  'teal-600': { light: 'teal-700', tints: [] },
+};
+
+/** C6: helle Statusflächen dieser Texte, die im Dark bisher hell blieben. */
+const C6_BG_TOKENS = ['green-50', 'amber-100', 'blue-100', 'purple-100', 'pink-100', 'indigo-50'];
+
+/** Tailwind-v4-Palette (oklch) → sRGB, für die hellen Fallbacks. */
+const THEME_CSS = readFileSync(require.resolve('tailwindcss/theme.css'), 'utf8');
+function paletteRgb(shade: string): Rgba {
+  const match = THEME_CSS.match(
+    new RegExp(`--color-${shade}:\\s*oklch\\(([\\d.]+)%\\s+([\\d.]+)\\s+([\\d.]+)\\)`),
+  );
+  if (!match) throw new Error(`Palettenstufe fehlt: ${shade}`);
+  const [lightness, chroma, hue] = [Number(match[1]) / 100, Number(match[2]), Number(match[3])];
+  const a = chroma * Math.cos((hue * Math.PI) / 180);
+  const b = chroma * Math.sin((hue * Math.PI) / 180);
+  const l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (lightness - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  const encode = (value: number) => {
+    const clamped = Math.min(1, Math.max(0, value));
+    return Math.round(
+      255 * (clamped <= 0.0031308 ? 12.92 * clamped : 1.055 * clamped ** (1 / 2.4) - 0.055),
+    );
+  };
+  return [
+    encode(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+    encode(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+    encode(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s),
+    1,
+  ];
+}
+
+/** Helle Flächen aus :root (card, page, raised), auf denen Statustext steht. */
+function lightSurfaces(): Array<[number, number, number]> {
+  const surfaces: Array<[number, number, number]> = [];
+  root.walkRules((rule) => {
+    if (rule.selector !== ':root' || layerOf(rule) !== 'base') return;
+    rule.walkDecls(/^--surface-(?:card|page|raised)$/, (decl) => {
+      const [r, g, b] = decl.value.split(/\s+/).map(Number);
+      surfaces.push([r!, g!, b!]);
+    });
+  });
+  return surfaces;
+}
 
 type Rgba = [number, number, number, number];
 
@@ -191,6 +262,47 @@ describe('Dark Mode über Status-Tokens statt globaler Overrides (K-07)', () => 
         expect(contrast(composite(fg, page), page)).toBeGreaterThanOrEqual(4.5);
       }
     }
+  });
+
+  it.each(Object.entries(C6_TEXT_TOKENS))(
+    'text-%s hält über sein C6-Token hell wie dunkel 4,5:1',
+    (shade, { light, tints }) => {
+      const token = `--dark-text-${shade}`;
+      const base = design.candidatesToCss([`text-${shade}`])[0]!.replace(/\s+/g, '');
+      expect(base).toContain(`var(${token},var(--color-${light}))`);
+      expect(base).not.toContain('.dark');
+      const tokens = darkTokens();
+      expect(tokens[token]).toMatch(/^rgb\(\d+ \d+ \d+\)$/);
+
+      // Dunkel: auf den Extremflächen und auf den getönten Statusflächen.
+      const fg = parseRgb(tokens[token]!);
+      for (const page of DARK_SURFACES) {
+        expect(contrast(composite(fg, page), page)).toBeGreaterThanOrEqual(4.5);
+        for (const tint of tints) {
+          const surface = composite(parseRgb(tokens[`--dark-bg-${tint}`]!), page);
+          expect(
+            contrast(composite(fg, surface), surface),
+            `${shade} auf ${tint}`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+
+      // Hell: Fallback-Stufe auf card, page, raised und den hellen Statusflächen.
+      const lightFg = paletteRgb(light);
+      const surfaces = lightSurfaces();
+      expect(surfaces).toHaveLength(3);
+      for (const surface of [...surfaces, ...tints.map((tint) => paletteRgb(tint))]) {
+        expect(contrast(lightFg, surface), `${light} hell`).toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
+
+  it.each(C6_BG_TOKENS)('bg-%s wird im Dark zur getönten Fläche (C6)', (shade) => {
+    const base = design.candidatesToCss([`bg-${shade}`])[0]!.replace(/\s+/g, '');
+    expect(base).toContain(`var(--dark-bg-${shade},var(--color-${shade}))`);
+    expect(darkTokens()[`--dark-bg-${shade}`]).toMatch(/^rgb\(\d+ \d+ \d+ \/ 0\.\d+\)$/);
+    // Explizite dark:-Klassen am Element gewinnen weiterhin.
+    expect(design.candidatesToCss([`dark:bg-${shade}`])[0]).toContain(':is(.dark *)');
   });
 
   it('löst Brand-Tokens am Tenant-Wrapper auf und bleibt im Light beim AA-Markentext', () => {

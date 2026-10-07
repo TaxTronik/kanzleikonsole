@@ -21,7 +21,7 @@ const RESULT_PROSE_CLASS =
   '[&_code]:bg-gray-100 dark:[&_code]:bg-gray-800 [&_code]:px-1 [&_code]:rounded ' +
   '[&_pre]:bg-gray-100 dark:[&_pre]:bg-gray-800 [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto ' +
   '[&_blockquote]:border-l-4 [&_blockquote]:border-strong [&_blockquote]:pl-3 [&_blockquote]:text-muted ' +
-  '[&_hr]:my-4 [&_hr]:border-border-subtle ' +
+  '[&_hr]:my-4 [&_hr]:border-subtle ' +
   '[&_table]:w-full [&_table]:border-collapse [&_table]:my-3 ' +
   '[&_th]:border [&_th]:border-default [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_th]:text-primary ' +
   '[&_td]:border [&_td]:border-default [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:align-top';

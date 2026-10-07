@@ -454,6 +454,7 @@
   .react-datepicker__time
   .react-datepicker__time-box
   ul.react-datepicker__time-list {
+  /* !important bleibt: react-datepicker setzt die Listenhöhe als Inline-Style. */
   height: 16.25rem !important;
   max-height: 16.25rem;
   box-sizing: border-box;
@@ -515,6 +516,7 @@
     .react-datepicker__time
     .react-datepicker__time-box
     ul.react-datepicker__time-list {
+    /* !important bleibt: überstimmt den Inline-Style von react-datepicker. */
     height: 10rem !important;
     max-height: 10rem;
   }
@@ -1626,6 +1628,35 @@
   --text-color-blue-700: var(--dark-text-blue-700, var(--color-blue-700));
   --text-color-purple-700: var(--dark-text-purple-700, var(--color-purple-700));
 
+  /* C6: weitere Statustexte, die im Dark unter 4,5:1 lagen (z. B. text-red-600
+   * 3,2:1 und text-green-700 3,1:1 auf surface-raised), samt den hellen
+   * Flächen, auf denen sie stehen. Hell gilt die Palettenstufe, wenn sie auf
+   * card, page, raised und der -50-Fläche ihrer Farbe 4,5:1 erreicht, sonst
+   * die nächstdunklere Stufe derselben Farbe (red-500/600 → 700, green-700 →
+   * 800, emerald-600 → 700, teal-600 → 700). Werte und Verhältnisse prüft
+   * app/__tests__/dark-mode-tokens.test.ts. */
+  --background-color-green-50: var(--dark-bg-green-50, var(--color-green-50));
+  --background-color-amber-100: var(--dark-bg-amber-100, var(--color-amber-100));
+  --background-color-blue-100: var(--dark-bg-blue-100, var(--color-blue-100));
+  --background-color-purple-100: var(--dark-bg-purple-100, var(--color-purple-100));
+  --background-color-pink-100: var(--dark-bg-pink-100, var(--color-pink-100));
+  --background-color-indigo-50: var(--dark-bg-indigo-50, var(--color-indigo-50));
+
+  --text-color-red-500: var(--dark-text-red-500, var(--color-red-700));
+  --text-color-red-600: var(--dark-text-red-600, var(--color-red-700));
+  --text-color-green-700: var(--dark-text-green-700, var(--color-green-800));
+  --text-color-green-800: var(--dark-text-green-800, var(--color-green-800));
+  --text-color-green-900: var(--dark-text-green-900, var(--color-green-900));
+  --text-color-emerald-600: var(--dark-text-emerald-600, var(--color-emerald-700));
+  --text-color-yellow-900: var(--dark-text-yellow-900, var(--color-yellow-900));
+  --text-color-blue-800: var(--dark-text-blue-800, var(--color-blue-800));
+  --text-color-blue-900: var(--dark-text-blue-900, var(--color-blue-900));
+  --text-color-purple-800: var(--dark-text-purple-800, var(--color-purple-800));
+  --text-color-pink-800: var(--dark-text-pink-800, var(--color-pink-800));
+  --text-color-indigo-700: var(--dark-text-indigo-700, var(--color-indigo-700));
+  --text-color-violet-600: var(--dark-text-violet-600, var(--color-violet-600));
+  --text-color-teal-600: var(--dark-text-teal-600, var(--color-teal-700));
+
   /* Markenfarbe als Vordergrund: tenantabhängig auf AA-Kontrast korrigiert
    * (brand-palette.ts). Alle dunklen Stufen ab 500 und `text-brand-accessible`
    * zeigen deshalb dieselbe geprüfte Textfarbe; helle Stufen (50–400) bleiben
@@ -1670,6 +1701,29 @@
     --dark-text-blue-600: rgb(147 197 253);
     --dark-text-blue-700: rgb(191 219 254);
     --dark-text-purple-700: rgb(216 180 254);
+
+    /* C6: Flächen wie die bestehenden Tönungen ihrer Farbe (900er-Stufe). */
+    --dark-bg-green-50: rgb(20 83 45 / 0.3);
+    --dark-bg-amber-100: rgb(120 53 15 / 0.4);
+    --dark-bg-blue-100: rgb(30 58 138 / 0.4);
+    --dark-bg-purple-100: rgb(76 29 149 / 0.4);
+    --dark-bg-pink-100: rgb(131 24 67 / 0.4);
+    --dark-bg-indigo-50: rgb(49 46 129 / 0.3);
+
+    --dark-text-red-500: rgb(248 113 113);
+    --dark-text-red-600: rgb(248 113 113);
+    --dark-text-green-700: rgb(134 239 172);
+    --dark-text-green-800: rgb(187 247 208);
+    --dark-text-green-900: rgb(220 252 231);
+    --dark-text-emerald-600: rgb(52 211 153);
+    --dark-text-yellow-900: rgb(254 240 138);
+    --dark-text-blue-800: rgb(191 219 254);
+    --dark-text-blue-900: rgb(219 234 254);
+    --dark-text-purple-800: rgb(233 213 255);
+    --dark-text-pink-800: rgb(251 207 232);
+    --dark-text-indigo-700: rgb(165 180 252);
+    --dark-text-violet-600: rgb(167 139 250);
+    --dark-text-teal-600: rgb(45 212 191);
   }
 
   /* Brand-abhängige Dark-Werte auch an .app-shell auflösen: dort setzt das
@@ -1900,7 +1954,9 @@
 
 /* Theme-Cross-Fade: nur bei explizitem Umschalten (Klasse wird in
  * setThemePref für ~350 ms gesetzt), Modus-unabhängig — auch Klassik
- * bekommt den weichen Farbübergang, der kostet keine GPU-Effekte. */
+ * bekommt den weichen Farbübergang, der kostet keine GPU-Effekte.
+ * !important bleibt: Der Übergang muss für diese 350 ms jede Komponenten-
+ * Transition schlagen, auch spezifischere wie `.ui-modern .card`. */
 .theme-fade,
 .theme-fade * {
   transition:
@@ -1909,41 +1965,46 @@
     box-shadow 0.3s ease !important;
 }
 
-/* Cards: deutlich größere Rundung, weiche Multi-Layer-Schatten, Lift-on-Hover */
+/* Cards: deutlich größere Rundung, weiche Multi-Layer-Schatten, Lift-on-Hover.
+ * Ohne !important (C6): Diese Regeln stehen außerhalb jeder Cascade-Layer und
+ * schlagen damit `.card` (@layer components) und alle Utilities am Element
+ * (@layer utilities) bereits; Hover und Dark gewinnen über ihre höhere
+ * Spezifität, der persönliche Anzeigemodus über `:root` (accessible-display.css). */
 .ui-modern .card {
   transition:
     box-shadow 0.2s ease,
     transform 0.2s ease,
     border-color 0.2s ease;
-  border-radius: var(--m-radius-card) !important;
-  border-color: rgb(var(--border-default)) !important;
-  background-color: rgb(var(--surface-card) / 0.95) !important;
+  border-radius: var(--m-radius-card);
+  border-color: rgb(var(--border-default));
+  background-color: rgb(var(--surface-card) / 0.95);
   backdrop-filter: blur(12px) saturate(140%);
   -webkit-backdrop-filter: blur(12px) saturate(140%);
   box-shadow: var(--m-shadow-card);
 }
 .ui-modern .card:hover {
   transform: translateY(-1px);
-  border-color: rgb(var(--border-strong)) !important;
+  border-color: rgb(var(--border-strong));
   box-shadow: var(--m-shadow-card-hover);
 }
 .ui-modern.dark .card {
-  background-color: rgb(var(--surface-card) / 0.85) !important;
+  background-color: rgb(var(--surface-card) / 0.85);
   box-shadow: var(--m-shadow-card);
 }
 
 /* Buttons bleiben auch im Modern-Modus bewusst flach (kein Gradient,
  * kein Glow) — Tiefe entsteht nur über Flächen, nicht über Buttons. */
 
-/* Sidebar als Glas-Panel */
+/* Sidebar als Glas-Panel — ohne !important, ungeschichtet schlägt die Regel
+ * `bg-surface-page border-default` am Element (wie bei den Cards oben). */
 .ui-modern aside.app-sidebar {
   backdrop-filter: blur(16px) saturate(160%);
   -webkit-backdrop-filter: blur(16px) saturate(160%);
-  background-color: rgb(var(--surface-page) / 0.6) !important;
-  border-right-color: rgb(var(--border-default)) !important;
+  background-color: rgb(var(--surface-page) / 0.6);
+  border-right-color: rgb(var(--border-default));
 }
 .ui-modern.dark aside.app-sidebar {
-  background-color: rgb(var(--surface-page) / 0.55) !important;
+  background-color: rgb(var(--surface-page) / 0.55);
 }
 
 /* Topbar: ebenfalls als Glas — nur die Kopfleiste von Staff- und Portal-Layout
@@ -2023,12 +2084,13 @@
      angewendet — die 55–65%-Deckkraft bleibt dann OHNE Blur übrig und das
      Menüband wirkt transparent/unlesbar über dem Seiteninhalt. Die
      .dark-Selektoren sind nötig, weil die Dark-Regeln oben spezifischer sind
-     (sonst blieb es im Dark bei 55 % bzw. 70 % ohne Blur). */
+     (sonst blieb es im Dark bei 55 % bzw. 70 % ohne Blur); bei gleicher
+     Spezifität gewinnt diese spätere Regel ohne !important. */
   .ui-modern aside.app-sidebar,
   .ui-modern.dark aside.app-sidebar {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    background-color: rgb(var(--surface-page) / 0.98) !important;
+    background-color: rgb(var(--surface-page) / 0.98);
   }
   .ui-modern .app-topbar,
   .ui-modern.dark .app-topbar {
@@ -2045,7 +2107,9 @@
 }
 
 /* Windows-Kontrastmodus entfernt reguläre Box-Shadows. Ein echter System-
- * Outline hält den Tastaturfokus unabhängig von Tenant-Farben sichtbar. */
+ * Outline hält den Tastaturfokus unabhängig von Tenant-Farben sichtbar.
+ * !important bleibt: Der Systemfokus muss jede Fokusregel der Komponenten
+ * schlagen, auch spezifischere und Inline-Styles. */
 @media (forced-colors: active) {
   :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
     outline: 2px solid Highlight !important;

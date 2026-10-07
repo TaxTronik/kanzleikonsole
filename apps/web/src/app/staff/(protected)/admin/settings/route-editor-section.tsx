@@ -420,7 +420,7 @@ export function RouteEditorSection({
                         <code>{eventName}</code>
                         <button
                           type="button"
-                          className="text-muted hover:text-danger"
+                          className="text-muted hover:text-red-700"
                           aria-label={`${eventName} entfernen`}
                           onClick={() =>
                             setRouteDraft((current) => ({

@@ -242,7 +242,7 @@ export function NormRefList({
           type="button"
           onClick={() => setShowAdd(true)}
           disabled={pending}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-brand rounded border border-dashed border-default py-1.5 hover:bg-gray-50 dark:hover:bg-gray-900/40 disabled:opacity-50"
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-brand-700 rounded border border-dashed border-default py-1.5 hover:bg-gray-50 dark:hover:bg-gray-900/40 disabled:opacity-50"
         >
           <BookPlus className="h-3.5 w-3.5" /> Eigene Norm ergänzen
         </button>
@@ -413,7 +413,7 @@ function NormRefRow({
               onClick={() => setVerworfen(false)}
               disabled={pending}
               title="Vorschlag für diesen Fall zurückholen"
-              className="text-[11px] text-brand hover:underline disabled:opacity-50 inline-flex items-center gap-0.5"
+              className="text-[11px] text-brand-700 hover:underline disabled:opacity-50 inline-flex items-center gap-0.5"
             >
               <Undo2 className="h-3 w-3" /> zurückholen
             </button>
@@ -440,8 +440,8 @@ function NormRefRow({
                 className={
                   'text-[11px] inline-flex items-center gap-0.5 rounded px-1 py-0.5 disabled:opacity-50 ' +
                   (showKat
-                    ? 'text-brand bg-gray-100 dark:bg-gray-800'
-                    : 'text-muted hover:text-brand hover:bg-gray-50 dark:hover:bg-gray-900/40')
+                    ? 'text-brand-700 bg-gray-100 dark:bg-gray-800'
+                    : 'text-muted hover:text-brand-700 hover:bg-gray-50 dark:hover:bg-gray-900/40')
                 }
               >
                 <Library className="h-3 w-3" /> Katalog
