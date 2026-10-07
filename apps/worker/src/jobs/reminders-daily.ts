@@ -26,13 +26,13 @@
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import type { NotificationKind } from '@prisma/client';
+import { withSystemContext } from '@taxtronik/db';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { filterStaffAccessClientsTx } from '@taxtronik/db/staff-client-access';
 import type { TxClient } from '@taxtronik/db/tenant-context';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 import { readWorkerTenantModules } from '../module-gate';
@@ -156,7 +156,9 @@ async function createDailyNotifications(
   );
   const createdAtLt = new Date(createdAtGte.getTime() + DAY_MS);
 
-  return withWorkerTenantContext(tenantId, async (tx) => {
+  // S-01: Sperren, Revalidierung, Zugriffsfilter und Insert über die App-Rolle
+  // im SYSTEM-Kontext des Tenants (RLS).
+  return withSystemContext(tenantId, async (tx) => {
     await lockDailyNotificationSourcesTx(tx, tenantId, groups);
     const noticeResolvedGroups = await resolveTaxNoticeDeadlineRecipientsTx(tx, tenantId, groups);
     const reminderResolvedGroups = await resolveCurrentReminderRecipientsTx(
@@ -265,7 +267,7 @@ async function createDailyNotificationsInChunks(
 
 /**
  * TAX-CONTROL-STATUS-001: Abschluss, Faelligkeit und Zuweisung einer
- * Wiedervorlage koennen sich nach dem Owner-Read aendern. Der Insert-Tx liest
+ * Wiedervorlage koennen sich nach dem Kandidaten-Read aendern. Der Insert-Tx liest
  * deshalb den aktuellen Quellvorgang und ersetzt veraltete Empfaenger durch
  * die jetzige Zuweisung. Nicht mehr offene oder verschobene Eintraege fallen
  * fail-closed heraus.
@@ -635,6 +637,7 @@ async function filterCurrentRecipientsTx(
 export const remindersDailyWorker = createWorker<ChecksJob>(
   JOB_QUEUES.remindersDaily.name,
   async (job) => {
+    // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client.
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]
       : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
@@ -648,71 +651,80 @@ export const remindersDailyWorker = createWorker<ChecksJob>(
 
     for (const tenantId of tenantIds) {
       const modules = await readWorkerTenantModules(tenantId);
-      const [notices, reminders, binders] = await Promise.all([
-        // Exakt die drei relevanten @db.Date-Tage statt aller künftigen
-        // Bescheide zu laden und anschließend im Worker zu filtern.
-        modules.taxNotices
-          ? prismaOwner.taxNotice.findMany({
-              where: {
-                tenantId,
-                client: { mandateEndedAt: null },
-                appealDeadline: { in: appealDates },
-                appealFiledAt: null,
-                deadlineCalculationStatus: 'CALCULATED',
-                manualReviewRequired: false,
-                status: { notIn: [...CLOSED_APPEAL_NOTICE_STATUSES] },
-              },
-              select: {
-                id: true,
-                kind: true,
-                period: true,
-                appealDeadline: true,
-                client: { select: { id: true, name: true } },
-                reviewedBy: true,
-                deadlineCalculationStatus: true,
-                manualReviewRequired: true,
-              },
-            })
-          : Promise.resolve([]),
-        modules.reminders
-          ? prismaOwner.clientReminder.findMany({
-              where: {
-                tenantId,
-                // Interne Aufgaben haben keinen Mandanten — der Mandats-Filter
-                // darf sie nicht mit aussortieren.
-                OR: [{ clientId: null }, { client: { mandateEndedAt: null } }],
-                doneAt: null,
-                archivedAt: null,
-                dueDate: { lte: today },
-              },
-              select: {
-                id: true,
-                dueDate: true,
-                subject: true,
-                assignees: { select: { staffId: true } },
-                createdByStaff: true,
-                client: { select: { id: true, name: true } },
-              },
-            })
-          : Promise.resolve([]),
-        modules.binders
-          ? prismaOwner.pendingBinder.findMany({
-              where: {
-                tenantId,
-                client: { mandateEndedAt: null },
-                status: 'WITH_CLIENT',
-                expectedReturnAt: { not: null, lt: today },
-              },
-              select: {
-                id: true,
-                label: true,
-                expectedReturnAt: true,
-                createdByStaff: true,
-                client: { select: { id: true, name: true } },
-              },
-            })
-          : Promise.resolve([]),
-      ]);
+      // S-01: Kandidaten über die App-Rolle im SYSTEM-Kontext des Tenants (RLS);
+      // eine Transaktion, die drei Abfragen laufen darin nacheinander.
+      const loadCandidates = (tx: TxClient) =>
+        Promise.all([
+          // Exakt die drei relevanten @db.Date-Tage statt aller künftigen
+          // Bescheide zu laden und anschließend im Worker zu filtern.
+          modules.taxNotices
+            ? tx.taxNotice.findMany({
+                where: {
+                  tenantId,
+                  client: { mandateEndedAt: null },
+                  appealDeadline: { in: appealDates },
+                  appealFiledAt: null,
+                  deadlineCalculationStatus: 'CALCULATED',
+                  manualReviewRequired: false,
+                  status: { notIn: [...CLOSED_APPEAL_NOTICE_STATUSES] },
+                },
+                select: {
+                  id: true,
+                  kind: true,
+                  period: true,
+                  appealDeadline: true,
+                  client: { select: { id: true, name: true } },
+                  reviewedBy: true,
+                  deadlineCalculationStatus: true,
+                  manualReviewRequired: true,
+                },
+              })
+            : Promise.resolve([]),
+          modules.reminders
+            ? tx.clientReminder.findMany({
+                where: {
+                  tenantId,
+                  // Interne Aufgaben haben keinen Mandanten — der Mandats-Filter
+                  // darf sie nicht mit aussortieren.
+                  OR: [{ clientId: null }, { client: { mandateEndedAt: null } }],
+                  doneAt: null,
+                  archivedAt: null,
+                  dueDate: { lte: today },
+                },
+                select: {
+                  id: true,
+                  dueDate: true,
+                  subject: true,
+                  assignees: { select: { staffId: true } },
+                  createdByStaff: true,
+                  client: { select: { id: true, name: true } },
+                },
+              })
+            : Promise.resolve([]),
+          modules.binders
+            ? tx.pendingBinder.findMany({
+                where: {
+                  tenantId,
+                  client: { mandateEndedAt: null },
+                  status: 'WITH_CLIENT',
+                  expectedReturnAt: { not: null, lt: today },
+                },
+                select: {
+                  id: true,
+                  label: true,
+                  expectedReturnAt: true,
+                  createdByStaff: true,
+                  client: { select: { id: true, name: true } },
+                },
+              })
+            : Promise.resolve([]),
+        ]);
+      const noCandidates: Awaited<ReturnType<typeof loadCandidates>> = [[], [], []];
+      // Ohne aktives Teilmodul keine Transaktion (wie zuvor keine Abfrage).
+      const [notices, reminders, binders] =
+        modules.taxNotices || modules.reminders || modules.binders
+          ? await withSystemContext(tenantId, loadCandidates)
+          : noCandidates;
 
       const appealNotifications: DailyNotification[] = [];
       for (const n of notices) {

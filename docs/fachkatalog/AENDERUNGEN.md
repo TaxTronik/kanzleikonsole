@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-029
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/reminders-daily.ts
+    rule_ids:
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - REMINDER-TICKET-001
+      - TAX-CONTROL-STATUS-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-NOTICE-APPEAL-001
+    reason: >-
+      Die täglichen Erinnerungen (`reminders-daily`) lesen Einspruchsfristen,
+      fällige Erinnerungen und überfällige Ordner und schreiben die Hinweise je
+      Block (Sperren, Nachprüfung, Zugriffsfilter, Einfügen) über die App-Rolle im
+      SYSTEM-Kontext des Tenants (Row-Level-Security) statt über die
+      Owner-Verbindung mit BYPASSRLS; nur die Tenant-Liste bleibt auf der
+      Owner-Verbindung. Kandidaten, Empfänger, Tagesidempotenz und die
+      P-15-Blockgrenzen bleiben unverändert; PostgreSQL-Suiten belegen das und dass
+      Erinnerungen fremder Tenants unsichtbar bleiben. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/reminders-daily-app-role-db.test.ts
+      - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-028
     date: '2026-10-07'
     paths:
@@ -4754,6 +4777,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-029` dokumentiert die täglichen Erinnerungen
+  über die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-028` dokumentiert die automatische
   Workflow-Wiederaufnahme über die App-Rolle.

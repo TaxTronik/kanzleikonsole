@@ -9,6 +9,10 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => {
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
+  };
+  // S-01: Die Kandidaten liest je Tenant die erste Transaktion über die App-Rolle,
+  // die folgenden Abschnittstransaktionen sperren, prüfen erneut und schreiben.
+  const readTx = {
     taxNotice: { findMany: vi.fn() },
     clientReminder: { findMany: vi.fn() },
     pendingBinder: { findMany: vi.fn() },
@@ -22,13 +26,16 @@ const h = vi.hoisted(() => {
     clientResponsibility: { findMany: vi.fn() },
     staffUser: { findMany: vi.fn() },
   };
-  const withWorkerTenantContext = vi.fn(
-    async (_tenantId: string, fn: (value: typeof tx) => Promise<unknown>) => fn(tx),
-  );
+  const withSystemContext = vi.fn();
+  const readTenants = new Set<string>();
+  const writeTransactions: string[] = [];
   return {
     prismaOwner,
+    readTx,
     tx,
-    withWorkerTenantContext,
+    withSystemContext,
+    readTenants,
+    writeTransactions,
     readWorkerTenantModules: vi.fn(),
     filterStaffAccessClientsTx: vi.fn(),
     // Zugriffsentscheidung je Mitarbeiter/Mandant für den gebündelten Filter.
@@ -42,8 +49,8 @@ vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
-vi.mock('../../tenant-context', () => ({
-  withWorkerTenantContext: h.withWorkerTenantContext,
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: h.withSystemContext,
 }));
 vi.mock('../../module-gate', () => ({
   readWorkerTenantModules: h.readWorkerTenantModules,
@@ -86,9 +93,9 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   vi.resetAllMocks();
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT_ID }]);
-  h.prismaOwner.taxNotice.findMany.mockResolvedValue([]);
-  h.prismaOwner.clientReminder.findMany.mockResolvedValue([]);
-  h.prismaOwner.pendingBinder.findMany.mockResolvedValue([]);
+  h.readTx.taxNotice.findMany.mockResolvedValue([]);
+  h.readTx.clientReminder.findMany.mockResolvedValue([]);
+  h.readTx.pendingBinder.findMany.mockResolvedValue([]);
   h.readWorkerTenantModules.mockResolvedValue({
     taxNotices: true,
     reminders: true,
@@ -114,8 +121,17 @@ beforeEach(() => {
         ]),
       ),
   );
-  h.withWorkerTenantContext.mockImplementation(
-    async (_tenantId: string, fn: (value: typeof h.tx) => Promise<unknown>) => fn(h.tx),
+  h.readTenants.clear();
+  h.writeTransactions.length = 0;
+  h.withSystemContext.mockImplementation(
+    async (tenantId: string, fn: (value: unknown) => Promise<unknown>) => {
+      if (!h.readTenants.has(tenantId)) {
+        h.readTenants.add(tenantId);
+        return fn(h.readTx);
+      }
+      h.writeTransactions.push(tenantId);
+      return fn(h.tx);
+    },
   );
 });
 
@@ -133,17 +149,17 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
 
     await expect(run()).resolves.toEqual({ appeal: 0, reminders: 0, binders: 0 });
 
-    expect(h.prismaOwner.taxNotice.findMany).not.toHaveBeenCalled();
-    expect(h.prismaOwner.clientReminder.findMany).not.toHaveBeenCalled();
-    expect(h.prismaOwner.pendingBinder.findMany).not.toHaveBeenCalled();
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.readTx.taxNotice.findMany).not.toHaveBeenCalled();
+    expect(h.readTx.clientReminder.findMany).not.toHaveBeenCalled();
+    expect(h.readTx.pendingBinder.findMany).not.toHaveBeenCalled();
+    expect(h.withSystemContext).not.toHaveBeenCalled();
   });
 
   it('fragt Einspruchsfristen ausschließlich für 1, 7 und 14 Tage ab', async () => {
     await run();
 
     const today = new Date('2026-07-16T00:00:00.000Z');
-    expect(h.prismaOwner.taxNotice.findMany).toHaveBeenCalledWith(
+    expect(h.readTx.taxNotice.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           tenantId: TENANT_ID,
@@ -155,11 +171,11 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
         }),
       }),
     );
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.writeTransactions).toEqual([]);
   });
 
   it('lädt heutige Dedupe-Keys einmal und schreibt sanitisiert per notify (createMany)', async () => {
-    h.prismaOwner.taxNotice.findMany.mockResolvedValue([
+    h.readTx.taxNotice.findMany.mockResolvedValue([
       {
         id: 'notice-existing',
         kind: 'EINKOMMENSTEUER',
@@ -199,7 +215,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
         manualReviewRequired: false,
       },
     ]);
-    h.prismaOwner.clientReminder.findMany.mockResolvedValue([
+    h.readTx.clientReminder.findMany.mockResolvedValue([
       {
         id: 'reminder-1',
         dueDate: new Date('2026-07-16T00:00:00.000Z'),
@@ -210,7 +226,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
         client: { id: 'client-1', name: 'Muster GmbH' },
       },
     ]);
-    h.prismaOwner.pendingBinder.findMany.mockResolvedValue([
+    h.readTx.pendingBinder.findMany.mockResolvedValue([
       {
         id: 'binder-1',
         label: 'Juni',
@@ -246,7 +262,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
 
     const result = await run();
 
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
+    expect(h.writeTransactions).toHaveLength(1);
     expect(lockQueries()).toHaveLength(3);
     const lockSql = lockQueries().map((query) => query.sql);
     expect(lockSql[0]).toContain('FROM public."tax_notice"');
@@ -291,7 +307,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
   });
 
   it('TAX-NOTICE-APPEAL-001: NEU ohne Prüfer geht nur an aktive Hauptbearbeiter', async () => {
-    h.prismaOwner.taxNotice.findMany.mockResolvedValue([
+    h.readTx.taxNotice.findMany.mockResolvedValue([
       {
         id: 'notice-neu',
         kind: 'EINKOMMENSTEUER',
@@ -343,7 +359,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
   it.each(['OPEN→RESTRICTED', 'nachtraeglich vertraulich'])(
     'TAX-CONTROL-STATUS-001: %s entzieht dem alten Prüfer den Reminder-Zugriff',
     async () => {
-      h.prismaOwner.taxNotice.findMany.mockResolvedValue([
+      h.readTx.taxNotice.findMany.mockResolvedValue([
         {
           id: 'notice-vertraulich',
           kind: 'UMSATZSTEUER',
@@ -388,7 +404,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
   );
 
   it('nutzt ohne berechtigten Prüfer oder Hauptbearbeiter aktive ADMIN/PARTNER', async () => {
-    h.prismaOwner.taxNotice.findMany.mockResolvedValue([
+    h.readTx.taxNotice.findMany.mockResolvedValue([
       {
         id: 'notice-fallback',
         kind: 'EINKOMMENSTEUER',
@@ -431,7 +447,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
   });
 
   it('TAX-NOTICE-APPEAL-001: §122a-Vorschlag mit manuellem Prüfbedarf erzeugt keinen Frist-Reminder', async () => {
-    h.prismaOwner.taxNotice.findMany.mockResolvedValue([
+    h.readTx.taxNotice.findMany.mockResolvedValue([
       {
         id: 'notice-122a-offen',
         kind: 'EINKOMMENSTEUER',
@@ -446,12 +462,12 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
 
     await expect(run()).resolves.toEqual({ appeal: 0, reminders: 0, binders: 0 });
 
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.writeTransactions).toEqual([]);
     expect(h.tx.notification.createMany).not.toHaveBeenCalled();
   });
 
   it('revalidiert die fachliche Fristqualifikation unmittelbar im Insert-Tx', async () => {
-    h.prismaOwner.taxNotice.findMany.mockResolvedValue([
+    h.readTx.taxNotice.findMany.mockResolvedValue([
       {
         id: 'notice-race',
         kind: 'EINKOMMENSTEUER',
@@ -492,7 +508,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
   it.each(['OPEN→RESTRICTED ohne Verantwortung', 'nachtraeglich vertraulich ohne Verantwortung'])(
     '%s: alte Reminder-Zuweisung erzeugt keine Notification',
     async () => {
-      h.prismaOwner.clientReminder.findMany.mockResolvedValue([
+      h.readTx.clientReminder.findMany.mockResolvedValue([
         {
           id: 'reminder-stale',
           dueDate: new Date('2026-07-16T00:00:00.000Z'),
@@ -525,7 +541,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
   );
 
   it('verwendet bei einer zwischenzeitlich neu zugewiesenen Wiedervorlage nur aktuelle Empfänger', async () => {
-    h.prismaOwner.clientReminder.findMany.mockResolvedValue([
+    h.readTx.clientReminder.findMany.mockResolvedValue([
       {
         id: 'reminder-reassigned',
         dueDate: new Date('2026-07-16T00:00:00.000Z'),
@@ -559,7 +575,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
   });
 
   it('verwirft eine zwischen Kandidaten-Read und Insert erledigte Wiedervorlage', async () => {
-    h.prismaOwner.clientReminder.findMany.mockResolvedValue([
+    h.readTx.clientReminder.findMany.mockResolvedValue([
       {
         id: 'reminder-done',
         dueDate: new Date('2026-07-16T00:00:00.000Z'),
@@ -586,7 +602,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
   });
 
   it('verwirft eine interne Wiedervorlage an einen inzwischen inaktiven Empfänger', async () => {
-    h.prismaOwner.clientReminder.findMany.mockResolvedValue([
+    h.readTx.clientReminder.findMany.mockResolvedValue([
       {
         id: 'reminder-internal',
         dueDate: new Date('2026-07-16T00:00:00.000Z'),
@@ -619,7 +635,7 @@ describe('reminders-daily Query- und Bulk-Dedupe', () => {
   it.each(['entzogener Mandantenzugriff', 'deaktivierter Ersteller'])(
     'Pendelordner mit %s erzeugt keine vertrauliche Notification',
     async () => {
-      h.prismaOwner.pendingBinder.findMany.mockResolvedValue([
+      h.readTx.pendingBinder.findMany.mockResolvedValue([
         {
           id: 'binder-sensitive',
           label: 'Vertrauliche Unterlagen',
@@ -699,7 +715,7 @@ describe('P-15: Abschnitte je 200 Mandanten mit eigener Transaktion', () => {
 
   it('schreibt 450 Mandanten in drei kurzen Transaktionen mit gebündeltem Zugriffsfilter', async () => {
     const reminders = Array.from({ length: 450 }, (_, index) => dueReminder(index));
-    h.prismaOwner.clientReminder.findMany.mockResolvedValue(reminders);
+    h.readTx.clientReminder.findMany.mockResolvedValue(reminders);
     h.tx.clientReminder.findMany.mockImplementation(
       async ({ where }: { where: { id: { in: string[] } } }) =>
         reminders
@@ -715,7 +731,7 @@ describe('P-15: Abschnitte je 200 Mandanten mit eigener Transaktion', () => {
 
     await expect(run()).resolves.toEqual({ appeal: 0, reminders: 450, binders: 0 });
 
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(3);
+    expect(h.writeTransactions).toHaveLength(3);
     const lockedIds = lockQueries().map((query) => query.values.slice(1));
     expect(lockedIds.map((ids) => ids.length)).toEqual([200, 200, 50]);
     expect(new Set(lockedIds.flat()).size).toBe(450);
