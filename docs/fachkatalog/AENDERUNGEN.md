@@ -1,5 +1,21 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-048
+    date: '2026-10-07'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Der Job `quality` führt die PowerShell-Tests der Windows-Hilfsskripte mit
+      gepinntem PowerShell 7.6.6 aus und parst alle PowerShell-Skripte unter
+      `scripts/`. Nur CI; Prüfschritte der übrigen Jobs und Fachlogik bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - scripts/release/tests/check-release-gates.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-047
     date: '2026-10-07'
     paths:
@@ -5204,6 +5220,8 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-048` dokumentiert die PowerShell-Tests im CI.
 
 - 2026-10-07: `FK-EXC-20261007-047` dokumentiert die CI-Caches für Turbo,
   Turbopack und Playwright.

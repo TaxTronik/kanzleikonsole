@@ -39,15 +39,24 @@ Rollen ohne Superuser-Attribut, und der Login funktioniert.
 
 Die Regressionstests laufen ohne Docker-Zugriff mit simulierten Befehlen. Der
 Reset-Test kopiert das Setup in ein eigenes temporäres Verzeichnis und prüft
-einen fehlgeschlagenen Reset mit einer synthetischen Konfiguration. Beide Tests
-jeweils in Windows PowerShell 5.1 und PowerShell 7 aus dem Repository starten:
+einen fehlgeschlagenen Reset mit einer synthetischen Konfiguration. Der
+Parser-Test liest alle PowerShell-Skripte unter `scripts/` mit dem
+PowerShell-Parser ein, ohne sie auszuführen. Die Tests jeweils in Windows
+PowerShell 5.1 und PowerShell 7 aus dem Repository starten:
 
 ```powershell
 powershell.exe -NoProfile -File scripts/tests/windows-docker-commands.test.ps1
 powershell.exe -NoProfile -File scripts/tests/windows-setup-reset.test.ps1
+powershell.exe -NoProfile -File scripts/tests/windows-scripts-parse.test.ps1
 pwsh.exe -NoProfile -File scripts/tests/windows-docker-commands.test.ps1
 pwsh.exe -NoProfile -File scripts/tests/windows-setup-reset.test.ps1
+pwsh.exe -NoProfile -File scripts/tests/windows-scripts-parse.test.ps1
 ```
+
+Im CI-Job `quality` laufen alle `scripts/tests/*.test.ps1` mit PowerShell 7
+unter Linux; das Release-Archiv ist mit Version und SHA-256 gepinnt
+(`.forgejo/workflows/ci.yml`, Schritt „PowerShell installieren“). Windows
+PowerShell 5.1 bleibt eine manuelle Prüfung auf Windows.
 
 Diese Tests prüfen Argumentübergabe, Fehlerbehandlung und Skriptkodierung. Einen
 vollständigen Windows-Installationslauf mit einer echten Docker-Installation

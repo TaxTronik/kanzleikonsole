@@ -171,6 +171,40 @@ jobs:
           path: testbericht-ops.log
           if-no-files-found: ignore
 
+      # R-10: Regressionstests der Windows-Hilfsskripte (scripts/tests/*.test.ps1,
+      # docs/development/windows-hilfsskripte.md) mit PowerShell 7 unter Linux.
+      # Release-Archiv mit gepinnter Version und SHA-256 wie gitleaks in
+      # security.yml; Docker und pnpm sind in den Tests Attrappen. Fehlt ICU im
+      # Runner-Image, läuft PowerShell im invarianten Globalisierungsmodus.
+      - name: PowerShell installieren (Version + SHA-256 gepinnt)
+        env:
+          PWSH_VERSION: 7.6.6
+          PWSH_LINUX_X64_SHA256: ddbc4a2d113bbd46d283cfedcbcd117a70caefd7673f41f2b4e0000badf103bc
+        run: |
+          set -euo pipefail
+          pwsh_dir="$(mktemp -d)"
+          curl -fsSL \
+            "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz" \
+            -o "$pwsh_dir/pwsh.tar.gz"
+          echo "${PWSH_LINUX_X64_SHA256}  $pwsh_dir/pwsh.tar.gz" | sha256sum -c -
+          tar -xzf "$pwsh_dir/pwsh.tar.gz" -C "$pwsh_dir"
+          rm "$pwsh_dir/pwsh.tar.gz"
+          chmod +x "$pwsh_dir/pwsh"
+          if ! ldconfig -p 2>/dev/null | grep -q 'libicuuc\.so'; then
+            echo 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1' >> "$GITHUB_ENV"
+            export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+          fi
+          "$pwsh_dir/pwsh" -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()'
+          echo "PWSH=$pwsh_dir/pwsh" >> "$GITHUB_ENV"
+
+      - name: PowerShell-Tests der Windows-Skripte
+        run: |
+          set -euo pipefail
+          for test in scripts/tests/*.test.ps1; do
+            echo "== $test"
+            "$PWSH" -NoProfile -NonInteractive -File "$test"
+          done
+
       # Ein ESLint-Lauf deckt Lint, React-Compiler-Regeln (error) und die
       # Komplexitaetsschuld ab (complexity: error + eslint-suppressions.json).
       - name: Lint

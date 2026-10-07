@@ -23,6 +23,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- CI: Die PowerShell-Tests der Windows-Hilfsskripte
+  (`scripts/tests/*.test.ps1`) laufen im Job `quality` mit PowerShell 7.6.6 aus
+  dem offiziellen Release-Archiv (Version und SHA-256 gepinnt). Ein neuer Test
+  parst alle PowerShell-Skripte unter `scripts/` und meldet Syntaxfehler mit
+  Datei und Zeile.
 - **[Scope]** Der Rückstand der Wartungsjobs (Audit-Archivierung, Bereinigung
   verwaister Speicherobjekte) ist eine Health-Kennzahl: Anzahl und Fälligkeit
   des ältesten offenen Eintrags je Job stehen unter „System → Jobs“ und für
