@@ -116,11 +116,13 @@ function pdfUpload() {
   return upload;
 }
 function input(quantity = 1.23, unitPrice = 100) {
+  // Rechnungsjahr im laufenden Jahr ± 1; die Fälligkeit liegt danach (A4).
+  const year = new Date().getUTCFullYear();
   return {
     clientId,
     subject: 'Beratung',
-    issueDate: `${new Date().getUTCFullYear()}-06-01`,
-    dueDate: '2026-07-01',
+    issueDate: `${year}-06-01`,
+    dueDate: `${year}-07-01`,
     format: 'XRECHNUNG' as const,
     positions: [{ description: 'Beratung', quantity, unitPrice, unit: 'Stück', vatRate: 19 }],
   };
@@ -186,6 +188,44 @@ describe('INV-VAT-TOTALS-001: Eingabe und gespeicherte Dezimalpräzision', () =>
       ),
     ).resolves.toMatchObject({ ok: false, error: expect.stringContaining('Nachkommastellen') });
     expect(m.storage).not.toHaveBeenCalled();
+  });
+});
+
+// Fachkatalog: INV-NUMBER-ALLOCATION-001 — Produktentscheidung A4: Fälligkeit nicht vor
+// dem Rechnungsdatum auf jedem Anlagepfad, mit der Meldung des StBVV-Pfads.
+describe('INV-NUMBER-ALLOCATION-001: Fälligkeit nicht vor dem Rechnungsdatum', () => {
+  const external = (issueDate: string, dueDate: string) => ({
+    clientId,
+    number: 'EXT-1',
+    subject: 'Import',
+    issueDate,
+    dueDate,
+    totalAmount: 119,
+    vatRatePct: 19,
+  });
+
+  it('weist den EXTERNAL-Upload vor dem Object-Lock-Upload zurück', async () => {
+    m.modules.mockResolvedValue({ invoiceMode: 'EXTERNAL' });
+    await expect(
+      uploadExternalInvoiceAction(external('2026-06-02', '2026-06-01'), pdfUpload()),
+    ).resolves.toEqual({ ok: false, error: 'Rechnungsdatum und Fälligkeit sind ungültig.' });
+    expect(m.context).not.toHaveBeenCalled();
+    expect(m.storage).not.toHaveBeenCalled();
+  });
+
+  it('weist die manuelle In-App-Rechnung vor jeder Transaktion zurück', async () => {
+    const data = { ...input(), dueDate: input().issueDate.replace(/-06-01$/, '-05-31') };
+    await expect(createInvoiceAction(data)).resolves.toEqual({
+      ok: false,
+      error: 'Rechnungsdatum und Fälligkeit sind ungültig.',
+    });
+    expect(m.context).not.toHaveBeenCalled();
+    expect(m.tx.invoice.create).not.toHaveBeenCalled();
+  });
+
+  it('lässt eine Fälligkeit am Rechnungsdatum zu', async () => {
+    const data = { ...input(), dueDate: input().issueDate };
+    await expect(createInvoiceAction(data)).resolves.toMatchObject({ ok: true });
   });
 });
 

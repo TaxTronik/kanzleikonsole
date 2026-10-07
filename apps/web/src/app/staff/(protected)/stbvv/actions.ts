@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { withStaff, ActionError, requireUuidParam } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { readModulesTx } from '@/server/settings/modules';
+import { dueDateError, INVOICE_DATES_INVALID } from '@/server/invoicing/create-draft';
 import { createFeeInvoice, validateFeeCalculation, feeJson } from '@/server/stbvv/service';
 import { audit } from '@/server/actions/audit';
 export async function saveStbvvQuoteAction(clientId: string, title: string, raw: unknown) {
@@ -66,8 +67,10 @@ export async function createStbvvDraftAction(
       const dates = z
         .object({ issueDate: z.iso.date(), dueDate: z.iso.date() })
         .safeParse({ issueDate, dueDate });
-      if (!dates.success || dueDate < issueDate)
-        throw new ActionError('Rechnungsdatum und Fälligkeit sind ungültig.');
+      // INV-NUMBER-ALLOCATION-001: dieselbe Fälligkeitsprüfung und Meldung wie alle
+      // Anlagepfade (der Anlageservice prüft sie erneut).
+      if (!dates.success || dueDateError(new Date(issueDate), new Date(dueDate)))
+        throw new ActionError(INVOICE_DATES_INVALID);
       return createFeeInvoice(
         tx,
         g.tenantId,

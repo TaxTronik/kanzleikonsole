@@ -3633,7 +3633,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "In-App-Rechnungen erhalten unter Tenant-Jahres-Lock eine fortlaufende Nummer in derselben Transaktion wie der Entwurf; externe Nummernkreise bleiben fremdgeführt."
+        "summary": "In-App-Rechnungen erhalten unter Tenant-Jahres-Lock eine fortlaufende Nummer in derselben Transaktion wie der Entwurf; vorher prüft jeder Anlagepfad Rechnungsjahr (laufendes Jahr ± 1) und Fälligkeit nicht vor dem Rechnungsdatum. Externe Nummernkreise bleiben fremdgeführt."
       },
       "sources": [
         {
@@ -3651,10 +3651,20 @@
           "primary": true
         }
       ],
-      "code_refs": ["apps/web/src/server/invoicing/number.ts", "packages/db/prisma/schema.prisma"],
+      "code_refs": [
+        "apps/web/src/server/invoicing/number.ts",
+        "packages/db/prisma/schema.prisma",
+        "apps/web/src/server/invoicing/create-draft.ts",
+        "apps/web/src/app/staff/(protected)/invoices/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/billing/actions.ts",
+        "apps/web/src/app/staff/(protected)/stbvv/actions.ts"
+      ],
       "test_refs": [
         "apps/web/src/server/invoicing/__tests__/number.test.ts",
-        "packages/db/src/__tests__/invoice-festschreibung.test.ts"
+        "packages/db/src/__tests__/invoice-festschreibung.test.ts",
+        "apps/web/src/server/invoicing/__tests__/create-draft.test.ts",
+        "apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts",
+        "apps/web/src/app/staff/(protected)/stbvv/__tests__/actions.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/fakturierung.md",

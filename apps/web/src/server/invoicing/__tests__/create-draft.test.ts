@@ -72,6 +72,8 @@ import { createFeeInvoice, validateFeeCalculation } from '@/server/stbvv/service
 import {
   checkDraftInvoice,
   createDraftInvoiceTx,
+  dueDateError,
+  INVOICE_DATES_INVALID,
   type DraftInvoiceHeader,
   type DraftInvoicePositionInput,
 } from '../create-draft';
@@ -170,6 +172,13 @@ const POSITION: DraftInvoicePositionInput = {
 describe('createDraftInvoiceTx – Prüfungen vor der Nummernvergabe', () => {
   it.each<[string, Partial<DraftInvoiceHeader>, DraftInvoicePositionInput[], RegExp]>([
     ['Rechnungsjahr ± 1', { issueDate: new Date('2029-01-02') }, [POSITION], /laufendes Jahr ± 1/],
+    // INV-NUMBER-ALLOCATION-001 (A4): Fälligkeit nicht vor dem Rechnungsdatum.
+    [
+      'Fälligkeit vor dem Rechnungsdatum',
+      { dueDate: new Date('2026-10-04') },
+      [POSITION],
+      /^Rechnungsdatum und Fälligkeit sind ungültig\.$/,
+    ],
     [
       'halber Leistungszeitraum',
       { servicePeriodStart: new Date('2026-09-01') },
@@ -435,6 +444,21 @@ describe('Manuelle Rechnung über den Service – unveränderte Anlage', () => {
       error: expect.stringContaining('erfordert die USt-IdNr der Kanzlei'),
     });
     expect(h.allocate).not.toHaveBeenCalled();
+  });
+
+  // INV-NUMBER-ALLOCATION-001 (A4): manueller Pfad, Meldung wie im StBVV-Pfad.
+  it('weist eine Fälligkeit vor dem Rechnungsdatum vor jeder Transaktion zurück', async () => {
+    h.tx = makeTx();
+    const result = await createInvoiceAction({
+      clientId: CLIENT,
+      subject: 'Beratung',
+      issueDate: '2026-10-05',
+      dueDate: '2026-10-04',
+      format: 'XRECHNUNG',
+      positions: [{ description: 'B', quantity: 1, unitPrice: 1, unit: 'Std.', vatRate: 19 }],
+    });
+    expect(result).toEqual({ ok: false, error: INVOICE_DATES_INVALID });
+    expect(h.events).toEqual([]);
   });
 
   it('prüft Rechnungsjahr und Beträge weiterhin vor jeder Transaktion', async () => {
@@ -768,6 +792,75 @@ describe('StBVV-Übernahme über den Service – unveränderte Anlage', () => {
     ).rejects.toThrow('laufendes Jahr ± 1');
     expect(h.allocate).not.toHaveBeenCalled();
     expect(tx.stbvvQuoteExport.create).not.toHaveBeenCalled();
+  });
+
+  // INV-NUMBER-ALLOCATION-001 (A4): auch der Service prüft die Fälligkeit, nicht nur
+  // die StBVV-Action.
+  it('weist eine Fälligkeit vor dem Rechnungsdatum vor der Nummernvergabe zurück', async () => {
+    const { quote } = feeQuote(19);
+    const tx = makeTx({ quote });
+    await expect(
+      createFeeInvoice(tx as never, TENANT, STAFF, CLIENT, 'quote-1', '2026-10-05', '2026-10-04'),
+    ).rejects.toThrow(INVOICE_DATES_INVALID);
+    expect(h.allocate).not.toHaveBeenCalled();
+    expect(tx.stbvvQuoteExport.create).not.toHaveBeenCalled();
+  });
+});
+
+// INV-NUMBER-ALLOCATION-001 (A4): Stundenabrechnung prüft die Fälligkeit schon vor
+// der Transaktion; Zeiteinträge werden weder gelesen noch beansprucht.
+describe('Stundenabrechnung – Fälligkeit vor dem Rechnungsdatum', () => {
+  it('lehnt ab, bevor Zeiteinträge gelesen oder eine Nummer vergeben wird', async () => {
+    const tx = makeTx({ entries: [entry('e1', '2026-09-01T09:00:00+02:00', 60, null)] });
+    h.tx = tx;
+
+    const result = await createInvoiceFromTimeEntriesAction({
+      ...TIME_INPUT,
+      dueDate: '2026-10-04',
+      strategy: 'one-line',
+    });
+
+    expect(result).toEqual({ ok: false, error: INVOICE_DATES_INVALID });
+    expect(tx.timeEntry.findMany).not.toHaveBeenCalled();
+    expect(h.events).toEqual([]);
+  });
+
+  it('lässt eine Fälligkeit am Rechnungsdatum zu', async () => {
+    h.tx = makeTx({ entries: [entry('e1', '2026-09-01T09:00:00+02:00', 60, null)] });
+
+    await expect(
+      createInvoiceFromTimeEntriesAction({
+        ...TIME_INPUT,
+        dueDate: TIME_INPUT.issueDate,
+        strategy: 'one-line',
+      }),
+    ).resolves.toEqual({ ok: true, invoiceId: 'invoice-1' });
+  });
+});
+
+describe('dueDateError (INV-NUMBER-ALLOCATION-001)', () => {
+  const tag = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
+
+  it('lässt Fälligkeit am oder nach dem Rechnungsdatum zu', () => {
+    expect(dueDateError(tag('2026-10-05'), tag('2026-10-05'))).toBeNull();
+    expect(dueDateError(tag('2026-10-05'), tag('2026-10-19'))).toBeNull();
+  });
+
+  it('lehnt eine frühere Fälligkeit und ungültige Daten mit der StBVV-Meldung ab', () => {
+    expect(INVOICE_DATES_INVALID).toBe('Rechnungsdatum und Fälligkeit sind ungültig.');
+    expect(dueDateError(tag('2026-10-05'), tag('2026-10-04'))).toBe(INVOICE_DATES_INVALID);
+    expect(dueDateError(tag('2026-01-01'), tag('2025-12-31'))).toBe(INVOICE_DATES_INVALID);
+    expect(dueDateError(new Date('ungültig'), tag('2026-10-05'))).toBe(INVOICE_DATES_INVALID);
+  });
+
+  it('prüft die Fälligkeit in checkDraftInvoice nach dem Rechnungsjahr', () => {
+    expect(checkDraftInvoice({ ...HEADER, dueDate: HEADER.issueDate }, [POSITION])).toMatchObject({
+      ok: true,
+    });
+    expect(checkDraftInvoice({ ...HEADER, dueDate: tag('2026-10-04') }, [POSITION])).toEqual({
+      ok: false,
+      error: INVOICE_DATES_INVALID,
+    });
   });
 });
 

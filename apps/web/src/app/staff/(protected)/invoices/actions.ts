@@ -22,6 +22,7 @@ import { IN_APP_VAT_RATES } from '@/server/invoicing/vat';
 import {
   checkDraftInvoice,
   createDraftInvoiceTx,
+  dueDateError,
   type DraftInvoiceHeader,
 } from '@/server/invoicing/create-draft';
 import { allocateInvoiceNumber, isValidInvoiceTransition } from '@/server/invoicing/number';
@@ -101,8 +102,8 @@ const PositionSchema = z
 // und lückenlos aus dem Nummernkreis vergeben (createDraftInvoiceTx, in
 // derselben Tx wie der INSERT). Manuelle Nummern gibt es nur noch im
 // EXTERNAL-Modus (Nummer des Fremdsystems). Rechnungsjahr (laufendes Jahr
-// ± 1), Leistungszeitraum, Steuer- und Betragsgrenzen prüft der gemeinsame
-// Anlageservice für alle In-App-Pfade.
+// ± 1), Fälligkeit nicht vor dem Rechnungsdatum, Leistungszeitraum, Steuer- und
+// Betragsgrenzen prüft der gemeinsame Anlageservice für alle In-App-Pfade.
 const CreateSchema = z.object({
   clientId: z.string().uuid(),
   subject: z.string().min(1).max(500),
@@ -910,6 +911,10 @@ export async function uploadExternalInvoiceAction(
         return { ok: false, error: parsed.error.issues[0]?.message ?? 'Validierungsfehler.' };
       }
       const data = parsed.data;
+      // INV-NUMBER-ALLOCATION-001: Fälligkeit nicht vor dem Rechnungsdatum wie bei
+      // den In-App-Pfaden — vor dem Object-Lock-Upload der Fremd-PDF.
+      const datesError = dueDateError(new Date(data.issueDate), new Date(data.dueDate));
+      if (datesError) return { ok: false, error: datesError };
 
       // EXTERNAL: erfasst wird der Brutto-Gesamtbetrag + der USt-Satz der Fremd-PDF.
       // Netto/USt daraus ableiten, damit die Umsatz-KPIs (netto) nicht den Brutto-

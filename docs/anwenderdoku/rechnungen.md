@@ -63,7 +63,10 @@ XRechnung-/ZUGFeRD-Download werden in der Audit-Hash-Chain festgehalten.
    berechnet der Server). Der USt-Satz wird **je Position** gewählt
    (19 % / 7 % / 0 %) — Mischsätze auf einer Rechnung sind möglich, die
    Steuer wird je Satz gruppiert ausgewiesen und gerundet. Format wählen:
-   XRechnung (Standard) oder ZUGFeRD.
+   XRechnung (Standard) oder ZUGFeRD. Das Rechnungsdatum muss im laufenden
+   Jahr ± 1 liegen; die Fälligkeit darf nicht vor dem Rechnungsdatum liegen
+   (dieselbe Fälligkeitsprüfung gilt für Stundenabrechnung, StBVV-Übernahme und
+   Extern-Upload; Fachkatalog `INV-NUMBER-ALLOCATION-001`).
 3. **Anlegen** → die Rechnung erhält ihre Nummer und steht als Entwurf
    auf der Detailseite.
 4. Auf der Detailseite: **Als versendet markieren** (erstellt die
@@ -145,6 +148,7 @@ Summen und den Jahresumsatz.
 | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- |
 | „Versand abgebrochen — GoBD-Archivkopie konnte nicht erstellt werden: …" | Absender- oder Mandantendaten unvollständig                                                | Kanzlei-Rechnungsdaten bzw. Mandanten-Anschrift vervollständigen, erneut versenden |
 | „Statuswechsel … ist nicht zulässig"                                     | Statuslauf erlaubt den Schritt nicht (z. B. bereits stornierte Rechnung erneut stornieren) | Status prüfen; Korrekturbelege über die vorgesehene Storno-Aktion anlegen          |
+| „Rechnungsdatum und Fälligkeit sind ungültig."                           | Fälligkeit liegt vor dem Rechnungsdatum oder ein Datum ist ungültig (jeder Anlageweg)      | Fälligkeit am oder nach dem Rechnungsdatum wählen                                  |
 | „Rechnungsnummer existiert bereits." (Extern-Modus)                      | Nummer des Fremdsystems schon erfasst                                                      | Nummer prüfen                                                                      |
 | „Mandant ist nicht aktiv (GwG-Prüfung ausstehend)."                      | Rechnungen nur an GwG-verifizierte Mandanten                                               | GwG-Prüfung abschließen                                                            |
 | „Dieser Eintrag ist bereits abgerechnet …"                               | Zeiteintrag hängt an einer Rechnung                                                        | Eintrag bleibt als Beleg erhalten                                                  |

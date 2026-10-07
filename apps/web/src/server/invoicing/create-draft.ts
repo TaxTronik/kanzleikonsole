@@ -3,10 +3,11 @@
 // Stundenabrechnungen und StBVV-Übernahmen.
 //
 // Reihenfolge (alle Prüfungen VOR der Nummernvergabe, INV-NUMBER-ALLOCATION-001):
-// 1. reine Eingabeprüfungen (checkDraftInvoice): Rechnungsjahr, Leistungs-
-//    zeitraum, USt-Satz-Whitelist, Reverse-Charge nur mit 0 %, 0 % nur mit
-//    Befreiungsgrund (INV-VAT-TOTALS-001), Speicherpräzision und
-//    Decimal-Grenzen je Position und für die Kopfsummen;
+// 1. reine Eingabeprüfungen (checkDraftInvoice): Rechnungsjahr, Fälligkeit nicht
+//    vor dem Rechnungsdatum, Leistungszeitraum, USt-Satz-Whitelist,
+//    Reverse-Charge nur mit 0 %, 0 % nur mit Befreiungsgrund
+//    (INV-VAT-TOTALS-001), Speicherpräzision und Decimal-Grenzen je Position
+//    und für die Kopfsummen;
 // 2. § 13b UStG: USt-IdNr der Kanzlei (BT-31, BR-AE-01) und des Mandanten
 //    (BT-48) in derselben Transaktion;
 // 3. Nummer + Kopf + Positionen in derselben Transaktion, einheitliche
@@ -85,12 +86,32 @@ export interface CreatedDraftInvoice {
 /**
  * Das Rechnungsdatum bestimmt den Jahres-Nummernkreis (allocateInvoiceNumber).
  * Ein frei rück-/vordatiertes Datum würde einen fremden Jahreskreis öffnen —
- * daher laufendes Jahr ± 1 (deckt die Jahreswechsel-Grenze ab).
+ * daher laufendes Jahr ± 1 (deckt die Jahreswechsel-Grenze ab). Das Fenster hat
+ * der Product Owner am 2026-10-07 bestätigt (INV-NUMBER-ALLOCATION-001).
  */
 export function issueYearPlausible(issueDate: Date, now = new Date()): boolean {
   const year = issueDate.getUTCFullYear();
   const current = now.getUTCFullYear();
   return year >= current - 1 && year <= current + 1;
+}
+
+/** Meldung wortgleich mit dem StBVV-Pfad, der die Fälligkeitsprüfung zuerst hatte. */
+export const INVOICE_DATES_INVALID = 'Rechnungsdatum und Fälligkeit sind ungültig.';
+
+/**
+ * Fälligkeit nicht vor dem Rechnungsdatum (INV-NUMBER-ALLOCATION-001,
+ * Produktentscheidung vom 2026-10-07): gilt für jeden Anlagepfad mit Rechnungs-
+ * und Fälligkeitsdatum (manuell, Stundenabrechnung, StBVV, EXTERNAL-Upload).
+ * Bewusst ohne DB-CHECK, damit Altbestand spätere Statusänderungen nicht sperrt.
+ * Beide Daten sind Kalendertage (UTC-Mitternacht wie `@db.Date`).
+ */
+export function dueDateError(issueDate: Date, dueDate: Date): string | null {
+  const issue = issueDate.getTime();
+  const due = dueDate.getTime();
+  if (!Number.isFinite(issue) || !Number.isFinite(due) || due < issue) {
+    return INVOICE_DATES_INVALID;
+  }
+  return null;
 }
 
 /** Leistungszeitraum (§ 14 Abs. 4 Nr. 6 UStG): beide Grenzen oder keine, Start ≤ Ende. */
@@ -138,6 +159,8 @@ export function checkDraftInvoice(
       error: 'Rechnungsdatum liegt außerhalb des plausiblen Bereichs (laufendes Jahr ± 1).',
     };
   }
+  const datesError = dueDateError(header.issueDate, header.dueDate);
+  if (datesError) return { ok: false, error: datesError };
   const periodError = servicePeriodError(header.servicePeriodStart, header.servicePeriodEnd);
   if (periodError) return { ok: false, error: periodError };
   if (positions.length === 0)

@@ -6,7 +6,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { berlinCalendarDate } from '@taxtronik/tax';
 import { round2 } from '@/lib/fmt';
 import { assertClientAccessTx } from '@/server/auth/rbac';
-import { createDraftInvoiceTx } from '@/server/invoicing/create-draft';
+import { createDraftInvoiceTx, dueDateError } from '@/server/invoicing/create-draft';
 import { IN_APP_VAT_RATES } from '@/server/invoicing/vat';
 import { readModules } from '@/server/settings/modules';
 import { staffAction, ActionError } from '@/server/actions/staff-action';
@@ -68,6 +68,10 @@ export async function createInvoiceFromTimeEntriesAction(
         return { ok: false, error: parsed.error.issues.map((i) => i.message).join('; ') };
       }
       const data = parsed.data;
+      // INV-NUMBER-ALLOCATION-001: Fälligkeit nicht vor dem Rechnungsdatum schon vor
+      // der Transaktion (der Anlageservice prüft sie erneut).
+      const datesError = dueDateError(new Date(data.issueDate), new Date(data.dueDate));
+      if (datesError) return { ok: false, error: datesError };
       const exemptionReason = data.vatExemptionReason || null;
       const taxError = validateTimeBillingTax({
         vatRate: data.vatRate,
