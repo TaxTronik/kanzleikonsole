@@ -18,9 +18,13 @@
 //     Adapter fragt die URL beim Prüfen nie an. Außerhalb der Produktion bleibt
 //     die Prüfung an die Stempel-Entscheidung gekoppelt, damit lokal
 //     gestempelte Entwicklungsketten weiter als lokale Evidenz prüfbar sind.
+//
+// S-01: Die Tenant-Einstellung liest die App-Rolle im SYSTEM-Kontext des
+// Tenants (withSystemContext, RLS), auch für die Owner-Wartungsjobs.
 // =============================================================================
 
 import { env } from '@taxtronik/config';
+import { withSystemContext } from '@taxtronik/db';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   LocalTimestampAdapter,
@@ -28,7 +32,6 @@ import {
   resolveTsaUrl,
   type TimestampPort,
 } from '@taxtronik/evidence';
-import { prismaOwner } from './prisma-owner';
 import { assertPublicHost } from './http/ssrf-guard';
 import { log } from './logger';
 
@@ -48,10 +51,9 @@ export interface ResolvedTsa {
 export async function selectTsaUrl(
   tenantId: string,
 ): Promise<{ url: string; source: TsaSource } | null> {
-  const stored = (await readTenantSettingValue(prismaOwner, tenantId, 'evidence.tsa')) as
-    | { providerId?: string | null; customUrl?: string | null }
-    | null
-    | undefined;
+  const stored = (await withSystemContext(tenantId, (tx) =>
+    readTenantSettingValue(tx, tenantId, 'evidence.tsa'),
+  )) as { providerId?: string | null; customUrl?: string | null } | null | undefined;
   const tenantUrl = stored
     ? resolveTsaUrl(stored.providerId ?? null, stored.customUrl ?? null)
     : null;

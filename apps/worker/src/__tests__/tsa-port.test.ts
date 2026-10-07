@@ -13,11 +13,19 @@ const h = vi.hoisted(() => ({
   readSetting: vi.fn(),
   assertPublicHost: vi.fn(),
   warn: vi.fn(),
+  systemTx: { systemTx: true },
+  contexts: [] as string[],
 }));
 
 vi.mock('@taxtronik/config', () => ({ env: h.env }));
 vi.mock('@taxtronik/db/tenant-settings', () => ({ readTenantSettingValue: h.readSetting }));
-vi.mock('../prisma-owner', () => ({ prismaOwner: { owner: true } }));
+// S-01: gelesen im SYSTEM-Kontext des Tenants (tsa-port-db.test.ts: App-Rolle).
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: async (tenantId: string, fn: (tx: unknown) => unknown) => {
+    h.contexts.push(tenantId);
+    return fn(h.systemTx);
+  },
+}));
 vi.mock('../http/ssrf-guard', () => ({ assertPublicHost: h.assertPublicHost }));
 vi.mock('../logger', () => ({ log: { warn: h.warn, info: vi.fn(), error: vi.fn() } }));
 vi.mock('@taxtronik/evidence', async () => {
@@ -40,13 +48,14 @@ const TENANT = 'tenant-1';
 
 beforeEach(() => {
   vi.resetAllMocks();
+  h.contexts.length = 0;
   for (const key of Object.keys(h.env)) delete h.env[key];
   h.readSetting.mockResolvedValue(undefined);
   h.assertPublicHost.mockResolvedValue([]);
 });
 
 describe('selectTsaUrl: Tenant → ENV → GlobalSign-Default', () => {
-  it('bevorzugt das Tenant-Preset und liest über den Owner-Client', async () => {
+  it('bevorzugt das Tenant-Preset und liest im SYSTEM-Kontext des Tenants', async () => {
     h.readSetting.mockResolvedValue({ providerId: 'freetsa', customUrl: '' });
     h.env['TIMESTAMP_AUTHORITY_URL'] = 'https://env.example/tsr';
 
@@ -54,7 +63,8 @@ describe('selectTsaUrl: Tenant → ENV → GlobalSign-Default', () => {
       url: 'https://freetsa.org/tsr',
       source: 'tenant',
     });
-    expect(h.readSetting).toHaveBeenCalledWith({ owner: true }, TENANT, 'evidence.tsa');
+    expect(h.readSetting).toHaveBeenCalledWith(h.systemTx, TENANT, 'evidence.tsa');
+    expect(h.contexts).toEqual([TENANT]);
   });
 
   it('nimmt eine eigene Tenant-URL nur mit providerId custom', async () => {

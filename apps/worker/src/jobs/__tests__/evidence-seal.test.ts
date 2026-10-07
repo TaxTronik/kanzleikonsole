@@ -21,17 +21,22 @@ const h = vi.hoisted(() => {
   const constructedPorts: unknown[] = [];
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
-    tenantSetting: { findUnique: vi.fn() },
     auditLog: { aggregate: vi.fn() },
     $queryRaw: vi.fn(),
   };
+  // S-01: Die TSA-Einstellung liest tsa-port.ts im SYSTEM-Kontext des Tenants.
+  const systemTx = { tenantSetting: { findUnique: vi.fn() } };
   const assertPublicHost = vi.fn();
-  return { sealDay, constructedPorts, prismaOwner, assertPublicHost };
+  return { sealDay, constructedPorts, prismaOwner, systemTx, assertPublicHost };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: async (_tenantId: string, fn: (tx: typeof h.systemTx) => unknown) =>
+    fn(h.systemTx),
+}));
 vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
@@ -87,7 +92,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   h.constructedPorts.length = 0;
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
-  h.prismaOwner.tenantSetting.findUnique.mockResolvedValue(null);
+  h.systemTx.tenantSetting.findUnique.mockResolvedValue(null);
   h.assertPublicHost.mockResolvedValue(undefined);
   h.sealDay.mockResolvedValue({ sealed: true });
 });
@@ -126,7 +131,7 @@ describe('Backfill — verpasste Versiegelungstage', () => {
     expect(h.sealDay).not.toHaveBeenCalled();
     expect(result.sealed).toEqual([]);
     // Tenant wird komplett übersprungen — nicht mal die TSA-Config wird gelesen
-    expect(h.prismaOwner.tenantSetting.findUnique).not.toHaveBeenCalled();
+    expect(h.systemTx.tenantSetting.findUnique).not.toHaveBeenCalled();
   });
 
   it('noch nie versiegelt → Start am Tag des ältesten Audit-Events', async () => {
@@ -209,7 +214,7 @@ describe('TSA-Auswahl (F1: TOCTOU-Re-Check)', () => {
   });
 
   it('öffentlich auflösbare Tenant-TSA → Rfc3161HttpAdapter mit der konfigurierten URL', async () => {
-    h.prismaOwner.tenantSetting.findUnique.mockResolvedValue({
+    h.systemTx.tenantSetting.findUnique.mockResolvedValue({
       value: { customUrl: 'https://tsa.example.com/tsr' },
     });
 
@@ -223,7 +228,7 @@ describe('TSA-Auswahl (F1: TOCTOU-Re-Check)', () => {
   });
 
   it('TSA-URL nicht öffentlich auflösbar → Fallback auf LocalTimestampAdapter', async () => {
-    h.prismaOwner.tenantSetting.findUnique.mockResolvedValue({
+    h.systemTx.tenantSetting.findUnique.mockResolvedValue({
       value: { customUrl: 'https://tsa.intern.example/tsr' },
     });
     h.assertPublicHost.mockRejectedValue(new Error('resolves to private IP'));

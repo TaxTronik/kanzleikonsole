@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-036
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/tsa-port.ts
+    rule_ids:
+      - AUDIT-ARCHIVE-001
+    reason: >-
+      Die TSA-Auswahl (`selectTsaUrl` in `tsa-port.ts`) für Siegel, Rolling Anchors,
+      Archivsegmente, Kettenprüfung und Restore-Drill liest die Tenant-Einstellung
+      `evidence.tsa` über die App-Rolle im SYSTEM-Kontext des Tenants
+      (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS. Die
+      Reihenfolge (Tenant-Vorgabe, dann `TIMESTAMP_AUTHORITY_URL`, dann GlobalSign)
+      bleibt unverändert; eine PostgreSQL-Suite belegt das und dass Einstellungen
+      fremder Tenants unsichtbar bleiben. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/__tests__/tsa-port-db.test.ts
+      - apps/worker/src/__tests__/tsa-port.test.ts
+      - apps/worker/src/jobs/__tests__/evidence-seal.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-035
     date: '2026-10-07'
     paths:
@@ -4907,6 +4926,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-036` dokumentiert die TSA-Auswahl über die
+  App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-035` dokumentiert die Konfigurationsprüfung
   der Drill-Verbindung.
