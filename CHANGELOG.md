@@ -822,6 +822,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Eine unlesbare oder ungültige SMTP-Konfiguration der Kanzlei (z. B. nicht
+  entschlüsselbares Passwort, ungültiger Port) bricht den Versand vor jedem
+  SMTP-Kontakt als eindeutigen Fehler ab. Mail-Outbox und automatische
+  Fristanforderung wiederholen ihn mit Wartezeit, statt ihn als „Ausgang
+  unklar“ ohne Wiederholung abzulegen; der Hinweis an die Kanzlei verweist auf
+  die SMTP-Einstellungen (`TAX-DEADLINE-AUTOREQUEST-001`).
 - **[Scope]** Rechnungen: Enthält eine ZUGFeRD-Rechnung oder ein
   Korrekturbeleg Zeichen, die die eingebettete PDF-Schrift nicht darstellen
   kann (z. B. Emoji, chinesische Schriftzeichen), nennen Versand, Storno und

@@ -79,6 +79,13 @@ export interface ContactNotificationResult {
    * automatisch erneut senden.
    */
   uncertainFailure: boolean;
+  /**
+   * A7: Mindestens ein Einzelversuch brach vor jedem SMTP-Kontakt ab, weil die
+   * Tenant-SMTP-Konfiguration nicht lesbar oder ungültig war. Solche Versuche
+   * sind eindeutig nicht versendet (kein `uncertainFailure`). Fehlt das Feld,
+   * gab es keinen solchen Abbruch.
+   */
+  smtpConfigUnavailable?: true;
 }
 
 export interface TemplateMailResult {
@@ -86,6 +93,8 @@ export interface TemplateMailResult {
   sentViaTemplate: boolean;
   /** Siehe `ContactNotificationResult.uncertainFailure`. */
   uncertainFailure: boolean;
+  /** Siehe `ContactNotificationResult.smtpConfigUnavailable`. */
+  smtpConfigUnavailable?: true;
 }
 
 export type ContactDispatchOptions = Omit<DispatchOptions, 'to'> & {
@@ -272,21 +281,44 @@ export async function sendTemplateMail(opts: DispatchOptions): Promise<TemplateM
     if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
       await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, n8nEmitOptions(opts));
     }
-    return {
-      ok: false,
-      sentViaTemplate,
-      // TAX-DEADLINE-AUTOREQUEST-001: Nur eine explizite negative SMTP-
-      // Antwort beweist hier hinreichend, dass der Provider die Nachricht
-      // nicht angenommen hat. Transport-/Socket-/Timeout-Exceptions bleiben
-      // wegen moeglicher Annahme vor dem Verbindungsabbruch fail-closed.
-      uncertainFailure: !isExplicitSmtpRejection(err),
-    };
+    return failedTemplateMailResult(err, sentViaTemplate);
   }
 
   if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
     await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, n8nEmitOptions(opts));
   }
   return { ok: true, sentViaTemplate, uncertainFailure: false };
+}
+
+/**
+ * A7: SmtpConfigUnavailableError (send.ts) trägt `beforeSmtpContact: true` —
+ * geworfen, bevor ein Transport erzeugt wurde. Als Merkmal statt instanceof,
+ * damit die Einordnung nicht an einer bestimmten Modulinstanz hängt.
+ */
+function failedBeforeSmtpContact(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { beforeSmtpContact?: unknown }).beforeSmtpContact === true
+  );
+}
+
+/** Ergebnis eines gescheiterten sendMail-Aufrufs. */
+function failedTemplateMailResult(error: unknown, sentViaTemplate: boolean): TemplateMailResult {
+  // A7: Eine nicht lesbare oder ungültige SMTP-Konfiguration bricht vor jedem
+  // SMTP-Kontakt ab — die Mail ist nachweislich nicht übergeben.
+  const smtpConfigUnavailable = failedBeforeSmtpContact(error);
+  return {
+    ok: false,
+    sentViaTemplate,
+    // TAX-DEADLINE-AUTOREQUEST-001: Nur eine explizite negative SMTP-
+    // Antwort oder ein Abbruch vor jedem SMTP-Kontakt beweist hier
+    // hinreichend, dass der Provider die Nachricht nicht angenommen hat.
+    // Transport-/Socket-/Timeout-Exceptions bleiben wegen moeglicher Annahme
+    // vor dem Verbindungsabbruch fail-closed.
+    uncertainFailure: !smtpConfigUnavailable && !isExplicitSmtpRejection(error),
+    ...(smtpConfigUnavailable ? { smtpConfigUnavailable: true as const } : {}),
+  };
 }
 
 function isExplicitSmtpRejection(error: unknown): boolean {
@@ -352,10 +384,11 @@ async function sendContactTemplateMails(
   opts: ContactDispatchOptions,
   contacts: ContactRecipient[],
   context: Awaited<ReturnType<typeof loadContactProfileContext>>,
-): Promise<{ okCount: number; uncertainFailure: boolean }> {
+): Promise<{ okCount: number; uncertainFailure: boolean; smtpConfigUnavailable: boolean }> {
   const clientVars = existingClientVars(opts);
   let okCount = 0;
   let uncertainFailure = false;
+  let smtpConfigUnavailable = false;
 
   for (const contact of contacts) {
     const hasMultipleProfiles =
@@ -377,9 +410,10 @@ async function sendContactTemplateMails(
     });
     if (result.ok) okCount++;
     if (result.uncertainFailure) uncertainFailure = true;
+    if (result.smtpConfigUnavailable) smtpConfigUnavailable = true;
   }
 
-  return { okCount, uncertainFailure };
+  return { okCount, uncertainFailure, smtpConfigUnavailable };
 }
 
 async function emitAggregateContactEvent(
@@ -444,7 +478,11 @@ export async function notifyClientContacts(
   }
 
   const context = await loadContactProfileContext(opts, contacts);
-  const { okCount, uncertainFailure } = await sendContactTemplateMails(opts, contacts, context);
+  const { okCount, uncertainFailure, smtpConfigUnavailable } = await sendContactTemplateMails(
+    opts,
+    contacts,
+    context,
+  );
   const externalSideEffectOccurred = await emitAggregateContactEvent(opts, aggregateDispatch);
 
   // `recipients` bleibt aus Kompatibilitaetsgruenden die Zahl der vom
@@ -457,5 +495,6 @@ export async function notifyClientContacts(
     attempted: contacts.length,
     externalSideEffectOccurred,
     uncertainFailure,
+    ...(smtpConfigUnavailable ? { smtpConfigUnavailable: true as const } : {}),
   };
 }

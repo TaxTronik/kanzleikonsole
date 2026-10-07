@@ -402,8 +402,9 @@ Modul `appointments`.
   gelöst. Das optionale n8n-Ereignis wird je logischem Request genau einmal,
   nicht pro Kontakt und auch bei vollständig fehlendem Mailkontakt ausgelöst;
   der Mailstatus bleibt dann `NO_RECIPIENT`. Nur ein durch eine ausdrückliche negative
-  SMTP-Providerantwort eindeutig belegter Totalfehler wird höchstens dreimal
-  versucht; Transport-, Socket- oder Timeout-Exceptions, Teilannahme,
+  SMTP-Providerantwort oder einen Abbruch vor jedem SMTP-Kontakt (nicht lesbare
+  oder ungültige SMTP-Konfiguration der Kanzlei) eindeutig belegter Totalfehler
+  wird höchstens dreimal versucht; Transport-, Socket- oder Timeout-Exceptions, Teilannahme,
   fehlender Empfänger, inkonsistente Verknüpfung oder sonst unklarer Ausgang
   werden ohne Blind-Retry intern eskaliert.
   Persistiert werden unter anderem Versuchszahl, nächster Versuch, Fehler und

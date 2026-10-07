@@ -185,6 +185,87 @@ describe('persistierter Auto-Request-Benachrichtigungsfluss', () => {
     expect(stats).toMatchObject({ retryPending: 0, escalated: 1 });
   });
 
+  describe('A7: nicht lesbare SMTP-Konfiguration (vor jedem SMTP-Kontakt)', () => {
+    const configFailure = {
+      ok: false,
+      recipients: 0,
+      attempted: 2,
+      externalSideEffectOccurred: false,
+      uncertainFailure: false,
+      smtpConfigUnavailable: true,
+    };
+
+    it('wertet den Abbruch als eindeutigen Fehlschlag mit Retry statt UNKNOWN', async () => {
+      const h = harness();
+      h.notifyAutomaticTaxRequestOpened.mockResolvedValue(configFailure);
+
+      const stats = await processTaxDeadlineNotifications(h.deps, {
+        tenantId: 'tenant-1',
+        now: NOW,
+      });
+
+      expect(h.updateMany.mock.calls[1]![0].data).toEqual({
+        autoRequestNotificationStatus: 'FAILED',
+        autoRequestNotificationAcceptedAt: null,
+        autoRequestNotificationNextAttemptAt: new Date('2026-06-09T10:04:00.000Z'),
+        autoRequestNotificationLastError:
+          'Die SMTP-Konfiguration der Kanzlei war in Versuch 1 nicht lesbar oder ungültig; keiner von 2 Versandversuchen wurde an den Mail-Provider übergeben.',
+        autoRequestNotificationEscalatedAt: null,
+      });
+      expect(h.upsertStaffNotification).not.toHaveBeenCalled();
+      expect(h.logUncertainError).not.toHaveBeenCalled();
+      expect(stats).toMatchObject({ retryPending: 1, escalated: 0 });
+    });
+
+    it('eskaliert nach dem dritten Versuch mit Hinweis auf die SMTP-Einstellungen', async () => {
+      const h = harness(
+        candidate({
+          autoRequestNotificationStatus: 'FAILED',
+          autoRequestNotificationAttemptCount: 2,
+        }),
+      );
+      h.notifyAutomaticTaxRequestOpened.mockResolvedValue(configFailure);
+
+      const stats = await processTaxDeadlineNotifications(h.deps, {
+        tenantId: 'tenant-1',
+        now: NOW,
+      });
+
+      expect(h.updateMany.mock.calls[1]![0].data).toMatchObject({
+        autoRequestNotificationStatus: 'ESCALATED',
+        autoRequestNotificationLastError: expect.stringContaining('maximale Versuchszahl erreicht'),
+      });
+      expect(h.upsertStaffNotification).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          body: expect.stringContaining('bitte die SMTP-Einstellungen prüfen'),
+        }),
+      );
+      expect(stats).toMatchObject({ retryPending: 0, escalated: 1 });
+    });
+
+    it('bleibt bei einem Fehler nach Beginn der SMTP-Verbindung UNKNOWN', async () => {
+      const h = harness();
+      h.notifyAutomaticTaxRequestOpened.mockResolvedValue({
+        ...configFailure,
+        uncertainFailure: true,
+        smtpConfigUnavailable: undefined,
+      });
+
+      const stats = await processTaxDeadlineNotifications(h.deps, {
+        tenantId: 'tenant-1',
+        now: NOW,
+      });
+
+      expect(h.updateMany.mock.calls[1]![0].data).toMatchObject({
+        autoRequestNotificationStatus: 'UNKNOWN',
+        autoRequestNotificationNextAttemptAt: null,
+        autoRequestNotificationEscalatedAt: NOW,
+      });
+      expect(stats).toMatchObject({ retryPending: 0, escalated: 1 });
+    });
+  });
+
   it('eskaliert fehlende Empfaenger ohne automatischen Retry', async () => {
     const h = harness();
     h.notifyAutomaticTaxRequestOpened.mockResolvedValue({

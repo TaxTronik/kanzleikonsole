@@ -54,9 +54,14 @@ diesem Fall `NO_RECIPIENT`.
   Zustellung, Zugang oder Kenntnisnahme.
 - Scheitern alle Einzelversuche durch ausdrückliche negative
   SMTP-Providerantworten eindeutig, wird derselbe Vorgang höchstens dreimal
-  versucht und anschließend intern eskaliert. Transport-, Socket- und
-  Timeout-Exceptions gelten wegen einer nicht sicher auszuschließenden
-  Providerannahme als `UNKNOWN` und werden nicht automatisch wiederholt.
+  versucht und anschließend intern eskaliert. Dasselbe gilt, wenn die
+  SMTP-Konfiguration der Kanzlei nicht lesbar oder ungültig ist, etwa ein nach
+  einem Schlüsselwechsel nicht mehr entschlüsselbares Passwort: Der Versand
+  bricht vor jedem SMTP-Kontakt ab, wird wiederholt und weist in der internen
+  Eskalation auf die SMTP-Einstellungen hin. Transport-, Socket- und
+  Timeout-Exceptions nach Beginn der SMTP-Verbindung gelten wegen einer nicht
+  sicher auszuschließenden Providerannahme als `UNKNOWN` und werden nicht
+  automatisch wiederholt.
 - Bei Teilannahme, fehlendem Empfänger oder unklarem Ausgang erfolgt keine
   blinde Wiederholung, sondern eine interne Eskalation. Das vermeidet
   Doppelversand, verlangt aber eine manuelle Prüfung.

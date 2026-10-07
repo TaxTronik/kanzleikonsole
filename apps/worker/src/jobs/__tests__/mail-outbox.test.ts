@@ -486,6 +486,94 @@ describe('Mail-Outbox: Retry, Terminalstatus und Kanzlei-Hinweis', () => {
     expect(stats.retryPending).toBe(1);
   });
 
+  describe('A7: nicht lesbare SMTP-Konfiguration (vor jedem SMTP-Kontakt)', () => {
+    const configFailure = {
+      ok: false,
+      sentViaTemplate: true,
+      uncertainFailure: false,
+      smtpConfigUnavailable: true,
+    };
+
+    it('wiederholt eine Einzelmail mit Backoff statt UNKNOWN', async () => {
+      const row = await inviteRow();
+      const h = harness([row]);
+      h.sendTemplateMail.mockResolvedValue(configFailure);
+
+      const stats = await processMailOutbox(h.deps, { now: NOW });
+
+      const retry = h.updateMany.mock.calls[1]![0];
+      expect(retry.data).toMatchObject({
+        status: 'RETRY_PENDING',
+        nextAttemptAt: new Date('2026-10-06T10:01:00.000Z'),
+        lastError:
+          'Die SMTP-Konfiguration der Kanzlei war nicht lesbar oder ungültig; der Versand wurde vor jedem SMTP-Kontakt abgebrochen. Versuch 1 von 6; erneuter Versuch geplant.',
+      });
+      // Inhalt und Secret bleiben für den nächsten Versuch erhalten.
+      expect(retry.data).not.toHaveProperty('payload');
+      expect(h.notifyStaff).not.toHaveBeenCalled();
+      expect(stats.retryPending).toBe(1);
+    });
+
+    it('wiederholt eine Kontaktmail ohne übergebenen Empfänger', async () => {
+      const h = harness([await requestRow()]);
+      h.notifyClientContacts.mockResolvedValue({
+        ok: false,
+        recipients: 0,
+        attempted: 2,
+        externalSideEffectOccurred: false,
+        uncertainFailure: false,
+        smtpConfigUnavailable: true,
+      });
+
+      const stats = await processMailOutbox(h.deps, { now: NOW });
+
+      expect(h.updateMany.mock.calls[1]![0].data).toMatchObject({
+        status: 'RETRY_PENDING',
+        recipientsAttempted: 2,
+        recipientsAccepted: 0,
+        lastError: expect.stringContaining(
+          'Keiner von 2 Mail-Einzelversuchen wurde an den Mail-Provider übergeben.',
+        ),
+      });
+      expect(stats.retryPending).toBe(1);
+    });
+
+    it('beendet nach dem letzten Versuch mit FAILED und Hinweis auf die SMTP-Einstellungen', async () => {
+      const h = harness([
+        await handoverRow({ status: 'RETRY_PENDING', attemptCount: MAIL_OUTBOX_MAX_ATTEMPTS - 1 }),
+      ]);
+      h.sendTemplateMail.mockResolvedValue(configFailure);
+
+      const stats = await processMailOutbox(h.deps, { now: NOW });
+
+      expect(h.updateMany.mock.calls[1]![0].data).toMatchObject({ status: 'FAILED' });
+      expect(h.notifyStaff).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          title: 'E-Mail an Mandanten fehlgeschlagen',
+          body: expect.stringContaining('Bitte die SMTP-Einstellungen der Kanzlei prüfen.'),
+        }),
+      );
+      expect(stats.escalated).toBe(1);
+    });
+
+    it('bleibt bei einem Fehler nach Beginn der SMTP-Verbindung UNKNOWN', async () => {
+      const h = harness([await inviteRow()]);
+      // Verbindungsabbruch ohne Provider-Antwort: sendTemplateMail meldet unklar.
+      h.sendTemplateMail.mockResolvedValue({
+        ok: false,
+        sentViaTemplate: true,
+        uncertainFailure: true,
+      });
+
+      const stats = await processMailOutbox(h.deps, { now: NOW });
+
+      expect(h.updateMany.mock.calls[1]![0].data).toMatchObject({ status: 'UNKNOWN' });
+      expect(stats.retryPending).toBe(0);
+      expect(stats.escalated).toBe(1);
+    });
+  });
+
   it('eskaliert einen hängenden Versandversuch nach 30 Minuten ohne Neuversand', async () => {
     const lastAttemptAt = new Date('2026-10-06T09:20:00.000Z');
     const stuck = {

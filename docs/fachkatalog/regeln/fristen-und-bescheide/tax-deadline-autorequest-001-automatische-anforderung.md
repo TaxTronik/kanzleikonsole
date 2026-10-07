@@ -17,11 +17,12 @@ implementation:
   status: partial
   summary: >-
     Portal-Anforderung und Benachrichtigung sind getrennt persistiert;
-    Request-Anlage, Vormerkung, begrenzter Retry eindeutiger Totalfehler,
-    Fail-closed-Behandlung unklarer Ergebnisse und laufender Versandclaims
-    sowie atomare interne Eskalation an aktive Zuständige sind umgesetzt.
-    Externer Versand ist auf offene Requests begrenzt. Provider-Annahme beweist
-    weder Zustellung noch Zugang.
+    Request-Anlage, Vormerkung, begrenzter Retry eindeutiger Totalfehler
+    (ausdrückliche Provider-Ablehnung oder Abbruch vor jedem SMTP-Kontakt
+    wegen nicht lesbarer SMTP-Konfiguration), Fail-closed-Behandlung unklarer
+    Ergebnisse und laufender Versandclaims sowie atomare interne Eskalation an
+    aktive Zuständige sind umgesetzt. Externer Versand ist auf offene Requests
+    begrenzt. Provider-Annahme beweist weder Zustellung noch Zugang.
 sources:
   - kind: product_documentation
     citation: Funktionskatalog Steuertermine und automatische Anforderungen
@@ -63,6 +64,8 @@ code_refs:
   - apps/worker/src/jobs/reminders-daily.ts
   - packages/mail/src/dispatch.ts
   - packages/mail/src/request-opened.ts
+  - packages/mail/src/send.ts
+  - packages/mail/src/smtp-settings.ts
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260823200100_tax_deadline_notification_kind/migration.sql
   - packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql
@@ -71,6 +74,9 @@ test_refs:
   - packages/tax/src/__tests__/materialize.test.ts
   - packages/mail/src/__tests__/dispatch-profile-context.test.ts
   - packages/mail/src/__tests__/request-opened.test.ts
+  - packages/mail/src/__tests__/send-config-errors.test.ts
+  - packages/mail/src/__tests__/smtp-config-for-send.test.ts
+  - packages/mail/src/__tests__/smtp-config-classification.test.ts
   - apps/web/src/lib/__tests__/tax-deadline-pipeline.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts
@@ -143,6 +149,7 @@ konkreten Kanzlei eingesetzt werden darf.
 | Request bereits verknüpft                                        | keine zweite Anforderung erzeugen                                       |
 | Request ist nicht mehr `OPEN` oder `IN_PROGRESS`                 | nicht extern senden; technischen Pointer terminal lösen                 |
 | alle Einzelversuche scheitern eindeutig                          | denselben Request höchstens dreimal versuchen; danach intern eskalieren |
+| SMTP-Konfiguration der Kanzlei nicht lesbar oder ungültig        | vor jedem SMTP-Kontakt abbrechen; wie eindeutigen Totalfehler behandeln |
 | nur ein Teil wird technisch angenommen                           | nicht blind erneut senden; als Teilfehler intern eskalieren             |
 | kein aktiver Kontakt mit Opt-in und gespeichertem Portal-Login   | nicht senden; fehlenden Empfänger intern eskalieren                     |
 | Ausgang des Versuchs ist unklar                                  | `UNKNOWN`; wegen Doppelversandrisiko kein automatischer Neuversand      |
@@ -192,11 +199,14 @@ beweist tatsächlichen Zugang oder Kenntnisnahme.
   nach einem möglicherweise erfolgreichen SMTP- oder n8n-Schritt, wird nicht
   blind wiederholt.
 - Nur wenn alle Einzelversuche durch eine ausdrückliche negative
-  SMTP-Providerantwort eindeutig abgelehnt wurden, ist ein Retry zulässig.
-  Eine Transport-, Socket- oder Timeout-Exception gilt als unklar, weil eine
-  vorherige Annahme nicht sicher ausgeschlossen werden kann. Der nächste
-  eindeutige Versuch ist in der Datenbank terminiert und der BullMQ-Lauf wird
-  erneut angestoßen; nach Versuch drei folgt `ESCALATED`.
+  SMTP-Providerantwort eindeutig abgelehnt wurden oder vor jedem SMTP-Kontakt
+  an einer nicht lesbaren oder ungültigen SMTP-Konfiguration der Kanzlei
+  scheiterten (Datenbankfehler beim Lesen, ungültiger Eintrag, nicht
+  entschlüsselbares Passwort), ist ein Retry zulässig. Eine Transport-,
+  Socket- oder Timeout-Exception nach Beginn der SMTP-Verbindung gilt als
+  unklar, weil eine vorherige Annahme nicht sicher ausgeschlossen werden kann.
+  Der nächste eindeutige Versuch ist in der Datenbank terminiert und der
+  BullMQ-Lauf wird erneut angestoßen; nach Versuch drei folgt `ESCALATED`.
 - Reguläres Entfernen des Request-Links setzt `ORPHANED` und erhält die
   Historie. Nur ein ausdrücklich dokumentierter DSGVO-Purge neutralisiert sie
   zu `NOT_REQUIRED` und löscht die Metadaten.
@@ -323,6 +333,19 @@ und -Beschreibung verbleiben im geschützten Portal. Der interne n8n-Payload
 führt die für den Workflow erforderlichen pseudonymen IDs, Priorität und
 Fälligkeit getrennt weiter.
 
+Der Versand liest die SMTP-Konfiguration der Kanzlei streng
+(`readSmtpConfigForSend`). Ein Datenbankfehler beim Lesen, ein ungültiger
+Eintrag (kein Objekt, Feld mit falschem Typ, ungültiger Port) und ein nicht
+entschlüsselbares Passwort einer vollständigen Konfiguration brechen den
+Einzelversuch ab, bevor ein SMTP-Transport entsteht; früher wurde ein
+unlesbares Passwort still als leer verwendet und der Versuch endete erst nach
+dem Verbindungsaufbau unklar. Der gemeinsame Dispatcher meldet diesen Abbruch
+als eindeutigen Fehlschlag (`smtpConfigUnavailable`, kein `uncertainFailure`);
+die Pipeline speichert `FAILED` mit eigenem Fehlertext, versucht es nach dem
+gespeicherten Abstand erneut und eskaliert nach Versuch drei mit dem Hinweis,
+die SMTP-Einstellungen zu prüfen. Eine unvollständige Konfiguration behält
+den bisherigen Fallback auf die Server-Konfiguration.
+
 Das optionale n8n-Ereignis wird für die logische Anforderung einmalig neben den
 kontaktbezogenen SMTP-Versuchen ausgelöst, auch wenn kein aktiver Mailkontakt
 existiert. Fehlt ein Mailkontakt, bleibt der Mailstatus `NO_RECIPIENT`. Ist n8n
@@ -355,11 +378,17 @@ tenantgebundenen Retention-Lauf gelöscht und gezählt.
   belastbare Delivery-, Bounce-, Zugang- oder Kenntnisnahmebestätigung.
 - SMTP und der optionale, einmalige n8n-Side-Effect laufen im gemeinsamen
   Dispatcher. Eine Exception kann nach einem bereits erfolgreichen Teilschritt
-  auftreten; nur eine ausdrückliche negative SMTP-Antwort wird als eindeutige
-  Ablehnung eingeordnet. Andere Exceptions bleiben fail-closed `UNKNOWN`, auch
+  auftreten; nur eine ausdrückliche negative SMTP-Antwort und ein Abbruch vor
+  jedem SMTP-Kontakt wegen nicht lesbarer SMTP-Konfiguration werden als
+  eindeutig eingeordnet. Andere Exceptions bleiben fail-closed `UNKNOWN`, auch
   wenn n8n bereits lief oder einzelne SMTP-Versuche sicher angenommen wurden.
-  Ein unklar beendeter oder per Timeout liegengebliebener Claim wird ohne
-  Blind-Retry eskaliert und verlangt manuelle Prüfung.
+  Das gilt auch für übrige Fehler vor dem SMTP-Kontakt, die der Dispatcher
+  nicht als solche kennzeichnet (etwa ein Datenbankfehler beim Lesen des
+  Dispatch-Modus oder der Mailvorlage). Ist n8n bei einer nicht lesbaren
+  SMTP-Konfiguration bereits ausgelöst, bleibt es wie bei ausdrücklicher
+  Ablehnung bei der terminalen `PARTIAL_FAILURE`. Ein unklar beendeter oder per
+  Timeout liegengebliebener Claim wird ohne Blind-Retry eskaliert und verlangt
+  manuelle Prüfung.
 - Vorhandene Kontakte werden nach Aktivstatus, Benachrichtigungsflag und einem
   gespeicherten erfolgreichen Portal-Login ausgewählt. Der Login ist keine
   erneute Bestätigung der aktuellen E-Mail-Adresse bei jedem Versand und keine
@@ -412,6 +441,13 @@ Kontakt-Tests prüfen den Filter auf aktive,
 benachrichtigungsfähige und bereits erfolgreich angemeldete Kontakte, den
 datenminimierten Template-Scope, den einmaligen n8n-Aufruf auch ohne Mailkontakt,
 die Trennung expliziter SMTP-Ablehnungen von unklaren Exceptions sowie den
-Login-Reset bei E-Mail-Änderung. Nicht belegt sind tatsächliche
+Login-Reset bei E-Mail-Änderung. Für die nicht lesbare SMTP-Konfiguration
+prüfen Mail-Tests mit echter Secret-Box den strengen Leser (nicht
+entschlüsselbares Passwort, ungültiger Eintrag, Legacy-Klartext,
+ENV-Fallback bei unvollständiger Konfiguration) und die durchgehende
+Einordnung bis zur Auto-Anforderung ohne erzeugten SMTP-Transport; ein
+Verbindungsabbruch nach Beginn der SMTP-Verbindung bleibt unklar. Die
+Worker-Tests belegen dafür `FAILED` mit Retry, die Eskalation nach Versuch drei
+und `UNKNOWN` für den Fehler nach Verbindungsbeginn. Nicht belegt sind tatsächliche
 Zustellung oder Zugang, die fortdauernde Richtigkeit der Adresse, fachliche
 Empfängerfreigabe und kanzleispezifische Datenschutzkontrollen.

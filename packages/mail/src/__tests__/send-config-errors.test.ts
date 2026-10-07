@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   logError: vi.fn(),
 }));
 vi.mock('nodemailer', () => ({ default: { createTransport: mocks.createTransport } }));
-vi.mock('../smtp-settings', () => ({ readSmtpConfig: mocks.readSmtpConfig }));
+vi.mock('../smtp-settings', () => ({ readSmtpConfigForSend: mocks.readSmtpConfig }));
 vi.mock('../logger', () => ({ mailLog: () => ({ error: mocks.logError, warn: vi.fn() }) }));
 vi.mock('@taxtronik/config', () => ({
   env: {
@@ -54,6 +54,25 @@ describe('F-05 sendMail tenant SMTP configuration errors', () => {
         errName: 'Error',
         err: 'Connection terminated unexpectedly',
       },
+      'mail: Tenant-SMTP-Konfiguration nicht lesbar — kein Fallback auf ENV-SMTP',
+    );
+  });
+
+  it('A7: fails before any SMTP contact for an invalid or undecryptable configuration', async () => {
+    const invalid = Object.assign(new Error('SMTP-Passwort ist nicht entschlüsselbar.'), {
+      name: 'SmtpConfigInvalidError',
+    });
+    mocks.readSmtpConfig.mockRejectedValue(invalid);
+    const { sendMail, SmtpConfigUnavailableError } = await import('../send');
+
+    const error = await sendMail(mail).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SmtpConfigUnavailableError);
+    // The marker sendTemplateMail uses to classify the failure as definite (A7).
+    expect(error).toMatchObject({ beforeSmtpContact: true, retryable: true, cause: invalid });
+    expect(mocks.createTransport).not.toHaveBeenCalled();
+    expect(mocks.logError).toHaveBeenCalledWith(
+      expect.objectContaining({ errName: 'SmtpConfigInvalidError' }),
       'mail: Tenant-SMTP-Konfiguration nicht lesbar — kein Fallback auf ENV-SMTP',
     );
   });

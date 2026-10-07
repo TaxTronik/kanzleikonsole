@@ -46,6 +46,8 @@ export interface TaxDeadlineNotificationDeps {
     attempted: number;
     externalSideEffectOccurred: boolean;
     uncertainFailure: boolean;
+    /** A7: Abbruch vor jedem SMTP-Kontakt wegen nicht lesbarer SMTP-Konfiguration. */
+    smtpConfigUnavailable?: true;
   }>;
   upsertStaffNotification: (tx: Db, input: StaffNotificationInput) => Promise<unknown>;
   resolveFailureNotifications: (
@@ -283,14 +285,29 @@ async function persistTerminalOutcome(
   });
 }
 
+function definiteFailureError(
+  attemptNo: number,
+  attempted: number,
+  exhausted: boolean,
+  smtpConfigUnavailable: boolean,
+): string {
+  const suffix = exhausted ? '; maximale Versuchszahl erreicht.' : '.';
+  // A7: Die SMTP-Konfiguration der Kanzlei war nicht lesbar oder ungültig; der
+  // Versuch endete vor jedem SMTP-Kontakt und ist damit eindeutig gescheitert.
+  return smtpConfigUnavailable
+    ? `Die SMTP-Konfiguration der Kanzlei war in Versuch ${attemptNo} nicht lesbar oder ungültig; keiner von ${attempted} Versandversuchen wurde an den Mail-Provider übergeben${suffix}`
+    : `Keiner von ${attempted} Versandversuchen wurde in Versuch ${attemptNo} vom Provider angenommen${suffix}`;
+}
+
 async function persistDefiniteFailure(
   deps: TaxDeadlineNotificationDeps,
   candidate: Candidate,
   attemptNo: number,
   attemptAt: Date,
-  attempted: number,
+  result: Pick<NotificationDispatchResult, 'attempted' | 'smtpConfigUnavailable'>,
 ): Promise<'retry' | 'escalated' | 'lost-claim'> {
   const exhausted = attemptNo >= MAX_ATTEMPTS;
+  const smtpConfigUnavailable = result.smtpConfigUnavailable === true;
   return deps.runAtomic(async (tx) => {
     const changed = await tx.taxDeadline.updateMany({
       where: {
@@ -307,20 +324,26 @@ async function persistDefiniteFailure(
         autoRequestNotificationNextAttemptAt: exhausted
           ? null
           : new Date(attemptAt.getTime() + RETRY_DELAY_MS),
-        autoRequestNotificationLastError: exhausted
-          ? `Keiner von ${attempted} Versandversuchen wurde in Versuch ${attemptNo} vom Provider angenommen; maximale Versuchszahl erreicht.`
-          : `Keiner von ${attempted} Versandversuchen wurde in Versuch ${attemptNo} vom Provider angenommen.`,
+        autoRequestNotificationLastError: definiteFailureError(
+          attemptNo,
+          result.attempted,
+          exhausted,
+          smtpConfigUnavailable,
+        ),
         autoRequestNotificationEscalatedAt: exhausted ? attemptAt : null,
       },
     });
     if (changed.count !== 1) return 'lost-claim';
     if (!exhausted) return 'retry';
+    const smtpHint = smtpConfigUnavailable
+      ? ' Die SMTP-Konfiguration der Kanzlei war nicht lesbar oder ungültig; bitte die SMTP-Einstellungen prüfen.'
+      : '';
     await deps.upsertStaffNotification(
       tx,
       failureNotification(
         candidate,
         'Benachrichtigung einer Auto-Anforderung fehlgeschlagen',
-        `Nach ${MAX_ATTEMPTS} eindeutigen technischen Fehlversuchen wurde der automatische Versand beendet. Die Portal-Anforderung bleibt bestehen; bitte Versandweg und Empfänger manuell prüfen.`,
+        `Nach ${MAX_ATTEMPTS} eindeutigen technischen Fehlversuchen wurde der automatische Versand beendet.${smtpHint} Die Portal-Anforderung bleibt bestehen; bitte Versandweg und Empfänger manuell prüfen.`,
       ),
     );
     return 'escalated';
@@ -488,13 +511,9 @@ async function persistNotificationResult(
     return;
   }
 
-  const outcome = await persistDefiniteFailure(
-    deps,
-    candidate,
-    attemptNo,
-    attemptAt,
-    result.attempted,
-  );
+  // Eindeutig: ausdrückliche Provider-Ablehnung aller Einzelversuche oder (A7)
+  // Abbruch vor jedem SMTP-Kontakt wegen nicht lesbarer SMTP-Konfiguration.
+  const outcome = await persistDefiniteFailure(deps, candidate, attemptNo, attemptAt, result);
   if (outcome === 'retry') stats.retryPending += 1;
   if (outcome === 'escalated') stats.escalated += 1;
 }

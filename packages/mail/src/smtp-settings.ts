@@ -23,7 +23,9 @@ import {
 } from '@taxtronik/db/tenant-settings';
 import { env } from '@taxtronik/config';
 import {
+  decryptSecret,
   encryptSecret,
+  looksEncrypted,
   readEncryptedSetting,
   SECRET_SLOTS,
   secretSlotContext,
@@ -73,11 +75,26 @@ export interface SmtpStatus {
   fromDb: boolean; // Quelle ist tenant_setting (sonst ENV-Fallback)
 }
 
+type StoredSmtpValue = Partial<SmtpStored> & { password?: string };
+
+function toSmtpConfig(stored: StoredSmtpValue, password: string): SmtpConfig {
+  return {
+    host: stored.host ?? '',
+    port: typeof stored.port === 'number' ? stored.port : 587,
+    secure: Boolean(stored.secure),
+    user: stored.user ?? '',
+    password,
+    from: stored.from ?? '',
+    replyTo: stored.replyTo ?? '',
+  };
+}
+
+/** Für die Einstellungsoberfläche: ein unlesbares Passwort wird geloggt und leer angezeigt. */
 export async function readSmtpConfig(ctx: TenantContext): Promise<SmtpConfig | null> {
   return withTenantContext(ctx, async (tx) => {
     const value = await readTenantSettingValue(tx, ctx.tenantId, KEY);
     if (value === undefined) return null;
-    const stored = value as Partial<SmtpStored> & { password?: string };
+    const stored = value as StoredSmtpValue;
     // Legacy-Klartext (stored.password) als Fallback; Decrypt-Fehler wird
     // geloggt statt still zu '' (Key-Rotation ohne Re-Wrap).
     const password = readEncryptedSetting(
@@ -91,16 +108,83 @@ export async function readSmtpConfig(ctx: TenantContext): Promise<SmtpConfig | n
           'readEncryptedSetting: Entschlüsselung fehlgeschlagen (Key-Rotation ohne Re-Wrap?)',
         ),
     );
-    return {
-      host: stored.host ?? '',
-      port: typeof stored.port === 'number' ? stored.port : 587,
-      secure: Boolean(stored.secure),
-      user: stored.user ?? '',
-      password,
-      from: stored.from ?? '',
-      replyTo: stored.replyTo ?? '',
-    };
+    return toSmtpConfig(stored, password);
   });
+}
+
+/**
+ * A7: Die gespeicherte Tenant-SMTP-Konfiguration ist für den Versand nicht
+ * verwendbar — kein Objekt, ein Feld mit falschem Typ, ein ungültiger Port oder
+ * ein nicht entschlüsselbares Passwort. Erkannt vor jedem SMTP-Kontakt.
+ */
+export class SmtpConfigInvalidError extends Error {
+  readonly reason: 'shape' | 'password';
+  constructor(reason: 'shape' | 'password', message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'SmtpConfigInvalidError';
+    this.reason = reason;
+  }
+}
+
+const TEXT_FIELDS = ['host', 'user', 'from', 'replyTo', 'passwordEncrypted', 'password'] as const;
+
+function isAbsent(value: unknown): boolean {
+  return value === undefined || value === null;
+}
+
+function storedForSend(value: unknown): StoredSmtpValue {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new SmtpConfigInvalidError('shape', 'Gespeicherte SMTP-Konfiguration ist kein Objekt.');
+  }
+  const record = value as Record<string, unknown>;
+  for (const field of TEXT_FIELDS) {
+    if (!isAbsent(record[field]) && typeof record[field] !== 'string') {
+      throw new SmtpConfigInvalidError('shape', `SMTP-Feld ${field} ist kein Text.`);
+    }
+  }
+  const port = record['port'];
+  if (
+    !isAbsent(port) &&
+    !(typeof port === 'number' && Number.isInteger(port) && port >= 1 && port <= 65_535)
+  ) {
+    throw new SmtpConfigInvalidError('shape', 'SMTP-Port ist ungültig.');
+  }
+  if (!isAbsent(record['secure']) && typeof record['secure'] !== 'boolean') {
+    throw new SmtpConfigInvalidError('shape', 'SMTP-Verschlüsselungsangabe ist ungültig.');
+  }
+  return record as StoredSmtpValue;
+}
+
+function passwordForSend(stored: StoredSmtpValue, tenantId: string): string {
+  const encrypted = stored.passwordEncrypted;
+  if (!encrypted) return stored.password ?? '';
+  if (!looksEncrypted(encrypted)) {
+    throw new SmtpConfigInvalidError('password', 'Gespeichertes SMTP-Passwort ist kein Secret.');
+  }
+  try {
+    return decryptSecret(encrypted, passwordContext(tenantId));
+  } catch (error) {
+    throw new SmtpConfigInvalidError('password', 'SMTP-Passwort ist nicht entschlüsselbar.', {
+      cause: error,
+    });
+  }
+}
+
+/**
+ * A7: Liest die Tenant-SMTP-Konfiguration für den Versand. Anders als
+ * readSmtpConfig (Einstellungsoberfläche) wird ein unbrauchbarer Eintrag nicht
+ * still zu Standardwerten oder einem leeren Passwort — sonst endete der
+ * Versuch erst nach dem Verbindungsaufbau (Anmeldung ohne Passwort) mit einem
+ * unklaren Ausgang. Wirft SmtpConfigInvalidError. Das Passwort wird nur für
+ * eine vollständige Konfiguration (Host und Absender) gebraucht; eine
+ * unvollständige behält den dokumentierten ENV-Fallback (F-05).
+ */
+export async function readSmtpConfigForSend(ctx: TenantContext): Promise<SmtpConfig | null> {
+  const value = await withTenantContext(ctx, (tx) => readTenantSettingValue(tx, ctx.tenantId, KEY));
+  if (value === undefined) return null;
+  const stored = storedForSend(value);
+  const complete = Boolean(stored.host && stored.from);
+  return toSmtpConfig(stored, complete ? passwordForSend(stored, ctx.tenantId) : '');
 }
 
 export async function writeSmtpConfig(ctx: TenantContext, cfg: SmtpConfig): Promise<void> {

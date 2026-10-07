@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ readSmtpConfig: vi.fn(), createTransport: vi.fn() }));
 vi.mock('nodemailer', () => ({ default: { createTransport: mocks.createTransport } }));
-vi.mock('../smtp-settings', () => ({ readSmtpConfig: mocks.readSmtpConfig }));
+vi.mock('../smtp-settings', () => ({ readSmtpConfigForSend: mocks.readSmtpConfig }));
 vi.mock('@taxtronik/config', () => ({
   env: {
     NODE_ENV: 'test',

@@ -8,6 +8,9 @@
 // existiert. Ist sie wegen eines DB-Fehlers nicht lesbar, schlägt der Versand
 // fehl (SmtpConfigUnavailableError, wiederholbar) — sonst ginge die Mail still
 // über einen anderen Server und Absender als vom Mandanten konfiguriert.
+// A7: Dasselbe gilt für einen ungültigen Eintrag und ein nicht entschlüsselbares
+// Passwort (readSmtpConfigForSend). Alle drei Fälle entstehen vor jedem
+// SMTP-Kontakt; sendTemplateMail wertet sie als eindeutigen Fehlschlag.
 //
 // Im Dev: MailHog (siehe docker-compose) — UI auf http://localhost:8025
 //
@@ -19,16 +22,19 @@
 import nodemailer, { type Transporter } from 'nodemailer';
 import { createHash } from 'node:crypto';
 import { env } from '@taxtronik/config';
-import { readSmtpConfig, type SmtpConfig } from './smtp-settings';
+import { readSmtpConfigForSend, type SmtpConfig } from './smtp-settings';
 import { mailLog } from './logger';
 
 /**
- * Die Tenant-SMTP-Konfiguration war nicht lesbar (DB-Fehler). Vor jedem
- * SMTP-Kontakt geworfen: die Mail wurde nachweislich nicht versendet und kann
- * erneut versucht werden.
+ * Die Tenant-SMTP-Konfiguration war nicht lesbar (DB-Fehler) oder für den
+ * Versand ungültig (A7: falscher Eintrag, nicht entschlüsselbares Passwort).
+ * Vor jedem SMTP-Kontakt geworfen: die Mail wurde nachweislich nicht versendet
+ * und kann erneut versucht werden.
  */
 export class SmtpConfigUnavailableError extends Error {
   readonly retryable = true;
+  /** Kein SMTP-Server wurde kontaktiert; ein Neuversand kann nicht doppelt zustellen. */
+  readonly beforeSmtpContact = true;
   readonly tenantId: string;
   constructor(tenantId: string, cause: unknown) {
     super('SMTP-Konfiguration des Mandanten nicht lesbar — Versand abgebrochen.', { cause });
@@ -186,7 +192,7 @@ export async function sendMail(opts: MailOptions): Promise<void> {
   let dbCfg: SmtpConfig | null = null;
   if (opts.tenantId) {
     try {
-      dbCfg = await readSmtpConfig({
+      dbCfg = await readSmtpConfigForSend({
         tenantId: opts.tenantId,
         actorId: null,
         actorType: 'SYSTEM',

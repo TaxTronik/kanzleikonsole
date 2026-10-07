@@ -5282,7 +5282,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Portal-Anforderung und Benachrichtigung sind getrennt persistiert; Request-Anlage, Vormerkung, begrenzter Retry eindeutiger Totalfehler, Fail-closed-Behandlung unklarer Ergebnisse und laufender Versandclaims sowie atomare interne Eskalation an aktive Zuständige sind umgesetzt. Externer Versand ist auf offene Requests begrenzt. Provider-Annahme beweist weder Zustellung noch Zugang."
+        "summary": "Portal-Anforderung und Benachrichtigung sind getrennt persistiert; Request-Anlage, Vormerkung, begrenzter Retry eindeutiger Totalfehler (ausdrückliche Provider-Ablehnung oder Abbruch vor jedem SMTP-Kontakt wegen nicht lesbarer SMTP-Konfiguration), Fail-closed-Behandlung unklarer Ergebnisse und laufender Versandclaims sowie atomare interne Eskalation an aktive Zuständige sind umgesetzt. Externer Versand ist auf offene Requests begrenzt. Provider-Annahme beweist weder Zustellung noch Zugang."
       },
       "sources": [
         {
@@ -5336,6 +5336,8 @@
         "apps/worker/src/jobs/reminders-daily.ts",
         "packages/mail/src/dispatch.ts",
         "packages/mail/src/request-opened.ts",
+        "packages/mail/src/send.ts",
+        "packages/mail/src/smtp-settings.ts",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260823200100_tax_deadline_notification_kind/migration.sql",
         "packages/db/prisma/migrations/20260823201000_tax_professional_control_model/migration.sql"
@@ -5345,6 +5347,9 @@
         "packages/tax/src/__tests__/materialize.test.ts",
         "packages/mail/src/__tests__/dispatch-profile-context.test.ts",
         "packages/mail/src/__tests__/request-opened.test.ts",
+        "packages/mail/src/__tests__/send-config-errors.test.ts",
+        "packages/mail/src/__tests__/smtp-config-for-send.test.ts",
+        "packages/mail/src/__tests__/smtp-config-classification.test.ts",
         "apps/web/src/lib/__tests__/tax-deadline-pipeline.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/actions.test.ts",

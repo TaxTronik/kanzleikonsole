@@ -11,7 +11,10 @@
 //     30 Minuten nicht erneut gesendet, sondern UNKNOWN eskaliert.
 //   - Nur eindeutig gescheiterte Versuche ohne angenommenen Empfänger werden
 //     wiederholt (RETRY_PENDING, exponentieller Backoff, höchstens sechs
-//     Versuche wie die n8n-Zustellung); danach FAILED.
+//     Versuche wie die n8n-Zustellung); danach FAILED. Eindeutig ist eine
+//     ausdrückliche Provider-Ablehnung, ein Fehler beim Vorbereiten des Auftrags
+//     und (A7) eine nicht lesbare oder ungültige SMTP-Konfiguration der Kanzlei
+//     — die beiden letzten entstehen vor jedem SMTP-Kontakt.
 //   - Unklarer Ausgang (UNKNOWN) und Teilzustellung (PARTIAL_FAILURE) werden
 //     wegen des Doppelversandrisikos nie automatisch wiederholt.
 //   - FAILED, UNKNOWN und PARTIAL_FAILURE erzeugen eine Kanzlei-Benachrichtigung
@@ -112,6 +115,27 @@ function purposeLabel(purpose: string): string {
 
 function retryDelayMs(attemptNo: number): number {
   return RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attemptNo - 1);
+}
+
+/** A7: Abbruch vor jedem SMTP-Kontakt; die Kanzlei muss ihre SMTP-Einstellungen prüfen. */
+const SMTP_CONFIG_UNAVAILABLE_REASON =
+  'Die SMTP-Konfiguration der Kanzlei war nicht lesbar oder ungültig; der Versand wurde vor jedem SMTP-Kontakt abgebrochen.';
+
+interface DefiniteFailure {
+  reason: string;
+  /** Zusatz für die Kanzlei-Benachrichtigung nach dem letzten Versuch. */
+  staffHint?: string;
+}
+
+function definiteFailure(reason: string): DefiniteFailure {
+  return { reason };
+}
+
+function smtpConfigFailure(detail?: string): DefiniteFailure {
+  return {
+    reason: detail ? `${SMTP_CONFIG_UNAVAILABLE_REASON} ${detail}` : SMTP_CONFIG_UNAVAILABLE_REASON,
+    staffHint: 'Bitte die SMTP-Einstellungen der Kanzlei prüfen.',
+  };
 }
 
 /** Terminalstatus: Inhalt und geheime Variablen verlassen den Auftrag. */
@@ -259,11 +283,13 @@ async function persistTerminal(
 async function persistDefiniteFailure(
   deps: MailOutboxDeliveryDeps,
   row: Claimed,
-  reason: string,
+  failure: DefiniteFailure,
   attempted: number | undefined,
   stats: MailOutboxStats,
 ): Promise<void> {
+  const { reason } = failure;
   if (row.attemptNo >= MAIL_OUTBOX_MAX_ATTEMPTS) {
+    const staffHint = failure.staffHint ? ` ${failure.staffHint}` : '';
     const changed = await persistTerminal(deps, row, {
       status: 'FAILED',
       lastError: `${reason} Versuch ${row.attemptNo} von ${MAIL_OUTBOX_MAX_ATTEMPTS}; kein weiterer automatischer Versuch.`,
@@ -271,7 +297,7 @@ async function persistDefiniteFailure(
       accepted: attempted === undefined ? undefined : 0,
       escalation: {
         title: 'E-Mail an Mandanten fehlgeschlagen',
-        body: `${purposeLabel(row.purpose)}: Nach ${MAIL_OUTBOX_MAX_ATTEMPTS} eindeutig gescheiterten Versuchen wurde der automatische Versand beendet. Bitte Empfänger und Versandweg prüfen und den Mandanten gegebenenfalls direkt informieren.`,
+        body: `${purposeLabel(row.purpose)}: Nach ${MAIL_OUTBOX_MAX_ATTEMPTS} eindeutig gescheiterten Versuchen wurde der automatische Versand beendet.${staffHint} Bitte Empfänger und Versandweg prüfen und den Mandanten gegebenenfalls direkt informieren.`,
       },
     });
     if (changed) stats.escalated += 1;
@@ -339,9 +365,13 @@ async function persistDirectResult(
   await persistDefiniteFailure(
     deps,
     row,
-    result.sentViaTemplate || hasFallback
-      ? 'Der Mail-Provider hat die Nachricht ausdrücklich abgelehnt.'
-      : 'Weder aktive Vorlage noch Ersatztext vorhanden.',
+    result.smtpConfigUnavailable
+      ? smtpConfigFailure()
+      : definiteFailure(
+          result.sentViaTemplate || hasFallback
+            ? 'Der Mail-Provider hat die Nachricht ausdrücklich abgelehnt.'
+            : 'Weder aktive Vorlage noch Ersatztext vorhanden.',
+        ),
     1,
     stats,
   );
@@ -400,7 +430,13 @@ async function persistContactResult(
   await persistDefiniteFailure(
     deps,
     row,
-    `Keiner von ${result.attempted} Mail-Einzelversuchen wurde vom Provider angenommen.`,
+    result.smtpConfigUnavailable
+      ? smtpConfigFailure(
+          `Keiner von ${result.attempted} Mail-Einzelversuchen wurde an den Mail-Provider übergeben.`,
+        )
+      : definiteFailure(
+          `Keiner von ${result.attempted} Mail-Einzelversuchen wurde vom Provider angenommen.`,
+        ),
     result.attempted,
     stats,
   );
@@ -434,7 +470,9 @@ async function deliver(
     await persistDefiniteFailure(
       deps,
       row,
-      'Der Versandauftrag konnte nicht vorbereitet werden (Inhalt oder Anhang nicht lesbar).',
+      definiteFailure(
+        'Der Versandauftrag konnte nicht vorbereitet werden (Inhalt oder Anhang nicht lesbar).',
+      ),
       undefined,
       stats,
     );
