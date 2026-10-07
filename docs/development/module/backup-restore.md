@@ -59,11 +59,13 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   `pg_restore --single-transaction --exit-on-error` (ganz oder gar nicht);
   läuft als Superuser aus der Host-`.env` des Operators und setzt die vorab
   aus der Betreiberkonfiguration angelegten Cluster-Rollen `taxtronik_app`
-  und — für Dumps ab Migration `20261006160000` — `taxtronik_owner` voraus
-  (`./taxtronik restore` synchronisiert beide; `restore.ts` prüft vorab nur
-  `taxtronik_app`, fehlt `taxtronik_owner`, bricht `pg_restore` an dessen
-  GRANT-Einträgen ab); verbindliche Rollen-/ACL-/RLS-Abnahme vor jeder
-  Erfolgsmeldung, zusätzlich optionaler Smoke-Test (Tenants/Audit-Zählung).
+  und `taxtronik_owner` voraus (`./taxtronik restore` synchronisiert beide;
+  `restore.ts` prüft vor `pg_restore` beide samt ihrer Attribute, die
+  Owner-Rolle wie in Migration `20261006160000` und ohne Mitgliedschaften);
+  verbindliche Rollen-/ACL-/RLS-Abnahme vor jeder Erfolgsmeldung,
+  einschließlich der Owner-Grants (Dumps von vor `20261006160000` werden mit
+  dem alten Release wiederhergestellt und per Update angehoben), zusätzlich
+  optionaler Smoke-Test (Tenants/Audit-Zählung).
 - **Restore-Drill** (Worker, monatlich 1., 05:00 UTC): letztes
   SUCCESS-Backup → private lokale Kopie unter `BACKUP_DRILL_TMP_DIR`
   (Compose: `/app/backups/restore-drill`, gemeinsamer Backup-Hostmount) →
@@ -121,7 +123,9 @@ Ein vorbereiteter Zielserver kann über Defaultprivilegien beim Neuanlegen der
 Tabellen Rechte vergeben, die im Quellsystem entzogen waren. Deshalb prüft
 `restore-security.ts` nach `pg_restore` die 30 effektiven Rollen-/ACL-/REVOKE-
 Invarianten des CI-Selbsttests, einschließlich erreichbarer privilegierter
-`SET ROLE`-Ziele, sowie ENABLE/FORCE RLS und Policies aller
+`SET ROLE`-Ziele, den S-01-Zustand der Owner-Rolle `taxtronik_owner`
+(Attribute, kein Objektbesitz, Grants aus dem Dump, Audit-Schreibsperren)
+sowie ENABLE/FORCE RLS und Policies aller
 normalen und partitionierten öffentlichen Tenanttabellen. Die dokumentierten
 globalen Ausnahmen bleiben erhalten; ein leeres Inventar wird abgewiesen.
 `--no-smoke-test` schaltet diese Sicherheitsabnahme nicht aus.

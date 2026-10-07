@@ -36,7 +36,10 @@ import { env } from '@taxtronik/config';
 import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
 import { pgConnArgs, pgRestoreArgs } from '@taxtronik/db/pg-tools';
 import { prismaOwner } from '@/server/db/prisma-owner';
-import { assertRestoreTargetSecurity } from '@taxtronik/db/restore-security';
+import {
+  assertRestoreRolesPresent,
+  assertRestoreTargetSecurity,
+} from '@taxtronik/db/restore-security';
 
 const BACKUP_BUCKET = process.env['S3_BUCKET_BACKUPS'] ?? 'backups';
 
@@ -327,43 +330,6 @@ export async function targetIsEmpty(
   }
 }
 
-/**
- * ACLs/REVOKEs sind Teil des Backups. PostgreSQL kann sie nur einspielen,
- * wenn die referenzierte App-Rolle clusterweit bereits existiert. Der
- * Operator-Wrapper synchronisiert sie aus der .env; direkte CLI-Aufrufe
- * erhalten hier einen klaren Fehler statt eines halben Restore-Versuchs.
- */
-async function assertRestoreRolesPresent(targetUrl: string): Promise<void> {
-  const probe = new PrismaClient({ adapter: createPostgresAdapter(targetUrl) });
-  try {
-    const rows = await probe.$queryRaw<{ present: boolean; safe: boolean }[]>`
-      SELECT
-        EXISTS (
-          SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'taxtronik_app'
-        ) AS present,
-        EXISTS (
-          SELECT 1
-            FROM pg_catalog.pg_roles
-           WHERE rolname = 'taxtronik_app'
-             AND NOT rolsuper
-             AND NOT rolcreatedb
-             AND NOT rolcreaterole
-             AND NOT rolreplication
-             AND NOT rolbypassrls
-        ) AS safe
-    `;
-    if (!rows[0]?.present || !rows[0]?.safe) {
-      throw new Error(
-        'Restore-Voraussetzung fehlt: PostgreSQL-Rolle taxtronik_app existiert nicht ' +
-          'oder besitzt unzulässige Clusterrechte. Zuerst ./taxtronik restore verwenden ' +
-          'oder die Rolle aus der .env sicher bootstrapen.',
-      );
-    }
-  } finally {
-    await probe.$disconnect();
-  }
-}
-
 async function runPgRestore(filePath: string, targetUrl: string): Promise<void> {
   // P-2: Passwort via PGPASSWORD, nicht via --dbname=postgresql://user:pw@…
   const connArgs = pgConnArgs(targetUrl);
@@ -451,7 +417,12 @@ async function main() {
     throw new Error('DATABASE_URL fehlt für das explizit gewählte --production-target.');
   }
 
-  await assertRestoreRolesPresent(targetUrl);
+  // ACLs/REVOKEs sind Teil des Backups: taxtronik_app und (S-01) taxtronik_owner
+  // muessen vor pg_restore mit sicheren Attributen existieren (B6).
+  await assertRestoreRolesPresent(
+    targetUrl,
+    (url) => new PrismaClient({ adapter: createPostgresAdapter(url) }),
+  );
 
   // Quelle bestimmen: entweder lokale Datei oder S3-Objekt.
   // `path`     = Pfad der Dump-Datei, die pg_restore liest.

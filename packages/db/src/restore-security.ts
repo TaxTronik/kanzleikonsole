@@ -3,6 +3,81 @@ import type { PrismaClient } from './prisma-client';
 
 type SecurityProbe = Pick<InstanceType<typeof PrismaClient>, '$queryRaw' | '$disconnect'>;
 
+/**
+ * B6 (S-01): Dumps von vor der Migration 20261006160000_owner_role_least_privilege
+ * enthalten weder Grants noch Default-Privilegien der Owner-Rolle taxtronik_owner.
+ * Wie andere Altdumps werden sie mit dem passenden alten Release wiederhergestellt
+ * und anschließend per Update (Migration) angehoben.
+ */
+export const PRE_OWNER_ROLE_DUMP_PROCEDURE =
+  'Dumps von vor Migration 20261006160000 (S-01) mit dem passenden alten Release ' +
+  'wiederherstellen und anschließend per ./taxtronik update anheben.';
+
+/**
+ * Vor pg_restore: ACLs/REVOKEs sind Teil des Backups. PostgreSQL kann sie nur
+ * einspielen, wenn die referenzierten Rollen clusterweit bereits existieren. Der
+ * Operator-Wrapper synchronisiert sie aus der .env; direkte CLI-Aufrufe erhalten
+ * hier einen klaren Fehler statt eines halben Restore-Versuchs. Die Owner-Rolle
+ * muss die Attribute aus 20261006160000 tragen (NOSUPERUSER NOCREATEDB
+ * NOCREATEROLE NOREPLICATION BYPASSRLS) und darf keiner Rolle angehören.
+ */
+export async function assertRestoreRolesPresent(
+  targetUrl: string,
+  createProbe: (url: string) => SecurityProbe,
+): Promise<void> {
+  const probe = createProbe(targetUrl);
+  try {
+    const rows = await probe.$queryRaw<
+      Array<{ appPresent: boolean; appSafe: boolean; ownerPresent: boolean; ownerSafe: boolean }>
+    >`
+SELECT
+  EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'taxtronik_app'
+  ) AS "appPresent",
+  EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles
+     WHERE rolname = 'taxtronik_app'
+       AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole
+       AND NOT rolreplication AND NOT rolbypassrls
+  ) AS "appSafe",
+  EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'taxtronik_owner'
+  ) AS "ownerPresent",
+  EXISTS (
+    SELECT 1 FROM pg_catalog.pg_roles r
+     WHERE r.rolname = 'taxtronik_owner'
+       AND NOT r.rolsuper AND NOT r.rolcreatedb AND NOT r.rolcreaterole
+       AND NOT r.rolreplication AND r.rolbypassrls
+       AND NOT EXISTS (
+         SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = r.oid
+       )
+  ) AS "ownerSafe";
+    `;
+    const row = rows.length === 1 ? rows[0] : undefined;
+    if (row?.appPresent !== true || row.appSafe !== true) {
+      throw new Error(
+        'Restore-Voraussetzung fehlt: PostgreSQL-Rolle taxtronik_app existiert nicht ' +
+          'oder besitzt unzulässige Clusterrechte. Zuerst ./taxtronik restore verwenden ' +
+          'oder die Rolle aus der .env sicher bootstrapen.',
+      );
+    }
+    if (row.ownerPresent !== true || row.ownerSafe !== true) {
+      throw new Error(
+        'Restore-Voraussetzung fehlt: PostgreSQL-Rolle taxtronik_owner (S-01) ' +
+          (row.ownerPresent === true
+            ? 'besitzt unzulässige Clusterrechte oder Rollenmitgliedschaften'
+            : 'existiert nicht') +
+          ' (erwartet: NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION BYPASSRLS, ' +
+          'keine Mitgliedschaften). Zuerst ./taxtronik restore verwenden, das die Rolle ' +
+          'aus TAXTRONIK_OWNER_PASSWORD der .env anlegt, oder die Rolle sicher bootstrapen. ' +
+          PRE_OWNER_ROLE_DUMP_PROCEDURE,
+      );
+    }
+  } finally {
+    await probe.$disconnect();
+  }
+}
+
 /** Required after pg_restore, including when the optional data smoke is disabled. */
 export async function assertRestoreTargetSecurity(
   targetUrl: string,
@@ -10,6 +85,9 @@ export async function assertRestoreTargetSecurity(
 ): Promise<void> {
   const probe = createProbe(targetUrl);
   try {
+    // B6: zuerst die Owner-Rolle der Container (S-01). Ein Altdump ohne ihre
+    // Grants erhält so die Anweisung zum Wiederherstellen mit dem alten Release.
+    await assertOwnerRoleRestored(probe);
     // Same 30 effective privilege invariants as scripts/restore-selftest.sh:
     // the original 17, five for the counter and permanent ticket links, seven
     // for the append-only rolling anchors (audit_anchor) and the owner-only
@@ -119,5 +197,86 @@ WHERE c.relkind IN ('r', 'p') AND n.nspname = 'public'
     );
   } finally {
     await probe.$disconnect();
+  }
+}
+
+/**
+ * B6 (S-01): effektiver Zustand der Owner-Rolle der Container nach pg_restore.
+ * Attribute wie vor dem Restore, kein Objektbesitz und kein CREATE; die Grants
+ * der Migration 20261006160000 stammen aus dem Dump (fehlen sie, ist es ein
+ * Altdump). Wie bei der App-Rolle gelten die Audit-Schreibsperren und das Verbot
+ * von TRUNCATE/REFERENCES/TRIGGER/MAINTAIN auch dann, wenn Default-Privilegien
+ * des Ziels beim Neuanlegen der Tabellen Rechte vergeben haben.
+ */
+async function assertOwnerRoleRestored(probe: SecurityProbe): Promise<void> {
+  const rows = await probe.$queryRaw<
+    Array<{ roleSafe: boolean; grantsPresent: boolean; writeLocks: boolean }>
+  >`
+WITH owner_role AS (
+  SELECT r.oid, r.rolsuper, r.rolcreatedb, r.rolcreaterole, r.rolreplication, r.rolbypassrls
+    FROM pg_catalog.pg_roles r
+   WHERE r.rolname = 'taxtronik_owner'
+), public_tables AS (
+  SELECT c.oid
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+   WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+)
+SELECT
+  (NOT o.rolsuper AND NOT o.rolcreatedb AND NOT o.rolcreaterole
+    AND NOT o.rolreplication AND o.rolbypassrls
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_auth_members m WHERE m.member = o.oid)
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.relowner = o.oid)
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p WHERE p.proowner = o.oid)
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace ns WHERE ns.nspowner = o.oid)
+    AND NOT pg_catalog.has_database_privilege(o.oid, pg_catalog.current_database(), 'CREATE')
+    AND NOT pg_catalog.has_schema_privilege(o.oid, 'public', 'CREATE')
+    AND NOT pg_catalog.has_schema_privilege(o.oid, 'app', 'CREATE')) AS "roleSafe",
+  (pg_catalog.has_schema_privilege(o.oid, 'public', 'USAGE')
+    AND pg_catalog.has_schema_privilege(o.oid, 'app', 'USAGE')
+    AND pg_catalog.has_table_privilege(o.oid, 'public.tenant', 'INSERT')
+    AND pg_catalog.has_table_privilege(o.oid, 'public.tenant', 'UPDATE')
+    AND pg_catalog.has_table_privilege(o.oid, 'public.tenant', 'DELETE')
+    AND NOT EXISTS (
+      SELECT 1 FROM public_tables t
+       WHERE NOT pg_catalog.has_table_privilege(o.oid, t.oid, 'SELECT')
+    )) AS "grantsPresent",
+  (NOT pg_catalog.has_table_privilege(o.oid, 'public.audit_log', 'UPDATE,DELETE,TRUNCATE')
+    AND NOT pg_catalog.has_table_privilege(o.oid, 'public.audit_seal', 'UPDATE,DELETE,TRUNCATE')
+    AND NOT pg_catalog.has_table_privilege(o.oid, 'public.audit_anchor', 'UPDATE,DELETE,TRUNCATE')
+    AND NOT pg_catalog.has_table_privilege(o.oid, 'public.audit_archive', 'DELETE,TRUNCATE')
+    AND NOT pg_catalog.has_table_privilege(o.oid, 'public._prisma_migrations',
+      'INSERT,UPDATE,DELETE,TRUNCATE')
+    AND NOT EXISTS (
+      SELECT 1 FROM public_tables t
+       WHERE pg_catalog.has_table_privilege(o.oid, t.oid, 'TRUNCATE,REFERENCES,TRIGGER')
+          OR CASE WHEN pg_catalog.current_setting('server_version_num')::int >= 170000
+                  THEN pg_catalog.has_table_privilege(o.oid, t.oid, 'MAINTAIN')
+                  ELSE false END
+    )) AS "writeLocks"
+FROM owner_role o;
+  `;
+  if (rows.length === 0) {
+    throw new Error('Owner-Rolle taxtronik_owner fehlt (S-01). ' + PRE_OWNER_ROLE_DUMP_PROCEDURE);
+  }
+  const owner = rows.length === 1 ? rows[0] : undefined;
+  if (owner?.roleSafe !== true) {
+    throw new Error(
+      'Owner-Rolle taxtronik_owner verletzt S-01 (Superuser-/Clusterrechte, ' +
+        'Rollenmitgliedschaften, Objektbesitz oder CREATE-Rechte).',
+    );
+  }
+  if (owner.grantsPresent !== true) {
+    throw new Error(
+      'Owner-Rolle taxtronik_owner ohne die Grants der Migration 20261006160000 (S-01); ' +
+        'der Dump stammt vermutlich von vor S-01. ' +
+        PRE_OWNER_ROLE_DUMP_PROCEDURE,
+    );
+  }
+  if (owner.writeLocks !== true) {
+    throw new Error(
+      'Owner-Rolle taxtronik_owner besitzt unzulässige Rechte (Schreibsperren der ' +
+        'Audit-Tabellen, Migrationsledger oder TRUNCATE/REFERENCES/TRIGGER/MAINTAIN).',
+    );
   }
 }

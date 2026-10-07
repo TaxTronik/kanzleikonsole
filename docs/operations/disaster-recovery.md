@@ -61,20 +61,33 @@ den gesondert bestätigten `--production-target`-Pfad. Einen impliziten Fallback
 auf die produktive `DATABASE_URL` aus `.env` gibt es nicht.
 
 Der Dump enthält PostgreSQL-ACLs und sicherheitsrelevante REVOKEs. Die
-clusterweiten Rollen `taxtronik_app` und — für Dumps ab Migration
-`20261006160000` (S-01) — `taxtronik_owner` müssen deshalb **vor**
-`pg_restore` aus der gesicherten `.env` angelegt/synchronisiert sein. Der
-Operator-Wrapper `./taxtronik restore` erledigt dies für alle Rollen
-einschließlich `taxtronik_drill`; ein direkter Aufruf von `restore.ts` bricht
-ohne `taxtronik_app` vorab ab, ohne `taxtronik_owner` erst in `pg_restore`
-(ganz oder gar nicht, die Ziel-DB bleibt unverändert). Der Restore selbst läuft
-als Superuser `taxtronik` mit der `DATABASE_URL` der Host-`.env`; app und
-worker verbinden danach als `taxtronik_owner` und benötigen die im Dump
-enthaltenen Grants. Ein Dump von vor S-01 enthält diese Grants nicht; er ist
-wie andere ältere Dumps mit dem passenden alten Release wiederherzustellen und
-anschließend per `./taxtronik update` kontrolliert zu aktualisieren (die
-Migration vergibt die Grants). `./taxtronik doctor` meldet fehlende Grants als
-`DB_ROLE_LIVE_owner`.
+clusterweiten Rollen `taxtronik_app` und `taxtronik_owner` (S-01) müssen
+deshalb **vor** `pg_restore` aus der gesicherten `.env` angelegt/synchronisiert
+sein. Der Operator-Wrapper `./taxtronik restore` erledigt dies für alle Rollen
+einschließlich `taxtronik_drill`. `restore.ts` prüft beide Rollen vor
+`pg_restore` und bricht ab, bevor die Ziel-DB verändert wird, wenn eine fehlt
+oder unzulässige Attribute trägt: `taxtronik_app` ohne Superuser-,
+Clusterrechte und BYPASSRLS, `taxtronik_owner` mit genau den Attributen der
+Migration `20261006160000` (NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+BYPASSRLS) und ohne Rollenmitgliedschaften.
+
+Der Restore selbst läuft als Superuser `taxtronik` mit der `DATABASE_URL` der
+Host-`.env`; app und worker verbinden danach als `taxtronik_owner` und
+benötigen die im Dump enthaltenen Grants. Die verbindliche Sicherheitsabnahme
+nach `pg_restore` prüft deshalb zuerst die Owner-Rolle: dieselben Attribute,
+kein Objektbesitz und kein CREATE, SELECT auf allen öffentlichen Tabellen und
+DML auf `tenant` aus dem Dump, keine UPDATE-/DELETE-/TRUNCATE-Rechte auf
+`audit_log`, `audit_seal` und `audit_anchor`, kein DELETE/TRUNCATE auf
+`audit_archive`, `_prisma_migrations` nur lesbar und auf keiner Tabelle
+TRUNCATE, REFERENCES, TRIGGER oder MAINTAIN. Ein Dump von vor S-01 enthält
+die Grants der Owner-Rolle nicht; die Abnahme scheitert dann mit dem Hinweis
+auf diesen Ablauf. Solche Dumps werden wie andere ältere Dumps mit dem
+passenden alten Release wiederhergestellt und anschließend per
+`./taxtronik update` kontrolliert angehoben (die Migration vergibt die
+Grants). Wie bei jeder gescheiterten Abnahme ist der Restore dann bereits
+angewendet; Dienste nicht starten und mit dem alten Release erneut
+wiederherstellen. `./taxtronik doctor` meldet fehlende Grants im laufenden
+Betrieb als `DB_ROLE_LIVE_owner`.
 
 Die S3-CLI vergleicht den Dump-Hash mit `BackupRecord`, solange die bisherige
 Produktiv-DB noch lesbar ist. Nach vollständigem DB-Verlust ist genau diese

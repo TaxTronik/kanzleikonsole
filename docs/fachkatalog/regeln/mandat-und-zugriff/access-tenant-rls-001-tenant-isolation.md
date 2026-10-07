@@ -277,6 +277,16 @@ drei dokumentierten globalen Ausnahmen. Ein leeres Inventar ist kein Erfolg.
 Diese Prüfung bleibt auch bei `--no-smoke-test` aktiv. Ziel-Defaultprivilegien
 können beim Neuanlegen von Tabellen zuvor entzogene Rechte erneut vergeben;
 ein erfolgreicher `pg_restore`-Exit allein genügt deshalb nicht.
+Vor `pg_restore` verlangt die Restore-CLI zusätzlich die S-01-Owner-Rolle
+`taxtronik_owner` mit NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION,
+BYPASSRLS und ohne Rollenmitgliedschaften. Nach `pg_restore` prüft sie vor den
+30 Invarianten deren Attribute, fehlenden Objektbesitz und fehlendes CREATE,
+die Grants der Migration `20261006160000` sowie die Schreibsperren auf
+`audit_log`, `audit_seal`, `audit_anchor`, `audit_archive` und
+`_prisma_migrations`; TRUNCATE, REFERENCES, TRIGGER sowie ab PostgreSQL 17
+MAINTAIN sind nirgends erlaubt. Fehlende S-01-Grants meldet sie als Dump von
+vor S-01 mit dem Verfahrenshinweis (passendes altes Release wiederherstellen,
+dann `./taxtronik update`).
 
 Eine nicht erfüllte oder nicht ausführbare Sicherheitsprüfung beendet die CLI
 mit Fehler und untersagt im Ergebnistext den Dienststart. Der eigentliche
@@ -633,8 +643,10 @@ erhält Tickets einschließlich Archiv, Zähler und Referenzen bytewertgleich
 in den verglichenen Spalten. Ein durch Defaultprivilegien vorbereitetes Ziel
 mit erneut gewährten Zähler-/Referenz-Schreibrechten wird trotz gleicher
 Datensätze abgewiesen; ein leeres Ziel mit erhaltenen Rechten besteht die
-Abnahme. Diese Tests ersetzen keine Objektberechtigungsprüfung innerhalb
-einer Kanzlei; Referenzanzeige und Nummernauflösung brauchen weiterhin das
+Abnahme. Owner-Fälle (fehlende, umbenannte oder mit zusätzlichen Rechten
+versehene Owner-Rolle sowie ein Dump von vor S-01) brechen beide
+Restore-Sicherheitsprüfungen mit eigener Meldung ab. Diese Tests ersetzen keine
+Objektberechtigungsprüfung innerhalb einer Kanzlei; Referenzanzeige und Nummernauflösung brauchen weiterhin das
 aktuelle Zugriffsgate für beide Tickets.
 
 Ticketmutationen und Archivierung verwenden `FOR NO KEY UPDATE`: Der Lock

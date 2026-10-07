@@ -1382,6 +1382,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Die Wiederherstellung verlangt vor `pg_restore` neben
+  `taxtronik_app` auch die S-01-Owner-Rolle `taxtronik_owner` (NOSUPERUSER,
+  BYPASSRLS, ohne Mitgliedschaften) und prüft nach dem Restore deren Rechte,
+  Besitz und Schreibsperren. Fehlt sie oder stammt der Dump von vor Migration
+  `20261006160000`, bricht der Restore mit dem Hinweis ab, den Dump mit dem
+  passenden alten Release wiederherzustellen und anschließend per
+  `./taxtronik update` anzuheben (`ACCESS-TENANT-RLS-001`).
 - Neue Advisories im Produktionsgraphen geschlossen: sharp `0.35.5` samt
   libvips `1.3.4` (librsvg, GHSA-wq5f-xc86-pv6w), source-map-js `1.2.2`
   (GHSA-68fv-2mgg-jv7q) und fast-copy `4.1.1` (GHSA-jggr-w7fw-pc2j) als exakte
