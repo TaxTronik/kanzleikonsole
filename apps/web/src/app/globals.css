@@ -1560,6 +1560,12 @@
     @apply bg-gray-100;
     color: rgb(var(--text-secondary));
   }
+  /* C1: abgesagte Termine — wie Abwesenheiten neutral-grau und ohne Aktion;
+     die Angaben stehen durchgestrichen (<s>) hinter „Abgesagt". */
+  .cal-pill-cancelled {
+    @apply bg-gray-100;
+    color: rgb(var(--text-secondary));
+  }
 }
 
 /*

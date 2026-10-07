@@ -94,4 +94,14 @@ describe('Kalender-Termine: Europe/Berlin-Monatsgrenzen', () => {
     expect(appointmentQuery).not.toContain('dateStart');
     expect(appointmentQuery).not.toContain('dateEnd');
   });
+
+  it('lädt abgesagte Termine mit und zeigt sie über die Terminpillen als abgesagt', () => {
+    // Review-Befund C1: Absagen ersetzt Löschen; nur der Kalender zeigt die Absage,
+    // Übersichten, Portal und iCal-Feed filtern CANCELLED weiter aus.
+    expect(appointmentQuery).not.toContain('CANCELLED');
+    expect(appointmentQuery).toContain('...optionalClientAccessFilter(clientAccess)');
+    expect(source).toContain(
+      '<AppointmentPills appointments={appts} staffOptions={data.staffList} limit={3} />',
+    );
+  });
 });

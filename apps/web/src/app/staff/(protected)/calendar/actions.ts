@@ -34,6 +34,9 @@ export interface AppointmentActionResult extends BaseActionResult {
 const KindEnum = z.enum(['CLIENT_MEETING', 'INTERNAL', 'PRIVATE']);
 const StatusEnum = z.enum(['PLANNED', 'CONFIRMED', 'CANCELLED', 'DONE']);
 
+const CANCELLED_IS_FINAL = 'Ein abgesagter Termin kann nicht mehr geändert werden.';
+const ALREADY_CANCELLED = 'Der Termin ist bereits abgesagt.';
+
 const isoLocal = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'YYYY-MM-DDTHH:MM');
 
 const CreateSchema = z.object({
@@ -187,6 +190,16 @@ export async function updateAppointmentAction(
       fieldErrors: { endsAt: ['Das Ende muss nach dem Start liegen.'] },
     };
   }
+  // C1: Absagen ist ein eigener, auditierter Schritt (cancelAppointmentAction)
+  // statt eines Statuswerts im Bearbeiten-Formular.
+  if (parsed.data.status === 'CANCELLED') {
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { status: ['Einen Termin sagen Sie über „Termin absagen“ ab.'] },
+    };
+  }
 
   return withAppointmentsStaff(
     async (tx, { tenantId, staffId, session, ctx }) => {
@@ -208,6 +221,8 @@ export async function updateAppointmentAction(
       if (parsed.data.clientId) await assertClientInTenant(tx, parsed.data.clientId);
       // Vertraulich-/RESTRICTED-Ventil für alten UND neuen Mandantenbezug.
       if (before.clientId) await assertClientAccessTx(tx, session, before.clientId);
+      // C1: Eine Absage ist endgültig; geprüft erst nach dem Zugriffsventil.
+      if (before.status === 'CANCELLED') throw new ActionError(CANCELLED_IS_FINAL);
       if (parsed.data.clientId) {
         await assertClientAccessTx(tx, session, parsed.data.clientId);
         if (
@@ -223,8 +238,10 @@ export async function updateAppointmentAction(
           );
         }
       }
-      await tx.appointment.update({
-        where: { id: parsed.data.id },
+      // Bedingt auf „nicht abgesagt": Ein offenes Bearbeiten-Formular darf eine
+      // inzwischen erfolgte Absage nicht still mit seinem alten Status überschreiben.
+      const updated = await tx.appointment.updateMany({
+        where: { id: parsed.data.id, status: { not: 'CANCELLED' } },
         data: {
           title: parsed.data.title.trim(),
           ownerStaffId: parsed.data.ownerStaffId,
@@ -237,7 +254,8 @@ export async function updateAppointmentAction(
           notes: parsed.data.notes?.trim() || null,
         },
       });
-      if (parsed.data.status === 'DONE' || parsed.data.status === 'CANCELLED') {
+      if (updated.count === 0) throw new ActionError(CANCELLED_IS_FINAL);
+      if (parsed.data.status === 'DONE') {
         await resolveNotificationsTx(tx, {
           tenantId,
           resources: [{ resourceType: 'appointment', resourceId: parsed.data.id }],
@@ -285,11 +303,18 @@ export async function updateAppointmentAction(
         },
       });
     },
-    { revalidate: ['/staff/calendar', '/staff/tax-deadlines'] },
+    { revalidate: ['/staff/calendar', '/staff/tax-deadlines', '/portal/appointments'] },
   );
 }
 
-export async function deleteAppointmentAction(input: {
+/**
+ * Review-Befund C1: Absagen statt Löschen. Der Termin bleibt mit Status
+ * CANCELLED erhalten (Kalender zeigt ihn als abgesagt; Übersichten, Portal und
+ * iCal-Feed blenden ihn aus) und wird auditiert. Eine noch ausstehende
+ * Terminbestätigung verwirft der Mail-Worker vor dem Versand. Eine Absage- oder
+ * Änderungsmail an den Mandanten gibt es bewusst nicht (offene Entscheidung).
+ */
+export async function cancelAppointmentAction(input: {
   id: string;
 }): Promise<AppointmentActionResult> {
   const parsed = z.object({ id: z.string().uuid() }).safeParse(input);
@@ -300,22 +325,47 @@ export async function deleteAppointmentAction(input: {
     async (tx, { tenantId, session, ctx }) => {
       const before = await tx.appointment.findUnique({
         where: { id: parsed.data.id },
-        select: { title: true, clientId: true },
+        select: {
+          title: true,
+          status: true,
+          clientId: true,
+          ownerStaffId: true,
+          startsAt: true,
+          endsAt: true,
+          fromRequestId: true,
+        },
       });
-      if (before?.clientId) await assertClientAccessTx(tx, session, before.clientId);
+      if (!before) throw new ActionError('Termin nicht gefunden.');
+      // Vertraulich-/RESTRICTED-Ventil vor jeder Statusauskunft.
+      if (before.clientId) await assertClientAccessTx(tx, session, before.clientId);
+      if (before.status === 'CANCELLED') throw new ActionError(ALREADY_CANCELLED);
+      // CAS: Zwei parallele Absagen erzeugen nur einen Statuswechsel und ein Audit.
+      const cancelled = await tx.appointment.updateMany({
+        where: { id: parsed.data.id, status: { not: 'CANCELLED' } },
+        data: { status: 'CANCELLED' },
+      });
+      if (cancelled.count === 0) throw new ActionError(ALREADY_CANCELLED);
       await resolveNotificationsTx(tx, {
         tenantId,
         resources: [{ resourceType: 'appointment', resourceId: parsed.data.id }],
       });
-      await tx.appointment.delete({ where: { id: parsed.data.id } });
       await audit(tx, ctx, {
-        action: 'appointment.delete',
+        action: 'appointment.cancel',
         resourceType: 'appointment',
         resourceId: parsed.data.id,
-        before: { title: before?.title ?? null },
+        before: {
+          title: before.title,
+          status: before.status,
+          ownerStaffId: before.ownerStaffId,
+          clientId: before.clientId,
+          startsAt: before.startsAt.toISOString(),
+          endsAt: before.endsAt.toISOString(),
+          fromRequestId: before.fromRequestId,
+        },
+        after: { status: 'CANCELLED' },
       });
     },
-    { revalidate: ['/staff/calendar', '/staff/tax-deadlines'] },
+    { revalidate: ['/staff/calendar', '/staff/tax-deadlines', '/portal/appointments'] },
   );
 }
 

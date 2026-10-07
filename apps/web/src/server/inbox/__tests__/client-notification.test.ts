@@ -19,7 +19,7 @@ vi.mock('@/server/notifications/service', () => ({ notify: h.notify }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.audit } }));
 vi.mock('@/server/logger', () => ({ log: h.log }));
 
-import { sendInboxClientActivityMail } from '../client-notification';
+import { retryableInboxClientMailsTx, sendInboxClientActivityMail } from '../client-notification';
 
 const input = {
   context: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' as const },
@@ -147,5 +147,58 @@ describe('ACCESS-NOTIFICATION-RECIPIENT-001 neutrale Inbox-E-Mail', () => {
         after: expect.objectContaining({ uncertainFailure: true, safeToRetry: false }),
       }),
     );
+  });
+});
+
+describe('PORTAL-INBOX-SUBMISSION-001 „Erneut senden" nur bei sicherem Retry (C1)', () => {
+  const failed = (safeToRetry: boolean) => ({
+    action: 'portal_inbox.client_activity_mail_failed',
+    after: { attempted: 1, accepted: 0, uncertainFailure: !safeToRetry, safeToRetry },
+  });
+
+  it('nimmt je Nachricht nur den jüngsten Journaleintrag und davon nur sichere Fehlschläge', async () => {
+    const findMany = vi.fn().mockResolvedValue([
+      // absteigend nach id: der jüngste Eintrag je Nachricht zuerst
+      { resourceId: 'retry-safe', ...failed(true) },
+      { resourceId: 'retry-unsafe', ...failed(false) },
+      { resourceId: 'claimed', action: 'portal_inbox.client_activity_mail_claimed', after: {} },
+      { resourceId: 'completed', action: 'portal_inbox.client_activity_mail_completed', after: {} },
+      { resourceId: 'claimed', ...failed(true) },
+      { resourceId: 'completed', ...failed(true) },
+      { resourceId: 'retry-unsafe', ...failed(true) },
+    ]);
+    const ids = ['retry-safe', 'retry-unsafe', 'claimed', 'completed', 'never-sent'];
+
+    const retryable = await retryableInboxClientMailsTx(
+      { auditLog: { findMany } } as never,
+      'tenant-1',
+      ids,
+    );
+
+    expect([...retryable]).toEqual(['retry-safe']);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-1',
+        action: {
+          in: [
+            'portal_inbox.client_activity_mail_claimed',
+            'portal_inbox.client_activity_mail_completed',
+            'portal_inbox.client_activity_mail_failed',
+          ],
+        },
+        resourceType: 'portal_inbox_message',
+        resourceId: { in: ids },
+      },
+      orderBy: { id: 'desc' },
+      select: { resourceId: true, action: true, after: true },
+    });
+  });
+
+  it('liest ohne Kanzleiantworten kein Journal', async () => {
+    const findMany = vi.fn();
+    await expect(
+      retryableInboxClientMailsTx({ auditLog: { findMany } } as never, 'tenant-1', []),
+    ).resolves.toEqual(new Set());
+    expect(findMany).not.toHaveBeenCalled();
   });
 });

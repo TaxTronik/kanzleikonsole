@@ -130,4 +130,27 @@ describe('portal iCal lifecycle gate', () => {
     expect(m.deadlineFindMany).toHaveBeenCalledTimes(1);
     expect(m.appointmentFindMany).toHaveBeenCalledTimes(1);
   });
+
+  it('omits cancelled appointments from the subscribed feed (review finding C1)', async () => {
+    m.appointmentFindMany.mockResolvedValue([
+      {
+        id: 'appointment-1',
+        title: 'Jahresgespräch',
+        startsAt: new Date('2026-10-20T08:00:00.000Z'),
+        endsAt: new Date('2026-10-20T09:00:00.000Z'),
+        location: null,
+      },
+    ]);
+
+    expect((await callRoute()).status).toBe(200);
+
+    expect(m.appointmentFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ clientId: 'client-1', status: { not: 'CANCELLED' } }),
+      }),
+    );
+    expect(m.buildIcs).toHaveBeenCalledWith(expect.any(String), [
+      expect.objectContaining({ uid: 'appt-appointment-1', summary: 'Jahresgespräch' }),
+    ]);
+  });
 });

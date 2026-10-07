@@ -1,5 +1,5 @@
 import { portalBaseUrl } from '@taxtronik/config';
-import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { notifyClientContacts } from '@/server/mail/dispatch';
 import { notify } from '@/server/notifications/service';
@@ -28,6 +28,46 @@ function retryableFromAudit(after: unknown): boolean {
   return after !== null && typeof after === 'object' && !Array.isArray(after)
     ? (after as Record<string, unknown>)['safeToRetry'] === true
     : false;
+}
+
+/**
+ * Review-Entscheidung C1: Kanzleiantworten, deren neutraler E-Mail-Hinweis
+ * zuletzt ohne Zustellung und ohne möglichen Seiteneffekt scheiterte
+ * (`safeToRetry`). Nur dort bietet der Verlauf „Erneut senden" an. Ein offener
+ * Claim, eine mögliche Teilzustellung oder ein Abschluss schließen es aus;
+ * sendInboxClientActivityMail prüft denselben Journalstand beim Versuch
+ * erneut unter Lock. Liest nur das Journal, versendet nichts.
+ */
+export async function retryableInboxClientMailsTx(
+  tx: TxClient,
+  tenantId: string,
+  messageIds: readonly string[],
+): Promise<Set<string>> {
+  if (messageIds.length === 0) return new Set();
+  const journal = await tx.auditLog.findMany({
+    where: {
+      tenantId,
+      action: { in: [...MAIL_JOURNAL_ACTIONS] },
+      resourceType: 'portal_inbox_message',
+      resourceId: { in: [...messageIds] },
+    },
+    orderBy: { id: 'desc' },
+    select: { resourceId: true, action: true, after: true },
+  });
+  const latest = new Map<string, { action: string; after: unknown }>();
+  for (const entry of journal) {
+    if (entry.resourceId && !latest.has(entry.resourceId)) latest.set(entry.resourceId, entry);
+  }
+  const retryable = new Set<string>();
+  for (const [messageId, entry] of latest) {
+    if (
+      entry.action === 'portal_inbox.client_activity_mail_failed' &&
+      retryableFromAudit(entry.after)
+    ) {
+      retryable.add(messageId);
+    }
+  }
+  return retryable;
 }
 
 export async function sendInboxClientActivityMail(input: {

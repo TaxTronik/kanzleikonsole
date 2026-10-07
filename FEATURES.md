@@ -445,13 +445,21 @@ Modul `appointments`.
 - Status PLANNED → CONFIRMED → CANCELLED / DONE
 - Optionaler Mandantenbezug + Ortsangabe (Büro / Video / Telefon)
 - Modal „Neuer Termin" mit Mandanten- + Owner-Auswahl
+- Modal „Termin bearbeiten" über die Termin-Pille (gleiche Felder und
+  serverseitige Prüfungen wie die Anlage, Status Geplant/Bestätigt/Erledigt)
+- „Termin absagen" statt Löschen: Status CANCELLED mit Audit
+  `appointment.cancel`; abgesagte Termine bleiben im Kalender durchgestrichen
+  sichtbar und fehlen in Dashboard, Mandantenakte, Portal und iCal-Feed; eine
+  noch ausstehende Terminbestätigung wird verworfen; keine automatische
+  Änderungs- oder Absagemail an den Mandanten
 - DB-Constraint `ends_at > starts_at`
 
 ### Monats-Ansicht
 
 - Kalenderraster mit Steuertermin-Pillen (Brand-Farbe, „X/Y offen"-Counter,
   Klick zeigt alle Mandanten dahinter) **und** Termin-Pillen (Emerald-Farbe
-  mit Uhrzeit + Titel)
+  mit Uhrzeit + Titel, Klick öffnet „Termin bearbeiten"; abgesagte Termine
+  grau und durchgestrichen)
 - Filter „Alle Mandanten / Meine Mandanten" (über `/staff/tax-deadlines`-
   Fallback-View)
 - Heute-Knopf + Monats-Navigation
@@ -1151,6 +1159,9 @@ Kanzlei nicht.
   serverseitig Schutzstufe, Storage und Retention
 - Neutrale, inhaltsfreie Aktivitätshinweise; Betreff, Nachrichtentext und
   Dateinamen gelangen weder in E-Mail noch Notification oder gewöhnliche Logs
+- „Erneut senden" an einer Kanzleiantwort, solange ihr letzter
+  E-Mail-Hinweis ohne Zustellung und ohne möglichen Seiteneffekt scheiterte;
+  bei möglicher Teilzustellung kein Neuversand
 
 ## Mandanten-Portal
 
@@ -1171,7 +1182,8 @@ Kanzlei nicht.
 - **Termine** (`/portal/appointments`): eigene bestätigte Termine + Anfrage-
   Formular mit 1–3 Wunschterminen + optionalem Wunsch-Bearbeiter; Verlauf
   eigener Anfragen mit Status (PENDING/ACCEPTED/REJECTED/CANCELLED) +
-  Rücknahme-Button bei PENDING; token-basierter iCal-Feed
+  Rücknahme-Button bei PENDING; angenommene Anfragen nennen den aktuellen
+  Terminbeginn bzw. „Termin abgesagt"; token-basierter iCal-Feed
   (`/api/portal/ical/:token`) zum Abonnieren der Termine
 - **Auswertungen** (`/portal/bwa`): Liquiditäts-Indikatoren,
   Jahres-Hochrechnung (beide Strategien mit Spanne), Plan vs.

@@ -3,31 +3,21 @@
 import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
-import {
-  FieldError,
-  FormErrorSummary,
-  fieldErrorProps,
-  type FieldErrors,
-} from '@/components/form-errors';
+import { FormErrorSummary } from '@/components/form-errors';
 import { Modal } from '@/components/ui/modal';
-import { ClientCombobox } from '@/components/ui/client-combobox';
 import { createAppointmentAction, type AppointmentActionResult } from './actions';
-
-interface StaffOption {
-  id: string;
-  fullName: string;
-}
-
-function AppointmentFieldError({ name, fieldErrors }: { name: string; fieldErrors?: FieldErrors }) {
-  return <FieldError name={name} errors={fieldErrors?.[name]} />;
-}
+import {
+  AppointmentFormFields,
+  appointmentFieldIds,
+  type AppointmentStaffOption,
+} from './appointment-form-fields';
 
 export function NewAppointmentDialog({
   staffOptions,
   currentStaffId,
   defaultStart,
 }: {
-  staffOptions: StaffOption[];
+  staffOptions: AppointmentStaffOption[];
   currentStaffId: string;
   defaultStart?: string;
 }) {
@@ -87,146 +77,14 @@ export function NewAppointmentDialog({
             <FormErrorSummary
               error={actionError}
               fieldErrors={fieldErrors}
-              fieldIds={{
-                title: 'new-appointment-title',
-                kind: 'new-appointment-kind',
-                ownerStaffId: 'new-appointment-owner',
-                clientId: 'new-appointment-client',
-                startsAt: 'new-appointment-start',
-                endsAt: 'new-appointment-end',
-                location: 'new-appointment-location',
-                notes: 'new-appointment-notes',
-              }}
+              fieldIds={appointmentFieldIds('new-appointment')}
             />
-            <div>
-              <label className="label" htmlFor="new-appointment-title">
-                Titel
-              </label>
-              <input
-                id="new-appointment-title"
-                type="text"
-                name="title"
-                required
-                maxLength={200}
-                className="input"
-                placeholder='z. B. „Bilanzbesprechung Müller GmbH"'
-                {...fieldErrorProps('title', fieldErrors)}
-              />
-              <AppointmentFieldError name="title" fieldErrors={fieldErrors} />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="label" htmlFor="new-appointment-kind">
-                  Art
-                </label>
-                <select
-                  id="new-appointment-kind"
-                  name="kind"
-                  defaultValue="CLIENT_MEETING"
-                  className="input"
-                  {...fieldErrorProps('kind', fieldErrors)}
-                >
-                  <option value="CLIENT_MEETING">Mandantentermin</option>
-                  <option value="INTERNAL">Intern</option>
-                  <option value="PRIVATE">Privat / blocken</option>
-                </select>
-                <AppointmentFieldError name="kind" fieldErrors={fieldErrors} />
-              </div>
-              <div>
-                <label className="label" htmlFor="new-appointment-owner">
-                  Für (Owner)
-                </label>
-                <select
-                  id="new-appointment-owner"
-                  name="ownerStaffId"
-                  defaultValue={currentStaffId}
-                  required
-                  className="input"
-                  {...fieldErrorProps('ownerStaffId', fieldErrors)}
-                >
-                  {staffOptions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.fullName}
-                    </option>
-                  ))}
-                </select>
-                <AppointmentFieldError name="ownerStaffId" fieldErrors={fieldErrors} />
-              </div>
-            </div>
-            <div>
-              <label className="label" htmlFor="new-appointment-client">
-                Mandant (optional)
-              </label>
-              {/* Serversuche statt der ersten 500 Mandanten; leer = ohne Mandantenbezug. */}
-              <ClientCombobox
-                id="new-appointment-client"
-                name="clientId"
-                filters={['active']}
-                placeholder="Ohne Mandantenbezug — Name, DATEV- oder Addison-Nr. suchen"
-                {...fieldErrorProps('clientId', fieldErrors)}
-              />
-              <AppointmentFieldError name="clientId" fieldErrors={fieldErrors} />
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <label className="label" htmlFor="new-appointment-start">
-                  Start
-                </label>
-                <input
-                  id="new-appointment-start"
-                  type="datetime-local"
-                  name="startsAt"
-                  defaultValue={defaultStart ?? nowLocal}
-                  required
-                  className="input"
-                  {...fieldErrorProps('startsAt', fieldErrors)}
-                />
-                <AppointmentFieldError name="startsAt" fieldErrors={fieldErrors} />
-              </div>
-              <div>
-                <label className="label" htmlFor="new-appointment-end">
-                  Ende
-                </label>
-                <input
-                  id="new-appointment-end"
-                  type="datetime-local"
-                  name="endsAt"
-                  required
-                  className="input"
-                  {...fieldErrorProps('endsAt', fieldErrors)}
-                />
-                <AppointmentFieldError name="endsAt" fieldErrors={fieldErrors} />
-              </div>
-            </div>
-            <div>
-              <label className="label" htmlFor="new-appointment-location">
-                Ort (optional)
-              </label>
-              <input
-                id="new-appointment-location"
-                type="text"
-                name="location"
-                maxLength={200}
-                className="input"
-                placeholder="Büro, Video-Call, Telefon, …"
-                {...fieldErrorProps('location', fieldErrors)}
-              />
-              <AppointmentFieldError name="location" fieldErrors={fieldErrors} />
-            </div>
-            <div>
-              <label className="label" htmlFor="new-appointment-notes">
-                Notizen (optional)
-              </label>
-              <textarea
-                id="new-appointment-notes"
-                name="notes"
-                rows={3}
-                maxLength={4000}
-                className="input"
-                {...fieldErrorProps('notes', fieldErrors)}
-              />
-              <AppointmentFieldError name="notes" fieldErrors={fieldErrors} />
-            </div>
+            <AppointmentFormFields
+              idPrefix="new-appointment"
+              staffOptions={staffOptions}
+              defaults={{ ownerStaffId: currentStaffId, startsAt: defaultStart ?? nowLocal }}
+              fieldErrors={fieldErrors}
+            />
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"

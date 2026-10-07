@@ -205,7 +205,10 @@ Kontakte des Mandanten. Vor dem externen Versand wird unter einem
 nachrichtenbezogenen Advisory-Lock ein dauerhafter Audit-Claim geschrieben.
 Parallele Replays versenden dadurch nicht doppelt. Totalfehler ohne möglichen
 Provider-Side-Effect sind sichtbar wiederholbar; Claim, Teilzustellung oder ein
-unklarer Provider-Throw bleiben konservativ manuell zu klären.
+unklarer Provider-Throw bleiben konservativ manuell zu klären. Der Staff-Verlauf
+zeigt an einer Kanzleiantwort „Erneut senden", solange ihr jüngster
+Journaleintrag ein solcher sicher wiederholbarer Fehlschlag ist; die Action
+prüft denselben Journalstand unter dem Lock erneut (Review-Entscheidung C1).
 
 ## Audit-Gates
 

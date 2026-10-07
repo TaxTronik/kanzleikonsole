@@ -18,10 +18,13 @@ import { IcalSubscribe } from './ical-subscribe';
 import { signIcalToken } from '@/server/ical/feed';
 import { fmtDateMedium, fmtDateTimeMedium } from '@/lib/fmt';
 import { readAppointmentStaffOptionsTx } from './staff-options';
+import { portalRequestView, type PortalRequestBadge } from './request-view';
 
-const STATUS_LABELS: Record<string, string> = {
+const STATUS_LABELS: Record<PortalRequestBadge, string> = {
   PENDING: 'Wird geprüft',
   ACCEPTED: 'Bestätigt',
+  // C1: Die Kanzlei hat den bestätigten Termin abgesagt.
+  APPOINTMENT_CANCELLED: 'Termin abgesagt',
   REJECTED: 'Abgelehnt',
   CANCELLED: 'Abgesagt',
 };
@@ -59,6 +62,8 @@ export default async function PortalAppointmentsPage() {
           include: {
             preferredStaff: { select: { fullName: true } },
             decidedBy: { select: { fullName: true } },
+            // C1: Stand des daraus entstandenen Termins (verschoben/abgesagt).
+            acceptedAppointment: { select: { status: true, startsAt: true } },
           },
         }),
         readAppointmentStaffOptionsTx(tx, tenantId, clientId),
@@ -137,29 +142,32 @@ export default async function PortalAppointmentsPage() {
           <ul className="divide-y divide-border-subtle">
             {data.requests.map((r) => {
               const slots = (r.proposedSlots as Array<{ startsAt: string; endsAt: string }>) ?? [];
+              const view = portalRequestView(r);
               return (
                 <li key={r.id} className="px-6 py-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-primary flex items-center gap-2 flex-wrap">
                         {r.subject}
-                        {r.status === 'PENDING' && (
+                        {view.badge === 'PENDING' && (
                           <span className="badge-yellow text-[10px] inline-flex items-center gap-1">
                             <Clock className="h-3 w-3" />
-                            {STATUS_LABELS[r.status]}
+                            {STATUS_LABELS[view.badge]}
                           </span>
                         )}
-                        {r.status === 'ACCEPTED' && (
+                        {view.badge === 'ACCEPTED' && (
                           <span className="badge-green text-[10px] inline-flex items-center gap-1">
                             <Check className="h-3 w-3" />
-                            {STATUS_LABELS[r.status]}
+                            {STATUS_LABELS[view.badge]}
                           </span>
                         )}
-                        {r.status === 'REJECTED' && (
-                          <span className="badge-red text-[10px]">{STATUS_LABELS[r.status]}</span>
+                        {view.badge === 'REJECTED' && (
+                          <span className="badge-red text-[10px]">{STATUS_LABELS[view.badge]}</span>
                         )}
-                        {r.status === 'CANCELLED' && (
-                          <span className="badge-gray text-[10px]">{STATUS_LABELS[r.status]}</span>
+                        {(view.badge === 'CANCELLED' || view.badge === 'APPOINTMENT_CANCELLED') && (
+                          <span className="badge-gray text-[10px]">
+                            {STATUS_LABELS[view.badge]}
+                          </span>
                         )}
                       </p>
                       <p className="text-[11px] text-disabled mt-0.5">
@@ -174,12 +182,9 @@ export default async function PortalAppointmentsPage() {
                           </li>
                         ))}
                       </ul>
-                      {r.status === 'ACCEPTED' && r.acceptedSlot && (
+                      {view.confirmedFor && (
                         <p className="text-xs text-emerald-700 mt-1">
-                          Bestätigt für:{' '}
-                          {fmtDateTimeMedium(
-                            new Date((r.acceptedSlot as { startsAt: string }).startsAt),
-                          )}
+                          Bestätigt für: {fmtDateTimeMedium(view.confirmedFor)}
                         </p>
                       )}
                       {r.status === 'REJECTED' && r.rejectionReason && (

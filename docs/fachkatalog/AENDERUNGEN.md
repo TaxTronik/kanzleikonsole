@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-013
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/server/audit/labels.ts
+      - apps/web/src/server/inbox/client-notification.ts
+    rule_ids:
+      - TCMS-SAMPLE-PROOF-001
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - AUDIT-HASH-CHAIN-001
+      - PORTAL-INBOX-SUBMISSION-001
+    reason: >-
+      Termine lassen sich im Kanzleikalender bearbeiten und absagen (Status
+      CANCELLED statt Löschen, auditiert als `appointment.cancel`; neues Label, das
+      historische `appointment.delete` bleibt lesbar). In der Mandantenpost zeigt der
+      Thread „Erneut senden“ an Kanzleiantworten, deren letzter Versandversuch
+      sicher wiederholbar gescheitert ist; `retryableInboxClientMailsTx` liest dafür
+      das Versandjournal, die bestehende Retry-Action prüft unter ihrer Sperre
+      erneut. Empfängerauflösung, Wiederholungslogik, Hashkette und
+      Portal-Posteingang bleiben unverändert. Keine fachliche Freigabe; ob Mandanten
+      bei Änderung oder Absage eine Mail erhalten, ist offen.
+    tests:
+      - apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-actions.test.tsx
+      - apps/web/src/server/inbox/__tests__/client-notification.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-012
     date: '2026-10-07'
     paths:
@@ -4353,6 +4377,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-013` dokumentiert Bearbeiten und Absagen
+  von Terminen sowie „Erneut senden“ im Mandantenpost-Thread.
 
 - 2026-10-07: `FK-EXC-20261007-012` dokumentiert „Erneut senden“ für
   fehlgeschlagene oder unklare Mandanten-Mails und die 30-Tage-Aufbewahrung

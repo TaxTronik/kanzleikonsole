@@ -11,6 +11,7 @@ import {
   fmtMinutes,
   fmtBytes,
   fmtIsoDate,
+  berlinWallClock,
   berlinWallClockToUtc,
   berlinYmd,
   berlinTodayUtcMidnight,
@@ -134,6 +135,24 @@ describe('berlinWallClockToUtc', () => {
     const d = berlinWallClockToUtc('2026-03-29T02:30');
     expect(d).not.toBeNull();
     expect(Number.isNaN(d!.getTime())).toBe(false);
+  });
+});
+
+describe('berlinWallClock', () => {
+  it('liefert die Berlin-Wanduhrzeit im datetime-local-Format (Winter und Sommer)', () => {
+    expect(berlinWallClock(new Date('2026-01-15T13:30:00.000Z'))).toBe('2026-01-15T14:30');
+    expect(berlinWallClock(new Date('2026-07-15T12:30:00.000Z'))).toBe('2026-07-15T14:30');
+  });
+
+  it('ordnet Instants nahe Mitternacht dem Berlin-Tag zu und schreibt 00 statt 24', () => {
+    expect(berlinWallClock(new Date('2026-07-01T22:05:00.000Z'))).toBe('2026-07-02T00:05');
+    expect(berlinWallClock(new Date('2026-03-15T23:00:00.000Z'))).toBe('2026-03-16T00:00');
+  });
+
+  it('ist das Gegenstück zu berlinWallClockToUtc (Bearbeiten speichert denselben Instant)', () => {
+    for (const value of ['2026-01-15T09:05', '2026-07-15T14:30', '2026-12-31T23:59']) {
+      expect(berlinWallClock(berlinWallClockToUtc(value)!)).toBe(value);
+    }
   });
 });
 

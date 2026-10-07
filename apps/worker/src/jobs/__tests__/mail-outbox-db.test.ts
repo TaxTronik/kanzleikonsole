@@ -53,6 +53,7 @@ const LINK = 'https://portal.example.test/gwg-onboarding?token=db-test-token';
 describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
   let tenantId = '';
   let clientId = '';
+  let staffId = '';
   let handoverId = '';
   const sendTemplateMail = vi.fn();
   const deps: MailOutboxDeliveryDeps = {
@@ -97,7 +98,7 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
         data: { tenantId, name: 'Synthetic F-08 client', kind: 'NATPERS' },
       })
     ).id;
-    const staffId = (
+    staffId = (
       await prismaOwner.staffUser.create({
         data: {
           tenantId,
@@ -262,6 +263,82 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
     expect(await prismaOwner.notification.count({ where: { tenantId } })).toBe(0);
     // Ein verworfener Auftrag ist kein Kandidat mehr.
     expect(await processMailOutbox(deps, { tenantId })).toMatchObject({ skipped: 0 });
+  });
+
+  it('verwirft eine Terminbestätigung, wenn der Termin inzwischen abgesagt wurde', async () => {
+    // Review-Befund C1: Absagen statt Löschen. Der Termin bleibt mit CANCELLED
+    // erhalten; die noch ausstehende Bestätigung geht nicht mehr hinaus.
+    const slot = { startsAt: '2030-10-20T10:00', endsAt: '2030-10-20T11:00' };
+    const requestId = (
+      await prismaOwner.appointmentRequest.create({
+        data: {
+          tenantId,
+          clientId,
+          subject: 'Jahresgespräch',
+          proposedSlots: [slot],
+          status: 'ACCEPTED',
+          acceptedSlot: slot,
+          decidedByStaff: staffId,
+          decidedAt: new Date(),
+        },
+      })
+    ).id;
+    const appointmentId = (
+      await prismaOwner.appointment.create({
+        data: {
+          tenantId,
+          ownerStaffId: staffId,
+          createdByStaff: staffId,
+          clientId,
+          status: 'CONFIRMED',
+          title: 'Jahresgespräch',
+          startsAt: new Date('2030-10-20T08:00:00.000Z'),
+          endsAt: new Date('2030-10-20T09:00:00.000Z'),
+          fromRequestId: requestId,
+        },
+      })
+    ).id;
+    await prismaOwner.appointmentRequest.update({
+      where: { id: requestId },
+      data: { acceptedAppointmentId: appointmentId },
+    });
+    const id = await withWorkerTenantContext(tenantId, (tx) =>
+      enqueueDirectMailTx(
+        tx,
+        {
+          tenantId,
+          clientId,
+          purpose: 'appointment-confirmed',
+          resource: { type: 'appointment_request', id: requestId },
+          staffHref: '/staff/calendar',
+        },
+        {
+          slug: 'appointment-confirmed',
+          to: 'max@example.test',
+          vars: { appointment: { title: 'Jahresgespräch' } },
+          fallback: { subject: 'Termin-Bestätigung', bodyMd: '{{appointment.title}}' },
+        },
+      ),
+    );
+    await prismaOwner.appointment.update({
+      where: { id: appointmentId },
+      data: { status: 'CANCELLED' },
+    });
+
+    const stats = await processMailOutbox(deps, { tenantId });
+
+    expect(stats).toMatchObject({ skipped: 1, processed: 0, escalated: 0 });
+    expect(sendTemplateMail).not.toHaveBeenCalled();
+    expect(await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      status: 'SKIPPED',
+      payload: {},
+      nextAttemptAt: null,
+      lastError: 'Nicht versendet: Der Termin wurde abgesagt.',
+    });
+    // Der Termin selbst bleibt als abgesagt erhalten.
+    expect(
+      await prismaOwner.appointment.findUniqueOrThrow({ where: { id: appointmentId } }),
+    ).toMatchObject({ status: 'CANCELLED' });
   });
 
   it('entfernt erhaltenen Inhalt nach dem Neuversandfenster, frische Aufträge bleiben', async () => {

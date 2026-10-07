@@ -314,6 +314,30 @@ export function berlinWallClockToUtc(s: string): Date | null {
   return new Date(guess - berlinOffsetMs(new Date(guess)));
 }
 
+const wallClockBerlinFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: TIME_ZONE,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/**
+ * Gegenstück zu {@link berlinWallClockToUtc}: Europe/Berlin-Wanduhrzeit eines
+ * Instants als `YYYY-MM-DDTHH:MM`, z. B. als Vorbelegung eines
+ * `<input type="datetime-local">` — unabhängig von der Zeitzone des Browsers.
+ */
+export function berlinWallClock(d: Date): string {
+  const p = Object.fromEntries(
+    wallClockBerlinFormatter.formatToParts(d).map((x) => [x.type, x.value]),
+  );
+  // Manche ICU-Stände formatieren Mitternacht trotz h23 als '24'.
+  const hour = p.hour === '24' ? '00' : p.hour;
+  return `${p.year}-${p.month}-${p.day}T${hour}:${p.minute}`;
+}
+
 const ymdBerlinFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: TIME_ZONE,
   year: 'numeric',

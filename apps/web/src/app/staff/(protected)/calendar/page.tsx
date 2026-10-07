@@ -3,7 +3,8 @@
 //
 // Zeigt im Monatsraster:
 //   - Steuertermine (aus tax_deadline) — Modul taxNotices
-//   - Termine (aus appointment) — Modul appointments
+//   - Termine (aus appointment) — Modul appointments; die Pille öffnet
+//     „Termin bearbeiten" mit „Termin absagen", abgesagte bleiben durchgestrichen
 //   - Abwesenheiten (ohne Modul)
 // Über dem Raster: Liste der offenen Terminanfragen (appointment_request) —
 // Modul appointments.
@@ -25,9 +26,10 @@ import { loadTaxDeadlineDayGroupsTx } from '@/server/tax-deadlines/day-groups';
 import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
 import { withTenantContext } from '@taxtronik/db';
 import { NewAppointmentDialog } from './new-appointment-dialog';
+import { AppointmentPills } from './appointment-pills';
 import { RequestDecision, type RequestRow } from './request-decision';
 import { DecidedRequests } from './decided-requests';
-import { fmtMonthYear, fmtTimeShort, berlinYmd } from '@/lib/fmt';
+import { fmtMonthYear, berlinYmd } from '@/lib/fmt';
 import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
 import { CalendarMonthGrid, MoreEntries, TaxDeadlinePills } from '@/components/calendar-month-grid';
 
@@ -99,7 +101,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               where: {
                 startsAt: { lt: appointmentEndExclusive },
                 endsAt: { gte: appointmentStart },
-                status: { not: 'CANCELLED' },
+                // C1: Abgesagte Termine bleiben hier (und nur hier) als abgesagt
+                // sichtbar; Übersichten, Portal und iCal-Feed blenden sie aus.
                 // clientId nullable: Termine ohne Mandantenbezug bleiben sichtbar.
                 ...optionalClientAccessFilter(clientAccess),
               },
@@ -140,7 +143,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               },
             })
           : Promise.resolve([]),
-        // Bearbeiterauswahl nur für Terminanlage und Terminanfragen.
+        // Bearbeiterauswahl nur für Terminanlage, -bearbeitung und Terminanfragen.
         showAppointments
           ? tx.staffUser.findMany({
               where: { active: true },
@@ -353,18 +356,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                   {label}
                 </span>
               ))}
-              {appts.slice(0, 3).map((a) => (
-                <Link
-                  key={a.id}
-                  href={a.client ? `/staff/clients/${a.client.id}` : '#'}
-                  className="cal-pill cal-pill-appointment"
-                  title={`${fmtTimeShort(a.startsAt)} – ${fmtTimeShort(a.endsAt)}: ${a.title}${a.client ? ' · ' + a.client.name : ''}`}
-                >
-                  <span className="font-medium">{fmtTimeShort(a.startsAt)}</span>
-                  {a.client && <span> · {a.client.name}</span>}
-                  <span className="opacity-70"> · {a.title}</span>
-                </Link>
-              ))}
+              {/* C1: Pille öffnet „Termin bearbeiten"; die Mandantenakte ist dort verlinkt. */}
+              <AppointmentPills appointments={appts} staffOptions={data.staffList} limit={3} />
               <TaxDeadlinePills
                 groups={dlArr}
                 limit={3}

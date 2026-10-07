@@ -23,6 +23,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- Termine lassen sich im Kanzleikalender bearbeiten und absagen. Abgesagte
+  Termine bleiben im Kalender durchgestrichen sichtbar und verschwinden aus
+  Dashboard, Mandantenakte, Portal und iCal-Feed; die Absage wird auditiert,
+  Löschen entfällt. In der Mandantenpost lässt sich ein sicher wiederholbarer
+  E-Mail-Hinweis an einer Kanzleiantwort „Erneut senden“.
 - „Erneut senden“ an den Zustellstatus-Zeilen fehlgeschlagener oder unklarer
   Mandanten-Mails: berechtigt wie die auslösende Aktion, auditiert, bei
   unklarem Ausgang mit Rückfrage; überholte Vorgänge werden ohne Versand
@@ -242,6 +247,8 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Im Portal zeigt eine angenommene Terminanfrage den aktuellen Termin bzw.
+  „Termin abgesagt“.
 - **[Scope]** DATEV-Belegexport: Der Abrufnachweis enthält neben Anzahl und
   Zeitraum die vollständige Liste der exportierten Dokument-IDs in
   Archivreihenfolge wie der Sammeldownload; der CSV-Export des Prüfprotokolls

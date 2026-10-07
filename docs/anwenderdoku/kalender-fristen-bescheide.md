@@ -11,6 +11,19 @@ Unter **Kalender** werden Kanzleitermine, Steuertermine und weitere
 fristenführende Einträge in einer Monatsansicht zusammengeführt. Die fokussierte
 Ansicht **Steuertermine** gruppiert nach Steuerart und Zeitraum.
 
+Ein Klick auf einen Termin öffnet **Termin bearbeiten**: Titel, Art, Status,
+Bearbeiter, Mandant, Zeitraum, Ort und Notizen lassen sich mit denselben
+Prüfungen wie bei der Anlage ändern; von dort führt ein Link in die
+Mandantenakte. **Termin absagen** löscht den Termin nicht, sondern setzt ihn
+nach einer Rückfrage auf „abgesagt“ und protokolliert das im Audit-Log. Ein
+abgesagter Termin bleibt im Kalender durchgestrichen sichtbar, erscheint aber
+nicht mehr im Dashboard, in der Mandantenakte, im Portal und im
+Kalender-Abonnement (iCal) des Mandanten; die Absage lässt sich nicht
+rückgängig machen. Der Mandant wird über Änderungen und Absagen **nicht**
+automatisch benachrichtigt. Eine noch nicht zugestellte Terminbestätigung wird
+nach einer Verschiebung oder Absage nicht mehr versendet, und die angenommene
+Anfrage zeigt im Portal den aktuellen Termin bzw. „Termin abgesagt“.
+
 Portalnutzer sehen bestätigte eigene Termine. Neue Wunschtermine können sie nur
 anfragen, wenn das Portal-Feature **Terminanfragen** aktiviert ist. Eine Anfrage
 ist noch kein bestätigter Termin; die Kanzlei nimmt sie an, ändert oder lehnt

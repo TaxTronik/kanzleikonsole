@@ -6,10 +6,12 @@ import { staffActionGuard } from '@/server/actions/staff-action';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { getStaffInboxThreadTx } from '@/server/inbox/queries';
 import { eligibleInboxStaffIdsTx } from '@/server/inbox/access';
+import { retryableInboxClientMailsTx } from '@/server/inbox/client-notification';
 import { INBOX_TOPIC_LABELS } from '@/server/inbox/constants';
 import { fmtBytes, fmtDateTimeShort } from '@/lib/fmt';
 import { InboxStaffControls } from '../controls';
 import { InboxAttachmentReview } from '../attachment-review';
+import { InboxMailRetry } from '../mail-retry';
 
 export default async function StaffInboxThreadPage({
   params,
@@ -51,12 +53,19 @@ export default async function StaffInboxThreadPage({
       select: { id: true, name: true },
       orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
     });
+    // C1: „Erneut senden" nur, solange der letzte Hinweisversuch sicher wiederholbar ist.
+    const retryableMail = await retryableInboxClientMailsTx(
+      tx,
+      guard.tenantId,
+      thread.messages.filter((message) => message.authorType === 'STAFF').map((m) => m.id),
+    );
     return {
       thread,
       staff: candidates
         .filter((entry) => eligible.has(entry.id))
         .map((entry) => ({ id: entry.id, name: entry.fullName })),
       documentTypes,
+      retryableMail,
     };
   });
   if (!data) notFound();
@@ -115,6 +124,7 @@ export default async function StaffInboxThreadPage({
               </time>
             </header>
             <p className="whitespace-pre-wrap break-words text-sm text-primary">{message.body}</p>
+            {data.retryableMail.has(message.id) ? <InboxMailRetry messageId={message.id} /> : null}
             {message.attachments.length ? (
               <ul className="mt-4 space-y-3" aria-label="Anlagen">
                 {message.attachments.map((attachment) => (

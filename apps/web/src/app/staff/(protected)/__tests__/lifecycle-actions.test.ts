@@ -417,7 +417,8 @@ describe('fachliche Lifecycle-Guards', () => {
           clientId: 'client-1',
           ownerStaffId: OLD_STAFF,
         }),
-        update: vi.fn().mockResolvedValue(undefined),
+        // C1: bedingt auf „nicht abgesagt" (CAS gegen eine parallele Absage).
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
     };
     h.currentTx = tx;
@@ -454,7 +455,7 @@ describe('fachliche Lifecycle-Guards', () => {
           clientId: 'client-1',
           ownerStaffId: OLD_STAFF,
         }),
-        update: vi.fn(),
+        updateMany: vi.fn(),
       },
     };
     h.currentTx = tx;
@@ -478,7 +479,7 @@ describe('fachliche Lifecycle-Guards', () => {
       '44444444-4444-4444-8444-444444444444',
     );
     expect(result.ok).toBe(false);
-    expect(tx.appointment.update).not.toHaveBeenCalled();
+    expect(tx.appointment.updateMany).not.toHaveBeenCalled();
     expect(h.notify).not.toHaveBeenCalled();
   });
 

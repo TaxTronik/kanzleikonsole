@@ -141,6 +141,8 @@ export const ACTION_LABELS: Record<string, string> = {
   // Kanzleikalender
   'appointment.create': 'Termin angelegt',
   'appointment.update': 'Termin geändert',
+  'appointment.cancel': 'Termin abgesagt',
+  // Historische Einträge: Termine werden seit Review-Befund C1 abgesagt statt gelöscht.
   'appointment.delete': 'Termin gelöscht',
   'appointment_request.create': 'Terminanfrage gestellt',
   'appointment_request.accept': 'Terminanfrage angenommen',
