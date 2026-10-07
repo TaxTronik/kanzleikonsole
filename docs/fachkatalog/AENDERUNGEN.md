@@ -1,5 +1,20 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-043
+    date: '2026-10-07'
+    paths:
+      - packages/tax/src/materialize.ts
+    rule_ids:
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-DEADLINE-WORKDAY-001
+    reason: >-
+      Kopf- und `runAtomic`-Kommentar des gemeinsamen Fristenkerns beschreiben den
+      Worker-Aufruf mit `systemContextClient` und `withSystemContext` (App-Rolle im
+      SYSTEM-Kontext) statt mit der Owner-Verbindung. Nur Kommentare; Verhalten
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/tax/src/__tests__/materialize.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-042
     date: '2026-10-07'
     paths:
@@ -5057,6 +5072,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-043` dokumentiert die Kommentare des
+  Fristenkerns zur App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-042` dokumentiert den Mail-Versand über die
   App-Rolle.

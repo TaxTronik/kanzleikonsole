@@ -14,9 +14,10 @@
 //
 // DB und Evidence kommen per Dependency-Injection (vgl. DI-Muster in
 // packages/risk-layer): die Web-App ruft mit ihrem withTenantContext-Tx +
-// evidenceService aus dem Container, der Worker mit prismaOwner +
-// withWorkerTenantContext + EvidenceService. Dadurch gibt es genau EINE
-// Logik — keine Web/Worker-Drift mehr (vormals ~150 Zeilen Duplikat).
+// evidenceService aus dem Container, der Worker (S-01) mit systemContextClient
+// + withSystemContext (App-Rolle im SYSTEM-Kontext des Tenants) +
+// EvidenceService. Dadurch gibt es genau EINE Logik — keine Web/Worker-Drift
+// mehr (vormals ~150 Zeilen Duplikat).
 // =============================================================================
 
 import type { Prisma, TaxScheduleKind } from '@prisma/client';
@@ -84,7 +85,7 @@ export interface MaterializeDeps {
    * Führt Kandidatenanlage und jeweils „Request + Deadline + Audit“ in einer
    * Transaktion aus. Web läuft bereits komplett in einer
    * withTenantContext-Transaktion (`(fn) => fn(tx)`); der Worker öffnet pro
-   * Block eine withWorkerTenantContext-Transaktion.
+   * Block eine withSystemContext-Transaktion (App-Rolle, S-01).
    */
   runAtomic: <T>(fn: (tx: MaterializeDb) => Promise<T>) => Promise<T>;
   /** Audit-Eintrag — wird mit der runAtomic-Transaktion aufgerufen. */
