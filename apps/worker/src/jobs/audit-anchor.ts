@@ -10,11 +10,17 @@
 // (audit_anchor_lease) is held across the TSA call so overlapping runs never
 // request a token for the same chain tip; no transaction or pooled connection
 // is held during the HTTP request. Only TSA errors count for the backoff.
+//
+// S-01: Due tenants, lease and anchors stay on the owner client: the app role
+// deliberately has no rights on audit_anchor_lease and may not change
+// audit_anchor. The per-tenant anchor status (tenant_setting) is read and
+// written through the app role in the tenant's SYSTEM context.
 // =============================================================================
 
 import { createWorker } from '../worker-factory';
 import { env } from '@taxtronik/config';
 import { AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS, JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { withSystemContext } from '@taxtronik/db';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import {
   ANCHOR_LOCKED_REASON,
@@ -29,7 +35,6 @@ import {
 import { connection, type AuditAnchorJob } from '../queues';
 import { prismaOwner } from '../prisma-owner';
 import { timestampPortFor } from '../tsa-port';
-import { withWorkerTenantContext } from '../tenant-context';
 import { log } from '../logger';
 
 const TENANT_BATCH = 50;
@@ -44,6 +49,7 @@ const REQUIRE_TRUST_ANCHOR =
  * immediately, everything else at most once per minimum interval per tenant.
  */
 function pendingTenantIds(): Promise<string[]> {
+  // S-01: cross-tenant due list (tenant IDs only) through the owner client.
   return tenantsDueForAnchoring(prismaOwner, {
     minIntervalMs: AUDIT_ANCHOR_MIN_TENANT_INTERVAL_MS,
     limit: TENANT_BATCH,
@@ -51,7 +57,7 @@ function pendingTenantIds(): Promise<string[]> {
 }
 
 async function previousStatus(tenantId: string): Promise<PersistedAnchorStatus | null> {
-  const stored = await withWorkerTenantContext(tenantId, (tx) =>
+  const stored = await withSystemContext(tenantId, (tx) =>
     readTenantSettingValue(tx, tenantId, AUDIT_ANCHOR_STATUS_SETTING_KEY),
   );
   return (stored ?? null) as PersistedAnchorStatus | null;
@@ -62,7 +68,7 @@ async function persistStatus(tenantId: string, status: PersistedAnchorStatus): P
   // status whose attempt started at least as late as the persisted one may
   // replace it; otherwise an old failure could overwrite a newer success.
   const attemptedAt = new Date(status.lastAttemptAt);
-  await withWorkerTenantContext(
+  await withSystemContext(
     tenantId,
     (tx) =>
       tx.$executeRaw`
@@ -204,6 +210,7 @@ async function anchorTenant(tenantId: string): Promise<AnchorTenantResult> {
     const service = new EvidenceService(await timestampPortFor(tenantId, 'stamp'));
     // A run that does not get the tenant lease returns without a TSA request
     // and without touching the persisted status.
+    // S-01: lease and anchor insert through the owner client (no app-role rights).
     const attempt = await anchorLatestWithLease(
       service,
       prismaOwner,

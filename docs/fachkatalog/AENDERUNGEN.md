@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-039
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/audit-anchor.ts
+    rule_ids:
+      - AUDIT-RFC3161-ANCHOR-001
+    reason: >-
+      Der Rolling Anchor (`audit-anchor`) liest und schreibt den Ankerstatus je
+      Tenant (einschließlich des bedingten Upserts, der einen neueren Versuch nie
+      überschreibt) über die App-Rolle im SYSTEM-Kontext des Tenants
+      (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS; das SQL
+      bleibt unverändert. Fällige Tenants, Lease und Anker-Insert bleiben auf der
+      Owner-Verbindung, weil die App-Rolle darauf bewusst keine Rechte hat. Eine
+      PostgreSQL-Suite belegt das und dass der Status fremder Tenants unsichtbar
+      bleibt. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/audit-anchor-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-038
     date: '2026-10-07'
     paths:
@@ -4966,6 +4984,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-039` dokumentiert den Ankerstatus über die
+  App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-038` dokumentiert die Drill-Ergebnisse über
   die App-Rolle.
