@@ -1091,6 +1091,12 @@ jobs:
           cat web.log
           exit 1
 
+      # B-04: Der Server bindet wie im Image an HOSTNAME=0.0.0.0. Redirects aus
+      # Proxy und Route-Handlern bleiben pfadrelativ; eine aus req.url gebaute
+      # absolute Location führte den Browser auf die Bind-Adresse.
+      - name: Redirects bleiben pfadrelativ (HOSTNAME=0.0.0.0)
+        run: node scripts/ci/check-redirect-locations.mjs "$E2E_BASE_URL"
+
       - name: Start synthetic identity fixture
         run: |
           node apps/web/scripts/identity-smoke-server.mjs > identity-fixture.log 2>&1 &

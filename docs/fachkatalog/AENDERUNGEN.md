@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-049
+    date: '2026-10-07'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/api/portal/logout/route.ts
+      - apps/web/src/app/staff/(auth)/login/password/route.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Der Passwortschritt der Staff-Anmeldung und die Portal-Abmeldung leiten
+      pfadrelativ und mit `no-store` weiter statt auf die aus `req.url` gebildete
+      Bind-Adresse (`http://0.0.0.0:…`); Ziele und Statuscodes bleiben unverändert.
+      Ein CI-Schritt prüft die Weiterleitungen gegen den gebauten Standalone-Server.
+      Anmeldeprüfung, Sitzungen und Mandantentrennung bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - apps/web/src/__tests__/redirect-location.test.ts
+      - apps/web/src/server/auth/__tests__/staff-login-enumeration.test.ts
+      - apps/web/src/server/auth/__tests__/staff-login-ticket.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-048
     date: '2026-10-07'
     paths:
@@ -5220,6 +5243,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-049` dokumentiert pfadrelative
+  Weiterleitungen der Anmelde- und Abmelderouten.
 
 - 2026-10-07: `FK-EXC-20261007-048` dokumentiert die PowerShell-Tests im CI.
 

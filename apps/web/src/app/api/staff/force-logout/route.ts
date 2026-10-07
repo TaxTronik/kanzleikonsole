@@ -13,17 +13,12 @@ import { revokeAllSessions } from '@/server/auth/revocation';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import { staffSessionFactory } from '@/server/auth/staff-session';
 import { log } from '@/server/logger';
+import { relativeRedirect } from '@/server/http/relative-redirect';
 
 function staffLoginResponse(): NextResponse {
   // Relative Location ist absichtlich host-neutral: req.url kann hinter einem
   // Reverse-Proxy die interne Adresse (z. B. https://0.0.0.0:3000) enthalten.
-  return new NextResponse(null, {
-    status: 303,
-    headers: {
-      location: '/staff/login',
-      'cache-control': 'no-store',
-    },
-  });
+  return relativeRedirect('/staff/login');
 }
 
 async function logout(req: NextRequest, revoke: boolean): Promise<NextResponse> {

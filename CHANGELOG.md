@@ -940,6 +940,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Staff-Anmeldung hinter dem Reverse-Proxy: Der Passwortschritt
+  leitete im Container auf die Bind-Adresse `http://0.0.0.0:3000/…` statt auf
+  die aufgerufene Adresse weiter (Fehlversuch und erfolgreiche Anmeldung).
+  Weiterleitungen der Route-Handler sind jetzt pfadrelativ und `no-store`; ein
+  CI-Schritt prüft die Weiterleitungen von Proxy und Route-Handlern gegen den
+  gebauten Standalone-Server mit `HOSTNAME=0.0.0.0` (`ACCESS-TENANT-RLS-001`).
 - Bisher stillschweigend verworfene Fehler werden protokolliert, mit Request-ID
   und ohne personenbezogene Daten, u. a. bei GwG-Onboarding-Tokenprüfungen,
   dem `lastLoginAt`-Update im Portal, Sperrzähler und Rate-Limit, Abmeldung,

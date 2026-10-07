@@ -92,7 +92,10 @@ Web-Image und der Standalone-Server (`apps/web/.next/standalone/apps/web/server.
 mit `NODE_ENV=production`; PostgreSQL und Redis laufen mit den Images aus
 `infra/compose/docker-compose.yml`. Playwright wiederholt keine Tests
 (`retries: 0`, vom Guard geprüft), damit ein erst im Retry bestandener Test den
-Lauf nicht grün meldet.
+Lauf nicht grün meldet. Vor der Suite prüft
+`scripts/ci/check-redirect-locations.mjs` am selben Server
+(`HOSTNAME=0.0.0.0` wie im Image), dass Redirects aus Proxy und Route-Handlern
+pfadrelativ bleiben und nie auf die Bind-Adresse zeigen.
 
 ## Reports
 

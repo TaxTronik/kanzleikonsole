@@ -228,7 +228,7 @@ const EXPECTED_REJECTION = {
   checkPasswordAction: { ok: false, error: 'Ungültige Anmeldedaten.' },
   'POST /staff/login/password': {
     status: 303,
-    location: 'https://staff.example.test/staff/login?error=password-invalid',
+    location: '/staff/login?error=password-invalid',
   },
 };
 

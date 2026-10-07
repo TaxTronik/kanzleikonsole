@@ -13,15 +13,11 @@ import { revokeAllSessions } from '@/server/auth/revocation';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import { portalSessionFactory } from '@/server/auth/portal-session';
 import { log } from '@/server/logger';
+import { relativeRedirect } from '@/server/http/relative-redirect';
 
 function portalLoginResponse(): NextResponse {
-  return new NextResponse(null, {
-    status: 303,
-    headers: {
-      location: '/portal/login',
-      'cache-control': 'no-store',
-    },
-  });
+  // Host-neutral wie /api/staff/force-logout (B-04).
+  return relativeRedirect('/portal/login');
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {

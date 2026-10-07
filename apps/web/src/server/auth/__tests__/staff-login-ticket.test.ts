@@ -415,7 +415,8 @@ describe('R-04: lokaler DEV-Formularpfad nutzt denselben Service', () => {
     );
 
     expect(response.status).toBe(303);
-    expect(response.headers.get('location')).toBe('https://staff.example.test/staff/dashboard');
+    // B-04: pfadrelativ, unabhängig von der Adresse in req.url.
+    expect(response.headers.get('location')).toBe('/staff/dashboard');
     expect(response.cookies.get(STAFF_SESSION_COOKIE)?.value).toBeTruthy();
     expect(h.compare).toHaveBeenCalledTimes(1);
     expect(h.tickets.size).toBe(0);

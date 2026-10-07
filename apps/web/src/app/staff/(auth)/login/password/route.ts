@@ -4,6 +4,7 @@ import { staffSessionFactory, staffSessionToken } from '@/server/auth/staff-sess
 import { checkPasswordAction } from '../actions';
 import { getClientIp } from '@/server/rate-limit';
 import { isRequestBodyTooLargeError, parseFormDataBounded } from '@/server/http/bounded-form-data';
+import { relativeRedirect } from '@/server/http/relative-redirect';
 
 export const STAFF_PASSWORD_FORM_MAX_BYTES = 64 * 1024;
 
@@ -15,10 +16,11 @@ function safeStaffReturnTo(raw: string | null): string {
   return raw;
 }
 
-function loginRedirect(req: NextRequest, error?: string): NextResponse {
-  const url = new URL('/staff/login', req.url);
-  if (error) url.searchParams.set('error', error);
-  return NextResponse.redirect(url, 303);
+// B-04: pfadrelative Location; req.url trägt hinter dem Proxy die
+// Bind-Adresse des Standalone-Servers (HOSTNAME=0.0.0.0).
+function loginRedirect(error?: string): NextResponse {
+  const query = error ? `?${new URLSearchParams({ error })}` : '';
+  return relativeRedirect(`/staff/login${query}`);
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -42,11 +44,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // dem Passwortschritt (TOTP braucht die Oberfläche).
   const passwordResult = await checkPasswordAction(email, password, tenantSlug);
   if (!passwordResult.ok) {
-    return loginRedirect(req, 'password-invalid');
+    return loginRedirect('password-invalid');
   }
 
   if (!passwordResult.devSkip || !passwordResult.loginTicket) {
-    return loginRedirect(req, 'totp-required');
+    return loginRedirect('totp-required');
   }
 
   const ip = (() => {
@@ -62,12 +64,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     ip,
   });
   if (!user) {
-    return loginRedirect(req, 'session-invalid');
+    return loginRedirect('session-invalid');
   }
 
   // S-05: Cookie-Name, -Optionen, Codec und Claims aus der Staff-Session-
   // Fabrik — dieselbe Implementierung, mit der Auth.js die Session ausstellt.
-  const response = NextResponse.redirect(new URL(returnTo, req.url), 303);
+  const response = relativeRedirect(returnTo);
   await staffSessionFactory.issue(staffSessionToken(user), { request: req, response });
   return response;
 }
