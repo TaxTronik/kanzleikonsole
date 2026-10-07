@@ -18,7 +18,6 @@
     "./outbox-purposes": "./src/outbox-purposes.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude \"**/*-db.test.{ts,tsx}\"",
     "test:db": "vitest run --config vitest.db.config.ts"

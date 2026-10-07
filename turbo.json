@@ -66,16 +66,37 @@
     },
     "@taxtronik/web#build": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/.env",
+        "$TURBO_ROOT$/eslint.config.mjs",
+        "$TURBO_ROOT$/infra/n8n/workflows/*.json",
+        "$TURBO_ROOT$/scripts/ci/db-suites.mjs"
+      ],
       "outputs": []
     },
-    "typecheck": {},
-    "test": {
-      "outputs": ["coverage/**"]
+    "@taxtronik/worker#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
     },
-    "@taxtronik/db#test": {
-      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/.env"],
-      "outputs": ["coverage/**"]
+    "transit": {
+      "dependsOn": ["^transit"]
+    },
+    "typecheck": {
+      "dependsOn": ["transit"]
+    },
+    "@taxtronik/web#typecheck": {
+      "dependsOn": ["transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/eslint.config.mjs",
+        "$TURBO_ROOT$/infra/n8n/workflows/*.json",
+        "$TURBO_ROOT$/scripts/ci/db-suites.mjs"
+      ]
+    },
+    "test": {
+      "dependsOn": ["transit"],
+      "cache": false
     }
   }
 }

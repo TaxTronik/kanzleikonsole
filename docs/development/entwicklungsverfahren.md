@@ -137,6 +137,21 @@ zusätzliche Diff-Gate ordnet Änderungen an überwachten Fach- und Prisma-Pfade
 konkret einer geänderten Regel oder einer strukturierten, unveränderlichen
 Ausnahme zu (`pnpm fachkatalog:diff`).
 
+**Typprüfung und Turbo-Cache:** `pnpm typecheck` prüft jedes Paket mit
+`tsc --noEmit`; in `apps/web` erzeugt `next typegen` vorher die Routentypen.
+Damit läuft dasselbe TypeScript-Programm wie in `next build` (dieselbe
+tsconfig, dieselben Dateien und Optionen; der Build blendet zusätzlich Befunde
+in Testdateien aus). Pakete, die nur TypeScript-Quellen exportieren, haben kein
+`build`-Skript. Der Produktions-Build im Job `e2e-paranoid` läuft erst nach
+`quality` desselben Commits und überspringt die zweite Typprüfung
+(`TAXTRONIK_SKIP_BUILD_TYPECHECK=1`); Image-Builds und lokale Builds prüfen
+selbst. In Turbo hängen `typecheck` und `test` über den leeren Task `transit`
+an ihren Abhängigkeiten, damit eine Änderung an einem genutzten Paket den
+Cache-Schlüssel ändert; `test` wird nie aus dem Cache abgespielt, weil Tests
+Dateien außerhalb ihres Pakets lesen und jeder Lauf ein eigenes Testprotokoll
+braucht. `scripts/tests/turbo-pipeline.test.mjs` und
+`apps/web/src/__tests__/next-build-typecheck.test.ts` halten diese Regeln fest.
+
 ## 5. Versionsführung und Freigabeverfahren
 
 - **Versionsführung:** Git ist das einzige Quellsystem; jede Änderung ist

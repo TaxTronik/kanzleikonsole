@@ -1,5 +1,29 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-046
+    date: '2026-10-07'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/next.config.mjs
+      - packages/gwg/package.json
+      - packages/tax/package.json
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - GWG-SCREENING-001
+      - MAIL-INBOX-001
+    reason: >-
+      Die Schein-Builds (`build: tsc --noEmit`) der Pakete entfallen; Turbo bezieht
+      Änderungen abhängiger Workspace-Pakete in die Hashes von Typprüfung, Tests und
+      Builds ein, und der Produktionsbuild im Job `e2e-paranoid` überspringt die
+      zweite Typprüfung, weil der Job `quality` denselben Commit prüft. Betroffen
+      sind CI-Workflow, `next.config.mjs` und Paket-Skripte; Laufzeitverhalten und
+      Fachlogik bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/__tests__/next-build-typecheck.test.ts
+      - scripts/tests/turbo-pipeline.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-045
     date: '2026-10-07'
     paths:
@@ -5164,6 +5188,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-046` dokumentiert die Build- und
+  Typprüfungs-Pipeline ohne Schein-Builds.
 
 - 2026-10-07: `FK-EXC-20261007-045` dokumentiert die CI-Einbindung der neuen
   PostgreSQL-Suiten.

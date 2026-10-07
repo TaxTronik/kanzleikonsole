@@ -12,7 +12,6 @@
     "./screening/persistence": "./src/screening/persistence.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

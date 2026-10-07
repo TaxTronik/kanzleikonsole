@@ -278,6 +278,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Build: Die Schein-Builds (`build: tsc --noEmit`) von neun Paketen entfallen;
+  geprüft wird über `typecheck`. Turbo bezieht Änderungen abhängiger
+  Workspace-Pakete wieder in die Hashes von `typecheck`, `test` und den
+  Web-/Worker-Builds ein (vorher konnte ein Cache-Treffer für geänderten Code
+  wiederverwendet werden); Tests werden nie aus dem Cache übernommen. Der
+  Produktionsbuild im Job `e2e-paranoid` überspringt mit
+  `TAXTRONIK_SKIP_BUILD_TYPECHECK=1` die zweite Typprüfung, weil der Job
+  `quality` denselben Commit prüft; Image- und lokale Builds prüfen weiterhin.
 - CI: Der Job `db` findet alle PostgreSQL-Suiten (`*-db.test.ts`) von Web,
   Worker und Evidence per Glob (`scripts/ci/db-suites.mjs`,
   `pnpm --filter <paket> run test:db`) statt über gepflegte Einzelschritte.

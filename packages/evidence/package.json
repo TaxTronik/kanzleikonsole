@@ -13,7 +13,6 @@
     "./ports/timestamp": "./src/ports/timestamp.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude \"**/*-db.test.{ts,tsx}\"",
     "test:db": "vitest run --config vitest.db.config.ts",

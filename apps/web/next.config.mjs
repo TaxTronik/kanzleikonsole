@@ -130,6 +130,19 @@ const nextConfig = {
   // Reaktivität strenger.
   reactStrictMode: true,
 
+  // B-07: Typprüfung im Build nur, wo sie nicht schon für denselben Stand lief.
+  // `pnpm typecheck` (Web: `next typegen && tsc --noEmit`) prüft dasselbe
+  // TypeScript-Programm wie `next build`: dieselbe tsconfig, dieselben Dateien
+  // samt erzeugten Routentypen und dieselben Optionen (jsx wie von Next
+  // verlangt); der Build blendet zusätzlich Befunde in Testdateien aus. Nur der
+  // E2E-Build im CI-Job e2e-paranoid läuft nach diesem Typecheck im Job
+  // quality desselben Commits und setzt den Schalter (geprüft in
+  // src/__tests__/next-build-typecheck.test.ts). Image-Builds und lokale
+  // Builds prüfen weiter selbst.
+  typescript: {
+    ignoreBuildErrors: process.env.TAXTRONIK_SKIP_BUILD_TYPECHECK === '1',
+  },
+
   // Sicherheits-Header (Defense in Depth).
   async headers() {
     // Die request-spezifische CSP wird im Proxy erzeugt, damit Next.js einen

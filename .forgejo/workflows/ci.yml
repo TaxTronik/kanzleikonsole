@@ -109,6 +109,11 @@ jobs:
       - name: Guard DB-Suiten im db-Job
         run: node --test scripts/tests/db-suites-ci.test.mjs
 
+      # B-07: keine Schein-Builds; typecheck/test hängen über transit an ihren
+      # Abhängigkeiten, test nie aus dem Cache, externe Importe als Eingaben.
+      - name: Guard Turbo-Pipeline
+        run: node --test scripts/tests/turbo-pipeline.test.mjs
+
       - name: Guard migration line endings
         run: pnpm verify:migration-line-endings
 
@@ -944,10 +949,14 @@ jobs:
 
       # Wie Dockerfile.web als Produktions-Build: NODE_ENV=production bindet
       # HSTS und das Prod-Gate in das Artefakt; NEXTAUTH_URL muss dort https sein.
+      # B-07: Der Job quality desselben Commits (needs) hat mit `pnpm typecheck`
+      # dasselbe TypeScript-Programm geprüft (Web: next typegen + tsc); der Build
+      # prüft die Typen deshalb nicht ein zweites Mal (next.config.mjs).
       - name: Build web app (Produktion)
         env:
           NODE_ENV: production
           NEXTAUTH_URL: https://localhost:3000
+          TAXTRONIK_SKIP_BUILD_TYPECHECK: '1'
         run: pnpm --filter @taxtronik/web build
 
       - name: Install Playwright browser

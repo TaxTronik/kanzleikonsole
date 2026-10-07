@@ -9,7 +9,7 @@
     "build": "node scripts/prepare-identity-assets.mjs && next build && node scripts/verify-standalone-trace.mjs",
     "identity:assets": "node scripts/prepare-identity-assets.mjs",
     "start": "next start --port 3000",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run --exclude \"**/*-db.test.{ts,tsx}\"",
     "test:db": "vitest run --config vitest.db.config.ts",
     "backup:run": "tsx --env-file-if-exists=../../.env src/server/backup/runner.ts",
