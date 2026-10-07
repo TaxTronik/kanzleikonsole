@@ -6,16 +6,22 @@
 // neuem Item abonnierte Staff-Members (taxNewsNotify=true) informieren.
 //
 // Konsolidierung Round 12: Parser + Body-Cap aus @taxtronik/rss.
+//
+// S-01: Abonnenten, vorhandene und neue Hinweise sowie den Lauf-Marker liest
+// und schreibt der Job je Tenant über die App-Rolle im SYSTEM-Kontext des
+// Tenants (withSystemContext, RLS). Beim Owner-Client bleiben die
+// mandantenübergreifende Liste aktiver Feeds (Tenant und URL) und der globale
+// Nachrichten-Cache tax_news_item ohne Tenantbezug (RLS-Ausnahme).
 // =============================================================================
 
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { withSystemContext } from '@taxtronik/db';
 import { writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { fetchRssFeed, type FetchedRssItem } from '@taxtronik/rss';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
 
@@ -41,6 +47,7 @@ export const taxNewsFetchWorker = createWorker<ChecksJob>(
   JOB_QUEUES.taxNewsFetch.name,
   async () => {
     // Distinct URLs aus aktiven Feeds — pro URL nur ein Fetch.
+    // S-01: mandantenübergreifende Feed-Liste (Tenant und URL) über den Owner-Client.
     const activeFeedRows = await prismaOwner.rssFeed.findMany({
       where: { active: true },
       select: { tenantId: true, url: true },
@@ -143,62 +150,63 @@ export const taxNewsFetchWorker = createWorker<ChecksJob>(
     }
 
     // Pro neuem Item: jeder Staff, der diese URL aktiv abonniert hat UND
-    // taxNewsNotify=true gesetzt hat, bekommt eine Notification.
+    // taxNewsNotify=true gesetzt hat, bekommt eine Notification. Je Tenant
+    // (S-01): Abonnenten und vorhandene Hinweise im SYSTEM-Kontext lesen, dann
+    // die neuen Hinweise in einer eigenen Transaktion schreiben.
     const sources = Array.from(new Set(newItems.map((item) => item.source)));
-    const subscribers = await prismaOwner.rssFeed.findMany({
-      where: {
-        url: { in: sources },
-        active: true,
-        staff: { active: true, taxNewsNotify: true },
-      },
-      select: { tenantId: true, staffId: true, name: true, url: true },
-    });
-
-    const subscribersBySource = new Map<string, typeof subscribers>();
-    for (const sub of subscribers) {
-      if (!enabledTenantIds.has(sub.tenantId)) continue;
-      subscribersBySource.set(sub.url, [...(subscribersBySource.get(sub.url) ?? []), sub]);
-    }
-
-    const existingNotifications = await prismaOwner.notification.findMany({
-      where: {
-        kind: 'TAX_NEWS_NEW',
-        resourceType: 'tax_news_item',
-        resourceId: { in: newItems.map((item) => item.id) },
-      },
-      select: { staffId: true, resourceId: true },
-    });
-    const existingNotificationKeys = new Set(
-      existingNotifications.map((n) => `${n.staffId ?? ''}\u0000${n.resourceId ?? ''}`),
-    );
-
-    const notificationRows = newItems.flatMap((item) =>
-      (subscribersBySource.get(item.source) ?? [])
-        .filter((sub) => !existingNotificationKeys.has(`${sub.staffId}\u0000${item.id}`))
-        .map((sub) => ({
-          tenantId: sub.tenantId,
-          staffId: sub.staffId,
-          kind: 'TAX_NEWS_NEW' as const,
-          title: `${sub.name}: ${item.title}`,
-          body: null,
-          href: '/staff/dashboard',
-          resourceType: 'tax_news_item',
-          resourceId: item.id,
-        })),
-    );
-
+    const itemIds = newItems.map((item) => item.id);
     let notifications = 0;
-    const notificationsByTenant = new Map<string, typeof notificationRows>();
-    for (const row of notificationRows) {
-      notificationsByTenant.set(row.tenantId, [
-        ...(notificationsByTenant.get(row.tenantId) ?? []),
-        row,
-      ]);
-    }
-    // R-11: RSS-Titel stammen aus externen Feeds — notify() schreibt sie nur
-    // über den gemeinsamen Sanitizer (vorher: createMany ohne Filter).
-    for (const [tenantId, rows] of notificationsByTenant) {
-      const result = await withWorkerTenantContext(tenantId, (tx) => notify(tx, rows));
+    for (const tenantId of enabledTenantIds) {
+      const { subscribers, existingNotifications } = await withSystemContext(
+        tenantId,
+        async (tx) => ({
+          subscribers: await tx.rssFeed.findMany({
+            where: {
+              tenantId,
+              url: { in: sources },
+              active: true,
+              staff: { active: true, taxNewsNotify: true },
+            },
+            select: { staffId: true, name: true, url: true },
+          }),
+          existingNotifications: await tx.notification.findMany({
+            where: {
+              tenantId,
+              kind: 'TAX_NEWS_NEW',
+              resourceType: 'tax_news_item',
+              resourceId: { in: itemIds },
+            },
+            select: { staffId: true, resourceId: true },
+          }),
+        }),
+      );
+
+      const subscribersBySource = new Map<string, typeof subscribers>();
+      for (const sub of subscribers) {
+        subscribersBySource.set(sub.url, [...(subscribersBySource.get(sub.url) ?? []), sub]);
+      }
+      const existingNotificationKeys = new Set(
+        existingNotifications.map((n) => `${n.staffId ?? ''}\u0000${n.resourceId ?? ''}`),
+      );
+
+      const rows = newItems.flatMap((item) =>
+        (subscribersBySource.get(item.source) ?? [])
+          .filter((sub) => !existingNotificationKeys.has(`${sub.staffId}\u0000${item.id}`))
+          .map((sub) => ({
+            tenantId,
+            staffId: sub.staffId,
+            kind: 'TAX_NEWS_NEW' as const,
+            title: `${sub.name}: ${item.title}`,
+            body: null,
+            href: '/staff/dashboard',
+            resourceType: 'tax_news_item',
+            resourceId: item.id,
+          })),
+      );
+      if (rows.length === 0) continue;
+      // R-11: RSS-Titel stammen aus externen Feeds — notify() schreibt sie nur
+      // über den gemeinsamen Sanitizer (vorher: createMany ohne Filter).
+      const result = await withSystemContext(tenantId, (tx) => notify(tx, rows));
       notifications += result.created;
     }
 
@@ -208,11 +216,13 @@ export const taxNewsFetchWorker = createWorker<ChecksJob>(
     // irreführend alt).
     const lastFetchAt = new Date().toISOString();
     for (const tenantId of enabledTenantIds) {
-      await writeTenantSettingValue(prismaOwner, {
-        tenantId,
-        key: 'tax-news.last-fetch-at',
-        value: lastFetchAt,
-      });
+      await withSystemContext(tenantId, (tx) =>
+        writeTenantSettingValue(tx, {
+          tenantId,
+          key: 'tax-news.last-fetch-at',
+          value: lastFetchAt,
+        }),
+      );
     }
 
     log.info(

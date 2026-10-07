@@ -1,14 +1,17 @@
+// S-01: Abonnenten, vorhandene und neue Hinweise sowie der Lauf-Marker laufen
+// je Tenant im SYSTEM-Kontext (tax-news-fetch-db.test.ts: App-Rolle).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   moduleEnabled: vi.fn(),
   fetchRssFeed: vi.fn(),
   rssFeedFindMany: vi.fn(),
+  subscriberFindMany: vi.fn(),
   taxNewsFindMany: vi.fn(),
   taxNewsCreateMany: vi.fn(),
-  notificationFindMany: vi.fn(),
+  existingNotifications: [] as Array<{ staffId: string; resourceId: string }>,
   tenantSettingUpsert: vi.fn(),
-  withWorkerTenantContext: vi.fn(),
+  withSystemContext: vi.fn(),
 }));
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -20,9 +23,7 @@ vi.mock('@taxtronik/rss', () => ({ fetchRssFeed: h.fetchRssFeed }));
 vi.mock('../../module-gate', () => ({
   isWorkerTenantModuleEnabled: h.moduleEnabled,
 }));
-vi.mock('../../tenant-context', () => ({
-  withWorkerTenantContext: h.withWorkerTenantContext,
-}));
+vi.mock('@taxtronik/db', () => ({ withSystemContext: h.withSystemContext }));
 vi.mock('../../prisma-owner', () => ({
   prismaOwner: {
     rssFeed: { findMany: h.rssFeedFindMany },
@@ -30,8 +31,6 @@ vi.mock('../../prisma-owner', () => ({
       findMany: h.taxNewsFindMany,
       createMany: h.taxNewsCreateMany,
     },
-    notification: { findMany: h.notificationFindMany },
-    tenantSetting: { upsert: h.tenantSettingUpsert },
   },
 }));
 
@@ -59,9 +58,8 @@ describe('tax-news-fetch tenant module gate', () => {
     expect(h.fetchRssFeed).not.toHaveBeenCalled();
     expect(h.taxNewsFindMany).not.toHaveBeenCalled();
     expect(h.taxNewsCreateMany).not.toHaveBeenCalled();
-    expect(h.notificationFindMany).not.toHaveBeenCalled();
     expect(h.tenantSettingUpsert).not.toHaveBeenCalled();
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.withSystemContext).not.toHaveBeenCalled();
   });
 });
 
@@ -72,16 +70,16 @@ describe('tax-news-fetch Benachrichtigungen', () => {
   const tx = {
     $queryRaw: vi.fn(),
     $executeRaw: vi.fn(),
+    rssFeed: { findMany: h.subscriberFindMany },
     notification: { findMany: vi.fn(), update: vi.fn(), createMany: vi.fn() },
+    tenantSetting: { upsert: h.tenantSettingUpsert },
   };
 
   beforeEach(() => {
     h.moduleEnabled.mockResolvedValue(true);
-    h.rssFeedFindMany
-      .mockResolvedValueOnce([{ tenantId: 'tenant-1', url: FEED }])
-      .mockResolvedValueOnce([
-        { tenantId: 'tenant-1', staffId: 'staff-1', name: 'BMF', url: FEED },
-      ]);
+    h.rssFeedFindMany.mockResolvedValue([{ tenantId: 'tenant-1', url: FEED }]);
+    h.subscriberFindMany.mockResolvedValue([{ staffId: 'staff-1', name: 'BMF', url: FEED }]);
+    h.existingNotifications = [];
     h.fetchRssFeed.mockResolvedValue([
       {
         source: FEED,
@@ -98,14 +96,16 @@ describe('tax-news-fetch Benachrichtigungen', () => {
         { id: 'item-1', source: FEED, title: 'Neu <img src=x>\u202e', link: 'https://x' },
       ]);
     h.taxNewsCreateMany.mockResolvedValue({ count: 1 });
-    h.notificationFindMany.mockResolvedValue([]);
     h.tenantSettingUpsert.mockResolvedValue({});
-    h.withWorkerTenantContext.mockImplementation(
+    h.withSystemContext.mockImplementation(
       async (_tenantId: string, fn: (value: typeof tx) => Promise<unknown>) => fn(tx),
     );
     tx.$queryRaw.mockResolvedValue([{ actorType: 'SYSTEM' }]);
     tx.$executeRaw.mockResolvedValue(1);
-    tx.notification.findMany.mockResolvedValue([]);
+    // Die Dedupe-Abfrage des Jobs wählt nur staffId/resourceId, notify() auch die id.
+    tx.notification.findMany.mockImplementation(async (args: { select: { id?: boolean } }) =>
+      args.select.id ? [] : h.existingNotifications,
+    );
     tx.notification.createMany.mockImplementation(async ({ data }: { data: unknown[] }) => ({
       count: data.length,
     }));
@@ -130,10 +130,24 @@ describe('tax-news-fetch Benachrichtigungen', () => {
       ],
       skipDuplicates: true,
     });
+    // Abonnenten, Hinweise und Lauf-Marker im SYSTEM-Kontext genau dieses Tenants.
+    expect(h.subscriberFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ tenantId: 'tenant-1' }) }),
+    );
+    expect(h.withSystemContext.mock.calls.map(([tenantId]) => tenantId)).toEqual([
+      'tenant-1',
+      'tenant-1',
+      'tenant-1',
+    ]);
+    expect(h.tenantSettingUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tenantId_key: { tenantId: 'tenant-1', key: 'tax-news.last-fetch-at' } },
+      }),
+    );
   });
 
   it('benachrichtigt nicht erneut, wenn es (auch gelesen) schon eine Notification gibt', async () => {
-    h.notificationFindMany.mockResolvedValue([{ staffId: 'staff-1', resourceId: 'item-1' }]);
+    h.existingNotifications = [{ staffId: 'staff-1', resourceId: 'item-1' }];
 
     await expect(processors.get('tax-news-fetch')!({ data: {} })).resolves.toMatchObject({
       notifications: 0,
