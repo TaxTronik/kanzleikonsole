@@ -8,7 +8,8 @@
 // schon vorhandenen zu duplizieren. Setzt danach `llmEnrichedAt`.
 //
 // Eigenständig im Worker (kein @taxtronik/web-Import): Engine-Client kommt aus
-// dem Paket, persistiert wird über den Worker-Owner-Client + tenant-context.
+// dem Paket, persistiert wird über die App-Rolle im SYSTEM-Kontext des Tenants
+// (withSystemContext, RLS; S-01).
 //
 // S-06: Der Job trägt nur { tenantId, analysisId, sourceHash }. Den Sachverhalt
 // liest der Worker unter dem Analyse-Lock aus der Datenbank und verarbeitet ihn
@@ -21,10 +22,10 @@ import { UnrecoverableError } from 'bullmq';
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES, type LegacyRiskAnalyseLlmJob } from '@taxtronik/config/job-queues';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
+import { withSystemContext } from '@taxtronik/db';
 import { lockRiskAnalysisTx, riskSourceHash } from '@taxtronik/db/risk-analysis';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type RiskAnalyseLlmJob } from '../queues';
-import { withWorkerTenantContext } from '../tenant-context';
 import { log } from '../logger';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
 
@@ -103,7 +104,7 @@ export const riskAnalyseLlmWorker = createWorker<QueuedRiskAnalyseLlmJob, void, 
     // current facts under the analysis lock and only use them while their hash
     // still matches the job; recheck again after the external I/O.
     const loadWritableSource = () =>
-      withWorkerTenantContext(tenantId, async (tx) => {
+      withSystemContext(tenantId, async (tx) => {
         const current = await lockRiskAnalysisTx(tx, tenantId, analysisId);
         if (current === null || current.archivedAt) return null;
         return riskSourceHash(current.sourceText) === sourceHash ? current.sourceText : null;
@@ -156,14 +157,14 @@ export const riskAnalyseLlmWorker = createWorker<QueuedRiskAnalyseLlmJob, void, 
       throw e; // andere (transiente) Fehler dürfen im Rahmen von attempts retryen
     }
 
-    await withWorkerTenantContext(tenantId, async (tx) => {
+    await withSystemContext(tenantId, async (tx) => {
       const current = await lockRiskAnalysisTx(tx, tenantId, analysisId);
       if (!current || current.archivedAt || current.sourceText !== sourceText) {
         log.info({ analysisId, tenantId }, 'risk-analyse-llm: Stand geändert, Ergebnis verworfen');
         return;
       }
-      // tenantId re-asserten: der Owner-Client hat BYPASSRLS — die id aus dem
-      // Job-Payload darf nicht allein über die Zugehörigkeit entscheiden.
+      // tenantId re-asserten: neben RLS darf die id aus dem Job-Payload nicht
+      // allein über die Zugehörigkeit entscheiden.
       const analysis = await tx.riskAnalysis.findFirst({
         where: { id: analysisId, tenantId },
         select: {

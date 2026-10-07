@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-025
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/risk-analyse-llm.ts
+    rule_ids:
+      - RISK-AI-SUGGESTION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+    reason: >-
+      Die KI-Anreicherung von Risikoanalysen (`risk-analyse-llm`) liest den
+      Sachverhalt unter der Analysesperre und ergänzt Markierungen, `llmEnrichedAt`
+      und das Audit-Ereignis über die App-Rolle im SYSTEM-Kontext des Tenants
+      (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS.
+      Archivschutz und expliziter Tenant-Filter bleiben; ergänzt werden weiterhin
+      nur neue Markierungen. Eine PostgreSQL-Suite belegt das und dass Analysen
+      fremder Tenants unsichtbar und unverändert bleiben. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/risk-analyse-llm-db.test.ts
+      - apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-024
     date: '2026-10-07'
     paths:
@@ -4675,6 +4694,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-025` dokumentiert die KI-Anreicherung von
+  Risikoanalysen über die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-024` dokumentiert die
   Erledigt-Benachrichtigung zu Erinnerungen über die App-Rolle.

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({
   moduleEnabled: vi.fn(),
   riskLayerClient: vi.fn(),
-  withWorkerTenantContext: vi.fn(),
+  withSystemContext: vi.fn(),
   record: vi.fn(),
 }));
 
@@ -20,8 +20,9 @@ vi.mock('../../logger', () => ({
 vi.mock('../../module-gate', () => ({
   isWorkerTenantModuleEnabled: h.moduleEnabled,
 }));
-vi.mock('../../tenant-context', () => ({
-  withWorkerTenantContext: h.withWorkerTenantContext,
+// S-01: die Analyse wird über die App-Rolle (withSystemContext) gelesen und ergänzt.
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: h.withSystemContext,
 }));
 vi.mock('@taxtronik/risk-layer', () => ({ RiskLayerClient: h.riskLayerClient }));
 vi.mock('@taxtronik/evidence', () => ({
@@ -67,7 +68,7 @@ describe('RISK-ARCHIVE-SNAPSHOT-001 / RISK-AI-SUGGESTION-001 queued enrichment',
       analyse: vi.fn(async () => ({ markings: [], engineVersion: 'test' })),
     };
     h.moduleEnabled.mockResolvedValue(true);
-    h.withWorkerTenantContext.mockImplementation(async (_tenant, fn) => fn(tx));
+    h.withSystemContext.mockImplementation(async (_tenant, fn) => fn(tx));
     h.riskLayerClient.mockImplementation(function () {
       return client;
     });
@@ -187,6 +188,6 @@ describe('risk-analyse-llm tenant module gate', () => {
 
     expect(h.moduleEnabled).toHaveBeenCalledWith('tenant-disabled', 'risk');
     expect(h.riskLayerClient).not.toHaveBeenCalled();
-    expect(h.withWorkerTenantContext).not.toHaveBeenCalled();
+    expect(h.withSystemContext).not.toHaveBeenCalled();
   });
 });
