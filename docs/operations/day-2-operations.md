@@ -431,6 +431,23 @@ Backup-Dump, `psql`) und meldet `FEHLT`, wenn die Summe `max_connections`
 erhöht, hebt `POSTGRES_MAX_CONNECTIONS` mit an (je Verbindung einige MB RAM) oder
 setzt PgBouncer davor.
 
+Zeitgrenzen der App-Rolle (F-06): Der App-Pool setzt je Verbindung
+`statement_timeout` 20 s und `idle_in_transaction_session_timeout` 30 s.
+`lock_timeout` 5 s ist eine Datenbankeinstellung der Rolle `taxtronik_app`
+(Migration `20261007140000_app_role_lock_timeout`, nur für die Datenbank
+`taxtronik`) und gilt damit für jede Verbindung dieser Rolle, auch ohne Pool.
+Wartet ein Request länger als 5 s auf eine Sperre (etwa die Audit-Sperre eines
+Tenants hinter einer langen Transaktion), bricht die Anweisung mit SQLSTATE
+`55P03` (`lock timeout`) ab, statt den App-Pool mit wartenden Requests zu
+füllen. Wartezeiten ab 1 s stehen schon vorher im Postgres-Log
+(`log_lock_waits`). Die Owner-Rolle (Worker-Wartungsjobs) und die
+Migrationsrolle haben kein `lock_timeout`. Kontrolle:
+
+```bash
+./taxtronik exec postgres psql -U taxtronik -d taxtronik -c \
+  "SELECT r.rolname, s.setconfig FROM pg_db_role_setting s JOIN pg_roles r ON r.oid = s.setrole WHERE s.setdatabase = (SELECT oid FROM pg_database WHERE datname = 'taxtronik')"
+```
+
 ## Logs und Request-ID
 
 App und Worker schreiben strukturierte JSON-Zeilen (pino) nach stdout;

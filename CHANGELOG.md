@@ -264,6 +264,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die App-Datenbankrolle `taxtronik_app` wartet höchstens 5 Sekunden auf eine
+  Sperre (`lock_timeout`, nur in der App-Datenbank) und bricht dann mit einem
+  eigenen Fehler ab, statt bis zum Statement-Timeout eine Pool-Verbindung zu
+  belegen; Owner- und Migrationsrolle bleiben ohne Grenze. Die
+  Disaster-Recovery-Checkliste prüft die Einstellung.
 - Fristenkontrollbuch: „Mit Erledigten“ zeigt erledigte Fristen seitenweise
   (200 je Seite, jüngste Fälligkeit zuerst, eigene Seitenleiste mit
   Gesamtzahl), statt alle auf einmal zu laden.

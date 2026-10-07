@@ -494,6 +494,12 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/runner.ts \
 - [ ] `pnpm install`
 - [ ] `pnpm db:migrate:deploy` (DB-Schema bauen)
 - [ ] `./taxtronik restore --latest --target-url <postgres-url>`
+- [ ] Rolleneinstellung geprüft: `lock_timeout=5s` für `taxtronik_app` in der
+      Datenbank `taxtronik` (Abfrage unter
+      [Datenbankverbindungen](day-2-operations.md#datenbankverbindungen)). Sie
+      liegt im Cluster, nicht im Dump; `pnpm db:migrate:deploy` vor dem Restore
+      setzt sie. Fehlt sie, als Superuser nachziehen:
+      `ALTER ROLE taxtronik_app IN DATABASE taxtronik SET lock_timeout = '5s'`
 - [ ] n8n-DB-Dump eingespielt; n8n-Volume und `N8N_ENCRYPTION_KEY` gehören zum
       gleichen Recovery Point
 - [ ] SeaweedFS-Cold-Snapshot gestartet; Byte-Export nur als Notfallalternative

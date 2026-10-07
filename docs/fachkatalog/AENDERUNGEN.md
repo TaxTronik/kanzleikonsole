@@ -1,5 +1,21 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-022
+    date: '2026-10-07'
+    paths:
+      - packages/db/prisma/migrations/20261007140000_app_role_lock_timeout/migration.sql
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Migration `20261007140000` setzt für `taxtronik_app` in der App-Datenbank
+      `lock_timeout = '5s'` (gleich der Pool-Wartezeit, unter Transaktions- und
+      Statement-Timeout). Eine App-Anweisung, die länger auf eine Sperre wartet,
+      bricht mit SQLSTATE 55P03 ab, statt eine Pool-Verbindung zu belegen; Owner-
+      und Migrationsrolle bleiben ohne Grenze. Rechte, RLS und Tenant-Isolation
+      bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/app-session-limits.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-021
     date: '2026-10-07'
     paths:
@@ -4577,6 +4593,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-022` dokumentiert den `lock_timeout` der
+  App-Datenbankrolle.
 
 - 2026-10-07: `FK-EXC-20261007-021` dokumentiert die Fehlerprotokollierung
   mit Request-ID in der Next-Instrumentierung.
