@@ -40,6 +40,8 @@ import {
   checkpointedVerifyOptions,
   detectAnchorTailTruncation,
   detectTailTruncation,
+  evaluateTenantVerification,
+  failedRunVerifyResult,
   manualProgressMessage,
   notifyAuditBreak,
   pendingFullVerification,
@@ -153,6 +155,7 @@ describe('AUDIT-VERIFY-ALERT-001: persistierte Monotonie und Recovery', () => {
       fullVerifyIntervalMs: FULL_VERIFY_INTERVAL_MS,
       fullVerifyBudgetMs: FULL_VERIFY_BUDGET_MS,
       forceFullVerify: false,
+      progressAnchor: null,
     });
     expect(checkpointedVerifyOptions(true).forceFullVerify).toBe(true);
   });
@@ -188,6 +191,86 @@ describe('AUDIT-VERIFY-ALERT-001: persistierte Monotonie und Recovery', () => {
         { auditId: '101', createdAt: '2026-09-01T08:05:00.000Z' } as never,
       ),
     ).toBe(false);
+  });
+});
+
+describe('B15: Fortschrittsanker im persistierten Prüfergebnis', () => {
+  const anchor = {
+    incrementalVerifiedAt: '2026-10-07T01:00:00.000Z',
+    sweep: { sweepId: 'sweep-1', verifiedAt: '2026-10-07T01:05:00.000Z', auditId: '70' },
+    mac: 'ab'.repeat(32),
+  };
+
+  it('reicht den Anker des vorigen Ergebnisses in den nächsten Prüflauf', () => {
+    expect(checkpointedVerifyOptions(false, anchor).progressAnchor).toBe(anchor);
+    expect(checkpointedVerifyOptions(true).progressAnchor).toBeNull();
+  });
+
+  it('speichert den Anker dieses Laufs, auch wenn er einen Befund meldet', () => {
+    const result = {
+      ok: false,
+      checked: 40,
+      firstBreak: null,
+      lastAuditId: 90n,
+      lastAnchorId: null,
+      lastAnchoredAuditId: null,
+      sealBreaks: [],
+      anchorBreaks: [],
+      policyBreaks: ['Stand der laufenden Vollprüfung liegt hinter … (Manipulationsverdacht).'],
+      incremental: {
+        mode: 'incremental',
+        startAuditId: 80n,
+        rowsHashed: 7,
+        lastFullVerifiedAt: null,
+        fullVerification: null,
+        progressAnchor: anchor,
+      },
+    };
+    const outcome = evaluateTenantVerification(
+      null,
+      {
+        checkedAt: new Date('2026-10-07T02:00:00.000Z'),
+        result: result as never,
+        recoveryResult: null,
+        recovered: false,
+      },
+      'request-1',
+    );
+    expect(outcome.freshFailure).toBe(true);
+    expect(outcome.persisted.progressAnchor).toBe(anchor);
+  });
+
+  it('übernimmt Monotonie- und Fortschrittsanker in das Ergebnis eines Fehlerlaufs', () => {
+    const previous = {
+      lastAuditId: '100',
+      lastAnchorId: '7',
+      lastAnchoredAuditId: '90',
+      progressAnchor: anchor,
+    } as never;
+    expect(
+      failedRunVerifyResult({
+        checkedAt: new Date('2026-10-07T03:00:00.000Z'),
+        requestId: null,
+        previous,
+        errorMessage: 'database unavailable',
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: 'database unavailable',
+      checkedAt: '2026-10-07T03:00:00.000Z',
+      lastAuditId: '100',
+      lastAnchorId: '7',
+      lastAnchoredAuditId: '90',
+      progressAnchor: anchor,
+    });
+    expect(
+      failedRunVerifyResult({
+        checkedAt: new Date(),
+        requestId: null,
+        previous: null,
+        errorMessage: 'x',
+      }).progressAnchor,
+    ).toBeNull();
   });
 });
 

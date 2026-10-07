@@ -1390,6 +1390,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Die checkpointgestützte Prüfung der Audit-Kette hält im
+  persistierten Prüfergebnis einen HMAC-geschützten Fortschrittsanker fest.
+  Zwischen zwei Läufen wieder eingespielte ältere Prüf-Checkpoints oder
+  Vollprüfungsstände werden als Manipulationsverdacht gemeldet und führen zur
+  Prüfung ab Genesis, statt eine laufende Vollprüfung unbemerkt zu verlangsamen
+  (`AUDIT-VERIFY-ALERT-001`).
 - **[Scope]** Die Wiederherstellung verlangt vor `pg_restore` neben
   `taxtronik_app` auch die S-01-Owner-Rolle `taxtronik_owner` (NOSUPERUSER,
   BYPASSRLS, ohne Mitgliedschaften) und prüft nach dem Restore deren Rechte,

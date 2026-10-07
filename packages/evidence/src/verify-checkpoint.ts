@@ -38,11 +38,24 @@
 // älteren Stand ersetzte Zeile ist ein Policy-Verstoß. Kein Lauf wird
 // übersprungen. verifyChain selbst (CLI, Prüfer-Link, Backup-Drill) bleibt die
 // checkpointfreie Vollprüfung.
+//
+// B15: Zwischen zwei Läufen konnte ein Owner ohne Schlüssel frühere, weniger
+// als drei Tage alte authentische Stände zurückspielen und so eine laufende
+// Vollprüfung beliebig verlangsamen, ohne dass sie „stockt“ oder „überfällig“
+// wurde. Jeder Lauf hält deshalb am Ende einen Fortschrittsanker fest, den der
+// Worker im persistierten Prüfergebnis speichert: `verified_at` des
+// Prüf-Checkpoints und Kennung, Position und `verified_at` des Stands einer
+// laufenden Vollprüfung, mit HMAC über dieselben Werte. Ein Folgelauf, der einen
+// älteren Prüf-Checkpoint oder einen älteren Stand derselben Vollprüfung
+// vorfindet, meldet ihn wie einen während des Laufs wieder eingespielten Stand
+// als Manipulationsverdacht und verwirft die Checkpoints. Ein fehlender oder
+// nicht authentischer Anker schaltet nur diese Monotonieprüfung ab.
 // =============================================================================
 
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { anchorGenesisHash } from './anchor';
 import { canonicalJson } from './canonical-json';
+import type { PersistedProgressAnchor } from './verify-status';
 import {
   DEFAULT_SEGMENT_LIMITS,
   applyUnanchoredAgePolicy,
@@ -86,6 +99,7 @@ export const FULL_SWEEP_STALE_AFTER_MS = 3 * 24 * 60 * 60_000;
 export const FULL_VERIFY_OVERDUE_FACTOR = 3;
 const DAY_MS = 24 * 60 * 60_000;
 const MAC_CONTEXT = 'taxtronik-audit-verify-checkpoint-v1\n';
+const PROGRESS_MAC_CONTEXT = 'taxtronik-audit-verify-progress-v1\n';
 
 export interface StoredSealFinding {
   id: string;
@@ -144,6 +158,11 @@ export interface CheckpointedVerifyOptions extends VerifyChainOptions {
   fullVerifyBudgetMs: number;
   /** Vollprüfung jetzt beginnen, falls keine läuft (manueller Prüflauf). */
   forceFullVerify?: boolean;
+  /**
+   * B15: Fortschrittsanker aus dem vorigen persistierten Prüfergebnis. Fehlt
+   * er oder ist er nicht authentisch, entfällt nur die Monotonieprüfung.
+   */
+  progressAnchor?: PersistedProgressAnchor | null;
   segmentLimits?: SegmentLimits;
   /** Uhr für persistierte Zeitpunkte und Fälligkeit (Tests). */
   now?: () => Date;
@@ -192,6 +211,14 @@ interface RunContext {
   sweepProgressAt: Date | null;
   /** Ein paralleler Lauf hat die Vollprüfung übernommen (nichts zur Fälligkeit melden). */
   sweepElsewhere: boolean;
+  /** B15: geprüfter Fortschrittsanker des vorigen Laufs (null = keine Prüfung). */
+  anchor: ProgressAnchor | null;
+}
+
+/** B15: Fortschrittsanker nach Prüfung der Prüfsumme. */
+interface ProgressAnchor {
+  incrementalVerifiedAt: Date;
+  sweep: { sweepId: string; verifiedAt: Date; auditId: bigint } | null;
 }
 
 /** Prüfstand der Zuwachsprüfung während eines Laufs. */
@@ -271,6 +298,7 @@ export async function verifyChainWithCheckpoints(
     persist: true,
     sweepProgressAt: null,
     sweepElsewhere: false,
+    anchor: openProgressAnchor(opts.checkpointKey, tenantId, opts.progressAnchor),
   };
   result.incremental = ctx.info;
 
@@ -303,6 +331,7 @@ export async function verifyChainWithCheckpoints(
     result.sealBreaks.length === 0 &&
     result.anchorBreaks.length === 0 &&
     result.policyBreaks.length === 0;
+  ctx.info.progressAnchor = await sealProgressAnchor(runTx, ctx);
   return result;
 }
 
@@ -341,12 +370,63 @@ async function loadIncrementalOrDiscard(
   }
   const cursor = loaded.checkpoint.cursor;
   const problem = await runTx((tx) => checkpointIntegrityProblem(tx, ctx.tenantId, cursor));
-  if (!problem) return loaded.checkpoint;
-  await discardCheckpoints(
-    runTx,
-    ctx,
-    `Prüf-Checkpoint passt nicht zur gespeicherten Kette: ${problem}`,
+  if (problem) {
+    await discardCheckpoints(
+      runTx,
+      ctx,
+      `Prüf-Checkpoint passt nicht zur gespeicherten Kette: ${problem}`,
+    );
+    return null;
+  }
+  const replayed = incrementalReplayProblem(ctx.anchor, loaded.checkpoint);
+  if (!replayed) return loaded.checkpoint;
+  await discardCheckpoints(runTx, ctx, replayed);
+  return null;
+}
+
+/**
+ * B15: Der Prüf-Checkpoint ist älter als der am Ende des vorigen Laufs
+ * festgehaltene. Jeder Schreibvorgang setzt `verified_at` streng später; ein
+ * älterer authentischer Stand ist deshalb wieder eingespielt.
+ */
+function incrementalReplayProblem(
+  anchor: ProgressAnchor | null,
+  checkpoint: StoredVerifyCheckpoint,
+): string | null {
+  if (!anchor || checkpoint.verifiedAt.getTime() >= anchor.incrementalVerifiedAt.getTime()) {
+    return null;
+  }
+  return (
+    'Prüf-Checkpoint ist älter als der im letzten Prüfergebnis festgehaltene Stand ' +
+    `(geschrieben ${checkpoint.verifiedAt.toISOString()}, festgehalten ` +
+    `${anchor.incrementalVerifiedAt.toISOString()}; wieder eingespielt)`
   );
+}
+
+/**
+ * B15: Der Stand der laufenden Vollprüfung liegt hinter dem am Ende des vorigen
+ * Laufs festgehaltenen Fortschritt derselben Vollprüfung (wieder eingespielt).
+ */
+function sweepReplayProblem(
+  anchor: ProgressAnchor | null,
+  full: StoredVerifyCheckpoint,
+): string | null {
+  const reached = anchor?.sweep;
+  if (!reached || full.sweepId !== reached.sweepId) return null;
+  if (full.cursor.auditId < reached.auditId) {
+    return (
+      'Stand der laufenden Vollprüfung liegt hinter dem im letzten Prüfergebnis ' +
+      `festgehaltenen Fortschritt (Audit-ID ${full.cursor.auditId} statt mindestens ` +
+      `${reached.auditId}; wieder eingespielt)`
+    );
+  }
+  if (full.verifiedAt.getTime() < reached.verifiedAt.getTime()) {
+    return (
+      'Stand der laufenden Vollprüfung ist älter als der im letzten Prüfergebnis ' +
+      `festgehaltene (geschrieben ${full.verifiedAt.toISOString()}, festgehalten ` +
+      `${reached.verifiedAt.toISOString()}; wieder eingespielt)`
+    );
+  }
   return null;
 }
 
@@ -614,6 +694,11 @@ async function runFullVerificationIfDue(
     running.status === 'ok' && frozen.status === 'ok'
       ? { full: running.checkpoint, target: frozen.checkpoint }
       : null;
+  const replayed = sweep ? sweepReplayProblem(ctx.anchor, sweep.full) : null;
+  if (replayed) {
+    await failAndReset(runTx, ctx, replayed);
+    return null;
+  }
   if (sweep && now.getTime() - sweep.full.verifiedAt.getTime() > FULL_SWEEP_STALE_AFTER_MS) {
     // Seit Tagen kein Fortschritt: „Vollprüfung stockt“ melden, die Vollprüfung
     // aufgeben und, da fällig, neu beginnen.
@@ -1302,6 +1387,112 @@ export async function checkpointIntegrityProblem(
     return 'zuletzt gültiger Rolling-Anker fehlt oder weicht ab';
   }
   return null;
+}
+
+// -----------------------------------------------------------------------------
+// B15: Fortschrittsanker im persistierten Prüfergebnis
+// -----------------------------------------------------------------------------
+
+type ProgressAnchorFields = Omit<PersistedProgressAnchor, 'mac'>;
+
+/** HMAC-SHA256 über Tenant und die Felder des Fortschrittsankers (eigener Kontext). */
+export function progressAnchorMac(
+  key: Buffer,
+  tenantId: string,
+  fields: ProgressAnchorFields,
+): Buffer {
+  const payload = canonicalJson({
+    tenantId: tenantId.toLowerCase(),
+    incrementalVerifiedAt: fields.incrementalVerifiedAt,
+    sweep: fields.sweep
+      ? {
+          sweepId: fields.sweep.sweepId,
+          verifiedAt: fields.sweep.verifiedAt,
+          auditId: fields.sweep.auditId,
+        }
+      : null,
+  });
+  return createHmac('sha256', key).update(PROGRESS_MAC_CONTEXT).update(payload, 'utf8').digest();
+}
+
+function isoDate(value: unknown): Date | null {
+  if (typeof value !== 'string') return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) || date.toISOString() !== value ? null : date;
+}
+
+/**
+ * Prüft Form und Prüfsumme des gespeicherten Ankers. null: fehlt, ist
+ * unlesbar oder nicht authentisch; dann entfällt nur die Monotonieprüfung.
+ */
+function openProgressAnchor(key: Buffer, tenantId: string, raw: unknown): ProgressAnchor | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  const incrementalVerifiedAt = isoDate(value['incrementalVerifiedAt']);
+  if (!incrementalVerifiedAt || typeof value['mac'] !== 'string') return null;
+  let sweep: ProgressAnchor['sweep'] = null;
+  if (value['sweep'] !== null) {
+    const rawSweep = value['sweep'];
+    if (!rawSweep || typeof rawSweep !== 'object' || Array.isArray(rawSweep)) return null;
+    const s = rawSweep as Record<string, unknown>;
+    const verifiedAt = isoDate(s['verifiedAt']);
+    const auditId = s['auditId'];
+    if (
+      typeof s['sweepId'] !== 'string' ||
+      !verifiedAt ||
+      typeof auditId !== 'string' ||
+      !/^\d{1,20}$/.test(auditId)
+    ) {
+      return null;
+    }
+    sweep = { sweepId: s['sweepId'], verifiedAt, auditId: BigInt(auditId) };
+  }
+  const mac = Buffer.from(value['mac'], 'hex');
+  const expected = progressAnchorMac(key, tenantId, {
+    incrementalVerifiedAt: incrementalVerifiedAt.toISOString(),
+    sweep: sweep
+      ? {
+          sweepId: sweep.sweepId,
+          verifiedAt: sweep.verifiedAt.toISOString(),
+          auditId: sweep.auditId.toString(),
+        }
+      : null,
+  });
+  if (mac.length !== expected.length || !timingSafeEqual(mac, expected)) return null;
+  return { incrementalVerifiedAt, sweep };
+}
+
+/**
+ * Anker am Laufende aus den dann gespeicherten, authentischen Zeilen; liest
+ * nach allen Schreibvorgängen (auch eines parallelen Laufs). null: kein
+ * Prüf-Checkpoint mehr vorhanden.
+ */
+async function sealProgressAnchor(
+  runTx: VerifyTxRunner,
+  ctx: RunContext,
+): Promise<PersistedProgressAnchor | null> {
+  const now = ctx.clock();
+  const [incremental, full] = await runTx(async (tx) => [
+    await loadVerifyCheckpoint(tx, ctx.key, ctx.tenantId, 'INCREMENTAL', now),
+    await loadVerifyCheckpoint(tx, ctx.key, ctx.tenantId, 'FULL', now),
+  ]);
+  if (incremental.status !== 'ok') return null;
+  const sweepId = incremental.checkpoint.sweepId;
+  const running =
+    sweepId !== null && full.status === 'ok' && full.checkpoint.sweepId === sweepId
+      ? full.checkpoint
+      : null;
+  const fields: ProgressAnchorFields = {
+    incrementalVerifiedAt: incremental.checkpoint.verifiedAt.toISOString(),
+    sweep: running
+      ? {
+          sweepId: running.sweepId!,
+          verifiedAt: running.verifiedAt.toISOString(),
+          auditId: running.cursor.auditId.toString(),
+        }
+      : null,
+  };
+  return { ...fields, mac: progressAnchorMac(ctx.key, ctx.tenantId, fields).toString('hex') };
 }
 
 // -----------------------------------------------------------------------------

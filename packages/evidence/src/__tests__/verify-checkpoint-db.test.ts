@@ -7,7 +7,9 @@
 // Anker unterhalb des Checkpoints werden geprüft, (4) ein manipulierter
 // Checkpoint oder eine manipulierte Checkpoint-Zeile fällt sofort auf,
 // (5) Manipulation unterhalb des Checkpoints findet die (fortsetzbare)
-// Vollprüfung, (6) Anker werden blockweise geladen.
+// Vollprüfung, (6) Anker werden blockweise geladen, (7) B15: zwischen zwei
+// Läufen wieder eingespielte ältere Stände fallen am Fortschrittsanker des
+// vorigen Prüfergebnisses auf.
 //
 // Alle Audit-, Siegel-, Anker- und Checkpoint-Zeilen entstehen in einer
 // Owner-Transaktion, die am Testende zurückgerollt wird; Manipulationen
@@ -24,6 +26,7 @@ import {
   MAX_STORED_FINDINGS,
   checkpointMac,
   loadVerifyCheckpoint,
+  progressAnchorMac,
   verifyChainWithCheckpoints,
   type CheckpointedVerifyOptions,
   type StoredVerifyCheckpoint,
@@ -1221,6 +1224,157 @@ const DAY = 24 * 60 * 60 * 1000;
           a < b ? -1 : a > b ? 1 : 0,
         ),
       );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // B15: Fortschrittsanker im persistierten Prüfergebnis. Der Worker reicht den
+  // Anker des vorigen Laufs (result.incremental.progressAnchor) in den nächsten.
+  // ---------------------------------------------------------------------------
+  function anchorOf(result: VerificationResult) {
+    return result.incremental?.progressAnchor ?? null;
+  }
+
+  it('B15: Folgeläufe mit dem Anker des Vorlaufs schließen eine Vollprüfung befundfrei ab', async () => {
+    await inRollback(async (tx) => {
+      await record(tx, 40);
+      let previous = await run(tx);
+      expect(anchorOf(previous)).toMatchObject({
+        sweep: null,
+        mac: expect.stringMatching(/^[0-9a-f]{64}$/),
+      });
+      const day = (n: number) => () => new Date(Date.now() + n * DAY);
+      const daily: VerificationResult[] = [];
+      for (let n = 8; n < 30; n++) {
+        await record(tx, 1);
+        previous = await run(tx, {
+          fullVerifyBudgetMs: 0,
+          now: day(n),
+          progressAnchor: anchorOf(previous),
+        });
+        daily.push(previous);
+        if (previous.incremental?.mode === 'full') break;
+      }
+      expect(daily.length).toBeGreaterThan(3);
+      expect(daily.at(-1)?.incremental?.mode).toBe('full');
+      expect(daily.flatMap((result) => result.policyBreaks)).toEqual([]);
+      // Während der Vollprüfung hält der Anker deren Fortschritt fest.
+      expect(anchorOf(daily[0]!)?.sweep).toMatchObject({ sweepId: expect.any(String) });
+      expect(anchorOf(daily.at(-1)!)?.sweep).toBeNull();
+      expect((await stored(tx, 'INCREMENTAL', day(60)()))?.sweepId).toBeNull();
+    });
+  });
+
+  it('B15: ein zwischen zwei Läufen wieder eingespielter früherer Vollprüfungsstand ist ein Befund', async () => {
+    await inRollback(async (tx) => {
+      await record(tx, 40);
+      await run(tx);
+      const started = await run(tx, { forceFullVerify: true, fullVerifyBudgetMs: 0 });
+      const earlier = await captureRows(tx, ['FULL']);
+      const advanced = await run(tx, {
+        fullVerifyBudgetMs: 0,
+        progressAnchor: anchorOf(started),
+      });
+      expect(advanced.policyBreaks).toEqual([]);
+      const reached = anchorOf(advanced)!.sweep!;
+      expect(BigInt(reached.auditId)).toBeGreaterThan(BigInt(anchorOf(started)!.sweep!.auditId));
+
+      // Angreifer ohne Schlüssel spielt einen früheren, authentischen Stand
+      // derselben Vollprüfung zurück (jünger als drei Tage, also kein „stockt“).
+      await replayRows(tx, ['FULL'], earlier);
+      // Ohne Anker (Ergebnis von vor B15) bliebe das unbemerkt.
+      const unnoticed = await run(tx, { fullVerifyBudgetMs: 0 });
+      expect(unnoticed.policyBreaks).toEqual([]);
+
+      await replayRows(tx, ['FULL'], earlier);
+      const detected = await run(tx, {
+        fullVerifyBudgetMs: 0,
+        progressAnchor: anchorOf(advanced),
+      });
+      expect(detected.ok).toBe(false);
+      expect(detected.policyBreaks).toEqual([
+        expect.stringMatching(
+          /^Stand der laufenden Vollprüfung liegt hinter dem im letzten Prüfergebnis festgehaltenen Fortschritt \(Audit-ID \d+ statt mindestens \d+; wieder eingespielt\) \(Manipulationsverdacht\)/,
+        ),
+      ]);
+      expect(await stored(tx)).toBeNull();
+      expect(anchorOf(detected)).toBeNull();
+      // Der nächste Lauf prüft die Kette ab Genesis vollständig.
+      const rewalk = await run(tx, { progressAnchor: anchorOf(detected) });
+      expect(rewalk.incremental).toMatchObject({ mode: 'full', startAuditId: null });
+      expect(rewalk.policyBreaks).toEqual([]);
+      await expectSameAsVerifyChain(tx, rewalk);
+    });
+  });
+
+  it('B15: ein wieder eingespielter Prüf-Checkpoint von vor dem Start der Vollprüfung ist ein Befund', async () => {
+    await inRollback(async (tx) => {
+      await record(tx, 40);
+      const first = await run(tx);
+      const beforeSweep = await captureRows(tx, ['INCREMENTAL']);
+      const started = await run(tx, {
+        forceFullVerify: true,
+        fullVerifyBudgetMs: 0,
+        progressAnchor: anchorOf(first),
+      });
+      expect(started.incremental?.fullVerification).not.toBeNull();
+      const dropSweep = () => tx.$executeRaw`
+        DELETE FROM audit_verify_checkpoint
+        WHERE tenant_id = ${tenantId}::uuid AND kind IN ('FULL', 'FULL_TARGET')
+      `;
+
+      // Angreifer: ungebundenen Prüf-Checkpoint zurückspielen und den Stand der
+      // Vollprüfung löschen. Ohne Anker sieht das aus, als liefe keine.
+      await replayRows(tx, ['INCREMENTAL'], beforeSweep);
+      await dropSweep();
+      const unnoticed = await run(tx, { fullVerifyBudgetMs: 0 });
+      expect(unnoticed.policyBreaks).toEqual([]);
+
+      await replayRows(tx, ['INCREMENTAL'], beforeSweep);
+      await dropSweep();
+      const detected = await run(tx, {
+        fullVerifyBudgetMs: 0,
+        progressAnchor: anchorOf(started),
+      });
+      expect(detected.policyBreaks).toEqual([
+        expect.stringMatching(
+          /^Prüf-Checkpoint ist älter als der im letzten Prüfergebnis festgehaltene Stand \(geschrieben .+, festgehalten .+; wieder eingespielt\) \(Manipulationsverdacht\)/,
+        ),
+      ]);
+      // Wie jeder verworfene Checkpoint: Neuprüfung ab Genesis im selben Lauf.
+      expect(detected.incremental).toMatchObject({ mode: 'full', startAuditId: null });
+      await expectChainFindingsAsVerifyChain(tx, detected);
+      expect(anchorOf(detected)).toMatchObject({ sweep: null });
+    });
+  });
+
+  it('B15: ein nicht authentischer oder fremder Anker schaltet nur die Monotonieprüfung ab', async () => {
+    await inRollback(async (tx) => {
+      await record(tx, 20);
+      await run(tx);
+      // Vorverlegt: als echter Anker meldete er jeden Prüf-Checkpoint als alt.
+      const ahead = {
+        incrementalVerifiedAt: new Date(Date.now() + DAY).toISOString(),
+        sweep: null,
+      };
+      const candidates = [
+        { ...ahead, mac: '00'.repeat(32) },
+        { ...ahead, mac: progressAnchorMac(KEY, randomUUID(), ahead).toString('hex') },
+        { ...ahead, mac: progressAnchorMac(Buffer.alloc(32, 8), tenantId, ahead).toString('hex') },
+        { ...ahead, incrementalVerifiedAt: 'gestern', mac: 'zz' },
+        'kein Anker',
+      ];
+      for (const progressAnchor of candidates) {
+        const result = await run(tx, { progressAnchor: progressAnchor as never });
+        expect(result.policyBreaks).toEqual([]);
+        expect(result.ok).toBe(true);
+      }
+      // Gegenprobe: derselbe Anker mit Schlüssel und Tenant wird geprüft.
+      const sealed = { ...ahead, mac: progressAnchorMac(KEY, tenantId, ahead).toString('hex') };
+      const flagged = await run(tx, { progressAnchor: sealed });
+      expect(flagged.policyBreaks).toEqual([
+        expect.stringMatching(/^Prüf-Checkpoint ist älter als der im letzten Prüfergebnis/),
+      ]);
     });
   });
 });

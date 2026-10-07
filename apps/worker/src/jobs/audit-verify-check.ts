@@ -20,6 +20,7 @@ import {
   toPersistedVerifyResult,
   verifyChainWithCheckpoints,
   type CheckpointedVerifyOptions,
+  type PersistedProgressAnchor,
   type PersistedRecoveryCheckpoint,
   type PersistedVerifyResult,
   type VerificationResult,
@@ -54,7 +55,10 @@ export const FULL_VERIFY_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 // folgt im nächsten Lauf ab dem gespeicherten Fortschritt.
 export const FULL_VERIFY_BUDGET_MS = 10 * 60 * 1000;
 
-export function checkpointedVerifyOptions(manual: boolean): CheckpointedVerifyOptions {
+export function checkpointedVerifyOptions(
+  manual: boolean,
+  progressAnchor: PersistedProgressAnchor | null = null,
+): CheckpointedVerifyOptions {
   return {
     requireExternalTsa,
     // HMAC-Schlüssel der Prüf-Checkpoints: HKDF aus dem vorhandenen
@@ -63,6 +67,9 @@ export function checkpointedVerifyOptions(manual: boolean): CheckpointedVerifyOp
     fullVerifyIntervalMs: FULL_VERIFY_INTERVAL_MS,
     fullVerifyBudgetMs: FULL_VERIFY_BUDGET_MS,
     forceFullVerify: manual,
+    // B15: Fortschrittsanker des vorigen Laufs; ein älterer Checkpoint- oder
+    // Vollprüfungsstand gilt danach als wieder eingespielt.
+    progressAnchor,
   };
 }
 
@@ -247,14 +254,14 @@ interface AuditVerifyEntry {
   fullVerificationPending?: boolean;
 }
 
-interface TenantVerificationRun {
+export interface TenantVerificationRun {
   checkedAt: Date;
   result: VerificationResult;
   recoveryResult: VerificationResult | null;
   recovered: boolean;
 }
 
-interface TenantVerificationOutcome {
+export interface TenantVerificationOutcome {
   persisted: PersistedVerifyResult;
   freshFailure: boolean;
   recovered: boolean;
@@ -285,7 +292,7 @@ async function verifyTenantChain(
     evidenceService,
     (work) => prismaOwner.$transaction((tx) => work(tx), VERIFY_TX_OPTIONS),
     tenantId,
-    checkpointedVerifyOptions(manual),
+    checkpointedVerifyOptions(manual, previous?.progressAnchor ?? null),
   );
   const checkpointValue = await withWorkerTenantContext(tenantId, (tx) =>
     readTenantSettingValue(tx, tenantId, AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY),
@@ -311,7 +318,15 @@ async function verifyTenantChain(
   return { checkedAt, result, recoveryResult, recovered };
 }
 
-function evaluateTenantVerification(
+/**
+ * B15: Fortschrittsanker dieses Laufs (auch bei Befunden); fehlt er, prüft der
+ * nächste Lauf ohne Monotonie-Vergleich.
+ */
+function runProgressAnchor(run: TenantVerificationRun): PersistedProgressAnchor | null {
+  return run.result.incremental?.progressAnchor ?? null;
+}
+
+export function evaluateTenantVerification(
   previous: PersistedVerifyResult | null,
   run: TenantVerificationRun,
   requestId: string | null,
@@ -358,6 +373,7 @@ function evaluateTenantVerification(
       ],
       requestId,
       recovered,
+      progressAnchor: runProgressAnchor(run),
     },
   };
 }
@@ -480,16 +496,19 @@ async function notifyFullVerificationRunning(input: {
   );
 }
 
-async function handleTenantVerifyError(input: {
-  tenantId: string;
+/**
+ * Ergebnis eines mit Exception abgebrochenen Laufs. Die Monotonie-Anker des
+ * vorigen Ergebnisses (höchste Audit-/Anchor-ID, B15-Fortschrittsanker)
+ * bleiben erhalten, sonst prüfte der Folgelauf blind.
+ */
+export function failedRunVerifyResult(input: {
+  checkedAt: Date;
   requestId: string | null;
   previous: PersistedVerifyResult | null;
-  error: unknown;
-}): Promise<AuditVerifyEntry> {
-  const errorMessage = input.error instanceof Error ? input.error.message : String(input.error);
-  log.error({ tenantId: input.tenantId, err: errorMessage }, 'audit-verify: tenant failed');
-  await persistVerifyResult(input.tenantId, {
-    checkedAt: new Date().toISOString(),
+  errorMessage: string;
+}): PersistedVerifyResult {
+  return {
+    checkedAt: input.checkedAt.toISOString(),
     requestId: input.requestId,
     ok: false,
     checked: 0,
@@ -500,9 +519,29 @@ async function handleTenantVerifyError(input: {
     sealBreaks: 0,
     policyBreaks: [],
     firstBreak: null,
-    error: errorMessage,
+    error: input.errorMessage,
     recovered: false,
-  }).catch((error) =>
+    progressAnchor: input.previous?.progressAnchor ?? null,
+  };
+}
+
+async function handleTenantVerifyError(input: {
+  tenantId: string;
+  requestId: string | null;
+  previous: PersistedVerifyResult | null;
+  error: unknown;
+}): Promise<AuditVerifyEntry> {
+  const errorMessage = input.error instanceof Error ? input.error.message : String(input.error);
+  log.error({ tenantId: input.tenantId, err: errorMessage }, 'audit-verify: tenant failed');
+  await persistVerifyResult(
+    input.tenantId,
+    failedRunVerifyResult({
+      checkedAt: new Date(),
+      requestId: input.requestId,
+      previous: input.previous,
+      errorMessage,
+    }),
+  ).catch((error) =>
     log.warn(
       { tenantId: input.tenantId, err: (error as Error).message },
       'audit-verify: persist failed',

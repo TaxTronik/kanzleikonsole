@@ -72,6 +72,26 @@ export interface PersistedVerifyResult {
    *  `checked` bleibt die kumulierte Zahl ab Genesis, `rowsHashed` die in
    *  diesem Lauf nachgerechneten Einträge). Fehlt bei älteren Ergebnissen. */
   incremental?: PersistedIncrementalInfo;
+  /** B15: Fortschrittsanker der Prüf-Checkpoints am Laufende (null = keine
+   *  Checkpoints). Fehlt bei älteren Ergebnissen; ein Fehlerlauf übernimmt den
+   *  vorigen Anker. */
+  progressAnchor?: PersistedProgressAnchor | null;
+}
+
+/**
+ * B15: Stand der Prüf-Checkpoints am Ende eines Laufs. Jeder Schreibvorgang
+ * setzt `verified_at` streng später; ein Folgelauf, der einen älteren
+ * Prüf-Checkpoint oder einen älteren Stand derselben Vollprüfung vorfindet,
+ * meldet ihn als wieder eingespielt. Die Prüfsumme (HMAC mit dem
+ * Checkpoint-Schlüssel) verhindert einen ohne Schlüssel vorverlegten Anker.
+ */
+export interface PersistedProgressAnchor {
+  /** verified_at des Prüf-Checkpoints (INCREMENTAL), ISO-8601. */
+  incrementalVerifiedAt: string;
+  /** Laufende Vollprüfung am Laufende; null = keine. */
+  sweep: { sweepId: string; verifiedAt: string; auditId: string } | null;
+  /** HMAC-SHA256 (hex) über Tenant und die Felder oben. */
+  mac: string;
 }
 
 export interface PersistedIncrementalInfo {
@@ -149,7 +169,12 @@ export function toPersistedVerifyResult(
     lastAnchoredAuditId: r.lastAnchoredAuditId === null ? null : String(r.lastAnchoredAuditId),
     unanchoredEntries: r.unanchoredEntries,
     oldestUnanchoredAt: r.oldestUnanchoredAt?.toISOString() ?? null,
-    ...(r.incremental ? { incremental: toPersistedIncrementalInfo(r.incremental) } : {}),
+    ...(r.incremental
+      ? {
+          incremental: toPersistedIncrementalInfo(r.incremental),
+          progressAnchor: r.incremental.progressAnchor ?? null,
+        }
+      : {}),
   };
 }
 

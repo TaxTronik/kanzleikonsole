@@ -96,16 +96,26 @@ aus dem Worker-Geheimnis abgeleiteten Schlüssel. Wer dieses Geheimnis und
 zugleich Owner-Rechte an der Datenbank besitzt, kann authentische, aber
 falsche Checkpoints schreiben und Befunde in bereits geprüfter Historie bis zu
 einer Prüfung ohne Checkpoint (`pnpm verify:chain`) verbergen. Ohne das
-Geheimnis bleiben nur wieder eingespielte ältere authentische Zeilen. Alle
-drei Zeilen einer laufenden Vollprüfung gemeinsam wieder eingespielt
-(Prüf-Checkpoint mit ihrer Kennung, Fortschritt kurz vor dem Abschluss und
-Ziel) können innerhalb der Dreitagesfrist einmalig ihren Abschluss
-vortäuschen; die nächste echte Vollprüfung erkennt eine Manipulation, der
-Gewinn ist auf etwa ein Intervall begrenzt. Wiederholt durch frühere, weniger
-als drei Tage alte Stände ersetzt, lässt sich eine laufende Vollprüfung
-erheblich verlangsamen, ohne dass „Vollprüfung stockt“ (drei Tage ohne
-Fortschritt) oder „Vollprüfung überfällig“ (21 Tage ohne laufende
-Vollprüfung) gemeldet wird. Die App-Rolle darf Tagessiegel anlegen; füllt sie
+Geheimnis bleiben nur wieder eingespielte ältere authentische Zeilen. Jeder
+Prüflauf hält dagegen im persistierten Prüfergebnis einen
+prüfsummengeschützten Fortschrittsanker fest: Schreibzeitpunkt des
+Prüf-Checkpoints sowie Kennung, Position und Schreibzeitpunkt einer laufenden
+Vollprüfung. Findet der nächste Lauf einen älteren Prüf-Checkpoint oder einen
+älteren Stand derselben Vollprüfung vor, meldet er ihn als
+Manipulationsverdacht, verwirft die Checkpoints und prüft die Kette ab Genesis
+vollständig; zwischen zwei Läufen zurückgespielte Stände verlangsamen eine
+Vollprüfung deshalb nicht mehr unbemerkt. Der Anker liegt wie das übrige
+Prüfergebnis in den Mandanteneinstellungen und ist nur gegen Fälschung, nicht
+gegen Wiedereinspielen oder Löschen geschützt. Wer vor jedem Lauf zusätzlich
+ein dazu passendes älteres Prüfergebnis zurückspielt oder den Anker entfernt,
+kann eine laufende Vollprüfung weiterhin erheblich verlangsamen, ohne dass
+„Vollprüfung stockt“ (drei Tage ohne Fortschritt) oder „Vollprüfung
+überfällig“ (21 Tage ohne laufende Vollprüfung) gemeldet wird. Auf demselben
+Weg können alle drei Zeilen einer laufenden Vollprüfung (Prüf-Checkpoint mit
+ihrer Kennung, Fortschritt kurz vor dem Abschluss und Ziel) gemeinsam wieder
+eingespielt innerhalb der Dreitagesfrist einmalig ihren Abschluss vortäuschen;
+die nächste echte Vollprüfung erkennt eine Manipulation, der Gewinn ist auf
+etwa ein Intervall begrenzt. Die App-Rolle darf Tagessiegel anlegen; füllt sie
 die 1.000 gespeicherten Siegelbefunde mit ungültigen Siegeln, werden spätere
 echte Siegelbefunde nur gezählt und nicht einzeln aufgeführt, der Status
 bleibt negativ.

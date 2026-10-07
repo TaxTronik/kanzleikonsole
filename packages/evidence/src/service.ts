@@ -25,6 +25,7 @@ import type { PrismaClient, AuditActorType } from '@prisma/client';
 import { eventHash, chainValue, type ChainEvent } from './chain';
 import { anchorGenesisHash, anchorPayload, anchorTokenHash } from './anchor';
 import type { TimestampPort } from './ports/timestamp';
+import type { PersistedProgressAnchor } from './verify-status';
 
 type Tx = Pick<PrismaClient, '$queryRaw' | '$queryRawUnsafe' | '$executeRaw'>;
 
@@ -150,6 +151,11 @@ export interface IncrementalVerificationInfo {
   lastFullVerifiedAt: Date | null;
   /** Fortschritt einer noch nicht abgeschlossenen Vollprüfung. */
   fullVerification: { startedAt: Date; auditId: bigint; targetAuditId: bigint } | null;
+  /**
+   * B15: Fortschrittsanker am Laufende für das persistierte Prüfergebnis
+   * (null = keine authentischen Checkpoints mehr vorhanden).
+   */
+  progressAnchor?: PersistedProgressAnchor | null;
 }
 
 export interface VerifyChainOptions {
