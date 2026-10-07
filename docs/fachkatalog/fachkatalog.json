@@ -569,7 +569,8 @@
         "apps/web/src/server/auth/staff-login-ticket.ts",
         "apps/web/src/server/auth/staff-password.ts",
         "apps/web/src/server/auth/password-hash-pool.ts",
-        "apps/worker/src/jobs/fido-mds-refresh.ts"
+        "apps/worker/src/jobs/fido-mds-refresh.ts",
+        "packages/db/prisma/migrations/20261007100400_document_mandate_artifact_flag/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
@@ -620,7 +621,8 @@
         "packages/crypto/src/__tests__/certificate-path.test.ts",
         "apps/web/src/server/auth/__tests__/webauthn-attestation.test.ts",
         "apps/web/src/server/auth/__tests__/webauthn-library-contract.test.ts",
-        "apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts"
+        "apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts",
+        "packages/db/src/__tests__/document-mandate-artifact-flag.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",

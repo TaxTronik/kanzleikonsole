@@ -1,0 +1,1 @@
+CREATE TRIGGER mandate_artifact_mark_document AFTER INSERT OR UPDATE OF document_id ON public.mandate_artifact FOR EACH ROW WHEN ((new.document_id IS NOT NULL)) EXECUTE FUNCTION app.mark_mandate_artifact_document();

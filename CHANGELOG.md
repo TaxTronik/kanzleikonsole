@@ -235,6 +235,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope]** Die RLS-Policy für Dokumente prüft Mandatsartefakte nur noch für
+  Dokumente, auf die ein Artefakt verweist (`document.has_mandate_artifact`,
+  per Trigger gepflegt, monoton). Mit 20.000 Dokumenten sinkt
+  `SELECT count(*)` als App-Rolle von 170–300 ms auf 4–6 ms; Sichtbarkeit und
+  Schreibprüfung bleiben unverändert (`ACCESS-TENANT-RLS-001`).
 - Der Status von E-Mail-Anhängen (`inbound_attachment.status`) ist per CHECK
   auf die vom Code geschriebenen Werte beschränkt; abweichende Bestandswerte
   lassen die Migration mit Wert und Anzahl abbrechen (`MAIL-INBOX-001`).

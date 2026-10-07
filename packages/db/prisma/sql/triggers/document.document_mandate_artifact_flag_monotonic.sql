@@ -1,0 +1,1 @@
+CREATE TRIGGER document_mandate_artifact_flag_monotonic BEFORE UPDATE OF has_mandate_artifact ON public.document FOR EACH ROW WHEN ((old.has_mandate_artifact AND (NOT new.has_mandate_artifact))) EXECUTE FUNCTION app.guard_document_mandate_artifact_flag();

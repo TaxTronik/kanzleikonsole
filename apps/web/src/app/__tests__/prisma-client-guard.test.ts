@@ -253,6 +253,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // B7: Owner-Fixtures in zwei Wegwerf-Tenants; Setzen, Auflisten und Compare-and-Set-
   // Löschen der Widerrufsmarker laufen wie im Worker als Rolle taxtronik_owner.
   'packages/db/src/__tests__/portal-session-revocation-pending.test.ts',
+  // P-01: Superuser-Fixtures in einer zurückgerollten Transaktion; bisherige und
+  // aktuelle Dokument-Policy werden ausgewertet und mit der RLS der App-Rolle verglichen.
+  'packages/db/src/__tests__/document-mandate-artifact-flag.test.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
   // Restore-Drill: eigene Clients der Drill-Rolle (S-01) für CREATE/DROP der

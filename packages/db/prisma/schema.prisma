@@ -2247,6 +2247,11 @@ model Document {
   classification              DocumentClassification
   /// Additional staff-only read restriction for generated payroll material.
   requiresPayrollAccess       Boolean                @default(false) @map("requires_payroll_access")
+  /// P-01: Ein Mandatsartefakt verweist auf dieses Dokument. Nur die Datenbank
+  /// setzt das Flag (Trigger auf mandate_artifact, Migration 20261007100400), und
+  /// es ist monoton. Nur markierte Dokumente durchlaufen in der RLS-Policy
+  /// document_mandate_artifact_scope die Artefaktprüfung.
+  hasMandateArtifact          Boolean                @default(false) @map("has_mandate_artifact")
   mimeType                    String                 @map("mime_type")
   retentionUntil              DateTime?              @map("retention_until")
   createdAt                   DateTime               @default(now()) @map("created_at")

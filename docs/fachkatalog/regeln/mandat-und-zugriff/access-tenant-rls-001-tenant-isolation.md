@@ -116,6 +116,7 @@ code_refs:
   - apps/web/src/server/auth/staff-password.ts
   - apps/web/src/server/auth/password-hash-pool.ts
   - apps/worker/src/jobs/fido-mds-refresh.ts
+  - packages/db/prisma/migrations/20261007100400_document_mandate_artifact_flag/migration.sql
 test_refs:
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts
@@ -166,6 +167,7 @@ test_refs:
   - apps/web/src/server/auth/__tests__/webauthn-attestation.test.ts
   - apps/web/src/server/auth/__tests__/webauthn-library-contract.test.ts
   - apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts
+  - packages/db/src/__tests__/document-mandate-artifact-flag.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -254,6 +256,14 @@ Policy versehen. `verify:rls` muss den Build stoppen; bis zur Ergänzung besteht
 keine behauptete Abdeckung für diese Tabelle.
 
 ## Umsetzung in TaxTronik
+
+Die RESTRICTIVE-Policy `document_mandate_artifact_scope` prüft
+Mandatsartefakte nur für Dokumente mit `document.has_mandate_artifact`. Das
+Flag setzt ein Trigger beim Verknüpfen eines Artefakts in derselben Anweisung;
+es ist monoton (kein Rücksetzen) und wurde für bestehende Verknüpfungen mit
+abschließender Kontrolle nachgetragen. Sichtbarkeit und Schreibprüfung
+entsprechen der vorherigen Policy; ein Vergleichstest prüft beide Policies je
+Dokumentart und Rolle.
 
 Nach `pg_restore` prüft die Restore-CLI vor jeder Erfolgsmeldung die 17 bisherigen
 effektiven Rollen-/Grant-/REVOKE-Invarianten und fünf zusätzliche Invarianten
