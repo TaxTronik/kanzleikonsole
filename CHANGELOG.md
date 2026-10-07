@@ -23,6 +23,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- Jede Antwort der Web-App trägt den Header `x-request-id`; jede Logzeile, die
+  während der Anfrage entsteht (Server Components, Server Actions, Route
+  Handler), enthält dieselbe `requestId`. Eine vom Reverse-Proxy gesetzte ID
+  wird nur übernommen, wenn sie eine UUID oder 16 bis 64 Hex-Zeichen ist.
+  Unbehandelte Fehler werden mit Request-ID, Routenmuster und Digest
+  protokolliert, ohne konkreten Pfad; Worker-Logzeilen tragen Queue und Job-ID.
 - Client-IP hinter dem Reverse-Proxy: Das Initialsetup fragt bei der
   Standardmethode, ob ein vorgeschalteter Reverse-Proxy `X-Forwarded-For` setzt
   und wie viele Proxy-Hops bestehen, und schreibt `TRUST_PROXY_REQUIRED` bzw.

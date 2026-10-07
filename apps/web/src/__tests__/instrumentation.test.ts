@@ -8,6 +8,7 @@ const m = vi.hoisted(() => ({
   setN8nEmitter: vi.fn(),
   emitN8nEvent: vi.fn(),
   initializeHardwareAccessPolicy: vi.fn(),
+  logRequestError: vi.fn(),
   log: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
@@ -20,6 +21,7 @@ vi.mock('@/server/logger', () => ({ log: m.log }));
 vi.mock('@/server/auth/webauthn', () => ({
   initializeHardwareAccessPolicy: m.initializeHardwareAccessPolicy,
 }));
+vi.mock('@/server/log-request-error', () => ({ logRequestError: m.logRequestError }));
 
 const env = process.env as Record<string, string | undefined>;
 const original = { runtime: env['NEXT_RUNTIME'], nodeEnv: env['NODE_ENV'] };
@@ -81,5 +83,35 @@ describe('instrumentation register()', () => {
 
     expect(m.setN8nEmitter).not.toHaveBeenCalled();
     expect(m.setMailLogger).not.toHaveBeenCalled();
+  });
+});
+
+// F-06: unbehandelte Request-Fehler gehen mit Request-ID ins strukturierte Log.
+describe('instrumentation onRequestError()', () => {
+  const request = { path: '/staff/dashboard', method: 'GET', headers: {} };
+  const context = {
+    routerKind: 'App Router',
+    routePath: '/staff/dashboard',
+    routeType: 'render',
+    revalidateReason: undefined,
+  } as const;
+
+  it('reicht den Fehler in Node an den strukturierten Logger weiter', async () => {
+    env['NEXT_RUNTIME'] = 'nodejs';
+    const { onRequestError } = await import('../instrumentation');
+    const error = new Error('kaputt');
+
+    await onRequestError(error, request, context);
+
+    expect(m.logRequestError).toHaveBeenCalledExactlyOnceWith(error, request, context);
+  });
+
+  it('lässt die Edge-Runtime unberührt', async () => {
+    env['NEXT_RUNTIME'] = 'edge';
+    const { onRequestError } = await import('../instrumentation');
+
+    await onRequestError(new Error('kaputt'), request, context);
+
+    expect(m.logRequestError).not.toHaveBeenCalled();
   });
 });

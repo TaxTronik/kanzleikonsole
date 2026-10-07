@@ -23,6 +23,7 @@ vi.mock('bullmq', () => ({
 }));
 vi.mock('../logger', () => ({ log: h.log }));
 
+import { currentJobLogContext } from '../log-context';
 import { createWorker, logJobFailure, logWorkerError } from '../worker-factory';
 
 function job(overrides: Record<string, unknown> = {}) {
@@ -53,7 +54,7 @@ describe('F-05 createWorker', () => {
     });
 
     expect(h.constructed).toEqual([
-      { name: 'queue-a', processor, opts: { connection, concurrency: 4 } },
+      { name: 'queue-a', processor: expect.any(Function), opts: { connection, concurrency: 4 } },
     ]);
     expect(worker.name).toBe('queue-a');
     expect([...h.handlers.keys()].sort()).toEqual(['error', 'failed']);
@@ -68,6 +69,60 @@ describe('F-05 createWorker', () => {
       expect.objectContaining({ queue: 'queue-a', err: 'lock lost' }),
       'worker: error',
     );
+  });
+});
+
+// F-06: Jeder Job läuft im Log-Kontext aus Queue und Job-ID.
+describe('F-06 job log context', () => {
+  it('runs the processor with queue and job id as log context across awaits', async () => {
+    const seen: unknown[] = [];
+    const processor = vi.fn(async (_job: unknown, token?: string) => {
+      seen.push(currentJobLogContext());
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      seen.push(currentJobLogContext());
+      return `done:${token}`;
+    });
+    createWorker('queue-a', processor, { connection: {} as never });
+    const wrapped = h.constructed[0]!.processor as (...args: unknown[]) => Promise<unknown>;
+
+    const signal = new AbortController().signal;
+    await expect(wrapped(job(), 'lock-token', signal)).resolves.toBe('done:lock-token');
+
+    expect(processor).toHaveBeenCalledWith(job(), 'lock-token', signal);
+    expect(seen).toEqual([
+      { queue: 'queue-a', jobId: 'job-1' },
+      { queue: 'queue-a', jobId: 'job-1' },
+    ]);
+    expect(currentJobLogContext()).toBeUndefined();
+  });
+
+  it('keeps concurrent jobs apart and propagates processor errors unchanged', async () => {
+    const processor = vi.fn(async (current: { id?: string }) => {
+      await new Promise((resolve) => setTimeout(resolve, current.id === 'job-1' ? 5 : 1));
+      if (current.id === 'job-2') throw new Error('boom');
+      return currentJobLogContext();
+    });
+    createWorker('queue-b', processor, { connection: {} as never });
+    const wrapped = h.constructed[0]!.processor as (...args: unknown[]) => Promise<unknown>;
+
+    const [first, second] = await Promise.allSettled([
+      wrapped(job()),
+      wrapped(job({ id: 'job-2' })),
+    ]);
+
+    expect(first).toEqual({ status: 'fulfilled', value: { queue: 'queue-b', jobId: 'job-1' } });
+    expect(second).toMatchObject({ status: 'rejected', reason: { message: 'boom' } });
+  });
+
+  it('uses null as job id when BullMQ has not assigned one', async () => {
+    const processor = vi.fn(async () => currentJobLogContext());
+    createWorker('queue-c', processor, { connection: {} as never });
+    const wrapped = h.constructed[0]!.processor as (...args: unknown[]) => Promise<unknown>;
+
+    await expect(wrapped(job({ id: undefined }))).resolves.toEqual({
+      queue: 'queue-c',
+      jobId: null,
+    });
   });
 });
 

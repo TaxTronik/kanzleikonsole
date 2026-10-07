@@ -7,9 +7,13 @@
 // auf console.error. Jeder Worker entsteht jetzt hier und loggt beides
 // strukturiert (Queue, Job-ID/-Name, Versuche, Fehler). Job-Daten werden bewusst
 // nicht geloggt — sie können personenbezogene Inhalte tragen.
+//
+// F-06: Jeder Job läuft in einem Log-Kontext (log-context.ts); alle Zeilen, die
+// der Processor schreibt, tragen damit Queue und Job-ID.
 // =============================================================================
 
 import { Worker, type Job, type Processor, type WorkerOptions } from 'bullmq';
+import { runWithJobLogContext } from './log-context';
 import { log } from './logger';
 
 function errorFields(err: unknown, withStack: boolean): Record<string, unknown> {
@@ -92,9 +96,20 @@ export function logWorkerError(queue: string, err: unknown, now: number = Date.n
   );
 }
 
+/** F-06: Processor im Log-Kontext seines Jobs (Queue + Job-ID) ausführen. */
+export function withJobLogContext<DataType, ResultType, NameType extends string>(
+  queueName: string,
+  processor: Processor<DataType, ResultType, NameType>,
+): Processor<DataType, ResultType, NameType> {
+  return (job, token, signal) =>
+    runWithJobLogContext({ queue: queueName, jobId: job.id ?? null }, () =>
+      processor(job, token, signal),
+    );
+}
+
 /**
  * Drop-in für `new Worker(...)`: gleiche Argumente, plus garantierte
- * `failed`- und `error`-Handler.
+ * `failed`- und `error`-Handler und Log-Kontext je Job.
  */
 export function createWorker<
   DataType = unknown,
@@ -105,7 +120,11 @@ export function createWorker<
   processor: Processor<DataType, ResultType, NameType>,
   opts: WorkerOptions,
 ): Worker<DataType, ResultType, NameType> {
-  const worker = new Worker<DataType, ResultType, NameType>(queueName, processor, opts);
+  const worker = new Worker<DataType, ResultType, NameType>(
+    queueName,
+    withJobLogContext(queueName, processor),
+    opts,
+  );
   worker.on('failed', (job, err) => logJobFailure(queueName, job as Job | undefined, err));
   worker.on('error', (err) => logWorkerError(queueName, err));
   return worker;

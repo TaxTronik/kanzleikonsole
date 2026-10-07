@@ -28,6 +28,7 @@
 // =============================================================================
 
 import type { PrismaClient } from '@prisma/client';
+import { log } from '@/server/logger';
 import { getRedis } from '@/server/redis';
 
 export const MAX_FAILED_LOGIN_ATTEMPTS = 5;
@@ -58,8 +59,11 @@ async function resetDistinctFailIps(userId: string): Promise<void> {
   if (!r) return;
   try {
     await r.del(`staff-fail-ips:${userId}`);
-  } catch {
-    console.warn('[lockout] Redis del für fail-ips fehlgeschlagen');
+  } catch (err) {
+    log.warn(
+      { component: 'lockout', err: (err as Error).message },
+      'lockout: Redis-DEL der Fehlversuchs-IPs fehlgeschlagen',
+    );
   }
 }
 

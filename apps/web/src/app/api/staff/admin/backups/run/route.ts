@@ -5,6 +5,7 @@ import { staffAuth } from '@/server/auth/staff';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
 import { prismaOwner } from '@/server/db/prisma-owner';
+import { log } from '@/server/logger';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { matchesSingleTenantBackupScope } from '@/server/backup/scope';
@@ -96,7 +97,10 @@ export async function POST(req: NextRequest) {
     }
   } catch (e) {
     // z. B. Audit-Write oder Redis fehlgeschlagen — keine internen Details ans UI.
-    console.error(`[backup] Trigger fehlgeschlagen: ${(e as Error).message}`);
+    log.error(
+      { component: 'backup-trigger', err: (e as Error).message },
+      'backup: Trigger fehlgeschlagen',
+    );
     return NextResponse.json({ error: 'backup_failed' }, { status: 500 });
   }
 
@@ -129,7 +133,10 @@ export async function GET() {
       { headers: { 'Cache-Control': 'no-store' } },
     );
   } catch (e) {
-    console.error(`[backup] Statusabfrage fehlgeschlagen: ${(e as Error).message}`);
+    log.error(
+      { component: 'backup-trigger', err: (e as Error).message },
+      'backup: Statusabfrage fehlgeschlagen',
+    );
     return NextResponse.json({ error: 'backup_status_unavailable' }, { status: 503 });
   }
 }

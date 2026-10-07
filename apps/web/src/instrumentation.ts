@@ -1,3 +1,5 @@
+import type { Instrumentation } from 'next';
+
 /**
  * Start jeder Node-Replica (Next.js ruft register() genau einmal je
  * Serverprozess auf, vor der ersten Anfrage).
@@ -22,3 +24,14 @@ export async function register(): Promise<void> {
   const { initializeHardwareAccessPolicy } = await import('@/server/auth/webauthn');
   await initializeHardwareAccessPolicy();
 }
+
+/**
+ * F-06: Unbehandelte Fehler aus Server Components, Server Actions, Route
+ * Handlern und dem Proxy als strukturierte Logzeile mit Request-ID; Next.js
+ * schreibt sie sonst nur unstrukturiert auf die Konsole.
+ */
+export const onRequestError: Instrumentation.onRequestError = async (error, request, context) => {
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+  const { logRequestError } = await import('@/server/log-request-error');
+  logRequestError(error, request, context);
+};

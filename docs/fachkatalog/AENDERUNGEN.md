@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-021
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/instrumentation.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      `instrumentation.ts` registriert zusätzlich `onRequestError`, das unbehandelte
+      Fehler mit Request-ID, Routenmuster und Digest protokolliert (ohne konkreten
+      Pfad, weil die Query Einmal-Tokens tragen kann). Die bestehende
+      Startinitialisierung, Zugriffsschutz, Sitzungen und Tenant-Isolation bleiben
+      unverändert; die Änderung ergänzt nur Protokollierung. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/web/src/__tests__/instrumentation.test.ts
+      - apps/web/src/server/__tests__/log-request-error.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-020
     date: '2026-10-07'
     paths:
@@ -4560,6 +4577,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-021` dokumentiert die Fehlerprotokollierung
+  mit Request-ID in der Next-Instrumentierung.
 
 - 2026-10-07: `FK-EXC-20261007-020` dokumentiert gemeinsame Bezeichnungen
   und den stufenbasierten Löschhinweis der Dokumentablage.

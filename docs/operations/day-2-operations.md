@@ -431,6 +431,31 @@ Backup-Dump, `psql`) und meldet `FEHLT`, wenn die Summe `max_connections`
 erhöht, hebt `POSTGRES_MAX_CONNECTIONS` mit an (je Verbindung einige MB RAM) oder
 setzt PgBouncer davor.
 
+## Logs und Request-ID
+
+App und Worker schreiben strukturierte JSON-Zeilen (pino) nach stdout;
+`./taxtronik logs app` bzw. `./taxtronik logs worker` zeigen sie.
+
+- **Web:** Jede Antwort trägt den Header `x-request-id`. Jede Logzeile, die
+  während dieses Requests entsteht (Server Components, Server Actions, Route
+  Handler und deren Hintergrundarbeit), enthält dasselbe Feld `requestId`.
+  Unbehandelte Fehler erscheinen zusätzlich als `request: unbehandelter Fehler`
+  mit `requestId`, Routenmuster `routePath` (ohne konkreten Pfad und ohne
+  Query-String, der Einmal-Token tragen kann) und Next.js-`digest`. Meldet ein
+  Nutzer einen Fehler, genügt die Request-ID aus den Entwicklerwerkzeugen des
+  Browsers (Netzwerk, Antwort-Header):
+
+  ```bash
+  ./taxtronik logs app --since 24h | grep '"requestId":"<id>"'
+  ```
+
+- **Eingehende IDs:** Setzt der Reverse-Proxy bereits `X-Request-ID`, übernimmt
+  die App den Wert nur, wenn er eine UUID oder 16 bis 64 Hex-Zeichen ist
+  (etwa nginx mit `proxy_set_header X-Request-ID $request_id;`). Jeder andere
+  Wert wird durch eine neue UUID ersetzt; Freitext, Namen oder Client-IPs
+  gelangen so nicht in die ID.
+- **Worker:** Jede Zeile eines Jobs trägt `queue` (Queue-Name) und `jobId`.
+
 ## SMTP
 
 Mailhog ist nur Dev. Produktion benötigt ein echtes SMTP-Relay:

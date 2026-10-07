@@ -10,7 +10,9 @@
 //   3. Redirect zur richtigen Login-Seite, falls keine Session
 //   4. Tenant-Resolution (Subdomain → tenant_slug → tenant_id) und Weitergabe
 //      via Request-Header an Server Components / Route Handlers
-//   5. Request-ID-Vergabe für strukturiertes Logging
+//   5. Request-ID-Vergabe für strukturiertes Logging (F-06: wohlgeformte
+//      eingehende `x-request-id` wird übernommen, sonst neu vergeben; steht
+//      auf jeder Antwort des Proxys und in jeder Logzeile des Requests)
 // =============================================================================
 
 import { NextResponse, type NextRequest } from 'next/server';
@@ -25,6 +27,8 @@ import {
   acceptedSessionCookieNames,
   readSessionCookieValue,
 } from '@/server/auth/session-cookie';
+// Ebenfalls abhängigkeitsfrei: Format und Vergabe der Request-ID.
+import { REQUEST_ID_HEADER, resolveRequestId } from '@/server/log-request-id';
 
 const STAFF_PATH_PREFIX = '/staff';
 const PORTAL_PATH_PREFIX = '/portal';
@@ -93,7 +97,7 @@ function createRequestSecurityContext(): RequestSecurityContext {
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
-  const requestId = crypto.randomUUID();
+  const requestId = resolveRequestId(request.headers.get(REQUEST_ID_HEADER));
   const security = createRequestSecurityContext();
 
   // 1. Globale Legacy-Callbacks sind default-off und werden bereits vor dem
@@ -108,6 +112,7 @@ export function proxy(request: NextRequest): NextResponse {
           headers: { 'cache-control': 'no-store' },
         }),
         security,
+        requestId,
       );
     }
     return forwardWithHeaders(request, { requestId }, security);
@@ -132,13 +137,13 @@ export function proxy(request: NextRequest): NextResponse {
       const u = request.nextUrl.clone();
       u.pathname = PORTAL_LOGIN_PATH;
       u.search = '';
-      return secureResponse(NextResponse.redirect(u), security);
+      return secureResponse(NextResponse.redirect(u), security, requestId);
     }
     if (reqHost === STAFF_HOST && pathname.startsWith(PORTAL_PATH_PREFIX)) {
       const u = request.nextUrl.clone();
       u.pathname = STAFF_LOGIN_PATH;
       u.search = '';
-      return secureResponse(NextResponse.redirect(u), security);
+      return secureResponse(NextResponse.redirect(u), security, requestId);
     }
   }
 
@@ -161,7 +166,7 @@ export function proxy(request: NextRequest): NextResponse {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = surface === 'staff' ? STAFF_LOGIN_PATH : PORTAL_LOGIN_PATH;
     loginUrl.searchParams.set('returnTo', pathname);
-    return secureResponse(NextResponse.redirect(loginUrl), security);
+    return secureResponse(NextResponse.redirect(loginUrl), security, requestId);
   }
 
   // 6. Tenant-Resolution. Strategie:
@@ -285,12 +290,17 @@ interface DecorationContext {
  * Lösung: `NextResponse.next({ request: { headers: newRequestHeaders } })`
  * — Next.js merged die übergebenen Header IN den weiterfließenden Request,
  * sodass Server Components / Route Handlers sie via `headers()` lesen können.
- * Die x-request-id stellen wir zusätzlich auf die Response, damit sie im
- * Browser/in Log-Aggregation sichtbar bleibt; Tenant-Slug + Surface bleiben
- * strikt interne Information.
+ * Die x-request-id stellen wir zusätzlich auf jede Response (auch Redirects
+ * und 404), damit sie im Browser/in Log-Aggregation sichtbar bleibt;
+ * Tenant-Slug + Surface bleiben strikt interne Information.
  */
-function secureResponse(response: NextResponse, security: RequestSecurityContext): NextResponse {
+function secureResponse(
+  response: NextResponse,
+  security: RequestSecurityContext,
+  requestId: string,
+): NextResponse {
   response.headers.set('Content-Security-Policy', security.contentSecurityPolicy);
+  response.headers.set(REQUEST_ID_HEADER, requestId);
   return response;
 }
 
@@ -305,13 +315,13 @@ function forwardWithHeaders(
   // frühen Return-Pfaden (n8n-Webhooks, statische Assets, Public-Pfade,
   // unbekannte Pfade) ungefiltert weitergereicht werden — sobald irgendwo
   // Server-Code den Header liest, hätten wir eine Spoofing-Lücke.
-  reqHeaders.delete('x-request-id');
+  reqHeaders.delete(REQUEST_ID_HEADER);
   reqHeaders.delete('x-taxtronik-surface');
   reqHeaders.delete('x-taxtronik-tenant-slug');
   reqHeaders.delete('x-taxtronik-pathname');
   reqHeaders.delete('x-nonce');
 
-  reqHeaders.set('x-request-id', ctx.requestId);
+  reqHeaders.set(REQUEST_ID_HEADER, ctx.requestId);
   if (ctx.surface) reqHeaders.set('x-taxtronik-surface', ctx.surface);
   if (ctx.tenantSlug) reqHeaders.set('x-taxtronik-tenant-slug', ctx.tenantSlug);
   reqHeaders.set('x-taxtronik-pathname', request.nextUrl.pathname);
@@ -320,10 +330,12 @@ function forwardWithHeaders(
   reqHeaders.set('x-nonce', security.nonce);
   reqHeaders.set('Content-Security-Policy', security.contentSecurityPolicy);
 
-  const response = NextResponse.next({ request: { headers: reqHeaders } });
-  // Nur Request-ID auf die Response — für Browser/Log-Korrelation.
-  response.headers.set('x-request-id', ctx.requestId);
-  return secureResponse(response, security);
+  // Nur Request-ID auf die Response (secureResponse) — für Browser/Log-Korrelation.
+  return secureResponse(
+    NextResponse.next({ request: { headers: reqHeaders } }),
+    security,
+    ctx.requestId,
+  );
 }
 
 // -----------------------------------------------------------------------------
