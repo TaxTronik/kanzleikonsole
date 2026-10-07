@@ -18,8 +18,10 @@ implementation:
   summary: >-
     Der zweiphasige Helper und der GwG-Onboarding-Pfad journalisieren einen
     festen PENDING-Intent vor dem Object-Write und können ihn wiederaufnehmen.
-    Mehrere andere geschützte Commit-Pfade schreiben hingegen zuerst in den
-    Store und besitzen nur eine nachgelagerte Orphan-Kompensation.
+    Die direkten Upload-Pfade journalisieren vor dem PUT eine Speicherabsicht,
+    die ihre Commit-Transaktion abschließt; eine offen gebliebene Absicht löst
+    der Cleanup-Worker auf, statt sie wiederaufzunehmen. Risiko-Archiv und
+    Engine-Rohergebnisse schreiben weiterhin ohne Vorab-Journal.
 sources:
   - kind: product_documentation
     citation: Technische Modulbeschreibung Dokumentenarchiv, Upload- und Kompensationsgrenzen
@@ -32,9 +34,14 @@ code_refs:
   - apps/web/src/app/api/staff/documents/download/route.ts
   - apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts
   - apps/worker/src/jobs/storage-orphan-cleanup.ts
+  - apps/worker/src/run-budget.ts
   - apps/web/src/server/documents/resumable-upload.ts
   - apps/web/src/server/documents/upload-helpers.ts
   - apps/web/src/server/documents/storage-compensation.ts
+  - apps/web/src/server/documents/journaled-upload.ts
+  - apps/web/src/server/documents/storage-intent.ts
+  - packages/db/prisma/migrations/20261006130000_storage_orphan_absent_resolution/migration.sql
+  - packages/db/prisma/migrations/20261006130100_storage_upload_intent/migration.sql
   - apps/web/src/app/gwg-onboarding/actions.ts
   - apps/web/src/server/inbox/staging-upload.ts
   - apps/web/src/server/inbox/accept-attachment.ts
@@ -58,6 +65,11 @@ test_refs:
   - apps/web/src/server/inbox/__tests__/rejection.test.ts
   - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
   - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
+  - apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts
+  - apps/worker/src/__tests__/run-budget.test.ts
+  - apps/web/src/server/documents/__tests__/journaled-upload.test.ts
+  - apps/web/src/server/documents/__tests__/storage-intent.test.ts
+  - packages/db/src/__tests__/storage-upload-intent.test.ts
 feature_refs:
   - docs/development/module/dokumentenarchiv.md
 related_rules:
@@ -77,8 +89,10 @@ tags:
 Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine
 `PENDING`-Dokumentversion mit festem Bucket, Schlüssel, Hash, Größe und
 Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und
-auf `CLEAN` finalisiert werden. Diese Vorab-Journalisierung ist derzeit nicht
-einheitlich auf allen geschützten Uploadwegen eingesetzt.
+auf `CLEAN` finalisiert werden. Diese wiederaufnehmbare Vorab-Journalisierung
+ist nicht auf allen geschützten Uploadwegen eingesetzt; die direkten
+Upload-Pfade journalisieren vor dem Write eine Speicherabsicht, die erst ihre
+Commit-Transaktion abschließt.
 
 ## Wann gilt die Regel?
 
@@ -114,10 +128,13 @@ Vorab-Intent-Garantie erfasst.
 
 Eine PENDING-Zeile kann absichtlich länger bestehen, wenn Store oder
 Datenbank ausfallen; sie ist ein Untersuchungs- und Wiederaufnahmepunkt, kein
-fertiges Dokument. Bei direktem Commit bleibt zwischen Store-Erfolg und
-nachgelagertem DB-/Orphan-Journal ein Prozessabbruchfenster. Schlägt auch das
-Orphan-Journal fehl, verbleibt nur ein strukturiertes Betriebslog. Nicht jeder
-intern erzeugte geschützte Blob verwendet das Dokumentjournal.
+fertiges Dokument. Bei direktem Commit steht die Speicherabsicht bereits vor
+dem Write im Journal; ein Prozessabbruch oder gescheiterter Commit hinterlässt
+eine offene Absicht, die der Cleanup-Worker nach der Sicherheitsfrist auflöst.
+Nur wenn eine Absicht beim Freigeben nicht mehr offen ist, greift die
+nachgelagerte Orphan-Kompensation; schlägt auch sie fehl, verbleibt nur ein
+strukturiertes Betriebslog. Nicht jeder intern erzeugte geschützte Blob
+verwendet das Dokumentjournal.
 
 ## Beispiele
 
@@ -151,20 +168,52 @@ bereits finalisierte Ausgaben erfüllen dieselben Statusfelder. Ein unbekannter
 Altbestand ohne Abschlusszeitpunkt bleibt gesperrt; es erfolgt weder ein
 pauschaler Backfill noch ein fingierter Scan-Nachweis.
 
-Der gemeinsame Orphan-Worker priorisiert die geringste Zahl bisheriger
-Bereinigungsversuche, danach Alter und ID. So blockiert ein voller Batch
-dauerhaft fehlender oder mehrdeutiger Speicheridentitäten keine späteren
-bereinigungsfähigen Objekte. Die Schutz-, Referenz- und Versionsprüfungen
-bleiben Voraussetzung jeder physischen Löschung. Ab dem fünften gescheiterten
-Versuch erscheint zusätzlich ein Betriebswarnhinweis zur manuellen Klärung.
-Der Regressionstest führt mehrere Läufe mit 100 dauerhaft fehlerhaften
-Objekten und einem jüngeren löschbaren Objekt aus.
+Der gemeinsame Orphan-Worker zieht je Lauf Batch um Batch zu je 100
+Kandidaten, bis kein fälliger Kandidat mehr übrig ist oder das Zeitbudget von
+zehn Minuten verbraucht ist; fährt der Worker herunter, endet der Lauf vor dem
+nächsten Schritt. Die Auswahl priorisiert die geringste Zahl bisheriger
+Bereinigungsversuche, danach Alter und ID. Ein in diesem Lauf gescheiterter
+Kandidat kommt erst im nächsten Lauf erneut an die Reihe. So blockiert ein
+voller Batch dauerhaft fehlender oder mehrdeutiger Speicheridentitäten keine
+späteren bereinigungsfähigen Objekte. Die Schutz-, Referenz- und
+Versionsprüfungen bleiben Voraussetzung jeder physischen Löschung. Ab dem
+fünften gescheiterten Versuch erscheint zusätzlich ein Betriebswarnhinweis zur
+manuellen Klärung. Den danach weiterhin fälligen, unaufgelösten Rückstand
+meldet der Lauf im Job-Ergebnis; die Jobübersicht der Administration zeigt ihn
+als „Rückstand“. Der Regressionstest belegt in einem Lauf mit 100 dauerhaft
+fehlerhaften Objekten und einem jüngeren löschbaren Objekt, dass das löschbare
+Objekt im zweiten Batch gelöscht wird und jeder gescheiterte Kandidat höchstens
+einen Versuch je Lauf erhält. Weitere Tests belegen den Nachlauf über mehrere
+Batches und das Ende am Zeitbudget mit gemeldetem Rückstand.
 
 `upload-helpers.ts` erzeugt und finalisiert die unveränderliche PENDING-Zeile.
 `resumable-upload.ts` orchestriert Prepare, Journal, Commit, Recovery und CAS-
 Finalize unter Tenant- und Fachguards. Der GwG-Onboarding-Pfad nutzt denselben
-PENDING-Grundmechanismus. `storage-compensation.ts` führt für direkte
-Store-first-Pfade eine nachgelagerte, ownerseitige Orphan-Reconciliation.
+PENDING-Grundmechanismus.
+
+Die direkten Upload-Pfade (Staff- und Portal-Upload, neue Version,
+Wissensanhang, Umklassifizierung mit erneuter Ablage, Fremdrechnung,
+Steuererklärungs-PDF, Formular-Upload, Rechercheablage) laufen über
+`journaled-upload.ts`. Eine gemeinsame Vorprüfung je Upload-Art läuft vor Scan,
+Journal und Write; vorhersehbare Ablehnungen erzeugen so weder Journal noch
+Objekt. Nach Größenprüfung, Virenscan hochgeladener Bytes und Hashbildung
+journalisiert `storage-intent.ts` die Speicherabsicht mit festem Bucket,
+Schlüssel, SHA-256, Größe, Schutz und Retention über die Owner-Verbindung im
+Storage-Orphan-Journal (`intent`); erst danach folgt der bedingte PUT. Die
+Commit-Transaktion wiederholt die
+Vorprüfung und schließt die Absicht über `app.settle_storage_intent` atomar
+ab. Die Funktion verlangt eine Dokumentversion desselben Tenants mit genau
+dieser Speicheridentität und eine offene, unbeanspruchte Absicht; ihre
+Zeilensperre hält einen parallelen Worker-Claim bis zum Commit auf, und eine
+bereits vom Worker beanspruchte Absicht lässt den Fachcommit scheitern. Das
+E-Rechnungsarchiv journalisiert PDF und XML gemeinsam vor dem ersten PUT.
+Scheitert der Commit, bleibt die Absicht mit gebundener Objektversion offen;
+`storage-compensation.ts` journalisiert nur noch nachgelagert, wenn die
+Absicht nicht mehr offen ist. Der Cleanup-Worker löst offene Absichten nach
+der Sicherheitsfrist von 30 Minuten, unter Object Lock erst nach dem
+Retention-Ende, auf: referenziert (`REFERENCED`), unreferenziert
+versionsgenau gelöscht oder nie geschrieben (`ABSENT`, nur für Absichten ohne
+gebundene Objektversion).
 
 Der Mandantenposteingang persistiert für jede Anlage zuerst eine PENDING-
 Staging-Identität mit unveränderlichem Bucket, Key, Hash, Größe, MIME-Typ,
@@ -185,10 +234,13 @@ atomar als `StorageOrphan` journalisiert.
 ## Bekannte Abweichungen und Grenzen
 
 Die Umsetzung ist teilweise: Die im Scope zunächst allgemein formulierte
-Vorab-Journalisierung gilt nicht für alle geschützten Uploadpfade. Insbesondere
-direkte Staff-Uploads, neue Versionen und mehrere intern erzeugte Archive
-committen vor ihrer Fachtransaktion in den Store. Deren nachgelagertes
-Orphan-Journal reduziert, schließt aber das Crash-Fenster nicht vollständig.
+Vorab-Journalisierung als wiederaufnehmbare PENDING-Dokumentversion gilt nicht
+für alle geschützten Uploadpfade. Die direkten Upload-Pfade journalisieren
+stattdessen eine Speicherabsicht vor dem Write; ein abgebrochener Upload wird
+dort nicht wiederaufgenommen, sondern vom Cleanup-Worker aufgelöst. Das
+Risiko-Archiv und die Engine-Rohergebnisse der Risikoanalyse schreiben
+weiterhin ohne Vorab-Journal in den GoBD-gesperrten Store; ihnen fehlt ein
+Dokumentbezug, den der Cleanup-Worker prüfen könnte.
 
 Abgelaufene oder verworfene Inbox-Drafts werden durch einen eigenen Worker
 erfasst. Er löscht Bytes nicht unjournalisiert, sondern übergibt die feste
@@ -210,7 +262,10 @@ Storage-Version, löscht der gemeinsame Worker nicht über einen bloßen
 Delete-Marker. Er recoveriert zuerst genau eine Hash-/Größen-identische
 Objektversion, bindet deren ID dauerhaft am Journal und löscht anschließend
 versionsgenau. Abwesenheit, Mehrdeutigkeit oder ein Bindungskonflikt bleiben als
-wiederholbarer Fehler offen.
+wiederholbarer Fehler offen. Eine vor dem Write journalisierte Absicht, unter
+deren Schlüssel nach der Sicherheitsfrist weder eine Version noch ein
+Delete-Marker existiert, wurde dagegen nie geschrieben und wird als `ABSENT`
+abgeschlossen.
 
 ## Fachliche Prüffragen
 
@@ -238,6 +293,17 @@ PENDING-Reservierung, Scope-/Hash-/Mehrversions-Rollback und die
 versionsgenaue Recovery vor physischer Löschung. Die Tests zeigen zugleich
 nicht, dass jeder Aufrufer den
 zweiphasigen Helper verwendet.
+
+Die Journal-Tests der direkten Upload-Pfade belegen die Reihenfolge
+Vorprüfung, Journal, PUT und Abschluss in der Commit-Transaktion, eine
+auflösbare offene Absicht nach einem Abbruch zwischen PUT und Commit, das
+Ausbleiben jedes Writes bei gescheiterter Vorprüfung, infizierten Bytes oder
+gescheitertem Journal und die Kompensation nur als Rückfallebene.
+PostgreSQL-Tests belegen den Abschluss ausschließlich über die eng gebundene
+Definer-Funktion, die offene Absicht nach zurückgerollter Fachtransaktion,
+`ABSENT` nur ohne gebundene Objektversion und einen bis zum Fachcommit
+wartenden Worker-Claim. Der Worker-Datenbanktest belegt versionsgenaue
+Löschung, `ABSENT`, `REFERENCED` und das Warten auf das Retention-Ende.
 
 ### Ergänzung: Mandanten-Assistenten
 

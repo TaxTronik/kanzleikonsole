@@ -159,7 +159,7 @@
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Teilweise umgesetzt**
 - Geltung: nicht eingegrenzt
-- Kurzfassung: Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine PENDING-Dokumentversion mit festem Bucket, Schlüssel, Hash, Größe und Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und auf CLEAN finalisiert werden. Diese Vorab-Journalisierung ist derzeit nicht einheitlich auf allen geschützten Uploadwegen eingesetzt.
+- Kurzfassung: Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine PENDING-Dokumentversion mit festem Bucket, Schlüssel, Hash, Größe und Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und auf CLEAN finalisiert werden. Diese wiederaufnehmbare Vorab-Journalisierung ist nicht auf allen geschützten Uploadwegen eingesetzt; die direkten Upload-Pfade journalisieren vor dem Write eine Speicherabsicht, die erst ihre Commit-Transaktion abschließt.
 
 ### [DOC-VERSION-IMMUTABILITY-001 — Geschützte Dokumentversionen nur anfügen und Schutz nicht herabsetzen](regeln/dokumente-und-aufbewahrung/doc-version-immutability-001-geschuetzte-versionen.md)
 

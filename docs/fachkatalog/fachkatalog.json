@@ -265,12 +265,17 @@
         "packages/db/prisma/migrations/20260901007000_portal_inbox_assignee_refresh/migration.sql",
         "apps/web/src/server/inbox/client-notification.ts",
         "packages/mail/src/dispatch.ts",
-        "apps/worker/src/notification-recipients.ts"
+        "apps/worker/src/notification-recipients.ts",
+        "apps/worker/src/notify.ts"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts",
         "apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts",
         "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
+        "apps/worker/src/jobs/__tests__/reminders-daily-db.test.ts",
+        "packages/db/src/__tests__/staff-client-access-batch.test.ts",
+        "apps/worker/src/__tests__/notify.test.ts",
+        "packages/db/src/__tests__/notification-batch.test.ts",
         "apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/notifications/__tests__/page.test.tsx",
         "apps/e2e/tests/12-accessibility.spec.ts",
@@ -506,6 +511,7 @@
         "apps/web/src/server/rate-limit/index.ts",
         "apps/web/src/app/staff/(protected)/dashboard/rss-feed-actions.ts",
         "apps/web/src/server/auth/portal.ts",
+        "apps/web/src/server/auth/magic-link.ts",
         "apps/web/src/server/auth/magic-link-entry.ts",
         "apps/web/src/app/portal/(auth)/login/actions.ts",
         "apps/web/src/app/portal/(auth)/login/verify/page.tsx",
@@ -555,6 +561,7 @@
         "packages/db/prisma/migrations/20261006160000_owner_role_least_privilege/migration.sql",
         "packages/crypto/src/certificate-path.ts",
         "apps/web/src/server/auth/webauthn-attestation.ts",
+        "apps/worker/src/jobs/fido-mds-verify.ts",
         "apps/worker/src/jobs/fido-mds-trust-anchors.ts",
         "apps/web/src/server/auth/session-factory.ts",
         "apps/web/src/server/auth/staff-session.ts",
@@ -578,6 +585,11 @@
         "apps/web/src/app/staff/(auth)/login/__tests__/totp-enrollment.test.ts",
         "apps/web/src/app/staff/(auth)/login/__tests__/totp-setup-race.test.ts",
         "apps/web/src/server/auth/__tests__/session-renewal.test.ts",
+        "apps/web/src/server/auth/__tests__/session-factory.test.ts",
+        "apps/web/src/server/auth/__tests__/staff-login-ticket.test.ts",
+        "apps/web/src/server/auth/__tests__/staff-login-without-client-ip.test.ts",
+        "apps/web/src/server/auth/__tests__/magic-link-request-limit.test.ts",
+        "apps/web/src/server/rate-limit/__tests__/ip-or-global-limit.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
         "packages/db/src/__tests__/reminder-tickets.test.ts",
         "packages/db/src/__tests__/tax-master-data.test.ts",
@@ -764,7 +776,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Der Rotationsjob erzeugt prüfbare NDJSON-Segmente, legt sie im COMPLIANCE-Object-Lock ab und kann Upload- oder Datenbankunterbrechungen vorwärts auflösen."
+        "summary": "Der Rotationsjob erzeugt prüfbare NDJSON-Segmente, legt sie im COMPLIANCE-Object-Lock ab und kann Upload- oder Datenbankunterbrechungen vorwärts auflösen. Je Lauf archiviert er Segment um Segment bis zu einem Zeitbudget; ohne verifizierten externen Stempel archivierte Segmente bleiben PENDING und werden von späteren Läufen nachgestempelt."
       },
       "sources": [
         {
@@ -785,12 +797,16 @@
       "code_refs": [
         "packages/evidence/src/archive.ts",
         "packages/evidence/src/canonical-json.ts",
-        "apps/worker/src/jobs/audit-rotate.ts"
+        "apps/worker/src/jobs/audit-rotate.ts",
+        "apps/worker/src/run-budget.ts",
+        "packages/db/prisma/migrations/20261005110100_audit_archive_tsa_status/migration.sql"
       ],
       "test_refs": [
         "packages/evidence/src/__tests__/archive.test.ts",
         "packages/evidence/src/__tests__/canonical-json-keys.test.ts",
-        "apps/worker/src/jobs/__tests__/audit-rotate.test.ts"
+        "apps/worker/src/jobs/__tests__/audit-rotate.test.ts",
+        "apps/worker/src/__tests__/run-budget.test.ts",
+        "packages/db/src/__tests__/audit-archive-tsa-status.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/audit-protokollierung.md",
@@ -1039,6 +1055,7 @@
       ],
       "code_refs": [
         "apps/worker/src/jobs/audit-verify-check.ts",
+        "apps/worker/src/notify.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/actions.ts",
         "apps/web/src/app/staff/(protected)/admin/audit/audit-chain-status.tsx",
         "apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts",
@@ -1803,7 +1820,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Der zweiphasige Helper und der GwG-Onboarding-Pfad journalisieren einen festen PENDING-Intent vor dem Object-Write und können ihn wiederaufnehmen. Mehrere andere geschützte Commit-Pfade schreiben hingegen zuerst in den Store und besitzen nur eine nachgelagerte Orphan-Kompensation."
+        "summary": "Der zweiphasige Helper und der GwG-Onboarding-Pfad journalisieren einen festen PENDING-Intent vor dem Object-Write und können ihn wiederaufnehmen. Die direkten Upload-Pfade journalisieren vor dem PUT eine Speicherabsicht, die ihre Commit-Transaktion abschließt; eine offen gebliebene Absicht löst der Cleanup-Worker auf, statt sie wiederaufzunehmen. Risiko-Archiv und Engine-Rohergebnisse schreiben weiterhin ohne Vorab-Journal."
       },
       "sources": [
         {
@@ -1820,9 +1837,14 @@
         "apps/web/src/app/api/staff/documents/download/route.ts",
         "apps/web/src/app/api/staff/clients/[id]/datev-belege-export/route.ts",
         "apps/worker/src/jobs/storage-orphan-cleanup.ts",
+        "apps/worker/src/run-budget.ts",
         "apps/web/src/server/documents/resumable-upload.ts",
         "apps/web/src/server/documents/upload-helpers.ts",
         "apps/web/src/server/documents/storage-compensation.ts",
+        "apps/web/src/server/documents/journaled-upload.ts",
+        "apps/web/src/server/documents/storage-intent.ts",
+        "packages/db/prisma/migrations/20261006130000_storage_orphan_absent_resolution/migration.sql",
+        "packages/db/prisma/migrations/20261006130100_storage_upload_intent/migration.sql",
         "apps/web/src/app/gwg-onboarding/actions.ts",
         "apps/web/src/server/inbox/staging-upload.ts",
         "apps/web/src/server/inbox/accept-attachment.ts",
@@ -1846,7 +1868,12 @@
         "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts",
         "apps/web/src/server/inbox/__tests__/rejection.test.ts",
         "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts",
-        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts"
+        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts",
+        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts",
+        "apps/worker/src/__tests__/run-budget.test.ts",
+        "apps/web/src/server/documents/__tests__/journaled-upload.test.ts",
+        "apps/web/src/server/documents/__tests__/storage-intent.test.ts",
+        "packages/db/src/__tests__/storage-upload-intent.test.ts"
       ],
       "feature_refs": ["docs/development/module/dokumentenarchiv.md"],
       "related_rules": [
@@ -1856,7 +1883,7 @@
       ],
       "tags": ["upload", "journal", "recovery"],
       "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-upload-journal-001-zweiphasiger-upload.md",
-      "summary": "Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine PENDING-Dokumentversion mit festem Bucket, Schlüssel, Hash, Größe und Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und auf CLEAN finalisiert werden. Diese Vorab-Journalisierung ist derzeit nicht einheitlich auf allen geschützten Uploadwegen eingesetzt."
+      "summary": "Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine PENDING-Dokumentversion mit festem Bucket, Schlüssel, Hash, Größe und Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und auf CLEAN finalisiert werden. Diese wiederaufnehmbare Vorab-Journalisierung ist nicht auf allen geschützten Uploadwegen eingesetzt; die direkten Upload-Pfade journalisieren vor dem Write eine Speicherabsicht, die erst ihre Commit-Transaktion abschließt."
     },
     {
       "id": "DOC-VERSION-IMMUTABILITY-001",
@@ -2161,6 +2188,7 @@
       ],
       "code_refs": [
         "apps/worker/src/jobs/storage-orphan-cleanup.ts",
+        "apps/worker/src/run-budget.ts",
         "apps/worker/src/jobs/dsgvo-retention.ts",
         "apps/worker/src/jobs/n8n-retention.ts",
         "apps/worker/src/jobs/magic-link-cleanup.ts",
@@ -2169,6 +2197,7 @@
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts",
+        "apps/worker/src/__tests__/run-budget.test.ts",
         "apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts",
         "apps/worker/src/jobs/__tests__/n8n-retention.test.ts",
         "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts"
@@ -3288,7 +3317,8 @@
         "packages/tax/src/screening/screening.test.ts",
         "packages/tax/src/screening/persistence.test.ts",
         "apps/web/src/server/screening/__tests__/gwg-gate.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
+        "apps/worker/src/jobs/__tests__/sanctions-refresh.test.ts"
       ],
       "feature_refs": ["docs/development/module/screening.md"],
       "related_rules": ["GWG-RISK-REVIEW-001", "ACCESS-TENANT-RLS-001", "ACCESS-CLIENT-MODE-001"],
@@ -4777,11 +4807,13 @@
         "apps/web/src/server/risk/persistence.ts",
         "apps/worker/src/jobs/risk-analyse-llm.ts",
         "apps/web/src/server/risk/reanalyze.ts",
-        "packages/db/src/risk-analysis.ts"
+        "packages/db/src/risk-analysis.ts",
+        "apps/web/src/server/jobs/risk-analyse-queue.ts"
       ],
       "test_refs": [
         "apps/web/src/server/risk/__tests__/llm.test.ts",
         "apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts",
+        "apps/web/src/server/jobs/__tests__/risk-analyse-queue.test.ts",
         "apps/web/src/server/risk/__tests__/norms-core.test.ts",
         "apps/web/src/server/risk/__tests__/reanalyze.test.ts",
         "packages/db/src/__tests__/risk-archive-consistency.test.ts"

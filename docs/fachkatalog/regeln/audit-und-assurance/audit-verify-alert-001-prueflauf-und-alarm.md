@@ -29,6 +29,7 @@ sources:
     primary: false
 code_refs:
   - apps/worker/src/jobs/audit-verify-check.ts
+  - apps/worker/src/notify.ts
   - apps/web/src/app/staff/(protected)/admin/audit/actions.ts
   - apps/web/src/app/staff/(protected)/admin/audit/audit-chain-status.tsx
   - apps/web/src/app/staff/(protected)/admin/audit/audit-page-state.ts
@@ -135,8 +136,12 @@ Befunds bleiben betriebliche Aufgaben.
 Ein Recovery-Checkpoint kann nach einem dokumentierten Restore eine neue
 Überwachungsbasis setzen. Er ändert weder frühere Audit-Einträge noch frühere
 Prüfergebnisse und unterdrückt keine anschließend neu auftretende Verkürzung.
-Eine bereits offene Warnung wird aktualisiert, damit parallele Läufe nicht
-beliebig viele gleichartige Meldungen erzeugen.
+Je Empfänger gibt es höchstens eine ungelesene Warnung je Bruchstelle (erste
+gebrochene Audit-ID): Eine erneute Meldung derselben Bruchstelle aktualisiert
+sie, damit parallele oder wiederholte Läufe keine gleichartigen Meldungen
+vervielfachen. Eine neue Bruchstelle erhält eine eigene Warnung; Befunde ohne
+Bruchstelle, etwa Verkürzungen, Policy- oder Laufzeitfehler, teilen sich eine
+Warnung.
 
 Der Prüf-Checkpoint ist kein Recovery-Checkpoint: Er hält nur fest, bis zu
 welcher Position die Kette bereits erfolgreich geprüft wurde, und setzt keine
@@ -212,7 +217,12 @@ starten.
 
 `audit-verify-check.ts` paginiert Kanzlei-Tenants, prüft je Tenant mit
 `verifyChainWithCheckpoints` (`verify-checkpoint.ts`), vergleicht lokale und
-externe Maximal-IDs monoton und schreibt Status sowie Notifications.
+externe Maximal-IDs monoton und schreibt Status sowie Notifications. Die
+Warnungen an aktive ADMIN/PARTNER laufen über den gemeinsamen Worker-Pfad
+`notify()`: Texte werden bereinigt, und ihr Schlüssel aus Tenant, Empfänger,
+Art und Ressource enthält die Bruchstelle als Ressourcen-ID. Eine ungelesene
+Warnung mit demselben Schlüssel wird aktualisiert, sonst neu angelegt; der
+Ressourcenlink einer bestehenden Warnung wird nie umgeschrieben.
 `actions.ts` startet manuelle Läufe und dokumentiert Recovery-Checkpoints als
 eigene Audit-Aktionen.
 
@@ -336,6 +346,8 @@ die sichtbare Trennung von gefilterter Liste und vollständigem Kettenstatus,
 die historische Einordnung nur mit persistierter Recovery sowie weiterhin
 sichtbare neue Policy- und Laufzeitfehler trotz altem Checkpoint. Die
 Komponentenaufteilung verändert keine Workerentscheidung oder Audit-Aktion.
+Ein Worker-Test belegt, dass Warnungen über `notify()` an aktive ADMIN/PARTNER
+gehen und die Bruchstelle als Ressourcen-ID im Schlüssel tragen.
 
 Die PostgreSQL-Regression der checkpointgestützten Prüfung vergleicht Erstlauf,
 Zuwachslauf und eine über mehrere Läufe fortgesetzte Vollprüfung mit

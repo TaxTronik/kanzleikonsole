@@ -45,6 +45,7 @@ test_refs:
   - packages/tax/src/screening/persistence.test.ts
   - apps/web/src/server/screening/__tests__/gwg-gate.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
+  - apps/worker/src/jobs/__tests__/sanctions-refresh.test.ts
 feature_refs:
   - docs/development/module/screening.md
 related_rules:
@@ -128,6 +129,15 @@ Transaktion stabil gelesen. Beurteilungen und automatische Folgeläufe verwenden
 denselben Mandatslock. Es gibt keine automatische Änderung von GwG-Risikofeldern.
 Tenant-RLS und zusammengesetzte Fremdschlüssel schützen neue Nachweise.
 
+Der tägliche Worker `sanctions-refresh.ts` bereitet die EU-Aliasliste einmal je
+Lauf vor und legt je Tenant nur für Ursprungsläufe ohne Folgelauf zur aktuellen
+Quellversion einen Folgelauf an; jeder Folgelauf bleibt ein eigener
+unveränderlicher Nachweis mit Audit-Eintrag. Interne Hinweise je Mandant
+(`SCREENING_REVIEW`) entstehen nur für Folgeläufe mit Namenskandidaten und
+gehen an aktive ADMIN/PARTNER mit aktuellem Mandantenzugriff. Folgeläufe ohne
+Kandidaten fasst je Tenant und Lauf höchstens ein Sammelhinweis an die aktiven
+ADMIN/PARTNER zusammen.
+
 ## Bekannte Abweichungen und Grenzen
 
 Nicht enthalten sind vollständige Transliteration, Eigentums-/Kontrollprüfung,
@@ -152,4 +162,7 @@ Gate-Tests und ein Action-Test zeigen die Sperre vor dem VERIFIED-Claim.
 Echte PostgreSQL-Tests führen die Produktions-Quellenablage und idempotente
 Folgeläufe mit allen Advisory-Locks über den Prisma-Adapter aus. Locks werden
 ohne Deserialisierung des PostgreSQL-Rückgabetyps `void` ausgeführt.
+Worker-Tests belegen die einmalige Listenvorbereitung je Lauf, Hinweise je
+Mandant nur bei Namenskandidaten, den Sammelhinweis für Folgeläufe ohne
+Kandidaten und keine Hinweise bei unverändertem, abgearbeitetem Stand.
 Die verlinkte Modulbeschreibung dokumentiert Datenwege und Grenzen.

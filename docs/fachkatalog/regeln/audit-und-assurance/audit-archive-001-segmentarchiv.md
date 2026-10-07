@@ -15,7 +15,7 @@ professional_review:
   reviewed_content_hash: null
 implementation:
   status: partial
-  summary: Der Rotationsjob erzeugt prüfbare NDJSON-Segmente, legt sie im COMPLIANCE-Object-Lock ab und kann Upload- oder Datenbankunterbrechungen vorwärts auflösen.
+  summary: Der Rotationsjob erzeugt prüfbare NDJSON-Segmente, legt sie im COMPLIANCE-Object-Lock ab und kann Upload- oder Datenbankunterbrechungen vorwärts auflösen. Je Lauf archiviert er Segment um Segment bis zu einem Zeitbudget; ohne verifizierten externen Stempel archivierte Segmente bleiben PENDING und werden von späteren Läufen nachgestempelt.
 sources:
   - kind: product_documentation
     citation: Technische Modulbeschreibung Audit-Protokollierung, unveränderliche Langzeitarchivierung
@@ -31,10 +31,14 @@ code_refs:
   - packages/evidence/src/archive.ts
   - packages/evidence/src/canonical-json.ts
   - apps/worker/src/jobs/audit-rotate.ts
+  - apps/worker/src/run-budget.ts
+  - packages/db/prisma/migrations/20261005110100_audit_archive_tsa_status/migration.sql
 test_refs:
   - packages/evidence/src/__tests__/archive.test.ts
   - packages/evidence/src/__tests__/canonical-json-keys.test.ts
   - apps/worker/src/jobs/__tests__/audit-rotate.test.ts
+  - apps/worker/src/__tests__/run-budget.test.ts
+  - packages/db/src/__tests__/audit-archive-tsa-status.test.ts
 feature_refs:
   - docs/development/module/audit-protokollierung.md
   - docs/adr/0004-evidence-chain-mit-rfc3161.md
@@ -100,9 +104,11 @@ Vertrauenskette als gültig.
 
 ### Normalfall
 
-Der Wochenlauf exportiert die nächste lückenlose Folge, verifiziert jede Zeile
-und ihre Vorgängerbindung, schreibt die NDJSON-Datei in den geschützten Bucket
-und registriert ID-Bereich, Datei-Hash und Storage-Key.
+Der Wochenlauf exportiert die fälligen lückenlosen Folgen Segment für Segment,
+bis nichts mehr fällig ist oder sein Zeitbudget erreicht ist. Für jedes
+Segment verifiziert er jede Zeile und ihre Vorgängerbindung, schreibt die
+NDJSON-Datei in den geschützten Bucket und registriert ID-Bereich, Datei-Hash,
+Storage-Key und Stempelstatus.
 
 ### Grenzfall
 
@@ -122,6 +128,30 @@ das bestehende Objekt größenbegrenzt gestreamt und sein SHA-256 gegen das
 deterministische Segment geprüft; eine reine Head-Erfolgsantwort genügt nicht.
 Erst danach registriert der Job das Segment tenantgebunden.
 
+Die Zeitstempelstelle wählt der Worker wie für Tagessiegel und Rolling
+Anchors: Kanzlei-Einstellung, sonst `TIMESTAMP_AUTHORITY_URL`, sonst die
+verifizierte Standard-TSA. Gespeichert wird nur ein externer RFC-3161-Token,
+der gegen den Datei-Hash und die konfigurierten Trust-Roots verifiziert ist;
+ein lokaler Entwicklungs-Zeitstempel zählt nicht. Ohne solchen Token wird das
+Segment mit `tsa_status = PENDING` archiviert. Jeder Lauf stempelt zuerst die
+PENDING-Segmente des Tenants seitenweise nach, nachdem er Größe, SHA-256 und
+Kettenanker des gesperrten Objekts gegen die Archivzeile geprüft hat; ein
+abweichendes Objekt wird protokolliert und nie gestempelt, ein TSA-Fehler
+beendet das Nachstempeln für diesen Tenant. Der Update-Trigger der sonst
+insert-only geführten Archivzeile erlaubt ausschließlich den einmaligen
+Übergang `PENDING` → `STAMPED_LATE`, der nur Token, Seriennummer, Status und
+Stempelzeitpunkt setzt. ID-Bereich, Kettenanker, Datei-Hash, Speicherort,
+Modus und Archivierungszeitpunkt bleiben unveränderlich; DELETE und TRUNCATE
+bleiben gesperrt.
+
+Ein Lauf archiviert je Tenant Segment um Segment, bis nichts mehr fällig ist
+oder das Zeitbudget von zehn Minuten verbraucht ist; fährt der Worker herunter,
+endet der Lauf vor dem nächsten Schritt. Nach dem ersten gescheiterten Stempel
+entstehen die weiteren Segmente dieses Tenants im selben Lauf ohne neuen
+TSA-Versuch als PENDING. Das Job-Ergebnis meldet den Rückstand fälliger, noch
+nicht archivierter Einträge und die Zahl noch ungestempelter Segmente; die
+Jobübersicht der Administration zeigt den Rückstand an.
+
 Eigene JSON-Schlüssel einschließlich `__proto__` werden beim NDJSON-Export
 vollständig erhalten. Die gemeinsame Kanonisierung verwendet dafür ein
 Objekt ohne geerbte Setter. Eine Änderung allein in einem solchen Feld führt
@@ -139,7 +169,10 @@ rückwirkend validiert und bleiben Gegenstand der separaten Archivprüfung.
 Der dokumentierte HARD-Modus ist nicht implementiert: Eine HARD-Anforderung
 wird auf SOFT normalisiert und `audit_log` bleibt vollständig in der
 Datenbank. Ein TSA-Ausfall blockiert die Archivierung bewusst nicht; das
-Segment kann daher ohne externen Zeitstempel vorliegen. Die konfigurierte
+Segment wird dann ohne externen Zeitstempel mit dem Status `PENDING` archiviert
+und erst von einem späteren Lauf nachgestempelt (`STAMPED_LATE`). Bis dahin
+fehlt für dieses Segment der externe Zeitnachweis; der nachträgliche Token
+belegt nur den späteren Stempelzeitpunkt. Die konfigurierte
 zehnjährige Storage-Retention ist eine Produkteinstellung, keine fachliche
 Feststellung der im Einzelfall richtigen Frist.
 
@@ -165,7 +198,14 @@ der die fehlende ursprüngliche Feldbindung verdecken würde.
 Die Pakettests prüfen deterministische Serialisierung, Datei- und Zeilenhashes,
 Ankergrenzen und fehlerhafte Segmente. Worker-Tests decken Segmentauswahl,
 Object-Lock-Parameter, idempotente Registrierung, Unterbrechungs-Recovery,
-TSA-Fehler und die SOFT-Behandlung einer HARD-Anforderung ab.
+TSA-Fehler und die SOFT-Behandlung einer HARD-Anforderung ab. Sie belegen
+außerdem die Archivierung als PENDING bei TSA-Fehler, nicht auflösbarer TSA
+oder lokalem Zeitstempel, das Verwerfen nicht verifizierter Antworten, das
+Nachstempeln nach Objekt- und Kettenprüfung, das Ausbleiben eines Stempels für
+abweichende Objekte, den Abbruch beim ersten TSA-Fehler sowie den Nachlauf bis
+zum Zeitbudget mit gemeldetem Rückstand. Der Datenbanktest belegt, dass der
+Update-Trigger nur den einmaligen Nachstempel eines PENDING-Segments zulässt,
+und die Einordnung von Bestandssegmenten nach vorhandenem Token.
 Die Worker-Regressionen zu `AUDIT-ARCHIVE-001` rechnen echte gültige und
 manipulierte Quellzeilen nach. Sie verweigern Recovery bei verändertem Inhalt,
 abweichender Header-Größe oder einem überlangen Stream, ohne einen

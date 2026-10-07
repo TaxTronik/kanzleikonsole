@@ -57,6 +57,7 @@ code_refs:
   - apps/web/src/server/rate-limit/index.ts
   - apps/web/src/app/staff/(protected)/dashboard/rss-feed-actions.ts
   - apps/web/src/server/auth/portal.ts
+  - apps/web/src/server/auth/magic-link.ts
   - apps/web/src/server/auth/magic-link-entry.ts
   - apps/web/src/app/portal/(auth)/login/actions.ts
   - apps/web/src/app/portal/(auth)/login/verify/page.tsx
@@ -106,6 +107,7 @@ code_refs:
   - packages/db/prisma/migrations/20261006160000_owner_role_least_privilege/migration.sql
   - packages/crypto/src/certificate-path.ts
   - apps/web/src/server/auth/webauthn-attestation.ts
+  - apps/worker/src/jobs/fido-mds-verify.ts
   - apps/worker/src/jobs/fido-mds-trust-anchors.ts
   - apps/web/src/server/auth/session-factory.ts
   - apps/web/src/server/auth/staff-session.ts
@@ -128,6 +130,11 @@ test_refs:
   - apps/web/src/app/staff/(auth)/login/__tests__/totp-enrollment.test.ts
   - apps/web/src/app/staff/(auth)/login/__tests__/totp-setup-race.test.ts
   - apps/web/src/server/auth/__tests__/session-renewal.test.ts
+  - apps/web/src/server/auth/__tests__/session-factory.test.ts
+  - apps/web/src/server/auth/__tests__/staff-login-ticket.test.ts
+  - apps/web/src/server/auth/__tests__/staff-login-without-client-ip.test.ts
+  - apps/web/src/server/auth/__tests__/magic-link-request-limit.test.ts
+  - apps/web/src/server/rate-limit/__tests__/ip-or-global-limit.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
   - packages/db/src/__tests__/reminder-tickets.test.ts
   - packages/db/src/__tests__/tax-master-data.test.ts
@@ -308,6 +315,15 @@ Login darf kein Cookie erzeugen, das die unmittelbar folgende Server-Auth
 wegen eines fehlenden ursprünglichen Anmeldezeitpunkts wieder verwirft.
 Die strikte Ablehnung bestehender Tokens ohne diesen Claim bleibt erhalten.
 
+Sitzungen beider Oberflächen enden absolut 24 Stunden nach dem signierten
+ursprünglichen Anmeldezeitpunkt. Seitenaufrufe erneuern das Cookie nicht;
+Anmeldung, Portal-Profilwechsel und der Auth.js-Sessionendpunkt stellen JWTs
+aus, deren Ablauf höchstens auf Anmeldung plus 24 Stunden gesetzt wird. Ein
+Cookie jenseits dieser Grenze wird abgewiesen, auch wenn eine frühere
+gleitende Erneuerung seinen Ablauf verlängert hatte; Tokens ohne gültigen
+Anmeldeanker werden nie verlängert. Session-Fabrik-, Erneuerungs- und
+Profilwechseltests belegen die Obergrenze für beide Oberflächen.
+
 Neue Magic-Link-Anmeldungen setzen zusätzlich `sessionOriginContactId`.
 Profilwechsel übernehmen beide signierten Werte unverändert. Aktuelles Profil
 und ursprünglicher Login-Kontakt müssen weiterhin im selben Tenant aktiv sein,
@@ -321,13 +337,39 @@ abgewiesen. Beim Deployment ist eine einmalige Portal-Neuanmeldung nötig,
 weil historische Profilwechsel nicht zuverlässig rekonstruierbar sind.
 
 Alle öffentlichen Magic-Link-Einstiege begrenzen Datenbankabfragen vor dem
-Tokenlookup. Auth.js-Callback und Bestätigungs-Server-Action teilen denselben
-IP- beziehungsweise globalen Bucket; die GET-Profilauswahl besitzt ein eigenes
-Lesekontingent und verbraucht weiterhin keinen Einmal-Link. Bei erschöpftem
-Kontingent erfolgen weder Tokenverbrauch noch Sessionausstellung. Die Anzeige
-unterscheidet vorübergehende Drosselung von einem ungültigen oder verbrauchten
-Link. Laufzeitregressionen führen beide Anmeldepfade und die gerenderte
-Profilauswahl mit simulierten Auth-/Persistenzgrenzen aus.
+Tokenlookup. Die Portal-Auth.js-Instanz besitzt keinen Provider; ein
+Einmal-Link wird ausschließlich über die Bestätigungs-Server-Action eingelöst.
+Sie hat ein eigenes Kontingent von zehn Versuchen je zehn Minuten und
+Client-IP; die GET-Profilauswahl besitzt ein eigenes Lesekontingent von 30
+Aufrufen je zehn Minuten und verbraucht weiterhin keinen Einmal-Link. Ohne
+vertrauenswürdige Client-IP gilt für beide je Endpunkt nur eine
+Sturm-Obergrenze von durchschnittlich zehn Anfragen je Sekunde. Bei
+erschöpftem Kontingent erfolgen weder Tokenverbrauch noch Sessionausstellung.
+Die Anzeige unterscheidet vorübergehende Drosselung von einem ungültigen oder
+verbrauchten Link. Magic-Link-Anforderungen sind je Client-IP und zusätzlich
+je HMAC der normalisierten E-Mail-Adresse auf fünf je 15 Minuten begrenzt;
+der Schlüssel entsteht vor jedem Lookup und behandelt bekannte und unbekannte
+Adressen gleich. Ohne Client-IP deckelt zusätzlich eine Versandobergrenze von
+100 tatsächlich versendeten Login-Mails je 15 Minuten. Laufzeitregressionen
+führen die Bestätigungs-Action und die gerenderte Profilauswahl mit
+simulierten Auth-/Persistenzgrenzen aus und belegen, dass die
+Portal-Instanz keinen Provider hat.
+
+Staff-Anmeldungen prüfen das Passwort genau einmal: Der Passwortschritt
+(`staff-login.ts`) bündelt Kontolookup, Sperr- und Modusprüfung, das
+kontogebundene Limit von 20 Versuchen je zehn Minuten vor bcrypt, genau einen
+bcrypt-Vergleich und das Fehlversuchs-Audit. Danach stellt der Server ein fünf
+Minuten gültiges Einmal-Ticket aus (`staff-login-ticket.ts`), gebunden an
+Zweck, Konto, Tenant, `authRevision` und einen SHA-256 des geprüften
+Passwort-Hashes; Redis speichert nur den Hash des Tickets. TOTP/Backup-Code im
+Credentials-Provider, das TOTP-Erstsetup und der lokale DEV-Formularpfad lösen
+es atomar ein, statt das Passwort erneut zu prüfen. Ein zweiter Einsatz, eine
+geänderte Revision oder ein geändertes Passwort, Deaktivierung, Sperre oder
+Hardware-only-Wechsel dazwischen, ein falscher Zweck oder ein abgelaufenes
+Ticket führen zur Neuanmeldung; ohne Redis wird kein Ticket ausgestellt. Die
+IP-Limits der Login-Schritte greifen nur mit vertrauenswürdiger Client-IP;
+ohne sie gelten die kontogebundenen Limits und je Endpunkt die
+Sturm-Obergrenze.
 
 Redis-Widerrufszeitpunkte steigen durch einen atomaren Lua-Vergleich monoton.
 Verspätete ältere Schreibvorgänge dürfen bereits widerrufene Tokens nicht
@@ -497,18 +539,28 @@ Replikas. Jede sicherheitsrelevante WebAuthn-Mutation übernimmt Serie,
 Policy-Revision und Policy-Hash aus der Trust-Prüfung und hält dieses exakte
 Tripel über den schmalen Definer-Guard bis zum Commit. MDS-/Policy-Anker werden
 dabei vor Staff-Kontolocks beansprucht; parallel überholte Snapshots oder
-Policies können nicht committen. Die versionsgebundene Dependency-Härtung ist
-über Patch- und Lockfile-Hash im Supply-Chain-Gate abgesichert.
+Policies können nicht committen.
+
+Die Ketten- und Sperrlistenprüfung der Hardware-Anmeldung ist eigener Code
+(`@taxtronik/crypto/certificate-path`). Die App prüft die Attestationskette
+gegen die Wurzeln des signaturgeprüften MDS-Eintrags
+(`webauthn-attestation.ts`), der Worker die MDS-Signaturkette gegen gepinnte
+Wurzeln (`fido-mds-verify.ts`, `fido-mds-trust-anchors.ts`); Sperrlisten werden
+erst nach erfolgreicher Signaturprüfung geladen. `@simplewebauthn/server`
+läuft ungepatcht in der exakt gepinnten Version 13.3.3, erhält keine
+Wurzelzertifikate und prüft daher weder Ketten noch Sperrlisten selbst und
+greift nicht aufs Netz zu. Das Supply-Chain-Gate prüft den Versionspin und
+diesen Aufrufvertrag anhand fester Härtungsmarker im Repository-Code.
 
 Der technische Paketmanager-Pin wird für Repository, CI, Container und
 One-Click-Host synchron auf pnpm `12.4.1` geführt und im Supply-Chain-Gate
 geprüft. Die Build-Script-Sollliste enthält die versionsgebundene Entscheidung
 `tesseract.js@7.0.0: false`: Dessen Postinstall zeigt ausschließlich einen
 OpenCollective-Spendenhinweis und erstellt keine OCR-Artefakte. Unbekannte
-Build-Scripts führen weiterhin zum Installationsfehler. Die bestehenden
-SimpleWebAuthn-Paket-, Patch- und Lockfile-Prüfungen bleiben unverändert;
-diese technische Installationskorrektur ändert weder Zugriffsentscheidungen
-noch die fachliche Bewertung dieser Regel.
+Build-Scripts führen weiterhin zum Installationsfehler. Die
+SimpleWebAuthn-Versions- und Aufrufvertragsprüfungen des Gates bleiben davon
+unberührt; diese technische Installationskorrektur ändert weder
+Zugriffsentscheidungen noch die fachliche Bewertung dieser Regel.
 
 Der privilegierte ADMIN-Owner-CLI-Pfad verlangt exakte E-Mail- und Tenant-Slug-
 Angaben, prüft die ADMIN-Zuordnung nach dem gemeinsamen Kontolock erneut und
@@ -647,6 +699,13 @@ exakte Tripel aus Serie, Policy-Revision und Policy-Hash sowie dessen
 transaktionslangen Share-Lock. WebAuthn-Tests belegen außerdem
 Serienübernahme vor dem lokalen Modellfilter, globale Deaktivierung,
 Same-Revision-Drift, Übernahme einer höheren Revision und Abweisung älterer
-Replikas. Das Supply-Chain-Gate belegt die exakte Paket-/Patch-/Lockfile-Bindung. Browser-
-Fehlertest und Ops-Test belegen die umschlossene Abbrucherkennung sowie die
-Weitergabe der Deployment-Allowlist an den App-Container.
+Replikas. Das Supply-Chain-Gate belegt den exakten Versionspin und die
+Härtungsmarker des Aufrufvertrags. Vertragstests gegen die echte Version
+13.3.3 belegen, dass die Bibliothek ohne Wurzeln Attestation und
+MDS-Signatur ohne Netzzugriff prüft, die eigene Kettenprüfung eine fremde
+Kette abweist und bei ungültiger MDS-Signatur keine Sperrliste lädt. Sie
+belegen auch, dass die Bibliothek mit Wurzeln die Sperrliste eines fremden
+Zertifikats vor dem Kettenaufbau abrufen und eine unerreichbare Sperrliste
+akzeptieren würde. Browser-Fehlertest und Ops-Test belegen die umschlossene
+Abbrucherkennung sowie die Weitergabe der Deployment-Allowlist an den
+App-Container.

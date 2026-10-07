@@ -66,10 +66,15 @@ code_refs:
   - apps/web/src/server/inbox/client-notification.ts
   - packages/mail/src/dispatch.ts
   - apps/worker/src/notification-recipients.ts
+  - apps/worker/src/notify.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts
   - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts
   - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
+  - apps/worker/src/jobs/__tests__/reminders-daily-db.test.ts
+  - packages/db/src/__tests__/staff-client-access-batch.test.ts
+  - apps/worker/src/__tests__/notify.test.ts
+  - packages/db/src/__tests__/notification-batch.test.ts
   - apps/web/src/app/staff/(protected)/notifications/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/notifications/__tests__/page.test.tsx
   - apps/e2e/tests/12-accessibility.spec.ts
@@ -179,8 +184,15 @@ bleibt die Zustellung leer; der technische Ablauf wird trotzdem vollzogen
 Die Migration ergänzt `client_id`, leitet sie über eine geschlossene Liste
 bekannter Ressourcen ab, macht Scope und Ressourcenlink unveränderlich und
 ersetzt die generische Notification-Policy durch getrennte SELECT/INSERT/
-UPDATE/DELETE-Regeln. Der Reminder-Worker sperrt die aktuelle Fachzeile und
-verwendet `filterStaffAccessClientTx` unmittelbar vor `createMany`. Für
+UPDATE/DELETE-Regeln. Der Reminder-Worker verarbeitet die Kandidaten eines
+Tenants in Abschnitten von höchstens 200 Mandanten, interne Wiedervorlagen als
+eigenen Abschnitt, jeden in einer eigenen kurzen Transaktion. Darin sperrt er
+die aktuellen Fachzeilen, revalidiert Status und Empfänger, filtert die
+Empfänger mit `filterStaffAccessClientsTx` und legt die verbleibenden Hinweise
+danach über `notify()` mit Tages-Dedupe an. Diese Batch-Variante trifft je
+Mandant/Mitarbeiter-Paar dieselbe Entscheidung wie `filterStaffAccessClientTx`,
+liest Policy, Rollen, Vertraulichkeit und Zuständigkeiten aber einmal je
+Abschnitt. Für
 `CLIENT_CONTACT` erkennt der gemeinsame Persistenzhelfer den Akteurtyp und
 delegiert an eine eng freigegebene SECURITY-DEFINER-Funktion. Diese sperrt den
 aktiven Kontakt und validiert Tenant, Ressourcen-Mandant, Empfänger-Tenant sowie
@@ -268,8 +280,12 @@ ohne ihn anschließend lesen oder einen bestehenden gleichartigen Hinweis
 verändern zu können; ein direkter Raw-INSERT bleibt gesperrt. Negative DB-Tests
 belegen die geschlossene Ereignisliste sowie Kontakt-, Ressourcen- und
 Empfänger-Scope. Worker-Tests belegen Locks, Statusrevalidierung, aktive
-Empfänger und den gemeinsamen Clientfilter. Die Nachweise sind noch kein
-vollständiges Producer-/Kanal-Inventar.
+Empfänger und den gemeinsamen Clientfilter. Ein PostgreSQL-Test vergleicht die
+Batch-Variante paarweise mit der Einzelprüfung in beiden Zugriffsmodi und
+belegt, dass sie Policy, Mitarbeiter, Mandanten und Zuständigkeiten je Aufruf
+nur einmal liest. Ein weiterer schreibt über mehrere Abschnitte genau die
+berechtigten Hinweise und beim zweiten Lauf desselben Tages keine weiteren.
+Die Nachweise sind noch kein vollständiges Producer-/Kanal-Inventar.
 
 Der zusätzliche Forward-Replaytest spielt die ältere INSERT-Policy in einer
 stets zurückgerollten Datenbanktransaktion ein und reproduziert den unerwünschten

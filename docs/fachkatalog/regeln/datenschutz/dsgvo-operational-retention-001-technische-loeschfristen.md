@@ -32,6 +32,7 @@ sources:
     primary: false
 code_refs:
   - apps/worker/src/jobs/storage-orphan-cleanup.ts
+  - apps/worker/src/run-budget.ts
   - apps/worker/src/jobs/dsgvo-retention.ts
   - apps/worker/src/jobs/n8n-retention.ts
   - apps/worker/src/jobs/magic-link-cleanup.ts
@@ -39,6 +40,7 @@ code_refs:
   - apps/web/src/server/inbox/retention-settings.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
+  - apps/worker/src/__tests__/run-budget.test.ts
   - apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts
   - apps/worker/src/jobs/__tests__/n8n-retention.test.ts
   - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
@@ -121,14 +123,23 @@ bekannter Rechtsstreit wird dagegen nicht automatisch erkannt.
 
 ## Umsetzung in TaxTronik
 
-Der gemeinsame Orphan-Worker priorisiert die geringste Zahl bisheriger
-Bereinigungsversuche, danach Alter und ID. So blockiert ein voller Batch
-dauerhaft fehlender oder mehrdeutiger Speicheridentitäten keine späteren
-bereinigungsfähigen Objekte. Die Schutz-, Referenz- und Versionsprüfungen
-bleiben Voraussetzung jeder physischen Löschung. Ab dem fünften gescheiterten
-Versuch erscheint zusätzlich ein Betriebswarnhinweis zur manuellen Klärung.
-Der Regressionstest führt mehrere Läufe mit 100 dauerhaft fehlerhaften
-Objekten und einem jüngeren löschbaren Objekt aus.
+Der gemeinsame Orphan-Worker zieht je Lauf Batch um Batch zu je 100
+Kandidaten, bis kein fälliger Kandidat mehr übrig ist oder das Zeitbudget von
+zehn Minuten verbraucht ist; fährt der Worker herunter, endet der Lauf vor dem
+nächsten Schritt. Die Auswahl priorisiert die geringste Zahl bisheriger
+Bereinigungsversuche, danach Alter und ID. Ein in diesem Lauf gescheiterter
+Kandidat kommt erst im nächsten Lauf erneut an die Reihe. So blockiert ein
+voller Batch dauerhaft fehlender oder mehrdeutiger Speicheridentitäten keine
+späteren bereinigungsfähigen Objekte. Die Schutz-, Referenz- und
+Versionsprüfungen bleiben Voraussetzung jeder physischen Löschung. Ab dem
+fünften gescheiterten Versuch erscheint zusätzlich ein Betriebswarnhinweis zur
+manuellen Klärung. Den danach weiterhin fälligen, unaufgelösten Rückstand
+meldet der Lauf im Job-Ergebnis; die Jobübersicht der Administration zeigt ihn
+als „Rückstand“. Der Regressionstest belegt in einem Lauf mit 100 dauerhaft
+fehlerhaften Objekten und einem jüngeren löschbaren Objekt, dass das löschbare
+Objekt im zweiten Batch gelöscht wird und jeder gescheiterte Kandidat höchstens
+einen Versuch je Lauf erhält. Weitere Tests belegen den Nachlauf über mehrere
+Batches und das Ende am Zeitbudget mit gemeldetem Rückstand.
 
 Der DSGVO-Worker berechnet tenantbezogene Cutoffs, löscht beziehungsweise
 nullt die definierten Klassen und schreibt nur bei tatsächlichen Änderungen

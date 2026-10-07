@@ -38,9 +38,11 @@ code_refs:
   - apps/worker/src/jobs/risk-analyse-llm.ts
   - apps/web/src/server/risk/reanalyze.ts
   - packages/db/src/risk-analysis.ts
+  - apps/web/src/server/jobs/risk-analyse-queue.ts
 test_refs:
   - apps/web/src/server/risk/__tests__/llm.test.ts
   - apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts
+  - apps/web/src/server/jobs/__tests__/risk-analyse-queue.test.ts
   - apps/web/src/server/risk/__tests__/norms-core.test.ts
   - apps/web/src/server/risk/__tests__/reanalyze.test.ts
   - packages/db/src/__tests__/risk-archive-consistency.test.ts
@@ -138,15 +140,22 @@ Worker `risk-analyse-llm.ts` ergänzt nach Modul- und Verfügbarkeitsprüfung ne
 LLM-/Embedding-Markierungen und protokolliert nur einen erfolgreichen
 Enrichment-Lauf, ohne dessen vollständigen Rohoutput zu speichern.
 
+Der Warteschlangenauftrag der LLM-Anreicherung enthält nur Tenant, Analyse-ID
+und den SHA-256-Hash des Sachverhalts, keinen Sachverhaltstext. Der Worker lädt
+den Text unter dem Analyse-Lock aus der Datenbank und verwendet ihn nur, solange
+der Stand nicht archiviert ist und sein Hash dem Auftrag entspricht. Diese
+Prüfung erfolgt vor dem Modellwarmlauf und erneut unmittelbar danach vor dem
+Engine-Aufruf; ein inzwischen archivierter, redigierter oder geänderter
+Sachverhalt wird nicht an die Engine gesendet. Aufträge der Vorversion mit
+vollem Text liefern nur noch den Hash, die Engine erhält stets den
+Datenbanktext; ein Auftrag ohne Hash und Text scheitert ohne Wiederholung.
 Worker und Reanalyse prüfen nach dem externen Engine-Aufruf in der
 Schreibtransaktion unter dem gemeinsamen Analyse-Lock erneut, dass der Stand
 noch nicht archiviert und der Sachverhalt unverändert ist. Ein bereits
 archivierter oder zwischenzeitlich redigierter Sachverhalt nimmt keine
-verspäteten Markierungen auf. Der Worker verwirft solche Ergebnisse ohne
-Erfolgs-Audit; vor einem neuen Engine-Lauf prüft er auch veraltete Queue-Payloads.
-Ein weiterer Check unmittelbar nach dem Modellwarmlauf verhindert, dass ein
-während dieses Warmlaufs archivierter oder redigierter Queue-Text gesendet wird.
-Langes Engine-I/O findet außerhalb der Datenbanktransaktion statt.
+verspäteten Markierungen auf; der Worker verwirft solche Ergebnisse ohne
+Erfolgs-Audit. Langes Engine-I/O findet außerhalb der Datenbanktransaktion
+statt.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -170,8 +179,10 @@ archivierter Rohoutput samt dort verwendeter Katalogversion. Die Aussage
 ## Technische Nachweise
 
 Die referenzierten Tests belegen LLM-Statusabbildung, den Modul-Gate des
-Workers, Zurückweisung archivierter/redigierter Queue-Payloads und später
-veralteter Ergebnisse sowie reine Operationen zur Normkuratierung. Die
+Workers, einen Warteschlangenauftrag ohne Sachverhaltstext, die Zurückweisung
+archivierter, redigierter oder nicht mehr zum Auftragshash passender
+Sachverhalte vor dem Engine-Lauf und nach dem Modellwarmlauf, das Verwerfen
+später veralteter Ergebnisse sowie reine Operationen zur Normkuratierung. Die
 PostgreSQL-Nachweise der Archivregel prüfen die zugrunde liegenden Locks.
 Sie belegen ausdrücklich
 weder die fachliche Qualität der Engine noch die Vollständigkeit der Treffer,
