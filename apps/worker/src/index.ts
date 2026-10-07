@@ -13,6 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setupSchedules } from './scheduler';
 import { connection } from './queues';
+import { prisma } from '@taxtronik/db';
 import { prismaOwner } from './prisma-owner';
 import { log } from './logger';
 // Eine Quelle für Ready-Log UND Shutdown: früher waren die Worker-Namen in
@@ -84,10 +85,11 @@ async function shutdown(reason: string) {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
   try {
     await Promise.all(ALL_WORKERS.map((w) => w.close()));
-    // RF-13: auch den Prisma-Pool sauber schließen — vorher blieben offene
-    // Postgres-Connections bis zum Prozess-Ende stehen. S-01: Der Owner-Pool
-    // dient nur noch Wartung und mandantenübergreifenden Listen.
-    await prismaOwner.$disconnect();
+    // RF-13: auch die Prisma-Pools sauber schließen — vorher blieben offene
+    // Postgres-Connections bis zum Prozess-Ende stehen. S-01: Die Jobs arbeiten
+    // überwiegend über den App-Pool; der Owner-Pool dient nur noch Wartung und
+    // mandantenübergreifenden Listen.
+    await Promise.all([prisma.$disconnect(), prismaOwner.$disconnect()]);
     await connection.quit();
     log.info('worker: shutdown complete');
     process.exit(0);
