@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
 vi.mock('@/server/logger', () => ({ log: h.log }));
 
 import {
+  comparePasswordHashes,
   defaultPasswordHashPoolSize,
   PASSWORD_HASH_POOL_MAX_QUEUE,
   PASSWORD_HASH_POOL_MAX_SIZE,
@@ -163,6 +164,98 @@ describe('Passwort-Pool: Parallelität und Warteschlange', () => {
     await expect(Promise.all(accepted)).resolves.toEqual([false, false, false]);
     // Nach dem Abbau nimmt der Pool wieder an.
     await expect(created.compare('richtiges-passwort', FAST_HASH)).resolves.toBe(true);
+  }, 30_000);
+});
+
+describe('Passwort-Pool: Backup-Codes, je Versuch alle Hashes (S-09)', () => {
+  const CODES = ['BACKUP0001', 'BACKUP0002', 'BACKUP0003', 'BACKUP0004'];
+  const CODE_HASHES = CODES.map((code) => bcrypt.hashSync(code, 4));
+  const settledLikeBcrypt = (code: string, hashes: readonly string[]) =>
+    hashes.map((hash) => ({ status: 'fulfilled', value: bcrypt.compareSync(code, hash) }));
+
+  it.each([
+    ['ersten', 0],
+    ['dritten', 2],
+    ['letzten', 3],
+    ['keinen', -1],
+  ])(
+    'vergleicht bei einem Treffer auf den %s Hash jeden Hash genau einmal',
+    async (_case, hit) => {
+      const posted: string[] = [];
+      const created = new PasswordHashPool({
+        size: 2,
+        onWorkerStart: (worker) => {
+          const post = worker.postMessage.bind(worker);
+          worker.postMessage = (task: { hash: string }) => {
+            posted.push(task.hash);
+            post(task);
+          };
+        },
+      });
+      pools.push(created);
+      const code = hit < 0 ? 'BACKUP9999' : CODES[hit]!;
+
+      const results = await created.compareEach(code, CODE_HASHES);
+
+      expect(results).toEqual(settledLikeBcrypt(code, CODE_HASHES));
+      expect(
+        results.filter((result) => result.status === 'fulfilled' && result.value),
+      ).toHaveLength(hit < 0 ? 0 : 1);
+      // Kein Abbruch beim Treffer: jeder Hash ging genau einmal an einen Thread.
+      expect([...posted].sort()).toEqual([...CODE_HASHES].sort());
+    },
+    30_000,
+  );
+
+  it('nimmt die Vergleiche eines Versuchs gemeinsam oder gar nicht an', async () => {
+    const { pool: created } = pool({ size: 1, maxQueue: 2 });
+    // Ein Thread und zwei Warteplätze: vier Hashes passen nicht, keiner startet.
+    await expect(created.compareEach(CODES[0]!, CODE_HASHES)).rejects.toBeInstanceOf(
+      PasswordHashPoolSaturatedError,
+    );
+    expect(created.stats()).toMatchObject({ workers: 1, active: 0, queued: 0 });
+    expect(h.log.warn).toHaveBeenCalledOnce();
+
+    // Drei passen genau: einer läuft, zwei warten; danach ist kein Platz mehr.
+    const accepted = created.compareEach(CODES[0]!, CODE_HASHES.slice(0, 3));
+    expect(created.stats()).toMatchObject({ active: 1, queued: 2 });
+    await expect(created.compare(CODES[0]!, FAST_HASH)).rejects.toBeInstanceOf(
+      PasswordHashPoolSaturatedError,
+    );
+    await expect(accepted).resolves.toEqual(settledLikeBcrypt(CODES[0]!, CODE_HASHES.slice(0, 3)));
+
+    await created.close();
+    await expect(created.compareEach(CODES[0]!, CODE_HASHES)).rejects.toBeInstanceOf(
+      PasswordHashPoolUnavailableError,
+    );
+  }, 30_000);
+
+  it('liefert Vergleichsfehler je Hash und beendet trotzdem alle übrigen Vergleiche', async () => {
+    const invalid = `$2x$04$${'a'.repeat(53)}`;
+    const expected = await bcrypt.compare(CODES[0]!, invalid).then(
+      () => null,
+      (error: Error) => error.message,
+    );
+    expect(expected).toEqual(expect.any(String));
+    const { pool: created } = pool({ size: 1 });
+
+    const results = await created.compareEach(CODES[0]!, [invalid, CODE_HASHES[0]!, invalid]);
+
+    expect(results.map((result) => result.status)).toEqual(['rejected', 'fulfilled', 'rejected']);
+    expect(results[1]).toEqual({ status: 'fulfilled', value: true });
+    expect((results[0] as PromiseRejectedResult).reason).toMatchObject({ message: expected });
+    expect(created.stats()).toMatchObject({ workers: 1, active: 0, queued: 0 });
+  }, 30_000);
+
+  it('startet ohne Hashes keinen Thread und prüft sonst im prozessweiten Pool', async () => {
+    const { pool: created, workers } = pool({ size: 2 });
+    await expect(created.compareEach(CODES[0]!, [])).resolves.toEqual([]);
+    expect(workers).toHaveLength(0);
+    await expect(comparePasswordHashes(CODES[0]!, [])).resolves.toEqual([]);
+
+    await expect(comparePasswordHashes(CODES[1]!, CODE_HASHES)).resolves.toEqual(
+      settledLikeBcrypt(CODES[1]!, CODE_HASHES),
+    );
   }, 30_000);
 });
 

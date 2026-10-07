@@ -14,7 +14,6 @@
 //              Anmeldung kostet einen Passwort-bcrypt statt zwei.
 // =============================================================================
 
-import bcrypt from 'bcryptjs';
 import type { StaffUser } from '@prisma/client';
 import { env } from '@taxtronik/config';
 import { evidenceService } from '@/server/container';
@@ -35,6 +34,7 @@ import type { StaffAuthMethod } from './staff-auth-state';
 import type { StaffSessionUser } from './staff-session';
 import { passwordLoginAccount, verifyStaffPassword } from './staff-password';
 import {
+  comparePasswordHashes,
   PasswordHashPoolSaturatedError,
   PasswordHashPoolUnavailableError,
 } from './password-hash-pool';
@@ -72,7 +72,7 @@ export const DEV_SKIP_TOTP =
 // Backup-Codes bestehen aus genau zehn Zeichen des Enrollment-Alphabets
 // (Großbuchstaben/Ziffern). Andere Eingaben — insbesondere ein falscher
 // sechsstelliger TOTP — können keinen Code treffen und kosten deshalb keine
-// bis zu acht bcrypt-Vergleiche im Hauptthread.
+// bis zu acht bcrypt-Vergleiche.
 const BACKUP_CODE_INPUT = /^[0-9A-Z]{10}$/;
 
 type StaffAccount = StaffUser & {
@@ -246,10 +246,14 @@ function recordSecondFactorFailure(
 
 /**
  * V-1: Backup-Code-Recovery. Wenn TOTP nicht matched, prüfen wir gegen die
- * hashedTotpBackupCodes (8 one-time-use codes aus dem Enrollment). bcrypt-
- * compare ist teuer (12 rounds × 8 codes = ~1s im Worst Case), aber das ist
- * der Recovery-Pfad — Latenz ist hier akzeptabel. Eingaben, die kein
- * Backup-Code sein können, vergleichen wir gar nicht erst (R-04).
+ * hashedTotpBackupCodes (8 one-time-use codes aus dem Enrollment, Kosten 12).
+ * S-09: Die Vergleiche laufen im Worker-Thread-Pool der Passwortprüfung statt
+ * im Haupt-Thread, und zwar immer gegen alle Hashes — ohne Abbruch beim
+ * ersten Treffer, damit Arbeit und Antwortzeit nicht verraten, welcher Code
+ * passt. Ausgewertet wird wie zuvor der Reihe nach: erster Treffer, ein
+ * Vergleichsfehler davor wird geworfen. Ist der Pool ausgelastet oder gestört,
+ * wirft er PasswordHashPool*Error, ohne verglichen zu haben. Eingaben, die
+ * kein Backup-Code sein können, vergleichen wir gar nicht erst (R-04).
  */
 async function matchingBackupCodeHash(account: StaffAccount, code: string): Promise<string | null> {
   if (!BACKUP_CODE_INPUT.test(code)) return null;
@@ -257,8 +261,10 @@ async function matchingBackupCodeHash(account: StaffAccount, code: string): Prom
   const backupCodes: string[] = Array.isArray(account.totpBackupCodes)
     ? (account.totpBackupCodes as unknown[]).filter((x): x is string => typeof x === 'string')
     : [];
-  for (const hashed of backupCodes) {
-    if (await bcrypt.compare(code, hashed)) return hashed;
+  const results = await comparePasswordHashes(code, backupCodes);
+  for (const [index, result] of results.entries()) {
+    if (result.status === 'rejected') throw result.reason;
+    if (result.value) return backupCodes[index]!;
   }
   return null;
 }
@@ -348,7 +354,21 @@ async function verifyStaffSecondFactor(
     return 'totp';
   }
 
-  const usedHash = await matchingBackupCodeHash(account, code);
+  let usedHash: string | null;
+  try {
+    usedHash = await matchingBackupCodeHash(account, code);
+  } catch (error) {
+    // Pool ausgelastet oder gestört: der Code wurde nicht (vollständig)
+    // geprüft. Dieselbe generische Ablehnung, aber wie im Passwortschritt
+    // kein Fehlversuch und kein Verbrauch.
+    if (
+      error instanceof PasswordHashPoolSaturatedError ||
+      error instanceof PasswordHashPoolUnavailableError
+    ) {
+      return null;
+    }
+    throw error;
+  }
   if (!usedHash) {
     await recordSecondFactorFailure(context, 'totp');
     return null;

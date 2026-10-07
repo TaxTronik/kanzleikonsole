@@ -25,6 +25,10 @@
 //   Scheitern drei Threads nacheinander, ohne einen Vergleich abzuschließen
 //   (z. B. bcryptjs nicht ladbar), lehnt der Pool 30 Sekunden lang alle
 //   Vergleiche ab, statt im Takt neue Threads zu starten (fail-closed).
+// - Backup-Codes des zweiten Faktors (S-09) prüft derselbe Pool: compareEach
+//   vergleicht einen Code mit allen gespeicherten Hashes (bis zu acht), nimmt
+//   diese Vergleiche gemeinsam oder gar nicht an und liefert erst nach dem
+//   letzten ein Ergebnis — ohne Abbruch beim ersten Treffer.
 // =============================================================================
 
 import os from 'node:os';
@@ -174,25 +178,27 @@ export class PasswordHashPool {
 
   /** Genau ein bcrypt-Vergleich in einem Pool-Thread; Ergebnis wie bcryptjs.compare. */
   compare(password: string, hash: string): Promise<boolean> {
-    if (this.closed) {
-      return Promise.reject(
-        new PasswordHashPoolUnavailableError('Die Passwortprüfung wurde beendet.'),
-      );
-    }
-    if (Date.now() < this.unavailableUntil) {
-      return Promise.reject(new PasswordHashPoolUnavailableError());
-    }
-    this.ensureWorkers();
-    const idle = this.idleSlot();
-    if (!idle && this.queue.length >= this.maxQueue) {
-      this.noteSaturation();
-      return Promise.reject(new PasswordHashPoolSaturatedError());
-    }
-    return new Promise<boolean>((resolve, reject) => {
-      const task: CompareTask = { id: this.nextTaskId++, password, hash, resolve, reject };
-      if (idle) this.dispatch(idle, task);
-      else this.queue.push(task);
-    });
+    const refusal = this.admissionRefusal(1);
+    if (refusal) return Promise.reject(refusal);
+    return this.enqueue(password, hash);
+  }
+
+  /**
+   * Je ein Vergleich von `password` mit jedem Hash (Backup-Codes, S-09). Alle
+   * Vergleiche werden gemeinsam angenommen oder keiner: Reichen freie Threads
+   * und Warteschlange nicht für alle, wird wie bei compare sofort abgewiesen,
+   * ohne einen Vergleich zu starten. Das Ergebnis liegt erst vor, wenn jeder
+   * Vergleich beendet ist, auch nach einem Treffer oder einem Fehler: je Hash
+   * in dessen Reihenfolge `fulfilled` (Treffer ja/nein) oder `rejected`.
+   */
+  compareEach(
+    password: string,
+    hashes: readonly string[],
+  ): Promise<PromiseSettledResult<boolean>[]> {
+    if (hashes.length === 0) return Promise.resolve([]);
+    const refusal = this.admissionRefusal(hashes.length);
+    if (refusal) return Promise.reject(refusal);
+    return Promise.allSettled(hashes.map((hash) => this.enqueue(password, hash)));
   }
 
   stats(): PasswordHashPoolStats {
@@ -212,6 +218,31 @@ export class PasswordHashPool {
     this.closed = true;
     this.rejectQueued(new PasswordHashPoolUnavailableError('Die Passwortprüfung wurde beendet.'));
     await Promise.all([...this.slots].map((slot) => slot.worker.terminate()));
+  }
+
+  /** null, wenn `count` Vergleiche jetzt angenommen werden können, sonst der Ablehnungsgrund. */
+  private admissionRefusal(count: number): Error | null {
+    if (this.closed) {
+      return new PasswordHashPoolUnavailableError('Die Passwortprüfung wurde beendet.');
+    }
+    if (Date.now() < this.unavailableUntil) return new PasswordHashPoolUnavailableError();
+    this.ensureWorkers();
+    let idle = 0;
+    for (const slot of this.slots) if (!slot.task) idle += 1;
+    if (count > idle + this.maxQueue - this.queue.length) {
+      this.noteSaturation();
+      return new PasswordHashPoolSaturatedError();
+    }
+    return null;
+  }
+
+  private enqueue(password: string, hash: string): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      const task: CompareTask = { id: this.nextTaskId++, password, hash, resolve, reject };
+      const idle = this.idleSlot();
+      if (idle) this.dispatch(idle, task);
+      else this.queue.push(task);
+    });
   }
 
   private ensureWorkers(): void {
@@ -329,4 +360,14 @@ let sharedPool: PasswordHashPool | null = null;
 export function comparePasswordHash(password: string, hash: string): Promise<boolean> {
   sharedPool ??= new PasswordHashPool();
   return sharedPool.compare(password, hash);
+}
+
+/** Prozessweiter Pool: je ein Vergleich mit jedem Hash, alle vollständig (compareEach). */
+export function comparePasswordHashes(
+  password: string,
+  hashes: readonly string[],
+): Promise<PromiseSettledResult<boolean>[]> {
+  if (hashes.length === 0) return Promise.resolve([]);
+  sharedPool ??= new PasswordHashPool();
+  return sharedPool.compareEach(password, hashes);
 }

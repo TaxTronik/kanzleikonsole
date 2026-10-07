@@ -628,7 +628,8 @@
         "apps/web/src/server/auth/__tests__/webauthn-library-contract.test.ts",
         "apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts",
         "packages/db/src/__tests__/document-mandate-artifact-flag.test.ts",
-        "apps/web/src/server/auth/__tests__/authjs-route.test.ts"
+        "apps/web/src/server/auth/__tests__/authjs-route.test.ts",
+        "apps/web/src/server/auth/__tests__/password-hash-pool.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",

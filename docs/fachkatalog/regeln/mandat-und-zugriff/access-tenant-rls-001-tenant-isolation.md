@@ -172,6 +172,7 @@ test_refs:
   - apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts
   - packages/db/src/__tests__/document-mandate-artifact-flag.test.ts
   - apps/web/src/server/auth/__tests__/authjs-route.test.ts
+  - apps/web/src/server/auth/__tests__/password-hash-pool.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -434,8 +435,15 @@ Längenlimit und die Browser-Formatprüfung dürfen den bereits unterstützten
 Recovery-Pfad nicht abschneiden. Die mobile Tastatur erlaubt dafür auch
 Buchstaben. Die serverseitige Passwortprüfung, die zeitliche TOTP-Prüfung,
 der Redis-Replay-Schutz und der atomare Verbrauch des gehashten Backup-Codes
-bleiben maßgeblich. Ein Backup-Code ist weiterhin weder Hardware-only-
-Fallback noch Ersatz für den frischen TOTP eines administrativen Step-up.
+bleiben maßgeblich. Ein Recovery-Code wird im begrenzten Worker-Thread-Pool
+der Passwortprüfung stets mit allen gespeicherten Hashes verglichen, ohne
+Abbruch beim ersten Treffer; ist der Pool ausgelastet oder gestört, wird der
+Versuch ohne Vergleich, ohne gezählten Fehlversuch und ohne Verbrauch mit
+derselben Meldung abgewiesen. Pool- und Login-Tests belegen je Versuch einen
+Pool-Aufruf mit allen Hashes, jeden Hash genau einmal verglichen,
+unveränderte Ergebnisse und Verbrauch sowie diese Abweisung. Ein Backup-Code
+ist weiterhin weder Hardware-only-Fallback noch Ersatz für den frischen TOTP
+eines administrativen Step-up.
 Der Render-Regressionsnachweis prüft die tatsächliche zweite Loginansicht mit
 vollständigen TOTP-/Recovery-Eingaben und ungültigen Formaten; er ersetzt
 keinen Browser- oder Datenbanknachweis des einmaligen Verbrauchs.

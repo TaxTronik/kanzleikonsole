@@ -16,6 +16,7 @@ const h = vi.hoisted(() => ({
   config: null as unknown as { providers: { authorize: Authorize }[] },
   account: {} as Record<string, unknown>,
   compare: vi.fn(),
+  comparePasswordHashes: vi.fn(),
   verifyTotp: vi.fn(),
   evidence: vi.fn(),
   counters: new Map<string, { count: number; until: number }>(),
@@ -55,6 +56,8 @@ vi.mock('../password-hash-pool', async (importOriginal) => {
   return {
     ...(await importOriginal<typeof import('../password-hash-pool')>()),
     comparePasswordHash: (password: string, hash: string) => bcrypt.compare(password, hash),
+    // S-09: Backup-Codes gehen als ein Pool-Aufruf mit allen Hashes hinein.
+    comparePasswordHashes: h.comparePasswordHashes,
   };
 });
 vi.mock('qrcode', () => ({ default: { toDataURL: async () => 'data:image/png;base64,qr' } }));
@@ -146,6 +149,10 @@ vi.mock('@/server/db/prisma-owner', () => ({
 }));
 
 import { checkPasswordAction } from '@/app/staff/(auth)/login/actions';
+import {
+  PasswordHashPoolSaturatedError,
+  PasswordHashPoolUnavailableError,
+} from '../password-hash-pool';
 import { STAFF_LOGIN_TICKET_TTL_SECONDS } from '../staff-login-ticket';
 
 const NOW = new Date('2026-10-05T11:00:00Z');
@@ -198,6 +205,9 @@ beforeEach(() => {
   h.ticketTtls = [];
   h.redisDown = false;
   h.compare.mockImplementation(async (plain: string, hashed: string) => hashed === `hash:${plain}`);
+  h.comparePasswordHashes.mockImplementation((plain: string, hashes: readonly string[]) =>
+    Promise.allSettled(hashes.map((hashed) => h.compare(plain, hashed))),
+  );
   h.verifyTotp.mockImplementation((code: string) => code === '123456');
   h.evidence.mockResolvedValue(undefined);
 });
@@ -298,13 +308,88 @@ describe('R-04: ein Passwort-bcrypt je Anmeldung, Schritt 2 über ein Einmal-Tic
     h.account['totpBackupCodes'] = Array.from({ length: 8 }, (_, i) => `hash:BACKUPCOD${i}`);
     await expect(authorize(await passwordStep(), '000000')).resolves.toBeNull();
     expect(h.compare).toHaveBeenCalledTimes(1);
+    expect(h.comparePasswordHashes).not.toHaveBeenCalled();
 
     h.compare.mockClear();
     await expect(authorize(await passwordStep(), 'BACKUPCOD5')).resolves.toMatchObject({
       authMethod: 'backup_code',
     });
-    // Passwortschritt + Backup-Codes bis zum Treffer.
-    expect(h.compare).toHaveBeenCalledTimes(1 + 6);
+    // Passwortschritt + alle acht Backup-Codes (S-09: kein Abbruch beim Treffer).
+    expect(h.compare).toHaveBeenCalledTimes(1 + 8);
+  });
+});
+
+describe('S-09: Backup-Codes im Passwort-Pool, immer gegen alle Hashes', () => {
+  const HASHES = Array.from({ length: 8 }, (_, i) => `hash:BACKUPCOD${i}`);
+
+  function failureAudits(): unknown[] {
+    return h.evidence.mock.calls
+      .map((call) => call[1] as { action: string; after: unknown })
+      .filter((entry) => entry.action === 'auth.login.failure')
+      .map((entry) => entry.after);
+  }
+
+  beforeEach(() => {
+    h.account['totpBackupCodes'] = [...HASHES];
+  });
+
+  it.each([0, 4, 7])(
+    'Treffer an Position %i: ein Pool-Aufruf mit allen acht Hashes, genau dieser Code wird verbraucht',
+    async (position) => {
+      const ticket = await passwordStep();
+      h.compare.mockClear();
+
+      await expect(authorize(ticket, `BACKUPCOD${position}`)).resolves.toMatchObject({
+        authMethod: 'backup_code',
+      });
+
+      expect(h.comparePasswordHashes).toHaveBeenCalledExactlyOnceWith(
+        `BACKUPCOD${position}`,
+        HASHES,
+      );
+      expect(h.compare).toHaveBeenCalledTimes(8);
+      expect(h.account['totpBackupCodes']).toEqual(HASHES.filter((_, i) => i !== position));
+      expect(failureAudits()).toEqual([]);
+    },
+  );
+
+  it('ohne Treffer: dieselbe Arbeit, Fehlversuch wie bisher', async () => {
+    const ticket = await passwordStep();
+    h.compare.mockClear();
+
+    await expect(authorize(ticket, 'BACKUPCOD9')).resolves.toBeNull();
+
+    expect(h.comparePasswordHashes).toHaveBeenCalledExactlyOnceWith('BACKUPCOD9', HASHES);
+    expect(h.compare).toHaveBeenCalledTimes(8);
+    expect(h.account['totpBackupCodes']).toEqual(HASHES);
+    expect(failureAudits()).toEqual([{ email: 'staff@example.test', reason: 'totp' }]);
+  });
+
+  it.each([
+    ['ausgelastet', () => new PasswordHashPoolSaturatedError()],
+    ['gestört', () => new PasswordHashPoolUnavailableError()],
+  ])('Pool %s: generische Ablehnung ohne Fehlversuch und ohne Verbrauch', async (_case, error) => {
+    const ticket = await passwordStep();
+    h.comparePasswordHashes.mockRejectedValueOnce(error());
+
+    await expect(authorize(ticket, 'BACKUPCOD3')).resolves.toBeNull();
+
+    expect(h.account['totpBackupCodes']).toEqual(HASHES);
+    expect(failureAudits()).toEqual([]);
+  });
+
+  it('wertet wie zuvor der Reihe nach aus: ein Fehler vor dem Treffer wird geworfen', async () => {
+    h.compare.mockImplementation(async (plain: string, hashed: string) => {
+      if (hashed === 'hash:BACKUPCOD2') throw new Error('Invalid salt version');
+      return hashed === `hash:${plain}`;
+    });
+
+    await expect(authorize(await passwordStep(), 'BACKUPCOD1')).resolves.toMatchObject({
+      authMethod: 'backup_code',
+    });
+    await expect(authorize(await passwordStep(), 'BACKUPCOD5')).rejects.toThrow(
+      'Invalid salt version',
+    );
   });
 });
 

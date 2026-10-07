@@ -46,7 +46,12 @@ bleibt erreichbar; „Mandant aufnehmen“ wird nur mit `CLIENT_CREATE` angebote
   derselben Meldung abgewiesen, ohne Vergleich und ohne gezählten Fehlversuch;
   eine gedrosselte Warnung meldet die Sättigung. Unter Sättigung hängt die
   Antwortzeit von der Last und nicht vom Konto ab, der Timing-Seitenkanal ist
-  dann gegenstandslos. Nach dem
+  dann gegenstandslos. Ein Backup-Code im zweiten Schritt wird im selben Pool
+  stets mit allen gespeicherten Hashes verglichen (bis zu acht, ohne Abbruch
+  beim ersten Treffer, alle Vergleiche gemeinsam oder gar nicht angenommen);
+  Arbeit und Antwortzeit verraten so nicht, welcher Code passt. Ist der Pool
+  ausgelastet oder gestört, gilt dasselbe wie beim Passwort: dieselbe Meldung,
+  kein gezählter Fehlversuch, kein Verbrauch. Nach dem
   Passwortschritt stellt der Server ein fünf Minuten gültiges Einmal-Ticket
   aus, gebunden an Konto, Tenant, Auth-Revision und Passwort-Hash; Redis
   speichert nur dessen Hash. TOTP/Backup-Code, Erst-Enrollment und der lokale

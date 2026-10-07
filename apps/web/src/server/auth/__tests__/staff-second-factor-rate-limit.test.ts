@@ -49,6 +49,9 @@ vi.mock('../password-hash-pool', async (importOriginal) => {
   return {
     ...(await importOriginal<typeof import('../password-hash-pool')>()),
     comparePasswordHash: (password: string, hash: string) => bcrypt.compare(password, hash),
+    // S-09: Backup-Codes gehen als ein Pool-Aufruf mit allen Hashes hinein.
+    comparePasswordHashes: (password: string, hashes: readonly string[]) =>
+      Promise.allSettled(hashes.map((hash) => bcrypt.compare(password, hash))),
   };
 });
 vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn() } }));

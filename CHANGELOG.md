@@ -1505,6 +1505,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Backup-Codes im zweiten Anmeldeschritt werden im
+  Worker-Thread-Pool der Passwortprüfung und stets gegen alle gespeicherten
+  Hashes verglichen; Antwortzeit und Hauptthread-Last verraten nicht mehr,
+  welcher Code passte. Bei ausgelastetem Pool wird mit derselben Meldung und
+  ohne gezählten Fehlversuch abgewiesen (`ACCESS-TENANT-RLS-001`).
 - **[Scope]** Über HTTP erreichen nur noch die genutzten Auth.js-Endpunkte
   Auth.js: CSRF-Token, Abmelden und die Anmelde-Callbacks der beiden
   Staff-Credentials-Provider. Der Sessionendpunkt, der ein gültiges
