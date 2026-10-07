@@ -886,6 +886,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Posteingang (Kanzlei): Die Suche über alle Mandanten wählt Treffer über den
+  Betreff-Index vor und scheitert auch bei sehr vielen Threads nicht mehr an
+  der Zeitgrenze der Datenbank; Treffer, Zähler und Sichtbarkeit sind
+  unverändert.
 - Workflow-Abhängigkeiten berücksichtigen alle sichtbaren Mandate; ab dem
   1.001. Mandat fehlten bisher Schritte, und abhängige Schritte galten
   fälschlich als nicht bestimmbar.

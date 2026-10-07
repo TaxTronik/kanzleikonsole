@@ -46,11 +46,14 @@ code_refs:
   - apps/web/src/app/api/staff/search/route.ts
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
+  - packages/db/prisma/migrations/20261007160200_portal_inbox_staff_search_candidates/migration.sql
+  - packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates(text,int4).sql
 test_refs:
   - apps/e2e/tests/recent-clients-state.spec.ts
   - apps/e2e/tests/saved-views-state.spec.ts
   - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
+  - packages/db/src/__tests__/portal-inbox-staff-search-candidates.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
   - apps/web/src/app/api/staff/search/__tests__/route.test.ts
   - apps/web/src/app/portal/(protected)/__tests__/list-ux.test.ts
@@ -171,6 +174,19 @@ Der einzige Inbox-Trigramindex liegt auf `portal_inbox_thread.subject`. Auf
 `portal_inbox_message.body` existiert bewusst weder ein Trigram-/GIN- noch ein
 anderer globaler Inhaltsindex. Status, Topic, Zuständigkeit und Zeit besitzen
 normale Scope-Indizes; diese ändern keine Sichtbarkeitsentscheidung.
+
+Unter RLS darf PostgreSQL die Teilstringsuche nicht als Indexbedingung nutzen.
+Die tenantweite Staff-Suche des Posteingangs wählt deshalb zuerst Kandidaten
+aus: `app.portal_inbox_staff_search_candidates` (SECURITY DEFINER, Tenant
+ausschließlich aus dem Transaktionskontext) sucht mit demselben Muster in
+denselben Feldern über den Trigramindex und liefert nur Threads, die die
+Staff-Policy sichtbar macht (Kanzleiperson, `PORTAL_INBOX_MANAGE`,
+Mandantenzugriff). Die Liste lädt danach wie bisher unter RLS mit allen
+Filtern, beschränkt auf diese Kandidaten; bei mehr als 10.000 Treffern entfällt
+die Vorauswahl. Suchfelder, Treffer, Zähler und Reihenfolge ändern sich dadurch
+nicht. Die Portalsuche (ein Mandant) und die Suche der Dokumentenseite (ein
+Mandant beziehungsweise Kanzlei-intern, ein Ordner) laufen über ihre
+Scope-Indizes; dort brächte der Trigramindex keinen Vorteil.
 
 Die Suchfelddefinition ist nach Oberfläche getrennt. Portalabfragen enthalten
 nur Betreff und Mandantenname. DATEV- und Addison-Nummern werden ausschließlich

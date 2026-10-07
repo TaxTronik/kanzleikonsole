@@ -14,7 +14,7 @@ import type {
   InboxThreadDetail,
   InboxThreadListItem,
 } from './types';
-import { inboxMetadataSearch } from './search';
+import { inboxMetadataSearch, staffInboxSearchCandidatesTx } from './search';
 
 // Fachkatalog: ACCESS-SEARCH-SCOPE-001 (Entwurf), ACCESS-TENANT-RLS-001,
 // ACCESS-STAFF-PERMISSION-001, DOC-PORTAL-SHARING-001.
@@ -150,8 +150,13 @@ export async function listStaffInboxThreadsTx(
   const requestedPage = normalizePage(filters.page);
   const clientAccess = await accessibleClientsWhereFor(tx, session);
   const scope = filters.scope ?? 'mine';
+  // P-10: Suchbegriff über den Trigram-Index vorauswählen (search.ts); der
+  // unveränderte Filter und RLS gelten weiterhin.
+  const query = normalizeQuery(filters.query);
+  const candidates = query ? await staffInboxSearchCandidatesTx(tx, query) : null;
   const where: Prisma.PortalInboxThreadWhereInput = {
     tenantId,
+    ...(candidates ? { id: { in: candidates } } : {}),
     ...filteredWhere(filters, 'staff'),
     ...(scope === 'mine'
       ? { assignedStaffId: staffId }

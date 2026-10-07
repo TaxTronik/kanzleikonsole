@@ -177,6 +177,18 @@ einzige Inbox-Trigramindex liegt auf dem Thread-Betreff.
 Es gibt keinen Trigram-/GIN- oder sonstigen globalen Inhaltsindex auf
 `PortalInboxMessage.body`, Anlagenbytes, OCR-Ausgaben oder Scannerdiagnosen.
 
+Unter RLS darf PostgreSQL `ILIKE` nicht als Indexbedingung nutzen (nicht
+LEAKPROOF). Die tenantweite Staff-Suche wählt deshalb zuerst Kandidaten über
+den Betreff-Trigramindex und die Mandantenfelder aus
+(`app.portal_inbox_staff_search_candidates`, SECURITY DEFINER, Tenant nur aus
+dem Kontext, dasselbe Muster wie Prisma `contains`). Die Funktion liefert nur
+Threads, die die Staff-Policy sichtbar macht, und bei mehr als 10.000 Treffern
+keine IDs; dann sucht die Liste wie zuvor ohne Vorauswahl. Danach lädt die
+Liste unverändert unter RLS mit allen Filtern, eingeschränkt auf die
+Kandidaten (`server/inbox/search.ts`); Treffer und Zähler bleiben gleich. Die
+Portalsuche ist auf einen Mandanten begrenzt und läuft über den Scope-Index
+`(tenant_id, client_id, …)`; der Trigramindex brächte dort keinen Vorteil.
+
 Treffer-, Zähler- und Detailabfragen müssen dieselben RLS-, Feature-, Kontakt-,
 Permission- und Mandantenzugriffsgates verwenden. Ein Deep-Link prüft die
 Autorisierung erneut. Suchbegriffe gehören nicht in Audit, Notification oder
