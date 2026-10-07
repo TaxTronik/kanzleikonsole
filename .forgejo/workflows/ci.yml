@@ -106,6 +106,12 @@ jobs:
       - name: Guard migration line endings
         run: pnpm verify:migration-line-endings
 
+      # D-01/D-07: Die Regeln des Migrations-Ledgers (bekannte Checksummen,
+      # Reparaturzustaende, CRLF-Varianten) sind reine Node-Tests ohne
+      # Datenbank; sie liefen bisher in keinem Job.
+      - name: Migration ledger unit tests
+        run: pnpm --filter @taxtronik/db test:migration-ledger
+
       # B-05: Shell-Skripte der Operator-CLI, der Guards und der Infra-Container
       # statisch pruefen. Projektoptionen stehen in .shellcheckrc, bewusste
       # Ausnahmen begruendet als Direktive an der Fundstelle.
@@ -787,6 +793,14 @@ jobs:
       - name: GwG-DB-Invarianten nach dem Kunden-Update prüfen
         if: steps.last.outputs.tag != ''
         run: pnpm --filter @taxtronik/db verify:invariants
+
+      # D-01/D-07: Auch die per Kunden-Update angehobene DB muss die kanonischen
+      # Funktionen, Trigger und RLS-Policies aus packages/db/prisma/sql tragen.
+      # Eine nachtraeglich geaenderte, beim Kunden bereits angewandte Migration
+      # faellt im frisch migrierten db-Job nicht auf, hier aber als Diff.
+      - name: Kanonische SQL-Quellen nach dem Kunden-Update prüfen
+        if: steps.last.outputs.tag != ''
+        run: pnpm db:sql:check
 
       - name: Migrationsstatus muss sauber sein
         if: steps.last.outputs.tag != ''

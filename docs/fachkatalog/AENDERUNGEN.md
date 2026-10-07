@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-007
+    date: '2026-10-07'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Die CI führt zusätzlich `pnpm db:sql:check` im Job upgrade-path nach der
+      Migration vom letzten Release und die Node-Tests des Migrations-Ledgers im
+      Quality-Job aus. Bestehende Prüfschritte, Release-Nachweise, Zeitstempel- und
+      Prüflauf-Schritte bleiben unverändert; die Änderung ergänzt nur Prüfungen.
+      Keine fachliche Freigabe.
+    tests:
+      - packages/db/src/__tests__/sql-sources.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-006
     date: '2026-10-07'
     paths:
@@ -4204,6 +4221,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-007` dokumentiert die zusätzlichen
+  CI-Prüfungen der kanonischen SQL-Quellen nach dem Upgrade-Pfad und der
+  Ledger-Tests.
 
 - 2026-10-07: `FK-EXC-20261007-006` dokumentiert die versionsgebundene
   Release-Age-Ausnahme für source-map-js 1.2.2 im Supply-Chain-Guard.

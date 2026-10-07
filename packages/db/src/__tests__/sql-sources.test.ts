@@ -587,6 +587,39 @@ describe('Kanonische SQL-Quellen im CI', () => {
     expect(dbTests).toBeGreaterThan(db.steps.indexOf(gate));
   });
 
+  it('prüft im upgrade-path-Job auch die per Kunden-Update angehobene DB', () => {
+    const upgrade = workflow.jobs['upgrade-path']!;
+    const index = (run: string) => upgrade.steps.findIndex((step) => step.run?.trim() === run);
+    const migrated = index('pnpm --filter @taxtronik/db exec prisma migrate deploy');
+    const invariants = index('pnpm --filter @taxtronik/db verify:invariants');
+    const gates = upgrade.steps.filter((step) => step.run?.trim() === 'pnpm db:sql:check');
+    expect(gates).toHaveLength(1);
+    const gate = gates[0]!;
+    const rlsTests = upgrade.steps.findIndex(
+      (step) => step.run?.trim() === 'pnpm --filter @taxtronik/db test',
+    );
+    expect(migrated).toBeGreaterThanOrEqual(0);
+    expect(invariants).toBeGreaterThan(migrated);
+    expect(upgrade.steps.indexOf(gate)).toBe(invariants + 1);
+    expect(rlsTests).toBeGreaterThan(upgrade.steps.indexOf(gate));
+    // Gleiche Bedingung wie das Kunden-Update selbst: nur mit Release-Tag.
+    expect(gate.if).toBe(upgrade.steps[migrated]!.if);
+    expect(gate['continue-on-error']).toBeFalsy();
+  });
+
+  it('führt die Ledger-Regeln als Node-Tests im quality-Job aus', () => {
+    const quality = workflow.jobs['quality']!;
+    const steps = quality.steps.filter(
+      (step) => step.run?.trim() === 'pnpm --filter @taxtronik/db test:migration-ledger',
+    );
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.if).toBeUndefined();
+    expect(steps[0]!['continue-on-error']).toBeFalsy();
+    expect(dbPackage.scripts['test:migration-ledger']).toBe(
+      'node --test scripts/migration-ledger.node-test.mjs',
+    );
+  });
+
   it('startet die Paketskripte über die Workspace-Wurzel', () => {
     for (const command of ['dump', 'check', 'migration']) {
       expect(rootPackage.scripts[`db:sql:${command}`]).toBe(

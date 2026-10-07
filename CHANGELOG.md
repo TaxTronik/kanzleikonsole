@@ -235,6 +235,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die CI prüft die kanonischen SQL-Quellen auch nach dem Upgrade vom letzten
+  Release (`pnpm db:sql:check` im Job `upgrade-path`) und führt die Node-Tests
+  des Migrations-Ledgers im Quality-Job aus.
 - Fachkatalog: `GWG-SELF-ONBOARDING-001` beschreibt die Zuordnung von
   Onboarding-Uploads allein über `document.gwg_onboarding_invite_id`; die
   JSON-Liste der Einladung wird nur noch für die Rollback-Verträglichkeit mit
