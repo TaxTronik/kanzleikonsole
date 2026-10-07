@@ -222,9 +222,11 @@ Zuständigkeit, gezielte Hauptbearbeiterzuordnung, OPEN mit Vertraulichkeitsflag
 und Admin-Override. Authentifizierung und nachgelagerte Eingabeformulare sind
 in diesen isolierten Tests ersetzt; Auswahlabfrage, Policy und RLS sind echt.
 
-Der Datenbanktest wird ausschließlich mit `INVOICE_SELECTION_DB_TEST=1`
-aktiviert. Der verpflichtende `db`-CI-Schritt führt ihn nach den Migrationen
-aus und archiviert `testbericht-invoice-selection.log`. Ungültige oder fehlende
-Datenbank-URLs führen bei aktiviertem Test zum Fehler. Die URL-Platzhalter des
-Quality-Jobs ohne PostgreSQL aktivieren ihn nicht; ein regulärer Unit-Test
-prüft die verbindliche CI-Zuordnung, das Opt-in und die Logarchivierung.
+Der Datenbanktest läuft lokal mit `INVOICE_SELECTION_DB_TEST=1`, in CI im
+verpflichtenden `db`-Job mit `DB_TESTS=1` im Glob-Schritt der Web-DB-Suiten
+nach den Migrationen; das Protokoll wird als `testbericht-web-db.log`
+archiviert. Ungültige oder fehlende Datenbank-URLs führen bei aktiviertem Test
+zum Fehler. Der Unit-Lauf des Quality-Jobs schließt `*-db.test.ts(x)` aus; mit
+`CI=true` scheitert die Datei ohne Opt-in, statt übersprungen zu werden. Ein
+regulärer Unit-Test prüft die verbindliche CI-Zuordnung, das Opt-in und die
+Logarchivierung.

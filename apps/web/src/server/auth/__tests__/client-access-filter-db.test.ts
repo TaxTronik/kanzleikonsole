@@ -27,7 +27,14 @@ import { loadDependenciesTx } from '@/server/mandate-expansion/service';
 
 // Quality hat Platzhalter-URLs, aber keine Datenbank. Der db-Job schaltet den
 // Test ausdrücklich ein; fehlende/ungültige URLs müssen dann scheitern.
-const enabled = process.env.CLIENT_ACCESS_FILTER_DB_TEST === '1';
+// B-02: lokal per CLIENT_ACCESS_FILTER_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
+// *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.
+const enabled = process.env.CLIENT_ACCESS_FILTER_DB_TEST === '1' || process.env.DB_TESTS === '1';
+if (!enabled && process.env.CI === 'true') {
+  throw new Error(
+    'CLIENT_ACCESS_FILTER_DB_TEST=1 oder DB_TESTS=1 fehlt: in CI wird keine DB-Suite übersprungen.',
+  );
+}
 if (enabled) {
   for (const name of ['DATABASE_URL', 'DATABASE_APP_URL']) {
     let url: URL;

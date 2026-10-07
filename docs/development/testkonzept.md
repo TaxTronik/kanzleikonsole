@@ -38,6 +38,19 @@ Testreport abgeleitet werden. DB-gebundene Tests laufen im Job `db` gegen eine
 echte Postgres-Instanz, die übrigen Pakete im Job `quality`.
 Plattformabhängige Evidence-Tests dürfen lokal nur mit ausgewiesenem
 Skip-Grund fehlen; in CI ist die erforderliche OpenSSL-Unterstützung ein Gate.
+
+PostgreSQL-Suiten außerhalb von `packages/db` heißen `*-db.test.ts(x)`. Der
+Job `db` findet sie je Paket per Glob (`pnpm --filter <paket> run test:db`
+mit `vitest.db.config.ts`) und schaltet alle mit `DB_TESTS=1` ein; die
+Unit-Läufe (`test`) schließen dieselben Dateien aus. Lokal schaltet weiter das
+eigene Flag einer Suite sie ein (z. B.
+`YEAR_END_DB_TEST=1 pnpm exec vitest run <datei>`). Mit `CI=true` scheitert
+eine Suite ohne Opt-in, statt still übersprungen zu werden.
+`scripts/tests/db-suites-ci.test.mjs` listet im Job `quality` alle gefundenen
+Suiten und prüft je Datei Wache, ausführenden Schritt und archiviertes
+Protokoll. Suiten mit eigener Datenbank stehen begründet in
+`scripts/ci/db-suites.mjs` (`ISOLATED_DB_SUITES`) und laufen in einem eigenen
+Schritt.
 Die A11Y-Gates und ihre Grenzen sind in der
 [Ist-/Gap-Dokumentation zur Barrierefreiheit](../assurance/barrierefreiheit.md)
 beschrieben. Insbesondere ersetzt ein bestandener Axe-Lauf keine manuelle

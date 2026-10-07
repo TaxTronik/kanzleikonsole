@@ -1,67 +1,10 @@
 // Fachkatalog: AUDIT-HASH-CHAIN-001, ACCESS-CLIENT-MODE-001
-import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
-import { describe, expect, it } from 'vitest';
+// B-02: Der db-Job findet die Suite per Glob (scripts/ci/db-suites.mjs) und führt
+// sie mit DB_TESTS=1 aus; geprüft wird die Verdrahtung genau dieser Datei.
+import { describeDbSuiteInCi } from '@/__tests__/db-suite-ci';
 
-type Step = {
-  name?: string;
-  run?: string;
-  uses?: string;
-  env?: Record<string, string>;
-  if?: string;
-  'continue-on-error'?: boolean;
-  with?: { name?: string; path?: string };
-};
-type Job = {
-  steps: Step[];
-  env?: Record<string, string>;
-  if?: string;
-  'continue-on-error'?: boolean;
-};
-type Workflow = { env?: Record<string, string>; jobs: Record<string, Job> };
-
-const yaml = createRequire(import.meta.url)('js-yaml') as { load: (source: string) => Workflow };
-const workflow = yaml.load(
-  readFileSync(new URL('../../../../../../.forgejo/workflows/ci.yml', import.meta.url), 'utf8'),
+describeDbSuiteInCi(
+  'required settings atomicity database evidence in CI',
+  'apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts',
+  'SETTINGS_ATOMICITY_DB_TEST',
 );
-const flag = 'SETTINGS_ATOMICITY_DB_TEST';
-const spec = 'src/server/settings/__tests__/settings-atomicity-db.test.ts';
-const log = 'testbericht-settings-atomicity.log';
-
-describe('required settings atomicity database evidence in CI', () => {
-  it('runs the exact opted-in spec after migrations as a blocking database step', () => {
-    const db = workflow.jobs.db!;
-    expect(db.if).toBeUndefined();
-    expect(db['continue-on-error']).toBeFalsy();
-    const candidates = db.steps.filter((step) => step.run?.includes(spec));
-    expect(candidates).toHaveLength(1);
-    const step = candidates[0]!;
-    expect(step.env?.[flag]).toBe('1');
-    expect(step.if).toBeUndefined();
-    expect(step['continue-on-error']).toBeFalsy();
-    expect(step.run?.trim()).toBe(
-      `set -o pipefail\npnpm --filter @taxtronik/web exec vitest run ${spec} 2>&1 | tee ${log}`,
-    );
-    const migrationIndex = db.steps.findIndex(
-      (item) => item.run?.trim() === 'pnpm db:migrate:deploy',
-    );
-    expect(migrationIndex).toBeGreaterThanOrEqual(0);
-    expect(db.steps.indexOf(step)).toBeGreaterThan(migrationIndex);
-  });
-
-  it('keeps the opt-in out of quality jobs without a database', () => {
-    expect(workflow.env?.[flag]).toBeUndefined();
-    expect(workflow.jobs.quality!.env?.[flag]).toBeUndefined();
-    for (const step of workflow.jobs.quality!.steps) expect(step.env?.[flag]).toBeUndefined();
-  });
-
-  it('uploads the database log even after a failed test', () => {
-    const upload = workflow.jobs.db!.steps.find(
-      (step) =>
-        step.uses?.startsWith('actions/upload-artifact@') && step.with?.name === 'testbericht-db',
-    );
-    expect(upload).toBeDefined();
-    expect(upload!.if).toBe('always()');
-    expect(upload!.with?.path?.split(/\r?\n/)).toContain(log);
-  });
-});

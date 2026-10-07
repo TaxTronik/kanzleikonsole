@@ -17,7 +17,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-const enabled = process.env['WORKER_DB_TEST'] === '1';
+// B-02: lokal per WORKER_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
+// *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.
+const enabled = process.env['WORKER_DB_TEST'] === '1' || process.env['DB_TESTS'] === '1';
+if (!enabled && process.env['CI'] === 'true') {
+  throw new Error(
+    'WORKER_DB_TEST=1 oder DB_TESTS=1 fehlt: in CI wird keine DB-Suite übersprungen.',
+  );
+}
 if (enabled) {
   let url: URL;
   try {

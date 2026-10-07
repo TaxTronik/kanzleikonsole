@@ -278,6 +278,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- CI: Der Job `db` findet alle PostgreSQL-Suiten (`*-db.test.ts`) von Web,
+  Worker und Evidence per Glob (`scripts/ci/db-suites.mjs`,
+  `pnpm --filter <paket> run test:db`) statt über gepflegte Einzelschritte.
+  Mit `CI=true` scheitert eine Suite ohne Opt-in (`DB_TESTS=1` oder ihr
+  bisheriges Flag), statt still übersprungen zu werden; die Unit-Läufe
+  schließen DB-Suiten aus. Ein Strukturtest im Job `quality` listet die
+  gefundenen Suiten und prüft Wache, Schritt und Protokoll.
 - Der Worker prüft die Verbindung der Restore-Drill-Rolle
   (`DATABASE_DRILL_URL`) beim Start und in der Konfigurationsprüfung
   (`SCHEMA_WORKER`): in Produktion Pflicht, sonst optional. Die mitgelieferte

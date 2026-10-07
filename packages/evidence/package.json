@@ -15,7 +15,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --exclude \"**/*-db.test.{ts,tsx}\"",
+    "test:db": "vitest run --config vitest.db.config.ts",
     "verify": "tsx --env-file-if-exists=../../.env src/cli/verify.ts"
   },
   "dependencies": {

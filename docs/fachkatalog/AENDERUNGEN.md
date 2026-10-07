@@ -1,5 +1,78 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-044
+    date: '2026-10-07'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-ci.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts
+      - apps/web/src/server/documents/__tests__/retag-db-ci.test.ts
+      - apps/web/src/server/documents/__tests__/retag-db.test.ts
+      - apps/web/src/server/fristen/__tests__/bescheid-vorab-db.test.ts
+      - apps/web/src/server/gwg/__tests__/services-db-ci.test.ts
+      - apps/web/src/server/gwg/__tests__/services-db.test.ts
+      - apps/web/src/server/poa/__tests__/poa-services-db-ci.test.ts
+      - apps/web/src/server/poa/__tests__/poa-services-db.test.ts
+      - packages/evidence/src/__tests__/anchor-schedule-db.test.ts
+      - packages/evidence/src/__tests__/evidence-db-ci.test.ts
+      - packages/evidence/src/__tests__/verify-checkpoint-db.test.ts
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-HASH-CHAIN-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - GWG-ACTIVATION-GATE-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-RISK-REVIEW-001
+      - POA-LIFECYCLE-001
+      - POA-SIGNING-CONFIRMATION-001
+      - POA-SIGNING-SNAPSHOT-001
+      - TAX-CONTROL-STATUS-001
+      - TAX-NOTICE-APPEAL-001
+    reason: >-
+      Der db-CI-Job findet alle PostgreSQL-Suiten (`*-db.test.ts`) von Web, Worker
+      und Evidence per Glob (`scripts/ci/db-suites.mjs`) statt über gepflegte
+      Einzelschritte; jede Suite akzeptiert ihr bisheriges Flag oder `DB_TESTS=1`
+      und scheitert mit `CI=true` ohne Opt-in, statt still übersprungen zu werden.
+      Die CI-Strukturtests der einzelnen Suiten prüfen ihre Zuordnung über dasselbe
+      Modul. Testinhalte und geprüfte Fachlogik bleiben unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-ci.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts
+      - apps/web/src/server/auth/__tests__/client-access-filter-ci.test.ts
+      - apps/web/src/server/auth/__tests__/client-access-filter-db.test.ts
+      - apps/web/src/server/auth/__tests__/invoice-selection-ci.test.ts
+      - apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx
+      - apps/web/src/server/documents/__tests__/retag-db-ci.test.ts
+      - apps/web/src/server/documents/__tests__/retag-db.test.ts
+      - apps/web/src/server/fristen/__tests__/bescheid-vorab-db.test.ts
+      - apps/web/src/server/gwg/__tests__/services-db-ci.test.ts
+      - apps/web/src/server/gwg/__tests__/services-db.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-concurrency-ci.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts
+      - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
+      - apps/web/src/server/n8n-settings/__tests__/n8n-settings-db-ci.test.ts
+      - apps/web/src/server/n8n-settings/__tests__/n8n-settings-db.test.ts
+      - apps/web/src/server/poa/__tests__/poa-services-db-ci.test.ts
+      - apps/web/src/server/poa/__tests__/poa-services-db.test.ts
+      - apps/web/src/server/reminders/__tests__/tickets-db.test.ts
+      - apps/web/src/server/settings/__tests__/settings-atomicity-ci.test.ts
+      - apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts
+      - apps/web/src/server/tax-deadlines/__tests__/day-groups-db.test.ts
+      - apps/web/src/server/workflows/__tests__/year-end-db.test.ts
+      - apps/worker/src/__tests__/worker-db-ci.test.ts
+      - apps/worker/src/jobs/__tests__/mail-outbox-db.test.ts
+      - apps/worker/src/jobs/__tests__/reminders-daily-db.test.ts
+      - apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts
+      - apps/worker/src/jobs/__tests__/workflow-n8n-dispatch-db.test.ts
+      - packages/evidence/src/__tests__/anchor-schedule-db.test.ts
+      - packages/evidence/src/__tests__/evidence-db-ci.test.ts
+      - packages/evidence/src/__tests__/verify-checkpoint-db.test.ts
+      - scripts/tests/db-suites-ci.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-043
     date: '2026-10-07'
     paths:
@@ -5072,6 +5145,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-044` dokumentiert die Glob-Ausführung der
+  PostgreSQL-Suiten im db-CI-Job.
 
 - 2026-10-07: `FK-EXC-20261007-043` dokumentiert die Kommentare des
   Fristenkerns zur App-Rolle.

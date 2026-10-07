@@ -44,7 +44,14 @@ import { suggestInboundClientsTx } from '@/server/mailbox/suggestions';
 
 // Quality has URL placeholders but no database service. The required db-job
 // step opts in explicitly; missing/invalid URLs must then fail, never skip.
-const enabled = process.env.INVOICE_SELECTION_DB_TEST === '1';
+// B-02: lokal per INVOICE_SELECTION_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
+// *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.
+const enabled = process.env.INVOICE_SELECTION_DB_TEST === '1' || process.env.DB_TESTS === '1';
+if (!enabled && process.env.CI === 'true') {
+  throw new Error(
+    'INVOICE_SELECTION_DB_TEST=1 oder DB_TESTS=1 fehlt: in CI wird keine DB-Suite übersprungen.',
+  );
+}
 if (enabled) {
   for (const name of ['DATABASE_URL', 'DATABASE_APP_URL']) {
     let url: URL;

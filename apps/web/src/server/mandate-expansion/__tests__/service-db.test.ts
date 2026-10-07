@@ -12,7 +12,14 @@ import type { TxClient } from '@taxtronik/db';
 // Production SQL, scope and mutation services run unchanged; no Next request or external audit service is needed.
 vi.mock('@/server/auth/staff', () => ({ staffAuth: vi.fn() }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
-const enabled = process.env['MANDATE_SERVICE_DB_TEST'] === '1';
+// B-02: lokal per MANDATE_SERVICE_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
+// *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.
+const enabled = process.env['MANDATE_SERVICE_DB_TEST'] === '1' || process.env['DB_TESTS'] === '1';
+if (!enabled && process.env['CI'] === 'true') {
+  throw new Error(
+    'MANDATE_SERVICE_DB_TEST=1 oder DB_TESTS=1 fehlt: in CI wird keine DB-Suite übersprungen.',
+  );
+}
 (enabled ? describe : describe.skip)(
   'production mandate services against an isolated PostgreSQL app role',
   () => {

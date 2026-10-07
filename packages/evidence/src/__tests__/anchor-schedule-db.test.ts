@@ -32,7 +32,14 @@ import type { TimestampPort, TimestampResult } from '../ports/timestamp';
 // S-01: DATABASE_URL ist dort die Owner-Rolle der Container; nur das Abräumen
 // committeter Audit-/Anker-Zeilen braucht den Tabellen-Owner
 // (EVIDENCE_DB_ADMIN_URL, sonst DATABASE_URL).
-const enabled = process.env['EVIDENCE_DB_TEST'] === '1';
+// B-02: lokal per EVIDENCE_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
+// *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.
+const enabled = process.env['EVIDENCE_DB_TEST'] === '1' || process.env['DB_TESTS'] === '1';
+if (!enabled && process.env['CI'] === 'true') {
+  throw new Error(
+    'EVIDENCE_DB_TEST=1 oder DB_TESTS=1 fehlt: in CI wird keine DB-Suite übersprungen.',
+  );
+}
 if (enabled) {
   for (const name of ['DATABASE_URL', 'EVIDENCE_DB_ADMIN_URL']) {
     if (name === 'EVIDENCE_DB_ADMIN_URL' && !process.env[name]) continue;

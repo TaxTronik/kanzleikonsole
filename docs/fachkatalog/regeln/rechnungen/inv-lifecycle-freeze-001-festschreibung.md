@@ -182,6 +182,7 @@ Versand-Actions mit App-Rolle und echten Evidence-Schreibvorgängen in beiden
 konkurrierenden Reihenfolgen aus. `pg_blocking_pids` weist das tatsächliche
 Warten nach; Endstatus, Zahlungsdatum, Rückzahlungskennzeichen und Auditkette
 werden anschließend geprüft. Authentifizierung, Archivrenderer und ausgehende
-Benachrichtigungen sind isoliert. Der Test läuft mit
-`INVOICE_CONCURRENCY_DB_TEST=1` verpflichtend im DB-CI-Job; ohne dieses Opt-in
-werden keine Datenbankzugriffe durch den Web-Unit-Lauf ausgelöst.
+Benachrichtigungen sind isoliert. Der Test läuft im DB-CI-Job verpflichtend mit
+`DB_TESTS=1` (lokal `INVOICE_CONCURRENCY_DB_TEST=1`); der Web-Unit-Lauf
+schließt die Datei aus und löst keine Datenbankzugriffe aus, und mit `CI=true`
+scheitert sie ohne Opt-in.

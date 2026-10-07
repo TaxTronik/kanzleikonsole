@@ -43,7 +43,14 @@ import {
 // S-01: Dort ist DATABASE_URL die Owner-Rolle der Container (taxtronik_owner),
 // der keine Tabelle gehört. Die Manipulations-Fixtures schalten Schutz-Trigger
 // ab und laufen deshalb über EVIDENCE_DB_ADMIN_URL (Tabellen-Owner).
-const enabled = process.env['EVIDENCE_DB_TEST'] === '1';
+// B-02: lokal per EVIDENCE_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
+// *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.
+const enabled = process.env['EVIDENCE_DB_TEST'] === '1' || process.env['DB_TESTS'] === '1';
+if (!enabled && process.env['CI'] === 'true') {
+  throw new Error(
+    'EVIDENCE_DB_TEST=1 oder DB_TESTS=1 fehlt: in CI wird keine DB-Suite übersprungen.',
+  );
+}
 if (enabled) {
   for (const name of ['DATABASE_URL', 'EVIDENCE_DB_ADMIN_URL']) {
     if (name === 'EVIDENCE_DB_ADMIN_URL' && !process.env[name]) continue;

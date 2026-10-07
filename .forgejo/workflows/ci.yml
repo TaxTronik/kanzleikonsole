@@ -103,6 +103,12 @@ jobs:
       - name: Guard pinned CI actions
         run: sh scripts/check-ci-actions-pinned.sh
 
+      # B-02: Jede PostgreSQL-Suite (*-db.test.ts) läuft im db-Job: Glob je
+      # Paket mit DB_TESTS=1, ohne Opt-in scheitert sie in CI. Der Test listet
+      # die gefundenen Dateien und ihren db-Schritt (scripts/ci/db-suites.mjs).
+      - name: Guard DB-Suiten im db-Job
+        run: node --test scripts/tests/db-suites-ci.test.mjs
+
       - name: Guard migration line endings
         run: pnpm verify:migration-line-endings
 
@@ -264,167 +270,49 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/db test 2>&1 | tee testbericht-db.log
 
+      # B-02: Jede Datei *-db.test.ts(x) unter src/ ist eine PostgreSQL-Suite.
+      # Die drei Schritte finden sie je Paket per Glob (`run test:db`,
+      # vitest.db.config.ts) statt über eine Dateiliste; DB_TESTS=1 schaltet
+      # alle ein, und mit CI=true scheitert eine Suite ohne Opt-in, statt still
+      # übersprungen zu werden. Quelle: scripts/ci/db-suites.mjs, Prüfung:
+      # scripts/tests/db-suites-ci.test.mjs (Quality-Job). Die Suiten eines
+      # Pakets laufen nacheinander, jede in eigenem Prozess und eigenem Tenant.
+      # Die Fachkatalog-Regeln, die eine Suite belegt, nennt ihr Dateikopf.
       # S-01: Web-, Worker- und Evidence-Suiten verbinden ihren Owner-Client
       # (DATABASE_URL) wie die Container als taxtronik_owner: BYPASSRLS ohne
       # Superuser, Rolle aus 01_bootstrap.sql, Grants aus der Migration
       # 20261006160000. Migrationen, Ledger-/Drift-/RLS-Gates und die
       # packages/db-Suite (Fixtures mit SET ROLE/DDL) behalten den Superuser.
-      - name: Ticket services against the PostgreSQL app role
+      - name: Web-DB-Suiten gegen die PostgreSQL-App-Rolle (Glob)
         env:
-          REMINDER_TICKETS_DB_TEST: '1'
+          DB_TESTS: '1'
           DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/reminders/__tests__/tickets-db.test.ts 2>&1 | tee testbericht-reminder-services.log
-
-      - name: Invoice selection against the PostgreSQL app role
-        env:
-          INVOICE_SELECTION_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/auth/__tests__/invoice-selection-db.test.tsx 2>&1 | tee testbericht-invoice-selection.log
-
-      # ACCESS-CLIENT-MODE-001: Relationsfilter der Mandanten-Sichtbarkeit
-      # liefern dieselben Zeilen wie die frühere NOT-IN-Liste (P-09).
-      - name: Client access relation filters against the PostgreSQL app role
-        env:
-          CLIENT_ACCESS_FILTER_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/auth/__tests__/client-access-filter-db.test.ts 2>&1 | tee testbericht-client-access-filter.log
-
-      # YEAR-END-CAMPAIGN-001: gesammelter Rollout und groupBy-Übersicht der
-      # Jahreswechsel-Kampagnen gegen Trigger und RLS (P-19).
-      - name: Year-end campaigns against the PostgreSQL app role
-        env:
-          YEAR_END_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/workflows/__tests__/year-end-db.test.ts 2>&1 | tee testbericht-year-end.log
-
-      # ACCESS-CLIENT-MODE-001: Monatsraster der Steuertermine zählt per groupBy
-      # dieselben Pillen wie die frühere Zählung über alle Terminzeilen (P-20).
-      - name: Tax-deadline month counts against the PostgreSQL app role
-        env:
-          TAX_DEADLINE_DAY_GROUPS_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/tax-deadlines/__tests__/day-groups-db.test.ts 2>&1 | tee testbericht-tax-deadline-day-groups.log
-
-      - name: Settings and audit atomicity against the PostgreSQL app role
-        env:
-          SETTINGS_ATOMICITY_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/settings/__tests__/settings-atomicity-db.test.ts 2>&1 | tee testbericht-settings-atomicity.log
-
-      - name: Invoice payment and correction concurrency against PostgreSQL
-        env:
-          INVOICE_CONCURRENCY_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/invoicing/__tests__/invoice-concurrency-db.test.ts 2>&1 | tee testbericht-invoice-concurrency.log
-
-      # DOC-PORTAL-SHARING-001 / DOC-VERSION-IMMUTABILITY-001: Bulk-Actions der
-      # Dokumentenverwaltung (P-18) — eine Transaktion je Auswahl, Zugriff und
-      # Audit je Dokument, Einzel-Rückfall bei Triggerfehlern.
-      - name: Document bulk actions against the PostgreSQL app role
-        env:
-          DOCUMENT_BULK_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run "src/app/staff/(protected)/documents/__tests__/bulk-actions-db.test.ts" 2>&1 | tee testbericht-document-bulk.log
-
-      # DOC-VERSION-IMMUTABILITY-001 / DOC-UPLOAD-JOURNAL-001: Umklassifizierung
-      # als Service (K-03) — Metadatenänderung, journal-first Re-Store mit
-      # app.settle_storage_intent, Versionsdrift nach dem Object-Write und die
-      # Auswahl über dieselben Schritte.
-      - name: Document retag service against the PostgreSQL app role
-        env:
-          DOCUMENT_RETAG_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/documents/__tests__/retag-db.test.ts 2>&1 | tee testbericht-document-retag.log
-
-      # TAX-CONTROL-STATUS-001 (K-05): Vorab-Abfragen des Fristenkontrollbuchs
-      # (verspätete Einlegung, tragfähige Bestandskraft-Begründung) unter der
-      # App-Rolle, rund um Mitternacht und DST in fünf Sitzungs-Zeitzonen.
-      - name: Fristenkontrollbuch pre-queries against the PostgreSQL app role
-        env:
-          FRISTEN_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/fristen/__tests__/bescheid-vorab-db.test.ts 2>&1 | tee testbericht-fristen-vorab.log
-
-      # POA-LIFECYCLE-001 / POA-SIGNING-SNAPSHOT-001: Vollmachten-Services (K-03)
-      # — Anlage (In-App und zweiphasiges Extern-PDF), Versand mit gebundenem
-      # Snapshot und DB-Versandzeit, Widerruf mit der Datenbank-Uhr.
-      - name: Power of attorney services against the PostgreSQL app role
-        env:
-          POA_SERVICE_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/poa/__tests__/poa-services-db.test.ts 2>&1 | tee testbericht-poa-services.log
-
-      # AUDIT-HASH-CHAIN-001: n8n-Einstellungs-Services (K-03) — Routen,
-      # Retry/Replay/Abschluss von Zustellungen und Zurücksetzen gegen RLS,
-      # Constraints und Outbox-Aggregation; Queue und SSRF-DNS sind Attrappen.
-      - name: n8n settings services against the PostgreSQL app role
-        env:
-          N8N_SETTINGS_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/n8n-settings/__tests__/n8n-settings-db.test.ts 2>&1 | tee testbericht-n8n-settings.log
-      # GWG-IDENTIFICATION-EVIDENCE-001 / GWG-BENEFICIAL-OWNERS-001 /
-      # GWG-RISK-REVIEW-001 / GWG-ACTIVATION-GATE-001 (K-03): GwG-Services
-      # (Prelude, Ausweissätze, wirtschaftlich Berechtigte, Übergabe und
-      # Verifikation) unter RLS, GwG-Triggern, Lifecycle-Lock und Status-CAS.
-      - name: GwG services against the PostgreSQL app role
-        env:
-          GWG_SERVICES_DB_TEST: '1'
-          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-        run: |
-          set -o pipefail
-          pnpm --filter @taxtronik/web exec vitest run src/server/gwg/__tests__/services-db.test.ts 2>&1 | tee testbericht-gwg-services.log
+          pnpm --filter @taxtronik/web run test:db 2>&1 | tee testbericht-web-db.log
 
       # AUDIT-VERIFY-ALERT-001 / AUDIT-RFC3161-ANCHOR-001: checkpointgestützte
-      # Kettenprüfung (P-04) und Rolling-Anchor-Takt (P-05) gegen echtes
-      # PostgreSQL; alle Fixtures werden zurückgerollt.
-      - name: Audit evidence services against PostgreSQL
+      # Kettenprüfung (P-04) und Rolling-Anchor-Takt (P-05). Manipulations-
+      # Fixtures schalten Schutz-Trigger ab (Tabellen-Owner); alle Fixtures
+      # werden zurückgerollt.
+      - name: Evidence-DB-Suiten gegen PostgreSQL (Glob)
         env:
-          EVIDENCE_DB_TEST: '1'
+          DB_TESTS: '1'
           DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
-          # Manipulations-Fixtures schalten Schutz-Trigger ab (Tabellen-Owner).
           EVIDENCE_DB_ADMIN_URL: postgresql://taxtronik:taxtronik@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
-          pnpm --filter @taxtronik/evidence exec vitest run src/__tests__/verify-checkpoint-db.test.ts src/__tests__/anchor-schedule-db.test.ts 2>&1 | tee testbericht-evidence-db.log
+          pnpm --filter @taxtronik/evidence run test:db 2>&1 | tee testbericht-evidence-db.log
 
-      # WORKFLOW-LIFECYCLE-001 / TAX-CONTROL-STATUS-001: Worker-Jobs gegen echtes
-      # PostgreSQL (F-11: endgültig verbuchte n8n-Handoffs verdrängen echte
-      # Fehlerfälle nicht; P-15: reminders-daily in Mandantenabschnitten mit
-      # gleichem Ergebnis; F-08: Mail-Outbox-Claims, Backoff und Eskalation;
-      # K-06/DOC-UPLOAD-JOURNAL-001: offene Upload-Absichten nach Prozessabbruch
-      # werden aufgelöst). Nur externe Übergaben und der Object Store sind
-      # Attrappen; eigene Tenants.
-      - name: Worker jobs against PostgreSQL
+      # Worker-Jobs gegen echtes PostgreSQL: nur externe Übergaben und der
+      # Object Store sind Attrappen; eigene Tenants.
+      - name: Worker-DB-Suiten gegen PostgreSQL (Glob)
         env:
-          WORKER_DB_TEST: '1'
+          DB_TESTS: '1'
           DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
         run: |
           set -o pipefail
-          pnpm --filter @taxtronik/worker exec vitest run src/jobs/__tests__/workflow-n8n-dispatch-db.test.ts src/jobs/__tests__/reminders-daily-db.test.ts src/jobs/__tests__/mail-outbox-db.test.ts src/jobs/__tests__/storage-orphan-cleanup-db.test.ts 2>&1 | tee testbericht-worker-db.log
+          pnpm --filter @taxtronik/worker run test:db 2>&1 | tee testbericht-worker-db.log
 
       # service-db.test.ts ist Nachweis für MANDATE-STRUCTURE-001,
       # GWG-BENEFICIAL-OWNERS-001, GWG-RISK-REVIEW-001 und
@@ -470,19 +358,7 @@ jobs:
           retention-days: 90
           path: |
             testbericht-db.log
-            testbericht-reminder-services.log
-            testbericht-invoice-selection.log
-            testbericht-client-access-filter.log
-            testbericht-year-end.log
-            testbericht-tax-deadline-day-groups.log
-            testbericht-settings-atomicity.log
-            testbericht-invoice-concurrency.log
-            testbericht-document-bulk.log
-            testbericht-document-retag.log
-            testbericht-fristen-vorab.log
-            testbericht-poa-services.log
-            testbericht-n8n-settings.log
-            testbericht-gwg-services.log
+            testbericht-web-db.log
             testbericht-evidence-db.log
             testbericht-worker-db.log
             testbericht-mandate-services.log
