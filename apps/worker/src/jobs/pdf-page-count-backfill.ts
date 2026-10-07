@@ -289,6 +289,8 @@ export async function runPdfPageCountBackfill(
     skipped: 0,
     failed: 0,
   };
+  // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client;
+  // Kandidaten und Ergebnisse laufen je Tenant über die App-Rolle.
   const tenants = await prismaOwner.tenant.findMany({
     where: scope.tenantIds ? { id: { in: [...scope.tenantIds] } } : {},
     select: { id: true },
