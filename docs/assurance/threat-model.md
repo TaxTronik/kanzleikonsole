@@ -22,12 +22,13 @@ Die Assets, deren Vertraulichkeit, Integrität oder Verfügbarkeit existenzbedro
 
 ### 2.1 Mandantentrennung (§203 StGB)
 
-| ID      | Was muss niemals passieren                                     | Schicht                                  | Test                                                       |
-| ------- | -------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------- |
-| T-ISO-1 | Ein User sieht Daten eines anderen Tenants                     | RLS + App-Filter                         | `rls-cross-tenant.test.ts`, E2E 07 (5.1-5.4), `verify:rls` |
-| T-ISO-2 | Eine Server Action umgeht Object Gates                         | `staffActionGuard` / `portalActionGuard` | `server-action-authz.test.ts` (AST-Guard)                  |
-| T-ISO-3 | Eine Query ohne `withTenantContext` läuft gegen Mandantendaten | PrismaClient-Guard                       | `prisma-client-guard.test.ts` (AST-Guard)                  |
-| T-ISO-4 | Eine neue Tabelle ohne RLS wird hinzugefügt                    | FORCE RLS + Drift-Gate                   | `verify:rls` in CI                                         |
+| ID      | Was muss niemals passieren                                                                       | Schicht                                                                             | Test                                                                                        |
+| ------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| T-ISO-1 | Ein User sieht Daten eines anderen Tenants                                                       | RLS + App-Filter                                                                    | `rls-cross-tenant.test.ts`, E2E 07 (5.1-5.4), `verify:rls`                                  |
+| T-ISO-2 | Eine Server Action umgeht Object Gates                                                           | `staffActionGuard` / `portalActionGuard`                                            | `server-action-authz.test.ts` (AST-Guard)                                                   |
+| T-ISO-3 | Eine Query ohne `withTenantContext` läuft gegen Mandantendaten                                   | PrismaClient-Guard                                                                  | `prisma-client-guard.test.ts` (AST-Guard)                                                   |
+| T-ISO-4 | Eine neue Tabelle ohne RLS wird hinzugefügt                                                      | FORCE RLS + Drift-Gate                                                              | `verify:rls` in CI                                                                          |
+| T-ISO-5 | Ein Worker-Job, n8n-Callback oder der iCal-Feed liest oder schreibt Mandantendaten am RLS vorbei | App-Rolle im SYSTEM-Kontext (`withSystemContext`), Owner nur auf begründeten Pfaden | App-Rollen-Suiten `*-db.test.ts` mit gesperrtem Owner-Client, `prisma-client-guard.test.ts` |
 
 ### 2.2 Audit-Chain / GoBD
 
@@ -169,6 +170,60 @@ aus, nie in Terminal oder Logs; Teildateien werden bei Ausgabefehlern gezielt
 entfernt und Datei sowie POSIX-Elternverzeichnis vor dem DB-Commit
 synchronisiert. Scheitert erst dieser Commit, kann eine unwirksame, aber sicher
 geschriebene Datei zurückbleiben und muss verworfen werden.
+
+### Datenbankrollen (S-01)
+
+| Rolle             | Verbindung                        | Genutzt von                                                                                                                                       | Rechte                                                                                                                                                                   |
+| ----------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `taxtronik`       | nur Init, `migrate`, Operator-CLI | Initialisierung, Migrationen, Rollensynchronisation, Backup vor Migrationen, Restore                                                              | Superuser                                                                                                                                                                |
+| `taxtronik_app`   | `DATABASE_APP_URL` (app, worker)  | Web-Requests und Server Actions; Worker-Jobs mit bekanntem Tenant; n8n-Callbacks nach der Credential-Prüfung; iCal-Feed nach der Tenant-Auflösung | DML nach Grants, immer unter FORCE RLS; ohne Tenant-Kontext keine Zeilen; Sitzungsgrenzen `statement_timeout` 20 s und `idle_in_transaction_session_timeout` 30 s        |
+| `taxtronik_owner` | `DATABASE_URL` (app, worker)      | begründete Owner-Pfade (unten)                                                                                                                    | NOSUPERUSER, BYPASSRLS, DML auf allen Tabellen; keine DDL, kein TRUNCATE, keine Rollen oder Datenbanken; `audit_log`, `audit_seal`, `audit_anchor` nur lesen und anfügen |
+| `taxtronik_drill` | `DATABASE_DRILL_URL` (nur worker) | monatlicher Restore-Drill                                                                                                                         | CREATEDB und BYPASSRLS für Wegwerf-Datenbanken, keine Rechte in der Produktiv-Datenbank                                                                                  |
+
+Über die App-Rolle im SYSTEM-Kontext des Tenants (`withSystemContext`, im
+Worker für Kerne mit eigenem DB-Parameter `systemContextClient`) laufen die
+mandantenbezogenen Worker-Jobs (Modulschalter, Fristen und Fristhinweise,
+Erinnerungen und Wiedervorlagen, offene Rechnungen, Vollmachten,
+GwG-Fristen, Sanktionslisten, Posteingangsbereinigung, Steuernachrichten,
+Workflow-Wiederaufnahme und n8n-Übergaben, Update-Prüfung,
+Risikoanreicherung, Ergebnisse und Hinweise von Kettenprüfung und
+Restore-Drill, Anker-Status, Tagessiegel, TSA-Auswahl), die n8n-Callbacks
+(überfällige Anforderungen, Anforderungsdetails, ablaufende GwG-Prüfungen,
+Receipt-Recovery, Rechercheergebnisse) und der iCal-Feed. Je Pfad belegt eine
+PostgreSQL-Suite mit gesperrtem Owner-Client die App-Rolle, dieselben Zeilen
+wie zuvor und die Unsichtbarkeit fremder Tenants.
+
+Beim Owner-Client bleiben, jeweils mit Begründung im Code beziehungsweise in
+der Owner-Allowlist (`prisma-client-guard.test.ts`):
+
+- Auflösungen vor jedem Tenant-Kontext: Login, Magic-Link, WebAuthn,
+  Token-Flows (GwG-Onboarding, Vollmachtssignatur, Audit-Nachweis), die
+  Credential-Prüfung der n8n-Callbacks, die Tenant-Auflösung des iCal-Feeds,
+  die Korrelations-ID des Legacy-Recherche-Callbacks sowie die
+  mandantenübergreifenden Tenant-Listen und Kandidatensuchen der Worker (nur
+  IDs);
+- Wartung über alle Tenants: Audit-Archivierung, Anker-Lease und Anker,
+  Prüf-Checkpoints der Kettenprüfung, Backup und Restore-Drill,
+  DSGVO-Aufbewahrung, Bereinigung abgelaufener Magic-Links, der n8n-Outbox und
+  verwaister Speicherobjekte, Betriebsüberwachung und FIDO-MDS-Stand;
+- bewusst fehlende App-Rechte: Zustellung der Mail-Outbox (die App-Rolle darf
+  `mail_outbox` nur anlegen und lesen) sowie n8n-Zustellung und -Enqueue
+  (tenantlose Ereignisse, global eindeutige Dedupe-Schlüssel);
+- offen: automatische Feedback-Einladungen (`workflow-feedback`; die Policies
+  von `client_interaction` kennen keinen SYSTEM-Akteur) und die Vorlagen- und
+  Empfängerauflösung des gemeinsamen Mail-Versands
+  (`packages/mail/src/dispatch.ts`).
+
+**Restrisiko:** Die Owner-Zugangsdaten liegen weiterhin in den Containern
+`app` und `worker`. Codeausführung oder SQL-Injection auf einem Owner-Pfad
+erreicht damit alle Mandantendaten lesend und schreibend (BYPASSRLS), aber
+keine Schemaänderung, Rechteausweitung, `COPY … PROGRAM` oder Abschaltung von
+Triggern; die Hash-Chain-Tabellen bleiben append-only. Auf Owner-Pfaden
+schützt vor einem fehlenden Tenant-Filter nur der Code. Der SYSTEM-Akteur der
+App-Rolle sieht innerhalb seines Tenants die meisten Tabellen: Ein Fehler in
+einem Job wirkt im eigenen Tenant breit, aber nicht über Tenant-Grenzen. Die
+Worker-Jobs auf der App-Rolle unterliegen den Sitzungsgrenzen und dem Pool
+der App-Verbindung des Workers.
 
 ## 5. Referenzen
 

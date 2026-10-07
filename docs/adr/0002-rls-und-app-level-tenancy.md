@@ -78,11 +78,16 @@ Reine Postgres-RLS ist robuster, aber:
 
 **Negativ**
 
-- Login, n8n-Callbacks, der iCal-Feed und die meisten Worker-Jobs laufen über
-  den Owner-Client; `withWorkerTenantContext` setzt dort nur den
-  Audit-Kontext, RLS wirkt nicht. Über diese Pfade erreicht ein Angreifer
-  weiterhin alle Mandantendaten (BYPASSRLS); vor fehlenden Tenant-Filtern
-  schützt hier nur der Code.
+- Pfade vor jedem Tenant-Kontext (Login, Token-Flows, Credential-Prüfung der
+  n8n-Callbacks, Tenant-Auflösung des iCal-Feeds), mandantenübergreifende
+  Tenant-Listen und die Wartungsjobs laufen weiter über den Owner-Client. Über
+  diese Pfade erreicht ein Angreifer weiterhin alle Mandantendaten
+  (BYPASSRLS); vor fehlenden Tenant-Filtern schützt hier nur der Code. Seit
+  der S-01-Folgearbeit laufen dagegen die mandantenbezogenen Worker-Jobs, die
+  n8n-Callbacks nach der Credential-Prüfung und der iCal-Feed nach der
+  Tenant-Auflösung über die App-Rolle (`withSystemContext`); die verbleibenden
+  Owner-Pfade und das Restrisiko führt das Threat Model
+  (`docs/assurance/threat-model.md`, Datenbankrollen).
 
 - Jede DB-Operation MUSS durch den Wrapper. Direkter `prisma.x.findMany()`
   ohne Wrapper liefert leeres Ergebnis (für die App-Role) — anfangs irritierend,

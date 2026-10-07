@@ -153,8 +153,10 @@ export interface PostgresSessionLimits {
  * Grenzen für den App-Client im Request-Pfad. Beide Werte liegen bewusst über
  * dem Transaktionslimit TX_OPTIONS.timeout (15 s): Was heute rechtzeitig
  * fertig wird, bleibt unberührt; von Prisma aufgegebene Arbeit endet
- * spätestens 5 s später auch in der Datenbank. Owner-, Migrations- und
- * Worker-Verbindungen mit längeren Transaktionen bleiben ohne Limit.
+ * spätestens 5 s später auch in der Datenbank. Sie gelten auch für die
+ * Worker-Jobs, die seit S-01 über die App-Rolle laufen (withSystemContext).
+ * Owner-, Migrations- und lange Worker-Verbindungen des Owner-Clients bleiben
+ * ohne Limit.
  */
 export const APP_SESSION_LIMITS = {
   statementTimeoutMs: 20_000,

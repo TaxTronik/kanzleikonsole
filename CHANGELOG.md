@@ -1577,6 +1577,8 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Das Threat Model beschreibt die Datenbankrollen: welche Komponente welche
+  Rolle nutzt, was die Owner-Rolle noch darf und welches Restrisiko bleibt.
 - **[Scope]** Alle verbleibenden Leser gespeicherter Fassungen prüfen Größe und
   SHA-256 der gebundenen Version: Einzel- und ZIP-Download,
   DATEV-Belegexport, ZUGFeRD- und XRechnung-Abruf, Abruf und Übernahme von

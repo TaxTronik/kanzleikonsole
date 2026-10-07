@@ -42,7 +42,11 @@ Stellen mit eingeschränktem Funktionsumfang:
 
 - App-Code nutzt diese Wrapper aus `@taxtronik/db`, um den RLS-Context
   innerhalb einer Transaktion zu setzen.
-- Worker-Code nutzt `withWorkerTenantContext` (das prismaOwner-äquivalent).
+- Worker-Jobs mit bekanntem Tenant nutzen ebenfalls `withSystemContext` über
+  die App-Rolle (S-01), für Kerne mit eigenem DB-Parameter
+  `systemContextClient` aus `apps/worker/src/tenant-context.ts`.
+  `withWorkerTenantContext` (Owner-Transaktion mit SYSTEM-Variablen, ohne RLS)
+  bleibt begründeten Owner-Pfaden vorbehalten.
 
 ### 3. Application-Layer-Filter (`tenantId: session.user.tenantId`)
 
@@ -59,9 +63,13 @@ gedacht, die RLS nicht sinnvoll nutzen können:
 2. **Cross-Tenant-Verifikation** — z. B. `pnpm verify:chain`.
 3. **System-Wartung** — Backup-Runner, Reconcile-Worker.
 
-**Aktuelle Verwendung** (Stand 2026-10-06): 34 Dateien in `apps/web` und 33 in
+**Aktuelle Verwendung** (Stand 2026-10-07): 32 Dateien in `apps/web` und 31 in
 `apps/worker` (ohne Tests). Jede ist ein expliziter Code-Pfad ohne RLS-Schutz
-und muss eigenverantwortlich tenantId-filtern.
+und muss eigenverantwortlich tenantId-filtern. In den Worker-Jobs mit
+Mandantendaten liest der Owner-Client seit der S-01-Folgearbeit nur noch die
+mandantenübergreifende Tenant- beziehungsweise Kandidatenliste; die
+verbleibenden Owner-Pfade nennt das Threat Model
+(`docs/assurance/threat-model.md`, Datenbankrollen).
 
 **Datenbankrolle** (S-01, [ADR 0002](../adr/0002-rls-und-app-level-tenancy.md)):
 In app und worker verbindet `prismaOwner` als `taxtronik_owner` — BYPASSRLS,

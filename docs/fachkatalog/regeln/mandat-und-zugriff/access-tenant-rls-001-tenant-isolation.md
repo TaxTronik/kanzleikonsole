@@ -19,7 +19,9 @@ implementation:
     Registrierte Tenant-Tabellen werden durch transaktionsgebundenen
     Tenantkontext, eine App-Rolle ohne BYPASSRLS sowie ENABLE/FORCE-RLS und
     Policies isoliert. Ein CI-Gate sucht nach neuen Tabellen ohne diesen
-    Backstop; privilegierte Owner-Pfade bleiben gesondert zu kontrollieren.
+    Backstop. Mandantenbezogene Worker-Jobs, n8n-Callbacks und der iCal-Feed
+    nutzen die App-Rolle im SYSTEM-Kontext; die verbleibenden, im Code
+    begründeten Owner-Pfade bleiben gesondert zu kontrollieren.
 sources:
   - kind: product_documentation
     citation: ADR 0002 — Doppelte Verteidigung durch RLS und App-Level-Tenancy
@@ -121,6 +123,7 @@ code_refs:
   - apps/web/src/app/api/auth/staff/[...nextauth]/route.ts
   - apps/web/src/app/api/auth/portal/[...nextauth]/route.ts
   - packages/crypto/src/crl-fetch.ts
+  - apps/worker/src/tenant-context.ts
 test_refs:
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts
@@ -177,6 +180,28 @@ test_refs:
   - packages/crypto/src/__tests__/crl-fetch.test.ts
   - packages/crypto/src/__tests__/crl-fetch-pinning.test.ts
   - apps/web/src/app/api/portal/ical/[token]/__tests__/route-db.test.ts
+  - apps/web/src/server/n8n/__tests__/operations-db.test.ts
+  - apps/web/src/server/n8n/__tests__/research-result-db.test.ts
+  - apps/worker/src/__tests__/module-gate-db.test.ts
+  - apps/worker/src/__tests__/tsa-port-db.test.ts
+  - apps/worker/src/jobs/__tests__/audit-anchor-db.test.ts
+  - apps/worker/src/jobs/__tests__/audit-verify-check-db.test.ts
+  - apps/worker/src/jobs/__tests__/backup-drill-app-role-db.test.ts
+  - apps/worker/src/jobs/__tests__/evidence-seal-db.test.ts
+  - apps/worker/src/jobs/__tests__/gwg-expiry-check-db.test.ts
+  - apps/worker/src/jobs/__tests__/invoice-overdue-check-db.test.ts
+  - apps/worker/src/jobs/__tests__/poa-expiry-check-db.test.ts
+  - apps/worker/src/jobs/__tests__/portal-inbox-cleanup-db.test.ts
+  - apps/worker/src/jobs/__tests__/reminder-done-notify-db.test.ts
+  - apps/worker/src/jobs/__tests__/reminders-daily-app-role-db.test.ts
+  - apps/worker/src/jobs/__tests__/risk-analyse-llm-db.test.ts
+  - apps/worker/src/jobs/__tests__/sanctions-refresh-db.test.ts
+  - apps/worker/src/jobs/__tests__/tax-deadline-materialize-db.test.ts
+  - apps/worker/src/jobs/__tests__/tax-news-fetch-db.test.ts
+  - apps/worker/src/jobs/__tests__/update-check-db.test.ts
+  - apps/worker/src/jobs/__tests__/workflow-auto-resume-db.test.ts
+  - apps/worker/src/jobs/__tests__/workflow-n8n-dispatch-app-role-db.test.ts
+  - apps/worker/src/__tests__/tenant-context.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -497,6 +522,22 @@ Token-Version, Mandantenstatus, Modulschalter, Fristen und Termine liest die
 App-Rolle im SYSTEM-Kontext dieses Tenants (`withSystemContext`). Der
 PostgreSQL-Test der Route belegt denselben Feed, die Tenant-Auflösung als
 einzigen Owner-Zugriff und die Unsichtbarkeit fremder Fristen und Termine.
+
+Die n8n-Callbacks (überfällige Anforderungen, Anforderungsdetails, ablaufende
+GwG-Prüfungen, Receipt-Recovery, Rechercheergebnisse) lesen und schreiben nach
+der Credential-Prüfung über die App-Rolle im SYSTEM-Kontext des
+authentifizierten Tenants. Die mandantenbezogenen Worker-Jobs tun dasselbe
+(`withSystemContext`; für Kerne mit eigenem DB-Parameter `systemContextClient`,
+je Aufruf eine kurze Transaktion im SYSTEM-Kontext). Beim Owner-Client bleiben
+mandantenübergreifende Tenant- und Kandidatenlisten (nur IDs), Auflösungen vor
+jedem Tenant-Kontext sowie Wartungspfade mit fehlenden App-Rechten oder
+tenantlosen Daten (Archivierung, Anker-Lease und Anker, Prüf-Checkpoints,
+Backup und Restore-Drill, Aufbewahrung, Mail-Outbox- und n8n-Zustellung); jeder
+dieser Pfade nennt seinen Grund im Code. Je verschobenem Pfad belegt eine
+PostgreSQL-Suite mit Owner- und App-Verbindung wie im CI, dass der Pfad ohne
+weiteren Owner-Zugriff dieselben Zeilen liest und schreibt und dass Zeilen
+eines fremden Tenants im SYSTEM-Kontext unsichtbar bleiben; gegen die vorherige
+Implementierung scheitern die Suiten am Owner-Zugriff.
 
 Die Prüf-Checkpoints der Audit-Kettenprüfung (`audit_verify_checkpoint`,
 `AUDIT-VERIFY-ALERT-001`) sind tenantgebunden und durch ENABLE/FORCE RLS sowie

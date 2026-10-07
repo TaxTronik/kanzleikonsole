@@ -468,7 +468,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Registrierte Tenant-Tabellen werden durch transaktionsgebundenen Tenantkontext, eine App-Rolle ohne BYPASSRLS sowie ENABLE/FORCE-RLS und Policies isoliert. Ein CI-Gate sucht nach neuen Tabellen ohne diesen Backstop; privilegierte Owner-Pfade bleiben gesondert zu kontrollieren."
+        "summary": "Registrierte Tenant-Tabellen werden durch transaktionsgebundenen Tenantkontext, eine App-Rolle ohne BYPASSRLS sowie ENABLE/FORCE-RLS und Policies isoliert. Ein CI-Gate sucht nach neuen Tabellen ohne diesen Backstop. Mandantenbezogene Worker-Jobs, n8n-Callbacks und der iCal-Feed nutzen die App-Rolle im SYSTEM-Kontext; die verbleibenden, im Code begründeten Owner-Pfade bleiben gesondert zu kontrollieren."
       },
       "sources": [
         {
@@ -579,7 +579,8 @@
         "apps/web/src/server/auth/authjs-route.ts",
         "apps/web/src/app/api/auth/staff/[...nextauth]/route.ts",
         "apps/web/src/app/api/auth/portal/[...nextauth]/route.ts",
-        "packages/crypto/src/crl-fetch.ts"
+        "packages/crypto/src/crl-fetch.ts",
+        "apps/worker/src/tenant-context.ts"
       ],
       "test_refs": [
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
@@ -636,7 +637,29 @@
         "apps/web/src/server/auth/__tests__/password-hash-pool.test.ts",
         "packages/crypto/src/__tests__/crl-fetch.test.ts",
         "packages/crypto/src/__tests__/crl-fetch-pinning.test.ts",
-        "apps/web/src/app/api/portal/ical/[token]/__tests__/route-db.test.ts"
+        "apps/web/src/app/api/portal/ical/[token]/__tests__/route-db.test.ts",
+        "apps/web/src/server/n8n/__tests__/operations-db.test.ts",
+        "apps/web/src/server/n8n/__tests__/research-result-db.test.ts",
+        "apps/worker/src/__tests__/module-gate-db.test.ts",
+        "apps/worker/src/__tests__/tsa-port-db.test.ts",
+        "apps/worker/src/jobs/__tests__/audit-anchor-db.test.ts",
+        "apps/worker/src/jobs/__tests__/audit-verify-check-db.test.ts",
+        "apps/worker/src/jobs/__tests__/backup-drill-app-role-db.test.ts",
+        "apps/worker/src/jobs/__tests__/evidence-seal-db.test.ts",
+        "apps/worker/src/jobs/__tests__/gwg-expiry-check-db.test.ts",
+        "apps/worker/src/jobs/__tests__/invoice-overdue-check-db.test.ts",
+        "apps/worker/src/jobs/__tests__/poa-expiry-check-db.test.ts",
+        "apps/worker/src/jobs/__tests__/portal-inbox-cleanup-db.test.ts",
+        "apps/worker/src/jobs/__tests__/reminder-done-notify-db.test.ts",
+        "apps/worker/src/jobs/__tests__/reminders-daily-app-role-db.test.ts",
+        "apps/worker/src/jobs/__tests__/risk-analyse-llm-db.test.ts",
+        "apps/worker/src/jobs/__tests__/sanctions-refresh-db.test.ts",
+        "apps/worker/src/jobs/__tests__/tax-deadline-materialize-db.test.ts",
+        "apps/worker/src/jobs/__tests__/tax-news-fetch-db.test.ts",
+        "apps/worker/src/jobs/__tests__/update-check-db.test.ts",
+        "apps/worker/src/jobs/__tests__/workflow-auto-resume-db.test.ts",
+        "apps/worker/src/jobs/__tests__/workflow-n8n-dispatch-app-role-db.test.ts",
+        "apps/worker/src/__tests__/tenant-context.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",
