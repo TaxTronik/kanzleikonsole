@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-037
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/audit-verify-check.ts
+    rule_ids:
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Die Kettenprüfung (`audit-verify-check`) liest das vorige Ergebnis und die
+      Checkpoint-Einstellung und schreibt Ergebnis, Bruchwarnungen und Entwarnungen
+      über die App-Rolle im SYSTEM-Kontext des Tenants (Row-Level-Security) statt
+      über die Owner-Verbindung mit BYPASSRLS. Die Prüfung selbst bleibt in
+      Owner-Transaktionen, weil sie die Prüf-Checkpoints schreibt, auf die die
+      App-Rolle nur Leserecht hat. Empfänger (aktive ADMIN/PARTNER bzw. Auslöser
+      eines manuellen Laufs) und Transaktionsgrenzen bleiben unverändert; eine
+      PostgreSQL-Suite belegt das und dass Warnungen fremder Tenants unberührt
+      bleiben. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/audit-verify-check-db.test.ts
+      - apps/worker/src/jobs/__tests__/audit-verify-check.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-036
     date: '2026-10-07'
     paths:
@@ -4926,6 +4946,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-037` dokumentiert Ergebnis und Warnungen der
+  Kettenprüfung über die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-036` dokumentiert die TSA-Auswahl über die
   App-Rolle.

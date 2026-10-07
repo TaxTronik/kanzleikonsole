@@ -5,12 +5,19 @@
 // Notification an alle ADMIN/PARTNER. Idempotent (notify dedupliziert).
 // P-04: täglich der Zuwachs ab dem Prüf-Checkpoint, periodisch bzw. manuell
 // eine fortsetzbare Vollprüfung ab Genesis (packages/evidence/verify-checkpoint).
+//
+// S-01: Die Kettenprüfung selbst bleibt beim Owner-Client: Sie schreibt die
+// Prüf-Checkpoints (audit_verify_checkpoint), auf denen die App-Rolle bewusst
+// nur SELECT hat. Ergebnis, Vorgänger-/Recovery-Einstellungen und Hinweise
+// liest und schreibt der Job über die App-Rolle im SYSTEM-Kontext des Tenants
+// (withSystemContext, RLS).
 // =============================================================================
 
 import { createWorker } from '../worker-factory';
 import { env } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { deriveAuditCheckpointMacKey } from '@taxtronik/crypto';
+import { withSystemContext, type TxClient } from '@taxtronik/db';
 import { readTenantSettingValue, writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { prismaOwner } from '../prisma-owner';
 import {
@@ -27,7 +34,6 @@ import {
 } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
-import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { timestampPortFor } from '../tsa-port';
 
@@ -77,7 +83,7 @@ export function checkpointedVerifyOptions(
 // — die Admin-Audit-Seite zeigt NUR dieses Ergebnis, statt bei jedem Render
 // selbst die komplette Chain zu hashen.
 async function persistVerifyResult(tenantId: string, result: PersistedVerifyResult): Promise<void> {
-  await withWorkerTenantContext(tenantId, async (tx) => {
+  await withSystemContext(tenantId, async (tx) => {
     await writeTenantSettingValue(tx, {
       tenantId,
       key: AUDIT_VERIFY_RESULT_SETTING_KEY,
@@ -191,7 +197,7 @@ export async function notifyAuditBreak(
   tenantId: string,
   input: { title?: string; body: string; resourceId: string | null },
 ): Promise<void> {
-  await withWorkerTenantContext(tenantId, async (tx) => {
+  await withSystemContext(tenantId, async (tx) => {
     const recipients = await tx.staffUser.findMany({
       where: {
         tenantId,
@@ -230,6 +236,7 @@ async function loadTenantIdsChunked(): Promise<AsyncGenerator<string[]>> {
   async function* gen(): AsyncGenerator<string[]> {
     let cursor: string | undefined;
     while (true) {
+      // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client.
       const rows = await prismaOwner.tenant.findMany({
         select: { id: true },
         take: TENANT_CHUNK_SIZE,
@@ -270,7 +277,7 @@ export interface TenantVerificationOutcome {
 }
 
 async function loadPreviousVerifyResult(tenantId: string): Promise<PersistedVerifyResult | null> {
-  const value = await withWorkerTenantContext(tenantId, (tx) =>
+  const value = await withSystemContext(tenantId, (tx) =>
     readTenantSettingValue(tx, tenantId, AUDIT_VERIFY_RESULT_SETTING_KEY),
   );
   return (value ?? null) as PersistedVerifyResult | null;
@@ -288,13 +295,14 @@ async function verifyTenantChain(
   // P-04: Zuwachs ab Prüf-Checkpoint plus fällige Vollprüfung, je Abschnitt
   // eine Owner-Transaktion. Das Ergebnis hat dieselbe Bedeutung wie
   // verifyChain (kumulierte Zähler, geprüfte Kettenspitze, Brüche).
+  // S-01: Owner-Client, weil der Prüflauf die Checkpoints schreibt (App-Rolle nur SELECT).
   const result = await verifyChainWithCheckpoints(
     evidenceService,
     (work) => prismaOwner.$transaction((tx) => work(tx), VERIFY_TX_OPTIONS),
     tenantId,
     checkpointedVerifyOptions(manual, previous?.progressAnchor ?? null),
   );
-  const checkpointValue = await withWorkerTenantContext(tenantId, (tx) =>
+  const checkpointValue = await withSystemContext(tenantId, (tx) =>
     readTenantSettingValue(tx, tenantId, AUDIT_RECOVERY_CHECKPOINT_SETTING_KEY),
   );
   const checkpoint = (checkpointValue ?? null) as PersistedRecoveryCheckpoint | null;
@@ -304,6 +312,7 @@ async function verifyTenantChain(
   let recoveryResult: VerificationResult | null = null;
   let recovered = false;
   if (checkpoint && result.firstBreak && result.firstBreak.auditId < BigInt(checkpoint.auditId)) {
+    // S-01: Teilkettenprüfung derselben Prüfinstanz über den Owner-Client.
     recoveryResult = await prismaOwner.$transaction(
       (tx) =>
         evidenceService.verifyRecoverySegment(tx, tenantId, BigInt(checkpoint.auditId), {
@@ -404,7 +413,7 @@ export function manualProgressMessage(progress: { auditId: bigint; targetAuditId
   };
 }
 
-type NotificationTx = Parameters<Parameters<typeof withWorkerTenantContext>[1]>[0];
+type NotificationTx = TxClient;
 
 async function notifyManualRequester(
   tx: NotificationTx,
@@ -456,7 +465,7 @@ async function clearBreakAndNotifySuccess(input: {
   recovered: boolean;
   result: VerificationResult;
 }): Promise<void> {
-  await withWorkerTenantContext(input.tenantId, async (tx) => {
+  await withSystemContext(input.tenantId, async (tx) => {
     await tx.notification.updateMany({
       where: { tenantId: input.tenantId, kind: 'SYSTEM_AUDIT_BREAK', readAt: null },
       data: { readAt: new Date() },
@@ -486,7 +495,7 @@ async function notifyFullVerificationRunning(input: {
   progress: { auditId: bigint; targetAuditId: bigint };
 }): Promise<void> {
   if (!input.manualSingleTenant) return;
-  await withWorkerTenantContext(input.tenantId, (tx) =>
+  await withSystemContext(input.tenantId, (tx) =>
     notifyManualRequester(tx, input, manualProgressMessage(input.progress)),
   ).catch((error) =>
     log.warn(

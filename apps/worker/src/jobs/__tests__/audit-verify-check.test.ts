@@ -1,7 +1,7 @@
 // Fachkatalog: AUDIT-VERIFY-ALERT-001
 import { describe, it, expect, vi } from 'vitest';
 
-const h = vi.hoisted(() => ({ notify: vi.fn(), withWorkerTenantContext: vi.fn() }));
+const h = vi.hoisted(() => ({ notify: vi.fn(), withSystemContext: vi.fn() }));
 
 // Modul-Import zieht Queue/Redis/Prisma/Evidence — mocken; getestet wird die
 // pure Monotonie-Logik gegen Tail-Truncation der unversiegelten Ketten-Spitze.
@@ -28,7 +28,9 @@ vi.mock('@taxtronik/evidence', () => ({
 }));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: {} }));
-vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
+// S-01: Hinweise und Ergebnis laufen im SYSTEM-Kontext des Tenants (App-Rolle;
+// audit-verify-check-db.test.ts belegt das gegen PostgreSQL).
+vi.mock('@taxtronik/db', () => ({ withSystemContext: h.withSystemContext }));
 vi.mock('../../notify', () => ({ notify: h.notify }));
 vi.mock('../../tsa-port', () => ({ timestampPortFor: vi.fn() }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
@@ -279,13 +281,14 @@ describe('notifyAuditBreak (R-11)', () => {
     const tx = {
       staffUser: { findMany: vi.fn().mockResolvedValue([{ id: 'a-1' }, { id: 'p-1' }]) },
     };
-    h.withWorkerTenantContext.mockImplementation(
+    h.withSystemContext.mockImplementation(
       async (_tenantId: string, fn: (value: unknown) => Promise<unknown>) => fn(tx),
     );
     h.notify.mockResolvedValue({ created: 2, updated: 0 });
 
     await notifyAuditBreak('tenant-1', { body: 'Bruch bei 42', resourceId: '42' });
 
+    expect(h.withSystemContext).toHaveBeenCalledWith('tenant-1', expect.any(Function));
     expect(tx.staffUser.findMany).toHaveBeenCalledWith({
       where: {
         tenantId: 'tenant-1',
