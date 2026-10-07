@@ -86,6 +86,12 @@ export async function loadGwgPageData({
       resourceType: 'gwg_onboarding_invite',
       resourceIds: invites.map((invite) => invite.id),
     });
+    // C4: Zustellstatus der Begrüßungsmail nach der Freischaltung (an der
+    // freigebenden Prüfung; nur die Erstfreigabe löst sie aus).
+    const activationMail = await loadMailDeliveryTx(tx, {
+      resourceType: 'gwg_check',
+      resourceIds: checkHistory.map((entry) => entry.id),
+    });
     return {
       tenantId,
       client,
@@ -93,6 +99,11 @@ export async function loadGwgPageData({
       clientDocuments,
       invites,
       inviteMail,
+      // Jüngste Prüfung mit Begrüßungsmail (checkHistory ist absteigend sortiert).
+      activationMail:
+        checkHistory
+          .map((entry) => activationMail.get(entry.id))
+          .find((summaries) => summaries && summaries.length > 0) ?? [],
       contacts,
       canVerify,
       checkHistory,

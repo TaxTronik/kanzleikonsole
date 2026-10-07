@@ -3,7 +3,8 @@
 //
 // Zeigt statt eines pauschalen „versendet" den Stand des Versandauftrags aus
 // der Mail-Outbox. „Angenommen" heißt technisch vom Versanddienst übernommen —
-// kein Zugangs- oder Kenntnisnahmenachweis (Tooltip).
+// kein Zugangs- oder Kenntnisnahmenachweis (Tooltip). C4: Fehlgeschlagene und
+// unklare Aufträge mit erhaltenem Inhalt bieten „Erneut senden" an.
 // =============================================================================
 
 import {
@@ -16,6 +17,7 @@ import {
   type MailDeliveryState,
   type MailDeliverySummary,
 } from '@/lib/mail-delivery-status';
+import { MailResendButton } from '@/components/mail-resend-button';
 
 const STATE_CLASSES: Readonly<Record<MailDeliveryState, string>> = {
   pending: 'text-muted',
@@ -46,14 +48,17 @@ function hint(summary: MailDeliverySummary): string {
 
 export function MailDeliveryStatus({ summary }: { summary: MailDeliverySummary }) {
   return (
-    <span
-      className={STATE_CLASSES[summary.state]}
-      title={hint(summary)}
-      data-mail-delivery={summary.state}
-    >
-      {purposeLabel(summary.purpose)}: {MAIL_DELIVERY_STATE_LABELS[summary.state]}
-      {recipientCount(summary)}
-    </span>
+    <>
+      <span
+        className={STATE_CLASSES[summary.state]}
+        title={hint(summary)}
+        data-mail-delivery={summary.state}
+      >
+        {purposeLabel(summary.purpose)}: {MAIL_DELIVERY_STATE_LABELS[summary.state]}
+        {recipientCount(summary)}
+      </span>
+      {summary.resend ? <MailResendButton target={summary.resend} /> : null}
+    </>
   );
 }
 

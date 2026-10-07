@@ -20,6 +20,7 @@ import {
 } from '@taxtronik/mail/outbox';
 import {
   MAIL_OUTBOX_MAX_ATTEMPTS,
+  MAIL_OUTBOX_RESEND_WINDOW_DAYS,
   processMailOutbox,
   type MailOutboxDeliveryDeps,
 } from '../mail-outbox';
@@ -160,6 +161,7 @@ function harness(rows: Row[], stranded: Row[] = []) {
       args.where.status === 'SENDING' ? stranded : rows,
     );
   const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+  const dbUpdateMany = vi.fn().mockResolvedValue({ count: 0 });
   const resources = activeResources();
   const tx = { mailOutbox: { updateMany }, ...resources };
   const sendTemplateMail = vi
@@ -180,7 +182,7 @@ function harness(rows: Row[], stranded: Row[] = []) {
   const notifyStaff = vi.fn().mockResolvedValue(undefined);
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const deps = {
-    db: { mailOutbox: { findMany } },
+    db: { mailOutbox: { findMany, updateMany: dbUpdateMany } },
     runAtomic: vi.fn(async (_tenantId: string, fn: (client: typeof tx) => Promise<unknown>) =>
       fn(tx),
     ),
@@ -194,6 +196,7 @@ function harness(rows: Row[], stranded: Row[] = []) {
     deps,
     findMany,
     updateMany,
+    dbUpdateMany,
     resources,
     runAtomic: deps.runAtomic as unknown as ReturnType<typeof vi.fn>,
     sendTemplateMail,
@@ -272,6 +275,7 @@ describe('Mail-Outbox: Versand mit unveränderten Optionen', () => {
       noRecipient: 0,
       escalated: 0,
       skipped: 0,
+      resendContentCleared: 0,
     });
   });
 
@@ -378,13 +382,15 @@ describe('Mail-Outbox: Retry, Terminalstatus und Kanzlei-Hinweis', () => {
 
     const stats = await processMailOutbox(h.deps, { now: NOW });
 
-    expect(h.updateMany.mock.calls[1]![0].data).toMatchObject({
+    const failed = h.updateMany.mock.calls[1]![0].data;
+    expect(failed).toMatchObject({
       status: 'FAILED',
-      payload: {},
-      secretVarsEnc: null,
       nextAttemptAt: null,
       escalatedAt: NOW,
     });
+    // C4: Inhalt und Secret bleiben für „Erneut senden" erhalten.
+    expect(failed).not.toHaveProperty('payload');
+    expect(failed).not.toHaveProperty('secretVarsEnc');
     // client_handover kennt der Benachrichtigungs-Scope nicht → Mandant.
     expect(h.notifyStaff).toHaveBeenCalledWith(expect.anything(), {
       tenantId: TENANT,
@@ -413,12 +419,11 @@ describe('Mail-Outbox: Retry, Terminalstatus und Kanzlei-Hinweis', () => {
 
     await processMailOutbox(h.deps, { now: NOW });
 
-    expect(h.updateMany.mock.calls[1]![0].data).toMatchObject({
-      status: 'UNKNOWN',
-      payload: {},
-      secretVarsEnc: null,
-      nextAttemptAt: null,
-    });
+    const unknown = h.updateMany.mock.calls[1]![0].data;
+    expect(unknown).toMatchObject({ status: 'UNKNOWN', nextAttemptAt: null });
+    // C4: Inhalt und Secret bleiben für „Erneut senden" erhalten.
+    expect(unknown).not.toHaveProperty('payload');
+    expect(unknown).not.toHaveProperty('secretVarsEnc');
     expect(h.notifyStaff).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
@@ -627,10 +632,10 @@ describe('Mail-Outbox: Retry, Terminalstatus und Kanzlei-Hinweis', () => {
       data: expect.objectContaining({
         status: 'UNKNOWN',
         escalatedAt: NOW,
-        payload: {},
-        secretVarsEnc: null,
+        nextAttemptAt: null,
       }),
     });
+    expect(h.updateMany.mock.calls[0]![0].data).not.toHaveProperty('payload');
     expect(h.notifyStaff).toHaveBeenCalledTimes(1);
     expect(h.sendTemplateMail).not.toHaveBeenCalled();
     expect(stats.escalated).toBe(1);
@@ -841,5 +846,48 @@ describe('Mail-Outbox: Zustand des Vorgangs vor jedem Versand', () => {
 
     expect(stats).toMatchObject({ processed: 0, skipped: 0 });
     expect(h.log.info).not.toHaveBeenCalled();
+  });
+});
+
+describe('Mail-Outbox: Inhalt für „Erneut senden" (C4)', () => {
+  it('entfernt den erhaltenen Inhalt nach dem Neuversandfenster oder bei Anonymisierung', async () => {
+    const h = harness([]);
+    h.dbUpdateMany.mockResolvedValue({ count: 2 });
+
+    const stats = await processMailOutbox(h.deps, { now: NOW, tenantId: TENANT });
+
+    expect(MAIL_OUTBOX_RESEND_WINDOW_DAYS).toBe(30);
+    expect(h.dbUpdateMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT,
+        status: { in: ['FAILED', 'UNKNOWN'] },
+        NOT: { payload: { equals: {} } },
+        OR: [
+          { escalatedAt: { lte: new Date('2026-09-06T10:00:00.000Z') } },
+          { client: { anonymizedAt: { not: null } } },
+        ],
+      },
+      data: { payload: {}, secretVarsEnc: null },
+    });
+    expect(stats.resendContentCleared).toBe(2);
+  });
+
+  it('entfernt den Inhalt bei Annahme, Teilzustellung und fehlendem Empfänger weiterhin', async () => {
+    const h = harness([await requestRow()]);
+    h.notifyClientContacts.mockResolvedValue({
+      ok: true,
+      recipients: 1,
+      attempted: 2,
+      externalSideEffectOccurred: false,
+      uncertainFailure: false,
+    });
+
+    await processMailOutbox(h.deps, { now: NOW });
+
+    expect(h.updateMany.mock.calls[1]![0].data).toMatchObject({
+      status: 'PARTIAL_FAILURE',
+      payload: {},
+      secretVarsEnc: null,
+    });
   });
 });

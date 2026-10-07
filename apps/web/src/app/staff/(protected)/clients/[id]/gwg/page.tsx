@@ -12,6 +12,7 @@ import { loadGwgPageData } from './gwg-page-data';
 import { buildGwgPageModel } from './gwg-page-model';
 import { GwgCheckHistory, GwgMasterData } from './gwg-page-overview';
 import { GwgCheckStatus } from './gwg-page-status';
+import { GwgActivationMail } from './gwg-page-activation-mail';
 import { GwgInvitation } from './gwg-page-invitation';
 import { GwgPersons } from './gwg-page-persons';
 import { GwgEntityEvidence } from './gwg-page-evidence';
@@ -103,6 +104,7 @@ export default async function GwgPage({
                 contacts={contacts}
                 availability={model}
               />
+              <GwgActivationMail summaries={data.activationMail} />
               {!destroyed && (
                 <>
                   {check.status === 'IN_REVIEW' && canVerify && (

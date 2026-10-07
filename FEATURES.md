@@ -471,6 +471,9 @@ Modul `appointments`.
 - Notification an Owner bei Annahme; an präferierten Bearbeiter oder alle
   verantwortlichen Berufsträger/Hauptbearbeiter bei neuer Anfrage
 - Audit-Trail über `appointment_request.create/.accept/.reject/.cancel`
+- „Entschiedene Terminanfragen" (14 Tage) im Kalender mit Zustellstatus der
+  Bestätigungs-/Absagemail und „Erneut senden" bei Fehlschlag oder unklarem
+  Ausgang
 
 ## Bescheide & Steuererklärungen ⚙
 

@@ -26,10 +26,17 @@ const skippedMigration = readFileSync(
   ),
   'utf8',
 );
+const resendMigration = readFileSync(
+  new URL(
+    '../../prisma/migrations/20261007120100_mail_outbox_resend/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 describe('Mail-Outbox: Migration', () => {
   it('ist zeilenweise LF, transaktional und nennt die Fachkatalog-Regel', () => {
-    for (const source of [migration, skippedMigration]) {
+    for (const source of [migration, skippedMigration, resendMigration]) {
       expect(source).not.toContain('\r');
       expect(source).toMatch(/^-- Fachkatalog: ACCESS-TENANT-RLS-001\b/m);
       expect(source).toMatch(/^BEGIN;$/m);
@@ -38,6 +45,15 @@ describe('Mail-Outbox: Migration', () => {
     // Folgebefund F-08: der neue Terminalstatus steht allein in seiner Migration.
     expect(skippedMigration).toMatch(
       /ALTER TYPE public\.mail_outbox_status\s+ADD VALUE IF NOT EXISTS 'SKIPPED';/,
+    );
+    // C4: Neuversand nur über die Funktion; App- und Owner-Rolle (Parität).
+    for (const role of ['taxtronik_app', 'taxtronik_owner']) {
+      expect(resendMigration).toContain(
+        `GRANT EXECUTE ON FUNCTION app.mail_outbox_resend(UUID, public.mail_outbox_status, TEXT)\n  TO ${role};`,
+      );
+    }
+    expect(resendMigration).toMatch(
+      /REVOKE ALL ON FUNCTION app\.mail_outbox_resend\(.*\) FROM PUBLIC;/,
     );
   });
 });
@@ -85,6 +101,53 @@ function outboxData(tenantId: string, clientId: string) {
     payload: { v: 1, slug: 'handover-ready', to: 'max@example.test', vars: {} },
     secretVarsEnc: 'v3:synthetic',
   };
+}
+
+async function asSystem<T>(tenantId: string, work: (tx: TxClient) => Promise<T>): Promise<T> {
+  return app.$transaction(async (tx) => {
+    await tx.$queryRaw`
+      SELECT
+        set_config('app.current_tenant_id', ${tenantId}, true),
+        set_config('app.current_actor_id', '', true),
+        set_config('app.current_actor_type', 'SYSTEM', true)
+    `;
+    return work(tx);
+  });
+}
+
+async function resend(
+  tx: TxClient,
+  id: string,
+  expected: string,
+  reason: string | null = null,
+): Promise<boolean> {
+  const [row] = await tx.$queryRaw<Array<{ ok: boolean }>>`
+    SELECT app.mail_outbox_resend(
+      ${id}::uuid, ${expected}::public.mail_outbox_status, ${reason}::text
+    ) AS ok
+  `;
+  return row!.ok;
+}
+
+/** Ein im Worker endgültig gescheiterter Auftrag mit erhaltenem Inhalt (C4). */
+async function failedWithContent(tenantId: string, clientId: string, status = 'FAILED') {
+  const { id } = await owner.mailOutbox.create({
+    data: outboxData(tenantId, clientId),
+    select: { id: true },
+  });
+  await owner.mailOutbox.update({
+    where: { id },
+    data: {
+      status: status as 'FAILED' | 'UNKNOWN',
+      nextAttemptAt: null,
+      attemptCount: 6,
+      escalatedAt: new Date(),
+      recipientsAttempted: 1,
+      recipientsAccepted: 0,
+      lastError: 'Versuch 6 von 6; kein weiterer automatischer Versuch.',
+    },
+  });
+  return id;
 }
 
 async function rejection(work: Promise<unknown>): Promise<string> {
@@ -313,5 +376,73 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
         }),
       ),
     ).toMatch(/mail_outbox_purpose_check/);
+  });
+
+  it('C4: setzt einen fehlgeschlagenen Auftrag mit Inhalt im Kanzleikontext zurück', async () => {
+    const id = await failedWithContent(tenantA, clientA);
+
+    expect(await asStaff(tenantA, (tx) => resend(tx, id, 'FAILED'))).toBe(true);
+
+    const row = await owner.mailOutbox.findUniqueOrThrow({ where: { id } });
+    expect(row).toMatchObject({
+      status: 'QUEUED',
+      attemptCount: 0,
+      escalatedAt: null,
+      recipientsAttempted: null,
+      recipientsAccepted: null,
+      lastError: 'Manuell erneut zum Versand vorgemerkt.',
+      secretVarsEnc: 'v3:synthetic',
+    });
+    expect(row.payload).toMatchObject({ slug: 'handover-ready' });
+    expect(row.nextAttemptAt).toBeInstanceOf(Date);
+    // Ein zweiter Klick trifft den geänderten Status nicht mehr.
+    expect(await asStaff(tenantA, (tx) => resend(tx, id, 'FAILED'))).toBe(false);
+  });
+
+  it('C4: verweigert fremde Tenants, falschen Status, fehlenden Inhalt und Nicht-Kanzlei', async () => {
+    const id = await failedWithContent(tenantA, clientA, 'UNKNOWN');
+
+    expect(await asStaff(tenantB, (tx) => resend(tx, id, 'UNKNOWN'))).toBe(false);
+    expect(await asStaff(tenantA, (tx) => resend(tx, id, 'FAILED'))).toBe(false);
+    expect(await rejection(asStaff(tenantA, (tx) => resend(tx, id, 'QUEUED')))).toMatch(
+      /MAIL_OUTBOX_RESEND_STATUS/,
+    );
+    expect(await rejection(asSystem(tenantA, (tx) => resend(tx, id, 'UNKNOWN')))).toMatch(
+      /MAIL_OUTBOX_RESEND_CONTEXT/,
+    );
+    await owner.mailOutbox.update({ where: { id }, data: { payload: {}, secretVarsEnc: null } });
+    expect(await asStaff(tenantA, (tx) => resend(tx, id, 'UNKNOWN'))).toBe(false);
+    expect((await owner.mailOutbox.findUniqueOrThrow({ where: { id } })).status).toBe('UNKNOWN');
+  });
+
+  it('C4: verwirft einen nicht mehr aktuellen Auftrag mit Begründung und ohne Inhalt', async () => {
+    const id = await failedWithContent(tenantA, clientA);
+
+    expect(await rejection(asStaff(tenantA, (tx) => resend(tx, id, 'FAILED', '  ')))).toMatch(
+      /MAIL_OUTBOX_RESEND_REASON/,
+    );
+    expect(
+      await asStaff(tenantA, (tx) =>
+        resend(tx, id, 'FAILED', 'Die Unterlagen wurden bereits abgeholt.'),
+      ),
+    ).toBe(true);
+
+    expect(await owner.mailOutbox.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      status: 'SKIPPED',
+      payload: {},
+      secretVarsEnc: null,
+      nextAttemptAt: null,
+      lastError: 'Nicht versendet: Die Unterlagen wurden bereits abgeholt.',
+    });
+  });
+
+  it('C4: erlaubt geheime Variablen nur in FAILED und UNKNOWN zusätzlich', async () => {
+    const id = await failedWithContent(tenantA, clientA);
+    expect((await owner.mailOutbox.findUniqueOrThrow({ where: { id } })).secretVarsEnc).toBe(
+      'v3:synthetic',
+    );
+    expect(
+      await rejection(owner.mailOutbox.update({ where: { id }, data: { status: 'NO_RECIPIENT' } })),
+    ).toMatch(/mail_outbox_secret_check/);
   });
 });

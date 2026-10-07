@@ -31,7 +31,10 @@
 // Ein n8n-Ereignis der Mail trägt den Dedupe-Schlüssel des Auftrags; ein
 // Retry erzeugt deshalb kein zweites Ereignis. Mit dem Terminalstatus werden
 // Payload (Empfänger, Variablen, Anhangsverweise) und geheime Variablen
-// entfernt.
+// entfernt — außer bei FAILED und UNKNOWN: Dort bleiben sie für „Erneut
+// senden" (C4, app.mail_outbox_resend) erhalten und werden nach
+// MAIL_OUTBOX_RESEND_WINDOW_DAYS ab Eskalation, bei anonymisiertem Mandanten
+// sofort entfernt.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
@@ -58,6 +61,13 @@ export const MAIL_OUTBOX_MAX_ATTEMPTS = 6;
 const RETRY_BASE_DELAY_MS = 60_000;
 /** Wie die Steuertermin-Benachrichtigung: danach gilt ein Claim als abgebrochen. */
 export const MAIL_OUTBOX_IN_FLIGHT_TIMEOUT_MS = 30 * 60_000;
+/**
+ * C4: So lange nach der Eskalation bleibt der Inhalt eines FAILED- oder
+ * UNKNOWN-Auftrags für „Erneut senden" erhalten. Offene Betriebsentscheidung;
+ * der Wert hält die Aufbewahrung kurz und deckt übliche Abwesenheiten ab.
+ */
+export const MAIL_OUTBOX_RESEND_WINDOW_DAYS = 30;
+const DAY_MS = 24 * 60 * 60_000;
 const DEFAULT_BATCH_SIZE = 25;
 
 type Db = Prisma.TransactionClient;
@@ -98,6 +108,8 @@ export interface MailOutboxStats {
   escalated: number;
   /** Vor dem Versand verworfen (SKIPPED), weil der Vorgang nicht mehr aktuell ist. */
   skipped: number;
+  /** FAILED/UNKNOWN-Aufträge, deren für den Neuversand erhaltener Inhalt entfernt wurde. */
+  resendContentCleared: number;
 }
 
 const candidateSelect = {
@@ -155,6 +167,39 @@ const CLEARED_CONTENT = {
   nextAttemptAt: null,
 } as const;
 
+/**
+ * C4: FAILED und UNKNOWN behalten Inhalt und geheime Variablen für „Erneut
+ * senden" (app.mail_outbox_resend setzt den Auftrag zurück nach QUEUED).
+ */
+const RETAINED_FOR_RESEND = { nextAttemptAt: null } as const;
+
+function terminalContent(status: string) {
+  return status === 'FAILED' || status === 'UNKNOWN' ? RETAINED_FOR_RESEND : CLEARED_CONTENT;
+}
+
+/**
+ * Entfernt den für „Erneut senden" erhaltenen Inhalt nach Ablauf des
+ * Neuversandfensters und — unabhängig davon — sofort bei anonymisiertem
+ * Mandanten. Status, Zähler und Zeitpunkte bleiben als Nachweis erhalten.
+ */
+async function clearExpiredResendContent(
+  deps: MailOutboxDeliveryDeps,
+  now: Date,
+  scope: TenantScope,
+): Promise<number> {
+  const cutoff = new Date(now.getTime() - MAIL_OUTBOX_RESEND_WINDOW_DAYS * DAY_MS);
+  const cleared = await deps.db.mailOutbox.updateMany({
+    where: {
+      ...scope,
+      status: { in: ['FAILED', 'UNKNOWN'] },
+      NOT: { payload: { equals: {} } },
+      OR: [{ escalatedAt: { lte: cutoff } }, { client: { anonymizedAt: { not: null } } }],
+    },
+    data: { payload: {}, secretVarsEnc: null },
+  });
+  return cleared.count;
+}
+
 function staffNotification(
   row: Pick<Candidate, 'tenantId' | 'clientId' | 'resourceType' | 'resourceId' | 'staffHref'>,
   escalation: Escalation,
@@ -205,7 +250,7 @@ async function escalateStrandedSending(
       const update = await tx.mailOutbox.updateMany({
         where: { id: row.id, status: 'SENDING', lastAttemptAt: row.lastAttemptAt },
         data: {
-          ...CLEARED_CONTENT,
+          ...terminalContent('UNKNOWN'),
           status: 'UNKNOWN',
           escalatedAt: now,
           lastError:
@@ -304,7 +349,7 @@ async function persistTerminal(
     const update = await tx.mailOutbox.updateMany({
       where: ownClaim(row),
       data: {
-        ...CLEARED_CONTENT,
+        ...terminalContent(input.status),
         status: input.status,
         acceptedAt: input.status === 'PROVIDER_ACCEPTED' ? row.attemptAt : null,
         lastError: input.lastError,
@@ -569,6 +614,7 @@ export async function processMailOutbox(
     noRecipient: 0,
     escalated: await escalateStrandedSending(deps, now, batchSize, scope),
     skipped: 0,
+    resendContentCleared: await clearExpiredResendContent(deps, now, scope),
   };
 
   const candidates = await deps.db.mailOutbox.findMany({

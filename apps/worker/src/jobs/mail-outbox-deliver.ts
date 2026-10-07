@@ -78,6 +78,7 @@ export const mailOutboxDeliverWorker = createWorker(
       noRecipient: 0,
       escalated: 0,
       skipped: 0,
+      resendContentCleared: 0,
     };
     for (let batch = 0; batch < MAX_BATCHES_PER_RUN; batch++) {
       const stats = await processMailOutbox(deps, { batchSize: BATCH_SIZE });
@@ -87,10 +88,16 @@ export const mailOutboxDeliverWorker = createWorker(
       totals.noRecipient += stats.noRecipient;
       totals.escalated += stats.escalated;
       totals.skipped += stats.skipped;
+      totals.resendContentCleared += stats.resendContentCleared;
       // Verworfene Aufträge zählen zum Batch: auch dann können weitere fällig sein.
       if (stats.processed + stats.skipped < BATCH_SIZE) break;
     }
-    if (totals.processed > 0 || totals.escalated > 0 || totals.skipped > 0) {
+    if (
+      totals.processed > 0 ||
+      totals.escalated > 0 ||
+      totals.skipped > 0 ||
+      totals.resendContentCleared > 0
+    ) {
       log.info(totals, 'mail-outbox-deliver: done');
     }
     return totals;

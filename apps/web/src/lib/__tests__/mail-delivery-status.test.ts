@@ -116,4 +116,61 @@ describe('summarizeMailDelivery', () => {
     expect(MAIL_DELIVERY_STATE_LABELS.failed).toContain('fehlgeschlagen');
     expect(MAIL_DELIVERY_STATE_LABELS.accepted).toBe('vom Versanddienst angenommen');
   });
+
+  it('C4: bietet erneut sendbare Aufträge nur mit Vorgang und erhaltenem Inhalt an', () => {
+    const resource = { resourceType: 'invoice', resourceId: 'invoice-1' };
+    const accepted = row({ id: 'outbox-1' });
+    const failed = row({
+      id: 'outbox-2',
+      status: 'FAILED',
+      recipientsAccepted: 0,
+      resendable: true,
+    });
+    const cleared = row({ id: 'outbox-3', status: 'FAILED', recipientsAccepted: 0 });
+
+    expect(summarizeMailDelivery([accepted, failed, cleared], resource)).toEqual([
+      {
+        purpose: 'invoice-sent',
+        state: 'partial',
+        accepted: 1,
+        attempted: 3,
+        resend: {
+          purpose: 'invoice-sent',
+          resourceType: 'invoice',
+          resourceId: 'invoice-1',
+          outboxIds: ['outbox-2'],
+          uncertain: false,
+        },
+      },
+    ]);
+    // Ohne Vorgang (reine Anzeige) kein Ziel.
+    expect(summarizeMailDelivery([failed])[0]).not.toHaveProperty('resend');
+    expect(
+      summarizeMailDelivery(
+        [row({ id: 'outbox-4', status: 'UNKNOWN', recipientsAccepted: 0, resendable: true })],
+        resource,
+      )[0]?.resend,
+    ).toEqual({
+      purpose: 'invoice-sent',
+      resourceType: 'invoice',
+      resourceId: 'invoice-1',
+      outboxIds: ['outbox-4'],
+      uncertain: true,
+    });
+  });
+
+  it('C4: bietet bei Kontaktmails nur den jüngsten Auftrag zum Neuversand an', () => {
+    const contacts = (overrides: Partial<MailOutboxStatusRow>) =>
+      row({ purpose: 'request-staff-replied', kind: 'CLIENT_CONTACTS', ...overrides });
+    const summaries = summarizeMailDelivery(
+      [
+        contacts({ id: 'old', status: 'FAILED', resendable: true, createdAt: T0 }),
+        contacts({ id: 'new', status: 'PROVIDER_ACCEPTED', createdAt: T1 }),
+      ],
+      { resourceType: 'request', resourceId: 'request-1' },
+    );
+
+    expect(summaries[0]?.state).toBe('accepted');
+    expect(summaries[0]).not.toHaveProperty('resend');
+  });
 });

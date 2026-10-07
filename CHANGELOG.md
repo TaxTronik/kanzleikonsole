@@ -23,6 +23,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- „Erneut senden“ an den Zustellstatus-Zeilen fehlgeschlagener oder unklarer
+  Mandanten-Mails: berechtigt wie die auslösende Aktion, auditiert, bei
+  unklarem Ausgang mit Rückfrage; überholte Vorgänge werden ohne Versand
+  verworfen. Inhalte solcher Aufträge bleiben dafür 30 Tage verschlüsselt
+  erhalten. Der Kalender zeigt entschiedene Terminanfragen 14 Tage lang mit dem
+  Zustellstatus der Entscheidungsmail, die GwG-Seite den Status der
+  Freischaltungsmail.
 - ADR 0014 (Vorschlag): Verfahrensschritte von Steuerbescheiden künftig als
   Ereigniszeilen (`tax_notice_event`) statt Spaltengruppen, Feiertagskontext je
   Partei; mit Zuordnung aller CHECKs und Trigger und Migrationsplan.

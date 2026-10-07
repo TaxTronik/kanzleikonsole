@@ -94,6 +94,56 @@ describe('loadMailDeliveryTx', () => {
     expect(result.get('invoice-2')?.[0]?.state).toBe('unknown');
   });
 
+  it('C4: markiert fehlgeschlagene Aufträge mit erhaltenem Inhalt als erneut sendbar', async () => {
+    const findMany = vi
+      .fn()
+      .mockResolvedValueOnce([
+        {
+          id: 'outbox-1',
+          resourceId: 'invite-1',
+          purpose: 'gwg-invite',
+          kind: 'DIRECT',
+          status: 'FAILED',
+          recipientsAttempted: 1,
+          recipientsAccepted: 0,
+          createdAt: new Date('2026-10-06T10:00:00Z'),
+          lastError: 'Der Mail-Provider hat die Nachricht ausdrücklich abgelehnt.',
+        },
+      ])
+      .mockResolvedValueOnce([{ id: 'outbox-1' }]);
+    const tx = { mailOutbox: { findMany } } as unknown as TxClient;
+
+    const result = await loadMailDeliveryTx(tx, {
+      resourceType: 'gwg_onboarding_invite',
+      resourceIds: ['invite-1'],
+    });
+
+    // Zweite Abfrage prüft nur, ob Inhalt erhalten ist — ohne ihn zu laden.
+    expect(findMany.mock.calls[1]![0]).toEqual({
+      where: {
+        id: { in: ['outbox-1'] },
+        status: { in: ['FAILED', 'UNKNOWN'] },
+        NOT: { payload: { equals: {} } },
+      },
+      select: { id: true },
+    });
+    expect(result.get('invite-1')).toEqual([
+      {
+        purpose: 'gwg-invite',
+        state: 'failed',
+        accepted: 0,
+        attempted: 1,
+        resend: {
+          purpose: 'gwg-invite',
+          resourceType: 'gwg_onboarding_invite',
+          resourceId: 'invite-1',
+          outboxIds: ['outbox-1'],
+          uncertain: false,
+        },
+      },
+    ]);
+  });
+
   it('fragt ohne Vorgänge nicht die Datenbank', async () => {
     const findMany = vi.fn();
     const tx = { mailOutbox: { findMany } } as unknown as TxClient;

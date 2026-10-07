@@ -14,7 +14,10 @@ Ansicht **Steuertermine** gruppiert nach Steuerart und Zeitraum.
 Portalnutzer sehen bestätigte eigene Termine. Neue Wunschtermine können sie nur
 anfragen, wenn das Portal-Feature **Terminanfragen** aktiviert ist. Eine Anfrage
 ist noch kein bestätigter Termin; die Kanzlei nimmt sie an, ändert oder lehnt
-sie ab. Als Wunsch-Bearbeiter werden im offenen Zugriffsmodus alle aktiven
+sie ab. Nach der Entscheidung zeigt der Kalender die Anfrage 14 Tage lang unter
+**Entschiedene Terminanfragen** mit dem Zustellstatus der Bestätigungs- oder
+Absagemail; nach einem Fehlschlag oder bei unklarem Ausgang lässt sie sich dort
+erneut senden (siehe [Administration, Abschnitt 7](administration.md)). Als Wunsch-Bearbeiter werden im offenen Zugriffsmodus alle aktiven
 Mitarbeiter angeboten. Im eingeschränkten Modus und bei vertraulichen Mandanten
 beschränkt sich die Auswahl auf Admin/Partner und zuständige Mitarbeiter; die
 gleiche Prüfung erfolgt nochmals serverseitig.

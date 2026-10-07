@@ -42,6 +42,7 @@ import { withWorkerTenantContext } from '../../tenant-context';
 import { notify } from '../../notify';
 import {
   MAIL_OUTBOX_MAX_ATTEMPTS,
+  MAIL_OUTBOX_RESEND_WINDOW_DAYS,
   processMailOutbox,
   type MailOutboxDeliveryDeps,
 } from '../mail-outbox';
@@ -194,12 +195,11 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
     const stats = await processMailOutbox(deps, { tenantId });
 
     expect(stats.escalated).toBe(1);
-    expect(await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id } })).toMatchObject({
-      status: 'FAILED',
-      payload: {},
-      secretVarsEnc: null,
-      nextAttemptAt: null,
-    });
+    const failed = await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id } });
+    // C4: Inhalt und Secret bleiben für „Erneut senden" erhalten (Secret-CHECK erlaubt FAILED).
+    expect(failed).toMatchObject({ status: 'FAILED', nextAttemptAt: null });
+    expect(failed.payload).toMatchObject({ slug: 'handover-ready' });
+    expect(failed.secretVarsEnc).not.toBeNull();
     expect(
       await prismaOwner.notification.findMany({
         where: { tenantId },
@@ -232,11 +232,10 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
 
     expect(stats).toMatchObject({ escalated: 1, processed: 0 });
     expect(sendTemplateMail).not.toHaveBeenCalled();
-    expect(await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id } })).toMatchObject({
-      status: 'UNKNOWN',
-      secretVarsEnc: null,
-      payload: {},
-    });
+    const unknown = await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id } });
+    expect(unknown.status).toBe('UNKNOWN');
+    expect(unknown.payload).toMatchObject({ slug: 'handover-ready' });
+    expect(unknown.secretVarsEnc).not.toBeNull();
     expect(await prismaOwner.notification.count({ where: { tenantId } })).toBe(1);
   });
 
@@ -263,5 +262,65 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
     expect(await prismaOwner.notification.count({ where: { tenantId } })).toBe(0);
     // Ein verworfener Auftrag ist kein Kandidat mehr.
     expect(await processMailOutbox(deps, { tenantId })).toMatchObject({ skipped: 0 });
+  });
+
+  it('entfernt erhaltenen Inhalt nach dem Neuversandfenster, frische Aufträge bleiben', async () => {
+    const expired = await enqueue();
+    const fresh = await enqueue();
+    const escalated = new Date(Date.now() - (MAIL_OUTBOX_RESEND_WINDOW_DAYS + 1) * 86_400_000);
+    for (const [id, escalatedAt] of [
+      [expired, escalated],
+      [fresh, new Date()],
+    ] as const) {
+      await prismaOwner.mailOutbox.update({
+        where: { id },
+        data: { status: 'FAILED', nextAttemptAt: null, escalatedAt },
+      });
+    }
+
+    const stats = await processMailOutbox(deps, { tenantId });
+
+    expect(stats.resendContentCleared).toBe(1);
+    expect(
+      await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id: expired } }),
+    ).toMatchObject({ status: 'FAILED', payload: {}, secretVarsEnc: null });
+    const kept = await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id: fresh } });
+    expect(kept.payload).toMatchObject({ slug: 'handover-ready' });
+    // Bereits geleerte Aufträge werden nicht erneut geschrieben.
+    expect((await processMailOutbox(deps, { tenantId })).resendContentCleared).toBe(0);
+  });
+
+  it('entfernt erhaltenen Inhalt sofort, wenn der Mandant anonymisiert wurde', async () => {
+    const anonymizedClient = (
+      await prismaOwner.client.create({
+        data: { tenantId, name: 'Synthetic anonymized client', kind: 'NATPERS' },
+      })
+    ).id;
+    const id = await withWorkerTenantContext(tenantId, (tx) =>
+      enqueueDirectMailTx(
+        tx,
+        {
+          ...target(),
+          clientId: anonymizedClient,
+          staffHref: `/staff/clients/${anonymizedClient}`,
+        },
+        { slug: 'handover-ready', to: 'max@example.test', vars: {}, secretVars: { link: LINK } },
+      ),
+    );
+    await prismaOwner.mailOutbox.update({
+      where: { id },
+      data: { status: 'UNKNOWN', nextAttemptAt: null, escalatedAt: new Date() },
+    });
+    await prismaOwner.client.update({
+      where: { id: anonymizedClient },
+      data: { anonymizedAt: new Date() },
+    });
+
+    expect((await processMailOutbox(deps, { tenantId })).resendContentCleared).toBe(1);
+    expect(await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      status: 'UNKNOWN',
+      payload: {},
+      secretVarsEnc: null,
+    });
   });
 });

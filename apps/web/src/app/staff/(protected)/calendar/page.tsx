@@ -22,9 +22,11 @@ import { requireModulePage } from '@/server/settings/module-page';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { loadTaxDeadlineDayGroupsTx } from '@/server/tax-deadlines/day-groups';
+import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
 import { withTenantContext } from '@taxtronik/db';
 import { NewAppointmentDialog } from './new-appointment-dialog';
 import { RequestDecision, type RequestRow } from './request-decision';
+import { DecidedRequests } from './decided-requests';
 import { fmtMonthYear, fmtTimeShort, berlinYmd } from '@/lib/fmt';
 import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
 import { CalendarMonthGrid, MoreEntries, TaxDeadlinePills } from '@/components/calendar-month-grid';
@@ -34,6 +36,8 @@ interface Search {
 }
 
 const NO_TAX_DEADLINES: Awaited<ReturnType<typeof loadTaxDeadlineDayGroupsTx>> = new Map();
+/** C4: Entschiedene Terminanfragen bleiben so lange mit dem Zustellstatus ihrer Mail sichtbar. */
+const DECIDED_REQUEST_DAYS = 14;
 
 function calendarDescription(showTax: boolean, showAppointments: boolean): string {
   const parts = [
@@ -63,6 +67,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     month0,
   );
 
+  // C4: Entscheidungen dieses Zeitraums bleiben mit ihrem Zustellstatus sichtbar.
+  const decidedSince = new Date(new Date().getTime() - DECIDED_REQUEST_DAYS * 86_400_000);
+
   const data = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
@@ -74,6 +81,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         deadlines,
         appointments,
         pendingRequests,
+        decidedRequests,
         staffList,
         // Keine Mandantenliste mehr: der Termindialog sucht serverseitig.
         vacations,
@@ -112,6 +120,26 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
               },
             })
           : Promise.resolve([]),
+        // C4: Nach der Entscheidung verschwindet die Anfrage aus der offenen
+        // Liste; der Zustellstatus der Bestätigungs-/Absagemail bleibt hier.
+        showAppointments
+          ? tx.appointmentRequest.findMany({
+              where: {
+                status: { in: ['ACCEPTED', 'REJECTED'] },
+                decidedAt: { gte: decidedSince },
+                ...viaVisibleClient,
+              },
+              orderBy: [{ decidedAt: 'desc' }, { id: 'asc' }],
+              take: 20,
+              select: {
+                id: true,
+                subject: true,
+                status: true,
+                decidedAt: true,
+                client: { select: { name: true } },
+              },
+            })
+          : Promise.resolve([]),
         // Bearbeiterauswahl nur für Terminanlage und Terminanfragen.
         showAppointments
           ? tx.staffUser.findMany({
@@ -142,10 +170,22 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           select: { startDate: true, endDate: true, staff: { select: { fullName: true } } },
         }),
       ]);
+      const decisionMail = await loadMailDeliveryTx(tx, {
+        resourceType: 'appointment_request',
+        resourceIds: decidedRequests.map((request) => request.id),
+      });
       return {
         deadlines,
         appointments,
         pendingRequests,
+        decidedRequests: decidedRequests.map((request) => ({
+          id: request.id,
+          subject: request.subject,
+          clientName: request.client.name,
+          status: request.status,
+          decidedAt: request.decidedAt,
+          mail: decisionMail.get(request.id) ?? [],
+        })),
         staffList,
         vacations,
         absences,
@@ -264,6 +304,8 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
           </ul>
         </div>
       )}
+
+      <DecidedRequests requests={data.decidedRequests} days={DECIDED_REQUEST_DAYS} />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">

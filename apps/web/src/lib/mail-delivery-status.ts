@@ -25,6 +25,8 @@ export type MailOutboxStatusValue =
   | 'SKIPPED';
 
 export interface MailOutboxStatusRow {
+  /** Auftrags-ID; nur für „Erneut senden" nötig. */
+  id?: string;
   purpose: string;
   kind: 'DIRECT' | 'CLIENT_CONTACTS';
   status: MailOutboxStatusValue;
@@ -33,6 +35,22 @@ export interface MailOutboxStatusRow {
   createdAt: Date;
   /** Begründung eines verworfenen Auftrags (`last_error` bei SKIPPED). */
   lastError?: string | null;
+  /** C4: FAILED/UNKNOWN mit erhaltenem Inhalt — „Erneut senden" ist möglich. */
+  resendable?: boolean;
+}
+
+/** Vorgang, an dem die Statuszeile steht. */
+export interface MailDeliveryResource {
+  resourceType: string;
+  resourceId: string;
+}
+
+/** C4: Aufträge einer Statuszeile, die „Erneut senden" zurücksetzen würde. */
+export interface MailResendTarget extends MailDeliveryResource {
+  purpose: string;
+  outboxIds: string[];
+  /** Mindestens ein unklarer Auftrag: die Mail wurde möglicherweise schon zugestellt. */
+  uncertain: boolean;
 }
 
 export type MailDeliveryState =
@@ -54,6 +72,8 @@ export interface MailDeliverySummary {
   attempted: number;
   /** Nur bei `skipped`: warum die Mail nicht versendet wurde. */
   skippedReason?: string;
+  /** Nur wenn fehlgeschlagene oder unklare Aufträge erneut gesendet werden können. */
+  resend?: MailResendTarget;
 }
 
 const PENDING: ReadonlySet<MailOutboxStatusValue> = new Set(['QUEUED', 'SENDING']);
@@ -79,7 +99,29 @@ function skippedReason(rows: readonly MailOutboxStatusRow[]): string | undefined
   return reason?.replace(/^Nicht versendet:\s*/, '') || undefined;
 }
 
-function summarizeBatch(purpose: string, batch: readonly MailOutboxStatusRow[]) {
+function resendTarget(
+  purpose: string,
+  rows: readonly MailOutboxStatusRow[],
+  resource: MailDeliveryResource | undefined,
+): MailResendTarget | undefined {
+  const resendable = rows.filter(
+    (row): row is MailOutboxStatusRow & { id: string } =>
+      Boolean(row.resendable && row.id) && (row.status === 'FAILED' || row.status === 'UNKNOWN'),
+  );
+  if (!resource || resendable.length === 0) return undefined;
+  return {
+    purpose,
+    ...resource,
+    outboxIds: resendable.map((row) => row.id),
+    uncertain: resendable.some((row) => row.status === 'UNKNOWN'),
+  };
+}
+
+function summarizeBatch(
+  purpose: string,
+  batch: readonly MailOutboxStatusRow[],
+  resource: MailDeliveryResource | undefined,
+): MailDeliverySummary {
   const counted = batch.filter((row) => row.status !== 'SKIPPED');
   if (counted.length === 0) {
     const reason = skippedReason(batch);
@@ -91,16 +133,25 @@ function summarizeBatch(purpose: string, batch: readonly MailOutboxStatusRow[]) 
       ...(reason ? { skippedReason: reason } : {}),
     };
   }
+  const resend = resendTarget(purpose, counted, resource);
   return {
     purpose,
     state: aggregateState(counted),
     accepted: counted.reduce((sum, row) => sum + (row.recipientsAccepted ?? 0), 0),
     attempted: counted.reduce((sum, row) => sum + attemptedOf(row), 0),
+    ...(resend ? { resend } : {}),
   };
 }
 
-/** Je Anlass eine Zusammenfassung, in der Reihenfolge des ersten Auftretens. */
-export function summarizeMailDelivery(rows: readonly MailOutboxStatusRow[]): MailDeliverySummary[] {
+/**
+ * Je Anlass eine Zusammenfassung, in der Reihenfolge des ersten Auftretens.
+ * Mit `resource` erhält eine Zeile mit erneut sendbaren Aufträgen ein
+ * `resend`-Ziel (C4); ohne bleibt die Anzeige rein lesend.
+ */
+export function summarizeMailDelivery(
+  rows: readonly MailOutboxStatusRow[],
+  resource?: MailDeliveryResource,
+): MailDeliverySummary[] {
   const byPurpose = new Map<string, MailOutboxStatusRow[]>();
   for (const row of rows) {
     const batch = byPurpose.get(row.purpose);
@@ -112,7 +163,9 @@ export function summarizeMailDelivery(rows: readonly MailOutboxStatusRow[]): Mai
       byPurpose.set(row.purpose, [row]);
     }
   }
-  return [...byPurpose.entries()].map(([purpose, batch]) => summarizeBatch(purpose, batch));
+  return [...byPurpose.entries()].map(([purpose, batch]) =>
+    summarizeBatch(purpose, batch, resource),
+  );
 }
 
 export const MAIL_DELIVERY_STATE_LABELS: Readonly<Record<MailDeliveryState, string>> = {

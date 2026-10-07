@@ -349,3 +349,22 @@ Mandanten. Rechnungsmails bleiben gewollt, solange die Rechnung im
 Mandantenportal sichtbar ist; eine Kanzlei-Antwort bleibt gewollt, solange die
 Anforderung nicht storniert wurde. Eine Prüfung unmittelbar vor dem Versand
 schließt nicht aus, dass sich der Vorgang danach noch ändert.
+
+Bei „Versand fehlgeschlagen" und „Versandstatus unklar" bietet die Statuszeile
+**Erneut senden** an. Die Schaltfläche setzt den Versandauftrag für den
+Hintergrunddienst zurück; die Seite selbst sendet nichts. Sie verlangt dieselbe
+Berechtigung wie die Aktion, die die Mail ausgelöst hat (etwa das Einzelrecht
+für den Rechnungsversand, das jeweilige Modul und den Zugriff auf den
+Mandanten; die Begrüßungsmail nach der GwG-Freischaltung darf nur der
+zugeordnete Berufsträger erneut senden), prüft vorher den Vorgang wie oben und
+wird im Prüfprotokoll festgehalten. Ist der Vorgang nicht mehr aktuell, wird die
+Mail mit Begründung verworfen statt gesendet. Bei unklarem Status fragt
+TaxTronik vorher nach, weil die Mail möglicherweise bereits zugestellt wurde
+und der Mandant sie dann doppelt erhält. Den dafür nötigen Inhalt des
+Versandauftrags bewahrt TaxTronik nach dem Fehlschlag 30 Tage auf, bei
+anonymisierten Mandanten nicht; danach steht „Erneut senden" nicht mehr zur
+Verfügung.
+
+Die Bestätigungs- oder Absagemail einer Terminanfrage zeigt der Kanzleikalender
+unter „Entschiedene Terminanfragen" (14 Tage nach der Entscheidung), die
+Begrüßungsmail nach der GwG-Freischaltung die GwG-Seite des Mandanten.

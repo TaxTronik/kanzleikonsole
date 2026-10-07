@@ -1,5 +1,40 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-012
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-activation-mail.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
+      - apps/web/src/server/audit/labels.ts
+      - packages/db/prisma/migrations/20261007120100_mail_outbox_resend/migration.sql
+    rule_ids:
+      - GWG-SELF-ONBOARDING-001
+      - GWG-ACTIVATION-GATE-001
+      - ACCESS-STAFF-PERMISSION-001
+      - ACCESS-TENANT-RLS-001
+      - AUDIT-HASH-CHAIN-001
+    reason: >-
+      An den Zustellstatus-Zeilen fehlgeschlagener (FAILED) oder unklarer (UNKNOWN)
+      Mandanten-Mails gibt es „Erneut senden“: berechtigt wie die auslösende Aktion,
+      mit Mandantenzugriff und bei GwG-Mails Berufsträger-Rolle, bei UNKNOWN mit
+      Rückfrage, auditiert (`mail_outbox.resend`/`.resend_skipped`). Die Funktion
+      `app.mail_outbox_resend` (Migration 20261007120100) stellt den Auftrag mit
+      vollem Versuchsbudget wieder in die Warteschlange oder beendet ihn nach der
+      Aktualitätsprüfung als SKIPPED; die App-Rolle erhält weiterhin kein UPDATE.
+      Abweichend von FK-EXC-20261006-014 bleibt der verschlüsselte Inhalt solcher
+      Aufträge (bei GwG-Einladungen einschließlich Link) bis zu 30 Tage nach dem
+      Endstatus erhalten und wird danach, bei anonymisierten Mandanten sofort,
+      gelöscht. Die GwG-Seite zeigt den Status der Freischaltungsmail, der Kalender
+      den der Terminentscheidung. Keine fachliche Freigabe; die 30-Tage-Frist ist
+      eine offene Betriebsentscheidung.
+    tests:
+      - apps/web/src/server/mail/__tests__/resend.test.ts
+      - apps/web/src/server/mail/__tests__/resend-actions.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
+      - packages/db/src/__tests__/mail-outbox-rls.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-011
     date: '2026-10-07'
     paths:
@@ -4318,6 +4353,10 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-012` dokumentiert „Erneut senden“ für
+  fehlgeschlagene oder unklare Mandanten-Mails und die 30-Tage-Aufbewahrung
+  ihres verschlüsselten Inhalts.
 
 - 2026-10-07: `FK-EXC-20261007-011` dokumentiert die Aktualitätsprüfung
   der Mail-Outbox vor jedem Versand und den Endstatus SKIPPED.

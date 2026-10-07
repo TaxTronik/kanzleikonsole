@@ -121,6 +121,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'portal_inbox.client_activity_mail_completed': 'Mandantenpost-Benachrichtigung versendet',
   'portal_inbox.client_activity_mail_failed':
     'Versand der Mandantenpost-Benachrichtigung fehlgeschlagen',
+  'mail_outbox.resend': 'Mandanten-E-Mail erneut zum Versand vorgemerkt',
+  'mail_outbox.resend_skipped': 'Erneuter Versand verworfen (Vorgang nicht mehr aktuell)',
 
   // Telefonzettel
   'phone_note.create': 'Telefonzettel erstellt',
@@ -538,6 +540,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   rss_feed: 'RSS-Feed',
   appointment: 'Termin',
   appointment_request: 'Terminanfrage',
+  mail_outbox: 'Mandanten-E-Mail',
   client_handover: 'Anlieferung',
   invoice_category: 'Rechnungstyp',
   risk_analysis: 'Subsumtion',

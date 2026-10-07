@@ -56,6 +56,7 @@ vi.mock('../id-document-actions', () => ({
   selectCurrentIdentityDocumentSetAction: vi.fn(),
 }));
 vi.mock('../invite-actions', () => ({ sendInviteAction: vi.fn(), cancelInviteAction: vi.fn() }));
+vi.mock('@/server/mail/resend-actions', () => ({ resendMailOutboxAction: vi.fn() }));
 
 import GwgPage from '../page';
 import { loadGwgPageData } from '../gwg-page-data';
@@ -365,6 +366,39 @@ describe('GWG-RISK-REVIEW-001 / GWG-SELF-ONBOARDING-001: page workflow and revie
       }),
     );
     expect(html).toContain('GwG-Einladung: Versand fehlgeschlagen – bitte prüfen');
+  });
+  it('C4: zeigt den Zustellstatus der Begrüßungsmail an der Freigabe mit „Erneut senden“', async () => {
+    const verified = check();
+    mocks.history.mockResolvedValue([verified]);
+    mocks.mail.mockImplementation(async (args: { where: Record<string, unknown> }) => {
+      if (args.where['resourceType'] !== 'gwg_check' && !args.where['id']) return [];
+      return args.where['id']
+        ? [{ id: 'outbox-welcome' }]
+        : [
+            {
+              id: 'outbox-welcome',
+              resourceId: verified.id,
+              purpose: 'gwg-activated',
+              kind: 'CLIENT_CONTACTS',
+              status: 'FAILED',
+              recipientsAttempted: 2,
+              recipientsAccepted: 0,
+              createdAt: now,
+              lastError: null,
+            },
+          ];
+    });
+
+    const html = await renderPage(verified);
+
+    expect(mocks.mail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { resourceType: 'gwg_check', resourceId: { in: [verified.id] } },
+      }),
+    );
+    expect(html).toContain('Begrüßungsmail an den Mandanten');
+    expect(html).toContain('Begrüßungsmail nach GwG-Freigabe: Versand fehlgeschlagen');
+    expect(html).toContain('Erneut senden');
   });
 });
 
