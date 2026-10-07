@@ -4,8 +4,9 @@
 // Die Fachlogik lebt in @taxtronik/tax (materializeTenantTaxDeadlines) und ist
 // dort separat getestet (packages/tax/src/__tests__/materialize.test.ts).
 // Hier wird nur die Worker-Verdrahtung abgesichert:
-//   - DI-Deps: db === prismaOwner, runAtomic delegiert an
-//     withWorkerTenantContext(tenantId, …), recordEvidence an EvidenceService
+//   - DI-Deps (S-01, App-Rolle): db === systemContextClient(tenantId),
+//     runAtomic delegiert an withSystemContext(tenantId, …), recordEvidence an
+//     EvidenceService
 //   - System-Staff: erster aktiver ADMIN/PARTNER; ohne so einen Account → skip
 //   - Stats-Summierung über mehrere Tenants
 //
@@ -17,11 +18,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const h = vi.hoisted(() => {
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
-    staffUser: { findFirst: vi.fn() },
   };
+  // S-01: Einzelabfragen über systemContextClient, atomare Blöcke über withSystemContext.
+  const db = { staffUser: { findFirst: vi.fn() } };
+  const systemContextClient = vi.fn((_tenantId: string) => db);
   const tx = {};
-  const withWorkerTenantContext = vi.fn(
-    async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
+  const withSystemContext = vi.fn(async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) =>
+    fn(tx),
   );
   const record = vi.fn();
   const materialize = vi.fn();
@@ -32,8 +35,10 @@ const h = vi.hoisted(() => {
   const moduleEnabled = vi.fn();
   return {
     prismaOwner,
+    db,
+    systemContextClient,
     tx,
-    withWorkerTenantContext,
+    withSystemContext,
     record,
     materialize,
     processNotifications,
@@ -50,7 +55,8 @@ vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
+vi.mock('../../tenant-context', () => ({ systemContextClient: h.systemContextClient }));
+vi.mock('@taxtronik/db', () => ({ withSystemContext: h.withSystemContext }));
 vi.mock('../../module-gate', () => ({
   isWorkerTenantModuleEnabled: h.moduleEnabled,
 }));
@@ -99,11 +105,12 @@ const STATS = {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  h.withWorkerTenantContext.mockImplementation(
+  h.systemContextClient.mockImplementation(() => h.db);
+  h.withSystemContext.mockImplementation(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(h.tx),
   );
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
-  h.prismaOwner.staffUser.findFirst.mockResolvedValue({ id: 'staff-1' });
+  h.db.staffUser.findFirst.mockResolvedValue({ id: 'staff-1' });
   h.materialize.mockResolvedValue(STATS);
   h.notifyAutomaticTaxRequestOpened.mockResolvedValue({
     ok: true,
@@ -139,17 +146,18 @@ describe('Verdrahtung des DI-Kerns', () => {
       mailRecipients: 0,
     });
 
-    expect(h.prismaOwner.staffUser.findFirst).not.toHaveBeenCalled();
+    expect(h.db.staffUser.findFirst).not.toHaveBeenCalled();
     expect(h.materialize).not.toHaveBeenCalled();
     expect(h.processNotifications).not.toHaveBeenCalled();
   });
 
-  it('übergibt prismaOwner als db und die korrekten Params (horizonDays 90)', async () => {
+  it('übergibt den Tenant-Client der App-Rolle als db und die korrekten Params (horizonDays 90)', async () => {
     const result = await run();
 
     expect(h.materialize).toHaveBeenCalledTimes(1);
     const [deps, params] = h.materialize.mock.calls[0]!;
-    expect(deps.db).toBe(h.prismaOwner);
+    expect(deps.db).toBe(h.db);
+    expect(h.systemContextClient).toHaveBeenCalledWith(TENANT);
     expect(params).toEqual({ tenantId: TENANT, systemStaffId: 'staff-1', horizonDays: 90 });
     expect(result).toEqual({ created: 2, requests: 1, overdue: 3, warned: 1, mailRecipients: 2 });
   });
@@ -177,14 +185,14 @@ describe('Verdrahtung des DI-Kerns', () => {
     });
   });
 
-  it('runAtomic delegiert an withWorkerTenantContext mit der Tenant-Id', async () => {
+  it('runAtomic delegiert an withSystemContext mit der Tenant-Id', async () => {
     await run();
 
     const [deps] = h.materialize.mock.calls[0]!;
     const inner = vi.fn().mockResolvedValue('ok');
     await expect(deps.runAtomic(inner)).resolves.toBe('ok');
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
-    expect(h.withWorkerTenantContext.mock.calls[0]![0]).toBe(TENANT);
+    expect(h.withSystemContext).toHaveBeenCalledTimes(1);
+    expect(h.withSystemContext.mock.calls[0]![0]).toBe(TENANT);
     // Die Callback-Funktion bekommt den Tx-Client des Tenant-Contexts
     expect(inner.mock.calls[0]![0]).toBe(h.tx);
   });
@@ -205,7 +213,7 @@ describe('System-Staff-Auswahl', () => {
   it('sucht den ersten aktiven ADMIN/PARTNER des Tenants', async () => {
     await run();
 
-    expect(h.prismaOwner.staffUser.findFirst).toHaveBeenCalledWith({
+    expect(h.db.staffUser.findFirst).toHaveBeenCalledWith({
       where: {
         tenantId: TENANT,
         active: true,
@@ -216,7 +224,7 @@ describe('System-Staff-Auswahl', () => {
   });
 
   it('ohne ADMIN/PARTNER werden keine neuen Requests erzeugt, persistierte Benachrichtigungen aber verarbeitet', async () => {
-    h.prismaOwner.staffUser.findFirst.mockResolvedValue(null);
+    h.db.staffUser.findFirst.mockResolvedValue(null);
 
     const result = await run();
 

@@ -5,9 +5,11 @@
 // Logik lebt in @taxtronik/tax (materializeTenantTaxDeadlines) und ist mit
 // dem Web-Pfad (apps/web/src/server/tax-deadlines/materialize.ts) geteilt —
 // EINE Logik, keine Drift. Hier nur die Worker-Verdrahtung:
-//   - prismaOwner (BYPASSRLS) als DB-Client; tenantId-Filter setzt der Kern;
+//   - S-01: App-Rolle im SYSTEM-Kontext des Tenants (RLS) statt Owner-Client:
+//     Einzelabfragen über systemContextClient (je Aufruf eine kurze
+//     Transaktion, wie zuvor beim Owner-Client); tenantId-Filter setzt der Kern;
 //   - atomare Blöcke (Request + Deadline-Update + Audit-Eintrag) laufen je in
-//     einer withWorkerTenantContext-Transaktion (Muster: invoice-overdue);
+//     einer withSystemContext-Transaktion (Muster: invoice-overdue);
 //   - Audit über EvidenceService (Muster: risk-analyse-llm).
 //
 // Mandant muss freigeschaltet (allowActive) sein — sonst keine Termine.
@@ -15,6 +17,7 @@
 
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { withSystemContext, type TxClient } from '@taxtronik/db';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { connection, type ChecksJob } from '../queues';
@@ -22,7 +25,7 @@ import { log } from '../logger';
 import { materializeTenantTaxDeadlines } from '@taxtronik/tax';
 import { notifyAutomaticTaxRequestOpened } from '../mail';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
+import { systemContextClient } from '../tenant-context';
 import { notify } from '../notify';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
 import { processTaxDeadlineNotifications } from './tax-deadline-notification';
@@ -36,6 +39,7 @@ const evidence = new EvidenceService(new LocalTimestampAdapter());
 export const taxDeadlineMaterializeWorker = createWorker<ChecksJob>(
   JOB_QUEUES.taxDeadlineMaterialize.name,
   async (job) => {
+    // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client.
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]
       : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
@@ -58,7 +62,9 @@ export const taxDeadlineMaterializeWorker = createWorker<ChecksJob>(
       // System-Staff fuer createdByStaff neuer Auto-Anforderungen. Bereits
       // persistierte Benachrichtigungen werden auch ohne diesen Account noch
       // abgearbeitet; sie gehoeren zu einem schon existierenden Request.
-      const systemStaff = await prismaOwner.staffUser.findFirst({
+      const db = systemContextClient(tenantId);
+      const runAtomic = <T>(fn: (tx: TxClient) => Promise<T>) => withSystemContext(tenantId, fn);
+      const systemStaff = await db.staffUser.findFirst({
         where: {
           tenantId,
           active: true,
@@ -69,10 +75,10 @@ export const taxDeadlineMaterializeWorker = createWorker<ChecksJob>(
       if (systemStaff) {
         const stats = await materializeTenantTaxDeadlines(
           {
-            db: prismaOwner,
-            runAtomic: (fn) => withWorkerTenantContext(tenantId, fn),
+            db,
+            runAtomic,
             recordEvidence: (tx, event) => evidence.record(tx, event),
-            // Läuft in derselben withWorkerTenantContext-Tx wie staffNotifiedAt.
+            // Läuft in derselben runAtomic-Tx wie staffNotifiedAt.
             upsertStaffNotification: async (tx, input) => {
               await notify(tx, input);
             },
@@ -101,8 +107,8 @@ export const taxDeadlineMaterializeWorker = createWorker<ChecksJob>(
       // Worker-/SMTP-Fehler kann keine zweite fachliche Anforderung erzeugen.
       const notificationStats = await processTaxDeadlineNotifications(
         {
-          db: prismaOwner,
-          runAtomic: (fn) => withWorkerTenantContext(tenantId, fn),
+          db,
+          runAtomic,
           notifyAutomaticTaxRequestOpened,
           upsertStaffNotification: async (tx, input) => {
             await notify(tx, input);

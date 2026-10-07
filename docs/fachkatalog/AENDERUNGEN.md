@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-031
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/tax-deadline-materialize.ts
+    rule_ids:
+      - TAX-DEADLINE-AUTOREQUEST-001
+    reason: >-
+      Die Fristmaterialisierung (`tax-deadline-materialize`) übergibt dem
+      gemeinsamen Fristenkern statt der Owner-Verbindung
+      `systemContextClient(tenantId)`: jede Abfrage läuft in einer eigenen kurzen
+      Transaktion über die App-Rolle im SYSTEM-Kontext des Tenants
+      (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS, atomare
+      Blöcke über `withSystemContext`. Transaktionsgrenzen, Fristen, automatische
+      Anforderungen, Audit-Ereignisse und Benachrichtigungen bleiben unverändert;
+      nur die Tenant-Liste bleibt auf der Owner-Verbindung. Eine PostgreSQL-Suite
+      belegt das und dass Fristpläne fremder Tenants unsichtbar und unbearbeitet
+      bleiben. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/__tests__/tenant-context.test.ts
+      - apps/worker/src/jobs/__tests__/tax-deadline-materialize-db.test.ts
+      - apps/worker/src/jobs/__tests__/tax-deadline-materialize.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-030
     date: '2026-10-07'
     paths:
@@ -4800,6 +4822,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-031` dokumentiert die Fristmaterialisierung
+  über die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-030` dokumentiert die GwG-Fristprüfung über
   die App-Rolle.
