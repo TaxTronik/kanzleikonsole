@@ -1,5 +1,21 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-047
+    date: '2026-10-07'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Der CI-Workflow nutzt `actions/cache` (per Commit-SHA gepinnt) für
+      Turbo-Cache, Turbopack-Cache des Produktionsbuilds und Playwright-Browser. Nur
+      CI-Caching; Tests, Prüfschritte und Fachlogik bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - scripts/tests/ci-caches.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-046
     date: '2026-10-07'
     paths:
@@ -5188,6 +5204,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-047` dokumentiert die CI-Caches für Turbo,
+  Turbopack und Playwright.
 
 - 2026-10-07: `FK-EXC-20261007-046` dokumentiert die Build- und
   Typprüfungs-Pipeline ohne Schein-Builds.

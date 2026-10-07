@@ -39,6 +39,10 @@ jobs:
     name: Format, Lint, Typecheck, Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # B-03: fester Ort des Turbo-Caches (ohne Wert legt Turbo ihn in einem
+      # Git-Worktree beim Haupt-Checkout ab); Schritt "Turbo-Cache".
+      TURBO_CACHE_DIR: .turbo/cache
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -114,6 +118,10 @@ jobs:
       - name: Guard Turbo-Pipeline
         run: node --test scripts/tests/turbo-pipeline.test.mjs
 
+      # B-03: Cache-Pfade und -Schlüssel (Turbo, Next, Playwright-Browser).
+      - name: Guard CI-Caches
+        run: node --test scripts/tests/ci-caches.test.mjs
+
       - name: Guard migration line endings
         run: pnpm verify:migration-line-endings
 
@@ -168,6 +176,22 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      # B-03: Turbo-Cache für `pnpm typecheck`; `test` spielt Turbo nie aus dem
+      # Cache ab (turbo.json). Turbo prüft jeden Eintrag über den eigenen Task-
+      # Hash (Paketdateien, Abhängigkeiten über transit, deklarierte externe
+      # Eingaben, Lockfile-Auflösung, globalEnv); ein älterer Cache kann daher
+      # kein veraltetes Ergebnis liefern. Der Schlüssel dient nur dem Auffinden:
+      # je Commit gespeichert, wiederhergestellt vom jüngsten Stand desselben
+      # Lockfiles, sonst von irgendeinem.
+      - name: Turbo-Cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -199,6 +223,11 @@ jobs:
   # upgrade-path und e2e-paranoid parallel nach quality, ohne dass sich ihre
   # Services auf demselben Runner-Host ins Gehege kommen. Die Eindeutigkeit
   # der Host-Ports prueft scripts/release/check-release-gates.mjs.
+  # Offen (B-03, Betriebsentscheidung): Zwei Laeufe desselben Jobs (z. B. zwei
+  # Pull Requests oder Release-Aufruf neben einem Push) auf demselben Runner-
+  # Host belegen dieselben Ports. Workflow-Ausdruecke koennen keinen Port je
+  # Lauf berechnen; Abhilfe schaffen nur Runner-Kapazitaet 1 je Host, eine
+  # Concurrency-Gruppe je Job oder dynamische Ports per docker run.
   db:
     name: Migrations, RLS, Drift
     runs-on: ubuntu-latest
@@ -793,6 +822,12 @@ jobs:
       S3_BUCKET_STAFF_PRIVATE: staff-private
       S3_BUCKET_BACKUPS: backups
       NODE_ENV: test
+      # B-03: fester Browser-Ort für Installation, Tests und Cache-Schritt
+      # (ohne Wert hängt er von HOME/XDG_CACHE_HOME des Runners ab). Relativ:
+      # Playwright löst ihn gegen das Arbeitsverzeichnis auf, bei
+      # `pnpm --filter @taxtronik/e2e exec` also apps/e2e/.cache/ms-playwright,
+      # innerhalb des Job-Workspace.
+      PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
@@ -947,6 +982,18 @@ jobs:
               assert_lock gwg GOVERNANCE 5
             '
 
+      # B-03: Dateisystem-Cache von Turbopack aus dem Produktions-Build (lokal
+      # gemessen rund 480 MB). Turbopack prüft wiederhergestellte Einträge
+      # selbst; der Schlüssel hängt am Lockfile (Next, Turbopack, Abhängigkeiten)
+      # und an next.config.mjs, ein älterer Stand dient als Startpunkt.
+      - name: Next-Build-Cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: apps/web/.next/cache
+          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'apps/web/next.config.mjs') }}
+          restore-keys: |
+            nextjs-${{ runner.os }}-
+
       # Wie Dockerfile.web als Produktions-Build: NODE_ENV=production bindet
       # HSTS und das Prod-Gate in das Artefakt; NEXTAUTH_URL muss dort https sein.
       # B-07: Der Job quality desselben Commits (needs) hat mit `pnpm typecheck`
@@ -958,6 +1005,16 @@ jobs:
           NEXTAUTH_URL: https://localhost:3000
           TAXTRONIK_SKIP_BUILD_TYPECHECK: '1'
         run: pnpm --filter @taxtronik/web build
+
+      # B-03: Browser-Binaries je Revision. browsers.json des installierten
+      # playwright-core legt Revision und Verzeichnis fest (chromium-<rev>,
+      # chromium_headless_shell-<rev>, ffmpeg-<rev>); Systempakete installiert
+      # der nächste Schritt weiterhin (--with-deps, nicht cachebar).
+      - name: Playwright-Browser-Cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: apps/e2e/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
 
       - name: Install Playwright browser
         run: pnpm --filter @taxtronik/e2e exec playwright install chromium --with-deps

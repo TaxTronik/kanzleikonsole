@@ -278,6 +278,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- CI: Turbo-Cache (Job `quality`), Turbopack-Cache des Produktionsbuilds und
+  Playwright-Browser (Job `e2e-paranoid`) werden zwischen Läufen über
+  `actions/cache` (v4.3.0, per Commit-SHA gepinnt) wiederverwendet; die
+  Schlüssel hängen an Lockfile, `next.config.mjs` bzw. der Browser-Revision von
+  `playwright-core`.
 - Build: Die Schein-Builds (`build: tsc --noEmit`) von neun Paketen entfallen;
   geprüft wird über `typecheck`. Turbo bezieht Änderungen abhängiger
   Workspace-Pakete wieder in die Hashes von `typecheck`, `test` und den

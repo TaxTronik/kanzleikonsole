@@ -152,6 +152,15 @@ Dateien außerhalb ihres Pakets lesen und jeder Lauf ein eigenes Testprotokoll
 braucht. `scripts/tests/turbo-pipeline.test.mjs` und
 `apps/web/src/__tests__/next-build-typecheck.test.ts` halten diese Regeln fest.
 
+**CI-Caches:** Der Job `quality` speichert den Turbo-Cache (`.turbo/cache`) je
+Commit und stellt den jüngsten Stand wieder her; Turbo verwendet daraus nur
+Einträge mit identischem Task-Hash. Der Job `e2e-paranoid` speichert den
+Turbopack-Cache des Produktions-Builds (`apps/web/.next/cache`, je Lockfile und
+`next.config.mjs`) und die Playwright-Browser (je Revision aus
+`playwright-core/browsers.json`). Ein Cache ersetzt kein Prüfergebnis: Tests
+laufen immer, Turbopack und Turbo prüfen wiederhergestellte Einträge selbst.
+`scripts/tests/ci-caches.test.mjs` prüft Pfade, Reihenfolge und Schlüssel.
+
 ## 5. Versionsführung und Freigabeverfahren
 
 - **Versionsführung:** Git ist das einzige Quellsystem; jede Änderung ist
