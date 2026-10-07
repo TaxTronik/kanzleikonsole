@@ -221,14 +221,19 @@ export async function createActiveClientFixture(
 }
 
 /**
- * Löscht die Fixture-Tenants samt Kaskade. Tenants mit append-only Audit-Zeilen
- * oder aufbewahrungspflichtigen GwG-Prüfungen bleiben wie in den übrigen
- * DB-Suiten in der Wegwerf-Datenbank stehen.
+ * Löscht die Fixture-Tenants samt Kaskade. Tenants mit append-only Audit-Zeilen,
+ * aufbewahrungspflichtigen GwG-Prüfungen oder unveränderlichen Screening-
+ * Nachweisen bleiben wie in den übrigen DB-Suiten in der Wegwerf-Datenbank.
  */
 export async function deleteTenantFixtures(owner: Owner, tenantIds: readonly string[]) {
   for (const tenantId of tenantIds.filter(Boolean)) {
-    if ((await owner.auditLog.count({ where: { tenantId } })) > 0) continue;
-    if ((await owner.gwgCheck.count({ where: { tenantId } })) > 0) continue;
+    const kept = await Promise.all([
+      owner.auditLog.count({ where: { tenantId } }),
+      owner.gwgCheck.count({ where: { tenantId } }),
+      owner.screeningRun.count({ where: { tenantId } }),
+      owner.sanctionsSnapshot.count({ where: { tenantId } }),
+    ]);
+    if (kept.some((count) => count > 0)) continue;
     await owner.tenant.delete({ where: { id: tenantId } });
   }
 }

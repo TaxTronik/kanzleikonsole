@@ -15,6 +15,7 @@
 // die Übernahme bei einem Tenant scheitert (BullMQ-Retry).
 // =============================================================================
 
+import { withSystemContext, type TxClient } from '@taxtronik/db';
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
 import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
@@ -22,20 +23,17 @@ import { prepareEuList, type PreparedEuList } from '@taxtronik/tax';
 import { fetchEuSanctions } from '@taxtronik/tax/screening/source';
 import { followupSanctions, storeSanctionsSnapshot } from '@taxtronik/tax/screening/persistence';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { log } from '../logger';
 
 const evidence = new EvidenceService(new LocalTimestampAdapter());
-
-type WorkerTx = Parameters<Parameters<typeof withWorkerTenantContext>[1]>[0];
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
 async function recordSourceFailure(tenantId: string, lastError: string): Promise<void> {
-  await withWorkerTenantContext(tenantId, async (tx) => {
+  await withSystemContext(tenantId, async (tx) => {
     await tx.sanctionsSourceState.upsert({
       where: { tenantId },
       create: { tenantId, attemptedAt: new Date(), lastError },
@@ -44,7 +42,7 @@ async function recordSourceFailure(tenantId: string, lastError: string): Promise
   });
 }
 
-async function activeAdminPartnerIds(tx: WorkerTx, tenantId: string): Promise<string[]> {
+async function activeAdminPartnerIds(tx: TxClient, tenantId: string): Promise<string[]> {
   const staff = await tx.staffUser.findMany({
     where: { tenantId, active: true, roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } } },
     select: { id: true },
@@ -61,7 +59,7 @@ async function runTenantFollowups(
   const counts = { runs: 0, withCandidates: 0, withoutCandidates: 0 };
   let cursor: string | undefined;
   do {
-    const batch = await withWorkerTenantContext(tenantId, async (tx) => {
+    const batch = await withSystemContext(tenantId, async (tx) => {
       if (!(await readBooleanTenantModules(tx, tenantId)).sanctionsScreening)
         return { created: [], nextCursor: null };
       const result = await followupSanctions(tx, tenantId, snapshotId, prepared, cursor);
@@ -111,7 +109,7 @@ async function runTenantFollowups(
 /** Höchstens ein Sammelhinweis je Tenant und Lauf für Folgeläufe ohne Kandidaten. */
 async function notifyFollowupsWithoutCandidates(tenantId: string, count: number): Promise<void> {
   if (count === 0) return;
-  await withWorkerTenantContext(tenantId, async (tx) => {
+  await withSystemContext(tenantId, async (tx) => {
     const admins = await activeAdminPartnerIds(tx, tenantId);
     await notify(
       tx,
@@ -132,6 +130,8 @@ async function notifyFollowupsWithoutCandidates(tenantId: string, count: number)
 /** Daily queue adapter. No network request if every tenant disabled the module.
  * Retries also finish missing follow-ups when a prior job stopped mid-batch. */
 export async function runSanctionsRefresh(onlyTenantId?: string) {
+  // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client;
+  // Modulschalter, Quellenstand, Folgeläufe und Hinweise laufen über die App-Rolle.
   const tenants = await prismaOwner.tenant.findMany({
     where: onlyTenantId ? { id: onlyTenantId } : {},
     select: { id: true },
@@ -139,7 +139,7 @@ export async function runSanctionsRefresh(onlyTenantId?: string) {
   const enabled: string[] = [];
   for (const t of tenants)
     if (
-      await withWorkerTenantContext(
+      await withSystemContext(
         t.id,
         async (tx) => (await readBooleanTenantModules(tx, t.id)).sanctionsScreening,
       )
@@ -165,7 +165,7 @@ export async function runSanctionsRefresh(onlyTenantId?: string) {
     failed = 0;
   for (const tenantId of enabled) {
     try {
-      const saved = await withWorkerTenantContext(tenantId, async (tx) => {
+      const saved = await withSystemContext(tenantId, async (tx) => {
         if (!(await readBooleanTenantModules(tx, tenantId)).sanctionsScreening) return null;
         const stored = await storeSanctionsSnapshot(tx, tenantId, downloaded);
         await evidence.record(tx, {

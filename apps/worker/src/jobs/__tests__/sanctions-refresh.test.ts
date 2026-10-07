@@ -31,9 +31,9 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock('../../prisma-owner', () => ({ prismaOwner: { tenant: { findMany: h.tenants } } }));
-vi.mock('../../tenant-context', () => ({
-  withWorkerTenantContext: async (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) =>
-    fn(h.tx),
+// S-01: Tenant-Transaktionen über die App-Rolle (withSystemContext).
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: async (_tenantId: string, fn: (tx: unknown) => Promise<unknown>) => fn(h.tx),
 }));
 vi.mock('../../logger', () => ({ log: h.log }));
 vi.mock('@taxtronik/db/tenant-modules', () => ({ readBooleanTenantModules: h.modules }));

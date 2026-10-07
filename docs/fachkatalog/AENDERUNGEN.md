@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-032
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/sanctions-refresh.ts
+    rule_ids:
+      - GWG-SCREENING-001
+    reason: >-
+      Der Sanktionslistenabgleich (`sanctions-refresh`) speichert Snapshot und
+      Quellstand, legt Folgeprüfungen samt Audit-Ereignissen an und schreibt die
+      Prüfhinweise über die App-Rolle im SYSTEM-Kontext des Tenants
+      (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS; die
+      Screening-Policies lassen den SYSTEM-Akteur zu, nur die Tenant-Liste bleibt
+      auf der Owner-Verbindung. Snapshot, Folgeprüfungen und Hinweise bleiben
+      unverändert; eine PostgreSQL-Suite belegt das und dass Prüfläufe fremder
+      Tenants unsichtbar und ohne Folgeprüfung bleiben. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/sanctions-refresh-db.test.ts
+      - apps/worker/src/jobs/__tests__/sanctions-refresh.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-031
     date: '2026-10-07'
     paths:
@@ -4822,6 +4841,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-032` dokumentiert den Sanktionslistenabgleich
+  über die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-031` dokumentiert die Fristmaterialisierung
   über die App-Rolle.
