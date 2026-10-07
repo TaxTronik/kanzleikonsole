@@ -11,12 +11,12 @@
 
 // Fachkatalog: WORKFLOW-LIFECYCLE-001.
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { withSystemContext } from '@taxtronik/db';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resumeElapsedPausedWorkflowTx } from '@taxtronik/db/workflow-lifecycle';
 import { createWorker } from '../worker-factory';
 import { connection } from '../queues';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
 import { isWorkerTenantModuleEnabled } from '../module-gate';
 import { log } from '../logger';
 
@@ -26,6 +26,8 @@ const evidence = new EvidenceService(new LocalTimestampAdapter());
 const BATCH = 500;
 
 export async function runWorkflowAutoResume(now = new Date()) {
+  // S-01: Die mandantenübergreifende Kandidatensuche (nur ID und Tenant) liest der
+  // Owner-Client; jede Instanz wird danach über die App-Rolle fortgesetzt.
   const due = await prismaOwner.workflowInstance.findMany({
     where: { status: 'PAUSED', pausedUntil: { not: null, lte: now } },
     select: { id: true, tenantId: true },
@@ -49,7 +51,7 @@ export async function runWorkflowAutoResume(now = new Date()) {
         moduleDisabled += 1;
         continue;
       }
-      const after = await withWorkerTenantContext(tenantId, async (tx) => {
+      const after = await withSystemContext(tenantId, async (tx) => {
         const state = await resumeElapsedPausedWorkflowTx(tx, {
           tenantId,
           instanceId: candidate.id,

@@ -17,8 +17,9 @@ vi.mock('../../prisma-owner', () => ({
   prismaOwner: { workflowInstance: { findMany: h.candidates } },
 }));
 vi.mock('../../module-gate', () => ({ isWorkerTenantModuleEnabled: h.moduleEnabled }));
-vi.mock('../../tenant-context', () => ({
-  withWorkerTenantContext: async (tenantId: string, fn: (tx: unknown) => Promise<unknown>) => {
+// S-01: jede Instanz wird über die App-Rolle (withSystemContext) fortgesetzt.
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: async (tenantId: string, fn: (tx: unknown) => Promise<unknown>) => {
     h.contexts.push(tenantId);
     return fn({ tenantId });
   },
