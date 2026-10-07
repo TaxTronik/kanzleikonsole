@@ -14,6 +14,7 @@ const WORKER_PROD: NodeJS.ProcessEnv = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgres://owner:pw@localhost:5432/taxtronik',
   DATABASE_APP_URL: 'postgres://app:pw@localhost:5432/taxtronik',
+  DATABASE_DRILL_URL: 'postgres://drill:pw@localhost:5432/postgres',
   REDIS_URL: 'redis://localhost:6379',
   AUTH_SECRET: STARK,
   PORTAL_PUBLIC_URL: 'https://portal.example.de',
@@ -89,6 +90,9 @@ const FAELLE: Array<[string, NodeJS.ProcessEnv]> = [
   ['Cookie-Domain einseitig', { PORTAL_COOKIE_DOMAIN: undefined }],
   ['Cookie-Domains gleich', { PORTAL_COOKIE_DOMAIN: 'staff.example.de' }],
   ['DATABASE_APP_URL fehlt', { DATABASE_APP_URL: undefined }],
+  ['DATABASE_DRILL_URL fehlt', { DATABASE_DRILL_URL: undefined }],
+  ['DATABASE_DRILL_URL leer', { DATABASE_DRILL_URL: '' }],
+  ['DATABASE_DRILL_URL kein PostgreSQL', { DATABASE_DRILL_URL: 'mysql://drill:pw@localhost/x' }],
   ['N8N_DELIVERY_MODE test', { N8N_DELIVERY_MODE: 'test' }],
 ];
 
@@ -154,6 +158,24 @@ describe('checkEnvProfileFrom', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     parseEnvProfileFrom('web', source);
     expect(warn).toHaveBeenCalledWith(findings.warnings[0]);
+  });
+
+  it('verlangt DATABASE_DRILL_URL in Produktion nur vom Worker, der den Restore-Drill ausführt', () => {
+    const ohneDrill = { DATABASE_DRILL_URL: undefined };
+    expect(checkEnvProfileFrom('worker', mit(WORKER_PROD, ohneDrill)).errors).toEqual([
+      '[config] DATABASE_DRILL_URL ist für den Worker in Produktion Pflicht: Der monatliche Restore-Drill legt seine Wegwerf-DB mit der Drill-Rolle taxtronik_drill an (die Owner-Verbindung hat kein CREATEDB).',
+    ]);
+    // Der app-Container erhält die Drill-Verbindung bewusst nicht.
+    expect(checkEnvProfileFrom('web', mit(WEB_PROD, ohneDrill)).errors).toEqual([]);
+    expect(
+      checkEnvProfileFrom('worker', mit(WORKER_PROD, { ...ohneDrill, NODE_ENV: 'development' }))
+        .errors,
+    ).toEqual([]);
+    const ungueltig = checkEnvProfileFrom(
+      'worker',
+      mit(WORKER_PROD, { DATABASE_DRILL_URL: 'mysql://drill:pw@localhost/x' }),
+    ).errors;
+    expect(ungueltig[0]).toMatch(/^\[config\] ENV-Validierung: DATABASE_DRILL_URL: /);
   });
 
   it('prüft außerhalb von Produktion nur die immer geltenden Regeln', () => {

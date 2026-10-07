@@ -18,7 +18,8 @@ const h = vi.hoisted(() => ({
   disconnect: vi.fn(),
   adminDisconnect: vi.fn(),
   clientUrls: [] as string[],
-  env: { DATABASE_URL: '', NODE_ENV: 'development' },
+  // S-01: Die Drill-Verbindung kommt aus der validierten ENV (Teil backupDrill).
+  env: { DATABASE_URL: '', NODE_ENV: 'development', DATABASE_DRILL_URL: '' as string | undefined },
 }));
 vi.mock('bullmq', () => import('./mocks/bullmq'));
 vi.mock('../../queues', () => ({ connection: {} }));
@@ -117,7 +118,7 @@ describe('BACKUP-DRILL-INTEGRITY-001: real job rejects altered S3 bytes before p
     h.env.NODE_ENV = 'development';
     directory = await mkdtemp(join(tmpdir(), 'drill-job-test-'));
     vi.stubEnv('BACKUP_DRILL_TMP_DIR', directory);
-    vi.stubEnv('DATABASE_DRILL_URL', DRILL_URL);
+    h.env.DATABASE_DRILL_URL = DRILL_URL;
     h.backup.mockResolvedValue({
       key: 'backup.dump',
       bucket: 'backups',
@@ -245,7 +246,7 @@ describe('BACKUP-DRILL-INTEGRITY-001: real job rejects altered S3 bytes before p
   );
 
   it('S-01: fails closed in production without the drill role and never runs drill DDL', async () => {
-    vi.stubEnv('DATABASE_DRILL_URL', '');
+    h.env.DATABASE_DRILL_URL = undefined;
     h.env.NODE_ENV = 'production';
     await expect(processors.get('backup-drill')!({ data: {} })).resolves.toMatchObject({
       ok: false,

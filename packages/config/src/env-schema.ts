@@ -3,11 +3,12 @@
 //
 // Review-Befund K-09: Web, Worker und CLI-Skripte validierten dasselbe
 // Gesamtschema; der Worker brauchte dadurch Web-Pflichtwerte wie NEXTAUTH_URL.
-// Hier stehen die Teile (Core, DB, Redis, Secrets, Portal-Links, Web-Auth,
-// WebAuthn, S3, ClamAV, SMTP, n8n, Risk-Layer, ELSTER, TSA, Lizenz, Update),
-// ihre Produktions-Prüfungen und die Prozessprofile. Das Web-Profil umfasst alle
-// Teile und prüft in derselben Reihenfolge mit denselben Meldungen wie zuvor;
-// Schemafehler listet die Konsole nach Teilen geordnet.
+// Hier stehen die Teile (Core, DB, Restore-Drill, Redis, Secrets, Portal-Links,
+// Web-Auth, WebAuthn, S3, ClamAV, SMTP, n8n, Risk-Layer, ELSTER, TSA, Lizenz,
+// Update), ihre Produktions-Prüfungen und die Prozessprofile. Das Web-Profil
+// umfasst alle Teile und prüft in derselben Reihenfolge mit denselben Meldungen
+// wie zuvor; Schemafehler listet die Konsole nach Teilen geordnet. Prüfungen,
+// die nur ein Prozess braucht, nennen ihre Profile (Restore-Drill: Worker).
 //
 // Dieses Modul liest beim Import keine ENV. Die eager validierte `env` liefert
 // ./env.ts für das vom Prozess gewählte Profil (./profile.ts).
@@ -102,6 +103,17 @@ const CORE = {
 const DATABASE = {
   DATABASE_URL: PostgresUrl,
   DATABASE_APP_URL: PostgresUrl.optional(),
+};
+
+// S-01: Verbindung der Drill-Rolle taxtronik_drill (CREATEDB + BYPASSRLS, keine
+// Rechte in der Produktiv-DB) für den monatlichen Restore-Drill des Workers
+// (apps/worker/src/jobs/backup-drill.ts). Die Owner-Verbindung hat kein
+// CREATEDB. Außerhalb von Produktion optional (der Drill nutzt dann
+// DATABASE_URL), für den Worker in Produktion Pflicht (Prüfung unten). Das
+// Web-Profil enthält den Teil nur als Obermenge aller Teile; die App liest ihn
+// nicht, und der app-Container erhält die Drill-Verbindung nicht.
+const BACKUP_DRILL = {
+  DATABASE_DRILL_URL: z.preprocess(blankAsUndefined, PostgresUrl.optional()),
 };
 
 const REDIS = {
@@ -298,6 +310,7 @@ const UPDATE = {
 export const ENV_PARTS = {
   core: CORE,
   database: DATABASE,
+  backupDrill: BACKUP_DRILL,
   redis: REDIS,
   secrets: SECRETS,
   portalLinks: PORTAL_LINKS,
@@ -327,6 +340,7 @@ export const ENV_PROFILES = {
   web: [
     'core',
     'database',
+    'backupDrill',
     'redis',
     'secrets',
     'portalLinks',
@@ -350,6 +364,7 @@ export const ENV_PROFILES = {
   worker: [
     'core',
     'database',
+    'backupDrill',
     'redis',
     'secrets',
     'portalLinks',
@@ -380,6 +395,7 @@ const PROFILE_SCHEMAS = {
   web: z.object({
     ...CORE,
     ...DATABASE,
+    ...BACKUP_DRILL,
     ...REDIS,
     ...SECRETS,
     ...PORTAL_LINKS,
@@ -398,6 +414,7 @@ const PROFILE_SCHEMAS = {
   worker: z.object({
     ...CORE,
     ...DATABASE,
+    ...BACKUP_DRILL,
     ...REDIS,
     ...SECRETS,
     ...PORTAL_LINKS,
@@ -444,6 +461,8 @@ type Warn = (message: string) => void;
 interface Check {
   /** Teil, ohne den die Prüfung entfällt; `null` = jeder Prozess. */
   part: EnvPartName | null;
+  /** Nur in diesen Profilen (ohne Angabe: in jedem Profil mit dem Teil). */
+  profiles?: readonly EnvProfileName[];
   /** Auch außerhalb von Produktion. */
   always?: boolean;
   /** Wirft bei einem Fehler; Warnungen gehen an `warn`. */
@@ -492,6 +511,19 @@ const CHECKS: readonly Check[] = [
       if (!str(data, 'DATABASE_APP_URL')) {
         throw new Error(
           '[config] DATABASE_APP_URL ist in Produktion Pflicht (RLS-Backstop). Owner-Verbindung darf nicht von der App genutzt werden.',
+        );
+      }
+    },
+  },
+  {
+    // S-01: Nur der Worker führt den Restore-Drill aus; die App erhält die
+    // Drill-Verbindung bewusst nicht.
+    part: 'backupDrill',
+    profiles: ['worker'],
+    run(data) {
+      if (!str(data, 'DATABASE_DRILL_URL')) {
+        throw new Error(
+          '[config] DATABASE_DRILL_URL ist für den Worker in Produktion Pflicht: Der monatliche Restore-Drill legt seine Wegwerf-DB mit der Drill-Rolle taxtronik_drill an (die Owner-Verbindung hat kein CREATEDB).',
         );
       }
     },
@@ -681,6 +713,7 @@ function checksFor(profile: EnvProfileName, data: Data): Check[] {
   return CHECKS.filter(
     (check) =>
       (check.part === null || envProfileHasPart(profile, check.part)) &&
+      (check.profiles === undefined || check.profiles.includes(profile)) &&
       (check.always || production),
   );
 }

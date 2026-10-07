@@ -116,14 +116,18 @@ export function missingTenantResult(
 }
 
 /**
- * S-01: Verbindung der Drill-Rolle (Wartungs-DB). Ohne DATABASE_DRILL_URL
- * fallen nur Dev/Test auf DATABASE_URL zurück; in Produktion ist das die
- * Owner-Rolle ohne CREATEDB, der Drill scheitert dann mit klarer Meldung.
+ * S-01: Verbindung der Drill-Rolle (Wartungs-DB) aus der validierten ENV
+ * (DATABASE_DRILL_URL, Teil `backupDrill` des Worker-Profils). Ohne sie fallen
+ * nur Dev/Test auf DATABASE_URL zurück; in Produktion verlangt schon das
+ * Worker-Profil die Drill-Verbindung, und der Drill scheitert ohne sie mit
+ * klarer Meldung statt mit der Owner-Rolle ohne CREATEDB.
  */
-export function drillDatabaseUrl(
-  source: { NODE_ENV?: string; DATABASE_URL: string },
-  drillUrl: string | undefined = process.env['DATABASE_DRILL_URL'],
-): string {
+export function drillDatabaseUrl(source: {
+  NODE_ENV?: string;
+  DATABASE_URL: string;
+  DATABASE_DRILL_URL?: string;
+}): string {
+  const drillUrl = source.DATABASE_DRILL_URL;
   if (drillUrl) return drillUrl;
   if (source.NODE_ENV === 'production') {
     throw new Error(

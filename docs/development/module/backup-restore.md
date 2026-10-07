@@ -74,7 +74,11 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   `verifyChain` je Tenant auf der **wiederhergestellten** DB. Anlegen,
   Einspielen, Prüfen und Löschen der Wegwerf-DB laufen als eigene Rolle
   `taxtronik_drill` (`DATABASE_DRILL_URL`: CREATEDB + BYPASSRLS, keine Rechte
-  in der Produktiv-DB, S-01); die Owner-Verbindung hat kein CREATEDB. Weil nur
+  in der Produktiv-DB, S-01); die Owner-Verbindung hat kein CREATEDB. Der
+  Worker liest die Drill-Verbindung aus seinem validierten ENV-Profil (Teil
+  `backupDrill` in `packages/config`): in Produktion Pflicht, sonst fällt der
+  Drill auf `DATABASE_URL` zurück; die Konfigurationsprüfung meldet eine
+  fehlende Verbindung als `SCHEMA_WORKER`-Zeile. Weil nur
   der Superuser Default-Privilegien der Migrationsrolle setzen darf, lässt der
   Drill genau diese `DEFAULT ACL`-Einträge des Dumps aus (`pg_restore --list`/
   `--use-list`); alle übrigen Einträge einschließlich GRANT/REVOKE spielt er

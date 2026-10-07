@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-035
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/backup-drill.ts
+    rule_ids:
+      - BACKUP-DRILL-INTEGRITY-001
+    reason: >-
+      Der Restore-Drill liest die Verbindung der Drill-Rolle (`DATABASE_DRILL_URL`)
+      aus der validierten Worker-Konfiguration statt direkt aus `process.env`; in
+      Produktion ist sie Pflicht (Startprüfung und `SCHEMA_WORKER`), sonst fällt der
+      Drill wie bisher auf `DATABASE_URL` zurück. Ablauf, Prüfschritte und Ergebnis
+      des Drills bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/__tests__/env-check.test.ts
+      - apps/worker/src/jobs/__tests__/backup-drill-integrity.test.ts
+      - apps/worker/src/jobs/__tests__/backup-drill.test.ts
+      - packages/config/src/__tests__/env-profile-findings.test.ts
+      - packages/config/src/__tests__/env-profiles.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-034
     date: '2026-10-07'
     paths:
@@ -4888,6 +4907,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-035` dokumentiert die Konfigurationsprüfung
+  der Drill-Verbindung.
 
 - 2026-10-07: `FK-EXC-20261007-034` dokumentiert den Recherche-Callback über
   die App-Rolle.

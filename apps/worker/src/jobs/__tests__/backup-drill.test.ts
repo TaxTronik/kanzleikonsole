@@ -72,18 +72,29 @@ describe('S-01: Drill-Rolle', () => {
   const owner = 'postgresql://taxtronik_owner:pw@postgres:5432/taxtronik?schema=public';
   const drill = 'postgresql://taxtronik_drill:pw@postgres:5432/postgres?schema=public';
 
-  it('nutzt DATABASE_DRILL_URL statt der Owner-Verbindung ohne CREATEDB', () => {
-    expect(drillDatabaseUrl({ NODE_ENV: 'production', DATABASE_URL: owner }, drill)).toBe(drill);
-    expect(drillDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: owner }, drill)).toBe(drill);
+  it('nutzt DATABASE_DRILL_URL der validierten ENV statt der Owner-Verbindung ohne CREATEDB', () => {
+    expect(
+      drillDatabaseUrl({ NODE_ENV: 'production', DATABASE_URL: owner, DATABASE_DRILL_URL: drill }),
+    ).toBe(drill);
+    expect(
+      drillDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: owner, DATABASE_DRILL_URL: drill }),
+    ).toBe(drill);
   });
 
   it('fällt nur außerhalb von Produktion auf DATABASE_URL zurück', () => {
-    expect(drillDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: owner }, undefined)).toBe(
-      owner,
-    );
-    expect(() => drillDatabaseUrl({ NODE_ENV: 'production', DATABASE_URL: owner }, '')).toThrow(
+    expect(drillDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: owner })).toBe(owner);
+    expect(() => drillDatabaseUrl({ NODE_ENV: 'production', DATABASE_URL: owner })).toThrow(
       /DATABASE_DRILL_URL fehlt/,
     );
+  });
+
+  it('liest die Prozess-ENV nicht direkt (S-01: nur über das Worker-Profil)', () => {
+    vi.stubEnv('DATABASE_DRILL_URL', drill);
+    try {
+      expect(drillDatabaseUrl({ NODE_ENV: 'development', DATABASE_URL: owner })).toBe(owner);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('lässt nur die DEFAULT-ACL-Einträge der TOC aus', () => {

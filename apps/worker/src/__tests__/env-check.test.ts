@@ -14,6 +14,7 @@ const WORKER_ENV: NodeJS.ProcessEnv = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgresql://taxtronik_owner:pw@postgres:5432/taxtronik?schema=public',
   DATABASE_APP_URL: 'postgresql://taxtronik_app:pw@postgres:5432/taxtronik?schema=public',
+  DATABASE_DRILL_URL: 'postgresql://taxtronik_drill:pw@postgres:5432/postgres?schema=public',
   REDIS_URL: 'redis://redis:6379',
   AUTH_SECRET: STARK,
   PORTAL_PUBLIC_URL: 'https://mandanten.example.de',
@@ -119,6 +120,22 @@ describe('env-check', () => {
     expect(result.lines).toContain(
       envCheckRow('OK', 'worker', 'Schema und Pruefungen der App bestanden'),
     );
+  });
+
+  it('verlangt die Drill-Verbindung nur vom worker-Container (S-01)', () => {
+    // Wie docker-compose.app.yml: nur der worker erhält DATABASE_DRILL_URL.
+    const app = run(['--profile', 'web'], { ...WEB_ENV, DATABASE_DRILL_URL: undefined });
+    const worker = run(['--profile', 'worker'], { ...WORKER_ENV, DATABASE_DRILL_URL: undefined });
+
+    expect(app.code).toBe(0);
+    expect(worker.code).toBe(1);
+    expect(worker.lines).toEqual([
+      envCheckRow(
+        'FEHLT',
+        'worker',
+        '[config] DATABASE_DRILL_URL ist für den Worker in Produktion Pflicht: Der monatliche Restore-Drill legt seine Wegwerf-DB mit der Drill-Rolle taxtronik_drill an (die Owner-Verbindung hat kein CREATEDB).',
+      ),
+    ]);
   });
 
   it('verlangt N8N_HMAC_SECRET nur bei Legacy-Callbacks oder Webhook-Basis', () => {

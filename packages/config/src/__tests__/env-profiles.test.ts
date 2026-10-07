@@ -48,6 +48,7 @@ const WORKER_DEV = mit(WEB_DEV, {
 const WORKER_PROD = mit(WORKER_DEV, {
   NODE_ENV: 'production',
   DATABASE_APP_URL: 'postgres://app:pw@localhost:5432/taxtronik',
+  DATABASE_DRILL_URL: 'postgres://drill:pw@localhost:5432/postgres',
   PORTAL_PUBLIC_URL: 'https://portal.example.de',
   S3_ACCESS_KEY: 'prod-storage-access-key',
   S3_SECRET_KEY: 'prod-storage-secret-with-at-least-thirty-two-chars',
@@ -175,6 +176,23 @@ describe('Worker-Profil', () => {
         }),
       ).NEXTAUTH_URL,
     ).toBe('https://kanzlei.example.de');
+  });
+
+  it('verlangt die Drill-Verbindung in Produktion nur vom Worker (S-01)', () => {
+    const meldung =
+      '[config] DATABASE_DRILL_URL ist für den Worker in Produktion Pflicht: Der monatliche Restore-Drill legt seine Wegwerf-DB mit der Drill-Rolle taxtronik_drill an (die Owner-Verbindung hat kein CREATEDB).';
+    expect(parseEnvProfileFrom('worker', WORKER_PROD).DATABASE_DRILL_URL).toBe(
+      'postgres://drill:pw@localhost:5432/postgres',
+    );
+    for (const ohne of [{ DATABASE_DRILL_URL: undefined }, { DATABASE_DRILL_URL: '' }]) {
+      expect(fehler(() => parseEnvProfileFrom('worker', mit(WORKER_PROD, ohne)))).toBe(meldung);
+      // Die App führt keinen Drill aus; der app-Container erhält die Verbindung nicht.
+      expect(fehler(() => parseEnvProfileFrom('web', mit(WEB_PROD, ohne)))).toBeNull();
+      // Außerhalb von Produktion fällt der Drill auf DATABASE_URL zurück.
+      expect(parseEnvProfileFrom('worker', mit(WORKER_DEV, ohne)).DATABASE_DRILL_URL).toBe(
+        undefined,
+      );
+    }
   });
 
   it('härtet Produktion mit denselben Prüfungen und Meldungen wie das Web', () => {
