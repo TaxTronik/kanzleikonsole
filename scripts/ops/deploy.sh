@@ -54,6 +54,28 @@ smoke_health() {
   return 1
 }
 
+# B-05 (b): Konfigurationspruefung im konfigurierten Worker-Image
+# (dist/env-check.js) mit genau dem Schema, mit dem web und worker starten.
+# Web-Profil mit der ENV des app-Dienstes (Override ENV_CHECK_COMPOSE),
+# Worker-Profil mit der des worker-Dienstes; --no-deps startet weder Datenbank
+# noch Migration. Gibt die Zeilen im doctor-Format aus; rc 0 = keine Fehler.
+run_app_env_check() {
+  local _TAXTRONIK_INTERNAL_COMPOSE_OVERRIDE="$ENV_CHECK_COMPOSE" status=0
+  compose run --rm --no-deps -T app node dist/env-check.js --profile web </dev/null || status=$?
+  compose run --rm --no-deps -T worker node dist/env-check.js --profile worker </dev/null || status=$?
+  return "$status"
+}
+
+# Gate in deploy und update: nach provide_images (Ziel-Image liegt vor), vor
+# Pflichtbackup und Migration. Das Schema des Ziel-Releases stoppt eine
+# ungueltige Konfiguration, bevor ein Backup, eine Migration oder ein
+# Containerwechsel stattfindet.
+assert_app_env_schema() {
+  info "Konfiguration mit dem Schema des Ziel-Images pruefen (web + worker, vor Backup und Migration)"
+  run_app_env_check || \
+    die "Konfiguration verletzt das Schema des Ziel-Images oder die Pruefung lief nicht (Zeilen oben); vor Backup und Migration abgebrochen, laufende Dienste unveraendert. .env korrigieren (./taxtronik doctor) und erneut ausfuehren."
+}
+
 # Adressen, die die App nie als Client-IP sehen darf: Gateways und eigene
 # Adressen der Docker-Netze der App sowie bei verwaltetem Traefik die Adressen
 # des Proxy-Containers. Ermittelt die App eine davon, liest sie die
@@ -247,6 +269,7 @@ _deploy_core() {
   wait_postgres_healthy
   sync_postgres_roles_from_env
   provide_images
+  assert_app_env_schema
   provide_traefik_for_deploy
   provide_signal_for_deploy deploy
   backup_before_migrations

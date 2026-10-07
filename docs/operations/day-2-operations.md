@@ -185,6 +185,28 @@ strikter Health-Smoke (`degraded` ist Fehler) und Deploy-Readiness ohne
 Skip-Pfad. Kein `git reset --hard`: Lokale Abweichungen müssen bewusst
 aufgelöst werden.
 
+Bevor migriert wird, prüfen `./taxtronik deploy` und `update` die
+App-Konfiguration mit dem Schema des **Ziel-Images** (`dist/env-check.js` im
+Worker-Image, dasselbe Schema, mit dem App und Worker starten): das Web-Profil
+mit der Umgebung, die Compose dem `app`-Dienst gibt, das Worker-Profil mit der
+des `worker`-Dienstes. Jeder Befund erscheint als eigene Zeile. Ein Fehler
+bricht `deploy` vor dem Pflichtbackup und `update` vor der Migration ab (das
+Update-Backup lief bereits mit dem alten Checkout vor dem Fetch); laufende
+Dienste bleiben unverändert. Warnungen blockieren nicht.
+
+`./taxtronik doctor` prüft Host-, Compose- und Betriebsregeln selbst (Secrets,
+Rollen, Kanal, Traefik, n8n, Signal, SMTP-Mailhog). Regeln, die nur das
+App-Schema wiederholten (z. B. `NEXTAUTH_TRUST_HOST`, `TRUST_PROXY_HOPS`,
+Cookie-Domains, Risk-Layer-Token-Paare), zeigt doctor als
+`SCHEMA_WEB`/`SCHEMA_WORKER`-Zeilen aus dem lokal vorhandenen Worker-Image der
+konfigurierten Version; fehlt es, steht dort eine INFO-Zeile. Unabhängig davon
+sind `AUTH_SECRET`, `SECRET_BOX_KEY`, `S3_SECRET_KEY` und `N8N_HMAC_SECRET`
+unter 32 Zeichen `FEHLT` (`N8N_HMAC_SECRET` ist nur mit Legacy-Callbacks oder
+`N8N_WEBHOOK_BASE_URL` Pflicht), `NEXTAUTH_URL` und eine gesetzte
+`PORTAL_PUBLIC_URL` brauchen HTTPS. Zu kurze Secrets werden nie automatisch
+rotiert ([secret-rotation.md](secret-rotation.md)); einseitig gesetzte
+Cookie-Domains sind nur eine Warnung.
+
 Mit `TRUST_PROXY_REQUIRED=true` prüfen `./taxtronik deploy` und `update` vor
 der Readiness zusätzlich die Client-IP: Ein Request über den öffentlichen Pfad
 (`NEXTAUTH_URL`, also durch den Reverse-Proxy) an `/api/health/client-ip`

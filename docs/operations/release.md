@@ -99,8 +99,10 @@ mit dem **bisher installierten Checkout und Prisma-Client**. Erst wenn dieses
 Backup erfolgreich abgeschlossen ist, führt es `git fetch` und den
 `git merge --ff-only` aus. Ein Backup-Fehler lässt Code und Arbeitsbaum
 unverändert. Danach vervollständigt es die Konfiguration aus dem neuen Stand,
-baut oder zieht Images, migriert über den One-Shot-`migrate`-Container und
-startet App/Worker/n8n neu. Die Images werden gepullt, **bevor** die alten
+zieht die Images, prüft die Konfiguration mit dem Schema des Ziel-Images
+(Abbruch vor der Migration, siehe
+[day-2-operations.md](day-2-operations.md#updates)), migriert über den
+One-Shot-`migrate`-Container und startet App/Worker/n8n neu. Die Images werden gepullt, **bevor** die alten
 Container stoppen — die Downtime ist der reine Container-Neustart.
 
 Private Registry: einmalig `docker login git.hirschmann-koxha.de` auf dem

@@ -29,9 +29,11 @@ preflight_common() {
   require_cmd docker
   require_cmd node
   require_cmd curl
+  # N8N_HMAC_SECRET ist nur bei Legacy-Callbacks oder N8N_WEBHOOK_BASE_URL
+  # Pflicht (B4); das prueft das App-Schema vor Backup und Migration.
   require_env \
     POSTGRES_PASSWORD TAXTRONIK_APP_PASSWORD AUTH_SECRET \
-    S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY N8N_HMAC_SECRET N8N_ENCRYPTION_KEY N8N_DB_PASSWORD
+    S3_ENDPOINT S3_ACCESS_KEY S3_SECRET_KEY N8N_ENCRYPTION_KEY N8N_DB_PASSWORD
 }
 
 # prompt LABEL VAR [DEFAULT]: interaktiv erfragen, falls VAR noch ungesetzt und

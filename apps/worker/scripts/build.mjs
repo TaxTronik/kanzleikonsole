@@ -1,14 +1,18 @@
 // =============================================================================
 // Produktions-Bundle des Workers fuer infra/docker/Dockerfile.worker.
 //
-// Das Image startet `node --enable-source-maps dist/index.js` statt tsx. Die
+// Das Image startet `node --enable-source-maps dist/index.js` statt tsx.
+// Daneben entsteht dist/env-check.js: die Konfigurationspruefung, die die
+// Operator-CLI vor Backup und Migration im Ziel-Image ausfuehrt (B-05). Beide
+// Einstiege sind eigenstaendige Bundles. Die
 // Workspace-Pakete (@taxtronik/*) exportieren TypeScript-Quellen und werden
 // eingebunden. Drittpakete bleiben extern und kommen zur Laufzeit aus dem per
 // `pnpm deploy --prod` befuellten node_modules. Loest das importierende Paket
 // ein Drittpaket anders auf als das Bundle (im flachen Baum verschachtelte
 // Version), wird es eingebunden, damit die deklarierte Version erhalten bleibt.
-// dist/runtime-packages.json haelt fuer jeden externen Import Paket und
-// Version fest; scripts/verify-runtime.mjs prueft den Laufzeitbaum dagegen.
+// dist/runtime-packages.json haelt fuer jeden externen Import beider Einstiege
+// Paket und Version fest; scripts/verify-runtime.mjs prueft den Laufzeitbaum
+// dagegen.
 // =============================================================================
 
 import { build } from 'esbuild';
@@ -20,6 +24,8 @@ import { fileURLToPath } from 'node:url';
 const workerRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outdir = join(workerRoot, 'dist');
 const SKIP = Symbol('skip');
+// Einstiege des Images: Worker-Prozess und Konfigurationspruefung (B-05).
+const ENTRY_POINTS = { index: 'src/index.ts', 'env-check': 'src/env-check.ts' };
 
 function packageName(specifier) {
   const parts = specifier.split('/');
@@ -67,8 +73,8 @@ const externalThirdParty = {
 rmSync(outdir, { recursive: true, force: true });
 const result = await build({
   absWorkingDir: workerRoot,
-  entryPoints: ['src/index.ts'],
-  outfile: 'dist/index.js',
+  entryPoints: ENTRY_POINTS,
+  outdir: 'dist',
   bundle: true,
   platform: 'node',
   format: 'esm',
@@ -84,9 +90,13 @@ const result = await build({
 
 // Eingebundener CommonJS-Code wuerde im ESM-Bundle erst zur Laufzeit an
 // `require` scheitern; dann lieber hier abbrechen.
-const bundle = readFileSync(join(outdir, 'index.js'), 'utf8');
-if (bundle.includes('Dynamic require of')) {
-  throw new Error('[worker-build] Bundle enthaelt dynamisches require() eines CommonJS-Moduls.');
+for (const name of Object.keys(ENTRY_POINTS)) {
+  const bundle = readFileSync(join(outdir, `${name}.js`), 'utf8');
+  if (bundle.includes('Dynamic require of')) {
+    throw new Error(
+      `[worker-build] dist/${name}.js enthaelt dynamisches require() eines CommonJS-Moduls.`,
+    );
+  }
 }
 const inlined = Object.keys(result.metafile.inputs)
   .filter((input) => input.includes('node_modules/'))
@@ -96,6 +106,6 @@ writeFileSync(
   `${JSON.stringify(Object.fromEntries([...runtimePackages].sort()), null, 2)}\n`,
 );
 console.log(
-  `[worker-build] dist/index.js: ${runtimePackages.size} externe Importe` +
+  `[worker-build] dist/index.js + dist/env-check.js: ${runtimePackages.size} externe Importe` +
     (inlined.length > 0 ? `, eingebunden: ${[...new Set(inlined)].sort().join(', ')}` : ''),
 );

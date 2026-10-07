@@ -1,7 +1,8 @@
 // =============================================================================
 // Prueft den Laufzeitbaum des Worker-Images (Dockerfile.worker) nach
 // `pnpm deploy --prod`, bevor er ins Runtime-Image kopiert wird:
-//   - jeder externe Import des Bundles loest dort zur selben Paketversion auf
+//   - beide Bundles (dist/index.js, dist/env-check.js) sind gebaut,
+//   - jeder externe Import der Bundles loest dort zur selben Paketversion auf
 //     wie beim Buendeln (dist/runtime-packages.json, scripts/build.mjs),
 //   - der Prisma-Client ist fuer genau diesen Baum generiert,
 //   - Build- und Testwerkzeuge fehlen.
@@ -28,6 +29,12 @@ const FORBIDDEN = [
 
 const expected = JSON.parse(readFileSync(join(workerRoot, 'dist/runtime-packages.json'), 'utf8'));
 const problems = [];
+
+// Die Konfigurationspruefung (B-05) laeuft vor Backup und Migration im
+// Ziel-Image; fehlt ihr Bundle, koennte die Operator-CLI nicht pruefen.
+for (const bundle of ['dist/index.js', 'dist/env-check.js']) {
+  if (!existsSync(join(workerRoot, bundle))) problems.push(`Bundle fehlt: ${bundle}`);
+}
 
 for (const name of FORBIDDEN.filter((tool) => existsSync(join(appRoot, 'node_modules', tool)))) {
   problems.push(`Build-/Testwerkzeug: ${name}`);
@@ -83,6 +90,6 @@ if (problems.length > 0) {
   );
 }
 console.log(
-  `[worker-runtime] OK: ${Object.keys(expected).length} externe Importe, Prisma-Client, ` +
-    'keine Build-/Testwerkzeuge.',
+  `[worker-runtime] OK: index + env-check, ${Object.keys(expected).length} externe Importe, ` +
+    'Prisma-Client, keine Build-/Testwerkzeuge.',
 );

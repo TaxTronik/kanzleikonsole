@@ -2,9 +2,9 @@
 # =============================================================================
 # ./taxtronik doctor — Teil der Operator-CLI (./taxtronik).
 #
-# .env-Validierung mit OK/FEHLT/SCHWACH/WARN-Zeilen inklusive DB-Pool-Summe,
-# Datenbankrollen der Container (S-01), n8n-Volume-Key und
-# Source-Update-Signaturen (S-04).
+# .env-Validierung mit OK/FEHLT/SCHWACH/WARN/INFO-Zeilen inklusive DB-Pool-Summe,
+# Datenbankrollen der Container (S-01), n8n-Volume-Key, Source-Update-Signaturen
+# (S-04) und den Befunden des App-Schemas aus dem Worker-Image (B-05).
 #
 # Wird ausschliesslich von scripts/ops-lib.sh gesourcet und nutzt deren
 # Shell-Optionen, Pfade und Pins. Definiert nur Funktionen und
@@ -45,6 +45,46 @@ _doctor_obsolete_unsigned_opt_out() {
   _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
 }
 
+# B-05 (c): Liegt das konfigurierte Worker-Image lokal vor, zeigt doctor die
+# Befunde seiner Konfigurationspruefung (dasselbe Schema, mit dem web und
+# worker starten; run_app_env_check). Sonst genuegt eine INFO-Zeile, denn
+# deploy/update pruefen im Ziel-Image vor Backup und Migration. Das interne
+# Konfigurations-Gate von deploy/update startet hier keinen Container: Dort
+# folgt die Pruefung mit dem Ziel-Image ohnehin.
+_doctor_app_env_schema() {
+  local image output="" status=0 line key row_status detail failed_rows=0
+  image="${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}"
+  if [[ "${_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY:-0}" == "1" ]]; then
+    _dr_row "INFO" "SCHEMA" "deploy/update pruefen die App-Konfiguration im Ziel-Image vor Backup und Migration"
+    return 0
+  fi
+  # Sonde: fehlt Docker oder das Image, gibt es hier nichts zu pruefen.
+  if ! command -v docker >/dev/null 2>&1 || ! docker image inspect "$image" >/dev/null 2>&1; then
+    _dr_row "INFO" "SCHEMA" "$image nicht lokal; deploy/update pruefen die App-Konfiguration vor Backup und Migration"
+    return 0
+  fi
+  # Subshell: ein `die` des Compose-Wrappers wird zur FEHLT-Zeile statt doctor zu beenden.
+  output="$( (run_app_env_check) 2>&1 )" || status=$?
+  while IFS= read -r line; do
+    if [[ "$line" =~ ^\ \ (FEHLT|WARN|OK)\ +(SCHEMA_(WEB|WORKER))\ +(.*)$ ]]; then
+      row_status="${BASH_REMATCH[1]}"; key="${BASH_REMATCH[2]}"; detail="${BASH_REMATCH[4]}"
+      _dr_row "$row_status" "$key" "$detail"
+      case "$row_status" in
+        FEHLT) _DOCTOR_ERRS=$((_DOCTOR_ERRS+1)); failed_rows=$((failed_rows+1)) ;;
+        WARN) _DOCTOR_WARNS=$((_DOCTOR_WARNS+1)) ;;
+      esac
+    elif [[ -n "$line" ]]; then
+      printf '           %s\n' "$line"
+    fi
+  done <<<"$output"
+  # Fehlschlag ohne eigene FEHLT-Zeile: Pruefung lief nicht (Compose, Image).
+  if (( status != 0 && failed_rows == 0 )); then
+    _dr_row "FEHLT" "SCHEMA" "Pruefung im Image $image nicht ausfuehrbar (Exit $status, Ausgabe oben)"
+    _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  fi
+  return 0
+}
+
 # Signal-Source-Builds fuehren Skripte aus dem Signal-Checkout auf dem Host aus.
 # Ein beweglicher Ref ist WARN statt FEHLT, weil Bestandsinstallationen den
 # frueheren Default `main` persistiert haben und doctor deploy/update hart
@@ -69,14 +109,60 @@ _doctor_signal_git_ref() {
 # ---------------------------------------------------------------------------
 _DOCTOR_ERRS=0; _DOCTOR_WARNS=0
 _dr_row()    { printf '  %-8s %-22s %s\n' "$1" "$2" "$3"; }
+# Secret-Zeile: leer ist FEHLT (--fix generiert), zu kurz SCHWACH. Die
+# App-Secrets mit 32-Zeichen-Pflicht im Schema (AUTH_SECRET, SECRET_BOX_KEY,
+# S3_SECRET_KEY, N8N_HMAC_SECRET) rufen mit short=FEHLT auf: Damit startet
+# die App in Produktion nicht (B4). Weder doctor --fix noch deploy/update
+# rotieren ein vorhandenes, zu kurzes Secret automatisch.
 _dr_secret() {
-  local key="$1" min="$2" val="${!1:-}"
+  local key="$1" min="$2" short="${3:-SCHWACH}" val="${!1:-}"
   if [[ -z "$val" ]]; then
     _dr_row "FEHLT" "$key" "leer -> './taxtronik doctor --fix'"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif (( ${#val} < min )) && [[ "$short" == "FEHLT" ]]; then
+    _dr_row "FEHLT" "$key" "nur ${#val} Zeichen (< $min): App startet so nicht; kontrolliert rotieren (docs/operations/secret-rotation.md), --fix rotiert nicht"
+    _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   elif (( ${#val} < min )); then
     _dr_row "SCHWACH" "$key" "nur ${#val} Zeichen (< $min)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   else
     _dr_row "OK" "$key" "${#val} Zeichen"
+  fi
+}
+
+# N8N_HMAC_SECRET verlangt das Schema nur fuer globale Legacy-Callbacks oder
+# eine Webhook-Basis (B4: nur bei Bedarf Pflicht); ein gesetzter Wert braucht
+# immer 32 Zeichen.
+_doctor_n8n_hmac_secret() {
+  if [[ -n "${N8N_HMAC_SECRET:-}" || "${N8N_LEGACY_CALLBACKS_ENABLED:-}" == "true" || \
+        -n "${N8N_WEBHOOK_BASE_URL:-}" ]]; then
+    _dr_secret N8N_HMAC_SECRET 32 FEHLT
+  else
+    _dr_row "OK" "N8N_HMAC_SECRET" "nicht benoetigt (keine Legacy-Callbacks, keine N8N_WEBHOOK_BASE_URL)"
+  fi
+}
+
+# B4: Die App verlangt in Produktion HTTPS fuer NEXTAUTH_URL und eine gesetzte
+# PORTAL_PUBLIC_URL. Ein leeres NEXTAUTH_URL ersetzt Compose durch
+# http://localhost:3000.
+_doctor_public_urls() {
+  local staff_url="${NEXTAUTH_URL:-}" portal_url="${PORTAL_PUBLIC_URL:-}"
+  if [[ -z "$staff_url" ]] && operator_is_production; then
+    _dr_row "FEHLT" "NEXTAUTH_URL" "leer: Compose setzt http://localhost:3000, die App verlangt in Produktion HTTPS"
+    _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ -z "$staff_url" ]]; then
+    _dr_row "WARN" "NEXTAUTH_URL" "leer"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  elif [[ "${staff_url,,}" != https://* ]] && operator_is_production; then
+    _dr_row "FEHLT" "NEXTAUTH_URL" "=$staff_url: in Produktion ist HTTPS Pflicht"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  elif [[ "$staff_url" == *localhost* || "$staff_url" == *127.0.0.1* ]]; then
+    _dr_row "WARN" "NEXTAUTH_URL" "=$staff_url (oeffentliche URL setzen)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  else
+    _dr_row "OK" "NEXTAUTH_URL" "$staff_url"
+  fi
+  if [[ -z "$portal_url" ]]; then
+    _dr_row "WARN" "PORTAL_PUBLIC_URL" "leer (Single-Host: ok)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  elif [[ "${portal_url,,}" != https://* ]] && operator_is_production; then
+    _dr_row "FEHLT" "PORTAL_PUBLIC_URL" "=$portal_url: in Produktion ist HTTPS Pflicht"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  else
+    _dr_row "OK" "PORTAL_PUBLIC_URL" "$portal_url"
   fi
 }
 
@@ -323,21 +409,21 @@ doctor() {
   _DOCTOR_ERRS=0; _DOCTOR_WARNS=0
   info "doctor — .env-Validierung ($(basename "$ENVFILE"))"
 
-  _dr_secret AUTH_SECRET 32
+  _dr_secret AUTH_SECRET 32 FEHLT
   if [[ -z "${SECRET_BOX_KEY:-}" ]]; then
     _dr_row "WARN" "SECRET_BOX_KEY" "Legacy-Fallback auf AUTH_SECRET; vor Produktivdaten separat provisionieren"
     _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
   else
-    _dr_secret SECRET_BOX_KEY 32
+    _dr_secret SECRET_BOX_KEY 32 FEHLT
   fi
-  _dr_secret N8N_HMAC_SECRET 32
+  _doctor_n8n_hmac_secret
   _dr_secret N8N_ENCRYPTION_KEY 24
   _doctor_n8n_volume_key
   _dr_secret POSTGRES_PASSWORD 24
   _dr_secret TAXTRONIK_APP_PASSWORD 24
   _dr_secret TAXTRONIK_OWNER_PASSWORD 24
   _dr_secret TAXTRONIK_DRILL_PASSWORD 24
-  _dr_secret S3_SECRET_KEY 32
+  _dr_secret S3_SECRET_KEY 32 FEHLT
   _dr_secret N8N_DB_PASSWORD 24
   if [[ -z "${S3_ACCESS_KEY:-}" ]]; then _dr_row "FEHLT" "S3_ACCESS_KEY" "leer"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1)); else _dr_row "OK" "S3_ACCESS_KEY" "$S3_ACCESS_KEY"; fi
 
@@ -418,11 +504,7 @@ doctor() {
     _dr_row "FEHLT" "DEPLOYMENT_METHOD" "nur standard oder traefik erlaubt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   fi
 
-  if [[ -z "${NEXTAUTH_URL:-}" ]]; then
-    _dr_row "WARN" "NEXTAUTH_URL" "leer"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
-  elif [[ "$NEXTAUTH_URL" == *localhost* || "$NEXTAUTH_URL" == *127.0.0.1* ]]; then
-    _dr_row "WARN" "NEXTAUTH_URL" "=$NEXTAUTH_URL (oeffentliche URL setzen)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
-  else _dr_row "OK" "NEXTAUTH_URL" "$NEXTAUTH_URL"; fi
+  _doctor_public_urls
 
   local public_n8n_host="${N8N_HOST:-}" public_staff_host public_portal_host
   public_staff_host="$(url_hostname "${NEXTAUTH_URL:-}")"
@@ -439,12 +521,11 @@ doctor() {
     _dr_row "OK" "N8N_PUBLIC_URL" "$N8N_WEBHOOK_URL"
   fi
 
-  # Auth.js v5 blockiert bei false jede Anfrage. Production braucht true und
-  # einen Reverse-Proxy, der Host/X-Forwarded-Host kanonisch setzt.
-  if [[ "${NODE_ENV:-}" == "production" && "${NEXTAUTH_TRUST_HOST:-}" != "true" ]]; then
-    _dr_row "FEHLT" "NEXTAUTH_TRUST_HOST" "in Prod exakt true; Proxy muss Host pinnen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  else _dr_row "OK" "NEXTAUTH_TRUST_HOST" "${NEXTAUTH_TRUST_HOST:-true}"; fi
-
+  # B-05 (d): Regeln, die nur das App-Schema wiederholten (NEXTAUTH_TRUST_HOST
+  # exakt true, TRUST_PROXY_HOPS 1-9, Cookie-Domains, Risk-Layer-Token-Paare
+  # und -Laengen), prueft das Schema selbst: im Ziel-Image vor Backup und
+  # Migration und hier als SCHEMA_*-Zeilen, sobald das Image lokal vorliegt.
+  # doctor behaelt Host-, Compose- und Betriebsregeln.
   if [[ "$deploy_method" == "traefik" && "${TRUST_PROXY_REQUIRED:-}" != "true" ]]; then
     _dr_row "FEHLT" "TRUST_PROXY_REQUIRED" "Traefik-Pfad braucht exakt true"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
   elif [[ "${TRUST_PROXY_REQUIRED:-}" != "true" && "${TRUST_PROXY_REQUIRED:-}" != "false" ]]; then
@@ -454,18 +535,12 @@ doctor() {
     # Konto/E-Mail plus globaler Sturmgrenze, und Konten werden nie hart gesperrt.
     _dr_row "WARN" "TRUST_PROXY_REQUIRED" "false: Login-Limits nur pro Konto/E-Mail; Proxy setzt X-Forwarded-For? Dann true"
     _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
-  else _dr_row "OK" "TRUST_PROXY_REQUIRED" "$TRUST_PROXY_REQUIRED"; fi
-  # Die App lehnt andere Werte beim Start ab (packages/config/src/env-schema.ts).
-  if [[ -n "${TRUST_PROXY_HOPS:-}" && ! "${TRUST_PROXY_HOPS}" =~ ^[1-9]$ ]]; then
-    _dr_row "FEHLT" "TRUST_PROXY_HOPS" "ganze Zahl 1-9 (anhaengende Proxy-Hops vor der App)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ "${TRUST_PROXY_REQUIRED:-}" == "true" ]]; then
-    _dr_row "OK" "TRUST_PROXY_HOPS" "${TRUST_PROXY_HOPS:-1}"
-  fi
+  else _dr_row "OK" "TRUST_PROXY_REQUIRED" "$TRUST_PROXY_REQUIRED (deploy/update pruefen die ermittelte Client-IP)"; fi
 
-  # Risk-Layer (optional): URL und Basis-Token MÜSSEN als Paar gesetzt werden.
-  # Das getrennte Operator-Token aktiviert schreibende Betriebsfunktionen. Bei
-  # bestehenden Installationen bleibt ein fehlendes Operator-Token eine
-  # Warnung; ein gesetzter, aber ungueltiger Wert muss den Start blockieren.
+  # Signal-Besitzvertrag (managed/external/disabled) und verwaltete Artefakte
+  # sind Host-Regeln. Paarung, Laenge und Verschiedenheit von RISK_LAYER_TOKEN
+  # und RISK_LAYER_OPERATOR_TOKEN prueft das App-Schema (B-05 d). Ein
+  # fehlendes Operator-Token bleibt ein Betriebshinweis.
   local rl_url="${RISK_LAYER_URL:-}" rl_tok="${RISK_LAYER_TOKEN:-}"
   local rl_operator_tok="${RISK_LAYER_OPERATOR_TOKEN:-}"
   local rl_festwissen="${RISK_LAYER_FESTWISSEN_DIR:-}"
@@ -485,22 +560,13 @@ doctor() {
     fi
   elif [[ "$signal_mode" == "managed" ]]; then
     _dr_row "OK" "SIGNAL_DEPLOYMENT" "managed"
-    [[ "${rl_url%/}" == "http://risk-layer:8000" ]] || {
-      _dr_row "FEHLT" "RISK_LAYER_URL" "verwaltetes Signal muss http://risk-layer:8000 verwenden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-    }
-    if (( ${#rl_tok} < 32 )); then
-      _dr_row "FEHLT" "RISK_LAYER_TOKEN" "nur ${#rl_tok} Zeichen (< 32)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    if [[ "${rl_url%/}" == "http://risk-layer:8000" ]]; then
+      _dr_row "OK" "SIGNAL" "verwaltet (http://risk-layer:8000)"
     else
-      _dr_row "OK" "SIGNAL" "verwaltet (URL + Bearer-Token)"
+      _dr_row "FEHLT" "RISK_LAYER_URL" "verwaltetes Signal muss http://risk-layer:8000 verwenden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
     fi
     if [[ -z "$rl_operator_tok" ]]; then
       _dr_row "WARN" "RISK_LAYER_OPERATOR_TOKEN" "fehlt; Embedding-Steuerung bleibt read-only"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
-    elif (( ${#rl_operator_tok} < 32 )); then
-      _dr_row "FEHLT" "RISK_LAYER_OPERATOR_TOKEN" "nur ${#rl_operator_tok} Zeichen (< 32)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-    elif [[ "$rl_operator_tok" == "$rl_tok" ]]; then
-      _dr_row "FEHLT" "RISK_LAYER_OPERATOR_TOKEN" "muss sich vom Bearer-Token unterscheiden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-    else
-      _dr_row "OK" "RISK_LAYER_OPERATOR_TOKEN" "konfiguriert"
     fi
     signal_channel="$(signal_deploy_channel 2>/dev/null || true)"
     if [[ "$signal_channel" == "source" ]]; then
@@ -558,38 +624,20 @@ doctor() {
     if [[ -n "$rl_festwissen" ]]; then
       _dr_row "WARN" "RISK_LAYER_FESTWISSEN_DIR" "wird im verwalteten Self-contained-Image nicht mehr verwendet"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
     fi
-  elif [[ "$signal_mode" == "external" && -z "$rl_url" ]]; then
+  else
+    # signal_deployment_mode liefert sonst nur noch external.
     _dr_row "OK" "SIGNAL_DEPLOYMENT" "external"
-    _dr_row "FEHLT" "RISK_LAYER_URL" "externes Signal braucht eine erreichbare URL"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ -n "$rl_url" && -z "$rl_tok" ]]; then
-    _dr_row "OK" "SIGNAL_DEPLOYMENT" "external"
-    _dr_row "FEHLT" "RISK_LAYER_TOKEN" "URL gesetzt, Token fehlt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ -z "$rl_url" && -n "$rl_tok" ]]; then
-    _dr_row "FEHLT" "RISK_LAYER_URL" "Token gesetzt, URL fehlt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ -n "$rl_url" ]]; then
-    _dr_row "OK" "SIGNAL_DEPLOYMENT" "external"
-    if [[ ${#rl_tok} -lt 32 ]]; then
-      _dr_row "FEHLT" "RISK_LAYER_TOKEN" "nur ${#rl_tok} Zeichen (< 32)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-    else
-      _dr_row "OK" "RISK_LAYER" "konfiguriert (URL + Token)"
-    fi
-    if [[ -z "$rl_operator_tok" ]]; then
-      _dr_row "WARN" "RISK_LAYER_OPERATOR_TOKEN" "fehlt; Embedding-Steuerung bleibt read-only"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
-    elif [[ ${#rl_operator_tok} -lt 32 ]]; then
-      _dr_row "FEHLT" "RISK_LAYER_OPERATOR_TOKEN" "nur ${#rl_operator_tok} Zeichen (< 32)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-    elif [[ "$rl_operator_tok" == "$rl_tok" ]]; then
-      _dr_row "FEHLT" "RISK_LAYER_OPERATOR_TOKEN" "muss sich vom Bearer-Token unterscheiden"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-    else
-      _dr_row "OK" "RISK_LAYER_OPERATOR_TOKEN" "konfiguriert"
-    fi
-    if [[ "${rl_url%/}" == "http://risk-layer:8000" ]]; then
+    if [[ -z "$rl_url" ]]; then
+      _dr_row "FEHLT" "RISK_LAYER_URL" "externes Signal braucht eine erreichbare URL"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    elif [[ "${rl_url%/}" == "http://risk-layer:8000" ]]; then
       _dr_row "FEHLT" "RISK_LAYER_URL" "Compose-DNS gehoert zum verwalteten Modus"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+    else
+      _dr_row "OK" "RISK_LAYER" "extern: $rl_url"
+    fi
+    if [[ -n "$rl_url" && -z "$rl_operator_tok" ]]; then
+      _dr_row "WARN" "RISK_LAYER_OPERATOR_TOKEN" "fehlt; Embedding-Steuerung bleibt read-only"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
     fi
     _dr_row "OK" "SIGNAL_UPDATE" "extern verwaltet; TaxTronik aktualisiert Signal nicht"
-  elif [[ -n "$rl_operator_tok" ]]; then
-    _dr_row "FEHLT" "RISK_LAYER_URL/TOKEN" "Operator-Token ohne Basiskonfiguration"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  else
-    _dr_row "OK" "RISK_LAYER" "inaktiv (ok)"
   fi
 
   if [[ -z "${SMTP_HOST:-}" ]]; then
@@ -609,24 +657,8 @@ doctor() {
   else
     _dr_row "OK" "SMTP_FROM" "$SMTP_FROM"
   fi
-  [[ -z "${PORTAL_PUBLIC_URL:-}" ]] && { _dr_row "WARN" "PORTAL_PUBLIC_URL" "leer (Single-Host: ok)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1)); }
 
-  local staff_dom="${STAFF_COOKIE_DOMAIN:-}" portal_dom="${PORTAL_COOKIE_DOMAIN:-}"
-  if [[ -z "$staff_dom" && -z "$portal_dom" ]]; then
-    _dr_row "WARN" "COOKIE_DOMAINS" "leer (Single-Host; Subdomain-Trennung empfohlen)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
-  elif [[ -z "$staff_dom" || -z "$portal_dom" ]]; then
-    _dr_row "FEHLT" "COOKIE_DOMAINS" "STAFF_COOKIE_DOMAIN und PORTAL_COOKIE_DOMAIN gemeinsam setzen"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ -z "${PORTAL_PUBLIC_URL:-}" ]]; then
-    _dr_row "FEHLT" "PORTAL_PUBLIC_URL" "bei Cookie-Domain-Trennung Pflicht"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ "$staff_dom" == "$portal_dom" ]]; then
-    _dr_row "FEHLT" "COOKIE_DOMAINS" "Staff/Portal muessen unterschiedliche Subdomains sein"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ "$staff_dom" == .* || "$portal_dom" == .* ]]; then
-    _dr_row "FEHLT" "COOKIE_DOMAINS" "keine Parent-Domain mit fuehrendem Punkt"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  elif [[ "$staff_dom" == *"://"* || "$portal_dom" == *"://"* || "$staff_dom" == *"/"* || "$portal_dom" == *"/"* || "$staff_dom" == *":"* || "$portal_dom" == *":"* ]]; then
-    _dr_row "FEHLT" "COOKIE_DOMAINS" "nur Hostnames, keine URLs/Pfade/Ports"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
-  else
-    _dr_row "OK" "COOKIE_DOMAINS" "$staff_dom / $portal_dom"
-  fi
+  _doctor_app_env_schema
 
   echo
   if (( _DOCTOR_ERRS > 0 )); then

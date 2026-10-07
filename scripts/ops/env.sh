@@ -150,8 +150,12 @@ validate_cookie_domains_or_die() {
   portal_url="$(get_env PORTAL_PUBLIC_URL)"
 
   [[ -z "$staff_dom" && -z "$portal_dom" ]] && return 0
-  [[ -n "$staff_dom" && -n "$portal_dom" ]] || \
-    die "STAFF_COOKIE_DOMAIN und PORTAL_COOKIE_DOMAIN muessen gemeinsam gesetzt sein (oder beide leer fuer Single-Host)."
+  # B4: Einseitige Cookie-Domains sind wie im App-Schema nur eine Warnung (beide
+  # Surfaces teilen sich dann den Hostnamen); die uebrigen Regeln entfallen dann.
+  if [[ -z "$staff_dom" || -z "$portal_dom" ]]; then
+    warn "STAFF_COOKIE_DOMAIN und PORTAL_COOKIE_DOMAIN sind nur einseitig gesetzt: keine Cookie-Trennung zwischen Kanzlei- und Mandantenportal. Beide setzen oder beide leeren."
+    return 0
+  fi
   [[ -n "$portal_url" ]] || \
     die "PORTAL_PUBLIC_URL muss gesetzt sein, wenn STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN gesetzt sind."
   [[ "$staff_dom" != "$portal_dom" ]] || \

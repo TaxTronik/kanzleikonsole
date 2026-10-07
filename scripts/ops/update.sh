@@ -356,6 +356,10 @@ continue_update_after_checkout() {
   wait_postgres_healthy
   sync_postgres_roles_from_env
   provide_images
+  # Das Pflichtbackup lief bereits mit dem alten Checkout vor dem Fetch; das
+  # Ziel-Image entsteht erst danach. Die Schemapruefung stoppt daher hier,
+  # vor jeder Migration und jedem Containerwechsel.
+  assert_app_env_schema
   provide_traefik_for_deploy
   provide_signal_for_deploy update
   run_migrations

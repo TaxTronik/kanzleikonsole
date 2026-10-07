@@ -70,7 +70,14 @@ compose() {
     render_s3_config
     ensure_compose_image_pinning
     method="$(deployment_method)" || die "DEPLOYMENT_METHOD muss standard oder traefik sein."
-    if [[ "$method" == "traefik" ]]; then
+    if [[ -n "${_TAXTRONIK_INTERNAL_COMPOSE_OVERRIDE:-}" ]]; then
+      # Nur im dynamischen Scope von run_app_env_check gesetzt (interne
+      # Variable, beim Laden bereinigt, nie aus .env gelesen). Die
+      # Konfigurationspruefung startet nur app/worker als Einmal-Container:
+      # Traefik-File und dynamische Route bleiben unberuehrt, damit doctor
+      # das laufende Routing nie veraendert.
+      compose_files+=(-f "$_TAXTRONIK_INTERNAL_COMPOSE_OVERRIDE")
+    elif [[ "$method" == "traefik" ]]; then
       render_traefik_dynamic_config
       compose_files+=(-f "$TRAEFIK")
     fi

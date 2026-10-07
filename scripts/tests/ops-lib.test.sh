@@ -262,6 +262,9 @@ run_doctor_with_env() {
     _doctor_n8n_volume_key() { :; }
     # Ebenso nicht von lokal laufenden TaxTronik-Containern (S-01-Live-Abgleich).
     [[ "${DOCTOR_TEST_LIVE_DB:-0}" == "1" ]] || _doctor_db_roles_live() { :; }
+    # Und nicht von lokal vorhandenen Images (B-05-Schemazeilen, eigene Tests).
+    [[ "${DOCTOR_TEST_SCHEMA:-0}" == "1" ]] || \
+      _doctor_app_env_schema() { _dr_row "INFO" "SCHEMA" "im Test nicht geprueft"; }
     doctor "${@:3}"
   ) >"$output" 2>&1
 }
@@ -335,17 +338,6 @@ test_doctor_rejects_loopback_mailhog_port() {
   pass "doctor rejects loopback:1025 in production"
 }
 
-test_doctor_rejects_disabled_auth_host_trust() {
-  local env_file="$TMP_DIR/auth-host.env" out="$TMP_DIR/doctor-auth-host.out"
-  write_prod_env "$env_file"
-  set_env_file_value "$env_file" NEXTAUTH_TRUST_HOST false
-  if run_doctor_with_env "$env_file" "$out"; then
-    test_fail "doctor accepted NEXTAUTH_TRUST_HOST=false although Auth.js rejects it"
-  fi
-  assert_contains "$out" "in Prod exakt true"
-  pass "doctor rejects disabled Auth.js host trust in production"
-}
-
 test_doctor_accepts_complete_traefik_contract() {
   local env_file="$TMP_DIR/traefik-doctor.env" out="$TMP_DIR/traefik-doctor.out"
   write_prod_env "$env_file"
@@ -405,21 +397,306 @@ test_doctor_warns_without_proxy_trust() {
   pass "doctor warns without failing when proxy trust is disabled"
 }
 
-test_doctor_validates_trust_proxy_hops() {
-  local env_file="$TMP_DIR/proxy-hops.env" out="$TMP_DIR/proxy-hops.out"
+# B-05 (d): Regeln, die nur das App-Schema wiederholten, prueft doctor nicht
+# mehr selbst (NEXTAUTH_TRUST_HOST exakt true, TRUST_PROXY_HOPS 1-9,
+# Cookie-Domain-Regeln, Risk-Layer-Paar/-Laenge/-Verschiedenheit). Sie stehen
+# als SCHEMA_*-Zeilen aus dem Ziel-Image in doctor und stoppen deploy/update
+# vor Backup und Migration (Tests unten und in apps/worker env-check).
+test_doctor_leaves_schema_only_rules_to_the_target_image() {
+  local env_file="$TMP_DIR/schema-only.env" out="$TMP_DIR/schema-only.out"
   write_prod_env "$env_file"
-  printf 'TRUST_PROXY_HOPS=2\n' >>"$env_file"
+  set_env_file_value "$env_file" NEXTAUTH_TRUST_HOST false
+  {
+    printf 'TRUST_PROXY_HOPS=0\n'
+    printf 'STAFF_COOKIE_DOMAIN=kanzlei.example.de\n'
+    printf 'PORTAL_COOKIE_DOMAIN=kanzlei.example.de\n'
+    printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
+    printf 'RISK_LAYER_OPERATOR_TOKEN=too-short\n'
+  } >>"$env_file"
   run_doctor_with_env "$env_file" "$out" || {
     cat "$out" >&2
-    test_fail "doctor rejected TRUST_PROXY_HOPS=2"
+    test_fail "doctor still duplicated an app-schema rule"
   }
-  assert_contains "$out" "OK       TRUST_PROXY_HOPS"
-  set_env_file_value "$env_file" TRUST_PROXY_HOPS 0
-  if run_doctor_with_env "$env_file" "$out"; then
-    test_fail "doctor accepted TRUST_PROXY_HOPS=0 although the app refuses to start"
+  assert_not_contains "$out" "NEXTAUTH_TRUST_HOST"
+  assert_not_contains "$out" "TRUST_PROXY_HOPS"
+  assert_not_contains "$out" "COOKIE_DOMAINS"
+  assert_not_contains "$out" "RISK_LAYER_TOKEN"
+  assert_not_contains "$out" "(< 32)"
+  assert_contains "$out" "OK       SIGNAL                 verwaltet (http://risk-layer:8000)"
+  assert_contains "$out" "INFO     SCHEMA"
+  pass "doctor leaves rules that only repeat the app schema to the target-image check"
+}
+
+# B4: Die vier App-Secrets mit 32-Zeichen-Pflicht sind unter 32 Zeichen FEHLT
+# (die App startet damit nicht); doctor --fix rotiert nichts. Host-Secrets
+# bleiben bei SCHWACH.
+test_doctor_requires_32_char_app_secrets_without_rotation() {
+  local env_file="$TMP_DIR/short-secrets.env" out="$TMP_DIR/short-secrets.out" key
+  write_prod_env "$env_file"
+  set_env_file_value "$env_file" AUTH_SECRET short-auth-secret-value
+  set_env_file_value "$env_file" SECRET_BOX_KEY short-box-key-value
+  set_env_file_value "$env_file" S3_SECRET_KEY short-s3-secret-value
+  set_env_file_value "$env_file" N8N_HMAC_SECRET short-hmac-secret-value
+  set_env_file_value "$env_file" POSTGRES_PASSWORD short-postgres
+  cp "$env_file" "$env_file.before"
+  if run_doctor_with_env "$env_file" "$out" --fix; then
+    test_fail "doctor accepted app secrets below 32 characters"
   fi
-  assert_contains "$out" "FEHLT    TRUST_PROXY_HOPS"
-  pass "doctor validates TRUST_PROXY_HOPS like the app schema"
+  for key in AUTH_SECRET SECRET_BOX_KEY S3_SECRET_KEY N8N_HMAC_SECRET; do
+    assert_contains "$out" "FEHLT    $key"
+    assert_key_equals "$env_file" "$key" "$(grep -E "^${key}=" "$env_file.before" | cut -d= -f2-)"
+  done
+  assert_contains "$out" "App startet so nicht; kontrolliert rotieren (docs/operations/secret-rotation.md), --fix rotiert nicht"
+  assert_contains "$out" "SCHWACH  POSTGRES_PASSWORD      nur 14 Zeichen (< 24)"
+  assert_key_equals "$env_file" POSTGRES_PASSWORD short-postgres
+  pass "doctor fails app secrets below 32 characters and never rotates them automatically"
+}
+
+# B4: N8N_HMAC_SECRET nur bei Bedarf Pflicht (wie das App-Schema).
+test_doctor_requires_n8n_hmac_secret_only_when_needed() {
+  local env_file="$TMP_DIR/hmac-need.env" out="$TMP_DIR/hmac-need.out"
+  write_prod_env "$env_file"
+  sed -i -E '/^N8N_HMAC_SECRET=/d' "$env_file"
+  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "doctor required an unused N8N_HMAC_SECRET"; }
+  assert_contains "$out" "OK       N8N_HMAC_SECRET        nicht benoetigt"
+
+  printf 'N8N_LEGACY_CALLBACKS_ENABLED=true\n' >>"$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted legacy callbacks without N8N_HMAC_SECRET"
+  fi
+  assert_contains "$out" "FEHLT    N8N_HMAC_SECRET        leer -> './taxtronik doctor --fix'"
+
+  set_env_file_value "$env_file" N8N_LEGACY_CALLBACKS_ENABLED false
+  printf 'N8N_WEBHOOK_BASE_URL=https://n8n.example.de/webhook\n' >>"$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted a webhook base without N8N_HMAC_SECRET"
+  fi
+  assert_contains "$out" "FEHLT    N8N_HMAC_SECRET"
+
+  (
+    POSTGRES_PASSWORD=x TAXTRONIK_APP_PASSWORD=x AUTH_SECRET=x S3_ENDPOINT=x S3_ACCESS_KEY=x
+    S3_SECRET_KEY=x N8N_ENCRYPTION_KEY=x N8N_DB_PASSWORD=x
+    unset N8N_HMAC_SECRET
+    require_cmd() { :; }
+    preflight_common
+  ) >"$out" 2>&1 || { cat "$out" >&2; test_fail "preflight still requires N8N_HMAC_SECRET"; }
+  pass "doctor and preflight require N8N_HMAC_SECRET only for legacy callbacks or a webhook base"
+}
+
+# B4: HTTPS fuer NEXTAUTH_URL und PORTAL_PUBLIC_URL in Produktion.
+test_doctor_requires_https_public_urls() {
+  local env_file="$TMP_DIR/https-urls.env" out="$TMP_DIR/https-urls.out"
+  write_prod_env "$env_file"
+  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "doctor rejected HTTPS URLs"; }
+  assert_contains "$out" "OK       NEXTAUTH_URL           https://kanzlei.example.de"
+  assert_contains "$out" "OK       PORTAL_PUBLIC_URL      https://mandanten.example.de"
+
+  set_env_file_value "$env_file" NEXTAUTH_URL http://kanzlei.example.de
+  set_env_file_value "$env_file" PORTAL_PUBLIC_URL http://mandanten.example.de
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted HTTP public URLs in production"
+  fi
+  assert_contains "$out" "FEHLT    NEXTAUTH_URL           =http://kanzlei.example.de: in Produktion ist HTTPS Pflicht"
+  assert_contains "$out" "FEHLT    PORTAL_PUBLIC_URL      =http://mandanten.example.de: in Produktion ist HTTPS Pflicht"
+
+  write_prod_env "$env_file"
+  sed -i -E '/^NEXTAUTH_URL=/d' "$env_file"
+  if run_doctor_with_env "$env_file" "$out"; then
+    test_fail "doctor accepted an empty NEXTAUTH_URL (Compose falls back to http://localhost:3000)"
+  fi
+  assert_contains "$out" "FEHLT    NEXTAUTH_URL           leer: Compose setzt http://localhost:3000"
+
+  write_prod_env "$env_file"
+  set_env_file_value "$env_file" NEXTAUTH_URL https://localhost:3000
+  sed -i -E '/^PORTAL_PUBLIC_URL=/d' "$env_file"
+  run_doctor_with_env "$env_file" "$out" || { cat "$out" >&2; test_fail "HTTPS localhost was rejected"; }
+  assert_contains "$out" "WARN     NEXTAUTH_URL           =https://localhost:3000 (oeffentliche URL setzen)"
+  assert_contains "$out" "WARN     PORTAL_PUBLIC_URL      leer (Single-Host: ok)"
+  pass "doctor requires HTTPS for NEXTAUTH_URL and a set PORTAL_PUBLIC_URL in production"
+}
+
+# B4: Einseitige Cookie-Domains sind eine Warnung (wie im App-Schema), auch in
+# der interaktiven .env-Vorbereitung; die uebrigen Cookie-Regeln bleiben hart.
+test_one_sided_cookie_domains_only_warn() {
+  local env_file="$TMP_DIR/one-sided-cookie.env" out="$TMP_DIR/one-sided-cookie.out"
+  printf 'STAFF_COOKIE_DOMAIN=kanzlei.example.de\nPORTAL_COOKIE_DOMAIN=\nPORTAL_PUBLIC_URL=https://mandanten.example.de\n' \
+    >"$env_file"
+  ( ENVFILE="$env_file"; validate_cookie_domains_or_die ) >"$out" 2>&1 || {
+    cat "$out" >&2
+    test_fail "one-sided cookie domains still stopped the env preparation"
+  }
+  assert_contains "$out" "nur einseitig gesetzt"
+  set_env_file_value "$env_file" PORTAL_COOKIE_DOMAIN kanzlei.example.de
+  if ( ENVFILE="$env_file"; validate_cookie_domains_or_die ) >"$out" 2>&1; then
+    test_fail "identical cookie domains were accepted"
+  fi
+  assert_contains "$out" "unterschiedliche Subdomains"
+  pass "one-sided cookie domains only warn while the other cookie rules still stop"
+}
+
+# B-05 (c): doctor zeigt die Befunde der Konfigurationspruefung, wenn das
+# konfigurierte Worker-Image lokal vorliegt; sonst und im internen Gate von
+# deploy/update eine INFO-Zeile.
+test_doctor_shows_target_image_schema_rows() {
+  local env_file="$TMP_DIR/schema-rows.env" out="$TMP_DIR/schema-rows.out" calls="$TMP_DIR/schema-rows.calls"
+  write_prod_env "$env_file"
+  schema_doctor() (
+    docker() {
+      printf 'docker %s\n' "$*" >>"$calls"
+      [[ "$1 $2" == "image inspect" && "${SCHEMA_IMAGE:-present}" == present ]]
+    }
+    run_app_env_check() {
+      printf 'run_app_env_check\n' >>"$calls"
+      printf '%s' "${SCHEMA_OUTPUT:-}"
+      return "${SCHEMA_STATUS:-0}"
+    }
+    DOCTOR_TEST_SCHEMA=1 run_doctor_with_env "$env_file" "$out"
+  )
+
+  : >"$calls"
+  SCHEMA_STATUS=1 SCHEMA_OUTPUT="$(printf '%s\n' \
+    '  FEHLT    SCHEMA_WEB             [config] NEXTAUTH_TRUST_HOST muss in Produktion explizit `true` sein.' \
+    '  WARN     SCHEMA_WEB             [config] WARNUNG: STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN nicht gesetzt' \
+    '  OK       SCHEMA_WORKER          Schema und Pruefungen der App bestanden')" schema_doctor && \
+    test_fail "doctor accepted a schema error of the target image"
+  assert_contains "$calls" "docker image inspect registry.example/taxtronik/worker:1.2.3"
+  assert_contains "$calls" "run_app_env_check"
+  assert_contains "$out" "FEHLT    SCHEMA_WEB             [config] NEXTAUTH_TRUST_HOST muss in Produktion explizit"
+  assert_contains "$out" "WARN     SCHEMA_WEB             [config] WARNUNG: STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN"
+  assert_contains "$out" "OK       SCHEMA_WORKER          Schema und Pruefungen der App bestanden"
+  assert_contains "$out" "1 Fehler"
+
+  : >"$calls"
+  SCHEMA_OUTPUT="$(printf '%s\n' \
+    '  OK       SCHEMA_WEB             Schema und Pruefungen der App bestanden' \
+    '  OK       SCHEMA_WORKER          Schema und Pruefungen der App bestanden')" schema_doctor || {
+    cat "$out" >&2
+    test_fail "doctor rejected a clean target-image schema check"
+  }
+  assert_contains "$out" "OK       SCHEMA_WEB"
+
+  # Pruefung lief nicht (z. B. Compose-Interpolation): FEHLT statt still OK.
+  : >"$calls"
+  SCHEMA_STATUS=1 SCHEMA_OUTPUT='required variable NEXTAUTH_TRUST_HOST is missing a value' schema_doctor && \
+    test_fail "doctor accepted a schema check that did not run"
+  assert_contains "$out" "           required variable NEXTAUTH_TRUST_HOST is missing a value"
+  assert_contains "$out" "FEHLT    SCHEMA                 Pruefung im Image registry.example/taxtronik/worker:1.2.3 nicht ausfuehrbar (Exit 1"
+
+  : >"$calls"
+  SCHEMA_IMAGE=absent schema_doctor || { cat "$out" >&2; test_fail "missing image blocked doctor"; }
+  assert_contains "$out" "INFO     SCHEMA                 registry.example/taxtronik/worker:1.2.3 nicht lokal; deploy/update pruefen"
+  assert_not_contains "$calls" "run_app_env_check"
+
+  : >"$calls"
+  _TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1 schema_doctor || { cat "$out" >&2; test_fail "config-only doctor failed"; }
+  assert_contains "$out" "INFO     SCHEMA                 deploy/update pruefen die App-Konfiguration im Ziel-Image"
+  assert_not_exists_or_empty "$calls"
+  pass "doctor shows the target image's schema rows when the configured worker image is local"
+}
+
+# B-05 (b): run_app_env_check startet die Konfigurationspruefung ueber den
+# Compose-Wrapper im konfigurierten Worker-Image, das Web-Profil mit der ENV des
+# app-Dienstes (Override), ohne Abhaengigkeiten.
+test_app_env_check_runs_in_the_target_worker_image() {
+  local calls="$TMP_DIR/env-check-compose.calls" out="$TMP_DIR/env-check-compose.out"
+  local worker_image override_image
+  : >"$calls"
+  (
+    deployment_method() { printf 'standard'; }
+    render_s3_config() { :; }
+    ensure_compose_image_pinning() { :; }
+    docker() { printf '%s\n' "$*" >>"$calls"; return "${ENV_CHECK_EXIT:-0}"; }
+    run_app_env_check
+  ) >"$out" 2>&1 || test_fail "env check failed with passing containers"
+  assert_contains "$calls" "compose -f $BASE -f $APP -f $ENV_CHECK_COMPOSE --env-file $ENVFILE run --rm --no-deps -T app node dist/env-check.js --profile web"
+  assert_contains "$calls" "run --rm --no-deps -T worker node dist/env-check.js --profile worker"
+
+  if (
+    deployment_method() { printf 'standard'; }
+    render_s3_config() { :; }
+    ensure_compose_image_pinning() { :; }
+    docker() { [[ "$*" == *"--profile web"* ]] && return 1; return 0; }
+    run_app_env_check
+  ) >"$out" 2>&1; then
+    test_fail "a failing web profile check was ignored"
+  fi
+
+  # Verwaltetes Traefik: Die Pruefung laedt weder das Traefik-File noch
+  # schreibt sie dessen dynamische Route neu (doctor aendert kein Routing).
+  : >"$calls"
+  (
+    deployment_method() { printf 'traefik'; }
+    render_s3_config() { :; }
+    ensure_compose_image_pinning() { :; }
+    render_traefik_dynamic_config() { test_fail "env check re-rendered the live Traefik routes"; }
+    docker() { printf '%s\n' "$*" >>"$calls"; }
+    run_app_env_check
+  ) >"$out" 2>&1 || { cat "$out" >&2; test_fail "env check failed on the Traefik path"; }
+  assert_not_contains "$calls" "$TRAEFIK"
+  assert_contains "$calls" "-f $ENV_CHECK_COMPOSE"
+
+  # Das Override muss genau das Worker-Image des Ziel-Releases verwenden.
+  worker_image="$(sed -n '/^  worker:/,/^  [a-z]/s/^    image: //p' "$APP" | tr -d '\r' | head -n1)"
+  override_image="$(sed -n 's/^    image: //p' "$ENV_CHECK_COMPOSE" | tr -d '\r')"
+  [[ -n "$worker_image" && "$override_image" == "$worker_image" ]] || \
+    test_fail "env-check override image '$override_image' differs from the worker image '$worker_image'"
+  pass "the app env check runs both profiles in the configured worker image without dependencies"
+}
+
+# B-05 (b): Reihenfolge im Deploy (gefaelschtes compose): nach provide_images,
+# vor Pflichtbackup und Migration; ein Schemafehler stoppt davor.
+test_deploy_checks_app_env_schema_before_backup_and_migration() {
+  local steps="$TMP_DIR/env-check-deploy.steps" out="$TMP_DIR/env-check-deploy.out"
+  run_core_deploy() (
+    NODE_ENV=production TAXTRONIK_DEPLOY_CHANNEL=release
+    load_env() { :; }
+    preflight_common() { :; }
+    assert_production_env() { :; }
+    require_release_version() { :; }
+    assert_no_database_restore_pending() { :; }
+    ensure_host_tool_deps() { :; }
+    prepare_release_contract() { :; }
+    start_infra() { printf 'start-infra\n' >>"$steps"; }
+    wait_postgres_healthy() { :; }
+    sync_postgres_roles_from_env() { :; }
+    provide_images() { printf 'provide-images\n' >>"$steps"; }
+    compose() {
+      printf 'compose %s\n' "$*" >>"$steps"
+      [[ "$*" == *"--profile ${ENV_CHECK_FAIL:-none}"* ]] && return 1
+      return 0
+    }
+    provide_traefik_for_deploy() { printf 'provide-traefik\n' >>"$steps"; }
+    provide_signal_for_deploy() { printf 'provide-signal\n' >>"$steps"; }
+    backup_before_migrations() { printf 'backup\n' >>"$steps"; }
+    run_migrations() { printf 'migrate\n' >>"$steps"; }
+    ensure_provisioned_interactive() { :; }
+    ensure_managed_n8n_connection() { :; }
+    start_signal_for_deploy() { :; }
+    start_apps_for_activation() { printf 'start-apps\n' >>"$steps"; }
+    smoke_health() { :; }
+    smoke_public_frontend() { :; }
+    smoke_client_ip() { :; }
+    deploy_readiness() { :; }
+    finalize_release_contract() { printf 'finalize\n' >>"$steps"; }
+    _deploy_core
+  )
+  : >"$steps"
+  run_core_deploy >"$out" 2>&1 || { cat "$out" >&2; test_fail "deploy failed with a valid schema check"; }
+  assert_before "$steps" "provide-images" "compose run --rm --no-deps -T app node dist/env-check.js --profile web"
+  assert_before "$steps" "compose run --rm --no-deps -T worker node dist/env-check.js --profile worker" "provide-signal"
+  assert_before "$steps" "node dist/env-check.js --profile worker" "backup"
+  assert_before "$steps" "backup" "migrate"
+
+  : >"$steps"
+  if ENV_CHECK_FAIL=worker run_core_deploy >"$out" 2>&1; then
+    test_fail "deploy continued after a schema error of the target image"
+  fi
+  assert_contains "$out" "Konfiguration verletzt das Schema des Ziel-Images"
+  assert_contains "$out" "vor Backup und Migration abgebrochen"
+  assert_not_contains "$steps" "backup"
+  assert_not_contains "$steps" "migrate"
+  assert_not_contains "$steps" "start-apps"
+  pass "deploy checks the app env schema in the target image after provide_images and before backup and migration"
 }
 
 test_doctor_rejects_n8n_on_an_application_domain() {
@@ -1233,20 +1510,9 @@ test_doctor_accepts_internal_risk_layer_without_fetch_allowlist() {
     printf 'RISK_LAYER_OPERATOR_TOKEN=operator-token-with-at-least-thirty-two-chars\n'
   } >>"$env_file"
   run_doctor_with_env "$env_file" "$out" || test_fail "doctor rejected trusted internal Risk-Layer URL"
-  assert_contains "$out" "OK       RISK_LAYER"
-  assert_contains "$out" "OK       RISK_LAYER_OPERATOR_TOKEN"
+  assert_contains "$out" "OK       RISK_LAYER             extern: http://10.10.0.42:8000"
+  assert_not_contains "$out" "RISK_LAYER_OPERATOR_TOKEN"
   pass "doctor accepts internal Risk-Layer URL without INTERNAL_FETCH_HOSTS"
-}
-
-test_doctor_rejects_incomplete_risk_layer_pair() {
-  local env_file="$TMP_DIR/risk-missing-token.env" out="$TMP_DIR/doctor-risk-missing.out"
-  write_prod_env "$env_file"
-  printf 'RISK_LAYER_URL=http://risk-layer:8000\n' >>"$env_file"
-  if run_doctor_with_env "$env_file" "$out"; then
-    test_fail "doctor accepted Risk-Layer URL without token"
-  fi
-  assert_contains "$out" "RISK_LAYER_TOKEN"
-  pass "doctor rejects incomplete Risk-Layer config"
 }
 
 test_doctor_warns_for_missing_risk_layer_operator_token_without_failing() {
@@ -1359,38 +1625,6 @@ test_signal_source_identifiers_are_shell_safe_and_secret_free() {
     test_fail "unsafe Signal Git ref was accepted"
   fi
   pass "Signal source identifiers reject credentials and unsafe refs"
-}
-
-test_doctor_rejects_short_risk_layer_operator_token() {
-  local env_file="$TMP_DIR/risk-short-operator.env" out="$TMP_DIR/doctor-risk-short-operator.out"
-  write_prod_env "$env_file"
-  {
-    printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
-    printf 'RISK_LAYER_TOKEN=risk-layer-token-with-at-least-thirty-two-chars\n'
-    printf 'RISK_LAYER_OPERATOR_TOKEN=too-short\n'
-  } >>"$env_file"
-  if run_doctor_with_env "$env_file" "$out"; then
-    test_fail "doctor accepted a configured but invalid short operator token"
-  fi
-  assert_contains "$out" "RISK_LAYER_OPERATOR_TOKEN"
-  assert_contains "$out" "(< 32)"
-  pass "doctor rejects a short configured Risk-Layer operator token"
-}
-
-test_doctor_rejects_identical_risk_layer_tokens() {
-  local env_file="$TMP_DIR/risk-identical-operator.env" out="$TMP_DIR/doctor-risk-identical-operator.out"
-  local shared="shared-risk-layer-token-with-at-least-thirty-two-chars"
-  write_prod_env "$env_file"
-  {
-    printf 'RISK_LAYER_URL=http://risk-layer:8000\n'
-    printf 'RISK_LAYER_TOKEN=%s\n' "$shared"
-    printf 'RISK_LAYER_OPERATOR_TOKEN=%s\n' "$shared"
-  } >>"$env_file"
-  if run_doctor_with_env "$env_file" "$out"; then
-    test_fail "doctor accepted identical Risk-Layer trust-boundary tokens"
-  fi
-  assert_contains "$out" "muss sich vom Bearer-Token unterscheiden"
-  pass "doctor rejects identical Risk-Layer tokens"
 }
 
 test_doctor_rejects_signal_values_when_disabled() {
@@ -2437,6 +2671,10 @@ stub_update_runtime() {
   ensure_host_tool_deps() { record_step ensure-host-deps; }
   prepare_release_contract() { record_step prepare-release-contract; }
   provide_images() { record_step provide-images; }
+  assert_app_env_schema() {
+    record_step assert-app-env-schema
+    [[ "${OPS_SCHEMA_STATUS:-0}" == "0" ]] || die "Konfiguration verletzt das Schema des Ziel-Images (Test)."
+  }
   provide_traefik_for_deploy() { record_step provide-traefik; }
   provide_signal_for_deploy() { record_step provide-signal; }
   run_migrations() { record_step migrate; }
@@ -2503,12 +2741,31 @@ test_update_backs_up_old_checkout_before_fetch() {
   assert_contains "$sequence" "git-umask 0022 merge --ff-only $MOCK_SOURCE_COMMIT"
   assert_contains "$sequence" "git-umask 0077 fetch origin"
   assert_not_contains "$sequence" "merge --ff-only origin/main"
+  # B-05: Schemapruefung im Ziel-Image nach provide_images, vor der Migration.
+  assert_before "$sequence" "provide-images" "assert-app-env-schema"
+  assert_before "$sequence" "assert-app-env-schema" "migrate"
   # B3: Client-IP-Smoke nach dem oeffentlichen Smoke, vor Readiness und
   # Finalisierung des Last-Good-Vertrags.
   assert_before "$sequence" "smoke-public-frontend" "smoke-client-ip"
   assert_before "$sequence" "smoke-client-ip" "deploy-readiness"
   assert_before "$sequence" "smoke-client-ip" "finalize-release-contract"
   pass "update completes mandatory old-checkout backup before fetch and merge"
+}
+
+# B-05 (b): Ein Schemafehler des Ziel-Images stoppt das Update vor jeder
+# Migration und jedem Containerwechsel.
+test_update_schema_error_stops_before_migration() {
+  local sequence="$TMP_DIR/update-schema.log" out="$TMP_DIR/update-schema.out"
+  local root="$TMP_DIR/mock-update-schema-root"
+  : >"$sequence"
+  if OPS_SEQUENCE="$sequence" OPS_MOCK_ROOT="$root" OPS_SCHEMA_STATUS=1 run_mock_update >"$out" 2>&1; then
+    test_fail "update continued after a schema error of the target image"
+  fi
+  assert_before "$sequence" "provide-images" "assert-app-env-schema"
+  assert_not_contains "$sequence" "migrate"
+  assert_not_contains "$sequence" "start-apps"
+  assert_not_contains "$sequence" "finalize-release-contract"
+  pass "a schema error of the target image stops the update before migration and activation"
 }
 
 test_update_backup_failure_leaves_checkout_untouched() {
@@ -2954,6 +3211,7 @@ test_production_source_deploy_is_refused_before_side_effects() {
     wait_postgres_healthy() { :; }
     sync_postgres_roles_from_env() { :; }
     provide_images() { printf 'provide-images\n' >>"$steps"; }
+    assert_app_env_schema() { printf 'env-check\n' >>"$steps"; }
     provide_traefik_for_deploy() { :; }
     provide_signal_for_deploy() { :; }
     backup_before_migrations() { printf 'backup\n' >>"$steps"; }
@@ -2997,7 +3255,8 @@ test_production_source_deploy_is_refused_before_side_effects() {
     >"$root/.env"
   run_prod_deploy >"$out" 2>&1 || { cat "$out" >&2; test_fail "release-channel deploy was refused"; }
   assert_before "$steps" "configure" "host-requirements"
-  assert_before "$steps" "provide-images" "backup"
+  assert_before "$steps" "provide-images" "env-check"
+  assert_before "$steps" "env-check" "backup"
   assert_before "$steps" "backup" "migrate"
   assert_before "$steps" "start-apps" "client-ip-smoke"
   assert_before "$steps" "client-ip-smoke" "finalize"
@@ -4562,11 +4821,14 @@ run_test test_doctor_reports_live_db_role_state
 run_test test_sync_postgres_roles_provisions_owner_and_drill_roles
 run_test test_doctor_rejects_mailhog
 run_test test_doctor_rejects_loopback_mailhog_port
-run_test test_doctor_rejects_disabled_auth_host_trust
+run_test test_doctor_leaves_schema_only_rules_to_the_target_image
 run_test test_doctor_accepts_complete_traefik_contract
 run_test test_doctor_rejects_unsafe_traefik_proxy_trust
 run_test test_doctor_warns_without_proxy_trust
-run_test test_doctor_validates_trust_proxy_hops
+run_test test_doctor_requires_32_char_app_secrets_without_rotation
+run_test test_doctor_requires_n8n_hmac_secret_only_when_needed
+run_test test_doctor_requires_https_public_urls
+run_test test_one_sided_cookie_domains_only_warn
 run_test test_doctor_rejects_n8n_on_an_application_domain
 run_test test_initial_setup_confirmation_and_atomic_plan_application
 run_test test_setup_asks_for_client_ip_trust
@@ -4589,14 +4851,14 @@ run_test test_traefik_dynamic_route_and_compose_contract_are_socketless
 run_test test_traefik_lifecycle_is_part_of_activation
 run_test test_full_backup_snapshots_managed_traefik_acme_volume
 run_test test_doctor_accepts_internal_risk_layer_without_fetch_allowlist
-run_test test_doctor_rejects_incomplete_risk_layer_pair
+run_test test_doctor_shows_target_image_schema_rows
 run_test test_doctor_warns_for_missing_risk_layer_operator_token_without_failing
 run_test test_doctor_accepts_self_contained_managed_signal
 run_test test_doctor_rejects_managed_signal_latest_image
 run_test test_doctor_accepts_managed_signal_source_checkout
 run_test test_signal_source_identifiers_are_shell_safe_and_secret_free
-run_test test_doctor_rejects_short_risk_layer_operator_token
-run_test test_doctor_rejects_identical_risk_layer_tokens
+run_test test_app_env_check_runs_in_the_target_worker_image
+run_test test_deploy_checks_app_env_schema_before_backup_and_migration
 run_test test_doctor_rejects_signal_values_when_disabled
 run_test test_configure_risk_layer_generates_operator_token
 run_test test_configure_external_risk_layer_stays_read_only_without_coordinated_token
@@ -4642,6 +4904,7 @@ run_test test_host_tool_deps_refresh_stale_checkout
 run_test test_run_backup_uses_resolved_host_path
 run_test test_run_backup_respects_explicit_staging_path
 run_test test_update_backs_up_old_checkout_before_fetch
+run_test test_update_schema_error_stops_before_migration
 run_test test_update_backup_failure_leaves_checkout_untouched
 run_test test_changed_update_reloads_operator_and_resumes_same_run
 run_test test_invalid_update_handoff_restarts_with_backup

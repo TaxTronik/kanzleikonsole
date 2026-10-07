@@ -1,0 +1,19 @@
+# =============================================================================
+# Compose-Override fuer die Konfigurationspruefung des Web-Profils (B-05 b/c).
+#
+# Nur ./taxtronik setzt diese Datei zusaetzlich ein (run_app_env_check in
+# scripts/ops/deploy.sh, vor Backup und Migration sowie in doctor):
+#   compose run --rm --no-deps -T app node dist/env-check.js --profile web
+# startet damit das Worker-Image des Ziel-Releases, das dist/env-check.js
+# enthaelt, mit genau der Umgebung, die Compose dem app-Container gibt. Ports
+# veroeffentlicht `compose run` nicht, container_name gilt fuer einmalige
+# Laeufe nicht, --no-deps startet weder Datenbank noch Migration.
+#
+# Die Image-Referenz muss der des worker-Dienstes in
+# infra/compose/docker-compose.app.yml entsprechen (Test in
+# scripts/tests/ops-lib.test.sh).
+# =============================================================================
+
+services:
+  app:
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/worker:${TAXTRONIK_VERSION:-dev}${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}

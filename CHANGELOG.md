@@ -258,6 +258,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Konfigurationsprüfung mit dem Schema des Ziel-Releases: Deploy und Update
+  prüfen die `.env` nach dem Bereitstellen der Images und vor Backup (Deploy)
+  bzw. Migration (Update) im Ziel-Worker-Image (`dist/env-check.js`, Profile
+  web und worker) und melden alle Befunde auf einmal. `./taxtronik doctor`
+  zeigt diese Zeilen, sobald das Worker-Image lokal vorliegt, bewertet
+  `AUTH_SECRET`, `SECRET_BOX_KEY`, `S3_SECRET_KEY` und – nur bei
+  Legacy-Callbacks oder `N8N_WEBHOOK_BASE_URL` – `N8N_HMAC_SECRET` unter 32
+  Zeichen als FEHLT (keine automatische Rotation), verlangt in Produktion HTTPS
+  für `NEXTAUTH_URL` und `PORTAL_PUBLIC_URL` und meldet einseitige
+  Cookie-Domains nur noch als Warnung; Regeln, die nur das Schema
+  wiederholten, entfallen.
 - Administration, Backup: „Backup starten“ erklärt, dass es den Backup-Job des
   Workers einreiht (direkt in den Backup-Bucket, ohne lokale Kopie); die lokale
   Kopie erstellt `./taxtronik backup` auf dem Server. Betriebs- und

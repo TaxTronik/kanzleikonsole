@@ -34,6 +34,9 @@ APP="$ROOT/infra/compose/docker-compose.app.yml"
 DEV="$ROOT/infra/compose/docker-compose.dev.yml"
 TRAEFIK="$ROOT/infra/compose/docker-compose.traefik.yml"
 TRAEFIK_DYNAMIC="$ROOT/.taxtronik.traefik-dynamic.yml"
+# Compose-Override der Konfigurationspruefung (B-05): Web-Profil mit der ENV des
+# app-Dienstes im Worker-Image (run_app_env_check, scripts/ops/deploy.sh).
+ENV_CHECK_COMPOSE="$ROOT/scripts/ops/env-check.compose.yml"
 S3_GENERATED="$ROOT/infra/scripts/seaweedfs-s3.generated.json"
 STATE="$ROOT/.taxtronik.state"
 MIGRATION_PENDING="$ROOT/.taxtronik.migration-pending"

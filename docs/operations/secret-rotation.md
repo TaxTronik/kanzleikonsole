@@ -18,6 +18,10 @@ Dieses Runbook beschreibt die Rotation produktiver Geheimnisse. Für
   abgeschlossen ist und alle damit geschützten Backups ihre Aufbewahrungsfrist
   verlassen haben.
 - Nach jeder Rotation: `./taxtronik doctor`, Health-Smoke, fachlicher Smoke.
+- Kein Werkzeug rotiert automatisch: `./taxtronik doctor --fix` füllt nur leere
+  Werte. `AUTH_SECRET`, `SECRET_BOX_KEY`, `S3_SECRET_KEY` und `N8N_HMAC_SECRET`
+  unter 32 Zeichen meldet doctor als `FEHLT` (die App startet damit in
+  Produktion nicht); sie werden nach diesem Runbook rotiert.
 - Jede Rotation im Betreiberprotokoll dokumentieren: Datum, Grund, betroffene
   Werte, zugehörige Backup-/Key-ID, Verifikation und Rollback-Plan.
 

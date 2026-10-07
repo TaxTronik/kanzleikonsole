@@ -95,6 +95,9 @@ COPY --from=builder /deploy/node_modules ./node_modules
 # package.json traegt "type": "module" fuer das ESM-Bundle.
 COPY --from=builder /repo/apps/worker/package.json ./apps/worker/
 COPY --from=builder /repo/apps/worker/dist/index.js /repo/apps/worker/dist/index.js.map ./apps/worker/dist/
+# Konfigurationspruefung (B-05): ./taxtronik deploy|update fuehrt sie vor Backup
+# und Migration im Ziel-Image aus (node dist/env-check.js --profile web|worker).
+COPY --from=builder /repo/apps/worker/dist/env-check.js ./apps/worker/dist/
 # Migrate-Service: Prisma-Konfiguration, Schema, Migrationen und Skripte.
 COPY --from=builder /repo/packages/db/package.json /repo/packages/db/prisma.config.ts ./packages/db/
 COPY --from=builder /repo/packages/db/prisma ./packages/db/prisma
@@ -121,7 +124,9 @@ RUN set -eux; \
     test ! -w /app/packages/db/prisma/migrations/20260801003400_gwg_fail_closed_and_destruction/migration.sql && \
     sh -n /app/packages/db/scripts/migrate-deploy.sh && \
     test -r /app/node_modules/prisma/build/index.js && \
-    test -r dist/index.js && test ! -e /app/node_modules/typescript
+    test -r dist/index.js && test -r dist/env-check.js && test ! -e /app/node_modules/typescript; \
+    rc=0; node dist/env-check.js --profile image-build-probe >/dev/null || rc=$?; \
+    test "$rc" -eq 2
 
 # Q-9: HEALTHCHECK auf den Heartbeat-File-Touch (siehe apps/worker/src/index.ts).
 # Worker schreibt alle 30 s nach /tmp/worker-alive; HEALTHCHECK schlägt fehl,

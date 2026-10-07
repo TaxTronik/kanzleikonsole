@@ -439,12 +439,15 @@ export function envProfileHasPart(profile: EnvProfileName, part: EnvPartName): b
 // --- Prüfungen ---------------------------------------------------------------------
 
 type Data = Record<string, unknown> & { NODE_ENV: 'development' | 'test' | 'production' };
+/** Ziel nicht blockierender Hinweise (`[config] WARNUNG: …`). */
+type Warn = (message: string) => void;
 interface Check {
   /** Teil, ohne den die Prüfung entfällt; `null` = jeder Prozess. */
   part: EnvPartName | null;
   /** Auch außerhalb von Produktion. */
   always?: boolean;
-  run(data: Data, source: NodeJS.ProcessEnv): void;
+  /** Wirft bei einem Fehler; Warnungen gehen an `warn`. */
+  run(data: Data, source: NodeJS.ProcessEnv, warn: Warn): void;
 }
 
 const str = (data: Data, key: string) => data[key] as string | undefined;
@@ -560,6 +563,8 @@ const CHECKS: readonly Check[] = [
       }
     },
   },
+  // Zwei getrennte Prüfungen in fester Reihenfolge, damit checkEnvProfileFrom
+  // beide URLs meldet; das Boot-Gate scheitert weiterhin an der ersten.
   {
     part: 'portalLinks',
     run(data) {
@@ -567,6 +572,11 @@ const CHECKS: readonly Check[] = [
       if (nextAuthUrl !== undefined && new URL(nextAuthUrl).protocol !== 'https:') {
         throw new Error('[config] NEXTAUTH_URL muss in Produktion HTTPS verwenden.');
       }
+    },
+  },
+  {
+    part: 'portalLinks',
+    run(data) {
       const portalUrl = str(data, 'PORTAL_PUBLIC_URL');
       if (portalUrl && new URL(portalUrl).protocol !== 'https:') {
         throw new Error('[config] PORTAL_PUBLIC_URL muss in Produktion HTTPS verwenden.');
@@ -627,11 +637,11 @@ const CHECKS: readonly Check[] = [
   },
 ];
 
-function checkCookieDomains(data: Data): void {
+function checkCookieDomains(data: Data, _source: NodeJS.ProcessEnv, warn: Warn): void {
   const staffDom = str(data, 'STAFF_COOKIE_DOMAIN');
   const portalDom = str(data, 'PORTAL_COOKIE_DOMAIN');
   if (!staffDom || !portalDom) {
-    console.warn(
+    warn(
       '[config] WARNUNG: STAFF_COOKIE_DOMAIN/PORTAL_COOKIE_DOMAIN nicht gesetzt — Staff- und Portal-Surface teilen sich denselben Hostname. ' +
         'Empfohlen für Multi-Standort-Kanzleien: Subdomain-Trennung (z. B. staff.example.de / portal.example.de). ' +
         'Siehe docs/adr/0010-session-strategie-und-cookie-scope.md.',
@@ -665,6 +675,18 @@ function validationFailed(error: z.ZodError): never {
   throw new Error('ENV-Validierung fehlgeschlagen — siehe Konsole.');
 }
 
+/** Prüfungen, die für ein Profil und den Betriebsmodus gelten (Reihenfolge wie CHECKS). */
+function checksFor(profile: EnvProfileName, data: Data): Check[] {
+  const production = data.NODE_ENV === 'production';
+  return CHECKS.filter(
+    (check) =>
+      (check.part === null || envProfileHasPart(profile, check.part)) &&
+      (check.always || production),
+  );
+}
+
+const consoleWarn: Warn = (message) => console.warn(message);
+
 /**
  * Validiert die ENV eines Profils: das Schema seiner Teile, dann deren
  * Prüfungen (in Produktion alle, sonst nur die immer geltenden).
@@ -676,12 +698,61 @@ export function parseEnvProfileFrom<N extends EnvProfileName>(
   const parsed = PROFILE_SCHEMAS[profile].safeParse(source);
   if (!parsed.success) validationFailed(parsed.error);
   const data = parsed.data as Data;
-  const production = data.NODE_ENV === 'production';
-  for (const check of CHECKS) {
-    if (check.part !== null && !envProfileHasPart(profile, check.part)) continue;
-    if (check.always || production) check.run(data, source);
-  }
+  for (const check of checksFor(profile, data)) check.run(data, source, consoleWarn);
   return parsed.data as ProfileEnv<N>;
+}
+
+/** Alle Befunde einer Profilprüfung (B-05), statt Abbruch beim ersten Fehler. */
+export interface EnvProfileFindings {
+  /** Schemafehler je Feld und Meldungen fehlgeschlagener Prüfungen (`[config] …`). */
+  errors: string[];
+  /** Nicht blockierende Hinweise (`[config] WARNUNG: …`). */
+  warnings: string[];
+}
+
+/** Gültige Felder einer ENV, deren Schema insgesamt scheitert (fehlende = nicht gesetzt). */
+function validFieldsOf(profile: EnvProfileName, source: NodeJS.ProcessEnv): Data {
+  const data: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(PROFILE_SCHEMAS[profile].shape)) {
+    const result = (field as z.ZodType).safeParse(source[key]);
+    if (result.success && result.data !== undefined) data[key] = result.data;
+  }
+  return { NODE_ENV: 'development', ...data } as Data;
+}
+
+/**
+ * B-05: Prüft ein Profil wie `parseEnvProfileFrom`, sammelt aber alle Befunde:
+ * jeden Schemafehler und jede Prüfung einzeln, statt beim ersten Fehler
+ * abzubrechen. Das Urteil bleibt dasselbe: `errors` ist genau dann leer, wenn
+ * `parseEnvProfileFrom` die ENV akzeptiert. Scheitert das Schema, laufen die
+ * Prüfungen auf den gültigen Feldern weiter, damit ein Lauf alle Probleme zeigt.
+ * Für die Konfigurationsprüfung im Ziel-Image vor Backup und Migration
+ * (apps/worker/src/env-check.ts) und `./taxtronik doctor`.
+ */
+export function checkEnvProfileFrom(
+  profile: EnvProfileName,
+  source: NodeJS.ProcessEnv,
+): EnvProfileFindings {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const parsed = PROFILE_SCHEMAS[profile].safeParse(source);
+  let data: Data;
+  if (parsed.success) {
+    data = parsed.data as Data;
+  } else {
+    for (const issue of parsed.error.issues) {
+      errors.push(`[config] ENV-Validierung: ${issue.path.join('.')}: ${issue.message}`);
+    }
+    data = validFieldsOf(profile, source);
+  }
+  for (const check of checksFor(profile, data)) {
+    try {
+      check.run(data, source, (message) => warnings.push(message));
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+  return { errors, warnings };
 }
 
 // --- Abgeleitete Konfiguration (auch als Lazy-Getter für Pakete) -------------------
