@@ -250,6 +250,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Administration, Backup: „Backup starten“ erklärt, dass es den Backup-Job des
+  Workers einreiht (direkt in den Backup-Bucket, ohne lokale Kopie); die lokale
+  Kopie erstellt `./taxtronik backup` auf dem Server. Betriebs- und
+  Anwenderdoku sind angeglichen.
 - Formulare: Feldfehler erscheinen auf Deutsch statt mit englischen
   Standardmeldungen und bei Benutzern, Telefonnotizen, Dienstleistern, Mandant
   bearbeiten, ELSTER-Kontoabfrage und Wiedervorlagen direkt am Feld samt

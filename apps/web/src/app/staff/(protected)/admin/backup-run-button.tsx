@@ -1,11 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Play } from 'lucide-react';
 
 // P-22: Der Button reiht den Worker-Job backup-run nur ein (202) und fragt den
 // gespeicherten Zustand ab; kein HTTP-Request wartet mehr auf pg_dump/Upload.
+// B12: Der Job streamt den Dump direkt in den Backup-Bucket; eine lokale Kopie
+// unter backups/ entsteht nur mit `./taxtronik backup` auf dem Server. Der
+// Hinweis unter dem Button sagt das, damit niemand eine Kopie dort erwartet.
 const POLL_INTERVAL_MS = 3_000;
 const POLL_LIMIT_MS = 2 * 60 * 60 * 1000;
 const PENDING = new Set(['waiting', 'delayed', 'prioritized', 'waiting-children', 'active']);
@@ -30,6 +33,7 @@ export function BackupRunButton() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hintId = useId();
 
   useEffect(
     () => () => {
@@ -109,11 +113,17 @@ export function BackupRunButton() {
         type="button"
         onClick={run}
         disabled={busy}
+        aria-describedby={hintId}
         className="btn-primary text-xs py-1.5 inline-flex items-center gap-1.5 disabled:opacity-60"
       >
         <Play className="h-3.5 w-3.5" />
         {label}
       </button>
+      <p id={hintId} className="text-xs text-muted mt-2">
+        Reiht den Backup-Job des Workers ein: Er sichert die Datenbank direkt in den Backup-Bucket
+        (S3), ohne lokale Kopie auf dem Server. Eine lokale Kopie unter <code>backups/</code>{' '}
+        erstellt der Betreiber auf dem Server mit <code>./taxtronik backup</code>.
+      </p>
       <p className="sr-only" role="status" aria-live="polite">
         {busy ? label : (message ?? '')}
       </p>

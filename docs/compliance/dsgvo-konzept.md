@@ -406,7 +406,8 @@ gepflegt.
 
 - Täglicher Postgres-Dump um 01:00 UTC durch den Worker direkt in den
   S3-Backup-Bucket; zusätzliche manuelle Sicherung samt lokaler Kopie über
-  `./taxtronik backup` bzw. den Single-Tenant-Admin-Trigger;
+  `./taxtronik backup`; der Single-Tenant-Admin-Trigger startet einen
+  zusätzlichen Lauf des Worker-Jobs (direkt nach S3, ohne lokale Kopie);
   jeder Lauf wird auditiert (`backup.run`) und als `BackupRecord` mit
   Status + SHA-256 erfasst, die Admin-Übersicht zeigt den letzten Stand.
   Dumps sind im Browser absichtlich nicht herunterladbar. Sie werden von der

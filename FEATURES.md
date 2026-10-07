@@ -1348,9 +1348,11 @@ Kanzlei nicht.
   Public Key und `backup-decrypt` mit offline age-Identity in ein leeres Ziel
 - Pre-Flight-DB-Backup vor Migration (`./taxtronik update`/`deploy`)
 - Backup-Records mit Größe, SHA-256 und Status; letzter Stand und Restore-Drill
-  sind in der Admin-Übersicht sichtbar. Start und Abruf vollständiger
-  Datenbank-Dumps bleiben dem Betreiber-Host beziehungsweise Backup-Storage
-  vorbehalten
+  sind in der Admin-Übersicht sichtbar. In Single-Tenant-Installationen reiht
+  „Backup starten“ dort einen zusätzlichen Lauf des Worker-Jobs `backup-run`
+  ein (direkt nach S3, ohne lokale Kopie); lokale Kopien (`./taxtronik backup`)
+  und der Abruf vollständiger Datenbank-Dumps bleiben dem Betreiber-Host
+  beziehungsweise Backup-Storage vorbehalten
 - **Restore-Mechanismus**: `./taxtronik restore --list`,
   `./taxtronik restore --latest --target-url <postgres-url>` oder
   `./taxtronik restore --file <dump>`; automatischer Smoke-Test, Schutz vor

@@ -86,10 +86,13 @@ weiteres Backup mit dem noch installierten Release.
 `./taxtronik backup` schreibt den Dump zuerst lokal unter `backups/` (bzw.
 `BACKUP_HOST_DIR`/`BACKUP_LOCAL_DIR`) und lädt dieselbe Datei danach in den
 S3-Backup-Bucket. Zusätzlich streamt der Worker täglich um 01:00 UTC einen
-Dump direkt nach S3; dieser Tagesjob erzeugt keine lokale Kopie. Der manuelle
-Lauf kann in einer Single-Tenant-Installation auch in der Admin-Übersicht
-gestartet werden. Vollständige Datenbank-Dumps sind dort absichtlich nicht
-herunterladbar; Download und Restore bleiben Operator-Aufgaben am Host/S3.
+Dump direkt nach S3; dieser Tagesjob erzeugt keine lokale Kopie. In einer
+Single-Tenant-Installation reiht „Backup starten“ in der Admin-Übersicht einen
+zusätzlichen Lauf dieses Worker-Jobs ein — ebenfalls direkt nach S3 und ohne
+lokale Kopie; die lokale Kopie unter `backups/` entsteht nur mit
+`./taxtronik backup` auf dem Server. Vollständige Datenbank-Dumps sind in der
+Admin-Übersicht absichtlich nicht herunterladbar; Download und Restore bleiben
+Operator-Aufgaben am Host/S3.
 
 Die normalen DB-Dumps aus `backup`/Tagesjob werden von TaxTronik nicht selbst
 verschlüsselt. `backups` hat eine 90-Tage-Lifecycle-Regel, aber keinen Object

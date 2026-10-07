@@ -208,6 +208,11 @@ Administratoren sehen immer alles.
   Operator-Kopie. Diese normalen DB-Dumps werden von TaxTronik nicht selbst
   verschlüsselt; `update`/`deploy` sichern außerdem vor jeder
   Datenbankmigration.
+- **„Backup starten“** (nur Single-Tenant-Installation): reiht sofort einen
+  zusätzlichen Lauf dieser Tagessicherung beim Worker ein — direkt in den
+  S3-Backup-Bucket, **ohne lokale Kopie** auf dem Server. Die lokale Kopie
+  unter `backups/` erstellt der Betreiber auf dem Server mit
+  `./taxtronik backup`.
 - **Full-Backup (Betreiber-Aufgabe):** `./taxtronik backup-full` erzeugt in
   einem Wartungsfenster einen gemeinsamen Wiederanlaufpunkt aus TaxTronik- und
   n8n-Datenbank, Cold-Snapshots der SeaweedFS-, Redis- und n8n-Volumes sowie der

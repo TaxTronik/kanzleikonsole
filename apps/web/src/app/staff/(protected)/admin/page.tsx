@@ -553,10 +553,9 @@ function BackupStatusCard({
         </div>
       </div>
       <p className="text-xs text-disabled">
-        CLI: <code className="text-secondary">./taxtronik backup</code>
-      </p>
-      <p className="text-xs text-disabled mt-1">
-        Lokale Kopie: <code className="text-secondary">backups/</code>
+        Betreiber-Host: <code className="text-secondary">./taxtronik backup</code> — Dump mit
+        lokaler Kopie unter <code className="text-secondary">backups/</code> und Upload in den
+        Backup-Bucket
       </p>
     </div>
   );
