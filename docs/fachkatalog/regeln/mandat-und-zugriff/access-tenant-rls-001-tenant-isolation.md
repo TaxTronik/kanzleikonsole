@@ -176,6 +176,7 @@ test_refs:
   - apps/web/src/server/auth/__tests__/password-hash-pool.test.ts
   - packages/crypto/src/__tests__/crl-fetch.test.ts
   - packages/crypto/src/__tests__/crl-fetch-pinning.test.ts
+  - apps/web/src/app/api/portal/ical/[token]/__tests__/route-db.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -488,6 +489,14 @@ ersetzen keinen Parallelitätstest gegen einen echten PostgreSQL-Server.
 serialisiert Queries auf der Verbindung. Die Migration aktiviert und erzwingt
 RLS. `verify-rls.ts` inventarisiert Tabellen, RLS-Flags und Policies; der
 Cross-Tenant-Test verwendet getrennte App-Sessions für Lesen und Mutieren.
+
+Der iCal-Feed des Portals (`api/portal/ical/[token]`) kennt vor dem
+Tenantkontext nur die Kontakt-ID aus dem signierten Token. Die
+Owner-Verbindung löst daraus ausschließlich die Tenant-ID auf; Kontakt,
+Token-Version, Mandantenstatus, Modulschalter, Fristen und Termine liest die
+App-Rolle im SYSTEM-Kontext dieses Tenants (`withSystemContext`). Der
+PostgreSQL-Test der Route belegt denselben Feed, die Tenant-Auflösung als
+einzigen Owner-Zugriff und die Unsichtbarkeit fremder Fristen und Termine.
 
 Die Prüf-Checkpoints der Audit-Kettenprüfung (`audit_verify_checkpoint`,
 `AUDIT-VERIFY-ALERT-001`) sind tenantgebunden und durch ENABLE/FORCE RLS sowie

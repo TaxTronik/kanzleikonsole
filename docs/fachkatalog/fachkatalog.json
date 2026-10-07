@@ -635,7 +635,8 @@
         "apps/web/src/server/auth/__tests__/authjs-route.test.ts",
         "apps/web/src/server/auth/__tests__/password-hash-pool.test.ts",
         "packages/crypto/src/__tests__/crl-fetch.test.ts",
-        "packages/crypto/src/__tests__/crl-fetch-pinning.test.ts"
+        "packages/crypto/src/__tests__/crl-fetch-pinning.test.ts",
+        "apps/web/src/app/api/portal/ical/[token]/__tests__/route-db.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",

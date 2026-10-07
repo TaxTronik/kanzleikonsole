@@ -1,6 +1,9 @@
 // Fachkatalog: ACCESS-TENANT-RLS-001.
 // Real contact actions, HMAC tokens and HTTP feed handler; only persistence,
 // authenticated staff context and external side effects are simulated.
+// S-01: the feed resolves only the tenant through the owner client and reads
+// contact, deadlines and appointments in the tenant's SYSTEM context
+// (route-db.test.ts proves this against PostgreSQL with the app role).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ForbiddenError } from '@/server/actions/action-error';
 import type { NextRequest } from 'next/server';
@@ -24,6 +27,8 @@ type Contact = {
 
 const m = vi.hoisted(() => ({
   contacts: new Map<string, Contact>(),
+  ownerSelects: [] as unknown[],
+  systemContexts: [] as string[],
   evidenceRecord: vi.fn(),
   revokeAllSessions: vi.fn(),
   deadlineFindMany: vi.fn(),
@@ -42,7 +47,39 @@ vi.mock('next/navigation', () => ({
     throw new Error(`NEXT_REDIRECT:${path}`);
   },
 }));
-vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
+/** Active contact with its client flags, as both lookups of the feed see it. */
+function activeContact(where: { id: string; active: boolean; tenantId?: string }) {
+  const contact = m.contacts.get(where.id);
+  if (!contact || contact.active !== where.active) return null;
+  if (where.tenantId !== undefined && contact.tenantId !== where.tenantId) return null;
+  return {
+    ...contact,
+    client: {
+      name: 'Synthetic client',
+      allowActive: true,
+      anonymizedAt: null,
+      mandateEndedAt: null,
+    },
+  };
+}
+
+vi.mock('@taxtronik/db', () => ({
+  withTenantContext: m.withTenantContext,
+  withSystemContext: async (tenantId: string, fn: (tx: unknown) => unknown) => {
+    m.systemContexts.push(tenantId);
+    return fn({
+      clientContact: {
+        findFirst: async ({
+          where,
+        }: {
+          where: { id: string; active: boolean; tenantId: string };
+        }) => activeContact(where),
+      },
+      taxDeadline: { findMany: (...args: unknown[]) => m.deadlineFindMany(...args) },
+      appointment: { findMany: (...args: unknown[]) => m.appointmentFindMany(...args) },
+    });
+  },
+}));
 vi.mock('@taxtronik/config', () => ({ env: { AUTH_SECRET: 'synthetic-ical-regression-secret' } }));
 vi.mock('@taxtronik/tax', () => ({ SCHEDULE_LABELS: {} }));
 vi.mock('@taxtronik/db/tenant-modules', () => ({
@@ -98,26 +135,22 @@ vi.mock('@/server/actions/staff-action', async () => {
     },
   };
 });
+// S-01: the owner client only resolves the tenant ID of the token's contact.
 vi.mock('@/server/db/prisma-owner', () => ({
   prismaOwner: {
     clientContact: {
-      findFirst: async ({ where }: { where: { id: string; active: boolean } }) => {
-        const contact = m.contacts.get(where.id);
-        return contact && contact.active === where.active
-          ? {
-              ...contact,
-              client: {
-                name: 'Synthetic client',
-                allowActive: true,
-                anonymizedAt: null,
-                mandateEndedAt: null,
-              },
-            }
-          : null;
+      findFirst: async ({
+        where,
+        select,
+      }: {
+        where: { id: string; active: boolean };
+        select: unknown;
+      }) => {
+        m.ownerSelects.push(select);
+        const contact = activeContact(where);
+        return contact ? { tenantId: contact.tenantId } : null;
       },
     },
-    taxDeadline: { findMany: m.deadlineFindMany },
-    appointment: { findMany: m.appointmentFindMany },
   },
 }));
 
@@ -129,6 +162,8 @@ import { GET } from '@/app/api/portal/ical/[token]/route';
 beforeEach(() => {
   vi.resetAllMocks();
   m.contacts.clear();
+  m.ownerSelects.length = 0;
+  m.systemContexts.length = 0;
   for (const id of [CONTACT_ID, OTHER_CONTACT_ID]) {
     m.contacts.set(id, {
       id,
@@ -200,6 +235,22 @@ function update(email: string) {
 }
 
 describe('contact identity changes revoke independent iCal capabilities', () => {
+  it('reads the feed in the tenant system context and uses the owner only for the tenant ID', async () => {
+    expect((await feed()).status).toBe(200);
+    expect(m.ownerSelects).toEqual([{ tenantId: true }]);
+    expect(m.systemContexts).toEqual(['tenant-1']);
+    expect(m.appointmentFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: 'tenant-1', clientId: CLIENT_ID }),
+      }),
+    );
+    expect(m.deadlineFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: 'tenant-1', clientId: CLIENT_ID }),
+      }),
+    );
+  });
+
   it('rejects the old signed feed after email replacement and permits a newly issued feed', async () => {
     expect(await (await feed()).text()).toContain('Confidential planning meeting');
     expect(await update('new@example.test')).toEqual({ ok: true });

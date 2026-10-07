@@ -336,6 +336,9 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/app/api/n8n/expiring-gwg-checks/route.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/api/n8n/overdue-requests/route.ts <- @/server/db/prisma-owner',
   'apps/web/src/app/api/n8n/request-detail/[id]/route.ts <- @/server/db/prisma-owner',
+  // Token-Feed ohne Session (S-01): der Owner löst nur den Tenant des Token-
+  // Kontakts auf; Kontakt, Fristen und Termine liest die App-Rolle im
+  // SYSTEM-Kontext dieses Tenants (route-db.test.ts).
   'apps/web/src/app/api/portal/ical/[token]/route.ts <- @/server/db/prisma-owner',
   // Browser-Backup-Trigger (P-22): Ein tenantgebundener Admin darf den globalen
   // pg_dump-Job nur in einer nachweislichen Single-Tenant-Installation einreihen;

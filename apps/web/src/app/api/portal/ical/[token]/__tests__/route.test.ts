@@ -1,27 +1,42 @@
-// Fachkatalog: CLIENT-MANDATE-LIFECYCLE-001.
+// Fachkatalog: CLIENT-MANDATE-LIFECYCLE-001, ACCESS-TENANT-RLS-001.
+// S-01: the owner client resolves only the tenant of the token's contact; the
+// feed itself is read in that tenant's SYSTEM context (route-db.test.ts proves
+// the app role and the tenant isolation against PostgreSQL).
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const m = vi.hoisted(() => ({
-  verifyIcalToken: vi.fn(),
-  buildIcs: vi.fn(),
-  contactFindFirst: vi.fn(),
-  deadlineFindMany: vi.fn(),
-  appointmentFindMany: vi.fn(),
-  readBooleanTenantModules: vi.fn(),
-}));
+const m = vi.hoisted(() => {
+  const contactFindFirst = vi.fn();
+  const deadlineFindMany = vi.fn();
+  const appointmentFindMany = vi.fn();
+  const tx = {
+    clientContact: { findFirst: contactFindFirst },
+    taxDeadline: { findMany: deadlineFindMany },
+    appointment: { findMany: appointmentFindMany },
+  };
+  return {
+    verifyIcalToken: vi.fn(),
+    buildIcs: vi.fn(),
+    ownerFindFirst: vi.fn(),
+    contactFindFirst,
+    deadlineFindMany,
+    appointmentFindMany,
+    readBooleanTenantModules: vi.fn(),
+    tx,
+    withSystemContext: vi.fn(async (_tenantId: string, fn: (value: typeof tx) => unknown) =>
+      fn(tx),
+    ),
+  };
+});
 
 vi.mock('@/server/ical/feed', () => ({
   verifyIcalToken: m.verifyIcalToken,
   buildIcs: m.buildIcs,
 }));
 vi.mock('@/server/db/prisma-owner', () => ({
-  prismaOwner: {
-    clientContact: { findFirst: m.contactFindFirst },
-    taxDeadline: { findMany: m.deadlineFindMany },
-    appointment: { findMany: m.appointmentFindMany },
-  },
+  prismaOwner: { clientContact: { findFirst: m.ownerFindFirst } },
 }));
+vi.mock('@taxtronik/db', () => ({ withSystemContext: m.withSystemContext }));
 vi.mock('@taxtronik/tax', () => ({ SCHEDULE_LABELS: {} }));
 vi.mock('@taxtronik/db/tenant-modules', () => ({
   readBooleanTenantModules: m.readBooleanTenantModules,
@@ -48,6 +63,7 @@ function contact(overrides: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   m.verifyIcalToken.mockReturnValue({ contactId: 'contact-1', version: 3 });
+  m.ownerFindFirst.mockResolvedValue({ tenantId: 'tenant-1' });
   m.contactFindFirst.mockResolvedValue(contact());
   m.deadlineFindMany.mockResolvedValue([]);
   m.appointmentFindMany.mockResolvedValue([]);
@@ -63,6 +79,14 @@ async function callRoute(): Promise<Response> {
 }
 
 describe('portal iCal lifecycle gate', () => {
+  it('returns 404 without a tenant context for an unknown or inactive contact', async () => {
+    m.ownerFindFirst.mockResolvedValue(null);
+
+    expect((await callRoute()).status).toBe(404);
+    expect(m.withSystemContext).not.toHaveBeenCalled();
+    expect(m.buildIcs).not.toHaveBeenCalled();
+  });
+
   it('revokes an existing calendar subscription after mandate termination', async () => {
     m.contactFindFirst.mockResolvedValue(
       contact({
@@ -116,10 +140,16 @@ describe('portal iCal lifecycle gate', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/calendar');
-    expect(m.contactFindFirst).toHaveBeenCalledWith({
+    // S-01: the owner reads only the tenant ID, everything else runs in the tenant context.
+    expect(m.ownerFindFirst).toHaveBeenCalledWith({
       where: { id: 'contact-1', active: true },
+      select: { tenantId: true },
+    });
+    expect(m.withSystemContext).toHaveBeenCalledTimes(1);
+    expect(m.withSystemContext).toHaveBeenCalledWith('tenant-1', expect.any(Function));
+    expect(m.contactFindFirst).toHaveBeenCalledWith({
+      where: { id: 'contact-1', tenantId: 'tenant-1', active: true },
       select: {
-        tenantId: true,
         clientId: true,
         icalTokenVersion: true,
         client: {
@@ -127,7 +157,13 @@ describe('portal iCal lifecycle gate', () => {
         },
       },
     });
+    expect(m.readBooleanTenantModules).toHaveBeenCalledWith(m.tx, 'tenant-1');
     expect(m.deadlineFindMany).toHaveBeenCalledTimes(1);
+    expect(m.deadlineFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: 'tenant-1', clientId: 'client-1' }),
+      }),
+    );
     expect(m.appointmentFindMany).toHaveBeenCalledTimes(1);
   });
 
@@ -146,7 +182,11 @@ describe('portal iCal lifecycle gate', () => {
 
     expect(m.appointmentFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ clientId: 'client-1', status: { not: 'CANCELLED' } }),
+        where: expect.objectContaining({
+          tenantId: 'tenant-1',
+          clientId: 'client-1',
+          status: { not: 'CANCELLED' },
+        }),
       }),
     );
     expect(m.buildIcs).toHaveBeenCalledWith(expect.any(String), [
