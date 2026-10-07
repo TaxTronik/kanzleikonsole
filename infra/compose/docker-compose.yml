@@ -77,6 +77,16 @@ services:
       - log_parameter_max_length=0
       - -c
       - log_lock_waits=on
+      # F-06: Abfragestatistik je normalisierter Anweisung (pg_stat_statements).
+      # Die Bibliothek muss beim Start geladen sein; die Extension legt
+      # postgres-init.sh in der Wartungs-DB `postgres` an, nicht in der
+      # App-Datenbank (Bestandsinstallationen und Auswertung:
+      # docs/operations/day-2-operations.md). Utility-Anweisungen bleiben außen
+      # vor: ihr Text würde nicht normalisiert (z. B. ALTER ROLE … PASSWORD).
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track_utility=off
     # Postgres braucht CHOWN/SETUID/SETGID nur in seinem initdb-Pfad; das
     # offizielle Image wechselt mit gosu auf den postgres-User. CHOWN/SETUID/
     # SETGID + FOWNER für das Daten-Volume.

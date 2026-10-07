@@ -91,6 +91,24 @@ if [[ -n "${TAXTRONIK_DRILL_PASSWORD:-}" ]]; then
 EOSQL
 fi
 
+# F-06: pg_stat_statements (geladen per shared_preload_libraries in
+# docker-compose.yml) in der Wartungs-DB `postgres`. Die Statistik ist
+# clusterweit, die Spalte dbid trennt die Datenbanken. Bewusst NICHT in der
+# App-Datenbank: die Extension ist nicht "trusted" — der Restore-Drill
+# (taxtronik_drill, kein Superuser) könnte einen Dump mit ihr nicht einspielen —
+# und sie gäbe ihre Views per GRANT an PUBLIC frei, also auch an taxtronik_app.
+# Hier lesen nur Superuser und Mitglieder von pg_read_all_stats (pg_monitor).
+# Ein Fehler stoppt die Initialisierung nicht: die Statistik ist Diagnose,
+# kein Betriebsbestandteil.
+if ! psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres <<-'EOSQL'
+  CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+  REVOKE ALL ON pg_stat_statements, pg_stat_statements_info FROM PUBLIC;
+  GRANT SELECT ON pg_stat_statements, pg_stat_statements_info TO pg_read_all_stats;
+EOSQL
+then
+  echo "[postgres-init] WARNUNG: pg_stat_statements nicht angelegt (siehe docs/operations/day-2-operations.md)." >&2
+fi
+
 # n8n: eigene DB + User (nur produktiv aktiv; in dev nutzt n8n SQLite)
 if [[ -n "${N8N_DB_PASSWORD:-}" ]]; then
   psql -v ON_ERROR_STOP=1 \

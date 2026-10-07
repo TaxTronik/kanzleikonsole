@@ -23,6 +23,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- Postgres lädt `pg_stat_statements` (Laufzeitstatistik je normalisierter
+  Anweisung, ohne Parameterwerte und Utility-Anweisungen), lesbar für
+  Superuser und `pg_monitor`. Neue Installationen legen die Extension in der
+  Wartungsdatenbank `postgres` an; Bestandsinstallationen brauchen nach dem
+  nächsten Update einmalig den Befehl aus `docs/operations/day-2-operations.md`.
 - Jede Antwort der Web-App trägt den Header `x-request-id`; jede Logzeile, die
   während der Anfrage entsteht (Server Components, Server Actions, Route
   Handler), enthält dieselbe `requestId`. Eine vom Reverse-Proxy gesetzte ID

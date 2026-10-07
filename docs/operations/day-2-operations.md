@@ -473,6 +473,48 @@ App und Worker schreiben strukturierte JSON-Zeilen (pino) nach stdout;
   gelangen so nicht in die ID.
 - **Worker:** Jede Zeile eines Jobs trägt `queue` (Queue-Name) und `jobId`.
 
+## Abfragestatistik (pg_stat_statements)
+
+Postgres lädt `pg_stat_statements` (Compose: `shared_preload_libraries`) und
+führt je normalisierter Anweisung Aufrufe, Gesamt- und Durchschnittszeit.
+Werte stehen dort als Platzhalter (`$1`); Utility-Anweisungen wie
+`ALTER ROLE … PASSWORD` werden nicht erfasst
+(`pg_stat_statements.track_utility=off`). Die Extension liegt in der
+Wartungs-DB `postgres`, nicht in der App-Datenbank: Sie ist nicht „trusted“
+(der Restore-Drill ohne Superuser könnte einen Dump mit ihr nicht einspielen)
+und gäbe ihre Sichten sonst an alle Rollen frei. Lesen dürfen Superuser und
+Mitglieder von `pg_read_all_stats` bzw. `pg_monitor`, nicht `taxtronik_app`.
+
+Neue Installationen legen die Extension beim ersten Start an
+(`infra/scripts/postgres-init.sh`). Bestandsinstallationen laden die
+Bibliothek nach dem nächsten `./taxtronik update` (Compose erzeugt `postgres`
+wegen der geänderten Startparameter neu) und brauchen danach einmalig:
+
+```bash
+./taxtronik exec postgres psql -U taxtronik -d postgres -v ON_ERROR_STOP=1 \
+  -c "CREATE EXTENSION IF NOT EXISTS pg_stat_statements" \
+  -c "REVOKE ALL ON pg_stat_statements, pg_stat_statements_info FROM PUBLIC" \
+  -c "GRANT SELECT ON pg_stat_statements, pg_stat_statements_info TO pg_read_all_stats"
+```
+
+Teuerste Anweisungen der App-Datenbank nach Gesamtzeit (für langsame
+Einzelaufrufe `ORDER BY mean_exec_time DESC`):
+
+```bash
+./taxtronik exec postgres psql -U taxtronik -d postgres -c "
+  SELECT calls, round(total_exec_time) AS total_ms,
+         round(mean_exec_time::numeric, 1) AS mean_ms, rows,
+         left(regexp_replace(query, '\s+', ' ', 'g'), 100) AS query
+    FROM pg_stat_statements
+   WHERE dbid = (SELECT oid FROM pg_database WHERE datname = 'taxtronik')
+   ORDER BY total_exec_time DESC LIMIT 20"
+```
+
+Die Statistik überlebt Neustarts; nach einer Optimierung setzt
+`SELECT pg_stat_statements_reset();` (Superuser) sie zurück. Einzelne langsame
+Anweisungen mit Dauer, aber ohne Parameterwerte, stehen zusätzlich im
+Postgres-Log (`log_min_duration_statement`, Default 1000 ms).
+
 ## SMTP
 
 Mailhog ist nur Dev. Produktion benötigt ein echtes SMTP-Relay:
