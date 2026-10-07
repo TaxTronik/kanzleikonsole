@@ -6,6 +6,11 @@ import { connection } from '../queues';
 import { prismaOwner } from '../prisma-owner';
 import { log } from '../logger';
 import { isWorkerClosing, startRunBudget, type RunBudget } from '../run-budget';
+import {
+  recordMaintenanceBacklog,
+  type MaintenanceBacklogStatus,
+  type TenantBacklog,
+} from '../maintenance-backlog';
 
 const CLAIM_STALE_MS = 30 * 60_000;
 // Ein verlorenes COMMIT-ACK ist zunaechst mehrdeutig. Der Abstand stellt
@@ -351,6 +356,8 @@ export interface StorageOrphanCleanupResult {
   backlog: number;
   /** P-17: der Lauf endete am Zeitbudget oder wegen Herunterfahrens. */
   budgetExhausted: boolean;
+  /** B14: Health-Kennzahl des Rückstands (Anzahl, ältester offener Kandidat, Läufe, Alarm). */
+  backlogStatus: MaintenanceBacklogStatus;
 }
 
 type Totals = Pick<
@@ -365,6 +372,56 @@ const OUTCOME_TOTAL: Partial<Record<Outcome, keyof Totals>> = {
   absent: 'absent',
   failed: 'failed',
 };
+
+function earlier(a: Date | null, b: Date | null): Date | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a < b ? a : b;
+}
+
+/**
+ * P-17/B14: fällige, unaufgelöste Kandidaten je Tenant mit der Fälligkeit des
+ * ältesten: Erstellung plus Sicherheitsfrist, bei Object-Lock-Objekten
+ * frühestens das gespeicherte Retention-Ende (dueWhere wie Auswahl und Claim).
+ */
+async function measureBacklog(now: Date): Promise<TenantBacklog[]> {
+  const due = dueWhere(now);
+  const [regular, locked] = await Promise.all([
+    prismaOwner.storageOrphan.groupBy({
+      by: ['tenantId'],
+      where: { ...due, immutable: false },
+      _count: { _all: true },
+      _min: { createdAt: true },
+    }),
+    prismaOwner.storageOrphan.groupBy({
+      by: ['tenantId'],
+      where: { ...due, immutable: true },
+      _count: { _all: true },
+      _min: { createdAt: true, retentionUntil: true },
+    }),
+  ]);
+  const byTenant = new Map<string, TenantBacklog>();
+  const add = (tenantId: string, count: number, dueAt: Date | null) => {
+    const tenant = byTenant.get(tenantId) ?? { tenantId, count: 0, oldestDueAt: null };
+    byTenant.set(tenantId, {
+      tenantId,
+      count: tenant.count + count,
+      oldestDueAt: earlier(tenant.oldestDueAt, dueAt),
+    });
+  };
+  const graceEnd = (createdAt: Date | null) =>
+    createdAt ? new Date(createdAt.getTime() + RECONCILIATION_GRACE_MS) : null;
+  for (const row of regular) add(row.tenantId, row._count._all, graceEnd(row._min.createdAt));
+  for (const row of locked) {
+    // Untere Schranke des ältesten Fälligkeitszeitpunkts max(Frist, Retention-Ende).
+    const graceDue = graceEnd(row._min.createdAt);
+    const retentionDue = row._min.retentionUntil;
+    const dueAt =
+      graceDue && retentionDue ? (graceDue > retentionDue ? graceDue : retentionDue) : graceDue;
+    add(row.tenantId, row._count._all, dueAt);
+  }
+  return [...byTenant.values()];
+}
 
 /** Arbeitet einen Batch ab; false = Budget erschöpft, bevor alle Kandidaten dran waren. */
 async function processBatch(
@@ -399,6 +456,9 @@ async function processBatch(
  * ist oder das Zeitbudget endet. Kandidaten, die in diesem Lauf scheiterten,
  * kommen erst im nächsten Lauf wieder an die Reihe. Der verbleibende Rückstand
  * (fällige, unaufgelöste Kandidaten inkl. gescheiterter) steht im Ergebnis.
+ * B14: maintenance-backlog.ts leitet aus dem Rückstand je Tenant samt
+ * Fälligkeit des ältesten Kandidaten die Health-Kennzahl `backlogStatus` ab und
+ * alarmiert ab der dort definierten Schwelle.
  */
 export async function runStorageOrphanCleanup(
   now = new Date(),
@@ -429,9 +489,11 @@ export async function runStorageOrphanCleanup(
     // Ein nicht voller Batch enthielt alle fälligen Kandidaten dieses Laufs.
     if (batch.length < BATCH_SIZE) break;
   }
-  const backlog = await prismaOwner.storageOrphan.count({ where: dueWhere(now) });
+  const tenantBacklogs = await measureBacklog(now);
+  const backlog = tenantBacklogs.reduce((sum, tenant) => sum + tenant.count, 0);
+  const backlogStatus = await recordMaintenanceBacklog('storageOrphanCleanup', tenantBacklogs, now);
 
-  const result: StorageOrphanCleanupResult = { ...totals, backlog, budgetExhausted };
+  const result: StorageOrphanCleanupResult = { ...totals, backlog, budgetExhausted, backlogStatus };
   log.info(
     { component: 'storage-orphan-cleanup', candidates, ...result },
     'storage orphan cleanup finished',

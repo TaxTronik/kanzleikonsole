@@ -1,5 +1,6 @@
 // Fachkatalog: DOC-UPLOAD-JOURNAL-001
 // Fachkatalog: DOC-OBJECT-LOCK-001
+// Fachkatalog: DSGVO-OPERATIONAL-RETENTION-001
 // =============================================================================
 // K-06: storage-orphan-cleanup gegen echtes PostgreSQL.
 //
@@ -17,6 +18,9 @@
 //   (5) Nach gescheitertem Commit gebundene Version: direkt löschen.
 //   (6) Risikoanalyse verweist auf Rohergebnis bzw. Archiv-Snapshot (ohne
 //       Versionsspalte): REFERENCED, nichts wird gelöscht.
+//   (7) B14: Der verbleibende Rückstand wird je Tenant mit der Fälligkeit des
+//       ältesten Kandidaten gemessen (Prisma-groupBy gegen PostgreSQL); Alarm
+//       und Kennzahl selbst prüft maintenance-backlog.test.ts.
 //
 // Der Object Store ist eine Attrappe; Auswahl, Claims, Constraints (ABSENT nur
 // für Absichten) und Statusübergänge laufen gegen die migrierte Datenbank.
@@ -54,6 +58,9 @@ interface FakeObject {
 const h = vi.hoisted(() => ({
   objects: new Map<string, FakeObject>(),
   deleted: [] as string[],
+  recordBacklog: vi.fn(async (_job: string, tenants: Array<{ count: number }>, _now?: Date) => ({
+    count: tenants.reduce((sum, tenant) => sum + tenant.count, 0),
+  })),
 }));
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
@@ -61,6 +68,7 @@ vi.mock('../../queues', () => ({ connection: {}, queues: {} }));
 vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+vi.mock('../../maintenance-backlog', () => ({ recordMaintenanceBacklog: h.recordBacklog }));
 vi.mock('@taxtronik/storage', () => ({
   recoverPreparedBytesCommit: async (prepared: {
     targetBucket: string;
@@ -135,6 +143,7 @@ describeDb('K-06 storage-orphan-cleanup resolves journaled upload intents (Postg
   beforeEach(async () => {
     h.objects.clear();
     h.deleted.length = 0;
+    h.recordBacklog.mockClear();
     await prismaOwner.storageOrphan.deleteMany({ where: { tenantId } });
   });
 
@@ -314,5 +323,34 @@ describeDb('K-06 storage-orphan-cleanup resolves journaled upload intents (Postg
     expect(h.objects.size).toBe(2);
     await expect(load(raw.row.id)).resolves.toMatchObject({ resolution: 'REFERENCED' });
     await expect(load(archive.row.id)).resolves.toMatchObject({ resolution: 'REFERENCED' });
+  });
+
+  it('(7) B14: misst den verbleibenden Rückstand je Tenant samt Fälligkeit des ältesten', async () => {
+    // Nachträglich journalisierter Orphan ohne auffindbare Bytes: bleibt fällig.
+    const failing = await journalIntent({ content: 'missing bytes' });
+    await prismaOwner.storageOrphan.update({
+      where: { id: failing.row.id },
+      data: { intent: false },
+    });
+    // Object Lock: fällig erst mit dem Retention-Ende, danach aber gleich alt.
+    const retentionUntil = new Date('2001-01-01T00:45:00.000Z');
+    const locked = await journalIntent({ content: 'locked', immutable: true, retentionUntil });
+    await prismaOwner.storageOrphan.update({
+      where: { id: locked.row.id },
+      data: { intent: false },
+    });
+
+    const result = await runStorageOrphanCleanup(NOW);
+
+    expect(result).toMatchObject({ claimed: 2, failed: 2, backlog: 2 });
+    expect(h.recordBacklog).toHaveBeenCalledTimes(1);
+    const [job, tenants, at] = h.recordBacklog.mock.calls[0]!;
+    expect(job).toBe('storageOrphanCleanup');
+    expect(at).toBe(NOW);
+    // Fremde Zeilen derselben Datenbank sind 2001 nicht fällig (siehe Kopf).
+    expect(tenants).toEqual([
+      // Frist 30 min nach Erstellung (00:30) liegt vor dem Retention-Ende (00:45).
+      { tenantId, count: 2, oldestDueAt: new Date('2001-01-01T00:30:00.000Z') },
+    ]);
   });
 });

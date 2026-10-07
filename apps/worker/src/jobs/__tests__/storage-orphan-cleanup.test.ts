@@ -1,9 +1,11 @@
+// Fachkatalog: DSGVO-OPERATIONAL-RETENTION-001, DOC-UPLOAD-JOURNAL-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   findMany: vi.fn(),
   updateMany: vi.fn(),
-  count: vi.fn(),
+  groupBy: vi.fn(),
+  recordBacklog: vi.fn(),
   documentVersionFindFirst: vi.fn(),
   riskAnalysisFindFirst: vi.fn(),
   deleteObjectVersion: vi.fn(),
@@ -15,12 +17,13 @@ vi.mock('bullmq', () => import('./mocks/bullmq'));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({
   prismaOwner: {
-    storageOrphan: { findMany: h.findMany, updateMany: h.updateMany, count: h.count },
+    storageOrphan: { findMany: h.findMany, updateMany: h.updateMany, groupBy: h.groupBy },
     documentVersion: { findFirst: h.documentVersionFindFirst },
     riskAnalysis: { findFirst: h.riskAnalysisFindFirst },
   },
 }));
 vi.mock('../../logger', () => ({ log: h.log }));
+vi.mock('../../maintenance-backlog', () => ({ recordMaintenanceBacklog: h.recordBacklog }));
 vi.mock('@taxtronik/storage', () => ({
   deleteObjectVersion: h.deleteObjectVersion,
   recoverPreparedBytesCommit: h.recoverPreparedBytesCommit,
@@ -31,13 +34,45 @@ import { startRunBudget } from '../../run-budget';
 import { runStorageOrphanCleanup, storageOrphanCleanupWorker } from '../storage-orphan-cleanup';
 
 const NOW = new Date('2026-08-23T12:00:00.000Z');
+// B14: Kennzahl aus maintenance-backlog (eigener Test); hier nur durchgereicht.
+const STATUS = {
+  count: 0,
+  oldestDueAt: null,
+  consecutiveRuns: 0,
+  alarm: false,
+  threshold: { consecutiveRuns: 3, maxOverdueMs: 7 * 24 * 60 * 60 * 1000 },
+};
+
+/** groupBy-Attrappe des Rückstands: offene, nicht unveränderliche Zeilen je Tenant. */
+function serveBacklog(
+  rows: ReadonlyArray<{ tenantId: string; cleanedAt: Date | null; createdAt?: Date }>,
+) {
+  h.groupBy.mockImplementation(async ({ where }: { where: { immutable: boolean } }) => {
+    if (where.immutable) return [];
+    const byTenant = new Map<string, { count: number; createdAt: Date | null }>();
+    for (const row of rows.filter((r) => !r.cleanedAt)) {
+      const entry = byTenant.get(row.tenantId) ?? { count: 0, createdAt: null };
+      entry.count += 1;
+      if (row.createdAt && (!entry.createdAt || row.createdAt < entry.createdAt)) {
+        entry.createdAt = row.createdAt;
+      }
+      byTenant.set(row.tenantId, entry);
+    }
+    return [...byTenant].map(([tenantId, entry]) => ({
+      tenantId,
+      _count: { _all: entry.count },
+      _min: { createdAt: entry.createdAt },
+    }));
+  });
+}
 
 describe('storage orphan cleanup', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     h.findMany.mockResolvedValue([]);
     h.updateMany.mockResolvedValue({ count: 1 });
-    h.count.mockResolvedValue(0);
+    h.groupBy.mockResolvedValue([]);
+    h.recordBacklog.mockResolvedValue(STATUS);
     h.documentVersionFindFirst.mockResolvedValue(null);
     h.riskAnalysisFindFirst.mockResolvedValue(null);
     h.deleteObjectVersion.mockResolvedValue(undefined);
@@ -94,7 +129,7 @@ describe('storage orphan cleanup', () => {
         return { count: 1 };
       },
     );
-    h.count.mockImplementation(async () => rows.filter((r) => !r.cleanedAt).length);
+    serveBacklog(rows);
 
     // Batch 1: 100 dauerhafte Fehler; Batch 2 ohne die in diesem Lauf
     // gescheiterten Kandidaten: das wiederherstellbare Objekt.
@@ -107,6 +142,7 @@ describe('storage orphan cleanup', () => {
       failed: 100,
       backlog: 100,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
     expect(h.findMany).toHaveBeenCalledTimes(2);
     expect(h.findMany.mock.calls[1]![0].where.id.notIn).toHaveLength(100);
@@ -145,7 +181,7 @@ describe('storage orphan cleanup', () => {
           return { count: 1 };
         },
       );
-      h.count.mockImplementation(async () => rows.filter((r) => !r.cleanedAt).length);
+      serveBacklog(rows);
     }
 
     it('zieht Batch um Batch, bis kein fälliger Kandidat übrig ist', async () => {
@@ -161,6 +197,7 @@ describe('storage orphan cleanup', () => {
         failed: 0,
         backlog: 0,
         budgetExhausted: false,
+        backlogStatus: STATUS,
       });
       // 100 + 100 + 50: der dritte, nicht volle Batch beendet den Lauf.
       expect(h.findMany).toHaveBeenCalledTimes(3);
@@ -189,10 +226,24 @@ describe('storage orphan cleanup', () => {
         failed: 0,
         backlog: 100,
         budgetExhausted: true,
+        backlogStatus: STATUS,
       });
-      expect(h.count).toHaveBeenCalledWith({
-        where: expect.objectContaining({ cleanedAt: null }),
-      });
+      // Rückstand mit derselben Fälligkeitsbedingung wie Auswahl und Claim, getrennt
+      // nach Object Lock (Fälligkeit: Frist bzw. Retention-Ende).
+      for (const immutable of [false, true]) {
+        expect(h.groupBy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            by: ['tenantId'],
+            where: expect.objectContaining({ cleanedAt: null, immutable }),
+            _count: { _all: true },
+          }),
+        );
+      }
+      expect(h.recordBacklog).toHaveBeenCalledWith(
+        'storageOrphanCleanup',
+        [{ tenantId: 't-1', count: 100, oldestDueAt: null }],
+        NOW,
+      );
     });
 
     it('Worker: liefert das Ergebnis als Job-Rückgabe und hört beim Herunterfahren auf', async () => {
@@ -210,12 +261,56 @@ describe('storage orphan cleanup', () => {
           claimed: 0,
           backlog: 5,
           budgetExhausted: true,
+          backlogStatus: STATUS,
         });
         expect(h.findMany).not.toHaveBeenCalled();
       } finally {
         delete worker.closing;
       }
     });
+  });
+
+  it('B14: meldet den Rückstand je Tenant mit der Fälligkeit des ältesten Kandidaten', async () => {
+    const created = (iso: string) => new Date(iso);
+    h.groupBy.mockImplementation(async ({ where }: { where: { immutable: boolean } }) =>
+      where.immutable
+        ? [
+            {
+              tenantId: 't-1',
+              _count: { _all: 2 },
+              // Object Lock: fällig erst mit dem Retention-Ende, nicht mit der Frist.
+              _min: {
+                createdAt: created('2016-03-01T10:00:00.000Z'),
+                retentionUntil: created('2026-08-01T00:00:00.000Z'),
+              },
+            },
+          ]
+        : [
+            {
+              tenantId: 't-1',
+              _count: { _all: 3 },
+              _min: { createdAt: created('2026-08-20T08:00:00.000Z') },
+            },
+            {
+              tenantId: 't-2',
+              _count: { _all: 1 },
+              _min: { createdAt: created('2026-08-23T09:00:00.000Z') },
+            },
+          ],
+    );
+
+    const result = await runStorageOrphanCleanup(NOW);
+
+    expect(h.recordBacklog).toHaveBeenCalledWith(
+      'storageOrphanCleanup',
+      [
+        { tenantId: 't-1', count: 5, oldestDueAt: created('2026-08-01T00:00:00.000Z') },
+        // Nicht unveränderlich: fällig nach der Sicherheitsfrist von 30 Minuten.
+        { tenantId: 't-2', count: 1, oldestDueAt: created('2026-08-23T09:30:00.000Z') },
+      ],
+      NOW,
+    );
+    expect(result).toMatchObject({ backlog: 6, backlogStatus: STATUS });
   });
 
   it('selektiert Object-Lock-Orphans erst nach Retention und löscht versionsgenau', async () => {
@@ -238,6 +333,7 @@ describe('storage orphan cleanup', () => {
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
 
     expect(h.findMany).toHaveBeenCalledWith(
@@ -326,6 +422,7 @@ describe('storage orphan cleanup', () => {
       failed: 1,
       backlog: 0,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
     expect(h.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -364,6 +461,7 @@ describe('storage orphan cleanup', () => {
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenCalledOnce();
@@ -393,6 +491,7 @@ describe('storage orphan cleanup', () => {
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
 
     expect(h.documentVersionFindFirst).toHaveBeenCalledWith({
@@ -493,6 +592,7 @@ describe('storage orphan cleanup', () => {
       failed: 1,
       backlog: 0,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenLastCalledWith(
@@ -529,6 +629,7 @@ describe('storage orphan cleanup', () => {
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenLastCalledWith(
@@ -565,6 +666,7 @@ describe('storage orphan cleanup', () => {
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
     expect(h.documentVersionFindFirst).not.toHaveBeenCalled();
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
@@ -613,6 +715,7 @@ describe('storage orphan cleanup', () => {
       failed: 0,
       backlog: 0,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
 
     expect(h.updateMany).toHaveBeenCalledWith(
@@ -665,6 +768,7 @@ describe('storage orphan cleanup', () => {
         failed: 0,
         backlog: 0,
         budgetExhausted: false,
+        backlogStatus: STATUS,
       });
       expect(h.deleteObjectVersion).not.toHaveBeenCalled();
       expect(h.updateMany).toHaveBeenLastCalledWith({
@@ -789,6 +893,7 @@ describe('storage orphan cleanup', () => {
       failed: 1,
       backlog: 0,
       budgetExhausted: false,
+      backlogStatus: STATUS,
     });
     expect(h.deleteObjectVersion).not.toHaveBeenCalled();
     expect(h.updateMany).toHaveBeenLastCalledWith(

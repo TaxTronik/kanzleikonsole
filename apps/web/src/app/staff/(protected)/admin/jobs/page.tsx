@@ -1,9 +1,29 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
 
 import { fmtDateTimeShort, fmtNumber } from '@/lib/fmt';
-import { getQueuesStatus } from '@/server/jobs/queue-status';
+import { describeBacklogThreshold } from '@/server/jobs/maintenance-backlog';
+import { getQueuesStatus, type QueueStatus } from '@/server/jobs/queue-status';
 
 // Nicht cachen: der Status soll bei jedem Aufruf frisch aus Redis kommen.
+
+/** P-17/B14: Rückstand des letzten Laufs, Fälligkeit des ältesten Eintrags und Alarm. */
+function BacklogCell({ queue }: { queue: QueueStatus }) {
+  const status = queue.backlogStatus;
+  const pending = (queue.backlog ?? 0) > 0;
+  return (
+    <td
+      className={`px-4 py-3 text-right tabular-nums ${pending ? 'text-amber-700 font-medium' : 'text-muted'}`}
+    >
+      {fmtNumber(queue.backlog)}
+      {status?.alarm && <span className="badge-red ml-2 text-[10px]">Alarm</span>}
+      {status?.oldestDueAt && (
+        <div className="text-xs font-normal text-secondary">
+          ältester fällig seit {fmtDateTimeShort(new Date(status.oldestDueAt))}
+        </div>
+      )}
+    </td>
+  );
+}
 
 export default async function AdminJobsPage() {
   await requireStaffPage({ admin: true });
@@ -12,6 +32,9 @@ export default async function AdminJobsPage() {
   const problems = queues.filter((q) => q.stale || q.failed > 0);
   // P-17: Wartungsjobs melden, was nach ihrem Zeitbudget noch fällig ist.
   const withBacklog = queues.filter((q) => (q.backlog ?? 0) > 0);
+  // B14: Rückstand über der Alarmschwelle (der Worker benachrichtigt bereits).
+  const alarmed = queues.filter((q) => q.backlogStatus?.alarm);
+  const threshold = alarmed[0]?.backlogStatus?.threshold;
 
   return (
     <div className="p-8">
@@ -23,7 +46,8 @@ export default async function AdminJobsPage() {
           Hinweis auf einen ausgefallenen periodischen Job. Fehlgeschlagene Jobs (`failed`) sollten
           geprüft werden; die letzte Fehlermeldung steht rechts. „Rückstand" = was der letzte
           erfolgreiche Lauf eines Wartungsjobs als weiterhin fällig gemeldet hat (audit-rotate:
-          Audit-Einträge, storage-orphan-cleanup: Storage-Kandidaten).
+          Audit-Einträge, storage-orphan-cleanup: Storage-Kandidaten), samt Fälligkeit des ältesten
+          offenen Eintrags. „Alarm" = der Rückstand hat die Alarmschwelle erreicht.
         </p>
       </div>
 
@@ -31,6 +55,15 @@ export default async function AdminJobsPage() {
         <div className="alert-warning mb-4 text-sm">
           <strong>{problems.length}</strong> Queue(s) mit veraltetem Lauf oder Fehlern — siehe rot
           markierte Zeilen.
+        </div>
+      )}
+
+      {alarmed.length > 0 && threshold && (
+        <div className="alert-warning mb-4 text-sm">
+          <strong>{alarmed.length}</strong> Wartungsjob(s) über der Alarmschwelle (
+          {describeBacklogThreshold(threshold)}). Admins und Partner der betroffenen Kanzleien
+          erhalten einen Hinweis, die Betriebsadresse (OPS_ALERT_EMAIL, falls gesetzt) höchstens
+          eine Mail je Tag. Bitte die Worker-Logs prüfen.
         </div>
       )}
 
@@ -81,11 +114,7 @@ export default async function AdminJobsPage() {
                     >
                       {q.failed}
                     </td>
-                    <td
-                      className={`px-4 py-3 text-right tabular-nums ${(q.backlog ?? 0) > 0 ? 'text-amber-700 font-medium' : 'text-muted'}`}
-                    >
-                      {fmtNumber(q.backlog)}
-                    </td>
+                    <BacklogCell queue={q} />
                     <td className="px-4 py-3 text-secondary">
                       {q.lastCompletedAt ? fmtDateTimeShort(new Date(q.lastCompletedAt)) : '—'}
                     </td>

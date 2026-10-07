@@ -15,7 +15,7 @@ professional_review:
   reviewed_content_hash: null
 implementation:
   status: partial
-  summary: Der Rotationsjob erzeugt prüfbare NDJSON-Segmente, legt sie im COMPLIANCE-Object-Lock ab und kann Upload- oder Datenbankunterbrechungen vorwärts auflösen. Je Lauf archiviert er Segment um Segment bis zu einem Zeitbudget; ohne verifizierten externen Stempel archivierte Segmente bleiben PENDING und werden von späteren Läufen nachgestempelt.
+  summary: Der Rotationsjob erzeugt prüfbare NDJSON-Segmente, legt sie im COMPLIANCE-Object-Lock ab und kann Upload- oder Datenbankunterbrechungen vorwärts auflösen. Je Lauf archiviert er Segment um Segment bis zu einem Zeitbudget; ohne verifizierten externen Stempel archivierte Segmente bleiben PENDING und werden von späteren Läufen nachgestempelt. Einen anhaltenden Archivierungsrückstand meldet er als Health-Kennzahl und ab einer festen Schwelle als Alarm.
 sources:
   - kind: product_documentation
     citation: Technische Modulbeschreibung Audit-Protokollierung, unveränderliche Langzeitarchivierung
@@ -33,14 +33,23 @@ code_refs:
   - apps/worker/src/jobs/audit-rotate.ts
   - apps/worker/src/tsa-port.ts
   - apps/worker/src/run-budget.ts
+  - apps/worker/src/maintenance-backlog.ts
+  - apps/web/src/server/jobs/maintenance-backlog.ts
   - packages/db/prisma/migrations/20261005110100_audit_archive_tsa_status/migration.sql
+  - packages/db/prisma/migrations/20261007141000_notification_kind_maintenance_backlog/migration.sql
+  - packages/db/prisma/migrations/20261007141100_notification_daily_dedupe_maintenance_backlog/migration.sql
+  - packages/db/prisma/schema.prisma
 test_refs:
   - packages/evidence/src/__tests__/archive.test.ts
   - packages/evidence/src/__tests__/canonical-json-keys.test.ts
   - apps/worker/src/jobs/__tests__/audit-rotate.test.ts
   - apps/worker/src/__tests__/tsa-port.test.ts
   - apps/worker/src/__tests__/run-budget.test.ts
+  - apps/worker/src/__tests__/maintenance-backlog.test.ts
+  - apps/web/src/server/jobs/__tests__/maintenance-backlog.test.ts
+  - apps/web/src/app/api/health/detail/__tests__/route.test.ts
   - packages/db/src/__tests__/audit-archive-tsa-status.test.ts
+  - packages/db/src/__tests__/notification-batch.test.ts
 feature_refs:
   - docs/development/module/audit-protokollierung.md
   - docs/adr/0004-evidence-chain-mit-rfc3161.md
@@ -156,6 +165,18 @@ TSA-Versuch als PENDING. Das Job-Ergebnis meldet den Rückstand fälliger, noch
 nicht archivierter Einträge und die Zahl noch ungestempelter Segmente; die
 Jobübersicht der Administration zeigt den Rückstand an.
 
+Ein vollständiger Lauf meldet den Rückstand zusätzlich als Health-Kennzahl:
+Anzahl, Fälligkeit des ältesten offenen Eintrags (Ereigniszeitpunkt plus
+Mindestalter) und die Zahl der Läufe in Folge mit Rückstand, sichtbar in der
+Jobübersicht und für ADMIN/PARTNER in `/api/health/detail`, ohne
+Kanzleibezug. Besteht der Rückstand nach drei Läufen in Folge noch oder ist
+der älteste offene Eintrag seit mehr als sieben Tagen fällig, erhalten die
+aktiven ADMIN/PARTNER jeder betroffenen Kanzlei einen Hinweis mit deren
+eigenen Zahlen (höchstens eine Neuanlage je Empfänger und Tag) und die
+Betriebsadresse `OPS_ALERT_EMAIL` höchstens eine Mail je Tag. Die Schwelle ist
+eine Betriebsvorgabe, keine fachliche Frist; der Alarm ändert weder Auswahl
+noch Inhalt oder Ablage der Segmente.
+
 Eigene JSON-Schlüssel einschließlich `__proto__` werden beim NDJSON-Export
 vollständig erhalten. Die gemeinsame Kanonisierung verwendet dafür ein
 Objekt ohne geerbte Setter. Eine Änderung allein in einem solchen Feld führt
@@ -207,7 +228,12 @@ außerdem die Archivierung als PENDING bei TSA-Fehler, nicht auflösbarer TSA
 oder lokalem Zeitstempel, das Verwerfen nicht verifizierter Antworten, das
 Nachstempeln nach Objekt- und Kettenprüfung, das Ausbleiben eines Stempels für
 abweichende Objekte, den Abbruch beim ersten TSA-Fehler sowie den Nachlauf bis
-zum Zeitbudget mit gemeldetem Rückstand. Der Datenbanktest belegt, dass der
+zum Zeitbudget mit gemeldetem Rückstand. Die Tests zum Rückstandsalarm belegen
+die Messung je Tenant samt Fälligkeit des ältesten Eintrags, die Schwelle
+(Läufe in Folge oder Alter seit Fälligkeit), Empfänger und Tagesdedupe von
+Hinweis und Mail sowie die Health-Ausgabe ohne Kanzleibezug, der
+Notification-Datenbanktest die Tagesgrenze der Hinweise. Der Datenbanktest
+belegt, dass der
 Update-Trigger nur den einmaligen Nachstempel eines PENDING-Segments zulässt,
 und die Einordnung von Bestandssegmenten nach vorhandenem Token. Der
 TSA-Port-Test belegt die Auswahlreihenfolge und die Auflösbarkeitsprüfung vor

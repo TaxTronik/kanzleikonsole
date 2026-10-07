@@ -17,8 +17,10 @@ implementation:
   status: partial
   summary: >-
     Tägliche Worker löschen oder neutralisieren ausgewählte Datenklassen nach
-    festen Kanzlei-Defaults und protokollieren Treffer sowie Cutoffs. Eine
-    allgemeine Rechtsgrundlagen-, Legal-Hold- oder Datenklassen-Engine fehlt.
+    festen Kanzlei-Defaults und protokollieren Treffer sowie Cutoffs. Einen
+    anhaltenden Rückstand der Orphan-Bereinigung melden sie als Health-Kennzahl
+    und ab einer festen Schwelle als Alarm. Eine allgemeine Rechtsgrundlagen-,
+    Legal-Hold- oder Datenklassen-Engine fehlt.
 sources:
   - kind: internal_policy
     citation: DSGVO-Lösch-, Aufbewahrungs- und Verarbeitungskonzept, feste Betriebsfristen
@@ -33,6 +35,11 @@ sources:
 code_refs:
   - apps/worker/src/jobs/storage-orphan-cleanup.ts
   - apps/worker/src/run-budget.ts
+  - apps/worker/src/maintenance-backlog.ts
+  - apps/web/src/server/jobs/maintenance-backlog.ts
+  - packages/db/prisma/migrations/20261007141000_notification_kind_maintenance_backlog/migration.sql
+  - packages/db/prisma/migrations/20261007141100_notification_daily_dedupe_maintenance_backlog/migration.sql
+  - packages/db/prisma/schema.prisma
   - apps/worker/src/jobs/dsgvo-retention.ts
   - apps/worker/src/jobs/n8n-retention.ts
   - apps/worker/src/jobs/magic-link-cleanup.ts
@@ -40,7 +47,10 @@ code_refs:
   - apps/web/src/server/inbox/retention-settings.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
+  - apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts
   - apps/worker/src/__tests__/run-budget.test.ts
+  - apps/worker/src/__tests__/maintenance-backlog.test.ts
+  - apps/web/src/server/jobs/__tests__/maintenance-backlog.test.ts
   - apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts
   - apps/worker/src/jobs/__tests__/n8n-retention.test.ts
   - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
@@ -140,6 +150,20 @@ fehlerhaften Objekten und einem jüngeren löschbaren Objekt, dass das löschbar
 Objekt im zweiten Batch gelöscht wird und jeder gescheiterte Kandidat höchstens
 einen Versuch je Lauf erhält. Weitere Tests belegen den Nachlauf über mehrere
 Batches und das Ende am Zeitbudget mit gemeldetem Rückstand.
+
+Der Lauf misst den Rückstand je Tenant mit derselben Fälligkeitsbedingung wie
+Auswahl und Claim, samt Fälligkeit des ältesten Kandidaten (Journaleintrag
+plus Sicherheitsfrist, bei Object Lock frühestens das Retention-Ende), und
+meldet daraus eine Health-Kennzahl: Anzahl, ältester offener Kandidat und Läufe
+in Folge mit Rückstand, sichtbar in der Jobübersicht und für ADMIN/PARTNER in
+`/api/health/detail`, ohne Kanzleibezug. Besteht der Rückstand nach drei
+Läufen in Folge noch oder ist der älteste Kandidat seit mehr als sieben Tagen
+fällig, erhalten die aktiven ADMIN/PARTNER jeder betroffenen Kanzlei einen
+Hinweis mit deren eigenen Zahlen (höchstens eine Neuanlage je Empfänger und
+Tag) und die Betriebsadresse `OPS_ALERT_EMAIL` höchstens eine Mail je Tag. Die
+Schwelle ist eine Betriebsvorgabe, keine Löschfrist; der Alarm ändert weder
+Auswahl noch Prüfungen oder Löschung. Ein Datenbanktest belegt die Messung
+gegen PostgreSQL, Unit-Tests belegen Schwelle, Empfänger und Tagesdedupe.
 
 Der DSGVO-Worker berechnet tenantbezogene Cutoffs, löscht beziehungsweise
 nullt die definierten Klassen und schreibt nur bei tatsächlichen Änderungen

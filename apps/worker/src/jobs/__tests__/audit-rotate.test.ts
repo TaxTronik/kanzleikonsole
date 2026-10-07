@@ -16,6 +16,8 @@
 //     stempelt nach geprüftem Objekt nach (STAMPED_LATE)
 //   - RF-13: AUDIT_ARCHIVE_MODE=HARD wird ehrlich als SOFT persistiert
 //     (DB-Cleanup nicht implementiert — kein irreführender HARD-Nachweis)
+//   - B14: ein vollständiger Lauf übergibt den Rückstand je Tenant samt
+//     Fälligkeit des ältesten Eintrags an maintenance-backlog (Kennzahl/Alarm)
 // Fachkatalog: AUDIT-ARCHIVE-001, AUDIT-RFC3161-ANCHOR-001
 // =============================================================================
 
@@ -33,7 +35,7 @@ const h = vi.hoisted(() => {
       updateMany: vi.fn(),
       count: vi.fn(),
     },
-    auditLog: { aggregate: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+    auditLog: { aggregate: vi.fn(), findMany: vi.fn(), count: vi.fn(), findFirst: vi.fn() },
     tenantSetting: { findUnique: vi.fn() },
   };
   const s3Send = vi.fn();
@@ -47,6 +49,7 @@ const h = vi.hoisted(() => {
   // RF-13: hoisted, damit der Logger auch nach vi.resetModules() (HARD-Test
   // unten) objekt-identisch geteilt bleibt und Warn-Assertions möglich sind.
   const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() };
+  const recordBacklog = vi.fn();
   return {
     prismaOwner,
     s3Send,
@@ -58,6 +61,7 @@ const h = vi.hoisted(() => {
     resolveTsa,
     retention,
     log,
+    recordBacklog,
   };
 });
 
@@ -66,6 +70,7 @@ vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('../../logger', () => ({ log: h.log }));
 vi.mock('../../tsa-port', () => ({ resolveTsa: h.resolveTsa }));
+vi.mock('../../maintenance-backlog', () => ({ recordMaintenanceBacklog: h.recordBacklog }));
 vi.mock('@taxtronik/config', () => ({ env: { S3_BUCKET_GOBD: 'gobd-bucket' } }));
 vi.mock('@taxtronik/storage', () => ({
   s3: { send: h.s3Send },
@@ -108,8 +113,10 @@ interface RotateResult {
   backlog: number;
   pendingStamps: number;
   budgetExhausted: boolean;
+  backlogStatus: unknown;
 }
 
+// Die Tests laufen auf einen Tenant begrenzt (data.tenantId): ohne Kennzahl (B14).
 const NOTHING: RotateResult = {
   totalArchived: 0,
   totalDeleted: 0,
@@ -119,6 +126,7 @@ const NOTHING: RotateResult = {
   backlog: 0,
   pendingStamps: 0,
   budgetExhausted: false,
+  backlogStatus: null,
 };
 const ROTATED: RotateResult = { ...NOTHING, totalArchived: 2, segments: 1 };
 
@@ -666,6 +674,72 @@ describe('P-17: Nachlauf bis nichts mehr fällig ist oder das Zeitbudget endet',
     } finally {
       delete worker.closing;
     }
+  });
+});
+
+describe('B14: Rückstand als Health-Kennzahl (vollständiger Lauf)', () => {
+  const STATUS = {
+    count: 4,
+    oldestDueAt: '2026-04-15T08:00:00.000Z',
+    consecutiveRuns: 1,
+    alarm: false,
+    threshold: { consecutiveRuns: 3, maxOverdueMs: 7 * 24 * 60 * 60 * 1000 },
+  };
+
+  function runAll(): Promise<RotateResult> {
+    return processors.get('audit-rotate')!({ data: {} }) as Promise<RotateResult>;
+  }
+
+  beforeEach(() => {
+    h.recordBacklog.mockResolvedValue(STATUS);
+  });
+
+  it('übergibt den Rückstand je Tenant samt Fälligkeit des ältesten Eintrags', async () => {
+    h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }, { id: 'tenant-2' }]);
+    h.prismaOwner.auditLog.count.mockResolvedValue(2);
+    // Ältester offener Eintrag: der erste des fälligen id-Bereichs.
+    h.prismaOwner.auditLog.findFirst.mockResolvedValue({
+      occurredAt: new Date('2026-01-15T08:00:00.000Z'),
+    });
+    const worker = auditRotateWorker as unknown as { closing?: Promise<void> };
+    worker.closing = Promise.resolve();
+    try {
+      const result = await runAll();
+
+      expect(h.prismaOwner.auditLog.findFirst).toHaveBeenCalledWith({
+        where: { tenantId: TENANT, id: { gt: 5n, lte: 7n } },
+        orderBy: { id: 'asc' },
+        select: { occurredAt: true },
+      });
+      // Fällig MIN_AGE_DAYS (90) nach dem Ereigniszeitpunkt.
+      expect(h.recordBacklog).toHaveBeenCalledWith('auditRotate', [
+        { tenantId: TENANT, count: 2, oldestDueAt: new Date('2026-04-15T08:00:00.000Z') },
+        { tenantId: 'tenant-2', count: 2, oldestDueAt: new Date('2026-04-15T08:00:00.000Z') },
+      ]);
+      expect(result).toEqual({
+        ...NOTHING,
+        backlog: 4,
+        budgetExhausted: true,
+        backlogStatus: STATUS,
+      });
+    } finally {
+      delete worker.closing;
+    }
+  });
+
+  it('meldet auch einen Lauf ohne Rückstand, damit Zählung und offene Hinweise enden', async () => {
+    const result = await runAll();
+
+    expect(h.recordBacklog).toHaveBeenCalledWith('auditRotate', []);
+    expect(h.prismaOwner.auditLog.count).not.toHaveBeenCalled();
+    expect(result).toEqual({ ...ROTATED, backlogStatus: STATUS });
+  });
+
+  it('ein auf einen Tenant begrenzter Lauf liefert keine Kennzahl und alarmiert nicht', async () => {
+    const result = await run();
+
+    expect(h.recordBacklog).not.toHaveBeenCalled();
+    expect(result.backlogStatus).toBeNull();
   });
 });
 

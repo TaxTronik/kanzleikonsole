@@ -25,6 +25,9 @@
 // weiteren Segmente des Tenants in diesem Lauf ohne neuen TSA-Versuch PENDING.
 // Das Job-Ergebnis meldet den Rückstand (`backlog`: fällige, noch nicht
 // archivierte Einträge) und die noch ungestempelten Segmente (`pendingStamps`).
+// B14: Ein vollständiger Lauf (ohne tenantId) übergibt den Rückstand je Tenant
+// samt Fälligkeit des ältesten offenen Eintrags an maintenance-backlog.ts —
+// Health-Kennzahl `backlogStatus` und Alarm ab der dort definierten Schwelle.
 //
 // Konfiguration:
 //   - AUDIT_ARCHIVE_BATCH (Default 5000): max. Einträge pro Segment
@@ -58,7 +61,13 @@ import { prismaOwner } from '../prisma-owner';
 import { prismaBytes } from '../pg-conn';
 import { resolveTsa } from '../tsa-port';
 import { isWorkerClosing, startRunBudget, type RunBudget } from '../run-budget';
+import {
+  recordMaintenanceBacklog,
+  type MaintenanceBacklogStatus,
+  type TenantBacklog,
+} from '../maintenance-backlog';
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 const BATCH = Number(process.env['AUDIT_ARCHIVE_BATCH'] ?? '5000');
 const MIN_AGE_DAYS = Number(process.env['AUDIT_ARCHIVE_MIN_AGE_DAYS'] ?? '90');
 const MODE_RAW = (process.env['AUDIT_ARCHIVE_MODE'] ?? 'SOFT') as 'SOFT' | 'HARD';
@@ -296,13 +305,25 @@ async function dueRange(
   return maxId === null || maxId <= sinceId ? null : { sinceId, maxId };
 }
 
-/** P-17: Rückstand eines Tenants — fällige, noch nicht archivierte Einträge. */
-async function countDueEntries(tenantId: string, cutoff: Date): Promise<number> {
+/**
+ * P-17/B14: Rückstand eines Tenants — fällige, noch nicht archivierte Einträge
+ * und die Fälligkeit des ältesten davon (erster Eintrag des Bereichs plus
+ * MIN_AGE_DAYS; die id folgt der Schreibreihenfolge).
+ */
+async function measureDueEntries(tenantId: string, cutoff: Date): Promise<TenantBacklog> {
   const range = await dueRange(tenantId, cutoff);
-  if (!range) return 0;
-  return prismaOwner.auditLog.count({
-    where: { tenantId, id: { gt: range.sinceId, lte: range.maxId } },
-  });
+  if (!range) return { tenantId, count: 0, oldestDueAt: null };
+  const where = { tenantId, id: { gt: range.sinceId, lte: range.maxId } };
+  const [count, oldest] = await Promise.all([
+    prismaOwner.auditLog.count({ where }),
+    prismaOwner.auditLog.findFirst({
+      where,
+      orderBy: { id: 'asc' },
+      select: { occurredAt: true },
+    }),
+  ]);
+  const oldestDueAt = oldest ? new Date(oldest.occurredAt.getTime() + MIN_AGE_DAYS * DAY_MS) : null;
+  return { tenantId, count, oldestDueAt };
 }
 
 type SerializedArchive = ReturnType<typeof serializeArchive>;
@@ -505,6 +526,12 @@ export interface AuditRotateResult {
   pendingStamps: number;
   /** P-17: der Lauf endete am Zeitbudget oder wegen Herunterfahrens. */
   budgetExhausted: boolean;
+  /**
+   * B14: Health-Kennzahl des Rückstands (Anzahl, ältester offener Eintrag,
+   * Läufe in Folge, Alarm). null bei einem auf einen Tenant begrenzten Lauf:
+   * Kennzahl und Alarm beruhen nur auf vollständigen Läufen.
+   */
+  backlogStatus: MaintenanceBacklogStatus | null;
 }
 
 export async function runAuditRotate(
@@ -546,9 +573,11 @@ export async function runAuditRotate(
     if (!archived.complete) unfinished.push(tenantId);
   }
 
-  // P-17: Rückstand nur für Tenants zählen, die der Lauf nicht abschließen konnte.
-  let backlog = 0;
-  for (const tenantId of unfinished) backlog += await countDueEntries(tenantId, cutoff);
+  // P-17: Rückstand nur für Tenants messen, die der Lauf nicht abschließen konnte;
+  // die übrigen haben mit diesem Stichtag nichts Fälliges mehr.
+  const tenantBacklogs: TenantBacklog[] = [];
+  for (const tenantId of unfinished) tenantBacklogs.push(await measureDueEntries(tenantId, cutoff));
+  const backlog = tenantBacklogs.reduce((sum, tenant) => sum + tenant.count, 0);
   const pendingStamps = await prismaOwner.auditArchive.count({
     where: { tsaStatus: 'PENDING', ...(data.tenantId ? { tenantId: data.tenantId } : {}) },
   });
@@ -561,6 +590,9 @@ export async function runAuditRotate(
     backlog,
     pendingStamps,
     budgetExhausted: unfinished.length > 0,
+    backlogStatus: data.tenantId
+      ? null
+      : await recordMaintenanceBacklog('auditRotate', tenantBacklogs),
   };
   if (backlog > 0) {
     log.warn(

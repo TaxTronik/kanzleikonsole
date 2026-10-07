@@ -23,6 +23,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- **[Scope]** Der Rückstand der Wartungsjobs (Audit-Archivierung, Bereinigung
+  verwaister Speicherobjekte) ist eine Health-Kennzahl: Anzahl und Fälligkeit
+  des ältesten offenen Eintrags je Job stehen unter „System → Jobs“ und für
+  Admins und Partner in `GET /api/health/detail`. Besteht ein Rückstand nach 3
+  Läufen in Folge noch oder ist der älteste offene Eintrag seit mehr als 7
+  Tagen fällig (Konstante `MAINTENANCE_BACKLOG_ALARM_THRESHOLD`), erhalten die
+  aktiven Admins und Partner der betroffenen Kanzlei einen Hinweis und die
+  Betriebsadresse `OPS_ALERT_EMAIL` eine Mail, jeweils höchstens einmal
+  täglich (`AUDIT-ARCHIVE-001`, `DSGVO-OPERATIONAL-RETENTION-001`).
 - Postgres lädt `pg_stat_statements` (Laufzeitstatistik je normalisierter
   Anweisung, ohne Parameterwerte und Utility-Anweisungen), lesbar für
   Superuser und `pg_monitor`. Neue Installationen legen die Extension in der

@@ -125,6 +125,8 @@ export const NOTIFICATION_KIND_LABELS: Readonly<Record<string, string>> = {
   SYSTEM_BACKUP_FAILED: 'Backup fehlgeschlagen',
   SYSTEM_AUDIT_BREAK: 'Audit-Chain-Bruch',
   SYSTEM_AUDIT_OK: 'Audit-Chain intakt',
+  SYSTEM_AUDIT_ARCHIVE_BACKLOG: 'Rückstand Audit-Archivierung',
+  SYSTEM_STORAGE_CLEANUP_BACKLOG: 'Rückstand Speicherbereinigung',
 };
 
 export const INVOICE_STATUS_LABELS: Readonly<Record<string, string>> = {

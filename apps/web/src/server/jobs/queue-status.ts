@@ -13,6 +13,8 @@
 // P-17: Wartungsjobs mit Zeitbudget (audit-rotate, storage-orphan-cleanup)
 // melden im Job-Ergebnis `backlog`: was nach dem Lauf weiterhin fällig ist.
 // Der Wert des letzten erfolgreichen Laufs erscheint als Kennzahl „Rückstand".
+// B14: dazu `backlogStatus` (ältester offener Eintrag, Läufe in Folge, Alarm),
+// siehe maintenance-backlog.ts.
 // =============================================================================
 
 import { QUEUE_HEALTH } from '@taxtronik/config/job-queues';
@@ -20,6 +22,7 @@ import { log } from '@/server/logger';
 
 import { withTimeout } from '@/lib/with-timeout';
 import { getWebQueue, WEB_QUEUE_TIMEOUT_MS } from './bullmq';
+import { readBacklogStatus, type MaintenanceBacklogStatus } from './maintenance-backlog';
 
 export interface QueueStatus {
   name: string;
@@ -41,6 +44,8 @@ export interface QueueStatus {
    * unaufgelöste Storage-Kandidaten). null = die Queue meldet keinen Rückstand.
    */
   backlog: number | null;
+  /** B14: Rückstands-Kennzahl samt Alarm laut letztem vollständigen Lauf; sonst null. */
+  backlogStatus: MaintenanceBacklogStatus | null;
 }
 
 /** P-17: `backlog` aus dem Ergebnis eines Jobs, sofern es eine gültige Zahl ist. */
@@ -81,6 +86,7 @@ export async function getQueuesStatus(now: number = Date.now()): Promise<QueueSt
           lastFailedReason: lastFailed?.failedReason ?? null,
           stale,
           backlog: readBacklog(lastCompleted?.returnvalue),
+          backlogStatus: readBacklogStatus(lastCompleted?.returnvalue),
         };
       } catch (err) {
         log.warn(
@@ -101,6 +107,7 @@ export async function getQueuesStatus(now: number = Date.now()): Promise<QueueSt
           lastFailedReason: 'Status nicht lesbar',
           stale: true,
           backlog: null,
+          backlogStatus: null,
         };
       }
     }),

@@ -791,7 +791,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Der Rotationsjob erzeugt prüfbare NDJSON-Segmente, legt sie im COMPLIANCE-Object-Lock ab und kann Upload- oder Datenbankunterbrechungen vorwärts auflösen. Je Lauf archiviert er Segment um Segment bis zu einem Zeitbudget; ohne verifizierten externen Stempel archivierte Segmente bleiben PENDING und werden von späteren Läufen nachgestempelt."
+        "summary": "Der Rotationsjob erzeugt prüfbare NDJSON-Segmente, legt sie im COMPLIANCE-Object-Lock ab und kann Upload- oder Datenbankunterbrechungen vorwärts auflösen. Je Lauf archiviert er Segment um Segment bis zu einem Zeitbudget; ohne verifizierten externen Stempel archivierte Segmente bleiben PENDING und werden von späteren Läufen nachgestempelt. Einen anhaltenden Archivierungsrückstand meldet er als Health-Kennzahl und ab einer festen Schwelle als Alarm."
       },
       "sources": [
         {
@@ -815,7 +815,12 @@
         "apps/worker/src/jobs/audit-rotate.ts",
         "apps/worker/src/tsa-port.ts",
         "apps/worker/src/run-budget.ts",
-        "packages/db/prisma/migrations/20261005110100_audit_archive_tsa_status/migration.sql"
+        "apps/worker/src/maintenance-backlog.ts",
+        "apps/web/src/server/jobs/maintenance-backlog.ts",
+        "packages/db/prisma/migrations/20261005110100_audit_archive_tsa_status/migration.sql",
+        "packages/db/prisma/migrations/20261007141000_notification_kind_maintenance_backlog/migration.sql",
+        "packages/db/prisma/migrations/20261007141100_notification_daily_dedupe_maintenance_backlog/migration.sql",
+        "packages/db/prisma/schema.prisma"
       ],
       "test_refs": [
         "packages/evidence/src/__tests__/archive.test.ts",
@@ -823,7 +828,11 @@
         "apps/worker/src/jobs/__tests__/audit-rotate.test.ts",
         "apps/worker/src/__tests__/tsa-port.test.ts",
         "apps/worker/src/__tests__/run-budget.test.ts",
-        "packages/db/src/__tests__/audit-archive-tsa-status.test.ts"
+        "apps/worker/src/__tests__/maintenance-backlog.test.ts",
+        "apps/web/src/server/jobs/__tests__/maintenance-backlog.test.ts",
+        "apps/web/src/app/api/health/detail/__tests__/route.test.ts",
+        "packages/db/src/__tests__/audit-archive-tsa-status.test.ts",
+        "packages/db/src/__tests__/notification-batch.test.ts"
       ],
       "feature_refs": [
         "docs/development/module/audit-protokollierung.md",
@@ -2221,7 +2230,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Tägliche Worker löschen oder neutralisieren ausgewählte Datenklassen nach festen Kanzlei-Defaults und protokollieren Treffer sowie Cutoffs. Eine allgemeine Rechtsgrundlagen-, Legal-Hold- oder Datenklassen-Engine fehlt."
+        "summary": "Tägliche Worker löschen oder neutralisieren ausgewählte Datenklassen nach festen Kanzlei-Defaults und protokollieren Treffer sowie Cutoffs. Einen anhaltenden Rückstand der Orphan-Bereinigung melden sie als Health-Kennzahl und ab einer festen Schwelle als Alarm. Eine allgemeine Rechtsgrundlagen-, Legal-Hold- oder Datenklassen-Engine fehlt."
       },
       "sources": [
         {
@@ -2242,6 +2251,11 @@
       "code_refs": [
         "apps/worker/src/jobs/storage-orphan-cleanup.ts",
         "apps/worker/src/run-budget.ts",
+        "apps/worker/src/maintenance-backlog.ts",
+        "apps/web/src/server/jobs/maintenance-backlog.ts",
+        "packages/db/prisma/migrations/20261007141000_notification_kind_maintenance_backlog/migration.sql",
+        "packages/db/prisma/migrations/20261007141100_notification_daily_dedupe_maintenance_backlog/migration.sql",
+        "packages/db/prisma/schema.prisma",
         "apps/worker/src/jobs/dsgvo-retention.ts",
         "apps/worker/src/jobs/n8n-retention.ts",
         "apps/worker/src/jobs/magic-link-cleanup.ts",
@@ -2250,7 +2264,10 @@
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts",
+        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts",
         "apps/worker/src/__tests__/run-budget.test.ts",
+        "apps/worker/src/__tests__/maintenance-backlog.test.ts",
+        "apps/web/src/server/jobs/__tests__/maintenance-backlog.test.ts",
         "apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts",
         "apps/worker/src/jobs/__tests__/n8n-retention.test.ts",
         "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts"

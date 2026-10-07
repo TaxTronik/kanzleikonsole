@@ -1,4 +1,5 @@
 // Fachkatalog: ACCESS-NOTIFICATION-RECIPIENT-001
+// Fachkatalog: AUDIT-ARCHIVE-001, DSGVO-OPERATIONAL-RETENTION-001 (B14-Rückstandsalarm)
 //
 // R-11: upsertNotificationsTx (gebündelter Worker-Pfad hinter notify()) wirkt je
 // Eintrag wie nacheinander ausgeführte upsertNotificationTx-Aufrufe: ungelesene
@@ -7,6 +8,8 @@
 // Scope ab, Texte laufen durch den Sanitizer. Bewusste Abweichung: ein Konflikt
 // mit dem Tages-Dedupe-Index wird übersprungen, statt die Transaktion
 // abzubrechen. insertNotificationsTx (Tages-Erinnerungen) legt je Tag einmal an.
+// B14: Die Rückstandshinweise der Wartungsjobs fallen unter die Tages-Dedupe-
+// Indizes (20261007141100): je Empfänger und UTC-Tag höchstens eine Neuanlage.
 import { randomUUID } from 'node:crypto';
 
 import { afterAll, describe, expect, it } from 'vitest';
@@ -258,4 +261,53 @@ describeWithDatabase('R-11: gebündelter Notification-Pfad', () => {
       'Erinnerung ‹c>',
     ]);
   });
+
+  it.each(['SYSTEM_AUDIT_ARCHIVE_BACKLOG', 'SYSTEM_STORAGE_CLEANUP_BACKLOG'] as const)(
+    'B14: legt %s je Empfänger und UTC-Tag höchstens einmal neu an',
+    async (kind) => {
+      const fixture = await createFixture(`backlog-${kind.toLowerCase()}`);
+      const notice: NotificationUpsertInput = {
+        tenantId: fixture.tenantId,
+        staffId: fixture.staff.a,
+        kind,
+        title: 'Wartungsrückstand',
+        href: '/staff/admin/jobs',
+        resourceType: 'tenant',
+        resourceId: fixture.tenantId,
+      };
+      // Der Hinweis von gestern ist gelesen und zählt für heute nicht.
+      await owner.notification.create({
+        data: { ...notice, createdAt: new Date(Date.now() - 86_400_000), readAt: new Date() },
+      });
+      const upsert = () =>
+        asWorker(fixture.tenantId, (tx) =>
+          upsertNotificationsTx(tx, [{ ...notice, body: 'aktuelle Zahlen' }]),
+        );
+
+      await expect(upsert()).resolves.toEqual({ created: 1, updated: 0 });
+      // Ungelesen: derselbe Hinweis wird aktualisiert, nicht dupliziert.
+      await expect(upsert()).resolves.toEqual({ created: 0, updated: 1 });
+      await owner.notification.updateMany({
+        where: { tenantId: fixture.tenantId, kind, readAt: null },
+        data: { readAt: new Date() },
+      });
+      // Heute gelesen: der Tages-Index lässt keine zweite Neuanlage zu.
+      await expect(upsert()).resolves.toEqual({ created: 0, updated: 0 });
+      // Ein anderer Empfänger ist ein eigener Schlüssel.
+      await expect(
+        asWorker(fixture.tenantId, (tx) =>
+          upsertNotificationsTx(tx, [{ ...notice, staffId: fixture.staff.b }]),
+        ),
+      ).resolves.toEqual({ created: 1, updated: 0 });
+
+      expect(
+        await owner.notification.count({
+          where: { tenantId: fixture.tenantId, staffId: fixture.staff.a, kind },
+        }),
+      ).toBe(2);
+      await expect(
+        owner.notification.create({ data: { ...notice, readAt: new Date() } }),
+      ).rejects.toThrow();
+    },
+  );
 });

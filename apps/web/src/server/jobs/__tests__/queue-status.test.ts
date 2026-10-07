@@ -2,6 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   now: 0,
+  // B14: Ergebnis eines vollständigen audit-rotate-Laufs mit Kennzahl.
+  backlogStatus: {
+    count: 15_000,
+    oldestDueAt: '2026-09-28T03:00:00.000Z',
+    consecutiveRuns: 2,
+    alarm: true,
+    threshold: { consecutiveRuns: 3, maxOverdueMs: 604_800_000 },
+  },
 }));
 
 vi.mock('@/server/logger', () => ({
@@ -18,19 +26,22 @@ vi.mock('../bullmq', () => ({
       failed: 0,
       delayed: 0,
     }),
-    getCompleted: vi
-      .fn()
-      .mockResolvedValue(
-        name === 'audit-anchor'
-          ? [{ finishedOn: state.now - 20_000 }]
-          : name === 'tax-news-fetch'
-            ? [{ finishedOn: state.now - 14 * 60 * 60 * 1_000 }]
-            : name === 'audit-rotate'
-              ? [{ finishedOn: state.now - 60_000, returnvalue: { backlog: 15_000 } }]
-              : name === 'storage-orphan-cleanup'
-                ? [{ finishedOn: state.now - 60_000, returnvalue: { backlog: 0 } }]
-                : [],
-      ),
+    getCompleted: vi.fn().mockResolvedValue(
+      name === 'audit-anchor'
+        ? [{ finishedOn: state.now - 20_000 }]
+        : name === 'tax-news-fetch'
+          ? [{ finishedOn: state.now - 14 * 60 * 60 * 1_000 }]
+          : name === 'audit-rotate'
+            ? [
+                {
+                  finishedOn: state.now - 60_000,
+                  returnvalue: { backlog: 15_000, backlogStatus: state.backlogStatus },
+                },
+              ]
+            : name === 'storage-orphan-cleanup'
+              ? [{ finishedOn: state.now - 60_000, returnvalue: { backlog: 0 } }]
+              : [],
+    ),
     getFailed: vi.fn().mockResolvedValue([]),
   }),
 }));
@@ -69,6 +80,19 @@ describe('queue status schedule health', () => {
     // Queues without a backlog contract (or without a completed run) report none.
     expect(statuses.get('audit-anchor')?.backlog).toBeNull();
     expect(statuses.get('n8n-deliver')?.backlog).toBeNull();
+  });
+
+  it('B14: reads the backlog health status (oldest due item, runs, alarm) of the last run', async () => {
+    state.now = Date.UTC(2026, 9, 5, 12);
+
+    const statuses = new Map(
+      (await getQueuesStatus(state.now)).map((status) => [status.name, status]),
+    );
+
+    expect(statuses.get('audit-rotate')?.backlogStatus).toEqual(state.backlogStatus);
+    // A result from before B14 only carries the count.
+    expect(statuses.get('storage-orphan-cleanup')?.backlogStatus).toBeNull();
+    expect(statuses.get('n8n-deliver')?.backlogStatus).toBeNull();
   });
 
   it.each([undefined, null, 'x', {}, { backlog: '3' }, { backlog: -1 }, { backlog: Infinity }])(

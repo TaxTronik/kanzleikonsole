@@ -57,6 +57,9 @@ docker builder prune --force --filter "until=168h"
 
 Keine Volumes löschen, solange kein Restore-/Migrationsplan vorliegt.
 
+5. „System → Jobs“ prüfen: keine veralteten oder fehlgeschlagenen Queues und
+   kein Wartungsjob mit „Alarm“ (siehe [Wartungsrückstand](#wartungsrückstand-audit-rotate-storage-orphan-cleanup)).
+
 ## Monatliche Routine
 
 1. Restore-Drill ausführen oder den automatischen Drill-Nachweis prüfen.
@@ -515,6 +518,82 @@ Die Statistik überlebt Neustarts; nach einer Optimierung setzt
 Anweisungen mit Dauer, aber ohne Parameterwerte, stehen zusätzlich im
 Postgres-Log (`log_min_duration_statement`, Default 1000 ms).
 
+## Wartungsrückstand (audit-rotate, storage-orphan-cleanup)
+
+Die Audit-Archivierung (`audit-rotate`, wöchentlich) und die Bereinigung
+verwaister Speicherobjekte (`storage-orphan-cleanup`, alle 6 Stunden) arbeiten
+je Lauf bis zu etwa zehn Minuten und melden, was danach weiterhin fällig ist.
+„Fällig“ heißt: Audit-Einträge 90 Tage nach ihrem Ereigniszeitpunkt
+(`AUDIT_ARCHIVE_MIN_AGE_DAYS`), Speicherkandidaten 30 Minuten nach dem
+Journaleintrag, Object-Lock-Objekte erst mit dem gespeicherten
+Retention-Ende.
+
+**Kennzahl.** Jeder vollständige Lauf meldet die Zahl offener fälliger
+Einträge, die Fälligkeit des ältesten davon, wie viele Läufe in Folge mit
+Rückstand endeten und ob die Alarmschwelle erreicht ist. Sichtbar ist das
+unter „System → Jobs“ (Spalte „Rückstand“, Badge „Alarm“) und in
+`GET /api/health/detail` (nur ADMIN/PARTNER) im Abschnitt `maintenance`:
+
+```json
+"maintenance": {
+  "status": "alarm",
+  "jobs": [
+    {
+      "queue": "audit-rotate",
+      "readable": true,
+      "lastRunAt": "2026-10-04T03:12:00.000Z",
+      "backlog": 1200,
+      "oldestPendingDueAt": "2026-09-28T03:00:00.000Z",
+      "oldestPendingAgeMs": 795600000,
+      "consecutiveRuns": 2,
+      "alarm": true,
+      "threshold": { "consecutiveRuns": 3, "maxOverdueMs": 604800000 }
+    }
+  ]
+}
+```
+
+`oldestPendingAgeMs` ist das Alter des ältesten offenen Eintrags seit seiner
+Fälligkeit zum Abfragezeitpunkt; zwischen zwei Läufen wächst es weiter.
+`maintenance.status` ist `alarm`, solange ein Job über der Schwelle liegt, und
+`unknown`, wenn ein Status in Redis nicht lesbar war. Der Abschnitt enthält
+keine Kanzlei- oder Tenant-Angaben. HTTP-Code und `status` der Route folgen
+weiter nur den Diensten: Ein Rückstand ist kein Ausfall. Die öffentliche
+`/api/health` bleibt beim binären Dienststatus; der Docker-HEALTHCHECK und
+Auto-Restart reagieren deshalb nicht auf einen Rückstand.
+
+**Alarmschwelle.** Alarm, sobald der Rückstand nach **3 Läufen in Folge**
+noch besteht **oder** der älteste offene Eintrag seit **mehr als 7 Tagen**
+fällig ist. Die Werte stehen ausschließlich in der Konstanten
+`MAINTENANCE_BACKLOG_ALARM_THRESHOLD` in `apps/worker/src/maintenance-backlog.ts`;
+Job-Ergebnis und Health-Ausgabe übernehmen sie von dort. Effektiv heißt das:
+`storage-orphan-cleanup` alarmiert nach etwa 12 Stunden anhaltendem Rückstand
+(drei Läufe im 6-Stunden-Takt), `audit-rotate` spätestens beim dritten
+Wochenlauf in Folge mit Rückstand, meist schon beim zweiten: Ist der älteste
+offene Eintrag dann noch derselbe wie eine Woche zuvor, ist er länger als
+7 Tage fällig.
+
+**Alarmwege**, beide je Tag dedupliziert:
+
+- Benachrichtigung an die aktiven ADMIN/PARTNER jeder betroffenen Kanzlei mit
+  den Zahlen dieser Kanzlei (Art „Rückstand Audit-Archivierung“ bzw.
+  „Rückstand Speicherbereinigung“, Link auf „System → Jobs“). Eine ungelesene
+  Benachrichtigung wird bei jedem Lauf aktualisiert; neu angelegt wird
+  höchstens eine je Empfänger und UTC-Tag. Fällt der Rückstand unter die
+  Schwelle, schließt der nächste Lauf offene Hinweise.
+- Mail an `OPS_ALERT_EMAIL` (derselbe Weg wie `health-alert`) mit den
+  Gesamtzahlen ohne Kanzleibezug, höchstens eine je Job und UTC-Tag. Scheitert
+  der Versand, versucht es der nächste Lauf erneut. Ohne `OPS_ALERT_EMAIL` gibt
+  es nur die Benachrichtigungen.
+
+**Vorgehen bei Alarm.** `./taxtronik logs worker --tail 200` auf Meldungen von
+`audit-rotate` (TSA-Stempel, Object-Store) bzw. `storage-orphan-cleanup`
+(`operator investigation required`: dauerhaft fehlschlagende Kandidaten)
+prüfen. Ein Rückstand, der trotz vollständig genutztem Zeitbudget wächst,
+braucht mehr Durchsatz (Object-Store, TSA) oder einen zusätzlichen Lauf, kein
+Abschalten des Alarms. Zum Ändern der Schwelle genügt die Konstante; nach dem
+Worker-Update gilt sie ab dem nächsten Lauf.
+
 ## SMTP
 
 Mailhog ist nur Dev. Produktion benötigt ein echtes SMTP-Relay:
@@ -861,7 +940,9 @@ werden:
 ## Externe Überwachung & Auto-Restart (Pflicht)
 
 Der interne `health-alert`-Job (Worker, alle 5 min) mailt bei Ausfall von
-Postgres/Redis/Object-Store/ClamAV/Backup/App/n8n an `OPS_ALERT_EMAIL`. Er hat
+Postgres/Redis/Object-Store/ClamAV/Backup/App/n8n an `OPS_ALERT_EMAIL`; an
+dieselbe Adresse geht der tägliche Alarm zum
+[Wartungsrückstand](#wartungsrückstand-audit-rotate-storage-orphan-cleanup). Er hat
 aber zwei Systemgrenzen, die extern abgedeckt werden MÜSSEN:
 
 1. **Plain-Docker restartet `unhealthy` Container nicht.** Die Restart-Policy
