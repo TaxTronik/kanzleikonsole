@@ -1,7 +1,21 @@
 // Fachkatalog: ASSURANCE-RELEASE-EVIDENCE-001
 // P-21: Der Update-Check läuft im Worker und speichert ein kompaktes Ergebnis je
 // Tenant; ein nicht erreichbarer Server ist ein gespeichertes Ergebnis.
+// S-01: gespeichert im SYSTEM-Kontext des Tenants (update-check-db.test.ts
+// belegt die App-Rolle gegen PostgreSQL).
 import { describe, expect, it, vi } from 'vitest';
+
+const h = vi.hoisted(() => {
+  const upsert = vi.fn(async () => ({}));
+  return {
+    upsert,
+    contexts: [] as string[],
+    withSystemContext: vi.fn(async (tenantId: string, fn: (tx: unknown) => unknown) => {
+      h.contexts.push(tenantId);
+      return fn({ tenantSetting: { upsert } });
+    }),
+  };
+});
 
 vi.mock('bullmq', () => ({
   Worker: class WorkerMock {
@@ -13,8 +27,9 @@ vi.mock('bullmq', () => ({
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: {} }));
+vi.mock('@taxtronik/db', () => ({ withSystemContext: h.withSystemContext }));
 
-import { runUpdateCheck, type UpdateCheckDeps } from '../update-check';
+import { runUpdateCheck, storeUpdateCheckResult, type UpdateCheckDeps } from '../update-check';
 import type { CheckResult } from '@taxtronik/config/update-manifest';
 
 const NOW = new Date('2026-10-05T12:00:00.000Z');
@@ -89,5 +104,21 @@ describe('runUpdateCheck', () => {
       error: 'Update-Prüfung fehlgeschlagen: ETIMEDOUT',
     });
     expect(stored).toHaveLength(2);
+  });
+});
+
+describe('storeUpdateCheckResult', () => {
+  it('schreibt das Ergebnis im SYSTEM-Kontext genau dieses Tenants', async () => {
+    const persisted = { checkedAt: NOW.toISOString(), ok: false, error: 'x' } as const;
+
+    await storeUpdateCheckResult('tenant-a', persisted);
+
+    expect(h.contexts).toEqual(['tenant-a']);
+    expect(h.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tenantId_key: { tenantId: 'tenant-a', key: 'update.check_result' } },
+        create: expect.objectContaining({ tenantId: 'tenant-a', value: persisted }),
+      }),
+    );
   });
 });
