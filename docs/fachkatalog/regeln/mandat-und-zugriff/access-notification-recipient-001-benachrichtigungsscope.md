@@ -67,6 +67,7 @@ code_refs:
   - packages/mail/src/dispatch.ts
   - apps/worker/src/notification-recipients.ts
   - apps/worker/src/notify.ts
+  - apps/worker/src/jobs/invoice-overdue-check.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts
   - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts
@@ -84,6 +85,7 @@ test_refs:
   - packages/db/src/__tests__/workflow-dependencies.test.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - apps/web/src/server/inbox/__tests__/client-notification.test.ts
+  - apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts
 feature_refs:
   - FEATURES.md
   - docs/development/module/zugriffsschutz.md
@@ -180,6 +182,12 @@ werden aktive berechtigte ADMIN/PARTNER verwendet. Die Hinweise werden zusammen
 mit dem Ablaufstatus und dessen Evidence committed. Fehlen alle Empfänger,
 bleibt die Zustellung leer; der technische Ablauf wird trotzdem vollzogen
 (`POA-LIFECYCLE-001`).
+
+Der Überfälligkeitsworker (`invoice-overdue-check.ts`, `INV-DUE-OVERDUE-001`)
+wählt über `resolveClientWarningRecipientsTx` im selben Tenant-Transaktionsclient
+wie Statuswechsel und Audit den Ersteller, solange er aktiv und für den
+Mandanten berechtigt ist, sonst die aktiven berechtigten ADMIN/PARTNER; ohne
+Empfänger bleibt die Zustellung leer.
 
 Die Migration ergänzt `client_id`, leitet sie über eine geschlossene Liste
 bekannter Ressourcen ab, macht Scope und Ressourcenlink unveränderlich und

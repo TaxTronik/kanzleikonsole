@@ -2,7 +2,9 @@
 // invoice-overdue-check-Worker
 //
 // Findet alle SENT-Rechnungen, deren Fälligkeit überschritten ist, setzt
-// status=OVERDUE und benachrichtigt den Ersteller (createdByStaff).
+// status=OVERDUE und benachrichtigt den Ersteller (createdByStaff), solange er
+// aktiv und für den Mandanten berechtigt ist; sonst die aktiven, berechtigten
+// ADMIN/PARTNER des Tenants (INV-DUE-OVERDUE-001, Produktentscheidung A6).
 // =============================================================================
 
 import { createWorker } from '../worker-factory';
@@ -14,6 +16,7 @@ import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
 import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
+import { resolveClientWarningRecipientsTx } from '../notification-recipients';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
 
 // RF-8: record() braucht nur den Tx — gleiches Muster wie risk-analyse-llm.ts.
@@ -80,17 +83,35 @@ export const invoiceOverdueWorker = createWorker<ChecksJob>(
               before: { status: 'SENT' },
               after: { status: 'OVERDUE', daysOverdue },
             });
-            // R-11: gemeinsamer Upsert mit Sperre und Sanitizer (Mandantenname im Text).
-            const result = await notify(tx, {
+            // INV-DUE-OVERDUE-001 (A6): der Ersteller nur, solange er aktiv und für
+            // den Mandanten berechtigt ist; sonst die aktiven, berechtigten
+            // ADMIN/PARTNER — derselbe Empfängerfilter wie GwG- und
+            // Vollmachtswarnungen (ACCESS-NOTIFICATION-RECIPIENT-001), im selben Tx.
+            const recipients = await resolveClientWarningRecipientsTx(tx, {
               tenantId,
-              staffId: inv.createdByStaff,
-              kind: 'INVOICE_OVERDUE',
-              title: `Rechnung ${inv.number} überfällig (${daysOverdue} Tag${daysOverdue === 1 ? '' : 'e'})`,
-              body: `Mandant: ${inv.client.name} · Brutto: ${Number(inv.totalAmount.toString()).toFixed(2)} €`,
-              href: `/staff/invoices/${inv.id}`,
-              resourceType: 'invoice',
-              resourceId: inv.id,
+              clientId: inv.clientId,
+              staffIds: [inv.createdByStaff],
             });
+            if (recipients.length === 0) {
+              log.warn({ tenantId, invoiceId: inv.id }, 'invoice-overdue: no active recipient');
+            }
+            // R-11: gemeinsamer Upsert mit Sperre und Sanitizer (Mandantenname im
+            // Text); je Empfänger wird eine offene Meldung aktualisiert statt dupliziert.
+            const title = `Rechnung ${inv.number} überfällig (${daysOverdue} Tag${daysOverdue === 1 ? '' : 'e'})`;
+            const body = `Mandant: ${inv.client.name} · Brutto: ${Number(inv.totalAmount.toString()).toFixed(2)} €`;
+            const result = await notify(
+              tx,
+              recipients.map((staffId) => ({
+                tenantId,
+                staffId,
+                kind: 'INVOICE_OVERDUE' as const,
+                title,
+                body,
+                href: `/staff/invoices/${inv.id}`,
+                resourceType: 'invoice',
+                resourceId: inv.id,
+              })),
+            );
             notified += result.created;
             return true;
           });

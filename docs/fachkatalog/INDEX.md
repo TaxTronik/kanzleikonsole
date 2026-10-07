@@ -475,7 +475,7 @@
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
-- Kurzfassung: Ein täglicher Worker markiert eine versendete, noch nicht bezahlte Originalrechnung ab dem Kalendertag nach ihrem gespeicherten Fälligkeitsdatum mit dem internen Status OVERDUE. Statuswechsel, Audit-Ereignis und interne Benachrichtigung erfolgen in einer Tenant-Transaktion und werden bei Wiederholung nicht dupliziert. Der Produktstatus ist keine abschließende rechtliche Feststellung des Schuldnerverzugs.
+- Kurzfassung: Ein täglicher Worker markiert eine versendete, noch nicht bezahlte Originalrechnung ab dem Kalendertag nach ihrem gespeicherten Fälligkeitsdatum mit dem internen Status OVERDUE. Statuswechsel, Audit-Ereignis und interne Benachrichtigung erfolgen in einer Tenant-Transaktion und werden bei Wiederholung nicht dupliziert. Die Meldung erhält der Ersteller der Rechnung, solange er aktiv und für den Mandanten berechtigt ist; andernfalls erhalten sie die aktiven, für den Mandanten berechtigten ADMIN/PARTNER der Kanzlei. Der Produktstatus ist keine abschließende rechtliche Feststellung des Schuldnerverzugs.
 
 ### [INV-LIFECYCLE-FREEZE-001 — Rechnungsinhalt nach Verlassen des Entwurfs festschreiben](regeln/rechnungen/inv-lifecycle-freeze-001-festschreibung.md)
 

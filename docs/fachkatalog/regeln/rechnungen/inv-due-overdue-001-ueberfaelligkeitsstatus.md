@@ -15,7 +15,7 @@ professional_review:
   reviewed_content_hash: null
 implementation:
   status: implemented
-  summary: Der Tagesjob setzt versendete unbezahlte Rechnungen ab dem Tag nach dem gespeicherten Fälligkeitsdatum idempotent auf OVERDUE und erzeugt Audit sowie interne Meldung.
+  summary: Der Tagesjob setzt versendete unbezahlte Rechnungen ab dem Tag nach dem gespeicherten Fälligkeitsdatum idempotent auf OVERDUE und erzeugt Audit sowie eine interne Meldung an den aktiven, berechtigten Ersteller, ersatzweise an die aktiven, berechtigten ADMIN/PARTNER.
 sources:
   - kind: official_law
     citation: § 271 BGB, Leistungszeit bei bestimmter Fälligkeit
@@ -35,8 +35,10 @@ sources:
 code_refs:
   - apps/worker/src/jobs/invoice-overdue-check.ts
   - apps/web/src/app/staff/(protected)/invoices/page.tsx
+  - apps/worker/src/notification-recipients.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts
+  - apps/worker/src/__tests__/notification-recipients.test.ts
   - apps/web/src/app/staff/(protected)/invoices/__tests__/page.test.tsx
   - apps/e2e/tests/12-accessibility.spec.ts
 feature_refs:
@@ -45,6 +47,7 @@ feature_refs:
 related_rules:
   - INV-LIFECYCLE-FREEZE-001
   - INV-STORNO-REFERENCE-001
+  - ACCESS-NOTIFICATION-RECIPIENT-001
 tags:
   - rechnung
   - faelligkeit
@@ -60,8 +63,11 @@ Ein täglicher Worker markiert eine versendete, noch nicht bezahlte
 Originalrechnung ab dem Kalendertag nach ihrem gespeicherten Fälligkeitsdatum
 mit dem internen Status `OVERDUE`. Statuswechsel, Audit-Ereignis und interne
 Benachrichtigung erfolgen in einer Tenant-Transaktion und werden bei
-Wiederholung nicht dupliziert. Der Produktstatus ist keine abschließende
-rechtliche Feststellung des Schuldnerverzugs.
+Wiederholung nicht dupliziert. Die Meldung erhält der Ersteller der Rechnung,
+solange er aktiv und für den Mandanten berechtigt ist; andernfalls erhalten sie
+die aktiven, für den Mandanten berechtigten ADMIN/PARTNER der Kanzlei. Der
+Produktstatus ist keine abschließende rechtliche Feststellung des
+Schuldnerverzugs.
 
 ## Wann gilt die Regel?
 
@@ -77,7 +83,10 @@ werden von diesem Übergang nicht erfasst.
 - gespeichertes Fälligkeitsdatum
 - aktueller Kalendertag in der betrieblichen Zeitzone Europe/Berlin
 - Kennzeichnung als Original oder Korrekturbeleg
-- Ersteller der Rechnung als interner Notification-Empfänger
+- Ersteller der Rechnung, sein Aktivstatus und sein aktueller Mandantenzugriff
+  (OPEN/RESTRICTED, Vertraulichkeit)
+- ersatzweise die aktiven ADMIN/PARTNER des Tenants mit aktuellem
+  Mandantenzugriff
 - Rechnungsnummer, Mandantenname und Bruttobetrag für die Meldung
 
 ## Entscheidungslogik
@@ -88,8 +97,11 @@ werden von diesem Übergang nicht erfasst.
 | Status `SENT`, Fälligkeit liegt vor heute, kein Korrekturbeleg | atomar `OVERDUE` setzen                                       |
 | Status änderte sich zwischen Suche und Transaktion             | bedingtes Update trifft nicht; Audit und Meldung überspringen |
 | Übergang wurde angewendet                                      | `invoice.overdue` mit Anzahl Kalendertage schreiben           |
-| offene gleichartige Meldung existiert                          | Meldung aktualisieren statt duplizieren                       |
-| keine offene Meldung existiert                                 | neue interne Meldung an den Ersteller anlegen                 |
+| Ersteller aktiv und für den Mandanten berechtigt               | Meldung an den Ersteller                                      |
+| Ersteller inaktiv, nicht vorhanden oder ohne Mandantenzugriff  | Meldung an alle aktiven, berechtigten ADMIN/PARTNER           |
+| kein berechtigter Empfänger                                    | Status und Audit wie oben; keine Meldung, Warnung im Log      |
+| offene gleichartige Meldung des Empfängers existiert           | Meldung aktualisieren statt duplizieren                       |
+| keine offene Meldung des Empfängers existiert                  | neue interne Meldung für diesen Empfänger anlegen             |
 | paralleler Notification-Insert kollidiert                      | Unique-Kollision idempotent behandeln                         |
 
 ## Ausnahmen und Grenzfälle
@@ -118,7 +130,17 @@ Worker schreibt weder ein falsches Audit-Ereignis noch eine neue Meldung.
 `invoice-overdue-check.ts` sucht Kandidaten mandantenweise, berechnet den
 Berliner Tagesbeginn und führt ein bedingtes `SENT`-Update aus. Der
 Evidence-Service und die Notification teilen denselben Tenant-Transaktionsclient.
-Eine bereits offene Ressourcenmeldung wird aktualisiert.
+Eine bereits offene Ressourcenmeldung desselben Empfängers wird aktualisiert.
+
+Die Empfänger löst seit der Produktentscheidung vom 2026-10-07 derselbe
+Empfängerfilter wie bei GwG- und Vollmachtswarnungen in derselben Transaktion
+auf (`resolveClientWarningRecipientsTx`, ACCESS-NOTIFICATION-RECIPIENT-001): Der
+Ersteller zählt nur, solange er aktiv ist und nach der aktuellen
+OPEN-/RESTRICTED-/Vertraulichkeitsregel auf den Mandanten zugreifen darf.
+Andernfalls erhalten alle aktiven ADMIN/PARTNER mit diesem Zugriff je eine
+Meldung. Zuvor blieb die Meldung bei einem deaktivierten Ersteller unbeachtet.
+Gibt es keinen berechtigten Empfänger, werden Status und Audit trotzdem gesetzt
+und der Worker protokolliert eine Warnung ohne Personen- oder Mandantendaten.
 
 Die Staff-Rechnungsübersicht verwendet für noch als `SENT` gespeicherte Rechnungen
 dieselbe Berliner Kalendertagesgrenze wie Worker und Portalübersicht. Der gemeinsame
@@ -165,8 +187,12 @@ kann die Markierung verzögern.
 
 Die Worker-Tests prüfen Kandidatenfilter, Tagesgrenze, Tagzählung,
 Status-Recheck, gemeinsamen Transaktionsclient für Update, Audit und Meldung,
-idempotente Aktualisierung, Parallelkollision und Fehlerweitergabe. Sie
-beurteilen keine zivilrechtlichen Verzugsvoraussetzungen.
+idempotente Aktualisierung, Parallelkollision und Fehlerweitergabe. Mit dem
+echten Empfängerfilter prüfen sie außerdem den aktiven Ersteller, den Fallback
+auf aktive ADMIN/PARTNER bei inaktivem, fehlendem oder nicht mehr berechtigtem
+Ersteller, den Ausschluss nicht berechtigter ADMIN/PARTNER, die Aktualisierung
+offener Meldungen je Empfänger und den Fall ohne Empfänger. Sie beurteilen keine
+zivilrechtlichen Verzugsvoraussetzungen.
 
 Die SSR-Tests der echten Staff-Rechnungsseite verwenden den unveränderten
 gemeinsamen Datumshilfsdienst. Sie prüfen Fälligkeitstag und Folgetag an den

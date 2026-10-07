@@ -24,8 +24,10 @@ verworfener Entwurf wird storniert, damit seine Nummer nachvollziehbar bleibt.
 
 **Statuslauf.** Entwurf → Versendet → Bezahlt; überfällige Rechnungen werden
 täglich automatisch als „Überfällig" markiert (mit interner Benachrichtigung
-an die anlegende Person). Storno ist aus jedem Status außer „Storniert"
-möglich. Bei einer bereits bezahlten Rechnung entsteht ebenfalls ein
+an die anlegende Person; ist sie nicht mehr aktiv oder hat sie keinen Zugriff
+mehr auf den Mandanten, erhalten die aktiven Admins und Partner mit
+Mandantenzugriff die Benachrichtigung). Storno ist aus jedem Status außer
+„Storniert" möglich. Bei einer bereits bezahlten Rechnung entsteht ebenfalls ein
 Korrekturbeleg; eine erforderliche Rückzahlung wird außerhalb von TaxTronik
 abgewickelt. „Storniert" ist der Endzustand.
 

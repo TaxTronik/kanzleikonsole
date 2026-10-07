@@ -266,7 +266,8 @@
         "apps/web/src/server/inbox/client-notification.ts",
         "packages/mail/src/dispatch.ts",
         "apps/worker/src/notification-recipients.ts",
-        "apps/worker/src/notify.ts"
+        "apps/worker/src/notify.ts",
+        "apps/worker/src/jobs/invoice-overdue-check.ts"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts",
@@ -284,7 +285,8 @@
         "packages/db/src/__tests__/notification-write-only-forward.test.ts",
         "packages/db/src/__tests__/workflow-dependencies.test.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
-        "apps/web/src/server/inbox/__tests__/client-notification.test.ts"
+        "apps/web/src/server/inbox/__tests__/client-notification.test.ts",
+        "apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
       "related_rules": [
@@ -3514,7 +3516,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Der Tagesjob setzt versendete unbezahlte Rechnungen ab dem Tag nach dem gespeicherten Fälligkeitsdatum idempotent auf OVERDUE und erzeugt Audit sowie interne Meldung."
+        "summary": "Der Tagesjob setzt versendete unbezahlte Rechnungen ab dem Tag nach dem gespeicherten Fälligkeitsdatum idempotent auf OVERDUE und erzeugt Audit sowie eine interne Meldung an den aktiven, berechtigten Ersteller, ersatzweise an die aktiven, berechtigten ADMIN/PARTNER."
       },
       "sources": [
         {
@@ -3541,10 +3543,12 @@
       ],
       "code_refs": [
         "apps/worker/src/jobs/invoice-overdue-check.ts",
-        "apps/web/src/app/staff/(protected)/invoices/page.tsx"
+        "apps/web/src/app/staff/(protected)/invoices/page.tsx",
+        "apps/worker/src/notification-recipients.ts"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts",
+        "apps/worker/src/__tests__/notification-recipients.test.ts",
         "apps/web/src/app/staff/(protected)/invoices/__tests__/page.test.tsx",
         "apps/e2e/tests/12-accessibility.spec.ts"
       ],
@@ -3552,10 +3556,14 @@
         "docs/development/module/fakturierung.md",
         "docs/anwenderdoku/rechnungen.md"
       ],
-      "related_rules": ["INV-LIFECYCLE-FREEZE-001", "INV-STORNO-REFERENCE-001"],
+      "related_rules": [
+        "INV-LIFECYCLE-FREEZE-001",
+        "INV-STORNO-REFERENCE-001",
+        "ACCESS-NOTIFICATION-RECIPIENT-001"
+      ],
       "tags": ["rechnung", "faelligkeit", "ueberfaellig", "notification"],
       "path": "docs/fachkatalog/regeln/rechnungen/inv-due-overdue-001-ueberfaelligkeitsstatus.md",
-      "summary": "Ein täglicher Worker markiert eine versendete, noch nicht bezahlte Originalrechnung ab dem Kalendertag nach ihrem gespeicherten Fälligkeitsdatum mit dem internen Status OVERDUE. Statuswechsel, Audit-Ereignis und interne Benachrichtigung erfolgen in einer Tenant-Transaktion und werden bei Wiederholung nicht dupliziert. Der Produktstatus ist keine abschließende rechtliche Feststellung des Schuldnerverzugs."
+      "summary": "Ein täglicher Worker markiert eine versendete, noch nicht bezahlte Originalrechnung ab dem Kalendertag nach ihrem gespeicherten Fälligkeitsdatum mit dem internen Status OVERDUE. Statuswechsel, Audit-Ereignis und interne Benachrichtigung erfolgen in einer Tenant-Transaktion und werden bei Wiederholung nicht dupliziert. Die Meldung erhält der Ersteller der Rechnung, solange er aktiv und für den Mandanten berechtigt ist; andernfalls erhalten sie die aktiven, für den Mandanten berechtigten ADMIN/PARTNER der Kanzlei. Der Produktstatus ist keine abschließende rechtliche Feststellung des Schuldnerverzugs."
     },
     {
       "id": "INV-LIFECYCLE-FREEZE-001",

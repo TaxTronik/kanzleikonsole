@@ -241,6 +241,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Nummernvergabe bzw. Object-Lock-Ablage. Das Rückdatierungsfenster von ±1 Jahr
   bleibt; seine Bestätigung durch den Product Owner am 2026-10-07 ist in
   `INV-NUMBER-ALLOCATION-001` vermerkt (keine fachliche Freigabe).
+- **[Scope]** Überfällige Rechnungen: Ist der Ersteller deaktiviert, gelöscht
+  oder nicht mehr für den Mandanten berechtigt, erhalten die aktiven,
+  berechtigten ADMIN/PARTNER die Überfälligkeitsmeldung (Empfängerfilter wie bei
+  GwG- und Vollmachtswarnungen); eine offene Meldung wird je Empfänger
+  aktualisiert statt dupliziert (`INV-DUE-OVERDUE-001`).
 - Bescheide und Fristenkontrollbuch: Für die Einlegung von Einspruch und Klage
   sowie für Abhilfe/Einspruchsentscheidung, Klage und Bestandskraft zählt der
   Berliner Kalendertag statt des UTC-Tags der Speicherung; eine Frist endet mit

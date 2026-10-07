@@ -1,4 +1,4 @@
-// Fachkatalog: INV-DUE-OVERDUE-001
+// Fachkatalog: INV-DUE-OVERDUE-001, ACCESS-NOTIFICATION-RECIPIENT-001
 // =============================================================================
 // Unit-Tests: invoice-overdue-check-Worker (SENT → OVERDUE + Notification).
 //
@@ -11,6 +11,9 @@
 //   - R-11: die Notification läuft über notify() (Upsert mit Sperre und
 //     Sanitizer, siehe packages/db notification-batch); nur Neuanlagen zählen
 //   - P2002 (paralleler Trigger) wird geschluckt, andere Fehler propagieren
+//   - A6: Empfänger über den gemeinsamen Filter (notification-recipients.ts, echt):
+//     der Ersteller nur aktiv und zugriffsberechtigt, sonst aktive, berechtigte
+//     ADMIN/PARTNER; offene Meldungen werden je Empfänger aktualisiert
 // =============================================================================
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -29,7 +32,15 @@ const h = vi.hoisted(() => {
   };
   const tx = {
     invoice: { updateMany: vi.fn() },
+    // ADMIN/PARTNER-Fallback des gemeinsamen Empfängerfilters
+    staffUser: { findMany: vi.fn() },
   };
+  // Inaktive, fehlende oder für den Mandanten nicht berechtigte Mitarbeiter.
+  const withoutAccess = new Set<string>();
+  const filterStaffAccessClientTx = vi.fn(
+    async (_tx: unknown, _tenantId: string, ids: readonly string[], _clientId: string) =>
+      new Set(ids.filter((id) => !withoutAccess.has(id))),
+  );
   const notify = vi.fn();
   const withWorkerTenantContext = vi.fn(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
@@ -39,6 +50,8 @@ const h = vi.hoisted(() => {
     PrismaClientKnownRequestError,
     prismaOwner,
     tx,
+    withoutAccess,
+    filterStaffAccessClientTx,
     withWorkerTenantContext,
     record,
     notify,
@@ -53,6 +66,9 @@ vi.mock('../../logger', () => ({
 }));
 vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
 vi.mock('../../notify', () => ({ notify: h.notify }));
+vi.mock('@taxtronik/db/staff-client-access', () => ({
+  filterStaffAccessClientTx: h.filterStaffAccessClientTx,
+}));
 vi.mock('@prisma/client', () => ({
   Prisma: { PrismaClientKnownRequestError: h.PrismaClientKnownRequestError },
 }));
@@ -64,6 +80,7 @@ vi.mock('@taxtronik/evidence', () => ({
 }));
 
 import { processors } from './mocks/bullmq';
+import { log } from '../../logger';
 import '../invoice-overdue-check';
 
 const FIXED_NOW = new Date('2026-06-09T10:00:00.000Z');
@@ -89,6 +106,7 @@ function invoice(overrides: Record<string, unknown> = {}) {
     id: 'inv-1',
     number: 'RE-2026-0001',
     dueDate: new Date(FIXED_NOW.getTime() - 3 * DAY),
+    clientId: 'client-1',
     createdByStaff: 'staff-1',
     totalAmount: { toString: () => '119.00' },
     client: { name: 'Muster GmbH' },
@@ -103,6 +121,12 @@ beforeEach(() => {
   h.withWorkerTenantContext.mockImplementation(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(h.tx),
   );
+  h.withoutAccess.clear();
+  h.filterStaffAccessClientTx.mockImplementation(
+    async (_tx: unknown, _tenantId: string, ids: readonly string[], _clientId: string) =>
+      new Set(ids.filter((id) => !h.withoutAccess.has(id))),
+  );
+  h.tx.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }, { id: 'partner-1' }]);
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
   h.prismaOwner.invoice.findMany.mockResolvedValue([]);
   h.tx.invoice.updateMany.mockResolvedValue({ count: 1 });
@@ -152,16 +176,21 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
       before: { status: 'SENT' },
       after: { status: 'OVERDUE', daysOverdue: 3 },
     });
-    expect(h.notify).toHaveBeenCalledWith(h.tx, {
-      tenantId: TENANT,
-      staffId: 'staff-1',
-      kind: 'INVOICE_OVERDUE',
-      title: 'Rechnung RE-2026-0001 überfällig (3 Tage)',
-      body: 'Mandant: Muster GmbH · Brutto: 119.00 €',
-      href: '/staff/invoices/inv-1',
-      resourceType: 'invoice',
-      resourceId: 'inv-1',
-    });
+    expect(h.notify).toHaveBeenCalledWith(h.tx, [
+      {
+        tenantId: TENANT,
+        staffId: 'staff-1',
+        kind: 'INVOICE_OVERDUE',
+        title: 'Rechnung RE-2026-0001 überfällig (3 Tage)',
+        body: 'Mandant: Muster GmbH · Brutto: 119.00 €',
+        href: '/staff/invoices/inv-1',
+        resourceType: 'invoice',
+        resourceId: 'inv-1',
+      },
+    ]);
+    // Aktiver, berechtigter Ersteller: kein ADMIN/PARTNER-Fallback.
+    expect(h.filterStaffAccessClientTx).toHaveBeenCalledWith(h.tx, TENANT, ['staff-1'], 'client-1');
+    expect(h.tx.staffUser.findMany).not.toHaveBeenCalled();
     expect(result).toEqual({ updated: 1, notified: 1 });
   });
 
@@ -172,10 +201,9 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
 
     await run();
 
-    expect(h.notify).toHaveBeenCalledWith(
-      h.tx,
+    expect(h.notify).toHaveBeenCalledWith(h.tx, [
       expect.objectContaining({ title: 'Rechnung RE-2026-0001 überfällig (1 Tag)' }),
-    );
+    ]);
   });
 });
 
@@ -233,5 +261,92 @@ describe('Fehlerbehandlung', () => {
     expect(result).toEqual({ updated: 0, notified: 0 });
     expect(h.record).not.toHaveBeenCalled();
     expect(h.notify).not.toHaveBeenCalled();
+  });
+});
+
+// INV-DUE-OVERDUE-001 — Produktentscheidung A6 (2026-10-07): Fallback auf aktive
+// ADMIN/PARTNER wie bei GwG- und Vollmachtswarnungen.
+describe('A6: Empfänger bei inaktivem oder fehlendem Ersteller', () => {
+  function recipientsOf(call: number): string[] {
+    const inputs = h.notify.mock.calls[call]![1] as Array<{ staffId: string }>;
+    return inputs.map((input) => input.staffId);
+  }
+
+  it.each([
+    ['inaktiv', 'staff-1'],
+    ['nicht mehr vorhanden', 'staff-deleted'],
+  ])('Ersteller %s: aktive ADMIN/PARTNER erhalten die Meldung', async (_name, creator) => {
+    h.withoutAccess.add(creator);
+    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice({ createdByStaff: creator })]);
+    h.notify.mockResolvedValue({ created: 2, updated: 0 });
+
+    const result = await run();
+
+    expect(h.tx.staffUser.findMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: TENANT,
+        active: true,
+        roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+      },
+      select: { id: true },
+      orderBy: { id: 'asc' },
+    });
+    expect(recipientsOf(0)).toEqual(['admin-1', 'partner-1']);
+    expect(h.notify).toHaveBeenCalledWith(h.tx, [
+      expect.objectContaining({
+        staffId: 'admin-1',
+        kind: 'INVOICE_OVERDUE',
+        resourceType: 'invoice',
+        resourceId: 'inv-1',
+      }),
+      expect.objectContaining({
+        staffId: 'partner-1',
+        kind: 'INVOICE_OVERDUE',
+        resourceType: 'invoice',
+        resourceId: 'inv-1',
+      }),
+    ]);
+    expect(result).toEqual({ updated: 1, notified: 2 });
+  });
+
+  it('ohne aktuellen Mandantenzugriff des Erstellers gilt derselbe Fallback, nur berechtigte ADMIN/PARTNER', async () => {
+    h.withoutAccess.add('staff-1');
+    h.withoutAccess.add('admin-1');
+    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+
+    await run();
+
+    expect(recipientsOf(0)).toEqual(['partner-1']);
+  });
+
+  it('aktualisiert offene Meldungen je Empfänger statt sie zu duplizieren', async () => {
+    h.withoutAccess.add('staff-1');
+    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.notify.mockResolvedValue({ created: 0, updated: 2 });
+
+    const result = await run();
+
+    // Standard-Dedupe von notify(): ungelesene Meldung desselben Schlüssels
+    // (Tenant, Empfänger, Art, Rechnung) wird aktualisiert.
+    expect(h.notify.mock.calls[0]).toHaveLength(2);
+    expect(result).toEqual({ updated: 1, notified: 0 });
+  });
+
+  it('ohne berechtigten Empfänger: Status und Audit, keine Meldung, Warnung im Log', async () => {
+    h.withoutAccess.add('staff-1');
+    h.tx.staffUser.findMany.mockResolvedValue([]);
+    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.notify.mockResolvedValue({ created: 0, updated: 0 });
+
+    const result = await run();
+
+    expect(h.tx.invoice.updateMany).toHaveBeenCalledTimes(1);
+    expect(h.record).toHaveBeenCalledTimes(1);
+    expect(h.notify).toHaveBeenCalledWith(h.tx, []);
+    expect(log.warn).toHaveBeenCalledWith(
+      { tenantId: TENANT, invoiceId: 'inv-1' },
+      'invoice-overdue: no active recipient',
+    );
+    expect(result).toEqual({ updated: 1, notified: 0 });
   });
 });
