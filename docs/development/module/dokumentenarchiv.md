@@ -160,9 +160,12 @@ GwG-Onboarding (anonym per Token, GWG-Bucket), Rechnungs-PDFs
   bzw. dem Retention-Ende: referenziert, versionsgenau gelöscht oder — nie
   geschrieben — `ABSENT`. `compensateStorageCommit` bleibt Rückfallebene; schlägt
   auch sie fehl, bleibt nur das strukturierte Log für einen manuellen Abgleich.
-  Nicht dokumentgebundene Ablagen (Risiko-Archiv/-Rohdaten, IMAP-Anhänge)
-  schreiben weiterhin ohne Vorab-Journal. Kein Streaming-Multipart (RAM-Puffer
-  bis Cap).
+  Risiko-Archiv und Engine-Rohergebnisse der Risikoanalyse
+  (`server/risk/archive.ts`, `server/risk/raw-store.ts`) journalisieren ebenso
+  vor dem PUT; der Abschluss bindet sich an den Archiv- bzw. Rohergebnisverweis
+  der Analyse desselben Tenants, den auch der Worker als Bezug prüft.
+  IMAP-Anhänge schreiben weiterhin ohne Vorab-Journal. Kein Streaming-Multipart
+  (RAM-Puffer bis Cap).
 - GwG-Frühvernichtung vor Lock-Ablauf (GOVERNANCE-Bypass) nicht implementiert.
 
 ## Fortschritt trotz fehlerhafter Orphans

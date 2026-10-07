@@ -12,7 +12,8 @@ import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import type { RiskAnalysisResult } from '@taxtronik/risk-layer';
 import { evidenceService } from '@/server/container';
 import { log } from '@/server/logger';
-import { storeRawResult } from './raw-store';
+import { releaseStorageIntent, settleStorageIntentTx } from '@/server/documents/storage-intent';
+import { storeRawResult, type StoredRawResult } from './raw-store';
 import { markingCreateFields } from './marking-data';
 
 export interface SaveAnalysisInput {
@@ -53,12 +54,38 @@ export async function saveAnalysis(
     );
   }
 
-  // ID vorab erzeugen → rawResult VOR der Transaktion in SeaweedFS ablegen (gzip),
-  // damit die DB-Transaktion nicht während des Object-Store-Calls offen bleibt.
-  // Scheitert der Upload, brechen wir ab, bevor die DB berührt wird.
+  // rawResult VOR der Transaktion in SeaweedFS ablegen (gzip), damit die
+  // DB-Transaktion nicht während des Object-Store-Calls offen bleibt. K-06: Die
+  // Speicherabsicht steht vor dem PUT im Journal; scheitern Journal oder Upload,
+  // brechen wir ab, bevor die Analyse angelegt wird.
   const analysisId = randomUUID();
-  const raw = await storeRawResult(ctx.tenantId, analysisId, input.result.rawResult);
+  const raw = await storeRawResult(ctx.tenantId, input.result.rawResult);
 
+  try {
+    return await createAnalysisTx(ctx, input, { analysisId, contentHash, engineHash, raw });
+  } catch (error) {
+    // Kein Verweis entstanden: Die Absicht bleibt mit gebundener Objektversion
+    // offen; der Cleanup-Worker löscht sie nach dem Retention-Ende versionsgenau.
+    await releaseStorageIntent({ intent: raw.intent, commit: raw.commit, cause: error });
+    throw error;
+  }
+}
+
+/**
+ * Analyse, Markierungen, Abschluss der Rohergebnis-Absicht und Audit in einer
+ * Transaktion (K-06: Verweis und Abschluss atomar).
+ */
+async function createAnalysisTx(
+  ctx: TenantContext,
+  input: SaveAnalysisInput,
+  run: {
+    analysisId: string;
+    contentHash: string;
+    engineHash: string | null | undefined;
+    raw: StoredRawResult;
+  },
+): Promise<SaveAnalysisResult> {
+  const { analysisId, contentHash, engineHash, raw } = run;
   return withTenantContext(ctx, async (tx) => {
     const analysis = await tx.riskAnalysis.create({
       data: {
@@ -76,8 +103,8 @@ export async function saveAnalysis(
         engineVersion: input.result.engineVersion,
         createdById: input.createdById,
         // rawResult liegt im Object-Store — nur die Referenz hier.
-        rawResultBucket: raw.bucket,
-        rawResultKey: raw.key,
+        rawResultBucket: raw.commit.targetBucket,
+        rawResultKey: raw.commit.targetKey,
         markings: {
           create: input.result.markings.map((m) => ({
             tenantId: ctx.tenantId,
@@ -87,6 +114,8 @@ export async function saveAnalysis(
       },
       select: { id: true, _count: { select: { markings: true } } },
     });
+    // K-06: Abschluss der Speicherabsicht mit dem Verweis in derselben Transaktion.
+    await settleStorageIntentTx(tx, raw.intent, raw.commit);
 
     // Hash + Lauf in die TaxTronik-Hash-Chain (audit_log) ankern — manipulations-
     // evident + täglich RFC-3161-versiegelt. Im selben Tx wie die Analyse (atomar).

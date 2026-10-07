@@ -8,27 +8,37 @@
 // Snapshot ist selbst hash-verankert (audit_log). Die Live-Daten bleiben in
 // Postgres abfragbar, aber die Analyse wird schreibgeschützt (Mutationen
 // werden über die Guards abgelehnt).
+//
+// K-06 / DOC-UPLOAD-JOURNAL-001: Die Speicherabsicht steht vor dem PUT im
+// Journal; die Transaktion, die den Archivverweis bindet, schließt sie ab.
+// Scheitert sie (z. B. Stand zwischenzeitlich geändert) oder bricht der Prozess
+// zwischen PUT und Commit ab, bleibt die Absicht offen und der Cleanup-Worker
+// löscht das Objekt nach dem Retention-Ende versionsgenau.
 // =============================================================================
 
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
-import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
 import {
   commitRiskArchiveTx,
   readRiskArchiveStateTx,
   riskArchiveStateHash,
   RiskAnalysisArchivedError,
 } from '@taxtronik/db/risk-analysis';
-import { getBucketForTier, gobdRetentionUntil, putObjectBytes } from '@taxtronik/storage';
+import { prepareBytesCommitWithTier, type CommitDocumentResult } from '@taxtronik/storage';
 import { evidenceService } from '@/server/container';
+import {
+  journalStorageIntents,
+  releaseStorageIntent,
+  settleStorageIntentTx,
+  storeStorageIntent,
+  type StorageIntent,
+} from '@/server/documents/storage-intent';
 
 export { RiskAnalysisArchivedError as AlreadyArchivedError };
 
-function archiveKeyFor(tenantId: string, analysisId: string): string {
-  // Object Lock protects versions, not a mutable key's current version. A losing
-  // concurrent attempt must never replace the winner's referenced bytes.
-  return `risk-archive/${tenantId}/${analysisId}/${randomUUID()}.json.gz`;
-}
+/** Herkunft der Speicherabsicht im Storage-Orphan-Journal. */
+export const ARCHIVE_INTENT_SOURCE = 'risk.analysis.archive';
 
 export async function archiveAnalysis(
   ctx: TenantContext,
@@ -50,39 +60,91 @@ export async function archiveAnalysis(
   const snapshotHash = createHash('sha256').update(json).digest('hex');
   const gz = gzipSync(json);
 
-  const bucket = getBucketForTier('GOBD');
-  const key = archiveKeyFor(ctx.tenantId, analysisId);
-  // Object-Lock COMPLIANCE → unveränderlich bis gobdRetentionUntil (10 J.).
-  await putObjectBytes(bucket, key, gz, {
-    contentType: 'application/gzip',
-    retainUntil: gobdRetentionUntil(),
+  // Jeder Versuch erhält einen eigenen Schlüssel: Object Lock schützt Versionen,
+  // nicht den aktuellen Stand eines Schlüssels — ein unterlegener paralleler
+  // Versuch ersetzt nie die referenzierten Bytes des Gewinners. App-eigene Bytes:
+  // ohne Virenscan. Object-Lock COMPLIANCE → unveränderlich bis Retention-Ende.
+  const prepared = await prepareBytesCommitWithTier({
+    fileData: gz,
+    tier: 'GOBD',
+    tenantId: ctx.tenantId,
+    skipScan: true,
   });
+  const [journaled] = await journalStorageIntents({
+    tenantId: ctx.tenantId,
+    intents: [{ source: ARCHIVE_INTENT_SOURCE, prepared }],
+  });
+  const intent = journaled!;
+  const stored = await storeStorageIntent(intent, gz);
+  const bucket = stored.targetBucket;
+  const key = stored.targetKey;
 
-  await withTenantContext(ctx, async (tx) => {
-    await commitRiskArchiveTx(tx, {
-      tenantId: ctx.tenantId,
-      analysisId,
-      expectedStateHash,
-      archivedAt,
-      bucket,
-      key,
-    });
-    await evidenceService.record(tx, {
-      tenantId: ctx.tenantId,
-      actorType: 'STAFF',
-      actorId: ctx.actorId,
-      action: 'risk.analysis.archived',
-      resourceType: 'risk_analysis',
-      resourceId: analysisId,
-      after: {
-        archiveBucket: bucket,
-        archiveKey: key,
+  try {
+    await withTenantContext(ctx, (tx) =>
+      bindArchiveTx(tx, ctx, {
+        analysisId,
+        expectedStateHash,
+        archivedAt,
         snapshotHash,
         markingCount: state.markings.length,
         textHash: state.analysis.textHash,
-      },
-    });
-  });
+        intent,
+        stored,
+      }),
+    );
+  } catch (error) {
+    // Kein Archivverweis entstanden: Die Absicht bleibt mit gebundener
+    // Objektversion offen; der Cleanup-Worker räumt nach dem Retention-Ende auf.
+    await releaseStorageIntent({ intent, commit: stored, cause: error });
+    throw error;
+  }
 
   return { bucket, key, snapshotHash };
+}
+
+/**
+ * Archivverweis, Abschluss der Speicherabsicht und Audit in einer Transaktion
+ * (K-06: Verweis und Abschluss atomar).
+ */
+async function bindArchiveTx(
+  tx: TxClient,
+  ctx: TenantContext,
+  input: {
+    analysisId: string;
+    expectedStateHash: string;
+    archivedAt: Date;
+    snapshotHash: string;
+    markingCount: number;
+    textHash: string;
+    intent: StorageIntent;
+    stored: CommitDocumentResult;
+  },
+): Promise<void> {
+  const { analysisId, stored } = input;
+  const bucket = stored.targetBucket;
+  const key = stored.targetKey;
+  await commitRiskArchiveTx(tx, {
+    tenantId: ctx.tenantId,
+    analysisId,
+    expectedStateHash: input.expectedStateHash,
+    archivedAt: input.archivedAt,
+    bucket,
+    key,
+  });
+  await settleStorageIntentTx(tx, input.intent, stored);
+  await evidenceService.record(tx, {
+    tenantId: ctx.tenantId,
+    actorType: 'STAFF',
+    actorId: ctx.actorId,
+    action: 'risk.analysis.archived',
+    resourceType: 'risk_analysis',
+    resourceId: analysisId,
+    after: {
+      archiveBucket: bucket,
+      archiveKey: key,
+      snapshotHash: input.snapshotHash,
+      markingCount: input.markingCount,
+      textHash: input.textHash,
+    },
+  });
 }

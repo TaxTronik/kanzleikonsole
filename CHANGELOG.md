@@ -886,6 +886,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Risiko-Archiv (Subsumtions-Snapshot) und Engine-Rohergebnisse der
+  Risikoanalyse journalisieren ihre Speicherabsicht vor dem Schreiben in den
+  GoBD-Bucket und schließen sie mit dem Verweis an der Analyse ab. Objekte aus
+  abgebrochenen oder gescheiterten Vorgängen löst der Cleanup-Worker nach dem
+  Retention-Ende auf, statt sie unauffindbar zurückzulassen
+  (`DOC-UPLOAD-JOURNAL-001`, `RISK-ARCHIVE-SNAPSHOT-001`).
 - **[Scope]** Der Löschdialog der Dokumentablage bestimmt den
   Aufbewahrungshinweis über die Schutzstufe des Dokumenttyps statt über das
   Namenspräfix der Klassifikation; Dokumente eines GoBD- oder GwG-Typs

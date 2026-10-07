@@ -1,5 +1,6 @@
 // Fachkatalog: DOC-UPLOAD-JOURNAL-001
 // Fachkatalog: DOC-OBJECT-LOCK-001
+// Fachkatalog: RISK-ARCHIVE-SNAPSHOT-001
 // Review-Finding K-06: Speicherabsichten (storage_orphan.intent) werden vor dem
 // Object-Write journalisiert und in der Fachtransaktion atomar abgeschlossen.
 import { randomUUID } from 'node:crypto';
@@ -19,7 +20,27 @@ const migration = readFileSync(
   'utf8',
 ).replace(/--.*$/gm, '');
 
+const riskReferenceMigration = readFileSync(
+  new URL(
+    '../../prisma/migrations/20261007150000_storage_intent_risk_references/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+).replace(/--.*$/gm, '');
+
 describe('Speicherabsicht: Migration', () => {
+  it('ersetzt die Abschlussfunktion fuer Risikoverweise mit unveraenderter Signatur und Bindung', () => {
+    expect(riskReferenceMigration).toMatch(
+      /CREATE OR REPLACE FUNCTION app\.settle_storage_intent\(\s*p_intent_id UUID,\s*p_storage_bucket TEXT,\s*p_storage_key TEXT,\s*p_storage_version_id TEXT\s*\)/,
+    );
+    expect(riskReferenceMigration).toMatch(
+      /SECURITY DEFINER\s+SET search_path = pg_catalog, public, app, pg_temp/,
+    );
+    expect(riskReferenceMigration).toMatch(
+      /FROM public\.risk_analysis analysis\s+WHERE analysis\.tenant_id = v_tenant_id/,
+    );
+  });
+
   it('schliesst Absichten nur ueber eine eng gebundene SECURITY-DEFINER-Funktion ab', () => {
     expect(migration).toMatch(/CREATE OR REPLACE FUNCTION app\.settle_storage_intent\(/);
     expect(migration).toMatch(
@@ -115,6 +136,18 @@ function settle(tx: TxClient, intentId: string, key: string, version: string | n
 }
 
 let nextVersionNo = 1;
+let otherStaffId: string;
+
+function riskAnalysisData(tenant: string = tenantId, createdById: string = staffId) {
+  return {
+    tenantId: tenant,
+    sourceText: 'Synthetischer Sachverhalt',
+    textHash: 'synthetic-hash',
+    katalogVersion: 'katalog',
+    engineVersion: 'engine',
+    createdById,
+  };
+}
 
 beforeAll(async () => {
   if (!hasDatabase) return;
@@ -133,6 +166,16 @@ beforeAll(async () => {
         fullName: 'Speicherabsicht',
         passwordHash: 'synthetic',
         roles: { create: { role: 'ADMIN' } },
+      },
+    })
+  ).id;
+  otherStaffId = (
+    await owner.staffUser.create({
+      data: {
+        tenantId: otherTenantId,
+        email: `intent-other-${seed}@example.test`,
+        fullName: 'Fremd',
+        passwordHash: 'synthetic',
       },
     })
   ).id;
@@ -290,6 +333,59 @@ describeWithDatabase('Speicherabsicht: Datenbank', () => {
         await settle(tx, orphan.id, orphanKey);
       }),
     ).rejects.toThrow(/STORAGE_INTENT_NOT_OPEN/);
+  });
+
+  // K-06: Risiko-Archiv und Engine-Rohergebnis sind Verweise ohne Objektversion.
+  it('schliesst eine Absicht ueber den Rohergebnis-Verweis einer neuen Risikoanalyse ab', async () => {
+    const key = storageKey();
+    const intent = await journalIntent({ key });
+    await inContext('STAFF', async (tx) => {
+      await tx.riskAnalysis.create({
+        data: {
+          ...riskAnalysisData(),
+          rawResultBucket: 'general',
+          rawResultKey: key,
+        },
+      });
+      await settle(tx, intent.id, key);
+    });
+    await expect(
+      owner.storageOrphan.findUniqueOrThrow({ where: { id: intent.id } }),
+    ).resolves.toMatchObject({ resolution: 'REFERENCED', storageVersionId: 'v-1' });
+  });
+
+  it('schliesst eine Absicht ueber den Archivverweis einer Risikoanalyse ab', async () => {
+    const key = storageKey();
+    const intent = await journalIntent({ key });
+    const analysis = await owner.riskAnalysis.create({ data: riskAnalysisData() });
+    await inContext('STAFF', async (tx) => {
+      await tx.riskAnalysis.update({
+        where: { id: analysis.id },
+        data: { archivedAt: new Date(), archiveBucket: 'general', archiveKey: key },
+      });
+      await settle(tx, intent.id, key);
+    });
+    await expect(
+      owner.storageOrphan.findUniqueOrThrow({ where: { id: intent.id } }),
+    ).resolves.toMatchObject({ resolution: 'REFERENCED' });
+  });
+
+  it('wertet den Verweis einer Risikoanalyse eines anderen Tenants nicht als Bezug', async () => {
+    const key = storageKey();
+    const intent = await journalIntent({ key });
+    await owner.riskAnalysis.create({
+      data: {
+        ...riskAnalysisData(otherTenantId, otherStaffId),
+        rawResultBucket: 'general',
+        rawResultKey: key,
+      },
+    });
+    await expect(inContext('STAFF', (tx) => settle(tx, intent.id, key))).rejects.toThrow(
+      /STORAGE_INTENT_UNREFERENCED/,
+    );
+    await expect(
+      owner.storageOrphan.findUniqueOrThrow({ where: { id: intent.id } }),
+    ).resolves.toMatchObject({ resolution: null, cleanedAt: null });
   });
 
   it('verlangt einen Mandantenkontext', async () => {

@@ -5,6 +5,7 @@ const h = vi.hoisted(() => ({
   updateMany: vi.fn(),
   count: vi.fn(),
   documentVersionFindFirst: vi.fn(),
+  riskAnalysisFindFirst: vi.fn(),
   deleteObjectVersion: vi.fn(),
   recoverPreparedBytesCommit: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -16,6 +17,7 @@ vi.mock('../../prisma-owner', () => ({
   prismaOwner: {
     storageOrphan: { findMany: h.findMany, updateMany: h.updateMany, count: h.count },
     documentVersion: { findFirst: h.documentVersionFindFirst },
+    riskAnalysis: { findFirst: h.riskAnalysisFindFirst },
   },
 }));
 vi.mock('../../logger', () => ({ log: h.log }));
@@ -37,6 +39,7 @@ describe('storage orphan cleanup', () => {
     h.updateMany.mockResolvedValue({ count: 1 });
     h.count.mockResolvedValue(0);
     h.documentVersionFindFirst.mockResolvedValue(null);
+    h.riskAnalysisFindFirst.mockResolvedValue(null);
     h.deleteObjectVersion.mockResolvedValue(undefined);
     h.recoverPreparedBytesCommit.mockResolvedValue(null);
   });
@@ -408,6 +411,67 @@ describe('storage orphan cleanup', () => {
     );
   });
 
+  // K-06: Risiko-Archiv und Engine-Rohergebnis sind Bezüge ohne Versionsspalte.
+  it('markiert einen Verweis einer Risikoanalyse als REFERENCED und löscht nie das Objekt', async () => {
+    h.findMany.mockResolvedValue([
+      {
+        id: 'orphan-1',
+        tenantId: 't-1',
+        storageBucket: 'gobd',
+        storageKey: 'tenants/t-1/gobd/2026/10/raw.bin',
+        storageVersionId: 'version-1',
+      },
+    ]);
+    h.riskAnalysisFindFirst.mockResolvedValue({ id: 'analysis-1', tenantId: 't-1' });
+
+    expect(await runStorageOrphanCleanup(NOW)).toMatchObject({
+      claimed: 1,
+      deleted: 0,
+      referenced: 1,
+      incidents: 0,
+    });
+    expect(h.riskAnalysisFindFirst).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { rawResultBucket: 'gobd', rawResultKey: 'tenants/t-1/gobd/2026/10/raw.bin' },
+          { archiveBucket: 'gobd', archiveKey: 'tenants/t-1/gobd/2026/10/raw.bin' },
+        ],
+      },
+      select: { id: true, tenantId: true },
+    });
+    expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+    expect(h.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ resolution: 'REFERENCED', cleanedAt: expect.any(Date) }),
+      }),
+    );
+  });
+
+  it('wertet den Verweis einer fremden Risikoanalyse als Integritätsvorfall', async () => {
+    h.findMany.mockResolvedValue([
+      {
+        id: 'orphan-1',
+        tenantId: 't-1',
+        storageBucket: 'gobd',
+        storageKey: 'tenants/t-1/gobd/2026/10/archive.bin',
+        storageVersionId: 'version-1',
+      },
+    ]);
+    h.riskAnalysisFindFirst.mockResolvedValue({ id: 'analysis-foreign', tenantId: 't-2' });
+
+    expect(await runStorageOrphanCleanup(NOW)).toMatchObject({ incidents: 1, deleted: 0 });
+    expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+    expect(h.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: 't-1',
+        referencedTenantId: 't-2',
+        referenceKind: 'risk_analysis',
+        referenceId: 'analysis-foreign',
+      }),
+      expect.stringContaining('cross-tenant'),
+    );
+  });
+
   it('löscht bei fehlgeschlagener DB-Referenzprüfung nicht und gibt den Claim frei', async () => {
     h.findMany.mockResolvedValue([
       {
@@ -645,6 +709,24 @@ describe('storage orphan cleanup', () => {
         id: 'version-1',
         document: { tenantId: 't-1' },
       });
+
+      expect((await runStorageOrphanCleanup(NOW)).referenced).toBe(1);
+      expect(h.recoverPreparedBytesCommit).not.toHaveBeenCalled();
+      expect(h.deleteObjectVersion).not.toHaveBeenCalled();
+    });
+
+    it('erkennt auch den committeten Verweis einer Risikoanalyse (Rohergebnis/Archiv)', async () => {
+      // Verlorenes COMMIT-ACK: releaseStorageIntent fand die Absicht schon
+      // abgeschlossen, die Kompensation journalisierte das Objekt erneut.
+      h.findMany.mockResolvedValue([
+        intentRow({
+          storageBucket: 'gobd',
+          storageKey: 'tenants/t-1/gobd/2026/10/archive.bin',
+          immutable: true,
+          retentionUntil: new Date('2026-01-01T00:00:00.000Z'),
+        }),
+      ]);
+      h.riskAnalysisFindFirst.mockResolvedValue({ id: 'analysis-1', tenantId: 't-1' });
 
       expect((await runStorageOrphanCleanup(NOW)).referenced).toBe(1);
       expect(h.recoverPreparedBytesCommit).not.toHaveBeenCalled();

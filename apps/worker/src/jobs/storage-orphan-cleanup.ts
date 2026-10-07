@@ -40,11 +40,18 @@ interface StorageIdentityCandidate {
   storageVersionId: string;
 }
 
+/** Dauerhafter Bezug auf eine Speicheridentität: Dokumentversion oder Risikoanalyse. */
+interface PersistedReference {
+  kind: 'document_version' | 'risk_analysis';
+  id: string;
+  tenantId: string;
+}
+
 async function findPersistedReference(
   candidate: StorageIdentityCandidate,
   storageVersionId: string,
-) {
-  return prismaOwner.documentVersion.findFirst({
+): Promise<PersistedReference | null> {
+  const version = await prismaOwner.documentVersion.findFirst({
     where: {
       storageBucket: candidate.storageBucket,
       storageKey: candidate.storageKey,
@@ -56,14 +63,30 @@ async function findPersistedReference(
     },
     select: { id: true, document: { select: { tenantId: true } } },
   });
+  if (version) {
+    return { kind: 'document_version', id: version.id, tenantId: version.document.tenantId };
+  }
+  // K-06: Risiko-Archiv und Engine-Rohergebnis verweisen ohne Versionsspalte auf
+  // ihr Objekt. Jeder Versuch schreibt unter einem eigenen Schlüssel (bedingter
+  // PUT, genau eine Version); jeder Bucket/Key-Treffer gilt deshalb als Bezug.
+  const analysis = await prismaOwner.riskAnalysis.findFirst({
+    where: {
+      OR: [
+        { rawResultBucket: candidate.storageBucket, rawResultKey: candidate.storageKey },
+        { archiveBucket: candidate.storageBucket, archiveKey: candidate.storageKey },
+      ],
+    },
+    select: { id: true, tenantId: true },
+  });
+  return analysis ? { kind: 'risk_analysis', id: analysis.id, tenantId: analysis.tenantId } : null;
 }
 
 async function settlePersistedReference(
   candidate: StorageIdentityCandidate,
   claimedAt: Date,
-  persistedReference: { id: string; document: { tenantId: string } },
+  persistedReference: PersistedReference,
 ): Promise<'REFERENCED' | 'INTEGRITY_INCIDENT'> {
-  if (persistedReference.document.tenantId !== candidate.tenantId) {
+  if (persistedReference.tenantId !== candidate.tenantId) {
     const updated = await prismaOwner.storageOrphan.updateMany({
       where: { id: candidate.id, cleanedAt: null, cleanupClaimedAt: claimedAt },
       data: {
@@ -79,8 +102,9 @@ async function settlePersistedReference(
         component: 'storage-orphan-cleanup',
         orphanId: candidate.id,
         tenantId: candidate.tenantId,
-        referencedTenantId: persistedReference.document.tenantId,
-        documentVersionId: persistedReference.id,
+        referencedTenantId: persistedReference.tenantId,
+        referenceKind: persistedReference.kind,
+        referenceId: persistedReference.id,
         storageBucket: candidate.storageBucket,
         storageKey: candidate.storageKey,
         storageVersionId: candidate.storageVersionId || null,

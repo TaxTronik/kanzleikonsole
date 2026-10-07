@@ -1,9 +1,36 @@
-CREATE OR REPLACE FUNCTION app.settle_storage_intent(p_intent_id uuid, p_storage_bucket text, p_storage_key text, p_storage_version_id text)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'pg_catalog', 'public', 'app', 'pg_temp'
-AS $function$
+-- DOC-UPLOAD-JOURNAL-001 / RISK-ARCHIVE-SNAPSHOT-001 / DOC-OBJECT-LOCK-001
+-- (app.settle_storage_intent aus 20261006130100_storage_upload_intent).
+--
+-- Review-Finding K-06 (Folgearbeit). Risiko-Archiv (Subsumtions-Snapshot) und
+-- Engine-Rohergebnisse der Risikoanalyse schrieben bisher ohne Vorab-Journal in
+-- den GoBD-Bucket (Object Lock COMPLIANCE): Brach der Prozess zwischen PUT und
+-- DB-Commit ab oder scheiterte der Commit, blieb ein unverknuepftes, bis zum
+-- Retention-Ende unloeschbares Objekt ohne jeden Journaleintrag zurueck. Beide
+-- Pfade journalisieren ihre Speicherabsicht jetzt vor dem PUT und schliessen
+-- sie in der Transaktion ab, die den Verweis an der Risikoanalyse setzt
+-- (raw_result_bucket/raw_result_key bzw. archive_bucket/archive_key).
+--
+-- app.settle_storage_intent akzeptiert dafuer neben einer Dokumentversion auch
+-- den Rohergebnis- oder Archivverweis einer Risikoanalyse desselben Tenants.
+-- Diese Verweise tragen keine Objektversion; jeder Versuch schreibt unter einem
+-- eigenen Schluessel (bedingter PUT, genau eine Version), daher genuegen Bucket
+-- und Schluessel. Signatur, SECURITY DEFINER, search_path und Volatilitaet
+-- bleiben unveraendert; CREATE OR REPLACE behaelt Eigentuemer und Rechte.
+--
+-- Aufwand beim Deploy: reine Funktionsersetzung, keine Datenaenderung.
+BEGIN;
+
+CREATE OR REPLACE FUNCTION app.settle_storage_intent(
+  p_intent_id UUID,
+  p_storage_bucket TEXT,
+  p_storage_key TEXT,
+  p_storage_version_id TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, app, pg_temp
+AS $$
 DECLARE
   v_tenant_id UUID := app.current_tenant_id();
   v_version_id TEXT := COALESCE(p_storage_version_id, '');
@@ -61,4 +88,6 @@ BEGIN
       USING ERRCODE = 'restrict_violation';
   END IF;
 END;
-$function$;
+$$;
+
+COMMIT;

@@ -20,7 +20,9 @@ implementation:
     gzip-JSON-Snapshot einschließlich Rich-Doc in den geschützten Bucket
     geschrieben. Gemeinsame Parent-Locks, Inhaltsvergleich nach Storage-I/O
     und DB-Trigger schützen den archivierten Kernstand. Das Rohresultat bleibt
-    referenziert; Storage-/DB-Fehler können unverknüpfte geschützte Blobs hinterlassen.
+    referenziert. Snapshot und Rohresultat stehen vor dem Schreiben als
+    Speicherabsicht im Journal (DOC-UPLOAD-JOURNAL-001); ein nach Storage-/DB-Fehlern
+    unverknüpfter Blob bleibt bis zum Retention-Ende bestehen und wird danach bereinigt.
 sources:
   - kind: product_documentation
     citation: Anwenderdokumentation Subsumtion, TCMS und Quantenlos, Export und Archivierung
@@ -127,8 +129,11 @@ Object-Store-Write und nachfolgende Datenbanktransaktion sind keine gemeinsame
 Transaktion. Gelingt der Store-Write und scheitert danach DB-Update oder Audit,
 kann ein geschütztes Objekt ohne passenden Live-Verweis verbleiben. Jeder
 Versuch nutzt einen eigenen UUID-Key, sodass ein unterlegener Parallelversuch
-die referenzierten Bytes des Gewinners nicht ersetzt. Es gibt noch keinen
-automatisierten Abgleichs-/Bereinigungspfad für diese unverknüpften Risk-Blobs.
+die referenzierten Bytes des Gewinners nicht ersetzt. Die Speicherabsicht
+steht vor dem Write im Storage-Orphan-Journal und wird mit dem Archivverweis
+abgeschlossen; einen unverknüpften Blob löscht der Cleanup-Worker nach dem
+Retention-Ende versionsgenau. Vor dieser Umstellung ohne Journal geschriebene
+Blobs bleiben unerfasst.
 
 Die zentralen Guards und die transaktionale DB-Grenze sperren den Kernstand.
 `guardAnalysisVertraulich` lässt eine spätere Vertraulichkeitsänderung bewusst
@@ -154,17 +159,18 @@ Guards abgelehnt.
 
 Der Object Store bestätigt den Write, danach fällt die Datenbanktransaktion
 aus. Der geschützte Blob kann nicht einfach überschrieben oder gelöscht
-werden; ohne einen getesteten Abgleichs- und Kompensationspfad ist der
-Archivvorgang nicht als vollständig abgeschlossen zu behandeln.
+werden; die offene Speicherabsicht hält ihn auffindbar, und der Archivvorgang
+gilt erst mit gebundenem Archivverweis als abgeschlossen.
 
 ## Umsetzung in TaxTronik
 
 `archive.ts` lädt Analyse, Mandantenname und nach Start/Ende/ID sortierte
 Markierungen unter dem gemeinsamen Analyse-Row-Lock. Es baut den JSON-Payload,
-hasht und komprimiert ihn und schreibt ihn außerhalb der DB-Transaktion mit
-Retention. Danach liest `commitRiskArchiveTx` den Stand erneut unter demselben
-Lock. Nur bei identischem Inhalts-Hash werden Archivstatus und
-`risk.analysis.archived` in derselben Transaktion gespeichert. Payload und
+hasht und komprimiert ihn, journalisiert die Speicherabsicht und schreibt ihn
+außerhalb der DB-Transaktion mit Retention. Danach liest `commitRiskArchiveTx`
+den Stand erneut unter demselben Lock. Nur bei identischem Inhalts-Hash werden
+Archivstatus, Abschluss der Speicherabsicht und `risk.analysis.archived` in
+derselben Transaktion gespeichert. Payload und
 DB verwenden denselben Archivzeitpunkt. Eine fehlgeschlagene Audittransaktion
 rollt auch den Archivpointer zurück.
 
@@ -194,9 +200,9 @@ Recherche-Schreibpfaden und weist dort Mutationen zurück.
 
 Die Umsetzung ist teilweise. Snapshot, Hash, Speicherschutz, Audit und
 wesentliche Schreibguards sind vorhanden. Es fehlen ein vollständig
-eingebettetes Rohresultat, Archivguards für sämtliche weiteren Folgeobjekte,
-End-to-End-Abruf aus dem tatsächlichen Object Store und eine automatisierte
-Storage-/DB-Kompensation. Die DB kann die Wahrheit eines vom berechtigten
+eingebettetes Rohresultat, Archivguards für sämtliche weiteren Folgeobjekte und
+End-to-End-Abruf aus dem tatsächlichen Object Store; unverknüpfte Blobs werden
+erst nach dem Retention-Ende bereinigt. Die DB kann die Wahrheit eines vom berechtigten
 Anwendungspfad gelieferten S3-Pointers nicht unabhängig prüfen. Der Bucketname oder die Bezeichnung
 „GoBD“ ist kein fachlicher Konformitätsnachweis.
 
@@ -222,7 +228,9 @@ Engine-Aufruf nicht nachträglich zurücknehmen.
 Der referenzierte Guard-Test belegt einzelne Autorisierungsentscheidungen und
 zeigt, dass die Vertraulichkeit archivierter Analysen bewusst änderbar bleibt.
 `archive.test.ts` prüft gzip-Inhalt einschließlich Rich-Doc, Hash, eindeutige
-Versuchsschlüssel, geänderten Stand während des Uploads und Storagefehler.
+Versuchsschlüssel, geänderten Stand während des Uploads und Storagefehler
+sowie die Journal-Reihenfolge, Journal- und PUT-Fehler und einen Abbruch
+zwischen PUT und Commit.
 Die PostgreSQL-Tests verwenden echte konkurrierende App-Verbindungen und
 beobachten `pg_blocking_pids`: normale, rohe und verschachtelte Writer warten
 auf die Archivtransaktion und scheitern danach; umgekehrt erkennt die finale

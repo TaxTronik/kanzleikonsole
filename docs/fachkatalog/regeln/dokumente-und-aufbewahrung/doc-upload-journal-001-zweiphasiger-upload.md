@@ -18,10 +18,10 @@ implementation:
   summary: >-
     Der zweiphasige Helper und der GwG-Onboarding-Pfad journalisieren einen
     festen PENDING-Intent vor dem Object-Write und können ihn wiederaufnehmen.
-    Die direkten Upload-Pfade journalisieren vor dem PUT eine Speicherabsicht,
-    die ihre Commit-Transaktion abschließt; eine offen gebliebene Absicht löst
-    der Cleanup-Worker auf, statt sie wiederaufzunehmen. Risiko-Archiv und
-    Engine-Rohergebnisse schreiben weiterhin ohne Vorab-Journal.
+    Die direkten Upload-Pfade sowie Risiko-Archiv und Engine-Rohergebnisse der
+    Risikoanalyse journalisieren vor dem PUT eine Speicherabsicht, die ihre
+    Commit-Transaktion abschließt; eine offen gebliebene Absicht löst der
+    Cleanup-Worker auf, statt sie wiederaufzunehmen.
 sources:
   - kind: product_documentation
     citation: Technische Modulbeschreibung Dokumentenarchiv, Upload- und Kompensationsgrenzen
@@ -49,6 +49,10 @@ code_refs:
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
   - packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql
   - packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql
+  - apps/web/src/server/risk/archive.ts
+  - apps/web/src/server/risk/raw-store.ts
+  - apps/web/src/server/risk/persistence.ts
+  - packages/db/prisma/migrations/20261007150000_storage_intent_risk_references/migration.sql
 test_refs:
   - apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts
   - apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts
@@ -70,12 +74,15 @@ test_refs:
   - apps/web/src/server/documents/__tests__/journaled-upload.test.ts
   - apps/web/src/server/documents/__tests__/storage-intent.test.ts
   - packages/db/src/__tests__/storage-upload-intent.test.ts
+  - apps/web/src/server/risk/__tests__/archive.test.ts
+  - apps/web/src/server/risk/__tests__/persistence.test.ts
 feature_refs:
   - docs/development/module/dokumentenarchiv.md
 related_rules:
   - DOC-OBJECT-LOCK-001
   - DOC-VERSION-IMMUTABILITY-001
   - PORTAL-INBOX-SUBMISSION-001
+  - RISK-ARCHIVE-SNAPSHOT-001
 tags:
   - upload
   - journal
@@ -91,8 +98,8 @@ Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine
 Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und
 auf `CLEAN` finalisiert werden. Diese wiederaufnehmbare Vorab-Journalisierung
 ist nicht auf allen geschützten Uploadwegen eingesetzt; die direkten
-Upload-Pfade journalisieren vor dem Write eine Speicherabsicht, die erst ihre
-Commit-Transaktion abschließt.
+Upload-Pfade sowie Risiko-Archiv und Engine-Rohergebnisse journalisieren vor
+dem Write eine Speicherabsicht, die erst ihre Commit-Transaktion abschließt.
 
 ## Wann gilt die Regel?
 
@@ -209,7 +216,9 @@ Storage-Orphan-Journal (`intent`); erst danach folgt der bedingte PUT. Die
 Commit-Transaktion wiederholt die
 Vorprüfung und schließt die Absicht über `app.settle_storage_intent` atomar
 ab. Die Funktion verlangt eine Dokumentversion desselben Tenants mit genau
-dieser Speicheridentität und eine offene, unbeanspruchte Absicht; ihre
+dieser Speicheridentität oder einen Rohergebnis- bzw. Archivverweis einer
+Risikoanalyse desselben Tenants auf Bucket und Schlüssel sowie eine offene,
+unbeanspruchte Absicht; ihre
 Zeilensperre hält einen parallelen Worker-Claim bis zum Commit auf, und eine
 bereits vom Worker beanspruchte Absicht lässt den Fachcommit scheitern. Das
 E-Rechnungsarchiv journalisiert PDF und XML gemeinsam vor dem ersten PUT.
@@ -220,6 +229,22 @@ der Sicherheitsfrist von 30 Minuten, unter Object Lock erst nach dem
 Retention-Ende, auf: referenziert (`REFERENCED`), unreferenziert
 versionsgenau gelöscht oder nie geschrieben (`ABSENT`, nur für Absichten ohne
 gebundene Objektversion).
+
+Risiko-Archiv (Subsumtions-Snapshot, `risk/archive.ts`) und Engine-Rohergebnis
+der Risikoanalyse (`risk/raw-store.ts`) folgen demselben Ablauf im GoBD-Bucket:
+Die gzip-Bytes werden als App-eigene Ausgabe ohne Virenscan mit Schutzstufe
+GoBD vorbereitet, die Speicherabsicht wird journalisiert und erst danach unter
+einem je Versuch neuen, tenantgebundenen Schlüssel (`tenants/<Tenant>/gobd/…`)
+bedingt geschrieben. Die Archivtransaktion setzt Archivzeitpunkt und
+Archivverweis und schließt die Absicht ab; das Rohergebnis schließt die
+Transaktion ab, die die Analyse mit ihrem Verweis anlegt (`risk/persistence.ts`).
+Diese Verweise tragen keine Objektversion; als Bezug gelten Bucket und
+Schlüssel. Der Cleanup-Worker wertet sie bei der Referenzprüfung wie
+Dokumentversionen aus: ein Verweis desselben Tenants schließt die Absicht als
+`REFERENCED`, ein tenantfremder Verweis ist ein Integritätsvorfall ohne
+Löschung. Scheitert die Fachtransaktion, etwa weil sich der Subsumtionsstand
+während des Schreibens geändert hat, bleibt die Absicht mit gebundener
+Objektversion offen und wird nach dem Retention-Ende versionsgenau gelöscht.
 
 Der Mandantenposteingang persistiert für jede Anlage zuerst eine PENDING-
 Staging-Identität mit unveränderlichem Bucket, Key, Hash, Größe, MIME-Typ,
@@ -243,10 +268,13 @@ Die Umsetzung ist teilweise: Die im Scope zunächst allgemein formulierte
 Vorab-Journalisierung als wiederaufnehmbare PENDING-Dokumentversion gilt nicht
 für alle geschützten Uploadpfade. Die direkten Upload-Pfade journalisieren
 stattdessen eine Speicherabsicht vor dem Write; ein abgebrochener Upload wird
-dort nicht wiederaufgenommen, sondern vom Cleanup-Worker aufgelöst. Das
-Risiko-Archiv und die Engine-Rohergebnisse der Risikoanalyse schreiben
-weiterhin ohne Vorab-Journal in den GoBD-gesperrten Store; ihnen fehlt ein
-Dokumentbezug, den der Cleanup-Worker prüfen könnte.
+dort nicht wiederaufgenommen, sondern vom Cleanup-Worker aufgelöst. Ein
+unverknüpftes Objekt aus Risiko-Archiv oder Engine-Rohergebnis bleibt unter
+Object Lock bis zum Retention-Ende bestehen und wird erst danach gelöscht.
+Risiko-Objekte, die vor der Journalisierung dieser Pfade ohne Speicherabsicht
+geschrieben wurden, erfasst der Worker nicht; eine Bestandsinventur dieser
+Altobjekte erfolgt nicht. Bestehende Analysen behalten ihre bisherigen
+Schlüssel.
 
 Abgelaufene oder verworfene Inbox-Drafts werden durch einen eigenen Worker
 erfasst. Er löscht Bytes nicht unjournalisiert, sondern übergibt die feste
@@ -310,6 +338,15 @@ Definer-Funktion, die offene Absicht nach zurückgerollter Fachtransaktion,
 `ABSENT` nur ohne gebundene Objektversion und einen bis zum Fachcommit
 wartenden Worker-Claim. Der Worker-Datenbanktest belegt versionsgenaue
 Löschung, `ABSENT`, `REFERENCED` und das Warten auf das Retention-Ende.
+
+Die Risiko-Tests (`archive.test.ts`, `persistence.test.ts`) belegen für
+Archiv-Snapshot und Rohergebnis die Reihenfolge Journal, PUT, Verweis und
+Abschluss, das Ausbleiben jedes Writes bei gescheitertem Journal, die offen
+bleibende Absicht bei gescheiterter Fachtransaktion und eine auflösbare Absicht
+nach einem Abbruch zwischen PUT und Commit. PostgreSQL-Tests belegen den
+Abschluss über Rohergebnis- und Archivverweis desselben Tenants und die
+Ablehnung eines tenantfremden Verweises; Worker-Tests belegen `REFERENCED`
+statt Löschung für beide Verweisarten, auch nach verlorener Commit-Antwort.
 
 ### Ergänzung: Mandanten-Assistenten
 

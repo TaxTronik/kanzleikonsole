@@ -15,6 +15,8 @@
 //       Schlüssel -> REFERENCED, nichts wird gelöscht.
 //   (4) Object Lock: erst nach dem gespeicherten Retention-Ende.
 //   (5) Nach gescheitertem Commit gebundene Version: direkt löschen.
+//   (6) Risikoanalyse verweist auf Rohergebnis bzw. Archiv-Snapshot (ohne
+//       Versionsspalte): REFERENCED, nichts wird gelöscht.
 //
 // Der Object Store ist eine Attrappe; Auswahl, Claims, Constraints (ABSENT nur
 // für Absichten) und Statusübergänge laufen gegen die migrierte Datenbank.
@@ -141,13 +143,14 @@ describeDb('K-06 storage-orphan-cleanup resolves journaled upload intents (Postg
     content: string;
     immutable?: boolean;
     retentionUntil?: Date | null;
+    source?: string;
   }) {
     const bytes = Buffer.from(input.content);
     const key = `tenants/${tenantId}/${input.immutable ? 'gobd' : 'none'}/2001/01/${randomUUID()}.bin`;
     const row = await prismaOwner.storageOrphan.create({
       data: {
         tenantId,
-        source: 'staff.document.commit',
+        source: input.source ?? 'staff.document.commit',
         intent: true,
         storageBucket: input.immutable ? 'gobd' : 'general',
         storageKey: key,
@@ -262,5 +265,54 @@ describeDb('K-06 storage-orphan-cleanup resolves journaled upload intents (Postg
 
     expect(result).toMatchObject({ claimed: 1, deleted: 1 });
     expect(h.deleted).toEqual([`${row.storageBucket}/${row.storageKey}@${versionId}`]);
+  });
+
+  it('(6) wertet Rohergebnis- und Archivverweise einer Risikoanalyse als Bezug', async () => {
+    // Retention-Ende vor NOW: Die GoBD-Absichten sind faellig.
+    const retentionUntil = new Date('2001-01-01T00:30:00.000Z');
+    const raw = await journalIntent({
+      content: 'engine raw result',
+      immutable: true,
+      retentionUntil,
+      source: 'risk.analysis.raw_result',
+    });
+    const archive = await journalIntent({
+      content: 'archive snapshot',
+      immutable: true,
+      retentionUntil,
+      source: 'risk.analysis.archive',
+    });
+    putObject(raw.row, raw.bytes);
+    putObject(archive.row, archive.bytes);
+    // Verlorenes COMMIT-ACK: Die Analyse traegt beide Verweise, die Absichten
+    // sind (nach nachgelagerter Kompensation) wieder offen.
+    const analysis = await prismaOwner.riskAnalysis.create({
+      data: {
+        tenantId,
+        sourceText: 'Synthetischer Sachverhalt',
+        textHash: 'synthetic-hash',
+        katalogVersion: 'katalog',
+        engineVersion: 'engine',
+        createdById: staffId,
+        rawResultBucket: raw.row.storageBucket,
+        rawResultKey: raw.row.storageKey,
+      },
+    });
+    await prismaOwner.riskAnalysis.update({
+      where: { id: analysis.id },
+      data: {
+        archivedAt: CREATED_AT,
+        archiveBucket: archive.row.storageBucket,
+        archiveKey: archive.row.storageKey,
+      },
+    });
+
+    const result = await runStorageOrphanCleanup(NOW);
+
+    expect(result).toMatchObject({ claimed: 2, referenced: 2, deleted: 0, incidents: 0 });
+    expect(h.deleted).toEqual([]);
+    expect(h.objects.size).toBe(2);
+    await expect(load(raw.row.id)).resolves.toMatchObject({ resolution: 'REFERENCED' });
+    await expect(load(archive.row.id)).resolves.toMatchObject({ resolution: 'REFERENCED' });
   });
 });

@@ -1837,7 +1837,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Der zweiphasige Helper und der GwG-Onboarding-Pfad journalisieren einen festen PENDING-Intent vor dem Object-Write und können ihn wiederaufnehmen. Die direkten Upload-Pfade journalisieren vor dem PUT eine Speicherabsicht, die ihre Commit-Transaktion abschließt; eine offen gebliebene Absicht löst der Cleanup-Worker auf, statt sie wiederaufzunehmen. Risiko-Archiv und Engine-Rohergebnisse schreiben weiterhin ohne Vorab-Journal."
+        "summary": "Der zweiphasige Helper und der GwG-Onboarding-Pfad journalisieren einen festen PENDING-Intent vor dem Object-Write und können ihn wiederaufnehmen. Die direkten Upload-Pfade sowie Risiko-Archiv und Engine-Rohergebnisse der Risikoanalyse journalisieren vor dem PUT eine Speicherabsicht, die ihre Commit-Transaktion abschließt; eine offen gebliebene Absicht löst der Cleanup-Worker auf, statt sie wiederaufzunehmen."
       },
       "sources": [
         {
@@ -1868,7 +1868,11 @@
         "apps/worker/src/jobs/portal-inbox-cleanup.ts",
         "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
         "packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql",
-        "packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql"
+        "packages/db/prisma/migrations/20260901008000_portal_inbox_reject_pending_acceptance/migration.sql",
+        "apps/web/src/server/risk/archive.ts",
+        "apps/web/src/server/risk/raw-store.ts",
+        "apps/web/src/server/risk/persistence.ts",
+        "packages/db/prisma/migrations/20261007150000_storage_intent_risk_references/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts",
@@ -1890,17 +1894,20 @@
         "apps/worker/src/__tests__/run-budget.test.ts",
         "apps/web/src/server/documents/__tests__/journaled-upload.test.ts",
         "apps/web/src/server/documents/__tests__/storage-intent.test.ts",
-        "packages/db/src/__tests__/storage-upload-intent.test.ts"
+        "packages/db/src/__tests__/storage-upload-intent.test.ts",
+        "apps/web/src/server/risk/__tests__/archive.test.ts",
+        "apps/web/src/server/risk/__tests__/persistence.test.ts"
       ],
       "feature_refs": ["docs/development/module/dokumentenarchiv.md"],
       "related_rules": [
         "DOC-OBJECT-LOCK-001",
         "DOC-VERSION-IMMUTABILITY-001",
-        "PORTAL-INBOX-SUBMISSION-001"
+        "PORTAL-INBOX-SUBMISSION-001",
+        "RISK-ARCHIVE-SNAPSHOT-001"
       ],
       "tags": ["upload", "journal", "recovery"],
       "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/doc-upload-journal-001-zweiphasiger-upload.md",
-      "summary": "Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine PENDING-Dokumentversion mit festem Bucket, Schlüssel, Hash, Größe und Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und auf CLEAN finalisiert werden. Diese wiederaufnehmbare Vorab-Journalisierung ist nicht auf allen geschützten Uploadwegen eingesetzt; die direkten Upload-Pfade journalisieren vor dem Write eine Speicherabsicht, die erst ihre Commit-Transaktion abschließt."
+      "summary": "Der zweiphasige Uploadpfad persistiert vor dem Object-Store-Write eine PENDING-Dokumentversion mit festem Bucket, Schlüssel, Hash, Größe und Retention. Nach einem mehrdeutigen Commit kann genau dieser Intent gesucht und auf CLEAN finalisiert werden. Diese wiederaufnehmbare Vorab-Journalisierung ist nicht auf allen geschützten Uploadwegen eingesetzt; die direkten Upload-Pfade sowie Risiko-Archiv und Engine-Rohergebnisse journalisieren vor dem Write eine Speicherabsicht, die erst ihre Commit-Transaktion abschließt."
     },
     {
       "id": "DOC-VERSION-IMMUTABILITY-001",
@@ -4912,7 +4919,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Analyse, Sachverhalt, Markierungen und Metadaten werden als gehashter gzip-JSON-Snapshot einschließlich Rich-Doc in den geschützten Bucket geschrieben. Gemeinsame Parent-Locks, Inhaltsvergleich nach Storage-I/O und DB-Trigger schützen den archivierten Kernstand. Das Rohresultat bleibt referenziert; Storage-/DB-Fehler können unverknüpfte geschützte Blobs hinterlassen."
+        "summary": "Analyse, Sachverhalt, Markierungen und Metadaten werden als gehashter gzip-JSON-Snapshot einschließlich Rich-Doc in den geschützten Bucket geschrieben. Gemeinsame Parent-Locks, Inhaltsvergleich nach Storage-I/O und DB-Trigger schützen den archivierten Kernstand. Das Rohresultat bleibt referenziert. Snapshot und Rohresultat stehen vor dem Schreiben als Speicherabsicht im Journal (DOC-UPLOAD-JOURNAL-001); ein nach Storage-/DB-Fehlern unverknüpfter Blob bleibt bis zum Retention-Ende bestehen und wird danach bereinigt."
       },
       "sources": [
         {
