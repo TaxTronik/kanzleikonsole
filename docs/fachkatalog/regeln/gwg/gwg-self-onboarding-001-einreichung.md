@@ -202,6 +202,14 @@ Einladungsausgabe und -nutzung verwenden gehashte Tokens, Ablaufstatus,
 Rate-Limits und einen Mandanten-Lifecycle-Lock. Uploads werden vor der
 Verknüpfung gescannt und auf eine offene Einladung gescopt; fehlerhafte
 Vorab-Uploads können über einen kontrollierten Vernichtungspfad entfernt werden.
+Die Zuordnung eines Uploads zur Einladung steht ausschließlich im
+Fremdschlüssel `document.gwg_onboarding_invite_id`, den der Uploadpfad schon
+beim Anlegen setzt; Referenzprüfung beim Submit, Verwerfen und GwG-Vernichtung
+lesen nur diesen Fremdschlüssel. Die JSON-Liste `uploaded_document_ids` der
+Einladung wird nicht mehr gelesen und nur noch für die Rollback-Verträglichkeit
+mit dem Vorgänger-Release weitergeschrieben; sie entfällt im Contract-Schritt
+eines Folgerelease (Expand/Contract nach `docs/operations/release.md`,
+Abschnitt 4).
 
 Der Submit validiert zuerst sämtliche Personen- und Dokumentreferenzen. Danach
 claimt eine Datenbanktransaktion die Einladung, löst den gebundenen Entwurf auf,
@@ -236,7 +244,7 @@ Grenzen:
 
 ## Technische Nachweise
 
-`page-render.test.tsx`: Der gerenderte Seitentest prüft die sichtbare jüngste Einladung und bestätigt, dass ihre ungenutzten Upload-IDs keinen weiteren Dokumentabruf auslösen.
+`page-render.test.tsx`: Der gerenderte Seitentest prüft die sichtbare jüngste Einladung und bestätigt, dass die nur noch für den Rollback gepflegte Upload-Liste der Einladung keinen weiteren Dokumentabruf auslöst.
 
 Einladungsbindung, Preflight und Transaktionsskript belegen Scope, CAS und
 Phasenreihenfolge. Die Tests prüfen invitefremde und doppelte Dokumente,

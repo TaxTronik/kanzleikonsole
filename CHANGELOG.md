@@ -235,6 +235,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Fachkatalog: `GWG-SELF-ONBOARDING-001` beschreibt die Zuordnung von
+  Onboarding-Uploads allein über `document.gwg_onboarding_invite_id`; die
+  JSON-Liste der Einladung wird nur noch für die Rollback-Verträglichkeit mit
+  dem Vorgänger-Release geschrieben und entfällt im Contract-Schritt eines
+  Folgerelease.
 - Fachkatalog: Die Umsetzungstexte von `ACCESS-TENANT-RLS-001`,
   `DOC-UPLOAD-JOURNAL-001`, `DSGVO-OPERATIONAL-RETENTION-001`,
   `AUDIT-ARCHIVE-001`, `AUDIT-VERIFY-ALERT-001`,
