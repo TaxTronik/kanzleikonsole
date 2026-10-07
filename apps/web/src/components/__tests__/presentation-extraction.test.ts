@@ -45,8 +45,17 @@ describe('Verhaltensneutrale Darstellungsextraktionen', () => {
     expect(progress).not.toContain('FormData');
     expect(progress).not.toContain('Action(');
     expect(n8n).toContain('n8nSetupProgress(');
-    expect(n8n).toContain('function connectionFormData(): FormData');
-    expect(n8n).toContain("if (keepApiKey) data.set('keepApiKey', 'on')");
+    // K-04-Folgearbeit: Speichern und „API testen“ bauen denselben Payload aus
+    // dem kontrollierten Zustand (n8n-connection-state.ts).
+    expect(n8n).toContain('testN8nApiAction(null, n8nConnectionFormData(connection))');
+    const state = source('admin/settings/n8n-connection-state.ts');
+    expect(state).toContain(
+      'export function n8nConnectionFormData(state: N8nConnectionState): FormData',
+    );
+    expect(state).toContain("if (state.keepApiKey) data.set('keepApiKey', 'on')");
+    expect(source('admin/settings/n8n-connection-section.tsx')).toContain(
+      'const formData = n8nConnectionFormData(connection);',
+    );
   });
 
   it('hält Route-Titel/Vorbelegung rein darstellend und Ereignispayloads unverändert am Formular', () => {

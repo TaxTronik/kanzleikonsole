@@ -12,7 +12,11 @@ import {
   testN8nApiAction,
   type ActionResult,
 } from './n8n-actions';
-import { createN8nConnectionState, n8nConnectionReducer } from './n8n-connection-state';
+import {
+  createN8nConnectionState,
+  n8nConnectionFormData,
+  n8nConnectionReducer,
+} from './n8n-connection-state';
 import { Stage } from '@/components/stage';
 import { withActiveStep } from '@/components/stepper';
 import { DeliveryOperationsSection } from './delivery-operations-section';
@@ -100,20 +104,7 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     initial,
     createN8nConnectionState,
   );
-  const {
-    name,
-    kind,
-    routingMode,
-    enabled,
-    uiBaseUrl,
-    callbackBaseUrl,
-    webhookBaseUrl,
-    apiBaseUrl,
-    apiKey,
-    keepApiKey,
-    hmacSecret,
-    keepHmac,
-  } = connection;
+  const { uiBaseUrl, callbackBaseUrl, apiBaseUrl } = connection;
   const [saveState, saveAction, saving] = useActionState<ActionResult | null, FormData>(
     saveN8nAction,
     null,
@@ -150,26 +141,11 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
   );
   const stageStates = withActiveStep(setupSteps);
 
-  function connectionFormData(): FormData {
-    const data = new FormData();
-    data.set('name', name);
-    data.set('kind', kind);
-    data.set('routingMode', routingMode);
-    if (enabled && routingMode !== 'DISABLED') data.set('enabled', 'on');
-    data.set('uiBaseUrl', uiBaseUrl);
-    data.set('callbackBaseUrl', callbackBaseUrl);
-    data.set('webhookBaseUrl', webhookBaseUrl);
-    data.set('apiBaseUrl', apiBaseUrl);
-    data.set('apiKey', apiKey);
-    data.set('hmacSecret', hmacSecret);
-    if (keepApiKey) data.set('keepApiKey', 'on');
-    if (keepHmac) data.set('keepHmac', 'on');
-    return data;
-  }
-
   function testApi() {
     setApiResult(null);
-    startTransition(async () => setApiResult(await testN8nApiAction(null, connectionFormData())));
+    startTransition(async () =>
+      setApiResult(await testN8nApiAction(null, n8nConnectionFormData(connection))),
+    );
   }
 
   function generateSecret() {

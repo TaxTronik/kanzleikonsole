@@ -51,6 +51,29 @@ export function createN8nConnectionState(initial: N8nConnectionInitialConfig): N
   };
 }
 
+/**
+ * FormData der Verbindung aus dem kontrollierten Zustand — dieselben Felder,
+ * die das Formular selbst trägt (sichtbare Inputs plus Hidden-Felder für
+ * Routing-Modus und Keep-Flags). Speichern und „API testen“ senden damit
+ * genau den angezeigten Stand.
+ */
+export function n8nConnectionFormData(state: N8nConnectionState): FormData {
+  const data = new FormData();
+  data.set('name', state.name);
+  data.set('kind', state.kind);
+  data.set('routingMode', state.routingMode);
+  if (state.enabled && state.routingMode !== 'DISABLED') data.set('enabled', 'on');
+  data.set('uiBaseUrl', state.uiBaseUrl);
+  data.set('callbackBaseUrl', state.callbackBaseUrl);
+  data.set('webhookBaseUrl', state.webhookBaseUrl);
+  data.set('apiBaseUrl', state.apiBaseUrl);
+  data.set('apiKey', state.apiKey);
+  data.set('hmacSecret', state.hmacSecret);
+  if (state.keepApiKey) data.set('keepApiKey', 'on');
+  if (state.keepHmac) data.set('keepHmac', 'on');
+  return data;
+}
+
 export function n8nConnectionReducer(
   state: N8nConnectionState,
   action: N8nConnectionAction,

@@ -1,9 +1,13 @@
 'use client';
 
 import { Link2, Loader2, Save } from 'lucide-react';
-import type { Dispatch } from 'react';
+import { startTransition, type Dispatch, type FormEvent } from 'react';
 import type { ActionResult } from './n8n-actions';
-import type { N8nConnectionAction, N8nConnectionState } from './n8n-connection-state';
+import {
+  n8nConnectionFormData,
+  type N8nConnectionAction,
+  type N8nConnectionState,
+} from './n8n-connection-state';
 import { N8nActionResult } from './n8n-form-result';
 import { CopyButton, ModeOption, SecretKeep } from './n8n-form-parts';
 import type { N8nBrowserConfig } from './n8n-form-types';
@@ -166,11 +170,29 @@ export function N8nConnectionSection({
     keepHmac,
   } = connection;
 
+  // Eigener Submit-Handler wie ActionForm (K-04): React 19 setzt ein Formular
+  // zurück, nachdem es dessen `action` selbst ausgeführt hat. Das kontrollierte
+  // Select „Betriebsart“ zeigte danach seine erste Option (BUNDLED), obwohl der
+  // State den gewählten Modus hielt — der nächste Submit las BUNDLED aus dem
+  // DOM. Der Handler verhindert das native Absenden und dispatcht die Action
+  // selbst in einer Transition, mit dem angezeigten (kontrollierten) Stand; das
+  // Ergebnis übernimmt N8nForm über saveState. `action` bleibt am Formular,
+  // damit ein Submit vor der Hydration weiter direkt an die Server-Action geht.
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = n8nConnectionFormData(connection);
+    startTransition(() => saveAction(formData));
+  }
+
   return (
     <section className="space-y-4">
       <ManagedN8nProvisionNotice initial={initial} />
 
-      <form action={saveAction} className="rounded-lg border border-default p-4 space-y-4">
+      <form
+        action={saveAction}
+        onSubmit={submit}
+        className="rounded-lg border border-default p-4 space-y-4"
+      >
         {/* Text-/URL-/Secret-Felder tragen ihr name-Attribut DIREKT am
     sichtbaren Input (kein Hidden-Mirror): ein Submit vor bzw. ohne
     Hydration postete sonst die server-gerenderten Alt-Werte statt

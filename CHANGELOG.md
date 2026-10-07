@@ -839,6 +839,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- n8n-Einstellungen: Nach dem Speichern springt die „Betriebsart“ nicht mehr
+  auf „Mit TaxTronik Compose betrieben“ zurück; ein weiteres Speichern
+  übernimmt nicht mehr versehentlich BUNDLED.
 - Mandanten-Mails aus der Outbox prüfen vor jedem Versand und jeder
   Wiederholung, ob der Vorgang noch aktuell ist (z. B. Rechnung storniert,
   Unterlagen abgeholt, Anforderung geschlossen, GwG-Einladung widerrufen oder
