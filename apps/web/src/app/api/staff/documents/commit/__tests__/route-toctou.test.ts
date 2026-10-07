@@ -156,6 +156,44 @@ describe('POST /api/staff/documents/commit - TOCTOU', () => {
     expect(storageJournal.events).toEqual([]);
   });
 
+  // F-03: Ablehnungen der Vorprüfung über die Fehlerklasse, nicht über Meldungspräfixe.
+  it('meldet eine Ablehnung der Vorprüfung mit unveränderter Meldung und ohne Store-Write', async () => {
+    const tx = { ...gobdTypeTx(), client: { findFirst: vi.fn().mockResolvedValue(null) } };
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: 'CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.',
+    });
+    expect(storageJournal.events).toEqual([]);
+  });
+
+  it('reicht einen fremden Fehler mit Validierungspräfix nicht als Ablehnung ins UI', async () => {
+    const tx = {
+      ...gobdTypeTx(),
+      client: {
+        findFirst: vi.fn().mockRejectedValue(new Error('CLIENT_NOT_FOUND: interner Treibertext')),
+      },
+    };
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: 'internal_error' });
+    expect(m.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: 'CLIENT_NOT_FOUND: interner Treibertext' }),
+      expect.any(String),
+    );
+    expect(storageJournal.events).toEqual([]);
+  });
+
   // Fachkatalog: REMINDER-TICKET-001
   it.each(['before-storage', 'during-storage'])(
     'archiviertes Ticket erhält keinen Anhang: %s',

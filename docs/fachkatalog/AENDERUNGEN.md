@@ -1,5 +1,35 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-019
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts
+      - apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts
+      - apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts
+      - apps/web/src/app/api/staff/documents/commit/route.ts
+      - apps/web/src/server/documents/__tests__/upload-helpers.test.ts
+      - apps/web/src/server/documents/upload-helpers.ts
+    rule_ids:
+      - DOC-OBJECT-LOCK-001
+      - DOC-RETENTION-CLASS-001
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - REMINDER-TICKET-001
+    reason: >-
+      Upload-Fehler bei Staff-Upload, neuer Version, Wissensanhang und
+      Mandantenposteingang werden nach Fehlerklasse (`UploadRejectedError`,
+      `StoredObjectError`, `UploadValidationError`, `GwgEvidenceLockedError`) statt
+      nach Meldungstext eingeordnet; die GwG-Sperre einer neuen Version liest die
+      Zuordnung nach der Zeilensperre selbst, der Trigger bleibt als
+      Datenbanksicherung. Meldungen, Statuscodes, Journal- und Sperrlogik bleiben
+      unverändert; fremde Fehler mit passendem Textanfang gelten nicht mehr als
+      Ablehnung. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts
+      - apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts
+      - apps/web/src/server/documents/__tests__/upload-helpers.test.ts
+      - apps/web/src/app/api/portal/inbox/batches/[id]/files/__tests__/route.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-018
     date: '2026-10-07'
     paths:
@@ -4513,6 +4543,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-019` dokumentiert die Einordnung von
+  Upload-Fehlern nach Fehlerklasse statt nach Meldungstext.
 
 - 2026-10-07: `FK-EXC-20261007-018` dokumentiert das Entfernen
   ungenutzter Einzel-Actions der Dokumentablage.

@@ -886,6 +886,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Upload-Fehler bei Staff- und Portal-Upload, neuer Version,
+  Wissensanhang und Mandantenposteingang werden nach Fehlerklasse statt nach
+  Meldungstext eingeordnet. Fremde Fehler mit passendem Textanfang erscheinen
+  nicht mehr als Ablehnung; die GwG-Sperre einer neuen Dokumentversion hängt
+  nicht mehr am Text des Datenbank-Triggers. Meldungen und Statuscodes bleiben
+  unverändert.
 - Posteingang (Kanzlei): Die Suche über alle Mandanten wählt Treffer über den
   Betreff-Index vor und scheitert auch bei sehr vielen Threads nicht mehr an
   der Zeitgrenze der Datenbank; Treffer, Zähler und Sichtbarkeit sind

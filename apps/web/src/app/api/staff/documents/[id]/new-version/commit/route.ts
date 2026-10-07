@@ -65,6 +65,26 @@ interface NewVersionCheck {
 }
 
 /**
+ * F-03: GwG-Zuordnung als eigenes Statement NACH der Dokumentzeilensperre. In
+ * READ COMMITTED sieht erst ein neues Statement eine Zuordnung, die eine
+ * parallele Transaktion während des Wartens auf die Sperre committet hat;
+ * spätere Zuordnungen warten auf diese Transaktion, weil der Fremdschlüssel
+ * gwg_id_document.document_id das Dokument mit FOR KEY SHARE sperrt. So erkennt
+ * die Nachprüfung auch dieses Rennen selbst (GwgEvidenceLockedError); vorher fing
+ * es nur der Meldungstext des Datenbank-Triggers beim Versionsinsert ab.
+ */
+async function isAssignedGwgEvidenceTx(tx: TxClient, documentId: string): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ assigned: boolean }>>`
+    SELECT EXISTS (
+      SELECT 1
+        FROM gwg_id_document gid
+       WHERE gid.document_id = ${documentId}::uuid
+    ) AS assigned
+  `;
+  return rows[0]?.assigned === true;
+}
+
+/**
  * Gemeinsame Vor- und Nachprüfung (K-06). Die Dokumentzeilensperre
  * stabilisiert Soft-Delete, Retagging und Tenant/Client-Paarung; der Typ ist
  * Teil der Storage-/Retention-Entscheidung und wird FOR SHARE gelesen. In der
@@ -90,7 +110,6 @@ async function checkNewVersionTx(
       clientId: string | null;
       classification: string;
       documentTypeId: string | null;
-      lockedByGwg: boolean;
     }>
   >`
     SELECT
@@ -98,12 +117,7 @@ async function checkNewVersionTx(
       d.tenant_id AS "tenantId",
       d.client_id AS "clientId",
       d.classification::text AS classification,
-      d.document_type_id AS "documentTypeId",
-      EXISTS (
-        SELECT 1
-          FROM gwg_id_document gid
-         WHERE gid.document_id = d.id
-      ) AS "lockedByGwg"
+      d.document_type_id AS "documentTypeId"
     FROM document d
     WHERE d.id = ${documentId}::uuid
       AND d.tenant_id = ${tenantId}::uuid
@@ -125,7 +139,7 @@ async function checkNewVersionTx(
   if (locked.clientId && !(await canAccessClientTx(tx, session, locked.clientId))) {
     throw unavailable();
   }
-  if (locked.lockedByGwg) throw new GwgEvidenceLockedError();
+  if (await isAssignedGwgEvidenceTx(tx, documentId)) throw new GwgEvidenceLockedError();
 
   let typeTier: string | null = null;
   let typeRetentionYears: number | null = null;
@@ -316,10 +330,8 @@ function uploadErrorResponse(error: unknown, tenantId: string): NextResponse {
     return NextResponse.json({ error: 'not_found' }, { status: 404 });
   }
   if (cause instanceof PoaDocumentLockedError) return lockedByPoaResponse();
-  const gwgEvidenceLocked =
-    cause instanceof GwgEvidenceLockedError ||
-    (cause instanceof Error && cause.message.includes('Zugeordneter GwG-Beweisinhalt'));
-  if (gwgEvidenceLocked) return lockedByGwgResponse();
+  // F-03: nur über die Klasse der eigenen Prüfung, nicht über Trigger-Meldungstexte.
+  if (cause instanceof GwgEvidenceLockedError) return lockedByGwgResponse();
   if (cause instanceof DocumentReferenceChangedError) {
     return NextResponse.json(
       {

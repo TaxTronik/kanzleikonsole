@@ -1,14 +1,58 @@
 import { describe, expect, it, vi } from 'vitest';
 
+const logError = vi.hoisted(() => vi.fn());
+
 vi.mock('@taxtronik/storage', () => ({ MAX_UPLOAD_BYTES: 25 * 1024 * 1024 }));
 vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: (value: unknown) => value }));
-vi.mock('@/server/logger', () => ({ log: { error: vi.fn() } }));
+vi.mock('@/server/logger', () => ({ log: { error: logError } }));
 
+import { StoredObjectError, UploadRejectedError } from '@taxtronik/storage/errors';
 import {
   createDocumentWithVersion,
   createPendingDocumentWithVersion,
   finalizePendingDocumentVersion,
+  storageCommitErrorResponse,
 } from '../upload-helpers';
+
+// F-03: Storage-Ablehnungen werden über Fehlerklasse und `reason` eingeordnet,
+// nicht über den Meldungstext; die Antwort behält Status und Meldung.
+describe('storageCommitErrorResponse', () => {
+  it.each([
+    [new UploadRejectedError('INFECTED', 'Datei wurde von ClamAV als infiziert markiert.'), 422],
+    [
+      new UploadRejectedError('TOO_LARGE', 'Datei überschreitet das Limit von 26214400 Bytes.'),
+      413,
+    ],
+    [new UploadRejectedError('SCAN_ERROR', 'ClamAV-Scan fehlgeschlagen.'), 502],
+    [new StoredObjectError('TOO_LARGE', 'Objekt (26214401 B) überschreitet das Limit.'), 413],
+  ])('%s → %i mit unveränderter Meldung', async (error, status) => {
+    const response = storageCommitErrorResponse(error);
+
+    expect(response.status).toBe(status);
+    await expect(response.json()).resolves.toEqual({ error: error.message });
+  });
+
+  it.each([
+    ['eine Meldung mit Ablehnungspräfix ohne Fehlerklasse', new Error('INFECTED: Fremdtext')],
+    ['ein früherer FORBIDDEN-Präfix', new Error('FORBIDDEN: Fremdtext')],
+    [
+      'eine unzulässige Frist (kein Upload-Fehler des Nutzers)',
+      new UploadRejectedError('INVALID_RETENTION_YEARS', 'GOBD erlaubt nur 6, 8 oder 10 Jahre.'),
+    ],
+    [
+      'eine Integritätsabweichung beim Wiederfinden',
+      new StoredObjectError('HASH_MISMATCH', 'SHA-256 weicht von der Fassung ab.'),
+    ],
+  ])('ordnet %s als 500 ohne Details ein', async (_case, error) => {
+    logError.mockClear();
+
+    const response = storageCommitErrorResponse(error);
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: 'storage_error' });
+    expect(logError).toHaveBeenCalledWith({ err: error.message }, expect.any(String));
+  });
+});
 
 describe('createDocumentWithVersion', () => {
   it('persistiert zwingend dieselbe Retention wie der Storage-Commit', async () => {

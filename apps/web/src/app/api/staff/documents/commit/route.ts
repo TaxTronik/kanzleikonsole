@@ -95,6 +95,27 @@ class ReferenceChangedError extends Error {
   }
 }
 
+type UploadValidationCode =
+  | 'TYPE_NOT_FOUND'
+  | 'CLIENT_NOT_FOUND'
+  | 'ANALYSIS_NOT_FOUND'
+  | 'WORKFLOW_ITEM_NOT_FOUND'
+  | 'WORKFLOW_ITEM_CLIENT_MISMATCH';
+
+/**
+ * Bekannte Ablehnung der Upload-Prüfung. F-03: eingeordnet über die Klasse statt
+ * über Meldungspräfixe; die Meldung behält das Format `CODE: …` für das UI.
+ */
+class UploadValidationError extends Error {
+  constructor(
+    readonly code: UploadValidationCode,
+    message: string,
+  ) {
+    super(`${code}: ${message}`);
+    this.name = 'UploadValidationError';
+  }
+}
+
 /** Typ → Schutzstufe + Carrier-Klassifikation + finale documentTypeId. */
 async function resolveUploadTypeTx(
   tx: TxClient,
@@ -106,7 +127,7 @@ async function resolveUploadTypeTx(
       where: { id: fields.documentTypeId, tenantId, active: true },
       select: { id: true, tier: true, classificationKey: true, retentionYears: true },
     });
-    if (!t) throw new Error('TYPE_NOT_FOUND: Datei-Typ nicht gefunden.');
+    if (!t) throw new UploadValidationError('TYPE_NOT_FOUND', 'Datei-Typ nicht gefunden.');
     return {
       tier: t.tier as ProtectionTier,
       classification: carrierClassification(t.tier as ProtectionTier, t.classificationKey),
@@ -164,14 +185,16 @@ async function checkStaffUploadTx(
   if (clientId) {
     const c = await tx.client.findFirst({ where: { id: clientId }, select: { id: true } });
     if (!c || !(await canAccessClientTx(tx, session, clientId))) {
-      throw new Error('CLIENT_NOT_FOUND: clientId nicht in diesem Tenant.');
+      throw new UploadValidationError('CLIENT_NOT_FOUND', 'clientId nicht in diesem Tenant.');
     }
   }
   // Tenant-Sanity für analysisId (analog clientId — der FK prüft nur Existenz,
   // unter RLS sieht findFirst nur Analysen DIESES Tenants).
   if (analysisId) {
     const a = await tx.riskAnalysis.findFirst({ where: { id: analysisId }, select: { id: true } });
-    if (!a) throw new Error('ANALYSIS_NOT_FOUND: analysisId nicht in diesem Tenant.');
+    if (!a) {
+      throw new UploadValidationError('ANALYSIS_NOT_FOUND', 'analysisId nicht in diesem Tenant.');
+    }
   }
   // HIGH: Tenant-/Mandanten-Sanity für workflowItemId. Der FK prüft nur
   // Existenz (workflow_item.id), nicht Tenant/Mandant — und workflow_item
@@ -184,10 +207,16 @@ async function checkStaffUploadTx(
       where: { id: workflowItemId, instance: { tenantId } },
       select: { instance: { select: { clientId: true } } },
     });
-    if (!wi) throw new Error('WORKFLOW_ITEM_NOT_FOUND: workflowItemId nicht in diesem Tenant.');
+    if (!wi) {
+      throw new UploadValidationError(
+        'WORKFLOW_ITEM_NOT_FOUND',
+        'workflowItemId nicht in diesem Tenant.',
+      );
+    }
     if ((wi.instance.clientId ?? null) !== (clientId ?? null)) {
-      throw new Error(
-        'WORKFLOW_ITEM_CLIENT_MISMATCH: Workflow-Schritt gehört zu einem anderen Mandanten.',
+      throw new UploadValidationError(
+        'WORKFLOW_ITEM_CLIENT_MISMATCH',
+        'Workflow-Schritt gehört zu einem anderen Mandanten.',
       );
     }
   }
@@ -394,32 +423,22 @@ function uploadErrorResponse(error: unknown, tenantId: string): NextResponse {
   }
 }
 
-const VALIDATION_PREFIXES = [
-  'TYPE_NOT_FOUND',
-  'CLIENT_NOT_FOUND',
-  'ANALYSIS_NOT_FOUND',
-  'WORKFLOW_ITEM_NOT_FOUND',
-  'WORKFLOW_ITEM_CLIENT_MISMATCH',
-];
-
 /** In der Commit-Transaktion bedeutet jeder Prüfungsfehler: Referenz geändert. */
 function isReferenceChange(error: unknown): boolean {
-  if (error instanceof ReferenceChangedError || error instanceof ReminderUploadError) return true;
-  const message = error instanceof Error ? error.message : '';
-  return VALIDATION_PREFIXES.some((prefix) => message.startsWith(prefix));
+  return (
+    error instanceof ReferenceChangedError ||
+    error instanceof ReminderUploadError ||
+    error instanceof UploadValidationError
+  );
 }
 
 /** Nur bekannte Validierungsfehler dürfen vor dem Store-Write ins UI gelangen. */
 function preflightErrorResponse(error: unknown, tenantId: string): NextResponse {
-  if (error instanceof ReminderUploadError) {
+  if (error instanceof ReminderUploadError || error instanceof UploadValidationError) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
-  const message = error instanceof Error ? error.message : '';
-  if (VALIDATION_PREFIXES.some((prefix) => message.startsWith(prefix))) {
-    return NextResponse.json({ error: message }, { status: 400 });
-  }
   log.error(
-    { component: 'documents-commit', tenantId, err: message },
+    { component: 'documents-commit', tenantId, err: error instanceof Error ? error.message : '' },
     'documents-commit: Validierungs-Tx vor Storage-Commit fehlgeschlagen',
   );
   return NextResponse.json({ error: 'internal_error' }, { status: 500 });

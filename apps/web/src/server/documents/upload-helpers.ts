@@ -20,6 +20,11 @@ import {
   type CommitDocumentResult,
   type PreparedBytesCommit,
 } from '@taxtronik/storage';
+import {
+  StoredObjectError,
+  UploadRejectedError,
+  type UploadRejectionReason,
+} from '@taxtronik/storage/errors';
 import { prismaBytes } from '@/server/db/prisma-bytes';
 import { log } from '@/server/logger';
 import { isRequestBodyTooLargeError, parseFormDataBounded } from '@/server/http/bounded-form-data';
@@ -60,30 +65,38 @@ export async function parseMultipartUpload(req: NextRequest): Promise<ParsedUplo
   return { ok: true, form, file };
 }
 
+/** HTTP-Status je Ablehnungsgrund des Storage-Pakets (UploadRejectedError). */
+const UPLOAD_REJECTION_STATUS: Partial<Record<UploadRejectionReason, number>> = {
+  INFECTED: 422,
+  TOO_LARGE: 413,
+  SCAN_ERROR: 502,
+};
+
+/** Status einer fachlich erwartbaren Storage-Ablehnung, sonst null (→ 500). */
+function storageRejectionStatus(e: unknown): number | null {
+  if (e instanceof UploadRejectedError) return UPLOAD_REJECTION_STATUS[e.reason] ?? null;
+  // Ein Objekt über dem Limit (Recovery eines mehrdeutigen PUT) ist dieselbe
+  // Größenablehnung wie beim Upload.
+  if (e instanceof StoredObjectError && e.reason === 'TOO_LARGE') return 413;
+  return null;
+}
+
 /**
- * Storage-Commit-Fehler (ClamAV/Größe/Policy) → HTTP-Response.
- * Mapping war 3× wortgleich kopiert; Message-Präfixe sind der Vertrag aus
- * @taxtronik/storage (commitDocumentFromBytes / commitBytesWithTier).
+ * Storage-Commit-Fehler (ClamAV/Größe) → HTTP-Response. Mapping war 3×
+ * wortgleich kopiert. F-03: Eingeordnet wird über Fehlerklasse und `reason` aus
+ * @taxtronik/storage (UploadRejectedError, StoredObjectError), nicht über den
+ * Meldungstext; die Antwort trägt weiterhin dieselbe Meldung (`CODE: …`).
  */
 export function storageCommitErrorResponse(e: unknown): NextResponse {
-  const msg = (e as Error).message;
-  const status = msg.startsWith('INFECTED')
-    ? 422
-    : msg.startsWith('TOO_LARGE')
-      ? 413
-      : msg.startsWith('FORBIDDEN')
-        ? 403
-        : msg.startsWith('SCAN_ERROR')
-          ? 502
-          : 500;
-  if (status === 500) {
+  const status = storageRejectionStatus(e);
+  if (status === null) {
     // Unbekannte Errors NIE roh ans UI (Policy, siehe rbac.ts) — die Route wird
     // auch vom Mandanten-Portal genutzt; ein ECONNREFUSED-Text würde interne
     // Netz-Topologie an externe Clients leaken. Details nur ins Server-Log.
-    log.error({ err: msg }, 'storage-commit: unerwarteter Fehler');
-    return NextResponse.json({ error: 'storage_error' }, { status });
+    log.error({ err: (e as Error)?.message ?? null }, 'storage-commit: unerwarteter Fehler');
+    return NextResponse.json({ error: 'storage_error' }, { status: 500 });
   }
-  return NextResponse.json({ error: msg }, { status });
+  return NextResponse.json({ error: (e as Error).message }, { status });
 }
 
 /**

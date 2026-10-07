@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
 import { portalBaseUrl } from '@taxtronik/config';
+import { StoredObjectError, UploadRejectedError } from '@taxtronik/storage/errors';
 import { portalAuth } from '@/server/auth/portal';
 import { assertSameOrigin } from '@/server/http/assert-same-origin';
 import { parseMultipartUpload } from '@/server/documents/upload-helpers';
@@ -17,6 +18,19 @@ import { log } from '@/server/logger';
 
 const ParamsSchema = z.object({ id: z.uuid() });
 const ResumeSchema = z.uuid().optional();
+
+/**
+ * F-03: Ablehnung des Storage-Pakets über Fehlerklasse und `reason`, nicht über
+ * den Meldungstext. Ein Objekt über dem Limit beim Wiederaufnehmen zählt wie
+ * eine zu große Datei.
+ */
+function storageRejection(cause: unknown): 'TOO_LARGE' | 'INFECTED' | 'SCAN_ERROR' | null {
+  if (cause instanceof UploadRejectedError && cause.reason !== 'INVALID_RETENTION_YEARS') {
+    return cause.reason;
+  }
+  if (cause instanceof StoredObjectError && cause.reason === 'TOO_LARGE') return 'TOO_LARGE';
+  return null;
+}
 
 function publicUploadError(error: unknown): NextResponse {
   const wrapped = error instanceof InboxUploadError ? error : null;
@@ -36,14 +50,14 @@ function publicUploadError(error: unknown): NextResponse {
     return NextResponse.json({ error: 'file_blocked' }, { status: 422 });
   }
 
-  const message = cause instanceof Error ? cause.message : '';
-  if (message.startsWith('TOO_LARGE')) {
+  const rejection = storageRejection(cause);
+  if (rejection === 'TOO_LARGE') {
     return NextResponse.json({ error: 'upload_limit', ...retry }, { status: 413 });
   }
-  if (message.startsWith('INFECTED')) {
+  if (rejection === 'INFECTED') {
     return NextResponse.json({ error: 'file_blocked' }, { status: 422 });
   }
-  if (message.startsWith('SCAN_ERROR')) {
+  if (rejection === 'SCAN_ERROR') {
     return NextResponse.json({ error: 'scan_unavailable', ...retry }, { status: 503 });
   }
 

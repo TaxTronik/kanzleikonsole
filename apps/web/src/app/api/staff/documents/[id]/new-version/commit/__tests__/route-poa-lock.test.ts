@@ -1,4 +1,4 @@
-// Fachkatalog: DOC-UPLOAD-JOURNAL-001
+// Fachkatalog: DOC-UPLOAD-JOURNAL-001, DOC-VERSION-IMMUTABILITY-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -85,16 +85,13 @@ function documentTx(
       if (sql.includes('FROM document_type')) {
         return options.type ? [{ id: document?.documentTypeId, ...options.type }] : [];
       }
+      // F-03: GwG-Zuordnung als eigenes Statement nach der Dokumentsperre.
+      if (sql.includes('FROM gwg_id_document')) {
+        return [{ assigned: document?.lockedByGwg === true }];
+      }
       if (!document) return [];
-      return [
-        {
-          id: DOCUMENT_ID,
-          tenantId: 'tenant-1',
-          clientId: CLIENT_ID,
-          lockedByGwg: false,
-          ...document,
-        },
-      ];
+      const { lockedByGwg: _assigned, ...row } = document;
+      return [{ id: DOCUMENT_ID, tenantId: 'tenant-1', clientId: CLIENT_ID, ...row }];
     }),
     $executeRaw: storageJournal.executeRaw,
     powerOfAttorney: { findFirst: vi.fn().mockResolvedValue(options.poa ?? null) },
@@ -180,6 +177,11 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
       expect.objectContaining({ error: 'locked_by_gwg_snapshot' }),
     );
     expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
+    // F-03: Die Nachprüfung erkennt die Zuordnung selbst — in einem eigenen
+    // Statement nach der Dokumentsperre, nicht am Meldungstext des Triggers.
+    const statements = finalTx.$queryRaw.mock.calls.map(([strings]) => strings.join(' '));
+    expect(statements[0]).toContain('FOR UPDATE OF d');
+    expect(statements[1]).toContain('FROM gwg_id_document');
     // K-06: kein nachgelagertes Orphan-Journal; die Vorab-Absicht bleibt offen.
     expect(storageJournal.events).not.toContain('compensate');
     expect(storageJournal.openIntents()).toEqual([
@@ -189,6 +191,22 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
         storageVersionId: storageJournal.objects[0]!.versionId,
       }),
     ]);
+  });
+
+  it('ordnet den Meldungstext des GwG-Triggers ohne Fehlerklasse nicht als Sperre ein', async () => {
+    const finalTx = documentTx({ classification: 'GWG_EVIDENCE', documentTypeId: null });
+    finalTx.documentVersion.create.mockRejectedValueOnce(
+      new Error(
+        'Zugeordneter GwG-Beweisinhalt ist unveraenderlich; neues Dokument anlegen und erneut zuordnen.',
+      ),
+    );
+    phases(documentTx({ classification: 'GWG_EVIDENCE', documentTypeId: null }), finalTx);
+
+    const response = await post();
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({ error: 'internal_error' });
+    expect(storageJournal.openIntents()).toHaveLength(1);
   });
 
   it('sperrt bereits ab SENT und lädt keine neuen Bytes in den Speicher', async () => {
