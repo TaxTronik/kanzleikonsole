@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Check, RotateCcw, UserPlus, CalendarClock, X, Building2 } from 'lucide-react';
+import { Check, RotateCcw, UserPlus, CalendarClock, X, Building2, Eye } from 'lucide-react';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import {
   phoneNoteReminderStatus,
@@ -15,6 +15,10 @@ import {
   forwardPhoneNoteAction,
   phoneNoteToReminderAction,
 } from '@/app/staff/(protected)/phone-notes/actions';
+import {
+  MARK_READ_LABEL,
+  usePhoneNoteReadStatus,
+} from '@/app/staff/(protected)/phone-notes/read-status';
 import { noticeDialog } from '@/components/ui/modal';
 
 export interface PhoneNoteItem {
@@ -61,6 +65,7 @@ export function PhoneNotesList({
     kind: 'forward' | 'reminder';
   } | null>(null);
   const staffName = new Map(staffOptions.map((s) => [s.id, s.fullName]));
+  const readStatus = usePhoneNoteReadStatus(notes, { startTransition: startMut, router });
 
   function markDone(id: string) {
     startMut(async () => {
@@ -119,7 +124,9 @@ export function PhoneNotesList({
               currentStaffId={currentStaffId}
               todayYmd={todayYmd}
               isMutating={isMutating}
+              unread={readStatus.isUnread(p)}
               activePanel={activePanel?.id === p.id ? activePanel.kind : null}
+              onMarkRead={() => readStatus.markRead(p.id)}
               onMarkDone={() => markDone(p.id)}
               onForwardOpen={() => setActivePanel({ id: p.id, kind: 'forward' })}
               onReminderOpen={() => setActivePanel({ id: p.id, kind: 'reminder' })}
@@ -173,7 +180,9 @@ function PhoneNoteRow({
   currentStaffId,
   todayYmd,
   isMutating,
+  unread,
   activePanel,
+  onMarkRead,
   onMarkDone,
   onForwardOpen,
   onReminderOpen,
@@ -187,7 +196,9 @@ function PhoneNoteRow({
   currentStaffId: string;
   todayYmd: string;
   isMutating: boolean;
+  unread: boolean;
   activePanel: 'forward' | 'reminder' | null;
+  onMarkRead: () => void;
   onMarkDone: () => void;
   onForwardOpen: () => void;
   onReminderOpen: () => void;
@@ -216,7 +227,7 @@ function PhoneNoteRow({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-medium text-primary">{note.subject}</p>
-            {!note.readAt && <span className="badge-yellow text-[10px]">ungelesen</span>}
+            {unread && <span className="badge-yellow text-[10px]">ungelesen</span>}
           </div>
           <p className="text-xs text-muted flex flex-wrap items-center gap-x-2">
             <span>
@@ -244,6 +255,21 @@ function PhoneNoteRow({
           <PhoneNoteReminderLinks reminders={note.reminders} todayYmd={todayYmd} />
 
           <div className="flex items-center gap-2 mt-2">
+            {unread && (
+              <>
+                <button
+                  type="button"
+                  onClick={onMarkRead}
+                  disabled={isMutating}
+                  aria-label={`${MARK_READ_LABEL}: ${note.subject}`}
+                  className="text-[11px] text-muted hover:text-brand-700 inline-flex items-center gap-1"
+                >
+                  <Eye className="h-3 w-3" />
+                  {MARK_READ_LABEL}
+                </button>
+                <span className="text-disabled">·</span>
+              </>
+            )}
             <button
               type="button"
               onClick={onForwardOpen}

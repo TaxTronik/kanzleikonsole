@@ -23,6 +23,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- Telefonzettel: Ungelesene Notizen lassen sich in der Telefonzettel-Liste und
+  im Mandanten-Cockpit direkt „Als gelesen markieren“; der Hinweis „ungelesen“
+  verschwindet sofort.
 - Termine lassen sich im Kanzleikalender bearbeiten und absagen. Abgesagte
   Termine bleiben im Kalender durchgestrichen sichtbar und verschwinden aus
   Dashboard, Mandantenakte, Portal und iCal-Feed; die Absage wird auditiert,

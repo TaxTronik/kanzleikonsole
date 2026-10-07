@@ -14,6 +14,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('@/app/staff/(protected)/phone-notes/actions', () => ({
+  markNoteReadAction: vi.fn(),
   markPhoneNoteDoneAction: vi.fn(),
   undoPhoneNoteDoneAction: vi.fn(),
   forwardPhoneNoteAction: vi.fn(),
