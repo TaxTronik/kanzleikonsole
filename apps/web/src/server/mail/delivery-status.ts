@@ -28,6 +28,8 @@ export async function loadMailDeliveryTx(
       recipientsAttempted: true,
       recipientsAccepted: true,
       createdAt: true,
+      // Nur für verworfene Aufträge angezeigt (Begründung ohne Empfängerdaten).
+      lastError: true,
     },
   });
   const byResource = new Map<string, typeof rows>();

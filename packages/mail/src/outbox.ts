@@ -27,6 +27,12 @@ export {
   type MailOutboxPurpose,
   type MailOutboxResourceType,
 } from './outbox-purposes';
+export {
+  checkMailOutboxRelevanceTx,
+  type MailOutboxRelevance,
+  type MailOutboxRelevanceReader,
+  type MailOutboxRelevanceRow,
+} from './outbox-relevance';
 
 export interface MailOutboxTarget {
   tenantId: string;

@@ -822,6 +822,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Mandanten-Mails aus der Outbox prüfen vor jedem Versand und jeder
+  Wiederholung, ob der Vorgang noch aktuell ist (z. B. Rechnung storniert,
+  Unterlagen abgeholt, Anforderung geschlossen, GwG-Einladung widerrufen oder
+  abgelaufen, Termin abgesagt oder verschoben, Mandant anonymisiert). Überholte
+  Aufträge enden ohne Versand als „nicht versendet – Vorgang nicht mehr
+  aktuell“ mit Grund.
 - Eine unlesbare oder ungültige SMTP-Konfiguration der Kanzlei (z. B. nicht
   entschlüsselbares Passwort, ungültiger Port) bricht den Versand vor jedem
   SMTP-Kontakt als eindeutigen Fehler ab. Mail-Outbox und automatische

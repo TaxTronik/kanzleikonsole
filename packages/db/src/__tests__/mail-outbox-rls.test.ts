@@ -19,13 +19,26 @@ const migration = readFileSync(
   new URL('../../prisma/migrations/20261006120000_mail_outbox/migration.sql', import.meta.url),
   'utf8',
 );
+const skippedMigration = readFileSync(
+  new URL(
+    '../../prisma/migrations/20261007120000_mail_outbox_skipped/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
 
 describe('Mail-Outbox: Migration', () => {
   it('ist zeilenweise LF, transaktional und nennt die Fachkatalog-Regel', () => {
-    expect(migration).not.toContain('\r');
-    expect(migration).toMatch(/^-- Fachkatalog: ACCESS-TENANT-RLS-001$/m);
-    expect(migration).toMatch(/^BEGIN;$/m);
-    expect(migration.trimEnd().endsWith('COMMIT;')).toBe(true);
+    for (const source of [migration, skippedMigration]) {
+      expect(source).not.toContain('\r');
+      expect(source).toMatch(/^-- Fachkatalog: ACCESS-TENANT-RLS-001\b/m);
+      expect(source).toMatch(/^BEGIN;$/m);
+      expect(source.trimEnd().endsWith('COMMIT;')).toBe(true);
+    }
+    // Folgebefund F-08: der neue Terminalstatus steht allein in seiner Migration.
+    expect(skippedMigration).toMatch(
+      /ALTER TYPE public\.mail_outbox_status\s+ADD VALUE IF NOT EXISTS 'SKIPPED';/,
+    );
   });
 });
 
@@ -241,6 +254,48 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
       select: { status: true, payload: true, secretVarsEnc: true },
     });
     expect(terminal).toEqual({ status: 'PROVIDER_ACCEPTED', payload: {}, secretVarsEnc: null });
+  });
+
+  it('nimmt SKIPPED nur ohne geheime Variablen und ohne nächsten Versuch an', async () => {
+    const { id } = await owner.mailOutbox.create({
+      data: outboxData(tenantA, clientA),
+      select: { id: true },
+    });
+
+    expect(
+      await rejection(
+        owner.mailOutbox.update({
+          where: { id },
+          data: { status: 'SKIPPED', nextAttemptAt: null },
+        }),
+      ),
+    ).toMatch(/mail_outbox_secret_check/);
+    expect(
+      await rejection(
+        owner.mailOutbox.update({
+          where: { id },
+          data: { status: 'SKIPPED', secretVarsEnc: null, payload: {} },
+        }),
+      ),
+    ).toMatch(/mail_outbox_schedule_check/);
+
+    const skipped = await owner.mailOutbox.update({
+      where: { id },
+      data: {
+        status: 'SKIPPED',
+        nextAttemptAt: null,
+        secretVarsEnc: null,
+        payload: {},
+        lastError: 'Nicht versendet: Die Unterlagen wurden bereits abgeholt.',
+      },
+      select: { status: true, payload: true, secretVarsEnc: true, nextAttemptAt: true },
+    });
+    expect(skipped).toEqual({
+      status: 'SKIPPED',
+      payload: {},
+      secretVarsEnc: null,
+      nextAttemptAt: null,
+    });
   });
 
   it('nimmt nur Kanzlei-Links und gültige Anlass-Kennungen an', async () => {

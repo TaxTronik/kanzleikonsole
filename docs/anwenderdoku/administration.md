@@ -317,3 +317,35 @@ Einbindung eines Dienstleisters bleiben unabhängig davon zu prüfen.
   letzten Prüfung. Der Hintergrunddienst prüft alle sechs Stunden; ein
   Ergebnis, das älter als zwei Tage ist, wird als veraltet markiert. Eingespielt
   wird ausschließlich vom Server-Betreiber.
+
+## 7. Zustellstatus von Mandanten-E-Mails
+
+Mandanten-E-Mails, die ein Vorgang auslöst (neue Anforderung, Kanzlei-Antwort,
+Formular, GwG-Einladung und -Freischaltung, Terminentscheidung,
+Rechnungsversand, Abholbereitschaft), speichert TaxTronik zusammen mit dem
+Vorgang als Versandauftrag; der Hintergrunddienst stellt sie danach zu. Am
+Vorgang zeigt eine Statuszeile den Stand:
+
+| Anzeige                                      | Bedeutung                                                                                                                                                          |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| wird zugestellt                              | Der Auftrag ist gespeichert, der Versand läuft.                                                                                                                    |
+| erneuter Zustellversuch geplant              | Der letzte Versuch ist eindeutig gescheitert (ausdrückliche Ablehnung oder nicht lesbare SMTP-Konfiguration); TaxTronik versucht es mit wachsendem Abstand erneut. |
+| vom Versanddienst angenommen                 | Technische Annahme durch den Versanddienst; kein Zugangs- oder Kenntnisnahmenachweis.                                                                              |
+| nur teilweise angenommen                     | Nicht alle Empfänger wurden angenommen; wegen des Doppelversandrisikos kein automatischer Neuversand.                                                              |
+| nicht versendet – kein bestätigter Kontakt … | Kein aktiver, per Portal-Login bestätigter Kontakt mit eingeschalteten Benachrichtigungen.                                                                         |
+| Versand fehlgeschlagen                       | Nach sechs eindeutig gescheiterten Versuchen beendet; die Kanzlei erhält eine Benachrichtigung.                                                                    |
+| Versandstatus unklar                         | Der Ausgang ist nicht bestimmbar; wegen des Doppelversandrisikos kein automatischer Neuversand.                                                                    |
+| nicht versendet – Vorgang nicht mehr aktuell | Vor dem Versand war der Vorgang erledigt, zurückgezogen oder abgesagt; der Hinweis an der Statuszeile nennt den Grund.                                             |
+
+Vor jedem Versandversuch, auch vor jeder Wiederholung, prüft TaxTronik, ob die
+Mail noch gewollt ist. Nicht versendet werden insbesondere eine GwG-Einladung,
+die zurückgezogen, eingereicht oder abgelaufen ist, eine Terminbestätigung für
+einen abgesagten, erledigten, bereits begonnenen oder seitdem verschobenen
+Termin, die Abholbenachrichtigung für bereits abgeholte oder nicht mehr
+abholbereite Unterlagen, die Mail zu einer neuen Anforderung, die nicht mehr
+offen ist, die Mail zu einem bereits eingereichten Formular, die Begrüßung nach
+einer zurückgenommenen Freischaltung sowie jede Mail an einen anonymisierten
+Mandanten. Rechnungsmails bleiben gewollt, solange die Rechnung im
+Mandantenportal sichtbar ist; eine Kanzlei-Antwort bleibt gewollt, solange die
+Anforderung nicht storniert wurde. Eine Prüfung unmittelbar vor dem Versand
+schließt nicht aus, dass sich der Vorgang danach noch ändert.

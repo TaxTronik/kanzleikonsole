@@ -13,6 +13,9 @@ import type { Prisma } from '@prisma/client';
 import {
   enqueueClientContactsMailTx,
   enqueueDirectMailTx,
+  MAIL_OUTBOX_PURPOSES,
+  type MailOutboxPurpose,
+  type MailOutboxResourceType,
   type MailOutboxTarget,
 } from '@taxtronik/mail/outbox';
 import {
@@ -124,6 +127,32 @@ function requestRow(overrides: Partial<Row> = {}) {
   );
 }
 
+/** Zustand der Vorgänge, in dem jede Mail noch gewollt ist (Folgebefund F-08). */
+function activeResources() {
+  return {
+    client: { findFirst: vi.fn().mockResolvedValue({ anonymizedAt: null }) },
+    invoice: { findFirst: vi.fn().mockResolvedValue({ status: 'SENT', sentAt: NOW }) },
+    clientHandover: { findFirst: vi.fn().mockResolvedValue({ status: 'READY' }) },
+    request: { findFirst: vi.fn().mockResolvedValue({ status: 'OPEN' }) },
+    gwgCheck: {
+      findFirst: vi.fn().mockResolvedValue({ status: 'VERIFIED', client: { allowActive: true } }),
+    },
+    gwgOnboardingInvite: {
+      findFirst: vi
+        .fn()
+        .mockResolvedValue({ status: 'PENDING', expiresAt: new Date('2026-10-20T00:00:00Z') }),
+    },
+    appointmentRequest: {
+      findFirst: vi.fn().mockResolvedValue({
+        status: 'ACCEPTED',
+        acceptedSlot: { startsAt: '2026-10-20T10:00', endsAt: '2026-10-20T11:00' },
+        acceptedAppointment: { status: 'CONFIRMED', startsAt: new Date('2026-10-20T08:00:00Z') },
+      }),
+    },
+    formSubmission: { findFirst: vi.fn().mockResolvedValue({ status: 'PENDING' }) },
+  };
+}
+
 function harness(rows: Row[], stranded: Row[] = []) {
   const findMany = vi
     .fn()
@@ -131,7 +160,8 @@ function harness(rows: Row[], stranded: Row[] = []) {
       args.where.status === 'SENDING' ? stranded : rows,
     );
   const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-  const tx = { mailOutbox: { updateMany } };
+  const resources = activeResources();
+  const tx = { mailOutbox: { updateMany }, ...resources };
   const sendTemplateMail = vi
     .fn()
     .mockResolvedValue({ ok: true, sentViaTemplate: false, uncertainFailure: false });
@@ -148,7 +178,7 @@ function harness(rows: Row[], stranded: Row[] = []) {
     contentType: 'application/pdf',
   });
   const notifyStaff = vi.fn().mockResolvedValue(undefined);
-  const log = { warn: vi.fn(), error: vi.fn() };
+  const log = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
   const deps = {
     db: { mailOutbox: { findMany } },
     runAtomic: vi.fn(async (_tenantId: string, fn: (client: typeof tx) => Promise<unknown>) =>
@@ -164,10 +194,13 @@ function harness(rows: Row[], stranded: Row[] = []) {
     deps,
     findMany,
     updateMany,
+    resources,
+    runAtomic: deps.runAtomic as unknown as ReturnType<typeof vi.fn>,
     sendTemplateMail,
     notifyClientContacts,
     loadAttachment,
     notifyStaff,
+    log,
   };
 }
 
@@ -238,6 +271,7 @@ describe('Mail-Outbox: Versand mit unveränderten Optionen', () => {
       retryPending: 0,
       noRecipient: 0,
       escalated: 0,
+      skipped: 0,
     });
   });
 
@@ -600,5 +634,212 @@ describe('Mail-Outbox: Retry, Terminalstatus und Kanzlei-Hinweis', () => {
     expect(h.notifyStaff).toHaveBeenCalledTimes(1);
     expect(h.sendTemplateMail).not.toHaveBeenCalled();
     expect(stats.escalated).toBe(1);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Folgebefund F-08: Vor jedem (erneuten) Versand prüft der Claim, ob die Mail
+// noch gewollt ist. Je Anlass: aktiver Vorgang → Versand; Vorgang erledigt,
+// zurückgezogen oder abgesagt → SKIPPED ohne SMTP-Kontakt.
+// -----------------------------------------------------------------------------
+
+type ResourceModel = keyof ReturnType<typeof activeResources>;
+
+const RESOURCE_ID = '77777777-7777-4777-8777-777777777777';
+const PURPOSE_RESOURCE: Record<
+  MailOutboxPurpose,
+  { type: MailOutboxResourceType; model: ResourceModel; direct: boolean }
+> = {
+  'invoice-sent': { type: 'invoice', model: 'invoice', direct: true },
+  'invoice-external': { type: 'invoice', model: 'invoice', direct: true },
+  'handover-ready': { type: 'client_handover', model: 'clientHandover', direct: true },
+  'request-opened': { type: 'request', model: 'request', direct: false },
+  'request-staff-replied': { type: 'request', model: 'request', direct: false },
+  'gwg-activated': { type: 'gwg_check', model: 'gwgCheck', direct: false },
+  'gwg-invite': { type: 'gwg_onboarding_invite', model: 'gwgOnboardingInvite', direct: true },
+  'appointment-confirmed': {
+    type: 'appointment_request',
+    model: 'appointmentRequest',
+    direct: true,
+  },
+  'appointment-rejected': {
+    type: 'appointment_request',
+    model: 'appointmentRequest',
+    direct: true,
+  },
+  'form-sent': { type: 'form_submission', model: 'formSubmission', direct: false },
+};
+
+/** Je Anlass ein Zustand, in dem die Mail nicht mehr gewollt ist. */
+const OBSOLETE_STATE: Record<MailOutboxPurpose, { state: unknown; reason: string }> = {
+  'invoice-sent': { state: null, reason: 'Die Rechnung existiert nicht mehr.' },
+  'invoice-external': {
+    state: { status: 'CANCELLED', sentAt: null },
+    reason: 'Die Rechnung ist im Mandantenportal nicht sichtbar.',
+  },
+  'handover-ready': {
+    state: { status: 'PICKED_UP' },
+    reason: 'Die Unterlagen wurden bereits abgeholt.',
+  },
+  'request-opened': {
+    state: { status: 'CLOSED' },
+    reason: 'Die Anforderung ist bereits abgeschlossen.',
+  },
+  'request-staff-replied': {
+    state: { status: 'CANCELLED' },
+    reason: 'Die Anforderung wurde storniert.',
+  },
+  'gwg-activated': {
+    state: { status: 'VERIFIED', client: { allowActive: false } },
+    reason: 'Die Freischaltung wurde zurückgenommen.',
+  },
+  'gwg-invite': {
+    state: { status: 'CANCELLED', expiresAt: new Date('2026-10-20T00:00:00Z') },
+    reason: 'Die GwG-Einladung wurde zurückgezogen.',
+  },
+  'appointment-confirmed': {
+    state: {
+      status: 'ACCEPTED',
+      acceptedSlot: { startsAt: '2026-10-20T10:00' },
+      acceptedAppointment: { status: 'CANCELLED', startsAt: new Date('2026-10-20T08:00:00Z') },
+    },
+    reason: 'Der Termin wurde abgesagt.',
+  },
+  'appointment-rejected': { state: null, reason: 'Die Terminanfrage existiert nicht mehr.' },
+  'form-sent': {
+    state: { status: 'SUBMITTED' },
+    reason: 'Das Formular wurde bereits eingereicht.',
+  },
+};
+
+function purposeRow(purpose: MailOutboxPurpose, overrides: Partial<Row> = {}) {
+  const resource = PURPOSE_RESOURCE[purpose];
+  const target: MailOutboxTarget = {
+    tenantId: TENANT,
+    clientId: CLIENT,
+    purpose,
+    resource: { type: resource.type, id: RESOURCE_ID },
+    staffHref: `/staff/clients/${CLIENT}`,
+  };
+  const mail = {
+    slug: purpose,
+    vars: { label: 'Vorgang' },
+    fallback: { subject: 'S', bodyMd: 'B' },
+  };
+  return enqueued(
+    (tx) =>
+      resource.direct
+        ? enqueueDirectMailTx(tx as unknown as Prisma.TransactionClient, target, {
+            ...mail,
+            to: 'max@example.test',
+            secretVars: purpose === 'gwg-invite' ? { link: 'https://p/x?token=geheim' } : undefined,
+          })
+        : enqueueClientContactsMailTx(tx as unknown as Prisma.TransactionClient, target, mail),
+    overrides,
+  );
+}
+
+describe('Mail-Outbox: Zustand des Vorgangs vor jedem Versand', () => {
+  it('kennt für jeden Anlass einen Vorgang', () => {
+    expect(Object.keys(PURPOSE_RESOURCE).sort()).toEqual([...MAIL_OUTBOX_PURPOSES].sort());
+  });
+
+  it.each([...MAIL_OUTBOX_PURPOSES])(
+    'versendet %s, solange der Vorgang aktiv ist',
+    async (purpose) => {
+      const row = await purposeRow(purpose);
+      const h = harness([row]);
+      // Der Standardzustand der Terminanfrage ist „angenommen“ (Bestätigung).
+      if (purpose === 'appointment-rejected') {
+        h.resources.appointmentRequest.findFirst.mockResolvedValue({ status: 'REJECTED' });
+      }
+
+      const stats = await processMailOutbox(h.deps, { now: NOW });
+
+      const resource = PURPOSE_RESOURCE[purpose];
+      expect(h.resources[resource.model].findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: RESOURCE_ID, tenantId: TENANT, clientId: CLIENT } }),
+      );
+      const send = resource.direct ? h.sendTemplateMail : h.notifyClientContacts;
+      expect(send).toHaveBeenCalledOnce();
+      expect(h.updateMany.mock.calls[0]![0].data).toMatchObject({ status: 'SENDING' });
+      expect(stats).toMatchObject({ processed: 1, providerAccepted: 1, skipped: 0 });
+    },
+  );
+
+  it.each([...MAIL_OUTBOX_PURPOSES])(
+    'verwirft %s ohne SMTP-Kontakt, wenn der Vorgang nicht mehr aktuell ist',
+    async (purpose) => {
+      const row = await purposeRow(purpose);
+      const h = harness([row]);
+      const { state, reason } = OBSOLETE_STATE[purpose];
+      h.resources[PURPOSE_RESOURCE[purpose].model].findFirst.mockResolvedValue(state);
+
+      const stats = await processMailOutbox(h.deps, { now: NOW });
+
+      expect(h.sendTemplateMail).not.toHaveBeenCalled();
+      expect(h.notifyClientContacts).not.toHaveBeenCalled();
+      expect(h.loadAttachment).not.toHaveBeenCalled();
+      expect(h.updateMany).toHaveBeenCalledOnce();
+      expect(h.updateMany.mock.calls[0]![0]).toEqual({
+        where: { id: row.id, status: 'QUEUED', attemptCount: 0 },
+        data: {
+          status: 'SKIPPED',
+          lastError: `Nicht versendet: ${reason}`,
+          payload: {},
+          secretVarsEnc: null,
+          nextAttemptAt: null,
+        },
+      });
+      // Gewolltes Ergebnis, kein Fehlschlag: keine Kanzlei-Benachrichtigung.
+      expect(h.notifyStaff).not.toHaveBeenCalled();
+      expect(h.log.info).toHaveBeenCalledWith(
+        { outboxId: row.id, tenantId: TENANT, purpose, reason },
+        'mail-outbox: Versandauftrag verworfen, Vorgang nicht mehr aktuell',
+      );
+      expect(stats).toMatchObject({ processed: 0, skipped: 1, escalated: 0 });
+    },
+  );
+
+  it('prüft auch vor einem Retry und verwirft eine inzwischen zurückgezogene Einladung', async () => {
+    const row = await inviteRow({ status: 'RETRY_PENDING', attemptCount: 2 });
+    const h = harness([row]);
+    h.resources.gwgOnboardingInvite.findFirst.mockResolvedValue({
+      status: 'CANCELLED',
+      expiresAt: new Date('2026-10-20T00:00:00Z'),
+    });
+
+    const stats = await processMailOutbox(h.deps, { now: NOW });
+
+    expect(h.updateMany.mock.calls[0]![0]).toMatchObject({
+      where: { id: row.id, status: 'RETRY_PENDING', attemptCount: 2 },
+      data: { status: 'SKIPPED', secretVarsEnc: null },
+    });
+    expect(h.sendTemplateMail).not.toHaveBeenCalled();
+    expect(stats.skipped).toBe(1);
+  });
+
+  it('prüft und beansprucht in derselben Tenant-Transaktion', async () => {
+    const h = harness([await handoverRow()]);
+
+    await processMailOutbox(h.deps, { now: NOW });
+
+    // Claim-Transaktion = erste runAtomic: Vorgang lesen, dann CAS nach SENDING.
+    expect(h.runAtomic.mock.calls[0]![0]).toBe(TENANT);
+    const readOrder = h.resources.clientHandover.findFirst.mock.invocationCallOrder[0]!;
+    const claimOrder = h.updateMany.mock.invocationCallOrder[0]!;
+    expect(readOrder).toBeLessThan(claimOrder);
+    expect(h.runAtomic.mock.invocationCallOrder[0]!).toBeLessThan(readOrder);
+  });
+
+  it('zählt einen parallel geänderten Auftrag weder als verworfen noch als versendet', async () => {
+    const h = harness([await purposeRow('form-sent')]);
+    h.resources.formSubmission.findFirst.mockResolvedValue({ status: 'SUBMITTED' });
+    h.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    const stats = await processMailOutbox(h.deps, { now: NOW });
+
+    expect(stats).toMatchObject({ processed: 0, skipped: 0 });
+    expect(h.log.info).not.toHaveBeenCalled();
   });
 });

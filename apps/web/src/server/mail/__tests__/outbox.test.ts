@@ -84,8 +84,10 @@ describe('loadMailDeliveryTx', () => {
         where: { resourceType: 'invoice', resourceId: { in: ['invoice-1', 'invoice-2'] } },
       }),
     );
-    // Keine Inhalte oder Empfänger aus dem Auftrag.
+    // Keine Inhalte oder Empfänger aus dem Auftrag; nur die Begründung verworfener Aufträge.
     expect(findMany.mock.calls[0]![0].select).not.toHaveProperty('payload');
+    expect(findMany.mock.calls[0]![0].select).not.toHaveProperty('secretVarsEnc');
+    expect(findMany.mock.calls[0]![0].select).toHaveProperty('lastError', true);
     expect(result.get('invoice-1')).toEqual([
       { purpose: 'invoice-sent', state: 'accepted', accepted: 1, attempted: 1 },
     ]);

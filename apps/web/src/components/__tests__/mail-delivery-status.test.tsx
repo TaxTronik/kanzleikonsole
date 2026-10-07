@@ -35,6 +35,25 @@ describe('MailDeliveryStatus', () => {
     expect(failed).not.toContain('emerald');
   });
 
+  it('zeigt einen verworfenen Auftrag neutral und nennt den Grund im Hinweis', () => {
+    const html = renderToStaticMarkup(
+      <MailDeliveryStatus
+        summary={{
+          purpose: 'appointment-confirmed',
+          state: 'skipped',
+          accepted: 0,
+          attempted: 0,
+          skippedReason: 'Der Termin wurde abgesagt.',
+        }}
+      />,
+    );
+
+    expect(html).toContain('Terminbestätigung: nicht versendet – Vorgang nicht mehr aktuell');
+    expect(html).toContain('data-mail-delivery="skipped"');
+    expect(html).toContain('Grund: Der Termin wurde abgesagt.');
+    expect(html).toContain('text-muted');
+  });
+
   it('rendert ohne Versandaufträge nichts', () => {
     expect(renderToStaticMarkup(<MailDeliveryStatusList summaries={[]} />)).toBe('');
     expect(renderToStaticMarkup(<MailDeliveryStatusList summaries={undefined} />)).toBe('');

@@ -8,6 +8,8 @@
 // (SMTP/n8n) ist eine Attrappe. Nur mit ausdrücklichem Opt-in im db-Job
 // (WORKER_DB_TEST=1). Eigener Tenant, der am Ende samt Kaskade gelöscht wird;
 // die Läufe sind auf ihn begrenzt, damit fremde Testreste unberührt bleiben.
+// Folgebefund F-08: Die Aufträge verweisen auf eine echte, abholbereite
+// Anlieferung; ist sie abgeholt, verwirft der Worker den Auftrag als SKIPPED.
 // =============================================================================
 
 import { randomUUID } from 'node:crypto';
@@ -50,6 +52,7 @@ const LINK = 'https://portal.example.test/gwg-onboarding?token=db-test-token';
 describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
   let tenantId = '';
   let clientId = '';
+  let handoverId = '';
   const sendTemplateMail = vi.fn();
   const deps: MailOutboxDeliveryDeps = {
     db: prismaOwner,
@@ -58,7 +61,7 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
     notifyClientContacts: vi.fn(),
     loadAttachment: vi.fn(),
     notifyStaff: (tx, input) => notify(tx, input),
-    log: { warn: vi.fn(), error: vi.fn() },
+    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 
   function target(): MailOutboxTarget {
@@ -66,7 +69,7 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
       tenantId,
       clientId,
       purpose: 'handover-ready',
-      resource: { type: 'client_handover', id: randomUUID() },
+      resource: { type: 'client_handover', id: handoverId },
       staffHref: `/staff/clients/${clientId}`,
     };
   }
@@ -93,6 +96,21 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
         data: { tenantId, name: 'Synthetic F-08 client', kind: 'NATPERS' },
       })
     ).id;
+    const staffId = (
+      await prismaOwner.staffUser.create({
+        data: {
+          tenantId,
+          email: `f08-${suffix}@example.test`,
+          fullName: 'F-08 Outbox',
+          passwordHash: 'synthetic',
+        },
+      })
+    ).id;
+    handoverId = (
+      await prismaOwner.clientHandover.create({
+        data: { tenantId, clientId, label: 'Belege', createdByStaff: staffId },
+      })
+    ).id;
   });
 
   afterAll(async () => {
@@ -104,6 +122,10 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
     vi.clearAllMocks();
     await prismaOwner.mailOutbox.deleteMany({ where: { tenantId } });
     await prismaOwner.notification.deleteMany({ where: { tenantId } });
+    await prismaOwner.clientHandover.update({
+      where: { id: handoverId },
+      data: { status: 'READY' },
+    });
   });
 
   it('wiederholt eine Ablehnung nach Backoff und leert Payload und Secret im Erfolg', async () => {
@@ -216,5 +238,30 @@ describeDb('F-08 mail-outbox-deliver against PostgreSQL', () => {
       payload: {},
     });
     expect(await prismaOwner.notification.count({ where: { tenantId } })).toBe(1);
+  });
+
+  it('verwirft den Auftrag ohne Versand, wenn die Unterlagen bereits abgeholt sind', async () => {
+    const id = await enqueue();
+    await prismaOwner.clientHandover.update({
+      where: { id: handoverId },
+      data: { status: 'PICKED_UP' },
+    });
+
+    const stats = await processMailOutbox(deps, { tenantId });
+
+    expect(stats).toMatchObject({ skipped: 1, processed: 0, escalated: 0 });
+    expect(sendTemplateMail).not.toHaveBeenCalled();
+    // SKIPPED erfüllt Zeitplan- und Secret-CHECK: Inhalt und Secret sind entfernt.
+    expect(await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      status: 'SKIPPED',
+      attemptCount: 0,
+      payload: {},
+      secretVarsEnc: null,
+      nextAttemptAt: null,
+      lastError: 'Nicht versendet: Die Unterlagen wurden bereits abgeholt.',
+    });
+    expect(await prismaOwner.notification.count({ where: { tenantId } })).toBe(0);
+    // Ein verworfener Auftrag ist kein Kandidat mehr.
+    expect(await processMailOutbox(deps, { tenantId })).toMatchObject({ skipped: 0 });
   });
 });

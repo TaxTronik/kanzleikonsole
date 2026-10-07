@@ -76,6 +76,36 @@ describe('summarizeMailDelivery', () => {
     ]);
   });
 
+  it('zeigt verworfene Aufträge nur, wenn der ganze Anlass verworfen wurde', () => {
+    const skipped = row({
+      status: 'SKIPPED',
+      recipientsAttempted: null,
+      recipientsAccepted: null,
+      lastError: 'Nicht versendet: Die GwG-Einladung wurde zurückgezogen.',
+    });
+    expect(summarizeMailDelivery([skipped])).toEqual([
+      {
+        purpose: 'invoice-sent',
+        state: 'skipped',
+        accepted: 0,
+        attempted: 0,
+        skippedReason: 'Die GwG-Einladung wurde zurückgezogen.',
+      },
+    ]);
+    // Neben einer angenommenen Einzelmail zählt der verworfene Auftrag nicht mit.
+    expect(summarizeMailDelivery([row({}), skipped])).toEqual([
+      { purpose: 'invoice-sent', state: 'accepted', accepted: 1, attempted: 1 },
+    ]);
+    // Bei Kontaktmails entscheidet weiterhin der jüngste Auftrag.
+    expect(
+      summarizeMailDelivery([
+        row({ kind: 'CLIENT_CONTACTS', purpose: 'request-opened', createdAt: T0 }),
+        { ...skipped, kind: 'CLIENT_CONTACTS', purpose: 'request-opened', createdAt: T1 },
+      ])[0]?.state,
+    ).toBe('skipped');
+    expect(MAIL_DELIVERY_STATE_LABELS.skipped).toBe('nicht versendet – Vorgang nicht mehr aktuell');
+  });
+
   it('meldet unklare und gescheiterte Zustellung deutlich', () => {
     expect(
       summarizeMailDelivery([row({ status: 'UNKNOWN', recipientsAccepted: 0 })])[0]?.state,

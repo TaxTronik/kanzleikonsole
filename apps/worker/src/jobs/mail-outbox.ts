@@ -21,6 +21,12 @@
 //     (SYSTEM_MAIL_FAILED) am Vorgang. NO_RECIPIENT (kein bestätigter Kontakt
 //     mit Benachrichtigungen) bleibt wie bisher ohne Mail und ohne Hinweis,
 //     ist aber am Vorgang sichtbar.
+//   - Vor jedem Versuch (auch jedem Retry) prüft der Claim in derselben
+//     Tenant-Transaktion, ob die Mail noch gewollt ist
+//     (checkMailOutboxRelevanceTx: zurückgezogene Einladung, abgesagter
+//     Termin, geschlossene Anforderung, ...). Sonst endet der Auftrag ohne
+//     SMTP-Kontakt als SKIPPED mit Begründung in last_error, ohne
+//     Kanzlei-Benachrichtigung.
 //
 // Ein n8n-Ereignis der Mail trägt den Dedupe-Schlüssel des Auftrags; ein
 // Retry erzeugt deshalb kein zweites Ereignis. Mit dem Terminalstatus werden
@@ -37,6 +43,7 @@ import type {
   TemplateMailResult,
 } from '@taxtronik/mail';
 import {
+  checkMailOutboxRelevanceTx,
   MAIL_OUTBOX_PURPOSE_LABELS,
   mailOutboxDispatch,
   openMailOutboxSecretVars,
@@ -77,6 +84,7 @@ export interface MailOutboxDeliveryDeps {
   }) => Promise<MailAttachment>;
   notifyStaff: (tx: Db, input: NotifyInput) => Promise<unknown>;
   log: {
+    info(obj: Record<string, unknown>, msg: string): void;
     warn(obj: Record<string, unknown>, msg: string): void;
     error(obj: Record<string, unknown>, msg: string): void;
   };
@@ -88,6 +96,8 @@ export interface MailOutboxStats {
   retryPending: number;
   noRecipient: number;
   escalated: number;
+  /** Vor dem Versand verworfen (SKIPPED), weil der Vorgang nicht mehr aktuell ist. */
+  skipped: number;
 }
 
 const candidateSelect = {
@@ -217,16 +227,44 @@ async function escalateStrandedSending(
   return escalated;
 }
 
-async function claim(deps: MailOutboxDeliveryDeps, candidate: Candidate): Promise<Claimed | null> {
+type ClaimOutcome =
+  | { kind: 'claimed'; row: Claimed }
+  | { kind: 'skipped'; reason: string }
+  | { kind: 'lost' };
+
+/**
+ * Prüft den Vorgang und beansprucht den Auftrag in EINER Tenant-Transaktion:
+ * ist die Mail nicht mehr gewollt, endet er als SKIPPED (Inhalt entfernt);
+ * sonst CAS nach SENDING vor jedem externen I/O. Beides ist an den gelesenen
+ * Status und Versuchszähler gebunden.
+ */
+async function claimOrSkip(
+  deps: MailOutboxDeliveryDeps,
+  candidate: Candidate,
+  now: Date,
+): Promise<ClaimOutcome> {
   const attemptAt = new Date();
   const attemptNo = candidate.attemptCount + 1;
-  const claimed = await deps.runAtomic(candidate.tenantId, (tx) =>
-    tx.mailOutbox.updateMany({
-      where: {
-        id: candidate.id,
-        status: candidate.status,
-        attemptCount: candidate.attemptCount,
-      },
+  const unchanged = {
+    id: candidate.id,
+    status: candidate.status,
+    attemptCount: candidate.attemptCount,
+  };
+  return deps.runAtomic(candidate.tenantId, async (tx): Promise<ClaimOutcome> => {
+    const relevance = await checkMailOutboxRelevanceTx(tx, candidate, now);
+    if (!relevance.wanted) {
+      const skipped = await tx.mailOutbox.updateMany({
+        where: unchanged,
+        data: {
+          ...CLEARED_CONTENT,
+          status: 'SKIPPED',
+          lastError: `Nicht versendet: ${relevance.reason}`,
+        },
+      });
+      return skipped.count === 1 ? { kind: 'skipped', reason: relevance.reason } : { kind: 'lost' };
+    }
+    const claimed = await tx.mailOutbox.updateMany({
+      where: unchanged,
       data: {
         status: 'SENDING',
         attemptCount: { increment: 1 },
@@ -234,9 +272,11 @@ async function claim(deps: MailOutboxDeliveryDeps, candidate: Candidate): Promis
         nextAttemptAt: null,
         lastError: 'Versandversuch gestartet; Providerstatus noch nicht bestimmt.',
       },
-    }),
-  );
-  return claimed.count === 1 ? { ...candidate, attemptNo, attemptAt } : null;
+    });
+    return claimed.count === 1
+      ? { kind: 'claimed', row: { ...candidate, attemptNo, attemptAt } }
+      : { kind: 'lost' };
+  });
 }
 
 /** CAS auf genau den eigenen Claim; ein fremder oder eskalierter Zustand bleibt unberührt. */
@@ -510,7 +550,8 @@ async function deliver(
 
 /**
  * Ein Lauf: hängende Claims eskalieren, dann höchstens `batchSize` fällige
- * Aufträge zustellen (älteste zuerst). Liefert die Zahl der bearbeiteten
+ * Aufträge zustellen oder als nicht mehr gewollt verwerfen (älteste zuerst).
+ * Liefert die Zahl der bearbeiteten (`processed`) und verworfenen (`skipped`)
  * Aufträge, damit der Job bei vollem Batch weiterlaufen kann. Ohne `tenantId`
  * mandantenübergreifend (Regelbetrieb), sonst nur dieser Tenant.
  */
@@ -527,6 +568,7 @@ export async function processMailOutbox(
     retryPending: 0,
     noRecipient: 0,
     escalated: await escalateStrandedSending(deps, now, batchSize, scope),
+    skipped: 0,
   };
 
   const candidates = await deps.db.mailOutbox.findMany({
@@ -541,10 +583,23 @@ export async function processMailOutbox(
   });
 
   for (const candidate of candidates) {
-    const claimed = await claim(deps, candidate);
-    if (!claimed) continue;
+    const outcome = await claimOrSkip(deps, candidate, now);
+    if (outcome.kind === 'skipped') {
+      stats.skipped += 1;
+      deps.log.info(
+        {
+          outboxId: candidate.id,
+          tenantId: candidate.tenantId,
+          purpose: candidate.purpose,
+          reason: outcome.reason,
+        },
+        'mail-outbox: Versandauftrag verworfen, Vorgang nicht mehr aktuell',
+      );
+      continue;
+    }
+    if (outcome.kind === 'lost') continue;
     stats.processed += 1;
-    await deliver(deps, claimed, stats);
+    await deliver(deps, outcome.row, stats);
   }
   return stats;
 }

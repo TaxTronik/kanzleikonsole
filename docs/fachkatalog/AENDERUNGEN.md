@@ -1,5 +1,31 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-011
+    date: '2026-10-07'
+    paths:
+      - packages/db/prisma/migrations/20261007120000_mail_outbox_skipped/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - GWG-SELF-ONBOARDING-001
+      - GWG-ACTIVATION-GATE-001
+      - REQ-LIFECYCLE-001
+      - INV-LIFECYCLE-FREEZE-001
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Die Mail-Outbox erhält den Endstatus SKIPPED. Vor jedem Versand und jeder
+      Wiederholung prüft der Worker im selben Tenant-Transaktionsclient je Zweck, ob
+      der auslösende Vorgang noch aktuell ist (Rechnung im Portal sichtbar, Übergabe
+      bereit, Anforderung offen, GwG-Prüfung freigegeben und Mandant aktiv,
+      Einladung offen und nicht abgelaufen, Termin weder abgesagt noch verschoben,
+      Formular nicht eingereicht, Mandant nicht anonymisiert). Überholte Aufträge
+      enden ohne SMTP-Kontakt mit Grund; Inhalt und Geheimnis werden geleert. Inhalt,
+      Empfänger und Auslöser der Mails bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/mail/src/__tests__/outbox-relevance.test.ts
+      - apps/worker/src/jobs/__tests__/mail-outbox.test.ts
+      - apps/worker/src/jobs/__tests__/mail-outbox-db.test.ts
+      - packages/db/src/__tests__/mail-outbox-rls.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-010
     date: '2026-10-07'
     paths:
@@ -4292,6 +4318,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-011` dokumentiert die Aktualitätsprüfung
+  der Mail-Outbox vor jedem Versand und den Endstatus SKIPPED.
 
 - 2026-10-07: `FK-EXC-20261007-010` dokumentiert die präzise Meldung für
   nicht darstellbare Zeichen in ZUGFeRD-Rechnungen und Korrekturbelegen.

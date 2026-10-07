@@ -4259,6 +4259,8 @@ enum MailOutboxStatus {
   NO_RECIPIENT
   FAILED
   UNKNOWN
+  /// Vor dem Versand verworfen: der Vorgang ist erledigt, zurückgezogen oder abgesagt.
+  SKIPPED
 
   @@map("mail_outbox_status")
 }

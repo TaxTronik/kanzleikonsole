@@ -8,6 +8,9 @@
 //     mehrere Adressen (Rechnungsmail) — alle Aufträge zählen zusammen.
 //   - Kontaktmails (CLIENT_CONTACTS) können sich wiederholen (jede
 //     Kanzlei-Antwort) — maßgeblich ist der jüngste Auftrag.
+//   - Vor dem Versand verworfene Aufträge (SKIPPED: Vorgang erledigt,
+//     zurückgezogen oder abgesagt) zählen nur, wenn alle Aufträge des Anlasses
+//     verworfen wurden.
 // =============================================================================
 
 export type MailOutboxStatusValue =
@@ -18,7 +21,8 @@ export type MailOutboxStatusValue =
   | 'PARTIAL_FAILURE'
   | 'NO_RECIPIENT'
   | 'FAILED'
-  | 'UNKNOWN';
+  | 'UNKNOWN'
+  | 'SKIPPED';
 
 export interface MailOutboxStatusRow {
   purpose: string;
@@ -27,6 +31,8 @@ export interface MailOutboxStatusRow {
   recipientsAttempted: number | null;
   recipientsAccepted: number | null;
   createdAt: Date;
+  /** Begründung eines verworfenen Auftrags (`last_error` bei SKIPPED). */
+  lastError?: string | null;
 }
 
 export type MailDeliveryState =
@@ -36,7 +42,8 @@ export type MailDeliveryState =
   | 'partial'
   | 'no-recipient'
   | 'failed'
-  | 'unknown';
+  | 'unknown'
+  | 'skipped';
 
 export interface MailDeliverySummary {
   purpose: string;
@@ -45,6 +52,8 @@ export interface MailDeliverySummary {
   accepted: number;
   /** Adressierte Empfänger, soweit bereits bekannt. */
   attempted: number;
+  /** Nur bei `skipped`: warum die Mail nicht versendet wurde. */
+  skippedReason?: string;
 }
 
 const PENDING: ReadonlySet<MailOutboxStatusValue> = new Set(['QUEUED', 'SENDING']);
@@ -64,6 +73,32 @@ function attemptedOf(row: MailOutboxStatusRow): number {
   return row.recipientsAttempted ?? (row.kind === 'DIRECT' ? 1 : 0);
 }
 
+/** Begründung ohne das technische Präfix des Workers. */
+function skippedReason(rows: readonly MailOutboxStatusRow[]): string | undefined {
+  const reason = rows.find((row) => row.lastError)?.lastError ?? undefined;
+  return reason?.replace(/^Nicht versendet:\s*/, '') || undefined;
+}
+
+function summarizeBatch(purpose: string, batch: readonly MailOutboxStatusRow[]) {
+  const counted = batch.filter((row) => row.status !== 'SKIPPED');
+  if (counted.length === 0) {
+    const reason = skippedReason(batch);
+    return {
+      purpose,
+      state: 'skipped' as const,
+      accepted: 0,
+      attempted: 0,
+      ...(reason ? { skippedReason: reason } : {}),
+    };
+  }
+  return {
+    purpose,
+    state: aggregateState(counted),
+    accepted: counted.reduce((sum, row) => sum + (row.recipientsAccepted ?? 0), 0),
+    attempted: counted.reduce((sum, row) => sum + attemptedOf(row), 0),
+  };
+}
+
 /** Je Anlass eine Zusammenfassung, in der Reihenfolge des ersten Auftretens. */
 export function summarizeMailDelivery(rows: readonly MailOutboxStatusRow[]): MailDeliverySummary[] {
   const byPurpose = new Map<string, MailOutboxStatusRow[]>();
@@ -77,12 +112,7 @@ export function summarizeMailDelivery(rows: readonly MailOutboxStatusRow[]): Mai
       byPurpose.set(row.purpose, [row]);
     }
   }
-  return [...byPurpose.entries()].map(([purpose, batch]) => ({
-    purpose,
-    state: aggregateState(batch),
-    accepted: batch.reduce((sum, row) => sum + (row.recipientsAccepted ?? 0), 0),
-    attempted: batch.reduce((sum, row) => sum + attemptedOf(row), 0),
-  }));
+  return [...byPurpose.entries()].map(([purpose, batch]) => summarizeBatch(purpose, batch));
 }
 
 export const MAIL_DELIVERY_STATE_LABELS: Readonly<Record<MailDeliveryState, string>> = {
@@ -93,6 +123,7 @@ export const MAIL_DELIVERY_STATE_LABELS: Readonly<Record<MailDeliveryState, stri
   'no-recipient': 'nicht versendet – kein bestätigter Kontakt mit Benachrichtigungen',
   failed: 'Versand fehlgeschlagen – bitte prüfen',
   unknown: 'Versandstatus unklar – bitte prüfen',
+  skipped: 'nicht versendet – Vorgang nicht mehr aktuell',
 };
 
 /** Tooltip: Annahme durch den Versanddienst ist kein Zugangsnachweis. */
@@ -109,4 +140,6 @@ export const MAIL_DELIVERY_STATE_HINTS: Readonly<Record<MailDeliveryState, strin
   failed: 'Nach mehreren eindeutig gescheiterten Versuchen wurde der automatische Versand beendet.',
   unknown:
     'Der Versandausgang ist nicht eindeutig bestimmbar. Wegen des Doppelversandrisikos wird nicht automatisch erneut gesendet.',
+  skipped:
+    'Vor dem Versand war der Vorgang bereits erledigt, zurückgezogen oder abgesagt; die Mail wurde deshalb nicht gesendet.',
 };

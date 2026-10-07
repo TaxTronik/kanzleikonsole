@@ -25,6 +25,7 @@ const STATE_CLASSES: Readonly<Record<MailDeliveryState, string>> = {
   'no-recipient': 'text-muted',
   failed: 'text-red-700 dark:text-red-300',
   unknown: 'text-amber-700 dark:text-amber-300',
+  skipped: 'text-muted',
 };
 
 function purposeLabel(purpose: string): string {
@@ -38,11 +39,16 @@ function recipientCount(summary: MailDeliverySummary): string {
   return '';
 }
 
+function hint(summary: MailDeliverySummary): string {
+  const base = MAIL_DELIVERY_STATE_HINTS[summary.state];
+  return summary.skippedReason ? `${base} Grund: ${summary.skippedReason}` : base;
+}
+
 export function MailDeliveryStatus({ summary }: { summary: MailDeliverySummary }) {
   return (
     <span
       className={STATE_CLASSES[summary.state]}
-      title={MAIL_DELIVERY_STATE_HINTS[summary.state]}
+      title={hint(summary)}
       data-mail-delivery={summary.state}
     >
       {purposeLabel(summary.purpose)}: {MAIL_DELIVERY_STATE_LABELS[summary.state]}
