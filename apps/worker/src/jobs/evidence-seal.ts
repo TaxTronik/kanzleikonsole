@@ -3,6 +3,12 @@
 //
 // Versiegelt den Tages-Spitzen-Hash mit RFC-3161 (oder Self-Timestamp im MVP).
 // Wird täglich vom Repeat-Scheduler getriggert (siehe scheduler.ts).
+//
+// S-01: Offene Tage und Siegel liest und schreibt der Job je Tenant über die
+// App-Rolle im SYSTEM-Kontext des Tenants (systemContextClient: jede Abfrage
+// eine eigene kurze Transaktion, wie zuvor die Auto-Commit-Abfragen des
+// Owner-Clients; der TSA-Aufruf liegt weiterhin außerhalb jeder Transaktion).
+// Die App-Rolle darf audit_seal lesen und anlegen, nicht ändern.
 // =============================================================================
 
 import { createWorker } from '../worker-factory';
@@ -12,6 +18,7 @@ import { EvidenceService } from '@taxtronik/evidence';
 import { connection, type EvidenceSealJob } from '../queues';
 import { log } from '../logger';
 import { timestampPortFor } from '../tsa-port';
+import { systemContextClient, type SystemContextClient } from '../tenant-context';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 // RF-2: harte Obergrenze pro Lauf — schützt vor Endlosschleifen bei kaputten
@@ -30,12 +37,12 @@ function utcDayStart(d: Date): Date {
  * (Worker down, TSA down), blieb der Tag dauerhaft unversiegelt. Startpunkt:
  * Tag nach dem letzten Seal, sonst der älteste audit_log-Tag.
  */
-async function pendingSealDays(tenantId: string): Promise<Date[]> {
+async function pendingSealDays(db: SystemContextClient, tenantId: string): Promise<Date[]> {
   const yesterday = utcDayStart(new Date(Date.now() - DAY_MS));
 
   // seal_date als Text lesen — date-Spalten würden je nach Treiber-TZ sonst
   // auf den Vortag kippen (gleiche Vorsicht wie RF-6 in sealDay).
-  const lastSeal = await prismaOwner.$queryRaw<Array<{ max: string | null }>>`
+  const lastSeal = await db.$queryRaw<Array<{ max: string | null }>>`
     SELECT max(seal_date)::text AS max FROM audit_seal WHERE tenant_id = ${tenantId}::uuid
   `;
   // Startpunkt: ältestes Audit-Event NACH dem letzten Seal-Tag. Tage ganz ohne
@@ -44,7 +51,7 @@ async function pendingSealDays(tenantId: string): Promise<Date[]> {
   const afterLastSeal = lastSeal[0]?.max
     ? new Date(new Date(`${lastSeal[0].max}T00:00:00.000Z`).getTime() + DAY_MS)
     : undefined;
-  const oldest = await prismaOwner.auditLog.aggregate({
+  const oldest = await db.auditLog.aggregate({
     _min: { occurredAt: true },
     where: { tenantId, ...(afterLastSeal ? { occurredAt: { gte: afterLastSeal } } : {}) },
   });
@@ -72,6 +79,7 @@ export const evidenceSealWorker = createWorker<EvidenceSealJob>(
     if (job.data.tenantId) {
       tenantIds = [job.data.tenantId];
     } else {
+      // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client.
       const tenants = await prismaOwner.tenant.findMany({ select: { id: true } });
       tenantIds = tenants.map((t) => t.id);
     }
@@ -80,11 +88,12 @@ export const evidenceSealWorker = createWorker<EvidenceSealJob>(
 
     for (const tenantId of tenantIds) {
       try {
+        const db = systemContextClient(tenantId);
         // RF-2: Manual-Trigger mit explizitem Datum versiegelt genau diesen
         // Tag; der Scheduler-Lauf füllt alle verpassten Tage bis gestern auf.
         const days = job.data.sealDate
           ? [new Date(job.data.sealDate)]
-          : await pendingSealDays(tenantId);
+          : await pendingSealDays(db, tenantId);
         if (days.length === 0) continue;
 
         const port = await timestampPortFor(tenantId, 'stamp');
@@ -93,7 +102,7 @@ export const evidenceSealWorker = createWorker<EvidenceSealJob>(
           // RF-4: bewusst KEINE Transaktion mehr um sealDay — der TSA-HTTP-Call
           // (bis 10 s) riss das interaktive 5-s-Prisma-TX-Timeout (P2028).
           // Idempotenz/Race-Sicherheit liegt jetzt in sealDay selbst.
-          const r = await service.sealDay(prismaOwner, tenantId, sealDate);
+          const r = await service.sealDay(db, tenantId, sealDate);
           results.push({ tenantId, ...r });
           log.info(
             { tenantId, sealDate: sealDate.toISOString().slice(0, 10), ...r },

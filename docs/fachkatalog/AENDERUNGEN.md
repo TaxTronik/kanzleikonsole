@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-040
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/evidence-seal.ts
+    rule_ids:
+      - AUDIT-RFC3161-ANCHOR-001
+    reason: >-
+      Das Tagessiegel (`evidence-seal`) findet offene Siegeltage und versiegelt sie
+      über `systemContextClient`: jede Abfrage läuft in einer eigenen kurzen
+      Transaktion über die App-Rolle im SYSTEM-Kontext des Tenants
+      (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS; der
+      TSA-Aufruf bleibt außerhalb jeder Transaktion. Abfragen, Idempotenz und
+      Nachhol-Grenzen bleiben unverändert; eine PostgreSQL-Suite belegt das und dass
+      Audit-Einträge und Siegel fremder Tenants unberührt bleiben. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/evidence-seal-db.test.ts
+      - apps/worker/src/jobs/__tests__/evidence-seal.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-039
     date: '2026-10-07'
     paths:
@@ -4984,6 +5003,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-040` dokumentiert das Tagessiegel über die
+  App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-039` dokumentiert den Ankerstatus über die
   App-Rolle.

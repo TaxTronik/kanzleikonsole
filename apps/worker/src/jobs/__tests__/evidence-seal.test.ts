@@ -19,23 +19,27 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const h = vi.hoisted(() => {
   const sealDay = vi.fn();
   const constructedPorts: unknown[] = [];
-  const prismaOwner = {
-    tenant: { findMany: vi.fn() },
+  const prismaOwner = { tenant: { findMany: vi.fn() } };
+  // S-01: Offene Tage, Siegel und die TSA-Einstellung laufen im SYSTEM-Kontext
+  // des Tenants (App-Rolle; evidence-seal-db.test.ts belegt das gegen PostgreSQL).
+  const systemTx = {
+    tenantSetting: { findUnique: vi.fn() },
     auditLog: { aggregate: vi.fn() },
     $queryRaw: vi.fn(),
   };
-  // S-01: Die TSA-Einstellung liest tsa-port.ts im SYSTEM-Kontext des Tenants.
-  const systemTx = { tenantSetting: { findUnique: vi.fn() } };
+  const contexts: string[] = [];
   const assertPublicHost = vi.fn();
-  return { sealDay, constructedPorts, prismaOwner, systemTx, assertPublicHost };
+  return { sealDay, constructedPorts, prismaOwner, systemTx, contexts, assertPublicHost };
 });
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));
 vi.mock('../../queues', () => ({ connection: {} }));
 vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('@taxtronik/db', () => ({
-  withSystemContext: async (_tenantId: string, fn: (tx: typeof h.systemTx) => unknown) =>
-    fn(h.systemTx),
+  withSystemContext: async (tenantId: string, fn: (tx: typeof h.systemTx) => unknown) => {
+    h.contexts.push(tenantId);
+    return fn(h.systemTx);
+  },
 }));
 vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -91,6 +95,7 @@ beforeEach(() => {
   vi.setSystemTime(FIXED_NOW);
   vi.resetAllMocks();
   h.constructedPorts.length = 0;
+  h.contexts.length = 0;
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
   h.systemTx.tenantSetting.findUnique.mockResolvedValue(null);
   h.assertPublicHost.mockResolvedValue(undefined);
@@ -104,8 +109,8 @@ afterEach(() => {
 describe('Backfill — verpasste Versiegelungstage', () => {
   it('füllt genau die unversiegelten Tage seit dem letzten Seal bis gestern (UTC)', async () => {
     // Letzter Seal: 05.06. — Worker war danach 3 Tage down.
-    h.prismaOwner.$queryRaw.mockResolvedValue([{ max: '2026-06-05' }]);
-    h.prismaOwner.auditLog.aggregate.mockResolvedValue({
+    h.systemTx.$queryRaw.mockResolvedValue([{ max: '2026-06-05' }]);
+    h.systemTx.auditLog.aggregate.mockResolvedValue({
       _min: { occurredAt: new Date('2026-06-06T08:30:00.000Z') },
     });
 
@@ -113,18 +118,23 @@ describe('Backfill — verpasste Versiegelungstage', () => {
 
     expect(sealedDays()).toEqual(['2026-06-06', '2026-06-07', '2026-06-08']);
     // Startpunkt-Query: ältestes Audit-Event NACH dem letzten Seal-Tag
-    expect(h.prismaOwner.auditLog.aggregate).toHaveBeenCalledWith({
+    expect(h.systemTx.auditLog.aggregate).toHaveBeenCalledWith({
       _min: { occurredAt: true },
       where: { tenantId: TENANT, occurredAt: { gte: new Date('2026-06-06T00:00:00.000Z') } },
     });
     // RF-4: sealDay läuft direkt auf dem Owner-Client (keine umschließende TX)
-    expect(h.sealDay.mock.calls[0]![0]).toBe(h.prismaOwner);
+    // S-01: sealDay erhält den Tenant-Client (App-Rolle), nicht den Owner-Client.
+    const db = h.sealDay.mock.calls[0]![0] as { $queryRaw: (...args: unknown[]) => unknown };
+    expect(db).not.toBe(h.prismaOwner);
+    h.contexts.length = 0;
+    await db.$queryRaw`SELECT 1`;
+    expect(h.contexts).toEqual([TENANT]);
     expect(h.sealDay.mock.calls[0]![1]).toBe(TENANT);
   });
 
   it('ist idempotent: alles bis gestern versiegelt + keine neuen Events → kein sealDay', async () => {
-    h.prismaOwner.$queryRaw.mockResolvedValue([{ max: '2026-06-08' }]);
-    h.prismaOwner.auditLog.aggregate.mockResolvedValue({ _min: { occurredAt: null } });
+    h.systemTx.$queryRaw.mockResolvedValue([{ max: '2026-06-08' }]);
+    h.systemTx.auditLog.aggregate.mockResolvedValue({ _min: { occurredAt: null } });
 
     const result = await run({ tenantId: TENANT });
 
@@ -135,8 +145,8 @@ describe('Backfill — verpasste Versiegelungstage', () => {
   });
 
   it('noch nie versiegelt → Start am Tag des ältesten Audit-Events', async () => {
-    h.prismaOwner.$queryRaw.mockResolvedValue([{ max: null }]);
-    h.prismaOwner.auditLog.aggregate.mockResolvedValue({
+    h.systemTx.$queryRaw.mockResolvedValue([{ max: null }]);
+    h.systemTx.auditLog.aggregate.mockResolvedValue({
       _min: { occurredAt: new Date('2026-06-07T23:59:59.000Z') },
     });
 
@@ -144,15 +154,15 @@ describe('Backfill — verpasste Versiegelungstage', () => {
 
     expect(sealedDays()).toEqual(['2026-06-07', '2026-06-08']);
     // Ohne letzten Seal: kein occurredAt-Filter
-    expect(h.prismaOwner.auditLog.aggregate).toHaveBeenCalledWith({
+    expect(h.systemTx.auditLog.aggregate).toHaveBeenCalledWith({
       _min: { occurredAt: true },
       where: { tenantId: TENANT },
     });
   });
 
   it('Events erst heute → heutiger Tag wird nie vorab versiegelt', async () => {
-    h.prismaOwner.$queryRaw.mockResolvedValue([{ max: null }]);
-    h.prismaOwner.auditLog.aggregate.mockResolvedValue({
+    h.systemTx.$queryRaw.mockResolvedValue([{ max: null }]);
+    h.systemTx.auditLog.aggregate.mockResolvedValue({
       _min: { occurredAt: new Date('2026-06-09T01:00:00.000Z') },
     });
 
@@ -162,8 +172,8 @@ describe('Backfill — verpasste Versiegelungstage', () => {
   });
 
   it('RF-2: Backfill ist auf 366 Tage pro Lauf gekappt (Rest folgt beim nächsten Lauf)', async () => {
-    h.prismaOwner.$queryRaw.mockResolvedValue([{ max: null }]);
-    h.prismaOwner.auditLog.aggregate.mockResolvedValue({
+    h.systemTx.$queryRaw.mockResolvedValue([{ max: null }]);
+    h.systemTx.auditLog.aggregate.mockResolvedValue({
       _min: { occurredAt: new Date('2024-01-01T05:00:00.000Z') }, // > 2 Jahre Backlog
     });
 
@@ -181,16 +191,16 @@ describe('Manual-Trigger', () => {
     await run({ tenantId: TENANT, sealDate: '2026-06-01T00:00:00.000Z' });
 
     expect(sealedDays()).toEqual(['2026-06-01']);
-    expect(h.prismaOwner.$queryRaw).not.toHaveBeenCalled();
-    expect(h.prismaOwner.auditLog.aggregate).not.toHaveBeenCalled();
+    expect(h.systemTx.$queryRaw).not.toHaveBeenCalled();
+    expect(h.systemTx.auditLog.aggregate).not.toHaveBeenCalled();
   });
 });
 
 describe('Fehler-Isolation über Tenants', () => {
   it('Fehler bei Tenant A stoppt Tenant B nicht; reason wird festgehalten', async () => {
     h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: 'tenant-a' }, { id: 'tenant-b' }]);
-    h.prismaOwner.$queryRaw.mockResolvedValue([{ max: '2026-06-07' }]);
-    h.prismaOwner.auditLog.aggregate.mockResolvedValue({
+    h.systemTx.$queryRaw.mockResolvedValue([{ max: '2026-06-07' }]);
+    h.systemTx.auditLog.aggregate.mockResolvedValue({
       _min: { occurredAt: new Date('2026-06-08T01:00:00.000Z') },
     });
     h.sealDay.mockRejectedValueOnce(new Error('TSA down')).mockResolvedValue({ sealed: true });
@@ -207,8 +217,8 @@ describe('Fehler-Isolation über Tenants', () => {
 describe('TSA-Auswahl (F1: TOCTOU-Re-Check)', () => {
   beforeEach(() => {
     // genau ein offener Tag, damit timestampPortFor überhaupt läuft
-    h.prismaOwner.$queryRaw.mockResolvedValue([{ max: '2026-06-07' }]);
-    h.prismaOwner.auditLog.aggregate.mockResolvedValue({
+    h.systemTx.$queryRaw.mockResolvedValue([{ max: '2026-06-07' }]);
+    h.systemTx.auditLog.aggregate.mockResolvedValue({
       _min: { occurredAt: new Date('2026-06-08T01:00:00.000Z') },
     });
   });
