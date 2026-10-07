@@ -1,10 +1,10 @@
 import { createRequire } from 'node:module';
+import { build } from 'esbuild';
 import { dirname } from 'node:path';
 import type { Page } from '@playwright/test';
 
 // Use the already installed web build tool; no app server, database or new dependency.
 const webRequire = createRequire(new URL('../../../web/package.json', import.meta.url));
-const { build } = createRequire(webRequire.resolve('tsx'))('esbuild') as typeof import('esbuild');
 const webRoot = dirname(webRequire.resolve('./package.json'));
 
 export const folderA = { id: 'folder-a', name: 'Ausgangsordner', parentId: null };

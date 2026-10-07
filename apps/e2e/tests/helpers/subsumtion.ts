@@ -1,9 +1,9 @@
 import { createRequire } from 'node:module';
+import { build } from 'esbuild';
 import { dirname } from 'node:path';
 import type { Page } from '@playwright/test';
 
 const webRequire = createRequire(new URL('../../../web/package.json', import.meta.url));
-const { build } = createRequire(webRequire.resolve('tsx'))('esbuild') as typeof import('esbuild');
 const webRoot = dirname(webRequire.resolve('./package.json'));
 let bundle: Promise<string> | undefined;
 

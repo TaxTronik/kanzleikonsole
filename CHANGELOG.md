@@ -258,6 +258,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Abhängigkeiten: `server-only` (Web, `0.0.1`, ohne Installations-Hooks und
+  ohne Abhängigkeiten) und `esbuild` (E2E, `0.28.1` wie der Override) sind
+  deklariert; die E2E-Hilfen laden esbuild direkt statt über die
+  tsx-Abhängigkeit des Web-Pakets.
 - Konfigurationsprüfung mit dem Schema des Ziel-Releases: Deploy und Update
   prüfen die `.env` nach dem Bereitstellen der Images und vor Backup (Deploy)
   bzw. Migration (Update) im Ziel-Worker-Image (`dist/env-check.js`, Profile
