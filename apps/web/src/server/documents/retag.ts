@@ -4,9 +4,10 @@
 // Fachkatalog: DOC-VERSION-IMMUTABILITY-001, DOC-RETENTION-CLASS-001,
 // DOC-OBJECT-LOCK-001, DOC-UPLOAD-JOURNAL-001
 //
-// Einzel-Action (retagDocumentAction) und Bulk-Action (retagDocumentsAction)
-// laufen über dieselben Schritte dieses Moduls; die Actions parsen nur noch,
-// rufen den Service und revalidieren.
+// Die Bulk-Action (retagDocumentsAction) und retagDocument (ein Dokument)
+// laufen über dieselben Schritte dieses Moduls; die Action parst nur noch,
+// ruft den Service und revalidiert. Die frühere Einzel-Action entfiel mit
+// P-18 (der Explorer ruft nur noch die Bulk-Action).
 //
 // Schutzstufen-Logik (iter55: Stufe statt roher Klassifikation). Die Stufe
 // steuert Bucket + Object-Lock + Aufbewahrung:

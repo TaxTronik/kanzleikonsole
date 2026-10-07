@@ -98,17 +98,14 @@ const bulkAction=name=>async input=>{
  return {ok:rejected.length===0,done:ids.length-rejected.length,rejected};
 };
 export const setDocumentFolderAction=action('setDocumentFolder');
-export const moveFolderAction=action('moveFolder');
 export const moveDocumentItemsAction=bulkAction('moveDocumentItems');
 export const deleteFolderAction=action('deleteFolder');
 export const createFolderAction=action('createFolder');
 export const renameFolderAction=action('renameFolder');
-export const softDeleteDocumentAction=action('softDeleteDocument');
 export const softDeleteDocumentsAction=bulkAction('softDeleteDocuments');
 export const restoreDocumentAction=action('restoreDocument');
 export const setDocumentShareAction=action('setDocumentShare');
 export const setDocumentsShareAction=bulkAction('setDocumentsShare');
-export const retagDocumentAction=action('retagDocument');
 export const retagDocumentsAction=bulkAction('retagDocuments');`,
               '@/components/document-upload-button': `import React from 'react';
 export const DocumentUploadButton=({folderId})=><button type="button" data-upload-folder={folderId??''}>Hochladen</button>;`,

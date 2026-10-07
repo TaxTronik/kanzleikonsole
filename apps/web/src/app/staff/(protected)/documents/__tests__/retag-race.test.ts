@@ -1,10 +1,12 @@
 // Fachkatalog: DOC-VERSION-IMMUTABILITY-001
 // Fachkatalog: DOC-UPLOAD-JOURNAL-001
+// Umklassifizierung eines Dokuments (server/documents/retag.ts, dieselben
+// Schritte wie in der Bulk-Action retagDocumentsAction). Bis P-18 lief das
+// über die Einzel-Action retagDocumentAction; die entfiel ohne Aufrufer.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => {
   return {
-    staffActionGuard: vi.fn(),
     withTenantContext: vi.fn(),
     fetchObjectBytes: vi.fn(),
     prepare: vi.fn(),
@@ -66,23 +68,22 @@ vi.mock('@/server/auth/rbac', async () => ({
 }));
 vi.mock('@/server/actions/staff-action', async () => ({
   ActionError: (await import('@/server/actions/action-error')).ActionError,
-  staffActionGuard: m.staffActionGuard,
-  withStaff: vi.fn(),
-  // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
-  staffAction: (
-    await vi.importActual<typeof import('@/server/actions/action-runner')>(
-      '@/server/actions/action-runner',
-    )
-  ).createActionRunner(m.staffActionGuard),
 }));
 vi.mock('@/server/logger', () => ({ log: { error: m.logError, warn: vi.fn() } }));
 
-import { retagDocumentAction } from '../actions';
+import type { StaffCtx } from '@/server/actions/staff-action';
+import { retagDocument } from '@/server/documents/retag';
 import { storageJournal } from '@/server/documents/__tests__/storage-journal-fake';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const VERSION_ID = '22222222-2222-4222-8222-222222222222';
 const CREATED_AT = new Date('2026-01-10T00:00:00.000Z');
+const STAFF = {
+  tenantId: 'tenant-1',
+  staffId: 'staff-1',
+  session: {},
+  ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+} as unknown as StaffCtx;
 
 function initialDocument(immutable: boolean) {
   return {
@@ -122,13 +123,6 @@ beforeEach(() => {
   storageJournal.reset();
   m.prepare.mockImplementation(storageJournal.prepare);
   m.txCommit.$executeRaw.mockImplementation(storageJournal.executeRaw);
-  m.staffActionGuard.mockResolvedValue({
-    ok: true,
-    tenantId: 'tenant-1',
-    staffId: 'staff-1',
-    session: {},
-    ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
-  });
   let txCall = 0;
   m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) => {
     txCall += 1;
@@ -149,7 +143,7 @@ beforeEach(() => {
   m.evidenceRecord.mockResolvedValue({});
 });
 
-describe('retagDocumentAction concurrency and immutable history', () => {
+describe('retagDocument concurrency and immutable history', () => {
   it('aborts on latest-version drift before any DB mutation or object write', async () => {
     m.txInitial.document.findFirst.mockResolvedValue(initialDocument(true));
     m.txCommit.documentVersion.findFirst.mockResolvedValue({
@@ -160,10 +154,7 @@ describe('retagDocumentAction concurrency and immutable history', () => {
       storageVersionId: 'concurrent-version-id',
     });
 
-    const result = await retagDocumentAction({
-      documentId: DOCUMENT_ID,
-      classification: 'GOBD_INVOICE',
-    });
+    const result = await retagDocument(STAFF, DOCUMENT_ID, { classification: 'GOBD_INVOICE' });
 
     expect(result).toEqual({
       ok: false,
@@ -191,10 +182,7 @@ describe('retagDocumentAction concurrency and immutable history', () => {
       versionNo: 2,
     });
 
-    const result = await retagDocumentAction({
-      documentId: DOCUMENT_ID,
-      classification: 'GOBD_INVOICE',
-    });
+    const result = await retagDocument(STAFF, DOCUMENT_ID, { classification: 'GOBD_INVOICE' });
 
     expect(result).toEqual({
       ok: false,
@@ -216,12 +204,9 @@ describe('retagDocumentAction concurrency and immutable history', () => {
     m.txInitial.document.findFirst.mockResolvedValue(initialDocument(true));
     m.txCommit.documentVersion.findFirst.mockResolvedValue(matchingLatest(true));
 
-    const result = await retagDocumentAction({
-      documentId: DOCUMENT_ID,
-      classification: 'GOBD_INVOICE',
-    });
+    const result = await retagDocument(STAFF, DOCUMENT_ID, { classification: 'GOBD_INVOICE' });
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, changed: true, clientId: null });
     expect(m.txCommit.documentVersion.update).not.toHaveBeenCalled();
     const stored = storageJournal.objects[0]!;
     expect(m.prepare).toHaveBeenCalledWith(

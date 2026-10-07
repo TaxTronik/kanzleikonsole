@@ -1,5 +1,30 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-018
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/documents/__tests__/acknowledge-button.test.tsx
+      - apps/web/src/app/staff/(protected)/documents/__tests__/restore-gwg.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
+      - apps/web/src/app/staff/(protected)/documents/acknowledge-button.tsx
+      - apps/web/src/app/staff/(protected)/documents/actions.ts
+      - apps/web/src/app/staff/(protected)/documents/folder-actions.ts
+      - apps/web/src/server/documents/retag.ts
+    rule_ids:
+      - DOC-PORTAL-SHARING-001
+      - DOC-VERSION-IMMUTABILITY-001
+    reason: >-
+      Drei Einzel-Actions ohne Aufrufer (`softDeleteDocumentAction`,
+      `retagDocumentAction`, `moveFolderAction`) entfallen; ihre Tests laufen über die
+      Sammelaktionen bzw. den Dienst. Die Empfangsbestätigung lädt die Seite nur
+      noch einmal neu und setzt bei Ablehnung den gespeicherten Stand zurück.
+      Freigabe, Bestätigung, Versionierung und Zugriffsprüfung der Dokumente bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/app/staff/(protected)/documents/__tests__/acknowledge-button.test.tsx
+      - apps/web/src/app/staff/(protected)/documents/__tests__/restore-gwg.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-017
     date: '2026-10-07'
     paths:
@@ -4488,6 +4513,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-018` dokumentiert das Entfernen
+  ungenutzter Einzel-Actions der Dokumentablage.
 
 - 2026-10-07: `FK-EXC-20261007-017` dokumentiert die Seitenzählung bei
   fortsetzbaren Uploads und den nächtlichen Seitenzahl-Backfill.

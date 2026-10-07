@@ -5,7 +5,6 @@ import { revalidatePath } from 'next/cache';
 import type { TxClient } from '@taxtronik/db';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import {
-  staffAction,
   staffActionGuard,
   withStaff,
   ActionError,
@@ -24,7 +23,7 @@ import {
   type AssertClientAccess,
   type DocumentBulkResult,
 } from '@/server/documents/document-bulk';
-import { RETAG_CLASSIFICATIONS, retagDocument, retagDocuments } from '@/server/documents/retag';
+import { RETAG_CLASSIFICATIONS, retagDocuments } from '@/server/documents/retag';
 
 export interface DocActionResult {
   ok: boolean;
@@ -89,15 +88,10 @@ async function isDocumentLinkedToGwg(tx: TxClient, documentId: string): Promise<
   return rows[0].linked;
 }
 
-const DeleteSchema = z.object({
-  documentId: z.string().uuid(),
-  reason: z.string().trim().max(500).optional(),
-});
-
 /**
- * Soft-Delete eines Dokuments in der laufenden Transaktion (Einzel- und
- * Bulk-Action). Die Datei im Object-Store bleibt UNANGETASTET — GoBD liegt
- * unter COMPLIANCE-Lock; GwG-Nachweise werden im GOVERNANCE-Bucket durch den
+ * Soft-Delete eines Dokuments in der laufenden Transaktion (Bulk-Action). Die
+ * Datei im Object-Store bleibt UNANGETASTET — GoBD liegt unter
+ * COMPLIANCE-Lock; GwG-Nachweise werden im GOVERNANCE-Bucket durch den
  * separaten fachlichen Vernichtungsprozess behandelt.
  */
 async function softDeleteDocumentTx(
@@ -137,39 +131,17 @@ async function softDeleteDocumentTx(
   return { clientId: doc.clientId };
 }
 
-/**
- * Soft-Delete: blendet das Dokument aus den Listen aus. Bewusst kein
- * S3-DeleteObject: "Löschen" ist reine Sichtbarkeit, die Aufbewahrung erzwingt
- * der Object-Store. Wiederherstellbar via restoreDocumentAction.
- */
-export async function softDeleteDocumentAction(
-  input: z.infer<typeof DeleteSchema>,
-): Promise<DocActionResult> {
-  const parsed = DeleteSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-  const { documentId } = parsed.data;
-  const reason = parsed.data.reason?.trim() || null;
-
-  return withStaff(
-    async (tx, staff) => {
-      await softDeleteDocumentTx(
-        tx,
-        staff,
-        clientAccessCheck(tx, staff.session),
-        documentId,
-        reason,
-      );
-    },
-    { revalidate: '/staff/documents' },
-  );
-}
-
 const BulkDeleteSchema = z.object({
   documentIds: DocumentIdsSchema,
   reason: z.string().trim().max(500).optional(),
 });
 
-/** P-18: Soft-Delete einer Auswahl mit einem Grund — eine Action, eine Transaktion. */
+/**
+ * P-18: Soft-Delete einer Auswahl mit einem Grund — eine Action, eine
+ * Transaktion. Blendet die Dokumente aus den Listen aus; bewusst kein
+ * S3-DeleteObject: „Löschen“ ist reine Sichtbarkeit, die Aufbewahrung erzwingt
+ * der Object-Store. Wiederherstellbar via restoreDocumentAction.
+ */
 export async function softDeleteDocumentsAction(
   input: z.infer<typeof BulkDeleteSchema>,
 ): Promise<DocumentBulkResult> {
@@ -250,35 +222,6 @@ export async function restoreDocumentAction(
 // Umklassifizierung (Retag): Schutzstufen-Logik, Sperren, journal-first
 // Re-Store und Audit liegen im Service server/documents/retag.ts (K-03).
 const ClassificationSchema = z.enum(RETAG_CLASSIFICATIONS);
-
-const RetagSchema = z
-  .object({
-    documentId: z.string().uuid(),
-    documentTypeId: z.string().uuid().optional(),
-    classification: ClassificationSchema.optional(),
-  })
-  .refine((d) => d.documentTypeId || d.classification, {
-    message: 'documentTypeId oder classification erforderlich',
-  });
-
-export async function retagDocumentAction(
-  input: z.infer<typeof RetagSchema>,
-): Promise<DocActionResult> {
-  return staffAction({
-    run: async (g) => {
-      const parsed = RetagSchema.safeParse(input);
-      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-
-      const result = await retagDocument(g, parsed.data.documentId, parsed.data);
-      if (!result.ok) return result;
-      // Unverändert (Ziel-Typ schon gesetzt): nichts geschrieben, nichts revalidiert.
-      if (result.changed) {
-        revalidatePath('/staff/documents');
-        if (result.clientId) revalidatePath(`/staff/clients/${result.clientId}`);
-      }
-    },
-  });
-}
 
 const BulkRetagSchema = z
   .object({

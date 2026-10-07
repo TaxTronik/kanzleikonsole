@@ -187,16 +187,12 @@ export async function deleteFolderAction(
 }
 
 // ---------------------------------------------------------------------------
-// Ordner verschieben (reparentieren) — zyklensicher.
+// Ordner verschieben (reparentieren) — zyklensicher. Seit P-18 nur über die
+// Bulk-Action moveDocumentItemsAction (Explorer: Ziehen, „Verschieben nach“).
 // ---------------------------------------------------------------------------
-const MoveSchema = z.object({
-  folderId: z.string().uuid(),
-  newParentId: z.string().uuid().nullable(),
-});
-
 type StaffActor = Pick<StaffCtx, 'tenantId' | 'ctx'>;
 
-/** Ordner in der laufenden Transaktion reparentieren (Einzel- und Bulk-Action). */
+/** Ordner in der laufenden Transaktion reparentieren (Bulk-Action). */
 async function moveFolderTx(
   tx: TxClient,
   { tenantId, ctx }: StaffActor,
@@ -249,27 +245,6 @@ async function moveFolderTx(
     after: { parentId: newParentId },
   });
   return { clientId: f.clientId };
-}
-
-export async function moveFolderAction(
-  input: z.infer<typeof MoveSchema>,
-): Promise<FolderActionResult> {
-  return staffAction({
-    run: async (g) => {
-      const parsed = MoveSchema.safeParse(input);
-      if (!parsed.success) return { ok: false, error: 'Validierungsfehler.' };
-      const { ctx } = g;
-      const { folderId, newParentId } = parsed.data;
-      if (folderId === newParentId)
-        return { ok: false, error: 'Ordner kann nicht in sich selbst.' };
-
-      const { clientId } = await withTenantContext(ctx, (tx) =>
-        moveFolderTx(tx, g, clientAccessCheck(tx, g.session), folderId, newParentId),
-      );
-      revalidate(clientId);
-    },
-    uniqueError: FOLDER_NAME_TAKEN,
-  });
 }
 
 // ---------------------------------------------------------------------------

@@ -1,10 +1,26 @@
 ﻿'use client';
 
 import { useState, useTransition, type MouseEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { CheckCircle2, Circle } from 'lucide-react';
 import { acknowledgeDocumentAction } from './acknowledge-actions';
 import { fmtDateTimeShort } from '@/lib/fmt';
+
+type AcknowledgeDocument = typeof acknowledgeDocumentAction;
+
+/**
+ * Setzt bzw. entfernt die Empfangsbestätigung über die Server-Action; `false`,
+ * wenn sie abgelehnt wurde. P-18: Die Action revalidiert die Dokumentseite
+ * (/staff/documents/<id>), ihre Antwort rendert sie bereits neu — ein
+ * zusätzlicher Router-Refresh wäre ein zweiter Seiten-Render.
+ */
+export async function submitAcknowledgement(
+  documentId: string,
+  acknowledged: boolean,
+  acknowledge: AcknowledgeDocument = acknowledgeDocumentAction,
+): Promise<boolean> {
+  const result = await acknowledge({ documentId, acknowledged });
+  return result.ok;
+}
 
 export function AcknowledgeButton({
   documentId,
@@ -17,7 +33,6 @@ export function AcknowledgeButton({
   acknowledgedByName: string | null;
   size?: 'sm' | 'md';
 }) {
-  const router = useRouter();
   const [done, setDone] = useState(Boolean(acknowledgedAt));
   const [doneAt, setDoneAt] = useState(acknowledgedAt);
   const [isPending, start] = useTransition();
@@ -26,12 +41,16 @@ export function AcknowledgeButton({
     e.preventDefault();
     e.stopPropagation();
     const next = !done;
+    const previousAt = doneAt;
     setDone(next);
     if (next) setDoneAt(new Date().toISOString());
     else setDoneAt(null);
     start(async () => {
-      await acknowledgeDocumentAction({ documentId, acknowledged: next });
-      router.refresh();
+      // Bei Ablehnung den optimistischen Stand zurücknehmen (Serverstand unverändert).
+      if (!(await submitAcknowledgement(documentId, next))) {
+        setDone(!next);
+        setDoneAt(previousAt);
+      }
     });
   }
 

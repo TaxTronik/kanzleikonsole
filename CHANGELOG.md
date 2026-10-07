@@ -258,6 +258,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Dokumente: Die Empfangsbestätigung lädt die Seite nur noch einmal neu und
+  zeigt bei Ablehnung wieder den gespeicherten Stand; nicht mehr genutzte
+  Einzelaktionen (Löschen, Umtypisieren, Ordner verschieben) sind entfernt.
 - GwG-Ausweisnachweise: Fortsetzbare Uploads (u. a. übernommene
   Posteingangs-Anhänge, Postfach-Import mit GwG-Dokumenttyp) speichern die
   PDF-Seitenzahl bereits beim Hochladen; ein nächtlicher Hintergrundjob trägt
