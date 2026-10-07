@@ -117,6 +117,9 @@ code_refs:
   - apps/web/src/server/auth/password-hash-pool.ts
   - apps/worker/src/jobs/fido-mds-refresh.ts
   - packages/db/prisma/migrations/20261007100400_document_mandate_artifact_flag/migration.sql
+  - apps/web/src/server/auth/authjs-route.ts
+  - apps/web/src/app/api/auth/staff/[...nextauth]/route.ts
+  - apps/web/src/app/api/auth/portal/[...nextauth]/route.ts
 test_refs:
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts
@@ -168,6 +171,7 @@ test_refs:
   - apps/web/src/server/auth/__tests__/webauthn-library-contract.test.ts
   - apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts
   - packages/db/src/__tests__/document-mandate-artifact-flag.test.ts
+  - apps/web/src/server/auth/__tests__/authjs-route.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -317,8 +321,13 @@ vergleicht entzogene, neu ausgestellte und fremde Kontakt-URLs.
 
 Die aktuelle Sitzung wird vor jeder Auth.js-Cookie-Erneuerung gegen den
 Redis-Widerruf und den aktuellen Konto-/Tenant-/Mandatszustand geprüft.
-Unzulässige oder nicht prüfbare Tokens werden bereits im JWT-Callback verworfen;
-der HTTP-Endpunkt entfernt dann das Sitzungscookie. Ein signierter
+Unzulässige oder nicht prüfbare Tokens werden bereits im JWT-Callback verworfen.
+Über HTTP erreichen nur noch `GET csrf` und `POST signout` beider Oberflächen
+sowie die Callbacks der beiden Staff-Credentials-Provider Auth.js; der
+Sessionendpunkt, `signin`, `providers`, `error`, alle übrigen Aktionen und der
+Portal-Callback antworten 404, eine erlaubte Aktion mit anderer Methode 405,
+jeweils ohne Auth.js aufzurufen. Damit erneuert kein HTTP-Endpunkt mehr ein
+Sitzungscookie; die Prüfung im JWT-Callback bleibt als Absicherung. Ein signierter
 `sessionIssuedAt`-Wert bewahrt den ursprünglichen Anmeldezeitpunkt über
 Erneuerungen hinweg. Tokens ohne diesen Wert werden gesperrt, weil ihr `iat`
 durch die frühere Cookie-Erneuerung bereits verschoben sein kann. Nach dem
@@ -337,8 +346,8 @@ Die strikte Ablehnung bestehender Tokens ohne diesen Claim bleibt erhalten.
 
 Sitzungen beider Oberflächen enden absolut 24 Stunden nach dem signierten
 ursprünglichen Anmeldezeitpunkt. Seitenaufrufe erneuern das Cookie nicht;
-Anmeldung, Portal-Profilwechsel und der Auth.js-Sessionendpunkt stellen JWTs
-aus, deren Ablauf höchstens auf Anmeldung plus 24 Stunden gesetzt wird. Ein
+Anmeldung und Portal-Profilwechsel stellen JWTs aus, deren Ablauf höchstens
+auf Anmeldung plus 24 Stunden gesetzt wird. Ein
 Cookie jenseits dieser Grenze wird abgewiesen, auch wenn eine frühere
 gleitende Erneuerung seinen Ablauf verlängert hatte; Tokens ohne gültigen
 Anmeldeanker werden nie verlängert. Session-Fabrik-, Erneuerungs- und
@@ -410,7 +419,13 @@ ungültige Claims und Ausfälle. Dies ist kein externer Penetrationstest.
 Zusätzlich werden die tatsächlich vom Staff-Formularhandler und Portal-
 Session-Schreiber ausgestellten Cookies mit der echten JWT-Verschlüsselung
 eingelesen, über den Auth.js-HTTP-Pfad erneuert und anschließend anhand eines
-zwischen Anmeldung und Erneuerung liegenden Widerrufs gesperrt.
+zwischen Anmeldung und Erneuerung liegenden Widerrufs gesperrt. Diese
+Erneuerung ist über die Route seit B5 nicht mehr erreichbar; die Regression
+belegt die Prüfung im JWT-Callback als Absicherung. Der Routentest belegt je
+Oberfläche, dass genau die erlaubten Endpunkte Auth.js erreichen und alle
+übrigen mit 404 beziehungsweise 405 ohne Auth.js-Aufruf antworten, gegen
+echtes Auth.js auch Credentials-Callback, Fehlerumleitung zur Anmeldung und
+Abmelden.
 
 Im regulären Passwort-/TOTP-Modus nimmt dasselbe beschriftete Loginfeld
 entweder einen sechsstelligen TOTP oder einen vollständigen zehnstelligen

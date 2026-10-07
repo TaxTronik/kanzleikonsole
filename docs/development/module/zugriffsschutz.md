@@ -389,8 +389,19 @@ Logout und Layout lesen, schreiben und löschen Session-Cookies nur darüber; in
 Production gilt ausschließlich der konfigurierte `__Host-`/`__Secure-`-Name.
 Das Portal besitzt keinen Auth.js-Provider mehr, der öffentliche
 Credentials-Callback stellt dort keine Session aus. Sessions enden absolut
-24 h nach der ursprünglichen Anmeldung; weder die Auth.js-Erneuerung über
-`/api/auth/<surface>/session` noch ein Portal-Profilwechsel verlängern sie.
+24 h nach der ursprünglichen Anmeldung; ein Portal-Profilwechsel verlängert sie
+nicht.
+
+B5: Über HTTP reichen die Auth.js-Routen nur noch die genutzten Endpunkte
+weiter (`server/auth/authjs-route.ts`): `GET csrf` und `POST signout` beider
+Oberflächen sowie `POST callback/credentials` und `POST callback/hardware-key`
+des Staff-Surface. `session` (früher eine Cookie-Erneuerung), `signin`,
+`providers`, `error`, `verify-request`, `webauthn-options` und der
+Portal-Callback antworten 404, eine erlaubte Aktion mit anderer Methode 405,
+jeweils ohne Auth.js aufzurufen. Anmeldung und Abmeldung rufen Auth.js
+serverseitig direkt auf (Login-Actions, Logout-Routen) und sind davon nicht
+betroffen. Fehler der verbleibenden Endpunkte leiten auf die Anmeldeseite der
+Oberfläche statt auf die gesperrte Auth.js-Fehlerseite.
 
 ACCESS-TENANT-RLS-001: JWT-Erneuerung, Session-Callback und direkte Server-Auth
 verwenden dieselbe laufende Konto-/Mandatsprüfung. Ein widerrufenes Token wird

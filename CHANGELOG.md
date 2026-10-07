@@ -1505,6 +1505,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope]** Über HTTP erreichen nur noch die genutzten Auth.js-Endpunkte
+  Auth.js: CSRF-Token, Abmelden und die Anmelde-Callbacks der beiden
+  Staff-Credentials-Provider. Der Sessionendpunkt, der ein gültiges
+  Session-Cookie bisher neu ausstellte, sowie `signin`, `providers`, `error` und
+  alle übrigen Aktionen antworten mit 404, eine erlaubte Aktion mit falscher
+  Methode mit 405, jeweils ohne Auth.js aufzurufen; Fehler der verbleibenden
+  Endpunkte leiten auf die Anmeldeseite (`ACCESS-TENANT-RLS-001`).
 - Produktion nur über den Release-Kanal: `./taxtronik deploy`, `bootstrap` und
   `update` verweigern in Produktion `TAXTRONIK_DEPLOY_CHANNEL=source` vor
   `.env`-Vorbereitung, Backup, Fetch, Image-Build und Migration und nennen den

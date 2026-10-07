@@ -13,8 +13,9 @@
 // S-05: Die Auth.js-Instanz hat keinen Provider mehr. Der frühere Credentials-
 // Provider hatte keinen Aufrufer in der Oberfläche, war aber über
 // /api/auth/portal/callback/credentials als zweiter Login-Pfad öffentlich
-// erreichbar. Auth.js bleibt nur für Abmelden (portalSignOut) und den
-// Session-Endpunkt mit denselben Prüfungen wie portalAuth().
+// erreichbar. Auth.js bleibt nur für das Abmelden (portalSignOut). Über HTTP
+// antworten nur noch csrf und signout; callback, session und alle übrigen
+// Aktionen antworten 404 (B5, PORTAL_AUTHJS_ROUTE).
 // =============================================================================
 
 import { cache } from 'react';
@@ -24,6 +25,7 @@ import { env } from '@taxtronik/config';
 import { isTokenRevoked } from './revocation';
 import { getSessionIssuedAt } from './session-issued-at';
 import { portalSessionFactory } from './portal-session';
+import { restrictAuthJsRoute, type AuthJsRouteSpec } from './authjs-route';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
 
@@ -162,8 +164,21 @@ export type PortalSession = Session & {
   };
 };
 
+const PORTAL_AUTH_BASE_PATH = '/api/auth/portal';
+
+// B5 (S-05): Das Portal hat keinen Provider, ein Callback kann also nichts
+// anmelden; über HTTP bleiben nur CSRF-Token und Abmelden erreichbar
+// (authjs-route.ts).
+export const PORTAL_AUTHJS_ROUTE: AuthJsRouteSpec = {
+  basePath: PORTAL_AUTH_BASE_PATH,
+  endpoints: [
+    { method: 'GET', action: 'csrf' },
+    { method: 'POST', action: 'signout' },
+  ],
+};
+
 const portalConfig: NextAuthConfig = {
-  basePath: '/api/auth/portal',
+  basePath: PORTAL_AUTH_BASE_PATH,
   // Auth.js v5 verlangt trustHost=true. Der vorgeschaltete Proxy pinnt den
   // Host auf den konfigurierten VHost; Production-Config erzwingt das Opt-in.
   trustHost: env.NEXTAUTH_TRUST_HOST ?? true,
@@ -210,6 +225,9 @@ const portalConfig: NextAuthConfig = {
 
   pages: {
     signIn: '/portal/login',
+    // Die Auth.js-Fehlerseite ist gesperrt (PORTAL_AUTHJS_ROUTE); Fehler der
+    // verbleibenden Endpunkte leiten auf die Anmeldung statt auf ein 404.
+    error: '/portal/login',
   },
 };
 
@@ -220,7 +238,10 @@ const _portal = NextAuth(portalConfig);
 // `.pnpm/@auth+core@.../...`, den der declaration-emitter als „nicht
 // portabel" ablehnt (TS4023 in pnpm-Workspaces). `typeof _portal.signOut`
 // schaltet die Inferenz ab — der Typ bleibt funktional identisch.
-export const portalHandlers: typeof _portal.handlers = _portal.handlers;
+export const portalHandlers: typeof _portal.handlers = restrictAuthJsRoute(
+  _portal.handlers,
+  PORTAL_AUTHJS_ROUTE,
+);
 export const portalSignOut: typeof _portal.signOut = _portal.signOut;
 
 /** Verifizierter JWT-Subject ohne DB-Hydration, insbesondere für Logout. */

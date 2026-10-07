@@ -14,12 +14,13 @@
 // Laufzeit: absolut 24 h ab der ursprünglichen Anmeldung (`sessionIssuedAt`,
 // der signierte Anmeldeanker, den auch der Widerruf nutzt). Seitenaufrufe
 // erneuern nichts — staffAuth()/portalAuth() und der Proxy lesen das Cookie
-// nur. Neu ausgestellt wird ein JWT bei der Anmeldung, beim Portal-
-// Profilwechsel (übernimmt den Anker) und bei jedem Aufruf des Auth.js-
-// Endpunkts /api/auth/<surface>/session (Oberfläche ruft ihn nicht auf). Keine
-// dieser Ausstellungen reicht über Anmeldung + 24 h hinaus: der Codec setzt
-// `exp` höchstens auf diese Grenze, isLive() lehnt danach jedes Cookie ab,
-// auch eines, dessen `exp` eine frühere gleitende Erneuerung verlängert hat.
+// nur. Neu ausgestellt wird ein JWT nur bei der Anmeldung und beim Portal-
+// Profilwechsel (übernimmt den Anker); den Auth.js-Endpunkt
+// /api/auth/<surface>/session, der früher ebenfalls erneuerte, sperrt die
+// Route (B5, authjs-route.ts). Keine dieser Ausstellungen reicht über
+// Anmeldung + 24 h hinaus: der Codec setzt `exp` höchstens auf diese Grenze,
+// isLive() lehnt danach jedes Cookie ab, auch eines, dessen `exp` eine
+// frühere gleitende Erneuerung verlängert hat.
 // Tokens ohne gültigen Anker (Altbestand) werden nie verlängert, sondern
 // enden spätestens zu ihrem bisherigen `exp`; die Server-Gates lehnen sie
 // ohnehin ab (ACCESS-TENANT-RLS-001).

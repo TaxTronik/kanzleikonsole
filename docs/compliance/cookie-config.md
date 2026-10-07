@@ -49,12 +49,13 @@ Encode/Decode unverändert an Auth.js und ergänzt nur die Session-Claims.
 **Laufzeit und Erneuerung**: Eine Session endet spätestens 24 h nach der
 ursprünglichen Anmeldung (signierter Anmeldezeitpunkt `sessionIssuedAt`).
 Seitenaufrufe verlängern sie nicht. Neu ausgestellt wird das JWT nur bei der
-Anmeldung, beim Portal-Profilwechsel (übernimmt den Anmeldezeitpunkt) und bei
-einem Aufruf des Auth.js-Endpunkts `/api/auth/<surface>/session`, den die
-Oberfläche nicht verwendet; keine dieser Ausstellungen reicht über Anmeldung +
-24 h hinaus, danach lehnen Server und Auth.js das Cookie ab. Ältere Cookies ohne
-Anmeldezeitpunkt werden nie verlängert. Ein `updateAge` ist nicht konfiguriert,
-weil Auth.js es für JWT-Sessions nicht auswertet.
+Anmeldung und beim Portal-Profilwechsel (übernimmt den Anmeldezeitpunkt); keine
+dieser Ausstellungen reicht über Anmeldung + 24 h hinaus, danach lehnen Server
+und Auth.js das Cookie ab. Der Auth.js-Endpunkt `/api/auth/<surface>/session`,
+der früher ebenfalls erneuerte, antwortet seit B5 mit 404: Über HTTP erreichen
+nur noch `csrf`, `signout` und die Staff-Credentials-Callbacks Auth.js. Ältere
+Cookies ohne Anmeldezeitpunkt werden nie verlängert. Ein `updateAge` ist nicht
+konfiguriert, weil Auth.js es für JWT-Sessions nicht auswertet.
 
 **Session-Revocation**: Server-side via Redis-Key
 `revoke:{surface}:{userId}` mit Timestamp. Wegen der Sekundengenauigkeit des

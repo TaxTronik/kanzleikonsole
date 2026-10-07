@@ -572,7 +572,10 @@
         "apps/web/src/server/auth/staff-password.ts",
         "apps/web/src/server/auth/password-hash-pool.ts",
         "apps/worker/src/jobs/fido-mds-refresh.ts",
-        "packages/db/prisma/migrations/20261007100400_document_mandate_artifact_flag/migration.sql"
+        "packages/db/prisma/migrations/20261007100400_document_mandate_artifact_flag/migration.sql",
+        "apps/web/src/server/auth/authjs-route.ts",
+        "apps/web/src/app/api/auth/staff/[...nextauth]/route.ts",
+        "apps/web/src/app/api/auth/portal/[...nextauth]/route.ts"
       ],
       "test_refs": [
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
@@ -624,7 +627,8 @@
         "apps/web/src/server/auth/__tests__/webauthn-attestation.test.ts",
         "apps/web/src/server/auth/__tests__/webauthn-library-contract.test.ts",
         "apps/worker/src/jobs/__tests__/fido-mds-library-contract.test.ts",
-        "packages/db/src/__tests__/document-mandate-artifact-flag.test.ts"
+        "packages/db/src/__tests__/document-mandate-artifact-flag.test.ts",
+        "apps/web/src/server/auth/__tests__/authjs-route.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",

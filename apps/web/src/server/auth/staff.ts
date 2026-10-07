@@ -12,6 +12,7 @@ import { getClientIp, checkIpOrGlobalLimit, resetRateLimit } from '@/server/rate
 import { authenticateStaffHardwareCredential } from './webauthn';
 import { staffTokenMatchesCurrentAuthState, type StaffAuthMethod } from './staff-auth-state';
 import { completeStaffLogin } from './staff-login';
+import { restrictAuthJsRoute, type AuthJsRouteSpec } from './authjs-route';
 
 // DEV-/E2E-only: TOTP-Bypass, definiert im Staff-Login-Service (R-04).
 export { DEV_SKIP_TOTP } from './staff-login';
@@ -161,8 +162,23 @@ function requestIp(request: Request | undefined): string | null {
   }
 }
 
+const STAFF_AUTH_BASE_PATH = '/api/auth/staff';
+
+// B5 (S-05): Über HTTP bleiben nur CSRF-Token, Abmelden und die Callbacks der
+// beiden Credentials-Provider erreichbar; session, signin, providers, error und
+// alle übrigen Auth.js-Aktionen antworten 404 (authjs-route.ts).
+export const STAFF_AUTHJS_ROUTE: AuthJsRouteSpec = {
+  basePath: STAFF_AUTH_BASE_PATH,
+  endpoints: [
+    { method: 'GET', action: 'csrf' },
+    { method: 'POST', action: 'signout' },
+    { method: 'POST', action: 'callback', providerId: 'credentials' },
+    { method: 'POST', action: 'callback', providerId: 'hardware-key' },
+  ],
+};
+
 const staffConfig: NextAuthConfig = {
-  basePath: '/api/auth/staff',
+  basePath: STAFF_AUTH_BASE_PATH,
   // Auth.js v5 verlangt trustHost=true. Der vorgeschaltete Proxy pinnt den
   // Host auf den konfigurierten VHost; Production-Config erzwingt das Opt-in.
   trustHost: env.NEXTAUTH_TRUST_HOST ?? true,
@@ -257,6 +273,9 @@ const staffConfig: NextAuthConfig = {
 
   pages: {
     signIn: '/staff/login',
+    // Die Auth.js-Fehlerseite ist gesperrt (STAFF_AUTHJS_ROUTE); Fehler der
+    // verbleibenden Endpunkte leiten auf die Anmeldung statt auf ein 404.
+    error: '/staff/login',
   },
 };
 
@@ -264,7 +283,10 @@ const _staff = NextAuth(staffConfig);
 
 // Explizite typeof-Annotationen verhindern den TS-Inferenz-Pfad zu
 // .pnpm/@auth+core/... (TS4023 in pnpm-Workspaces). Siehe portal.ts.
-export const staffHandlers: typeof _staff.handlers = _staff.handlers;
+export const staffHandlers: typeof _staff.handlers = restrictAuthJsRoute(
+  _staff.handlers,
+  STAFF_AUTHJS_ROUTE,
+);
 export const staffSignIn: typeof _staff.signIn = _staff.signIn;
 export const staffSignOut: typeof _staff.signOut = _staff.signOut;
 
