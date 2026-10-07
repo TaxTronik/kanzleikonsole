@@ -46,6 +46,7 @@ test_refs:
   - apps/worker/src/__tests__/tsa-port.test.ts
   - apps/worker/src/__tests__/run-budget.test.ts
   - apps/worker/src/__tests__/maintenance-backlog.test.ts
+  - apps/worker/src/__tests__/maintenance-backlog-db.test.ts
   - apps/web/src/server/jobs/__tests__/maintenance-backlog.test.ts
   - apps/web/src/app/api/health/detail/__tests__/route.test.ts
   - packages/db/src/__tests__/audit-archive-tsa-status.test.ts

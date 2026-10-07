@@ -659,6 +659,7 @@
         "apps/worker/src/jobs/__tests__/update-check-db.test.ts",
         "apps/worker/src/jobs/__tests__/workflow-auto-resume-db.test.ts",
         "apps/worker/src/jobs/__tests__/workflow-n8n-dispatch-app-role-db.test.ts",
+        "apps/worker/src/__tests__/maintenance-backlog-db.test.ts",
         "apps/worker/src/__tests__/tenant-context.test.ts",
         "packages/mail/src/__tests__/dispatch-db.test.ts",
         "apps/web/src/server/tax-news/__tests__/fetcher-db.test.ts"
@@ -855,6 +856,7 @@
         "apps/worker/src/__tests__/tsa-port.test.ts",
         "apps/worker/src/__tests__/run-budget.test.ts",
         "apps/worker/src/__tests__/maintenance-backlog.test.ts",
+        "apps/worker/src/__tests__/maintenance-backlog-db.test.ts",
         "apps/web/src/server/jobs/__tests__/maintenance-backlog.test.ts",
         "apps/web/src/app/api/health/detail/__tests__/route.test.ts",
         "packages/db/src/__tests__/audit-archive-tsa-status.test.ts",
@@ -2293,6 +2295,7 @@
         "apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts",
         "apps/worker/src/__tests__/run-budget.test.ts",
         "apps/worker/src/__tests__/maintenance-backlog.test.ts",
+        "apps/worker/src/__tests__/maintenance-backlog-db.test.ts",
         "apps/web/src/server/jobs/__tests__/maintenance-backlog.test.ts",
         "apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts",
         "apps/worker/src/jobs/__tests__/n8n-retention.test.ts",

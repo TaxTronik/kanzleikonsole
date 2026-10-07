@@ -201,6 +201,7 @@ test_refs:
   - apps/worker/src/jobs/__tests__/update-check-db.test.ts
   - apps/worker/src/jobs/__tests__/workflow-auto-resume-db.test.ts
   - apps/worker/src/jobs/__tests__/workflow-n8n-dispatch-app-role-db.test.ts
+  - apps/worker/src/__tests__/maintenance-backlog-db.test.ts
   - apps/worker/src/__tests__/tenant-context.test.ts
   - packages/mail/src/__tests__/dispatch-db.test.ts
   - apps/web/src/server/tax-news/__tests__/fetcher-db.test.ts

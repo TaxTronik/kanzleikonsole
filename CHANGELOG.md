@@ -1624,12 +1624,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Erinnerungen, offene Rechnungen, Vollmachten, GwG-Fristen, Sanktionslisten,
   Posteingangsbereinigung, Steuernachrichten, Workflow-Wiederaufnahme und
   n8n-Übergaben, Update-Prüfung, Risikoanreicherung, Ergebnisse von
-  Kettenprüfung und Restore-Drill, Anker-Status, Tagessiegel), die
-  n8n-Callbacks, der iCal-Feed des Portals, der Mail-Versand und der manuelle
-  RSS-Abruf im Dashboard lesen und schreiben Mandantendaten über die App-Rolle
-  mit Tenant-Kontext und damit unter Row-Level-Security statt über die
-  Owner-Verbindung (BYPASSRLS). Verbleibende Owner-Pfade sind im Code begründet
-  und im Threat Model aufgeführt (`ACCESS-TENANT-RLS-001`).
+  Kettenprüfung und Restore-Drill, Anker-Status, Tagessiegel, Hinweise zum
+  Wartungsrückstand), die n8n-Callbacks, der iCal-Feed des Portals, der
+  Mail-Versand und der manuelle RSS-Abruf im Dashboard lesen und schreiben
+  Mandantendaten über die App-Rolle mit Tenant-Kontext und damit unter
+  Row-Level-Security statt über die Owner-Verbindung (BYPASSRLS). Verbleibende
+  Owner-Pfade sind im Code begründet und im Threat Model aufgeführt
+  (`ACCESS-TENANT-RLS-001`).
 - Das Threat Model beschreibt die Datenbankrollen: welche Komponente welche
   Rolle nutzt, was die Owner-Rolle noch darf und welches Restrisiko bleibt.
 - **[Scope]** Alle verbleibenden Leser gespeicherter Fassungen prüfen Größe und

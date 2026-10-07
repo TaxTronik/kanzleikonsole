@@ -38,8 +38,8 @@ vi.mock('../queues', () => ({ connection: h.redis }));
 vi.mock('../prisma-owner', () => ({
   prismaOwner: { notification: { findMany: h.openNotifications } },
 }));
-vi.mock('../tenant-context', () => ({
-  withWorkerTenantContext: (tenantId: string, fn: (tx: unknown) => Promise<unknown>) =>
+vi.mock('@taxtronik/db', () => ({
+  withSystemContext: (tenantId: string, fn: (tx: unknown) => Promise<unknown>) =>
     fn({ tenantId, staffUser: { findMany: h.staffFindMany } }),
 }));
 vi.mock('../notify', () => ({ notify: h.notify }));

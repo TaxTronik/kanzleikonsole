@@ -20,22 +20,24 @@
 //   - Mail an OPS_ALERT_EMAIL über sendOpsMail (der Alarmweg von health-alert)
 //     mit den Gesamtzahlen ohne Tenant-Bezug, höchstens eine je Job und UTC-Tag
 //     (Redis-Tagesmarke; scheitert der Versand, versucht es der nächste Lauf).
-// Ohne Alarm werden offene Rückstandshinweise geschlossen.
+// Ohne Alarm werden offene Rückstandshinweise geschlossen. Empfänger, Hinweise
+// und deren Abschluss laufen über die App-Rolle im SYSTEM-Kontext der Kanzlei
+// (S-01); der Owner-Client liefert nur die Kanzleien mit offenem Hinweis.
 //
 // Fehler im Alarmweg werden protokolliert und brechen den Wartungslauf nicht
 // ab: dessen Arbeit ist erledigt, ein Retry würde sie nur wiederholen.
 // =============================================================================
 
 import type { NotificationKind } from '@prisma/client';
-import { env } from '@taxtronik/config';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { withSystemContext } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
+import { env } from './env';
 import { log } from './logger';
 import { sendOpsMail } from './mailer';
 import { notify } from './notify';
 import { prismaOwner } from './prisma-owner';
 import { connection } from './queues';
-import { withWorkerTenantContext } from './tenant-context';
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -230,7 +232,7 @@ async function notifyTenantAdmins(
   const body =
     `${pending}: ${formatCount(tenant.count)}${since}. ` +
     `Alarmschwelle: ${describeThreshold()}. Details unter System → Jobs.`;
-  return withWorkerTenantContext(tenant.tenantId, async (tx) => {
+  return withSystemContext(tenant.tenantId, async (tx) => {
     const admins = await tx.staffUser.findMany({
       where: {
         tenantId: tenant.tenantId,
@@ -266,6 +268,8 @@ async function resolveStaleNotifications(
   affected: ReadonlySet<string>,
 ): Promise<number> {
   const { kind } = JOB_ALARM[job];
+  // S-01: Owner nur für die mandantenübergreifende Liste der Kanzleien mit
+  // offenem Hinweis (nur IDs); geschlossen wird im SYSTEM-Kontext der Kanzlei.
   const open = await prismaOwner.notification.findMany({
     where: { kind, readAt: null },
     select: { tenantId: true },
@@ -274,7 +278,7 @@ async function resolveStaleNotifications(
   let resolved = 0;
   for (const { tenantId } of open) {
     if (affected.has(tenantId)) continue;
-    resolved += await withWorkerTenantContext(tenantId, (tx) =>
+    resolved += await withSystemContext(tenantId, (tx) =>
       resolveNotificationsTx(tx, {
         tenantId,
         resources: [{ resourceType: 'tenant', resourceId: tenantId }],

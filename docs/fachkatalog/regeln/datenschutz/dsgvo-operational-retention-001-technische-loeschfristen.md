@@ -50,6 +50,7 @@ test_refs:
   - apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts
   - apps/worker/src/__tests__/run-budget.test.ts
   - apps/worker/src/__tests__/maintenance-backlog.test.ts
+  - apps/worker/src/__tests__/maintenance-backlog-db.test.ts
   - apps/web/src/server/jobs/__tests__/maintenance-backlog.test.ts
   - apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts
   - apps/worker/src/jobs/__tests__/n8n-retention.test.ts
