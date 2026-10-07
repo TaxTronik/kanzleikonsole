@@ -71,14 +71,11 @@ const COLOR_FAMILY =
  * `bg-surface-raised`, `border-border-subtle` → `border-subtle`,
  * `bg-border-subtle` (Trennstrich) → `bg-gray-200` (= `--border-default`),
  * `border-primary` → `border-current` mit `text-primary`, `text-brand` →
- * `text-brand-700`, `text-danger` → `text-red-700`. Offen sind nur die
- * Posteingangs-Dateien (anderer Arbeitsbereich); beim Bereinigen
- * `border-subtle` bzw. `text-emerald-700` einsetzen und den Eintrag löschen.
+ * `text-brand-700`, `text-danger` → `text-red-700`, im Posteingang
+ * `text-success` → `text-emerald-700`. Neue Funde gehören nicht in eine
+ * Ausnahmeliste, sondern auf ein vorhandenes Token.
  */
-const KNOWN_UNRESOLVED: Record<string, readonly string[]> = {
-  'border-border-subtle': ['app/staff/(protected)/inbox/attachment-review.tsx'],
-  'text-success': ['app/staff/(protected)/inbox/[id]/page.tsx'],
-};
+const KNOWN_UNRESOLVED: Record<string, readonly string[]> = {};
 
 interface Candidate {
   token: string;

@@ -149,7 +149,7 @@ export default async function StaffInboxThreadPage({
                         documentTypes={data.documentTypes}
                       />
                     ) : attachment.decision === 'ACCEPTED' && attachment.acceptedDocumentId ? (
-                      <p className="mt-2 inline-flex items-center gap-2 text-success">
+                      <p className="mt-2 inline-flex items-center gap-2 text-emerald-700">
                         <FileCheck2 className="h-4 w-4" aria-hidden="true" /> Übernommen als{' '}
                         <Link
                           className="underline"

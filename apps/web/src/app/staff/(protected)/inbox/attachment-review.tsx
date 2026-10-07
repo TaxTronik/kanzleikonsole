@@ -44,7 +44,7 @@ export function InboxAttachmentReview({
   }
 
   return (
-    <div className="mt-3 space-y-3 border-t border-border-subtle pt-3">
+    <div className="mt-3 space-y-3 border-t border-subtle pt-3">
       <FormErrorSummary
         error={state.ok ? undefined : state.error}
         fieldErrors={state.fieldErrors}
