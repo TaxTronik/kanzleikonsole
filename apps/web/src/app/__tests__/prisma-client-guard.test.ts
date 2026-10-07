@@ -333,9 +333,6 @@ const OWNER_IMPORT = /import\s*\{[^}]*\bprismaOwner\b[^}]*\}\s*from\s*['"]([^'"]
 // fachlicher Begruendung landen, damit BYPASSRLS-Nutzung nicht versehentlich in
 // normale Request-Pfade rutscht.
 const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
-  'apps/web/src/app/api/n8n/expiring-gwg-checks/route.ts <- @/server/db/prisma-owner',
-  'apps/web/src/app/api/n8n/overdue-requests/route.ts <- @/server/db/prisma-owner',
-  'apps/web/src/app/api/n8n/request-detail/[id]/route.ts <- @/server/db/prisma-owner',
   // Token-Feed ohne Session (S-01): der Owner löst nur den Tenant des Token-
   // Kontakts auf; Kontakt, Fristen und Termine liest die App-Rolle im
   // SYSTEM-Kontext dieses Tenants (route-db.test.ts).
@@ -344,20 +341,32 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   // pg_dump-Job nur in einer nachweislichen Single-Tenant-Installation einreihen;
   // dafür liest die Route alle Tenant-IDs (wie zuvor runner.ts), sonst nichts.
   'apps/web/src/app/api/staff/admin/backups/run/route.ts <- @/server/db/prisma-owner',
+  // Oeffentlicher Audit-Nachweis per signiertem Token ohne Session: liest nur
+  // den Namen des im Token gebundenen Tenants.
   'apps/web/src/app/audit-verify/[token]/page.tsx <- @/server/db/prisma-owner',
+  // Oeffentlicher GwG-Onboarding-Token-Flow ohne Session (wie service.ts).
   'apps/web/src/app/gwg-onboarding/actions.ts <- @/server/gwg-onboarding/service',
   // Unauthentifizierte, token-basierte PoA-Signatur-Dokumentansicht (kein
   // Session-/Tenant-Kontext) — spiegelt loadPoaForSigning; liefert NUR das eine
   // per Token freigeschaltete Dokument (scoped auf poa.tenantId + poa.documentId).
   'apps/web/src/app/poa/sign/document/route.ts <- @/server/db/prisma-owner',
+  // Portal-Login vor jeder Session: Tenant-Aufloesung ueber den Slug.
   'apps/web/src/app/portal/(auth)/login/actions.ts <- @/server/db/prisma-owner',
+  // Staff-Login vor jeder Session: Konto ueber Tenant-Slug und E-Mail; die
+  // TOTP-Einrichtung bleibt an genau dieses Konto gebunden.
   'apps/web/src/app/staff/(auth)/login/actions.ts <- @/server/db/prisma-owner',
   // Oeffentlicher Token-Sign-Flow (aus poa/actions.ts herausgeloest): kein
   // Session-/Tenant-Kontext, Lookup ausschliesslich ueber den Token-Hash —
   // dieselbe Begruendung wie zuvor fuer poa/actions.ts.
   'apps/web/src/app/staff/(protected)/poa/sign-actions.ts <- @/server/db/prisma-owner',
+  // Fehlversuchszaehler und Audit eines Logins vor jeder Session (Tenant und
+  // Konto aus dem vorangegangenen Login-Lookup).
   'apps/web/src/server/auth/login-audit.ts <- @/server/db/prisma-owner',
+  // Magic-Link-Ausgabe und -Einloesung vor jeder Session: Lookup ueber den
+  // Token-Hash, Tenant und Kontakt aus dem Link.
   'apps/web/src/server/auth/magic-link.ts <- @/server/db/prisma-owner',
+  // Session-Callbacks ohne Tenant-Kontext: pruefen Kontakt bzw. Konto der
+  // Sitzung gegen Tenant, Status und Revision.
   'apps/web/src/server/auth/portal.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/auth/staff.ts <- @/server/db/prisma-owner',
   // Staff-Login-Service (R-04): Passwortschritt und Ticket-Einlösung laufen vor
@@ -373,6 +382,8 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   // Tabellen sind bewusst owner-only (die App-Rolle hat keine Tabellenrechte).
   // Gelesen werden nur Serie, Policy-Bindung und öffentliche FIDO-Metadaten.
   'apps/web/src/server/auth/webauthn-metadata.ts <- @/server/db/prisma-owner',
+  // Backup und Restore sind Wartung ueber alle Tenants (installationsweite
+  // Backup-Historie, pg_dump).
   'apps/web/src/server/backup/restore.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/backup/runner.ts <- @/server/db/prisma-owner',
   // Dev-only Retention/Object-Lock-Fixtures; verweigert NODE_ENV=production.
@@ -388,21 +399,27 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   // Owner-Pfad schreibt nur die tenantgebundene, tenant-präfixgeprüfte Absicht
   // und bindet bei Fehlschlag die Objektversion; er liest keine Mandantendaten.
   'apps/web/src/server/documents/storage-intent.ts <- @/server/db/prisma-owner',
+  // GwG-Onboarding-Token-Flow ohne Session: Einladung nur ueber den Token-Hash;
+  // Ablauf und Schreibpfad sind an Tenant und Mandant der Einladung gebunden.
   'apps/web/src/server/gwg-onboarding/service.ts <- @/server/db/prisma-owner',
   // Einmaliger Operator-Cutover: SQL-Migrationsmarker tenantübergreifend lesen
   // und idempotent auditieren. Kein Request-Import, keine externen Nachrichten.
   'apps/web/src/server/gwg-onboarding/migrate-invite-v2-audit.ts <- @/server/db/prisma-owner',
+  // Installationsbindung der Lizenz: Slug des aeltesten Tenants, sonst nichts.
   'apps/web/src/server/license/state.ts <- @/server/db/prisma-owner',
   // Externe n8n-Callbacks haben vor der Credential-Pruefung noch keinen
   // vertrauenswuerdigen Tenant-Kontext. Der Owner-Lookup bindet Key-ID an
   // Connection/Tenant. Danach lesen Operations und Crash-Recovery (S-01) ueber
   // die App-Rolle im SYSTEM-Kontext des authentifizierten Tenants.
   'apps/web/src/server/n8n/callback-auth.ts <- @/server/db/prisma-owner',
+  // n8n-Enqueue: tenantlose Ereignisse und global eindeutige Dedupe-Schluessel.
   'apps/web/src/server/n8n/outbox.ts <- @/server/db/prisma-owner',
   // Legacy-Recherche-Callback ohne authentifizierten Tenant: nur die
   // Korrelations-ID -> Tenant-Aufloesung liest der Owner; Modulschalter und
   // Schreibpfad sowie der v1-Callback laufen im SYSTEM-Kontext (S-01).
   'apps/web/src/server/risk/research.ts <- @/server/db/prisma-owner',
+  // readLegalForSlug: oeffentlicher Reader fuer die Login-Seiten vor der
+  // Session; liefert nur die Rechtstext-Links des per Slug adressierten Tenants.
   'apps/web/src/server/settings/legal.ts <- @/server/db/prisma-owner',
   // readBrandingForSlug: oeffentlicher Reader fuer die Login-Seiten (Staff +
   // Portal) — vor der Session gibt es keinen Tenant-Kontext; liefert nur
