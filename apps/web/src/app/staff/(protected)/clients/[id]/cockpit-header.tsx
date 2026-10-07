@@ -14,6 +14,7 @@ import { computeOnboardingStatus, resumeStep } from '@/server/onboarding/status'
 import { isRiskLayerAvailable } from '@/server/risk/availability';
 import type { resolveClientNavigation } from '@/lib/navigation-registry';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
+import { createQuickRequestAction } from '@/app/staff/(protected)/clients/[id]/requests/actions';
 import { CLIENT_KIND_LABELS, domainLabel } from '@/lib/domain-labels';
 import type { ClientCockpitClient, ClientCockpitHeaderData } from './_data';
 
@@ -66,6 +67,7 @@ export function ClientCockpitHeader({ header }: { header: ClientCockpitHeaderDat
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <QuickRequestDialog
+          createAction={createQuickRequestAction}
           requestId={randomUUID()}
           client={{
             id: client.id,

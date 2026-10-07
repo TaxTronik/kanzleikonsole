@@ -9,8 +9,8 @@
 // genannten Datei und dürfen nicht veralten.
 // =============================================================================
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
@@ -71,13 +71,11 @@ describe('Schichtgrenze components/ und server/ → app/', () => {
   });
 
   it('erlaubt in Ausnahmedateien nur die genannten Module', async () => {
-    const [eintrag] = APP_LAYER_ALLOWLIST.filter((e) =>
-      e.files.includes('apps/web/src/components/quick-request-dialog.tsx'),
-    );
+    const [eintrag] = APP_LAYER_ALLOWLIST;
     const modul = `@/app/${eintrag!.modules[0]}`;
     await expect(
       verstoesse(
-        'apps/web/src/components/quick-request-dialog.tsx',
+        eintrag!.files[0]!,
         [
           `import type { T } from '${modul}';`,
           `export const lade = () => import('${modul}');`,
@@ -112,18 +110,39 @@ describe('Schichtgrenze components/ und server/ → app/', () => {
         portal,
       ),
     ).resolves.toEqual([]);
-    // Ausnahme: nur das genannte Modul in der genannten Datei.
-    const [eintrag] = STAFF_PORTAL_ALLOWLIST;
+    // K-08: keine Ausnahme mehr; die frühere Ausnahmedatei (neue Planung)
+    // bezieht den Plan-Assistenten aus components/bwa und hält die Regel ein.
+    expect(STAFF_PORTAL_ALLOWLIST).toEqual([]);
+    const newPlanPage = 'apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx';
+    await expect(
+      verstoesse(newPlanPage, readFileSync(join(ROOT, newPlanPage), 'utf8')),
+    ).resolves.toEqual([]);
     await expect(
       verstoesse(
-        eintrag!.files[0]!,
-        [
-          `import { PlanWizard } from '@/app/${eintrag!.modules[0]}';`,
-          "import { X } from '@/app/portal/(protected)/bwa/plan/plan-comparison';",
-          'export { PlanWizard, X };',
-        ].join('\n'),
+        newPlanPage,
+        "import { PlanWizard } from '@/app/portal/(protected)/bwa/plan/plan-wizard';\nexport { PlanWizard };",
       ),
-    ).resolves.toEqual([2]);
+    ).resolves.toEqual([1]);
+  });
+
+  it('hält katalog-gepinnte UI nicht mehr per Ausnahme in app/ und server/ (K-08)', async () => {
+    // Früher per Ausnahme erlaubt, weil der Fachkatalog den Pfad festhielt; die
+    // Dateien liegen jetzt unter components/ und die Ausnahmen sind entfernt.
+    const ausnahmen = [...APP_LAYER_ALLOWLIST, ...STAFF_PORTAL_ALLOWLIST].flatMap((e) => e.files);
+    for (const file of [
+      'apps/web/src/components/quick-request-dialog.tsx',
+      'apps/web/src/components/bwa/bwa-dashboard.tsx',
+      'apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx',
+    ]) {
+      expect(ausnahmen).not.toContain(file);
+      await expect(verstoesse(file, readFileSync(join(ROOT, file), 'utf8'))).resolves.toEqual([]);
+    }
+    // In server/ liegt keine Oberfläche mehr (.tsx außerhalb von Tests).
+    const ui = readdirSync(join(ROOT, 'apps/web/src/server'), {
+      recursive: true,
+      encoding: 'utf8',
+    }).filter((file) => file.endsWith('.tsx') && !file.split(sep).includes('__tests__'));
+    expect(ui).toEqual([]);
   });
 
   it('führt keine veralteten Ausnahmen', () => {

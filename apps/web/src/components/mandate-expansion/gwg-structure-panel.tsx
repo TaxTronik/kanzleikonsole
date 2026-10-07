@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { withTenantContext } from '@taxtronik/db';
 import type { StaffSession } from '@/server/auth/staff';
 import { readModules } from '@/server/settings/modules';
-import { loadStructureTx } from './service';
-import { loadGwgStructureHistoryTx } from './gwg-structure';
+import { loadStructureTx } from '@/server/mandate-expansion/service';
+import { loadGwgStructureHistoryTx } from '@/server/mandate-expansion/gwg-structure';
 import type { FormAction } from '@/components/action-form';
 import { ActionForm } from '@/components/mandate-expansion/action-form';
 

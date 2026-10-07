@@ -8,10 +8,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf
 const appointmentFields = read(`${CALENDAR}appointment-form-fields.tsx`);
 
 const files = {
-  requests: readFileSync(
-    new URL('../../app/staff/(protected)/clients/[id]/requests/new/form.tsx', import.meta.url),
-    'utf8',
-  ),
+  requests: readFileSync(new URL('../requests/new-request-form.tsx', import.meta.url), 'utf8'),
   contacts: readFileSync(new URL('../client-contacts-panel.tsx', import.meta.url), 'utf8'),
   staffAppointments: read(`${CALENDAR}new-appointment-dialog.tsx`) + appointmentFields,
   staffAppointmentEdit: read(`${CALENDAR}edit-appointment-dialog.tsx`) + appointmentFields,

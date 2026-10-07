@@ -13,13 +13,19 @@ describe('Quick-Anforderungsdialog', () => {
     expect(source).toContain('aria-haspopup="dialog"');
     expect(source).toContain('<Modal title="Anforderung erstellen"');
     expect(source).toContain('mode="quick"');
+    expect(source).toContain('action={createAction}');
     expect(source).toContain('if (!pending) setOpen(false)');
   });
 
   it('verlangt die bestätigte Formulareingabe und sperrt während Pending', () => {
-    const source = read('app/staff/(protected)/clients/[id]/requests/new/form.tsx');
+    const source = read('components/requests/new-request-form.tsx');
 
-    expect(source).toContain("mode === 'quick' ? createQuickRequestAction : createRequestAction");
+    // K-08: die Action kommt als Prop (Route: createRequestAction, Dialog:
+    // createQuickRequestAction), components/ importiert nicht aus app/.
+    expect(source).toMatch(/useActionState<RequestCreationResult \| null, FormData>\(\s*action,/);
+    expect(read('app/staff/(protected)/clients/[id]/requests/new/page.tsx')).toContain(
+      'action={createRequestAction}',
+    );
     expect(source).toContain('Mandant suchen');
     // Gemeinsame Serversuche statt eigener Server-Action im Formular.
     expect(source).toContain('<ClientCombobox');
@@ -50,12 +56,12 @@ describe('Quick-Anforderungsdialog', () => {
     const clientPage = read('app/staff/(protected)/clients/[id]/cockpit-header.tsx');
     const onboarding = read('app/staff/(protected)/clients/onboarding/[id]/page.tsx');
 
-    expect(overview).toContain('<QuickRequestDialog');
-    expect(clientsPage).toContain('<QuickRequestDialog');
-    expect(clientPage).toContain('<QuickRequestDialog');
+    for (const page of [overview, clientsPage, clientPage, onboarding]) {
+      expect(page).toContain('<QuickRequestDialog');
+      expect(page).toContain('createAction={createQuickRequestAction}');
+    }
     expect(clientPage).toContain('allowActive: client.allowActive');
     expect(clientPage).not.toContain('href={`/staff/clients/${client.id}/requests/new`}');
-    expect(onboarding).toContain('<QuickRequestDialog');
     expect(onboarding).not.toContain('requests/new?from=onboarding');
   });
 });

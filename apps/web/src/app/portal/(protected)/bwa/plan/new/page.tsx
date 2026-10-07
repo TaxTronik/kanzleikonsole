@@ -6,7 +6,7 @@ import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { computeBwaPlanBasis } from '@/server/bwa/plan-basis';
-import { PlanWizard } from '../plan-wizard';
+import { PlanWizard } from '@/components/bwa/plan-wizard';
 import { createPlanAction } from '../actions';
 
 export default async function NewPlanPage() {

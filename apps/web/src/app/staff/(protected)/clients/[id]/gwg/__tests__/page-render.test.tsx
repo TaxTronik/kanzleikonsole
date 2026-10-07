@@ -23,7 +23,7 @@ vi.mock('@/app/staff/(protected)/mandate-expansion/structure/gwg-actions', () =>
   bindGwgStructureAction: vi.fn(),
 }));
 // Separate async RSC; its own authorisation and mandate queries are outside this page test.
-vi.mock('@/server/mandate-expansion/gwg-structure-panel', () => ({
+vi.mock('@/components/mandate-expansion/gwg-structure-panel', () => ({
   GwgStructurePanel: () => null,
 }));
 vi.mock('next/navigation', () => ({

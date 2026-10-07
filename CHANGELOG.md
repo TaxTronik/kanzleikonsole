@@ -283,6 +283,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Interne Struktur: GwG-Strukturpanel, Planungsassistent, Planvergleich,
+  Plan↔Hochrechnung und das Anforderungsformular liegen unter `components/`;
+  die Ausnahmen der ESLint-Schichtgrenze für katalog-gepinnte Dateien
+  entfallen. Das Anforderungsformular erhält seine Server-Action als Prop.
+  Verhalten unverändert; angepasst sind nur die Codeverweise der betroffenen
+  Regeln.
 - CI: Turbo-Cache (Job `quality`), Turbopack-Cache des Produktionsbuilds und
   Playwright-Browser (Job `e2e-paranoid`) werden zwischen Läufen über
   `actions/cache` (v4.3.0, per Commit-SHA gepinnt) wiederverwendet; die

@@ -49,21 +49,6 @@ export const APP_LAYER_ALLOWLIST = [
     ],
     modules: ['staff/(protected)/documents/actions', 'staff/(protected)/documents/folder-actions'],
   },
-  {
-    // NewRequestForm ist code_ref von REQ-LIFECYCLE-001 und wird hier per
-    // next/dynamic erst beim Öffnen geladen (P-25). Ziel: components/requests.
-    files: ['apps/web/src/components/quick-request-dialog.tsx'],
-    modules: ['staff/(protected)/clients/[id]/requests/new/form'],
-  },
-  {
-    // Planungsvergleich und Plan↔Hochrechnung sind code_refs von
-    // BWA-PROJECTION-001 unter app/portal. Ziel: components/bwa.
-    files: ['apps/web/src/components/bwa/bwa-dashboard.tsx'],
-    modules: [
-      'portal/(protected)/bwa/plan/plan-comparison',
-      'portal/(protected)/bwa/plan/plan-vs-projection',
-    ],
-  },
 ];
 
 // ENV-Profile (Review-Befund K-09): Worker und CLI-Skripte wählen ihr Profil
@@ -120,14 +105,9 @@ const STAFF_PORTAL_MESSAGE =
  * (`@/app/<modul>`), die sie importieren dürfen. Fällt ein Import weg, wird der
  * Eintrag gelöscht (apps/web/src/__tests__/app-layer-imports.test.ts prüft das).
  */
-export const STAFF_PORTAL_ALLOWLIST = [
-  {
-    // Der Plan-Assistent ist code_ref von BWA-IMPORT-MAPPING-001 unter
-    // app/portal. Ziel: components/bwa.
-    files: ['apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx'],
-    modules: ['portal/(protected)/bwa/plan/plan-wizard'],
-  },
-];
+// Seit K-08 leer: der Plan-Assistent liegt in components/bwa.
+/** @type {{ files: string[]; modules: string[] }[]} */
+export const STAFF_PORTAL_ALLOWLIST = [];
 
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), 'apps/web/src/app');
 

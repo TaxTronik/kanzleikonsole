@@ -7,7 +7,7 @@ import { expansionPage, ExpansionNavigation, ClientSelect } from '../common';
 import { ActionForm } from '@/components/mandate-expansion/action-form';
 import { archiveStructureAction } from '../actions';
 import StructureEditor from './editor';
-import { GwgStructurePanel } from '@/server/mandate-expansion/gwg-structure-panel';
+import { GwgStructurePanel } from '@/components/mandate-expansion/gwg-structure-panel';
 import { bindGwgStructureAction } from './gwg-actions';
 import { ActionError, ForbiddenError } from '@/server/actions/action-error';
 import { log } from '@/server/logger';

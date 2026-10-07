@@ -36,7 +36,7 @@ vi.mock('@/app/portal/(protected)/bwa/plan/actions', () => ({ createPlanAction: 
 vi.mock('@/app/staff/(protected)/clients/[id]/bwa/plans/actions', () => ({
   createStaffPlanAction: vi.fn(),
 }));
-vi.mock('@/app/portal/(protected)/bwa/plan/plan-wizard', () => ({
+vi.mock('@/components/bwa/plan-wizard', () => ({
   PlanWizard: ({ bases }: { bases: typeof fixture.bases }) => {
     fixture.bases = bases;
     return null;

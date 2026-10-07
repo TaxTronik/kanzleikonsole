@@ -7,16 +7,16 @@ import { Plus } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import type {
   RequestClientOption,
+  RequestCreationAction,
   RequestFormTemplateOption,
   RequestTemplateOption,
-} from '@/app/staff/(protected)/clients/[id]/requests/new/form';
+} from '@/components/requests/new-request-form';
 
 // Das Formular zieht react-datepicker, date-fns-Locale und das Picker-CSS nach.
 // Der Dialog ist standardmäßig geschlossen: erst beim Öffnen laden (P-25),
 // vorgeladen bei Hover/Fokus des Auslösers.
 const NewRequestForm = dynamic(
-  () =>
-    import('@/app/staff/(protected)/clients/[id]/requests/new/form').then((m) => m.NewRequestForm),
+  () => import('@/components/requests/new-request-form').then((m) => m.NewRequestForm),
   {
     ssr: false,
     loading: () => (
@@ -28,10 +28,12 @@ const NewRequestForm = dynamic(
 );
 
 function preloadForm() {
-  void import('@/app/staff/(protected)/clients/[id]/requests/new/form');
+  void import('@/components/requests/new-request-form');
 }
 
 interface Props {
+  /** createQuickRequestAction der Anforderungsroute, von der Seite übergeben. */
+  createAction: RequestCreationAction;
   requestId: string;
   client?: RequestClientOption;
   templates: RequestTemplateOption[];
@@ -48,6 +50,7 @@ interface Props {
  * ausgefüllten Formular — der Öffnen-Klick versendet niemals etwas.
  */
 export function QuickRequestDialog({
+  createAction,
   requestId,
   client,
   templates,
@@ -136,6 +139,7 @@ export function QuickRequestDialog({
                   : 'Suchen und wählen Sie den Mandanten direkt aus. Mandanten mit offener GwG-Prüfung werden mit ihrem Status angezeigt.'}
             </p>
             <NewRequestForm
+              action={createAction}
               requestId={currentRequestId}
               clientId={client?.id}
               disabled={client ? !client.allowActive : false}

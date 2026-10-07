@@ -11,6 +11,7 @@ import { BulkToolbar } from './bulk-toolbar';
 import type { Prisma, RequestStatus } from '@prisma/client';
 import { fmtDateShort } from '@/lib/fmt';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
+import { createQuickRequestAction } from '@/app/staff/(protected)/clients/[id]/requests/actions';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 import { REQUEST_STATUS_LABELS, PRIORITY_LABELS } from '@/lib/domain-labels';
 
@@ -154,6 +155,7 @@ export default async function RequestsOverviewPage({
             CSV
           </a>
           <QuickRequestDialog
+            createAction={createQuickRequestAction}
             requestId={randomUUID()}
             templates={requestTemplates}
             formTemplates={requestFormTemplates}

@@ -89,11 +89,6 @@
       "count": 1
     }
   },
-  "apps/web/src/app/staff/(protected)/clients/[id]/requests/new/form.tsx": {
-    "complexity": {
-      "count": 1
-    }
-  },
   "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/marking-panel.tsx": {
     "complexity": {
       "count": 1
@@ -160,6 +155,11 @@
     }
   },
   "apps/web/src/components/document-explorer/embedded-view.tsx": {
+    "complexity": {
+      "count": 1
+    }
+  },
+  "apps/web/src/components/requests/new-request-form.tsx": {
     "complexity": {
       "count": 1
     }

@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
-import { NewRequestForm } from './form';
+import { NewRequestForm } from '@/components/requests/new-request-form';
+import { createRequestAction } from '../actions';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 
 export default async function NewRequestPage({ params }: { params: Promise<{ id: string }> }) {
@@ -49,6 +50,7 @@ export default async function NewRequestPage({ params }: { params: Promise<{ id:
 
       <div className="card p-6">
         <NewRequestForm
+          action={createRequestAction}
           requestId={randomUUID()}
           clientId={client.id}
           disabled={!client.allowActive}

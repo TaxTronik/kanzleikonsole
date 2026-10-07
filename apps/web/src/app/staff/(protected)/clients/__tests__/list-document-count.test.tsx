@@ -32,6 +32,9 @@ vi.mock('@/server/request-creation-options', () => ({
 vi.mock('@/components/recent-clients', () => ({ RecentClients: () => null }));
 vi.mock('@/components/saved-views', () => ({ SavedViews: () => null }));
 vi.mock('@/components/quick-request-dialog', () => ({ QuickRequestDialog: () => null }));
+vi.mock('@/app/staff/(protected)/clients/[id]/requests/actions', () => ({
+  createQuickRequestAction: vi.fn(),
+}));
 
 import ClientsPage from '../page';
 

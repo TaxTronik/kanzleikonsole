@@ -27,7 +27,7 @@ sources:
 code_refs:
   - apps/web/src/server/mandate-expansion/service.ts
   - apps/web/src/server/mandate-expansion/gwg-structure.ts
-  - apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx
+  - apps/web/src/components/mandate-expansion/gwg-structure-panel.tsx
   - apps/web/src/server/mandate-expansion/artifacts.ts
   - apps/web/src/server/mandate-expansion/pdf.ts
   - apps/web/src/server/documents/pdf-fonts.ts

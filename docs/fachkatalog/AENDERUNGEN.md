@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-050
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/app/staff/(protected)/clients/[id]/requests/new/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/page.tsx
+    rule_ids:
+      - ACCESS-SEARCH-SCOPE-001
+    reason: >-
+      Katalog-gepinnte UI-Dateien (GwG-Strukturpanel, Planungsassistent,
+      Planvergleich, Plan↔Hochrechnung, Anforderungsformular) liegen unter
+      `components/`; die Seiten übergeben die Server-Actions als Prop. Die
+      Codeverweise der betroffenen Regeln sind angepasst; Verhalten und Fachlogik
+      bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/__tests__/app-layer-imports.test.ts
+      - apps/web/src/app/__tests__/code-splitting.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/__tests__/list-document-count.test.tsx
+      - apps/web/src/components/__tests__/form-error-migrations.test.ts
+      - apps/web/src/components/__tests__/quick-request-dialog.test.ts
+      - apps/web/src/components/bwa/__tests__/plan-comparison-contrast.test.ts
+      - apps/web/src/components/bwa/__tests__/plan-page-basis.test.tsx
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-049
     date: '2026-10-07'
     paths:
@@ -5243,6 +5266,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-050` dokumentiert die Verlagerung
+  katalog-gepinnter UI-Dateien nach `components/`.
 
 - 2026-10-07: `FK-EXC-20261007-049` dokumentiert pfadrelative
   Weiterleitungen der Anmelde- und Abmelderouten.

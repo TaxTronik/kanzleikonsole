@@ -1,5 +1,5 @@
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
-import { GwgStructurePanel } from '@/server/mandate-expansion/gwg-structure-panel';
+import { GwgStructurePanel } from '@/components/mandate-expansion/gwg-structure-panel';
 import { bindGwgStructureAction } from '../../../mandate-expansion/structure/gwg-actions';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';

@@ -20,11 +20,8 @@ import {
   type YearProjection,
 } from '@/server/bwa/projection';
 import { computeLiquidity } from '@/server/bwa/liquidity';
-import {
-  PlanListWithCompare,
-  type PlanForCompare,
-} from '@/app/portal/(protected)/bwa/plan/plan-comparison';
-import { PlanVsProjection } from '@/app/portal/(protected)/bwa/plan/plan-vs-projection';
+import { PlanListWithCompare, type PlanForCompare } from './plan-comparison';
+import { PlanVsProjection } from './plan-vs-projection';
 import { buildProjectionSnapshot } from './projection-snapshot';
 
 import { fmtEURRound } from '@/lib/fmt';

@@ -10,9 +10,9 @@ function bwaBundle() {
     stdin: {
       contents: `import React from 'react';
 import {createRoot} from 'react-dom/client';
-import {PlanWizard} from './src/app/portal/(protected)/bwa/plan/plan-wizard';
-import {PlanListWithCompare} from './src/app/portal/(protected)/bwa/plan/plan-comparison';
-import {PlanVsProjection} from './src/app/portal/(protected)/bwa/plan/plan-vs-projection';
+import {PlanWizard} from './src/components/bwa/plan-wizard';
+import {PlanListWithCompare} from './src/components/bwa/plan-comparison';
+import {PlanVsProjection} from './src/components/bwa/plan-vs-projection';
 import {BwaDashboard} from './src/components/bwa/bwa-dashboard';
 import {TaxEstimatorCard} from './src/app/staff/(protected)/clients/[id]/bwa/[periodId]/tax-estimator-card';
 globalThis.__calls=[];

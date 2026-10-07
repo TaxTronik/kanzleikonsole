@@ -26,8 +26,8 @@ const STATIC_IMPORT_ALLOWLIST: Record<string, readonly string[]> = {
   'app/staff/(protected)/dashboard/dashboard-grid-editor': [],
   'react-datepicker': ['components/datetime-picker.tsx'],
   // Vollseite „Neue Anforderung" zeigt den Picker sofort; Dialoge laden ihn nach.
-  'components/datetime-picker': ['app/staff/(protected)/clients/[id]/requests/new/form.tsx'],
-  'app/staff/(protected)/clients/[id]/requests/new/form': [
+  'components/datetime-picker': ['components/requests/new-request-form.tsx'],
+  'components/requests/new-request-form': [
     'app/staff/(protected)/clients/[id]/requests/new/page.tsx',
   ],
   // Editor ist jeweils der Seiteninhalt (Wissensartikel, Subsumtion).
@@ -104,7 +104,7 @@ describe('schwere Client-Bibliotheken nur bei sichtbarem Inhalt statisch (P-25)'
       /dynamic\(\s*\(\) => import\('\.\/dashboard-grid-editor'\)/,
     );
     expect(read('components/quick-request-dialog.tsx')).toMatch(
-      /dynamic\(\s*\(\)\s*=>\s*import\('@\/app\/staff\/\(protected\)\/clients\/\[id\]\/requests\/new\/form'\)/,
+      /dynamic\(\s*\(\)\s*=>\s*import\('@\/components\/requests\/new-request-form'\)/,
     );
     expect(read('app/portal/(protected)/appointments/request-form.tsx')).toMatch(
       /dynamic\(\s*\(\) => import\('@\/components\/datetime-picker'\)/,

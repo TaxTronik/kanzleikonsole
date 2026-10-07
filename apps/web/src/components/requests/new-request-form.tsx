@@ -12,11 +12,24 @@ import {
   type FieldErrors,
 } from '@/components/form-errors';
 import { ClientCombobox, type ClientComboboxValue } from '@/components/ui/client-combobox';
-import {
-  createQuickRequestAction,
-  createRequestAction,
-  type RequestActionResult,
-} from '../actions';
+import type { ActionResult } from '@/server/actions/types';
+
+/** Ergebnis der Anlage-Actions (createRequestAction/createQuickRequestAction). */
+export type RequestCreationResult = ActionResult & {
+  requestId?: string;
+  clientId?: string;
+  nextRequestId?: string;
+};
+
+/**
+ * Server-Action der Anlage. Die Route übergibt createRequestAction, der
+ * Schnelldialog createQuickRequestAction (K-08: components/ importiert nicht aus
+ * app/; beide Actions liegen in app/staff/(protected)/clients/[id]/requests/actions.ts).
+ */
+export type RequestCreationAction = (
+  prev: RequestCreationResult | null,
+  formData: FormData,
+) => Promise<RequestCreationResult>;
 
 export type RequestPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 
@@ -45,6 +58,7 @@ export interface RequestClientOption {
 }
 
 interface Props {
+  action: RequestCreationAction;
   requestId: string;
   clientId?: string;
   disabled?: boolean;
@@ -56,7 +70,7 @@ interface Props {
   autoFocus?: boolean;
   onPendingChange?: (pending: boolean) => void;
   onCreated?: (
-    result: Required<Pick<RequestActionResult, 'requestId' | 'clientId' | 'nextRequestId'>>,
+    result: Required<Pick<RequestCreationResult, 'requestId' | 'clientId' | 'nextRequestId'>>,
   ) => void;
 }
 
@@ -79,6 +93,7 @@ function requestFieldDescription(name: string, fieldErrors?: FieldErrors): strin
 }
 
 export function NewRequestForm({
+  action,
   requestId,
   clientId,
   disabled,
@@ -91,9 +106,8 @@ export function NewRequestForm({
   onPendingChange,
   onCreated,
 }: Props) {
-  const submitAction = mode === 'quick' ? createQuickRequestAction : createRequestAction;
-  const [state, formAction, isPending] = useActionState<RequestActionResult | null, FormData>(
-    submitAction,
+  const [state, formAction, isPending] = useActionState<RequestCreationResult | null, FormData>(
+    action,
     null,
   );
   const fieldErrors = state?.fieldErrors;

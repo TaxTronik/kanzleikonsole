@@ -41,7 +41,7 @@ sources:
     checked_at: '2026-08-24'
     primary: true
 code_refs:
-  - apps/web/src/app/portal/(protected)/bwa/plan/plan-wizard.tsx
+  - apps/web/src/components/bwa/plan-wizard.tsx
   - apps/web/src/app/portal/(protected)/bwa/plan/new/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx
   - apps/web/src/server/bwa/datev-parser.ts

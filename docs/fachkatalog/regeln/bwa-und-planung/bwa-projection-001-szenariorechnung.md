@@ -29,8 +29,8 @@ sources:
 code_refs:
   - apps/web/src/components/bwa/projection-snapshot.ts
   - apps/web/src/components/bwa/bwa-dashboard.tsx
-  - apps/web/src/app/portal/(protected)/bwa/plan/plan-comparison.tsx
-  - apps/web/src/app/portal/(protected)/bwa/plan/plan-vs-projection.tsx
+  - apps/web/src/components/bwa/plan-comparison.tsx
+  - apps/web/src/components/bwa/plan-vs-projection.tsx
   - apps/web/src/app/portal/(protected)/bwa/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/page.tsx
   - apps/web/src/server/bwa/projection.ts

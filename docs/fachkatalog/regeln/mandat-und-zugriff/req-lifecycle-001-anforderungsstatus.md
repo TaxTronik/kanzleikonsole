@@ -31,7 +31,7 @@ code_refs:
   - apps/web/src/app/portal/(protected)/requests/[id]/actions.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
-  - apps/web/src/app/staff/(protected)/clients/[id]/requests/new/form.tsx
+  - apps/web/src/components/requests/new-request-form.tsx
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts

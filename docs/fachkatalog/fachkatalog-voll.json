@@ -1238,7 +1238,7 @@
         }
       ],
       "code_refs": [
-        "apps/web/src/app/portal/(protected)/bwa/plan/plan-wizard.tsx",
+        "apps/web/src/components/bwa/plan-wizard.tsx",
         "apps/web/src/app/portal/(protected)/bwa/plan/new/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx",
         "apps/web/src/server/bwa/datev-parser.ts",
@@ -1296,8 +1296,8 @@
       "code_refs": [
         "apps/web/src/components/bwa/projection-snapshot.ts",
         "apps/web/src/components/bwa/bwa-dashboard.tsx",
-        "apps/web/src/app/portal/(protected)/bwa/plan/plan-comparison.tsx",
-        "apps/web/src/app/portal/(protected)/bwa/plan/plan-vs-projection.tsx",
+        "apps/web/src/components/bwa/plan-comparison.tsx",
+        "apps/web/src/components/bwa/plan-vs-projection.tsx",
         "apps/web/src/app/portal/(protected)/bwa/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/page.tsx",
         "apps/web/src/server/bwa/projection.ts",
@@ -2739,7 +2739,7 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx",
         "apps/web/src/server/mandate-expansion/gwg-structure.ts",
-        "apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx",
+        "apps/web/src/components/mandate-expansion/gwg-structure-panel.tsx",
         "apps/web/src/server/gwg/verification.ts",
         "apps/web/src/server/gwg/identity-subject.ts",
         "apps/web/src/server/gwg/revisions.ts",
@@ -4229,7 +4229,7 @@
       "code_refs": [
         "apps/web/src/server/mandate-expansion/service.ts",
         "apps/web/src/server/mandate-expansion/gwg-structure.ts",
-        "apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx",
+        "apps/web/src/components/mandate-expansion/gwg-structure-panel.tsx",
         "apps/web/src/server/mandate-expansion/artifacts.ts",
         "apps/web/src/server/mandate-expansion/pdf.ts",
         "apps/web/src/server/documents/pdf-fonts.ts",
@@ -4930,7 +4930,7 @@
         "apps/web/src/app/portal/(protected)/requests/[id]/actions.ts",
         "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/requests/new/form.tsx"
+        "apps/web/src/components/requests/new-request-form.tsx"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts",

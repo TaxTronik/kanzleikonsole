@@ -12,6 +12,7 @@ import { computeOnboardingStatus, type OnboardingStatus } from '@/server/onboard
 import { RecentClients } from '@/components/recent-clients';
 import { SavedViews } from '@/components/saved-views';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
+import { createQuickRequestAction } from '@/app/staff/(protected)/clients/[id]/requests/actions';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 import {
   CLIENT_KIND_LABELS,
@@ -155,6 +156,7 @@ export default async function ClientsPage({
         </div>
         <div className="flex flex-wrap gap-2">
           <QuickRequestDialog
+            createAction={createQuickRequestAction}
             requestId={randomUUID()}
             templates={requestTemplates}
             formTemplates={requestFormTemplates}

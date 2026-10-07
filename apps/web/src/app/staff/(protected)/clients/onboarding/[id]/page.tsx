@@ -38,6 +38,7 @@ import {
   type GwgSubmissionSummaryData,
 } from '@/components/gwg-submission-summary';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
+import { createQuickRequestAction } from '@/app/staff/(protected)/clients/[id]/requests/actions';
 import { ActionForm } from '@/components/action-form';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
@@ -46,7 +47,7 @@ import type { MailDeliverySummary } from '@/lib/mail-delivery-status';
 import type {
   RequestFormTemplateOption,
   RequestTemplateOption,
-} from '@/app/staff/(protected)/clients/[id]/requests/new/form';
+} from '@/components/requests/new-request-form';
 
 interface Search {
   step?: string;
@@ -701,6 +702,7 @@ function FirstRequestStep({
             label={requestCount > 0 ? 'Weiter' : 'Überspringen'}
           />
           <QuickRequestDialog
+            createAction={createQuickRequestAction}
             requestId={randomUUID()}
             client={{
               id: client.id,

@@ -52,7 +52,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx
   - apps/web/src/server/mandate-expansion/gwg-structure.ts
-  - apps/web/src/server/mandate-expansion/gwg-structure-panel.tsx
+  - apps/web/src/components/mandate-expansion/gwg-structure-panel.tsx
   - apps/web/src/server/gwg/verification.ts
   - apps/web/src/server/gwg/identity-subject.ts
   - apps/web/src/server/gwg/revisions.ts
