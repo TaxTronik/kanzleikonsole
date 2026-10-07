@@ -17,6 +17,12 @@ import { ENV_PROFILES } from '../env-schema';
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 const eslint = new ESLint({ cwd: ROOT });
 
+// Der Import von eslint.config.mjs laedt alle Lint-Plugins, und jeder Lauf
+// wertet die volle Konfiguration aus. Unter paralleler CI-Last brauchte schon
+// der erste Test mehr als die 5-s-Grenze (CI-Lauf 3737: 5,8 s). Die Zeit fehlt
+// keiner fachlichen Pruefung; daher eine eigene, grosszuegige Grenze je Test.
+const LINT_TIMEOUT_MS = 60_000;
+
 interface Einstieg {
   file: string;
   profile: string;
@@ -40,7 +46,7 @@ async function meldungen(file: string, code?: string): Promise<string[]> {
     .map((m) => `${m.line}: ${m.message}`);
 }
 
-describe('ENV-Profilwahl als erster Import', () => {
+describe('ENV-Profilwahl als erster Import', { timeout: LINT_TIMEOUT_MS }, () => {
   it('schützt für jedes Prozessprofil außer web genau einen Einstieg', async () => {
     const liste = await einstiege();
     const profile = Object.keys(ENV_PROFILES).filter((p) => p !== 'web');
