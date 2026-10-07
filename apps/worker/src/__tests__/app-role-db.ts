@@ -139,13 +139,15 @@ export async function createClientFixture(
  * Aktiver Mandant (allow_active) hinter der GwG-Schranke: dieselbe fail-closed
  * Folge wie packages/db/src/__tests__/gwg-test-fixture.ts (DRAFT, Vertretung,
  * Nachweis, bestätigte 1:1-Zuordnung, VERIFIED). Der Import der Vorlage ist
- * wegen rootDir des Workers nicht möglich.
+ * wegen rootDir des Workers nicht möglich. `validUntil` (Prüfung) und
+ * `idExpiryDate` (Ausweis) sind optional; ohne Angabe unbefristet bzw. 2099.
  */
 export async function createActiveClientFixture(
   owner: Owner,
   tenantId: string,
   verifiedBy: string,
   name: string,
+  dates: { validUntil?: Date; idExpiryDate?: Date } = {},
 ): Promise<string> {
   const clientId = await createClientFixture(owner, tenantId, name);
   const confirmedAt = new Date();
@@ -158,6 +160,7 @@ export async function createActiveClientFixture(
         tenantId,
         clientId,
         status: 'DRAFT',
+        validUntil: dates.validUntil ?? null,
         legalForm: 'GmbH',
         registerNumber: 'HRB TEST',
         registerAuthority: 'Amtsgericht Teststadt',
@@ -204,7 +207,7 @@ export async function createActiveClientFixture(
         number: `TEST-${check.id}`,
         issuedBy: 'Testbehoerde',
         issueDate: new Date('2020-01-01T00:00:00.000Z'),
-        expiryDate: new Date('2099-12-31T00:00:00.000Z'),
+        expiryDate: dates.idExpiryDate ?? new Date('2099-12-31T00:00:00.000Z'),
         verifiedAt: confirmedAt,
       },
     });

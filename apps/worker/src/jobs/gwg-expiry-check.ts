@@ -35,6 +35,7 @@
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
 import { type NotificationKind } from '@prisma/client';
+import { withSystemContext } from '@taxtronik/db';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import {
@@ -57,7 +58,6 @@ import { dueGwgCheckDeletionsWhere, dueGwgDeletionDocsWhere } from '@taxtronik/g
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { resolveClientWarningRecipientsTx } from '../notification-recipients';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
@@ -75,7 +75,7 @@ async function resolveObsoleteStageNotifications(
   stage: GwgExpiryStage,
 ): Promise<void> {
   if (stage !== 'STAGE2') return;
-  await withWorkerTenantContext(tenantId, (tx) =>
+  await withSystemContext(tenantId, (tx) =>
     resolveNotificationsTx(tx, {
       tenantId,
       resources: [{ resourceType: 'gwg_check', resourceId: checkId }],
@@ -90,7 +90,7 @@ async function resolveIdDocumentWarning(
   expired: boolean,
 ): Promise<void> {
   if (!expired) return;
-  await withWorkerTenantContext(tenantId, (tx) =>
+  await withSystemContext(tenantId, (tx) =>
     resolveNotificationsTx(tx, {
       tenantId,
       resources: [{ resourceType: 'gwg_id_document', resourceId: documentId }],
@@ -115,43 +115,48 @@ async function processExpiringIdDocuments(
   let idDocRequests = 0;
   const berlinToday = berlinTodayUtcMidnight(now);
   const idDocCutoff = gwgIdDocumentWarnCutoff(berlinToday);
-  const expiringDocs = await prismaOwner.gwgIdDocument.findMany({
-    where: {
-      expiryDate: { not: null, lte: idDocCutoff },
-      check: {
-        tenantId,
-        status: { in: ['VERIFIED', 'IN_REVIEW'] },
+  // S-01: Ausweise und offene Anforderungen über die App-Rolle im SYSTEM-Kontext
+  // des Tenants (RLS), eine Transaktion.
+  const { expiringDocs, existingIdDocRequests } = await withSystemContext(tenantId, async (tx) => {
+    const expiringDocs = await tx.gwgIdDocument.findMany({
+      where: {
+        expiryDate: { not: null, lte: idDocCutoff },
+        check: {
+          tenantId,
+          status: { in: ['VERIFIED', 'IN_REVIEW'] },
+        },
       },
-    },
-    include: {
-      check: {
-        select: {
-          clientId: true,
-          client: {
-            select: {
-              name: true,
-              allowActive: true,
-              responsibilities: {
-                where: { role: { in: ['HAUPTBEARBEITER', 'BERUFSTRAEGER'] } },
-                select: { staffId: true },
+      include: {
+        check: {
+          select: {
+            clientId: true,
+            client: {
+              select: {
+                name: true,
+                allowActive: true,
+                responsibilities: {
+                  where: { role: { in: ['HAUPTBEARBEITER', 'BERUFSTRAEGER'] } },
+                  select: { staffId: true },
+                },
               },
             },
           },
         },
       },
-    },
-  });
+    });
 
-  const existingIdDocRequests = expiringDocs.length
-    ? await prismaOwner.request.findMany({
-        where: {
-          tenantId,
-          status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] },
-          linkedGwgIdDocumentId: { in: expiringDocs.map((doc) => doc.id) },
-        },
-        select: { linkedGwgIdDocumentId: true },
-      })
-    : [];
+    const existingIdDocRequests = expiringDocs.length
+      ? await tx.request.findMany({
+          where: {
+            tenantId,
+            status: { in: ['OPEN', 'IN_PROGRESS', 'RESPONDED'] },
+            linkedGwgIdDocumentId: { in: expiringDocs.map((doc) => doc.id) },
+          },
+          select: { linkedGwgIdDocumentId: true },
+        })
+      : [];
+    return { expiringDocs, existingIdDocRequests };
+  });
   const requestedIdDocumentIds = new Set(
     existingIdDocRequests.flatMap((request) =>
       request.linkedGwgIdDocumentId ? [request.linkedGwgIdDocumentId] : [],
@@ -171,7 +176,7 @@ async function processExpiringIdDocuments(
     const expiryDate = doc.expiryDate;
     // Notification an aktive, berechtigte Bearbeiter; sonst ADMIN/PARTNER
     // (F-10). R-11: Empfänger und Hinweise in derselben Tenant-Transaktion.
-    const recipients = await withWorkerTenantContext(tenantId, async (tx) => {
+    const recipients = await withSystemContext(tenantId, async (tx) => {
       const staffIds = await resolveClientWarningRecipientsTx(tx, {
         tenantId,
         clientId: doc.check.clientId,
@@ -199,23 +204,25 @@ async function processExpiringIdDocuments(
     // „Müller-Schmidt" teilten den `contains: ownerName`-Match — der
     // zweite Auto-Request wurde nie angelegt.
     if (!requestedIdDocumentIds.has(doc.id) && doc.check.client.allowActive) {
-      const created = await prismaOwner.request.createMany({
-        data: [
-          {
-            tenantId,
-            clientId: doc.check.clientId,
-            title: `Neuer ${idDocTypeLabel(doc.type)} von ${doc.ownerName} erforderlich`,
-            description: `Der ${idDocTypeLabel(doc.type)} läuft am ${dateFmt(
-              doc.expiryDate,
-            )} ab. Bitte stellen Sie eine aktuelle Kopie (Vorder- und Rückseite) zur Verfügung.`,
-            priority: isExpired ? 'HIGH' : 'NORMAL',
-            createdByStaff: systemStaff.id,
-            dueAt: isExpired ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) : doc.expiryDate,
-            linkedGwgIdDocumentId: doc.id,
-          },
-        ],
-        skipDuplicates: true,
-      });
+      const created = await withSystemContext(tenantId, (tx) =>
+        tx.request.createMany({
+          data: [
+            {
+              tenantId,
+              clientId: doc.check.clientId,
+              title: `Neuer ${idDocTypeLabel(doc.type)} von ${doc.ownerName} erforderlich`,
+              description: `Der ${idDocTypeLabel(doc.type)} läuft am ${dateFmt(
+                expiryDate,
+              )} ab. Bitte stellen Sie eine aktuelle Kopie (Vorder- und Rückseite) zur Verfügung.`,
+              priority: isExpired ? 'HIGH' : 'NORMAL',
+              createdByStaff: systemStaff.id,
+              dueAt: isExpired ? new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) : expiryDate,
+              linkedGwgIdDocumentId: doc.id,
+            },
+          ],
+          skipDuplicates: true,
+        }),
+      );
       requestedIdDocumentIds.add(doc.id);
       idDocRequests += created.count;
     }
@@ -232,6 +239,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
     // unten mangels ADMIN/PARTNER übersprungen werden.
     let portalRevocationFailures = await catchUpPendingPortalRevocations(job.data.tenantId);
 
+    // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client.
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]
       : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
@@ -249,13 +257,43 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       // System-Staff für Auto-Anforderungen + Empfänger der Lösch-Queue. Den
       // Fallback mandantenbezogener Hinweise löst resolveClientWarningRecipientsTx
       // je Mandant mit aktuellem Zugriffsstand auf.
-      const adminPartners = await prismaOwner.staffUser.findMany({
-        where: {
-          tenantId,
-          active: true,
-          roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
-        },
-        select: { id: true },
+      // S-01: Admin/Partner und Kandidaten über die App-Rolle im SYSTEM-Kontext des
+      // Tenants (RLS), eine Transaktion; ohne Admin/Partner wie zuvor keine Kandidaten.
+      // RF-14: nur das Relevanz-Fenster laden (validUntil <= now + 90 Tage =
+      // Stage-1-Grenze). Vorher zog die Query ALLE VERIFIED-Checks mit
+      // validUntil und filterte erst im Speicher — unnötige Last, die mit dem
+      // Mandantenbestand linear wächst.
+      const stage1Cutoff = gwgExpiryStage1Cutoff(now);
+      const { adminPartners, candidates } = await withSystemContext(tenantId, async (tx) => {
+        const adminPartners = await tx.staffUser.findMany({
+          where: {
+            tenantId,
+            active: true,
+            roles: { some: { role: { in: ['ADMIN', 'PARTNER'] } } },
+          },
+          select: { id: true },
+        });
+        if (adminPartners.length === 0) return { adminPartners, candidates: [] };
+        const candidates = await tx.gwgCheck.findMany({
+          where: {
+            tenantId,
+            status: 'VERIFIED',
+            validUntil: { not: null, lte: stage1Cutoff },
+          },
+          include: {
+            client: {
+              select: {
+                id: true,
+                name: true,
+                responsibilities: {
+                  where: { role: { in: ['HAUPTBEARBEITER', 'BERUFSTRAEGER'] } },
+                  select: { staffId: true, role: true },
+                },
+              },
+            },
+          },
+        });
+        return { adminPartners, candidates };
       });
       if (adminPartners.length === 0) {
         log.info({ tenantId }, 'gwg-expiry: keine Admin/Partner — skip');
@@ -264,33 +302,8 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       const systemStaff = adminPartners[0]!;
 
       // ----------------------------------------------------------------------
-      // 1. GwG-Check-Eskalation
+      // 1. GwG-Check-Eskalation (Kandidaten oben, RF-14)
       // ----------------------------------------------------------------------
-      // RF-14: nur das Relevanz-Fenster laden (validUntil <= now + 90 Tage =
-      // Stage-1-Grenze). Vorher zog die Query ALLE VERIFIED-Checks mit
-      // validUntil und filterte erst im Speicher — unnötige Last, die mit dem
-      // Mandantenbestand linear wächst.
-      const stage1Cutoff = gwgExpiryStage1Cutoff(now);
-      const candidates = await prismaOwner.gwgCheck.findMany({
-        where: {
-          tenantId,
-          status: 'VERIFIED',
-          validUntil: { not: null, lte: stage1Cutoff },
-        },
-        include: {
-          client: {
-            select: {
-              id: true,
-              name: true,
-              responsibilities: {
-                where: { role: { in: ['HAUPTBEARBEITER', 'BERUFSTRAEGER'] } },
-                select: { staffId: true, role: true },
-              },
-            },
-          },
-        },
-      });
-
       for (const check of candidates) {
         const daysLeft = gwgCheckDaysLeft(check.validUntil!, now);
         const stage = gwgExpiryStageForDaysLeft(daysLeft);
@@ -304,7 +317,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
           // Audit-Chain (vorher: nackte prismaOwner-Updates ohne
           // evidence.record) — Muster analog risk-analyse-llm.ts.
           let supersededByValid = false;
-          const pendingRevocation = await withWorkerTenantContext(tenantId, async (tx) => {
+          const pendingRevocation = await withSystemContext(tenantId, async (tx) => {
             const clientBefore = await tx.client.findUnique({
               where: { id: check.clientId },
               select: { allowActive: true },
@@ -404,7 +417,7 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
         // R-11: Empfänger und Hinweise in derselben Tenant-Transaktion.
         const title = titleForStage(stage, daysLeft, check.client.name);
         const body = bodyForStage(stage, check.riskLevel ?? null);
-        const recipients = await withWorkerTenantContext(tenantId, async (tx) => {
+        const recipients = await withSystemContext(tenantId, async (tx) => {
           const staffIds = await resolveClientWarningRecipientsTx(tx, {
             tenantId,
             clientId: check.clientId,
@@ -448,43 +461,48 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       //    erst an diesem fachlichen Startpunkt; das bloße Belegalter beendet
       //    keine laufende Geschäftsbeziehung.
       // ----------------------------------------------------------------------
-      const [dueDocs, dueChecks] = await Promise.all([
-        prismaOwner.document.count({ where: { tenantId, ...dueGwgDeletionDocsWhere(now) } }),
-        prismaOwner.gwgCheck.count({ where: { tenantId, ...dueGwgCheckDeletionsWhere(now) } }),
-      ]);
-      const dueTotal = dueDocs + dueChecks;
-      if (dueTotal > 0) {
+      // S-01: Die Belegzählung bleibt beim Owner-Client: RLS blendet Belege in
+      // Mandatsartefakten anonymisierter Mandanten oder mit nicht mehr vollständigen
+      // Quellen aus (mandate_artifact_row_allowed, mandate_artifact_sources_valid);
+      // die Löschprüfung muss sie mitzählen.
+      const dueDocs = await prismaOwner.document.count({
+        where: { tenantId, ...dueGwgDeletionDocsWhere(now) },
+      });
+      // Strukturierte Aufzeichnungen, Hinweis und Auflösung über die App-Rolle.
+      deletionDueNotices += await withSystemContext(tenantId, async (tx) => {
+        const dueChecks = await tx.gwgCheck.count({
+          where: { tenantId, ...dueGwgCheckDeletionsWhere(now) },
+        });
+        const dueTotal = dueDocs + dueChecks;
+        if (dueTotal === 0) {
+          await resolveNotificationsTx(tx, {
+            tenantId,
+            resources: [{ resourceType: 'tenant', resourceId: tenantId }],
+            kinds: ['GWG_DELETION_DUE'],
+          });
+          return 0;
+        }
         const itemWord = dueTotal === 1 ? '1 Eintrag' : `${dueTotal} Einträge`;
         // Idempotent: ungelesene Notification wird aktualisiert; der Daily-
         // Dedupe-Index (iter81) deckelt zusätzlich auf 1/Tag. resource_id =
         // Tenant-ID als stabiler Schlüssel für den Tages-Dedupe.
-        await withWorkerTenantContext(tenantId, (tx) =>
-          notify(
-            tx,
-            adminPartners.map((s) => ({
-              tenantId,
-              staffId: s.id,
-              kind: 'GWG_DELETION_DUE' as NotificationKind,
-              title: `GwG-Löschprüfung: ${itemWord} löschreif`,
-              body:
-                'Belege/Aufzeichnungen beendeter Mandate oder nie zustande gekommener Beziehungen, ' +
-                'deren Aufbewahrungsfrist (§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.',
-              href: '/staff/admin/gwg-retention',
-              resourceType: 'tenant',
-              resourceId: tenantId,
-            })),
-          ),
-        );
-        deletionDueNotices += adminPartners.length;
-      } else {
-        await withWorkerTenantContext(tenantId, (tx) =>
-          resolveNotificationsTx(tx, {
+        await notify(
+          tx,
+          adminPartners.map((s) => ({
             tenantId,
-            resources: [{ resourceType: 'tenant', resourceId: tenantId }],
-            kinds: ['GWG_DELETION_DUE'],
-          }),
+            staffId: s.id,
+            kind: 'GWG_DELETION_DUE' as NotificationKind,
+            title: `GwG-Löschprüfung: ${itemWord} löschreif`,
+            body:
+              'Belege/Aufzeichnungen beendeter Mandate oder nie zustande gekommener Beziehungen, ' +
+              'deren Aufbewahrungsfrist (§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.',
+            href: '/staff/admin/gwg-retention',
+            resourceType: 'tenant',
+            resourceId: tenantId,
+          })),
         );
-      }
+        return adminPartners.length;
+      });
     }
 
     log.info(
@@ -550,13 +568,16 @@ async function revokePendingPortalSessions(
   pending: PendingPortalSessionRevocation,
 ): Promise<number> {
   try {
-    const contacts = await prismaOwner.clientContact.findMany({
-      where: { tenantId: pending.tenantId, clientId: pending.clientId, active: true },
-      select: { id: true },
-    });
+    // S-01: Kontakte und Marker über die App-Rolle im SYSTEM-Kontext des Tenants.
+    const contacts = await withSystemContext(pending.tenantId, (tx) =>
+      tx.clientContact.findMany({
+        where: { tenantId: pending.tenantId, clientId: pending.clientId, active: true },
+        select: { id: true },
+      }),
+    );
     const failed = await revokePortalSessions(contacts.map((c) => c.id));
     if (failed > 0) return failed;
-    await withWorkerTenantContext(pending.tenantId, (tx) =>
+    await withSystemContext(pending.tenantId, (tx) =>
       clearPortalSessionRevocationPendingTx(tx, pending),
     );
     return 0;
@@ -570,6 +591,8 @@ async function revokePendingPortalSessions(
 }
 
 async function catchUpPendingPortalRevocations(tenantId: string | undefined): Promise<number> {
+  // S-01: Offene Widerrufsmarker aller Tenants (nur IDs und Zeitpunkt) liest der
+  // Owner-Client; der Widerruf je Marker läuft danach über die App-Rolle.
   const pending = await listPendingPortalSessionRevocations(prismaOwner, tenantId);
   let failed = 0;
   for (const entry of pending) {

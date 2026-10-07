@@ -1,5 +1,28 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-030
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/gwg-expiry-check.ts
+    rule_ids:
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+    reason: >-
+      Die GwG-Fristprüfung (`gwg-expiry-check`) liest Prüfungen, Ausweisdokumente,
+      offene Anforderungen und Portalkontakte und schreibt Stufe 3 (Prüfung
+      `EXPIRED`, Mandant deaktiviert, Audit, Sperrmarker), Hinweise und automatische
+      Ausweisanforderungen über die App-Rolle im SYSTEM-Kontext des Tenants
+      (Row-Level-Security) statt über die Owner-Verbindung mit BYPASSRLS. Bei der
+      Owner-Verbindung bleiben die mandantenübergreifende Liste offener Sperrmarker
+      (nur IDs) und die Zählung der Dokumente in der GwG-Löschprüfung, weil RLS
+      Dokumente von Mandatsartefakten verbirgt, die diese Prüfung zählen muss.
+      Stufen, Fristen und Empfänger bleiben unverändert; eine PostgreSQL-Suite
+      belegt das und dass Prüfungen fremder Tenants unsichtbar bleiben. Keine
+      fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/gwg-expiry-check-db.test.ts
+      - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-029
     date: '2026-10-07'
     paths:
@@ -4777,6 +4800,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-030` dokumentiert die GwG-Fristprüfung über
+  die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-029` dokumentiert die täglichen Erinnerungen
   über die App-Rolle.
