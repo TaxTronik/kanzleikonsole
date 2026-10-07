@@ -1,16 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { ownerFindUniqueMock, createManyMock, findUniqueMock, updateMock } = vi.hoisted(() => ({
-  ownerFindUniqueMock: vi.fn(),
-  createManyMock: vi.fn(),
-  findUniqueMock: vi.fn(),
-  updateMock: vi.fn(),
-}));
+const {
+  recoveryFindUniqueMock,
+  withSystemContextMock,
+  createManyMock,
+  findUniqueMock,
+  updateMock,
+} = vi.hoisted(() => {
+  const recoveryFindUniqueMock = vi.fn();
+  return {
+    recoveryFindUniqueMock,
+    // S-01: Crash-Recovery liest im SYSTEM-Kontext des authentifizierten Tenants.
+    withSystemContextMock: vi.fn(async (_tenantId: string, fn: (tx: unknown) => unknown) =>
+      fn({ n8nCallbackReceipt: { findUnique: recoveryFindUniqueMock } }),
+    ),
+    createManyMock: vi.fn(),
+    findUniqueMock: vi.fn(),
+    updateMock: vi.fn(),
+  };
+});
 
-vi.mock('@/server/db/prisma-owner', () => ({
-  prismaOwner: { n8nCallbackReceipt: { findUnique: ownerFindUniqueMock } },
-}));
+vi.mock('@taxtronik/db', () => ({ withSystemContext: withSystemContextMock }));
 
 import {
   claimN8nCallbackReceipt,
@@ -105,15 +116,16 @@ describe('durable n8n callback receipts', () => {
 
   it('erkennt Crash-Recovery nur bei Tenant und Operation des DB-Receipts', async () => {
     const resultId = randomUUID();
-    ownerFindUniqueMock.mockResolvedValue({
+    recoveryFindUniqueMock.mockResolvedValue({
       tenantId: key.tenantId,
       operation: key.operation,
       resultId,
     });
     await expect(getCompletedN8nCallbackReceipt(key)).resolves.toEqual({ resultId });
     await expect(hasCompletedN8nCallbackReceipt(key)).resolves.toBe(true);
+    expect(withSystemContextMock).toHaveBeenCalledWith(key.tenantId, expect.any(Function));
 
-    ownerFindUniqueMock.mockResolvedValue({
+    recoveryFindUniqueMock.mockResolvedValue({
       tenantId: key.tenantId,
       operation: 'request-inbound',
     });

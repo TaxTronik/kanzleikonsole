@@ -1,10 +1,13 @@
+// Fachkatalog: ACCESS-TENANT-RLS-001
+// S-01: the callback reads run in the authenticated tenant's SYSTEM context
+// (operations-db.test.ts proves the app role against PostgreSQL).
 import { randomUUID } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
   withSystemContext: vi.fn(),
   requestFindMany: vi.fn(),
-  requestFindFirst: vi.fn(),
+  gwgCheckFindMany: vi.fn(),
   riskRequestFindFirst: vi.fn(),
   readModules: vi.fn(),
   evidenceRecord: vi.fn(),
@@ -19,11 +22,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@taxtronik/db', () => ({ withSystemContext: h.withSystemContext }));
 vi.mock('@/server/db/prisma-owner', () => ({
-  prismaOwner: {
-    request: { findMany: h.requestFindMany, findFirst: h.requestFindFirst },
-    gwgCheck: { findMany: vi.fn() },
-    riskResearchRequest: { findFirst: h.riskRequestFindFirst },
-  },
+  prismaOwner: { riskResearchRequest: { findFirst: h.riskRequestFindFirst } },
 }));
 vi.mock('@/server/settings/modules', () => ({ readModules: h.readModules }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidenceRecord } }));
@@ -38,6 +37,7 @@ vi.mock('@/server/n8n/callback-receipts', () => ({
 }));
 
 import {
+  getExpiringGwgChecks,
   getOverdueRequestsForTenant,
   getRequestDetailForTenant,
   handleInboundRequestEmail,
@@ -54,7 +54,12 @@ const callbackReceipt = {
   operation: 'request-inbound' as const,
 };
 const tx = {
-  request: { findFirst: h.txRequestFindFirst, updateMany: h.requestUpdateMany },
+  request: {
+    findMany: h.requestFindMany,
+    findFirst: h.txRequestFindFirst,
+    updateMany: h.requestUpdateMany,
+  },
+  gwgCheck: { findMany: h.gwgCheckFindMany },
   clientContact: { findFirst: h.contactFindFirst },
   requestResponse: { create: h.responseCreate },
 };
@@ -98,6 +103,7 @@ describe('n8n operations privacy', () => {
 
     const result = await getOverdueRequestsForTenant(TENANT_ID, now);
 
+    expect(h.withSystemContext).toHaveBeenCalledWith(TENANT_ID, expect.any(Function));
     expect(h.requestFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
         include: {
@@ -134,7 +140,7 @@ describe('n8n operations privacy', () => {
   });
 
   it('gibt in Request-Details nur explizit notifizierbare Kontakte aus', async () => {
-    h.requestFindFirst.mockResolvedValue({
+    h.txRequestFindFirst.mockResolvedValue({
       id: REQUEST_ID,
       tenantId: TENANT_ID,
       title: 'Unterlagen',
@@ -150,8 +156,10 @@ describe('n8n operations privacy', () => {
 
     const result = await getRequestDetailForTenant(TENANT_ID, REQUEST_ID);
 
-    expect(h.requestFindFirst).toHaveBeenCalledWith(
+    expect(h.withSystemContext).toHaveBeenCalledWith(TENANT_ID, expect.any(Function));
+    expect(h.txRequestFindFirst).toHaveBeenCalledWith(
       expect.objectContaining({
+        where: { id: REQUEST_ID, tenantId: TENANT_ID },
         include: {
           client: {
             include: {
@@ -169,6 +177,42 @@ describe('n8n operations privacy', () => {
     });
     expect(result).not.toHaveProperty('contactName');
     expect(result).not.toHaveProperty('contactEmail');
+  });
+
+  it('liest ablaufende GwG-Prüfungen im SYSTEM-Kontext des Tenants', async () => {
+    const validUntil = new Date('2026-07-20T00:00:00.000Z');
+    h.gwgCheckFindMany.mockResolvedValue([
+      {
+        id: 'check-1',
+        tenantId: TENANT_ID,
+        clientId: 'client-1',
+        client: { name: 'Beispiel GmbH' },
+        validUntil,
+        riskLevel: 'NORMAL',
+      },
+    ]);
+
+    await expect(
+      getExpiringGwgChecks(TENANT_ID, 30, new Date('2026-07-14T12:00:00.000Z')),
+    ).resolves.toEqual({
+      count: 1,
+      checks: [
+        {
+          id: 'check-1',
+          tenantId: TENANT_ID,
+          clientId: 'client-1',
+          clientName: 'Beispiel GmbH',
+          validUntil,
+          riskLevel: 'NORMAL',
+        },
+      ],
+    });
+    expect(h.withSystemContext).toHaveBeenCalledWith(TENANT_ID, expect.any(Function));
+    expect(h.gwgCheckFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ tenantId: TENANT_ID, status: 'VERIFIED' }),
+      }),
+    );
   });
 });
 

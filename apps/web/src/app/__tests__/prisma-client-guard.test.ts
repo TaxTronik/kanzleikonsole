@@ -395,10 +395,9 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   'apps/web/src/server/license/state.ts <- @/server/db/prisma-owner',
   // Externe n8n-Callbacks haben vor der Credential-Pruefung noch keinen
   // vertrauenswuerdigen Tenant-Kontext. Der Owner-Lookup bindet Key-ID an
-  // Connection/Tenant; Operations und Crash-Recovery scopen danach jeden
-  // Zugriff explizit auf den authentifizierten tenantId/connectionId.
+  // Connection/Tenant. Danach lesen Operations und Crash-Recovery (S-01) ueber
+  // die App-Rolle im SYSTEM-Kontext des authentifizierten Tenants.
   'apps/web/src/server/n8n/callback-auth.ts <- @/server/db/prisma-owner',
-  'apps/web/src/server/n8n/callback-receipts.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/n8n/operations.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/n8n/outbox.ts <- @/server/db/prisma-owner',
   'apps/web/src/server/risk/research.ts <- @/server/db/prisma-owner',

@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { TxClient } from '@taxtronik/db';
-import { prismaOwner } from '@/server/db/prisma-owner';
+import { withSystemContext, type TxClient } from '@taxtronik/db';
 
 export const N8N_CALLBACK_OPERATIONS = {
   inboundMail: 'request-inbound',
@@ -89,20 +88,24 @@ export async function setN8nCallbackReceiptResult(
 /**
  * Read-only Crash-Recovery-Check für einen Redis-IN_PROGRESS-Marker. Die
  * Zeile kann erst nach Commit sichtbar werden und ist damit eine belastbare
- * Aussage, dass der Side Effect abgeschlossen ist.
+ * Aussage, dass der Side Effect abgeschlossen ist. S-01: gelesen wird über die
+ * App-Rolle im SYSTEM-Kontext des authentifizierten Tenants; ein Receipt eines
+ * anderen Tenants ist dort unsichtbar und ergibt wie bisher `null`.
  */
 export async function getCompletedN8nCallbackReceipt(
   key: N8nCallbackReceiptKey,
 ): Promise<{ resultId: string | null } | null> {
-  const existing = await prismaOwner.n8nCallbackReceipt.findUnique({
-    where: {
-      connectionId_requestIdHash: {
-        connectionId: key.connectionId,
-        requestIdHash: requestIdHash(key.requestId),
+  const existing = await withSystemContext(key.tenantId, (tx) =>
+    tx.n8nCallbackReceipt.findUnique({
+      where: {
+        connectionId_requestIdHash: {
+          connectionId: key.connectionId,
+          requestIdHash: requestIdHash(key.requestId),
+        },
       },
-    },
-    select: { tenantId: true, operation: true, resultId: true },
-  });
+      select: { tenantId: true, operation: true, resultId: true },
+    }),
+  );
   if (existing?.tenantId !== key.tenantId || existing.operation !== key.operation) return null;
   return { resultId: existing.resultId };
 }

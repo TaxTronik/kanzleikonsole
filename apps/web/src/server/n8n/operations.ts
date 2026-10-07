@@ -10,25 +10,32 @@ import {
   type N8nCallbackReceiptKey,
 } from '@/server/n8n/callback-receipts';
 
+// S-01: Die Callback-Operationen laufen nach der Credential-Prüfung mit dem
+// authentifizierten Tenant. Anforderungen, Kontakte und GwG-Prüfungen lesen
+// sie über die App-Rolle im SYSTEM-Kontext dieses Tenants (withSystemContext,
+// RLS), nicht über den Owner-Client.
+
 export async function getOverdueRequestsForTenant(tenantId: string, now = new Date()) {
-  const rows = await prismaOwner.request.findMany({
-    where: {
-      tenantId,
-      status: { in: ['OPEN', 'IN_PROGRESS'] },
-      dueAt: { not: null, lt: now },
-    },
-    include: {
-      client: {
-        include: {
-          contacts: {
-            where: { active: true, notificationsEnabled: true, email: { not: '' } },
-            take: 1,
-            orderBy: { fullName: 'asc' },
+  const rows = await withSystemContext(tenantId, (tx) =>
+    tx.request.findMany({
+      where: {
+        tenantId,
+        status: { in: ['OPEN', 'IN_PROGRESS'] },
+        dueAt: { not: null, lt: now },
+      },
+      include: {
+        client: {
+          include: {
+            contacts: {
+              where: { active: true, notificationsEnabled: true, email: { not: '' } },
+              take: 1,
+              orderBy: { fullName: 'asc' },
+            },
           },
         },
       },
-    },
-  });
+    }),
+  );
 
   const requests = rows
     .filter((row) => row.client.contacts.length > 0)
@@ -55,15 +62,17 @@ export async function getOverdueRequestsForTenant(tenantId: string, now = new Da
 
 export async function getExpiringGwgChecks(tenantId: string, withinDays: number, now = new Date()) {
   const cutoff = new Date(now.getTime() + withinDays * 24 * 60 * 60 * 1000);
-  const checks = await prismaOwner.gwgCheck.findMany({
-    where: {
-      tenantId,
-      status: 'VERIFIED',
-      validUntil: { not: null, lte: cutoff },
-    },
-    include: { client: { select: { name: true } } },
-    orderBy: { validUntil: 'asc' },
-  });
+  const checks = await withSystemContext(tenantId, (tx) =>
+    tx.gwgCheck.findMany({
+      where: {
+        tenantId,
+        status: 'VERIFIED',
+        validUntil: { not: null, lte: cutoff },
+      },
+      include: { client: { select: { name: true } } },
+      orderBy: { validUntil: 'asc' },
+    }),
+  );
 
   return {
     count: checks.length,
@@ -79,19 +88,21 @@ export async function getExpiringGwgChecks(tenantId: string, withinDays: number,
 }
 
 export async function getRequestDetailForTenant(tenantId: string, id: string) {
-  const request = await prismaOwner.request.findFirst({
-    where: { id, tenantId },
-    include: {
-      client: {
-        include: {
-          contacts: {
-            where: { active: true, notificationsEnabled: true, email: { not: '' } },
-            orderBy: { fullName: 'asc' },
+  const request = await withSystemContext(tenantId, (tx) =>
+    tx.request.findFirst({
+      where: { id, tenantId },
+      include: {
+        client: {
+          include: {
+            contacts: {
+              where: { active: true, notificationsEnabled: true, email: { not: '' } },
+              orderBy: { fullName: 'asc' },
+            },
           },
         },
       },
-    },
-  });
+    }),
+  );
   if (!request) return null;
 
   const notifiableContacts = request.client.contacts.map((candidate) => ({
