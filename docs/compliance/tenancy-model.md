@@ -63,7 +63,7 @@ gedacht, die RLS nicht sinnvoll nutzen können:
 2. **Cross-Tenant-Verifikation** — z. B. `pnpm verify:chain`.
 3. **System-Wartung** — Backup-Runner, Reconcile-Worker.
 
-**Aktuelle Verwendung** (Stand 2026-10-07): 32 Dateien in `apps/web` und 31 in
+**Aktuelle Verwendung** (Stand 2026-10-07): 31 Dateien in `apps/web` und 31 in
 `apps/worker` (ohne Tests). Jede ist ein expliziter Code-Pfad ohne RLS-Schutz
 und muss eigenverantwortlich tenantId-filtern. In den Worker-Jobs mit
 Mandantendaten liest der Owner-Client seit der S-01-Folgearbeit nur noch die

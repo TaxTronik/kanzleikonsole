@@ -203,6 +203,7 @@ test_refs:
   - apps/worker/src/jobs/__tests__/workflow-n8n-dispatch-app-role-db.test.ts
   - apps/worker/src/__tests__/tenant-context.test.ts
   - packages/mail/src/__tests__/dispatch-db.test.ts
+  - apps/web/src/server/tax-news/__tests__/fetcher-db.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -530,16 +531,21 @@ der Credential-Prüfung über die App-Rolle im SYSTEM-Kontext des
 authentifizierten Tenants. Die mandantenbezogenen Worker-Jobs tun dasselbe
 (`withSystemContext`; für Kerne mit eigenem DB-Parameter `systemContextClient`,
 je Aufruf eine kurze Transaktion im SYSTEM-Kontext), ebenso der gemeinsame
-Mail-Versand für Vorlage, Mandant und Empfänger. Beim Owner-Client bleiben
-mandantenübergreifende Tenant- und Kandidatenlisten (nur IDs), Auflösungen vor
-jedem Tenant-Kontext sowie Wartungspfade mit fehlenden App-Rechten oder
-tenantlosen Daten (Archivierung, Anker-Lease und Anker, Prüf-Checkpoints,
-Backup und Restore-Drill, Aufbewahrung, Mail-Outbox- und n8n-Zustellung); jeder
+Mail-Versand für Vorlage, Mandant und Empfänger. Der manuelle
+Steuernachrichten-Abruf im Dashboard läuft vollständig im Kontext des
+angemeldeten Mitarbeiters (`withTenantContext`), einschließlich des globalen
+Nachrichten-Caches. Beim Owner-Client bleiben mandantenübergreifende Tenant-
+und Kandidatenlisten (nur IDs; beim Steuernachrichten-Job Tenant und
+Feed-URL), Auflösungen vor jedem Tenant-Kontext sowie Wartungspfade mit
+fehlenden App-Rechten oder tenantlosen Daten (Archivierung, Anker-Lease und
+Anker, Prüf-Checkpoints, Backup und Restore-Drill, Aufbewahrung, Mail-Outbox-
+und n8n-Zustellung, Nachrichten-Cache des Steuernachrichten-Jobs); jeder
 dieser Pfade nennt seinen Grund im Code. Je verschobenem Pfad belegt eine
 PostgreSQL-Suite mit Owner- und App-Verbindung wie im CI, dass der Pfad ohne
 weiteren Owner-Zugriff dieselben Zeilen liest und schreibt und dass Zeilen
-eines fremden Tenants im SYSTEM-Kontext unsichtbar bleiben; gegen die vorherige
-Implementierung scheitern die Suiten am Owner-Zugriff.
+eines fremden Tenants im SYSTEM- beziehungsweise Mitarbeiterkontext unsichtbar
+bleiben; gegen die vorherige Implementierung scheitern die Suiten am
+Owner-Zugriff.
 
 Die Prüf-Checkpoints der Audit-Kettenprüfung (`audit_verify_checkpoint`,
 `AUDIT-VERIFY-ALERT-001`) sind tenantgebunden und durch ENABLE/FORCE RLS sowie

@@ -5,9 +5,17 @@
 //
 // Konsolidierung Round 12: Parser + Body-Cap leben in @taxtronik/rss.
 // Diese Datei ist nur noch der DB-Orchestrator.
+//
+// S-01: Der Abruf läuft vollständig über die App-Rolle im Kontext des
+// angemeldeten Mitarbeiters (withTenantContext, RLS): Modulschalter, eigene
+// Feeds, eigener Marker und der globale Nachrichten-Cache tax_news_item (ohne
+// Tenantbezug und ohne RLS; die App-Rolle darf ihn anlegen). Jeder Cache-
+// Eintrag läuft in einer eigenen kurzen Transaktion, damit ein Duplikat (P2002)
+// wie bisher nur diesen Eintrag verwirft; während des Netzabrufs ist keine
+// Transaktion offen.
 // =============================================================================
 
-import { prismaOwner } from '@/server/db/prisma-owner';
+import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { readBooleanTenantModules } from '@taxtronik/db/tenant-modules';
 import { writeTenantSettingValue } from '@taxtronik/db/tenant-settings';
 import { fetchRssFeed, type FetchedRssItem } from '@taxtronik/rss';
@@ -32,17 +40,23 @@ export async function fetchAndPersistTaxNews(scope: TaxNewsFetchScope): Promise<
   }>;
   errors: string[];
 }> {
-  const modules = await readBooleanTenantModules(prismaOwner, scope.tenantId);
-  if (!modules.rssReader) throw new Error('Modul rssReader ist deaktiviert.');
-
-  const activeFeeds = await prismaOwner.rssFeed.findMany({
-    where: {
-      active: true,
-      tenantId: scope.tenantId,
-      staffId: scope.staffId,
-    },
-    select: { url: true },
-    distinct: ['url'],
+  const ctx: TenantContext = {
+    tenantId: scope.tenantId,
+    actorId: scope.staffId,
+    actorType: 'STAFF',
+  };
+  const activeFeeds = await withTenantContext(ctx, async (tx) => {
+    const modules = await readBooleanTenantModules(tx, scope.tenantId);
+    if (!modules.rssReader) throw new Error('Modul rssReader ist deaktiviert.');
+    return tx.rssFeed.findMany({
+      where: {
+        active: true,
+        tenantId: scope.tenantId,
+        staffId: scope.staffId,
+      },
+      select: { url: true },
+      distinct: ['url'],
+    });
   });
 
   const errors: string[] = [];
@@ -65,16 +79,18 @@ export async function fetchAndPersistTaxNews(scope: TaxNewsFetchScope): Promise<
   }> = [];
   for (const item of all) {
     try {
-      const created = await prismaOwner.taxNewsItem.create({
-        data: {
-          source: item.source,
-          guid: item.guid,
-          title: item.title,
-          summary: item.summary,
-          link: item.link,
-          publishedAt: item.publishedAt,
-        },
-      });
+      const created = await withTenantContext(ctx, (tx) =>
+        tx.taxNewsItem.create({
+          data: {
+            source: item.source,
+            guid: item.guid,
+            title: item.title,
+            summary: item.summary,
+            link: item.link,
+            publishedAt: item.publishedAt,
+          },
+        }),
+      );
       newItems.push({
         id: created.id,
         source: created.source,
@@ -98,11 +114,13 @@ export async function fetchAndPersistTaxNews(scope: TaxNewsFetchScope): Promise<
   ];
   const lastFetchAt = new Date().toISOString();
   for (const { tenantId, key } of markerTargets) {
-    await writeTenantSettingValue(prismaOwner, {
-      tenantId,
-      key,
-      value: lastFetchAt,
-    });
+    await withTenantContext(ctx, (tx) =>
+      writeTenantSettingValue(tx, {
+        tenantId,
+        key,
+        value: lastFetchAt,
+      }),
+    );
   }
 
   return {

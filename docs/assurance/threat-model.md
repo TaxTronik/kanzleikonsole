@@ -190,9 +190,12 @@ Risikoanreicherung, Ergebnisse und Hinweise von Kettenprüfung und
 Restore-Drill, Anker-Status, Tagessiegel, TSA-Auswahl), die n8n-Callbacks
 (überfällige Anforderungen, Anforderungsdetails, ablaufende GwG-Prüfungen,
 Receipt-Recovery, Rechercheergebnisse), der iCal-Feed und die Vorlagen- und
-Empfängerauflösung des gemeinsamen Mail-Versands. Je Pfad belegt eine
-PostgreSQL-Suite mit gesperrtem Owner-Client die App-Rolle, dieselben Zeilen
-wie zuvor und die Unsichtbarkeit fremder Tenants.
+Empfängerauflösung des gemeinsamen Mail-Versands. Der manuelle
+Steuernachrichten-Abruf im Dashboard läuft vollständig im Kontext des
+angemeldeten Mitarbeiters (`withTenantContext`), einschließlich des globalen
+Nachrichten-Caches. Je Pfad belegt eine PostgreSQL-Suite mit gesperrtem
+Owner-Client die App-Rolle, dieselben Zeilen wie zuvor und die Unsichtbarkeit
+fremder Tenants.
 
 Beim Owner-Client bleiben, jeweils mit Begründung im Code beziehungsweise in
 der Owner-Allowlist (`prisma-client-guard.test.ts`):
@@ -202,7 +205,8 @@ der Owner-Allowlist (`prisma-client-guard.test.ts`):
   Credential-Prüfung der n8n-Callbacks, die Tenant-Auflösung des iCal-Feeds,
   die Korrelations-ID des Legacy-Recherche-Callbacks sowie die
   mandantenübergreifenden Tenant-Listen und Kandidatensuchen der Worker (nur
-  IDs);
+  IDs; beim Steuernachrichten-Job Tenant und Feed-URL) und der globale,
+  mandantenfreie Nachrichten-Cache dieses Jobs;
 - Wartung über alle Tenants: Audit-Archivierung, Anker-Lease und Anker,
   Prüf-Checkpoints der Kettenprüfung, Backup und Restore-Drill,
   DSGVO-Aufbewahrung, Bereinigung abgelaufener Magic-Links, der n8n-Outbox und

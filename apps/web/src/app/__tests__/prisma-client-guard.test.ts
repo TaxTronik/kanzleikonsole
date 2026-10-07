@@ -409,7 +409,6 @@ const ALLOWED_PRISMA_OWNER_IMPORTS = new Set<string>([
   // Anzeige-Name/Akzentfarbe/Logo-Data-URLs des per Slug adressierten Tenants
   // (Muster: readLegalForSlug in legal.ts).
   'apps/web/src/server/settings/branding.ts <- @/server/db/prisma-owner',
-  'apps/web/src/server/tax-news/fetcher.ts <- @/server/db/prisma-owner',
 ]);
 
 describe('prismaOwner-Guard - BYPASSRLS-Importe bleiben explizit', () => {
