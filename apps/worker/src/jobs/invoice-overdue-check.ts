@@ -9,12 +9,12 @@
 
 import { createWorker } from '../worker-factory';
 import { JOB_QUEUES } from '@taxtronik/config/job-queues';
+import { withSystemContext } from '@taxtronik/db';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { EvidenceService, LocalTimestampAdapter } from '@taxtronik/evidence';
 import { connection, type ChecksJob } from '../queues';
 import { log } from '../logger';
 import { prismaOwner } from '../prisma-owner';
-import { withWorkerTenantContext } from '../tenant-context';
 import { notify } from '../notify';
 import { resolveClientWarningRecipientsTx } from '../notification-recipients';
 import { berlinTodayUtcMidnight, wholeDaysBetween } from '../date-util';
@@ -29,6 +29,7 @@ const evidence = new EvidenceService(new LocalTimestampAdapter());
 export const invoiceOverdueWorker = createWorker<ChecksJob>(
   JOB_QUEUES.invoiceOverdue.name,
   async (job) => {
+    // S-01: Die mandantenübergreifende Tenant-Liste (nur IDs) liest der Owner-Client.
     const tenantIds = job.data.tenantId
       ? [job.data.tenantId]
       : (await prismaOwner.tenant.findMany({ select: { id: true } })).map((t) => t.id);
@@ -41,17 +42,20 @@ export const invoiceOverdueWorker = createWorker<ChecksJob>(
       // Überfällig erst ab dem Tag NACH der Fälligkeit (Zahlung am
       // Fälligkeitstag ist rechtzeitig, § 271 BGB).
       const todayMidnight = berlinTodayUtcMidnight(now);
-      const overdue = await prismaOwner.invoice.findMany({
-        where: {
-          tenantId,
-          status: 'SENT',
-          dueDate: { lt: todayMidnight },
-          // Stornorechnungen (Gutschriften, negative Beträge) sind keine offene
-          // Forderung — nicht als „überfällig" markieren.
-          stornoOfId: null,
-        },
-        include: { client: { select: { name: true } } },
-      });
+      // S-01: Kandidaten über die App-Rolle im SYSTEM-Kontext des Tenants (RLS).
+      const overdue = await withSystemContext(tenantId, (tx) =>
+        tx.invoice.findMany({
+          where: {
+            tenantId,
+            status: 'SENT',
+            dueDate: { lt: todayMidnight },
+            // Stornorechnungen (Gutschriften, negative Beträge) sind keine offene
+            // Forderung — nicht als „überfällig" markieren.
+            stornoOfId: null,
+          },
+          include: { client: { select: { name: true } } },
+        }),
+      );
 
       for (const inv of overdue) {
         // U-1: Status-Update + Notification in einer Tenant-Context-Transaktion.
@@ -61,7 +65,7 @@ export const invoiceOverdueWorker = createWorker<ChecksJob>(
         // Tagesvielfache) → am ersten Folgetag genau „1 Tag überfällig".
         const daysOverdue = wholeDaysBetween(inv.dueDate, todayMidnight);
         try {
-          const applied = await withWorkerTenantContext(tenantId, async (tx) => {
+          const applied = await withSystemContext(tenantId, async (tx) => {
             // Status-Recheck IN der Tx: zwischen findMany und hier kann die
             // Rechnung bezahlt/storniert worden sein. SENT→OVERDUE nur, solange
             // noch SENT — sonst würfe der iter85-Trigger restrict_violation

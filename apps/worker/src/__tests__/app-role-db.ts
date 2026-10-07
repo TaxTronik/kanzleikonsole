@@ -136,12 +136,96 @@ export async function createClientFixture(
 }
 
 /**
+ * Aktiver Mandant (allow_active) hinter der GwG-Schranke: dieselbe fail-closed
+ * Folge wie packages/db/src/__tests__/gwg-test-fixture.ts (DRAFT, Vertretung,
+ * Nachweis, bestätigte 1:1-Zuordnung, VERIFIED). Der Import der Vorlage ist
+ * wegen rootDir des Workers nicht möglich.
+ */
+export async function createActiveClientFixture(
+  owner: Owner,
+  tenantId: string,
+  verifiedBy: string,
+  name: string,
+): Promise<string> {
+  const clientId = await createClientFixture(owner, tenantId, name);
+  const confirmedAt = new Date();
+  await owner.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true),
+      set_config('app.current_actor_type', 'STAFF', true),
+      set_config('app.current_actor_id', ${verifiedBy}, true)`;
+    const check = await tx.gwgCheck.create({
+      data: {
+        tenantId,
+        clientId,
+        status: 'DRAFT',
+        legalForm: 'GmbH',
+        registerNumber: 'HRB TEST',
+        registerAuthority: 'Amtsgericht Teststadt',
+        representativeNames: ['Test-Vertretung'],
+        ownershipStructureNotes: 'Vollstaendiger Test-Snapshot.',
+      },
+    });
+    const representative = await tx.gwgRepresentative.create({
+      data: { gwgCheckId: check.id, fullName: 'Test-Vertretung', position: 0 },
+      select: { id: true, fullName: true },
+    });
+    const evidence = await tx.document.create({
+      data: {
+        tenantId,
+        clientId,
+        title: `Identitaetsnachweis ${check.id}`,
+        classification: 'GWG_EVIDENCE',
+        mimeType: 'image/jpeg',
+      },
+    });
+    await tx.documentVersion.create({
+      data: {
+        documentId: evidence.id,
+        versionNo: 1,
+        storageBucket: 'gwg-test',
+        storageKey: `gwg-test/${evidence.id}/v1`,
+        sha256: Buffer.alloc(32, 0x7a),
+        sizeBytes: 1n,
+        immutable: false,
+        scanStatus: 'CLEAN',
+        scanCompletedAt: confirmedAt,
+        createdById: verifiedBy,
+      },
+    });
+    await tx.gwgIdDocument.create({
+      data: {
+        gwgCheckId: check.id,
+        type: 'PERSONALAUSWEIS',
+        ownerName: representative.fullName,
+        documentId: evidence.id,
+        representativeSubjectId: representative.id,
+        identityAssignmentConfirmedAt: confirmedAt,
+        identityAssignmentConfirmedBy: verifiedBy,
+        number: `TEST-${check.id}`,
+        issuedBy: 'Testbehoerde',
+        issueDate: new Date('2020-01-01T00:00:00.000Z'),
+        expiryDate: new Date('2099-12-31T00:00:00.000Z'),
+        verifiedAt: confirmedAt,
+      },
+    });
+    await tx.gwgCheck.update({
+      where: { id: check.id },
+      data: { status: 'VERIFIED', verifiedAt: confirmedAt, verifiedBy },
+    });
+  });
+  await owner.client.update({ where: { id: clientId }, data: { allowActive: true } });
+  return clientId;
+}
+
+/**
  * Löscht die Fixture-Tenants samt Kaskade. Tenants mit append-only Audit-Zeilen
- * bleiben wie in den übrigen DB-Suiten in der Wegwerf-Datenbank stehen.
+ * oder aufbewahrungspflichtigen GwG-Prüfungen bleiben wie in den übrigen
+ * DB-Suiten in der Wegwerf-Datenbank stehen.
  */
 export async function deleteTenantFixtures(owner: Owner, tenantIds: readonly string[]) {
   for (const tenantId of tenantIds.filter(Boolean)) {
     if ((await owner.auditLog.count({ where: { tenantId } })) > 0) continue;
+    if ((await owner.gwgCheck.count({ where: { tenantId } })) > 0) continue;
     await owner.tenant.delete({ where: { id: tenantId } });
   }
 }

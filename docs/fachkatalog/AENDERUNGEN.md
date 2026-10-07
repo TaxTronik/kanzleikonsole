@@ -1,5 +1,25 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-026
+    date: '2026-10-07'
+    paths:
+      - apps/worker/src/jobs/invoice-overdue-check.ts
+    rule_ids:
+      - ACCESS-NOTIFICATION-RECIPIENT-001
+      - INV-DUE-OVERDUE-001
+    reason: >-
+      Die Prüfung überfälliger Rechnungen (`invoice-overdue-check`) sucht versendete
+      Rechnungen und setzt sie samt Audit-Ereignis und Benachrichtigung über die
+      App-Rolle im SYSTEM-Kontext des Tenants (Row-Level-Security) statt über die
+      Owner-Verbindung mit BYPASSRLS auf `OVERDUE`; nur die mandantenübergreifende
+      Tenant-Liste bleibt auf der Owner-Verbindung. Fälligkeitslogik, Empfänger
+      (einschließlich Ersatzempfänger) und Idempotenz bleiben unverändert; eine
+      PostgreSQL-Suite belegt das und dass Rechnungen fremder Tenants unsichtbar und
+      unverändert bleiben. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/invoice-overdue-check-db.test.ts
+      - apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-025
     date: '2026-10-07'
     paths:
@@ -4694,6 +4714,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-026` dokumentiert die Prüfung überfälliger
+  Rechnungen über die App-Rolle.
 
 - 2026-10-07: `FK-EXC-20261007-025` dokumentiert die KI-Anreicherung von
   Risikoanalysen über die App-Rolle.

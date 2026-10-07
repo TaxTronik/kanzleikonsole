@@ -28,10 +28,10 @@ const h = vi.hoisted(() => {
   }
   const prismaOwner = {
     tenant: { findMany: vi.fn() },
-    invoice: { findMany: vi.fn() },
   };
   const tx = {
-    invoice: { updateMany: vi.fn() },
+    // S-01: Kandidaten und Statuswechsel laufen über die App-Rolle (withSystemContext).
+    invoice: { findMany: vi.fn(), updateMany: vi.fn() },
     // ADMIN/PARTNER-Fallback des gemeinsamen Empfängerfilters
     staffUser: { findMany: vi.fn() },
   };
@@ -42,8 +42,8 @@ const h = vi.hoisted(() => {
       new Set(ids.filter((id) => !withoutAccess.has(id))),
   );
   const notify = vi.fn();
-  const withWorkerTenantContext = vi.fn(
-    async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(tx),
+  const withSystemContext = vi.fn(async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) =>
+    fn(tx),
   );
   const record = vi.fn();
   return {
@@ -52,7 +52,7 @@ const h = vi.hoisted(() => {
     tx,
     withoutAccess,
     filterStaffAccessClientTx,
-    withWorkerTenantContext,
+    withSystemContext,
     record,
     notify,
   };
@@ -64,7 +64,7 @@ vi.mock('../../prisma-owner', () => ({ prismaOwner: h.prismaOwner }));
 vi.mock('../../logger', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock('../../tenant-context', () => ({ withWorkerTenantContext: h.withWorkerTenantContext }));
+vi.mock('@taxtronik/db', () => ({ withSystemContext: h.withSystemContext }));
 vi.mock('../../notify', () => ({ notify: h.notify }));
 vi.mock('@taxtronik/db/staff-client-access', () => ({
   filterStaffAccessClientTx: h.filterStaffAccessClientTx,
@@ -118,7 +118,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(FIXED_NOW);
   vi.resetAllMocks();
-  h.withWorkerTenantContext.mockImplementation(
+  h.withSystemContext.mockImplementation(
     async (_tenantId: string, fn: (t: unknown) => Promise<unknown>) => fn(h.tx),
   );
   h.withoutAccess.clear();
@@ -128,7 +128,7 @@ beforeEach(() => {
   );
   h.tx.staffUser.findMany.mockResolvedValue([{ id: 'admin-1' }, { id: 'partner-1' }]);
   h.prismaOwner.tenant.findMany.mockResolvedValue([{ id: TENANT }]);
-  h.prismaOwner.invoice.findMany.mockResolvedValue([]);
+  h.tx.invoice.findMany.mockResolvedValue([]);
   h.tx.invoice.updateMany.mockResolvedValue({ count: 1 });
   h.notify.mockResolvedValue({ created: 1, updated: 0 });
   h.record.mockResolvedValue({});
@@ -140,13 +140,13 @@ afterEach(() => {
 
 describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
   it('setzt OVERDUE, schreibt invoice.overdue und Notification auf demselben Tx-Client', async () => {
-    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.tx.invoice.findMany.mockResolvedValue([invoice()]);
 
     const result = await run();
 
     // Nur SENT-Rechnungen, deren Fälligkeit VOR dem heutigen Tagesbeginn liegt
     // (Zahlung am Fälligkeitstag ist rechtzeitig → nicht überfällig).
-    expect(h.prismaOwner.invoice.findMany).toHaveBeenCalledWith(
+    expect(h.tx.invoice.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           tenantId: TENANT,
@@ -156,8 +156,9 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
         },
       }),
     );
-    expect(h.withWorkerTenantContext).toHaveBeenCalledTimes(1);
-    expect(h.withWorkerTenantContext.mock.calls[0]![0]).toBe(TENANT);
+    // Kandidaten-Read und Statuswechsel: je eine Transaktion im Kontext des Tenants.
+    expect(h.withSystemContext).toHaveBeenCalledTimes(2);
+    expect(h.withSystemContext.mock.calls.map((call) => call[0])).toEqual([TENANT, TENANT]);
     // Status-Recheck IN der Tx: nur SENT → OVERDUE (sonst würfe der Trigger).
     expect(h.tx.invoice.updateMany).toHaveBeenCalledWith({
       where: { id: 'inv-1', status: 'SENT' },
@@ -195,7 +196,7 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
   });
 
   it('Singular bei genau 1 Tag Verzug', async () => {
-    h.prismaOwner.invoice.findMany.mockResolvedValue([
+    h.tx.invoice.findMany.mockResolvedValue([
       invoice({ dueDate: new Date(FIXED_NOW.getTime() - DAY) }),
     ]);
 
@@ -209,7 +210,7 @@ describe('U-1/RF-8: Statuswechsel + Audit + Notification in einer Tx', () => {
 
 describe('Idempotenz der Notification', () => {
   it('ungelesene INVOICE_OVERDUE-Notification wird aktualisiert, nicht neu gezählt', async () => {
-    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.tx.invoice.findMany.mockResolvedValue([invoice()]);
     // notify() aktualisiert die offene Notification desselben Schlüssels.
     h.notify.mockResolvedValue({ created: 0, updated: 1 });
 
@@ -223,7 +224,7 @@ describe('Idempotenz der Notification', () => {
 
 describe('Fehlerbehandlung', () => {
   it('P2002 (paralleler Notification-Insert) wird geschluckt, die nächste Rechnung läuft weiter', async () => {
-    h.prismaOwner.invoice.findMany.mockResolvedValue([
+    h.tx.invoice.findMany.mockResolvedValue([
       invoice(),
       invoice({ id: 'inv-2', number: 'RE-2026-0002' }),
     ]);
@@ -243,7 +244,7 @@ describe('Fehlerbehandlung', () => {
   });
 
   it('andere Fehler propagieren (Job schlägt fehl)', async () => {
-    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.tx.invoice.findMany.mockResolvedValue([invoice()]);
     h.tx.invoice.updateMany.mockRejectedValueOnce(new Error('connection lost'));
 
     await expect(run()).rejects.toThrow('connection lost');
@@ -253,7 +254,7 @@ describe('Fehlerbehandlung', () => {
     // Review-Fix: zwischen findMany und Update kann die Rechnung den Status
     // verlassen haben. updateMany trifft dann nichts (count 0) — die Rechnung
     // wird übersprungen statt den Trigger (restrict_violation) auszulösen.
-    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.tx.invoice.findMany.mockResolvedValue([invoice()]);
     h.tx.invoice.updateMany.mockResolvedValueOnce({ count: 0 });
 
     const result = await run();
@@ -277,7 +278,7 @@ describe('A6: Empfänger bei inaktivem oder fehlendem Ersteller', () => {
     ['nicht mehr vorhanden', 'staff-deleted'],
   ])('Ersteller %s: aktive ADMIN/PARTNER erhalten die Meldung', async (_name, creator) => {
     h.withoutAccess.add(creator);
-    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice({ createdByStaff: creator })]);
+    h.tx.invoice.findMany.mockResolvedValue([invoice({ createdByStaff: creator })]);
     h.notify.mockResolvedValue({ created: 2, updated: 0 });
 
     const result = await run();
@@ -312,7 +313,7 @@ describe('A6: Empfänger bei inaktivem oder fehlendem Ersteller', () => {
   it('ohne aktuellen Mandantenzugriff des Erstellers gilt derselbe Fallback, nur berechtigte ADMIN/PARTNER', async () => {
     h.withoutAccess.add('staff-1');
     h.withoutAccess.add('admin-1');
-    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.tx.invoice.findMany.mockResolvedValue([invoice()]);
 
     await run();
 
@@ -321,7 +322,7 @@ describe('A6: Empfänger bei inaktivem oder fehlendem Ersteller', () => {
 
   it('aktualisiert offene Meldungen je Empfänger statt sie zu duplizieren', async () => {
     h.withoutAccess.add('staff-1');
-    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.tx.invoice.findMany.mockResolvedValue([invoice()]);
     h.notify.mockResolvedValue({ created: 0, updated: 2 });
 
     const result = await run();
@@ -335,7 +336,7 @@ describe('A6: Empfänger bei inaktivem oder fehlendem Ersteller', () => {
   it('ohne berechtigten Empfänger: Status und Audit, keine Meldung, Warnung im Log', async () => {
     h.withoutAccess.add('staff-1');
     h.tx.staffUser.findMany.mockResolvedValue([]);
-    h.prismaOwner.invoice.findMany.mockResolvedValue([invoice()]);
+    h.tx.invoice.findMany.mockResolvedValue([invoice()]);
     h.notify.mockResolvedValue({ created: 0, updated: 0 });
 
     const result = await run();
