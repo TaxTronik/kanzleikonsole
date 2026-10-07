@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-008
+    date: '2026-10-07'
+    paths:
+      - packages/db/prisma/migrations/20261007100100_inbound_attachment_status_check/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - MAIL-INBOX-001
+    reason: >-
+      `inbound_attachment.status` erhält einen CHECK auf die Werte, die IMAP-Abruf
+      und Postfach-Archivierung schreiben (PENDING, SCAN_ERROR, BLOCKED, CLEAN,
+      IMPORTING, IMPORTED). Abweichende Bestandswerte lassen die Migration mit Wert
+      und Anzahl abbrechen. Annahme, Scan, Freigabe und Ablage von Anhängen bleiben
+      unverändert; die Datenbank weist nur Werte ab, die der Code nie schreibt.
+      `risk_marking.engine_status` bleibt bewusst freier Text. Keine fachliche
+      Freigabe.
+    tests:
+      - packages/db/src/__tests__/status-text-checks.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-007
     date: '2026-10-07'
     paths:
@@ -4221,6 +4239,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-008` dokumentiert den CHECK auf den
+  Status eingehender E-Mail-Anhänge.
 
 - 2026-10-07: `FK-EXC-20261007-007` dokumentiert die zusätzlichen
   CI-Prüfungen der kanonischen SQL-Quellen nach dem Upgrade-Pfad und der

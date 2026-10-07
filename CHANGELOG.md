@@ -235,6 +235,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Der Status von E-Mail-Anhängen (`inbound_attachment.status`) ist per CHECK
+  auf die vom Code geschriebenen Werte beschränkt; abweichende Bestandswerte
+  lassen die Migration mit Wert und Anzahl abbrechen (`MAIL-INBOX-001`).
+  `risk_marking.engine_status` bleibt bewusst freier Text (Rohwert der externen
+  Engine).
 - Die CI prüft die kanonischen SQL-Quellen auch nach dem Upgrade vom letzten
   Release (`pnpm db:sql:check` im Job `upgrade-path`) und führt die Node-Tests
   des Migrations-Ledgers im Quality-Job aus.

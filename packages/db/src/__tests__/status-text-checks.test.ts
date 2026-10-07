@@ -3,7 +3,9 @@
 //
 // Review-Finding D-07: inbound_message.status und bwa_plan.status nehmen nur
 // die Werte an, die der Code schreibt (packages/mail/src/imap.ts bzw.
-// CreateBwaPlanSchema/UpdateBwaPlanSchema in apps/web/src/server/bwa/plans.ts).
+// CreateBwaPlanSchema/UpdateBwaPlanSchema in apps/web/src/server/bwa/plans.ts),
+// ebenso inbound_attachment.status (imap.ts und die Archivübernahme in
+// apps/web/src/app/staff/(protected)/mailbox/actions.ts).
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PrismaClient } from '../prisma-client';
@@ -22,10 +24,12 @@ const owner = new PrismaClient({
 let tenantId: string | undefined;
 let mailboxId: string;
 let messageId: string;
+let attachmentId: string;
 let planId: string;
 
 afterAll(async () => {
   if (tenantId) {
+    await owner.inboundAttachment.deleteMany({ where: { message: { mailboxId } } });
     await owner.inboundMessage.deleteMany({ where: { mailboxId } });
     await owner.inboundMailbox.deleteMany({ where: { tenantId } });
     await owner.bwaPlan.deleteMany({ where: { tenantId } });
@@ -55,6 +59,18 @@ describeWithDatabase('Status-CHECKs ohne Enum (D-07)', () => {
     });
     messageId = message.id;
     expect(message.status).toBe('PENDING');
+    const attachment = await owner.inboundAttachment.create({
+      data: {
+        messageId,
+        part: 0,
+        filename: 'beleg.pdf',
+        mimeType: 'application/pdf',
+        sha256: 'a'.repeat(64),
+        sizeBytes: 1,
+      },
+    });
+    attachmentId = attachment.id;
+    expect(attachment.status).toBe('PENDING');
     const plan = await owner.bwaPlan.create({
       data: {
         tenantId,
@@ -73,13 +89,24 @@ describeWithDatabase('Status-CHECKs ohne Enum (D-07)', () => {
     const rows = await owner.$queryRaw<Array<{ name: string; def: string; validated: boolean }>>`
       SELECT conname::text AS name, pg_get_constraintdef(oid) AS def, convalidated AS validated
         FROM pg_constraint
-       WHERE conname IN ('inbound_message_status_check', 'bwa_plan_status_check')
+       WHERE conname IN (
+         'inbound_message_status_check',
+         'inbound_attachment_status_check',
+         'bwa_plan_status_check'
+       )
        ORDER BY conname
     `;
     expect(rows).toEqual([
       {
         name: 'bwa_plan_status_check',
         def: "CHECK ((status = ANY (ARRAY['DRAFT'::text, 'FINAL'::text])))",
+        validated: true,
+      },
+      {
+        name: 'inbound_attachment_status_check',
+        def:
+          "CHECK ((status = ANY (ARRAY['PENDING'::text, 'SCAN_ERROR'::text, 'BLOCKED'::text, " +
+          "'CLEAN'::text, 'IMPORTING'::text, 'IMPORTED'::text])))",
         validated: true,
       },
       {
@@ -100,6 +127,25 @@ describeWithDatabase('Status-CHECKs ohne Enum (D-07)', () => {
       ).rejects.toThrow(/inbound_message_status_check/);
     }
     const row = await owner.inboundMessage.findUniqueOrThrow({ where: { id: messageId } });
+    expect(row.status).toBe('PENDING');
+  });
+
+  it('nimmt die Anhangstatus von IMAP-Abruf und Archivübernahme an und weist andere ab', async () => {
+    for (const status of ['SCAN_ERROR', 'BLOCKED', 'CLEAN', 'IMPORTING', 'IMPORTED', 'PENDING']) {
+      await owner.inboundAttachment.update({ where: { id: attachmentId }, data: { status } });
+    }
+    for (const status of ['DONE', 'clean', 'INFECTED', '']) {
+      await expect(
+        owner.$executeRaw`UPDATE inbound_attachment SET status = ${status} WHERE id = ${attachmentId}::uuid`,
+      ).rejects.toThrow(/inbound_attachment_status_check/);
+    }
+    await expect(
+      owner.$executeRaw`
+        INSERT INTO inbound_attachment (message_id, part, filename, mime_type, sha256, size_bytes, status)
+        VALUES (${messageId}::uuid, 1, 'x.pdf', 'application/pdf', ${'b'.repeat(64)}, 1, 'QUARANTINE')
+      `,
+    ).rejects.toThrow(/inbound_attachment_status_check/);
+    const row = await owner.inboundAttachment.findUniqueOrThrow({ where: { id: attachmentId } });
     expect(row.status).toBe('PENDING');
   });
 

@@ -585,6 +585,10 @@ model InboundMessage {
   @@map("inbound_message")
 }
 
+// D-07: status ist Text mit CHECK inbound_attachment_status_check (PENDING,
+// SCAN_ERROR, BLOCKED, CLEAN aus packages/mail/src/imap.ts; IMPORTING, IMPORTED
+// aus der Archivübernahme der Mailbox). Neue Werte brauchen eine Migration, die
+// den CHECK erweitert.
 model InboundAttachment {
   id         String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   messageId  String         @map("message_id") @db.Uuid
