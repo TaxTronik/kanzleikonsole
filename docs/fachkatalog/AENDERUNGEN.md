@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-045
+    date: '2026-10-07'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+    reason: >-
+      Die neuen PostgreSQL-Suiten dieser Welle (Worker- und Web-Suiten der
+      S-01-Folgearbeit, Seitenzahl-Nachtrag, Mail-Versand) akzeptieren wie die
+      übrigen Suiten `DB_TESTS=1` und scheitern mit `CI=true` ohne Opt-in;
+      `@taxtronik/mail` erhält den Glob-Lauf im db-CI-Job samt archiviertem
+      Protokoll. Testinhalte und geprüfte Fachlogik bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - scripts/tests/db-suites-ci.test.mjs
+      - packages/mail/src/__tests__/dispatch-db.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-044
     date: '2026-10-07'
     paths:
@@ -5145,6 +5164,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-045` dokumentiert die CI-Einbindung der neuen
+  PostgreSQL-Suiten.
 
 - 2026-10-07: `FK-EXC-20261007-044` dokumentiert die Glob-Ausführung der
   PostgreSQL-Suiten im db-CI-Job.

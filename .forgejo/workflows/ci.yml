@@ -314,6 +314,16 @@ jobs:
           set -o pipefail
           pnpm --filter @taxtronik/worker run test:db 2>&1 | tee testbericht-worker-db.log
 
+      # S-01: der gemeinsame Mail-Versand (packages/mail) liest Vorlagen und
+      # Empfänger über die App-Rolle; SMTP ist eine Attrappe, eigene Tenants.
+      - name: Mail-DB-Suiten gegen PostgreSQL (Glob)
+        env:
+          DB_TESTS: '1'
+          DATABASE_URL: postgresql://taxtronik_owner:taxtronik_owner@localhost:15433/taxtronik?schema=public
+        run: |
+          set -o pipefail
+          pnpm --filter @taxtronik/mail run test:db 2>&1 | tee testbericht-mail-db.log
+
       # service-db.test.ts ist Nachweis für MANDATE-STRUCTURE-001,
       # GWG-BENEFICIAL-OWNERS-001, GWG-RISK-REVIEW-001 und
       # GWG-RETENTION-DESTRUCTION-001. Die Suite verlangt eine ausdrücklich
@@ -361,6 +371,7 @@ jobs:
             testbericht-web-db.log
             testbericht-evidence-db.log
             testbericht-worker-db.log
+            testbericht-mail-db.log
             testbericht-mandate-services.log
           if-no-files-found: ignore
 

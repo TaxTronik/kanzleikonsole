@@ -27,7 +27,14 @@ import {
   type Owner,
 } from '../../__tests__/app-role-db';
 
-const enabled = process.env['WORKER_DB_TEST'] === '1';
+// B-02: lokal per WORKER_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
+// *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.
+const enabled = process.env['WORKER_DB_TEST'] === '1' || process.env['DB_TESTS'] === '1';
+if (!enabled && process.env['CI'] === 'true') {
+  throw new Error(
+    'WORKER_DB_TEST=1 oder DB_TESTS=1 fehlt: in CI wird keine DB-Suite übersprungen.',
+  );
+}
 if (enabled) assertLoopbackDatabases('WORKER_DB_TEST');
 
 vi.mock('bullmq', () => import('./mocks/bullmq'));

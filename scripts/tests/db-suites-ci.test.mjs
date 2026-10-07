@@ -83,7 +83,7 @@ test('eine neue Suite mit Wache laeuft ohne Workflow-Aenderung im Glob-Schritt',
 test('meldet Suiten ohne CI-Wache, ohne DB_TESTS und in Paketen ohne Glob-Lauf', () => {
   const workflow = freshWorkflow();
   const unguarded = 'apps/web/src/server/new-feature/__tests__/unguarded-db.test.ts';
-  const foreign = 'packages/mail/src/__tests__/outbox-db.test.ts';
+  const foreign = 'packages/crypto/src/__tests__/keyring-db.test.ts';
   const reader = (file) =>
     file === unguarded
       ? "const enabled = process.env['NEW_DB_TEST'] === '1';"
@@ -100,7 +100,7 @@ test('meldet Suiten ohne CI-Wache, ohne DB_TESTS und in Paketen ohne Glob-Lauf',
   assert.match(problems.join('\n'), /unguarded-db\.test\.ts: wird nicht per DB_TESTS=1/);
   assert.match(
     problems.join('\n'),
-    /outbox-db\.test\.ts: Paket packages\/mail hat keinen Glob-Lauf/,
+    /keyring-db\.test\.ts: Paket packages\/crypto hat keinen Glob-Lauf/,
   );
 });
 

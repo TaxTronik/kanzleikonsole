@@ -35,6 +35,7 @@ export const DB_SUITE_PACKAGES = [
   { name: '@taxtronik/web', dir: 'apps/web', log: 'testbericht-web-db.log' },
   { name: '@taxtronik/worker', dir: 'apps/worker', log: 'testbericht-worker-db.log' },
   { name: '@taxtronik/evidence', dir: 'packages/evidence', log: 'testbericht-evidence-db.log' },
+  { name: '@taxtronik/mail', dir: 'packages/mail', log: 'testbericht-mail-db.log' },
 ];
 
 /** Paket, dessen gesamte Suite der db-Job ausfuehrt. */

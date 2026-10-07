@@ -19,7 +19,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { createVerifiedLegalEntityGwgFixture } from '../../../../../../packages/db/src/__tests__/gwg-test-fixture';
 
-const enabled = process.env['N8N_OPERATIONS_DB_TEST'] === '1';
+// B-02: lokal per N8N_OPERATIONS_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
+// *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.
+const enabled = process.env['N8N_OPERATIONS_DB_TEST'] === '1' || process.env['DB_TESTS'] === '1';
+if (!enabled && process.env['CI'] === 'true') {
+  throw new Error(
+    'N8N_OPERATIONS_DB_TEST=1 oder DB_TESTS=1 fehlt: in CI wird keine DB-Suite übersprungen.',
+  );
+}
 if (enabled) {
   for (const name of ['DATABASE_URL', 'DATABASE_APP_URL']) {
     let url: URL;

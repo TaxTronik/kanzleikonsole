@@ -20,7 +20,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --exclude \"**/*-db.test.{ts,tsx}\"",
+    "test:db": "vitest run --config vitest.db.config.ts"
   },
   "dependencies": {
     "@azure/msal-node": "5.6.0",
