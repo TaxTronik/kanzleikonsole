@@ -12,6 +12,7 @@ import {
   createPendingDocumentWithVersion,
   finalizePendingDocumentVersion,
 } from '@/server/documents/upload-helpers';
+import { identityPdfPageCountForUpload } from '@/server/gwg/identity-pdf-pages';
 
 export type ResumableDocumentUploadPhase = 'prepare' | 'resume' | 'journal' | 'commit' | 'finalize';
 
@@ -234,6 +235,7 @@ export async function persistResumableDocumentUpload(
   } else {
     let fileData: Buffer;
     let prepared: PreparedBytesCommit;
+    let pdfPageCount: number | null;
     try {
       fileData = await options.readBytes();
       prepared = await prepareBytesCommitWithTier({
@@ -249,6 +251,15 @@ export async function persistResumableDocumentUpload(
         throw new ResumableDocumentUploadInvariantError('PREPARED_TENANT_MISMATCH');
       }
       await options.validatePrepared?.(prepared);
+      // P-13: Seitenzahl einer PDF-Ausweisquelle (GwG-Beleg) aus genau diesen
+      // Bytes, vor jeder Transaktion im begrenzten Worker-Thread; für alle
+      // anderen Dokumente `null` ohne Parsing. Ein Fehlschlag verhindert den
+      // Upload nicht (Nachtrag bzw. Zählung vor der Ausschnittsprüfung).
+      pdfPageCount = await identityPdfPageCountForUpload({
+        classification: options.documentData.classification,
+        mimeType: options.documentData.mimeType,
+        bytes: fileData,
+      });
     } catch (cause) {
       throw new ResumableDocumentUploadError('prepare', cause);
     }
@@ -260,6 +271,7 @@ export async function persistResumableDocumentUpload(
           documentData: { ...options.documentData, tenantId },
           prepared,
           createdById: options.createdById,
+          pdfPageCount,
         });
         const journal = {
           documentId: created.document.id,

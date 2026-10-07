@@ -1,5 +1,31 @@
 ---
 exceptions:
+  - id: FK-EXC-20261007-017
+    date: '2026-10-07'
+    paths:
+      - apps/web/src/server/documents/__tests__/resumable-upload.test.ts
+      - apps/web/src/server/documents/resumable-upload.ts
+      - apps/web/src/server/gwg/identity-pdf-pages.ts
+      - packages/db/prisma/migrations/20261007160000_document_version_pdf_page_count_checked/migration.sql
+      - packages/db/prisma/schema.prisma
+    rule_ids:
+      - DOC-UPLOAD-JOURNAL-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+    reason: >-
+      Fortsetzbare Uploads (übernommene Posteingangsanlagen, Postfach-Import mit
+      GwG-Dokumenttyp) zählen die Seiten von GWG_EVIDENCE-PDFs beim Vorbereiten der
+      Bytes außerhalb jeder Transaktion mit demselben Parser und denselben Grenzen
+      wie bisher; ein täglicher, idempotenter Backfill-Job (App-Rolle, Batches,
+      Laufzeitbudget) trägt die Seitenzahl älterer Versionen nach und vermerkt den
+      Versuch in `document_version.pdf_page_count_checked_at`. Prüfregeln,
+      Seitengrenzen und Ergebnisse der GwG-Prüfung bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - apps/web/src/server/documents/__tests__/resumable-upload.test.ts
+      - apps/worker/src/jobs/__tests__/pdf-page-count-backfill.test.ts
+      - apps/worker/src/jobs/__tests__/pdf-page-count-backfill-db.test.ts
+      - packages/db/src/__tests__/document-version-pdf-page-count.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-016
     date: '2026-10-07'
     paths:
@@ -4462,6 +4488,9 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-07: `FK-EXC-20261007-017` dokumentiert die Seitenzählung bei
+  fortsetzbaren Uploads und den nächtlichen Seitenzahl-Backfill.
 
 - 2026-10-07: `FK-EXC-20261007-016` dokumentiert die mengenbasierte
   Sichtbarkeitsprüfung der Mandate in der Workflow-Abhängigkeitsübersicht.

@@ -2437,6 +2437,9 @@ model DocumentVersion {
   /// P-13: Seitenzahl einer PDF-Ausweisquelle, beim Upload aus genau diesen
   /// Bytes ermittelt (NULL: kein PDF, nicht lesbar oder Altbestand).
   pdfPageCount                Int?                         @map("pdf_page_count")
+  /// P-13: vom Nachtrag (Worker-Job pdf-page-count-backfill) abschließend
+  /// geprüft, gezählt oder nicht lesbar (NULL: nicht geprüft).
+  pdfPageCountCheckedAt       DateTime?                    @map("pdf_page_count_checked_at") @db.Timestamptz(6)
   createdById                 String                       @map("created_by_id") @db.Uuid
   createdAt                   DateTime                     @default(now()) @map("created_at")
   document                    Document                     @relation(fields: [documentId], references: [id], onDelete: Cascade)

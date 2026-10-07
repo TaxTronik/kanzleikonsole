@@ -94,6 +94,7 @@ describe('shared BullMQ metadata', () => {
       'poa-expiry-check': 'Europe/Berlin',
       'backup-run': 'UTC',
       'backup-drill': 'UTC',
+      'pdf-page-count-backfill': 'UTC',
       'n8n-retention': 'UTC',
     });
   });
@@ -125,6 +126,7 @@ describe('shared BullMQ metadata', () => {
       'workflow-auto-resume @ every 5 min',
       'storage-orphan-cleanup @ every 6 h',
       'portal-inbox-cleanup @ every 6 h',
+      'pdf-page-count-backfill @ 04:30 UTC daily',
       'n8n-retention @ 03:45 UTC daily',
       'mail-outbox-deliver @ every 1 min',
     ]);

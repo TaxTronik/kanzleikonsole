@@ -350,6 +350,19 @@ export const JOB_QUEUES = {
       expectedMaxGapMs: 6 * HOUR,
     },
   },
+  pdfPageCountBackfill: {
+    name: 'pdf-page-count-backfill',
+    schedule: {
+      // P-13: zählt fehlende Seitenzahlen von PDF-Ausweisquellen nach
+      // (Altbestand, nachträglich eingestufte GwG-Belege). Lädt Originale aus
+      // dem Objektspeicher und parst sie im Worker-Thread, deshalb nachts;
+      // je Lauf bis zum Zeitbudget der Wartungsjobs, Rest im nächsten Lauf.
+      schedulerId: 'daily-pdf-page-count-backfill',
+      repeat: { pattern: '30 4 * * *', tz: UTC },
+      jobOptions: DAILY_RETRY,
+      expectedMaxGapMs: DAY,
+    },
+  },
   n8nRetention: {
     name: 'n8n-retention',
     schedule: {
@@ -523,6 +536,7 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.workflowAutoResume.name]: EmptyJob;
   [JOB_QUEUES.storageOrphanCleanup.name]: EmptyJob;
   [JOB_QUEUES.portalInboxCleanup.name]: EmptyJob;
+  [JOB_QUEUES.pdfPageCountBackfill.name]: EmptyJob;
   [JOB_QUEUES.n8nRetention.name]: EmptyJob;
   [JOB_QUEUES.riskAnalyseLlm.name]: RiskAnalyseLlmJob;
   [JOB_QUEUES.reminderDoneNotify.name]: ReminderDoneNotifyJob;

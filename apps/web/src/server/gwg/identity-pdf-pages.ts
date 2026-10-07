@@ -10,44 +10,31 @@
 // beides im begrenzten Worker-Thread aus @taxtronik/mail (wie die
 // Mail-Anhangsprüfung). pdf-lib lädt mit denselben Optionen wie bisher im
 // Hauptthread, damit dieselben PDFs als lesbar gelten und dieselbe Seitenzahl
-// ergeben.
+// ergeben. Programm und Grenzen teilt die Web-App mit dem Nachtrag des Workers
+// (@taxtronik/mail/pdf-page-count, Job pdf-page-count-backfill).
 // =============================================================================
 
 import { runBoundedWorker, type BoundedWorkerLimits } from '@taxtronik/mail/bounded-worker';
+import {
+  PDF_PAGE_COUNT_LIMITS,
+  PDF_PAGE_COUNT_PROGRAM_BODY,
+  pdfPageCountOutcome,
+  pdfPageCountValue,
+} from '@taxtronik/mail/pdf-page-count';
 import { log } from '@/server/logger';
 import { LOAD_PARSER_SOURCE, workerParserBases } from '@/server/util/worker-parser';
 
-/**
- * Großzügig für Ausweisquellen bis 25 MiB: Ein synthetisches 25-MiB-PDF mit
- * 40.000 Seiten brauchte lokal rund 3,6 s und 220 MiB RSS-Zuwachs, ein
- * Ausweisscan (ein Bild) unter 0,3 s. Was darüber liegt, gilt als nicht
- * lesbar, statt den Webprozess zu blockieren.
- */
-export const IDENTITY_PDF_PAGE_COUNT_LIMITS: BoundedWorkerLimits = {
-  timeoutMs: 30_000,
-  rssBudgetBytes: 512 * 1024 * 1024,
-  maxOldGenerationSizeMb: 256,
-  maxYoungGenerationSizeMb: 32,
-  stackSizeMb: 4,
-};
+/** Grenzen der Zählung (dieselben wie im Nachtrag des Workers). */
+export const IDENTITY_PDF_PAGE_COUNT_LIMITS: BoundedWorkerLimits = PDF_PAGE_COUNT_LIMITS;
 
-// Nur dieses feste Programm wird ausgewertet; die Dateibytes sind Daten. Die
-// Ladeoptionen entsprechen dem bisherigen Aufruf in validateIdentityViewportsTx.
+// Nur dieses feste Programm wird ausgewertet; die Dateibytes sind Daten.
 // pdf-lib wird außerhalb des try geladen: Fehlt der Parser, endet der Thread
 // mit einem Fehler statt mit einer scheinbar unlesbaren Datei.
 const PAGE_COUNT_WORKER = `
 const { parentPort, workerData } = require('node:worker_threads');
 ${LOAD_PARSER_SOURCE}
 const { PDFDocument } = loadParser('pdf-lib');
-(async () => {
-  try {
-    const document = await PDFDocument.load(workerData.bytes, { updateMetadata: false });
-    parentPort.postMessage(document.getPageCount());
-  } catch {
-    parentPort.postMessage(null);
-  }
-})();
-`;
+${PDF_PAGE_COUNT_PROGRAM_BODY}`;
 
 /**
  * Seitenzahl laut pdf-lib oder `null`, wenn die Datei nicht gelesen werden
@@ -69,9 +56,7 @@ export async function countIdentityPdfPages(
       'PDF-Seitenzählung: Worker-Thread ohne Ergebnis',
     );
   }
-  return result.ok && Number.isSafeInteger(result.value) && (result.value as number) >= 0
-    ? (result.value as number)
-    : null;
+  return pdfPageCountValue(pdfPageCountOutcome(result));
 }
 
 const PDF_MAGIC = Buffer.from('%PDF-', 'latin1');

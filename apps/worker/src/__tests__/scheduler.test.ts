@@ -69,6 +69,12 @@ const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
   workflowAutoResume: ['workflow-auto-resume', { every: 5 * MINUTE }, undefined],
   storageOrphanCleanup: ['storage-orphan-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
   portalInboxCleanup: ['portal-inbox-cleanup', { every: 6 * 60 * MINUTE }, DAILY_RETRY],
+  // P-13: new nightly scheduler (S3 reads and PDF parsing outside office hours).
+  pdfPageCountBackfill: [
+    'daily-pdf-page-count-backfill',
+    { pattern: '30 4 * * *', tz: UTC },
+    DAILY_RETRY,
+  ],
   n8nRetention: ['daily-n8n-retention', { pattern: '45 3 * * *', tz: UTC }, DAILY_RETRY],
   // F-08: new scheduler, no retry (state lives in mail_outbox; runs every minute).
   mailOutboxDeliver: ['mail-outbox-deliver', { every: MINUTE }, undefined],

@@ -94,11 +94,20 @@ ein abweichendes Objekt wird abgewiesen, niemals stillschweigend verwendet.
 Eine spätere Erweiterung um explizite Objectstore-Version-Reads wäre sinnvoll.
 
 Die Seitenzahl einer PDF-Ausweisquelle wird beim Upload (Staff-Upload, neue
-Version, Onboarding) einmalig aus genau diesen Bytes im begrenzten
-Worker-Thread gezählt und an der Dokumentversion gespeichert
+Version, Onboarding sowie alle wiederaufnehmbaren Uploads, darunter die
+Übernahme von Portal-Posteingangsanlagen und Mailbox-Anhängen mit
+GwG-Dokumenttyp) einmalig aus genau diesen Bytes im begrenzten Worker-Thread
+gezählt und an der Dokumentversion gespeichert
 (`document_version.pdf_page_count`, P-13). Die Ausschnittsprüfung unter
-Lifecycle-Lock liest deshalb keine Bytes mehr. Für Altbestand ohne
-gespeicherten Wert zählt die Aktion vor der Transaktion (Download, Längen- und
+Lifecycle-Lock liest deshalb keine Bytes mehr. Für Versionen ohne gespeicherten
+Wert (Altbestand, nachträglich als GwG-Beleg eingestufte Dokumente) zählt der
+nächtliche Worker-Job `pdf-page-count-backfill` nach: nur die neueste Version
+nicht zugeordneter GwG-PDFs, mit Längen- und Hashprüfung, demselben Programm und
+denselben Grenzen (`@taxtronik/mail/pdf-page-count`), in Stapeln unter der
+App-Rolle bis zum Zeitbudget der Wartungsjobs; gezählte und nicht lesbare
+Versionen erhalten `pdf_page_count_checked_at`. Versionen zugeordneter Belege
+sperrt der GwG-Trigger gegen jede Änderung; für sie und alles noch nicht
+Nachgetragene zählt die Aktion vor der Transaktion (Download, Längen- und
 Hashprüfung, Worker-Thread); die Transaktion vergleicht nur Version-ID und
 SHA-256. Eine PDF, die die Grenzen des Worker-Threads überschreitet, gilt als
 nicht lesbar.

@@ -149,4 +149,46 @@ describeWithDatabase('document_version.pdf_page_count (P-13)', () => {
     });
     expect(stored?.pdfPageCount).toBe(1);
   });
+
+  // Migration 20261007160000: Der Nachtrag (Worker-Job pdf-page-count-backfill)
+  // schreibt Seitenzahl und Prüfmarke unter der App-Rolle im System-Kontext.
+  it('lässt den Nachtrag Seitenzahl und Prüfmarke einer nicht zugeordneten Version setzen', async () => {
+    const legacy = await evidenceWithVersion(null);
+    const unreadable = await evidenceWithVersion(null);
+    const checkedAt = new Date('2026-10-07T04:30:00.000Z');
+    const asSystem = <T>(fn: (tx: TxClient) => Promise<T>) =>
+      app.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT set_config('app.current_tenant_id',${tenantId},true), set_config('app.current_actor_id','',true), set_config('app.current_actor_type','SYSTEM',true)`;
+        return fn(tx);
+      });
+    await asSystem((tx) =>
+      tx.documentVersion.update({
+        where: { id: legacy.versionId },
+        data: { pdfPageCount: 3, pdfPageCountCheckedAt: checkedAt },
+      }),
+    );
+    // Nicht lesbar: nur die Prüfmarke, die Seitenzahl bleibt NULL.
+    await asSystem((tx) =>
+      tx.documentVersion.update({
+        where: { id: unreadable.versionId },
+        data: { pdfPageCountCheckedAt: checkedAt },
+      }),
+    );
+    const stored = await owner.documentVersion.findMany({
+      where: { id: { in: [legacy.versionId, unreadable.versionId] } },
+      select: { id: true, pdfPageCount: true, pdfPageCountCheckedAt: true },
+    });
+    expect(Object.fromEntries(stored.map((row) => [row.id, row]))).toEqual({
+      [legacy.versionId]: {
+        id: legacy.versionId,
+        pdfPageCount: 3,
+        pdfPageCountCheckedAt: checkedAt,
+      },
+      [unreadable.versionId]: {
+        id: unreadable.versionId,
+        pdfPageCount: null,
+        pdfPageCountCheckedAt: checkedAt,
+      },
+    });
+  });
 });

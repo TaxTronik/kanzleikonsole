@@ -1,5 +1,5 @@
 // Fachkatalog: DOC-UPLOAD-JOURNAL-001, DOC-VERSION-IMMUTABILITY-001,
-// PORTAL-INBOX-SUBMISSION-001
+// PORTAL-INBOX-SUBMISSION-001, GWG-IDENTIFICATION-EVIDENCE-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const m = vi.hoisted(() => ({
@@ -9,6 +9,7 @@ const m = vi.hoisted(() => ({
   recoverPreparedBytesCommit: vi.fn(),
   createPendingDocumentWithVersion: vi.fn(),
   finalizePendingDocumentVersion: vi.fn(),
+  identityPdfPageCountForUpload: vi.fn(),
 }));
 
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
@@ -20,6 +21,9 @@ vi.mock('@taxtronik/storage', () => ({
 vi.mock('@/server/documents/upload-helpers', () => ({
   createPendingDocumentWithVersion: m.createPendingDocumentWithVersion,
   finalizePendingDocumentVersion: m.finalizePendingDocumentVersion,
+}));
+vi.mock('@/server/gwg/identity-pdf-pages', () => ({
+  identityPdfPageCountForUpload: m.identityPdfPageCountForUpload,
 }));
 
 import {
@@ -122,9 +126,74 @@ beforeEach(() => {
     version: { id: 'version-1' },
   });
   m.finalizePendingDocumentVersion.mockResolvedValue(undefined);
+  m.identityPdfPageCountForUpload.mockResolvedValue(null);
 });
 
 describe('persistResumableDocumentUpload', () => {
+  it('P-13: zählt die Seiten eines GwG-PDFs vor jeder Transaktion und speichert sie am Journal', async () => {
+    let openTransactions = 0;
+    m.withTenantContext.mockImplementation(
+      async (_context: unknown, run: (client: typeof tx) => unknown) => {
+        openTransactions += 1;
+        try {
+          return await run(tx);
+        } finally {
+          openTransactions -= 1;
+        }
+      },
+    );
+    m.identityPdfPageCountForUpload.mockImplementation(async () => {
+      // Außerhalb jeder (gesperrten) Transaktion.
+      expect(openTransactions).toBe(0);
+      return 3;
+    });
+    const options = makeOptions({
+      documentData: {
+        ...makeOptions().documentData,
+        classification: 'GWG_EVIDENCE',
+        mimeType: 'application/pdf',
+      },
+    });
+
+    await persistResumableDocumentUpload(options);
+
+    expect(m.identityPdfPageCountForUpload).toHaveBeenCalledWith({
+      classification: 'GWG_EVIDENCE',
+      mimeType: 'application/pdf',
+      bytes: FILE_BYTES,
+    });
+    expect(m.identityPdfPageCountForUpload.mock.invocationCallOrder[0]).toBeLessThan(
+      m.withTenantContext.mock.invocationCallOrder[0]!,
+    );
+    expect(m.createPendingDocumentWithVersion).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ prepared: PREPARED, pdfPageCount: 3 }),
+    );
+  });
+
+  it('P-13: übergibt Klassifizierung und MIME-Typ jedes Uploads; ohne Zählung bleibt null', async () => {
+    await persistResumableDocumentUpload(makeOptions());
+
+    expect(m.identityPdfPageCountForUpload).toHaveBeenCalledWith({
+      classification: 'GOBD_CONTRACT',
+      mimeType: 'application/pdf',
+      bytes: FILE_BYTES,
+    });
+    expect(m.createPendingDocumentWithVersion).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ pdfPageCount: null }),
+    );
+  });
+
+  it('P-13: zählt beim Wiederaufnehmen nicht erneut (die Journalzeile trägt den Wert)', async () => {
+    m.recoverPreparedBytesCommit.mockResolvedValue(COMMITTED);
+
+    await persistResumableDocumentUpload(makeOptions({ resumeDocumentId: 'document-1' }));
+
+    expect(m.identityPdfPageCountForUpload).not.toHaveBeenCalled();
+    expect(m.createPendingDocumentWithVersion).not.toHaveBeenCalled();
+  });
+
   it('journalisiert vor dem Object-Write und finalisiert in einer zweiten Transaktion', async () => {
     const options = makeOptions();
 

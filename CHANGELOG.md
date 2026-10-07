@@ -258,6 +258,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- GwG-Ausweisnachweise: Fortsetzbare Uploads (u. a. übernommene
+  Posteingangs-Anhänge, Postfach-Import mit GwG-Dokumenttyp) speichern die
+  PDF-Seitenzahl bereits beim Hochladen; ein nächtlicher Hintergrundjob trägt
+  sie für ältere Versionen nach.
 - Abhängigkeiten: `server-only` (Web, `0.0.1`, ohne Installations-Hooks und
   ohne Abhängigkeiten) und `esbuild` (E2E, `0.28.1` wie der Override) sind
   deklariert; die E2E-Hilfen laden esbuild direkt statt über die

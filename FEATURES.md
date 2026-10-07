@@ -1647,8 +1647,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `fido-mds-refresh` (alle 20 Minuten signaturgeprüfter FIDO-MDS-Stand für
   die Hardware-Anmeldung, nur bei aktivem Hardware-Zugang),
   `workflow-n8n-dispatch` (minütliche Wiederaufnahme dauerhaft vorgemerkter
-  Workflow-Events) und `storage-orphan-cleanup` (sechsstündliche Bereinigung
-  journalisierter Storage-Waisen nach der jeweiligen Retention).
+  Workflow-Events), `storage-orphan-cleanup` (sechsstündliche Bereinigung
+  journalisierter Storage-Waisen nach der jeweiligen Retention) und
+  `pdf-page-count-backfill` (04:30 UTC, trägt fehlende Seitenzahlen von
+  PDF-Ausweisquellen nach).
   Ein asynchroner Virus-Scan-Job existiert bewusst nicht — Scans laufen
   ausschließlich synchron beim Upload-Commit in `@taxtronik/storage`.
   Die Worker-Jobs haben eigene Unit-Tests

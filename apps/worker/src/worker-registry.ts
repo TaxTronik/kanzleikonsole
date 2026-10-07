@@ -37,6 +37,7 @@ import { workflowFeedbackWorker } from './jobs/workflow-feedback';
 import { workflowAutoResumeWorker } from './jobs/workflow-auto-resume';
 import { storageOrphanCleanupWorker } from './jobs/storage-orphan-cleanup';
 import { portalInboxCleanupWorker } from './jobs/portal-inbox-cleanup';
+import { pdfPageCountBackfillWorker } from './jobs/pdf-page-count-backfill';
 import { mailboxPollWorker, sanctionsRefreshWorker } from './jobs/expansion';
 
 /** Minimal shape the registry needs; real entries are BullMQ workers. */
@@ -71,6 +72,7 @@ const WORKERS_BY_QUEUE = {
   workflowAutoResume: workflowAutoResumeWorker,
   storageOrphanCleanup: storageOrphanCleanupWorker,
   portalInboxCleanup: portalInboxCleanupWorker,
+  pdfPageCountBackfill: pdfPageCountBackfillWorker,
   n8nRetention: n8nRetentionWorker,
   riskAnalyseLlm: riskAnalyseLlmWorker,
   reminderDoneNotify: reminderDoneNotifyWorker,

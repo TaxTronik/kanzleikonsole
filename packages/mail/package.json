@@ -9,6 +9,8 @@
   "exports": {
     "./imap": "./src/imap.ts",
     "./bounded-worker": "./src/bounded-worker.ts",
+    "./pdf-page-count": "./src/pdf-page-count.ts",
+    "./pdf-page-count-node": "./src/pdf-page-count-node.ts",
     ".": "./src/index.ts",
     "./markdown": "./src/markdown.ts",
     "./markdown-safety": "./src/markdown-safety.ts",

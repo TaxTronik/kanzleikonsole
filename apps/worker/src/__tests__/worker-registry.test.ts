@@ -68,6 +68,8 @@ const LEGACY_CONCURRENCY: Record<string, number | undefined> = {
   'workflow-auto-resume': 1,
   'storage-orphan-cleanup': 1,
   'portal-inbox-cleanup': 1,
+  // P-13: new queue.
+  'pdf-page-count-backfill': 1,
   'n8n-retention': 1,
   'risk-analyse-llm': 1,
   'reminder-done-notify': 4,
