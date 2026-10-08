@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const DIGEST = /@sha256:[0-9a-f]{64}(?:\s|$)/;
@@ -329,6 +330,61 @@ export function checkBuildContextCopySources(files, { exists, dockerignore }) {
   return true;
 }
 
+// Build-Kontext-Importe: `next build` prueft per TypeScript jede .ts/.tsx-Datei
+// unter apps/web, die im Build-Kontext liegt (Abbild von include/exclude in
+// apps/web/tsconfig.json). Ein relativer Import auf einen per .dockerignore
+// ausgeschlossenen Pfad faellt sonst erst im Image-Build nach dem
+// Turbopack-Lauf auf (vitest.db.config.ts -> ../../scripts/ci/db-suites.mjs:
+// TS2307 "Cannot find module").
+const RELATIVE_IMPORT = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*(['"])(\.{1,2}\/[^'"\r\n]*)\1/g;
+const TS_RESOLUTION_SUFFIXES = ['.ts', '.tsx', '.d.ts', '/index.ts', '/index.tsx'];
+const WEB_TYPECHECK_EXCLUDED_DIRS = new Set(['node_modules', '.next', 'dist']);
+// next-env.d.ts referenziert die Routentypen, die `next build` im Image selbst
+// unter apps/web/.next/types erzeugt.
+const GENERATED_IN_IMAGE_BUILD = /^apps\/web\/\.next\/types\//;
+
+export function relativeImportSpecifiers(source) {
+  return [...source.matchAll(RELATIVE_IMPORT)].map((match) => match[2]);
+}
+
+export function checkBuildContextImports(files, { exists, dockerignore }) {
+  const patterns = dockerignorePatterns(dockerignore);
+  const findings = [];
+  for (const { name, source } of files) {
+    if (ignoredByDockerignore(name, patterns)) continue;
+    for (const specifier of relativeImportSpecifiers(source)) {
+      const target = posix.normalize(posix.join(posix.dirname(name), specifier));
+      const resolved =
+        [target, ...TS_RESOLUTION_SUFFIXES.map((suffix) => `${target}${suffix}`)].find((path) =>
+          exists(path),
+        ) ?? target;
+      if (GENERATED_IN_IMAGE_BUILD.test(resolved)) continue;
+      if (resolved.startsWith('../') || ignoredByDockerignore(resolved, patterns)) {
+        findings.push(`${name}: ${specifier} -> ${resolved}`);
+      }
+    }
+  }
+  if (findings.length > 0) {
+    throw new Error(
+      `Typgepruefte Dateien im Docker-Build-Kontext importieren ausgeschlossene Pfade:\n${findings.join('\n')}`,
+    );
+  }
+  return true;
+}
+
+function webTypecheckSources(directory = 'apps/web') {
+  const files = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (!WEB_TYPECHECK_EXCLUDED_DIRS.has(entry.name)) files.push(...webTypecheckSources(path));
+    } else if (/\.tsx?$/.test(entry.name)) {
+      files.push({ name: path, source: readFileSync(path, 'utf8') });
+    }
+  }
+  return files;
+}
+
 function main() {
   try {
     const directory = 'infra/docker';
@@ -361,9 +417,13 @@ function main() {
     const dockerignore = readFileSync('.dockerignore', 'utf8');
     checkDockerignore(dockerignore);
     checkBuildContextCopySources(files, { exists: (path) => existsSync(path), dockerignore });
+    checkBuildContextImports(webTypecheckSources(), {
+      exists: (path) => existsSync(path),
+      dockerignore,
+    });
     checkRequiredComposeSecrets(readFileSync('infra/compose/docker-compose.app.yml', 'utf8'));
     process.stdout.write(
-      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases (Web und Worker gemeinsam ueber ${SHARED_BASE_ARG}), kopieren nur vorhandene Build-Kontext-Quellen, normalisieren Builder-Quellmodi und entfernen Runtime-Paketmanager; Web-Liveness ist erreichbar, lokale Betriebsdaten sind ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
+      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases (Web und Worker gemeinsam ueber ${SHARED_BASE_ARG}), kopieren nur vorhandene Build-Kontext-Quellen, Web-Quellen importieren nichts Ausgeschlossenes, normalisieren Builder-Quellmodi und entfernen Runtime-Paketmanager; Web-Liveness ist erreichbar, lokale Betriebsdaten sind ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
     );
   } catch (error) {
     process.stderr.write(`FEHLER: ${error.message}\n`);

@@ -87,16 +87,20 @@ install.log
 # Lokale QA-Zustände, Zugangsdaten, Logs und Test-Fixtures.
 .codex-run
 
-# Nicht build-relevant: Doku, Markdown im Root, E2E-Suite, Unit-Tests sowie
-# CI-, Betriebs- und Infra-Dateien. `COPY . .` im Builder soll durch deren
-# Aenderung nicht invalidiert werden (sonst kalter Install + Build).
-# infra/n8n/workflows bleibt drin: apps/web buendelt die Workflow-JSONs.
+# Nicht build-relevant: Doku, Markdown im Root, E2E-Suite, Unit-Tests,
+# Vitest-Konfigurationen sowie CI-, Betriebs- und Infra-Dateien. `COPY . .` im
+# Builder soll durch deren Aenderung nicht invalidiert werden (sonst kalter
+# Install + Build). infra/n8n/workflows bleibt drin: apps/web buendelt die
+# Workflow-JSONs. Die Vitest-Konfigurationen muessen draussen bleiben: `next
+# build` prueft jede .ts-Datei unter apps/web, und vitest.db.config.ts
+# importiert aus dem ausgeschlossenen /scripts (TS2307 im Image-Build).
 /docs
 /*.md
 /apps/e2e
 **/__tests__
 **/*.test.ts
 **/*.test.tsx
+**/vitest*.config.ts
 /.forgejo
 /scripts
 /infra/clamav

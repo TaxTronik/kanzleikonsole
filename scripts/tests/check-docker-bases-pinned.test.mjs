@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   buildContextCopySources,
   checkBuildContextCopySources,
+  checkBuildContextImports,
   checkBuilderSourcePermissions,
   checkDockerfiles,
   checkDockerignore,
@@ -11,6 +12,7 @@ import {
   checkSharedNodeBase,
   checkWebRuntimeDockerfile,
   ignoredByDockerignore,
+  relativeImportSpecifiers,
   REQUIRED_COMPOSE_SECRETS,
   REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS,
   unpinnedFromLines,
@@ -262,5 +264,66 @@ assert.equal(ignoredByDockerignore('apps/web/node_modules/x', ['**/node_modules'
 assert.equal(ignoredByDockerignore('node_modules', ['**/node_modules']), true);
 assert.equal(ignoredByDockerignore('apps/web/install.log', ['*.log']), false);
 assert.equal(ignoredByDockerignore('install.log', ['*.log']), true);
+assert.equal(ignoredByDockerignore('apps/web/vitest.db.config.ts', ['**/vitest*.config.ts']), true);
 
-process.stdout.write('36 Docker base/context/runtime/compose tests passed.\n');
+// Build-Kontext-Importe: apps/web/vitest.db.config.ts importierte aus dem per
+// .dockerignore ausgeschlossenen /scripts; `next build` brach im Image mit TS2307 ab.
+assert.deepEqual(
+  relativeImportSpecifiers(
+    [
+      "import a from './a';",
+      'export * from "../b";',
+      "import './c.css';",
+      "const d = await import('./d');",
+      "import e from 'e';",
+      "import f from '@/f';",
+    ].join('\n'),
+  ),
+  ['./a', '../b', './c.css', './d'],
+);
+const webFiles = new Set(['apps/web/src/a.ts', 'apps/web/src/lib/index.ts', 'scripts/ci/x.mjs']);
+const webExists = (path) => webFiles.has(path);
+assert.throws(
+  () =>
+    checkBuildContextImports(
+      [
+        {
+          name: 'apps/web/vitest.db.config.ts',
+          source: "import { X } from '../../scripts/ci/x.mjs';",
+        },
+      ],
+      { exists: webExists, dockerignore: '/scripts\n' },
+    ),
+  /apps\/web\/vitest\.db\.config\.ts: \.\.\/\.\.\/scripts\/ci\/x\.mjs -> scripts\/ci\/x\.mjs/,
+);
+// Ausgeschlossene Importeure, aufgeloeste Endungen und index-Dateien sowie die
+// im Image erzeugten Next-Routentypen sind zulaessig.
+assert.equal(
+  checkBuildContextImports(
+    [
+      { name: 'apps/web/vitest.db.config.ts', source: "import '../../scripts/ci/x.mjs';" },
+      { name: 'apps/web/src/b.ts', source: "import a from './a';\nimport l from './lib';" },
+      { name: 'apps/web/next-env.d.ts', source: 'import "./.next/types/routes.d.ts";' },
+    ],
+    { exists: webExists, dockerignore: '/scripts\n**/vitest*.config.ts\n**/.next\n' },
+  ),
+  true,
+);
+assert.throws(
+  () =>
+    checkBuildContextImports(
+      [{ name: 'apps/web/src/b.ts', source: "import h from './__tests__/helper';" }],
+      { exists: () => false, dockerignore: '**/__tests__\n' },
+    ),
+  /apps\/web\/src\/b\.ts: \.\/__tests__\/helper -> apps\/web\/src\/__tests__\/helper/,
+);
+assert.throws(
+  () =>
+    checkBuildContextImports([{ name: 'apps/web/x.ts', source: "import '../../../outside';" }], {
+      exists: () => false,
+      dockerignore: '',
+    }),
+  /apps\/web\/x\.ts: \.\.\/\.\.\/\.\.\/outside -> \.\.\/outside/,
+);
+
+process.stdout.write('42 Docker base/context/runtime/compose tests passed.\n');

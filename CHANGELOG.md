@@ -952,6 +952,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Web-Image-Build: `next build` brach beim Typecheck an
+  `apps/web/vitest.db.config.ts` ab, weil die Datei aus dem nicht im
+  Build-Kontext liegenden `scripts/ci/db-suites.mjs` importiert (TS2307).
+  `.dockerignore` schließt die Vitest-Konfigurationen jetzt aus, und
+  `pnpm guard:docker-bases` prüft zusätzlich, dass typgeprüfte Web-Quellen im
+  Build-Kontext keine ausgeschlossenen Pfade importieren.
 - **[Scope]** Staff-Anmeldung hinter dem Reverse-Proxy: Der Passwortschritt
   leitete im Container auf die Bind-Adresse `http://0.0.0.0:3000/…` statt auf
   die aufgerufene Adresse weiter (Fehlversuch und erfolgreiche Anmeldung).
