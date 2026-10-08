@@ -634,21 +634,26 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).not.toContain('/staff/login');
 
-    if (
-      await page
-        .getByText(/Keine aktiven Mandanten/)
-        .isVisible({ timeout: 3000 })
-        .catch(() => false)
-    ) {
+    // Wie bei der Rechnung: zuerst streamt das Skelett aus
+    // staff/(protected)/loading.tsx, und isVisible() wartet nicht. Deshalb erst
+    // auf das Formular oder den Leerhinweis warten.
+    const noClients = page.getByText(/Keine aktiven Mandanten/);
+    const clientInput = page.locator('#clientId');
+    const pageReady = await noClients
+      .or(clientInput)
+      .first()
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (pageReady && (await noClients.isVisible())) {
       await ctx.close();
       throw new Error(
         'No active clients for POA — Paranoid-E2E seed must include a GwG-verified client',
       );
     }
 
-    const clientInput = page.locator('#clientId');
-    const inputVisible = await clientInput.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!inputVisible) {
+    if (!pageReady || !(await clientInput.isVisible())) {
       await ctx.close();
       throw new Error('POA creation form not available (#clientId missing)');
     }
