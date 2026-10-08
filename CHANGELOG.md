@@ -952,6 +952,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- CI: Der S-01-Test der Default-Privilegien
+  (`packages/db/src/__tests__/owner-role-privileges.test.ts`) sortiert die
+  Objekttypen mit `COLLATE "C"`. Unter der glibc-Kollation des Debian-Postgres
+  in den Jobs „Migrations, RLS, Drift“ und „Upgrade-Pfad“ stand `r` vor `S`,
+  und der Test schlug fehl.
 - Web-Image-Build: `next build` brach beim Typecheck an
   `apps/web/vitest.db.config.ts` ab, weil die Datei aus dem nicht im
   Build-Kontext liegenden `scripts/ci/db-suites.mjs` importiert (TS2307).

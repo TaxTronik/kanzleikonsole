@@ -382,8 +382,11 @@ describeWithDatabase('S-01: Rollenmodell gegen PostgreSQL', () => {
          AND d.defaclrole = (SELECT relowner FROM pg_catalog.pg_class WHERE oid = 'public.tenant'::regclass)
          AND acl.grantee = ${OWNER_ROLE}::regrole
        GROUP BY d.defaclobjtype
-       ORDER BY 1
+       ORDER BY d.defaclobjtype::text COLLATE "C"
     `;
+    // COLLATE "C": Sonst hängt die Reihenfolge von 'S' und 'r' an der
+    // Datenbank-Kollation; der Debian-Postgres der db-CI-Jobs (glibc) sortiert
+    // 'r' zuerst.
     expect(defaults).toEqual([
       { objtype: 'S', privileges: 'SELECT,USAGE' },
       { objtype: 'r', privileges: 'DELETE,INSERT,SELECT,UPDATE' },
