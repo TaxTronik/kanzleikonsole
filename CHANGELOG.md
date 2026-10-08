@@ -1631,6 +1631,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Dependency Audit 3751: Next.js und sein ESLint-Plugin auf `16.3.8`. Das
+  schließt den blockierenden Befund `GHSA-cjq9-62q9-8jv4` (SSRF in der
+  Bildoptimierung) sowie `GHSA-3w37-wq28-93x7`, `GHSA-4jqv-mc3x-m676`,
+  `GHSA-f87g-xv8r-7p7x`, `GHSA-mcj8-r9mp-w47p` und `GHSA-39w2-rjm5-chcv`.
+  Der Lockfile ändert nur die Next.js-Pakete; neue Install-Hooks kommen nicht
+  hinzu. Weiter offen, weil es keine gepatchte Version gibt: sprintf-js
+  (`GHSA-hp3w-g68c-fv3c`, moderat, über mammoth) und braces
+  (`GHSA-vfj7-8cjw-p6xm`, nur Dev-Abhängigkeit über das Next.js-ESLint-Plugin);
+  beide blockieren das Audit (`--prod --audit-level high`) nicht.
 - **[Scope]** Mandantenbezogene Worker-Jobs (u. a. Fristen und Fristhinweise,
   Erinnerungen, offene Rechnungen, Vollmachten, GwG-Fristen, Sanktionslisten,
   Posteingangsbereinigung, Steuernachrichten, Workflow-Wiederaufnahme und
