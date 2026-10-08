@@ -299,12 +299,19 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).not.toContain('/staff/login');
 
-    if (
-      await page
-        .getByText(/zentraler Rechnungssoftware/)
-        .isVisible({ timeout: 2000 })
-        .catch(() => false)
-    ) {
+    // staff/(protected)/loading.tsx streamt zuerst ein Skelett. isVisible()
+    // wartet nicht, deshalb erst auf den Seiteninhalt warten und danach den
+    // Modus bestimmen (EXTERNAL-Hinweis oder Formular-Überschrift).
+    const externalHint = page.getByText(/zentraler Rechnungssoftware/);
+    const heading = page.getByRole('heading', { name: /Neue Rechnung|PDF-Rechnung/ }).first();
+    const pageReady = await externalHint
+      .or(heading)
+      .first()
+      .waitFor({ state: 'visible', timeout: 15_000 })
+      .then(() => true)
+      .catch(() => false);
+
+    if (pageReady && (await externalHint.isVisible())) {
       const clientInput = page.locator('#clientId');
       await expect(clientInput, 'EXTERNAL-Rechnungsupload braucht aktive Mandanten').toBeVisible({
         timeout: 5000,
@@ -335,9 +342,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       return;
     }
 
-    const heading = page.getByRole('heading', { name: /Neue Rechnung|PDF-Rechnung/ }).first();
-    const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!headingVisible) {
+    if (!pageReady || !(await heading.isVisible())) {
       // FIX 1: Weder EXTERNAL noch Heading → Seiten-Bug/RBAC-Fehler → FAIL.
       await ctx.close();
       throw new Error(

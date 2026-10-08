@@ -952,6 +952,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- CI-E2E: „Create a new invoice“ wartet auf den Seiteninhalt, bevor der Test
+  den Rechnungsmodus bestimmt. Seit `staff/(protected)/loading.tsx` streamt die
+  Seite zuerst ein Skelett, und die sofortige Sichtbarkeitsprüfung schlug fehl.
 - CI-E2E: Seit der Paranoid-Lauf gegen den Produktions-Standalone-Server
   läuft (`NODE_ENV=production`), verlangte der Mailversand STARTTLS auch von
   MailHog auf `localhost:1025`. Jede Magic-Link-Mail scheiterte, und alle
