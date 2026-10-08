@@ -233,7 +233,12 @@ test.describe('Such- und Benachrichtigungspanels: Tastatur und Lesen', () => {
         await page.setViewportSize({ width: 1280, height: 900 });
         await setMode(page, enabled);
         await page.setViewportSize({ width: 320, height: 240 });
-        const trigger = page.getByRole('button', { name: 'Benachrichtigungen', exact: true });
+        // Den Startzähler rendert das Staff-Layout aus der Datenbank; der
+        // gemockte /count-Abruf kommt erst nach 30 s (P-08). Der Name der Glocke
+        // kann deshalb ungelesene Einträge aus der Datenbank enthalten.
+        const trigger = page.getByRole('button', {
+          name: /^(?:\d+ ungelesene )?Benachrichtigungen$/,
+        });
         await expect(trigger).toBeVisible();
         await trigger.focus();
         await page.keyboard.press('Enter');

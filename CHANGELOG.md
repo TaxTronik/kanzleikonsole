@@ -952,6 +952,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- CI-E2E: „Create a power of attorney“ wartet wie der Rechnungstest auf das
+  gestreamte Formular. Der Barrierefreiheitstest der Benachrichtigungen findet
+  die Glocke auch mit Zähler im Namen: Seit `8156e97d` kommt der Startzähler
+  aus dem Staff-Layout (Datenbank), der gemockte Abruf erst nach 30 s.
 - CI-E2E: „Create a new invoice“ wartet auf den Seiteninhalt, bevor der Test
   den Rechnungsmodus bestimmt. Seit `staff/(protected)/loading.tsx` streamt die
   Seite zuerst ein Skelett, und die sofortige Sichtbarkeitsprüfung schlug fehl.
