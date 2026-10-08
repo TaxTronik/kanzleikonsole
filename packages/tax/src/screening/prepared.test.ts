@@ -210,6 +210,10 @@ describe('P-16: vorbereitete EU-Liste', () => {
   const { entries, subjects } = fixture();
   const prepared = prepareEuList(entries);
 
+  // Die Referenz normalisiert bewusst ohne Vorbereitung für jedes der 302
+  // Subjekte alle Aliasse der 501 Einträge neu. Isoliert dauert das rund 3 s,
+  // im CI-Job parallel zu den übrigen Paket-Suiten 8,8 s; die Vorgabe von 5 s
+  // ist für diesen Äquivalenzlauf kein Fehlerkriterium.
   it('liefert für jedes Fixture-Subjekt exakt das bisherige Ergebnis', () => {
     let withCandidates = 0;
     for (const subject of subjects) {
@@ -220,7 +224,7 @@ describe('P-16: vorbereitete EU-Liste', () => {
     // Die Fixture deckt Treffer und Nichttreffer in nennenswerter Zahl ab.
     expect(withCandidates).toBeGreaterThan(100);
     expect(subjects.length - withCandidates).toBeGreaterThan(30);
-  });
+  }, 30_000);
 
   it('nimmt für den Einzelabgleich weiterhin die rohe Liste an', () => {
     for (const subject of subjects.slice(0, 40)) {

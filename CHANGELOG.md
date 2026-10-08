@@ -958,6 +958,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   `.dockerignore` schließt die Vitest-Konfigurationen jetzt aus, und
   `pnpm guard:docker-bases` prüft zusätzlich, dass typgeprüfte Web-Quellen im
   Build-Kontext keine ausgeschlossenen Pfade importieren.
+- CI: Der P-16-Äquivalenztest des EU-Sanktionsabgleichs
+  (`packages/tax/src/screening/prepared.test.ts`, `GWG-SCREENING-001`) hat ein
+  eigenes Zeitbudget von 30 s. Die bewusst unvorbereitete Referenz brauchte im
+  Job `quality` 8,8 s und lief in die Vitest-Vorgabe von 5 s; Fixture und
+  Erwartungen sind unverändert.
 - **[Scope]** Staff-Anmeldung hinter dem Reverse-Proxy: Der Passwortschritt
   leitete im Container auf die Bind-Adresse `http://0.0.0.0:3000/…` statt auf
   die aufgerufene Adresse weiter (Fehlversuch und erfolgreiche Anmeldung).

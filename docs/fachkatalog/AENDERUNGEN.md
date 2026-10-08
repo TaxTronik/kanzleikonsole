@@ -1,5 +1,21 @@
 ---
 exceptions:
+  - id: FK-EXC-20261008-001
+    date: '2026-10-08'
+    paths:
+      - packages/tax/src/screening/prepared.test.ts
+    rule_ids:
+      - GWG-SCREENING-001
+    reason: >-
+      Der P-16-Äquivalenztest der vorbereiteten EU-Liste erhält ein eigenes
+      Zeitbudget von 30 s statt der Vitest-Vorgabe von 5 s, weil die bewusst
+      unvorbereitete Referenz im CI-Job parallel zu den übrigen Paket-Suiten
+      8,8 s brauchte. Fixture, Referenzalgorithmus und Erwartungen bleiben
+      unverändert; Trefferlogik, Schwellen und Kürzungen sind nicht betroffen.
+      Keine fachliche Freigabe.
+    tests:
+      - packages/tax/src/screening/prepared.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261007-051
     date: '2026-10-07'
     paths:
