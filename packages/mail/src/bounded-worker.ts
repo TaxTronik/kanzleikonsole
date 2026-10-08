@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import { memoryUsage } from 'node:process';
 import { Worker } from 'node:worker_threads';
 
@@ -62,12 +63,22 @@ export async function runBoundedWorker<T>(
       resolve(result);
     };
     const deadline = setTimeout(() => finish({ ok: false, reason: 'timeout' }), limits.timeoutMs);
+    const deadlineAt = performance.now() + limits.timeoutMs;
     const memoryWatch = setInterval(() => {
       if (memoryUsage.rss() - baselineRss > limits.rssBudgetBytes) {
         finish({ ok: false, reason: 'memory' });
       }
     }, 25);
-    worker.once('message', (value: T) => finish({ ok: true, value }));
+    // Frist und Speicherbudget gelten auch für die Antwort selbst: Liegen Timer
+    // und Nachricht gleichzeitig an, entscheidet sonst die Reihenfolge der
+    // Event-Loop, und ein Ergebnis nach Fristablauf oder über dem Budget gälte
+    // als gelesen.
+    worker.once('message', (value: T) => {
+      if (performance.now() > deadlineAt) finish({ ok: false, reason: 'timeout' });
+      else if (memoryUsage.rss() - baselineRss > limits.rssBudgetBytes) {
+        finish({ ok: false, reason: 'memory' });
+      } else finish({ ok: true, value });
+    });
     worker.once('error', () => finish({ ok: false, reason: 'error' }));
     worker.once('exit', () => finish({ ok: false, reason: 'exit' }));
   });

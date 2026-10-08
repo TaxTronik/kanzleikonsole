@@ -952,6 +952,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Begrenzte Worker-Threads (`@taxtronik/mail/bounded-worker`, u. a.
+  PDF-Seitenzählung der Ausweisbelege und Prüfung von Mailanhängen): Eine
+  Antwort nach Ablauf der Frist oder über dem Speicherbudget zählt jetzt als
+  Überschreitung. Bisher entschied bei gleichzeitig fälligem Timer und Ergebnis
+  die Reihenfolge der Event-Loop; der P-13-Test mit 1-ms-Frist schlug dadurch
+  sporadisch fehl.
 - CI-E2E: „Create a power of attorney“ wartet wie der Rechnungstest auf das
   gestreamte Formular. Der Barrierefreiheitstest der Benachrichtigungen findet
   die Glocke auch mit Zähler im Namen: Seit `8156e97d` kommt der Startzähler
