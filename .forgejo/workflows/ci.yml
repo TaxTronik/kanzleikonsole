@@ -844,6 +844,10 @@ jobs:
       SMTP_HOST: localhost
       SMTP_PORT: '1025'
       SMTP_FROM: 'TaxTronik <noreply@example.de>'
+      # MailHog spricht kein STARTTLS, der Produktionsbuild verlangt es sonst
+      # (packages/mail/src/send.ts, isPlaintextMailhog). Wirkt nur mit CI=true
+      # und nur für localhost/127.0.0.1:1025.
+      E2E_ALLOW_PLAINTEXT_SMTP_IN_PRODUCTION: 'true'
       S3_ENDPOINT: http://localhost:8333
       S3_REGION: us-east-1
       # Ausdrückliche CI-Werte: das Prod-Gate des Servers (NODE_ENV=production)

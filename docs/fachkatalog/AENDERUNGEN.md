@@ -1,5 +1,27 @@
 ---
 exceptions:
+  - id: FK-EXC-20261008-002
+    date: '2026-10-08'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - packages/mail/src/send.ts
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+    reason: >-
+      Der E2E-Job startet seit dem Wechsel auf den Produktions-Standalone-Server
+      mit NODE_ENV=production; der Mailversand verlangte dadurch STARTTLS auch von
+      MailHog auf localhost:1025, und jede Magic-Link-Mail scheiterte. Ohne
+      STARTTLS liefert der Produktionsbuild nur mit CI=true und
+      E2E_ALLOW_PLAINTEXT_SMTP_IN_PRODUCTION=true (nur im E2E-Job gesetzt) und nur
+      über Loopback auf Port 1025 ein. Echte Installationen, Empfänger, Vorlagen
+      und Zeitpunkte der automatischen Anforderungen bleiben unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - packages/mail/src/__tests__/plaintext-mailhog.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261008-001
     date: '2026-10-08'
     paths:

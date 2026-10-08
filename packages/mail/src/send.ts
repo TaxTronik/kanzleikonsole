@@ -84,12 +84,48 @@ function envSmtp(): SmtpConfig {
   };
 }
 
+export interface PlaintextMailhogRuntime {
+  nodeEnv: string | undefined;
+  ci: string | undefined;
+  allowInProductionE2e: string | undefined;
+}
+
+function currentPlaintextMailhogRuntime(): PlaintextMailhogRuntime {
+  return {
+    nodeEnv: env.NODE_ENV,
+    ci: process.env['CI'],
+    allowInProductionE2e: process.env['E2E_ALLOW_PLAINTEXT_SMTP_IN_PRODUCTION'],
+  };
+}
+
+/**
+ * MailHog (Dev-Compose, CI) spricht kein STARTTLS; nur für ihn entfällt
+ * requireTLS. Außerhalb von Produktion gilt das für localhost, 127.0.0.1 und
+ * den Compose-Dienst `mailhog` auf Port 1025. Im Produktionsbuild nur für den
+ * CI-E2E-Lauf gegen den Standalone-Server (ci.yml, e2e-paranoid): zusätzlich
+ * CI=true und E2E_ALLOW_PLAINTEXT_SMTP_IN_PRODUCTION=true, und nur über
+ * Loopback, damit eine echte Installation nie unverschlüsselt über das Netz
+ * einliefert.
+ */
+export function isPlaintextMailhog(
+  cfg: Pick<SmtpConfig, 'host' | 'port'>,
+  runtime: PlaintextMailhogRuntime = currentPlaintextMailhogRuntime(),
+): boolean {
+  if (cfg.port !== 1025) return false;
+  const host = cfg.host.toLowerCase();
+  if (runtime.nodeEnv !== 'production') {
+    return ['localhost', '127.0.0.1', 'mailhog'].includes(host);
+  }
+  return (
+    runtime.ci === 'true' &&
+    runtime.allowInProductionE2e === 'true' &&
+    ['localhost', '127.0.0.1'].includes(host)
+  );
+}
+
 function transporterFor(cfg: SmtpConfig): Transporter {
   const isImplicitTls = cfg.secure || cfg.port === 465;
-  const isDevMailhog =
-    env.NODE_ENV !== 'production' &&
-    cfg.port === 1025 &&
-    ['localhost', '127.0.0.1', 'mailhog'].includes(cfg.host.toLowerCase());
+  const isDevMailhog = isPlaintextMailhog(cfg);
   // U-2: STARTTLS erzwingen für Port 587 (Submission). Vorher fiel Nodemailer
   // im opportunistischen Modus auf Klartext zurück, wenn der SMTP-Server kein
   // STARTTLS ankündigt (oder ein MitM die Ankündigung stripped). Folge: AUTH-

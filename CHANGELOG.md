@@ -952,6 +952,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- CI-E2E: Seit der Paranoid-Lauf gegen den Produktions-Standalone-Server
+  läuft (`NODE_ENV=production`), verlangte der Mailversand STARTTLS auch von
+  MailHog auf `localhost:1025`. Jede Magic-Link-Mail scheiterte, und alle
+  Portal-Logins der Suite liefen ins Leere. Ohne STARTTLS liefert der
+  Produktionsbuild jetzt nur mit `CI=true` und
+  `E2E_ALLOW_PLAINTEXT_SMTP_IN_PRODUCTION=true` (nur im E2E-Job gesetzt) und
+  nur über Loopback auf Port 1025 ein; echte Installationen verlangen weiter
+  STARTTLS.
 - CI: Der S-01-Test der Default-Privilegien
   (`packages/db/src/__tests__/owner-role-privileges.test.ts`) sortiert die
   Objekttypen mit `COLLATE "C"`. Unter der glibc-Kollation des Debian-Postgres
