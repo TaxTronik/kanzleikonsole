@@ -1,9 +1,13 @@
-// Fachkatalog: DOC-VERSION-IMMUTABILITY-001
+// Fachkatalog: DOC-VERSION-IMMUTABILITY-001, RISK-AI-SUGGESTION-001
 // =============================================================================
 // R-05: Die Textübernahme aus einem vorhandenen Mandanten-Dokument liest die
 // Bytes über den gemeinsamen, prüfenden Leseweg (fetchVerifiedObjectBytes).
 // S3 ist am Storage-Client gemockt; Größen- und SHA-256-Prüfung laufen echt,
 // ebenso das zentrale Fehler-Mapping (toActionError, F-03).
+// Welle 15 (Entscheidung 5): nur die freigegebene neueste Fassung (Virenscan
+// CLEAN und abgeschlossen, wie Download und Vorschau); läuft die Prüfung noch,
+// eine verständliche Meldung; nicht freigegeben → Abweisung ohne Lesen und
+// Parsen, auditiert als document.text_extract_denied.
 // =============================================================================
 
 import { createHash } from 'node:crypto';
@@ -75,9 +79,16 @@ const document = () => ({
       storageVersionId: 'bound-version',
       sha256: createHash('sha256').update(BYTES).digest(),
       sizeBytes: BigInt(BYTES.length),
+      scanStatus: 'CLEAN',
+      scanCompletedAt: new Date('2026-10-01T08:00:00.000Z'),
     },
   ],
 });
+
+function withVersion(patch: { scanStatus: string; scanCompletedAt: Date | null }) {
+  const doc = document();
+  return { ...doc, versions: [{ ...doc.versions[0]!, ...patch }] };
+}
 
 function stored(bytes: Buffer, contentLength = bytes.length) {
   h.send.mockResolvedValueOnce({ Body: Readable.from([bytes]), ContentLength: contentLength });
@@ -107,6 +118,17 @@ describe('Textübernahme aus Mandanten-Dokument über den geprüften Leseweg (R-
       Key: 'tenants/tenant-1/none/2026/10/sachverhalt.bin',
       VersionId: 'bound-version',
     });
+    // Neueste, nicht gelöschte Fassung des Mandanten-Dokuments; Zugriff auditiert.
+    expect(h.findFirst).toHaveBeenCalledWith({
+      where: { id: DOCUMENT_ID, clientId: CLIENT_ID, tenantId: 'tenant-1', deletedAt: null },
+      include: { versions: { orderBy: { versionNo: 'desc' }, take: 1 } },
+    });
+    expect(h.audit).toHaveBeenCalledTimes(1);
+    expect(h.audit.mock.calls[0]![2]).toMatchObject({
+      action: 'document.text_extract',
+      resourceType: 'document',
+      resourceId: DOCUMENT_ID,
+    });
   });
 
   it.each([
@@ -121,4 +143,48 @@ describe('Textübernahme aus Mandanten-Dokument über den geprüften Leseweg (R-
     });
     expect(h.extractText).not.toHaveBeenCalled();
   });
+});
+
+describe('Textübernahme nur aus freigegebenen Fassungen (Welle 15, Entscheidung 5)', () => {
+  it.each([
+    ['Virenscan ausstehend', { scanStatus: 'PENDING', scanCompletedAt: null }],
+    ['Freigabe noch nicht abgeschlossen', { scanStatus: 'CLEAN', scanCompletedAt: null }],
+  ])('%s: meldet die laufende Prüfung, ohne Bytes zu lesen', async (_case, patch) => {
+    h.findFirst.mockResolvedValue(withVersion(patch));
+
+    await expect(call()).resolves.toEqual({
+      ok: false,
+      error: 'Die Virenprüfung dieses Dokuments läuft noch. Bitte versuchen Sie es später erneut.',
+    });
+    expect(h.send).not.toHaveBeenCalled();
+    expect(h.extractText).not.toHaveBeenCalled();
+    // Kein Zugriff auf Inhalt: weder Abruf- noch Abweisungsnachweis.
+    expect(h.audit).not.toHaveBeenCalled();
+  });
+
+  it.each(['INFECTED', 'ERROR', 'BLOCKED'])(
+    'Status %s: weist ohne Lesen und Parsen ab und auditiert die Abweisung',
+    async (scanStatus) => {
+      h.findFirst.mockResolvedValue(
+        withVersion({ scanStatus, scanCompletedAt: new Date('2026-10-01T08:00:00.000Z') }),
+      );
+
+      await expect(call()).resolves.toEqual({
+        ok: false,
+        error:
+          'Das Dokument wurde von der Virenprüfung nicht freigegeben und wird nicht eingelesen.',
+      });
+      expect(h.send).not.toHaveBeenCalled();
+      expect(h.extractText).not.toHaveBeenCalled();
+      expect(h.audit).toHaveBeenCalledTimes(1);
+      expect(h.audit.mock.calls[0]![2]).toEqual({
+        action: 'document.text_extract_denied',
+        resourceType: 'document',
+        resourceId: DOCUMENT_ID,
+        ip: '127.0.0.1',
+        userAgent: 'Test',
+        after: { reason: 'scan_not_clean', scanStatus },
+      });
+    },
+  );
 });

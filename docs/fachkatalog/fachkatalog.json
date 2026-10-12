@@ -5009,7 +5009,10 @@
         "apps/worker/src/jobs/risk-analyse-llm.ts",
         "apps/web/src/server/risk/reanalyze.ts",
         "packages/db/src/risk-analysis.ts",
-        "apps/web/src/server/jobs/risk-analyse-queue.ts"
+        "apps/web/src/server/jobs/risk-analyse-queue.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts",
+        "apps/web/src/server/documents/delivery-readiness.ts",
+        "apps/web/src/server/audit/labels.ts"
       ],
       "test_refs": [
         "apps/web/src/server/risk/__tests__/llm.test.ts",
@@ -5017,7 +5020,9 @@
         "apps/web/src/server/jobs/__tests__/risk-analyse-queue.test.ts",
         "apps/web/src/server/risk/__tests__/norms-core.test.ts",
         "apps/web/src/server/risk/__tests__/reanalyze.test.ts",
-        "packages/db/src/__tests__/risk-archive-consistency.test.ts"
+        "packages/db/src/__tests__/risk-archive-consistency.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/import-client-doc.test.ts",
+        "apps/web/src/server/documents/__tests__/delivery-readiness.test.ts"
       ],
       "feature_refs": [
         "docs/anwenderdoku/subsumtion-tcms-quantenlos.md",

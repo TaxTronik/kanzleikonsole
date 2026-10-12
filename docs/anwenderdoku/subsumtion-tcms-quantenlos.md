@@ -11,6 +11,15 @@ Im Mandantenprofil wird ein Sachverhalt direkt erfasst oder aus PDF, DOCX oder
 einem vorhandenen Dokument übernommen. Vor der Analyse sind Mandant,
 Textvollständigkeit und Dokumentversion zu prüfen.
 
+Aus einem vorhandenen Mandanten-Dokument übernimmt TaxTronik den Text nur aus
+der neuesten Fassung, deren Virenprüfung sauber abgeschlossen ist – dieselbe
+Freigabe wie beim Herunterladen und in der Vorschau. Läuft die Prüfung noch,
+erscheint „Die Virenprüfung dieses Dokuments läuft noch. Bitte versuchen Sie
+es später erneut.“ Eine Fassung, die die Virenprüfung nicht freigegeben hat,
+wird weder gelesen noch ausgewertet; die Abweisung steht im Prüfprotokoll
+(„Dokumenttext-Übernahme abgewiesen (Virenprüfung)“). Die übernommene Datei
+wird außerdem gegen Größe und Prüfsumme der gespeicherten Fassung geprüft.
+
 Die Analyse ist zweistufig:
 
 1. deterministische Wortlaut-, Muster- und Triggerprüfung,

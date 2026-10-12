@@ -5,3 +5,20 @@ export function isDocumentVersionReady(
 ): boolean {
   return version?.scanStatus === 'CLEAN' && version.scanCompletedAt != null;
 }
+
+/**
+ * Welle 15: Für Leser, die dem Nutzer den Grund nennen (Textübernahme der
+ * Subsumtion). `ready` ist genau isDocumentVersionReady; sonst läuft die
+ * Prüfung noch (PENDING oder CLEAN ohne Abschluss) oder die Version wurde nicht
+ * freigegeben (infiziert, Scannerfehler, jeder andere Status).
+ */
+export type DocumentVersionReadiness = 'ready' | 'scan_pending' | 'scan_rejected';
+
+export function documentVersionReadiness(version: {
+  scanStatus: string;
+  scanCompletedAt: Date | null;
+}): DocumentVersionReadiness {
+  if (isDocumentVersionReady(version)) return 'ready';
+  if (version.scanStatus === 'PENDING' || version.scanStatus === 'CLEAN') return 'scan_pending';
+  return 'scan_rejected';
+}

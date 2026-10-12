@@ -13,6 +13,7 @@ import { parseActionInput } from '@/server/actions/form-data';
 import { withTenantContext } from '@taxtronik/db';
 import { lockRiskAnalysisTx, requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { fetchVerifiedObjectBytes } from '@taxtronik/storage';
+import { documentVersionReadiness } from '@/server/documents/delivery-readiness';
 import { readUploadFile } from '@/server/documents/upload-file';
 import { getClientIp } from '@/server/rate-limit';
 import {
@@ -522,8 +523,19 @@ export async function delegateAction(
 
 const ImportDocSchema = z.object({ clientId: z.string().uuid(), documentId: z.string().uuid() });
 
+const SCAN_PENDING_MESSAGE =
+  'Die Virenprüfung dieses Dokuments läuft noch. Bitte versuchen Sie es später erneut.';
+const SCAN_REJECTED_MESSAGE =
+  'Das Dokument wurde von der Virenprüfung nicht freigegeben und wird nicht eingelesen.';
+
 /** Holt ein vorhandenes Mandanten-Dokument aus dem Object-Store (SeaweedFS) und
- *  extrahiert den Text. Der Zugriff wird wie ein Download auditiert. */
+ *  extrahiert den Text. Der Zugriff wird wie ein Download auditiert.
+ *
+ *  Welle 15 (Entscheidung 5, RISK-AI-SUGGESTION-001): nur aus der neuesten
+ *  Fassung mit abgeschlossenem, sauberem Virenscan — dieselbe Freigabe wie
+ *  Download und Vorschau (isDocumentVersionReady). Läuft die Prüfung noch,
+ *  bleibt es bei einer Meldung; eine nicht freigegebene Fassung wird ohne
+ *  Lesen und Parsen abgewiesen und die Abweisung auditiert. */
 export async function importClientDocAction(
   input: z.infer<typeof ImportDocSchema>,
 ): Promise<OkActionResult<{ text: string; suggestedTitle: string | null }>> {
@@ -549,6 +561,21 @@ export async function importClientDocAction(
       });
       const v = d?.versions[0];
       if (!d || !v) return null;
+      const readiness = documentVersionReadiness(v);
+      if (readiness === 'scan_pending') return { readiness } as const;
+      if (readiness === 'scan_rejected') {
+        // Wie andere abgewiesene Zugriffe (backup.download_denied): Nachweis
+        // mit Grund, ohne Inhalt; die Bytes werden nicht gelesen.
+        await audit(tx, ctx, {
+          action: 'document.text_extract_denied',
+          resourceType: 'document',
+          resourceId: d.id,
+          ip,
+          userAgent,
+          after: { reason: 'scan_not_clean', scanStatus: v.scanStatus },
+        });
+        return { readiness } as const;
+      }
       await audit(tx, ctx, {
         action: 'document.text_extract',
         resourceType: 'document',
@@ -557,6 +584,7 @@ export async function importClientDocAction(
         userAgent,
       });
       return {
+        readiness,
         mimeType: d.mimeType,
         bucket: v.storageBucket,
         key: v.storageKey,
@@ -567,6 +595,8 @@ export async function importClientDocAction(
       };
     });
     if (!doc) return { ok: false, error: 'Dokument nicht gefunden.' };
+    if (doc.readiness === 'scan_pending') return { ok: false, error: SCAN_PENDING_MESSAGE };
+    if (doc.readiness === 'scan_rejected') return { ok: false, error: SCAN_REJECTED_MESSAGE };
 
     // App-proxied: Bytes intern aus SeaweedFS holen (Store nie öffentlich).
     // R-05: nur nach Größen- und SHA-256-Prüfung der gebundenen Fassung; eine

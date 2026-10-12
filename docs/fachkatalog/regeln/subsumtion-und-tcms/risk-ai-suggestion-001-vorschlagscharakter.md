@@ -39,6 +39,9 @@ code_refs:
   - apps/web/src/server/risk/reanalyze.ts
   - packages/db/src/risk-analysis.ts
   - apps/web/src/server/jobs/risk-analyse-queue.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
+  - apps/web/src/server/documents/delivery-readiness.ts
+  - apps/web/src/server/audit/labels.ts
 test_refs:
   - apps/web/src/server/risk/__tests__/llm.test.ts
   - apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts
@@ -46,6 +49,8 @@ test_refs:
   - apps/web/src/server/risk/__tests__/norms-core.test.ts
   - apps/web/src/server/risk/__tests__/reanalyze.test.ts
   - packages/db/src/__tests__/risk-archive-consistency.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/import-client-doc.test.ts
+  - apps/web/src/server/documents/__tests__/delivery-readiness.test.ts
 feature_refs:
   - docs/anwenderdoku/subsumtion-tcms-quantenlos.md
   - docs/assurance/known-limits.md
@@ -83,7 +88,8 @@ ihre Speicherung macht sie ebenfalls nicht automatisch richtig.
 
 ## Benötigte Angaben
 
-- vollständiger und aktueller Sachverhalt
+- vollständiger und aktueller Sachverhalt; bei Übernahme aus einem
+  Mandanten-Dokument dessen neueste, vom Virenscan freigegebene Fassung
 - Version des Risiko-/Normkatalogs und der Engine
 - Herkunft jeder Markierung
 - Normanker und gegebenenfalls Normketten
@@ -92,14 +98,15 @@ ihre Speicherung macht sie ebenfalls nicht automatisch richtig.
 
 ## Entscheidungslogik
 
-| Wenn                                                        | Dann                                                                                 | Begründung                                                               |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| ein Sachverhalt analysiert wird                             | zunächst deterministischen Engine-Lauf ausführen und Ergebnis mit Herkunft speichern | schnelle maschinelle Vorstrukturierung                                   |
-| optionale LLM-Schicht verfügbar ist                         | nur zusätzliche, noch nicht vorhandene Markierungen anhängen                         | vorhandene Markierungen sollen nicht unbemerkt dupliziert werden         |
-| LLM-Modell, Binary oder Modul fehlt                         | Anreicherung abbrechen oder überspringen und Fehler sichtbar lassen                  | fehlende Analyse darf nicht als leerer fachlicher Befund erscheinen      |
-| Engine-Hash vom lokal berechneten Sachverhalt-Hash abweicht | Abweichung protokollieren; lokalen Hash als maßgeblichen Auditanker verwenden        | Engine-Ausgabe wird nicht blind vertraut                                 |
-| Engine eine Markierung oder Norm vorschlägt                 | Herkunft sichtbar halten und durch einen Berufsträger prüfen                         | maschineller Treffer ist keine fachliche Entscheidung                    |
-| Berater eine Norm ergänzt, verwirft oder entfernt           | getrennte Kuratierung mit unverändert erhaltener Provenienz anwenden                 | menschliche Bearbeitung muss vom Engine-Vorschlag unterscheidbar bleiben |
+| Wenn                                                        | Dann                                                                                                                       | Begründung                                                               |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Text aus einem Mandanten-Dokument übernommen werden soll    | nur aus der neuesten Fassung mit abgeschlossenem, sauberem Virenscan; sonst Meldung bzw. auditierte Abweisung ohne Parsing | keine ungeprüften oder abgewiesenen Inhalte als Sachverhalt              |
+| ein Sachverhalt analysiert wird                             | zunächst deterministischen Engine-Lauf ausführen und Ergebnis mit Herkunft speichern                                       | schnelle maschinelle Vorstrukturierung                                   |
+| optionale LLM-Schicht verfügbar ist                         | nur zusätzliche, noch nicht vorhandene Markierungen anhängen                                                               | vorhandene Markierungen sollen nicht unbemerkt dupliziert werden         |
+| LLM-Modell, Binary oder Modul fehlt                         | Anreicherung abbrechen oder überspringen und Fehler sichtbar lassen                                                        | fehlende Analyse darf nicht als leerer fachlicher Befund erscheinen      |
+| Engine-Hash vom lokal berechneten Sachverhalt-Hash abweicht | Abweichung protokollieren; lokalen Hash als maßgeblichen Auditanker verwenden                                              | Engine-Ausgabe wird nicht blind vertraut                                 |
+| Engine eine Markierung oder Norm vorschlägt                 | Herkunft sichtbar halten und durch einen Berufsträger prüfen                                                               | maschineller Treffer ist keine fachliche Entscheidung                    |
+| Berater eine Norm ergänzt, verwirft oder entfernt           | getrennte Kuratierung mit unverändert erhaltener Provenienz anwenden                                                       | menschliche Bearbeitung muss vom Engine-Vorschlag unterscheidbar bleiben |
 
 ## Ausnahmen und Grenzfälle
 
@@ -157,6 +164,18 @@ verspäteten Markierungen auf; der Worker verwirft solche Ergebnisse ohne
 Erfolgs-Audit. Langes Engine-I/O findet außerhalb der Datenbanktransaktion
 statt.
 
+Die Übernahme eines Sachverhalts aus einem vorhandenen Mandanten-Dokument
+liest nur die neueste, nicht gelöschte Fassung, deren Virenscan sauber
+abgeschlossen ist (`documentVersionReadiness`, gleiche Bedingung wie
+`isDocumentVersionReady` für Download und Vorschau). Die Bytes werden mit
+gespeicherter Objektversion, Größe und SHA-256 gelesen (R-05). Läuft der Scan
+noch, erhält der Berater nur eine Meldung; weder Bytes noch Audit entstehen.
+Eine nicht freigegebene Fassung (infiziert, Scannerfehler oder anderer Status)
+wird ohne Lesen und Parsen abgewiesen und als
+`document.text_extract_denied` mit Grund und Scanstatus auditiert; ein
+erfolgreicher Abruf bleibt `document.text_extract`. Der übernommene Text ist
+nur ein Editor-Vorschlag; analysiert wird der vom Berater bearbeitete Text.
+
 ## Bekannte Abweichungen und Grenzen
 
 Die Umsetzung ist teilweise. Provenienz, getrennte LLM-Phase, Hashanker und
@@ -183,6 +202,8 @@ Workers, einen Warteschlangenauftrag ohne Sachverhaltstext, die Zurückweisung
 archivierter, redigierter oder nicht mehr zum Auftragshash passender
 Sachverhalte vor dem Engine-Lauf und nach dem Modellwarmlauf, das Verwerfen
 später veralteter Ergebnisse sowie reine Operationen zur Normkuratierung. Die
+Tests der Textübernahme belegen Lesen nur der freigegebenen Fassung, die
+Meldung bei laufendem Scan und die auditierte Abweisung ohne Lesen und Parsen. Die
 PostgreSQL-Nachweise der Archivregel prüfen die zugrunde liegenden Locks.
 Sie belegen ausdrücklich
 weder die fachliche Qualität der Engine noch die Vollständigkeit der Treffer,

@@ -83,6 +83,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'document.share': 'Dokument für Mandant freigegeben',
   'document.unshare': 'Mandanten-Freigabe zurückgezogen',
   'document.text_extract': 'Dokumenttext extrahiert',
+  'document.text_extract_denied': 'Dokumenttext-Übernahme abgewiesen (Virenprüfung)',
 
   // Dokument-Ablage (Ordner + Typen)
   'document_folder.create': 'Ordner angelegt',
