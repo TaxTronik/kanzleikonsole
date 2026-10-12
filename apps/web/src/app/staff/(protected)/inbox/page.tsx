@@ -3,13 +3,55 @@ import { MessageSquare, Search } from 'lucide-react';
 import { withTenantContext } from '@taxtronik/db';
 import { staffActionGuard } from '@/server/actions/staff-action';
 import { requireStaffPage } from '@/server/auth/staff-page';
-import { listStaffInboxThreadsTx } from '@/server/inbox/queries';
+import { listStaffInboxThreadsTx, type InboxListResult } from '@/server/inbox/queries';
 import { INBOX_TOPICS, INBOX_TOPIC_LABELS, type InboxTopic } from '@/server/inbox/constants';
 import { OffsetPagination } from '@/components/offset-pagination';
+import { Pagination } from '@/components/pagination';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
 function topic(value: string | undefined): InboxTopic | undefined {
   return INBOX_TOPICS.find((candidate) => candidate === value);
+}
+
+/**
+ * P-10 (Welle 15): Die Suche lädt nur die jüngsten Treffer bis zur Grenze;
+ * ältere dürfen nicht stillschweigend fehlen.
+ */
+function SearchLimitHint({ data }: { data: InboxListResult }) {
+  if (!data.search?.truncated) return null;
+  const limit = data.search.limit.toLocaleString('de-DE');
+  return (
+    <p role="status" className="alert-warning m-4">
+      Mehr als {limit} Treffer – Suche verfeinern. Angezeigt werden die {limit} zuletzt aktiven
+      Verläufe.
+    </p>
+  );
+}
+
+/** Suche: Keyset-Blättern mit begrenzter Zählung; sonst Seitenzahlen. */
+function ListFooter({ data, baseQs }: { data: InboxListResult; baseQs: URLSearchParams }) {
+  if (!data.search) {
+    return (
+      <OffsetPagination
+        basePath="/staff/inbox"
+        baseQs={baseQs}
+        page={data.page}
+        pageSize={data.pageSize}
+        totalCount={data.total}
+      />
+    );
+  }
+  return (
+    <Pagination
+      basePath="/staff/inbox"
+      baseQs={baseQs}
+      currentCursor={data.search.cursor}
+      nextCursor={data.search.nextCursor}
+      totalCount={data.search.truncated ? data.search.limit : data.total}
+      shownCount={data.items.length}
+      capped={data.search.truncated}
+    />
+  );
 }
 
 export default async function StaffInboxPage({
@@ -37,6 +79,7 @@ export default async function StaffInboxPage({
         ? raw.attention
         : undefined,
     scope,
+    cursor: raw.cursor,
   } as const;
   const data = await withTenantContext(guard.ctx, (tx) =>
     listStaffInboxThreadsTx(tx, guard.session, filters),
@@ -125,6 +168,7 @@ export default async function StaffInboxPage({
       </form>
 
       <section className="card overflow-hidden" aria-label="Mandantenpost-Verläufe">
+        <SearchLimitHint data={data} />
         {data.items.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <MessageSquare className="mx-auto mb-3 h-12 w-12 text-disabled" aria-hidden="true" />
@@ -172,13 +216,7 @@ export default async function StaffInboxPage({
             ))}
           </ul>
         )}
-        <OffsetPagination
-          basePath="/staff/inbox"
-          baseQs={baseQs}
-          page={data.page}
-          pageSize={data.pageSize}
-          totalCount={data.total}
-        />
+        <ListFooter data={data} baseQs={baseQs} />
       </section>
     </main>
   );

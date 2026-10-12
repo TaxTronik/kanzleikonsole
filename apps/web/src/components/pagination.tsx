@@ -15,6 +15,12 @@ interface Props {
   nextCursor: string | null;
   totalCount: number;
   shownCount: number;
+  /**
+   * Die Treffer sind auf `totalCount` begrenzt (z. B. Posteingangssuche, P-10):
+   * „Mehr als …“ statt einer genauen Zahl und am Ende der Hinweis zum
+   * Verfeinern statt „Ende“.
+   */
+  capped?: boolean;
 }
 
 export function Pagination({
@@ -24,6 +30,7 @@ export function Pagination({
   nextCursor,
   totalCount,
   shownCount,
+  capped = false,
 }: Props) {
   const nextQs = new URLSearchParams(baseQs);
   if (nextCursor) nextQs.set('cursor', nextCursor);
@@ -31,6 +38,7 @@ export function Pagination({
   return (
     <div className="card-footer">
       <span>
+        {capped ? 'Mehr als ' : ''}
         {totalCount.toLocaleString('de-DE')} Treffer · zeige {shownCount}
       </span>
       <div className="flex items-center gap-4">
@@ -52,7 +60,7 @@ export function Pagination({
             <ChevronRight className="h-3 w-3" />
           </Link>
         ) : (
-          <span className="text-disabled">Ende</span>
+          <span className="text-disabled">{capped ? 'Suche verfeinern' : 'Ende'}</span>
         )}
       </div>
     </div>

@@ -235,6 +235,12 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // ACCESS-SEARCH-SCOPE-001 / ACCESS-TENANT-RLS-001: Owner-Fixtures in zwei frischen
   // Tenants; die App-Rolle prüft Tenantgrenze und Indexnutzung der Kandidatensuche (P-10).
   'packages/db/src/__tests__/staff-search-candidates.test.ts',
+  // ACCESS-SEARCH-SCOPE-001 (P-10, Welle 15): Owner-Fixtures in eigenen Tenants; die App-Rolle
+  // vergleicht die v2-Kandidatenfunktion mit der bisherigen Staff-Liste unter RLS.
+  'packages/db/src/__tests__/portal-inbox-staff-search-candidates-v2.test.ts',
+  // ACCESS-SEARCH-SCOPE-001 (P-10, Welle 15): Owner legt über 12.000 Threads an; die App-Rolle
+  // führt die Staff-Posteingangssuche mit Zeitgrenze unter RLS aus.
+  'apps/web/src/server/inbox/__tests__/staff-search-db.test.ts',
   // AUDIT-HASH-CHAIN-001: Owner liest nur Katalogdaten (pg_indexes, pg_proc) zu den
   // audit_log-Leserindizes (P-11); keine Fixtures, kein Request-Pfad.
   'packages/db/src/__tests__/audit-log-reader-indexes.test.ts',

@@ -14,7 +14,14 @@ import type {
   InboxThreadDetail,
   InboxThreadListItem,
 } from './types';
-import { inboxMetadataSearch, staffInboxSearchCandidatesTx } from './search';
+import {
+  compareInboxRecency,
+  encodeInboxCursor,
+  inboxMetadataSearch,
+  parseInboxCursor,
+  STAFF_INBOX_SEARCH_CANDIDATE_LIMIT,
+  staffInboxSearchCandidatesTx,
+} from './search';
 
 // Fachkatalog: ACCESS-SEARCH-SCOPE-001 (Entwurf), ACCESS-TENANT-RLS-001,
 // ACCESS-STAFF-PERMISSION-001, DOC-PORTAL-SHARING-001.
@@ -29,6 +36,20 @@ export interface InboxListFilters {
 
 export interface StaffInboxListFilters extends InboxListFilters {
   scope?: 'mine' | 'team' | 'all';
+  /** Keyset-Cursor der Suche (`encodeInboxCursor`); ohne Suchbegriff ignoriert. */
+  cursor?: string;
+}
+
+/**
+ * Blättern in einer Staff-Suche (P-10, Welle 15): Keyset statt Seitenzahl,
+ * Treffer auf die jüngsten `limit` begrenzt.
+ */
+export interface StaffInboxSearchPaging {
+  /** Mehr Treffer als `limit`; ältere fehlen und die Oberfläche sagt das. */
+  truncated: boolean;
+  limit: number;
+  cursor: string | null;
+  nextCursor: string | null;
 }
 
 export interface InboxListResult {
@@ -37,6 +58,8 @@ export interface InboxListResult {
   pageSize: number;
   total: number;
   totalPages: number;
+  /** Nur bei einer Staff-Suche; `page`/`totalPages` sind dann 1. */
+  search?: StaffInboxSearchPaging;
 }
 
 function normalizePage(value: number | undefined): number {
@@ -140,6 +163,40 @@ export async function listPortalInboxThreadsTx(
   };
 }
 
+const STAFF_LIST_SELECT = {
+  id: true,
+  clientId: true,
+  subject: true,
+  topic: true,
+  status: true,
+  attention: true,
+  assignedStaffId: true,
+  lastMessageAt: true,
+  client: { select: { name: true } },
+  assignedStaff: { select: { fullName: true } },
+} satisfies Prisma.PortalInboxThreadSelect;
+
+async function pendingAttachmentCountsTx(
+  tx: TxClient,
+  tenantId: string,
+  threadIds: string[],
+): Promise<Map<string, number>> {
+  const pending = new Map<string, number>();
+  if (threadIds.length === 0) return pending;
+  const attachments = await tx.portalInboxAttachment.findMany({
+    where: {
+      tenantId,
+      decision: 'PENDING_REVIEW',
+      message: { threadId: { in: threadIds } },
+    },
+    select: { message: { select: { threadId: true } } },
+  });
+  for (const attachment of attachments) {
+    pending.set(attachment.message!.threadId, (pending.get(attachment.message!.threadId) ?? 0) + 1);
+  }
+  return pending;
+}
+
 export async function listStaffInboxThreadsTx(
   tx: TxClient,
   session: StaffSession,
@@ -150,13 +207,9 @@ export async function listStaffInboxThreadsTx(
   const requestedPage = normalizePage(filters.page);
   const clientAccess = await accessibleClientsWhereFor(tx, session);
   const scope = filters.scope ?? 'mine';
-  // P-10: Suchbegriff über den Trigram-Index vorauswählen (search.ts); der
-  // unveränderte Filter und RLS gelten weiterhin.
   const query = normalizeQuery(filters.query);
-  const candidates = query ? await staffInboxSearchCandidatesTx(tx, query) : null;
   const where: Prisma.PortalInboxThreadWhereInput = {
     tenantId,
-    ...(candidates ? { id: { in: candidates } } : {}),
     ...filteredWhere(filters, 'staff'),
     ...(scope === 'mine'
       ? { assignedStaffId: staffId }
@@ -170,6 +223,8 @@ export async function listStaffInboxThreadsTx(
       ],
     },
   };
+  if (query) return searchStaffInboxThreadsTx(tx, tenantId, where, query, { ...filters, scope });
+
   const total = await tx.portalInboxThread.count({ where });
   const totalPages = Math.max(1, Math.ceil(total / INBOX_STAFF_PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);
@@ -178,42 +233,77 @@ export async function listStaffInboxThreadsTx(
     orderBy: [{ lastMessageAt: 'desc' }, { id: 'desc' }],
     skip: (page - 1) * INBOX_STAFF_PAGE_SIZE,
     take: INBOX_STAFF_PAGE_SIZE,
-    select: {
-      id: true,
-      clientId: true,
-      subject: true,
-      topic: true,
-      status: true,
-      attention: true,
-      assignedStaffId: true,
-      lastMessageAt: true,
-      client: { select: { name: true } },
-      assignedStaff: { select: { fullName: true } },
-    },
+    select: STAFF_LIST_SELECT,
   });
-  const pending = new Map<string, number>();
-  if (rows.length > 0) {
-    const attachments = await tx.portalInboxAttachment.findMany({
-      where: {
-        tenantId,
-        decision: 'PENDING_REVIEW',
-        message: { threadId: { in: rows.map((row) => row.id) } },
-      },
-      select: { message: { select: { threadId: true } } },
-    });
-    for (const attachment of attachments) {
-      pending.set(
-        attachment.message!.threadId,
-        (pending.get(attachment.message!.threadId) ?? 0) + 1,
-      );
-    }
-  }
+  const pending = await pendingAttachmentCountsTx(
+    tx,
+    tenantId,
+    rows.map((row) => row.id),
+  );
   return {
     items: rows.map((row) => listItem(row, pending.get(row.id) ?? 0)),
     page,
     pageSize: INBOX_STAFF_PAGE_SIZE,
     total,
     totalPages,
+  };
+}
+
+/**
+ * Staff-Suche im Posteingang (ACCESS-SEARCH-SCOPE-001, Review-Finding P-10).
+ * Stufe 1 liefert die jüngsten sichtbaren Treffer mit allen Listenfiltern
+ * (höchstens `STAFF_INBOX_SEARCH_CANDIDATE_LIMIT`). Stufe 2 lädt genau diese
+ * IDs in EINER Abfrage unter RLS mit dem unveränderten Filter; nur was RLS und
+ * Filter zulassen, zählt und erscheint. Unter RLS kostet jede geprüfte Zeile
+ * die Policy-Funktionen, deshalb bleiben Zählung und Laden auf die Grenze
+ * begrenzt (Welle 15: vorher bis zu zwei Minuten bei 100.000 Threads).
+ * Geblättert wird per Keyset (letzte Aktivität, ID) innerhalb dieser Treffer;
+ * ältere Treffer jenseits der Grenze meldet `truncated`.
+ */
+async function searchStaffInboxThreadsTx(
+  tx: TxClient,
+  tenantId: string,
+  where: Prisma.PortalInboxThreadWhereInput,
+  query: string,
+  filters: StaffInboxListFilters & { scope: 'mine' | 'team' | 'all' },
+): Promise<InboxListResult> {
+  const candidates = await staffInboxSearchCandidatesTx(tx, query, {
+    topic: filters.topic,
+    status: filters.status,
+    attention: filters.attention,
+    scope: filters.scope,
+  });
+  const visible =
+    candidates.ids.length === 0
+      ? []
+      : await tx.portalInboxThread.findMany({
+          where: { ...where, id: { in: candidates.ids } },
+          select: STAFF_LIST_SELECT,
+        });
+  visible.sort(compareInboxRecency);
+  const cursor = parseInboxCursor(filters.cursor);
+  const remaining = cursor
+    ? visible.filter((row) => compareInboxRecency(cursor, row) < 0)
+    : visible;
+  const rows = remaining.slice(0, INBOX_STAFF_PAGE_SIZE);
+  const last = rows.at(-1);
+  const pending = await pendingAttachmentCountsTx(
+    tx,
+    tenantId,
+    rows.map((row) => row.id),
+  );
+  return {
+    items: rows.map((row) => listItem(row, pending.get(row.id) ?? 0)),
+    page: 1,
+    pageSize: INBOX_STAFF_PAGE_SIZE,
+    total: visible.length,
+    totalPages: 1,
+    search: {
+      truncated: candidates.truncated,
+      limit: STAFF_INBOX_SEARCH_CANDIDATE_LIMIT,
+      cursor: cursor ? encodeInboxCursor(cursor) : null,
+      nextCursor: last && remaining.length > rows.length ? encodeInboxCursor(last) : null,
+    },
   };
 }
 

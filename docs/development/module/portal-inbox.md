@@ -178,16 +178,26 @@ Es gibt keinen Trigram-/GIN- oder sonstigen globalen Inhaltsindex auf
 `PortalInboxMessage.body`, Anlagenbytes, OCR-Ausgaben oder Scannerdiagnosen.
 
 Unter RLS darf PostgreSQL `ILIKE` nicht als Indexbedingung nutzen (nicht
-LEAKPROOF). Die tenantweite Staff-Suche wählt deshalb zuerst Kandidaten über
-den Betreff-Trigramindex und die Mandantenfelder aus
-(`app.portal_inbox_staff_search_candidates`, SECURITY DEFINER, Tenant nur aus
-dem Kontext, dasselbe Muster wie Prisma `contains`). Die Funktion liefert nur
-Threads, die die Staff-Policy sichtbar macht, und bei mehr als 10.000 Treffern
-keine IDs; dann sucht die Liste wie zuvor ohne Vorauswahl. Danach lädt die
-Liste unverändert unter RLS mit allen Filtern, eingeschränkt auf die
-Kandidaten (`server/inbox/search.ts`); Treffer und Zähler bleiben gleich. Die
-Portalsuche ist auf einen Mandanten begrenzt und läuft über den Scope-Index
-`(tenant_id, client_id, …)`; der Trigramindex brächte dort keinen Vorteil.
+LEAKPROOF), und jede geprüfte Thread-Zeile kostet die Policy-Funktionen (rund
+0,5 ms). Die tenantweite Staff-Suche wählt deshalb zuerst Kandidaten über den
+Betreff-Trigramindex und die Mandantenfelder aus
+(`app.portal_inbox_staff_search_candidates_v2`, SECURITY DEFINER, Tenant und
+Bearbeiter für „Meine Arbeit“ nur aus dem Kontext, dasselbe Muster wie Prisma
+`contains`). Die Funktion wendet dieselben Listenfilter an (Thema, Status, Zug,
+Arbeitsbereich, aktives Mandat), liefert nur Threads, die die Staff-Policy
+sichtbar macht, und davon die 500 jüngsten (letzte Aktivität, dann ID); gibt
+es mehr, meldet sie einen Überlauf. Danach lädt die Liste genau diese IDs in
+einer Abfrage unter RLS mit allen Filtern (`server/inbox/search.ts`,
+`server/inbox/queries.ts`); die Zählung ist damit auf 500 begrenzt. Geblättert
+wird per Keyset (`cursor=<Millisekunden>_<Thread-ID>`, „Ältere“ und „Erste
+Seite“) statt über Seitenzahlen. Bei Überlauf zeigt die Liste „Mehr als 500
+Treffer – Suche verfeinern“ und am Ende der 500 Treffer denselben Hinweis statt
+„Ende“; ältere Treffer fehlen also nie stillschweigend. Messung (Welle 15,
+100.000 Threads, 30.000 Treffer): vorher 114 s für Zählung und Seite, jetzt
+0,3–0,9 s je Seite. Die Liste ohne Suchbegriff zählt und blättert unverändert
+über Seitenzahlen unter RLS. Die Portalsuche ist auf einen Mandanten begrenzt
+und läuft über den Scope-Index `(tenant_id, client_id, …)`; der Trigramindex
+brächte dort keinen Vorteil.
 
 Treffer-, Zähler- und Detailabfragen müssen dieselben RLS-, Feature-, Kontakt-,
 Permission- und Mandantenzugriffsgates verwenden. Ein Deep-Link prüft die

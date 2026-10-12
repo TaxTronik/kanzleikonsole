@@ -124,6 +124,8 @@ code_refs:
   - apps/web/src/app/api/auth/portal/[...nextauth]/route.ts
   - packages/crypto/src/crl-fetch.ts
   - apps/worker/src/tenant-context.ts
+  - packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates_v2(text,text,text,text,text,int4).sql
+  - packages/db/prisma/migrations/20261012120000_portal_inbox_staff_search_recent/migration.sql
 test_refs:
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts
@@ -206,6 +208,8 @@ test_refs:
   - apps/worker/src/__tests__/tenant-context.test.ts
   - packages/mail/src/__tests__/dispatch-db.test.ts
   - apps/web/src/server/tax-news/__tests__/fetcher-db.test.ts
+  - packages/db/src/__tests__/portal-inbox-staff-search-candidates-v2.test.ts
+  - apps/web/src/server/inbox/__tests__/staff-search-db.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -700,6 +704,25 @@ bereinigendes Artefakt verbleiben. Der lokale Dev-Seed setzt bestehende
 Admin-Konten konsistent in den normalen Passwort-/TOTP-Onboarding-Modus zurück,
 widerruft aktive Hardware-Credentials und erhöht die Auth-Revision in derselben
 Transaktion.
+
+Suchkandidaten (Review-Finding P-10): Unter RLS darf PostgreSQL eine
+Teilstringsuche (`ILIKE`, nicht LEAKPROOF) nicht als Indexbedingung nutzen und
+prüft jede Zeile des Tenants erst gegen die Policies. Suchen wählen deshalb
+Kandidaten-IDs über eng begrenzte SECURITY-DEFINER-Funktionen mit festem
+`search_path` und `row_security = off` vor, die Trigram-Indizes nutzen können
+(neben `app.staff_search_candidates` und
+`app.portal_inbox_staff_search_candidates` seit Welle 15
+`app.portal_inbox_staff_search_candidates_v2` für die Staff-Suche im
+Posteingang). Sie binden den Tenant ausschließlich an `app.current_tenant_id()`
+und einen akteurbezogenen Filter an `app.current_actor_id()`, nehmen dafür
+keinen Parameter entgegen, liefern ohne Kontext nichts, liefern nur IDs und
+höchstens bis zu einer festen Obergrenze und wenden die Teilbedingungen der
+Tabellen-Policy selbst an. EXECUTE haben nur die App-Rolle und, zur Parität,
+die Owner-Rolle. Die Anwendung lädt danach ausschließlich diese IDs unter RLS
+mit allen Zugriffsfiltern; jede angezeigte Zeile und jeder Zähler bleibt damit
+durch RLS gedeckt. Die DB-Suiten belegen je Funktion die Tenant-Bindung, die
+Gleichheit mit der bisherigen Abfrage unter RLS und die Sperre für Akteure
+ohne Recht.
 
 ## Bekannte Abweichungen und Grenzen
 

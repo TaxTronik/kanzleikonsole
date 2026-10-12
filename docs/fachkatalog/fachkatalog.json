@@ -581,7 +581,9 @@
         "apps/web/src/app/api/auth/staff/[...nextauth]/route.ts",
         "apps/web/src/app/api/auth/portal/[...nextauth]/route.ts",
         "packages/crypto/src/crl-fetch.ts",
-        "apps/worker/src/tenant-context.ts"
+        "apps/worker/src/tenant-context.ts",
+        "packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates_v2(text,text,text,text,text,int4).sql",
+        "packages/db/prisma/migrations/20261012120000_portal_inbox_staff_search_recent/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
@@ -664,7 +666,9 @@
         "apps/worker/src/__tests__/maintenance-backlog-db.test.ts",
         "apps/worker/src/__tests__/tenant-context.test.ts",
         "packages/mail/src/__tests__/dispatch-db.test.ts",
-        "apps/web/src/server/tax-news/__tests__/fetcher-db.test.ts"
+        "apps/web/src/server/tax-news/__tests__/fetcher-db.test.ts",
+        "packages/db/src/__tests__/portal-inbox-staff-search-candidates-v2.test.ts",
+        "apps/web/src/server/inbox/__tests__/staff-search-db.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",
