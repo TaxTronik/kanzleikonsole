@@ -1,9 +1,6 @@
 // Review-Entscheidung C4: Der Zustellstatus der Bestätigungs- bzw. Absagemail
 // steht dort, wo die Terminanfrage entschieden wurde — im Kanzleikalender,
 // auch nachdem die Anfrage die offene Liste verlassen hat.
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -11,8 +8,6 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock('@/server/mail/resend-actions', () => ({ resendMailOutboxAction: vi.fn() }));
 
 import { DecidedRequests } from '../decided-requests';
-
-const page = readFileSync(resolve(__dirname, '../page.tsx'), 'utf8');
 
 describe('Entschiedene Terminanfragen im Kalender', () => {
   it('zeigt Entscheidung, Zustellstatus und „Erneut senden“ je Anfrage', () => {
@@ -67,13 +62,6 @@ describe('Entschiedene Terminanfragen im Kalender', () => {
     expect(renderToStaticMarkup(<DecidedRequests days={14} requests={[]} />)).toBe('');
   });
 
-  it('lädt entschiedene Anfragen des Zeitraums samt Zustellstatus der Terminmails', () => {
-    expect(page).toContain("status: { in: ['ACCEPTED', 'REJECTED'] }");
-    expect(page).toContain('decidedAt: { gte: decidedSince }');
-    expect(page).toContain('new Date().getTime() - DECIDED_REQUEST_DAYS * 86_400_000');
-    expect(page).toContain("resourceType: 'appointment_request'");
-    // Dieselbe Mandantensichtbarkeit wie die offenen Anfragen.
-    const decided = page.slice(page.indexOf("status: { in: ['ACCEPTED', 'REJECTED'] }"));
-    expect(decided.slice(0, 400)).toContain('...viaVisibleClient');
-  });
+  // Laden der entschiedenen Anfragen (Zeitraum, Sichtbarkeit, Zustellstatus)
+  // prüft page-render.test.tsx am gerenderten Kalender (B-08).
 });

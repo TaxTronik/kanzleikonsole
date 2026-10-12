@@ -1,33 +1,39 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { TxClient } from '@taxtronik/db';
 import { berlinMonthBoundsUtc, groupTaxDeadlinesByDay } from '@/lib/tax-calendar';
+import { loadTaxDeadlineDayGroupsTx } from '@/server/tax-deadlines/day-groups';
 
-const source = readFileSync(resolve(__dirname, '../page.tsx'), 'utf8');
-// P-20: Die Aggregation teilen sich Kanzleikalender und /staff/tax-deadlines.
-const loader = readFileSync(
-  resolve(__dirname, '../../../../../server/tax-deadlines/day-groups.ts'),
-  'utf8',
-);
-const deadlineQuery = source.slice(
-  source.indexOf('loadTaxDeadlineDayGroupsTx(tx'),
-  source.indexOf('tx.appointment.findMany'),
-);
-const appointmentQuery = source.slice(
-  source.indexOf('tx.appointment.findMany'),
-  source.indexOf('tx.appointmentRequest.findMany'),
-);
-
+// Die Abfragen der Kalenderseite (Tageslader, Berlin-Grenzen der Termine,
+// Absagen) prüft page-render.test.tsx am gerenderten Kalender (B-08).
 describe('Kalender-Steuertermine', () => {
-  it('aggregiert die Monatsdaten in der Datenbank und lädt keine Client-Relation', () => {
-    expect(deadlineQuery).toContain('loadTaxDeadlineDayGroupsTx(tx, {');
-    expect(source).not.toContain('tx.taxDeadline.');
-    expect(loader).toContain('tx.taxDeadline.groupBy({');
-    expect(loader).toContain("by: ['dueDate', 'kind', 'period', 'status']");
-    expect(loader).toContain('_count: { _all: true }');
-    expect(loader).not.toContain('findMany');
-    expect(loader).not.toContain('include');
+  it('aggregiert die Monatsdaten in der Datenbank und lädt keine Client-Relation', async () => {
+    // P-20: Kanzleikalender und /staff/tax-deadlines teilen diesen Lader.
+    const groupBy = vi.fn(async () => [
+      {
+        dueDate: new Date(Date.UTC(2026, 2, 10)),
+        kind: 'USTA_MONATLICH',
+        period: '2026-02',
+        status: 'PLANNED',
+        _count: { _all: 3 },
+      },
+    ]);
+    const findMany = vi.fn();
+    const tx = { taxDeadline: { groupBy, findMany } } as unknown as TxClient;
+    const where = { dueDate: { gte: new Date(Date.UTC(2026, 2, 1)) } };
+
+    const groups = await loadTaxDeadlineDayGroupsTx(tx, where);
+
+    expect(groupBy).toHaveBeenCalledOnce();
+    expect(groupBy).toHaveBeenCalledWith({
+      by: ['dueDate', 'kind', 'period', 'status'],
+      where,
+      orderBy: [{ dueDate: 'asc' }, { kind: 'asc' }, { period: 'asc' }],
+      _count: { _all: true },
+    });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(groups.get('2026-03-10')).toEqual([
+      { kind: 'USTA_MONATLICH', period: '2026-02', total: 3, open: 3, overdue: false },
+    ]);
   });
 
   it('übernimmt die DB-Zähler in Gesamt- und Offen-Anzahl', () => {
@@ -45,12 +51,6 @@ describe('Kalender-Steuertermine', () => {
     expect(groups.get('2026-03-10')).toEqual([
       { kind: 'USTA_MONATLICH', period: '2026-02', total: 12, open: 7, overdue: false },
     ]);
-  });
-
-  it('lässt @db.Date-Steuertermine auf separaten UTC-Kalendertag-Grenzen', () => {
-    expect(deadlineQuery).toContain('dueDate: { gte: dateStart, lte: dateEnd }');
-    expect(deadlineQuery).not.toContain('appointmentStart');
-    expect(deadlineQuery).not.toContain('appointmentEndExclusive');
   });
 });
 
@@ -86,22 +86,5 @@ describe('Kalender-Termine: Europe/Berlin-Monatsgrenzen', () => {
     expect(isInJuly('2026-06-30T22:30:00.000Z')).toBe(true);
     // 01.08. 01:30 Berlin (CEST)
     expect(isInJuly('2026-07-31T23:30:00.000Z')).toBe(false);
-  });
-
-  it('wendet die halb-offenen Berlin-Grenzen auf die Appointment-Query an', () => {
-    expect(appointmentQuery).toContain('startsAt: { lt: appointmentEndExclusive }');
-    expect(appointmentQuery).toContain('endsAt: { gte: appointmentStart }');
-    expect(appointmentQuery).not.toContain('dateStart');
-    expect(appointmentQuery).not.toContain('dateEnd');
-  });
-
-  it('lädt abgesagte Termine mit und zeigt sie über die Terminpillen als abgesagt', () => {
-    // Review-Befund C1: Absagen ersetzt Löschen; nur der Kalender zeigt die Absage,
-    // Übersichten, Portal und iCal-Feed filtern CANCELLED weiter aus.
-    expect(appointmentQuery).not.toContain('CANCELLED');
-    expect(appointmentQuery).toContain('...optionalClientAccessFilter(clientAccess)');
-    expect(source).toContain(
-      '<AppointmentPills appointments={appts} staffOptions={data.staffList} limit={3} />',
-    );
   });
 });

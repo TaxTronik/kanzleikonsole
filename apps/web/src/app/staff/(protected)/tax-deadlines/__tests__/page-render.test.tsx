@@ -302,3 +302,14 @@ describe('Steuertermine — Monatsansicht (P-20)', () => {
     );
   });
 });
+
+describe('Kalender-Ansichtsschalter', () => {
+  it('steht am selben Bedienort wie im Kanzleikalender, mit dem angezeigten Monat', async () => {
+    const html = await render({ month: '2026-04' });
+    expect(html).toContain('role="group" aria-label="Kalenderansicht"');
+    expect(html).toMatch(/<span class="[^"]*" aria-current="page">Nur Steuertermine<\/span>/);
+    expect(html).toContain('href="/staff/calendar?month=2026-04"');
+    // Der Schalter ersetzt den früheren Rücklink.
+    expect(html).not.toContain('Zurück zum Kanzleikalender');
+  });
+});
