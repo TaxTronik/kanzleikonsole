@@ -128,6 +128,7 @@ test_refs:
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts
   - packages/db/src/__tests__/restore-security.test.ts
+  - packages/db/src/__tests__/role-settings.test.ts
   - apps/web/src/server/auth/__tests__/revocation.test.ts
   - apps/web/src/server/auth/__tests__/revocation.redis.test.ts
   - apps/web/src/server/auth/__tests__/portal-profile-session.test.ts
@@ -334,6 +335,19 @@ die Grants der Migration `20261006160000` sowie die Schreibsperren auf
 MAINTAIN sind nirgends erlaubt. Fehlende S-01-Grants meldet sie als Dump von
 vor S-01 mit dem Verfahrenshinweis (passendes altes Release wiederherstellen,
 dann `./taxtronik update`).
+
+Datenbankbezogene Rolleneinstellungen (`pg_db_role_setting`) gehören nicht zum
+`pg_dump`. Die Restore-CLI setzt sie nach allen Vorprüfungen und vor
+`pg_restore` aus der einzigen Quelle `CANONICAL_ROLE_SETTINGS`
+(derzeit `lock_timeout = 5s` für `taxtronik_app` aus Migration
+`20261007140000`) in der Ziel-Datenbank; fehlt der Restore-Verbindung das Recht
+auf `ALTER ROLE`, bricht sie vor `pg_restore` ab. Nach `pg_restore` verlangt die
+Sicherheitsprüfung direkt nach der Owner-Rolle für `taxtronik_app` und
+`taxtronik_owner` genau den kanonischen Satz; fehlende, abweichende oder
+zusätzliche Einstellungen sind ein Fehler. Zusätzliche Einstellungen entfernt
+die CLI nicht selbst. Der Worker-Restore-Drill setzt und prüft sie nicht, weil
+seine Drill-Rolle ohne `CREATEROLE` sie nicht ändern darf und die Wegwerf-DB nie
+von der App-Rolle genutzt wird.
 
 Eine nicht erfüllte oder nicht ausführbare Sicherheitsprüfung beendet die CLI
 mit Fehler und untersagt im Ergebnistext den Dienststart. Der eigentliche
@@ -713,7 +727,15 @@ SET-ROLE-Ziele, fehlende Funktionsausführung, deaktiviertes oder nicht
 erzwungenes RLS sowie neue ungeschützte normale und partitionierte Tabellen.
 Probe-Units weisen fehlende, verkürzte und null-Ergebnisse sowie Queryfehler
 ab und belegen, dass Restore-CLI und CI-Selbsttest dieselben 30 Invarianten
-prüfen. Ein echter Dump-/Restore-Gegenlauf prüft jeweils mit und ohne optionalen
+prüfen. Die Rolleneinstellungs-Regression prüft die kanonische Liste gegen jede
+`ALTER ROLE … SET`-Anweisung der Migrationen und gegen eine frisch migrierte
+Datenbank, setzt sie in einer neu angelegten Datenbank als Migrationsrolle
+(Wirkung in einer neuen App-Verbindung, zweiter Lauf ohne Änderung), weist die
+Owner-Rolle ohne `ALTER ROLE`-Recht ab und lehnt zusätzliche Einstellungen ab.
+Zurückgerollte Proben entfernen, ändern oder ergänzen Einstellungen und
+belegen, dass die Sicherheitsprüfung nach `pg_restore` scheitert; der
+CI-Selbsttest erwartet das `lock_timeout` in einer neuen App-Verbindung der
+wiederhergestellten Datenbank. Ein echter Dump-/Restore-Gegenlauf prüft jeweils mit und ohne optionalen
 Datensmoke ein leeres Ziel und ein durch den CI-Bootstrap vorbereitetes Ziel:
 identische Daten können unterschiedliche effektive Rechte haben; nur das
 sichere Ziel darf Erfolg melden. Fehlende Rollen/Schemaobjekte, ausschließlich

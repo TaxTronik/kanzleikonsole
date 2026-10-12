@@ -18,6 +18,9 @@
 //   - --production-target wird nur vom quieszierten Operator-Wrapper akzeptiert.
 //   - Skript verlangt explizit `--confirm-overwrite`, wenn es Tabellen findet
 //   - pg_restore muss im PATH sein
+//   - Die Ziel-Verbindung braucht das Recht auf ALTER ROLE (Migrationsrolle/
+//     Superuser): Die Rolleneinstellungen der Ziel-DB setzt die CLI selbst
+//     (Welle 15, CANONICAL_ROLE_SETTINGS), weil pg_dump sie nicht enthält.
 // =============================================================================
 
 import { spawn } from 'node:child_process';
@@ -37,6 +40,7 @@ import { createPostgresAdapter } from '@taxtronik/db/prisma-adapter';
 import { pgConnArgs, pgRestoreArgs } from '@taxtronik/db/pg-tools';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import {
+  applyCanonicalRoleSettings,
   assertRestoreRolesPresent,
   assertRestoreTargetSecurity,
 } from '@taxtronik/db/restore-security';
@@ -500,6 +504,19 @@ async function main() {
       );
     }
 
+    // Welle 15: Rolleneinstellungen (pg_db_role_setting, z. B. lock_timeout der
+    // App-Rolle) sind nicht Teil des Dumps. Erst nach allen Vorprüfungen und
+    // vor pg_restore setzen: Fehlt das Recht dazu, bleibt die Ziel-DB unberührt.
+    const appliedRoleSettings = await applyCanonicalRoleSettings(
+      targetUrl,
+      (url) => new PrismaClient({ adapter: createPostgresAdapter(url) }),
+    );
+    process.stdout.write(
+      appliedRoleSettings.length > 0
+        ? `  Rolleneinstellungen gesetzt: ${appliedRoleSettings.join(', ')}\n`
+        : `  Rolleneinstellungen bereits kanonisch.\n`,
+    );
+
     process.stdout.write(`Spiele in DB ein …\n`);
     await runPgRestore(path, targetUrl);
   } finally {
@@ -517,7 +534,9 @@ async function main() {
     targetUrl,
     (url) => new PrismaClient({ adapter: createPostgresAdapter(url) }),
   );
-  process.stdout.write(`✓ Restore abgeschlossen; Rollenrechte und RLS geprüft.\n`);
+  process.stdout.write(
+    `✓ Restore abgeschlossen; Rollenrechte, Rolleneinstellungen und RLS geprüft.\n`,
+  );
 
   if (args.smokeTest) {
     await smokeTest(targetUrl);

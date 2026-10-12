@@ -2,8 +2,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  applyCanonicalRoleSettings,
   assertRestoreRolesPresent,
   assertRestoreTargetSecurity,
+  CANONICAL_ROLE_SETTINGS,
 } from '@taxtronik/db/restore-security';
 
 const ACL_SELECT = "SELECT concat_ws('|',";
@@ -29,6 +31,8 @@ function aclInvariants(source: string, end: string): string[] {
 
 /** B6: Ergebnis der Owner-Rollen-Probe eines sicheren Ziels (läuft zuerst). */
 const OWNER_OK = [{ roleSafe: true, grantsPresent: true, writeLocks: true }];
+/** Welle 15: pg_db_role_setting der Ziel-DB mit genau den kanonischen Einstellungen. */
+const ROLE_SETTINGS_OK = [{ role: 'taxtronik_app', setting: 'lock_timeout=5s' }];
 const ALL_30 = [{ aclState: Array(30).fill('true').join('|') }];
 const PRE_S01_PROCEDURE =
   'Dumps von vor Migration 20261006160000 (S-01) mit dem passenden alten Release ' +
@@ -60,11 +64,11 @@ describe('Restore security probe failures', () => {
   it.each([{ rows: [] }, { rows: [{ aclState: null }] }, { rows: [{ aclState: 'true' }] }])(
     'rejects incomplete privilege evidence without announcing rollback: %j',
     async ({ rows }) => {
-      const probe = probeReturning(OWNER_OK, rows);
+      const probe = probeReturning(OWNER_OK, ROLE_SETTINGS_OK, rows);
       await expect(
         assertRestoreTargetSecurity('postgresql://synthetic/test', probe.factory),
       ).rejects.toThrow('bereits angewendet und nicht zurückgerollt');
-      expect(probe.queryRaw).toHaveBeenCalledTimes(2);
+      expect(probe.queryRaw).toHaveBeenCalledTimes(3);
       expect(probe.disconnect).toHaveBeenCalledOnce();
     },
   );
@@ -81,27 +85,69 @@ describe('Restore security probe failures', () => {
   });
 
   it('does not accept the former 17-invariant evidence without the ticket protections', async () => {
-    const probe = probeReturning(OWNER_OK, [{ aclState: Array(17).fill('true').join('|') }]);
+    const probe = probeReturning(OWNER_OK, ROLE_SETTINGS_OK, [
+      { aclState: Array(17).fill('true').join('|') },
+    ]);
     await expect(
       assertRestoreTargetSecurity('postgresql://synthetic/test', probe.factory),
     ).rejects.toThrow('Dienste nicht starten');
   });
 
   it('does not accept the former 22-invariant evidence without the anchor and checkpoint write locks', async () => {
-    const probe = probeReturning(OWNER_OK, [{ aclState: Array(22).fill('true').join('|') }]);
+    const probe = probeReturning(OWNER_OK, ROLE_SETTINGS_OK, [
+      { aclState: Array(22).fill('true').join('|') },
+    ]);
     await expect(
       assertRestoreTargetSecurity('postgresql://synthetic/test', probe.factory),
     ).rejects.toThrow('Dienste nicht starten');
   });
 
   it('accepts exactly 30 satisfied invariants with a safe owner role and a non-empty RLS inventory', async () => {
-    const probe = probeReturning(OWNER_OK, ALL_30, [{ checked: 3, violations: 0 }]);
+    const probe = probeReturning(OWNER_OK, ROLE_SETTINGS_OK, ALL_30, [
+      { checked: 3, violations: 0 },
+    ]);
     await expect(
       assertRestoreTargetSecurity('postgresql://synthetic/test', probe.factory),
     ).resolves.toBeUndefined();
-    expect(probe.queryRaw).toHaveBeenCalledTimes(3);
+    expect(probe.queryRaw).toHaveBeenCalledTimes(4);
     const ownerSql = (probe.queryRaw.mock.calls[0]?.[0] as TemplateStringsArray).join(' ');
     expect(ownerSql).toContain("r.rolname = 'taxtronik_owner'");
+    const settingsSql = (probe.queryRaw.mock.calls[1]?.[0] as TemplateStringsArray).join(' ');
+    expect(settingsSql).toContain('pg_catalog.pg_db_role_setting');
+    expect(settingsSql).toContain('pg_catalog.current_database()');
+  });
+
+  // Welle 15: Rolleneinstellungen liegen nicht im Dump; das Gate verlangt genau
+  // den kanonischen Satz für taxtronik_app und taxtronik_owner.
+  it.each([
+    [[], /fehlend: taxtronik_app lock_timeout=5s/],
+    [
+      [{ role: 'taxtronik_app', setting: 'lock_timeout=10s' }],
+      /fehlend: taxtronik_app lock_timeout=5s; abweichend oder zusätzlich: taxtronik_app lock_timeout=10s/,
+    ],
+    [
+      [...ROLE_SETTINGS_OK, { role: 'taxtronik_owner', setting: 'lock_timeout=5s' }],
+      /abweichend oder zusätzlich: taxtronik_owner lock_timeout=5s/,
+    ],
+  ])('rejects missing or deviating role settings: %j', async (settingRows, message) => {
+    const probe = probeReturning(OWNER_OK, settingRows, ALL_30, [{ checked: 3, violations: 0 }]);
+    const failure = assertRestoreTargetSecurity('postgresql://synthetic/test', probe.factory);
+    await expect(failure).rejects.toThrow(message);
+    await expect(failure).rejects.toThrow('Dienste nicht starten');
+    expect(probe.queryRaw).toHaveBeenCalledTimes(2);
+    expect(probe.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('ignores per-database settings of roles outside the service roles', async () => {
+    const probe = probeReturning(
+      OWNER_OK,
+      [...ROLE_SETTINGS_OK, { role: 'taxtronik', setting: 'work_mem=64MB' }],
+      ALL_30,
+      [{ checked: 3, violations: 0 }],
+    );
+    await expect(
+      assertRestoreTargetSecurity('postgresql://synthetic/test', probe.factory),
+    ).resolves.toBeUndefined();
   });
 
   // B6 (S-01): die Owner-Rolle der Container wird vor den 30 Invarianten geprüft.
@@ -211,5 +257,86 @@ describe('Restore security invariants of CLI and CI self-test', () => {
   it('expects all 30 invariants to hold in the self-test', () => {
     const expected = /^EXPECTED_ACL_STATE="([^"]*)"$/m.exec(selftestSource)?.[1];
     expect(expected?.split('|')).toEqual(Array(30).fill('true'));
+  });
+});
+
+describe('Canonical role settings before pg_restore (Welle 15)', () => {
+  function writer(...reads: unknown[]) {
+    const queryRaw = vi.fn();
+    for (const result of reads) queryRaw.mockResolvedValueOnce(result);
+    const executeRawUnsafe = vi.fn().mockResolvedValue(0);
+    const disconnect = vi.fn().mockResolvedValue(undefined);
+    return {
+      queryRaw,
+      executeRawUnsafe,
+      disconnect,
+      factory: () => ({
+        $queryRaw: queryRaw,
+        $executeRawUnsafe: executeRawUnsafe,
+        $disconnect: disconnect,
+      }),
+    };
+  }
+
+  it('changes nothing when the target already carries the canonical settings', async () => {
+    const target = writer(ROLE_SETTINGS_OK, ROLE_SETTINGS_OK);
+    await expect(
+      applyCanonicalRoleSettings('postgresql://synthetic/test', target.factory),
+    ).resolves.toEqual([]);
+    expect(target.executeRawUnsafe).not.toHaveBeenCalled();
+    expect(target.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('sets missing settings with the static statement and verifies the result', async () => {
+    const target = writer([], ROLE_SETTINGS_OK);
+    await expect(
+      applyCanonicalRoleSettings('postgresql://synthetic/test', target.factory),
+    ).resolves.toEqual(['taxtronik_app lock_timeout=5s']);
+    expect(target.executeRawUnsafe).toHaveBeenCalledOnce();
+    expect(target.executeRawUnsafe.mock.calls[0]?.[0]).toContain(
+      "'ALTER ROLE %I IN DATABASE %I SET %I = %L', 'taxtronik_app', " +
+        "pg_catalog.current_database(), 'lock_timeout', '5s'",
+    );
+    expect(target.queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops before pg_restore when extra settings remain or ALTER ROLE is not permitted', async () => {
+    const extra = writer(
+      [...ROLE_SETTINGS_OK, { role: 'taxtronik_owner', setting: 'lock_timeout=5s' }],
+      [...ROLE_SETTINGS_OK, { role: 'taxtronik_owner', setting: 'lock_timeout=5s' }],
+    );
+    await expect(
+      applyCanonicalRoleSettings('postgresql://synthetic/test', extra.factory),
+    ).rejects.toThrow(/zusätzlich: taxtronik_owner lock_timeout=5s.*Abbruch vor pg_restore/s);
+    expect(extra.executeRawUnsafe).not.toHaveBeenCalled();
+    expect(extra.disconnect).toHaveBeenCalledOnce();
+
+    const denied = writer([]);
+    denied.executeRawUnsafe.mockRejectedValueOnce(new Error('permission denied to alter role'));
+    await expect(
+      applyCanonicalRoleSettings('postgresql://synthetic/test', denied.factory),
+    ).rejects.toThrow(/permission denied to alter role.*Abbruch vor pg_restore/s);
+    expect(denied.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('runs after the overwrite check and before pg_restore in the CLI', () => {
+    const cli = repoFile('apps/web/src/server/backup/restore.ts');
+    const main = cli.slice(cli.indexOf('async function main()'));
+    const empty = main.indexOf('await targetIsEmpty(');
+    const settings = main.indexOf('await applyCanonicalRoleSettings(');
+    const restore = main.indexOf('await runPgRestore(');
+    const acceptance = main.indexOf('await assertRestoreTargetSecurity(');
+    expect(settings).toBeGreaterThan(empty);
+    expect(restore).toBeGreaterThan(settings);
+    expect(acceptance).toBeGreaterThan(restore);
+  });
+
+  it('expects the canonical app-role setting in the CI self-test probe', () => {
+    const selftest = repoFile('scripts/restore-selftest.sh');
+    const expected = /^EXPECTED_APP_PROBE="([^"]*)"$/m.exec(selftest)?.[1];
+    const appSettings = CANONICAL_ROLE_SETTINGS.filter((s) => s.role === 'taxtronik_app');
+    expect(appSettings.map((s) => s.name)).toEqual(['lock_timeout']);
+    expect(expected).toBe(`taxtronik_app|NULL|0|${appSettings[0]!.value}`);
+    expect(selftest).toContain("current_setting('lock_timeout')");
   });
 });

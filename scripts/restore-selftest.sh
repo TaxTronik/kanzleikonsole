@@ -6,7 +6,8 @@
 # restore.ts (--file) spielt ihn via pg_restore in eine frische Ziel-DB ein.
 # Anschließend drei Integritäts-Assertions:
 #   A) Zeilenzahl-Vergleich Quelle↔Ziel für die wichtigsten Tabellen
-#   B) App-Rolle + sicherheitskritische Grants/REVOKEs sind wiederhergestellt
+#   B) App-Rolle + sicherheitskritische Grants/REVOKEs sind wiederhergestellt,
+#      die kanonische Rolleneinstellung (lock_timeout) wirkt in der Ziel-DB
 #   C) verify:chain auf der wiederhergestellten DB (Audit-Hash-Chain intakt?)
 #
 # Läuft eigenständig — KEINE Prod-.env nötig. Quelle = $DATABASE_URL, das Ziel
@@ -269,12 +270,15 @@ EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|
 
 # Wirklich als eingeschränkte Rolle verbinden: Schema/Funktion müssen
 # nutzbar sein, RLS muss ohne Tenant-Kontext gleichzeitig alle Tenant-Zeilen
-# ausblenden.
+# ausblenden. Welle 15: Die Rolleneinstellung lock_timeout (F-06) liegt nicht im
+# Dump; restore.ts setzt sie in der neuen Ziel-DB (CANONICAL_ROLE_SETTINGS in
+# packages/db/src/restore-security.ts), eine neue App-Verbindung muss sie sehen.
 APP_PROBE="$(psql_app_db "$TARGET_DB" -tA -c \
-  "SELECT current_user || '|' || COALESCE(app.current_tenant_id()::text, 'NULL') || '|' || (SELECT count(*) FROM tenant)::text")"
-[[ "$APP_PROBE" == "taxtronik_app|NULL|0" ]] || \
-  die "App-Rollen-/RLS-Probe fehlgeschlagen: $APP_PROBE"
-echo "  ✓ taxtronik_app funktionsfähig; kritische Grants/REVOKEs und RLS intakt"
+  "SELECT current_user || '|' || COALESCE(app.current_tenant_id()::text, 'NULL') || '|' || (SELECT count(*) FROM tenant)::text || '|' || current_setting('lock_timeout')")"
+EXPECTED_APP_PROBE="taxtronik_app|NULL|0|5s"
+[[ "$APP_PROBE" == "$EXPECTED_APP_PROBE" ]] || \
+  die "App-Rollen-/RLS-/Rolleneinstellungs-Probe fehlgeschlagen: $APP_PROBE (erwartet $EXPECTED_APP_PROBE)"
+echo "  ✓ taxtronik_app funktionsfähig; kritische Grants/REVOKEs, RLS und lock_timeout intakt"
 
 # -----------------------------------------------------------------------------
 # 7. Assertion C (compliance-kritisch) — Audit-Hash-Chain auf der Ziel-DB.

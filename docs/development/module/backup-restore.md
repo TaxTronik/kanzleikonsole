@@ -134,6 +134,20 @@ normalen und partitionierten öffentlichen Tenanttabellen. Die dokumentierten
 globalen Ausnahmen bleiben erhalten; ein leeres Inventar wird abgewiesen.
 `--no-smoke-test` schaltet diese Sicherheitsabnahme nicht aus.
 
+Datenbankbezogene Rolleneinstellungen (`pg_db_role_setting`, derzeit
+`lock_timeout = 5s` für `taxtronik_app`, Migration `20261007140000`) sind nicht
+Teil des `pg_dump`. `restore.ts` setzt sie vor `pg_restore` aus
+`CANONICAL_ROLE_SETTINGS` (`restore-security.ts`) in der Ziel-DB, die Abnahme
+verlangt danach für `taxtronik_app` und `taxtronik_owner` genau diesen Satz
+(Welle 15). `role-settings.test.ts` bindet die Liste an alle Migrationen (jedes
+`ALTER ROLE … SET` muss dort stehen) und an eine frisch migrierte Datenbank und
+belegt an einer neu angelegten Datenbank Setzen, Wirkung für eine neue
+App-Verbindung und den Abbruch ohne `ALTER ROLE`-Recht. Der Worker-Restore-Drill
+setzt und prüft die Einstellungen bewusst nicht: Seine Drill-Rolle hat kein
+`CREATEROLE` (S-01) und darf Einstellungen anderer Rollen nicht ändern, die
+Wegwerf-DB wird nie von der App-Rolle genutzt und mit `DROP DATABASE` samt ihren
+Einstellungen entfernt.
+
 Fünf der Prüfungen betreffen die Ticketmigration `20260907013230`: Der
 Nummernzähler bleibt ausschließlich dem Owner zugänglich, Referenzkanten
 sind für die Anwendung nur les- und ergänzbar; die Triggerfunktionen sind

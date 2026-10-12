@@ -106,6 +106,11 @@ eines kompromittierten BackupRecord noch die Isolation eines kompromittierten
 Hosts. Der Drill prüft PostgreSQL und Auditdaten, keine vollständige
 Wiederherstellung aller Kanzleidateien und externen Dienste. Die Laufkopie
 benötigt zusätzlich freien Plattenplatz in Höhe des komprimierten Dumps.
+Datenbankbezogene Rolleneinstellungen (`pg_db_role_setting`, etwa das
+`lock_timeout` der App-Rolle) sind nicht Teil des Dumps; der Drill setzt und
+prüft sie nicht, weil die Drill-Rolle ohne `CREATEROLE` Einstellungen anderer
+Rollen nicht ändern darf und die Wegwerf-DB nie von der App-Rolle genutzt wird.
+Diesen Nachweis führt die Restore-CLI (`ACCESS-TENANT-RLS-001`).
 
 ## Fachliche Prüffragen
 

@@ -587,6 +587,7 @@
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
         "apps/web/src/server/backup/__tests__/restore.test.ts",
         "packages/db/src/__tests__/restore-security.test.ts",
+        "packages/db/src/__tests__/role-settings.test.ts",
         "apps/web/src/server/auth/__tests__/revocation.test.ts",
         "apps/web/src/server/auth/__tests__/revocation.redis.test.ts",
         "apps/web/src/server/auth/__tests__/portal-profile-session.test.ts",

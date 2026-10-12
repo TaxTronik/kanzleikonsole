@@ -448,7 +448,10 @@ Tenants hinter einer langen Transaktion), bricht die Anweisung mit SQLSTATE
 `55P03` (`lock timeout`) ab, statt den App-Pool mit wartenden Requests zu
 füllen. Wartezeiten ab 1 s stehen schon vorher im Postgres-Log
 (`log_lock_waits`). Die Owner-Rolle (Worker-Wartungsjobs) und die
-Migrationsrolle haben kein `lock_timeout`. Kontrolle:
+Migrationsrolle haben kein `lock_timeout`. Die Einstellung liegt im Cluster
+(`pg_db_role_setting`), nicht im `pg_dump`; `./taxtronik restore` setzt sie in der
+Ziel-Datenbank selbst und bricht ab, wenn sie danach fehlt oder abweicht
+([Disaster Recovery](disaster-recovery.md#3-restore-procedure-postgres)). Kontrolle:
 
 ```bash
 ./taxtronik exec postgres psql -U taxtronik -d taxtronik -c \

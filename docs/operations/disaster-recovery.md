@@ -71,6 +71,25 @@ Clusterrechte und BYPASSRLS, `taxtronik_owner` mit genau den Attributen der
 Migration `20261006160000` (NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
 BYPASSRLS) und ohne Rollenmitgliedschaften.
 
+Datenbankbezogene Rolleneinstellungen (`ALTER ROLE … IN DATABASE … SET`,
+derzeit nur `lock_timeout = 5s` für `taxtronik_app` aus Migration
+`20261007140000`, F-06) liegen in `pg_db_role_setting` des Clusters und sind
+nicht Teil des `pg_dump`. Nach einem Restore in eine neu angelegte Datenbank
+oder einen neuen Cluster fehlten sie bisher, obwohl das Migrationsledger die
+Migration als angewendet führt. Seit Welle 15 setzt `restore.ts` sie nach allen
+Vorprüfungen und unmittelbar vor `pg_restore` selbst in der Ziel-DB (Ausgabe
+`Rolleneinstellungen gesetzt: …` bzw. `… bereits kanonisch`). Einzige Quelle ist
+`CANONICAL_ROLE_SETTINGS` in `packages/db/src/restore-security.ts`; ein Test
+bindet sie an alle Migrationen und an eine frisch migrierte Datenbank. Die
+Sicherheitsabnahme nach `pg_restore` verlangt für `taxtronik_app` und
+`taxtronik_owner` in der Ziel-DB genau diesen Satz (fail-closed bei fehlender,
+abweichender oder zusätzlicher Einstellung). Die Restore-Verbindung braucht dafür
+das Recht auf `ALTER ROLE` (Migrationsrolle `taxtronik` bzw. Superuser, wie bei
+`./taxtronik restore`); ohne dieses Recht bricht der Restore **vor**
+`pg_restore` ab. Zusätzliche Einstellungen der Dienstrollen entfernt die CLI
+nicht still; sie bricht mit dem passenden
+`ALTER ROLE <rolle> IN DATABASE <db> RESET <parameter>` als Hinweis ab.
+
 Der Restore selbst läuft als Superuser `taxtronik` mit der `DATABASE_URL` der
 Host-`.env`; app und worker verbinden danach als `taxtronik_owner` und
 benötigen die im Dump enthaltenen Grants. Die verbindliche Sicherheitsabnahme
@@ -443,7 +462,9 @@ Code-Pfad — kein Parallel-Reimplementat:
 3. **Assertion A:** Zeilenzahl-Vergleich Quelle ↔ Ziel für die wichtigsten
    Tabellen (`tenant`, `audit_log`, `client`, `document`, `invoice`).
 4. **Assertion B:** Verbindung als `taxtronik_app`, RLS sowie kritische
-   Grants/REVOKEs auf Audit-Tabellen und GwG-SECURITY-DEFINER-Funktionen.
+   Grants/REVOKEs auf Audit-Tabellen und GwG-SECURITY-DEFINER-Funktionen; die
+   neue App-Verbindung muss die von `restore.ts` gesetzte Rolleneinstellung
+   `lock_timeout = 5s` sehen (Welle 15).
 5. **Assertion C (compliance-kritisch):** `verify:chain` auf der
    wiederhergestellten DB — die Audit-Hash-Chain MUSS intakt sein.
 6. **Assertion D (S-01):** Worker-Backup und Restore-Drill ohne Superuser —
@@ -494,12 +515,12 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/runner.ts \
 - [ ] `pnpm install`
 - [ ] `pnpm db:migrate:deploy` (DB-Schema bauen)
 - [ ] `./taxtronik restore --latest --target-url <postgres-url>`
-- [ ] Rolleneinstellung geprüft: `lock_timeout=5s` für `taxtronik_app` in der
-      Datenbank `taxtronik` (Abfrage unter
-      [Datenbankverbindungen](day-2-operations.md#datenbankverbindungen)). Sie
-      liegt im Cluster, nicht im Dump; `pnpm db:migrate:deploy` vor dem Restore
-      setzt sie. Fehlt sie, als Superuser nachziehen:
-      `ALTER ROLE taxtronik_app IN DATABASE taxtronik SET lock_timeout = '5s'`
+- [ ] Rolleneinstellung `lock_timeout=5s` für `taxtronik_app` gesetzt: Sie
+      liegt im Cluster, nicht im Dump. `./taxtronik restore` setzt und prüft sie
+      seit Welle 15 selbst (Ausgabe „Rolleneinstellungen gesetzt“ oder „bereits
+      kanonisch“, danach „Rollenrechte, Rolleneinstellungen und RLS geprüft“);
+      ein manuelles `ALTER ROLE` entfällt. Kontrollabfrage unter
+      [Datenbankverbindungen](day-2-operations.md#datenbankverbindungen)
 - [ ] n8n-DB-Dump eingespielt; n8n-Volume und `N8N_ENCRYPTION_KEY` gehören zum
       gleichen Recovery Point
 - [ ] SeaweedFS-Cold-Snapshot gestartet; Byte-Export nur als Notfallalternative

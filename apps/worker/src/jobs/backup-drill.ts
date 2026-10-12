@@ -30,6 +30,12 @@
 //     Objekte der Wegwerf-DB. Der Drill lässt genau diese TOC-Einträge aus
 //     (pg_restore --list/--use-list) und spielt alle übrigen, inklusive
 //     GRANT/REVOKE, mit den Flags des Produktiv-Restores ein.
+//   - Rolleneinstellungen (pg_db_role_setting, z. B. lock_timeout der App-Rolle)
+//     setzt und prüft der Drill bewusst nicht (Welle 15): Sie sind nicht Teil
+//     des Dumps, die Drill-Rolle hat kein CREATEROLE und darf Einstellungen
+//     anderer Rollen nicht ändern, und die Wegwerf-DB nutzt nie die App-Rolle.
+//     DROP DATABASE entfernt ihre Einstellungen mit. Setzen und prüfen
+//     übernimmt die Restore-CLI (CANONICAL_ROLE_SETTINGS, restore-security.ts).
 // =============================================================================
 
 import { spawn } from 'node:child_process';

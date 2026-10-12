@@ -103,6 +103,34 @@ describe('Restore: effective ACLs and tenant RLS are mandatory', () => {
     await expectRejectedAfter(mutation, message);
   });
 
+  // Welle 15: pg_db_role_setting ist nicht Teil des Dumps; das Gate verlangt
+  // genau die kanonischen Einstellungen (CANONICAL_ROLE_SETTINGS).
+  const roleSetting = (statement: string) =>
+    `DO $$ BEGIN EXECUTE format('ALTER ROLE ${statement}', current_database()); END $$`;
+  it.each([
+    [
+      roleSetting('taxtronik_app IN DATABASE %I RESET lock_timeout'),
+      /Rolleneinstellungen der Ziel-Datenbank weichen ab \(fehlend: taxtronik_app lock_timeout=5s\)/,
+    ],
+    [
+      roleSetting("taxtronik_app IN DATABASE %I SET lock_timeout = ''10s''"),
+      /fehlend: taxtronik_app lock_timeout=5s; abweichend oder zusätzlich: taxtronik_app lock_timeout=10s/,
+    ],
+    [
+      roleSetting("taxtronik_app IN DATABASE %I SET statement_timeout = ''1s''"),
+      /abweichend oder zusätzlich: taxtronik_app statement_timeout=1s/,
+    ],
+    [
+      roleSetting("taxtronik_owner IN DATABASE %I SET lock_timeout = ''5s''"),
+      /abweichend oder zusätzlich: taxtronik_owner lock_timeout=5s/,
+    ],
+  ])(
+    'rejects missing or deviating role settings after pg_restore: %s',
+    async (mutation, message) => {
+      await expectRejectedAfter(mutation, message);
+    },
+  );
+
   it('leaves the original privilege and RLS state intact after rolled-back probes', async () => {
     await expect(assertRestoreTargetSecurity(url, createProbe)).resolves.toBeUndefined();
   });
