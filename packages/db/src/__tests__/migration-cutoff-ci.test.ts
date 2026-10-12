@@ -1,5 +1,6 @@
 // Fachkatalog: GWG-ACTIVATION-GATE-001
 // Fachkatalog: GWG-SELF-ONBOARDING-001
+// Fachkatalog: TCMS-SAMPLE-PROOF-001
 //
 // Review-Finding B-10: Die Altbestandstests fuer Migration 034 (GwG fail-closed)
 // und 041 (Onboarding-Backfill) laufen als SQL-Dateien ueber
@@ -35,6 +36,13 @@ const cases = [
     asserts: 'scripts/ci/migration-cutoff/onboarding-041-asserts.sql',
     underTest: '20260801004100_onboarding_gwg_review_workflow',
     rule: 'GWG-SELF-ONBOARDING-001',
+  },
+  // Welle 15 (P-11): Los-Ziehungen aus audit_log nach risk_los_ziehung.
+  {
+    fixtures: 'scripts/ci/migration-cutoff/los-ziehung-fixtures.sql',
+    asserts: 'scripts/ci/migration-cutoff/los-ziehung-asserts.sql',
+    underTest: '20261012100000_risk_los_ziehung',
+    rule: 'TCMS-SAMPLE-PROOF-001',
   },
 ];
 

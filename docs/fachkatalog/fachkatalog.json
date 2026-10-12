@@ -6058,6 +6058,9 @@
       ],
       "code_refs": [
         "apps/web/src/server/risk/los.ts",
+        "packages/db/prisma/migrations/20261012100000_risk_los_ziehung/migration.sql",
+        "packages/db/prisma/schema.prisma",
+        ".forgejo/workflows/ci.yml",
         "apps/web/src/server/risk/los-state.ts",
         "apps/web/src/server/risk/index.ts",
         "apps/web/src/server/audit/labels.ts",
@@ -6072,6 +6075,7 @@
       "test_refs": [
         "apps/web/src/server/risk/__tests__/los.test.ts",
         "packages/db/src/__tests__/los-state-consistency.test.ts",
+        "packages/db/src/__tests__/risk-los-ziehung.test.ts",
         "apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-state.test.ts",
         "apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-hooks.test.tsx"
       ],

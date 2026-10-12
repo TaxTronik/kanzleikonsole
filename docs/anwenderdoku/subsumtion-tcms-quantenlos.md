@@ -67,6 +67,9 @@ Der Rahmen wird vor der Ziehung über ein Commitment gebunden. Nachweis,
 Rahmen, Backend-Metadaten und gezogene IDs werden im manipulationsgeschützten
 Audit-Ereignis gespeichert. **Nachweis prüfen** validiert diesen gespeicherten
 Nachweis gegen den damals gebundenen Rahmen; es findet keine neue Ziehung statt.
+Die Liste der Ziehungen liest eine eigene, unveränderliche Tabelle, die beim
+Speichern des Audit-Ereignisses automatisch mitgeschrieben wird; geprüft wird
+weiterhin gegen das Audit-Ereignis.
 
 Der Nachweis belegt nicht:
 

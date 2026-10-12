@@ -14,6 +14,13 @@ const h = vi.hoisted(() => {
     pendingRow: null as { value: unknown } | null,
     startRow: null as { value: unknown } | null,
     auditRows: [] as { id: bigint; after: unknown }[],
+    // Welle 15: risk_los_ziehung (Projektion der Audit-Events, Quelle der Liste).
+    losRows: [] as {
+      auditLogId: bigint;
+      nachweis: unknown;
+      zeitraum: unknown;
+      rahmenTyp: string;
+    }[],
     // Chain-Ereignisse für den Audit-Rahmen (Betriebs-Nachschau): zeitraum-
     // Query (occurredAt) liefert alle, id-in-Query die angefragten.
     chainRows: [] as {
@@ -62,6 +69,12 @@ const h = vi.hoisted(() => {
       },
       findFirst: async (args: { where: { id: bigint } }) =>
         state.auditRows.find((r) => r.id === args.where.id) ?? null,
+    },
+    riskLosZiehung: {
+      findMany: async (args: { orderBy: unknown; take: number }) =>
+        [...state.losRows]
+          .sort((a, b) => (a.auditLogId < b.auditLogId ? 1 : -1))
+          .slice(0, args.take),
     },
   };
   return { state, tx };
@@ -136,6 +149,7 @@ beforeEach(() => {
   h.state.pendingRow = null;
   h.state.startRow = null;
   h.state.auditRows = [];
+  h.state.losRows = [];
   h.state.chainRows = [];
   h.state.record.mockClear();
   h.state.reminderCreate.mockClear();
@@ -412,12 +426,7 @@ describe('zieheLosStichprobe — Rahmen-Typ audit (Betriebs-Nachschau)', () => {
   it('listLosZiehungen erkennt audit-Events und meldet fehlende Chain-Einträge', async () => {
     h.state.chainRows = chain.slice(0, 1); // nur #1 existiert (noch)
     const auditNachweis = { ...nachweis, stichprobe: ['1', '3'] };
-    h.state.auditRows = [
-      {
-        id: 88n,
-        after: { nachweis: auditNachweis, rahmen: ['1', '2', '3'], zeitraum, rahmenTyp: 'audit' },
-      },
-    ];
+    h.state.losRows = [{ auditLogId: 88n, nachweis: auditNachweis, zeitraum, rahmenTyp: 'audit' }];
     const list = await listLosZiehungen(ctx);
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ auditId: '88', rahmenTyp: 'audit', stichprobe: [] });
@@ -788,8 +797,8 @@ describe('pruefeLosNachweis / listLosZiehungen', () => {
     expect(losPruefen).not.toHaveBeenCalled();
   });
 
-  it('listLosZiehungen mappt Audit-Events auf Anzeige-DTOs (inkl. gelöschter Analysen)', async () => {
-    h.state.auditRows = [{ id: 77n, after: { nachweis, rahmen: ['a1', 'b2', 'c3'], zeitraum } }];
+  it('listLosZiehungen mappt Ziehungen auf Anzeige-DTOs (inkl. gelöschter Analysen)', async () => {
+    h.state.losRows = [{ auditLogId: 77n, nachweis, zeitraum, rahmenTyp: 'subsumtion' }];
     h.state.analysen = [{ id: 'a1', clientId: 'cl-1', title: 'GmbH-Umwandlung' }]; // c3 gelöscht
     const list = await listLosZiehungen(ctx);
     expect(list).toHaveLength(1);
@@ -804,5 +813,29 @@ describe('pruefeLosNachweis / listLosZiehungen', () => {
         { analysisId: 'c3', clientId: null, geloescht: true },
       ],
     });
+  });
+
+  // Welle 15 (P-11): Die Liste liest risk_los_ziehung, nicht audit_log.
+  it('listLosZiehungen liest nur risk_los_ziehung, neueste zuerst, ohne ungültige Nachweise', async () => {
+    h.state.auditRows = [{ id: 99n, after: { nachweis, rahmen: ['a1', 'b2', 'c3'], zeitraum } }];
+    expect(await listLosZiehungen(ctx)).toEqual([]);
+
+    h.state.losRows = [
+      { auditLogId: 70n, nachweis, zeitraum, rahmenTyp: 'subsumtion' },
+      { auditLogId: 80n, nachweis: { kaputt: true }, zeitraum: null, rahmenTyp: 'subsumtion' },
+      { auditLogId: 90n, nachweis, zeitraum: null, rahmenTyp: 'subsumtion' },
+    ];
+    const list = await listLosZiehungen(ctx);
+    expect(list.map((z) => z.auditId)).toEqual(['90', '70']);
+    expect(list[0]!.zeitraum).toBeNull();
+  });
+
+  it('prüft nur gegen das Audit-Ereignis, nicht gegen die Listen-Tabelle', async () => {
+    h.state.losRows = [{ auditLogId: 55n, nachweis, zeitraum, rahmenTyp: 'subsumtion' }];
+    const losPruefen = vi.fn();
+    await expect(pruefeLosNachweis(ctx, '55', {}, { losPruefen })).rejects.toThrow(
+      'Ziehung nicht gefunden',
+    );
+    expect(losPruefen).not.toHaveBeenCalled();
   });
 });

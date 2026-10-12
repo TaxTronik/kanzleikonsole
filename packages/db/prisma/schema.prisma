@@ -105,6 +105,7 @@ model Tenant {
   requests                       Request[]
   requestTemplates               RequestTemplate[]
   riskAnalyses                   RiskAnalysis[]
+  riskLosZiehungen               RiskLosZiehung[]
   riskMarkings                   RiskMarking[]
   riskResearchRequests           RiskResearchRequest[]
   riskResearchResults            RiskResearchResult[]
@@ -2685,6 +2686,30 @@ model RequestInternalComment {
 
   @@index([requestId, createdAt], map: "request_internal_comment_request_idx")
   @@map("request_internal_comment")
+}
+
+/// TCMS-SAMPLE-PROOF-001 (Welle 15, P-11): Los-Ziehungen als eigene,
+/// unveränderliche Tabelle. Jede Zeile bildet ein Audit-Ereignis
+/// `risk.los.gezogen` ab (Nachweis bleibt die Hash-Chain); angelegt nur vom
+/// Trigger auf audit_log, Guard und Append-only-Sperre in der Migration
+/// 20261012100000_risk_los_ziehung. Kein FK auf audit_log (Archiv-Kürzung).
+model RiskLosZiehung {
+  auditLogId      BigInt   @id @map("audit_log_id")
+  tenantId        String   @map("tenant_id") @db.Uuid
+  auditOccurredAt DateTime @map("audit_occurred_at") @db.Timestamptz(6)
+  commitment      String
+  rahmenTyp       String   @map("rahmen_typ")
+  nachweis        Json
+  rahmen          Json
+  zeitraum        Json?
+  reviewAufgaben  Json     @map("review_aufgaben")
+  attemptId       String?  @map("attempt_id")
+  jobId           String?  @map("job_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, auditLogId])
+  @@map("risk_los_ziehung")
 }
 
 /// Ein Analyse-Lauf der Risk-Layer-Engine (§4, TCMS) über einen Text/ein

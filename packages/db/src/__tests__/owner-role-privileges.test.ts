@@ -303,6 +303,8 @@ describeWithDatabase('S-01: Rollenmodell gegen PostgreSQL', () => {
       'public.audit_seal': { i: true, u: false, d: false },
       'public.audit_anchor': { i: true, u: false, d: false },
       'public.audit_archive': { i: true, u: true, d: false },
+      // Welle 15 (TCMS-SAMPLE-PROOF-001): Los-Ziehungen sind unveränderlich.
+      'public.risk_los_ziehung': { i: true, u: false, d: false },
     };
     const mismatches = rows.filter((row) => {
       const expected = exceptions[row.table] ?? { i: true, u: true, d: true };

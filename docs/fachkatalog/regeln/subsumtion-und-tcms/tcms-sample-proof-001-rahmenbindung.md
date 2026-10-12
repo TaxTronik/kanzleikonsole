@@ -39,6 +39,9 @@ sources:
     primary: false
 code_refs:
   - apps/web/src/server/risk/los.ts
+  - packages/db/prisma/migrations/20261012100000_risk_los_ziehung/migration.sql
+  - packages/db/prisma/schema.prisma
+  - .forgejo/workflows/ci.yml
   - apps/web/src/server/risk/los-state.ts
   - apps/web/src/server/risk/index.ts
   - apps/web/src/server/audit/labels.ts
@@ -52,6 +55,7 @@ code_refs:
 test_refs:
   - apps/web/src/server/risk/__tests__/los.test.ts
   - packages/db/src/__tests__/los-state-consistency.test.ts
+  - packages/db/src/__tests__/risk-los-ziehung.test.ts
   - apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-state.test.ts
   - apps/web/src/app/staff/(protected)/admin/quantenlos/__tests__/quantenlos-hooks.test.tsx
 feature_refs:
@@ -174,7 +178,24 @@ Auswahlbelegs heilt diese unvollständige Grundgesamtheit nicht.
 `los.ts` bildet den Rahmen, ruft den Risk-Layer außerhalb der
 Datenbanktransaktion auf, verwaltet wartende QPU-Jobs und finalisiert Aufgaben
 plus Audit atomar. `pruefeLosNachweis` lädt Nachweis und Rahmen aus dem Audit
-und lässt genau diese Kombination prüfen. Die Admin-Actions validieren
+und lässt genau diese Kombination prüfen, nie eine Kopie aus der unten
+beschriebenen Listentabelle.
+
+Seit Welle 15 (Folgepunkt P-11) hält die Tabelle `risk_los_ziehung` jede
+Ziehung als eigene, tenantgebundene Zeile (Nachweis, Rahmen, Zeitraum,
+Rahmenart, Review-Aufgaben, Versuchs- beziehungsweise Job-ID, Zeitpunkt des
+Audit-Ereignisses). Ein Trigger auf `audit_log` legt sie im selben INSERT wie
+das Audit-Ereignis `risk.los.gezogen` an, auch für Ziehungen eines älteren
+Release-Standes; ein Guard verlangt für jede Zeile das passende Audit-Ereignis
+desselben Tenants Feld für Feld. Die Zeilen sind unveränderlich (kein UPDATE,
+DELETE oder TRUNCATE, auch nicht für Owner und Superuser), RLS wie bei den
+Nachbartabellen. Die Los-Liste liest nur noch diese Tabelle; das Audit-Ereignis
+bleibt der Nachweis. Die Migration `20261012100000_risk_los_ziehung` hat alle
+vorhandenen Ziehungen mit vollständigem Nachweis idempotent und mit
+Zählprüfung übernommen; Ereignisse ohne Nachweis, Commitment, Stichprobe oder
+Rahmen zeigte die Liste schon zuvor nicht an und bleiben nur im Audit-Log.
+Der CI-Job `upgrade-path` belegt die Übernahme mit einem Cutoff-Test auf
+historischen Audit-Ereignissen (`scripts/ci/migration-cutoff/los-ziehung-*.sql`). Die Admin-Actions validieren
 Zeitraum, `k`, Backend und Rollen und reichen einen IBM-Token nur serverseitig
 für QPU-bezogene Aufrufe weiter.
 

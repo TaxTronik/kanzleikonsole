@@ -12,9 +12,12 @@
 //    Ergebnisliste geprüft.
 // In beiden Fällen NUR opake IDs an die Engine — kein Falltext, kein
 // Mandantendatum (§203). Der zurückkommende Nachweis (Commitment, Entropie-
-// Provenienz, Ableitung) wird als Audit-Event in der Hash-Chain verankert —
-// KEINE eigene Tabelle: die Chain ist bereits der manipulationsevidente Ort,
-// und `after` trägt Nachweis + Rahmen für die spätere Re-Verifikation.
+// Provenienz, Ableitung) wird als Audit-Event in der Hash-Chain verankert:
+// die Chain ist der manipulationsevidente Ort, und `after` trägt Nachweis +
+// Rahmen für die spätere Re-Verifikation (pruefeLosNachweis liest dort).
+// Welle 15 (P-11): Dasselbe INSERT legt per Trigger eine unveränderliche Zeile
+// in `risk_los_ziehung` an (Migration 20261012100000, Guard gegen das
+// Audit-Ereignis); die Los-Liste liest nur diese Tabelle statt audit_log.
 //
 // Analysen ohne Mandantenbezug bekommen keine Wiedervorlage (ClientReminder
 // verlangt clientId) → Hinweis im Ergebnis.
@@ -723,32 +726,31 @@ async function finalisiereZiehung(
   return toZiehung(String(auditId), rahmenTyp, nachweis, zeitraum, eintraege, nachschau, hinweise);
 }
 
-/** Letzte Ziehungen aus dem Audit-Log (action `risk.los.gezogen`). */
+/**
+ * Letzte Ziehungen aus `risk_los_ziehung` (Welle 15, P-11): eine Zeile je
+ * Audit-Event `risk.los.gezogen`, angelegt im selben INSERT (Trigger) und vom
+ * Guard an dieses Event gebunden. Die Liste filtert damit nicht mehr das
+ * Audit-Log nach `action`.
+ */
 export async function listLosZiehungen(ctx: TenantContext, limit = 10): Promise<LosZiehung[]> {
   return withTenantContext(ctx, async (tx) => {
-    const rows = await tx.auditLog.findMany({
-      where: { action: 'risk.los.gezogen' },
-      orderBy: { id: 'desc' },
+    const rows = await tx.riskLosZiehung.findMany({
+      orderBy: { auditLogId: 'desc' },
       take: limit,
-      select: { id: true, after: true },
+      select: { auditLogId: true, nachweis: true, zeitraum: true, rahmenTyp: true },
     });
 
     const parsed = rows.flatMap((row) => {
-      const after = row.after as {
-        nachweis?: unknown;
-        rahmen?: unknown;
-        zeitraum?: unknown;
-        rahmenTyp?: unknown;
-      } | null;
-      const nachweis = LosNachweisSchema.safeParse(after?.nachweis);
+      const nachweis = LosNachweisSchema.safeParse(row.nachweis);
       if (!nachweis.success) return [];
-      // Alt-Events (vor Audit-Nachschau) tragen kein rahmenTyp ⇒ 'subsumtion'.
-      const rahmenTyp: LosRahmenTyp = after?.rahmenTyp === 'audit' ? 'audit' : 'subsumtion';
+      // Alt-Events (vor Audit-Nachschau) tragen kein rahmenTyp ⇒ 'subsumtion'
+      // (die Migration bildet das in rahmen_typ ab).
+      const rahmenTyp: LosRahmenTyp = row.rahmenTyp === 'audit' ? 'audit' : 'subsumtion';
       return [
         {
-          id: row.id,
+          id: row.auditLogId,
           nachweis: nachweis.data,
-          zeitraum: (after?.zeitraum ?? null) as LosZeitraum | null,
+          zeitraum: (row.zeitraum ?? null) as LosZeitraum | null,
           rahmenTyp,
         },
       ];
@@ -808,6 +810,8 @@ export async function pruefeLosNachweis(
   opts: { online?: boolean; ibmToken?: string } = {},
   client?: LosPruefClient,
 ): Promise<LosPruefErgebnis> {
+  // Welle 15: geprüft wird weiterhin gegen das Audit-Ereignis (Nachweis), nicht
+  // gegen die Listen-Tabelle risk_los_ziehung.
   const row = await withTenantContext(ctx, (tx) =>
     tx.auditLog.findFirst({
       where: { id: BigInt(auditId), action: 'risk.los.gezogen' },

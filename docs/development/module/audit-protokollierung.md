@@ -13,6 +13,10 @@ Tagesversiegelung und unveränderlicher Langzeit-Archivierung.
    `this_hash = SHA-256(prev_hash ‖ canonical_json(event))`, serialisiert
    pro Tenant via Advisory-Lock, **in derselben Transaktion wie die
    Fachoperation** (kein Event ohne Daten, keine Daten ohne Event).
+   Einziger Trigger nach dem Einfügen: Ereignisse `risk.los.gezogen` bildet
+   `risk_los_ziehung` im selben INSERT als unveränderliche Listenzeile ab
+   (Welle 15, P-11, `TCMS-SAMPLE-PROOF-001`); die Audit-Zeile selbst ändert
+   er nicht.
 2. Kanonisierung deterministisch (`canonical-json.ts`, BigInt/Decimal-
    Normalisierung); IP/User-Agent bewusst außerhalb des Hashes.
 3. Rolling-Verankerung (`anchorLatest`): Der Worker stempelt außerhalb der

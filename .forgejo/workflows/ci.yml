@@ -713,6 +713,14 @@ jobs:
             scripts/ci/migration-cutoff/onboarding-041-fixtures.sql \
             scripts/ci/migration-cutoff/onboarding-041-asserts.sql
 
+      # Fachkatalog: TCMS-SAMPLE-PROOF-001 (Welle 15, P-11: Los-Ziehungen aus
+      # audit_log verlustfrei nach risk_los_ziehung übernommen).
+      - name: Altbestand vor Los-Ziehungstabelle (Cutoff-Test)
+        run: |
+          bash scripts/ci/migration-cutoff.sh 20261007160200_portal_inbox_staff_search_candidates \
+            scripts/ci/migration-cutoff/los-ziehung-fixtures.sql \
+            scripts/ci/migration-cutoff/los-ziehung-asserts.sql
+
       - name: Bootstrap roles and extensions
         if: steps.last.outputs.tag != ''
         run: bash scripts/ci/setup.sh pg-bootstrap
