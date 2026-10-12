@@ -5,6 +5,7 @@ import { test, expect } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
 import { chooseClient } from './helpers/client-combobox';
 import { expectPortalDashboardReady, loginAsMandant } from './helpers/portal-auth';
+import { anyVisible, firstVisibleCandidate, PAGE_READY_TIMEOUT } from './helpers/visibility';
 import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
@@ -41,12 +42,26 @@ function createMinimalPdf(): Buffer {
   return Buffer.from(pdf, 'utf-8');
 }
 
+// Letzter Breadcrumb der Mandantentyp-Ebene (DOCUMENT_SCOPE_LABELS der Web-App).
+const DOCUMENT_KIND_LABELS = {
+  JURPERS: 'Juristische Personen',
+  NATPERS: 'Natürliche Personen',
+  PERSGES: 'Personengesellschaften',
+} as const;
+
 async function openMustermannDocuments(page: import('@playwright/test').Page): Promise<string> {
-  for (const type of ['JURPERS', 'NATPERS', 'PERSGES']) {
+  for (const type of ['JURPERS', 'NATPERS', 'PERSGES'] as const) {
     await page.goto(`/staff/documents?type=${type}`);
     await page.waitForLoadState('domcontentloaded');
+    // Die Seite streamt nach dem Skelett. Der Breadcrumb kommt im selben
+    // Server-Render wie die Mandantenliste; erst danach ist die Verzweigung
+    // (Mustermann in diesem Typ oder nicht) entscheidbar.
+    await expect(
+      anyVisible(page.locator('main').getByText(DOCUMENT_KIND_LABELS[type], { exact: true })),
+      `Dokumentenebene ${type} muss geladen werden`,
+    ).toBeVisible({ timeout: PAGE_READY_TIMEOUT });
     const link = page.getByRole('link', { name: /Mustermann/ }).first();
-    if (await link.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await link.isVisible()) {
       await link.click();
       await expect(page).toHaveURL(/\/staff\/documents\?type=.*client=/, { timeout: 10_000 });
       return page.url();
@@ -157,26 +172,20 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const scopedDocumentsUrl = await openMustermannDocuments(page);
     expect(page.url()).not.toContain('/staff/login');
 
-    // Try multiple possible upload button selectors
-    let uploadBtn = page.getByRole('button', { name: /Hochladen/i }).first();
-    let btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
-    if (!btnVisible) {
-      uploadBtn = page.getByRole('button', { name: /Upload/i }).first();
-      btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
-    }
-    if (!btnVisible) {
-      uploadBtn = page
+    // Try multiple possible upload button selectors: nach dem Mandantenklick
+    // streamt die Scope-Ebene nach; erst auf einen der Kandidaten warten, dann
+    // in dieser Reihenfolge wählen.
+    const uploadBtn = await firstVisibleCandidate([
+      page.getByRole('button', { name: /Hochladen/i }).first(),
+      page.getByRole('button', { name: /Upload/i }).first(),
+      page
         .locator(
           'button[title*="hochladen" i], button[title*="upload" i], button[aria-label*="hochladen" i], button[aria-label*="upload" i]',
         )
-        .first();
-      btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
-    }
-    if (!btnVisible) {
-      uploadBtn = page.getByRole('link', { name: /Hochladen|Dokument.*hochladen|Upload/i }).first();
-      btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
-    }
-    if (!btnVisible) {
+        .first(),
+      page.getByRole('link', { name: /Hochladen|Dokument.*hochladen|Upload/i }).first(),
+    ]);
+    if (!uploadBtn) {
       const allButtons = await page
         .locator('button, a[role="button"]')
         .allInnerTexts()
@@ -439,12 +448,10 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
       'Eindeutig erzeugte Workflow-Vorlage muss in der Liste stehen',
     ).toHaveCount(1);
     const startBtn = templateRow.getByRole('button', { name: /Starten/ });
-    if (!(await startBtn.isVisible({ timeout: 5000 }).catch(() => false))) {
-      await ctx.close();
-      throw new Error(
-        'No active workflow templates — Paranoid-E2E seed must include at least one startable workflow template',
-      );
-    }
+    await expect(
+      startBtn,
+      'No active workflow templates — Paranoid-E2E seed must include at least one startable workflow template',
+    ).toBeVisible();
     await startBtn.click();
 
     const startDialog = page.getByRole('dialog', {
@@ -486,13 +493,10 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     expect(page.url()).not.toContain('/staff/login');
 
     const titleEl = page.locator('#title');
-    const titleVisible = await titleEl.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!titleVisible) {
-      await ctx.close();
-      throw new Error(
-        'Knowledge article form not found — /staff/knowledge/new muss im Paranoid-E2E verfuegbar sein',
-      );
-    }
+    await expect(
+      titleEl,
+      'Knowledge article form not found — /staff/knowledge/new muss im Paranoid-E2E verfuegbar sein',
+    ).toBeVisible();
     const articleTitle = `E2E Test Wissensartikel ${randomUUID().slice(0, 8)}`;
     await titleEl.fill(articleTitle);
     const articleEditor = page.getByRole('textbox', {
@@ -588,13 +592,10 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const neuBtn = page
       .getByRole('heading', { name: /Telefonzettel/i })
       .locator('xpath=following::button[normalize-space()="Neu"][1]');
-    const neuVisible = await neuBtn.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!neuVisible) {
-      await ctx.close();
-      throw new Error(
-        '"Neu" button not found on client detail page — Telefonnotiz-Flow kann nicht getestet werden',
-      );
-    }
+    await expect(
+      neuBtn,
+      '"Neu" button not found on client detail page — Telefonnotiz-Flow kann nicht getestet werden',
+    ).toBeVisible();
     await neuBtn.click();
 
     const callerInput = page.locator('#qpn-caller');
@@ -713,9 +714,14 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForTimeout(2000);
     expect(page.url()).not.toContain('/staff/login');
 
-    // Stop any running timer first
+    // Stop any running timer first. Ob ein Timer läuft, ist Zustand: erst auf
+    // die Seitenüberschrift warten (gleicher Server-Render wie die Timer-Karte),
+    // dann verzweigen.
+    await expect(page.getByRole('heading', { level: 1, name: 'Zeiterfassung' })).toBeVisible({
+      timeout: PAGE_READY_TIMEOUT,
+    });
     const stopBtn = page.getByRole('button', { name: /Stoppen/ });
-    if (await stopBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await stopBtn.isVisible().catch(() => false)) {
       await stopBtn.click();
       // Warten bis der Stopp verarbeitet ist: der „Stoppen"-Button verschwindet.
       await stopBtn.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});

@@ -189,9 +189,15 @@ Der CI-Job `e2e-paranoid` entdeckt die vollständige Playwright-Suite ohne
 manuell gepflegte Dateiliste. `pnpm guard:paranoid-e2e` prüft den unbeschränkten
 CI-Aufruf und gleicht die Testdateien rekursiv mit der tatsächlichen
 Playwright-Testerkennung ab; einschränkende Filter sowie Fokus-/Skip-Marker
-werden abgewiesen. Der Guard samt Regressionstests läuft unmittelbar nach der
-CI-Installation und lokal in `pnpm lint`, auch unter Windows. Dieser Check
-startet keine Browser oder Dienste und ist kein Nachweis bestandener E2E-Tests.
+werden abgewiesen. Ebenso abgewiesen wird `isVisible`/`isHidden` mit der Option
+`timeout`: Playwright ignoriert sie, die Prüfung wartet nicht und trifft hinter
+gestreamten Seiten (`loading.tsx`) oft nur das Skelett. Erwartete Elemente
+prüfen die Specs mit `expect(locator).toBeVisible()`; echte Verzweigungen
+warten zuerst auf einen Seitenanker oder nutzen `becomesVisible()` aus
+`apps/e2e/tests/helpers/visibility.ts`. Der Guard samt Regressionstests läuft
+unmittelbar nach der CI-Installation und lokal in `pnpm lint`, auch unter
+Windows. Dieser Check startet keine Browser oder Dienste und ist kein Nachweis
+bestandener E2E-Tests.
 
 | Umgebung            | Beschreibung                                                                                                                                                                                                                                                                                                                                              |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

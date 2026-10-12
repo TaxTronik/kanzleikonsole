@@ -216,6 +216,47 @@ for (const marker of [
   });
 }
 
+// isVisible()/isHidden() ignorieren timeout und warten nicht (CI-Flakes vom 8.10.).
+for (const call of [
+  'await locator.isVisible({ timeout: 3000 })',
+  'await locator.isVisible({timeout:3000}).catch(() => false)',
+  'await page\n  .getByText(/GwG/)\n  .first()\n  .isVisible({ timeout: 5000 })',
+  'await locator.isVisible({\n  timeout: 2_000,\n})',
+  'await locator.isVisible({ timeout })',
+  'await locator.isVisible({ strict: true, timeout: 1 })',
+  'await locator . isVisible ( { timeout: 1 } )',
+  'await locator?.isVisible({ timeout: 1 })',
+  'await locator.isHidden({ timeout: 1000 })',
+]) {
+  test(`rejects a non-waiting visibility check with timeout: ${JSON.stringify(call)}`, (t) => {
+    const f = fixture(t);
+    f.write('test.spec.ts');
+    f.write('helpers/fixture.ts', `${call};`);
+    assert.throws(() => scanTestSources(f.tests), /warten nicht/);
+  });
+}
+
+test('accepts waiting alternatives and isVisible without options', (t) => {
+  const f = fixture(t);
+  f.write(
+    'test.spec.ts',
+    [
+      'await expect(locator).toBeVisible({ timeout: 5000 });',
+      "await locator.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false);",
+      'if (await locator.isVisible()) await locator.click();',
+      'const hidden = await locator.isHidden();',
+      'await becomesVisible(locator, 2000);',
+      "await page.waitForURL('/x', { timeout: 1000 }); await locator.isVisible();",
+      '// isVisible() wartet nicht, deshalb erst auf den Anker warten.',
+    ].join('\n'),
+  );
+  assert.equal(scanTestSources(f.tests).length, 1);
+});
+
+test('the real E2E sources contain no non-waiting visibility check with timeout', () => {
+  assert.doesNotThrow(() => scanTestSources(resolve(ROOT, 'apps/e2e/tests')));
+});
+
 test('rejects empty suites, filtered configuration and runtime skip annotations', (t) => {
   const f = fixture(t);
   assert.throws(() => scanTestSources(f.tests), /Keine E2E/);

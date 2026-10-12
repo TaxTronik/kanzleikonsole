@@ -3,6 +3,7 @@ import { generateSync } from 'otplib';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { becomesVisible } from './visibility';
 
 function readLocalSeedCredentials(): { email?: string; password?: string } {
   try {
@@ -178,10 +179,12 @@ export async function loginAsAdmin(page: Page): Promise<void> {
     .catch(() => false);
   if (onDashboard) return;
 
-  const stillOnPasswordStep = await page
-    .getByRole('button', { name: /^Weiter$/ })
-    .isVisible({ timeout: 1000 })
-    .catch(() => false);
+  // Die Login-Schritte sind Zustände ohne gemeinsamen Anker (Passwortschritt,
+  // Fehler, TOTP-Einrichtung, TOTP-Abfrage): jeweils kurz auf den Schritt warten.
+  const stillOnPasswordStep = await becomesVisible(
+    page.getByRole('button', { name: /^Weiter$/ }),
+    1000,
+  );
   if (stillOnPasswordStep) {
     const retryButton = page.getByRole('button', { name: /^Weiter$/ });
     await expect(retryButton).toBeEnabled({ timeout: 10_000 });
@@ -204,10 +207,10 @@ export async function loginAsAdmin(page: Page): Promise<void> {
     throw new Error(`Login fehlgeschlagen: ${errorText} (URL: ${page.url()})`);
   }
 
-  const setupVisible = await page
-    .getByText(/Zwei-Faktor-Authentifizierung einrichten/i)
-    .isVisible({ timeout: 2_000 })
-    .catch(() => false);
+  const setupVisible = await becomesVisible(
+    page.getByText(/Zwei-Faktor-Authentifizierung einrichten/i),
+    2_000,
+  );
 
   if (setupVisible) {
     const secret = await page.locator('code.text-sm').first().innerText();
@@ -220,10 +223,10 @@ export async function loginAsAdmin(page: Page): Promise<void> {
     await page.getByLabel('Bestätigungs-Code').fill(code);
     await page.getByRole('button', { name: /Bestätigen/ }).click();
 
-    const backupVisible = await page
-      .getByText(/Recovery-Codes|Codes notiert/)
-      .isVisible({ timeout: 3_000 })
-      .catch(() => false);
+    const backupVisible = await becomesVisible(
+      page.getByText(/Recovery-Codes|Codes notiert/),
+      3_000,
+    );
     if (backupVisible) {
       await page.getByRole('button', { name: /Codes notiert/ }).click();
     }

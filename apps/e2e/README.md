@@ -78,7 +78,11 @@ frühes Gate bestehen.
 
 `pnpm guard:paranoid-e2e` prüft den tatsächlichen Workflow-Aufruf und gleicht
 alle Testdateien mit der echten Playwright-Testerkennung ab. Einschränkende
-Filter und `test.only`/`test.skip`/`test.fixme`-Marker sind nicht erlaubt. Der
+Filter und `test.only`/`test.skip`/`test.fixme`-Marker sind nicht erlaubt,
+ebenso `isVisible`/`isHidden` mit der Option `timeout` (Playwright ignoriert sie,
+die Prüfung wartet nicht). Erwartete Elemente mit `expect(locator).toBeVisible()`
+prüfen; echte Verzweigungen erst auf einen Seitenanker warten lassen oder
+`becomesVisible()` aus `tests/helpers/visibility.ts` nutzen. Der
 Guard und seine Regressionstests laufen in CI unmittelbar nach der Installation
 und lokal als Teil von `pnpm lint` im Repository-Root. Beide Aufrufe funktionieren
 auch unter Windows ohne `sh`.

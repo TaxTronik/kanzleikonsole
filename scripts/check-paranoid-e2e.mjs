@@ -82,6 +82,13 @@ export function checkWorkflow(source) {
   return env;
 }
 
+// isVisible()/isHidden() warten nicht: Playwright ignoriert dort die Option
+// timeout (deprecated) und antwortet sofort. Hinter gestreamten Seiten
+// (loading.tsx) war das die Ursache der Flakes vom 8.10. Erfasst die Option
+// auch über Zeilenumbrüche, als Kurzform und neben weiteren Optionen.
+export const NON_WAITING_VISIBILITY_TIMEOUT =
+  /\.\s*is(?:Visible|Hidden)\s*\(\s*\{[^)}]*?\btimeout\b/;
+
 export function scanTestSources(testDir) {
   const specs = [];
   // Preserve the source guard, including markers inside helpers and describe chains.
@@ -93,9 +100,16 @@ export function scanTestSources(testDir) {
       requireThat(!entry.isSymbolicLink(), `E2E-Inventur benötigt reguläre Dateien: ${path}`);
       if (entry.isDirectory()) visit(path);
       else if (/\.[cm]?[jt]sx?$/.test(entry.name)) {
+        const source = readFileSync(path, 'utf8');
         requireThat(
-          !forbidden.test(readFileSync(path, 'utf8')),
+          !forbidden.test(source),
           `E2E darf keine Fokus-/Skip-Marker enthalten: ${path}`,
+        );
+        requireThat(
+          !NON_WAITING_VISIBILITY_TIMEOUT.test(source),
+          `E2E: isVisible()/isHidden() warten nicht, die Option timeout wird ignoriert: ${path}. ` +
+            'Erwartete Elemente mit expect(locator).toBeVisible() prüfen; echte Verzweigungen erst ' +
+            'auf einen Seitenanker warten lassen oder becomesVisible() aus tests/helpers/visibility.ts nutzen.',
         );
         if (/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(entry.name)) specs.push(path);
       }

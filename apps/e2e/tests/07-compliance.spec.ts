@@ -19,6 +19,12 @@ import {
   PORTAL_EMAIL,
 } from './helpers/portal-auth';
 import { flushRedisDb } from './helpers/redis';
+import {
+  anyVisible,
+  becomesVisible,
+  firstVisibleCandidate,
+  PAGE_READY_TIMEOUT,
+} from './helpers/visibility';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -56,12 +62,26 @@ function createMinimalPdf(): Buffer {
   return Buffer.from(pdf, 'utf-8');
 }
 
+// Letzter Breadcrumb der Mandantentyp-Ebene (DOCUMENT_SCOPE_LABELS der Web-App).
+const DOCUMENT_KIND_LABELS = {
+  JURPERS: 'Juristische Personen',
+  NATPERS: 'Natürliche Personen',
+  PERSGES: 'Personengesellschaften',
+} as const;
+
 async function openMustermannDocuments(page: Page): Promise<string> {
-  for (const type of ['JURPERS', 'NATPERS', 'PERSGES']) {
+  for (const type of ['JURPERS', 'NATPERS', 'PERSGES'] as const) {
     await page.goto(`/staff/documents?type=${type}`);
     await page.waitForLoadState('domcontentloaded');
+    // Die Seite streamt nach dem Skelett. Der Breadcrumb kommt im selben
+    // Server-Render wie die Mandantenliste; erst danach ist die Verzweigung
+    // (Mustermann in diesem Typ oder nicht) entscheidbar.
+    await expect(
+      anyVisible(page.locator('main').getByText(DOCUMENT_KIND_LABELS[type], { exact: true })),
+      `Dokumentenebene ${type} muss geladen werden`,
+    ).toBeVisible({ timeout: PAGE_READY_TIMEOUT });
     const link = page.getByRole('link', { name: /Mustermann/ }).first();
-    if (await link.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await link.isVisible()) {
       await link.click();
       await expect(page).toHaveURL(/\/staff\/documents\?type=.*client=/, { timeout: 10_000 });
       return page.url();
@@ -180,32 +200,23 @@ test.describe.serial('GoBD §147 AO — Dokumenten-Compliance', () => {
     const scopedDocumentsUrl = await openMustermannDocuments(page);
     expect(page.url()).not.toContain('/staff/login');
 
-    const uploadBtn = page.getByRole('button', { name: /Hochladen/i }).first();
-    let btnVisible = await uploadBtn.isVisible({ timeout: 3000 }).catch(() => false);
-    if (!btnVisible) {
-      const uploadBtn2 = page.getByRole('button', { name: /Upload/i }).first();
-      btnVisible = await uploadBtn2.isVisible({ timeout: 3000 }).catch(() => false);
-      if (btnVisible) {
-        await uploadBtn2.click();
-      } else {
-        const uploadLink = page
-          .getByRole('link', { name: /Hochladen|Dokument.*hochladen|Upload/i })
-          .first();
-        btnVisible = await uploadLink.isVisible({ timeout: 3000 }).catch(() => false);
-        if (!btnVisible) {
-          const allButtons = await page
-            .locator('button, a[role="button"]')
-            .allInnerTexts()
-            .catch(() => [] as string[]);
-          throw new Error(
-            `Upload button not found on /staff/documents. Available buttons: ${allButtons.join(', ') || '(none)'}`,
-          );
-        }
-        await uploadLink.click();
-      }
-    } else {
-      await uploadBtn.click();
+    // Die Scope-Ebene streamt nach dem Mandantenklick nach: erst auf einen der
+    // Upload-Auslöser warten, dann in dieser Reihenfolge wählen.
+    const uploadTrigger = await firstVisibleCandidate([
+      page.getByRole('button', { name: /Hochladen/i }).first(),
+      page.getByRole('button', { name: /Upload/i }).first(),
+      page.getByRole('link', { name: /Hochladen|Dokument.*hochladen|Upload/i }).first(),
+    ]);
+    if (!uploadTrigger) {
+      const allButtons = await page
+        .locator('button, a[role="button"]')
+        .allInnerTexts()
+        .catch(() => [] as string[]);
+      throw new Error(
+        `Upload button not found on /staff/documents. Available buttons: ${allButtons.join(', ') || '(none)'}`,
+      );
     }
+    await uploadTrigger.click();
     await page.waitForTimeout(1000);
 
     complianceDocumentTitle = `E2E Compliance Test Dokument ${Date.now()}`;
@@ -556,19 +567,12 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
       throw new Error('Admin cannot access GwG retention page — RBAC or session issue');
     }
 
+    // Überschrift oder GwG-Inhalt muss erscheinen (wartet auf den gestreamten Inhalt).
     const heading = page.getByRole('heading', { name: /GwG-Pflichtlöschung/i });
-    const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!headingVisible) {
-      const hasContent = await page
-        .getByText(/GwG|Belege|löschreif/i)
-        .first()
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-      if (!hasContent) {
-        await ctx.close();
-        throw new Error('GwG retention page loaded but rendered no GwG content — page broken');
-      }
-    }
+    await expect(
+      anyVisible(heading, page.getByText(/GwG|Belege|löschreif/i)),
+      'GwG retention page loaded but rendered no GwG content — page broken',
+    ).toBeVisible({ timeout: PAGE_READY_TIMEOUT });
 
     // FIX 4: Die Aufbewahrungsfrist MUSS „5 Jahre" (GwG § 8 Abs. 4) lauten —
     // nicht irgendein GwG-Text. Eine abweichende Frist wäre ein Compliance-Bug.
@@ -599,12 +603,17 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
     await clientLink.click();
     await expect(page).toHaveURL(/\/staff\/clients\//);
 
+    // Der Cockpit-Kopf rendert neben dem Mandantennamen immer den Status
+    // („Aktiv" oder „GwG ausstehend"); er streamt nach dem Skelett.
+    await expect(page.getByRole('heading', { level: 1, name: /Mustermann/ })).toBeVisible({
+      timeout: PAGE_READY_TIMEOUT,
+    });
     const statusBadge = page.locator('.badge-green, .badge-yellow').first();
-    const badgeVisible = await statusBadge.isVisible({ timeout: 5000 }).catch(() => false);
-    if (badgeVisible) {
-      const text = await statusBadge.textContent().catch(() => '');
-      expect(text).toMatch(/Aktiv|GwG|ausstehend|Verifiziert/i);
-    }
+    await expect(
+      statusBadge,
+      'Mandanten-Detail muss den GwG-Status als Badge zeigen',
+    ).toBeVisible();
+    await expect(statusBadge).toHaveText(/Aktiv|GwG|ausstehend|Verifiziert/i);
 
     await ctx.close();
   });
@@ -637,14 +646,11 @@ test.describe.serial('GwG §10-12 — Geldwäschegesetz-Compliance', () => {
       throw new Error('Admin cannot access admin dashboard — RBAC or session issue');
     }
 
-    const gwgContent = page.getByText(/GwG|Geldwäsche/i);
-    const gwgVisible = await gwgContent
-      .first()
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    if (gwgVisible) {
-      await expect(gwgContent.first()).toBeVisible();
-    }
+    // Die Admin-Übersicht verlinkt die GwG-Pflichtlöschung immer (Schnellzugriffe).
+    await expect(page.getByRole('heading', { level: 1, name: 'Administration' })).toBeVisible({
+      timeout: PAGE_READY_TIMEOUT,
+    });
+    await expect(anyVisible(page.getByText(/GwG|Geldwäsche/i))).toBeVisible();
 
     await ctx.close();
   });
@@ -673,20 +679,14 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
       throw new Error('Admin cannot access DSGVO requests page — RBAC or session issue');
     }
 
+    // Erst auf Überschrift oder DSGVO-Inhalt warten (gestreamte Seite), dann verzweigen.
     const heading = page.getByRole('heading', { name: /DSGVO-Anfragen/i });
-    const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!headingVisible) {
-      const hasContent = await page
-        .getByText(/DSGVO|Auskunft|Löschung|Art\./i)
-        .first()
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-      if (hasContent) {
-        await expect(page.getByText(/DSGVO|Auskunft/i).first()).toBeVisible();
-      } else {
-        await ctx.close();
-        throw new Error('DSGVO requests page loaded but rendered no DSGVO content — page broken');
-      }
+    await expect(
+      anyVisible(heading, page.getByText(/DSGVO|Auskunft|Löschung|Art\./i)),
+      'DSGVO requests page loaded but rendered no DSGVO content — page broken',
+    ).toBeVisible({ timeout: PAGE_READY_TIMEOUT });
+    if (!(await heading.isVisible().catch(() => false))) {
+      await expect(page.getByText(/DSGVO|Auskunft/i).first()).toBeVisible();
     } else {
       await expect(heading).toBeVisible();
     }
@@ -714,30 +714,23 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
       throw new Error('Admin cannot access DSGVO retention page — RBAC or session issue');
     }
 
+    // Erst auf Überschrift oder Anonymisierungsinhalt warten (gestreamte Seite),
+    // dann verzweigen.
     const heading = page.getByRole('heading', { name: /Anonymisierung/i });
-    const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!headingVisible) {
-      const hasContent = await page
-        .getByText(/anonymisierungsrei|Anonymisierung|Mandant/i)
-        .first()
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-      if (hasContent) {
-        await expect(page.getByText(/anonymisierungsrei|Anonymisierung/i).first()).toBeVisible();
-      } else {
-        await ctx.close();
-        throw new Error('DSGVO retention page loaded but no anonymization content rendered');
-      }
+    await expect(
+      anyVisible(heading, page.getByText(/anonymisierungsrei|Anonymisierung|Mandant/i)),
+      'DSGVO retention page loaded but no anonymization content rendered',
+    ).toBeVisible({ timeout: PAGE_READY_TIMEOUT });
+    if (!(await heading.isVisible().catch(() => false))) {
+      await expect(page.getByText(/anonymisierungsrei|Anonymisierung/i).first()).toBeVisible();
     } else {
       await expect(heading).toBeVisible();
-      const legalText = page.getByText(/unwiderruflich|Art\. 17|Art\. 5/i);
-      const legalVisible = await legalText
-        .first()
-        .isVisible({ timeout: 3000 })
-        .catch(() => false);
-      if (legalVisible) {
-        await expect(legalText.first()).toBeVisible();
-      }
+      // Die Seite nennt Rechtsgrundlage (Art. 17, Art. 5) und Unwiderruflichkeit
+      // im Kopftext unter der Überschrift.
+      await expect(
+        anyVisible(page.getByText(/unwiderruflich|Art\. 17|Art\. 5/i)),
+        'Anonymisierungsseite muss Rechtsgrundlage bzw. Unwiderruflichkeit nennen',
+      ).toBeVisible();
     }
 
     await ctx.close();
@@ -768,11 +761,11 @@ test.describe.serial('DSGVO — Datenschutz-Grundverordnung', () => {
     await expect(dsgvoLink).toBeVisible();
     await expect(dsgvoLink).toHaveAttribute('href', '/staff/admin/privacy');
 
+    // Die DSGVO-Karte der Admin-Übersicht wird immer gerendert (gestreamter Inhalt).
     const dsgvoCard = page.getByText(/Offene DSGVO-Anfragen/);
-    const cardVisible = await dsgvoCard.isVisible({ timeout: 5000 }).catch(() => false);
-    if (cardVisible) {
-      await expect(dsgvoCard).toBeVisible();
-    }
+    await expect(dsgvoCard, 'Admin-Übersicht muss die DSGVO-Karte zeigen').toBeVisible({
+      timeout: PAGE_READY_TIMEOUT,
+    });
 
     await ctx.close();
   });
@@ -802,19 +795,12 @@ test.describe.serial('Audit Trail — GoBD-Revisionssicherheit', () => {
       throw new Error('Admin cannot access audit log page — RBAC or session issue');
     }
 
+    // Überschrift oder Audit-Inhalt muss erscheinen (wartet auf den gestreamten Inhalt).
     const heading = page.getByRole('heading', { name: /Audit-Log/i });
-    const headingVisible = await heading.isVisible({ timeout: 6000 }).catch(() => false);
-    if (!headingVisible) {
-      const hasContent = await page
-        .getByText(/Hash-Chain|Prüfer-Link|Noch kein/)
-        .first()
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-      if (!hasContent) {
-        await ctx.close();
-        throw new Error('Audit page loaded but rendered no audit content — page broken');
-      }
-    }
+    await expect(
+      anyVisible(heading, page.getByText(/Hash-Chain|Prüfer-Link|Noch kein/)),
+      'Audit page loaded but rendered no audit content — page broken',
+    ).toBeVisible({ timeout: PAGE_READY_TIMEOUT });
 
     await ctx.close();
   });
@@ -1050,8 +1036,10 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     await expect(page.getByText('Mustermann GmbH').first()).toBeVisible({ timeout: 8000 });
     // FIX 3: Fremd-Mandant aus Tenant B darf in Tenant As Liste NICHT auftauchen.
     if (TENANT_B_CLIENT_ID) {
+      // Die Liste steht (Mustermann sichtbar); 2 s Beobachtungsfenster für den
+      // fremden Mandanten, sichtbar in irgendeinem Treffer.
       const foreignLeak = page.getByText('Fremd Mandant GmbH');
-      const leaked = await foreignLeak.isVisible({ timeout: 2000 }).catch(() => false);
+      const leaked = await becomesVisible(foreignLeak, 2000);
       expect(
         leaked,
         'Fremder Mandant (Tenant B) darf in Tenant As Client-Liste nicht sichtbar sein',
@@ -1150,11 +1138,13 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
 
     // Falls kein Redirect: sicherstellen, dass KEINE Fremddaten gerendert werden.
     if (!page.url().includes('/staff/login') && !page.url().includes('/staff/dashboard')) {
-      const foreignData = page.getByText('Fremd Mandant GmbH');
-      const leaked = await foreignData.isVisible({ timeout: 2000 }).catch(() => false);
-      expect(leaked, 'Fremder Mandantenname darf nicht im DOM auftauchen').toBe(false);
+      // Erst muss die Not-Found-Seite stehen (gestreamt), dann 2 s
+      // Beobachtungsfenster für den fremden Mandantennamen.
       const notFoundText = page.getByText(/nicht gefunden|404|Not Found/i);
       await expect(notFoundText.first()).toBeVisible({ timeout: 3000 });
+      const foreignData = page.getByText('Fremd Mandant GmbH');
+      const leaked = await becomesVisible(foreignData, 2000);
+      expect(leaked, 'Fremder Mandantenname darf nicht im DOM auftauchen').toBe(false);
     }
 
     // (2) API-Versuch: GET /api/staff/clients/<Tenant-B-Client-ID>/export
@@ -1230,8 +1220,10 @@ test.describe('Session & Cookie Security', () => {
     expect(sessionCookie, 'Session-Cookie muss vor Logout existieren').toBeDefined();
     const cookieName = sessionCookie?.name;
 
+    // Verzweigung mit Rückfall auf die Logout-URL: bis zu 5 s auf den
+    // Abmelden-Button der Sidebar warten.
     const logoutBtn = page.getByRole('button', { name: /Abmelden/i });
-    const logoutVisible = await logoutBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    const logoutVisible = await becomesVisible(logoutBtn, 5000);
 
     if (logoutVisible) {
       await logoutBtn.click();
@@ -1320,15 +1312,21 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     await page.waitForLoadState('domcontentloaded');
     await expect(page).not.toHaveURL(/\/staff\/login/);
 
-    const heading = page.getByText(/Rechnung|Neue Rechnung/i).first();
-    const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
+    // Wie 06-actions: erst auf die Seitenüberschrift (beide Modi) warten, weil
+    // staff/(protected)/loading.tsx zuerst ein Skelett streamt; die Sidebar
+    // enthält ebenfalls „Rechnungen" und taugt nicht als Anker.
+    const heading = page.getByRole('heading', {
+      level: 1,
+      name: /Neue Rechnung|PDF-Rechnung hochladen/,
+    });
+    const headingVisible = await becomesVisible(heading, PAGE_READY_TIMEOUT);
 
     if (headingVisible) {
       await expect(heading).toBeVisible();
 
       const external = await page
         .getByText(/zentraler Rechnungssoftware/)
-        .isVisible({ timeout: 2000 })
+        .isVisible()
         .catch(() => false);
       if (external) {
         invoiceModeUnderTest = 'EXTERNAL';
@@ -1378,14 +1376,19 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
       );
     }
 
+    // Modus erst bestimmen, wenn die Seitenüberschrift (beide Modi) gestreamt ist.
+    await expect(
+      page.getByRole('heading', { level: 1, name: /Neue Rechnung|PDF-Rechnung hochladen/ }),
+      'Rechnungsanlage muss laden (Überschrift fehlt)',
+    ).toBeVisible({ timeout: PAGE_READY_TIMEOUT });
     const isExternal =
       (await page
         .getByText(/zentraler Rechnungssoftware/)
-        .isVisible({ timeout: 2000 })
+        .isVisible()
         .catch(() => false)) ||
       (await page
         .getByText(/PDF-Rechnung hochladen/)
-        .isVisible({ timeout: 2000 })
+        .isVisible()
         .catch(() => false));
     if (isExternal) {
       invoiceModeUnderTest = 'EXTERNAL';
@@ -1419,7 +1422,7 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
 
     const noClients = await page
       .getByText(/Keine aktiven Mandanten/)
-      .isVisible({ timeout: 2000 })
+      .isVisible()
       .catch(() => false);
     if (noClients) {
       await ctx.close();
@@ -1429,37 +1432,38 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     }
 
     const subjectInput = page.locator('#subject');
-    const subjectReady = await subjectInput.isVisible({ timeout: 8000 }).catch(() => false);
-    if (!subjectReady) {
-      // FIX 1: Weder EXTERNAL noch „keine Mandanten", aber #subject fehlt → Bug.
-      await ctx.close();
-      throw new Error(
-        'Invoice form #subject field not found (not EXTERNAL, clients exist) — form regression',
-      );
-    }
+    // FIX 1: Weder EXTERNAL noch „keine Mandanten", aber #subject fehlt → Bug.
+    await expect(
+      subjectInput,
+      'Invoice form #subject field not found (not EXTERNAL, clients exist) — form regression',
+    ).toBeVisible();
 
     await chooseClient(page, page.locator('#clientId'), 'Mustermann GmbH');
     await subjectInput.fill('E2E Compliance Test Rechnung');
 
+    // Positionsfelder und Positionsknopf gehören zum selben Formular wie
+    // #subject (oben sichtbar): ohne Wartezeit verzweigen.
     const descInput = page.locator('[id^="pos-0-description"]');
-    if (await descInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await descInput.isVisible().catch(() => false)) {
       await descInput.fill('Compliance Beratung Q1');
     }
     const unitPriceInput = page.locator('[id^="pos-0-unitPrice"]');
-    if (await unitPriceInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (await unitPriceInput.isVisible().catch(() => false)) {
       await unitPriceInput.fill('200.00');
     }
 
     const addPosBtn = page.getByRole('button', { name: /Position hinzufügen|weitere Position/i });
-    if (await addPosBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (await addPosBtn.isVisible().catch(() => false)) {
       await addPosBtn.click();
       await page.waitForTimeout(500);
+      // Die zweite Positionszeile entsteht clientseitig nach dem Klick: bis zu
+      // 2 s darauf warten, wie zuvor beabsichtigt.
       const desc2 = page.locator('[id^="pos-1-description"]');
-      if (await desc2.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await becomesVisible(desc2, 2000)) {
         await desc2.fill('Compliance Prüfung Q1');
       }
       const price2 = page.locator('[id^="pos-1-unitPrice"]');
-      if (await price2.isVisible({ timeout: 2000 }).catch(() => false)) {
+      if (await becomesVisible(price2, 2000)) {
         await price2.fill('350.00');
       }
     }
@@ -1531,14 +1535,10 @@ test.describe.serial('Rechnungs-Compliance — XRechnung & GoBD', () => {
     const firstInvLink = complianceInvoiceHref
       ? page.locator(`a[href="${complianceInvoiceHref}"]`).first()
       : page.locator('table tbody tr a').first();
-    const invVisible = await firstInvLink.isVisible({ timeout: 5000 }).catch(() => false);
-
-    if (!invVisible) {
-      await ctx.close();
-      throw new Error(
-        'Keine Rechnung für Export-/Archivprüfung gefunden — Test 7.2 muss deterministisch eine Rechnung anlegen',
-      );
-    }
+    await expect(
+      firstInvLink,
+      'Keine Rechnung für Export-/Archivprüfung gefunden — Test 7.2 muss deterministisch eine Rechnung anlegen',
+    ).toBeVisible();
 
     const href = await firstInvLink.getAttribute('href').catch(() => null);
     expect(href, 'Rechnungslink muss eine Detail-URL enthalten').toBeTruthy();
@@ -1836,21 +1836,15 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
     await searchInput.press('Enter');
     await page.waitForTimeout(2000);
 
+    // Negativprüfung: 2 s Beobachtungsfenster für eine sichtbare DB-Fehlermeldung.
     const dbError = page.getByText(/SQL|syntax error|pg_|database error/i);
-    const dbErrVisible = await dbError
-      .first()
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
+    const dbErrVisible = await becomesVisible(dbError, 2000);
     expect(dbErrVisible).toBe(false);
 
     await searchInput.fill("'; DROP TABLE clients; --");
     await searchInput.press('Enter');
     await page.waitForTimeout(1500);
-    const dbErr2 = await page
-      .getByText(/SQL|syntax error/i)
-      .first()
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
+    const dbErr2 = await becomesVisible(page.getByText(/SQL|syntax error/i), 2000);
     expect(dbErr2).toBe(false);
 
     await ctx.close();
@@ -1881,10 +1875,7 @@ test.describe.serial('Input Validation — XSS/SQL Injection', () => {
     // FIX 2: Statt body-visible — die Suche darf keinen Server-Fehler auslösen
     // und die Mandanten-Seite muss funktionsfähig bleiben (keine Leerseite).
     const crashError = page.getByText(/SQL|syntax error|pg_|Something went wrong|Internal Server/i);
-    const crashed = await crashError
-      .first()
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
+    const crashed = await becomesVisible(crashError, 2000);
     expect(crashed, 'Sehr lange Eingabe darf keinen Server-Fehler auslösen').toBe(false);
     await expect(page.getByRole('heading', { name: /Mandanten|Clients/i }).first()).toBeVisible({
       timeout: 5000,
@@ -2226,15 +2217,10 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
     await page.waitForTimeout(3000);
 
     const settingsContent = page.getByText(/Einstellung|Benachrichtigung|DSGVO/i);
-    const contentVisible = await settingsContent
-      .first()
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
-    expect(
-      contentVisible,
+    await expect(
+      settingsContent.first(),
       'Portal settings content must be visible for consent/DSGVO settings',
-    ).toBe(true);
-    await expect(settingsContent.first()).toBeVisible();
+    ).toBeVisible();
 
     await ctx.close();
   });
@@ -2250,11 +2236,9 @@ test.describe.serial('Portal Compliance — DSGVO Export & Consent', () => {
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(3000);
 
+    // Die Portal-Dokumentenseite rendert ihre Überschrift immer.
     const heading = page.getByRole('heading', { name: /Dokumente/i });
-    const headingVisible = await heading.isVisible({ timeout: 5000 }).catch(() => false);
-    if (headingVisible) {
-      await expect(heading).toBeVisible();
-    }
+    await expect(heading.first(), 'Portal-Dokumentenseite muss laden').toBeVisible();
 
     await ctx.close();
   });
