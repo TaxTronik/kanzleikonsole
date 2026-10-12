@@ -50,6 +50,19 @@ describe('AuthShell', () => {
     expect(readBrandingForSlug).toHaveBeenCalledWith('default');
   });
 
+  it('zeigt ein hinterlegtes Kanzlei-Logo statt der Text-Wortmarke', async () => {
+    h.branding.logoDataUrl = 'data:image/png;base64,AA';
+    try {
+      const html = await render(AuthShell({ children: <h1>Login</h1> }));
+      expect(html).toMatch(
+        /<img[^>]*alt="Kanzlei Muster"[^>]*src="data:image\/png;base64,AA"|<img[^>]*src="data:image\/png;base64,AA"[^>]*alt="Kanzlei Muster"/,
+      );
+      expect(html).not.toContain('brand-wordmark');
+    } finally {
+      h.branding.logoDataUrl = null;
+    }
+  });
+
   it('wird von Portal- und Staff-Layout identisch verwendet', async () => {
     const portal = await render(PortalAuthLayout({ children: <p>Inhalt</p> }));
     const staff = await render(StaffAuthLayout({ children: <p>Inhalt</p> }));
