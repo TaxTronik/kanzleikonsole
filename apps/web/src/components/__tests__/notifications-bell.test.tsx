@@ -3,7 +3,6 @@
 // Serverbestätigung (F-01), gerenderte Glocke, Dropdown und Hinweis. Die
 // Lesefrist prüft notification-alert-timing.test.ts.
 
-import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -308,45 +307,5 @@ describe('Hinweis „Neue Benachrichtigung“', () => {
   });
 });
 
-describe('Zählerabgleich über den geteilten Tab-Poller (P-08)', () => {
-  const sources = [
-    'notifications-bell.tsx',
-    'notifications-bell-feed.ts',
-    'notifications-bell-ack.ts',
-    'notifications-bell-sound.ts',
-    'notifications-bell-alert.tsx',
-    'notifications-bell-dropdown.tsx',
-    'notifications-bell-model.ts',
-  ].map((file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'));
-  const all = sources.join('\n');
-
-  // Verdrahtung, die ohne DOM-Testumgebung nicht ausführbar ist.
-  it('lädt nur bei betroffener oder Live-Seite neu und meldet betroffene Blöcke', () => {
-    expect(all).toContain('growthTargets(data.items, previousLatestUnreadAt)');
-    expect(all).toContain('shouldRefreshForNotifications(pathname, targets)');
-    expect(all).not.toContain('isAutomaticRefreshEnabled');
-    expect(all).toContain('emitNotificationsGrew(buildNotificationSignal(data.items))');
-    expect(all).toContain('if (step.grew) onUnreadGrew(step.previousLatestUnreadAt);');
-    expect(all).toContain('completion && (await confirmRead(completion.id))');
-  });
-
-  it('koppelt die Lesefrist an Profilmodus und Interaktion und verankert das Dropdown', () => {
-    expect(all).toContain('useNotificationAlert({ persistent: accessibleDisplay, open })');
-    expect(all).toContain('interacting: hovered || focused || open');
-    expect(all).toContain('alert.item && !open && (');
-    expect(all).toContain("useAnchoredPanel(open, containerRef, 384, 'end')");
-    expect(all).toContain('panelRef.current?.focus({ preventScroll: true })');
-    expect(all).toContain(
-      "event.key === 'Escape' && containerRef.current?.contains(event.target as Node)",
-    );
-    expect(all).toContain('event.currentTarget.contains(event.relatedTarget)');
-  });
-
-  it('nutzt keine eigenen Timer, Sichtbarkeits-Listener oder Zählabrufe', () => {
-    expect(all).toContain('notificationCountPoller.subscribe(applyUnreadSummary)');
-    expect(all).toContain('notificationCountPoller.pollNow()');
-    expect(all).not.toContain('setInterval(');
-    expect(all).not.toContain("addEventListener('visibilitychange'");
-    expect(all).not.toContain("fetch('/api/staff/notifications/count'");
-  });
-});
+// Verdrahtung (Poller, Zuwachs, Quittung, Lesefrist, Dropdown) prüft
+// notifications-bell-wiring.test.tsx in jsdom (B-08, Welle 15).

@@ -9,4 +9,13 @@ if (typeof document !== 'undefined') {
   afterEach(() => {
     cleanup();
   });
+
+  // jsdom misst kein Layout und kennt ResizeObserver nicht; Popover-Bibliotheken
+  // (floating-ui) beobachten damit nur Größenänderungen. Ohne Layout gibt es
+  // keine, ein stummer Beobachter ist deshalb gleichwertig.
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
 }

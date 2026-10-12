@@ -1,9 +1,10 @@
-import { readFileSync } from 'node:fs';
+// @vitest-environment jsdom
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AccessibleDisplayProvider, AccessibleDisplaySettings } from '../accessible-display';
 
-function render(enabled: boolean) {
+function markup(enabled: boolean) {
   return renderToStaticMarkup(
     <AccessibleDisplayProvider initialEnabled={enabled} saveAction={async () => ({ ok: true })}>
       <AccessibleDisplaySettings />
@@ -13,47 +14,86 @@ function render(enabled: boolean) {
 
 describe('persönlicher barrierearmer Anzeigemodus', () => {
   it.each([false, true])('rendert den gespeicherten Zustand %s schon serverseitig', (enabled) => {
-    const markup = render(enabled);
-    expect(markup).toContain(`data-accessible-display="${enabled}"`);
-    expect(markup.match(/<input\b[^>]*>/)?.[0].includes('checked=""')).toBe(enabled);
-    expect(markup).toContain('data-accessible-font-size="large"');
-    expect(markup).toContain('data-accessible-spacing="relaxed"');
-    expect(markup).toContain('data-accessible-contrast="strong"');
-    expect(markup).toContain('data-accessible-reduce-motion="true"');
-    expect(markup).toContain('Anzeige individuell anpassen');
-    expect(markup).toContain('Barrierearmen Anzeigemodus aktivieren');
-    expect(markup).toContain('aria-describedby=');
-    expect(markup).toContain('role="status"');
+    const html = markup(enabled);
+    expect(html).toContain(`data-accessible-display="${enabled}"`);
+    expect(html.match(/<input\b[^>]*>/)?.[0].includes('checked=""')).toBe(enabled);
+    expect(html).toContain('data-accessible-font-size="large"');
+    expect(html).toContain('data-accessible-spacing="relaxed"');
+    expect(html).toContain('data-accessible-contrast="strong"');
+    expect(html).toContain('data-accessible-reduce-motion="true"');
+    expect(html).toContain('Anzeige individuell anpassen');
+    expect(html).toContain('Barrierearmen Anzeigemodus aktivieren');
+    expect(html).toContain('aria-describedby=');
+    expect(html).toContain('role="status"');
   });
 
   it('verlangt eine authentifizierte Profilumgebung statt eines browserweiten Fallbacks', () => {
     expect(() => renderToStaticMarkup(<AccessibleDisplaySettings />)).toThrow('profile provider');
-    const source = readFileSync(new URL('../accessible-display.tsx', import.meta.url), 'utf8');
-    expect(source).not.toContain('localStorage.');
-    expect(source).not.toContain('document.cookie');
-    expect(source).toContain('useOptimistic(initialEnabled)');
-    expect(source).toContain('aria-disabled={pending}');
-    expect(source).not.toMatch(/\sdisabled=/);
-    expect(source).toContain('role="alert"');
   });
 
-  it('isoliert Staff- und Portalzustände bei Profilwechseln und bleibt außerhalb des Logins', () => {
-    for (const scope of ['staff', 'portal']) {
-      const protectedLayout = readFileSync(
-        new URL(`../../app/${scope}/(protected)/layout.tsx`, import.meta.url),
-        'utf8',
-      );
-      const authLayout = readFileSync(
-        new URL(`../../app/${scope}/(auth)/layout.tsx`, import.meta.url),
-        'utf8',
-      );
-      // P-06: Darstellung kommt profilgebunden aus der einen Layout-Transaktion.
-      expect(protectedLayout).toContain(
-        scope === 'staff' ? 'readStaffLayoutData(' : 'readPortalLayoutData(',
-      );
-      expect(protectedLayout).toContain('initialEnabled={accessibleDisplay}');
-      expect(protectedLayout).toContain(`key={\`${scope}:`);
-      expect(authLayout).not.toContain('AccessibleDisplayProvider');
-    }
+  // Verhalten statt Quelltext (B-08): optimistisch umschalten, während des
+  // Speicherns bedienbar bleiben (aria-disabled statt disabled), bei Fehler
+  // zurückfallen und melden; gespeichert wird nur über die Profil-Action.
+  // Profilbindung (key je Staff-/Portalprofil, Wert aus der Layout-Transaktion)
+  // und Login ohne Provider prüft app/__tests__/protected-layouts.test.tsx.
+  type Save = (enabled: boolean) => Promise<{ ok: true } | { ok: false; error: string }>;
+
+  function renderSettings(saveAction: Save) {
+    render(
+      <AccessibleDisplayProvider initialEnabled={false} saveAction={saveAction}>
+        <AccessibleDisplaySettings />
+      </AccessibleDisplayProvider>,
+    );
+    return screen.getByRole('checkbox', {
+      name: 'Barrierearmen Anzeigemodus aktivieren',
+    }) as HTMLInputElement;
+  }
+
+  function marker() {
+    return document
+      .querySelector('[data-accessible-display]')!
+      .getAttribute('data-accessible-display');
+  }
+
+  it('schaltet sofort optimistisch um und bleibt während des Speicherns fokussierbar', async () => {
+    let finish!: (result: { ok: true }) => void;
+    const saveAction = vi.fn(
+      () =>
+        new Promise<{ ok: true }>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const checkbox = renderSettings(saveAction);
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const cookieBefore = document.cookie;
+
+    fireEvent.click(checkbox);
+    await waitFor(() => expect(marker()).toBe('true'));
+    expect(checkbox.checked).toBe(true);
+    expect(checkbox.getAttribute('aria-disabled')).toBe('true');
+    expect(checkbox.disabled).toBe(false);
+    expect(screen.getByRole('status').textContent).toBe('Anzeigeeinstellung wird gespeichert …');
+    expect(saveAction).toHaveBeenCalledWith(true);
+
+    await act(async () => finish({ ok: true }));
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe('Anzeigeeinstellung gespeichert.'),
+    );
+    expect(checkbox.getAttribute('aria-disabled')).toBe('false');
+    // Kein browserweiter Zustand: weder localStorage noch Cookie.
+    expect(setItem).not.toHaveBeenCalled();
+    expect(document.cookie).toBe(cookieBefore);
+    setItem.mockRestore();
+  });
+
+  it('fällt bei einem Speicherfehler auf den Serverstand zurück und meldet ihn als Alert', async () => {
+    const checkbox = renderSettings(async () => ({
+      ok: false,
+      error: 'Speichern fehlgeschlagen.',
+    }));
+    fireEvent.click(checkbox);
+    expect((await screen.findByRole('alert')).textContent).toBe('Speichern fehlgeschlagen.');
+    await waitFor(() => expect(marker()).toBe('false'));
+    expect(checkbox.checked).toBe(false);
   });
 });
