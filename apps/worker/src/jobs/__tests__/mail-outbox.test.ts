@@ -153,6 +153,15 @@ function activeResources() {
       }),
     },
     formSubmission: { findFirst: vi.fn().mockResolvedValue({ status: 'PENDING' }) },
+    appointment: {
+      findFirst: vi.fn().mockResolvedValue({
+        status: 'CONFIRMED',
+        startsAt: new Date('2026-10-20T08:00:00Z'),
+        endsAt: new Date('2026-10-20T09:00:00Z'),
+        title: 'Jahresgespräch',
+        location: null,
+      }),
+    },
   };
 }
 
@@ -675,6 +684,8 @@ const PURPOSE_RESOURCE: Record<
     direct: true,
   },
   'form-sent': { type: 'form_submission', model: 'formSubmission', direct: false },
+  'appointment-changed': { type: 'appointment', model: 'appointment', direct: true },
+  'appointment-cancelled': { type: 'appointment', model: 'appointment', direct: true },
 };
 
 /** Je Anlass ein Zustand, in dem die Mail nicht mehr gewollt ist. */
@@ -716,6 +727,14 @@ const OBSOLETE_STATE: Record<MailOutboxPurpose, { state: unknown; reason: string
   'form-sent': {
     state: { status: 'SUBMITTED' },
     reason: 'Das Formular wurde bereits eingereicht.',
+  },
+  'appointment-changed': {
+    state: { status: 'CANCELLED', startsAt: new Date('2026-10-20T08:00:00Z') },
+    reason: 'Der Termin wurde inzwischen abgesagt.',
+  },
+  'appointment-cancelled': {
+    state: { status: 'CONFIRMED', startsAt: new Date('2026-10-20T08:00:00Z') },
+    reason: 'Der Termin ist nicht abgesagt.',
   },
 };
 
@@ -759,6 +778,13 @@ describe('Mail-Outbox: Zustand des Vorgangs vor jedem Versand', () => {
       // Der Standardzustand der Terminanfrage ist „angenommen“ (Bestätigung).
       if (purpose === 'appointment-rejected') {
         h.resources.appointmentRequest.findFirst.mockResolvedValue({ status: 'REJECTED' });
+      }
+      // Der Standardzustand des Termins ist „aktiv“ (Änderung); die Absage braucht CANCELLED.
+      if (purpose === 'appointment-cancelled') {
+        h.resources.appointment.findFirst.mockResolvedValue({
+          status: 'CANCELLED',
+          startsAt: new Date('2026-10-20T08:00:00Z'),
+        });
       }
 
       const stats = await processMailOutbox(h.deps, { now: NOW });
@@ -807,6 +833,32 @@ describe('Mail-Outbox: Zustand des Vorgangs vor jedem Versand', () => {
       expect(stats).toMatchObject({ processed: 0, skipped: 1, escalated: 0 });
     },
   );
+
+  it('Welle 15: meldet eine endgültig gescheiterte Terminmitteilung am Termin', async () => {
+    const row = await purposeRow('appointment-changed', {
+      status: 'RETRY_PENDING',
+      attemptCount: MAIL_OUTBOX_MAX_ATTEMPTS - 1,
+    });
+    const h = harness([row]);
+    h.sendTemplateMail.mockResolvedValue({
+      ok: false,
+      sentViaTemplate: true,
+      uncertainFailure: false,
+    });
+
+    await processMailOutbox(h.deps, { now: NOW });
+
+    expect(h.notifyStaff).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        kind: 'SYSTEM_MAIL_FAILED',
+        body: expect.stringContaining('Terminänderung: Nach 6 eindeutig gescheiterten Versuchen'),
+        resourceType: 'appointment',
+        resourceId: RESOURCE_ID,
+        clientId: CLIENT,
+      }),
+    );
+  });
 
   it('prüft auch vor einem Retry und verwirft eine inzwischen zurückgezogene Einladung', async () => {
     const row = await inviteRow({ status: 'RETRY_PENDING', attemptCount: 2 });

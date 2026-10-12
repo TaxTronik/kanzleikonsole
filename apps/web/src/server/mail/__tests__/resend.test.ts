@@ -103,6 +103,8 @@ describe('MAIL_RESEND_GUARDS', () => {
     expect(MAIL_RESEND_GUARDS['appointment-confirmed']).toEqual({ module: 'appointments' });
     expect(MAIL_RESEND_GUARDS['appointment-rejected']).toEqual({ module: 'appointments' });
     expect(MAIL_RESEND_GUARDS['form-sent']).toEqual({ module: 'forms' });
+    expect(MAIL_RESEND_GUARDS['appointment-changed']).toEqual({ module: 'appointments' });
+    expect(MAIL_RESEND_GUARDS['appointment-cancelled']).toEqual({ module: 'appointments' });
     for (const purpose of [
       'request-opened',
       'request-staff-replied',
@@ -256,5 +258,65 @@ describe('resendMailOutboxTx', () => {
       'Inhalt wurde nach Ablauf der Aufbewahrung entfernt',
     );
     expect(h.audit).not.toHaveBeenCalled();
+  });
+
+  it('Welle 15: verwirft eine überholte Terminänderung beim Neuversand (angekündigter Stand)', async () => {
+    const appointmentId = '77777777-7777-4777-8777-777777777777';
+    const announced = {
+      v: 1,
+      slug: 'appointment-changed',
+      vars: {},
+      relevance: {
+        appointment: {
+          startsAt: '2026-10-20T08:00:00.000Z',
+          endsAt: '2026-10-20T09:00:00.000Z',
+          title: 'Jahresgespräch',
+          location: null,
+        },
+      },
+    };
+    const { tx, raw, queryRaw } = txWith([
+      outboxRow({
+        purpose: 'appointment-changed',
+        resourceType: 'appointment',
+        resourceId: appointmentId,
+        payload: announced,
+      }),
+    ]);
+    // Seit der Mail erneut verschoben: Beginn 11:00 statt 10:00 (Berlin).
+    (raw as Record<string, unknown>)['appointment'] = {
+      findFirst: vi.fn().mockResolvedValue({
+        status: 'CONFIRMED',
+        startsAt: new Date('2026-10-20T09:00:00.000Z'),
+        endsAt: new Date('2026-10-20T10:00:00.000Z'),
+        title: 'Jahresgespräch',
+        location: null,
+      }),
+    };
+
+    const outcome = await resendMailOutboxTx(
+      tx,
+      actor,
+      input({
+        purpose: 'appointment-changed',
+        resourceType: 'appointment',
+        resourceId: appointmentId,
+      }),
+      NOW,
+    );
+
+    expect(outcome).toEqual({
+      kind: 'skipped',
+      count: 1,
+      reason: 'Der Termin wurde seitdem erneut geändert.',
+    });
+    expect(raw.mailOutbox.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ select: expect.objectContaining({ payload: true }) }),
+    );
+    expect(resendCall(queryRaw).values).toEqual([
+      OUTBOX_A,
+      'FAILED',
+      'Der Termin wurde seitdem erneut geändert.',
+    ]);
   });
 });

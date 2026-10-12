@@ -326,8 +326,9 @@ Einbindung eines Dienstleisters bleiben unabhängig davon zu prüfen.
 ## 7. Zustellstatus von Mandanten-E-Mails
 
 Mandanten-E-Mails, die ein Vorgang auslöst (neue Anforderung, Kanzlei-Antwort,
-Formular, GwG-Einladung und -Freischaltung, Terminentscheidung,
-Rechnungsversand, Abholbereitschaft), speichert TaxTronik zusammen mit dem
+Formular, GwG-Einladung und -Freischaltung, Terminentscheidung, auf Wunsch
+Terminänderung und -absage, Rechnungsversand, Abholbereitschaft), speichert
+TaxTronik zusammen mit dem
 Vorgang als Versandauftrag; der Hintergrunddienst stellt sie danach zu. Am
 Vorgang zeigt eine Statuszeile den Stand:
 
@@ -346,6 +347,8 @@ Vor jedem Versandversuch, auch vor jeder Wiederholung, prüft TaxTronik, ob die
 Mail noch gewollt ist. Nicht versendet werden insbesondere eine GwG-Einladung,
 die zurückgezogen, eingereicht oder abgelaufen ist, eine Terminbestätigung für
 einen abgesagten, erledigten, bereits begonnenen oder seitdem verschobenen
+Termin, eine Terminänderung, wenn der Termin seitdem erneut geändert, abgesagt,
+erledigt oder begonnen wurde, eine Terminabsage für einen bereits begonnenen
 Termin, die Abholbenachrichtigung für bereits abgeholte oder nicht mehr
 abholbereite Unterlagen, die Mail zu einer neuen Anforderung, die nicht mehr
 offen ist, die Mail zu einem bereits eingereichten Formular, die Begrüßung nach
@@ -378,5 +381,7 @@ Zustellstatus mehr. Wartende oder laufende Versandaufträge werden nicht
 gelöscht.
 
 Die Bestätigungs- oder Absagemail einer Terminanfrage zeigt der Kanzleikalender
-unter „Entschiedene Terminanfragen" (14 Tage nach der Entscheidung), die
-Begrüßungsmail nach der GwG-Freischaltung die GwG-Seite des Mandanten.
+unter „Entschiedene Terminanfragen" (14 Tage nach der Entscheidung), Mails zu
+Terminänderungen und -absagen unter „Mandanten-Mails zu Terminänderungen"
+(14 Tage, je Termin die jüngste Mitteilung), die Begrüßungsmail nach der
+GwG-Freischaltung die GwG-Seite des Mandanten.

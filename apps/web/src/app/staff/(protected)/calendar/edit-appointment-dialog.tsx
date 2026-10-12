@@ -6,16 +6,20 @@
 // Die Terminpille im Kanzleikalender öffnet diesen Dialog. Gespeichert wird über
 // updateAppointmentAction mit denselben Feldern und Grenzen wie bei der Anlage;
 // „Termin absagen" setzt über cancelAppointmentAction den Status CANCELLED
-// (auditiert), gelöscht wird nicht mehr. Ob der Mandant bei einer Änderung oder
-// Absage eine Mail erhält, ist nicht entschieden: Der Dialog sagt ausdrücklich,
-// dass keine automatische Benachrichtigung erfolgt.
+// (auditiert), gelöscht wird nicht mehr.
+//
+// Welle 15 (Entscheidung „Checkbox im Dialog“): Bearbeiten und Absagen bieten je
+// „Mandant per E-Mail informieren“ an — vorausgewählt, wenn der Termin einen
+// erreichbaren Mandantenkontakt hat (Regel der Entscheidungsmail, siehe
+// server/appointments/client-mail.ts), sonst deaktiviert mit Grund. Ohne
+// Häkchen geht keine Mail hinaus.
 // =============================================================================
 
 import Link from 'next/link';
 import { useActionState, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
-import { FormErrorSummary } from '@/components/form-errors';
+import { FieldError, FormErrorSummary } from '@/components/form-errors';
 import { Modal } from '@/components/ui/modal';
 import {
   cancelAppointmentAction,
@@ -29,6 +33,7 @@ import {
   type AppointmentFormStatus,
   type AppointmentStaffOption,
 } from './appointment-form-fields';
+import type { AppointmentClientMailOption } from '@/server/appointments/client-mail';
 
 export interface EditableAppointment {
   id: string;
@@ -45,10 +50,16 @@ export interface EditableAppointment {
   notes: string | null;
   /** Aus einer Portal-Terminanfrage angenommen (mit Terminbestätigung). */
   fromRequest: boolean;
+  /** Welle 15: Empfänger der Mandanten-Mail oder der Grund, warum es keine gibt. */
+  clientMail: AppointmentClientMailOption;
 }
 
-export const APPOINTMENT_NOT_NOTIFIED_HINT =
-  'Der Mandant wird über Änderungen und Absagen nicht automatisch benachrichtigt.';
+export const APPOINTMENT_MAIL_LABEL = 'Mandant per E-Mail informieren';
+export const APPOINTMENT_MAIL_OPT_IN_HINT = 'Ohne Häkchen wird der Mandant nicht benachrichtigt.';
+export const APPOINTMENT_CHANGE_MAIL_HINT =
+  'Die Mail nennt Titel, Zeit und Ort, keine Notizen; sie geht nur hinaus, wenn sich davon etwas ändert.';
+export const APPOINTMENT_CANCEL_MAIL_HINT =
+  'Die Mail nennt Titel und Zeit des abgesagten Termins, keine Notizen.';
 export const APPOINTMENT_FROM_REQUEST_HINT =
   'Der Termin stammt aus einer Terminanfrage im Portal; eine noch nicht zugestellte Terminbestätigung wird nach einer Verschiebung oder Absage nicht mehr versendet.';
 
@@ -65,6 +76,59 @@ export function ownerOptionsFor(
         { id: appointment.ownerStaffId, fullName: `${appointment.ownerName} (nicht mehr aktiv)` },
         ...staffOptions,
       ];
+}
+
+function recipientList(option: AppointmentClientMailOption): string {
+  return option.recipients.map((r) => `${r.fullName} (${r.email})`).join(', ');
+}
+
+/**
+ * Checkbox „Mandant per E-Mail informieren“: vorausgewählt mit Empfängern,
+ * sonst deaktiviert mit kurzem Grund. Im Bearbeiten-Formular sendet sie das
+ * Feld `notifyClient`; für die Absage (eigene Aktion, kein Formularfeld) steuern
+ * `checked`/`onChange` sie ohne Feldnamen, damit sie das Speichern nicht beeinflusst.
+ */
+export function AppointmentClientMailCheckbox({
+  id,
+  option,
+  hint,
+  errors,
+  checked,
+  onChange,
+  disabled,
+}: {
+  id: string;
+  option: AppointmentClientMailOption;
+  hint: string;
+  errors?: readonly string[];
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  const available = option.recipients.length > 0;
+  const controlled = onChange
+    ? { checked: available && Boolean(checked), onChange: () => onChange(!checked) }
+    : { name: 'notifyClient', value: 'on', defaultChecked: available };
+  return (
+    <div className="rounded-md border border-default p-3 text-sm" data-client-mail={id}>
+      <label htmlFor={id} className="flex items-start gap-2 text-secondary">
+        <input
+          id={id}
+          type="checkbox"
+          disabled={!available || disabled}
+          aria-describedby={`${id}-hint`}
+          {...controlled}
+        />
+        <span className="font-medium text-primary">{APPOINTMENT_MAIL_LABEL}</span>
+      </label>
+      <p id={`${id}-hint`} className="mt-1 text-xs text-muted">
+        {available
+          ? `An: ${recipientList(option)}. ${hint} ${APPOINTMENT_MAIL_OPT_IN_HINT}`
+          : `Nicht möglich: ${option.unavailableReason ?? 'kein erreichbarer Empfänger.'}`}
+      </p>
+      <FieldError name="notifyClient" errors={errors} prefix={id} />
+    </div>
+  );
 }
 
 export function EditAppointmentDialog({
@@ -127,18 +191,28 @@ export function AppointmentEditModal({
   );
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [isCancelling, startCancel] = useTransition();
+  const [notifyOnCancel, setNotifyOnCancel] = useState(
+    appointment.clientMail.recipients.length > 0,
+  );
   const busy = isSaving || isCancelling;
   const fieldErrors = state?.fieldErrors;
 
   function cancelAppointment() {
     setCancelError(null);
     startCancel(async () => {
-      const result = await cancelAppointmentAction({ id: appointment.id });
+      const result = await cancelAppointmentAction({
+        id: appointment.id,
+        notifyClient: notifyOnCancel && appointment.clientMail.recipients.length > 0,
+      });
       if (result.ok) {
         onClose();
         router.refresh();
       } else {
-        setCancelError(result.error ?? 'Der Termin konnte nicht abgesagt werden.');
+        setCancelError(
+          result.fieldErrors?.['notifyClient']?.[0] ??
+            result.error ??
+            'Der Termin konnte nicht abgesagt werden.',
+        );
       }
     });
   }
@@ -186,10 +260,15 @@ export function AppointmentEditModal({
           }}
           fieldErrors={fieldErrors}
         />
-        <p className="text-xs text-muted">
-          {APPOINTMENT_NOT_NOTIFIED_HINT}
-          {appointment.fromRequest ? ` ${APPOINTMENT_FROM_REQUEST_HINT}` : null}
-        </p>
+        <AppointmentClientMailCheckbox
+          id={`${ID_PREFIX}-notify`}
+          option={appointment.clientMail}
+          hint={APPOINTMENT_CHANGE_MAIL_HINT}
+          errors={fieldErrors?.['notifyClient']}
+        />
+        {appointment.fromRequest ? (
+          <p className="text-xs text-muted">{APPOINTMENT_FROM_REQUEST_HINT}</p>
+        ) : null}
         {appointment.client ? (
           <p className="text-xs">
             <Link
@@ -208,8 +287,16 @@ export function AppointmentEditModal({
             <p className="text-xs text-muted">
               Der Termin bleibt im Kalender als abgesagt sichtbar und verschwindet aus den
               Übersichten, dem Portal und dem Kalender-Abonnement des Mandanten. Eine Absage lässt
-              sich nicht rückgängig machen. {APPOINTMENT_NOT_NOTIFIED_HINT}
+              sich nicht rückgängig machen.
             </p>
+            <AppointmentClientMailCheckbox
+              id={`${ID_PREFIX}-cancel-notify`}
+              option={appointment.clientMail}
+              hint={APPOINTMENT_CANCEL_MAIL_HINT}
+              checked={notifyOnCancel}
+              onChange={setNotifyOnCancel}
+              disabled={busy}
+            />
             {cancelError ? (
               <p role="alert" className="text-xs text-red-700 dark:text-red-300">
                 {cancelError}

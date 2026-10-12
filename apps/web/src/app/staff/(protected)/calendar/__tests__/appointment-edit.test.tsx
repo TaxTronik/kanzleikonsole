@@ -1,4 +1,6 @@
 // Review-Befund C1: Kalender-UI für „Termin bearbeiten" und „Termin absagen".
+// Welle 15: Checkbox „Mandant per E-Mail informieren“ in beiden Dialogteilen
+// (Fachkatalog: MAIL-OUTBOX-001).
 //
 // Kein DOM in der Testumgebung: Die Tests rendern serverseitig, fangen die Props
 // der gerenderten <button> ab und rufen Handler direkt auf. useActionState und
@@ -70,12 +72,25 @@ vi.mock('@/components/ui/modal', () => ({
 
 const { AppointmentPills, editableAppointment, sortCancelledLast } =
   await import('../appointment-pills');
-const { AppointmentEditModal, ownerOptionsFor, APPOINTMENT_NOT_NOTIFIED_HINT } =
-  await import('../edit-appointment-dialog');
+const {
+  AppointmentEditModal,
+  ownerOptionsFor,
+  APPOINTMENT_MAIL_LABEL,
+  APPOINTMENT_MAIL_OPT_IN_HINT,
+} = await import('../edit-appointment-dialog');
 type CalendarAppointment = import('../appointment-pills').CalendarAppointment;
 
 const OWNER = '22222222-2222-4222-8222-222222222222';
 const STAFF = [{ id: OWNER, fullName: 'Erika Beispiel' }];
+const REACHABLE = {
+  recipients: [{ contactId: 'contact-1', fullName: 'Max Müller', email: 'max@example.test' }],
+  unavailableReason: null,
+};
+const UNREACHABLE = {
+  recipients: [],
+  unavailableReason:
+    'Für den Mandanten ist kein aktiver Kontakt mit eingeschalteten Benachrichtigungen hinterlegt.',
+};
 
 function row(overrides: Partial<CalendarAppointment> = {}): CalendarAppointment {
   return {
@@ -92,6 +107,7 @@ function row(overrides: Partial<CalendarAppointment> = {}): CalendarAppointment 
     location: 'Büro',
     notes: null,
     fromRequestId: null,
+    clientMail: REACHABLE,
     ...overrides,
   };
 }
@@ -177,6 +193,7 @@ describe('Terminpillen im Kanzleikalender', () => {
       location: 'Büro',
       notes: 'Notiz',
       fromRequest: true,
+      clientMail: REACHABLE,
     });
   });
 });
@@ -193,7 +210,7 @@ describe('Dialog „Termin bearbeiten"', () => {
     expect(html).toMatch(/<option value="CONFIRMED" selected="">Bestätigt<\/option>/);
     expect(html).toMatch(/<option value="CLIENT_MEETING" selected="">Mandantentermin<\/option>/);
     expect(html).not.toContain('value="CANCELLED"');
-    expect(html).toContain(APPOINTMENT_NOT_NOTIFIED_HINT);
+    expect(html).toContain(APPOINTMENT_MAIL_OPT_IN_HINT);
     expect(html).toContain('stammt aus einer Terminanfrage im Portal');
     expect(html).toContain('href="/staff/clients/client-1"');
     expect(html).toContain('Termin absagen …');
@@ -242,7 +259,10 @@ describe('Dialog „Termin bearbeiten"', () => {
     });
     (confirm!['onClick'] as () => void)();
     await Promise.all(probe.transitions);
-    expect(probe.cancelAppointmentAction).toHaveBeenLastCalledWith({ id: 'appointment-1' });
+    expect(probe.cancelAppointmentAction).toHaveBeenLastCalledWith({
+      id: 'appointment-1',
+      notifyClient: true,
+    });
     expect(onClose).not.toHaveBeenCalled();
 
     probe.cancelAppointmentAction.mockResolvedValueOnce({ ok: true });
@@ -251,5 +271,59 @@ describe('Dialog „Termin bearbeiten"', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(probe.refresh).toHaveBeenCalledTimes(1);
     expect(probe.updateAppointmentAction).not.toHaveBeenCalled();
+  });
+});
+
+describe('Welle 15: „Mandant per E-Mail informieren“', () => {
+  /** Die beiden Checkboxen: Bearbeiten (Formularfeld) und Absagen (gesteuert). */
+  function checkboxes(html: string) {
+    return [...html.matchAll(/<input[^>]*type="checkbox"[^>]*>/g)].map(([tag]) => tag);
+  }
+
+  it('wählt die Mail mit erreichbarem Kontakt vor und nennt den Empfänger', () => {
+    const { html } = modal();
+
+    const [edit, cancel] = checkboxes(html);
+    expect(html.match(new RegExp(APPOINTMENT_MAIL_LABEL, 'g'))).toHaveLength(2);
+    expect(edit).toContain('name="notifyClient"');
+    expect(edit).toContain('checked=""');
+    expect(edit).not.toContain('disabled');
+    // Die Absage-Checkbox ist kein Formularfeld: Speichern bleibt unbeeinflusst.
+    expect(cancel).not.toContain('name=');
+    expect(cancel).toContain('checked=""');
+    expect(html).toContain('An: Max Müller (max@example.test).');
+    expect(html).toContain('keine Notizen');
+  });
+
+  it('deaktiviert die Mail ohne erreichbaren Kontakt und nennt den Grund', async () => {
+    const { html } = modal({ clientMail: UNREACHABLE });
+
+    for (const box of checkboxes(html)) {
+      expect(box).toContain('disabled=""');
+      expect(box).not.toContain('checked');
+    }
+    expect(html).toContain(`Nicht möglich: ${UNREACHABLE.unavailableReason}`);
+
+    const confirm = probe.buttons.find((props) => props['data-appointment-cancel']);
+    probe.cancelAppointmentAction.mockResolvedValueOnce({ ok: true });
+    (confirm!['onClick'] as () => void)();
+    await Promise.all(probe.transitions);
+    expect(probe.cancelAppointmentAction).toHaveBeenLastCalledWith({
+      id: 'appointment-1',
+      notifyClient: false,
+    });
+  });
+
+  it('zeigt die Feldmeldung der Absage, wenn kein Empfänger mehr erreichbar ist', async () => {
+    modal();
+    const confirm = probe.buttons.find((props) => props['data-appointment-cancel']);
+    probe.cancelAppointmentAction.mockResolvedValueOnce({
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      fieldErrors: { notifyClient: ['Der Mandant ist anonymisiert.'] },
+    });
+    (confirm!['onClick'] as () => void)();
+    await Promise.all(probe.transitions);
+    expect(probe.refresh).not.toHaveBeenCalled();
   });
 });

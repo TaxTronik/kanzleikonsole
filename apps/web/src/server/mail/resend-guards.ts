@@ -24,4 +24,6 @@ export const MAIL_RESEND_GUARDS: Readonly<Record<MailOutboxPurpose, StaffGuardOp
   'appointment-confirmed': { module: 'appointments' },
   'appointment-rejected': { module: 'appointments' },
   'form-sent': { module: 'forms' },
+  'appointment-changed': { module: 'appointments' },
+  'appointment-cancelled': { module: 'appointments' },
 };

@@ -4168,7 +4168,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter Wiederholung und Eskalation zu, der Status steht am Vorgang, und fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden. Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach dem letzten Statuswechsel. Die technische Annahme ist kein Zugangsnachweis; die fachliche Freigabe der Fristen fehlt."
+        "summary": "Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter Wiederholung und Eskalation zu, der Status steht am Vorgang, und fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden. Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach dem letzten Statuswechsel. Terminänderung und -absage im Kanzleikalender lösen auf ausdrücklichen Wunsch eine Mail aus. Die technische Annahme ist kein Zugangsnachweis; die fachliche Freigabe der Fristen fehlt."
       },
       "sources": [
         {
@@ -4202,7 +4202,12 @@
         "packages/db/prisma/migrations/20261007120000_mail_outbox_skipped/migration.sql",
         "packages/db/prisma/migrations/20261007120100_mail_outbox_resend/migration.sql",
         "apps/worker/src/jobs/mail-outbox-retention.ts",
-        "packages/db/prisma/migrations/20261012110000_mail_outbox_retention/migration.sql"
+        "packages/db/prisma/migrations/20261012110000_mail_outbox_retention/migration.sql",
+        "apps/web/src/server/appointments/client-mail.ts",
+        "apps/web/src/app/staff/(protected)/calendar/actions.ts",
+        "apps/web/src/app/staff/(protected)/calendar/edit-appointment-dialog.tsx",
+        "apps/web/src/app/staff/(protected)/calendar/appointment-mails.tsx",
+        "packages/db/prisma/migrations/20261012110100_appointment_change_mail_templates/migration.sql"
       ],
       "test_refs": [
         "packages/mail/src/__tests__/outbox.test.ts",
@@ -4216,9 +4221,17 @@
         "apps/web/src/components/__tests__/mail-delivery-status.test.tsx",
         "packages/db/src/__tests__/mail-outbox-rls.test.ts",
         "apps/worker/src/jobs/__tests__/mail-outbox-retention.test.ts",
-        "apps/worker/src/jobs/__tests__/mail-outbox-retention-db.test.ts"
+        "apps/worker/src/jobs/__tests__/mail-outbox-retention-db.test.ts",
+        "apps/web/src/server/appointments/__tests__/client-mail.test.ts",
+        "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-actions.test.tsx",
+        "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-edit.test.tsx",
+        "apps/worker/src/jobs/__tests__/mail-outbox-appointment-db.test.ts",
+        "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-mails.test.tsx"
       ],
-      "feature_refs": ["docs/anwenderdoku/administration.md"],
+      "feature_refs": [
+        "docs/anwenderdoku/administration.md",
+        "docs/anwenderdoku/kalender-fristen-bescheide.md"
+      ],
       "related_rules": [
         "ACCESS-TENANT-RLS-001",
         "ACCESS-STAFF-PERMISSION-001",

@@ -21,8 +21,9 @@ implementation:
     Wiederholung und Eskalation zu, der Status steht am Vorgang, und
     fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden.
     Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach
-    dem letzten Statuswechsel. Die technische Annahme ist kein Zugangsnachweis;
-    die fachliche Freigabe der Fristen fehlt.
+    dem letzten Statuswechsel. Terminänderung und -absage im Kanzleikalender
+    lösen auf ausdrücklichen Wunsch eine Mail aus. Die technische Annahme ist
+    kein Zugangsnachweis; die fachliche Freigabe der Fristen fehlt.
 sources:
   - kind: product_documentation
     citation: Anwenderdokumentation Administration, Abschnitt 7 „Zustellstatus von Mandanten-E-Mails“
@@ -51,6 +52,11 @@ code_refs:
   - packages/db/prisma/migrations/20261007120100_mail_outbox_resend/migration.sql
   - apps/worker/src/jobs/mail-outbox-retention.ts
   - packages/db/prisma/migrations/20261012110000_mail_outbox_retention/migration.sql
+  - apps/web/src/server/appointments/client-mail.ts
+  - apps/web/src/app/staff/(protected)/calendar/actions.ts
+  - apps/web/src/app/staff/(protected)/calendar/edit-appointment-dialog.tsx
+  - apps/web/src/app/staff/(protected)/calendar/appointment-mails.tsx
+  - packages/db/prisma/migrations/20261012110100_appointment_change_mail_templates/migration.sql
 test_refs:
   - packages/mail/src/__tests__/outbox.test.ts
   - packages/mail/src/__tests__/outbox-relevance.test.ts
@@ -64,8 +70,14 @@ test_refs:
   - packages/db/src/__tests__/mail-outbox-rls.test.ts
   - apps/worker/src/jobs/__tests__/mail-outbox-retention.test.ts
   - apps/worker/src/jobs/__tests__/mail-outbox-retention-db.test.ts
+  - apps/web/src/server/appointments/__tests__/client-mail.test.ts
+  - apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-actions.test.tsx
+  - apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-edit.test.tsx
+  - apps/worker/src/jobs/__tests__/mail-outbox-appointment-db.test.ts
+  - apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-mails.test.tsx
 feature_refs:
   - docs/anwenderdoku/administration.md
+  - docs/anwenderdoku/kalender-fristen-bescheide.md
 related_rules:
   - ACCESS-TENANT-RLS-001
   - ACCESS-STAFF-PERMISSION-001
@@ -95,8 +107,9 @@ Rechtsgrundlage für Inhalt, Zeitpunkt oder Pflicht dieser Mails ist offen.
 Die Regel gilt für die Versandanlässe der Mail-Outbox: Rechnungsmail (mit und
 ohne PDF), Abholbenachrichtigung, Mail zur neuen Anforderung, Mail zur
 Kanzlei-Antwort, Begrüßungsmail nach GwG-Freigabe, GwG-Einladung,
-Terminbestätigung, Terminabsage einer Terminanfrage und Mail zum neuen
-Formular. Sie gilt nicht für Anmelde- und Sicherheitsmails (Magic Link,
+Terminbestätigung, Terminabsage einer Terminanfrage, Mail zum neuen Formular
+sowie Terminänderung und Absage eines Kanzleitermins, wenn die Kanzlei sie im
+Kalender ausdrücklich auswählt. Sie gilt nicht für Anmelde- und Sicherheitsmails (Magic Link,
 Einladung zum Portal), die automatische Steuertermin-Anforderung mit eigener
 Versandhistorie, interne Mitarbeiterbenachrichtigungen, n8n-Ereignisse ohne
 Mail und den Posteingang.
@@ -106,6 +119,9 @@ Mail und den Posteingang.
 - Kanzlei, Mandant und Vorgang (Typ und ID), an dem der Status angezeigt wird
 - Versandanlass und Vorlagenkennung samt Variablen; geheime Variablen getrennt
 - Empfängerart: genau eine Adresse oder alle bestätigten Kontakte
+- bei Terminänderung und -absage: Auswahl „Mandant per E-Mail informieren“,
+  Herkunft des Termins (Terminanfrage oder Kalender) und Kontakte des Mandanten
+- angekündigter Vorgangsstand, wo die Aktualitätsprüfung ihn vergleicht
 - aktueller Zustand des Vorgangs zum Versandzeitpunkt
 - Versuchszähler, Zeitpunkte und Antwort des Versanddienstes
 
@@ -123,6 +139,13 @@ Mail und den Posteingang.
 | Kanzlei wählt „Erneut senden“ bei `FAILED` oder `UNKNOWN`                             | gleiche Berechtigung wie der Auslöser, Aktualitätsprüfung, dann `QUEUED` oder `SKIPPED`, auditiert | bewusste Entscheidung; bei `UNKNOWN` mit Rückfrage |
 | letzter Statuswechsel eines Auftrags im Endstatus liegt mehr als ein Jahr zurück      | Auftrag samt Metadaten löschen; der Vorgang zeigt für diese Mail keinen Status mehr                | Entscheidung A8, wie die Versandhistorie           |
 | Auftrag wartet oder läuft (`QUEUED`, `RETRY_PENDING`, `SENDING`)                      | nie löschen                                                                                        | laufende Zustellung schützen                       |
+| Kanzlei bearbeitet oder sagt einen Termin ab, ohne „Mandant per E-Mail informieren“   | keine Mail                                                                                         | ausdrückliche Entscheidung je Vorgang              |
+| mit Auswahl, aber ohne Mandantenbezug, anonymisiert oder ohne erreichbaren Kontakt    | nichts speichern, Feld mit Grund markieren                                                         | keine stille Nichtzustellung                       |
+| mit Auswahl: Termin aus Terminanfrage dieses Mandanten                                | ein Auftrag an den anfragenden Kontakt, wenn aktiv und mit Benachrichtigungen                      | Regel der Entscheidungsmail                        |
+| mit Auswahl: sonstiger Termin                                                         | je aktivem Kontakt mit Benachrichtigungen ein Auftrag, alle mit gemeinsamem Erstellungszeitpunkt   | Regel der Entscheidungsmail je Kontakt             |
+| Änderung ohne neuen Titel, neue Zeit oder neuen Ort oder als erledigt gespeichert     | keine Änderungsmail                                                                                | nichts mitzuteilen                                 |
+| vor dem Versand weicht der Termin vom angekündigten Stand ab oder ist abgesagt        | Änderungsmail `SKIPPED` mit Grund                                                                  | nur der aktuelle Stand geht hinaus                 |
+| Termin hat vor dem Versand begonnen                                                   | Änderungs- oder Absagemail `SKIPPED` mit Grund                                                     | Mitteilung überholt                                |
 
 ## Ausnahmen und Grenzfälle
 
@@ -139,6 +162,16 @@ Für „Erneut senden“ bleibt der Inhalt eines `FAILED`- oder `UNKNOWN`-Auftra
 30 Tage nach der Eskalation erhalten, bei anonymisiertem Mandanten nicht.
 Danach ist kein Neuversand mehr möglich. Die 30 Tage sind eine offene
 Betriebsentscheidung, keine Rechtsfrist.
+
+Bei Terminen ohne Terminanfrage gehen Änderungs- und Absagemails an jeden
+aktiven Kontakt mit Benachrichtigungen; anders als bei Kontaktmails wird kein
+bestätigter Portal-Login verlangt, weil die Entscheidungsmail diese Bedingung
+ebenfalls nicht kennt. Der Dialog nennt die Empfänger vor dem Speichern. Wird
+ein Termin aus einer Terminanfrage einem anderen Mandanten zugeordnet, gelten
+dessen Kontakte. Wechselt die Kanzlei im Dialog den Mandanten, ermittelt die
+Action die Empfänger für den neuen Mandanten; die Empfängeranzeige im Dialog
+bezieht sich auf den gespeicherten Stand. Für den Zustellstatus zählt je Termin und Anlass nur die
+jüngste Auslösung.
 
 Für die einjährige Löschfrist gilt bei `FAILED` und `UNKNOWN` die Eskalation
 als letzter Statuswechsel; das spätere Entfernen des Neuversandinhalts
@@ -194,6 +227,20 @@ kein allgemeines Löschrecht. Lauf, Stichtag, Löschzähler je Kanzlei und der
 verbleibende Rückstand stehen im Log und im Job-Ergebnis
 (DSGVO-OPERATIONAL-RETENTION-001).
 
+Beim Bearbeiten und Absagen im Kanzleikalender bietet der Dialog „Mandant per
+E-Mail informieren“ an, vorausgewählt mit den Empfängern oder deaktiviert mit
+Grund. Die Server-Actions prüfen die Empfänger erneut, bevor sie etwas
+schreiben, legen die Aufträge `appointment-changed` bzw.
+`appointment-cancelled` im Commit der Änderung an und vermerken ihre Zahl im
+Audit-Eintrag `appointment.update` bzw. `appointment.cancel`. Die Mails nennen
+Titel, Zeit und Ort bzw. die Absage, nie die internen Notizen; die
+Änderungsmail speichert zusätzlich den angekündigten Stand (nicht gerendert),
+den die Aktualitätsprüfung vor jedem Versand mit dem Termin vergleicht. Die
+Texte kommen aus den System-Vorlagen „Termin geändert (Kanzlei)“ und „Termin
+abgesagt (Kanzlei)“ (für bestehende Kanzleien geseedet, anpassbar) oder dem
+gleichlautenden Ersatztext. Der Kalender zeigt Zustellstatus und „Erneut
+senden“ unter „Mandanten-Mails zu Terminänderungen“.
+
 Am Vorgang zeigt eine Statuszeile je Anlass den zusammengefassten Stand; bei
 `FAILED` und `UNKNOWN` mit erhaltenem Inhalt bietet sie „Erneut senden“ an.
 Das Gate entspricht der auslösenden Aktion (Einzelrecht, Modul,
@@ -202,8 +249,10 @@ Mandantenzugriff; bei der GwG-Begrüßung der zugeordnete Berufsträger).
 ## Bekannte Abweichungen und Grenzen
 
 Die Umsetzung ist teilweise. Die technische Annahme durch den Versanddienst beweist weder Zugang noch
-Kenntnisnahme. Termine, die im Kalender bearbeitet oder abgesagt werden,
-lösen keine Mail an den Mandanten aus. Die 30-Tage-Frist für den Neuversand,
+Kenntnisnahme. Terminänderungen und -absagen lösen nur mit ausdrücklicher
+Auswahl eine Mail aus; ein n8n-Ereignis entsteht dafür nicht. Neue Kanzleien
+erhalten die System-Vorlagen der Terminmitteilungen nicht automatisch und
+versenden den Ersatztext. Die 30-Tage-Frist für den Neuversand,
 die einjährige Löschfrist der Metadaten und die Zahl von sechs Versuchen sind
 nicht fachlich freigegeben. Der Löschlauf schreibt keinen Auditnachweis; Zähler
 und Stichtag stehen nur im Worker-Log und Job-Ergebnis. Eine
@@ -220,6 +269,8 @@ ist im Katalog nicht belegt.
   angemessen, und braucht die Löschung einen Auditnachweis?
 - Wer prüft „unklar“ und „nur teilweise angenommen“ und informiert den
   Mandanten gegebenenfalls direkt?
+- Genügt für Terminmitteilungen an Kontakte ohne bestätigten Portal-Login die
+  Regel der Entscheidungsmail, oder ist ein bestätigter Login zu verlangen?
 
 ## Technische Nachweise
 
@@ -232,6 +283,10 @@ Datenbanktests belegen Compare-and-Swap, CHECKs, Tenant-Isolation und die
 Rechte der App-Rolle. Die Löschtests belegen gegen PostgreSQL die Grenze von
 genau einem Jahr, den Schutz wartender und laufender Aufträge, die Eskalation
 als Bezugszeitpunkt bei `FAILED`/`UNKNOWN`, mehrere Stapel, Idempotenz und die
-Tenant-Grenze. Die Web-Tests belegen Anstoß, Statusanzeige und
+Tenant-Grenze. Die Terminmitteilungstests belegen Empfängerregeln und Gründe,
+die Actions mit und ohne Auswahl sowie ohne erreichbaren Kontakt, die
+Checkbox im Dialog und gegen PostgreSQL das Verwerfen überholter Änderungs-
+mails, den Versand der Absage und die idempotenten System-Vorlagen. Die
+Web-Tests belegen Anstoß, Statusanzeige und
 „Erneut senden“ mit Gate, Rückfrage und Audit. Eine Zustellung beim Mandanten
 belegen sie nicht.

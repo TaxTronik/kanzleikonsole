@@ -30,6 +30,7 @@ export type MailOutboxRelevanceReader = Pick<
   | 'gwgCheck'
   | 'gwgOnboardingInvite'
   | 'appointmentRequest'
+  | 'appointment'
   | 'formSubmission'
 >;
 
@@ -39,6 +40,11 @@ export interface MailOutboxRelevanceRow {
   purpose: string;
   resourceType: string;
   resourceId: string;
+  /**
+   * Gespeicherter Auftragsinhalt; Welle 15: `relevance` enthält den Stand, den
+   * die Mail ankündigt. Fehlt er, prüft die Aktualitätsprüfung nur den Status.
+   */
+  payload?: unknown;
 }
 
 interface ResourceRef {
@@ -51,6 +57,7 @@ type Check = (
   db: MailOutboxRelevanceReader,
   ref: ResourceRef,
   now: Date,
+  announced: Record<string, unknown> | null,
 ) => Promise<MailOutboxRelevance>;
 
 const WANTED: MailOutboxRelevance = { wanted: true };
@@ -166,7 +173,8 @@ function acceptedSlotStart(slot: Prisma.JsonValue | null): string | null {
 /**
  * Terminbestätigung: Die Mail nennt Titel und Beginn des angenommenen
  * Wunschtermins. Ein abgesagter, erledigter, bereits begonnener oder seitdem
- * verschobener Termin macht sie überholt (eine Änderungsmail gibt es nicht).
+ * verschobener Termin macht sie überholt; über die Änderung informiert eine
+ * eigene Mail, wenn die Kanzlei sie beim Bearbeiten auswählt (Welle 15).
  */
 const appointmentStillConfirmed: Check = async (db, ref, now) => {
   const request = await db.appointmentRequest.findFirst({
@@ -204,6 +212,80 @@ const appointmentStillRejected: Check = async (db, ref) => {
   return WANTED;
 };
 
+/** Terminstand, den eine Änderungsmail ankündigt (payload.relevance.appointment). */
+export interface AnnouncedAppointment {
+  /** ISO-8601-Instants. */
+  startsAt: string;
+  endsAt: string;
+  title: string;
+  location: string | null;
+}
+
+function announcedAppointment(
+  announced: Record<string, unknown> | null,
+): AnnouncedAppointment | null {
+  const value = announced?.['appointment'];
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const { startsAt, endsAt, title, location } = record;
+  if (typeof startsAt !== 'string' || typeof endsAt !== 'string' || typeof title !== 'string') {
+    return null;
+  }
+  if (location !== null && typeof location !== 'string') return null;
+  return { startsAt, endsAt, title, location };
+}
+
+function sameInstant(iso: string, instant: Date): boolean {
+  const parsed = Date.parse(iso);
+  return Number.isFinite(parsed) && parsed === instant.getTime();
+}
+
+/**
+ * Welle 15: Änderungsmail zu einem Kanzleitermin. Überholt, wenn der Termin
+ * abgesagt, erledigt oder bereits begonnen ist oder seitdem erneut geändert
+ * wurde: Zeit, Titel oder Ort weichen vom angekündigten Stand ab. So geht bei
+ * mehreren Änderungen nur die Mail mit dem aktuellen Stand hinaus.
+ */
+const appointmentChangeCurrent: Check = async (db, ref, now, announced) => {
+  const appointment = await db.appointment.findFirst({
+    where: scope(ref),
+    select: { status: true, startsAt: true, endsAt: true, title: true, location: true },
+  });
+  if (!appointment) return obsolete('Der Termin existiert für diesen Mandanten nicht mehr.');
+  if (appointment.status === 'CANCELLED') return obsolete('Der Termin wurde inzwischen abgesagt.');
+  if (appointment.status === 'DONE') return obsolete('Der Termin ist bereits erledigt.');
+  if (appointment.startsAt.getTime() <= now.getTime()) {
+    return obsolete('Der Termin hat bereits begonnen.');
+  }
+  const expected = announcedAppointment(announced);
+  if (
+    expected &&
+    !(
+      sameInstant(expected.startsAt, appointment.startsAt) &&
+      sameInstant(expected.endsAt, appointment.endsAt) &&
+      expected.title === appointment.title &&
+      expected.location === appointment.location
+    )
+  ) {
+    return obsolete('Der Termin wurde seitdem erneut geändert.');
+  }
+  return WANTED;
+};
+
+/** Welle 15: Absagemail; eine Absage ist endgültig, ein begonnener Termin braucht keine. */
+const appointmentStillCancelled: Check = async (db, ref, now) => {
+  const appointment = await db.appointment.findFirst({
+    where: scope(ref),
+    select: { status: true, startsAt: true },
+  });
+  if (!appointment) return obsolete('Der Termin existiert für diesen Mandanten nicht mehr.');
+  if (appointment.status !== 'CANCELLED') return obsolete('Der Termin ist nicht abgesagt.');
+  if (appointment.startsAt.getTime() <= now.getTime()) {
+    return obsolete('Der Termin hat bereits begonnen.');
+  }
+  return WANTED;
+};
+
 const formStillOpen: Check = async (db, ref) => {
   const submission = await db.formSubmission.findFirst({
     where: scope(ref),
@@ -231,7 +313,18 @@ const CHECKS: Readonly<Record<MailOutboxPurpose, { resourceType: string; check: 
   },
   'appointment-rejected': { resourceType: 'appointment_request', check: appointmentStillRejected },
   'form-sent': { resourceType: 'form_submission', check: formStillOpen },
+  'appointment-changed': { resourceType: 'appointment', check: appointmentChangeCurrent },
+  'appointment-cancelled': { resourceType: 'appointment', check: appointmentStillCancelled },
 };
+
+/** `payload.relevance` eines Auftrags, sofern vorhanden. */
+function announcedState(payload: unknown): Record<string, unknown> | null {
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const relevance = (payload as Record<string, unknown>)['relevance'];
+  return relevance !== null && typeof relevance === 'object' && !Array.isArray(relevance)
+    ? (relevance as Record<string, unknown>)
+    : null;
+}
 
 function isKnownPurpose(purpose: string): purpose is MailOutboxPurpose {
   return (MAIL_OUTBOX_PURPOSES as readonly string[]).includes(purpose);
@@ -262,5 +355,6 @@ export async function checkMailOutboxRelevanceTx(
     db,
     { tenantId: row.tenantId, clientId: row.clientId, id: row.resourceId },
     now,
+    announcedState(row.payload),
   );
 }

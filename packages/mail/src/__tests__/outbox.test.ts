@@ -205,4 +205,40 @@ describe('Mail-Outbox-Vertrag', () => {
       }),
     ).toThrow(/Anhangsverweis/);
   });
+
+  it('Welle 15: speichert den angekündigten Stand und den gemeinsamen Zeitpunkt einer Auslösung', async () => {
+    const { tx, rows } = writer();
+    const createdAt = new Date('2026-10-12T09:00:00.000Z');
+    const relevance = {
+      appointment: {
+        startsAt: '2026-10-20T08:00:00.000Z',
+        endsAt: '2026-10-20T09:00:00.000Z',
+        title: 'Jahresgespräch',
+        location: null,
+      },
+    };
+    await enqueueDirectMailTx(
+      tx,
+      {
+        ...target,
+        purpose: 'appointment-changed',
+        resource: { type: 'appointment', id: INVOICE },
+        staffHref: '/staff/calendar',
+        createdAt,
+      },
+      { slug: 'appointment-changed', to: 'max@example.test', vars: {}, relevance },
+    );
+
+    expect(rows[0]).toMatchObject({ createdAt, resourceType: 'appointment' });
+    expect(rows[0]!.payload).toMatchObject({ relevance });
+    const parsed = parseMailOutboxPayload(JSON.parse(JSON.stringify(rows[0]!.payload)));
+    expect(parsed.relevance).toEqual(relevance);
+    // Der angekündigte Stand wird nicht gerendert: keine Template-Variable.
+    const dispatch = roundTrip(rows[0]!);
+    expect(dispatch.options.vars).toEqual({});
+    expect(dispatch.options).not.toHaveProperty('relevance');
+    expect(() => parseMailOutboxPayload({ v: 1, slug: 'x', vars: {}, relevance: 'neu' })).toThrow(
+      /relevance/,
+    );
+  });
 });

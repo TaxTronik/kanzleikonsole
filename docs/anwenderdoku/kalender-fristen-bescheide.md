@@ -19,10 +19,32 @@ nach einer Rückfrage auf „abgesagt“ und protokolliert das im Audit-Log. Ein
 abgesagter Termin bleibt im Kalender durchgestrichen sichtbar, erscheint aber
 nicht mehr im Dashboard, in der Mandantenakte, im Portal und im
 Kalender-Abonnement (iCal) des Mandanten; die Absage lässt sich nicht
-rückgängig machen. Der Mandant wird über Änderungen und Absagen **nicht**
-automatisch benachrichtigt. Eine noch nicht zugestellte Terminbestätigung wird
-nach einer Verschiebung oder Absage nicht mehr versendet, und die angenommene
+rückgängig machen. Eine noch nicht zugestellte Terminbestätigung wird nach
+einer Verschiebung oder Absage nicht mehr versendet, und die angenommene
 Anfrage zeigt im Portal den aktuellen Termin bzw. „Termin abgesagt“.
+
+Beim Speichern und beim Absagen gibt es je die Option **Mandant per E-Mail
+informieren**. Sie ist vorausgewählt, wenn der Termin einen erreichbaren
+Mandantenkontakt hat; der Dialog nennt die Empfänger. Erreichbar ist ein
+Kontakt, der aktiv ist und Benachrichtigungen eingeschaltet hat – wie bei der
+Mail zur Terminanfrage. Stammt der Termin aus einer Terminanfrage, geht die
+Mail nur an den anfragenden Kontakt, sonst an jeden erreichbaren Kontakt des
+Mandanten. Ohne Mandantenbezug, bei anonymisiertem Mandanten oder ohne
+erreichbaren Kontakt ist die Option deaktiviert und der Grund steht darunter.
+Ohne Häkchen erhält der Mandant keine Mail.
+
+Die Änderungsmail nennt Titel, Zeit und Ort, die Absagemail Titel und Zeit
+des abgesagten Termins; interne Notizen stehen nie darin. Eine Änderungsmail
+geht nur hinaus, wenn sich Titel, Zeit oder Ort ändern und der Termin nicht als
+erledigt gespeichert wird. Vor dem Versand prüft TaxTronik den Termin erneut:
+Wurde er inzwischen wieder geändert, geht nur die Mail mit dem aktuellen Stand
+hinaus; nach einer Absage keine Änderungsmail mehr; für einen bereits
+begonnenen Termin keine Mail. Den Zustellstatus zeigt der Kalender unter
+**Mandanten-Mails zu Terminänderungen** (14 Tage); nach einem Fehlschlag oder
+bei unklarem Ausgang lässt sich die Mail dort erneut senden (siehe
+[Administration, Abschnitt 7](administration.md)). Die Texte sind als
+System-Vorlagen „Termin geändert (Kanzlei)“ und „Termin abgesagt (Kanzlei)“
+unter **Administration → E-Mail-Vorlagen** anpassbar.
 
 Portalnutzer sehen bestätigte eigene Termine. Neue Wunschtermine können sie nur
 anfragen, wenn das Portal-Feature **Terminanfragen** aktiviert ist. Eine Anfrage

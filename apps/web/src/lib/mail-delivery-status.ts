@@ -11,7 +11,12 @@
 //   - Vor dem Versand verworfene Aufträge (SKIPPED: Vorgang erledigt,
 //     zurückgezogen oder abgesagt) zählen nur, wenn alle Aufträge des Anlasses
 //     verworfen wurden.
+//   - Welle 15: Terminänderung und -absage können je Termin mehrfach ausgelöst
+//     werden, jeweils an mehrere Einzeladressen. Maßgeblich ist nur die jüngste
+//     Auslösung; ihre Aufträge teilen denselben created_at.
 // =============================================================================
+
+import { MAIL_OUTBOX_LATEST_BATCH_PURPOSES } from '@taxtronik/mail/outbox-purposes';
 
 export type MailOutboxStatusValue =
   | 'QUEUED'
@@ -157,6 +162,10 @@ export function summarizeMailDelivery(
     const batch = byPurpose.get(row.purpose);
     if (!batch) {
       byPurpose.set(row.purpose, [row]);
+    } else if (row.kind === 'DIRECT' && MAIL_OUTBOX_LATEST_BATCH_PURPOSES.has(row.purpose)) {
+      const newest = batch[0]!.createdAt.getTime();
+      if (row.createdAt.getTime() > newest) byPurpose.set(row.purpose, [row]);
+      else if (row.createdAt.getTime() === newest) batch.push(row);
     } else if (row.kind === 'DIRECT') {
       batch.push(row);
     } else if (row.createdAt.getTime() > batch[0]!.createdAt.getTime()) {

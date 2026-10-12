@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { berlinWallClock, fmtTimeShort } from '@/lib/fmt';
+import type { AppointmentClientMailOption } from '@/server/appointments/client-mail';
 import type { AppointmentStaffOption } from './appointment-form-fields';
 import { EditAppointmentDialog, type EditableAppointment } from './edit-appointment-dialog';
 
@@ -24,6 +25,8 @@ export interface CalendarAppointment {
   location: string | null;
   notes: string | null;
   fromRequestId: string | null;
+  /** Welle 15: Empfänger einer Mandanten-Mail bei Änderung oder Absage. */
+  clientMail: AppointmentClientMailOption;
 }
 
 /** Stabil: innerhalb beider Gruppen bleibt die Startzeit-Reihenfolge erhalten. */
@@ -52,6 +55,7 @@ export function editableAppointment(
     location: appointment.location,
     notes: appointment.notes,
     fromRequest: appointment.fromRequestId !== null,
+    clientMail: appointment.clientMail,
   };
 }
 

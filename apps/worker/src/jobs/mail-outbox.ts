@@ -79,6 +79,8 @@ const NOTIFICATION_RESOURCE_TYPES: ReadonlySet<string> = new Set([
   'gwg_check',
   'gwg_onboarding_invite',
   'appointment_request',
+  // Welle 15: Änderungs- und Absagemails zu Kanzleiterminen.
+  'appointment',
 ]);
 
 export interface MailOutboxDeliveryDeps {

@@ -102,6 +102,8 @@ export async function resendMailOutboxTx(
       resourceId: true,
       status: true,
       attemptCount: true,
+      // Welle 15: angekündigter Stand (payload.relevance) für die Aktualitätsprüfung.
+      payload: true,
     },
   });
   if (rows.length !== new Set(input.outboxIds).size) {

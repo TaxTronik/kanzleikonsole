@@ -15,6 +15,8 @@ export const MAIL_OUTBOX_PURPOSES = [
   'appointment-confirmed',
   'appointment-rejected',
   'form-sent',
+  'appointment-changed',
+  'appointment-cancelled',
 ] as const;
 
 export type MailOutboxPurpose = (typeof MAIL_OUTBOX_PURPOSES)[number];
@@ -30,7 +32,19 @@ export const MAIL_OUTBOX_PURPOSE_LABELS: Readonly<Record<MailOutboxPurpose, stri
   'appointment-confirmed': 'Terminbestätigung',
   'appointment-rejected': 'Terminabsage',
   'form-sent': 'Mail zum neuen Formular',
+  'appointment-changed': 'Terminänderung',
+  'appointment-cancelled': 'Absage des Termins',
 };
+
+/**
+ * Welle 15: Anlässe, die für denselben Vorgang mehrfach ausgelöst werden können
+ * (jede Terminänderung) und je Auslösung an mehrere Einzeladressen gehen. Für
+ * den Zustellstatus zählt nur die jüngste Auslösung (gleicher created_at).
+ */
+export const MAIL_OUTBOX_LATEST_BATCH_PURPOSES: ReadonlySet<string> = new Set([
+  'appointment-changed',
+  'appointment-cancelled',
+]);
 
 /** Vorgang, an dem der Zustellstatus angezeigt wird. */
 export type MailOutboxResourceType =
@@ -40,4 +54,5 @@ export type MailOutboxResourceType =
   | 'gwg_check'
   | 'gwg_onboarding_invite'
   | 'appointment_request'
+  | 'appointment'
   | 'form_submission';

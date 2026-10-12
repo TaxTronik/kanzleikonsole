@@ -29,6 +29,8 @@ const RESOURCE_TYPE: Record<MailOutboxPurpose, string> = {
   'appointment-confirmed': 'appointment_request',
   'appointment-rejected': 'appointment_request',
   'form-sent': 'form_submission',
+  'appointment-changed': 'appointment',
+  'appointment-cancelled': 'appointment',
 };
 
 const MODEL: Record<string, keyof MailOutboxRelevanceReader> = {
@@ -38,6 +40,7 @@ const MODEL: Record<string, keyof MailOutboxRelevanceReader> = {
   gwg_check: 'gwgCheck',
   gwg_onboarding_invite: 'gwgOnboardingInvite',
   appointment_request: 'appointmentRequest',
+  appointment: 'appointment',
   form_submission: 'formSubmission',
 };
 
@@ -51,13 +54,14 @@ function reader() {
   return { db, findFirst };
 }
 
-function row(purpose: MailOutboxPurpose) {
+function row(purpose: MailOutboxPurpose, payload?: unknown) {
   return {
     tenantId: TENANT,
     clientId: CLIENT,
     purpose,
     resourceType: RESOURCE_TYPE[purpose],
     resourceId: RESOURCE,
+    ...(payload === undefined ? {} : { payload }),
   };
 }
 
@@ -80,6 +84,14 @@ const WANTED_STATE: Record<MailOutboxPurpose, unknown> = {
   },
   'appointment-rejected': { status: 'REJECTED' },
   'form-sent': { status: 'DRAFT' },
+  'appointment-changed': {
+    status: 'CONFIRMED',
+    startsAt: SLOT_INSTANT,
+    endsAt: new Date('2026-10-20T09:00:00.000Z'),
+    title: 'Jahresgespräch',
+    location: 'Büro',
+  },
+  'appointment-cancelled': { status: 'CANCELLED', startsAt: SLOT_INSTANT },
 };
 
 const OBSOLETE: Array<[MailOutboxPurpose, string, unknown, string]> = [
@@ -196,6 +208,42 @@ const OBSOLETE: Array<[MailOutboxPurpose, string, unknown, string]> = [
     'Die Terminanfrage ist nicht mehr abgelehnt.',
   ],
   ['form-sent', 'eingereicht', { status: 'SUBMITTED' }, 'Das Formular wurde bereits eingereicht.'],
+  [
+    'appointment-changed',
+    'Termin gelöscht oder anderem Mandanten zugeordnet',
+    null,
+    'Der Termin existiert für diesen Mandanten nicht mehr.',
+  ],
+  [
+    'appointment-changed',
+    'inzwischen abgesagt',
+    { status: 'CANCELLED', startsAt: SLOT_INSTANT },
+    'Der Termin wurde inzwischen abgesagt.',
+  ],
+  [
+    'appointment-changed',
+    'erledigt',
+    { status: 'DONE', startsAt: SLOT_INSTANT },
+    'Der Termin ist bereits erledigt.',
+  ],
+  [
+    'appointment-changed',
+    'begonnen',
+    { status: 'CONFIRMED', startsAt: NOW },
+    'Der Termin hat bereits begonnen.',
+  ],
+  [
+    'appointment-cancelled',
+    'nicht abgesagt',
+    { status: 'CONFIRMED', startsAt: SLOT_INSTANT },
+    'Der Termin ist nicht abgesagt.',
+  ],
+  [
+    'appointment-cancelled',
+    'begonnen',
+    { status: 'CANCELLED', startsAt: NOW },
+    'Der Termin hat bereits begonnen.',
+  ],
 ];
 
 let h: ReturnType<typeof reader>;
@@ -279,5 +327,66 @@ describe('checkMailOutboxRelevanceTx', () => {
     await expect(
       checkMailOutboxRelevanceTx(h.db, row('appointment-confirmed'), NOW),
     ).resolves.toEqual({ wanted: true });
+  });
+
+  describe('Terminänderung (Welle 15): nur der angekündigte, aktuelle Stand', () => {
+    const current = WANTED_STATE['appointment-changed'] as {
+      startsAt: Date;
+      endsAt: Date;
+      title: string;
+      location: string | null;
+    };
+    const announced = (overrides: Record<string, unknown> = {}) => ({
+      v: 1,
+      slug: 'appointment-changed',
+      vars: {},
+      relevance: {
+        appointment: {
+          startsAt: current.startsAt.toISOString(),
+          endsAt: current.endsAt.toISOString(),
+          title: current.title,
+          location: current.location,
+          ...overrides,
+        },
+      },
+    });
+
+    beforeEach(() => {
+      h.findFirst['appointment']!.mockResolvedValue(current);
+    });
+
+    it('versendet, solange Zeit, Titel und Ort dem angekündigten Stand entsprechen', async () => {
+      await expect(
+        checkMailOutboxRelevanceTx(h.db, row('appointment-changed', announced()), NOW),
+      ).resolves.toEqual({ wanted: true });
+      expect(h.findFirst['appointment']).toHaveBeenCalledWith({
+        where: { id: RESOURCE, tenantId: TENANT, clientId: CLIENT },
+        select: { status: true, startsAt: true, endsAt: true, title: true, location: true },
+      });
+    });
+
+    it.each([
+      ['Beginn', { startsAt: '2026-10-20T07:00:00.000Z' }],
+      ['Ende', { endsAt: '2026-10-20T10:00:00.000Z' }],
+      ['Titel', { title: 'Vorgespräch' }],
+      ['Ort', { location: null }],
+    ])('verwirft eine überholte Änderungsmail (%s seitdem geändert)', async (_field, changed) => {
+      await expect(
+        checkMailOutboxRelevanceTx(h.db, row('appointment-changed', announced(changed)), NOW),
+      ).resolves.toEqual({ wanted: false, reason: 'Der Termin wurde seitdem erneut geändert.' });
+    });
+
+    it('prüft ohne angekündigten Stand nur den Status (konservativ)', async () => {
+      await expect(
+        checkMailOutboxRelevanceTx(
+          h.db,
+          row('appointment-changed', { v: 1, slug: 'x', vars: {}, relevance: { other: 1 } }),
+          NOW,
+        ),
+      ).resolves.toEqual({ wanted: true });
+      await expect(
+        checkMailOutboxRelevanceTx(h.db, row('appointment-changed', {}), NOW),
+      ).resolves.toEqual({ wanted: true });
+    });
   });
 });

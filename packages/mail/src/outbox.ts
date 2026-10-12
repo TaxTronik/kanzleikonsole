@@ -22,6 +22,7 @@ import type { MailAttachment } from './send';
 import type { MailOutboxPurpose, MailOutboxResourceType } from './outbox-purposes';
 
 export {
+  MAIL_OUTBOX_LATEST_BATCH_PURPOSES,
   MAIL_OUTBOX_PURPOSES,
   MAIL_OUTBOX_PURPOSE_LABELS,
   type MailOutboxPurpose,
@@ -29,6 +30,7 @@ export {
 } from './outbox-purposes';
 export {
   checkMailOutboxRelevanceTx,
+  type AnnouncedAppointment,
   type MailOutboxRelevance,
   type MailOutboxRelevanceReader,
   type MailOutboxRelevanceRow,
@@ -41,6 +43,13 @@ export interface MailOutboxTarget {
   resource: { type: MailOutboxResourceType; id: string };
   /** Ziel der Kanzlei-Benachrichtigung bei endgültigem Fehlschlag. */
   staffHref: string;
+  /**
+   * Welle 15: gemeinsamer Erstellungszeitpunkt aller Aufträge EINER Auslösung
+   * (mehrere Einzeladressen); der Zustellstatus fasst Anlässe aus
+   * MAIL_OUTBOX_LATEST_BATCH_PURPOSES danach zusammen. Ohne Angabe setzt die
+   * Datenbank den Zeitpunkt.
+   */
+  createdAt?: Date;
 }
 
 /** Anhang als Verweis auf eine gespeicherte Dokumentfassung (keine Bytes in der DB). */
@@ -58,6 +67,12 @@ interface OutboxMailBase {
   subjectSuffix?: string;
   n8nEvent?: N8nEventName;
   n8nPayload?: Record<string, unknown>;
+  /**
+   * Welle 15: Stand des Vorgangs, den die Mail ankündigt (z. B. neue Terminzeit).
+   * Wird nicht gerendert; die Aktualitätsprüfung vergleicht ihn vor jedem
+   * Versand mit dem aktuellen Vorgang (outbox-relevance.ts).
+   */
+  relevance?: Record<string, unknown>;
 }
 
 /** Eine Template-Mail an genau eine Adresse (Semantik von sendTemplateMail). */
@@ -97,6 +112,8 @@ export interface MailOutboxPayload {
   n8nEvent?: N8nEventName;
   n8nPayload?: JsonObject;
   attachments?: OutboxAttachmentRef[];
+  /** Angekündigter Vorgangsstand für die Aktualitätsprüfung (nicht gerendert). */
+  relevance?: JsonObject;
 }
 
 /** Der Auftrag ist nicht (mehr) versendbar; kein SMTP-Kontakt hat stattgefunden. */
@@ -174,6 +191,7 @@ function basePayload(mail: OutboxMailBase): MailOutboxPayload {
     subjectSuffix: mail.subjectSuffix,
     n8nEvent: mail.n8nEvent,
     n8nPayload: mail.n8nPayload ? toJsonObject(mail.n8nPayload, 'n8nPayload') : undefined,
+    relevance: mail.relevance ? toJsonObject(mail.relevance, 'relevance') : undefined,
   });
 }
 
@@ -235,6 +253,7 @@ export async function enqueueDirectMailTx(
       staffHref: target.staffHref,
       payload: payload as unknown as Prisma.InputJsonObject,
       secretVarsEnc: sealSecretVars(target.tenantId, id, mail.vars, mail.secretVars),
+      ...(target.createdAt ? { createdAt: target.createdAt } : {}),
     },
   });
   return id;
@@ -263,6 +282,7 @@ export async function enqueueClientContactsMailTx(
       resourceId: target.resource.id,
       staffHref: target.staffHref,
       payload: basePayload(mail) as unknown as Prisma.InputJsonObject,
+      ...(target.createdAt ? { createdAt: target.createdAt } : {}),
     },
   });
   return id;
@@ -322,6 +342,10 @@ export function parseMailOutboxPayload(value: unknown): MailOutboxPayload {
   if (n8nPayload !== undefined && !isPlainObject(n8nPayload)) {
     throw new MailOutboxPayloadError('payload.n8nPayload ist kein Objekt.');
   }
+  const relevance = value['relevance'];
+  if (relevance !== undefined && !isPlainObject(relevance)) {
+    throw new MailOutboxPayloadError('payload.relevance ist kein Objekt.');
+  }
   return definedOnly({
     v: 1 as const,
     slug,
@@ -333,6 +357,7 @@ export function parseMailOutboxPayload(value: unknown): MailOutboxPayload {
     n8nEvent: n8nEvent as N8nEventName | undefined,
     n8nPayload: n8nPayload as JsonObject | undefined,
     attachments: parseAttachments(value['attachments']),
+    relevance: relevance as JsonObject | undefined,
   });
 }
 

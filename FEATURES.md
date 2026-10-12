@@ -450,8 +450,12 @@ Modul `appointments`.
 - „Termin absagen" statt Löschen: Status CANCELLED mit Audit
   `appointment.cancel`; abgesagte Termine bleiben im Kalender durchgestrichen
   sichtbar und fehlen in Dashboard, Mandantenakte, Portal und iCal-Feed; eine
-  noch ausstehende Terminbestätigung wird verworfen; keine automatische
-  Änderungs- oder Absagemail an den Mandanten
+  noch ausstehende Terminbestätigung wird verworfen
+- Checkbox „Mandant per E-Mail informieren“ beim Bearbeiten und Absagen
+  (vorausgewählt bei erreichbarem Kontakt, sonst deaktiviert mit Grund):
+  Terminänderungs- bzw. Absagemail über die Mail-Outbox mit
+  Aktualitätsprüfung, Zustellstatus und „Erneut senden“ im Kalender; ohne
+  Häkchen keine Mail
 - DB-Constraint `ends_at > starts_at`
 
 ### Monats-Ansicht

@@ -7,7 +7,9 @@
 //     „Termin bearbeiten" mit „Termin absagen", abgesagte bleiben durchgestrichen
 //   - Abwesenheiten (ohne Modul)
 // Über dem Raster: Liste der offenen Terminanfragen (appointment_request) —
-// Modul appointments.
+// Modul appointments. Welle 15: Mandanten-Mails zu Terminänderungen und
+// -absagen der letzten Tage mit Zustellstatus; der Bearbeiten-Dialog erhält die
+// Empfänger je Termin für „Mandant per E-Mail informieren“.
 // Registry-Bereich officeCalendar: nutzbar, sobald eines der beiden Module
 // aktiv ist; Inhalte des inaktiven Moduls werden weder geladen noch gezeigt.
 //
@@ -24,11 +26,13 @@ import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { clientAccessFilter, optionalClientAccessFilter } from '@/server/auth/client-access-filter';
 import { loadTaxDeadlineDayGroupsTx } from '@/server/tax-deadlines/day-groups';
 import { loadMailDeliveryTx } from '@/server/mail/delivery-status';
+import { loadAppointmentMailOptionsTx } from '@/server/appointments/client-mail';
 import { withTenantContext } from '@taxtronik/db';
 import { NewAppointmentDialog } from './new-appointment-dialog';
 import { AppointmentPills } from './appointment-pills';
 import { RequestDecision, type RequestRow } from './request-decision';
 import { DecidedRequests } from './decided-requests';
+import { AppointmentMails } from './appointment-mails';
 import { fmtMonthYear, berlinYmd } from '@/lib/fmt';
 import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
 import { CalendarMonthGrid, MoreEntries, TaxDeadlinePills } from '@/components/calendar-month-grid';
@@ -40,6 +44,8 @@ interface Search {
 const NO_TAX_DEADLINES: Awaited<ReturnType<typeof loadTaxDeadlineDayGroupsTx>> = new Map();
 /** C4: Entschiedene Terminanfragen bleiben so lange mit dem Zustellstatus ihrer Mail sichtbar. */
 const DECIDED_REQUEST_DAYS = 14;
+/** Welle 15: Anlässe der Mandanten-Mails aus dem Bearbeiten- und Absagen-Dialog. */
+const APPOINTMENT_MAIL_PURPOSES = ['appointment-changed', 'appointment-cancelled'];
 
 function calendarDescription(showTax: boolean, showAppointments: boolean): string {
   const parts = [
@@ -177,9 +183,76 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         resourceType: 'appointment_request',
         resourceIds: decidedRequests.map((request) => request.id),
       });
+      // Welle 15: Empfänger je aktivem Termin (Checkbox im Dialog).
+      const mailOptions = await loadAppointmentMailOptionsTx(
+        tx,
+        appointments.filter((appointment) => appointment.status !== 'CANCELLED'),
+      );
+      // Welle 15: Terminänderungs- und Absagemails der letzten Tage samt Status.
+      const recentAppointmentMailRows = showAppointments
+        ? await tx.mailOutbox.findMany({
+            where: {
+              resourceType: 'appointment',
+              purpose: { in: APPOINTMENT_MAIL_PURPOSES },
+              createdAt: { gte: decidedSince },
+            },
+            orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+            take: 200,
+            select: { resourceId: true },
+          })
+        : [];
+      // Jüngste zuerst, je Termin eine Zeile, höchstens 20 Termine.
+      const recentAppointmentMails = [
+        ...new Set(recentAppointmentMailRows.map((row) => row.resourceId)),
+      ]
+        .slice(0, 20)
+        .map((resourceId) => ({ resourceId }));
+      const mailedAppointments =
+        recentAppointmentMails.length > 0
+          ? await tx.appointment.findMany({
+              where: {
+                id: { in: recentAppointmentMails.map((row) => row.resourceId) },
+                ...optionalClientAccessFilter(clientAccess),
+              },
+              select: {
+                id: true,
+                title: true,
+                status: true,
+                startsAt: true,
+                client: { select: { name: true } },
+              },
+            })
+          : [];
+      const appointmentMail = await loadMailDeliveryTx(tx, {
+        resourceType: 'appointment',
+        resourceIds: mailedAppointments.map((appointment) => appointment.id),
+      });
+      const mailedById = new Map(mailedAppointments.map((a) => [a.id, a]));
       return {
         deadlines,
-        appointments,
+        appointments: appointments.map((appointment) => ({
+          ...appointment,
+          clientMail: mailOptions.get(appointment.id) ?? {
+            recipients: [],
+            unavailableReason: null,
+          },
+        })),
+        appointmentMails: recentAppointmentMails.flatMap(({ resourceId }) => {
+          const appointment = mailedById.get(resourceId);
+          if (!appointment) return [];
+          return [
+            {
+              id: appointment.id,
+              title: appointment.title,
+              clientName: appointment.client?.name ?? null,
+              status: appointment.status,
+              startsAt: appointment.startsAt,
+              mail: (appointmentMail.get(appointment.id) ?? []).filter((summary) =>
+                APPOINTMENT_MAIL_PURPOSES.includes(summary.purpose),
+              ),
+            },
+          ];
+        }),
         pendingRequests,
         decidedRequests: decidedRequests.map((request) => ({
           id: request.id,
@@ -309,6 +382,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       )}
 
       <DecidedRequests requests={data.decidedRequests} days={DECIDED_REQUEST_DAYS} />
+      <AppointmentMails appointments={data.appointmentMails} days={DECIDED_REQUEST_DAYS} />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">

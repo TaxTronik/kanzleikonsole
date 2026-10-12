@@ -173,4 +173,57 @@ describe('summarizeMailDelivery', () => {
     expect(summaries[0]?.state).toBe('accepted');
     expect(summaries[0]).not.toHaveProperty('resend');
   });
+
+  it('Welle 15: wertet bei Terminmitteilungen nur die jüngste Auslösung (alle ihre Adressen)', () => {
+    const changed = (overrides: Partial<MailOutboxStatusRow>) =>
+      row({ purpose: 'appointment-changed', ...overrides });
+    // Ältere Änderung (zwei Adressen, eine gescheitert), jüngere Änderung an zwei Adressen.
+    const rows = [
+      changed({ id: 'old-1', createdAt: T0 }),
+      changed({ id: 'old-2', createdAt: T0, status: 'FAILED', recipientsAccepted: 0 }),
+      changed({ id: 'new-1', createdAt: T1 }),
+      changed({ id: 'new-2', createdAt: T1, status: 'QUEUED', recipientsAccepted: null }),
+    ];
+    expect(summarizeMailDelivery(rows)).toEqual([
+      { purpose: 'appointment-changed', state: 'pending', accepted: 1, attempted: 2 },
+    ]);
+    // Reihenfolge der Abfrage egal; ein Neuversand betrifft nur die jüngste Auslösung.
+    const failedNewest = [
+      changed({
+        id: 'new-1',
+        createdAt: T1,
+        status: 'FAILED',
+        recipientsAccepted: 0,
+        resendable: true,
+      }),
+      changed({
+        id: 'old-1',
+        createdAt: T0,
+        status: 'FAILED',
+        recipientsAccepted: 0,
+        resendable: true,
+      }),
+    ];
+    expect(
+      summarizeMailDelivery(failedNewest, { resourceType: 'appointment', resourceId: 'a-1' }),
+    ).toEqual([
+      {
+        purpose: 'appointment-changed',
+        state: 'failed',
+        accepted: 0,
+        attempted: 1,
+        resend: {
+          purpose: 'appointment-changed',
+          resourceType: 'appointment',
+          resourceId: 'a-1',
+          outboxIds: ['new-1'],
+          uncertain: false,
+        },
+      },
+    ]);
+    // Andere Einzelmails zählen weiterhin alle Aufträge (z. B. Rechnung an mehrere Adressen).
+    expect(summarizeMailDelivery([row({}), row({ createdAt: T1 })])[0]).toMatchObject({
+      accepted: 2,
+    });
+  });
 });
