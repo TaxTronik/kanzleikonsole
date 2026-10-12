@@ -42,6 +42,13 @@ export function useDialogA11y(onClose: () => void, closeDisabled = false) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
   const closeDisabledRef = useRef(closeDisabled);
+  // Auslöser vor dem ersten Commit festhalten (B-08-Verhaltenstest, Welle 15):
+  // React fokussiert autoFocus-Kinder bereits im Commit und setzt dabei kein
+  // autofocus-Attribut. Im Effekt wäre der Auslöser schon verloren, und die
+  // Rückgabe zielte auf das dann entfernte Dialogfeld.
+  const [prevFocus] = useState(() =>
+    typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null),
+  );
   useEffect(() => {
     closeRef.current = onClose;
     closeDisabledRef.current = closeDisabled;
@@ -49,7 +56,6 @@ export function useDialogA11y(onClose: () => void, closeDisabled = false) {
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-    const prevFocus = document.activeElement as HTMLElement | null;
     const backdrop = node.closest<HTMLElement>('.modal-backdrop');
     const backgroundStates = Array.from(document.body.children)
       .filter(
@@ -76,8 +82,13 @@ export function useDialogA11y(onClose: () => void, closeDisabled = false) {
           'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),summary,[contenteditable]:not([contenteditable="false"]),[tabindex]:not([tabindex="-1"])',
         ),
       ).filter((element) => element.getClientRects().length > 0 && !element.closest('[inert]'));
-    const auto = node.querySelector<HTMLElement>('[autofocus]');
-    (auto ?? focusables()[0] ?? node).focus();
+    // Ein per autoFocus bereits fokussiertes Dialogelement behält den Fokus;
+    // sonst [autofocus] (SSR-Markup), das erste sichtbare Element oder der Dialog.
+    const focused = document.activeElement;
+    if (!(focused instanceof HTMLElement && focused !== node && node.contains(focused))) {
+      const auto = node.querySelector<HTMLElement>('[autofocus]');
+      (auto ?? focusables()[0] ?? node).focus();
+    }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -112,7 +123,7 @@ export function useDialogA11y(onClose: () => void, closeDisabled = false) {
       }
       if (prevFocus?.isConnected && !prevFocus.closest('[inert]')) prevFocus?.focus?.();
     };
-  }, []);
+  }, [prevFocus]);
   return ref;
 }
 

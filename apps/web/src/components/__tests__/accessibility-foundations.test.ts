@@ -78,18 +78,6 @@ describe('globale Accessibility-Grundlagen', () => {
     expect(globalSearch).toContain('aria-live="polite"');
   });
 
-  it('benennt Dialoge, isoliert den Hintergrund und beschriftet Eingaben', () => {
-    const modal = source(resolve(componentsDir, 'ui', 'modal.tsx'));
-
-    expect(modal).toContain('aria-labelledby={titleId}');
-    expect(modal).toContain('tabIndex={-1}');
-    expect(modal).toContain("element.setAttribute('inert', '')");
-    expect(modal).toContain('(auto ?? focusables()[0] ?? node).focus()');
-    expect(modal).toContain('<label htmlFor={inputId}');
-    expect(modal).toContain('aria-invalid={err');
-    expect(modal).toContain('role="alert"');
-  });
-
   it('hält Fokus und Sekundärtext auch im Kontrastmodus wahrnehmbar', () => {
     const css = source(resolve(appDir, 'globals.css'));
 

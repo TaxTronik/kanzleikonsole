@@ -35,16 +35,6 @@ describe('gemeinsame Dialog-Infrastruktur', () => {
 
     expect(violations).toEqual([]);
   });
-
-  it('behält Fokusführung, Dialogrollen und den bestätigten Formular-Submit zentral', () => {
-    const source = readFileSync(modalPath, 'utf8');
-
-    expect(source).toContain('role="dialog"');
-    expect(source).toContain('aria-modal="true"');
-    expect(source).toContain("if (e.key === 'Escape')");
-    expect(source).toContain("if (e.key !== 'Tab') return");
-    expect(source).toContain('prevFocus?.focus?.()');
-    expect(source).toContain('export function confirmFormSubmission');
-    expect(source).toContain('form.requestSubmit(submitter)');
-  });
+  // Dialogrolle, Fokusführung, Escape und den bestätigten Formular-Submit
+  // prüft modal-a11y.test.tsx als Verhalten (B-08, Welle 15).
 });
