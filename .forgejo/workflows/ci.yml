@@ -1,3 +1,17 @@
+# Quality-Workflow: Gates und Ablauf in docs/development/entwicklungsverfahren.md,
+# Abschnitt 4.
+#
+# Runner-Kapazitaet 1 (Entscheidung 7, Welle 15): Jeder Forgejo-Runner, der
+# diesen Workflow ausfuehrt, nimmt hoechstens einen Job gleichzeitig an
+# (`runner.capacity: 1` in der config.yaml des Runners; Einstellung ausserhalb
+# des Repositorys durch den Betreiber). Grund: act_runner startet die
+# Service-Container im Host-Netz. Die Jobs nutzen je eigene Host-Ports (siehe
+# Kommentar ueber `db:`), zwei gleichzeitige Laeufe DESSELBEN Jobs auf einem
+# Host belegen aber dieselben Ports und scheitern mit "address already in use".
+# Mehrere Runner duerfen parallel laufen, wenn jeder einen eigenen
+# Docker-Daemon mit eigenem Host-Netz hat (eigener Host, eigene VM oder
+# Docker-in-Docker); zwei Runner an einem gemeinsamen Daemon kollidieren wie
+# zwei Laeufe auf einem Host.
 name: Quality
 
 on:
@@ -257,11 +271,11 @@ jobs:
   # upgrade-path und e2e-paranoid parallel nach quality, ohne dass sich ihre
   # Services auf demselben Runner-Host ins Gehege kommen. Die Eindeutigkeit
   # der Host-Ports prueft scripts/release/check-release-gates.mjs.
-  # Offen (B-03, Betriebsentscheidung): Zwei Laeufe desselben Jobs (z. B. zwei
-  # Pull Requests oder Release-Aufruf neben einem Push) auf demselben Runner-
-  # Host belegen dieselben Ports. Workflow-Ausdruecke koennen keinen Port je
-  # Lauf berechnen; Abhilfe schaffen nur Runner-Kapazitaet 1 je Host, eine
-  # Concurrency-Gruppe je Job oder dynamische Ports per docker run.
+  # Zwei Laeufe desselben Jobs (z. B. zwei Pull Requests oder Release-Aufruf
+  # neben einem Push) auf demselben Runner-Host belegen dieselben Ports, und
+  # Workflow-Ausdruecke koennen keinen Port je Lauf berechnen. Entschieden
+  # (B-03, Entscheidung 7): Runner-Kapazitaet 1 je Docker-Daemon, siehe Kopf
+  # dieser Datei und docs/operations/release.md.
   db:
     name: Migrations, RLS, Drift
     runs-on: ubuntu-latest

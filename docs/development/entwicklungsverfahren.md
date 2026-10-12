@@ -137,6 +137,21 @@ zusätzliche Diff-Gate ordnet Änderungen an überwachten Fach- und Prisma-Pfade
 konkret einer geänderten Regel oder einer strukturierten, unveränderlichen
 Ausnahme zu (`pnpm fachkatalog:diff`).
 
+**CI-Runner (Kapazität 1):** Forgejos `act_runner` startet die
+Service-Container (PostgreSQL, Redis, MailHog, ClamAV) im Host-Netz. Jeder Job
+mit Services nutzt eigene Host-Ports, sodass `db`, `restore`, `upgrade-path`
+und `e2e-paranoid` eines Laufs parallel laufen; zwei gleichzeitige Läufe
+desselben Jobs (zwei Pull Requests, Release-Aufruf neben einem Push) würden auf
+einem Host aber dieselben Ports belegen. Ein Workflow kann keinen Port je Lauf
+berechnen. Entscheidung (Entscheidung 7, Welle 15): Jeder Runner nimmt
+höchstens einen Job gleichzeitig an (`runner.capacity: 1` in seiner
+`config.yaml`, vom Betreiber außerhalb des Repositorys gesetzt, siehe
+[Release-Prozess](../operations/release.md)). Mehr Durchsatz entsteht durch
+mehrere Runner, die parallel laufen dürfen, sofern jeder einen eigenen
+Docker-Daemon mit eigenem Host-Netz hat (eigener Host, eigene VM oder
+Docker-in-Docker); zwei Runner an einem gemeinsamen Daemon kollidieren wie
+zwei Läufe auf einem Host. Der Kopf von `.forgejo/workflows/ci.yml` hält dieselbe Regel fest.
+
 **Typprüfung und Turbo-Cache:** `pnpm typecheck` prüft jedes Paket mit
 `tsc --noEmit`; in `apps/web` erzeugt `next typegen` vorher die Routentypen.
 Damit läuft dasselbe TypeScript-Programm wie in `next build` (dieselbe

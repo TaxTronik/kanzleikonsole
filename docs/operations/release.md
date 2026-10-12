@@ -63,7 +63,14 @@ das [Release-Rehearsal](release-rehearsal.md) auf einem frischen
 Wegwerf-System durchgeführt.
 
 **Einmaliges Forgejo-Setup:** Actions-Runner mit Docker-Zugriff (existiert für
-build-images.yml bereits). Falls der Actions-Auto-Token keine Pakete schreiben
+build-images.yml bereits). Jeder Runner wird mit `runner.capacity: 1` in seiner
+`config.yaml` betrieben: Die Service-Container der CI-Jobs laufen im Host-Netz
+mit festen Ports je Job, zwei gleichzeitige Läufe desselben Jobs auf einem
+Docker-Daemon kollidieren sonst („address already in use"). Mehrere Runner
+dürfen parallel laufen, wenn jeder einen eigenen Docker-Daemon mit eigenem
+Host-Netz hat (eigener Host, eigene VM oder Docker-in-Docker); Begründung in
+der [Entwicklungsverfahrensbeschreibung](../development/entwicklungsverfahren.md),
+Abschnitt 4. Falls der Actions-Auto-Token keine Pakete schreiben
 darf, einen PAT mit `write:package` als Secrets `REGISTRY_USER` +
 `REGISTRY_TOKEN` im Repo hinterlegen. Optional Repo-Variable `REGISTRY`, wenn
 der Registry-Host von der Instanz-URL abweicht. Zusätzlich Release-Tags mit dem
