@@ -5,6 +5,7 @@ import jsxA11y from 'eslint-plugin-jsx-a11y';
 import nextPlugin from '@next/eslint-plugin-next';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { complexityPlugin, readBaseline } from './scripts/eslint/complexity-baseline.mjs';
 
 // isStaffAdmin statt Rollen-Literalen; gilt für alle TS-Dateien.
 const ROLE_CHECK_SELECTORS = [
@@ -181,6 +182,7 @@ export default [
   ...tseslint.configs.recommended,
   {
     files: ['**/*.{ts,tsx}'],
+    plugins: { taxtronik: complexityPlugin },
     rules: {
       // Guardrail für künftige Beiträge: `any` wird als Fehler gewertet.
       // Einzelfälle (z. B. ASN.1-Parsing) können via eslint-disable gerechtfertigt werden.
@@ -193,11 +195,12 @@ export default [
           caughtErrorsIgnorePattern: '^_',
         },
       ],
-      // Neue Treffer blockieren. Die bestehende Komplexitätsschuld steht je
-      // Datei als Zähler in eslint-suppressions.json (ESLint-Bulk-Suppressions):
-      // mehr Treffer als erfasst schlagen fehl, weniger verlangen
-      // `pnpm lint:prune-suppressions`. Die Zähler können so nur sinken.
-      complexity: ['error', 20],
+      // Komplexität über 20 je Funktion (B-09, Welle 15): Die Altlast steht je
+      // Datei + Funktion mit ihrem erlaubten Wert in
+      // eslint-complexity-baseline.json. Neue oder verschlimmerte Funktionen
+      // schlagen fehl, Verbesserungen nicht; `pnpm lint:prune-complexity` senkt
+      // die Einträge (scripts/eslint/complexity-baseline.mjs).
+      'taxtronik/complexity': ['error', { max: 20, baseline: readBaseline() }],
       'no-restricted-syntax': ['error', ...ROLE_CHECK_SELECTORS],
     },
   },

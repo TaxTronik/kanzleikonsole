@@ -61,6 +61,26 @@ Boot-Validierung scheitert. Worker-Module lesen `env` über
 `apps/worker/src/env.ts` mit dem Typ des ENV-Profils „worker“ (`WorkerEnv`):
 Felder anderer Prozesse lehnt schon der Typecheck ab, und ESLint verbietet im
 Worker `env` aus `@taxtronik/config`.
+
+Komplexität über 20 ist je Funktion ein Lint-Fehler (B-09). Die Regel
+`taxtronik/complexity` (`scripts/eslint/complexity-baseline.mjs`) zählt wie die
+ESLint-Kernregel `complexity` und vergleicht jeden Treffer mit
+`eslint-complexity-baseline.json`: je Datei und Funktion der erlaubte Wert.
+Der Funktionsbezeichner ist unabhängig von Zeilennummern (Pfad aus Klasse,
+Funktion, Variable, Eigenschaft, Aufrufer oder JSX-Attribut; gleichnamige
+Geschwister mit `#2`). Eine neue Funktion über der Grenze und eine
+verschlimmerte Altlast brechen `pnpm lint` und damit den Quality-Job;
+Verbesserungen nicht. `pnpm lint:prune-complexity` senkt die Einträge auf den
+Ist-Stand und entfernt erledigte, ohne neue aufzunehmen;
+`pnpm lint:complexity-baseline` übernimmt den gesamten Ist-Stand und ist nur
+für eine bewusste, im Review begründete Ausnahme gedacht. Beide starten einen
+eigenen ESLint-Lauf nur für diese Regel; im Quality-Job bleibt es bei einem
+ESLint-Lauf. `pnpm guard:complexity` (Teil von `pnpm lint`) prüft Regel,
+Bezeichner, Baseline-Datei und Konfiguration
+(`scripts/tests/complexity-baseline.test.mjs`). Wird eine anonyme Funktion vor
+eine gleichnamige Geschwisterfunktion eingefügt, verschieben sich die
+Ordnungszahlen; die Meldung nennt dann den neuen Bezeichner.
+
 Die A11Y-Gates und ihre Grenzen sind in der
 [Ist-/Gap-Dokumentation zur Barrierefreiheit](../assurance/barrierefreiheit.md)
 beschrieben. Insbesondere ersetzt ein bestandener Axe-Lauf keine manuelle

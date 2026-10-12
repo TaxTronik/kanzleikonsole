@@ -509,9 +509,11 @@ Hinweise:
   (`eslint-plugin-react-hooks`), Next.js-Konventionen (`@next/eslint-plugin-next`)
   und domänenspezifische AST-Regeln (RBAC-Guardrails) in einem einzigen
   ESLint-Lauf über das ganze Repository (immer im Repository-Root starten).
-  Komplexität über 20 ist ein Fehler; bestehende Treffer stehen je Datei als
-  Zähler in `eslint-suppressions.json`. Sinkt ein Zähler, meldet `pnpm lint`
-  das und `pnpm lint:prune-suppressions` senkt ihn.
+  Komplexität über 20 ist je Funktion ein Fehler; bestehende Funktionen stehen
+  mit ihrem erlaubten Wert in `eslint-complexity-baseline.json`. Neue oder
+  verschlimmerte Funktionen brechen `pnpm lint`, Verbesserungen nicht;
+  `pnpm lint:prune-complexity` senkt die Einträge auf den Ist-Stand
+  (Details: [Testkonzept](docs/development/testkonzept.md)).
 - `pnpm test` läuft via Turborepo über alle Workspaces mit Test-Skript —
   neben der Web-App auch die Worker-Jobs (`apps/worker/src/jobs/__tests__`)
   und die Packages (u. a. `tax`, `evidence`, `db`, `crypto`, `http-utils`,

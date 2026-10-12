@@ -1,212 +1,214 @@
 {
   "apps/web/src/app/api/staff/documents/commit/route.ts": {
     "complexity": {
-      "count": 1
+      "checkStaffUploadTx": 23
     }
   },
   "apps/web/src/app/api/staff/documents/download/route.ts": {
     "complexity": {
-      "count": 1
+      "GET": 21
     }
   },
   "apps/web/src/app/gwg-onboarding/actions.ts": {
     "complexity": {
-      "count": 1
+      "uploadIdImageAction": 28
     }
   },
   "apps/web/src/app/portal/(protected)/forms/[id]/filler.tsx": {
     "complexity": {
-      "count": 1
+      "renderField": 30
     }
   },
   "apps/web/src/app/staff/(protected)/admin/audit/[id]/page.tsx": {
     "complexity": {
-      "count": 1
+      "AuditEntryPage": 26
     }
   },
   "apps/web/src/app/staff/(protected)/admin/dsgvo/[id]/page.tsx": {
     "complexity": {
-      "count": 1
+      "DsgvoDetailPage": 32
     }
   },
   "apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts": {
     "complexity": {
-      "count": 1
+      "updateStatusAction > run > withTenantContext(…)": 38
     }
   },
   "apps/web/src/app/staff/(protected)/admin/page.tsx": {
     "complexity": {
-      "count": 1
+      "AdminPage": 33
     }
   },
   "apps/web/src/app/staff/(protected)/admin/settings/smtp-form.tsx": {
     "complexity": {
-      "count": 1
+      "SmtpForm": 32
     }
   },
   "apps/web/src/app/staff/(protected)/admin/settings/tsa-form.tsx": {
     "complexity": {
-      "count": 1
+      "TsaForm": 29
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/elster/actions.ts": {
     "complexity": {
-      "count": 1
+      "kontoabfrageAction > run": 23
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/gwg/add-id-doc-form.tsx": {
     "complexity": {
-      "count": 1
+      "AddIdDocumentForm": 34
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/gwg/decision-forms.tsx": {
     "complexity": {
-      "count": 1
+      "GwgDecisionForms": 23
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/gwg/identity-document-review.tsx": {
     "complexity": {
-      "count": 1
+      "IdentityReviewCard": 36
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/gwg/start-check-cycle-form.tsx": {
     "complexity": {
-      "count": 1
+      "StartCheckCycleForm": 23
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/notices/actions.ts": {
     "complexity": {
-      "count": 1
+      "updateNoticeStatusAction > run": 28
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/notices/status-select.tsx": {
     "complexity": {
-      "count": 1
+      "NoticeStatusSelect": 25
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts": {
     "complexity": {
-      "count": 1
+      "createRequestCore > run > withTenantContext(…)": 32
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/marking-panel.tsx": {
     "complexity": {
-      "count": 1
+      "MarkingPanel": 36
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/norm-ref-editor.tsx": {
     "complexity": {
-      "count": 1
+      "NormRefRow": 35
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-document.tsx": {
     "complexity": {
-      "count": 1
+      "SubsumtionDocument": 28
     }
   },
   "apps/web/src/app/staff/(protected)/clients/[id]/workflows/[instanceId]/page.tsx": {
     "complexity": {
-      "count": 1
+      "WorkflowInstanceDetail > inst.items.map(…)": 21
     }
   },
   "apps/web/src/app/staff/(protected)/clients/onboarding/[id]/page.tsx": {
     "complexity": {
-      "count": 1
+      "OnboardingStepPage": 43
     }
   },
   "apps/web/src/app/staff/(protected)/clients/page.tsx": {
     "complexity": {
-      "count": 1
+      "ClientsPage": 37
     }
   },
   "apps/web/src/app/staff/(protected)/documents/page.tsx": {
     "complexity": {
-      "count": 1
+      "DocumentsPage": 28
     }
   },
   "apps/web/src/app/staff/(protected)/forms/submissions/[id]/page.tsx": {
     "complexity": {
-      "count": 1
+      "renderValue": 23
     }
   },
   "apps/web/src/app/staff/(protected)/poa/[id]/page.tsx": {
     "complexity": {
-      "count": 1
+      "PoaDetailPage": 25
     }
   },
   "apps/web/src/app/staff/(protected)/poa/sign-actions.ts": {
     "complexity": {
-      "count": 2
+      "loadPoaForSigning": 21,
+      "signPoaAction > withTenantContext(…)": 23
     }
   },
   "apps/web/src/app/staff/(protected)/reports/page.tsx": {
     "complexity": {
-      "count": 1
+      "ReportsPage": 27
     }
   },
   "apps/web/src/app/staff/(protected)/requests/page.tsx": {
     "complexity": {
-      "count": 1
+      "RequestsOverviewPage": 22
     }
   },
   "apps/web/src/components/bwa/bwa-dashboard.tsx": {
     "complexity": {
-      "count": 1
+      "BwaDashboard": 25
     }
   },
   "apps/web/src/components/document-explorer/embedded-view.tsx": {
     "complexity": {
-      "count": 1
+      "EmbeddedView": 33
     }
   },
   "apps/web/src/components/requests/new-request-form.tsx": {
     "complexity": {
-      "count": 1
+      "NewRequestForm": 31
     }
   },
   "apps/web/src/server/backup/restore.ts": {
     "complexity": {
-      "count": 2
+      "main": 22,
+      "parseRestoreArgs": 23
     }
   },
   "apps/web/src/server/documents/resumable-upload.ts": {
     "complexity": {
-      "count": 1
+      "loadResumableUpload > withTenantContext(…)": 21
     }
   },
   "apps/web/src/server/dsgvo/workflow.ts": {
     "complexity": {
-      "count": 1
+      "validateDsgvoStatusEvidence": 22
     }
   },
   "apps/web/src/server/risk/research.ts": {
     "complexity": {
-      "count": 1
+      "buildRaw": 23
     }
   },
   "packages/config/src/update-manifest.ts": {
     "complexity": {
-      "count": 1
+      "checkForUpdates": 23
     }
   },
   "packages/evidence/src/cli/verify.ts": {
     "complexity": {
-      "count": 1
+      "main": 28
     }
   },
   "packages/evidence/src/ports/rfc3161-verify.ts": {
     "complexity": {
-      "count": 1
+      "checkEssSigningCert": 34
     }
   },
   "packages/http-utils/src/index.ts": {
     "complexity": {
-      "count": 1
+      "isPrivateIPv6": 28
     }
   },
   "packages/risk-layer/src/mapping.ts": {
     "complexity": {
-      "count": 1
+      "deriveHerkunft": 28
     }
   }
 }
