@@ -10,7 +10,10 @@ Entscheidung zu Sanktionen, Eigentum, Kontrolle oder PEP-Eigenschaften.
 - `/staff/admin/screening`: Admin/Partner lädt die offizielle XML-Liste und sieht
   Veröffentlichung, erfolgreichen Abruf, Fehler, Versionskennung und SHA-256.
 - `/staff/clients/[id]/screening`: zugriffsberechtigte Mitarbeiter erfassen Namen,
-  Rolle und optional Geburtsdatum. Natürliche Personen, Gesellschaften, Vertreter
+  Rolle und optional Geburtsdatum. Erreichbar über den Link
+  „Sanktions- und PEP-Prüfung“ in der GwG-Karte des Mandanten-Cockpits; er
+  erscheint nur bei aktivem Modul (Modul-Registry, gleiche Prüfung wie das
+  Seiten-Gate). Natürliche Personen, Gesellschaften, Vertreter
   und wirtschaftlich Berechtigte werden bewusst einzeln benannt; es erfolgt
   keine automatische rechtliche Zuordnung aus einer Gesellschaftsstruktur.
 - Eine PEP-Recherche ist rein manuell: Person, Ergebnis, Rechercheumfang,

@@ -8,8 +8,10 @@
 
 import { Suspense, type ReactNode } from 'react';
 import type { TenantContext } from '@taxtronik/db';
+import { resolveClientNavigation } from '@/lib/navigation-registry';
 import type { StaffSession } from '@/server/auth/staff';
 import type { ClientBlockKey } from '@/server/settings/client-layout-shared';
+import type { ModuleConfig } from '@/server/settings/modules';
 import { ClientDocumentsBlock, ClientDocumentsSkeleton } from './client-documents-block';
 import {
   BindersCockpitBlock,
@@ -32,12 +34,12 @@ import type {
   ClientCockpitBlockLoads,
   ClientCockpitHeaderData,
   ClientDocumentsQuery,
-  CockpitModules,
 } from './_data';
 
 export interface CockpitBlockNodesInput {
   header: ClientCockpitHeaderData;
-  modules: CockpitModules;
+  /** Vollständige Modulkonfiguration: Blöcke und Links nutzen die Modul-Registry. */
+  modules: ModuleConfig;
   /** Ein Promise je gestreamtem Block (startClientCockpitBlocks). */
   blocks: ClientCockpitBlockLoads;
   ctx: TenantContext;
@@ -62,6 +64,9 @@ export function cockpitBlockNodes({
   const { client } = header;
   const clientRef = { id: client.id, name: client.name };
   const customDefs = customFieldsForKind(header.customDefs, client.kind);
+  // C3: Die Screening-Seite prüft Mandantenzugriff (wie dieses Cockpit) und den
+  // Modulbereich sanctionsScreening; der Link folgt derselben Registry.
+  const screeningHref = resolveClientNavigation(modules, client.id).screening ?? null;
   return {
     upcoming:
       modules.taxNotices || modules.appointments ? (
@@ -118,7 +123,12 @@ export function cockpitBlockNodes({
         <CustomFieldsCockpitCard defs={customDefs} values={header.customValues} />
       ),
     gwg_status: (
-      <GwgStatusCockpitCard clientId={client.id} latest={client.gwgChecks[0]} now={now} />
+      <GwgStatusCockpitCard
+        clientId={client.id}
+        latest={client.gwgChecks[0]}
+        now={now}
+        screeningHref={screeningHref}
+      />
     ),
     requests: (
       <Suspense fallback={<CockpitBlockSkeleton title="Anforderungen" />}>

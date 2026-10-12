@@ -655,6 +655,8 @@ const CLIENT_NAVIGATION = [
   { id: 'notices', href: '/staff/clients/[id]/notices', module: 'taxNotices' },
   { id: 'workflows', href: '/staff/clients/[id]/workflows', module: 'workflows' },
   { id: 'forms', href: '/staff/clients/[id]/forms', module: 'forms' },
+  // C3 (Welle 15): verlinkt aus der GwG-Karte des Cockpits, nicht als Reiter.
+  { id: 'screening', href: '/staff/clients/[id]/screening', module: 'sanctionsScreening' },
 ] as const satisfies ReadonlyArray<{ id: string; href: string; module: ModuleAreaKey }>;
 
 export type ClientNavigationId = (typeof CLIENT_NAVIGATION)[number]['id'];

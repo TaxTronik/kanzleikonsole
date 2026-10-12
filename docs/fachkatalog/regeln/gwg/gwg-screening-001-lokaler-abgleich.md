@@ -138,6 +138,12 @@ gehen an aktive ADMIN/PARTNER mit aktuellem Mandantenzugriff. Folgeläufe ohne
 Kandidaten fasst je Tenant und Lauf höchstens ein Sammelhinweis an die aktiven
 ADMIN/PARTNER zusammen.
 
+Die Prüfseite des Mandanten (`/staff/clients/[id]/screening`) ist aus der
+GwG-Karte des Mandanten-Cockpits verlinkt („Sanktions- und PEP-Prüfung“). Der
+Link erscheint nur bei aktivem Modul `sanctionsScreening` und folgt derselben
+Modul-Registry wie das Seiten-Gate; den Mandantenzugriff prüfen Cockpit und
+Prüfseite gleich. An Prüfung und Freigabesperre ändert der Link nichts.
+
 ## Bekannte Abweichungen und Grenzen
 
 Nicht enthalten sind vollständige Transliteration, Eigentums-/Kontrollprüfung,

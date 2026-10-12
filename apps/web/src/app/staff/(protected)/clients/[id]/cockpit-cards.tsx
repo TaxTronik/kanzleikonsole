@@ -157,10 +157,17 @@ export function GwgStatusCockpitCard({
   clientId,
   latest,
   now,
+  screeningHref = null,
 }: {
   clientId: string;
   latest: GwgCheck | undefined;
   now: Date;
+  /**
+   * Entscheidung C3 (Welle 15): Ziel der Sanktions- und PEP-Prüfung des
+   * Mandanten, nur gesetzt, wenn das Modul aktiv ist (Modul-Registry wie das
+   * Seiten-Gate der Screening-Seite); `null` blendet den Link aus.
+   */
+  screeningHref?: string | null;
 }) {
   return (
     <div key="gwg_status" className="card p-6">
@@ -174,6 +181,13 @@ export function GwgStatusCockpitCard({
         </Link>
       </div>
       <GwgStatusDetails latest={latest} now={now} />
+      {screeningHref && (
+        <p className="mt-4 border-t border-subtle pt-3">
+          <Link href={screeningHref} className="text-xs text-brand-700 hover:underline">
+            Sanktions- und PEP-Prüfung →
+          </Link>
+        </p>
+      )}
     </div>
   );
 }

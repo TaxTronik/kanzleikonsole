@@ -259,6 +259,21 @@ describe('Mandanten-Cockpit streamt die Blöcke', () => {
     expect(html).toContain('href="/staff/clients/client-1/change-requests"');
   });
 
+  it('verlinkt die Sanktions- und PEP-Prüfung in der GwG-Karte nur bei aktivem Modul (C3)', async () => {
+    const link = 'href="/staff/clients/client-1/screening"';
+
+    h.modules = { ...ALL_MODULES, sanctionsScreening: true };
+    const enabled = await render();
+    expect(enabled).toContain(link);
+    expect(enabled).toContain('Sanktions- und PEP-Prüfung →');
+
+    h.modules = { ...ALL_MODULES, sanctionsScreening: false };
+    const disabled = await render();
+    expect(disabled).toContain('GwG-Status');
+    expect(disabled).not.toContain(link);
+    expect(disabled).not.toContain('Sanktions- und PEP-Prüfung');
+  });
+
   it('startet die Blockdaten, bevor der Kopf geladen ist', async () => {
     let resolveHeader: ((value: unknown) => void) | undefined;
     h.loadHeader.mockImplementationOnce(
