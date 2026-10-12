@@ -87,6 +87,18 @@ Belege oder Aufzeichnungen beendeter Mandate oder nie zustande gekommener
 Beziehungen nach dem jeweils maßgeblichen Fristbeginn löschreif sind
 (Tages-Dedupe pro Tenant), mit Link auf die Review-Queue.
 
+**Zählungen (Welle 15):** Admin-Kachel, Review-Queue und Benachrichtigung
+zählen Datei-Belege und Aufzeichnungen mit denselben Filtern
+(`@taxtronik/gwg`). Kachel und Queue zeigen die für den Betrachter sichtbaren
+Einträge (RLS der App-Rolle). Die Benachrichtigung zählt Datei-Belege
+kanzleiweit über den Owner-Client und damit auch Belege, die RLS selbst
+ADMIN/PARTNER nicht anzeigt: Übergabeprotokolle und -archive einer
+Mandatsübergabe (Klasse `GWG_EVIDENCE`), deren übergebene Quelldokumente nicht
+mehr vollständig sind oder deren Mandant anonymisiert ist. Sie nennt deren
+Anzahl gesondert („Davon zeigt die Review-Queue … nicht an“). Diese Belege
+lassen sich in der Queue derzeit nicht vernichten; das Vorgehen dafür ist noch
+fachlich zu entscheiden.
+
 ## 4. Was die Kanzlei selbst regeln muss
 
 - Risikoanalyse der Kanzlei nach § 5 GwG (Dokument, jährliche Prüfung)

@@ -9,9 +9,10 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
-import { dueGwgDeletionDocsWhere } from '../retention';
+import { dueGwgCheckDeletionsWhere, dueGwgDeletionDocsWhere } from '../retention';
 import {
   countDueGwgDeletionDocs,
+  countDueGwgRetentionItems,
   findDueGwgCheckDeletions,
   findDueGwgDeletionDocs,
 } from '../review-queue';
@@ -41,6 +42,20 @@ describe('Review-Queue der GwG-Löschprüfung', () => {
       3,
     );
     expect(count).toHaveBeenCalledWith({ where: dueGwgDeletionDocsWhere(now) });
+  });
+
+  // Welle 15: Die Admin-Kachel zählt beide Queue-Abschnitte wie der Worker-Hinweis.
+  it('zählt für die Kachel Belege und Aufzeichnungen mit den Worker-Filtern', async () => {
+    const documentCount = vi.fn().mockResolvedValue(2);
+    const checkCount = vi.fn().mockResolvedValue(1);
+    const now = new Date('2032-01-01T00:00:00Z');
+    const tx = {
+      document: { count: documentCount },
+      gwgCheck: { count: checkCount },
+    } as unknown as TxClient;
+    expect(await countDueGwgRetentionItems(tx, now)).toEqual({ documents: 2, checks: 1 });
+    expect(documentCount).toHaveBeenCalledWith({ where: dueGwgDeletionDocsWhere(now) });
+    expect(checkCount).toHaveBeenCalledWith({ where: dueGwgCheckDeletionsWhere(now) });
   });
 
   it('ordnet Belege nach Fristbeginn ein und überspringt eine laufende Beziehung', async () => {

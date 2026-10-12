@@ -14,6 +14,7 @@
 
 import type { TxClient } from '@taxtronik/db';
 import {
+  dueGwgCheckDeletionsWhere,
   dueGwgDeletionDocsWhere,
   GWG_UNESTABLISHED_CHECK_STATUSES,
   gwgDeletionDeadline,
@@ -29,6 +30,23 @@ export async function countDueGwgDeletionDocs(
   now: Date = new Date(),
 ): Promise<number> {
   return tx.document.count({ where: dueGwgDeletionDocsWhere(now) });
+}
+
+/**
+ * Welle 15: Anzahl der löschreifen Einträge beider Queue-Abschnitte (Datei-Belege
+ * und Aufzeichnungen) per COUNT, mit denselben Filtern wie der Worker
+ * gwg-expiry-check. Die Admin-Kachel zählte zuvor nur die Belege, die
+ * Benachrichtigung dagegen beide Abschnitte. Die Zählung läuft in der
+ * Transaktion des Aufrufers und umfasst deshalb nur die für ihn sichtbaren
+ * Einträge (RLS); der Worker zählt Belege zusätzlich ohne RLS (siehe dort).
+ */
+export async function countDueGwgRetentionItems(
+  tx: TxClient,
+  now: Date = new Date(),
+): Promise<{ documents: number; checks: number }> {
+  const documents = await countDueGwgDeletionDocs(tx, now);
+  const checks = await tx.gwgCheck.count({ where: dueGwgCheckDeletionsWhere(now) });
+  return { documents, checks };
 }
 
 export interface GwgDeletionItem {

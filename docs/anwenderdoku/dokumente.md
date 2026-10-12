@@ -116,6 +116,13 @@ Administratoren erhalten zusätzlich eine Benachrichtigung. Die Vernichtung
 wird je Beleg ausdrücklich bestätigt, entfernt alle Dateiversionen
 endgültig und wird im Prüfprotokoll nachgewiesen.
 
+Prüfliste und Zähler auf der Administrationsseite zeigen die für Sie
+sichtbaren löschreifen Belege und Aufzeichnungen. Die Benachrichtigung
+„GwG-Löschprüfung“ zählt alle löschreifen Einträge der Kanzlei und kann
+deshalb höher sein; Belege, die die Prüfliste nicht anzeigen kann
+(Übergabe-Archive, deren Quelldokumente nicht mehr vollständig sind oder deren
+Mandant anonymisiert ist), nennt sie gesondert.
+
 ## 5. Häufige Meldungen
 
 | Meldung/Situation                            | Bedeutung                                                        | Was tun                                             |

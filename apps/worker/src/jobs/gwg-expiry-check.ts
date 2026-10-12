@@ -465,6 +465,13 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
       // Mandatsartefakten anonymisierter Mandanten oder mit nicht mehr vollständigen
       // Quellen aus (mandate_artifact_row_allowed, mandate_artifact_sources_valid);
       // die Löschprüfung muss sie mitzählen.
+      // Welle 15: Diese Belege (in der Praxis GWG_EVIDENCE-Übergabeprotokolle und
+      // -archive einer Mandatsübergabe, deren übergebene Quelle vernichtet, zur
+      // Vernichtung angefordert oder gelöscht ist) sieht auch kein ADMIN/PARTNER
+      // und der SYSTEM-Kontext nicht; Admin-Kachel und Review-Queue zählen sie
+      // nicht (gwg-retention-visibility.test.ts). Der Hinweis nennt ihre Zahl
+      // gesondert, damit die Abweichung zur Queue nicht als Fehler erscheint;
+      // Titel und Anzahl bleiben kanzleiweit.
       const dueDocs = await prismaOwner.document.count({
         where: { tenantId, ...dueGwgDeletionDocsWhere(now) },
       });
@@ -473,6 +480,11 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
         const dueChecks = await tx.gwgCheck.count({
           where: { tenantId, ...dueGwgCheckDeletionsWhere(now) },
         });
+        // Für ADMIN/PARTNER wie für SYSTEM sichtbare Belege (RLS der App-Rolle).
+        const visibleDocs = await tx.document.count({
+          where: { tenantId, ...dueGwgDeletionDocsWhere(now) },
+        });
+        const hiddenDocs = Math.max(0, dueDocs - visibleDocs);
         const dueTotal = dueDocs + dueChecks;
         if (dueTotal === 0) {
           await resolveNotificationsTx(tx, {
@@ -483,6 +495,12 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
           return 0;
         }
         const itemWord = dueTotal === 1 ? '1 Eintrag' : `${dueTotal} Einträge`;
+        const hiddenNote =
+          hiddenDocs === 0
+            ? ''
+            : ` Davon zeigt die Review-Queue ${hiddenDocs === 1 ? '1 Beleg' : `${hiddenDocs} Belege`} ` +
+              'nicht an: Übergabe-Archive, deren Quelldokumente nicht mehr vollständig sind ' +
+              'oder deren Mandant anonymisiert ist; dort lassen sie sich derzeit nicht vernichten.';
         // Idempotent: ungelesene Notification wird aktualisiert; der Daily-
         // Dedupe-Index (iter81) deckelt zusätzlich auf 1/Tag. resource_id =
         // Tenant-ID als stabiler Schlüssel für den Tages-Dedupe.
@@ -495,7 +513,8 @@ export const gwgExpiryWorker = createWorker<ChecksJob>(
             title: `GwG-Löschprüfung: ${itemWord} löschreif`,
             body:
               'Belege/Aufzeichnungen beendeter Mandate oder nie zustande gekommener Beziehungen, ' +
-              'deren Aufbewahrungsfrist (§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.',
+              'deren Aufbewahrungsfrist (§ 8 Abs. 4 GwG) abgelaufen ist — bitte Vernichtung in der Review-Queue bestätigen.' +
+              hiddenNote,
             href: '/staff/admin/gwg-retention',
             resourceType: 'tenant',
             resourceId: tenantId,

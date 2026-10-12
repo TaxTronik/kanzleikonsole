@@ -41,7 +41,7 @@ import {
 } from '@/server/update/manifest';
 import { getLicenseInfo } from '@/server/license/state';
 import { getSetupStatus, type SetupStatus } from '@/server/setup/status';
-import { countDueGwgDeletionDocs } from '@/server/gwg/retention';
+import { countDueGwgRetentionItems } from '@/server/gwg/retention';
 import { countDueClientAnonymizations } from '@/server/dsgvo/client-retention';
 import { LicenseCard } from './license-card';
 import { BackupRunButton } from './backup-run-button';
@@ -84,7 +84,7 @@ export default async function AdminPage() {
       openDsgvoCount,
       providerCount,
       contactCount,
-      gwgDueCount,
+      gwgDue,
       anonDueCount,
       legacyStorageVersionCount,
       updateSetting,
@@ -108,7 +108,9 @@ export default async function AdminPage() {
         tx.dsgvoRequest.count({ where: { status: { in: ['RECEIVED', 'IN_PROGRESS'] } } }),
         tx.serviceProvider.count(),
         tx.clientContact.count({ where: { active: true } }),
-        countDueGwgDeletionDocs(tx),
+        // Welle 15: Belege und Aufzeichnungen wie Review-Queue und Worker-Hinweis;
+        // unter RLS nur die für den Betrachter sichtbaren Einträge.
+        countDueGwgRetentionItems(tx),
         countDueClientAnonymizations(tx),
         tx.documentVersion.count({
           where: { immutable: true, storageVersionId: null },
@@ -120,6 +122,7 @@ export default async function AdminPage() {
     getLicenseInfo(),
   ]);
 
+  const gwgDueCount = gwgDue.documents + gwgDue.checks;
   const drill = (drillSetting ?? null) as PersistedDrillResult | null;
   const verifyResult = (verifySetting ?? null) as PersistedVerifyResult | null;
   const updateCheck = evaluateStoredUpdateCheck(updateSetting, APP_VERSION);
@@ -156,7 +159,10 @@ export default async function AdminPage() {
     });
   }
   if (gwgDueCount > 0) {
-    issues.push({ href: '#quicklinks', label: `${gwgDueCount} GwG-Pflichtlöschung löschreif` });
+    issues.push({
+      href: '#quicklinks',
+      label: `${gwgDueCount} GwG-${gwgDueCount === 1 ? 'Eintrag' : 'Einträge'} löschreif (für Sie sichtbar)`,
+    });
   }
   if (anonDueCount > 0) {
     issues.push({ href: '#quicklinks', label: `${anonDueCount} DSGVO-Anonymisierung fällig` });

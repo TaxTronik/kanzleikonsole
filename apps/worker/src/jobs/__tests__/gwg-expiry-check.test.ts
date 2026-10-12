@@ -46,6 +46,8 @@ const h = vi.hoisted(() => {
     request: { findMany: vi.fn(), createMany: vi.fn() },
     clientContact: { findMany: vi.fn() },
     client: { findUnique: vi.fn(), updateMany: vi.fn() },
+    // Welle 15: für ADMIN/PARTNER und SYSTEM sichtbare löschreife Belege (RLS).
+    document: { count: vi.fn() },
     staffUser: {
       findMany: (args: { orderBy?: unknown }) =>
         args.orderBy ? recipientStaff(args) : adminPartners(args),
@@ -238,6 +240,7 @@ beforeEach(() => {
   h.tx.gwgCheck.count.mockResolvedValue(0);
   h.tx.gwgIdDocument.findMany.mockResolvedValue([]);
   h.prismaOwner.document.count.mockResolvedValue(0);
+  h.tx.document.count.mockResolvedValue(0);
   h.tx.request.findMany.mockResolvedValue([]);
   h.tx.request.createMany.mockResolvedValue({ count: 1 });
   h.tx.clientContact.findMany.mockResolvedValue([{ id: 'contact-1' }]);
@@ -845,6 +848,7 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
   it('löschreife Belege + Aufzeichnungen → tägliche Notification an alle ADMIN/PARTNER', async () => {
     h.adminPartners.mockResolvedValue([{ id: 'admin-1' }, { id: 'partner-1' }]);
     h.prismaOwner.document.count.mockResolvedValue(2);
+    h.tx.document.count.mockResolvedValue(2);
     h.tx.gwgCheck.count.mockResolvedValue(1);
 
     const result = await run();
@@ -915,8 +919,36 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
         resourceId: TENANT,
       });
       expect((c[2] as { body: string }).body).toContain('nie zustande gekommener Beziehungen');
+      // Alle löschreifen Belege sind in der Review-Queue sichtbar: kein Zusatz.
+      expect((c[2] as { body: string }).body).not.toContain('Davon zeigt die Review-Queue');
     }
     expect(result.deletionDueNotices).toBe(2);
+  });
+
+  // Welle 15: Der Owner zählt auch Belege, die RLS für ADMIN/PARTNER und SYSTEM
+  // ausblendet (Übergabe-Archive mit ungültiger Quelle oder anonymisiertem
+  // Mandanten). Titel und Anzahl bleiben kanzleiweit, der Hinweis nennt die nicht
+  // in der Queue angezeigten Belege gesondert, ohne sie zu bezeichnen.
+  it('nennt löschreife Belege gesondert, die die Review-Queue nicht anzeigen kann', async () => {
+    h.adminPartners.mockResolvedValue([{ id: 'admin-1' }]);
+    h.prismaOwner.document.count.mockResolvedValue(3);
+    h.tx.document.count.mockResolvedValue(1);
+    h.tx.gwgCheck.count.mockResolvedValue(1);
+
+    await run();
+
+    expect(h.tx.document.count).toHaveBeenCalledWith({
+      where: { tenantId: TENANT, ...dueGwgDeletionDocsWhere(FIXED_NOW) },
+    });
+    const [call] = upsertCalls().filter(
+      (c) => (c[2] as { kind: string }).kind === 'GWG_DELETION_DUE',
+    );
+    expect(call?.[2]).toMatchObject({ title: 'GwG-Löschprüfung: 4 Einträge löschreif' });
+    const body = (call?.[2] as { body: string }).body;
+    expect(body).toContain(
+      'Davon zeigt die Review-Queue 2 Belege nicht an: Übergabe-Archive, deren Quelldokumente',
+    );
+    expect(body).toContain('dort lassen sie sich derzeit nicht vernichten.');
   });
 
   it('nichts löschreif → keine GWG_DELETION_DUE-Notification', async () => {

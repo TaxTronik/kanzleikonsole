@@ -31,6 +31,10 @@ const app = new PrismaClient({
 type Retention = {
   findDueGwgDeletionDocs: (tx: TxClient, now: Date) => Promise<Array<{ documentId: string }>>;
   countDueGwgDeletionDocs: (tx: TxClient, now: Date) => Promise<number>;
+  countDueGwgRetentionItems: (
+    tx: TxClient,
+    now: Date,
+  ) => Promise<{ documents: number; checks: number }>;
   findDueGwgCheckDeletions: (
     tx: TxClient,
     now: Date,
@@ -266,6 +270,35 @@ describeWithDatabase('GwG-Löschreife: COUNT-Filter = Fristlogik (P-21)', () => 
     ]);
     expect(due.map((item) => item.clientName)).toEqual(['Alte Erstprüfung']);
     expect(count).toBe(1);
+  });
+
+  // Welle 15: Die Admin-Kachel zählte nur Belege, Review-Queue und Worker-Hinweis
+  // umfassen auch die Aufzeichnungen (zum Stichtag 2026-10-05 ist nur die alte
+  // Erstprüfung löschreif: Kachel 0, Queue 1).
+  it.each(STICHTAGE)(
+    'zählt für die Kachel zum Stichtag %s Belege und Aufzeichnungen der Review-Queue',
+    async (iso) => {
+      const now = new Date(iso);
+      const [docs, checks, tile] = await inTenant(async (tx) => [
+        await retention.findDueGwgDeletionDocs(tx, now),
+        await retention.findDueGwgCheckDeletions(tx, now),
+        await retention.countDueGwgRetentionItems(tx, now),
+      ]);
+      expect(tile).toEqual({ documents: docs.length, checks: checks.length });
+      expect(tile.documents + tile.checks).toBe(docs.length + checks.length);
+    },
+  );
+
+  it('übersah mit der früheren Kachelzählung (nur Belege) löschreife Aufzeichnungen', async () => {
+    const now = new Date('2026-10-05T12:00:00Z');
+    const [former, tile, checks] = await inTenant(async (tx) => [
+      await retention.countDueGwgDeletionDocs(tx, now),
+      await retention.countDueGwgRetentionItems(tx, now),
+      await retention.findDueGwgCheckDeletions(tx, now),
+    ]);
+    expect(checks.map((item) => item.clientName)).toEqual(['Alte Erstprüfung']);
+    expect(former).toBe(0);
+    expect(tile.documents + tile.checks).toBe(1);
   });
 
   it.each(STICHTAGE)(

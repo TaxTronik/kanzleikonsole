@@ -33,6 +33,14 @@ export default async function GwgRetentionPage() {
           Berufsträger manuell und ist unwiderruflich. Ein Mandat wird über „Mandat beenden" auf der
           Mandanten-Bearbeitungsseite als beendet markiert.
         </p>
+        {/* Welle 15: Die Liste läuft unter RLS, die tägliche Benachrichtigung zählt
+            Belege kanzleiweit ohne RLS (gwg-expiry-check). */}
+        <p className="text-muted text-xs max-w-3xl mt-2">
+          Angezeigt werden die für Sie sichtbaren löschreifen Einträge. Die tägliche
+          Benachrichtigung „GwG-Löschprüfung“ zählt alle löschreifen Einträge der Kanzlei und nennt
+          Belege gesondert, die hier nicht angezeigt werden können (Übergabe-Archive, deren
+          Quelldokumente nicht mehr vollständig sind oder deren Mandant anonymisiert ist).
+        </p>
       </div>
 
       <h2 className="text-sm font-medium text-secondary uppercase tracking-wide mb-3">

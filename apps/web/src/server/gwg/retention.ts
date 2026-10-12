@@ -30,6 +30,7 @@ export {
 } from '@taxtronik/gwg/retention';
 export {
   countDueGwgDeletionDocs,
+  countDueGwgRetentionItems,
   findDueGwgCheckDeletions,
   findDueGwgDeletionDocs,
   type GwgCheckDeletionItem,

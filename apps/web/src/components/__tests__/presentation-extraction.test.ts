@@ -22,7 +22,11 @@ describe('Verhaltensneutrale Darstellungsextraktionen', () => {
     expect(admin).toContain(
       'readTenantSettingValue(tx, tenantId, UPDATE_CHECK_RESULT_SETTING_KEY)',
     );
-    expect(admin).toContain('countDueGwgDeletionDocs(tx)');
+    // Welle 15: Belege und Aufzeichnungen wie Review-Queue und Worker-Hinweis.
+    expect(admin).toContain('countDueGwgRetentionItems(tx)');
+    expect(admin).toContain('gwgDue.documents + gwgDue.checks');
+    expect(admin).not.toContain('countDueGwgDeletionDocs(');
+    expect(admin).toContain('löschreif (für Sie sichtbar)');
     expect(admin).toContain('countDueClientAnonymizations(tx)');
     expect(admin).not.toContain('findDueGwgDeletionDocs');
     expect(admin).toContain('<BackupStatusCard lastBackup={lastBackup} drill={drill} />');

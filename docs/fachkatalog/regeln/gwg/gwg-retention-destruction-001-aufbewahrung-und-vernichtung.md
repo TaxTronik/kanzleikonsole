@@ -35,6 +35,7 @@ code_refs:
   - apps/web/src/server/gwg/retention.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/id-document-actions.ts
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts
+  - apps/web/src/app/staff/(protected)/admin/gwg-retention/page.tsx
   - apps/worker/src/jobs/gwg-expiry-check.ts
   - packages/storage/src/service.ts
   - packages/db/prisma/migrations/20260801004300_gwg_identity_subjects_and_document_sets/migration.sql
@@ -55,6 +56,8 @@ test_refs:
   - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
   - packages/gwg/src/__tests__/retention.test.ts
   - packages/gwg/src/__tests__/review-queue.test.ts
+  - packages/db/src/__tests__/gwg-retention-count.test.ts
+  - packages/db/src/__tests__/gwg-retention-visibility.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -168,6 +171,20 @@ Kalenderjahren und eine entsprechende Zehnjahresgrenze. Beendete Mandate und
 nie etablierte Erstprüfungen erscheinen in einer Admin-Review-Queue; ein
 täglicher Worker erinnert Admins und Partner. Es gibt bewusst kein stilles
 Auto-Delete.
+
+Admin-Kachel, Review-Queue und Worker-Hinweis zählen dieselben Filter und
+dieselben Einträge: Datei-Belege und Aufzeichnungen. Kachel und Queue laufen mit
+der App-Rolle im Kontext des Betrachters (RLS) und zeigen die für ihn sichtbaren
+Einträge; die Kachel ist entsprechend als „für Sie sichtbar“ beschriftet. Der
+Worker zählt Datei-Belege dagegen kanzleiweit mit dem Owner-Client ohne RLS. Die
+RLS blendet dabei für ADMIN/PARTNER und den SYSTEM-Kontext gleichermaßen nur
+Ausgabedokumente von Mandatsartefakten aus, in der Praxis Übergabeprotokolle und
+-archive der Klasse `GWG_EVIDENCE`, deren übergebene Quelldokumente nicht mehr
+vollständig sind (gelöscht, vernichtet oder zur Vernichtung angefordert) oder
+deren Mandant anonymisiert ist (`document_mandate_artifact_scope`). Solche Belege
+bleiben löschreif, erscheinen aber nicht in der Queue und lassen sich dort nicht
+vernichten. Der Worker-Hinweis nennt ihre Anzahl deshalb gesondert, ohne sie zu
+bezeichnen; Titel und Gesamtzahl bleiben kanzleiweit.
 
 Dateien liegen als `GWG_EVIDENCE` in einem eigenen Bucket mit Governance Object
 Lock. Die Action committtet zuerst eine Vernichtungsabsicht, lädt danach die
