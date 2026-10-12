@@ -62,6 +62,21 @@ Boot-Validierung scheitert. Worker-Module lesen `env` über
 Felder anderer Prozesse lehnt schon der Typecheck ab, und ESLint verbietet im
 Worker `env` aus `@taxtronik/config`.
 
+Oberflächen prüfen Render- und Verhaltenstests, nicht ihr Quelltext (B-08).
+Statisches Markup prüft `renderToStaticMarkup` in der Node-Umgebung; Zustände,
+Interaktion und Effekte prüfen Tests mit jsdom und Testing Library
+(`@testing-library/react`, `@testing-library/dom`; keine jest-dom-Matcher).
+jsdom gilt nur für Testdateien mit dem Kopfkommentar
+`// @vitest-environment jsdom`; die übrigen Web-Tests bleiben in Node und
+laden weder jsdom noch Testing Library. `src/__tests__/dom-setup.ts` räumt in
+jsdom-Dateien nach jedem Test den gerenderten Baum ab. Server Components mit
+Datenbank- oder Sitzungsbedarf rendern die Tests mit `vi.mock`-Doubles und
+prüfen die abgesetzten Abfragen als Aufrufargumente. Quelltext lesen nur noch
+Architektur-Guards (Import- und Schichtgrenzen, Allowlists, Struktur-Ratchets,
+Workflow- und Dockerfile-Guards) sowie Stylesheet-Verträge, deren Kaskade
+(Tailwind-`@apply`, `@layer`, Container-Queries) jsdom nicht auswertet; diese
+parsen das CSS mit PostCSS.
+
 Komplexität über 20 ist je Funktion ein Lint-Fehler (B-09). Die Regel
 `taxtronik/complexity` (`scripts/eslint/complexity-baseline.mjs`) zählt wie die
 ESLint-Kernregel `complexity` und vergleicht jeden Treffer mit
