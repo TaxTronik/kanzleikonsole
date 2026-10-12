@@ -6,6 +6,8 @@
 // Worker daraus exakt die bisherigen Versandoptionen erzeugt, eindeutige
 // Fehlschläge mit Backoff wiederholt, unklare und Teilzustellungen nie
 // wiederholt und die Kanzlei bei jedem endgültigen Fehlschlag benachrichtigt.
+//
+// Fachkatalog: MAIL-OUTBOX-001
 // =============================================================================
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

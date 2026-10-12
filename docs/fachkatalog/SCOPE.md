@@ -4,7 +4,7 @@ Inventurstand: 2026-09-06
 Technischer Bezugspunkt: Ausbau-Arbeitsbaum auf `599c969c` einschließlich übernommener GwG-/Steuerstammdatenänderungen
 Status: ungeprüfte Scope-Inventur, keine fachliche Freigabe
 
-<!-- fachkatalog-scope: version=1; active=82; reserved=8 -->
+<!-- fachkatalog-scope: version=1; active=83; reserved=8 -->
 
 ## Zweck und belastbare Vollständigkeitsgrenze
 
@@ -38,14 +38,14 @@ jedoch in scope.
 | Geldwäschegesetz                        |             12 | GwG-Inventur mit OCR, Kontrollliste und lokalem Screening                       |
 | Datenschutz und Betroffenenrechte       |              6 | Abschnitt 1                                                                     |
 | Dokumente und Aufbewahrung              |              9 | Abschnitt 2 und Opt-in-Assistenten                                              |
-| Mandat, Zugriff und Anforderungen       |             20 | Abschnitt 3, Steuerverbindungen, Workflow-Abschluss, Tickets und Opt-in-Abläufe |
+| Mandat, Zugriff und Anforderungen       |             21 | Abschnitt 3, Steuerverbindungen, Workflow-Abschluss, Tickets und Opt-in-Abläufe |
 | Vollmachten und Signaturen              |              5 | Abschnitt 4 einschließlich getrennter VDB-Nachweise                             |
 | Audit und Software-Assurance            |              7 | Abschnitt 5                                                                     |
 | Rechnungslogik                          |              9 | Abschnitt 6 einschließlich StBVV-Vorschlägen                                    |
 | BWA, Subsumtion und TCMS-Produktgrenzen |              8 | Abschnitt 7                                                                     |
-| **Gesamt**                              |         **82** | Export der definierten Produktlogik einschließlich ungeprüfter Erweiterungen    |
+| **Gesamt**                              |         **83** | Export der definierten Produktlogik einschließlich ungeprüfter Erweiterungen    |
 
-Die acht reservierten IDs in Abschnitt 8 zählen nicht zu diesen 82 Regeln.
+Die acht reservierten IDs in Abschnitt 8 zählen nicht zu diesen 83 Regeln.
 Sie kennzeichnen bewusst nicht behauptete Rechts- oder Organisationsabdeckung.
 
 ### Separat inventarisierte Regelblöcke
@@ -119,6 +119,12 @@ Abschnitten 1 bis 7 aber nicht erneut fachlich beschrieben:
 | G/R + S | `GOBD-VERFAHRENSDOKU-001`      | **Teilweise.** TaxTronik erzeugt eine IST-orientierte technische Verfahrensdokumentation aus Konfiguration und Betriebsdaten. Fachliche Prozessbeschreibung, tatsächliche Kontrolldurchführung, Freigabe und langfristige Dokumentenlenkung bleiben organisatorisch.                                                                               | `apps/web/src/server/compliance/verfahrensdoku.ts`<br>`docs/compliance/gobd.md`<br>`docs/compliance/gobd-template.md`                                                                                                  | `apps/web/src/server/compliance/__tests__/verfahrensdoku.test.ts`                                                                                                                                                                                                |
 
 ## 3. Mandat, Zugriff, Portal und Anforderungen
+
+Ergänzung vom 12. Oktober 2026 (Welle 15, ungeprüfter Entwurf):
+
+| Klasse | Regel-ID          | Entscheidungsblock und Ist-Status                                                                                                                                                                                                                                                                                                                                                | Codepfade                                                                                                                                                 | Testnachweise                                                                                                                                                         |
+| ------ | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P      | `MAIL-OUTBOX-001` | **Teilweise.** Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; der Worker prüft vor jedem Versuch die Aktualität, wiederholt nur eindeutig gescheiterte Versuche, eskaliert Fehlschläge und unklare Ausgänge, und die Kanzlei kann berechtigt erneut senden. Technische Annahme ist kein Zugangsnachweis; Fristen sind nicht fachlich freigegeben. | `packages/mail/src/outbox.ts`<br>`packages/mail/src/outbox-relevance.ts`<br>`apps/worker/src/jobs/mail-outbox.ts`<br>`apps/web/src/server/mail/resend.ts` | `apps/worker/src/jobs/__tests__/mail-outbox.test.ts`<br>`packages/mail/src/__tests__/outbox-relevance.test.ts`<br>`packages/db/src/__tests__/mail-outbox-rls.test.ts` |
 
 Ergänzung vom 7. September 2026:
 

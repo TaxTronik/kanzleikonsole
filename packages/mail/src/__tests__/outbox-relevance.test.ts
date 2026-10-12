@@ -2,6 +2,8 @@
 // manuelle Neuversand), ob die Mail noch gewollt ist. Je Anlass: noch gewollt
 // → versenden; Vorgang erledigt, zurückgezogen oder abgesagt → verwerfen mit
 // Begründung. Die Prüfung setzt den Tenant-Filter selbst.
+//
+// Fachkatalog: MAIL-OUTBOX-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {

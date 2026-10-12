@@ -4,8 +4,8 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:5a18d51989b3f18710257e3cf1e68a445acd099c48e68d7c3829ee234455b8a4",
-    "expected_active_rule_count": 82,
+    "definition_sha256": "sha256:95e48cf260e4b9d27b70e942accf6512511c615a6197991124a3b56a3bee8e4e",
+    "expected_active_rule_count": 83,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
       "ACCESS-CLIENT-MODE-001",
@@ -63,6 +63,7 @@
       "INV-VAT-TOTALS-001",
       "KNOWLEDGE-CONTEXT-001",
       "MAIL-INBOX-001",
+      "MAIL-OUTBOX-001",
       "MANDATE-STRUCTURE-001",
       "PAYROLL-INTAKE-001",
       "POA-LIFECYCLE-001",
@@ -103,8 +104,8 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 82,
-  "active_rule_count": 82,
+  "rule_count": 83,
+  "active_rule_count": 83,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
@@ -4145,6 +4146,79 @@
       "tags": ["imap", "oauth", "virenpruefung", "originaldatei"],
       "path": "docs/fachkatalog/regeln/dokumente-und-aufbewahrung/mail-inbox-001-bestaetigte-ablage.md",
       "summary": "E-Mail-Absender und Aliase sind unbestätigte Hinweise. Sie erteilen keinen Portalzugriff und bestätigen keine Mandantenantwort. Eingänge bleiben zunächst im internen Postfachbestand. Ein Archivdokument entsteht ausschließlich durch eine berechtigte, ausdrückliche Zuordnung."
+    },
+    {
+      "id": "MAIL-OUTBOX-001",
+      "title": "Mandanten-E-Mails als Versandauftrag zustellen und vor jedem Versand auf Aktualität prüfen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation und Datenschutz",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter Wiederholung und Eskalation zu, der Status steht am Vorgang, und fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden. Die technische Annahme ist kein Zugangsnachweis; eine Löschfrist für die Auftragsmetadaten und die fachliche Freigabe der Fristen fehlen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Administration, Abschnitt 7 „Zustellstatus von Mandanten-E-Mails“",
+          "path": "docs/anwenderdoku/administration.md",
+          "checked_at": "2026-10-12",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Kalender, Entschiedene Terminanfragen und Zustellstatus",
+          "path": "docs/anwenderdoku/kalender-fristen-bescheide.md",
+          "checked_at": "2026-10-12",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/mail/src/outbox.ts",
+        "packages/mail/src/outbox-purposes.ts",
+        "packages/mail/src/outbox-relevance.ts",
+        "apps/worker/src/jobs/mail-outbox.ts",
+        "apps/worker/src/jobs/mail-outbox-deliver.ts",
+        "apps/web/src/server/mail/outbox.ts",
+        "apps/web/src/server/mail/delivery-status.ts",
+        "apps/web/src/server/mail/resend.ts",
+        "apps/web/src/server/mail/resend-actions.ts",
+        "apps/web/src/server/mail/resend-guards.ts",
+        "apps/web/src/lib/mail-delivery-status.ts",
+        "packages/db/prisma/migrations/20261006120000_mail_outbox/migration.sql",
+        "packages/db/prisma/migrations/20261007120000_mail_outbox_skipped/migration.sql",
+        "packages/db/prisma/migrations/20261007120100_mail_outbox_resend/migration.sql"
+      ],
+      "test_refs": [
+        "packages/mail/src/__tests__/outbox.test.ts",
+        "packages/mail/src/__tests__/outbox-relevance.test.ts",
+        "apps/worker/src/jobs/__tests__/mail-outbox.test.ts",
+        "apps/worker/src/jobs/__tests__/mail-outbox-db.test.ts",
+        "apps/web/src/server/mail/__tests__/outbox.test.ts",
+        "apps/web/src/server/mail/__tests__/resend.test.ts",
+        "apps/web/src/server/mail/__tests__/resend-actions.test.ts",
+        "apps/web/src/lib/__tests__/mail-delivery-status.test.ts",
+        "apps/web/src/components/__tests__/mail-delivery-status.test.tsx",
+        "packages/db/src/__tests__/mail-outbox-rls.test.ts"
+      ],
+      "feature_refs": ["docs/anwenderdoku/administration.md"],
+      "related_rules": [
+        "ACCESS-TENANT-RLS-001",
+        "ACCESS-STAFF-PERMISSION-001",
+        "DSGVO-OPERATIONAL-RETENTION-001",
+        "AUDIT-HASH-CHAIN-001"
+      ],
+      "tags": ["e-mail", "outbox", "zustellstatus", "mandantenkommunikation"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/mail-outbox-001-mandantenmail-zustellung.md",
+      "summary": "E-Mails, die ein Kanzleivorgang an Mandanten auslöst, speichert TaxTronik im selben Commit wie den Vorgang als Versandauftrag. Ein Hintergrunddienst stellt sie zu, prüft vor jedem Versuch, ob die Mail noch gewollt ist, wiederholt nur eindeutig gescheiterte Versuche und meldet endgültige Fehlschläge der Kanzlei. „Vom Versanddienst angenommen“ ist eine technische Aussage und kein Zugangs- oder Kenntnisnahmenachweis. Diese Regel ist eine Produktregel; eine Rechtsgrundlage für Inhalt, Zeitpunkt oder Pflicht dieser Mails ist offen."
     },
     {
       "id": "MANDATE-STRUCTURE-001",

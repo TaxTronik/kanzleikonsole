@@ -398,6 +398,13 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: ADMIN/PARTNER verknüpft höchstens zehn veröffentlichte Wissensartikel mit einem Workflow-Schritt oder einer Anforderungsvorlage. Die neuen Funktionen verlangen knowledgeContext und knowledge; Workflowbezüge zusätzlich workflows. Alle Verweise müssen innerhalb desselben Tenants liegen.
 
+### [MAIL-OUTBOX-001 — Mandanten-E-Mails als Versandauftrag zustellen und vor jedem Versand auf Aktualität prüfen](regeln/mandat-und-zugriff/mail-outbox-001-mandantenmail-zustellung.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: E-Mails, die ein Kanzleivorgang an Mandanten auslöst, speichert TaxTronik im selben Commit wie den Vorgang als Versandauftrag. Ein Hintergrunddienst stellt sie zu, prüft vor jedem Versuch, ob die Mail noch gewollt ist, wiederholt nur eindeutig gescheiterte Versuche und meldet endgültige Fehlschläge der Kanzlei. „Vom Versanddienst angenommen“ ist eine technische Aussage und kein Zugangs- oder Kenntnisnahmenachweis. Diese Regel ist eine Produktregel; eine Rechtsgrundlage für Inhalt, Zeitpunkt oder Pflicht dieser Mails ist offen.
+
 ### [MANDATE-STRUCTURE-001 — Explizite Mandanten- und Beteiligungsstrukturen getrennt von GwG-Entscheidungen versionieren](regeln/mandat-und-zugriff/mandate-structure-001-versionierte-struktur.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
