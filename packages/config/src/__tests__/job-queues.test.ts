@@ -96,6 +96,7 @@ describe('shared BullMQ metadata', () => {
       'backup-drill': 'UTC',
       'pdf-page-count-backfill': 'UTC',
       'n8n-retention': 'UTC',
+      'mail-outbox-retention': 'UTC',
     });
   });
 
@@ -129,6 +130,7 @@ describe('shared BullMQ metadata', () => {
       'pdf-page-count-backfill @ 04:30 UTC daily',
       'n8n-retention @ 03:45 UTC daily',
       'mail-outbox-deliver @ every 1 min',
+      'mail-outbox-retention @ 04:15 UTC daily',
     ]);
 
     const schedule = (repeat: QueueScheduleDefinition['repeat']): QueueScheduleDefinition => ({

@@ -388,6 +388,18 @@ export const JOB_QUEUES = {
       expectedMaxGapMs: MINUTE,
     },
   },
+  mailOutboxRetention: {
+    name: 'mail-outbox-retention',
+    schedule: {
+      // Welle 15 (A8): Versandaufträge im Endstatus ein Jahr nach dem letzten
+      // Statuswechsel löschen, wie die Steuertermin-Versandhistorie. Wartende
+      // und laufende Aufträge bleiben; Stapel bis zum Zeitbudget (P-17).
+      schedulerId: 'daily-mail-outbox-retention',
+      repeat: { pattern: '15 4 * * *', tz: UTC },
+      jobOptions: DAILY_RETRY,
+      expectedMaxGapMs: DAY,
+    },
+  },
 } as const satisfies Record<string, QueueDefinition>;
 
 export type JobQueueKey = keyof typeof JOB_QUEUES;
@@ -541,6 +553,7 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.riskAnalyseLlm.name]: RiskAnalyseLlmJob;
   [JOB_QUEUES.reminderDoneNotify.name]: ReminderDoneNotifyJob;
   [JOB_QUEUES.mailOutboxDeliver.name]: EmptyJob;
+  [JOB_QUEUES.mailOutboxRetention.name]: EmptyJob;
 };
 
 type AssertTrue<T extends true> = T;

@@ -27,6 +27,7 @@ import { poaExpiryWorker } from './jobs/poa-expiry-check';
 import { riskAnalyseLlmWorker } from './jobs/risk-analyse-llm';
 import { reminderDoneNotifyWorker } from './jobs/reminder-done-notify';
 import { mailOutboxDeliverWorker } from './jobs/mail-outbox-deliver';
+import { mailOutboxRetentionWorker } from './jobs/mail-outbox-retention';
 import { backupDrillWorker } from './jobs/backup-drill';
 import { backupRunWorker } from './jobs/backup-run';
 import { healthAlertWorker } from './jobs/health-alert';
@@ -77,6 +78,7 @@ const WORKERS_BY_QUEUE = {
   riskAnalyseLlm: riskAnalyseLlmWorker,
   reminderDoneNotify: reminderDoneNotifyWorker,
   mailOutboxDeliver: mailOutboxDeliverWorker,
+  mailOutboxRetention: mailOutboxRetentionWorker,
 } satisfies Record<JobQueueKey, Worker>;
 
 /**

@@ -78,6 +78,12 @@ const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
   n8nRetention: ['daily-n8n-retention', { pattern: '45 3 * * *', tz: UTC }, DAILY_RETRY],
   // F-08: new scheduler, no retry (state lives in mail_outbox; runs every minute).
   mailOutboxDeliver: ['mail-outbox-deliver', { every: MINUTE }, undefined],
+  // Welle 15 (A8): new nightly retention scheduler for mail_outbox.
+  mailOutboxRetention: [
+    'daily-mail-outbox-retention',
+    { pattern: '15 4 * * *', tz: UTC },
+    DAILY_RETRY,
+  ],
 };
 
 describe('R-13 generated repeat schedulers', () => {

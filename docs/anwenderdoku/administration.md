@@ -370,6 +370,13 @@ Versandauftrags bewahrt TaxTronik nach dem Fehlschlag 30 Tage auf, bei
 anonymisierten Mandanten nicht; danach steht „Erneut senden" nicht mehr zur
 Verfügung.
 
+Die Versandaufträge selbst enthalten nach dem Abschluss nur noch Anlass,
+Status, Zeitpunkte und den Bezug zum Vorgang. Ein Jahr nach dem letzten
+Statuswechsel löscht TaxTronik auch diese Angaben (wie die Versandhistorie der
+Steuertermin-Anforderungen); danach zeigt der Vorgang für diese Mail keinen
+Zustellstatus mehr. Wartende oder laufende Versandaufträge werden nicht
+gelöscht.
+
 Die Bestätigungs- oder Absagemail einer Terminanfrage zeigt der Kanzleikalender
 unter „Entschiedene Terminanfragen" (14 Tage nach der Entscheidung), die
 Begrüßungsmail nach der GwG-Freischaltung die GwG-Seite des Mandanten.

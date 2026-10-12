@@ -45,6 +45,8 @@ code_refs:
   - apps/worker/src/jobs/magic-link-cleanup.ts
   - apps/worker/src/jobs/portal-inbox-cleanup.ts
   - apps/web/src/server/inbox/retention-settings.ts
+  - apps/worker/src/jobs/mail-outbox-retention.ts
+  - packages/db/prisma/migrations/20261012110000_mail_outbox_retention/migration.sql
 test_refs:
   - apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts
   - apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts
@@ -55,12 +57,15 @@ test_refs:
   - apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts
   - apps/worker/src/jobs/__tests__/n8n-retention.test.ts
   - apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts
+  - apps/worker/src/jobs/__tests__/mail-outbox-retention.test.ts
+  - apps/worker/src/jobs/__tests__/mail-outbox-retention-db.test.ts
 feature_refs:
   - docs/compliance/dsgvo-konzept.md
 related_rules:
   - DSGVO-MANDATE-ANONYMIZATION-001
   - DOC-RETENTION-CLASS-001
   - PORTAL-INBOX-SUBMISSION-001
+  - MAIL-OUTBOX-001
 tags:
   - loeschung
   - retention
@@ -81,8 +86,8 @@ Sperrbedarf je Datenklasse prüfen.
 
 Die Regel gilt für Notifications, pseudonyme Steuertermin-Versandhistorie,
 Telefonnotizen, alte Login-Zeitpunkte, terminale Anforderungen samt Antworten,
-n8n-Outbox-/Ausnahmehistorie, Callback-Idempotenzbelege und bereinigungsfähige
-Magic Links. Sie gilt nicht als allgemeine Löschlogik für sämtliche Tabellen,
+n8n-Outbox-/Ausnahmehistorie, Callback-Idempotenzbelege, Versandaufträge der
+Mail-Outbox im Endstatus und bereinigungsfähige Magic Links. Sie gilt nicht als allgemeine Löschlogik für sämtliche Tabellen,
 Dokumente, Auditdaten oder externe Systeme.
 
 ## Benötigte Angaben
@@ -98,6 +103,8 @@ Dokumente, Auditdaten oder externe Systeme.
 | Datenklasse                                       | Produktfrist und Aktion                                  | Einordnung                            |
 | ------------------------------------------------- | -------------------------------------------------------- | ------------------------------------- |
 | Notifications und Steuertermin-Versandhistorie    | nach einem Jahr löschen                                  | fester Kanzlei-Default                |
+| Mail-Outbox-Auftrag im Endstatus                  | ein Jahr nach dem letzten Statuswechsel löschen          | fester Kanzlei-Default (A8)           |
+| wartender oder laufender Mail-Outbox-Auftrag      | nicht löschen                                            | laufende Verarbeitung schützen        |
 | Telefonnotizen                                    | nach drei Jahren löschen                                 | fester Kanzlei-Default                |
 | `client_contact.lastLoginAt`                      | nach zwei Jahren nullen                                  | Datenminimierung ohne Kontaktlöschung |
 | terminale Anforderung ohne längeren Dokumentbezug | jahresende-basiert nach sechs Jahren löschen             | Produktklasse                         |
@@ -165,6 +172,23 @@ Tag) und die Betriebsadresse `OPS_ALERT_EMAIL` höchstens eine Mail je Tag. Die
 Schwelle ist eine Betriebsvorgabe, keine Löschfrist; der Alarm ändert weder
 Auswahl noch Prüfungen oder Löschung. Ein Datenbanktest belegt die Messung
 gegen PostgreSQL, Unit-Tests belegen Schwelle, Empfänger und Tagesdedupe.
+
+Der Worker `mail-outbox-retention` löscht täglich Versandaufträge der
+Mandanten-Mails im Endstatus (`PROVIDER_ACCEPTED`, `PARTIAL_FAILURE`,
+`NO_RECIPIENT`, `FAILED`, `UNKNOWN`, `SKIPPED`), deren letzter Statuswechsel
+strikt vor dem Stichtag liegt. Der Stichtag ist wie bei der
+Steuertermin-Versandhistorie ein Kalenderjahr vor dem Lauf; bei `FAILED` und
+`UNKNOWN` zählt die Eskalation, weil das spätere Entfernen des
+Neuversandinhalts den Status nicht ändert. `QUEUED`, `RETRY_PENDING` und
+`SENDING` bleiben. Der Lauf arbeitet je Kanzlei über die App-Rolle im
+SYSTEM-Kontext; die Funktion `app.mail_outbox_purge_terminal` erzwingt
+Kontext, Endstatus, ein Mindestalter des Stichtags von einem Jahr und
+höchstens 1.000 Aufträge je Aufruf. Er löscht in Stapeln bis zum Zeitbudget
+der Wartungsjobs, meldet Rückstand und Zähler im Log und Job-Ergebnis und
+schreibt wie der n8n-Worker keinen Auditnachweis. Empfänger und Inhalt hat
+bereits der Zustell-Worker entfernt (MAIL-OUTBOX-001). Datenbanktests belegen
+die Grenze von genau einem Jahr, den Schutz nicht terminaler Aufträge,
+mehrere Stapel, Idempotenz und die Tenant-Grenze.
 
 Der DSGVO-Worker berechnet tenantbezogene Cutoffs, löscht beziehungsweise
 nullt die definierten Klassen und schreibt nur bei tatsächlichen Änderungen

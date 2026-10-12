@@ -20,8 +20,9 @@ implementation:
     Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter
     Wiederholung und Eskalation zu, der Status steht am Vorgang, und
     fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden.
-    Die technische Annahme ist kein Zugangsnachweis; eine Löschfrist für die
-    Auftragsmetadaten und die fachliche Freigabe der Fristen fehlen.
+    Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach
+    dem letzten Statuswechsel. Die technische Annahme ist kein Zugangsnachweis;
+    die fachliche Freigabe der Fristen fehlt.
 sources:
   - kind: product_documentation
     citation: Anwenderdokumentation Administration, Abschnitt 7 „Zustellstatus von Mandanten-E-Mails“
@@ -48,6 +49,8 @@ code_refs:
   - packages/db/prisma/migrations/20261006120000_mail_outbox/migration.sql
   - packages/db/prisma/migrations/20261007120000_mail_outbox_skipped/migration.sql
   - packages/db/prisma/migrations/20261007120100_mail_outbox_resend/migration.sql
+  - apps/worker/src/jobs/mail-outbox-retention.ts
+  - packages/db/prisma/migrations/20261012110000_mail_outbox_retention/migration.sql
 test_refs:
   - packages/mail/src/__tests__/outbox.test.ts
   - packages/mail/src/__tests__/outbox-relevance.test.ts
@@ -59,6 +62,8 @@ test_refs:
   - apps/web/src/lib/__tests__/mail-delivery-status.test.ts
   - apps/web/src/components/__tests__/mail-delivery-status.test.tsx
   - packages/db/src/__tests__/mail-outbox-rls.test.ts
+  - apps/worker/src/jobs/__tests__/mail-outbox-retention.test.ts
+  - apps/worker/src/jobs/__tests__/mail-outbox-retention-db.test.ts
 feature_refs:
   - docs/anwenderdoku/administration.md
 related_rules:
@@ -116,6 +121,8 @@ Mail und den Posteingang.
 | nur ein Teil der Kontakte angenommen                                                  | `PARTIAL_FAILURE` und Kanzlei-Hinweis, kein automatischer Neuversand                               | Doppelversandrisiko                                |
 | Kontaktmail ohne aktiven, per Portal-Login bestätigten Kontakt mit Benachrichtigungen | `NO_RECIPIENT` ohne Kanzlei-Hinweis, am Vorgang sichtbar                                           | bisheriges Empfängerverhalten                      |
 | Kanzlei wählt „Erneut senden“ bei `FAILED` oder `UNKNOWN`                             | gleiche Berechtigung wie der Auslöser, Aktualitätsprüfung, dann `QUEUED` oder `SKIPPED`, auditiert | bewusste Entscheidung; bei `UNKNOWN` mit Rückfrage |
+| letzter Statuswechsel eines Auftrags im Endstatus liegt mehr als ein Jahr zurück      | Auftrag samt Metadaten löschen; der Vorgang zeigt für diese Mail keinen Status mehr                | Entscheidung A8, wie die Versandhistorie           |
+| Auftrag wartet oder läuft (`QUEUED`, `RETRY_PENDING`, `SENDING`)                      | nie löschen                                                                                        | laufende Zustellung schützen                       |
 
 ## Ausnahmen und Grenzfälle
 
@@ -132,6 +139,13 @@ Für „Erneut senden“ bleibt der Inhalt eines `FAILED`- oder `UNKNOWN`-Auftra
 30 Tage nach der Eskalation erhalten, bei anonymisiertem Mandanten nicht.
 Danach ist kein Neuversand mehr möglich. Die 30 Tage sind eine offene
 Betriebsentscheidung, keine Rechtsfrist.
+
+Für die einjährige Löschfrist gilt bei `FAILED` und `UNKNOWN` die Eskalation
+als letzter Statuswechsel; das spätere Entfernen des Neuversandinhalts
+verlängert die Frist nicht. Ein Auftrag, den die Kanzlei gerade erneut sendet,
+wird im laufenden Löschlauf übersprungen und danach nach seinem neuen Status
+beurteilt. Die Frist ist ein Kanzlei-Default, keine Rechtsfrist; einen
+Legal Hold kennt der Löschlauf nicht.
 
 ## Beispiele
 
@@ -170,6 +184,16 @@ werden Empfänger, Variablen, Anhangsverweise und geheime Variablen entfernt,
 außer bei `FAILED` und `UNKNOWN` innerhalb des Neuversandfensters. Status,
 Zähler, Zeitpunkte und Vorgangsverweis bleiben als Metadaten erhalten.
 
+Der tägliche Worker `mail-outbox-retention` löscht diese Metadaten ein
+Kalenderjahr nach dem letzten Statuswechsel, gleich berechnet wie die
+pseudonyme Steuertermin-Versandhistorie (strikt älter als der Stichtag). Er
+arbeitet je Kanzlei über die App-Rolle im SYSTEM-Kontext; die Funktion
+`app.mail_outbox_purge_terminal` erzwingt Kontext, Endstatus, ein Mindestalter
+des Stichtags von einem Jahr und die Stapelgröße. Die App-Rolle erhält dafür
+kein allgemeines Löschrecht. Lauf, Stichtag, Löschzähler je Kanzlei und der
+verbleibende Rückstand stehen im Log und im Job-Ergebnis
+(DSGVO-OPERATIONAL-RETENTION-001).
+
 Am Vorgang zeigt eine Statuszeile je Anlass den zusammengefassten Stand; bei
 `FAILED` und `UNKNOWN` mit erhaltenem Inhalt bietet sie „Erneut senden“ an.
 Das Gate entspricht der auslösenden Aktion (Einzelrecht, Modul,
@@ -177,12 +201,12 @@ Mandantenzugriff; bei der GwG-Begrüßung der zugeordnete Berufsträger).
 
 ## Bekannte Abweichungen und Grenzen
 
-Die Umsetzung ist teilweise. Die Auftragsmetadaten (Status, Anlass, Zeitpunkte,
-Vorgangsverweis) werden derzeit nicht automatisch gelöscht; eine Löschfrist
-fehlt. Die technische Annahme durch den Versanddienst beweist weder Zugang noch
+Die Umsetzung ist teilweise. Die technische Annahme durch den Versanddienst beweist weder Zugang noch
 Kenntnisnahme. Termine, die im Kalender bearbeitet oder abgesagt werden,
-lösen keine Mail an den Mandanten aus. Die 30-Tage-Frist für den Neuversand und
-die Zahl von sechs Versuchen sind nicht fachlich freigegeben. Eine
+lösen keine Mail an den Mandanten aus. Die 30-Tage-Frist für den Neuversand,
+die einjährige Löschfrist der Metadaten und die Zahl von sechs Versuchen sind
+nicht fachlich freigegeben. Der Löschlauf schreibt keinen Auditnachweis; Zähler
+und Stichtag stehen nur im Worker-Log und Job-Ergebnis. Eine
 Rechtsgrundlage, die eine dieser Mails vorschreibt oder ihren Inhalt bestimmt,
 ist im Katalog nicht belegt.
 
@@ -192,8 +216,8 @@ ist im Katalog nicht belegt.
   eine Rechtsgrundlage zu dokumentieren?
 - Genügt die technische Annahme als Kanzleinachweis, oder ist für einzelne
   Anlässe ein Zugangsnachweis auf anderem Weg nötig?
-- Sind 30 Tage für den Neuversand und die Aufbewahrung der Auftragsmetadaten
-  angemessen?
+- Sind 30 Tage für den Neuversand und ein Jahr für die Auftragsmetadaten
+  angemessen, und braucht die Löschung einen Auditnachweis?
 - Wer prüft „unklar“ und „nur teilweise angenommen“ und informiert den
   Mandanten gegebenenfalls direkt?
 
@@ -205,6 +229,9 @@ Relevanztests belegen je Anlass gewollt und überholt. Die Worker-Tests belegen
 Claim, Backoff, `FAILED`, `UNKNOWN`, `PARTIAL_FAILURE`, `NO_RECIPIENT`,
 `SKIPPED`, Kanzlei-Hinweise und das Entfernen des Inhalts; die
 Datenbanktests belegen Compare-and-Swap, CHECKs, Tenant-Isolation und die
-Rechte der App-Rolle. Die Web-Tests belegen Anstoß, Statusanzeige und
+Rechte der App-Rolle. Die Löschtests belegen gegen PostgreSQL die Grenze von
+genau einem Jahr, den Schutz wartender und laufender Aufträge, die Eskalation
+als Bezugszeitpunkt bei `FAILED`/`UNKNOWN`, mehrere Stapel, Idempotenz und die
+Tenant-Grenze. Die Web-Tests belegen Anstoß, Statusanzeige und
 „Erneut senden“ mit Gate, Rückfrage und Audit. Eine Zustellung beim Mandanten
 belegen sie nicht.

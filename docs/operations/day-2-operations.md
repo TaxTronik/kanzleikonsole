@@ -685,6 +685,20 @@ Prüfnachweis und Aktivierung zurück.
   `UNROUTED`) bzw. 180 Tagen (`FAILED`, `PARTIAL`). `PENDING` und `PROCESSING`
   werden nie gelöscht. Gehashte Callback-Idempotenzbelege werden nach 180
   Tagen gelöscht. Lauf und alle Löschzähler im Worker-Log überwachen.
+- Der tägliche Job `mail-outbox-retention` läuft um 04:15 UTC. Er löscht
+  Versandaufträge der Mandanten-Mails (`mail_outbox`) im Endstatus
+  (`PROVIDER_ACCEPTED`, `PARTIAL_FAILURE`, `NO_RECIPIENT`, `FAILED`,
+  `UNKNOWN`, `SKIPPED`), deren letzter Statuswechsel länger als ein
+  Kalenderjahr zurückliegt; bei `FAILED` und `UNKNOWN` zählt die Eskalation.
+  Die Frist entspricht der Steuertermin-Versandhistorie (Entscheidung A8).
+  `QUEUED`, `RETRY_PENDING` und `SENDING` werden nie gelöscht. Der Job arbeitet
+  je Kanzlei über die App-Rolle im Systemkontext in Stapeln zu 500 Aufträgen
+  bis zum Zeitbudget der Wartungsjobs (zehn Minuten) und meldet im
+  Job-Ergebnis gelöschte Aufträge, Stichtag (`cutoff`), Rückstand (`backlog`)
+  und `budgetExhausted`. Im Worker-Log stehen die Löschzähler je Kanzlei und
+  die Zusammenfassung; ein dauerhafter Rückstand deutet auf ein Problem mit
+  der Datenbank oder einen sehr großen Altbestand hin. Nach der Löschung zeigt
+  der Vorgang für diese Mail keinen Zustellstatus mehr.
 - Prüfen, ob Workflows nach Änderungen tatsächlich **veröffentlicht** wurden.
   Gespeicherte Entwürfe ändern die Production-Ausführung nicht.
 - Ablauf und Scopes des n8n-API-Keys kontrollieren. Wenn die Edition keine

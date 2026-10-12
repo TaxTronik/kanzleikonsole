@@ -212,8 +212,11 @@ der Owner-Allowlist (`prisma-client-guard.test.ts`):
   DSGVO-Aufbewahrung, Bereinigung abgelaufener Magic-Links, der n8n-Outbox und
   verwaister Speicherobjekte, Betriebsüberwachung und FIDO-MDS-Stand;
 - bewusst fehlende App-Rechte: Zustellung der Mail-Outbox (die App-Rolle darf
-  `mail_outbox` nur anlegen und lesen) sowie n8n-Zustellung und -Enqueue
-  (tenantlose Ereignisse, global eindeutige Dedupe-Schlüssel);
+  `mail_outbox` nur anlegen und lesen; „Erneut senden“ und die einjährige
+  Löschung im Endstatus laufen über die eng begrenzten Funktionen
+  `app.mail_outbox_resend` und `app.mail_outbox_purge_terminal`) sowie
+  n8n-Zustellung und -Enqueue (tenantlose Ereignisse, global eindeutige
+  Dedupe-Schlüssel);
 - offen: automatische Feedback-Einladungen (`workflow-feedback`; die Policies
   von `client_interaction` kennen keinen SYSTEM-Akteur).
 

@@ -2289,7 +2289,9 @@
         "apps/worker/src/jobs/n8n-retention.ts",
         "apps/worker/src/jobs/magic-link-cleanup.ts",
         "apps/worker/src/jobs/portal-inbox-cleanup.ts",
-        "apps/web/src/server/inbox/retention-settings.ts"
+        "apps/web/src/server/inbox/retention-settings.ts",
+        "apps/worker/src/jobs/mail-outbox-retention.ts",
+        "packages/db/prisma/migrations/20261012110000_mail_outbox_retention/migration.sql"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/storage-orphan-cleanup.test.ts",
@@ -2300,13 +2302,16 @@
         "apps/web/src/server/jobs/__tests__/maintenance-backlog.test.ts",
         "apps/worker/src/jobs/__tests__/dsgvo-retention.test.ts",
         "apps/worker/src/jobs/__tests__/n8n-retention.test.ts",
-        "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts"
+        "apps/worker/src/jobs/__tests__/portal-inbox-cleanup.test.ts",
+        "apps/worker/src/jobs/__tests__/mail-outbox-retention.test.ts",
+        "apps/worker/src/jobs/__tests__/mail-outbox-retention-db.test.ts"
       ],
       "feature_refs": ["docs/compliance/dsgvo-konzept.md"],
       "related_rules": [
         "DSGVO-MANDATE-ANONYMIZATION-001",
         "DOC-RETENTION-CLASS-001",
-        "PORTAL-INBOX-SUBMISSION-001"
+        "PORTAL-INBOX-SUBMISSION-001",
+        "MAIL-OUTBOX-001"
       ],
       "tags": ["loeschung", "retention", "kanzleipolicy"],
       "path": "docs/fachkatalog/regeln/datenschutz/dsgvo-operational-retention-001-technische-loeschfristen.md",
@@ -4163,7 +4168,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter Wiederholung und Eskalation zu, der Status steht am Vorgang, und fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden. Die technische Annahme ist kein Zugangsnachweis; eine Löschfrist für die Auftragsmetadaten und die fachliche Freigabe der Fristen fehlen."
+        "summary": "Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter Wiederholung und Eskalation zu, der Status steht am Vorgang, und fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden. Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach dem letzten Statuswechsel. Die technische Annahme ist kein Zugangsnachweis; die fachliche Freigabe der Fristen fehlt."
       },
       "sources": [
         {
@@ -4195,7 +4200,9 @@
         "apps/web/src/lib/mail-delivery-status.ts",
         "packages/db/prisma/migrations/20261006120000_mail_outbox/migration.sql",
         "packages/db/prisma/migrations/20261007120000_mail_outbox_skipped/migration.sql",
-        "packages/db/prisma/migrations/20261007120100_mail_outbox_resend/migration.sql"
+        "packages/db/prisma/migrations/20261007120100_mail_outbox_resend/migration.sql",
+        "apps/worker/src/jobs/mail-outbox-retention.ts",
+        "packages/db/prisma/migrations/20261012110000_mail_outbox_retention/migration.sql"
       ],
       "test_refs": [
         "packages/mail/src/__tests__/outbox.test.ts",
@@ -4207,7 +4214,9 @@
         "apps/web/src/server/mail/__tests__/resend-actions.test.ts",
         "apps/web/src/lib/__tests__/mail-delivery-status.test.ts",
         "apps/web/src/components/__tests__/mail-delivery-status.test.tsx",
-        "packages/db/src/__tests__/mail-outbox-rls.test.ts"
+        "packages/db/src/__tests__/mail-outbox-rls.test.ts",
+        "apps/worker/src/jobs/__tests__/mail-outbox-retention.test.ts",
+        "apps/worker/src/jobs/__tests__/mail-outbox-retention-db.test.ts"
       ],
       "feature_refs": ["docs/anwenderdoku/administration.md"],
       "related_rules": [

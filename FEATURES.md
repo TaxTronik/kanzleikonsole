@@ -1651,7 +1651,9 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   Workflow-Events), `storage-orphan-cleanup` (sechsstündliche Bereinigung
   journalisierter Storage-Waisen nach der jeweiligen Retention) und
   `pdf-page-count-backfill` (04:30 UTC, trägt fehlende Seitenzahlen von
-  PDF-Ausweisquellen nach).
+  PDF-Ausweisquellen nach) und `mail-outbox-retention` (04:15 UTC, löscht
+  Mail-Outbox-Versandaufträge ein Jahr nach dem letzten Statuswechsel im
+  Endstatus).
   Ein asynchroner Virus-Scan-Job existiert bewusst nicht — Scans laufen
   ausschließlich synchron beim Upload-Commit in `@taxtronik/storage`.
   Die Worker-Jobs haben eigene Unit-Tests
