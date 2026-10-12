@@ -583,7 +583,9 @@
         "packages/crypto/src/crl-fetch.ts",
         "apps/worker/src/tenant-context.ts",
         "packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates_v2(text,text,text,text,text,int4).sql",
-        "packages/db/prisma/migrations/20261012120000_portal_inbox_staff_search_recent/migration.sql"
+        "packages/db/prisma/migrations/20261012120000_portal_inbox_staff_search_recent/migration.sql",
+        "packages/db/prisma/sql/functions/app.document_title_search_candidates(uuid,uuid,bool,text,int4).sql",
+        "packages/db/prisma/migrations/20261012120100_document_title_search_candidates/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/server/backup/__tests__/restore-security.test.ts",
@@ -668,7 +670,9 @@
         "packages/mail/src/__tests__/dispatch-db.test.ts",
         "apps/web/src/server/tax-news/__tests__/fetcher-db.test.ts",
         "packages/db/src/__tests__/portal-inbox-staff-search-candidates-v2.test.ts",
-        "apps/web/src/server/inbox/__tests__/staff-search-db.test.ts"
+        "apps/web/src/server/inbox/__tests__/staff-search-db.test.ts",
+        "packages/db/src/__tests__/document-title-search-candidates.test.ts",
+        "apps/web/src/server/documents/__tests__/title-search-db.test.ts"
       ],
       "feature_refs": [
         "docs/architecture.md",

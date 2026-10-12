@@ -241,6 +241,12 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // ACCESS-SEARCH-SCOPE-001 (P-10, Welle 15): Owner legt über 12.000 Threads an; die App-Rolle
   // führt die Staff-Posteingangssuche mit Zeitgrenze unter RLS aus.
   'apps/web/src/server/inbox/__tests__/staff-search-db.test.ts',
+  // ACCESS-TENANT-RLS-001 (P-10, Welle 15): Superuser-Fixtures in einer zurückgerollten
+  // Transaktion; die App-Rolle vergleicht die Titel-Kandidatenfunktion mit der Seite unter RLS.
+  'packages/db/src/__tests__/document-title-search-candidates.test.ts',
+  // ACCESS-TENANT-RLS-001 (P-10, Welle 15): Owner-Fixtures in frischen Tenants; die App-Rolle
+  // vergleicht den Lader der Dokumentenseite mit der bisherigen Abfrage unter RLS.
+  'apps/web/src/server/documents/__tests__/title-search-db.test.ts',
   // AUDIT-HASH-CHAIN-001: Owner liest nur Katalogdaten (pg_indexes, pg_proc) zu den
   // audit_log-Leserindizes (P-11); keine Fixtures, kein Request-Pfad.
   'packages/db/src/__tests__/audit-log-reader-indexes.test.ts',

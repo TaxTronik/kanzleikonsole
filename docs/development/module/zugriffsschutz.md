@@ -351,6 +351,20 @@ Eine zukünftige Inhalts- oder Nachrichtenvolltextsuche erfordert eine neue
 Datenklassen-, Scope-, Retention- und Missbrauchsprüfung nach
 `ACCESS-SEARCH-SCOPE-001`.
 
+Teilstringsuchen unter RLS laufen zweistufig (Review-Finding P-10): Prisma
+übersetzt `contains` mit `insensitive` in `ILIKE`; der Operator ist nicht
+LEAKPROOF, PostgreSQL wertet ihn erst nach den Policies aus und nutzt keinen
+Trigramindex. Eine SECURITY-DEFINER-Funktion wählt deshalb Kandidaten-IDs über
+den Index vor; Tenant und Akteur kommen nur aus dem Transaktionskontext, die
+Funktion wendet die Teilbedingungen der Policies selbst an und liefert höchstens
+eine feste Zahl IDs. Danach lädt die Anwendung nur diese IDs unter RLS mit dem
+unveränderten Filter. So arbeiten die globale Suche
+(`app.staff_search_candidates`), die Staff-Suche im Posteingang
+(`app.portal_inbox_staff_search_candidates_v2`, die 500 jüngsten Treffer mit
+Hinweis bei mehr) und die Titelsuche der Dokumentenseite
+(`app.document_title_search_candidates`, eine Ebene: Mandant oder
+Kanzlei-intern, ein Ordner, aktiv oder gelöscht).
+
 ## Bekannte Grenzen
 
 Es gibt bewusst keinen automatischen Passwort-Ablauf und keine Passwort-

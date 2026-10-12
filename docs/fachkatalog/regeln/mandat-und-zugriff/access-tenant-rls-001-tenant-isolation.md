@@ -126,6 +126,8 @@ code_refs:
   - apps/worker/src/tenant-context.ts
   - packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates_v2(text,text,text,text,text,int4).sql
   - packages/db/prisma/migrations/20261012120000_portal_inbox_staff_search_recent/migration.sql
+  - packages/db/prisma/sql/functions/app.document_title_search_candidates(uuid,uuid,bool,text,int4).sql
+  - packages/db/prisma/migrations/20261012120100_document_title_search_candidates/migration.sql
 test_refs:
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore.test.ts
@@ -210,6 +212,8 @@ test_refs:
   - apps/web/src/server/tax-news/__tests__/fetcher-db.test.ts
   - packages/db/src/__tests__/portal-inbox-staff-search-candidates-v2.test.ts
   - apps/web/src/server/inbox/__tests__/staff-search-db.test.ts
+  - packages/db/src/__tests__/document-title-search-candidates.test.ts
+  - apps/web/src/server/documents/__tests__/title-search-db.test.ts
 feature_refs:
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
@@ -713,7 +717,9 @@ Kandidaten-IDs über eng begrenzte SECURITY-DEFINER-Funktionen mit festem
 (neben `app.staff_search_candidates` und
 `app.portal_inbox_staff_search_candidates` seit Welle 15
 `app.portal_inbox_staff_search_candidates_v2` für die Staff-Suche im
-Posteingang). Sie binden den Tenant ausschließlich an `app.current_tenant_id()`
+Posteingang und `app.document_title_search_candidates` für die Titelsuche der
+Dokumentenseite; diese prüft zusätzlich den Mandantenzugriff der Ebene und
+nimmt nur aktive Kanzleipersonen an). Sie binden den Tenant ausschließlich an `app.current_tenant_id()`
 und einen akteurbezogenen Filter an `app.current_actor_id()`, nehmen dafür
 keinen Parameter entgegen, liefern ohne Kontext nichts, liefern nur IDs und
 höchstens bis zu einer festen Obergrenze und wenden die Teilbedingungen der

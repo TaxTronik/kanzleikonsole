@@ -65,8 +65,9 @@ und „Kanzlei-intern") sowie als Tab **Dokumente** in jeder Mandantenakte.
 - **Ordner** anlegen, umbenennen, verschieben; Dokumente per Drag & Drop
   zwischen Ordnern verschieben. Beim Löschen eines Ordners bleiben alle
   Dokumente erhalten (sie rücken eine Ebene nach oben).
-- **Suche** durchsucht Titel im aktuellen Bereich (auch bei Tippfehlern
-  tolerant).
+- **Suche** findet Dokumente, deren Titel den Suchbegriff enthält, im
+  aktuellen Bereich; Groß- und Kleinschreibung spielen keine Rolle. Tippfehler
+  gleicht die Suche nicht aus.
 - Listen zeigen maximal 1000 Einträge und weisen darauf hin, wenn gekürzt
   wurde — dann Suche oder Ordnerstruktur nutzen.
 

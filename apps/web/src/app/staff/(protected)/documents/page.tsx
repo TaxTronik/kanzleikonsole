@@ -3,7 +3,8 @@ import { withTenantContext } from '@taxtronik/db';
 import { redirect } from 'next/navigation';
 import type { ClientKind } from '@prisma/client';
 import { accessibleClientsWhereFor, canAccessClientTx } from '@/server/auth/rbac';
-import { MANAGED_DOC_SELECT, toManagedDoc } from '@/server/documents/managed-docs';
+import { toManagedDoc } from '@/server/documents/managed-docs';
+import { loadScopeDocumentsTx } from '@/server/documents/title-search';
 import { DocumentExplorer, type Entry, type Crumb } from '@/components/document-explorer';
 import { DOCUMENT_SCOPE_LABELS } from '@/lib/domain-labels';
 
@@ -124,14 +125,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
         return null;
       }
 
-      const docWhere = {
-        tenantId,
-        clientId: scopeClientId,
-        folderId: folderId ?? null,
-        deletedAt: deleted ? { not: null } : null,
-        ...(q ? { title: { contains: q, mode: 'insensitive' as const } } : {}),
-      };
-      const [clientRow, folders, docs] = await Promise.all([
+      const [clientRow, folders, { docs, docsTotal }] = await Promise.all([
         scopeClientId
           ? tx.client.findFirst({
               where: { id: scopeClientId },
@@ -143,17 +137,16 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
           select: { id: true, name: true, parentId: true },
           orderBy: { name: 'asc' },
         }),
-        tx.document.findMany({
-          where: docWhere,
-          orderBy: { createdAt: 'desc' },
-          take: DOCS_CAP,
-          // Dasselbe DTO wie Mandanten-Tab und Aktenregal (server/documents).
-          select: MANAGED_DOC_SELECT,
+        // P-10 (Welle 15): Titelsuche zweistufig über den Trigram-Index.
+        loadScopeDocumentsTx(tx, {
+          tenantId,
+          clientId: scopeClientId,
+          folderId: folderId ?? null,
+          deleted,
+          q,
+          cap: DOCS_CAP,
         }),
       ]);
-      // Nur wenn der Cap erreicht wurde: Gesamtzahl für den Truncation-Hinweis.
-      const docsTotal =
-        docs.length === DOCS_CAP ? await tx.document.count({ where: docWhere }) : docs.length;
       return { clientRow, folders, docs, docsTotal };
     },
   );

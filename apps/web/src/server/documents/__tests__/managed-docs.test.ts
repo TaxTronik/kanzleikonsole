@@ -53,8 +53,11 @@ describe('ein Dokument-DTO für beide Explorer-Varianten', () => {
   it('wird von /staff/documents, Mandanten-Tab und Aktenregal genutzt (kein zweiter Tier-Mapper)', () => {
     const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
     const documentsPage = read('../../../app/staff/(protected)/documents/page.tsx');
+    // P-10 (Welle 15): Die Seite lädt über server/documents/title-search.ts.
+    const scopeLoader = read('../title-search.ts');
     const clientLoader = read('../../../app/staff/(protected)/clients/[id]/_data.ts');
-    expect(documentsPage).toContain('select: MANAGED_DOC_SELECT');
+    expect(documentsPage).toContain('loadScopeDocumentsTx(tx, {');
+    expect(scopeLoader.match(/select: MANAGED_DOC_SELECT/g)).toHaveLength(2);
     expect(documentsPage).toContain("({ kind: 'file', ...toManagedDoc(d) })");
     expect(documentsPage).not.toContain('GWG_EVIDENCE');
     expect(clientLoader).toContain('rows.map(toManagedDoc)');
