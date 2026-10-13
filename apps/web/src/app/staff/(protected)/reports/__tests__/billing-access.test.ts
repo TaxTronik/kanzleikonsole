@@ -1,9 +1,24 @@
-import { readFileSync } from 'node:fs';
+// @vitest-environment jsdom
+import { screen } from '@testing-library/react';
 import type { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadReports } from '../data';
+import { renderServer } from '@/__tests__/render-helpers';
 
-const pageSource = readFileSync(new URL('../page.tsx', import.meta.url), 'utf8');
+const h = vi.hoisted(() => ({ admin: false, tx: null as unknown }));
+
+vi.mock('@/server/auth/staff-page', () => ({
+  requireStaffPage: vi.fn(async () => ({
+    user: { tenantId: 'tenant-1', staffId: 'staff-1', roles: ['EMPLOYEE'] },
+  })),
+}));
+vi.mock('@/server/settings/module-page', () => ({ requireModulePage: vi.fn(async () => ({})) }));
+vi.mock('@/server/auth/rbac', () => ({ isStaffAdmin: () => h.admin }));
+vi.mock('@taxtronik/db', () => ({
+  withTenantContext: vi.fn(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(h.tx)),
+}));
+
+import { loadReports } from '../data';
+import ReportsPage from '../page';
 
 const tx = {
   request: {
@@ -52,9 +67,24 @@ describe('reports billing access', () => {
     expect(tx.$queryRaw).toHaveBeenCalledTimes(4);
   });
 
-  it('gates every billing section with the admin/partner role result', () => {
-    expect(pageSource).toContain('const canViewBilling = isStaffAdmin(session)');
-    expect(pageSource).toContain('loadReports(tx, canViewBilling)');
-    expect(pageSource.match(/\{billing && \(/g)).toHaveLength(3);
-  });
+  // Seite als Render-Test (B-08, Welle 15) statt Quelltextprüfung.
+  it.each([
+    [false, 'Kanzlei-KPIs aus Anforderungen und Zeiterfassung.'],
+    [true, 'Kanzlei-KPIs aus Anforderungen, Zeiterfassung und Rechnungswesen.'],
+  ])(
+    'blendet alle Abrechnungsbereiche nach der Admin/Partner-Rolle ein (Admin: %s)',
+    async (admin, intro) => {
+      h.admin = admin;
+      h.tx = tx;
+      await renderServer(ReportsPage());
+      expect(screen.getByText(intro)).toBeTruthy();
+      const billingSections = [
+        screen.queryByText('Umsatz lfd. Jahr (netto)'),
+        screen.queryByRole('heading', { name: 'Top-Mandanten — Umsatz im lfd. Jahr' }),
+        screen.queryByRole('heading', { name: 'Rechnungen — Status' }),
+      ];
+      expect(billingSections.map(Boolean)).toEqual([admin, admin, admin]);
+      expect(vi.mocked(tx.invoice.groupBy).mock.calls.length > 0).toBe(admin);
+    },
+  );
 });

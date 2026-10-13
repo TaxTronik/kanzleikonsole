@@ -213,6 +213,15 @@ describe('abgeschlossene GwG im Onboarding', () => {
   });
 });
 
+describe('Vollmacht-Schritt im Onboarding', () => {
+  it('verlinkt die Vollmachtanlage mit Mandant und Onboarding-Kontext', async () => {
+    await renderStep('poa');
+    expect(screen.getByRole('link', { name: 'Vollmacht anlegen' }).getAttribute('href')).toBe(
+      `/staff/poa/new?clientId=${CLIENT_ID}&from=onboarding`,
+    );
+  });
+});
+
 describe('Navigation zwischen Wizard-Schritten', () => {
   it('verlinkt bereits durchlaufene Schritte und den vorherigen Schritt', async () => {
     h.contactCount = 1;
