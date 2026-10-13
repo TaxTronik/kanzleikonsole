@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -12,6 +9,8 @@ import {
 import { GridLayoutControls } from '@/components/ui/grid-layout-controls';
 import { adjustClientLayoutItem } from '../client-layout-adjustment';
 
+// Speicherweg, Fokus und Live-Rückmeldung des Formulars prüft
+// client-layout-form.test.tsx als Verhaltenstest (B-08, Welle 15).
 describe('ACP-Mandantenlayout: Tastatur- und Einzelklick-Alternative', () => {
   it('nutzt Block-Minima und erhält IDs, Reihenfolge und unveränderte Eingabedaten', () => {
     const original = Object.freeze(
@@ -62,22 +61,5 @@ describe('ACP-Mandantenlayout: Tastatur- und Einzelklick-Alternative', () => {
     expect(html).toContain('name="width"');
     expect(html).toContain('min="6" max="12"');
     expect(html).toContain('min="4" max="40"');
-  });
-
-  it('bindet Änderungen an den vorhandenen Speicherweg und schützt Fokus/Live-Rückmeldung', () => {
-    const source = readFileSync(
-      resolve(dirname(fileURLToPath(import.meta.url)), '..', 'client-layout-form.tsx'),
-      'utf8',
-    );
-    expect(source).toContain('onApply={applyGeometry}');
-    expect(source).toContain('adjustClientLayoutItem(itemsRef.current, id, geometry)');
-    expect(source).toContain('saveClientLayoutAction({ items: next })');
-    expect(source).toMatch(/saveQueue\.current\s*\.then\(async \(\) =>/);
-    expect(source).toContain('role="status"');
-    expect(source).toContain('role="alert"');
-    expect(source).toContain('editButtonRef.current?.focus()');
-    expect(source).toContain('if (current.length <= 1)');
-    expect(source).toContain('await saveQueue.current');
-    expect(source).not.toContain('useAccessibleDisplay');
   });
 });
