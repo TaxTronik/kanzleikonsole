@@ -23,6 +23,33 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- Mandanten-Mails bei Terminänderung oder -absage: Im Bearbeiten- und
+  Absagen-Dialog des Kanzleikalenders kann die Kanzlei den Mandanten per
+  E-Mail informieren (vorausgewählt bei erreichbarem Kontakt, sonst mit Grund
+  deaktiviert). Versand über die Mail-Outbox mit Aktualitätsprüfung (überholte
+  Änderungen werden verworfen), Zustellstatus und „Erneut senden“ im Kalender
+  sowie anpassbaren System-Vorlagen (`MAIL-OUTBOX-001`).
+
+- Täglicher Worker-Job `mail-outbox-retention`: Versandaufträge von
+  Mandanten-Mails im Endstatus werden ein Jahr nach dem letzten Statuswechsel
+  gelöscht, wie die Steuertermin-Versandhistorie; wartende und laufende
+  Aufträge bleiben. Das Löschrecht kapselt die Funktion
+  `app.mail_outbox_purge_terminal`, die App-Rolle erhält kein DELETE
+  (`MAIL-OUTBOX-001`, `DSGVO-OPERATIONAL-RETENTION-001`).
+
+- **[Fachkatalog]** Ungeprüfter Regelentwurf `MAIL-OUTBOX-001` für
+  Mandanten-E-Mails über die Mail-Outbox (Aktualitätsprüfung, begrenzte
+  Wiederholung, Eskalation, Zustellstatus, „Erneut senden“, Aufbewahrung);
+  Rechtsgrundlage offen.
+
+- Mandanten-Cockpit: Die GwG-Karte verlinkt bei aktivem Modul die Sanktions-
+  und PEP-Prüfung des Mandanten (`GWG-SCREENING-001`).
+
+- Tests: DOM-Testumgebung für `apps/web` (jsdom, `@testing-library/react`,
+  `@testing-library/dom`, nur devDependencies ohne Install-Hooks), per
+  Datei-Kommentar `// @vitest-environment jsdom`; die übrigen Web-Tests laufen
+  weiter in Node.
+
 - CI: Die PowerShell-Tests der Windows-Hilfsskripte
   (`scripts/tests/*.test.ps1`) laufen im Job `quality` mit PowerShell 7.6.6 aus
   dem offiziellen Release-Archiv (Version und SHA-256 gepinnt). Ein neuer Test
@@ -282,6 +309,50 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Release-Evidence ordnen die Nachweise nach Zielgruppe und Dokumenttyp.
 
 ### Geändert
+
+- **[Scope]** DSGVO-Auskunft: Das kontaktbezogene JSON-Paket (Art. 15/20)
+  erzeugt der Worker `dsgvo-export` im Hintergrund statt der Web-Anfrage;
+  Inhalt und Format sind unverändert. Die Detailseite zeigt den Status
+  (angefordert, läuft, fertig, fehlgeschlagen); das fertige Paket liegt im
+  Object Store und ist nur für ADMIN/PARTNER nach Größen- und Hash-Prüfung
+  herunterladbar. Anforderung, Erzeugung und Download werden auditiert;
+  hängengebliebene Aufträge (15 Minuten) ersetzt eine neue Anforderung
+  (`DSGVO-CONTACT-EXPORT-001`, `DSGVO-REQUEST-EVIDENCE-001`).
+
+- **[Scope]** TCMS-Quantenlos: Los-Ziehungen werden zusätzlich zum
+  Audit-Eintrag in der mandantenisolierten, unveränderlichen Tabelle
+  `risk_los_ziehung` geführt, die ein Trigger beim Audit-Eintrag atomar
+  befüllt; Bestandsziehungen übernimmt die Migration mit Mengenprüfung. Die
+  Ziehungsliste liest die Tabelle, der Nachweis prüft weiterhin den
+  Audit-Eintrag (`TCMS-SAMPLE-PROOF-001`).
+
+- Dokumente: Die Titelsuche der Dokumentenseite nutzt den Trigramm-Index
+  (seltene Begriffe bei 200.000 Dokumenten: 85 ms → 9 ms); Treffer,
+  Reihenfolge und Gesamtzahl bleiben gleich. Die Anwenderdoku verspricht keine
+  Tippfehlertoleranz mehr (`ACCESS-TENANT-RLS-001`, `FK-EXC-20261014-001`).
+
+- Mandantenportal: Die Suche im Nachrichtenfach nutzt den Trigramm-Index
+  (30.000 Verläufe: 2 s → unter 0,2 s); bei mehr als 500 Treffern erscheint
+  ein Hinweis (`ACCESS-SEARCH-SCOPE-001`, `ACCESS-TENANT-RLS-001`).
+
+- Lint: Die Komplexitäts-Baseline gilt je Funktion statt je Datei
+  (`eslint-complexity-baseline.json`, Regel `taxtronik/complexity`). Neue oder
+  verschlechterte Funktionen über 20 brechen `pnpm lint`, Verbesserungen
+  nicht; neu sind `pnpm lint:prune-complexity` und
+  `pnpm lint:complexity-baseline`.
+
+- Tests: Die UI-Quelltexttests in `apps/web` sind durch Render- und
+  Verhaltenstests ersetzt (B-08); Architektur- und CSS-Guards bleiben.
+  Regel-IDs der Testdateien sind erhalten (`FK-EXC-20261014-002`).
+
+- E2E: Die Specs warten auf gestreamte Seiten mit web-first-Assertions bzw.
+  einem Seitenanker statt `isVisible({ timeout })`, das Playwright nicht
+  abwartet (48 Stellen). `guard:paranoid-e2e` verbietet `isVisible`/`isHidden`
+  mit Option.
+
+- CI: Entscheidung „Runner-Kapazität 1“ dokumentiert (`runner.capacity: 1`
+  je Docker-Daemon; mehrere Runner mit eigenem Daemon dürfen parallel laufen)
+  in `ci.yml`, `entwicklungsverfahren.md` und `docs/operations/release.md`.
 
 - `@taxtronik/storage` validiert Object-Store- und ClamAV-Konfiguration erst
   beim ersten Zugriff und erzeugt den S3-Client dann einmalig, mit
@@ -951,6 +1022,30 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   nicht länger als bereits erbrachte Nachweise.
 
 ### Behoben
+
+- **[Scope]** Restore: Datenbankbezogene Rolleneinstellungen
+  (`lock_timeout` der App-Rolle), die `pg_dump` nicht sichert, werden vor
+  `pg_restore` gesetzt und nach dem Restore exakt geprüft. Fehlen die Rechte
+  dafür, bricht der Restore vor dem Einspielen ab; die Sicherheitsabnahme
+  scheitert bei fehlenden, abweichenden oder zusätzlichen Einstellungen
+  (`ACCESS-TENANT-RLS-001`, `BACKUP-DRILL-INTEGRITY-001`).
+
+- **[Scope]** GwG-Löschfristen: Die Admin-Kachel zählt löschreife Belege und
+  Prüfungen wie die Review-Queue und ist als „für Sie sichtbar“ gekennzeichnet;
+  die tägliche Erinnerung nennt zusätzlich die Zahl der Belege, die die Queue
+  nicht anzeigt (Übergabe-Archive mit unvollständigen Quelldokumenten oder
+  anonymisiertem Mandanten). Fristen und Vernichtung sind unverändert
+  (`GWG-RETENTION-DESTRUCTION-001`).
+
+- Mandantenpost: Die Suche lief bei mehr als 10.000 Treffern in den Timeout
+  (100.000 Verläufe: rund zwei Minuten). Sie zeigt jetzt die 500 zuletzt
+  aktiven Treffer mit allen Filtern in unter einer Sekunde, blättert über
+  „Ältere“ und meldet weitere Treffer mit „Mehr als 500 Treffer – Suche
+  verfeinern“ (`ACCESS-SEARCH-SCOPE-001`, `ACCESS-TENANT-RLS-001`).
+
+- Dialoge: Ein Eingabefeld mit Autofokus behält beim Öffnen den Fokus,
+  statt auf „Schließen“ zu springen; nach dem Schließen kehrt der Fokus zum
+  auslösenden Element zurück.
 
 - Begrenzte Worker-Threads (`@taxtronik/mail/bounded-worker`, u. a.
   PDF-Seitenzählung der Ausweisbelege und Prüfung von Mailanhängen): Eine
@@ -1656,6 +1751,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   die Cookie-Löschung (`0c1f8174`).
 
 ### Sicherheit
+
+- Subsumtion: Die Textübernahme eines Mandanten-Dokuments liest nur noch die
+  neueste Fassung mit abgeschlossenem, sauberem Virenscan; bei laufender
+  Prüfung erscheint ein Hinweis, nicht freigegebene Fassungen werden ohne
+  Auswertung abgewiesen und protokolliert (`RISK-AI-SUGGESTION-001`).
 
 - Dependency Audit 3751: Next.js und sein ESLint-Plugin auf `16.3.8`. Das
   schließt den blockierenden Befund `GHSA-cjq9-62q9-8jv4` (SSRF in der
