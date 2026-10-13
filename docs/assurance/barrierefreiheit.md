@@ -137,13 +137,14 @@ Formularlabels, Rollen und Tastaturereignissen.
 
 `jsx-a11y/no-autofocus` ist bewusst deaktiviert. Mehrstufige Login- und
 Dialogabläufe setzen den Fokus gezielt; dieses Verhalten wird durch eigene
-Fokus- und Strukturtests abgesichert. Diese Ausnahme ist keine allgemeine
-Erlaubnis, beliebig `autoFocus` zu verwenden.
+Fokus- und Verhaltenstests (u. a. Autofokus im Dialog) abgesichert. Diese
+Ausnahme ist keine allgemeine Erlaubnis, beliebig `autoFocus` zu verwenden.
 
 ### 3.2 Komponenten- und Regressionstests
 
-Quellcode- und Komponententests sichern insbesondere folgende gemeinsame
-Grundlagen ab:
+Render- und Verhaltenstests (Testing Library in jsdom, siehe
+[Testkonzept](../development/testkonzept.md)) und für CSS ein PostCSS-basierter
+Stylesheet-Vertrag sichern insbesondere folgende gemeinsame Grundlagen ab:
 
 - Skip-Link, Hauptinhalt und Navigations-Landmarks;
 - mobile Navigation mit `inert`, Dialogsemantik, Escape und Fokus-Rückgabe;
@@ -159,16 +160,22 @@ vollständigen Screenreader und ersetzen keine Bedienprüfung.
 
 Zentrale technische Nachweise sind derzeit:
 
-- die
-  [globalen A11Y-Grundlagentests](../../apps/web/src/components/__tests__/accessibility-foundations.test.ts);
+- die globalen A11Y-Grundlagen als Render-Tests:
+  [Skip-Link und Landmarks der Layouts](../../apps/web/src/app/__tests__/protected-layouts.test.tsx),
+  [mobile Navigation](../../apps/web/src/components/__tests__/mobile-sidebar-dialog.test.tsx)
+  und [globale Suche](../../apps/web/src/components/__tests__/global-search-a11y.test.tsx);
 - der
-  [Konsolidierungs- und Fokustest der Dialog-Infrastruktur](../../apps/web/src/components/ui/__tests__/modal-consolidation.test.ts);
+  [Stylesheet-Vertrag für Fokus-, Text-Tokens und Forced Colors](../../apps/web/src/app/__tests__/stylesheet-contracts.test.ts);
+- der
+  [Verhaltenstest der Dialog-Infrastruktur](../../apps/web/src/components/ui/__tests__/modal-a11y.test.tsx)
+  (Rolle, Fokusfalle, Hintergrundisolierung, Fokus-Rückgabe) mit dem
+  [Konsolidierungs-Guard](../../apps/web/src/components/ui/__tests__/modal-consolidation.test.ts);
 - die
   [Property-Tests der Brand-Palette](../../apps/web/src/lib/__tests__/brand-palette.test.ts);
 - die
-  [Strukturtests des Wissensdatenbank-Editors](<../../apps/web/src/app/staff/(protected)/knowledge/__tests__/editor-structure.test.ts>);
+  [Render-Tests des Wissensdatenbank-Editors](<../../apps/web/src/app/staff/(protected)/knowledge/__tests__/editor-structure.test.tsx>);
 - die
-  [Strukturtests des Subsumtions-Editors](<../../apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/compose-editor-structure.test.ts>).
+  [Render-Tests des Subsumtions-Editors](<../../apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/compose-editor-structure.test.tsx>).
 
 ### 3.3 Axe und Playwright
 
