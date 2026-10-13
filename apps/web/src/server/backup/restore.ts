@@ -392,6 +392,22 @@ async function smokeTest(targetUrl: string): Promise<void> {
   }
 }
 
+/**
+ * Welle 15: setzt die kanonischen Rolleneinstellungen der Ziel-DB
+ * (CANONICAL_ROLE_SETTINGS), die pg_dump nicht enthält, und meldet das Ergebnis.
+ */
+async function applyRoleSettingsBeforeRestore(targetUrl: string): Promise<void> {
+  const applied = await applyCanonicalRoleSettings(
+    targetUrl,
+    (url) => new PrismaClient({ adapter: createPostgresAdapter(url) }),
+  );
+  process.stdout.write(
+    applied.length > 0
+      ? `  Rolleneinstellungen gesetzt: ${applied.join(', ')}\n`
+      : `  Rolleneinstellungen bereits kanonisch.\n`,
+  );
+}
+
 async function main() {
   const args = parseRestoreArgs(process.argv.slice(2));
 
@@ -507,15 +523,7 @@ async function main() {
     // Welle 15: Rolleneinstellungen (pg_db_role_setting, z. B. lock_timeout der
     // App-Rolle) sind nicht Teil des Dumps. Erst nach allen Vorprüfungen und
     // vor pg_restore setzen: Fehlt das Recht dazu, bleibt die Ziel-DB unberührt.
-    const appliedRoleSettings = await applyCanonicalRoleSettings(
-      targetUrl,
-      (url) => new PrismaClient({ adapter: createPostgresAdapter(url) }),
-    );
-    process.stdout.write(
-      appliedRoleSettings.length > 0
-        ? `  Rolleneinstellungen gesetzt: ${appliedRoleSettings.join(', ')}\n`
-        : `  Rolleneinstellungen bereits kanonisch.\n`,
-    );
+    await applyRoleSettingsBeforeRestore(targetUrl);
 
     process.stdout.write(`Spiele in DB ein …\n`);
     await runPgRestore(path, targetUrl);

@@ -159,10 +159,7 @@ export default async function AdminPage() {
     });
   }
   if (gwgDueCount > 0) {
-    issues.push({
-      href: '#quicklinks',
-      label: `${gwgDueCount} GwG-${gwgDueCount === 1 ? 'Eintrag' : 'Einträge'} löschreif (für Sie sichtbar)`,
-    });
+    issues.push({ href: '#quicklinks', label: gwgDueIssueLabel(gwgDueCount) });
   }
   if (anonDueCount > 0) {
     issues.push({ href: '#quicklinks', label: `${anonDueCount} DSGVO-Anonymisierung fällig` });
@@ -725,4 +722,9 @@ function SmallKpi({
       </div>
     </div>
   );
+}
+
+/** Welle 15: Hinweistext der Kachel; zählt nur für den Betrachter sichtbare Einträge. */
+function gwgDueIssueLabel(count: number): string {
+  return `${count} GwG-${count === 1 ? 'Eintrag' : 'Einträge'} löschreif (für Sie sichtbar)`;
 }

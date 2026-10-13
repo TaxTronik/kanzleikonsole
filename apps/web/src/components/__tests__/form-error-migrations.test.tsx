@@ -77,6 +77,8 @@ function appointment() {
     location: null,
     notes: null,
     fromRequest: false,
+    // Welle 15: ohne Mandantenbezug kein Mailangebot (Checkbox deaktiviert).
+    clientMail: { recipients: [], unavailableReason: null },
   };
 }
 

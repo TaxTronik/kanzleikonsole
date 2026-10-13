@@ -54,49 +54,12 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
 
   const { req, latestExport, storedExport } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
-    async (tx) => {
-      const req = await tx.dsgvoRequest.findUnique({ where: { id } });
-      // Welle 15: letzter Auftrag an den Worker dsgvo-export (Status) und das
-      // fertige, noch abgelegte Paket (Download, wie server/dsgvo/export-download).
-      const latestExport = req
-        ? await tx.dsgvoExport.findFirst({
-            where: { requestId: req.id },
-            orderBy: { requestedAt: 'desc' },
-            select: {
-              status: true,
-              requestedAt: true,
-              startedAt: true,
-              finishedAt: true,
-              error: true,
-            },
-          })
-        : null;
-      const storedExport = req
-        ? await tx.dsgvoExport.findFirst({
-            where: { requestId: req.id, status: 'DONE', objectDeletedAt: null },
-            orderBy: { finishedAt: 'desc' },
-            select: { sha256: true },
-          })
-        : null;
-      return { req, latestExport, storedExport };
-    },
+    (tx) => loadRequestWithExports(tx, id),
   );
 
   if (!req) notFound();
 
-  const latestExportView: ExportJobView | null = latestExport
-    ? {
-        status: latestExport.status,
-        requestedAt: latestExport.requestedAt.toISOString(),
-        finishedAt: latestExport.finishedAt?.toISOString() ?? null,
-        error: latestExport.error,
-        stale: isDsgvoExportStale(latestExport, new Date()),
-        downloadable:
-          storedExport?.sha256 != null &&
-          req.resultSha256 !== null &&
-          Buffer.from(storedExport.sha256).equals(Buffer.from(req.resultSha256)),
-      }
-    : null;
+  const latestExportView = toExportJobView(latestExport, storedExport, req.resultSha256);
 
   const isContactAction =
     req.subjectType === 'CLIENT_CONTACT' &&
@@ -360,4 +323,50 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
       )}
     </div>
   );
+}
+
+type DetailTx = Parameters<Parameters<typeof withTenantContext>[1]>[0];
+
+/**
+ * Welle 15: Antrag, letzter Auftrag an den Worker dsgvo-export (Status) und das
+ * fertige, noch abgelegte Paket (Download, wie server/dsgvo/export-download).
+ */
+async function loadRequestWithExports(tx: DetailTx, id: string) {
+  const req = await tx.dsgvoRequest.findUnique({ where: { id } });
+  if (!req) return { req, latestExport: null, storedExport: null };
+  const [latestExport, storedExport] = await Promise.all([
+    tx.dsgvoExport.findFirst({
+      where: { requestId: req.id },
+      orderBy: { requestedAt: 'desc' },
+      select: { status: true, requestedAt: true, startedAt: true, finishedAt: true, error: true },
+    }),
+    tx.dsgvoExport.findFirst({
+      where: { requestId: req.id, status: 'DONE', objectDeletedAt: null },
+      orderBy: { finishedAt: 'desc' },
+      select: { sha256: true },
+    }),
+  ]);
+  return { req, latestExport, storedExport };
+}
+
+type LoadedExports = Awaited<ReturnType<typeof loadRequestWithExports>>;
+
+/** Statuszeile der Auskunft; herunterladbar nur das am Antrag gebundene Paket. */
+function toExportJobView(
+  latest: LoadedExports['latestExport'],
+  stored: LoadedExports['storedExport'],
+  resultSha256: Uint8Array | null,
+): ExportJobView | null {
+  if (!latest) return null;
+  return {
+    status: latest.status,
+    requestedAt: latest.requestedAt.toISOString(),
+    finishedAt: latest.finishedAt?.toISOString() ?? null,
+    error: latest.error,
+    stale: isDsgvoExportStale(latest, new Date()),
+    downloadable:
+      stored?.sha256 != null &&
+      resultSha256 !== null &&
+      Buffer.from(stored.sha256).equals(Buffer.from(resultSha256)),
+  };
 }

@@ -323,7 +323,10 @@ describe('Canonical role settings before pg_restore (Welle 15)', () => {
     const cli = repoFile('apps/web/src/server/backup/restore.ts');
     const main = cli.slice(cli.indexOf('async function main()'));
     const empty = main.indexOf('await targetIsEmpty(');
-    const settings = main.indexOf('await applyCanonicalRoleSettings(');
+    // Der Aufruf steckt im Helfer applyRoleSettingsBeforeRestore (Komplexität je Funktion).
+    const helper = cli.slice(cli.indexOf('async function applyRoleSettingsBeforeRestore('));
+    expect(helper.indexOf('await applyCanonicalRoleSettings(')).toBeGreaterThan(0);
+    const settings = main.indexOf('await applyRoleSettingsBeforeRestore(');
     const restore = main.indexOf('await runPgRestore(');
     const acceptance = main.indexOf('await assertRestoreTargetSecurity(');
     expect(settings).toBeGreaterThan(empty);
