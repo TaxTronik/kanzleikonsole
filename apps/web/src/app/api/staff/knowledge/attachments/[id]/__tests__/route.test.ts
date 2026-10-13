@@ -1,4 +1,6 @@
 // Fachkatalog: DOC-VERSION-IMMUTABILITY-001
+// Ergänzt um Mandanten-, Entwurfs- und Cache-Grenzen aus der früheren
+// Quelltextprüfung knowledge/__tests__/editor-structure.test.ts (B-08, Welle 15).
 // =============================================================================
 // R-05: Der Abruf einer Wissensanlage streamt über den gemeinsamen, prüfenden
 // Leseweg (streamVerifiedObject). S3 ist am Storage-Client gemockt; Größen- und
@@ -111,6 +113,34 @@ describe('Wissensanlage über den geprüften Leseweg (R-05)', () => {
       name: 'StoredObjectError',
       reason: 'LENGTH_MISMATCH',
     });
+  });
+
+  it('fragt nur Anlagen des eigenen Mandantenkontexts ab und liefert sie privat aus', async () => {
+    stored(BYTES);
+    const response = await call();
+    expect(h.findFirst.mock.calls[0]![0].where).toEqual({
+      id: ATTACHMENT_ID,
+      tenantId: 'tenant-1',
+    });
+    expect(h.findFirst.mock.calls[0]![0].include.document.select.versions.select).toMatchObject({
+      scanStatus: true,
+      scanCompletedAt: true,
+    });
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('liefert Entwurfsanlagen nur der hochladenden Person aus', async () => {
+    const foreignDraft = entry();
+    Object.assign(foreignDraft, { articleId: null, uploadedBy: 'staff-2' });
+    h.findFirst.mockResolvedValue(foreignDraft);
+    expect((await call()).status).toBe(404);
+    expect(h.send).not.toHaveBeenCalled();
+
+    const ownDraft = entry();
+    Object.assign(ownDraft, { articleId: null, uploadedBy: 'staff-1' });
+    h.findFirst.mockResolvedValue(ownDraft);
+    stored(BYTES);
+    expect((await call()).status).toBe(200);
   });
 
   it('liest eine nicht freigegebene Anlage nicht aus dem Speicher', async () => {

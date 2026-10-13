@@ -1,11 +1,16 @@
+// @vitest-environment jsdom
 // P-18: Die Empfangsbestätigung lädt die Dokumentseite einmal neu (über die
-// revalidierende Action), nicht zusätzlich per router.refresh(); eine
-// abgelehnte Bestätigung nimmt den optimistischen Stand zurück.
-import { readFileSync } from 'node:fs';
+// revalidierende Action, siehe acknowledge-access.test.ts), nicht zusätzlich
+// per router.refresh(); eine abgelehnte Bestätigung nimmt den optimistischen
+// Stand zurück.
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
-vi.mock('../acknowledge-actions', () => ({ acknowledgeDocumentAction: vi.fn() }));
+const h = vi.hoisted(() => ({ acknowledge: vi.fn(), useRouter: vi.fn() }));
+
+vi.mock('../acknowledge-actions', () => ({ acknowledgeDocumentAction: h.acknowledge }));
+vi.mock('next/navigation', () => ({ useRouter: h.useRouter }));
 
 import { AcknowledgeButton, submitAcknowledgement } from '../acknowledge-button';
 
@@ -23,12 +28,34 @@ describe('AcknowledgeButton', () => {
     expect(reject).toHaveBeenCalledWith({ documentId: DOCUMENT_ID, acknowledged: false });
   });
 
-  it('lädt die Seite nicht zusätzlich per router.refresh() neu', () => {
-    const source = readFileSync(new URL('../acknowledge-button.tsx', import.meta.url), 'utf8');
-    expect(source).not.toMatch(/router\.refresh|useRouter/);
-    // Die Action revalidiert genau die Seite, auf der der Knopf steht.
-    const action = readFileSync(new URL('../acknowledge-actions.ts', import.meta.url), 'utf8');
-    expect(action).toContain('revalidatePath(`/staff/documents/${parsed.data.documentId}`)');
+  it('bestätigt optimistisch ohne zusätzlichen Router-Refresh und nimmt Ablehnungen zurück', async () => {
+    h.acknowledge.mockResolvedValueOnce({ ok: true });
+    render(
+      <AcknowledgeButton
+        documentId={DOCUMENT_ID}
+        acknowledgedAt={null}
+        acknowledgedByName={null}
+        size="md"
+      />,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Empfang bestätigen' }));
+    });
+    expect(h.acknowledge).toHaveBeenCalledWith({ documentId: DOCUMENT_ID, acknowledged: true });
+    expect(screen.getByText('Empfang bestätigt')).toBeTruthy();
+    // Kein Router im Spiel: Die Action-Antwort rendert die Seite neu.
+    expect(h.useRouter).not.toHaveBeenCalled();
+
+    h.acknowledge.mockResolvedValueOnce({ ok: false, error: 'Dokument nicht gefunden.' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^Empfang bestätigt am/ }));
+    });
+    expect(h.acknowledge).toHaveBeenLastCalledWith({
+      documentId: DOCUMENT_ID,
+      acknowledged: false,
+    });
+    // Abgelehnt: zurück auf den bestätigten Stand.
+    expect(screen.getByText('Empfang bestätigt')).toBeTruthy();
   });
 
   it('zeigt den gespeicherten Stand', () => {

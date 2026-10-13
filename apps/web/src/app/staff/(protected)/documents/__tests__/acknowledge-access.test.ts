@@ -95,5 +95,38 @@ describe('Empfangsbestätigung — RESTRICTED-Gate', () => {
     });
     expect(result.ok).toBe(false);
     expect(tx.document.update).not.toHaveBeenCalled();
+    expect(m.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  // P-18 (B-08, Welle 15): Die Action revalidiert genau die Seite, auf der der
+  // Knopf steht; der Knopf selbst lädt nicht zusätzlich per Router neu
+  // (acknowledge-button.test.tsx).
+  it('revalidiert nach Erfolg die Dokumentseite, die Liste und den Mandanten', async () => {
+    const tx = {
+      document: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: DOCUMENT_ID,
+          title: 'Beleg',
+          clientId: CLIENT_ID,
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+    };
+    m.withStaff.mockImplementation(async (fn: (arg: unknown, ctx: unknown) => unknown) => ({
+      ok: true,
+      ...((await fn(tx, {
+        tenantId: 'tenant-1',
+        staffId: 'staff-1',
+        ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+        session: { user: { tenantId: 'tenant-1', staffId: 'staff-1' } },
+      })) as object),
+    }));
+
+    await acknowledgeDocumentAction({ documentId: DOCUMENT_ID, acknowledged: true });
+    expect(m.revalidatePath.mock.calls.map(([path]) => path)).toEqual([
+      '/staff/documents',
+      `/staff/documents/${DOCUMENT_ID}`,
+      `/staff/clients/${CLIENT_ID}`,
+    ]);
   });
 });
