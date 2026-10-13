@@ -37,7 +37,7 @@ export interface StaffInboxSearchFilters {
   scope: 'mine' | 'team' | 'all';
 }
 
-export interface StaffInboxSearchCandidates {
+export interface InboxSearchCandidates {
   /** IDs der jüngsten Treffer, höchstens `STAFF_INBOX_SEARCH_CANDIDATE_LIMIT`. */
   ids: string[];
   /** Es gibt mehr Treffer als die Grenze; ältere fehlen in `ids`. */
@@ -62,7 +62,7 @@ export async function staffInboxSearchCandidatesTx(
   tx: TxClient,
   query: string,
   filters: StaffInboxSearchFilters,
-): Promise<StaffInboxSearchCandidates> {
+): Promise<InboxSearchCandidates> {
   const rows = await tx.$queryRaw<Array<{ id: string | null; ueberlauf: boolean }>>`
     SELECT thread_id::text AS id, ueberlauf
       FROM app.portal_inbox_staff_search_candidates_v2(
@@ -72,6 +72,43 @@ export async function staffInboxSearchCandidatesTx(
         ${filters.attention ?? null}::text,
         ${filters.scope},
         ${STAFF_INBOX_SEARCH_CANDIDATE_LIMIT}::int
+      )
+  `;
+  return {
+    ids: rows.flatMap((row) => (row.id ? [row.id] : [])),
+    truncated: rows.some((row) => row.ueberlauf),
+  };
+}
+
+/**
+ * Höchstzahl der Treffer einer Portalsuche (P-10, Welle 15); darüber zeigt das
+ * Portal die jüngsten Treffer mit dem Hinweis „Mehr als N Treffer – Suche
+ * verfeinern“.
+ */
+export const PORTAL_INBOX_SEARCH_CANDIDATE_LIMIT = 500;
+
+/**
+ * Review-Finding P-10, Welle 15: Stufe 1 der Portalsuche im Posteingang.
+ * `app.portal_inbox_contact_search_candidates` (SECURITY DEFINER) bindet Tenant
+ * und Kontakt an den Kontext, leitet den Mandanten ausschließlich aus dem
+ * Kontakt ab (wie die Kontakt-Policy) und findet die jüngsten Treffer derselben
+ * Felder (`inboxMetadataSearch(query, 'portal')`: Betreff, eigener
+ * Mandantenname) und Filter. Unter RLS lief vorher jede Thread-Zeile des
+ * Mandanten durch die Kontakt-Policy, bevor ILIKE filtern durfte.
+ */
+export async function portalInboxSearchCandidatesTx(
+  tx: TxClient,
+  query: string,
+  filters: Omit<StaffInboxSearchFilters, 'scope'>,
+): Promise<InboxSearchCandidates> {
+  const rows = await tx.$queryRaw<Array<{ id: string | null; ueberlauf: boolean }>>`
+    SELECT thread_id::text AS id, ueberlauf
+      FROM app.portal_inbox_contact_search_candidates(
+        ${query},
+        ${filters.topic ?? null}::text,
+        ${filters.status ?? null}::text,
+        ${filters.attention ?? null}::text,
+        ${PORTAL_INBOX_SEARCH_CANDIDATE_LIMIT}::int
       )
   `;
   return {

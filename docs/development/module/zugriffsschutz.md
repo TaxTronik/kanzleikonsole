@@ -361,7 +361,9 @@ eine feste Zahl IDs. Danach lädt die Anwendung nur diese IDs unter RLS mit dem
 unveränderten Filter. So arbeiten die globale Suche
 (`app.staff_search_candidates`), die Staff-Suche im Posteingang
 (`app.portal_inbox_staff_search_candidates_v2`, die 500 jüngsten Treffer mit
-Hinweis bei mehr) und die Titelsuche der Dokumentenseite
+Hinweis bei mehr), die Portalsuche im Posteingang
+(`app.portal_inbox_contact_search_candidates`, Mandant nur aus dem Kontakt des
+Kontexts) und die Titelsuche der Dokumentenseite
 (`app.document_title_search_candidates`, eine Ebene: Mandant oder
 Kanzlei-intern, ein Ordner, aktiv oder gelöscht).
 

@@ -6,26 +6,12 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { listStaffInboxThreadsTx, type InboxListResult } from '@/server/inbox/queries';
 import { INBOX_TOPICS, INBOX_TOPIC_LABELS, type InboxTopic } from '@/server/inbox/constants';
 import { OffsetPagination } from '@/components/offset-pagination';
+import { SearchLimitHint } from '@/components/search-limit-hint';
 import { Pagination } from '@/components/pagination';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
 function topic(value: string | undefined): InboxTopic | undefined {
   return INBOX_TOPICS.find((candidate) => candidate === value);
-}
-
-/**
- * P-10 (Welle 15): Die Suche lädt nur die jüngsten Treffer bis zur Grenze;
- * ältere dürfen nicht stillschweigend fehlen.
- */
-function SearchLimitHint({ data }: { data: InboxListResult }) {
-  if (!data.search?.truncated) return null;
-  const limit = data.search.limit.toLocaleString('de-DE');
-  return (
-    <p role="status" className="alert-warning m-4">
-      Mehr als {limit} Treffer – Suche verfeinern. Angezeigt werden die {limit} zuletzt aktiven
-      Verläufe.
-    </p>
-  );
 }
 
 /** Suche: Keyset-Blättern mit begrenzter Zählung; sonst Seitenzahlen. */
@@ -168,7 +154,7 @@ export default async function StaffInboxPage({
       </form>
 
       <section className="card overflow-hidden" aria-label="Mandantenpost-Verläufe">
-        <SearchLimitHint data={data} />
+        <SearchLimitHint paging={data.search} />
         {data.items.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <MessageSquare className="mx-auto mb-3 h-12 w-12 text-disabled" aria-hidden="true" />

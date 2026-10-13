@@ -7,6 +7,7 @@ import { readPortalFeatures } from '@/server/settings/portal-features';
 import { listPortalInboxThreadsTx, type InboxListFilters } from '@/server/inbox/queries';
 import { INBOX_TOPICS, INBOX_TOPIC_LABELS, type InboxTopic } from '@/server/inbox/constants';
 import { OffsetPagination } from '@/components/offset-pagination';
+import { SearchLimitHint } from '@/components/search-limit-hint';
 import { fmtDateTimeShort } from '@/lib/fmt';
 
 function topic(value: string | undefined): InboxTopic | undefined {
@@ -106,6 +107,7 @@ export default async function PortalInboxPage({
       </form>
 
       <section className="card overflow-hidden" aria-label="Nachrichtenverläufe">
+        <SearchLimitHint paging={data.portalSearch} />
         {data.items.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <MessageSquarePlus

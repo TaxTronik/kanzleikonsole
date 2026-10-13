@@ -19,6 +19,8 @@ import {
   encodeInboxCursor,
   inboxMetadataSearch,
   parseInboxCursor,
+  PORTAL_INBOX_SEARCH_CANDIDATE_LIMIT,
+  portalInboxSearchCandidatesTx,
   STAFF_INBOX_SEARCH_CANDIDATE_LIMIT,
   staffInboxSearchCandidatesTx,
 } from './search';
@@ -60,6 +62,11 @@ export interface InboxListResult {
   totalPages: number;
   /** Nur bei einer Staff-Suche; `page`/`totalPages` sind dann 1. */
   search?: StaffInboxSearchPaging;
+  /**
+   * Nur bei einer Portalsuche (P-10, Welle 15): mehr Treffer als `limit`;
+   * `total` zählt dann nur die jüngsten `limit` und die Oberfläche sagt das.
+   */
+  portalSearch?: { truncated: boolean; limit: number };
 }
 
 function normalizePage(value: number | undefined): number {
@@ -116,6 +123,31 @@ function listItem(
   };
 }
 
+const PORTAL_LIST_ORDER: Prisma.PortalInboxThreadOrderByWithRelationInput[] = [
+  { lastMessageAt: 'desc' },
+  { id: 'desc' },
+];
+
+function portalListSelect(contactId: string) {
+  return {
+    id: true,
+    clientId: true,
+    subject: true,
+    topic: true,
+    status: true,
+    attention: true,
+    assignedStaffId: true,
+    lastMessageAt: true,
+    client: { select: { name: true } },
+    assignedStaff: { select: { fullName: true } },
+    reads: {
+      where: { contactId },
+      take: 1,
+      select: { lastReadAt: true },
+    },
+  } satisfies Prisma.PortalInboxThreadSelect;
+}
+
 export async function listPortalInboxThreadsTx(
   tx: TxClient,
   actor: { tenantId: string; clientId: string; contactId: string },
@@ -128,31 +160,18 @@ export async function listPortalInboxThreadsTx(
     clientId: actor.clientId,
     ...filteredWhere(filters, 'portal'),
   };
+  const query = normalizeQuery(filters.query);
+  if (query) return searchPortalInboxThreadsTx(tx, actor, where, query, filters, requestedPage);
+
   const total = await tx.portalInboxThread.count({ where });
   const totalPages = Math.max(1, Math.ceil(total / INBOX_PAGE_SIZE));
   const page = Math.min(requestedPage, totalPages);
   const rows = await tx.portalInboxThread.findMany({
     where,
-    orderBy: [{ lastMessageAt: 'desc' }, { id: 'desc' }],
+    orderBy: PORTAL_LIST_ORDER,
     skip: (page - 1) * INBOX_PAGE_SIZE,
     take: INBOX_PAGE_SIZE,
-    select: {
-      id: true,
-      clientId: true,
-      subject: true,
-      topic: true,
-      status: true,
-      attention: true,
-      assignedStaffId: true,
-      lastMessageAt: true,
-      client: { select: { name: true } },
-      assignedStaff: { select: { fullName: true } },
-      reads: {
-        where: { contactId: actor.contactId },
-        take: 1,
-        select: { lastReadAt: true },
-      },
-    },
+    select: portalListSelect(actor.contactId),
   });
   return {
     items: rows.map((row) => listItem(row)),
@@ -160,6 +179,60 @@ export async function listPortalInboxThreadsTx(
     pageSize: INBOX_PAGE_SIZE,
     total,
     totalPages,
+  };
+}
+
+/**
+ * Portalsuche im Posteingang (ACCESS-SEARCH-SCOPE-001, Review-Finding P-10,
+ * Welle 15). Stufe 1 liefert die jüngsten Treffer des eigenen Mandanten
+ * (höchstens `PORTAL_INBOX_SEARCH_CANDIDATE_LIMIT`). Stufe 2 prüft genau diese
+ * IDs unter RLS mit dem unveränderten Filter (Tenant, Mandant, Suchfelder,
+ * Filter); nur was dabei sichtbar bleibt, zählt. Geblättert wird wie bisher
+ * über Seitenzahlen, jetzt innerhalb der geprüften Treffer; die Seite selbst
+ * lädt die Lesestände nur für ihre höchstens 25 Threads.
+ */
+async function searchPortalInboxThreadsTx(
+  tx: TxClient,
+  actor: { tenantId: string; clientId: string; contactId: string },
+  where: Prisma.PortalInboxThreadWhereInput,
+  query: string,
+  filters: InboxListFilters,
+  requestedPage: number,
+): Promise<InboxListResult> {
+  const candidates = await portalInboxSearchCandidatesTx(tx, query, {
+    topic: filters.topic,
+    status: filters.status,
+    attention: filters.attention,
+  });
+  const visible =
+    candidates.ids.length === 0
+      ? []
+      : await tx.portalInboxThread.findMany({
+          where: { ...where, id: { in: candidates.ids } },
+          select: { id: true, lastMessageAt: true },
+        });
+  visible.sort(compareInboxRecency);
+  const total = visible.length;
+  const totalPages = Math.max(1, Math.ceil(total / INBOX_PAGE_SIZE));
+  const page = Math.min(requestedPage, totalPages);
+  const pageIds = visible
+    .slice((page - 1) * INBOX_PAGE_SIZE, page * INBOX_PAGE_SIZE)
+    .map((row) => row.id);
+  const rows =
+    pageIds.length === 0
+      ? []
+      : await tx.portalInboxThread.findMany({
+          where: { ...where, id: { in: pageIds } },
+          orderBy: PORTAL_LIST_ORDER,
+          select: portalListSelect(actor.contactId),
+        });
+  return {
+    items: rows.map((row) => listItem(row)),
+    page,
+    pageSize: INBOX_PAGE_SIZE,
+    total,
+    totalPages,
+    portalSearch: { truncated: candidates.truncated, limit: PORTAL_INBOX_SEARCH_CANDIDATE_LIMIT },
   };
 }
 

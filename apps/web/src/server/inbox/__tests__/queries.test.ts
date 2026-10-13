@@ -12,6 +12,7 @@ import {
   encodeInboxCursor,
   inboxMetadataSearch,
   parseInboxCursor,
+  PORTAL_INBOX_SEARCH_CANDIDATE_LIMIT,
   STAFF_INBOX_SEARCH_CANDIDATE_LIMIT,
 } from '../search';
 
@@ -216,24 +217,146 @@ describe('Staff-Posteingangssuche mit Kandidaten', () => {
     });
   });
 
-  it('fragt ohne Suchbegriff und in der Portalliste keine Kandidaten ab', async () => {
+  it('fragt ohne Suchbegriff keine Kandidaten ab', async () => {
     const ohneBegriff = makeTx([]);
     await listStaffInboxThreadsTx(ohneBegriff as never, session, { query: '   ', scope: 'all' });
     expect(ohneBegriff.$queryRaw).not.toHaveBeenCalled();
     expect(whereOf(ohneBegriff.portalInboxThread.count)).not.toHaveProperty('id');
+  });
+});
 
-    // Die Portalsuche bleibt auf einen Mandanten begrenzt (Scope-Index).
-    const portal = makeTx([]);
-    await listPortalInboxThreadsTx(
-      portal as never,
-      { tenantId: 'tenant-1', clientId: 'client-1', contactId: 'contact-1' },
-      { query: 'Belege' },
+// Review-Finding P-10, Welle 15: Die Portalsuche wählt Treffer über
+// app.portal_inbox_contact_search_candidates vor (Mandant nur aus dem Kontakt
+// des Kontexts) und prüft genau diese IDs unter RLS mit unverändertem Filter.
+describe('Portalsuche im Posteingang mit Kandidaten', () => {
+  const actor = { tenantId: 'tenant-1', clientId: 'client-1', contactId: 'contact-1' };
+
+  function thread(index: number) {
+    return {
+      id: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+      lastMessageAt: new Date(Date.UTC(2026, 0, 1, 0, index)),
+    };
+  }
+  function fullRow(index: number) {
+    return {
+      ...thread(index),
+      clientId: 'client-1',
+      subject: `Belege ${index}`,
+      topic: 'GENERAL' as const,
+      status: 'OPEN' as const,
+      attention: 'STAFF' as const,
+      assignedStaffId: null,
+      client: { name: 'Mandant' },
+      assignedStaff: null,
+      reads: [],
+    };
+  }
+
+  function makePortalTx(
+    kandidaten: Array<{ id: string | null; ueberlauf: boolean }>,
+    sichtbar: Array<ReturnType<typeof thread>>,
+  ) {
+    // Prüfung (nur ID und Aktivität) liefert die sichtbaren Kandidaten, die
+    // Seitenabfrage (mit Lesestand) die angefragten Threads vollständig.
+    const findMany = vi.fn(
+      async (args: { where: { id?: { in: string[] } }; select: { reads?: unknown } }) =>
+        args.select.reads
+          ? (args.where.id?.in ?? []).map((id) => fullRow(Number(id.slice(-12))))
+          : sichtbar,
     );
-    expect(portal.$queryRaw).not.toHaveBeenCalled();
-    expect(whereOf(portal.portalInboxThread.count)).toEqual({
+    return {
+      $queryRaw: vi.fn(async () => kandidaten),
+      portalInboxThread: { count: vi.fn(async () => 0), findMany },
+    };
+  }
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('übergibt Begriff und Filter, prüft die Kandidaten unter RLS und lädt nur die Seite', async () => {
+    const rows = Array.from({ length: 60 }, (_, index) => thread(index));
+    const tx = makePortalTx(
+      rows.map((row) => ({ id: row.id, ueberlauf: false })),
+      [...rows].reverse(),
+    );
+
+    const result = await listPortalInboxThreadsTx(tx as never, actor, {
+      query: '  Belege ',
+      topic: 'DOCUMENTS',
+      status: 'OPEN',
+      page: 2,
+    });
+
+    const [sql, ...werte] = tx.$queryRaw.mock.calls[0] as unknown as [string[], ...unknown[]];
+    expect(sql.join('?')).toContain('app.portal_inbox_contact_search_candidates(');
+    // Kein Tenant, Mandant oder Kontakt als Parameter: die Funktion nimmt sie aus dem Kontext.
+    expect(werte).toEqual([
+      'Belege',
+      'DOCUMENTS',
+      'OPEN',
+      null,
+      PORTAL_INBOX_SEARCH_CANDIDATE_LIMIT,
+    ]);
+    expect(tx.portalInboxThread.count).not.toHaveBeenCalled();
+    const [pruefung, seite] = tx.portalInboxThread.findMany.mock.calls.map(
+      (call) => (call as unknown as [{ where: Record<string, unknown>; select: object }])[0],
+    );
+    const where = {
       tenantId: 'tenant-1',
       clientId: 'client-1',
+      topic: 'DOCUMENTS',
+      status: 'OPEN',
       OR: inboxMetadataSearch('Belege', 'portal'),
+    };
+    expect(pruefung).toEqual({
+      where: { ...where, id: { in: rows.map((row) => row.id) } },
+      select: { id: true, lastMessageAt: true },
     });
+    // Seite 2 (Threads 34 bis 10, neueste zuerst) mit Lesestand des Kontakts.
+    const seitenIds = rows
+      .slice(10, 35)
+      .reverse()
+      .map((row) => row.id);
+    expect(seite?.where).toEqual({ ...where, id: { in: seitenIds } });
+    expect(seite?.select).toMatchObject({ reads: { where: { contactId: 'contact-1' } } });
+    expect(result).toMatchObject({
+      page: 2,
+      total: 60,
+      totalPages: 3,
+      portalSearch: { truncated: false, limit: PORTAL_INBOX_SEARCH_CANDIDATE_LIMIT },
+    });
+    expect(result.items.map((item) => item.id)).toEqual(seitenIds);
+  });
+
+  it('meldet einen Überlauf und begrenzt die Seitenzahl auf die geprüften Treffer', async () => {
+    const rows = Array.from({ length: 3 }, (_, index) => thread(index));
+    const tx = makePortalTx(
+      [...rows.map((row) => ({ id: row.id, ueberlauf: false })), { id: null, ueberlauf: true }],
+      rows,
+    );
+
+    const result = await listPortalInboxThreadsTx(tx as never, actor, { query: 'e', page: 9 });
+
+    expect(result).toMatchObject({
+      page: 1,
+      total: 3,
+      totalPages: 1,
+      portalSearch: { truncated: true },
+    });
+  });
+
+  it('liefert ohne Kandidaten keine Treffer und fragt die Liste nicht ab', async () => {
+    const tx = makePortalTx([], []);
+    const result = await listPortalInboxThreadsTx(tx as never, actor, { query: 'Zylinderkopf' });
+    expect(tx.portalInboxThread.findMany).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ items: [], total: 0, portalSearch: { truncated: false } });
+  });
+
+  it('fragt ohne Suchbegriff keine Kandidaten ab (unveränderte Liste)', async () => {
+    const tx = makePortalTx([], []);
+    await listPortalInboxThreadsTx(tx as never, actor, { query: '   ' });
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(
+      (tx.portalInboxThread.count.mock.calls[0] as unknown as [{ where: unknown }])[0].where,
+    ).toEqual({ tenantId: 'tenant-1', clientId: 'client-1' });
   });
 });

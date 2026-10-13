@@ -195,9 +195,21 @@ Treffer – Suche verfeinern“ und am Ende der 500 Treffer denselben Hinweis st
 „Ende“; ältere Treffer fehlen also nie stillschweigend. Messung (Welle 15,
 100.000 Threads, 30.000 Treffer): vorher 114 s für Zählung und Seite, jetzt
 0,3–0,9 s je Seite. Die Liste ohne Suchbegriff zählt und blättert unverändert
-über Seitenzahlen unter RLS. Die Portalsuche ist auf einen Mandanten begrenzt
-und läuft über den Scope-Index `(tenant_id, client_id, …)`; der Trigramindex
-brächte dort keinen Vorteil.
+über Seitenzahlen unter RLS.
+
+Die Portalsuche läuft ebenso zweistufig: Unter RLS durchlief vorher jede
+Thread-Zeile des Mandanten die Kontakt-Policy, bevor `ILIKE` filtern durfte
+(30.000 Threads eines Mandanten: rund 2 s je Suche).
+`app.portal_inbox_contact_search_candidates` (SECURITY DEFINER) bindet Tenant
+und Kontakt an den Kontext und leitet den Mandanten ausschließlich aus dem
+Kontakt ab, mit denselben Bedingungen wie die Kontakt-Policy (aktiver Kontakt,
+aktives Mandat, Nachrichtenfach an). Sie sucht nur Betreff und eigenen
+Mandantennamen mit Thema-, Status- und Zug-Filter und liefert die 500 jüngsten
+Treffer. Die Liste prüft genau diese IDs unter RLS mit dem unveränderten Filter
+und blättert wie bisher über Seitenzahlen (25 je Seite), jetzt innerhalb dieser
+Treffer; bei mehr als 500 zeigt das Portal denselben Hinweis. Ein Portalnutzer
+erhält damit nie Threads anderer Mandanten oder Tenants. Der Betreff-
+Trigramindex bleibt: Staff- und Portalsuche nutzen ihn für seltene Begriffe.
 
 Treffer-, Zähler- und Detailabfragen müssen dieselben RLS-, Feature-, Kontakt-,
 Permission- und Mandantenzugriffsgates verwenden. Ein Deep-Link prüft die
