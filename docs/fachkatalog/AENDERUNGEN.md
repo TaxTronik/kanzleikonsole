@@ -1,5 +1,111 @@
 ---
 exceptions:
+  - id: FK-EXC-20261014-002
+    date: '2026-10-14'
+    paths:
+      - apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx
+      - apps/web/src/app/gwg-onboarding/__tests__/wizard-representatives.test.ts
+      - apps/web/src/app/gwg-onboarding/__tests__/wizard-steps-structure.test.ts
+      - apps/web/src/app/portal/(protected)/requests/[id]/__tests__/internal-comment-visibility.test.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/entry-actor.test.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/entry-actor.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/decision-forms.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/decision-forms.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/ui-state.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/compose-editor-structure.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/compose-editor-structure.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/document-surface.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/workspace-views.test.tsx
+      - apps/web/src/app/staff/(protected)/documents/__tests__/acknowledge-access.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/acknowledge-button.test.tsx
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.ts
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
+      - apps/web/src/server/privacy/__tests__/consent-policy-ui.test.ts
+    rule_ids:
+      - ACCESS-SEARCH-SCOPE-001
+      - AUDIT-HASH-CHAIN-001
+      - AUDIT-VERIFY-ALERT-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - DOC-PORTAL-SHARING-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - DSGVO-CONSENT-SNAPSHOT-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-REPRESENTATIVE-AUTHORITY-001
+      - GWG-RISK-REVIEW-001
+      - GWG-SELF-ONBOARDING-001
+      - POA-LIFECYCLE-001
+      - REQ-INTERNAL-COMMENT-001
+      - RISK-AI-SUGGESTION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+      - RISK-EXTERNAL-ANONYMIZATION-001
+    reason: >-
+      Nur die Nachweisform ändert sich (Befund B-08): Tests, die .tsx- und
+      .css-Quelltext lasen und mit toContain/toMatch prüften, sind durch
+      Render- und Verhaltenstests mit jsdom und Testing Library ersetzt
+      (teils als .tsx neu angelegt, teils gelöscht und in benannte Nachfolger
+      übernommen); reine Architektur- und Strukturguards bleiben. Jede
+      fachliche Zusicherung der alten Dateien ist in den neuen Tests erhalten,
+      der Commit-Text ordnet sie zu und gezielte Mutationen belegen sie.
+      Produktcode der betroffenen Regeln ist unverändert; Entscheidung,
+      Geltungsbereich, Ausnahmen und Ergebnis bleiben gleich. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx
+      - apps/web/src/app/gwg-onboarding/__tests__/wizard-steps-structure.test.ts
+      - apps/web/src/app/portal/(protected)/requests/[id]/__tests__/internal-comment-visibility.test.ts
+      - apps/web/src/app/staff/(protected)/admin/__tests__/admin-status-cards.test.tsx
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/audit-verify-refresh-ui.test.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/entry-actor.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/decision-forms.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/gwg-layout.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/ui-state.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/compose-editor-structure.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/document-surface.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/workspace-views.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/onboarding/__tests__/onboarding-page.test.tsx
+      - apps/web/src/app/staff/(protected)/documents/__tests__/acknowledge-access.test.ts
+      - apps/web/src/app/staff/(protected)/documents/__tests__/acknowledge-button.test.tsx
+      - apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
+      - apps/web/src/server/privacy/__tests__/consent-policy-ui.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20261014-001
+    date: '2026-10-14'
+    paths:
+      - apps/web/src/app/staff/(protected)/documents/page.tsx
+      - apps/web/src/server/documents/__tests__/managed-docs.test.ts
+      - apps/web/src/server/documents/__tests__/title-search.test.ts
+      - apps/web/src/server/documents/title-search.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - ACCESS-CLIENT-MODE-001
+      - ACCESS-STAFF-PERMISSION-001
+      - DOC-PORTAL-SHARING-001
+    reason: >-
+      Die Titelsuche der Dokumentenseite (eine Ebene: Mandant oder
+      Kanzlei-intern, ein Ordner, aktiv oder gelöscht) wählt Kandidaten über
+      app.document_title_search_candidates und den Trigramm-Index vor und lädt
+      nur diese Dokumente unter RLS mit unverändertem Filter (P-10). Die
+      Funktion nimmt Tenant und Akteur nur aus dem Transaktionskontext, lässt nur
+      aktive Kanzleipersonen zu, prüft den Mandantenzugriff wie
+      canAccessClientTx, die Lohn-Sperre und Mandatsartefakte wie die
+      restriktiven Dokument-Policies und kann daher höchstens strenger sein; RLS
+      prüft jede geladene Zeile erneut. Treffer, Reihenfolge und Gesamtzahl
+      bleiben gleich (288 Vergleiche mit der bisherigen Seitenabfrage), bei
+      gleicher Erstellzeit entscheidet die ID. Der Dokument-DTO-Test prüft den
+      gemeinsamen Mapper jetzt über gerenderte Seiten statt Quelltext (B-08).
+      Zugriffs-, Freigabe- und Lohnregeln sind unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - apps/web/src/server/documents/__tests__/title-search-db.test.ts
+      - apps/web/src/server/documents/__tests__/title-search.test.ts
+      - packages/db/src/__tests__/document-title-search-candidates.test.ts
+      - apps/web/src/server/documents/__tests__/managed-docs.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261008-002
     date: '2026-10-08'
     paths:
@@ -5341,6 +5447,12 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 2026-10-14: `FK-EXC-20261014-002` dokumentiert die Umstellung der
+  UI-Quelltexttests auf Render- und Verhaltenstests (B-08).
+
+- 2026-10-14: `FK-EXC-20261014-001` dokumentiert die Kandidatensuche der
+  Dokumentenseite über den Trigramm-Index (P-10).
 
 - 2026-10-07: `FK-EXC-20261007-051` dokumentiert die verzögerte
   Konfigurationsprüfung des Storage-Pakets und die typisierte Worker-ENV.
