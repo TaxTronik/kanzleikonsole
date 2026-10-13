@@ -126,23 +126,26 @@ describe('Dashboard-Leseansicht als serverseitiges CSS-Grid (P-24)', () => {
     expect(source('../../../../globals.css')).toContain('container-type: inline-size');
   });
 
-  it('lädt react-grid-layout samt CSS nur im Bearbeitungsmodus', () => {
-    const grid = source('../dashboard-grid.tsx');
-    expect(grid).not.toMatch(/^import (?!type )[^;]*from 'react-grid-layout'/m);
-    expect(grid).toContain("import type { Layout } from 'react-grid-layout';");
-    expect(grid).toMatch(/dynamic\(\s*\(\) => import\('\.\/dashboard-grid-editor'\)/);
-    expect(grid).toContain('ssr: false');
-    const editor = source('../dashboard-grid-editor.tsx');
-    expect(editor).toContain("from 'react-grid-layout';");
-    expect(editor).toContain("import '@/components/ui/grid-layout-edit.css';");
-    const globals = source('../../../../globals.css');
-    expect(globals).not.toContain('react-grid-layout/css');
-    expect(globals).not.toContain('react-resizable/css');
+  // Stylesheet-Vertrag (bewusst CSS-Quelle): Das Editor-CSS hängt nur am
+  // Editor-Chunk, nicht am globalen Stylesheet. Dass Editor und CSS erst im
+  // Bearbeitungsmodus geladen werden, prüft dashboard-lazy-editor.test.tsx
+  // (B-08, Welle 15).
+  it('bindet das react-grid-layout-CSS nur über das Editor-Stylesheet ein', () => {
+    const imports = (css: string) => {
+      const found: string[] = [];
+      parse(css).walkAtRules('import', (rule) => {
+        found.push(rule.params.replace(/^['"]|['"]$/g, ''));
+      });
+      return found;
+    };
+    const globals = imports(source('../../../../globals.css'));
+    expect(globals.filter((entry) => /react-(grid-layout|resizable)/.test(entry))).toEqual([]);
     const editCss = readFileSync(resolve(appDir, '../components/ui/grid-layout-edit.css'), 'utf8');
-    expect(editCss).toContain("@import 'react-grid-layout/css/styles.css';");
-    expect(editCss).toContain("@import 'react-resizable/css/styles.css';");
-    expect(source('../../admin/settings/client-layout-form.tsx')).toContain(
-      "import '@/components/ui/grid-layout-edit.css';",
+    expect(imports(editCss)).toEqual(
+      expect.arrayContaining([
+        'react-grid-layout/css/styles.css',
+        'react-resizable/css/styles.css',
+      ]),
     );
   });
 });

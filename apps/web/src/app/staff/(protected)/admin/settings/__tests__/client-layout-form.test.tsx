@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   refresh: vi.fn(),
   confirm: vi.fn(),
   controls: null as null | { onRemove: (id: string) => void },
+  editCssLoaded: false,
 }));
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: h.refresh }) }));
@@ -21,6 +22,10 @@ vi.mock('../actions', () => ({
   resetClientLayoutAction: h.reset,
 }));
 vi.mock('@/components/ui/modal', () => ({ confirmDialog: h.confirm }));
+vi.mock('@/components/ui/grid-layout-edit.css', () => {
+  h.editCssLoaded = true;
+  return {};
+});
 // Echte Bedienelemente; die Props werden nur mitgeschnitten, um den Schutz
 // gegen das Entfernen des letzten Blocks auch ohne (gesperrten) Button zu prüfen.
 vi.mock('@/components/ui/grid-layout-controls', async (importOriginal) => {
@@ -211,6 +216,11 @@ describe('ACP-Mandantenlayout: Entfernen und Fokus', () => {
     );
     await flushSave();
     expect(h.save).not.toHaveBeenCalled();
+  });
+
+  it('lädt das gemeinsame Editor-Stylesheet der Rasterbearbeitung', () => {
+    // Der Mock greift nur, wenn client-layout-form.tsx das Stylesheet importiert.
+    expect(h.editCssLoaded).toBe(true);
   });
 
   it('hängt nicht vom barrierearmen Anzeigemodus ab', () => {
