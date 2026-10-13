@@ -6,7 +6,7 @@
 // Benachrichtigungsglocke. Ersetzt auch die entsprechenden Teile aus
 // ui-state.test.ts.
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { onNotificationsChanged } from '@/lib/live-events';
 
 const h = vi.hoisted(() => ({
@@ -46,12 +46,12 @@ function renderForms(props: Partial<Props> = {}) {
   );
 }
 
-let notificationsChanged: ReturnType<typeof vi.fn>;
+let notificationsChanged: Mock<() => void>;
 let unsubscribe: () => void;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  notificationsChanged = vi.fn();
+  notificationsChanged = vi.fn<() => void>();
   unsubscribe = onNotificationsChanged(notificationsChanged);
 });
 

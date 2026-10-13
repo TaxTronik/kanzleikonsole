@@ -5,7 +5,7 @@
 // nach der Einreichung und die Glocken-Aktualisierung nach einer Entscheidung
 // prüft decision-forms.test.tsx.
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { createElement as el } from 'react';
+import { createElement as el, type ComponentType, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { IdentitySubjectOption } from '@/server/gwg/identity-subject';
 
@@ -59,6 +59,15 @@ import { PersonRolesPanel } from '../person-roles-panel';
 import { NewGwgPersonForm } from '../new-gwg-person-form';
 import { BeneficialOwnerForm } from '../beneficial-owner-form';
 import { PersonGeneralForm } from '../person-general-form';
+
+/** createElement für Provider mit Pflicht-children (Kinder als Restargumente). */
+function provider<P extends object>(
+  type: ComponentType<P & { children: ReactNode }>,
+  props: P,
+  ...children: ReactNode[]
+) {
+  return el(type as ComponentType<P>, props, ...children);
+}
 
 const CHECK_ID = 'check-1';
 const CLIENT_ID = 'client-1';
@@ -127,11 +136,11 @@ function InvalidateIdentity() {
 
 function renderIdentity(group = identityGroup()) {
   const tree = (current: IdentityReviewGroup) =>
-    el(
+    provider(
       GwgEditStateProvider,
-      { initialStatus: 'IN_REVIEW' },
+      { initialStatus: 'IN_REVIEW' as const },
       el(GwgLiveStatusBadge),
-      el(
+      provider(
         GwgIdentitySubjectsProvider,
         { initialOptions: [SUBJECT] },
         el(InvalidateIdentity),
@@ -374,7 +383,7 @@ describe('lokaler GwG-Bearbeitungszustand', () => {
       );
     }
     const tree = (initialStatus: 'DRAFT' | 'IN_REVIEW' | 'VERIFIED') =>
-      el(GwgEditStateProvider, { initialStatus }, el(GwgLiveStatusBadge), el(Controls));
+      provider(GwgEditStateProvider, { initialStatus }, el(GwgLiveStatusBadge), el(Controls));
     const { rerender, unmount } = render(tree('IN_REVIEW'));
     expect(screen.getByText('In Prüfung')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Entwurf markieren' }));

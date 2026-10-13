@@ -346,7 +346,7 @@ describe('Einwilligungsrichtlinien in der UI', () => {
     const options = optionsWithRequiredSections().map((option) =>
       option.id === 'marketing.emailNewsletter' ? { ...option, recommended: true } : option,
     );
-    const { container } = render(createElement(ConsentFields, { options, mode: 'onboarding' }));
+    const { container } = render(createElement(ConsentFields, { options, mode: 'catalog-only' }));
     const checkboxes = [...container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
     expect(checkboxes.length).toBeGreaterThan(0);
     expect(checkboxes.every((checkbox) => !checkbox.checked)).toBe(true);
