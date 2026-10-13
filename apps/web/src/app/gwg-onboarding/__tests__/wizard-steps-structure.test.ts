@@ -1,58 +1,31 @@
 import { readFileSync } from 'node:fs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
+vi.mock('../actions', () => ({ loadOnboardingIdentitySourceAction: vi.fn() }));
+
+import * as steps from '../wizard-steps';
+
+// Architektur-Guard (bewusst Quelltext): Der Wizard bleibt Orchestrator für
+// Zustand und Übermittlung, die Schrittkarten liegen in wizard-steps.tsx.
+// Das Verhalten der Schritte prüft wizard-flow.test.tsx (B-08, Welle 15).
 const wizard = readFileSync(new URL('../wizard.tsx', import.meta.url), 'utf8');
-const steps = readFileSync(new URL('../wizard-steps.tsx', import.meta.url), 'utf8');
 
 describe('GwG-Onboarding – Step-Komponentenstruktur', () => {
-  it('hält den Wizard als Orchestrator und rendert fünf ausgelagerte Schritte', () => {
+  it('hält den Wizard als Orchestrator mit fünf ausgelagerten Schritten', () => {
     for (const component of [
       'MasterDataStep',
       'OwnersStep',
       'DocumentsStep',
       'PrivacyStep',
       'SubmitStep',
-    ]) {
-      expect(wizard).toContain(`<${component}`);
-      expect(steps).toContain(`export function ${component}`);
+      'WizardStepper',
+      'WizardNavigation',
+    ] as const) {
+      expect(typeof steps[component]).toBe('function');
     }
-
-    expect(wizard).toContain('<WizardStepper step={step} />');
-    expect(wizard).toContain('<WizardNavigation step={step} onPrevious={prev} onNext={next} />');
     expect(wizard).not.toContain('function OwnerCard');
     expect(wizard).not.toContain('function RepresentativeCard');
     expect(wizard).not.toContain('function IdUploadField');
     expect(wizard.split('\n').length).toBeLessThan(650);
-  });
-
-  it('reicht die generische Identity-Upload-Orchestrierung unverändert an beide Rollen durch', () => {
-    expect(wizard).toContain(
-      'async function handleIdentityUpload<T extends IdentityUploadSubject>',
-    );
-    expect(wizard).toContain('handleIdentityUpload(ownerId, side, file, personName, setOwners)');
-    expect(wizard).toContain(
-      'handleIdentityUpload(representativeId, side, file, personName, setRepresentatives)',
-    );
-    expect(wizard).toContain("uploadOnboardingFile(token, file, 'ID_DOCUMENT', personName)");
-    expect(steps).toContain(
-      'onOwnerUpload: (ownerId: string, side: IdentitySide, file: File) => void',
-    );
-    expect(steps).toContain(
-      'onRepresentativeUpload: (representativeId: string, side: IdentitySide, file: File) => void',
-    );
-  });
-
-  it('bewahrt gekoppelte Register- und Dateiinput-Semantik in den zustandsarmen Steps', () => {
-    const registerUpdate = steps.indexOf('onRegisterStatusChange(withoutRegister)');
-    const typeUpdate = steps.indexOf(
-      "if (withoutRegister) onExtraTypeChange('GESELLSCHAFTSVERTRAG')",
-    );
-    expect(registerUpdate).toBeGreaterThanOrEqual(0);
-    expect(typeUpdate).toBeGreaterThan(registerUpdate);
-
-    const upload = steps.indexOf('if (file) onUpload(file, extraType)');
-    const clearInput = steps.indexOf("event.target.value = '';", upload);
-    expect(upload).toBeGreaterThanOrEqual(0);
-    expect(clearInput).toBeGreaterThan(upload);
   });
 });
