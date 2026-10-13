@@ -20,6 +20,7 @@ export default defineConfig({
     forks: { singleFork: true },
     fileParallelism: false,
     maxConcurrency: 1,
-    timeout: 30_000,
+    // Vitest kennt nur testTimeout; „timeout“ wurde still ignoriert (Vorgabe 5 s).
+    testTimeout: 30_000,
   },
 });
