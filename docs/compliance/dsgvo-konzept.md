@@ -232,10 +232,49 @@ Daraus folgt für die DSGVO-Löschung:
 
 ### 4.1 Auskunft (Art. 15 DSGVO)
 
-**Implementiert** als DSGVO-Modul (`/staff/admin/dsgvo`),
-`exportContactDataAction` in
-[`apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts`](<../../apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts>):
+**Implementiert** als DSGVO-Modul (`/staff/admin/dsgvo`). Den Paketaufbau
+enthält
+[`packages/db/src/dsgvo-contact-export.ts`](../../packages/db/src/dsgvo-contact-export.ts);
+erzeugt wird das Paket seit Welle 15 (Folgepunkt P-11) im Worker
+`dsgvo-export`
+([`apps/worker/src/jobs/dsgvo-export.ts`](../../apps/worker/src/jobs/dsgvo-export.ts)):
 
+- **Ablauf:** „JSON-Auskunft anfordern" (`requestContactExportAction`, nur
+  ADMIN/PARTNER) legt in `dsgvo_export` einen Auftrag mit Status
+  `REQUESTED` an, auditiert `dsgvo.export.requested` und stößt den Job an. Je
+  Antrag ist höchstens ein Auftrag `REQUESTED`/`RUNNING` aktiv. Der Worker
+  setzt `RUNNING`, baut das Paket als App-Rolle im SYSTEM-Kontext des Tenants
+  (RLS; für die abgefragten Tabellen dieselbe Sicht wie ADMIN/PARTNER) mit
+  120 s statt bisher 15 s Transaktionslimit, legt exakt die serialisierten
+  Bytes im Object Store ab (allgemeiner Bucket, ohne Object Lock, bedingter
+  PUT, Größe und SHA-256 gebunden) und schließt dann in einer Transaktion ab:
+  Ergebnis-Hash am Antrag wie bisher, Auftrag `DONE`, Audit
+  `dsgvo.export.contact` im Namen der anfordernden Person. Fehler enden als
+  `FAILED` mit Meldung. Ein Auftrag, der 15 Minuten lang `REQUESTED` bzw.
+  seit der Übernahme `RUNNING` bleibt (verlorener Job), gilt als
+  hängengeblieben: Eine neue Anforderung schließt ihn als `FAILED` ab
+  (`server/dsgvo/export-status.ts`). Die Oberfläche zeigt Angefordert/Läuft/Fertig/
+  Fehlgeschlagen und aktualisiert sich selbst.
+- **Kein synchroner Pfad:** Auch kleine Pakete laufen über den Worker; der
+  frühere Pfad hatte keine Größenschwelle, und eine Schwelle müsste die
+  Paketgröße vor dem Aufbau schätzen. Ist die Warteschlange nicht erreichbar,
+  wird der Auftrag sofort `FAILED` und die Oberfläche meldet es.
+- **Download** (`GET /api/staff/admin/dsgvo/<Antrag>/export`, nur
+  ADMIN/PARTNER): ausschließlich das Paket, dessen Hash am Antrag als
+  Ergebnis gebunden ist; die gespeicherte Objektversion wird vor der
+  Auslieferung gegen Größe und SHA-256 geprüft, jeder Download auditiert
+  (`dsgvo.export.download`). Dateiname wie bisher
+  `dsgvo-auskunft-<Name>-<Datum>.json`, das Datum ist jetzt der
+  Erzeugungstag statt des Klicktags.
+- **Inhalt und Format unverändert:** Datenklassen, Reihenfolge,
+  Serialisierung (2 Leerzeichen Einrückung, Hash über die exakten UTF-8-Bytes)
+  und Audit-Felder entsprechen der Erzeugung vor Welle 15; ein DB-Test
+  vergleicht die eingefrorene alte Fassung bytegenau mit dem Worker-Aufbau.
+- **Speicherdauer:** Ein neues Paket ersetzt das alte; überholte Pakete
+  desselben Antrags löscht der Worker. Das letzte Paket bleibt nach Abschluss
+  des Antrags gespeichert (Löschfrist noch nicht festgelegt, siehe
+  DSGVO-CONTACT-EXPORT-001). Die Art.-12-Abs.-3-Fristen des Antrags bleiben
+  unverändert; der Auftrag beeinflusst sie nicht.
 - Pro `client_contact` ein **JSON-Export** mit folgenden Datenklassen:
   - Kontakt-Stammdaten (E-Mail, Name, Mandant, Anlage-/Login-Zeitpunkte)
   - Anforderungs-Antworten der Person (`request_response`)
@@ -258,7 +297,9 @@ Daraus folgt für die DSGVO-Löschung:
 - Audit-Log-Einträge der Person werden nicht inline gedumpt — der Export
   verweist auf den **Audit-CSV-Export** (`/api/staff/admin/audit/export`,
   Filter auf Akteur/Ressource = Kontakt)
-- Jeder Export wird selbst auditiert (`dsgvo.export.contact`)
+- Jeder Export wird selbst auditiert (`dsgvo.export.contact`), ebenso
+  Anforderung (`dsgvo.export.requested`) und Download
+  (`dsgvo.export.download`)
 
 ### 4.2 Berichtigung (Art. 16)
 

@@ -8,10 +8,10 @@ import { revokeAllSessions } from '@/server/auth/revocation';
 import { anonymizeContactInTx } from '@/server/dsgvo/anonymize-contact';
 import { dsgvoResponseDeadline } from '@/server/dsgvo/deadline';
 import { validateDsgvoStatusEvidence } from '@/server/dsgvo/workflow';
-import { serializeDsgvoExport } from '@/server/dsgvo/export-package';
-import { readPrivacyConfigTx, renderPrivacyNotice } from '@/server/privacy/notice';
+import { DSGVO_EXPORT_STALE_ERROR, isDsgvoExportStale } from '@/server/dsgvo/export-status';
+import { enqueueDsgvoExport } from '@/server/jobs/dsgvo-export-queue';
+import { log } from '@/server/logger';
 import { berlinTodayUtcMidnight } from '@/lib/fmt';
-import { prismaBytes } from '@/server/db/prisma-bytes';
 import {
   staffAction,
   ActionError,
@@ -276,17 +276,28 @@ export async function updateStatusAction(
 }
 
 /**
- * Auskunfts-Export für einen Client-Contact: alle personenbezogenen Daten
- * der Person als JSON. Wird im Audit-Log dokumentiert (Art.-15-Auskunft).
+ * Auskunfts-Export für einen Client-Contact (Art. 15/20): alle
+ * personenbezogenen Daten der Person als JSON-Paket.
+ *
+ * Welle 15 (Folgepunkt P-11): Die Erzeugung lief hier in der 15-s-Transaktion
+ * und wuchs linear mit dem Audit-Log. Die Action legt jetzt nur den Auftrag an
+ * (dsgvo_export, auditiert als dsgvo.export.requested) und stößt den Worker
+ * dsgvo-export an. Er baut dasselbe Paket (@taxtronik/db/dsgvo-contact-export),
+ * legt es im Object Store ab, bindet den Hash wie bisher am Antrag und auditiert
+ * dsgvo.export.contact. Eine synchrone Erzeugung für kleinen Bestand gibt es
+ * nicht: Der bisherige Code kannte keine Größengrenze, ein Weg hält Inhalt,
+ * Status und Ablage einheitlich. Je Antrag läuft höchstens ein Auftrag; ein
+ * hängengebliebener (server/dsgvo/export-status.ts) wird vor dem neuen als
+ * FAILED abgeschlossen.
  */
-export async function exportContactDataAction(
+export async function requestContactExportAction(
   requestId: string,
   contactId: string,
 ): Promise<{
   ok: boolean;
   error?: string;
-  serialized?: string;
-  sha256?: string;
+  exportId?: string;
+  alreadyActive?: boolean;
 }> {
   return staffAction({
     guard: { requireAdmin: true },
@@ -296,7 +307,7 @@ export async function exportContactDataAction(
         .safeParse({ requestId, contactId });
       if (!input.success) return { ok: false, error: 'Validierungsfehler.' };
 
-      const generated = await withTenantContext(ctx, async (tx) => {
+      const queued = await withTenantContext(ctx, async (tx) => {
         const request = await tx.dsgvoRequest.findFirst({
           where: {
             id: input.data.requestId,
@@ -306,334 +317,83 @@ export async function exportContactDataAction(
             type: { in: ['ACCESS', 'PORTABILITY'] },
             status: { in: ['RECEIVED', 'IN_PROGRESS'] },
           },
+          select: { id: true },
         });
         if (!request) throw new ActionError('Passender offener DSGVO-Antrag nicht gefunden.');
-
         const contact = await tx.clientContact.findUnique({
           where: { id: input.data.contactId },
-          include: { client: { select: { id: true, name: true } } },
+          select: { id: true },
         });
         if (!contact) throw new ActionError('Kontakt nicht gefunden.');
 
-        // Alle Vorgänge dieser Person sammeln
-        const responses = await tx.requestResponse.findMany({
-          where: { authorType: 'CLIENT_CONTACT', authorId: input.data.contactId },
-          select: {
-            id: true,
-            requestId: true,
-            message: true,
-            createdAt: true,
-            request: { select: { title: true } },
-          },
+        const active = await tx.dsgvoExport.findFirst({
+          where: { requestId: request.id, status: { in: ['REQUESTED', 'RUNNING'] } },
+          select: { id: true, status: true, requestedAt: true, startedAt: true },
         });
-        // N-7: Auskunftsanspruch nach Art. 15 DSGVO bezieht sich auf
-        // personenbezogene Daten DES ANTRAGSTELLERS — nicht auf alle Dokumente
-        // seines Mandanten. Bei einem Mandanten mit mehreren Kontakten bekäme
-        // sonst jeder Kontakt im Export Metadaten von Dokumenten anderer
-        // Personen.
-        //
-        // Wir filtern auf Dokumente, die im Audit-Trail eine Aktion DIESES
-        // Kontakts haben (Upload via Portal, Antwort mit Anhang etc.) — das
-        // ist die einzige zuverlässige Verknüpfung „Kontakt ↔ Dokument" im
-        // Schema (Document.ownerStaffId zeigt auf Staff, nicht Contact).
-        const auditDocs = await tx.auditLog.findMany({
-          where: {
-            tenantId,
-            actorType: 'CLIENT_CONTACT',
-            actorId: input.data.contactId,
-            resourceType: 'document',
-          },
-          select: { resourceId: true },
-          distinct: ['resourceId'],
-        });
-        const docIds = auditDocs
-          .map((a) => a.resourceId)
-          .filter((id): id is string => typeof id === 'string');
-        const documents = docIds.length
-          ? await tx.document.findMany({
-              where: { id: { in: docIds } },
-              select: { id: true, title: true, classification: true, createdAt: true },
-            })
-          : [];
-        const magicLinks = await tx.magicLink.findMany({
-          where: {
-            tenantId,
-            OR: [{ contactId: input.data.contactId }, { contactId: null, email: contact.email }],
-          },
-          select: {
-            id: true,
-            email: true,
-            expiresAt: true,
-            consumedAt: true,
-            createdAt: true,
-          },
-        });
+        const now = new Date();
+        if (active && !isDsgvoExportStale(active, now)) {
+          return { exportId: active.id, alreadyActive: true };
+        }
+        if (active) {
+          await tx.dsgvoExport.updateMany({
+            where: { id: active.id, status: { in: ['REQUESTED', 'RUNNING'] } },
+            data: { status: 'FAILED', finishedAt: now, error: DSGVO_EXPORT_STALE_ERROR },
+          });
+        }
 
-        // Art. 15/20: weitere Datenklassen mit Personenbezug des Antragstellers.
-        // Verknüpfungs-Heuristiken (kommentiert, weil das Schema nicht überall
-        // einen Kontakt-FK hat):
-        //  - power_of_attorney: signerContactId (FK) ODER signerEmail-Match
-        //    (citext → case-insensitiv) — Vollmachten tragen Name/E-Mail/IP
-        //    des Unterzeichners.
-        //  - appointment_request: createdByContact (FK).
-        //  - form_submission: submittedByContact (FK); answers sind die von der
-        //    Person selbst eingegebenen Daten (Art.-20-relevant).
-        //  - phone_note: KEIN Kontakt-FK im Schema → Heuristik „gleicher Mandant
-        //    + Anrufername == Kontaktname (case-insensitiv)". Kann Namens-
-        //    gleiche Dritte treffen bzw. abweichende Schreibweisen verfehlen —
-        //    der Sachbearbeiter prüft den Export vor Herausgabe ohnehin.
-        const [
-          powersOfAttorney,
-          appointmentRequests,
-          formSubmissions,
-          phoneNotes,
-          consents,
-          masterChangeRequests,
-          auditEntries,
-          providers,
-          tenant,
-          privacyConfig,
-        ] = await Promise.all([
-          tx.powerOfAttorney.findMany({
-            where: {
-              OR: [{ signerContactId: input.data.contactId }, { signerEmail: contact.email }],
-            },
-            select: {
-              id: true,
-              subject: true,
-              scope: true,
-              status: true,
-              signerName: true,
-              signerEmail: true,
-              signedAt: true,
-              signedByIp: true,
-              validFrom: true,
-              validUntil: true,
-            },
-          }),
-          tx.appointmentRequest.findMany({
-            where: { createdByContact: input.data.contactId },
-            select: {
-              id: true,
-              subject: true,
-              notes: true,
-              status: true,
-              createdAt: true,
-              decidedAt: true,
-            },
-          }),
-          tx.formSubmission.findMany({
-            where: { submittedByContact: input.data.contactId },
-            select: {
-              id: true,
-              name: true,
-              status: true,
-              answers: true,
-              submittedAt: true,
-            },
-          }),
-          tx.phoneNote.findMany({
-            where: {
-              clientId: contact.clientId,
-              callerName: { equals: contact.fullName, mode: 'insensitive' },
-            },
-            select: {
-              id: true,
-              subject: true,
-              body: true,
-              callerName: true,
-              callerPhone: true,
-              createdAt: true,
-            },
-          }),
-          tx.clientConsent.findMany({
-            where: { signedByContact: input.data.contactId },
-            select: {
-              id: true,
-              noticeVersion: true,
-              noticeSnapshot: true,
-              consents: true,
-              source: true,
-              signedByName: true,
-              isRevocation: true,
-              note: true,
-              createdAt: true,
-            },
-            orderBy: { createdAt: 'asc' },
-          }),
-          tx.clientMasterChangeRequest.findMany({
-            where: { contactId: input.data.contactId },
-            select: {
-              id: true,
-              fields: true,
-              note: true,
-              status: true,
-              createdAt: true,
-              decidedAt: true,
-              decisionNote: true,
-            },
-            orderBy: { createdAt: 'asc' },
-          }),
-          tx.auditLog.findMany({
-            where: {
-              tenantId,
-              OR: [
-                { actorType: 'CLIENT_CONTACT', actorId: input.data.contactId },
-                { resourceType: 'client_contact', resourceId: input.data.contactId },
-              ],
-            },
-            select: {
-              id: true,
-              occurredAt: true,
-              actorType: true,
-              actorId: true,
-              action: true,
-              resourceType: true,
-              resourceId: true,
-              before: true,
-              after: true,
-              ip: true,
-              userAgent: true,
-            },
-            orderBy: { id: 'asc' },
-          }),
-          tx.serviceProvider.findMany({
-            where: { tenantId, hasDataAccess: true },
-            select: { name: true, category: true },
-            orderBy: { name: 'asc' },
-          }),
-          tx.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
-          readPrivacyConfigTx(tx, tenantId),
-        ]);
-
-        const privacyNotice = renderPrivacyNotice({
-          kanzleiName: tenant?.name ?? 'Kanzlei',
-          config: privacyConfig,
-          providers,
-        });
-        const generatedAt = new Date();
-        const exportData = {
-          request: {
-            id: request.id,
-            type: request.type,
-            receivedAt: request.receivedAt,
-            subjectName: request.subjectName,
-            subjectEmail: request.subjectEmail,
-          },
-          contact: {
-            id: contact.id,
-            email: contact.email,
-            fullName: contact.fullName,
-            phone: contact.phone,
-            role: contact.role,
-            notificationsEnabled: contact.notificationsEnabled,
-            client: { id: contact.client.id, name: contact.client.name },
-            createdAt: contact.createdAt,
-            updatedAt: contact.updatedAt,
-            lastLoginAt: contact.lastLoginAt,
-            active: contact.active,
-          },
-          interactions: {
-            requestResponses: responses,
-            // Nur Dokumente, die über einen personenbezogenen Audit-Akteur
-            // direkt mit diesem Kontakt verbunden sind — nie pauschal die ganze
-            // Mandantenakte mit Daten Dritter.
-            documentsActedOnByContact: documents,
-            magicLinks,
-            powersOfAttorney,
-            appointmentRequests,
-            formSubmissions,
-            consents,
-            masterChangeRequests,
-            // Heuristik: gleicher Mandant + Anrufername == Kontaktname. Muss vor
-            // Herausgabe personell auf Fehlzuordnungen geprüft werden.
-            phoneNotes,
-          },
-          auditTrail: auditEntries.map((entry) => ({
-            ...entry,
-            id: entry.id.toString(),
-          })),
-          processingInformation: {
-            purposes: [
-              'Mandatsanbahnung und -bearbeitung',
-              'Kommunikation und Dokumentenaustausch',
-              'Erfüllung steuer-, berufs- und geldwäscherechtlicher Pflichten',
-              'Abrechnung, Forderungsmanagement, IT-Sicherheit und Rechtsverteidigung',
-            ],
-            dataCategories: [
-              'Stamm-, Identifikations- und Kontaktdaten',
-              'Kommunikations-, Formular- und Portaldaten',
-              'Mandats-, Vollmachts-, Dokument- und Abrechnungsmetadaten',
-              'Technische Nachweisdaten wie Zeitstempel, IP-Adresse und User-Agent',
-            ],
-            recipientCategories: [
-              'Finanzbehörden, Sozialversicherungsträger, Gerichte und sonstige mandatsbezogene Stellen',
-              'Zur Verschwiegenheit verpflichtete Kanzleimitarbeiter und Berufsträger',
-              ...providers.map((provider) => `${provider.name} (${provider.category})`),
-            ],
-            source:
-              'Direkt von der betroffenen Person, vom vertretenen Mandanten sowie aus mandatsbezogenen Vorgängen und gesetzlichen Quellen.',
-            retention:
-              'Je Datenklasse nach Mandats-, Steuer-, Handels-, Berufs- und GwG-Aufbewahrung; Einschränkung oder Löschung nach Wegfall sämtlicher Zwecke und Pflichten.',
-            automatedDecisionMaking: false,
-            privacyNoticeSnapshot: privacyNotice,
-            privacyContact: privacyConfig.privacyContact,
-            supervisoryAuthority: privacyConfig.supervisoryAuthority,
-          },
-          coverage: {
-            automaticLinks:
-              'Der Export enthält sicher bzw. heuristisch mit diesem Kontakt verknüpfte Systemdaten.',
-            manualReviewRequired: [
-              'Telefonnotizen auf Namensgleichheit und mögliche Daten Dritter prüfen.',
-              'Dokumentinhalte, Freitexte und Alt-/Importdaten auf weitere personenbezogene Angaben prüfen.',
-              'Rechtsgrundlagen, Empfänger und konkrete Aufbewahrungsfristen fallbezogen ergänzen.',
-              'Vor Herausgabe Daten Dritter schwärzen und Identität des Antragstellers prüfen.',
-            ],
-          },
-          exportedAt: generatedAt.toISOString(),
-          exportedBy: staffId,
-        };
-
-        // Hash exakt über DIE Bytes, die der Browser herunterlädt. Ein Hash über
-        // kompaktes JSON bei anschließend hübsch eingerückter Download-Datei
-        // würde sonst trotz identischer Daten niemals verifizieren.
-        const { serialized, sha256: resultSha256 } = serializeDsgvoExport(exportData);
-        await tx.dsgvoRequest.update({
-          where: { id: request.id },
+        const created = await tx.dsgvoExport.create({
           data: {
-            resultSha256: prismaBytes(resultSha256),
-            resultPreparedAt: generatedAt,
-            resultPreparedBy: staffId,
-            // Jede Neugenerierung verändert das Paket und braucht eine neue
-            // personelle Vollständigkeitsprüfung.
-            resultReviewedAt: null,
-            resultReviewedBy: null,
-            status: request.status === 'RECEIVED' ? 'IN_PROGRESS' : request.status,
+            tenantId,
+            requestId: request.id,
+            contactId: contact.id,
+            requestedBy: staffId,
           },
+          select: { id: true },
         });
         await audit(tx, ctx, {
-          action: 'dsgvo.export.contact',
+          action: 'dsgvo.export.requested',
           resourceType: 'dsgvo_request',
           resourceId: request.id,
           after: {
-            exportedFor: contact.email,
+            exportId: created.id,
             contactId: contact.id,
-            sha256: resultSha256.toString('hex'),
-            manualReviewRequired: true,
+            ...(active ? { replacedStaleExportId: active.id } : {}),
           },
         });
-
-        return {
-          serialized,
-          sha256: resultSha256.toString('hex'),
-        };
+        return { exportId: created.id, alreadyActive: false };
       });
+
+      if (!queued.alreadyActive) {
+        try {
+          await enqueueDsgvoExport({ tenantId, exportId: queued.exportId });
+        } catch (error) {
+          log.warn(
+            {
+              component: 'dsgvo-export',
+              exportId: queued.exportId,
+              err: error instanceof Error ? error.message : String(error),
+            },
+            'dsgvo-export: Auftrag nicht eingereiht',
+          );
+          await withTenantContext(ctx, (tx) =>
+            tx.dsgvoExport.updateMany({
+              where: { id: queued.exportId, status: 'REQUESTED' },
+              data: { status: 'FAILED', finishedAt: new Date(), error: EXPORT_QUEUE_UNAVAILABLE },
+            }),
+          );
+          revalidatePath(`/staff/admin/dsgvo/${input.data.requestId}`);
+          return { ok: false, error: EXPORT_QUEUE_UNAVAILABLE };
+        }
+      }
       revalidatePath(`/staff/admin/dsgvo/${input.data.requestId}`);
-      return generated;
+      return queued;
     },
     revalidate: '/staff/admin/dsgvo',
   });
 }
+
+const EXPORT_QUEUE_UNAVAILABLE =
+  'Der Auftrag konnte nicht an die Hintergrundverarbeitung übergeben werden. Bitte erneut anfordern.';
 
 /**
  * Anonymisiert einen Client-Contact (Art. 17): Email/Name werden überschrieben,

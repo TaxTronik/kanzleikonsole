@@ -1,13 +1,4 @@
-import { createHash } from 'node:crypto';
-
-/** Serialisiert und hasht exakt dieselben Download-Bytes. */
-export function serializeDsgvoExport(value: unknown): {
-  serialized: string;
-  sha256: Buffer;
-} {
-  const serialized = JSON.stringify(value, null, 2);
-  return {
-    serialized,
-    sha256: createHash('sha256').update(serialized, 'utf8').digest(),
-  };
-}
+// Welle 15 (Folgepunkt P-11): Serialisierung und Paketaufbau liegen in
+// @taxtronik/db/dsgvo-contact-export, damit der Worker dsgvo-export dieselben
+// Bytes erzeugt. Dieser Pfad bleibt für die Web-App erhalten.
+export { serializeDsgvoExport } from '@taxtronik/db/dsgvo-contact-export';

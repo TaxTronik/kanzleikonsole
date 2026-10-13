@@ -269,6 +269,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'dsgvo.request.completed': 'DSGVO-Anfrage abgeschlossen',
   'dsgvo.request.rejected': 'DSGVO-Anfrage abgelehnt',
   'dsgvo.export.contact': 'DSGVO-Datenauskunft',
+  'dsgvo.export.requested': 'DSGVO-Datenauskunft angefordert',
+  'dsgvo.export.download': 'DSGVO-Datenauskunft heruntergeladen',
   'dsgvo.anonymize.contact': 'DSGVO-Anonymisierung',
   'dsgvo.retention.run': 'DSGVO-Fristenlöschung (System)',
 

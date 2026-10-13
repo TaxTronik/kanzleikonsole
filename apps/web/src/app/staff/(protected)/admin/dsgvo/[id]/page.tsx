@@ -6,7 +6,8 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { ActionForm } from '@/components/action-form';
 import { updateStatusAction } from '../actions';
-import { ExportContactButton } from './export-button';
+import { ExportContactButton, type ExportJobView } from './export-button';
+import { isDsgvoExportStale } from '@/server/dsgvo/export-status';
 import { AnonymizeContactButton } from './anonymize-contact-button';
 import { fmtDateShort } from '@/lib/fmt';
 
@@ -51,11 +52,51 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const { tenantId, staffId } = session.user;
 
-  const req = await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
-    tx.dsgvoRequest.findUnique({ where: { id } }),
+  const { req, latestExport, storedExport } = await withTenantContext(
+    { tenantId, actorId: staffId, actorType: 'STAFF' },
+    async (tx) => {
+      const req = await tx.dsgvoRequest.findUnique({ where: { id } });
+      // Welle 15: letzter Auftrag an den Worker dsgvo-export (Status) und das
+      // fertige, noch abgelegte Paket (Download, wie server/dsgvo/export-download).
+      const latestExport = req
+        ? await tx.dsgvoExport.findFirst({
+            where: { requestId: req.id },
+            orderBy: { requestedAt: 'desc' },
+            select: {
+              status: true,
+              requestedAt: true,
+              startedAt: true,
+              finishedAt: true,
+              error: true,
+            },
+          })
+        : null;
+      const storedExport = req
+        ? await tx.dsgvoExport.findFirst({
+            where: { requestId: req.id, status: 'DONE', objectDeletedAt: null },
+            orderBy: { finishedAt: 'desc' },
+            select: { sha256: true },
+          })
+        : null;
+      return { req, latestExport, storedExport };
+    },
   );
 
   if (!req) notFound();
+
+  const latestExportView: ExportJobView | null = latestExport
+    ? {
+        status: latestExport.status,
+        requestedAt: latestExport.requestedAt.toISOString(),
+        finishedAt: latestExport.finishedAt?.toISOString() ?? null,
+        error: latestExport.error,
+        stale: isDsgvoExportStale(latestExport, new Date()),
+        downloadable:
+          storedExport?.sha256 != null &&
+          req.resultSha256 !== null &&
+          Buffer.from(storedExport.sha256).equals(Buffer.from(req.resultSha256)),
+      }
+    : null;
 
   const isContactAction =
     req.subjectType === 'CLIENT_CONTACT' &&
@@ -129,12 +170,13 @@ export default async function DsgvoDetailPage({ params }: { params: Promise<{ id
             <p className="text-xs text-blue-800 mb-3">
               Sammelt sicher bzw. heuristisch zugeordnete Daten, Art.-15-Verarbeitungsinformationen
               und den personenbezogenen Audit-Ausschnitt als gehashtes JSON-Paket. Vor Herausgabe
-              ist eine personelle Vollständigkeits- und Drittdatenprüfung zwingend.
+              ist eine personelle Vollständigkeits- und Drittdatenprüfung zwingend. Die Erzeugung
+              läuft im Hintergrund; der Status aktualisiert sich selbst.
             </p>
             <ExportContactButton
               requestId={req.id}
               contactId={req.subjectRefId}
-              subjectName={req.subjectName}
+              latest={latestExportView}
             />
             {req.resultPreparedAt && (
               <div className="text-xs text-blue-900 mt-3">

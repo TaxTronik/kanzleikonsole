@@ -23,7 +23,9 @@
     "./pg-tools": "./src/pg-tools.ts",
     "./restore-security": "./src/restore-security.ts",
     "./portal-session-revocation": "./src/portal-session-revocation.ts",
-    "./fido-mds-snapshot": "./src/fido-mds-snapshot.ts"
+    "./fido-mds-snapshot": "./src/fido-mds-snapshot.ts",
+    "./privacy-notice": "./src/privacy-notice.ts",
+    "./dsgvo-contact-export": "./src/dsgvo-contact-export.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

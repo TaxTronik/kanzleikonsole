@@ -34,9 +34,11 @@ code_refs:
   - apps/web/src/server/dsgvo/workflow.ts
   - apps/web/src/app/staff/(protected)/admin/dsgvo/actions.ts
   - packages/db/prisma/migrations/20260801003510_dsgvo_request_evidence/migration.sql
+  - apps/worker/src/jobs/dsgvo-export.ts
 test_refs:
   - apps/web/src/server/dsgvo/__tests__/workflow.test.ts
   - packages/db/src/__tests__/dsgvo-evidence.test.ts
+  - apps/worker/src/jobs/__tests__/dsgvo-export.test.ts
 feature_refs:
   - docs/compliance/dsgvo-konzept.md
 related_rules:
@@ -110,8 +112,11 @@ würde ihre fachliche Richtigkeit nicht automatisch beweisen.
 ## Umsetzung in TaxTronik
 
 `workflow.ts` validiert die statusabhängigen Pflichtfelder. Die Admin-Actions
-erzeugen und prüfen Ergebnisartefakte, speichern Versandangaben und führen den
-Statuswechsel aus. Check-Constraints sichern Feldpaare, Reihenfolge und
+prüfen Ergebnisartefakte, speichern Versandangaben und führen den
+Statuswechsel aus. Das Kontaktpaket erzeugt seit Welle 15 der Worker
+`dsgvo-export` und bindet seinen Hash wie zuvor die Admin-Action als
+Ergebnis am noch offenen Antrag (DSGVO-CONTACT-EXPORT-001); an einem
+inzwischen abgeschlossenen Antrag ändert er nichts. Check-Constraints sichern Feldpaare, Reihenfolge und
 Hashlänge; ein Trigger blockiert Änderungen an terminalen Nachweisen und prüft
 die Mandantenzugehörigkeit eines Ergebnisdokuments.
 

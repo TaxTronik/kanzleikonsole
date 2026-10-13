@@ -400,6 +400,10 @@ export const JOB_QUEUES = {
       expectedMaxGapMs: DAY,
     },
   },
+  // Welle 15 (P-11): DSGVO-Auskunft (Art. 15/20) eines Kontakts. Die Web-App
+  // legt den Auftrag in dsgvo_export an und stößt je Auftrag einen Job an; der
+  // Zustand liegt in der Datenbank, die Oberfläche liest ihn dort.
+  dsgvoExport: { name: 'dsgvo-export', schedule: null },
 } as const satisfies Record<string, QueueDefinition>;
 
 export type JobQueueKey = keyof typeof JOB_QUEUES;
@@ -518,6 +522,28 @@ export const MAIL_OUTBOX_KICK_JOB_OPTIONS = {
   removeOnFail: { age: (7 * DAY) / SECOND, count: 100 },
 } as const;
 
+/**
+ * Welle 15 (P-11): Auftrag zur Erzeugung eines DSGVO-Kontaktpakets. Der Job
+ * trägt nur IDs (S-06: keine personenbezogenen Daten in Redis); Antrag, Kontakt
+ * und anfordernde Person liest der Worker aus dsgvo_export.
+ */
+export interface DsgvoExportJob {
+  tenantId: string;
+  exportId: string;
+}
+
+/**
+ * Welle 15: ein Versuch je Auftrag. Der Zustand liegt in dsgvo_export; ein
+ * gescheiterter Auftrag endet als FAILED und wird in der Oberfläche neu
+ * angefordert, nie still wiederholt. Fertige Jobs 24 h, gescheiterte 7 Tage
+ * zur Diagnose. `age` in Sekunden.
+ */
+export const DSGVO_EXPORT_JOB_OPTIONS = {
+  attempts: 1,
+  removeOnComplete: { age: DAY / SECOND, count: 100 },
+  removeOnFail: { age: (7 * DAY) / SECOND, count: 100 },
+} as const;
+
 type EmptyJob = Record<string, never>;
 
 /** Compile-time mapping used by typed producer/consumer factories. */
@@ -554,6 +580,7 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.reminderDoneNotify.name]: ReminderDoneNotifyJob;
   [JOB_QUEUES.mailOutboxDeliver.name]: EmptyJob;
   [JOB_QUEUES.mailOutboxRetention.name]: EmptyJob;
+  [JOB_QUEUES.dsgvoExport.name]: DsgvoExportJob;
 };
 
 type AssertTrue<T extends true> = T;

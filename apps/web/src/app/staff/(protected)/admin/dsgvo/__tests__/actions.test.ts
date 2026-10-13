@@ -1,4 +1,4 @@
-// Fachkatalog: DSGVO-REQUEST-DEADLINE-001, DSGVO-REQUEST-EVIDENCE-001
+// Fachkatalog: DSGVO-REQUEST-DEADLINE-001, DSGVO-REQUEST-EVIDENCE-001, DSGVO-CONTACT-EXPORT-001
 //
 // Review-Befund F-01: DSGVO-Antrag erfassen, Status fortschreiben und Kontakt
 // anonymisieren melden Validierungs- und Workflowfehler als `{ ok: false, error }`
@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
     throw new Error(`NEXT_REDIRECT:${url}`);
   }),
   revalidatePath: vi.fn(),
+  enqueueDsgvoExport: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ redirect: h.redirect }));
@@ -28,12 +29,10 @@ vi.mock('@/server/auth/revocation', () => ({ revokeAllSessions: h.revokeAllSessi
 vi.mock('@/server/dsgvo/anonymize-contact', () => ({
   anonymizeContactInTx: h.anonymizeContactInTx,
 }));
-vi.mock('@/server/dsgvo/export-package', () => ({ serializeDsgvoExport: vi.fn() }));
-vi.mock('@/server/privacy/notice', () => ({
-  readPrivacyConfigTx: vi.fn(),
-  renderPrivacyNotice: vi.fn(),
+vi.mock('@/server/jobs/dsgvo-export-queue', () => ({ enqueueDsgvoExport: h.enqueueDsgvoExport }));
+vi.mock('@/server/logger', () => ({
+  log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-vi.mock('@/server/db/prisma-bytes', () => ({ prismaBytes: vi.fn() }));
 vi.mock('@/server/actions/staff-action', async () => {
   const { ActionError } = await vi.importActual<typeof import('@/server/actions/action-error')>(
     '@/server/actions/action-error',
@@ -49,7 +48,12 @@ vi.mock('@/server/actions/staff-action', async () => {
   };
 });
 
-import { anonymizeContactAction, createDsgvoRequestAction, updateStatusAction } from '../actions';
+import {
+  anonymizeContactAction,
+  createDsgvoRequestAction,
+  requestContactExportAction,
+  updateStatusAction,
+} from '../actions';
 
 const REQUEST_ID = '7e6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e6f';
 const CONTACT_ID = '8d6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e7a';
@@ -261,5 +265,166 @@ describe('DSGVO-Actions — Rückkanal statt Wurf', () => {
     });
     expect(h.revokeAllSessions).not.toHaveBeenCalled();
     expect(h.anonymizeContactInTx).not.toHaveBeenCalled();
+  });
+});
+
+// Welle 15 (Folgepunkt P-11): Die Action erzeugt das Paket nicht mehr selbst,
+// sondern legt den Auftrag an und stößt den Worker dsgvo-export an.
+describe('DSGVO-Auskunft — Auftrag an den Worker', () => {
+  const EXPORT_ID = '9d6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e7b';
+
+  function exportTx(options: { request?: object | null; active?: object | null } = {}) {
+    return {
+      dsgvoRequest: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValue(options.request === undefined ? { id: REQUEST_ID } : options.request),
+      },
+      clientContact: { findUnique: vi.fn().mockResolvedValue({ id: CONTACT_ID }) },
+      dsgvoExport: {
+        findFirst: vi.fn().mockResolvedValue(options.active ?? null),
+        create: vi.fn().mockResolvedValue({ id: EXPORT_ID }),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    h.staffActionGuard.mockResolvedValue({
+      ok: true,
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      ctx: { tenantId: 'tenant-1', actorId: 'staff-1', actorType: 'STAFF' },
+      session: { user: { id: 'staff-1' } },
+    });
+    h.enqueueDsgvoExport.mockResolvedValue(undefined);
+  });
+
+  it('legt einen Auftrag an, auditiert die Anforderung und stößt genau diesen Job an', async () => {
+    const tx = exportTx();
+    h.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
+      fn(tx),
+    );
+    await expect(requestContactExportAction(REQUEST_ID, CONTACT_ID)).resolves.toEqual({
+      ok: true,
+      exportId: EXPORT_ID,
+      alreadyActive: false,
+    });
+    // Nur ein offener Auskunfts-/Portabilitätsantrag über genau diesen Kontakt.
+    expect(tx.dsgvoRequest.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: REQUEST_ID,
+        tenantId: 'tenant-1',
+        subjectType: 'CLIENT_CONTACT',
+        subjectRefId: CONTACT_ID,
+        type: { in: ['ACCESS', 'PORTABILITY'] },
+        status: { in: ['RECEIVED', 'IN_PROGRESS'] },
+      },
+      select: { id: true },
+    });
+    expect(tx.dsgvoExport.create).toHaveBeenCalledWith({
+      data: {
+        tenantId: 'tenant-1',
+        requestId: REQUEST_ID,
+        contactId: CONTACT_ID,
+        requestedBy: 'staff-1',
+      },
+      select: { id: true },
+    });
+    expect(h.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'dsgvo.export.requested',
+        resourceType: 'dsgvo_request',
+        resourceId: REQUEST_ID,
+        after: { exportId: EXPORT_ID, contactId: CONTACT_ID },
+      }),
+    );
+    expect(h.enqueueDsgvoExport).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      exportId: EXPORT_ID,
+    });
+  });
+
+  it('legt neben einem laufenden Auftrag keinen zweiten an', async () => {
+    const tx = exportTx({
+      active: { id: EXPORT_ID, status: 'RUNNING', requestedAt: new Date(), startedAt: new Date() },
+    });
+    h.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
+      fn(tx),
+    );
+    await expect(requestContactExportAction(REQUEST_ID, CONTACT_ID)).resolves.toEqual({
+      ok: true,
+      exportId: EXPORT_ID,
+      alreadyActive: true,
+    });
+    expect(tx.dsgvoExport.create).not.toHaveBeenCalled();
+    expect(h.enqueueDsgvoExport).not.toHaveBeenCalled();
+  });
+
+  it('markiert den Auftrag als fehlgeschlagen, wenn die Warteschlange nicht antwortet', async () => {
+    const tx = exportTx();
+    h.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
+      fn(tx),
+    );
+    h.enqueueDsgvoExport.mockRejectedValueOnce(new Error('redis timeout'));
+    const result = await requestContactExportAction(REQUEST_ID, CONTACT_ID);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('Hintergrundverarbeitung');
+    expect(tx.dsgvoExport.updateMany).toHaveBeenCalledWith({
+      where: { id: EXPORT_ID, status: 'REQUESTED' },
+      data: expect.objectContaining({ status: 'FAILED', error: result.error }),
+    });
+  });
+
+  it('lehnt einen geschlossenen oder fremden Antrag ab, ohne Auftrag und Job', async () => {
+    const tx = exportTx({ request: null });
+    h.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
+      fn(tx),
+    );
+    await expect(requestContactExportAction(REQUEST_ID, CONTACT_ID)).resolves.toEqual({
+      ok: false,
+      error: 'Passender offener DSGVO-Antrag nicht gefunden.',
+    });
+    expect(tx.dsgvoExport.create).not.toHaveBeenCalled();
+    expect(h.enqueueDsgvoExport).not.toHaveBeenCalled();
+  });
+
+  it('ersetzt einen hängengebliebenen Auftrag: FAILED, neuer Auftrag, Job', async () => {
+    const STALE_ID = '9d6f0d2c-9c1a-4f5b-8d3e-2a1b3c4d5e70';
+    const longAgo = new Date(Date.now() - 16 * 60_000);
+    const tx = exportTx({
+      active: { id: STALE_ID, status: 'REQUESTED', requestedAt: longAgo, startedAt: null },
+    });
+    h.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (t: unknown) => unknown) =>
+      fn(tx),
+    );
+    await expect(requestContactExportAction(REQUEST_ID, CONTACT_ID)).resolves.toEqual({
+      ok: true,
+      exportId: EXPORT_ID,
+      alreadyActive: false,
+    });
+    expect(tx.dsgvoExport.updateMany).toHaveBeenCalledWith({
+      where: { id: STALE_ID, status: { in: ['REQUESTED', 'RUNNING'] } },
+      data: expect.objectContaining({
+        status: 'FAILED',
+        error: expect.stringContaining('15 Minuten'),
+      }),
+    });
+    expect(tx.dsgvoExport.updateMany.mock.invocationCallOrder[0]).toBeLessThan(
+      tx.dsgvoExport.create.mock.invocationCallOrder[0]!,
+    );
+    expect(h.evidenceRecord).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: 'dsgvo.export.requested',
+        after: { exportId: EXPORT_ID, contactId: CONTACT_ID, replacedStaleExportId: STALE_ID },
+      }),
+    );
+    expect(h.enqueueDsgvoExport).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      exportId: EXPORT_ID,
+    });
   });
 });

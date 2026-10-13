@@ -76,6 +76,7 @@ model Tenant {
   documentFolders                DocumentFolder[]
   documentTypes                  DocumentType[]
   dsgvoRequests                  DsgvoRequest[]
+  dsgvoExports                   DsgvoExport[]
   elsterKontoabfragen            ElsterKontoabfrage[]
   emailTemplates                 EmailTemplate[]
   formSubmissions                FormSubmission[]
@@ -1609,11 +1610,45 @@ model DsgvoRequest {
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
   tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  exports          DsgvoExport[]
 
   @@index([tenantId, status])
   @@index([tenantId, type])
   @@index([tenantId, dueDate])
   @@map("dsgvo_request")
+}
+
+/// DSGVO-CONTACT-EXPORT-001 (Welle 15, P-11): Auftrag an den Worker
+/// dsgvo-export, ein Kontaktpaket (Art. 15/20) zu erzeugen. Ein fertiger
+/// Auftrag bindet das Ergebnis im Object Store (Version, SHA-256, Größe).
+/// Guard, Statusfolge und „ein aktiver Auftrag je Antrag“ in der Migration
+/// 20261012101000_dsgvo_export.
+model DsgvoExport {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String            @map("tenant_id") @db.Uuid
+  requestId        String            @map("request_id") @db.Uuid
+  contactId        String            @map("contact_id") @db.Uuid
+  status           DsgvoExportStatus @default(REQUESTED)
+  requestedBy      String            @map("requested_by") @db.Uuid
+  requestedAt      DateTime          @default(now()) @map("requested_at") @db.Timestamptz(6)
+  startedAt        DateTime?         @map("started_at") @db.Timestamptz(6)
+  finishedAt       DateTime?         @map("finished_at") @db.Timestamptz(6)
+  attempts         Int               @default(0)
+  error            String?
+  storageBucket    String?           @map("storage_bucket")
+  storageKey       String?           @map("storage_key")
+  storageVersionId String?           @map("storage_version_id")
+  sha256           Bytes?
+  sizeBytes        BigInt?           @map("size_bytes")
+  objectDeletedAt  DateTime?         @map("object_deleted_at") @db.Timestamptz(6)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  request          DsgvoRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([requestId, requestedAt])
+  @@index([tenantId, status])
+  @@map("dsgvo_export")
 }
 
 model BackupRecord {
@@ -4362,6 +4397,15 @@ enum DsgvoRequestStatus {
   REJECTED
 
   @@map("dsgvo_request_status")
+}
+
+enum DsgvoExportStatus {
+  REQUESTED
+  RUNNING
+  DONE
+  FAILED
+
+  @@map("dsgvo_export_status")
 }
 
 enum DsgvoSubjectType {
