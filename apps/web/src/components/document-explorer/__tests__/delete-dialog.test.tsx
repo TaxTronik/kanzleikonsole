@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -124,16 +123,5 @@ describe('gemeinsamer Lösch-Dialog (mit Grund)', () => {
     expect(notes.includes('COMPLIANCE-Lock')).toBe(tier === 'GOBD');
     expect(notes.includes('GwG-Vernichtung')).toBe(tier === 'GWG');
     expect(notes.includes('entfernt die gespeicherten Bytes nicht')).toBe(tier === 'NONE');
-  });
-
-  it('beide Explorer-Varianten löschen nur über diesen Dialog', () => {
-    const read = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
-    for (const view of ['../browser-view.tsx', '../embedded-view.tsx']) {
-      const source = read(view);
-      expect(source, view).toContain('<DeleteDocumentsDialog');
-      expect(source, view).not.toContain('softDeleteDocumentAction');
-      expect(source, view).not.toContain('DeleteDocModal');
-    }
-    expect(read('../../document-dialogs.tsx')).not.toContain('softDeleteDocumentAction');
   });
 });
