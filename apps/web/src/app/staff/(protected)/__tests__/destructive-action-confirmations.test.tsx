@@ -39,6 +39,8 @@ vi.mock('@taxtronik/db', () => ({
     fn({
       powerOfAttorney: { findUnique: vi.fn(async () => h.row) },
       dsgvoRequest: { findUnique: vi.fn(async () => h.row) },
+      // Welle 15: Statuszeile der Auskunft (Worker dsgvo-export); kein Auftrag.
+      dsgvoExport: { findFirst: vi.fn(async () => null) },
     }),
   ),
 }));

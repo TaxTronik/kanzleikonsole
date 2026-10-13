@@ -51,6 +51,18 @@ const ALTERNATIVE_AUTH: Record<string, AlternativeAuth> = {
       source.includes('mandateStructure') &&
       /if\s*\(\s*!guard\.ok\s*\)/.test(source),
   },
+  // Welle 15 (P-11): Download des im Worker erzeugten DSGVO-Pakets; der zentrale
+  // Guard bindet Staff-Session und ADMIN/PARTNER, der Dienst den Antrag.
+  'api/staff/admin/dsgvo/[id]/export/route.ts': {
+    reason:
+      'staffActionGuard erzwingt Staff-Session und ADMIN/PARTNER; der Download-Dienst liefert nur das am Antrag gebundene, hashgeprüfte Paket',
+    validate: (source) =>
+      /import\s+\{[^}]*\bstaffActionGuard\b[^}]*\}\s+from\s+['"]@\/server\/actions\/staff-action['"]/.test(
+        source,
+      ) &&
+      /await\s+staffActionGuard\s*\(\s*\{\s*requireAdmin\s*:\s*true/.test(source) &&
+      /if\s*\(\s*!guard\.ok\s*\)/.test(source),
+  },
   // Die Wissens-Anhangsrouten brauchen neben der Staff-Session zugleich die
   // Modulfreigabe und nutzen deshalb den zentralen Guard, der beides koppelt.
   'api/staff/knowledge/attachments/route.ts': {

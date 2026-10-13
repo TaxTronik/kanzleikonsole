@@ -277,6 +277,18 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // P-01: Superuser-Fixtures in einer zurückgerollten Transaktion; bisherige und
   // aktuelle Dokument-Policy werden ausgewertet und mit der RLS der App-Rolle verglichen.
   'packages/db/src/__tests__/document-mandate-artifact-flag.test.ts',
+  // Welle 15: Superuser-Fixtures für offene DSGVO-Anträge; Paketaufbau, Guard und
+  // RLS von dsgvo_export werden mit der App-Rolle gegen den alten Aufbau verglichen.
+  'packages/db/src/__tests__/dsgvo-contact-export.test.ts',
+  // Welle 15: Owner-Fixtures (Wegwerf-Tenants) und Vergleich der GwG-Löschzählung
+  // ohne RLS mit der Sicht der App-Rolle im Kontext von Betrachter und SYSTEM.
+  'packages/db/src/__tests__/gwg-retention-visibility.test.ts',
+  // Welle 15: Superuser-, App- und Owner-Clients belegen RLS, Unveränderlichkeit
+  // und Audit-Bindung von risk_los_ziehung sowie den Backfill der Migration.
+  'packages/db/src/__tests__/risk-los-ziehung.test.ts',
+  // Welle 15: Migrationsrolle setzt Rolleneinstellungen in einer Wegwerf-DB wie
+  // nach einem Restore; eine App-Verbindung prüft den wirksamen lock_timeout.
+  'packages/db/src/__tests__/role-settings.test.ts',
   // Backup-Restore-Probe — Admin-Operation gegen die Ziel-DB.
   'apps/web/src/server/backup/restore.ts',
   // Restore-Drill: eigene Clients der Drill-Rolle (S-01) für CREATE/DROP der

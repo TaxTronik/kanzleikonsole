@@ -18,6 +18,8 @@ const h = vi.hoisted(() => ({
   decided: [] as Array<Record<string, unknown>>,
   tx: {
     appointment: { findMany: vi.fn() },
+    // Welle 15: Zustellstatus der Termin-Mails (Mail-Outbox); ohne Aufträge leer.
+    mailOutbox: { findMany: vi.fn(async () => []) },
     appointmentRequest: { findMany: vi.fn() },
     staffUser: { findMany: vi.fn() },
     vacationRequest: { findMany: vi.fn() },
@@ -42,6 +44,12 @@ vi.mock('@taxtronik/db', () => ({
   withTenantContext: vi.fn(async (_ctx: unknown, fn: (tx: unknown) => unknown) => fn(h.tx)),
 }));
 vi.mock('../new-appointment-dialog', () => ({ NewAppointmentDialog: () => null }));
+// Welle 15: Mailangebot je Termin und Statusliste der Termin-Mails gehören zu
+// eigenen Tests (client-mail, appointment-mails); hier ohne Empfänger.
+vi.mock('@/server/appointments/client-mail', () => ({
+  loadAppointmentMailOptionsTx: vi.fn(async () => new Map()),
+}));
+vi.mock('../appointment-mails', () => ({ AppointmentMails: () => null }));
 vi.mock('../request-decision', () => ({ RequestDecision: () => null }));
 vi.mock('../appointment-pills', () => ({
   AppointmentPills: (props: Record<string, unknown>) => {
