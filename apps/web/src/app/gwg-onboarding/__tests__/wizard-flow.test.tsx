@@ -9,6 +9,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
+import type { ResolvedConsentOption } from '@/server/privacy/consent';
 import type {
   LoadedInviteDraft,
   LoadedInviteDraftOwner,
@@ -104,7 +105,10 @@ function draft(overrides: Partial<LoadedInviteDraft> = {}): LoadedInviteDraft {
   };
 }
 
-function renderWizard(initialDraft: LoadedInviteDraft | null) {
+function renderWizard(
+  initialDraft: LoadedInviteDraft | null,
+  consentOptions: ResolvedConsentOption[] = [],
+) {
   return render(
     <OnboardingWizard
       token="token-1"
@@ -113,7 +117,7 @@ function renderWizard(initialDraft: LoadedInviteDraft | null) {
       initialDraft={initialDraft}
       noticeBody="Datenschutzhinweise der Kanzlei"
       noticeVersion={1}
-      consentOptions={[]}
+      consentOptions={consentOptions}
       consentDisplayRevision="rev-1"
     />,
   );
@@ -320,6 +324,65 @@ describe('GwG-Onboarding – explizite Doppelrollen-UX', () => {
       }),
     ]);
     expect(await screen.findByRole('heading', { name: 'Vielen Dank!' })).toBeTruthy();
+  });
+});
+
+describe('GwG-Onboarding – Datenschutz-Auswahl', () => {
+  // Fachkatalog: DSGVO-CONSENT-SNAPSHOT-001
+  it('verlangt Pflichtoptionen und bindet die Erklärung an die angezeigte Revision', async () => {
+    const required: ResolvedConsentOption = {
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      builtin: false,
+      section: 'OTHER',
+      label: 'Eigene Bestätigung',
+      description: null,
+      active: true,
+      required: true,
+      recommended: false,
+      sortOrder: 200,
+      serviceProviderId: null,
+      serviceProvider: null,
+      providerMissing: false,
+    };
+    renderWizard(
+      draft({
+        noRegisterEntry: false,
+        representatives: [representative({ id: 'rep-linked', linkedOwnerId: OWNER.id })],
+        extraDocuments: [
+          { documentId: uuid(5), fileName: 'hr.pdf', type: 'HANDELSREGISTERAUSZUG' },
+        ],
+      }),
+      [required],
+    );
+    next();
+    next();
+    next();
+    const option = screen.getByRole('checkbox', { name: /Eigene Bestätigung/ }) as HTMLInputElement;
+    expect(option.checked).toBe(false);
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Ich habe die Datenschutzhinweise zur Kenntnis genommen.',
+      }),
+    );
+    next();
+    expect(
+      screen.getByText('Bitte bestätigen Sie die folgenden Pflichtoptionen: Eigene Bestätigung.'),
+    ).toBeTruthy();
+    expect(stepHeading('Datenschutz')).toBeTruthy();
+
+    fireEvent.click(option);
+    next();
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt übermitteln' }));
+    await waitFor(() => expect(h.submit).toHaveBeenCalledOnce());
+    const [payload] = h.submit.mock.calls[0]!;
+    expect(payload.consent).toMatchObject({
+      noticeAcknowledged: true,
+      signedByName: 'Max Muster',
+      displayRevision: 'rev-1',
+    });
+    expect(payload.consent.selections.optionSelections).toEqual([
+      expect.objectContaining({ optionId: required.id }),
+    ]);
   });
 });
 
