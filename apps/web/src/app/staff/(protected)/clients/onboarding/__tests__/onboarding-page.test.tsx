@@ -20,6 +20,8 @@ const h = vi.hoisted(() => ({
   gwgCheck: null as Record<string, unknown> | null,
   invite: null as Record<string, unknown> | null,
   poaCount: 0,
+  createQuick: vi.fn(),
+  quickDialogs: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -78,10 +80,15 @@ vi.mock('../[id]/actions', () => ({
   onboardingCaptureGwgInOfficeAction: h.captureInOffice,
 }));
 vi.mock('@/app/staff/(protected)/clients/[id]/requests/actions', () => ({
-  createQuickRequestAction: vi.fn(),
+  createQuickRequestAction: h.createQuick,
 }));
 vi.mock('@/components/gwg-submission-summary', () => ({ GwgSubmissionSummary: () => null }));
-vi.mock('@/components/quick-request-dialog', () => ({ QuickRequestDialog: () => null }));
+vi.mock('@/components/quick-request-dialog', () => ({
+  QuickRequestDialog: (props: Record<string, unknown>) => {
+    h.quickDialogs.push(props);
+    return null;
+  },
+}));
 
 import OnboardingStepPage from '../[id]/page';
 
@@ -138,6 +145,7 @@ beforeEach(() => {
   h.gwgCheck = null;
   h.invite = null;
   h.poaCount = 0;
+  h.quickDialogs.length = 0;
   for (const action of [h.addContact, h.sendGwg, h.skip, h.captureInOffice]) {
     action.mockResolvedValue({ ok: false, error: 'nicht im Test' });
   }
@@ -219,6 +227,20 @@ describe('Vollmacht-Schritt im Onboarding', () => {
     expect(screen.getByRole('link', { name: 'Vollmacht anlegen' }).getAttribute('href')).toBe(
       `/staff/poa/new?clientId=${CLIENT_ID}&from=onboarding`,
     );
+  });
+});
+
+describe('Erste Anforderung im Onboarding', () => {
+  it('bindet den Quick-Dialog mit der Quick-Action statt eines Seitenwechsels ein', async () => {
+    h.client = { ...h.client, allowActive: true };
+    const { container } = await renderStep('first_request');
+    expect(h.quickDialogs).toEqual([
+      expect.objectContaining({
+        createAction: h.createQuick,
+        client: expect.objectContaining({ id: CLIENT_ID, allowActive: true }),
+      }),
+    ]);
+    expect(container.querySelector('a[href*="requests/new?from=onboarding"]')).toBeNull();
   });
 });
 
