@@ -1,6 +1,6 @@
 // n8n-Adminformular: gerenderte Stufen, Sektionen und Zustände statt
-// Quelltextprüfung. Klick-Verdrahtung (Action-Argumente, Refresh) braucht eine
-// DOM-Testumgebung und ist hier nicht abgedeckt.
+// Quelltextprüfung (statisches Markup). Klick-Verdrahtung in jsdom prüfen
+// n8n-form-payload.test.tsx (Speichern/API-Test) und n8n-route-editor.test.tsx.
 
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
