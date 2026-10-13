@@ -349,7 +349,13 @@
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
         "packages/db/prisma/migrations/20261007160200_portal_inbox_staff_search_candidates/migration.sql",
-        "packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates(text,int4).sql"
+        "packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates(text,int4).sql",
+        "packages/db/prisma/migrations/20261012120000_portal_inbox_staff_search_recent/migration.sql",
+        "packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates_v2(text,text,text,text,text,int4).sql",
+        "packages/db/prisma/migrations/20261012120200_portal_inbox_contact_search_candidates/migration.sql",
+        "packages/db/prisma/sql/functions/app.portal_inbox_contact_search_candidates(text,text,text,text,int4).sql",
+        "apps/web/src/app/portal/(protected)/inbox/page.tsx",
+        "apps/web/src/app/staff/(protected)/inbox/page.tsx"
       ],
       "test_refs": [
         "apps/e2e/tests/recent-clients-state.spec.ts",
@@ -357,6 +363,10 @@
         "apps/e2e/tests/12-accessibility.spec.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "packages/db/src/__tests__/portal-inbox-staff-search-candidates.test.ts",
+        "packages/db/src/__tests__/portal-inbox-staff-search-candidates-v2.test.ts",
+        "packages/db/src/__tests__/portal-inbox-contact-search-candidates.test.ts",
+        "apps/web/src/server/inbox/__tests__/staff-search-db.test.ts",
+        "apps/web/src/server/inbox/__tests__/portal-search-db.test.ts",
         "packages/db/src/__tests__/rls-cross-tenant.test.ts",
         "apps/web/src/app/api/staff/search/__tests__/route.test.ts",
         "apps/web/src/app/portal/(protected)/__tests__/list-ux.test.ts",

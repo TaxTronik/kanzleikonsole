@@ -48,12 +48,22 @@ code_refs:
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
   - packages/db/prisma/migrations/20261007160200_portal_inbox_staff_search_candidates/migration.sql
   - packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates(text,int4).sql
+  - packages/db/prisma/migrations/20261012120000_portal_inbox_staff_search_recent/migration.sql
+  - packages/db/prisma/sql/functions/app.portal_inbox_staff_search_candidates_v2(text,text,text,text,text,int4).sql
+  - packages/db/prisma/migrations/20261012120200_portal_inbox_contact_search_candidates/migration.sql
+  - packages/db/prisma/sql/functions/app.portal_inbox_contact_search_candidates(text,text,text,text,int4).sql
+  - apps/web/src/app/portal/(protected)/inbox/page.tsx
+  - apps/web/src/app/staff/(protected)/inbox/page.tsx
 test_refs:
   - apps/e2e/tests/recent-clients-state.spec.ts
   - apps/e2e/tests/saved-views-state.spec.ts
   - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - packages/db/src/__tests__/portal-inbox-staff-search-candidates.test.ts
+  - packages/db/src/__tests__/portal-inbox-staff-search-candidates-v2.test.ts
+  - packages/db/src/__tests__/portal-inbox-contact-search-candidates.test.ts
+  - apps/web/src/server/inbox/__tests__/staff-search-db.test.ts
+  - apps/web/src/server/inbox/__tests__/portal-search-db.test.ts
   - packages/db/src/__tests__/rls-cross-tenant.test.ts
   - apps/web/src/app/api/staff/search/__tests__/route.test.ts
   - apps/web/src/app/portal/(protected)/__tests__/list-ux.test.ts
@@ -177,16 +187,22 @@ normale Scope-Indizes; diese ändern keine Sichtbarkeitsentscheidung.
 
 Unter RLS darf PostgreSQL die Teilstringsuche nicht als Indexbedingung nutzen.
 Die tenantweite Staff-Suche des Posteingangs wählt deshalb zuerst Kandidaten
-aus: `app.portal_inbox_staff_search_candidates` (SECURITY DEFINER, Tenant
-ausschließlich aus dem Transaktionskontext) sucht mit demselben Muster in
-denselben Feldern über den Trigramindex und liefert nur Threads, die die
-Staff-Policy sichtbar macht (Kanzleiperson, `PORTAL_INBOX_MANAGE`,
-Mandantenzugriff). Die Liste lädt danach wie bisher unter RLS mit allen
-Filtern, beschränkt auf diese Kandidaten; bei mehr als 10.000 Treffern entfällt
-die Vorauswahl. Suchfelder, Treffer, Zähler und Reihenfolge ändern sich dadurch
-nicht. Die Portalsuche (ein Mandant) und die Suche der Dokumentenseite (ein
-Mandant beziehungsweise Kanzlei-intern, ein Ordner) laufen über ihre
-Scope-Indizes; dort brächte der Trigramindex keinen Vorteil.
+aus: `app.portal_inbox_staff_search_candidates_v2` (SECURITY DEFINER, Tenant
+und Bearbeiter für „Meine Arbeit“ ausschließlich aus dem Transaktionskontext)
+sucht mit demselben Muster in denselben Feldern über den Trigramindex, wendet
+dieselben Listenfilter und die Bedingungen der Staff-Policy an
+(Kanzleiperson, `PORTAL_INBOX_MANAGE`, Mandantenzugriff) und liefert die 500
+zuletzt aktiven sichtbaren Treffer. Die Liste lädt genau diese Threads unter
+RLS mit allen Filtern, zählt höchstens 500, blättert per Keyset und zeigt bei
+mehr Treffern „Mehr als 500 Treffer – Suche verfeinern“. Die Portalsuche wählt
+über `app.portal_inbox_contact_search_candidates` vor (Mandant ausschließlich
+aus dem Kontakt des Transaktionskontexts, nur Betreff und eigener
+Mandantenname, Bedingungen der Kontakt-Policy, höchstens 500 Treffer mit
+demselben Hinweis) und lädt die Kandidaten ebenfalls unter RLS. Suchfelder und
+Autorisierungsscope ändern sich dadurch nicht; die Begrenzung lässt höchstens
+ältere zulässige Treffer aus und wird angezeigt. Die Vorgängerfunktion
+`app.portal_inbox_staff_search_candidates` bleibt bis zum Contract-Schritt
+eines Folgerelease für das Image des Vorreleases bestehen.
 
 Die Suchfelddefinition ist nach Oberfläche getrennt. Portalabfragen enthalten
 nur Betreff und Mandantenname. DATEV- und Addison-Nummern werden ausschließlich
