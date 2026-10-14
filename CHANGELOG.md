@@ -310,6 +310,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Abhängigkeiten: `undici` in `@taxtronik/http-utils` von 8.10.2 auf 8.11.2,
+  dieselbe Version, die `jsdom` (Testumgebung) verlangt. Mit zwei Versionen
+  lag die von `http-utils` verschachtelt, der Worker-Build bündelte sie als
+  CommonJS und brach ab. Keine Install-Hooks; SSRF-Pinning und Antwortgrenzen
+  unverändert.
+
 - **[Scope]** DSGVO-Auskunft: Das kontaktbezogene JSON-Paket (Art. 15/20)
   erzeugt der Worker `dsgvo-export` im Hintergrund statt der Web-Anfrage;
   Inhalt und Format sind unverändert. Die Detailseite zeigt den Status
