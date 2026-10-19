@@ -50,6 +50,7 @@ import {
   TextChips,
   type ProfilPerson,
 } from '@/components/tcms/programm/profil-formular';
+import { profilFeldBezeichnung } from '@/components/tcms/programm/profil-fehler';
 import { confirmFormSubmission } from '@/components/ui/modal';
 import { einrichtungSpeichernAction } from './actions';
 
@@ -66,18 +67,27 @@ interface Basis {
 }
 
 /** Feldfehler mit Bezeichnung (Pfade relativ zu `daten`, bzw. Felder der Personenprüfung). */
-function beschriftet(
+export function beschriftet(
   fieldErrors: Record<string, string[]> | undefined,
-  labels: ReadonlyArray<readonly [RegExp, string]>,
+  labels: ReadonlyArray<Beschriftung>,
 ): Record<string, string[]> | undefined {
   if (!fieldErrors) return undefined;
   const aus: Record<string, string[]> = {};
   for (const [pfad, meldungen] of Object.entries(fieldErrors)) {
-    const label = labels.find(([muster]) => muster.test(pfad))?.[1];
+    const eintrag = labels.find(([muster]) => muster.test(pfad))?.[1];
+    const label = typeof eintrag === 'function' ? eintrag(pfad) : eintrag;
     aus[pfad] = meldungen.map((m) => (label ? `${label}: ${m}` : m));
   }
   return aus;
 }
+
+/** Bezeichnung je Pfadmuster: fester Text oder aus dem Pfad (Geschäftsprofil). */
+type Beschriftung = readonly [RegExp, string | ((pfad: string) => string)];
+
+/** Schritt 2: Frage und Feld des Profils (Altbestand, TCMS s8), sonst „Geschäftsprofil“. */
+export const PROFIL_LABELS: ReadonlyArray<Beschriftung> = [
+  [/^profil\.(p\d+)/, (pfad) => profilFeldBezeichnung(pfad) ?? 'Geschäftsprofil'],
+];
 
 const PERSONEN_LABELS = [
   [/^kontrollen/, 'Zuständigkeiten'],
@@ -166,7 +176,7 @@ function SchrittMeldung({
   fieldIds,
 }: {
   ergebnis: TcmsAktionsErgebnis | null;
-  labels: ReadonlyArray<readonly [RegExp, string]>;
+  labels: ReadonlyArray<Beschriftung>;
   fieldIds: Record<string, string> | undefined;
 }) {
   if (!ergebnis) return null;
@@ -207,7 +217,7 @@ function SchrittFormular({
   schritt: 1 | 2 | 3 | 4 | 5;
   daten: unknown;
   hinweis: ReactNode;
-  labels?: ReadonlyArray<readonly [RegExp, string]>;
+  labels?: ReadonlyArray<Beschriftung>;
   fieldIds?: Record<string, string>;
   children: (fieldErrors: Record<string, string[]> | undefined) => ReactNode;
 }) {
@@ -480,7 +490,7 @@ export function SchrittProfil({
       schritt={2}
       daten={{ profil }}
       hinweis="Änderungen am Profil setzen Risiko- und Kontrollvorschlag neu auf."
-      labels={[[/^profil\.(p\d+)/, 'Geschäftsprofil']]}
+      labels={PROFIL_LABELS}
     >
       {() => (
         <div className="px-6 py-4">

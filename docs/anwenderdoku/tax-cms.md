@@ -137,7 +137,12 @@ abgelehnte, deaktivierte und nicht mehr vorgeschlagene Risiken.
 
 - **Profil ändern** legt einen neuen Stand mit Gültigkeitsdatum an; frühere
   Stände bleiben unverändert. Optional entstehen die zugehörigen Ereignisse im
-  Ereigniseingang.
+  Ereigniseingang. Ältere Stände können Bezeichnungen mit Zeilenumbrüchen oder
+  unsichtbaren Zeichen enthalten (z. B. aus kopierten Texten); angezeigt
+  werden sie, gespeichert wird ein neuer Stand aber nur ohne solche Zeichen.
+  Die Meldung nennt dann Frage und Feld (z. B. „P1 Verkaufskanäle ·
+  Shopsystem: Unzulässige Zeichen“) – den Text dort neu eintippen. Dasselbe
+  gilt im Einrichtungsassistenten (Schritt 2).
 - **Risiko aufnehmen** legt ein vorgeschlagenes Risiko mit Brutto-Startwerten
   und den fehlenden Katalogkontrollen an. Verantwortlich werden
   Berufsträgerin bzw. Berufsträger und Hauptbearbeitung aus der

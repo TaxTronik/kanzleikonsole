@@ -5,7 +5,7 @@
 // Zuständigkeit der kanzleikonsole (nie aus dem Formular), Weiterleitung nur
 // nach Erfolg und nur mit Zahlen/Codes aus der Antwort des Dienstes.
 // Fachkatalog: TCMS-AKTEUR-001, TCMS-DIENST-001
-import { ENDPUNKTE } from '@taxtronik/tcms-contract';
+import { ENDPUNKTE, ProfilAntwortenSchema } from '@taxtronik/tcms-contract';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -36,6 +36,7 @@ vi.mock('@/server/tcms/programm/zustaendigkeit', async (orig) => ({
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { ActionError } from '@/server/actions/action-error';
 import { AUFNAHME_TEXTE } from '@/server/tcms/programm/zustaendigkeit';
+import { PROFIL_ALTBESTAND_HINWEIS } from '@/components/tcms/programm/profil-fehler';
 import { profilAendernAction, risikoAufnehmenAction } from '../actions';
 
 const MANDANT = DEMO.talwind;
@@ -184,6 +185,49 @@ describe('profilAendernAction', () => {
       ok: false,
       fieldErrors: { profil: ['Bitte prüfen Sie die Angaben des Profils.'] },
     });
+  });
+});
+
+describe('Altbestand des Profils (TCMS s8)', () => {
+  /** Stand vor der Zeichenregel: Zeilenumbruch im Shopsystem, Nullbreite in einer Warengruppe. */
+  function altbestand() {
+    const p = structuredClone(profil());
+    p.p1.shopSystem = 'Shopware\n6';
+    p.p4.warengruppen = [
+      { name: 'Textil', abweichenderSatz: false },
+      { name: `Bücher${String.fromCodePoint(0x200b)}`, abweichenderSatz: true },
+    ];
+    return p;
+  }
+
+  it('wird tolerant gelesen (Antwort des Dienstes), aber nur nach der Eingaberegel gespeichert', () => {
+    const daten = tcmsFixtures.profilTalwind();
+    daten.staende.at(-1)!.antworten = altbestand();
+    expect(ENDPUNKTE.profilLesen.antwortSchema.safeParse(daten).success).toBe(true);
+    expect(ProfilAntwortenSchema.safeParse(altbestand()).success).toBe(false);
+  });
+
+  it('erneutes Speichern: Feldfehler mit Frage und Feld, Hinweis auf den Altbestand, kein Dienstaufruf', async () => {
+    await profilAendernAction(
+      MANDANT,
+      null,
+      aendernFormular({
+        profilStandId: 'cmv-stand_1',
+        profil: JSON.stringify(altbestand()),
+        gueltigAb: '2026-11-01',
+      }),
+    );
+    const p = spec().parse();
+    expect(p.ok).toBe(false);
+    expect(p.error).toBe(PROFIL_ALTBESTAND_HINWEIS);
+    const zeilen = (p.fieldErrors as Record<string, string[]>)['profil'];
+    expect(zeilen).toEqual(
+      expect.arrayContaining([
+        'P1 Verkaufskanäle · Shopsystem: Unzulässige Zeichen',
+        'P4 Sortiment und Steuersätze · Warengruppe 2: Unzulässige Zeichen',
+      ]),
+    );
+    expect(zeilen).toHaveLength(2);
   });
 });
 

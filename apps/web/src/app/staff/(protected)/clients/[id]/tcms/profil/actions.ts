@@ -24,6 +24,10 @@ import {
   type ProfilAntworten,
 } from '@taxtronik/tcms-contract';
 import type { TcmsAktionsErgebnis } from '@/components/tcms/programm/dialog';
+import {
+  PROFIL_ALTBESTAND_HINWEIS,
+  profilFehlerZeilen,
+} from '@/components/tcms/programm/profil-fehler';
 import type { ActionParseResult } from '@/server/actions/action-runner';
 import { formFlag, parseActionInput, parseFormData } from '@/server/actions/form-data';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
@@ -63,7 +67,14 @@ function aenderungAus(formData: FormData): ActionParseResult<Aenderung> {
   }
   const profil = parseActionInput(ProfilAntwortenSchema, json.wert);
   if (!profil.ok) {
-    return { ...profil, fieldErrors: { profil: ['Bitte prüfen Sie die Angaben des Profils.'] } };
+    // Altbestand (TCMS s8): gelesen tolerant, gespeichert nur nach der Regel
+    // für Eingaben – Feldfehler mit Frage und Feld statt einer Sammelmeldung.
+    const { zeilen, feldbezogen } = profilFehlerZeilen(profil.fieldErrors ?? {});
+    return {
+      ...profil,
+      ...(feldbezogen ? { error: PROFIL_ALTBESTAND_HINWEIS } : {}),
+      fieldErrors: { profil: zeilen },
+    };
   }
   return {
     ok: true,
