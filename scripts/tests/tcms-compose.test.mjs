@@ -231,6 +231,15 @@ test('verwaltet: Haertung, Nicht-root, Healthchecks und Startreihenfolge', dynam
   }
   assert.equal(model.services['tcms-db'].user, '70:70');
   assert.equal(model.services['tcms-api'].user, '10001:10001');
+  // tcms-migrate: Nutzer des Images (postgres) und kein anonymes Volume aus dem
+  // VOLUME des PostgreSQL-Basisimages.
+  assert.equal(model.services['tcms-migrate'].user, '70:70');
+  assert.ok(
+    (model.services['tcms-migrate'].tmpfs ?? []).some((entry) =>
+      entry.startsWith('/var/lib/postgresql:'),
+    ),
+    'tcms-migrate tmpfs /var/lib/postgresql',
+  );
   assert.match(model.services['tcms-db'].image, /^postgres:18-alpine@sha256:[0-9a-f]{64}$/);
   assert.deepEqual(model.services['tcms-db'].healthcheck.test, [
     'CMD-SHELL',

@@ -114,9 +114,15 @@ services:
     container_name: taxtronik-tcms-migrate
     restart: 'no'
     profiles: ['tcms']
+    # Image laeuft als postgres (UID/GID 70), ohne Node und Prisma-CLI.
+    user: '70:70'
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
+      # Das PostgreSQL-Basisimage erklaert VOLUME /var/lib/postgresql; ohne
+      # Mount entstuende je Lauf ein anonymes Volume. Der Schritt schreibt dort
+      # nichts.
+      - /var/lib/postgresql:size=1m,mode=0700,uid=70,gid=70
     mem_limit: ${TCMS_MIGRATE_MEM_LIMIT:-256m}
     depends_on:
       tcms-db:
