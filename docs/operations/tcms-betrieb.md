@@ -155,7 +155,9 @@ Dienst-Token (32–512 Zeichen, kein Platzhalter), erzeugt bei Bedarf das eigene
 Schlüsselpaar und gibt nur den öffentlichen Eintrag `kid=<SPKI>` aus, den die
 Betreiber des externen Tax-CMS an ihre `TCMS_ACTOR_PUBLIC_KEYS` anhängen.
 TaxTronik startet und aktualisiert dort nichts. Der Wechsel von `managed` zu
-`external` geht nur über `disable`.
+`external` geht nur über `disable`; beim Wechsel von `external` zu `managed`
+erzeugt `setup` ein neues Dienst-Token, statt das des externen Betreibers
+weiterzuverwenden.
 
 **Initialsetup.** `./taxtronik deploy` fragt bei einer neuen Installation
 nach dem Tax-CMS (Standard: deaktiviert). Bestehende Installationen ohne Wert

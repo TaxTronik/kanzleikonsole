@@ -155,18 +155,23 @@ tcms_database_volume_exists() {
   [[ -n "$(docker volume ls -q --filter 'label=com.docker.compose.volume=tcms-db-data' 2>/dev/null | head -n1)" ]]
 }
 
+# tcms-db fuer eine Sicherung bereitstellen; startet den Container bei Bedarf
+# (aendert keine Daten). rc 1: noch keine TCMS-Daten (Volume fehlt).
+tcms_prepare_db_for_backup() {
+  tcms_database_volume_exists || return 1
+  if [[ "$(docker inspect --format '{{.State.Running}}' "$TCMS_DB_CONTAINER" 2>/dev/null || true)" != "true" ]]; then
+    compose --profile tcms up -d --no-deps tcms-db || die "tcms-db konnte fuer das Backup nicht gestartet werden."
+  fi
+  tcms_wait_db_healthy
+}
+
 # TCMS-Dump wie der Hauptdump: lokal unter backups/ und im Backup-Bucket.
-# Startet tcms-db bei Bedarf (aendert keine Daten); ohne Volume nichts zu tun.
 backup_tcms_with_upload() {
   [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
-  if ! tcms_database_volume_exists; then
+  if ! tcms_prepare_db_for_backup; then
     info "Noch keine TCMS-Datenbank vorhanden; TCMS-Backup entfaellt."
     return 0
   fi
-  if [[ "$(docker inspect --format '{{.State.Running}}' "$TCMS_DB_CONTAINER" 2>/dev/null || true)" != "true" ]]; then
-    compose --profile tcms up -d --no-deps tcms-db || return 1
-  fi
-  tcms_wait_db_healthy
   run_backup_tcms "$(resolve_backup_host_dir)" || return 1
   upload_tcms_backup "$_TCMS_BACKUP_FILE" || {
     warn "TCMS-Dump liegt lokal ($_TCMS_BACKUP_FILE), der Upload in den Backup-Bucket ist fehlgeschlagen."
@@ -602,7 +607,8 @@ cmd_backup_full() {
   if ! run_backup_n8n "$staging/database"; then
     die "n8n-DB-Dump im Full-Backup fehlgeschlagen."
   fi
-  if ! run_backup_tcms "$staging/database"; then
+  if [[ "$(tcms_deployment_mode)" == "managed" ]] && tcms_prepare_db_for_backup && \
+      ! run_backup_tcms "$staging/database"; then
     die "TCMS-DB-Dump im Full-Backup fehlgeschlagen."
   fi
   if ! run_backup_files "$staging/object-store-byte-export"; then

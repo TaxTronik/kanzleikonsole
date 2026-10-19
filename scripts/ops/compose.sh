@@ -143,7 +143,8 @@ compose() {
       render_traefik_dynamic_config
       compose_files+=(-f "$TRAEFIK")
     fi
-    if [[ "$subcommand" == "up" ]]; then
+    # Nur wenn n8n mitstarten kann (nicht fuer reine TCMS-/Signal-Starts).
+    if [[ "$subcommand" == "up" ]] && compose_starts_writers "$@"; then
       reconcile_n8n_encryption_key_from_volume
     fi
     docker compose "${compose_files[@]}" --env-file "$ENVFILE" "$@"

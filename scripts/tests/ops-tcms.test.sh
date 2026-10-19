@@ -657,6 +657,15 @@ test_external_setup_requires_https_and_prints_only_the_public_key() {
   assert_contains "$out" "$(env_value "$env_file" TCMS_ACTOR_KEY_ID)=MCowBQYDK2VwAyEA"
   assert_not_contains "$out" "$private"
   assert_not_contains "$out" "externTokenMitGenugZeichen0123456789ab"
+  # Wechsel extern -> verwaltet: nie das Token des externen Betreibers weiterverwenden.
+  tcms_isolated "$env_file" cmd_tcms_setup managed --no-start </dev/null >"$out" 2>&1 || {
+    cat "$out" >&2; test_fail "switch from external to managed failed"
+  }
+  assert_key_equals "$env_file" TCMS_DEPLOYMENT managed
+  [[ "$(env_value "$env_file" TCMS_SERVICE_TOKEN)" != "externTokenMitGenugZeichen0123456789ab" ]] || \
+    test_fail "managed mode reused the external operator's token"
+  [[ "$(env_value "$env_file" TCMS_SERVICE_TOKENS)" == "$(env_value "$env_file" TCMS_SERVICE_TOKEN)" ]] || \
+    test_fail "managed token list does not hold the new token"
   pass "external setup requires HTTPS and a real token and prints only the public key"
 }
 

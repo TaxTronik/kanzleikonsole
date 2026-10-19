@@ -951,6 +951,12 @@ cmd_tcms_setup() {
   fi
   case "$mode" in
     managed)
+      if [[ "$current" == "external" ]]; then
+        # Das Token stammt vom externen Betreiber; der eigene Dienst bekommt
+        # ein neues statt eines fremden, mehrfach verwendeten Geheimnisses.
+        tcms_set TCMS_SERVICE_TOKEN ""
+        tcms_set TCMS_URL ""
+      fi
       tcms_configure_managed
       if (( start == 1 )) && tcms_installed; then
         tcms_activate
