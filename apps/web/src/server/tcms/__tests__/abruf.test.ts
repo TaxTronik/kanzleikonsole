@@ -5,8 +5,6 @@
 //     Mandanten freigegeben, DOC-PORTAL-SHARING-001).
 //   - SHA-256 und Größe der neuesten Version müssen dem Verweis entsprechen;
 //     sonst keine Auslieferung, kein Abrufnachweis, kein Storage-Zugriff.
-//   - Einstieg (ÜBERGANG bis server/tcms/route.ts): Zustände als feste
-//     Antworten, nie Texte des Dienstes.
 // Fachkatalog: TCMS-DIENST-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -15,9 +13,6 @@ const h = vi.hoisted(() => ({
   antwort: vi.fn(),
   zugriff: vi.fn(),
   version: null as null | { sha256: Uint8Array; sizeBytes: bigint },
-  mandantSeite: vi.fn(),
-  portalSeite: vi.fn(),
-  lesenOptional: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -26,20 +21,8 @@ vi.mock('@/server/documents/delivery', () => ({
   loadDocumentDelivery: h.laden,
   documentDownloadResponse: h.antwort,
 }));
-vi.mock('@/server/tcms/seite', () => ({
-  tcmsMandantSeite: h.mandantSeite,
-  tcmsPortalSeite: h.portalSeite,
-  tcmsLesenOptional: h.lesenOptional,
-}));
 
-import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { tcmsVerweisAusliefern, type TcmsAuslieferungsAkteur } from '../abruf/auslieferung';
-import {
-  tcmsMandantRoute,
-  tcmsPortalRoute,
-  tcmsRouteLesen,
-  tcmsRouteZustand,
-} from '../abruf/einstieg';
 
 const TENANT = '7a1e0000-0000-4000-8000-00000000d3e0';
 const MANDANT = 'a1000000-0000-4000-8000-000000004711';
@@ -151,47 +134,5 @@ describe('tcmsVerweisAusliefern', () => {
     });
     expect(r).toEqual({ art: 'NICHT_VERFUEGBAR' });
     expect(h.laden).not.toHaveBeenCalled();
-  });
-});
-
-describe('Einstieg der Route-Handler (ÜBERGANG)', () => {
-  it('Zustände → feste JSON-Antworten ohne Texte des Dienstes', async () => {
-    const faelle = [
-      ['NICHT_KONFIGURIERT', 404, 'not_found'],
-      ['KEIN_ZUGRIFF', 403, 'forbidden'],
-      ['NICHT_ERREICHBAR', 503, 'tcms_unavailable'],
-      ['ANFRAGE_UNGUELTIG', 400, 'invalid_request'],
-    ] as const;
-    for (const [art, status, code] of faelle) {
-      const a = tcmsRouteZustand({ art, neuAnmelden: false } as never);
-      expect(a.status, art).toBe(status);
-      expect(a.headers.get('cache-control')).toBe('private, no-store');
-      expect(((await a.json()) as { error: string }).error).toBe(code);
-    }
-  });
-
-  it('Mandanten- und Portal-Einstieg laufen über die Seiten-Helfer', async () => {
-    const seite = { ok: true, art: 'MANDANT', mandantId: MANDANT };
-    h.mandantSeite.mockResolvedValue(seite);
-    expect(await tcmsMandantRoute(MANDANT)).toBe(seite);
-    expect(h.mandantSeite).toHaveBeenCalledWith(MANDANT);
-    h.portalSeite.mockResolvedValue({ ok: false, zustand: { art: 'KEIN_ZUGRIFF' } });
-    const r = await tcmsPortalRoute();
-    expect(r.ok).toBe(false);
-    expect(!r.ok && r.antwort.status).toBe(403);
-    expect(h.portalSeite).toHaveBeenCalledWith();
-  });
-
-  it('Lesen: 404 des Dienstes → 404 ohne Existenzhinweis', async () => {
-    const route = { ok: true, art: 'PORTAL', mandantId: MANDANT } as never;
-    h.lesenOptional.mockResolvedValue({ ok: true, daten: null, requestId: null });
-    const r = await tcmsRouteLesen(route, ENDPUNKTE.portalAnlageLesen, {
-      params: { nachweisId: 'cmvf9ne96007qdy7d0c2yfigq' },
-    });
-    expect(r.ok).toBe(false);
-    expect(!r.ok && r.antwort.status).toBe(404);
-    expect(h.lesenOptional).toHaveBeenCalledWith(route, ENDPUNKTE.portalAnlageLesen, {
-      params: { nachweisId: 'cmvf9ne96007qdy7d0c2yfigq' },
-    });
   });
 });

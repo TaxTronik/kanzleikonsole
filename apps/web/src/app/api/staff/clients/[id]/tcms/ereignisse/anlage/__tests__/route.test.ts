@@ -1,5 +1,5 @@
 // TCMS Stufe 3, Bereich D: Abruf einer Anlage einer Portal-Meldung durch die
-// Kanzlei (GET /staff/clients/:id/tcms/ereignisse/anlage?e=…&h=…).
+// Kanzlei (GET /api/staff/clients/:id/tcms/ereignisse/anlage?e=…&h=…).
 // Schutzregeln: Einstieg zuerst mit der ID aus dem Pfad; nur der Verweis, den
 // das Tax-CMS für genau diesen Hash liefert; Bytes nur über die
 // Kanzlei-Auslieferung des geprüften Mandanten; Abweichung → Hinweis.
@@ -9,11 +9,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const h = vi.hoisted(() => ({ route: vi.fn(), lesen: vi.fn(), ausliefern: vi.fn() }));
 
 vi.mock('server-only', () => ({}));
-// Einstieg mit echten Antworten, aber ohne Seiten-Helfer (Sitzung, Datenbank).
-vi.mock('@/server/tcms/seite', () => ({}));
+// Der echte Einstieg wird geladen (feste Antworten); Sitzungen bleiben außen vor.
+vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => null }));
+vi.mock('@/server/auth/portal', () => ({ portalAuth: async () => null }));
 vi.mock('@/server/tcms/abruf/auslieferung', () => ({ tcmsVerweisAusliefern: h.ausliefern }));
-vi.mock('@/server/tcms/abruf/einstieg', async (original) => ({
-  ...(await original<typeof import('@/server/tcms/abruf/einstieg')>()),
+// Gemeinsamer Einstieg mit echten Antworten; nur Einstieg und Lesen ersetzt.
+vi.mock('@/server/tcms/route', async (original) => ({
+  ...(await original<typeof import('@/server/tcms/route')>()),
   tcmsMandantRoute: h.route,
   tcmsRouteLesen: h.lesen,
 }));
@@ -21,7 +23,7 @@ vi.mock('@/server/tcms/abruf/einstieg', async (original) => ({
 import { NextRequest } from 'next/server';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { DEMO } from '@/__tests__/tcms-fixtures';
-import { GET } from '../ereignisse/anlage/route';
+import { GET } from '../route';
 
 const EREIGNIS = 'cmvf9ned0008hdy7dlufu2vuo';
 const SHA = 'ab'.repeat(32);
@@ -42,7 +44,7 @@ const VERWEIS = {
 
 function aufruf(query: string, id: string = DEMO.talwind) {
   const req = new NextRequest(
-    `http://localhost/staff/clients/${id}/tcms/ereignisse/anlage?${query}`,
+    `http://localhost/api/staff/clients/${id}/tcms/ereignisse/anlage?${query}`,
   );
   return { req, antwort: GET(req, { params: Promise.resolve({ id }) }) };
 }

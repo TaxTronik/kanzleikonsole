@@ -19,7 +19,8 @@ import 'server-only';
 //     aktiv, portalAkteurTx; der Mandant kommt nur aus der Sitzung.
 //
 // Danach liest der Handler über `tcmsRouteLesen(route, ENDPUNKTE.x, …)` – nur
-// GET-Endpunkte mit Mandant im Pfad; Akteur und `mandantId` setzt der Helfer,
+// GET-Endpunkte mit Mandant im Pfad, deren `akteure` die Art der Route nennen
+// (Portal: MANDANT, Kanzlei: KANZLEI); Akteur und `mandantId` setzt der Helfer,
 // der Handler gibt nur die übrigen Pfadparameter an. Die Bytes liefert danach
 // ausschließlich die Dokumentauslieferung der kanzleikonsole
 // (server/documents/delivery.ts) mit ihren eigenen Rechten und dem
@@ -267,8 +268,14 @@ export async function tcmsRouteLesen<E extends Endpunkt>(
   if (!endpunkt.mandantenbezogen) {
     throw new TcmsRouteFehler(`${endpunkt.name} hat keinen Mandanten im Pfad`);
   }
-  if (route.art === 'PORTAL' && !endpunkt.portal) {
-    throw new TcmsRouteFehler(`${endpunkt.name} ist kein Portal-Endpunkt`);
+  // TCMS Stufe 4 (wie seite.ts/aktion.ts): Zulassung nur aus `akteure` des
+  // Registers (`portal` ist abgeleitet). Portal-Routen erreichen nur
+  // MANDANT-Endpunkte, Kanzlei-Routen nur KANZLEI-Endpunkte.
+  const portalRoute = route.art === 'PORTAL';
+  if (!endpunkt.akteure.includes(portalRoute ? 'MANDANT' : 'KANZLEI')) {
+    throw new TcmsRouteFehler(
+      `${endpunkt.name} ist kein ${portalRoute ? 'Portal' : 'Kanzlei'}-Endpunkt`,
+    );
   }
   const client = tcmsClient();
   if (!client) return abbruch('NICHT_GEFUNDEN');

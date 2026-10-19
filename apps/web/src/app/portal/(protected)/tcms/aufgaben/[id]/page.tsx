@@ -5,8 +5,9 @@
 // Mandant nur aus der Portal-Sitzung (tcmsPortalSeite). Sichtbarkeit, Rechte
 // (`rechte.*` mit Grund), Status und Prüfung des Stands liefert das Tax-CMS;
 // die Seite zeigt sie an. Anlagen über die Portal-Dokumentenpipeline der
-// kanzleikonsole, Abruf über …/anlagen/[nachweisId] (Hash-Abgleich). Namen
-// der Personen aus der kanzleikonsole (Kontakte nur dieses Mandanten).
+// kanzleikonsole, Abruf über /api/portal/tcms/aufgaben/[id]/anlagen/[nachweisId]
+// (Hash-Abgleich). Namen der Personen aus der kanzleikonsole (Kontakte nur
+// dieses Mandanten).
 // =============================================================================
 
 import Link from 'next/link';
@@ -161,7 +162,7 @@ function Anlagen({
       ausgeblendet={d.nachweiseAusgeblendet}
       namen={namen}
       abruf={(nachweisId) =>
-        `/portal/tcms/aufgaben/${encodeURIComponent(d.id)}/anlagen/${encodeURIComponent(nachweisId)}`
+        `/api/portal/tcms/aufgaben/${encodeURIComponent(d.id)}/anlagen/${encodeURIComponent(nachweisId)}`
       }
       entfernen={entfernen}
       upload={

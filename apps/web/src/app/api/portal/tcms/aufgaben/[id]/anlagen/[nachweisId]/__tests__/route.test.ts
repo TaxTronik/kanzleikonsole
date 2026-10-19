@@ -1,5 +1,5 @@
 // TCMS Stufe 3, Bereich D: Abruf einer Anlage im Portal
-// (GET /portal/tcms/aufgaben/:id/anlagen/:nachweisId). Schutzregeln:
+// (GET /api/portal/tcms/aufgaben/:id/anlagen/:nachweisId). Schutzregeln:
 //   - Einstieg zuerst; Mandant nur aus der Sitzung (nie aus dem Pfad).
 //   - Lese-Limit des Portals vor dem Dienstaufruf.
 //   - Der Verweis muss zu genau der Aufgabe im Pfad gehören.
@@ -15,19 +15,21 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock('server-only', () => ({}));
-// Einstieg mit echten Antworten, aber ohne Seiten-Helfer (Sitzung, Datenbank).
-vi.mock('@/server/tcms/seite', () => ({}));
+// Der echte Einstieg wird geladen (feste Antworten); Sitzungen bleiben außen vor.
+vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => null }));
+vi.mock('@/server/auth/portal', () => ({ portalAuth: async () => null }));
 vi.mock('@/server/rate-limit', () => ({ checkPortalReadLimit: h.limit }));
 vi.mock('@/server/tcms/abruf/auslieferung', () => ({ tcmsVerweisAusliefern: h.ausliefern }));
-vi.mock('@/server/tcms/abruf/einstieg', async (original) => ({
-  ...(await original<typeof import('@/server/tcms/abruf/einstieg')>()),
+// Gemeinsamer Einstieg mit echten Antworten; nur Einstieg und Lesen ersetzt.
+vi.mock('@/server/tcms/route', async (original) => ({
+  ...(await original<typeof import('@/server/tcms/route')>()),
   tcmsPortalRoute: h.route,
   tcmsRouteLesen: h.lesen,
 }));
 
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { DEMO } from '@/__tests__/tcms-fixtures';
-import { GET } from '../aufgaben/[id]/anlagen/[nachweisId]/route';
+import { GET } from '../route';
 
 const AUFGABE = 'cmvf9ne7i007kdy7d467junj7';
 const ANDERE = 'cmvf9ne7i007kdy7d467junj8';

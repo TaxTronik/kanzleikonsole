@@ -107,7 +107,7 @@ function AnlagenBlock({ e, basis }: { e: EreignisDetail; basis: string }) {
           <li key={a.sha256} className="flex flex-wrap items-center gap-2 text-sm">
             <FileText className="h-4 w-4 text-muted" aria-hidden="true" />
             <a
-              href={`${basis}/ereignisse/anlage?e=${encodeURIComponent(e.id)}&h=${a.sha256}`}
+              href={`/api${basis}/ereignisse/anlage?e=${encodeURIComponent(e.id)}&h=${a.sha256}`}
               className="text-primary hover:underline break-all"
             >
               {a.dateiname}

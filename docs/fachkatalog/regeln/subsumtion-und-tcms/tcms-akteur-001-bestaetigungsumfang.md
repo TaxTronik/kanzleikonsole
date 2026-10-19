@@ -56,7 +56,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/risiken/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/actions.ts
   - apps/web/src/server/tcms/ereignisse/personen.ts
-  - apps/web/src/server/tcms/abruf/einstieg.ts
+  - apps/web/src/server/tcms/route.ts
 test_refs:
   - apps/web/src/server/tcms/__tests__/seite.test.ts
   - apps/web/src/server/tcms/__tests__/aktion.test.ts
@@ -79,9 +79,11 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/__tests__/seite.test.tsx
   - apps/web/src/components/tcms/kontrollen/__tests__/kontrollen.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-aktionen.test.ts
-  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-anlage-route.test.ts
+  - apps/web/src/app/api/staff/clients/[id]/tcms/ereignisse/anlage/__tests__/route.test.ts
   - apps/web/src/app/portal/(protected)/tcms/__tests__/portal-aktionen.test.ts
-  - apps/web/src/app/portal/(protected)/tcms/__tests__/anlagen-route.test.ts
+  - apps/web/src/app/api/portal/tcms/aufgaben/[id]/anlagen/[nachweisId]/__tests__/route.test.ts
+  - apps/web/src/server/tcms/__tests__/route.test.ts
+  - apps/web/src/__tests__/tcms-route-authz.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

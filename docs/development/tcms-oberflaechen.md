@@ -331,8 +331,14 @@ Nur **ergänzen** (keine bestehenden Einträge ändern): `TCMS_KEIN_RECHT`,
 
 Dateien zu Verweisen des Tax-CMS (Nachweise einer Durchführung, Anlagen
 einer Meldung) liefert die kanzleikonsole über Route Handler aus, nicht über
-Seiten. Einstieg ist `server/tcms/route.ts` (gemeinsamer Baustein, zuerst von
-Bereich C gebaut, von D mitgenutzt).
+Seiten. Einstieg ist `server/tcms/route.ts` (gemeinsamer Baustein der
+Bereiche C und D). Bestehende Abrufe:
+
+| Route                                                                  | Einstieg               | Lesen                 |
+| ---------------------------------------------------------------------- | ---------------------- | --------------------- |
+| `/api/staff/clients/[id]/tcms/nachweise/[nachweisId]`                  | `tcmsMandantRoute(id)` | `nachweisLesen`       |
+| `/api/staff/clients/[id]/tcms/ereignisse/anlage?e=…&h=…`               | `tcmsMandantRoute(id)` | `ereignisAnlageLesen` |
+| `/api/portal/tcms/aufgaben/[id]/anlagen/[nachweisId]` (mit Lese-Limit) | `tcmsPortalRoute()`    | `portalAnlageLesen`   |
 
 ```ts
 // app/api/staff/clients/[id]/tcms/nachweise/[nachweisId]/route.ts
@@ -357,7 +363,9 @@ export async function GET(
 | `tcmsPortalRoute()`    | `app/api/portal/…/tcms/…/route.ts` | `portalAuth` zuerst, Modulbereich `tcms`, Dienst konfiguriert; aktiv, `portalAkteurTx`; Mandant nur aus der Sitzung                                                    |
 
 - **Lesen:** `tcmsRouteLesen(route, ENDPUNKTE.x, { params })` nur für
-  GET-Endpunkte mit Mandant im Pfad (Portal-Route nur `portal: true`);
+  GET-Endpunkte mit Mandant im Pfad, deren `akteure` die Art der Route nennen
+  (Portal-Route: `MANDANT`, Kanzlei-Route: `KANZLEI`; wie `seite.ts` und
+  `aktion.ts` seit TCMS Stufe 4);
   `mandantId` und Akteur setzt der Helfer, der Aufruf läuft außerhalb jeder
   Transaktion. Andere Endpunkte sind Programmierfehler.
 - **Antworten:** `{ ok: false, antwort }` mit fester JSON-Antwort

@@ -337,6 +337,27 @@ describe('tcmsRouteLesen', () => {
     ).rejects.toThrow(/kein Portal-Endpunkt/);
   });
 
+  it('Zulassung nur nach `akteure` des Registers, nicht nach dem abgeleiteten `portal`', async () => {
+    // Stufe 4: `portal` ist abgeleitet und veraltet; maßgeblich ist `akteure`.
+    const portal = (await tcmsPortalRoute()) as TcmsPortalRoute;
+    const nurKanzlei = { ...ENDPUNKTE.portalAnlageLesen, akteure: ['KANZLEI'] as const };
+    await expect(
+      tcmsRouteLesen(portal, nurKanzlei as never, { params: { nachweisId: NACHWEIS } } as never),
+    ).rejects.toThrow(/kein Portal-Endpunkt/);
+    const kanzlei = await mandantRoute();
+    const nurMandant = { ...ENDPUNKTE.nachweisLesen, akteure: ['MANDANT'] as const, portal: true };
+    await expect(
+      tcmsRouteLesen(kanzlei, nurMandant as never, { params: { nachweisId: NACHWEIS } } as never),
+    ).rejects.toThrow(/kein Kanzlei-Endpunkt/);
+    const nurSystem = { ...ENDPUNKTE.nachweisLesen, akteure: ['SYSTEM'] as const };
+    for (const route of [portal, kanzlei]) {
+      await expect(
+        tcmsRouteLesen(route, nurSystem as never, { params: { nachweisId: NACHWEIS } } as never),
+      ).rejects.toThrow(/ist kein (Kanzlei|Portal)-Endpunkt/);
+    }
+    expect(m.rufe).not.toHaveBeenCalled();
+  });
+
   it('weist schreibende und mandantenlose Endpunkte als Programmierfehler ab', async () => {
     const route = await mandantRoute();
     await expect(tcmsRouteLesen(route, ENDPUNKTE.nachweisAnhaengen)).rejects.toThrow(

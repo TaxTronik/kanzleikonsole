@@ -1,13 +1,10 @@
 // =============================================================================
-// GET /portal/tcms/aufgaben/:id/anlagen/:nachweisId — Anlage einer
+// GET /api/portal/tcms/aufgaben/:id/anlagen/:nachweisId — Anlage einer
 // Kontrollaufgabe im Portal (TCMS Stufe 3, Bereich D).
 //
-//   1. Einstieg als erster Aufruf (Sitzung, Modul, Dienst, Akteur; Mandant nur
-//      aus der Sitzung) – ÜBERGANG über server/tcms/abruf/einstieg.ts mit der
-//      Schnittstelle von server/tcms/route.ts (Bereich C); beim
-//      Zusammenführen nach app/api/portal/tcms/aufgaben/[id]/anlagen/
-//      [nachweisId]/route.ts verschieben und den Import umstellen. Danach das
-//      Lese-Limit des Portals.
+//   1. Gemeinsamer Einstieg `tcmsPortalRoute` (server/tcms/route.ts) als
+//      erster Aufruf: Sitzung (sonst 401), Modul, Dienst, Aktivierung, Akteur;
+//      Mandant nur aus der Sitzung. Danach das Lese-Limit des Portals.
 //   2. `portalAnlageLesen`: Sichtbarkeit prüft das Tax-CMS (404 ohne
 //      Existenzhinweis); der Verweis muss zu genau dieser Aufgabe gehören.
 //   3. Auslieferung über die Dokumentauslieferung der kanzleikonsole mit den
@@ -27,7 +24,7 @@ import {
   tcmsPortalRoute,
   tcmsRouteAntwort,
   tcmsRouteLesen,
-} from '@/server/tcms/abruf/einstieg';
+} from '@/server/tcms/route';
 
 const Anfrage = z.object({ durchfuehrungId: DurchfuehrungIdSchema, nachweisId: NachweisIdSchema });
 

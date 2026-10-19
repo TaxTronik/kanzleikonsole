@@ -132,7 +132,7 @@ describe('Kontrollaufgabe im Portal', () => {
         name: new RegExp(n.dateiname.replace('.', '\\.')),
       });
       expect(links[0]!.getAttribute('href')).toBe(
-        `/portal/tcms/aufgaben/${AUFGABE}/anlagen/${n.id}`,
+        `/api/portal/tcms/aufgaben/${AUFGABE}/anlagen/${n.id}`,
       );
     }
     expect(screen.getByLabelText('Dateien auswählen')).toBeTruthy();

@@ -173,7 +173,7 @@ describe('Ereigniseingang', () => {
     await seite({ anlage: 'abweichend' });
     const link = screen.getByRole('link', { name: /Bescheid\.pdf/ });
     expect(link.getAttribute('href')).toBe(
-      `${BASIS}/ereignisse/anlage?e=${encodeURIComponent(ereignis.id)}&h=${sha}`,
+      `/api${BASIS}/ereignisse/anlage?e=${encodeURIComponent(ereignis.id)}&h=${sha}`,
     );
     expect(screen.getByRole('alert').textContent).toMatch(/SHA-256/);
 
