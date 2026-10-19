@@ -53,6 +53,7 @@ eingerichtet oder fachlich freigegeben ist.
 | [FIDO-MDS und Attestation](operations/fido-mds.md)     | Runbook             | Hardware-Allowlist, MDS-Netz/Refresh und Datenschutz     |
 | [Secret-Rotation](operations/secret-rotation.md)       | Runbook             | Betriebliche Secrets kontrolliert wechseln               |
 | [Subdomain-Trennung](operations/subdomain-trennung.md) | Runbook             | Staff-, Portal- und n8n-Domains sicher trennen           |
+| [Tax-CMS-Betrieb](operations/tcms-betrieb.md)          | Runbook             | Tax-CMS verwalten, anbinden, rotieren und sichern        |
 | [Lizenzschlüssel-Verifikation](operations/lizenz.md)   | Betriebsdoku        | Lizenzprüfung und Ausfallverhalten einordnen             |
 
 Ergänzend dokumentiert das

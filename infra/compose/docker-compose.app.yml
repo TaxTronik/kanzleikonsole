@@ -124,6 +124,17 @@ services:
       RISK_LAYER_OPERATOR_TOKEN: ${RISK_LAYER_OPERATOR_TOKEN:-}
       # UI-Metadatum für den ehrlichen Hinweis auf den CPU-Bottleneck.
       RISK_LAYER_LLM_BACKEND: ${RISK_LAYER_LLM_BACKEND:-auto}
+      # Tax-CMS (TCMS Stufe 2, docs/operations/tcms-betrieb.md): Besitzvertrag
+      # und Zugang der kanzleikonsole. Leer/disabled => Modul aus; managed =>
+      # TCMS_URL=http://tcms-api:3200 im internen Netz tcms-frontend
+      # (docker-compose.tcms.yml, nur im verwalteten Modus geladen). App und
+      # Worker erhalten genau ein Dienst-Token und den eigenen privaten
+      # Schluessel, nie Zugangsdaten der TCMS-Datenbank.
+      TCMS_DEPLOYMENT: ${TCMS_DEPLOYMENT:-disabled}
+      TCMS_URL: ${TCMS_URL:-}
+      TCMS_SERVICE_TOKEN: ${TCMS_SERVICE_TOKEN:-}
+      TCMS_ACTOR_PRIVATE_KEY: ${TCMS_ACTOR_PRIVATE_KEY:-}
+      TCMS_ACTOR_KEY_ID: ${TCMS_ACTOR_KEY_ID:-}
       # ELSTER / eric-bridge — opt-in (Muster Risk-Layer). Leer => Modul
       # unsichtbar. Aktivieren nur mit ELSTER_BRIDGE_URL, ELSTER_BRIDGE_TOKEN
       # und Compose-Profil `elster`.
@@ -313,6 +324,13 @@ services:
       RISK_LAYER_URL: ${RISK_LAYER_URL:-}
       RISK_LAYER_TOKEN: ${RISK_LAYER_TOKEN:-}
       RISK_LAYER_LLM_BACKEND: ${RISK_LAYER_LLM_BACKEND:-auto}
+      # Tax-CMS: dieselben Werte wie im app-Service (Jobs des Workers rufen
+      # das Tax-CMS ebenfalls mit Akteursbestaetigung auf).
+      TCMS_DEPLOYMENT: ${TCMS_DEPLOYMENT:-disabled}
+      TCMS_URL: ${TCMS_URL:-}
+      TCMS_SERVICE_TOKEN: ${TCMS_SERVICE_TOKEN:-}
+      TCMS_ACTOR_PRIVATE_KEY: ${TCMS_ACTOR_PRIVATE_KEY:-}
+      TCMS_ACTOR_KEY_ID: ${TCMS_ACTOR_KEY_ID:-}
       # ELSTER / eric-bridge — opt-in, siehe app-Service.
       ELSTER_BRIDGE_URL: ${ELSTER_BRIDGE_URL:-}
       ELSTER_BRIDGE_TOKEN: ${ELSTER_BRIDGE_TOKEN:-}

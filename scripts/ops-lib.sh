@@ -6,7 +6,8 @@
 # Pfade und alle Pins/Defaults und lädt danach die Domänendateien unter
 # scripts/ops/ in fester Reihenfolge (Source-Block am Dateiende):
 #   - core, env, compose: Ausgabe/Preflight, .env, docker-compose-Wrapper (ehemals ./dc)
-#   - traefik, signal, release, postgres: Oberfläche, Signal, Release-Vertrag, DB-Rollen
+#   - traefik, signal, tcms, release, postgres: Oberfläche, Signal, Tax-CMS,
+#     Release-Vertrag, DB-Rollen
 #   - doctor: vorab .env-Validierung statt telemetrischem Mid-Deploy-Abbruch
 #   - provision, deploy: Erstkonfiguration + Build + Migration + Start + Smoke;
 #     bootstrap bleibt veralteter Kompatibilitätsalias für deploy
@@ -33,6 +34,8 @@ APP="$ROOT/infra/compose/docker-compose.app.yml"
 # shellcheck disable=SC2034 # seit dem Baseline-Snapshot ungenutzt; Entfernen ist eine eigene Aufraeumentscheidung
 DEV="$ROOT/infra/compose/docker-compose.dev.yml"
 TRAEFIK="$ROOT/infra/compose/docker-compose.traefik.yml"
+# TCMS Stufe 2: nur bei TCMS_DEPLOYMENT=managed zusaetzlich geladen.
+TCMS_COMPOSE="$ROOT/infra/compose/docker-compose.tcms.yml"
 TRAEFIK_DYNAMIC="$ROOT/.taxtronik.traefik-dynamic.yml"
 # Compose-Override der Konfigurationspruefung (B-05): Web-Profil mit der ENV des
 # app-Dienstes im Worker-Image (run_app_env_check, scripts/ops/deploy.sh).
@@ -98,6 +101,8 @@ source "$ROOT/scripts/ops/compose.sh"
 source "$ROOT/scripts/ops/traefik.sh"
 # shellcheck source=ops/signal.sh
 source "$ROOT/scripts/ops/signal.sh"
+# shellcheck source=ops/tcms.sh
+source "$ROOT/scripts/ops/tcms.sh"
 # shellcheck source=ops/release.sh
 source "$ROOT/scripts/ops/release.sh"
 # shellcheck source=ops/postgres.sh

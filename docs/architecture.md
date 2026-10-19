@@ -36,6 +36,23 @@ Feature-Stand und Release-Prozess stehen in `README.md`, `FEATURES.md` und
         packages/storage — nicht als Worker-Job.)
 ```
 
+### Tax-CMS (TCMS)
+
+Optionaler interner, headless Dienst (`TCMS_DEPLOYMENT=managed|external|disabled`).
+Im verwalteten Modus betreibt die kanzleikonsole `tcms-api`, den kurzlebigen
+Schritt `tcms-migrate` und eine eigene Datenbank `tcms-db` in zwei internen
+Netzen:
+
+```
+  app, worker ──tcms-frontend (internal)── tcms-api ──tcms-backend (internal)── tcms-db
+                                                          └── tcms-migrate (einmalig)
+```
+
+App und Worker erreichen die TCMS-Datenbank nie; jede Anfrage trägt ein
+Dienst-Token und eine Ed25519-Akteursbestätigung. Die Images sind per Digest an
+den signierten Release-Stand gebunden. Betrieb:
+[docs/operations/tcms-betrieb.md](operations/tcms-betrieb.md).
+
 ## Kern-Prinzipien
 
 1. **Identitätstrennung Mitarbeiter vs Mandant** — zwei separate Tabellen,

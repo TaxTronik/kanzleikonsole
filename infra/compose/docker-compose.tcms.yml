@@ -1,0 +1,184 @@
+# =============================================================================
+# Tax-CMS (TCMS) — verwalteter interner Dienst (TCMS_DEPLOYMENT=managed).
+#
+# Die Operator-CLI laedt diese Datei NUR im verwalteten Modus zusaetzlich
+# (scripts/ops/compose.sh). Compose interpoliert alle Dienste einer Datei,
+# auch die inaktiver Profile (siehe risk-layer in docker-compose.app.yml);
+# ein Profil allein koennte die `:?`-Pflichtwerte unten deshalb nicht auf den
+# aktiven Fall beschraenken. Ohne diese Datei kennt Compose weder die
+# TCMS-Dienste noch ihre Pflichtwerte, mit ihr bricht jeder Aufruf mit klarer
+# Meldung ab, solange ein Pflichtwert fehlt.
+#
+# Netze (beide `internal: true`: kein Weg ins Internet, keine Host-Ports):
+#   tcms-backend : tcms-db, tcms-migrate, tcms-api — sonst niemand
+#   tcms-frontend: tcms-api, app, worker
+# App und Worker erreichen die TCMS-Datenbank damit nie, tcms-api erreicht die
+# kanzleikonsole-Datenbank, Redis und den Object-Store nie
+# (scripts/tests/tcms-compose.test.mjs prueft beides).
+#
+# Reihenfolge: tcms-db gesund -> tcms-migrate erfolgreich beendet -> tcms-api.
+# Schnittstelle zu den Images: docs/operations/tcms-betrieb.md.
+# Start: ./taxtronik deploy bzw. ./taxtronik tcms setup (Profil `tcms`).
+# =============================================================================
+
+# Anchors gelten pro Datei; Werte wie in docker-compose.yml (P-11).
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: '10m'
+      max-file: '5'
+
+services:
+  # App und Worker sprechen tcms-api im eigenen Frontend-Netz an. `default`
+  # muss ausdruecklich stehen bleiben: Ein networks-Block ohne `default`
+  # nähme ihnen Postgres, Redis, SeaweedFS und ClamAV.
+  app:
+    networks:
+      default: {}
+      tcms-frontend: {}
+  worker:
+    networks:
+      default: {}
+      tcms-frontend: {}
+
+  tcms-db:
+    <<: [*hardening, *logging]
+    # Dasselbe digest-gepinnte Image wie die kanzleikonsole-Datenbank.
+    image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+    container_name: taxtronik-tcms-db
+    restart: unless-stopped
+    profiles: ['tcms']
+    # Nicht-root ohne Capabilities: UID/GID 70 ist der postgres-Benutzer des
+    # Alpine-Images, dem /var/lib/postgresql im Image gehoert (ein neues
+    # Volume uebernimmt Eigentuemer und Modus). Der Entrypoint unterstuetzt
+    # beliebige --user-Werte und laesst chown/chmod dann aus.
+    user: '70:70'
+    read_only: true
+    tmpfs:
+      # Socket und Lock-Datei; Modus 1777 statt chown, weil ohne CHOWN-Cap.
+      - /var/run/postgresql:size=1m,mode=1777
+      - /tmp:size=64m,mode=1777
+    mem_limit: ${TCMS_DB_MEM_LIMIT:-1g}
+    stop_grace_period: 30s
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${TCMS_DB_SHARED_BUFFERS:-128MB}
+      - -c
+      - max_connections=${TCMS_DB_MAX_CONNECTIONS:-50}
+      # Rollenpasswoerter stehen beim Bootstrap/Restore als SQL-Literal im
+      # Statement. Fehlerhafte Statements schreibt Postgres sonst samt Text ins
+      # Log; panic heisst: nie. terse laesst auch CONTEXT/QUERY weg, die bei
+      # einem EXECUTE in PL/pgSQL den Statement-Text wiederholen wuerden.
+      # Bind-Parameter ebenfalls nicht.
+      - -c
+      - log_min_error_statement=panic
+      - -c
+      - log_error_verbosity=terse
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - log_parameter_max_length_on_error=0
+    environment:
+      POSTGRES_USER: tcms
+      POSTGRES_DB: tcms
+      POSTGRES_PASSWORD: ${TCMS_DB_SUPERUSER_PASSWORD:?TCMS_DB_SUPERUSER_PASSWORD fehlt - ./taxtronik tcms setup}
+    volumes:
+      - tcms-db-data:/var/lib/postgresql
+    networks:
+      - tcms-backend
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tcms -d tcms']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Kurzlebiger Schritt: Rollen-Bootstrap (Superuser), Migrationen (tcms_owner),
+  # Pruefung der Laufzeitrolle. Ohne Argumente, idempotent, Exit != 0 bei jedem
+  # Fehler. Die Operator-CLI startet ihn ausdruecklich und wertet den Exit-Code
+  # aus (scripts/ops/tcms.sh); depends_on unten deckt direkte Compose-Starts ab.
+  tcms-migrate:
+    <<: [*hardening, *logging]
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/tcms-migrate:${TCMS_VERSION:?TCMS_VERSION fehlt - ./taxtronik tcms setup bzw. deploy}${TCMS_MIGRATE_DIGEST_SUFFIX:-}
+    # Nie implizit ziehen: Registry-Images bezieht die Operator-CLI per Digest
+    # aus dem signierten Release-Stand, lokale Tags (Source-Kanal) duerfen nicht
+    # auf ein gleichnamiges oeffentliches Image ausweichen.
+    pull_policy: never
+    container_name: taxtronik-tcms-migrate
+    restart: 'no'
+    profiles: ['tcms']
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    mem_limit: ${TCMS_MIGRATE_MEM_LIMIT:-256m}
+    depends_on:
+      tcms-db:
+        condition: service_healthy
+    environment:
+      TCMS_DB_SUPERUSER_URL: postgresql://tcms:${TCMS_DB_SUPERUSER_PASSWORD:?TCMS_DB_SUPERUSER_PASSWORD fehlt - ./taxtronik tcms setup}@tcms-db:5432/tcms
+      TCMS_DB_OWNER_URL: postgresql://tcms_owner:${TCMS_DB_OWNER_PASSWORD:?TCMS_DB_OWNER_PASSWORD fehlt - ./taxtronik tcms setup}@tcms-db:5432/tcms
+      TCMS_DB_OWNER_PASSWORD: ${TCMS_DB_OWNER_PASSWORD:?TCMS_DB_OWNER_PASSWORD fehlt - ./taxtronik tcms setup}
+      TCMS_DB_APP_PASSWORD: ${TCMS_DB_APP_PASSWORD:?TCMS_DB_APP_PASSWORD fehlt - ./taxtronik tcms setup}
+    networks:
+      - tcms-backend
+
+  tcms-api:
+    <<: [*hardening, *logging]
+    image: ${TAXTRONIK_IMAGE_PREFIX:-taxtronik}/tcms-api:${TCMS_VERSION:?TCMS_VERSION fehlt - ./taxtronik tcms setup bzw. deploy}${TCMS_API_DIGEST_SUFFIX:-}
+    pull_policy: never
+    container_name: taxtronik-tcms-api
+    restart: unless-stopped
+    profiles: ['tcms']
+    # Schnittstelle: Nicht-root (UID/GID 10001), nur /tmp beschreibbar.
+    user: '10001:10001'
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    mem_limit: ${TCMS_API_MEM_LIMIT:-512m}
+    # SIGTERM: laufende Anfragen max. 20 s beenden, dann Ende.
+    stop_grace_period: 25s
+    depends_on:
+      tcms-db:
+        condition: service_healthy
+      tcms-migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      # Komma-Liste; waehrend einer Rotation stehen altes und neues Token darin.
+      TCMS_SERVICE_TOKENS: ${TCMS_SERVICE_TOKENS:?TCMS_SERVICE_TOKENS fehlt - ./taxtronik tcms setup}
+      # kid=SPKI-base64, kommagetrennt; nur oeffentliche Schluessel.
+      TCMS_ACTOR_PUBLIC_KEYS: ${TCMS_ACTOR_PUBLIC_KEYS:?TCMS_ACTOR_PUBLIC_KEYS fehlt - ./taxtronik tcms setup}
+      # Laufzeitrolle: kein Superuser, NOBYPASSRLS, nicht Eigentuemer.
+      DATABASE_URL: postgresql://tcms_app:${TCMS_DB_APP_PASSWORD:?TCMS_DB_APP_PASSWORD fehlt - ./taxtronik tcms setup}@tcms-db:5432/tcms
+      HOST: 0.0.0.0
+      PORT: '3200'
+      TCMS_LOG_LEVEL: ${TCMS_LOG_LEVEL:-info}
+    networks:
+      - tcms-backend
+      - tcms-frontend
+    healthcheck:
+      # Eingebautes Kommando der Schnittstelle: liest das Token aus der
+      # Umgebung, ruft 127.0.0.1:$PORT/v1/health, Exit 0/1, keine Werte.
+      test: ['CMD', 'node', '/app/healthcheck.mjs']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  tcms-db-data:
+
+networks:
+  tcms-backend:
+    name: taxtronik-tcms-backend
+    internal: true
+  tcms-frontend:
+    name: taxtronik-tcms-frontend
+    internal: true

@@ -55,6 +55,24 @@ ensure_compose_image_pinning() {
        "$commit" == "$(state_value current_commit)" ]] || \
       die "Registry-Compose verweigert: .env/Prozessvertrag weicht vom verifizierten Last-Good-State ab. deploy/update/rollback verwenden."
   fi
+  # TCMS Stufe 2: verwaltete TCMS-Images nur mit den Digests des signierten Stands.
+  ensure_tcms_image_pinning "$commit"
+}
+
+# Compose-Unterkommando hinter globalen Optionen. `compose --profile tcms up`
+# muss denselben Writer-Guard ausloesen wie `compose up`; frueher pruefte der
+# Wrapper nur das erste Argument, sodass jede globale Option davor den Guard
+# umging (TCMS Stufe 2). Globale Optionen mit Wert werden samt Wert
+# uebersprungen; Ausgabe leer, wenn kein Unterkommando folgt.
+compose_subcommand() {
+  while (( $# > 0 )); do
+    case "$1" in
+      --profile|-p|--project-name|-f|--file|--env-file|--project-directory|--ansi|--progress|--parallel)
+        shift 2 || return 0 ;;
+      -*) shift ;;
+      *) printf '%s' "$1"; return 0 ;;
+    esac
+  done
 }
 
 compose() {
@@ -63,13 +81,22 @@ compose() {
     render_s3_config
     docker compose -f "$BASE" --env-file "$ENVFILE" "$@"
   else
-    local compose_files=(-f "$BASE" -f "$APP") method
-    case "${1:-}" in
+    local compose_files=(-f "$BASE" -f "$APP") method subcommand tcms_mode
+    subcommand="$(compose_subcommand "$@")"
+    case "$subcommand" in
       up|start|restart) assert_writer_start_authorized ;;
     esac
     render_s3_config
     ensure_compose_image_pinning
     method="$(deployment_method)" || die "DEPLOYMENT_METHOD muss standard oder traefik sein."
+    # TCMS Stufe 2: Dienste, Netze und Pflichtwerte des Tax-CMS existieren fuer
+    # Compose nur im verwalteten Modus (Begruendung im Kopf der Datei).
+    tcms_mode="$(tcms_deployment_mode)" || \
+      die "TCMS_DEPLOYMENT muss managed, external oder disabled sein (./taxtronik doctor)."
+    if [[ "$tcms_mode" == "managed" ]]; then
+      [[ -f "$TCMS_COMPOSE" ]] || die "TCMS-Compose-Datei fehlt im Checkout: $TCMS_COMPOSE"
+      compose_files+=(-f "$TCMS_COMPOSE")
+    fi
     if [[ -n "${_TAXTRONIK_INTERNAL_COMPOSE_OVERRIDE:-}" ]]; then
       # Nur im dynamischen Scope von run_app_env_check gesetzt (interne
       # Variable, beim Laden bereinigt, nie aus .env gelesen). Die
@@ -81,7 +108,7 @@ compose() {
       render_traefik_dynamic_config
       compose_files+=(-f "$TRAEFIK")
     fi
-    if [[ "${1:-}" == "up" ]]; then
+    if [[ "$subcommand" == "up" ]]; then
       reconcile_n8n_encryption_key_from_volume
     fi
     docker compose "${compose_files[@]}" --env-file "$ENVFILE" "$@"
