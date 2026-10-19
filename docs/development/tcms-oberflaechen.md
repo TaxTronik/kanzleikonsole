@@ -26,6 +26,8 @@ Eine Seite der kanzleikonsole
   Anzeige,
 - blendet Aktionen nach den Rechte-Kennzeichen der Antwort aus oder sperrt
   sie sichtbar mit festem Grund (`rechte.bearbeiten`, `rechte.wuerdigen`,
+  je Bereich das Kennzeichen seiner Liste – Risikoinventar, Kontrollmatrix,
+  Länder-Monitor `rechte.bearbeiten` (TCMS s7) –,
   Stammdaten `kontext.mandant.rechte.bearbeiten`, Kontaktrollen
   `kontakte.rechte.bearbeiten`, Durchführung `{ erlaubt, grund, verweigerung }`,
   Portal `portalLesen`, `melden`); wo eine Antwort keine Kennzeichen trägt,

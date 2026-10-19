@@ -135,7 +135,7 @@ describe('Kontrollmatrix – Liste', () => {
   it('rendert die Kontrollen mit Kennzahlen und Namen aus der kanzleikonsole', async () => {
     const { container } = await renderServer(TcmsKontrollenPage(mit({})));
     expect(screen.getByRole('heading', { level: 2, name: 'Kontrollmatrix' })).toBeTruthy();
-    const tabelle = screen.getByRole('table');
+    const tabelle = screen.getByRole('region', { name: 'Liste der Kontrollen' });
     expect(within(tabelle).getAllByRole('row')).toHaveLength(liste.kontrollen.length + 1);
     const kennzahlen = screen.getByRole('list', { name: 'Kennzahlen der Kontrollmatrix' });
     expect(kennzahlen.textContent).toContain(`${liste.kontrollen.length} aktiv`);
@@ -145,6 +145,36 @@ describe('Kontrollmatrix – Liste', () => {
     expect(aufrufe('kontrolleLesen')).toHaveLength(0);
     // Ohne geöffnete Kontrolle keine Personenauswahl.
     expect(h.tenantLesen).not.toHaveBeenCalled();
+  });
+
+  it('Pflichtattribute: fehlende laut Dienst in Liste und Detail (TCMS s7), sonst „dokumentiert“', async () => {
+    const luecken = [
+      'Nachweisanforderung',
+      'Gegenzeichnung (Pflicht bei Schlüsselkontrollen)',
+    ] as const;
+    const k08 = liste.kontrollen.find((k) => k.code === 'K-EC-08')!;
+    k08.pflichtattributeOk = false;
+    k08.pflichtattributeLuecken = [...luecken];
+    const detailDaten = tcmsFixtures.kontrolleKEc08();
+    detailDaten.kontrolle.pflichtattributeOk = false;
+    detailDaten.kontrolle.pflichtattributeLuecken = [...luecken];
+    antworten({ detail: ok(detailDaten) });
+    await renderServer(TcmsKontrollenPage(mit({ kontrolle: k08.id })));
+    const tabelle = screen.getByRole('region', { name: 'Liste der Kontrollen' });
+    expect(tabelle.textContent).toContain(
+      'Pflichtattribute unvollständig: Nachweisanforderung, Gegenzeichnung (Pflicht bei Schlüsselkontrollen)',
+    );
+    const detail = screen.getByRole('region', { name: /^K-EC-08 · / });
+    const hinweis = within(detail)
+      .getAllByRole('note')
+      .find((n) => n.textContent?.includes('Pflichtattribute unvollständig'))!;
+    expect(
+      within(hinweis)
+        .getAllByRole('listitem')
+        .map((li) => li.textContent),
+    ).toEqual(['Nachweisanforderung', 'Gegenzeichnung (Pflicht bei Schlüsselkontrollen)']);
+    // Andere Kontrollen ohne Lücken: kein Hinweis in der Liste.
+    expect(tabelle.textContent!.match(/Pflichtattribute unvollständig/g)).toHaveLength(1);
   });
 
   it('maskierte Feststellung: nur die Nummer, kein §-153-Hinweis; lesbare mit Hinweis', async () => {
@@ -284,7 +314,9 @@ describe('Kontrollmatrix – Detail', () => {
   });
 
   it('ohne Bearbeitungsrecht: fester Text, keine Personenauswahl', async () => {
-    kontext.rechte.bearbeiten = false;
+    // Recht des Bereichs aus der Liste (TCMS s7); der Kontext erlaubt weiterhin.
+    kontext.rechte.bearbeiten = true;
+    liste.rechte.bearbeiten = false;
     antworten();
     await renderServer(TcmsKontrollenPage(mit({ kontrolle: idVon('K-EC-08') })));
     expect(h.tenantLesen).not.toHaveBeenCalled();

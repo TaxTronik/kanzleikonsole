@@ -148,7 +148,9 @@ describe('Länder-Monitor', () => {
   });
 
   it('ohne Bearbeitungsrecht: keine Erfassung, kein Formular im Detail, Grund sichtbar', async () => {
-    kontext.rechte.bearbeiten = false;
+    // Recht des Bereichs aus der Liste (TCMS s7); der Kontext erlaubt weiterhin.
+    kontext.rechte.bearbeiten = true;
+    monitor.rechte.bearbeiten = false;
     antworten();
     await renderServer(TcmsLaenderPage(mit({ erfassen: '1', land: 'FR' })));
     expect(screen.queryByRole('form', { name: 'Länderdaten erfassen' })).toBeNull();
@@ -188,7 +190,9 @@ describe('Länder-Monitor', () => {
       `${PFAD}?erfassen=1#land-neu`,
     );
     document.body.innerHTML = '';
-    kontext.rechte.bearbeiten = false;
+    // Recht des Bereichs aus der Liste (TCMS s7); der Kontext erlaubt weiterhin.
+    kontext.rechte.bearbeiten = true;
+    monitor.rechte.bearbeiten = false;
     antworten();
     await renderServer(TcmsLaenderPage(mit({})));
     expect(screen.queryByRole('link', { name: 'Erstes Land erfassen' })).toBeNull();

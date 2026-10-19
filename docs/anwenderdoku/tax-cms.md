@@ -254,6 +254,10 @@ Stände und Historie.
   begründet ab. Eine freigegebene Abweichung lässt sich aufheben.
 - **Designbeurteilung** „angemessen“ oder „Mangel“ mit Begründung; sie legt
   einen neuen Kontrollstand an.
+- **Pflichtattribute:** Fehlt einer Kontrolle ein Pflichtattribut (Ziel,
+  Schritte, Nachweisanforderung, durchführende Person, Vertretung,
+  Gegenzeichnung bei Schlüsselkontrollen), nennen Liste und Detail die
+  fehlenden Angaben laut Tax-CMS.
 - **Zuständigkeiten ändern:** Für Kanzleikontrollen stehen Personen mit
   Zugriff auf den Mandanten zur Auswahl, für Mandantenkontrollen Kontakte
   dieses Mandanten mit Rolle im Tax-CMS. Gegenzeichnen kann eine Person der

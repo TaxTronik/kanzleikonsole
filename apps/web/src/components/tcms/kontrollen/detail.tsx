@@ -9,10 +9,10 @@
 // beantragt hat, sieht den Antrag mit Namen, bekommt die Entscheidung aber
 // nicht angeboten; entscheidend bleibt der Dienst.
 //
-// Abweichung von der Demo: Die Demo listet Lücken der Pflichtattribute aus
-// eigener Prüfung; hier gilt nur das Kennzeichen `pflichtattributeOk` des
-// Dienstes (keine zweite Prüfung). Die Häufigkeitsmatrix ist eine
-// Anzeige-Vorschau aus @taxtronik/tcms-domain; maßgeblich ist `ableitung`.
+// Lücken der Pflichtattribute liefert seit TCMS s7 der Dienst
+// (`pflichtattributeLuecken`, feste Texte in fester Reihenfolge; leer genau
+// bei `pflichtattributeOk`) – keine eigene Prüfung. Die Häufigkeitsmatrix ist
+// eine Anzeige-Vorschau aus @taxtronik/tcms-domain; maßgeblich ist `ableitung`.
 // =============================================================================
 
 import Link from 'next/link';
@@ -197,6 +197,31 @@ export function KontrolleDetailBereich({
 // Ziel, Schritte, Kennzahlen
 // ---------------------------------------------------------------------------
 
+/** Pflichtattribute laut Dienst: dokumentiert oder die fehlenden als Liste (TCMS s7). */
+export function PflichtattributHinweis({
+  k,
+}: {
+  k: Pick<KontrolleEintrag, 'pflichtattributeOk' | 'pflichtattributeLuecken'>;
+}) {
+  if (k.pflichtattributeOk && k.pflichtattributeLuecken.length === 0) {
+    return <p className="text-xs text-muted">Pflichtattribute dokumentiert (laut Tax-CMS).</p>;
+  }
+  return (
+    <div className="alert-warning text-xs" role="note">
+      <p>Pflichtattribute unvollständig (laut Tax-CMS). Es fehlt:</p>
+      {k.pflichtattributeLuecken.length ? (
+        <ul className="list-disc pl-5 mt-1">
+          {k.pflichtattributeLuecken.map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-1">Die Angaben im Tax-CMS prüfen.</p>
+      )}
+    </div>
+  );
+}
+
 function BeschreibungAbschnitte({ t }: { t: Teil }) {
   const { k } = t;
   const kat = katalogKontrolle(k.code);
@@ -218,14 +243,7 @@ function BeschreibungAbschnitte({ t }: { t: Teil }) {
             {k.faelligNachTagen} Tage nach Periodenende
           </Feld>
         </dl>
-        {k.pflichtattributeOk ? (
-          <p className="text-xs text-muted">Pflichtattribute dokumentiert (laut Tax-CMS).</p>
-        ) : (
-          <p className="alert-warning text-xs">
-            Pflichtattribute unvollständig (laut Tax-CMS) – bitte Ziel, Schritte, Nachweis, Personen
-            und Designbeurteilung prüfen.
-          </p>
-        )}
+        <PflichtattributHinweis k={k} />
       </Abschnitt>
       <Abschnitt titel={`Schritte (${k.schritte.length})`} offen>
         <ol className="list-decimal pl-5 space-y-1">

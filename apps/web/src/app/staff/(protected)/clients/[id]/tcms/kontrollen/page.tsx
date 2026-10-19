@@ -170,7 +170,8 @@ export default async function TcmsKontrollenPage({
         })
       : null,
   );
-  const sperre = sperreAus(ctx);
+  // Recht des Bereichs aus der Kontrollmatrix (TCMS s7), wie die Schreiboperationen.
+  const sperre = sperreAus(liste);
   const namen = await tcmsNamenLesen(
     seite,
     personenDerSeite(liste, detail?.ok ? detail.daten : null),

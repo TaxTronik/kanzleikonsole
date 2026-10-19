@@ -188,7 +188,8 @@ export default async function TcmsRisikenPage({
         })
       : null,
   );
-  const sperre = sperreAus(ctx);
+  // Recht des Bereichs aus dem Risikoinventar (TCMS s7), wie die Schreiboperationen.
+  const sperre = sperreAus(liste);
   const ich = seite.session.user.staffId;
   const namen = await tcmsNamenLesen(
     seite,

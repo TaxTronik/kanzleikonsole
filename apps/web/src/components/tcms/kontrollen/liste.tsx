@@ -108,8 +108,11 @@ function KontrolleZelle({ k, z }: { k: KontrolleEintrag; z: ZeilenKontext }) {
           <span className="text-xs text-muted">alle Risiken (Kultur, Kommunikation)</span>
         )}
       </span>
-      {!k.pflichtattributeOk ? (
-        <span className="block text-xs text-red-700">Pflichtattribute unvollständig</span>
+      {!k.pflichtattributeOk || k.pflichtattributeLuecken.length ? (
+        <span className="block text-xs text-red-700">
+          Pflichtattribute unvollständig
+          {k.pflichtattributeLuecken.length ? `: ${k.pflichtattributeLuecken.join(', ')}` : ''}
+        </span>
       ) : null}
     </td>
   );

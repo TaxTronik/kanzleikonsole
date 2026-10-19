@@ -248,7 +248,8 @@ export default async function TcmsLaenderPage({
 
   const pfad = `${seite.basis}/laender`;
   const stand = standFuerLinks(ctx);
-  const sperre = sperreAus(ctx);
+  // Recht des Bereichs aus dem Länder-Monitor (TCMS s7), wie die Schreiboperationen.
+  const sperre = sperreAus(daten);
   const erfassen = param(sp, 'erfassen') === '1' && !sperre;
   // Nur ein Land, das der Dienst im Monitor führt.
   const landParam = param(sp, 'land');

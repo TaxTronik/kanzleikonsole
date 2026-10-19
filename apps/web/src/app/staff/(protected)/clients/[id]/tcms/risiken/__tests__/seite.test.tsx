@@ -300,7 +300,9 @@ describe('Risikoinventar – Detail', () => {
   );
 
   it('ohne Bearbeitungsrecht laut Dienst: Bedienelemente gesperrt mit Grund', async () => {
-    kontext.rechte.bearbeiten = false;
+    // Recht des Bereichs aus der Liste (TCMS s7); der Kontext erlaubt weiterhin.
+    kontext.rechte.bearbeiten = true;
+    liste.rechte.bearbeiten = false;
     antworten();
     h.seite.mockResolvedValue(seite(DEMO.leon));
     await renderServer(TcmsRisikenPage(mit({ risiko: idVon('EC-UST-01') })));
@@ -381,7 +383,9 @@ describe('Risikoinventar – Detail', () => {
   });
 
   it('offene Akzeptanz verworfen ohne Bearbeitungsrecht: Status, aber kein Verweis', async () => {
-    kontext.rechte.bearbeiten = false;
+    // Recht des Bereichs aus der Liste (TCMS s7); der Kontext erlaubt weiterhin.
+    kontext.rechte.bearbeiten = true;
+    liste.rechte.bearbeiten = false;
     const ver01 = liste.risiken.find((r) => r.code === 'EC-VER-01')!;
     ver01.akzeptanzen[0]!.zustellung = {
       zweck: 'FREIGABE_CODE',
@@ -447,6 +451,7 @@ describe('Risikoinventar – Zustände', () => {
 
   it('ohne Programm: „Tax-CMS einrichten“ nur mit Bearbeitungsrecht', async () => {
     kontext.programm = null;
+    // Einrichten ist ein Recht am Mandanten: Kennzeichen des Kontexts.
     kontext.rechte.bearbeiten = false;
     antworten();
     const { container } = await renderServer(TcmsRisikenPage(mit({})));
