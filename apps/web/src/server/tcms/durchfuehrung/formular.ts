@@ -19,6 +19,7 @@ import type { z } from 'zod';
 import { parseDezimal } from '@/components/tcms/durchfuehrung/werte';
 import { germanFieldError, validationFailure } from '@/server/actions/form-data';
 import type { ActionResult } from '@/server/actions/types';
+import { freitextZeichenFehler, tcmsKuerzen } from '@/server/tcms/zeichen';
 
 type Fehlschlag = ActionResult & { ok: false; error: string };
 
@@ -42,15 +43,27 @@ export function speichernAusFormular(
   formData: FormData,
   d: Pick<DurchfuehrungDetail, 'schritte' | 'kontrolle'>,
 ): { ok: true; eingabe: SpeichernEingabe; einreichen: boolean } | Fehlschlag {
+  const fieldErrors: Record<string, string[]> = {};
+  const zeichenFehler: string[] = [];
+  // Freitexte: Basisregel des Vertrags (TCMS s8) als Feldfehler, nie still
+  // geändert; gekürzt wird ohne ein Ersatzpaar zu trennen.
+  const freitext = (feld: string, max: number): string => {
+    const wert = tcmsKuerzen(text(formData, feld).trim(), max).trim();
+    const fehler = freitextZeichenFehler(wert);
+    if (fehler !== null) {
+      fieldErrors[feld] = [fehler];
+      zeichenFehler.push(feld);
+    }
+    return wert;
+  };
   const schritte = d.schritte.map((_, i) => ({
     erledigt: formData.get(`schritt_${i}_erledigt`) === 'on',
-    kommentar: text(formData, `schritt_${i}_kommentar`).trim().slice(0, DF_MAX_SCHRITT_KOMMENTAR),
+    kommentar: freitext(`schritt_${i}_kommentar`, DF_MAX_SCHRITT_KOMMENTAR),
   }));
   const werte: SpeichernEingabe['werte'] = [];
   const unlesbar: string[] = [];
-  const fieldErrors: Record<string, string[]> = {};
   for (const k of d.kontrolle.kennzahlen) {
-    const bemerkung = text(formData, `bemerkung_${k.key}`).trim().slice(0, DF_MAX_WERT_BEMERKUNG);
+    const bemerkung = freitext(`bemerkung_${k.key}`, DF_MAX_WERT_BEMERKUNG);
     const erklaert = formData.get(`erklaert_${k.key}`) === 'on';
     if (k.differenzAus) {
       werte.push({ key: k.key, wert: null, bemerkung, erklaert });
@@ -62,6 +75,7 @@ export function speichernAusFormular(
       fieldErrors[`wert_${k.key}`] = ['Bitte einen Betrag im Format 1.234,56 eingeben.'];
     } else werte.push({ key: k.key, wert, bemerkung, erklaert });
   }
+  const ergebnisKommentar = freitext('ergebnisKommentar', DF_MAX_ERGEBNIS_KOMMENTAR) || null;
   if (unlesbar.length > 0) {
     return {
       ok: false,
@@ -70,10 +84,16 @@ export function speichernAusFormular(
       fieldErrors,
     };
   }
+  if (zeichenFehler.length > 0) {
+    return {
+      ok: false,
+      error: 'Bitte prüfen Sie die markierten Angaben.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors,
+    };
+  }
   const e = text(formData, 'ergebnis');
   const ergebnis = e === 'OHNE_BEFUND' || e === 'MIT_BEFUND' ? e : null;
-  const ergebnisKommentar =
-    text(formData, 'ergebnisKommentar').trim().slice(0, DF_MAX_ERGEBNIS_KOMMENTAR) || null;
   return {
     ok: true,
     eingabe: { schritte, werte, ergebnis, ergebnisKommentar },

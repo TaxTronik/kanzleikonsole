@@ -11,6 +11,7 @@ import type { DurchfuehrungSpeichernBodySchema, Kontrollaufgabe } from '@taxtron
 import type { z } from 'zod';
 import { parseDezimal } from '@/components/tcms/durchfuehrung/werte';
 import type { ActionFailure } from '@/server/actions/action-runner';
+import { freitextZeichenFehler } from '@/server/tcms/zeichen';
 
 /** Formularfelder `schritt_<i>_erledigt|kommentar`, `wert_<key>`, `bemerkung_<key>`, `erklaert_<key>`, `ergebnis`, `ergebnisKommentar`. */
 export type AufgabeFormular = Readonly<Record<string, string | undefined>>;
@@ -23,14 +24,21 @@ export function koerperAusFormular(
   a: Pick<Kontrollaufgabe, 'schritte' | 'kontrolle'>,
   f: AufgabeFormular,
 ): { ok: true; body: SpeichernBody } | ActionFailure {
+  const fieldErrors: Record<string, string[]> = {};
+  // Freitexte: Basisregel des Vertrags (TCMS s8) als Feldfehler, nie still geändert.
+  const freitext = (feld: string): string => {
+    const wert = (f[feld] ?? '').trim();
+    const fehler = freitextZeichenFehler(wert);
+    if (fehler !== null) fieldErrors[feld] = [fehler];
+    return wert;
+  };
   const schritte = a.schritte.map((_, i) => ({
     erledigt: f[`schritt_${i}_erledigt`] === 'on',
-    kommentar: (f[`schritt_${i}_kommentar`] ?? '').trim(),
+    kommentar: freitext(`schritt_${i}_kommentar`),
   }));
-  const fieldErrors: Record<string, string[]> = {};
   const werte: SpeichernBody['werte'] = [];
   for (const k of a.kontrolle.kennzahlen) {
-    const bemerkung = (f[`bemerkung_${k.key}`] ?? '').trim();
+    const bemerkung = freitext(`bemerkung_${k.key}`);
     const erklaert = f[`erklaert_${k.key}`] === 'on';
     if (k.differenzAus) {
       werte.push({ key: k.key, wert: null, bemerkung, erklaert });
@@ -40,6 +48,7 @@ export function koerperAusFormular(
     if (wert === 'fehler') fieldErrors[`wert_${k.key}`] = [BETRAG_FORMAT];
     else werte.push({ key: k.key, wert, bemerkung, erklaert });
   }
+  const kommentar = freitext('ergebnisKommentar');
   if (Object.keys(fieldErrors).length > 0) {
     return {
       ok: false,
@@ -50,7 +59,6 @@ export function koerperAusFormular(
   }
   const ergebnis =
     f['ergebnis'] === 'OHNE_BEFUND' || f['ergebnis'] === 'MIT_BEFUND' ? f['ergebnis'] : null;
-  const kommentar = (f['ergebnisKommentar'] ?? '').trim();
   return {
     ok: true,
     body: { schritte, werte, ergebnis, ergebnisKommentar: kommentar === '' ? null : kommentar },

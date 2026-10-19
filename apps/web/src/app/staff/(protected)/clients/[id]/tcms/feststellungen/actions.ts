@@ -13,6 +13,7 @@ import { TcmsKonflikt, TcmsUngueltig } from '@taxtronik/tcms-client';
 import {
   AuswirkungSchema,
   ENDPUNKTE,
+  FeststellungErfassenBodySchema,
   FeststellungKlasseSchema,
   FeststellungQuelleSchema,
   FeststellungStatusSchema,
@@ -52,7 +53,9 @@ const leerAlsNull = (wert: unknown) => (wert === '' || wert === undefined ? null
 
 const ErfassenFormular = z
   .object({
-    titel: freitext(5, 200),
+    // Einzeilig wie im Vertrag (TCMS s8): unzulässige Zeichen, auch CR/LF,
+    // als Feldfehler mit dem Text des Vertrags.
+    titel: FeststellungErfassenBodySchema.shape.titel,
     sachverhalt: freitext(20, 4000),
     quelle: FeststellungQuelleSchema,
     quelleText: freitext(2, 200),

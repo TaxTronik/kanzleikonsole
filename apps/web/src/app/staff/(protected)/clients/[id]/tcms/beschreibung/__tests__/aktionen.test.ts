@@ -6,7 +6,11 @@
 // nur als Kontakt dieses Mandanten, Zuständigkeit und Namen für den
 // eingefrorenen Inhalt aus der kanzleikonsole.
 // Fachkatalog: TCMS-AKTEUR-001, TCMS-DIENST-001
-import { ENDPUNKTE, REVIEW_MIN_BEGRUENDUNG } from '@taxtronik/tcms-contract';
+import {
+  ENDPUNKTE,
+  REVIEW_MIN_BEGRUENDUNG,
+  TEXT_UNZULAESSIG_MELDUNG,
+} from '@taxtronik/tcms-contract';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -158,6 +162,20 @@ describe('abschnittSpeichernAction', () => {
         key: 'teilbereich',
         bloecke: (r.data as { bloecke: unknown }).bloecke,
       },
+    });
+  });
+
+  it('Textblock mit NUL (TCMS s8): Feldfehler mit dem Text des Vertrags, nicht „kürzen“', async () => {
+    const r = await parse([
+      ['versionId', VERSION],
+      ['key', 'teilbereich'],
+      ['struktur', struktur],
+      ['text', 'Erster\u0000Absatz'],
+      ['text', 'Zweiter Absatz'],
+    ]);
+    expect(r).toMatchObject({
+      ok: false,
+      fieldErrors: { text: [TEXT_UNZULAESSIG_MELDUNG] },
     });
   });
 

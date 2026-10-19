@@ -34,6 +34,7 @@ import { log } from '@/server/logger';
 import { TcmsAkteurVerweigert } from './akteur';
 import { TcmsInaktivError } from './dienst';
 import { TcmsPersonUnzulaessig } from './personen';
+import { vertragsZeichenMeldung } from './zeichen';
 
 // ---------------------------------------------------------------------------
 // Seiten
@@ -199,6 +200,9 @@ export const TCMS_AKTION_TEXTE = {
   nichtGefunden: 'Der Eintrag wurde im Tax-CMS nicht gefunden. Bitte laden Sie die Seite neu.',
   ungueltig: 'Bitte prüfen Sie die markierten Angaben.',
   feld: 'Bitte prüfen Sie diese Angabe.',
+  /** 400 ohne Feld, das die Seite markieren kann (TCMS s8). */
+  ungueltigOhneFeld:
+    'Die Angaben wurden nicht angenommen. Bitte prüfen Sie sie – etwa auf unsichtbare Sonderzeichen aus kopierten Texten – und versuchen Sie es erneut.',
   nichtErreichbar:
     'Das Tax-CMS ist derzeit nicht erreichbar. Bitte versuchen Sie es in einigen Minuten erneut.',
   /** Schreibender Aufruf ohne verlässliche Antwort: Ausgang unbekannt. */
@@ -240,9 +244,23 @@ function feldFehler(
           ? zuordnung[segment]
           : undefined;
     if (!feld) continue;
-    ergebnis[feld] = [TCMS_AKTION_TEXTE.feld];
+    ergebnis[feld] = [feldText(felder[pfad])];
   }
   return ergebnis;
+}
+
+/**
+ * Text eines Feldfehlers: die feste Zeichenmeldung des Vertrags, wenn der
+ * Feldfehler genau eine davon ist (TCMS s8: „Unzulässige Zeichen“, Basisregel
+ * der Freitexte – gleich, ob die lokale Prüfung oder der Dienst sie meldet),
+ * sonst der allgemeine Feldtext. Andere Texte des Dienstes erscheinen nie.
+ */
+function feldText(texte: readonly string[] | undefined): string {
+  for (const text of Array.isArray(texte) ? texte : []) {
+    const meldung = typeof text === 'string' ? vertragsZeichenMeldung(text) : null;
+    if (meldung !== null) return meldung;
+  }
+  return TCMS_AKTION_TEXTE.feld;
 }
 
 /**
@@ -277,11 +295,14 @@ export function aktionsFehlerAus(
   if (!(fehler instanceof TcmsFehler)) return undefined;
   if (fehler instanceof TcmsUngueltig) {
     const fieldErrors = feldFehler(fehler.felder, abbildung.felder);
+    const mitFeld = Object.keys(fieldErrors).length > 0;
     return {
       ok: false,
-      error: TCMS_AKTION_TEXTE.ungueltig,
+      // Ohne zugeordnetes Feld (z. B. Textfehler der Datenbank des Dienstes,
+      // TCMS s8) gibt es nichts zu markieren: eigener Text mit Hinweis.
+      error: mitFeld ? TCMS_AKTION_TEXTE.ungueltig : TCMS_AKTION_TEXTE.ungueltigOhneFeld,
       errorCode: 'VALIDATION_ERROR',
-      ...(Object.keys(fieldErrors).length > 0 ? { fieldErrors } : {}),
+      ...(mitFeld ? { fieldErrors } : {}),
     };
   }
   if (fehler instanceof TcmsKonflikt) {

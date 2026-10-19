@@ -505,6 +505,25 @@ describe('portalEreignisMeldenAction', () => {
     expect(r).toEqual({ nummer: '2026-T-0400' });
   });
 
+  it('Titel einzeilig (TCMS s8): CR/LF und unsichtbare Zeichen als Feldfehler des Vertrags, kein Dienstaufruf', async () => {
+    for (const titel of [
+      'Start auf\nKaufland.de',
+      `Start ${String.fromCodePoint(0x1f6d2, 0xfe0f)} Kaufland`,
+    ]) {
+      h.spec = null;
+      ohneWeiterleitung();
+      await portalEreignisMeldenAction(
+        null,
+        formular(felder.map(([k, v]) => [k, k === 'titel' ? titel : v] as [string, string | File])),
+      );
+      const p = spec().parse!();
+      expect(p.ok, titel).toBe(false);
+      expect((p.fieldErrors as Record<string, string[]>)['titel'], titel).toEqual([
+        'Unzulässige Zeichen',
+      ]);
+    }
+  });
+
   it('nach Erfolg zur Bestätigung mit der Vorgangsnummer des Dienstes', async () => {
     h.ergebnis = { ok: true, nummer: '2026-T-0400' };
     await expect(portalEreignisMeldenAction(null, formular(felder))).rejects.toThrow(

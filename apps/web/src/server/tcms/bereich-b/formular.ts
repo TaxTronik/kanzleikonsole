@@ -5,6 +5,7 @@
 // (Vier-Augen, Status, Klassen) prüft der Dienst.
 // =============================================================================
 
+import { mitTextBasis } from '@taxtronik/tcms-contract';
 import { MIN_BEGRUENDUNG } from '@taxtronik/tcms-domain';
 import { z } from 'zod';
 import { formEmpty, formFlag } from '@/server/actions/form-data';
@@ -15,13 +16,19 @@ export const MAX_BEGRUENDUNG_ZEICHEN = 2000;
 /** ID eines Tax-CMS-Objekts wie `ObjektIdSchema` im Vertrag. */
 export const ObjektIdFeld = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'Ungültige Auswahl.');
 
-/** Begründung wie `BegruendungSchema` im Vertrag (getrimmt, 30–2000 Zeichen). */
-export const BegruendungFeld = z.string().trim().min(MIN_BEGRUENDUNG).max(MAX_BEGRUENDUNG_ZEICHEN);
+/**
+ * Begründung wie `BegruendungSchema` im Vertrag (getrimmt, 30–2000 Zeichen,
+ * Basisregel der Freitexte seit TCMS s8: kein NUL, kein einzelnes Surrogat –
+ * Feldfehler mit dem Text des Vertrags, keine stille Änderung).
+ */
+export const BegruendungFeld = mitTextBasis(
+  z.string().trim().min(MIN_BEGRUENDUNG).max(MAX_BEGRUENDUNG_ZEICHEN),
+);
 
 /** Optionale Begründung (Freigabe ohne, Ablehnung mit); leer → undefined. */
 export const OptionaleBegruendungFeld = formEmpty(
   undefined,
-  z.string().trim().min(MIN_BEGRUENDUNG).max(MAX_BEGRUENDUNG_ZEICHEN).optional(),
+  mitTextBasis(z.string().trim().min(MIN_BEGRUENDUNG).max(MAX_BEGRUENDUNG_ZEICHEN)).optional(),
 );
 
 /** Kontrollkästchen (`on`) als Wahrheitswert; fehlt es, ist es `false`. */

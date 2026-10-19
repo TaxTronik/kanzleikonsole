@@ -26,6 +26,7 @@ import {
 } from '../ereignisse/personen';
 import { TcmsPersonUnzulaessig } from '../personen';
 import { BETRAG_FORMAT, koerperAusFormular } from '../portal/aufgabe';
+import { TEXT_UNZULAESSIG_MELDUNG } from '@taxtronik/tcms-contract';
 
 const BEZUG = { tenantId: DEMO.tenant, mandantId: DEMO.talwind };
 const MIB = 1024 * 1024;
@@ -94,6 +95,29 @@ describe('koerperAusFormular', () => {
       ok: false,
       fieldErrors: { wert_soll: [BETRAG_FORMAT], wert_ist: [BETRAG_FORMAT] },
     });
+  });
+});
+
+describe('koerperAusFormular – Basisregel der Freitexte (TCMS s8)', () => {
+  it('NUL und einzelne Surrogate: Feldfehler mit dem Text des Vertrags, kein Body', () => {
+    const a = tcmsFixtures.portalAufgabeK23Murat();
+    const r = koerperAusFormular(a, {
+      schritt_0_kommentar: 'erledigt\u0000',
+      ergebnisKommentar: `ok ${String.fromCharCode(0xdc00)}`,
+    });
+    expect(r).toMatchObject({
+      ok: false,
+      fieldErrors: {
+        schritt_0_kommentar: [TEXT_UNZULAESSIG_MELDUNG],
+        ergebnisKommentar: [TEXT_UNZULAESSIG_MELDUNG],
+      },
+    });
+    // Mehrzeilig und mit sichtbaren Sonderzeichen bleibt ein Freitext gültig.
+    expect(
+      koerperAusFormular(a, {
+        schritt_0_kommentar: `Zeile 1\nZeile 2 ${String.fromCodePoint(0x1f600)}`,
+      }),
+    ).toMatchObject({ ok: true });
   });
 });
 

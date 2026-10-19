@@ -405,6 +405,34 @@ describe('Erfassen, Würdigung, Erklärung, Nachkontrolle', () => {
     expect(geparst()).toMatchObject({ durchfuehrungId: 'cmvf9q02e005efu7dgfw846up' });
   });
 
+  it('erfassen: Titel einzeilig (TCMS s8) – CR/LF, Richtungs- und unsichtbare Zeichen als Feldfehler des Vertrags', async () => {
+    const z = (...cps: number[]) => String.fromCodePoint(...cps);
+    for (const titel of [
+      'Clearingkonto\r\nKlarna',
+      `Clearing${z(0x202e)}konto Klarna`,
+      `Clearingkonto Klarna ${z(0x26a0, 0xfe0f)}`,
+      `Clearing${z(0x034f)}konto`,
+      `Clearing${z(0x180b)}konto`,
+      `Clearing${z(0xe0041)}konto`,
+    ]) {
+      h.spec = null;
+      await aktionen.feststellungErfassenAction(
+        MANDANT,
+        null,
+        formular([
+          ['titel', titel],
+          ['sachverhalt', 'Restsaldo zum Monatsende auf dem Klarna-Clearingkonto.'],
+          ['quelle', 'HINWEIS'],
+          ['quelleText', 'Hinweis Buchhaltung'],
+          ['klasse', 'DURCHFUEHRUNGSMANGEL'],
+          ['schwere', 'GERING'],
+          ['auswirkung', 'NEIN'],
+        ]),
+      );
+      expect(fehler().titel, titel).toEqual(['Unzulässige Zeichen']);
+    }
+  });
+
   it('Erklärung: deutscher Betrag, leer = zu klären, unlesbar = Feldfehler', async () => {
     const basis: Array<[string, string]> = [
       ['steuerart', 'USt (OSS)'],

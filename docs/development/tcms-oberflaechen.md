@@ -228,17 +228,17 @@ Regeln:
 Die einzige Abbildung steht in `server/tcms/zustand.ts`; Seiten und Aktionen
 zeigen nie den Text des Dienstes.
 
-| Ursache                                      | Seite (`TcmsZustand`)                                 | Aktion (`ActionResult`)                                    |
-| -------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------- |
-| Dienst nicht konfiguriert oder Modul aus     | „Tax-CMS nicht eingerichtet“                          | „Das Tax-CMS ist für diese Kanzlei nicht aktiv.“           |
-| keine Bestätigung (`TcmsAkteurVerweigert`)   | „Kein Zugriff“, bei veralteter Sitzung „neu anmelden“ | „Kein Zugriff auf das Tax-CMS.“, ggf. „neu anmelden“       |
-| 403 des Dienstes                             | „Kein Zugriff“                                        | fester Text nach `verweigerung` (Rückfall `keinRecht`)     |
-| 404                                          | `notFound()` bzw. `daten: null`                       | „nicht gefunden – bitte neu laden“                         |
-| 409                                          | „Anfrage nicht möglich“ mit Vorgangsnummer            | „Wurde zwischenzeitlich geändert – bitte neu laden.“       |
-| 400 (mit `felder`)                           | „Anfrage nicht möglich“ mit Vorgangsnummer            | Sammelmeldung, Feldfehler „Bitte prüfen Sie diese Angabe.“ |
-| unzulässige Person (`TcmsPersonUnzulaessig`) | –                                                     | Feldfehler am Formularfeld, kein Dienstaufruf              |
-| 401, 5xx, offener Breaker                    | „derzeit nicht erreichbar“ mit Vorgangsnummer         | „derzeit nicht erreichbar“                                 |
-| Zeitlimit, Transport, Protokollfehler        | „derzeit nicht erreichbar“ mit Vorgangsnummer         | Schreiben: „Ausgang offen – neu laden und prüfen“          |
+| Ursache                                      | Seite (`TcmsZustand`)                                 | Aktion (`ActionResult`)                                                                                                                            |
+| -------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dienst nicht konfiguriert oder Modul aus     | „Tax-CMS nicht eingerichtet“                          | „Das Tax-CMS ist für diese Kanzlei nicht aktiv.“                                                                                                   |
+| keine Bestätigung (`TcmsAkteurVerweigert`)   | „Kein Zugriff“, bei veralteter Sitzung „neu anmelden“ | „Kein Zugriff auf das Tax-CMS.“, ggf. „neu anmelden“                                                                                               |
+| 403 des Dienstes                             | „Kein Zugriff“                                        | fester Text nach `verweigerung` (Rückfall `keinRecht`)                                                                                             |
+| 404                                          | `notFound()` bzw. `daten: null`                       | „nicht gefunden – bitte neu laden“                                                                                                                 |
+| 409                                          | „Anfrage nicht möglich“ mit Vorgangsnummer            | „Wurde zwischenzeitlich geändert – bitte neu laden.“                                                                                               |
+| 400 (mit `felder`)                           | „Anfrage nicht möglich“ mit Vorgangsnummer            | Sammelmeldung, Feldfehler „Bitte prüfen Sie diese Angabe.“ bzw. Zeichenmeldung des Vertrags (Abschnitt 12); ohne zuordenbares Feld eigener Hinweis |
+| unzulässige Person (`TcmsPersonUnzulaessig`) | –                                                     | Feldfehler am Formularfeld, kein Dienstaufruf                                                                                                      |
+| 401, 5xx, offener Breaker                    | „derzeit nicht erreichbar“ mit Vorgangsnummer         | „derzeit nicht erreichbar“                                                                                                                         |
+| Zeitlimit, Transport, Protokollfehler        | „derzeit nicht erreichbar“ mit Vorgangsnummer         | Schreiben: „Ausgang offen – neu laden und prüfen“                                                                                                  |
 
 Ein 401 bedeutet einen Fehler zwischen den Diensten (Token, Schlüssel), nicht
 fehlende Rechte der Person; deshalb „nicht erreichbar“ statt „Kein Zugriff“.
@@ -457,5 +457,18 @@ kanzleikonsole übernimmt die Regel aus dem Vertrag in
   trennen. Nutzer sind `server/tcms/mandant.ts` (Anker), die Dateinamen der
   Nachweise (`durchfuehrung/verweis.ts`) und der Portal-Anlagen
   (`portal/anlagen.ts`).
+- **Eingaben des Menschen** (Titel, Funktion, Begründungen, Kommentare,
+  Textblöcke) werden nie still geändert: Die Formularschemas nutzen die
+  Schemas des Vertrags (`einzeilig`, `freitext`, `mitTextBasis`, z. B.
+  `FeststellungErfassenBodySchema.shape.titel`), Formulare mit selbst gebautem
+  Body prüfen `freitextZeichenFehler`. Ergebnis ist ein Feldfehler mit dem
+  Text des Vertrags („Unzulässige Zeichen“, „Unzulässige Zeichen (NUL oder
+  einzelnes Surrogat)“, „Steuerzeichen sind nicht erlaubt“).
+- **Abbildung (`zustand.ts`):** Ist ein Feldfehler eines 400 – aus der lokalen
+  Prüfung des Clients oder vom Dienst – genau eine dieser festen Meldungen
+  (`vertragsZeichenMeldung`, aus den Schemas des Vertrags ermittelt), erscheint
+  sie am Feld; jeder andere Text bleibt „Bitte prüfen Sie diese Angabe.“. Ein
+  400 ohne zuordenbares Feld (z. B. Textfehler der Datenbank des Dienstes)
+  zeigt `TCMS_AKTION_TEXTE.ungueltigOhneFeld`.
 - Die Regel folgt der Unicode-Version der Laufzeit; kanzleikonsole und Dienst
   laufen auf derselben Node-Hauptversion (24).

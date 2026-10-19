@@ -154,6 +154,46 @@ describe('kontaktRollenSetzenAction', () => {
     });
   });
 
+  it('Funktion mit unzulässigen Zeichen (TCMS s8): Feldfehler mit dem Text des Vertrags, keine stille Änderung', async () => {
+    const z = (...cps: number[]) => String.fromCodePoint(...cps);
+    for (const roh of [
+      `Geschäfts${z(0x200b)}führerin`,
+      `Leitung\r\nFinanzen`,
+      `Prokurist ${z(0x2764, 0xfe0f)}`,
+      `Leitung${z(0x034f)}`,
+      `Leitung${z(0x180b)}`,
+      `Leitung${z(0xe0041)}`,
+      `${z(0x202e)}Leitung`,
+      `Lei${z(0x00ad)}tung`,
+    ]) {
+      h.spec = null;
+      await kontaktRollenSetzenAction(
+        MANDANT,
+        null,
+        formular([
+          ['kontaktId', KONTAKT],
+          ['rollen', 'MITARBEITER'],
+          ['funktion', roh],
+        ]),
+      );
+      const parsed = spec().parse!();
+      expect(parsed.ok, roh).toBe(false);
+      expect(parsed.fieldErrors, roh).toEqual({ funktion: ['Unzulässige Zeichen'] });
+    }
+    // Nur Leerraum: keine Funktion (wie bisher).
+    h.spec = null;
+    await kontaktRollenSetzenAction(
+      MANDANT,
+      null,
+      formular([
+        ['kontaktId', KONTAKT],
+        ['rollen', 'MITARBEITER'],
+        ['funktion', '   '],
+      ]),
+    );
+    expect(spec().parse!()).toMatchObject({ ok: true, data: { funktion: null } });
+  });
+
   it('weist unbekannte Rollen und ungültige Kontakt-IDs als Feldfehler ab', async () => {
     await kontaktRollenSetzenAction(
       MANDANT,

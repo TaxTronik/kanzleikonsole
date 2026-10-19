@@ -27,6 +27,7 @@ import {
 } from '@/server/actions/form-data';
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
+import { vertragsZeichenMeldung } from '@/server/tcms/zeichen';
 import {
   pruefeZuweisungenTx,
   zuweisungAusFormular,
@@ -182,9 +183,13 @@ function folgenAusFormular(ereignisId: string, formData: FormData) {
   for (const folge of folgen) {
     const geprueft = ohnePerson.safeParse(folge);
     if (!geprueft.success) {
-      const feld = geprueft.error.issues[0]?.path[0] === 'frist' ? 'frist' : 'ftitel';
+      const issue = geprueft.error.issues[0];
+      const feld = issue?.path[0] === 'frist' ? 'frist' : 'ftitel';
+      // Unzulässige Zeichen im Titel (einzeilig, TCMS s8): Text des Vertrags.
+      const meldung =
+        (issue && vertragsZeichenMeldung(issue.message)) ?? 'Bitte prüfen Sie diese Angabe.';
       return validationFailure(
-        [{ path: [`${feld}_${folge.folgeId}`], message: 'Bitte prüfen Sie diese Angabe.' }],
+        [{ path: [`${feld}_${folge.folgeId}`], message: meldung }],
         'Bitte prüfen Sie die Angaben der gewählten Folgen (Feststellung: Titel mind. 5 Zeichen, Klasse, Schwere und Auswirkung; Frist als Datum).',
       );
     }

@@ -211,6 +211,24 @@ describe('folgenAnlegenAction', () => {
     expect(p.fieldErrors).toHaveProperty(`ftitel_${F_RISIKO}`);
   });
 
+  it('Feststellungstitel mit unzulässigen Zeichen (TCMS s8): Text des Vertrags an der Zeile', async () => {
+    await folgenAnlegenAction(
+      MANDANT,
+      EREIGNIS,
+      null,
+      formular([
+        ['folge', F_RISIKO],
+        ['ftitel_' + F_RISIKO, `Lager CZ${String.fromCodePoint(0x200f)} prüfen`],
+        ['fklasse_' + F_RISIKO, 'DURCHFUEHRUNGSMANGEL'],
+        ['fschwere_' + F_RISIKO, 'MITTEL'],
+        ['fauswirkung_' + F_RISIKO, 'UNKLAR'],
+      ]),
+    );
+    const p = spec().parse!();
+    expect(p.ok).toBe(false);
+    expect(p.fieldErrors).toEqual({ [`ftitel_${F_RISIKO}`]: ['Unzulässige Zeichen'] });
+  });
+
   it('Hinweis, wenn der Dienst die Auswirkung herabgestuft hat (TS-04)', async () => {
     await folgenAnlegenAction(MANDANT, EREIGNIS, null, formular([['folge', F_PROFIL]]));
     const { r } = await lauf({

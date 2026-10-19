@@ -3,7 +3,7 @@
 // Oberfläche noch das Log.
 // Fachkatalog: TCMS-DIENST-001, TCMS-AKTEUR-001
 import { describe, expect, it, vi } from 'vitest';
-import { VERWEIGERUNG_GRUENDE } from '@taxtronik/tcms-contract';
+import { TEXT_UNZULAESSIG_MELDUNG, VERWEIGERUNG_GRUENDE } from '@taxtronik/tcms-contract';
 
 const log = vi.hoisted(() => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }));
 vi.mock('@/server/logger', () => ({ log }));
@@ -166,7 +166,7 @@ describe('aktionsFehlerAus', () => {
     const ergebnis = aktionsFehlerAus(fehler, { ...schreibend, felder: { funktion: 'funktion' } });
     expect(ergebnis).toEqual({
       ok: false,
-      error: TCMS_AKTION_TEXTE.ungueltig,
+      error: TCMS_AKTION_TEXTE.ungueltigOhneFeld,
       errorCode: 'VALIDATION_ERROR',
     });
     const ohne = aktionsFehlerAus(
@@ -174,6 +174,39 @@ describe('aktionsFehlerAus', () => {
       schreibend,
     );
     expect(ohne?.fieldErrors).toBeUndefined();
+  });
+
+  it('400 mit unzulässigen Zeichen (TCMS s8): Feldfehler mit dem Text des Vertrags, sonst kein Rohtext', () => {
+    // Lokal (Schema des Vertrags im Client) und vom Dienst: dieselben festen Meldungen.
+    const lokal = new TcmsUngueltig(
+      { 'body.funktion': ['Unzulässige Zeichen'], 'body.titel': ['<b>Rohtext</b>'] },
+      { lokal: true },
+    );
+    expect(aktionsFehlerAus(lokal, schreibend)).toEqual({
+      ok: false,
+      error: TCMS_AKTION_TEXTE.ungueltig,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { funktion: ['Unzulässige Zeichen'], titel: [TCMS_AKTION_TEXTE.feld] },
+    });
+    const dienst = new TcmsUngueltig(
+      { begruendung: ['x', TEXT_UNZULAESSIG_MELDUNG], titel: ['Steuerzeichen sind nicht erlaubt'] },
+      { status: 400, code: 'UNGUELTIG' },
+    );
+    expect(aktionsFehlerAus(dienst, schreibend)?.fieldErrors).toEqual({
+      begruendung: [TEXT_UNZULAESSIG_MELDUNG],
+      titel: ['Steuerzeichen sind nicht erlaubt'],
+    });
+    // Textfehler der Datenbank des Dienstes (400 ohne Felder): eigener Hinweis.
+    const ohneFeld = new TcmsUngueltig(
+      {},
+      { status: 400, code: 'UNGUELTIG', meldung: 'Die Eingabe enthält Zeichen …' },
+    );
+    expect(aktionsFehlerAus(ohneFeld, schreibend)).toEqual({
+      ok: false,
+      error: TCMS_AKTION_TEXTE.ungueltigOhneFeld,
+      errorCode: 'VALIDATION_ERROR',
+    });
+    expect(JSON.stringify(aktionsFehlerAus(ohneFeld, schreibend))).not.toContain('enthält');
   });
 
   it('Ausfall: feste Meldung; bei Schreibzugriffen ohne verlässliche Antwort „Ausgang offen“', () => {

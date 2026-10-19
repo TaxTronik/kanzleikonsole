@@ -31,6 +31,7 @@ import type { TcmsAktionsErgebnis } from '@/components/tcms/programm/dialog';
 import type { ActionParseResult } from '@/server/actions/action-runner';
 import { formList, formOptional, parseFormData } from '@/server/actions/form-data';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
+import { vertragsZeichenMeldung } from '@/server/tcms/zeichen';
 import { mandantKontakteTx } from '@/server/tcms/personen';
 import { freigabeNamenTx, tcmsZustaendigkeitTx } from '@/server/tcms/programm/zustaendigkeit';
 
@@ -131,6 +132,18 @@ function abschnittAus(formData: FormData): ActionParseResult<Abschnitt> {
   if (bloecke.length === 0) bloecke.push({ typ: 'text', text: '' });
   const body = AbschnittSpeichernBodySchema.safeParse({ key: f.data.key, bloecke });
   if (!body.success) {
+    // Basisregel der Freitexte (TCMS s8): Text des Vertrags am Textfeld.
+    const zeichen = body.error.issues
+      .map((i) => vertragsZeichenMeldung(i.message))
+      .find((m) => m !== null);
+    if (zeichen) {
+      return {
+        ok: false,
+        error: 'Bitte prüfen Sie die markierten Angaben.',
+        errorCode: 'VALIDATION_ERROR',
+        fieldErrors: { text: [zeichen] },
+      };
+    }
     return {
       ok: false,
       error:

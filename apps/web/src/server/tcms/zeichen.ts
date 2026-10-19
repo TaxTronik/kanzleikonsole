@@ -113,3 +113,12 @@ export const VERTRAG_ZEICHEN_MELDUNGEN: ReadonlySet<string> = new Set([
 export function vertragsZeichenMeldung(meldung: string): string | null {
   return VERTRAG_ZEICHEN_MELDUNGEN.has(meldung) ? meldung : null;
 }
+
+/**
+ * Feldfehler der Basisregel für einen Freitext, den der Mensch eingetippt hat
+ * (kein NUL, kein einzelnes Surrogat): der Text des Vertrags oder `null`. Für
+ * Formulare, die ihren Body selbst zusammensetzen (Durchführung, Kontrollaufgabe).
+ */
+export function freitextZeichenFehler(wert: string): string | null {
+  return TEXT_UNZULAESSIG.test(wert) ? TEXT_UNZULAESSIG_MELDUNG : null;
+}

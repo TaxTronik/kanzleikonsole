@@ -1,6 +1,7 @@
 // TCMS Stufe 3, Bereich B: Feldschemas der Aktionen. Geprüft wird nur die
 // Form wie im Vertrag; fachliche Regeln (Vier-Augen, Status) prüft der Dienst.
 // Fachkatalog: TCMS-DIENST-001
+import { TEXT_UNZULAESSIG_MELDUNG } from '@taxtronik/tcms-contract';
 import { MIN_BEGRUENDUNG } from '@taxtronik/tcms-domain';
 import { describe, expect, it } from 'vitest';
 import { BegruendungFeld, ObjektIdFeld, OptionaleBegruendungFeld } from '../formular';
@@ -18,6 +19,21 @@ describe('Feldschemas', () => {
     expect(OptionaleBegruendungFeld.parse('')).toBeUndefined();
     expect(OptionaleBegruendungFeld.parse(null)).toBeUndefined();
     expect(OptionaleBegruendungFeld.safeParse('kurz').success).toBe(false);
+  });
+
+  it('Basisregel der Freitexte (TCMS s8): NUL und einzelne Surrogate als Feldfehler mit dem Text des Vertrags', () => {
+    const basis = 'x'.repeat(MIN_BEGRUENDUNG);
+    for (const schlecht of [`${basis}\u0000`, `${basis}${String.fromCharCode(0xd83d)}`]) {
+      for (const schema of [BegruendungFeld, OptionaleBegruendungFeld]) {
+        const r = schema.safeParse(schlecht);
+        expect(r.success).toBe(false);
+        expect(r.error?.issues[0]?.message).toBe(TEXT_UNZULAESSIG_MELDUNG);
+      }
+    }
+    // Zeilenumbrüche und sichtbare Sonderzeichen bleiben erlaubt (Freitext).
+    expect(
+      BegruendungFeld.safeParse(`${basis}\nZweite Zeile ${String.fromCodePoint(0x1f600)}`).success,
+    ).toBe(true);
   });
 
   it('Objekt-ID wie im Vertrag', () => {

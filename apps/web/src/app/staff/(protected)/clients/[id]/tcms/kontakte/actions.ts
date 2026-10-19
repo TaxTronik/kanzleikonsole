@@ -8,7 +8,7 @@
 // darf, entscheidet der Dienst (kannBearbeiten).
 // =============================================================================
 
-import { ENDPUNKTE } from '@taxtronik/tcms-contract';
+import { ENDPUNKTE, KontaktRollenBodySchema } from '@taxtronik/tcms-contract';
 import { MANDANT_ROLLEN, type MandantRolle } from '@taxtronik/tcms-domain';
 import { z } from 'zod';
 import { parseFormData } from '@/server/actions/form-data';
@@ -30,12 +30,13 @@ const RollenFormular = z.object({
     .default([])
     .refine((werte) => werte.every(istMandantRolle), 'Bitte nur angebotene Rollen wählen.')
     .transform((werte) => werte.filter(istMandantRolle)),
-  funktion: z
-    .string()
-    .trim()
-    .max(200)
-    .nullable()
-    .transform((wert) => (wert ? wert : null)),
+  // Wie der Vertrag (einzeilig, Zeichenregel seit TCMS s8): unzulässige
+  // Zeichen ergeben einen Feldfehler mit dem Text des Vertrags, keine stille
+  // Änderung der Eingabe; leer → keine Funktion.
+  funktion: z.preprocess(
+    (wert) => (typeof wert === 'string' && wert.trim() === '' ? null : wert),
+    KontaktRollenBodySchema.shape.funktion,
+  ),
 });
 
 export async function kontaktRollenSetzenAction(
