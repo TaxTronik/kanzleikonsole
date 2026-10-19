@@ -7,11 +7,12 @@
 // Seite entscheidet über `bearbeitbar`), sonst schreibgeschützt mit dem Grund
 // des Dienstes. Die Eingaben gehören über das `form`-Attribut zum
 // Entwurfsformular in der Fußleiste; die Nachweis-Karte kommt als Slot.
-// Differenz und Toleranzlage sind Anzeige-Vorschau; ob eingereicht werden kann,
-// prüft der Dienst.
+// Differenzen, Abweichungen und Toleranzlage kommen aus der Prüfung des
+// Dienstes (`pruefung.kennzahlen`, TCMS s7) für den gespeicherten Stand – der
+// Browser rechnet nichts nach; ob eingereicht werden kann, prüft der Dienst.
 // =============================================================================
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { fmtEur } from '@taxtronik/tcms-domain';
 import {
   alsEingabe,
@@ -20,6 +21,7 @@ import {
   parseDezimal,
   werteZeilen,
   type KennzahlDef,
+  type KennzahlPruefung,
   type Werte,
   type WertZeile,
 } from './werte';
@@ -187,6 +189,7 @@ export function DurchfuehrungEditor({
   schritte,
   kennzahlen,
   werte,
+  pruefung,
   toleranzEur,
   periodeKurz,
   ergebnis,
@@ -201,6 +204,8 @@ export function DurchfuehrungEditor({
   schritte: EditorSchritt[];
   kennzahlen: KennzahlDef[];
   werte: Werte;
+  /** Berechnete Werte des Dienstes für den gespeicherten Stand (`pruefung.kennzahlen`). */
+  pruefung: readonly KennzahlPruefung[];
   toleranzEur: number | null;
   periodeKurz: string;
   ergebnis: 'OHNE_BEFUND' | 'MIT_BEFUND' | null;
@@ -225,23 +230,12 @@ export function DurchfuehrungEditor({
   );
   const [wahl, setWahl] = useState(ergebnis);
 
-  const live: Werte = useMemo(() => {
-    const out: Werte = {};
-    for (const k of kennzahlen) {
-      const p = k.differenzAus ? null : parseDezimal(eingaben[k.key] ?? '');
-      out[k.key] = {
-        wert: p === 'fehler' ? null : p,
-        bemerkung: bemerkungen[k.key] ?? '',
-        erklaert: erklaert[k.key] ?? false,
-      };
-    }
-    return out;
-  }, [kennzahlen, eingaben, bemerkungen, erklaert]);
-  const zeilen = werteZeilen(kennzahlen, bearbeitbar ? live : werte, toleranzEur);
+  // Werte, Differenzen und Lage des gespeicherten Stands laut Dienst.
+  const zeilen = werteZeilen(kennzahlen, werte, pruefung);
   const anzahlErledigt = erledigt.filter(Boolean).length;
   const alleErledigt = schritte.length > 0 && anzahlErledigt === schritte.length;
   const differenzen = zeilen.filter(
-    (z) => z.def.differenzAus && z.wert != null && toleranzEur != null,
+    (z) => z.def.differenzAus && z.berechnet && z.wert != null && toleranzEur != null,
   );
 
   const schrittKarte = (
@@ -341,6 +335,10 @@ export function DurchfuehrungEditor({
           </h3>
           <span className="text-xs text-muted">Angaben der durchführenden Person</span>
         </div>
+        <p className="hint px-6 pt-2">
+          Differenzen und Toleranzlage berechnet das Tax-CMS für den gespeicherten Stand; nach
+          Änderungen zuerst speichern.
+        </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>

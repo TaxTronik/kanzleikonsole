@@ -11,9 +11,9 @@
 // damit Eingaben bei einer Ablehnung erhalten bleiben.
 //
 // Abweichung von der Demo: keine Toleranz- und Differenzrechnung im Browser.
-// Ob ein Wert außerhalb der Toleranz liegt, meldet das Tax-CMS (`pruefung.
-// ausserhalb` des gespeicherten Stands); Differenzkennzahlen berechnet nur der
-// Dienst und zeigt die Seite als „wird berechnet“.
+// Differenzen, Abweichungen und Toleranzlage liefert das Tax-CMS für den
+// gespeicherten Stand (`pruefung.kennzahlen`, TCMS s7); die Seite zeigt sie –
+// dieselben Werte wie in der Kanzlei.
 // =============================================================================
 
 import { useId, useState, type ReactNode } from 'react';
@@ -22,7 +22,7 @@ import { fmtEur } from '@taxtronik/tcms-domain';
 import { FieldError, fieldErrorProps } from '@/components/form-errors';
 import { TcmsErgebnisMeldung } from '../ereignisse/aktionen';
 import { useTcmsFormular, type TcmsFormAktion } from '../formular';
-import { alsEingabe } from '../durchfuehrung/werte';
+import { alsEingabe, LAGE_BADGE, LAGE_TEXT, type KennzahlPruefung } from '../durchfuehrung/werte';
 
 export interface EditorSchritt {
   titel: string;
@@ -74,7 +74,7 @@ function WerteKarte({
   kannSenden,
   kennzahlen,
   werte,
-  ausserhalb,
+  berechnet,
   toleranzEur,
   periodeLabel,
   fieldErrors,
@@ -84,12 +84,14 @@ function WerteKarte({
   kannSenden: boolean;
   kennzahlen: readonly EditorKennzahl[];
   werte: readonly EditorWert[];
-  ausserhalb: readonly string[];
+  /** Werte, Abweichung und Lage des gespeicherten Stands laut Dienst. */
+  berechnet: readonly KennzahlPruefung[];
   toleranzEur: number | null;
   periodeLabel: string;
   fieldErrors: Record<string, string[]> | undefined;
 }) {
   const wertJe = new Map(werte.map((w) => [w.key, w]));
+  const pruefungJe = new Map(berechnet.map((k) => [k.key, k] as const));
   const f = form;
   return (
     <section className="card overflow-x-auto" aria-labelledby={`${formId}-werte`}>
@@ -122,19 +124,22 @@ function WerteKarte({
         <tbody>
           {kennzahlen.map((k) => {
             const w = wertJe.get(k.key);
+            const p = pruefungJe.get(k.key);
             const feld = `wert_${k.key}`;
-            const istAusserhalb = ausserhalb.includes(k.label);
             return (
               <tr key={k.key} className="border-t border-default align-top">
                 <th scope="row" className="px-4 py-2 text-left font-normal">
                   {k.label}
-                  {istAusserhalb ? (
-                    <span className="badge-red ml-2">außerhalb der Toleranz</span>
+                  {p?.lage && (p.lage !== 'OK' || k.differenzAus) ? (
+                    <span className={`${LAGE_BADGE[p.lage]} ml-2`}>{LAGE_TEXT[p.lage]}</span>
                   ) : null}
                 </th>
                 <td className="px-4 py-2 td-num">
                   {k.differenzAus ? (
-                    <span className="text-xs text-muted">wird vom Tax-CMS berechnet</span>
+                    <span className="font-mono font-semibold">
+                      {p ? fmtEur(p.wert) : '—'}
+                      <span className="sr-only"> (berechnet vom Tax-CMS)</span>
+                    </span>
                   ) : kannSenden ? (
                     <>
                       <input
@@ -191,7 +196,8 @@ function WerteKarte({
         </tbody>
       </table>
       <p className="hint px-4 pb-3">
-        Ob ein Wert außerhalb der Toleranz liegt, prüft das Tax-CMS beim Speichern.
+        Differenzen und die Lage zur Toleranz berechnet das Tax-CMS für den gespeicherten Stand;
+        nach Änderungen zuerst speichern.
       </p>
     </section>
   );
@@ -204,7 +210,7 @@ export function AufgabeEditor({
   schritte,
   kennzahlen,
   werte,
-  ausserhalb,
+  berechnet,
   toleranzEur,
   periodeLabel,
   ergebnis,
@@ -223,7 +229,8 @@ export function AufgabeEditor({
   kennzahlen: readonly EditorKennzahl[];
   werte: readonly EditorWert[];
   /** Kennzahlen außerhalb der Toleranz laut Prüfung des Dienstes. */
-  ausserhalb: readonly string[];
+  /** `pruefung.kennzahlen` des gespeicherten Stands (TCMS s7). */
+  berechnet: readonly KennzahlPruefung[];
   toleranzEur: number | null;
   periodeLabel: string;
   ergebnis: ErgebnisWahl | null;
@@ -315,7 +322,7 @@ export function AufgabeEditor({
           kannSenden={kannSenden}
           kennzahlen={kennzahlen}
           werte={werte}
-          ausserhalb={ausserhalb}
+          berechnet={berechnet}
           toleranzEur={toleranzEur}
           periodeLabel={periodeLabel}
           fieldErrors={fieldErrors}

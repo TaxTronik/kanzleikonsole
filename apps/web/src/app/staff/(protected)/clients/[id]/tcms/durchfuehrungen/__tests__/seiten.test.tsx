@@ -284,6 +284,32 @@ describe('Kontrolldurchführung', () => {
     expect(screen.getByRole('button', { name: /Nachtrag anlegen/ })).toBeTruthy();
   });
 
+  it('Werte und Toleranz laut Dienst (TCMS s7): Differenz und Lage aus `pruefung.kennzahlen`, keine eigene Rechnung', async () => {
+    h.seite.mockResolvedValue(seiteVon(DEMO.anna));
+    const d = tcmsFixtures.durchfuehrungMitBefund();
+    // Erfasste Werte ergäben 153 €; der Dienst meldet für den gespeicherten Stand 812,40 €.
+    const diff = d.pruefung.kennzahlen.find((k) => k.key === 'differenz')!;
+    diff.wert = 812.4;
+    diff.abweichung = 812.4;
+    diff.lage = 'AUSSERHALB';
+    const paypal = d.pruefung.kennzahlen.find((k) => k.key === 'clearing_paypal')!;
+    paypal.lage = 'ERKLAERT';
+    durchfuehrung(d);
+    await detail(d.id);
+    const werte = screen.getByRole('region', { name: 'Werte & Toleranz' });
+    const zeile = within(werte).getByRole('rowheader', { name: 'Differenz' }).closest('tr')!;
+    expect(zeile.textContent).toContain('812,40');
+    expect(zeile.textContent).not.toContain('153,00');
+    expect(zeile.textContent).toContain('außerhalb Toleranz');
+    const pp = within(werte)
+      .getByRole('rowheader', { name: 'Clearingkonto PayPal' })
+      .closest('tr')!;
+    expect(pp.textContent).toContain('Differenz erklärt');
+    // Toleranzkarte mit dem Wert des Dienstes.
+    expect(screen.getByText(/außerhalb der Toleranz und nicht erklärt/)).toBeTruthy();
+    expect(screen.getAllByText('812,40 €').length).toBeGreaterThan(0);
+  });
+
   it('historischer Stand: nur Lesen, keine Formulare, Stichtag an den Dienst', async () => {
     const d = tcmsFixtures.durchfuehrungInDurchfuehrung();
     d.historisch = true;

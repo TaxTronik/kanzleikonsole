@@ -315,7 +315,8 @@ Gegenzeichnung, geplant, abgeschlossen, entfallen oder alle; Kanzlei oder
 Mandant; nur Schlüsselkontrollen. Ein Klick öffnet die Durchführung.
 
 In der Durchführung arbeiten Sie die Schritte ab, erfassen Werte (Beträge im
-Format 1.234,56; Differenzen und Toleranz zeigt die Seite sofort an), hängen
+Format 1.234,56; Differenzen und die Lage zur Toleranz berechnet das Tax-CMS
+für den gespeicherten Stand – nach Änderungen zuerst speichern), hängen
 Nachweise an und wählen das Ergebnis. „Entwurf speichern“ sichert den Stand;
 „Zur Gegenzeichnung einreichen“ speichert und reicht ein. Fehlt noch etwas,
 bleibt der Entwurf gespeichert und die Meldung nennt die offenen Punkte. Eine
@@ -433,8 +434,9 @@ zu tun ist, Schritte mit Kommentaren, Kennzahlen, Anlagen und Ergebnis
 - **Entwurf speichern** ist jederzeit möglich. **Übermitteln** speichert und
   übermittelt nur, wenn das Tax-CMS keine offenen Punkte mehr nennt; sonst
   erscheinen die offenen Punkte als Hinweis.
-- Differenzen und die Toleranzprüfung berechnet das Tax-CMS; außerhalb der
-  Toleranz liegende Werte sind markiert.
+- Differenzen und die Toleranzprüfung berechnet das Tax-CMS für den
+  gespeicherten Stand und zeigt sie wie in der Kanzlei an; außerhalb der
+  Toleranz liegende Werte sind markiert. Nach Änderungen zuerst speichern.
 - **Anlagen** hochladen: höchstens 5 Dateien je Vorgang, je bis 10 MB,
   zusammen bis 25 MB (PDF, Bild, CSV, Text, Excel, Word, ZIP). Der Dateityp
   wird am Inhalt erkannt, jede Datei auf Viren geprüft. Hochgeladene Dateien

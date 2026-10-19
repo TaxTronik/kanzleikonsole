@@ -139,6 +139,50 @@ describe('Kontrollaufgabe im Portal', () => {
     expect(screen.getAllByRole('button', { name: /Entfernen/ })).toHaveLength(2);
   });
 
+  it('Kennzahlen laut Dienst (TCMS s7): Differenz und Lage statt „wird berechnet“', async () => {
+    aufgabe.kontrolle.kennzahlen = [
+      { key: 'soll', label: 'Soll laut Report', sollEur: null, differenzAus: null },
+      { key: 'ist', label: 'Ist laut Ablage', sollEur: null, differenzAus: null },
+      { key: 'diff', label: 'Differenz', sollEur: null, differenzAus: ['soll', 'ist'] },
+    ] as never;
+    aufgabe.werte = [
+      { key: 'soll', wert: 1000, bemerkung: '', erklaert: false },
+      { key: 'ist', wert: 900, bemerkung: '', erklaert: false },
+      { key: 'diff', wert: null, bemerkung: '', erklaert: false },
+    ];
+    aufgabe.pruefung.kennzahlen = [
+      {
+        key: 'soll',
+        label: 'Soll laut Report',
+        wert: 1000,
+        abweichung: null,
+        lage: null,
+        berechnet: false,
+      },
+      {
+        key: 'ist',
+        label: 'Ist laut Ablage',
+        wert: 900,
+        abweichung: null,
+        lage: null,
+        berechnet: false,
+      },
+      {
+        key: 'diff',
+        label: 'Differenz',
+        wert: 100,
+        abweichung: 100,
+        lage: 'AUSSERHALB',
+        berechnet: true,
+      },
+    ];
+    await seite();
+    expect(screen.queryByText(/wird vom Tax-CMS berechnet/)).toBeNull();
+    const zeile = screen.getByRole('rowheader', { name: /^Differenz/ }).closest('tr')!;
+    expect(zeile.textContent).toContain('100,00');
+    expect(zeile.textContent).toContain('außerhalb Toleranz');
+  });
+
   it('ohne Bearbeitungsrecht laut Dienst: kein Upload, kein Entfernen, Grund sichtbar', async () => {
     aufgabe.rechte.bearbeiten = {
       erlaubt: false,

@@ -1,11 +1,12 @@
 // =============================================================================
 // Kennzahlen einer Kontrolldurchführung (TCMS Stufe 3, Bereich C; portiert aus
 // der Demo components/durchfuehrung/werte.ts). Reine Helfer ohne I/O für die
-// Live-Anzeige der Differenz und Toleranzlage im Editor und das Lesen der
-// Beträge im Formular. Ob eine Abweichung das Einreichen hindert, entscheidet
-// der Dienst (`pruefung.ausserhalb`); die Lage hier ist nur Anzeige-Vorschau.
-// Eingabe und Formatierung (parseDezimal, alsEingabe, fmtGroesse) nutzt auch
-// die Kontrollaufgabe im Portal (Bereich D) – eine Quelle für beide Flächen.
+// Werte-Tabelle und das Lesen der Beträge im Formular. Differenzen,
+// Abweichungen und Toleranzlage berechnet seit TCMS s7 nur der Dienst
+// (`pruefung.kennzahlen` des gespeicherten Stands); die Seiten zeigen diese
+// Werte an und rechnen nichts nach (vorher eine Anzeige-Vorschau im Browser).
+// Eingabe und Formatierung (parseDezimal, alsEingabe, fmtGroesse) und die
+// Zeilen der Tabelle nutzen Kanzlei (Bereich C) und Portal (Bereich D).
 // =============================================================================
 
 export interface KennzahlDef {
@@ -81,49 +82,38 @@ export function alsEingabe(n: number | null | undefined): string {
   return n.toFixed(2).replace('.', ',');
 }
 
-function lage(
-  abweichung: number | null,
-  toleranz: number | null,
-  eintrag: WertEintrag,
-): Toleranzlage | null {
-  if (abweichung == null) return null;
-  const grenze = toleranz ?? 0;
-  if (Math.abs(abweichung) <= grenze + 0.004) return 'OK';
-  return eintrag.erklaert && eintrag.bemerkung.trim().length > 0 ? 'ERKLAERT' : 'AUSSERHALB';
+/** Kennzahl der Prüfung des Dienstes (`pruefung.kennzahlen`, TCMS s7). */
+export interface KennzahlPruefung {
+  key: string;
+  wert: number | null;
+  abweichung: number | null;
+  lage: Toleranzlage | null;
+  berechnet: boolean;
 }
 
-/** Zeilen der Werte-Tabelle inkl. berechneter Differenzen und Toleranzlage. */
+/**
+ * Zeilen der Werte-Tabelle: Aufbau der Kontrolle (`defs`), Bemerkungen aus den
+ * gespeicherten Werten, Wert, Abweichung und Toleranzlage aus der Prüfung des
+ * Dienstes. Fehlt eine Kennzahl in der Prüfung, bleiben Abweichung und Lage
+ * leer (keine eigene Rechnung).
+ */
 export function werteZeilen(
   defs: readonly KennzahlDef[],
   werte: Werte,
-  toleranzEur: number | null,
+  pruefung: readonly KennzahlPruefung[],
 ): WertZeile[] {
+  const jeKey = new Map(pruefung.map((k) => [k.key, k] as const));
   return defs.map((def) => {
     const e = werte[def.key] ?? leererEintrag();
-    if (def.differenzAus) {
-      const a = werte[def.differenzAus[0]]?.wert ?? null;
-      const b = werte[def.differenzAus[1]]?.wert ?? null;
-      const diff = a != null && b != null ? Math.round((a - b) * 100) / 100 : null;
-      return {
-        def,
-        wert: diff,
-        abweichung: diff,
-        lage: lage(diff, toleranzEur, e),
-        bemerkung: e.bemerkung,
-        erklaert: e.erklaert,
-        berechnet: true,
-      };
-    }
-    const abw =
-      def.sollEur != null && e.wert != null ? Math.round((e.wert - def.sollEur) * 100) / 100 : null;
+    const p = jeKey.get(def.key);
     return {
       def,
-      wert: e.wert,
-      abweichung: abw,
-      lage: lage(abw, toleranzEur, e),
+      wert: p ? p.wert : def.differenzAus ? null : e.wert,
+      abweichung: p?.abweichung ?? null,
+      lage: p?.lage ?? null,
       bemerkung: e.bemerkung,
       erklaert: e.erklaert,
-      berechnet: false,
+      berechnet: p?.berechnet ?? def.differenzAus != null,
     };
   });
 }

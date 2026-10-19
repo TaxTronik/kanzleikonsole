@@ -251,7 +251,7 @@ function Bearbeitung({
       }
       kennzahlen={k.kennzahlen}
       werte={ohneInhalt ? [] : d.werte}
-      ausserhalb={d.pruefung.ausserhalb}
+      berechnet={ohneInhalt ? [] : d.pruefung.kennzahlen}
       toleranzEur={k.toleranzEur}
       periodeLabel={d.periodeLabel}
       ergebnis={ohneInhalt ? null : d.ergebnis}

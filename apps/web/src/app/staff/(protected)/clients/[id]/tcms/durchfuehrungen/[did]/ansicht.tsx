@@ -620,6 +620,7 @@ function Hauptspalte({
       schritte={schritte}
       kennzahlen={k.kennzahlen}
       werte={werteAusListe(werte)}
+      pruefung={leer ? [] : d.pruefung.kennzahlen}
       toleranzEur={k.toleranzEur}
       periodeKurz={periodeKurz(d.periodeLabel)}
       ergebnis={ergebnis}
