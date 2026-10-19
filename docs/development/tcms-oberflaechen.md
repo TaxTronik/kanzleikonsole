@@ -272,11 +272,11 @@ Protokolliert werden nur Komponente, Endpunkt, Fehlerklasse, Status, Code,
 Bereichsübergreifend genutzte Bausteine in Unterordnern (eine Darstellung je
 Sache für Kanzlei und Portal, Integration Stufe 3):
 
-| Datei                              | Inhalt                                                                                                                                  |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `durchfuehrung/nachweis-liste.tsx` | `NachweisListe`: Nachweise der Durchführung (Kanzlei, mit Abgleich zur Ablage) und Anlagen der Kontrollaufgabe (Portal)                 |
-| `durchfuehrung/werte.ts`           | `parseDezimal`, `alsEingabe`, `fmtGroesse`: eine Umwandlung von Beträgen und Größen für beide Flächen                                   |
-| `programm/beschreibung.tsx`        | `BeschreibungFassung`, `AbschnittAnsicht`, `BausteinBlock`: Beschreibung lebend oder eingefroren, auch die vorgelegte Fassung im Portal |
+| Datei                              | Inhalt                                                                                                                                                                                                                                                                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `durchfuehrung/nachweis-liste.tsx` | `NachweisListe`: Nachweise der Durchführung (Kanzlei, mit Abgleich zur Ablage) und Anlagen der Kontrollaufgabe (Portal)                                                                                                                                                                                                               |
+| `durchfuehrung/werte.ts`           | `parseDezimal`, `alsEingabe`, `fmtGroesse`: eine Umwandlung von Beträgen und Größen für beide Flächen                                                                                                                                                                                                                                 |
+| `programm/beschreibung.tsx`        | `BeschreibungFassung`, `AbschnittAnsicht`, `BausteinBlock`: Beschreibung lebend (strenges Schema, Namen über `tcmsNamen`) oder eingefroren (tolerantes Schema, eingefrorene Namen), auch die vorgelegte Fassung im Portal; „(Mandant)“ an der Gegenzeichnung nach `gegenzeichnungMandant`, ältere Snapshots ohne das Feld unverändert |
 
 Darstellung: nur Tokens der kanzleikonsole (`text-foreground`,
 `bg-surface-raised`, `border-border`, Badge-Töne aus `ton.ts`); keine Farben

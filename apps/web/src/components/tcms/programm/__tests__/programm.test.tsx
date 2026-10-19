@@ -7,7 +7,7 @@
 // Fachkatalog: TCMS-DIENST-001
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import type { BausteinSatzDaten } from '@taxtronik/tcms-contract';
+import type { BausteinSatzDaten, BausteinSatzSnapshotDaten } from '@taxtronik/tcms-contract';
 import { BausteinBlock, BeschreibungFassung, type BausteinQuelle } from '../beschreibung';
 import { TcmsAktionsDialog, type TcmsAktionsErgebnis } from '../dialog';
 import { codeText } from '../freigaben';
@@ -159,6 +159,7 @@ describe('TcmsKnopfAktion', () => {
 });
 
 describe('BausteinBlock VERANTWORTUNG', () => {
+  // Lebend und in neuen Snapshots (TCMS s7): Name ohne Endung, Kennzeichen als Feld.
   const satz = {
     VERANTWORTUNG: {
       rollen: [
@@ -172,16 +173,52 @@ describe('BausteinBlock VERANTWORTUNG', () => {
           partei: 'MANDANT',
           durchfuehrend: 'Murat (eingefroren)',
           vertretung: '—',
-          gegenzeichnung: 'Jana (eingefroren) (Mandant)',
+          gegenzeichnung: 'Jana (eingefroren)',
           durchfuehrendId: M,
           vertretungId: null,
           gegenzeichnungId: J,
+          gegenzeichnungMandant: true,
+        },
+        {
+          code: 'K-EC-03',
+          titel: 'Kanzlei',
+          partei: 'KANZLEI',
+          durchfuehrend: 'Murat (eingefroren)',
+          vertretung: '—',
+          gegenzeichnung: 'Jana (eingefroren)',
+          durchfuehrendId: M,
+          vertretungId: null,
+          gegenzeichnungId: J,
+          gegenzeichnungMandant: false,
         },
       ],
     },
   } as unknown as BausteinSatzDaten;
+  /** Ältere Snapshots (vor s7): Endung im eingefrorenen Namen, ohne Kennzeichen. */
+  const altform = {
+    VERANTWORTUNG: {
+      rollen: [],
+      kontrollen: [
+        {
+          code: 'K-EC-23',
+          titel: 'Export',
+          partei: 'MANDANT',
+          durchfuehrend: 'Murat (eingefroren)',
+          vertretung: '—',
+          gegenzeichnung: 'Jana (eingefroren) (Mandant)',
+        },
+      ],
+    },
+  } as unknown as Partial<BausteinSatzSnapshotDaten>;
 
-  it('lebend: Namen der kanzleikonsole, unbekannte ID als „Unbekannte Person“', () => {
+  function zellen(container: HTMLElement, code: string): string[] {
+    const zeile = [...container.querySelectorAll('tr')].find((tr) =>
+      tr.textContent?.includes(code),
+    )!;
+    return [...zeile.querySelectorAll('td')].map((td) => td.textContent ?? '');
+  }
+
+  it('lebend: Namen der kanzleikonsole, „(Mandant)“ nach dem Kennzeichen, unbekannte ID als „Unbekannte Person“', () => {
     const quelle: BausteinQuelle = {
       modus: 'live',
       stand: '2026-10-19',
@@ -192,21 +229,28 @@ describe('BausteinBlock VERANTWORTUNG', () => {
     const text = container.textContent!;
     expect(text).toContain('Gesetzliche Vertretung: Jana Weller');
     expect(text).toContain('Tax-Compliance-Beauftragte:r: Unbekannte Person');
-    expect(text).toContain('Murat Yilmaz');
-    expect(text).toContain('Jana Weller (Mandant)');
+    expect(zellen(container, 'K-EC-02')[4]).toBe('Jana Weller (Mandant)');
+    expect(zellen(container, 'K-EC-03')[4]).toBe('Jana Weller');
     expect(text).not.toContain('eingefroren)');
     expect(text).toContain('automatisch · Stand 19.10.2026');
   });
 
-  it('eingefroren: genau die eingefrorenen Namen, keine Auflösung', () => {
+  it('eingefroren (neue Form): eingefrorene Namen, „(Mandant)“ nach dem Kennzeichen', () => {
     const quelle: BausteinQuelle = { modus: 'snapshot', stand: '2026-09-30', satz };
     const { container } = render(<BausteinBlock art="VERANTWORTUNG" quelle={quelle} />);
     const text = container.textContent!;
     expect(text).toContain('Gesetzliche Vertretung: Jana (eingefroren)');
-    expect(text).toContain('Murat (eingefroren)');
-    expect(text).toContain('Jana (eingefroren) (Mandant)');
+    expect(zellen(container, 'K-EC-02')[4]).toBe('Jana (eingefroren) (Mandant)');
+    expect(zellen(container, 'K-EC-03')[4]).toBe('Jana (eingefroren)');
     expect(text).not.toContain('Jana Weller');
     expect(text).toContain('eingefroren · Stand 30.09.2026');
+  });
+
+  it('eingefroren (Altform ohne Kennzeichen): Name unverändert, keine doppelte Endung', () => {
+    const quelle: BausteinQuelle = { modus: 'snapshot', stand: '2026-03-31', satz: altform };
+    const { container } = render(<BausteinBlock art="VERANTWORTUNG" quelle={quelle} />);
+    expect(zellen(container, 'K-EC-23')[4]).toBe('Jana (eingefroren) (Mandant)');
+    expect(container.textContent).not.toContain('(Mandant) (Mandant)');
   });
 });
 

@@ -147,6 +147,13 @@ describe('CMS-Beschreibung', () => {
     const karte = abschnitt();
     expect(karte.textContent).toContain('Gesetzliche Vertretung: Jana Weller');
     expect(karte.textContent).toContain('Berufsträger:in (Kanzlei): StB Dr. Anna Roth');
+    // K-EC-23: Gegenzeichnung beim Mandanten als Feld (TCMS s7), Name aus der kanzleikonsole.
+    const k23 = [...karte.querySelectorAll('tr')].find((tr) =>
+      tr.textContent?.includes('K-EC-23'),
+    )!;
+    expect(k23.querySelectorAll('td')[4]!.textContent).toBe(
+      `${NAMEN[DEMO.sabine] ?? UNBEKANNTE_PERSON} (Mandant)`,
+    );
     // ID ohne Namen in der kanzleikonsole: „Unbekannte Person“, nie der Platzhalter des Dienstes.
     expect(karte.textContent).toContain(UNBEKANNTE_PERSON);
     expect(karte.textContent).toContain('automatisch · Stand 19.10.2026');

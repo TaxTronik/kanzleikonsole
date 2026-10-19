@@ -329,6 +329,29 @@ function KontrollmatrixInhalt({ satz, quelle, label }: InhaltProps) {
   );
 }
 
+/** Kennzeichen einer Gegenzeichnung durch die Vertretung beim Mandanten. */
+export const GEGENZEICHNUNG_MANDANT_ZUSATZ = ' (Mandant)';
+
+/**
+ * Gegenzeichnung einer Kontrolle im Baustein VERANTWORTUNG (TCMS s7): Seit
+ * dem Feld `gegenzeichnungMandant` trägt der Name nur die Person – lebend als
+ * ID mit Namen aus der kanzleikonsole, eingefroren als gespeicherter Name –
+ * und die Anzeige ergänzt „ (Mandant)“ nach dem Feld. Ältere Snapshots ohne
+ * das Feld (`undefined`) haben die Endung bereits im eingefrorenen Namen; er
+ * erscheint unverändert (der Inhalt ist per SHA-256 gebunden).
+ */
+export function gegenzeichnungText(
+  quelle: BausteinQuelle,
+  x: {
+    gegenzeichnung: string;
+    gegenzeichnungId?: string | null | undefined;
+    gegenzeichnungMandant?: boolean | undefined;
+  },
+): string {
+  const name = person(quelle, x.gegenzeichnungId, x.gegenzeichnung);
+  return x.gegenzeichnungMandant === true ? `${name}${GEGENZEICHNUNG_MANDANT_ZUSATZ}` : name;
+}
+
 function VerantwortungInhalt({ satz, quelle, label }: InhaltProps) {
   const v = satz?.VERANTWORTUNG;
   if (!v) return <p className="text-sm text-muted">Für diesen Baustein liegen keine Daten vor.</p>;
@@ -348,9 +371,7 @@ function VerantwortungInhalt({ satz, quelle, label }: InhaltProps) {
           beschriftung={label}
         >
           {v.kontrollen.map((x) => {
-            // Der Dienst kennzeichnet eine Gegenzeichnung durch den Mandanten im Text.
-            const mandant = x.gegenzeichnung.endsWith(' (Mandant)');
-            const gegen = person(quelle, x.gegenzeichnungId, x.gegenzeichnung);
+            const gegen = gegenzeichnungText(quelle, x);
             return (
               <tr key={x.code}>
                 <td className={ZELLE}>
@@ -363,11 +384,7 @@ function VerantwortungInhalt({ satz, quelle, label }: InhaltProps) {
                 <td className={`${ZELLE} text-xs`}>
                   {person(quelle, x.vertretungId, x.vertretung)}
                 </td>
-                <td className={`${ZELLE} text-xs`}>
-                  {quelle.modus === 'live' && mandant && x.gegenzeichnungId
-                    ? `${gegen} (Mandant)`
-                    : gegen}
-                </td>
+                <td className={`${ZELLE} text-xs`}>{gegen}</td>
               </tr>
             );
           })}
