@@ -26,6 +26,7 @@ import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { getTcmsConfig, type TcmsConfig } from '@taxtronik/config/env-schema';
 import {
   AKTEUR_HEADER,
+  ENDPUNKT_LISTE,
   KontextAntwortSchema,
   KontextQuerySchema,
   MandantenListeSchema,
@@ -37,6 +38,7 @@ import {
 import { afterAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { TcmsClient, type FetchImpl, type TcmsAkteurAngaben } from '../client';
+import { rufeEndpunkt } from '../endpunkt';
 import {
   TcmsFehler,
   TcmsNichtAuthentifiziert,
@@ -163,6 +165,35 @@ async function fehlerVon(p: Promise<unknown>): Promise<TcmsFehler> {
       akteur: PORTAL,
     });
     expect(daten.mandant.id).toBe(TALWIND);
+  });
+
+  it('Register: jeder GET-Endpunkt mit nur dem Mandanten als Parameter antwortet vertragsgemäß', async () => {
+    // Antworten werden gegen das antwortSchema des Registers geprüft; ein
+    // Abweichen wäre TcmsProtokollFehler. Fachliche Abweisungen (404/403/409)
+    // sind zulässig, sie laufen über das FehlerSchema.
+    const kandidaten = ENDPUNKT_LISTE.filter(
+      (e) =>
+        e.methode === 'GET' &&
+        e.akteur &&
+        e.mandantenbezogen &&
+        e.paramsSchema.safeParse({ mandantId: TALWIND }).success &&
+        (e.querySchema === null || e.querySchema.safeParse({}).success),
+    );
+    let erfolgreich = 0;
+    for (const e of kandidaten) {
+      try {
+        await rufeEndpunkt(client, e, {
+          params: { mandantId: TALWIND },
+          akteur: e.portal && e.pfad.includes('/portal/') ? PORTAL : mitMandant(TALWIND),
+        });
+        erfolgreich += 1;
+      } catch (error) {
+        expect(error, e.name).not.toBeInstanceOf(TcmsProtokollFehler);
+        expect(error, e.name).toBeInstanceOf(TcmsFehler);
+      }
+    }
+    expect(kandidaten.length).toBeGreaterThan(10);
+    expect(erfolgreich).toBeGreaterThan(10);
   });
 
   it('negativ: falscher Schlüssel, unbekannte kid, falsches Token → 401', async () => {

@@ -101,8 +101,22 @@ const { daten, requestId } = await client.aufruf({
 await client.health(); // GET /v1/health, nur Dienst-Token
 ```
 
-Ein künftiges Endpunktregister im Vertrag (`{ methode, pfad, querySchema,
-bodySchema, antwortSchema }`, Typ `TcmsEndpunkt`) speist `aufruf` direkt.
+Bevorzugter Weg ist das Endpunktregister des Vertrags (`ENDPUNKTE`, eine
+Quelle für Methode, Pfad und Schemas; der Dienst registriert seine Routen
+daraus und startet nicht bei Abweichung):
+
+```ts
+const { daten } = await rufeEndpunkt(client, ENDPUNKTE.kontextLesen, {
+  params: { mandantId },
+  query: { stand: '2026-10-16' },
+  akteur,
+});
+```
+
+`rufeEndpunkt` leitet die Typen von Eingabe und Ergebnis aus den Schemas ab
+und prüft vor dem Senden zusätzlich zum Dienst: Pfadparameter mit dem
+`paramsSchema` des Eintrags (z. B. UUIDs), Mandantenkontakte nur auf
+Endpunkten mit `portal: true`, `health` nur über `client.health()`.
 
 - **Bindung.** Target und Body entstehen je Aufruf genau einmal; der Hash
   läuft über genau die gesendeten Bytes. Pfadparameter werden mit
@@ -207,7 +221,10 @@ gegen eine laufende TCMS-API: Health; signierter
 „Anna Roth“, UUIDs aus `packages/db/seeds/demo.ts` des TCMS); `POST
 /v1/portfolio` mit Mandantenliste im Body; eine Query mit Umlauten und
 Sonderzeichen (400 statt 401 belegt die Bindung, weil der Dienst die
-Bestätigung vor der Query prüft); Portal-Endpunkt mit Portal-Akteur. Negativ:
+Bestätigung vor der Query prüft); Portal-Endpunkt mit Portal-Akteur; jeder
+GET-Endpunkt des Registers, der nur den Mandanten als Parameter braucht, über
+`rufeEndpunkt` (jede Erfolgsantwort gegen das `antwortSchema` des Registers,
+fachliche Abweisungen über das `FehlerSchema`). Negativ:
 falscher Schlüssel, unbekannte kid und falsches Token (401), fremder Mandant
 (404), `cli` ≠ Mandant im Pfad (404), Portal-Akteur auf Kanzlei-Endpunkt
 (404), Body nach der Signatur verändert (401), Replay derselben Bestätigung
