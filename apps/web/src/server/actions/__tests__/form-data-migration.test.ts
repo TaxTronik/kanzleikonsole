@@ -128,8 +128,11 @@ describe('parseFormData-Migrationsrest', () => {
     // lesen von Beginn an über parseFormData (+17).
     // TCMS Stufe 3, Bereich A: Einrichtung (+1), Profil (+2), Beschreibung (+5)
     // und Kommunikation (+1) lesen von Beginn an über parseFormData (+9).
+    // TCMS Stufe 3, Bereich B: Risiken (+8, davon Auswahl des Freigabeschritts),
+    // Kontrollen (+5) und Länder (+1, Art der Erfassung) lesen von Beginn an
+    // über parseFormData (+14).
     expect(direct).toHaveLength(2);
     expect(direct.filter((call) => !call.exact)).toHaveLength(1);
-    expect(shared).toBe(150);
+    expect(shared).toBe(164);
   });
 });
