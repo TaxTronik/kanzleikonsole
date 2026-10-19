@@ -74,6 +74,35 @@ describe('Freigabeauswahl', () => {
   });
 });
 
+describe('Risikotabelle: gesperrte Auswahl', () => {
+  it('nennt den Sperrgrund als zugängliche Beschreibung, nicht nur als Tooltip', async () => {
+    const { RisikoTabelle } = await import('../inventar');
+    const daten = tcmsFixtures.risikenTalwind();
+    const [frei, gesperrt] = daten.risiken;
+    render(
+      <RisikoTabelle
+        risiken={[frei!, gesperrt!]}
+        kontrollen={[]}
+        appetit="MITTEL"
+        betriebAktiv={false}
+        namen={{ name: () => '—', bekannt: () => false } as never}
+        optionen={{
+          mitAuswahl: true,
+          auswahl: (r) => (r.id === gesperrt!.id ? SPERRE : true),
+          detailHref: () => '#',
+          ausgewaehlt: null,
+        }}
+      />,
+    );
+    const zu = screen.getByRole('checkbox', { name: `${gesperrt!.code} auswählen` });
+    expect((zu as HTMLInputElement).disabled).toBe(true);
+    const beschreibung = document.getElementById(zu.getAttribute('aria-describedby') ?? '');
+    expect(beschreibung?.textContent).toBe(SPERRE);
+    const offen = screen.getByRole('checkbox', { name: `${frei!.code} auswählen` });
+    expect(offen.getAttribute('aria-describedby')).toBeNull();
+  });
+});
+
 describe('Filter des Risikoinventars', () => {
   const liste = tcmsFixtures.risikenTalwind().risiken;
 

@@ -200,7 +200,14 @@ export function RisikoTabelle({
                       disabled={auswahl !== true}
                       aria-label={`${r.code} auswählen`}
                       title={auswahl === true ? undefined : auswahl}
+                      aria-describedby={auswahl === true ? undefined : `risiko-sperre-${r.id}`}
                     />
+                    {/* Sperrgrund auch für Screenreader, nicht nur als Tooltip (a11y, Bereich B). */}
+                    {auswahl === true ? null : (
+                      <span id={`risiko-sperre-${r.id}`} className="sr-only">
+                        {auswahl}
+                      </span>
+                    )}
                   </td>
                 ) : null}
                 <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">
