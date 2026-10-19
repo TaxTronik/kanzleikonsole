@@ -8,12 +8,12 @@
 // =============================================================================
 
 import type { KontakteAntwort, KontextAntwort } from '@taxtronik/tcms-contract';
+import { MANDANT_ROLLE_LABEL, type MandantRolle } from '@taxtronik/tcms-domain';
 import type { TcmsNamen } from '@/server/tcms/namen';
-import { TCMS_KONTAKT_ROLLE_LABEL, type TcmsKontaktRolle } from '../rollen';
 
 export interface KontaktRolle {
   kontaktId: string;
-  rolle: TcmsKontaktRolle;
+  rolle: MandantRolle;
   funktion: string | null;
 }
 
@@ -29,7 +29,7 @@ export function aktiveRollen(kontakte: KontakteAntwort['kontakte']): KontaktRoll
       .filter((r) => r.aktiv)
       .map((r) => ({
         kontaktId: k.kontaktId.toLowerCase(),
-        rolle: r.rolle as TcmsKontaktRolle,
+        rolle: r.rolle,
         funktion: r.funktion ?? null,
       })),
   );
@@ -48,7 +48,7 @@ export function rollenAusKontext(rollen: KontextAntwort['kontaktRollen']): Konta
 export function kontaktPersonen(
   rollen: readonly KontaktRolle[],
   namen: TcmsNamen,
-  nur?: readonly TcmsKontaktRolle[],
+  nur?: readonly MandantRolle[],
 ): Person[] {
   const gesehen = new Map<string, Person>();
   for (const r of rollen) {
@@ -75,7 +75,7 @@ export function ansprechpersonen(
     .map((r) => ({
       id: r.kontaktId,
       name: namen.name(r.kontaktId),
-      rolle: TCMS_KONTAKT_ROLLE_LABEL[r.rolle],
+      rolle: MANDANT_ROLLE_LABEL[r.rolle],
       funktion: r.funktion,
     }));
 }
@@ -83,8 +83,6 @@ export function ansprechpersonen(
 /** Rollenbezeichnung eines Kontakts (mehrere Rollen kommagetrennt) oder null. */
 export function rollenText(rollen: readonly KontaktRolle[], kontaktId: string): string | null {
   const id = kontaktId.toLowerCase();
-  const eigene = rollen
-    .filter((r) => r.kontaktId === id)
-    .map((r) => TCMS_KONTAKT_ROLLE_LABEL[r.rolle]);
+  const eigene = rollen.filter((r) => r.kontaktId === id).map((r) => MANDANT_ROLLE_LABEL[r.rolle]);
   return eigene.length ? eigene.join(', ') : null;
 }

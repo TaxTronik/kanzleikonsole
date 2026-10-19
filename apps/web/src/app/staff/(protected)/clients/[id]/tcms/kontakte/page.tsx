@@ -5,28 +5,29 @@
 // TCMS (`GET …/kontakte`). Einträge des TCMS ohne Kontakt dieses Mandanten
 // werden nicht angezeigt, nur gezählt – keine Daten eines anderen Mandanten,
 // keine erratenen Namen. Ein Kontakt ohne aktive Rolle hat im Tax-CMS keinen
-// Zugriff (ADR 0001 §5).
+// Zugriff (ADR 0001 §5). Ob Rollen geändert werden dürfen, meldet der Dienst
+// als Kennzeichen (`rechte.bearbeiten`); ohne Recht bleiben die Formulare
+// sichtbar, aber gesperrt, mit dem festen Grund (Integration TCMS Stufe 3).
 // =============================================================================
 
 import { Users } from 'lucide-react';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
+import { MANDANT_ROLLE_LABEL, MANDANT_ROLLEN } from '@taxtronik/tcms-domain';
 import { TcmsLeer } from '@/components/tcms/leer';
-import {
-  TCMS_KONTAKT_ROLLE_LABEL,
-  TCMS_KONTAKT_ROLLEN,
-  type TcmsKontaktRolle,
-} from '@/components/tcms/rollen';
 import { TcmsZustand } from '@/components/tcms/zustand';
 import { kontakteDesMandantenTx } from '@/server/tcms/personen';
 import { tcmsLesen, tcmsMandantSeite, tcmsTenantLesen } from '@/server/tcms/seite';
+import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import { RollenFormular } from './rollen-formular';
 
 export const metadata = { title: 'Tax-CMS – Kontakte & Rollen' };
 
-const ROLLEN_AUSWAHL = TCMS_KONTAKT_ROLLEN.map((wert) => ({
+const ROLLEN_AUSWAHL = MANDANT_ROLLEN.map((wert) => ({
   wert,
-  label: TCMS_KONTAKT_ROLLE_LABEL[wert],
+  label: MANDANT_ROLLE_LABEL[wert],
 }));
+
+const GESPERRT_ID = 'tcms-kontakte-gesperrt';
 
 export default async function TcmsKontaktePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -44,6 +45,9 @@ export default async function TcmsKontaktePage({ params }: { params: Promise<{ i
 
   const rollenJe = new Map(rollen.daten.kontakte.map((k) => [k.kontaktId.toLowerCase(), k.rollen]));
   const bekannt = new Set(kontakte.map((k) => k.id.toLowerCase()));
+  const gesperrt = rollen.daten.rechte.bearbeiten
+    ? null
+    : { grund: TCMS_KEIN_RECHT.BEARBEITEN, hinweisId: GESPERRT_ID };
   const ohneKontakt = rollen.daten.kontakte.filter(
     (k) => !bekannt.has(k.kontaktId.toLowerCase()) && k.rollen.some((r) => r.aktiv),
   ).length;
@@ -59,6 +63,11 @@ export default async function TcmsKontaktePage({ params }: { params: Promise<{ i
         Ohne aktive Rolle hat ein Kontakt keinen Zugriff auf das Tax-CMS. Kontakte selbst pflegen
         Sie in der Mandantenakte.
       </p>
+      {gesperrt ? (
+        <p id={GESPERRT_ID} className="alert-info mb-4" role="note">
+          Rollen ändern: {gesperrt.grund}
+        </p>
+      ) : null}
       {ohneKontakt > 0 ? (
         <p className="alert-warning mb-4" role="status">
           {ohneKontakt === 1
@@ -101,7 +110,7 @@ export default async function TcmsKontaktePage({ params }: { params: Promise<{ i
                         <ul className="flex flex-wrap gap-1">
                           {aktiv.map((r) => (
                             <li key={r.rolle} className="badge-brand">
-                              {TCMS_KONTAKT_ROLLE_LABEL[r.rolle as TcmsKontaktRolle]}
+                              {MANDANT_ROLLE_LABEL[r.rolle]}
                             </li>
                           ))}
                         </ul>
@@ -119,6 +128,7 @@ export default async function TcmsKontaktePage({ params }: { params: Promise<{ i
                         aktiveRollen={aktiv.map((r) => r.rolle)}
                         funktion={aktiv[0]?.funktion ?? null}
                         rollenZuweisbar={k.aktiv}
+                        gesperrt={gesperrt}
                       />
                     </td>
                   </tr>
@@ -128,10 +138,6 @@ export default async function TcmsKontaktePage({ params }: { params: Promise<{ i
           </table>
         </div>
       )}
-      <p className="text-xs text-muted mt-4">
-        Ob Sie Rollen ändern dürfen, entscheidet das Tax-CMS (Admins und Partner, zuständige
-        Berufsträgerin oder Hauptbearbeitung).
-      </p>
     </section>
   );
 }

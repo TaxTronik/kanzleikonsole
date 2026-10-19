@@ -9,22 +9,27 @@
 // =============================================================================
 
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
+import { MANDANT_ROLLEN, type MandantRolle } from '@taxtronik/tcms-domain';
 import { z } from 'zod';
 import { parseFormData } from '@/server/actions/form-data';
 import type { ActionResult } from '@/server/actions/types';
-import { istKontaktRolle, TCMS_KONTAKT_ROLLEN } from '@/components/tcms/rollen';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
 import { mandantKontakteTx } from '@/server/tcms/personen';
+
+/** Typwächter für Formularwerte (Fehler am Feld `rollen`, nicht an einem Index). */
+function istMandantRolle(wert: string): wert is MandantRolle {
+  return (MANDANT_ROLLEN as readonly string[]).includes(wert);
+}
 
 const RollenFormular = z.object({
   kontaktId: z.uuid(),
   // Fehler am Feld selbst (nicht `rollen.0`), damit das Formular sie zeigt.
   rollen: z
     .array(z.string())
-    .max(TCMS_KONTAKT_ROLLEN.length)
+    .max(MANDANT_ROLLEN.length)
     .default([])
-    .refine((werte) => werte.every(istKontaktRolle), 'Bitte nur angebotene Rollen wählen.')
-    .transform((werte) => werte.filter(istKontaktRolle)),
+    .refine((werte) => werte.every(istMandantRolle), 'Bitte nur angebotene Rollen wählen.')
+    .transform((werte) => werte.filter(istMandantRolle)),
   funktion: z
     .string()
     .trim()

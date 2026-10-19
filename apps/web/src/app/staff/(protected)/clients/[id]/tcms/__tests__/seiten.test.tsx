@@ -153,6 +153,26 @@ describe('Cockpit', () => {
     expect(screen.getByRole('button', { name: 'Stammdaten übernehmen' })).toBeTruthy();
   });
 
+  it.each([
+    ['ohne Recht', false, TCMS_KEIN_RECHT.BEARBEITEN],
+    ['im historischen Stand', true, 'Übernehmen ist nur im aktuellen Stand möglich.'],
+  ])(
+    'Stammdaten abweichend %s: kein Abgleich, nur der feste Grund (mandant.rechte)',
+    async (_fall, historisch, grund) => {
+      const kontext = tcmsFixtures.kontextTalwind();
+      kontext.mandant.name = 'Talwind Outdoor GmbH (alt)';
+      kontext.mandant.rechte.bearbeiten = false;
+      kontext.historisch = historisch;
+      h.lesenOptional.mockResolvedValue({ ok: true, daten: kontext, requestId: null });
+      await renderServer(TcmsCockpitPage({ params, searchParams: Promise.resolve({}) }));
+      expect(screen.queryByRole('button', { name: 'Stammdaten übernehmen' })).toBeNull();
+      const hinweis = screen.getByText(
+        'Die Stammdaten im Tax-CMS weichen von der Mandantenakte ab.',
+      ).parentElement!;
+      expect(hinweis.textContent).toContain(grund);
+    },
+  );
+
   it.each([true, false])(
     'ohne Programm: „Tax-CMS einrichten“ nur mit dem Bearbeitungsrecht des Dienstes (%s)',
     async (bearbeiten) => {
@@ -228,6 +248,44 @@ describe('Kontakte & Rollen', () => {
     const mitRolle = within(formular).getByRole('checkbox', { name: 'Tax-Compliance-Beauftragte' });
     expect((mitRolle as HTMLInputElement).disabled).toBe(false);
     expect((mitRolle as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('mit Recht laut Dienst: Formulare bedienbar, kein Sperrhinweis', async () => {
+    const { container } = await renderServer(TcmsKontaktePage({ params }));
+    expect(container.textContent).not.toContain(TCMS_KEIN_RECHT.BEARBEITEN);
+    for (const formular of screen.getAllByRole('form', { name: /Tax-CMS-Rollen von/ })) {
+      const knopf = within(formular).getByRole('button', { name: 'Rollen speichern' });
+      expect((knopf as HTMLButtonElement).matches(':disabled')).toBe(false);
+      expect(within(formular).getByLabelText('Funktion (optional)').matches(':disabled')).toBe(
+        false,
+      );
+    }
+  });
+
+  it('ohne Recht laut Dienst (kontakte.rechte): Formulare sichtbar, aber gesperrt, mit Grund', async () => {
+    const kontakte = tcmsFixtures.kontakteTalwind();
+    kontakte.rechte.bearbeiten = false;
+    h.lesen.mockResolvedValue({ ok: true, daten: kontakte, requestId: null });
+    await renderServer(TcmsKontaktePage({ params }));
+    const hinweis = screen.getByRole('note');
+    expect(hinweis.textContent).toBe(`Rollen ändern: ${TCMS_KEIN_RECHT.BEARBEITEN}`);
+    const formulare = screen.getAllByRole('form', { name: /Tax-CMS-Rollen von/ });
+    expect(formulare).toHaveLength(3);
+    for (const formular of formulare) {
+      const knopf = within(formular).getByRole('button', { name: 'Rollen speichern' });
+      expect((knopf as HTMLButtonElement).disabled).toBe(true);
+      expect(knopf.getAttribute('title')).toBe(TCMS_KEIN_RECHT.BEARBEITEN);
+      for (const feld of within(formular).getAllByRole('checkbox')) {
+        expect(feld.matches(':disabled')).toBe(true);
+      }
+      expect(within(formular).getByLabelText('Funktion (optional)').matches(':disabled')).toBe(
+        true,
+      );
+      const gruppe = within(formular).getByRole('group', { name: /^Rollen von / });
+      expect(gruppe.getAttribute('aria-describedby')).toBe(hinweis.id);
+    }
+    // Aktive Rollen bleiben lesbar.
+    expect(screen.getAllByRole('checkbox', { checked: true }).length).toBeGreaterThan(0);
   });
 
   it('liest Kontakte nur mit dem Mandanten der Seite', async () => {

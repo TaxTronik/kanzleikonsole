@@ -188,7 +188,7 @@ export function Cockpit({
   if (!ctx.programm || (ctx.programm.status === 'ENTWURF' && !ctx.programm.version1Am)) {
     return (
       <>
-        {stammdatenAbweichend ? <StammdatenHinweis seite={seite} /> : null}
+        {stammdatenAbweichend ? <StammdatenHinweis seite={seite} ctx={ctx} /> : null}
         <OhneProgramm seite={seite} ctx={ctx} />
       </>
     );
@@ -212,7 +212,7 @@ export function Cockpit({
         }}
         titel={<h2 className="text-lg font-semibold text-primary mr-2">Cockpit</h2>}
       />
-      {stammdatenAbweichend ? <StammdatenHinweis seite={seite} /> : null}
+      {stammdatenAbweichend ? <StammdatenHinweis seite={seite} ctx={ctx} /> : null}
       <TcmsPflichthinweis />
       <P153Hinweis k={k} />
       <div className="card mt-4 px-6 py-5">
@@ -693,18 +693,31 @@ function LaenderKarte({ k }: { k: KartenKontext }) {
 }
 
 /** Name im Tax-CMS weicht von der Mandantenakte ab: Abgleich anbieten. */
-function StammdatenHinweis({ seite }: { seite: TcmsMandantSeite }) {
+/**
+ * Stammdaten im Tax-CMS weichen von der Mandantenakte ab. Übernehmen nur mit
+ * dem Kennzeichen des Dienstes (`mandant.rechte.bearbeiten`; im historischen
+ * Stand immer `false`), sonst der feste Grund statt der Schaltfläche.
+ */
+function StammdatenHinweis({ seite, ctx }: { seite: TcmsMandantSeite; ctx: KontextAntwort }) {
   return (
     <div
       className="alert-info mb-3 flex flex-wrap items-center justify-between gap-3"
       role="status"
     >
       <span>Die Stammdaten im Tax-CMS weichen von der Mandantenakte ab.</span>
-      <MandantAnlegenFormular
-        mandantId={seite.mandantId}
-        beschriftung="Stammdaten übernehmen"
-        erfolg="Die Stammdaten sind im Tax-CMS aktualisiert."
-      />
+      {ctx.mandant.rechte.bearbeiten ? (
+        <MandantAnlegenFormular
+          mandantId={seite.mandantId}
+          beschriftung="Stammdaten übernehmen"
+          erfolg="Die Stammdaten sind im Tax-CMS aktualisiert."
+        />
+      ) : (
+        <span className="text-sm text-muted">
+          {ctx.historisch
+            ? 'Übernehmen ist nur im aktuellen Stand möglich.'
+            : TCMS_KEIN_RECHT.BEARBEITEN}
+        </span>
+      )}
     </div>
   );
 }

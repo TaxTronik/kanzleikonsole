@@ -24,10 +24,12 @@ Eine Seite der kanzleikonsole
 
 - zeigt die Antwort an und wählt aus, filtert und sortiert sie für die
   Anzeige,
-- blendet Aktionen nach den Rechte-Kennzeichen der Antwort aus
-  (`rechte.bearbeiten`, `rechte.wuerdigen`, Portal `portalLesen`, `melden`);
-  wo eine Antwort keine Kennzeichen trägt, zeigt sie die Aktion und bildet die
-  Ablehnung des Dienstes ab,
+- blendet Aktionen nach den Rechte-Kennzeichen der Antwort aus oder sperrt
+  sie sichtbar mit festem Grund (`rechte.bearbeiten`, `rechte.wuerdigen`,
+  Stammdaten `kontext.mandant.rechte.bearbeiten`, Kontaktrollen
+  `kontakte.rechte.bearbeiten`, Durchführung `{ erlaubt, grund, verweigerung }`,
+  Portal `portalLesen`, `melden`); wo eine Antwort keine Kennzeichen trägt,
+  zeigt sie die Aktion und bildet die Ablehnung des Dienstes ab,
 - nimmt Labels und Formatierung aus `@taxtronik/tcms-domain`
   (`labels.ts`, `format.ts`, `katalog.ts`, `phasen.ts`) statt eigener Texte,
 - berechnet **nichts** nach: keine eigene Fälligkeit, keine eigene Phase,
@@ -263,7 +265,6 @@ Protokolliert werden nur Komponente, Endpunkt, Fehlerklasse, Status, Code,
 | `ton.ts`           | Farbtöne der Badges und Chips aus den Tokens der kanzleikonsole                                                                                                                                |
 | `format.ts`        | Datumsanzeige (`isoDatumText`, `isoZeitText`, …) auf Basis von `@taxtronik/tcms-domain`                                                                                                        |
 | `icon.tsx`         | `KatalogIcon` für die Icon-Namen des Katalogs                                                                                                                                                  |
-| `rollen.ts`        | Rollen der Mandantenkontakte und Labels                                                                                                                                                        |
 | `ergebnis.ts`      | `TcmsAktionsErgebnis` (ActionResult mit `meldung`/`warnung`), `TcmsFormAktion` – ein Typ für alle Bereiche                                                                                     |
 | `formular.ts`      | `useTcmsFormular`: Absenden in einer Transition, Eingaben bleiben bei Ablehnung stehen, Reset nur nach Erfolg (abschaltbar), keine Doppelübermittlung, optional Gefahrendialog und `nachLesen` |
 

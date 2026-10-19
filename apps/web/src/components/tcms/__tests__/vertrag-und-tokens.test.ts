@@ -12,11 +12,11 @@ import {
   GRUNDELEMENTE,
   KLASSEN,
   KLASSE_BADGE,
+  MANDANT_ROLLEN,
   NORMSTUFE_BADGE,
 } from '@taxtronik/tcms-domain';
 import { aktiverTcmsBereich, tcmsBereichHref, TCMS_MANDANT_BEREICHE } from '../bereiche';
 import { KATALOG_ICON_NAMEN } from '../icon';
-import { TCMS_KONTAKT_ROLLEN } from '../rollen';
 import {
   BADGE_KLASSEN,
   CHIP_KLASSEN,
@@ -63,13 +63,13 @@ describe('Katalog und Vertrag', () => {
     for (const name of namen) expect(KATALOG_ICON_NAMEN, name).toContain(name);
   });
 
-  it('führt genau die Kontaktrollen des Vertrags', () => {
+  it('Domain und Vertrag führen dieselben Kontaktrollen (vendorte Stände passen zusammen)', () => {
     const rollen = KontaktRollenBodySchema.shape.rollen;
-    expect(rollen.safeParse([...TCMS_KONTAKT_ROLLEN]).success).toBe(true);
+    expect(rollen.safeParse([...MANDANT_ROLLEN]).success).toBe(true);
     expect(rollen.safeParse(['GESCHAEFTSFUEHRER']).success).toBe(false);
     // Vollständig: jede Rolle des Vertrags ist in der Liste.
     const vertrag = (rollen.element as unknown as { options: readonly string[] }).options;
-    expect([...vertrag].sort()).toEqual([...TCMS_KONTAKT_ROLLEN].sort());
+    expect([...vertrag].sort()).toEqual([...MANDANT_ROLLEN].sort());
   });
 });
 

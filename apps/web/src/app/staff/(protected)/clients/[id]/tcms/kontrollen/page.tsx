@@ -21,6 +21,7 @@ import {
   type KontrolleEintrag,
   type KontrollenListe,
 } from '@taxtronik/tcms-contract';
+import { MANDANT_ROLLE_LABEL } from '@taxtronik/tcms-domain';
 import { SperrHinweis } from '@/components/tcms/bereich-b/detail';
 import { auswerten, detailAus, kopfDaten, standQuery } from '@/components/tcms/bereich-b/laden';
 import {
@@ -39,7 +40,6 @@ import { KontrollMatrix, KontrollTabelle } from '@/components/tcms/kontrollen/li
 import type { PersonOption } from '@/components/tcms/kontrollen/zustaendigkeit';
 import { TcmsKopf } from '@/components/tcms/kopf';
 import { TcmsLeer } from '@/components/tcms/leer';
-import { TCMS_KONTAKT_ROLLE_LABEL } from '@/components/tcms/rollen';
 import { AnsichtUmschalter } from '@/components/tcms/risiken/uebersicht';
 import { TcmsZustand } from '@/components/tcms/zustand';
 import {
@@ -98,7 +98,7 @@ async function personenAuswahl(
     for (const r of ctx.kontaktRollen) {
       const schluessel = r.kontaktId.toLowerCase();
       if (!rollen.has(schluessel)) {
-        rollen.set(schluessel, r.funktion ?? TCMS_KONTAKT_ROLLE_LABEL[r.rolle]);
+        rollen.set(schluessel, r.funktion ?? MANDANT_ROLLE_LABEL[r.rolle]);
       }
     }
     return { seite: await mandantPersonenAuswahlTx(tx, bezug, rollen), kanzlei };

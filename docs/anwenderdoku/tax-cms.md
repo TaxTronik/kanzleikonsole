@@ -69,7 +69,8 @@ Unternavigation darunter enthält alle Bereiche des Tax-CMS.
   TaxTronik; das Tax-CMS hält keine weiteren Stammdaten. Weicht der Name im
   Tax-CMS später von der Mandantenakte ab, bietet das Cockpit „Stammdaten
   übernehmen“ an. Ob Sie anlegen oder übernehmen dürfen, entscheidet das
-  Tax-CMS.
+  Tax-CMS; ohne dieses Recht (und in einem früheren Stand) steht dort statt
+  der Schaltfläche der Grund.
 - **Cockpit:** Phase und Teilbereich, offene §-153-Würdigungen, Stand der
   Grundelemente, Risikolage (Heatmap), laufender Wirksamkeitszeitraum, in
   14 Tagen fällige oder überfällige Durchführungen, offene Feststellungen,
@@ -91,7 +92,9 @@ im Mandanten-Portal sieht und tun darf.
 - Zur Auswahl stehen nur Kontakte dieses Mandanten; Rollen erhalten nur
   aktive Kontakte. Rollen entfernen geht auch bei inaktiven Kontakten.
 - Die Kontaktdaten selbst pflegen Sie wie gewohnt in der Mandantenakte.
-- Ob Sie Rollen pflegen dürfen, entscheidet das Tax-CMS.
+- Ob Sie Rollen pflegen dürfen, entscheidet das Tax-CMS. Ohne dieses Recht
+  sehen Sie die Rollen und Formulare gesperrt, mit dem Grund über der
+  Tabelle.
 
 ## 6. Programm & Dokumentation
 
