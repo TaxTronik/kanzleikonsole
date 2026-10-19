@@ -117,6 +117,18 @@ tcms_read_release_pins() {
   printf '%s\n%s\n%s\n' "$version" "$api" "$migrate"
 }
 
+# Zerlegt die Ausgabe von tcms_read_release_pins in _TCMS_PIN_VERSION,
+# _TCMS_PIN_API und _TCMS_PIN_MIGRATE. Die Befehlsersetzung entfernt die
+# Leerzeilen leerer Pins; ein nacktes `read` liefe dann auf EOF und beendete
+# unter `set -e` den ganzen Lauf ohne Meldung.
+tcms_split_pins() {
+  local version="" api="" migrate=""
+  { read -r version || true; read -r api || true; read -r migrate || true; } <<<"${1:-}"
+  _TCMS_PIN_VERSION="$version"
+  _TCMS_PIN_API="$api"
+  _TCMS_PIN_MIGRATE="$migrate"
+}
+
 # Teil des Compose-Guards (ensure_compose_image_pinning, Release-Kanal): Ein
 # verwaltetes Tax-CMS laeuft nur mit Digests aus dem signierten Release-Stand.
 # Ausserhalb von deploy/update/rollback sind das die Pins des verifizierten
@@ -141,7 +153,8 @@ ensure_tcms_image_pinning() {
   [[ "${_TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED:-0}" == "1" ]] && return 0
   pins="$(tcms_read_release_pins "$commit")" || \
     die "Registry-Compose verweigert: TCMS-Pins des verifizierten Release-Commits sind nicht lesbar."
-  { read -r pinned_version; read -r pinned_api; read -r pinned_migrate; } <<<"$pins"
+  tcms_split_pins "$pins"
+  pinned_version="$_TCMS_PIN_VERSION"; pinned_api="$_TCMS_PIN_API"; pinned_migrate="$_TCMS_PIN_MIGRATE"
   [[ -n "$pinned_version" ]] || \
     die "Registry-Compose verweigert: Der verifizierte Release-Stand verankert kein TCMS-Release; TCMS_DEPLOYMENT=managed ist so nicht betreibbar (./taxtronik tcms disable oder Update auf einen Release mit TCMS)."
   [[ "$version" == "$pinned_version" && "$api_suffix" == "@$pinned_api" && \
@@ -348,7 +361,8 @@ tcms_set_images_from_state() {
   tcms_installed || return 0
   commit="$(state_value current_commit)"
   pins="$(tcms_read_release_pins "$commit")" || die "TCMS-Pins des installierten Release-Stands sind nicht lesbar."
-  { read -r version; read -r api; read -r migrate; } <<<"$pins"
+  tcms_split_pins "$pins"
+  version="$_TCMS_PIN_VERSION"; api="$_TCMS_PIN_API"; migrate="$_TCMS_PIN_MIGRATE"
   [[ -n "$version" ]] || \
     die "Der installierte Release verankert kein TCMS-Release; managed ist erst nach einem Update auf einen Release mit TCMS moeglich."
   tcms_set TCMS_VERSION "$version"
@@ -509,6 +523,14 @@ tcms_restart_api() {
   }
 }
 
+# tcms-api mit anderen Images (Rueckfall auf Last-Good); die Werte gelten nur
+# fuer diesen Aufruf (lokal, fuer Compose exportiert).
+tcms_restart_api_with() {
+  local TCMS_VERSION="$1" TCMS_API_DIGEST_SUFFIX="$2" TCMS_MIGRATE_DIGEST_SUFFIX="$3"
+  export TCMS_VERSION TCMS_API_DIGEST_SUFFIX TCMS_MIGRATE_DIGEST_SUFFIX
+  tcms_restart_api
+}
+
 # App und Worker mit der aktuellen Umgebung neu erzeugen (Netze, TCMS-Werte).
 tcms_restart_writers() {
   info "App und Worker mit neuer TCMS-Konfiguration neu starten"
@@ -549,6 +571,97 @@ tcms_remove_containers() {
     docker network inspect "$network" >/dev/null 2>&1 || continue
     docker network rm "$network" >/dev/null || warn "Netz $network ist noch belegt; nach dem Neustart von app/worker erneut 'tcms disable' ausfuehren."
   done
+}
+
+# ---------------------------------------------------------------------------
+# Release-Vertrag: deploy, update, rollback
+# ---------------------------------------------------------------------------
+# Exportiert die TCMS-Pins eines signiert verifizierten Commits fuer den
+# laufenden Prozess, wie stage_release_contract die Web-/Worker-Digests.
+# .env und STATE aendern sich erst mit dem Last-Good-Vertrag
+# (commit_release_contract). Nur der verwaltete Modus braucht die Pins: Fehlen
+# sie, bricht der Ablauf vor jedem Backup, jeder Migration und jedem
+# Containerwechsel ab.
+tcms_stage_release_pins() {
+  local commit="$1" mode pins version="" api="" migrate=""
+  mode="$(tcms_deployment_mode)" || die "TCMS_DEPLOYMENT muss managed, external oder disabled sein."
+  if ! pins="$(tcms_read_release_pins "$commit")"; then
+    [[ "$mode" != "managed" ]] || \
+      die "TCMS-Pins im signierten Release-Commit ${commit:0:12} sind nicht lesbar; verwaltetes Tax-CMS verweigert."
+    pins=""
+  fi
+  tcms_split_pins "$pins"
+  version="$_TCMS_PIN_VERSION"; api="$_TCMS_PIN_API"; migrate="$_TCMS_PIN_MIGRATE"
+  if [[ -z "$version" ]]; then
+    [[ "$mode" != "managed" ]] || \
+      die "Der signierte Release-Stand ${commit:0:12} verankert kein TCMS-Release; TCMS_DEPLOYMENT=managed ist damit nicht betreibbar (./taxtronik tcms disable oder anderen Release waehlen). Es wurde nichts veraendert."
+    export TCMS_VERSION="" TCMS_API_DIGEST_SUFFIX="" TCMS_MIGRATE_DIGEST_SUFFIX=""
+    return 0
+  fi
+  export TCMS_VERSION="$version" TCMS_API_DIGEST_SUFFIX="@$api" TCMS_MIGRATE_DIGEST_SUFFIX="@$migrate"
+}
+
+# deploy/update: Datenbank -> Migration -> Dienst mit den gestagten Images.
+# Wird der neue tcms-api nicht gesund, startet der Last-Good-Stand aus .env
+# wieder (wie Signal); der Ablauf bricht dann ab, STATE bleibt Last-Good.
+start_tcms_for_deploy() {
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
+  local previous_version previous_api previous_migrate
+  previous_version="$(get_env TCMS_VERSION)"
+  previous_api="$(get_env TCMS_API_DIGEST_SUFFIX)"
+  previous_migrate="$(get_env TCMS_MIGRATE_DIGEST_SUFFIX)"
+  info "TCMS-Datenbank starten"
+  compose --profile tcms up -d --no-deps tcms-db || die "tcms-db konnte nicht gestartet werden."
+  tcms_wait_db_healthy
+  run_tcms_migrate
+  tcms_restart_api && return 0
+  warn "Neuer tcms-api wurde nicht healthy; vorherigen Containerstand wiederherstellen."
+  if [[ -n "$previous_version" && \
+        "$previous_version$previous_api$previous_migrate" != "${TCMS_VERSION:-}${TCMS_API_DIGEST_SUFFIX:-}${TCMS_MIGRATE_DIGEST_SUFFIX:-}" ]]; then
+    tcms_restart_api_with "$previous_version" "$previous_api" "$previous_migrate" || \
+      warn "Auch der vorherige tcms-api konnte nicht wiederhergestellt werden."
+  fi
+  return 1
+}
+
+# Rollback: Das Ziel muss das verwaltete Tax-CMS kennen; im Release-Kanal
+# gelten die Pins seines signiert verifizierten Commits. Merkt den
+# Last-Good-Stand fuer die Wiederherstellung (rollback_failure_recover).
+tcms_prepare_rollback() {
+  local target_commit="$1" current_commit="$2" pins version="" api="" migrate=""
+  export _TAXTRONIK_ROLLBACK_TCMS_CHANGED=0
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
+  git -C "$ROOT" cat-file -e "${target_commit}:infra/compose/docker-compose.tcms.yml" 2>/dev/null || \
+    die "Rollback-Ziel ${target_commit:0:12} kennt das verwaltete Tax-CMS nicht; zuerst ./taxtronik tcms disable (Daten bleiben im Volume tcms-db-data)."
+  if images_from_registry; then
+    pins="$(tcms_read_release_pins "$current_commit")" || pins=""
+    tcms_split_pins "$pins"
+    version="$_TCMS_PIN_VERSION"; api="$_TCMS_PIN_API"; migrate="$_TCMS_PIN_MIGRATE"
+    export _TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_VERSION="$version"
+    export _TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_API="${api:+@$api}"
+    export _TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_MIGRATE="${migrate:+@$migrate}"
+    tcms_stage_release_pins "$target_commit"
+  else
+    export _TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_VERSION="${TCMS_VERSION:-}"
+    export _TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_API="" _TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_MIGRATE=""
+  fi
+}
+
+# Rollback-Aktivierung: tcms-api mit den Ziel-Images, ohne Migrationsschritt
+# (Rollback migriert nie). Vor app/worker, damit ein Fehler vor der
+# Writer-Aktivierung abbricht.
+tcms_rollback_activate() {
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
+  export _TAXTRONIK_ROLLBACK_TCMS_CHANGED=1
+  tcms_restart_api || die "Rollback abgebrochen: tcms-api mit den Images des Ziel-Releases nicht healthy."
+}
+
+tcms_rollback_recover() {
+  [[ "${_TAXTRONIK_ROLLBACK_TCMS_CHANGED:-0}" == "1" ]] || return 0
+  [[ -n "${_TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_VERSION:-}" ]] || return 0
+  tcms_restart_api_with "$_TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_VERSION" \
+    "${_TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_API:-}" "${_TAXTRONIK_ROLLBACK_LAST_GOOD_TCMS_MIGRATE:-}" || \
+    warn "Last-Good-tcms-api konnte nicht wiederhergestellt werden; ./taxtronik tcms status pruefen."
 }
 
 # ---------------------------------------------------------------------------

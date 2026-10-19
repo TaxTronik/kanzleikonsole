@@ -362,7 +362,9 @@ continue_update_after_checkout() {
   assert_app_env_schema
   provide_traefik_for_deploy
   provide_signal_for_deploy update
+  provide_tcms_images
   run_migrations
+  start_tcms_for_deploy || die "Update abgebrochen: verwaltetes Tax-CMS ist nicht bereit."
   start_signal_for_deploy || die "Update abgebrochen: verwaltetes Signal ist nicht bereit."
   start_apps_for_activation deploy "$(image_tag)"
   smoke_health || die "Update fehlgeschlagen: Anwendung ist nicht vollstaendig healthy; letzter erfolgreicher Stand bleibt in $STATE vermerkt."

@@ -61,6 +61,8 @@ rollback_failure_recover() {
       compose stop app worker n8n || \
         warn "Writer konnten nach fehlgeschlagener Rollback-Aktivierung nicht vollstaendig gestoppt werden."
     fi
+    # TCMS Stufe 2: tcms-api ebenfalls auf die Last-Good-Images zurueck.
+    tcms_rollback_recover
   fi
   exit "$rc"
 }
@@ -203,6 +205,8 @@ cmd_rollback() {
     fi
     stage_release_contract
     fetch_verified_release_tag "$target" "$UPDATE_COMMIT_SHA"
+    # TCMS Stufe 2: Pins des signiert verifizierten Ziel-Commits.
+    tcms_prepare_rollback "$UPDATE_COMMIT_SHA" "$current_commit"
     # Images und OCI-Labels werden vor dem Checkout-Wechsel validiert. Dadurch
     # bleibt ein Pull-/Registry-Fehler vollstaendig ohne Aktivierungswirkung.
     pull_release_images_direct
@@ -217,6 +221,8 @@ cmd_rollback() {
         die "Image $prefix/$img:$target nicht lokal vorhanden (Lokalbuild-Modus)."
       fi
     done
+    tcms_prepare_rollback "$state_commit" "$current_commit"
+    provide_tcms_images
   fi
 
   require_clean_release_checkout
@@ -241,6 +247,7 @@ cmd_rollback() {
   ensure_host_tool_deps
 
   warn "Rollback auf $target — DB-Kompatibilitaet wurde fail-closed aus dem Release-State bestaetigt."
+  tcms_rollback_activate
   export _TAXTRONIK_ROLLBACK_WRITERS_STARTED=1
   start_apps_for_activation rollback "$target"
   smoke_health || die "Rollback-Container sind gestartet, aber nicht healthy."

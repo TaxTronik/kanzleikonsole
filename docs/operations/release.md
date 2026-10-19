@@ -38,6 +38,15 @@ Der Tag-Push löst `.forgejo/workflows/release.yml` aus:
 6. Ermittelt die Registry-Digests beider Images und publiziert erst danach das
    signierte Manifest mit Tag-Commit, Web-Digest und Worker-Digest.
 
+Tax-CMS-Images (`tcms-api`, `tcms-migrate`) baut das TCMS-Repository. Ein
+Release gibt sie über `infra/compose/tcms-release.env` im Tag-Commit frei; das
+Manifest bindet sie damit über den signierten Commit (das Manifest-Schema v2
+bleibt unverändert, damit ältere Operator-CLIs und der Update-Check weiter
+lesen können). Vor dem Build prüft der Image-Job, dass beide Digests in der
+Release-Registry existieren und das passende Versionslabel tragen
+(`scripts/release/verify-tcms-pins.sh`). Details:
+[Tax-CMS-Betrieb](tcms-betrieb.md#3-images-und-release).
+
 Der Image-Job besitzt die harte Abhängigkeit
 `needs: [preflight, full-ci, security-gate]` und hat keinen
 `if`-/`continue-on-error`-Bypass. Schlägt irgendeine Prüfung fehl oder passt
@@ -332,6 +341,11 @@ Im Lokalbuild-Modus müssen die früheren Images bereits vorhanden sein oder aus
 dem exakten früheren Checkout gebaut werden. Achtung: Daten, die
 nach dem Backup entstanden sind, gehen dabei verloren — Rollback über
 Migrationen ist die letzte Option, nicht der Standardweg.
+
+Ein verwaltetes Tax-CMS folgt dem Rollback: `tcms-api` wechselt vor App und
+Worker auf die Images, die der Ziel-Commit verankert (ohne TCMS-Migration);
+ein Ziel ohne TCMS-Unterstützung wird mit Verweis auf `./taxtronik tcms
+disable` abgewiesen ([Tax-CMS-Betrieb](tcms-betrieb.md#3-images-und-release)).
 
 Der Guard gilt für `./taxtronik` und alle internen Aufrufe des gemeinsamen
 Compose-Wrappers. Ein direkter Aufruf von `docker compose` umgeht die

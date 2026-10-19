@@ -801,6 +801,301 @@ test_initial_setup_asks_for_the_tax_cms() {
   pass "initial setup asks for the Tax-CMS like Signal and defaults to disabled"
 }
 
+# ---------------------------------------------------------------------------
+# Release-Vertrag: deploy, update, rollback
+# ---------------------------------------------------------------------------
+# Regel: Ohne gueltige Signatur kein TCMS-Image. prepare_release_contract
+# stagt die Pins erst nach Signatur- und Checkout-Pruefung, aus genau dem
+# signierten Commit; leere Pins halten ein nicht verwaltetes Tax-CMS nicht auf.
+test_registry_release_stages_tcms_pins_from_the_signed_commit() {
+  local repo="$TMP_DIR/stage-pins" env_file="$TMP_DIR/stage-pins.env" calls="$TMP_DIR/stage-pins.calls"
+  local commit out="$TMP_DIR/stage-pins.out"
+  commit="$(pin_repo "$repo" "$(pins_text 1.4.0 "$DIGEST_API" "$DIGEST_MIGRATE")")"
+  printf 'TCMS_DEPLOYMENT=managed\nTCMS_VERSION=0.0.1\nTCMS_API_DIGEST_SUFFIX=@sha256:%s\n' \
+    "$(printf 'f%.0s' {1..64})" >"$env_file"
+  : >"$calls"
+  (
+    ROOT="$repo"; ENVFILE="$env_file"
+    unset "${TCMS_CONFIG_VARS[@]}"
+    load_env
+    images_from_registry() { return 0; }
+    resolve_release_contract() {
+      printf 'resolve\n' >>"$calls"
+      UPDATE_COMMIT_SHA="$commit"
+      UPDATE_WEB_DIGEST="sha256:$(printf 'a%.0s' {1..64})"
+      UPDATE_WORKER_DIGEST="sha256:$(printf 'b%.0s' {1..64})"
+    }
+    verify_release_checkout() { printf 'verify\n' >>"$calls"; }
+    prepare_release_contract
+    printf 'staged %s %s %s\n' "$TCMS_VERSION" "$TCMS_API_DIGEST_SUFFIX" "$TCMS_MIGRATE_DIGEST_SUFFIX" >>"$calls"
+    commit_release_contract
+  ) || test_fail "prepare_release_contract failed"
+  assert_contains "$calls" "staged 1.4.0 @$DIGEST_API @$DIGEST_MIGRATE"
+  assert_before "$calls" "verify" "staged"
+  assert_key_equals "$env_file" TCMS_VERSION 1.4.0
+  assert_key_equals "$env_file" TCMS_API_DIGEST_SUFFIX "@$DIGEST_API"
+  assert_key_equals "$env_file" TCMS_MIGRATE_DIGEST_SUFFIX "@$DIGEST_MIGRATE"
+
+  # Signatur ungueltig: resolve bricht ab, es wird nichts gestagt.
+  if (
+    ROOT="$repo"; ENVFILE="$env_file"
+    images_from_registry() { return 0; }
+    resolve_release_contract() { die "Update-Manifest/Signatur/Release-Vertrag ungueltig."; }
+    tcms_stage_release_pins() { printf 'staged-after-bad-signature\n' >>"$calls"; }
+    prepare_release_contract
+  ) >"$out" 2>&1; then test_fail "an invalid signature did not stop the release contract"; fi
+  assert_not_contains "$calls" "staged-after-bad-signature"
+
+  # Leere Pins: disabled laeuft weiter (auch unter set -e), managed bricht ab.
+  rm -rf "$repo"; commit="$(pin_repo "$repo" "$(pins_text "" "" "")")"
+  # Ohne if/||, damit errexit wie im echten Lauf gilt.
+  set +e
+  (
+    set -e
+    ROOT="$repo"; ENVFILE="$env_file"; TCMS_DEPLOYMENT=disabled
+    tcms_stage_release_pins "$commit"
+    [[ -z "$TCMS_VERSION$TCMS_API_DIGEST_SUFFIX$TCMS_MIGRATE_DIGEST_SUFFIX" ]] || exit 3
+    printf 'continued\n' >>"$calls"
+  )
+  set -e
+  assert_contains "$calls" "continued"
+  if ( ROOT="$repo"; ENVFILE="$env_file"; TCMS_DEPLOYMENT=managed; tcms_stage_release_pins "$commit" ) >"$out" 2>&1; then
+    test_fail "managed TCMS accepted a signed release without TCMS pins"
+  fi
+  assert_contains "$out" "verankert kein TCMS-Release"
+  pass "release contract stages TCMS digests only from the verified signed commit"
+}
+
+test_provide_tcms_images_pulls_only_signed_digests() {
+  local calls="$TMP_DIR/provide.calls" out="$TMP_DIR/provide.out"
+  : >"$calls"
+  provide_with() (
+    TCMS_DEPLOYMENT=managed TAXTRONIK_IMAGE_PREFIX=registry.example/taxtronik
+    TCMS_VERSION="$1" TCMS_API_DIGEST_SUFFIX="$2" TCMS_MIGRATE_DIGEST_SUFFIX="$3" LABEL="$4" CHANNEL="$5"
+    images_from_registry() { [[ "$CHANNEL" == release ]]; }
+    docker() {
+      printf 'docker %s\n' "$*" >>"$calls"
+      case "$1 $2" in
+        "image inspect")
+          [[ "$*" != *--format* ]] || printf '%s\n' "$LABEL"
+          [[ "$*" != *missing* ]]
+          ;;
+        *) return 0 ;;
+      esac
+    }
+    provide_tcms_images
+  )
+  provide_with 1.4.0 "@$DIGEST_API" "@$DIGEST_MIGRATE" 1.4.0 release >/dev/null || test_fail "signed images rejected"
+  assert_contains "$calls" "docker pull registry.example/taxtronik/tcms-api:1.4.0@$DIGEST_API"
+  assert_contains "$calls" "docker pull registry.example/taxtronik/tcms-migrate:1.4.0@$DIGEST_MIGRATE"
+  if provide_with 1.4.0 "@$DIGEST_API" "@$DIGEST_MIGRATE" 1.3.9 release >"$out" 2>&1; then
+    test_fail "image with a foreign version label accepted"
+  fi
+  assert_contains "$out" "stimmt nicht mit der signierten TCMS-Version"
+  : >"$calls"
+  if provide_with 1.4.0 "" "@$DIGEST_MIGRATE" 1.4.0 release >"$out" 2>&1; then
+    test_fail "registry image without digest accepted"
+  fi
+  assert_not_contains "$calls" "docker pull"
+  : >"$calls"
+  provide_with dev-1 "" "" "" source >/dev/null || test_fail "local source images rejected"
+  assert_not_contains "$calls" "docker pull"
+  if provide_with missing "" "" "" source >"$out" 2>&1; then test_fail "missing local image accepted"; fi
+  pass "TCMS images: registry only by signed digest with version label, source only local tags"
+}
+
+test_deploy_and_update_start_tcms_between_migrations_and_writers() {
+  local steps="$TMP_DIR/deploy-order.steps" fn step
+  local -a deploy_steps=(load_env prepare_source_version_for_checkout preflight_common assert_production_env
+    require_release_version assert_no_database_restore_pending ensure_host_tool_deps prepare_release_contract
+    start_infra wait_postgres_healthy sync_postgres_roles_from_env provide_images assert_app_env_schema
+    provide_traefik_for_deploy provide_signal_for_deploy provide_tcms_images backup_before_migrations
+    run_migrations ensure_provisioned_interactive ensure_managed_n8n_connection start_tcms_for_deploy
+    start_signal_for_deploy start_apps_for_activation smoke_health smoke_public_frontend smoke_client_ip
+    deploy_readiness finalize_release_contract prepare_env_interactive image_tag)
+  for fn in _deploy_core continue_update_after_checkout; do
+    : >"$steps"
+    (
+      for step in "${deploy_steps[@]}"; do
+        eval "$step() { printf '%s\n' $step >>\"$steps\"; }"
+      done
+      "$fn"
+    ) >/dev/null
+    assert_before "$steps" "provide_tcms_images" "run_migrations"
+    assert_before "$steps" "run_migrations" "start_tcms_for_deploy"
+    assert_before "$steps" "start_tcms_for_deploy" "start_apps_for_activation"
+    assert_before "$steps" "start_tcms_for_deploy" "finalize_release_contract"
+  done
+  pass "deploy and update provide TCMS images before migrations and start TCMS before the writers"
+}
+
+test_start_tcms_runs_migration_before_api_and_falls_back() {
+  local env_file="$TMP_DIR/start-tcms.env" calls="$TMP_DIR/start-tcms.calls" out="$TMP_DIR/start-tcms.out"
+  printf 'TCMS_DEPLOYMENT=managed\nTCMS_VERSION=1.3.0\nTCMS_API_DIGEST_SUFFIX=@%s\nTCMS_MIGRATE_DIGEST_SUFFIX=@%s\n' \
+    "$DIGEST_MIGRATE" "$DIGEST_API" >"$env_file"
+  start_with() (
+    ENVFILE="$env_file"; MIGRATE_EXIT="$1"; API_RESULT="$2"
+    TCMS_DEPLOYMENT=managed TCMS_VERSION=1.4.0 TCMS_API_DIGEST_SUFFIX="@$DIGEST_API" TCMS_MIGRATE_DIGEST_SUFFIX="@$DIGEST_MIGRATE"
+    compose() {
+      printf 'compose %s version=%s\n' "$*" "$TCMS_VERSION" >>"$calls"
+      if [[ "$*" == *"tcms-api"* && "$TCMS_VERSION" == 1.4.0 ]]; then return "$API_RESULT"; fi
+      return 0
+    }
+    docker() {
+      printf 'docker %s\n' "$*" >>"$calls"
+      case "$1" in
+        wait) printf '%s\n' "$MIGRATE_EXIT" ;;
+        inspect) printf 'healthy\n' ;;
+      esac
+      return 0
+    }
+    start_tcms_for_deploy
+  )
+  : >"$calls"
+  start_with 0 0 >/dev/null 2>&1 || test_fail "healthy TCMS start failed"
+  assert_before "$calls" "compose --profile tcms up -d --no-deps tcms-db" "compose --profile tcms up -d --no-deps tcms-migrate"
+  assert_before "$calls" "docker wait taxtronik-tcms-migrate" "tcms-api version=1.4.0"
+  : >"$calls"
+  if start_with 3 0 >"$out" 2>&1; then test_fail "failed migration did not stop the start"; fi
+  assert_contains "$out" "tcms-migrate fehlgeschlagen (Exit 3)"
+  assert_not_contains "$calls" "tcms-api version"
+  : >"$calls"
+  if start_with 0 1 >"$out" 2>&1; then test_fail "unhealthy tcms-api reported success"; fi
+  assert_contains "$calls" "--force-recreate --wait --wait-timeout 180 tcms-api version=1.3.0"
+  pass "TCMS start: database, migration with checked exit code, api; unhealthy api falls back to last-good"
+}
+
+# Rollback-Attrappe mit echtem Git (zwei Release-Commits) und protokollierenden
+# docker/compose-Aufrufen.
+rollback_repo() {
+  local repo="$1"
+  mkdir -p "$repo/infra/compose"
+  git -C "$repo" init -q
+  printf 'services: {}\n' >"$repo/infra/compose/docker-compose.tcms.yml"
+  pins_text 1.0.0 "$DIGEST_API" "$DIGEST_MIGRATE" >"$repo/infra/compose/tcms-release.env"
+  git -C "$repo" add -A
+  git -C "$repo" -c user.name=t -c user.email=t@example.test commit -qm previous
+  ROLLBACK_PREVIOUS="$(git -C "$repo" rev-parse HEAD)"
+  pins_text 1.1.0 "sha256:$(printf '5%.0s' {1..64})" "sha256:$(printf '6%.0s' {1..64})" \
+    >"$repo/infra/compose/tcms-release.env"
+  git -C "$repo" -c user.name=t -c user.email=t@example.test commit -qam current
+  ROLLBACK_CURRENT="$(git -C "$repo" rev-parse HEAD)"
+}
+
+run_tcms_rollback() (
+  local repo="$1" env_file="$2" state_file="$3" calls="$4"
+  ROOT="$repo"; ENVFILE="$env_file"; STATE="$state_file"
+  MIGRATION_PENDING="$repo/.pending"; DB_RESTORE_AUTHORIZATION="$repo/.restored"; INSTALL_PENDING="$repo/.install"
+  unset "${TCMS_CONFIG_VARS[@]}" TAXTRONIK_VERSION TAXTRONIK_WEB_DIGEST_SUFFIX TAXTRONIK_WORKER_DIGEST_SUFFIX TAXTRONIK_RELEASE_COMMIT
+  require_cmd() { :; }
+  preflight_common() { :; }
+  assert_production_env() { :; }
+  ensure_host_tool_deps() { :; }
+  images_from_registry() { return 0; }
+  fetch_verified_release_tag() { printf 'fetch-tag %s\n' "$1" >>"$calls"; }
+  require_clean_release_checkout() { :; }
+  smoke_health() { :; }
+  smoke_public_frontend() { :; }
+  deploy_readiness() { :; }
+  start_apps() {
+    printf 'apps %s\n' "$TAXTRONIK_VERSION" >>"$calls"
+    if [[ -n "${FAIL_APPS_ONCE:-}" && ! -e "$FAIL_APPS_ONCE" ]]; then : >"$FAIL_APPS_ONCE"; return 1; fi
+  }
+  compose() { printf 'compose %s version=%s api=%s\n' "$*" "${TCMS_VERSION:-}" "${TCMS_API_DIGEST_SUFFIX:-}" >>"$calls"; }
+  docker() {
+    printf 'docker %s\n' "$*" >>"$calls"
+    case "$*" in
+      "image inspect --format"*revision*) printf '%s\n' "$TAXTRONIK_RELEASE_COMMIT" ;;
+      "image inspect --format"*version*/tcms-*) printf '%s\n' "$TCMS_VERSION" ;;
+      "image inspect --format"*version*) printf '%s\n' "$TAXTRONIK_VERSION" ;;
+    esac
+    return 0
+  }
+  cmd_rollback ""
+)
+
+tcms_rollback_fixture() {
+  local repo="$1" env_file="$2" state_file="$3"
+  rollback_repo "$repo"
+  cat >"$state_file" <<STATE
+previous=1.0.0
+previous_web_digest_suffix=@sha256:$(printf '1%.0s' {1..64})
+previous_worker_digest_suffix=@sha256:$(printf '2%.0s' {1..64})
+previous_commit=$ROLLBACK_PREVIOUS
+current=2.0.0
+current_web_digest_suffix=@sha256:$(printf '3%.0s' {1..64})
+current_worker_digest_suffix=@sha256:$(printf '4%.0s' {1..64})
+current_commit=$ROLLBACK_CURRENT
+current_rollback_requires_db_restore=false
+STATE
+  cat >"$env_file" <<ENVFILE
+NODE_ENV=production
+TAXTRONIK_IMAGE_PREFIX=registry.example/taxtronik
+TAXTRONIK_VERSION=2.0.0
+TAXTRONIK_WEB_DIGEST_SUFFIX=@sha256:$(printf '3%.0s' {1..64})
+TAXTRONIK_WORKER_DIGEST_SUFFIX=@sha256:$(printf '4%.0s' {1..64})
+TAXTRONIK_RELEASE_COMMIT=$ROLLBACK_CURRENT
+TCMS_DEPLOYMENT=managed
+TCMS_VERSION=1.1.0
+TCMS_API_DIGEST_SUFFIX=@sha256:$(printf '5%.0s' {1..64})
+TCMS_MIGRATE_DIGEST_SUFFIX=@sha256:$(printf '6%.0s' {1..64})
+ENVFILE
+}
+
+# Regel: Rollback beruecksichtigt TCMS-Digests: Ziel-Pins aus dem signierten
+# Ziel-Commit, Pull vor dem Checkout-Wechsel, tcms-api vor app/worker, kein
+# Migrationsschritt; ein Ziel ohne TCMS wird vor jeder Wirkung abgewiesen.
+test_registry_rollback_switches_tcms_to_the_signed_target_pins() {
+  local repo="$TMP_DIR/rb-ok" env_file="$TMP_DIR/rb-ok.env" state_file="$TMP_DIR/rb-ok.state"
+  local calls="$TMP_DIR/rb-ok.calls"
+  tcms_rollback_fixture "$repo" "$env_file" "$state_file"; : >"$calls"
+  run_tcms_rollback "$repo" "$env_file" "$state_file" "$calls" >"$TMP_DIR/rb-ok.out" 2>&1 || {
+    cat "$TMP_DIR/rb-ok.out" >&2; test_fail "rollback failed"
+  }
+  assert_contains "$calls" "docker pull registry.example/taxtronik/tcms-api:1.0.0@$DIGEST_API"
+  assert_contains "$calls" "docker pull registry.example/taxtronik/tcms-migrate:1.0.0@$DIGEST_MIGRATE"
+  assert_before "$calls" "tcms-api:1.0.0@$DIGEST_API" "--force-recreate --wait --wait-timeout 180 tcms-api version=1.0.0"
+  assert_before "$calls" "tcms-api version=1.0.0" "apps 1.0.0"
+  assert_not_contains "$calls" "tcms-migrate version"
+  [[ "$(git -C "$repo" rev-parse HEAD)" == "$ROLLBACK_PREVIOUS" ]] || test_fail "checkout not switched to the target"
+  assert_key_equals "$env_file" TCMS_VERSION 1.0.0
+  assert_key_equals "$env_file" TCMS_API_DIGEST_SUFFIX "@$DIGEST_API"
+
+  # Ziel ohne TCMS-Unterstuetzung: Abbruch vor Pull und Checkout-Wechsel.
+  repo="$TMP_DIR/rb-old"; env_file="$TMP_DIR/rb-old.env"; state_file="$TMP_DIR/rb-old.state"; calls="$TMP_DIR/rb-old.calls"
+  tcms_rollback_fixture "$repo" "$env_file" "$state_file"; : >"$calls"
+  git -C "$repo" checkout -q "$ROLLBACK_PREVIOUS"
+  git -C "$repo" rm -q infra/compose/docker-compose.tcms.yml
+  git -C "$repo" -c user.name=t -c user.email=t@example.test commit -qm without-tcms
+  sed -i "s/^previous_commit=.*/previous_commit=$(git -C "$repo" rev-parse HEAD)/" "$state_file"
+  git -C "$repo" checkout -q "$ROLLBACK_CURRENT"
+  if run_tcms_rollback "$repo" "$env_file" "$state_file" "$calls" >"$TMP_DIR/rb-old.out" 2>&1; then
+    test_fail "rollback to a release without TCMS support ran with managed TCMS"
+  fi
+  assert_contains "$TMP_DIR/rb-old.out" "kennt das verwaltete Tax-CMS nicht"
+  assert_not_contains "$calls" "docker pull"
+  [[ "$(git -C "$repo" rev-parse HEAD)" == "$ROLLBACK_CURRENT" ]] || test_fail "refused rollback changed the checkout"
+  pass "registry rollback pulls the target TCMS digests first and switches tcms-api before the writers"
+}
+
+test_failed_rollback_restores_the_last_good_tcms_images() {
+  local repo="$TMP_DIR/rb-fail" env_file="$TMP_DIR/rb-fail.env" state_file="$TMP_DIR/rb-fail.state"
+  local calls="$TMP_DIR/rb-fail.calls"
+  tcms_rollback_fixture "$repo" "$env_file" "$state_file"; : >"$calls"
+  # Ohne if/||: errexit muss wie im echten Lauf greifen (Writer-Start scheitert).
+  set +e
+  ( set -e; FAIL_APPS_ONCE="$TMP_DIR/rb-fail.apps-failed" run_tcms_rollback "$repo" "$env_file" "$state_file" "$calls" ) \
+    >"$TMP_DIR/rb-fail.out" 2>&1
+  local rc=$?
+  set -e
+  (( rc != 0 )) || test_fail "failed rollback reported success"
+  assert_before "$calls" "tcms-api version=1.0.0" "apps 2.0.0"
+  assert_contains "$calls" "--force-recreate --wait --wait-timeout 180 tcms-api version=1.1.0 api=@sha256:$(printf '5%.0s' {1..64})"
+  assert_key_equals "$env_file" TCMS_VERSION 1.1.0
+  [[ "$(git -C "$repo" rev-parse HEAD)" == "$ROLLBACK_CURRENT" ]] || test_fail "last-good checkout not restored"
+  pass "a failed rollback restores the last-good TCMS images together with the last-good writers"
+}
+
 run_test test_tcms_mode_defaults_to_disabled_and_rejects_unknown_values
 run_test test_compose_loads_tcms_file_only_when_managed
 run_test test_compose_writer_guard_sees_subcommand_after_global_options
@@ -819,6 +1114,12 @@ run_test test_doctor_checks_tcms_formats_without_printing_values
 run_test test_doctor_flags_app_in_the_tcms_backend_network
 run_test test_external_health_check_sends_the_token_only_via_stdin
 run_test test_initial_setup_asks_for_the_tax_cms
+run_test test_registry_release_stages_tcms_pins_from_the_signed_commit
+run_test test_provide_tcms_images_pulls_only_signed_digests
+run_test test_deploy_and_update_start_tcms_between_migrations_and_writers
+run_test test_start_tcms_runs_migration_before_api_and_falls_back
+run_test test_registry_rollback_switches_tcms_to_the_signed_target_pins
+run_test test_failed_rollback_restores_the_last_good_tcms_images
 
 if (( TESTS_FAILED > 0 )); then
   printf '\n%s ops-tcms tests failed, %s passed:\n' "$TESTS_FAILED" "$TESTS_RUN" >&2

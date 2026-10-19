@@ -272,10 +272,12 @@ _deploy_core() {
   assert_app_env_schema
   provide_traefik_for_deploy
   provide_signal_for_deploy deploy
+  provide_tcms_images
   backup_before_migrations
   run_migrations
   ensure_provisioned_interactive
   ensure_managed_n8n_connection
+  start_tcms_for_deploy || die "Deploy abgebrochen: verwaltetes Tax-CMS ist nicht bereit."
   start_signal_for_deploy || die "Deploy abgebrochen: verwaltetes Signal ist nicht bereit."
   start_apps_for_activation deploy "$(image_tag)"
   smoke_health || die "Deploy abgebrochen: Anwendung ist nicht vollstaendig healthy."

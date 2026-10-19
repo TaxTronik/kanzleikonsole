@@ -84,7 +84,45 @@ TCMS-Release, ist `managed` dort nicht betreibbar.
 
 **Source-Kanal (nur außerhalb Produktion).** `TCMS_VERSION` nennt einen lokal
 gebauten Tag `taxtronik/tcms-api:<tag>` bzw. `taxtronik/tcms-migrate:<tag>`
-ohne Digest-Suffix.
+ohne Digest-Suffix. Gebaut wird im TCMS-Checkout mit dessen Dockerfiles, zum
+Beispiel `docker build -t taxtronik/tcms-api:<tag> …`; fehlt ein lokales
+Image, bricht `deploy` vor jeder Migration ab.
+
+**deploy und update.** Nach der Signatur- und Checkout-Prüfung stagt die CLI
+die Pins des signierten Commits nur für den laufenden Prozess, zieht beide
+Images per Digest (Docker prüft den Inhalt gegen den Digest) und vergleicht
+das Label `org.opencontainers.image.version` mit der TCMS-Version, alles vor
+Pflichtbackup und Migration. Nach den Migrationen der kanzleikonsole startet
+sie `tcms-db`, führt `tcms-migrate` aus (Exit-Code wird ausgewertet) und
+erzeugt `tcms-api` neu; erst danach starten app und worker. Wird der neue
+`tcms-api` nicht gesund, startet der bisherige Stand aus `.env` wieder und der
+Ablauf bricht ab. Persistiert werden die Pins zusammen mit dem
+Last-Good-Vertrag. Verankert der signierte Stand kein TCMS-Release, bricht ein
+verwaltetes Tax-CMS den Ablauf vor jeder Wirkung ab; ohne verwaltetes Tax-CMS
+läuft er normal weiter.
+
+**rollback.** Das Ziel muss das verwaltete Tax-CMS kennen (sonst Abbruch vor
+jeder Wirkung mit dem Hinweis auf `tcms disable`). Im Release-Kanal gelten die
+Pins des signiert verifizierten Ziel-Commits; beide Images werden vor dem
+Checkout-Wechsel per Digest gezogen und geprüft. `tcms-api` wechselt vor app
+und worker auf die Ziel-Images, ohne Migrationsschritt (ein Rollback migriert
+nie). Scheitert die Aktivierung, kehrt `tcms-api` mit app und worker auf den
+Last-Good-Stand zurück. Weil auch die TCMS-Datenbank vorwärts migriert,
+müssen TCMS-Migrationen wie die der kanzleikonsole Expand/Contract folgen
+(ältere `tcms-api` läuft auf dem neueren Schema).
+
+**Wie TCMS-Images in die Registry kommen.** Das TCMS-Repository baut
+`tcms-api` und `tcms-migrate` in seinem eigenen Release-Workflow (gepinnte
+Basis, Trivy-Gate, OCI-Labels `org.opencontainers.image.version`
+= TCMS-Version und `org.opencontainers.image.revision` = TCMS-Commit) und
+schiebt sie write-once nach `${REGISTRY}/${OWNER}/tcms-api:<version>` bzw.
+`…/tcms-migrate:<version>` derselben Registry wie Web und Worker. Die
+gemeldeten Digests übernimmt ein kanzleikonsole-Commit in
+`infra/compose/tcms-release.env`. Der Release-Workflow der kanzleikonsole
+prüft vor jedem Build, dass beide Digests in der Registry existieren und das
+Versionslabel tragen (`scripts/release/verify-tcms-pins.sh`); ohne Pins läuft
+der Release ohne Tax-CMS. `build-images.yml` enthält bewusst keine
+TCMS-Platzhalter, weil die Quellen nur im TCMS-Repository liegen.
 
 ## 4. Einrichtung und Prüfung
 

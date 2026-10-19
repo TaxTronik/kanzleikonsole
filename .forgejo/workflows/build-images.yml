@@ -10,6 +10,12 @@
 #
 # Auslöser: Push auf main (nur bei build-relevanten Änderungen) + manuell.
 #
+# Tax-CMS (TCMS Stufe 2): tcms-api und tcms-migrate entstehen im TCMS-Repository
+# (Quellen liegen nur dort) und werden von dessen Release-Workflow in dieselbe
+# Registry geschoben. Hier gibt es dafuer bewusst keine Platzhalter-Jobs; der
+# Release-Workflow prueft die in infra/compose/tcms-release.env verankerten
+# Digests (scripts/release/verify-tcms-pins.sh, docs/operations/tcms-betrieb.md).
+#
 # VORAUSSETZUNG in Forgejo: Actions aktiviert + ein Runner, der Docker bauen kann
 # (Host-Docker-Socket oder Docker-in-Docker; Label = runs-on unten). KEINE
 # Registry/Secrets nötig, solange nur gebaut wird.

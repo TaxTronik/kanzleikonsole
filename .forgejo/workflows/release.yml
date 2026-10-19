@@ -57,6 +57,7 @@ jobs:
           node scripts/check-docker-bases-pinned.mjs
           node scripts/tests/check-docker-bases-pinned.test.mjs
           bash scripts/release/tests/verify-tag-checkout.test.sh
+          bash scripts/release/tests/verify-tcms-pins.test.sh
 
       - name: Manifest-Konfiguration und Schreibrecht fail-closed prüfen
         env:
@@ -157,6 +158,14 @@ jobs:
           registry: ${{ steps.meta.outputs.registry }}
           username: ${{ secrets.REGISTRY_USER || github.actor }}
           password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+
+      # TCMS Stufe 2: tcms-api und tcms-migrate baut und veroeffentlicht das
+      # TCMS-Repository in dieselbe Registry. Dieser Release verankert sie ueber
+      # infra/compose/tcms-release.env im Tag-Commit (Operator-CLI liest die
+      # Pins nur aus dem signiert verifizierten Commit). Pins auf fehlende oder
+      # falsch gelabelte Images stoppen den Release vor jedem Build und Push.
+      - name: TCMS-Pins gegen die Registry pruefen
+        run: bash scripts/release/verify-tcms-pins.sh --prefix "${{ steps.meta.outputs.prefix }}"
 
       # Forgejo/act stellt den Docker-Daemon dem Job-Container bereit. Ein darin
       # gestarteter Trivy-Container sieht denselben Socket-Pfad jedoch nicht

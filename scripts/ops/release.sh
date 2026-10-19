@@ -167,6 +167,9 @@ stage_release_contract() {
     export TAXTRONIK_WORKER_DIGEST_SUFFIX=""
     export TAXTRONIK_RELEASE_COMMIT=""
     export TAXTRONIK_RELEASE_MIGRATIONS_REQUIRED=""
+    # Lokale TCMS-Images (Source-Kanal) tragen nie einen Digest.
+    export TCMS_API_DIGEST_SUFFIX=""
+    export TCMS_MIGRATE_DIGEST_SUFFIX=""
   fi
   export _TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED=1
 }
@@ -182,6 +185,10 @@ commit_release_contract() {
   set_env TAXTRONIK_WORKER_DIGEST_SUFFIX "${TAXTRONIK_WORKER_DIGEST_SUFFIX:-}"
   set_env TAXTRONIK_RELEASE_COMMIT "${TAXTRONIK_RELEASE_COMMIT:-}"
   set_env TAXTRONIK_RELEASE_MIGRATIONS_REQUIRED "${TAXTRONIK_RELEASE_MIGRATIONS_REQUIRED:-}"
+  # TCMS Stufe 2: Images des Tax-CMS aus demselben signierten Stand.
+  set_env TCMS_VERSION "${TCMS_VERSION:-}"
+  set_env TCMS_API_DIGEST_SUFFIX "${TCMS_API_DIGEST_SUFFIX:-}"
+  set_env TCMS_MIGRATE_DIGEST_SUFFIX "${TCMS_MIGRATE_DIGEST_SUFFIX:-}"
   unset _TAXTRONIK_INTERNAL_RELEASE_CONTRACT_STAGED
 }
 
@@ -190,6 +197,8 @@ prepare_release_contract() {
     resolve_release_contract
     verify_release_checkout
     stage_release_contract
+    # Der Checkout ist jetzt der signierte Commit; seine TCMS-Pins gelten.
+    tcms_stage_release_pins "$UPDATE_COMMIT_SHA"
   else
     stage_release_contract
   fi
@@ -244,6 +253,8 @@ pull_release_images_direct() {
   docker pull "${prefix}/web:${version}${TAXTRONIK_WEB_DIGEST_SUFFIX}"
   docker pull "${prefix}/worker:${version}${TAXTRONIK_WORKER_DIGEST_SUFFIX}"
   verify_release_image_labels
+  # Verwaltetes Tax-CMS: Ziel-Images per Digest samt Versionslabel.
+  provide_tcms_images
 }
 
 prune_build_cache() {
