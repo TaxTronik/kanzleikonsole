@@ -325,7 +325,12 @@ mindestens zwei Bereiche sie brauchen.
   `server/tcms/__tests__/oberflaechen-live.test.tsx` (Fundament),
   `server/tcms/programm/__tests__/programm-live.test.tsx` (A),
   `server/tcms/__tests__/bereich-c-live.test.tsx` (C),
-  `server/tcms/__tests__/bereich-d-live.test.tsx` (D).
+  `server/tcms/__tests__/bereich-d-live.test.tsx` (D). Objekt-IDs des
+  Dienstes (Durchführungen, Feststellungen, Ereignisse) lesen die Suiten aus
+  dessen Antworten, nie fest verdrahtet: Der Seed des Tax-CMS vergibt sie je
+  Datenbank neu. C löscht beim Aufräumen die Abrufnachweise (`audit_log`, nur
+  anhängend) und braucht dafür als `DATABASE_URL` eine Verbindung, die
+  `session_replication_role` setzen darf (Superuser der Testdatenbank).
 - **Guards** erkennen die Helfer: `client-page-authz.test.ts`
   (`tcmsMandantSeite` als geprüfter Wrapper, `requireClientPageAccess` als
   erster Aufruf im Helfer, jedes Layout im Segment), `module-page-guard.test.ts`

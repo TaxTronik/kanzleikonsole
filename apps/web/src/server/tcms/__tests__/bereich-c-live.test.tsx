@@ -67,10 +67,14 @@ async function rendern(seite: ReactNode | Promise<ReactNode>) {
   return { screen: within(body), container: body };
 }
 
+// IDs der Demo-Objekte liest beforeAll aus dem Kontext des Dienstes: Der Seed
+// des Tax-CMS vergibt sie je Datenbank neu (Integration TCMS Stufe 3).
 /** K-EC-06 September 2026 (Demo): fällig, durchführende Person Leon Brandt. */
-const K_EC_06 = 'cmvf9pzzo0048fu7d8zdkiu4f';
-const F_P153 = 'cmvf9q0c40082fu7dh1ef2q31';
-const F_VERTRAULICH = 'cmvf9q0bi007xfu7dqkshgfrc';
+let K_EC_06 = '';
+/** F-2026-007 (§-153-Folgeentscheidung). */
+let F_P153 = '';
+/** F-2026-006 (wird vertraulich markiert). */
+let F_VERTRAULICH = '';
 
 (enabled ? describe : describe.skip)('Bereich C gegen den laufenden Dienst', () => {
   // Freigegebener Owner-Client aus @taxtronik/db (prisma-client-guard) nur für
@@ -217,6 +221,24 @@ const F_VERTRAULICH = 'cmvf9q0bi007xfu7dqkshgfrc';
       },
     });
     dokumentId = doc.id;
+
+    anna();
+    const { tcmsLesen, tcmsMandantSeite } = await import('@/server/tcms/seite');
+    const seite = await tcmsMandantSeite(DEMO.talwind);
+    if (!seite.ok) throw new Error(`Seite: ${seite.zustand.art}`);
+    const kontext = await tcmsLesen(seite, ENDPUNKTE.kontextLesen);
+    if (!kontext.ok) throw new Error(`Kontext: ${kontext.zustand.art}`);
+    const ctx = kontext.daten;
+    const d = ctx.durchfuehrungen.find(
+      (x) => x.code === 'K-EC-06' && x.periodeLabel === 'September 2026' && !x.ausserplanmaessig,
+    );
+    const feststellung = (nummer: string) => ctx.feststellungen.find((f) => f.nummer === nummer);
+    if (!d || !feststellung('F-2026-007') || !feststellung('F-2026-006')) {
+      throw new Error('Demo-Daten des Tax-CMS unvollständig (K-EC-06 September, F-2026-006/007)');
+    }
+    K_EC_06 = d.id;
+    F_P153 = feststellung('F-2026-007')!.id;
+    F_VERTRAULICH = feststellung('F-2026-006')!.id;
   }, 60_000);
 
   afterAll(async () => {
@@ -411,10 +433,11 @@ const F_VERTRAULICH = 'cmvf9q0bi007xfu7dqkshgfrc';
         screen.getByRole('heading', { level: 2, name: 'F-2026-006 · Vertrauliche Feststellung' }),
       ).toBeTruthy();
       expect(container.textContent).not.toContain('Erstattungen FR/IT');
-      // Vertraulich markieren ist nur mit Würdigungsrecht möglich.
+      // Vertraulich markieren ist nur mit Würdigungsrecht möglich: Der Dienst
+      // nennt dafür den Grund WUERDIGEN (kannWuerdigen), nicht VERTRAULICH.
       expect(await setzen('0')).toEqual({
         ok: false,
-        error: TCMS_KEIN_RECHT.VERTRAULICH,
+        error: TCMS_KEIN_RECHT.WUERDIGEN,
         errorCode: 'FORBIDDEN',
       });
     } finally {
