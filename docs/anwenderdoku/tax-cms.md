@@ -278,10 +278,11 @@ mit Bezug auf das Land.
 ## Ereignisse, Portal-Aufgaben und Audit
 
 Hier melden Mandanten Veränderungen, erledigen Kontrollaufgaben und geben
-Dokumente frei; die Kanzlei triagiert die Meldungen. Wer was darf, ob eine
-Angabe vollständig ist und was als Nächstes möglich ist, entscheidet das
-Tax-CMS; TaxTronik zeigt das Ergebnis an, gibt Personen nur aus der eigenen
-Datenbank weiter und nimmt Dateien nur über die eigene Dokumentenablage an.
+Dokumente frei; die Kanzlei triagiert die Meldungen, Admins und Partner sehen
+das Audit-Protokoll. Wer was darf, ob eine Angabe vollständig ist und was als
+Nächstes möglich ist, entscheidet das Tax-CMS; TaxTronik zeigt das Ergebnis
+an, gibt Personen nur aus der eigenen Datenbank weiter und nimmt Dateien nur
+über die eigene Dokumentenablage an.
 
 ### Ereigniseingang (Kanzlei)
 
@@ -354,6 +355,16 @@ _Tax-CMS → Freigaben_ zeigt offene und erledigte Anforderungen der Kanzlei:
   diesem Code geben Sie frei. TaxTronik zeigt den Code nie an und leert das
   Eingabefeld nach jedem Versuch. Nach mehreren Fehlversuchen sperrt das
   Tax-CMS den Code.
+
+### Audit-Protokoll
+
+Admins und Partner sehen unter `/staff/tcms/audit` alle fachlichen Änderungen
+im Tax-CMS der Kanzlei, neueste zuerst, mit Filter nach Mandant und
+Aktionspräfix. Personen erscheinen mit dem Namen, der zum Zeitpunkt der
+Handlung im Protokoll festgehalten wurde. **Hashkette prüfen** lässt das
+Tax-CMS die Verkettung aller Einträge prüfen; das Ergebnis („intakt“ bzw.
+„gebrochen bei Eintrag #…“) stammt vom Tax-CMS. Die Hashkette hat keinen
+qualifizierten Zeitstempel.
 
 ### Meldungen in diesen Bereichen
 

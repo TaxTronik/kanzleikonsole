@@ -1226,6 +1226,8 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   Benachrichtigung der Hauptbearbeitung; **Freigaben und Kenntnisnahmen**
   `/portal/tcms/freigaben` mit Bestätigungscode per E-Mail (Code nie
   angezeigt, Fehlversuche und Sperre im Dienst)
+- **Audit-Protokoll** `/staff/tcms/audit` (nur Admin/Partner): Einträge mit
+  festgehaltenem Namen, Filter, Kettenprüfung durch den Dienst
 - Unternavigation mit allen 14 Bereichen des Tax-CMS; die übrigen Bereiche
   folgen mit denselben Bausteinen
 - Feste Meldungen für fehlende Rechte, Konflikte („Wurde zwischenzeitlich

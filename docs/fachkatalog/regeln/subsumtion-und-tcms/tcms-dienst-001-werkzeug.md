@@ -77,6 +77,7 @@ code_refs:
   - apps/web/src/app/portal/(protected)/tcms/ereignis/actions.ts
   - apps/web/src/app/portal/(protected)/tcms/freigaben/actions.ts
   - apps/web/src/components/tcms/portal/freigabe-formulare.tsx
+  - apps/web/src/app/staff/(protected)/tcms/audit/actions.ts
 test_refs:
   - apps/web/src/server/tcms/__tests__/zustand.test.ts
   - apps/web/src/server/tcms/__tests__/seite.test.ts
@@ -118,6 +119,7 @@ test_refs:
   - apps/web/src/server/tcms/__tests__/bereich-d-helfer.test.ts
   - apps/web/src/server/tcms/__tests__/bereich-d-db.test.ts
   - apps/web/src/app/portal/(protected)/tcms/__tests__/portal-seiten.test.tsx
+  - apps/web/src/app/staff/(protected)/tcms/__tests__/audit.test.tsx
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md
