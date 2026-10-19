@@ -70,6 +70,7 @@ import {
   TcmsAnlageAbgelehnt,
 } from '../portal/anlagen';
 import { SERVER_ACTION_BODY_LIMIT_BYTES } from '@/lib/upload-limits.mjs';
+import { DATEINAME_UNZULAESSIG } from '@taxtronik/tcms-contract';
 
 const MIB = 1024 * 1024;
 const G = {
@@ -118,6 +119,14 @@ describe('portalDateiname', () => {
     expect(portalDateiname('..')).toBe('Anlage');
     expect(portalDateiname('')).toBe('Anlage');
     expect(portalDateiname('a'.repeat(300))).toHaveLength(200);
+  });
+
+  it('Zeichenregel des Vertrags (TCMS s8): auch Variantenselektoren, Tag-Zeichen, Anführungszeichen', () => {
+    const roh = `Beleg${String.fromCodePoint(0x2764, 0xfe0f, 0x034f, 0x180b, 0xe0041)}"Q3"${String.fromCodePoint(0x200e)}.pdf`;
+    const name = portalDateiname(roh);
+    expect(name).toBe(`Beleg${String.fromCodePoint(0x2764)}Q3.pdf`);
+    expect(DATEINAME_UNZULAESSIG.test(name)).toBe(false);
+    expect(portalDateiname(`${String.fromCodePoint(0x200b)}\n`)).toBe('Anlage');
   });
 });
 

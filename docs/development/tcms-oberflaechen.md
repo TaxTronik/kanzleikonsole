@@ -438,3 +438,24 @@ export async function GET(
   Seiten-/Aktions-Helfern oder Sitzung; Reihenfolge im Einstieg selbst) und
   `api-route-authz.test.ts` (erkennt die Einstiege nur als Import aus
   `@/server/tcms/route`). Semantik: `server/tcms/__tests__/route.test.ts`.
+
+## 12. Zeichenregel (TCMS s8)
+
+Der Vertrag hat eine Zeichenregel aus Unicode-Eigenschaften
+(`UNZULAESSIG_KLASSE`: Steuer-, Format-, Zeilen- und Absatztrennzeichen,
+standardmäßig unsichtbare Zeichen wie Variantenselektoren, einzelne Surrogate).
+Einzeilige Texte (Titel, Namen, Funktion, Rechtsform) und Dateinamen dürfen
+keines dieser Zeichen enthalten (Dateinamen zusätzlich kein `/` und `\`),
+Freitexte kein NUL und kein einzelnes Surrogat (`TEXT_UNZULAESSIG`). Die
+kanzleikonsole übernimmt die Regel aus dem Vertrag in
+`server/tcms/zeichen.ts`, nie als Kopie:
+
+- **Stammdaten der kanzleikonsole** (Namen von Personen und Mandanten,
+  Rechtsform, Dateinamen hochgeladener Dateien) werden still bereinigt
+  (`tcmsTextBereinigen`): Zeilen- und Spaltentrenner werden Leerzeichen, alle
+  anderen Zeichen der Regel entfallen, gekürzt wird ohne Ersatzpaare zu
+  trennen. Nutzer sind `server/tcms/mandant.ts` (Anker), die Dateinamen der
+  Nachweise (`durchfuehrung/verweis.ts`) und der Portal-Anlagen
+  (`portal/anlagen.ts`).
+- Die Regel folgt der Unicode-Version der Laufzeit; kanzleikonsole und Dienst
+  laufen auf derselben Node-Hauptversion (24).

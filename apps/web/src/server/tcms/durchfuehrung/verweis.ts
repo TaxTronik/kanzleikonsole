@@ -34,14 +34,12 @@ import {
 import { ActionError } from '@/server/actions/action-error';
 import { isDocumentVersionReady } from '@/server/documents/delivery-readiness';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
+import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
 
 /** Klassifikationen, die nie Nachweis werden (eigene Vernichtungs- bzw. Zugriffsregeln). */
 export const NACHWEIS_AUSGESCHLOSSEN = ['GWG_EVIDENCE', 'PERSONNEL', 'STAFF_PRIVATE'] as const;
 
 const MIME = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
-// Wie DATEINAME_VERBOTEN im Vertrag: Steuerzeichen, Pfadtrenner, Richtungszeichen.
-// eslint-disable-next-line no-control-regex -- Steuerzeichen werden bewusst ersetzt.
-const DATEINAME_ERSETZEN = /[\u0000-\u001f\u007f/\\؜‎‏‪-‮⁦-⁩]/g;
 
 /** Das Dokument ist als Nachweis nicht verwendbar (fremd, gelöscht, ungescannt, ausgeschlossen). */
 export class NachweisDokumentUnzulaessig extends ActionError {
@@ -84,11 +82,8 @@ export function nachweisDokumentFilter(tenantId: string, mandantId: string) {
 
 /** Dateiname des Verweises aus dem Titel der Ablage (mit Endung, ohne verbotene Zeichen). */
 export function nachweisDateiname(titel: string, mime: string): string {
-  const sauber = filenameWithExtension(titel, mime)
-    .replace(DATEINAME_ERSETZEN, '_')
-    .trim()
-    .slice(0, 255)
-    .trim();
+  // Zeichenregel des Vertrags, still (Dateiname aus der Ablage; TCMS s8).
+  const sauber = tcmsTextBereinigen(filenameWithExtension(titel, mime), 'DATEINAME', 255);
   return gueltigerNachweisDateiname(sauber) ? sauber : 'Nachweis';
 }
 

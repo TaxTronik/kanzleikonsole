@@ -156,15 +156,16 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
   });
 
   it('bildet den Verweis aus der gespeicherten neuesten Version und legt die Verknüpfung an', async () => {
-    const d = await dokument({ titel: 'Kontoabstimmung/September‮', mime: 'APPLICATION/PDF' });
+    const d = await dokument({ titel: 'Kontoabstimmung/September\u202e', mime: 'APPLICATION/PDF' });
     const { verknuepfungId, verweis } = await imTenant((tx) =>
       nachweisVerknuepfenTx(tx, bezug(), d.id, DURCHF),
     );
     expect(NachweisVerweisSchema.parse(verweis)).toEqual(verweis);
     expect(verweis).toEqual({
       dokumentId: d.id,
-      // Pfadtrenner und Richtungszeichen ersetzt, Endung aus dem geprüften Typ.
-      dateiname: 'Kontoabstimmung_September_.pdf',
+      // Pfadtrenner ersetzt, Richtungszeichen entfernt (Zeichenregel des
+      // Vertrags, TCMS s8), Endung aus dem geprüften Typ.
+      dateiname: 'Kontoabstimmung_September.pdf',
       mime: 'application/pdf',
       groesse: 4821,
       sha256: '07'.repeat(32),

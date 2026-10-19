@@ -2,6 +2,8 @@
 // Nullbreitenzeichen aus Stammdaten der kanzleikonsole dürfen weder den
 // Vertrag verletzen (Anker scheitert) noch unsichtbar in Anzeigen des Dienstes
 // landen (Trojan-Source-artige Umkehrungen, RT-Befund des TCMS-Vertrags).
+// Seit TCMS s8 mit der einen Zeichenregel des Vertrags (server/tcms/zeichen.ts):
+// Trenner werden Leerzeichen, alle anderen unzulässigen Zeichen entfallen.
 // Die Abfrage selbst prüft namen-personen-db.test.ts gegen PostgreSQL.
 // Fachkatalog: TCMS-AKTEUR-001
 import { describe, expect, it } from 'vitest';
@@ -19,12 +21,22 @@ const ZEICHEN = {
 };
 
 describe('einzeilig / ankerName', () => {
-  it('ersetzt Steuer-, Richtungs- und Formatzeichen durch Leerzeichen', () => {
+  it('entfernt Steuer-, Richtungs- und Formatzeichen, Zeilenumbruch wird Leerzeichen', () => {
     const roh = `Tal${ZEICHEN.rlo}wind${ZEICHEN.bel}\n${ZEICHEN.lri}GmbH${ZEICHEN.pdi}${ZEICHEN.zwsp}${ZEICHEN.bom}${ZEICHEN.shy}`;
     const name = ankerName(roh);
-    expect(name).toBe('Tal wind GmbH');
+    expect(name).toBe('Talwind GmbH');
     expect(
       MandantAnkerBodySchema.safeParse({ name, rechtsform: 'GmbH', datevNr: null }).success,
+    ).toBe(true);
+  });
+
+  it('besteht den Vertrag auch mit Zeichen, die erst TCMS s8 abweist', () => {
+    const roh = `Talwind ${String.fromCodePoint(0x2764, 0xfe0f)} Outdoor${String.fromCodePoint(0x034f, 0x180b, 0xe0041)} GmbH`;
+    const name = ankerName(roh);
+    expect(name).toBe(`Talwind ${String.fromCodePoint(0x2764)} Outdoor GmbH`);
+    expect(
+      MandantAnkerBodySchema.safeParse({ name, rechtsform: einzeilig(roh, 50), datevNr: null })
+        .success,
     ).toBe(true);
   });
 

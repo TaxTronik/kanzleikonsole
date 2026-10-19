@@ -9,9 +9,9 @@
 //                 des Mandanten (Natürliche/Juristische Person,
 //                 Personengesellschaft)
 //   - datevNr:    Client.datevNo, nur wenn rein numerisch (Vertrag: 1–20 Ziffern)
-// Steuer- und Richtungszeichen werden für die einzeiligen Felder des Vertrags
-// durch Leerzeichen ersetzt; das Ergebnis wird mit dem Schema des Vertrags
-// geprüft, bevor es gesendet wird.
+// Name und Rechtsform sind Stammdaten der kanzleikonsole: Sie werden mit der
+// Zeichenregel des Vertrags still bereinigt (server/tcms/zeichen.ts, TCMS s8);
+// das Ergebnis wird mit dem Schema des Vertrags geprüft, bevor es gesendet wird.
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
@@ -19,21 +19,13 @@ import { MandantAnkerBodySchema } from '@taxtronik/tcms-contract';
 import type { z } from 'zod';
 import { CLIENT_KIND_LABELS } from '@/lib/domain-labels';
 import { ActionError } from '@/server/actions/action-error';
+import { tcmsTextBereinigen } from './zeichen';
 
 export type MandantAnker = z.input<typeof MandantAnkerBodySchema>;
 
-// Steuerzeichen (Cc) und Formatzeichen (Cf, u. a. Richtungs- und Nullbreitenzeichen):
-// strenger als die Prüfung des Vertrags, nie lockerer.
-const STEUERZEICHEN = /[\p{Cc}\p{Cf}]/gu;
-
-/** Einzeiliger Text wie im Anker (Steuer-/Richtungszeichen → Leerzeichen, gekürzt). */
+/** Einzeiliger Text wie im Anker: Zeichenregel des Vertrags, still bereinigt und gekürzt. */
 export function einzeilig(wert: string, max: number): string {
-  let text = '';
-  for (const zeichen of wert.replace(STEUERZEICHEN, ' ').replace(/\s+/g, ' ').trim()) {
-    if (text.length + zeichen.length > max) break;
-    text += zeichen;
-  }
-  return text.trim();
+  return tcmsTextBereinigen(wert, 'EINZEILIG', max);
 }
 
 /** Name, wie ihn der Anker im TCMS trägt (Vergleich „Stammdaten abweichend“). */

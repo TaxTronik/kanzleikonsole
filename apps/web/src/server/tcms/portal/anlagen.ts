@@ -53,6 +53,7 @@ import {
   readPortalFeaturesTx,
 } from '@/server/settings/portal-features';
 import { nachweisVerknuepfenTx } from '@/server/tcms/durchfuehrung/verweis';
+import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
 import type { NachweisVerknuepft } from '@/server/tcms/durchfuehrung/nachweis-aktion';
 
 export { PORTAL_MAX_ANLAGE_BYTES, PORTAL_MAX_ANLAGEN };
@@ -118,15 +119,17 @@ export function effektiverPortalMime(erkannt: string | null, gemeldet: string): 
   return OHNE_SIGNATUR.has(angabe) && PORTAL_ANLAGE_MIME.test(angabe) ? angabe : null;
 }
 
-// Wie DATEINAME_VERBOTEN im Vertrag: Steuerzeichen, Pfadtrenner, Richtungszeichen.
-const DATEINAME_ENTFERNEN =
-  // eslint-disable-next-line no-control-regex -- Steuerzeichen werden bewusst entfernt.
-  /[\u0000-\u001f\u007f\\/\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069"]/g;
+/** Anführungszeichen zusätzlich zur Regel des Vertrags (Content-Disposition beim Abruf). */
+const ANFUEHRUNGSZEICHEN = /"/g;
 
-/** Anzeigename einer hochgeladenen Datei: nur der Dateiname, bereinigt, höchstens 200 Zeichen. */
+/**
+ * Anzeigename einer hochgeladenen Datei: nur der Dateiname (ohne Pfad), mit
+ * der Zeichenregel des Vertrags still bereinigt (server/tcms/zeichen.ts, TCMS
+ * s8), höchstens 200 Zeichen.
+ */
 export function portalDateiname(roh: string): string {
   const basis = roh.split(/[\\/]/).pop() ?? '';
-  const sauber = basis.replace(DATEINAME_ENTFERNEN, '').trim().slice(0, 200).trim();
+  const sauber = tcmsTextBereinigen(basis.replace(ANFUEHRUNGSZEICHEN, ''), 'DATEINAME', 200);
   return sauber === '' || sauber === '.' || sauber === '..' ? 'Anlage' : sauber;
 }
 
