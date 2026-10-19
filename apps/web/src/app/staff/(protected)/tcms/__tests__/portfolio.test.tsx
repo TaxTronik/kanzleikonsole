@@ -63,6 +63,34 @@ beforeEach(() => {
 const zeilen = () => (screen.getAllByRole('row') as HTMLTableRowElement[]).slice(1);
 
 describe('Tax-CMS-Portfolio', () => {
+  it('verlinkt den Arbeitskorb für alle, den Katalog nur für Admin/Partner (Integration Stufe 3)', async () => {
+    await renderServer(TcmsPortfolioPage({ searchParams: Promise.resolve({}) }));
+    const nav = screen.getByRole('navigation', { name: 'Tax-CMS-Arbeitsbereiche' });
+    expect(
+      within(nav)
+        .getByRole('link', { name: /Mein Arbeitskorb/ })
+        .getAttribute('href'),
+    ).toBe('/staff/tcms/arbeitskorb');
+    expect(within(nav).queryByRole('link', { name: /Katalog/ })).toBeNull();
+  });
+
+  it('Admin/Partner: zusätzlich der Katalog', async () => {
+    for (const rolle of ['ADMIN', 'PARTNER']) {
+      document.body.innerHTML = '';
+      h.seite.mockResolvedValue({
+        ...SEITE,
+        session: { user: { ...SEITE.session.user, roles: [rolle] } },
+      });
+      await renderServer(TcmsPortfolioPage({ searchParams: Promise.resolve({}) }));
+      const nav = screen.getByRole('navigation', { name: 'Tax-CMS-Arbeitsbereiche' });
+      expect(
+        within(nav)
+          .getByRole('link', { name: /Katalog/ })
+          .getAttribute('href'),
+      ).toBe('/staff/tcms/katalog');
+    }
+  });
+
   it('zeigt nur Mandanten der kanzleikonsole, mit Namen und Berufsträger:innen aus ihr', async () => {
     const { container } = await renderServer(
       TcmsPortfolioPage({ searchParams: Promise.resolve({}) }),

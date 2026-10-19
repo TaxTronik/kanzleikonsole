@@ -7,15 +7,19 @@
 // Berufsträger:innen kommen aus der kanzleikonsole. Mandanten der Liste ohne
 // Anker im TCMS erscheinen als „nicht im Tax-CMS angelegt“. Filter laufen per
 // GET (Lesezeichen möglich) und wählen nur aus – sie berechnen nichts neu.
+// Links zum Arbeitskorb (alle) und zum Katalog (nur Admin/Partner, wie die
+// Katalogseite selbst; Integration Stufe 3).
 // =============================================================================
 
 import Link from 'next/link';
 import {
   AlarmClock,
+  BookOpen,
   CalendarRange,
   Flame,
   Inbox,
   LayoutGrid,
+  ListChecks,
   Search,
   ShieldCheck,
 } from 'lucide-react';
@@ -25,6 +29,7 @@ import { isoDatumKurzText, isoDatumText } from '@/components/tcms/format';
 import { TcmsLeer } from '@/components/tcms/leer';
 import { Fortschritt, MiniSteps, PHASEN_KURZ } from '@/components/tcms/visual';
 import { TcmsZustand } from '@/components/tcms/zustand';
+import { isStaffAdmin } from '@/server/auth/rbac';
 import { portfolioMandanten, type PortfolioMandant } from '@/server/tcms/portfolio';
 import { tcmsKanzleiSeite, tcmsLesen } from '@/server/tcms/seite';
 
@@ -94,7 +99,17 @@ export default async function TcmsPortfolioPage({ searchParams }: { searchParams
   return (
     <div className="p-8">
       <h1 className="text-2xl font-bold text-primary">Tax-CMS</h1>
-      <p className="text-sm text-muted mb-6">Compliance-Programme der Mandanten im Überblick</p>
+      <p className="text-sm text-muted mb-3">Compliance-Programme der Mandanten im Überblick</p>
+      <nav aria-label="Tax-CMS-Arbeitsbereiche" className="flex flex-wrap gap-2 mb-6">
+        <Link href="/staff/tcms/arbeitskorb" className="btn-secondary text-xs py-1">
+          <ListChecks className="h-3.5 w-3.5" aria-hidden="true" /> Mein Arbeitskorb
+        </Link>
+        {isStaffAdmin(seite.session) ? (
+          <Link href="/staff/tcms/katalog" className="btn-secondary text-xs py-1">
+            <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> Katalog
+          </Link>
+        ) : null}
+      </nav>
 
       <ul className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-4">
         <Kennzahl

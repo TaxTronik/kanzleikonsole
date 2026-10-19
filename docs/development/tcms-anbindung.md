@@ -240,9 +240,10 @@ Fehlversuche Dritter einer angemeldeten Person das TCMS sperren.
   Modul-Register (`apps/web/src/lib/module-registry.ts`) mit `/staff/tcms`,
   `/staff/clients/[id]/tcms` und `/portal/tcms` (Layout-Gate und
   `requireModulePage`: Modul aus → 404). Die Einträge „Tax-CMS“ in der
-  Seitenleiste (Staff: Gruppe Mandatsarbeit, Portal: Zusammenarbeit) und der
-  Reiter der Mandantenakte erscheinen zusätzlich nur bei konfiguriertem
-  Dienst (`dienst: 'tcms'` in `lib/navigation-registry.ts`, gespeist aus
+  Seitenleiste (Staff: Gruppe Mandatsarbeit, Portal: Zusammenarbeit),
+  „Tax-CMS-Arbeitskorb“ (Mandatsarbeit), „Tax-CMS-Audit“ (Administration,
+  nur Admin/Partner) und der Reiter der Mandantenakte erscheinen zusätzlich
+  nur bei konfiguriertem Dienst (`dienst: 'tcms'` in `lib/navigation-registry.ts`, gespeist aus
   `tcmsKonfiguriert()`). Modul an, Dienst nicht konfiguriert: kein
   Menüpunkt; direkt aufgerufene Seiten zeigen einen Hinweis statt eines
   Fehlers. „Subsumtion / TCMS“ (Modul `risk`) ist davon getrennt.

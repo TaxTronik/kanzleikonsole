@@ -128,6 +128,20 @@ const NAVIGATION: readonly NavDefinition[] = [
     module: 'tcms',
     availableWhen: one({ dienst: 'tcms' }),
   },
+  // Arbeitskorb des Tax-CMS (Integration Stufe 3, Bereich C): eigene Aufgaben
+  // über alle Mandanten. Kein `exact` bei `staff-tcms` nötig: Der längste
+  // Treffer gewinnt (activeNavHref), der Katalog markiert weiter das Portfolio.
+  {
+    id: 'staff-tcms-arbeitskorb',
+    surface: 'staff',
+    groupId: 'mandates',
+    href: '/staff/tcms/arbeitskorb',
+    label: 'Tax-CMS-Arbeitskorb',
+    icon: 'ListChecks',
+    searchAliases: ['Arbeitskorb Tax-CMS', 'Meine Tax-CMS-Aufgaben'],
+    module: 'tcms',
+    availableWhen: one({ dienst: 'tcms' }),
+  },
   {
     id: 'staff-requests',
     surface: 'staff',
@@ -407,6 +421,20 @@ const NAVIGATION: readonly NavDefinition[] = [
     module: module as ModuleAreaKey | undefined,
     availableWhen: one({ admin: true }),
   })),
+  // Audit-Protokoll des Tax-CMS (Integration Stufe 3, Bereich D): Hashkette des
+  // Dienstes, nur Admin/Partner (Seite über tcmsAdminSeite) und nur bei
+  // konfiguriertem Dienst.
+  {
+    id: 'staff-tcms-audit',
+    surface: 'staff',
+    groupId: 'administration',
+    href: '/staff/tcms/audit',
+    label: 'Tax-CMS-Audit',
+    icon: 'ShieldCheck',
+    searchAliases: ['Audit-Protokoll Tax-CMS', 'Hashkette'],
+    module: 'tcms',
+    availableWhen: one({ admin: true, dienst: 'tcms' }),
+  },
 
   // Portal
   {

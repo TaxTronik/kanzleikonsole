@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { activeNavHref } from '@/components/sidebar-nav';
 import type { ModuleConfig } from '@/server/settings/modules';
 import { isModuleRouteEnabled } from '@/server/settings/module-route-gate';
 import {
@@ -168,6 +169,41 @@ describe('zentrale Navigation', () => {
     expect(isModuleRouteEnabled(an, 'staff', '/staff/clients/abc/tcms/kontakte')).toBe(true);
     expect(isModuleRouteEnabled(aus, 'staff', '/staff/clients/abc/tcms')).toBe(false);
     expect(isModuleRouteEnabled(aus, 'portal', '/portal/tcms')).toBe(false);
+  });
+
+  it('Tax-CMS-Arbeitskorb und -Audit: Arbeitskorb für alle, Audit nur Admin/Partner, beide nur mit Dienst', () => {
+    // Fachkatalog: TCMS-DIENST-001 (Integration Stufe 3: Navigation der Bereiche C und D)
+    const an = moduleConfig({ tcms: true });
+    const hrefs = (modules: ModuleConfig, isAdmin: boolean, tcms?: boolean) =>
+      items(
+        resolveStaffNavigation({
+          modules,
+          isAdmin,
+          ...(tcms === undefined ? {} : { dienste: { tcms } }),
+        }),
+      ).map((item) => item.href);
+    expect(hrefs(an, false, true)).toContain('/staff/tcms/arbeitskorb');
+    expect(hrefs(an, false, true)).not.toContain('/staff/tcms/audit');
+    expect(hrefs(an, true, true)).toContain('/staff/tcms/audit');
+    for (const [modules, tcms] of [
+      [an, false],
+      [an, undefined],
+      [moduleConfig({ tcms: false }), true],
+    ] as const) {
+      expect(hrefs(modules, true, tcms)).not.toContain('/staff/tcms/arbeitskorb');
+      expect(hrefs(modules, true, tcms)).not.toContain('/staff/tcms/audit');
+    }
+    const gruppen = resolveStaffNavigation({ modules: an, isAdmin: true, dienste: { tcms: true } });
+    const gruppeVon = (href: string) =>
+      gruppen.find((g) => g.items.some((i) => i.href === href))?.id;
+    expect(gruppeVon('/staff/tcms/arbeitskorb')).toBe('mandates');
+    expect(gruppeVon('/staff/tcms/audit')).toBe('administration');
+    // Genau ein aktiver Eintrag: der spezifischste; der Katalog bleibt beim Portfolio.
+    const alle = gruppen.flatMap((g) => g.items);
+    expect(activeNavHref(alle, '/staff/tcms/audit')).toBe('/staff/tcms/audit');
+    expect(activeNavHref(alle, '/staff/tcms/arbeitskorb')).toBe('/staff/tcms/arbeitskorb');
+    expect(activeNavHref(alle, '/staff/tcms/katalog')).toBe('/staff/tcms');
+    expect(activeNavHref(alle, '/staff/tcms')).toBe('/staff/tcms');
   });
 
   it('Tax-CMS-Reiter der Mandantenakte nur mit Modul und konfiguriertem Dienst', () => {
