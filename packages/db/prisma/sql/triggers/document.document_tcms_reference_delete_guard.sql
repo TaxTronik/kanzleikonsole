@@ -1,0 +1,1 @@
+CREATE TRIGGER document_tcms_reference_delete_guard BEFORE UPDATE OF deleted_at ON public.document FOR EACH ROW WHEN (((old.deleted_at IS NULL) AND (new.deleted_at IS NOT NULL))) EXECUTE FUNCTION app.guard_tcms_referenced_document();

@@ -1,6 +1,7 @@
 // Fachkatalog: DOC-PORTAL-SHARING-001
 // Fachkatalog: DOC-VERSION-IMMUTABILITY-001
 // Fachkatalog: DOC-UPLOAD-JOURNAL-001
+// Fachkatalog: TCMS-NACHWEIS-001
 // Review-Finding P-18: Verschieben, Freigeben, Löschen und Umtypisieren einer
 // Auswahl laufen als EINE Server Action mit ID-Liste — eine Transaktion,
 // Zugriffsprüfung und Audit-Event je Dokument wie bisher, eine Revalidierung.
@@ -49,6 +50,8 @@ interface DocRow {
   sharedByStaff: string | null;
   retentionUntil: Date | null;
   gwgLinked: boolean;
+  /** TCMS-NACHWEIS-001: offene Verknüpfung mit einem Nachweis des Tax-CMS. */
+  tcmsLinked?: boolean;
   payroll: boolean;
 }
 interface VersionRow {
@@ -143,6 +146,9 @@ class FakeDb {
             : [];
         }
         if (sql.includes('gwg_id_document')) return [{ linked: doc?.gwgLinked ?? false }];
+        if (sql.includes('FROM tcms_document_reference')) {
+          return [{ verknuepft: doc?.tcmsLinked ?? false }];
+        }
         if (sql.includes('FROM document_type')) {
           const type = s().types[values[0] as string];
           return type?.active
@@ -403,6 +409,21 @@ beforeEach(() => {
 });
 
 describe('softDeleteDocumentsAction', () => {
+  it('weist Dokumente mit Nachweis-Verknüpfung im Tax-CMS ab, ohne Audit (TCMS-NACHWEIS-001)', async () => {
+    seed([doc(A), doc(B, { tcmsLinked: true })]);
+
+    const result = await softDeleteDocumentsAction({ documentIds: [A, B] });
+
+    expect(result).toEqual({
+      ok: false,
+      done: 1,
+      rejected: [{ id: B, error: expect.stringContaining('als Nachweis') }],
+    });
+    expect(m.db.state.docs[A]!.deletedAt).toBeInstanceOf(Date);
+    expect(m.db.state.docs[B]!.deletedAt).toBeNull();
+    expect(events('document.delete').map((e) => e['resourceId'])).toEqual([A]);
+  });
+
   it('blendet die Auswahl in einer Transaktion aus, mit Audit je Dokument und einer Revalidierung', async () => {
     seed([
       doc(A),

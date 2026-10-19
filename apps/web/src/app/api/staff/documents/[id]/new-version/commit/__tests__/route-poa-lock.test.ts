@@ -1,4 +1,5 @@
 // Fachkatalog: DOC-UPLOAD-JOURNAL-001, DOC-VERSION-IMMUTABILITY-001
+// Fachkatalog: TCMS-NACHWEIS-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -69,6 +70,7 @@ interface DocumentRow {
   documentTypeId: string | null;
   clientId?: string | null;
   lockedByGwg?: boolean;
+  lockedByTcms?: boolean;
 }
 
 /** Transaktion mit Dokument-/Typzeile (beide Phasen sperren dieselben Zeilen). */
@@ -89,8 +91,12 @@ function documentTx(
       if (sql.includes('FROM gwg_id_document')) {
         return [{ assigned: document?.lockedByGwg === true }];
       }
+      // TCMS-NACHWEIS-001: offene Verknüpfung mit einem Nachweis des Tax-CMS.
+      if (sql.includes('FROM tcms_document_reference')) {
+        return [{ verknuepft: document?.lockedByTcms === true }];
+      }
       if (!document) return [];
-      const { lockedByGwg: _assigned, ...row } = document;
+      const { lockedByGwg: _assigned, lockedByTcms: _verknuepft, ...row } = document;
       return [{ id: DOCUMENT_ID, tenantId: 'tenant-1', clientId: CLIENT_ID, ...row }];
     }),
     $executeRaw: storageJournal.executeRaw,
@@ -160,6 +166,43 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
       expect.objectContaining({ error: 'locked_by_gwg_snapshot' }),
     );
     expect(storageJournal.events).toEqual([]);
+  });
+
+  it('sperrt Dokumente, auf die ein Nachweis des Tax-CMS verweist, vor dem Storage-Upload', async () => {
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (arg: unknown) => unknown) =>
+      fn(documentTx({ classification: 'GENERAL', documentTypeId: null, lockedByTcms: true })),
+    );
+
+    const response = await post();
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        error: 'locked_by_tcms_evidence',
+        message: expect.stringContaining('Nachweis im Tax-CMS'),
+      }),
+    );
+    expect(storageJournal.events).toEqual([]);
+  });
+
+  it('erkennt eine Nachweis-Verknüpfung auch zwischen Vorprüfung und Versionsinsert', async () => {
+    const finalTx = documentTx({
+      classification: 'GENERAL',
+      documentTypeId: null,
+      lockedByTcms: true,
+    });
+    phases(documentTx({ classification: 'GENERAL', documentTypeId: null }), finalTx);
+
+    const response = await post();
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ error: 'locked_by_tcms_evidence' }),
+    );
+    expect(finalTx.documentVersion.create).not.toHaveBeenCalled();
+    const statements = finalTx.$queryRaw.mock.calls.map(([strings]) => strings.join(' '));
+    expect(statements[0]).toContain('FOR UPDATE OF d');
+    expect(statements[2]).toContain('FROM tcms_document_reference');
   });
 
   it('verhindert auch eine GwG-Zuordnung zwischen Vorpruefung und Versionsinsert', async () => {

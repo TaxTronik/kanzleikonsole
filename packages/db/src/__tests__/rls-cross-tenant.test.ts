@@ -88,6 +88,7 @@ const TENANT_CLIENT_PAIR_TABLES = [
   'tax_filing',
   'tax_notice',
   'tax_schedule_config',
+  'tcms_document_reference',
   'time_entry',
   'vdb_record',
   'workflow_instance',

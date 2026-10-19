@@ -577,6 +577,13 @@
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Das Tax-CMS strukturiert und belegt das Tax-Compliance-Programm eines Mandanten. Ob eine Person bearbeiten oder würdigen darf, ob ein Vier-Augen- Schritt zulässig ist, wie eine §-153-Würdigung festgehalten wird, was vertraulich bleibt und welcher Status folgt, entscheidet allein der Dienst. Die kanzleikonsole zeigt Daten und Rechte-Kennzeichen des Dienstes an, bildet Fehler über feste Texte ab und erfindet keine Ersatzlogik. Weder Werkzeug noch Oberfläche treffen eine Aussage über Angemessenheit oder Wirksamkeit (Ausschluss TCMS-EFFECTIVENESS-001).
 
+### [TCMS-NACHWEIS-001 — Nachweise des Tax-CMS nur aus gespeicherten Dokumenten des Mandanten, referenzierte Dokumente nicht still löschen](regeln/subsumtion-und-tcms/tcms-nachweis-001-dokumentbindung.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Das Tax-CMS speichert zu einem Nachweis einer Kontrolldurchführung nur einen Verweis (Dokument-ID, Dateiname, MIME-Typ, Größe, SHA-256); die Datei liegt in der Dokumentablage der kanzleikonsole. Die kanzleikonsole bildet diesen Verweis ausschließlich aus der gespeicherten, sauber gescannten neuesten Version eines Dokuments genau dieses Mandanten, nie aus Formularangaben. Sie liefert die Datei nur mit ihren eigenen Rechten aus und nur, wenn der SHA-256 der auszuliefernden Version dem Verweis entspricht. Solange ein Nachweis auf ein Dokument verweist, lässt sich das Dokument nicht löschen und keine neue Version hochladen.
+
 ### [TCMS-SAMPLE-PROOF-001 — Stichprobennachweis nur auf den deklarierten Rahmen und die konkrete Ziehung beziehen](regeln/subsumtion-und-tcms/tcms-sample-proof-001-rahmenbindung.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**

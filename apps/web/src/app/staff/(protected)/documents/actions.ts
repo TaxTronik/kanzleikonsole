@@ -24,6 +24,10 @@ import {
   type DocumentBulkResult,
 } from '@/server/documents/document-bulk';
 import { RETAG_CLASSIFICATIONS, retagDocuments } from '@/server/documents/retag';
+import {
+  istNachweisDokumentTx,
+  TCMS_NACHWEIS_LOESCHSPERRE,
+} from '@/server/tcms/durchfuehrung/sperre';
 
 export interface DocActionResult {
   ok: boolean;
@@ -112,6 +116,12 @@ async function softDeleteDocumentTx(
   if (doc.clientId) await assertAccess(doc.clientId);
   if (await isDocumentLinkedToGwg(tx, documentId)) {
     throw new ActionError(GWG_ASSOCIATED_VISIBILITY_ERROR);
+  }
+  // TCMS-NACHWEIS-001: Ein Dokument, auf das ein Nachweis des Tax-CMS
+  // verweist, wird nicht still ausgeblendet (der Trigger
+  // document_tcms_reference_delete_guard sperrt zusätzlich jeden anderen Pfad).
+  if (await istNachweisDokumentTx(tx, documentId)) {
+    throw new ActionError(TCMS_NACHWEIS_LOESCHSPERRE);
   }
   await tx.document.update({
     where: { id: documentId },

@@ -144,6 +144,7 @@ model Tenant {
   screeningRuns                  ScreeningRun[]
   screeningReviews               ScreeningReview[]
   stbvvQuotes                    StbvvQuote[]
+  tcmsDocumentReferences         TcmsDocumentReference[]
 
   @@map("tenant")
 }
@@ -443,6 +444,43 @@ model MandateArtifactSource {
 }
 
 /// Append-only external status evidence, independent of the PoA signing state.
+/// TCMS Stufe 3 (TCMS-NACHWEIS-001): Verknüpfung eines Nachweises im Tax-CMS
+/// mit einem Dokument der kanzleikonsole – genau die verwiesene Version mit
+/// ihrem SHA-256. Offen (releasedAt null) sperrt sie Löschen und neue
+/// Versionen des Dokuments. Bezug und Inhalt sind unveränderlich; anlegen
+/// lässt der Trigger tcms_document_reference_guard nur die neueste, sauber
+/// gescannte Version eines Dokuments desselben Mandanten (Migration
+/// 20261019180000). Höchstens eine offene Verknüpfung je Nachweis-ID
+/// (partieller Unique-Index tcms_document_reference_open_evidence, nicht in
+/// Prisma abbildbar).
+model TcmsDocumentReference {
+  id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String          @map("tenant_id") @db.Uuid
+  clientId          String          @map("client_id") @db.Uuid
+  documentId        String          @map("document_id") @db.Uuid
+  documentVersionId String          @map("document_version_id") @db.Uuid
+  sha256            Bytes
+  /// Durchführung im Tax-CMS (Objekt-ID des Dienstes).
+  tcmsExecutionId   String          @map("tcms_execution_id")
+  /// Nachweis im Tax-CMS; null, solange das Anhängen aussteht oder unklar ist.
+  tcmsEvidenceId    String?         @map("tcms_evidence_id")
+  createdBy         String          @map("created_by") @db.Uuid
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  releasedAt        DateTime?       @map("released_at") @db.Timestamptz(6)
+  releasedBy        String?         @map("released_by") @db.Uuid
+  /// REMOVED (Nachweis entfernt) oder NOT_ATTACHED (vom Tax-CMS abgewiesen).
+  releaseReason     String?         @map("release_reason")
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  client            Client          @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  document          Document        @relation(fields: [documentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([tenantId, documentId])
+  @@index([clientId, tcmsExecutionId])
+  @@index([documentVersionId])
+  @@map("tcms_document_reference")
+}
+
 model VdbRecord {
   id                String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String           @map("tenant_id") @db.Uuid
@@ -2043,6 +2081,7 @@ model Client {
   portalInboxUploadBatches PortalInboxUploadBatch[]
   portalInboxAttachments   PortalInboxAttachment[]
   portalInboxReads         PortalInboxRead[]
+  tcmsDocumentReferences   TcmsDocumentReference[]
 
   @@unique([tenantId, datevNo])
   @@unique([tenantId, id], map: "client_tenant_id_id_key")
@@ -2368,6 +2407,7 @@ model Document {
   researchShelfResult         RiskResearchResult?    @relation("ResearchResultShelfDocument")
   knowledgeAttachment         KbAttachment?
   portalInboxSourceAttachment PortalInboxAttachment?
+  tcmsReferences              TcmsDocumentReference[]
 
   @@index([tenantId, clientId])
   @@index([tenantId, classification])
@@ -2488,6 +2528,7 @@ model DocumentVersion {
   assistanceOutputs           ClientAssistanceOutput[]
   assistanceSourceRevisions   ClientAssistanceRevision[]   @relation("assistance_revision_original")
   assistanceExternalRevisions ClientAssistanceRevision[]   @relation("assistance_revision_external")
+  tcmsReferences              TcmsDocumentReference[]
 
   @@unique([documentId, versionNo])
   @@index([storageBucket, storageKey, storageVersionId], map: "document_version_storage_identity_idx")

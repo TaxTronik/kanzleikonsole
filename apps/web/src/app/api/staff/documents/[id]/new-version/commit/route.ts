@@ -24,6 +24,10 @@ import { JournaledUploadError, runJournaledUpload } from '@/server/documents/jou
 import { evidenceService } from '@/server/container';
 import { identityPdfPageCountForUpload } from '@/server/gwg/identity-pdf-pages';
 import { log } from '@/server/logger';
+import {
+  istNachweisDokumentTx,
+  TCMS_NACHWEIS_VERSIONSSPERRE,
+} from '@/server/tcms/durchfuehrung/sperre';
 
 const Schema = z.object({
   mimeType: z.string().min(1).max(255).default('application/octet-stream'),
@@ -33,6 +37,7 @@ const Schema = z.object({
 class DocumentNotFoundError extends Error {}
 class PoaDocumentLockedError extends Error {}
 class GwgEvidenceLockedError extends Error {}
+class TcmsEvidenceLockedError extends Error {}
 class DocumentReferenceChangedError extends Error {}
 
 const lockedByPoaResponse = () =>
@@ -52,6 +57,13 @@ const lockedByGwgResponse = () =>
       message:
         'Dieser Nachweis ist bereits einer GwG-Prüfung zugeordnet und unveränderlich. Bitte ein neues Dokument hochladen und ausdrücklich neu zuordnen.',
     },
+    { status: 409 },
+  );
+
+/** TCMS-NACHWEIS-001: Ein Nachweis des Tax-CMS bindet genau diese Fassung. */
+const lockedByTcmsResponse = () =>
+  NextResponse.json(
+    { error: 'locked_by_tcms_evidence', message: TCMS_NACHWEIS_VERSIONSSPERRE },
     { status: 409 },
   );
 
@@ -140,6 +152,8 @@ async function checkNewVersionTx(
     throw unavailable();
   }
   if (await isAssignedGwgEvidenceTx(tx, documentId)) throw new GwgEvidenceLockedError();
+  // TCMS-NACHWEIS-001: wie die GwG-Zuordnung als eigenes Statement nach der Sperre.
+  if (await istNachweisDokumentTx(tx, documentId)) throw new TcmsEvidenceLockedError();
 
   let typeTier: string | null = null;
   let typeRetentionYears: number | null = null;
@@ -332,6 +346,7 @@ function uploadErrorResponse(error: unknown, tenantId: string): NextResponse {
   if (cause instanceof PoaDocumentLockedError) return lockedByPoaResponse();
   // F-03: nur über die Klasse der eigenen Prüfung, nicht über Trigger-Meldungstexte.
   if (cause instanceof GwgEvidenceLockedError) return lockedByGwgResponse();
+  if (cause instanceof TcmsEvidenceLockedError) return lockedByTcmsResponse();
   if (cause instanceof DocumentReferenceChangedError) {
     return NextResponse.json(
       {

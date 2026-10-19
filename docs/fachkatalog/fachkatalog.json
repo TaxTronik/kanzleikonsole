@@ -4,8 +4,8 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:db2e4158f28561b7789f7cc404c3d19a55da953f3a5aed44920022c43f5a6505",
-    "expected_active_rule_count": 85,
+    "definition_sha256": "sha256:d3245ed7a71622f09a5d679b692f5651b1ec6adff6701656ef6d4a96f9990a3c",
+    "expected_active_rule_count": 86,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
       "ACCESS-CLIENT-MODE-001",
@@ -88,6 +88,7 @@
       "TAX-NOTICE-DECISION-001",
       "TCMS-AKTEUR-001",
       "TCMS-DIENST-001",
+      "TCMS-NACHWEIS-001",
       "TCMS-SAMPLE-PROOF-001",
       "VDB-PREPARATION-001",
       "WORKFLOW-DEPENDENCY-001",
@@ -106,8 +107,8 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 85,
-  "active_rule_count": 85,
+  "rule_count": 86,
+  "active_rule_count": 86,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
@@ -6221,6 +6222,73 @@
       "tags": ["tcms", "werkzeug", "anzeige", "vertraulichkeit"],
       "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/tcms-dienst-001-werkzeug.md",
       "summary": "Das Tax-CMS strukturiert und belegt das Tax-Compliance-Programm eines Mandanten. Ob eine Person bearbeiten oder würdigen darf, ob ein Vier-Augen- Schritt zulässig ist, wie eine §-153-Würdigung festgehalten wird, was vertraulich bleibt und welcher Status folgt, entscheidet allein der Dienst. Die kanzleikonsole zeigt Daten und Rechte-Kennzeichen des Dienstes an, bildet Fehler über feste Texte ab und erfindet keine Ersatzlogik. Weder Werkzeug noch Oberfläche treffen eine Aussage über Angemessenheit oder Wirksamkeit (Ausschluss TCMS-EFFECTIVENESS-001)."
+    },
+    {
+      "id": "TCMS-NACHWEIS-001",
+      "title": "Nachweise des Tax-CMS nur aus gespeicherten Dokumenten des Mandanten, referenzierte Dokumente nicht still löschen",
+      "domain": "subsumtion-und-tcms",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger TCMS und Qualitätssicherung",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt. Oberfläche und Auslieferung über die Dokumentauslieferung der kanzleikonsole folgen mit der Durchführungsseite."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Leitfaden Tax-CMS-Oberflächen, Abschnitt 11 (Route Handler für Datei-Abrufe)",
+          "path": "docs/development/tcms-oberflaechen.md",
+          "checked_at": "2026-10-19",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Tax-CMS, Durchführungen und Nachweise",
+          "path": "docs/anwenderdoku/tax-cms.md",
+          "checked_at": "2026-10-19",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Technische Modulbeschreibung Dokumentenarchiv",
+          "path": "docs/development/module/dokumentenarchiv.md",
+          "checked_at": "2026-10-19",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/tcms/durchfuehrung/verweis.ts",
+        "apps/web/src/server/tcms/durchfuehrung/sperre.ts",
+        "apps/web/src/app/staff/(protected)/documents/actions.ts",
+        "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20261019180000_tcms_document_reference/migration.sql"
+      ],
+      "test_refs": [
+        "apps/web/src/server/tcms/__tests__/nachweis-verweis-db.test.ts",
+        "apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions.test.ts",
+        "apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
+      "related_rules": [
+        "TCMS-AKTEUR-001",
+        "TCMS-DIENST-001",
+        "DOC-UPLOAD-JOURNAL-001",
+        "DOC-VERSION-IMMUTABILITY-001",
+        "DOC-RETENTION-CLASS-001",
+        "ACCESS-CLIENT-MODE-001"
+      ],
+      "tags": ["tcms", "nachweis", "dokumente", "loeschsperre"],
+      "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/tcms-nachweis-001-dokumentbindung.md",
+      "summary": "Das Tax-CMS speichert zu einem Nachweis einer Kontrolldurchführung nur einen Verweis (Dokument-ID, Dateiname, MIME-Typ, Größe, SHA-256); die Datei liegt in der Dokumentablage der kanzleikonsole. Die kanzleikonsole bildet diesen Verweis ausschließlich aus der gespeicherten, sauber gescannten neuesten Version eines Dokuments genau dieses Mandanten, nie aus Formularangaben. Sie liefert die Datei nur mit ihren eigenen Rechten aus und nur, wenn der SHA-256 der auszuliefernden Version dem Verweis entspricht. Solange ein Nachweis auf ein Dokument verweist, lässt sich das Dokument nicht löschen und keine neue Version hochladen."
     },
     {
       "id": "TCMS-SAMPLE-PROOF-001",
