@@ -42,6 +42,13 @@ Quell-Commit und je Datei den SHA-256 fest.
   TCMS-Stand laufen lassen. Die Aktualisierung ist ein eigener Commit mit dem
   Quell-Commit im Text.
 
+- **Gegen die Quelle nachprüfen:** Der Guard sichert die Kopie gegen
+  `VENDOR.json`, nicht `VENDOR.json` gegen das TCMS-Repo. Wer beides ändert,
+  fällt erst in der Prüfung gegen die Quelle auf: TCMS-Checkout auf
+  `quelle.commit` setzen und das Sync-Skript ausführen; danach muss
+  `git status packages/tcms-contract` leer sein. Das gehört zum Review jeder
+  Änderung unter `packages/tcms-contract`.
+
 ## 2. Konfiguration
 
 Teil `tcms` des ENV-Schemas (`packages/config/src/env-schema.ts`), in den
