@@ -353,6 +353,66 @@ describe('Risikoinventar – Detail', () => {
     expect(knopf.title).toContain('wartet auf Jana Akte');
   });
 
+  it('offene Akzeptanz unzustellbar: Status mit Grund, Verweis auf die Neuadressierung', async () => {
+    const ver01 = liste.risiken.find((r) => r.code === 'EC-VER-01')!;
+    ver01.akzeptanzen[0]!.zustellung = {
+      zweck: 'FREIGABE_ANGEFORDERT',
+      erstelltAm: '2026-10-02T08:00:00.000Z',
+      status: 'UNZUSTELLBAR',
+      am: '2026-10-09T08:00:00.000Z',
+      grund: 'ABGELAUFEN',
+    };
+    await renderServer(TcmsRisikenPage(mit({ risiko: ver01.id })));
+    const detail = screen.getByRole('region', { name: /^EC-VER-01 · / });
+    expect(detail.textContent).toContain('Nachricht unzustellbar');
+    expect(detail.textContent).toContain('Zustellfrist abgelaufen');
+    expect(detail.textContent).toContain(
+      'Die gesetzliche Vertretung hat die Anforderung nicht erhalten.',
+    );
+    const link = within(detail).getByRole('link', { name: 'Neu adressieren (Kommunikation)' });
+    expect(link.getAttribute('href')).toBe(`${BASIS}/kommunikation`);
+    // Kein zweites Anfordern; der Sperrgrund nennt die gescheiterte Zustellung.
+    const knopf = within(detail).getByRole('button', {
+      name: /Risikoakzeptanz anfordern/,
+    }) as HTMLButtonElement;
+    expect(knopf.disabled).toBe(true);
+    expect(knopf.title).toContain('Anforderung: Nachricht unzustellbar (Zustellfrist abgelaufen)');
+    expect(knopf.title).toContain('unter Kommunikation neu adressieren');
+  });
+
+  it('offene Akzeptanz verworfen ohne Bearbeitungsrecht: Status, aber kein Verweis', async () => {
+    kontext.rechte.bearbeiten = false;
+    const ver01 = liste.risiken.find((r) => r.code === 'EC-VER-01')!;
+    ver01.akzeptanzen[0]!.zustellung = {
+      zweck: 'FREIGABE_CODE',
+      erstelltAm: '2026-10-02T08:00:00.000Z',
+      status: 'VERWORFEN',
+      am: '2026-10-03T08:00:00.000Z',
+    };
+    antworten();
+    await renderServer(TcmsRisikenPage(mit({ risiko: ver01.id })));
+    const detail = screen.getByRole('region', { name: /^EC-VER-01 · / });
+    expect(detail.textContent).toContain('Nachricht nicht ausgeliefert');
+    expect(detail.textContent).toContain('nicht erhalten');
+    expect(within(detail).queryByRole('link', { name: /Neu adressieren/ })).toBeNull();
+  });
+
+  it('zugestellte Akzeptanz: Status ohne Hinweis', async () => {
+    const ver01 = liste.risiken.find((r) => r.code === 'EC-VER-01')!;
+    ver01.akzeptanzen[0]!.zustellung = {
+      zweck: 'FREIGABE_ANGEFORDERT',
+      erstelltAm: '2026-10-02T08:00:00.000Z',
+      status: 'ZUGESTELLT',
+      am: '2026-10-02T08:01:00.000Z',
+    };
+    await renderServer(TcmsRisikenPage(mit({ risiko: ver01.id })));
+    const detail = screen.getByRole('region', { name: /^EC-VER-01 · / });
+    expect(detail.textContent).toContain('Nachricht zugestellt');
+    expect(detail.textContent).not.toContain('nicht erhalten');
+    const knopf = within(detail).getByRole('button', { name: /Risikoakzeptanz anfordern/ });
+    expect(knopf.title).not.toContain('neu adressieren');
+  });
+
   it('Störung beim Detail: Zustand im Detailbereich, Inventar bleibt', async () => {
     antworten({
       detail: {

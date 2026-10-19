@@ -187,6 +187,63 @@ describe('CMS-Beschreibung', () => {
     expect(screen.getByText(/wartet auf Freigabe durch den/)).toBeTruthy();
   });
 
+  it.each([
+    [
+      'unzustellbar',
+      {
+        zweck: 'FREIGABE_ANGEFORDERT',
+        erstelltAm: '2026-10-02T08:00:00.000Z',
+        status: 'UNZUSTELLBAR',
+        am: '2026-10-09T08:00:00.000Z',
+        grund: 'EMPFAENGER_UNGUELTIG',
+      },
+      'Empfänger gehört nicht (mehr) zu diesem Mandanten',
+    ],
+    [
+      'verworfen',
+      {
+        zweck: 'FREIGABE_CODE',
+        erstelltAm: '2026-10-02T08:00:00.000Z',
+        status: 'VERWORFEN',
+        am: '2026-10-03T08:00:00.000Z',
+      },
+      'Code galt nicht mehr',
+    ],
+  ] as const)(
+    'Anforderung %s: Status im Hinweis und Neuadressierung über Kommunikation',
+    async (_fall, zustellung, grund) => {
+      const { b } = daten();
+      b.freigaben[0]!.zustellung = { ...zustellung };
+      await rendern({ version: V12 });
+      const hinweis = screen
+        .getAllByRole('note')
+        .find((n) => n.textContent?.includes('Zur Freigabe'))!;
+      expect(hinweis.textContent).toContain(
+        'Die gesetzliche Vertretung hat die Anforderung nicht erhalten.',
+      );
+      expect(hinweis.textContent).toContain(grund);
+      const link = within(hinweis).getByRole('link', { name: 'Neu adressieren (Kommunikation)' });
+      expect(link.getAttribute('href')).toBe(`${BASIS}/kommunikation`);
+    },
+  );
+
+  it('Anforderung zugestellt: Status ohne Aufforderung', async () => {
+    const { b } = daten();
+    b.freigaben[0]!.zustellung = {
+      zweck: 'FREIGABE_ANGEFORDERT',
+      erstelltAm: '2026-10-02T08:00:00.000Z',
+      status: 'ZUGESTELLT',
+      am: '2026-10-02T08:01:00.000Z',
+    };
+    await rendern({ version: V12 });
+    const hinweis = screen
+      .getAllByRole('note')
+      .find((n) => n.textContent?.includes('Zur Freigabe'))!;
+    expect(hinweis.textContent).toContain('Nachricht zugestellt');
+    expect(hinweis.textContent).not.toContain('nicht erhalten');
+    expect(within(hinweis).getByRole('link').textContent).toBe('Empfänger ändern (Kommunikation)');
+  });
+
   it('Snapshot ohne Bausteindaten: Hinweis statt lebender Daten', async () => {
     daten();
     await rendern({ version: V12, abschnitt: 'organisation' });

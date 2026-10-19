@@ -47,6 +47,7 @@ import {
 import { TcmsAktionsDialog } from '@/components/tcms/programm/dialog';
 import { TcmsKnopfAktion } from '@/components/tcms/programm/knopf';
 import type { Person } from '@/components/tcms/programm/kontakte';
+import { zustellungGescheitert, ZustellungAnzeige } from '@/components/tcms/zustellung';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import {
   freigabeAnfordernAction,
@@ -348,6 +349,7 @@ function codeHinweis(f: Freigabe | null): string {
 
 export function Hinweise({ m }: { m: BeschreibungModell }) {
   const { v, b, offeneFreigabe: f } = m;
+  const gescheitert = zustellungGescheitert(f?.zustellung);
   if (v.anzeige === 'BEIM_MANDANTEN') {
     return (
       <div className="alert-info mt-3 flex items-start gap-2" role="note">
@@ -360,11 +362,15 @@ export function Hinweise({ m }: { m: BeschreibungModell }) {
           {m.eingefroren
             ? 'Angezeigt wird der zur Freigabe vorgelegte, eingefrorene Inhalt.'
             : 'Für diese Version liegt noch kein eingefrorener Inhalt vor.'}{' '}
+          {f && gescheitert ? (
+            <strong>Die gesetzliche Vertretung hat die Anforderung nicht erhalten. </strong>
+          ) : null}
           {f && b.darfBearbeiten ? (
             <Link className="underline" href={`${m.basis}/kommunikation`}>
-              Empfänger ändern (Kommunikation)
+              {gescheitert ? 'Neu adressieren (Kommunikation)' : 'Empfänger ändern (Kommunikation)'}
             </Link>
           ) : null}
+          {f ? <ZustellungAnzeige zustellung={f.zustellung} /> : null}
         </span>
       </div>
     );

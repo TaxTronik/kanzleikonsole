@@ -170,6 +170,17 @@ Person dieses Mandanten (Freigaben nur an gesetzliche Vertretungen); ein
 bereits ausgestellter Code verfällt, die Person erhält eine Nachricht. Der
 Schritt fragt vorher nach.
 
+Je offener oder erledigter Anforderung steht der **Zustellstatus** der
+jüngsten Nachricht an die aktuelle Person (Anforderung, Bestätigungscode
+oder Neuadressierung): „noch nicht zugestellt“, „zugestellt“, „unzustellbar“
+mit Grund (Empfänger gehört nicht mehr zum Mandanten, kein bestätigter
+Portalzugang, Zustellfrist abgelaufen, sonstiger Grund) oder „nicht
+ausgeliefert“ (der Code galt nicht mehr). Hat die Person eine offene
+Anforderung nicht erhalten, weist die Zeile darauf hin; adressieren Sie sie
+dann neu. Dieselbe Angabe zeigen der Freigabehinweis der CMS-Beschreibung und
+die Risikoakzeptanz, jeweils mit Verweis auf die Kommunikation. Im
+historischen Stand entfällt der Zustellstatus.
+
 ### Katalog
 
 Admins und Partner sehen unter _Tax-CMS → Katalog_ (Link im Portfolio und im
@@ -223,7 +234,9 @@ Feld der Heatmap filtert die Liste.
 - **Risikoakzeptanz anfordern:** Liegt ein Risiko über dem Appetit, fordern
   Sie die Akzeptanz bei einer gesetzlichen Vertretung an (aktiver Kontakt
   dieses Mandanten mit dieser Rolle, Abschnitt 5). Die Freigabe erfolgt im
-  Portal mit Bestätigung per E-Mail-Code.
+  Portal mit Bestätigung per E-Mail-Code. Jede Anforderung zeigt ihren
+  Zustellstatus; ist die Nachricht nicht angekommen, führt ein Verweis zur
+  Neuadressierung unter _Kommunikation_.
 
 ### Kontrollmatrix
 

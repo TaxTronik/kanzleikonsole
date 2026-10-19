@@ -3,7 +3,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { KontaktRollenBodySchema } from '@taxtronik/tcms-contract';
+import {
+  FREIGABE_NACHRICHT_ZWECKE,
+  FreigabeZustellungSchema,
+  KontaktRollenBodySchema,
+  NACHRICHT_UNZUSTELLBAR_GRUENDE,
+  ZUSTELL_STATUS,
+} from '@taxtronik/tcms-contract';
 import {
   ANZEIGE_BADGE,
   AUSWIRKUNG_BADGE,
@@ -25,6 +31,13 @@ import {
   badgeKlasse,
   tonChip,
 } from '../ton';
+import {
+  UNZUSTELLBAR_GRUND_LABEL,
+  ZUSTELL_STATUS_ANZEIGE,
+  ZUSTELL_ZWECK_LABEL,
+  zustellungGescheitert,
+  zustellungText,
+} from '../zustellung';
 
 const GLOBALS = readFileSync(join(__dirname, '..', '..', '..', 'app', 'globals.css'), 'utf8');
 const definiert = (klasse: string) => new RegExp(`\\.${klasse}\\s*\\{`).test(GLOBALS);
@@ -70,6 +83,46 @@ describe('Katalog und Vertrag', () => {
     // Vollständig: jede Rolle des Vertrags ist in der Liste.
     const vertrag = (rollen.element as unknown as { options: readonly string[] }).options;
     expect([...vertrag].sort()).toEqual([...MANDANT_ROLLEN].sort());
+  });
+});
+
+describe('Zustellstatus (Vertrag bereiche/zustellung.ts)', () => {
+  it('ein eigener Text je Status, Grund und Zweck des Vertrags, Badges aus globals.css', () => {
+    expect(Object.keys(ZUSTELL_STATUS_ANZEIGE).sort()).toEqual([...ZUSTELL_STATUS].sort());
+    expect(Object.keys(UNZUSTELLBAR_GRUND_LABEL).sort()).toEqual(
+      [...NACHRICHT_UNZUSTELLBAR_GRUENDE].sort(),
+    );
+    expect(Object.keys(ZUSTELL_ZWECK_LABEL).sort()).toEqual([...FREIGABE_NACHRICHT_ZWECKE].sort());
+    const labels = Object.values(ZUSTELL_STATUS_ANZEIGE).map((a) => a.label);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(new Set(Object.values(UNZUSTELLBAR_GRUND_LABEL)).size).toBe(
+      NACHRICHT_UNZUSTELLBAR_GRUENDE.length,
+    );
+    for (const { badge } of Object.values(ZUSTELL_STATUS_ANZEIGE)) {
+      expect(BADGE_KLASSEN).toContain(badge);
+    }
+  });
+
+  it('gescheitert heißt unzustellbar oder verworfen; offen und zugestellt nicht', () => {
+    const kopf = { zweck: 'FREIGABE_ANGEFORDERT', erstelltAm: '2026-10-01T08:00:00.000Z' } as const;
+    const faelle = [
+      [{ ...kopf, status: 'OFFEN' }, false],
+      [{ ...kopf, status: 'ZUGESTELLT', am: '2026-10-01T08:01:00.000Z' }, false],
+      [
+        { ...kopf, status: 'UNZUSTELLBAR', am: '2026-10-02T08:00:00.000Z', grund: 'SONSTIGES' },
+        true,
+      ],
+      [{ ...kopf, status: 'VERWORFEN', am: '2026-10-02T08:00:00.000Z' }, true],
+    ] as const;
+    for (const [z, gescheitert] of faelle) {
+      // Jeder Fall ist eine gültige Antwort des Vertrags.
+      expect(FreigabeZustellungSchema.safeParse(z).success).toBe(true);
+      expect(zustellungGescheitert(z)).toBe(gescheitert);
+    }
+    expect(zustellungGescheitert(null)).toBe(false);
+    expect(zustellungText(faelle[2][0])).toBe(
+      'Anforderung: Nachricht unzustellbar (sonstiger Grund)',
+    );
   });
 });
 

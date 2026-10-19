@@ -2,6 +2,8 @@
 // Teile der Seite „Kommunikation“ (TCMS Stufe 3, Bereich A): Freigaben,
 // Kenntnisnahmen, Freigabestände sowie Kultur und Meldewege. Reine Darstellung
 // des Modells aus page.tsx; „Neu adressieren“ läuft über ./actions.ts.
+// Je Anforderung der Zustellstatus der jüngsten Nachricht (TCMS s6); ist sie
+// unzustellbar oder verworfen, weist die Zeile auf die Neuadressierung hin.
 // =============================================================================
 
 import Link from 'next/link';
@@ -16,6 +18,7 @@ import { AnzeigeBadge } from '@/components/tcms/badges';
 import { isoDatumText, isoZeitText } from '@/components/tcms/format';
 import { TcmsLeer } from '@/components/tcms/leer';
 import { TcmsAktionsDialog } from '@/components/tcms/programm/dialog';
+import { zustellungGescheitert, ZustellungAnzeige } from '@/components/tcms/zustellung';
 import {
   codeText,
   FREIGABE_ART_LABEL,
@@ -129,6 +132,14 @@ function StatusZelle({ m, f }: { m: KommunikationModell; f: FreigabeHistorieZeil
       <span className="block text-xs text-muted mt-1">{unterzeile}</span>
       {f.anmerkung ? (
         <span className="block text-xs text-secondary mt-1">„{f.anmerkung}“</span>
+      ) : null}
+      <ZustellungAnzeige zustellung={f.zustellung} />
+      {offen && zustellungGescheitert(f.zustellung) ? (
+        <span className="block text-xs text-secondary mt-1">
+          {m.neuAdressierbar
+            ? 'Die Person hat die Anforderung nicht erhalten. Bitte neu adressieren.'
+            : 'Die Person hat die Anforderung nicht erhalten.'}
+        </span>
       ) : null}
       {m.neuAdressierbar && offen ? (
         <div className="mt-2">

@@ -48,6 +48,7 @@ import { isoDatumText, isoZeitText } from '../format';
 import { DesignBadge, DurchfuehrungBadge } from '../kontrollen/badges';
 import { BETRIEB_BADGE, BETRIEB_KURZ, BETRIEB_LABEL } from '../kontrollen/labels';
 import { badgeKlasse } from '../ton';
+import { zustellungGescheitert, ZustellungAnzeige, zustellungText } from '../zustellung';
 import {
   AKZEPTANZ_STATUS_BADGE,
   AKZEPTANZ_STATUS_LABEL,
@@ -583,7 +584,11 @@ function AkzeptanzDialog({ t }: { t: Teil }) {
   const grund =
     t.sperre ??
     (offen
-      ? `Bereits angefordert am ${isoDatumText(offen.angefordertAm)} – wartet auf ${namen.name(offen.empfaengerId)}.`
+      ? `Bereits angefordert am ${isoDatumText(offen.angefordertAm)} – wartet auf ${namen.name(offen.empfaengerId)}.${
+          zustellungGescheitert(offen.zustellung) && offen.zustellung
+            ? ` ${zustellungText(offen.zustellung)} – bitte unter Kommunikation neu adressieren.`
+            : ''
+        }`
       : t.vertretung.length === 0
         ? 'Beim Mandanten ist keine gesetzliche Vertretung mit aktiver Rolle hinterlegt.'
         : null);
@@ -681,6 +686,21 @@ function AppetitAbschnitt({ t }: { t: Teil }) {
                 <span className={AKZEPTANZ_STATUS_BADGE[a.status]}>
                   {AKZEPTANZ_STATUS_LABEL[a.status]}
                 </span>
+                {a.zustellung ? (
+                  <div className="basis-full">
+                    <ZustellungAnzeige zustellung={a.zustellung} />
+                    {a.status === 'OFFEN' && zustellungGescheitert(a.zustellung) ? (
+                      <p className="text-xs text-secondary mt-1">
+                        Die gesetzliche Vertretung hat die Anforderung nicht erhalten.{' '}
+                        {t.sperre === null ? (
+                          <Link href={`${t.basis}/kommunikation`} className="underline">
+                            Neu adressieren (Kommunikation)
+                          </Link>
+                        ) : null}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
               </li>
             ))}
           </ul>

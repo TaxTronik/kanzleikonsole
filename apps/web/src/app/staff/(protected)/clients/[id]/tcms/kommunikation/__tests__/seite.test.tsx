@@ -5,7 +5,9 @@
 // gemockt; ihre Prüfkette testet server/tcms/__tests__/seite.test.ts.
 // Geprüft wird: Status zum Stichtag aus dem Dienst, Namen aus der
 // kanzleikonsole, „Neu adressieren“ nur für offene Anforderungen mit Recht und
-// nur an Kontakte dieses Mandanten mit passender Rolle.
+// nur an Kontakte dieses Mandanten mit passender Rolle; Zustellstatus der
+// jüngsten Nachricht je Anforderung (TCMS s6) mit Hinweis auf die
+// Neuadressierung, wenn die Person sie nicht erhalten hat.
 // Fachkatalog: TCMS-DIENST-001
 import { fireEvent, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -168,6 +170,80 @@ describe('Kommunikation', () => {
     }
     await rendern();
     expect(screen.queryAllByRole('button', { name: /Neu adressieren/ })).toHaveLength(0);
+  });
+
+  it('Zustellstatus je Anforderung: zugestellt, unzustellbar mit Grund, verworfen', async () => {
+    const { historie } = daten();
+    const [kenntnis, beschreibung] = historie.freigaben;
+    kenntnis!.zustellung = {
+      zweck: 'FREIGABE_ANGEFORDERT',
+      erstelltAm: '2026-10-01T08:00:00.000Z',
+      status: 'ZUGESTELLT',
+      am: '2026-10-01T08:05:00.000Z',
+    };
+    beschreibung!.zustellung = {
+      zweck: 'FREIGABE_CODE',
+      erstelltAm: '2026-10-02T08:00:00.000Z',
+      status: 'UNZUSTELLBAR',
+      am: '2026-10-09T08:00:00.000Z',
+      grund: 'KEIN_PORTALZUGANG',
+    };
+    await rendern();
+    const freigabe = within(screen.getByRole('table', { name: 'Freigaben' }))
+      .getAllByRole('row')
+      .at(1)!;
+    expect(freigabe.textContent).toContain('Nachricht unzustellbar');
+    expect(freigabe.textContent).toContain('Bestätigungscode');
+    expect(freigabe.textContent).toContain('Empfänger hat keinen bestätigten Portalzugang');
+    expect(freigabe.textContent).toContain(
+      'Die Person hat die Anforderung nicht erhalten. Bitte neu adressieren.',
+    );
+    expect(within(freigabe).getByRole('button', { name: /Neu adressieren/ })).toBeTruthy();
+    const zugestellt = within(screen.getByRole('table', { name: 'Kenntnisnahmen' }))
+      .getAllByRole('row')
+      .at(1)!;
+    expect(zugestellt.textContent).toContain('Nachricht zugestellt');
+    expect(zugestellt.textContent).not.toContain('nicht erhalten');
+  });
+
+  it('verworfen ohne Bearbeitungsrecht: Status und Hinweis, aber keine Aufforderung', async () => {
+    const { kontext, historie } = daten();
+    kontext.rechte.bearbeiten = false;
+    historie.freigaben[1]!.zustellung = {
+      zweck: 'FREIGABE_NEU_ADRESSIERT',
+      erstelltAm: '2026-10-02T08:00:00.000Z',
+      status: 'VERWORFEN',
+      am: '2026-10-03T08:00:00.000Z',
+    };
+    await rendern();
+    const zeile = within(screen.getByRole('table', { name: 'Freigaben' }))
+      .getAllByRole('row')
+      .at(1)!;
+    expect(zeile.textContent).toContain('Nachricht nicht ausgeliefert');
+    expect(zeile.textContent).toContain('Code galt nicht mehr');
+    expect(zeile.textContent).toContain('Die Person hat die Anforderung nicht erhalten.');
+    expect(zeile.textContent).not.toContain('Bitte neu adressieren');
+    expect(within(zeile).queryByRole('button')).toBeNull();
+  });
+
+  it('erledigte Anforderung mit unzustellbarer Nachricht: Status, kein Hinweis', async () => {
+    const { historie } = daten();
+    const f = historie.freigaben[1]!;
+    f.status = 'FREIGEGEBEN';
+    f.erledigtAm = '2026-10-05T10:00:00.000Z';
+    f.zustellung = {
+      zweck: 'FREIGABE_ANGEFORDERT',
+      erstelltAm: '2026-10-02T08:00:00.000Z',
+      status: 'UNZUSTELLBAR',
+      am: '2026-10-03T08:00:00.000Z',
+      grund: 'SONSTIGES',
+    };
+    await rendern();
+    const zeile = within(screen.getByRole('table', { name: 'Freigaben' }))
+      .getAllByRole('row')
+      .at(1)!;
+    expect(zeile.textContent).toContain('Nachricht unzustellbar');
+    expect(zeile.textContent).not.toContain('nicht erhalten');
   });
 
   it('Stichtag geht an beide Abfragen; Verweise behalten ihn', async () => {

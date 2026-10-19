@@ -250,23 +250,24 @@ Protokolliert werden nur Komponente, Endpunkt, Fehlerklasse, Status, Code,
 
 ## 7. Bausteine (`apps/web/src/components/tcms`)
 
-| Datei              | Inhalt                                                                                                                                                                                         |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `zustand.tsx`      | `TcmsZustand` (Fehlerzustände, `role="status"`, Vorgangsnummer)                                                                                                                                |
-| `leer.tsx`         | `TcmsLeer` (leere Listen)                                                                                                                                                                      |
-| `disclaimer.tsx`   | `TcmsPflichthinweis` (Pflicht-Framing aus `@taxtronik/tcms-domain`) – auf jeder Seite mit Statusangaben                                                                                        |
-| `badges.tsx`       | `KlasseBadge`, `AnzeigeBadge`, `GtBadge`, `HashKurz`, `VertraulichBadge`                                                                                                                       |
-| `feststellung.tsx` | `FeststellungBezeichnung`, `feststellungText`: maskierte Feststellungen als „<Nummer> · Vertrauliche Feststellung“                                                                             |
-| `visual.tsx`       | `PhasenStepper`, `MiniSteps`, `BalkenZeilen`, `Fortschritt`, `SegmentBalken`, `SchwellenAnzeige`, `ZeitraumLeiste`                                                                             |
-| `heatmap.tsx`      | `RisikoHeatmap` (Client-Komponente, serialisierbare Props)                                                                                                                                     |
-| `kopf.tsx`         | `TcmsKopf` (Teilbereich, Phase, Stichtag-Wähler)                                                                                                                                               |
-| `navigation.tsx`   | `TcmsMandantNavigation` (Unternavigation mit `aria-current`)                                                                                                                                   |
-| `bereiche.ts`      | `TCMS_MANDANT_BEREICHE`, `aktiverTcmsBereich`, `tcmsBereichHref`                                                                                                                               |
-| `ton.ts`           | Farbtöne der Badges und Chips aus den Tokens der kanzleikonsole                                                                                                                                |
-| `format.ts`        | Datumsanzeige (`isoDatumText`, `isoZeitText`, …) auf Basis von `@taxtronik/tcms-domain`                                                                                                        |
-| `icon.tsx`         | `KatalogIcon` für die Icon-Namen des Katalogs                                                                                                                                                  |
-| `ergebnis.ts`      | `TcmsAktionsErgebnis` (ActionResult mit `meldung`/`warnung`), `TcmsFormAktion` – ein Typ für alle Bereiche                                                                                     |
-| `formular.ts`      | `useTcmsFormular`: Absenden in einer Transition, Eingaben bleiben bei Ablehnung stehen, Reset nur nach Erfolg (abschaltbar), keine Doppelübermittlung, optional Gefahrendialog und `nachLesen` |
+| Datei              | Inhalt                                                                                                                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zustand.tsx`      | `TcmsZustand` (Fehlerzustände, `role="status"`, Vorgangsnummer)                                                                                                                                               |
+| `leer.tsx`         | `TcmsLeer` (leere Listen)                                                                                                                                                                                     |
+| `disclaimer.tsx`   | `TcmsPflichthinweis` (Pflicht-Framing aus `@taxtronik/tcms-domain`) – auf jeder Seite mit Statusangaben                                                                                                       |
+| `badges.tsx`       | `KlasseBadge`, `AnzeigeBadge`, `GtBadge`, `HashKurz`, `VertraulichBadge`                                                                                                                                      |
+| `feststellung.tsx` | `FeststellungBezeichnung`, `feststellungText`: maskierte Feststellungen als „<Nummer> · Vertrauliche Feststellung“                                                                                            |
+| `visual.tsx`       | `PhasenStepper`, `MiniSteps`, `BalkenZeilen`, `Fortschritt`, `SegmentBalken`, `SchwellenAnzeige`, `ZeitraumLeiste`                                                                                            |
+| `heatmap.tsx`      | `RisikoHeatmap` (Client-Komponente, serialisierbare Props)                                                                                                                                                    |
+| `kopf.tsx`         | `TcmsKopf` (Teilbereich, Phase, Stichtag-Wähler)                                                                                                                                                              |
+| `navigation.tsx`   | `TcmsMandantNavigation` (Unternavigation mit `aria-current`)                                                                                                                                                  |
+| `bereiche.ts`      | `TCMS_MANDANT_BEREICHE`, `aktiverTcmsBereich`, `tcmsBereichHref`                                                                                                                                              |
+| `ton.ts`           | Farbtöne der Badges und Chips aus den Tokens der kanzleikonsole                                                                                                                                               |
+| `format.ts`        | Datumsanzeige (`isoDatumText`, `isoZeitText`, …) auf Basis von `@taxtronik/tcms-domain`                                                                                                                       |
+| `icon.tsx`         | `KatalogIcon` für die Icon-Namen des Katalogs                                                                                                                                                                 |
+| `ergebnis.ts`      | `TcmsAktionsErgebnis` (ActionResult mit `meldung`/`warnung`), `TcmsFormAktion` – ein Typ für alle Bereiche                                                                                                    |
+| `formular.ts`      | `useTcmsFormular`: Absenden in einer Transition, Eingaben bleiben bei Ablehnung stehen, Reset nur nach Erfolg (abschaltbar), keine Doppelübermittlung, optional Gefahrendialog und `nachLesen`                |
+| `zustellung.tsx`   | `ZustellungAnzeige`, `zustellungGescheitert`, `zustellungText`: Zustellstatus der jüngsten Nachricht zu einer Freigabe (Kommunikation, Beschreibung, Risikoakzeptanz), feste Texte je Status, Grund und Zweck |
 
 Bereichsübergreifend genutzte Bausteine in Unterordnern (eine Darstellung je
 Sache für Kanzlei und Portal, Integration Stufe 3):
