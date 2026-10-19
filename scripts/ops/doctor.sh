@@ -169,6 +169,45 @@ _doctor_tcms_managed_credentials() {
   fi
 }
 
+# Code-Schluessel (TCMS s8, Hinweis H5): Vorhandensein, Format, Abstand zu
+# Tokens und Passwoertern, Anzahl der Eintraege und Rotationsstand. Nie ein
+# Wert; Kennungen und Zeitpunkte nennt ./taxtronik tcms status.
+_doctor_tcms_code_key() {
+  local list="${TCMS_CODE_SCHLUESSEL:-}" problem count now due
+  problem="$(tcms_code_key_problem "$list")"
+  if [[ "$problem" == "fehlt" ]]; then
+    _doctor_tcms_row "FEHLT" "TCMS_CODE_SCHLUESSEL" "fehlt; tcms-api startet ohne ihn nicht -> ./taxtronik tcms setup managed"
+    return 0
+  elif [[ -n "$problem" ]]; then
+    _doctor_tcms_row "FEHLT" "TCMS_CODE_SCHLUESSEL" "$problem"
+    return 0
+  fi
+  count="$(tcms_list_count "$list")"
+  if [[ ! -e "$TCMS_CODE_KEY_ROTATION_STATE" ]]; then
+    if (( count == 1 )); then
+      _doctor_tcms_row "OK" "TCMS_CODE_SCHLUESSEL" "1 Eintrag, Format gueltig"
+    else
+      _doctor_tcms_row "WARN" "TCMS_CODE_SCHLUESSEL" "$count Eintraege ohne Rotationszustand; ./taxtronik tcms status (Abschnitt 5 der TCMS-Betriebsdoku)"
+    fi
+    return 0
+  fi
+  if ! tcms_parse_code_key_rotation_state; then
+    _doctor_tcms_row "WARN" "TCMS_CODE_ROTATION" "Rotationszustand $_TCMS_CKR_PROBLEM; manuell pruefen"
+    return 0
+  fi
+  if [[ "$_TCMS_CKR_PHASE" == "prepared" ]]; then
+    _doctor_tcms_row "WARN" "TCMS_CODE_ROTATION" "Start unterbrochen; fortsetzen mit ./taxtronik tcms rotate-code-key"
+    return 0
+  fi
+  now="$(tcms_now)"
+  due="$(tcms_code_key_rotation_due)"
+  if (( now >= due )); then
+    _doctor_tcms_row "WARN" "TCMS_CODE_ROTATION" "Abschluss faellig seit $(tcms_format_epoch "$due"): ./taxtronik tcms rotate-code-key --finish"
+  else
+    _doctor_tcms_row "OK" "TCMS_CODE_ROTATION" "$count Eintraege; Abschluss ab $(tcms_format_epoch "$due")"
+  fi
+}
+
 _doctor_tcms_images() {
   if images_from_registry; then
     if [[ "${TCMS_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && \
@@ -283,6 +322,7 @@ _doctor_tcms() {
         _doctor_tcms_row "FEHLT" "TCMS_URL" "verwaltetes Tax-CMS muss $TCMS_MANAGED_URL verwenden"
       fi
       _doctor_tcms_managed_credentials
+      _doctor_tcms_code_key
       _doctor_tcms_images
       _doctor_tcms_live
       ;;

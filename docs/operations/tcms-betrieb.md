@@ -154,7 +154,7 @@ TCMS-Platzhalter, weil die Quellen nur im TCMS-Repository liegen.
 ./taxtronik tcms setup                    # interaktiv: managed | external | disabled
 ./taxtronik tcms setup managed            # nicht-interaktiv
 ./taxtronik tcms setup external           # fragt URL und Dienst-Token (verdeckt)
-./taxtronik tcms status                   # Modus, Container, Netze, kids – ohne Werte
+./taxtronik tcms status                   # Modus, Container, Netze, kids, Code-Schlüssel – ohne Werte
 ./taxtronik doctor                        # enthält die TCMS-Prüfungen
 ```
 
@@ -213,6 +213,14 @@ werden bei `deploy`/`update` als `disabled` festgeschrieben und nie gefragt.
   Betrieb Container (`tcms-db`/`tcms-api` healthy, `tcms-migrate` mit Exit 0),
   beide Netze `internal`, `tcms-db` nur im Backend-Netz, app/worker **nicht**
   im Backend-Netz (sonst `FEHLT`),
+- `managed`, Code-Schlüssel: fehlt, Format ungültig oder gleich einem Token
+  bzw. Passwort → `FEHLT` (damit brechen auch `deploy`/`update` in der
+  `.env`-Vorbereitung ab, bevor ein Dienst gestoppt wird); mehrere Einträge
+  ohne Rotationszustand, unterbrochener Start, beschädigter Zustand oder
+  fälliger Abschluss (`rotate-code-key --finish`) → `WARN`; laufende Rotation →
+  `OK` mit dem frühesten Abschluss. Geprüft werden nur Vorhandensein, Format und
+  Anzahl der Einträge, nie ein Wert. `tcms status` nennt zusätzlich die
+  Kennungen (`csk:…`), welcher Eintrag signiert, und den Rotationsstand.
 - `external`: HTTPS-URL, Token- und Schlüsselformat sowie `GET /v1/health` mit
   Token. Das Token geht nur über stdin an `curl --config -`, nie als Argument.
 

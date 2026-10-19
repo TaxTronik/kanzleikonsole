@@ -1195,7 +1195,7 @@ tcms_code_key_rotation_publish() {
   _TCMS_CKR_PUBLISHED="$(tcms_now)"
   tcms_write_code_key_rotation_state
   info "tcms-api signiert neue Codes mit $_TCMS_CKR_NEW und prueft $_TCMS_CKR_OLD weiter."
-  info "Abschluss fruehestens $(tcms_format_epoch "$(tcms_code_key_rotation_due)") mit ./taxtronik tcms rotate-code-key --finish (Erinnerung setzen)."
+  info "Abschluss fruehestens $(tcms_format_epoch "$(tcms_code_key_rotation_due)") mit ./taxtronik tcms rotate-code-key --finish (Erinnerung setzen; doctor und status melden die Faelligkeit)."
 }
 
 tcms_code_key_rotation_start() {
@@ -1395,6 +1395,7 @@ cmd_tcms_status() {
         "$(tr ',' '\n' <<<"${TCMS_SERVICE_TOKENS:-}" | grep -c .)" \
         "$(tcms_token_list_contains "${TCMS_SERVICE_TOKENS:-}" "${TCMS_SERVICE_TOKEN:-}" && printf 'gelistet' || printf 'NICHT gelistet')"
       printf 'Schluessel (kid) : %s; aktiv: %s\n' "$(tcms_kids_of_list "${TCMS_ACTOR_PUBLIC_KEYS:-}")" "${TCMS_ACTOR_KEY_ID:-<fehlt>}"
+      tcms_status_code_key
       for container in "$TCMS_DB_CONTAINER" "$TCMS_MIGRATE_CONTAINER" "$TCMS_API_CONTAINER"; do
         cstate="$(docker inspect --format '{{.State.Status}} exit={{.State.ExitCode}} {{if .State.Health}}{{.State.Health.Status}}{{end}}' "$container" 2>/dev/null || printf 'fehlt')"
         printf '%-17s: %s\n' "${container#taxtronik-}" "$cstate"
@@ -1413,6 +1414,41 @@ cmd_tcms_status() {
     printf 'Rotation         : %s in Phase %s (%s -> %s); fortsetzen mit ./taxtronik tcms rotate-%s\n' \
       "$_TCMS_ROT_KIND" "$_TCMS_ROT_PHASE" "$_TCMS_ROT_OLD" "$_TCMS_ROT_NEW" "$_TCMS_ROT_KIND"
   fi
+  tcms_status_code_key_rotation
+}
+
+# Code-Schluessel im Status: Anzahl, Kennungen (csk:…) und Formatpruefung,
+# nie ein Wert.
+tcms_status_code_key() {
+  local list="${TCMS_CODE_SCHLUESSEL:-}" problem
+  problem="$(tcms_code_key_problem "$list")"
+  if [[ "$problem" == "fehlt" ]]; then
+    printf 'Code-Schluessel  : fehlt (./taxtronik tcms setup managed)\n'
+  elif [[ -n "$problem" ]]; then
+    printf 'Code-Schluessel  : UNGUELTIG (%s)\n' "$problem"
+  else
+    printf 'Code-Schluessel  : %s Eintrag/Eintraege (%s), Format gueltig; signiert: %s\n' \
+      "$(tcms_list_count "$list")" "$(tcms_code_key_ids "$list")" "$(tcms_code_key_id "${list%%,*}")"
+  fi
+}
+
+tcms_status_code_key_rotation() {
+  local due when
+  [[ -e "$TCMS_CODE_KEY_ROTATION_STATE" ]] || return 0
+  if ! tcms_parse_code_key_rotation_state; then
+    printf 'Code-Rotation    : Zustand %s (%s)\n' "$_TCMS_CKR_PROBLEM" "$TCMS_CODE_KEY_ROTATION_STATE"
+    return 0
+  fi
+  if [[ "$_TCMS_CKR_PHASE" == "prepared" ]]; then
+    printf 'Code-Rotation    : Start unterbrochen (%s -> %s); fortsetzen mit ./taxtronik tcms rotate-code-key\n' \
+      "$_TCMS_CKR_OLD" "$_TCMS_CKR_NEW"
+    return 0
+  fi
+  due="$(tcms_code_key_rotation_due)"
+  when="ab"
+  (( $(tcms_now) < due )) || when="faellig seit"
+  printf 'Code-Rotation    : seit %s (%s -> %s); Abschluss %s %s mit ./taxtronik tcms rotate-code-key --finish\n' \
+    "$(tcms_format_epoch "$_TCMS_CKR_PUBLISHED")" "$_TCMS_CKR_OLD" "$_TCMS_CKR_NEW" "$when" "$(tcms_format_epoch "$due")"
 }
 
 cmd_tcms() {

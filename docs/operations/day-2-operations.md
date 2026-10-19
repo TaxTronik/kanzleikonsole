@@ -941,7 +941,7 @@ Bei Fehlern:
 (`managed`, `external`, `disabled`). Routine:
 
 ```bash
-./taxtronik tcms status   # Modus, Container, Netze, kids, laufende Rotation
+./taxtronik tcms status   # Modus, Container, Netze, kids, Code-Schlüssel, laufende Rotation
 ./taxtronik doctor        # TCMS-Zeilen: Formate, Paarprüfung, Netze, Health
 ```
 
@@ -951,6 +951,10 @@ Bei Fehlern:
   nicht in den Listen des Dienstes stehen.
 - `WARN` bei Listen mit mehr als dem aktuellen Eintrag ohne laufende Rotation
   und bei einer unterbrochenen Rotation (`./taxtronik tcms rotate-…` erneut).
+- Code-Schlüssel (`TCMS_CODE_SCHLUESSEL`): `FEHLT`, wenn er fehlt oder
+  ungültig ist; `WARN`, sobald der Abschluss einer Rotation fällig ist
+  (`./taxtronik tcms rotate-code-key --finish`, frühestens 7 Tage nach dem
+  Start). Den Termin beim Start als Erinnerung eintragen.
 - Logs ohne Werte: `./taxtronik compose --profile tcms logs tcms-api` bzw.
   `tcms-migrate`.
 - Sicherung: `./taxtronik backup` enthält die TCMS-Datenbank; für tägliche

@@ -1089,6 +1089,76 @@ test_doctor_checks_tcms_formats_without_printing_values() {
   pass "doctor checks TCMS formats and key/token consistency without printing values"
 }
 
+write_code_rotation_state() {
+  local file="$1" phase="$2" old="$3" new="$4" created="$5" published="$6"
+  printf 'format=1\nkind=code-key\nphase=%s\nold_id=%s\nnew_id=%s\ncreated_at_epoch=%s\npublished_at_epoch=%s\n' \
+    "$phase" "$old" "$new" "$created" "$published" >"$file"
+  chmod 0600 "$file"
+}
+
+# Regel (TCMS s8, H5): doctor und status pruefen nur Vorhandensein, Format,
+# Anzahl und Rotationsstand des Code-Schluessels und geben nie einen Wert
+# aus. Fehlt er oder ist er ungueltig, meldet doctor FEHLT; prepare_env
+# bricht deploy/update damit vor jeder Wirkung ab.
+test_doctor_and_status_check_the_code_key_without_values() {
+  local env_file="$TMP_DIR/doctor-ck.env" out="$TMP_DIR/doctor-ck.out" key token second variant
+  local clock='tcms_now() { printf 1700100000; }'
+  export CODE_ROTATION_STATE="$TMP_DIR/doctor-ck.rotation"
+  managed_env "$env_file"
+  key="$(code_key_of "$env_file")"; token="$(env_value "$env_file" TCMS_SERVICE_TOKEN)"
+  run_tcms_doctor "$env_file" "$out" '_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1'
+  assert_contains "$out" "OK       TCMS_CODE_SCHLUESSEL   1 Eintrag, Format gueltig"
+  assert_contains "$out" "ERRS=0"
+  assert_no_secret "$out" "$key" TCMS_CODE_SCHLUESSEL
+  for variant in fehlt kurz token; do
+    cp "$env_file" "$env_file.$variant"
+    case "$variant" in
+      fehlt) sed -i 's/^TCMS_CODE_SCHLUESSEL=.*/TCMS_CODE_SCHLUESSEL=/' "$env_file.$variant" ;;
+      kurz) sed -i 's/^TCMS_CODE_SCHLUESSEL=.*/TCMS_CODE_SCHLUESSEL=kurz0123456789/' "$env_file.$variant" ;;
+      token) sed -i "s/^TCMS_CODE_SCHLUESSEL=.*/TCMS_CODE_SCHLUESSEL=$token/" "$env_file.$variant" ;;
+    esac
+    run_tcms_doctor "$env_file.$variant" "$out" '_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1'
+    assert_contains "$out" "FEHLT    TCMS_CODE_SCHLUESSEL"
+    assert_not_contains "$out" "ERRS=0"
+    assert_no_secret "$out" "$token" TCMS_SERVICE_TOKEN
+    assert_no_secret "$out" "$key" TCMS_CODE_SCHLUESSEL
+  done
+  assert_contains "$out" "gleicht TCMS_SERVICE_TOKENS"
+
+  # Zwei Eintraege: laufende Rotation (OK mit Termin), faellig, unterbrochen,
+  # beschaedigter Zustand, kein Zustand (jeweils WARN, nie FEHLT).
+  second="zweiterCodeSchluesselNurFuerDenTest0123456789"
+  cp "$env_file" "$env_file.two"
+  sed -i "s|^TCMS_CODE_SCHLUESSEL=.*|TCMS_CODE_SCHLUESSEL=$second,$key|" "$env_file.two"
+  write_code_rotation_state "$CODE_ROTATION_STATE" published "$(tcms_code_key_id "$key")" "$(tcms_code_key_id "$second")" 1700000000 1700000000
+  run_tcms_doctor "$env_file.two" "$out" '_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1;'"$clock"
+  assert_contains "$out" "OK       TCMS_CODE_ROTATION     2 Eintraege; Abschluss ab $(tcms_format_epoch 1700604800)"
+  assert_contains "$out" "ERRS=0 WARNS=0"
+  run_tcms_doctor "$env_file.two" "$out" '_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1; tcms_now() { printf 1700604800; }'
+  assert_contains "$out" "WARN     TCMS_CODE_ROTATION     Abschluss faellig seit $(tcms_format_epoch 1700604800)"
+  # status: Anzahl, Kennungen und Termin, keine Werte.
+  tcms_isolated "$env_file.two" eval '
+    docker() { return 1; }
+    '"$clock"'
+    cmd_tcms_status' >"$out" 2>&1 || { cat "$out" >&2; test_fail "status failed"; }
+  assert_contains "$out" "Code-Schluessel  : 2 Eintrag/Eintraege ($(tcms_code_key_id "$second"), $(tcms_code_key_id "$key")), Format gueltig; signiert: $(tcms_code_key_id "$second")"
+  assert_contains "$out" "Code-Rotation    : seit $(tcms_format_epoch 1700000000) ($(tcms_code_key_id "$key") -> $(tcms_code_key_id "$second")); Abschluss ab $(tcms_format_epoch 1700604800)"
+  assert_no_secret "$out" "$key" TCMS_CODE_SCHLUESSEL
+  assert_no_secret "$out" "$second" TCMS_CODE_SCHLUESSEL
+  write_code_rotation_state "$CODE_ROTATION_STATE" prepared "$(tcms_code_key_id "$key")" "$(tcms_code_key_id "$second")" 1700000000 ""
+  run_tcms_doctor "$env_file.two" "$out" '_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1'
+  assert_contains "$out" "WARN     TCMS_CODE_ROTATION     Start unterbrochen"
+  chmod 0644 "$CODE_ROTATION_STATE"
+  run_tcms_doctor "$env_file.two" "$out" '_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1'
+  assert_contains "$out" "WARN     TCMS_CODE_ROTATION     Rotationszustand muss dem Operator gehoeren"
+  rm -f "$CODE_ROTATION_STATE"
+  run_tcms_doctor "$env_file.two" "$out" '_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY=1'
+  assert_contains "$out" "WARN     TCMS_CODE_SCHLUESSEL   2 Eintraege ohne Rotationszustand"
+  assert_contains "$out" "ERRS=0"
+  assert_no_secret "$out" "$second" TCMS_CODE_SCHLUESSEL
+  pass "doctor and status check presence, format, count and rotation of the code key without values"
+}
+
 # Regel: Netztrennung auch im laufenden Betrieb (doctor, live).
 test_doctor_flags_app_in_the_tcms_backend_network() {
   local env_file="$TMP_DIR/doctor-net.env" out="$TMP_DIR/doctor-net.out"
@@ -1702,6 +1772,7 @@ run_test test_external_setup_requires_https_and_prints_only_the_public_key
 run_test test_disable_restarts_writers_first_and_keeps_the_database_volume
 run_test test_configure_tcms_for_env_persists_disabled_and_fills_only_gaps
 run_test test_doctor_checks_tcms_formats_without_printing_values
+run_test test_doctor_and_status_check_the_code_key_without_values
 run_test test_doctor_flags_app_in_the_tcms_backend_network
 run_test test_external_health_check_sends_the_token_only_via_stdin
 run_test test_initial_setup_asks_for_the_tax_cms
