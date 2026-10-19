@@ -126,8 +126,10 @@ describe('parseFormData-Migrationsrest', () => {
     // lesen von Beginn an über parseFormData (+1).
     // TCMS Stufe 3, Bereich C: Durchführungen (+7) und Feststellungen (+10)
     // lesen von Beginn an über parseFormData (+17).
+    // TCMS Stufe 3, Bereich A: Einrichtung (+1), Profil (+2), Beschreibung (+5)
+    // und Kommunikation (+1) lesen von Beginn an über parseFormData (+9).
     expect(direct).toHaveLength(2);
     expect(direct.filter((call) => !call.exact)).toHaveLength(1);
-    expect(shared).toBe(141);
+    expect(shared).toBe(150);
   });
 });
