@@ -1794,7 +1794,9 @@
         "apps/web/src/server/inbox/accept-attachment.ts",
         "apps/web/src/server/inbox/attachment-delivery.ts",
         "packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql",
-        "packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql"
+        "packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql",
+        "apps/web/src/server/tcms/abruf/auslieferung.ts",
+        "apps/web/src/server/tcms/portal/anlagen.ts"
       ],
       "test_refs": [
         "apps/web/src/server/documents/__tests__/delivery.test.ts",
@@ -1803,7 +1805,9 @@
         "apps/web/src/components/__tests__/document-preview-security.test.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts",
-        "apps/web/src/server/inbox/__tests__/attachment-delivery.test.ts"
+        "apps/web/src/server/inbox/__tests__/attachment-delivery.test.ts",
+        "apps/web/src/server/tcms/__tests__/bereich-d-db.test.ts",
+        "apps/web/src/server/tcms/__tests__/abruf.test.ts"
       ],
       "feature_refs": ["docs/anwenderdoku/dokumente.md"],
       "related_rules": [
@@ -6201,7 +6205,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Rechte, Vier-Augen-Prinzip, §-153-Würdigung, Vertraulichkeit und Statusübergänge entscheidet der Tax-CMS-Dienst. Die Oberflächen der kanzleikonsole zeigen dessen Antworten an, bilden Fehler über feste Texte ab und rechnen nichts nach. Umgesetzt sind Cockpit, Kontakte & Rollen, Portfolio und Portal-Übersicht; die übrigen Bereiche folgen."
+        "summary": "Rechte, Vier-Augen-Prinzip, §-153-Würdigung, Vertraulichkeit und Statusübergänge entscheidet der Tax-CMS-Dienst. Die Oberflächen der kanzleikonsole zeigen dessen Antworten an, bilden Fehler über feste Texte ab und rechnen nichts nach. Umgesetzt sind alle Bereiche: Portfolio, Arbeitskorb, Cockpit, Kontakte & Rollen, Programm und Dokumentation, Risiken, Kontrollen, Kalender, Prüfung, Länder, Durchführungen mit Nachweisen, Feststellungen, Ereignisse, Mandanten-Portal, Katalog und Audit; Mitteilungen stellt der Worker zu."
       },
       "sources": [
         {

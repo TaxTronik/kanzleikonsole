@@ -19,8 +19,11 @@ implementation:
     Rechte, Vier-Augen-Prinzip, §-153-Würdigung, Vertraulichkeit und
     Statusübergänge entscheidet der Tax-CMS-Dienst. Die Oberflächen der
     kanzleikonsole zeigen dessen Antworten an, bilden Fehler über feste Texte
-    ab und rechnen nichts nach. Umgesetzt sind Cockpit, Kontakte & Rollen,
-    Portfolio und Portal-Übersicht; die übrigen Bereiche folgen.
+    ab und rechnen nichts nach. Umgesetzt sind alle Bereiche: Portfolio,
+    Arbeitskorb, Cockpit, Kontakte & Rollen, Programm und Dokumentation,
+    Risiken, Kontrollen, Kalender, Prüfung, Länder, Durchführungen mit
+    Nachweisen, Feststellungen, Ereignisse, Mandanten-Portal, Katalog und
+    Audit; Mitteilungen stellt der Worker zu.
 sources:
   - kind: product_documentation
     citation: Leitfaden Tax-CMS-Oberflächen
@@ -204,14 +207,20 @@ Framing aus `@taxtronik/tcms-domain`. Labels und Formatierung stammen aus
 dem vendorten Domain-Paket des Dienstes. Menüpunkte und der Reiter der
 Mandantenakte erscheinen nur bei eingeschaltetem Modul und konfiguriertem
 Dienst (`dienst: 'tcms'` in `lib/navigation-registry.ts`, gespeist in den
-geschützten Layouts und der Mandantenakte aus `tcmsKonfiguriert()`).
+geschützten Layouts und der Mandantenakte aus `tcmsKonfiguriert()`); das
+Tax-CMS-Audit zusätzlich nur für Admins und Partner. Gleiche Antwortfelder
+zeigen Kanzlei und Portal mit denselben Bausteinen (Nachweisliste,
+Beschreibung, Formular-Baustein `useTcmsFormular`).
 
 ## Bekannte Abweichungen und Grenzen
 
-Die fachliche Freigabe steht aus. Die übrigen Bereiche des Tax-CMS sind noch
-nicht in der kanzleikonsole; die Demo-Oberfläche des TCMS-Repos ist kein
+Die fachliche Freigabe steht aus. Die Demo-Oberfläche des TCMS-Repos ist kein
 Produkt. Die Anzeige historischer Stände (`?stand=`) übernimmt die Angaben des
-Dienstes ohne eigene Prüfung.
+Dienstes ohne eigene Prüfung. Der Editor der Durchführung (Kanzlei) zeigt
+Differenzen und die Toleranzlage bei der Eingabe als Vorschau; maßgeblich ist
+die Prüfung des gespeicherten Stands durch den Dienst (`pruefung.ausserhalb`),
+die die Kontrollaufgabe im Portal allein anzeigt. Berechnete Differenzen in
+der Antwort des Dienstes sind als Änderungsvorschlag an das TCMS offen.
 
 ## Fachliche Prüffragen
 

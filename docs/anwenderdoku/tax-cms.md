@@ -11,11 +11,14 @@ Tax-Compliance-Management-Systems und ersetzt keine unabhängige Prüfung.
 > „Subsumtion / TCMS“ (Sachverhaltsanalyse, siehe
 > [Subsumtion, TCMS und Quantenlos](subsumtion-tcms-quantenlos.md)).
 
-Dieses Kapitel beschreibt den aktuellen Stand: Portfolio, Cockpit des
-Mandanten, Kontakte & Rollen und die Übersicht im Mandanten-Portal. Die
-übrigen Bereiche (Einrichtung, Profil, Beschreibung, Risiken, Kontrollen,
-Durchführungen, Feststellungen, Ereignisse, Länder, Kalender, Prüfung,
-Kommunikation) sind in der Navigation bereits vorgesehen und folgen.
+Dieses Kapitel beschreibt alle Bereiche: Portfolio und Arbeitskorb über alle
+Mandanten, je Mandant das Cockpit, Kontakte & Rollen, Programm und
+Dokumentation (Einrichtung, Geschäftsprofil, CMS-Beschreibung,
+Kommunikation), Risiken, Kontrollen, Kalender, Prüfungsvorbereitung und
+Länder, Durchführungen mit Nachweisen und Feststellungen, Ereignisse, das
+Mandanten-Portal (Aufgaben, Ereignismeldungen, Freigaben) sowie das
+Audit-Protokoll und den Katalog für Admins und Partner. Mitteilungen des
+Tax-CMS stellt TaxTronik per E-Mail bzw. Hinweis zu (Abschnitt 11).
 
 ## 1. Voraussetzungen
 
@@ -51,7 +54,10 @@ fälligen Aufgaben. Die Kennzahlen oben fassen die Liste zusammen.
 Filter: Suche nach Mandant, Phase (einschließlich „ohne Tax-CMS“), „nur meine
 Mandate“ (zugeordnet als Berufsträgerin oder Hauptbearbeitung), „nur mit
 Überfälligem“ und „nur mit Handlungsbedarf“. Ein Klick auf den Mandanten
-öffnet sein Cockpit.
+öffnet sein Cockpit. Über der Liste führen Links zu **Mein Arbeitskorb**
+(Abschnitt 8) und – für Admins und Partner – zum **Katalog** (Abschnitt 6).
+Admins und Partner finden das **Tax-CMS-Audit** unter _Administration_
+(Abschnitt 10).
 
 ## 4. Cockpit des Mandanten
 
@@ -87,15 +93,7 @@ im Mandanten-Portal sieht und tun darf.
 - Die Kontaktdaten selbst pflegen Sie wie gewohnt in der Mandantenakte.
 - Ob Sie Rollen pflegen dürfen, entscheidet das Tax-CMS.
 
-## 6. Mandanten-Portal
-
-Kontakte mit Portalzugang sehen unter **Tax-CMS** den Stand des Programms,
-ihre Aufgaben, die Möglichkeit, neue Ereignisse zu melden, und die letzten
-Meldungen. Was ein Kontakt sieht, hängt von seiner Rolle (Abschnitt 5) ab.
-Aufgaben, Ereignismeldungen sowie Freigaben und Kenntnisnahmen im Portal
-beschreibt der Abschnitt „Ereignisse, Portal-Aufgaben und Audit“.
-
-## Programm & Dokumentation
+## 6. Programm & Dokumentation
 
 Diese Bereiche bauen das Programm eines Mandanten auf und halten seine
 Dokumentation fest. Was angelegt, geändert oder freigegeben werden darf und
@@ -171,12 +169,12 @@ Schritt fragt vorher nach.
 
 ### Katalog
 
-Admins und Partner sehen unter `/staff/tcms/katalog` (Verweis im
+Admins und Partner sehen unter _Tax-CMS → Katalog_ (Link im Portfolio und im
 Einrichtungsassistenten) den Katalog des Branchenpakets: Risiken, Kontrollen,
 Ereignistypen, Häufigkeitsmatrix und Profilfragen – nur lesend und als
 **ungeprüfter Entwurf**, den Berufsträgerinnen und Berufsträger kalibrieren.
 
-## Risiken, Kontrollen & Prüfung
+## 7. Risiken, Kontrollen & Prüfung
 
 Diese Bereiche zeigen, welche Risiken ein Mandant hat, wie er sie mit
 Kontrollen steuert und wie eine Prüfung vorbereitet wird. Klassen,
@@ -277,7 +275,85 @@ mit Bezug auf das Land.
 - Ein neues Lagerland oder ein Wechsel der Schwelle legt das Tax-CMS als
   Ereignis im Ereigniseingang an. Der CSV-Import folgt.
 
-## Ereignisse, Portal-Aufgaben und Audit
+## 8. Durchführungen, Feststellungen und Arbeitskorb
+
+### Durchführungen
+
+_Tax-CMS → Durchführungen_ listet die Kontrolldurchführungen des Mandanten mit
+Periode, Fälligkeit, Status, Nachweisen und Zuständigkeit. Filter: offen, zur
+Gegenzeichnung, geplant, abgeschlossen, entfallen oder alle; Kanzlei oder
+Mandant; nur Schlüsselkontrollen. Ein Klick öffnet die Durchführung.
+
+In der Durchführung arbeiten Sie die Schritte ab, erfassen Werte (Beträge im
+Format 1.234,56; Differenzen und Toleranz zeigt die Seite sofort an), hängen
+Nachweise an und wählen das Ergebnis. „Entwurf speichern“ sichert den Stand;
+„Zur Gegenzeichnung einreichen“ speichert und reicht ein. Fehlt noch etwas,
+bleibt der Entwurf gespeichert und die Meldung nennt die offenen Punkte. Eine
+zweite Person zeichnet gegen oder weist mit Begründung zurück; bei einem
+Befund wird dabei die Feststellung erfasst. Wer durchgeführt hat, kann nicht
+selbst gegenzeichnen. Entfallen beantragen (mit Begründung) gibt eine zweite
+Person frei; abgeschlossene Durchführungen ändern Sie nur über einen
+Nachtrag. Welche Schaltflächen Sie nutzen können, entscheidet das Tax-CMS;
+gesperrte zeigen den Grund. Ein früherer Stichtag zeigt nur an.
+
+### Nachweise
+
+- **Hochladen:** Die Datei wird in der Dokumentablage des Mandanten
+  gespeichert (Virenscan, Prüfsumme, Typ „Allgemein“) und dann als Nachweis
+  angehängt; das Tax-CMS erhält nur einen Verweis. Gleicher Inhalt wird nicht
+  doppelt angehängt. Lehnt das Tax-CMS das Anhängen ab, bleibt die Datei in
+  der Ablage; die Meldung sagt das.
+- **Vorhandenes Dokument wählen:** Zur Auswahl stehen gescannte Dokumente
+  dieses Mandanten ohne GwG-, Personal- oder Lohnbezug.
+- **Herunterladen:** über die Dokumentablage mit Ihren Rechten in TaxTronik.
+  Stimmt die gespeicherte Datei nicht mehr mit dem Nachweis überein, wird sie
+  nicht ausgeliefert („Abweichung zur Ablage – nicht abrufbar“).
+- **Schutz:** Solange ein Dokument als Nachweis verknüpft ist, lässt es sich
+  in der Ablage nicht löschen und keine neue Version hochladen. Entfernen Sie
+  zuerst den Nachweis in der Durchführung (nur vor dem Einreichen möglich).
+
+### Feststellungen und Maßnahmen
+
+_Tax-CMS → Feststellungen_ listet die Feststellungen mit Quelle, Klasse,
+Schwere, steuerlicher Auswirkung, §-153-Stand, offenen Maßnahmen und ältester
+Frist, darunter alle offenen Maßnahmen. In der Feststellung bearbeiten Sie
+Würdigung, betroffene Erklärungen, Maßnahmen (Verantwortliche: Personen der
+Kanzlei mit Zugriff auf den Mandanten oder Kontakte des Mandanten mit
+Tax-CMS-Rolle), Nachkontrolle und schalten den Status weiter.
+
+- **§-153-Würdigung:** vier gleichrangige Optionen ohne Vorauswahl,
+  Begründung mit mindestens 30 Zeichen, Frist bei „Berichtigung erforderlich“
+  und „Weitere Klärung“. Würdigen dürfen nur zuständige Berufsträgerinnen und
+  Berufsträger.
+- **Verwerfen:** mit Begründung beantragen; eine zweite Person bestätigt.
+- **Vertraulich:** markiert die zuständige Berufsträgerin bzw. der zuständige
+  Berufsträger; Nicht-Beteiligte sehen dann nur „<Nummer> · Vertrauliche
+  Feststellung“.
+
+### Arbeitskorb
+
+Der Arbeitskorb des Tax-CMS (_Mandatsarbeit → Tax-CMS-Arbeitskorb_) sammelt Ihre offenen
+Aufgaben über alle Mandanten: eigene Durchführungen, Gegenzeichnungen,
+Vier-Augen-Bestätigungen, §-153-Würdigungen, neue Ereignisse und
+Beschreibungen im Kanzlei-Review. Ein Klick führt in den Bereich des
+Mandanten.
+
+| Meldung                                                             | Bedeutung und was zu tun ist                                                                       |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Entwurf gespeichert, aber noch nicht eingereicht: …                 | Die genannten Punkte fehlen noch. Ergänzen und erneut einreichen.                                  |
+| … in der Dokumentablage gespeichert, aber nicht als Nachweis …      | Die Datei liegt in der Ablage; als Nachweis später über „Vorhandenes Dokument“ erneut anhängen.    |
+| Dieses Dokument ist als Nachweis … verknüpft                        | Erst den Nachweis in der Durchführung entfernen, dann löschen bzw. eine neue Version hochladen.    |
+| Der Schritt ist noch nicht möglich oder … zwischenzeitlich geändert | Voraussetzungen des nächsten Schritts prüfen (Anzeige „Nächster Schritt“) und die Seite neu laden. |
+
+## 9. Mandanten-Portal
+
+Kontakte mit Portalzugang sehen unter **Tax-CMS** den Stand des Programms,
+ihre Aufgaben, die Möglichkeit, neue Ereignisse zu melden, und die letzten
+Meldungen. Was ein Kontakt sieht, hängt von seiner Rolle (Abschnitt 5) ab.
+Aufgaben, Ereignismeldungen sowie Freigaben und Kenntnisnahmen im Portal
+beschreibt Abschnitt 10.
+
+## 10. Ereignisse, Portal-Aufgaben und Audit
 
 Hier melden Mandanten Veränderungen, erledigen Kontrollaufgaben und geben
 Dokumente frei; die Kanzlei triagiert die Meldungen, Admins und Partner sehen
@@ -363,7 +439,7 @@ _Tax-CMS → Freigaben_ zeigt offene und erledigte Anforderungen der Kanzlei:
 
 ### Audit-Protokoll
 
-Admins und Partner sehen unter `/staff/tcms/audit` alle fachlichen Änderungen
+Admins und Partner sehen unter _Administration → Tax-CMS-Audit_ alle fachlichen Änderungen
 im Tax-CMS der Kanzlei, neueste zuerst, mit Filter nach Mandant und
 Aktionspräfix. Personen erscheinen mit dem Namen, der zum Zeitpunkt der
 Handlung im Protokoll festgehalten wurde. **Hashkette prüfen** lässt das
@@ -382,27 +458,7 @@ qualifizierten Zeitstempel.
 | Die Anlage wurde nicht ausgeliefert …                                        | Die Datei in der Ablage weicht vom festgehaltenen Stand ab. Bitte an die Kanzlei bzw. Admins wenden. |
 | Zusammen höchstens 25 MB auf einmal – bitte in mehreren Schritten hochladen. | Dateien auf mehrere Uploads verteilen.                                                               |
 
-## 7. Meldungen
-
-| Meldung                                               | Bedeutung und was zu tun ist                                                                              |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Tax-CMS nicht eingerichtet                            | Der Dienst ist nicht angebunden. Bitte an die Administration wenden.                                      |
-| Kein Zugriff                                          | Sie haben auf diesen Mandanten oder Bereich keinen Zugriff.                                               |
-| Tax-CMS derzeit nicht erreichbar                      | Der Dienst antwortet nicht. Später erneut versuchen; bei Rückfragen die angezeigte Vorgangsnummer nennen. |
-| Wurde zwischenzeitlich geändert – bitte neu laden.    | Jemand hat denselben Eintrag gleichzeitig geändert. Seite neu laden und die Änderung erneut vornehmen.    |
-| … hat nicht rechtzeitig oder nicht lesbar geantwortet | Ob die Änderung übernommen wurde, ist offen. Seite neu laden und prüfen, bevor Sie sie wiederholen.       |
-| Bitte prüfen Sie diese Angabe.                        | Ein Feld wurde vom Tax-CMS oder von TaxTronik abgelehnt (z. B. Person gehört nicht zu diesem Mandanten).  |
-
-## 8. Grenzen
-
-- Das Tax-CMS dokumentiert; es bescheinigt nichts. Eine Aussage über
-  Angemessenheit oder Wirksamkeit bleibt einer unabhängigen Prüfung
-  vorbehalten.
-- Die Regeln zur Weitergabe von Personen und Rechten an das Tax-CMS sind im
-  [Fachkatalog](../fachkatalog/README.md) als **ungeprüfte Entwürfe** geführt
-  (TCMS-AKTEUR-001, TCMS-DIENST-001); die fachliche Freigabe steht aus.
-
-## 9. Mitteilungen per E-Mail und Hinweis
+## 11. Mitteilungen per E-Mail und Hinweis
 
 Das Tax-CMS versendet selbst keine E-Mails. TaxTronik stellt seine
 Mitteilungen zu:
@@ -435,72 +491,23 @@ Mitteilung als unzustellbar; fordern Sie die Freigabe dann im Tax-CMS neu an
 oder adressieren Sie sie neu. Mails des Tax-CMS können nicht über „Erneut
 senden“ wiederholt werden.
 
-## Durchführungen, Feststellungen und Arbeitskorb
+## 12. Meldungen
 
-### Durchführungen
+| Meldung                                               | Bedeutung und was zu tun ist                                                                                                                                                       |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tax-CMS nicht eingerichtet                            | Der Dienst ist nicht angebunden. Bitte an die Administration wenden.                                                                                                               |
+| Kein Zugriff                                          | Sie haben auf diesen Mandanten oder Bereich keinen Zugriff.                                                                                                                        |
+| Tax-CMS derzeit nicht erreichbar                      | Der Dienst antwortet nicht. Später erneut versuchen; bei Rückfragen die angezeigte Vorgangsnummer nennen.                                                                          |
+| Wurde zwischenzeitlich geändert – bitte neu laden.    | Jemand hat denselben Eintrag gleichzeitig geändert. Seite neu laden und die Änderung erneut vornehmen.                                                                             |
+| … hat nicht rechtzeitig oder nicht lesbar geantwortet | Ob die Änderung übernommen wurde, ist offen. Seite neu laden und prüfen, bevor Sie sie wiederholen.                                                                                |
+| Bitte prüfen Sie diese Angabe.                        | Ein Feld wurde vom Tax-CMS oder von TaxTronik abgelehnt (z. B. Person gehört nicht zu diesem Mandanten).                                                                           |
+| … zweite Person … (Vier-Augen-Prinzip)                | Antrag und Entscheidung (Übersteuerung, Freigabe, Abweichung, Verwerfen) müssen von verschiedenen Personen mit Bearbeitungsrecht kommen. Eine Kollegin bzw. einen Kollegen bitten. |
 
-_Tax-CMS → Durchführungen_ listet die Kontrolldurchführungen des Mandanten mit
-Periode, Fälligkeit, Status, Nachweisen und Zuständigkeit. Filter: offen, zur
-Gegenzeichnung, geplant, abgeschlossen, entfallen oder alle; Kanzlei oder
-Mandant; nur Schlüsselkontrollen. Ein Klick öffnet die Durchführung.
+## 13. Grenzen
 
-In der Durchführung arbeiten Sie die Schritte ab, erfassen Werte (Beträge im
-Format 1.234,56; Differenzen und Toleranz zeigt die Seite sofort an), hängen
-Nachweise an und wählen das Ergebnis. „Entwurf speichern“ sichert den Stand;
-„Zur Gegenzeichnung einreichen“ speichert und reicht ein. Fehlt noch etwas,
-bleibt der Entwurf gespeichert und die Meldung nennt die offenen Punkte. Eine
-zweite Person zeichnet gegen oder weist mit Begründung zurück; bei einem
-Befund wird dabei die Feststellung erfasst. Wer durchgeführt hat, kann nicht
-selbst gegenzeichnen. Entfallen beantragen (mit Begründung) gibt eine zweite
-Person frei; abgeschlossene Durchführungen ändern Sie nur über einen
-Nachtrag. Welche Schaltflächen Sie nutzen können, entscheidet das Tax-CMS;
-gesperrte zeigen den Grund. Ein früherer Stichtag zeigt nur an.
-
-### Nachweise
-
-- **Hochladen:** Die Datei wird in der Dokumentablage des Mandanten
-  gespeichert (Virenscan, Prüfsumme, Typ „Allgemein“) und dann als Nachweis
-  angehängt; das Tax-CMS erhält nur einen Verweis. Gleicher Inhalt wird nicht
-  doppelt angehängt. Lehnt das Tax-CMS das Anhängen ab, bleibt die Datei in
-  der Ablage; die Meldung sagt das.
-- **Vorhandenes Dokument wählen:** Zur Auswahl stehen gescannte Dokumente
-  dieses Mandanten ohne GwG-, Personal- oder Lohnbezug.
-- **Herunterladen:** über die Dokumentablage mit Ihren Rechten in TaxTronik.
-  Stimmt die gespeicherte Datei nicht mehr mit dem Nachweis überein, wird sie
-  nicht ausgeliefert („Abweichung zur Ablage – nicht abrufbar“).
-- **Schutz:** Solange ein Dokument als Nachweis verknüpft ist, lässt es sich
-  in der Ablage nicht löschen und keine neue Version hochladen. Entfernen Sie
-  zuerst den Nachweis in der Durchführung (nur vor dem Einreichen möglich).
-
-### Feststellungen und Maßnahmen
-
-_Tax-CMS → Feststellungen_ listet die Feststellungen mit Quelle, Klasse,
-Schwere, steuerlicher Auswirkung, §-153-Stand, offenen Maßnahmen und ältester
-Frist, darunter alle offenen Maßnahmen. In der Feststellung bearbeiten Sie
-Würdigung, betroffene Erklärungen, Maßnahmen (Verantwortliche: Personen der
-Kanzlei mit Zugriff auf den Mandanten oder Kontakte des Mandanten mit
-Tax-CMS-Rolle), Nachkontrolle und schalten den Status weiter.
-
-- **§-153-Würdigung:** vier gleichrangige Optionen ohne Vorauswahl,
-  Begründung mit mindestens 30 Zeichen, Frist bei „Berichtigung erforderlich“
-  und „Weitere Klärung“. Würdigen dürfen nur zuständige Berufsträgerinnen und
-  Berufsträger.
-- **Verwerfen:** mit Begründung beantragen; eine zweite Person bestätigt.
-- **Vertraulich:** markiert die zuständige Berufsträgerin bzw. der zuständige
-  Berufsträger; Nicht-Beteiligte sehen dann nur „<Nummer> · Vertrauliche
-  Feststellung“.
-
-### Arbeitskorb
-
-Der Arbeitskorb des Tax-CMS (Adresse `/staff/tcms/arbeitskorb`) sammelt Ihre offenen
-Aufgaben über alle Mandanten: eigene Durchführungen, Gegenzeichnungen,
-Vier-Augen-Bestätigungen, §-153-Würdigungen, neue Ereignisse und
-Beschreibungen im Kanzlei-Review. Ein Klick führt in den Bereich des
-Mandanten.
-
-| Meldung                                                             | Bedeutung und was zu tun ist                                                                       |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Entwurf gespeichert, aber noch nicht eingereicht: …                 | Die genannten Punkte fehlen noch. Ergänzen und erneut einreichen.                                  |
-| … in der Dokumentablage gespeichert, aber nicht als Nachweis …      | Die Datei liegt in der Ablage; als Nachweis später über „Vorhandenes Dokument“ erneut anhängen.    |
-| Dieses Dokument ist als Nachweis … verknüpft                        | Erst den Nachweis in der Durchführung entfernen, dann löschen bzw. eine neue Version hochladen.    |
-| Der Schritt ist noch nicht möglich oder … zwischenzeitlich geändert | Voraussetzungen des nächsten Schritts prüfen (Anzeige „Nächster Schritt“) und die Seite neu laden. |
+- Das Tax-CMS dokumentiert; es bescheinigt nichts. Eine Aussage über
+  Angemessenheit oder Wirksamkeit bleibt einer unabhängigen Prüfung
+  vorbehalten.
+- Die Regeln zur Weitergabe von Personen und Rechten an das Tax-CMS sind im
+  [Fachkatalog](../fachkatalog/README.md) als **ungeprüfte Entwürfe** geführt
+  (TCMS-AKTEUR-001, TCMS-DIENST-001); die fachliche Freigabe steht aus.

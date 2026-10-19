@@ -42,6 +42,8 @@ code_refs:
   - apps/web/src/server/inbox/attachment-delivery.ts
   - packages/db/prisma/migrations/20260901001000_portal_inbox/migration.sql
   - packages/db/prisma/migrations/20260901006000_portal_inbox_resume_and_routing/migration.sql
+  - apps/web/src/server/tcms/abruf/auslieferung.ts
+  - apps/web/src/server/tcms/portal/anlagen.ts
 test_refs:
   - apps/web/src/server/documents/__tests__/delivery.test.ts
   - apps/web/src/app/api/portal/documents/__tests__/read-rate-limit.test.ts
@@ -50,6 +52,8 @@ test_refs:
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - apps/web/src/server/inbox/__tests__/accept-attachment.test.ts
   - apps/web/src/server/inbox/__tests__/attachment-delivery.test.ts
+  - apps/web/src/server/tcms/__tests__/bereich-d-db.test.ts
+  - apps/web/src/server/tcms/__tests__/abruf.test.ts
 feature_refs:
   - docs/anwenderdoku/dokumente.md
 related_rules:
@@ -161,6 +165,15 @@ Dokument anschließend auf Mandantenebene frei. Vor Abschluss der Übernahme
 bleibt es privat; abgelehnte oder blockierte Staging-Bytes sind kein
 Portal-Dokument und bleiben nicht downloadbar. Zusätzliche Schutzregeln des
 gewählten Dokumenttyps, insbesondere für Personalunterlagen, bleiben wirksam.
+
+Anlagen, die Kontakte im Tax-CMS-Bereich des Portals hochladen (Kontrollaufgabe,
+Ereignismeldung), legt `server/tcms/portal/anlagen.ts` wie jeden Portal-Upload
+am Sitzungsmandanten ab und gibt sie für den Mandanten frei; das Tax-CMS
+erhält nur einen Verweis. Abrufe zu solchen Verweisen liefert
+`server/tcms/abruf/auslieferung.ts` ausschließlich über die
+Dokumentauslieferung mit denselben Portalregeln (Sitzungsmandant,
+freigegeben, nicht gelöscht, sauber) und nur bei gleichem SHA-256 und gleicher
+Größe aus.
 
 ## Bekannte Abweichungen und Grenzen
 

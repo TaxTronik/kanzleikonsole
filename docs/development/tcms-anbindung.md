@@ -317,11 +317,16 @@ TCMS-AKTEUR-001 und TCMS-DIENST-001 (ungeprüfte Entwürfe).
 | `server/tcms/mandant.ts`, `server/tcms/portfolio.ts` | Mandantenanker (Name, Rechtsform, DATEV-Nr.) aus der kanzleikonsole; Portfolio-Zeilen mit Namen und Zuständigkeit aus der Mandantenliste                                                                                           |
 | `components/tcms/*`                                  | gemeinsame Anzeige-Bausteine (Zustände, Badges, Phasen, Heatmap, Kopf mit Stichtag, Unternavigation mit 14 Bereichen, Pflichthinweis), Tokens der kanzleikonsole, Labels aus `@taxtronik/tcms-domain`                              |
 
-**Seiten.** `/staff/clients/[id]/tcms` (Cockpit mit „Mandant im Tax-CMS
-anlegen“ bzw. „Stammdaten übernehmen“), `/staff/clients/[id]/tcms/kontakte`
-(Kontakte & Rollen), `/staff/tcms` (Portfolio mit Filtern) und `/portal/tcms`
-(Portal-Übersicht). Das Layout unter `/staff/clients/[id]/tcms` ruft
-`tcmsMandantSeite` vor jedem Rendern.
+**Seiten.** Unter `/staff/clients/[id]/tcms` das Cockpit (mit „Mandant im
+Tax-CMS anlegen“ bzw. „Stammdaten übernehmen“) und die 13 Bereiche der
+Unternavigation (Kontakte & Rollen, Einrichtung, Profil, Beschreibung,
+Risiken, Kontrollen, Durchführungen, Feststellungen, Ereignisse, Länder,
+Kalender, Prüfung, Kommunikation); `/staff/tcms` (Portfolio),
+`/staff/tcms/arbeitskorb`, `/staff/tcms/katalog` und `/staff/tcms/audit`
+(Admin/Partner); `/portal/tcms` mit Aufgaben, Ereignismeldung und Freigaben.
+Datei-Abrufe laufen über Route Handler unter `/api/staff/…/tcms/…` und
+`/api/portal/tcms/…` (Leitfaden, Abschnitt 11). Das Layout unter
+`/staff/clients/[id]/tcms` ruft `tcmsMandantSeite` vor jedem Rendern.
 
 **Regeln.**
 

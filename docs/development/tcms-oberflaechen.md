@@ -1,6 +1,6 @@
 # Leitfaden: Tax-CMS-Oberflächen
 
-- **Dokumentstatus:** Entwicklerleitfaden (TCMS Stufe 3, Fundament)
+- **Dokumentstatus:** Entwicklerleitfaden (TCMS Stufe 3, alle Bereiche)
 - **Bezug:** [Anbindung des Tax-CMS](tcms-anbindung.md), Fachkatalog
   [TCMS-AKTEUR-001](../fachkatalog/regeln/subsumtion-und-tcms/tcms-akteur-001-bestaetigungsumfang.md)
   und
@@ -295,13 +295,28 @@ mindestens zwei Bereiche sie brauchen.
   `clients/[id]/tcms/__tests__/actions.test.ts`): Mandant aus dem gebundenen
   Argument (auch wenn das Formular einen anderen sendet), `keinRecht`,
   `vorbereiten` mit den Prüfungen der kanzleikonsole, Body des Aufrufs.
-- **DB-Tests:** Personenprüfung und Namen gegen PostgreSQL in
-  `server/tcms/__tests__/namen-personen-db.test.ts`
-  (`TCMS_SEITE_DB_TEST=1` oder `DB_TESTS=1`).
-- **Live-Test:** `server/tcms/__tests__/oberflaechen-live.test.tsx` mit
-  `TCMS_LIVE_TESTS=1` gegen einen laufenden Dienst mit Demo-Daten
-  (Start wie in [Anbindung, Abschnitt 6](tcms-anbindung.md#6-vertragstest-gegen-den-echten-dienst));
-  rendert die Seiten und ruft die Aktionen echt auf.
+- **DB-Tests** gegen PostgreSQL (App-Rolle unter RLS, Owner nur für
+  Fixtures; `DB_TESTS=1` bzw. das genannte Opt-in, `prismaOwner`/`prisma` aus
+  `@taxtronik/db`, kein eigener `PrismaClient`):
+
+  | Suite                                                         | Inhalt                                                                  | Opt-in                   |
+  | ------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------ |
+  | `server/tcms/__tests__/akteur-db.test.ts`                     | Akteursabbildung (Stufe 2)                                              | `TCMS_AKTEUR_DB_TEST`    |
+  | `server/tcms/__tests__/namen-personen-db.test.ts`             | Personenprüfung und Namen (Fundament)                                   | `TCMS_SEITE_DB_TEST`     |
+  | `server/tcms/programm/__tests__/zustaendigkeit-db.test.ts`    | Zuständigkeiten und Freigabe-Empfänger (Bereich A)                      | `TCMS_SEITE_DB_TEST`     |
+  | `server/tcms/bereich-b/__tests__/personen-auswahl-db.test.ts` | Auswahllisten der Zuständigkeiten (Bereich B)                           | `TCMS_SEITE_DB_TEST`     |
+  | `server/tcms/__tests__/nachweis-verweis-db.test.ts`           | Verknüpfung, Lösch- und Versionssperre der Nachweise (Bereich C)        | `TCMS_SEITE_DB_TEST`     |
+  | `server/tcms/__tests__/bereich-d-db.test.ts`                  | Auslieferung, Portal-Anlagen als Nachweis, Ansprechpersonen (Bereich D) | `TCMS_BEREICH_D_DB_TEST` |
+
+- **Live-Tests** gegen einen laufenden Dienst mit Demo-Daten
+  (`TCMS_LIVE_TESTS=1` plus DB-Opt-in, Start wie in
+  [Anbindung, Abschnitt 6](tcms-anbindung.md#6-vertragstest-gegen-den-echten-dienst)),
+  rendern die Seiten und rufen die Aktionen echt auf. Alle nutzen denselben
+  Demo-Tenant und laufen deshalb **nacheinander**, nie parallel:
+  `server/tcms/__tests__/oberflaechen-live.test.tsx` (Fundament),
+  `server/tcms/programm/__tests__/programm-live.test.tsx` (A),
+  `server/tcms/__tests__/bereich-c-live.test.tsx` (C),
+  `server/tcms/__tests__/bereich-d-live.test.tsx` (D).
 - **Guards** erkennen die Helfer: `client-page-authz.test.ts`
   (`tcmsMandantSeite` als geprüfter Wrapper, `requireClientPageAccess` als
   erster Aufruf im Helfer, jedes Layout im Segment), `module-page-guard.test.ts`

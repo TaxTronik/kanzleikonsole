@@ -1210,8 +1210,8 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   Liste mit offenen Maßnahmen; Würdigung, Erklärungen, Maßnahmen,
   §-153-Würdigung (vier Optionen ohne Vorauswahl), Nachkontrolle, Verwerfen
   (Vier-Augen), Vertraulichkeit
-- **Arbeitskorb** `/staff/tcms/arbeitskorb`: eigene Aufgaben über alle
-  Mandanten
+- **Arbeitskorb** `/staff/tcms/arbeitskorb` (Menüpunkt in der Mandatsarbeit,
+  Link im Portfolio): eigene Aufgaben über alle Mandanten
 - **Ereigniseingang** `/staff/clients/[id]/tcms/ereignisse`: Liste und Triage
   (in Prüfung nehmen, Folgen mit Zuständigkeit und Frist anlegen, erledigen
   oder begründet verwerfen, weitere Folge vorschlagen, abschließen); Verwerfen
@@ -1221,15 +1221,20 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   Kennzahlen, Ergebnis, Entwurf/Übermitteln nach Prüfung des Dienstes,
   Bestätigung bzw. Rückgabe durch eine zweite Person; Anlagen über die
   Portal-Dokumentenpipeline (Virenscan, Typ nach Inhalt, je 10 MB, höchstens
-  5, zusammen 25 MB), Abruf nur freigegebener Dokumente des Sitzungsmandanten
+  5, zusammen 25 MB) als Nachweise der Durchführung verknüpft (Lösch- und
+  Versionssperre wie in der Kanzlei, TCMS-NACHWEIS-001), Abruf nur
+  freigegebener Dokumente des Sitzungsmandanten
 - **Portal: Ereignis melden** `/portal/tcms/ereignis` mit Anlagen und
   Benachrichtigung der Hauptbearbeitung; **Freigaben und Kenntnisnahmen**
   `/portal/tcms/freigaben` mit Bestätigungscode per E-Mail (Code nie
   angezeigt, Fehlversuche und Sperre im Dienst)
-- **Audit-Protokoll** `/staff/tcms/audit` (nur Admin/Partner): Einträge mit
-  festgehaltenem Namen, Filter, Kettenprüfung durch den Dienst
-- Unternavigation mit allen 14 Bereichen des Tax-CMS; die übrigen Bereiche
-  folgen mit denselben Bausteinen
+- **Audit-Protokoll** `/staff/tcms/audit` (nur Admin/Partner, Menüpunkt
+  „Tax-CMS-Audit“ in der Administration): Einträge mit festgehaltenem Namen,
+  Filter, Kettenprüfung durch den Dienst
+- Unternavigation mit allen 14 Bereichen des Tax-CMS; gleiche Antwortfelder
+  zeigen Kanzlei und Portal mit denselben Bausteinen (Nachweisliste,
+  Beschreibung); Eingaben bleiben bei einer Ablehnung in allen Formularen
+  stehen
 - Feste Meldungen für fehlende Rechte, Konflikte („Wurde zwischenzeitlich
   geändert – bitte neu laden.“), Ausfälle und offene Ausgänge bei
   Schreibzugriffen; nie Texte des Dienstes
