@@ -424,11 +424,12 @@ export async function nachtragAnlegenAction(
         params: { durchfuehrungId: durchfuehrung(durchfuehrungId) },
         body: { begruendung: daten.begruendung },
       });
-      return { neu: DurchfuehrungIdSchema.parse(nachtrag.durchfuehrungId) };
+      // Vor der Weiterleitung nur ein gültiges ID-Format übernehmen; sonst zur Liste.
+      const neu = DurchfuehrungIdSchema.safeParse(nachtrag.durchfuehrungId);
+      return { neu: neu.success ? neu.data : null };
     },
   });
   if (!ergebnis.ok) return ergebnis;
-  redirect(
-    `/staff/clients/${encodeURIComponent(mandantId)}/tcms/durchfuehrungen/${encodeURIComponent(ergebnis.neu)}`,
-  );
+  const liste = `/staff/clients/${encodeURIComponent(mandantId)}/tcms/durchfuehrungen`;
+  redirect(ergebnis.neu ? `${liste}/${encodeURIComponent(ergebnis.neu)}` : liste);
 }

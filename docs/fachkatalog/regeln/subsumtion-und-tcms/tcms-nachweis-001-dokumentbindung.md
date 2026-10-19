@@ -198,6 +198,12 @@ Dokumente verhindert der Fremdschlüssel; Pfade mit eigener Vernichtung
 Zulassung nur der neuesten sauberen Version desselben Mandanten, die
 Unveränderlichkeit, die Lösch- und Versionssperre über die Ablage und den
 Trigger sowie die Freigabe und das parallele Löschen und Verknüpfen.
+`nachweis-aktion.test.ts` und `nachweis-download.test.ts` belegen Upload-Weg,
+Freigabe nur nach eindeutiger Ablehnung und den Abgleich vor jeder
+Auslieferung; `bereich-c-live.test.tsx` (Opt-in gegen einen laufenden Dienst)
+führt Auswahl, Sperre, Abruf bis zum Speicher und Freigabe beim Entfernen über
+die echten Aktionen aus. Die Aktionen der Durchführung übernehmen IDs aus
+Antworten des Dienstes nur nach Formatprüfung (`safeParse`).
 `bulk-actions.test.ts` belegt die Löschsperre der Ablage mit Grund,
 `route-poa-lock.test.ts` die Versionssperre der Route (auch zwischen Vor- und
 Nachprüfung). `nachweis-aktion.test.ts` belegt Freigabe nur bei eindeutiger

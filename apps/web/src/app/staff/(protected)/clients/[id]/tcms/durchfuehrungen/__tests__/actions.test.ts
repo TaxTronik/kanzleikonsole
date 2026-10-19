@@ -278,6 +278,13 @@ describe('Beginnen, Entfallen, Zurückweisen, Gegenzeichnen', () => {
     await expect(spec().aufruf(d, await geparst(), undefined)).resolves.toEqual({
       neu: 'cneu000000000000000000001',
     });
+    // Unerwartetes ID-Format: keine Weiterleitung mit dieser ID, sondern zur Liste.
+    const fremd = dienst({ nachtragAnlegen: { durchfuehrungId: '../x', nachtragZuId: DID } });
+    await expect(spec().aufruf(fremd, await geparst(), undefined)).resolves.toEqual({ neu: null });
+    h.ergebnis = { ok: true, neu: null };
+    await expect(
+      aktionen.nachtragAnlegenAction(MANDANT, DID, null, formular([['begruendung', BEGRUENDUNG]])),
+    ).rejects.toThrow(new RegExp(`^NEXT_REDIRECT:/staff/clients/${MANDANT}/tcms/durchfuehrungen$`));
     h.ergebnis = { ok: false, error: 'Wurde zwischenzeitlich geändert – bitte neu laden.' };
     h.redirect.mockClear();
     await expect(

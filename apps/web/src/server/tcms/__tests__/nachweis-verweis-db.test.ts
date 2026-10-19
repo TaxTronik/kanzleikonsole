@@ -7,16 +7,15 @@
 // Verknüpfen serialisieren sich über die Dokumentzeile.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { PrismaClient } from '@taxtronik/db/prisma-client';
-import { createPostgresAdapter, optionalDatabaseUrl } from '@taxtronik/db/prisma-adapter';
-import type { TenantContext, TxClient } from '@taxtronik/db';
+import type { PrismaClient, TenantContext, TxClient } from '@taxtronik/db';
 import { NachweisVerweisSchema } from '@taxtronik/tcms-contract';
 import { createVerifiedLegalEntityGwgFixture } from '../../../../../../packages/db/src/__tests__/gwg-test-fixture';
 
 const fixture = vi.hoisted(() => ({
   run: async (_ctx: TenantContext, _fn: (tx: TxClient) => unknown): Promise<unknown> => undefined,
 }));
-vi.mock('@taxtronik/db/tenant-context', () => ({
+vi.mock('@taxtronik/db/tenant-context', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
   withTenantContext: (ctx: TenantContext, fn: (tx: TxClient) => unknown) => fixture.run(ctx, fn),
 }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
@@ -41,12 +40,11 @@ if (!enabled && process.env.CI === 'true') {
 const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
 
 (enabled ? describe : describe.skip)('Nachweis-Verknüpfungen (TCMS-NACHWEIS-001)', () => {
-  const owner = new PrismaClient({
-    adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
-  });
-  const app = new PrismaClient({
-    adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_APP_URL)),
-  });
+  // Freigegebene Clients aus @taxtronik/db (prisma-client-guard): Owner nur für
+  // Fixtures, die App-Rolle (DATABASE_APP_URL, RLS) für alle Prüfungen. Erst im
+  // beforeAll geladen, damit eine übersprungene Suite keine Verbindung braucht.
+  let owner!: PrismaClient;
+  let app!: PrismaClient;
   let tenantId = '';
   let fremderTenant = '';
   let staffId = '';
@@ -127,6 +125,7 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
   const bezug = () => ({ tenantId, mandantId: mandant, staffId });
 
   beforeAll(async () => {
+    ({ prismaOwner: owner, prisma: app } = await import('@taxtronik/db'));
     const neu = async (name: string) =>
       (await owner.tenant.create({ data: { slug: `tcms-nw-${randomUUID()}`, name } })).id;
     tenantId = await neu('TCMS Nachweise');
