@@ -1,5 +1,21 @@
 ---
 exceptions:
+  - id: FK-EXC-20261019-002
+    date: '2026-10-19'
+    paths:
+      - apps/web/next.config.mjs
+    rule_ids:
+      - MAIL-INBOX-001
+    reason: >-
+      transpilePackages erhält nur das neue Workspace-Paket @taxtronik/tcms-domain
+      (geprüfte Kopie der Labels und Formatierung des Tax-CMS); der Technik-Test
+      verlangt jede Workspace-Laufzeitabhängigkeit dort. Mail-Pakete,
+      serverExternalPackages und Standalone-Paketierung bleiben unverändert;
+      Entscheidung, Geltungsbereich und Ergebnis von MAIL-INBOX-001 ändern sich
+      nicht. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/__tests__/next-workspace-transpilation.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261019-001
     date: '2026-10-19'
     paths:
