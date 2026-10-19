@@ -165,7 +165,7 @@ describe('Frequenzabweichung', () => {
         ['begruendung', ''],
       ]),
     );
-    expect(spec().keinRecht).toBe('ZWEITE_PERSON');
+    expect(spec().keinRecht).toBe('VIER_AUGEN');
     const abgelehnt = spec().parse!();
     expect(abgelehnt.ok).toBe(false);
     expect(Object.keys(abgelehnt.fieldErrors ?? {})).toEqual(['begruendung']);

@@ -158,7 +158,7 @@ export async function frequenzAbweichungEntscheidenAction(
 ): Promise<TcmsAktionsErgebnis> {
   return tcmsKanzleiAktion({
     mandantId,
-    keinRecht: 'ZWEITE_PERSON',
+    keinRecht: 'VIER_AUGEN',
     felder: FELDER,
     parse: () => parseFormData(EntscheidenFormular, formData, { absentAsNull: true }),
     aufruf: async (dienst, d) => {

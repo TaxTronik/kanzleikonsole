@@ -193,7 +193,7 @@ export async function uebersteuerungEntscheidenAction(
 ): Promise<TcmsAktionsErgebnis> {
   return tcmsKanzleiAktion({
     mandantId,
-    keinRecht: 'ZWEITE_PERSON',
+    keinRecht: 'VIER_AUGEN',
     felder: FELDER,
     parse: () => parseFormData(EntscheidenFormular, formData, { absentAsNull: true }),
     aufruf: async (dienst, d) => {
@@ -245,7 +245,7 @@ export async function risikenFreigabeSchrittAction(
   const freigeben = schritt.ok && schritt.data.schritt === 'freigeben';
   return tcmsKanzleiAktion({
     mandantId,
-    keinRecht: freigeben ? 'ZWEITE_PERSON' : 'BEARBEITEN',
+    keinRecht: freigeben ? 'VIER_AUGEN' : 'BEARBEITEN',
     felder: FELDER,
     parse: () =>
       parseFormData(FreigabeSchrittFormular, formData, {
@@ -283,7 +283,7 @@ export async function risikoZurueckweisenAction(
 ): Promise<TcmsAktionsErgebnis> {
   return tcmsKanzleiAktion({
     mandantId,
-    keinRecht: 'ZWEITE_PERSON',
+    keinRecht: 'VIER_AUGEN',
     felder: FELDER,
     parse: () => parseFormData(ZurueckweisenFormular, formData),
     aufruf: async (dienst, d) => {

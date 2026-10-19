@@ -134,7 +134,8 @@ function fehlerAusUmschlag(fehler: Fehler, details: TcmsFehlerDetails): TcmsFehl
     case 'NICHT_AUTHENTIFIZIERT':
       return new TcmsNichtAuthentifiziert(mit);
     case 'NICHT_BERECHTIGT':
-      return new TcmsNichtBerechtigt(mit);
+      // Der Vertrag erzwingt `grund` genau hier (FehlerSchema); ohne Grund kein 403.
+      return new TcmsNichtBerechtigt({ ...mit, verweigerung: fehler.grund ?? null });
     case 'NICHT_GEFUNDEN':
       return new TcmsNichtGefunden(mit);
     case 'KONFLIKT':

@@ -395,6 +395,42 @@ describe('Fehlerabbildung', () => {
       client.aufruf({ methode: 'GET', pfad: '/v1/audit', antwortSchema: Daten, akteur: OHNE_CLI }),
     )) as TcmsNichtBerechtigt;
     expect(berechtigt.grund).toBe(GEHEIM);
+    // TCMS s5: maschinenlesbarer Grund aus `fehler.grund`, nie in `message`.
+    expect(berechtigt.verweigerung).toBe('VIER_AUGEN');
+    expect(berechtigt.message).not.toContain('VIER_AUGEN');
+    // Ein 403 ohne Grund widerspricht dem Vertrag: Protokollfehler, kein 403.
+    srv.setze((_a, res) =>
+      json(res, 403, { ok: false, fehler: { code: 'NICHT_BERECHTIGT', meldung: GEHEIM } }),
+    );
+    expect(
+      await fehlerVon(
+        client.aufruf({
+          methode: 'GET',
+          pfad: '/v1/audit',
+          antwortSchema: Daten,
+          akteur: OHNE_CLI,
+        }),
+      ),
+    ).toBeInstanceOf(TcmsProtokollFehler);
+    // … ebenso ein unbekannter Grund oder ein Grund an einem anderen Code.
+    for (const fehler of [
+      { code: 'NICHT_BERECHTIGT', grund: 'IRGENDWAS' },
+      { code: 'KONFLIKT', grund: 'VIER_AUGEN' },
+    ]) {
+      srv.setze((_a, res) =>
+        json(res, fehler.code === 'KONFLIKT' ? 409 : 403, { ok: false, fehler }),
+      );
+      expect(
+        await fehlerVon(
+          client.aufruf({
+            methode: 'GET',
+            pfad: '/v1/audit',
+            antwortSchema: Daten,
+            akteur: OHNE_CLI,
+          }),
+        ),
+      ).toBeInstanceOf(TcmsProtokollFehler);
+    }
     srv.setze((_a, res) =>
       json(res, 400, { ok: false, fehler: { code: 'UNGUELTIG', felder: { stand: ['ungültig'] } } }),
     );

@@ -201,7 +201,11 @@ um Neuladen; sie wiederholt den Aufruf nicht und nimmt keinen Erfolg an.
 
 `server/tcms/zustand.ts` enthält die einzige Abbildung von Fehlern auf
 Seiten- und Aktionszustände mit festen Texten; Logs enthalten nur
-Klassifikation und Vorgangsnummer. `components/tcms/feststellung.tsx` zeigt
+Klassifikation und Vorgangsnummer. Den Text einer Ablehnung (403) wählt der
+maschinenlesbare Grund des Dienstes (`fehler.grund`, ein fester Text je Grund
+des Vertrags); die Festlegung der Aktion gilt nur als Rückfall. Rechte-
+Kennzeichen der Durchführung tragen denselben Grund (`verweigerung`), damit
+Vorprüfungen und Ablehnungen dieselbe Meldung zeigen. `components/tcms/feststellung.tsx` zeigt
 maskierte Feststellungen, `components/tcms/disclaimer.tsx` das Pflicht-
 Framing aus `@taxtronik/tcms-domain`. Labels und Formatierung stammen aus
 dem vendorten Domain-Paket des Dienstes. Menüpunkte und der Reiter der

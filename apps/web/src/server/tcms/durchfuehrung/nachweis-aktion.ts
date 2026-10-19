@@ -48,6 +48,7 @@ import type { TcmsDienst } from '@/server/tcms/aktion';
 import { TcmsInaktivError } from '@/server/tcms/dienst';
 import {
   aktionsFehlerAus,
+  keinRechtText,
   protokolliereTcmsFehler,
   TCMS_AKTION_TEXTE,
   TCMS_KEIN_RECHT,
@@ -211,11 +212,16 @@ export async function nachweisVorpruefung(
   const { daten } = await dienst.rufe(ENDPUNKTE.durchfuehrungLesen, {
     params: { durchfuehrungId },
   });
-  if (!daten.rechte.bearbeiten.erlaubt) {
+  const recht = daten.rechte.bearbeiten;
+  if (!recht.erlaubt) {
+    // TCMS s6: Darf die Person nicht (`verweigerung`), derselbe feste Text wie
+    // beim 403 des Anhängens; steht nur der Zustand entgegen, dessen Beschreibung.
     throw new ActionError(
-      daten.rechte.bearbeiten.grund
-        ? `Upload nicht möglich: ${daten.rechte.bearbeiten.grund}`
-        : TCMS_KEIN_RECHT.DURCHFUEHREN,
+      recht.verweigerung !== null
+        ? keinRechtText(recht.verweigerung, 'DURCHFUEHREN')
+        : recht.grund
+          ? `Upload nicht möglich: ${recht.grund}`
+          : TCMS_KEIN_RECHT.DURCHFUEHREN,
     );
   }
   return daten;

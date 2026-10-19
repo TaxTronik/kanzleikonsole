@@ -28,6 +28,7 @@ import {
   TcmsProtokollFehler,
   TcmsUngueltig,
 } from '@taxtronik/tcms-client';
+import type { VerweigerungGrund } from '@taxtronik/tcms-contract';
 import type { ActionFailure } from '@/server/actions/action-runner';
 import { log } from '@/server/logger';
 import { TcmsAkteurVerweigert } from './akteur';
@@ -115,49 +116,77 @@ export function seitenZustandAus(fehler: unknown): TcmsSeitenZustand | 'NICHT_GE
 // ---------------------------------------------------------------------------
 
 /**
- * Feste Meldungen für 403 des Dienstes. Die Aktion wählt den Schlüssel, der
- * zu ihrem fachlichen Schritt passt; der Text des Dienstes wird nie
- * durchgereicht. Neue Schlüssel nur hier ergänzen (Test: zustand.test.ts).
+ * Feste Meldungen je Verweigerungsgrund des Dienstes (`fehler.grund` jedes 403,
+ * TCMS s5; VERWEIGERUNG_GRUENDE im Vertrag). Vollständig über alle Gründe
+ * (`satisfies`): Ein neuer Grund im Vertrag bricht die Typprüfung, bis er hier
+ * einen festen Text hat. Der Text des Dienstes wird nie durchgereicht.
  */
-export const TCMS_KEIN_RECHT = {
+const KEIN_RECHT_JE_GRUND = {
   /** Bearbeiten im Mandanten (kannBearbeiten im Dienst). */
   BEARBEITEN:
     'Dieser Schritt ist Admins und Partnern sowie der zuständigen Berufsträgerin oder Hauptbearbeitung des Mandanten vorbehalten.',
   /** §-153-Würdigung (kannWuerdigen im Dienst). */
   WUERDIGEN: 'Die §-153-Würdigung ist zuständigen Berufsträgerinnen und Berufsträgern vorbehalten.',
-  /** Vier-Augen-Prinzip: dieselbe Person darf nicht beantragen und entscheiden. */
+  /**
+   * Vier-Augen-Prinzip: dieselbe Person darf nicht beantragen bzw. mitwirken und
+   * entscheiden (Übersteuerung, Risikofreigabe, Frequenzabweichung, Verwerfen,
+   * Gegenzeichnung, Review; vorher je Bereich „ZWEITE_PERSON“).
+   */
   VIER_AUGEN: 'Vier-Augen-Prinzip: Diesen Schritt muss eine andere Person ausführen.',
   /** Kanzleiweite Verwaltung (z. B. Audit). */
   VERWALTUNG: 'Dieser Schritt ist Admins und Partnern der Kanzlei vorbehalten.',
-  /** Portal: Rolle beim Mandanten fehlt (gesetzliche Vertretung, Tax-Compliance-Beauftragte). */
-  PORTAL_ROLLE:
-    'Dieser Schritt ist der gesetzlichen Vertretung oder den Tax-Compliance-Beauftragten Ihres Unternehmens vorbehalten.',
-  /** Portal: Aufgabe oder Freigabe ist einer anderen Person zugeordnet. */
-  PORTAL_ZUGEORDNET: 'Dieser Schritt ist der zugeordneten Person vorbehalten.',
-  /** Fallback, wenn keiner der Schlüssel passt. */
-  STANDARD: 'Dieser Schritt ist zuständigen Personen vorbehalten.',
+  /** Vertrauliche Feststellung (nur Beteiligte; markieren nur zuständige BT). */
+  VERTRAULICH:
+    'Vertraulich markieren ist der zuständigen Berufsträgerin bzw. dem zuständigen Berufsträger vorbehalten.',
   /** Durchführung einer Kontrolle (kannDurchfuehren im Dienst). */
   DURCHFUEHREN:
     'Dieser Schritt ist der zugewiesenen durchführenden Person oder ihrer Vertretung vorbehalten.',
   /** Gegenzeichnung bzw. Zurückweisung einer eingereichten Durchführung (kannGegenzeichnen). */
   GEGENZEICHNEN:
     'Die Gegenzeichnung ist der vorgesehenen gegenzeichnenden Person oder zuständigen Berufsträgerinnen und Berufsträgern vorbehalten, nie der durchführenden Person.',
-  /** Verwerfen einer Feststellung bestätigen (kannVerwerfenBestaetigen). */
+  /** Schritt der anderen Seite (Kanzlei bzw. Mandant), z. B. eine Kontrolle des Mandanten. */
+  PARTEI: 'Diesen Schritt führt die andere Seite aus (Kanzlei bzw. Mandant).',
+  /** Portal: Rolle beim Mandanten fehlt (gesetzliche Vertretung, Tax-Compliance-Beauftragte). */
+  PORTAL_ROLLE:
+    'Dieser Schritt ist der gesetzlichen Vertretung oder den Tax-Compliance-Beauftragten Ihres Unternehmens vorbehalten.',
+  /** Portal: Aufgabe oder Freigabe ist einer anderen Person zugeordnet. */
+  PORTAL_ZUGEORDNET: 'Dieser Schritt ist der zugeordneten Person vorbehalten.',
+} as const satisfies Readonly<Record<VerweigerungGrund, string>>;
+
+/**
+ * Rückfälle der Aktionen (`keinRecht`), wenn ein 403 keinen bekannten Grund
+ * trägt (nur ohne Antwort des Dienstes denkbar; jede 403-Antwort hat einen).
+ */
+const KEIN_RECHT_RUECKFALL = {
+  /** Fallback, wenn keiner der Schlüssel passt. */
+  STANDARD: 'Dieser Schritt ist zuständigen Personen vorbehalten.',
+  /** Verwerfen einer Feststellung bestätigen (kein eigener Grund im Dienst). */
   VERWERFEN_BESTAETIGEN:
     'Das Verwerfen bestätigt eine zweite Person; ist eine steuerliche Auswirkung nicht ausgeschlossen, nur die zuständige Berufsträgerin bzw. der zuständige Berufsträger.',
-  /** Feststellung vertraulich markieren (kannWuerdigen). */
-  VERTRAULICH:
-    'Vertraulich markieren ist der zuständigen Berufsträgerin bzw. dem zuständigen Berufsträger vorbehalten.',
-  /**
-   * Entscheidung im Vier-Augen-Prinzip (Übersteuerung, Risikofreigabe,
-   * Frequenzabweichung): Der Dienst lehnt mit 403 ab, wenn die Person selbst
-   * beantragt hat oder kein Bearbeitungsrecht hat – der Text deckt beides ab.
-   */
-  ZWEITE_PERSON:
-    'Diese Entscheidung trifft eine zweite Person mit Bearbeitungsrecht für diesen Mandanten (Vier-Augen-Prinzip).',
 } as const;
 
+/**
+ * Feste Meldungen für 403: je Grund des Dienstes und die Rückfälle der
+ * Aktionen. Neue Schlüssel nur hier ergänzen, nie umformulieren (Test:
+ * zustand.test.ts).
+ */
+export const TCMS_KEIN_RECHT = { ...KEIN_RECHT_JE_GRUND, ...KEIN_RECHT_RUECKFALL } as const;
+
 export type TcmsKeinRechtGrund = keyof typeof TCMS_KEIN_RECHT;
+
+/**
+ * Fester Text zu einer Verweigerung: der Grund des Dienstes zuerst, sonst der
+ * Rückfall der Aktion (bzw. `STANDARD`). Unbekannte Werte fallen zurück.
+ */
+export function keinRechtText(
+  verweigerung: VerweigerungGrund | null | undefined,
+  rueckfall: TcmsKeinRechtGrund = 'STANDARD',
+): string {
+  if (typeof verweigerung === 'string' && Object.hasOwn(KEIN_RECHT_JE_GRUND, verweigerung)) {
+    return KEIN_RECHT_JE_GRUND[verweigerung];
+  }
+  return TCMS_KEIN_RECHT[rueckfall];
+}
 
 export const TCMS_AKTION_TEXTE = {
   keinZugriff: 'Kein Zugriff auf das Tax-CMS.',
@@ -175,7 +204,10 @@ export const TCMS_AKTION_TEXTE = {
 } as const;
 
 export interface TcmsAktionsAbbildung {
-  /** Fester Text bei 403 (Standard `STANDARD`). */
+  /**
+   * Rückfall bei 403 ohne Grund des Dienstes (Standard `STANDARD`); mit Grund
+   * (`verweigerung`, TCMS s5) gilt immer der Text zu diesem Grund.
+   */
   keinRecht?: TcmsKeinRechtGrund;
   /**
    * Feldpfad des Dienstes (erstes Segment, ohne `body.`/`query.`) → Feldname
@@ -255,7 +287,7 @@ export function aktionsFehlerAus(
   if (fehler instanceof TcmsNichtBerechtigt) {
     return {
       ok: false,
-      error: TCMS_KEIN_RECHT[abbildung.keinRecht ?? 'STANDARD'],
+      error: keinRechtText(fehler.verweigerung, abbildung.keinRecht),
       errorCode: 'FORBIDDEN',
     };
   }
@@ -293,6 +325,8 @@ export function tcmsLogFelder(fehler: unknown): Record<string, string | number |
     ...(fehler instanceof TcmsNichtVerfuegbar ? { grund: fehler.grund } : {}),
     ...(fehler instanceof TcmsProtokollFehler ? { grund: fehler.grund } : {}),
     ...(fehler instanceof TcmsUngueltig ? { lokal: fehler.lokal ? 1 : 0 } : {}),
+    // Grund eines 403 nur als Wert der festen Liste (nie der Text des Dienstes).
+    ...(fehler instanceof TcmsNichtBerechtigt ? { verweigerung: fehler.verweigerung } : {}),
   };
 }
 

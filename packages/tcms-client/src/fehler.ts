@@ -10,7 +10,7 @@
 // im Log.
 // =============================================================================
 
-import type { FehlerCode } from '@taxtronik/tcms-contract';
+import type { FehlerCode, VerweigerungGrund } from '@taxtronik/tcms-contract';
 
 export interface TcmsFehlerDetails {
   status?: number | null;
@@ -51,12 +51,20 @@ export class TcmsNichtGefunden extends TcmsFehler {
   }
 }
 
-/** 403: fachlich nicht berechtigt (z. B. Vier-Augen); `grund` ist die Meldung des Dienstes. */
+/**
+ * 403: fachlich nicht berechtigt (z. B. Vier-Augen); `grund` ist die Meldung
+ * des Dienstes (Text, nie anzeigen), `verweigerung` der maschinenlesbare Grund
+ * aus `fehler.grund` (feste Liste des Vertrags, TCMS s5), nach dem die
+ * kanzleikonsole ihre feste Meldung wählt. `null` nur ohne Antwort des Dienstes
+ * (lokal gebaut); jede 403-Antwort des Dienstes trägt einen Grund.
+ */
 export class TcmsNichtBerechtigt extends TcmsFehler {
   readonly grund: string | null;
-  constructor(details: TcmsFehlerDetails = {}) {
+  readonly verweigerung: VerweigerungGrund | null;
+  constructor(details: TcmsFehlerDetails & { verweigerung?: VerweigerungGrund | null } = {}) {
     super('TcmsNichtBerechtigt', mitStatus('TCMS: nicht berechtigt', details), details);
     this.grund = details.meldung ?? null;
+    this.verweigerung = details.verweigerung ?? null;
   }
 }
 

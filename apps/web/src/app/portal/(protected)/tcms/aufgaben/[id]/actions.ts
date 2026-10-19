@@ -26,6 +26,7 @@ import { parseActionInput, parseFormData } from '@/server/actions/form-data';
 import type { ActionFailure } from '@/server/actions/action-runner';
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsPortalAktion } from '@/server/tcms/aktion';
+import { keinRechtText } from '@/server/tcms/zustand';
 import {
   nachweisAnhaengenUndBinden,
   nachweisEntfernenUndFreigeben,
@@ -128,12 +129,21 @@ export async function portalAnlagenHochladenAction(
       const params = { durchfuehrungId: d.durchfuehrungId };
       // Erst das Recht laut Dienst, dann Dateien annehmen: ohne Recht wird nichts abgelegt.
       const { daten: a } = await dienst.rufe(ENDPUNKTE.portalAufgabeLesen, { params });
-      if (!a.rechte.bearbeiten.erlaubt) {
-        return {
-          ok: false,
-          error: 'Für diese Aufgabe können Sie derzeit keine Anlagen hochladen.',
-          errorCode: 'FORBIDDEN',
-        };
+      const recht = a.rechte.bearbeiten;
+      if (!recht.erlaubt) {
+        // TCMS s6: Darf die Person nicht (`verweigerung`), derselbe feste Text wie
+        // beim 403 des Dienstes; steht nur der Zustand entgegen, ein fester Hinweis.
+        return recht.verweigerung !== null
+          ? {
+              ok: false,
+              error: keinRechtText(recht.verweigerung, 'PORTAL_ZUGEORDNET'),
+              errorCode: 'FORBIDDEN',
+            }
+          : {
+              ok: false,
+              error: 'Für diese Aufgabe können Sie derzeit keine Anlagen hochladen.',
+              errorCode: 'CONFLICT',
+            };
       }
       // Gleicher Inhalt in derselben Aufgabe wird übersprungen (wie in der Demo).
       const vorhanden = new Set(a.nachweise.map((n) => n.sha256));

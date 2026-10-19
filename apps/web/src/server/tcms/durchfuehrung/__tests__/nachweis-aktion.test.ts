@@ -213,6 +213,15 @@ describe('Vorprüfung und gleicher Inhalt', () => {
     await expect(nachweisVorpruefung(dienst(d) as never, DID)).rejects.toThrow(
       TCMS_KEIN_RECHT.DURCHFUEHREN,
     );
+    // TCMS s6: Verweigerung der Person → fester Text zum Grund (wie beim 403), nie der Text des Dienstes.
+    d.rechte.bearbeiten = {
+      erlaubt: false,
+      grund: 'Diese Kontrolle führt der Mandant im Portal durch',
+      verweigerung: 'PARTEI',
+    };
+    await expect(nachweisVorpruefung(dienst(d) as never, DID)).rejects.toThrow(
+      TCMS_KEIN_RECHT.PARTEI,
+    );
     d.rechte.bearbeiten = { erlaubt: true, grund: null, verweigerung: null };
     await expect(nachweisVorpruefung(dienst(d) as never, DID)).resolves.toBe(d);
   });

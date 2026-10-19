@@ -189,9 +189,10 @@ Tax-CMS bei jedem Schritt.
 - **Vier-Augen-Prinzip:** Wer eine Übersteuerung oder Frequenzabweichung
   beantragt oder Risiken zur Freigabe eingereicht hat, sieht statt der
   Entscheidung den Hinweis „Von Ihnen beantragt – die Entscheidung trifft
-  eine zweite Person.“ Lehnt das Tax-CMS eine Entscheidung ab, erscheint
-  „Diese Entscheidung trifft eine zweite Person mit Bearbeitungsrecht für
-  diesen Mandanten (Vier-Augen-Prinzip).“
+  eine zweite Person.“ Lehnt das Tax-CMS eine Entscheidung ab, weil Sie selbst
+  beantragt haben, erscheint „Vier-Augen-Prinzip: Diesen Schritt muss eine
+  andere Person ausführen.“; fehlt das Bearbeitungsrecht, die Meldung zum
+  Bearbeitungsrecht (Abschnitt 2).
 - **Begründungen** brauchen mindestens 30 Zeichen und werden mit Name und
   Zeitpunkt festgehalten. Bei einem Fehler bleiben Ihre Eingaben stehen.
 
@@ -451,7 +452,6 @@ qualifizierten Zeitstempel.
 
 | Meldung                                                                      | Bedeutung und was zu tun ist                                                                         |
 | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Vier-Augen-Prinzip: Diesen Schritt muss eine andere Person ausführen.        | Antrag und Bestätigung müssen von verschiedenen Personen kommen.                                     |
 | Der Code stimmt nicht. Noch … Versuche.                                      | Code aus der E-Mail erneut eingeben oder einen neuen anfordern.                                      |
 | Der Bestätigungscode ist nach mehreren Fehlversuchen gesperrt.               | Bitte an die Kanzlei wenden.                                                                         |
 | Entwurf gespeichert, aber noch nicht übermittelt: …                          | Die genannten Punkte ergänzen und erneut übermitteln.                                                |
@@ -493,15 +493,16 @@ senden“ wiederholt werden.
 
 ## 12. Meldungen
 
-| Meldung                                               | Bedeutung und was zu tun ist                                                                                                                                                       |
-| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tax-CMS nicht eingerichtet                            | Der Dienst ist nicht angebunden. Bitte an die Administration wenden.                                                                                                               |
-| Kein Zugriff                                          | Sie haben auf diesen Mandanten oder Bereich keinen Zugriff.                                                                                                                        |
-| Tax-CMS derzeit nicht erreichbar                      | Der Dienst antwortet nicht. Später erneut versuchen; bei Rückfragen die angezeigte Vorgangsnummer nennen.                                                                          |
-| Wurde zwischenzeitlich geändert – bitte neu laden.    | Jemand hat denselben Eintrag gleichzeitig geändert. Seite neu laden und die Änderung erneut vornehmen.                                                                             |
-| … hat nicht rechtzeitig oder nicht lesbar geantwortet | Ob die Änderung übernommen wurde, ist offen. Seite neu laden und prüfen, bevor Sie sie wiederholen.                                                                                |
-| Bitte prüfen Sie diese Angabe.                        | Ein Feld wurde vom Tax-CMS oder von TaxTronik abgelehnt (z. B. Person gehört nicht zu diesem Mandanten).                                                                           |
-| … zweite Person … (Vier-Augen-Prinzip)                | Antrag und Entscheidung (Übersteuerung, Freigabe, Abweichung, Verwerfen) müssen von verschiedenen Personen mit Bearbeitungsrecht kommen. Eine Kollegin bzw. einen Kollegen bitten. |
+| Meldung                                                               | Bedeutung und was zu tun ist                                                                                                                                                                              |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tax-CMS nicht eingerichtet                                            | Der Dienst ist nicht angebunden. Bitte an die Administration wenden.                                                                                                                                      |
+| Kein Zugriff                                                          | Sie haben auf diesen Mandanten oder Bereich keinen Zugriff.                                                                                                                                               |
+| Tax-CMS derzeit nicht erreichbar                                      | Der Dienst antwortet nicht. Später erneut versuchen; bei Rückfragen die angezeigte Vorgangsnummer nennen.                                                                                                 |
+| Wurde zwischenzeitlich geändert – bitte neu laden.                    | Jemand hat denselben Eintrag gleichzeitig geändert. Seite neu laden und die Änderung erneut vornehmen.                                                                                                    |
+| … hat nicht rechtzeitig oder nicht lesbar geantwortet                 | Ob die Änderung übernommen wurde, ist offen. Seite neu laden und prüfen, bevor Sie sie wiederholen.                                                                                                       |
+| Bitte prüfen Sie diese Angabe.                                        | Ein Feld wurde vom Tax-CMS oder von TaxTronik abgelehnt (z. B. Person gehört nicht zu diesem Mandanten).                                                                                                  |
+| Vier-Augen-Prinzip: Diesen Schritt muss eine andere Person ausführen. | Antrag bzw. Mitwirkung und Entscheidung (Übersteuerung, Freigabe, Abweichung, Verwerfen, Gegenzeichnung, Bestätigung) müssen von verschiedenen Personen kommen. Eine Kollegin bzw. einen Kollegen bitten. |
+| Diesen Schritt führt die andere Seite aus (Kanzlei bzw. Mandant).     | Der Schritt gehört der Kanzlei bzw. dem Mandanten im Portal, z. B. eine Kontrolle, die der Mandant durchführt.                                                                                            |
 
 ## 13. Grenzen
 

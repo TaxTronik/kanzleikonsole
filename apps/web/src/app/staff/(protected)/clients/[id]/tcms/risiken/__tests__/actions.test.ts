@@ -216,7 +216,7 @@ describe('Übersteuerung', () => {
     );
     const s = spec();
     expect(s.mandantId).toBe(MANDANT);
-    expect(s.keinRecht).toBe('ZWEITE_PERSON');
+    expect(s.keinRecht).toBe('VIER_AUGEN');
     const { d, ergebnis } = await ausfuehren({ status: 'FREIGEGEBEN' });
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.uebersteuerungEntscheiden, {
       params: { uebersteuerungId: 'ue_1' },
@@ -258,7 +258,7 @@ describe('Übersteuerung', () => {
 describe('risikenFreigabeSchrittAction', () => {
   it.each([
     ['einreichen', 'BEARBEITEN', ENDPUNKTE.risikenFreigabeEinreichen, 'zur Freigabe eingereicht'],
-    ['freigeben', 'ZWEITE_PERSON', ENDPUNKTE.risikenFreigeben, 'freigegeben'],
+    ['freigeben', 'VIER_AUGEN', ENDPUNKTE.risikenFreigeben, 'freigegeben'],
   ] as const)(
     'Schritt %s: Text bei 403 %s, Endpunkt nach Schritt, Auswahl ohne Dubletten',
     async (schritt, keinRecht, endpunkt, was) => {
@@ -327,7 +327,7 @@ describe('risikoZurueckweisenAction', () => {
         ['begruendung', BEGRUENDUNG],
       ]),
     );
-    expect(spec().keinRecht).toBe('ZWEITE_PERSON');
+    expect(spec().keinRecht).toBe('VIER_AUGEN');
     const { d, ergebnis } = await ausfuehren({ code: 'EC-UST-01' });
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.risikoZurueckweisen, {
       params: { risikoId: 'EC-UST-01' },

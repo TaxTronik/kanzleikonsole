@@ -64,6 +64,7 @@ vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({
 vi.mock('@/server/tcms/portal/ansprechpartner', () => ({ ansprechpersonenTx: h.ansprech }));
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
+import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import {
   portalAnlageEntfernenAction,
   portalAnlagenHochladenAction,
@@ -324,10 +325,32 @@ describe('portalAnlagenHochladenAction', () => {
     await portalAnlagenHochladenAction(AUFGABE, null, formular([['dateien', datei('a.csv')]]));
     const ablauf: string[] = [];
     const { r } = await lauf({ portalAufgabeLesen: aufgabe }, ablauf);
-    expect(r).toMatchObject({ ok: false, errorCode: 'FORBIDDEN' });
+    // TCMS s6: Grund des Dienstes → fester Text der kanzleikonsole, nie dessen Text.
+    expect(r).toEqual({
+      ok: false,
+      error: TCMS_KEIN_RECHT.PORTAL_ZUGEORDNET,
+      errorCode: 'FORBIDDEN',
+    });
     expect(h.nachweisAblegen).not.toHaveBeenCalled();
     expect(h.ablegen).not.toHaveBeenCalled();
     expect(ablauf).toEqual(['portalAufgabeLesen']);
+  });
+
+  it('nur der Zustand steht entgegen (keine Verweigerung): fester Hinweis, nichts abgelegt', async () => {
+    const aufgabe = tcmsFixtures.portalAufgabeK23Murat();
+    aufgabe.rechte.bearbeiten = {
+      erlaubt: false,
+      grund: 'Einreichung liegt vor — keine Änderung mehr möglich',
+      verweigerung: null,
+    };
+    await portalAnlagenHochladenAction(AUFGABE, null, formular([['dateien', datei('a.csv')]]));
+    const { r } = await lauf({ portalAufgabeLesen: aufgabe });
+    expect(r).toEqual({
+      ok: false,
+      error: 'Für diese Aufgabe können Sie derzeit keine Anlagen hochladen.',
+      errorCode: 'CONFLICT',
+    });
+    expect(h.nachweisAblegen).not.toHaveBeenCalled();
   });
 
   it('mit Recht: ablegen, Verweis aus der Ablage anhängen; gleicher Inhalt wird übersprungen', async () => {

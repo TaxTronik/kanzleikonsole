@@ -197,10 +197,17 @@ Regeln:
   (Portal).
 - **`'use server'`-Dateien exportieren nur asynchrone Funktionen**;
   Konstanten (z. B. Auswahlwerte) liegen in `components/tcms/…`.
-- **`keinRecht`** wählt den festen Text bei 403 aus `TCMS_KEIN_RECHT`
-  (`BEARBEITEN`, `WUERDIGEN`, `VIER_AUGEN`, `VERWALTUNG`, `PORTAL_ROLLE`,
-  `PORTAL_ZUGEORDNET`, `STANDARD`). Neue Gründe werden dort **ergänzt**, nie
-  umformuliert.
+- **403:** Jede Ablehnung des Dienstes trägt einen maschinenlesbaren Grund
+  (`fehler.grund`, `TcmsNichtBerechtigt.verweigerung`, TCMS s5). Der feste
+  Text kommt aus `TCMS_KEIN_RECHT[verweigerung]` (ein Text je Grund des
+  Vertrags: `BEARBEITEN`, `WUERDIGEN`, `VIER_AUGEN`, `VERWALTUNG`,
+  `VERTRAULICH`, `DURCHFUEHREN`, `GEGENZEICHNEN`, `PARTEI`, `PORTAL_ROLLE`,
+  `PORTAL_ZUGEORDNET`; Vollständigkeit per `satisfies`). **`keinRecht`** der
+  Aktion ist nur noch Rückfall ohne Grund (zusätzlich `STANDARD`,
+  `VERWERFEN_BESTAETIGEN`). Rechte-Kennzeichen der Durchführung tragen
+  denselben Grund als `verweigerung` (`null`: nur der Zustand steht
+  entgegen); Vorprüfungen vor einer Ablage wählen danach denselben Text
+  (`keinRechtText`). Neue Texte werden **ergänzt**, nie umformuliert.
 - **`felder`** ordnet Feldnamen des Dienstes (`felder` eines 400) den
   Formularfeldern zu; nicht zugeordnete Felder ergeben die allgemeine
   Meldung.
@@ -223,7 +230,7 @@ zeigen nie den Text des Dienstes.
 | -------------------------------------------- | ----------------------------------------------------- | ---------------------------------------------------------- |
 | Dienst nicht konfiguriert oder Modul aus     | „Tax-CMS nicht eingerichtet“                          | „Das Tax-CMS ist für diese Kanzlei nicht aktiv.“           |
 | keine Bestätigung (`TcmsAkteurVerweigert`)   | „Kein Zugriff“, bei veralteter Sitzung „neu anmelden“ | „Kein Zugriff auf das Tax-CMS.“, ggf. „neu anmelden“       |
-| 403 des Dienstes                             | „Kein Zugriff“                                        | fester Text nach `keinRecht`                               |
+| 403 des Dienstes                             | „Kein Zugriff“                                        | fester Text nach `verweigerung` (Rückfall `keinRecht`)     |
 | 404                                          | `notFound()` bzw. `daten: null`                       | „nicht gefunden – bitte neu laden“                         |
 | 409                                          | „Anfrage nicht möglich“ mit Vorgangsnummer            | „Wurde zwischenzeitlich geändert – bitte neu laden.“       |
 | 400 (mit `felder`)                           | „Anfrage nicht möglich“ mit Vorgangsnummer            | Sammelmeldung, Feldfehler „Bitte prüfen Sie diese Angabe.“ |

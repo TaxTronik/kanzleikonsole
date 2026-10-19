@@ -3,6 +3,7 @@
 // Oberfläche noch das Log.
 // Fachkatalog: TCMS-DIENST-001, TCMS-AKTEUR-001
 import { describe, expect, it, vi } from 'vitest';
+import { VERWEIGERUNG_GRUENDE } from '@taxtronik/tcms-contract';
 
 const log = vi.hoisted(() => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }));
 vi.mock('@/server/logger', () => ({ log }));
@@ -26,6 +27,7 @@ import {
   TCMS_KEIN_RECHT,
   TCMS_SEITEN_TEXTE,
   aktionsFehlerAus,
+  keinRechtText,
   protokolliereTcmsFehler,
   seitenZustandAus,
   tcmsLogFelder,
@@ -93,6 +95,28 @@ describe('seitenZustandAus', () => {
 
 describe('aktionsFehlerAus', () => {
   const schreibend = { schreibend: true };
+
+  it('403 mit Grund des Dienstes (TCMS s5): fester Text genau zu diesem Grund, vor dem Rückfall der Aktion', () => {
+    for (const grund of VERWEIGERUNG_GRUENDE) {
+      const fehler = new TcmsNichtBerechtigt({ ...details, verweigerung: grund });
+      // Der Rückfall der Aktion zählt nicht, wenn der Dienst einen Grund nennt.
+      expect(aktionsFehlerAus(fehler, { ...schreibend, keinRecht: 'STANDARD' })).toEqual({
+        ok: false,
+        error: TCMS_KEIN_RECHT[grund],
+        errorCode: 'FORBIDDEN',
+      });
+      expect(keinRechtText(grund, 'VERWERFEN_BESTAETIGEN')).toBe(TCMS_KEIN_RECHT[grund]);
+      expect(JSON.stringify(aktionsFehlerAus(fehler, schreibend))).not.toContain('Anna');
+    }
+    // Jeder Grund hat einen eigenen Text; die Rückfälle sind keine Gründe des Dienstes.
+    expect(new Set(VERWEIGERUNG_GRUENDE.map((g) => TCMS_KEIN_RECHT[g])).size).toBe(
+      VERWEIGERUNG_GRUENDE.length,
+    );
+    // Unbekannter Wert (nie aus dem Vertrag) und Prototyp-Schlüssel: Rückfall.
+    expect(keinRechtText('constructor' as never, 'VIER_AUGEN')).toBe(TCMS_KEIN_RECHT.VIER_AUGEN);
+    expect(keinRechtText('STANDARD' as never)).toBe(TCMS_KEIN_RECHT.STANDARD);
+    expect(keinRechtText(null)).toBe(TCMS_KEIN_RECHT.STANDARD);
+  });
 
   it('403: feste Meldung je Schlüssel, nie der Text des Dienstes', () => {
     const fehler = new TcmsNichtBerechtigt(details);
@@ -207,12 +231,13 @@ describe('aktionsFehlerAus', () => {
 
 describe('Protokoll', () => {
   it('enthält Klassifikation und requestId, nie Meldung, Grundtext oder Feldwerte', () => {
-    const fehler = new TcmsNichtBerechtigt(details);
+    const fehler = new TcmsNichtBerechtigt({ ...details, verweigerung: 'VIER_AUGEN' });
     expect(tcmsLogFelder(fehler)).toEqual({
       fehler: 'TcmsNichtBerechtigt',
       status: 403,
       code: 'NICHT_BERECHTIGT',
       tcmsRequestId: 'req-1',
+      verweigerung: 'VIER_AUGEN',
     });
     protokolliereTcmsFehler(
       { komponente: 'tcms-aktion', endpunkt: 'durchfuehrungGegenzeichnen' },

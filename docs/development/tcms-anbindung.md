@@ -175,7 +175,9 @@ noch für bestehende Aufrufer da), `health` nur über `client.health()`.
   Protokollfehler).
 - **Fehler.** `TcmsUngueltig` (400 mit `felder`, oder `lokal: true`, wenn
   nicht gesendet), `TcmsNichtAuthentifiziert` (401), `TcmsNichtBerechtigt`
-  (403, `grund`), `TcmsNichtGefunden` (404), `TcmsKonflikt` (409),
+  (403, `grund` = Text des Dienstes, `verweigerung` = maschinenlesbarer Grund
+  aus `fehler.grund`; ein 403 ohne gültigen Grund ist ein Protokollfehler),
+  `TcmsNichtGefunden` (404), `TcmsKonflikt` (409),
   `TcmsNichtVerfuegbar` (Transport, Zeitlimit, 500/502/503/504, offener
   Breaker), `TcmsProtokollFehler` (alles Unerwartete). `message` enthält nur
   Status und Code, nie Antwortkörper; `meldung`/`grund`/`felder` des Dienstes
