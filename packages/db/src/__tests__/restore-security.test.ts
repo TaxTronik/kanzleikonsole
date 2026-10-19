@@ -1,4 +1,5 @@
-// Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001, REMINDER-TICKET-001.
+// Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001, REMINDER-TICKET-001,
+// MAIL-OUTBOX-001.
 // Real PostgreSQL privilege/policy regressions. Every mutation rolls back,
 // including the cluster-wide role changes (ALTER ROLE/GRANT role are transactional).
 // The cases that probe MAINTAIN need PostgreSQL 17+ (CI: 18).
@@ -34,6 +35,11 @@ describe('Restore: effective ACLs and tenant RLS are mandatory', () => {
     'GRANT TRUNCATE ON audit_verify_checkpoint TO PUBLIC',
     'GRANT SELECT ON audit_anchor_lease TO taxtronik_app',
     'GRANT UPDATE ON audit_anchor_lease TO PUBLIC',
+    // TCMS Stufe 4 (MAIL-OUTBOX-001): Zustelltabellen nur für den Worker (Owner).
+    'GRANT SELECT ON tcms_systemakteur TO taxtronik_app',
+    'GRANT UPDATE ON tcms_systemakteur TO PUBLIC',
+    'GRANT SELECT ON tcms_nachricht_zustellung TO taxtronik_app',
+    'GRANT INSERT ON tcms_nachricht_zustellung TO PUBLIC',
     'GRANT DELETE ON document_version TO taxtronik_app',
     'GRANT TRUNCATE ON audit_log TO PUBLIC',
     'GRANT taxtronik TO taxtronik_app WITH INHERIT FALSE, SET TRUE',
@@ -58,7 +64,7 @@ describe('Restore: effective ACLs and tenant RLS are mandatory', () => {
   });
 
   // B6 (S-01): the owner role of the containers after pg_restore. These cases
-  // run before the 30-invariant probe and therefore also hold on PostgreSQL 16.
+  // run before the 32-invariant probe and therefore also hold on PostgreSQL 16.
   const OWNER_UNSAFE = /Owner-Rolle taxtronik_owner verletzt S-01/;
   const OWNER_EXTRA = /Owner-Rolle taxtronik_owner besitzt unzulässige Rechte/;
   const PRE_S01_DUMP =

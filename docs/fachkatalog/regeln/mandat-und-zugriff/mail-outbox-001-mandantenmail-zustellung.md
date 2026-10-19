@@ -103,6 +103,8 @@ test_refs:
   - apps/web/src/__tests__/tcms-systemakteur-guard.test.ts
   - packages/tcms-client/src/__tests__/nachrichten.test.ts
   - apps/web/src/app/staff/(protected)/admin/email-templates/__tests__/editor.test.tsx
+  - packages/db/src/__tests__/restore-security.test.ts
+  - apps/web/src/server/backup/__tests__/restore-security.test.ts
 feature_refs:
   - docs/anwenderdoku/administration.md
   - docs/anwenderdoku/kalender-fristen-bescheide.md
@@ -383,5 +385,8 @@ gleichzeitige Einplanungen und Läufe, eindeutiger Auftrag), einmaligen Hinweis,
 Abschluss nach 7 Tagen und nach Gültigkeitsende, den festen, unveränderlichen
 und für die App-Rolle unsichtbaren Systemakteur und mit dem echten Client nur
 die zwei Nachrichten-Endpunkte; Guards in Web und Worker belegen, dass nur der
-Worker den Systemakteur bildet. Eine Zustellung beim Mandanten
+Worker den Systemakteur bildet. Die Restore-Abnahme (`restore-security.ts`,
+CI-Selbsttest) weist einen wiederhergestellten Stand ab, in dem die App-Rolle
+ein Recht auf `tcms_systemakteur` oder `tcms_nachricht_zustellung` hat. Eine
+Zustellung beim Mandanten
 belegen sie nicht.

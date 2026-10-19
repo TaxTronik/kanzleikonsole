@@ -340,7 +340,7 @@ ein erfolgreicher `pg_restore`-Exit allein genügt deshalb nicht.
 Vor `pg_restore` verlangt die Restore-CLI zusätzlich die S-01-Owner-Rolle
 `taxtronik_owner` mit NOSUPERUSER, NOCREATEDB, NOCREATEROLE, NOREPLICATION,
 BYPASSRLS und ohne Rollenmitgliedschaften. Nach `pg_restore` prüft sie vor den
-30 Invarianten deren Attribute, fehlenden Objektbesitz und fehlendes CREATE,
+32 Invarianten deren Attribute, fehlenden Objektbesitz und fehlendes CREATE,
 die Grants der Migration `20261006160000` sowie die Schreibsperren auf
 `audit_log`, `audit_seal`, `audit_anchor`, `audit_archive` und
 `_prisma_migrations`; TRUNCATE, REFERENCES, TRIGGER sowie ab PostgreSQL 17
@@ -756,12 +756,14 @@ Host-Isolation.
 Die PostgreSQL-Regression führt den tatsächlichen Sicherheitsprüfer gegen
 isolierte Datenbanken aus. Sie prüft sichere Rechte vor und nach den stets
 zurückgerollten Abweichungen, zusätzliche Audit-/Dokument-Schreibrechte
-einschließlich Rolling Anchors, Prüf-Checkpoints und Anchor-Lease,
+einschließlich Rolling Anchors, Prüf-Checkpoints und Anchor-Lease, jedes
+Recht der App-Rolle auf die Zustelltabellen des Tax-CMS (`tcms_systemakteur`,
+`tcms_nachricht_zustellung`, nur der Worker als Owner),
 öffentliches TRUNCATE und Definer-Ausführung, erreichbare privilegierte
 SET-ROLE-Ziele, fehlende Funktionsausführung, deaktiviertes oder nicht
 erzwungenes RLS sowie neue ungeschützte normale und partitionierte Tabellen.
 Probe-Units weisen fehlende, verkürzte und null-Ergebnisse sowie Queryfehler
-ab und belegen, dass Restore-CLI und CI-Selbsttest dieselben 30 Invarianten
+ab und belegen, dass Restore-CLI und CI-Selbsttest dieselben 32 Invarianten
 prüfen. Die Rolleneinstellungs-Regression prüft die kanonische Liste gegen jede
 `ALTER ROLE … SET`-Anweisung der Migrationen und gegen eine frisch migrierte
 Datenbank, setzt sie in einer neu angelegten Datenbank als Migrationsrolle

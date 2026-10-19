@@ -4299,7 +4299,9 @@
         "apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts",
         "apps/web/src/__tests__/tcms-systemakteur-guard.test.ts",
         "packages/tcms-client/src/__tests__/nachrichten.test.ts",
-        "apps/web/src/app/staff/(protected)/admin/email-templates/__tests__/editor.test.tsx"
+        "apps/web/src/app/staff/(protected)/admin/email-templates/__tests__/editor.test.tsx",
+        "packages/db/src/__tests__/restore-security.test.ts",
+        "apps/web/src/server/backup/__tests__/restore-security.test.ts"
       ],
       "feature_refs": [
         "docs/anwenderdoku/administration.md",
