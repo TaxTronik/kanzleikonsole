@@ -61,6 +61,7 @@ import { processMailOutbox, type MailOutboxDeliveryDeps } from '../mail-outbox';
 import {
   planeTcmsNachrichtEin,
   stelleTcmsNachrichtenZu,
+  TCMS_NICHT_VERSENDET_VERWORFEN,
   TCMS_UNZUSTELLBAR_NACH_TAGEN,
   type TcmsZustellDeps,
 } from '../tcms-nachrichten';
@@ -661,6 +662,63 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     await lauf();
     expect(postausgang.unzustellbar).toHaveBeenCalledOnce();
     logOhneInhalt();
+  });
+
+  it('409 bei „zugestellt“ (TCMS s8: verworfen, bevor ausgeliefert): erledigt, nicht wiederholt, nicht versendet', async () => {
+    const n = code();
+    postausgang.nachrichten = [n];
+    postausgang.meldenFehler = new TcmsKonflikt({ status: 409, requestId: 'req-409z' });
+
+    expect(await lauf()).toMatchObject({ eingeplant: 1, gemeldet: 1, fehler: 0 });
+    expect((await zeile(n.id))?.gemeldetAm).toBeInstanceOf(Date);
+    // Der wartende Auftrag endet ohne Versand; Inhalt und Code sind entfernt.
+    const [auftrag] = await auftraege();
+    expect(auftrag).toMatchObject({
+      status: 'SKIPPED',
+      payload: {},
+      secretVarsEnc: null,
+      lastError: TCMS_NICHT_VERSENDET_VERWORFEN,
+    });
+    expect(log.info).toHaveBeenCalledWith(
+      expect.objectContaining({ meldung: 'ZUGESTELLT', fehler: 'TcmsKonflikt', status: 409 }),
+      'tcms-nachrichten: Mitteilung im Tax-CMS bereits abgeschlossen',
+    );
+    const sendTemplateMail = vi.fn();
+    await processMailOutbox(
+      {
+        db: prismaOwner,
+        runAtomic: (t, fn) => withWorkerTenantContext(t, fn),
+        sendTemplateMail,
+        notifyClientContacts: vi.fn(),
+        loadAttachment: vi.fn(),
+        notifyStaff: (tx, input) => notify(tx, input),
+        log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      },
+      { tenantId, now: new Date() },
+    );
+    expect(sendTemplateMail).not.toHaveBeenCalled();
+    // Weitere Läufe melden nichts erneut und planen nichts neu ein.
+    postausgang.nachrichten = [];
+    expect(await lauf()).toMatchObject({ eingeplant: 0, gemeldet: 0, fehler: 0 });
+    expect(postausgang.melden).toHaveBeenCalledOnce();
+    expect(await auftraege()).toHaveLength(1);
+    logOhneInhalt();
+  });
+
+  it('409 bei „zugestellt“ lässt einen bereits laufenden oder angenommenen Versand unberührt', async () => {
+    const n = code();
+    postausgang.nachrichten = [n];
+    // Erster Lauf: Meldung scheitert vorübergehend; der Auftrag wird inzwischen versendet.
+    postausgang.meldenFehler = new TcmsNichtVerfuegbar('TRANSPORT');
+    await lauf();
+    const [auftrag] = await auftraege();
+    await prismaOwner.mailOutbox.update({
+      where: { id: auftrag!.id },
+      data: { status: 'PROVIDER_ACCEPTED', payload: {}, secretVarsEnc: null, nextAttemptAt: null },
+    });
+    postausgang.meldenFehler = new TcmsKonflikt({ status: 409 });
+    expect(await lauf()).toMatchObject({ eingeplant: 0, gemeldet: 1, fehler: 0 });
+    expect(await auftraege()).toEqual([expect.objectContaining({ status: 'PROVIDER_ACCEPTED' })]);
   });
 
   it('meldet ein Ereignis nur der Kanzleiperson mit Zugriff (Nummer und Titel)', async () => {

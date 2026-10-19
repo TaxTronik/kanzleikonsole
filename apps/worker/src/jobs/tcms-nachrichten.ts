@@ -17,7 +17,12 @@
 //      unzustellbar → `POST …/unzustellbar` mit festem Grund (TCMS s6); 404
 //      und 409 = erledigt. Ein anderer Fehler lässt die Zeile ungemeldet: Der
 //      nächste Lauf sieht die Mitteilung wieder, findet die Zeile und meldet
-//      nur – nie eine zweite Einplanung, nie ein anderer Grund.
+//      nur – nie eine zweite Einplanung, nie ein anderer Grund. Antwortet der
+//      Dienst auf „zugestellt“ mit 409 (TCMS s8: im Tax-CMS verworfen, bevor
+//      sie ausgeliefert wurde, oder anders abgeschlossen), wird die Mail nicht
+//      versendet: Ein noch wartender Auftrag endet als SKIPPED (Inhalt und
+//      Code entfernt); ein Auftrag, dessen Versand schon läuft oder erfolgt
+//      ist, bleibt unberührt.
 //
 // Das Tax-CMS reserviert beim Abruf nichts; zwei gleichzeitige Läufe sähen
 // dieselbe Mitteilung. Doppelte schließen der eindeutige Schlüssel der
@@ -660,6 +665,7 @@ async function melde(
   meldung: Meldung,
   jetzt: Date,
 ): Promise<boolean> {
+  let nichtVersenden = false;
   try {
     if (meldung.art === 'UNZUSTELLBAR') {
       await postausgang.unzustellbar(akteur, nachrichtId, meldung.grund);
@@ -673,6 +679,7 @@ async function melde(
         { tenantId, nachrichtId, meldung: meldung.art, ...fehlerFelder(fehler) },
         'tcms-nachrichten: Mitteilung im Tax-CMS bereits abgeschlossen',
       );
+      nichtVersenden = meldung.art === 'ZUGESTELLT';
     } else if (!(fehler instanceof TcmsNichtGefunden)) {
       deps.log.warn(
         { tenantId, nachrichtId, meldung: meldung.art, ...fehlerFelder(fehler) },
@@ -681,14 +688,43 @@ async function melde(
       return false;
     }
   }
-  await deps.runAtomic(tenantId, (tx) =>
-    tx.tcmsNachrichtZustellung.updateMany({
+  await deps.runAtomic(tenantId, async (tx) => {
+    await tx.tcmsNachrichtZustellung.updateMany({
       where: { id: zeileId, tenantId, gemeldetAm: null, abgeschlossenAm: { not: null } },
       data: { gemeldetAm: jetzt },
-    }),
-  );
+    });
+    if (nichtVersenden) {
+      // Nur wartende Aufträge (QUEUED, RETRY_PENDING); der Claim der Mail-Outbox
+      // ist an den gelesenen Status gebunden und geht danach ins Leere.
+      const { count } = await tx.mailOutbox.updateMany({
+        where: {
+          tenantId,
+          resourceType: TCMS_NACHRICHT_RESSOURCE,
+          resourceId: zeileId,
+          status: { in: ['QUEUED', 'RETRY_PENDING'] },
+        },
+        data: {
+          payload: {},
+          secretVarsEnc: null,
+          nextAttemptAt: null,
+          status: 'SKIPPED',
+          lastError: TCMS_NICHT_VERSENDET_VERWORFEN,
+        },
+      });
+      if (count > 0) {
+        deps.log.info(
+          { tenantId, nachrichtId, auftraege: count },
+          'tcms-nachrichten: Mail nicht versendet, Mitteilung im Tax-CMS abgeschlossen',
+        );
+      }
+    }
+  });
   return true;
 }
+
+/** Grund am Auftrag, wenn das Tax-CMS „zugestellt“ mit 409 beantwortet (kein Inhalt). */
+export const TCMS_NICHT_VERSENDET_VERWORFEN =
+  'Nicht versendet: Die Mitteilung ist im Tax-CMS bereits abgeschlossen oder verworfen.';
 
 /** Gemeldete und lange nicht mehr gesehene Zeilen entfernen (keine Inhalte, nur Koordination). */
 async function bereinige(deps: TcmsZustellDeps, tenantId: string, jetzt: Date): Promise<number> {
