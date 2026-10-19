@@ -93,10 +93,16 @@ export function durchfuehrungenGefiltert(ctx: KontextAntwort, filter: ListenFilt
   return { zeilen: alle.slice(0, MAX_ZEILEN), gesamt: alle.length, anzahl };
 }
 
-export function OhneProgramm({ seite }: { seite: TcmsMandantSeite }) {
+export function OhneProgramm({
+  seite,
+  titel = 'Durchführungen',
+}: {
+  seite: TcmsMandantSeite;
+  titel?: string;
+}) {
   return (
     <>
-      <h2 className="text-lg font-semibold text-primary mb-3">Durchführungen</h2>
+      <h2 className="text-lg font-semibold text-primary mb-3">{titel}</h2>
       <div className="card">
         <TcmsLeer
           icon={ClipboardList}

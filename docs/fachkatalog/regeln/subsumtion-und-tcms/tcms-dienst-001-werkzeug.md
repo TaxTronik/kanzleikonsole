@@ -49,6 +49,8 @@ code_refs:
   - apps/web/src/app/portal/(protected)/layout.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/ansicht.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/[fid]/ansicht.tsx
+  - apps/web/src/components/tcms/feststellungen/formulare.tsx
 test_refs:
   - apps/web/src/server/tcms/__tests__/zustand.test.ts
   - apps/web/src/server/tcms/__tests__/seite.test.ts
@@ -60,6 +62,7 @@ test_refs:
   - apps/web/src/app/__tests__/protected-layouts.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/__tests__/page-streaming.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/__tests__/seiten.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/__tests__/seiten.test.tsx
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

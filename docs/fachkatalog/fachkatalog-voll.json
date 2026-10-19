@@ -6214,7 +6214,8 @@
         "apps/web/src/server/tcms/aktion.ts",
         "apps/web/src/server/tcms/personen.ts",
         "apps/web/src/server/tcms/namen.ts",
-        "apps/web/src/server/tcms/mandant.ts"
+        "apps/web/src/server/tcms/mandant.ts",
+        "apps/web/src/server/tcms/feststellungen/personen.ts"
       ],
       "test_refs": [
         "apps/web/src/server/tcms/__tests__/seite.test.ts",
@@ -6224,7 +6225,9 @@
         "apps/web/src/server/tcms/__tests__/akteur-db.test.ts",
         "apps/web/src/__tests__/client-page-authz.test.ts",
         "apps/web/src/server/tcms/__tests__/mandant.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/actions.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/actions.test.ts",
+        "apps/web/src/server/tcms/feststellungen/__tests__/personen.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/__tests__/actions.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
       "related_rules": ["ACCESS-CLIENT-MODE-001", "ACCESS-TENANT-RLS-001", "TCMS-DIENST-001"],
@@ -6285,7 +6288,9 @@
         "apps/web/src/app/staff/(protected)/layout.tsx",
         "apps/web/src/app/portal/(protected)/layout.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/page.tsx",
-        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/ansicht.tsx"
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/ansicht.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/[fid]/ansicht.tsx",
+        "apps/web/src/components/tcms/feststellungen/formulare.tsx"
       ],
       "test_refs": [
         "apps/web/src/server/tcms/__tests__/zustand.test.ts",
@@ -6297,7 +6302,8 @@
         "apps/web/src/lib/__tests__/navigation-registry.test.ts",
         "apps/web/src/app/__tests__/protected-layouts.test.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/__tests__/page-streaming.test.tsx",
-        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/__tests__/seiten.test.tsx"
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/__tests__/seiten.test.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/__tests__/seiten.test.tsx"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
       "related_rules": ["TCMS-AKTEUR-001", "TCMS-SAMPLE-PROOF-001"],

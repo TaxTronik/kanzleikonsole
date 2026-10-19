@@ -45,6 +45,7 @@ code_refs:
   - apps/web/src/server/tcms/personen.ts
   - apps/web/src/server/tcms/namen.ts
   - apps/web/src/server/tcms/mandant.ts
+  - apps/web/src/server/tcms/feststellungen/personen.ts
 test_refs:
   - apps/web/src/server/tcms/__tests__/seite.test.ts
   - apps/web/src/server/tcms/__tests__/aktion.test.ts
@@ -54,6 +55,8 @@ test_refs:
   - apps/web/src/__tests__/client-page-authz.test.ts
   - apps/web/src/server/tcms/__tests__/mandant.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/actions.test.ts
+  - apps/web/src/server/tcms/feststellungen/__tests__/personen.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/__tests__/actions.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

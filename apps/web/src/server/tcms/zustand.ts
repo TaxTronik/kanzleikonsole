@@ -142,6 +142,12 @@ export const TCMS_KEIN_RECHT = {
   /** Gegenzeichnung bzw. Zurückweisung einer eingereichten Durchführung (kannGegenzeichnen). */
   GEGENZEICHNEN:
     'Die Gegenzeichnung ist der vorgesehenen gegenzeichnenden Person oder zuständigen Berufsträgerinnen und Berufsträgern vorbehalten, nie der durchführenden Person.',
+  /** Verwerfen einer Feststellung bestätigen (kannVerwerfenBestaetigen). */
+  VERWERFEN_BESTAETIGEN:
+    'Das Verwerfen bestätigt eine zweite Person; ist eine steuerliche Auswirkung nicht ausgeschlossen, nur die zuständige Berufsträgerin bzw. der zuständige Berufsträger.',
+  /** Feststellung vertraulich markieren (kannWuerdigen). */
+  VERTRAULICH:
+    'Vertraulich markieren ist der zuständigen Berufsträgerin bzw. dem zuständigen Berufsträger vorbehalten.',
 } as const;
 
 export type TcmsKeinRechtGrund = keyof typeof TCMS_KEIN_RECHT;
