@@ -6,6 +6,8 @@
 // Formularen der Feststellungsseiten). Aktionen sind Server Actions mit
 // gebundenem Mandanten (und Objekt); Formulare tragen nur Eingaben. Dialoge
 // nutzen `Modal` (Fokusfalle, Esc, Fokus-Rückgabe), Fehler erscheinen am Feld.
+// Abgesendet wird über `useTcmsFormular` (components/tcms/formular.ts): Eingaben
+// bleiben bei einer Ablehnung stehen (Integration TCMS Stufe 3).
 //
 // §-153-Würdigung: vier gleichrangige Optionen ohne Vorauswahl und ohne
 // Empfehlung, Begründung mindestens 30 Zeichen, Frist bei Berichtigung und
@@ -13,7 +15,7 @@
 // Seite sperrt nur sichtbar mit Grund.
 // =============================================================================
 
-import { useActionState, useId, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { useFormStatus } from 'react-dom';
 import { EyeOff, ShieldAlert, ShieldCheck, TriangleAlert } from 'lucide-react';
 import {
@@ -30,17 +32,23 @@ import {
   type TcmsErgebnis,
   type TcmsFormAktion,
 } from '@/components/tcms/durchfuehrung/formulare';
+import { useTcmsFormular } from '../formular';
+
+type FormularProps = ReturnType<typeof useTcmsFormular>['formular'];
 
 function Absenden({
   children,
   className = 'btn-primary',
   disabled,
+  laeuft = false,
 }: {
   children: ReactNode;
   className?: string;
   disabled?: boolean;
+  /** Übermittlung läuft (useTcmsFormular; useFormStatus sieht Transitionen nicht). */
+  laeuft?: boolean;
 }) {
-  const { pending } = useFormStatus();
+  const pending = useFormStatus().pending || laeuft;
   return (
     <button type="submit" className={className} disabled={disabled || pending} aria-busy={pending}>
       {pending ? 'Bitte warten …' : children}
@@ -101,7 +109,8 @@ function DialogFormular(
   },
 ) {
   const { ausloeser, action, disabled, disabledGrund } = props;
-  const [ergebnis, aktion] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  // Kein Reset: der Dialog schließt nach Erfolg; bei Ablehnung bleiben Eingaben stehen.
+  const { ergebnis, laeuft, formular } = useTcmsFormular(action, { zuruecksetzen: false });
   // Geöffnet mit dem Ergebnis zum Öffnungszeitpunkt; ein neuer Erfolg schließt.
   const [geoeffnet, setGeoeffnet] = useState<{ bei: TcmsErgebnis | null } | null>(null);
   const offen = geoeffnet !== null && !(ergebnis?.ok && ergebnis !== geoeffnet.bei);
@@ -127,7 +136,8 @@ function DialogFormular(
       {offen ? (
         <DialogInhalt
           {...props}
-          aktion={aktion}
+          formular={formular}
+          laeuft={laeuft}
           // Fehler nur aus Absendungen dieses Öffnens.
           ergebnis={ergebnis !== geoeffnet.bei ? ergebnis : null}
           schliessen={() => setGeoeffnet(null)}
@@ -145,13 +155,15 @@ function DialogInhalt({
   breit,
   absendenGesperrt,
   felder,
-  aktion,
+  formular,
+  laeuft,
   ergebnis,
   schliessen,
 }: DialogAngaben & {
   absendenGesperrt?: boolean;
   felder: (fe: FieldErrors | undefined, id: string) => ReactNode;
-  aktion: (formData: FormData) => void;
+  formular: FormularProps;
+  laeuft: boolean;
   ergebnis: TcmsErgebnis | null;
   schliessen: () => void;
 }) {
@@ -161,7 +173,7 @@ function DialogInhalt({
     <Modal title={titel} onClose={schliessen} maxWidth={breit ? 'max-w-2xl' : 'max-w-lg'}>
       <h2 className="text-base font-semibold text-primary pr-8">{titel}</h2>
       {hinweis ? <p className="text-xs text-muted mt-1">{hinweis}</p> : null}
-      <form action={aktion} className="mt-4 space-y-3">
+      <form {...formular} className="mt-4 space-y-3">
         {ergebnis && !ergebnis.ok ? <Meldung ergebnis={ergebnis} /> : null}
         {felder(fe, id)}
         <div className="form-actions">
@@ -171,6 +183,7 @@ function DialogInhalt({
           <Absenden
             className={gefahr ? 'btn-danger-outline' : 'btn-primary'}
             disabled={absendenGesperrt === true}
+            laeuft={laeuft}
           >
             {bestaetigen ?? 'Speichern'}
           </Absenden>
@@ -987,7 +1000,11 @@ export function P153Block({
   const id = useId();
   const [wahl, setWahl] = useState<Paragraph153Entscheidung | null>(null);
   const [text, setText] = useState('');
-  const [rueckmeldung, aktion] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  const {
+    ergebnis: rueckmeldung,
+    laeuft,
+    formular,
+  } = useTcmsFormular(action, { zuruecksetzen: false });
   const gesperrt = sperrGrund !== null;
   const fe = rueckmeldung && !rueckmeldung.ok ? rueckmeldung.fieldErrors : undefined;
   const absendenGrund = absendenGrundP153(sperrGrund, wahl, text);
@@ -1005,7 +1022,7 @@ export function P153Block({
               </div>
             ) : null}
             {rueckmeldung ? <Meldung ergebnis={rueckmeldung} titel="Nicht dokumentiert." /> : null}
-            <form action={aktion} className="mt-2">
+            <form {...formular} className="mt-2">
               <input type="hidden" name="bisher" value={bisher ?? ''} />
               <fieldset disabled={gesperrt} title={sperrGrund ?? undefined}>
                 <legend className="sr-only">Ergebnis der §-153-Würdigung</legend>
@@ -1029,7 +1046,9 @@ export function P153Block({
                   {absendenGrund ? (
                     <span className="text-xs text-muted">{absendenGrund}</span>
                   ) : null}
-                  <Absenden disabled={absendenGrund !== null}>Entscheidung dokumentieren</Absenden>
+                  <Absenden disabled={absendenGrund !== null} laeuft={laeuft}>
+                    Entscheidung dokumentieren
+                  </Absenden>
                 </div>
               </fieldset>
             </form>
@@ -1054,9 +1073,9 @@ export function VertraulichSchalter({
   wert: boolean;
   gesperrtGrund: string | null;
 }) {
-  const [ergebnis, aktion, laeuft] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  const { ergebnis, laeuft, formular } = useTcmsFormular(action, { zuruecksetzen: false });
   return (
-    <form action={aktion} className="space-y-2">
+    <form {...formular} className="space-y-2">
       <input type="hidden" name="vertraulich" value={wert ? '0' : '1'} />
       <div className="flex items-center justify-between gap-2">
         <span className="inline-flex items-center gap-1.5 text-sm">

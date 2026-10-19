@@ -13,89 +13,19 @@
 //
 // Gesperrte Elemente bleiben sichtbar und nennen den Grund als Text (nicht nur
 // als Tooltip). Meldungen kommen ausschließlich aus dem ActionResult der Aktion
-// (feste Texte aus server/tcms/zustand.ts bzw. der Aktion). Absenden ohne
-// automatischen Formular-Reset (wie components/action-form.tsx), damit
-// Eingaben bei einer Ablehnung erhalten bleiben.
+// (feste Texte aus server/tcms/zustand.ts bzw. der Aktion). Absenden über den
+// gemeinsamen Formular-Baustein `useTcmsFormular` (components/tcms/formular.ts)
+// ohne Reset, damit Eingaben bei einer Ablehnung erhalten bleiben.
 // =============================================================================
 
-import {
-  startTransition,
-  useActionState,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from 'react';
-import { formDataWithSubmitter } from '@/components/action-form';
+import { useId, useState, type ReactNode } from 'react';
 import { FormErrorSummary } from '@/components/form-errors';
-import { confirmDialog, Modal } from '@/components/ui/modal';
-import type { ActionResult } from '@/server/actions/types';
+import { Modal } from '@/components/ui/modal';
+import type { TcmsAktionsErgebnis, TcmsFormAktion } from '../ergebnis';
+import { useTcmsFormular, type TcmsBestaetigung } from '../formular';
 
-/**
- * Ergebnis einer Tax-CMS-Aktion mit optionaler Erfolgsmeldung; `warnung`:
- * Teilerfolg (z. B. gespeichert, aber noch nicht übermittelt).
- */
-export type TcmsAktionsErgebnis = ActionResult & { meldung?: string; warnung?: string };
-
-export type TcmsFormAktion = (
-  vorher: TcmsAktionsErgebnis | null,
-  formData: FormData,
-) => Promise<TcmsAktionsErgebnis>;
-
-export interface TcmsBestaetigung {
-  titel: string;
-  text: string;
-  bestaetigen: string;
-  /** Destruktiver Schritt: Gefahrendialog. */
-  gefahr?: boolean;
-}
-
-/**
- * Absenden mit optionaler Bestätigung, ohne Reset, ohne Doppelabsendung.
- * `nachLesen(form)` läuft direkt nach dem Lesen der Formulardaten (z. B. ein
- * Codefeld leeren, damit der Wert nicht im Formular stehen bleibt).
- */
-export function useTcmsAbsenden(
-  aktion: TcmsFormAktion,
-  optionen: { bestaetigung?: TcmsBestaetigung; nachLesen?: (form: HTMLFormElement) => void } = {},
-) {
-  const [ergebnis, dispatch, laeuft] = useActionState<TcmsAktionsErgebnis | null, FormData>(
-    aktion,
-    null,
-  );
-  const unterwegs = useRef(false);
-  useEffect(() => {
-    if (!laeuft) unterwegs.current = false;
-  }, [laeuft]);
-
-  function onSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (unterwegs.current) return;
-    const form = event.currentTarget;
-    const submitter = (event.nativeEvent as SubmitEvent).submitter;
-    const senden = () => {
-      unterwegs.current = true;
-      const formData = formDataWithSubmitter(form, submitter);
-      optionen.nachLesen?.(form);
-      startTransition(() => dispatch(formData));
-    };
-    const b = optionen.bestaetigung;
-    if (!b) {
-      senden();
-      return;
-    }
-    void confirmDialog(b.text, {
-      title: b.titel,
-      confirmLabel: b.bestaetigen,
-      danger: b.gefahr ?? false,
-    }).then((ok) => {
-      if (ok && form.isConnected) senden();
-    });
-  }
-  return { ergebnis, laeuft, onSubmit };
-}
+export type { TcmsAktionsErgebnis, TcmsFormAktion } from '../ergebnis';
+export type { TcmsBestaetigung } from '../formular';
 
 /** Fehler- bzw. Erfolgsmeldung eines Ergebnisses. */
 export function TcmsErgebnisMeldung({
@@ -162,7 +92,8 @@ export function TcmsAktionsKnopf({
   felder?: Readonly<Record<string, string>>;
 }) {
   const id = useId();
-  const { ergebnis, laeuft, onSubmit } = useTcmsAbsenden(aktion, {
+  const { ergebnis, laeuft, onSubmit } = useTcmsFormular(aktion, {
+    zuruecksetzen: false,
     ...(bestaetigung ? { bestaetigung } : {}),
   });
   return (
@@ -286,11 +217,14 @@ function DialogInhalt({
 }) {
   const id = useId();
   const [text, setText] = useState('');
-  const { ergebnis, laeuft, onSubmit } = useTcmsAbsenden(async (vorher, formData) => {
-    const r = await aktion(vorher, formData);
-    if (r.ok) nachErfolg(r);
-    return r;
-  });
+  const { ergebnis, laeuft, onSubmit } = useTcmsFormular(
+    async (vorher, formData) => {
+      const r = await aktion(vorher, formData);
+      if (r.ok) nachErfolg(r);
+      return r;
+    },
+    { zuruecksetzen: false },
+  );
   const zuKurz = begruendung ? text.trim().length < begruendung.min : false;
   return (
     <Modal
@@ -368,7 +302,7 @@ export function TcmsFormular({
   children: ReactNode;
 }) {
   const id = useId();
-  const { ergebnis, laeuft, onSubmit } = useTcmsAbsenden(aktion);
+  const { ergebnis, laeuft, onSubmit } = useTcmsFormular(aktion, { zuruecksetzen: false });
   return (
     <form onSubmit={onSubmit} className="space-y-3">
       {children}

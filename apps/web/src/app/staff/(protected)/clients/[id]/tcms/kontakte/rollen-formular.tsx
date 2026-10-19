@@ -1,10 +1,11 @@
 'use client';
 
 // Rollen eines Kontakts im Tax-CMS (TCMS Stufe 3). Labels der Rollen aus
-// der Seite (feste Tabelle); Ergebnis als feste Meldung der Aktion.
-import { useActionState, useId } from 'react';
+// der Seite (feste Tabelle); Ergebnis als feste Meldung der Aktion. Absenden
+// über useTcmsFormular: Eingaben bleiben bei einer Ablehnung stehen.
+import { useId } from 'react';
 import { FieldError, fieldErrorProps, FormErrorSummary } from '@/components/form-errors';
-import type { ActionResult } from '@/server/actions/types';
+import { useTcmsFormular } from '@/components/tcms/formular';
 import { kontaktRollenSetzenAction } from './actions';
 
 export interface RollenAuswahl {
@@ -31,13 +32,13 @@ export function RollenFormular({
   rollenZuweisbar: boolean;
 }) {
   const id = useId();
-  const [ergebnis, aktion, laeuft] = useActionState<ActionResult | null, FormData>(
+  const { ergebnis, laeuft, formular } = useTcmsFormular(
     kontaktRollenSetzenAction.bind(null, mandantId),
-    null,
+    { zuruecksetzen: false },
   );
   const fieldErrors = ergebnis && !ergebnis.ok ? ergebnis.fieldErrors : undefined;
   return (
-    <form action={aktion} className="space-y-2" aria-label={`Tax-CMS-Rollen von ${kontaktName}`}>
+    <form {...formular} className="space-y-2" aria-label={`Tax-CMS-Rollen von ${kontaktName}`}>
       <input type="hidden" name="kontaktId" value={kontaktId} />
       {ergebnis && !ergebnis.ok ? (
         <FormErrorSummary

@@ -13,15 +13,12 @@
 import { useId, useRef, useState, useTransition, type FormEvent, type ReactNode } from 'react';
 import { FormErrorSummary } from '@/components/form-errors';
 import { Modal } from '@/components/ui/modal';
-import type { ActionResult } from '@/server/actions/types';
+import type { TcmsAktionsErgebnis, TcmsFormAktion } from '../ergebnis';
 
 /** Ergebnis einer TCMS-Aktion; `meldung` ist ein fester Erfolgstext der Aktion (nie Text des Dienstes). */
-export type TcmsAktionsErgebnis = ActionResult & { meldung?: string };
+export type { TcmsAktionsErgebnis } from '../ergebnis';
 
-export type TcmsDialogAktion = (
-  vorher: TcmsAktionsErgebnis | null,
-  formData: FormData,
-) => Promise<TcmsAktionsErgebnis>;
+export type TcmsDialogAktion = TcmsFormAktion;
 
 export function TcmsAktionsDialog({
   ausloeser,

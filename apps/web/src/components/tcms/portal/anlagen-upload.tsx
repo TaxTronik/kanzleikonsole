@@ -11,7 +11,8 @@
 
 import { useId, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
-import { TcmsErgebnisMeldung, useTcmsAbsenden, type TcmsFormAktion } from '../ereignisse/aktionen';
+import { TcmsErgebnisMeldung } from '../ereignisse/aktionen';
+import { useTcmsFormular, type TcmsFormAktion } from '../formular';
 import { fmtGroesse } from '../durchfuehrung/werte';
 
 /** Problem einer Auswahl für die Anzeige (oder null). */
@@ -52,14 +53,17 @@ export function AnlagenUpload({
   const id = useId();
   const eingabe = useRef<HTMLInputElement>(null);
   const [auswahl, setAuswahl] = useState<Array<{ name: string; size: number }>>([]);
-  const { ergebnis, laeuft, onSubmit } = useTcmsAbsenden(async (vorher, formData) => {
-    const r = await aktion(vorher, formData);
-    if (r.ok) {
-      if (eingabe.current) eingabe.current.value = '';
-      setAuswahl([]);
-    }
-    return r;
-  });
+  const { ergebnis, laeuft, onSubmit } = useTcmsFormular(
+    async (vorher, formData) => {
+      const r = await aktion(vorher, formData);
+      if (r.ok) {
+        if (eingabe.current) eingabe.current.value = '';
+        setAuswahl([]);
+      }
+      return r;
+    },
+    { zuruecksetzen: false },
+  );
   const problem = auswahlProblem(auswahl, { maxDateien, maxBytes, maxGesamt });
   return (
     <form onSubmit={onSubmit} className="space-y-2">

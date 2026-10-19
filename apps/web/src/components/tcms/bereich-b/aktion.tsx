@@ -27,7 +27,7 @@ import {
 } from '@/components/form-errors';
 import { Modal } from '@/components/ui/modal';
 import type { TcmsAktion } from './ergebnis';
-import { useTcmsFormular } from './formular';
+import { useTcmsFormular } from '../formular';
 
 /** Höchstlänge einer Begründung wie im Vertrag (`MAX_BEGRUENDUNG_ZEICHEN`). */
 export const MAX_BEGRUENDUNG = 2000;

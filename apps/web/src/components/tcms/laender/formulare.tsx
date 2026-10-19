@@ -14,7 +14,7 @@ import { Plus, Save } from 'lucide-react';
 import { LAND_NAME } from '@taxtronik/tcms-domain';
 import { FieldError, fieldErrorProps, FormErrorSummary } from '@/components/form-errors';
 import type { TcmsAktion, TcmsAktionsErgebnis } from '../bereich-b/ergebnis';
-import { useTcmsFormular } from '../bereich-b/formular';
+import { useTcmsFormular } from '../formular';
 
 /** Ergebnis von „Land hinzufügen“: mit dem aufgenommenen Land für den Link. */
 export type LandHinzufuegenErgebnis = TcmsAktionsErgebnis & { land?: string };

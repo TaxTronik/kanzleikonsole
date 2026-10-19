@@ -8,7 +8,7 @@
 import { useId, useState } from 'react';
 import { FieldError, fieldErrorProps, FormErrorSummary } from '@/components/form-errors';
 import type { TcmsAktion } from '../bereich-b/ergebnis';
-import { useTcmsFormular } from '../bereich-b/formular';
+import { useTcmsFormular } from '../formular';
 
 export interface PersonOption {
   id: string;

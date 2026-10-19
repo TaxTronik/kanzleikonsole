@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 import { CheckCheck, Send } from 'lucide-react';
 import { FormErrorSummary } from '@/components/form-errors';
 import type { TcmsAktion } from '../bereich-b/ergebnis';
-import { useTcmsFormular } from '../bereich-b/formular';
+import { useTcmsFormular } from '../formular';
 
 export function FreigabeAuswahl({
   aktion,

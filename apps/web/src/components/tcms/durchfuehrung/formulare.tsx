@@ -6,37 +6,29 @@
 // components/ui/client.tsx). Die Aktionen sind Server Actions mit gebundenem
 // Mandanten (und Objekt); Formulare tragen nur Eingaben, nie Personen- oder
 // Mandantenangaben. Destruktive Schritte fragen über den Gefahrendialog der
-// kanzleikonsole nach (confirmFormSubmission), Dialoge nutzen `Modal`
-// (Fokusfalle, Esc, Fokus-Rückgabe). Rechte zeigt die Seite aus der Antwort des
-// Dienstes an; entscheidend bleibt der Dienst.
+// kanzleikonsole nach (`bestaetigung` des Formular-Bausteins), Dialoge nutzen
+// `Modal` (Fokusfalle, Esc, Fokus-Rückgabe). Rechte zeigt die Seite aus der
+// Antwort des Dienstes an; entscheidend bleibt der Dienst. Abgesendet wird über
+// den gemeinsamen Baustein `useTcmsFormular` (components/tcms/formular.ts):
+// Eingaben bleiben bei einer Ablehnung stehen (Integration TCMS Stufe 3).
 // =============================================================================
 
-import { useActionState, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Save, Send, Trash2, Upload, UserCheck } from 'lucide-react';
 import { AUSWIRKUNG_LABEL, FESTSTELLUNG_KLASSE_LABEL, KLASSE_LABEL } from '@taxtronik/tcms-domain';
 import { FieldError, fieldErrorProps, FormErrorSummary } from '@/components/form-errors';
-import { confirmFormSubmission, Modal } from '@/components/ui/modal';
-import type { ActionResult } from '@/server/actions/types';
+import { Modal } from '@/components/ui/modal';
+import type { TcmsAktionsErgebnis, TcmsFormAktion } from '../ergebnis';
+import { useTcmsFormular, type TcmsBestaetigung } from '../formular';
 import { fmtGroesse } from './werte';
 
 /** Ergebnis einer TCMS-Aktion: feste Meldung bei Erfolg, sonst Fehler der Abbildung. */
-export interface TcmsErgebnis extends ActionResult {
-  meldung?: string;
-}
-
-export type TcmsFormAktion = (
-  vorher: TcmsErgebnis | null,
-  formData: FormData,
-) => Promise<TcmsErgebnis>;
+export type TcmsErgebnis = TcmsAktionsErgebnis;
+export type { TcmsFormAktion } from '../ergebnis';
 
 /** Rückfrage vor dem Absenden (Gefahrendialog bei `gefahr`). */
-export interface Rueckfrage {
-  text: string;
-  titel?: string;
-  bestaetigen?: string;
-  gefahr?: boolean;
-}
+export type Rueckfrage = TcmsBestaetigung;
 
 function Versteckt({ felder }: { felder?: Readonly<Record<string, string>> | undefined }) {
   return (
@@ -79,14 +71,17 @@ function Absenden({
   disabled,
   title,
   laeuftText = 'Bitte warten …',
+  laeuft = false,
 }: {
   children: ReactNode;
   className?: string;
   disabled?: boolean | undefined;
   title?: string | undefined;
   laeuftText?: string;
+  /** Übermittlung läuft (useTcmsFormular; useFormStatus sieht Transitionen nicht). */
+  laeuft?: boolean;
 }) {
-  const { pending } = useFormStatus();
+  const pending = useFormStatus().pending || laeuft;
   return (
     <button
       type="submit"
@@ -122,24 +117,14 @@ export function AktionsKnopf({
   title?: string | undefined;
   rueckfrage?: Rueckfrage;
 }) {
-  const [ergebnis, aktion] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  const { ergebnis, laeuft, formular } = useTcmsFormular(action, {
+    zuruecksetzen: false,
+    ...(rueckfrage ? { bestaetigung: rueckfrage } : {}),
+  });
   return (
-    <form
-      action={aktion}
-      className="flex flex-col items-end gap-1.5"
-      onSubmit={
-        rueckfrage
-          ? (e) =>
-              confirmFormSubmission(e, rueckfrage.text, {
-                ...(rueckfrage.titel ? { title: rueckfrage.titel } : {}),
-                ...(rueckfrage.bestaetigen ? { confirmLabel: rueckfrage.bestaetigen } : {}),
-                danger: rueckfrage.gefahr === true,
-              })
-          : undefined
-      }
-    >
+    <form {...formular} className="flex flex-col items-end gap-1.5">
       <Versteckt felder={felder} />
-      <Absenden className={className} disabled={disabled} title={title}>
+      <Absenden className={className} disabled={disabled} title={title} laeuft={laeuft}>
         {children}
       </Absenden>
       {disabled && title ? <span className="sr-only">{title}</span> : null}
@@ -241,7 +226,7 @@ function BegruendungsInhalt({
 }) {
   const id = useId();
   const [text, setText] = useState('');
-  const [ergebnis, aktion] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  const { ergebnis, laeuft, formular } = useTcmsFormular(action, { zuruecksetzen: false });
   useEffect(() => {
     if (ergebnis?.ok) schliessen();
   }, [ergebnis, schliessen]);
@@ -250,7 +235,7 @@ function BegruendungsInhalt({
     <Modal title={titel} onClose={schliessen} maxWidth="max-w-lg">
       <h2 className="text-base font-semibold text-primary pr-8">{titel}</h2>
       {hinweis ? <p className="text-xs text-muted mt-1">{hinweis}</p> : null}
-      <form action={aktion} className="mt-4 space-y-3">
+      <form {...formular} className="mt-4 space-y-3">
         <Versteckt felder={felder} />
         {ergebnis && !ergebnis.ok ? <Meldung ergebnis={ergebnis} /> : null}
         {children}
@@ -293,6 +278,7 @@ function BegruendungsInhalt({
           <Absenden
             className={gefahr ? 'btn-danger-outline' : 'btn-primary'}
             disabled={text.trim().length < min}
+            laeuft={laeuft}
           >
             {bestaetigen}
           </Absenden>
@@ -318,13 +304,15 @@ export function EntwurfFormular({
   einreichen: string;
   links?: ReactNode;
 }) {
-  const [ergebnis, aktion, laeuft] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  // Schritte, Kommentare und Werte gehören über `form` zu diesem Formular: ohne
+  // Reset, damit eine abgewiesene Einreichung keine Eingaben verwirft.
+  const { ergebnis, laeuft, formular } = useTcmsFormular(action, { zuruecksetzen: false });
   return (
     <div className="flex flex-col gap-2">
       <Meldung ergebnis={ergebnis} titel="Nicht gespeichert bzw. nicht eingereicht." />
       <div className="form-actions flex-wrap">
         {links}
-        <form id={formId} action={aktion} className="flex items-center gap-2">
+        <form id={formId} {...formular} className="flex items-center gap-2">
           <button
             type="submit"
             name="absicht"
@@ -418,7 +406,7 @@ function BefundDialog({
   schliessen: () => void;
 }) {
   const id = useId();
-  const [ergebnis, aktion] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  const { ergebnis, laeuft, formular } = useTcmsFormular(action, { zuruecksetzen: false });
   useEffect(() => {
     if (ergebnis?.ok) schliessen();
   }, [ergebnis, schliessen]);
@@ -432,7 +420,7 @@ function BefundDialog({
         Die durchführende Person hat einen Befund angegeben. Mit der Gegenzeichnung wird die
         verknüpfte Feststellung erfasst (Status „Erfasst“).
       </p>
-      <form action={aktion} className="mt-4 space-y-3">
+      <form {...formular} className="mt-4 space-y-3">
         {ergebnis && !ergebnis.ok ? <Meldung ergebnis={ergebnis} /> : null}
         <div>
           <label className="label" htmlFor={`${id}-titel`}>
@@ -559,7 +547,7 @@ function BefundDialog({
           <button type="button" className="btn-secondary" onClick={schliessen}>
             Abbrechen
           </button>
-          <Absenden>Gegenzeichnen und Feststellung erfassen</Absenden>
+          <Absenden laeuft={laeuft}>Gegenzeichnen und Feststellung erfassen</Absenden>
         </div>
       </form>
     </Modal>
@@ -579,21 +567,23 @@ export function NachweisEntfernenKnopf({
   nachweisId: string;
   dateiname: string;
 }) {
-  const [ergebnis, aktion] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  const { ergebnis, laeuft, formular } = useTcmsFormular(action, {
+    zuruecksetzen: false,
+    bestaetigung: {
+      text: `„${dateiname}“ als Nachweis entfernen? Das Dokument bleibt in der Dokumentablage des Mandanten.`,
+      titel: 'Nachweis entfernen',
+      bestaetigen: 'Entfernen',
+      gefahr: true,
+    },
+  });
   return (
-    <form
-      action={aktion}
-      className="flex flex-col items-end gap-1"
-      onSubmit={(e) =>
-        confirmFormSubmission(
-          e,
-          `„${dateiname}“ als Nachweis entfernen? Das Dokument bleibt in der Dokumentablage des Mandanten.`,
-          { title: 'Nachweis entfernen', confirmLabel: 'Entfernen', danger: true },
-        )
-      }
-    >
+    <form {...formular} className="flex flex-col items-end gap-1">
       <input type="hidden" name="nachweisId" value={nachweisId} />
-      <Absenden className="btn-secondary text-xs py-1" title="Ungesperrten Nachweis entfernen">
+      <Absenden
+        className="btn-secondary text-xs py-1"
+        title="Ungesperrten Nachweis entfernen"
+        laeuft={laeuft}
+      >
         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Entfernen
         <span className="sr-only"> ({dateiname})</span>
       </Absenden>
@@ -616,8 +606,8 @@ export function NachweisHochladen({
   maxText: string;
 }) {
   const id = useId();
-  const formular = useRef<HTMLFormElement>(null);
-  const [ergebnis, aktion] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  // Zurückgesetzt wird nur nach Erfolg; bei Ablehnung bleibt die Datei gewählt.
+  const { ergebnis, laeuft, formular } = useTcmsFormular(action);
   // Auswahl gehört zu dem Ergebnis, das bei der Auswahl galt; nach einem
   // Erfolg ist sie verbraucht (kein setState im Effekt).
   const [auswahl, setAuswahl] = useState<{
@@ -625,14 +615,11 @@ export function NachweisHochladen({
     groesse: number;
     fuer: TcmsErgebnis | null;
   } | null>(null);
-  useEffect(() => {
-    if (ergebnis?.ok) formular.current?.reset();
-  }, [ergebnis]);
   const datei = auswahl && !(ergebnis?.ok && auswahl.fuer !== ergebnis) ? auswahl : null;
   const zuGross = datei !== null && datei.groesse > maxBytes;
   const fe = ergebnis && !ergebnis.ok ? ergebnis.fieldErrors : undefined;
   return (
-    <form ref={formular} action={aktion} className="space-y-2" aria-label="Nachweis hochladen">
+    <form {...formular} className="space-y-2" aria-label="Nachweis hochladen">
       <div>
         <label htmlFor={`${id}-datei`} className="label-sm">
           Datei hochladen
@@ -668,7 +655,12 @@ export function NachweisHochladen({
       ) : (
         <Meldung ergebnis={ergebnis} titel="Nachweis nicht hochgeladen." />
       )}
-      <Absenden className="btn-primary" disabled={zuGross} laeuftText="Wird hochgeladen …">
+      <Absenden
+        className="btn-primary"
+        disabled={zuGross}
+        laeuftText="Wird hochgeladen …"
+        laeuft={laeuft}
+      >
         <Upload className="h-4 w-4" aria-hidden="true" /> Hochladen
       </Absenden>
     </form>
@@ -690,7 +682,7 @@ export function NachweisAuswahl({
   dokumente: readonly DokumentWahl[];
 }) {
   const id = useId();
-  const [ergebnis, aktion] = useActionState<TcmsErgebnis | null, FormData>(action, null);
+  const { ergebnis, laeuft, formular } = useTcmsFormular(action);
   const fe = ergebnis && !ergebnis.ok ? ergebnis.fieldErrors : undefined;
   if (dokumente.length === 0) {
     return (
@@ -700,7 +692,7 @@ export function NachweisAuswahl({
     );
   }
   return (
-    <form action={aktion} className="space-y-2" aria-label="Vorhandenes Dokument als Nachweis">
+    <form {...formular} className="space-y-2" aria-label="Vorhandenes Dokument als Nachweis">
       <div>
         <label htmlFor={`${id}-dokument`} className="label-sm">
           Vorhandenes Dokument des Mandanten
@@ -725,7 +717,9 @@ export function NachweisAuswahl({
         <FieldError name="dokumentId" errors={fe?.dokumentId} prefix={id} />
       </div>
       <Meldung ergebnis={ergebnis} titel="Nachweis nicht angehängt." />
-      <Absenden className="btn-secondary">Als Nachweis anhängen</Absenden>
+      <Absenden className="btn-secondary" laeuft={laeuft}>
+        Als Nachweis anhängen
+      </Absenden>
     </form>
   );
 }

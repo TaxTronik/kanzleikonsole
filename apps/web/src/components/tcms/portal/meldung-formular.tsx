@@ -15,7 +15,8 @@ import { Check, Send } from 'lucide-react';
 import { FieldError, fieldErrorProps } from '@/components/form-errors';
 import { KatalogIcon } from '../icon';
 import { tonChip } from '../ton';
-import { TcmsErgebnisMeldung, useTcmsAbsenden, type TcmsFormAktion } from '../ereignisse/aktionen';
+import { TcmsErgebnisMeldung } from '../ereignisse/aktionen';
+import { useTcmsFormular, type TcmsFormAktion } from '../formular';
 import type { MeldeKachel } from '../ereignisse/texte';
 import { auswahlProblem } from './anlagen-upload';
 import { fmtGroesse } from '../durchfuehrung/werte';
@@ -127,7 +128,7 @@ export function MeldungFormular({
   uploadHinweis: string;
 }) {
   const id = useId();
-  const { ergebnis, laeuft, onSubmit } = useTcmsAbsenden(aktion);
+  const { ergebnis, laeuft, onSubmit } = useTcmsFormular(aktion, { zuruecksetzen: false });
   const [typ, setTyp] = useState<string | null>(null);
   const [titel, setTitel] = useState('');
   const [beschreibung, setBeschreibung] = useState('');

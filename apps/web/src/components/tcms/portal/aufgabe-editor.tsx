@@ -20,7 +20,8 @@ import { useId, useState, type ReactNode } from 'react';
 import { Send, Save, TriangleAlert, Check } from 'lucide-react';
 import { fmtEur } from '@taxtronik/tcms-domain';
 import { FieldError, fieldErrorProps } from '@/components/form-errors';
-import { TcmsErgebnisMeldung, useTcmsAbsenden, type TcmsFormAktion } from '../ereignisse/aktionen';
+import { TcmsErgebnisMeldung } from '../ereignisse/aktionen';
+import { useTcmsFormular, type TcmsFormAktion } from '../formular';
 import { alsEingabe } from '../durchfuehrung/werte';
 
 export interface EditorSchritt {
@@ -241,8 +242,9 @@ export function AufgabeEditor({
     ergebnis: antwort,
     laeuft,
     onSubmit,
-  } = useTcmsAbsenden(
+  } = useTcmsFormular(
     aktion ?? (async () => ({ ok: false, error: sperrGrund ?? 'Bearbeitung nicht möglich.' })),
+    { zuruecksetzen: false },
   );
   const fieldErrors = antwort && !antwort.ok ? antwort.fieldErrors : undefined;
   const anzahlErledigt = erledigt.filter(Boolean).length;

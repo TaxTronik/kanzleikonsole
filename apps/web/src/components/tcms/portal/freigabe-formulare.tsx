@@ -16,7 +16,8 @@
 import { useId } from 'react';
 import { Check, CheckCheck } from 'lucide-react';
 import { FieldError, fieldErrorProps } from '@/components/form-errors';
-import { TcmsErgebnisMeldung, useTcmsAbsenden, type TcmsFormAktion } from '../ereignisse/aktionen';
+import { TcmsErgebnisMeldung } from '../ereignisse/aktionen';
+import { useTcmsFormular, type TcmsFormAktion } from '../formular';
 
 /** Name des Codefelds (auch für Tests der Schutzregel). */
 export const CODE_FELD = 'code';
@@ -29,7 +30,8 @@ export function FreigabeCodeFormular({
   freigabeTitel: string;
 }) {
   const id = useId();
-  const { ergebnis, laeuft, onSubmit } = useTcmsAbsenden(aktion, {
+  const { ergebnis, laeuft, onSubmit } = useTcmsFormular(aktion, {
+    zuruecksetzen: false,
     // Code sofort nach dem Lesen aus dem Formular entfernen (nie stehen lassen).
     nachLesen: (form) => {
       const feld = form.elements.namedItem(CODE_FELD);
@@ -75,7 +77,7 @@ export function FreigabeCodeFormular({
 
 export function KenntnisnahmeFormular({ aktion }: { aktion: TcmsFormAktion }) {
   const id = useId();
-  const { ergebnis, laeuft, onSubmit } = useTcmsAbsenden(aktion);
+  const { ergebnis, laeuft, onSubmit } = useTcmsFormular(aktion, { zuruecksetzen: false });
   const fieldErrors = ergebnis && !ergebnis.ok ? ergebnis.fieldErrors : undefined;
   return (
     <form onSubmit={onSubmit} className="space-y-2">
