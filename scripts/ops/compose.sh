@@ -59,10 +59,10 @@ ensure_compose_image_pinning() {
   ensure_tcms_image_pinning "$commit"
 }
 
-# Compose-Unterkommando hinter globalen Optionen. `compose --profile tcms up`
-# muss denselben Writer-Guard ausloesen wie `compose up`; frueher pruefte der
-# Wrapper nur das erste Argument, sodass jede globale Option davor den Guard
-# umging (TCMS Stufe 2). Globale Optionen mit Wert werden samt Wert
+# Compose-Unterkommando hinter globalen Optionen. `compose --profile x up app`
+# muss denselben Writer-Guard ausloesen wie `compose up app`; frueher pruefte
+# der Wrapper nur das erste Argument, sodass jede globale Option davor den
+# Guard umging (TCMS Stufe 2). Globale Optionen mit Wert werden samt Wert
 # uebersprungen; Ausgabe leer, wenn kein Unterkommando folgt.
 compose_subcommand() {
   while (( $# > 0 )); do
@@ -75,6 +75,43 @@ compose_subcommand() {
   done
 }
 
+# Dienste, die nie in die kanzleikonsole-Datenbank schreiben und die die
+# Operator-CLI selbst zwischen Migration und Writer-Aktivierung startet, also
+# waehrend der Migrationsmarker besteht: das Tax-CMS (eigene Datenbank) und die
+# Signal-Engine. Vorher umgingen diese Starts den Guard nur, weil `--profile`
+# vorn stand.
+COMPOSE_NON_WRITER_SERVICES=" tcms-db tcms-migrate tcms-api risk-layer "
+
+# rc 0, wenn der Aufruf Writer starten kann: up/start/restart ohne Dienstliste
+# (alle Dienste) oder mit mindestens einem Dienst ausserhalb der Liste oben.
+# Unbekannte Optionen mit Wert koennen ihren Wert wie einen Dienst aussehen
+# lassen; das fuehrt nur zu mehr Pruefung, nie zu weniger.
+compose_starts_writers() {
+  local seen_subcommand=0 operands=0 arg
+  case "$(compose_subcommand "$@")" in up|start|restart) ;; *) return 1 ;; esac
+  while (( $# > 0 )); do
+    arg="$1"; shift
+    if (( seen_subcommand == 0 )); then
+      case "$arg" in
+        --profile|-p|--project-name|-f|--file|--env-file|--project-directory|--ansi|--progress|--parallel)
+          shift || true ;;
+        -*) ;;
+        *) seen_subcommand=1 ;;
+      esac
+      continue
+    fi
+    case "$arg" in
+      --wait-timeout|--timeout|-t|--scale|--pull|--exit-code-from|--attach|--no-attach) shift || true ;;
+      -*) ;;
+      *)
+        operands=$((operands + 1))
+        [[ "$COMPOSE_NON_WRITER_SERVICES" == *" $arg "* ]] || return 0
+        ;;
+    esac
+  done
+  (( operands == 0 ))
+}
+
 compose() {
   if [[ "${1:-}" == "--infra" ]]; then
     shift
@@ -83,9 +120,7 @@ compose() {
   else
     local compose_files=(-f "$BASE" -f "$APP") method subcommand tcms_mode
     subcommand="$(compose_subcommand "$@")"
-    case "$subcommand" in
-      up|start|restart) assert_writer_start_authorized ;;
-    esac
+    if compose_starts_writers "$@"; then assert_writer_start_authorized; fi
     render_s3_config
     ensure_compose_image_pinning
     method="$(deployment_method)" || die "DEPLOYMENT_METHOD muss standard oder traefik sein."

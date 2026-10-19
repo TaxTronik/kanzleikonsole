@@ -221,7 +221,31 @@ EOF
   done
   [[ "$(compose_subcommand --profile tcms --env-file x up -d)" == "up" ]] || test_fail "subcommand parsing"
   [[ "$(compose_subcommand ps)" == "ps" ]] || test_fail "plain subcommand parsing"
-  pass "compose writer guard also applies after global options such as --profile"
+
+  # Die Operator-CLI startet Tax-CMS und Signal zwischen Migration und
+  # Writer-Aktivierung, also bei bestehendem Marker. Das bleibt erlaubt; jeder
+  # Aufruf mit einem Writer oder ohne Dienstliste bleibt blockiert.
+  for args in "--profile tcms up -d --no-deps tcms-db" \
+    "--profile tcms up -d --no-deps --force-recreate --wait --wait-timeout 180 tcms-api" \
+    "--profile risk-layer up -d --force-recreate --no-deps --wait --wait-timeout 300 risk-layer"; do
+    : >"$calls"
+    # shellcheck disable=SC2086 # Wortzerlegung gewollt: Argumentliste des Testfalls
+    (
+      MIGRATION_PENDING="$pending"
+      DB_RESTORE_AUTHORIZATION="$TMP_DIR/guard-profile.no-restore"
+      render_s3_config() { :; }
+      ensure_compose_image_pinning() { :; }
+      reconcile_n8n_encryption_key_from_volume() { :; }
+      docker() { printf '%s\n' "$*" >>"$calls"; }
+      compose $args
+    ) >"$out" 2>&1 || { cat "$out" >&2; test_fail "compose $args was blocked although it starts no writer"; }
+    [[ -s "$calls" ]] || test_fail "compose $args did not reach docker"
+  done
+  for args in "--profile tcms up -d tcms-api app" "up -d" "--profile tcms up -d --wait-timeout 60 n8n"; do
+    # shellcheck disable=SC2086 # Wortzerlegung gewollt: Argumentliste des Testfalls
+    compose_starts_writers $args || test_fail "compose $args was not treated as a writer start"
+  done
+  pass "compose writer guard applies after global options and spares only TCMS/Signal starts"
 }
 
 # ---------------------------------------------------------------------------

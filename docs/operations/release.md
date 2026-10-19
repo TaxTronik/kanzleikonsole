@@ -314,8 +314,13 @@ Update bestehen. Ein Wiederholungsdeploy darf den gespeicherten Status
 `true`/`unknown` nicht durch eine spätere, nach bereits angewandter Migration
 erfolgreiche Probe auf `false` abschwächen; unterschiedliche Quell-/Zielverträge
 werden ebenfalls nicht überschrieben. Solange der Marker existiert, blockiert
-die CLI jeden manuellen Writer-Start über `up`, `restart`, `start_apps` und
-`backup-full`. Zulässig sind nur die interne Fortsetzung von `deploy`/`update`
+die CLI jeden manuellen Writer-Start über `up`, `start`, `restart`,
+`start_apps` und `backup-full`, auch hinter globalen Compose-Optionen wie
+`--profile`. Ausgenommen sind nur Aufrufe, die ausschließlich Tax-CMS-Dienste
+(`tcms-db`, `tcms-migrate`, `tcms-api`, eigene Datenbank) oder die
+Signal-Engine (`risk-layer`) starten; sie schreiben nie in die
+kanzleikonsole-Datenbank und werden von `deploy`/`update` zwischen Migration
+und Writer-Aktivierung gestartet. Zulässig sind nur die interne Fortsetzung von `deploy`/`update`
 mit exakt passender Zielversion und passendem Commit oder ein verifizierter
 Nachfolge-Commit desselben Quellstands, wenn der alte Marker
 `requires_db_restore=false` ausweist, dessen Ziel-Commit ein echter Vorfahr ist
