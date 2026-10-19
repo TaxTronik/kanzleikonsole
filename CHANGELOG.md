@@ -34,6 +34,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   mit eigener Datenbank, `./taxtronik tcms setup|status|rotate-token|rotate-key|disable|backup|restore`
   mit Rotation in Überlappung, TCMS-Prüfungen in `doctor`, TCMS-Datenbank in
   Backup, Update-Pflichtbackup und Restore (`docs/operations/tcms-betrieb.md`).
+- **[TCMS]** Code-Schlüssel des verwalteten Tax-CMS (TCMS s8, Hinweis H5):
+  `tcms setup`, `deploy` und `update` erzeugen `TCMS_CODE_SCHLUESSEL` einmalig
+  (32 Byte base64url, nie neu erzeugt), `./taxtronik tcms rotate-code-key`
+  rotiert mit 7 Tagen Überlappung (`--finish` frühestens danach, vorzeitig nur
+  mit `--force` und Bestätigungswort), `doctor` und `tcms status` prüfen
+  Vorhandensein, Format und Rotationsstand ohne Werte; ein laufender
+  Rotationszustand liegt im Full-Backup. Beim ersten Rollout von TCMS s8
+  laufen offene Bestätigungscodes ab.
 - **[TCMS]** Oberflächen des Tax-CMS, Stufe 3 (Fundament): Portfolio
   (_Mandatsarbeit → Tax-CMS_), Cockpit und „Kontakte & Rollen“ in der
   Mandantenakte, Übersicht im Mandanten-Portal. Menüpunkte erscheinen nur bei
@@ -1878,6 +1886,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Worker erreichen nur die TCMS-API, nie deren Datenbank. Images sind per
   Digest an den signierten Release-Stand gebunden; Token, Schlüssel und
   Passwörter gehen nur über stdin oder das Prozess-Env, nie über argv.
+- **[TCMS]** Der Code-Schlüssel der Bestätigungscodes erreicht nur `tcms-api`
+  (Pflichtwert aus der `.env`, nie Image, `tcms-migrate`, Healthcheck oder
+  app/worker), muss sich von allen Tokens und Passwörtern unterscheiden und
+  erscheint weder in Ausgaben, Kommandozeilen noch Zustandsdateien (dort nur
+  Kennungen). Fehlt er oder ist er ungültig, brechen `deploy` und `update` vor
+  den TCMS-Images und den Migrationen ab; der laufende Dienst bleibt
+  unverändert.
 - Betrieb: `set_env` übergibt `.env`-Werte nicht mehr in der
   sed-Kommandozeile (sichtbar in Prozesslisten); `.env` wird atomar mit 0600
   geschrieben.

@@ -312,8 +312,13 @@ pnpm env:lokal
 bash /home/claude/work/tcms-mkdb.sh tcms_kkct /home/claude/wt/tcms-kkct
 # Schlüsselpaar: Ausgabe in eine Datei mit Modus 600, nie ins Terminal-Log.
 umask 077 && node scripts/akteur-schluessel.mjs --kid kk-vertrag > ~/kkct-schluessel.txt
+# Code-Schlüssel der Bestätigungscodes (TCMS s8): 32 Zufallsbyte in eine Datei
+# mit Modus 600, getrennt vom Token; der Wert geht nur über die Umgebung an den
+# Prozess, nie als Argument oder ins Terminal.
+(umask 077 && openssl rand -base64 32 | tr -d '\n' > ~/kkct-code-schluessel.txt)
 # API auf freiem Port (Token zufällig, z. B. openssl rand -base64 48):
 TCMS_SERVICE_TOKENS=<token> TCMS_ACTOR_PUBLIC_KEYS=<kid>=<spki> \
+  TCMS_CODE_SCHLUESSEL="$(cat ~/kkct-code-schluessel.txt)" \
   DATABASE_URL=postgresql://tcms_app:<passwort>@127.0.0.1:55432/tcms_kkct \
   HOST=127.0.0.1 PORT=<port> node_modules/.bin/tsx --env-file=.env apps/api/src/server.ts
 # Vertragstest in der kanzleikonsole:
@@ -321,6 +326,13 @@ cd <kanzleikonsole>/packages/tcms-client
 TCMS_CONTRACT_TESTS=1 TCMS_URL=http://127.0.0.1:<port> TCMS_SERVICE_TOKEN=<token> \
   TCMS_ACTOR_PRIVATE_KEY=<pkcs8> TCMS_ACTOR_KEY_ID=<kid> pnpm test:contract
 ```
+
+Ab TCMS s8 startet der Dienst ohne gültigen `TCMS_CODE_SCHLUESSEL` nicht
+(Format wie die Dienst-Tokens, kein Eintrag gleich einem Token; das Startlog
+nennt nur die Anzahl). Wird die Datei neu erzeugt, laufen offene
+Bestätigungscodes der Test-Datenbank ab; Daten gehen nicht verloren. Im
+verwalteten Betrieb erzeugt und rotiert die Operator-CLI den Schlüssel
+([Tax-CMS-Betrieb](../operations/tcms-betrieb.md), Abschnitte 4 und 5).
 
 Die Gründe der Abweisungen stehen nur im Log des Dienstes (`grund`, z. B.
 `SIGNATUR`, `KID_UNBEKANNT`, `DIENST_TOKEN`, `REQ_BODY`, `JTI_WIEDERHOLT`) und
