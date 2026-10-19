@@ -1,3 +1,4 @@
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 const VALID_BASE: NodeJS.ProcessEnv = {
@@ -123,6 +124,31 @@ describe('ENV production hardening', () => {
         RISK_LAYER_OPERATOR_TOKEN: shared,
       }),
     ).toThrow(/muss sich von RISK_LAYER_TOKEN unterscheiden/);
+  });
+
+  it('TCMS: in Produktion HTTPS, http nur managed zum Compose-Dienst (TCMS Stufe 2)', () => {
+    const tcms = {
+      TCMS_DEPLOYMENT: 'managed',
+      TCMS_URL: 'http://tcms-api:3200',
+      TCMS_SERVICE_TOKEN: randomBytes(32).toString('base64url'),
+      TCMS_ACTOR_PRIVATE_KEY: generateKeyPairSync('ed25519')
+        .privateKey.export({ format: 'der', type: 'pkcs8' })
+        .toString('base64'),
+      TCMS_ACTOR_KEY_ID: 'kk-1',
+    };
+    expect(() => parseEnvFrom({ ...PROD_BASE, ...tcms })).not.toThrow();
+    expect(() =>
+      parseEnvFrom({ ...PROD_BASE, ...tcms, TCMS_URL: 'https://tcms.intern.example' }),
+    ).not.toThrow();
+    expect(() => parseEnvFrom({ ...PROD_BASE, ...tcms, TCMS_DEPLOYMENT: 'external' })).toThrow(
+      /TCMS_URL muss bei TCMS_DEPLOYMENT=external in Produktion https:\/\/ verwenden/,
+    );
+    expect(() =>
+      parseEnvFrom({ ...PROD_BASE, ...tcms, TCMS_URL: 'http://tcms.intern.example:3200' }),
+    ).toThrow(/nur zum verwalteten Compose-Dienst tcms-api:3200/);
+    expect(() => parseEnvFrom({ ...PROD_BASE, ...tcms, TCMS_SERVICE_TOKEN: '' })).toThrow(
+      /TCMS_DEPLOYMENT managed\/external verlangt TCMS_SERVICE_TOKEN/,
+    );
   });
 
   it('blockt Parent-Domain-Cookie-Scope', () => {

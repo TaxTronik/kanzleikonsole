@@ -22,6 +22,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@taxtronik/tcms-contract": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

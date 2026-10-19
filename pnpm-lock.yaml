@@ -586,6 +586,9 @@ importers:
 
   packages/config:
     dependencies:
+      '@taxtronik/tcms-contract':
+        specifier: workspace:*
+        version: link:../tcms-contract
       zod:
         specifier: ^4.4.3
         version: 4.4.3

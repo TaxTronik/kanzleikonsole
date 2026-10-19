@@ -9,6 +9,8 @@
 // Konfiguration erst beim Aufruf lesen.
 // =============================================================================
 
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { inspect } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import devDefaults from '../dev-default-secrets.json';
 import {
@@ -18,6 +20,7 @@ import {
   envProfileSchema,
   getElsterConfig,
   getRiskLayerConfig,
+  getTcmsConfig,
   parseEnvProfileFrom,
   type EnvPartName,
   type EnvProfileName,
@@ -88,6 +91,26 @@ function pflichtwerte(profile: EnvProfileName): string[] {
     .filter(([, schema]) => !schema.safeParse(undefined).success)
     .map(([key]) => key)
     .sort();
+}
+
+// TCMS Stufe 2: Schlüssel und Token entstehen je Lauf, nichts davon steht im Repo.
+const TCMS_SCHLUESSEL = generateKeyPairSync('ed25519')
+  .privateKey.export({ format: 'der', type: 'pkcs8' })
+  .toString('base64');
+const TCMS_TOKEN = randomBytes(32).toString('base64url');
+
+/** Vollständige TCMS-Konfiguration (managed, Compose-Dienst) plus Änderungen. */
+function tcmsEnv(aenderung: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return mit(
+    {
+      TCMS_DEPLOYMENT: 'managed',
+      TCMS_URL: 'http://tcms-api:3200',
+      TCMS_SERVICE_TOKEN: TCMS_TOKEN,
+      TCMS_ACTOR_PRIVATE_KEY: TCMS_SCHLUESSEL,
+      TCMS_ACTOR_KEY_ID: 'kk-2026-10-19',
+    },
+    aenderung,
+  );
 }
 
 const ORIGINAL_ENV = process.env;
@@ -211,6 +234,8 @@ describe('Worker-Profil', () => {
       ['Legacy-Callbacks ohne N8N_HMAC_SECRET', { N8N_LEGACY_CALLBACKS_ENABLED: 'true' }],
       ['RISK_LAYER_URL ohne Token', { RISK_LAYER_URL: 'http://risk-layer:8000' }],
       ['Operator-Secret ohne Basiskonfiguration', { RISK_LAYER_OPERATOR_TOKEN: 'o'.repeat(32) }],
+      ['TCMS aktiv ohne Token', { TCMS_DEPLOYMENT: 'managed', TCMS_URL: 'http://tcms-api:3200' }],
+      ['TCMS external ohne HTTPS', { ...tcmsEnv(), TCMS_DEPLOYMENT: 'external' }],
     ];
     for (const [fall, aenderung] of faelle) {
       const worker = fehler(() => parseEnvProfileFrom('worker', mit(WORKER_PROD, aenderung)));
@@ -401,5 +426,170 @@ describe('Lazy-Getter für Pakete', () => {
       'ENV-Validierung fehlgeschlagen — siehe Konsole.',
     );
     expect(String(error.mock.calls[0]?.[0])).toContain('  - ELSTER_BRIDGE_URL: ');
+  });
+});
+
+describe('TCMS-Konfiguration (TCMS Stufe 2)', () => {
+  /** Schemafehler: generische Meldung, Feld und Grund nur auf der Konsole. */
+  function schemaFehler(source: NodeJS.ProcessEnv): string {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(fehler(() => getTcmsConfig(source))).toBe(
+      'ENV-Validierung fehlgeschlagen — siehe Konsole.',
+    );
+    const ausgabe = error.mock.calls.map((c) => String(c[0])).join('\n');
+    error.mockRestore();
+    return ausgabe;
+  }
+
+  it('ist ohne Angabe deaktiviert (null), auch mit leerem Wert', () => {
+    expect(getTcmsConfig({})).toBeNull();
+    expect(getTcmsConfig({ TCMS_DEPLOYMENT: '' })).toBeNull();
+    expect(getTcmsConfig({ TCMS_DEPLOYMENT: 'disabled' })).toBeNull();
+    expect(schemaFehler({ TCMS_DEPLOYMENT: 'an' })).toContain('TCMS_DEPLOYMENT');
+  });
+
+  it('liefert bei managed/external URL, kid und den geladenen Ed25519-Schlüssel', () => {
+    const config = getTcmsConfig(tcmsEnv({ TCMS_URL: 'http://tcms-api:3200/' }))!;
+    expect(config.deployment).toBe('managed');
+    expect(config.url).toBe('http://tcms-api:3200');
+    expect(config.actorKeyId).toBe('kk-2026-10-19');
+    expect(config.actorPrivateKey.type).toBe('private');
+    expect(config.actorPrivateKey.asymmetricKeyType).toBe('ed25519');
+    expect(config.serviceToken).toBe(TCMS_TOKEN);
+    expect(Object.isFrozen(config)).toBe(true);
+    expect(getTcmsConfig(tcmsEnv({ TCMS_DEPLOYMENT: 'external' }))?.deployment).toBe('external');
+  });
+
+  it('zeigt Token und Schlüssel weder in JSON noch in console.log/inspect', () => {
+    const config = getTcmsConfig(tcmsEnv())!;
+    const ausgaben = [JSON.stringify(config), inspect(config, { depth: 5 }), String(config)];
+    for (const ausgabe of ausgaben) {
+      expect(ausgabe).not.toContain(TCMS_TOKEN);
+      expect(ausgabe).not.toContain(TCMS_SCHLUESSEL);
+    }
+    expect(Object.keys(config)).not.toContain('serviceToken');
+  });
+
+  it('verlangt bei managed/external alle Werte und nennt die fehlenden', () => {
+    for (const deployment of ['managed', 'external']) {
+      for (const key of [
+        'TCMS_URL',
+        'TCMS_SERVICE_TOKEN',
+        'TCMS_ACTOR_PRIVATE_KEY',
+        'TCMS_ACTOR_KEY_ID',
+      ]) {
+        const meldung = fehler(() =>
+          getTcmsConfig(tcmsEnv({ TCMS_DEPLOYMENT: deployment, [key]: '' })),
+        );
+        expect(meldung, `${deployment} ohne ${key}`).toBe(
+          `[config] TCMS_DEPLOYMENT managed/external verlangt ${key} (nicht gesetzt).`,
+        );
+      }
+    }
+  });
+
+  it('prüft das Dienst-Token wie der Dienst und nennt nie den Wert', () => {
+    const faelle: Array<[string, string]> = [
+      [TCMS_TOKEN.slice(0, 31), 'kürzer als 32 Zeichen'],
+      [`${TCMS_TOKEN}${'x'.repeat(512)}`, 'länger als 512 Zeichen'],
+      [`${TCMS_TOKEN}%`, 'enthält Zeichen außerhalb'],
+      [`${TCMS_TOKEN}==a`, 'enthält Zeichen außerhalb'],
+      [`replace-me-${TCMS_TOKEN}`, 'ist ein Platzhalter'],
+      ['bitte-durch-einen-zufaelligen-dienst-token-ersetzen', 'ist ein Platzhalter'],
+      ['abcdefgabcdefgabcdefgabcdefgabcdefg', 'hat zu wenige verschiedene Zeichen'],
+    ];
+    for (const [token, grund] of faelle) {
+      const ausgabe = schemaFehler(tcmsEnv({ TCMS_SERVICE_TOKEN: token }));
+      expect(ausgabe, grund).toContain(`TCMS_SERVICE_TOKEN: ${grund}`);
+      expect(ausgabe, grund).not.toContain(token);
+    }
+  });
+
+  it('verlangt einen privaten Ed25519-Schlüssel (PKCS#8, base64) und nennt nie den Wert', () => {
+    const rsa = generateKeyPairSync('rsa', { modulusLength: 1024 })
+      .privateKey.export({ format: 'der', type: 'pkcs8' })
+      .toString('base64');
+    const x25519 = generateKeyPairSync('x25519')
+      .privateKey.export({ format: 'der', type: 'pkcs8' })
+      .toString('base64');
+    const oeffentlich = generateKeyPairSync('ed25519')
+      .publicKey.export({ format: 'der', type: 'spki' })
+      .toString('base64');
+    const faelle: Array<[string, string]> = [
+      [rsa, 'kein Ed25519-Schlüssel'],
+      [x25519, 'kein Ed25519-Schlüssel'],
+      [oeffentlich, 'kein PKCS8-DER'],
+      [`${TCMS_SCHLUESSEL.slice(0, -2)}*=`, 'kein kanonisches base64'],
+    ];
+    for (const [schluessel, grund] of faelle) {
+      const ausgabe = schemaFehler(tcmsEnv({ TCMS_ACTOR_PRIVATE_KEY: schluessel }));
+      expect(ausgabe, grund).toContain(`TCMS_ACTOR_PRIVATE_KEY: ${grund}`);
+      expect(ausgabe, grund).not.toContain(schluessel.slice(0, 40));
+    }
+  });
+
+  it('verlangt eine kid im Format der Schlüsselliste des Dienstes', () => {
+    for (const kid of ['kid mit leerzeichen', 'k'.repeat(65), 'kid=1', 'ä']) {
+      expect(schemaFehler(tcmsEnv({ TCMS_ACTOR_KEY_ID: kid })), kid).toContain(
+        'TCMS_ACTOR_KEY_ID: muss aus 1–64 Zeichen',
+      );
+    }
+    expect(getTcmsConfig(tcmsEnv({ TCMS_ACTOR_KEY_ID: 'kk-2026.10_A' }))?.actorKeyId).toBe(
+      'kk-2026.10_A',
+    );
+  });
+
+  it('erlaubt in TCMS_URL nur Schema, Host und Port über http(s)', () => {
+    const faelle: Array<[string, string]> = [
+      ['kein-url', 'ist keine URL'],
+      ['ftp://tcms-api:3200', 'muss http:// oder https:// verwenden'],
+      ['http://kk:geheimes-passwort@tcms-api:3200', 'darf keine Zugangsdaten enthalten'],
+      ['http://tcms-api:3200/?token=abc', 'darf keine Query und kein Fragment enthalten'],
+      ['http://tcms-api:3200/#x', 'darf keine Query und kein Fragment enthalten'],
+      ['http://tcms-api:3200/tcms', 'darf nur Schema, Host und Port enthalten'],
+    ];
+    for (const [url, grund] of faelle) {
+      const ausgabe = schemaFehler(tcmsEnv({ TCMS_URL: url }));
+      expect(ausgabe, url).toContain(`TCMS_URL: ${grund}`);
+      expect(ausgabe, url).not.toContain('geheimes-passwort');
+    }
+  });
+
+  it('verlangt in Produktion HTTPS, außer managed zum Compose-Dienst', () => {
+    const prod = (aenderung: NodeJS.ProcessEnv) =>
+      fehler(() => getTcmsConfig(tcmsEnv({ NODE_ENV: 'production', ...aenderung })));
+    expect(prod({})).toBeNull();
+    expect(prod({ TCMS_URL: 'https://tcms.intern.example' })).toBeNull();
+    expect(prod({ TCMS_DEPLOYMENT: 'external', TCMS_URL: 'https://tcms.intern.example' })).toBe(
+      null,
+    );
+    expect(prod({ TCMS_DEPLOYMENT: 'external' })).toBe(
+      '[config] TCMS_URL muss bei TCMS_DEPLOYMENT=external in Produktion https:// verwenden.',
+    );
+    const nurCompose =
+      '[config] TCMS_URL: http:// ist in Produktion nur zum verwalteten Compose-Dienst tcms-api:3200 erlaubt, sonst https://.';
+    expect(prod({ TCMS_URL: 'http://tcms-api:3201' })).toBe(nurCompose);
+    expect(prod({ TCMS_URL: 'http://tcms.intern.example:3200' })).toBe(nurCompose);
+    expect(prod({ TCMS_URL: 'http://tcms-api' })).toBe(nurCompose);
+    // Außerhalb von Produktion (Entwicklung, Vertragstest) ist http überall erlaubt.
+    expect(
+      getTcmsConfig(tcmsEnv({ TCMS_DEPLOYMENT: 'external', TCMS_URL: 'http://127.0.0.1:4100' }))
+        ?.url,
+    ).toBe('http://127.0.0.1:4100');
+  });
+
+  it('prüft dieselben Regeln beim Start von Web und Worker', () => {
+    expect(parseEnvProfileFrom('web', mit(WEB_PROD, tcmsEnv())).TCMS_DEPLOYMENT).toBe('managed');
+    expect(parseEnvProfileFrom('worker', mit(WORKER_PROD, tcmsEnv())).TCMS_DEPLOYMENT).toBe(
+      'managed',
+    );
+    expect(parseEnvProfileFrom('web', WEB_DEV).TCMS_DEPLOYMENT).toBe('disabled');
+    for (const profile of ['web', 'worker'] as const) {
+      const basis = profile === 'web' ? WEB_DEV : WORKER_DEV;
+      expect(
+        fehler(() => parseEnvProfileFrom(profile, mit(basis, { TCMS_DEPLOYMENT: 'external' }))),
+        profile,
+      ).toMatch(/^\[config\] TCMS_DEPLOYMENT managed\/external verlangt TCMS_URL, /);
+    }
   });
 });

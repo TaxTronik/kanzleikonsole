@@ -4,8 +4,8 @@
 // Review-Befund K-09: Web, Worker und CLI-Skripte validierten dasselbe
 // Gesamtschema; der Worker brauchte dadurch Web-Pflichtwerte wie NEXTAUTH_URL.
 // Hier stehen die Teile (Core, DB, Restore-Drill, Redis, Secrets, Portal-Links,
-// Web-Auth, WebAuthn, S3, ClamAV, SMTP, n8n, Risk-Layer, ELSTER, TSA, Lizenz,
-// Update), ihre Produktions-Prüfungen und die Prozessprofile. Das Web-Profil
+// Web-Auth, WebAuthn, S3, ClamAV, SMTP, n8n, Risk-Layer, TCMS, ELSTER, TSA,
+// Lizenz, Update), ihre Produktions-Prüfungen und die Prozessprofile. Das Web-Profil
 // umfasst alle Teile und prüft in derselben Reihenfolge mit denselben Meldungen
 // wie zuvor; Schemafehler listet die Konsole nach Teilen geordnet. Prüfungen,
 // die nur ein Prozess braucht, nennen ihre Profile (Restore-Drill: Worker).
@@ -14,6 +14,9 @@
 // ./env.ts für das vom Prozess gewählte Profil (./profile.ts).
 // =============================================================================
 
+import type { KeyObject } from 'node:crypto';
+import { AkteurHeaderSchema } from '@taxtronik/tcms-contract/akteur';
+import { parsePrivatenSchluessel } from '@taxtronik/tcms-contract/signatur';
 import { z } from 'zod';
 import devDefaultSecrets from './dev-default-secrets.json';
 
@@ -280,6 +283,118 @@ const RISK_LAYER = {
   RISK_LAYER_LLM_BACKEND: z.preprocess(blankAsUndefined, z.enum(['auto', 'cpu', 'gpu']).optional()),
 };
 
+// --- TCMS (Tax-CMS, TCMS Stufe 2) -------------------------------------------------
+//
+// Interner headless Dienst (ADR 0001 im TCMS-Repo). Anders als beim Risk-Layer
+// gibt es keinen stillen Halbzustand: TCMS_DEPLOYMENT entscheidet (Standard
+// `disabled`), bei `managed`/`external` sind alle Werte Pflicht (checkTcms).
+// Formatregeln gelten, sobald ein Wert gesetzt ist. Meldungen nennen Variable
+// und Grund, nie den Wert.
+
+/** Compose-Dienst des verwalteten TCMS (infra/compose, Ops-Aufgabe). */
+export const TCMS_COMPOSE_DIENST = 'tcms-api';
+export const TCMS_COMPOSE_PORT = 3200;
+export const TCMS_DEPLOYMENTS = ['managed', 'external', 'disabled'] as const;
+export type TcmsDeployment = (typeof TCMS_DEPLOYMENTS)[number];
+
+// Dieselben Token-Regeln wie der Dienst (tcms apps/api/src/konfiguration.ts):
+// Länge, b64token-Zeichensatz (RFC 6750), Platzhalter, Zeichenvielfalt.
+const TCMS_TOKEN_ZEICHEN = /^[A-Za-z0-9\-._~+/]+=*$/;
+const TCMS_TOKEN_PLATZHALTER =
+  /ersetzen|replace|change.?me|platzhalter|placeholder|beispiel|example|dummy|secret|geheim|passwor|xxxx/i;
+const TCMS_TOKEN_MIN = 32;
+const TCMS_TOKEN_MAX = 512;
+const TCMS_TOKEN_MIN_VERSCHIEDEN = 8;
+
+/** Erster Verstoß gegen die Token-Regeln oder `null`. */
+function tcmsTokenProblem(token: string): string | null {
+  if (token.length < TCMS_TOKEN_MIN) return `kürzer als ${TCMS_TOKEN_MIN} Zeichen`;
+  if (token.length > TCMS_TOKEN_MAX) return `länger als ${TCMS_TOKEN_MAX} Zeichen`;
+  if (!TCMS_TOKEN_ZEICHEN.test(token)) {
+    return 'enthält Zeichen außerhalb von A-Z a-z 0-9 - . _ ~ + / (= nur am Ende)';
+  }
+  if (TCMS_TOKEN_PLATZHALTER.test(token)) return 'ist ein Platzhalter';
+  if (new Set(token).size < TCMS_TOKEN_MIN_VERSCHIEDEN) return 'hat zu wenige verschiedene Zeichen';
+  return null;
+}
+
+/** Erster Verstoß gegen die URL-Regeln oder `null` (Produktionsregeln: checkTcms). */
+function tcmsUrlProblem(wert: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(wert);
+  } catch {
+    return 'ist keine URL';
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return 'muss http:// oder https:// verwenden';
+  }
+  if (url.username !== '' || url.password !== '') return 'darf keine Zugangsdaten enthalten';
+  if (wert.includes('?') || wert.includes('#'))
+    return 'darf keine Query und kein Fragment enthalten';
+  // Der Client signiert `/v1/…` exakt wie gesendet; ein Pfadpräfix (Proxy)
+  // würde Signatur und empfangenen Pfad auseinanderlaufen lassen.
+  if (url.pathname !== '/' || wert !== wert.trim())
+    return 'darf nur Schema, Host und Port enthalten';
+  return null;
+}
+
+const TCMS = {
+  TCMS_DEPLOYMENT: z.preprocess(blankOrMissing, z.enum(TCMS_DEPLOYMENTS).default('disabled')),
+  TCMS_URL: z.preprocess(
+    blankAsUndefined,
+    z
+      .string()
+      .superRefine((wert, ctx) => {
+        const problem = tcmsUrlProblem(wert);
+        if (problem) ctx.addIssue({ code: 'custom', message: problem });
+      })
+      .optional(),
+  ),
+  TCMS_SERVICE_TOKEN: z.preprocess(
+    blankAsUndefined,
+    z
+      .string()
+      .superRefine((wert, ctx) => {
+        const problem = tcmsTokenProblem(wert);
+        if (problem) ctx.addIssue({ code: 'custom', message: problem });
+      })
+      .optional(),
+  ),
+  // PKCS#8-DER, base64, wie `akteur-schluessel.mjs` des TCMS ihn ausgibt.
+  TCMS_ACTOR_PRIVATE_KEY: z.preprocess(
+    blankAsUndefined,
+    z
+      .string()
+      .superRefine((wert, ctx) => {
+        try {
+          parsePrivatenSchluessel(wert);
+        } catch (error) {
+          // Meldungen von parsePrivatenSchluessel enthalten kein Schlüsselmaterial.
+          const grund = error instanceof Error ? error.message : 'ungültig';
+          ctx.addIssue({ code: 'custom', message: grund.replace(/^Privater Schlüssel: /, '') });
+        }
+      })
+      .optional(),
+  ),
+  TCMS_ACTOR_KEY_ID: z.preprocess(
+    blankAsUndefined,
+    z
+      .string()
+      .refine((wert) => AkteurHeaderSchema.shape.kid.safeParse(wert).success, {
+        message: 'muss aus 1–64 Zeichen A-Z a-z 0-9 . _ - bestehen',
+      })
+      .optional(),
+  ),
+};
+
+const TCMS_PFLICHT = [
+  'TCMS_URL',
+  'TCMS_SERVICE_TOKEN',
+  'TCMS_ACTOR_PRIVATE_KEY',
+  'TCMS_ACTOR_KEY_ID',
+] as const;
+
 const ELSTER = {
   // Netzinterner HTTP-Dienst, der die native ERiC-Bibliothek kapselt (eigener
   // Debian-Container; Repo taxtronik-eric-bridge). Beide Werte optional:
@@ -321,6 +436,7 @@ export const ENV_PARTS = {
   smtp: SMTP,
   n8n: N8N,
   riskLayer: RISK_LAYER,
+  tcms: TCMS,
   elster: ELSTER,
   tsa: TSA,
   license: LICENSE,
@@ -351,6 +467,7 @@ export const ENV_PROFILES = {
     'smtp',
     'n8n',
     'riskLayer',
+    'tcms',
     'elster',
     'tsa',
     'license',
@@ -374,6 +491,7 @@ export const ENV_PROFILES = {
     'smtp',
     'n8n',
     'riskLayer',
+    'tcms',
     'tsa',
     'update',
   ],
@@ -406,6 +524,7 @@ const PROFILE_SCHEMAS = {
     ...SMTP,
     ...N8N,
     ...RISK_LAYER,
+    ...TCMS,
     ...ELSTER,
     ...TSA,
     ...LICENSE,
@@ -424,6 +543,7 @@ const PROFILE_SCHEMAS = {
     ...SMTP,
     ...N8N,
     ...RISK_LAYER,
+    ...TCMS,
     ...TSA,
     ...UPDATE,
   }),
@@ -482,6 +602,33 @@ function checkRiskLayerOperator(data: Partial<Data>): void {
   if (operator && operator === data.RISK_LAYER_TOKEN) {
     throw new Error(
       '[config] RISK_LAYER_OPERATOR_TOKEN muss sich von RISK_LAYER_TOKEN unterscheiden.',
+    );
+  }
+}
+
+/**
+ * TCMS: bei `managed`/`external` alle Werte Pflicht; in Produktion nur HTTPS,
+ * außer `managed` zum Compose-Dienst (internes Netz). Gilt auch im Lazy-Getter.
+ */
+function checkTcms(data: Partial<Data>): void {
+  const deployment = (data.TCMS_DEPLOYMENT as TcmsDeployment | undefined) ?? 'disabled';
+  if (deployment === 'disabled') return;
+  const fehlend = TCMS_PFLICHT.filter((key) => !data[key]);
+  if (fehlend.length > 0) {
+    throw new Error(
+      `[config] TCMS_DEPLOYMENT managed/external verlangt ${fehlend.join(', ')} (nicht gesetzt).`,
+    );
+  }
+  const url = new URL(data.TCMS_URL as string);
+  if (data.NODE_ENV !== 'production' || url.protocol === 'https:') return;
+  if (deployment === 'external') {
+    throw new Error(
+      '[config] TCMS_URL muss bei TCMS_DEPLOYMENT=external in Produktion https:// verwenden.',
+    );
+  }
+  if (url.hostname !== TCMS_COMPOSE_DIENST || url.port !== String(TCMS_COMPOSE_PORT)) {
+    throw new Error(
+      `[config] TCMS_URL: http:// ist in Produktion nur zum verwalteten Compose-Dienst ${TCMS_COMPOSE_DIENST}:${TCMS_COMPOSE_PORT} erlaubt, sonst https://.`,
     );
   }
 }
@@ -667,6 +814,8 @@ const CHECKS: readonly Check[] = [
     part: 'webAuth',
     run: checkCookieDomains,
   },
+  // TCMS Stufe 2: Pflichtwerte in jedem Modus, HTTPS-Regel in Produktion.
+  { part: 'tcms', always: true, run: checkTcms },
 ];
 
 function checkCookieDomains(data: Data, _source: NodeJS.ProcessEnv, warn: Warn): void {
@@ -812,6 +961,21 @@ export interface ElsterConfig {
   token: string;
 }
 
+/**
+ * Konfiguration des TCMS oder `null` bei `TCMS_DEPLOYMENT=disabled`. Der
+ * private Schlüssel ist bereits als KeyObject geladen (Ausgabe in JSON oder
+ * Logs zeigt kein Material); das Dienst-Token ist nicht aufzählbar und fehlt
+ * deshalb in `JSON.stringify` und `console.log` des Objekts.
+ */
+export interface TcmsConfig {
+  deployment: Exclude<TcmsDeployment, 'disabled'>;
+  /** Origin des Dienstes (Schema, Host, Port) ohne abschließenden Schrägstrich. */
+  url: string;
+  readonly serviceToken: string;
+  actorKeyId: string;
+  actorPrivateKey: KeyObject;
+}
+
 export type N8nDeliveryMode = 'production' | 'test' | 'log';
 
 export function riskLayerConfigOf(data: {
@@ -852,8 +1016,39 @@ export function n8nDeliveryModeOf(data: {
   return data.N8N_DELIVERY_MODE ?? (data.NODE_ENV === 'production' ? 'production' : 'test');
 }
 
+export function tcmsConfigOf(data: {
+  TCMS_DEPLOYMENT?: TcmsDeployment;
+  TCMS_URL?: string;
+  TCMS_SERVICE_TOKEN?: string;
+  TCMS_ACTOR_PRIVATE_KEY?: string;
+  TCMS_ACTOR_KEY_ID?: string;
+}): TcmsConfig | null {
+  const deployment = data.TCMS_DEPLOYMENT ?? 'disabled';
+  if (deployment === 'disabled') return null;
+  if (
+    !data.TCMS_URL ||
+    !data.TCMS_SERVICE_TOKEN ||
+    !data.TCMS_ACTOR_PRIVATE_KEY ||
+    !data.TCMS_ACTOR_KEY_ID
+  ) {
+    throw new Error('[config] TCMS-Konfiguration unvollständig.');
+  }
+  const config = {
+    deployment,
+    url: new URL(data.TCMS_URL).origin,
+    actorKeyId: data.TCMS_ACTOR_KEY_ID,
+    actorPrivateKey: parsePrivatenSchluessel(data.TCMS_ACTOR_PRIVATE_KEY),
+  };
+  Object.defineProperty(config, 'serviceToken', {
+    value: data.TCMS_SERVICE_TOKEN,
+    enumerable: false,
+  });
+  return Object.freeze(config) as TcmsConfig;
+}
+
 const RISK_LAYER_SCHEMA = z.object(RISK_LAYER);
 const ELSTER_SCHEMA = z.object(ELSTER);
+const TCMS_SCHEMA = z.object({ NODE_ENV: CORE.NODE_ENV, ...TCMS });
 
 /**
  * Lazy-Getter für Pakete (risk-layer): liest nur den Risk-Layer-Teil zur
@@ -874,4 +1069,17 @@ export function getElsterConfig(source: NodeJS.ProcessEnv = process.env): Elster
   const parsed = ELSTER_SCHEMA.safeParse(source);
   if (!parsed.success) validationFailed(parsed.error);
   return elsterConfigOf(parsed.data);
+}
+
+/**
+ * Lazy-Getter für das TCMS (TCMS Stufe 2): liest nur NODE_ENV und den
+ * TCMS-Teil zur Aufrufzeit und prüft dieselben Regeln wie das Boot-Gate.
+ * Lädt den privaten Schlüssel je Aufruf neu; Aufrufer halten den Client (und
+ * damit den Schlüssel) einmal pro Prozess.
+ */
+export function getTcmsConfig(source: NodeJS.ProcessEnv = process.env): TcmsConfig | null {
+  const parsed = TCMS_SCHEMA.safeParse(source);
+  if (!parsed.success) validationFailed(parsed.error);
+  checkTcms(parsed.data);
+  return tcmsConfigOf(parsed.data);
 }

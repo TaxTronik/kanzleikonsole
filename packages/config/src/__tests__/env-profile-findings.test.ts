@@ -5,6 +5,7 @@
 // Grundlage der Konfigurationsprüfung im Ziel-Image vor Backup und Migration.
 // =============================================================================
 
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { checkEnvProfileFrom, parseEnvProfileFrom, type EnvProfileName } from '../env-schema';
 
@@ -32,6 +33,16 @@ const WEB_PROD: NodeJS.ProcessEnv = {
   NEXTAUTH_TRUST_HOST: 'true',
   STAFF_COOKIE_DOMAIN: 'staff.example.de',
   PORTAL_COOKIE_DOMAIN: 'portal.example.de',
+};
+
+const TCMS: NodeJS.ProcessEnv = {
+  TCMS_DEPLOYMENT: 'managed',
+  TCMS_URL: 'http://tcms-api:3200',
+  TCMS_SERVICE_TOKEN: randomBytes(32).toString('base64url'),
+  TCMS_ACTOR_PRIVATE_KEY: generateKeyPairSync('ed25519')
+    .privateKey.export({ format: 'der', type: 'pkcs8' })
+    .toString('base64'),
+  TCMS_ACTOR_KEY_ID: 'kk-1',
 };
 
 /** Basis plus Änderungen; `undefined` entfernt den Wert. */
@@ -94,6 +105,12 @@ const FAELLE: Array<[string, NodeJS.ProcessEnv]> = [
   ['DATABASE_DRILL_URL leer', { DATABASE_DRILL_URL: '' }],
   ['DATABASE_DRILL_URL kein PostgreSQL', { DATABASE_DRILL_URL: 'mysql://drill:pw@localhost/x' }],
   ['N8N_DELIVERY_MODE test', { N8N_DELIVERY_MODE: 'test' }],
+  // TCMS Stufe 2
+  ['TCMS managed vollständig', TCMS],
+  ['TCMS aktiv ohne Token', { ...TCMS, TCMS_SERVICE_TOKEN: undefined }],
+  ['TCMS external ohne HTTPS', { ...TCMS, TCMS_DEPLOYMENT: 'external' }],
+  ['TCMS-Token Platzhalter', { ...TCMS, TCMS_SERVICE_TOKEN: `placeholder-${STARK}` }],
+  ['TCMS-Schlüssel kein Ed25519', { ...TCMS, TCMS_ACTOR_PRIVATE_KEY: 'AAAA' }],
 ];
 
 describe('checkEnvProfileFrom', () => {

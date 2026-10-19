@@ -114,6 +114,8 @@ const nextConfig = {
     '@taxtronik/rss',
     '@taxtronik/storage',
     '@taxtronik/tax',
+    // Transitiv über @taxtronik/config (TCMS-Schlüssel- und kid-Prüfung).
+    '@taxtronik/tcms-contract',
   ],
 
   // pdfkit lädt seine Standard-Font-Metriken (.afm) zur Laufzeit aus
