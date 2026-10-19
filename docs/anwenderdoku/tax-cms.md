@@ -242,6 +242,24 @@ Stände und Historie.
   TaxTronik prüft jede Person beim Speichern erneut.
 - Vertrauliche Feststellungen erscheinen nur mit ihrer Nummer.
 
+### Kontrollkalender
+
+_Tax-CMS → Kalender_ zeigt die Durchführungen je Kontrolle und
+Fälligkeitsmonat für zwölf Monate; Monate im Wirksamkeitszeitraum sind
+hinterlegt, jeder Status hat ein eigenes Symbol (Legende unter der Tabelle).
+Filter: Partei und „nur Schlüsselkontrollen“. Darunter steht die Prüflast je
+Monat nach Governance-Typ. Ein Symbol öffnet die Durchführung.
+
+### Prüfungsvorbereitung
+
+_Tax-CMS → Prüfung_ fasst zusammen, was eine Prüfung braucht:
+Prüfungsgegenstand (Angemessenheit zum Stichtag, Wirksamkeit über den
+Zeitraum), **Lückenanalyse** (Zahlen aus dem Tax-CMS; „n. a.“, solange der
+Wirksamkeitszeitraum nicht begonnen hat), die sieben Grundelemente, die
+freigegebenen Versionen der CMS-Beschreibung mit Hash und die Durchführungen
+im Zeitraum. Das Nachweispaket folgt. Ein Prüfurteil trifft das Werkzeug
+nicht.
+
 ## 7. Meldungen
 
 | Meldung                                               | Bedeutung und was zu tun ist                                                                              |

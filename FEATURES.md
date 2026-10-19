@@ -1194,6 +1194,9 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
     Freigabe und Risikoakzeptanz
   - Kontrollmatrix `…/kontrollen`: Liste und Matrix, Frequenzabweichung,
     Designbeurteilung, Zuständigkeiten
+  - Kontrollkalender `…/kalender` (zwölf Monate, Prüflast) und
+    Prüfungsvorbereitung `…/pruefung` (Lückenanalyse, Beschreibungsversionen,
+    Durchführungen im Zeitraum)
 - **Durchführungen** `/staff/clients/[id]/tcms/durchfuehrungen[/[did]]`:
   Liste mit Filtern; Schritte, Werte mit Toleranz, Ergebnis, Einreichen,
   Gegenzeichnen (Befund mit Feststellung), Zurückweisen, Entfallen, Nachtrag.

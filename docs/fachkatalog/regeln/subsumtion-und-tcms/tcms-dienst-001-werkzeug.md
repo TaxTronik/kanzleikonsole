@@ -64,6 +64,8 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/risiken/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kalender/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/pruefung/page.tsx
 test_refs:
   - apps/web/src/server/tcms/__tests__/zustand.test.ts
   - apps/web/src/server/tcms/__tests__/seite.test.ts
@@ -92,6 +94,9 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/__tests__/seite.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/__tests__/actions.test.ts
   - apps/web/src/components/tcms/kontrollen/__tests__/kontrollen.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kalender/__tests__/seite.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/pruefung/__tests__/seite.test.tsx
+  - apps/web/src/components/tcms/kalender/__tests__/zeitfenster.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md
