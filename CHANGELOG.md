@@ -40,21 +40,58 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   eingeschaltetem Modul und angebundenem Dienst. Zentrale Seiten- und
   Aktions-Helfer binden Akteur und Mandant an die geprüfte Sitzung, bilden
   Fehler über feste Meldungen ab und lösen Namen nur aus der kanzleikonsole
-  auf; vendortes Domain-Paket `@taxtronik/tcms-domain` für Labels.
+  auf; vendortes Domain-Paket `@taxtronik/tcms-domain` für Labels und die
+  Rollen der Mandantenseite. „Kontakte & Rollen“ und „Stammdaten übernehmen“
+  folgen den Rechte-Kennzeichen des Dienstes: ohne Recht bleiben Formulare
+  sichtbar, aber gesperrt, mit festem Grund.
   Fachkatalog-Entwürfe TCMS-AKTEUR-001 und TCMS-DIENST-001 (ungeprüft)
   (`docs/anwenderdoku/tax-cms.md`, `docs/development/tcms-oberflaechen.md`).
+- **[TCMS]** Programm & Dokumentation (Stufe 3, Bereich A):
+  Einrichtungsassistent bis Version 1, Geschäftsprofil, Katalog des
+  Branchenpakets für Admins und Partner, CMS-Beschreibung mit Versionen,
+  Kanzlei-Review, Freigabe beim Mandanten und eingefrorenem Inhalt mit
+  SHA-256 sowie die Seite „Kommunikation“ mit Freigaben, Kenntnisnahmen und
+  Neuadressierung offener Anforderungen an Kontakte genau dieses Mandanten
+  (`TCMS-DIENST-001`, `TCMS-AKTEUR-001`).
+- **[TCMS]** Risiken und Kontrollen (Stufe 3, Bereich B): Risikoinventar mit
+  Heatmap, Neubewertung, Übersteuerung und Freigabe im Vier-Augen-Prinzip und
+  Anforderung der Risikoakzeptanz; Kontrollmatrix mit Designbeurteilung,
+  Frequenzabweichung (Vier-Augen) und Zuständigkeiten; Länder-Monitor mit
+  manueller Erfassung, Kontrollkalender und Prüfungsvorbereitung
+  (`TCMS-DIENST-001`).
+- **[TCMS]** Durchführungen und Feststellungen (Stufe 3, Bereich C):
+  Kontrolldurchführungen mit Schritten, Kennzahlen, Gegenzeichnung, Entfallen
+  und Nachtrag; Nachweise aus der Dokumentenablage oder hochgeladen, mit
+  SHA-256-Abgleich beim Abruf; Feststellungen mit §-153-Würdigung,
+  Vertraulichkeit und Maßnahmen; persönlicher Arbeitskorb unter
+  _Mandatsarbeit → Tax-CMS-Arbeitskorb_. Neue Tabelle
+  `tcms_document_reference` (Migration `20261019180000`)
+  (`TCMS-NACHWEIS-001`, ungeprüft; `TCMS-DIENST-001`).
+- **[TCMS]** Ereignisse, Audit und Mandanten-Portal (Stufe 3, Bereich D):
+  Ereigniseingang mit Triage und Folgen, Audit-Protokoll des Tax-CMS mit
+  Hashkette unter _Administration → Tax-CMS-Audit_ (Admins und Partner), im
+  Portal Kontrollaufgaben mit Anlagen, Meldungen an die Kanzlei sowie
+  Freigaben und Kenntnisnahmen mit E-Mail-Code (`TCMS-DIENST-001`,
+  `DOC-PORTAL-SHARING-001`).
+- **[TCMS]** Zustellstatus an Freigaben: Kommunikation, Freigabehinweis der
+  CMS-Beschreibung und Risikoakzeptanz zeigen, ob die jüngste Nachricht an die
+  aktuelle Person zugestellt, noch offen, unzustellbar (mit Grund) oder nicht
+  ausgeliefert ist, und weisen bei einer gescheiterten Zustellung auf die
+  Neuadressierung hin (`TCMS-DIENST-001`, `MAIL-OUTBOX-001`).
 - **[TCMS]** Zustellung der Mitteilungen des Tax-CMS, Stufe 4: Der Worker
   `tcms-nachrichten-zustellen` holt den Postausgang minütlich mit einem
   Systemakteur je Tenant ab (feste, zufällige ID, nur im Worker gebildet, nur
-  die zwei Nachrichten-Endpunkte) und stellt zu – Freigabe angefordert,
+  die drei Nachrichten-Endpunkte) und stellt zu – Freigabe angefordert,
   Bestätigungscode und Neuadressierung per Mail-Outbox nur an aktive,
   per Portal-Anmeldung bestätigte Kontakte genau dieses Mandanten, gemeldete
   Ereignisse als Hinweis an Kanzleipersonen mit Zugriff. Keine
   Doppelzustellung, Meldung erst nach dem Commit, einmaliger Hinweis an
   Admins und Partner bei nicht bestätigtem Empfänger, Abschluss als
-  unzustellbar nach 7 Tagen. System-Vorlagen „Tax-CMS: …“ mit erklärten
-  Platzhaltern unter _Administration → E-Mail-Vorlagen_. Vertrag aus TCMS
-  `main` 6af277d; der Client prüft die Akteursarten je Endpunkt und je Client
+  unzustellbar nach 7 Tagen bzw. nach Ablauf des Codes mit Meldung
+  „unzustellbar“ und festem Grund an das Tax-CMS (Wiederholung mit demselben
+  Grund). System-Vorlagen „Tax-CMS: …“ mit erklärten
+  Platzhaltern unter _Administration → E-Mail-Vorlagen_. Vertrag und Domain aus
+  TCMS `main` 7a900b1; der Client prüft die Akteursarten je Endpunkt und je Client
   (`MAIL-OUTBOX-001`, ungeprüft; `docs/development/tcms-anbindung.md`
   Abschnitt 8, `docs/operations/tcms-betrieb.md` Abschnitt 10).
 
@@ -345,6 +382,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[TCMS]** Ablehnungen des Tax-CMS erscheinen mit der festen Meldung zum
+  Grund, den der Dienst nennt (Bearbeiten, §-153-Würdigung, Vier-Augen,
+  Verwaltung, Vertraulichkeit, Durchführung, Gegenzeichnung, andere Seite,
+  Portalrolle, Zuordnung) statt einer je Aktion geschätzten Meldung; dieselben
+  Texte nennen gesperrte Bedienelemente und die Vorprüfung vor einer
+  Nachweisablage (`TCMS-DIENST-001`).
 - Circuit-Breaker und Retry der internen Dienst-Clients liegen jetzt in
   `@taxtronik/http-utils/resilience` (gemeinsam für Risk-Layer und TCMS);
   4xx-Antworten zählen dort optional nicht als Ausfall. Das Verhalten des
@@ -1819,6 +1862,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   und fremde Tenants erhalten keine Bestätigung. Antworten sind auf 8 MiB
   begrenzt, Redirects verboten, Rohkörper erscheinen nie in Fehlern oder Logs;
   in Produktion nur https (Ausnahme: verwalteter Compose-Dienst).
+- **[TCMS]** Nachweise des Tax-CMS sind Dokumente der Mandantenakte: Solange
+  eine Durchführung sie referenziert, sperrt die kanzleikonsole Löschen und
+  neue Versionen (Datenbank-Trigger, 409 beim Upload), auch für Anlagen aus
+  dem Portal. Dateien gehen nur über Routen der kanzleikonsole hinaus, nach
+  Sitzungs-, Mandanten- und Akteursprüfung und mit SHA-256- und
+  Größenabgleich gegen den Verweis des Dienstes; bei Abweichung wird nichts
+  ausgeliefert (`TCMS-NACHWEIS-001`, `DOC-PORTAL-SHARING-001`).
+- **[TCMS]** Seiten, Aktionen und Datei-Routen lassen einen Endpunkt nur für
+  die Akteursarten zu, die der Vertrag nennt (Kanzlei bzw. Mandant); die
+  Restore-Abnahme weist einen Stand ab, in dem die App-Rolle Rechte auf
+  `tcms_systemakteur` oder `tcms_nachricht_zustellung` hat
+  (`TCMS-AKTEUR-001`, `MAIL-OUTBOX-001`).
 - **[TCMS]** Der verwaltete Dienst läuft in zwei internen Netzen: App und
   Worker erreichen nur die TCMS-API, nie deren Datenbank. Images sind per
   Digest an den signierten Release-Stand gebunden; Token, Schlüssel und

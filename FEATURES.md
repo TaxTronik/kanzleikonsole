@@ -1169,10 +1169,10 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   Grundelemente, Risiko-Heatmap, Wirksamkeitszeitraum, Fälliges,
   Feststellungen (vertrauliche maskiert), Ereignisse, Länder, Stichtag für
   frühere Stände; Mandant im Tax-CMS anlegen bzw. Stammdaten übernehmen (nur
-  Name, Rechtsform, DATEV-Nr.)
+  Name, Rechtsform, DATEV-Nr.; Übernehmen nur mit dem Recht laut Dienst)
 - **Kontakte & Rollen** `/staff/clients/[id]/tcms/kontakte`: Rollen
   „Gesetzliche Vertretung“, „Tax-Compliance-Beauftragte“, „Mitarbeitende“ für
-  Kontakte genau dieses Mandanten
+  Kontakte genau dieses Mandanten; ohne Recht laut Dienst gesperrt mit Grund
 - **Portal-Übersicht** `/portal/tcms`: Stand des Programms, eigene und
   weitere Aufgaben, letzte Meldungen
 - **Programm & Dokumentation:** Einrichtungsassistent
@@ -1182,7 +1182,8 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   **CMS-Beschreibung** `…/beschreibung` (Versionen, Abschnitte mit lebenden
   Bausteinen, Kanzlei-Review mit Vier-Augen-Prinzip, Freigabe beim Mandanten
   mit eingefrorenem, SHA-256-gebundenem Inhalt), **Kommunikation**
-  `…/kommunikation` (Freigaben und Kenntnisnahmen, Neuadressierung) und
+  `…/kommunikation` (Freigaben und Kenntnisnahmen mit Zustellstatus der
+  jüngsten Nachricht, Neuadressierung) und
   **Katalog** `/staff/tcms/katalog` (Admin/Partner, nur lesend); Personen nur
   aus der kanzleikonsole (Zugriff auf den Mandanten bzw. Kontakte dieses
   Mandanten)
@@ -1235,9 +1236,9 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   zeigen Kanzlei und Portal mit denselben Bausteinen (Nachweisliste,
   Beschreibung); Eingaben bleiben bei einer Ablehnung in allen Formularen
   stehen
-- Feste Meldungen für fehlende Rechte, Konflikte („Wurde zwischenzeitlich
-  geändert – bitte neu laden.“), Ausfälle und offene Ausgänge bei
-  Schreibzugriffen; nie Texte des Dienstes
+- Feste Meldungen für fehlende Rechte (je Grund, den der Dienst nennt),
+  Konflikte („Wurde zwischenzeitlich geändert – bitte neu laden.“), Ausfälle
+  und offene Ausgänge bei Schreibzugriffen; nie Texte des Dienstes
 
 ### Zustellung (Stufe 4)
 
@@ -1246,7 +1247,9 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   gegen TaxTronik und stellt zu – Mails an bestätigte Kontakte genau dieses
   Mandanten über die Mail-Outbox (Code nur verschlüsselt und nur bis zum
   Versand), Hinweise an Kanzleipersonen mit Zugriff; keine Doppelzustellung,
-  einmaliger Admin-Hinweis bei nicht bestätigtem Empfänger (MAIL-OUTBOX-001)
+  einmaliger Admin-Hinweis bei nicht bestätigtem Empfänger; nach 7 Tagen bzw.
+  Ablauf als unzustellbar mit festem Grund an das Tax-CMS gemeldet, das den
+  Zustellstatus an der Freigabe zeigt (MAIL-OUTBOX-001)
 - System-Vorlagen „Tax-CMS: …“ mit erklärten Platzhaltern unter
   _Administration → E-Mail-Vorlagen_
 
