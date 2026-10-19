@@ -6,7 +6,8 @@
 // gezielt gebauter RSC-Request kann das Layout überspringen. Die Seite muss
 // deshalb in ihrer Default-Export-Funktion `requireModulePage('<surface>',
 // '<bereich>')` mit genau dem Registry-Bereich ihres Pfads aufrufen — oder einen
-// der geprüften Wrapper (Mandatsorganisation, Subsumtion), der das tut.
+// der geprüften Wrapper (Mandatsorganisation, Subsumtion, Tax-CMS-Seiten-
+// helfer), der das tut.
 //
 // Statischer Check über den TS-AST, ohne DB. Die Semantik des Helpers prüft
 // server/settings/__tests__/module-page.test.ts.
@@ -31,6 +32,14 @@ const SUBSUMTION_GUARD = join(
   'subsumtion',
   '_guard.ts',
 );
+const TCMS_SEITE = join(APP_DIR, '..', 'server', 'tcms', 'seite.ts');
+/** Seiten-Helfer des Tax-CMS (TCMS Stufe 3) → Oberfläche, für die sie den Bereich `tcms` prüfen. */
+const TCMS_WRAPPER: Readonly<Record<string, ModuleSurface>> = {
+  tcmsMandantSeite: 'staff',
+  tcmsKanzleiSeite: 'staff',
+  tcmsAdminSeite: 'staff',
+  tcmsPortalSeite: 'portal',
+};
 
 function walkPages(directory: string): string[] {
   const files: string[] = [];
@@ -96,8 +105,33 @@ function checkedAreas(file: string, surface: ModuleSurface): string[] {
     if (name === 'requireModulePage' && args[0] === surface) areas.push(args[1]!);
     if (name === 'expansionPage') areas.push(args[0]!);
     if (name === 'guardSubsumtionPage') areas.push('risk');
+    if (name && Object.hasOwn(TCMS_WRAPPER, name) && TCMS_WRAPPER[name] === surface) {
+      areas.push('tcms');
+    }
   }
   return areas;
+}
+
+/** Je Tax-CMS-Helfer der Aufruf `requireModulePage('<oberfläche>', 'tcms')` in seinem Rumpf. */
+function tcmsWrapperAreas(): Record<string, string[]> {
+  const source = parse(TCMS_SEITE);
+  const result: Record<string, string[]> = {};
+  const visit = (node: ts.Node, owner: string | null): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+      const name = node.name.text;
+      if (Object.hasOwn(TCMS_WRAPPER, name)) {
+        result[name] = [];
+        if (node.initializer) visit(node.initializer, name);
+        return;
+      }
+    }
+    if (owner && ts.isCallExpression(node) && callName(node) === 'requireModulePage') {
+      result[owner]!.push(literalArgs(node).join(':'));
+    }
+    ts.forEachChild(node, (child) => visit(child, owner));
+  };
+  visit(source, null);
+  return result;
 }
 
 const PAGES = SURFACES.flatMap((surface) =>
@@ -132,5 +166,14 @@ describe('Modulseiten prüfen ihr Modul selbst (requireModulePage)', () => {
     expect(expansion).toContain("await requireModulePage('staff', area)");
     const subsumtion = readFileSync(SUBSUMTION_GUARD, 'utf8');
     expect(subsumtion).toContain("await requireModulePage('staff', 'risk')");
+  });
+
+  it('die Tax-CMS-Helfer prüfen genau den Bereich tcms ihrer Oberfläche', () => {
+    expect(tcmsWrapperAreas()).toEqual({
+      tcmsMandantSeite: ['staff:tcms'],
+      tcmsKanzleiSeite: ['staff:tcms'],
+      tcmsAdminSeite: ['staff:tcms'],
+      tcmsPortalSeite: ['portal:tcms'],
+    });
   });
 });

@@ -65,6 +65,11 @@ const CANONICAL_ACTION_MODULES = new Map<
       factories: new Set(['withPortalModule']),
     },
   ],
+  // TCMS Stufe 3: Bausteine auf staffAction/portalAction (server/tcms/aktion.ts).
+  [
+    '@/server/tcms/aktion',
+    { wrappers: new Set(['tcmsKanzleiAktion', 'tcmsPortalAktion']), factories: new Set() },
+  ],
 ]);
 
 export type ActionStyle = 'wrapper' | 'delegating' | 'public' | 'handwritten';

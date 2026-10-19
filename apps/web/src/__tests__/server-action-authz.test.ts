@@ -58,6 +58,33 @@ const TRUSTED_MODULE_WRAPPER_FACTORIES = new Map<string, ReadonlySet<string>>([
   ['@/server/actions/portal-action', new Set(['withPortalModule'])],
 ]);
 
+// Tax-CMS (TCMS Stufe 3): tcmsKanzleiAktion/tcmsPortalAktion laufen über
+// staffAction/portalAction mit Modul-Gate tcms. Autorisierend nur als Import
+// aus dem kanonischen Modul, nie als gleichnamige lokale Funktion.
+const TRUSTED_GUARD_IMPORTS = new Map<string, ReadonlySet<string>>([
+  ['@/server/tcms/aktion', new Set(['tcmsKanzleiAktion', 'tcmsPortalAktion'])],
+]);
+
+function trustedGuardImports(src: ts.SourceFile): Set<string> {
+  const names = new Set<string>();
+  src.forEachChild((node) => {
+    if (
+      !ts.isImportDeclaration(node) ||
+      !ts.isStringLiteral(node.moduleSpecifier) ||
+      node.importClause?.isTypeOnly
+    )
+      return;
+    const trusted = TRUSTED_GUARD_IMPORTS.get(node.moduleSpecifier.text);
+    const bindings = node.importClause?.namedBindings;
+    if (!trusted || !bindings || !ts.isNamedImports(bindings)) return;
+    for (const binding of bindings.elements) {
+      if (!binding.isTypeOnly && trusted.has(binding.propertyName?.text ?? binding.name.text))
+        names.add(binding.name.text);
+    }
+  });
+  return names;
+}
+
 // Payroll uses a separate, narrowly scoped capability session. Trust the
 // reviewed exports only when imported from the canonical capability module.
 function payrollCapabilityImports(src: ts.SourceFile): Set<string> {
@@ -229,6 +256,7 @@ function authCarryingFns(file: string, seen: Set<string> = new Set()): Set<strin
     ...fns.filter((f) => PRIMITIVE.test(f.body)).map((f) => f.name),
     ...boundModuleAuthWrappers(src),
     ...payrollCapabilityImports(src),
+    ...trustedGuardImports(src),
   ]);
   for (const [spec, names] of importedFnsBySource(src)) {
     const target = resolveRelative(file, spec);
@@ -293,6 +321,30 @@ describe('Server-Actions sind autorisiert (Struktur-Guardrail)', () => {
       ),
     ]).toEqual([]);
   });
+  it('erkennt die Tax-CMS-Aktionshelfer nur als Import aus dem kanonischen Modul', () => {
+    const parse = (source: string) =>
+      ts.createSourceFile('fixture.ts', source, ts.ScriptTarget.Latest, true);
+    expect([
+      ...trustedGuardImports(
+        parse("import { tcmsKanzleiAktion, tcmsPortalAktion as p } from '@/server/tcms/aktion';"),
+      ),
+    ]).toEqual(['tcmsKanzleiAktion', 'p']);
+    expect([
+      ...trustedGuardImports(parse("import { tcmsKanzleiAktion } from './eigene-aktion';")),
+    ]).toEqual([]);
+    expect([
+      ...trustedGuardImports(
+        parse("import type { tcmsKanzleiAktion } from '@/server/tcms/aktion';"),
+      ),
+    ]).toEqual([]);
+    expect([
+      ...trustedGuardImports(
+        parse("import { revalidiereTcmsMandant } from '@/server/tcms/aktion';"),
+      ),
+    ]).toEqual([]);
+    expect(PRIMITIVE.test('return tcmsKanzleiAktion({ mandantId, aufruf });')).toBe(false);
+  });
+
   it('findet die Server-Action-Fläche', () => {
     expect(files.length).toBeGreaterThan(40);
   });

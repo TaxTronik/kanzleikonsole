@@ -6,8 +6,11 @@
 // gezielt gebauter RSC-Request kann das Layout überspringen; RLS trennt nur
 // nach Tenant. Deshalb muss jede page.tsx (und jedes exportierte
 // generateMetadata) nach dem Auflösen der Route-Params als ERSTES
-// `await requireClientPageAccess(<id aus params>)` rufen — oder den
-// Subsumtions-Guard, der ihn seinerseits als Erstes ruft.
+// `await requireClientPageAccess(<id aus params>)` rufen — oder einen der
+// geprüften Wrapper, der ihn seinerseits als Erstes ruft: den
+// Subsumtions-Guard (`guardSubsumtionPage`) bzw. den Seiten-Helfer des
+// Tax-CMS (`tcmsMandantSeite`, TCMS Stufe 3). Dasselbe gilt für jedes
+// Layout im Segment.
 //
 // Statischer Präsenz- und Reihenfolge-Check über den TS-AST, ohne DB. Die
 // Semantik des Guards prüft server/auth/__tests__/client-page-access.test.ts.
@@ -31,15 +34,17 @@ const CLIENT_DIR = join(
 );
 const SUBSUMTION_GUARD = join(CLIENT_DIR, 'subsumtion', '_guard.ts');
 const ACCESS_MODULE = '@/server/auth/client-page-access';
+const TCMS_MODULE = '@/server/tcms/seite';
+const TCMS_SEITE = join(CLIENT_DIR, '..', '..', '..', '..', '..', 'server', 'tcms', 'seite.ts');
 
 type RouteFunction = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
 
-function walkPages(directory: string): string[] {
+function walkPages(directory: string, name = 'page.tsx'): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory)) {
     const path = join(directory, entry);
-    if (statSync(path).isDirectory()) files.push(...walkPages(path));
-    else if (entry === 'page.tsx') files.push(path);
+    if (statSync(path).isDirectory()) files.push(...walkPages(path, name));
+    else if (entry === name) files.push(path);
   }
   return files;
 }
@@ -77,10 +82,12 @@ function trustedGuards(file: string, source: ts.SourceFile): Set<string> {
     const trusted =
       specifier === ACCESS_MODULE
         ? 'requireClientPageAccess'
-        : specifier.startsWith('.') &&
-            resolve(dirname(file), `${specifier}.ts`) === SUBSUMTION_GUARD
-          ? 'guardSubsumtionPage'
-          : null;
+        : specifier === TCMS_MODULE
+          ? 'tcmsMandantSeite'
+          : specifier.startsWith('.') &&
+              resolve(dirname(file), `${specifier}.ts`) === SUBSUMTION_GUARD
+            ? 'guardSubsumtionPage'
+            : null;
     for (const element of clause.namedBindings.elements) {
       if (!element.isTypeOnly && (element.propertyName ?? element.name).text === trusted) {
         names.add(element.name.text);
@@ -258,7 +265,7 @@ function guardFirstViolation(
       ts.isIdentifier(node.expression) &&
       guards.has(node.expression.text),
   );
-  if (!guard) return 'ruft weder requireClientPageAccess noch guardSubsumtionPage';
+  if (!guard) return 'ruft weder requireClientPageAccess noch einen geprüften Wrapper';
   const before = nodes.find(
     (node) => node.getStart() < guard.getStart() && node !== guard.parent && !isResolution(node),
   );
@@ -304,6 +311,56 @@ function subsumtionGuardViolations(text: string): string[] {
   return violation ? [`subsumtion/_guard.ts#guardSubsumtionPage: ${violation}`] : [];
 }
 
+/** `cache(async function …)` – genau ein Funktionsargument von React cache(). */
+function cacheArgument(init: ts.Expression | undefined): RouteFunction | undefined {
+  if (
+    init &&
+    ts.isCallExpression(init) &&
+    ts.isIdentifier(init.expression) &&
+    init.expression.text === 'cache' &&
+    init.arguments.length === 1 &&
+    isFunctionValue(init.arguments[0])
+  ) {
+    return init.arguments[0];
+  }
+  return isFunctionValue(init) ? init : undefined;
+}
+
+/** Exportierte Funktion oder Konstante `name` (auch als `cache(…)`). */
+function exportedRouteFunction(source: ts.SourceFile, name: string): RouteFunction | undefined {
+  let fn: RouteFunction | undefined;
+  for (const statement of source.statements) {
+    if (!hasModifier(statement, ts.SyntaxKind.ExportKeyword)) continue;
+    if (ts.isFunctionDeclaration(statement) && statement.name?.text === name) fn = statement;
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === name) {
+        fn = cacheArgument(declaration.initializer) ?? fn;
+      }
+    }
+  }
+  return fn;
+}
+
+/**
+ * `tcmsMandantSeite` in server/tcms/seite.ts: exportierte Konstante
+ * `cache(async function (clientId) { … })` oder Funktion; ihr erster Aufruf
+ * ist `await requireClientPageAccess(clientId)`.
+ */
+function tcmsSeiteViolations(text: string): string[] {
+  const source = parse(TCMS_SEITE, text);
+  const fn = exportedRouteFunction(source, 'tcmsMandantSeite');
+  const clientId = fn?.parameters[0]?.name;
+  if (!fn || !clientId || !ts.isIdentifier(clientId)) return ['tcmsMandantSeite fehlt'];
+  const violation = guardFirstViolation(
+    fn,
+    trustedGuards(TCMS_SEITE, source),
+    new Set([clientId.text]),
+    new Set(),
+  );
+  return violation ? [`server/tcms/seite.ts#tcmsMandantSeite: ${violation}`] : [];
+}
+
 describe('Mandanten-Seiten prüfen den Zugriff selbst', () => {
   const pages = walkPages(CLIENT_DIR);
 
@@ -318,9 +375,17 @@ describe('Mandanten-Seiten prüfen den Zugriff selbst', () => {
     expect(violations).toEqual([]);
   });
 
-  it('nutzt im Segment-Layout denselben request-gecachten Guard', () => {
-    const layout = join(CLIENT_DIR, 'layout.tsx');
-    expect(routeFileViolations(layout, readFileSync(layout, 'utf8'))).toEqual([]);
+  it('nutzt in jedem Layout des Segments denselben request-gecachten Guard', () => {
+    const layouts = walkPages(CLIENT_DIR, 'layout.tsx');
+    expect(layouts).toContain(join(CLIENT_DIR, 'layout.tsx'));
+    const violations = layouts.flatMap((file) =>
+      routeFileViolations(file, readFileSync(file, 'utf8')),
+    );
+    expect(violations).toEqual([]);
+  });
+
+  it('ruft im Tax-CMS-Helfer requireClientPageAccess vor allem anderen (TCMS Stufe 3)', () => {
+    expect(tcmsSeiteViolations(readFileSync(TCMS_SEITE, 'utf8'))).toEqual([]);
   });
 
   it('ruft im Subsumtions-Guard requireClientPageAccess vor allem anderen', () => {
@@ -344,7 +409,7 @@ describe('Prüflogik des Guardrails', () => {
   it('meldet eine Seite ohne Guard', () => {
     const source = page('const { id } = await params;\nreturn load(id);');
     expect(routeFileViolations(file, source)).toEqual([
-      'beispiel/page.tsx#default: ruft weder requireClientPageAccess noch guardSubsumtionPage',
+      'beispiel/page.tsx#default: ruft weder requireClientPageAccess noch einen geprüften Wrapper',
     ]);
   });
 
@@ -377,14 +442,59 @@ describe('Prüflogik des Guardrails', () => {
       "import { requireClientPageAccess } from './eigener-guard';\n",
     );
     expect(routeFileViolations(file, source)).toEqual([
-      'beispiel/page.tsx#default: ruft weder requireClientPageAccess noch guardSubsumtionPage',
+      'beispiel/page.tsx#default: ruft weder requireClientPageAccess noch einen geprüften Wrapper',
+    ]);
+  });
+
+  it('akzeptiert tcmsMandantSeite nur aus dem kanonischen Modul', () => {
+    const tcms = `import { tcmsMandantSeite } from '${TCMS_MODULE}';\n`;
+    expect(
+      routeFileViolations(
+        file,
+        page('const { id } = await params;\nawait tcmsMandantSeite(id);', tcms),
+      ),
+    ).toEqual([]);
+    expect(
+      routeFileViolations(
+        file,
+        page(
+          'const { id } = await params;\nawait tcmsMandantSeite(id);',
+          "import { tcmsMandantSeite } from './eigene-seite';\n",
+        ),
+      ),
+    ).toEqual([
+      'beispiel/page.tsx#default: ruft weder requireClientPageAccess noch einen geprüften Wrapper',
+    ]);
+  });
+
+  it('meldet einen Tax-CMS-Helfer, der vor dem Zugriffs-Guard lädt oder ihn nicht ruft', () => {
+    const kopf = `import { cache } from 'react';\nimport { requireClientPageAccess } from '${ACCESS_MODULE}';\n`;
+    const helfer = (rumpf: string) =>
+      `${kopf}export const tcmsMandantSeite = cache(async function tcmsMandantSeite(clientId: string) {\n${rumpf}\n});\n`;
+    expect(
+      tcmsSeiteViolations(helfer('const s = await requireClientPageAccess(clientId);\nreturn s;')),
+    ).toEqual([]);
+    expect(
+      tcmsSeiteViolations(
+        helfer(
+          "await requireModulePage('staff', 'tcms');\nawait requireClientPageAccess(clientId);",
+        ),
+      ),
+    ).toEqual([
+      "server/tcms/seite.ts#tcmsMandantSeite: lädt vor dem Zugriffs-Guard: await requireModulePage('staff', 'tcms')",
+    ]);
+    expect(tcmsSeiteViolations(helfer('return null;'))).toEqual([
+      'server/tcms/seite.ts#tcmsMandantSeite: ruft weder requireClientPageAccess noch einen geprüften Wrapper',
+    ]);
+    expect(tcmsSeiteViolations(`${kopf}export const andere = 1;\n`)).toEqual([
+      'tcmsMandantSeite fehlt',
     ]);
   });
 
   it('prüft auch generateMetadata', () => {
     const source = `${page('const { id } = await params;\nawait requireClientPageAccess(id);')}export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {\nconst { id } = await params;\nreturn { title: await loadName(id) };\n}\n`;
     expect(routeFileViolations(file, source)).toEqual([
-      'beispiel/page.tsx#generateMetadata: ruft weder requireClientPageAccess noch guardSubsumtionPage',
+      'beispiel/page.tsx#generateMetadata: ruft weder requireClientPageAccess noch einen geprüften Wrapper',
     ]);
   });
 });
