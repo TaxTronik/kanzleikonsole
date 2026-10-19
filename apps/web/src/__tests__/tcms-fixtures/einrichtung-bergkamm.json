@@ -1,0 +1,805 @@
+{
+  "programm": {
+    "id": "cmvf9rxji00004j7dpxm8gsa9",
+    "status": "ENTWURF",
+    "version1Am": null,
+    "createdAt": "2026-10-19T13:07:54.884Z"
+  },
+  "eingerichtet": false,
+  "entwurf": {
+    "v": 1,
+    "abgeschlossen": 4,
+    "teilbereich": {
+      "name": "Umsatzsteuer & Erlös-Datenkette E-Commerce",
+      "abgrenzung": "Umsatzsteuerliche Pflichten aus Online-Verkäufen (eigener Shop und Marktplätze) im Inland und in allen Ländern mit Steuerpflicht sowie die Erlös-Datenkette vom Shop über Zahlungsdienstleister bis zur Finanzbuchhaltung.",
+      "einschluesse": [
+        "Umsatzsteuer DE und EU",
+        "OSS/IOSS",
+        "Erlös-Datenkette Shop → ZDL → FiBu",
+        "ausgewählte Ertragsteuerrisiken"
+      ],
+      "ausschluesse": [
+        "Lohnsteuer",
+        "Zoll außer EUSt",
+        "Verpackungs-, Elektro- und Batterieregister",
+        "Produktsicherheit"
+      ]
+    },
+    "zeitraum": {
+      "angemessenheitStichtag": "2026-12-31",
+      "wirksamAb": "2027-01-01",
+      "wirksamBis": "2027-06-30",
+      "erklaerungsTurnus": "MONATLICH"
+    },
+    "profil": {
+      "p1": {
+        "eigenerShop": true,
+        "shopSystem": "Shopware 6",
+        "marktplaetze": ["Amazon"]
+      },
+      "p2": {
+        "eigenversandDE": true,
+        "lager": []
+      },
+      "p3": {
+        "laender": ["DE"],
+        "b2bAnteilProzent": 0,
+        "b2bEU": false,
+        "b2bInland": false
+      },
+      "p4": {
+        "warengruppen": [
+          {
+            "name": "Kaffee",
+            "abweichenderSatz": true
+          }
+        ],
+        "gebrauchtware": false
+      },
+      "p5": {
+        "drittlandImport": false,
+        "laender": [],
+        "zollabwicklung": ""
+      },
+      "p6": {
+        "zahlungswege": ["PayPal"]
+      },
+      "p7": {
+        "gutscheine": true,
+        "abos": false,
+        "bundles": false
+      },
+      "p8": {
+        "systeme": []
+      },
+      "p9": {
+        "ossSeit": null,
+        "ioss": false,
+        "lokaleUstNr": [],
+        "dauerfrist": false
+      },
+      "p10": {
+        "vorjahresumsatzEur": 0,
+        "euFernverkaeufeVorjahrEur": 0,
+        "euFernverkaeufeLfdEur": 0
+      },
+      "p11": {
+        "vorhanden": false,
+        "anbieter": []
+      },
+      "p12": {
+        "buchhaltung": "KANZLEI"
+      }
+    },
+    "ziele": [
+      {
+        "key": "ust-erklaerung",
+        "text": "Vollständige, richtige und fristgerechte Erfüllung der umsatzsteuerlichen Erklärungs- und Zahlungspflichten in allen Ländern mit Steuerpflicht.",
+        "wesentlichkeitEur": 5000,
+        "risikoappetit": "MITTEL",
+        "aktiv": true,
+        "eigen": false
+      },
+      {
+        "key": "erloese",
+        "text": "Lückenlose und abgestimmte Erfassung aller Erlöse aus Shop, Marktplätzen und Zahlungsdienstleistern.",
+        "wesentlichkeitEur": 2500,
+        "risikoappetit": "MITTEL",
+        "aktiv": true,
+        "eigen": false
+      },
+      {
+        "key": "berichtigung",
+        "text": "Erkannte Fehler werden unverzüglich gewürdigt und, soweit erforderlich, berichtigt.",
+        "wesentlichkeitEur": 0,
+        "risikoappetit": "MITTEL",
+        "aktiv": true,
+        "eigen": false
+      }
+    ],
+    "freigabe": {
+      "anfordern": true,
+      "empfaengerId": "b1000000-0000-4000-8000-000000000051"
+    },
+    "risiken": {
+      "EC-ERT-02": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-GOB-01": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-GOB-02": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-GOB-03": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-UST-02": {
+        "uebernehmen": false,
+        "begruendung": "Nicht einschlägig, da keine entsprechenden Umsätze im Zeitraum."
+      },
+      "EC-UST-08": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-UST-09": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-UST-10": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-UST-13": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-VER-01": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-VER-02": {
+        "uebernehmen": true,
+        "begruendung": ""
+      },
+      "EC-VER-03": {
+        "uebernehmen": true,
+        "begruendung": ""
+      }
+    },
+    "kontrollen": {},
+    "gespeichertVon": "b1000000-0000-4000-8000-000000000001",
+    "gespeichertAm": "2026-10-19T13:07:55.051Z"
+  },
+  "plan": {
+    "appetit": "MITTEL",
+    "zeitraum": {
+      "stichtag": "2026-12-31",
+      "ab": "2027-01-01",
+      "bis": "2027-06-30"
+    },
+    "risiken": [
+      {
+        "code": "EC-UST-02",
+        "titel": "Falscher Steuersatz in Shop- oder Marktplatzregeln",
+        "kern": false,
+        "gt": "FF",
+        "grund": "weil Warengruppe „Kaffee\" mit abweichendem Satz (P4)",
+        "frage": "P4",
+        "uebernehmen": false,
+        "begruendung": "Nicht einschlägig, da keine entsprechenden Umsätze im Zeitraum.",
+        "brutto": "KRITISCH",
+        "ueberAppetit": true
+      },
+      {
+        "code": "EC-UST-08",
+        "titel": "Gutscheine falsch eingeordnet",
+        "kern": false,
+        "gt": "FF",
+        "grund": "weil Gutscheine (P7)",
+        "frage": "P7",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "MITTEL",
+        "ueberAppetit": false
+      },
+      {
+        "code": "EC-UST-09",
+        "titel": "Entgeltminderungen nicht oder falsch korrigiert",
+        "kern": true,
+        "gt": "FP",
+        "grund": "Kernrisiko – immer aktiv",
+        "frage": "–",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "HOCH",
+        "ueberAppetit": true
+      },
+      {
+        "code": "EC-UST-10",
+        "titel": "Falsche Periodenzuordnung",
+        "kern": true,
+        "gt": "FP",
+        "grund": "Kernrisiko – immer aktiv",
+        "frage": "–",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "GERING",
+        "ueberAppetit": false
+      },
+      {
+        "code": "EC-UST-13",
+        "titel": "Marktplatz-Nachweise und Plattformmeldungen",
+        "kern": false,
+        "gt": "FP",
+        "grund": "weil Marktplatzverkäufe über Amazon (P1)",
+        "frage": "P1",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "MITTEL",
+        "ueberAppetit": false
+      },
+      {
+        "code": "EC-GOB-01",
+        "titel": "Erlöse unvollständig gebucht",
+        "kern": true,
+        "gt": "FP",
+        "grund": "Kernrisiko – immer aktiv",
+        "frage": "–",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "KRITISCH",
+        "ueberAppetit": true
+      },
+      {
+        "code": "EC-GOB-02",
+        "titel": "Verfahrensdokumentation der Datenkette fehlt",
+        "kern": true,
+        "gt": "FF",
+        "grund": "Kernrisiko – immer aktiv",
+        "frage": "–",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "MITTEL",
+        "ueberAppetit": false
+      },
+      {
+        "code": "EC-GOB-03",
+        "titel": "Plattform- und Shopdaten nicht aufbewahrt",
+        "kern": true,
+        "gt": "FP",
+        "grund": "Kernrisiko – immer aktiv",
+        "frage": "–",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "MITTEL",
+        "ueberAppetit": false
+      },
+      {
+        "code": "EC-ERT-02",
+        "titel": "Abgrenzung im Abschluss fehlerhaft",
+        "kern": false,
+        "gt": "FP",
+        "grund": "weil Gutscheine (P7)",
+        "frage": "P7",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "GERING",
+        "ueberAppetit": false
+      },
+      {
+        "code": "EC-VER-01",
+        "titel": "Erkannter Fehler nicht berichtigt",
+        "kern": true,
+        "gt": "FF",
+        "grund": "Kernrisiko – immer aktiv",
+        "frage": "–",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "KRITISCH",
+        "ueberAppetit": true
+      },
+      {
+        "code": "EC-VER-02",
+        "titel": "Frist versäumt",
+        "kern": true,
+        "gt": "FP",
+        "grund": "Kernrisiko – immer aktiv",
+        "frage": "–",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "MITTEL",
+        "ueberAppetit": false
+      },
+      {
+        "code": "EC-VER-03",
+        "titel": "Rechts- oder Satzänderung nicht nachvollzogen",
+        "kern": true,
+        "gt": "FF",
+        "grund": "Kernrisiko – immer aktiv",
+        "frage": "–",
+        "uebernehmen": true,
+        "begruendung": "",
+        "brutto": "KRITISCH",
+        "ueberAppetit": true
+      }
+    ],
+    "nichtVorgeschlagen": [
+      {
+        "code": "EC-UST-01",
+        "titel": "EU-Lieferschwelle unbemerkt überschritten"
+      },
+      {
+        "code": "EC-UST-03",
+        "titel": "OSS-Erklärung unvollständig, falsch oder verspätet"
+      },
+      {
+        "code": "EC-UST-04",
+        "titel": "Umsätze falsch dem OSS zugeordnet"
+      },
+      {
+        "code": "EC-UST-05",
+        "titel": "Ausländisches Lager ohne Registrierung"
+      },
+      {
+        "code": "EC-UST-06",
+        "titel": "Steuerfreie ig. B2B-Lieferung ohne Nachweise"
+      },
+      {
+        "code": "EC-UST-07",
+        "titel": "§-13b-Eingangsleistungen nicht erfasst"
+      },
+      {
+        "code": "EC-UST-11",
+        "titel": "B2B-Rechnungen ohne Pflichtangaben oder E-Rechnung"
+      },
+      {
+        "code": "EC-UST-12",
+        "titel": "Einfuhrumsatzsteuer ohne Berechtigung abgezogen"
+      },
+      {
+        "code": "EC-UST-14",
+        "titel": "Differenzbesteuerung fehlerhaft"
+      },
+      {
+        "code": "EC-ERT-01",
+        "titel": "Fremdlagerbestände nicht vollständig erfasst"
+      },
+      {
+        "code": "EC-ERT-03",
+        "titel": "Ausländische Betriebsstätte nicht geprüft"
+      }
+    ],
+    "kontrollen": [
+      {
+        "code": "K-EC-03",
+        "titel": "Bestellstichprobe Steuerausweis",
+        "schluessel": false,
+        "risikoCodes": ["EC-UST-08"],
+        "primaer": "EC-UST-08",
+        "vorlage": {
+          "turnus": "QUARTALSWEISE",
+          "anlass": false
+        },
+        "effektiv": {
+          "turnus": "QUARTALSWEISE",
+          "anlass": true
+        },
+        "gt": "FF",
+        "begruendung": "abgeleitet aus FF · mittel (EC-UST-08); Vorlage: quartalsweise",
+        "zust": {
+          "partei": "KANZLEI",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 3
+      },
+      {
+        "code": "K-EC-04",
+        "titel": "OSS-Abstimmung vor Abgabe",
+        "schluessel": true,
+        "risikoCodes": ["EC-UST-09"],
+        "primaer": "EC-UST-09",
+        "vorlage": {
+          "turnus": "QUARTALSWEISE",
+          "anlass": false
+        },
+        "effektiv": {
+          "turnus": "QUARTALSWEISE",
+          "anlass": false
+        },
+        "gt": "FP",
+        "begruendung": "abgeleitet aus FP · hoch (EC-UST-09); Vorlage: quartalsweise",
+        "zust": {
+          "partei": "KANZLEI",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 3
+      },
+      {
+        "code": "K-EC-09",
+        "titel": "Freigabe neuer Gutschein-, Abo- oder Bundle-Modelle",
+        "schluessel": false,
+        "risikoCodes": ["EC-UST-08", "EC-ERT-02"],
+        "primaer": "EC-UST-08",
+        "vorlage": {
+          "turnus": "KEIN",
+          "anlass": true
+        },
+        "effektiv": {
+          "turnus": "QUARTALSWEISE",
+          "anlass": true
+        },
+        "gt": "FF",
+        "begruendung": "abgeleitet aus FF · mittel (EC-UST-08); Vorlage: nur bei Auslösung",
+        "zust": {
+          "partei": "MANDANT",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000052",
+          "vertretungId": "b1000000-0000-4000-8000-000000000051",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 3
+      },
+      {
+        "code": "K-EC-10",
+        "titel": "Erstattungs- und Retourenabstimmung",
+        "schluessel": false,
+        "risikoCodes": ["EC-UST-09"],
+        "primaer": "EC-UST-09",
+        "vorlage": {
+          "turnus": "MONATLICH",
+          "anlass": false
+        },
+        "effektiv": {
+          "turnus": "MONATLICH",
+          "anlass": false
+        },
+        "gt": "FP",
+        "begruendung": "abgeleitet aus FP · hoch (EC-UST-09); Vorlage: monatlich",
+        "zust": {
+          "partei": "KANZLEI",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 7
+      },
+      {
+        "code": "K-EC-11",
+        "titel": "Dreifach-Abstimmung Shop/Zahlungsdienstleister/FiBu",
+        "schluessel": true,
+        "risikoCodes": ["EC-GOB-01", "EC-UST-09", "EC-UST-10"],
+        "primaer": "EC-GOB-01",
+        "vorlage": {
+          "turnus": "MONATLICH",
+          "anlass": false
+        },
+        "effektiv": {
+          "turnus": "MONATLICH",
+          "anlass": false
+        },
+        "gt": "FP",
+        "begruendung": "abgeleitet aus FP · kritisch (EC-GOB-01); Vorlage: monatlich",
+        "zust": {
+          "partei": "KANZLEI",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 7
+      },
+      {
+        "code": "K-EC-12",
+        "titel": "UStVA-Plausibilisierung vor Abgabe",
+        "schluessel": true,
+        "risikoCodes": ["EC-UST-10", "EC-GOB-01"],
+        "primaer": "EC-GOB-01",
+        "vorlage": {
+          "turnus": "MONATLICH",
+          "anlass": false
+        },
+        "effektiv": {
+          "turnus": "MONATLICH",
+          "anlass": false
+        },
+        "gt": "FP",
+        "begruendung": "abgeleitet aus FP · kritisch (EC-GOB-01); Vorlage: monatlich",
+        "zust": {
+          "partei": "KANZLEI",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 7
+      },
+      {
+        "code": "K-EC-13",
+        "titel": "Fristenkontrolle aller USt-Pflichten",
+        "schluessel": false,
+        "risikoCodes": ["EC-VER-02"],
+        "primaer": "EC-VER-02",
+        "vorlage": {
+          "turnus": "MONATLICH",
+          "anlass": true
+        },
+        "effektiv": {
+          "turnus": "MONATLICH",
+          "anlass": true
+        },
+        "gt": "FP",
+        "begruendung": "abgeleitet aus FP · mittel (EC-VER-02); Vorlage: monatlich + bei Auslösung",
+        "zust": {
+          "partei": "KANZLEI",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 7
+      },
+      {
+        "code": "K-EC-14",
+        "titel": "Change-Management Systeme und Schnittstellen",
+        "schluessel": false,
+        "risikoCodes": ["EC-GOB-02", "EC-GOB-03"],
+        "primaer": "EC-GOB-03",
+        "vorlage": {
+          "turnus": "KEIN",
+          "anlass": true
+        },
+        "effektiv": {
+          "turnus": "QUARTALSWEISE",
+          "anlass": true
+        },
+        "gt": "FP",
+        "begruendung": "abgeleitet aus FP · mittel (EC-GOB-03); Vorlage: nur bei Auslösung",
+        "zust": {
+          "partei": "MANDANT",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000052",
+          "vertretungId": "b1000000-0000-4000-8000-000000000051",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 3
+      },
+      {
+        "code": "K-EC-17",
+        "titel": "Abgleich Marktplatz-Nachweise und Plattformmeldungen",
+        "schluessel": false,
+        "risikoCodes": ["EC-UST-13"],
+        "primaer": "EC-UST-13",
+        "vorlage": {
+          "turnus": "JAEHRLICH",
+          "anlass": false
+        },
+        "effektiv": {
+          "turnus": "QUARTALSWEISE",
+          "anlass": false
+        },
+        "gt": "FP",
+        "begruendung": "abgeleitet aus FP · mittel (EC-UST-13); Vorlage: jährlich",
+        "zust": {
+          "partei": "MANDANT",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000052",
+          "vertretungId": "b1000000-0000-4000-8000-000000000051",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 3
+      },
+      {
+        "code": "K-EC-19",
+        "titel": "Abschlussabgrenzung E-Commerce",
+        "schluessel": false,
+        "risikoCodes": ["EC-ERT-02"],
+        "primaer": "EC-ERT-02",
+        "vorlage": {
+          "turnus": "JAEHRLICH",
+          "anlass": false
+        },
+        "effektiv": {
+          "turnus": "JAEHRLICH",
+          "anlass": false
+        },
+        "gt": "FP",
+        "begruendung": "abgeleitet aus FP · gering (EC-ERT-02); Vorlage: jährlich",
+        "zust": {
+          "partei": "KANZLEI",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 1
+      },
+      {
+        "code": "K-EC-20",
+        "titel": "Berichtigungsprozess",
+        "schluessel": true,
+        "risikoCodes": ["EC-VER-01"],
+        "primaer": "EC-VER-01",
+        "vorlage": {
+          "turnus": "KEIN",
+          "anlass": true
+        },
+        "effektiv": {
+          "turnus": "MONATLICH",
+          "anlass": true
+        },
+        "gt": "FF",
+        "begruendung": "abgeleitet aus FF · kritisch (EC-VER-01); Vorlage: nur bei Auslösung",
+        "zust": {
+          "partei": "KANZLEI",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000001",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 7
+      },
+      {
+        "code": "K-EC-21",
+        "titel": "Rechtsänderungs-Monitoring",
+        "schluessel": false,
+        "risikoCodes": ["EC-VER-03"],
+        "primaer": "EC-VER-03",
+        "vorlage": {
+          "turnus": "MONATLICH",
+          "anlass": true
+        },
+        "effektiv": {
+          "turnus": "MONATLICH",
+          "anlass": true
+        },
+        "gt": "FF",
+        "begruendung": "abgeleitet aus FF · kritisch (EC-VER-03); Vorlage: monatlich + bei Auslösung",
+        "zust": {
+          "partei": "KANZLEI",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 7
+      },
+      {
+        "code": "K-EC-22",
+        "titel": "Kenntnisnahme Steuerrichtlinie und Schulung",
+        "schluessel": false,
+        "risikoCodes": [],
+        "primaer": null,
+        "vorlage": {
+          "turnus": "JAEHRLICH",
+          "anlass": true
+        },
+        "effektiv": {
+          "turnus": "JAEHRLICH",
+          "anlass": true
+        },
+        "gt": null,
+        "begruendung": "keine verknüpften Risiken; Vorlage: jährlich + bei Auslösung",
+        "zust": {
+          "partei": "MANDANT",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000052",
+          "vertretungId": "b1000000-0000-4000-8000-000000000051",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
+        },
+        "perioden": 1
+      },
+      {
+        "code": "K-EC-23",
+        "titel": "Report-Export und geschützte Ablage",
+        "schluessel": false,
+        "risikoCodes": ["EC-GOB-03"],
+        "primaer": "EC-GOB-03",
+        "vorlage": {
+          "turnus": "QUARTALSWEISE",
+          "anlass": false
+        },
+        "effektiv": {
+          "turnus": "QUARTALSWEISE",
+          "anlass": false
+        },
+        "gt": "FP",
+        "begruendung": "abgeleitet aus FP · mittel (EC-GOB-03); Vorlage: quartalsweise",
+        "zust": {
+          "partei": "MANDANT",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000052",
+          "vertretungId": "b1000000-0000-4000-8000-000000000051",
+          "gegenzeichnerId": "b1000000-0000-4000-8000-000000000051",
+          "gegenzeichnungMandant": true
+        },
+        "perioden": 3
+      }
+    ],
+    "prueflast": [
+      {
+        "monat": "2027-01",
+        "FP": 8,
+        "FF": 4,
+        "IN": 0,
+        "ausloesungen": 0,
+        "gesamt": 12
+      },
+      {
+        "monat": "2027-02",
+        "FP": 4,
+        "FF": 2,
+        "IN": 0,
+        "ausloesungen": 0,
+        "gesamt": 6
+      },
+      {
+        "monat": "2027-03",
+        "FP": 6,
+        "FF": 2,
+        "IN": 0,
+        "ausloesungen": 0,
+        "gesamt": 8
+      },
+      {
+        "monat": "2027-04",
+        "FP": 7,
+        "FF": 4,
+        "IN": 0,
+        "ausloesungen": 0,
+        "gesamt": 11
+      },
+      {
+        "monat": "2027-05",
+        "FP": 5,
+        "FF": 2,
+        "IN": 0,
+        "ausloesungen": 0,
+        "gesamt": 7
+      },
+      {
+        "monat": "2027-06",
+        "FP": 4,
+        "FF": 2,
+        "IN": 0,
+        "ausloesungen": 0,
+        "gesamt": 6
+      }
+    ],
+    "durchfuehrungen": 62
+  },
+  "pruefung": [
+    {
+      "schritt": 1,
+      "fehler": []
+    },
+    {
+      "schritt": 2,
+      "fehler": []
+    },
+    {
+      "schritt": 3,
+      "fehler": []
+    },
+    {
+      "schritt": 4,
+      "fehler": []
+    },
+    {
+      "schritt": 5,
+      "fehler": []
+    }
+  ],
+  "gesetzlicheVertreter": ["b1000000-0000-4000-8000-000000000051"],
+  "darfBearbeiten": true
+}

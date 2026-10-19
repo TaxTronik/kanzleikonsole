@@ -1175,6 +1175,13 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   Kontakte genau dieses Mandanten
 - **Portal-Übersicht** `/portal/tcms`: Stand des Programms, eigene und
   weitere Aufgaben, letzte Meldungen
+- **Programm & Dokumentation:** Einrichtungsassistent
+  `/staff/clients/[id]/tcms/einrichtung` (fünf Schritte bis Version 1; Plan,
+  Prüflast und offene Punkte vom Dienst), **Geschäftsprofil** `…/profil`
+  (Stände mit Historie, Profil ändern, Risiko aus dem Vorschlag aufnehmen) und
+  **Katalog** `/staff/tcms/katalog` (Admin/Partner, nur lesend); Personen nur
+  aus der kanzleikonsole (Zugriff auf den Mandanten bzw. Kontakte dieses
+  Mandanten)
 - **Durchführungen** `/staff/clients/[id]/tcms/durchfuehrungen[/[did]]`:
   Liste mit Filtern; Schritte, Werte mit Toleranz, Ergebnis, Einreichen,
   Gegenzeichnen (Befund mit Feststellung), Zurückweisen, Entfallen, Nachtrag.

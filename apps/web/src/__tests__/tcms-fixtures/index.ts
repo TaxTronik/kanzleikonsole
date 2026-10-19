@@ -17,12 +17,19 @@
 //     Demo-Daten tragen Ablagepfade statt Dokument-IDs (nicht abrufbar).
 //     feststellung-maskiert.json und feststellungen-talwind-thomas.json mit
 //     F-2026-006 vorübergehend vertraulich, gelesen von Thomas (nicht beteiligt).
+//   - einrichtung-bergkamm.json: Entwurf des Einrichtungsassistenten nach
+//     Schritt 4 (Live-Antwort des Dienstes mit dem Demo-Akteur, ungekürzt).
+//   - profil-talwind.json, einrichtung-talwind.json, kontakte-bergkamm.json:
+//     ungekürzt.
 // Neue Fixtures: Antwort mit dem Demo-Akteur abrufen, kürzen, hier mit dem
 // Schema des Endpunkts laden (ENDPUNKTE.<name>.antwortSchema).
 // =============================================================================
 
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import type { z } from 'zod';
+import einrichtungBergkamm from './einrichtung-bergkamm.json';
+import einrichtungTalwind from './einrichtung-talwind.json';
+import kontakteBergkamm from './kontakte-bergkamm.json';
 import kontakteTalwind from './kontakte-talwind.json';
 import kontextTalwind from './kontext-talwind.json';
 import portalUebersichtJana from './portal-uebersicht-jana.json';
@@ -39,6 +46,7 @@ import feststellungP153 from './feststellung-p153.json';
 import feststellungenTalwind from './feststellungen-talwind.json';
 import feststellungenTalwindThomas from './feststellungen-talwind-thomas.json';
 import nachweisLesen from './nachweis-lesen.json';
+import profilTalwind from './profil-talwind.json';
 
 /** Feste IDs der TCMS-Demo (gleich in der kanzleikonsole-Testdatenbank des Live-Tests). */
 export const DEMO = {
@@ -88,4 +96,9 @@ export const tcmsFixtures = {
     laden(ENDPUNKTE.feststellungLesen.antwortSchema, feststellungMaskiert),
   arbeitskorbAnna: () => laden(ENDPUNKTE.arbeitskorbLesen.antwortSchema, arbeitskorbAnna),
   arbeitskorbLeon: () => laden(ENDPUNKTE.arbeitskorbLesen.antwortSchema, arbeitskorbLeon),
+  // Bereich A (Programm & Dokumentation)
+  einrichtungBergkamm: () => laden(ENDPUNKTE.einrichtungLesen.antwortSchema, einrichtungBergkamm),
+  einrichtungTalwind: () => laden(ENDPUNKTE.einrichtungLesen.antwortSchema, einrichtungTalwind),
+  kontakteBergkamm: () => laden(ENDPUNKTE.kontakteLesen.antwortSchema, kontakteBergkamm),
+  profilTalwind: () => laden(ENDPUNKTE.profilLesen.antwortSchema, profilTalwind),
 };

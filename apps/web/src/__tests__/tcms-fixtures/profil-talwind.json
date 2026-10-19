@@ -1,0 +1,654 @@
+{
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "programmId": "cmvf9k7fi0003g87dyrg2d53f",
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "version1Am": "2026-03-01T00:00:00.000Z",
+  "staende": [
+    {
+      "id": "cmvf9k7gt0008g87d2dksqwoq",
+      "version": 1,
+      "antworten": {
+        "p1": {
+          "eigenerShop": true,
+          "shopSystem": "Shopware 6",
+          "marktplaetze": ["Amazon", "eBay"]
+        },
+        "p2": {
+          "eigenversandDE": true,
+          "lager": [
+            {
+              "land": "DE",
+              "seit": "2021-04",
+              "art": "FBA"
+            },
+            {
+              "land": "PL",
+              "seit": "2025-03",
+              "art": "PAN-EU"
+            }
+          ]
+        },
+        "p3": {
+          "laender": ["DE", "AT", "BE", "CZ", "ES", "FR", "IT", "NL", "PL"],
+          "b2bAnteilProzent": 7,
+          "b2bEU": true,
+          "b2bInland": false
+        },
+        "p4": {
+          "warengruppen": [
+            {
+              "name": "Zelte und Schlafsäcke",
+              "abweichenderSatz": false
+            },
+            {
+              "name": "Outdoor-Bekleidung",
+              "abweichenderSatz": false
+            },
+            {
+              "name": "Kocher und Zubehör",
+              "abweichenderSatz": false
+            }
+          ],
+          "gebrauchtware": false
+        },
+        "p5": {
+          "drittlandImport": true,
+          "laender": ["CN", "VN"],
+          "zollabwicklung": "Spediteur mit indirekter Vertretung"
+        },
+        "p6": {
+          "zahlungswege": ["PayPal", "Stripe", "Klarna", "Amazon Pay", "Vorkasse"]
+        },
+        "p7": {
+          "gutscheine": true,
+          "abos": false,
+          "bundles": false
+        },
+        "p8": {
+          "systeme": [
+            {
+              "art": "Shop",
+              "name": "Shopware",
+              "version": "6.6"
+            },
+            {
+              "art": "Marktplatz-Tool",
+              "name": "Amazon Seller Central",
+              "version": "—"
+            },
+            {
+              "art": "Warenwirtschaft",
+              "name": "Standard-WaWi",
+              "version": "2026.1"
+            },
+            {
+              "art": "FiBu",
+              "name": "DATEV (Kanzlei)",
+              "version": "—"
+            }
+          ]
+        },
+        "p9": {
+          "ossSeit": "2021-07",
+          "ioss": false,
+          "lokaleUstNr": ["PL"],
+          "dauerfrist": true
+        },
+        "p10": {
+          "vorjahresumsatzEur": 4800000,
+          "euFernverkaeufeVorjahrEur": 1260000,
+          "euFernverkaeufeLfdEur": 1089300
+        },
+        "p11": {
+          "vorhanden": true,
+          "anbieter": ["Amazon EU S.à r.l.", "Google Ireland", "Meta Platforms Ireland"]
+        },
+        "p12": {
+          "buchhaltung": "KANZLEI"
+        }
+      },
+      "gueltigAb": "2026-02-15T00:00:00.000Z",
+      "gueltigBis": "2026-10-01T00:00:00.000Z",
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002",
+      "createdAt": "2026-02-15T09:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k8fl007og87dilm7agso",
+      "version": 2,
+      "antworten": {
+        "p1": {
+          "eigenerShop": true,
+          "shopSystem": "Shopware 6",
+          "marktplaetze": ["Amazon", "eBay"]
+        },
+        "p2": {
+          "eigenversandDE": true,
+          "lager": [
+            {
+              "land": "DE",
+              "seit": "2021-04",
+              "art": "FBA"
+            },
+            {
+              "land": "PL",
+              "seit": "2025-03",
+              "art": "PAN-EU"
+            },
+            {
+              "land": "CZ",
+              "seit": "2026-08",
+              "art": "PAN-EU"
+            }
+          ]
+        },
+        "p3": {
+          "laender": ["DE", "AT", "BE", "CZ", "ES", "FR", "IT", "NL", "PL"],
+          "b2bAnteilProzent": 7,
+          "b2bEU": true,
+          "b2bInland": false
+        },
+        "p4": {
+          "warengruppen": [
+            {
+              "name": "Zelte und Schlafsäcke",
+              "abweichenderSatz": false
+            },
+            {
+              "name": "Outdoor-Bekleidung",
+              "abweichenderSatz": false
+            },
+            {
+              "name": "Kocher und Zubehör",
+              "abweichenderSatz": false
+            }
+          ],
+          "gebrauchtware": false
+        },
+        "p5": {
+          "drittlandImport": true,
+          "laender": ["CN", "VN"],
+          "zollabwicklung": "Spediteur mit indirekter Vertretung"
+        },
+        "p6": {
+          "zahlungswege": ["PayPal", "Stripe", "Klarna", "Amazon Pay", "Vorkasse"]
+        },
+        "p7": {
+          "gutscheine": true,
+          "abos": false,
+          "bundles": false
+        },
+        "p8": {
+          "systeme": [
+            {
+              "art": "Shop",
+              "name": "Shopware",
+              "version": "6.6"
+            },
+            {
+              "art": "Marktplatz-Tool",
+              "name": "Amazon Seller Central",
+              "version": "—"
+            },
+            {
+              "art": "Warenwirtschaft",
+              "name": "Standard-WaWi",
+              "version": "2026.1"
+            },
+            {
+              "art": "FiBu",
+              "name": "DATEV (Kanzlei)",
+              "version": "—"
+            }
+          ]
+        },
+        "p9": {
+          "ossSeit": "2021-07",
+          "ioss": false,
+          "lokaleUstNr": ["PL"],
+          "dauerfrist": true
+        },
+        "p10": {
+          "vorjahresumsatzEur": 4800000,
+          "euFernverkaeufeVorjahrEur": 1260000,
+          "euFernverkaeufeLfdEur": 1089300
+        },
+        "p11": {
+          "vorhanden": true,
+          "anbieter": ["Amazon EU S.à r.l.", "Google Ireland", "Meta Platforms Ireland"]
+        },
+        "p12": {
+          "buchhaltung": "KANZLEI"
+        }
+      },
+      "gueltigAb": "2026-10-01T00:00:00.000Z",
+      "gueltigBis": null,
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002",
+      "createdAt": "2026-10-01T10:00:00.000Z"
+    }
+  ],
+  "vorschlaege": [
+    {
+      "code": "EC-UST-01",
+      "kern": false,
+      "grund": "weil EU-B2C nach AT, BE, CZ … (P3)",
+      "frage": "P3",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7h90009g87dc2a52wdc"
+    },
+    {
+      "code": "EC-UST-02",
+      "kern": false,
+      "grund": "weil EU-B2C nach AT, BE, CZ … (P3)",
+      "frage": "P3",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7hs000bg87dyd1bnjq2"
+    },
+    {
+      "code": "EC-UST-03",
+      "kern": false,
+      "grund": "weil OSS seit 07/2021 (P9)",
+      "frage": "P9",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7ic000dg87drfc8u7fo"
+    },
+    {
+      "code": "EC-UST-04",
+      "kern": false,
+      "grund": "weil EU-B2C und Lager PL seit 03/2025 (P2, P3)",
+      "frage": "P2",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7ip000fg87dg7g9vx3v"
+    },
+    {
+      "code": "EC-UST-05",
+      "kern": false,
+      "grund": "weil Lager PL seit 03/2025 (P2)",
+      "frage": "P2",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7j4000hg87d63xt4g5x"
+    },
+    {
+      "code": "EC-UST-06",
+      "kern": false,
+      "grund": "weil EU-B2B-Verkäufe (P3)",
+      "frage": "P3",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7jc000jg87dt6u9s6bz"
+    },
+    {
+      "code": "EC-UST-07",
+      "kern": false,
+      "grund": "weil ausländische Leistende (Amazon EU S.à r.l., Google Ireland) (P11)",
+      "frage": "P11",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7jl000lg87d689dcl1o"
+    },
+    {
+      "code": "EC-UST-08",
+      "kern": false,
+      "grund": "weil Gutscheine (P7)",
+      "frage": "P7",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7k0000ng87d2dljhn2h"
+    },
+    {
+      "code": "EC-UST-09",
+      "kern": true,
+      "grund": "Kernrisiko – immer aktiv",
+      "frage": "–",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7kk000pg87dpzq33lt0"
+    },
+    {
+      "code": "EC-UST-10",
+      "kern": true,
+      "grund": "Kernrisiko – immer aktiv",
+      "frage": "–",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7l2000rg87d6ha7h0o9"
+    },
+    {
+      "code": "EC-UST-11",
+      "kern": false,
+      "grund": "weil B2B-Verkäufe (P3)",
+      "frage": "P3",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7ld000tg87dm8dg51ic"
+    },
+    {
+      "code": "EC-UST-12",
+      "kern": false,
+      "grund": "weil Import aus CN, VN (P5)",
+      "frage": "P5",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7lo000vg87d1lrolzvm"
+    },
+    {
+      "code": "EC-UST-13",
+      "kern": false,
+      "grund": "weil Marktplatzverkäufe über Amazon, eBay (P1)",
+      "frage": "P1",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7m1000xg87dj94svuij"
+    },
+    {
+      "code": "EC-GOB-01",
+      "kern": true,
+      "grund": "Kernrisiko – immer aktiv",
+      "frage": "–",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7m8000zg87djsseclnn"
+    },
+    {
+      "code": "EC-GOB-02",
+      "kern": true,
+      "grund": "Kernrisiko – immer aktiv",
+      "frage": "–",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7me0011g87d5f50mj2c"
+    },
+    {
+      "code": "EC-GOB-03",
+      "kern": true,
+      "grund": "Kernrisiko – immer aktiv",
+      "frage": "–",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7mj0013g87d5w0i2a6b"
+    },
+    {
+      "code": "EC-ERT-01",
+      "kern": false,
+      "grund": "weil Fremdlager FBA DE (P2)",
+      "frage": "P2",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7mp0015g87dnxqb18qk"
+    },
+    {
+      "code": "EC-ERT-02",
+      "kern": false,
+      "grund": "weil Gutscheine (P7)",
+      "frage": "P7",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7mw0017g87dtg13pis4"
+    },
+    {
+      "code": "EC-ERT-03",
+      "kern": false,
+      "grund": "weil Lager PL seit 03/2025 (P2)",
+      "frage": "P2",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7n50019g87d6fjyy29o"
+    },
+    {
+      "code": "EC-VER-01",
+      "kern": true,
+      "grund": "Kernrisiko – immer aktiv",
+      "frage": "–",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7ng001bg87dtyoitm25"
+    },
+    {
+      "code": "EC-VER-02",
+      "kern": true,
+      "grund": "Kernrisiko – immer aktiv",
+      "frage": "–",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7nn001dg87d72jyfm46"
+    },
+    {
+      "code": "EC-VER-03",
+      "kern": true,
+      "grund": "Kernrisiko – immer aktiv",
+      "frage": "–",
+      "entscheidung": "UEBERNOMMEN",
+      "risikoId": "cmvf9k7nt001fg87dmw8nrbsq"
+    }
+  ],
+  "risiken": [
+    {
+      "id": "cmvf9k7mp0015g87dnxqb18qk",
+      "code": "EC-ERT-01",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil Fremdlager FBA DE (P2)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7mw0017g87dtg13pis4",
+      "code": "EC-ERT-02",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil Gutscheine (P7)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7n50019g87d6fjyy29o",
+      "code": "EC-ERT-03",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil Lager PL seit 03/2025 (P2)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7m8000zg87djsseclnn",
+      "code": "EC-GOB-01",
+      "kern": true,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7me0011g87d5f50mj2c",
+      "code": "EC-GOB-02",
+      "kern": true,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7mj0013g87d5w0i2a6b",
+      "code": "EC-GOB-03",
+      "kern": true,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7h90009g87dc2a52wdc",
+      "code": "EC-UST-01",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil EU-B2C nach AT, BE, CZ … (P3)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7hs000bg87dyd1bnjq2",
+      "code": "EC-UST-02",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil EU-B2C nach AT, BE, CZ … (P3)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7ic000dg87drfc8u7fo",
+      "code": "EC-UST-03",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil OSS seit 07/2021 (P9)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7ip000fg87dg7g9vx3v",
+      "code": "EC-UST-04",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil EU-B2C und Lager PL seit 03/2025 (P2, P3)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7j4000hg87d63xt4g5x",
+      "code": "EC-UST-05",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil Lager PL seit 03/2025 (P2)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7jc000jg87dt6u9s6bz",
+      "code": "EC-UST-06",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil EU-B2B-Verkäufe (P3)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7jl000lg87d689dcl1o",
+      "code": "EC-UST-07",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil ausländische Leistende (Amazon EU S.à r.l., Google Ireland) (P11)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7k0000ng87d2dljhn2h",
+      "code": "EC-UST-08",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil Gutscheine (P7)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7kk000pg87dpzq33lt0",
+      "code": "EC-UST-09",
+      "kern": true,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7l2000rg87d6ha7h0o9",
+      "code": "EC-UST-10",
+      "kern": true,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7ld000tg87dm8dg51ic",
+      "code": "EC-UST-11",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil B2B-Verkäufe (P3)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7lo000vg87d1lrolzvm",
+      "code": "EC-UST-12",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil Import aus CN, VN (P5)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7m1000xg87dj94svuij",
+      "code": "EC-UST-13",
+      "kern": false,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "weil Marktplatzverkäufe über Amazon, eBay (P1)",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7ng001bg87dtyoitm25",
+      "code": "EC-VER-01",
+      "kern": true,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7nn001dg87d72jyfm46",
+      "code": "EC-VER-02",
+      "kern": true,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    },
+    {
+      "id": "cmvf9k7nt001fg87dmw8nrbsq",
+      "code": "EC-VER-03",
+      "kern": true,
+      "entscheidung": "UEBERNOMMEN",
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "ablehnungsgrund": null,
+      "inaktivAb": null,
+      "neuBewerten": false,
+      "createdAt": "2026-03-01T00:00:00.000Z"
+    }
+  ],
+  "namen": {}
+}

@@ -1,0 +1,14 @@
+{
+  "programm": {
+    "id": "cmvf9k7fi0003g87dyrg2d53f",
+    "status": "AKTIV",
+    "version1Am": "2026-03-01T00:00:00.000Z",
+    "createdAt": "2026-02-15T00:00:00.000Z"
+  },
+  "eingerichtet": true,
+  "entwurf": null,
+  "plan": null,
+  "pruefung": [],
+  "gesetzlicheVertreter": ["b1000000-0000-4000-8000-000000000011"],
+  "darfBearbeiten": true
+}

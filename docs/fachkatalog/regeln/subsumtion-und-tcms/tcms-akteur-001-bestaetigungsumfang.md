@@ -46,6 +46,10 @@ code_refs:
   - apps/web/src/server/tcms/namen.ts
   - apps/web/src/server/tcms/mandant.ts
   - apps/web/src/server/tcms/feststellungen/personen.ts
+  - apps/web/src/server/tcms/programm/zustaendigkeit.ts
+  - apps/web/src/server/tcms/programm/einrichtung.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/actions.ts
 test_refs:
   - apps/web/src/server/tcms/__tests__/seite.test.ts
   - apps/web/src/server/tcms/__tests__/aktion.test.ts
@@ -57,6 +61,9 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/actions.test.ts
   - apps/web/src/server/tcms/feststellungen/__tests__/personen.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/__tests__/actions.test.ts
+  - apps/web/src/server/tcms/programm/__tests__/zustaendigkeit-db.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/__tests__/aktionen.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/__tests__/aktionen.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

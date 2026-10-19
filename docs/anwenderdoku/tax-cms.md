@@ -95,6 +95,58 @@ Meldungen. Was ein Kontakt sieht, hängt von seiner Rolle (Abschnitt 5) ab.
 Aufgaben, Meldungen und Freigaben im Portal folgen mit den weiteren
 Bereichen.
 
+## Programm & Dokumentation
+
+Diese Bereiche bauen das Programm eines Mandanten auf und halten seine
+Dokumentation fest. Was angelegt, geändert oder freigegeben werden darf und
+ob eine Angabe vollständig ist, entscheidet das Tax-CMS; TaxTronik zeigt das
+Ergebnis an und gibt Personen nur aus der eigenen Datenbank weiter.
+
+### Einrichtung
+
+_Tax-CMS → Einrichtung_ führt in fünf Schritten zu Version 1 des Programms:
+**Teilbereich** (Paketvorlage, Abgrenzung, Angemessenheits-Stichtag,
+Wirksamkeitszeitraum, Erklärungsturnus), **Geschäftsprofil** (Fragen
+P1–P12), **Compliance-Ziele** (Wesentlichkeit, Risikoappetit, optional
+Freigabe bei einer gesetzlichen Vertretung), **Risikovorschlag** (übernehmen
+oder begründet ablehnen; Kernrisiken bleiben immer aktiv) und
+**Kontrollvorschlag** (Partei, durchführende Person, Vertretung,
+Gegenzeichnung; Frequenzen aus der Häufigkeitsmatrix).
+
+- Der Entwurf lässt sich jederzeit speichern. „Weiter“ speichert und lässt
+  den Schritt vom Tax-CMS prüfen; offene Punkte erscheinen über dem Schritt.
+- Vorschläge, Frequenzen und die Prüflast je Monat berechnet das Tax-CMS;
+  die Vorschau im Profilschritt dient nur der Orientierung.
+- Zur Auswahl stehen in der Kanzlei nur Personen mit Zugriff auf den
+  Mandanten, auf Mandantenseite nur Kontakte dieses Mandanten mit Rolle im
+  Tax-CMS (Abschnitt 5). Berufsträgerin bzw. Berufsträger und
+  Hauptbearbeitung übernimmt TaxTronik aus der Mandantenakte.
+- „Tax-CMS Version 1 anlegen“ fragt vorher nach. Danach ist der Assistent
+  geschlossen; Änderungen erfolgen in Profil, Risiken und Kontrollen.
+
+### Geschäftsprofil
+
+_Tax-CMS → Profil_ zeigt den zum Stichtag gültigen Profilstand mit den
+Änderungen zum Vorgänger, Teilbereich und Ziele, die Historie aller Stände
+und den **Risikovorschlag aus dem Profil**: neu vorgeschlagene, begründet
+abgelehnte, deaktivierte und nicht mehr vorgeschlagene Risiken.
+
+- **Profil ändern** legt einen neuen Stand mit Gültigkeitsdatum an; frühere
+  Stände bleiben unverändert. Optional entstehen die zugehörigen Ereignisse im
+  Ereigniseingang.
+- **Risiko aufnehmen** legt ein vorgeschlagenes Risiko mit Brutto-Startwerten
+  und den fehlenden Katalogkontrollen an. Verantwortlich werden
+  Berufsträgerin bzw. Berufsträger und Hauptbearbeitung aus der
+  Mandantenakte; sind sie nicht zugeordnet oder dieselbe Person, erscheint ein
+  Hinweis statt des Knopfs.
+
+### Katalog
+
+Admins und Partner sehen unter `/staff/tcms/katalog` (Verweis im
+Einrichtungsassistenten) den Katalog des Branchenpakets: Risiken, Kontrollen,
+Ereignistypen, Häufigkeitsmatrix und Profilfragen – nur lesend und als
+**ungeprüfter Entwurf**, den Berufsträgerinnen und Berufsträger kalibrieren.
+
 ## 7. Meldungen
 
 | Meldung                                               | Bedeutung und was zu tun ist                                                                              |
