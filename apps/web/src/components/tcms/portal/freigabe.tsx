@@ -4,7 +4,10 @@
 // (`darfFreigeben`, `darfKenntnisnehmen`, `sperrgrund`) und den Zustand des
 // Bestätigungscodes (nie den Code selbst) liefert das Tax-CMS; Namen kommen
 // aus der kanzleikonsole. Codes fordert die Seite an (Zustellung per E-Mail
-// über den Postausgang des Tax-CMS) und nimmt sie entgegen.
+// über den Postausgang des Tax-CMS) und nimmt sie entgegen. Die vorgelegte
+// Fassung einer Beschreibung zeigt die gemeinsame Darstellung aus Bereich A
+// (`BeschreibungFassung`): eingefroren mit SHA-256, sonst lebend mit Namen aus
+// der kanzleikonsole.
 // =============================================================================
 
 import { Ban, CheckCheck, FileText, Lock, Mail } from 'lucide-react';
@@ -12,7 +15,7 @@ import type { BausteinSatzDaten, PortalFreigabeView } from '@taxtronik/tcms-cont
 import { HashKurz } from '../badges';
 import { isoDatumText, isoZeitText } from '../format';
 import { TcmsAktionsKnopf, type TcmsFormAktion } from '../ereignisse/aktionen';
-import { BeschreibungLesen } from './dokument';
+import { bausteinPersonIds, BeschreibungFassung } from '../programm/beschreibung';
 import { FreigabeCodeFormular, KenntnisnahmeFormular } from './freigabe-formulare';
 import { freigabeArtLabel } from './texte';
 
@@ -121,25 +124,44 @@ function CodeBedienung({
 function FreigabeDokument({
   f,
   live,
+  namen,
 }: {
   f: PortalFreigabeView;
   live: { stand: string; bausteine: BausteinSatzDaten } | null;
+  namen: Namen;
 }) {
   if (!f.version) return <p className="text-sm text-secondary whitespace-pre-wrap">{f.inhalt}</p>;
   const snapshot = f.version.snapshot;
-  return snapshot ? (
-    <BeschreibungLesen
-      abschnitte={snapshot.abschnitte}
-      satz={snapshot.bausteine ?? null}
-      snapshotSha256={f.version.snapshotSha256}
-      eingefroren
-    />
-  ) : (
-    <BeschreibungLesen
+  const idPraefix = `freigabe-${f.id}`;
+  if (snapshot) {
+    return (
+      <BeschreibungFassung
+        abschnitte={snapshot.abschnitte}
+        quelle={{
+          modus: 'snapshot',
+          stand: snapshot.stand ?? null,
+          satz: snapshot.bausteine ?? null,
+        }}
+        snapshotSha256={f.version.snapshotSha256}
+        lueckenHinweis={false}
+        idPraefix={idPraefix}
+      />
+    );
+  }
+  const satz = live?.bausteine ?? null;
+  return (
+    <BeschreibungFassung
       abschnitte={f.version.abschnitte}
-      satz={live?.bausteine ?? null}
-      snapshotSha256={null}
-      eingefroren={false}
+      quelle={{
+        modus: 'live',
+        stand: live?.stand ?? null,
+        satz,
+        namen: Object.fromEntries(
+          bausteinPersonIds(satz).map((id) => [id.toLowerCase(), namen.name(id)]),
+        ),
+      }}
+      lueckenHinweis={false}
+      idPraefix={idPraefix}
     />
   );
 }
@@ -189,7 +211,7 @@ export function FreigabeKarte({
             <FileText className="h-4 w-4" aria-hidden="true" /> Dokument ansehen
           </summary>
           <div className="details-body max-h-[32rem] overflow-y-auto">
-            <FreigabeDokument f={f} live={live} />
+            <FreigabeDokument f={f} live={live} namen={namen} />
           </div>
         </details>
       ) : null}

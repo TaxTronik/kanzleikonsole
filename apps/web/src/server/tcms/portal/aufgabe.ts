@@ -9,7 +9,7 @@
 
 import type { DurchfuehrungSpeichernBodySchema, Kontrollaufgabe } from '@taxtronik/tcms-contract';
 import type { z } from 'zod';
-import { parseDezimal } from '@/components/tcms/portal/werte';
+import { parseDezimal } from '@/components/tcms/durchfuehrung/werte';
 import type { ActionFailure } from '@/server/actions/action-runner';
 
 /** Formularfelder `schritt_<i>_erledigt|kommentar`, `wert_<key>`, `bemerkung_<key>`, `erklaert_<key>`, `ergebnis`, `ergebnisKommentar`. */

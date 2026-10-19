@@ -254,6 +254,15 @@ Protokolliert werden nur Komponente, Endpunkt, Fehlerklasse, Status, Code,
 | `icon.tsx`         | `KatalogIcon` für die Icon-Namen des Katalogs                                                                      |
 | `rollen.ts`        | Rollen der Mandantenkontakte und Labels                                                                            |
 
+Bereichsübergreifend genutzte Bausteine in Unterordnern (eine Darstellung je
+Sache für Kanzlei und Portal, Integration Stufe 3):
+
+| Datei                              | Inhalt                                                                                                                                  |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `durchfuehrung/nachweis-liste.tsx` | `NachweisListe`: Nachweise der Durchführung (Kanzlei, mit Abgleich zur Ablage) und Anlagen der Kontrollaufgabe (Portal)                 |
+| `durchfuehrung/werte.ts`           | `parseDezimal`, `alsEingabe`, `fmtGroesse`: eine Umwandlung von Beträgen und Größen für beide Flächen                                   |
+| `programm/beschreibung.tsx`        | `BeschreibungFassung`, `AbschnittAnsicht`, `BausteinBlock`: Beschreibung lebend oder eingefroren, auch die vorgelegte Fassung im Portal |
+
 Darstellung: nur Tokens der kanzleikonsole (`text-foreground`,
 `bg-surface-raised`, `border-border`, Badge-Töne aus `ton.ts`); keine Farben
 der Demo. Farbe trägt nie allein Bedeutung (Text oder `aria-label` dazu).

@@ -8,7 +8,7 @@
 
 import type { AnzeigeStatus } from '@taxtronik/tcms-domain';
 import { isoDatumText } from '../format';
-import { groesseText } from './werte';
+import { fmtGroesse } from '../durchfuehrung/werte';
 
 /** Dateiauswahl im Portal (Positivliste PORTAL_ANLAGE_MIME des Vertrags). */
 export const PORTAL_ANLAGE_ACCEPT =
@@ -20,7 +20,7 @@ export function portalAnlageHinweis(g: {
   maxBytes: number;
   maxGesamt: number;
 }): string {
-  return `höchstens ${g.maxDateien} Dateien, je bis ${groesseText(g.maxBytes)}, zusammen bis ${groesseText(g.maxGesamt)} (PDF, Bild, CSV, Text, Excel, Word, ZIP)`;
+  return `höchstens ${g.maxDateien} Dateien, je bis ${fmtGroesse(g.maxBytes)}, zusammen bis ${fmtGroesse(g.maxGesamt)} (PDF, Bild, CSV, Text, Excel, Word, ZIP)`;
 }
 
 /** Status einer Kontrollaufgabe in Portal-Sprache (Anzeige aus `anzeige` des Dienstes). */

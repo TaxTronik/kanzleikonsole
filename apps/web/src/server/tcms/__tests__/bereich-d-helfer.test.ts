@@ -18,7 +18,7 @@ vi.mock('@/server/auth/rbac', () => ({ filterStaffAccessClientTx: h.filter }));
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { auswahlProblem } from '@/components/tcms/portal/anlagen-upload';
 import { codeFehlerText, portalAnlageHinweis } from '@/components/tcms/portal/texte';
-import { parseDezimal } from '@/components/tcms/portal/werte';
+import { parseDezimal } from '@/components/tcms/durchfuehrung/werte';
 import {
   kanzleiPersonenAuswahlTx,
   zustaendigkeitTx,

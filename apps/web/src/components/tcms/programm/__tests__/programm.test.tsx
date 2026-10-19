@@ -8,7 +8,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { BausteinSatzDaten } from '@taxtronik/tcms-contract';
-import { BausteinBlock, type BausteinQuelle } from '../beschreibung';
+import { BausteinBlock, BeschreibungFassung, type BausteinQuelle } from '../beschreibung';
 import { TcmsAktionsDialog, type TcmsAktionsErgebnis } from '../dialog';
 import { codeText } from '../freigaben';
 import { TcmsKnopfAktion } from '../knopf';
@@ -207,6 +207,62 @@ describe('BausteinBlock VERANTWORTUNG', () => {
     expect(text).toContain('Jana (eingefroren) (Mandant)');
     expect(text).not.toContain('Jana Weller');
     expect(text).toContain('eingefroren · Stand 30.09.2026');
+  });
+});
+
+describe('BeschreibungFassung (Kanzlei und Portal, Integration Stufe 3)', () => {
+  const abschnitte = [
+    {
+      key: 'teilbereich' as const,
+      bloecke: [
+        { typ: 'text' as const, text: 'Umsatzsteuer der Talwind GmbH.' },
+        { typ: 'baustein' as const, art: 'VERANTWORTUNG' as const },
+      ],
+    },
+  ];
+  const satz = {
+    VERANTWORTUNG: {
+      rollen: [{ rolle: 'Gesetzliche Vertretung', name: 'Jana (eingefroren)', personId: J }],
+      kontrollen: [],
+    },
+  } as unknown as BausteinSatzDaten;
+
+  it('eingefroren: SHA-256, alle Abschnitte der Domain, eingefrorene Namen', () => {
+    const { container } = render(
+      <BeschreibungFassung
+        abschnitte={abschnitte}
+        quelle={{ modus: 'snapshot', stand: null, satz }}
+        snapshotSha256={'ab'.repeat(32)}
+        lueckenHinweis={false}
+        idPraefix="freigabe-1"
+      />,
+    );
+    expect(screen.getByText('Vorgelegte Fassung, durch SHA-256 gebunden.')).toBeTruthy();
+    // Abschnitte 0–7 und Anhang in fester Reihenfolge (fehlende leer, ohne Lückenhinweis).
+    expect(container.querySelectorAll('h4')).toHaveLength(9);
+    expect(screen.queryByText(/Lücke in diesem Abschnitt/)).toBeNull();
+    expect(container.textContent).toContain('Umsatzsteuer der Talwind GmbH.');
+    expect(container.textContent).toContain('Gesetzliche Vertretung: Jana (eingefroren)');
+    // IDs mit Präfix: mehrere Fassungen auf einer Seite kollidieren nicht.
+    expect(container.querySelector('#freigabe-1-teilbereich')).not.toBeNull();
+    expect(container.querySelector('#abschnitt-teilbereich')).toBeNull();
+  });
+
+  it('lebend: kein Hash, Namen aus der kanzleikonsole, ohne Datenstand des Dienstes kein Stand', () => {
+    const { container } = render(
+      <BeschreibungFassung
+        abschnitte={abschnitte}
+        quelle={{ modus: 'live', stand: null, satz, namen: { [J]: 'Jana Weller' } }}
+        snapshotSha256={'ab'.repeat(32)}
+      />,
+    );
+    expect(screen.queryByText('Vorgelegte Fassung, durch SHA-256 gebunden.')).toBeNull();
+    expect(container.textContent).toContain('Gesetzliche Vertretung: Jana Weller');
+    expect(container.textContent).not.toContain('Jana (eingefroren)');
+    expect(container.textContent).toContain('automatisch');
+    expect(container.textContent).not.toContain('Stand');
+    // Kanzlei-Gesamtansicht: Lückenhinweis für Abschnitte ohne Freitext.
+    expect(screen.getAllByText(/Lücke in diesem Abschnitt/).length).toBe(8);
   });
 });
 

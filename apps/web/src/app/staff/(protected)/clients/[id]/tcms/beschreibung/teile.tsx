@@ -38,9 +38,11 @@ import { HashKurz } from '@/components/tcms/badges';
 import { alsDatum, isoDatumText, isoZeitText } from '@/components/tcms/format';
 import {
   AbschnittAnsicht,
+  abschnittFuer,
   BausteinBlock,
-  BeschreibungStatusBadge,
   type BausteinQuelle,
+  BeschreibungFassung,
+  BeschreibungStatusBadge,
 } from '@/components/tcms/programm/beschreibung';
 import { TcmsAktionsDialog } from '@/components/tcms/programm/dialog';
 import { TcmsKnopfAktion } from '@/components/tcms/programm/knopf';
@@ -95,18 +97,8 @@ export interface BeschreibungModell {
   href: (o: HrefOptionen) => string;
 }
 
-/** Abschnitt zur Vorlage; fehlt er (ältere Snapshots), ist er leer. */
-export function abschnittFuer(
-  abschnitte: readonly BeschreibungAbschnitt[],
-  key: string,
-): BeschreibungAbschnitt {
-  return (
-    abschnitte.find((a) => a.key === key) ?? {
-      key: key as BeschreibungAbschnitt['key'],
-      bloecke: [],
-    }
-  );
-}
+/** Abschnitt zur Vorlage (gemeinsam mit der Fassung im Portal). */
+export { abschnittFuer };
 
 const titelVon = (a: AbschnittVorlage) =>
   a.nr === 'A' ? 'Anhang' : `Abschnitt ${a.nr} – ${a.titel}`;
@@ -487,19 +479,7 @@ function KopfAktion({ m }: { m: BeschreibungModell }) {
 
 function Inhalt({ m }: { m: BeschreibungModell }) {
   if (m.gesamt) {
-    return (
-      <div className="space-y-5">
-        {ABSCHNITTE.map((a) => (
-          <AbschnittAnsicht
-            key={a.key}
-            abschnitt={abschnittFuer(m.abschnitte, a.key)}
-            vorlage={a}
-            quelle={m.quelle}
-            mitTitel
-          />
-        ))}
-      </div>
-    );
+    return <BeschreibungFassung abschnitte={m.abschnitte} quelle={m.quelle} />;
   }
   if (!m.bearbeiten) {
     return <AbschnittAnsicht abschnitt={m.abschnitt} vorlage={m.vorlage} quelle={m.quelle} />;

@@ -9,7 +9,7 @@
 //     aktivem Code und es wird direkt nach dem Absenden geleert.
 //   - Anlagen nur über den Abruf der kanzleikonsole.
 // Fachkatalog: TCMS-DIENST-001
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -267,6 +267,17 @@ describe('Freigaben und Kenntnisnahmen', () => {
     expect(screen.queryByLabelText('Bestätigungscode (6 Ziffern)')).toBeNull();
     expect(screen.queryByRole('button', { name: /anfordern|erneut senden/ })).toBeNull();
     expect(screen.getByText(/nach mehreren Fehlversuchen gesperrt/)).toBeTruthy();
+  });
+
+  it('vorgelegte Fassung über die gemeinsame Darstellung der Beschreibung (eingefroren, mit SHA-256)', async () => {
+    const f = beschreibung();
+    await seite();
+    const karte = screen.getByRole('article', { name: new RegExp(f.titel) });
+    expect(within(karte).getByText('Vorgelegte Fassung, durch SHA-256 gebunden.')).toBeTruthy();
+    // Bausteine des Snapshots wie in der Kanzlei: eingefroren, ohne erfundene Daten.
+    expect(within(karte).getAllByText(/eingefroren/).length).toBeGreaterThan(0);
+    expect(within(karte).getByText(/enthält nur die Gliederung/)).toBeTruthy();
+    expect(karte.querySelector(`#freigabe-${f.id}-teilbereich`)).not.toBeNull();
   });
 
   it('ohne Freigaberecht laut Dienst: Grund statt Bedienung', async () => {

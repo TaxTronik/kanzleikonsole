@@ -12,7 +12,7 @@
 import { useId, useRef, useState } from 'react';
 import { Upload } from 'lucide-react';
 import { TcmsErgebnisMeldung, useTcmsAbsenden, type TcmsFormAktion } from '../ereignisse/aktionen';
-import { groesseText } from './werte';
+import { fmtGroesse } from '../durchfuehrung/werte';
 
 /** Problem einer Auswahl für die Anzeige (oder null). */
 export function auswahlProblem(
@@ -24,11 +24,11 @@ export function auswahlProblem(
   }
   const zuGross = dateien.filter((d) => d.size > grenzen.maxBytes);
   if (zuGross.length) {
-    return `Höchstens ${groesseText(grenzen.maxBytes)} je Datei: ${zuGross.map((d) => d.name).join(', ')}`;
+    return `Höchstens ${fmtGroesse(grenzen.maxBytes)} je Datei: ${zuGross.map((d) => d.name).join(', ')}`;
   }
   if (dateien.some((d) => d.size === 0)) return 'Eine Datei ist leer.';
   if (dateien.reduce((summe, d) => summe + d.size, 0) > grenzen.maxGesamt) {
-    return `Zusammen höchstens ${groesseText(grenzen.maxGesamt)} auf einmal – bitte in mehreren Schritten hochladen.`;
+    return `Zusammen höchstens ${fmtGroesse(grenzen.maxGesamt)} auf einmal – bitte in mehreren Schritten hochladen.`;
   }
   return null;
 }
@@ -89,7 +89,7 @@ export function AnlagenUpload({
         </p>
         {auswahl.length ? (
           <p className="text-xs text-secondary">
-            {auswahl.map((d) => `${d.name} (${groesseText(d.size)})`).join(' · ')}
+            {auswahl.map((d) => `${d.name} (${fmtGroesse(d.size)})`).join(' · ')}
           </p>
         ) : null}
       </div>

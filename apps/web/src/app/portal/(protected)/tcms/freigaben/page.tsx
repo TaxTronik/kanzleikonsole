@@ -16,6 +16,7 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { isoZeitText } from '@/components/tcms/format';
 import { TcmsLeer } from '@/components/tcms/leer';
 import { ErledigtZeile, erledigtText, FreigabeKarte } from '@/components/tcms/portal/freigabe';
+import { bausteinPersonIds } from '@/components/tcms/programm/beschreibung';
 import { TcmsZustand } from '@/components/tcms/zustand';
 import { personIdsAus } from '@/server/tcms/namen';
 import { tcmsLesen, tcmsNamenLesen, tcmsPortalSeite } from '@/server/tcms/seite';
@@ -85,6 +86,8 @@ export default async function PortalFreigabenPage({
       v.freigaben.flatMap((f) => [f.angefordertVon, f.empfaengerId, f.version?.freigegebenVon]),
       v.fruehere.map((x) => x.freigegebenVon),
       v.gesetzlicheVertreter,
+      // Personen der lebenden Bausteine einer vorgelegten Fassung ohne Snapshot.
+      bausteinPersonIds(v.live?.bausteine ?? null),
     ),
   );
   const kann = (f: (typeof v.freigaben)[number]) => f.darfFreigeben || f.darfKenntnisnehmen;

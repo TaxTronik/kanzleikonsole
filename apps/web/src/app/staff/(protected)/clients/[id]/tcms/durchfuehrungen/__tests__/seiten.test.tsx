@@ -212,7 +212,7 @@ describe('Kontrolldurchführung', () => {
     await detail(d.id);
     const nachweise = screen.getByRole('region', { name: 'Nachweise' });
     expect(within(nachweise).queryByRole('link', { name: /Kontoabstimmung/ })).toBeNull();
-    expect(within(nachweise).queryByRole('link', { name: /Download/ })).toBeNull();
+    expect(within(nachweise).queryByRole('link', { name: /Herunterladen/ })).toBeNull();
     expect(within(nachweise).getByText('Abweichung zur Ablage – nicht abrufbar')).toBeTruthy();
     expect(within(nachweise).getByText('Dokument in der Ablage nicht verfügbar')).toBeTruthy();
   });
@@ -224,7 +224,7 @@ describe('Kontrolldurchführung', () => {
     await detail(d.id);
     expect(screen.getByText(/Prüferansicht — StB Dr. Anna Roth/)).toBeTruthy();
     const nachweise = screen.getByRole('region', { name: 'Nachweise' });
-    expect(within(nachweise).queryByRole('link', { name: /Download/ })).toBeNull();
+    expect(within(nachweise).queryByRole('link', { name: /Herunterladen/ })).toBeNull();
     expect(within(nachweise).queryByLabelText('Datei hochladen')).toBeNull();
     expect(within(nachweise).getByText('Nach Einreichung gesperrt')).toBeTruthy();
     const zurueck = screen.getByRole('button', { name: /Zurückweisen/ });

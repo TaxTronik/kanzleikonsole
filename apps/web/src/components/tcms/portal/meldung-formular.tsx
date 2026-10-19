@@ -18,7 +18,7 @@ import { tonChip } from '../ton';
 import { TcmsErgebnisMeldung, useTcmsAbsenden, type TcmsFormAktion } from '../ereignisse/aktionen';
 import type { MeldeKachel } from '../ereignisse/texte';
 import { auswahlProblem } from './anlagen-upload';
-import { groesseText } from './werte';
+import { fmtGroesse } from '../durchfuehrung/werte';
 
 /** Warum noch nicht gesendet werden kann (Bedienhilfe), sonst null. */
 function sperrGrund(z: {
@@ -90,7 +90,7 @@ function AnlagenFeld({
       </p>
       {dateien.length ? (
         <p className="text-xs text-secondary mt-1">
-          {dateien.map((d) => `${d.name} (${groesseText(d.size)})`).join(' · ')}
+          {dateien.map((d) => `${d.name} (${fmtGroesse(d.size)})`).join(' · ')}
         </p>
       ) : null}
       <FieldError name="anlagen" errors={fehler?.['anlagen']} prefix={id} />

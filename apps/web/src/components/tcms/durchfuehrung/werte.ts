@@ -4,6 +4,8 @@
 // Live-Anzeige der Differenz und Toleranzlage im Editor und das Lesen der
 // Beträge im Formular. Ob eine Abweichung das Einreichen hindert, entscheidet
 // der Dienst (`pruefung.ausserhalb`); die Lage hier ist nur Anzeige-Vorschau.
+// Eingabe und Formatierung (parseDezimal, alsEingabe, fmtGroesse) nutzt auch
+// die Kontrollaufgabe im Portal (Bereich D) – eine Quelle für beide Flächen.
 // =============================================================================
 
 export interface KennzahlDef {
@@ -52,19 +54,24 @@ export function werteAusListe(
   return out;
 }
 
+/** Vertragsgrenze für Beträge (DF_MAX_BETRAG des Vertrags, Euro, exklusiv). */
+const MAX_BETRAG = 1e12;
+
 /**
- * Deutsche Dezimaleingabe („412.380,15", „-12,5", „0") → Zahl.
- * Leere Eingabe → null; unlesbare Eingabe → 'fehler'.
+ * Deutsche Dezimaleingabe („412.380,15", „-12,5", „0") → Zahl mit zwei
+ * Nachkommastellen. Leer → null; unlesbar oder zu groß → 'fehler'. Eine
+ * Umwandlung für Kanzlei (Durchführung, Feststellung) und Portal
+ * (Kontrollaufgabe); Integration TCMS Stufe 3.
  */
 export function parseDezimal(eingabe: string): number | null | 'fehler' {
-  let s = eingabe.replace(/[\s €]/g, '');
+  let s = eingabe.replace(/[\s\u00a0\u20ac]/g, '');
   if (s === '') return null;
-  s = s.replace(/^−/, '-');
+  s = s.replace(/^[\u2212\u2013]/, '-');
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
   else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '');
   if (!/^-?\d+(\.\d+)?$/.test(s)) return 'fehler';
   const n = Number(s);
-  if (!Number.isFinite(n) || Math.abs(n) >= 1e12) return 'fehler';
+  if (!Number.isFinite(n) || Math.abs(n) >= MAX_BETRAG) return 'fehler';
   return Math.round(n * 100) / 100;
 }
 

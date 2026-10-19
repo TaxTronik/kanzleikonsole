@@ -11,15 +11,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import {
-  Download,
-  FileSpreadsheet,
-  FileText,
-  Hash,
-  Lock,
-  TriangleAlert,
-  Upload,
-} from 'lucide-react';
+import { Lock, Upload } from 'lucide-react';
 import type { DurchfuehrungDetail } from '@taxtronik/tcms-contract';
 import {
   AUSFUEHRUNG_LABEL,
@@ -29,7 +21,7 @@ import {
   KONTROLLART_LABEL,
   type Turnus,
 } from '@taxtronik/tcms-domain';
-import { AnzeigeBadge, HashKurz } from '@/components/tcms/badges';
+import { AnzeigeBadge } from '@/components/tcms/badges';
 import { isoDatumText, isoZeitText } from '@/components/tcms/format';
 import type { TcmsNamen } from '@/server/tcms/namen';
 import {
@@ -39,19 +31,10 @@ import {
   type DokumentWahl,
   type TcmsFormAktion,
 } from './formulare';
-import { fmtGroesse } from './werte';
-
-type Nachweis = DurchfuehrungDetail['nachweise'][number];
+import { NachweisListe, type NachweisZustand } from './nachweis-liste';
 
 /** Abgleich eines Nachweises mit der Ablage (aus verweis.ts, hier als Anzeige). */
-export type NachweisZustand = 'OK' | 'ABWEICHUNG' | 'FEHLT';
-
-function dateiIcon(n: Nachweis) {
-  const x = n.dateiname.toLowerCase();
-  return /\.(xlsx?|csv|ods)$/.test(x) || n.mime.includes('spreadsheet') || n.mime === 'text/csv'
-    ? FileSpreadsheet
-    : FileText;
-}
+export type { NachweisZustand } from './nachweis-liste';
 
 function KartenKopf({ id, titel, children }: { id: string; titel: string; children?: ReactNode }) {
   return (
@@ -94,115 +77,30 @@ export function NachweiseKarte({
   bedienung: NachweisBedienung;
   gesperrtText: string;
 }) {
-  const mind = d.kontrolle.mindestNachweise;
   return (
-    <section className="card" aria-labelledby="df-nachweise">
-      <KartenKopf id="df-nachweise" titel="Nachweise">
-        <span className="flex items-center gap-2">
-          {mind > 0 ? (
-            <span
-              className={d.nachweise.length >= mind ? 'badge-green' : 'badge-yellow'}
-              title={`Nachweisanforderung: ${d.kontrolle.nachweis}`}
-            >
-              {d.nachweise.length} von mind. {mind}
-            </span>
-          ) : null}
-          <span className="badge-gray">
-            {d.nachweise.length === 1 ? '1 Datei' : `${d.nachweise.length} Dateien`}
-          </span>
-        </span>
-      </KartenKopf>
-      {d.nachweise.length === 0 ? (
-        <p className="px-6 py-4 text-sm text-muted">
-          Noch keine Nachweise hochgeladen. Erwartet: {d.kontrolle.nachweis}.
-        </p>
-      ) : (
-        <ul>
-          {d.nachweise.map((n) => {
-            const Icon = dateiIcon(n);
-            const zustand = abgleich.get(n.id) ?? 'FEHLT';
-            return (
-              <li
-                key={n.id}
-                className="flex items-start gap-3 px-6 py-3 border-b border-default last:border-b-0"
-              >
-                <Icon className="h-5 w-5 mt-0.5 shrink-0 text-muted" aria-hidden="true" />
-                <div className="grow min-w-0">
-                  {zustand === 'OK' ? (
-                    <a
-                      href={downloadHref(n.id)}
-                      className="text-sm font-medium text-primary underline-offset-2 hover:underline break-all"
-                    >
-                      {n.dateiname}
-                    </a>
-                  ) : (
-                    <span className="text-sm font-medium text-primary break-all">
-                      {n.dateiname}
-                    </span>
-                  )}
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <span className="badge-gray gap-1">
-                      {n.gesperrt ? (
-                        <Lock className="h-3 w-3" aria-hidden="true" />
-                      ) : (
-                        <Hash className="h-3 w-3" aria-hidden="true" />
-                      )}
-                      {n.gesperrt ? 'gesperrt · Hash' : 'Hash'} <HashKurz wert={n.sha256} />
-                    </span>
-                    {!n.gesperrt ? (
-                      <span className="badge-yellow">bis zum Einreichen änderbar</span>
-                    ) : null}
-                    {zustand === 'ABWEICHUNG' ? (
-                      <span className="badge-red gap-1">
-                        <TriangleAlert className="h-3 w-3" aria-hidden="true" />
-                        Abweichung zur Ablage – nicht abrufbar
-                      </span>
-                    ) : zustand === 'FEHLT' ? (
-                      <span className="badge-gray">Dokument in der Ablage nicht verfügbar</span>
-                    ) : null}
-                    <span className="text-[11px] text-muted">
-                      {fmtGroesse(n.groesse)} · {namen.name(n.hochgeladenVon)} ·{' '}
-                      {isoZeitText(n.hochgeladenAm)}
-                    </span>
-                  </div>
-                  {zustand === 'ABWEICHUNG' ? (
-                    <p className="hint">
-                      Die gespeicherte Datei stimmt nicht mit dem Verweis im Tax-CMS überein
-                      (SHA-256 oder Größe). Sie wird nicht ausgeliefert; bitte die Kanzleiverwaltung
-                      informieren.
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex shrink-0 items-start gap-2">
-                  {zustand === 'OK' ? (
-                    <a
-                      className="btn-secondary text-xs py-1 inline-flex items-center gap-1"
-                      href={downloadHref(n.id)}
-                    >
-                      <Download className="h-3.5 w-3.5" aria-hidden="true" /> Download
-                      <span className="sr-only"> {n.dateiname}</span>
-                    </a>
-                  ) : null}
-                  {!n.gesperrt && bedienung.erlaubt && d.status !== 'GEPLANT' ? (
-                    <NachweisEntfernenKnopf
-                      action={bedienung.entfernen}
-                      nachweisId={n.id}
-                      dateiname={n.dateiname}
-                    />
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {d.nachweiseAusgeblendet > 0 ? (
-        <p className="px-6 py-3 text-xs text-muted border-t border-default">
-          {d.nachweiseAusgeblendet} später hochgeladene Datei(en) zum Stichtag ausgeblendet.
-        </p>
-      ) : null}
-      <div className="px-6 py-4 border-t border-default">
-        {bedienung.erlaubt ? (
+    <NachweisListe
+      id="df-nachweise"
+      titel="Nachweise"
+      ebene="h3"
+      nachweise={d.nachweise}
+      mindest={d.kontrolle.mindestNachweise}
+      anforderung={d.kontrolle.nachweis}
+      ausgeblendet={d.nachweiseAusgeblendet}
+      namen={namen}
+      abrufHref={downloadHref}
+      abgleich={abgleich}
+      aenderbarBis="Einreichen"
+      entfernen={(n) =>
+        !n.gesperrt && bedienung.erlaubt && d.status !== 'GEPLANT' ? (
+          <NachweisEntfernenKnopf
+            action={bedienung.entfernen}
+            nachweisId={n.id}
+            dateiname={n.dateiname}
+          />
+        ) : null
+      }
+      fuss={
+        bedienung.erlaubt ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <NachweisHochladen
               action={bedienung.hochladen}
@@ -220,9 +118,9 @@ export function NachweiseKarte({
             )}
             {gesperrtText}
           </p>
-        )}
-      </div>
-    </section>
+        )
+      }
+    />
   );
 }
 

@@ -1,7 +1,9 @@
 // =============================================================================
 // CMS-Beschreibung: Status, Abschnitte und lebende bzw. eingefrorene Bausteine
 // (TCMS Stufe 3, Bereich A; aus der Demo components/beschreibung/*). Reine
-// Anzeige, auch für die Freigabe im Portal nutzbar.
+// Anzeige; seit der Integration der Bereiche auch die Fassung, die das Portal
+// bei einer Freigabe vorlegt (`BeschreibungFassung`, Bereich D) – eine
+// Darstellung für Kanzlei und Portal.
 //
 // Personen in Bausteinen:
 //   - live (Entwurf, Review, Vorschau): Der Dienst liefert Personen als ID
@@ -21,6 +23,7 @@ import type {
   BeschreibungVersionView,
 } from '@taxtronik/tcms-contract';
 import {
+  ABSCHNITTE,
   abschnittHatText,
   BAUSTEIN_LABEL,
   BAUSTEIN_QUELLE,
@@ -32,7 +35,7 @@ import {
   type AbschnittVorlage,
   type BausteinArt,
 } from '@taxtronik/tcms-domain';
-import { GtBadge, KlasseBadge } from '../badges';
+import { GtBadge, HashKurz, KlasseBadge } from '../badges';
 import { isoDatumText } from '../format';
 
 export type BeschreibungStatus = BeschreibungVersionView['status'];
@@ -61,8 +64,8 @@ export function BeschreibungStatusBadge({ status }: { status: BeschreibungStatus
 export type BausteinQuelle =
   | {
       modus: 'live';
-      /** Datenstand (`YYYY-MM-DD`) der lebenden Bausteine. */
-      stand: string;
+      /** Datenstand (`YYYY-MM-DD`) der lebenden Bausteine; null, wenn der Dienst keine liefert. */
+      stand: string | null;
       satz: BausteinSatzDaten | null;
       /** Personen-ID (klein) → Name aus der kanzleikonsole. */
       namen: Readonly<Record<string, string>>;
@@ -469,7 +472,7 @@ export function BausteinBlock({
     : false;
   const marke =
     quelle.modus === 'live'
-      ? `automatisch · Stand ${isoDatumText(quelle.stand)}`
+      ? `automatisch${quelle.stand ? ` · Stand ${isoDatumText(quelle.stand)}` : ''}`
       : `eingefroren${quelle.stand ? ` · Stand ${isoDatumText(quelle.stand)}` : ''}`;
   return (
     <div className="mt-4 rounded-md border border-dashed border-default bg-surface-raised p-3">
@@ -519,6 +522,19 @@ export function Freitext({ text }: { text: string }) {
   );
 }
 
+/** Abschnitt zur Vorlage; fehlt er (ältere Snapshots), ist er leer. */
+export function abschnittFuer(
+  abschnitte: readonly BeschreibungAbschnitt[],
+  key: string,
+): BeschreibungAbschnitt {
+  return (
+    abschnitte.find((a) => a.key === key) ?? {
+      key: key as BeschreibungAbschnitt['key'],
+      bloecke: [],
+    }
+  );
+}
+
 /** Abschnitt im Lesemodus: Freitextblöcke und lebende bzw. eingefrorene Bausteine. */
 export function AbschnittAnsicht({
   abschnitt,
@@ -526,18 +542,21 @@ export function AbschnittAnsicht({
   quelle,
   mitTitel = false,
   lueckenHinweis = true,
+  idPraefix = 'abschnitt',
 }: {
   abschnitt: BeschreibungAbschnitt;
   vorlage: AbschnittVorlage;
   quelle: BausteinQuelle;
   mitTitel?: boolean;
   lueckenHinweis?: boolean;
+  /** Präfix der Element-IDs (mehrere Fassungen auf einer Seite, z. B. im Portal). */
+  idPraefix?: string;
 }) {
   const hatText = abschnittHatText(abschnitt);
-  const titelId = `abschnitt-${abschnitt.key}-titel`;
+  const titelId = `${idPraefix}-${abschnitt.key}-titel`;
   return (
     <section
-      id={`abschnitt-${abschnitt.key}`}
+      id={`${idPraefix}-${abschnitt.key}`}
       aria-labelledby={mitTitel ? titelId : undefined}
       className="flex flex-col gap-1"
     >
@@ -565,5 +584,51 @@ export function AbschnittAnsicht({
         ),
       )}
     </section>
+  );
+}
+
+/**
+ * Ganze Fassung einer Beschreibung zum Lesen: Abschnitte 0–7 und Anhang in
+ * fester Reihenfolge der Domain, Bausteine lebend (Namen aus der
+ * kanzleikonsole) oder eingefroren (Snapshot, mit SHA-256). Gesamtansicht der
+ * Kanzlei und vorgelegte Fassung einer Freigabe im Portal.
+ */
+export function BeschreibungFassung({
+  abschnitte,
+  quelle,
+  snapshotSha256 = null,
+  lueckenHinweis = true,
+  idPraefix = 'abschnitt',
+}: {
+  abschnitte: readonly BeschreibungAbschnitt[];
+  quelle: BausteinQuelle;
+  /** SHA-256 des eingefrorenen Inhalts (nur bei `quelle.modus === 'snapshot'` angezeigt). */
+  snapshotSha256?: string | null;
+  lueckenHinweis?: boolean;
+  idPraefix?: string;
+}) {
+  return (
+    <div className="space-y-5">
+      {quelle.modus === 'snapshot' && snapshotSha256 ? (
+        <p className="text-xs text-muted flex flex-wrap items-center gap-2">
+          <span className="badge-gray gap-1">
+            <Lock className="h-3 w-3" aria-hidden="true" />
+            <HashKurz wert={snapshotSha256} />
+          </span>
+          Vorgelegte Fassung, durch SHA-256 gebunden.
+        </p>
+      ) : null}
+      {ABSCHNITTE.map((vorlage) => (
+        <AbschnittAnsicht
+          key={vorlage.key}
+          abschnitt={abschnittFuer(abschnitte, vorlage.key)}
+          vorlage={vorlage}
+          quelle={quelle}
+          mitTitel
+          lueckenHinweis={lueckenHinweis}
+          idPraefix={idPraefix}
+        />
+      ))}
+    </div>
   );
 }

@@ -21,7 +21,7 @@ import { Send, Save, TriangleAlert, Check } from 'lucide-react';
 import { fmtEur } from '@taxtronik/tcms-domain';
 import { FieldError, fieldErrorProps } from '@/components/form-errors';
 import { TcmsErgebnisMeldung, useTcmsAbsenden, type TcmsFormAktion } from '../ereignisse/aktionen';
-import { alsEingabe } from './werte';
+import { alsEingabe } from '../durchfuehrung/werte';
 
 export interface EditorSchritt {
   titel: string;
