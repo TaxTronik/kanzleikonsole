@@ -66,6 +66,44 @@ export function freigabeArtLabel(art: string): string {
   return Object.hasOwn(FREIGABE_ART_LABEL, art) ? FREIGABE_ART_LABEL[art]! : art;
 }
 
+/**
+ * 409 auf „Code anfordern“ (TCMS s8): u. a. höchstens einige Anforderungen je
+ * Stunde und Freigabe; der Dienst nennt den Grund nur als Text, der die
+ * Oberfläche nie erreicht. Ein fester Text für alle Fälle.
+ */
+export const CODE_ANFORDERN_KONFLIKT =
+  'Gerade kann kein neuer Code angefordert werden – etwa weil Sie in der letzten Stunde schon mehrere Codes angefordert haben. Bitte verwenden Sie den zuletzt gesendeten Code oder versuchen Sie es später erneut; nach dem Neuladen zeigt die Seite den aktuellen Stand.';
+
+/**
+ * 409 auf „Freigeben“ (TCMS s8): Code abgelaufen (auch nach einem Wechsel des
+ * Code-Schlüssels im Tax-CMS), gesperrt oder Anforderung erledigt.
+ */
+export const CODE_NICHT_MEHR_GUELTIG =
+  'Dieser Code kann nicht mehr verwendet werden – er ist abgelaufen oder die Anforderung hat sich geändert. Bitte laden Sie die Seite neu und fordern Sie einen neuen Code an.';
+
+/**
+ * Hinweis zum Codezustand `ABGELAUFEN`: mit Datum nur, wenn der Ablauf
+ * erreicht ist; meldet der Dienst einen Code vor seinem Ablauf als
+ * abgelaufen (Wechsel des Code-Schlüssels), ohne Datum.
+ */
+export function codeAbgelaufenText(
+  ablauf: string | null,
+  datumText: (iso: string) => string,
+  jetzt: number = Date.now(),
+): string {
+  const zeit = ablauf ? Date.parse(ablauf) : Number.NaN;
+  return ablauf && Number.isFinite(zeit) && zeit <= jetzt
+    ? `Der Code ist am ${datumText(ablauf)} abgelaufen. Bitte fordern Sie einen neuen an.`
+    : 'Der Code ist nicht mehr gültig. Bitte fordern Sie einen neuen an.';
+}
+
+/**
+ * Ohne Leserecht im Portal (`rechte.portalLesen` der Übersicht) liefert das
+ * Tax-CMS nur die eigenen Meldungen (TCMS s8).
+ */
+export const NUR_EIGENE_MELDUNGEN =
+  'Sie sehen nur Meldungen, die Sie selbst abgegeben haben. Alle Meldungen Ihres Unternehmens sehen die gesetzliche Vertretung und die Tax-Compliance-Beauftragten.';
+
 /** Ergebnis eines falschen Codes (strukturierte Antwort des Dienstes → fester Text). */
 export function codeFehlerText(grund: 'CODE_FALSCH' | 'GESPERRT', verbleibend: number): string {
   if (grund === 'GESPERRT' || verbleibend <= 0) {

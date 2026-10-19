@@ -24,7 +24,11 @@ import { isoDatumText, isoZeitText } from '@/components/tcms/format';
 import { KatalogIcon } from '@/components/tcms/icon';
 import { TcmsLeer } from '@/components/tcms/leer';
 import { MeldungFormular } from '@/components/tcms/portal/meldung-formular';
-import { PORTAL_ANLAGE_ACCEPT, portalAnlageHinweis } from '@/components/tcms/portal/texte';
+import {
+  NUR_EIGENE_MELDUNGEN,
+  PORTAL_ANLAGE_ACCEPT,
+  portalAnlageHinweis,
+} from '@/components/tcms/portal/texte';
 import { badgeKlasse, tonChip } from '@/components/tcms/ton';
 import { TcmsZustand } from '@/components/tcms/zustand';
 import { readPortalFeaturesTx } from '@/server/settings/portal-features';
@@ -213,6 +217,11 @@ export default async function PortalEreignisPage({
                 </h2>
                 <span className="badge-gray">{m.meldungen.length}</span>
               </div>
+              {u.rechte.portalLesen ? null : (
+                <p className="px-6 pt-3 text-xs text-muted" role="note">
+                  {NUR_EIGENE_MELDUNGEN}
+                </p>
+              )}
               {m.meldungen.length === 0 ? (
                 <TcmsLeer icon={Inbox} text="Sie haben noch keine Ereignisse gemeldet." />
               ) : (

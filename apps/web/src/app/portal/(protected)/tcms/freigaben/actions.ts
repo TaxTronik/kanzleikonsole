@@ -15,9 +15,14 @@
 
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import { TcmsKonflikt } from '@taxtronik/tcms-client';
 import { ENDPUNKTE, FreigabeCodeSchema, ObjektIdSchema } from '@taxtronik/tcms-contract';
 import { isoZeitText } from '@/components/tcms/format';
-import { codeFehlerText } from '@/components/tcms/portal/texte';
+import {
+  CODE_ANFORDERN_KONFLIKT,
+  CODE_NICHT_MEHR_GUELTIG,
+  codeFehlerText,
+} from '@/components/tcms/portal/texte';
 import { formFlag, parseActionInput, parseFormData } from '@/server/actions/form-data';
 import type { ActionFailure } from '@/server/actions/action-runner';
 import type { ActionResult } from '@/server/actions/types';
@@ -44,7 +49,16 @@ export async function portalFreigabeCodeAnfordernAction(
     keinRecht: 'PORTAL_ZUGEORDNET',
     parse: () => parseActionInput(Freigabe, { freigabeId }, NICHT_GEFUNDEN),
     aufruf: async (dienst, p): Promise<Lauf> => {
-      const { daten } = await dienst.rufe(ENDPUNKTE.portalFreigabeCodeAnfordern, { params: p });
+      let daten;
+      try {
+        ({ daten } = await dienst.rufe(ENDPUNKTE.portalFreigabeCodeAnfordern, { params: p }));
+      } catch (fehler) {
+        // TCMS s8: u. a. Mengenbegrenzung je Stunde – fester Text, nie der des Dienstes.
+        if (fehler instanceof TcmsKonflikt) {
+          return { ok: false, error: CODE_ANFORDERN_KONFLIKT, errorCode: 'CONFLICT' };
+        }
+        throw fehler;
+      }
       return {
         meldung: `Ein neuer Bestätigungscode wird an Ihre E-Mail-Adresse gesendet. Er ist gültig bis ${isoZeitText(daten.codeAblauf)}.`,
       };
@@ -74,10 +88,24 @@ export async function portalFreigebenAction(
       return f.ok ? { ok: true, data: { ...p.data, code: f.data.code } } : f;
     },
     aufruf: async (dienst, d) => {
-      const { daten } = await dienst.rufe(ENDPUNKTE.portalFreigabeErteilen, {
-        params: { freigabeId: d.freigabeId },
-        body: { code: d.code },
-      });
+      let daten;
+      try {
+        ({ daten } = await dienst.rufe(ENDPUNKTE.portalFreigabeErteilen, {
+          params: { freigabeId: d.freigabeId },
+          body: { code: d.code },
+        }));
+      } catch (fehler) {
+        // TCMS s8: abgelaufen (auch nach Schlüsselwechsel, ohne Fehlversuch),
+        // gesperrt oder erledigt – fester Text, nie der des Dienstes.
+        if (fehler instanceof TcmsKonflikt) {
+          return {
+            ok: false as const,
+            error: CODE_NICHT_MEHR_GUELTIG,
+            errorCode: 'CONFLICT' as const,
+          };
+        }
+        throw fehler;
+      }
       // Falscher Code ist eine Antwort, kein Fehler (Fehlversuch gezählt): nur Grund und Rest.
       return daten.freigegeben
         ? { freigegeben: true as const }

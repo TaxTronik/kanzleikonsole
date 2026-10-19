@@ -71,6 +71,7 @@ vi.mock('@/server/tcms/portal/ansprechpartner', () => ({ ansprechpersonenTx: h.a
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
+import { CODE_ANFORDERN_KONFLIKT, CODE_NICHT_MEHR_GUELTIG } from '@/components/tcms/portal/texte';
 import {
   portalAnlageEntfernenAction,
   portalAnlagenHochladenAction,
@@ -639,6 +640,44 @@ describe('Freigabe mit Bestätigungscode', () => {
       params: { freigabeId: FREIGABE },
     });
     expect(r).toEqual({ meldung: expect.stringContaining('gültig bis') });
+  });
+
+  it('Code anfordern, 409 (TCMS s8, u. a. mehr als die erlaubten Codes je Stunde): fester Text, nie der des Dienstes', async () => {
+    await portalFreigabeCodeAnfordernAction(FREIGABE, null, new FormData());
+    const s = spec();
+    const p = s.parse!();
+    const DIENST_TEXT = 'Sie haben in der letzten Stunde bereits 5 Codes angefordert.';
+    const rufe = vi.fn(async () => {
+      throw new TcmsKonflikt({ status: 409, code: 'KONFLIKT', meldung: DIENST_TEXT });
+    });
+    const r = await s.aufruf({ rufe }, p.data, undefined);
+    expect(r).toEqual({ ok: false, error: CODE_ANFORDERN_KONFLIKT, errorCode: 'CONFLICT' });
+    expect(JSON.stringify(r)).not.toContain('5 Codes');
+    // Andere Fehler gehen an die gemeinsame Abbildung des Helfers.
+    const ausfall = new TcmsNichtVerfuegbar('ZEITLIMIT');
+    await expect(
+      s.aufruf(
+        {
+          rufe: vi.fn(async () => {
+            throw ausfall;
+          }),
+        },
+        p.data,
+        undefined,
+      ),
+    ).rejects.toBe(ausfall);
+  });
+
+  it('Freigeben, 409 (Code abgelaufen – auch nach Schlüsselwechsel –, gesperrt oder erledigt): fester Text ohne Code', async () => {
+    await portalFreigebenAction(FREIGABE, null, formular([['code', CODE]]));
+    const s = spec();
+    const p = s.parse!();
+    const rufe = vi.fn(async () => {
+      throw new TcmsKonflikt({ status: 409 });
+    });
+    const r = await s.aufruf({ rufe }, p.data, undefined);
+    expect(r).toEqual({ ok: false, error: CODE_NICHT_MEHR_GUELTIG, errorCode: 'CONFLICT' });
+    expect(JSON.stringify(r)).not.toContain(CODE);
   });
 
   it('Kenntnisnahme nur mit Bestätigung des Lesens', async () => {

@@ -62,6 +62,7 @@ vi.mock('../freigaben/actions', () => ({
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
 import { FreigabeCodeFormular, CODE_FELD } from '@/components/tcms/portal/freigabe-formulare';
+import { NUR_EIGENE_MELDUNGEN } from '@/components/tcms/portal/texte';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import PortalKontrollaufgabePage from '../aufgaben/[id]/page';
@@ -252,6 +253,18 @@ describe('Ereignis melden', () => {
     ).toBeGreaterThan(0);
   });
 
+  it('ohne Leserecht im Portal (TCMS s8): Hinweis, dass nur eigene Meldungen erscheinen', async () => {
+    lesen();
+    await renderServer(PortalEreignisPage({ searchParams: Promise.resolve({}) }));
+    expect(screen.queryByText(NUR_EIGENE_MELDUNGEN)).toBeNull();
+    document.body.innerHTML = '';
+    const u = tcmsFixtures.portalUebersichtJana();
+    u.rechte.portalLesen = false;
+    lesen(u);
+    await renderServer(PortalEreignisPage({ searchParams: Promise.resolve({}) }));
+    expect(screen.getByText(NUR_EIGENE_MELDUNGEN)).toBeTruthy();
+  });
+
   it('Bestätigung nur für eine Vorgangsnummer aus der eigenen Liste', async () => {
     lesen();
     await renderServer(
@@ -308,6 +321,31 @@ describe('Freigaben und Kenntnisnahmen', () => {
     expect(feld.getAttribute('autocomplete')).toBe('one-time-code');
     expect(screen.getByText(/noch 4 Versuche/)).toBeTruthy();
     expect(screen.getByRole('button', { name: /Code erneut senden/ })).toBeTruthy();
+  });
+
+  it('abgelaufener Code: kein Eingabefeld, neuen Code anfordern; vor dem Ablaufdatum (Schlüsselwechsel) ohne Datum', async () => {
+    beschreibung().code = {
+      status: 'ABGELAUFEN',
+      ablauf: '2026-10-01T18:00:00.000Z',
+      verbleibendeVersuche: 5,
+    };
+    await seite();
+    expect(screen.queryByLabelText('Bestätigungscode (6 Ziffern)')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /Neuen Bestätigungscode per E-Mail anfordern/ }),
+    ).toBeTruthy();
+    expect(screen.getByText(/am 01\.10\.2026 abgelaufen/)).toBeTruthy();
+    document.body.innerHTML = '';
+    beschreibung().code = {
+      status: 'ABGELAUFEN',
+      ablauf: '2999-01-01T00:00:00.000Z',
+      verbleibendeVersuche: 5,
+    };
+    await seite();
+    expect(
+      screen.getByText('Der Code ist nicht mehr gültig. Bitte fordern Sie einen neuen an.'),
+    ).toBeTruthy();
+    expect(screen.queryByText(/2999/)).toBeNull();
   });
 
   it('gesperrter Code: weder Eingabe noch Anfordern', async () => {

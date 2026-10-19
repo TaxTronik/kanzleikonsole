@@ -17,7 +17,7 @@ import { isoDatumText, isoZeitText } from '../format';
 import { TcmsAktionsKnopf, type TcmsFormAktion } from '../ereignisse/aktionen';
 import { bausteinPersonIds, BeschreibungFassung } from '../programm/beschreibung';
 import { FreigabeCodeFormular, KenntnisnahmeFormular } from './freigabe-formulare';
-import { freigabeArtLabel } from './texte';
+import { codeAbgelaufenText, freigabeArtLabel } from './texte';
 
 type Namen = { name(id: string | null | undefined): string };
 
@@ -40,8 +40,7 @@ function CodeStatus({ code }: { code: NonNullable<PortalFreigabeView['code']> })
     case 'ABGELAUFEN':
       return (
         <p className="text-xs text-red-700 dark:text-red-400" role="status">
-          Der Code ist {code.ablauf ? `am ${isoDatumText(code.ablauf)} ` : ''}abgelaufen. Bitte
-          fordern Sie einen neuen an.
+          {codeAbgelaufenText(code.ablauf, isoDatumText)}
         </p>
       );
     case 'AKTIV':
@@ -112,7 +111,11 @@ function CodeBedienung({
             className={status === 'AKTIV' ? 'btn-secondary text-xs py-1' : 'btn-primary'}
           >
             <Mail className="h-4 w-4" aria-hidden="true" />{' '}
-            {status === 'AKTIV' ? 'Code erneut senden' : 'Bestätigungscode per E-Mail anfordern'}
+            {status === 'AKTIV'
+              ? 'Code erneut senden'
+              : status === 'ABGELAUFEN'
+                ? 'Neuen Bestätigungscode per E-Mail anfordern'
+                : 'Bestätigungscode per E-Mail anfordern'}
           </TcmsAktionsKnopf>
         ) : null}
       </div>
