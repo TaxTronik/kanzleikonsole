@@ -6,7 +6,7 @@
 // Antwort macht: Plan und offene Punkte nur aus dem Dienst, Personen nur aus
 // der kanzleikonsole bzw. den Rollen des Mandanten, Schreibrecht laut Dienst.
 // Fachkatalog: TCMS-DIENST-001
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -179,6 +179,17 @@ describe('Einrichtungsassistent', () => {
       expect(container.querySelector('[aria-current="step"]')?.textContent).toContain('5');
     },
   );
+
+  it('Profil: neue Monatsangaben nach „heute“ des Dienstes, nicht nach der Uhr des Web-Servers (TCMS s7)', async () => {
+    const e = antwort();
+    e.heute = '2027-03-05';
+    await rendern({ schritt: '2' });
+    const profil = screen.getByRole('region', { name: /Geschäftsprofil/ });
+    fireEvent.click(within(profil).getByRole('button', { name: /Lager hinzufügen/ }));
+    const n = within(profil).getAllByRole('combobox', { name: /^Lager \d+: Land$/ }).length;
+    const beginn = within(profil).getByLabelText(`Lager ${n}: Beginn`) as HTMLInputElement;
+    expect(beginn.value).toBe('2027-03');
+  });
 
   it('zeigt die offenen Punkte des Dienstes zum geöffneten Schritt', async () => {
     const e = antwort();

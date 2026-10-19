@@ -76,11 +76,6 @@ type Entwurf = NonNullable<EinrichtungView['entwurf']>;
 
 const eins = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-/** Heutiger Kalendertag in Berlin (`YYYY-MM-DD`) – nur Vorbelegung neuer Monatsangaben im Profil. */
-function heuteBerlin(): string {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Berlin' }).format(new Date());
-}
-
 function Kopf({ children }: { children?: ReactNode }) {
   return (
     <div className="mb-4">
@@ -252,7 +247,9 @@ function SchrittInhalt({ m }: { m: EinrichtungModell }) {
           {...basis}
           start={entwurf.profil as Geschaeftsprofil}
           personen={ansprechpersonen(rollen, namen)}
-          heuteIso={heuteBerlin()}
+          // „Heute“ der Uhr des Dienstes (TCMS s7): dieselbe Uhr, mit der er beim
+          // Speichern prüft – nicht die des Web-Servers.
+          heuteIso={m.e.heute}
         />
       );
     case 3:
