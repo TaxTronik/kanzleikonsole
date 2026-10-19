@@ -17,6 +17,11 @@ export const MAIL_OUTBOX_PURPOSES = [
   'form-sent',
   'appointment-changed',
   'appointment-cancelled',
+  // TCMS Stufe 4: Mitteilungen des Tax-CMS an Mandantenkontakte (= System-Slug,
+  // Liste TCMS_MAIL_ANLAESSE in tcms-vorlagen.ts).
+  'tcms-freigabe-angefordert',
+  'tcms-freigabe-code',
+  'tcms-freigabe-neu-adressiert',
 ] as const;
 
 export type MailOutboxPurpose = (typeof MAIL_OUTBOX_PURPOSES)[number];
@@ -34,6 +39,9 @@ export const MAIL_OUTBOX_PURPOSE_LABELS: Readonly<Record<MailOutboxPurpose, stri
   'form-sent': 'Mail zum neuen Formular',
   'appointment-changed': 'Terminänderung',
   'appointment-cancelled': 'Absage des Termins',
+  'tcms-freigabe-angefordert': 'Tax-CMS: Mail zur angeforderten Freigabe',
+  'tcms-freigabe-code': 'Tax-CMS: Mail mit Bestätigungscode',
+  'tcms-freigabe-neu-adressiert': 'Tax-CMS: Mail zur neu adressierten Freigabe',
 };
 
 /**
@@ -55,4 +63,18 @@ export type MailOutboxResourceType =
   | 'gwg_onboarding_invite'
   | 'appointment_request'
   | 'appointment'
-  | 'form_submission';
+  | 'form_submission'
+  /** TCMS Stufe 4: Zustellzeile einer Mitteilung des Tax-CMS (tcms_nachricht_zustellung.id). */
+  | 'tcms_nachricht';
+
+/**
+ * TCMS Stufe 4: Vorgangstypen, deren Aufträge Inhalt und geheime Variablen mit
+ * JEDEM Endstatus verlieren, auch bei FAILED/UNKNOWN. Für sie gibt es kein
+ * „Erneut senden“: Ein Bestätigungscode soll nach dem Versand nicht in der
+ * Datenbank bleiben, und das Tax-CMS stellt bei Bedarf eine neue Mitteilung
+ * (neuer Code, Neuadressierung). Die Datenbank erzwingt dasselbe
+ * (mail_outbox_tcms_content_check).
+ */
+export const MAIL_OUTBOX_NO_RESEND_RESOURCE_TYPES: ReadonlySet<string> = new Set([
+  'tcms_nachricht',
+]);

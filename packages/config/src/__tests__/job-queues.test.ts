@@ -131,6 +131,7 @@ describe('shared BullMQ metadata', () => {
       'n8n-retention @ 03:45 UTC daily',
       'mail-outbox-deliver @ every 1 min',
       'mail-outbox-retention @ 04:15 UTC daily',
+      'tcms-nachrichten-zustellen @ every 1 min',
     ]);
 
     const schedule = (repeat: QueueScheduleDefinition['repeat']): QueueScheduleDefinition => ({

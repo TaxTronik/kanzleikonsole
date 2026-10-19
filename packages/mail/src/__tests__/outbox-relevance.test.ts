@@ -2,6 +2,8 @@
 // manuelle Neuversand), ob die Mail noch gewollt ist. Je Anlass: noch gewollt
 // → versenden; Vorgang erledigt, zurückgezogen oder abgesagt → verwerfen mit
 // Begründung. Die Prüfung setzt den Tenant-Filter selbst.
+// TCMS Stufe 4: Mitteilungen des Tax-CMS fail-closed (Gültigkeitsende,
+// bestätigter Empfänger dieses Mandanten mit unveränderter Adresse).
 //
 // Fachkatalog: MAIL-OUTBOX-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +14,7 @@ import {
   type MailOutboxPurpose,
   type MailOutboxRelevanceReader,
 } from '../outbox';
+import { istTcmsMailAnlass, TCMS_MAIL_ANLAESSE } from '../tcms-vorlagen';
 
 const NOW = new Date('2026-10-07T10:00:00.000Z');
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -31,7 +34,13 @@ const RESOURCE_TYPE: Record<MailOutboxPurpose, string> = {
   'form-sent': 'form_submission',
   'appointment-changed': 'appointment',
   'appointment-cancelled': 'appointment',
+  'tcms-freigabe-angefordert': 'tcms_nachricht',
+  'tcms-freigabe-code': 'tcms_nachricht',
+  'tcms-freigabe-neu-adressiert': 'tcms_nachricht',
 };
+
+/** Anlässe mit Vorgangsprüfung über die Vorgangs-ID (ohne TCMS-Mitteilungen). */
+const VORGANG_ANLAESSE = MAIL_OUTBOX_PURPOSES.filter((purpose) => !istTcmsMailAnlass(purpose));
 
 const MODEL: Record<string, keyof MailOutboxRelevanceReader> = {
   invoice: 'invoice',
@@ -42,6 +51,7 @@ const MODEL: Record<string, keyof MailOutboxRelevanceReader> = {
   appointment_request: 'appointmentRequest',
   appointment: 'appointment',
   form_submission: 'formSubmission',
+  tcms_nachricht: 'clientContact',
 };
 
 function reader() {
@@ -64,6 +74,18 @@ function row(purpose: MailOutboxPurpose, payload?: unknown) {
     ...(payload === undefined ? {} : { payload }),
   };
 }
+
+/** Bestätigter Kontakt eines aktiven Mandats (TCMS-Mitteilungen). */
+function TCMS_KONTAKT(overrides: Record<string, unknown> = {}) {
+  return {
+    active: true,
+    email: 'Jana.Weller@talwind.example',
+    lastLoginAt: new Date('2026-10-01T08:00:00.000Z'),
+    client: { allowActive: true, mandateEndedAt: null },
+    ...overrides,
+  };
+}
+const KONTAKT = '44444444-4444-4444-8444-444444444444';
 
 /** Berliner Wanduhrzeit, wie das Portal Wunschtermine speichert. */
 const SLOT_START = '2026-10-20T10:00';
@@ -92,6 +114,9 @@ const WANTED_STATE: Record<MailOutboxPurpose, unknown> = {
     location: 'Büro',
   },
   'appointment-cancelled': { status: 'CANCELLED', startsAt: SLOT_INSTANT },
+  'tcms-freigabe-angefordert': TCMS_KONTAKT(),
+  'tcms-freigabe-code': TCMS_KONTAKT(),
+  'tcms-freigabe-neu-adressiert': TCMS_KONTAKT(),
 };
 
 const OBSOLETE: Array<[MailOutboxPurpose, string, unknown, string]> = [
@@ -258,7 +283,7 @@ describe('checkMailOutboxRelevanceTx', () => {
     expect(Object.keys(WANTED_STATE).sort()).toEqual([...MAIL_OUTBOX_PURPOSES].sort());
   });
 
-  it.each([...MAIL_OUTBOX_PURPOSES])('lässt %s im aktiven Vorgang versenden', async (purpose) => {
+  it.each(VORGANG_ANLAESSE)('lässt %s im aktiven Vorgang versenden', async (purpose) => {
     const model = MODEL[RESOURCE_TYPE[purpose]]!;
     h.findFirst[model]!.mockResolvedValue(WANTED_STATE[purpose]);
 
@@ -387,6 +412,115 @@ describe('checkMailOutboxRelevanceTx', () => {
       await expect(
         checkMailOutboxRelevanceTx(h.db, row('appointment-changed', {}), NOW),
       ).resolves.toEqual({ wanted: true });
+    });
+  });
+});
+
+describe('Mitteilungen des Tax-CMS (TCMS Stufe 4, fail-closed)', () => {
+  const BIS = '2026-10-14T10:00:00.000Z';
+  const payload = (
+    relevance: unknown = { bis: BIS, kontaktId: KONTAKT },
+    to = 'jana.weller@talwind.example ',
+  ) => ({
+    v: 1,
+    slug: 'tcms-freigabe-code',
+    to,
+    vars: {},
+    relevance,
+  });
+
+  beforeEach(() => {
+    h.findFirst['clientContact']!.mockResolvedValue(TCMS_KONTAKT());
+  });
+
+  it.each([...TCMS_MAIL_ANLAESSE])(
+    'versendet %s bis zum Gültigkeitsende an den bestätigten Kontakt dieses Mandanten',
+    async (purpose) => {
+      await expect(checkMailOutboxRelevanceTx(h.db, row(purpose, payload()), NOW)).resolves.toEqual(
+        {
+          wanted: true,
+        },
+      );
+      expect(h.findFirst['clientContact']).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: KONTAKT, tenantId: TENANT, clientId: CLIENT } }),
+      );
+    },
+  );
+
+  it.each([
+    [
+      'Gültigkeitsende erreicht',
+      payload({ bis: NOW.toISOString(), kontaktId: KONTAKT }),
+      'Die Mitteilung des Tax-CMS ist abgelaufen.',
+    ],
+    [
+      'ohne Gültigkeitsende',
+      payload({ kontaktId: KONTAKT }),
+      'Die Mitteilung des Tax-CMS hat kein Gültigkeitsende.',
+    ],
+    [
+      'Gültigkeitsende unlesbar',
+      payload({ bis: 'bald', kontaktId: KONTAKT }),
+      'Die Mitteilung des Tax-CMS hat kein Gültigkeitsende.',
+    ],
+    ['ohne Payload', undefined, 'Die Mitteilung des Tax-CMS hat kein Gültigkeitsende.'],
+    ['ohne Kontakt', payload({ bis: BIS }), 'Der Empfänger der Mitteilung ist nicht bestimmt.'],
+    [
+      'ohne Adresse',
+      { v: 1, slug: 'x', vars: {}, relevance: { bis: BIS, kontaktId: KONTAKT } },
+      'Der Empfänger der Mitteilung ist nicht bestimmt.',
+    ],
+  ])('verwirft ohne Abfrage: %s', async (_label, p, reason) => {
+    await expect(
+      checkMailOutboxRelevanceTx(h.db, row('tcms-freigabe-code', p), NOW),
+    ).resolves.toEqual({ wanted: false, reason });
+    expect(h.findFirst['clientContact']).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      'anderem Mandanten oder gelöscht',
+      null,
+      'Der Empfänger gehört nicht (mehr) zu diesem Mandanten.',
+    ],
+    ['inaktiv', TCMS_KONTAKT({ active: false }), 'Der Empfänger ist nicht mehr aktiv.'],
+    [
+      'nie angemeldet',
+      TCMS_KONTAKT({ lastLoginAt: null }),
+      'Die Adresse des Empfängers ist nicht bestätigt.',
+    ],
+    [
+      'Mandat beendet',
+      TCMS_KONTAKT({ client: { allowActive: true, mandateEndedAt: NOW } }),
+      'Das Mandat ist nicht mehr aktiv.',
+    ],
+    [
+      'Mandant gesperrt',
+      TCMS_KONTAKT({ client: { allowActive: false, mandateEndedAt: null } }),
+      'Das Mandat ist nicht mehr aktiv.',
+    ],
+    [
+      'Adresse geändert',
+      TCMS_KONTAKT({ email: 'neu@talwind.example' }),
+      'Die E-Mail-Adresse des Empfängers hat sich geändert.',
+    ],
+  ])('verwirft, wenn der Empfänger %s ist', async (_label, kontakt, reason) => {
+    h.findFirst['clientContact']!.mockResolvedValue(kontakt);
+    await expect(
+      checkMailOutboxRelevanceTx(h.db, row('tcms-freigabe-angefordert', payload()), NOW),
+    ).resolves.toEqual({ wanted: false, reason });
+  });
+
+  it('verwirft eine TCMS-Mitteilung mit fremdem Vorgangstyp (kein Rückfall auf „gewollt“)', async () => {
+    await expect(
+      checkMailOutboxRelevanceTx(
+        h.db,
+        { ...row('tcms-freigabe-code', payload()), resourceType: 'request' },
+        NOW,
+      ),
+    ).resolves.toEqual({
+      wanted: false,
+      reason: 'Der Auftrag gehört zu keiner Mitteilung des Tax-CMS.',
     });
   });
 });

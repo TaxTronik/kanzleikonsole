@@ -404,6 +404,19 @@ export const JOB_QUEUES = {
   // legt den Auftrag in dsgvo_export an und stößt je Auftrag einen Job an; der
   // Zustand liegt in der Datenbank, die Oberfläche liest ihn dort.
   dsgvoExport: { name: 'dsgvo-export', schedule: null },
+  tcmsNachrichtenZustellen: {
+    name: 'tcms-nachrichten-zustellen',
+    schedule: {
+      // TCMS Stufe 4: Postausgang des Tax-CMS mit dem Systemakteur abholen,
+      // Empfänger prüfen, über Mail-Outbox bzw. In-App-Hinweis einplanen und
+      // die Zustellung melden. Minütlich wie mail-outbox-deliver; kein
+      // BullMQ-Retry: der Zustand liegt in tcms_nachricht_zustellung und im
+      // Tax-CMS, der nächste Lauf setzt fort.
+      schedulerId: 'tcms-nachrichten-zustellen',
+      repeat: { every: MINUTE },
+      expectedMaxGapMs: MINUTE,
+    },
+  },
 } as const satisfies Record<string, QueueDefinition>;
 
 export type JobQueueKey = keyof typeof JOB_QUEUES;
@@ -581,6 +594,7 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.mailOutboxDeliver.name]: EmptyJob;
   [JOB_QUEUES.mailOutboxRetention.name]: EmptyJob;
   [JOB_QUEUES.dsgvoExport.name]: DsgvoExportJob;
+  [JOB_QUEUES.tcmsNachrichtenZustellen.name]: EmptyJob;
 };
 
 type AssertTrue<T extends true> = T;

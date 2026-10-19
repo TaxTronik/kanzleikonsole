@@ -26,4 +26,9 @@ export const MAIL_RESEND_GUARDS: Readonly<Record<MailOutboxPurpose, StaffGuardOp
   'form-sent': { module: 'forms' },
   'appointment-changed': { module: 'appointments' },
   'appointment-cancelled': { module: 'appointments' },
+  // TCMS Stufe 4: kein Neuversand (Inhalt und Code sind mit dem Endstatus
+  // entfernt; resendMailOutboxTx lehnt ab). Das Gate bleibt eng.
+  'tcms-freigabe-angefordert': { module: 'tcms', requireAdmin: true },
+  'tcms-freigabe-code': { module: 'tcms', requireAdmin: true },
+  'tcms-freigabe-neu-adressiert': { module: 'tcms', requireAdmin: true },
 };

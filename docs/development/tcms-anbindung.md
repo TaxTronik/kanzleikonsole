@@ -1,6 +1,6 @@
 # Anbindung des Tax-CMS (TCMS)
 
-- **Dokumentstatus:** Ist-Dokumentation (TCMS Stufen 2 und 3, kanzleikonsole-Seite)
+- **Dokumentstatus:** Ist-Dokumentation (TCMS Stufen 2 bis 4, kanzleikonsole-Seite)
 - **Bezug:** ADR 0001 des TCMS-Repos („Tax-CMS als headless Dienst der
   kanzleikonsole“)
 
@@ -345,3 +345,96 @@ anlegen“ bzw. „Stammdaten übernehmen“), `/staff/clients/[id]/tcms/kontakt
   `antwortSchema` geprüft). Live-Test der Seiten und Aktionen gegen einen
   laufenden Dienst: `server/tcms/__tests__/oberflaechen-live.test.tsx` mit
   `TCMS_LIVE_TESTS=1` und den Variablen aus Abschnitt 6.
+
+## 8. Zustellung des Postausgangs (Stufe 4)
+
+Das Tax-CMS versendet keine E-Mails. Es legt Mitteilungen ab – Freigabe
+angefordert, Bestätigungscode und Neuadressierung an Mandantenkontakte,
+gemeldetes Ereignis an Kanzleipersonen – und die kanzleikonsole stellt sie zu
+(ADR 0001 §3.4 und §7 „Postausgang“ des TCMS-Repos). Fachliche Regel:
+[MAIL-OUTBOX-001](../fachkatalog/regeln/mandat-und-zugriff/mail-outbox-001-mandantenmail-zustellung.md)
+(ungeprüfter Entwurf).
+
+**Systemakteur.** Abruf und Bestätigung laufen mit einem Akteur der Art
+`SYSTEM`: `sub` ist eine feste, zufällige UUID je Tenant
+(`tcms_systemakteur.akteur_id`, `gen_random_uuid` beim ersten Lauf, nicht aus
+der Tenant-ID ableitbar, per Trigger unveränderlich, eindeutig), `nam` ist
+„Zustellung kanzleikonsole“, ohne `rol` und `cli`. Eine erfundene Admin-Person
+hätte im Tax-CMS den ganzen Tenant lesen dürfen. Nur der Worker bildet ihn
+(`apps/worker/src/tcms/systemakteur.ts`); sein Client
+(`apps/worker/src/tcms/dienst.ts`, `akteurArten: NUR_SYSTEMAKTEUR`) bestätigt
+keine Person und erreicht über das Register nur `nachrichtenOffenLesen` und
+`nachrichtZugestelltMelden`. Die App-Rolle hat auf `tcms_systemakteur` und
+`tcms_nachricht_zustellung` keine Rechte; die Web-App kann ihn weder kennen
+noch signieren (Abschnitt 3, Guards in Web und Worker).
+
+**Job `tcms-nachrichten-zustellen`** (minütlich; Kern
+`apps/worker/src/jobs/tcms-nachrichten.ts`). Je Tenant mit
+`isWorkerTcmsActive` und nur, wenn kein anderer Lauf den Lease in
+`tcms_systemakteur` hält (`lauf_halter`/`lauf_bis`, 2 Minuten, vor jeder
+Mitteilung verlängert):
+
+1. `GET /v1/nachrichten/offen?limit=50` (älteste zuerst).
+2. Je Mitteilung eine Tenant-Transaktion: Zustellzeile
+   `tcms_nachricht_zustellung` (eindeutig je Tenant und Nachrichten-ID) sperren
+   bzw. mit `ON CONFLICT DO NOTHING` anlegen, Empfänger prüfen, einplanen.
+3. Nach dem Commit `POST /v1/nachrichten/:id/zugestellt`. 404 gilt als
+   erledigt; jeder andere Fehler lässt die Zeile ungemeldet – der nächste
+   Lauf erhält die Mitteilung erneut, findet die Zeile und meldet nur.
+
+Das Tax-CMS reserviert beim Abruf nichts. Doppelte schließen die eindeutige
+Zustellzeile, ein partieller eindeutiger Index auf `mail_outbox`
+(`tenant_id, resource_id` für `resource_type = 'tcms_nachricht'`) und der
+Lease aus.
+
+| Empfänger | Prüfung (allein Daten der kanzleikonsole)                                                                                                                                 | Zustellung                                                                                                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KONTAKT` | Mandant im Tenant, zugelassen, nicht beendet, nicht anonymisiert; Kontakt dieses Tenants und **genau dieses** Mandanten, aktiv, gültige E-Mail, bestätigt (`lastLoginAt`) | `enqueueDirectMailTx`, Anlässe `tcms-freigabe-angefordert`, `tcms-freigabe-code`, `tcms-freigabe-neu-adressiert`, Vorgang `tcms_nachricht` = ID der Zustellzeile |
+| `KANZLEI` | Mandant im Tenant, nicht anonymisiert; Person dieses Tenants, aktiv, mit Zugriff (`canStaffAccessClientTx`)                                                               | In-App-Hinweis `TCMS_EREIGNIS_GEMELDET` mit Nummer und Titel, Link `/staff/clients/<id>/tcms/ereignisse`                                                         |
+
+Die Benachrichtigungs-Einstellung des Kontakts gilt nicht (Transaktionsmail
+zu einem Vorgang, den er selbst ausgelöst hat oder der ihn nennt); verlangt
+wird aber eine bestätigte Adresse. Adressen aus dem Tax-CMS gibt es nicht.
+
+**Code.** Der Bestätigungscode geht nur als `secretVars.code` in die Outbox
+(Secret-Box, an Tenant und Auftrag gebunden) und wird erst beim Versand
+eingesetzt. Für Vorgänge `tcms_nachricht` entfernt jeder Endstatus Inhalt und
+geheime Variablen, auch `FAILED`/`UNKNOWN` (DB-CHECK
+`mail_outbox_tcms_content_check`); „Erneut senden“ gibt es dafür nicht
+(`MAIL_OUTBOX_NO_RESEND_RESOURCE_TYPES`). `betreff` und `text` des Dienstes
+(Rückfall, können den Code enthalten) werden nie übernommen; die Texte kommen
+aus den System-Vorlagen bzw. dem gleichlautenden Ersatztext
+(`packages/mail/src/tcms-vorlagen.ts`, Platzhalter dort und in der
+Vorlagenverwaltung). Betreffzeilen nennen den Code nie.
+
+**Gültigkeit.** Code bis `gueltigBis`; Anforderung und Neuadressierung
+`TCMS_NACHRICHT_FENSTER_TAGE` (7, wie die Code-Lebensdauer) ab Anlage;
+Ereignisse unbegrenzt. Außerhalb des Fensters: nicht zustellen, als
+`UNZUSTELLBAR` (`ABGELAUFEN`) abschließen und melden. Die Outbox prüft vor
+jedem Versandversuch dasselbe Fenster und den Empfänger (aktiv, bestätigt,
+dieser Mandant, unveränderte Adresse, Mandat aktiv) und verwirft sonst
+(`SKIPPED`).
+
+**Scheitert die Prüfung:** nicht einplanen, nicht melden, Status
+`ZURUECKGESTELLT` mit festem Grund (z. B. `KONTAKT_UNBESTAETIGT`), einmal je
+Mitteilung ein Hinweis `TCMS_ZUSTELLUNG_GESCHEITERT` an die aktiven
+ADMIN/PARTNER (Anlass und Grund, keine Namen, kein Titel, kein Code). Jeder
+Lauf prüft erneut; nach `TCMS_UNZUSTELLBAR_NACH_TAGEN` (7) ab der ersten
+gescheiterten Prüfung `UNZUSTELLBAR` und melden. Begründung der 7 Tage: gleich
+der Code-Lebensdauer, danach ist jede Mitteilung inhaltlich überholt; die
+Frist deckt ein Wochenende plus Abwesenheit ab; länger offene Mitteilungen
+belegten den ältesten-zuerst-Abruf. Das Tax-CMS kennt nur „zugestellt“;
+dort steht eine als unzustellbar abgeschlossene Mitteilung deshalb als
+zugestellt, der wahre Stand steht in der Zustellzeile und im Hinweis.
+
+**Logs** nennen Tenant, Nachrichten-ID, Zweck, Grund und die Fehlerklasse des
+Clients; nie Code, Text, Betreff, Titel, Namen, Adressen, Mandanten- oder
+Personen-IDs. Gemeldete Zustellzeilen (und lange nicht mehr gesehene
+zurückgestellte) löscht der Job nach 30 Tagen.
+
+**Tests.** `apps/worker/src/jobs/__tests__/tcms-nachrichten-db.test.ts`
+(PostgreSQL, In-Memory-Postausgang und echter Client gegen einen lokalen
+Server), `apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts`,
+`apps/worker/src/jobs/__tests__/mail-outbox.test.ts`,
+`packages/mail/src/__tests__/outbox-relevance.test.ts`,
+`packages/tcms-client/src/__tests__/nachrichten.test.ts`.

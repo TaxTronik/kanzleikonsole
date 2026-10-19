@@ -113,6 +113,13 @@ describe('MAIL_RESEND_GUARDS', () => {
     ] satisfies MailOutboxPurpose[]) {
       expect(MAIL_RESEND_GUARDS[purpose]).toEqual({});
     }
+    for (const purpose of [
+      'tcms-freigabe-angefordert',
+      'tcms-freigabe-code',
+      'tcms-freigabe-neu-adressiert',
+    ] satisfies MailOutboxPurpose[]) {
+      expect(MAIL_RESEND_GUARDS[purpose]).toEqual({ module: 'tcms', requireAdmin: true });
+    }
   });
 });
 
@@ -161,6 +168,23 @@ describe('resendMailOutboxTx', () => {
       after: { status: 'QUEUED' },
     });
     expect(h.audit).toHaveBeenCalledTimes(2);
+  });
+
+  it('TCMS Stufe 4: sendet Mitteilungen des Tax-CMS nie erneut (kein Lesen, kein Rücksetzen)', async () => {
+    const { tx, raw, queryRaw } = txWith([
+      outboxRow({ purpose: 'tcms-freigabe-code', resourceType: 'tcms_nachricht' }),
+    ]);
+    await expect(
+      resendMailOutboxTx(
+        tx,
+        actor,
+        input({ purpose: 'tcms-freigabe-code', resourceType: 'tcms_nachricht' }),
+        NOW,
+      ),
+    ).rejects.toThrow('Mitteilungen des Tax-CMS werden nicht erneut gesendet.');
+    expect(raw.mailOutbox.findMany).not.toHaveBeenCalled();
+    expect(queryRaw).not.toHaveBeenCalled();
+    expect(h.audit).not.toHaveBeenCalled();
   });
 
   it('verlangt bei unklarem Ausgang eine ausdrückliche Bestätigung', async () => {

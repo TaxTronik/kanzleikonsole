@@ -16,7 +16,11 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
-import { checkMailOutboxRelevanceTx, type MailOutboxPurpose } from '@taxtronik/mail/outbox';
+import {
+  checkMailOutboxRelevanceTx,
+  MAIL_OUTBOX_NO_RESEND_RESOURCE_TYPES,
+  type MailOutboxPurpose,
+} from '@taxtronik/mail/outbox';
 import { ActionError } from '@/server/actions/action-error';
 import { audit } from '@/server/actions/audit';
 import type { StaffCtx } from '@/server/actions/staff-action';
@@ -85,6 +89,13 @@ export async function resendMailOutboxTx(
   input: MailResendInput,
   now: Date,
 ): Promise<MailResendOutcome> {
+  // TCMS Stufe 4: Mitteilungen des Tax-CMS werden nie erneut gesendet; ein
+  // neuer Code oder eine Neuadressierung entsteht im Tax-CMS.
+  if (MAIL_OUTBOX_NO_RESEND_RESOURCE_TYPES.has(input.resourceType)) {
+    throw new ActionError(
+      'Mitteilungen des Tax-CMS werden nicht erneut gesendet. Bitte im Tax-CMS neu anfordern.',
+    );
+  }
   const rows = await tx.mailOutbox.findMany({
     where: {
       id: { in: [...input.outboxIds] },

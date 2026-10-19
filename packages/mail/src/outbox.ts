@@ -23,6 +23,7 @@ import type { MailOutboxPurpose, MailOutboxResourceType } from './outbox-purpose
 
 export {
   MAIL_OUTBOX_LATEST_BATCH_PURPOSES,
+  MAIL_OUTBOX_NO_RESEND_RESOURCE_TYPES,
   MAIL_OUTBOX_PURPOSES,
   MAIL_OUTBOX_PURPOSE_LABELS,
   type MailOutboxPurpose,

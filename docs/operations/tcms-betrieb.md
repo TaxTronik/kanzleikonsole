@@ -248,17 +248,54 @@ dann Daten, dann Migrationsschritt); Details im
 
 ## 9. Fehlerbilder
 
-| Meldung                                                                   | Ursache und Abhilfe                                                                                                             |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `TCMS_… fehlt - ./taxtronik tcms setup` (bei jedem Compose-Aufruf)        | `managed` ohne vollständige Konfiguration: `./taxtronik tcms setup` ausführen oder `./taxtronik tcms disable`.                  |
-| `TCMS_DEPLOYMENT muss managed, external oder disabled sein`               | Tippfehler in `.env`; Wert korrigieren.                                                                                         |
-| `Registry-Compose verweigert: … verankert kein TCMS-Release`              | Der installierte Release gibt keine TCMS-Images frei. Auf einen Release mit TCMS aktualisieren oder `tcms disable`.             |
-| `Registry-Compose verweigert: TCMS-Images … weichen … ab`                 | `.env` oder Prozessumgebung nennt andere Digests als der signierte Stand. Nicht von Hand ändern; deploy/update/rollback nutzen. |
-| `TCMS-Compose-Datei fehlt im Checkout`                                    | `managed` in einem Checkout ohne TCMS-Unterstützung (älterer Release): vorher `./taxtronik tcms disable`.                       |
-| `Eine Rotation (…) ist nicht abgeschlossen`                               | Denselben `rotate-…`-Befehl erneut ausführen; er setzt an der gespeicherten Phase fort.                                         |
-| `… muss vor einer Rotation genau das aktuelle … enthalten`                | Liste enthält Fremdeinträge; mit `tcms status` prüfen und die Liste auf den aktuellen Eintrag zurückführen.                     |
-| doctor: `haengt im TCMS-Backend-Netz`                                     | App/Worker wurden außerhalb der CLI mit falschem Netz gestartet; `./taxtronik tcms setup managed` erzeugt sie neu.              |
-| doctor: `TCMS_HEALTH … nicht erreichbar` (external)                       | URL, TLS-Kette oder Token prüfen; das externe Tax-CMS muss das Token in seiner Liste führen.                                    |
-| `TCMS-Backup vor der Migration fehlgeschlagen; tcms-migrate laeuft nicht` | Backup-Verzeichnis/S3 prüfen (`./taxtronik tcms backup`); ohne Backup wird nicht migriert.                                      |
-| `SHA-256 des Dumps stimmt nicht …` (restore)                              | Dump beschädigt oder falsche Prüfsummendatei; anderen Dump wählen.                                                              |
-| `pg_restore fehlgeschlagen; tcms-api bleibt gestoppt`                     | Der bisherige Stand liegt unter `backups/tcms-pre-restore/`; mit diesem Dump erneut `tcms restore` ausführen.                   |
+| Meldung                                                                                                  | Ursache und Abhilfe                                                                                                                                                                                          |
+| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TCMS_… fehlt - ./taxtronik tcms setup` (bei jedem Compose-Aufruf)                                       | `managed` ohne vollständige Konfiguration: `./taxtronik tcms setup` ausführen oder `./taxtronik tcms disable`.                                                                                               |
+| `TCMS_DEPLOYMENT muss managed, external oder disabled sein`                                              | Tippfehler in `.env`; Wert korrigieren.                                                                                                                                                                      |
+| `Registry-Compose verweigert: … verankert kein TCMS-Release`                                             | Der installierte Release gibt keine TCMS-Images frei. Auf einen Release mit TCMS aktualisieren oder `tcms disable`.                                                                                          |
+| `Registry-Compose verweigert: TCMS-Images … weichen … ab`                                                | `.env` oder Prozessumgebung nennt andere Digests als der signierte Stand. Nicht von Hand ändern; deploy/update/rollback nutzen.                                                                              |
+| `TCMS-Compose-Datei fehlt im Checkout`                                                                   | `managed` in einem Checkout ohne TCMS-Unterstützung (älterer Release): vorher `./taxtronik tcms disable`.                                                                                                    |
+| `Eine Rotation (…) ist nicht abgeschlossen`                                                              | Denselben `rotate-…`-Befehl erneut ausführen; er setzt an der gespeicherten Phase fort.                                                                                                                      |
+| `… muss vor einer Rotation genau das aktuelle … enthalten`                                               | Liste enthält Fremdeinträge; mit `tcms status` prüfen und die Liste auf den aktuellen Eintrag zurückführen.                                                                                                  |
+| doctor: `haengt im TCMS-Backend-Netz`                                                                    | App/Worker wurden außerhalb der CLI mit falschem Netz gestartet; `./taxtronik tcms setup managed` erzeugt sie neu.                                                                                           |
+| doctor: `TCMS_HEALTH … nicht erreichbar` (external)                                                      | URL, TLS-Kette oder Token prüfen; das externe Tax-CMS muss das Token in seiner Liste führen.                                                                                                                 |
+| `TCMS-Backup vor der Migration fehlgeschlagen; tcms-migrate laeuft nicht`                                | Backup-Verzeichnis/S3 prüfen (`./taxtronik tcms backup`); ohne Backup wird nicht migriert.                                                                                                                   |
+| `SHA-256 des Dumps stimmt nicht …` (restore)                                                             | Dump beschädigt oder falsche Prüfsummendatei; anderen Dump wählen.                                                                                                                                           |
+| `pg_restore fehlgeschlagen; tcms-api bleibt gestoppt`                                                    | Der bisherige Stand liegt unter `backups/tcms-pre-restore/`; mit diesem Dump erneut `tcms restore` ausführen.                                                                                                |
+| Worker-Log `tcms-nachrichten: Abruf gescheitert` (`fehler`, `status`, `grund`)                           | Dienst nicht erreichbar, Token/Schlüssel falsch (401) oder Antwort außerhalb des Vertrags. Der nächste Lauf (1 min) versucht es erneut; `tcmsRequestId` im Log des Dienstes nachsehen.                       |
+| Worker-Log `Zustellung nicht gemeldet, nächster Lauf`                                                    | Die Mitteilung ist eingeplant, die Bestätigung kam nicht an. Kein Handlungsbedarf: Der nächste Lauf meldet, ohne erneut zuzustellen.                                                                         |
+| Worker-Log `Mitteilung nicht zugestellt` (`grund`) und Hinweis „Mitteilung des Tax-CMS nicht zugestellt“ | Empfänger in TaxTronik nicht bestätigt (z. B. `KONTAKT_UNBESTAETIGT`: Kontakt hat sich nie im Portal angemeldet). Kontaktdaten korrigieren; nach 7 Tagen wird die Mitteilung als unzustellbar abgeschlossen. |
+| Worker-Log `voller Abruf ohne Einplanung`                                                                | 50 zurückgestellte Mitteilungen belegen den Postausgang (älteste zuerst); neue kommen erst nach Korrektur oder nach 7 Tagen dran. Empfänger der Hinweise korrigieren.                                        |
+| Worker-Log `Lease verloren, Lauf beendet`                                                                | Ein Lauf dauerte länger als der Lease (2 min, je Mitteilung verlängert) – meist ein sehr langsamer Dienst. Der nächste Lauf setzt fort; Doppelte schließt die Zustellzeile aus.                              |
+
+## 10. Zustellung der Mitteilungen (Stufe 4)
+
+Der Worker-Job `tcms-nachrichten-zustellen` holt jede Minute den Postausgang
+des Tax-CMS ab (Freigabe angefordert, Bestätigungscode, Neuadressierung,
+gemeldetes Ereignis), prüft die Empfänger gegen TaxTronik und plant Mails über
+die Mail-Outbox bzw. In-App-Hinweise ein; danach bestätigt er die Zustellung
+beim Dienst. Technik: [Anbindung, Abschnitt 8](../development/tcms-anbindung.md#8-zustellung-des-postausgangs-stufe-4).
+
+- **Voraussetzungen:** Modul „Tax-CMS“ des Tenants an, `TCMS_DEPLOYMENT`
+  `managed` oder `external`, Worker mit derselben `TCMS_*`-Konfiguration wie
+  die App, `PORTAL_PUBLIC_URL` (oder `NEXTAUTH_URL`) für den Link ins Portal
+  und funktionierender Mailversand der Kanzlei. Der Worker meldet sich als
+  Systemakteur „Zustellung kanzleikonsole“ (Audit des Tax-CMS: „System: …“);
+  seine ID je Tenant entsteht beim ersten Lauf in `tcms_systemakteur` und
+  ändert sich nie.
+- **Ein Lauf je Tenant:** Lease in `tcms_systemakteur` (2 Minuten, vor jeder
+  Mitteilung verlängert). Mehrere Worker-Instanzen sind zulässig.
+- **Zustand:** `tcms_nachricht_zustellung` (nur Owner): je Mitteilung Status
+  `EINGEPLANT`, `ZURUECKGESTELLT` oder `UNZUSTELLBAR`, fester Grund, Zeitpunkte;
+  keine Inhalte. Gemeldete Zeilen werden nach 30 Tagen gelöscht. Wird die
+  Datenbank des Tax-CMS auf einen Stand vor einer Meldung zurückgesetzt, liefert
+  sie gemeldete Mitteilungen erneut; innerhalb der 30 Tage verhindert die
+  Zustellzeile eine zweite Zustellung, danach nicht.
+- **Code:** liegt in TaxTronik nur Secret-Box-verschlüsselt im
+  Versandauftrag und nur bis zum Endstatus (auch bei Fehlschlag); kein
+  „Erneut senden“. Ein Neuversand entsteht im Tax-CMS (neuer Code bzw.
+  Neuadressierung).
+- **Prüfen:** Worker-Log `tcms-nachrichten-zustellen: done` mit Zählern
+  (`abgerufen`, `eingeplant`, `zurueckgestellt`, `unzustellbar`, `gemeldet`,
+  `fehler`); Zustellstatus der Mails in der Mail-Outbox (Anlass
+  „Tax-CMS: …“).

@@ -29,6 +29,7 @@ import { reminderDoneNotifyWorker } from './jobs/reminder-done-notify';
 import { mailOutboxDeliverWorker } from './jobs/mail-outbox-deliver';
 import { mailOutboxRetentionWorker } from './jobs/mail-outbox-retention';
 import { dsgvoExportWorker } from './jobs/dsgvo-export';
+import { tcmsNachrichtenZustellenWorker } from './jobs/tcms-nachrichten-zustellen';
 import { backupDrillWorker } from './jobs/backup-drill';
 import { backupRunWorker } from './jobs/backup-run';
 import { healthAlertWorker } from './jobs/health-alert';
@@ -81,6 +82,7 @@ const WORKERS_BY_QUEUE = {
   mailOutboxDeliver: mailOutboxDeliverWorker,
   mailOutboxRetention: mailOutboxRetentionWorker,
   dsgvoExport: dsgvoExportWorker,
+  tcmsNachrichtenZustellen: tcmsNachrichtenZustellenWorker,
 } satisfies Record<JobQueueKey, Worker>;
 
 /**

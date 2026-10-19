@@ -79,6 +79,8 @@ const LEGACY_CONCURRENCY: Record<string, number | undefined> = {
   'mail-outbox-retention': 1,
   // Welle 15 (P-11): new queue.
   'dsgvo-export': 1,
+  // TCMS Stufe 4: new queue.
+  'tcms-nachrichten-zustellen': 1,
 };
 
 describe('R-13 worker registry', () => {

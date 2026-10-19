@@ -22,8 +22,13 @@ implementation:
     fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden.
     Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach
     dem letzten Statuswechsel. Terminänderung und -absage im Kanzleikalender
-    lösen auf ausdrücklichen Wunsch eine Mail aus. Die technische Annahme ist
-    kein Zugangsnachweis; die fachliche Freigabe der Fristen fehlt.
+    lösen auf ausdrücklichen Wunsch eine Mail aus. Mitteilungen des Tax-CMS
+    (Freigabe angefordert, Bestätigungscode, Neuadressierung) stellt ein
+    Worker mit einem Systemakteur je Tenant über die Outbox zu, nur an
+    bestätigte Kontakte genau dieses Mandanten, ohne Doppelzustellung und mit
+    Code nur verschlüsselt bis zum Endstatus; gemeldete Ereignisse gehen als
+    Hinweis an Kanzleipersonen mit Zugriff. Die technische Annahme ist kein
+    Zugangsnachweis; die fachliche Freigabe der Fristen fehlt.
 sources:
   - kind: product_documentation
     citation: Anwenderdokumentation Administration, Abschnitt 7 „Zustellstatus von Mandanten-E-Mails“
@@ -34,6 +39,11 @@ sources:
     citation: Anwenderdokumentation Kalender, Entschiedene Terminanfragen und Zustellstatus
     path: docs/anwenderdoku/kalender-fristen-bescheide.md
     checked_at: '2026-10-12'
+    primary: false
+  - kind: product_documentation
+    citation: Anwenderdokumentation Tax-CMS, Abschnitt 9 „Mitteilungen per E-Mail und Hinweis“
+    path: docs/anwenderdoku/tax-cms.md
+    checked_at: '2026-10-19'
     primary: false
 code_refs:
   - packages/mail/src/outbox.ts
@@ -57,6 +67,19 @@ code_refs:
   - apps/web/src/app/staff/(protected)/calendar/edit-appointment-dialog.tsx
   - apps/web/src/app/staff/(protected)/calendar/appointment-mails.tsx
   - packages/db/prisma/migrations/20261012110100_appointment_change_mail_templates/migration.sql
+  - packages/mail/src/tcms-vorlagen.ts
+  - apps/worker/src/jobs/tcms-nachrichten.ts
+  - apps/worker/src/jobs/tcms-nachrichten-zustellen.ts
+  - apps/worker/src/tcms/systemakteur.ts
+  - apps/worker/src/tcms/dienst.ts
+  - packages/tcms-client/src/nachrichten.ts
+  - packages/config/src/job-queues.ts
+  - apps/web/src/app/staff/(protected)/admin/email-templates/page.tsx
+  - apps/web/src/app/staff/(protected)/admin/email-templates/editor.tsx
+  - packages/db/prisma/schema.prisma
+  - packages/db/prisma/migrations/20261019150000_notification_kind_tcms/migration.sql
+  - packages/db/prisma/migrations/20261019150100_tcms_nachrichten_zustellung/migration.sql
+  - packages/db/prisma/migrations/20261019150200_tcms_mail_templates/migration.sql
 test_refs:
   - packages/mail/src/__tests__/outbox.test.ts
   - packages/mail/src/__tests__/outbox-relevance.test.ts
@@ -75,19 +98,29 @@ test_refs:
   - apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-edit.test.tsx
   - apps/worker/src/jobs/__tests__/mail-outbox-appointment-db.test.ts
   - apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-mails.test.tsx
+  - apps/worker/src/jobs/__tests__/tcms-nachrichten-db.test.ts
+  - apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts
+  - apps/web/src/__tests__/tcms-systemakteur-guard.test.ts
+  - packages/tcms-client/src/__tests__/nachrichten.test.ts
+  - apps/web/src/app/staff/(protected)/admin/email-templates/__tests__/editor.test.tsx
 feature_refs:
   - docs/anwenderdoku/administration.md
   - docs/anwenderdoku/kalender-fristen-bescheide.md
+  - docs/anwenderdoku/tax-cms.md
 related_rules:
   - ACCESS-TENANT-RLS-001
   - ACCESS-STAFF-PERMISSION-001
   - DSGVO-OPERATIONAL-RETENTION-001
   - AUDIT-HASH-CHAIN-001
+  - ACCESS-CLIENT-MODE-001
+  - TCMS-AKTEUR-001
+  - TCMS-DIENST-001
 tags:
   - e-mail
   - outbox
   - zustellstatus
   - mandantenkommunikation
+  - tax-cms
 ---
 
 # MAIL-OUTBOX-001 — Mandanten-E-Mails als Versandauftrag zustellen und vor jedem Versand auf Aktualität prüfen
@@ -109,10 +142,13 @@ ohne PDF), Abholbenachrichtigung, Mail zur neuen Anforderung, Mail zur
 Kanzlei-Antwort, Begrüßungsmail nach GwG-Freigabe, GwG-Einladung,
 Terminbestätigung, Terminabsage einer Terminanfrage, Mail zum neuen Formular
 sowie Terminänderung und Absage eines Kanzleitermins, wenn die Kanzlei sie im
-Kalender ausdrücklich auswählt. Sie gilt nicht für Anmelde- und Sicherheitsmails (Magic Link,
+Kalender ausdrücklich auswählt. Sie gilt außerdem für die Mitteilungen des Tax-CMS: Mails an
+Mandantenkontakte (Freigabe angefordert, Bestätigungscode, Freigabe neu
+adressiert) und den Hinweis an Kanzleipersonen zu einem im Portal gemeldeten
+Ereignis. Sie gilt nicht für Anmelde- und Sicherheitsmails (Magic Link,
 Einladung zum Portal), die automatische Steuertermin-Anforderung mit eigener
-Versandhistorie, interne Mitarbeiterbenachrichtigungen, n8n-Ereignisse ohne
-Mail und den Posteingang.
+Versandhistorie, sonstige interne Mitarbeiterbenachrichtigungen,
+n8n-Ereignisse ohne Mail und den Posteingang.
 
 ## Benötigte Angaben
 
@@ -124,28 +160,39 @@ Mail und den Posteingang.
 - angekündigter Vorgangsstand, wo die Aktualitätsprüfung ihn vergleicht
 - aktueller Zustand des Vorgangs zum Versandzeitpunkt
 - Versuchszähler, Zeitpunkte und Antwort des Versanddienstes
+- bei Mitteilungen des Tax-CMS: Nachrichten-ID, Zweck, Mandanten- und
+  Empfänger-ID, Gültigkeitsende (Code bzw. Anlage), Vorlagendaten; Stand von
+  Mandant, Kontakt (Mandant, aktiv, Adresse, Portal-Anmeldung) bzw.
+  Kanzleiperson (aktiv, Zugriff) in TaxTronik
 
 ## Entscheidungslogik
 
-| Wenn                                                                                  | Dann                                                                                               | Begründung                                         |
-| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| der Vorgang wird gespeichert                                                          | Versandauftrag im selben Commit; ein Rollback verwirft auch den Auftrag                            | keine Mail ohne gespeicherten Vorgang              |
-| vor einem Versuch ist der Mandant anonymisiert oder der Anlass entfallen              | `SKIPPED` mit Begründung, Inhalt entfernt, kein SMTP-Kontakt, keine Kanzlei-Benachrichtigung       | keine überholte Mail                               |
-| der Versanddienst nimmt alle Empfänger an                                             | `PROVIDER_ACCEPTED`, Inhalt entfernt                                                               | nur technische Annahme                             |
-| eindeutig gescheitert (Ablehnung, Auftrag nicht vorbereitbar, SMTP-Konfiguration)     | erneuter Versuch mit wachsendem Abstand, nach sechs Versuchen `FAILED` und Kanzlei-Hinweis         | kein Doppelversand möglich                         |
-| Ausgang unklar oder begonnener Versuch nach 30 Minuten nicht abgeschlossen            | `UNKNOWN` und Kanzlei-Hinweis, kein automatischer Neuversand                                       | Doppelversandrisiko                                |
-| nur ein Teil der Kontakte angenommen                                                  | `PARTIAL_FAILURE` und Kanzlei-Hinweis, kein automatischer Neuversand                               | Doppelversandrisiko                                |
-| Kontaktmail ohne aktiven, per Portal-Login bestätigten Kontakt mit Benachrichtigungen | `NO_RECIPIENT` ohne Kanzlei-Hinweis, am Vorgang sichtbar                                           | bisheriges Empfängerverhalten                      |
-| Kanzlei wählt „Erneut senden“ bei `FAILED` oder `UNKNOWN`                             | gleiche Berechtigung wie der Auslöser, Aktualitätsprüfung, dann `QUEUED` oder `SKIPPED`, auditiert | bewusste Entscheidung; bei `UNKNOWN` mit Rückfrage |
-| letzter Statuswechsel eines Auftrags im Endstatus liegt mehr als ein Jahr zurück      | Auftrag samt Metadaten löschen; der Vorgang zeigt für diese Mail keinen Status mehr                | Entscheidung A8, wie die Versandhistorie           |
-| Auftrag wartet oder läuft (`QUEUED`, `RETRY_PENDING`, `SENDING`)                      | nie löschen                                                                                        | laufende Zustellung schützen                       |
-| Kanzlei bearbeitet oder sagt einen Termin ab, ohne „Mandant per E-Mail informieren“   | keine Mail                                                                                         | ausdrückliche Entscheidung je Vorgang              |
-| mit Auswahl, aber ohne Mandantenbezug, anonymisiert oder ohne erreichbaren Kontakt    | nichts speichern, Feld mit Grund markieren                                                         | keine stille Nichtzustellung                       |
-| mit Auswahl: Termin aus Terminanfrage dieses Mandanten                                | ein Auftrag an den anfragenden Kontakt, wenn aktiv und mit Benachrichtigungen                      | Regel der Entscheidungsmail                        |
-| mit Auswahl: sonstiger Termin                                                         | je aktivem Kontakt mit Benachrichtigungen ein Auftrag, alle mit gemeinsamem Erstellungszeitpunkt   | Regel der Entscheidungsmail je Kontakt             |
-| Änderung ohne neuen Titel, neue Zeit oder neuen Ort oder als erledigt gespeichert     | keine Änderungsmail                                                                                | nichts mitzuteilen                                 |
-| vor dem Versand weicht der Termin vom angekündigten Stand ab oder ist abgesagt        | Änderungsmail `SKIPPED` mit Grund                                                                  | nur der aktuelle Stand geht hinaus                 |
-| Termin hat vor dem Versand begonnen                                                   | Änderungs- oder Absagemail `SKIPPED` mit Grund                                                     | Mitteilung überholt                                |
+| Wenn                                                                                                                                                         | Dann                                                                                                                               | Begründung                                                                       |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| der Vorgang wird gespeichert                                                                                                                                 | Versandauftrag im selben Commit; ein Rollback verwirft auch den Auftrag                                                            | keine Mail ohne gespeicherten Vorgang                                            |
+| vor einem Versuch ist der Mandant anonymisiert oder der Anlass entfallen                                                                                     | `SKIPPED` mit Begründung, Inhalt entfernt, kein SMTP-Kontakt, keine Kanzlei-Benachrichtigung                                       | keine überholte Mail                                                             |
+| der Versanddienst nimmt alle Empfänger an                                                                                                                    | `PROVIDER_ACCEPTED`, Inhalt entfernt                                                                                               | nur technische Annahme                                                           |
+| eindeutig gescheitert (Ablehnung, Auftrag nicht vorbereitbar, SMTP-Konfiguration)                                                                            | erneuter Versuch mit wachsendem Abstand, nach sechs Versuchen `FAILED` und Kanzlei-Hinweis                                         | kein Doppelversand möglich                                                       |
+| Ausgang unklar oder begonnener Versuch nach 30 Minuten nicht abgeschlossen                                                                                   | `UNKNOWN` und Kanzlei-Hinweis, kein automatischer Neuversand                                                                       | Doppelversandrisiko                                                              |
+| nur ein Teil der Kontakte angenommen                                                                                                                         | `PARTIAL_FAILURE` und Kanzlei-Hinweis, kein automatischer Neuversand                                                               | Doppelversandrisiko                                                              |
+| Kontaktmail ohne aktiven, per Portal-Login bestätigten Kontakt mit Benachrichtigungen                                                                        | `NO_RECIPIENT` ohne Kanzlei-Hinweis, am Vorgang sichtbar                                                                           | bisheriges Empfängerverhalten                                                    |
+| Kanzlei wählt „Erneut senden“ bei `FAILED` oder `UNKNOWN`                                                                                                    | gleiche Berechtigung wie der Auslöser, Aktualitätsprüfung, dann `QUEUED` oder `SKIPPED`, auditiert                                 | bewusste Entscheidung; bei `UNKNOWN` mit Rückfrage                               |
+| letzter Statuswechsel eines Auftrags im Endstatus liegt mehr als ein Jahr zurück                                                                             | Auftrag samt Metadaten löschen; der Vorgang zeigt für diese Mail keinen Status mehr                                                | Entscheidung A8, wie die Versandhistorie                                         |
+| Auftrag wartet oder läuft (`QUEUED`, `RETRY_PENDING`, `SENDING`)                                                                                             | nie löschen                                                                                                                        | laufende Zustellung schützen                                                     |
+| Kanzlei bearbeitet oder sagt einen Termin ab, ohne „Mandant per E-Mail informieren“                                                                          | keine Mail                                                                                                                         | ausdrückliche Entscheidung je Vorgang                                            |
+| mit Auswahl, aber ohne Mandantenbezug, anonymisiert oder ohne erreichbaren Kontakt                                                                           | nichts speichern, Feld mit Grund markieren                                                                                         | keine stille Nichtzustellung                                                     |
+| mit Auswahl: Termin aus Terminanfrage dieses Mandanten                                                                                                       | ein Auftrag an den anfragenden Kontakt, wenn aktiv und mit Benachrichtigungen                                                      | Regel der Entscheidungsmail                                                      |
+| mit Auswahl: sonstiger Termin                                                                                                                                | je aktivem Kontakt mit Benachrichtigungen ein Auftrag, alle mit gemeinsamem Erstellungszeitpunkt                                   | Regel der Entscheidungsmail je Kontakt                                           |
+| Änderung ohne neuen Titel, neue Zeit oder neuen Ort oder als erledigt gespeichert                                                                            | keine Änderungsmail                                                                                                                | nichts mitzuteilen                                                               |
+| vor dem Versand weicht der Termin vom angekündigten Stand ab oder ist abgesagt                                                                               | Änderungsmail `SKIPPED` mit Grund                                                                                                  | nur der aktuelle Stand geht hinaus                                               |
+| Termin hat vor dem Versand begonnen                                                                                                                          | Änderungs- oder Absagemail `SKIPPED` mit Grund                                                                                     | Mitteilung überholt                                                              |
+| Tax-CMS-Mitteilung an einen Kontakt: Kontakt dieses Tenants und genau dieses Mandanten, aktiv, gültige Adresse, per Portal-Anmeldung bestätigt; Mandat aktiv | ein Auftrag an die in TaxTronik hinterlegte Adresse, unabhängig von „Benachrichtigungen per E-Mail“; Code nur als geheime Variable | Transaktionsmail zum eigenen Vorgang; nur an nachweislich kontrollierte Adressen |
+| Tax-CMS-Ereignis an eine Kanzleiperson: aktiv, im Tenant, mit Zugriff auf den Mandanten                                                                      | In-App-Hinweis mit Nummer und Titel                                                                                                | kein Inhalt über die Rechte im Tax-CMS hinaus                                    |
+| Empfängerprüfung einer Tax-CMS-Mitteilung scheitert                                                                                                          | nicht zustellen, nicht als zugestellt melden, einmal je Mitteilung Hinweis an ADMIN/PARTNER ohne Inhalt; jeder Lauf prüft erneut   | keine stille Nichtzustellung, kein Versand an Unbestätigte                       |
+| Tax-CMS-Mitteilung 7 Tage nach der ersten gescheiterten Prüfung weiter nicht zustellbar oder Gültigkeitsende erreicht                                        | als unzustellbar abschließen und dem Tax-CMS als erledigt melden, kein Versand                                                     | Code bzw. Anforderung überholt; Postausgang nicht blockieren                     |
+| dieselbe Tax-CMS-Mitteilung erneut oder gleichzeitig abgerufen                                                                                               | höchstens ein Auftrag bzw. Hinweis (eindeutige Zustellzeile, eindeutiger Auftrag je Mitteilung)                                    | keine Doppelzustellung                                                           |
+| Auftrag einer Tax-CMS-Mitteilung erreicht einen Endstatus (auch `FAILED`/`UNKNOWN`)                                                                          | Inhalt und Code entfernen, kein „Erneut senden“                                                                                    | Code nicht dauerhaft speichern; Neuversand im Tax-CMS                            |
+| vor dem Versand einer Tax-CMS-Mitteilung: Gültigkeitsende erreicht, Empfänger nicht mehr bestätigt, anderer Mandant, neue Adresse oder Mandat beendet        | `SKIPPED` mit Grund                                                                                                                | fail-closed                                                                      |
 
 ## Ausnahmen und Grenzfälle
 
@@ -172,6 +219,20 @@ dessen Kontakte. Wechselt die Kanzlei im Dialog den Mandanten, ermittelt die
 Action die Empfänger für den neuen Mandanten; die Empfängeranzeige im Dialog
 bezieht sich auf den gespeicherten Stand. Für den Zustellstatus zählt je Termin und Anlass nur die
 jüngste Auslösung.
+
+Mitteilungen des Tax-CMS: Die Benachrichtigungs-Einstellung des Kontakts gilt
+nicht, weil es sich um Transaktionsmails zu einer Freigabe handelt, die der
+Kontakt selbst angefordert hat (Code) oder die ihn als Empfänger nennt
+(Anforderung, Neuadressierung). Ein bestätigter Portal-Login wird dagegen
+immer verlangt: Ein Bestätigungscode bestätigt eine Freigabe und darf nur an
+eine Adresse gehen, deren Inhaber sich nachweislich angemeldet hat; die
+Mitteilungen des Tax-CMS tragen ohnehin keine Adressen. Gültigkeitsfenster:
+der Code bis zu seinem Ablauf, Anforderung und Neuadressierung 7 Tage ab
+Anlage (wie die Code-Lebensdauer), Ereignisse ohne Frist. Die 7 Tage bis zum
+Abschluss als unzustellbar sind eine Betriebsentscheidung (Code-Lebensdauer,
+Zeit für Korrekturen, kein dauerhaft belegter Postausgang), keine Rechtsfrist.
+Das Tax-CMS kennt nur „zugestellt“; eine als unzustellbar abgeschlossene
+Mitteilung steht dort als zugestellt, der wahre Stand in TaxTronik.
 
 Für die einjährige Löschfrist gilt bei `FAILED` und `UNKNOWN` die Eskalation
 als letzter Statuswechsel; das spätere Entfernen des Neuversandinhalts
@@ -241,6 +302,21 @@ abgesagt (Kanzlei)“ (für bestehende Kanzleien geseedet, anpassbar) oder dem
 gleichlautenden Ersatztext. Der Kalender zeigt Zustellstatus und „Erneut
 senden“ unter „Mandanten-Mails zu Terminänderungen“.
 
+Mitteilungen des Tax-CMS holt der Worker `tcms-nachrichten-zustellen`
+minütlich mit einem Systemakteur je Tenant ab (feste, zufällige ID, nur im
+Worker gebildet, nur die zwei Nachrichten-Endpunkte; ein Lauf je Tenant). Je
+Mitteilung prüft er in einer Tenant-Transaktion die Empfänger allein gegen
+TaxTronik, legt eine eindeutige Zustellzeile an und plant den Auftrag
+(`tcms-freigabe-angefordert`, `tcms-freigabe-code`,
+`tcms-freigabe-neu-adressiert`; Vorgang `tcms_nachricht`) bzw. den Hinweis
+ein; erst nach dem Commit meldet er die Zustellung (404 gilt als erledigt). Der
+Code liegt nur Secret-Box-verschlüsselt im Auftrag; jeder Endstatus entfernt
+ihn (Datenbank-CHECK). Texte und Betreff des Tax-CMS werden nicht übernommen;
+es gelten die System-Vorlagen „Tax-CMS: …“ (für bestehende Kanzleien
+geseedet, Platzhalter in der Vorlagenverwaltung erklärt) oder der
+gleichlautende Ersatztext. Logs nennen nur Tenant, Nachrichten-ID, Zweck und
+Grundcode.
+
 Am Vorgang zeigt eine Statuszeile je Anlass den zusammengefassten Stand; bei
 `FAILED` und `UNKNOWN` mit erhaltenem Inhalt bietet sie „Erneut senden“ an.
 Das Gate entspricht der auslösenden Aktion (Einzelrecht, Modul,
@@ -257,7 +333,13 @@ die einjährige Löschfrist der Metadaten und die Zahl von sechs Versuchen sind
 nicht fachlich freigegeben. Der Löschlauf schreibt keinen Auditnachweis; Zähler
 und Stichtag stehen nur im Worker-Log und Job-Ergebnis. Eine
 Rechtsgrundlage, die eine dieser Mails vorschreibt oder ihren Inhalt bestimmt,
-ist im Katalog nicht belegt.
+ist im Katalog nicht belegt. Mitteilungen des Tax-CMS haben keine
+Statuszeile an einem Vorgang; ihr Stand steht in der Zustellzeile (nur
+Betrieb) und im Hinweis an die Admins. Zustellzeilen werden 30 Tage nach der
+Meldung gelöscht; liefert das Tax-CMS danach (etwa nach einer
+Wiederherstellung) eine gemeldete Mitteilung erneut, würde sie erneut
+zugestellt. Zurückgestellte Mitteilungen belegen den ältesten-zuerst-Abruf
+(50 je Lauf) bis zur Korrektur oder zum Abschluss.
 
 ## Fachliche Prüffragen
 
@@ -271,6 +353,11 @@ ist im Katalog nicht belegt.
   Mandanten gegebenenfalls direkt?
 - Genügt für Terminmitteilungen an Kontakte ohne bestätigten Portal-Login die
   Regel der Entscheidungsmail, oder ist ein bestätigter Login zu verlangen?
+- Ist es vertretbar, Mitteilungen des Tax-CMS (insbesondere Bestätigungscodes)
+  ohne Rücksicht auf die Benachrichtigungs-Einstellung, aber nur an per
+  Portal-Anmeldung bestätigte Adressen zu senden?
+- Sind 7 Tage bis zum Abschluss als unzustellbar angemessen, und genügt der
+  einmalige Hinweis an Admins und Partner?
 
 ## Technische Nachweise
 
@@ -288,5 +375,13 @@ die Actions mit und ohne Auswahl sowie ohne erreichbaren Kontakt, die
 Checkbox im Dialog und gegen PostgreSQL das Verwerfen überholter Änderungs-
 mails, den Versand der Absage und die idempotenten System-Vorlagen. Die
 Web-Tests belegen Anstoß, Statusanzeige und
-„Erneut senden“ mit Gate, Rückfrage und Audit. Eine Zustellung beim Mandanten
+„Erneut senden“ mit Gate, Rückfrage und Audit. Für die Mitteilungen des
+Tax-CMS belegen die Datenbanktests des Workers Empfängerprüfung je Grund,
+Einplanung mit verschlüsseltem Code und Entfernen nach dem Versand, Meldung
+erst nach dem Commit, 404 als erledigt, keine Doppelzustellung (zweiter Lauf,
+gleichzeitige Einplanungen und Läufe, eindeutiger Auftrag), einmaligen Hinweis,
+Abschluss nach 7 Tagen und nach Gültigkeitsende, den festen, unveränderlichen
+und für die App-Rolle unsichtbaren Systemakteur und mit dem echten Client nur
+die zwei Nachrichten-Endpunkte; Guards in Web und Worker belegen, dass nur der
+Worker den Systemakteur bildet. Eine Zustellung beim Mandanten
 belegen sie nicht.

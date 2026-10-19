@@ -20,6 +20,7 @@ import {
   type MailOutboxResourceType,
   type MailOutboxTarget,
 } from '@taxtronik/mail/outbox';
+import { istTcmsMailAnlass, type TcmsMailAnlass } from '@taxtronik/mail/tcms-vorlagen';
 import {
   MAIL_OUTBOX_MAX_ATTEMPTS,
   MAIL_OUTBOX_RESEND_WINDOW_DAYS,
@@ -662,8 +663,13 @@ describe('Mail-Outbox: Retry, Terminalstatus und Kanzlei-Hinweis', () => {
 type ResourceModel = keyof ReturnType<typeof activeResources>;
 
 const RESOURCE_ID = '77777777-7777-4777-8777-777777777777';
+/** Anlässe mit Vorgangsprüfung; Mitteilungen des Tax-CMS prüft ein eigener Block unten. */
+type VorgangsAnlass = Exclude<MailOutboxPurpose, TcmsMailAnlass>;
+const VORGANG_ANLAESSE = MAIL_OUTBOX_PURPOSES.filter(
+  (purpose): purpose is VorgangsAnlass => !istTcmsMailAnlass(purpose),
+);
 const PURPOSE_RESOURCE: Record<
-  MailOutboxPurpose,
+  VorgangsAnlass,
   { type: MailOutboxResourceType; model: ResourceModel; direct: boolean }
 > = {
   'invoice-sent': { type: 'invoice', model: 'invoice', direct: true },
@@ -689,7 +695,7 @@ const PURPOSE_RESOURCE: Record<
 };
 
 /** Je Anlass ein Zustand, in dem die Mail nicht mehr gewollt ist. */
-const OBSOLETE_STATE: Record<MailOutboxPurpose, { state: unknown; reason: string }> = {
+const OBSOLETE_STATE: Record<VorgangsAnlass, { state: unknown; reason: string }> = {
   'invoice-sent': { state: null, reason: 'Die Rechnung existiert nicht mehr.' },
   'invoice-external': {
     state: { status: 'CANCELLED', sentAt: null },
@@ -738,7 +744,7 @@ const OBSOLETE_STATE: Record<MailOutboxPurpose, { state: unknown; reason: string
   },
 };
 
-function purposeRow(purpose: MailOutboxPurpose, overrides: Partial<Row> = {}) {
+function purposeRow(purpose: VorgangsAnlass, overrides: Partial<Row> = {}) {
   const resource = PURPOSE_RESOURCE[purpose];
   const target: MailOutboxTarget = {
     tenantId: TENANT,
@@ -767,40 +773,37 @@ function purposeRow(purpose: MailOutboxPurpose, overrides: Partial<Row> = {}) {
 
 describe('Mail-Outbox: Zustand des Vorgangs vor jedem Versand', () => {
   it('kennt für jeden Anlass einen Vorgang', () => {
-    expect(Object.keys(PURPOSE_RESOURCE).sort()).toEqual([...MAIL_OUTBOX_PURPOSES].sort());
+    expect(Object.keys(PURPOSE_RESOURCE).sort()).toEqual([...VORGANG_ANLAESSE].sort());
   });
 
-  it.each([...MAIL_OUTBOX_PURPOSES])(
-    'versendet %s, solange der Vorgang aktiv ist',
-    async (purpose) => {
-      const row = await purposeRow(purpose);
-      const h = harness([row]);
-      // Der Standardzustand der Terminanfrage ist „angenommen“ (Bestätigung).
-      if (purpose === 'appointment-rejected') {
-        h.resources.appointmentRequest.findFirst.mockResolvedValue({ status: 'REJECTED' });
-      }
-      // Der Standardzustand des Termins ist „aktiv“ (Änderung); die Absage braucht CANCELLED.
-      if (purpose === 'appointment-cancelled') {
-        h.resources.appointment.findFirst.mockResolvedValue({
-          status: 'CANCELLED',
-          startsAt: new Date('2026-10-20T08:00:00Z'),
-        });
-      }
+  it.each(VORGANG_ANLAESSE)('versendet %s, solange der Vorgang aktiv ist', async (purpose) => {
+    const row = await purposeRow(purpose);
+    const h = harness([row]);
+    // Der Standardzustand der Terminanfrage ist „angenommen“ (Bestätigung).
+    if (purpose === 'appointment-rejected') {
+      h.resources.appointmentRequest.findFirst.mockResolvedValue({ status: 'REJECTED' });
+    }
+    // Der Standardzustand des Termins ist „aktiv“ (Änderung); die Absage braucht CANCELLED.
+    if (purpose === 'appointment-cancelled') {
+      h.resources.appointment.findFirst.mockResolvedValue({
+        status: 'CANCELLED',
+        startsAt: new Date('2026-10-20T08:00:00Z'),
+      });
+    }
 
-      const stats = await processMailOutbox(h.deps, { now: NOW });
+    const stats = await processMailOutbox(h.deps, { now: NOW });
 
-      const resource = PURPOSE_RESOURCE[purpose];
-      expect(h.resources[resource.model].findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: RESOURCE_ID, tenantId: TENANT, clientId: CLIENT } }),
-      );
-      const send = resource.direct ? h.sendTemplateMail : h.notifyClientContacts;
-      expect(send).toHaveBeenCalledOnce();
-      expect(h.updateMany.mock.calls[0]![0].data).toMatchObject({ status: 'SENDING' });
-      expect(stats).toMatchObject({ processed: 1, providerAccepted: 1, skipped: 0 });
-    },
-  );
+    const resource = PURPOSE_RESOURCE[purpose];
+    expect(h.resources[resource.model].findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: RESOURCE_ID, tenantId: TENANT, clientId: CLIENT } }),
+    );
+    const send = resource.direct ? h.sendTemplateMail : h.notifyClientContacts;
+    expect(send).toHaveBeenCalledOnce();
+    expect(h.updateMany.mock.calls[0]![0].data).toMatchObject({ status: 'SENDING' });
+    expect(stats).toMatchObject({ processed: 1, providerAccepted: 1, skipped: 0 });
+  });
 
-  it.each([...MAIL_OUTBOX_PURPOSES])(
+  it.each(VORGANG_ANLAESSE)(
     'verwirft %s ohne SMTP-Kontakt, wenn der Vorgang nicht mehr aktuell ist',
     async (purpose) => {
       const row = await purposeRow(purpose);
@@ -942,6 +945,157 @@ describe('Mail-Outbox: Inhalt für „Erneut senden" (C4)', () => {
       status: 'PARTIAL_FAILURE',
       payload: {},
       secretVarsEnc: null,
+    });
+  });
+});
+
+// -----------------------------------------------------------------------------
+// TCMS Stufe 4: Mitteilungen des Tax-CMS. Der Bestätigungscode liegt nur als
+// geheime Variable im Auftrag und verlässt ihn mit JEDEM Endstatus – auch bei
+// FAILED/UNKNOWN (kein „Erneut senden“); vor jedem Versuch gelten
+// Gültigkeitsende und bestätigter Empfänger.
+// -----------------------------------------------------------------------------
+
+const KONTAKT = '88888888-8888-4888-8888-888888888888';
+const CODE = '482913';
+
+function tcmsCodeRow(overrides: Partial<Row> = {}) {
+  return enqueued(
+    (tx) =>
+      enqueueDirectMailTx(
+        tx as unknown as Prisma.TransactionClient,
+        {
+          tenantId: TENANT,
+          clientId: CLIENT,
+          purpose: 'tcms-freigabe-code',
+          resource: { type: 'tcms_nachricht', id: RESOURCE_ID },
+          staffHref: `/staff/clients/${CLIENT}/tcms`,
+        },
+        {
+          slug: 'tcms-freigabe-code',
+          to: 'jana@example.test',
+          vars: { freigabe: { titel: 'CMS-Beschreibung v1.2' } },
+          secretVars: { code: CODE },
+          fallback: { subject: 'Code', bodyMd: 'Ihr Code: {{code}}' },
+          relevance: { bis: '2026-10-08T10:00:00.000Z', kontaktId: KONTAKT },
+        },
+      ),
+    overrides,
+  );
+}
+
+function tcmsHarness(rows: Row[]) {
+  const h = harness(rows);
+  const clientContact = {
+    findFirst: vi.fn().mockResolvedValue({
+      active: true,
+      email: 'jana@example.test',
+      lastLoginAt: new Date('2026-10-01T08:00:00Z'),
+      client: { allowActive: true, mandateEndedAt: null },
+    }),
+  };
+  const tx = { mailOutbox: { updateMany: h.updateMany }, ...h.resources, clientContact };
+  h.runAtomic.mockImplementation(async (_t: string, fn: (c: typeof tx) => Promise<unknown>) =>
+    fn(tx),
+  );
+  return { ...h, clientContact };
+}
+
+describe('Mail-Outbox: Mitteilungen des Tax-CMS (TCMS Stufe 4)', () => {
+  it('speichert den Code nur verschlüsselt und setzt ihn erst beim Versand ein', async () => {
+    const row = await tcmsCodeRow();
+    expect(JSON.stringify(row.payload)).not.toContain(CODE);
+    expect(String(row.secretVarsEnc)).not.toContain(CODE);
+    const h = tcmsHarness([row]);
+
+    await processMailOutbox(h.deps, { now: NOW });
+
+    expect(h.sendTemplateMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        slug: 'tcms-freigabe-code',
+        to: 'jana@example.test',
+        vars: expect.objectContaining({ code: CODE }),
+      }),
+    );
+    expect(h.updateMany.mock.calls[1]![0].data).toMatchObject({
+      status: 'PROVIDER_ACCEPTED',
+      payload: {},
+      secretVarsEnc: null,
+    });
+    for (const call of [...h.log.info.mock.calls, ...h.log.warn.mock.calls]) {
+      expect(JSON.stringify(call)).not.toContain(CODE);
+    }
+  });
+
+  it.each([
+    [
+      'FAILED nach dem letzten Versuch',
+      { ok: false, sentViaTemplate: true, uncertainFailure: false },
+      'FAILED',
+    ],
+    [
+      'UNKNOWN bei unklarem Ausgang',
+      { ok: false, sentViaTemplate: true, uncertainFailure: true },
+      'UNKNOWN',
+    ],
+  ])('entfernt Inhalt und Code auch bei %s (kein Neuversand)', async (_label, result, status) => {
+    const row = await tcmsCodeRow({
+      status: 'RETRY_PENDING',
+      attemptCount: MAIL_OUTBOX_MAX_ATTEMPTS - 1,
+    });
+    const h = tcmsHarness([row]);
+    h.sendTemplateMail.mockResolvedValue(result);
+
+    await processMailOutbox(h.deps, { now: NOW });
+
+    const terminal = h.updateMany.mock.calls[1]![0].data;
+    expect(terminal).toMatchObject({ status, payload: {}, secretVarsEnc: null });
+    // Der Kanzlei-Hinweis nennt den Anlass, nie den Code.
+    expect(h.notifyStaff).toHaveBeenCalledOnce();
+    expect(JSON.stringify(h.notifyStaff.mock.calls[0])).not.toContain(CODE);
+  });
+
+  it('eskaliert einen hängenden Versuch als UNKNOWN ohne Inhalt und Code', async () => {
+    const lastAttemptAt = new Date(NOW.getTime() - 31 * 60_000);
+    const stuck = await tcmsCodeRow({ status: 'SENDING', attemptCount: 1, lastAttemptAt });
+    const h = tcmsHarness([]);
+    h.findMany.mockImplementation(async (args: { where: { status: unknown } }) =>
+      args.where.status === 'SENDING' ? [stuck] : [],
+    );
+
+    await processMailOutbox(h.deps, { now: NOW });
+
+    expect(h.updateMany.mock.calls[0]![0].data).toMatchObject({
+      status: 'UNKNOWN',
+      payload: {},
+      secretVarsEnc: null,
+    });
+  });
+
+  it('verwirft den Code nach seinem Gültigkeitsende oder bei geänderter Adresse ohne Versand', async () => {
+    const abgelaufen = await tcmsCodeRow();
+    const h = tcmsHarness([abgelaufen]);
+    await processMailOutbox(h.deps, { now: new Date('2026-10-08T10:00:00.000Z') });
+    expect(h.sendTemplateMail).not.toHaveBeenCalled();
+    expect(h.updateMany.mock.calls[0]![0].data).toMatchObject({
+      status: 'SKIPPED',
+      lastError: 'Nicht versendet: Die Mitteilung des Tax-CMS ist abgelaufen.',
+      payload: {},
+      secretVarsEnc: null,
+    });
+
+    const umgezogen = tcmsHarness([await tcmsCodeRow()]);
+    umgezogen.clientContact.findFirst.mockResolvedValue({
+      active: true,
+      email: 'neu@example.test',
+      lastLoginAt: new Date('2026-10-01T08:00:00Z'),
+      client: { allowActive: true, mandateEndedAt: null },
+    });
+    await processMailOutbox(umgezogen.deps, { now: NOW });
+    expect(umgezogen.sendTemplateMail).not.toHaveBeenCalled();
+    expect(umgezogen.updateMany.mock.calls[0]![0].data).toMatchObject({
+      status: 'SKIPPED',
+      lastError: 'Nicht versendet: Die E-Mail-Adresse des Empfängers hat sich geändert.',
     });
   });
 });

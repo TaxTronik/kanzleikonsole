@@ -84,6 +84,8 @@ const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
     { pattern: '15 4 * * *', tz: UTC },
     DAILY_RETRY,
   ],
+  // TCMS Stufe 4: new scheduler, no retry (state in tcms_nachricht_zustellung; every minute).
+  tcmsNachrichtenZustellen: ['tcms-nachrichten-zustellen', { every: MINUTE }, undefined],
 };
 
 describe('R-13 generated repeat schedulers', () => {

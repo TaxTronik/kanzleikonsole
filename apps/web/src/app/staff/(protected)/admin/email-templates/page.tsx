@@ -3,6 +3,7 @@ import { ArrowLeft } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 
 import { withTenantContext } from '@taxtronik/db';
+import { TCMS_MAIL_VORLAGEN } from '@taxtronik/mail/tcms-vorlagen';
 import { EmailTemplateEditor } from './editor';
 
 export default async function EmailTemplatesPage() {
@@ -16,6 +17,13 @@ export default async function EmailTemplatesPage() {
         orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
       }),
   );
+
+  // TCMS Stufe 4: System-Slugs ohne eigene Fassung der Kanzlei bleiben sichtbar
+  // (neue Kanzleien erhalten die Vorlagen nicht per Migration; es gilt der Standardtext).
+  const vorhanden = new Set(templates.map((t) => t.slug));
+  const systemStandard = Object.values(TCMS_MAIL_VORLAGEN)
+    .filter((v) => !vorhanden.has(v.slug))
+    .map((v) => ({ slug: v.slug, name: v.name, subject: v.subject }));
 
   return (
     <div className="min-w-0 max-w-4xl p-4 sm:p-6 lg:p-8">
@@ -40,6 +48,7 @@ export default async function EmailTemplatesPage() {
           bodyMd: t.bodyMd,
           active: t.active,
         }))}
+        systemStandard={systemStandard}
       />
     </div>
   );

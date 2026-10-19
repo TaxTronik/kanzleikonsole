@@ -2,6 +2,11 @@
 
 import { useState, useTransition } from 'react';
 import { Plus, Trash2, Save, X, Mail, Pencil, Lock } from 'lucide-react';
+import {
+  istTcmsMailAnlass,
+  TCMS_VORLAGEN_PLATZHALTER,
+  type VorlagenPlatzhalter,
+} from '@taxtronik/mail/tcms-vorlagen';
 import { saveEmailTemplateAction, deleteEmailTemplateAction } from './actions';
 import { confirmDialog, noticeDialog } from '@/components/ui/modal';
 
@@ -15,11 +20,46 @@ interface Template {
   active: boolean;
 }
 
+/** System-Vorlage, für die die Kanzlei keine eigene Fassung hat (es gilt der Standardtext). */
+export interface SystemStandard {
+  slug: string;
+  name: string;
+  subject: string;
+}
+
+/** Platzhalter einer System-Vorlage (TCMS Stufe 4: Mitteilungen des Tax-CMS). */
+function platzhalterFuer(slug: string | null): readonly VorlagenPlatzhalter[] | null {
+  return slug && istTcmsMailAnlass(slug) ? TCMS_VORLAGEN_PLATZHALTER[slug] : null;
+}
+
+function PlatzhalterListe({ slug, id }: { slug: string; id: string }) {
+  const liste = platzhalterFuer(slug);
+  if (!liste) return null;
+  return (
+    <div id={id} className="mt-2 text-xs text-muted">
+      <p className="font-medium text-secondary">Platzhalter dieser System-Vorlage</p>
+      <ul className="mt-1 space-y-0.5">
+        {liste.map((p) => (
+          <li key={p.name} className="[overflow-wrap:anywhere]">
+            <code>{`{{${p.name}}}`}</code> – {p.beschreibung}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function emptyDraft(): Template {
   return { id: '', slug: null, name: '', category: '', subject: '', bodyMd: '', active: true };
 }
 
-export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
+export function EmailTemplateEditor({
+  initial,
+  systemStandard = [],
+}: {
+  initial: Template[];
+  systemStandard?: SystemStandard[];
+}) {
   const [editing, setEditing] = useState<Template | null>(null);
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -136,6 +176,30 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
         </ul>
       )}
 
+      {systemStandard.length > 0 && (
+        <section className="card min-w-0 p-4" aria-labelledby="email-template-standard">
+          <h2 id="email-template-standard" className="text-sm font-semibold text-primary">
+            System-Vorlagen mit Standardtext
+          </h2>
+          <p className="text-xs text-muted mt-1">
+            Für diese Anlässe hat Ihre Kanzlei keine eigene Vorlage; TaxTronik versendet den
+            Standardtext.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {systemStandard.map((t) => (
+              <li key={t.slug} className="min-w-0 [overflow-wrap:anywhere]">
+                <span className="font-medium text-primary">{t.name}</span>{' '}
+                <span className="badge-gray text-[10px]">System · {t.slug}</span>
+                <p className="text-xs text-secondary dark:text-disabled mt-1">
+                  <strong>Betreff:</strong> {t.subject}
+                </p>
+                <PlatzhalterListe slug={t.slug} id={`email-template-standard-${t.slug}`} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {!editing && (
         <button
           type="button"
@@ -219,6 +283,9 @@ export function EmailTemplateEditor({ initial }: { initial: Template[] }) {
               Platzhalter: <code>{'{{client.name}}'}</code> wird zur Laufzeit durch den
               Mandantennamen ersetzt.
             </p>
+            {editing.slug && (
+              <PlatzhalterListe slug={editing.slug} id="email-template-placeholders" />
+            )}
           </div>
 
           <label className="inline-flex items-start gap-2 text-sm [&>input]:mt-1 [&>input]:shrink-0">

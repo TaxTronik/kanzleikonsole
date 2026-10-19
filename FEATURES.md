@@ -1181,6 +1181,17 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   geändert – bitte neu laden.“), Ausfälle und offene Ausgänge bei
   Schreibzugriffen; nie Texte des Dienstes
 
+### Zustellung (Stufe 4)
+
+- Worker-Job `tcms-nachrichten-zustellen` (minütlich): holt den Postausgang
+  des Tax-CMS mit einem Systemakteur je Tenant ab, prüft Empfänger allein
+  gegen TaxTronik und stellt zu – Mails an bestätigte Kontakte genau dieses
+  Mandanten über die Mail-Outbox (Code nur verschlüsselt und nur bis zum
+  Versand), Hinweise an Kanzleipersonen mit Zugriff; keine Doppelzustellung,
+  einmaliger Admin-Hinweis bei nicht bestätigtem Empfänger (MAIL-OUTBOX-001)
+- System-Vorlagen „Tax-CMS: …“ mit erklärten Platzhaltern unter
+  _Administration → E-Mail-Vorlagen_
+
 ### Integration
 
 - Vendorte Pakete `@taxtronik/tcms-contract` (HTTP-Vertrag) und
@@ -1709,7 +1720,8 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `pdf-page-count-backfill` (04:30 UTC, trägt fehlende Seitenzahlen von
   PDF-Ausweisquellen nach) und `mail-outbox-retention` (04:15 UTC, löscht
   Mail-Outbox-Versandaufträge ein Jahr nach dem letzten Statuswechsel im
-  Endstatus).
+  Endstatus) sowie `tcms-nachrichten-zustellen` (minütlich, Postausgang des
+  Tax-CMS zustellen).
   Ein asynchroner Virus-Scan-Job existiert bewusst nicht — Scans laufen
   ausschließlich synchron beim Upload-Commit in `@taxtronik/storage`.
   Die Worker-Jobs haben eigene Unit-Tests

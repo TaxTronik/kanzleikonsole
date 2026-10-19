@@ -4215,7 +4215,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter Wiederholung und Eskalation zu, der Status steht am Vorgang, und fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden. Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach dem letzten Statuswechsel. Terminänderung und -absage im Kanzleikalender lösen auf ausdrücklichen Wunsch eine Mail aus. Die technische Annahme ist kein Zugangsnachweis; die fachliche Freigabe der Fristen fehlt."
+        "summary": "Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter Wiederholung und Eskalation zu, der Status steht am Vorgang, und fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden. Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach dem letzten Statuswechsel. Terminänderung und -absage im Kanzleikalender lösen auf ausdrücklichen Wunsch eine Mail aus. Mitteilungen des Tax-CMS (Freigabe angefordert, Bestätigungscode, Neuadressierung) stellt ein Worker mit einem Systemakteur je Tenant über die Outbox zu, nur an bestätigte Kontakte genau dieses Mandanten, ohne Doppelzustellung und mit Code nur verschlüsselt bis zum Endstatus; gemeldete Ereignisse gehen als Hinweis an Kanzleipersonen mit Zugriff. Die technische Annahme ist kein Zugangsnachweis; die fachliche Freigabe der Fristen fehlt."
       },
       "sources": [
         {
@@ -4230,6 +4230,13 @@
           "citation": "Anwenderdokumentation Kalender, Entschiedene Terminanfragen und Zustellstatus",
           "path": "docs/anwenderdoku/kalender-fristen-bescheide.md",
           "checked_at": "2026-10-12",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Tax-CMS, Abschnitt 9 „Mitteilungen per E-Mail und Hinweis“",
+          "path": "docs/anwenderdoku/tax-cms.md",
+          "checked_at": "2026-10-19",
           "primary": false
         }
       ],
@@ -4254,7 +4261,20 @@
         "apps/web/src/app/staff/(protected)/calendar/actions.ts",
         "apps/web/src/app/staff/(protected)/calendar/edit-appointment-dialog.tsx",
         "apps/web/src/app/staff/(protected)/calendar/appointment-mails.tsx",
-        "packages/db/prisma/migrations/20261012110100_appointment_change_mail_templates/migration.sql"
+        "packages/db/prisma/migrations/20261012110100_appointment_change_mail_templates/migration.sql",
+        "packages/mail/src/tcms-vorlagen.ts",
+        "apps/worker/src/jobs/tcms-nachrichten.ts",
+        "apps/worker/src/jobs/tcms-nachrichten-zustellen.ts",
+        "apps/worker/src/tcms/systemakteur.ts",
+        "apps/worker/src/tcms/dienst.ts",
+        "packages/tcms-client/src/nachrichten.ts",
+        "packages/config/src/job-queues.ts",
+        "apps/web/src/app/staff/(protected)/admin/email-templates/page.tsx",
+        "apps/web/src/app/staff/(protected)/admin/email-templates/editor.tsx",
+        "packages/db/prisma/schema.prisma",
+        "packages/db/prisma/migrations/20261019150000_notification_kind_tcms/migration.sql",
+        "packages/db/prisma/migrations/20261019150100_tcms_nachrichten_zustellung/migration.sql",
+        "packages/db/prisma/migrations/20261019150200_tcms_mail_templates/migration.sql"
       ],
       "test_refs": [
         "packages/mail/src/__tests__/outbox.test.ts",
@@ -4273,19 +4293,28 @@
         "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-actions.test.tsx",
         "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-edit.test.tsx",
         "apps/worker/src/jobs/__tests__/mail-outbox-appointment-db.test.ts",
-        "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-mails.test.tsx"
+        "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-mails.test.tsx",
+        "apps/worker/src/jobs/__tests__/tcms-nachrichten-db.test.ts",
+        "apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts",
+        "apps/web/src/__tests__/tcms-systemakteur-guard.test.ts",
+        "packages/tcms-client/src/__tests__/nachrichten.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/email-templates/__tests__/editor.test.tsx"
       ],
       "feature_refs": [
         "docs/anwenderdoku/administration.md",
-        "docs/anwenderdoku/kalender-fristen-bescheide.md"
+        "docs/anwenderdoku/kalender-fristen-bescheide.md",
+        "docs/anwenderdoku/tax-cms.md"
       ],
       "related_rules": [
         "ACCESS-TENANT-RLS-001",
         "ACCESS-STAFF-PERMISSION-001",
         "DSGVO-OPERATIONAL-RETENTION-001",
-        "AUDIT-HASH-CHAIN-001"
+        "AUDIT-HASH-CHAIN-001",
+        "ACCESS-CLIENT-MODE-001",
+        "TCMS-AKTEUR-001",
+        "TCMS-DIENST-001"
       ],
-      "tags": ["e-mail", "outbox", "zustellstatus", "mandantenkommunikation"],
+      "tags": ["e-mail", "outbox", "zustellstatus", "mandantenkommunikation", "tax-cms"],
       "path": "docs/fachkatalog/regeln/mandat-und-zugriff/mail-outbox-001-mandantenmail-zustellung.md",
       "summary": "E-Mails, die ein Kanzleivorgang an Mandanten auslöst, speichert TaxTronik im selben Commit wie den Vorgang als Versandauftrag. Ein Hintergrunddienst stellt sie zu, prüft vor jedem Versuch, ob die Mail noch gewollt ist, wiederholt nur eindeutig gescheiterte Versuche und meldet endgültige Fehlschläge der Kanzlei. „Vom Versanddienst angenommen“ ist eine technische Aussage und kein Zugangs- oder Kenntnisnahmenachweis. Diese Regel ist eine Produktregel; eine Rechtsgrundlage für Inhalt, Zeitpunkt oder Pflicht dieser Mails ist offen."
     },

@@ -34,7 +34,8 @@
 // entfernt — außer bei FAILED und UNKNOWN: Dort bleiben sie für „Erneut
 // senden" (C4, app.mail_outbox_resend) erhalten und werden nach
 // MAIL_OUTBOX_RESEND_WINDOW_DAYS ab Eskalation, bei anonymisiertem Mandanten
-// sofort entfernt.
+// sofort entfernt. Mitteilungen des Tax-CMS (TCMS Stufe 4) verlieren beides mit
+// jedem Endstatus; für sie gibt es keinen Neuversand.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
@@ -47,6 +48,7 @@ import type {
 } from '@taxtronik/mail';
 import {
   checkMailOutboxRelevanceTx,
+  MAIL_OUTBOX_NO_RESEND_RESOURCE_TYPES,
   MAIL_OUTBOX_PURPOSE_LABELS,
   mailOutboxDispatch,
   openMailOutboxSecretVars,
@@ -175,7 +177,11 @@ const CLEARED_CONTENT = {
  */
 const RETAINED_FOR_RESEND = { nextAttemptAt: null } as const;
 
-function terminalContent(status: string) {
+function terminalContent(status: string, resourceType: string) {
+  // TCMS Stufe 4: Mitteilungen des Tax-CMS (Bestätigungscode) behalten nie Inhalt
+  // oder geheime Variablen, auch nicht für „Erneut senden“ (DB-CHECK
+  // mail_outbox_tcms_content_check).
+  if (MAIL_OUTBOX_NO_RESEND_RESOURCE_TYPES.has(resourceType)) return CLEARED_CONTENT;
   return status === 'FAILED' || status === 'UNKNOWN' ? RETAINED_FOR_RESEND : CLEARED_CONTENT;
 }
 
@@ -252,7 +258,7 @@ async function escalateStrandedSending(
       const update = await tx.mailOutbox.updateMany({
         where: { id: row.id, status: 'SENDING', lastAttemptAt: row.lastAttemptAt },
         data: {
-          ...terminalContent('UNKNOWN'),
+          ...terminalContent('UNKNOWN', row.resourceType),
           status: 'UNKNOWN',
           escalatedAt: now,
           lastError:
@@ -351,7 +357,7 @@ async function persistTerminal(
     const update = await tx.mailOutbox.updateMany({
       where: ownClaim(row),
       data: {
-        ...terminalContent(input.status),
+        ...terminalContent(input.status, row.resourceType),
         status: input.status,
         acceptedAt: input.status === 'PROVIDER_ACCEPTED' ? row.attemptAt : null,
         lastError: input.lastError,

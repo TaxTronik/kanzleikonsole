@@ -114,3 +114,36 @@ Bereichen.
 - Die Regeln zur Weitergabe von Personen und Rechten an das Tax-CMS sind im
   [Fachkatalog](../fachkatalog/README.md) als **ungeprüfte Entwürfe** geführt
   (TCMS-AKTEUR-001, TCMS-DIENST-001); die fachliche Freigabe steht aus.
+
+## 9. Mitteilungen per E-Mail und Hinweis
+
+Das Tax-CMS versendet selbst keine E-Mails. TaxTronik stellt seine
+Mitteilungen zu:
+
+- **An Kontakte des Mandanten** per E-Mail: „Freigabe angefordert“,
+  „Bestätigungscode“ (nach „Code anfordern“ im Portal) und „Freigabe an Sie
+  adressiert“. Die Mails gehen nur an aktive Kontakte genau dieses Mandanten,
+  deren Adresse bestätigt ist – der Kontakt hat sich mindestens einmal im
+  Mandantenportal angemeldet. Weil es um eine Freigabe geht, die der Kontakt
+  selbst angefordert hat oder die ihn nennt, gelten sie unabhängig von
+  „Benachrichtigungen per E-Mail“ des Kontakts. Der Code steht nie im
+  Betreff und gilt höchstens 7 Tage.
+- **An Kanzleipersonen** als Hinweis in TaxTronik: „Ereignis im Tax-CMS
+  gemeldet“ mit Nummer und Titel, nur an die zuständige Person mit Zugriff
+  auf den Mandanten. Der Hinweis führt zu den Ereignissen des Mandanten.
+
+**Texte anpassen:** Unter _Administration → E-Mail-Vorlagen_ stehen die
+System-Vorlagen „Tax-CMS: Freigabe angefordert“, „Tax-CMS: Bestätigungscode“
+und „Tax-CMS: Freigabe neu adressiert“ mit ihren Platzhaltern. Hat Ihre
+Kanzlei keine eigene Fassung, nennt die Seite sie unter „System-Vorlagen mit
+Standardtext“; es gilt dann der Standardtext.
+
+**Nicht zugestellt?** Kann TaxTronik einen Empfänger nicht bestätigen (z. B.
+Kontakt ohne Portal-Anmeldung, deaktiviert, anderem Mandanten zugeordnet;
+Kanzleiperson ohne Zugriff), erhalten Admins und Partner einmal je Mitteilung
+den Hinweis „Mitteilung des Tax-CMS nicht zugestellt“ mit dem Grund – ohne
+Inhalt und ohne Code. Nach der Korrektur stellt TaxTronik innerhalb einer
+Minute zu. Nach 7 Tagen ohne Korrektur oder nach Ablauf des Codes gilt die
+Mitteilung als unzustellbar; fordern Sie die Freigabe dann im Tax-CMS neu an
+oder adressieren Sie sie neu. Mails des Tax-CMS können nicht über „Erneut
+senden“ wiederholt werden.

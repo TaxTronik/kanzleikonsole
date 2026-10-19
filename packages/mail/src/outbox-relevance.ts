@@ -13,10 +13,16 @@
 // RLS) und ist bewusst konservativ: Sie verhindert nur Mails, deren Anlass
 // erkennbar entfallen ist oder deren Inhalt nicht mehr stimmt. Ein unbekannter
 // Anlass bleibt gewollt (bisheriges Verhalten).
+//
+// TCMS Stufe 4: Mitteilungen des Tax-CMS prüfen dagegen fail-closed: Ohne
+// angekündigtes Gültigkeitsende, nach seinem Ablauf, mit fremdem Vorgangstyp
+// oder wenn der Empfänger nicht mehr bestätigt zu diesem Mandanten gehört,
+// geht nichts hinaus (MAIL-OUTBOX-001).
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
 import { MAIL_OUTBOX_PURPOSES, type MailOutboxPurpose } from './outbox-purposes';
+import { istTcmsMailAnlass, TCMS_NACHRICHT_RESSOURCE } from './tcms-vorlagen';
 
 export type MailOutboxRelevance = { wanted: true } | { wanted: false; reason: string };
 
@@ -32,6 +38,7 @@ export type MailOutboxRelevanceReader = Pick<
   | 'appointmentRequest'
   | 'appointment'
   | 'formSubmission'
+  | 'clientContact'
 >;
 
 export interface MailOutboxRelevanceRow {
@@ -58,6 +65,8 @@ type Check = (
   ref: ResourceRef,
   now: Date,
   announced: Record<string, unknown> | null,
+  /** Gespeicherter Auftragsinhalt (Empfängeradresse `to` für TCMS-Mitteilungen). */
+  payload: unknown,
 ) => Promise<MailOutboxRelevance>;
 
 const WANTED: MailOutboxRelevance = { wanted: true };
@@ -298,6 +307,53 @@ const formStillOpen: Check = async (db, ref) => {
   return WANTED;
 };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function payloadTo(payload: unknown): string | null {
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const to = (payload as Record<string, unknown>)['to'];
+  return typeof to === 'string' ? to : null;
+}
+
+/**
+ * TCMS Stufe 4: Mitteilung des Tax-CMS an einen Mandantenkontakt. Gewollt nur
+ * bis zum angekündigten Gültigkeitsende (`relevance.bis`: Ablauf des Codes bzw.
+ * Anforderung plus Code-Lebensdauer) und nur, solange der Empfänger ein
+ * aktiver, per Portal-Anmeldung bestätigter Kontakt genau dieses Mandanten mit
+ * unveränderter Adresse ist und das Mandat aktiv ist – dieselben Bedingungen,
+ * unter denen der Worker den Auftrag angelegt hat. Fehlt eine Angabe: verworfen.
+ */
+const tcmsMitteilungAktuell: Check = async (db, ref, now, announced, payload) => {
+  const bis = typeof announced?.['bis'] === 'string' ? Date.parse(announced['bis']) : NaN;
+  if (!Number.isFinite(bis))
+    return obsolete('Die Mitteilung des Tax-CMS hat kein Gültigkeitsende.');
+  if (now.getTime() >= bis) return obsolete('Die Mitteilung des Tax-CMS ist abgelaufen.');
+  const kontaktId = announced?.['kontaktId'];
+  const to = payloadTo(payload);
+  if (typeof kontaktId !== 'string' || !UUID.test(kontaktId) || !to) {
+    return obsolete('Der Empfänger der Mitteilung ist nicht bestimmt.');
+  }
+  const kontakt = await db.clientContact.findFirst({
+    where: { id: kontaktId, tenantId: ref.tenantId, clientId: ref.clientId },
+    select: {
+      active: true,
+      email: true,
+      lastLoginAt: true,
+      client: { select: { allowActive: true, mandateEndedAt: true } },
+    },
+  });
+  if (!kontakt) return obsolete('Der Empfänger gehört nicht (mehr) zu diesem Mandanten.');
+  if (!kontakt.active) return obsolete('Der Empfänger ist nicht mehr aktiv.');
+  if (!kontakt.lastLoginAt) return obsolete('Die Adresse des Empfängers ist nicht bestätigt.');
+  if (!kontakt.client.allowActive || kontakt.client.mandateEndedAt) {
+    return obsolete('Das Mandat ist nicht mehr aktiv.');
+  }
+  if (kontakt.email.trim().toLowerCase() !== to.trim().toLowerCase()) {
+    return obsolete('Die E-Mail-Adresse des Empfängers hat sich geändert.');
+  }
+  return WANTED;
+};
+
 /** Je Anlass der erwartete Vorgangstyp und seine Prüfung. */
 const CHECKS: Readonly<Record<MailOutboxPurpose, { resourceType: string; check: Check }>> = {
   'invoice-sent': { resourceType: 'invoice', check: invoiceVisible },
@@ -315,6 +371,15 @@ const CHECKS: Readonly<Record<MailOutboxPurpose, { resourceType: string; check: 
   'form-sent': { resourceType: 'form_submission', check: formStillOpen },
   'appointment-changed': { resourceType: 'appointment', check: appointmentChangeCurrent },
   'appointment-cancelled': { resourceType: 'appointment', check: appointmentStillCancelled },
+  'tcms-freigabe-angefordert': {
+    resourceType: TCMS_NACHRICHT_RESSOURCE,
+    check: tcmsMitteilungAktuell,
+  },
+  'tcms-freigabe-code': { resourceType: TCMS_NACHRICHT_RESSOURCE, check: tcmsMitteilungAktuell },
+  'tcms-freigabe-neu-adressiert': {
+    resourceType: TCMS_NACHRICHT_RESSOURCE,
+    check: tcmsMitteilungAktuell,
+  },
 };
 
 /** `payload.relevance` eines Auftrags, sofern vorhanden. */
@@ -335,7 +400,7 @@ function isKnownPurpose(purpose: string): purpose is MailOutboxPurpose {
  * gilt: Ein anonymisierter Mandant erhält keine Mail mehr. Danach entscheidet
  * der Zustand des Vorgangs. Unbekannte Anlässe oder ein abweichender
  * Vorgangstyp bleiben gewollt, damit die Prüfung nie stiller als bisher
- * blockiert.
+ * blockiert – außer bei Mitteilungen des Tax-CMS (fail-closed, TCMS Stufe 4).
  */
 export async function checkMailOutboxRelevanceTx(
   db: MailOutboxRelevanceReader,
@@ -350,11 +415,17 @@ export async function checkMailOutboxRelevanceTx(
   if (client.anonymizedAt) return obsolete('Der Mandant wurde anonymisiert.');
   if (!isKnownPurpose(row.purpose)) return WANTED;
   const entry = CHECKS[row.purpose];
-  if (entry.resourceType !== row.resourceType) return WANTED;
+  if (entry.resourceType !== row.resourceType) {
+    // TCMS-Mitteilungen fail-closed: nie ohne ihre Zustellzeile.
+    return istTcmsMailAnlass(row.purpose)
+      ? obsolete('Der Auftrag gehört zu keiner Mitteilung des Tax-CMS.')
+      : WANTED;
+  }
   return entry.check(
     db,
     { tenantId: row.tenantId, clientId: row.clientId, id: row.resourceId },
     now,
     announcedState(row.payload),
+    row.payload,
   );
 }

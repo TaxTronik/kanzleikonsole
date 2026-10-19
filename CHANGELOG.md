@@ -43,6 +43,20 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   auf; vendortes Domain-Paket `@taxtronik/tcms-domain` für Labels.
   Fachkatalog-Entwürfe TCMS-AKTEUR-001 und TCMS-DIENST-001 (ungeprüft)
   (`docs/anwenderdoku/tax-cms.md`, `docs/development/tcms-oberflaechen.md`).
+- **[TCMS]** Zustellung der Mitteilungen des Tax-CMS, Stufe 4: Der Worker
+  `tcms-nachrichten-zustellen` holt den Postausgang minütlich mit einem
+  Systemakteur je Tenant ab (feste, zufällige ID, nur im Worker gebildet, nur
+  die zwei Nachrichten-Endpunkte) und stellt zu – Freigabe angefordert,
+  Bestätigungscode und Neuadressierung per Mail-Outbox nur an aktive,
+  per Portal-Anmeldung bestätigte Kontakte genau dieses Mandanten, gemeldete
+  Ereignisse als Hinweis an Kanzleipersonen mit Zugriff. Keine
+  Doppelzustellung, Meldung erst nach dem Commit, einmaliger Hinweis an
+  Admins und Partner bei nicht bestätigtem Empfänger, Abschluss als
+  unzustellbar nach 7 Tagen. System-Vorlagen „Tax-CMS: …“ mit erklärten
+  Platzhaltern unter _Administration → E-Mail-Vorlagen_. Vertrag aus TCMS
+  `main` 6af277d; der Client prüft die Akteursarten je Endpunkt und je Client
+  (`MAIL-OUTBOX-001`, ungeprüft; `docs/development/tcms-anbindung.md`
+  Abschnitt 8, `docs/operations/tcms-betrieb.md` Abschnitt 10).
 
 - Mandanten-Mails bei Terminänderung oder -absage: Im Bearbeiten- und
   Absagen-Dialog des Kanzleikalenders kann die Kanzlei den Mandanten per
@@ -1792,6 +1806,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[TCMS]** Bestätigungscodes des Tax-CMS liegen in TaxTronik nur
+  Secret-Box-verschlüsselt im Versandauftrag und nur bis zu dessen Endstatus,
+  auch bei Fehlschlag (Datenbank-CHECK, kein „Erneut senden“); sie erscheinen
+  weder in Logs, Hinweisen noch Betreffzeilen. Die Web-App kann keinen
+  Systemakteur signieren (Client mit Personen-Akteursarten, Guard).
+  (`MAIL-OUTBOX-001`)
 - **[TCMS]** Anbindung des Tax-CMS mit je Anfrage einer an Methode, Pfad,
   Query und Body gebundenen, einmaligen Ed25519-Akteursbestätigung (höchstens
   60 s gültig) plus Dienst-Token. Mandantenbezüge werden nur im Umfang von

@@ -58,6 +58,8 @@ model Tenant {
   auditSeals                     AuditSeal[]
   auditVerifyCheckpoints         AuditVerifyCheckpoint[]
   auditAnchorLease               AuditAnchorLease?
+  tcmsSystemakteur               TcmsSystemakteur?
+  tcmsNachrichtZustellungen      TcmsNachrichtZustellung[]
   backupRecords                  BackupRecord[]
   bwaPeriods                     BwaPeriod[]
   bwaPlans                       BwaPlan[]
@@ -2583,6 +2585,41 @@ model AuditVerifyCheckpoint {
 /// P-05 (AUDIT-RFC3161-ANCHOR-001): Tenant-Lease des Rolling-Anchor-Workers.
 /// Owner-only; während des TSA-Aufrufs hält der Worker weder Transaktion noch
 /// Verbindung, nur diesen committeten Lease mit Ablaufzeit.
+/// TCMS Stufe 4 (MAIL-OUTBOX-001): Systemakteur des Tax-CMS je Tenant – feste,
+/// zufällige ID (einmal erzeugt, unveränderlich per Trigger) – und Lease des
+/// Zustelllaufs (ein Lauf je Tenant). Owner-only: nur der Worker.
+model TcmsSystemakteur {
+  tenantId   String    @id @map("tenant_id") @db.Uuid
+  akteurId   String    @unique(map: "tcms_systemakteur_akteur_id_key") @default(dbgenerated("gen_random_uuid()")) @map("akteur_id") @db.Uuid
+  erstelltAm DateTime  @default(now()) @map("erstellt_am") @db.Timestamptz(6)
+  laufHalter String?   @map("lauf_halter") @db.Uuid
+  laufBis    DateTime? @map("lauf_bis") @db.Timestamptz(6)
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tcms_systemakteur_tenant_id_fkey")
+
+  @@map("tcms_systemakteur")
+}
+
+/// TCMS Stufe 4 (MAIL-OUTBOX-001): Zustellstand je Mitteilung des Tax-CMS
+/// (ohne Inhalte). Eindeutig je Tenant und Nachrichten-ID; schließt eine
+/// doppelte Einplanung aus. Owner-only: nur der Worker.
+model TcmsNachrichtZustellung {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  nachrichtId     String    @map("nachricht_id")
+  zweck           String
+  status          String
+  grund           String?
+  erstmalsAm      DateTime  @default(now()) @map("erstmals_am") @db.Timestamptz(6)
+  geprueftAm      DateTime  @default(now()) @map("geprueft_am") @db.Timestamptz(6)
+  abgeschlossenAm DateTime? @map("abgeschlossen_am") @db.Timestamptz(6)
+  hinweisAm       DateTime? @map("hinweis_am") @db.Timestamptz(6)
+  gemeldetAm      DateTime? @map("gemeldet_am") @db.Timestamptz(6)
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "tcms_nachricht_zustellung_tenant_id_fkey")
+
+  @@unique([tenantId, nachrichtId], map: "tcms_nachricht_zustellung_tenant_nachricht_key")
+  @@map("tcms_nachricht_zustellung")
+}
+
 model AuditAnchorLease {
   tenantId   String   @id @map("tenant_id") @db.Uuid
   holder     String   @db.Uuid
@@ -4469,6 +4506,10 @@ enum NotificationKind {
   CLIENT_REMINDER_MENTION
   TAX_DEADLINE_REQUEST_PENDING
   TAX_DEADLINE_NOTIFICATION_FAILED
+  /// TCMS Stufe 4: Ereignis im Portal gemeldet (an die geprüfte Kanzleiperson).
+  TCMS_EREIGNIS_GEMELDET
+  /// TCMS Stufe 4: Mitteilung des Tax-CMS nicht zustellbar (einmal je Mitteilung an Admins).
+  TCMS_ZUSTELLUNG_GESCHEITERT
 
   @@map("notification_kind")
 }
