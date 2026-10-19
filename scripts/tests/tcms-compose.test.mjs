@@ -8,6 +8,8 @@
 // - Images: tcms-db per Digest, tcms-api/tcms-migrate nie implizit gezogen.
 // - Geringste Rechte in der Umgebung: tcms-api ohne Superuser-/Owner-Passwort
 //   und ohne privaten Schluessel, app/worker ohne TCMS-Datenbankzugang.
+// - Code-Schluessel (TCMS s8, Hinweis H5): nur tcms-api, Pflichtwert, in der
+//   Datei nur als Interpolation aus der .env, nie im Healthcheck oder Image.
 // - Pflichtwerte brechen Compose nur ab, wenn die TCMS-Datei geladen ist.
 //
 // Der statische Teil liest die Dateien direkt. Der dynamische Teil prueft das
@@ -58,6 +60,11 @@ const SECRET = {
   app: 'wegwerf-tcms-app-pw',
   tokens: 'wegwerfTokenAlt0123456789abcdefghijk,wegwerfTokenNeu0123456789abcdefghijk',
   token: 'wegwerfTokenNeu0123456789abcdefghijk',
+  // Zwei Eintraege wie waehrend einer Rotation; jeder fuer sich eindeutig.
+  codeKeys: [
+    'wegwerfCodeSchluesselNeu0123456789abcdef',
+    'wegwerfCodeSchluesselAlt0123456789abcdef',
+  ],
   // Form-Attrappe (PKCS#8-Praefix plus Fuelltext), zur Laufzeit zusammengesetzt,
   // damit der Secret-Scan kein Schluesselliteral meldet.
   privateKey: ['MC4CAQAwBQYDK2VwBCIEI', 'wegwerfPrivatSchluessel0123456789abcdefghijk'].join(''),
@@ -70,6 +77,7 @@ const TCMS_ENV = {
   TCMS_ACTOR_KEY_ID: 'kk-test-neu',
   TCMS_SERVICE_TOKENS: SECRET.tokens,
   TCMS_ACTOR_PUBLIC_KEYS: 'kk-test-neu=MCowBQYDK2VwAyEAwegwerfOeffentlich0123456789abcdefghijkA=',
+  TCMS_CODE_SCHLUESSEL: SECRET.codeKeys.join(','),
   TCMS_DB_SUPERUSER_PASSWORD: SECRET.super,
   TCMS_DB_OWNER_PASSWORD: SECRET.owner,
   TCMS_DB_APP_PASSWORD: SECRET.app,
@@ -95,7 +103,7 @@ test('TCMS-Dienste, -Netze und -Pflichtwerte stehen nur in der TCMS-Datei', () =
     assert.doesNotMatch(text, /\$\{TCMS_[A-Z_]+:\?/, file);
     assert.doesNotMatch(
       text,
-      /TCMS_DB_[A-Z_]*PASSWORD|TCMS_SERVICE_TOKENS|TCMS_ACTOR_PUBLIC_KEYS/,
+      /TCMS_DB_[A-Z_]*PASSWORD|TCMS_SERVICE_TOKENS|TCMS_ACTOR_PUBLIC_KEYS|TCMS_CODE_SCHLUESSEL/,
       file,
     );
   }
@@ -122,6 +130,34 @@ test('Rohdatei: Netze intern, Mitgliedschaften getrennt, keine Ports', () => {
     assert.equal(doc.services[name].ports, undefined, `${name} veroeffentlicht keinen Port`);
     assert.equal(doc.services[name].network_mode, undefined, name);
   }
+});
+
+// TCMS s8 (Hinweis H5): Der Code-Schluessel kommt nur aus der geheimen .env
+// (0600) und nur zu tcms-api, als Pflichtwert ohne Ersatzwert. Kein Dienst
+// dieser Datei baut ein Image, also kann er auch nicht in eines geraten.
+test('Rohdatei: Code-Schluessel nur bei tcms-api und nur als Pflicht-Interpolation', () => {
+  const doc = load(TCMS);
+  for (const [name, service] of Object.entries(doc.services)) {
+    assert.equal(service.build, undefined, `${name} baut kein Image`);
+    if (name === 'tcms-api') continue;
+    assert.doesNotMatch(JSON.stringify(service), /CODE_SCHLUESSEL/, `${name} ohne Code-Schluessel`);
+  }
+  const api = doc.services['tcms-api'];
+  assert.equal(
+    api.environment.TCMS_CODE_SCHLUESSEL,
+    '${TCMS_CODE_SCHLUESSEL:?TCMS_CODE_SCHLUESSEL fehlt - ./taxtronik tcms setup}',
+  );
+  assert.doesNotMatch(
+    JSON.stringify(api.healthcheck),
+    /CODE_SCHLUESSEL/,
+    'Healthcheck ohne Schluessel',
+  );
+  // Ausserhalb von Kommentaren genau diese eine Fundstelle (kein Klartextwert,
+  // kein zweiter Weg wie env_file oder secrets).
+  const zeilen = readFileSync(TCMS, 'utf8')
+    .split('\n')
+    .filter((zeile) => !zeile.trim().startsWith('#') && zeile.includes('CODE_SCHLUESSEL'));
+  assert.equal(zeilen.length, 1, zeilen.join('\n'));
 });
 
 // ---------------------------------------------------------------------------
@@ -285,9 +321,16 @@ test('verwaltet: jeder Dienst erhaelt nur seine eigenen Geheimnisse', dynamic, (
     'NODE_ENV',
     'PORT',
     'TCMS_ACTOR_PUBLIC_KEYS',
+    'TCMS_CODE_SCHLUESSEL',
     'TCMS_LOG_LEVEL',
     'TCMS_SERVICE_TOKENS',
   ]);
+  assert.equal(env('tcms-api').TCMS_CODE_SCHLUESSEL, SECRET.codeKeys.join(','));
+  assert.doesNotMatch(
+    JSON.stringify(model.services['tcms-api'].healthcheck),
+    /CODE_SCHLUESSEL|wegwerfCodeSchluessel/,
+    'Healthcheck ohne Code-Schluessel',
+  );
   assert.match(env('tcms-api').DATABASE_URL, /^postgresql:\/\/tcms_app:[^@]+@tcms-db:5432\/tcms$/);
   for (const secret of [SECRET.super, SECRET.owner, SECRET.privateKey]) {
     assert.ok(
@@ -323,6 +366,15 @@ test('verwaltet: jeder Dienst erhaelt nur seine eigenen Geheimnisse', dynamic, (
       `${name} kennt das TCMS-Superuser-Passwort nicht`,
     );
   }
+  // Code-Schluessel: ausser tcms-api kennt ihn kein Dienst (auch nicht
+  // tcms-migrate, tcms-db, app oder worker), weder als Wert noch als Name.
+  for (const [name, service] of Object.entries(model.services)) {
+    if (name === 'tcms-api') continue;
+    const text = JSON.stringify(service);
+    assert.doesNotMatch(text, /CODE_SCHLUESSEL/, `${name} ohne Code-Schluessel`);
+    for (const key of SECRET.codeKeys)
+      assert.ok(!text.includes(key), `${name} ohne Code-Schluessel`);
+  }
 });
 
 test('Pflichtwerte brechen nur ab, wenn die TCMS-Datei geladen ist', dynamic, () => {
@@ -332,6 +384,7 @@ test('Pflichtwerte brechen nur ab, wenn die TCMS-Datei geladen ist', dynamic, ()
     'TCMS_DB_APP_PASSWORD',
     'TCMS_SERVICE_TOKENS',
     'TCMS_ACTOR_PUBLIC_KEYS',
+    'TCMS_CODE_SCHLUESSEL',
     'TCMS_VERSION',
   ]) {
     const values = { ...BASE_ENV, ...TCMS_ENV };

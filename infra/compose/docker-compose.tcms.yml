@@ -161,6 +161,12 @@ services:
       TCMS_SERVICE_TOKENS: ${TCMS_SERVICE_TOKENS:?TCMS_SERVICE_TOKENS fehlt - ./taxtronik tcms setup}
       # kid=SPKI-base64, kommagetrennt; nur oeffentliche Schluessel.
       TCMS_ACTOR_PUBLIC_KEYS: ${TCMS_ACTOR_PUBLIC_KEYS:?TCMS_ACTOR_PUBLIC_KEYS fehlt - ./taxtronik tcms setup}
+      # Schluessel der Bestaetigungscodes (HMAC, TCMS s8 Hinweis H5) aus der
+      # .env (0600) wie die Token-Liste: Komma-Liste, der erste Eintrag
+      # signiert neue Codes; zwei Eintraege nur waehrend
+      # ./taxtronik tcms rotate-code-key. Nur dieser Dienst bekommt ihn, nie
+      # tcms-migrate, der Healthcheck oder app/worker; nie im Image.
+      TCMS_CODE_SCHLUESSEL: ${TCMS_CODE_SCHLUESSEL:?TCMS_CODE_SCHLUESSEL fehlt - ./taxtronik tcms setup}
       # Laufzeitrolle: kein Superuser, NOBYPASSRLS, nicht Eigentuemer.
       DATABASE_URL: postgresql://tcms_app:${TCMS_DB_APP_PASSWORD:?TCMS_DB_APP_PASSWORD fehlt - ./taxtronik tcms setup}@tcms-db:5432/tcms
       HOST: 0.0.0.0
@@ -172,6 +178,7 @@ services:
     healthcheck:
       # Eingebautes Kommando der Schnittstelle: liest das Token aus der
       # Umgebung, ruft 127.0.0.1:$PORT/v1/health, Exit 0/1, keine Werte.
+      # Der Code-Schluessel gehoert nicht in dieses Kommando.
       test: ['CMD', 'node', '/app/healthcheck.mjs']
       interval: 15s
       timeout: 5s

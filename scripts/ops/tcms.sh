@@ -39,6 +39,12 @@ TCMS_KID_PATTERN='^[A-Za-z0-9._-]{1,64}$'
 # mindestens 8 verschiedene Zeichen.
 TCMS_TOKEN_PATTERN='^[A-Za-z0-9._~+/-]{32,512}=*$'
 TCMS_PLACEHOLDER_PATTERN='(ersetzen|replace|change.?me|platzhalter|placeholder|beispiel|example|dummy|secret|geheim|passwor|xxxx)'
+# Code-Schluessel der Bestaetigungscodes (TCMS s8, Hinweis H5): Liste nach
+# denselben Regeln wie die Dienst-Tokens (konfiguration.ts, geheimnisListe),
+# kein Eintrag gleich einem Dienst-Token. Erzeugt werden 32 Zufallsbyte als
+# base64url ohne Padding (43 Zeichen); der Dienst verwendet den Eintrag als
+# Zeichenkette, nie dekodiert.
+TCMS_CODE_KEY_GENERATED_PATTERN='^[A-Za-z0-9_-]{43}$'
 
 # ---------------------------------------------------------------------------
 # Besitzvertrag
@@ -252,15 +258,80 @@ tcms_token_id() {
   printf 'tok:%s' "$digest"
 }
 
+# Kurzbezeichner eines Code-Schluessels fuer Zustand, Status und Meldungen
+# (SHA-256-Praefix wie tcms_token_id). Er ist nicht die codeSchluesselId, die
+# der Dienst neben einem Code speichert, und verraet den Schluessel nicht.
+tcms_code_key_id() {
+  local digest
+  digest="$(printf '%s' "${1:-}" | sha256sum | cut -c1-16)"
+  printf 'csk:%s' "$digest"
+}
+
+tcms_code_key_ids() {
+  local list="${1:-}" entry out=""
+  local -a entries
+  IFS=',' read -r -a entries <<<"$list"
+  for entry in "${entries[@]}"; do out+="${out:+, }$(tcms_code_key_id "$entry")"; done
+  printf '%s' "$out"
+}
+
+tcms_list_count() {
+  local list="${1:-}"
+  [[ -n "$list" ]] || { printf '0'; return 0; }
+  local -a entries
+  IFS=',' read -r -a entries <<<"$list"
+  printf '%s' "${#entries[@]}"
+}
+
+# Name des Geheimnisses, dem ein Eintrag der Code-Schluessel-Liste gleicht
+# (leer: keines). Der Dienst startet nicht, wenn ein Code-Schluessel einem
+# Dienst-Token gleicht (wer ein Token kennt, koennte sonst gespeicherte
+# Code-Hashes nachrechnen); die Passwoerter kommen hinzu, damit jedes
+# Geheimnis genau einen Zweck hat. Ausgabe nur des Namens, nie des Werts.
+tcms_code_key_collision() {
+  local list="${1:-}" entry key
+  local -a entries
+  IFS=',' read -r -a entries <<<"$list"
+  for entry in "${entries[@]}"; do
+    [[ -n "$entry" ]] || continue
+    if tcms_token_list_contains "${TCMS_SERVICE_TOKENS:-}" "$entry"; then
+      printf 'TCMS_SERVICE_TOKENS'
+      return 0
+    fi
+    for key in TCMS_SERVICE_TOKEN TCMS_SERVICE_TOKEN_NEXT TCMS_DB_SUPERUSER_PASSWORD \
+      TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD POSTGRES_PASSWORD; do
+      [[ "$entry" != "${!key:-}" ]] || { printf '%s' "$key"; return 0; }
+    done
+  done
+  return 0
+}
+
+# Grund, warum TCMS_CODE_SCHLUESSEL nicht so startet, wie der Dienst es
+# verlangt (leer: gueltig). Nennt nie einen Wert.
+tcms_code_key_problem() {
+  local list="${1:-}" collision
+  if [[ -z "$list" ]]; then
+    printf 'fehlt'
+  elif ! tcms_valid_token_list "$list"; then
+    printf 'Format ungueltig (Komma-Liste ohne Leerzeichen, je Eintrag 32-512 Zeichen aus A-Z a-z 0-9 - . _ ~ + /, = nur am Ende, mind. 8 verschiedene Zeichen, kein Platzhalter, keine Doppelten)'
+  else
+    collision="$(tcms_code_key_collision "$list")"
+    [[ -z "$collision" ]] || printf 'ein Eintrag gleicht %s; Code-Schluessel und Tokens muessen verschieden sein' "$collision"
+  fi
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # Erzeugung neuer Geheimnisse
 # ---------------------------------------------------------------------------
-# Neues Dienst-Token, verschieden von allen uebergebenen Werten.
+# Neues Dienst-Token, verschieden von allen uebergebenen Werten und von jedem
+# Eintrag des Code-Schluessels (TCMS s8, H5: sonst startet der Dienst nicht).
 tcms_generate_token() {
   local candidate existing ok
   for _ in 1 2 3 4 5; do
     candidate="$(rand_b64 32)"
     tcms_valid_token "$candidate" || continue
+    ! tcms_token_list_contains "${TCMS_CODE_SCHLUESSEL:-}" "$candidate" || continue
     ok=1
     for existing in "$@"; do [[ "$candidate" != "$existing" ]] || ok=0; done
     (( ok == 1 )) && { printf '%s' "$candidate"; return 0; }
@@ -290,6 +361,22 @@ tcms_generate_keypair() {
   _TCMS_GEN_KID="$kid"
   _TCMS_GEN_PRIVATE="$private"
   _TCMS_GEN_PUBLIC="$public"
+}
+
+# Neuer Code-Schluessel: 32 Byte base64url, verschieden von den Eintraegen der
+# uebergebenen Liste (bei der Rotation: dem alten Schluessel) und von jedem
+# anderen TCMS-Geheimnis. openssl schreibt nur in die Pipe.
+tcms_generate_code_key() {
+  local avoid="${1:-}" candidate
+  for _ in 1 2 3 4 5; do
+    candidate="$(rand_b64 32)"
+    [[ "$candidate" =~ $TCMS_CODE_KEY_GENERATED_PATTERN ]] && tcms_valid_token "$candidate" || continue
+    ! tcms_token_list_contains "$avoid" "$candidate" || continue
+    [[ -z "$(tcms_code_key_collision "$candidate")" ]] || continue
+    printf '%s' "$candidate"
+    return 0
+  done
+  die "Neuer TCMS-Code-Schluessel konnte nicht sicher erzeugt werden (Zufallsquelle pruefen)."
 }
 
 # set_env und Prozessumgebung gemeinsam: load_env hat die alten Werte
@@ -353,6 +440,48 @@ tcms_ensure_managed_credentials() {
   unset _TCMS_GEN_PRIVATE
 }
 
+# Code-Schluessel fuer managed (TCMS s8, Hinweis H5): einmalig erzeugen, wenn
+# er fehlt. Ein vorhandener wird nie neu erzeugt, sonst liefen alle offenen
+# Codes ab; ein ungueltiger bricht ab, ohne die .env zu aendern (keine stille
+# Reparatur). Laeuft nach tcms_ensure_managed_credentials, damit die Tokens
+# feststehen, gegen die geprueft wird. Ein Abbruch vor dem Schreiben hinterlaesst
+# nichts; danach findet der naechste Lauf den Schluessel und erzeugt keinen
+# zweiten (set_env schreibt atomar). _TCMS_CODE_KEY_CREATED=1 nach Erzeugung.
+tcms_ensure_code_key() {
+  local list="${TCMS_CODE_SCHLUESSEL:-}" key problem
+  _TCMS_CODE_KEY_CREATED=0
+  if [[ -z "$list" ]]; then
+    key="$(tcms_generate_code_key "")"
+    tcms_set TCMS_CODE_SCHLUESSEL "$key"
+    _TCMS_CODE_KEY_CREATED=1
+    info "TCMS-Code-Schluessel erzeugt ($(tcms_code_key_id "$key"))."
+    return 0
+  fi
+  problem="$(tcms_code_key_problem "$list")"
+  [[ -z "$problem" ]] || \
+    die "TCMS_CODE_SCHLUESSEL: $problem. Der vorhandene Wert wird nicht ersetzt (offene Codes liefen sonst ab): korrigieren oder bewusst leeren und ./taxtronik tcms setup managed ausfuehren."
+}
+
+# Erster Rollout mit Code-Schluessel auf einer bestehenden verwalteten
+# Installation (TCMS s8): Die TCMS-Migration freigabe_code_schluessel laesst
+# alle offenen Codes ablaufen; nachricht_abgerufen (H2) setzt einen CHECK, der
+# bei Altbestand fail closed scheitert.
+tcms_print_code_key_rollout_hint() {
+  warn "Erster Rollout mit TCMS_CODE_SCHLUESSEL: Mit der TCMS-Migration freigabe_code_schluessel laufen alle bis dahin ausgestellten Bestaetigungscodes ab; betroffene Personen fordern einen neuen Code an (hoechstens 5 je Stunde). Rollout zu ruhiger Zeit, Nutzer vorher informieren."
+  warn "Die TCMS-Migration nachricht_abgerufen (H2) setzt einen CHECK, der bei Altbestand (verworfene, aber zugestellt/unzustellbar gemeldete Nachrichten) fail closed scheitert; tcms-api bleibt dann auf dem bisherigen Stand. Siehe docs/operations/tcms-betrieb.md, Abschnitt 3."
+}
+
+# Code-Schluessel sicherstellen; der Hinweis zum ersten Rollout erscheint nur,
+# wenn eine bestehende verwaltete Installation (Token-Liste vorhanden) ihn
+# gerade erst bekommt.
+tcms_ensure_code_key_for_managed() {
+  local existing_installation="$1"
+  tcms_ensure_code_key
+  if [[ "$_TCMS_CODE_KEY_CREATED" == "1" && "$existing_installation" == "1" ]]; then
+    tcms_print_code_key_rollout_hint
+  fi
+}
+
 # Image-Werte im Release-Kanal: Pins des verifizierten Last-Good-Commits
 # (STATE). Vor der Erstinstallation setzt deploy sie aus dem signierten Stand.
 tcms_set_images_from_state() {
@@ -376,6 +505,8 @@ tcms_valid_local_tag() {
 }
 
 tcms_configure_managed() {
+  local existing=0
+  [[ -z "${TCMS_SERVICE_TOKENS:-}" ]] || existing=1
   if images_from_registry; then
     tcms_set_images_from_state
   else
@@ -388,6 +519,7 @@ tcms_configure_managed() {
   fi
   tcms_ensure_db_passwords
   tcms_ensure_managed_credentials
+  tcms_ensure_code_key_for_managed "$existing"
   tcms_set TCMS_URL "$TCMS_MANAGED_URL"
   tcms_set TCMS_DEPLOYMENT managed
 }
@@ -440,13 +572,17 @@ tcms_configure_external() {
 # nachfragt; einschalten nur bewusst per ./taxtronik tcms setup oder im
 # Initialsetup.
 configure_tcms_for_env() {
-  local mode
+  local mode existing=0
   mode="$(tcms_deployment_mode)" || die "TCMS_DEPLOYMENT muss managed, external oder disabled sein."
   case "$mode" in
     disabled) [[ -n "$(get_env TCMS_DEPLOYMENT)" ]] || set_env TCMS_DEPLOYMENT disabled ;;
     managed)
+      [[ -z "${TCMS_SERVICE_TOKENS:-}" ]] || existing=1
       tcms_ensure_db_passwords
       tcms_ensure_managed_credentials
+      # TCMS s8 (H5): deploy/update erzeugen einen fehlenden Code-Schluessel,
+      # bevor irgendein Dienst angefasst wird; ein ungueltiger bricht hier ab.
+      tcms_ensure_code_key_for_managed "$existing"
       [[ "${TCMS_URL:-}" == "$TCMS_MANAGED_URL" ]] || tcms_set TCMS_URL "$TCMS_MANAGED_URL"
       ;;
     external)
@@ -983,7 +1119,7 @@ cmd_tcms_disable() {
   tcms_set TCMS_DEPLOYMENT disabled
   for key in TCMS_URL TCMS_SERVICE_TOKEN TCMS_ACTOR_PRIVATE_KEY TCMS_ACTOR_KEY_ID \
     TCMS_SERVICE_TOKENS TCMS_ACTOR_PUBLIC_KEYS TCMS_SERVICE_TOKEN_NEXT \
-    TCMS_ACTOR_PRIVATE_KEY_NEXT TCMS_ACTOR_KEY_ID_NEXT; do
+    TCMS_ACTOR_PRIVATE_KEY_NEXT TCMS_ACTOR_KEY_ID_NEXT TCMS_CODE_SCHLUESSEL; do
     [[ -z "$(get_env "$key")" && -z "${!key:-}" ]] || tcms_set "$key" ""
   done
   # Erst app/worker ohne TCMS neu starten, dann den Dienst entfernen.

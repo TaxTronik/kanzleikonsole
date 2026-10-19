@@ -51,10 +51,31 @@ assert_not_contains() {
   fi
 }
 
+# Geheimnisse erscheinen auch in Fehlermeldungen nur als Kennung, obwohl die
+# Tests Wegwerfwerte nutzen (Regel: keine Werte in Ausgaben).
+redacted() {
+  if [[ -z "${1:-}" ]]; then printf '<leer>'
+  else printf 'sha256:%s' "$(printf '%s' "$1" | sha256sum | cut -c1-12)"; fi
+}
+
+# Wie assert_not_contains, aber ohne den Wert oder die Datei auszugeben; der
+# Wert geht per Prozesssubstitution an grep, nicht als Argument.
+assert_no_secret() {
+  local file="$1" secret="$2" label="${3:-Geheimnis}"
+  [[ -n "$secret" ]] || test_fail "assert_no_secret: leerer Wert ($label)"
+  if [[ -f "$file" ]] && grep -Fq -f <(printf '%s\n' "$secret") -- "$file"; then
+    test_fail "$label $(redacted "$secret") erscheint in $(basename "$file")"
+  fi
+}
+
 assert_key_equals() {
   local file="$1" key="$2" expected="$3" actual
   actual="$(grep -E "^${key}=" "$file" | head -n1 | cut -d= -f2- || true)"
-  [[ "$actual" == "$expected" ]] || test_fail "expected ${key}=${expected}, got ${actual}"
+  [[ "$actual" == "$expected" ]] && return 0
+  if [[ "$key" =~ (PASSWORD|TOKEN|PRIVATE|SCHLUESSEL|SECRET) ]]; then
+    test_fail "expected ${key}=$(redacted "$expected"), got $(redacted "$actual")"
+  fi
+  test_fail "expected ${key}=${expected}, got ${actual}"
 }
 
 env_value() { grep -E "^${2}=" "$1" | head -n1 | cut -d= -f2- || true; }
@@ -389,7 +410,8 @@ tcms_base_env() {
 TCMS_CONFIG_VARS=(TCMS_DEPLOYMENT TCMS_URL TCMS_SERVICE_TOKEN TCMS_SERVICE_TOKENS
   TCMS_ACTOR_PRIVATE_KEY TCMS_ACTOR_KEY_ID TCMS_ACTOR_PUBLIC_KEYS TCMS_DB_SUPERUSER_PASSWORD
   TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD TCMS_VERSION TCMS_API_DIGEST_SUFFIX
-  TCMS_MIGRATE_DIGEST_SUFFIX TCMS_SERVICE_TOKEN_NEXT TCMS_ACTOR_PRIVATE_KEY_NEXT TCMS_ACTOR_KEY_ID_NEXT)
+  TCMS_MIGRATE_DIGEST_SUFFIX TCMS_SERVICE_TOKEN_NEXT TCMS_ACTOR_PRIVATE_KEY_NEXT TCMS_ACTOR_KEY_ID_NEXT
+  TCMS_CODE_SCHLUESSEL)
 tcms_isolated() {
   local env_file="$1"
   shift
@@ -432,6 +454,22 @@ assert_contract_keys() {
   ' || test_fail "generated key material does not match the TCMS contract"
 }
 
+# TCMS s8 (H5): genau ein Code-Schluessel aus 32 Zufallsbyte (base64url ohne
+# Padding), von Token und Passwoertern verschieden. Der Wert geht nur ueber
+# die Umgebung an node, nie als Argument.
+assert_code_key_format() {
+  local env_file="$1" key value
+  value="$(env_value "$env_file" TCMS_CODE_SCHLUESSEL)"
+  [[ "$value" =~ ^[A-Za-z0-9_-]{43}$ ]] || test_fail "TCMS_CODE_SCHLUESSEL is not one 43-character base64url entry"
+  TCMS_CK="$value" "$NODE_BIN" -e '
+    const b = Buffer.from(process.env.TCMS_CK, "base64url");
+    if (b.length !== 32 || b.toString("base64url") !== process.env.TCMS_CK) process.exit(1);
+  ' || test_fail "TCMS_CODE_SCHLUESSEL does not encode exactly 32 random bytes"
+  for key in TCMS_SERVICE_TOKEN TCMS_SERVICE_TOKENS TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD; do
+    [[ "$value" != "$(env_value "$env_file" "$key")" ]] || test_fail "TCMS_CODE_SCHLUESSEL equals $key"
+  done
+}
+
 test_managed_setup_generates_contract_conform_secrets_once() {
   local env_file="$TMP_DIR/setup-managed.env" before after key
   managed_env "$env_file"
@@ -448,12 +486,120 @@ test_managed_setup_generates_contract_conform_secrets_once() {
   [[ "$(env_value "$env_file" TCMS_ACTOR_KEY_ID)" =~ ^kk-[0-9]{4}-[0-9]{2}-[0-9]{2}-[A-Za-z0-9_-]{8}$ ]] || \
     test_fail "kid does not follow the akteur:schluessel format"
   assert_contract_keys "$env_file"
+  assert_code_key_format "$env_file"
   [[ "$(file_mode "$env_file")" == "600" ]] || test_fail ".env is not 0600 after setup"
   before="$(cat "$env_file")"
   tcms_isolated "$env_file" eval 'load_env; tcms_configure_managed' >/dev/null
   after="$(cat "$env_file")"
   [[ "$before" == "$after" ]] || test_fail "a second setup rotated existing TCMS secrets"
   pass "managed setup creates contract-conform secrets once and keeps them afterwards"
+}
+
+# Regel (TCMS s8, H5): Der Code-Schluessel entsteht genau einmal. Ein
+# vorhandener wird nie neu erzeugt (offene Codes liefen sonst ab), auch nicht
+# nach einem Abbruch; ein ungueltiger oder mit einem Token identischer bricht
+# ab, ohne die .env zu aendern und ohne den Wert zu nennen.
+test_code_key_setup_is_idempotent_resumable_and_strict() {
+  local env_file="$TMP_DIR/code-key.env" out="$TMP_DIR/code-key.out" key before token bad
+  managed_env "$env_file"
+  key="$(env_value "$env_file" TCMS_CODE_SCHLUESSEL)"
+
+  # Abbruch nach dem Schreiben (Strg-C vor dem Rest von setup): der naechste
+  # Lauf uebernimmt den Schluessel, statt einen zweiten zu erzeugen.
+  tcms_base_env "$env_file.resume"
+  if tcms_isolated "$env_file.resume" eval '
+    load_env; tcms_ensure_db_passwords; tcms_ensure_managed_credentials; tcms_ensure_code_key
+    exit 130' >/dev/null 2>&1; then test_fail "simulated abort did not abort"; fi
+  key="$(env_value "$env_file.resume" TCMS_CODE_SCHLUESSEL)"
+  [[ -n "$key" ]] || test_fail "code key not written before the abort"
+  tcms_isolated "$env_file.resume" eval 'load_env; tcms_configure_managed' >"$out" 2>&1 || {
+    cat "$out" >&2; test_fail "setup after an abort failed"; }
+  assert_key_equals "$env_file.resume" TCMS_CODE_SCHLUESSEL "$key"
+  [[ "$(grep -c '^TCMS_CODE_SCHLUESSEL=' "$env_file.resume")" == "1" ]] || test_fail "code key written twice"
+  assert_not_contains "$out" "Code-Schluessel erzeugt"
+
+  # Abbruch vor dem Schreiben: nichts in der .env, der naechste Lauf erzeugt genau einen.
+  tcms_base_env "$env_file.early"
+  if tcms_isolated "$env_file.early" eval '
+    load_env; tcms_ensure_db_passwords; tcms_ensure_managed_credentials
+    set_env() { exit 130; }
+    tcms_ensure_code_key' >/dev/null 2>&1; then test_fail "simulated early abort did not abort"; fi
+  assert_key_equals "$env_file.early" TCMS_CODE_SCHLUESSEL ""
+  tcms_isolated "$env_file.early" eval 'load_env; tcms_configure_managed' >/dev/null 2>&1 || test_fail "setup after an early abort failed"
+  assert_code_key_format "$env_file.early"
+
+  # Laufende Rotation (zwei Eintraege) bleibt unveraendert.
+  cp "$env_file" "$env_file.two"
+  token="zweiterCodeSchluesselNurFuerDenTest0123456789"
+  sed -i "s|^TCMS_CODE_SCHLUESSEL=.*|&,$token|" "$env_file.two"
+  before="$(cat "$env_file.two")"
+  tcms_isolated "$env_file.two" eval 'load_env; tcms_configure_managed' >/dev/null 2>&1 || test_fail "setup rejected a rotation list"
+  [[ "$(cat "$env_file.two")" == "$before" ]] || test_fail "setup changed a two-entry code key list"
+
+  # Ungueltig: Platzhalter, zu kurz, Leerzeichen, doppelt, gleich einem Token.
+  token="$(env_value "$env_file" TCMS_SERVICE_TOKEN)"
+  for bad in "bitte-durch-einen-zufaelligen-code-schluessel-ersetzen" "kurz0123456789" \
+    "$key, $key" "$key,$key" "$token" "$key,$token"; do
+    cp "$env_file" "$env_file.bad"
+    BAD="$bad" "$NODE_BIN" -e '
+      const fs = require("node:fs"); const f = process.argv[1];
+      fs.writeFileSync(f, fs.readFileSync(f, "utf8").replace(/^TCMS_CODE_SCHLUESSEL=.*$/m, () => "TCMS_CODE_SCHLUESSEL=" + process.env.BAD));
+    ' "$env_file.bad"
+    before="$(cat "$env_file.bad")"
+    if tcms_isolated "$env_file.bad" eval 'load_env; configure_tcms_for_env' >"$out" 2>&1; then
+      test_fail "invalid code key accepted (case $(tcms_code_key_id "$bad"))"
+    fi
+    assert_contains "$out" "TCMS_CODE_SCHLUESSEL:"
+    assert_contains "$out" "wird nicht ersetzt"
+    assert_no_secret "$out" "$bad" TCMS_CODE_SCHLUESSEL
+    [[ "$(cat "$env_file.bad")" == "$before" ]] || test_fail "a refused code key changed .env"
+  done
+  assert_contains "$out" "gleicht TCMS_SERVICE_TOKENS"
+  pass "code key: generated once, kept after aborts and during rotation, invalid or token-equal values refused"
+}
+
+# Regel (TCMS s8, H5): deploy/update erzeugen einen fehlenden Code-Schluessel
+# einer bestehenden verwalteten Installation vor jedem Dienstwechsel und
+# weisen auf das Ablaufen offener Codes und den H2-CHECK hin; andere Werte
+# bleiben unveraendert.
+test_update_adds_a_missing_code_key_and_warns_once() {
+  local env_file="$TMP_DIR/code-key-upgrade.env" out="$TMP_DIR/code-key-upgrade.out" key before after
+  managed_env "$env_file"
+  sed -i 's/^TCMS_CODE_SCHLUESSEL=.*$//' "$env_file"
+  before="$(grep -v '^TCMS_CODE_SCHLUESSEL=' "$env_file" | grep .)"
+  tcms_isolated "$env_file" eval 'load_env; configure_tcms_for_env' >"$out" 2>&1 || { cat "$out" >&2; test_fail "upgrade failed"; }
+  assert_code_key_format "$env_file"
+  after="$(grep -v '^TCMS_CODE_SCHLUESSEL=' "$env_file" | grep .)"
+  [[ "$before" == "$after" ]] || test_fail "upgrade changed other TCMS values"
+  assert_contains "$out" "laufen alle bis dahin ausgestellten Bestaetigungscodes ab"
+  assert_contains "$out" "CHECK, der bei Altbestand"
+  key="$(env_value "$env_file" TCMS_CODE_SCHLUESSEL)"
+  assert_no_secret "$out" "$key" TCMS_CODE_SCHLUESSEL
+  tcms_isolated "$env_file" eval 'load_env; configure_tcms_for_env' >"$out" 2>&1 || test_fail "second update failed"
+  assert_key_equals "$env_file" TCMS_CODE_SCHLUESSEL "$key"
+  assert_not_contains "$out" "Erster Rollout"
+  # Neue Installation: kein Rollout-Hinweis.
+  tcms_base_env "$env_file.neu"
+  tcms_isolated "$env_file.neu" eval 'load_env; tcms_configure_managed' >"$out" 2>&1 || test_fail "new managed setup failed"
+  assert_not_contains "$out" "Erster Rollout"
+  pass "deploy/update add a missing code key once, before any service, and warn about expiring codes"
+}
+
+# Ein neues Dienst-Token darf keinem Code-Schluessel gleichen.
+test_new_service_tokens_avoid_the_code_key() {
+  local seq="$TMP_DIR/token-avoid.seq" ergebnis zweiter
+  zweiter="andererWertFuerDenTest$(printf '%s' 0123456789abcdefghij)"
+  printf '0\n' >"$seq"
+  ergebnis="$(
+    TCMS_CODE_SCHLUESSEL="kollisionsWertFuerDenTest$(printf '%s' 0123456789abcdefgh)"
+    rand_b64() {
+      local n; n="$(cat "$seq")"; printf '%s\n' $(( n + 1 )) >"$seq"
+      if (( n == 0 )); then printf '%s' "$TCMS_CODE_SCHLUESSEL"; else printf '%s' "$zweiter"; fi
+    }
+    tcms_generate_token
+  )"
+  [[ "$ergebnis" == "$zweiter" ]] || test_fail "token generation accepted a code key value"
+  pass "new service tokens never equal a code key entry"
 }
 
 # Regel: kein Geheimnis in Kommandozeilen (Prozessliste) oder Ausgaben.
@@ -481,12 +627,12 @@ test_setup_and_rotation_never_expose_secrets() {
   [[ -s "$log" ]] || test_fail "argv spies were not used"
   assert_contains "$log" "openssl genpkey -algorithm ed25519"
   for key in TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD \
-    TCMS_SERVICE_TOKEN TCMS_ACTOR_PRIVATE_KEY; do
+    TCMS_SERVICE_TOKEN TCMS_ACTOR_PRIVATE_KEY TCMS_CODE_SCHLUESSEL; do
     value="$(env_value "$env_file" "$key")"
     [[ -n "$value" ]] || test_fail "$key missing after setup"
-    assert_not_contains "$log" "$value"
-    assert_not_contains "$calls" "$value"
-    assert_not_contains "$out" "$value"
+    assert_no_secret "$log" "$value" "$key"
+    assert_no_secret "$calls" "$value" "$key"
+    assert_no_secret "$out" "$value" "$key"
   done
   pass "setup and rotation keep every TCMS secret out of command lines, docker calls and output"
 }
@@ -681,7 +827,8 @@ test_disable_restarts_writers_first_and_keeps_the_database_volume() {
     load_env; cmd_tcms_disable
   ' >/dev/null 2>&1 || test_fail "disable failed"
   assert_key_equals "$env_file" TCMS_DEPLOYMENT disabled
-  for key in TCMS_URL TCMS_SERVICE_TOKEN TCMS_ACTOR_PRIVATE_KEY TCMS_ACTOR_KEY_ID TCMS_SERVICE_TOKENS TCMS_ACTOR_PUBLIC_KEYS; do
+  for key in TCMS_URL TCMS_SERVICE_TOKEN TCMS_ACTOR_PRIVATE_KEY TCMS_ACTOR_KEY_ID TCMS_SERVICE_TOKENS TCMS_ACTOR_PUBLIC_KEYS \
+    TCMS_CODE_SCHLUESSEL; do
     assert_key_equals "$env_file" "$key" ""
   done
   assert_key_equals "$env_file" TCMS_DB_SUPERUSER_PASSWORD "$super"
@@ -1360,6 +1507,9 @@ run_test test_compose_writer_guard_sees_subcommand_after_global_options
 run_test test_release_pins_are_read_strictly_from_a_commit
 run_test test_registry_compose_requires_signed_tcms_pins
 run_test test_managed_setup_generates_contract_conform_secrets_once
+run_test test_code_key_setup_is_idempotent_resumable_and_strict
+run_test test_update_adds_a_missing_code_key_and_warns_once
+run_test test_new_service_tokens_avoid_the_code_key
 run_test test_setup_and_rotation_never_expose_secrets
 run_test test_token_rotation_overlaps_and_retires_the_old_token
 run_test test_key_rotation_waits_five_minutes_before_removing_the_old_key

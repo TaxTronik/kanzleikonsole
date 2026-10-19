@@ -58,10 +58,13 @@ stehen.
 
 Jeder Dienst bekommt nur seine eigenen Geheimnisse: `tcms-db` das
 Superuser-Passwort, `tcms-migrate` Superuser-, Owner- und App-Passwort,
-`tcms-api` die Token-Liste, die öffentlichen Schlüssel und die URL der Rolle
-`tcms_app`; app und worker genau ein Dienst-Token und den eigenen privaten
-Schlüssel. `scripts/tests/tcms-compose.test.mjs` prüft Netze, Härtung und
-Umgebung am tatsächlichen Compose-Modell.
+`tcms-api` die Token-Liste, die öffentlichen Schlüssel, den Code-Schlüssel
+(`TCMS_CODE_SCHLUESSEL`) und die URL der Rolle `tcms_app`; app und worker genau
+ein Dienst-Token und den eigenen privaten Schlüssel. Der Code-Schlüssel kommt
+wie die Token-Liste nur aus der `.env` (`0600`) als Pflichtwert
+(`${TCMS_CODE_SCHLUESSEL:?…}`), nie aus dem Image, nie zu `tcms-migrate`, in
+den Healthcheck oder zu app/worker. `scripts/tests/tcms-compose.test.mjs`
+prüft Netze, Härtung und Umgebung am tatsächlichen Compose-Modell.
 
 ## 3. Images und Release
 
@@ -101,6 +104,27 @@ Last-Good-Vertrag. Verankert der signierte Stand kein TCMS-Release, bricht ein
 verwaltetes Tax-CMS den Ablauf vor jeder Wirkung ab; ohne verwaltetes Tax-CMS
 läuft er normal weiter.
 
+**Erster Rollout mit Code-Schlüssel (TCMS s8, Hinweis H5).** Ab diesem
+TCMS-Stand speichert der Dienst Bestätigungscodes nur als HMAC mit
+`TCMS_CODE_SCHLUESSEL` und startet ohne gültigen Schlüssel nicht. `deploy` und
+`update` erzeugen einen fehlenden Schlüssel (Abschnitt 4) gleich zu Beginn in
+der `.env`-Vorbereitung, also bevor ein Backup, eine Migration oder ein
+Containerwechsel läuft; ein ungültiger Schlüssel bricht dort ab. Zwei Folgen
+des Rollouts nennt die CLI dabei als Warnung:
+
+- Die TCMS-Migration `freigabe_code_schluessel` lässt alle bis dahin
+  ausgestellten Codes ablaufen. Freigeben ergibt dann „Der Code ist
+  abgelaufen“ (ohne Fehlversuch), die Person fordert einen neuen Code an
+  (höchstens 5 je Stunde). Rollout zu ruhiger Zeit, Nutzer vorher informieren.
+- Die TCMS-Migration `nachricht_abgerufen` (H2) setzt einen CHECK, der eine
+  Datenbank ohne Altbestand „verworfen und dennoch zugestellt bzw.
+  unzustellbar gemeldet“ voraussetzt. Mit solchem Bestand scheitert
+  `tcms-migrate` fail closed (die Migration läuft in einer Transaktion und
+  wird zurückgerollt); `tcms-api` bleibt auf dem bisherigen Stand und das
+  Update bricht ab. Die Daten nicht von Hand ändern, sondern die betroffenen
+  Zeilen nur lesend zählen und an die TCMS-Betreuung geben:
+  `docker exec taxtronik-tcms-db psql -X -U tcms -d tcms -tAc 'SELECT count(*) FROM "Nachricht" WHERE "verworfenAm" IS NOT NULL AND ("zugestelltAm" IS NOT NULL OR "unzustellbarAm" IS NOT NULL)'`.
+
 **rollback.** Das Ziel muss das verwaltete Tax-CMS kennen (sonst Abbruch vor
 jeder Wirkung mit dem Hinweis auf `tcms disable`). Im Release-Kanal gelten die
 Pins des signiert verifizierten Ziel-Commits; beide Images werden vor dem
@@ -136,9 +160,25 @@ TCMS-Platzhalter, weil die Quellen nur im TCMS-Repository liegen.
 
 **managed.** `setup` erzeugt fehlende Geheimnisse und lässt vorhandene
 unverändert: drei getrennte Datenbankpasswörter, ein Dienst-Token
-(`TCMS_SERVICE_TOKEN`, Liste `TCMS_SERVICE_TOKENS` mit genau diesem Eintrag)
-und ein Ed25519-Schlüsselpaar mit neuem `kid` (`kk-<Datum>-<Fingerabdruck>`,
-wie `pnpm akteur:schluessel` im TCMS-Repo). Der private Schlüssel ist
+(`TCMS_SERVICE_TOKEN`, Liste `TCMS_SERVICE_TOKENS` mit genau diesem Eintrag),
+den Code-Schlüssel `TCMS_CODE_SCHLUESSEL` und ein Ed25519-Schlüsselpaar mit
+neuem `kid` (`kk-<Datum>-<Fingerabdruck>`, wie `pnpm akteur:schluessel` im
+TCMS-Repo).
+
+Der **Code-Schlüssel** (TCMS s8, Hinweis H5) entsteht genau einmal: 32
+Zufallsbyte als base64url ohne Padding (43 Zeichen, `openssl rand` in eine
+Pipe). Der Dienst verwendet den Eintrag als Zeichenkette, nicht dekodiert.
+`setup`, `deploy` und `update` erzeugen ihn nur, wenn er fehlt, und ersetzen
+einen vorhandenen nie, denn ein neuer Schlüssel ließe alle offenen Codes
+ablaufen. Bricht `setup` ab, findet der nächste Lauf den bereits geschriebenen
+Schlüssel und erzeugt keinen zweiten. Ein vorhandener Wert muss das Format des
+Dienstes erfüllen (Komma-Liste ohne Leerzeichen, je Eintrag 32–512 Zeichen aus
+`A-Z a-z 0-9 - . _ ~ + /`, `=` nur am Ende, mindestens 8 verschiedene Zeichen,
+kein Platzhalter, keine Doppelten) und darf keinem Dienst-Token oder
+TCMS-Passwort gleichen; sonst bricht `setup` bzw. `deploy`/`update` ab, ohne
+die `.env` zu ändern und ohne den Wert zu nennen. Ausgegeben wird nur die
+Kennung `csk:<16 Hex-Zeichen>` (Anfang des SHA-256; nicht die
+`codeSchluesselId` des Dienstes). Der private Schlüssel ist
 PKCS#8-DER als base64 (`TCMS_ACTOR_PRIVATE_KEY`), der öffentliche SPKI-DER als
 base64 in `TCMS_ACTOR_PUBLIC_KEYS` (`kid=…`), exakt die Formate von
 `parsePrivatenSchluessel`/`parseSchluesselListe`. Erzeugt wird mit
@@ -208,7 +248,7 @@ Datenbankpasswörter und das externe Tax-CMS: siehe
 ## 6. Abschalten
 
 `./taxtronik tcms disable` setzt `TCMS_DEPLOYMENT=disabled`, leert Token,
-Schlüssel und URL, erzeugt app und worker ohne TCMS neu und entfernt danach
+Schlüssel (auch den Code-Schlüssel) und URL, erzeugt app und worker ohne TCMS neu und entfernt danach
 die TCMS-Container und -Netze. Das Volume `tcms-db-data` und die
 `TCMS_DB_*`-Passwörter bleiben erhalten (Daten, Rollen, Superuser-Passwort des
 Volumes); gelöscht wird nur bewusst von Hand.
@@ -236,15 +276,16 @@ dann Daten, dann Migrationsschritt); Details im
 
 ## 8. Variablen
 
-| Variable                                                                           | Inhalt                                                                         |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `TCMS_DB_SUPERUSER_PASSWORD`, `TCMS_DB_OWNER_PASSWORD`, `TCMS_DB_APP_PASSWORD`     | Passwörter von `tcms`, `tcms_owner`, `tcms_app`; nur `managed`                 |
-| `TCMS_SERVICE_TOKENS`                                                              | Token-Liste des Dienstes (Komma-Liste; zwei Einträge nur während der Rotation) |
-| `TCMS_ACTOR_PUBLIC_KEYS`                                                           | `kid=<SPKI-base64>`, kommagetrennt (zwei Einträge nur während der Rotation)    |
-| `TCMS_SERVICE_TOKEN_NEXT`, `TCMS_ACTOR_PRIVATE_KEY_NEXT`, `TCMS_ACTOR_KEY_ID_NEXT` | nur während einer Rotation bis zur Umstellung; danach leer                     |
-| `TCMS_VERSION`, `TCMS_API_DIGEST_SUFFIX`, `TCMS_MIGRATE_DIGEST_SUFFIX`             | Image-Tag und `@sha256:…`-Suffixe; im Release-Kanal aus dem signierten Stand   |
-| `TCMS_API_MEM_LIMIT`, `TCMS_DB_MEM_LIMIT`, `TCMS_MIGRATE_MEM_LIMIT`                | Speichergrenzen (Standard 512m, 1g, 256m)                                      |
-| `TCMS_DB_SHARED_BUFFERS`, `TCMS_DB_MAX_CONNECTIONS`, `TCMS_LOG_LEVEL`              | Datenbank-Tuning und Log-Stufe des Dienstes                                    |
+| Variable                                                                           | Inhalt                                                                          |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `TCMS_DB_SUPERUSER_PASSWORD`, `TCMS_DB_OWNER_PASSWORD`, `TCMS_DB_APP_PASSWORD`     | Passwörter von `tcms`, `tcms_owner`, `tcms_app`; nur `managed`                  |
+| `TCMS_SERVICE_TOKENS`                                                              | Token-Liste des Dienstes (Komma-Liste; zwei Einträge nur während der Rotation)  |
+| `TCMS_ACTOR_PUBLIC_KEYS`                                                           | `kid=<SPKI-base64>`, kommagetrennt (zwei Einträge nur während der Rotation)     |
+| `TCMS_CODE_SCHLUESSEL`                                                             | Code-Schlüssel (HMAC der Bestätigungscodes); `NEU,ALT` nur während der Rotation |
+| `TCMS_SERVICE_TOKEN_NEXT`, `TCMS_ACTOR_PRIVATE_KEY_NEXT`, `TCMS_ACTOR_KEY_ID_NEXT` | nur während einer Rotation bis zur Umstellung; danach leer                      |
+| `TCMS_VERSION`, `TCMS_API_DIGEST_SUFFIX`, `TCMS_MIGRATE_DIGEST_SUFFIX`             | Image-Tag und `@sha256:…`-Suffixe; im Release-Kanal aus dem signierten Stand    |
+| `TCMS_API_MEM_LIMIT`, `TCMS_DB_MEM_LIMIT`, `TCMS_MIGRATE_MEM_LIMIT`                | Speichergrenzen (Standard 512m, 1g, 256m)                                       |
+| `TCMS_DB_SHARED_BUFFERS`, `TCMS_DB_MAX_CONNECTIONS`, `TCMS_LOG_LEVEL`              | Datenbank-Tuning und Log-Stufe des Dienstes                                     |
 
 ## 9. Fehlerbilder
 
@@ -252,6 +293,8 @@ dann Daten, dann Migrationsschritt); Details im
 | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `TCMS_… fehlt - ./taxtronik tcms setup` (bei jedem Compose-Aufruf)                                       | `managed` ohne vollständige Konfiguration: `./taxtronik tcms setup` ausführen oder `./taxtronik tcms disable`.                                                                                                                                                                                     |
 | `TCMS_DEPLOYMENT muss managed, external oder disabled sein`                                              | Tippfehler in `.env`; Wert korrigieren.                                                                                                                                                                                                                                                            |
+| `TCMS_CODE_SCHLUESSEL: … Der vorhandene Wert wird nicht ersetzt`                                         | Code-Schlüssel ungültig oder gleich einem Token/Passwort. Von Hand korrigieren oder bewusst leeren und `./taxtronik tcms setup managed` ausführen (neuer Schlüssel: offene Codes laufen ab, Abschnitt 4).                                                                                          |
+| `tcms-migrate fehlgeschlagen` beim ersten Rollout von TCMS s8                                            | Meist der CHECK der Migration `nachricht_abgerufen` bei Altbestand (Abschnitt 3, erster Rollout). `tcms-api` läuft auf dem bisherigen Stand weiter; Zeilen nur lesend zählen und an die TCMS-Betreuung geben.                                                                                      |
 | `Registry-Compose verweigert: … verankert kein TCMS-Release`                                             | Der installierte Release gibt keine TCMS-Images frei. Auf einen Release mit TCMS aktualisieren oder `tcms disable`.                                                                                                                                                                                |
 | `Registry-Compose verweigert: TCMS-Images … weichen … ab`                                                | `.env` oder Prozessumgebung nennt andere Digests als der signierte Stand. Nicht von Hand ändern; deploy/update/rollback nutzen.                                                                                                                                                                    |
 | `TCMS-Compose-Datei fehlt im Checkout`                                                                   | `managed` in einem Checkout ohne TCMS-Unterstützung (älterer Release): vorher `./taxtronik tcms disable`.                                                                                                                                                                                          |
