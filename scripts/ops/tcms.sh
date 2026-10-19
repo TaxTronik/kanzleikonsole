@@ -1061,6 +1061,250 @@ cmd_tcms_rotate() {
 }
 
 # ---------------------------------------------------------------------------
+# Rotation des Code-Schluessels (TCMS s8, Hinweis H5)
+# ---------------------------------------------------------------------------
+# TCMS_CODE_SCHLUESSEL=NEU,ALT: der erste Eintrag signiert neue Codes, alle
+# pruefen. ALT darf erst weg, wenn kein mit ALT ausgestellter Code mehr gilt,
+# also 7 Tage (CODE_GUELTIG_TAGE des Dienstes) nach dem Neustart mit NEU,ALT;
+# davor entfernt, laufen offene Codes ab. Eigene Zustandsdatei, unabhaengig
+# von rotate-token/rotate-key: Eine Token- oder Schluesselrotation (etwa nach
+# einem Leck) soll nicht 7 Tage warten muessen. Die Datei (0600) haelt nur
+# Kennungen (csk:…) und Zeitpunkte, nie einen Schluessel:
+#   prepared  : NEU erzeugt, .env enthaelt NEU,ALT; Neustart noch offen
+#   published : tcms-api laeuft mit NEU,ALT seit published_at_epoch
+TCMS_CODE_KEY_ROTATION_MIN_WAIT=604800
+# Bestaetigungswort fuer einen vorzeitigen Abschluss (--force).
+TCMS_CODE_KEY_FORCE_WORD="OFFENE_CODES_LAUFEN_AB"
+
+tcms_format_epoch() {
+  date -u -d "@$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || \
+    date -u -r "$1" '+%Y-%m-%d %H:%M UTC' 2>/dev/null || printf '@%s' "$1"
+}
+
+tcms_format_duration() {
+  local seconds="$1"
+  printf '%s Tage %s Std %s Min' $(( seconds / 86400 )) $(( seconds % 86400 / 3600 )) $(( seconds % 3600 / 60 ))
+}
+
+_tcms_code_key_state_value() {
+  grep -E "^${1}=" "$TCMS_CODE_KEY_ROTATION_STATE" | head -n1 | cut -d= -f2- || true
+}
+
+# Liest den Zustand nach _TCMS_CKR_*. rc 1 mit Grund in _TCMS_CKR_PROBLEM,
+# ohne abzubrechen (doctor und status melden, statt zu sterben).
+tcms_parse_code_key_rotation_state() {
+  local file="$TCMS_CODE_KEY_ROTATION_STATE" key mode owner
+  _TCMS_CKR_PROBLEM=""
+  if [[ ! -f "$file" || -L "$file" ]]; then
+    _TCMS_CKR_PROBLEM="keine regulaere Datei"
+    return 1
+  fi
+  mode="$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file")"
+  owner="$(stat -c '%u' "$file" 2>/dev/null || stat -f '%u' "$file")"
+  if [[ "$mode" != "600" || "$owner" != "$(id -u)" ]]; then
+    _TCMS_CKR_PROBLEM="muss dem Operator gehoeren und Modus 0600 haben"
+    return 1
+  fi
+  for key in format kind phase old_id new_id created_at_epoch published_at_epoch; do
+    if [[ "$(grep -c "^${key}=" "$file")" != "1" ]]; then
+      _TCMS_CKR_PROBLEM="beschaedigt ($key)"
+      return 1
+    fi
+  done
+  _TCMS_CKR_PHASE="$(_tcms_code_key_state_value phase)"
+  _TCMS_CKR_OLD="$(_tcms_code_key_state_value old_id)"
+  _TCMS_CKR_NEW="$(_tcms_code_key_state_value new_id)"
+  _TCMS_CKR_CREATED="$(_tcms_code_key_state_value created_at_epoch)"
+  _TCMS_CKR_PUBLISHED="$(_tcms_code_key_state_value published_at_epoch)"
+  if [[ "$(_tcms_code_key_state_value format)" != "1" || \
+        "$(_tcms_code_key_state_value kind)" != "code-key" || \
+        ! "$_TCMS_CKR_PHASE" =~ ^(prepared|published)$ || \
+        ! "$_TCMS_CKR_OLD" =~ ^csk:[0-9a-f]{16}$ || ! "$_TCMS_CKR_NEW" =~ ^csk:[0-9a-f]{16}$ || \
+        "$_TCMS_CKR_OLD" == "$_TCMS_CKR_NEW" || ! "$_TCMS_CKR_CREATED" =~ ^[0-9]{10}$ || \
+        ! "$_TCMS_CKR_PUBLISHED" =~ ^([0-9]{10})?$ ]] || \
+     [[ "$_TCMS_CKR_PHASE" == "published" && -z "$_TCMS_CKR_PUBLISHED" ]]; then
+    _TCMS_CKR_PROBLEM="ungueltig"
+    return 1
+  fi
+}
+
+tcms_read_code_key_rotation_state() {
+  tcms_parse_code_key_rotation_state || \
+    die "TCMS-Code-Schluessel-Rotationszustand $_TCMS_CKR_PROBLEM: $TCMS_CODE_KEY_ROTATION_STATE; nicht raten, manuell pruefen."
+}
+
+tcms_write_code_key_rotation_state() {
+  local tmp
+  tmp="$(mktemp "${TCMS_CODE_KEY_ROTATION_STATE}.tmp.XXXXXX")" || \
+    die "Rotationszustand des Code-Schluessels konnte nicht angelegt werden."
+  {
+    printf 'format=1\nkind=code-key\n'
+    printf 'phase=%s\n' "$_TCMS_CKR_PHASE"
+    printf 'old_id=%s\n' "$_TCMS_CKR_OLD"
+    printf 'new_id=%s\n' "$_TCMS_CKR_NEW"
+    printf 'created_at_epoch=%s\n' "$_TCMS_CKR_CREATED"
+    printf 'published_at_epoch=%s\n' "$_TCMS_CKR_PUBLISHED"
+  } >"$tmp"
+  chmod 0600 "$tmp" || { rm -f -- "$tmp"; die "Rotationszustand des Code-Schluessels konnte nicht auf 0600 gehaertet werden."; }
+  mv -f -- "$tmp" "$TCMS_CODE_KEY_ROTATION_STATE"
+}
+
+# Frühester Abschluss einer veroeffentlichten Rotation (Epoch).
+tcms_code_key_rotation_due() {
+  printf '%s' $(( _TCMS_CKR_PUBLISHED + TCMS_CODE_KEY_ROTATION_MIN_WAIT ))
+}
+
+# Neuen Schluessel erzeugen und vorn einfuegen. Der Zustand entsteht vor dem
+# Schreiben der .env: Ein Abbruch dazwischen laesst die .env unveraendert,
+# und der naechste Lauf beginnt neu, ohne dass ein Schluessel je verwendet
+# wurde.
+tcms_code_key_rotation_begin() {
+  local old="$1" new
+  new="$(tcms_generate_code_key "$old")"
+  _TCMS_CKR_PHASE="prepared"
+  _TCMS_CKR_OLD="$(tcms_code_key_id "$old")"
+  _TCMS_CKR_NEW="$(tcms_code_key_id "$new")"
+  _TCMS_CKR_CREATED="$(tcms_now)"
+  _TCMS_CKR_PUBLISHED=""
+  tcms_write_code_key_rotation_state
+  tcms_set TCMS_CODE_SCHLUESSEL "$new,$old"
+  info "Code-Schluessel-Rotation vorbereitet: $_TCMS_CKR_OLD -> $_TCMS_CKR_NEW"
+}
+
+# Phase prepared: tcms-api mit NEU,ALT starten; erst danach beginnt die Frist.
+tcms_code_key_rotation_publish() {
+  local list="${TCMS_CODE_SCHLUESSEL:-}" problem
+  local -a entries
+  IFS=',' read -r -a entries <<<"$list"
+  if (( ${#entries[@]} == 1 )) && [[ "$(tcms_code_key_id "${entries[0]}")" == "$_TCMS_CKR_OLD" ]]; then
+    warn "Unterbrochene Vorbereitung ohne neuen Code-Schluessel gefunden; Rotation beginnt neu."
+    rm -f -- "$TCMS_CODE_KEY_ROTATION_STATE"
+    tcms_code_key_rotation_begin "$list"
+    list="$TCMS_CODE_SCHLUESSEL"
+    IFS=',' read -r -a entries <<<"$list"
+  fi
+  (( ${#entries[@]} == 2 )) && \
+    [[ "$(tcms_code_key_id "${entries[0]}")" == "$_TCMS_CKR_NEW" && \
+       "$(tcms_code_key_id "${entries[1]}")" == "$_TCMS_CKR_OLD" ]] || \
+    die "TCMS_CODE_SCHLUESSEL passt nicht zum Rotationszustand ($_TCMS_CKR_OLD -> $_TCMS_CKR_NEW); nicht raten, manuell pruefen."
+  problem="$(tcms_code_key_problem "$list")"
+  [[ -z "$problem" ]] || die "TCMS_CODE_SCHLUESSEL: $problem; Rotation angehalten."
+  tcms_restart_api || \
+    die "tcms-api mit neuem und altem Code-Schluessel nicht healthy; Rotation bleibt in Phase prepared (erneut ./taxtronik tcms rotate-code-key)."
+  _TCMS_CKR_PHASE="published"
+  _TCMS_CKR_PUBLISHED="$(tcms_now)"
+  tcms_write_code_key_rotation_state
+  info "tcms-api signiert neue Codes mit $_TCMS_CKR_NEW und prueft $_TCMS_CKR_OLD weiter."
+  info "Abschluss fruehestens $(tcms_format_epoch "$(tcms_code_key_rotation_due)") mit ./taxtronik tcms rotate-code-key --finish (Erinnerung setzen)."
+}
+
+tcms_code_key_rotation_start() {
+  local list="${TCMS_CODE_SCHLUESSEL:-}" problem
+  if [[ -e "$TCMS_CODE_KEY_ROTATION_STATE" ]]; then
+    tcms_read_code_key_rotation_state
+    [[ "$_TCMS_CKR_PHASE" == "prepared" ]] || \
+      die "Code-Schluessel-Rotation laeuft seit $(tcms_format_epoch "$_TCMS_CKR_PUBLISHED") ($_TCMS_CKR_OLD -> $_TCMS_CKR_NEW); Abschluss fruehestens $(tcms_format_epoch "$(tcms_code_key_rotation_due)") mit ./taxtronik tcms rotate-code-key --finish."
+    info "Unterbrochener Start der Code-Schluessel-Rotation wird fortgesetzt."
+  else
+    problem="$(tcms_code_key_problem "$list")"
+    [[ -z "$problem" ]] || die "TCMS_CODE_SCHLUESSEL: $problem; Rotation nicht moeglich (./taxtronik doctor)."
+    [[ "$list" != *,* ]] || \
+      die "TCMS_CODE_SCHLUESSEL enthaelt mehrere Eintraege ohne laufende Rotation; zuerst abschliessen (./taxtronik tcms status, docs/operations/tcms-betrieb.md Abschnitt 5)."
+    tcms_code_key_rotation_begin "$list"
+  fi
+  tcms_code_key_rotation_publish
+}
+
+# Ohne Zustandsdatei (z. B. nach einer Wiederherstellung ohne sie) ist der
+# Startzeitpunkt unbekannt: nur mit --force; der erste Eintrag signiert und
+# bleibt, alle anderen gehen.
+tcms_code_key_rotation_finish_without_state() {
+  local force="$1" list="${TCMS_CODE_SCHLUESSEL:-}" problem first
+  problem="$(tcms_code_key_problem "$list")"
+  [[ -z "$problem" ]] || die "TCMS_CODE_SCHLUESSEL: $problem; nichts entfernt."
+  [[ "$list" == *,* ]] || die "Keine Code-Schluessel-Rotation offen (TCMS_CODE_SCHLUESSEL hat einen Eintrag)."
+  [[ "$force" == "1" ]] || \
+    die "Zustand der Code-Schluessel-Rotation fehlt ($TCMS_CODE_KEY_ROTATION_STATE); der Startzeitpunkt ist unbekannt. Datei aus dem Full-Backup wiederherstellen oder, wenn der Start sicher 7 Tage zurueckliegt, mit --finish --force --confirm-expiry $TCMS_CODE_KEY_FORCE_WORD abschliessen."
+  first="${list%%,*}"
+  warn "Abschluss ohne Zustand (--force): offene Codes laufen ab, soweit sie nicht mit $(tcms_code_key_id "$first") ausgestellt wurden; nur dieser erste Eintrag bleibt."
+  tcms_set TCMS_CODE_SCHLUESSEL "$first"
+  tcms_restart_api || die "tcms-api nach dem Kuerzen von TCMS_CODE_SCHLUESSEL nicht healthy; erneut ausfuehren."
+  info "Code-Schluessel-Liste auf $(tcms_code_key_id "$first") gekuerzt."
+}
+
+# Phase published: fruehestens 7 Tage nach dem Neustart ALT entfernen und
+# tcms-api neu starten. Vorher nur mit --force (Bestaetigungswort geprueft
+# vom Aufrufer). Wiederholbar: Ist ALT schon aus der .env entfernt, gilt die
+# Entscheidung als getroffen und nur der Neustart wird nachgeholt.
+tcms_code_key_rotation_finish() {
+  local force="$1" list="${TCMS_CODE_SCHLUESSEL:-}" now due entry kept="" problem
+  local -a entries
+  if [[ ! -e "$TCMS_CODE_KEY_ROTATION_STATE" ]]; then
+    tcms_code_key_rotation_finish_without_state "$force"
+    return 0
+  fi
+  tcms_read_code_key_rotation_state
+  [[ "$_TCMS_CKR_PHASE" == "published" ]] || \
+    die "Start der Code-Schluessel-Rotation ist nicht abgeschlossen (Phase prepared); zuerst ./taxtronik tcms rotate-code-key."
+  IFS=',' read -r -a entries <<<"$list"
+  [[ -n "$list" && "$(tcms_code_key_id "${entries[0]}")" == "$_TCMS_CKR_NEW" ]] || \
+    die "Erster Eintrag von TCMS_CODE_SCHLUESSEL ist nicht $_TCMS_CKR_NEW; nichts entfernt, manuell pruefen."
+  for entry in "${entries[@]}"; do
+    [[ "$(tcms_code_key_id "$entry")" == "$_TCMS_CKR_OLD" ]] || kept+="${kept:+,}$entry"
+  done
+  if [[ "$kept" != "$list" ]]; then
+    now="$(tcms_now)"
+    due="$(tcms_code_key_rotation_due)"
+    if (( now < due )); then
+      [[ "$force" == "1" ]] || \
+        die "Code-Schluessel-Rotation: Abschluss fruehestens $(tcms_format_epoch "$due") (noch $(tcms_format_duration $(( due - now )))). Bis dahin gelten Codes, die mit $_TCMS_CKR_OLD ausgestellt wurden; vorher entfernt, laufen offene Codes ab. Erzwingen nur mit --force --confirm-expiry $TCMS_CODE_KEY_FORCE_WORD."
+      warn "Vorzeitiger Abschluss (--force): offene Codes laufen ab. Codes, die mit $_TCMS_CKR_OLD ausgestellt wurden, gelten ab jetzt als abgelaufen; betroffene Personen fordern einen neuen Code an (hoechstens 5 je Stunde)."
+    fi
+    problem="$(tcms_code_key_problem "$kept")"
+    [[ -z "$problem" ]] || die "TCMS_CODE_SCHLUESSEL waere ungueltig ($problem); nichts entfernt."
+    tcms_set TCMS_CODE_SCHLUESSEL "$kept"
+  fi
+  tcms_restart_api || \
+    die "tcms-api nach dem Entfernen des alten Code-Schluessels nicht healthy; erneut ./taxtronik tcms rotate-code-key --finish (Zustand bleibt)."
+  rm -f -- "$TCMS_CODE_KEY_ROTATION_STATE"
+  info "Code-Schluessel-Rotation abgeschlossen: $_TCMS_CKR_OLD entfernt, $_TCMS_CKR_NEW aktiv."
+}
+
+cmd_tcms_rotate_code_key() {
+  local action="start" force=0 confirm=""
+  while (( $# > 0 )); do
+    case "$1" in
+      --start) action="start" ;;
+      --finish) action="finish" ;;
+      --force) force=1 ;;
+      --confirm-expiry)
+        (( $# >= 2 )) || die "--confirm-expiry braucht das Bestaetigungswort."
+        confirm="$2"
+        shift
+        ;;
+      # Unbekannte Argumente nie wiedergeben: Es koennte ein Schluessel sein.
+      *) die "Unbekannte Option fuer rotate-code-key (./taxtronik tcms help)." ;;
+    esac
+    shift
+  done
+  # Vor jeder Seitenwirkung: --force nur zum Abschluss und nur mit Wort.
+  if (( force == 1 )); then
+    [[ "$action" == "finish" ]] || die "--force gilt nur zusammen mit --finish."
+    [[ "$confirm" == "$TCMS_CODE_KEY_FORCE_WORD" ]] || \
+      die "--force verlangt --confirm-expiry $TCMS_CODE_KEY_FORCE_WORD: Ein vorzeitiger Abschluss laesst offene Codes ablaufen."
+  elif [[ -n "$confirm" ]]; then
+    die "--confirm-expiry gilt nur zusammen mit --finish --force."
+  fi
+  load_env
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || \
+    die "rotate-code-key gilt fuer TCMS_DEPLOYMENT=managed; ein externes Tax-CMS rotiert sein Betreiber."
+  case "$action" in
+    start) tcms_code_key_rotation_start ;;
+    finish) tcms_code_key_rotation_finish "$force" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
 # Kommandos
 # ---------------------------------------------------------------------------
 cmd_tcms_setup() {
@@ -1122,6 +1366,11 @@ cmd_tcms_disable() {
     TCMS_ACTOR_PRIVATE_KEY_NEXT TCMS_ACTOR_KEY_ID_NEXT TCMS_CODE_SCHLUESSEL; do
     [[ -z "$(get_env "$key")" && -z "${!key:-}" ]] || tcms_set "$key" ""
   done
+  # Mit dem Code-Schluessel ist auch seine laufende Rotation gegenstandslos.
+  if [[ -e "$TCMS_CODE_KEY_ROTATION_STATE" ]]; then
+    rm -f -- "$TCMS_CODE_KEY_ROTATION_STATE"
+    info "Laufende Code-Schluessel-Rotation verworfen (Schluessel geleert)."
+  fi
   # Erst app/worker ohne TCMS neu starten, dann den Dienst entfernen.
   if tcms_installed; then tcms_restart_writers; fi
   tcms_remove_containers
@@ -1174,6 +1423,7 @@ cmd_tcms() {
     status) cmd_tcms_status ;;
     rotate-token) cmd_tcms_rotate token ;;
     rotate-key) cmd_tcms_rotate key ;;
+    rotate-code-key) cmd_tcms_rotate_code_key "$@" ;;
     disable) load_env; cmd_tcms_disable ;;
     backup) cmd_tcms_backup ;;
     restore) cmd_tcms_restore "$@" ;;
@@ -1183,6 +1433,9 @@ cmd_tcms() {
 ./taxtronik tcms status
 ./taxtronik tcms rotate-token     Dienst-Token mit Ueberlappung tauschen (managed)
 ./taxtronik tcms rotate-key       Akteursschluessel mit Ueberlappung tauschen (managed, >= 5 min)
+./taxtronik tcms rotate-code-key [--start]   Code-Schluessel: NEU,ALT setzen, tcms-api neu starten
+./taxtronik tcms rotate-code-key --finish    ALT entfernen, fruehestens 7 Tage nach dem Start
+./taxtronik tcms rotate-code-key --finish --force --confirm-expiry OFFENE_CODES_LAUFEN_AB
 ./taxtronik tcms disable          Tax-CMS abschalten (Volume bleibt)
 ./taxtronik tcms backup           TCMS-Datenbank sichern (backups/ + Backup-Bucket)
 ./taxtronik tcms restore --file <dump> --confirm-overwrite RESTORE_TCMS_DATABASE

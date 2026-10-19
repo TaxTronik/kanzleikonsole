@@ -42,6 +42,7 @@ out
 .taxtronik.database-restored
 .taxtronik.install-pending
 .taxtronik.tcms-rotation
+.taxtronik.tcms-code-key-rotation
 licensing-private-*.pem
 infra/scripts/seaweedfs-s3.generated.json
 .taxtronik.traefik-dynamic.yml

@@ -418,6 +418,7 @@ tcms_isolated() {
   (
     unset "${TCMS_CONFIG_VARS[@]}"
     TCMS_ROTATION_STATE="${ROTATION_STATE:-$TMP_DIR/no-rotation}"
+    TCMS_CODE_KEY_ROTATION_STATE="${CODE_ROTATION_STATE:-$TMP_DIR/no-code-rotation}"
     ENVFILE="$env_file"
     STATE="${INSTALL_STATE:-$TMP_DIR/no-install-state}"
     "$@"
@@ -605,11 +606,12 @@ test_new_service_tokens_avoid_the_code_key() {
 # Regel: kein Geheimnis in Kommandozeilen (Prozessliste) oder Ausgaben.
 test_setup_and_rotation_never_expose_secrets() {
   local env_file="$TMP_DIR/setup-argv.env" spies="$TMP_DIR/setup-argv-spies" log="$TMP_DIR/setup-argv.log"
-  local out="$TMP_DIR/setup-argv.out" calls="$TMP_DIR/setup-argv.calls" key value
+  local out="$TMP_DIR/setup-argv.out" calls="$TMP_DIR/setup-argv.calls" key value snapshot
   tcms_base_env "$env_file"
   : >"$log"; : >"$calls"
-  install_argv_spies "$spies" "$log" openssl base64 tr sha256sum cut grep sed cat mv chmod mktemp head date rm
+  install_argv_spies "$spies" "$log" openssl base64 tr sha256sum cut grep sed cat mv chmod mktemp head date rm cp stat
   ROTATION_STATE="$TMP_DIR/setup-argv.rotation" INSTALL_STATE="$TMP_DIR/setup-argv.state" \
+  CODE_ROTATION_STATE="$TMP_DIR/setup-argv.code-rotation" \
   tcms_isolated "$env_file" eval '
     PATH="'"$spies"':$PATH"
     compose() { printf "compose %s\n" "$*" >>"'"$calls"'"; }
@@ -620,21 +622,33 @@ test_setup_and_rotation_never_expose_secrets() {
     tcms_sleep() { FAKE_NOW=$(( FAKE_NOW + $1 )); }
     load_env
     tcms_configure_managed
+    cp "$ENVFILE" "$ENVFILE.nach-setup"
     cmd_tcms_rotate token
     cmd_tcms_rotate key
+    cmd_tcms_rotate_code_key
+    cp "$TCMS_CODE_KEY_ROTATION_STATE" "$ENVFILE.code-rotation"
+    cmd_tcms_status
+    FAKE_NOW=$(( FAKE_NOW + 604800 ))
+    cmd_tcms_rotate_code_key --finish
     cmd_tcms_status
   ' >"$out" 2>&1 || { cat "$out" >&2; test_fail "setup/rotation failed"; }
   [[ -s "$log" ]] || test_fail "argv spies were not used"
   assert_contains "$log" "openssl genpkey -algorithm ed25519"
-  for key in TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD \
-    TCMS_SERVICE_TOKEN TCMS_ACTOR_PRIVATE_KEY TCMS_CODE_SCHLUESSEL; do
-    value="$(env_value "$env_file" "$key")"
-    [[ -n "$value" ]] || test_fail "$key missing after setup"
-    assert_no_secret "$log" "$value" "$key"
-    assert_no_secret "$calls" "$value" "$key"
-    assert_no_secret "$out" "$value" "$key"
+  # Werte nach dem Setup (alt) und nach allen Rotationen (neu).
+  for snapshot in "$env_file.nach-setup" "$env_file"; do
+    for key in TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD \
+      TCMS_SERVICE_TOKEN TCMS_ACTOR_PRIVATE_KEY TCMS_CODE_SCHLUESSEL; do
+      value="$(env_value "$snapshot" "$key")"
+      [[ -n "$value" ]] || test_fail "$key missing after setup"
+      assert_no_secret "$log" "$value" "$key"
+      assert_no_secret "$calls" "$value" "$key"
+      assert_no_secret "$out" "$value" "$key"
+      assert_no_secret "$env_file.code-rotation" "$value" "$key"
+    done
   done
-  pass "setup and rotation keep every TCMS secret out of command lines, docker calls and output"
+  [[ "$(env_value "$env_file.nach-setup" TCMS_CODE_SCHLUESSEL)" != "$(env_value "$env_file" TCMS_CODE_SCHLUESSEL)" ]] || \
+    test_fail "code key was not rotated"
+  pass "setup and rotation keep every TCMS secret out of command lines, docker calls, state and output"
 }
 
 # Compose-Attrappe fuer Rotationen: protokolliert je Neustart, welche Werte
@@ -765,6 +779,169 @@ test_rotation_resumes_after_interruptions() {
   pass "rotation resumes after failures and interruptions without new secrets or a shorter overlap"
 }
 
+# Compose-Attrappe fuer die Code-Schluessel-Rotation: protokolliert je
+# Neustart von tcms-api die Kennungen der Liste (nie Werte).
+code_rotation_stubs() {
+  cat <<'STUBS'
+compose() {
+  if [[ "$*" == *"tcms-api"* ]]; then
+    printf 'API t=%s codes=%s\n' "$FAKE_NOW" "$(tcms_code_key_ids "$TCMS_CODE_SCHLUESSEL")" >>"$CALLS"
+    [[ -z "${FAIL_API_ONCE:-}" || -e "$FAIL_API_ONCE" ]] || { : >"$FAIL_API_ONCE"; return 1; }
+  fi
+  return 0
+}
+docker() { return 0; }
+tcms_now() { printf '%s' "$FAKE_NOW"; }
+if [[ -n "${ABORT_ON_CODE_KEY_WRITE:-}" ]]; then
+  tcms_set() { [[ "$1" != TCMS_CODE_SCHLUESSEL ]] || exit 130; set_env "$1" "$2"; export "$1=$2"; }
+fi
+STUBS
+}
+
+run_code_rotation() {
+  local env_file="$1"
+  shift
+  ROT_ARGS="$*" tcms_isolated "$env_file" eval "$(code_rotation_stubs)"'
+    FAKE_NOW="$(cat "$CLOCK")"
+    # shellcheck disable=SC2086 # Wortzerlegung gewollt: Optionen des Testfalls
+    cmd_tcms_rotate_code_key $ROT_ARGS'
+}
+
+code_key_of() { env_value "$1" TCMS_CODE_SCHLUESSEL; }
+
+# Regel (TCMS s8, H5): Der neue Code-Schluessel steht vorn (signiert), der
+# alte prueft weiter und verschwindet fruehestens 7 Tage nach dem Neustart
+# von tcms-api mit NEU,ALT.
+test_code_key_rotation_keeps_the_old_key_for_seven_days() {
+  local env_file="$TMP_DIR/ck-rot.env" out="$TMP_DIR/ck-rot.out" old new old_id new_id
+  export CALLS="$TMP_DIR/ck-rot.calls" CLOCK="$TMP_DIR/ck-rot.clock"
+  export CODE_ROTATION_STATE="$TMP_DIR/ck-rot.rotation" INSTALL_STATE="$TMP_DIR/ck-rot.state"
+  managed_env "$env_file"; : >"$CALLS"; printf '1700000000' >"$CLOCK"
+  old="$(code_key_of "$env_file")"; old_id="$(tcms_code_key_id "$old")"
+  run_code_rotation "$env_file" >"$out" 2>&1 || { cat "$out" >&2; test_fail "code key rotation start failed"; }
+  [[ "$(code_key_of "$env_file")" == *",$old" ]] || test_fail "old key is not kept as the second entry"
+  new="$(code_key_of "$env_file")"; new="${new%%,*}"; new_id="$(tcms_code_key_id "$new")"
+  [[ "$new" =~ ^[A-Za-z0-9_-]{43}$ && "$new" != "$old" ]] || test_fail "no new 32-byte key in front"
+  [[ "$(cat "$CALLS")" == "API t=1700000000 codes=$new_id, $old_id" ]] || {
+    cat "$CALLS" >&2; test_fail "tcms-api was not restarted with new,old"; }
+  grep -qx 'phase=published' "$CODE_ROTATION_STATE" && grep -qx 'published_at_epoch=1700000000' "$CODE_ROTATION_STATE" || \
+    test_fail "rotation state is not published at the restart time"
+  [[ "$(file_mode "$CODE_ROTATION_STATE")" == "600" ]] || test_fail "code key rotation state is not 0600"
+  assert_contains "$out" "fruehestens $(tcms_format_epoch 1700604800)"
+  # Zweiter Start waehrend der Ueberlappung: Abbruch, kein neuer Schluessel.
+  if run_code_rotation "$env_file" --start >"$out" 2>&1; then test_fail "a second start during the overlap succeeded"; fi
+  assert_contains "$out" "laeuft seit"
+  [[ "$(code_key_of "$env_file")" == "$new,$old" ]] || test_fail "second start changed the key list"
+  # Eine Sekunde zu frueh: Abbruch mit Hinweis, nichts geaendert, kein Neustart.
+  : >"$CALLS"; printf '1700604799' >"$CLOCK"
+  if run_code_rotation "$env_file" --finish >"$out" 2>&1; then test_fail "finish before seven days succeeded"; fi
+  assert_contains "$out" "Abschluss fruehestens $(tcms_format_epoch 1700604800) (noch 0 Tage 0 Std 0 Min)"
+  assert_contains "$out" "--force --confirm-expiry OFFENE_CODES_LAUFEN_AB"
+  [[ "$(code_key_of "$env_file")" == "$new,$old" && ! -s "$CALLS" ]] || \
+    test_fail "an early finish changed the key list or restarted tcms-api"
+  # Nach 7 Tagen: ALT entfernt, Neustart, Zustand weg.
+  printf '1700604800' >"$CLOCK"
+  run_code_rotation "$env_file" --finish >"$out" 2>&1 || { cat "$out" >&2; test_fail "finish after seven days failed"; }
+  assert_key_equals "$env_file" TCMS_CODE_SCHLUESSEL "$new"
+  [[ "$(cat "$CALLS")" == "API t=1700604800 codes=$new_id" ]] || test_fail "tcms-api not restarted with the new key only"
+  [[ ! -e "$CODE_ROTATION_STATE" ]] || test_fail "rotation state left behind"
+  if run_code_rotation "$env_file" --finish >"$out" 2>&1; then test_fail "finish without an open rotation succeeded"; fi
+  assert_contains "$out" "Keine Code-Schluessel-Rotation offen"
+  pass "code key rotation: the new key signs first, the old one stays seven days after the restart"
+}
+
+# Regel: Wiederaufnahme ohne zweiten Schluessel; die Frist laeuft ab dem
+# erfolgreichen Neustart; --force nur zum Abschluss und nur mit Wort.
+test_code_key_rotation_resumes_and_forces_only_with_the_word() {
+  local env_file="$TMP_DIR/ck-res.env" out="$TMP_DIR/ck-res.out" list args old state_new
+  export CALLS="$TMP_DIR/ck-res.calls" CLOCK="$TMP_DIR/ck-res.clock"
+  export CODE_ROTATION_STATE="$TMP_DIR/ck-res.rotation" INSTALL_STATE="$TMP_DIR/ck-res.state"
+  managed_env "$env_file"; : >"$CALLS"; printf '1700000000' >"$CLOCK"
+  # 1) Neustart scheitert: Phase prepared, Liste NEU,ALT schon in der .env.
+  if FAIL_API_ONCE="$TMP_DIR/ck-res.api-failed" run_code_rotation "$env_file" >"$out" 2>&1; then
+    test_fail "rotation reported success although tcms-api did not become healthy"
+  fi
+  grep -qx 'phase=prepared' "$CODE_ROTATION_STATE" || test_fail "state is not prepared after a failed restart"
+  list="$(code_key_of "$env_file")"
+  [[ "$list" == *,* ]] || test_fail "new,old not written before the restart"
+  if run_code_rotation "$env_file" --finish >"$out" 2>&1; then test_fail "finish accepted an unpublished rotation"; fi
+  assert_contains "$out" "Phase prepared"
+  # 2) Spaeter fortsetzen: derselbe neue Schluessel, Frist ab diesem Neustart.
+  printf '1700001000' >"$CLOCK"
+  run_code_rotation "$env_file" >"$out" 2>&1 || { cat "$out" >&2; test_fail "resume failed"; }
+  [[ "$(code_key_of "$env_file")" == "$list" ]] || test_fail "resume generated another key"
+  grep -qx 'published_at_epoch=1700001000' "$CODE_ROTATION_STATE" || test_fail "overlap does not start at the successful restart"
+  # 3) 7 Tage nach dem Erzeugen, aber vor 7 Tagen nach dem Neustart: zu frueh.
+  printf '1700604800' >"$CLOCK"
+  if run_code_rotation "$env_file" --finish >"$out" 2>&1; then test_fail "overlap counted from the creation instead of the restart"; fi
+  # 4) --force ohne bzw. mit falschem Wort, oder Wort ohne --force: Abbruch vor jeder Wirkung.
+  : >"$CALLS"
+  for args in "--finish --force" "--finish --force --confirm-expiry ja" "--force --confirm-expiry OFFENE_CODES_LAUFEN_AB" \
+    "--finish --confirm-expiry OFFENE_CODES_LAUFEN_AB" "--finish --unbekannt"; do
+    # shellcheck disable=SC2086 # Wortzerlegung gewollt: Optionen des Testfalls
+    if run_code_rotation "$env_file" $args >"$out" 2>&1; then test_fail "accepted: $args"; fi
+    [[ "$(code_key_of "$env_file")" == "$list" && ! -s "$CALLS" ]] || test_fail "refused options changed something: $args"
+  done
+  assert_contains "$out" "Unbekannte Option"
+  # 5) Mit Wort: Warnung, ALT entfernt, Neustart.
+  run_code_rotation "$env_file" --finish --force --confirm-expiry OFFENE_CODES_LAUFEN_AB >"$out" 2>&1 || {
+    cat "$out" >&2; test_fail "forced finish failed"; }
+  assert_contains "$out" "offene Codes laufen ab"
+  assert_key_equals "$env_file" TCMS_CODE_SCHLUESSEL "${list%%,*}"
+  [[ ! -e "$CODE_ROTATION_STATE" ]] || test_fail "state left after the forced finish"
+  # 6) Abbruch zwischen Zustand und .env: der naechste Lauf beginnt neu und
+  #    schreibt genau einen neuen Schluessel vor den alten.
+  old="$(code_key_of "$env_file")"
+  if ABORT_ON_CODE_KEY_WRITE=1 run_code_rotation "$env_file" >"$out" 2>&1; then test_fail "simulated abort did not abort"; fi
+  [[ "$(code_key_of "$env_file")" == "$old" ]] || test_fail "aborted start changed .env"
+  state_new="$(grep '^new_id=' "$CODE_ROTATION_STATE" | cut -d= -f2)"
+  run_code_rotation "$env_file" >"$out" 2>&1 || { cat "$out" >&2; test_fail "restart after the abort failed"; }
+  assert_contains "$out" "Rotation beginnt neu"
+  list="$(code_key_of "$env_file")"
+  [[ "$list" == *",$old" && "$list" != *,*,* ]] || test_fail "restart after the abort did not produce exactly new,old"
+  [[ "$(grep '^new_id=' "$CODE_ROTATION_STATE" | cut -d= -f2)" == "$(tcms_code_key_id "${list%%,*}")" && \
+     "$(tcms_code_key_id "${list%%,*}")" != "$state_new" ]] || test_fail "state does not describe the key in .env"
+  pass "code key rotation resumes without a second key and forces only with the confirmation word"
+}
+
+# Regel: Zustand nur Kennungen und Zeitpunkte; Abweisungen vor jeder Wirkung.
+test_code_key_rotation_state_and_refusals() {
+  local env_file="$TMP_DIR/ck-ref.env" out="$TMP_DIR/ck-ref.out" line first
+  export CALLS="$TMP_DIR/ck-ref.calls" CLOCK="$TMP_DIR/ck-ref.clock"
+  export CODE_ROTATION_STATE="$TMP_DIR/ck-ref.rotation" INSTALL_STATE="$TMP_DIR/ck-ref.state"
+  managed_env "$env_file"; : >"$CALLS"; printf '1700000000' >"$CLOCK"
+  run_code_rotation "$env_file" >/dev/null 2>&1 || test_fail "rotation start failed"
+  while IFS= read -r line; do
+    [[ "$line" =~ ^(format=1|kind=code-key|phase=(prepared|published)|(old|new)_id=csk:[0-9a-f]{16}|(created|published)_at_epoch=([0-9]{10})?)$ ]] || \
+      test_fail "unexpected line in the rotation state: ${line%%=*}"
+  done <"$CODE_ROTATION_STATE"
+  # Manipulierter Zustand (Gruppenrechte, fremde Zeile): kein Raten.
+  chmod 0640 "$CODE_ROTATION_STATE"
+  if run_code_rotation "$env_file" --finish >"$out" 2>&1; then test_fail "state with group rights accepted"; fi
+  assert_contains "$out" "Modus 0600"
+  chmod 0600 "$CODE_ROTATION_STATE"; sed -i 's/^kind=code-key$/kind=token/' "$CODE_ROTATION_STATE"
+  if run_code_rotation "$env_file" --finish >"$out" 2>&1; then test_fail "state of another kind accepted"; fi
+  assert_contains "$out" "ungueltig"
+  # Zwei Eintraege ohne Zustand: Start abgewiesen, Abschluss nur mit --force
+  # (der erste Eintrag bleibt).
+  rm -f "$CODE_ROTATION_STATE"; : >"$CALLS"
+  if run_code_rotation "$env_file" >"$out" 2>&1; then test_fail "start accepted a two-entry list without state"; fi
+  assert_contains "$out" "mehrere Eintraege ohne laufende Rotation"
+  if run_code_rotation "$env_file" --finish >"$out" 2>&1; then test_fail "finish without state and without force succeeded"; fi
+  assert_contains "$out" "Startzeitpunkt ist unbekannt"
+  [[ ! -s "$CALLS" ]] || test_fail "refused commands restarted tcms-api"
+  first="$(code_key_of "$env_file")"; first="${first%%,*}"
+  run_code_rotation "$env_file" --finish --force --confirm-expiry OFFENE_CODES_LAUFEN_AB >"$out" 2>&1 || {
+    cat "$out" >&2; test_fail "forced finish without state failed"; }
+  assert_key_equals "$env_file" TCMS_CODE_SCHLUESSEL "$first"
+  # Nur verwaltet.
+  sed -i 's/^TCMS_DEPLOYMENT=managed$/TCMS_DEPLOYMENT=external/' "$env_file"; : >"$CALLS"
+  if run_code_rotation "$env_file" >"$out" 2>&1; then test_fail "rotation ran for an external Tax-CMS"; fi
+  assert_contains "$out" "gilt fuer TCMS_DEPLOYMENT=managed"
+  [[ ! -s "$CALLS" && ! -e "$CODE_ROTATION_STATE" ]] || test_fail "refused rotation had side effects"
+  pass "code key rotation state holds only ids and times; refusals happen before any side effect"
+}
+
 test_rotation_refuses_inconsistent_or_unmanaged_configuration() {
   local env_file="$TMP_DIR/rot-refuse.env" out="$TMP_DIR/rot-refuse.out"
   export CALLS="$TMP_DIR/rot-refuse.calls" CLOCK="$TMP_DIR/rot-refuse.clock"
@@ -820,6 +997,8 @@ test_disable_restarts_writers_first_and_keeps_the_database_volume() {
   managed_env "$env_file"; : >"$calls"
   super="$(env_value "$env_file" TCMS_DB_SUPERUSER_PASSWORD)"
   printf 'current=1.0.0\n' >"$TMP_DIR/disable.state"
+  printf 'format=1\n' >"$TMP_DIR/disable.code-rotation"
+  CODE_ROTATION_STATE="$TMP_DIR/disable.code-rotation" \
   INSTALL_STATE="$TMP_DIR/disable.state" tcms_isolated "$env_file" eval '
     compose() { printf "compose %s TCMS_DEPLOYMENT=%s TCMS_URL=%s\n" "$*" "$TCMS_DEPLOYMENT" "${TCMS_URL:-}" >>"'"$calls"'"; }
     docker() { printf "docker %s\n" "$*" >>"'"$calls"'"; return 0; }
@@ -832,6 +1011,7 @@ test_disable_restarts_writers_first_and_keeps_the_database_volume() {
     assert_key_equals "$env_file" "$key" ""
   done
   assert_key_equals "$env_file" TCMS_DB_SUPERUSER_PASSWORD "$super"
+  [[ ! -e "$TMP_DIR/disable.code-rotation" ]] || test_fail "disable kept the code key rotation state"
   assert_contains "$calls" "compose up -d --no-deps --force-recreate --wait --wait-timeout 300 app worker TCMS_DEPLOYMENT=disabled TCMS_URL="
   assert_before "$calls" "app worker" "docker stop --time 30 taxtronik-tcms-api"
   assert_contains "$calls" "docker network rm taxtronik-tcms-frontend"
@@ -1514,6 +1694,9 @@ run_test test_setup_and_rotation_never_expose_secrets
 run_test test_token_rotation_overlaps_and_retires_the_old_token
 run_test test_key_rotation_waits_five_minutes_before_removing_the_old_key
 run_test test_rotation_resumes_after_interruptions
+run_test test_code_key_rotation_keeps_the_old_key_for_seven_days
+run_test test_code_key_rotation_resumes_and_forces_only_with_the_word
+run_test test_code_key_rotation_state_and_refusals
 run_test test_rotation_refuses_inconsistent_or_unmanaged_configuration
 run_test test_external_setup_requires_https_and_prints_only_the_public_key
 run_test test_disable_restarts_writers_first_and_keeps_the_database_volume

@@ -245,6 +245,44 @@ laufenden. Vor dem Start muss jede Liste genau den aktuellen Eintrag enthalten.
 Datenbankpasswörter und das externe Tax-CMS: siehe
 [Secret-Rotation](secret-rotation.md#tax-cms-tcms).
 
+### Code-Schlüssel (7 Tage Überlappung)
+
+```bash
+./taxtronik tcms rotate-code-key            # Start (auch --start)
+./taxtronik tcms rotate-code-key --finish   # frühestens 7 Tage später
+```
+
+Der Dienst signiert neue Bestätigungscodes mit dem ersten Eintrag von
+`TCMS_CODE_SCHLUESSEL` und prüft mit allen. Ein Code gilt 7 Tage; so lange
+muss der alte Schlüssel in der Liste bleiben, sonst laufen offene Codes ab.
+
+1. **Start:** neuen Schlüssel erzeugen (32 Byte base64url, verschieden vom
+   alten und von allen Tokens und Passwörtern), `TCMS_CODE_SCHLUESSEL=NEU,ALT`
+   setzen, `tcms-api` neu starten. Ab dem erfolgreichen Neustart läuft die
+   Frist; die CLI nennt den frühesten Abschluss (UTC). Eine Erinnerung für
+   diesen Zeitpunkt setzen.
+2. **Abschluss** (`--finish`) frühestens 7 Tage nach diesem Neustart: `ALT`
+   entfernen, `tcms-api` neu starten. Vorher bricht der Befehl mit dem
+   frühesten Zeitpunkt und der Restzeit ab und ändert nichts.
+
+Vorzeitig nur bewusst:
+`./taxtronik tcms rotate-code-key --finish --force --confirm-expiry OFFENE_CODES_LAUFEN_AB`.
+Die CLI warnt dann: Offene Codes, die mit dem alten Schlüssel ausgestellt
+wurden, laufen ab; betroffene Personen fordern einen neuen Code an (höchstens 5
+je Stunde). `--force` ohne genau dieses Wort oder ohne `--finish` bricht vor
+jeder Wirkung ab.
+
+Der Zustand liegt in `.taxtronik.tcms-code-key-rotation` (`0600`): Phase
+(`prepared` bis zum erfolgreichen Neustart, dann `published`), Kennungen von
+alt und neu (`csk:` + 16 Hex-Zeichen SHA-256) und die Zeitpunkte von Start und
+Neustart, nie ein Schlüssel. Scheitert der Neustart, setzt derselbe Befehl fort,
+ohne einen zweiten Schlüssel zu erzeugen; bricht der Start ab, bevor der neue
+Schlüssel in der `.env` steht, beginnt der nächste Lauf neu. Die Datei ist von
+`rotate-token`/`rotate-key` unabhängig: Token und Akteursschlüssel lassen sich
+während der 7 Tage rotieren. Fehlt die Datei bei zwei Einträgen (etwa nach einer
+Wiederherstellung ohne sie), ist der Startzeitpunkt unbekannt: `--finish` geht
+dann nur mit `--force` und dem Bestätigungswort und behält den ersten Eintrag.
+
 ## 6. Abschalten
 
 `./taxtronik tcms disable` setzt `TCMS_DEPLOYMENT=disabled`, leert Token,
@@ -276,16 +314,16 @@ dann Daten, dann Migrationsschritt); Details im
 
 ## 8. Variablen
 
-| Variable                                                                           | Inhalt                                                                          |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `TCMS_DB_SUPERUSER_PASSWORD`, `TCMS_DB_OWNER_PASSWORD`, `TCMS_DB_APP_PASSWORD`     | Passwörter von `tcms`, `tcms_owner`, `tcms_app`; nur `managed`                  |
-| `TCMS_SERVICE_TOKENS`                                                              | Token-Liste des Dienstes (Komma-Liste; zwei Einträge nur während der Rotation)  |
-| `TCMS_ACTOR_PUBLIC_KEYS`                                                           | `kid=<SPKI-base64>`, kommagetrennt (zwei Einträge nur während der Rotation)     |
-| `TCMS_CODE_SCHLUESSEL`                                                             | Code-Schlüssel (HMAC der Bestätigungscodes); `NEU,ALT` nur während der Rotation |
-| `TCMS_SERVICE_TOKEN_NEXT`, `TCMS_ACTOR_PRIVATE_KEY_NEXT`, `TCMS_ACTOR_KEY_ID_NEXT` | nur während einer Rotation bis zur Umstellung; danach leer                      |
-| `TCMS_VERSION`, `TCMS_API_DIGEST_SUFFIX`, `TCMS_MIGRATE_DIGEST_SUFFIX`             | Image-Tag und `@sha256:…`-Suffixe; im Release-Kanal aus dem signierten Stand    |
-| `TCMS_API_MEM_LIMIT`, `TCMS_DB_MEM_LIMIT`, `TCMS_MIGRATE_MEM_LIMIT`                | Speichergrenzen (Standard 512m, 1g, 256m)                                       |
-| `TCMS_DB_SHARED_BUFFERS`, `TCMS_DB_MAX_CONNECTIONS`, `TCMS_LOG_LEVEL`              | Datenbank-Tuning und Log-Stufe des Dienstes                                     |
+| Variable                                                                           | Inhalt                                                                               |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `TCMS_DB_SUPERUSER_PASSWORD`, `TCMS_DB_OWNER_PASSWORD`, `TCMS_DB_APP_PASSWORD`     | Passwörter von `tcms`, `tcms_owner`, `tcms_app`; nur `managed`                       |
+| `TCMS_SERVICE_TOKENS`                                                              | Token-Liste des Dienstes (Komma-Liste; zwei Einträge nur während der Rotation)       |
+| `TCMS_ACTOR_PUBLIC_KEYS`                                                           | `kid=<SPKI-base64>`, kommagetrennt (zwei Einträge nur während der Rotation)          |
+| `TCMS_CODE_SCHLUESSEL`                                                             | Code-Schlüssel (HMAC der Bestätigungscodes); `NEU,ALT` nur während `rotate-code-key` |
+| `TCMS_SERVICE_TOKEN_NEXT`, `TCMS_ACTOR_PRIVATE_KEY_NEXT`, `TCMS_ACTOR_KEY_ID_NEXT` | nur während einer Rotation bis zur Umstellung; danach leer                           |
+| `TCMS_VERSION`, `TCMS_API_DIGEST_SUFFIX`, `TCMS_MIGRATE_DIGEST_SUFFIX`             | Image-Tag und `@sha256:…`-Suffixe; im Release-Kanal aus dem signierten Stand         |
+| `TCMS_API_MEM_LIMIT`, `TCMS_DB_MEM_LIMIT`, `TCMS_MIGRATE_MEM_LIMIT`                | Speichergrenzen (Standard 512m, 1g, 256m)                                            |
+| `TCMS_DB_SHARED_BUFFERS`, `TCMS_DB_MAX_CONNECTIONS`, `TCMS_LOG_LEVEL`              | Datenbank-Tuning und Log-Stufe des Dienstes                                          |
 
 ## 9. Fehlerbilder
 
@@ -299,6 +337,8 @@ dann Daten, dann Migrationsschritt); Details im
 | `Registry-Compose verweigert: TCMS-Images … weichen … ab`                                                | `.env` oder Prozessumgebung nennt andere Digests als der signierte Stand. Nicht von Hand ändern; deploy/update/rollback nutzen.                                                                                                                                                                    |
 | `TCMS-Compose-Datei fehlt im Checkout`                                                                   | `managed` in einem Checkout ohne TCMS-Unterstützung (älterer Release): vorher `./taxtronik tcms disable`.                                                                                                                                                                                          |
 | `Eine Rotation (…) ist nicht abgeschlossen`                                                              | Denselben `rotate-…`-Befehl erneut ausführen; er setzt an der gespeicherten Phase fort.                                                                                                                                                                                                            |
+| `Code-Schluessel-Rotation: Abschluss fruehestens …`                                                      | Die 7 Tage seit dem Neustart mit `NEU,ALT` sind nicht um. Zum genannten Zeitpunkt `rotate-code-key --finish` wiederholen; nur bewusst vorzeitig mit `--force --confirm-expiry OFFENE_CODES_LAUFEN_AB` (offene Codes laufen ab).                                                                    |
+| `Code-Schluessel-Rotation laeuft seit …`                                                                 | Ein Start ist schon veröffentlicht; erst `--finish`, dann neu starten.                                                                                                                                                                                                                             |
 | `… muss vor einer Rotation genau das aktuelle … enthalten`                                               | Liste enthält Fremdeinträge; mit `tcms status` prüfen und die Liste auf den aktuellen Eintrag zurückführen.                                                                                                                                                                                        |
 | doctor: `haengt im TCMS-Backend-Netz`                                                                    | App/Worker wurden außerhalb der CLI mit falschem Netz gestartet; `./taxtronik tcms setup managed` erzeugt sie neu.                                                                                                                                                                                 |
 | doctor: `TCMS_HEALTH … nicht erreichbar` (external)                                                      | URL, TLS-Kette oder Token prüfen; das externe Tax-CMS muss das Token in seiner Liste führen.                                                                                                                                                                                                       |

@@ -57,6 +57,8 @@ infra/compose/.volumes/
 /.taxtronik.update-handoff
 # Phase einer laufenden TCMS-Rotation (ohne Geheimnisse, TCMS Stufe 2).
 /.taxtronik.tcms-rotation
+# Laufende Rotation des TCMS-Code-Schluessels (Kennungen, Zeitpunkte).
+/.taxtronik.tcms-code-key-rotation
 # Protokoll ungeprüft übernommener Source-Updates (Opt-out, siehe release.md 2.2).
 /.taxtronik.source-update-audit.log
 # Regenerierbare, sehr große lokale Signal-LLM-Artefakte (GGUF + llama.cpp).

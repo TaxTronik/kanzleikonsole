@@ -63,6 +63,8 @@ Nutze:
                                     Tax-CMS einrichten (Geheimnisse, Netze, Start)
   ./taxtronik tcms status|rotate-token|rotate-key|disable
                                     Zustand, Rotation mit Ueberlappung, Abschalten
+  ./taxtronik tcms rotate-code-key [--finish]
+                                    Code-Schluessel rotieren (Abschluss >= 7 Tage)
   ./taxtronik compose <cmd>          expliziter Docker-Compose-Passthrough
   ./taxtronik up|down|ps|logs|exec|pull ...   Kurzform fuer Compose
   ./taxtronik --infra <cmd>                    nur Infra-Services
