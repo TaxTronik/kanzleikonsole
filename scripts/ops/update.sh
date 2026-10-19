@@ -362,6 +362,8 @@ continue_update_after_checkout() {
   assert_app_env_schema
   provide_traefik_for_deploy
   provide_signal_for_deploy update
+  # TCMS s8 (H5): Code-Schluessel vor TCMS-Images und Migrationen pruefen.
+  tcms_preflight_for_deploy
   provide_tcms_images
   run_migrations
   start_tcms_for_deploy || die "Update abgebrochen: verwaltetes Tax-CMS ist nicht bereit."

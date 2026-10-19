@@ -107,10 +107,16 @@ läuft er normal weiter.
 **Erster Rollout mit Code-Schlüssel (TCMS s8, Hinweis H5).** Ab diesem
 TCMS-Stand speichert der Dienst Bestätigungscodes nur als HMAC mit
 `TCMS_CODE_SCHLUESSEL` und startet ohne gültigen Schlüssel nicht. `deploy` und
-`update` erzeugen einen fehlenden Schlüssel (Abschnitt 4) gleich zu Beginn in
-der `.env`-Vorbereitung, also bevor ein Backup, eine Migration oder ein
-Containerwechsel läuft; ein ungültiger Schlüssel bricht dort ab. Zwei Folgen
-des Rollouts nennt die CLI dabei als Warnung:
+`update` erzeugen einen fehlenden Schlüssel (Abschnitt 4) in der
+`.env`-Vorbereitung, bevor eine Migration oder ein Containerwechsel läuft (bei
+`update` im neuen Operator nach dem Fast-forward, also nach dem Pflichtbackup);
+ein ungültiger Schlüssel bricht dort ab (`doctor` meldet `FEHLT`). Zusätzlich
+prüfen `deploy` und `update` den Wert, den Compose tatsächlich verwendet (eine
+gesetzte Prozessvariable vor der `.env`), vor den TCMS-Images und den
+Migrationen der kanzleikonsole (bei `deploy` auch vor dem Backup davor), und
+jeder Start von `tcms-db`/`tcms-migrate`/`tcms-api` (auch `tcms setup`) prüft
+ihn noch einmal; ohne gültigen Schlüssel bleibt der laufende `tcms-api`
+unverändert. Zwei Folgen des Rollouts nennt die CLI als Warnung:
 
 - Die TCMS-Migration `freigabe_code_schluessel` lässt alle bis dahin
   ausgestellten Codes ablaufen. Freigeben ergibt dann „Der Code ist
@@ -133,7 +139,11 @@ und worker auf die Ziel-Images, ohne Migrationsschritt (ein Rollback migriert
 nie). Scheitert die Aktivierung, kehrt `tcms-api` mit app und worker auf den
 Last-Good-Stand zurück. Weil auch die TCMS-Datenbank vorwärts migriert,
 müssen TCMS-Migrationen wie die der kanzleikonsole Expand/Contract folgen
-(ältere `tcms-api` läuft auf dem neueren Schema).
+(ältere `tcms-api` läuft auf dem neueren Schema). Ein Rollback auf ein
+TCMS-Image vor s8 kennt den Code-Schlüssel nicht: Es erkennt die HMAC-Codes
+des neueren Images nicht, eine Eingabe solcher Codes zählt dort als
+Fehlversuch. Nur im Notfall und mit Hinweis an die Nutzer; der Schlüssel bleibt
+in der `.env` (ältere Images ignorieren die Variable).
 
 **Wie TCMS-Images in die Registry kommen.** Das TCMS-Repository baut
 `tcms-api` und `tcms-migrate` in seinem eigenen Release-Workflow (gepinnte

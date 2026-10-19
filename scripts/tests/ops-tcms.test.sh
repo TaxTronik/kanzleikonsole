@@ -1339,7 +1339,7 @@ test_deploy_and_update_start_tcms_between_migrations_and_writers() {
   local -a deploy_steps=(load_env prepare_source_version_for_checkout preflight_common assert_production_env
     require_release_version assert_no_database_restore_pending ensure_host_tool_deps prepare_release_contract
     start_infra wait_postgres_healthy sync_postgres_roles_from_env provide_images assert_app_env_schema
-    provide_traefik_for_deploy provide_signal_for_deploy provide_tcms_images backup_before_migrations
+    provide_traefik_for_deploy provide_signal_for_deploy tcms_preflight_for_deploy provide_tcms_images backup_before_migrations
     run_migrations ensure_provisioned_interactive ensure_managed_n8n_connection start_tcms_for_deploy
     start_signal_for_deploy start_apps_for_activation smoke_health smoke_public_frontend smoke_client_ip
     deploy_readiness finalize_release_contract prepare_env_interactive image_tag)
@@ -1352,6 +1352,9 @@ test_deploy_and_update_start_tcms_between_migrations_and_writers() {
       "$fn"
     ) >/dev/null
     assert_before "$steps" "provide_tcms_images" "run_migrations"
+    # TCMS s8 (H5): Code-Schluessel-Pruefung vor Images, Backup und Migrationen.
+    assert_before "$steps" "tcms_preflight_for_deploy" "provide_tcms_images"
+    [[ "$fn" == continue_update_after_checkout ]] || assert_before "$steps" "tcms_preflight_for_deploy" "backup_before_migrations"
     assert_before "$steps" "run_migrations" "start_tcms_for_deploy"
     assert_before "$steps" "start_tcms_for_deploy" "start_apps_for_activation"
     assert_before "$steps" "start_tcms_for_deploy" "finalize_release_contract"
@@ -1366,6 +1369,7 @@ test_start_tcms_runs_migration_before_api_and_falls_back() {
   start_with() (
     ENVFILE="$env_file"; MIGRATE_EXIT="$1"; API_RESULT="$2"; LEDGER="${3:-f}"
     TCMS_DEPLOYMENT=managed TCMS_VERSION=1.4.0 TCMS_API_DIGEST_SUFFIX="@$DIGEST_API" TCMS_MIGRATE_DIGEST_SUFFIX="@$DIGEST_MIGRATE"
+    TCMS_CODE_SCHLUESSEL="${CODE_KEY-wegwerfCodeSchluesselStart$(printf '%s' 0123456789abcdefgh)}"
     backup_tcms_with_upload() { printf 'tcms-backup\n' >>"$calls"; }
     compose() {
       printf 'compose %s version=%s\n' "$*" "$TCMS_VERSION" >>"$calls"
@@ -1390,6 +1394,7 @@ test_start_tcms_runs_migration_before_api_and_falls_back() {
   : >"$calls"
   if start_with 3 0 >"$out" 2>&1; then test_fail "failed migration did not stop the start"; fi
   assert_contains "$out" "tcms-migrate fehlgeschlagen (Exit 3)"
+  assert_contains "$out" "CHECK der Migration nachricht_abgerufen bei Altbestand: docs/operations/tcms-betrieb.md"
   assert_not_contains "$calls" "tcms-api version"
   : >"$calls"
   if start_with 0 1 >"$out" 2>&1; then test_fail "unhealthy tcms-api reported success"; fi
@@ -1402,7 +1407,30 @@ test_start_tcms_runs_migration_before_api_and_falls_back() {
   : >"$calls"
   if start_with 0 0 unklar >"$out" 2>&1; then test_fail "TCMS migrated without a clear schema answer"; fi
   assert_not_contains "$calls" "tcms-migrate"
-  pass "TCMS start: database, backup of an existing schema, migration with checked exit code, api, fallback"
+  # TCMS s8 (H5): ohne gueltigen Code-Schluessel weder Datenbank noch Backup,
+  # Migration oder Dienstwechsel; der alte tcms-api laeuft weiter.
+  for bad in "" "kurz0123456789"; do
+    : >"$calls"
+    if CODE_KEY="$bad" start_with 0 0 t >"$out" 2>&1; then test_fail "TCMS start without a valid code key succeeded"; fi
+    assert_contains "$out" "TCMS_CODE_SCHLUESSEL:"
+    assert_contains "$out" "der laufende Dienst bleibt unveraendert"
+    [[ ! -s "$calls" ]] || test_fail "TCMS start touched services without a valid code key"
+  done
+  : >"$calls"
+  if ( ENVFILE="$env_file"; TCMS_DEPLOYMENT=managed; TCMS_CODE_SCHLUESSEL=""; tcms_preflight_for_deploy ) >"$out" 2>&1; then
+    test_fail "deploy preflight accepted a missing code key"
+  fi
+  ( ENVFILE="$env_file"; TCMS_DEPLOYMENT=disabled; TCMS_CODE_SCHLUESSEL=""; tcms_preflight_for_deploy ) >"$out" 2>&1 || \
+    test_fail "deploy preflight demanded a code key without managed TCMS"
+  # tcms setup auf einer laufenden Installation (tcms_activate) ebenso.
+  if (
+    ENVFILE="$env_file"; TCMS_DEPLOYMENT=managed; TCMS_CODE_SCHLUESSEL=""
+    compose() { printf 'compose %s\n' "$*" >>"$calls"; }
+    docker() { printf 'docker %s\n' "$*" >>"$calls"; }
+    start_tcms_services
+  ) >"$out" 2>&1; then test_fail "setup started TCMS without a code key"; fi
+  [[ ! -s "$calls" ]] || test_fail "setup touched TCMS services without a code key"
+  pass "TCMS start: code key, database, backup of an existing schema, migration with checked exit code, api, fallback"
 }
 
 # Rollback-Attrappe mit echtem Git (zwei Release-Commits) und protokollierenden

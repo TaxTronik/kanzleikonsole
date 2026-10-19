@@ -600,6 +600,28 @@ configure_tcms_for_env() {
 # ---------------------------------------------------------------------------
 # Container-Lebenszyklus (managed)
 # ---------------------------------------------------------------------------
+# TCMS-Images ab s8 (Hinweis H5) starten ohne gueltigen Code-Schluessel nicht.
+# Geprueft wird der Wert, den Compose interpoliert (eine gesetzte
+# Prozessvariable vor der .env), bevor Images bezogen, die TCMS-Datenbank
+# gesichert oder migriert oder der laufende tcms-api ersetzt wird. In
+# deploy/update steht das vor den Migrationen der kanzleikonsole.
+tcms_assert_code_key_ready() {
+  local problem
+  problem="$(tcms_code_key_problem "$(tcms_effective_env TCMS_CODE_SCHLUESSEL)")"
+  [[ -z "$problem" ]] || \
+    die "TCMS_CODE_SCHLUESSEL: $problem. Verwaltetes Tax-CMS wird nicht angefasst, der laufende Dienst bleibt unveraendert (./taxtronik tcms setup managed, ./taxtronik doctor)."
+}
+
+# deploy/update: dieselbe Pruefung vor den TCMS-Images und den Migrationen der
+# kanzleikonsole (deploy: auch vor dem Backup davor), nur fuer ein
+# verwaltetes Tax-CMS. Rollback prueft bewusst
+# nicht vorab: Ein Ziel ohne Code-Schluessel-Pflicht braucht ihn nicht, und
+# ein Ziel mit Pflicht scheitert fail closed an der Compose-Interpolation.
+tcms_preflight_for_deploy() {
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
+  tcms_assert_code_key_ready
+}
+
 # Images bereitstellen: Release-Kanal zieht per Digest (Docker prueft den
 # Inhalt gegen den Digest) und prueft das Versionslabel; Source-Kanal
 # verlangt lokal gebaute Tags.
@@ -646,7 +668,7 @@ run_tcms_migrate() {
   code="$(docker wait "$TCMS_MIGRATE_CONTAINER" 2>/dev/null || echo 1)"
   if [[ "$code" != "0" ]]; then
     compose --profile tcms logs --no-color --tail 80 tcms-migrate >&2 || true
-    die "tcms-migrate fehlgeschlagen (Exit $code); tcms-api bleibt auf dem bisherigen Stand."
+    die "tcms-migrate fehlgeschlagen (Exit $code); tcms-api bleibt auf dem bisherigen Stand. Fehlerbilder, u. a. der CHECK der Migration nachricht_abgerufen bei Altbestand: docs/operations/tcms-betrieb.md (Abschnitte 3 und 9)."
   fi
 }
 
@@ -694,6 +716,7 @@ tcms_backup_before_migration() {
 # laufenden tcms-api unveraendert.
 start_tcms_services() {
   [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
+  tcms_assert_code_key_ready
   info "TCMS-Datenbank starten"
   compose --profile tcms up -d --no-deps tcms-db || die "tcms-db konnte nicht gestartet werden."
   tcms_wait_db_healthy
@@ -759,6 +782,7 @@ tcms_stage_release_pins() {
 start_tcms_for_deploy() {
   [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
   local previous_version previous_api previous_migrate
+  tcms_assert_code_key_ready
   previous_version="$(get_env TCMS_VERSION)"
   previous_api="$(get_env TCMS_API_DIGEST_SUFFIX)"
   previous_migrate="$(get_env TCMS_MIGRATE_DIGEST_SUFFIX)"

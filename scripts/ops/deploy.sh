@@ -272,6 +272,8 @@ _deploy_core() {
   assert_app_env_schema
   provide_traefik_for_deploy
   provide_signal_for_deploy deploy
+  # TCMS s8 (H5): Code-Schluessel vor TCMS-Images und Migrationen pruefen.
+  tcms_preflight_for_deploy
   provide_tcms_images
   backup_before_migrations
   run_migrations

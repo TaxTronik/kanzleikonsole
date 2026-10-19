@@ -44,7 +44,11 @@ Manifest bindet sie damit über den signierten Commit (das Manifest-Schema v2
 bleibt unverändert, damit ältere Operator-CLIs und der Update-Check weiter
 lesen können). Vor dem Build prüft der Image-Job, dass beide Digests in der
 Release-Registry existieren und das passende Versionslabel tragen
-(`scripts/release/verify-tcms-pins.sh`). Details:
+(`scripts/release/verify-tcms-pins.sh`). Den Code-Schlüssel
+(`TCMS_CODE_SCHLUESSEL`), den `tcms-api` ab TCMS s8 verlangt, enthält kein
+Release: Er ist ein Geheimnis der Installation, entsteht bei `tcms setup`,
+`deploy` oder `update` in der `.env` und wird vor den TCMS-Images und den
+Migrationen geprüft. Details:
 [Tax-CMS-Betrieb](tcms-betrieb.md#3-images-und-release).
 
 Der Image-Job besitzt die harte Abhängigkeit
