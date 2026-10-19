@@ -52,6 +52,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kommunikation/actions.ts
+  - apps/web/src/server/tcms/bereich-b/personen-auswahl.ts
 test_refs:
   - apps/web/src/server/tcms/__tests__/seite.test.ts
   - apps/web/src/server/tcms/__tests__/aktion.test.ts
@@ -68,6 +69,7 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/__tests__/aktionen.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/__tests__/aktionen.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kommunikation/__tests__/aktionen.test.ts
+  - apps/web/src/server/tcms/bereich-b/__tests__/personen-auswahl-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

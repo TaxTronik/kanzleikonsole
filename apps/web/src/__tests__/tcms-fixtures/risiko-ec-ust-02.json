@@ -1,0 +1,188 @@
+{
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "programmId": "cmvf9kyrc0003wb7d12b2juhr",
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "appetit": "MITTEL",
+  "betriebAktiv": true,
+  "risiko": {
+    "id": "cmvf9kyut000bwb7d4niwsq84",
+    "code": "EC-UST-02",
+    "gruppe": "UST",
+    "gruppeLabel": "Umsatzsteuer",
+    "kern": false,
+    "herkunft": "KATALOG",
+    "freigabe": "FREIGEGEBEN",
+    "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+    "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+    "freigegebenAm": "2026-03-07T00:00:00.000Z",
+    "ownerId": "b1000000-0000-4000-8000-000000000012",
+    "neuBewerten": false,
+    "vorschlagsgrund": "weil EU-B2C nach AT, BE, CZ … (P3)",
+    "standId": "cmvf9kyuu000cwb7d7flov69x",
+    "titel": "Falscher Steuersatz in Shop- oder Marktplatzregeln",
+    "fehlerquelle": "Falscher Steuersatz je Bestimmungsland oder Warengruppe in Shop- oder Marktplatzregeln",
+    "folge": "Steuer zu niedrig oder zu hoch",
+    "normanker": [
+      {
+        "text": "§ 12 UStG",
+        "stufe": "UNGEPRUEFT"
+      },
+      {
+        "text": "Satzrecht der Bestimmungsländer",
+        "stufe": "UNGEPRUEFT"
+      }
+    ],
+    "s": "M",
+    "w": "WAHRSCHEINLICH",
+    "r": 3,
+    "gt": "FF",
+    "gueltigAb": "2026-03-01T00:00:00.000Z",
+    "kontrollIds": [
+      "cmvf9kz04001jwb7diau9fqxc",
+      "cmvf9kz0l001lwb7djc5t634a",
+      "cmvf9kz6f002lwb7dmfx5dq4c"
+    ],
+    "bewertung": {
+      "brutto": {
+        "klasse": "KRITISCH",
+        "punkte": 6,
+        "basis": "HOCH",
+        "angehoben": true,
+        "erklaerung": "mittel × wahrscheinlich = 6 → hoch; Reichweite 3 hebt auf kritisch"
+      },
+      "nettoDesign": {
+        "klasse": "MITTEL",
+        "abschlag": 2,
+        "erklaerung": "−2: präventive und detektive Kontrolle angemessen",
+        "zaehlend": ["K-EC-02", "K-EC-03", "K-EC-21"]
+      },
+      "nettoBetrieb": {
+        "klasse": "MITTEL",
+        "abschlag": 2,
+        "erklaerung": "−2: präventive und detektive Kontrolle angemessen",
+        "zaehlend": ["K-EC-02", "K-EC-03", "K-EC-21"]
+      },
+      "wirksamDesign": "GERING",
+      "wirksamBetrieb": "MITTEL",
+      "uebersteuertDesign": true,
+      "uebersteuertBetrieb": false,
+      "modell": "ec-1.0"
+    },
+    "netto": "MITTEL",
+    "ueberAppetit": false,
+    "uebersteuerungen": [
+      {
+        "id": "cmvf9ns9o0000fd7dnc0ek7ed",
+        "sicht": "DESIGN",
+        "klasse": "GERING",
+        "berechnet": "MITTEL",
+        "begruendung": "Zusätzliche manuelle Abstimmung der Steuersätze je Land wird monatlich dokumentiert.",
+        "status": "FREIGEGEBEN",
+        "beantragtVon": "b1000000-0000-4000-8000-000000000001",
+        "beantragtAm": "2026-10-19T13:04:41.370Z",
+        "entschiedenVon": "b1000000-0000-4000-8000-000000000002",
+        "entschiedenAm": "2026-10-19T13:04:41.480Z"
+      }
+    ],
+    "offeneEreignisse": 1,
+    "wirktAuf": ["EC-UST-03", "EC-UST-09"],
+    "hinweise": [
+      {
+        "quelle": "EREIGNIS",
+        "text": "Ereignis 2026-T-0342 (T-05) vom 12.10.2026 – Triage offen",
+        "ereignisId": "cmvf9kzql008dwb7d1bpr1xn4"
+      }
+    ],
+    "akzeptanzen": []
+  },
+  "aktivAb": "2026-03-01T00:00:00.000Z",
+  "staende": [
+    {
+      "id": "cmvf9kyuu000cwb7d7flov69x",
+      "version": 1,
+      "s": "M",
+      "w": "WAHRSCHEINLICH",
+      "r": 3,
+      "gt": "FF",
+      "brutto": "KRITISCH",
+      "modell": "ec-1.0",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "gueltigBis": null,
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002"
+    }
+  ],
+  "kontrollen": [
+    {
+      "id": "cmvf9kz04001jwb7diau9fqxc",
+      "code": "K-EC-02",
+      "titel": "Review der Steuerregeln in Shop und Marktplätzen",
+      "art": "P",
+      "schluessel": false,
+      "design": "ANGEMESSEN",
+      "betrieb": "OK",
+      "frequenz": {
+        "turnus": "MONATLICH",
+        "anlass": true
+      }
+    },
+    {
+      "id": "cmvf9kz0l001lwb7djc5t634a",
+      "code": "K-EC-03",
+      "titel": "Bestellstichprobe Steuerausweis",
+      "art": "D",
+      "schluessel": false,
+      "design": "ANGEMESSEN",
+      "betrieb": "OK",
+      "frequenz": {
+        "turnus": "MONATLICH",
+        "anlass": true
+      }
+    },
+    {
+      "id": "cmvf9kz6f002lwb7dmfx5dq4c",
+      "code": "K-EC-21",
+      "titel": "Rechtsänderungs-Monitoring",
+      "art": "D",
+      "schluessel": false,
+      "design": "ANGEMESSEN",
+      "betrieb": "OK",
+      "frequenz": {
+        "turnus": "MONATLICH",
+        "anlass": true
+      }
+    }
+  ],
+  "audit": [
+    {
+      "pos": 33,
+      "at": "2026-10-19T13:04:41.529Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "aktion": "tcms.risiko.uebersteuerung_freigegeben",
+      "detail": {
+        "code": "EC-UST-02",
+        "sicht": "DESIGN",
+        "klasse": "GERING",
+        "berechnet": "MITTEL",
+        "beantragtVon": "b1000000-0000-4000-8000-000000000001",
+        "uebersteuerungId": "cmvf9ns9o0000fd7dnc0ek7ed"
+      }
+    },
+    {
+      "pos": 32,
+      "at": "2026-10-19T13:04:41.438Z",
+      "actorId": "b1000000-0000-4000-8000-000000000001",
+      "aktion": "tcms.risiko.uebersteuerung_beantragt",
+      "detail": {
+        "code": "EC-UST-02",
+        "sicht": "DESIGN",
+        "klasse": "GERING",
+        "berechnet": "MITTEL",
+        "begruendung": "Zusätzliche manuelle Abstimmung der Steuersätze je Land wird monatlich dokumentiert.",
+        "uebersteuerungId": "cmvf9ns9o0000fd7dnc0ek7ed"
+      }
+    }
+  ],
+  "namen": {}
+}

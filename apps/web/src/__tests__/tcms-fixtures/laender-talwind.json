@@ -1,0 +1,318 @@
+{
+  "stand": "2026-10-19",
+  "historisch": false,
+  "programmId": "cmvf9kyrc0003wb7d12b2juhr",
+  "historie": [
+    {
+      "land": "AT",
+      "staende": [
+        {
+          "id": "cmvf9kzr8008qwb7d31cvmjur",
+          "land": "AT",
+          "fernverkaeufeLfdEur": 186400,
+          "fernverkaeufeVorjahrEur": 218000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-09-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-10-02T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "id": "cmvf9kzr6008pwb7dz34b59ff",
+          "land": "AT",
+          "fernverkaeufeLfdEur": 121000,
+          "fernverkaeufeVorjahrEur": 218000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-06-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-07-03T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        }
+      ]
+    },
+    {
+      "land": "FR",
+      "staende": [
+        {
+          "id": "cmvf9kzr1008mwb7dem2bl9mw",
+          "land": "FR",
+          "fernverkaeufeLfdEur": 241900,
+          "fernverkaeufeVorjahrEur": 281000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-09-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-10-02T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "id": "cmvf9kzqz008lwb7dvzqd4t6d",
+          "land": "FR",
+          "fernverkaeufeLfdEur": 156000,
+          "fernverkaeufeVorjahrEur": 281000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-06-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-07-03T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        }
+      ]
+    },
+    {
+      "land": "CZ",
+      "staende": [
+        {
+          "id": "cmvf9kzs8008ywb7dzlv9bz3l",
+          "land": "CZ",
+          "fernverkaeufeLfdEur": 61200,
+          "fernverkaeufeVorjahrEur": 41000,
+          "lagerSeit": "2026-08",
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": true,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-09-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-10-02T09:00:00.000Z",
+          "registrierung": "FEHLT"
+        },
+        {
+          "id": "cmvf9kzrz008xwb7dfmxgv527",
+          "land": "CZ",
+          "fernverkaeufeLfdEur": 0,
+          "fernverkaeufeVorjahrEur": 41000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-06-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-07-03T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        }
+      ]
+    },
+    {
+      "land": "IT",
+      "staende": [
+        {
+          "id": "cmvf9kzr5008owb7dxo8k1a7i",
+          "land": "IT",
+          "fernverkaeufeLfdEur": 198300,
+          "fernverkaeufeVorjahrEur": 230000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-09-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-10-02T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "id": "cmvf9kzr3008nwb7d2ck1vs29",
+          "land": "IT",
+          "fernverkaeufeLfdEur": 128400,
+          "fernverkaeufeVorjahrEur": 230000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-06-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-07-03T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        }
+      ]
+    },
+    {
+      "land": "BE",
+      "staende": [
+        {
+          "id": "cmvf9kzsj0090wb7dnb0vewrr",
+          "land": "BE",
+          "fernverkaeufeLfdEur": 38900,
+          "fernverkaeufeVorjahrEur": 72000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-09-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-10-02T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "id": "cmvf9kzsd008zwb7d695gvlpf",
+          "land": "BE",
+          "fernverkaeufeLfdEur": 25100,
+          "fernverkaeufeVorjahrEur": 72000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-06-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-07-03T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        }
+      ]
+    },
+    {
+      "land": "NL",
+      "staende": [
+        {
+          "id": "cmvf9kzrn008uwb7d8aqmkpt3",
+          "land": "NL",
+          "fernverkaeufeLfdEur": 122700,
+          "fernverkaeufeVorjahrEur": 140000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-09-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-10-02T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "id": "cmvf9kzrj008twb7dkc784jet",
+          "land": "NL",
+          "fernverkaeufeLfdEur": 79900,
+          "fernverkaeufeVorjahrEur": 140000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-06-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-07-03T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        }
+      ]
+    },
+    {
+      "land": "ES",
+      "staende": [
+        {
+          "id": "cmvf9kzru008wwb7dyupikxh6",
+          "land": "ES",
+          "fernverkaeufeLfdEur": 96100,
+          "fernverkaeufeVorjahrEur": 112000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": null,
+          "stand": "2026-09-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-10-02T09:00:00.000Z",
+          "registrierung": "PRUEFEN"
+        },
+        {
+          "id": "cmvf9kzrr008vwb7dc4udl35h",
+          "land": "ES",
+          "fernverkaeufeLfdEur": 61200,
+          "fernverkaeufeVorjahrEur": 112000,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "zmRelevant": false,
+          "steuersaetzeGeprueftAm": null,
+          "stand": "2026-06-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-07-03T09:00:00.000Z",
+          "registrierung": "PRUEFEN"
+        }
+      ]
+    },
+    {
+      "land": "PL",
+      "staende": [
+        {
+          "id": "cmvf9kzrc008swb7d1krra10r",
+          "land": "PL",
+          "fernverkaeufeLfdEur": 143800,
+          "fernverkaeufeVorjahrEur": 166000,
+          "lagerSeit": "2025-03",
+          "oss": true,
+          "lokaleUstNr": true,
+          "zmRelevant": true,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-09-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-10-02T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "id": "cmvf9kzra008rwb7dj1a1c8kk",
+          "land": "PL",
+          "fernverkaeufeLfdEur": 92500,
+          "fernverkaeufeVorjahrEur": 166000,
+          "lagerSeit": "2025-03",
+          "oss": true,
+          "lokaleUstNr": true,
+          "zmRelevant": true,
+          "steuersaetzeGeprueftAm": "2026-03-12",
+          "stand": "2026-06-30",
+          "quelle": "MANUELL",
+          "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-07-03T09:00:00.000Z",
+          "registrierung": "VOLLSTAENDIG"
+        }
+      ]
+    }
+  ],
+  "feststellungen": [
+    {
+      "land": "CZ",
+      "eintraege": [
+        {
+          "id": "cmvf9kzq00082wb7dviryib4x",
+          "nummer": "F-2026-007",
+          "titel": "Lager CZ ohne Registrierung und ohne Verbringensmeldung",
+          "status": "IN_WUERDIGUNG",
+          "p153Offen": true
+        }
+      ]
+    }
+  ],
+  "namen": []
+}

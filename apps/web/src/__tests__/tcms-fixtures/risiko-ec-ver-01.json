@@ -1,0 +1,137 @@
+{
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "programmId": "cmvf9kyrc0003wb7d12b2juhr",
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "appetit": "MITTEL",
+  "betriebAktiv": true,
+  "risiko": {
+    "id": "cmvf9kyyu001bwb7dac6ytegj",
+    "code": "EC-VER-01",
+    "gruppe": "VER",
+    "gruppeLabel": "Verfahren",
+    "kern": true,
+    "herkunft": "KATALOG",
+    "freigabe": "FREIGEGEBEN",
+    "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+    "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+    "freigegebenAm": "2026-03-07T00:00:00.000Z",
+    "ownerId": "b1000000-0000-4000-8000-000000000012",
+    "neuBewerten": false,
+    "vorschlagsgrund": "Kernrisiko – immer aktiv",
+    "standId": "cmvf9kyyv001cwb7djxycbjtb",
+    "titel": "Erkannter Fehler nicht berichtigt",
+    "fehlerquelle": "Erkannter Fehler in abgegebener Erklärung nicht unverzüglich angezeigt",
+    "folge": "Berichtigungspflicht verletzt",
+    "normanker": [
+      {
+        "text": "§ 153 AO",
+        "stufe": "UNGEPRUEFT"
+      },
+      {
+        "text": "AEAO zu § 153 Nr. 2.6",
+        "stufe": "UNGEPRUEFT"
+      }
+    ],
+    "s": "H",
+    "w": "MOEGLICH",
+    "r": 3,
+    "gt": "FF",
+    "gueltigAb": "2026-03-01T00:00:00.000Z",
+    "kontrollIds": ["cmvf9kz65002jwb7dinaf8mhw"],
+    "bewertung": {
+      "brutto": {
+        "klasse": "KRITISCH",
+        "punkte": 6,
+        "basis": "HOCH",
+        "angehoben": true,
+        "erklaerung": "hoch × möglich = 6 → hoch; Reichweite 3 hebt auf kritisch"
+      },
+      "nettoDesign": {
+        "klasse": "HOCH",
+        "abschlag": 1,
+        "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+        "zaehlend": ["K-EC-20"]
+      },
+      "nettoBetrieb": {
+        "klasse": "HOCH",
+        "abschlag": 1,
+        "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+        "zaehlend": ["K-EC-20"]
+      },
+      "wirksamDesign": "HOCH",
+      "wirksamBetrieb": "HOCH",
+      "uebersteuertDesign": false,
+      "uebersteuertBetrieb": false,
+      "modell": "ec-1.0"
+    },
+    "netto": "HOCH",
+    "ueberAppetit": true,
+    "uebersteuerungen": [],
+    "offeneEreignisse": 0,
+    "wirktAuf": [],
+    "hinweise": [],
+    "akzeptanzen": [
+      {
+        "id": "cmvf9nsm30007fd7drs6dbk0e",
+        "status": "OFFEN",
+        "titel": "Risikoakzeptanz EC-VER-01 · Erkannter Fehler nicht berichtigt",
+        "inhalt": "Risikoakzeptanz – EC-VER-01 Erkannter Fehler nicht berichtigt\n\nFehlerquelle: Erkannter Fehler in abgegebener Erklärung nicht unverzüglich angezeigt\nFolge: Berichtigungspflicht verletzt\n\nBewertung zum 19.10.2026 (Modell ec-1.0): Schadensintensität hoch, Wahrscheinlichkeit möglich, Reichweite 3 · mehrere Länder oder Steuerarten, FF · laufend.\nBrutto kritisch · Netto (Design) hoch · Netto (Betrieb) hoch.\nDer in den Compliance-Zielen festgelegte Risikoappetit ist „mittel\". Die maßgebliche Nettoklasse (Netto (Betrieb): hoch) liegt darüber.\n\nZugeordnete Kontrollen: K-EC-20 Berichtigungsprozess.\n\nErläuterung der Kanzlei: Die Verrechnungspreisdokumentation wird erst mit dem Jahresabschluss erstellt.\n\nLiegt ein Risiko über dem Risikoappetit, ist eine Maßnahme oder eine Risikoakzeptanz durch die gesetzlichen Vertreter erforderlich. Mit Ihrer Freigabe akzeptieren Sie dieses Risiko in der genannten Höhe bis zur nächsten Neubewertung. Ihre Entscheidung wird mit Name und Zeitpunkt protokolliert.",
+        "angefordertVon": "b1000000-0000-4000-8000-000000000001",
+        "angefordertAm": "2026-10-19T13:04:41.804Z",
+        "empfaengerId": "b1000000-0000-4000-8000-000000000011",
+        "anmerkung": null,
+        "erledigtAm": null
+      }
+    ]
+  },
+  "aktivAb": "2026-03-01T00:00:00.000Z",
+  "staende": [
+    {
+      "id": "cmvf9kyyv001cwb7djxycbjtb",
+      "version": 1,
+      "s": "H",
+      "w": "MOEGLICH",
+      "r": 3,
+      "gt": "FF",
+      "brutto": "KRITISCH",
+      "modell": "ec-1.0",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "gueltigBis": null,
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002"
+    }
+  ],
+  "kontrollen": [
+    {
+      "id": "cmvf9kz65002jwb7dinaf8mhw",
+      "code": "K-EC-20",
+      "titel": "Berichtigungsprozess",
+      "art": "K",
+      "schluessel": true,
+      "design": "ANGEMESSEN",
+      "betrieb": "OK",
+      "frequenz": {
+        "turnus": "MONATLICH",
+        "anlass": true
+      }
+    }
+  ],
+  "audit": [
+    {
+      "pos": 40,
+      "at": "2026-10-19T13:04:41.889Z",
+      "actorId": "b1000000-0000-4000-8000-000000000001",
+      "aktion": "tcms.risiko.akzeptanz_angefordert",
+      "detail": {
+        "code": "EC-VER-01",
+        "netto": "HOCH",
+        "appetit": "MITTEL",
+        "freigabeId": "cmvf9nsm30007fd7drs6dbk0e",
+        "begruendung": "Die Verrechnungspreisdokumentation wird erst mit dem Jahresabschluss erstellt.",
+        "empfaengerId": "b1000000-0000-4000-8000-000000000011"
+      }
+    }
+  ],
+  "namen": {}
+}

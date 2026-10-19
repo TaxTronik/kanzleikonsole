@@ -148,6 +148,13 @@ export const TCMS_KEIN_RECHT = {
   /** Feststellung vertraulich markieren (kannWuerdigen). */
   VERTRAULICH:
     'Vertraulich markieren ist der zuständigen Berufsträgerin bzw. dem zuständigen Berufsträger vorbehalten.',
+  /**
+   * Entscheidung im Vier-Augen-Prinzip (Übersteuerung, Risikofreigabe,
+   * Frequenzabweichung): Der Dienst lehnt mit 403 ab, wenn die Person selbst
+   * beantragt hat oder kein Bearbeitungsrecht hat – der Text deckt beides ab.
+   */
+  ZWEITE_PERSON:
+    'Diese Entscheidung trifft eine zweite Person mit Bearbeitungsrecht für diesen Mandanten (Vier-Augen-Prinzip).',
 } as const;
 
 export type TcmsKeinRechtGrund = keyof typeof TCMS_KEIN_RECHT;

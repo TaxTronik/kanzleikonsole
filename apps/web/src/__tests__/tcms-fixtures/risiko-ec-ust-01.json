@@ -1,0 +1,138 @@
+{
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "programmId": "cmvf9kyrc0003wb7d12b2juhr",
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "appetit": "MITTEL",
+  "betriebAktiv": true,
+  "risiko": {
+    "id": "cmvf9kyul0009wb7dw9t9diqc",
+    "code": "EC-UST-01",
+    "gruppe": "UST",
+    "gruppeLabel": "Umsatzsteuer",
+    "kern": false,
+    "herkunft": "KATALOG",
+    "freigabe": "FREIGEGEBEN",
+    "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+    "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+    "freigegebenAm": "2026-03-07T00:00:00.000Z",
+    "ownerId": "b1000000-0000-4000-8000-000000000012",
+    "neuBewerten": false,
+    "vorschlagsgrund": "weil EU-B2C nach AT, BE, CZ … (P3)",
+    "standId": "cmvf9kyum000awb7d4px5elkh",
+    "titel": "EU-Lieferschwelle unbemerkt überschritten",
+    "fehlerquelle": "EU-Lieferschwelle unbemerkt überschritten",
+    "folge": "Fernverkäufe werden weiter in DE statt im Bestimmungsland versteuert",
+    "normanker": [
+      {
+        "text": "§ 3c Abs. 1 UStG",
+        "stufe": "UNGEPRUEFT"
+      },
+      {
+        "text": "§ 3c Abs. 4 UStG",
+        "stufe": "UNGEPRUEFT"
+      }
+    ],
+    "s": "H",
+    "w": "MOEGLICH",
+    "r": 3,
+    "gt": "FF",
+    "gueltigAb": "2026-03-01T00:00:00.000Z",
+    "kontrollIds": ["cmvf9kyzn001hwb7dkydlujfv"],
+    "bewertung": {
+      "brutto": {
+        "klasse": "KRITISCH",
+        "punkte": 6,
+        "basis": "HOCH",
+        "angehoben": true,
+        "erklaerung": "hoch × möglich = 6 → hoch; Reichweite 3 hebt auf kritisch"
+      },
+      "nettoDesign": {
+        "klasse": "HOCH",
+        "abschlag": 1,
+        "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+        "zaehlend": ["K-EC-01"]
+      },
+      "nettoBetrieb": {
+        "klasse": "HOCH",
+        "abschlag": 1,
+        "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+        "zaehlend": ["K-EC-01"]
+      },
+      "wirksamDesign": "HOCH",
+      "wirksamBetrieb": "HOCH",
+      "uebersteuertDesign": false,
+      "uebersteuertBetrieb": false,
+      "modell": "ec-1.0"
+    },
+    "netto": "HOCH",
+    "ueberAppetit": true,
+    "uebersteuerungen": [
+      {
+        "id": "cmvf9nsdy0001fd7drep0f8qz",
+        "sicht": "BETRIEB",
+        "klasse": "MITTEL",
+        "berechnet": "HOCH",
+        "begruendung": "Die Fernverkaufsschwelle wird wöchentlich überwacht; Abweichungen sind seit Juli null.",
+        "status": "BEANTRAGT",
+        "beantragtVon": "b1000000-0000-4000-8000-000000000001",
+        "beantragtAm": "2026-10-19T13:04:41.548Z",
+        "entschiedenVon": null,
+        "entschiedenAm": null
+      }
+    ],
+    "offeneEreignisse": 0,
+    "wirktAuf": [],
+    "hinweise": [],
+    "akzeptanzen": []
+  },
+  "aktivAb": "2026-03-01T00:00:00.000Z",
+  "staende": [
+    {
+      "id": "cmvf9kyum000awb7d4px5elkh",
+      "version": 1,
+      "s": "H",
+      "w": "MOEGLICH",
+      "r": 3,
+      "gt": "FF",
+      "brutto": "KRITISCH",
+      "modell": "ec-1.0",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "gueltigBis": null,
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002"
+    }
+  ],
+  "kontrollen": [
+    {
+      "id": "cmvf9kyzn001hwb7dkydlujfv",
+      "code": "K-EC-01",
+      "titel": "Lieferschwellen-Monitor",
+      "art": "D",
+      "schluessel": true,
+      "design": "ANGEMESSEN",
+      "betrieb": "OK",
+      "frequenz": {
+        "turnus": "MONATLICH",
+        "anlass": true
+      }
+    }
+  ],
+  "audit": [
+    {
+      "pos": 34,
+      "at": "2026-10-19T13:04:41.591Z",
+      "actorId": "b1000000-0000-4000-8000-000000000001",
+      "aktion": "tcms.risiko.uebersteuerung_beantragt",
+      "detail": {
+        "code": "EC-UST-01",
+        "sicht": "BETRIEB",
+        "klasse": "MITTEL",
+        "berechnet": "HOCH",
+        "begruendung": "Die Fernverkaufsschwelle wird wöchentlich überwacht; Abweichungen sind seit Juli null.",
+        "uebersteuerungId": "cmvf9nsdy0001fd7drep0f8qz"
+      }
+    }
+  ],
+  "namen": {}
+}

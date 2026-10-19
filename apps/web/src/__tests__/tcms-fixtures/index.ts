@@ -49,6 +49,24 @@ import feststellungenTalwind from './feststellungen-talwind.json';
 import feststellungenTalwindThomas from './feststellungen-talwind-thomas.json';
 import nachweisLesen from './nachweis-lesen.json';
 import profilTalwind from './profil-talwind.json';
+// Bereich B (Risiken, Kontrollen, Kalender, Prüfung, Länder): ein Abruf
+// desselben Dienststands (Demo-Daten plus per API hergestellte Fälle:
+// Übersteuerung beantragt von Anna Roth bzw. von Leon Brandt freigegeben,
+// EC-GOB-02 von Leon eingereicht, EC-GOB-03 bewertet, Risikoakzeptanz
+// EC-VER-01 bei Jana Weller offen, Frequenzabweichung K-EC-02 von Leon
+// beantragt, K-EC-08 von Anna beantragt und von Leon freigegeben). Gekürzt
+// (Auswahl an Risiken, Kontrollen und Durchführungen, Texte der Beschreibung);
+// F-2026-006 so maskiert, wie Nicht-Beteiligte sie erhalten (Kontext und
+// Kontrollen), und deshalb nicht in den Feststellungen des Länder-Monitors.
+import kontextTalwindB from './kontext-talwind-b.json';
+import kontrolleKEc02 from './kontrolle-k-ec-02.json';
+import kontrolleKEc08 from './kontrolle-k-ec-08.json';
+import kontrollenTalwind from './kontrollen-talwind.json';
+import laenderTalwind from './laender-talwind.json';
+import risikenTalwind from './risiken-talwind.json';
+import risikoEcUst01 from './risiko-ec-ust-01.json';
+import risikoEcUst02 from './risiko-ec-ust-02.json';
+import risikoEcVer01 from './risiko-ec-ver-01.json';
 
 /** Feste IDs der TCMS-Demo (gleich in der kanzleikonsole-Testdatenbank des Live-Tests). */
 export const DEMO = {
@@ -105,4 +123,14 @@ export const tcmsFixtures = {
   profilTalwind: () => laden(ENDPUNKTE.profilLesen.antwortSchema, profilTalwind),
   beschreibungTalwind: () => laden(ENDPUNKTE.beschreibungLesen.antwortSchema, beschreibungTalwind),
   freigabenTalwind: () => laden(ENDPUNKTE.freigabenHistorieLesen.antwortSchema, freigabenTalwind),
+  // Bereich B
+  kontextTalwindB: () => laden(ENDPUNKTE.kontextLesen.antwortSchema, kontextTalwindB),
+  risikenTalwind: () => laden(ENDPUNKTE.risikenLesen.antwortSchema, risikenTalwind),
+  risikoEcUst01: () => laden(ENDPUNKTE.risikoLesen.antwortSchema, risikoEcUst01),
+  risikoEcUst02: () => laden(ENDPUNKTE.risikoLesen.antwortSchema, risikoEcUst02),
+  risikoEcVer01: () => laden(ENDPUNKTE.risikoLesen.antwortSchema, risikoEcVer01),
+  kontrollenTalwind: () => laden(ENDPUNKTE.kontrollenLesen.antwortSchema, kontrollenTalwind),
+  kontrolleKEc02: () => laden(ENDPUNKTE.kontrolleLesen.antwortSchema, kontrolleKEc02),
+  kontrolleKEc08: () => laden(ENDPUNKTE.kontrolleLesen.antwortSchema, kontrolleKEc08),
+  laenderTalwind: () => laden(ENDPUNKTE.laenderLesen.antwortSchema, laenderTalwind),
 };

@@ -1,0 +1,847 @@
+{
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "programmId": "cmvf9kyrc0003wb7d12b2juhr",
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "appetit": "MITTEL",
+  "betriebAktiv": true,
+  "risiken": [
+    {
+      "id": "cmvf9kyya0015wb7djxzekojz",
+      "code": "EC-ERT-01",
+      "gruppe": "ERT",
+      "gruppeLabel": "Ertragsteuern",
+      "kern": false,
+      "herkunft": "KATALOG",
+      "freigabe": "FREIGEGEBEN",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "weil Fremdlager FBA DE (P2)",
+      "standId": "cmvf9kyyb0016wb7dj9j8fkzk",
+      "titel": "Fremdlagerbestände nicht vollständig erfasst",
+      "fehlerquelle": "Bestände in Fremdlagern und Retourenbestand nicht vollständig inventarisiert",
+      "folge": "Bestände falsch bewertet",
+      "normanker": [
+        {
+          "text": "§§ 240, 241 HGB",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 6 EStG",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "M",
+      "w": "MOEGLICH",
+      "r": 2,
+      "gt": "FP",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "kontrollIds": ["cmvf9kz5p002fwb7de8pd0r76"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "MITTEL",
+          "punkte": 4,
+          "basis": "MITTEL",
+          "angehoben": false,
+          "erklaerung": "mittel × möglich = 4 → mittel"
+        },
+        "nettoDesign": {
+          "klasse": "GERING",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-18"]
+        },
+        "nettoBetrieb": {
+          "klasse": "GERING",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-18"]
+        },
+        "wirksamDesign": "GERING",
+        "wirksamBetrieb": "GERING",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "GERING",
+      "ueberAppetit": false,
+      "uebersteuerungen": [],
+      "offeneEreignisse": 0,
+      "wirktAuf": [],
+      "hinweise": [
+        {
+          "quelle": "PROFIL",
+          "text": "Profiländerung P2 am 01.10.2026 (letzte Bewertung 01.03.2026)",
+          "ereignisId": null
+        }
+      ],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyyo0019wb7dyuy2vsz7",
+      "code": "EC-ERT-03",
+      "gruppe": "ERT",
+      "gruppeLabel": "Ertragsteuern",
+      "kern": false,
+      "herkunft": "KATALOG",
+      "freigabe": "FREIGEGEBEN",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "weil Lager PL seit 03/2025 (P2)",
+      "standId": "cmvf9kyyp001awb7dumrppgn9",
+      "titel": "Ausländische Betriebsstätte nicht geprüft",
+      "fehlerquelle": "Ausländische Betriebsstätte durch Lager oder Personal nicht geprüft",
+      "folge": "Steuerpflicht im Ausland übersehen",
+      "normanker": [
+        {
+          "text": "§ 12 AO",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "DBA",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "H",
+      "w": "SELTEN",
+      "r": 2,
+      "gt": "IN",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "kontrollIds": ["cmvf9kz1g001pwb7d7ins1vky", "cmvf9kz7p002rwb7dbgifb5bn"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "MITTEL",
+          "punkte": 3,
+          "basis": "MITTEL",
+          "angehoben": false,
+          "erklaerung": "hoch × selten = 3 → mittel"
+        },
+        "nettoDesign": {
+          "klasse": "GERING",
+          "abschlag": 2,
+          "erklaerung": "−2: präventive und detektive Kontrolle angemessen",
+          "zaehlend": ["K-EC-05", "K-EC-24"]
+        },
+        "nettoBetrieb": {
+          "klasse": "MITTEL",
+          "abschlag": 0,
+          "erklaerung": "kein Abschlag: keine angemessen beurteilte Kontrolle; entfällt für K-EC-05 mit Befund, K-EC-24 ohne Durchführung",
+          "zaehlend": []
+        },
+        "wirksamDesign": "GERING",
+        "wirksamBetrieb": "MITTEL",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "MITTEL",
+      "ueberAppetit": false,
+      "uebersteuerungen": [],
+      "offeneEreignisse": 0,
+      "wirktAuf": [],
+      "hinweise": [
+        {
+          "quelle": "PROFIL",
+          "text": "Profiländerung P2 am 01.10.2026 (letzte Bewertung 01.03.2026)",
+          "ereignisId": null
+        }
+      ],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyxx000zwb7dkb5d3xqx",
+      "code": "EC-GOB-01",
+      "gruppe": "GOB",
+      "gruppeLabel": "GoBD / Datenkette",
+      "kern": true,
+      "herkunft": "KATALOG",
+      "freigabe": "FREIGEGEBEN",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "standId": "cmvf9kyxx0010wb7dr7f4anil",
+      "titel": "Erlöse unvollständig gebucht",
+      "fehlerquelle": "Shop-, Marktplatz- und Zahlungsdaten nicht mit FiBu abgestimmt, Gebühren saldiert, Clearingkonten mit Restsalden",
+      "folge": "Erlöse unvollständig gebucht",
+      "normanker": [
+        {
+          "text": "§§ 145, 146 AO",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "GoBD",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "H",
+      "w": "WAHRSCHEINLICH",
+      "r": 3,
+      "gt": "FP",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "kontrollIds": ["cmvf9kz3q0021wb7db78nbxz2", "cmvf9kz470023wb7dlt8s0s8c"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "KRITISCH",
+          "punkte": 9,
+          "basis": "KRITISCH",
+          "angehoben": false,
+          "erklaerung": "hoch × wahrscheinlich = 9 → kritisch; Reichweite 3: bereits kritisch"
+        },
+        "nettoDesign": {
+          "klasse": "HOCH",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-11", "K-EC-12"]
+        },
+        "nettoBetrieb": {
+          "klasse": "HOCH",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-11", "K-EC-12"]
+        },
+        "wirksamDesign": "HOCH",
+        "wirksamBetrieb": "HOCH",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "HOCH",
+      "ueberAppetit": true,
+      "uebersteuerungen": [],
+      "offeneEreignisse": 0,
+      "wirktAuf": ["EC-UST-03", "EC-UST-09", "EC-UST-10"],
+      "hinweise": [],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyy10011wb7da5pph4kd",
+      "code": "EC-GOB-02",
+      "gruppe": "GOB",
+      "gruppeLabel": "GoBD / Datenkette",
+      "kern": true,
+      "herkunft": "KATALOG",
+      "freigabe": "ZUR_FREIGABE",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "standId": "cmvf9nsf70002fd7djc7zssc5",
+      "titel": "Verfahrensdokumentation der Datenkette fehlt",
+      "fehlerquelle": "Verfahrensdokumentation der Datenkette fehlt oder ist veraltet",
+      "folge": "Systemwechsel ohne Dokumentation",
+      "normanker": [
+        {
+          "text": "§ 146 Abs. 5 AO",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 147 AO",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "GoBD",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "M",
+      "w": "WAHRSCHEINLICH",
+      "r": 2,
+      "gt": "FF",
+      "gueltigAb": "2026-10-19T13:04:41.612Z",
+      "kontrollIds": ["cmvf9kz4v0027wb7dmii4p9ck"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "HOCH",
+          "punkte": 6,
+          "basis": "HOCH",
+          "angehoben": false,
+          "erklaerung": "mittel × wahrscheinlich = 6 → hoch"
+        },
+        "nettoDesign": {
+          "klasse": "MITTEL",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-14"]
+        },
+        "nettoBetrieb": {
+          "klasse": "MITTEL",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-14"]
+        },
+        "wirksamDesign": "MITTEL",
+        "wirksamBetrieb": "MITTEL",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "MITTEL",
+      "ueberAppetit": false,
+      "uebersteuerungen": [],
+      "offeneEreignisse": 0,
+      "wirktAuf": [],
+      "hinweise": [],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyy50013wb7d7u435it1",
+      "code": "EC-GOB-03",
+      "gruppe": "GOB",
+      "gruppeLabel": "GoBD / Datenkette",
+      "kern": true,
+      "herkunft": "KATALOG",
+      "freigabe": "BEWERTET",
+      "freigabeEingereichtVon": null,
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "standId": "cmvf9nsj00006fd7dajtkxuj4",
+      "titel": "Plattform- und Shopdaten nicht aufbewahrt",
+      "fehlerquelle": "Marktplatz- und Shopdaten nicht vollständig und unveränderbar aufbewahrt",
+      "folge": "Verlust bei Plattform- oder Systemwechsel",
+      "normanker": [
+        {
+          "text": "§ 147 AO",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "H",
+      "w": "MOEGLICH",
+      "r": 2,
+      "gt": "FP",
+      "gueltigAb": "2026-10-19T13:04:41.751Z",
+      "kontrollIds": ["cmvf9kz4v0027wb7dmii4p9ck", "cmvf9kz78002pwb7duxzds5en"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "HOCH",
+          "punkte": 6,
+          "basis": "HOCH",
+          "angehoben": false,
+          "erklaerung": "hoch × möglich = 6 → hoch"
+        },
+        "nettoDesign": {
+          "klasse": "MITTEL",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-14", "K-EC-23"]
+        },
+        "nettoBetrieb": {
+          "klasse": "MITTEL",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen; entfällt für K-EC-23 überfällig",
+          "zaehlend": ["K-EC-14"]
+        },
+        "wirksamDesign": "MITTEL",
+        "wirksamBetrieb": "MITTEL",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "MITTEL",
+      "ueberAppetit": false,
+      "uebersteuerungen": [],
+      "offeneEreignisse": 0,
+      "wirktAuf": [],
+      "hinweise": [],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyul0009wb7dw9t9diqc",
+      "code": "EC-UST-01",
+      "gruppe": "UST",
+      "gruppeLabel": "Umsatzsteuer",
+      "kern": false,
+      "herkunft": "KATALOG",
+      "freigabe": "FREIGEGEBEN",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "weil EU-B2C nach AT, BE, CZ … (P3)",
+      "standId": "cmvf9kyum000awb7d4px5elkh",
+      "titel": "EU-Lieferschwelle unbemerkt überschritten",
+      "fehlerquelle": "EU-Lieferschwelle unbemerkt überschritten",
+      "folge": "Fernverkäufe werden weiter in DE statt im Bestimmungsland versteuert",
+      "normanker": [
+        {
+          "text": "§ 3c Abs. 1 UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 3c Abs. 4 UStG",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "H",
+      "w": "MOEGLICH",
+      "r": 3,
+      "gt": "FF",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "kontrollIds": ["cmvf9kyzn001hwb7dkydlujfv"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "KRITISCH",
+          "punkte": 6,
+          "basis": "HOCH",
+          "angehoben": true,
+          "erklaerung": "hoch × möglich = 6 → hoch; Reichweite 3 hebt auf kritisch"
+        },
+        "nettoDesign": {
+          "klasse": "HOCH",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-01"]
+        },
+        "nettoBetrieb": {
+          "klasse": "HOCH",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-01"]
+        },
+        "wirksamDesign": "HOCH",
+        "wirksamBetrieb": "HOCH",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "HOCH",
+      "ueberAppetit": true,
+      "uebersteuerungen": [
+        {
+          "id": "cmvf9nsdy0001fd7drep0f8qz",
+          "sicht": "BETRIEB",
+          "klasse": "MITTEL",
+          "berechnet": "HOCH",
+          "begruendung": "Die Fernverkaufsschwelle wird wöchentlich überwacht; Abweichungen sind seit Juli null.",
+          "status": "BEANTRAGT",
+          "beantragtVon": "b1000000-0000-4000-8000-000000000001",
+          "beantragtAm": "2026-10-19T13:04:41.548Z",
+          "entschiedenVon": null,
+          "entschiedenAm": null
+        }
+      ],
+      "offeneEreignisse": 0,
+      "wirktAuf": [],
+      "hinweise": [],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyut000bwb7d4niwsq84",
+      "code": "EC-UST-02",
+      "gruppe": "UST",
+      "gruppeLabel": "Umsatzsteuer",
+      "kern": false,
+      "herkunft": "KATALOG",
+      "freigabe": "FREIGEGEBEN",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "weil EU-B2C nach AT, BE, CZ … (P3)",
+      "standId": "cmvf9kyuu000cwb7d7flov69x",
+      "titel": "Falscher Steuersatz in Shop- oder Marktplatzregeln",
+      "fehlerquelle": "Falscher Steuersatz je Bestimmungsland oder Warengruppe in Shop- oder Marktplatzregeln",
+      "folge": "Steuer zu niedrig oder zu hoch",
+      "normanker": [
+        {
+          "text": "§ 12 UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "Satzrecht der Bestimmungsländer",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "M",
+      "w": "WAHRSCHEINLICH",
+      "r": 3,
+      "gt": "FF",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "kontrollIds": [
+        "cmvf9kz04001jwb7diau9fqxc",
+        "cmvf9kz0l001lwb7djc5t634a",
+        "cmvf9kz6f002lwb7dmfx5dq4c"
+      ],
+      "bewertung": {
+        "brutto": {
+          "klasse": "KRITISCH",
+          "punkte": 6,
+          "basis": "HOCH",
+          "angehoben": true,
+          "erklaerung": "mittel × wahrscheinlich = 6 → hoch; Reichweite 3 hebt auf kritisch"
+        },
+        "nettoDesign": {
+          "klasse": "MITTEL",
+          "abschlag": 2,
+          "erklaerung": "−2: präventive und detektive Kontrolle angemessen",
+          "zaehlend": ["K-EC-02", "K-EC-03", "K-EC-21"]
+        },
+        "nettoBetrieb": {
+          "klasse": "MITTEL",
+          "abschlag": 2,
+          "erklaerung": "−2: präventive und detektive Kontrolle angemessen",
+          "zaehlend": ["K-EC-02", "K-EC-03", "K-EC-21"]
+        },
+        "wirksamDesign": "GERING",
+        "wirksamBetrieb": "MITTEL",
+        "uebersteuertDesign": true,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "MITTEL",
+      "ueberAppetit": false,
+      "uebersteuerungen": [
+        {
+          "id": "cmvf9ns9o0000fd7dnc0ek7ed",
+          "sicht": "DESIGN",
+          "klasse": "GERING",
+          "berechnet": "MITTEL",
+          "begruendung": "Zusätzliche manuelle Abstimmung der Steuersätze je Land wird monatlich dokumentiert.",
+          "status": "FREIGEGEBEN",
+          "beantragtVon": "b1000000-0000-4000-8000-000000000001",
+          "beantragtAm": "2026-10-19T13:04:41.370Z",
+          "entschiedenVon": "b1000000-0000-4000-8000-000000000002",
+          "entschiedenAm": "2026-10-19T13:04:41.480Z"
+        }
+      ],
+      "offeneEreignisse": 1,
+      "wirktAuf": ["EC-UST-03", "EC-UST-09"],
+      "hinweise": [
+        {
+          "quelle": "EREIGNIS",
+          "text": "Ereignis 2026-T-0342 (T-05) vom 12.10.2026 – Triage offen",
+          "ereignisId": "cmvf9kzql008dwb7d1bpr1xn4"
+        }
+      ],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyvc000fwb7dwn3k1hnq",
+      "code": "EC-UST-04",
+      "gruppe": "UST",
+      "gruppeLabel": "Umsatzsteuer",
+      "kern": false,
+      "herkunft": "KATALOG",
+      "freigabe": "FREIGEGEBEN",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "weil EU-B2C und Lager PL seit 03/2025 (P2, P3)",
+      "standId": "cmvf9kyvd000gwb7d0cd0tzpj",
+      "titel": "Umsätze falsch dem OSS zugeordnet",
+      "fehlerquelle": "Umsätze falsch dem OSS zugeordnet, z. B. Verkäufe ab Lager im Lagerland, B2B, Verbringen",
+      "folge": "Steuer im falschen Verfahren erklärt",
+      "normanker": [
+        {
+          "text": "§ 18j UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 3c UStG",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "M",
+      "w": "MOEGLICH",
+      "r": 3,
+      "gt": "FP",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "kontrollIds": ["cmvf9kz11001nwb7ddf9nyqrh", "cmvf9kz1s001rwb7djqlc9yoa"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "HOCH",
+          "punkte": 4,
+          "basis": "MITTEL",
+          "angehoben": true,
+          "erklaerung": "mittel × möglich = 4 → mittel; Reichweite 3 hebt auf hoch"
+        },
+        "nettoDesign": {
+          "klasse": "MITTEL",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-04", "K-EC-06"]
+        },
+        "nettoBetrieb": {
+          "klasse": "MITTEL",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen; entfällt für K-EC-04 mit Befund",
+          "zaehlend": ["K-EC-06"]
+        },
+        "wirksamDesign": "MITTEL",
+        "wirksamBetrieb": "MITTEL",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "MITTEL",
+      "ueberAppetit": false,
+      "uebersteuerungen": [],
+      "offeneEreignisse": 0,
+      "wirktAuf": [],
+      "hinweise": [
+        {
+          "quelle": "PROFIL",
+          "text": "Profiländerung P2 am 01.10.2026 (letzte Bewertung 01.03.2026)",
+          "ereignisId": null
+        }
+      ],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyvp000hwb7dakrsaz9n",
+      "code": "EC-UST-05",
+      "gruppe": "UST",
+      "gruppeLabel": "Umsatzsteuer",
+      "kern": false,
+      "herkunft": "KATALOG",
+      "freigabe": "FREIGEGEBEN",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "weil Lager PL seit 03/2025 (P2)",
+      "standId": "cmvf9kzmz007pwb7dqe1o63u4",
+      "titel": "Ausländisches Lager ohne Registrierung",
+      "fehlerquelle": "Ausländisches Lager ohne Registrierung",
+      "folge": "Verbringen nicht erklärt, ZM fehlt",
+      "normanker": [
+        {
+          "text": "§ 3 Abs. 1a UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 6a Abs. 2 UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 1a Abs. 2 UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 18a UStG",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "H",
+      "w": "WAHRSCHEINLICH",
+      "r": 3,
+      "gt": "FF",
+      "gueltigAb": "2026-10-12T11:40:00.000Z",
+      "kontrollIds": ["cmvf9kz1g001pwb7d7ins1vky", "cmvf9kz1s001rwb7djqlc9yoa"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "KRITISCH",
+          "punkte": 9,
+          "basis": "KRITISCH",
+          "angehoben": false,
+          "erklaerung": "hoch × wahrscheinlich = 9 → kritisch; Reichweite 3: bereits kritisch"
+        },
+        "nettoDesign": {
+          "klasse": "HOCH",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-05", "K-EC-06"]
+        },
+        "nettoBetrieb": {
+          "klasse": "HOCH",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen; entfällt für K-EC-05 mit Befund",
+          "zaehlend": ["K-EC-06"]
+        },
+        "wirksamDesign": "HOCH",
+        "wirksamBetrieb": "HOCH",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "HOCH",
+      "ueberAppetit": true,
+      "uebersteuerungen": [],
+      "offeneEreignisse": 0,
+      "wirktAuf": ["EC-UST-04", "EC-UST-06", "EC-ERT-03"],
+      "hinweise": [],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyvt000jwb7dqm86slpv",
+      "code": "EC-UST-06",
+      "gruppe": "UST",
+      "gruppeLabel": "Umsatzsteuer",
+      "kern": false,
+      "herkunft": "KATALOG",
+      "freigabe": "FREIGEGEBEN",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "weil EU-B2B-Verkäufe (P3)",
+      "standId": "cmvf9kyvu000kwb7dakjex83a",
+      "titel": "Steuerfreie ig. B2B-Lieferung ohne Nachweise",
+      "fehlerquelle": "Steuerfreie ig. B2B-Lieferung ohne qualifizierte USt-IdNr.-Bestätigung oder Gelangensnachweis",
+      "folge": "Steuerfreiheit gefährdet; ZM unvollständig",
+      "normanker": [
+        {
+          "text": "§ 4 Nr. 1 b UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 6a UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 18a UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 18e UStG",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "§ 17a UStDV",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "M",
+      "w": "MOEGLICH",
+      "r": 2,
+      "gt": "FP",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "kontrollIds": ["cmvf9kz1s001rwb7djqlc9yoa", "cmvf9kz1z001twb7dfs96ptsv"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "MITTEL",
+          "punkte": 4,
+          "basis": "MITTEL",
+          "angehoben": false,
+          "erklaerung": "mittel × möglich = 4 → mittel"
+        },
+        "nettoDesign": {
+          "klasse": "GERING",
+          "abschlag": 2,
+          "erklaerung": "−2: präventive und detektive Kontrolle angemessen",
+          "zaehlend": ["K-EC-06", "K-EC-07"]
+        },
+        "nettoBetrieb": {
+          "klasse": "GERING",
+          "abschlag": 2,
+          "erklaerung": "−2: präventive und detektive Kontrolle angemessen",
+          "zaehlend": ["K-EC-06", "K-EC-07"]
+        },
+        "wirksamDesign": "GERING",
+        "wirksamBetrieb": "GERING",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "GERING",
+      "ueberAppetit": false,
+      "uebersteuerungen": [],
+      "offeneEreignisse": 0,
+      "wirktAuf": [],
+      "hinweise": [],
+      "akzeptanzen": []
+    },
+    {
+      "id": "cmvf9kyyu001bwb7dac6ytegj",
+      "code": "EC-VER-01",
+      "gruppe": "VER",
+      "gruppeLabel": "Verfahren",
+      "kern": true,
+      "herkunft": "KATALOG",
+      "freigabe": "FREIGEGEBEN",
+      "freigabeEingereichtVon": "b1000000-0000-4000-8000-000000000002",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000001",
+      "freigegebenAm": "2026-03-07T00:00:00.000Z",
+      "ownerId": "b1000000-0000-4000-8000-000000000012",
+      "neuBewerten": false,
+      "vorschlagsgrund": "Kernrisiko – immer aktiv",
+      "standId": "cmvf9kyyv001cwb7djxycbjtb",
+      "titel": "Erkannter Fehler nicht berichtigt",
+      "fehlerquelle": "Erkannter Fehler in abgegebener Erklärung nicht unverzüglich angezeigt",
+      "folge": "Berichtigungspflicht verletzt",
+      "normanker": [
+        {
+          "text": "§ 153 AO",
+          "stufe": "UNGEPRUEFT"
+        },
+        {
+          "text": "AEAO zu § 153 Nr. 2.6",
+          "stufe": "UNGEPRUEFT"
+        }
+      ],
+      "s": "H",
+      "w": "MOEGLICH",
+      "r": 3,
+      "gt": "FF",
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "kontrollIds": ["cmvf9kz65002jwb7dinaf8mhw"],
+      "bewertung": {
+        "brutto": {
+          "klasse": "KRITISCH",
+          "punkte": 6,
+          "basis": "HOCH",
+          "angehoben": true,
+          "erklaerung": "hoch × möglich = 6 → hoch; Reichweite 3 hebt auf kritisch"
+        },
+        "nettoDesign": {
+          "klasse": "HOCH",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-20"]
+        },
+        "nettoBetrieb": {
+          "klasse": "HOCH",
+          "abschlag": 1,
+          "erklaerung": "−1: mindestens eine Kontrolle angemessen",
+          "zaehlend": ["K-EC-20"]
+        },
+        "wirksamDesign": "HOCH",
+        "wirksamBetrieb": "HOCH",
+        "uebersteuertDesign": false,
+        "uebersteuertBetrieb": false,
+        "modell": "ec-1.0"
+      },
+      "netto": "HOCH",
+      "ueberAppetit": true,
+      "uebersteuerungen": [],
+      "offeneEreignisse": 0,
+      "wirktAuf": [],
+      "hinweise": [],
+      "akzeptanzen": [
+        {
+          "id": "cmvf9nsm30007fd7drs6dbk0e",
+          "status": "OFFEN",
+          "titel": "Risikoakzeptanz EC-VER-01 · Erkannter Fehler nicht berichtigt",
+          "inhalt": "Risikoakzeptanz – EC-VER-01 Erkannter Fehler nicht berichtigt\n\nFehlerquelle: Erkannter Fehler in abgegebener Erklärung nicht unverzüglich angezeigt\nFolge: Berichtigungspflicht verletzt\n\nBewertung zum 19.10.2026 (Modell ec-1.0): Schadensintensität hoch, Wahrscheinlichkeit möglich, Reichweite 3 · mehrere Länder oder Steuerarten, FF · laufend.\nBrutto kritisch · Netto (Design) hoch · Netto (Betrieb) hoch.\nDer in den Compliance-Zielen festgelegte Risikoappetit ist „mittel\". Die maßgebliche Nettoklasse (Netto (Betrieb): hoch) liegt darüber.\n\nZugeordnete Kontrollen: K-EC-20 Berichtigungsprozess.\n\nErläuterung der Kanzlei: Die Verrechnungspreisdokumentation wird erst mit dem Jahresabschluss erstellt.\n\nLiegt ein Risiko über dem Risikoappetit, ist eine Maßnahme oder eine Risikoakzeptanz durch die gesetzlichen Vertreter erforderlich. Mit Ihrer Freigabe akzeptieren Sie dieses Risiko in der genannten Höhe bis zur nächsten Neubewertung. Ihre Entscheidung wird mit Name und Zeitpunkt protokolliert.",
+          "angefordertVon": "b1000000-0000-4000-8000-000000000001",
+          "angefordertAm": "2026-10-19T13:04:41.804Z",
+          "empfaengerId": "b1000000-0000-4000-8000-000000000011",
+          "anmerkung": null,
+          "erledigtAm": null
+        }
+      ]
+    }
+  ],
+  "vorschlaegeOffen": 0,
+  "namen": {}
+}

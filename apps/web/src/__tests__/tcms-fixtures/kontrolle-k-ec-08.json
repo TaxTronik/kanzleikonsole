@@ -1,0 +1,331 @@
+{
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "programmId": "cmvf9kyrc0003wb7d12b2juhr",
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "kontrolle": {
+    "id": "cmvf9kz2f001vwb7d3gt5lb60",
+    "code": "K-EC-08",
+    "standId": "cmvf9oaf5000bfd7dhupahdxn",
+    "version": 3,
+    "titel": "Kreditorencheck § 13b",
+    "ziel": "Kreditoren auf §-13b-Leistungen ausländischer Anbieter prüfen.",
+    "art": "D",
+    "ausfuehrung": "M",
+    "vorlage": {
+      "turnus": "MONATLICH",
+      "anlass": false
+    },
+    "abweichung": {
+      "frequenz": {
+        "turnus": "QUARTALSWEISE",
+        "anlass": false
+      },
+      "begruendung": "Die Gutschriften laufen über das ERP mit Vier-Augen-Freigabe; quartalsweise genügt.",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000002",
+      "beantragtVon": "b1000000-0000-4000-8000-000000000001",
+      "beantragtAm": "2026-10-19T13:05:04.903Z"
+    },
+    "partei": "KANZLEI",
+    "schluessel": false,
+    "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+    "vertretungId": "b1000000-0000-4000-8000-000000000003",
+    "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+    "gegenzeichnungMandant": false,
+    "nachweis": "Kreditorenliste mit Kennzeichnung",
+    "mindestNachweise": 1,
+    "schritte": [
+      {
+        "titel": "Ausländische Kreditoren filtern",
+        "hinweis": "Plattformen, Werbe- und SaaS-Anbieter"
+      },
+      {
+        "titel": "Buchung nach § 13b prüfen",
+        "hinweis": "Steuerschuldnerschaft und Vorsteuer gebucht"
+      }
+    ],
+    "kennzahlen": [],
+    "toleranzEur": null,
+    "faelligNachTagen": 10,
+    "design": "ANGEMESSEN",
+    "designVon": "b1000000-0000-4000-8000-000000000001",
+    "designAm": "2026-03-11T00:00:00.000Z",
+    "designBegruendung": "Kontrolle adressiert die Fehlerquelle direkt; Schritte, Nachweis und Toleranz sind festgelegt.",
+    "risikoIds": ["cmvf9kyw0000lwb7d6wavluzp"],
+    "risikoCodes": ["EC-UST-07"],
+    "ableitung": {
+      "mindest": {
+        "turnus": "QUARTALSWEISE",
+        "anlass": false
+      },
+      "effektiv": {
+        "turnus": "MONATLICH",
+        "anlass": false
+      },
+      "gt": "FP",
+      "quelle": {
+        "code": "EC-UST-07",
+        "gt": "FP",
+        "brutto": "MITTEL"
+      },
+      "abweichendVonVorlage": false,
+      "begruendung": "abgeleitet aus FP · mittel (EC-UST-07); Vorlage: monatlich"
+    },
+    "frequenz": {
+      "turnus": "QUARTALSWEISE",
+      "anlass": false
+    },
+    "gt": "FP",
+    "betrieb": "OK",
+    "letzte": {
+      "id": "cmvf9kzgi004twb7dkrypqfb4",
+      "periodeLabel": "September 2026",
+      "periodeVon": "2026-09-01T00:00:00.000Z",
+      "periodeBis": "2026-09-30T00:00:00.000Z",
+      "faelligAm": "2026-10-10T00:00:00.000Z",
+      "status": "ZUR_GEGENZEICHNUNG",
+      "anzeige": "ZUR_GEGENZEICHNUNG",
+      "ausserplanmaessig": false,
+      "anlass": null,
+      "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+      "gegengezeichnetVon": null,
+      "mandantBestaetigtVon": null,
+      "eingereichtAm": "2026-10-09T16:12:00.000Z",
+      "abgeschlossenAm": null,
+      "nachweise": 1,
+      "mindestNachweise": 1,
+      "feststellung": null
+    },
+    "naechste": {
+      "id": "cmvf9oafn000cfd7dyi458kdx",
+      "periodeLabel": "Q4 2026",
+      "periodeVon": "2026-10-01T00:00:00.000Z",
+      "periodeBis": "2026-12-31T00:00:00.000Z",
+      "faelligAm": "2027-01-10T00:00:00.000Z",
+      "status": "GEPLANT",
+      "anzeige": "GEPLANT",
+      "ausserplanmaessig": false,
+      "anlass": null,
+      "durchgefuehrtVon": null,
+      "gegengezeichnetVon": null,
+      "mandantBestaetigtVon": null,
+      "eingereichtAm": null,
+      "abgeschlossenAm": null,
+      "nachweise": 0,
+      "mindestNachweise": 1,
+      "feststellung": null
+    },
+    "pflichtattributeOk": true
+  },
+  "staende": [
+    {
+      "id": "cmvf9oaf5000bfd7dhupahdxn",
+      "version": 3,
+      "gueltigAb": "2026-10-19T13:05:04.939Z",
+      "gueltigBis": null,
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002",
+      "design": "ANGEMESSEN",
+      "designVon": "b1000000-0000-4000-8000-000000000001",
+      "designAm": "2026-03-11T00:00:00.000Z",
+      "designBegruendung": "Kontrolle adressiert die Fehlerquelle direkt; Schritte, Nachweis und Toleranz sind festgelegt.",
+      "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+      "vertretungId": "b1000000-0000-4000-8000-000000000003",
+      "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+      "gegenzeichnungMandant": false,
+      "abweichung": {
+        "turnus": "QUARTALSWEISE",
+        "anlass": false,
+        "begruendung": "Die Gutschriften laufen über das ERP mit Vier-Augen-Freigabe; quartalsweise genügt.",
+        "freigegebenVon": "b1000000-0000-4000-8000-000000000002"
+      },
+      "aenderungen": ["Frequenzabweichung freigegeben"]
+    },
+    {
+      "id": "cmvf9oadv000afd7dbbfz6xrs",
+      "version": 2,
+      "gueltigAb": "2026-10-19T13:05:04.903Z",
+      "gueltigBis": "2026-10-19T13:05:04.939Z",
+      "erstelltVon": "b1000000-0000-4000-8000-000000000001",
+      "design": "ANGEMESSEN",
+      "designVon": "b1000000-0000-4000-8000-000000000001",
+      "designAm": "2026-03-11T00:00:00.000Z",
+      "designBegruendung": "Kontrolle adressiert die Fehlerquelle direkt; Schritte, Nachweis und Toleranz sind festgelegt.",
+      "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+      "vertretungId": "b1000000-0000-4000-8000-000000000003",
+      "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+      "gegenzeichnungMandant": false,
+      "abweichung": {
+        "turnus": "QUARTALSWEISE",
+        "anlass": false,
+        "begruendung": "Die Gutschriften laufen über das ERP mit Vier-Augen-Freigabe; quartalsweise genügt.",
+        "freigegebenVon": null
+      },
+      "aenderungen": ["Frequenzabweichung beantragt"]
+    },
+    {
+      "id": "cmvf9kz2f001wwb7dntzx94ir",
+      "version": 1,
+      "gueltigAb": "2026-03-01T00:00:00.000Z",
+      "gueltigBis": "2026-10-19T13:05:04.903Z",
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002",
+      "design": "ANGEMESSEN",
+      "designVon": "b1000000-0000-4000-8000-000000000001",
+      "designAm": "2026-03-11T00:00:00.000Z",
+      "designBegruendung": "Kontrolle adressiert die Fehlerquelle direkt; Schritte, Nachweis und Toleranz sind festgelegt.",
+      "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+      "vertretungId": "b1000000-0000-4000-8000-000000000003",
+      "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+      "gegenzeichnungMandant": false,
+      "abweichung": null,
+      "aenderungen": ["Kontrolle angelegt"]
+    }
+  ],
+  "durchfuehrungen": [
+    {
+      "id": "cmvf9kzg2004nwb7dlhnxo7gz",
+      "periodeLabel": "Juni 2026",
+      "periodeVon": "2026-06-01T00:00:00.000Z",
+      "periodeBis": "2026-06-30T00:00:00.000Z",
+      "faelligAm": "2026-07-10T00:00:00.000Z",
+      "status": "OHNE_BEFUND",
+      "anzeige": "OHNE_BEFUND",
+      "ausserplanmaessig": false,
+      "anlass": null,
+      "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+      "gegengezeichnetVon": "b1000000-0000-4000-8000-000000000001",
+      "mandantBestaetigtVon": null,
+      "eingereichtAm": "2026-07-08T15:20:00.000Z",
+      "abgeschlossenAm": "2026-07-09T10:05:00.000Z",
+      "nachweise": 1,
+      "mindestNachweise": 1,
+      "feststellung": null
+    },
+    {
+      "id": "cmvf9kzg5004pwb7dwaojdrlv",
+      "periodeLabel": "Juli 2026",
+      "periodeVon": "2026-07-01T00:00:00.000Z",
+      "periodeBis": "2026-07-31T00:00:00.000Z",
+      "faelligAm": "2026-08-10T00:00:00.000Z",
+      "status": "OHNE_BEFUND",
+      "anzeige": "OHNE_BEFUND",
+      "ausserplanmaessig": false,
+      "anlass": null,
+      "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+      "gegengezeichnetVon": "b1000000-0000-4000-8000-000000000001",
+      "mandantBestaetigtVon": null,
+      "eingereichtAm": "2026-08-08T15:20:00.000Z",
+      "abgeschlossenAm": "2026-08-09T10:05:00.000Z",
+      "nachweise": 1,
+      "mindestNachweise": 1,
+      "feststellung": null
+    },
+    {
+      "id": "cmvf9kzga004rwb7d4gzfzp2m",
+      "periodeLabel": "August 2026",
+      "periodeVon": "2026-08-01T00:00:00.000Z",
+      "periodeBis": "2026-08-31T00:00:00.000Z",
+      "faelligAm": "2026-09-10T00:00:00.000Z",
+      "status": "OHNE_BEFUND",
+      "anzeige": "OHNE_BEFUND",
+      "ausserplanmaessig": false,
+      "anlass": null,
+      "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+      "gegengezeichnetVon": "b1000000-0000-4000-8000-000000000001",
+      "mandantBestaetigtVon": null,
+      "eingereichtAm": "2026-09-08T15:20:00.000Z",
+      "abgeschlossenAm": "2026-09-09T10:05:00.000Z",
+      "nachweise": 1,
+      "mindestNachweise": 1,
+      "feststellung": null
+    },
+    {
+      "id": "cmvf9kzgi004twb7dkrypqfb4",
+      "periodeLabel": "September 2026",
+      "periodeVon": "2026-09-01T00:00:00.000Z",
+      "periodeBis": "2026-09-30T00:00:00.000Z",
+      "faelligAm": "2026-10-10T00:00:00.000Z",
+      "status": "ZUR_GEGENZEICHNUNG",
+      "anzeige": "ZUR_GEGENZEICHNUNG",
+      "ausserplanmaessig": false,
+      "anlass": null,
+      "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+      "gegengezeichnetVon": null,
+      "mandantBestaetigtVon": null,
+      "eingereichtAm": "2026-10-09T16:12:00.000Z",
+      "abgeschlossenAm": null,
+      "nachweise": 1,
+      "mindestNachweise": 1,
+      "feststellung": null
+    },
+    {
+      "id": "cmvf9oafn000cfd7dyi458kdx",
+      "periodeLabel": "Q4 2026",
+      "periodeVon": "2026-10-01T00:00:00.000Z",
+      "periodeBis": "2026-12-31T00:00:00.000Z",
+      "faelligAm": "2027-01-10T00:00:00.000Z",
+      "status": "GEPLANT",
+      "anzeige": "GEPLANT",
+      "ausserplanmaessig": false,
+      "anlass": null,
+      "durchgefuehrtVon": null,
+      "gegengezeichnetVon": null,
+      "mandantBestaetigtVon": null,
+      "eingereichtAm": null,
+      "abgeschlossenAm": null,
+      "nachweise": 0,
+      "mindestNachweise": 1,
+      "feststellung": null
+    }
+  ],
+  "audit": [
+    {
+      "pos": 44,
+      "at": "2026-10-19T13:05:04.987Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "aktion": "tcms.kontrolle.neu_geplant",
+      "detail": {
+        "bis": "2026-12-31",
+        "code": "K-EC-08",
+        "anlass": "Frequenzabweichung freigegeben",
+        "angelegt": ["Q4 2026"],
+        "behalten": [],
+        "entfernt": ["Oktober 2026", "November 2026", "Dezember 2026"],
+        "kontrolleId": "cmvf9kz2f001vwb7d3gt5lb60",
+        "turnusVorher": "MONATLICH",
+        "turnusNachher": "QUARTALSWEISE"
+      }
+    },
+    {
+      "pos": 43,
+      "at": "2026-10-19T13:05:04.981Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "aktion": "tcms.kontrolle.abweichung_freigegeben",
+      "detail": {
+        "code": "K-EC-08",
+        "vorher": "monatlich",
+        "mindest": "quartalsweise",
+        "nachher": "quartalsweise",
+        "version": 3,
+        "unterMatrix": false,
+        "beantragtVon": "b1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "pos": 42,
+      "at": "2026-10-19T13:05:04.916Z",
+      "actorId": "b1000000-0000-4000-8000-000000000001",
+      "aktion": "tcms.kontrolle.abweichung_beantragt",
+      "detail": {
+        "code": "K-EC-08",
+        "mindest": "quartalsweise",
+        "version": 2,
+        "beantragt": "quartalsweise",
+        "abgeleitet": "monatlich",
+        "begruendung": "Die Gutschriften laufen über das ERP mit Vier-Augen-Freigabe; quartalsweise genügt.",
+        "unterMatrix": false
+      }
+    }
+  ],
+  "namen": {}
+}
