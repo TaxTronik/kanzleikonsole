@@ -15,13 +15,21 @@
 //
 // Muster: feste Segmente `[a-z0-9-]+`, Parameter `:name`; `:mandantId` nur als
 // `/v1/mandanten/:mandantId/…` (dann `mandantenbezogen`, an `cli.id` gebunden,
-// ADR 0001 §3.3). `portal: true` lässt Mandantenkontakte zu. Nur `health`
-// braucht keine Akteursbestätigung (`akteur: false`, ADR 0001 §7).
+// ADR 0001 §3.3). Nur `health` braucht keine Akteursbestätigung
+// (`akteur: false`, ADR 0001 §7).
+//
+// Akteursarten (`akteure`, ADR 0001 §3.3, §7): Jeder Eintrag nennt die Arten,
+// die ihn aufrufen dürfen – Standard nur `KANZLEI`. Jede andere Art erhält 404
+// wie ein unbekannter Pfad. Der Systemakteur steht nur allein (`['SYSTEM']`)
+// und nie auf Mandantenpfaden; `register` weist andere Definitionen beim Laden
+// ab. `portal` wird daraus abgeleitet (`akteure` enthält `MANDANT`) und bleibt
+// nur für bestehende Aufrufer.
 //
 // Der Vertrag hängt nur von zod ab; alle Schemas stammen aus `bereiche/*`.
 // =============================================================================
 
 import { z } from 'zod';
+import { AKTEUR_ARTEN, type AkteurArt } from './akteur';
 import {
   DurchfuehrungBegruendungBodySchema,
   DurchfuehrungDetailSchema,
@@ -191,7 +199,16 @@ export interface Endpunkt<
   readonly methode: EndpunktMethode;
   /** Muster unter `/v1/`, z. B. `/v1/mandanten/:mandantId/risiken/:risikoId`. */
   readonly pfad: string;
-  /** Mandantenkontakte (`knd: MANDANT`) zugelassen (ADR 0001 §3.3). */
+  /**
+   * Zugelassene Akteursarten (`knd` der Bestätigung, ADR 0001 §3.3, §7); jede
+   * andere Art erhält 404. `['SYSTEM']` steht immer allein; leer nur bei
+   * `health` (ohne Bestätigung). Eingefroren.
+   */
+  readonly akteure: readonly AkteurArt[];
+  /**
+   * Mandantenkontakte zugelassen – abgeleitet: `akteure` enthält `MANDANT`.
+   * @deprecated Nur für bestehende Aufrufer; maßgeblich ist `akteure`.
+   */
   readonly portal: boolean;
   /** Pfad unter `/v1/mandanten/:mandantId/…`: an `cli.id` gebunden (ADR 0001 §3.3). */
   readonly mandantenbezogen: boolean;
@@ -209,7 +226,8 @@ export interface Endpunkt<
 interface Definition {
   methode: EndpunktMethode;
   pfad: string;
-  portal?: boolean;
+  /** Standard: nur Kanzleipersonen (`NUR_KANZLEI`). */
+  akteure?: readonly AkteurArt[];
   akteur?: boolean;
   params: z.ZodType;
   query?: z.ZodType;
@@ -220,25 +238,88 @@ interface Definition {
 
 type Oder<T, Ersatz> = T extends z.ZodType ? T : Ersatz;
 
+/** Nur Kanzleipersonen (Standard). */
+export const NUR_KANZLEI = Object.freeze(['KANZLEI'] as const);
+/** Kanzleipersonen und Mandantenkontakte (`/v1/ich` und Portal-Endpunkte). */
+export const KANZLEI_UND_MANDANT = Object.freeze(['KANZLEI', 'MANDANT'] as const);
+/** Nur der Systemakteur (Dienstnutzer der kanzleikonsole), keine Person. */
+export const NUR_SYSTEM = Object.freeze(['SYSTEM'] as const);
+
+type AkteureAus<D extends Definition> = D['akteur'] extends false
+  ? readonly []
+  : D['akteure'] extends readonly AkteurArt[]
+    ? D['akteure']
+    : typeof NUR_KANZLEI;
+
 /** Vollständiger Eintrag aus einer Definition; `name` ist der Schlüssel im Register. */
 export type EndpunktAus<N extends string, D extends Definition> = Endpunkt<
   D['params'],
   Oder<D['query'], null>,
   Oder<D['body'], null>,
   D['antwort']
-> & { readonly name: N; readonly methode: D['methode']; readonly pfad: D['pfad'] };
+> & {
+  readonly name: N;
+  readonly methode: D['methode'];
+  readonly pfad: D['pfad'];
+  readonly akteure: AkteureAus<D>;
+};
+
+const MANDANT_PFAD = '/v1/mandanten/:mandantId';
+
+/**
+ * Zugelassene Akteursarten einer Definition, geprüft (fail closed): bekannte
+ * Arten ohne Doppelte, mindestens eine (außer `health`), der Systemakteur nur
+ * allein und nie auf Mandantenpfaden (er hat kein `cli`). Wirft beim Laden
+ * des Vertrags – ein falsch definierter Endpunkt erreicht weder Dienst noch
+ * kanzleikonsole.
+ */
+export function pruefeAkteure(
+  name: string,
+  pfad: string,
+  akteur: boolean,
+  akteure: readonly unknown[] | undefined,
+): readonly AkteurArt[] {
+  if (!akteur) {
+    if (akteure !== undefined && akteure.length > 0) {
+      throw new Error(`Endpunkt ${name}: ohne Bestätigung keine Akteursarten`);
+    }
+    return Object.freeze([]);
+  }
+  const arten = akteure ?? NUR_KANZLEI;
+  if (!Array.isArray(arten) || arten.length === 0) {
+    throw new Error(`Endpunkt ${name}: mindestens eine Akteursart`);
+  }
+  for (const a of arten) {
+    if (!(AKTEUR_ARTEN as readonly unknown[]).includes(a)) {
+      throw new Error(`Endpunkt ${name}: unbekannte Akteursart`);
+    }
+  }
+  if (new Set(arten).size !== arten.length) {
+    throw new Error(`Endpunkt ${name}: Akteursart doppelt`);
+  }
+  if (arten.includes('SYSTEM')) {
+    if (arten.length !== 1) throw new Error(`Endpunkt ${name}: SYSTEM nur allein`);
+    if (pfad.startsWith(MANDANT_PFAD)) {
+      throw new Error(`Endpunkt ${name}: SYSTEM nicht auf Mandantenpfaden`);
+    }
+  }
+  return Object.freeze([...(arten as AkteurArt[])]);
+}
 
 function register<const D extends Record<string, Definition>>(
   definitionen: D,
 ): { readonly [N in keyof D & string]: EndpunktAus<N, D[N]> } {
   const eintraege = Object.entries(definitionen).map(([name, d]) => {
+    const akteur = d.akteur ?? true;
+    const akteure = pruefeAkteure(name, d.pfad, akteur, d.akteure);
     const eintrag: Endpunkt = {
       name,
       methode: d.methode,
       pfad: d.pfad,
-      portal: d.portal ?? false,
-      mandantenbezogen: d.pfad.startsWith('/v1/mandanten/:mandantId'),
-      akteur: d.akteur ?? true,
+      akteure,
+      portal: akteure.includes('MANDANT'),
+      mandantenbezogen: d.pfad.startsWith(MANDANT_PFAD),
+      akteur,
       paramsSchema: d.params,
       querySchema: d.query ?? null,
       bodySchema: d.body ?? null,
@@ -325,7 +406,7 @@ export const ENDPUNKTE = register({
   ich: {
     methode: 'GET',
     pfad: '/v1/ich',
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: KeineParamsSchema,
     antwort: IchAntwortSchema,
   },
@@ -361,7 +442,7 @@ export const ENDPUNKTE = register({
   portalUebersichtLesen: {
     methode: 'GET',
     pfad: `${M}/portal/uebersicht`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: MandantPfadSchema,
     antwort: PortalUebersichtAntwortSchema,
   },
@@ -488,14 +569,14 @@ export const ENDPUNKTE = register({
   portalAufgabenLesen: {
     methode: 'GET',
     pfad: P,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: KontrollaufgabenEingabeSchema,
     antwort: KontrollaufgabenSchema,
   },
   portalAufgabeLesen: {
     methode: 'GET',
     pfad: `${P}/:durchfuehrungId`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: DurchfuehrungZielSchema,
     query: DurchfuehrungStandQuerySchema,
     antwort: KontrollaufgabeSchema,
@@ -503,7 +584,7 @@ export const ENDPUNKTE = register({
   portalAufgabeSpeichern: {
     methode: 'POST',
     pfad: `${P}/:durchfuehrungId/speichern`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: DurchfuehrungZielSchema,
     body: DurchfuehrungSpeichernBodySchema,
     antwort: DurchfuehrungSpeichernErgebnisSchema,
@@ -511,14 +592,14 @@ export const ENDPUNKTE = register({
   portalAufgabeEinreichen: {
     methode: 'POST',
     pfad: `${P}/:durchfuehrungId/einreichen`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: DurchfuehrungZielSchema,
     antwort: DurchfuehrungUebergangSchema,
   },
   portalAnlageAnhaengen: {
     methode: 'POST',
     pfad: `${P}/:durchfuehrungId/anlagen`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: DurchfuehrungZielSchema,
     body: NachweisAnhaengenBodySchema,
     antwort: NachweisErgebnisSchema,
@@ -527,14 +608,14 @@ export const ENDPUNKTE = register({
   portalAnlageEntfernen: {
     methode: 'POST',
     pfad: `${P}/:durchfuehrungId/anlagen/:nachweisId/entfernen`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: NachweisEntfernenEingabeSchema,
     antwort: NachweisEntferntSchema,
   },
   portalAufgabeZurueckgeben: {
     methode: 'POST',
     pfad: `${P}/:durchfuehrungId/zurueckgeben`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: DurchfuehrungZielSchema,
     body: DurchfuehrungBegruendungBodySchema,
     antwort: DurchfuehrungUebergangSchema,
@@ -542,14 +623,14 @@ export const ENDPUNKTE = register({
   portalAufgabeBestaetigen: {
     methode: 'POST',
     pfad: `${P}/:durchfuehrungId/bestaetigen`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: DurchfuehrungZielSchema,
     antwort: DurchfuehrungUebergangSchema,
   },
   portalAnlageLesen: {
     methode: 'GET',
     pfad: `${M}/portal/anlagen/:nachweisId`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: NachweisLesenEingabeSchema,
     antwort: NachweisErgebnisSchema,
   },
@@ -896,14 +977,14 @@ export const ENDPUNKTE = register({
   portalMeldungenLesen: {
     methode: 'GET',
     pfad: `${M}/portal/ereignisse`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: MandantPfadSchema,
     antwort: PortalMeldungenSchema,
   },
   portalMeldungErfassen: {
     methode: 'POST',
     pfad: `${M}/portal/ereignisse`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: MandantPfadSchema,
     body: PortalMeldungBodySchema,
     antwort: PortalMeldungErgebnisSchema,
@@ -935,10 +1016,11 @@ export const ENDPUNKTE = register({
     status: 201,
   },
 
-  // ---- Postausgang (tenantweit) -----------------------------------------------
+  // ---- Postausgang (tenantweit, nur Systemakteur: Zustell-Worker der kanzleikonsole) ----
   nachrichtenOffenLesen: {
     methode: 'GET',
     pfad: '/v1/nachrichten/offen',
+    akteure: NUR_SYSTEM,
     params: KeineParamsSchema,
     query: NachrichtenOffenQuerySchema,
     antwort: NachrichtenOffenSchema,
@@ -946,6 +1028,7 @@ export const ENDPUNKTE = register({
   nachrichtZugestelltMelden: {
     methode: 'POST',
     pfad: '/v1/nachrichten/:nachrichtId/zugestellt',
+    akteure: NUR_SYSTEM,
     params: NachrichtZugestelltEingabeSchema,
     antwort: NachrichtZugestelltErgebnisSchema,
   },
@@ -1035,21 +1118,21 @@ export const ENDPUNKTE = register({
   portalFreigabenLesen: {
     methode: 'GET',
     pfad: `${M}/portal/freigaben`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: MandantPfadSchema,
     antwort: PortalFreigabenViewSchema,
   },
   portalFreigabeCodeAnfordern: {
     methode: 'POST',
     pfad: `${FREIGABE}/code`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: FreigabePfadSchema,
     antwort: PortalCodeAnfordernErgebnisSchema,
   },
   portalFreigabeErteilen: {
     methode: 'POST',
     pfad: `${FREIGABE}/freigeben`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: FreigabePfadSchema,
     body: PortalFreigebenBodySchema,
     antwort: PortalFreigebenErgebnisSchema,
@@ -1057,7 +1140,7 @@ export const ENDPUNKTE = register({
   portalKenntnisnahmeBestaetigen: {
     methode: 'POST',
     pfad: `${FREIGABE}/kenntnisnahme`,
-    portal: true,
+    akteure: KANZLEI_UND_MANDANT,
     params: FreigabePfadSchema,
     body: PortalKenntnisnahmeBodySchema,
     antwort: PortalKenntnisnahmeErgebnisSchema,

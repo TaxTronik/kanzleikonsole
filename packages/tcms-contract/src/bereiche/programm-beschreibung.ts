@@ -41,6 +41,19 @@ const partei = z.enum(['KANZLEI', 'MANDANT']);
 const namensEintrag = z.object({ id: uuid, name: z.string().trim().min(1).max(200) }).strict();
 
 // -----------------------------------------------------------------------------
+// Freigabearten (vor dem Postausgang: Nachrichten nennen die Art)
+// -----------------------------------------------------------------------------
+
+export const FREIGABE_ARTEN = [
+  'ZIELE',
+  'BESCHREIBUNG',
+  'RISIKOAKZEPTANZ',
+  'AUFKLAERUNG',
+  'KENNTNISNAHME',
+] as const;
+const freigabeArt = z.enum(FREIGABE_ARTEN);
+
+// -----------------------------------------------------------------------------
 // Postausgang (Zustellung durch die kanzleikonsole, Stufe 4)
 // -----------------------------------------------------------------------------
 
@@ -72,19 +85,126 @@ export const NachrichtenOffenEingabeSchema = z
   .object({ limit: z.number().int().min(1).max(MAX_NACHRICHTEN_JE_ABRUF).optional() })
   .strict();
 export type NachrichtenOffenEingabe = z.infer<typeof NachrichtenOffenEingabeSchema>;
-export const OffeneNachrichtSchema = z
+
+/**
+ * Empfängerart (Stufe 4): Mandantenkontakt (`KONTAKT`, Zustellung über die
+ * Mail-Outbox der kanzleikonsole) oder Kanzleiperson (`KANZLEI`,
+ * In-App-Benachrichtigung). Folgt aus dem Zweck (`NACHRICHT_EMPFAENGER`).
+ */
+export const NACHRICHT_EMPFAENGER_ARTEN = ['KONTAKT', 'KANZLEI'] as const;
+export const NachrichtEmpfaengerArtSchema = z.enum(NACHRICHT_EMPFAENGER_ARTEN);
+export type NachrichtEmpfaengerArt = z.infer<typeof NachrichtEmpfaengerArtSchema>;
+/** Empfängerart je Zweck: Freigaben gehen an Kontakte, Ereignismeldungen an die Kanzlei. */
+export const NACHRICHT_EMPFAENGER = {
+  FREIGABE_ANGEFORDERT: 'KONTAKT',
+  FREIGABE_CODE: 'KONTAKT',
+  FREIGABE_NEU_ADRESSIERT: 'KONTAKT',
+  EREIGNIS_GEMELDET: 'KANZLEI',
+} as const satisfies Record<NachrichtZweck, NachrichtEmpfaengerArt>;
+
+const nachrichtTitel = z.string().min(1).max(500);
+/** Versionsnummer einer CMS-Beschreibung (z. B. `1.2`), sonst null. */
+const nachrichtVersion = z
+  .string()
+  .regex(/^\d{1,3}\.\d{1,3}$/)
+  .nullable();
+
+/**
+ * Vorlagendaten je Zweck: genau die Felder, die eine Vorlage der
+ * kanzleikonsole braucht. Keine Namen und keine Adressen – Empfänger und
+ * Mandant stehen als IDs in der Nachricht, die kanzleikonsole löst sie auf.
+ */
+export const NachrichtDatenFreigabeAngefordertSchema = z
   .object({
-    id: z.string(),
-    empfaengerId: z.string(),
-    zweck: NachrichtZweckSchema,
-    betreff: z.string(),
-    text: z.string(),
-    erstelltAm: isoZeit,
+    freigabeId: objektId,
+    art: freigabeArt,
+    titel: nachrichtTitel,
+    version: nachrichtVersion,
   })
   .strict();
+/** Bestätigungscode für genau eine Freigabe; `gueltigBis` = Ablauf des Codes. */
+export const NachrichtDatenFreigabeCodeSchema = z
+  .object({
+    freigabeId: objektId,
+    art: freigabeArt,
+    titel: nachrichtTitel,
+    version: nachrichtVersion,
+    code: z.string().regex(/^\d{6}$/),
+    gueltigBis: isoZeit,
+    /** SHA-256 des vorgelegten, eingefrorenen Inhalts (CMS-Beschreibung), sonst null. */
+    sha256: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .nullable(),
+  })
+  .strict();
+/** Neu adressierte Anforderung (ohne Code); `art: KENNTNISNAHME` braucht nie einen Code. */
+export const NachrichtDatenFreigabeNeuAdressiertSchema = NachrichtDatenFreigabeAngefordertSchema;
+/** Im Portal gemeldetes Ereignis (an die von der kanzleikonsole genannte Kanzleiperson). */
+export const NachrichtDatenEreignisGemeldetSchema = z
+  .object({
+    ereignisId: objektId,
+    nummer: z.string().min(1).max(40),
+    titel: nachrichtTitel,
+    /** Anzeigename der Ereignisart (Katalog bzw. „Sonstiges"). */
+    typ: z.string().min(1).max(200),
+    /** Meldende Person (Kontakt-ID der kanzleikonsole). */
+    gemeldetVonId: uuid,
+  })
+  .strict();
+export type NachrichtDatenFreigabeCode = z.infer<typeof NachrichtDatenFreigabeCodeSchema>;
+
+/** Gemeinsame Felder jeder offenen Nachricht; `betreff`/`text` sind der Rückfall ohne Vorlage. */
+const nachrichtKopf = {
+  id: objektId,
+  mandantId: uuid,
+  empfaengerId: uuid,
+  betreff: z.string().max(1000),
+  text: z.string().max(20_000),
+  erstelltAm: isoZeit,
+};
+
+/**
+ * Offene Nachricht zur Zustellung (Stufe 4): diskriminiert über `zweck`, je
+ * Zweck feste Empfängerart und Vorlagendaten (`daten`).
+ */
+export const OffeneNachrichtSchema = z.discriminatedUnion('zweck', [
+  z
+    .object({
+      ...nachrichtKopf,
+      zweck: z.literal('FREIGABE_ANGEFORDERT'),
+      empfaengerArt: z.literal(NACHRICHT_EMPFAENGER.FREIGABE_ANGEFORDERT),
+      daten: NachrichtDatenFreigabeAngefordertSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...nachrichtKopf,
+      zweck: z.literal('FREIGABE_CODE'),
+      empfaengerArt: z.literal(NACHRICHT_EMPFAENGER.FREIGABE_CODE),
+      daten: NachrichtDatenFreigabeCodeSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...nachrichtKopf,
+      zweck: z.literal('FREIGABE_NEU_ADRESSIERT'),
+      empfaengerArt: z.literal(NACHRICHT_EMPFAENGER.FREIGABE_NEU_ADRESSIERT),
+      daten: NachrichtDatenFreigabeNeuAdressiertSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...nachrichtKopf,
+      zweck: z.literal('EREIGNIS_GEMELDET'),
+      empfaengerArt: z.literal(NACHRICHT_EMPFAENGER.EREIGNIS_GEMELDET),
+      daten: NachrichtDatenEreignisGemeldetSchema,
+    })
+    .strict(),
+]);
 export type OffeneNachricht = z.infer<typeof OffeneNachrichtSchema>;
 export const NachrichtenOffenSchema = z
-  .object({ nachrichten: z.array(OffeneNachrichtSchema) })
+  .object({ nachrichten: z.array(OffeneNachrichtSchema).max(MAX_NACHRICHTEN_JE_ABRUF) })
   .strict();
 
 export const NachrichtZugestelltEingabeSchema = z.object({ nachrichtId: objektId }).strict();
@@ -544,14 +664,6 @@ export const BESCHREIBUNG_STATUS = [
 ] as const;
 const beschreibungStatus = z.enum(BESCHREIBUNG_STATUS);
 const freigabeStatus = z.enum(['OFFEN', 'FREIGEGEBEN', 'ABGELEHNT']);
-export const FREIGABE_ARTEN = [
-  'ZIELE',
-  'BESCHREIBUNG',
-  'RISIKOAKZEPTANZ',
-  'AUFKLAERUNG',
-  'KENNTNISNAHME',
-] as const;
-const freigabeArt = z.enum(FREIGABE_ARTEN);
 
 /** Zustand des Bestätigungscodes einer Freigabe (nie der Code oder sein Hash). */
 export const FreigabeCodeStatusSchema = z.enum(['KEIN', 'AKTIV', 'ABGELAUFEN', 'GESPERRT']);

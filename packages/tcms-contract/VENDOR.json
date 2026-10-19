@@ -3,12 +3,12 @@
   "quelle": {
     "repo": "tcms",
     "pfad": "packages/contract/src",
-    "commit": "d5b651115d13126bf7d160862220eb930bc4adbf"
+    "commit": "6af277d07047bcfd640288f53882e4cbf7e7e26b"
   },
   "dateien": [
     {
       "pfad": "akteur.ts",
-      "sha256": "7d5ca329d7b767f0a64f255691d6c70843a298b18fffaa953bd359b0e6483ed3"
+      "sha256": "0acdc3029092f9613c0435fbb7e4ee420d06d05c99343e19e9d88a629cd82cd3"
     },
     {
       "pfad": "bereiche/durchfuehrung.ts",
@@ -24,7 +24,7 @@
     },
     {
       "pfad": "bereiche/programm-beschreibung.ts",
-      "sha256": "fd71c2e76305bfeaffb034a59a076f3af90c45ea0390cbce6a22e9bd95d7e953"
+      "sha256": "892d6eca84a11682d4cf113a97ce6ab06a3a4298de26cc166191c59698086798"
     },
     {
       "pfad": "bereiche/risiken-kontrollen.ts",
@@ -32,7 +32,7 @@
     },
     {
       "pfad": "endpunkte.ts",
-      "sha256": "59a8e5001e56936ca85318b8ed5e55a230090f00ea484bd0644aff1760ddf628"
+      "sha256": "9bbe87c3094ce6f886c48d1e3647b31bed46f6e50eab4b98e3ee29634362d07d"
     },
     {
       "pfad": "fehler.ts",

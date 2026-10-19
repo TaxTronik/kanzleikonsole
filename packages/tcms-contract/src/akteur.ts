@@ -21,6 +21,16 @@ export const AKTEUR_MAX_VORLAUF_S = 30;
 /** Höchste Größe des kompakten Tokens in Bytes. */
 export const AKTEUR_MAX_BYTES = 4096;
 
+/**
+ * Akteursarten (ADR 0001 §3.2): Kanzleiperson, Mandantenkontakt und
+ * Systemakteur. Der Systemakteur ist keine Person, sondern ein Dienstnutzer
+ * der kanzleikonsole je Tenant (z. B. der Worker, der Nachrichten zustellt);
+ * er hat weder Rollen noch Mandantenbezug und erreicht nur Endpunkte, die ihn
+ * im Endpunktregister ausdrücklich zulassen (`akteure`, ADR 0001 §7).
+ */
+export const AKTEUR_ARTEN = ['KANZLEI', 'MANDANT', 'SYSTEM'] as const;
+export type AkteurArt = (typeof AKTEUR_ARTEN)[number];
+
 const uuid = z.uuid();
 const base64url = (min: number, max: number) =>
   z
@@ -61,7 +71,7 @@ export const AkteurClaimsSchema = z
     jti: base64url(22, 64),
     tnt: uuid,
     sub: uuid,
-    knd: z.enum(['KANZLEI', 'MANDANT']),
+    knd: z.enum(AKTEUR_ARTEN),
     nam: z.string().trim().min(1).max(200),
     rol: z.object({ adm: z.boolean(), bt: z.boolean() }).strict().optional(),
     cli: z.object({ id: uuid, bt: z.boolean(), hb: z.boolean() }).strict().optional(),
@@ -80,6 +90,12 @@ export const AkteurClaimsSchema = z
         ctx.addIssue({ code: 'custom', path: ['cli'], message: 'bt/hb nur für KANZLEI' });
       }
     }
+    // Systemakteur: weder Rollen noch Mandantenbezug. Ein Systemakteur mit `rol`
+    // oder `cli` wäre eine verdeckte Person bzw. bekäme Mandantenpfade (fail closed).
+    if (c.knd === 'SYSTEM') {
+      if (c.rol) ctx.addIssue({ code: 'custom', path: ['rol'], message: 'rol nur für KANZLEI' });
+      if (c.cli) ctx.addIssue({ code: 'custom', path: ['cli'], message: 'cli nicht für SYSTEM' });
+    }
     if (c.exp <= c.iat) ctx.addIssue({ code: 'custom', path: ['exp'], message: 'exp ≤ iat' });
     if (c.exp - c.iat > AKTEUR_MAX_LEBENSDAUER_S) {
       ctx.addIssue({ code: 'custom', path: ['exp'], message: 'Lebensdauer zu lang' });
@@ -97,42 +113,68 @@ export interface MandantBezug {
   hauptbearbeitung: boolean;
 }
 
+/** Kanzleiperson (Mitarbeiter-ID der kanzleikonsole). */
+export interface KanzleiAkteur {
+  art: 'KANZLEI';
+  tenantId: string;
+  id: string;
+  name: string;
+  istAdmin: boolean;
+  istBerufstraeger: boolean;
+  mandant: MandantBezug | null;
+}
+
 /**
- * Handelnde Person einer Anfrage, abgeleitet aus geprüften Claims. Rollen der
- * Mandantenseite (GV, TCB, Mitarbeiter) stehen nicht hier, sondern im Tax-CMS
+ * Mandantenkontakt (Kontakt-ID der kanzleikonsole). Rollen der Mandantenseite
+ * (GV, TCB, Mitarbeiter) stehen nicht hier, sondern im Tax-CMS
  * (MandantKontaktRolle) und werden vom Dienst nachgeladen.
  */
-export type Akteur =
-  | {
-      art: 'KANZLEI';
-      tenantId: string;
-      id: string;
-      name: string;
-      istAdmin: boolean;
-      istBerufstraeger: boolean;
-      mandant: MandantBezug | null;
-    }
-  | {
-      art: 'MANDANT';
-      tenantId: string;
-      id: string;
-      name: string;
-      mandantId: string;
-    };
+export interface MandantAkteur {
+  art: 'MANDANT';
+  tenantId: string;
+  id: string;
+  name: string;
+  mandantId: string;
+}
+
+/**
+ * Systemakteur: Dienstnutzer der kanzleikonsole (`sub` = feste ID je Tenant,
+ * `nam` = Bezeichnung für das Audit). Keine Person, keine Rollen, kein
+ * Mandantenbezug; Fachoperationen für Personen lehnen ihn ab (ADR 0001 §3.2).
+ */
+export interface SystemAkteur {
+  art: 'SYSTEM';
+  tenantId: string;
+  id: string;
+  name: string;
+}
+
+/** Handelnde Person (Kanzleiperson oder Mandantenkontakt). */
+export type PersonAkteur = KanzleiAkteur | MandantAkteur;
+
+/** Akteur einer Anfrage, abgeleitet aus geprüften Claims. */
+export type Akteur = PersonAkteur | SystemAkteur;
 
 export function akteurAusClaims(c: AkteurClaims): Akteur {
-  if (c.knd === 'KANZLEI') {
-    return {
-      art: 'KANZLEI',
-      tenantId: c.tnt,
-      id: c.sub,
-      name: c.nam,
-      istAdmin: c.rol!.adm,
-      istBerufstraeger: c.rol!.bt,
-      mandant: c.cli
-        ? { id: c.cli.id, zustaendigBerufstraeger: c.cli.bt, hauptbearbeitung: c.cli.hb }
-        : null,
-    };
+  switch (c.knd) {
+    case 'KANZLEI':
+      return {
+        art: 'KANZLEI',
+        tenantId: c.tnt,
+        id: c.sub,
+        name: c.nam,
+        istAdmin: c.rol!.adm,
+        istBerufstraeger: c.rol!.bt,
+        mandant: c.cli
+          ? { id: c.cli.id, zustaendigBerufstraeger: c.cli.bt, hauptbearbeitung: c.cli.hb }
+          : null,
+      };
+    case 'MANDANT':
+      return { art: 'MANDANT', tenantId: c.tnt, id: c.sub, name: c.nam, mandantId: c.cli!.id };
+    case 'SYSTEM':
+      return { art: 'SYSTEM', tenantId: c.tnt, id: c.sub, name: c.nam };
+    default:
+      // Unerreichbar mit geprüften Claims; fail closed statt einer Standardart.
+      throw new Error('Akteursbestätigung: unbekannte Akteursart');
   }
-  return { art: 'MANDANT', tenantId: c.tnt, id: c.sub, name: c.nam, mandantId: c.cli!.id };
 }
