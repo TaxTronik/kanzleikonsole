@@ -4,12 +4,13 @@
 //
 //   - Eine Bestätigung der Art SYSTEM bildet allein tcms/systemakteur.ts.
 //   - Den Client mit NUR_SYSTEMAKTEUR baut allein tcms/dienst.ts; er ruft nur
-//     holeOffeneNachrichten/meldeNachrichtZugestellt (die zwei Endpunkte, die
-//     den Systemakteur zulassen; rufeEndpunkt prüft `akteure`).
+//     holeOffeneNachrichten/meldeNachrichtZugestellt/meldeNachrichtUnzustellbar
+//     (die drei Endpunkte, die den Systemakteur zulassen; rufeEndpunkt prüft
+//     `akteure`).
 //   - Kein anderer Worker-Code ruft das Tax-CMS (kein rufeEndpunkt, kein
 //     ENDPUNKTE, kein eigener Client).
 // Die Proben belegen, dass jede Regel greift. Den Laufzeitnachweis (nur
-// GET …/offen und POST …/zugestellt, Bestätigung ohne rol/cli) führt
+// GET …/offen, POST …/zugestellt und …/unzustellbar, Bestätigung ohne rol/cli) führt
 // jobs/__tests__/tcms-nachrichten-db.test.ts mit dem echten Client.
 // =============================================================================
 
@@ -30,7 +31,7 @@ const REGELN: ReadonlyArray<{ name: string; muster: RegExp; erlaubtIn: readonly 
   { name: 'TcmsClient', muster: /\bnew\s+TcmsClient\s*\(/, erlaubtIn: ['tcms/dienst.ts'] },
   {
     name: 'Postausgang',
-    muster: /\b(?:holeOffeneNachrichten|meldeNachrichtZugestellt)\b/,
+    muster: /\b(?:holeOffeneNachrichten|meldeNachrichtZugestellt|meldeNachrichtUnzustellbar)\b/,
     erlaubtIn: ['tcms/dienst.ts'],
   },
   {
@@ -80,6 +81,7 @@ describe('Systemakteur nur an einer Stelle des Workers (TCMS Stufe 4)', () => {
       ['jobs/x.ts', 'new TcmsClient({ config, akteurArten: NUR_SYSTEMAKTEUR });', 'Systemclient'],
       ['jobs/x.ts', 'const c = new TcmsClient({ config });', 'TcmsClient'],
       ['jobs/x.ts', 'await meldeNachrichtZugestellt(c, e);', 'Postausgang'],
+      ['jobs/x.ts', 'await meldeNachrichtUnzustellbar(c, e);', 'Postausgang'],
       ['tcms/dienst.ts', 'await rufeEndpunkt(c, ENDPUNKTE.ich, e);', 'Endpunktregister'],
       ['jobs/x.ts', 'await client.aufruf({ methode: "GET" });', 'generischer Aufruf'],
     ];

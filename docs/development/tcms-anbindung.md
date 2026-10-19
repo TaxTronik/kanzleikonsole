@@ -153,8 +153,9 @@ noch für bestehende Aufrufer da), `health` nur über `client.health()`.
   Der Guard `apps/web/src/__tests__/tcms-systemakteur-guard.test.ts` sperrt
   im Quelltext der Web-App Bestätigungen der Art `SYSTEM`, eigene Clients,
   andere Akteursarten, den Postausgang und Importe aus dem Worker.
-  Abruf und Bestätigung des Postausgangs stehen als
-  `holeOffeneNachrichten`/`meldeNachrichtZugestellt` im Client.
+  Abruf, Bestätigung und Meldung „unzustellbar“ des Postausgangs stehen als
+  `holeOffeneNachrichten`/`meldeNachrichtZugestellt`/
+  `meldeNachrichtUnzustellbar` im Client.
 
 - **Bindung.** Target und Body entstehen je Aufruf genau einmal; der Hash
   läuft über genau die gesendeten Bytes. Pfadparameter werden mit
@@ -377,8 +378,8 @@ der Tenant-ID ableitbar, per Trigger unveränderlich, eindeutig), `nam` ist
 hätte im Tax-CMS den ganzen Tenant lesen dürfen. Nur der Worker bildet ihn
 (`apps/worker/src/tcms/systemakteur.ts`); sein Client
 (`apps/worker/src/tcms/dienst.ts`, `akteurArten: NUR_SYSTEMAKTEUR`) bestätigt
-keine Person und erreicht über das Register nur `nachrichtenOffenLesen` und
-`nachrichtZugestelltMelden`. Die App-Rolle hat auf `tcms_systemakteur` und
+keine Person und erreicht über das Register nur `nachrichtenOffenLesen`,
+`nachrichtZugestelltMelden` und `nachrichtUnzustellbarMelden`. Die App-Rolle hat auf `tcms_systemakteur` und
 `tcms_nachricht_zustellung` keine Rechte; die Web-App kann ihn weder kennen
 noch signieren (Abschnitt 3, Guards in Web und Worker).
 
@@ -392,9 +393,12 @@ Mitteilung verlängert):
 2. Je Mitteilung eine Tenant-Transaktion: Zustellzeile
    `tcms_nachricht_zustellung` (eindeutig je Tenant und Nachrichten-ID) sperren
    bzw. mit `ON CONFLICT DO NOTHING` anlegen, Empfänger prüfen, einplanen.
-3. Nach dem Commit `POST /v1/nachrichten/:id/zugestellt`. 404 gilt als
-   erledigt; jeder andere Fehler lässt die Zeile ungemeldet – der nächste
-   Lauf erhält die Mitteilung erneut, findet die Zeile und meldet nur.
+3. Nach dem Commit melden: eingeplant → `POST /v1/nachrichten/:id/zugestellt`,
+   unzustellbar → `POST /v1/nachrichten/:id/unzustellbar` mit `{ grund }`
+   (TCMS s6). 404 und 409 (dort bereits zugestellt bzw. unzustellbar, auch mit
+   anderem Grund) gelten als erledigt; jeder andere Fehler lässt die Zeile
+   ungemeldet – der nächste Lauf erhält die Mitteilung erneut, findet die
+   Zeile und meldet nur, mit demselben Grund.
 
 Das Tax-CMS reserviert beim Abruf nichts. Doppelte schließen die eindeutige
 Zustellzeile, ein partieller eindeutiger Index auf `mail_outbox`
@@ -424,7 +428,7 @@ Vorlagenverwaltung). Betreffzeilen nennen den Code nie.
 **Gültigkeit.** Code bis `gueltigBis`; Anforderung und Neuadressierung
 `TCMS_NACHRICHT_FENSTER_TAGE` (7, wie die Code-Lebensdauer) ab Anlage;
 Ereignisse unbegrenzt. Außerhalb des Fensters: nicht zustellen, als
-`UNZUSTELLBAR` (`ABGELAUFEN`) abschließen und melden. Die Outbox prüft vor
+`UNZUSTELLBAR` (`ABGELAUFEN`) abschließen und als unzustellbar melden. Die Outbox prüft vor
 jedem Versandversuch dasselbe Fenster und den Empfänger (aktiv, bestätigt,
 dieser Mandant, unveränderte Adresse, Mandat aktiv) und verwirft sonst
 (`SKIPPED`).
@@ -434,15 +438,32 @@ dieser Mandant, unveränderte Adresse, Mandat aktiv) und verwirft sonst
 Mitteilung ein Hinweis `TCMS_ZUSTELLUNG_GESCHEITERT` an die aktiven
 ADMIN/PARTNER (Anlass und Grund, keine Namen, kein Titel, kein Code). Jeder
 Lauf prüft erneut; nach `TCMS_UNZUSTELLBAR_NACH_TAGEN` (7) ab der ersten
-gescheiterten Prüfung `UNZUSTELLBAR` und melden. Begründung der 7 Tage: gleich
-der Code-Lebensdauer, danach ist jede Mitteilung inhaltlich überholt; die
-Frist deckt ein Wochenende plus Abwesenheit ab; länger offene Mitteilungen
-belegten den ältesten-zuerst-Abruf. Das Tax-CMS kennt nur „zugestellt“;
-dort steht eine als unzustellbar abgeschlossene Mitteilung deshalb als
-zugestellt, der wahre Stand steht in der Zustellzeile und im Hinweis.
+gescheiterten Prüfung `UNZUSTELLBAR` und als unzustellbar melden. Begründung
+der 7 Tage: gleich der Code-Lebensdauer, danach ist jede Mitteilung inhaltlich
+überholt; die Frist deckt ein Wochenende plus Abwesenheit ab; länger offene
+Mitteilungen belegten den ältesten-zuerst-Abruf.
 
-**Logs** nennen Tenant, Nachrichten-ID, Zweck, Grund und die Fehlerklasse des
-Clients; nie Code, Text, Betreff, Titel, Namen, Adressen, Mandanten- oder
+**Meldegrund.** Der Grund der Meldung „unzustellbar“ folgt fest aus dem
+gespeicherten Grund der Zustellzeile (`TCMS_MELDEGRUND`, vollständig per
+`satisfies`), steht also vor dem ersten Senden fest; eine Wiederholung prüft
+nicht neu und sendet denselben Grund (das Tax-CMS nimmt ihn nur mit demselben
+Grund idempotent an).
+
+| Grund der Zustellzeile                                                                                      | Meldung an das Tax-CMS |
+| ----------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `ABGELAUFEN`                                                                                                | `ABGELAUFEN`           |
+| `KONTAKT_UNBESTAETIGT`, `KONTAKT_INAKTIV`, `KONTAKT_OHNE_EMAIL`                                             | `KEIN_PORTALZUGANG`    |
+| `KONTAKT_UNBEKANNT`, `KONTAKT_ANDERER_MANDANT`, `PERSON_UNBEKANNT`, `PERSON_INAKTIV`, `PERSON_OHNE_ZUGRIFF` | `EMPFAENGER_UNGUELTIG` |
+| `MANDANT_UNBEKANNT`, `MANDANT_INAKTIV`                                                                      | `SONSTIGES`            |
+
+Das Tax-CMS zeigt den Zustellstatus an Freigabenhistorie, Beschreibung und
+Risikoakzeptanz; die kanzleikonsole bietet dort die Neuadressierung an
+(`components/tcms/zustellung.tsx`). „Zugestellt“ heißt: in TaxTronik als
+Auftrag bzw. Hinweis eingeplant; ein späteres `SKIPPED`/`FAILED` der
+Mail-Outbox wird nicht zurückgemeldet.
+
+**Logs** nennen Tenant, Nachrichten-ID, Zweck, Grund, Art der Meldung und die
+Fehlerklasse des Clients (Status, Code, Request-ID); nie Code, Text, Betreff, Titel, Namen, Adressen, Mandanten- oder
 Personen-IDs. Gemeldete Zustellzeilen (und lange nicht mehr gesehene
 zurückgestellte) löscht der Job nach 30 Tagen.
 

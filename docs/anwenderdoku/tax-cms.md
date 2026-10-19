@@ -503,8 +503,9 @@ Kanzleiperson ohne Zugriff), erhalten Admins und Partner einmal je Mitteilung
 den Hinweis „Mitteilung des Tax-CMS nicht zugestellt“ mit dem Grund – ohne
 Inhalt und ohne Code. Nach der Korrektur stellt TaxTronik innerhalb einer
 Minute zu. Nach 7 Tagen ohne Korrektur oder nach Ablauf des Codes gilt die
-Mitteilung als unzustellbar; fordern Sie die Freigabe dann im Tax-CMS neu an
-oder adressieren Sie sie neu. Mails des Tax-CMS können nicht über „Erneut
+Mitteilung als unzustellbar; das Tax-CMS zeigt das dann mit Grund an der
+Freigabe (_Kommunikation_, Beschreibung, Risikoakzeptanz; Abschnitte 6 und 7).
+Adressieren Sie die Freigabe dann neu. Mails des Tax-CMS können nicht über „Erneut
 senden“ wiederholt werden.
 
 ## 12. Meldungen

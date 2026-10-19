@@ -4300,6 +4300,7 @@
         "apps/worker/src/jobs/__tests__/mail-outbox-appointment-db.test.ts",
         "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-mails.test.tsx",
         "apps/worker/src/jobs/__tests__/tcms-nachrichten-db.test.ts",
+        "apps/worker/src/jobs/__tests__/tcms-nachrichten-meldegrund.test.ts",
         "apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts",
         "apps/web/src/__tests__/tcms-systemakteur-guard.test.ts",
         "packages/tcms-client/src/__tests__/nachrichten.test.ts",

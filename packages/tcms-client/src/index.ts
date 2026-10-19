@@ -24,8 +24,11 @@ export type { TcmsErgebnis } from './antwort';
 export { rufeEndpunkt, type TcmsEndpunktEingabe } from './endpunkt';
 export {
   holeOffeneNachrichten,
+  meldeNachrichtUnzustellbar,
   meldeNachrichtZugestellt,
   MAX_NACHRICHTEN_JE_ABRUF,
+  NACHRICHT_UNZUSTELLBAR_GRUENDE,
+  type NachrichtUnzustellbarGrund,
   type OffeneNachricht,
 } from './nachrichten';
 export {

@@ -9,10 +9,11 @@
 // verschlüsselt und nach dem Versand weg, Meldung erst nach dem Commit, 404 =
 // erledigt, keine Doppelzustellung (zweiter Lauf, zwei gleichzeitige
 // Einplanungen, zwei gleichzeitige Läufe), einmaliger Admin-Hinweis ohne
-// Inhalt, Abschluss als unzustellbar, Gültigkeitsfenster, fester
-// Systemakteur je Tenant (unveränderlich, für die App-Rolle unsichtbar), nur
-// die zwei Nachrichten-Endpunkte. Nie Code, Text, Betreff, Titel, Namen oder
-// Adressen im Log.
+// Inhalt, Abschluss als unzustellbar mit Meldung „unzustellbar“ und festem
+// Grund (TCMS s6; Wiederholung mit demselben Grund, 409 = erledigt),
+// Gültigkeitsfenster, fester Systemakteur je Tenant (unveränderlich, für die
+// App-Rolle unsichtbar), nur die drei Nachrichten-Endpunkte. Nie Code, Text,
+// Betreff, Titel, Namen oder Adressen im Log.
 //
 // Fachkatalog: MAIL-OUTBOX-001
 // =============================================================================
@@ -39,8 +40,10 @@ import { TCMS_MAIL_VORLAGEN } from '@taxtronik/mail/tcms-vorlagen';
 import {
   NUR_SYSTEMAKTEUR,
   TcmsClient,
+  TcmsKonflikt,
   TcmsNichtGefunden,
   TcmsNichtVerfuegbar,
+  type NachrichtUnzustellbarGrund,
   type OffeneNachricht,
   type TcmsAkteurAngaben,
 } from '@taxtronik/tcms-client';
@@ -82,23 +85,43 @@ const BETREFF = 'Betreff mit Geheimnis';
 const TEXT = `Ihr Code lautet ${CODE}`;
 const PORTAL = 'https://portal.example.test';
 
-/** In-Memory-Postausgang: liefert nicht gemeldete Mitteilungen, zählt Meldungen. */
+/**
+ * In-Memory-Postausgang: liefert nicht gemeldete Mitteilungen, zählt
+ * Meldungen; „unzustellbar“ wie der Dienst idempotent nur mit demselben Grund.
+ */
 class Postausgang implements TcmsPostausgang {
   nachrichten: OffeneNachricht[] = [];
   gemeldet = new Set<string>();
+  unzustellbarMit = new Map<string, NachrichtUnzustellbarGrund>();
   akteure: TcmsAkteurAngaben[] = [];
   meldenFehler: Error | null = null;
+  unzustellbarFehler: Error | null = null;
   beimMelden: ((id: string) => Promise<void>) | null = null;
   holen = vi.fn(async (akteur: TcmsAkteurAngaben, limit: number) => {
     this.akteure.push(akteur);
-    return this.nachrichten.filter((n) => !this.gemeldet.has(n.id)).slice(0, limit);
+    return this.nachrichten
+      .filter((n) => !this.gemeldet.has(n.id) && !this.unzustellbarMit.has(n.id))
+      .slice(0, limit);
   });
   melden = vi.fn(async (akteur: TcmsAkteurAngaben, id: string) => {
     this.akteure.push(akteur);
     await this.beimMelden?.(id);
     if (this.meldenFehler) throw this.meldenFehler;
+    if (this.unzustellbarMit.has(id)) throw new TcmsKonflikt({ status: 409 });
     this.gemeldet.add(id);
   });
+  unzustellbar = vi.fn(
+    async (akteur: TcmsAkteurAngaben, id: string, grund: NachrichtUnzustellbarGrund) => {
+      this.akteure.push(akteur);
+      await this.beimMelden?.(id);
+      if (this.unzustellbarFehler) throw this.unzustellbarFehler;
+      const vorher = this.unzustellbarMit.get(id);
+      if (this.gemeldet.has(id) || (vorher && vorher !== grund)) {
+        throw new TcmsKonflikt({ status: 409 });
+      }
+      this.unzustellbarMit.set(id, grund);
+    },
+  );
 }
 
 describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
@@ -529,6 +552,13 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
       grund: 'PERSON_UNBEKANNT',
     });
     expect((await zeile(nie.id))?.gemeldetAm).toBeInstanceOf(Date);
+    // Dem Tax-CMS als unzustellbar gemeldet (fester Grund), nie als zugestellt.
+    expect(postausgang.unzustellbar).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ knd: 'SYSTEM' }),
+      nie.id,
+      'EMPFAENGER_UNGUELTIG',
+    );
+    expect(postausgang.melden).not.toHaveBeenCalledWith(expect.anything(), nie.id);
     expect(await auftraege()).toHaveLength(1);
     // Je Mitteilung einmal; beide betreffen denselben Mandanten: ein ungelesener Eintrag je Admin.
     expect(await hinweise('TCMS_ZUSTELLUNG_GESCHEITERT')).toHaveLength(1);
@@ -548,10 +578,89 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     expect(await auftraege()).toHaveLength(0);
     for (const n of [abgelaufenerCode, alteAnforderung]) {
       expect(await zeile(n.id)).toMatchObject({ status: 'UNZUSTELLBAR', grund: 'ABGELAUFEN' });
+      expect(postausgang.unzustellbarMit.get(n.id)).toBe('ABGELAUFEN');
     }
+    expect(postausgang.melden).not.toHaveBeenCalled();
     const [h] = await hinweise('TCMS_ZUSTELLUNG_GESCHEITERT');
     expect(h?.body).toContain('Sie wird nicht zugestellt.');
     expect(JSON.stringify(h)).not.toContain(CODE);
+  });
+
+  it('unzustellbar: Grund steht vor dem Senden fest, Wiederholung mit demselben Grund', async () => {
+    await prismaOwner.clientContact.update({
+      where: { id: kontaktId },
+      data: { lastLoginAt: null },
+    });
+    // Code mit langer Gültigkeit: Abschluss nach N Tagen wegen des Empfängers, nicht der Frist.
+    const n = code({}, new Date(jetzt.getTime() + 30 * 86_400_000));
+    postausgang.nachrichten = [n];
+    expect(await lauf()).toMatchObject({ zurueckgestellt: 1 });
+    const start = jetzt.getTime();
+    jetzt = new Date(start + TCMS_UNZUSTELLBAR_NACH_TAGEN * 86_400_000);
+    let sichtbar: unknown = null;
+    // Gemeldet wird erst, wenn der Abschluss mit Grund committet ist.
+    postausgang.beimMelden = async (id) => {
+      sichtbar = await prismaOwner.tcmsNachrichtZustellung.findFirst({
+        where: { tenantId, nachrichtId: id },
+        select: { status: true, grund: true },
+      });
+    };
+    postausgang.unzustellbarFehler = new TcmsNichtVerfuegbar('TRANSPORT');
+    expect(await lauf()).toMatchObject({ unzustellbar: 1, gemeldet: 0, fehler: 1 });
+    expect(sichtbar).toEqual({ status: 'UNZUSTELLBAR', grund: 'KONTAKT_UNBESTAETIGT' });
+    expect((await zeile(n.id))?.gemeldetAm).toBeNull();
+
+    // Inzwischen gehört der Kontakt zu einem anderen Mandanten: Der nächste Lauf
+    // prüft nicht neu, sondern meldet denselben Grund wie beim ersten Versuch.
+    await prismaOwner.clientContact.update({
+      where: { id: kontaktId },
+      data: { clientId: andererMandantId },
+    });
+    postausgang.unzustellbarFehler = null;
+    try {
+      expect(await lauf()).toMatchObject({ unzustellbar: 0, gemeldet: 1, fehler: 0 });
+    } finally {
+      await prismaOwner.clientContact.update({
+        where: { id: kontaktId },
+        data: { clientId: mandantId },
+      });
+    }
+    expect(postausgang.unzustellbar.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+      [n.id, 'KEIN_PORTALZUGANG'],
+      [n.id, 'KEIN_PORTALZUGANG'],
+    ]);
+    expect(postausgang.melden).not.toHaveBeenCalled();
+    expect((await zeile(n.id))?.gemeldetAm).toBeInstanceOf(Date);
+    expect(await auftraege()).toHaveLength(0);
+    logOhneInhalt();
+  });
+
+  it('409 bei „unzustellbar“ (im Tax-CMS schon abgeschlossen) gilt als erledigt, Log ohne Inhalt', async () => {
+    const n = code({}, new Date(jetzt.getTime() - 1_000));
+    postausgang.nachrichten = [n];
+    // Der Dienst kennt die Nachricht schon als abgeschlossen (z. B. Meldung eines früheren Laufs).
+    postausgang.unzustellbarFehler = new TcmsKonflikt({ status: 409, requestId: 'req-409' });
+
+    expect(await lauf()).toMatchObject({ unzustellbar: 1, gemeldet: 1, fehler: 0 });
+    expect((await zeile(n.id))?.gemeldetAm).toBeInstanceOf(Date);
+    expect(log.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        meldung: 'UNZUSTELLBAR',
+        fehler: 'TcmsKonflikt',
+        status: 409,
+        tcmsRequestId: 'req-409',
+      }),
+      'tcms-nachrichten: Mitteilung im Tax-CMS bereits abgeschlossen',
+    );
+    expect(log.warn).not.toHaveBeenCalledWith(
+      expect.anything(),
+      'tcms-nachrichten: Zustellung nicht gemeldet, nächster Lauf',
+    );
+    // Ein weiterer Lauf ohne die Mitteilung meldet nichts erneut.
+    postausgang.nachrichten = [];
+    await lauf();
+    expect(postausgang.unzustellbar).toHaveBeenCalledOnce();
+    logOhneInhalt();
   });
 
   it('meldet ein Ereignis nur der Kanzleiperson mit Zugriff (Nummer und Titel)', async () => {
@@ -639,20 +748,34 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     ).rejects.toThrow(/mail_outbox_tcms_content_check/);
   });
 
-  it('ruft über den echten Client nur die zwei Nachrichten-Endpunkte mit dem Systemakteur', async () => {
+  it('ruft über den echten Client nur die drei Nachrichten-Endpunkte mit dem Systemakteur', async () => {
     const n = code();
+    const abgelaufen = code({}, new Date(jetzt.getTime() - 1_000));
     const targets: string[] = [];
+    const bodies: string[] = [];
     const claims: Array<Record<string, unknown>> = [];
     const server: Server = createServer((req, res) => {
       targets.push(`${req.method} ${req.url}`);
       const token = String(req.headers['x-tcms-akteur'] ?? '');
       claims.push(JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8')));
-      res.setHeader('content-type', 'application/json');
-      if (req.method === 'GET') {
-        res.end(JSON.stringify({ ok: true, daten: { nachrichten: [n] } }));
-      } else {
-        res.end(JSON.stringify({ ok: true, daten: { nachrichtId: n.id, zugestellt: true } }));
-      }
+      const teile: Buffer[] = [];
+      req.on('data', (c: Buffer) => teile.push(c));
+      req.on('end', () => {
+        bodies.push(Buffer.concat(teile).toString('utf8'));
+        res.setHeader('content-type', 'application/json');
+        if (req.method === 'GET') {
+          res.end(JSON.stringify({ ok: true, daten: { nachrichten: [n, abgelaufen] } }));
+        } else if (req.url?.endsWith('/unzustellbar')) {
+          res.end(
+            JSON.stringify({
+              ok: true,
+              daten: { nachrichtId: abgelaufen.id, unzustellbar: true, grund: 'ABGELAUFEN' },
+            }),
+          );
+        } else {
+          res.end(JSON.stringify({ ok: true, daten: { nachrichtId: n.id, zugestellt: true } }));
+        }
+      });
     });
     await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
     try {
@@ -666,7 +789,11 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
         },
         akteurArten: NUR_SYSTEMAKTEUR,
       });
-      expect(await lauf(postausgangUeber(client))).toMatchObject({ eingeplant: 1, gemeldet: 1 });
+      expect(await lauf(postausgangUeber(client))).toMatchObject({
+        eingeplant: 1,
+        unzustellbar: 1,
+        gemeldet: 2,
+      });
     } finally {
       server.closeAllConnections();
       await new Promise<void>((r) => server.close(() => r()));
@@ -674,7 +801,9 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     expect(targets).toEqual([
       'GET /v1/nachrichten/offen?limit=50',
       `POST /v1/nachrichten/${n.id}/zugestellt`,
+      `POST /v1/nachrichten/${abgelaufen.id}/unzustellbar`,
     ]);
+    expect(bodies.slice(1)).toEqual(['', JSON.stringify({ grund: 'ABGELAUFEN' })]);
     const akteur = await prismaOwner.tcmsSystemakteur.findUniqueOrThrow({ where: { tenantId } });
     for (const c of claims) {
       expect(c).toMatchObject({ knd: 'SYSTEM', tnt: tenantId, sub: akteur.akteurId });

@@ -13,9 +13,11 @@
 //      Empfänger allein aus den Daten der kanzleikonsole prüfen und einplanen:
 //      Kontakte über die Mail-Outbox (Transaktionsmail, Code nur als geheime
 //      Variable), Kanzleipersonen als In-App-Hinweis.
-//   3. Erst nach dem Commit `POST …/zugestellt`; 404 = erledigt. Ein Fehler
-//      dabei lässt die Zeile ungemeldet: Der nächste Lauf sieht die Mitteilung
-//      wieder, findet die Zeile und meldet nur – nie eine zweite Einplanung.
+//   3. Erst nach dem Commit melden: eingeplant → `POST …/zugestellt`,
+//      unzustellbar → `POST …/unzustellbar` mit festem Grund (TCMS s6); 404
+//      und 409 = erledigt. Ein anderer Fehler lässt die Zeile ungemeldet: Der
+//      nächste Lauf sieht die Mitteilung wieder, findet die Zeile und meldet
+//      nur – nie eine zweite Einplanung, nie ein anderer Grund.
 //
 // Das Tax-CMS reserviert beim Abruf nichts; zwei gleichzeitige Läufe sähen
 // dieselbe Mitteilung. Doppelte schließen der eindeutige Schlüssel der
@@ -38,8 +40,12 @@
 // Scheitert eine Prüfung: nicht einplanen, nicht melden, einmal je Mitteilung
 // ein In-App-Hinweis an die ADMIN/PARTNER (ohne Inhalt und Code), Log ohne
 // personenbezogene Daten. Jeder Lauf prüft erneut; nach
-// TCMS_UNZUSTELLBAR_NACH_TAGEN als UNZUSTELLBAR abschließen und melden (sonst
-// blockierte die Mitteilung den ältesten-zuerst-Abruf dauerhaft).
+// TCMS_UNZUSTELLBAR_NACH_TAGEN als UNZUSTELLBAR abschließen und dem Tax-CMS
+// als unzustellbar melden (sonst blockierte die Mitteilung den
+// ältesten-zuerst-Abruf dauerhaft). Der gemeldete Grund folgt fest aus dem
+// gespeicherten Grund der Zeile (TCMS_MELDEGRUND) und steht damit vor dem
+// ersten Senden fest; eine Wiederholung sendet denselben Grund. Das Tax-CMS
+// zeigt der Kanzlei daraufhin „unzustellbar“ an der Freigabe (Neuadressierung).
 // Gültigkeitsfenster: ein Code bis `gueltigBis`, eine Anforderung bzw.
 // Neuadressierung TCMS_NACHRICHT_FENSTER_TAGE ab Anlage; danach ABGELAUFEN
 // (abschließen und melden, kein Versand). Die Mail-Outbox prüft dasselbe
@@ -61,10 +67,12 @@ import {
 } from '@taxtronik/mail/tcms-vorlagen';
 import {
   TcmsFehler,
+  TcmsKonflikt,
   TcmsNichtGefunden,
   TcmsNichtVerfuegbar,
   TcmsProtokollFehler,
   TcmsUngueltig,
+  type NachrichtUnzustellbarGrund,
   type OffeneNachricht,
   type TcmsAkteurAngaben,
 } from '@taxtronik/tcms-client';
@@ -112,6 +120,37 @@ export const TCMS_ZUSTELL_GRUENDE = {
   PERSON_OHNE_ZUGRIFF: 'Die Kanzleiperson hat keinen Zugriff auf diesen Mandanten.',
 } as const;
 export type TcmsZustellGrund = keyof typeof TCMS_ZUSTELL_GRUENDE;
+
+/**
+ * Grund der Meldung „unzustellbar“ an das Tax-CMS je eigenem Grund (feste
+ * Abbildung, vollständig per `satisfies`): Empfänger unbekannt, bei einem
+ * anderen Mandanten bzw. als Kanzleiperson deaktiviert oder ohne Zugriff →
+ * EMPFAENGER_UNGUELTIG; Kontakt ohne bestätigten Zugang (keine Anmeldung,
+ * deaktiviert, keine gültige Adresse) → KEIN_PORTALZUGANG; Fenster der
+ * Mitteilung abgelaufen → ABGELAUFEN; Mandant fehlt oder ist nicht aktiv →
+ * SONSTIGES. Nach Ablauf von TCMS_UNZUSTELLBAR_NACH_TAGEN bleibt der Grund der
+ * letzten Prüfung maßgeblich (er sagt der Kanzlei, was zu korrigieren ist).
+ */
+export const TCMS_MELDEGRUND = {
+  ABGELAUFEN: 'ABGELAUFEN',
+  MANDANT_UNBEKANNT: 'SONSTIGES',
+  MANDANT_INAKTIV: 'SONSTIGES',
+  KONTAKT_UNBEKANNT: 'EMPFAENGER_UNGUELTIG',
+  KONTAKT_ANDERER_MANDANT: 'EMPFAENGER_UNGUELTIG',
+  KONTAKT_INAKTIV: 'KEIN_PORTALZUGANG',
+  KONTAKT_OHNE_EMAIL: 'KEIN_PORTALZUGANG',
+  KONTAKT_UNBESTAETIGT: 'KEIN_PORTALZUGANG',
+  PERSON_UNBEKANNT: 'EMPFAENGER_UNGUELTIG',
+  PERSON_INAKTIV: 'EMPFAENGER_UNGUELTIG',
+  PERSON_OHNE_ZUGRIFF: 'EMPFAENGER_UNGUELTIG',
+} as const satisfies Readonly<Record<TcmsZustellGrund, NachrichtUnzustellbarGrund>>;
+
+/** Meldegrund einer abgeschlossenen Zeile; unbekannte Werte (nur bei Drift) → SONSTIGES. */
+export function meldegrund(grund: string | null): NachrichtUnzustellbarGrund {
+  return grund !== null && Object.hasOwn(TCMS_MELDEGRUND, grund)
+    ? TCMS_MELDEGRUND[grund as TcmsZustellGrund]
+    : 'SONSTIGES';
+}
 
 const ZWECK_LABEL: Readonly<Record<OffeneNachricht['zweck'], string>> = {
   FREIGABE_ANGEFORDERT: 'Freigabe angefordert',
@@ -421,13 +460,19 @@ async function hinweisAnAdmins(
   );
 }
 
+/** Was nach dem Commit an das Tax-CMS geht. */
+export type Meldung =
+  | { art: 'ZUGESTELLT' }
+  | { art: 'UNZUSTELLBAR'; grund: NachrichtUnzustellbarGrund };
+
 export type Einplanung =
-  | { art: 'eingeplant' | 'unzustellbar' | 'bereits'; zeileId: string; melden: true }
-  | { art: 'zurueckgestellt' | 'konkurrenz'; melden: false };
+  | { art: 'eingeplant' | 'unzustellbar' | 'bereits'; zeileId: string; meldung: Meldung }
+  | { art: 'zurueckgestellt' | 'konkurrenz'; meldung: null };
 
 const zeileSelect = {
   id: true,
   status: true,
+  grund: true,
   erstmalsAm: true,
   hinweisAm: true,
 } satisfies Prisma.TcmsNachrichtZustellungSelect;
@@ -483,7 +528,7 @@ async function planeZustellungEin(
     geprueftAm: k.jetzt,
     abgeschlossenAm: k.jetzt,
   };
-  if (!(await schreibeZeile(k, zeileId, daten))) return { art: 'konkurrenz', melden: false };
+  if (!(await schreibeZeile(k, zeileId, daten))) return { art: 'konkurrenz', meldung: null };
   const { n } = k;
   if (e.art === 'KONTAKT' && n.zweck !== 'EREIGNIS_GEMELDET' && bis) {
     await planeMailEin(k.deps, k.tx, k.tenantId, zeileId, n, e, bis);
@@ -493,7 +538,7 @@ async function planeZustellungEin(
     // Der Vertrag bindet die Empfängerart an den Zweck; sonst nichts einplanen (Rollback).
     throw new Error('tcms-nachrichten: Zweck und Empfängerart passen nicht zusammen');
   }
-  return { art: 'eingeplant', zeileId, melden: true };
+  return { art: 'eingeplant', zeileId, meldung: { art: 'ZUGESTELLT' } };
 }
 
 /**
@@ -519,7 +564,7 @@ async function stelleZurueck(
     abgeschlossenAm: abschliessen ? jetzt : null,
     ...(hinweisFaellig ? { hinweisAm: jetzt } : {}),
   };
-  if (!(await schreibeZeile(k, zeileId, daten))) return { art: 'konkurrenz', melden: false };
+  if (!(await schreibeZeile(k, zeileId, daten))) return { art: 'konkurrenz', meldung: null };
   if (hinweisFaellig) {
     await hinweisAnAdmins(k.deps, k.tx, k.tenantId, n, grund, mandantVorhanden, abschliessen);
   }
@@ -528,8 +573,8 @@ async function stelleZurueck(
     'tcms-nachrichten: Mitteilung nicht zugestellt',
   );
   return abschliessen
-    ? { art: 'unzustellbar', zeileId, melden: true }
-    : { art: 'zurueckgestellt', melden: false };
+    ? { art: 'unzustellbar', zeileId, meldung: { art: 'UNZUSTELLBAR', grund: meldegrund(grund) } }
+    : { art: 'zurueckgestellt', meldung: null };
 }
 
 /**
@@ -546,7 +591,15 @@ export async function planeTcmsNachrichtEin(
   return deps.runAtomic(tenantId, async (tx): Promise<Einplanung> => {
     const zeile = await sperreZeile(tx, tenantId, n.id);
     if (zeile && zeile.status !== 'ZURUECKGESTELLT') {
-      return { art: 'bereits', zeileId: zeile.id, melden: true };
+      // Abgeschlossen: dieselbe Meldung wie beim ersten Mal (Grund aus der Zeile).
+      return {
+        art: 'bereits',
+        zeileId: zeile.id,
+        meldung:
+          zeile.status === 'UNZUSTELLBAR'
+            ? { art: 'UNZUSTELLBAR', grund: meldegrund(zeile.grund) }
+            : { art: 'ZUGESTELLT' },
+      };
     }
     const k: Kontext = { deps, tx, tenantId, n, zeile, jetzt };
     const bis = gueltigBis(n);
@@ -592,7 +645,11 @@ async function legeAn(
   return angelegt === 1;
 }
 
-/** Nach dem Commit: Zustellung melden. 404 = erledigt; sonst nächster Lauf. */
+/**
+ * Nach dem Commit: Zustellung bzw. Unzustellbarkeit melden. 404 (unbekannt
+ * oder fremd) und 409 (im Tax-CMS bereits abgeschlossen: zugestellt bzw.
+ * unzustellbar, auch mit anderem Grund) = erledigt; sonst nächster Lauf.
+ */
 async function melde(
   deps: TcmsZustellDeps,
   postausgang: TcmsPostausgang,
@@ -600,14 +657,25 @@ async function melde(
   tenantId: string,
   zeileId: string,
   nachrichtId: string,
+  meldung: Meldung,
   jetzt: Date,
 ): Promise<boolean> {
   try {
-    await postausgang.melden(akteur, nachrichtId);
+    if (meldung.art === 'UNZUSTELLBAR') {
+      await postausgang.unzustellbar(akteur, nachrichtId, meldung.grund);
+    } else {
+      await postausgang.melden(akteur, nachrichtId);
+    }
   } catch (fehler) {
-    if (!(fehler instanceof TcmsNichtGefunden)) {
+    if (fehler instanceof TcmsKonflikt) {
+      // Ohne Inhalte: nur Art der Meldung, Status und requestId.
+      deps.log.info(
+        { tenantId, nachrichtId, meldung: meldung.art, ...fehlerFelder(fehler) },
+        'tcms-nachrichten: Mitteilung im Tax-CMS bereits abgeschlossen',
+      );
+    } else if (!(fehler instanceof TcmsNichtGefunden)) {
       deps.log.warn(
-        { tenantId, nachrichtId, ...fehlerFelder(fehler) },
+        { tenantId, nachrichtId, meldung: meldung.art, ...fehlerFelder(fehler) },
         'tcms-nachrichten: Zustellung nicht gemeldet, nächster Lauf',
       );
       return false;
@@ -690,9 +758,18 @@ export async function stelleTenantZu(
       } else if (einplanung.art === 'unzustellbar') {
         ergebnis.unzustellbar += 1;
       }
-      if (!einplanung.melden) continue;
+      if (!einplanung.meldung) continue;
       if (
-        await melde(deps, postausgang, lauf.akteur, tenantId, einplanung.zeileId, n.id, jetzt())
+        await melde(
+          deps,
+          postausgang,
+          lauf.akteur,
+          tenantId,
+          einplanung.zeileId,
+          n.id,
+          einplanung.meldung,
+          jetzt(),
+        )
       ) {
         ergebnis.gemeldet += 1;
       } else {

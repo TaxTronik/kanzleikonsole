@@ -3,26 +3,38 @@
 //
 // Ein Client je Prozess, gebaut mit `NUR_SYSTEMAKTEUR`: Er bestätigt
 // ausschließlich den Systemakteur und erreicht über das Endpunktregister nur
-// die zwei Nachrichten-Endpunkte (der Client prüft `akteure`; der Dienst
-// antwortet auf alles andere 404). Konfiguration wie in der Web-App aus
+// die drei Nachrichten-Endpunkte (Abruf, „zugestellt“, „unzustellbar“; der
+// Client prüft `akteure`; der Dienst antwortet auf alles andere 404). Konfiguration wie in der Web-App aus
 // getTcmsConfig() (`null` bei TCMS_DEPLOYMENT=disabled).
 // =============================================================================
 
 import { getTcmsConfig } from '@taxtronik/config/env-schema';
 import {
   holeOffeneNachrichten,
+  meldeNachrichtUnzustellbar,
   meldeNachrichtZugestellt,
   NUR_SYSTEMAKTEUR,
   TcmsClient,
+  type NachrichtUnzustellbarGrund,
   type OffeneNachricht,
   type TcmsAkteurAngaben,
 } from '@taxtronik/tcms-client';
 
-/** Die zwei Aufrufe des Zustelljobs (für Tests austauschbar). */
+/** Die drei Aufrufe des Zustelljobs (für Tests austauschbar). */
 export interface TcmsPostausgang {
   holen(akteur: TcmsAkteurAngaben, limit: number): Promise<OffeneNachricht[]>;
   /** Wirft TcmsNichtGefunden bei 404 (unbekannt oder fremd = erledigt). */
   melden(akteur: TcmsAkteurAngaben, nachrichtId: string): Promise<void>;
+  /**
+   * Meldet „unzustellbar“ mit festem Grund (TCMS s6). Wirft TcmsNichtGefunden
+   * (404) bzw. TcmsKonflikt (409: schon zugestellt oder mit anderem Grund
+   * gemeldet) – für den Job beides erledigt.
+   */
+  unzustellbar(
+    akteur: TcmsAkteurAngaben,
+    nachrichtId: string,
+    grund: NachrichtUnzustellbarGrund,
+  ): Promise<void>;
 }
 
 /** Postausgang über einen Client, der nur den Systemakteur bestätigt. */
@@ -32,6 +44,9 @@ export function postausgangUeber(client: TcmsClient): TcmsPostausgang {
       (await holeOffeneNachrichten(client, { akteur, limit })).daten.nachrichten,
     melden: async (akteur, nachrichtId) => {
       await meldeNachrichtZugestellt(client, { akteur, nachrichtId });
+    },
+    unzustellbar: async (akteur, nachrichtId, grund) => {
+      await meldeNachrichtUnzustellbar(client, { akteur, nachrichtId, grund });
     },
   };
 }
