@@ -132,6 +132,15 @@ export const MODULE_AREAS = {
     requires: { all: ['risk'] },
     paths: ['/staff/clients/[id]/subsumtion', '/staff/admin/quantenlos'],
   },
+  // Tax-CMS (TCMS Stufe 3): Portfolio der Kanzlei, Bereich je Mandant und
+  // Portal. Nicht zu verwechseln mit „Subsumtion / TCMS“ (Modul `risk`). Der
+  // Dienst muss zusätzlich konfiguriert sein (TCMS_DEPLOYMENT): das prüfen die
+  // Navigation (`dienst: 'tcms'`) und die Seiten-Helfer in server/tcms/seite.ts
+  // (Hinweis statt Fehlerseite), nicht dieses reine Register.
+  tcms: {
+    requires: { all: ['tcms'] },
+    paths: ['/staff/tcms', '/staff/clients/[id]/tcms', '/portal/tcms'],
+  },
   appointments: { requires: { all: ['appointments'] }, paths: ['/portal/appointments'] },
   handovers: { requires: { all: ['handovers'] }, paths: ['/portal/handovers'] },
 } as const satisfies Record<string, ModuleArea>;

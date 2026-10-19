@@ -15,6 +15,7 @@ import { TenantLogo } from '@/components/tenant-logo';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { PortalProfileSwitcher } from './profile-switcher';
 import { resolvePortalNavigation } from '@/lib/navigation-registry';
+import { tcmsKonfiguriert } from '@/server/tcms/dienst';
 import { AccessibleDisplayProvider } from '@/components/accessible-display';
 import {
   savePortalAccessibleDisplayAction,
@@ -43,7 +44,11 @@ export default async function PortalLayout({ children }: { children: ReactNode }
     { clientId, email: session.user.email },
   );
 
-  const navGroups = resolvePortalNavigation({ modules, portalFeatures });
+  const navGroups = resolvePortalNavigation({
+    modules,
+    portalFeatures,
+    dienste: { tcms: tcmsKonfiguriert() },
+  });
 
   const pathname = (await headers()).get('x-taxtronik-pathname') ?? '';
   if (!isModuleRouteEnabled(modules, 'portal', pathname)) notFound();

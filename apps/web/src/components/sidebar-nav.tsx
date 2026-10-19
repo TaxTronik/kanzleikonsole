@@ -29,6 +29,7 @@ import {
   CalendarClock,
   Dices,
   ListChecks,
+  ShieldCheck,
   ChevronDown,
 } from 'lucide-react';
 
@@ -60,6 +61,7 @@ const ICONS = {
   CalendarClock,
   Dices,
   ListChecks,
+  ShieldCheck,
 } as const;
 
 export type NavIcon = keyof typeof ICONS;

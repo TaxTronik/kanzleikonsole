@@ -18,6 +18,7 @@ import { brandPaletteStyle } from '@/lib/brand-palette';
 import { TenantLogo } from '@/components/tenant-logo';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { resolveStaffNavigation } from '@/lib/navigation-registry';
+import { tcmsKonfiguriert } from '@/server/tcms/dienst';
 import { AccessibleDisplayProvider } from '@/components/accessible-display';
 import {
   saveStaffAccessibleDisplayAction,
@@ -58,6 +59,7 @@ export default async function StaffLayout({ children }: { children: ReactNode })
     isAdmin,
     permissions: session.user.permissions,
     portalFeatures,
+    dienste: { tcms: tcmsKonfiguriert() },
   });
 
   return (

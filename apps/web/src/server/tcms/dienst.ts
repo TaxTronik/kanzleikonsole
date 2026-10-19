@@ -45,6 +45,16 @@ export function tcmsClient(): TcmsClient | null {
   return laden().client;
 }
 
+/**
+ * Dienst konfiguriert (TCMS_DEPLOYMENT managed/external), unabhängig vom
+ * Modulschalter des Tenants. Speist die Sichtbarkeit der Navigation
+ * (`dienste.tcms`, TCMS Stufe 3); Seiten und Aktionen prüfen zusätzlich
+ * `tcmsAktivTx` (Schalter UND Konfiguration).
+ */
+export function tcmsKonfiguriert(): boolean {
+  return laden().config !== null;
+}
+
 /** Fachfehler mit UI-tauglicher Meldung (toActionError reicht sie durch). */
 export class TcmsInaktivError extends ActionError {
   constructor() {

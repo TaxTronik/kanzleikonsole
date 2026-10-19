@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { ModuleConfig } from '@/server/settings/modules';
+import { isModuleRouteEnabled } from '@/server/settings/module-route-gate';
 import {
+  resolveClientNavigation,
   resolveMandateExpansionItems,
   resolvePortalNavigation,
   resolveStaffNavigation,
@@ -126,6 +128,61 @@ describe('zentrale Navigation', () => {
     expect(
       visible.flatMap((g) => g.items).find((item) => item.href === '/portal/inbox')?.label,
     ).toBe('Nachrichten');
+  });
+
+  it('Tax-CMS: Eintraege nur mit Modul UND konfiguriertem Dienst, Seiten bleiben erreichbar', () => {
+    // TCMS Stufe 3: Modul an, Dienst nicht konfiguriert → kein Menüpunkt; das
+    // Route-Gate lässt die Seite zu, die dann einen Hinweis statt eines
+    // Fehlers zeigt (server/tcms/seite.ts).
+    const an = moduleConfig({ tcms: true });
+    const aus = moduleConfig({ tcms: false });
+    const staff = (modules: ModuleConfig, tcms?: boolean) =>
+      items(
+        resolveStaffNavigation({ modules, ...(tcms === undefined ? {} : { dienste: { tcms } }) }),
+      ).find((item) => item.href === '/staff/tcms');
+    const portal = (modules: ModuleConfig, tcms?: boolean) =>
+      resolvePortalNavigation({
+        modules,
+        portalFeatures: {},
+        ...(tcms === undefined ? {} : { dienste: { tcms } }),
+      })
+        .flatMap((group) => group.items)
+        .find((item) => item.href === '/portal/tcms');
+
+    expect(staff(an, true)?.label).toBe('Tax-CMS');
+    expect(portal(an, true)?.label).toBe('Tax-CMS');
+    for (const [modules, tcms] of [
+      [an, false],
+      [an, undefined],
+      [aus, true],
+    ] as const) {
+      expect(staff(modules, tcms)).toBeUndefined();
+      expect(portal(modules, tcms)).toBeUndefined();
+    }
+    expect(
+      resolveStaffNavigation({ modules: an, dienste: { tcms: true } }).find((group) =>
+        group.items.some((item) => item.href === '/staff/tcms'),
+      )?.id,
+    ).toBe('mandates');
+    expect(isModuleRouteEnabled(an, 'staff', '/staff/clients/abc/tcms/kontakte')).toBe(true);
+    expect(isModuleRouteEnabled(aus, 'staff', '/staff/clients/abc/tcms')).toBe(false);
+    expect(isModuleRouteEnabled(aus, 'portal', '/portal/tcms')).toBe(false);
+  });
+
+  it('Tax-CMS-Reiter der Mandantenakte nur mit Modul und konfiguriertem Dienst', () => {
+    const an = moduleConfig({ tcms: true });
+    expect(resolveClientNavigation(an, 'c 1', { tcms: true }).tcms).toBe(
+      '/staff/clients/c%201/tcms',
+    );
+    expect(resolveClientNavigation(an, 'c1', { tcms: false }).tcms).toBeUndefined();
+    expect(resolveClientNavigation(an, 'c1').tcms).toBeUndefined();
+    expect(
+      resolveClientNavigation(moduleConfig({ tcms: false }), 'c1', { tcms: true }).tcms,
+    ).toBeUndefined();
+    // „Subsumtion / TCMS“ (Modul risk) bleibt davon unberührt.
+    expect(resolveClientNavigation(moduleConfig({ risk: true }), 'c1').subsumtion).toBe(
+      '/staff/clients/c1/subsumtion',
+    );
   });
 
   it('liefert je Oberflaeche eindeutige Ziele und IDs', () => {

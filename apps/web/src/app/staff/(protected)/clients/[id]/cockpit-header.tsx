@@ -233,6 +233,11 @@ export function ClientCockpitNav({
           Formulare
         </Link>
       )}
+      {clientNav.tcms && (
+        <Link href={clientNav.tcms} className="btn-secondary text-xs py-1">
+          Tax-CMS
+        </Link>
+      )}
       <Link
         href={`/staff/clients/${client.id}/change-requests`}
         className="btn-secondary text-xs py-1"

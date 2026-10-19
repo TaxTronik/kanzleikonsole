@@ -3,6 +3,7 @@ import { isStaffAdmin } from '@/server/auth/rbac';
 import { redirect, notFound } from 'next/navigation';
 import { readModules } from '@/server/settings/modules';
 import { resolveClientNavigation } from '@/lib/navigation-registry';
+import { tcmsKonfiguriert } from '@/server/tcms/dienst';
 import { readClientLayout } from '@/server/settings/client-layout';
 import { CockpitGrid } from './cockpit-grid';
 import { RecordClientVisit } from '@/components/recent-clients';
@@ -79,7 +80,7 @@ export default async function ClientDetailPage({
       <ClientOnboardingBanner client={client} />
       <ClientCockpitNav
         client={client}
-        clientNav={resolveClientNavigation(modules, id)}
+        clientNav={resolveClientNavigation(modules, id, { tcms: tcmsKonfiguriert() })}
         pendingChangeRequests={pendingChangeRequests}
         canSubsumtion={canOpenSubsumtion(isAdmin, staffId, client.responsibilities)}
       />

@@ -7,15 +7,26 @@ type Surface = 'staff' | 'portal';
 type PortalFeatureKey = keyof PortalFeatures | 'clientInbox';
 
 /**
+ * Angebundene Dienste, deren Konfiguration (nicht der Tenant-Schalter) über
+ * die Sichtbarkeit mitentscheidet. `tcms`: TCMS_DEPLOYMENT ≠ disabled
+ * (`tcmsKonfiguriert()` in server/tcms/dienst.ts, TCMS Stufe 3).
+ */
+export type ExternerDienst = 'tcms';
+export type VerfuegbareDienste = Partial<Record<ExternerDienst, boolean>>;
+
+/**
  * Nicht-modulare Sichtbarkeitsbedingungen. Modulanforderungen stehen
  * ausschließlich in der Modul-Registry (`module`); `anyArea` verfeinert nur
  * (schränkt weiter ein), erweitert aber nie, was das Route-Gate erlaubt.
+ * `dienst` blendet einen Eintrag aus, solange der Dienst nicht konfiguriert
+ * ist; die Seiten selbst zeigen dann einen Hinweis statt eines Fehlers.
  */
 interface AvailabilityClause {
   permission?: string;
   admin?: boolean;
   portalFeature?: PortalFeatureKey;
   anyArea?: readonly ModuleAreaKey[];
+  dienst?: ExternerDienst;
 }
 
 export interface NavDefinition extends NavItem {
@@ -34,6 +45,8 @@ export interface NavigationAccess {
   isAdmin?: boolean;
   permissions?: readonly string[];
   portalFeatures?: Partial<Record<PortalFeatureKey, boolean>>;
+  /** Fehlt ein Dienst, gilt er als nicht konfiguriert (Eintrag ausgeblendet). */
+  dienste?: VerfuegbareDienste;
 }
 
 export interface ResolvedNavItem extends NavItem {
@@ -100,6 +113,20 @@ const NAVIGATION: readonly NavDefinition[] = [
     href: '/staff/gwg',
     label: 'GwG-Kontrollliste',
     icon: 'IdCard',
+  },
+  // Tax-CMS-Portfolio (TCMS Stufe 3) in der Mandatsarbeit: eine Arbeitssicht
+  // über die Mandanten (Fälligkeiten, Feststellungen, Ereignisse) wie die
+  // GwG-Kontrollliste, kein Werkzeug neben der Mandatsarbeit (Erweiterungen).
+  {
+    id: 'staff-tcms',
+    surface: 'staff',
+    groupId: 'mandates',
+    href: '/staff/tcms',
+    label: 'Tax-CMS',
+    icon: 'ShieldCheck',
+    searchAliases: ['Tax-CMS-Portfolio', 'Tax-Compliance-Management-System'],
+    module: 'tcms',
+    availableWhen: one({ dienst: 'tcms' }),
   },
   {
     id: 'staff-requests',
@@ -453,6 +480,17 @@ const NAVIGATION: readonly NavDefinition[] = [
     icon: 'ClipboardList',
     module: 'payrollIntake',
   },
+  // Aufgaben, Freigaben und Meldungen des Tax-CMS: Zusammenarbeit mit der Kanzlei.
+  {
+    id: 'portal-tcms',
+    surface: 'portal',
+    groupId: 'collaboration',
+    href: '/portal/tcms',
+    label: 'Tax-CMS',
+    icon: 'ShieldCheck',
+    module: 'tcms',
+    availableWhen: one({ dienst: 'tcms' }),
+  },
   {
     id: 'portal-handovers',
     surface: 'portal',
@@ -525,6 +563,7 @@ function clauseMatches(clause: AvailabilityClause, access: NavigationAccess): bo
   if (clause.portalFeature && access.portalFeatures?.[clause.portalFeature] !== true) return false;
   if (clause.anyArea && !clause.anyArea.some((area) => isModuleAreaEnabled(access.modules, area)))
     return false;
+  if (clause.dienst && access.dienste?.[clause.dienst] !== true) return false;
   return true;
 }
 
@@ -657,27 +696,40 @@ const CLIENT_NAVIGATION = [
   { id: 'forms', href: '/staff/clients/[id]/forms', module: 'forms' },
   // C3 (Welle 15): verlinkt aus der GwG-Karte des Cockpits, nicht als Reiter.
   { id: 'screening', href: '/staff/clients/[id]/screening', module: 'sanctionsScreening' },
-] as const satisfies ReadonlyArray<{ id: string; href: string; module: ModuleAreaKey }>;
+  // TCMS Stufe 3: nur mit konfiguriertem Dienst (wie die Seitenleiste).
+  { id: 'tcms', href: '/staff/clients/[id]/tcms', module: 'tcms', dienst: 'tcms' },
+] as const satisfies ReadonlyArray<ClientNavigationDefinition>;
+
+interface ClientNavigationDefinition {
+  id: string;
+  href: string;
+  module: ModuleAreaKey;
+  dienst?: ExternerDienst;
+}
 
 export type ClientNavigationId = (typeof CLIENT_NAVIGATION)[number]['id'];
 
 /** Reiter der Mandantenakte (Registry-Konsistenztests). */
-export function clientNavigationDefinitions(): ReadonlyArray<{
-  id: ClientNavigationId;
-  href: string;
-  module: ModuleAreaKey;
-}> {
+export function clientNavigationDefinitions(): ReadonlyArray<
+  ClientNavigationDefinition & { id: ClientNavigationId }
+> {
   return CLIENT_NAVIGATION;
 }
 
+/** `dienste`: wie in der Seitenleiste; ein fehlender Dienst blendet seinen Reiter aus. */
 export function resolveClientNavigation(
   modules: ModuleConfig,
   clientId: string,
+  dienste: VerfuegbareDienste = {},
 ): Partial<Record<ClientNavigationId, string>> {
   const resolved: Partial<Record<ClientNavigationId, string>> = {};
-  for (const item of CLIENT_NAVIGATION) {
+  for (const item of CLIENT_NAVIGATION as readonly ClientNavigationDefinition[]) {
+    if (item.dienst && dienste[item.dienst] !== true) continue;
     if (isModuleAreaEnabled(modules, item.module)) {
-      resolved[item.id] = item.href.replace('[id]', encodeURIComponent(clientId));
+      resolved[item.id as ClientNavigationId] = item.href.replace(
+        '[id]',
+        encodeURIComponent(clientId),
+      );
     }
   }
   return resolved;

@@ -223,6 +223,16 @@ Fehlversuche Dritter einer angemeldeten Person das TCMS sperren.
   `isWorkerTcmsActive(tenantId)` aus `apps/worker/src/module-gate.ts`
   (Modulschalter über `isWorkerTenantModuleEnabled`, dieselbe Regel
   `istTcmsAktiv`).
+- **Modulbereich und Navigation (Stufe 3):** Bereich `tcms` im
+  Modul-Register (`apps/web/src/lib/module-registry.ts`) mit `/staff/tcms`,
+  `/staff/clients/[id]/tcms` und `/portal/tcms` (Layout-Gate und
+  `requireModulePage`: Modul aus → 404). Die Einträge „Tax-CMS“ in der
+  Seitenleiste (Staff: Gruppe Mandatsarbeit, Portal: Zusammenarbeit) und der
+  Reiter der Mandantenakte erscheinen zusätzlich nur bei konfiguriertem
+  Dienst (`dienst: 'tcms'` in `lib/navigation-registry.ts`, gespeist aus
+  `tcmsKonfiguriert()`). Modul an, Dienst nicht konfiguriert: kein
+  Menüpunkt; direkt aufgerufene Seiten zeigen einen Hinweis statt eines
+  Fehlers. „Subsumtion / TCMS“ (Modul `risk`) ist davon getrennt.
 - **Client je Prozess:** `tcmsClient()` (`null` bei `disabled`) lädt
   Konfiguration und Schlüssel beim ersten Zugriff einmal.
 - **Health-Check:** `checkTcms()` in `apps/web/src/server/health/checks.ts`:

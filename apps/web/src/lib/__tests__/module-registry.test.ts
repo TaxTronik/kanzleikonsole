@@ -115,6 +115,7 @@ describe('Modul-Registry – eine Quelle für Navigation, Route-Gate und Seiten'
     const access = (config: ModuleConfig) => ({
       modules: config,
       isAdmin: true,
+      dienste: { tcms: true },
       permissions: ['PORTAL_INBOX_MANAGE', 'INBOUND_MAIL_MANAGE', 'PAYROLL_MANAGE'],
       portalFeatures: {
         clientInbox: true,

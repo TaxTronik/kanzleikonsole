@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   readBrandingForSlug: vi.fn(),
   readLegalForSlug: vi.fn(),
   userMenu: vi.fn(),
+  tcmsKonfiguriert: vi.fn(() => false),
   pathname: '/staff/dashboard',
 }));
 
@@ -66,6 +67,7 @@ vi.mock('@/components/user-menu', () => ({
   },
 }));
 vi.mock('../portal/(protected)/profile-switcher', () => ({ PortalProfileSwitcher: () => null }));
+vi.mock('@/server/tcms/dienst', () => ({ tcmsKonfiguriert: mocks.tcmsKonfiguriert }));
 
 import { DEFAULT_MODULES } from '@/server/settings/modules';
 import { DEFAULT_PORTAL_FEATURES } from '@/server/settings/portal-features';
@@ -247,6 +249,36 @@ describe('geschütztes Portal-Layout', () => {
   it('bindet den Anzeigemodus an das Portalprofil', async () => {
     const element = (await PortalLayout({ children: page })) as ReactElement;
     expect(element.key).toBe(`portal:${TENANT}:${CONTACT}`);
+  });
+});
+
+describe('Tax-CMS in der Seitenleiste (TCMS Stufe 3)', () => {
+  // Modul an, aber Dienst nicht konfiguriert (TCMS_DEPLOYMENT=disabled): kein
+  // Menüpunkt; die Seiten zeigen dann einen Hinweis (server/tcms/seite.ts).
+  const mitTcms = { ...layoutData(false), modules: { ...DEFAULT_MODULES, tcms: true } };
+
+  it.each([true, false])('Staff: Menüpunkt nur bei konfiguriertem Dienst (%s)', async (an) => {
+    mocks.tcmsKonfiguriert.mockReturnValue(an);
+    mocks.readStaffLayoutData.mockResolvedValue({
+      ...mitTcms,
+      notifications: { unread: 0, latestUnreadAt: null },
+    });
+    await renderServer(StaffLayout({ children: page }));
+    const sidebar = screen.getByRole('complementary', { name: 'Hauptmenü' });
+    expect(within(sidebar).queryByRole('link', { name: 'Tax-CMS' }) !== null).toBe(an);
+  });
+
+  it.each([true, false])('Portal: Menüpunkt nur bei konfiguriertem Dienst (%s)', async (an) => {
+    mocks.pathname = '/portal/dashboard';
+    mocks.tcmsKonfiguriert.mockReturnValue(an);
+    mocks.readPortalLayoutData.mockResolvedValue({
+      ...mitTcms,
+      clientName: 'Muster GmbH',
+      profiles: [],
+    });
+    await renderServer(PortalLayout({ children: page }));
+    const sidebar = screen.getByRole('complementary', { name: 'Hauptmenü' });
+    expect(within(sidebar).queryByRole('link', { name: 'Tax-CMS' }) !== null).toBe(an);
   });
 });
 
