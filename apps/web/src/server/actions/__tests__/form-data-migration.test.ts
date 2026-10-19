@@ -124,8 +124,10 @@ describe('parseFormData-Migrationsrest', () => {
     // (Slot-Paare mit eigener Feldfehler-Zuordnung, siehe FORM_DATA_READ_BASELINE).
     // TCMS Stufe 3: Kontaktrollen (staff/clients/[id]/tcms/kontakte/actions.ts)
     // lesen von Beginn an über parseFormData (+1).
+    // TCMS Stufe 3, Bereich C: Durchführungen (+7) und Feststellungen (+10)
+    // lesen von Beginn an über parseFormData (+17).
     expect(direct).toHaveLength(2);
     expect(direct.filter((call) => !call.exact)).toHaveLength(1);
-    expect(shared).toBe(124);
+    expect(shared).toBe(141);
   });
 });
