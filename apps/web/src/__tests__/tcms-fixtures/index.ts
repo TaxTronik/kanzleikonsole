@@ -19,16 +19,18 @@
 //     F-2026-006 vorübergehend vertraulich, gelesen von Thomas (nicht beteiligt).
 //   - einrichtung-bergkamm.json: Entwurf des Einrichtungsassistenten nach
 //     Schritt 4 (Live-Antwort des Dienstes mit dem Demo-Akteur, ungekürzt).
-//   - profil-talwind.json, einrichtung-talwind.json, kontakte-bergkamm.json:
-//     ungekürzt.
+//   - beschreibung-talwind.json, profil-talwind.json, freigaben-talwind.json,
+//     einrichtung-talwind.json, kontakte-bergkamm.json: ungekürzt.
 // Neue Fixtures: Antwort mit dem Demo-Akteur abrufen, kürzen, hier mit dem
 // Schema des Endpunkts laden (ENDPUNKTE.<name>.antwortSchema).
 // =============================================================================
 
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import type { z } from 'zod';
+import beschreibungTalwind from './beschreibung-talwind.json';
 import einrichtungBergkamm from './einrichtung-bergkamm.json';
 import einrichtungTalwind from './einrichtung-talwind.json';
+import freigabenTalwind from './freigaben-talwind.json';
 import kontakteBergkamm from './kontakte-bergkamm.json';
 import kontakteTalwind from './kontakte-talwind.json';
 import kontextTalwind from './kontext-talwind.json';
@@ -101,4 +103,6 @@ export const tcmsFixtures = {
   einrichtungTalwind: () => laden(ENDPUNKTE.einrichtungLesen.antwortSchema, einrichtungTalwind),
   kontakteBergkamm: () => laden(ENDPUNKTE.kontakteLesen.antwortSchema, kontakteBergkamm),
   profilTalwind: () => laden(ENDPUNKTE.profilLesen.antwortSchema, profilTalwind),
+  beschreibungTalwind: () => laden(ENDPUNKTE.beschreibungLesen.antwortSchema, beschreibungTalwind),
+  freigabenTalwind: () => laden(ENDPUNKTE.freigabenHistorieLesen.antwortSchema, freigabenTalwind),
 };

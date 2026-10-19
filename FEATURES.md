@@ -1178,7 +1178,11 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
 - **Programm & Dokumentation:** Einrichtungsassistent
   `/staff/clients/[id]/tcms/einrichtung` (fünf Schritte bis Version 1; Plan,
   Prüflast und offene Punkte vom Dienst), **Geschäftsprofil** `…/profil`
-  (Stände mit Historie, Profil ändern, Risiko aus dem Vorschlag aufnehmen) und
+  (Stände mit Historie, Profil ändern, Risiko aus dem Vorschlag aufnehmen),
+  **CMS-Beschreibung** `…/beschreibung` (Versionen, Abschnitte mit lebenden
+  Bausteinen, Kanzlei-Review mit Vier-Augen-Prinzip, Freigabe beim Mandanten
+  mit eingefrorenem, SHA-256-gebundenem Inhalt), **Kommunikation**
+  `…/kommunikation` (Freigaben und Kenntnisnahmen, Neuadressierung) und
   **Katalog** `/staff/tcms/katalog` (Admin/Partner, nur lesend); Personen nur
   aus der kanzleikonsole (Zugriff auf den Mandanten bzw. Kontakte dieses
   Mandanten)

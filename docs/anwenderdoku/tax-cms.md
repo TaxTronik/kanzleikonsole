@@ -140,6 +140,35 @@ abgelehnte, deaktivierte und nicht mehr vorgeschlagene Risiken.
   Mandantenakte; sind sie nicht zugeordnet oder dieselbe Person, erscheint ein
   Hinweis statt des Knopfs.
 
+### CMS-Beschreibung
+
+_Tax-CMS → Beschreibung_ gliedert die Beschreibung in Abschnitte mit Freitext
+und Bausteinen (Teilbereich, Ziele, Risikoinventar, Kontrollmatrix,
+Verantwortung, Länder, Feststellungen), die das Tax-CMS automatisch füllt.
+
+- **Ablauf:** Entwurf → „Zur Kanzlei-Review einreichen“ → „Review
+  abschließen“ (eine zweite Person; wer zuletzt bearbeitet hat, bekommt den
+  Abschluss nicht angeboten) oder „Zurück in den Entwurf“ mit Begründung
+  (mindestens 30 Zeichen) → „Freigabe beim Mandanten anfordern“.
+- **Freigabe anfordern** friert den Inhalt ein und bindet ihn mit SHA-256.
+  Empfänger ist eine gesetzliche Vertretung dieses Mandanten; sie gibt im
+  Mandanten-Portal mit E-Mail-Code frei. Eine offene Anforderung einer
+  älteren Version wird dabei zurückgezogen.
+- **Eingefrorene Versionen** (beim Mandanten, freigegeben, abgelöst) zeigen
+  genau den eingefrorenen Inhalt mit Hash und Prüfergebnis und lassen sich
+  nicht bearbeiten; Änderungen entstehen als neue Version. Personen erscheinen
+  dort mit dem Namen zum Zeitpunkt des Einfrierens, in lebenden Bausteinen mit
+  dem heutigen Namen aus TaxTronik.
+
+### Kommunikation
+
+_Tax-CMS → Kommunikation_ listet Freigaben und Kenntnisnahmen mit Status zum
+Stichtag, die Freigabestände von Zielen und Beschreibung sowie Kultur und
+Meldewege. **Neu adressieren** richtet eine offene Anforderung an eine andere
+Person dieses Mandanten (Freigaben nur an gesetzliche Vertretungen); ein
+bereits ausgestellter Code verfällt, die Person erhält eine Nachricht. Der
+Schritt fragt vorher nach.
+
 ### Katalog
 
 Admins und Partner sehen unter `/staff/tcms/katalog` (Verweis im

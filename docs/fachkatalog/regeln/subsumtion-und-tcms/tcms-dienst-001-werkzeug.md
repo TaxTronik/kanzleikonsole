@@ -54,6 +54,10 @@ code_refs:
   - apps/web/src/app/staff/(protected)/tcms/arbeitskorb/ansicht.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/teile.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kommunikation/page.tsx
+  - apps/web/src/components/tcms/programm/beschreibung.tsx
 test_refs:
   - apps/web/src/server/tcms/__tests__/zustand.test.ts
   - apps/web/src/server/tcms/__tests__/seite.test.ts
@@ -69,7 +73,10 @@ test_refs:
   - apps/web/src/app/staff/(protected)/tcms/arbeitskorb/__tests__/seite.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/__tests__/seite.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/__tests__/seite.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/__tests__/seite.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kommunikation/__tests__/seite.test.tsx
   - apps/web/src/app/staff/(protected)/tcms/katalog/__tests__/seite.test.tsx
+  - apps/web/src/components/tcms/programm/__tests__/programm.test.tsx
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

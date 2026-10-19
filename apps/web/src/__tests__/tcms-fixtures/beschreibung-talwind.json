@@ -1,0 +1,1850 @@
+{
+  "programmId": "cmvf9k7fi0003g87dyrg2d53f",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "versionen": [
+    {
+      "id": "cmvf9k8m80091g87dogir16zj",
+      "nummer": "1.0",
+      "status": "ABGELOEST",
+      "anzeige": "ABGELOEST",
+      "abschnitte": [
+        {
+          "key": "teilbereich",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die gesetzlichen Vertreter der Talwind Outdoor GmbH grenzen den Teilbereich „Umsatzsteuer & Erlös-Datenkette E-Commerce\" ab. Er umfasst die umsatzsteuerlichen Pflichten aus Online-Verkäufen im Inland und in allen Ländern mit Steuerpflicht sowie die Datenkette vom Shop bis zur Finanzbuchhaltung."
+            },
+            {
+              "typ": "baustein",
+              "art": "TEILBEREICH"
+            }
+          ]
+        },
+        {
+          "key": "kultur",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Geschäftsführung bekennt sich in der Steuerrichtlinie zur vollständigen und fristgerechten Erfüllung steuerlicher Pflichten. Verstöße werden nicht toleriert; Hinweise auf Fehler sind ausdrücklich erwünscht und haben keine Nachteile für die meldende Person."
+            }
+          ]
+        },
+        {
+          "key": "ziele",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Compliance-Ziele und der Risikoappetit sind von den gesetzlichen Vertretern freigegeben. Risiken oberhalb des Appetits erfordern eine Maßnahme oder eine dokumentierte Risikoakzeptanz."
+            },
+            {
+              "typ": "baustein",
+              "art": "ZIELE"
+            }
+          ]
+        },
+        {
+          "key": "risiken",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Kanzlei bewertet die risikorelevanten Prozesse jährlich und anlassbezogen. Die Bewertung folgt der dokumentierten Methodik aus Schadensintensität, Eintrittswahrscheinlichkeit und Reichweite; Ergebnisse und Begründungen sind im Risikoinventar hinterlegt."
+            },
+            {
+              "typ": "baustein",
+              "art": "RISIKOINVENTAR"
+            }
+          ]
+        },
+        {
+          "key": "programm",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Jedem Risiko sind Kontrollen mit Ziel, Schritten, Nachweisanforderung, Toleranz und Frequenz zugeordnet. Die Mindestfrequenz folgt aus Governance-Typ und Bruttoklasse; Schlüsselkontrollen werden im Vier-Augen-Prinzip gegengezeichnet."
+            },
+            {
+              "typ": "baustein",
+              "art": "KONTROLLMATRIX"
+            }
+          ]
+        },
+        {
+          "key": "organisation",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Verantwortlich für das Tax-CMS ist die Geschäftsführung. Die operative Steuerung liegt beim Tax-Compliance-Beauftragten; die Kanzlei führt die ihr übertragenen Kontrollen durch und würdigt Feststellungen fachlich."
+            },
+            {
+              "typ": "baustein",
+              "art": "VERANTWORTUNG"
+            }
+          ]
+        },
+        {
+          "key": "kommunikation",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Steuerrichtlinie und die Arbeitsanweisungen werden allen Beteiligten zur Kenntnis gegeben. Veränderungen im Geschäftsmodell meldet der Mandant über das Portal als Ereignis; die Kanzlei triagiert jede Meldung."
+            }
+          ]
+        },
+        {
+          "key": "ueberwachung",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Abweichungen aus Kontrollen, Ereignissen und Stichproben werden als Feststellungen erfasst und bis zur Nachkontrolle verfolgt. Erkannte steuerliche Fehler würdigt ein Berufsträger im Hinblick auf § 153 AO."
+            },
+            {
+              "typ": "baustein",
+              "art": "FESTSTELLUNGEN"
+            }
+          ]
+        },
+        {
+          "key": "anhang",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die länderspezifischen Besonderheiten der Fernverkäufe werden im Länder-Monitor geführt."
+            },
+            {
+              "typ": "baustein",
+              "art": "LAENDER"
+            }
+          ]
+        }
+      ],
+      "createdAt": "2026-03-01T00:00:00.000Z",
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002",
+      "reviewAngefordertVon": null,
+      "reviewAngefordertAm": null,
+      "reviewVon": "b1000000-0000-4000-8000-000000000001",
+      "reviewAm": "2026-03-09T00:00:00.000Z",
+      "freigabeAngefordertAm": null,
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000011",
+      "freigegebenAm": "2026-03-12T00:00:00.000Z",
+      "snapshot": {
+        "nummer": "1.0",
+        "mandant": "Talwind Outdoor GmbH",
+        "eingefroren": true,
+        "abschnitte": [
+          {
+            "key": "teilbereich",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die gesetzlichen Vertreter der Talwind Outdoor GmbH grenzen den Teilbereich „Umsatzsteuer & Erlös-Datenkette E-Commerce\" ab. Er umfasst die umsatzsteuerlichen Pflichten aus Online-Verkäufen im Inland und in allen Ländern mit Steuerpflicht sowie die Datenkette vom Shop bis zur Finanzbuchhaltung."
+              },
+              {
+                "typ": "baustein",
+                "art": "TEILBEREICH"
+              }
+            ]
+          },
+          {
+            "key": "kultur",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Geschäftsführung bekennt sich in der Steuerrichtlinie zur vollständigen und fristgerechten Erfüllung steuerlicher Pflichten. Verstöße werden nicht toleriert; Hinweise auf Fehler sind ausdrücklich erwünscht und haben keine Nachteile für die meldende Person."
+              }
+            ]
+          },
+          {
+            "key": "ziele",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Compliance-Ziele und der Risikoappetit sind von den gesetzlichen Vertretern freigegeben. Risiken oberhalb des Appetits erfordern eine Maßnahme oder eine dokumentierte Risikoakzeptanz."
+              },
+              {
+                "typ": "baustein",
+                "art": "ZIELE"
+              }
+            ]
+          },
+          {
+            "key": "risiken",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Kanzlei bewertet die risikorelevanten Prozesse jährlich und anlassbezogen. Die Bewertung folgt der dokumentierten Methodik aus Schadensintensität, Eintrittswahrscheinlichkeit und Reichweite; Ergebnisse und Begründungen sind im Risikoinventar hinterlegt."
+              },
+              {
+                "typ": "baustein",
+                "art": "RISIKOINVENTAR"
+              }
+            ]
+          },
+          {
+            "key": "programm",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Jedem Risiko sind Kontrollen mit Ziel, Schritten, Nachweisanforderung, Toleranz und Frequenz zugeordnet. Die Mindestfrequenz folgt aus Governance-Typ und Bruttoklasse; Schlüsselkontrollen werden im Vier-Augen-Prinzip gegengezeichnet."
+              },
+              {
+                "typ": "baustein",
+                "art": "KONTROLLMATRIX"
+              }
+            ]
+          },
+          {
+            "key": "organisation",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Verantwortlich für das Tax-CMS ist die Geschäftsführung. Die operative Steuerung liegt beim Tax-Compliance-Beauftragten; die Kanzlei führt die ihr übertragenen Kontrollen durch und würdigt Feststellungen fachlich."
+              },
+              {
+                "typ": "baustein",
+                "art": "VERANTWORTUNG"
+              }
+            ]
+          },
+          {
+            "key": "kommunikation",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Steuerrichtlinie und die Arbeitsanweisungen werden allen Beteiligten zur Kenntnis gegeben. Veränderungen im Geschäftsmodell meldet der Mandant über das Portal als Ereignis; die Kanzlei triagiert jede Meldung."
+              }
+            ]
+          },
+          {
+            "key": "ueberwachung",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Abweichungen aus Kontrollen, Ereignissen und Stichproben werden als Feststellungen erfasst und bis zur Nachkontrolle verfolgt. Erkannte steuerliche Fehler würdigt ein Berufsträger im Hinblick auf § 153 AO."
+              },
+              {
+                "typ": "baustein",
+                "art": "FESTSTELLUNGEN"
+              }
+            ]
+          },
+          {
+            "key": "anhang",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die länderspezifischen Besonderheiten der Fernverkäufe werden im Länder-Monitor geführt."
+              },
+              {
+                "typ": "baustein",
+                "art": "LAENDER"
+              }
+            ]
+          }
+        ]
+      },
+      "snapshotSha256": "35dfab816a06e6bb11e44dcc2700de7e3d5562b7ae6a3bd29010a97dc01f9358",
+      "snapshotGeprueft": true,
+      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "cmvf9k8mh0092g87dguwfvkyx",
+      "nummer": "1.1",
+      "status": "FREIGEGEBEN",
+      "anzeige": "FREIGEGEBEN",
+      "abschnitte": [
+        {
+          "key": "teilbereich",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die gesetzlichen Vertreter der Talwind Outdoor GmbH grenzen den Teilbereich „Umsatzsteuer & Erlös-Datenkette E-Commerce\" ab. Er umfasst die umsatzsteuerlichen Pflichten aus Online-Verkäufen im Inland und in allen Ländern mit Steuerpflicht sowie die Datenkette vom Shop bis zur Finanzbuchhaltung."
+            },
+            {
+              "typ": "baustein",
+              "art": "TEILBEREICH"
+            }
+          ]
+        },
+        {
+          "key": "kultur",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Geschäftsführung bekennt sich in der Steuerrichtlinie zur vollständigen und fristgerechten Erfüllung steuerlicher Pflichten. Verstöße werden nicht toleriert; Hinweise auf Fehler sind ausdrücklich erwünscht und haben keine Nachteile für die meldende Person."
+            }
+          ]
+        },
+        {
+          "key": "ziele",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Compliance-Ziele und der Risikoappetit sind von den gesetzlichen Vertretern freigegeben. Risiken oberhalb des Appetits erfordern eine Maßnahme oder eine dokumentierte Risikoakzeptanz."
+            },
+            {
+              "typ": "baustein",
+              "art": "ZIELE"
+            }
+          ]
+        },
+        {
+          "key": "risiken",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Kanzlei bewertet die risikorelevanten Prozesse jährlich und anlassbezogen. Die Bewertung folgt der dokumentierten Methodik aus Schadensintensität, Eintrittswahrscheinlichkeit und Reichweite; Ergebnisse und Begründungen sind im Risikoinventar hinterlegt."
+            },
+            {
+              "typ": "baustein",
+              "art": "RISIKOINVENTAR"
+            }
+          ]
+        },
+        {
+          "key": "programm",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Jedem Risiko sind Kontrollen mit Ziel, Schritten, Nachweisanforderung, Toleranz und Frequenz zugeordnet. Die Mindestfrequenz folgt aus Governance-Typ und Bruttoklasse; Schlüsselkontrollen werden im Vier-Augen-Prinzip gegengezeichnet."
+            },
+            {
+              "typ": "baustein",
+              "art": "KONTROLLMATRIX"
+            }
+          ]
+        },
+        {
+          "key": "organisation",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Verantwortlich für das Tax-CMS ist die Geschäftsführung. Die operative Steuerung liegt beim Tax-Compliance-Beauftragten; die Kanzlei führt die ihr übertragenen Kontrollen durch und würdigt Feststellungen fachlich."
+            },
+            {
+              "typ": "baustein",
+              "art": "VERANTWORTUNG"
+            }
+          ]
+        },
+        {
+          "key": "kommunikation",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Steuerrichtlinie und die Arbeitsanweisungen werden allen Beteiligten zur Kenntnis gegeben. Veränderungen im Geschäftsmodell meldet der Mandant über das Portal als Ereignis; die Kanzlei triagiert jede Meldung."
+            }
+          ]
+        },
+        {
+          "key": "ueberwachung",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Abweichungen aus Kontrollen, Ereignissen und Stichproben werden als Feststellungen erfasst und bis zur Nachkontrolle verfolgt. Erkannte steuerliche Fehler würdigt ein Berufsträger im Hinblick auf § 153 AO."
+            },
+            {
+              "typ": "baustein",
+              "art": "FESTSTELLUNGEN"
+            }
+          ]
+        },
+        {
+          "key": "anhang",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die länderspezifischen Besonderheiten der Fernverkäufe werden im Länder-Monitor geführt."
+            },
+            {
+              "typ": "baustein",
+              "art": "LAENDER"
+            }
+          ]
+        }
+      ],
+      "createdAt": "2026-06-20T00:00:00.000Z",
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002",
+      "reviewAngefordertVon": "b1000000-0000-4000-8000-000000000002",
+      "reviewAngefordertAm": "2026-06-25T00:00:00.000Z",
+      "reviewVon": "b1000000-0000-4000-8000-000000000001",
+      "reviewAm": "2026-06-27T16:00:00.000Z",
+      "freigabeAngefordertAm": "2026-06-28T09:00:00.000Z",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000011",
+      "freigegebenAm": "2026-06-30T11:12:00.000Z",
+      "snapshot": {
+        "nummer": "1.1",
+        "mandant": "Talwind Outdoor GmbH",
+        "eingefroren": true,
+        "abschnitte": [
+          {
+            "key": "teilbereich",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die gesetzlichen Vertreter der Talwind Outdoor GmbH grenzen den Teilbereich „Umsatzsteuer & Erlös-Datenkette E-Commerce\" ab. Er umfasst die umsatzsteuerlichen Pflichten aus Online-Verkäufen im Inland und in allen Ländern mit Steuerpflicht sowie die Datenkette vom Shop bis zur Finanzbuchhaltung."
+              },
+              {
+                "typ": "baustein",
+                "art": "TEILBEREICH"
+              }
+            ]
+          },
+          {
+            "key": "kultur",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Geschäftsführung bekennt sich in der Steuerrichtlinie zur vollständigen und fristgerechten Erfüllung steuerlicher Pflichten. Verstöße werden nicht toleriert; Hinweise auf Fehler sind ausdrücklich erwünscht und haben keine Nachteile für die meldende Person."
+              }
+            ]
+          },
+          {
+            "key": "ziele",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Compliance-Ziele und der Risikoappetit sind von den gesetzlichen Vertretern freigegeben. Risiken oberhalb des Appetits erfordern eine Maßnahme oder eine dokumentierte Risikoakzeptanz."
+              },
+              {
+                "typ": "baustein",
+                "art": "ZIELE"
+              }
+            ]
+          },
+          {
+            "key": "risiken",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Kanzlei bewertet die risikorelevanten Prozesse jährlich und anlassbezogen. Die Bewertung folgt der dokumentierten Methodik aus Schadensintensität, Eintrittswahrscheinlichkeit und Reichweite; Ergebnisse und Begründungen sind im Risikoinventar hinterlegt."
+              },
+              {
+                "typ": "baustein",
+                "art": "RISIKOINVENTAR"
+              }
+            ]
+          },
+          {
+            "key": "programm",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Jedem Risiko sind Kontrollen mit Ziel, Schritten, Nachweisanforderung, Toleranz und Frequenz zugeordnet. Die Mindestfrequenz folgt aus Governance-Typ und Bruttoklasse; Schlüsselkontrollen werden im Vier-Augen-Prinzip gegengezeichnet."
+              },
+              {
+                "typ": "baustein",
+                "art": "KONTROLLMATRIX"
+              }
+            ]
+          },
+          {
+            "key": "organisation",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Verantwortlich für das Tax-CMS ist die Geschäftsführung. Die operative Steuerung liegt beim Tax-Compliance-Beauftragten; die Kanzlei führt die ihr übertragenen Kontrollen durch und würdigt Feststellungen fachlich."
+              },
+              {
+                "typ": "baustein",
+                "art": "VERANTWORTUNG"
+              }
+            ]
+          },
+          {
+            "key": "kommunikation",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Steuerrichtlinie und die Arbeitsanweisungen werden allen Beteiligten zur Kenntnis gegeben. Veränderungen im Geschäftsmodell meldet der Mandant über das Portal als Ereignis; die Kanzlei triagiert jede Meldung."
+              }
+            ]
+          },
+          {
+            "key": "ueberwachung",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Abweichungen aus Kontrollen, Ereignissen und Stichproben werden als Feststellungen erfasst und bis zur Nachkontrolle verfolgt. Erkannte steuerliche Fehler würdigt ein Berufsträger im Hinblick auf § 153 AO."
+              },
+              {
+                "typ": "baustein",
+                "art": "FESTSTELLUNGEN"
+              }
+            ]
+          },
+          {
+            "key": "anhang",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die länderspezifischen Besonderheiten der Fernverkäufe werden im Länder-Monitor geführt."
+              },
+              {
+                "typ": "baustein",
+                "art": "LAENDER"
+              }
+            ]
+          }
+        ]
+      },
+      "snapshotSha256": "2039b321d61b16d443509ca47c837785d5dfbd246b5d1b57adadfa25195445b2",
+      "snapshotGeprueft": true,
+      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "cmvf9k8n20093g87donaw4i34",
+      "nummer": "1.2",
+      "status": "BEIM_MANDANTEN",
+      "anzeige": "BEIM_MANDANTEN",
+      "abschnitte": [
+        {
+          "key": "teilbereich",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die gesetzlichen Vertreter der Talwind Outdoor GmbH grenzen den Teilbereich „Umsatzsteuer & Erlös-Datenkette E-Commerce\" ab. Er umfasst die umsatzsteuerlichen Pflichten aus Online-Verkäufen im Inland und in allen Ländern mit Steuerpflicht sowie die Datenkette vom Shop bis zur Finanzbuchhaltung."
+            },
+            {
+              "typ": "baustein",
+              "art": "TEILBEREICH"
+            }
+          ]
+        },
+        {
+          "key": "kultur",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Geschäftsführung bekennt sich in der Steuerrichtlinie zur vollständigen und fristgerechten Erfüllung steuerlicher Pflichten. Verstöße werden nicht toleriert; Hinweise auf Fehler sind ausdrücklich erwünscht und haben keine Nachteile für die meldende Person."
+            }
+          ]
+        },
+        {
+          "key": "ziele",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Compliance-Ziele und der Risikoappetit sind von den gesetzlichen Vertretern freigegeben. Risiken oberhalb des Appetits erfordern eine Maßnahme oder eine dokumentierte Risikoakzeptanz."
+            },
+            {
+              "typ": "baustein",
+              "art": "ZIELE"
+            }
+          ]
+        },
+        {
+          "key": "risiken",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Kanzlei bewertet die risikorelevanten Prozesse jährlich und anlassbezogen. Die Bewertung folgt der dokumentierten Methodik aus Schadensintensität, Eintrittswahrscheinlichkeit und Reichweite; Ergebnisse und Begründungen sind im Risikoinventar hinterlegt."
+            },
+            {
+              "typ": "baustein",
+              "art": "RISIKOINVENTAR"
+            }
+          ]
+        },
+        {
+          "key": "programm",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Jedem Risiko sind Kontrollen mit Ziel, Schritten, Nachweisanforderung, Toleranz und Frequenz zugeordnet. Die Mindestfrequenz folgt aus Governance-Typ und Bruttoklasse; Schlüsselkontrollen werden im Vier-Augen-Prinzip gegengezeichnet."
+            },
+            {
+              "typ": "baustein",
+              "art": "KONTROLLMATRIX"
+            }
+          ]
+        },
+        {
+          "key": "organisation",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Verantwortlich für das Tax-CMS ist die Geschäftsführung. Die operative Steuerung liegt beim Tax-Compliance-Beauftragten; die Kanzlei führt die ihr übertragenen Kontrollen durch und würdigt Feststellungen fachlich."
+            },
+            {
+              "typ": "baustein",
+              "art": "VERANTWORTUNG"
+            }
+          ]
+        },
+        {
+          "key": "kommunikation",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Steuerrichtlinie und die Arbeitsanweisungen werden allen Beteiligten zur Kenntnis gegeben. Veränderungen im Geschäftsmodell meldet der Mandant über das Portal als Ereignis; die Kanzlei triagiert jede Meldung."
+            }
+          ]
+        },
+        {
+          "key": "ueberwachung",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Abweichungen aus Kontrollen, Ereignissen und Stichproben werden als Feststellungen erfasst und bis zur Nachkontrolle verfolgt. Erkannte steuerliche Fehler würdigt ein Berufsträger im Hinblick auf § 153 AO."
+            },
+            {
+              "typ": "baustein",
+              "art": "FESTSTELLUNGEN"
+            }
+          ]
+        },
+        {
+          "key": "anhang",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die länderspezifischen Besonderheiten der Fernverkäufe werden im Länder-Monitor geführt."
+            },
+            {
+              "typ": "baustein",
+              "art": "LAENDER"
+            }
+          ]
+        }
+      ],
+      "createdAt": "2026-09-22T00:00:00.000Z",
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002",
+      "reviewAngefordertVon": "b1000000-0000-4000-8000-000000000002",
+      "reviewAngefordertAm": "2026-09-25T00:00:00.000Z",
+      "reviewVon": "b1000000-0000-4000-8000-000000000001",
+      "reviewAm": "2026-09-29T17:00:00.000Z",
+      "freigabeAngefordertAm": "2026-09-30T08:45:00.000Z",
+      "freigegebenVon": null,
+      "freigegebenAm": null,
+      "snapshot": {
+        "nummer": "1.2",
+        "mandant": "Talwind Outdoor GmbH",
+        "eingefroren": true,
+        "abschnitte": [
+          {
+            "key": "teilbereich",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die gesetzlichen Vertreter der Talwind Outdoor GmbH grenzen den Teilbereich „Umsatzsteuer & Erlös-Datenkette E-Commerce\" ab. Er umfasst die umsatzsteuerlichen Pflichten aus Online-Verkäufen im Inland und in allen Ländern mit Steuerpflicht sowie die Datenkette vom Shop bis zur Finanzbuchhaltung."
+              },
+              {
+                "typ": "baustein",
+                "art": "TEILBEREICH"
+              }
+            ]
+          },
+          {
+            "key": "kultur",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Geschäftsführung bekennt sich in der Steuerrichtlinie zur vollständigen und fristgerechten Erfüllung steuerlicher Pflichten. Verstöße werden nicht toleriert; Hinweise auf Fehler sind ausdrücklich erwünscht und haben keine Nachteile für die meldende Person."
+              }
+            ]
+          },
+          {
+            "key": "ziele",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Compliance-Ziele und der Risikoappetit sind von den gesetzlichen Vertretern freigegeben. Risiken oberhalb des Appetits erfordern eine Maßnahme oder eine dokumentierte Risikoakzeptanz."
+              },
+              {
+                "typ": "baustein",
+                "art": "ZIELE"
+              }
+            ]
+          },
+          {
+            "key": "risiken",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Kanzlei bewertet die risikorelevanten Prozesse jährlich und anlassbezogen. Die Bewertung folgt der dokumentierten Methodik aus Schadensintensität, Eintrittswahrscheinlichkeit und Reichweite; Ergebnisse und Begründungen sind im Risikoinventar hinterlegt."
+              },
+              {
+                "typ": "baustein",
+                "art": "RISIKOINVENTAR"
+              }
+            ]
+          },
+          {
+            "key": "programm",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Jedem Risiko sind Kontrollen mit Ziel, Schritten, Nachweisanforderung, Toleranz und Frequenz zugeordnet. Die Mindestfrequenz folgt aus Governance-Typ und Bruttoklasse; Schlüsselkontrollen werden im Vier-Augen-Prinzip gegengezeichnet."
+              },
+              {
+                "typ": "baustein",
+                "art": "KONTROLLMATRIX"
+              }
+            ]
+          },
+          {
+            "key": "organisation",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Verantwortlich für das Tax-CMS ist die Geschäftsführung. Die operative Steuerung liegt beim Tax-Compliance-Beauftragten; die Kanzlei führt die ihr übertragenen Kontrollen durch und würdigt Feststellungen fachlich."
+              },
+              {
+                "typ": "baustein",
+                "art": "VERANTWORTUNG"
+              }
+            ]
+          },
+          {
+            "key": "kommunikation",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Steuerrichtlinie und die Arbeitsanweisungen werden allen Beteiligten zur Kenntnis gegeben. Veränderungen im Geschäftsmodell meldet der Mandant über das Portal als Ereignis; die Kanzlei triagiert jede Meldung."
+              }
+            ]
+          },
+          {
+            "key": "ueberwachung",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Abweichungen aus Kontrollen, Ereignissen und Stichproben werden als Feststellungen erfasst und bis zur Nachkontrolle verfolgt. Erkannte steuerliche Fehler würdigt ein Berufsträger im Hinblick auf § 153 AO."
+              },
+              {
+                "typ": "baustein",
+                "art": "FESTSTELLUNGEN"
+              }
+            ]
+          },
+          {
+            "key": "anhang",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die länderspezifischen Besonderheiten der Fernverkäufe werden im Länder-Monitor geführt."
+              },
+              {
+                "typ": "baustein",
+                "art": "LAENDER"
+              }
+            ]
+          }
+        ]
+      },
+      "snapshotSha256": "85050466cd367af859c683d047f4797ec64f2a757f31e84e1a4089ad34d808d3",
+      "snapshotGeprueft": true,
+      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "cmvf9k8n80094g87dcb19jjso",
+      "nummer": "1.3",
+      "status": "ENTWURF",
+      "anzeige": "ENTWURF",
+      "abschnitte": [
+        {
+          "key": "teilbereich",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die gesetzlichen Vertreter der Talwind Outdoor GmbH grenzen den Teilbereich „Umsatzsteuer & Erlös-Datenkette E-Commerce\" ab. Er umfasst die umsatzsteuerlichen Pflichten aus Online-Verkäufen im Inland und in allen Ländern mit Steuerpflicht sowie die Datenkette vom Shop bis zur Finanzbuchhaltung."
+            },
+            {
+              "typ": "baustein",
+              "art": "TEILBEREICH"
+            }
+          ]
+        },
+        {
+          "key": "kultur",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Geschäftsführung bekennt sich in der Steuerrichtlinie zur vollständigen und fristgerechten Erfüllung steuerlicher Pflichten. Verstöße werden nicht toleriert; Hinweise auf Fehler sind ausdrücklich erwünscht und haben keine Nachteile für die meldende Person."
+            }
+          ]
+        },
+        {
+          "key": "ziele",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Compliance-Ziele und der Risikoappetit sind von den gesetzlichen Vertretern freigegeben. Risiken oberhalb des Appetits erfordern eine Maßnahme oder eine dokumentierte Risikoakzeptanz."
+            },
+            {
+              "typ": "baustein",
+              "art": "ZIELE"
+            }
+          ]
+        },
+        {
+          "key": "risiken",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Kanzlei bewertet die risikorelevanten Prozesse jährlich und anlassbezogen. Die Bewertung folgt der dokumentierten Methodik aus Schadensintensität, Eintrittswahrscheinlichkeit und Reichweite; Ergebnisse und Begründungen sind im Risikoinventar hinterlegt."
+            },
+            {
+              "typ": "baustein",
+              "art": "RISIKOINVENTAR"
+            }
+          ]
+        },
+        {
+          "key": "programm",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Jedem Risiko sind Kontrollen mit Ziel, Schritten, Nachweisanforderung, Toleranz und Frequenz zugeordnet. Die Mindestfrequenz folgt aus Governance-Typ und Bruttoklasse; Schlüsselkontrollen werden im Vier-Augen-Prinzip gegengezeichnet."
+            },
+            {
+              "typ": "baustein",
+              "art": "KONTROLLMATRIX"
+            }
+          ]
+        },
+        {
+          "key": "organisation",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Verantwortlich für das Tax-CMS ist die Geschäftsführung. Die operative Steuerung liegt beim Tax-Compliance-Beauftragten; die Kanzlei führt die ihr übertragenen Kontrollen durch und würdigt Feststellungen fachlich."
+            },
+            {
+              "typ": "baustein",
+              "art": "VERANTWORTUNG"
+            }
+          ]
+        },
+        {
+          "key": "kommunikation",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die Steuerrichtlinie und die Arbeitsanweisungen werden allen Beteiligten zur Kenntnis gegeben. Veränderungen im Geschäftsmodell meldet der Mandant über das Portal als Ereignis; die Kanzlei triagiert jede Meldung."
+            }
+          ]
+        },
+        {
+          "key": "ueberwachung",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Abweichungen aus Kontrollen, Ereignissen und Stichproben werden als Feststellungen erfasst und bis zur Nachkontrolle verfolgt. Erkannte steuerliche Fehler würdigt ein Berufsträger im Hinblick auf § 153 AO."
+            },
+            {
+              "typ": "baustein",
+              "art": "FESTSTELLUNGEN"
+            }
+          ]
+        },
+        {
+          "key": "anhang",
+          "bloecke": [
+            {
+              "typ": "text",
+              "text": "Die länderspezifischen Besonderheiten der Fernverkäufe werden im Länder-Monitor geführt."
+            },
+            {
+              "typ": "baustein",
+              "art": "LAENDER"
+            }
+          ]
+        }
+      ],
+      "createdAt": "2026-10-16T07:00:00.000Z",
+      "erstelltVon": "b1000000-0000-4000-8000-000000000002",
+      "reviewAngefordertVon": null,
+      "reviewAngefordertAm": null,
+      "reviewVon": null,
+      "reviewAm": null,
+      "freigabeAngefordertAm": null,
+      "freigegebenVon": null,
+      "freigegebenAm": null,
+      "snapshot": null,
+      "snapshotSha256": null,
+      "snapshotGeprueft": null,
+      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002"
+    }
+  ],
+  "freigaben": [
+    {
+      "id": "cmvf9k8nd0095g87dk8fp5l35",
+      "refId": "cmvf9k8n20093g87donaw4i34",
+      "status": "OFFEN",
+      "angefordertVon": "b1000000-0000-4000-8000-000000000001",
+      "angefordertAm": "2026-09-30T08:45:00.000Z",
+      "empfaengerId": "b1000000-0000-4000-8000-000000000011",
+      "codeStatus": "KEIN",
+      "codeAblauf": null,
+      "anmerkung": null,
+      "erledigtAm": null
+    }
+  ],
+  "zurueckweisungen": [],
+  "bausteine": {
+    "TEILBEREICH": {
+      "name": "Umsatzsteuer & Erlös-Datenkette E-Commerce",
+      "abgrenzung": "Umsatzsteuerliche Pflichten aus Online-Verkäufen (eigener Shop und Marktplätze) im Inland und in allen Ländern mit Steuerpflicht sowie die Erlös-Datenkette vom Shop über Zahlungsdienstleister bis zur Finanzbuchhaltung.",
+      "einschluesse": [
+        "Umsatzsteuer DE und EU",
+        "OSS/IOSS",
+        "Erlös-Datenkette Shop → ZDL → FiBu",
+        "ausgewählte Ertragsteuerrisiken"
+      ],
+      "ausschluesse": [
+        "Lohnsteuer",
+        "Zoll außer EUSt",
+        "Verpackungs-, Elektro- und Batterieregister",
+        "Produktsicherheit"
+      ],
+      "zielLaender": ["DE", "AT", "BE", "CZ", "ES", "FR", "IT", "NL", "PL"],
+      "kanaele": ["eigener Shop (Shopware 6)", "Amazon", "eBay"]
+    },
+    "ZIELE": {
+      "appetit": "MITTEL",
+      "ziele": [
+        {
+          "text": "Vollständige, richtige und fristgerechte Erfüllung der umsatzsteuerlichen Erklärungs- und Zahlungspflichten in allen Ländern mit Steuerpflicht.",
+          "wesentlichkeitEur": 5000,
+          "risikoappetit": "MITTEL",
+          "freigabe": "FREIGEGEBEN",
+          "freigegebenAm": "2026-03-05",
+          "freigegebenVon": "—",
+          "freigegebenVonId": "b1000000-0000-4000-8000-000000000011"
+        },
+        {
+          "text": "Lückenlose und abgestimmte Erfassung aller Erlöse aus Shop, Marktplätzen und Zahlungsdienstleistern.",
+          "wesentlichkeitEur": 2500,
+          "risikoappetit": "MITTEL",
+          "freigabe": "FREIGEGEBEN",
+          "freigegebenAm": "2026-03-05",
+          "freigegebenVon": "—",
+          "freigegebenVonId": "b1000000-0000-4000-8000-000000000011"
+        },
+        {
+          "text": "Erkannte Fehler werden unverzüglich gewürdigt und, soweit erforderlich, berichtigt.",
+          "wesentlichkeitEur": 0,
+          "risikoappetit": "MITTEL",
+          "freigabe": "FREIGEGEBEN",
+          "freigegebenAm": "2026-03-05",
+          "freigegebenVon": "—",
+          "freigegebenVonId": "b1000000-0000-4000-8000-000000000011"
+        }
+      ]
+    },
+    "RISIKOINVENTAR": {
+      "appetit": "MITTEL",
+      "sicht": "BETRIEB",
+      "risiken": [
+        {
+          "code": "EC-GOB-01",
+          "titel": "Erlöse unvollständig gebucht",
+          "gt": "FP",
+          "brutto": "KRITISCH",
+          "netto": "HOCH",
+          "ueberAppetit": true,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-UST-01",
+          "titel": "EU-Lieferschwelle unbemerkt überschritten",
+          "gt": "FF",
+          "brutto": "KRITISCH",
+          "netto": "HOCH",
+          "ueberAppetit": true,
+          "kontrollen": 1
+        },
+        {
+          "code": "EC-UST-02",
+          "titel": "Falscher Steuersatz in Shop- oder Marktplatzregeln",
+          "gt": "FF",
+          "brutto": "KRITISCH",
+          "netto": "MITTEL",
+          "ueberAppetit": false,
+          "kontrollen": 3
+        },
+        {
+          "code": "EC-UST-05",
+          "titel": "Ausländisches Lager ohne Registrierung",
+          "gt": "FF",
+          "brutto": "KRITISCH",
+          "netto": "HOCH",
+          "ueberAppetit": true,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-VER-01",
+          "titel": "Erkannter Fehler nicht berichtigt",
+          "gt": "FF",
+          "brutto": "KRITISCH",
+          "netto": "HOCH",
+          "ueberAppetit": true,
+          "kontrollen": 1
+        },
+        {
+          "code": "EC-VER-03",
+          "titel": "Rechts- oder Satzänderung nicht nachvollzogen",
+          "gt": "FF",
+          "brutto": "KRITISCH",
+          "netto": "HOCH",
+          "ueberAppetit": true,
+          "kontrollen": 1
+        },
+        {
+          "code": "EC-UST-03",
+          "titel": "OSS-Erklärung unvollständig, falsch oder verspätet",
+          "gt": "FP",
+          "brutto": "HOCH",
+          "netto": "MITTEL",
+          "ueberAppetit": false,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-UST-04",
+          "titel": "Umsätze falsch dem OSS zugeordnet",
+          "gt": "FP",
+          "brutto": "HOCH",
+          "netto": "MITTEL",
+          "ueberAppetit": false,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-UST-09",
+          "titel": "Entgeltminderungen nicht oder falsch korrigiert",
+          "gt": "FP",
+          "brutto": "HOCH",
+          "netto": "MITTEL",
+          "ueberAppetit": false,
+          "kontrollen": 3
+        },
+        {
+          "code": "EC-ERT-01",
+          "titel": "Fremdlagerbestände nicht vollständig erfasst",
+          "gt": "FP",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 1
+        },
+        {
+          "code": "EC-ERT-03",
+          "titel": "Ausländische Betriebsstätte nicht geprüft",
+          "gt": "IN",
+          "brutto": "MITTEL",
+          "netto": "MITTEL",
+          "ueberAppetit": false,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-GOB-02",
+          "titel": "Verfahrensdokumentation der Datenkette fehlt",
+          "gt": "FF",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 1
+        },
+        {
+          "code": "EC-GOB-03",
+          "titel": "Plattform- und Shopdaten nicht aufbewahrt",
+          "gt": "FP",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-UST-06",
+          "titel": "Steuerfreie ig. B2B-Lieferung ohne Nachweise",
+          "gt": "FP",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-UST-07",
+          "titel": "§-13b-Eingangsleistungen nicht erfasst",
+          "gt": "FP",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-UST-08",
+          "titel": "Gutscheine falsch eingeordnet",
+          "gt": "FF",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-UST-11",
+          "titel": "B2B-Rechnungen ohne Pflichtangaben oder E-Rechnung",
+          "gt": "FF",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 1
+        },
+        {
+          "code": "EC-UST-12",
+          "titel": "Einfuhrumsatzsteuer ohne Berechtigung abgezogen",
+          "gt": "FP",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 1
+        },
+        {
+          "code": "EC-UST-13",
+          "titel": "Marktplatz-Nachweise und Plattformmeldungen",
+          "gt": "FP",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 1
+        },
+        {
+          "code": "EC-VER-02",
+          "titel": "Frist versäumt",
+          "gt": "FP",
+          "brutto": "MITTEL",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 1
+        },
+        {
+          "code": "EC-ERT-02",
+          "titel": "Abgrenzung im Abschluss fehlerhaft",
+          "gt": "FP",
+          "brutto": "GERING",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 2
+        },
+        {
+          "code": "EC-UST-10",
+          "titel": "Falsche Periodenzuordnung",
+          "gt": "FP",
+          "brutto": "GERING",
+          "netto": "GERING",
+          "ueberAppetit": false,
+          "kontrollen": 2
+        }
+      ]
+    },
+    "KONTROLLMATRIX": {
+      "kontrollen": [
+        {
+          "code": "K-EC-01",
+          "titel": "Lieferschwellen-Monitor",
+          "art": "D",
+          "frequenz": "monatlich + bei Auslösung",
+          "partei": "KANZLEI",
+          "schluessel": true,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-01"]
+        },
+        {
+          "code": "K-EC-02",
+          "titel": "Review der Steuerregeln in Shop und Marktplätzen",
+          "art": "P",
+          "frequenz": "monatlich + bei Auslösung",
+          "partei": "MANDANT",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-02"]
+        },
+        {
+          "code": "K-EC-03",
+          "titel": "Bestellstichprobe Steuerausweis",
+          "art": "D",
+          "frequenz": "monatlich + bei Auslösung",
+          "partei": "KANZLEI",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-02", "EC-UST-08"]
+        },
+        {
+          "code": "K-EC-04",
+          "titel": "OSS-Abstimmung vor Abgabe",
+          "art": "D",
+          "frequenz": "quartalsweise",
+          "partei": "KANZLEI",
+          "schluessel": true,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-03", "EC-UST-04", "EC-UST-09"]
+        },
+        {
+          "code": "K-EC-05",
+          "titel": "Lagerland-Monitor",
+          "art": "D",
+          "frequenz": "monatlich + bei Auslösung",
+          "partei": "MANDANT",
+          "schluessel": true,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-ERT-03", "EC-UST-05"]
+        },
+        {
+          "code": "K-EC-06",
+          "titel": "Verbringens- und ZM-Abstimmung",
+          "art": "D",
+          "frequenz": "monatlich + bei Auslösung",
+          "partei": "KANZLEI",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-04", "EC-UST-05", "EC-UST-06"]
+        },
+        {
+          "code": "K-EC-07",
+          "titel": "USt-IdNr.-Bestätigung und Gelangensnachweise",
+          "art": "P",
+          "frequenz": "monatlich + bei Auslösung",
+          "partei": "MANDANT",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-06"]
+        },
+        {
+          "code": "K-EC-08",
+          "titel": "Kreditorencheck § 13b",
+          "art": "D",
+          "frequenz": "monatlich",
+          "partei": "KANZLEI",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-07"]
+        },
+        {
+          "code": "K-EC-09",
+          "titel": "Freigabe neuer Gutschein-, Abo- oder Bundle-Modelle",
+          "art": "P",
+          "frequenz": "quartalsweise + bei Auslösung",
+          "partei": "MANDANT",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-ERT-02", "EC-UST-08"]
+        },
+        {
+          "code": "K-EC-10",
+          "titel": "Erstattungs- und Retourenabstimmung",
+          "art": "D",
+          "frequenz": "monatlich",
+          "partei": "KANZLEI",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-09"]
+        },
+        {
+          "code": "K-EC-11",
+          "titel": "Dreifach-Abstimmung Shop/Zahlungsdienstleister/FiBu",
+          "art": "D",
+          "frequenz": "monatlich",
+          "partei": "KANZLEI",
+          "schluessel": true,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-GOB-01", "EC-UST-09", "EC-UST-10"]
+        },
+        {
+          "code": "K-EC-12",
+          "titel": "UStVA-Plausibilisierung vor Abgabe",
+          "art": "D",
+          "frequenz": "monatlich",
+          "partei": "KANZLEI",
+          "schluessel": true,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-GOB-01", "EC-UST-07", "EC-UST-10"]
+        },
+        {
+          "code": "K-EC-13",
+          "titel": "Fristenkontrolle aller USt-Pflichten",
+          "art": "P",
+          "frequenz": "monatlich + bei Auslösung",
+          "partei": "KANZLEI",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-03", "EC-VER-02"]
+        },
+        {
+          "code": "K-EC-14",
+          "titel": "Change-Management Systeme und Schnittstellen",
+          "art": "P",
+          "frequenz": "quartalsweise + bei Auslösung",
+          "partei": "MANDANT",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-GOB-02", "EC-GOB-03"]
+        },
+        {
+          "code": "K-EC-15",
+          "titel": "Prüfung der B2B-Rechnungsvorlagen und E-Rechnung",
+          "art": "P",
+          "frequenz": "quartalsweise + bei Auslösung",
+          "partei": "MANDANT",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-11"]
+        },
+        {
+          "code": "K-EC-16",
+          "titel": "EUSt-Belegprüfung vor Vorsteuerabzug",
+          "art": "D",
+          "frequenz": "monatlich",
+          "partei": "KANZLEI",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-12"]
+        },
+        {
+          "code": "K-EC-17",
+          "titel": "Abgleich Marktplatz-Nachweise und Plattformmeldungen",
+          "art": "D",
+          "frequenz": "quartalsweise",
+          "partei": "MANDANT",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-13"]
+        },
+        {
+          "code": "K-EC-18",
+          "titel": "Inventur und Abgleich Fremdlager",
+          "art": "D",
+          "frequenz": "quartalsweise",
+          "partei": "MANDANT",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-ERT-01"]
+        },
+        {
+          "code": "K-EC-19",
+          "titel": "Abschlussabgrenzung E-Commerce",
+          "art": "D",
+          "frequenz": "jährlich",
+          "partei": "KANZLEI",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-ERT-02"]
+        },
+        {
+          "code": "K-EC-20",
+          "titel": "Berichtigungsprozess",
+          "art": "K",
+          "frequenz": "monatlich + bei Auslösung",
+          "partei": "KANZLEI",
+          "schluessel": true,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-VER-01"]
+        },
+        {
+          "code": "K-EC-21",
+          "titel": "Rechtsänderungs-Monitoring",
+          "art": "D",
+          "frequenz": "monatlich + bei Auslösung",
+          "partei": "KANZLEI",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-UST-02", "EC-VER-03"]
+        },
+        {
+          "code": "K-EC-22",
+          "titel": "Kenntnisnahme Steuerrichtlinie und Schulung",
+          "art": "P",
+          "frequenz": "jährlich + bei Auslösung",
+          "partei": "MANDANT",
+          "schluessel": false,
+          "design": "NICHT_BEURTEILT",
+          "designVon": null,
+          "designVonId": null,
+          "designAm": null,
+          "risikoCodes": []
+        },
+        {
+          "code": "K-EC-23",
+          "titel": "Report-Export und geschützte Ablage",
+          "art": "P",
+          "frequenz": "quartalsweise",
+          "partei": "MANDANT",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-GOB-03"]
+        },
+        {
+          "code": "K-EC-24",
+          "titel": "Gegengezeichnete Risikoaufklärung",
+          "art": "P",
+          "frequenz": "jährlich + bei Auslösung",
+          "partei": "KANZLEI",
+          "schluessel": false,
+          "design": "ANGEMESSEN",
+          "designVon": "—",
+          "designVonId": "b1000000-0000-4000-8000-000000000001",
+          "designAm": "2026-03-11",
+          "risikoCodes": ["EC-ERT-03"]
+        }
+      ]
+    },
+    "VERANTWORTUNG": {
+      "rollen": [
+        {
+          "rolle": "Gesetzliche Vertretung",
+          "name": "—",
+          "personId": "b1000000-0000-4000-8000-000000000011"
+        },
+        {
+          "rolle": "Tax-Compliance-Beauftragte:r",
+          "name": "—",
+          "personId": "b1000000-0000-4000-8000-000000000012"
+        },
+        {
+          "rolle": "Berufsträger:in (Kanzlei)",
+          "name": "—",
+          "personId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "rolle": "Bearbeitung (Kanzlei)",
+          "name": "—",
+          "personId": "b1000000-0000-4000-8000-000000000002"
+        }
+      ],
+      "kontrollen": [
+        {
+          "code": "K-EC-01",
+          "titel": "Lieferschwellen-Monitor",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-02",
+          "titel": "Review der Steuerregeln in Shop und Marktplätzen",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-03",
+          "titel": "Bestellstichprobe Steuerausweis",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-04",
+          "titel": "OSS-Abstimmung vor Abgabe",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-05",
+          "titel": "Lagerland-Monitor",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-06",
+          "titel": "Verbringens- und ZM-Abstimmung",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-07",
+          "titel": "USt-IdNr.-Bestätigung und Gelangensnachweise",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-08",
+          "titel": "Kreditorencheck § 13b",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-09",
+          "titel": "Freigabe neuer Gutschein-, Abo- oder Bundle-Modelle",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-10",
+          "titel": "Erstattungs- und Retourenabstimmung",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-11",
+          "titel": "Dreifach-Abstimmung Shop/Zahlungsdienstleister/FiBu",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-12",
+          "titel": "UStVA-Plausibilisierung vor Abgabe",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-13",
+          "titel": "Fristenkontrolle aller USt-Pflichten",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-14",
+          "titel": "Change-Management Systeme und Schnittstellen",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-15",
+          "titel": "Prüfung der B2B-Rechnungsvorlagen und E-Rechnung",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-16",
+          "titel": "EUSt-Belegprüfung vor Vorsteuerabzug",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-17",
+          "titel": "Abgleich Marktplatz-Nachweise und Plattformmeldungen",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-18",
+          "titel": "Inventur und Abgleich Fremdlager",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-19",
+          "titel": "Abschlussabgrenzung E-Commerce",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-20",
+          "titel": "Berichtigungsprozess",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000001",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000003"
+        },
+        {
+          "code": "K-EC-21",
+          "titel": "Rechtsänderungs-Monitoring",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-22",
+          "titel": "Kenntnisnahme Steuerrichtlinie und Schulung",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "code": "K-EC-23",
+          "titel": "Report-Export und geschützte Ablage",
+          "partei": "MANDANT",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "— (Mandant)",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+          "vertretungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000013"
+        },
+        {
+          "code": "K-EC-24",
+          "titel": "Gegengezeichnete Risikoaufklärung",
+          "partei": "KANZLEI",
+          "durchfuehrend": "—",
+          "vertretung": "—",
+          "gegenzeichnung": "—",
+          "durchfuehrendId": "b1000000-0000-4000-8000-000000000001",
+          "vertretungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000003"
+        }
+      ]
+    },
+    "LAENDER": {
+      "stand": "2026-09-30",
+      "summeLfd": 1089300,
+      "summeVorjahr": 1260000,
+      "schwelle": "Schwelle überschritten",
+      "laender": [
+        {
+          "land": "FR",
+          "name": "Frankreich",
+          "fernverkaeufeLfdEur": 241900,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "land": "IT",
+          "name": "Italien",
+          "fernverkaeufeLfdEur": 198300,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "land": "AT",
+          "name": "Österreich",
+          "fernverkaeufeLfdEur": 186400,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "land": "PL",
+          "name": "Polen",
+          "fernverkaeufeLfdEur": 143800,
+          "lagerSeit": "2025-03",
+          "oss": true,
+          "lokaleUstNr": true,
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "land": "NL",
+          "name": "Niederlande",
+          "fernverkaeufeLfdEur": 122700,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "registrierung": "VOLLSTAENDIG"
+        },
+        {
+          "land": "ES",
+          "name": "Spanien",
+          "fernverkaeufeLfdEur": 96100,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "registrierung": "PRUEFEN"
+        },
+        {
+          "land": "CZ",
+          "name": "Tschechien",
+          "fernverkaeufeLfdEur": 61200,
+          "lagerSeit": "2026-08",
+          "oss": true,
+          "lokaleUstNr": false,
+          "registrierung": "FEHLT"
+        },
+        {
+          "land": "BE",
+          "name": "Belgien",
+          "fernverkaeufeLfdEur": 38900,
+          "lagerSeit": null,
+          "oss": true,
+          "lokaleUstNr": false,
+          "registrierung": "VOLLSTAENDIG"
+        }
+      ]
+    },
+    "FESTSTELLUNGEN": {
+      "feststellungen": [
+        {
+          "nummer": "F-2026-007",
+          "titel": "Lager CZ ohne Registrierung und ohne Verbringensmeldung",
+          "schwere": "HOCH",
+          "status": "In Würdigung",
+          "massnahmenOffen": 3
+        },
+        {
+          "nummer": "F-2026-006",
+          "titel": "Erstattungen FR/IT nicht im OSS korrigiert",
+          "schwere": "GERING",
+          "status": "Nachkontrolle",
+          "massnahmenOffen": 0
+        }
+      ]
+    }
+  },
+  "gesetzlicheVertreter": ["b1000000-0000-4000-8000-000000000011"],
+  "darfBearbeiten": true,
+  "namen": []
+}

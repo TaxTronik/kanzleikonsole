@@ -6219,7 +6219,9 @@
         "apps/web/src/server/tcms/programm/zustaendigkeit.ts",
         "apps/web/src/server/tcms/programm/einrichtung.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/actions.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/actions.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/kommunikation/actions.ts"
       ],
       "test_refs": [
         "apps/web/src/server/tcms/__tests__/seite.test.ts",
@@ -6234,7 +6236,9 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/__tests__/actions.test.ts",
         "apps/web/src/server/tcms/programm/__tests__/zustaendigkeit-db.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/__tests__/aktionen.test.ts",
-        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/__tests__/aktionen.test.ts"
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/__tests__/aktionen.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/__tests__/aktionen.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/kommunikation/__tests__/aktionen.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
       "related_rules": ["ACCESS-CLIENT-MODE-001", "ACCESS-TENANT-RLS-001", "TCMS-DIENST-001"],
@@ -6300,7 +6304,11 @@
         "apps/web/src/components/tcms/feststellungen/formulare.tsx",
         "apps/web/src/app/staff/(protected)/tcms/arbeitskorb/ansicht.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/page.tsx",
-        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/page.tsx"
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/teile.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/kommunikation/page.tsx",
+        "apps/web/src/components/tcms/programm/beschreibung.tsx"
       ],
       "test_refs": [
         "apps/web/src/server/tcms/__tests__/zustand.test.ts",
@@ -6317,7 +6325,10 @@
         "apps/web/src/app/staff/(protected)/tcms/arbeitskorb/__tests__/seite.test.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/__tests__/seite.test.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/profil/__tests__/seite.test.tsx",
-        "apps/web/src/app/staff/(protected)/tcms/katalog/__tests__/seite.test.tsx"
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/__tests__/seite.test.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/kommunikation/__tests__/seite.test.tsx",
+        "apps/web/src/app/staff/(protected)/tcms/katalog/__tests__/seite.test.tsx",
+        "apps/web/src/components/tcms/programm/__tests__/programm.test.tsx"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
       "related_rules": ["TCMS-AKTEUR-001", "TCMS-SAMPLE-PROOF-001"],

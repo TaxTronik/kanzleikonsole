@@ -1,0 +1,32 @@
+{
+  "stand": "2026-10-19",
+  "historisch": false,
+  "freigaben": [
+    {
+      "id": "cmvf9k8ni0096g87dnb5c4p96",
+      "art": "KENNTNISNAHME",
+      "titel": "Steuerrichtlinie v1.1",
+      "empfaengerId": "b1000000-0000-4000-8000-000000000012",
+      "angefordertVon": "b1000000-0000-4000-8000-000000000001",
+      "angefordertAm": "2026-09-30T09:00:00.000Z",
+      "status": "OFFEN",
+      "erledigtAm": null,
+      "anmerkung": null,
+      "codeStatus": "KEIN",
+      "codeAblauf": null
+    },
+    {
+      "id": "cmvf9k8nd0095g87dk8fp5l35",
+      "art": "BESCHREIBUNG",
+      "titel": "CMS-Beschreibung v1.2",
+      "empfaengerId": "b1000000-0000-4000-8000-000000000011",
+      "angefordertVon": "b1000000-0000-4000-8000-000000000001",
+      "angefordertAm": "2026-09-30T08:45:00.000Z",
+      "status": "OFFEN",
+      "erledigtAm": null,
+      "anmerkung": null,
+      "codeStatus": "KEIN",
+      "codeAblauf": null
+    }
+  ]
+}
