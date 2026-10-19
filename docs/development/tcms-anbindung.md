@@ -306,13 +306,16 @@ Entwicklungsumgebung; `main` ist im Haupt-Checkout ausgecheckt, deshalb
 git -C /home/claude/tcms worktree add --detach /home/claude/wt/tcms-kkct main
 cd /home/claude/wt/tcms-kkct
 pnpm install --frozen-lockfile && pnpm db:generate
+# Lokale .env (Modus 600) mit SESSION_SECRET und TCMS_CODE_SCHLUESSEL – ohne
+# Code-Schlüssel startet der Dienst nicht (TCMS s8); Werte nie ausgeben.
+pnpm env:lokal
 bash /home/claude/work/tcms-mkdb.sh tcms_kkct /home/claude/wt/tcms-kkct
 # Schlüsselpaar: Ausgabe in eine Datei mit Modus 600, nie ins Terminal-Log.
 umask 077 && node scripts/akteur-schluessel.mjs --kid kk-vertrag > ~/kkct-schluessel.txt
 # API auf freiem Port (Token zufällig, z. B. openssl rand -base64 48):
 TCMS_SERVICE_TOKENS=<token> TCMS_ACTOR_PUBLIC_KEYS=<kid>=<spki> \
   DATABASE_URL=postgresql://tcms_app:<passwort>@127.0.0.1:55432/tcms_kkct \
-  HOST=127.0.0.1 PORT=<port> node_modules/.bin/tsx apps/api/src/server.ts
+  HOST=127.0.0.1 PORT=<port> node_modules/.bin/tsx --env-file=.env apps/api/src/server.ts
 # Vertragstest in der kanzleikonsole:
 cd <kanzleikonsole>/packages/tcms-client
 TCMS_CONTRACT_TESTS=1 TCMS_URL=http://127.0.0.1:<port> TCMS_SERVICE_TOKEN=<token> \
