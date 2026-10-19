@@ -4,8 +4,8 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:95e48cf260e4b9d27b70e942accf6512511c615a6197991124a3b56a3bee8e4e",
-    "expected_active_rule_count": 83,
+    "definition_sha256": "sha256:db2e4158f28561b7789f7cc404c3d19a55da953f3a5aed44920022c43f5a6505",
+    "expected_active_rule_count": 85,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
       "ACCESS-CLIENT-MODE-001",
@@ -86,6 +86,8 @@
       "TAX-NOTICE-APPEAL-001",
       "TAX-NOTICE-DATARETRIEVAL-001",
       "TAX-NOTICE-DECISION-001",
+      "TCMS-AKTEUR-001",
+      "TCMS-DIENST-001",
       "TCMS-SAMPLE-PROOF-001",
       "VDB-PREPARATION-001",
       "WORKFLOW-DEPENDENCY-001",
@@ -104,8 +106,8 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 83,
-  "active_rule_count": 83,
+  "rule_count": 85,
+  "active_rule_count": 85,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
@@ -6055,6 +6057,141 @@
       "tags": ["workflow", "mandantenportal", "ungeprueft"],
       "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-notice-decision-001-persoenliche-rueckmeldung.md",
       "summary": "Eine berechtigte Kanzleiperson erstellt zu einem GEPRUEFT-Bescheid mit berechnetem Fristvorschlag ohne offenen manuellen Prüfbedarf eine persönliche Rückfrage. Erforderlich sind eine Erklärung, ein aktiver Mandantenkontakt, eine bereits geteilte saubere Dokumentfassung und eine künftige Antwortfrist, die den gespeicherten Einspruchsfristtag nicht überschreitet."
+    },
+    {
+      "id": "TCMS-AKTEUR-001",
+      "title": "Akteursbestätigungen an das Tax-CMS höchstens im Umfang des eigenen Mandantenzugriffs ausstellen",
+      "domain": "subsumtion-und-tcms",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger TCMS und Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Die kanzleikonsole bestätigt dem Tax-CMS je Aufruf Person, Rollen und Mandantenbezug ausschließlich aus der geprüften Sitzung und dem aktuellen Datenbestand; ohne Mandantenzugriff nach ACCESS-CLIENT-MODE-001 entsteht keine Bestätigung und kein Aufruf. Seiten und Aktionen der Oberflächen nutzen dafür zentrale Helfer; Personen aus Formularen werden gegen den Mandanten geprüft. Die fachliche Freigabe der Abbildungstabelle steht aus."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Anbindung des Tax-CMS, Abschnitt 4 (Akteursabbildung) und Abschnitt 7 (Oberflächen)",
+          "path": "docs/development/tcms-anbindung.md",
+          "checked_at": "2026-10-19",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Leitfaden Tax-CMS-Oberflächen",
+          "path": "docs/development/tcms-oberflaechen.md",
+          "checked_at": "2026-10-19",
+          "primary": false
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Tax-CMS",
+          "path": "docs/anwenderdoku/tax-cms.md",
+          "checked_at": "2026-10-19",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/tcms/akteur.ts",
+        "apps/web/src/server/tcms/seite.ts",
+        "apps/web/src/server/tcms/aktion.ts",
+        "apps/web/src/server/tcms/personen.ts",
+        "apps/web/src/server/tcms/namen.ts",
+        "apps/web/src/server/tcms/mandant.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/server/tcms/__tests__/seite.test.ts",
+        "apps/web/src/server/tcms/__tests__/aktion.test.ts",
+        "apps/web/src/server/tcms/__tests__/zustand.test.ts",
+        "apps/web/src/server/tcms/__tests__/namen-personen-db.test.ts",
+        "apps/web/src/server/tcms/__tests__/akteur-db.test.ts",
+        "apps/web/src/__tests__/client-page-authz.test.ts",
+        "apps/web/src/server/tcms/__tests__/mandant.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/actions.test.ts"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
+      "related_rules": ["ACCESS-CLIENT-MODE-001", "ACCESS-TENANT-RLS-001", "TCMS-DIENST-001"],
+      "tags": ["tcms", "akteur", "mandantenzugriff", "bestätigung"],
+      "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/tcms-akteur-001-bestaetigungsumfang.md",
+      "summary": "Das Tax-CMS leitet seine Rechte (Lesen, Bearbeiten, §-153-Würdigung) aus einer signierten Akteursbestätigung der kanzleikonsole ab. Die kanzleikonsole stellt diese Bestätigung nur aus der geprüften Sitzung und dem aktuellen Datenbestand aus und bestätigt nie mehr, als sie selbst gewährt: einen Mandantenbezug nur bei Zugriff nach ACCESS-CLIENT-MODE-001, die Rolle Admin/Partner nur bei aktuellem Rollenstand, Zuständigkeiten nur aus den Zuordnungen des Mandanten. Ohne Bestätigung findet kein Aufruf statt."
+    },
+    {
+      "id": "TCMS-DIENST-001",
+      "title": "Tax-CMS als Werkzeug – fachliche Entscheidungen trifft der Dienst, die kanzleikonsole zeigt an",
+      "domain": "subsumtion-und-tcms",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger TCMS und Qualitätssicherung",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Rechte, Vier-Augen-Prinzip, §-153-Würdigung, Vertraulichkeit und Statusübergänge entscheidet der Tax-CMS-Dienst. Die Oberflächen der kanzleikonsole zeigen dessen Antworten an, bilden Fehler über feste Texte ab und rechnen nichts nach. Umgesetzt sind Cockpit, Kontakte & Rollen, Portfolio und Portal-Übersicht; die übrigen Bereiche folgen."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Leitfaden Tax-CMS-Oberflächen",
+          "path": "docs/development/tcms-oberflaechen.md",
+          "checked_at": "2026-10-19",
+          "primary": true
+        },
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Tax-CMS",
+          "path": "docs/anwenderdoku/tax-cms.md",
+          "checked_at": "2026-10-19",
+          "primary": false
+        },
+        {
+          "kind": "internal_policy",
+          "citation": "TCMS-Einordnung und Abgrenzung zu einer unabhängigen Prüfung",
+          "path": "docs/compliance/idw-ps980-tcms.md",
+          "checked_at": "2026-10-19",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/server/tcms/zustand.ts",
+        "apps/web/src/server/tcms/seite.ts",
+        "apps/web/src/server/tcms/aktion.ts",
+        "apps/web/src/components/tcms/feststellung.tsx",
+        "apps/web/src/components/tcms/disclaimer.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/cockpit.tsx",
+        "apps/web/src/lib/navigation-registry.ts",
+        "apps/web/src/app/staff/(protected)/layout.tsx",
+        "apps/web/src/app/portal/(protected)/layout.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/page.tsx"
+      ],
+      "test_refs": [
+        "apps/web/src/server/tcms/__tests__/zustand.test.ts",
+        "apps/web/src/server/tcms/__tests__/seite.test.ts",
+        "apps/web/src/server/tcms/__tests__/aktion.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/seiten.test.tsx",
+        "apps/web/src/app/staff/(protected)/tcms/__tests__/portfolio.test.tsx",
+        "apps/web/src/app/portal/(protected)/tcms/__tests__/portal.test.tsx",
+        "apps/web/src/lib/__tests__/navigation-registry.test.ts",
+        "apps/web/src/app/__tests__/protected-layouts.test.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/__tests__/page-streaming.test.tsx"
+      ],
+      "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
+      "related_rules": ["TCMS-AKTEUR-001", "TCMS-SAMPLE-PROOF-001"],
+      "tags": ["tcms", "werkzeug", "anzeige", "vertraulichkeit"],
+      "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/tcms-dienst-001-werkzeug.md",
+      "summary": "Das Tax-CMS strukturiert und belegt das Tax-Compliance-Programm eines Mandanten. Ob eine Person bearbeiten oder würdigen darf, ob ein Vier-Augen- Schritt zulässig ist, wie eine §-153-Würdigung festgehalten wird, was vertraulich bleibt und welcher Status folgt, entscheidet allein der Dienst. Die kanzleikonsole zeigt Daten und Rechte-Kennzeichen des Dienstes an, bildet Fehler über feste Texte ab und erfindet keine Ersatzlogik. Weder Werkzeug noch Oberfläche treffen eine Aussage über Angemessenheit oder Wirksamkeit (Ausschluss TCMS-EFFECTIVENESS-001)."
     },
     {
       "id": "TCMS-SAMPLE-PROOF-001",

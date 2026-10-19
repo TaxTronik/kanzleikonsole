@@ -20,7 +20,7 @@ Steuererklärungen ⚙ · Telefonzettel ⚙ · Wiedervorlagen ⚙ · Pendelordne
 Anlieferungen ⚙ · Fristenkontrollbuch
 
 **Beratung & Auswertung** — BWA, Hochrechnung & Planung ⚙ ·
-Subsumtions-Workspace / TCMS ⚙ · Wissensdatenbank ⚙
+Subsumtions-Workspace / TCMS ⚙ · Tax-CMS ⚙ · Wissensdatenbank ⚙
 
 **Abrechnung & Vertretung** — Rechnungen ⚙ · Vollmachten ⚙ · Zeiterfassung ⚙
 
@@ -33,7 +33,7 @@ Tätigkeitsbereiche/Skills · Kanzlei-Einstellungen
 
 **Mandanten-Portal** — Login · Anforderungen · Formulare · Dokumente ·
 Stammdaten-Self-Service · Steuererklärungen · Termine · Auswertungen ·
-Rechnungen · Anlieferungen · GwG-Onboarding · Mandantenpost ⚙
+Rechnungen · Anlieferungen · GwG-Onboarding · Mandantenpost ⚙ · Tax-CMS ⚙
 
 **Querschnitt** — Globale Suche · Benachrichtigungen · DSGVO · Compliance &
 Audit · Backups & DR · Update-Mechanik & Lizenz · ELSTER-Anbindung
@@ -1136,6 +1136,58 @@ Kanzlei nicht.
   ausgewiesen. Die Nachschau bleibt fachliche Aufgabe der Kanzlei.
   Quantenrandomness beweist weder Vollständigkeit des Rahmens noch fachliche
   Angemessenheit der Stichprobenparameter
+
+## Tax-CMS ⚙
+
+Anbindung des Tax-CMS als interner headless Dienst (ADR 0001 des TCMS-Repos):
+Das Tax-CMS hält Programm, Risiken, Kontrollen, Durchführungen, Feststellungen
+und Ereignisse und entscheidet Rechte, Vier-Augen-Prinzip, §-153-Würdigung
+und Vertraulichkeit; die kanzleikonsole besitzt Anmeldung, Oberfläche,
+Personen und Mandanten. Werkzeug ohne Aussage über Angemessenheit oder
+Wirksamkeit. Anwenderkapitel: [Tax-CMS](docs/anwenderdoku/tax-cms.md);
+Technik: [Anbindung](docs/development/tcms-anbindung.md),
+[Leitfaden Oberflächen](docs/development/tcms-oberflaechen.md),
+[Betrieb](docs/operations/tcms-betrieb.md).
+
+### Zugang & Aktivierung
+
+- Modul `tcms` pro Tenant (Standard aus) **plus** konfigurierter Dienst
+  (`TCMS_DEPLOYMENT` `managed` oder `external`); ohne Dienst kein Menüpunkt,
+  direkt aufgerufene Seiten zeigen „nicht eingerichtet“
+- Jeder Aufruf trägt eine signierte Akteursbestätigung aus der geprüften
+  Sitzung: Mandantenbezug nur bei Zugriff nach ACCESS-CLIENT-MODE-001,
+  Admin/Partner, Berufsträgereigenschaft und Zuordnungen aus dem aktuellen
+  Datenbestand (Fachkatalog TCMS-AKTEUR-001, ungeprüfter Entwurf)
+
+### Oberflächen (Stufe 3)
+
+- **Portfolio** `/staff/tcms`: alle sichtbaren Mandanten mit Phase,
+  Teilbereich, offenen §-153-Würdigungen, Risikolage, Zeitraum und fälligen
+  Durchführungen; Kennzahlen und Filter (Suche, Phase, eigene Mandate,
+  Überfälliges, Handlungsbedarf)
+- **Cockpit** `/staff/clients/[id]/tcms` (Reiter der Mandantenakte):
+  Grundelemente, Risiko-Heatmap, Wirksamkeitszeitraum, Fälliges,
+  Feststellungen (vertrauliche maskiert), Ereignisse, Länder, Stichtag für
+  frühere Stände; Mandant im Tax-CMS anlegen bzw. Stammdaten übernehmen (nur
+  Name, Rechtsform, DATEV-Nr.)
+- **Kontakte & Rollen** `/staff/clients/[id]/tcms/kontakte`: Rollen
+  „Gesetzliche Vertretung“, „Tax-Compliance-Beauftragte“, „Mitarbeitende“ für
+  Kontakte genau dieses Mandanten
+- **Portal-Übersicht** `/portal/tcms`: Stand des Programms, eigene und
+  weitere Aufgaben, letzte Meldungen
+- Unternavigation mit allen 14 Bereichen des Tax-CMS; die übrigen Bereiche
+  folgen mit denselben Bausteinen
+- Feste Meldungen für fehlende Rechte, Konflikte („Wurde zwischenzeitlich
+  geändert – bitte neu laden.“), Ausfälle und offene Ausgänge bei
+  Schreibzugriffen; nie Texte des Dienstes
+
+### Integration
+
+- Vendorte Pakete `@taxtronik/tcms-contract` (HTTP-Vertrag) und
+  `@taxtronik/tcms-domain` (Labels, Formatierung, Katalog) mit Guard
+  `guard:tcms-contract`; signierender Client `@taxtronik/tcms-client`
+- Seiten- und Aktions-Helfer in `apps/web/src/server/tcms/`, gemeinsame
+  Bausteine in `apps/web/src/components/tcms/`
 
 ## Wissensdatenbank ⚙
 

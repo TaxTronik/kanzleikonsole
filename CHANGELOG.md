@@ -34,6 +34,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   mit eigener Datenbank, `./taxtronik tcms setup|status|rotate-token|rotate-key|disable|backup|restore`
   mit Rotation in Überlappung, TCMS-Prüfungen in `doctor`, TCMS-Datenbank in
   Backup, Update-Pflichtbackup und Restore (`docs/operations/tcms-betrieb.md`).
+- **[TCMS]** Oberflächen des Tax-CMS, Stufe 3 (Fundament): Portfolio
+  (_Mandatsarbeit → Tax-CMS_), Cockpit und „Kontakte & Rollen“ in der
+  Mandantenakte, Übersicht im Mandanten-Portal. Menüpunkte erscheinen nur bei
+  eingeschaltetem Modul und angebundenem Dienst. Zentrale Seiten- und
+  Aktions-Helfer binden Akteur und Mandant an die geprüfte Sitzung, bilden
+  Fehler über feste Meldungen ab und lösen Namen nur aus der kanzleikonsole
+  auf; vendortes Domain-Paket `@taxtronik/tcms-domain` für Labels.
+  Fachkatalog-Entwürfe TCMS-AKTEUR-001 und TCMS-DIENST-001 (ungeprüft)
+  (`docs/anwenderdoku/tax-cms.md`, `docs/development/tcms-oberflaechen.md`).
 
 - Mandanten-Mails bei Terminänderung oder -absage: Im Bearbeiten- und
   Absagen-Dialog des Kanzleikalenders kann die Kanzlei den Mandanten per

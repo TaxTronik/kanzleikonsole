@@ -1,0 +1,212 @@
+{
+  "heute": "2026-10-19",
+  "mandant": {
+    "id": "a1000000-0000-4000-8000-000000004711",
+    "name": "Talwind Outdoor GmbH"
+  },
+  "rechte": {
+    "portalLesen": true,
+    "gesetzlicherVertreter": true,
+    "melden": true
+  },
+  "programm": {
+    "aktivePhase": 6,
+    "wirksamAb": "2026-07-01T00:00:00.000Z",
+    "wirksamBis": "2026-12-31T00:00:00.000Z",
+    "zeitraum": {
+      "monat": 4,
+      "monate": 6
+    },
+    "monate": [
+      {
+        "label": "Jul",
+        "zustand": "done",
+        "offen": 0
+      },
+      {
+        "label": "Aug",
+        "zustand": "done",
+        "offen": 0
+      },
+      {
+        "label": "Sep",
+        "zustand": "offen",
+        "offen": 6
+      },
+      {
+        "label": "Okt",
+        "zustand": "now",
+        "offen": 0
+      },
+      {
+        "label": "Nov",
+        "zustand": "",
+        "offen": 0
+      },
+      {
+        "label": "Dez",
+        "zustand": "",
+        "offen": 0
+      }
+    ]
+  },
+  "aufgaben": [
+    {
+      "art": "DURCHFUEHREN",
+      "eigene": false,
+      "durchfuehrungId": "cmvf6epe1007ks87ds40o7bdq",
+      "code": "K-EC-23",
+      "titel": "Report-Export und geschützte Ablage",
+      "periodeLabel": "Q3 2026",
+      "faelligAm": "2026-10-15T00:00:00.000Z",
+      "anzeige": "UEBERFAELLIG",
+      "status": "IN_DURCHFUEHRUNG",
+      "nachweise": 2,
+      "mindestNachweise": 1,
+      "zustaendigId": "b1000000-0000-4000-8000-000000000012",
+      "nachweis": "abgelegte Reports mit Hash",
+      "ziel": "Plattform- und Zahlungsreports quartalsweise exportieren und geschützt ablegen."
+    },
+    {
+      "art": "DURCHFUEHREN",
+      "eigene": false,
+      "durchfuehrungId": "cmvf6ep5e0039s87dlf8xbgif",
+      "code": "K-EC-02",
+      "titel": "Review der Steuerregeln in Shop und Marktplätzen",
+      "periodeLabel": "September 2026",
+      "faelligAm": "2026-10-30T00:00:00.000Z",
+      "anzeige": "FAELLIG",
+      "status": "GEPLANT",
+      "nachweise": 0,
+      "mindestNachweise": 1,
+      "zustaendigId": "b1000000-0000-4000-8000-000000000012",
+      "nachweis": "Export der Steuerregeln, Checkliste",
+      "ziel": "Steuerregeln je Land und Warengruppe gegen die Soll-Sätze prüfen."
+    },
+    {
+      "art": "DURCHFUEHREN",
+      "eigene": false,
+      "durchfuehrungId": "cmvf6epbq006ds87djvfscezo",
+      "code": "K-EC-14",
+      "titel": "Change-Management Systeme und Schnittstellen",
+      "periodeLabel": "Q3 2026",
+      "faelligAm": "2026-10-30T00:00:00.000Z",
+      "anzeige": "FAELLIG",
+      "status": "GEPLANT",
+      "nachweise": 0,
+      "mindestNachweise": 1,
+      "zustaendigId": "b1000000-0000-4000-8000-000000000012",
+      "nachweis": "Änderungsmeldung, aktualisierte Verfahrensdoku",
+      "ziel": "Änderungen an Shop, Warenwirtschaft, FiBu und Schnittstellen inkl. Verfahrensdoku-Update."
+    },
+    {
+      "art": "DURCHFUEHREN",
+      "eigene": false,
+      "durchfuehrungId": "cmvf6epbz006hs87di1a7u2ih",
+      "code": "K-EC-15",
+      "titel": "Prüfung der B2B-Rechnungsvorlagen und E-Rechnung",
+      "periodeLabel": "Q3 2026",
+      "faelligAm": "2026-10-30T00:00:00.000Z",
+      "anzeige": "FAELLIG",
+      "status": "GEPLANT",
+      "nachweise": 0,
+      "mindestNachweise": 1,
+      "zustaendigId": "b1000000-0000-4000-8000-000000000012",
+      "nachweis": "Musterrechnung, Checkliste",
+      "ziel": "Pflichtangaben und E-Rechnungsformat der B2B-Rechnungen prüfen."
+    },
+    {
+      "art": "DURCHFUEHREN",
+      "eigene": false,
+      "durchfuehrungId": "cmvf6ep6v003zs87d6t57vz5j",
+      "code": "K-EC-05",
+      "titel": "Lagerland-Monitor",
+      "periodeLabel": "Oktober 2026",
+      "faelligAm": "2026-11-05T00:00:00.000Z",
+      "anzeige": "GEPLANT",
+      "status": "GEPLANT",
+      "nachweise": 0,
+      "mindestNachweise": 1,
+      "zustaendigId": "b1000000-0000-4000-8000-000000000012",
+      "nachweis": "Bestandsreport nach Land",
+      "ziel": "Bestände nach Land prüfen; neues Land löst Ereignis und Betriebsstättenprüfung aus."
+    },
+    {
+      "art": "DURCHFUEHREN",
+      "eigene": false,
+      "durchfuehrungId": "cmvf6ep83004ks87dusfqs9mf",
+      "code": "K-EC-07",
+      "titel": "USt-IdNr.-Bestätigung und Gelangensnachweise",
+      "periodeLabel": "Oktober 2026",
+      "faelligAm": "2026-11-10T00:00:00.000Z",
+      "anzeige": "GEPLANT",
+      "status": "GEPLANT",
+      "nachweise": 0,
+      "mindestNachweise": 1,
+      "zustaendigId": "b1000000-0000-4000-8000-000000000012",
+      "nachweis": "Bestätigungsprotokoll, Quote",
+      "ziel": "Qualifizierte Bestätigung vor steuerfreier B2B-Lieferung; monatliche Quote der Gelangensnachweise."
+    },
+    {
+      "art": "DURCHFUEHREN",
+      "eigene": false,
+      "durchfuehrungId": "cmvf6epd40070s87drsrrwal9",
+      "code": "K-EC-18",
+      "titel": "Inventur und Abgleich Fremdlager",
+      "periodeLabel": "Q3 2026",
+      "faelligAm": "2026-11-14T00:00:00.000Z",
+      "anzeige": "FAELLIG",
+      "status": "GEPLANT",
+      "nachweise": 0,
+      "mindestNachweise": 1,
+      "zustaendigId": "b1000000-0000-4000-8000-000000000012",
+      "nachweis": "Bestandsbestätigung, Abgleich",
+      "ziel": "Bestände in Fremdlagern inklusive Retourenbestand bestätigen und abgleichen."
+    },
+    {
+      "art": "DURCHFUEHREN",
+      "eigene": false,
+      "durchfuehrungId": "cmvf6epcy006ws87dp9f7y2mc",
+      "code": "K-EC-17",
+      "titel": "Abgleich Marktplatz-Nachweise und Plattformmeldungen",
+      "periodeLabel": "Q3 2026",
+      "faelligAm": "2026-11-29T00:00:00.000Z",
+      "anzeige": "FAELLIG",
+      "status": "GEPLANT",
+      "nachweise": 0,
+      "mindestNachweise": 1,
+      "zustaendigId": "b1000000-0000-4000-8000-000000000012",
+      "nachweis": "Plattformmeldung, Abgleich",
+      "ziel": "Registrierungsnachweise und Plattformmeldungen mit eigenen Erlösen abgleichen."
+    }
+  ],
+  "meldungen": [
+    {
+      "id": "cmvf6epig008hs87dggd2xmig",
+      "nummer": "2026-T-0345",
+      "typ": "T-01",
+      "titel": "Start auf Kaufland.de zum 01.12.2026",
+      "status": "NEU",
+      "gemeldetAm": "2026-10-14T13:02:00.000Z",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012"
+    },
+    {
+      "id": "cmvf6epi6008ds87dki38952e",
+      "nummer": "2026-T-0342",
+      "typ": "T-05",
+      "titel": "Neue Warengruppe „Outdoor-Kochbücher\" ab 11/2026",
+      "status": "NEU",
+      "gemeldetAm": "2026-10-12T09:14:00.000Z",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012"
+    },
+    {
+      "id": "cmvf6ephw0089s87dc6soi67u",
+      "nummer": "2026-T-0329",
+      "typ": "T-02",
+      "titel": "Neues Lager CZ (PAN-EU) seit 08/2026",
+      "status": "ERLEDIGT",
+      "gemeldetAm": "2026-09-30T16:40:00.000Z",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012"
+    }
+  ]
+}

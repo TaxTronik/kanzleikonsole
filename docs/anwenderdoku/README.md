@@ -10,17 +10,18 @@ Funktionen aktualisieren das betroffene Kapitel im selben Commit
 
 ## Kapitel
 
-| Kapitel                                                          | Inhalt                                                                                                                             | Zielgruppe                      |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------- |
-| [Erste Schritte](erste-schritte.md)                              | Inbetriebnahme in 30 Minuten: Erstlogin, TOTP/optionale Sicherheitsschlüssel, Checkliste, Team + Berechtigungen                    | Admin/Partner                   |
-| [Dokumente und Archiv](dokumente.md)                             | Explorer, Upload/Virenscan, Schutzstufen/Aufbewahrung, Versionen, Freigabe, GwG-Vernichtung, Portal-Sicht                          | Mitarbeiter, Admin, Mandant     |
-| [Rechnungen](rechnungen.md)                                      | In-App-/Extern-Modus, automatische Nummernvergabe, Festschreibung, E-Rechnung (XRechnung/ZUGFeRD), Stundenabrechnung, Portal-Sicht | Mitarbeiter, Admin, Mandant     |
-| [n8n-Automatisierungen](n8n-automatisierungen.md)                | Geführtes Setup, workflow-spezifische Ziele, eigene Workflows, Eventkatalog, Datenschutz und Fehlerdiagnose                        | Admin, Workflow-Verantwortliche |
-| [Administration](administration.md)                              | Benutzer/Rollen, TOTP/Hardware-only, Recovery, Prüfprotokoll, Backup & Restore-Test, Zustellstatus von Mandanten-E-Mails           | Admin/Partner                   |
-| [BWA und Planung](bwa-planung.md)                                | BWA-Import, Plausibilisierung, Hochrechnung, Liquiditätsindikatoren, Szenarien und Portal-Planung                                  | Mitarbeiter, Mandant            |
-| [Workflows und Formulare](workflows-formulare.md)                | Vorlagen, Instanzen, konsistenzgesicherte Schritte, Mandantenanforderungen, Form-Builder, Antworten und interne Nacharbeit         | Mitarbeiter, Admin, Mandant     |
-| [Kalender, Fristen und Bescheide](kalender-fristen-bescheide.md) | Kanzleikalender, Steuertermine, Terminanfragen, Bescheiderfassung, Einspruchs- und Klagefristen                                    | Mitarbeiter, Admin, Mandant     |
-| [Subsumtion, TCMS und Quantenlos](subsumtion-tcms-quantenlos.md) | Sachverhaltsanalyse, Governance-Matrix, Recherche, Archivierung und beweisbare Stichproben                                         | Berufsträger, Admin             |
+| Kapitel                                                          | Inhalt                                                                                                                             | Zielgruppe                                |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| [Erste Schritte](erste-schritte.md)                              | Inbetriebnahme in 30 Minuten: Erstlogin, TOTP/optionale Sicherheitsschlüssel, Checkliste, Team + Berechtigungen                    | Admin/Partner                             |
+| [Dokumente und Archiv](dokumente.md)                             | Explorer, Upload/Virenscan, Schutzstufen/Aufbewahrung, Versionen, Freigabe, GwG-Vernichtung, Portal-Sicht                          | Mitarbeiter, Admin, Mandant               |
+| [Rechnungen](rechnungen.md)                                      | In-App-/Extern-Modus, automatische Nummernvergabe, Festschreibung, E-Rechnung (XRechnung/ZUGFeRD), Stundenabrechnung, Portal-Sicht | Mitarbeiter, Admin, Mandant               |
+| [n8n-Automatisierungen](n8n-automatisierungen.md)                | Geführtes Setup, workflow-spezifische Ziele, eigene Workflows, Eventkatalog, Datenschutz und Fehlerdiagnose                        | Admin, Workflow-Verantwortliche           |
+| [Administration](administration.md)                              | Benutzer/Rollen, TOTP/Hardware-only, Recovery, Prüfprotokoll, Backup & Restore-Test, Zustellstatus von Mandanten-E-Mails           | Admin/Partner                             |
+| [BWA und Planung](bwa-planung.md)                                | BWA-Import, Plausibilisierung, Hochrechnung, Liquiditätsindikatoren, Szenarien und Portal-Planung                                  | Mitarbeiter, Mandant                      |
+| [Workflows und Formulare](workflows-formulare.md)                | Vorlagen, Instanzen, konsistenzgesicherte Schritte, Mandantenanforderungen, Form-Builder, Antworten und interne Nacharbeit         | Mitarbeiter, Admin, Mandant               |
+| [Kalender, Fristen und Bescheide](kalender-fristen-bescheide.md) | Kanzleikalender, Steuertermine, Terminanfragen, Bescheiderfassung, Einspruchs- und Klagefristen                                    | Mitarbeiter, Admin, Mandant               |
+| [Subsumtion, TCMS und Quantenlos](subsumtion-tcms-quantenlos.md) | Sachverhaltsanalyse, Governance-Matrix, Recherche, Archivierung und beweisbare Stichproben                                         | Berufsträger, Admin                       |
+| [Tax-CMS](tax-cms.md)                                            | Voraussetzungen, Rechte, Portfolio, Cockpit des Mandanten, Kontakte & Rollen, Portal-Übersicht, Meldungen und Grenzen              | Berufsträger, Mitarbeiter, Admin, Mandant |
 
 Geltungsbereich: Die Kapitel decken die Module des Prüfungs-Scopes und die
 zentralen optionalen Fachmodule ab (vgl.

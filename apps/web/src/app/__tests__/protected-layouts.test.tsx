@@ -253,6 +253,7 @@ describe('geschütztes Portal-Layout', () => {
 });
 
 describe('Tax-CMS in der Seitenleiste (TCMS Stufe 3)', () => {
+  // Fachkatalog: TCMS-DIENST-001
   // Modul an, aber Dienst nicht konfiguriert (TCMS_DEPLOYMENT=disabled): kein
   // Menüpunkt; die Seiten zeigen dann einen Hinweis (server/tcms/seite.ts).
   const mitTcms = { ...layoutData(false), modules: { ...DEFAULT_MODULES, tcms: true } };

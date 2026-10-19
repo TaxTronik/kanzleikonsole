@@ -1,15 +1,17 @@
 # Anbindung des Tax-CMS (TCMS)
 
-- **Dokumentstatus:** Ist-Dokumentation (TCMS Stufe 2, kanzleikonsole-Seite)
+- **Dokumentstatus:** Ist-Dokumentation (TCMS Stufen 2 und 3, kanzleikonsole-Seite)
 - **Bezug:** ADR 0001 des TCMS-Repos („Tax-CMS als headless Dienst der
   kanzleikonsole“)
 
 Das Tax-CMS ist ein interner, headless Dienst. Die kanzleikonsole besitzt
 Anmeldung, Oberfläche, Personen und Mandanten; sie ruft das TCMS je Anfrage mit
 einem Dienst-Token und einer Ed25519-signierten Akteursbestätigung auf. Diese
-Seite beschreibt den Teil in der kanzleikonsole, der nicht vom Betrieb abhängt.
-Compose, Backup und Betrieb folgen gesondert, die Oberflächen in Stufe 3; bis
-dahin ruft keine Seite das TCMS auf.
+Seite beschreibt den Teil in der kanzleikonsole, der nicht vom Betrieb abhängt;
+Compose, Backup und Betrieb stehen in
+[TCMS-Betrieb](../operations/tcms-betrieb.md). Seiten und Aktionen rufen das
+TCMS ausschließlich über die Helfer aus Abschnitt 7 auf; wie eine Oberfläche
+gebaut wird, beschreibt der [Leitfaden](tcms-oberflaechen.md).
 
 ## 1. Vendorte Pakete: Vertrag und Domain
 
@@ -289,3 +291,47 @@ Die Gründe der Abweisungen stehen nur im Log des Dienstes (`grund`, z. B.
 `SIGNATUR`, `KID_UNBEKANNT`, `DIENST_TOKEN`, `REQ_BODY`, `JTI_WIEDERHOLT`) und
 lassen sich über die `requestId` zuordnen. Nach einer Aktualisierung des
 vendored Vertrags (Abschnitt 1) gegen denselben TCMS-Stand ausführen.
+
+## 7. Oberflächen (Stufe 3)
+
+Fundament für alle Seiten und Aktionen; Anleitung mit Beispielen im
+[Leitfaden Tax-CMS-Oberflächen](tcms-oberflaechen.md), fachliche Regeln
+TCMS-AKTEUR-001 und TCMS-DIENST-001 (ungeprüfte Entwürfe).
+
+| Baustein                                             | Aufgabe                                                                                                                                                                                                                            |
+| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `server/tcms/seite.ts`                               | Einstiege `tcmsMandantSeite(id)`, `tcmsKanzleiSeite()`, `tcmsAdminSeite()`, `tcmsPortalSeite()`; Lesen mit `tcmsLesen`/`tcmsLesenOptional` (Akteur, Mandant und Mandantenliste aus der Seite), `tcmsTenantLesen`, `tcmsNamenLesen` |
+| `server/tcms/aktion.ts`                              | `tcmsKanzleiAktion`/`tcmsPortalAktion`: Gate mit Modul `tcms`, eine Tenant-Transaktion für Aktivierung, Akteur und `vorbereiten`, Dienstaufruf außerhalb, feste Fehlerabbildung, Revalidierung nur des TCMS-Bereichs               |
+| `server/tcms/zustand.ts`                             | einzige Abbildung von Fehlern auf Seitenzustände und `ActionResult` mit festen Texten (`TCMS_SEITEN_TEXTE`, `TCMS_KEIN_RECHT`, `TCMS_AKTION_TEXTE`); Protokoll ohne Inhalte des Dienstes                                           |
+| `server/tcms/namen.ts`, `server/tcms/personen.ts`    | Namen zu Personen-IDs nur aus dem Tenant bzw. vom Mandanten; Personen aus Formularen gegen den Mandanten prüfen (`TcmsPersonUnzulaessig` als Feldfehler)                                                                           |
+| `server/tcms/mandant.ts`, `server/tcms/portfolio.ts` | Mandantenanker (Name, Rechtsform, DATEV-Nr.) aus der kanzleikonsole; Portfolio-Zeilen mit Namen und Zuständigkeit aus der Mandantenliste                                                                                           |
+| `components/tcms/*`                                  | gemeinsame Anzeige-Bausteine (Zustände, Badges, Phasen, Heatmap, Kopf mit Stichtag, Unternavigation mit 14 Bereichen, Pflichthinweis), Tokens der kanzleikonsole, Labels aus `@taxtronik/tcms-domain`                              |
+
+**Seiten.** `/staff/clients/[id]/tcms` (Cockpit mit „Mandant im Tax-CMS
+anlegen“ bzw. „Stammdaten übernehmen“), `/staff/clients/[id]/tcms/kontakte`
+(Kontakte & Rollen), `/staff/tcms` (Portfolio mit Filtern) und `/portal/tcms`
+(Portal-Übersicht). Das Layout unter `/staff/clients/[id]/tcms` ruft
+`tcmsMandantSeite` vor jedem Rendern.
+
+**Regeln.**
+
+- Jede Seite beginnt mit genau einem Einstieg; `requireClientPageAccess`
+  läuft im Mandanten-Einstieg als erster Aufruf. Die Guards
+  `client-page-authz`, `module-page-guard` und `staff-page-authz` erkennen die
+  Einstiege nur als Import aus `@/server/tcms/seite`, `server-action-authz` und
+  `server-action-style` die Aktions-Helfer nur aus `@/server/tcms/aktion`.
+- Der Mandant eines Aufrufs stammt nur aus der geprüften Seite bzw. dem
+  gebundenen Aktionsargument (Kanzlei) oder der Sitzung (Portal); eine Seite
+  oder Aktion kann `mandantId`, Akteur und Mandantenliste nicht
+  überschreiben. Lesepfade erlauben nur `GET` und die lesenden POSTs
+  Portfolio und Arbeitskorb; Portalseiten und -aktionen nur Endpunkte mit
+  `portal: true`.
+- Kein Dienstaufruf innerhalb einer Datenbank-Transaktion; keine
+  Wiederholung schreibender Aufrufe; kein Caching über die Anfrage hinaus.
+- Rechte, Vier-Augen-Prinzip, §-153-Würdigung, Vertraulichkeit und Status
+  entscheidet der Dienst; die Oberfläche blendet nach seinen
+  Rechte-Kennzeichen aus und bildet Ablehnungen über feste Texte ab.
+- Testdaten: `apps/web/src/__tests__/tcms-fixtures` (gegen das
+  `antwortSchema` geprüft). Live-Test der Seiten und Aktionen gegen einen
+  laufenden Dienst: `server/tcms/__tests__/oberflaechen-live.test.tsx` mit
+  `TCMS_LIVE_TESTS=1` und den Variablen aus Abschnitt 6.

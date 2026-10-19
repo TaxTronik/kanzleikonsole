@@ -1,0 +1,34 @@
+{
+  "kontakte": [
+    {
+      "kontaktId": "b1000000-0000-4000-8000-000000000011",
+      "rollen": [
+        {
+          "rolle": "GESETZLICHER_VERTRETER",
+          "aktiv": true,
+          "funktion": "Geschäftsführerin"
+        }
+      ]
+    },
+    {
+      "kontaktId": "b1000000-0000-4000-8000-000000000012",
+      "rollen": [
+        {
+          "rolle": "TAX_COMPLIANCE_BEAUFTRAGTER",
+          "aktiv": true,
+          "funktion": "Leitung Finanzen"
+        }
+      ]
+    },
+    {
+      "kontaktId": "b1000000-0000-4000-8000-000000000013",
+      "rollen": [
+        {
+          "rolle": "MITARBEITER",
+          "aktiv": true,
+          "funktion": "Buchhaltung"
+        }
+      ]
+    }
+  ]
+}

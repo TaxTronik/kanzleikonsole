@@ -1,0 +1,194 @@
+{
+  "heute": "2026-10-19",
+  "zeilen": [
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH",
+        "rechtsform": "KapG"
+      },
+      "darfBearbeiten": true,
+      "hatProgramm": true,
+      "entwurf": false,
+      "paket": "E-Commerce v1.0",
+      "teilbereich": "Umsatzsteuer & Erlös-Datenkette E-Commerce",
+      "phase": 6,
+      "phaseName": "Wirksamkeitszeitraum",
+      "risiken": 22,
+      "ueberAppetit": 5,
+      "appetit": "MITTEL",
+      "prueflast": {
+        "monat": "2026-11",
+        "FP": 10,
+        "FF": 6,
+        "IN": 0,
+        "ausloesungen": 1,
+        "gesamt": 17
+      },
+      "faellig": 10,
+      "ueberfaellig": 2,
+      "zurGegenzeichnung": 3,
+      "feststellungenOffen": 2,
+      "feststellungenHochOffen": 1,
+      "p153Offen": 1,
+      "ereignisseNeu": 2,
+      "zeitraum": {
+        "art": "LAUFEND",
+        "monat": 4,
+        "monate": 6,
+        "ab": "2026-07-01T00:00:00.000Z",
+        "bis": "2026-12-31T00:00:00.000Z"
+      },
+      "naechsterTermin": {
+        "datum": "2026-10-20T00:00:00.000Z",
+        "code": "K-EC-01",
+        "titel": "Lieferschwellen-Monitor",
+        "periode": "September 2026",
+        "durchfuehrungId": "cmvf6ep4u002zs87d0sj4zv5h",
+        "anzeige": "FAELLIG"
+      },
+      "handlungsbedarf": true,
+      "prioritaet": 12900
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004720",
+        "name": "Seestern Home & Living GmbH",
+        "rechtsform": "KapG"
+      },
+      "darfBearbeiten": true,
+      "hatProgramm": true,
+      "entwurf": false,
+      "paket": "E-Commerce v1.0",
+      "teilbereich": "Umsatzsteuer & Erlös-Datenkette E-Commerce",
+      "phase": 4,
+      "phaseName": "Beschreibung",
+      "risiken": 14,
+      "ueberAppetit": 4,
+      "appetit": "MITTEL",
+      "prueflast": null,
+      "faellig": 0,
+      "ueberfaellig": 0,
+      "zurGegenzeichnung": 0,
+      "feststellungenOffen": 1,
+      "feststellungenHochOffen": 0,
+      "p153Offen": 1,
+      "ereignisseNeu": 0,
+      "zeitraum": {
+        "art": "OFFEN"
+      },
+      "naechsterTermin": null,
+      "handlungsbedarf": true,
+      "prioritaet": 10400
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004733",
+        "name": "Kleinwerk Manufaktur UG (haftungsbeschränkt)",
+        "rechtsform": "KapG"
+      },
+      "darfBearbeiten": true,
+      "hatProgramm": true,
+      "entwurf": false,
+      "paket": "E-Commerce v1.0",
+      "teilbereich": "Umsatzsteuer & Erlös-Datenkette E-Commerce",
+      "phase": 3,
+      "phaseName": "Kontrollplanung",
+      "risiken": 12,
+      "ueberAppetit": 6,
+      "appetit": "MITTEL",
+      "prueflast": null,
+      "faellig": 0,
+      "ueberfaellig": 0,
+      "zurGegenzeichnung": 0,
+      "feststellungenOffen": 0,
+      "feststellungenHochOffen": 0,
+      "p153Offen": 0,
+      "ereignisseNeu": 1,
+      "zeitraum": {
+        "art": "OFFEN"
+      },
+      "naechsterTermin": null,
+      "handlungsbedarf": true,
+      "prioritaet": 630
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004698",
+        "name": "Pixelhafen Electronics KG",
+        "rechtsform": "PersG"
+      },
+      "darfBearbeiten": true,
+      "hatProgramm": true,
+      "entwurf": false,
+      "paket": "E-Commerce v1.0",
+      "teilbereich": "Umsatzsteuer & Erlös-Datenkette E-Commerce",
+      "phase": 7,
+      "phaseName": "Prüfung & Regelbetrieb",
+      "risiken": 19,
+      "ueberAppetit": 4,
+      "appetit": "MITTEL",
+      "prueflast": {
+        "monat": "2026-11",
+        "FP": 10,
+        "FF": 5,
+        "IN": 0,
+        "ausloesungen": 0,
+        "gesamt": 15
+      },
+      "faellig": 9,
+      "ueberfaellig": 0,
+      "zurGegenzeichnung": 0,
+      "feststellungenOffen": 0,
+      "feststellungenHochOffen": 0,
+      "p153Offen": 0,
+      "ereignisseNeu": 0,
+      "zeitraum": {
+        "art": "ABGESCHLOSSEN",
+        "ab": "2025-07-01T00:00:00.000Z",
+        "bis": "2025-12-31T00:00:00.000Z"
+      },
+      "naechsterTermin": {
+        "datum": "2026-10-20T00:00:00.000Z",
+        "code": "K-EC-01",
+        "titel": "Lieferschwellen-Monitor",
+        "periode": "September 2026",
+        "durchfuehrungId": "cmvf6eq9j00gfs87d83qp5p70",
+        "anzeige": "FAELLIG"
+      },
+      "handlungsbedarf": true,
+      "prioritaet": 409
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004752",
+        "name": "Bergkamm Kaffeerösterei GmbH",
+        "rechtsform": "KapG"
+      },
+      "darfBearbeiten": true,
+      "hatProgramm": false,
+      "entwurf": false,
+      "paket": null,
+      "teilbereich": null,
+      "phase": 0,
+      "phaseName": "kein Tax-CMS",
+      "risiken": 0,
+      "ueberAppetit": 0,
+      "appetit": null,
+      "prueflast": null,
+      "faellig": 0,
+      "ueberfaellig": 0,
+      "zurGegenzeichnung": 0,
+      "feststellungenOffen": 0,
+      "feststellungenHochOffen": 0,
+      "p153Offen": 0,
+      "ereignisseNeu": 0,
+      "zeitraum": {
+        "art": "OFFEN"
+      },
+      "naechsterTermin": null,
+      "handlungsbedarf": false,
+      "prioritaet": -1
+    }
+  ]
+}

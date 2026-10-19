@@ -131,6 +131,7 @@ describe('zentrale Navigation', () => {
   });
 
   it('Tax-CMS: Eintraege nur mit Modul UND konfiguriertem Dienst, Seiten bleiben erreichbar', () => {
+    // Fachkatalog: TCMS-DIENST-001
     // TCMS Stufe 3: Modul an, Dienst nicht konfiguriert → kein Menüpunkt; das
     // Route-Gate lässt die Seite zu, die dann einen Hinweis statt eines
     // Fehlers zeigt (server/tcms/seite.ts).

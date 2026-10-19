@@ -122,8 +122,10 @@ describe('parseFormData-Migrationsrest', () => {
     // ausgeschlossenen Dateien (GwG, Vollmachten, Admin-Einstellungen). Es
     // bleiben der Profilwechsel (exakter Sonderfall) und die Portal-Termine
     // (Slot-Paare mit eigener Feldfehler-Zuordnung, siehe FORM_DATA_READ_BASELINE).
+    // TCMS Stufe 3: Kontaktrollen (staff/clients/[id]/tcms/kontakte/actions.ts)
+    // lesen von Beginn an über parseFormData (+1).
     expect(direct).toHaveLength(2);
     expect(direct.filter((call) => !call.exact)).toHaveLength(1);
-    expect(shared).toBe(123);
+    expect(shared).toBe(124);
   });
 });

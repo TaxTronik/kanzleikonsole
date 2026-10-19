@@ -563,6 +563,20 @@
 - Geltung: ab 2018-05-25
 - Kurzfassung: TaxTronik ersetzt vor einem n8n-Rechercheauftrag bekannte Mandanten- und Kontaktdaten durch Platzhalter und markiert zusätzliche heuristische Treffer. Das Platzhalter-Mapping bleibt in der tenantgeschützten Anwendung und wird nicht in den Outbound-Payload aufgenommen. Auch frei befüllte Normanker und Governance-Typen durchlaufen dieselbe Ersetzung. Die Heuristik ist unvollständig; deshalb sind Vorschau, bewusste Auswahl des Ausschnitts und eine rechtliche beziehungsweise organisatorische Freigabe weiterhin erforderlich. Der Server erzwingt oder bindet diese Vorschauprüfung aktuell nicht.
 
+### [TCMS-AKTEUR-001 — Akteursbestätigungen an das Tax-CMS höchstens im Umfang des eigenen Mandantenzugriffs ausstellen](regeln/subsumtion-und-tcms/tcms-akteur-001-bestaetigungsumfang.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Das Tax-CMS leitet seine Rechte (Lesen, Bearbeiten, §-153-Würdigung) aus einer signierten Akteursbestätigung der kanzleikonsole ab. Die kanzleikonsole stellt diese Bestätigung nur aus der geprüften Sitzung und dem aktuellen Datenbestand aus und bestätigt nie mehr, als sie selbst gewährt: einen Mandantenbezug nur bei Zugriff nach ACCESS-CLIENT-MODE-001, die Rolle Admin/Partner nur bei aktuellem Rollenstand, Zuständigkeiten nur aus den Zuordnungen des Mandanten. Ohne Bestätigung findet kein Aufruf statt.
+
+### [TCMS-DIENST-001 — Tax-CMS als Werkzeug – fachliche Entscheidungen trifft der Dienst, die kanzleikonsole zeigt an](regeln/subsumtion-und-tcms/tcms-dienst-001-werkzeug.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Das Tax-CMS strukturiert und belegt das Tax-Compliance-Programm eines Mandanten. Ob eine Person bearbeiten oder würdigen darf, ob ein Vier-Augen- Schritt zulässig ist, wie eine §-153-Würdigung festgehalten wird, was vertraulich bleibt und welcher Status folgt, entscheidet allein der Dienst. Die kanzleikonsole zeigt Daten und Rechte-Kennzeichen des Dienstes an, bildet Fehler über feste Texte ab und erfindet keine Ersatzlogik. Weder Werkzeug noch Oberfläche treffen eine Aussage über Angemessenheit oder Wirksamkeit (Ausschluss TCMS-EFFECTIVENESS-001).
+
 ### [TCMS-SAMPLE-PROOF-001 — Stichprobennachweis nur auf den deklarierten Rahmen und die konkrete Ziehung beziehen](regeln/subsumtion-und-tcms/tcms-sample-proof-001-rahmenbindung.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**

@@ -23,6 +23,7 @@ const h = vi.hoisted(() => ({
   riskAvailable: vi.fn(async () => true),
   isAdmin: false,
   quickRequest: vi.fn((_props: unknown) => null),
+  tcmsKonfiguriert: vi.fn(() => false),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -48,6 +49,7 @@ vi.mock('@/server/settings/client-layout', () => ({
   readClientLayout: vi.fn(async () => DEFAULT_CLIENT_LAYOUT),
 }));
 vi.mock('@/server/risk/availability', () => ({ isRiskLayerAvailable: h.riskAvailable }));
+vi.mock('@/server/tcms/dienst', () => ({ tcmsKonfiguriert: h.tcmsKonfiguriert }));
 vi.mock('@taxtronik/elster', () => ({ isElsterConfigured: () => false }));
 vi.mock('@/components/quick-request-dialog', () => ({ QuickRequestDialog: h.quickRequest }));
 vi.mock('@/components/recent-clients', () => ({ RecordClientVisit: () => null }));
@@ -408,5 +410,22 @@ describe('gestreamte Cockpit-Blöcke', () => {
     expect(html).toContain('<span class="badge-purple text-[10px]">Steuertermin</span>');
     expect(html).toContain('2026-09');
     expect(html).toContain('noch 9 Tage');
+  });
+});
+
+describe('Tax-CMS-Reiter der Mandantenakte (TCMS Stufe 3)', () => {
+  // Fachkatalog: TCMS-DIENST-001 – Modul an, Dienst nicht konfiguriert: kein Reiter.
+  const reiter = '<a class="btn-secondary text-xs py-1" href="/staff/clients/client-1/tcms">';
+
+  it.each([
+    [true, true, true],
+    [true, false, false],
+    [false, true, false],
+  ])('Modul %s, Dienst konfiguriert %s → Reiter %s', async (modul, dienst, sichtbar) => {
+    h.modules = { ...ALL_MODULES, tcms: modul };
+    h.tcmsKonfiguriert.mockReturnValue(dienst);
+    const html = await render();
+    expect(html.includes(reiter)).toBe(sichtbar);
+    if (sichtbar) expect(html).toContain('Tax-CMS');
   });
 });
