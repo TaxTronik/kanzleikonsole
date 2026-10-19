@@ -44,6 +44,7 @@ import { portalAuth, type PortalSession } from '@/server/auth/portal';
 import { findPortalProfilesForContactTx } from '@/server/auth/portal-profiles';
 import type { StaffSession } from '@/server/auth/staff';
 import { canStaffReviewGwgTx } from '@/server/gwg/professional-review';
+import { tcmsTextBereinigen } from './zeichen';
 
 export type TcmsVerweigerungsGrund =
   | 'SITZUNG_UNGUELTIG'
@@ -88,14 +89,15 @@ function pruefeAblauf(expires: unknown, jetzt: Date): void {
   if (!Number.isFinite(ende) || ende <= jetzt.getTime()) throw verweigert('SITZUNG_ABGELAUFEN');
 }
 
-/** Anzeigename für `nam`: getrimmt, höchstens 200 Codeeinheiten, ohne halbe Surrogate. */
+/**
+ * Anzeigename für `nam`: mit der Zeichenregel des Vertrags still bereinigt
+ * (TCMS s8, server/tcms/zeichen.ts – der Dienst prüft `nam` nicht selbst),
+ * getrimmt, höchstens 200 Codeeinheiten, ohne halbe Surrogate. Dieselbe
+ * Funktion liefert die Namen, die die kanzleikonsole in Bodies sendet
+ * (Zuständigkeit, Freigabe-Namen, Ansprechperson einer Meldung).
+ */
 export function anzeigename(roh: string): string {
-  let name = '';
-  for (const zeichen of roh.trim()) {
-    if (name.length + zeichen.length > MAX_NAME) break;
-    name += zeichen;
-  }
-  name = name.trim();
+  const name = tcmsTextBereinigen(roh, 'EINZEILIG', MAX_NAME);
   if (name === '') throw verweigert('NAME_UNGUELTIG');
   return name;
 }
