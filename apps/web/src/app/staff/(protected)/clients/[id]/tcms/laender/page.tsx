@@ -44,6 +44,7 @@ import {
   LandDetailBereich,
   LaenderTabelle,
   SchwellenKarte,
+  type LandBezugAnzeige,
 } from '@/components/tcms/laender/ansicht';
 import {
   LandHinzufuegenFormular,
@@ -225,6 +226,46 @@ function LaenderListe({
   );
 }
 
+/** Objekt-ID in Links nur in der Form des Vertrags (sonst kein Link). */
+const OBJEKT_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Bezüge eines Landes laut Dienst (TCMS s7) mit Links in die Bereiche: Codes
+ * und Ereignis-IDs werden über den Kontext desselben Stands aufgelöst
+ * (Anzeige, keine Zuordnung); was der Kontext nicht kennt, erscheint ohne Link.
+ */
+function bezugAnzeige(
+  b: LaenderMonitor['bezuege'][number] | null,
+  ctx: KontextMitProgramm,
+  link: (pfad: string) => string,
+): LandBezugAnzeige | null {
+  if (!b) return null;
+  const risikoId = new Map(ctx.risiken.map((r) => [r.code, r.id] as const));
+  const kontrolleId = new Map(ctx.kontrollen.map((k) => [k.code, k.id] as const));
+  const ereignis = new Map(ctx.ereignisse.map((e) => [e.id, e] as const));
+  const ziel = (pfad: string, param: string, id: string | undefined) =>
+    id && OBJEKT_ID.test(id) ? link(`${pfad}?${param}=${encodeURIComponent(id)}`) : null;
+  return {
+    risiken: b.risiken.map((r) => ({
+      code: r.code,
+      grund: r.grund,
+      href: ziel('/risiken', 'risiko', risikoId.get(r.code)),
+    })),
+    kontrollen: b.kontrollen.map((code) => ({
+      code,
+      href: ziel('/kontrollen', 'kontrolle', kontrolleId.get(code)),
+    })),
+    ereignisse: b.ereignisse.map((id) => {
+      const e = ereignis.get(id);
+      return {
+        id,
+        text: e ? `${e.nummer} – ${e.titel}` : 'Ereignis (im aktuellen Kontext nicht aufgeführt)',
+        href: ziel('/ereignisse', 'e', id),
+      };
+    }),
+  };
+}
+
 export default async function TcmsLaenderPage({
   params,
   searchParams,
@@ -268,6 +309,11 @@ export default async function TcmsLaenderPage({
   const feststellungHref = (fid: string) =>
     mitStand(`${seite.basis}/feststellungen/${encodeURIComponent(fid)}`, stand);
   const speichern = landStaendeSpeichernAction.bind(null, seite.mandantId);
+  const bezug = auswahl
+    ? bezugAnzeige(daten.bezuege.find((b) => b.land === auswahl.land) ?? null, ctx, (pfad) =>
+        mitStand(`${seite.basis}${pfad}`, stand),
+      )
+    : null;
 
   return (
     <>
@@ -317,6 +363,7 @@ export default async function TcmsLaenderPage({
             l={auswahl}
             historie={historie.get(auswahl.land) ?? []}
             feststellungen={feststellungen.get(auswahl.land) ?? []}
+            bezug={bezug}
             profil={ctx.profil}
             namen={namen}
             sperre={sperre}

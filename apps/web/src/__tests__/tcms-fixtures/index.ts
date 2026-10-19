@@ -31,7 +31,8 @@
 //     mit frischem Demo-Seed ergänzt, zugeordnet über Codes und Nummern statt
 //     IDs (der Seed vergibt IDs je Datenbank neu): `heute` der Einrichtung,
 //     Zeitraumzahlen und `pflichtattributeLuecken`, `rechte` der Listen,
-//     `bezuege` der Länder (Ereignis-IDs auf die der Fixtures abgebildet),
+//     `bezuege` der Länder (Ereignis-IDs auf die von kontext-talwind-b.json
+//     abgebildet, desselben Abrufs wie der Länder-Monitor),
 //     `pruefung.kennzahlen`, Rechte der Ereignisse (Anna Roth), `melden`
 //     (Jana Weller), `gegenzeichnungMandant` der lebenden Bausteine (K-EC-23
 //     dabei ohne die frühere Endung „ (Mandant)“ im Namen, wie der Dienst sie

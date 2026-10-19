@@ -292,8 +292,10 @@ Nachweispaket folgt. Ein Prüfurteil trifft das Werkzeug nicht.
 _Tax-CMS → Länder_ stellt die EU-Fernverkäufe der Lieferschwelle von
 10.000 € gegenüber (Warnung ab 80 %) und zeigt je Land Fernverkäufe, Lager,
 OSS, lokale USt-Nummer und Registrierungsstatus. Ein Land öffnet
-Registrierungsschritte, Fristen, die Historie der Stände und Feststellungen
-mit Bezug auf das Land.
+Registrierungsschritte, Fristen, die Historie der Stände, Feststellungen
+mit Bezug auf das Land und die **Bezüge im Tax-CMS**: Risiken mit dem Grund
+des Bezugs, Kontrollen an diesen Risiken und Ereignisse, die das Land nennen –
+zugeordnet vom Tax-CMS, mit Links in die Bereiche.
 
 - **Daten manuell erfassen** legt für alle Länder auf einmal einen neuen
   Stand an; im Detailbereich geht das je Land. Frühere Stände bleiben in der

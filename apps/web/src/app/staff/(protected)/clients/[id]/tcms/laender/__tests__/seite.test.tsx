@@ -133,6 +133,64 @@ describe('Länder-Monitor', () => {
     expect((lfd as HTMLInputElement).value).toBe('61200');
   });
 
+  it('Bezüge des Landes laut Dienst (TCMS s7): Risiken mit Grund, Kontrollen, Ereignisse mit Links', async () => {
+    await renderServer(TcmsLaenderPage(mit({ land: 'CZ' })));
+    const detail = screen.getByRole('region', { name: 'CZ – Registrierungen und Fristen' });
+    const bezuege = within(detail).getByRole('region', { name: 'Bezüge im Tax-CMS' });
+    const cz = monitor.bezuege.find((b) => b.land === 'CZ')!;
+    // Risiken: Code mit Link ins Inventar (ID aus dem Kontext), Grund des Dienstes.
+    const ust04 = kontext.risiken.find((r) => r.code === 'EC-UST-04')!;
+    const link = within(bezuege).getByRole('link', { name: 'EC-UST-04' });
+    expect(link.getAttribute('href')).toBe(`${BASIS}/risiken?risiko=${ust04.id}`);
+    expect(link.parentElement!.textContent).toBe(
+      `EC-UST-04 – ${cz.risiken.find((r) => r.code === 'EC-UST-04')!.grund}`,
+    );
+    // Nicht im Kontext geführte Risiken bzw. Kontrollen: ohne Link.
+    expect(within(bezuege).queryByRole('link', { name: 'EC-UST-03' })).toBeNull();
+    expect(bezuege.textContent).toContain('EC-UST-03');
+    const k02 = kontext.kontrollen.find((k) => k.code === 'K-EC-02')!;
+    expect(within(bezuege).getByRole('link', { name: 'K-EC-02' }).getAttribute('href')).toBe(
+      `${BASIS}/kontrollen?kontrolle=${k02.id}`,
+    );
+    expect(within(bezuege).queryByRole('link', { name: 'K-EC-03' })).toBeNull();
+    // Ereignis mit Nummer und Titel aus dem Kontext.
+    const e329 = kontext.ereignisse.find((e) => e.nummer === '2026-T-0329')!;
+    const ereignis = within(bezuege).getByRole('link', { name: /^2026-T-0329 – / });
+    expect(ereignis.getAttribute('href')).toBe(`${BASIS}/ereignisse?e=${e329.id}`);
+  });
+
+  it('Bezüge: Stichtag in den Links; ungültige Ereignis-ID ohne Link; keine Bezüge → Hinweis', async () => {
+    monitor.bezuege = monitor.bezuege.map((b) =>
+      b.land === 'FR' ? { ...b, ereignisse: ['../admin', 'unbekannt_1'] } : b,
+    );
+    monitor.historisch = true;
+    monitor.stand = '2026-09-30';
+    kontext.historisch = true;
+    kontext.stand = '2026-09-30';
+    antworten();
+    await renderServer(TcmsLaenderPage(mit({ land: 'FR', stand: '2026-09-30' })));
+    const bezuege = screen.getByRole('region', { name: 'Bezüge im Tax-CMS' });
+    const links = within(bezuege)
+      .getAllByRole('link')
+      .map((a) => a.getAttribute('href'));
+    expect(links.every((h) => h!.endsWith('stand=2026-09-30'))).toBe(true);
+    expect(links.some((h) => h!.includes('admin'))).toBe(false);
+    expect(
+      within(bezuege)
+        .getByRole('link', { name: /nicht aufgeführt/ })
+        .getAttribute('href'),
+    ).toBe(`${BASIS}/ereignisse?e=unbekannt_1&stand=2026-09-30`);
+    document.body.innerHTML = '';
+    monitor.bezuege = monitor.bezuege.filter((b) => b.land !== 'FR');
+    monitor.historisch = false;
+    kontext.historisch = false;
+    antworten();
+    await renderServer(TcmsLaenderPage(mit({ land: 'FR' })));
+    expect(screen.getByRole('region', { name: 'Bezüge im Tax-CMS' }).textContent).toContain(
+      'Keine Risiken, Kontrollen oder Ereignisse',
+    );
+  });
+
   it('Sammelerfassung nur mit `erfassen=1` und ohne Sperre; je Land eine Feldgruppe', async () => {
     await renderServer(TcmsLaenderPage(mit({ erfassen: '1' })));
     const form = screen.getByRole('form', { name: 'Länderdaten erfassen' });

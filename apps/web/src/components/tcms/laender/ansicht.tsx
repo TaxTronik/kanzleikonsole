@@ -4,10 +4,9 @@
 // Schwellenkarte, Ländertabelle und Detailbereich eines Landes.
 //
 // Schwelle (Status, Anteile), Registrierungsstatus und Fernverkaufssummen
-// liefert der Dienst. Abweichung von der Demo: Die Demo ordnet Ländern
-// Risiken, Kontrollen und Ereignisse über eigene Regeln zu (Risikocodes je
-// Merkmal, Textsuche in Ereignissen). Diese Zuordnung ist fachlich und gehört
-// in den Dienst; hier entfällt sie (Vorschlag an das TCMS im Bericht).
+// liefert der Dienst. Die Bezüge eines Landes (Risiken mit Grund, Kontrollen,
+// Ereignisse) ordnet seit TCMS s7 der Dienst zu (`bezuege`); die Seite zeigt
+// sie nur an und verlinkt auf die Bereiche (keine eigene Zuordnung).
 // =============================================================================
 
 import Link from 'next/link';
@@ -463,10 +462,90 @@ function StandUnterschiede({
   );
 }
 
+/** Bezüge eines Landes laut Dienst, mit Links der Seite (null: nicht im Kontext auflösbar). */
+export interface LandBezugAnzeige {
+  risiken: readonly { code: string; grund: string; href: string | null }[];
+  kontrollen: readonly { code: string; href: string | null }[];
+  ereignisse: readonly { id: string; text: string; href: string | null }[];
+}
+
+function BezugLink({ href, children }: { href: string | null; children: ReactNode }) {
+  return href ? (
+    <Link href={href} className="font-medium underline">
+      {children}
+    </Link>
+  ) : (
+    <span className="font-medium">{children}</span>
+  );
+}
+
+function BezuegeAbschnitt({ bezug }: { bezug: LandBezugAnzeige | null }) {
+  const leer =
+    !bezug ||
+    (bezug.risiken.length === 0 && bezug.kontrollen.length === 0 && bezug.ereignisse.length === 0);
+  return (
+    <section aria-label="Bezüge im Tax-CMS">
+      <H>Bezüge im Tax-CMS</H>
+      {leer ? (
+        <p className="text-xs text-muted">
+          Keine Risiken, Kontrollen oder Ereignisse zu diesem Land.
+        </p>
+      ) : (
+        <dl className="space-y-2 text-sm">
+          {bezug.risiken.length ? (
+            <div>
+              <dt className="text-xs text-muted">Risiken</dt>
+              <dd>
+                <ul className="space-y-0.5">
+                  {bezug.risiken.map((r) => (
+                    <li key={`${r.code}-${r.grund}`}>
+                      <BezugLink href={r.href}>{r.code}</BezugLink>
+                      <span className="text-secondary"> – {r.grund}</span>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          ) : null}
+          {bezug.kontrollen.length ? (
+            <div>
+              <dt className="text-xs text-muted">Kontrollen</dt>
+              <dd>
+                <ul className="flex flex-wrap gap-x-3 gap-y-0.5">
+                  {bezug.kontrollen.map((k) => (
+                    <li key={k.code}>
+                      <BezugLink href={k.href}>{k.code}</BezugLink>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          ) : null}
+          {bezug.ereignisse.length ? (
+            <div>
+              <dt className="text-xs text-muted">Ereignisse</dt>
+              <dd>
+                <ul className="space-y-0.5">
+                  {bezug.ereignisse.map((e) => (
+                    <li key={e.id}>
+                      <BezugLink href={e.href}>{e.text}</BezugLink>
+                    </li>
+                  ))}
+                </ul>
+              </dd>
+            </div>
+          ) : null}
+        </dl>
+      )}
+    </section>
+  );
+}
+
 export function LandDetailBereich({
   l,
   historie,
   feststellungen,
+  bezug,
   profil,
   namen,
   sperre,
@@ -477,6 +556,8 @@ export function LandDetailBereich({
   l: Land;
   historie: readonly LandStand[];
   feststellungen: readonly Feststellung[];
+  /** Bezüge laut Dienst (`bezuege`), null wenn der Dienst keine führt. */
+  bezug: LandBezugAnzeige | null;
   profil: KontextAntwort['profil'];
   namen: TcmsNamen;
   sperre: string | null;
@@ -532,6 +613,7 @@ export function LandDetailBereich({
           </p>
         </div>
       ))}
+      <BezuegeAbschnitt bezug={bezug} />
       <FristenAbschnitt l={l} />
       <LandHistorie historie={historie} namen={namen} />
       <H>Neuen Stand erfassen</H>
