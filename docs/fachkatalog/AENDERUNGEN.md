@@ -1,5 +1,32 @@
 ---
 exceptions:
+  - id: FK-EXC-20261019-003
+    date: '2026-10-19'
+    paths:
+      - apps/web/src/server/tcms/aktion.ts
+      - apps/web/src/server/tcms/seite.ts
+      - apps/web/src/server/tcms/route.ts
+    rule_ids:
+      - TCMS-AKTEUR-001
+      - TCMS-DIENST-001
+    reason: >-
+      TCMS Stufe 4: Der Vertrag nennt je Endpunkt die zulässigen Akteursarten
+      (akteure; portal bleibt abgeleitet). Seiten-, Aktions- und Route-Helfer
+      der Web-App lassen einen Endpunkt nur zu, wenn akteure die Art der Fläche
+      nennt (Kanzlei KANZLEI, Portal MANDANT); die Endpunkte des Systemakteurs
+      (Postausgang) sind für die Web-App damit gesperrt, die Web-App bildet nie
+      einen Systemakteur. Das ist eine strengere technische Zulassung derselben
+      Bestätigungen: Wer bestätigt wird, mit welchem Mandantenbezug und welchen
+      Rollen, sowie die Entscheidungen des Dienstes ändern sich nicht;
+      Entscheidung, Geltungsbereich und Ergebnis von TCMS-AKTEUR-001 und
+      TCMS-DIENST-001 bleiben gleich (TCMS-AKTEUR-001 nennt die Zulassung in
+      der Umsetzung). Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/tcms/__tests__/seite.test.ts
+      - apps/web/src/server/tcms/__tests__/aktion.test.ts
+      - apps/web/src/server/tcms/__tests__/route.test.ts
+      - apps/web/src/__tests__/tcms-systemakteur-guard.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261019-002
     date: '2026-10-19'
     paths:

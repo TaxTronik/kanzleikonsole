@@ -170,7 +170,14 @@ Seiten nutzen ausschließlich `tcmsMandantSeite`, `tcmsKanzleiSeite`,
 und Modulprüfung zuerst, dann in einer Tenant-Transaktion Aktivierung und
 Akteur. Lesezugriffe setzen Mandant, Akteur und Mandantenliste aus der Seite;
 eine Seite kann sie nicht überschreiben. Aktionen nutzen `tcmsKanzleiAktion`
-bzw. `tcmsPortalAktion` (`server/tcms/aktion.ts`) mit demselben Ablauf.
+bzw. `tcmsPortalAktion` (`server/tcms/aktion.ts`) mit demselben Ablauf,
+Datei-Abrufe den Route-Einstieg `tcmsMandantRoute` bzw. `tcmsPortalRoute`
+(`server/tcms/route.ts`; Sitzung zuerst, Mandantenzugriff vor der
+Bestätigung). Seiten, Aktionen und Route-Handler lassen einen Endpunkt nur zu,
+wenn dessen `akteure` im Register des Vertrags die Art der Fläche nennen
+(Kanzlei: `KANZLEI`, Portal: `MANDANT`). Die Web-App bestätigt nur Personen
+(KANZLEI, MANDANT); den Systemakteur bildet allein der Zustell-Worker
+(MAIL-OUTBOX-001).
 Personen aus Formularen prüft `server/tcms/personen.ts`, Namen in Antworten
 löst `server/tcms/namen.ts` nur im Tenant bzw. beim Mandanten auf. Name,
 Rechtsform und DATEV-Nummer des Mandantenankers stammen aus
@@ -179,12 +186,13 @@ Formular.
 
 ## Bekannte Abweichungen und Grenzen
 
-Die Abbildungstabelle ist fachlich nicht freigegeben. Hintergrundaufgaben des
-Workers rufen das Tax-CMS noch nicht auf; für sie fehlt eine eigene Regel zur
-Bestätigung ohne Sitzung. Die Oberflächen der übrigen Bereiche (Einrichtung,
-Risiken, Kontrollen, Durchführungen, Feststellungen, Ereignisse, Länder,
-Beschreibung, Kommunikation, Audit) folgen in weiteren Schritten mit denselben
-Helfern.
+Die Abbildungstabelle ist fachlich nicht freigegeben. Der Zustell-Worker ruft
+das Tax-CMS nur als Systemakteur ohne Personen- und Mandantenbezug und nur für
+den Postausgang auf (MAIL-OUTBOX-001); eine Bestätigung von Personen ohne
+Sitzung gibt es nicht. Alle Bereiche der Oberflächen (Programm und
+Dokumentation, Risiken, Kontrollen, Kalender, Prüfung, Länder,
+Durchführungen, Feststellungen, Arbeitskorb, Ereignisse, Portal, Audit) nutzen
+dieselben Helfer.
 
 ## Fachliche Prüffragen
 
