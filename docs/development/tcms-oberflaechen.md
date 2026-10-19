@@ -324,6 +324,8 @@ mindestens zwei Bereiche sie brauchen.
   Demo-Tenant und laufen deshalb **nacheinander**, nie parallel:
   `server/tcms/__tests__/oberflaechen-live.test.tsx` (Fundament),
   `server/tcms/programm/__tests__/programm-live.test.tsx` (A),
+  `server/tcms/__tests__/bereich-b-live.test.tsx` (B: je Seite Rendering und
+  eine Aktion),
   `server/tcms/__tests__/bereich-c-live.test.tsx` (C),
   `server/tcms/__tests__/bereich-d-live.test.tsx` (D). Objekt-IDs des
   Dienstes (Durchführungen, Feststellungen, Ereignisse) lesen die Suiten aus
