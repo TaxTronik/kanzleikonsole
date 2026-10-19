@@ -175,6 +175,72 @@ Admins und Partner sehen unter `/staff/tcms/katalog` (Verweis im
 Einrichtungsassistenten) den Katalog des Branchenpakets: Risiken, Kontrollen,
 Ereignistypen, Häufigkeitsmatrix und Profilfragen – nur lesend und als
 **ungeprüfter Entwurf**, den Berufsträgerinnen und Berufsträger kalibrieren.
+## Risiken, Kontrollen & Prüfung
+
+Diese Bereiche zeigen, welche Risiken ein Mandant hat, wie er sie mit
+Kontrollen steuert und wie eine Prüfung vorbereitet wird. Klassen,
+Frequenzen, Status, Fristen und die Zahlen des Wirksamkeitszeitraums
+berechnet das Tax-CMS; TaxTronik zeigt sie an, filtert und sortiert. Ob Sie
+etwas ändern dürfen und ob eine zweite Person entscheiden muss, prüft das
+Tax-CMS bei jedem Schritt.
+
+- **Nur lesen:** An einem früheren Stichtag (Datumsfeld im Kopf) und ohne
+  Bearbeitungsrecht laut Tax-CMS sind die Schaltflächen gesperrt; der Grund
+  steht über der Liste.
+- **Vier-Augen-Prinzip:** Wer eine Übersteuerung oder Frequenzabweichung
+  beantragt oder Risiken zur Freigabe eingereicht hat, sieht statt der
+  Entscheidung den Hinweis „Von Ihnen beantragt – die Entscheidung trifft
+  eine zweite Person.“ Lehnt das Tax-CMS eine Entscheidung ab, erscheint
+  „Diese Entscheidung trifft eine zweite Person mit Bearbeitungsrecht für
+  diesen Mandanten (Vier-Augen-Prinzip).“
+- **Begründungen** brauchen mindestens 30 Zeichen und werden mit Name und
+  Zeitpunkt festgehalten. Bei einem Fehler bleiben Ihre Eingaben stehen.
+
+### Risikoinventar
+
+_Tax-CMS → Risiken_ zeigt alle aktiven Risiken als **Liste** oder
+**Heatmap** (Schadensintensität × Wahrscheinlichkeit) mit Brutto- und
+Nettoklassen (Design und Betrieb), Risikoappetit, Kontrollen, Verantwortlichen
+und Freigabestatus. Filter: Gruppe, Governance-Typ, Bruttoklasse, „nur über
+Appetit“, „nur übersteuert“, „nur Kernrisiken“ und „nur neu bewerten“; ein
+Feld der Heatmap filtert die Liste.
+
+- **Freigabe:** Bewertete Risiken auswählen und „Zur Freigabe einreichen“;
+  eingereichte Risiken gibt eine zweite Person frei oder weist sie mit
+  Begründung zurück. Übersprungene Risiken nennt die Meldung mit Grund.
+- **Detailbereich** (Klick auf ein Risiko): Beschreibung, Normanker,
+  Bewertung mit Herleitung über die Kontrollen, Übersteuerungen, Freigabe,
+  Risikoappetit, Interdependenzen, Ereignisse, Stand-Historie und Historie.
+- **Neu bewerten** legt einen neuen Stand an; geänderte Werte brauchen eine
+  erneute Freigabe, und das Tax-CMS plant Durchführungen der verknüpften
+  Kontrollen gegebenenfalls neu. **Bewertung bestätigen** hält eine
+  unveränderte Bewertung fest.
+- **Nettoklasse übersteuern** gilt erst nach Freigabe durch eine zweite
+  Person; der berechnete Wert bleibt sichtbar.
+- **Risikoakzeptanz anfordern:** Liegt ein Risiko über dem Appetit, fordern
+  Sie die Akzeptanz bei einer gesetzlichen Vertretung an (aktiver Kontakt
+  dieses Mandanten mit dieser Rolle, Abschnitt 5). Die Freigabe erfolgt im
+  Portal mit Bestätigung per E-Mail-Code.
+
+### Kontrollmatrix
+
+_Tax-CMS → Kontrollen_ zeigt die Kontrollen als **Liste** (Risiken,
+Frequenz, Zuständige, Design, letzte und nächste Durchführung) oder als
+**Matrix** Risiken × Kontrollen. Der Detailbereich enthält Beschreibung,
+Frequenzherleitung, Designbeurteilung, Zuständigkeiten, Durchführungen,
+Stände und Historie.
+
+- **Frequenzabweichung** beantragen (Turnus, zusätzlich bei jeder
+  Auslösung, Begründung); eine zweite Person gibt sie frei oder lehnt sie
+  begründet ab. Eine freigegebene Abweichung lässt sich aufheben.
+- **Designbeurteilung** „angemessen“ oder „Mangel“ mit Begründung; sie legt
+  einen neuen Kontrollstand an.
+- **Zuständigkeiten ändern:** Für Kanzleikontrollen stehen Personen mit
+  Zugriff auf den Mandanten zur Auswahl, für Mandantenkontrollen Kontakte
+  dieses Mandanten mit Rolle im Tax-CMS. Gegenzeichnen kann eine Person der
+  Kanzlei oder – bei Mandantenkontrollen – die Vertretung beim Mandanten.
+  TaxTronik prüft jede Person beim Speichern erneut.
+- Vertrauliche Feststellungen erscheinen nur mit ihrer Nummer.
 
 ## 7. Meldungen
 

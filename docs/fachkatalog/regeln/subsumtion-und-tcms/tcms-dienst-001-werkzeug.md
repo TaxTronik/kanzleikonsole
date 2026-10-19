@@ -60,6 +60,10 @@ code_refs:
   - apps/web/src/components/tcms/programm/beschreibung.tsx
   - apps/web/src/components/tcms/bereich-b/seite.ts
   - apps/web/src/components/tcms/bereich-b/laden.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/risiken/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/risiken/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/actions.ts
 test_refs:
   - apps/web/src/server/tcms/__tests__/zustand.test.ts
   - apps/web/src/server/tcms/__tests__/seite.test.ts
@@ -82,6 +86,12 @@ test_refs:
   - apps/web/src/components/tcms/bereich-b/__tests__/hilfen.test.ts
   - apps/web/src/components/tcms/bereich-b/__tests__/aktion.test.tsx
   - apps/web/src/server/tcms/bereich-b/__tests__/formular.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/risiken/__tests__/seite.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/risiken/__tests__/actions.test.ts
+  - apps/web/src/components/tcms/risiken/__tests__/anzeige.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/__tests__/seite.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/__tests__/actions.test.ts
+  - apps/web/src/components/tcms/kontrollen/__tests__/kontrollen.test.tsx
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

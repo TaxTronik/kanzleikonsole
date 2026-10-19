@@ -1186,6 +1186,14 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   **Katalog** `/staff/tcms/katalog` (Admin/Partner, nur lesend); Personen nur
   aus der kanzleikonsole (Zugriff auf den Mandanten bzw. Kontakte dieses
   Mandanten)
+- **Risiken, Kontrollen & Prüfung:** Vier-Augen entscheidet der Dienst; wer
+  beantragt oder eingereicht hat, bekommt die Entscheidung nicht angeboten;
+  Personen nur aus der kanzleikonsole
+  - Risikoinventar `/staff/clients/[id]/tcms/risiken`: Liste und Heatmap mit
+    Filtern, Freigabe im Inventar, Detail mit Neubewertung, Übersteuerung,
+    Freigabe und Risikoakzeptanz
+  - Kontrollmatrix `…/kontrollen`: Liste und Matrix, Frequenzabweichung,
+    Designbeurteilung, Zuständigkeiten
 - **Durchführungen** `/staff/clients/[id]/tcms/durchfuehrungen[/[did]]`:
   Liste mit Filtern; Schritte, Werte mit Toleranz, Ergebnis, Einreichen,
   Gegenzeichnen (Befund mit Feststellung), Zurückweisen, Entfallen, Nachtrag.
