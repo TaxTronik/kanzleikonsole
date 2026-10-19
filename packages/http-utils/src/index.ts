@@ -10,6 +10,9 @@
 //
 // IPv4/IPv6-Block-Listen siehe `assertPublicHost`. `safeFetch` macht Lookup
 // + Pin + fetch + Body-Stream-Lifecycle in einem.
+//
+// Circuit-Breaker und Retry der internen Dienst-Clients (Risk-Layer, TCMS)
+// liegen ohne undici-Import im Subpath `@taxtronik/http-utils/resilience`.
 // =============================================================================
 
 import { lookup } from 'node:dns/promises';

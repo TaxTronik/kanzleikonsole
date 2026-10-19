@@ -841,6 +841,9 @@ importers:
       '@taxtronik/config':
         specifier: workspace:*
         version: link:../config
+      '@taxtronik/http-utils':
+        specifier: workspace:*
+        version: link:../http-utils
       zod:
         specifier: ^4.4.3
         version: 4.4.3

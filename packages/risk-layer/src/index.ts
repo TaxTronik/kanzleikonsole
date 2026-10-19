@@ -71,5 +71,16 @@ export {
   LosPruefenResponseSchema,
 } from './schema';
 
-export { CircuitBreaker, CircuitOpenError, executeResilient, withRetry } from './resilience';
-export type { CircuitState, CircuitBreakerOptions, RetryOptions } from './resilience';
+// Seit TCMS Stufe 2 in @taxtronik/http-utils (gemeinsam mit dem TCMS-Client);
+// hier weiter exportiert, damit bestehende Importpfade stabil bleiben.
+export {
+  CircuitBreaker,
+  CircuitOpenError,
+  executeResilient,
+  withRetry,
+} from '@taxtronik/http-utils/resilience';
+export type {
+  CircuitState,
+  CircuitBreakerOptions,
+  RetryOptions,
+} from '@taxtronik/http-utils/resilience';

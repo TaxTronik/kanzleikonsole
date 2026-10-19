@@ -1,17 +1,24 @@
 // =============================================================================
 // Resilienz: Circuit-Breaker + begrenztes Retry mit Backoff.
 //
-// Die LLM-Schicht der Engine kann 15–30 s dauern und zeitweise überlastet/aus
-// sein. Damit ein Ausfall nicht jeden Aufruf in den Timeout laufen lässt,
-// schützt ein Circuit-Breaker pro Client-Instanz: nach N Fehlern in Folge
-// „öffnet" er und lehnt Calls sofort ab (CircuitOpenError), bis nach einer
-// Cooldown-Zeit ein Probe-Call (half-open) erlaubt wird.
+// Gemeinsam für die internen Dienst-Clients (Risk-Layer/Signal, TCMS). Bis
+// TCMS Stufe 2 lag das Modul in @taxtronik/risk-layer; ein zweiter Client
+// hätte eine Kopie gebraucht, die bei jeder Härtung mitgezogen werden muss.
 //
-// Retry NUR für idempotente, billige Calls (GET + schnelle Analyse). Der teure
-// LLM-Call wird nicht auto-retried (Caller setzt retries: 0).
+// Ein Dienst kann zeitweise überlastet oder aus sein. Damit ein Ausfall nicht
+// jeden Aufruf in den Timeout laufen lässt, schützt ein Circuit-Breaker pro
+// Client-Instanz: nach N Fehlern in Folge „öffnet" er und lehnt Calls sofort ab
+// (CircuitOpenError), bis nach einer Cooldown-Zeit ein Probe-Call (half-open)
+// erlaubt wird.
+//
+// Retry NUR für idempotente, billige Calls. Welche Fehler wiederholt werden und
+// welche als Ausfall des Dienstes zählen, entscheidet der Aufrufer
+// (`shouldRetry`, `countsAsFailure`).
 // =============================================================================
 
 export type CircuitState = 'closed' | 'open' | 'half-open';
+
+const DEFAULT_OPEN_MESSAGE = 'Circuit ist offen — Dienst gilt als nicht erreichbar.';
 
 export interface CircuitBreakerOptions {
   /** Aufeinanderfolgende Fehler, ab denen der Breaker öffnet. */
@@ -20,11 +27,13 @@ export interface CircuitBreakerOptions {
   resetTimeoutMs: number;
   /** Zeitquelle (injizierbar für Tests). Default: Date.now. */
   now?: () => number;
+  /** Meldung des CircuitOpenError (dienstspezifisch, ohne Interna). */
+  openMessage?: string;
 }
 
 export class CircuitOpenError extends Error {
-  constructor() {
-    super('Risk-Layer-Circuit ist offen — Engine gilt als nicht erreichbar.');
+  constructor(message: string = DEFAULT_OPEN_MESSAGE) {
+    super(message);
     this.name = 'CircuitOpenError';
   }
 }
@@ -49,7 +58,7 @@ export class CircuitBreaker {
 
   /** Wirft CircuitOpenError, wenn aktuell kein Call erlaubt ist. */
   assertCanRequest(): void {
-    if (this.getState() === 'open') throw new CircuitOpenError();
+    if (this.getState() === 'open') throw new CircuitOpenError(this.opts.openMessage);
   }
 
   onSuccess(): void {
@@ -102,13 +111,18 @@ export async function withRetry<T>(
 /**
  * Kombiniert Breaker + Retry: lehnt bei offenem Breaker sofort ab, sonst
  * `withRetry`, und meldet Erfolg/Fehler an den Breaker zurück. Ein
- * CircuitOpenError aus dem Retry zählt nicht erneut als Engine-Fehler.
+ * CircuitOpenError aus dem Retry zählt nicht erneut als Dienst-Fehler.
+ *
+ * `countsAsFailure` (Standard: jeder Fehler): Fehler, die zeigen, dass der
+ * Dienst erreichbar ist und fachlich antwortet (z. B. 404 beim TCMS), zählen
+ * nicht als Ausfall und setzen den Zähler wie ein Erfolg zurück.
  */
 export async function executeResilient<T>(
   breaker: CircuitBreaker,
   retry: RetryOptions,
   shouldRetry: (err: unknown) => boolean,
   fn: () => Promise<T>,
+  countsAsFailure: (err: unknown) => boolean = () => true,
 ): Promise<T> {
   breaker.assertCanRequest();
   try {
@@ -116,7 +130,9 @@ export async function executeResilient<T>(
     breaker.onSuccess();
     return result;
   } catch (err) {
-    if (!(err instanceof CircuitOpenError)) breaker.onFailure();
+    if (err instanceof CircuitOpenError) throw err;
+    if (countsAsFailure(err)) breaker.onFailure();
+    else breaker.onSuccess();
     throw err;
   }
 }

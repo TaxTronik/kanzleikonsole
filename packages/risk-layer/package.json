@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@taxtronik/config": "workspace:*",
+    "@taxtronik/http-utils": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -60,7 +60,7 @@ import {
   CircuitOpenError,
   executeResilient,
   type RetryOptions,
-} from './resilience';
+} from '@taxtronik/http-utils/resilience';
 
 // Timeouts: billig/schnell, deterministische Analyse mit lokalem Modell-Warm-up
 // und LLM-Pfad. Auch die deterministische Analyse kann beim ersten Aufruf BGE-M3
@@ -81,7 +81,13 @@ const LOS_TIMEOUT_MS = 60_000;
 const FAST_RETRY: RetryOptions = { retries: 2, baseDelayMs: 300 };
 const NO_RETRY: RetryOptions = { retries: 0, baseDelayMs: 0 };
 
-const BREAKER_DEFAULTS = { failureThreshold: 5, resetTimeoutMs: 30_000 };
+// Circuit-Breaker aus @taxtronik/http-utils (gemeinsam mit dem TCMS-Client);
+// die Meldung bleibt die bisherige der Risk-Engine.
+const BREAKER_DEFAULTS = {
+  failureThreshold: 5,
+  resetTimeoutMs: 30_000,
+  openMessage: 'Risk-Layer-Circuit ist offen — Engine gilt als nicht erreichbar.',
+};
 
 async function trustedRiskLayerFetch(url: string, init?: RequestInit): Promise<Response> {
   const parsed = new URL(url);
