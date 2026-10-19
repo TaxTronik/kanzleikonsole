@@ -37,6 +37,21 @@ describe('speichernAusFormular', () => {
     });
   });
 
+  it('Richtungssteuerzeichen (TCMS s9, „Trojan Source“): Feldfehler „Unzulässige Zeichen“; ZWJ, VS16, LRM bleiben erlaubt', () => {
+    for (const zeichen of [0x202a, 0x202e, 0x2066, 0x2069]) {
+      const r = speichernAusFormular(
+        formular({ schritt_0_kommentar: `Betrag${String.fromCodePoint(zeichen)} 120` }),
+        d,
+      );
+      expect(r, zeichen.toString(16)).toMatchObject({
+        ok: false,
+        fieldErrors: { schritt_0_kommentar: ['Unzulässige Zeichen'] },
+      });
+    }
+    const erlaubt = `Team ${String.fromCodePoint(0x1f469, 0x200d, 0x1f4bb, 0x2764, 0xfe0f)} \u200e`;
+    expect(speichernAusFormular(formular({ schritt_0_kommentar: erlaubt }), d).ok).toBe(true);
+  });
+
   it('Kürzen an der Höchstlänge trennt kein Ersatzpaar (sonst einzelnes Surrogat)', () => {
     const lang = `${'x'.repeat(1999)}${String.fromCodePoint(0x1f600)}`;
     const r = speichernAusFormular(formular({ schritt_0_kommentar: lang }), d);

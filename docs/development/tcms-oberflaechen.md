@@ -459,14 +459,18 @@ export async function GET(
   `api-route-authz.test.ts` (erkennt die Einstiege nur als Import aus
   `@/server/tcms/route`). Semantik: `server/tcms/__tests__/route.test.ts`.
 
-## 12. Zeichenregel (TCMS s8)
+## 12. Zeichenregel (TCMS s8/s9)
 
 Der Vertrag hat eine Zeichenregel aus Unicode-Eigenschaften
 (`UNZULAESSIG_KLASSE`: Steuer-, Format-, Zeilen- und Absatztrennzeichen,
 standardmäßig unsichtbare Zeichen wie Variantenselektoren, einzelne Surrogate).
 Einzeilige Texte (Titel, Namen, Funktion, Rechtsform) und Dateinamen dürfen
 keines dieser Zeichen enthalten (Dateinamen zusätzlich kein `/` und `\`),
-Freitexte kein NUL und kein einzelnes Surrogat (`TEXT_UNZULAESSIG`). Die
+Freitexte kein NUL, kein einzelnes Surrogat und (seit s9) keine
+Richtungssteuerzeichen U+202A–202E und U+2066–2069 (`TEXT_UNZULAESSIG`;
+Zeilenumbruch, TAB, ZWJ, Variantenselektoren und LRM/RLM/ALM bleiben erlaubt).
+Gespeicherte Texte liest der Vertrag tolerant (nur Länge), damit Altbestand
+lesbar bleibt; gespeichert wird nur nach der Regel für Eingaben. Die
 kanzleikonsole übernimmt die Regel aus dem Vertrag in
 `server/tcms/zeichen.ts`, nie als Kopie:
 
@@ -481,9 +485,11 @@ kanzleikonsole übernimmt die Regel aus dem Vertrag in
   Textblöcke) werden nie still geändert: Die Formularschemas nutzen die
   Schemas des Vertrags (`einzeilig`, `freitext`, `mitTextBasis`, z. B.
   `FeststellungErfassenBodySchema.shape.titel`), Formulare mit selbst gebautem
-  Body prüfen `freitextZeichenFehler`. Ergebnis ist ein Feldfehler mit dem
-  Text des Vertrags („Unzulässige Zeichen“, „Unzulässige Zeichen (NUL oder
-  einzelnes Surrogat)“, „Steuerzeichen sind nicht erlaubt“).
+  Body prüfen `freitextZeichenFehler` (Meldung aus `mitTextBasis` des
+  Vertrags). Ergebnis ist ein Feldfehler mit dem Text des Vertrags
+  („Unzulässige Zeichen“ – auch für Richtungssteuerzeichen in Freitexten –,
+  „Unzulässige Zeichen (NUL oder einzelnes Surrogat)“, „Steuerzeichen sind
+  nicht erlaubt“).
 - **Abbildung (`zustand.ts`):** Ist ein Feldfehler eines 400 – aus der lokalen
   Prüfung des Clients oder vom Dienst – genau eine dieser festen Meldungen
   (`vertragsZeichenMeldung`, aus den Schemas des Vertrags ermittelt), erscheint

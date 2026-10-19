@@ -112,6 +112,10 @@ describe('koerperAusFormular – Basisregel der Freitexte (TCMS s8)', () => {
         ergebnisKommentar: [TEXT_UNZULAESSIG_MELDUNG],
       },
     });
+    // TCMS s9: Richtungssteuerzeichen mit der Meldung des Vertrags.
+    expect(
+      koerperAusFormular(a, { ergebnisKommentar: `geprüft ${String.fromCodePoint(0x202e)}ok` }),
+    ).toMatchObject({ ok: false, fieldErrors: { ergebnisKommentar: ['Unzulässige Zeichen'] } });
     // Mehrzeilig und mit sichtbaren Sonderzeichen bleibt ein Freitext gültig.
     expect(
       koerperAusFormular(a, {

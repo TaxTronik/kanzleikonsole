@@ -76,10 +76,10 @@ describe('tcmsTextBereinigen', () => {
     expect(DATEINAME_UNZULAESSIG.test(sauber)).toBe(false);
   });
 
-  it('FREITEXT: nur NUL und einzelne Surrogate entfallen, Zeilen bleiben', () => {
-    const roh = `Zeile 1\nZeile 2${UNSICHTBAR.nul}${String.fromCharCode(0xd800)} ${UNSICHTBAR.rlo}`;
+  it('FREITEXT: nur die Basisregel (NUL, einzelne Surrogate, seit TCMS s9 Richtungssteuerzeichen); Zeilen, LRM und ZWJ bleiben', () => {
+    const roh = `Zeile 1\nZeile 2${UNSICHTBAR.nul}${String.fromCharCode(0xd800)} ${UNSICHTBAR.rlo}x\u2066y\u200e\u200d`;
     const sauber = tcmsTextBereinigen(roh, 'FREITEXT');
-    expect(sauber).toBe(`Zeile 1\nZeile 2 ${UNSICHTBAR.rlo}`);
+    expect(sauber).toBe('Zeile 1\nZeile 2 xy\u200e\u200d');
     expect(TEXT_UNZULAESSIG.test(sauber)).toBe(false);
   });
 });

@@ -6,7 +6,8 @@
 // (`UNZULAESSIG_KLASSE`: Cc, Cf, Zl, Zp, Default_Ignorable_Code_Point, Cs). Sie
 // gilt für einzeilige Texte (Titel, Namen, Funktion, Rechtsform …) und
 // Dateinamen (dort zusätzlich `/` und `\`); Freitexte prüfen nur die
-// Basisregel (`TEXT_UNZULAESSIG`: kein NUL, keine einzelnen Surrogate).
+// Basisregel (`TEXT_UNZULAESSIG`: kein NUL, keine einzelnen Surrogate, seit
+// TCMS s9 keine Richtungssteuerzeichen U+202A–202E und U+2066–2069).
 // Diese Datei übernimmt die Regel aus dem Vertrag (nie kopiert) und wendet sie
 // auf zwei Arten an:
 //
@@ -26,9 +27,11 @@
 // kanzleikonsole und Dienst laufen auf derselben Node-Hauptversion.
 // =============================================================================
 
+import { z } from 'zod';
 import {
   einzeilig,
   freitext,
+  mitTextBasis,
   TEXT_UNZULAESSIG,
   TEXT_UNZULAESSIG_MELDUNG,
   UNZULAESSIG_KLASSE,
@@ -65,7 +68,8 @@ export function tcmsKuerzen(text: string, max: number): string {
  * - `EINZEILIG`: ohne Zeichen der Regel, Trenner → Leerzeichen, Leerraum
  *   zusammengefasst und getrimmt.
  * - `DATEINAME`: wie `EINZEILIG`, zusätzlich `/` und `\` → `_`.
- * - `FREITEXT`: nur NUL und einzelne Surrogate entfallen; Zeilen bleiben.
+ * - `FREITEXT`: nur die Zeichen der Basisregel entfallen (NUL, einzelne
+ *   Surrogate, Richtungssteuerzeichen); Zeilen bleiben.
  *
  * `max` kürzt danach (Codeeinheiten, ohne Ersatzpaare zu trennen). Das
  * Ergebnis kann leer sein; Pflichtfelder prüft der Aufrufer.
@@ -114,11 +118,17 @@ export function vertragsZeichenMeldung(meldung: string): string | null {
   return VERTRAG_ZEICHEN_MELDUNGEN.has(meldung) ? meldung : null;
 }
 
+/** Basisregel des Vertrags für Freitexte (Meldung je nach Zeichen aus dem Vertrag). */
+const FREITEXT_BASIS = mitTextBasis(z.string());
+
 /**
  * Feldfehler der Basisregel für einen Freitext, den der Mensch eingetippt hat
- * (kein NUL, kein einzelnes Surrogat): der Text des Vertrags oder `null`. Für
- * Formulare, die ihren Body selbst zusammensetzen (Durchführung, Kontrollaufgabe).
+ * (kein NUL, kein einzelnes Surrogat, kein Richtungssteuerzeichen): die Meldung
+ * des Vertrags („Unzulässige Zeichen (NUL oder einzelnes Surrogat)“ bzw.
+ * „Unzulässige Zeichen“) oder `null`. Für Formulare, die ihren Body selbst
+ * zusammensetzen (Durchführung, Kontrollaufgabe).
  */
 export function freitextZeichenFehler(wert: string): string | null {
-  return TEXT_UNZULAESSIG.test(wert) ? TEXT_UNZULAESSIG_MELDUNG : null;
+  const ergebnis = FREITEXT_BASIS.safeParse(wert);
+  return ergebnis.success ? null : (ergebnis.error.issues[0]?.message ?? TEXT_UNZULAESSIG_MELDUNG);
 }
