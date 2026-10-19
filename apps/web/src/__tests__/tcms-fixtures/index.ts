@@ -27,6 +27,15 @@
 //   - portal-freigaben-jana.json (Bereich D): `inhalt` und Abschnitte der
 //     Beschreibung gekürzt (snapshotSha256 passt deshalb nicht mehr zum Inhalt).
 //   - audit-anna.json (Bereich D): erste Seite mit `vor` (neueste zuerst), limit 5.
+//   - Felder aus TCMS s7/s8 (Vendoring 4752652) aus einem Abruf des Dienstes
+//     mit frischem Demo-Seed ergänzt, zugeordnet über Codes und Nummern statt
+//     IDs (der Seed vergibt IDs je Datenbank neu): `heute` der Einrichtung,
+//     Zeitraumzahlen und `pflichtattributeLuecken`, `rechte` der Listen,
+//     `bezuege` der Länder (Ereignis-IDs auf die der Fixtures abgebildet),
+//     `pruefung.kennzahlen`, Rechte der Ereignisse (Anna Roth), `melden`
+//     (Jana Weller), `gegenzeichnungMandant` der lebenden Bausteine (K-EC-23
+//     dabei ohne die frühere Endung „ (Mandant)“ im Namen, wie der Dienst sie
+//     seit s7 lebend liefert).
 // Neue Fixtures: Antwort mit dem Demo-Akteur abrufen, kürzen, hier mit dem
 // Schema des Endpunkts laden (ENDPUNKTE.<name>.antwortSchema).
 // =============================================================================

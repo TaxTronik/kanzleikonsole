@@ -113,6 +113,56 @@
     "schritteGesamt": 4,
     "werteFehlend": [],
     "ausserhalb": [],
+    "kennzahlen": [
+      {
+        "key": "shop",
+        "label": "Shop- und Marktplatzerlöse",
+        "wert": 371271,
+        "abweichung": null,
+        "lage": null,
+        "berechnet": false
+      },
+      {
+        "key": "zdl",
+        "label": "Eingänge Zahlungsdienstleister",
+        "wert": 371118,
+        "abweichung": null,
+        "lage": null,
+        "berechnet": false
+      },
+      {
+        "key": "differenz",
+        "label": "Differenz",
+        "wert": 153,
+        "abweichung": 153,
+        "lage": "OK",
+        "berechnet": true
+      },
+      {
+        "key": "clearing_paypal",
+        "label": "Clearingkonto PayPal",
+        "wert": 0,
+        "abweichung": 0,
+        "lage": "OK",
+        "berechnet": false
+      },
+      {
+        "key": "clearing_stripe",
+        "label": "Clearingkonto Stripe",
+        "wert": 0,
+        "abweichung": 0,
+        "lage": "OK",
+        "berechnet": false
+      },
+      {
+        "key": "clearing_amazonpay",
+        "label": "Clearingkonto Amazon Pay",
+        "wert": 0,
+        "abweichung": 0,
+        "lage": "OK",
+        "berechnet": false
+      }
+    ],
     "nachweise": 2,
     "mindestNachweise": 2,
     "ergebnis": "MIT_BEFUND",

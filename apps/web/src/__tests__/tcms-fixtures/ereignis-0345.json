@@ -14,6 +14,22 @@
   "triagiertAm": null,
   "stand": "2026-10-19",
   "historisch": false,
+  "rechte": {
+    "abschliessen": {
+      "erlaubt": false,
+      "verweigerung": null
+    },
+    "verwerfen": {
+      "beantragen": {
+        "erlaubt": true,
+        "verweigerung": null
+      },
+      "bestaetigen": {
+        "erlaubt": false,
+        "verweigerung": null
+      }
+    }
+  },
   "folgen": [
     {
       "id": "cmvf9ned1008idy7ddnhhtfja",

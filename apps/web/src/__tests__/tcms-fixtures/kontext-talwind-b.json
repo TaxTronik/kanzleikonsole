@@ -1108,7 +1108,8 @@
         "gt": "FF",
         "schluessel": true
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz04001jwb7diau9fqxc",
@@ -1238,7 +1239,8 @@
         "gt": "FF",
         "schluessel": false
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz11001nwb7ddf9nyqrh",
@@ -1386,7 +1388,8 @@
         "gt": "FP",
         "schluessel": true
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz1g001pwb7d7ins1vky",
@@ -1509,7 +1512,8 @@
         "gt": "FF",
         "schluessel": true
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz2f001vwb7d3gt5lb60",
@@ -1635,7 +1639,8 @@
         "gt": "FP",
         "schluessel": false
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz3a001zwb7dbt5eay4q",
@@ -1771,7 +1776,8 @@
         "gt": "FP",
         "schluessel": false
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz6r002nwb7dn7ln80yg",
@@ -1861,7 +1867,8 @@
         "gt": null,
         "schluessel": false
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz78002pwb7duxzds5en",
@@ -1980,7 +1987,8 @@
         "gt": "FP",
         "schluessel": false
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     }
   ],
   "durchfuehrungen": [
@@ -3955,7 +3963,10 @@
     "offen": 15,
     "ohneGegenzeichnung": 3,
     "ueberfaellig": 2,
-    "fehlendeNachweise": 0
+    "fehlendeNachweise": 0,
+    "ohneDurchfuehrung": [],
+    "nachweise": 47,
+    "entfallen": 0
   },
   "ausgeblendet": 0
 }

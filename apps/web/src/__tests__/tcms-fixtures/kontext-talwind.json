@@ -1795,7 +1795,8 @@
         "gt": "FF",
         "schluessel": true
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf6eowp001js87dc5n4j3cq",
@@ -1918,7 +1919,8 @@
         "gt": "FF",
         "schluessel": false
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     }
   ],
   "durchfuehrungen": [
@@ -3425,7 +3427,10 @@
     "offen": 15,
     "ohneGegenzeichnung": 3,
     "ueberfaellig": 2,
-    "fehlendeNachweise": 0
+    "fehlendeNachweise": 0,
+    "ohneDurchfuehrung": [],
+    "nachweise": 47,
+    "entfallen": 0
   },
   "ausgeblendet": 0
 }

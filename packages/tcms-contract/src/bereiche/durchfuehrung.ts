@@ -16,7 +16,7 @@
 
 import { z } from 'zod';
 import { VERWEIGERUNG_GRUENDE } from '../fehler';
-import { StandSchema } from './lesepfade';
+import { DATEINAME_UNZULAESSIG, einzeilig, mitTextBasis, StandSchema } from './lesepfade';
 
 // ---------------------------------------------------------------------------
 // Grenzen und Bausteine
@@ -49,11 +49,13 @@ const RisikoIdSchema = objektId();
 const MandantIdSchema = z.uuid().transform((s) => s.toLowerCase());
 
 const begruendung = () =>
-  z
-    .string()
-    .trim()
-    .min(DF_MIN_BEGRUENDUNG, `Begründung: mindestens ${DF_MIN_BEGRUENDUNG} Zeichen`)
-    .max(DF_MAX_BEGRUENDUNG);
+  mitTextBasis(
+    z
+      .string()
+      .trim()
+      .min(DF_MIN_BEGRUENDUNG, `Begründung: mindestens ${DF_MIN_BEGRUENDUNG} Zeichen`)
+      .max(DF_MAX_BEGRUENDUNG),
+  );
 
 const ziel = {
   mandantId: MandantIdSchema,
@@ -80,6 +82,52 @@ export const NachweisLesenEingabeSchema = z
   .strict();
 export type NachweisLesenEingabe = z.infer<typeof NachweisLesenEingabeSchema>;
 
+/** Dokument-ID der kanzleikonsole (UUID); kanonisch in Kleinbuchstaben wie gespeichert. */
+const DokumentIdSchema = z.uuid().transform((s) => s.toLowerCase());
+
+/**
+ * Nachweise je Dokument (`GET …/nachweise?dokumentId=`): Abgleich offener
+ * Verknüpfungen der kanzleikonsole mit ihrer Dokumentenpipeline (ADR 0001
+ * §6). Nur Kanzleipersonen mit Leserecht für den Mandanten. `dokumentId` ist
+ * Pflicht (der Dienst antwortet sonst `400`); im Query-Schema optional, weil
+ * das Register jede Query ohne Parameter zulässt und Pflicht im Service prüft.
+ */
+export const NachweiseJeDokumentQuerySchema = z
+  .object({ dokumentId: DokumentIdSchema.optional() })
+  .strict();
+export const NachweiseJeDokumentPfadSchema = z.object({ mandantId: MandantIdSchema }).strict();
+export const NachweiseJeDokumentEingabeSchema = z
+  .object({ mandantId: MandantIdSchema, dokumentId: DokumentIdSchema })
+  .strict();
+/** Eingabe aus Pfad und Query (Pflicht von `dokumentId` prüft der Dienst mit dem Eingabeschema). */
+export type NachweiseJeDokumentEingabe = z.input<typeof NachweiseJeDokumentPfadSchema> &
+  z.input<typeof NachweiseJeDokumentQuerySchema>;
+
+/**
+ * Jeder Nachweis dieses Mandanten mit der Dokument-ID – auch entfernte
+ * (`entfernt: true`; die Bindung der Dokument-ID an Mandant und Inhalt bleibt
+ * bestehen, ADR 0001 §6), damit die kanzleikonsole eine Verknüpfung nach dem
+ * Entfernen freigibt bzw. eine bestätigt. Eine Dokument-ID eines anderen
+ * Mandanten oder eine unbekannte ergibt dieselbe leere Liste (kein
+ * Existenz-Orakel). Keine Dateinamen, Hashes oder Personen.
+ */
+export const NachweiseJeDokumentSchema = z
+  .object({
+    dokumentId: z.string(),
+    nachweise: z.array(
+      z
+        .object({
+          id: z.string(),
+          durchfuehrungId: z.string(),
+          /** Verweis entfernt (vor der Einreichung); sonst aktiv. */
+          entfernt: z.boolean(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export type NachweiseJeDokument = z.infer<typeof NachweiseJeDokumentSchema>;
+
 // ---------------------------------------------------------------------------
 // Operationen ohne Body (beginnen, einreichen, bestätigen, Entfallen freigeben)
 // ---------------------------------------------------------------------------
@@ -94,7 +142,7 @@ export type DurchfuehrungZiel = z.infer<typeof DurchfuehrungZielSchema>;
 export const DurchfuehrungSchrittEingabeSchema = z
   .object({
     erledigt: z.boolean(),
-    kommentar: z.string().trim().max(DF_MAX_SCHRITT_KOMMENTAR),
+    kommentar: mitTextBasis(z.string().trim().max(DF_MAX_SCHRITT_KOMMENTAR)),
   })
   .strict();
 
@@ -105,7 +153,7 @@ export const DurchfuehrungWertEingabeSchema = z
   .object({
     key: DurchfuehrungKennzahlKeySchema,
     wert: z.number().gt(-DF_MAX_BETRAG).lt(DF_MAX_BETRAG).nullable(),
-    bemerkung: z.string().trim().max(DF_MAX_WERT_BEMERKUNG),
+    bemerkung: mitTextBasis(z.string().trim().max(DF_MAX_WERT_BEMERKUNG)),
     erklaert: z.boolean(),
   })
   .strict();
@@ -119,7 +167,7 @@ const speichernFelder = {
     .max(DF_MAX_KENNZAHLEN)
     .refine((w) => new Set(w.map((x) => x.key)).size === w.length, 'Kennzahl doppelt'),
   ergebnis: DurchfuehrungErgebnisSchema.nullable(),
-  ergebnisKommentar: z.string().trim().max(DF_MAX_ERGEBNIS_KOMMENTAR).nullable(),
+  ergebnisKommentar: mitTextBasis(z.string().trim().max(DF_MAX_ERGEBNIS_KOMMENTAR)).nullable(),
 };
 
 export const DurchfuehrungSpeichernBodySchema = z.object(speichernFelder).strict();
@@ -133,8 +181,9 @@ export type DurchfuehrungSpeichernEingabe = z.infer<typeof DurchfuehrungSpeicher
 // ---------------------------------------------------------------------------
 
 const MIME = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
-// Steuerzeichen, Pfadtrenner, Unicode-Richtungszeichen (Dateinamen-Spoofing).
-const DATEINAME_VERBOTEN = /[\u0000-\u001f\u007f/\\\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/;
+// Steuer-, Richtungs-, Nullbreiten- und Füllzeichen, Pfadtrenner
+// (Dateinamen-Spoofing): eine Regel für alle Dateinamen (lesepfade.ts).
+const DATEINAME_VERBOTEN = DATEINAME_UNZULAESSIG;
 
 /** Gültiger Dateiname eines Verweises (strenger als `pruefeVerweis`, nie lockerer). */
 export function gueltigerNachweisDateiname(name: string): boolean {
@@ -188,7 +237,9 @@ export type DurchfuehrungBegruendungEingabe = z.infer<typeof DurchfuehrungBegrue
  * Entfallen-Antrag ablehnen bzw. zurückziehen: Die antragstellende Person zieht
  * ohne Begründung zurück; jede andere Person lehnt mit Begründung ab (Service).
  */
-const ablehnenFelder = { begruendung: z.string().trim().max(DF_MAX_BEGRUENDUNG).optional() };
+const ablehnenFelder = {
+  begruendung: mitTextBasis(z.string().trim().max(DF_MAX_BEGRUENDUNG)).optional(),
+};
 export const EntfallenAblehnenBodySchema = z.object(ablehnenFelder).strict();
 export const EntfallenAblehnenEingabeSchema = z.object({ ...ziel, ...ablehnenFelder }).strict();
 export type EntfallenAblehnenEingabe = z.infer<typeof EntfallenAblehnenEingabeSchema>;
@@ -214,8 +265,10 @@ const AuswirkungSchema = z.enum(['JA', 'NEIN', 'UNKLAR'], {
  */
 export const GegenzeichnungFeststellungSchema = z
   .object({
-    titel: z.string().trim().min(5, 'Titel: mindestens 5 Zeichen').max(200),
-    sachverhalt: z.string().trim().min(20, 'Sachverhalt: mindestens 20 Zeichen').max(4000),
+    titel: einzeilig(5, 200, 'Titel: mindestens 5 Zeichen'),
+    sachverhalt: mitTextBasis(
+      z.string().trim().min(20, 'Sachverhalt: mindestens 20 Zeichen').max(4000),
+    ),
     klasse: FeststellungKlasseSchema,
     schwere: KlasseSchema,
     auswirkung: AuswirkungSchema,
@@ -339,12 +392,34 @@ export const DurchfuehrungWertSchema = z
   })
   .strict();
 
+/**
+ * Kennzahl in der Prüfung: vom Dienst berechnete Werte, damit Kanzlei und
+ * Portal dieselben Differenzen zeigen wie die Prüfung beim Einreichen (statt
+ * sie selbst zu rechnen).
+ */
+export const KennzahlPruefungSchema = z
+  .object({
+    key: z.string(),
+    label: z.string(),
+    /** Erfasster Wert bzw. berechnete Differenz (a − b aus `differenzAus`, auf Cent gerundet). */
+    wert: z.number().nullable(),
+    /** Abweichung gegen das Soll bzw. die Differenz selbst; null = keine Toleranzprüfung. */
+    abweichung: z.number().nullable(),
+    /** Lage zur Toleranz der Kontrolle (`AUSSERHALB` ohne Erklärung steht auch in `ausserhalb`). */
+    lage: z.enum(['OK', 'ERKLAERT', 'AUSSERHALB']).nullable(),
+    /** Differenzkennzahl (berechnet, nicht erfasst). */
+    berechnet: z.boolean(),
+  })
+  .strict();
+
 export const EinreichPruefungSchema = z
   .object({
     schritteErledigt: z.number().int(),
     schritteGesamt: z.number().int(),
     werteFehlend: z.array(z.string()),
     ausserhalb: z.array(z.string()),
+    /** Je Kennzahl der Kontrolle die berechneten Werte (Reihenfolge der Kontrolle). */
+    kennzahlen: z.array(KennzahlPruefungSchema),
     nachweise: z.number().int(),
     mindestNachweise: z.number().int(),
     ergebnis: DurchfuehrungErgebnisSchema.nullable(),

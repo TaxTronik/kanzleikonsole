@@ -261,6 +261,7 @@ describe('verantwortlicheAendernAction', () => {
         params: { kontrolleId: 'K-EC-02' },
         body: {
           standId: 'ks_2',
+          partei: 'KANZLEI',
           durchfuehrendId: LEON,
           vertretungId: MURAT,
           gegenzeichnerId: ANNA,

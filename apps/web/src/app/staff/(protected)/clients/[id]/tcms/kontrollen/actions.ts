@@ -270,6 +270,7 @@ export async function verantwortlicheAendernAction(
         params: { kontrolleId: d.kontrolleId },
         body: {
           standId: d.standId,
+          partei: d.partei,
           durchfuehrendId: personen.durchfuehrendId,
           vertretungId: personen.vertretungId,
           gegenzeichnerId: personen.gegenzeichnerId,

@@ -4,6 +4,9 @@
   "heute": "2026-10-19",
   "stand": "2026-10-19",
   "historisch": false,
+  "rechte": {
+    "bearbeiten": true
+  },
   "appetit": "MITTEL",
   "betriebAktiv": true,
   "risiken": [

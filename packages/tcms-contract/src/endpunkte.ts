@@ -52,9 +52,12 @@ import {
   NachweisEntferntSchema,
   NachweisErgebnisSchema,
   NachweisLesenEingabeSchema,
+  NachweiseJeDokumentPfadSchema,
+  NachweiseJeDokumentQuerySchema,
+  NachweiseJeDokumentSchema,
 } from './bereiche/durchfuehrung';
 import {
-  AnlageVerweisSchema,
+  AnlageGespeichertSchema,
   EreignisAktionSchema,
   EreignisAnlageLesenSchema,
   EreignisDetailSchema,
@@ -592,6 +595,14 @@ export const ENDPUNKTE = register({
     params: NachweisLesenEingabeSchema,
     antwort: NachweisErgebnisSchema,
   },
+  /** Nachweise je Dokument-ID (Abgleich der kanzleikonsole), auch entfernte; nur Kanzlei. */
+  nachweiseJeDokumentLesen: {
+    methode: 'GET',
+    pfad: `${M}/nachweise`,
+    params: NachweiseJeDokumentPfadSchema,
+    query: NachweiseJeDokumentQuerySchema,
+    antwort: NachweiseJeDokumentSchema,
+  },
 
   // ---- Kontrollaufgaben (Portal) -------------------------------------------
   portalAufgabenLesen: {
@@ -933,7 +944,7 @@ export const ENDPUNKTE = register({
     methode: 'GET',
     pfad: `${E}/anlagen/:sha256`,
     params: EreignisAnlageLesenSchema,
-    antwort: AnlageVerweisSchema,
+    antwort: AnlageGespeichertSchema,
   },
   ereignisErfassen: {
     methode: 'POST',

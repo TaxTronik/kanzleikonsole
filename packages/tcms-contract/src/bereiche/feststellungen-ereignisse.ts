@@ -19,7 +19,15 @@
 // =============================================================================
 
 import { z } from 'zod';
-import { StandSchema } from './lesepfade';
+import { VERWEIGERUNG_GRUENDE } from '../fehler';
+import {
+  BearbeitenRechteSchema,
+  DATEINAME_GESPEICHERT_UNZULAESSIG,
+  DATEINAME_UNZULAESSIG,
+  einzeilig,
+  freitext,
+  StandSchema,
+} from './lesepfade';
 
 // ---------------------------------------------------------------------------
 // Bausteine
@@ -31,21 +39,8 @@ export const ObjektIdSchema = z.string().regex(/^[a-z0-9]{16,40}$/, 'Ungültige 
 /** Kalendertag `YYYY-MM-DD` (nur gültige Tage). */
 export const TagSchema = z.iso.date();
 
-// NUL und andere Steuerzeichen (außer Tab/Zeilenumbruch) sowie einzelne
-// Surrogate: PostgreSQL weist NUL ab (sonst 500), die übrigen sind nie fachlich.
-const STEUERZEICHEN = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
-const EINZELNES_SURROGAT = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
-
-/** Freitext: getrimmt, Längengrenzen, ohne Steuerzeichen. */
-export function freitext(min: number, max: number) {
-  return z
-    .string()
-    .trim()
-    .min(min)
-    .max(max)
-    .refine((s) => !STEUERZEICHEN.test(s), 'Steuerzeichen sind nicht erlaubt')
-    .refine((s) => !EINZELNES_SURROGAT.test(s), 'Ungültige Zeichenfolge');
-}
+// Freitexte (`freitext`) und einzeilige Texte (`einzeilig`) kommen aus
+// lesepfade.ts: eine Text-Basisregel für den ganzen Vertrag (RT4-T-08).
 
 const iso = z.iso.datetime();
 
@@ -134,6 +129,14 @@ export const FeststellungLesenSchema = z
 const feststellung = { ...mandant, feststellungId: ObjektIdSchema };
 
 // ---- Status weiterschalten ----
+/**
+ * Antworten: `409 KONFLIKT` nur, wenn der Status inzwischen ein anderer als
+ * `von` ist (gleichzeitige Änderung, TS-05). Ist der Schritt auf dem
+ * gesehenen Stand fachlich gesperrt (geschlossen/verworfen, kein weiterer
+ * Schritt, §-153-Würdigung offen, Maßnahme fehlt oder offen, Nachkontrolle
+ * fehlt), antwortet der Dienst `400 UNGUELTIG` mit `felder.von` (Grund als
+ * Text); fehlendes Recht bleibt `403` (vor dem Zustand geprüft).
+ */
 export const FeststellungWeiterBodySchema = z
   .object({
     /** Status, den der Aufrufer gesehen hat; weicht er ab → KONFLIKT (TS-05). */
@@ -218,7 +221,7 @@ export const VertraulichSchema = VertraulichBodySchema.extend(feststellung).stri
 // ---- Feststellung erfassen ----
 export const FeststellungErfassenBodySchema = z
   .object({
-    titel: freitext(5, 200),
+    titel: einzeilig(5, 200),
     sachverhalt: freitext(20, 4000),
     quelle: FeststellungQuelleSchema,
     quelleText: freitext(2, 200),
@@ -482,7 +485,7 @@ export const FolgeAnlegenSchema = z
     /** Pflicht bei „Feststellung anlegen". „NEIN" nur mit Würdigungsrecht (TS-04). */
     feststellung: z
       .object({
-        titel: freitext(5, 200),
+        titel: einzeilig(5, 200),
         klasse: FeststellungKlasseSchema,
         schwere: SchwereSchema,
         auswirkung: AuswirkungSchema,
@@ -532,7 +535,7 @@ export const EreignisErfassenBodySchema = z
   .object({
     typ: EreignistypCodeSchema,
     quelle: z.enum(['MANUELL', 'KONTROLLE', 'STAMMDATEN', 'RSS']),
-    titel: freitext(5, 200),
+    titel: einzeilig(5, 200),
     beschreibung: freitext(10, 4000),
     datum: TagSchema,
   })
@@ -546,10 +549,20 @@ export const PORTAL_ANLAGE_MIME =
 export const PORTAL_MAX_ANLAGEN = 5;
 export const PORTAL_MAX_ANLAGE_BYTES = 10 * 1024 * 1024;
 const SHA256 = /^[0-9a-f]{64}$/;
-// Wie `pruefeVerweis` (@tcms/service): Steuerzeichen, Pfadtrenner, Richtungszeichen.
-const DATEINAME_VERBOTEN = /[\u0000-\u001f\u007f/\\\u202a-\u202e\u2066-\u2069]/;
+// Wie `pruefeVerweis` (@tcms/service) und Nachweise: eine Regel für Dateinamen
+// (Steuer-, Richtungs-, Nullbreiten- und Füllzeichen, Pfadtrenner; lesepfade.ts).
+const DATEINAME_VERBOTEN = DATEINAME_UNZULAESSIG;
 
 export const Sha256Schema = z.string().regex(SHA256, 'Ungültiger SHA-256');
+
+/** Dateiname einer Anlage; `verboten` ist die Zeichenregel (neu bzw. gespeichert). */
+const anlageDateiname = (verboten: RegExp) =>
+  z
+    .string()
+    .min(1)
+    .max(255)
+    .refine((s) => s.trim().length > 0 && s !== '.' && s !== '..', 'Ungültiger Dateiname')
+    .refine((s) => !verboten.test(s), 'Ungültiger Dateiname');
 
 /**
  * Verweis auf eine Anlage, die die kanzleikonsole angenommen hat (Virenscan,
@@ -565,23 +578,29 @@ export const AnlageVerweisSchema = z
       .max(200)
       .regex(/^[A-Za-z0-9._:-]+(?:\/[A-Za-z0-9._:-]+)*$/)
       .refine((s) => !s.split('/').some((t) => t === '.' || t === '..'), 'Ungültige Dokument-ID'),
-    dateiname: z
-      .string()
-      .min(1)
-      .max(255)
-      .refine((s) => s.trim().length > 0 && s !== '.' && s !== '..', 'Ungültiger Dateiname')
-      .refine((s) => !DATEINAME_VERBOTEN.test(s), 'Ungültiger Dateiname'),
+    dateiname: anlageDateiname(DATEINAME_VERBOTEN),
     mime: z.string().max(127).regex(PORTAL_ANLAGE_MIME, 'Dateityp nicht zulässig'),
     groesse: z.number().int().min(1).max(PORTAL_MAX_ANLAGE_BYTES),
     sha256: Sha256Schema,
   })
   .strict();
 
+/**
+ * Gespeicherter Anlage-Verweis in Antworten (`ereignisAnlageLesen`, im Detail
+ * ohne Dokument-ID): wie `AnlageVerweisSchema`, der Dateiname aber nach der
+ * Regel für gespeicherte Namen (`DATEINAME_GESPEICHERT_UNZULAESSIG`). Anlagen
+ * stehen im unveränderlichen Meldungs-Audit; vor der Angleichung gespeicherte
+ * Namen bleiben so lesbar. Neue Verweise prüft `AnlageVerweisSchema`.
+ */
+export const AnlageGespeichertSchema = AnlageVerweisSchema.extend({
+  dateiname: anlageDateiname(DATEINAME_GESPEICHERT_UNZULAESSIG),
+}).strict();
+
 // ---- Portal: Ereignis melden ----
 export const PortalMeldungBodySchema = z
   .object({
     typ: EreignistypCodeSchema,
-    titel: freitext(5, 200),
+    titel: einzeilig(5, 200),
     beschreibung: freitext(10, 4000),
     datum: TagSchema,
     anlagen: z
@@ -595,7 +614,7 @@ export const PortalMeldungBodySchema = z
      * nur für den Postausgang; begründet kein Recht).
      */
     benachrichtigen: z
-      .object({ id: z.uuid(), name: freitext(1, 200) })
+      .object({ id: z.uuid(), name: einzeilig(1, 200) })
       .strict()
       .nullable()
       .optional(),
@@ -647,7 +666,7 @@ export const EreignisListeSchema = z
   })
   .strict();
 
-export const AnlageSchema = AnlageVerweisSchema.omit({ dokumentId: true }).strict();
+export const AnlageSchema = AnlageGespeichertSchema.omit({ dokumentId: true }).strict();
 
 export const FolgeDetailSchema = z
   .object({
@@ -680,10 +699,36 @@ export const FolgeDetailSchema = z
   })
   .strict();
 
+/**
+ * Recht des Akteurs auf einen Schritt am Ereignis (wie die Rechte der
+ * Durchführung): `verweigerung` ist der Grund des `403`, den die Operation
+ * jetzt liefern würde (gleiche Vorbedingung im Dienst); `null` bei Erlaubnis
+ * oder wenn nur der Zustand entgegensteht (die Operation antwortet `409`).
+ * Im historischen Stand nie erlaubt.
+ */
+export const EreignisRechtSchema = z
+  .object({
+    erlaubt: z.boolean(),
+    verweigerung: z.enum(VERWEIGERUNG_GRUENDE).nullable(),
+  })
+  .strict()
+  .refine((r) => !r.erlaubt || r.verweigerung === null, {
+    message: 'erlaubt ohne Verweigerungsgrund',
+    path: ['verweigerung'],
+  });
+
 export const EreignisDetailSchema = EreignisListenEintragSchema.omit({ folgen: true })
   .extend({
     stand: TagSchema,
     historisch: z.boolean(),
+    rechte: z
+      .object({
+        abschliessen: EreignisRechtSchema,
+        verwerfen: z
+          .object({ beantragen: EreignisRechtSchema, bestaetigen: EreignisRechtSchema })
+          .strict(),
+      })
+      .strict(),
     folgen: z.array(FolgeDetailSchema),
     anlagen: z.array(AnlageSchema),
     meldung: z.object({ aktion: z.string(), at: iso, hash: z.string() }).strict().nullable(),
@@ -724,12 +769,18 @@ export const FolgenAngelegtSchema = z
   })
   .strict();
 export const FolgeErgebnisSchema = z.object({ id: z.string(), status: FolgeStatusSchema }).strict();
-export const AnlageVerweisErgebnisSchema = AnlageVerweisSchema;
+export const AnlageVerweisErgebnisSchema = AnlageGespeichertSchema;
 export const PortalMeldungErgebnisSchema = z
   .object({ id: z.string(), nummer: z.string() })
   .strict();
 export const PortalMeldungenSchema = z
   .object({
+    /**
+     * Melderecht des Akteurs (gesetzliche Vertretung oder Tax-Compliance-
+     * Beauftragte:r mit aktiver Rolle) – dieselbe Regel wie `POST …/portal/ereignisse`.
+     */
+    melden: z.boolean(),
+    /** Für den Mandanten besteht ein Tax-CMS (sonst nimmt das Melden nichts an). */
     programmVorhanden: z.boolean(),
     meldungen: z.array(
       z
@@ -820,6 +871,8 @@ export const LaenderSchema = z
     stand: TagSchema,
     historisch: z.boolean(),
     programmId: z.string().nullable(),
+    /** Länder aufnehmen und Stände erfassen: wie die Schreiboperationen (`kannBearbeiten`). */
+    rechte: BearbeitenRechteSchema,
     /** Stände je Land bis zum Stichtag, neueste zuerst. */
     historie: z.array(z.object({ land: z.string(), staende: z.array(LandStandSchema) }).strict()),
     /** Nicht vertrauliche Feststellungen mit Länderbezug. */
@@ -838,6 +891,23 @@ export const LaenderSchema = z
               })
               .strict(),
           ),
+        })
+        .strict(),
+    ),
+    /**
+     * Bezüge je Land im Monitor (jüngster Stand bis zum Stichtag), deterministisch
+     * aus seinen Merkmalen: aktive Risiken mit Länderbezug (Katalogcode und Grund),
+     * Codes der aktiven Kontrollen an diesen Risiken, IDs der Ereignisse bis zum
+     * Stichtag, die das Land (Code oder Name) in Titel oder Beschreibung nennen.
+     * Feststellungen gehen nicht ein (vertrauliche nie, RT-01).
+     */
+    bezuege: z.array(
+      z
+        .object({
+          land: z.string(),
+          risiken: z.array(z.object({ code: z.string(), grund: z.string() }).strict()),
+          kontrollen: z.array(z.string()),
+          ereignisse: z.array(z.string()),
         })
         .strict(),
     ),

@@ -3,7 +3,7 @@
   "quelle": {
     "repo": "tcms",
     "pfad": "packages/contract/src",
-    "commit": "7a900b141c4d39b97690f36ecd56d8d3a2d00e5a"
+    "commit": "47526522a53d31e117e1a341f060f07b2a04a601"
   },
   "dateien": [
     {
@@ -12,23 +12,23 @@
     },
     {
       "pfad": "bereiche/durchfuehrung.ts",
-      "sha256": "58afdf27c2bd0671155e5aa42e2c5ebf89c41c28b61e8112f8435296b0627fc6"
+      "sha256": "471c246135795479babca73de8a516ff20135cd882d3bb8a5de28add60651929"
     },
     {
       "pfad": "bereiche/feststellungen-ereignisse.ts",
-      "sha256": "ac9773298eed85a60154a810dcfa7124f8f408f4065530be8484505519463454"
+      "sha256": "33fdb8f9156a438949f288a2ba0428a11da2bedf5bb4091b3cca8a79ac970aa9"
     },
     {
       "pfad": "bereiche/lesepfade.ts",
-      "sha256": "3266a3abdd4bed9399a903362a73e1fcbce3d408a311f20397867a2acd5c3825"
+      "sha256": "debd0bd9683f4b544b58d4851cd5a34f99c393094c696d956469de52b98ffdd9"
     },
     {
       "pfad": "bereiche/programm-beschreibung.ts",
-      "sha256": "a3a151ad6f9b8a7b426e237212f5c9fad5816098f21d12987a38beca3c8ddd1d"
+      "sha256": "11b48060ed1c16b115612ea34b01ae430647edbf83c2b84336a5df2ba61e7770"
     },
     {
       "pfad": "bereiche/risiken-kontrollen.ts",
-      "sha256": "73bbb4945e286ea0c30ba87c310a7f76a771aa8180de82989f4c37b86031f943"
+      "sha256": "2c0b3e5ed202a857e3dce3632e3b52c441c098b18c56ff19eaf3a1e4ba05e4a7"
     },
     {
       "pfad": "bereiche/zustellung.ts",
@@ -36,7 +36,7 @@
     },
     {
       "pfad": "endpunkte.ts",
-      "sha256": "f120f9e81da18a1a1f8152878285f75ea31ec0b3adb2c55ee79afc4b7495cbce"
+      "sha256": "6a8b0b0b3f0e12c9055ae7925f91096cd432dae4d5f8368262d9cc5e98fbe460"
     },
     {
       "pfad": "fehler.ts",

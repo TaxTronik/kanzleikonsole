@@ -19,6 +19,7 @@ import type { ReactNode } from 'react';
 import { KeyRound, Lock, TriangleAlert } from 'lucide-react';
 import type {
   BausteinSatzDaten,
+  BausteinSatzSnapshotDaten,
   BeschreibungAbschnitt,
   BeschreibungVersionView,
 } from '@taxtronik/tcms-contract';
@@ -70,12 +71,18 @@ export type BausteinQuelle =
       /** Personen-ID (klein) → Name aus der kanzleikonsole. */
       namen: Readonly<Record<string, string>>;
     }
-  | { modus: 'snapshot'; stand: string | null; satz: Partial<BausteinSatzDaten> | null };
+  | { modus: 'snapshot'; stand: string | null; satz: Partial<BausteinSatzSnapshotDaten> | null };
+
+/**
+ * Bausteindaten für die Anzeige: lebend (streng, alle Felder) oder eingefroren
+ * (tolerant, später ergänzte Felder optional) – die Anzeige liest beide.
+ */
+type AnzeigeSatz = Partial<BausteinSatzSnapshotDaten>;
 
 export const UNBEKANNT = 'Unbekannte Person';
 
 /** Alle Personen-IDs der lebenden Bausteine (für eine Namensabfrage je Seite). */
-export function bausteinPersonIds(satz: Partial<BausteinSatzDaten> | null): string[] {
+export function bausteinPersonIds(satz: AnzeigeSatz | null): string[] {
   if (!satz) return [];
   const ids: Array<string | null | undefined> = [];
   for (const z of satz.ZIELE?.ziele ?? []) ids.push(z.freigegebenVonId);
@@ -136,7 +143,7 @@ const REG: Readonly<Record<'VOLLSTAENDIG' | 'FEHLT' | 'PRUEFEN', [string, string
 };
 
 interface InhaltProps {
-  satz: Partial<BausteinSatzDaten> | null;
+  satz: AnzeigeSatz | null;
   quelle: BausteinQuelle;
   label: string;
 }
@@ -435,7 +442,7 @@ function FeststellungenInhalt({ satz, label }: InhaltProps) {
 
 function Inhalt({ art, quelle }: { art: BausteinArt; quelle: BausteinQuelle }) {
   const props: InhaltProps = {
-    satz: quelle.satz as Partial<BausteinSatzDaten> | null,
+    satz: quelle.satz,
     quelle,
     label: BAUSTEIN_LABEL[art],
   };
@@ -467,9 +474,7 @@ export function BausteinBlock({
   quelle: BausteinQuelle;
   aktion?: ReactNode;
 }) {
-  const vorhanden = quelle.satz
-    ? (quelle.satz as Partial<BausteinSatzDaten>)[art] !== undefined
-    : false;
+  const vorhanden = quelle.satz ? quelle.satz[art] !== undefined : false;
   const marke =
     quelle.modus === 'live'
       ? `automatisch${quelle.stand ? ` · Stand ${isoDatumText(quelle.stand)}` : ''}`

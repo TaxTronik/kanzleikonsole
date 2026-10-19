@@ -20,8 +20,8 @@
 // =============================================================================
 
 import { z } from 'zod';
-import { StandSchema } from './lesepfade';
-import { ProfilAntwortenSchema } from './risiken-kontrollen';
+import { einzeilig, mitTextBasis, StandSchema } from './lesepfade';
+import { ProfilAntwortenGespeichertSchema, ProfilAntwortenSchema } from './risiken-kontrollen';
 import { FreigabeZustellungSchema, NachrichtUnzustellbarGrundSchema } from './zustellung';
 
 const uuid = z.uuid();
@@ -38,8 +38,12 @@ const governanceTyp = z.enum(['FP', 'FF', 'IN']);
 const turnus = z.enum(['KEIN', 'JAEHRLICH', 'QUARTALSWEISE', 'MONATLICH']);
 const partei = z.enum(['KANZLEI', 'MANDANT']);
 
-/** Person der kanzleikonsole mit Anzeigenamen (nur Anzeige, nie für Rechte). */
-const namensEintrag = z.object({ id: uuid, name: z.string().trim().min(1).max(200) }).strict();
+/**
+ * Person der kanzleikonsole mit Anzeigenamen (nur Anzeige, nie für Rechte).
+ * Einzeilig (RT4-T-03): Der Name wird in eingefrorene Beschreibungen
+ * übernommen, deren Anzeige dem gehashten Inhalt entsprechen muss.
+ */
+const namensEintrag = z.object({ id: uuid, name: einzeilig(1, 200) }).strict();
 
 // -----------------------------------------------------------------------------
 // Freigabearten (vor dem Postausgang: Nachrichten nennen die Art)
@@ -103,7 +107,13 @@ export const NACHRICHT_EMPFAENGER = {
   EREIGNIS_GEMELDET: 'KANZLEI',
 } as const satisfies Record<NachrichtZweck, NachrichtEmpfaengerArt>;
 
-const nachrichtTitel = z.string().min(1).max(500);
+/**
+ * Titel in Vorlagendaten (z. B. für einen Betreff): einzeilig (RT4-T-03), ohne
+ * CR/LF (Header-Injektion) und ohne Richtungs- oder unsichtbare Zeichen. Gilt
+ * beim Anlegen und beim Ausliefern; ältere offene Nachrichten, die die Regel
+ * verletzen, liefert der Abruf nicht aus (verworfen, `DATEN_UNGUELTIG`).
+ */
+const nachrichtTitel = einzeilig(1, 500);
 /** Versionsnummer einer CMS-Beschreibung (z. B. `1.2`), sonst null. */
 const nachrichtVersion = z
   .string()
@@ -145,10 +155,10 @@ export const NachrichtDatenFreigabeNeuAdressiertSchema = NachrichtDatenFreigabeA
 export const NachrichtDatenEreignisGemeldetSchema = z
   .object({
     ereignisId: objektId,
-    nummer: z.string().min(1).max(40),
+    nummer: einzeilig(1, 40),
     titel: nachrichtTitel,
     /** Anzeigename der Ereignisart (Katalog bzw. „Sonstiges"). */
-    typ: z.string().min(1).max(200),
+    typ: einzeilig(1, 200),
     /** Meldende Person (Kontakt-ID der kanzleikonsole). */
     gemeldetVonId: uuid,
   })
@@ -252,15 +262,16 @@ const katalogCode = z
   .min(3)
   .max(20)
   .regex(/^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/);
-const kurz = z.string().trim().max(200);
+/** Einträge der Ein- und Ausschlüsse: einzeilig (Kanäle bzw. Grenzen im Snapshot, RT4-T-03). */
+const kurz = einzeilig(0, 200);
 const tagOderLeer = isoTag.or(z.literal(''));
 
 export const TeilbereichSchrittSchema = z
   .object({
     teilbereich: z
       .object({
-        name: z.string().trim().min(1).max(200),
-        abgrenzung: z.string().trim().max(4000),
+        name: einzeilig(1, 200),
+        abgrenzung: mitTextBasis(z.string().trim().max(4000)),
         einschluesse: z.array(kurz).max(30),
         ausschluesse: z.array(kurz).max(30),
       })
@@ -286,7 +297,7 @@ export const EntwurfZielSchema = z
       .min(1)
       .max(60)
       .regex(/^[A-Za-z0-9_-]+$/),
-    text: z.string().trim().max(1000),
+    text: mitTextBasis(z.string().trim().max(1000)),
     wesentlichkeitEur: z.number().int().min(0).max(1e9),
     risikoappetit: SetupAppetitSchema,
     aktiv: z.boolean(),
@@ -303,7 +314,7 @@ export const ZieleSchrittSchema = z
   .strict();
 
 export const EntwurfRisikoSchema = z
-  .object({ uebernehmen: z.boolean(), begruendung: z.string().trim().max(2000) })
+  .object({ uebernehmen: z.boolean(), begruendung: mitTextBasis(z.string().trim().max(2000)) })
   .strict();
 
 export const RisikenSchrittSchema = z
@@ -331,7 +342,7 @@ export const SetupEntwurfSchema = z
     abgeschlossen: z.number().int().min(0).max(5),
     teilbereich: TeilbereichSchrittSchema.shape.teilbereich,
     zeitraum: TeilbereichSchrittSchema.shape.zeitraum,
-    profil: ProfilAntwortenSchema,
+    profil: ProfilAntwortenGespeichertSchema,
     ziele: ZieleSchrittSchema.shape.ziele,
     freigabe: ZieleSchrittSchema.shape.freigabe,
     risiken: RisikenSchrittSchema.shape.risiken,
@@ -491,6 +502,13 @@ export type PlanView = z.infer<typeof PlanViewSchema>;
 
 export const EinrichtungViewSchema = z
   .object({
+    /**
+     * „Heute" der Uhr des Dienstes (Kalendertag Europe/Berlin, ADR 0001 §7) –
+     * in beiden Zuständen (eingerichtet oder nicht). Die Oberfläche belegt
+     * damit Datumsfelder vor und zeigt Fristen; die Prüfung beim Speichern
+     * rechnet mit derselben Uhr.
+     */
+    heute: StandSchema,
     programm: z
       .object({
         id: z.string(),
@@ -548,7 +566,12 @@ export const BESCHREIBUNG_MAX_TEXTBLOCK = 20_000;
 export const BESCHREIBUNG_MAX_BLOECKE = 20;
 
 export const BeschreibungBlockSchema = z.discriminatedUnion('typ', [
-  z.object({ typ: z.literal('text'), text: z.string().max(BESCHREIBUNG_MAX_TEXTBLOCK) }).strict(),
+  z
+    .object({
+      typ: z.literal('text'),
+      text: mitTextBasis(z.string().max(BESCHREIBUNG_MAX_TEXTBLOCK)),
+    })
+    .strict(),
   z.object({ typ: z.literal('baustein'), art: BeschreibungBausteinArtSchema }).strict(),
 ]);
 export const BeschreibungAbschnittSchema = z
@@ -558,116 +581,177 @@ export const BeschreibungAbschnittSchema = z
   })
   .strict();
 
-const ZieleDaten = z.object({
-  appetit: klasse,
-  ziele: z.array(
-    z.object({
-      text: z.string(),
-      wesentlichkeitEur: z.number(),
-      risikoappetit: klasse,
-      freigabe: z.enum(['ENTWURF', 'AUSSTEHEND', 'FREIGEGEBEN']),
-      freigegebenAm: z.string().nullable(),
-      freigegebenVon: z.string().nullable(),
-      freigegebenVonId: z.string().nullable().optional(),
-    }),
-  ),
-});
+// Bausteine in zwei Fassungen aus denselben Feldern:
+//   - lebend (`BausteinSatzSchema`): baut der Dienst bei jedem Lesen neu; streng
+//     (unbekannte Felder abgewiesen) und jedes Feld Pflicht, auch die später
+//     ergänzten (`…_NEU`). Neue Snapshots friert der Dienst nur in dieser Form
+//     ein (`baueSnapshot` prüft sie vor dem Hash, fail closed).
+//   - eingefroren (`BausteinSatzSnapshotSchema`): Inhalt freigegebener Versionen,
+//     per SHA-256 festgeschrieben und unveränderlich (AGENTS.md Regel 3). Der
+//     Dienst gibt ihn unverändert zurück; die später ergänzten Felder dürfen
+//     fehlen, damit ältere Snapshots lesbar bleiben (ein strenges Schema machte
+//     sie nach jeder Formatänderung unlesbar, umschreiben bräche den Hash).
 
-/** Daten der lebenden Bausteine (JSON-flach; Personen als Name und – neu – als ID). */
-export const BausteinSatzSchema = z.object({
-  TEILBEREICH: z
-    .object({
-      name: z.string(),
-      abgrenzung: z.string(),
-      einschluesse: z.array(z.string()),
-      ausschluesse: z.array(z.string()),
-      zielLaender: z.array(z.string()),
-      kanaele: z.array(z.string()),
-    })
-    .nullable(),
-  ZIELE: ZieleDaten,
+const TEILBEREICH_FELDER = {
+  name: z.string(),
+  abgrenzung: z.string(),
+  einschluesse: z.array(z.string()),
+  ausschluesse: z.array(z.string()),
+  zielLaender: z.array(z.string()),
+  kanaele: z.array(z.string()),
+};
+const ZIEL_FELDER = {
+  text: z.string(),
+  wesentlichkeitEur: z.number(),
+  risikoappetit: klasse,
+  freigabe: z.enum(['ENTWURF', 'AUSSTEHEND', 'FREIGEGEBEN']),
+  freigegebenAm: z.string().nullable(),
+  freigegebenVon: z.string().nullable(),
+};
+const ZIEL_NEU = { freigegebenVonId: z.string().nullable() };
+const RISIKO_FELDER = {
+  code: z.string(),
+  titel: z.string(),
+  gt: governanceTyp,
+  brutto: klasse,
+  netto: klasse,
+  ueberAppetit: z.boolean(),
+  kontrollen: z.number(),
+};
+const MATRIX_FELDER = {
+  code: z.string(),
+  titel: z.string(),
+  art: z.enum(['P', 'D', 'K']),
+  frequenz: z.string(),
+  partei,
+  schluessel: z.boolean(),
+  design: z.enum(['ANGEMESSEN', 'NICHT_BEURTEILT', 'MANGEL']),
+  designVon: z.string().nullable(),
+  designAm: z.string().nullable(),
+  risikoCodes: z.array(z.string()),
+};
+const MATRIX_NEU = { designVonId: z.string().nullable() };
+const ROLLE_FELDER = { rolle: z.string(), name: z.string() };
+const ROLLE_NEU = { personId: z.string().nullable() };
+const VERANTWORTUNG_FELDER = {
+  code: z.string(),
+  titel: z.string(),
+  partei,
+  durchfuehrend: z.string(),
+  vertretung: z.string(),
+  /**
+   * Anzeigename der gegenzeichnenden Person. Lebend und in neuen Snapshots nur
+   * der Name; ältere Snapshots (ohne `gegenzeichnungMandant`) hängen bei
+   * Gegenzeichnung beim Mandanten „ (Mandant)" an.
+   */
+  gegenzeichnung: z.string(),
+};
+const VERANTWORTUNG_NEU = {
+  durchfuehrendId: z.string().nullable(),
+  vertretungId: z.string().nullable(),
+  gegenzeichnungId: z.string().nullable(),
+  /** Gegenzeichnung durch die Vertretung beim Mandanten (Bestätigung, nicht die Kanzlei). */
+  gegenzeichnungMandant: z.boolean(),
+};
+const LAENDER_FELDER = {
+  stand: z.string().nullable(),
+  summeLfd: z.number(),
+  summeVorjahr: z.number(),
+  schwelle: z.string(),
+};
+const LAND_FELDER = {
+  land: z.string(),
+  name: z.string(),
+  fernverkaeufeLfdEur: z.number(),
+  lagerSeit: z.string().nullable(),
+  oss: z.boolean(),
+  lokaleUstNr: z.boolean(),
+  registrierung: z.enum(['VOLLSTAENDIG', 'FEHLT', 'PRUEFEN']),
+};
+const FESTSTELLUNG_FELDER = {
+  nummer: z.string(),
+  titel: z.string(),
+  schwere: klasse,
+  status: z.string(),
+  massnahmenOffen: z.number(),
+};
+
+/**
+ * Daten der lebenden Bausteine (JSON-flach; Personen als Name und als ID),
+ * streng: jede Antwort und jeder neue Snapshot hat genau diese Felder.
+ */
+export const BausteinSatzSchema = z
+  .object({
+    TEILBEREICH: z.object(TEILBEREICH_FELDER).strict().nullable(),
+    ZIELE: z
+      .object({
+        appetit: klasse,
+        ziele: z.array(z.object({ ...ZIEL_FELDER, ...ZIEL_NEU }).strict()),
+      })
+      .strict(),
+    RISIKOINVENTAR: z
+      .object({
+        appetit: klasse,
+        sicht: z.enum(['DESIGN', 'BETRIEB']),
+        risiken: z.array(z.object(RISIKO_FELDER).strict()),
+      })
+      .strict(),
+    KONTROLLMATRIX: z
+      .object({ kontrollen: z.array(z.object({ ...MATRIX_FELDER, ...MATRIX_NEU }).strict()) })
+      .strict(),
+    VERANTWORTUNG: z
+      .object({
+        rollen: z.array(z.object({ ...ROLLE_FELDER, ...ROLLE_NEU }).strict()),
+        kontrollen: z.array(z.object({ ...VERANTWORTUNG_FELDER, ...VERANTWORTUNG_NEU }).strict()),
+      })
+      .strict(),
+    LAENDER: z
+      .object({ ...LAENDER_FELDER, laender: z.array(z.object(LAND_FELDER).strict()) })
+      .strict(),
+    FESTSTELLUNGEN: z
+      .object({ feststellungen: z.array(z.object(FESTSTELLUNG_FELDER).strict()) })
+      .strict(),
+  })
+  .strict();
+export type BausteinSatzDaten = z.infer<typeof BausteinSatzSchema>;
+
+/**
+ * Bausteine eines eingefrorenen Inhalts (tolerant): dieselben Felder, die
+ * später ergänzten (`…_NEU`: Personen-IDs, `gegenzeichnungMandant`) optional.
+ * Fehlt `gegenzeichnungMandant`, steht die Endung „ (Mandant)" noch im Namen
+ * (`gegenzeichnung`); die Oberfläche zeigt den Namen dann unverändert.
+ */
+export const BausteinSatzSnapshotSchema = z.object({
+  TEILBEREICH: z.object(TEILBEREICH_FELDER).nullable(),
+  ZIELE: z.object({
+    appetit: klasse,
+    ziele: z.array(z.object({ ...ZIEL_FELDER, ...z.object(ZIEL_NEU).partial().shape })),
+  }),
   RISIKOINVENTAR: z.object({
     appetit: klasse,
     sicht: z.enum(['DESIGN', 'BETRIEB']),
-    risiken: z.array(
-      z.object({
-        code: z.string(),
-        titel: z.string(),
-        gt: governanceTyp,
-        brutto: klasse,
-        netto: klasse,
-        ueberAppetit: z.boolean(),
-        kontrollen: z.number(),
-      }),
-    ),
+    risiken: z.array(z.object(RISIKO_FELDER)),
   }),
   KONTROLLMATRIX: z.object({
-    kontrollen: z.array(
-      z.object({
-        code: z.string(),
-        titel: z.string(),
-        art: z.enum(['P', 'D', 'K']),
-        frequenz: z.string(),
-        partei,
-        schluessel: z.boolean(),
-        design: z.enum(['ANGEMESSEN', 'NICHT_BEURTEILT', 'MANGEL']),
-        designVon: z.string().nullable(),
-        designVonId: z.string().nullable().optional(),
-        designAm: z.string().nullable(),
-        risikoCodes: z.array(z.string()),
-      }),
-    ),
+    kontrollen: z.array(z.object({ ...MATRIX_FELDER, ...z.object(MATRIX_NEU).partial().shape })),
   }),
   VERANTWORTUNG: z.object({
-    rollen: z.array(
-      z.object({ rolle: z.string(), name: z.string(), personId: z.string().nullable().optional() }),
-    ),
+    rollen: z.array(z.object({ ...ROLLE_FELDER, ...z.object(ROLLE_NEU).partial().shape })),
     kontrollen: z.array(
-      z.object({
-        code: z.string(),
-        titel: z.string(),
-        partei,
-        durchfuehrend: z.string(),
-        vertretung: z.string(),
-        gegenzeichnung: z.string(),
-        durchfuehrendId: z.string().nullable().optional(),
-        vertretungId: z.string().nullable().optional(),
-        gegenzeichnungId: z.string().nullable().optional(),
-      }),
+      z.object({ ...VERANTWORTUNG_FELDER, ...z.object(VERANTWORTUNG_NEU).partial().shape }),
     ),
   }),
-  LAENDER: z.object({
-    stand: z.string().nullable(),
-    summeLfd: z.number(),
-    summeVorjahr: z.number(),
-    schwelle: z.string(),
-    laender: z.array(
-      z.object({
-        land: z.string(),
-        name: z.string(),
-        fernverkaeufeLfdEur: z.number(),
-        lagerSeit: z.string().nullable(),
-        oss: z.boolean(),
-        lokaleUstNr: z.boolean(),
-        registrierung: z.enum(['VOLLSTAENDIG', 'FEHLT', 'PRUEFEN']),
-      }),
-    ),
-  }),
-  FESTSTELLUNGEN: z.object({
-    feststellungen: z.array(
-      z.object({
-        nummer: z.string(),
-        titel: z.string(),
-        schwere: klasse,
-        status: z.string(),
-        massnahmenOffen: z.number(),
-      }),
-    ),
-  }),
+  LAENDER: z.object({ ...LAENDER_FELDER, laender: z.array(z.object(LAND_FELDER)) }),
+  FESTSTELLUNGEN: z.object({ feststellungen: z.array(z.object(FESTSTELLUNG_FELDER)) }),
 });
-export type BausteinSatzDaten = z.infer<typeof BausteinSatzSchema>;
+export type BausteinSatzSnapshotDaten = z.infer<typeof BausteinSatzSnapshotSchema>;
 
-/** Eingefrorener Inhalt einer Beschreibungsversion (SHA-256 über kanonisches JSON). */
+/**
+ * Eingefrorener Inhalt einer Beschreibungsversion (SHA-256 über kanonisches
+ * JSON). Tolerant wie `BausteinSatzSnapshotSchema`: Der Dienst liefert den
+ * gespeicherten Inhalt unverändert (ADR 0001 §7, Ausnahme von den strengen
+ * Antwortschemas).
+ */
 export const BeschreibungSnapshotSchema = z.object({
   nummer: z.string(),
   mandant: z.string(),
@@ -675,7 +759,7 @@ export const BeschreibungSnapshotSchema = z.object({
   stand: z.string().optional(),
   erzeugtAm: z.string().optional(),
   abschnitte: z.array(BeschreibungAbschnittSchema),
-  bausteine: BausteinSatzSchema.partial().optional(),
+  bausteine: BausteinSatzSnapshotSchema.partial().optional(),
 });
 
 export type BeschreibungSnapshot = z.infer<typeof BeschreibungSnapshotSchema>;
@@ -816,7 +900,9 @@ export type BeschreibungVersionAktionErgebnis = z.infer<
 export const REVIEW_MIN_BEGRUENDUNG = 30;
 
 export const ReviewZurueckweisenBodySchema = z
-  .object({ begruendung: z.string().trim().min(REVIEW_MIN_BEGRUENDUNG).max(2000) })
+  .object({
+    begruendung: mitTextBasis(z.string().trim().min(REVIEW_MIN_BEGRUENDUNG).max(2000)),
+  })
   .strict();
 export const ReviewZurueckweisenEingabeSchema =
   ReviewZurueckweisenBodySchema.extend(versionPfad).strict();

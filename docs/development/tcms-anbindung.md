@@ -69,15 +69,26 @@ Quell-Commit und je Datei den SHA-256 fest.
   dasselbe `VENDOR.json` (gleiche Paketliste, Ausschlüsse und Beschreibung).
   Das gehört zum Review jeder Änderung unter `packages/tcms-contract` und
   `packages/tcms-domain`.
-- **Stand:** Vertrag und Domain aus TCMS `main` `7a900b1` (Stufe 4:
-  Akteursarten `KANZLEI`, `MANDANT`, `SYSTEM` mit `akteure` je Endpunkt,
-  strukturierter Postausgang; Härtungen s5/s6: Portal-Endpunkte nur für
-  `MANDANT`, maschinenlesbarer Grund `fehler.grund` jedes 403,
-  Rechte-Kennzeichen für Stammdaten und Kontaktrollen, `verweigerung` an den
-  Rechten der Durchführung, Zustellstatus an Freigaben und Risikoakzeptanzen,
-  Meldung „unzustellbar“). Domain zusätzlich mit den Rollen der Mandantenseite
-  (`MANDANT_ROLLEN`). Vertrag und Dienst nur gemeinsam ausrollen: Die Schemas
-  sind strikt, ein 403 ohne Grund ist für diesen Vertrag ein Protokollfehler.
+- **Stand:** Vertrag und Domain aus TCMS `4752652` (s7/s8, wird `main`;
+  davor `7a900b1`). Stufe 4: Akteursarten `KANZLEI`, `MANDANT`, `SYSTEM` mit
+  `akteure` je Endpunkt, strukturierter Postausgang; Härtungen s5/s6:
+  Portal-Endpunkte nur für `MANDANT`, maschinenlesbarer Grund `fehler.grund`
+  jedes 403, Rechte-Kennzeichen für Stammdaten und Kontaktrollen,
+  `verweigerung` an den Rechten der Durchführung, Zustellstatus an Freigaben
+  und Risikoakzeptanzen, Meldung „unzustellbar“. s7: `heute` der
+  Einrichtung, `partei` beim Ändern der Verantwortlichen, gesperrte Schritte
+  einer Feststellung als 400 mit `felder.von`, Zeitraumzahlen,
+  Pflichtattribut-Lücken, `rechte.bearbeiten` in Risiken, Kontrollen und
+  Ländern, Länderbezüge, Rechte am Ereignis, Melderecht im Portal, berechnete
+  Kennzahlen der Prüfung, „Nachweise je Dokument“, Bausteine lebend streng
+  und eingefroren tolerant. s8: eine Zeichenregel aus Unicode-Eigenschaften
+  (`UNZULAESSIG_KLASSE`), einzeilige Titel und Namen, Basisregel für
+  Freitexte (`TEXT_UNZULAESSIG`), gespeicherte Profile tolerant
+  (`ProfilAntwortenGespeichertSchema`). Domain zusätzlich mit den Rollen der
+  Mandantenseite (`MANDANT_ROLLEN`). Vertrag und Dienst nur gemeinsam
+  ausrollen: Die Schemas sind strikt, ein 403 ohne Grund ist für diesen
+  Vertrag ein Protokollfehler. Die Zeichenregel folgt der Unicode-Version der
+  Laufzeit: kanzleikonsole und Dienst auf derselben Node-Hauptversion (24).
 
 ## 2. Konfiguration
 

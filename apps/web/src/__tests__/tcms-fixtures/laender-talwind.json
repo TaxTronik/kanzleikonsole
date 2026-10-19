@@ -2,6 +2,9 @@
   "stand": "2026-10-19",
   "historisch": false,
   "programmId": "cmvf9kyrc0003wb7d12b2juhr",
+  "rechte": {
+    "bearbeiten": true
+  },
   "historie": [
     {
       "land": "AT",
@@ -312,6 +315,224 @@
           "p153Offen": true
         }
       ]
+    }
+  ],
+  "bezuege": [
+    {
+      "land": "AT",
+      "risiken": [
+        {
+          "code": "EC-UST-01",
+          "grund": "EU-Fernverkäufe nach Österreich"
+        },
+        {
+          "code": "EC-UST-02",
+          "grund": "Steuersätze in Österreich"
+        },
+        {
+          "code": "EC-UST-03",
+          "grund": "Umsätze in AT über OSS"
+        }
+      ],
+      "kontrollen": ["K-EC-01", "K-EC-02", "K-EC-03", "K-EC-04", "K-EC-13", "K-EC-21"],
+      "ereignisse": []
+    },
+    {
+      "land": "FR",
+      "risiken": [
+        {
+          "code": "EC-UST-01",
+          "grund": "EU-Fernverkäufe nach Frankreich"
+        },
+        {
+          "code": "EC-UST-02",
+          "grund": "Steuersätze in Frankreich"
+        },
+        {
+          "code": "EC-UST-03",
+          "grund": "Umsätze in FR über OSS"
+        }
+      ],
+      "kontrollen": ["K-EC-01", "K-EC-02", "K-EC-03", "K-EC-04", "K-EC-13", "K-EC-21"],
+      "ereignisse": []
+    },
+    {
+      "land": "CZ",
+      "risiken": [
+        {
+          "code": "EC-UST-01",
+          "grund": "EU-Fernverkäufe nach Tschechien"
+        },
+        {
+          "code": "EC-UST-02",
+          "grund": "Steuersätze in Tschechien"
+        },
+        {
+          "code": "EC-UST-03",
+          "grund": "Umsätze in CZ über OSS"
+        },
+        {
+          "code": "EC-UST-04",
+          "grund": "Lager in CZ seit 08/2026: Abgrenzung OSS / Lagerland"
+        },
+        {
+          "code": "EC-UST-05",
+          "grund": "Lager in CZ seit 08/2026"
+        },
+        {
+          "code": "EC-UST-06",
+          "grund": "ZM-relevante Bewegungen mit CZ"
+        },
+        {
+          "code": "EC-ERT-01",
+          "grund": "Bestände im Lager CZ"
+        },
+        {
+          "code": "EC-ERT-03",
+          "grund": "Betriebsstätte durch das Lager in CZ seit 08/2026"
+        }
+      ],
+      "kontrollen": [
+        "K-EC-01",
+        "K-EC-02",
+        "K-EC-03",
+        "K-EC-04",
+        "K-EC-05",
+        "K-EC-06",
+        "K-EC-07",
+        "K-EC-13",
+        "K-EC-18",
+        "K-EC-21",
+        "K-EC-24"
+      ],
+      "ereignisse": ["cmvf9necd0089dy7dcys5yscb"]
+    },
+    {
+      "land": "IT",
+      "risiken": [
+        {
+          "code": "EC-UST-01",
+          "grund": "EU-Fernverkäufe nach Italien"
+        },
+        {
+          "code": "EC-UST-02",
+          "grund": "Steuersätze in Italien"
+        },
+        {
+          "code": "EC-UST-03",
+          "grund": "Umsätze in IT über OSS"
+        }
+      ],
+      "kontrollen": ["K-EC-01", "K-EC-02", "K-EC-03", "K-EC-04", "K-EC-13", "K-EC-21"],
+      "ereignisse": []
+    },
+    {
+      "land": "BE",
+      "risiken": [
+        {
+          "code": "EC-UST-01",
+          "grund": "EU-Fernverkäufe nach Belgien"
+        },
+        {
+          "code": "EC-UST-02",
+          "grund": "Steuersätze in Belgien"
+        },
+        {
+          "code": "EC-UST-03",
+          "grund": "Umsätze in BE über OSS"
+        }
+      ],
+      "kontrollen": ["K-EC-01", "K-EC-02", "K-EC-03", "K-EC-04", "K-EC-13", "K-EC-21"],
+      "ereignisse": []
+    },
+    {
+      "land": "NL",
+      "risiken": [
+        {
+          "code": "EC-UST-01",
+          "grund": "EU-Fernverkäufe nach Niederlande"
+        },
+        {
+          "code": "EC-UST-02",
+          "grund": "Steuersätze in Niederlande"
+        },
+        {
+          "code": "EC-UST-03",
+          "grund": "Umsätze in NL über OSS"
+        }
+      ],
+      "kontrollen": ["K-EC-01", "K-EC-02", "K-EC-03", "K-EC-04", "K-EC-13", "K-EC-21"],
+      "ereignisse": []
+    },
+    {
+      "land": "ES",
+      "risiken": [
+        {
+          "code": "EC-UST-01",
+          "grund": "EU-Fernverkäufe nach Spanien"
+        },
+        {
+          "code": "EC-UST-02",
+          "grund": "Steuersätze in Spanien"
+        },
+        {
+          "code": "EC-UST-03",
+          "grund": "Umsätze in ES über OSS"
+        }
+      ],
+      "kontrollen": ["K-EC-01", "K-EC-02", "K-EC-03", "K-EC-04", "K-EC-13", "K-EC-21"],
+      "ereignisse": []
+    },
+    {
+      "land": "PL",
+      "risiken": [
+        {
+          "code": "EC-UST-01",
+          "grund": "EU-Fernverkäufe nach Polen"
+        },
+        {
+          "code": "EC-UST-02",
+          "grund": "Steuersätze in Polen"
+        },
+        {
+          "code": "EC-UST-03",
+          "grund": "Umsätze in PL über OSS"
+        },
+        {
+          "code": "EC-UST-04",
+          "grund": "Lager in PL seit 03/2025: Abgrenzung OSS / Lagerland"
+        },
+        {
+          "code": "EC-UST-05",
+          "grund": "Lager in PL seit 03/2025"
+        },
+        {
+          "code": "EC-UST-06",
+          "grund": "ZM-relevante Bewegungen mit PL"
+        },
+        {
+          "code": "EC-ERT-01",
+          "grund": "Bestände im Lager PL"
+        },
+        {
+          "code": "EC-ERT-03",
+          "grund": "Betriebsstätte durch das Lager in PL seit 03/2025"
+        }
+      ],
+      "kontrollen": [
+        "K-EC-01",
+        "K-EC-02",
+        "K-EC-03",
+        "K-EC-04",
+        "K-EC-05",
+        "K-EC-06",
+        "K-EC-07",
+        "K-EC-13",
+        "K-EC-18",
+        "K-EC-21",
+        "K-EC-24"
+      ],
+      "ereignisse": []
     }
   ],
   "namen": []

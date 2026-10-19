@@ -4,6 +4,9 @@
   "heute": "2026-10-19",
   "stand": "2026-10-19",
   "historisch": false,
+  "rechte": {
+    "bearbeiten": true
+  },
   "wirksamAb": "2026-07-01T00:00:00.000Z",
   "kontrollen": [
     {
@@ -124,7 +127,8 @@
         "mindestNachweise": 1,
         "feststellung": null
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz04001jwb7diau9fqxc",
@@ -242,7 +246,8 @@
         "mindestNachweise": 1,
         "feststellung": null
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz11001nwb7ddf9nyqrh",
@@ -380,7 +385,8 @@
         "mindestNachweise": 1,
         "feststellung": null
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz1g001pwb7d7ins1vky",
@@ -494,7 +500,8 @@
         "mindestNachweise": 1,
         "feststellung": null
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz2f001vwb7d3gt5lb60",
@@ -608,7 +615,8 @@
         "mindestNachweise": 1,
         "feststellung": null
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz3a001zwb7dbt5eay4q",
@@ -730,7 +738,8 @@
         "mindestNachweise": 1,
         "feststellung": null
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz6r002nwb7dn7ln80yg",
@@ -813,7 +822,8 @@
         "mindestNachweise": 1,
         "feststellung": null
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     },
     {
       "id": "cmvf9kz78002pwb7duxzds5en",
@@ -918,7 +928,8 @@
         "mindestNachweise": 1,
         "feststellung": null
       },
-      "pflichtattributeOk": true
+      "pflichtattributeOk": true,
+      "pflichtattributeLuecken": []
     }
   ],
   "namen": {}

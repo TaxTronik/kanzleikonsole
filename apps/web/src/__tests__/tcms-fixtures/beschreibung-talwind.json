@@ -1489,7 +1489,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-02",
@@ -1500,7 +1501,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-03",
@@ -1511,7 +1513,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-04",
@@ -1522,7 +1525,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-05",
@@ -1533,7 +1537,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-06",
@@ -1544,7 +1549,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-07",
@@ -1555,7 +1561,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-08",
@@ -1566,7 +1573,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-09",
@@ -1577,7 +1585,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-10",
@@ -1588,7 +1597,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-11",
@@ -1599,7 +1609,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-12",
@@ -1610,7 +1621,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-13",
@@ -1621,7 +1633,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-14",
@@ -1632,7 +1645,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-15",
@@ -1643,7 +1657,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-16",
@@ -1654,7 +1669,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-17",
@@ -1665,7 +1681,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-18",
@@ -1676,7 +1693,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-19",
@@ -1687,7 +1705,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-20",
@@ -1698,7 +1717,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000001",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000003"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-21",
@@ -1709,7 +1729,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-22",
@@ -1720,7 +1741,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000001",
+          "gegenzeichnungMandant": false
         },
         {
           "code": "K-EC-23",
@@ -1728,10 +1750,11 @@
           "partei": "MANDANT",
           "durchfuehrend": "—",
           "vertretung": "—",
-          "gegenzeichnung": "— (Mandant)",
+          "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
           "vertretungId": "b1000000-0000-4000-8000-000000000013",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000013"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000013",
+          "gegenzeichnungMandant": true
         },
         {
           "code": "K-EC-24",
@@ -1742,7 +1765,8 @@
           "gegenzeichnung": "—",
           "durchfuehrendId": "b1000000-0000-4000-8000-000000000001",
           "vertretungId": "b1000000-0000-4000-8000-000000000003",
-          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000003"
+          "gegenzeichnungId": "b1000000-0000-4000-8000-000000000003",
+          "gegenzeichnungMandant": false
         }
       ]
     },
