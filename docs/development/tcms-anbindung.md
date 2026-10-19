@@ -70,3 +70,61 @@ dann `TCMS_SERVICE_TOKEN` bzw. `TCMS_ACTOR_PRIVATE_KEY` und `TCMS_ACTOR_KEY_ID`
 der kanzleikonsole umstellen und neu starten, zuletzt den alten Eintrag beim
 Dienst entfernen. Bestätigungen leben höchstens 60 Sekunden; nach dem Neustart
 genügt diese Wartezeit vor dem Entfernen.
+
+## 3. Client (`@taxtronik/tcms-client`)
+
+Reiner Transport ohne Geschäftslogik, ohne DB-Zugriff und ohne Logs.
+
+```ts
+const client = new TcmsClient({ config: getTcmsConfig()! }); // einmal je Prozess
+const { daten, requestId } = await client.aufruf({
+  methode: 'GET',
+  pfad: '/v1/mandanten/:mandantId/kontext',
+  params: { mandantId },
+  query: { stand: '2026-10-16' },
+  querySchema: KontextQuerySchema, // optional, lokal geprüft
+  antwortSchema: KontextAntwortSchema,
+  akteur, // aus apps/web/src/server/tcms (Abschnitt 4)
+});
+await client.health(); // GET /v1/health, nur Dienst-Token
+```
+
+Ein künftiges Endpunktregister im Vertrag (`{ methode, pfad, querySchema,
+bodySchema, antwortSchema }`, Typ `TcmsEndpunkt`) speist `aufruf` direkt.
+
+- **Bindung.** Target und Body entstehen je Aufruf genau einmal; der Hash
+  läuft über genau die gesendeten Bytes. Pfadparameter werden mit
+  `encodeURIComponent` kodiert und müssen danach ein kanonisches Segment sein
+  (`A-Z a-z 0-9 _ ~ -`); Query-Werte werden zusätzlich in `!'()*` kodiert, weil
+  der URL-Parser von fetch sonst z. B. `'` nachkodiert und das gesendete vom
+  signierten Target abwiche. Vor dem Senden prüft der Client
+  `pathname + search` der URL gegen das signierte Target. Pfade unter
+  `/v1/mandanten/:mandantId/…` verlangen `akteur.cli.id == mandantId`, sonst
+  wird nicht gesendet.
+- **Bestätigung.** `signiereAkteur` aus dem Vertrag, frisches `jti`, `iat`
+  jetzt, Lebensdauer 30 s (höchstens 60 s), neue Bestätigung je Versuch.
+- **Antworten.** `redirect: 'error'`, Zeitlimit je Aufruf (Standard 10 s,
+  Health 3 s), Größe hart begrenzt (Standard 8 MiB, je Aufruf
+  `maxAntwortBytes`; `Content-Length` vorab, sonst gestreamt mit Abbruch), nur
+  `application/json`, strenges JSON, Umschlag und Daten mit dem zod-Schema des
+  Aufrufs (die Schemas des Vertrags sind `strict`: unbekannte Felder sind ein
+  Protokollfehler).
+- **Fehler.** `TcmsUngueltig` (400 mit `felder`, oder `lokal: true`, wenn
+  nicht gesendet), `TcmsNichtAuthentifiziert` (401), `TcmsNichtBerechtigt`
+  (403, `grund`), `TcmsNichtGefunden` (404), `TcmsKonflikt` (409),
+  `TcmsNichtVerfuegbar` (Transport, Zeitlimit, 500/502/503/504, offener
+  Breaker), `TcmsProtokollFehler` (alles Unerwartete). `message` enthält nur
+  Status und Code, nie Antwortkörper; `meldung`/`grund`/`felder` des Dienstes
+  stehen als Eigenschaften bereit. Jeder Fehler trägt die `requestId` der
+  Antwort: Der Dienst erzeugt sie selbst und übernimmt keine des Aufrufers,
+  deshalb reicht der Client die Antwort-ID nach oben weiter.
+- **Wiederholung und Breaker.** Nur `GET` bei Transportfehler oder 503, mit
+  neuer Bestätigung; nie POST/PUT/PATCH/DELETE, nie 401, nie Zeitlimit. Der
+  Circuit-Breaker liegt gemeinsam mit dem Risk-Layer in
+  `@taxtronik/http-utils/resilience` und zählt nur Ausfälle, keine fachlichen
+  Antworten.
+- **401 und Verbindung.** Der Dienst schließt bei jedem 401 die Verbindung,
+  bei ungültigem Token auch vor dem Lesen des Bodys; dann kann statt der 401
+  ein Transportfehler ankommen. Beides wird nicht wiederholt.
+- **Geheimnisse.** Token und Schlüssel (als `KeyObject`) stehen nur in
+  privaten Feldern; `JSON.stringify(client)` zeigt Origin und kid.
