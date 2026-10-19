@@ -46,6 +46,8 @@ MIGRATION_PENDING="$ROOT/.taxtronik.migration-pending"
 DB_RESTORE_AUTHORIZATION="$ROOT/.taxtronik.database-restored"
 INSTALL_PENDING="$ROOT/.taxtronik.install-pending"
 UPDATE_HANDOFF="$ROOT/.taxtronik.update-handoff"
+# TCMS-Rotation mit Ueberlappung: Phase und Zeitpunkte, keine Geheimnisse.
+TCMS_ROTATION_STATE="$ROOT/.taxtronik.tcms-rotation"
 AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150"
 ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 # Der Wert wird zusammen mit einem TaxTronik-Release getestet und angehoben.

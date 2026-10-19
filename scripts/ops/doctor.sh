@@ -4,7 +4,8 @@
 #
 # .env-Validierung mit OK/FEHLT/SCHWACH/WARN/INFO-Zeilen inklusive DB-Pool-Summe,
 # Datenbankrollen der Container (S-01), n8n-Volume-Key, Source-Update-Signaturen
-# (S-04) und den Befunden des App-Schemas aus dem Worker-Image (B-05).
+# (S-04), Tax-CMS (TCMS Stufe 2) und den Befunden des App-Schemas aus dem
+# Worker-Image (B-05).
 #
 # Wird ausschliesslich von scripts/ops-lib.sh gesourcet und nutzt deren
 # Shell-Optionen, Pfade und Pins. Definiert nur Funktionen und
@@ -97,6 +98,193 @@ _doctor_signal_git_ref() {
     *)
       _dr_row "WARN" "SIGNAL_GIT_REF" "'$ref' ist beweglich: jedes Update baut den neuesten Stand; Commit-SHA setzen"
       _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+      ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Tax-CMS (TCMS Stufe 2): Besitzvertrag, Formate und Zusammenhang von Token und
+# Schluessel (ohne Werte auszugeben); managed zusaetzlich Container, Migration
+# und Netze, external HTTPS und Erreichbarkeit von /v1/health mit Token.
+# ---------------------------------------------------------------------------
+_doctor_tcms_row() {
+  _dr_row "$1" "$2" "$3"
+  [[ "$1" == "FEHLT" ]] && _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))
+  [[ "$1" == "WARN" ]] && _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
+  return 0
+}
+
+_doctor_tcms_own_key() {
+  if ! tcms_valid_private_key "${TCMS_ACTOR_PRIVATE_KEY:-}"; then
+    _doctor_tcms_row "FEHLT" "TCMS_ACTOR_PRIVATE_KEY" "kein PKCS#8-Ed25519-Schluessel (base64) -> ./taxtronik tcms setup"
+  elif ! tcms_valid_kid "${TCMS_ACTOR_KEY_ID:-}"; then
+    _doctor_tcms_row "FEHLT" "TCMS_ACTOR_KEY_ID" "fehlt/ungueltig (1-64 Zeichen A-Z a-z 0-9 . _ -)"
+  else
+    _doctor_tcms_row "OK" "TCMS_ACTOR_KEY" "Ed25519, kid ${TCMS_ACTOR_KEY_ID}"
+  fi
+}
+
+_doctor_tcms_managed_credentials() {
+  local key value other public listed
+  for key in TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD; do
+    _dr_secret "$key" 24
+  done
+  for key in TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD; do
+    value="${!key:-}"
+    [[ -n "$value" ]] || continue
+    for other in TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD \
+      POSTGRES_PASSWORD TAXTRONIK_APP_PASSWORD TAXTRONIK_OWNER_PASSWORD TAXTRONIK_DRILL_PASSWORD N8N_DB_PASSWORD; do
+      [[ "$other" != "$key" && "$value" == "${!other:-}" ]] || continue
+      _doctor_tcms_row "FEHLT" "TCMS_DB_SECRETS" "$key ist identisch mit $other; jede Rolle braucht ein eigenes Passwort"
+      return 0
+    done
+  done
+  if ! tcms_valid_token "${TCMS_SERVICE_TOKEN:-}"; then
+    _doctor_tcms_row "FEHLT" "TCMS_SERVICE_TOKEN" "fehlt/ungueltig (32-512 Zeichen, kein Platzhalter) -> ./taxtronik tcms setup"
+  elif ! tcms_valid_token_list "${TCMS_SERVICE_TOKENS:-}"; then
+    _doctor_tcms_row "FEHLT" "TCMS_SERVICE_TOKENS" "Liste ungueltig (Format, Doppelte)"
+  elif ! tcms_token_list_contains "$TCMS_SERVICE_TOKENS" "$TCMS_SERVICE_TOKEN"; then
+    _doctor_tcms_row "FEHLT" "TCMS_SERVICE_TOKENS" "aktuelles Token von app/worker ist nicht gelistet; tcms-api wiese es ab"
+  elif [[ "$TCMS_SERVICE_TOKENS" != "$TCMS_SERVICE_TOKEN" && ! -e "$TCMS_ROTATION_STATE" ]]; then
+    _doctor_tcms_row "WARN" "TCMS_SERVICE_TOKENS" "enthaelt weitere Tokens ohne laufende Rotation; ./taxtronik tcms rotate-token raeumt auf"
+  else
+    _doctor_tcms_row "OK" "TCMS_SERVICE_TOKEN" "gueltig und gelistet"
+  fi
+  _doctor_tcms_own_key
+  if ! tcms_valid_public_key_list "${TCMS_ACTOR_PUBLIC_KEYS:-}"; then
+    _doctor_tcms_row "FEHLT" "TCMS_ACTOR_PUBLIC_KEYS" "Liste ungueltig (kid=SPKI-base64, Ed25519, eindeutig)"
+    return 0
+  fi
+  listed="$(tcms_public_key_of_kid "$TCMS_ACTOR_PUBLIC_KEYS" "${TCMS_ACTOR_KEY_ID:-}")"
+  if [[ -z "$listed" ]]; then
+    _doctor_tcms_row "FEHLT" "TCMS_ACTOR_PUBLIC_KEYS" "kid ${TCMS_ACTOR_KEY_ID:-?} von app/worker ist nicht gelistet"
+  elif ! command -v openssl >/dev/null 2>&1; then
+    _doctor_tcms_row "WARN" "TCMS_ACTOR_PUBLIC_KEYS" "openssl fehlt; Zuordnung privat/oeffentlich nicht pruefbar"
+  elif ! public="$(tcms_public_key_for_private "${TCMS_ACTOR_PRIVATE_KEY:-}")" || [[ "$public" != "$listed" ]]; then
+    _doctor_tcms_row "FEHLT" "TCMS_ACTOR_PUBLIC_KEYS" "gelisteter Schluessel zu kid ${TCMS_ACTOR_KEY_ID} passt nicht zum privaten Schluessel"
+  elif [[ "$TCMS_ACTOR_PUBLIC_KEYS" != *,* || -e "$TCMS_ROTATION_STATE" ]]; then
+    _doctor_tcms_row "OK" "TCMS_ACTOR_PUBLIC_KEYS" "kid $(tcms_kids_of_list "$TCMS_ACTOR_PUBLIC_KEYS"); passt zum privaten Schluessel"
+  else
+    _doctor_tcms_row "WARN" "TCMS_ACTOR_PUBLIC_KEYS" "weitere Schluessel ohne laufende Rotation (kid $(tcms_kids_of_list "$TCMS_ACTOR_PUBLIC_KEYS"))"
+  fi
+}
+
+_doctor_tcms_images() {
+  if images_from_registry; then
+    if [[ "${TCMS_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && \
+          "${TCMS_API_DIGEST_SUFFIX:-}" =~ ^@sha256:[0-9a-f]{64}$ && \
+          "${TCMS_MIGRATE_DIGEST_SUFFIX:-}" =~ ^@sha256:[0-9a-f]{64}$ ]]; then
+      _doctor_tcms_row "OK" "TCMS_IMAGES" "Version ${TCMS_VERSION} per Digest (Abgleich mit dem signierten Stand im Compose-Guard)"
+    elif [[ "${_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY:-0}" == "1" ]]; then
+      _doctor_tcms_row "INFO" "TCMS_IMAGES" "deploy/update setzen sie aus dem signierten Release-Stand"
+    else
+      _doctor_tcms_row "FEHLT" "TCMS_IMAGES" "TCMS_VERSION/Digest-Suffixe fehlen; ./taxtronik deploy bzw. update ausfuehren"
+    fi
+  elif tcms_valid_local_tag "${TCMS_VERSION:-}" && [[ -z "${TCMS_API_DIGEST_SUFFIX:-}${TCMS_MIGRATE_DIGEST_SUFFIX:-}" ]]; then
+    _doctor_tcms_row "OK" "TCMS_IMAGES" "lokaler Tag ${TCMS_VERSION} (Source-Kanal)"
+  else
+    _doctor_tcms_row "FEHLT" "TCMS_IMAGES" "Source-Kanal braucht einen lokalen Tag in TCMS_VERSION und leere Digest-Suffixe"
+  fi
+}
+
+_doctor_tcms_live() {
+  local status code net networks container
+  [[ "${_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY:-0}" == "1" ]] && return 0
+  command -v docker >/dev/null 2>&1 || return 0
+  status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$TCMS_DB_CONTAINER" 2>/dev/null || true)"
+  if [[ -z "$status" ]]; then
+    _doctor_tcms_row "WARN" "TCMS_CONTAINER" "nicht gestartet (./taxtronik tcms setup bzw. deploy)"
+    return 0
+  fi
+  if [[ "$status" == "healthy" ]]; then _doctor_tcms_row "OK" "TCMS_DB" "healthy"
+  else _doctor_tcms_row "FEHLT" "TCMS_DB" "$status"; fi
+  code="$(docker inspect --format '{{.State.Status}} {{.State.ExitCode}}' "$TCMS_MIGRATE_CONTAINER" 2>/dev/null || true)"
+  case "$code" in
+    "exited 0") _doctor_tcms_row "OK" "TCMS_MIGRATE" "erfolgreich beendet" ;;
+    "") _doctor_tcms_row "WARN" "TCMS_MIGRATE" "kein Lauf sichtbar" ;;
+    *) _doctor_tcms_row "FEHLT" "TCMS_MIGRATE" "nicht erfolgreich ($code); Logs: ./taxtronik compose --profile tcms logs tcms-migrate" ;;
+  esac
+  status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$TCMS_API_CONTAINER" 2>/dev/null || true)"
+  if [[ "$status" == "healthy" ]]; then _doctor_tcms_row "OK" "TCMS_API" "healthy"
+  else _doctor_tcms_row "FEHLT" "TCMS_API" "${status:-fehlt}"; fi
+  for net in "$TCMS_BACKEND_NETWORK" "$TCMS_FRONTEND_NETWORK"; do
+    status="$(docker network inspect --format '{{.Internal}}' "$net" 2>/dev/null || true)"
+    if [[ "$status" == "true" ]]; then _doctor_tcms_row "OK" "TCMS_NETZ" "$net internal"
+    else _doctor_tcms_row "FEHLT" "TCMS_NETZ" "$net nicht internal (${status:-fehlt})"; fi
+  done
+  networks="$(docker inspect --format '{{range $name, $net := .NetworkSettings.Networks}}{{$name}} {{end}}' "$TCMS_DB_CONTAINER" 2>/dev/null || true)"
+  [[ "$networks" == "$TCMS_BACKEND_NETWORK " ]] || \
+    _doctor_tcms_row "FEHLT" "TCMS_NETZ_DB" "tcms-db haengt nicht ausschliesslich im Backend-Netz (${networks:-?})"
+  for container in taxtronik-app taxtronik-worker; do
+    networks="$(docker inspect --format '{{range $name, $net := .NetworkSettings.Networks}}{{$name}} {{end}}' "$container" 2>/dev/null || true)"
+    [[ -n "$networks" ]] || continue
+    if [[ " $networks" == *" $TCMS_BACKEND_NETWORK "* ]]; then
+      _doctor_tcms_row "FEHLT" "TCMS_NETZ_${container#taxtronik-}" "haengt im TCMS-Backend-Netz und erreicht die TCMS-Datenbank"
+    elif [[ " $networks" != *" $TCMS_FRONTEND_NETWORK "* ]]; then
+      _doctor_tcms_row "WARN" "TCMS_NETZ_${container#taxtronik-}" "nicht im tcms-frontend; Neustart noetig (./taxtronik tcms setup managed)"
+    else
+      _doctor_tcms_row "OK" "TCMS_NETZ_${container#taxtronik-}" "nur Frontend-Netz"
+    fi
+  done
+}
+
+# Token nur ueber stdin an curl (Konfiguration -K -), nie als Argument; die
+# Antwort wird verworfen.
+_doctor_tcms_external_health() {
+  [[ "${_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY:-0}" == "1" ]] && return 0
+  command -v curl >/dev/null 2>&1 || return 0
+  tcms_valid_external_url "${TCMS_URL:-}" && tcms_valid_token "${TCMS_SERVICE_TOKEN:-}" || return 0
+  if printf 'url = "%s/v1/health"\nheader = "Authorization: Bearer %s"\n' "${TCMS_URL%/}" "$TCMS_SERVICE_TOKEN" | \
+      curl --silent --fail --proto '=https' --tlsv1.2 --connect-timeout 5 --max-time 10 \
+        --output /dev/null --config - 2>/dev/null; then
+    _doctor_tcms_row "OK" "TCMS_HEALTH" "/v1/health mit Token erreichbar"
+  else
+    _doctor_tcms_row "FEHLT" "TCMS_HEALTH" "/v1/health mit Token nicht erreichbar (URL, TLS, Token pruefen)"
+  fi
+}
+
+_doctor_tcms() {
+  local mode key
+  if ! mode="$(tcms_deployment_mode 2>/dev/null)"; then
+    _doctor_tcms_row "FEHLT" "TCMS_DEPLOYMENT" "nur managed, external oder disabled erlaubt"
+    return 0
+  fi
+  _doctor_tcms_row "OK" "TCMS_DEPLOYMENT" "$mode"
+  if [[ -e "$TCMS_ROTATION_STATE" ]]; then
+    _doctor_tcms_row "WARN" "TCMS_ROTATION" "nicht abgeschlossen (./taxtronik tcms status)"
+  fi
+  case "$mode" in
+    disabled)
+      for key in TCMS_URL TCMS_SERVICE_TOKEN TCMS_ACTOR_PRIVATE_KEY TCMS_ACTOR_KEY_ID; do
+        [[ -z "${!key:-}" ]] || {
+          _doctor_tcms_row "FEHLT" "$key" "bei disabled muessen die TCMS-Zugangswerte leer sein (./taxtronik tcms disable)"
+          return 0
+        }
+      done
+      ;;
+    external)
+      if tcms_valid_external_url "${TCMS_URL:-}"; then
+        _doctor_tcms_row "OK" "TCMS_URL" "extern: ${TCMS_URL}"
+      else
+        _doctor_tcms_row "FEHLT" "TCMS_URL" "externes Tax-CMS braucht eine HTTPS-URL (nicht ${TCMS_MANAGED_URL})"
+      fi
+      if tcms_valid_token "${TCMS_SERVICE_TOKEN:-}"; then
+        _doctor_tcms_row "OK" "TCMS_SERVICE_TOKEN" "${#TCMS_SERVICE_TOKEN} Zeichen"
+      else
+        _doctor_tcms_row "FEHLT" "TCMS_SERVICE_TOKEN" "fehlt/ungueltig (32-512 Zeichen, kein Platzhalter)"
+      fi
+      _doctor_tcms_own_key
+      _doctor_tcms_external_health
+      ;;
+    managed)
+      if [[ "${TCMS_URL:-}" == "$TCMS_MANAGED_URL" ]]; then
+        _doctor_tcms_row "OK" "TCMS_URL" "verwaltet ($TCMS_MANAGED_URL)"
+      else
+        _doctor_tcms_row "FEHLT" "TCMS_URL" "verwaltetes Tax-CMS muss $TCMS_MANAGED_URL verwenden"
+      fi
+      _doctor_tcms_managed_credentials
+      _doctor_tcms_images
+      _doctor_tcms_live
       ;;
   esac
 }
@@ -643,6 +831,8 @@ doctor() {
     fi
     _dr_row "OK" "SIGNAL_UPDATE" "extern verwaltet; TaxTronik aktualisiert Signal nicht"
   fi
+
+  _doctor_tcms
 
   if [[ -z "${SMTP_HOST:-}" ]]; then
     _dr_row "FEHLT" "SMTP_HOST" "Prod braucht ein echtes SMTP-Relay (Mailhog nur Dev)"; _DOCTOR_ERRS=$((_DOCTOR_ERRS+1))

@@ -86,18 +86,106 @@ TCMS-Release, ist `managed` dort nicht betreibbar.
 gebauten Tag `taxtronik/tcms-api:<tag>` bzw. `taxtronik/tcms-migrate:<tag>`
 ohne Digest-Suffix.
 
-## 4. Variablen
+## 4. Einrichtung und Prüfung
 
-| Variable                                                                       | Inhalt                                                                         |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `TCMS_DB_SUPERUSER_PASSWORD`, `TCMS_DB_OWNER_PASSWORD`, `TCMS_DB_APP_PASSWORD` | Passwörter von `tcms`, `tcms_owner`, `tcms_app`; nur `managed`                 |
-| `TCMS_SERVICE_TOKENS`                                                          | Token-Liste des Dienstes (Komma-Liste; zwei Einträge nur während der Rotation) |
-| `TCMS_ACTOR_PUBLIC_KEYS`                                                       | `kid=<SPKI-base64>`, kommagetrennt (zwei Einträge nur während der Rotation)    |
-| `TCMS_VERSION`, `TCMS_API_DIGEST_SUFFIX`, `TCMS_MIGRATE_DIGEST_SUFFIX`         | Image-Tag und `@sha256:…`-Suffixe; im Release-Kanal aus dem signierten Stand   |
-| `TCMS_API_MEM_LIMIT`, `TCMS_DB_MEM_LIMIT`, `TCMS_MIGRATE_MEM_LIMIT`            | Speichergrenzen (Standard 512m, 1g, 256m)                                      |
-| `TCMS_DB_SHARED_BUFFERS`, `TCMS_DB_MAX_CONNECTIONS`, `TCMS_LOG_LEVEL`          | Datenbank-Tuning und Log-Stufe des Dienstes                                    |
+```bash
+./taxtronik tcms setup                    # interaktiv: managed | external | disabled
+./taxtronik tcms setup managed            # nicht-interaktiv
+./taxtronik tcms setup external           # fragt URL und Dienst-Token (verdeckt)
+./taxtronik tcms status                   # Modus, Container, Netze, kids – ohne Werte
+./taxtronik doctor                        # enthält die TCMS-Prüfungen
+```
 
-## 5. Fehlerbilder
+**managed.** `setup` erzeugt fehlende Geheimnisse und lässt vorhandene
+unverändert: drei getrennte Datenbankpasswörter, ein Dienst-Token
+(`TCMS_SERVICE_TOKEN`, Liste `TCMS_SERVICE_TOKENS` mit genau diesem Eintrag)
+und ein Ed25519-Schlüsselpaar mit neuem `kid` (`kk-<Datum>-<Fingerabdruck>`,
+wie `pnpm akteur:schluessel` im TCMS-Repo). Der private Schlüssel ist
+PKCS#8-DER als base64 (`TCMS_ACTOR_PRIVATE_KEY`), der öffentliche SPKI-DER als
+base64 in `TCMS_ACTOR_PUBLIC_KEYS` (`kid=…`), exakt die Formate von
+`parsePrivatenSchluessel`/`parseSchluesselListe`. Erzeugt wird mit
+`openssl genpkey -algorithm ed25519`; kein Schlüssel und kein Passwort steht
+dabei in einer Kommandozeile oder Datei außer der `.env` (`0600`). Auf einer
+installierten Instanz startet `setup` danach `tcms-db`, den Migrationsschritt
+(Exit-Code wird ausgewertet) und `tcms-api` und erzeugt app und worker neu;
+sonst übernimmt `./taxtronik deploy` den Start (`--no-start` erzwingt das).
+Im Release-Kanal setzt `setup` die Image-Werte aus den Pins des installierten
+Release-Stands.
+
+**external.** `setup` verlangt eine HTTPS-URL ohne Zugangsdaten und ein
+Dienst-Token (32–512 Zeichen, kein Platzhalter), erzeugt bei Bedarf das eigene
+Schlüsselpaar und gibt nur den öffentlichen Eintrag `kid=<SPKI>` aus, den die
+Betreiber des externen Tax-CMS an ihre `TCMS_ACTOR_PUBLIC_KEYS` anhängen.
+TaxTronik startet und aktualisiert dort nichts. Der Wechsel von `managed` zu
+`external` geht nur über `disable`.
+
+**Initialsetup.** `./taxtronik deploy` fragt bei einer neuen Installation
+nach dem Tax-CMS (Standard: deaktiviert). Bestehende Installationen ohne Wert
+werden bei `deploy`/`update` als `disabled` festgeschrieben und nie gefragt.
+
+**doctor** prüft je Modus, ohne Werte auszugeben:
+
+- alle Modi: gültiger Modus; bei `disabled` keine Zugangswerte mehr in `.env`,
+- `managed`: Datenbankpasswörter vorhanden und paarweise sowie von den
+  kanzleikonsole-Rollen verschieden, Token-Format, aktuelles Token in der
+  Liste, Schlüsselliste gültig, `kid` gelistet und der gelistete öffentliche
+  Schlüssel passt zum privaten (openssl), Image-Werte je Kanal; im laufenden
+  Betrieb Container (`tcms-db`/`tcms-api` healthy, `tcms-migrate` mit Exit 0),
+  beide Netze `internal`, `tcms-db` nur im Backend-Netz, app/worker **nicht**
+  im Backend-Netz (sonst `FEHLT`),
+- `external`: HTTPS-URL, Token- und Schlüsselformat sowie `GET /v1/health` mit
+  Token. Das Token geht nur über stdin an `curl --config -`, nie als Argument.
+
+## 5. Rotation mit Überlappung
+
+```bash
+./taxtronik tcms rotate-token
+./taxtronik tcms rotate-key
+```
+
+Beide Befehle folgen der Schnittstelle und laufen ohne Ausfall:
+
+1. neues Token bzw. Schlüsselpaar (neuer `kid`) erzeugen und an die Liste des
+   Dienstes anhängen → `tcms-api` neu starten (akzeptiert alt und neu),
+2. `TCMS_SERVICE_TOKEN` bzw. `TCMS_ACTOR_PRIVATE_KEY`/`TCMS_ACTOR_KEY_ID`
+   umstellen → app und worker neu starten,
+3. warten (Schlüssel: mindestens 300 s nach dem Neustart von app/worker, weil
+   Bestätigungen bis zu 120 s leben; Token: keine Wartezeit, alte Prozesse
+   existieren nicht mehr),
+4. alten Eintrag entfernen → `tcms-api` neu starten.
+
+Der Ablauf ist wiederaufnehmbar: `.taxtronik.tcms-rotation` (`0600`, ohne
+Geheimnisse) hält Art, Phase, `kid` bzw. Token-Kennung (`tok:` + 16 Hex-Zeichen
+SHA-256) und den Umstellungszeitpunkt. Neue Geheimnisse liegen bis zur
+Umstellung als `*_NEXT` in der `.env`. Bricht ein Schritt ab (Neustart
+scheitert, Strg-C während der Wartezeit), setzt derselbe Befehl an der
+richtigen Stelle fort, ohne neue Geheimnisse zu erzeugen und ohne die
+Wartezeit zu verkürzen. Eine zweite Rotation startet erst nach Abschluss der
+laufenden. Vor dem Start muss jede Liste genau den aktuellen Eintrag enthalten.
+Datenbankpasswörter und das externe Tax-CMS: siehe
+[Secret-Rotation](secret-rotation.md#tax-cms-tcms).
+
+## 6. Abschalten
+
+`./taxtronik tcms disable` setzt `TCMS_DEPLOYMENT=disabled`, leert Token,
+Schlüssel und URL, erzeugt app und worker ohne TCMS neu und entfernt danach
+die TCMS-Container und -Netze. Das Volume `tcms-db-data` und die
+`TCMS_DB_*`-Passwörter bleiben erhalten (Daten, Rollen, Superuser-Passwort des
+Volumes); gelöscht wird nur bewusst von Hand.
+
+## 7. Variablen
+
+| Variable                                                                           | Inhalt                                                                         |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `TCMS_DB_SUPERUSER_PASSWORD`, `TCMS_DB_OWNER_PASSWORD`, `TCMS_DB_APP_PASSWORD`     | Passwörter von `tcms`, `tcms_owner`, `tcms_app`; nur `managed`                 |
+| `TCMS_SERVICE_TOKENS`                                                              | Token-Liste des Dienstes (Komma-Liste; zwei Einträge nur während der Rotation) |
+| `TCMS_ACTOR_PUBLIC_KEYS`                                                           | `kid=<SPKI-base64>`, kommagetrennt (zwei Einträge nur während der Rotation)    |
+| `TCMS_SERVICE_TOKEN_NEXT`, `TCMS_ACTOR_PRIVATE_KEY_NEXT`, `TCMS_ACTOR_KEY_ID_NEXT` | nur während einer Rotation bis zur Umstellung; danach leer                     |
+| `TCMS_VERSION`, `TCMS_API_DIGEST_SUFFIX`, `TCMS_MIGRATE_DIGEST_SUFFIX`             | Image-Tag und `@sha256:…`-Suffixe; im Release-Kanal aus dem signierten Stand   |
+| `TCMS_API_MEM_LIMIT`, `TCMS_DB_MEM_LIMIT`, `TCMS_MIGRATE_MEM_LIMIT`                | Speichergrenzen (Standard 512m, 1g, 256m)                                      |
+| `TCMS_DB_SHARED_BUFFERS`, `TCMS_DB_MAX_CONNECTIONS`, `TCMS_LOG_LEVEL`              | Datenbank-Tuning und Log-Stufe des Dienstes                                    |
+
+## 8. Fehlerbilder
 
 | Meldung                                                            | Ursache und Abhilfe                                                                                                             |
 | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
@@ -106,3 +194,7 @@ ohne Digest-Suffix.
 | `Registry-Compose verweigert: … verankert kein TCMS-Release`       | Der installierte Release gibt keine TCMS-Images frei. Auf einen Release mit TCMS aktualisieren oder `tcms disable`.             |
 | `Registry-Compose verweigert: TCMS-Images … weichen … ab`          | `.env` oder Prozessumgebung nennt andere Digests als der signierte Stand. Nicht von Hand ändern; deploy/update/rollback nutzen. |
 | `TCMS-Compose-Datei fehlt im Checkout`                             | `managed` in einem Checkout ohne TCMS-Unterstützung (älterer Release): vorher `./taxtronik tcms disable`.                       |
+| `Eine Rotation (…) ist nicht abgeschlossen`                        | Denselben `rotate-…`-Befehl erneut ausführen; er setzt an der gespeicherten Phase fort.                                         |
+| `… muss vor einer Rotation genau das aktuelle … enthalten`         | Liste enthält Fremdeinträge; mit `tcms status` prüfen und die Liste auf den aktuellen Eintrag zurückführen.                     |
+| doctor: `haengt im TCMS-Backend-Netz`                              | App/Worker wurden außerhalb der CLI mit falschem Netz gestartet; `./taxtronik tcms setup managed` erzeugt sie neu.              |
+| doctor: `TCMS_HEALTH … nicht erreichbar` (external)                | URL, TLS-Kette oder Token prüfen; das externe Tax-CMS muss das Token in seiner Liste führen.                                    |

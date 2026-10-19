@@ -390,6 +390,12 @@ apply_initial_setup_plan() {
     set_env RISK_LAYER_LLM_BACKEND auto
     set_env RISK_LAYER_LLM_TIMEOUT ""
   fi
+  # Ohne Antwort (aeltere Aufrufer) bleibt das Tax-CMS deaktiviert.
+  set_env TCMS_DEPLOYMENT "${_SETUP_TCMS_MODE:-disabled}"
+  if [[ "${_SETUP_TCMS_MODE:-disabled}" == "external" ]]; then
+    set_env TCMS_URL "$_SETUP_TCMS_URL"
+    set_env TCMS_SERVICE_TOKEN "$_SETUP_TCMS_TOKEN"
+  fi
   set_env TENANT_NAME "$_SETUP_TENANT_NAME"
   set_env ADMIN_EMAIL "$_SETUP_ADMIN_EMAIL"
 
@@ -397,6 +403,41 @@ apply_initial_setup_plan() {
 
   export TENANT_NAME="$_SETUP_TENANT_NAME"
   export ADMIN_EMAIL="$_SETUP_ADMIN_EMAIL"
+}
+
+# Tax-CMS im Initialsetup (TCMS Stufe 2), Frage analog Signal. Standard ist
+# deaktiviert: Ein verwaltetes Tax-CMS braucht im Release-Kanal ein im
+# signierten Stand verankertes TCMS-Release. Geheimnisse erzeugt danach
+# prepare_env_interactive (configure_tcms_for_env); hier werden nur Modus
+# sowie fuer extern URL und Dienst-Token erfragt.
+configure_setup_tcms() {
+  local choice=""
+  printf '\nTax-CMS einrichten?\n'
+  printf '  1) Deaktiviert lassen (Standard; spaeter ./taxtronik tcms setup)\n'
+  printf '  2) Mit TaxTronik verwalten (eigene Datenbank, interne Netze)\n'
+  printf '  3) Externes Tax-CMS anbinden (HTTPS)\n'
+  read -rp 'Auswahl [1]: ' choice || true
+  case "${choice:-1}" in
+    1|disabled) _SETUP_TCMS_MODE="disabled" ;;
+    2|managed)
+      _SETUP_TCMS_MODE="managed"
+      [[ "$_SETUP_DEPLOY_CHANNEL" != "release" ]] || \
+        printf 'Hinweis: Der gewaehlte Release muss ein TCMS-Release verankern, sonst bricht deploy vor jeder Migration ab.\n'
+      ;;
+    3|external)
+      _SETUP_TCMS_MODE="external"
+      while :; do
+        read -rp 'URL des externen Tax-CMS (https://...): ' _SETUP_TCMS_URL || true
+        tcms_valid_external_url "$_SETUP_TCMS_URL" && break
+        warn "TCMS-URL muss HTTPS ohne Zugangsdaten sein."
+      done
+      read -rsp 'Dienst-Token des externen Tax-CMS (wird nicht angezeigt): ' _SETUP_TCMS_TOKEN || true
+      printf '\n'
+      tcms_valid_token "$_SETUP_TCMS_TOKEN" || die "Dienst-Token fehlt oder ist ungueltig (32-512 Zeichen, kein Platzhalter)."
+      _SETUP_TCMS_URL="${_SETUP_TCMS_URL%/}"
+      ;;
+    *) die "Ungueltige Tax-CMS-Auswahl: $choice" ;;
+  esac
 }
 
 # B3: Vertrauen in X-Forwarded-For im Initialsetup festlegen. Verwaltetes
@@ -464,6 +505,9 @@ configure_initial_deployment_interactive() {
   _SETUP_SIGNAL_URL=""
   _SETUP_SIGNAL_TOKEN=""
   _SETUP_SIGNAL_OPERATOR_TOKEN=""
+  _SETUP_TCMS_MODE="disabled"
+  _SETUP_TCMS_URL=""
+  _SETUP_TCMS_TOKEN=""
   _SETUP_TENANT_NAME="Kanzlei"
   _SETUP_ADMIN_EMAIL=""
 
@@ -664,6 +708,8 @@ configure_initial_deployment_interactive() {
     *) die "Ungueltige Signal-Auswahl: $choice" ;;
   esac
 
+  configure_setup_tcms
+
   printf '\n================ Setup-Zusammenfassung ================\n'
   printf 'Deployment : %s\n' "$([[ "$_SETUP_METHOD" == "traefik" ]] && printf '1-Klick Traefik (leerer Host)' || printf 'Standard / vorhandener Reverse-Proxy')"
   if [[ "$_SETUP_TRUST_PROXY_REQUIRED" == "true" ]]; then
@@ -695,6 +741,11 @@ configure_initial_deployment_interactive() {
   else
     printf 'Signal     : %s\n' "$_SETUP_SIGNAL_MODE"
   fi
+  case "$_SETUP_TCMS_MODE" in
+    managed) printf 'Tax-CMS    : verwaltet (eigene Datenbank, interne Netze, Geheimnisse werden erzeugt)\n' ;;
+    external) printf 'Tax-CMS    : extern %s (eigener Schluessel wird erzeugt)\n' "$_SETUP_TCMS_URL" ;;
+    *) printf 'Tax-CMS    : deaktiviert\n' ;;
+  esac
   printf 'Kanzleiname: %s\n' "$_SETUP_TENANT_NAME"
   printf 'Admin      : %s\n' "$_SETUP_ADMIN_EMAIL"
   if [[ "$_SETUP_METHOD" == "standard" ]]; then

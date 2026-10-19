@@ -147,6 +147,9 @@ Der Assistent validiert und fasst vor der Anwendung zusammen:
 - SMTP-Ziel und optionale Zugangsdaten,
 - Signal als verwalteter Docker-Dienst, externe/native API oder deaktiviert;
   beim verwalteten Dienst zusätzlich Git-Quellstand oder Registry-Image,
+- das Tax-CMS als verwalteter Dienst, externes HTTPS-Tax-CMS (URL und
+  verdeckt eingegebenes Dienst-Token) oder deaktiviert (Standard; später
+  `./taxtronik tcms setup`, siehe [Tax-CMS-Betrieb](tcms-betrieb.md)),
 - beim 1-Klick-Weg die ACME-E-Mail.
 
 Secrets werden nicht in der Zusammenfassung ausgegeben. Für die Standardmethode

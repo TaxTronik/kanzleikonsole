@@ -17,6 +17,7 @@
 #   ./taxtronik rollback [<version>] zurueck auf vorherigen Stand (keine Migration)
 #   ./taxtronik reset-admin-password Admin-Passwort neu setzen (Recovery)
 #   ./taxtronik doctor [--fix]       .env vorab validieren / Secrets generieren
+#   ./taxtronik tcms <kommando>      Tax-CMS einrichten, pruefen, rotieren, abschalten
 #   ./taxtronik up|down|ps|logs|exec|pull ...   docker-compose-Passthrough
 #   ./taxtronik --infra up -d                     nur Infra (Postgres/Redis/S3/ClamAV)
 #
@@ -58,6 +59,10 @@ Nutze:
   ./taxtronik rollback [<version>]  zurueck; nach Prod-Restore ist <version> Pflicht
   ./taxtronik reset-admin-password  Admin-Passwort neu setzen (Recovery)
   ./taxtronik doctor [--fix]        .env-Validierung; --fix generiert fehlende Secrets
+  ./taxtronik tcms setup [managed|external|disabled] [--no-start]
+                                    Tax-CMS einrichten (Geheimnisse, Netze, Start)
+  ./taxtronik tcms status|rotate-token|rotate-key|disable
+                                    Zustand, Rotation mit Ueberlappung, Abschalten
   ./taxtronik compose <cmd>          expliziter Docker-Compose-Passthrough
   ./taxtronik up|down|ps|logs|exec|pull ...   Kurzform fuer Compose
   ./taxtronik --infra <cmd>                    nur Infra-Services
@@ -92,6 +97,7 @@ case "$cmd" in
     ;;
   reset-admin-password) cmd_reset_admin_password ;;
   doctor)    shift || true; doctor "$@" ;;
+  tcms)      shift || true; cmd_tcms "$@" ;;
   compose)
     shift || true
     [[ $# -gt 0 ]] || die "Nutzung: ./taxtronik compose <docker-compose-subcommand> [...]"

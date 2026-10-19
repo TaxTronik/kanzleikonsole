@@ -41,6 +41,7 @@ out
 .taxtronik.migration-pending
 .taxtronik.database-restored
 .taxtronik.install-pending
+.taxtronik.tcms-rotation
 licensing-private-*.pem
 infra/scripts/seaweedfs-s3.generated.json
 .taxtronik.traefik-dynamic.yml

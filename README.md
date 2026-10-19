@@ -258,6 +258,8 @@ Im Normalfall danach:
 ./taxtronik restore --file backups/<dump> --target-url <postgres-url>
 ./taxtronik doctor      # .env prüfen (--fix generiert fehlende Secrets)
 ./taxtronik rollback    # zurück auf den vorherigen Stand (keine Migration)
+./taxtronik tcms setup  # Tax-CMS verwalten/anbinden/abschalten (docs/operations/tcms-betrieb.md)
+./taxtronik tcms status|rotate-token|rotate-key|disable
 ```
 
 Mutierende Restores haben bewusst keinen impliziten `DATABASE_URL`-Fallback.

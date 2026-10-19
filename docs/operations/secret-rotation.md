@@ -27,26 +27,29 @@ Dieses Runbook beschreibt die Rotation produktiver Geheimnisse. Für
 
 ## Secret-Matrix
 
-| Secret                                                    | Zweck                             | Rotation                       | Auswirkung                             |
-| --------------------------------------------------------- | --------------------------------- | ------------------------------ | -------------------------------------- |
-| `AUTH_SECRET`                                             | Session-Signing, TOTP-Encryption  | nur nach Auth-Runbook          | Sessions ungültig, TOTP betroffen      |
-| `SECRET_BOX_KEY`                                          | Wurzel der Secret-Box             | nur bei Kompromittierung       | Checkpoints einmalig ungültig          |
-| `SECRET_BOX_KEYRING`                                      | Tenant-/Integrations-Secrets      | ohne Ausfallzeit mit Re-Wrap   | gespeicherte Secrets sonst unlesbar    |
-| `POSTGRES_PASSWORD`                                       | DB-Superuser (Migration/Restore)  | Wartungsfenster                | Migrationen, Operator-Werkzeuge        |
-| `TAXTRONIK_APP_PASSWORD`                                  | App-DB-Rolle mit RLS              | Wartungsfenster                | App/Worker DB-Zugriff                  |
-| `TAXTRONIK_OWNER_PASSWORD`                                | Owner-Rolle App/Worker (S-01)     | Wartungsfenster                | Login, Callbacks, Worker-Jobs          |
-| `TAXTRONIK_DRILL_PASSWORD`                                | Restore-Drill-Rolle (S-01)        | Wartungsfenster                | monatlicher Restore-Drill              |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY`                         | SeaweedFS S3                      | Wartungsfenster                | Uploads, Backups, Restore              |
-| Outbound-HMAC je Tenant; `N8N_HMAC_SECRET` nur Legacy     | TaxTronik→n8n Event-Signaturen    | koordiniert App/Worker+n8n     | Event-Webhooks schlagen sonst fehl     |
-| n8n Callback-Key/-Token                                   | n8n→TaxTronik Scoped Callback     | ohne Dual-Token-Fenster        | Callbacks schlagen sonst fehl          |
-| n8n API-Key (Tenant-Einstellung)                          | Workflow-Verwaltung via `/api/v1` | überlappender Key-Wechsel      | Import/Status gestört, Webhooks laufen |
-| `N8N_ENCRYPTION_KEY`                                      | n8n Credential-Store              | nur mit n8n-Backup             | n8n kann Credentials verlieren         |
-| `N8N_DB_PASSWORD`                                         | n8n Postgres-Rolle                | Wartungsfenster                | n8n startet sonst nicht                |
-| `SMTP_PASSWORD`                                           | SMTP-Relay                        | laufend möglich                | Mailversand                            |
-| `RISK_LAYER_TOKEN`                                        | App↔Risk-Layer Bearer Auth        | koordiniert App+Engine         | Subsumtion/Risk-Layer inaktiv          |
-| `BACKUP_OFFSITE_ACCESS_KEY` / `BACKUP_OFFSITE_SECRET_KEY` | getrenntes Offsite-S3             | mit überlappenden Zugangsdaten | Full-Backup-Upload und Receipt-Prüfung |
-| Backup-Manifest Private Key                               | Ed25519-Signatur des Full-Backups | geplante Key-Zeremonie         | alte Public Keys für Altbackups nötig  |
-| Update-Manifest Private Key                               | Release-Manifest-Signatur         | Vendor-Prozess                 | Update-Check fail-closed               |
+| Secret                                                                         | Zweck                             | Rotation                               | Auswirkung                             |
+| ------------------------------------------------------------------------------ | --------------------------------- | -------------------------------------- | -------------------------------------- |
+| `AUTH_SECRET`                                                                  | Session-Signing, TOTP-Encryption  | nur nach Auth-Runbook                  | Sessions ungültig, TOTP betroffen      |
+| `SECRET_BOX_KEY`                                                               | Wurzel der Secret-Box             | nur bei Kompromittierung               | Checkpoints einmalig ungültig          |
+| `SECRET_BOX_KEYRING`                                                           | Tenant-/Integrations-Secrets      | ohne Ausfallzeit mit Re-Wrap           | gespeicherte Secrets sonst unlesbar    |
+| `POSTGRES_PASSWORD`                                                            | DB-Superuser (Migration/Restore)  | Wartungsfenster                        | Migrationen, Operator-Werkzeuge        |
+| `TAXTRONIK_APP_PASSWORD`                                                       | App-DB-Rolle mit RLS              | Wartungsfenster                        | App/Worker DB-Zugriff                  |
+| `TAXTRONIK_OWNER_PASSWORD`                                                     | Owner-Rolle App/Worker (S-01)     | Wartungsfenster                        | Login, Callbacks, Worker-Jobs          |
+| `TAXTRONIK_DRILL_PASSWORD`                                                     | Restore-Drill-Rolle (S-01)        | Wartungsfenster                        | monatlicher Restore-Drill              |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY`                                              | SeaweedFS S3                      | Wartungsfenster                        | Uploads, Backups, Restore              |
+| Outbound-HMAC je Tenant; `N8N_HMAC_SECRET` nur Legacy                          | TaxTronik→n8n Event-Signaturen    | koordiniert App/Worker+n8n             | Event-Webhooks schlagen sonst fehl     |
+| n8n Callback-Key/-Token                                                        | n8n→TaxTronik Scoped Callback     | ohne Dual-Token-Fenster                | Callbacks schlagen sonst fehl          |
+| n8n API-Key (Tenant-Einstellung)                                               | Workflow-Verwaltung via `/api/v1` | überlappender Key-Wechsel              | Import/Status gestört, Webhooks laufen |
+| `N8N_ENCRYPTION_KEY`                                                           | n8n Credential-Store              | nur mit n8n-Backup                     | n8n kann Credentials verlieren         |
+| `N8N_DB_PASSWORD`                                                              | n8n Postgres-Rolle                | Wartungsfenster                        | n8n startet sonst nicht                |
+| `SMTP_PASSWORD`                                                                | SMTP-Relay                        | laufend möglich                        | Mailversand                            |
+| `RISK_LAYER_TOKEN`                                                             | App↔Risk-Layer Bearer Auth        | koordiniert App+Engine                 | Subsumtion/Risk-Layer inaktiv          |
+| `TCMS_SERVICE_TOKEN` / `TCMS_SERVICE_TOKENS`                                   | Dienst-Token app/worker→Tax-CMS   | `tcms rotate-token`, überlappend       | ohne Ausfall                           |
+| `TCMS_ACTOR_PRIVATE_KEY` / `TCMS_ACTOR_PUBLIC_KEYS`                            | Ed25519-Akteursbestätigung        | `tcms rotate-key`, ≥ 5 min überlappend | ohne Ausfall                           |
+| `TCMS_DB_SUPERUSER_PASSWORD`, `TCMS_DB_OWNER_PASSWORD`, `TCMS_DB_APP_PASSWORD` | Rollen der Tax-CMS-Datenbank      | Wartungsfenster                        | Tax-CMS kurz nicht verfügbar           |
+| `BACKUP_OFFSITE_ACCESS_KEY` / `BACKUP_OFFSITE_SECRET_KEY`                      | getrenntes Offsite-S3             | mit überlappenden Zugangsdaten         | Full-Backup-Upload und Receipt-Prüfung |
+| Backup-Manifest Private Key                                                    | Ed25519-Signatur des Full-Backups | geplante Key-Zeremonie                 | alte Public Keys für Altbackups nötig  |
+| Update-Manifest Private Key                                                    | Release-Manifest-Signatur         | Vendor-Prozess                         | Update-Check fail-closed               |
 
 ## Standardablauf
 
@@ -303,6 +306,55 @@ Drill.
 2. `RISK_LAYER_TOKEN` in TaxTronik setzen.
 3. `./taxtronik deploy`.
 4. Subsumtions-Analyse mit Testfall ausführen.
+
+## Tax-CMS (TCMS)
+
+Dienst-Token und Akteursschlüssel eines verwalteten Tax-CMS rotiert die
+Operator-CLI mit Überlappung und ohne Ausfall
+([Tax-CMS-Betrieb](tcms-betrieb.md#5-rotation-mit-überlappung)):
+
+```bash
+./taxtronik tcms rotate-token
+./taxtronik tcms rotate-key   # wartet mindestens 300 s vor dem Entfernen des alten Schlüssels
+./taxtronik tcms status       # Phase einer unterbrochenen Rotation
+```
+
+Ein Abbruch ist unkritisch: derselbe Befehl setzt fort. Ein vollständiges
+Backup vor der Rotation ist hier nicht nötig, weil keine gespeicherten Daten
+mit Token oder Schlüssel verschlüsselt sind.
+
+**Externes Tax-CMS** (keine CLI-Rotation, weil die Listen dem externen
+Betreiber gehören):
+
+1. Token: Der externe Betreiber hängt das neue Token an seine
+   `TCMS_SERVICE_TOKENS` an und startet seinen Dienst neu. Danach
+   `./taxtronik tcms setup external` mit dem neuen Token ausführen (app und
+   worker werden neu gestartet). Erst dann entfernt der externe Betreiber das
+   alte Token.
+2. Schlüssel: `TCMS_ACTOR_PRIVATE_KEY` und `TCMS_ACTOR_KEY_ID` in `.env` leeren
+   und `./taxtronik tcms setup external` ausführen; die Ausgabe nennt den neuen
+   öffentlichen Eintrag. Den alten privaten Schlüssel bis zum Abschluss offline
+   sichern. Der externe Betreiber hängt den neuen Eintrag an und startet neu,
+   dann app/worker neu starten (`setup external` erneut) und frühestens
+   5 Minuten danach den alten Eintrag beim externen Betreiber entfernen.
+
+**Datenbankpasswörter** (`managed`, Wartungsfenster):
+
+- `TCMS_DB_OWNER_PASSWORD`, `TCMS_DB_APP_PASSWORD`: neuen Wert in `.env`
+  setzen und `./taxtronik tcms setup managed` ausführen. Der Migrationsschritt
+  gleicht die Rollenpasswörter an, danach startet `tcms-api` mit dem neuen
+  App-Passwort.
+- `TCMS_DB_SUPERUSER_PASSWORD`: gilt seit dem ersten Start des Volumes und wird
+  durch `.env` allein nicht geändert. Zuerst in der Datenbank ändern (Wert nur
+  über stdin), dann `.env` anpassen und `./taxtronik tcms setup managed`:
+
+  ```bash
+  read -rs NEU && printf "ALTER ROLE tcms WITH PASSWORD '%s';\n" "$NEU" | \
+    docker exec -i taxtronik-tcms-db psql -X -U tcms -d tcms -v ON_ERROR_STOP=1
+  ```
+
+  `tcms-db` protokolliert keine Statement-Texte (Abschnitt 2 im
+  Tax-CMS-Betrieb).
 
 ## Secret-Box-Schlüssel
 

@@ -371,6 +371,10 @@ prepare_env_interactive() {
 
   configure_risk_layer_interactive
 
+  # Tax-CMS (TCMS Stufe 2): fehlender Modus wird disabled; managed erhaelt
+  # fehlende Geheimnisse, nie eine stille Rotation vorhandener.
+  configure_tcms_for_env
+
   reconcile_n8n_encryption_key_from_volume
 
   # Schluss-Check (read-only). Bleiben blockierende Fehler, Klartext + Abbruch.

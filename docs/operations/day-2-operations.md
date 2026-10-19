@@ -198,7 +198,7 @@ Update-Backup lief bereits mit dem alten Checkout vor dem Fetch); laufende
 Dienste bleiben unverändert. Warnungen blockieren nicht.
 
 `./taxtronik doctor` prüft Host-, Compose- und Betriebsregeln selbst (Secrets,
-Rollen, Kanal, Traefik, n8n, Signal, SMTP-Mailhog). Regeln, die nur das
+Rollen, Kanal, Traefik, n8n, Signal, Tax-CMS, SMTP-Mailhog). Regeln, die nur das
 App-Schema wiederholten (z. B. `NEXTAUTH_TRUST_HOST`, `TRUST_PROXY_HOPS`,
 Cookie-Domains, Risk-Layer-Token-Paare), zeigt doctor als
 `SCHEMA_WEB`/`SCHEMA_WORKER`-Zeilen aus dem lokal vorhandenen Worker-Image der
@@ -934,6 +934,28 @@ Bei Fehlern:
 3. Tokenlänge und Bearer-Konfiguration prüfen.
 4. Signal-Logs getrennt vom TaxTronik-Stack auswerten, wenn es extern/nativ
    betrieben wird.
+
+## Tax-CMS (TCMS)
+
+`TCMS_DEPLOYMENT` legt wie bei Signal Topologie und Update-Verantwortung fest
+(`managed`, `external`, `disabled`). Routine:
+
+```bash
+./taxtronik tcms status   # Modus, Container, Netze, kids, laufende Rotation
+./taxtronik doctor        # TCMS-Zeilen: Formate, Paarprüfung, Netze, Health
+```
+
+- `doctor` meldet `FEHLT`, wenn app oder worker im Netz
+  `taxtronik-tcms-backend` hängen, ein Netz nicht `internal` ist,
+  `tcms-migrate` nicht mit Exit 0 endete oder Token/Schlüssel von app/worker
+  nicht in den Listen des Dienstes stehen.
+- `WARN` bei Listen mit mehr als dem aktuellen Eintrag ohne laufende Rotation
+  und bei einer unterbrochenen Rotation (`./taxtronik tcms rotate-…` erneut).
+- Logs ohne Werte: `./taxtronik compose --profile tcms logs tcms-api` bzw.
+  `tcms-migrate`.
+
+Einrichtung, Netze, Images, Rotation und Fehlerbilder:
+[Tax-CMS-Betrieb](tcms-betrieb.md).
 
 ## Incident-Kurzpfad
 
