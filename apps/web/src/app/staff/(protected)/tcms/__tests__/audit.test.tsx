@@ -134,19 +134,27 @@ describe('auditPruefenAction', () => {
     expect(r).toEqual({ meldung: expect.stringContaining('31 Einträge geprüft') });
   });
 
-  it('gebrochene Kette: Warnung mit Position laut Dienst', async () => {
-    await auditPruefenAction(null, new FormData());
-    const rufe = vi.fn(async () => ({
-      daten: {
-        status: 'GEBROCHEN',
-        geprueft: 7,
-        bruchBei: 8,
-        grund: 'Hash passt nicht',
-        weiterAb: null,
-      },
-      requestId: 'r',
-    }));
-    const r = await spec().aufruf({ rufe });
-    expect(r).toEqual({ warnung: expect.stringContaining('#8 (laut Tax-CMS: Hash passt nicht)') });
+  it('gebrochene Kette (RT3): Position laut Dienst, Grund nur als fester Text, nie der Rohtext', async () => {
+    const lauf = async (grund: string | null) => {
+      h.spec = null;
+      await auditPruefenAction(null, new FormData());
+      const rufe = vi.fn(async () => ({
+        daten: { status: 'GEBROCHEN', geprueft: 7, bruchBei: 8, grund, weiterAb: null },
+        requestId: 'r',
+      }));
+      return (await spec().aufruf({ rufe })) as { warnung: string };
+    };
+    expect((await lauf('Inhalt wurde verändert')).warnung).toBe(
+      'Hashkette gebrochen bei Eintrag #8: Der Inhalt des Eintrags wurde verändert. Einträge davor sind konsistent. Bitte den Betrieb informieren.',
+    );
+    expect((await lauf('Lücke in den Positionen')).warnung).toContain(
+      'In der Nummerierung der Einträge fehlt ein Eintrag.',
+    );
+    // Unbekannter Text des Dienstes, Prototyp-Schlüssel und kein Grund: Rückfall.
+    for (const grund of ['<b>Bitte rufen Sie 0800 … an</b>', 'constructor', '__proto__', null]) {
+      const w = (await lauf(grund)).warnung;
+      expect(w).toContain('#8: Prüfung fehlgeschlagen.');
+      if (grund) expect(w).not.toContain(grund);
+    }
   });
 });

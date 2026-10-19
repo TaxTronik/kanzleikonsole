@@ -5,13 +5,16 @@
 // Demo server/actions/admin.ts). Nur Admins und Partner: Gate `nurAdmin` der
 // kanzleikonsole UND Recht im Tax-CMS (kannVerwalten; 403 → fester Text
 // VERWALTUNG). Die Kette prüft ausschließlich der Dienst (seitenweise mit
-// Zeitbudget, `weiterAb`); die kanzleikonsole rechnet keinen Hash nach.
+// Zeitbudget, `weiterAb`); die kanzleikonsole rechnet keinen Hash nach. Den
+// Grund eines Bruchs zeigt sie nur als festen Text (server/tcms/audit.ts),
+// nie den Text des Dienstes (RT3).
 // =============================================================================
 
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import type { ActionFailure } from '@/server/actions/action-runner';
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
+import { auditBruchText } from '@/server/tcms/audit';
 
 type Ergebnis = ActionResult & { meldung?: string; warnung?: string };
 /** Rückgabe des Dienstaufrufs: Fehlerergebnis oder Meldung (Nutzlast). */
@@ -43,9 +46,9 @@ export async function auditPruefenAction(
         }
         if (r.status === 'GEBROCHEN') {
           return {
-            warnung: `Hashkette gebrochen bei Eintrag #${r.bruchBei ?? '?'}${
-              r.grund ? ` (laut Tax-CMS: ${r.grund})` : ''
-            }. Einträge davor sind konsistent. Bitte den Betrieb informieren.`,
+            warnung: `Hashkette gebrochen bei Eintrag #${r.bruchBei ?? '?'}: ${auditBruchText(
+              r.grund,
+            )} Einträge davor sind konsistent. Bitte den Betrieb informieren.`,
           };
         }
         if (r.weiterAb === null) break;

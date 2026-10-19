@@ -480,8 +480,10 @@ im Tax-CMS der Kanzlei, neueste zuerst, mit Filter nach Mandant und
 Aktionspräfix. Personen erscheinen mit dem Namen, der zum Zeitpunkt der
 Handlung im Protokoll festgehalten wurde. **Hashkette prüfen** lässt das
 Tax-CMS die Verkettung aller Einträge prüfen; das Ergebnis („intakt“ bzw.
-„gebrochen bei Eintrag #…“) stammt vom Tax-CMS. Die Hashkette hat keinen
-qualifizierten Zeitstempel.
+„gebrochen bei Eintrag #…“) stammt vom Tax-CMS. Bei einem Bruch nennt
+TaxTronik die Art des Bruchs mit einem festen Text (z. B. „Der Inhalt des
+Eintrags wurde verändert.“), bei unbekannter Art „Prüfung fehlgeschlagen.“.
+Die Hashkette hat keinen qualifizierten Zeitstempel.
 
 ### Meldungen in diesen Bereichen
 
