@@ -147,3 +147,73 @@ Minute zu. Nach 7 Tagen ohne Korrektur oder nach Ablauf des Codes gilt die
 Mitteilung als unzustellbar; fordern Sie die Freigabe dann im Tax-CMS neu an
 oder adressieren Sie sie neu. Mails des Tax-CMS können nicht über „Erneut
 senden“ wiederholt werden.
+
+## Durchführungen, Feststellungen und Arbeitskorb
+
+### Durchführungen
+
+_Tax-CMS → Durchführungen_ listet die Kontrolldurchführungen des Mandanten mit
+Periode, Fälligkeit, Status, Nachweisen und Zuständigkeit. Filter: offen, zur
+Gegenzeichnung, geplant, abgeschlossen, entfallen oder alle; Kanzlei oder
+Mandant; nur Schlüsselkontrollen. Ein Klick öffnet die Durchführung.
+
+In der Durchführung arbeiten Sie die Schritte ab, erfassen Werte (Beträge im
+Format 1.234,56; Differenzen und Toleranz zeigt die Seite sofort an), hängen
+Nachweise an und wählen das Ergebnis. „Entwurf speichern“ sichert den Stand;
+„Zur Gegenzeichnung einreichen“ speichert und reicht ein. Fehlt noch etwas,
+bleibt der Entwurf gespeichert und die Meldung nennt die offenen Punkte. Eine
+zweite Person zeichnet gegen oder weist mit Begründung zurück; bei einem
+Befund wird dabei die Feststellung erfasst. Wer durchgeführt hat, kann nicht
+selbst gegenzeichnen. Entfallen beantragen (mit Begründung) gibt eine zweite
+Person frei; abgeschlossene Durchführungen ändern Sie nur über einen
+Nachtrag. Welche Schaltflächen Sie nutzen können, entscheidet das Tax-CMS;
+gesperrte zeigen den Grund. Ein früherer Stichtag zeigt nur an.
+
+### Nachweise
+
+- **Hochladen:** Die Datei wird in der Dokumentablage des Mandanten
+  gespeichert (Virenscan, Prüfsumme, Typ „Allgemein“) und dann als Nachweis
+  angehängt; das Tax-CMS erhält nur einen Verweis. Gleicher Inhalt wird nicht
+  doppelt angehängt. Lehnt das Tax-CMS das Anhängen ab, bleibt die Datei in
+  der Ablage; die Meldung sagt das.
+- **Vorhandenes Dokument wählen:** Zur Auswahl stehen gescannte Dokumente
+  dieses Mandanten ohne GwG-, Personal- oder Lohnbezug.
+- **Herunterladen:** über die Dokumentablage mit Ihren Rechten in TaxTronik.
+  Stimmt die gespeicherte Datei nicht mehr mit dem Nachweis überein, wird sie
+  nicht ausgeliefert („Abweichung zur Ablage – nicht abrufbar“).
+- **Schutz:** Solange ein Dokument als Nachweis verknüpft ist, lässt es sich
+  in der Ablage nicht löschen und keine neue Version hochladen. Entfernen Sie
+  zuerst den Nachweis in der Durchführung (nur vor dem Einreichen möglich).
+
+### Feststellungen und Maßnahmen
+
+_Tax-CMS → Feststellungen_ listet die Feststellungen mit Quelle, Klasse,
+Schwere, steuerlicher Auswirkung, §-153-Stand, offenen Maßnahmen und ältester
+Frist, darunter alle offenen Maßnahmen. In der Feststellung bearbeiten Sie
+Würdigung, betroffene Erklärungen, Maßnahmen (Verantwortliche: Personen der
+Kanzlei mit Zugriff auf den Mandanten oder Kontakte des Mandanten mit
+Tax-CMS-Rolle), Nachkontrolle und schalten den Status weiter.
+
+- **§-153-Würdigung:** vier gleichrangige Optionen ohne Vorauswahl,
+  Begründung mit mindestens 30 Zeichen, Frist bei „Berichtigung erforderlich“
+  und „Weitere Klärung“. Würdigen dürfen nur zuständige Berufsträgerinnen und
+  Berufsträger.
+- **Verwerfen:** mit Begründung beantragen; eine zweite Person bestätigt.
+- **Vertraulich:** markiert die zuständige Berufsträgerin bzw. der zuständige
+  Berufsträger; Nicht-Beteiligte sehen dann nur „<Nummer> · Vertrauliche
+  Feststellung“.
+
+### Arbeitskorb
+
+Der Arbeitskorb des Tax-CMS (Adresse `/staff/tcms/arbeitskorb`) sammelt Ihre offenen
+Aufgaben über alle Mandanten: eigene Durchführungen, Gegenzeichnungen,
+Vier-Augen-Bestätigungen, §-153-Würdigungen, neue Ereignisse und
+Beschreibungen im Kanzlei-Review. Ein Klick führt in den Bereich des
+Mandanten.
+
+| Meldung                                                             | Bedeutung und was zu tun ist                                                                       |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Entwurf gespeichert, aber noch nicht eingereicht: …                 | Die genannten Punkte fehlen noch. Ergänzen und erneut einreichen.                                  |
+| … in der Dokumentablage gespeichert, aber nicht als Nachweis …      | Die Datei liegt in der Ablage; als Nachweis später über „Vorhandenes Dokument“ erneut anhängen.    |
+| Dieses Dokument ist als Nachweis … verknüpft                        | Erst den Nachweis in der Durchführung entfernen, dann löschen bzw. eine neue Version hochladen.    |
+| Der Schritt ist noch nicht möglich oder … zwischenzeitlich geändert | Voraussetzungen des nächsten Schritts prüfen (Anzeige „Nächster Schritt“) und die Seite neu laden. |

@@ -1175,6 +1175,19 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   Kontakte genau dieses Mandanten
 - **Portal-Übersicht** `/portal/tcms`: Stand des Programms, eigene und
   weitere Aufgaben, letzte Meldungen
+- **Durchführungen** `/staff/clients/[id]/tcms/durchfuehrungen[/[did]]`:
+  Liste mit Filtern; Schritte, Werte mit Toleranz, Ergebnis, Einreichen,
+  Gegenzeichnen (Befund mit Feststellung), Zurückweisen, Entfallen, Nachtrag.
+  Nachweise über die Dokumentenpipeline (Upload am Mandanten bzw. gescanntes
+  Dokument des Mandanten), Abruf nur über die Dokumentauslieferung mit
+  SHA-256-Abgleich; verknüpfte Dokumente gegen Löschen und neue Versionen
+  gesperrt (Fachkatalog TCMS-NACHWEIS-001, ungeprüfter Entwurf)
+- **Feststellungen** `/staff/clients/[id]/tcms/feststellungen[/[fid]]`:
+  Liste mit offenen Maßnahmen; Würdigung, Erklärungen, Maßnahmen,
+  §-153-Würdigung (vier Optionen ohne Vorauswahl), Nachkontrolle, Verwerfen
+  (Vier-Augen), Vertraulichkeit
+- **Arbeitskorb** `/staff/tcms/arbeitskorb`: eigene Aufgaben über alle
+  Mandanten
 - Unternavigation mit allen 14 Bereichen des Tax-CMS; die übrigen Bereiche
   folgen mit denselben Bausteinen
 - Feste Meldungen für fehlende Rechte, Konflikte („Wurde zwischenzeitlich
