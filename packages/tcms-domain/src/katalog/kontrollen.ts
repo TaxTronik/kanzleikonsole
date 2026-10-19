@@ -1,0 +1,707 @@
+// =============================================================================
+// Kontrollkatalog E-Commerce, Startfassung v1.0 (Fachkonzept Abschnitt 6).
+// 24 Vorlagen, sechs als Schlüsselkontrollen vorbelegt. Die Frequenz ist der
+// Startwert der Vorlage; maßgeblich ist die strengere aus Vorlage und Matrix.
+// =============================================================================
+
+import type { Frequenz } from '../frequenz';
+import type { Ausfuehrung, KontrollArt, Partei } from '../types';
+
+export interface KontrollSchritt {
+  titel: string;
+  hinweis: string;
+}
+
+export interface Kennzahl {
+  key: string;
+  label: string;
+  /** Sollwert in Euro (z. B. 0 für Clearingkonten); null = kein Soll. */
+  sollEur: number | null;
+  /** Differenzkennzahl: wird aus zwei Werten gebildet und gegen die Toleranz geprüft. */
+  differenzAus?: [string, string];
+}
+
+export interface KatalogKontrolle {
+  code: string;
+  titel: string;
+  ziel: string;
+  art: KontrollArt;
+  ausfuehrung: Ausfuehrung;
+  frequenz: Frequenz;
+  /** Text wie im Katalog, z. B. „anlassbezogen + jährlich". */
+  frequenzText: string;
+  partei: Partei;
+  /** Prüfende Partei, wenn abweichend (z. B. „Review Kanzlei"). */
+  review: string | null;
+  schluessel: boolean;
+  nachweis: string;
+  /** Mindestanzahl Nachweisdateien für das Einreichen. */
+  mindestNachweise: number;
+  risiken: string[];
+  schritte: KontrollSchritt[];
+  kennzahlen: Kennzahl[];
+  toleranzEur: number | null;
+  /** Tage nach Periodenende bis zur Fälligkeit. */
+  faelligNachTagen: number;
+}
+
+const f = (turnus: Frequenz['turnus'], anlass = false): Frequenz => ({ turnus, anlass });
+
+export const KATALOG_KONTROLLEN: readonly KatalogKontrolle[] = [
+  {
+    code: 'K-EC-01',
+    titel: 'Lieferschwellen-Monitor',
+    ziel: 'Kumulierte EU-Fernverkäufe gegen die Lieferschwelle abgleichen; Warnung ab 80 %.',
+    art: 'D',
+    ausfuehrung: 'IT',
+    frequenz: f('MONATLICH'),
+    frequenzText: 'monatlich',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: true,
+    nachweis: 'Auswertung mit Summen je Land',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-01'],
+    schritte: [
+      {
+        titel: 'Fernverkäufe je Land erfassen',
+        hinweis:
+          'Summen des laufenden Jahres und des Vorjahres aus Shop und Marktplätzen übernehmen',
+      },
+      {
+        titel: 'Summe gegen Schwelle prüfen',
+        hinweis: 'Kumulierte EU-Fernverkäufe gegen 10.000 € abgleichen',
+      },
+      { titel: 'Warnstufe dokumentieren', hinweis: 'Bei 80 % oder 100 % Ereignis T-04 anlegen' },
+    ],
+    kennzahlen: [
+      { key: 'fernverkaeufe_lfd', label: 'EU-Fernverkäufe laufendes Jahr', sollEur: null },
+      { key: 'fernverkaeufe_vj', label: 'EU-Fernverkäufe Vorjahr', sollEur: null },
+    ],
+    toleranzEur: null,
+    faelligNachTagen: 20,
+  },
+  {
+    code: 'K-EC-02',
+    titel: 'Review der Steuerregeln in Shop und Marktplätzen',
+    ziel: 'Steuerregeln je Land und Warengruppe gegen die Soll-Sätze prüfen.',
+    art: 'P',
+    ausfuehrung: 'M',
+    frequenz: f('JAEHRLICH', true),
+    frequenzText: 'anlassbezogen + jährlich',
+    partei: 'MANDANT',
+    review: 'Review Kanzlei',
+    schluessel: false,
+    nachweis: 'Export der Steuerregeln, Checkliste',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-02', 'EC-UST-14'],
+    schritte: [
+      {
+        titel: 'Steuerregeln exportieren',
+        hinweis: 'Export aus Shop und Marktplatz-Steuereinstellungen ablegen',
+      },
+      {
+        titel: 'Sätze je Land und Warengruppe prüfen',
+        hinweis: 'Abgleich mit der Soll-Tabelle der Kanzlei',
+      },
+      {
+        titel: 'Abweichungen korrigieren',
+        hinweis: 'Korrekturen dokumentieren, Datum der Umstellung festhalten',
+      },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 30,
+  },
+  {
+    code: 'K-EC-03',
+    titel: 'Bestellstichprobe Steuerausweis',
+    ziel: 'Steuerausweis je Land in einer Stichprobe von Bestellungen gegen den Soll-Satz prüfen.',
+    art: 'D',
+    ausfuehrung: 'M',
+    frequenz: f('QUARTALSWEISE'),
+    frequenzText: 'quartalsweise',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: false,
+    nachweis: 'Stichprobenliste mit Ergebnis',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-02', 'EC-UST-08', 'EC-UST-14'],
+    schritte: [
+      { titel: 'Stichprobe ziehen', hinweis: 'Bestellungen je Land und Warengruppe auswählen' },
+      { titel: 'Steuerausweis prüfen', hinweis: 'Ausgewiesenen Satz gegen Soll-Satz vergleichen' },
+      { titel: 'Ergebnis festhalten', hinweis: 'Abweichungen mit Bestellnummer dokumentieren' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 30,
+  },
+  {
+    code: 'K-EC-04',
+    titel: 'OSS-Abstimmung vor Abgabe',
+    ziel: 'OSS-Entwurf gegen Erlöskonten und Plattformreports abstimmen; Toleranz dokumentieren.',
+    art: 'D',
+    ausfuehrung: 'IT',
+    frequenz: f('QUARTALSWEISE'),
+    frequenzText: 'quartalsweise',
+    partei: 'KANZLEI',
+    review: 'Vier-Augen',
+    schluessel: true,
+    nachweis: 'Abstimmungsblatt, Abgabebestätigung',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-03', 'EC-UST-04', 'EC-UST-09'],
+    schritte: [
+      {
+        titel: 'OSS-Entwurf erstellen',
+        hinweis: 'Bemessungsgrundlagen je Land aus der FiBu ableiten',
+      },
+      {
+        titel: 'Gegen Plattformreports abstimmen',
+        hinweis: 'VAT-Reports der Marktplätze und Shop-Export gegenüberstellen',
+      },
+      {
+        titel: 'Korrekturen früherer Quartale prüfen',
+        hinweis: 'Erstattungen und Retouren der Vorquartale berücksichtigen',
+      },
+      { titel: 'Abgabe dokumentieren', hinweis: 'Übermittlungsprotokoll ablegen' },
+    ],
+    kennzahlen: [
+      { key: 'oss_entwurf', label: 'Bemessungsgrundlage OSS-Entwurf', sollEur: null },
+      { key: 'erloeskonten', label: 'Erlöskonten OSS-Länder (FiBu)', sollEur: null },
+      {
+        key: 'differenz',
+        label: 'Differenz',
+        sollEur: null,
+        differenzAus: ['oss_entwurf', 'erloeskonten'],
+      },
+    ],
+    toleranzEur: 250,
+    faelligNachTagen: 24,
+  },
+  {
+    code: 'K-EC-05',
+    titel: 'Lagerland-Monitor',
+    ziel: 'Bestände nach Land prüfen; neues Land löst Ereignis und Betriebsstättenprüfung aus.',
+    art: 'D',
+    ausfuehrung: 'IT',
+    frequenz: f('MONATLICH'),
+    frequenzText: 'monatlich',
+    partei: 'MANDANT',
+    review: null,
+    schluessel: true,
+    nachweis: 'Bestandsreport nach Land',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-05', 'EC-ERT-03'],
+    schritte: [
+      {
+        titel: 'Bestandsreport abrufen',
+        hinweis: 'Bestände je Lagerland aus Marktplatz und 3PL exportieren',
+      },
+      {
+        titel: 'Lagerländer abgleichen',
+        hinweis: 'Länder mit Bestand gegen die Registrierungen (P9) vergleichen',
+      },
+      { titel: 'Neue Länder melden', hinweis: 'Neues Lagerland als Ereignis T-02 melden' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 5,
+  },
+  {
+    code: 'K-EC-06',
+    titel: 'Verbringens- und ZM-Abstimmung',
+    ziel: 'Verbringensliste gegen die Zusammenfassende Meldung abstimmen.',
+    art: 'D',
+    ausfuehrung: 'M',
+    frequenz: f('MONATLICH'),
+    frequenzText: 'monatlich',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: false,
+    nachweis: 'Abstimmung Verbringensliste ↔ ZM',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-04', 'EC-UST-05', 'EC-UST-06'],
+    schritte: [
+      {
+        titel: 'Verbringensliste übernehmen',
+        hinweis: 'Warenbewegungen zwischen Lagerländern aus den Reports',
+      },
+      {
+        titel: 'Gegen ZM abstimmen',
+        hinweis: 'Innergemeinschaftliche Verbringen und Lieferungen in der ZM prüfen',
+      },
+      { titel: 'Differenzen klären', hinweis: 'Abweichungen dokumentieren' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 25,
+  },
+  {
+    code: 'K-EC-07',
+    titel: 'USt-IdNr.-Bestätigung und Gelangensnachweise',
+    ziel: 'Qualifizierte Bestätigung vor steuerfreier B2B-Lieferung; monatliche Quote der Gelangensnachweise.',
+    art: 'P',
+    ausfuehrung: 'IT',
+    frequenz: f('MONATLICH', true),
+    frequenzText: 'je Neukunde + monatlich',
+    partei: 'MANDANT',
+    review: null,
+    schluessel: false,
+    nachweis: 'Bestätigungsprotokoll, Quote',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-06'],
+    schritte: [
+      {
+        titel: 'Neukunden bestätigen',
+        hinweis: 'Qualifizierte Bestätigung der USt-IdNr. je neuem B2B-Kunden',
+      },
+      { titel: 'Gelangensnachweise zählen', hinweis: 'Quote der vorliegenden Nachweise ermitteln' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 10,
+  },
+  {
+    code: 'K-EC-08',
+    titel: 'Kreditorencheck § 13b',
+    ziel: 'Kreditoren auf §-13b-Leistungen ausländischer Anbieter prüfen.',
+    art: 'D',
+    ausfuehrung: 'M',
+    frequenz: f('MONATLICH'),
+    frequenzText: 'monatlich',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: false,
+    nachweis: 'Kreditorenliste mit Kennzeichnung',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-07'],
+    schritte: [
+      {
+        titel: 'Ausländische Kreditoren filtern',
+        hinweis: 'Plattformen, Werbe- und SaaS-Anbieter',
+      },
+      {
+        titel: 'Buchung nach § 13b prüfen',
+        hinweis: 'Steuerschuldnerschaft und Vorsteuer gebucht',
+      },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 10,
+  },
+  {
+    code: 'K-EC-09',
+    titel: 'Freigabe neuer Gutschein-, Abo- oder Bundle-Modelle',
+    ziel: 'Neue Modelle vor dem Start steuerlich würdigen und freigeben.',
+    art: 'P',
+    ausfuehrung: 'M',
+    frequenz: f('KEIN', true),
+    frequenzText: 'anlassbezogen',
+    partei: 'MANDANT',
+    review: 'Würdigung Kanzlei',
+    schluessel: false,
+    nachweis: 'Freigabevermerk',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-08', 'EC-ERT-02'],
+    schritte: [
+      { titel: 'Modell beschreiben', hinweis: 'Ablauf, Einlösung, Laufzeit, Länder' },
+      { titel: 'Würdigung einholen', hinweis: 'Einordnung durch die Kanzlei' },
+      { titel: 'Freigabe dokumentieren', hinweis: 'Freigabevermerk vor Start ablegen' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 14,
+  },
+  {
+    code: 'K-EC-10',
+    titel: 'Erstattungs- und Retourenabstimmung',
+    ziel: 'Erstattungen und Retouren je Kanal mit den Korrekturbuchungen abstimmen.',
+    art: 'D',
+    ausfuehrung: 'IT',
+    frequenz: f('MONATLICH'),
+    frequenzText: 'monatlich',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: false,
+    nachweis: 'Abstimmungsblatt',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-09'],
+    schritte: [
+      {
+        titel: 'Erstattungen je Kanal erfassen',
+        hinweis: 'Shop, Marktplätze, Chargebacks der Zahlungsdienstleister',
+      },
+      {
+        titel: 'Korrekturbuchungen abstimmen',
+        hinweis: 'Entgeltminderungen in FiBu und OSS-Zuordnung',
+      },
+    ],
+    kennzahlen: [
+      { key: 'erstattungen', label: 'Erstattungen laut Kanälen', sollEur: null },
+      { key: 'korrekturen', label: 'Korrekturbuchungen FiBu', sollEur: null },
+      {
+        key: 'differenz',
+        label: 'Differenz',
+        sollEur: null,
+        differenzAus: ['erstattungen', 'korrekturen'],
+      },
+    ],
+    toleranzEur: 100,
+    faelligNachTagen: 10,
+  },
+  {
+    code: 'K-EC-11',
+    titel: 'Dreifach-Abstimmung Shop/Zahlungsdienstleister/FiBu',
+    ziel: 'Vollständigkeit der Erlösdatenkette: Shop/Marktplatz ↔ Zahlungsdienstleister ↔ FiBu angleichen; Clearingkonten auf 0,00 € prüfen.',
+    art: 'D',
+    ausfuehrung: 'IT',
+    frequenz: f('MONATLICH'),
+    frequenzText: 'monatlich',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: true,
+    nachweis: 'Abstimmungsblatt, Saldenliste Clearingkonten',
+    mindestNachweise: 2,
+    risiken: ['EC-GOB-01', 'EC-UST-09', 'EC-UST-10'],
+    schritte: [
+      {
+        titel: 'Shop- und Marktplatzerlöse erfassen',
+        hinweis: 'Shop- und Marktplatzerlöse aus Export des Systems abgleichen',
+      },
+      {
+        titel: 'Eingänge der Zahlungsdienstleister abstimmen',
+        hinweis: 'Eingänge der ZDL (PayPal, Stripe, Klarna, Amazon Pay) gegen Bankabflüsse prüfen',
+      },
+      {
+        titel: 'FiBu-Erlöskonten gegenüberstellen',
+        hinweis: 'Erlöskonten mit der Summe aus Shop-Export und ZDL-Eingängen abgleichen',
+      },
+      {
+        titel: 'Clearingkonten auf 0,00 € prüfen',
+        hinweis: 'Salden der Clearingkonten kontrollieren',
+      },
+    ],
+    kennzahlen: [
+      { key: 'shop', label: 'Shop- und Marktplatzerlöse', sollEur: null },
+      { key: 'zdl', label: 'Eingänge Zahlungsdienstleister', sollEur: null },
+      { key: 'differenz', label: 'Differenz', sollEur: null, differenzAus: ['shop', 'zdl'] },
+      { key: 'clearing_paypal', label: 'Clearingkonto PayPal', sollEur: 0 },
+      { key: 'clearing_stripe', label: 'Clearingkonto Stripe', sollEur: 0 },
+      { key: 'clearing_amazonpay', label: 'Clearingkonto Amazon Pay', sollEur: 0 },
+    ],
+    toleranzEur: 500,
+    faelligNachTagen: 10,
+  },
+  {
+    code: 'K-EC-12',
+    titel: 'UStVA-Plausibilisierung vor Abgabe',
+    ziel: 'Vorjahresvergleich, Quoten und §-13b-Summen vor Abgabe plausibilisieren.',
+    art: 'D',
+    ausfuehrung: 'M',
+    frequenz: f('MONATLICH'),
+    frequenzText: 'monatlich',
+    partei: 'KANZLEI',
+    review: 'Vier-Augen',
+    schluessel: true,
+    nachweis: 'Plausibilitätsprotokoll',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-10', 'EC-UST-07', 'EC-GOB-01'],
+    schritte: [
+      { titel: 'Vorjahresvergleich', hinweis: 'Umsätze und Vorsteuer gegen Vorjahresmonat' },
+      { titel: 'Quoten prüfen', hinweis: 'Steuersatzquoten und Erlösminderungen' },
+      { titel: '§-13b-Summen prüfen', hinweis: 'Abgleich mit K-EC-08' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 10,
+  },
+  {
+    code: 'K-EC-13',
+    titel: 'Fristenkontrolle aller USt-Pflichten',
+    ziel: 'Fristen im Inland und in Registrierungsländern lückenlos überwachen.',
+    art: 'P',
+    ausfuehrung: 'IT',
+    frequenz: f('MONATLICH', true),
+    frequenzText: 'laufend',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: false,
+    nachweis: 'Fristenkontrollbuch-Einträge',
+    mindestNachweise: 0,
+    risiken: ['EC-VER-02', 'EC-UST-03'],
+    schritte: [
+      {
+        titel: 'Fristen des Monats prüfen',
+        hinweis: 'UStVA, ZM, OSS und ausländische Erklärungen',
+      },
+      { titel: 'Erledigung bestätigen', hinweis: 'Abgabe und Zahlung je Frist festhalten' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 5,
+  },
+  {
+    code: 'K-EC-14',
+    titel: 'Change-Management Systeme und Schnittstellen',
+    ziel: 'Änderungen an Shop, Warenwirtschaft, FiBu und Schnittstellen inkl. Verfahrensdoku-Update.',
+    art: 'P',
+    ausfuehrung: 'M',
+    frequenz: f('KEIN', true),
+    frequenzText: 'anlassbezogen',
+    partei: 'MANDANT',
+    review: 'Review Kanzlei',
+    schluessel: false,
+    nachweis: 'Änderungsmeldung, aktualisierte Verfahrensdoku',
+    mindestNachweise: 1,
+    risiken: ['EC-GOB-02', 'EC-GOB-03'],
+    schritte: [
+      { titel: 'Änderung melden', hinweis: 'System, Version, Stichtag, betroffene Schnittstellen' },
+      { titel: 'Datenübernahme prüfen', hinweis: 'Vollständigkeit der migrierten Daten' },
+      { titel: 'Verfahrensdoku aktualisieren', hinweis: 'Neue Fassung ablegen' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 30,
+  },
+  {
+    code: 'K-EC-15',
+    titel: 'Prüfung der B2B-Rechnungsvorlagen und E-Rechnung',
+    ziel: 'Pflichtangaben und E-Rechnungsformat der B2B-Rechnungen prüfen.',
+    art: 'P',
+    ausfuehrung: 'M',
+    frequenz: f('JAEHRLICH', true),
+    frequenzText: 'anlassbezogen + jährlich',
+    partei: 'MANDANT',
+    review: 'Review Kanzlei',
+    schluessel: false,
+    nachweis: 'Musterrechnung, Checkliste',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-11'],
+    schritte: [
+      { titel: 'Musterrechnung erzeugen', hinweis: 'B2B-Rechnung aus dem Produktivsystem' },
+      { titel: 'Pflichtangaben prüfen', hinweis: 'Checkliste § 14 UStG' },
+      { titel: 'Format prüfen', hinweis: 'Zulässiges E-Rechnungsformat' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 30,
+  },
+  {
+    code: 'K-EC-16',
+    titel: 'EUSt-Belegprüfung vor Vorsteuerabzug',
+    ziel: 'Einfuhrbelege und Verfügungsmacht vor dem Vorsteuerabzug prüfen.',
+    art: 'D',
+    ausfuehrung: 'M',
+    frequenz: f('MONATLICH'),
+    frequenzText: 'monatlich',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: false,
+    nachweis: 'Belegliste',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-12'],
+    schritte: [
+      { titel: 'Einfuhrbelege sammeln', hinweis: 'Zollbescheide des Monats' },
+      { titel: 'Berechtigung prüfen', hinweis: 'Lieferbedingungen und Verfügungsmacht' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 10,
+  },
+  {
+    code: 'K-EC-17',
+    titel: 'Abgleich Marktplatz-Nachweise und Plattformmeldungen',
+    ziel: 'Registrierungsnachweise und Plattformmeldungen mit eigenen Erlösen abgleichen.',
+    art: 'D',
+    ausfuehrung: 'M',
+    frequenz: f('JAEHRLICH'),
+    frequenzText: 'jährlich',
+    partei: 'MANDANT',
+    review: 'Review Kanzlei',
+    schluessel: false,
+    nachweis: 'Plattformmeldung, Abgleich',
+    mindestNachweise: 1,
+    risiken: ['EC-UST-13'],
+    schritte: [
+      { titel: 'Plattformmeldungen beschaffen', hinweis: 'Kopien der Meldungen der Marktplätze' },
+      { titel: 'Mit Erlösen abgleichen', hinweis: 'Abweichungen erklären' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 60,
+  },
+  {
+    code: 'K-EC-18',
+    titel: 'Inventur und Abgleich Fremdlager',
+    ziel: 'Bestände in Fremdlagern inklusive Retourenbestand bestätigen und abgleichen.',
+    art: 'D',
+    ausfuehrung: 'M',
+    frequenz: f('JAEHRLICH'),
+    frequenzText: 'jährlich',
+    partei: 'MANDANT',
+    review: null,
+    schluessel: false,
+    nachweis: 'Bestandsbestätigung, Abgleich',
+    mindestNachweise: 1,
+    risiken: ['EC-ERT-01'],
+    schritte: [
+      { titel: 'Bestandsbestätigungen anfordern', hinweis: 'Je Fremdlager zum Stichtag' },
+      { titel: 'Mit Warenwirtschaft abgleichen', hinweis: 'Retourenbestand gesondert' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 45,
+  },
+  {
+    code: 'K-EC-19',
+    titel: 'Abschlussabgrenzung E-Commerce',
+    ziel: 'Gutscheine, Retouren und Plattformguthaben zum Abschluss abgrenzen.',
+    art: 'D',
+    ausfuehrung: 'M',
+    frequenz: f('JAEHRLICH'),
+    frequenzText: 'jährlich',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: false,
+    nachweis: 'Abgrenzungsblatt',
+    mindestNachweise: 1,
+    risiken: ['EC-ERT-02'],
+    schritte: [
+      { titel: 'Gutscheinverbindlichkeiten ermitteln', hinweis: 'Offene Gutscheine zum Stichtag' },
+      { titel: 'Retourenrückstellung bemessen', hinweis: 'Quote aus Vorjahren' },
+      { titel: 'Plattformguthaben erfassen', hinweis: 'Einbehaltene Auszahlungsreserven' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 60,
+  },
+  {
+    code: 'K-EC-20',
+    titel: 'Berichtigungsprozess',
+    ziel: 'Feststellung → Würdigung → dokumentierte Entscheidung des Berufsträgers.',
+    art: 'K',
+    ausfuehrung: 'M',
+    frequenz: f('KEIN', true),
+    frequenzText: 'anlassbezogen',
+    partei: 'KANZLEI',
+    review: 'Berufsträger',
+    schluessel: true,
+    nachweis: 'Entscheidungsvermerk, ggf. Berichtigung',
+    mindestNachweise: 0,
+    risiken: ['EC-VER-01'],
+    schritte: [
+      {
+        titel: 'Betroffene Erklärungen erfassen',
+        hinweis: 'Steuerart, Land, Zeitraum, geschätzte Auswirkung',
+      },
+      { titel: 'Würdigung dokumentieren', hinweis: 'Entscheidung des Berufsträgers' },
+      { titel: 'Berichtigung belegen', hinweis: 'Übermittlungsprotokoll oder Bescheid' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 14,
+  },
+  {
+    code: 'K-EC-21',
+    titel: 'Rechtsänderungs-Monitoring',
+    ziel: 'Rechts- und Satzänderungen im Inland und in Bestimmungsländern sichten.',
+    art: 'D',
+    ausfuehrung: 'IT',
+    frequenz: f('MONATLICH', true),
+    frequenzText: 'laufend',
+    partei: 'KANZLEI',
+    review: null,
+    schluessel: false,
+    nachweis: 'gesichtete Meldungen mit Folgeentscheidung',
+    mindestNachweise: 0,
+    risiken: ['EC-VER-03', 'EC-UST-02'],
+    schritte: [
+      { titel: 'Meldungen sichten', hinweis: 'Quellen der Kanzlei und RSS-Treffer' },
+      { titel: 'Folgen entscheiden', hinweis: 'Betroffene Risiken und Kontrollen markieren' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 5,
+  },
+  {
+    code: 'K-EC-22',
+    titel: 'Kenntnisnahme Steuerrichtlinie und Schulung',
+    ziel: 'Kenntnisnahme der Steuerrichtlinie und Schulung der Beteiligten belegen.',
+    art: 'P',
+    ausfuehrung: 'IT',
+    frequenz: f('JAEHRLICH', true),
+    frequenzText: 'jährlich + bei Eintritt',
+    partei: 'MANDANT',
+    review: null,
+    schluessel: false,
+    nachweis: 'Kenntnisnahmen, Schulungsnachweis',
+    mindestNachweise: 1,
+    risiken: [],
+    schritte: [
+      {
+        titel: 'Kenntnisnahmen einholen',
+        hinweis: 'Alle Beteiligten bestätigen die aktuelle Fassung',
+      },
+      { titel: 'Schulung durchführen', hinweis: 'Teilnehmende und Inhalte dokumentieren' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 30,
+  },
+  {
+    code: 'K-EC-23',
+    titel: 'Report-Export und geschützte Ablage',
+    ziel: 'Plattform- und Zahlungsreports quartalsweise exportieren und geschützt ablegen.',
+    art: 'P',
+    ausfuehrung: 'IT',
+    frequenz: f('QUARTALSWEISE'),
+    frequenzText: 'quartalsweise',
+    partei: 'MANDANT',
+    review: null,
+    schluessel: false,
+    nachweis: 'abgelegte Reports mit Hash',
+    mindestNachweise: 1,
+    risiken: ['EC-GOB-03'],
+    schritte: [
+      {
+        titel: 'Reports exportieren',
+        hinweis: 'Marktplätze und Zahlungsdienstleister, vollständiges Quartal',
+      },
+      { titel: 'Reports ablegen', hinweis: 'Upload in die geschützte Ablage' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 15,
+  },
+  {
+    code: 'K-EC-24',
+    titel: 'Gegengezeichnete Risikoaufklärung',
+    ziel: 'Aufklärung über IN-Risiken durch die Kanzlei, Kenntnisnahme durch die gesetzlichen Vertreter.',
+    art: 'P',
+    ausfuehrung: 'IT',
+    frequenz: f('JAEHRLICH', true),
+    frequenzText: 'jährlich + bei Ereignis',
+    partei: 'KANZLEI',
+    review: 'Bestätigung Mandant',
+    schluessel: false,
+    nachweis: 'Aufklärungsdokument, Bestätigung per E-Mail-Code',
+    mindestNachweise: 1,
+    risiken: ['EC-ERT-03'],
+    schritte: [
+      { titel: 'Aufklärung verfassen', hinweis: 'Risiko, Unsicherheit, mögliche Folgen' },
+      { titel: 'Kenntnisnahme einholen', hinweis: 'Bestätigung durch die gesetzlichen Vertreter' },
+    ],
+    kennzahlen: [],
+    toleranzEur: null,
+    faelligNachTagen: 30,
+  },
+];
+
+export function katalogKontrolle(code: string): KatalogKontrolle | undefined {
+  return KATALOG_KONTROLLEN.find((k) => k.code === code);
+}
+
+/** Kontrollen eines Risikos laut Katalog. */
+export function kontrollenFuerRisiko(risikoCode: string): KatalogKontrolle[] {
+  return KATALOG_KONTROLLEN.filter((k) => k.risiken.includes(risikoCode));
+}

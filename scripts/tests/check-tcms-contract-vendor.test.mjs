@@ -1,10 +1,12 @@
-// Regressionstests für den vendored TCMS-Vertrag (TCMS Stufe 2):
-// scripts/tcms/sync-contract.mjs und scripts/check-tcms-contract-vendor.mjs.
-// Jede Regel des Guards hat einen Fall, der ohne die Regel durchginge.
+// Regressionstests für die vendorten TCMS-Pakete (TCMS Stufe 2, mehrere Pakete
+// ab Stufe 3): scripts/tcms/sync-contract.mjs und
+// scripts/check-tcms-contract-vendor.mjs. Jede Regel des Guards hat einen
+// Fall, der ohne die Regel durchginge.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -17,13 +19,22 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { pruefeTcmsVertrag } from '../check-tcms-contract-vendor.mjs';
+import { pruefeTcmsVendor } from '../check-tcms-contract-vendor.mjs';
 import {
+  VENDOR_PAKETE,
+  istAusgeschlossen,
   istSichererPfad,
   istTestdatei,
-  pruefeVendor,
-  pruefeVendorDaten,
+  pruefeVendor as pruefeVendorPaket,
+  pruefeVendorDaten as pruefeVendorDatenPaket,
+  vendorPaket,
 } from '../tcms/vendor-lib.mjs';
+
+const VERTRAG = vendorPaket('contract');
+const DOMAIN = vendorPaket('domain');
+/** Prüfungen für den Vertrag (die Fälle aus Stufe 2). */
+const pruefeVendor = (ziel, paket = VERTRAG) => pruefeVendorPaket(ziel, paket);
+const pruefeVendorDaten = (daten, paket = VERTRAG) => pruefeVendorDatenPaket(daten, paket);
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SYNC = join(REPO_ROOT, 'scripts', 'tcms', 'sync-contract.mjs');
@@ -64,14 +75,19 @@ function quellRepo(name) {
   schreibe(wurzel, 'packages/contract/src/bereiche/lesen.test.ts', 'test\n');
   schreibe(wurzel, 'packages/contract/src/__tests__/akteur.test.ts', 'test\n');
   schreibe(wurzel, 'packages/contract/package.json', '{}\n');
+  schreibe(wurzel, 'packages/domain/src/index.ts', "export * from './format';\n");
+  schreibe(wurzel, 'packages/domain/src/format.ts', 'export const F = 1;\n');
+  schreibe(wurzel, 'packages/domain/src/katalog/risiken.ts', 'export const R = 2;\n');
+  schreibe(wurzel, 'packages/domain/src/audit.ts', "import { createHash } from 'node:crypto';\n");
+  schreibe(wurzel, 'packages/domain/src/__tests__/format.test.ts', 'test\n');
   schreibe(wurzel, 'README.md', 'tcms\n');
   git(wurzel, 'add', '-A');
   git(wurzel, 'commit', '-q', '-m', 'init');
   return wurzel;
 }
 
-function sync(quelle, ziel) {
-  return spawnSync(process.execPath, [SYNC, '--from', quelle, '--ziel', ziel], {
+function sync(quelle, ziel, paket = 'contract') {
+  return spawnSync(process.execPath, [SYNC, '--from', quelle, '--paket', paket, '--ziel', ziel], {
     encoding: 'utf8',
   });
 }
@@ -168,9 +184,146 @@ describe('sync-contract', () => {
   });
 });
 
+describe('sync-contract mit mehreren Paketen (TCMS Stufe 3)', () => {
+  test('vendort das Domain-Paket ohne Tests und ohne audit.ts', () => {
+    const quelle = quellRepo('domain-quelle');
+    const ziel = join(temp, 'domain-ziel');
+    mkdirSync(ziel);
+    const r = sync(quelle, ziel, 'domain');
+    assert.equal(r.status, 0, r.stderr);
+    const vendor = JSON.parse(readFileSync(join(ziel, 'VENDOR.json'), 'utf8'));
+    assert.equal(vendor.beschreibung, DOMAIN.beschreibung);
+    assert.deepEqual(vendor.quelle, {
+      repo: 'tcms',
+      pfad: 'packages/domain/src',
+      commit: git(quelle, 'rev-parse', 'HEAD'),
+    });
+    assert.deepEqual(
+      vendor.dateien.map((d) => d.pfad),
+      ['format.ts', 'index.ts', 'katalog/risiken.ts'],
+    );
+    assert.equal(existsSync(join(ziel, 'src/audit.ts')), false);
+    assert.equal(existsSync(join(ziel, 'src/__tests__')), false);
+    assert.deepEqual(pruefeVendor(ziel, DOMAIN), []);
+  });
+
+  test('ausgeschlossene Dateien sind im Ziel zusätzliche Dateien und in VENDOR.json unzulässig', () => {
+    const quelle = quellRepo('domain-ausschluss-quelle');
+    const ziel = join(temp, 'domain-ausschluss-ziel');
+    mkdirSync(ziel);
+    assert.equal(sync(quelle, ziel, 'domain').status, 0);
+    schreibe(ziel, 'src/audit.ts', 'x\n');
+    assert.deepEqual(pruefeVendor(ziel, DOMAIN), [
+      'src/audit.ts: nicht in VENDOR.json (zusätzliche Datei)',
+    ]);
+    rmSync(join(ziel, 'src/audit.ts'));
+    const vendorPfad = join(ziel, 'VENDOR.json');
+    const vendor = JSON.parse(readFileSync(vendorPfad, 'utf8'));
+    vendor.dateien.unshift({ pfad: 'audit.ts', sha256: 'a'.repeat(64) });
+    writeFileSync(vendorPfad, JSON.stringify(vendor));
+    assert.match(pruefeVendor(ziel, DOMAIN).join(), /audit\.ts ist für domain ausgeschlossen/);
+  });
+
+  test('bindet VENDOR.json an sein Paket (Quellpfad und Beschreibung)', () => {
+    const { ziel } = gueltigesPaket('fremdes-paket');
+    // Ein Vertrags-VENDOR.json im Domain-Paket fällt auf, auch bei passenden Hashes.
+    assert.match(pruefeVendor(ziel, DOMAIN).join(), /quelle\.pfad muss packages\/domain\/src sein/);
+    assert.match(
+      pruefeVendor(ziel, DOMAIN).join(),
+      /beschreibung entspricht nicht dem Paket domain/,
+    );
+  });
+
+  test('ohne --paket übernimmt es alle Pakete aus demselben Commit', () => {
+    const quelle = quellRepo('alle-quelle');
+    const wurzel = join(temp, 'alle-wurzel');
+    const r = spawnSync(process.execPath, [SYNC, '--from', quelle, '--wurzel', wurzel], {
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 0, r.stderr);
+    const commit = git(quelle, 'rev-parse', 'HEAD');
+    for (const paket of VENDOR_PAKETE) {
+      const ziel = join(wurzel, paket.zielPaket);
+      const vendor = JSON.parse(readFileSync(join(ziel, 'VENDOR.json'), 'utf8'));
+      assert.equal(vendor.quelle.commit, commit, paket.name);
+      assert.deepEqual(pruefeVendor(ziel, paket), [], paket.name);
+    }
+    assert.deepEqual(pruefeTcmsVendor(wurzel), []);
+  });
+
+  test('prüft alle Pakete vor dem ersten Schreibzugriff', () => {
+    const quelle = quellRepo('alle-abbruch-quelle');
+    const wurzel = join(temp, 'alle-abbruch-wurzel');
+    assert.equal(
+      spawnSync(process.execPath, [SYNC, '--from', quelle, '--wurzel', wurzel]).status,
+      0,
+    );
+    const vorher = VENDOR_PAKETE.map((paket) =>
+      readFileSync(join(wurzel, paket.zielPaket, 'VENDOR.json'), 'utf8'),
+    );
+    // Der Vertrag (erstes Paket) wäre gültig; das Domain-Paket bricht ab.
+    schreibe(quelle, 'packages/contract/src/akteur.ts', 'export const A = 7;\n');
+    chmodSync(join(quelle, 'packages/domain/src/format.ts'), 0o755);
+    git(quelle, 'add', '-A');
+    git(quelle, 'commit', '-q', '-m', 'ausfuehrbar');
+    const r = spawnSync(process.execPath, [SYNC, '--from', quelle, '--wurzel', wurzel], {
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /packages\/domain\/src\/format\.ts ist keine normale Datei/);
+    assert.deepEqual(
+      VENDOR_PAKETE.map((paket) =>
+        readFileSync(join(wurzel, paket.zielPaket, 'VENDOR.json'), 'utf8'),
+      ),
+      vorher,
+    );
+    assert.equal(
+      readFileSync(join(wurzel, 'packages/tcms-contract/src/akteur.ts'), 'utf8'),
+      'export const A = 1;\n',
+    );
+  });
+
+  test('weist unbekannte Pakete und --ziel ohne --paket ab', () => {
+    const quelle = quellRepo('argumente-quelle');
+    for (const paket of ['web', '__proto__', 'toString']) {
+      const r = spawnSync(process.execPath, [SYNC, '--from', quelle, '--paket', paket], {
+        encoding: 'utf8',
+      });
+      assert.equal(r.status, 1, paket);
+      assert.match(r.stderr, /--paket muss einer von contract, domain sein/);
+    }
+    const r = spawnSync(process.execPath, [SYNC, '--from', quelle, '--ziel', join(temp, 'x')], {
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /--ziel nur zusammen mit --paket/);
+  });
+});
+
 describe('check-tcms-contract-vendor', () => {
-  test('der eingecheckte Vertrag entspricht VENDOR.json', () => {
-    assert.deepEqual(pruefeTcmsVertrag(REPO_ROOT), []);
+  test('die eingecheckten Pakete entsprechen ihrem VENDOR.json', () => {
+    assert.deepEqual(pruefeTcmsVendor(REPO_ROOT), []);
+    assert.deepEqual(
+      VENDOR_PAKETE.map((paket) => paket.zielPaket),
+      ['packages/tcms-contract', 'packages/tcms-domain'],
+    );
+  });
+
+  test('meldet Abweichungen jedes Pakets mit dem Paketverzeichnis', () => {
+    // Kopie des Repository-Ausschnitts mit einer manipulierten Domain-Datei.
+    const wurzel = join(temp, 'repo-kopie');
+    for (const paket of VENDOR_PAKETE) {
+      const quelle = join(REPO_ROOT, paket.zielPaket);
+      const ziel = join(wurzel, paket.zielPaket);
+      mkdirSync(ziel, { recursive: true });
+      cpSync(join(quelle, 'src'), join(ziel, 'src'), { recursive: true });
+      cpSync(join(quelle, 'VENDOR.json'), join(ziel, 'VENDOR.json'));
+    }
+    assert.deepEqual(pruefeTcmsVendor(wurzel), []);
+    writeFileSync(join(wurzel, 'packages/tcms-domain/src/format.ts'), 'export {};\n');
+    assert.deepEqual(pruefeTcmsVendor(wurzel), [
+      'packages/tcms-domain: src/format.ts: Inhalt weicht vom Quell-Commit ab (lokale Änderung)',
+    ]);
   });
 
   test('meldet lokale Änderung, zusätzliche und fehlende Dateien', () => {
@@ -216,7 +369,7 @@ describe('check-tcms-contract-vendor', () => {
 
   test('prüft Aufbau und Werte von VENDOR.json', () => {
     const basis = {
-      beschreibung: 'x',
+      beschreibung: VERTRAG.beschreibung,
       quelle: { repo: 'tcms', pfad: 'packages/contract/src', commit: 'a'.repeat(40) },
       dateien: [
         { pfad: 'a.ts', sha256: 'b'.repeat(64) },
@@ -226,6 +379,7 @@ describe('check-tcms-contract-vendor', () => {
     assert.deepEqual(pruefeVendorDaten(basis), []);
     const fall = (aenderung) => pruefeVendorDaten({ ...basis, ...aenderung });
     assert.match(fall({ zusatz: 1 }).join(), /genau die Felder/);
+    assert.match(fall({ beschreibung: 'x' }).join(), /beschreibung entspricht nicht/);
     assert.match(fall({ quelle: { ...basis.quelle, commit: 'abc' } }).join(), /SHA-1/);
     assert.match(fall({ quelle: { ...basis.quelle, pfad: 'src' } }).join(), /quelle\.pfad/);
     assert.match(fall({ dateien: [] }).join(), /leer/);
@@ -252,6 +406,13 @@ describe('check-tcms-contract-vendor', () => {
       fall({ dateien: [basis.dateien[0], basis.dateien[0]] }).join(),
       /nicht aufsteigend sortiert oder doppelt/,
     );
+  });
+
+  test('erkennt Ausschlüsse je Paket', () => {
+    assert.equal(istAusgeschlossen('audit.ts', DOMAIN), true);
+    assert.equal(istAusgeschlossen('audit.ts', VERTRAG), false);
+    assert.equal(istAusgeschlossen('katalog/audit.ts', DOMAIN), false);
+    assert.equal(istAusgeschlossen('__tests__/x.ts', VERTRAG), true);
   });
 
   test('erkennt Testdateien und sichere Pfade', () => {

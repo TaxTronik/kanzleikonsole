@@ -1,0 +1,82 @@
+{
+  "beschreibung": "Exakte Kopie von packages/domain/src des TCMS-Repos ohne Tests und ohne audit.ts. Nicht von Hand ändern: Aktualisieren mit scripts/tcms/sync-contract.mjs --paket domain, Prüfung mit scripts/check-tcms-contract-vendor.mjs (docs/development/tcms-anbindung.md).",
+  "quelle": {
+    "repo": "tcms",
+    "pfad": "packages/domain/src",
+    "commit": "13e38875017ae638de69b1d1c196effd3518af0b"
+  },
+  "dateien": [
+    {
+      "pfad": "beschreibung.ts",
+      "sha256": "6ec1a2070dfc37fdaf6843a504036ab30d8b18d662d95b2d08828e7c83e4ca4a"
+    },
+    {
+      "pfad": "bewertung.ts",
+      "sha256": "09f8643afa74159ac888fd7a65e3db2b9ace8802590f047e0bb99b8a9df501ac"
+    },
+    {
+      "pfad": "format.ts",
+      "sha256": "9dd15f09eba26dd13f9d364eaff1ca72573ee7969cc41f82298d2f9f4eeefc28"
+    },
+    {
+      "pfad": "frequenz.ts",
+      "sha256": "5e025ba0287be3ab61b47546a11c3f41c6066719e585f9d4995414309a488047"
+    },
+    {
+      "pfad": "grundelemente.ts",
+      "sha256": "bad1999801ca981ebcdbe7f64e2855b0da985f32fab08b0d2b689492cef2ea4d"
+    },
+    {
+      "pfad": "index.ts",
+      "sha256": "cb65f32e1908adde3ecc7a50cfced0fd770796dde6c860895347e4b8579429a6"
+    },
+    {
+      "pfad": "katalog/ereignisse.ts",
+      "sha256": "5d0cdb97ebdc03d70c7a538fadbeb87a729a055d364eda3a914816462c28d699"
+    },
+    {
+      "pfad": "katalog/kontrollen.ts",
+      "sha256": "bc57237088550a41ea8b44d9bd2f0ea48508b0925cac13e68498d0c1cda44897"
+    },
+    {
+      "pfad": "katalog/profil.ts",
+      "sha256": "aef92916ea99b56ce52fdbcf5af61139fd2abea46ac9552f4a8d34cc3aa9eb32"
+    },
+    {
+      "pfad": "katalog/risiken.ts",
+      "sha256": "ff612a84316f8109c73c37cec96f5b5cf4adb2c047130b47deb291995cda61f8"
+    },
+    {
+      "pfad": "katalog/ziele.ts",
+      "sha256": "444463e49ade82db029ad02ff79ff659d479cb494f51ec77b966e5b4e039ba12"
+    },
+    {
+      "pfad": "perioden.ts",
+      "sha256": "e417af09cac2a75bcd1e1666cb8754148370e3907eae5077db8f415d6da435f7"
+    },
+    {
+      "pfad": "phasen.ts",
+      "sha256": "ae030d234aee79200f796d3b5fac335564ffc9540b12b17b19136078455d3ae8"
+    },
+    {
+      "pfad": "profil-regeln.ts",
+      "sha256": "92220fd8ad962f5d7ddedd720bf0e00c1e18ed742444302f2a52f0a2c54cff65"
+    },
+    {
+      "pfad": "prueflast.ts",
+      "sha256": "d7b0687a7884c5d24bdfccc0a7b6af524ef3ed5e7c54b578279bba64a20f101f"
+    },
+    {
+      "pfad": "schwelle.ts",
+      "sha256": "d9e6fbd3f51c12cd32154f4856eb5b42e891310e0fe65164d5e43cfcff7b4cdc"
+    },
+    {
+      "pfad": "status.ts",
+      "sha256": "0fca001caa73027e4afdecfa4808a438e03816febceae27494241464c18c7b68"
+    },
+    {
+      "pfad": "types.ts",
+      "sha256": "9770d9031d1e315014e89f14effef5e40bb2180290d9bc201bad57e130cd0f76"
+    }
+  ]
+}

@@ -11,47 +11,67 @@ Seite beschreibt den Teil in der kanzleikonsole, der nicht vom Betrieb abhängt.
 Compose, Backup und Betrieb folgen gesondert, die Oberflächen in Stufe 3; bis
 dahin ruft keine Seite das TCMS auf.
 
-## 1. Vertrag (vendored)
+## 1. Vendorte Pakete: Vertrag und Domain
 
-`packages/tcms-contract` (`@taxtronik/tcms-contract`) ist eine byte-genaue
-Kopie von `packages/contract/src` des TCMS-Repos ohne Tests: zod-Schemas des
-HTTP-Vertrags, Fehlercodes, strenges JSON und Signieren/Prüfen der
-Akteursbestätigung (nur `node:crypto`). `VENDOR.json` hält Quell-Repo,
+Zwei Pakete sind byte-genaue Kopien aus dem TCMS-Repo ohne Tests (Liste
+`VENDOR_PAKETE` in `scripts/tcms/vendor-lib.mjs`):
+
+| Paket                                                 | Quelle im TCMS-Repo     | Inhalt                                                                                                                                                                |
+| ----------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/tcms-contract` (`@taxtronik/tcms-contract`) | `packages/contract/src` | zod-Schemas des HTTP-Vertrags, Endpunktregister, Fehlercodes, strenges JSON, Signieren/Prüfen der Akteursbestätigung (nur `node:crypto`)                              |
+| `packages/tcms-domain` (`@taxtronik/tcms-domain`)     | `packages/domain/src`   | Labels, Formatierung, Katalog, Phasen und Profilregeln für die Oberflächen (zod-frei, ohne Abhängigkeiten); **ohne `audit.ts`**: die Hashkette rechnet nur der Dienst |
+
+Die Oberflächen nehmen Labels und Formatierung aus `@taxtronik/tcms-domain`
+statt eigene Texte zu pflegen; Fachentscheidungen trifft weiter allein der
+Dienst (ADR 0001). `VENDOR.json` im Paket hält Quell-Repo, Quellpfad,
 Quell-Commit und je Datei den SHA-256 fest.
 
-- **Nie von Hand ändern.** Änderungen am Vertrag entstehen im TCMS-Repo.
-- **Prüfung:** `pnpm guard:tcms-contract` (Teil von `pnpm lint`) prüft, dass
-  `src/` exakt `VENDOR.json` entspricht: keine lokale Änderung, keine fehlende,
-  keine zusätzliche Datei (auch keine Dotfiles), keine Symlinks. ESLint lässt
-  die Kopie aus (`eslint.config.mjs`), weil Korrekturen die Kopie verfälschen
-  würden; geprüft wird sie im TCMS-Repo.
+- **Nie von Hand ändern.** Änderungen entstehen im TCMS-Repo.
+- **Prüfung:** `pnpm guard:tcms-contract` (Teil von `pnpm lint`) prüft für
+  jedes Paket, dass `src/` exakt seinem `VENDOR.json` entspricht: keine lokale
+  Änderung, keine fehlende, keine zusätzliche Datei (auch keine Dotfiles und
+  keine ausgeschlossene Datei wie `audit.ts`), keine Symlinks; Quellpfad und
+  Beschreibung müssen zum Paket passen (ein `VENDOR.json` lässt sich nicht in
+  ein anderes Paket kopieren). ESLint lässt die Kopien aus
+  (`eslint.config.mjs`), weil Korrekturen sie verfälschen würden; geprüft
+  werden sie im TCMS-Repo.
 - **Aktualisieren:**
 
   ```bash
   # sauberer TCMS-Checkout auf dem gewünschten Stand (nur lesen)
   git -C /pfad/zu/tcms status --short          # muss leer sein
-  node scripts/tcms/sync-contract.mjs --from /pfad/zu/tcms
+  node scripts/tcms/sync-contract.mjs --from /pfad/zu/tcms                  # alle Pakete
+  node scripts/tcms/sync-contract.mjs --from /pfad/zu/tcms --paket domain   # nur eines
   pnpm guard:tcms-contract
   ```
 
   Das Skript verweigert bei geänderten, gestagten oder unversionierten Dateien
-  im Quellbaum, kopiert nur versionierte Dateien außer `__tests__/` und
-  `*.test.*`, entfernt alles andere unter `packages/tcms-contract/src` und
-  schreibt `VENDOR.json` mit `git rev-parse HEAD`. Gelesen wird nur der
-  Git-Blob des Commits (`git ls-tree`/`git cat-file`), nie der Arbeitsbaum;
-  Symlinks, ausführbare Dateien und Submodule im Vertrag brechen ab (Red Team
-  RT2-K-01: Ein Symlink-Blob sieht im Review harmlos aus, dereferenziert hätte
-  er Fremdinhalt vendored). Danach Typprüfung und Tests
-  der Nutzer des Vertrags und den Vertragstest (Abschnitt 6) gegen denselben
-  TCMS-Stand laufen lassen. Die Aktualisierung ist ein eigener Commit mit dem
-  Quell-Commit im Text.
+  im Quellbaum, kopiert je Paket nur versionierte Dateien außer `__tests__/`,
+  `*.test.*` und den Ausschlüssen des Pakets, entfernt alles andere unter
+  `<paket>/src` und schreibt `VENDOR.json` mit `git rev-parse HEAD`. Gelesen
+  wird nur der Git-Blob des Commits (`git ls-tree`/`git cat-file`), nie der
+  Arbeitsbaum; Symlinks, ausführbare Dateien und Submodule brechen ab (Red
+  Team RT2-K-01: Ein Symlink-Blob sieht im Review harmlos aus, dereferenziert
+  hätte er Fremdinhalt vendored). Alle gewählten Pakete werden gelesen und
+  geprüft, bevor das erste geschrieben wird. Danach Typprüfung und Tests der
+  Nutzer und den Vertragstest (Abschnitt 6) gegen denselben TCMS-Stand laufen
+  lassen. Die Aktualisierung ist ein eigener Commit mit dem Quell-Commit im
+  Text.
 
 - **Gegen die Quelle nachprüfen:** Der Guard sichert die Kopie gegen
   `VENDOR.json`, nicht `VENDOR.json` gegen das TCMS-Repo. Wer beides ändert,
   fällt erst in der Prüfung gegen die Quelle auf: TCMS-Checkout auf
-  `quelle.commit` setzen und das Sync-Skript ausführen; danach muss
-  `git status packages/tcms-contract` leer sein. Das gehört zum Review jeder
-  Änderung unter `packages/tcms-contract`.
+  `quelle.commit` setzen und das Sync-Skript für das Paket ausführen; danach
+  muss `git status packages/tcms-<paket>` leer sein. Alternativ liefert
+  `pnpm vertrag:export [--paket domain]` im TCMS-Repo für denselben Commit
+  dasselbe `VENDOR.json` (gleiche Paketliste, Ausschlüsse und Beschreibung).
+  Das gehört zum Review jeder Änderung unter `packages/tcms-contract` und
+  `packages/tcms-domain`.
+- **Stand:** Vertrag aus TCMS `d5b6511`, Domain aus TCMS `13e3887`
+  (Branch `wt/tcms-s3a`: `main` plus Dateimodus 100644 für
+  `packages/domain` und `vertrag-export --paket domain`). Nach dem Merge in
+  TCMS `main` (ohne Umschreiben der Commits) bleibt der Commit gültig;
+  wird umgeschrieben, ändert ein erneuter Sync nur `quelle.commit`.
 
 ## 2. Konfiguration
 

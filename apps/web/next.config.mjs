@@ -116,6 +116,7 @@ const nextConfig = {
     '@taxtronik/tax',
     '@taxtronik/tcms-client',
     '@taxtronik/tcms-contract',
+    '@taxtronik/tcms-domain',
   ],
 
   // pdfkit lädt seine Standard-Font-Metriken (.afm) zur Laufzeit aus

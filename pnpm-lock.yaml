@@ -326,6 +326,9 @@ importers:
       '@taxtronik/tcms-contract':
         specifier: workspace:*
         version: link:../../packages/tcms-contract
+      '@taxtronik/tcms-domain':
+        specifier: workspace:*
+        version: link:../../packages/tcms-domain
       '@tesseract.js-data/deu':
         specifier: 1.0.0
         version: 1.0.0
@@ -972,6 +975,15 @@ importers:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 24.13.2
+        version: 24.13.2
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+
+  packages/tcms-domain:
     devDependencies:
       '@types/node':
         specifier: 24.13.2

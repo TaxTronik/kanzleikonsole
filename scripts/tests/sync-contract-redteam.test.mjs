@@ -64,9 +64,13 @@ function schreibe(wurzel, pfad, inhalt) {
 }
 
 function sync(quelle, ziel) {
-  return spawnSync(process.execPath, [SYNC, '--from', quelle, '--ziel', ziel], {
-    encoding: 'utf8',
-  });
+  return spawnSync(
+    process.execPath,
+    [SYNC, '--from', quelle, '--paket', 'contract', '--ziel', ziel],
+    {
+      encoding: 'utf8',
+    },
+  );
 }
 
 describe('sync-contract Lieferkette (Red Team, Modell F)', () => {
@@ -95,6 +99,8 @@ describe('sync-contract Lieferkette (Red Team, Modell F)', () => {
     // Sichere Soll-Lage: Entweder lehnt das Sync-Skript den Symlink ab, oder die
     // Kopie bleibt blob-treu (das Linkziel). In keinem Fall darf der
     // dereferenzierte Fremdinhalt in der Kopie landen.
+    // Eine Ablehnung zählt nur als die richtige: kein Argument- oder sonstiger Fehler.
+    if (r.status !== 0) assert.match(r.stderr, /keine normale Datei/);
     if (r.status === 0) {
       const kopie = readFileSync(join(ziel, 'src/leck.ts'), 'utf8');
       assert.notEqual(

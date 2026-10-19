@@ -40,6 +40,7 @@
     "@taxtronik/tax": "workspace:*",
     "@taxtronik/tcms-client": "workspace:*",
     "@taxtronik/tcms-contract": "workspace:*",
+    "@taxtronik/tcms-domain": "workspace:*",
     "@tesseract.js-data/deu": "1.0.0",
     "@tesseract.js-data/eng": "1.0.0",
     "@tiptap/core": "3.30.5",
