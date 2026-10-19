@@ -276,10 +276,12 @@ Monat nach Governance-Typ. Ein Symbol öffnet die Durchführung.
 _Tax-CMS → Prüfung_ fasst zusammen, was eine Prüfung braucht:
 Prüfungsgegenstand (Angemessenheit zum Stichtag, Wirksamkeit über den
 Zeitraum), **Lückenanalyse** (Zahlen aus dem Tax-CMS; „n. a.“, solange der
-Wirksamkeitszeitraum nicht begonnen hat), die sieben Grundelemente, die
+Wirksamkeitszeitraum nicht begonnen hat; darunter wiederkehrende Kontrollen
+ohne Durchführung im Zeitraum mit ihren Codes), die sieben Grundelemente, die
 freigegebenen Versionen der CMS-Beschreibung mit Hash und die Durchführungen
-im Zeitraum. Das Nachweispaket folgt. Ein Prüfurteil trifft das Werkzeug
-nicht.
+im Zeitraum (auch dokumentierte Nachweise und entfallene Durchführungen; diese
+zählen nicht als „ohne Befund“). Alle Zahlen zählt das Tax-CMS. Das
+Nachweispaket folgt. Ein Prüfurteil trifft das Werkzeug nicht.
 
 ### Länder-Monitor
 

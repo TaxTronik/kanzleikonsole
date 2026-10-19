@@ -7,12 +7,11 @@
 // Dienst; die Lückenanalyse zählt nur Einträge nach dem Status, den der Dienst
 // liefert (Auswahl, keine eigene Regel).
 //
-// Abweichung von der Demo: Die Demo zählt „Kontrollen ohne Durchführung im
-// Zeitraum“, „Nachweise dokumentiert“ und „entfallen“ selbst über ein eigenes
-// Zeitfenster (Fälligkeit bis 60 Tage nach Zeitraumende). Diese Regel gehört
-// in den Dienst; die Seite zeigt stattdessen die Zahlen aus `zeitraum`
-// (Vorschlag an das TCMS im Bericht). Ein Prüfurteil trifft das Werkzeug
-// nicht (TCMS-EFFECTIVENESS-001).
+// „Kontrollen ohne Durchführung im Zeitraum“, „Nachweise dokumentiert“ und
+// „entfallen“ zählt seit TCMS s7 der Dienst (`zeitraum.ohneDurchfuehrung`,
+// `nachweise`, `entfallen`; Zeitfenster bis 60 Tage nach Zeitraumende wie in
+// der Demo); die Seite zeigt nur diese Zahlen. Ein Prüfurteil trifft das
+// Werkzeug nicht (TCMS-EFFECTIVENESS-001).
 // =============================================================================
 
 import Link from 'next/link';
@@ -55,6 +54,8 @@ interface Luecke {
   /** Nur im begonnenen Wirksamkeitszeitraum aussagekräftig. */
   nurZeitraum?: boolean;
   rot?: boolean;
+  /** Betroffene Einträge (Codes des Dienstes), z. B. Kontrollen ohne Durchführung. */
+  codes?: readonly string[];
 }
 
 type Ansicht = { ctx: KontextMitProgramm; link: (pfad: string) => string };
@@ -88,6 +89,15 @@ function lueckenAus(ctx: KontextMitProgramm): Luecke[] {
       f.status !== 'VERWORFEN',
   ).length;
   return [
+    {
+      // Wiederkehrende Kontrollen ohne (auch geplante) Durchführung im Zeitraum (TCMS s7).
+      text: 'Kontrollen ohne Durchführung im Zeitraum',
+      anzahl: zr?.ohneDurchfuehrung.length ?? 0,
+      ziel: 'kontrollen',
+      nurZeitraum: true,
+      rot: true,
+      codes: zr?.ohneDurchfuehrung ?? [],
+    },
     {
       text: 'Durchführungen ohne ausreichende Nachweise',
       anzahl: zr?.fehlendeNachweise ?? 0,
@@ -257,6 +267,9 @@ function LueckeZeile({ l, begonnen, href }: { l: Luecke; begonnen: boolean; href
         <span className={`status-dot ${punkt}`} aria-hidden="true" />
         <span className={`grow text-sm ${na || l.anzahl === 0 ? 'text-secondary' : ''}`}>
           {l.text}
+          {!na && l.codes?.length ? (
+            <span className="block text-xs text-muted">{l.codes.join(', ')}</span>
+          ) : null}
         </span>
         <span className="font-mono text-sm">
           {na ? (
@@ -433,6 +446,8 @@ function ZeitraumDurchfuehrungen({ ctx }: Ansicht) {
                 [zr.mitBefund, 'abgeschlossen – mit Befund'],
                 [zr.offen, 'noch offen'],
                 [zr.ohneGegenzeichnung, 'warten auf Gegenzeichnung'],
+                [zr.nachweise, 'Nachweise dokumentiert'],
+                [zr.entfallen, 'entfallen (zählen nicht als „ohne Befund“)'],
               ] as const
             ).map(([wert, label]) => (
               <div

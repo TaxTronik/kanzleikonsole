@@ -86,6 +86,24 @@ describe('Prüfungsvorbereitung', () => {
     expect(werte['fällig gewordene Durchführungen']).toBe('71');
     expect(werte['abgeschlossen und gegengezeichnet']).toBe('56');
     expect(werte['warten auf Gegenzeichnung']).toBe('3');
+    // TCMS s7: vom Dienst gezählt, nicht in der Seite.
+    expect(werte['Nachweise dokumentiert']).toBe('47');
+    expect(werte['entfallen (zählen nicht als „ohne Befund“)']).toBe('0');
+  });
+
+  it('Kontrollen ohne Durchführung im Zeitraum: Codes und Zahl aus dem Dienst (TCMS s7)', async () => {
+    kontext.zeitraum!.ohneDurchfuehrung = ['K-EC-12', 'K-EC-19'];
+    kontext.zeitraum!.nachweise = 12;
+    kontext.zeitraum!.entfallen = 2;
+    await renderServer(TcmsPruefungPage(mit({})));
+    expect(luecke('Kontrollen ohne Durchführung im Zeitraum')).toBe('2');
+    const karte = screen.getByRole('region', { name: 'Lückenanalyse' });
+    const zeile = within(karte).getByRole('link', { name: /^Kontrollen ohne Durchführung/ });
+    expect(zeile.textContent).toContain('K-EC-12, K-EC-19');
+    expect(zeile.getAttribute('href')).toBe(`${BASIS}/kontrollen`);
+    const zr = screen.getByRole('region', { name: 'Durchführungen im Zeitraum' });
+    expect(zr.textContent).toContain('Nachweise dokumentiert12');
+    expect(zr.textContent).toContain('entfallen (zählen nicht als „ohne Befund“)2');
   });
 
   it('Lückenanalyse nach Status des Dienstes; maskierte Feststellungen ohne Schwere zählen nicht', async () => {
@@ -115,6 +133,7 @@ describe('Prüfungsvorbereitung', () => {
     kontext.programm!.wirksamBis = '2027-12-31T00:00:00.000Z';
     await renderServer(TcmsPruefungPage(mit({})));
     expect(luecke('Durchführungen ohne Gegenzeichnung')).toContain('nicht anwendbar');
+    expect(luecke('Kontrollen ohne Durchführung im Zeitraum')).toContain('nicht anwendbar');
     expect(luecke('Überfällige Durchführungen')).not.toContain('nicht anwendbar');
     expect(screen.getByRole('region', { name: 'Prüfungsgegenstand' }).textContent).toContain(
       'beginnt 01.01.2027',
