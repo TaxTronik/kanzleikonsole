@@ -1197,6 +1197,8 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   - Kontrollkalender `…/kalender` (zwölf Monate, Prüflast) und
     Prüfungsvorbereitung `…/pruefung` (Lückenanalyse, Beschreibungsversionen,
     Durchführungen im Zeitraum)
+  - Länder-Monitor `…/laender`: Lieferschwelle, Länder mit Historie,
+    Registrierung und Fristen, manuelle Erfassung neuer Stände
 - **Durchführungen** `/staff/clients/[id]/tcms/durchfuehrungen[/[did]]`:
   Liste mit Filtern; Schritte, Werte mit Toleranz, Ergebnis, Einreichen,
   Gegenzeichnen (Befund mit Feststellung), Zurückweisen, Entfallen, Nachtrag.

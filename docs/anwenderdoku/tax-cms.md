@@ -260,6 +260,22 @@ freigegebenen Versionen der CMS-Beschreibung mit Hash und die Durchführungen
 im Zeitraum. Das Nachweispaket folgt. Ein Prüfurteil trifft das Werkzeug
 nicht.
 
+### Länder-Monitor
+
+_Tax-CMS → Länder_ stellt die EU-Fernverkäufe der Lieferschwelle von
+10.000 € gegenüber (Warnung ab 80 %) und zeigt je Land Fernverkäufe, Lager,
+OSS, lokale USt-Nummer und Registrierungsstatus. Ein Land öffnet
+Registrierungsschritte, Fristen, die Historie der Stände und Feststellungen
+mit Bezug auf das Land.
+
+- **Daten manuell erfassen** legt für alle Länder auf einmal einen neuen
+  Stand an; im Detailbereich geht das je Land. Frühere Stände bleiben in der
+  Historie. **Land hinzufügen** nimmt ein weiteres EU-Land auf.
+- Beträge in deutscher Schreibweise, z. B. „12.345,67“; „10.000“ bedeutet
+  zehntausend. Uneindeutige Schreibweisen wie „1,234.56“ werden abgelehnt.
+- Ein neues Lagerland oder ein Wechsel der Schwelle legt das Tax-CMS als
+  Ereignis im Ereigniseingang an. Der CSV-Import folgt.
+
 ## 7. Meldungen
 
 | Meldung                                               | Bedeutung und was zu tun ist                                                                              |
