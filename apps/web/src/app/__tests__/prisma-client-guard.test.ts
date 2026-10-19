@@ -77,6 +77,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // TCMS-AKTEUR-001 (TCMS Stufe 3): Owner-Fixtures in frischen Tenants; die App-Rolle
   // löst Namen und prüft Personen und Mandantenanker unter echter RLS (Opt-in).
   'apps/web/src/server/tcms/__tests__/namen-personen-db.test.ts',
+  // TCMS-AKTEUR-001 (TCMS Stufe 3, Bereich B): Owner-Fixtures in frischen Tenants; die
+  // App-Rolle liest die Auswahllisten der Zuständigkeiten unter echter RLS (Opt-in).
+  'apps/web/src/server/tcms/bereich-b/__tests__/personen-auswahl-db.test.ts',
   // TCMS-AKTEUR-001 (TCMS Stufe 3): Opt-in-Lauf gegen einen laufenden TCMS-Dienst; der
   // Owner legt einen Tenant mit den Demo-UUIDs an und löscht ihn wieder, die Seiten
   // lesen über withTenantContext der App.
