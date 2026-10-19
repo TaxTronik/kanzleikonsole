@@ -380,6 +380,10 @@ encrypt_full_backup_payload() {
   require_cmd age
   [[ -n "$recipient" ]] || die "BACKUP_AGE_RECIPIENT fehlt. Full-Backup darf Konfiguration/Schluessel nur age-verschluesselt sichern."
   [[ -f "$STATE" ]] && root_files+=(.taxtronik.state)
+  # Laufende Rotation des TCMS-Code-Schluessels (7 Tage, nur Kennungen und
+  # Zeitpunkte): Mit der .env gehoert sie zum Recovery Point, sonst ist der
+  # Startzeitpunkt nach einer Wiederherstellung unbekannt.
+  [[ -f "$TCMS_CODE_KEY_ROTATION_STATE" ]] && root_files+=(.taxtronik.tcms-code-key-rotation)
   info "Gesamtes Full-Backup inklusive Recovery-Konfiguration age-verschluesseln"
   tar -cf - -C "$payload" . -C "$ROOT" "${root_files[@]}" | \
     age --recipient "$recipient" --output "$dest/full-backup.tar.age"

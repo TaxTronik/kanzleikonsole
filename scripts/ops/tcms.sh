@@ -462,13 +462,14 @@ tcms_ensure_code_key() {
     die "TCMS_CODE_SCHLUESSEL: $problem. Der vorhandene Wert wird nicht ersetzt (offene Codes liefen sonst ab): korrigieren oder bewusst leeren und ./taxtronik tcms setup managed ausfuehren."
 }
 
-# Erster Rollout mit Code-Schluessel auf einer bestehenden verwalteten
-# Installation (TCMS s8): Die TCMS-Migration freigabe_code_schluessel laesst
-# alle offenen Codes ablaufen; nachricht_abgerufen (H2) setzt einen CHECK, der
+# Neuer Code-Schluessel fuer eine bestehende verwaltete Installation: beim
+# ersten Rollout von TCMS s8 oder nach einem Verlust. Offene Codes laufen ab
+# (beim ersten Rollout zusaetzlich durch die TCMS-Migration
+# freigabe_code_schluessel); nachricht_abgerufen (H2) setzt einen CHECK, der
 # bei Altbestand fail closed scheitert.
 tcms_print_code_key_rollout_hint() {
-  warn "Erster Rollout mit TCMS_CODE_SCHLUESSEL: Mit der TCMS-Migration freigabe_code_schluessel laufen alle bis dahin ausgestellten Bestaetigungscodes ab; betroffene Personen fordern einen neuen Code an (hoechstens 5 je Stunde). Rollout zu ruhiger Zeit, Nutzer vorher informieren."
-  warn "Die TCMS-Migration nachricht_abgerufen (H2) setzt einen CHECK, der bei Altbestand (verworfene, aber zugestellt/unzustellbar gemeldete Nachrichten) fail closed scheitert; tcms-api bleibt dann auf dem bisherigen Stand. Siehe docs/operations/tcms-betrieb.md, Abschnitt 3."
+  warn "Neuer TCMS_CODE_SCHLUESSEL fuer eine bestehende Installation: Alle bis dahin ausgestellten Bestaetigungscodes laufen ab (beim ersten Rollout von TCMS s8 ohnehin durch die Migration freigabe_code_schluessel); betroffene Personen fordern einen neuen Code an (hoechstens 5 je Stunde). Zu ruhiger Zeit ausrollen, Nutzer vorher informieren."
+  warn "Beim ersten Rollout von TCMS s8: Die Migration nachricht_abgerufen (H2) setzt einen CHECK, der bei Altbestand (verworfene, aber zugestellt/unzustellbar gemeldete Nachrichten) fail closed scheitert; tcms-api bleibt dann auf dem bisherigen Stand. Siehe docs/operations/tcms-betrieb.md, Abschnitt 3."
 }
 
 # Code-Schluessel sicherstellen; der Hinweis zum ersten Rollout erscheint nur,

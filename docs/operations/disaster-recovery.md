@@ -259,6 +259,13 @@ TCMS-Dump **desselben** Sicherungszeitpunkts einspielen: Das Tax-CMS
 referenziert Tenant-, Personen- und Mandanten-IDs der kanzleikonsole.
 `TCMS_DB_SUPERUSER_PASSWORD` muss zum Volume `tcms-db-data` passen; auf einem
 neuen, leeren Volume gilt der Wert aus der wiederhergestellten `.env`.
+`TCMS_CODE_SCHLUESSEL` steht nur in der `.env`, nie im Dump. Fehlt er oder
+passt er nicht zum Sicherungszeitpunkt, laufen nur offene Bestätigungscodes ab
+(keine Datenverluste); ein neuer entsteht mit `./taxtronik tcms setup managed`
+([Tax-CMS-Betrieb, Abschnitt 7](tcms-betrieb.md#7-backup-und-restore)). Lief
+beim Backup eine Code-Schlüssel-Rotation, die Datei
+`.taxtronik.tcms-code-key-rotation` aus dem Full-Backup zusammen mit der `.env`
+zurücklegen.
 
 ## 4. Restore-Procedure (SeaweedFS)
 
@@ -288,6 +295,7 @@ Traefik-ACME-TAR strukturell. Danach enthält
 
 ```text
 .env
+.taxtronik.tcms-code-key-rotation  # nur während einer TCMS-Code-Schlüssel-Rotation
 database/                       # taxtronik- und n8n-Custom-Dumps
 object-store-byte-export/       # sichtbare Bytes als Notfallquelle
 volumes/

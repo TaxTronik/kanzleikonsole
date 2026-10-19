@@ -572,17 +572,17 @@ test_update_adds_a_missing_code_key_and_warns_once() {
   assert_code_key_format "$env_file"
   after="$(grep -v '^TCMS_CODE_SCHLUESSEL=' "$env_file" | grep .)"
   [[ "$before" == "$after" ]] || test_fail "upgrade changed other TCMS values"
-  assert_contains "$out" "laufen alle bis dahin ausgestellten Bestaetigungscodes ab"
+  assert_contains "$out" "Alle bis dahin ausgestellten Bestaetigungscodes laufen ab"
   assert_contains "$out" "CHECK, der bei Altbestand"
   key="$(env_value "$env_file" TCMS_CODE_SCHLUESSEL)"
   assert_no_secret "$out" "$key" TCMS_CODE_SCHLUESSEL
   tcms_isolated "$env_file" eval 'load_env; configure_tcms_for_env' >"$out" 2>&1 || test_fail "second update failed"
   assert_key_equals "$env_file" TCMS_CODE_SCHLUESSEL "$key"
-  assert_not_contains "$out" "Erster Rollout"
+  assert_not_contains "$out" "Neuer TCMS_CODE_SCHLUESSEL fuer eine bestehende Installation"
   # Neue Installation: kein Rollout-Hinweis.
   tcms_base_env "$env_file.neu"
   tcms_isolated "$env_file.neu" eval 'load_env; tcms_configure_managed' >"$out" 2>&1 || test_fail "new managed setup failed"
-  assert_not_contains "$out" "Erster Rollout"
+  assert_not_contains "$out" "Neuer TCMS_CODE_SCHLUESSEL fuer eine bestehende Installation"
   pass "deploy/update add a missing code key once, before any service, and warn about expiring codes"
 }
 
@@ -1688,6 +1688,38 @@ test_backup_update_and_full_backup_include_tcms() {
   pass "backup, update backup and full backup include the managed TCMS database"
 }
 
+# TCMS s8 (H5): Der Code-Schluessel steht nur in der .env; das Full-Backup
+# verschluesselt sie und, falls eine Rotation laeuft, deren Zustand mit.
+test_full_backup_keeps_env_and_a_running_code_key_rotation() {
+  local root="$TMP_DIR/full-ck" payload="$TMP_DIR/full-ck-payload" dest="$TMP_DIR/full-ck-dest" entries
+  mkdir -p "$root" "$payload/database" "$dest"
+  printf 'TCMS_CODE_SCHLUESSEL=wegwerf\n' >"$root/.env"
+  write_code_rotation_state "$root/.taxtronik.tcms-code-key-rotation" published \
+    "csk:$(printf '1%.0s' {1..16})" "csk:$(printf '2%.0s' {1..16})" 1700000000 1700000000
+  full_backup_entries() (
+    ROOT="$root"; STATE="$root/.taxtronik.state"
+    TCMS_CODE_KEY_ROTATION_STATE="$root/.taxtronik.tcms-code-key-rotation"
+    BACKUP_AGE_RECIPIENT=age1wegwerf
+    require_cmd() { :; }
+    # age-Attrappe: schreibt den Klartext-Strom, damit der Inhalt pruefbar ist.
+    age() {
+      local out=""
+      while (( $# > 0 )); do [[ "$1" != --output ]] || { out="$2"; shift; }; shift; done
+      cat >"$out"
+    }
+    rm -f "$dest/full-backup.tar.age"
+    encrypt_full_backup_payload "$payload" "$dest" >/dev/null
+    tar -tf "$dest/full-backup.tar.age"
+  )
+  entries="$(full_backup_entries)"
+  grep -qx '.env' <<<"$entries" || test_fail ".env missing in the full backup"
+  grep -qx '.taxtronik.tcms-code-key-rotation' <<<"$entries" || test_fail "running code key rotation missing in the full backup"
+  rm -f "$root/.taxtronik.tcms-code-key-rotation"
+  entries="$(full_backup_entries)"
+  ! grep -q 'tcms-code-key-rotation' <<<"$entries" || test_fail "full backup lists a rotation state that does not exist"
+  pass "full backup encrypts .env with the code key and a running code key rotation state"
+}
+
 # Regel: Restore-Argumente vor jeder Seitenwirkung pruefen.
 test_tcms_restore_validates_before_side_effects() {
   local dump="$TMP_DIR/restore-val/tcms-db.dump" calls="$TMP_DIR/restore-val.calls" out="$TMP_DIR/restore-val.out" args
@@ -1813,6 +1845,7 @@ run_test test_failed_rollback_restores_the_last_good_tcms_images
 run_test test_tcms_backup_dumps_in_container_with_0600_and_checksum
 run_test test_tcms_backup_upload_passes_s3_secrets_only_by_name
 run_test test_backup_update_and_full_backup_include_tcms
+run_test test_full_backup_keeps_env_and_a_running_code_key_rotation
 run_test test_tcms_restore_validates_before_side_effects
 run_test test_tcms_restore_restores_roles_then_data_then_migrates
 

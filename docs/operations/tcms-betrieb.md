@@ -330,6 +330,31 @@ RESTORE_TCMS_DATABASE` mit festem Ablauf (Rollen und Passwörter aus `.env`,
 dann Daten, dann Migrationsschritt); Details im
 [Disaster-Recovery-Runbook](disaster-recovery.md#schritt-37-tax-cms-datenbank-verwaltet).
 
+**Geheimnisse und Code-Schlüssel.** Alle TCMS-Geheimnisse (Datenbankpasswörter,
+Tokens, privater Akteursschlüssel, `TCMS_CODE_SCHLUESSEL`) stehen nur in der
+`.env` (`0600`). Die TCMS-Dumps (`backup`, Update-Pflichtbackup,
+`tcms backup`, vor einer Migration) enthalten keines davon; vom Code-Schlüssel
+liegen in der Datenbank nur der HMAC der offenen Codes und die abgeleitete
+Kennung `codeSchluesselId`. `backup-full` legt die `.env` und, solange eine
+Code-Schlüssel-Rotation läuft, `.taxtronik.tcms-code-key-rotation` in das
+age-verschlüsselte Archiv. Darüber hinaus gehört die `.env` wie jede
+Konfiguration in den Tresor außerhalb von TaxTronik
+([Disaster-Recovery](disaster-recovery.md)).
+
+**Verlust des Code-Schlüssels** kostet keine Daten: Codes, deren Schlüssel
+nicht mehr in der Liste steht, gelten als abgelaufen. Freigeben ergibt „Der
+Code ist abgelaufen“ ohne Fehlversuch, der nächste Abruf verwirft die offenen
+Code-Mitteilungen (`CODE_ABGELAUFEN`), und die Person fordert einen neuen Code
+an (höchstens 5 je Stunde). Vorgehen: `TCMS_CODE_SCHLUESSEL` in der `.env`
+leeren und `./taxtronik tcms setup managed` ausführen (neuer Schlüssel,
+Neustart von `tcms-api`; die CLI warnt, dass offene Codes ablaufen). Dasselbe gilt, wenn ein Dump eingespielt wird, dessen
+Codes mit einem inzwischen entfernten Schlüssel ausgestellt wurden. Bei
+Verdacht auf Offenlegung sofort rotieren und vorzeitig abschließen
+(`rotate-code-key`, dann `--finish --force --confirm-expiry
+OFFENE_CODES_LAUFEN_AB`): Mit Schlüssel und Datenbank zusammen ließen sich die
+10⁶ möglichen Codes offline durchprobieren; das Ablaufen offener Codes ist dann
+gewollt.
+
 ## 8. Variablen
 
 | Variable                                                                           | Inhalt                                                                               |
