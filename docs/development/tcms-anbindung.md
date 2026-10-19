@@ -69,8 +69,8 @@ Quell-Commit und je Datei den SHA-256 fest.
   dasselbe `VENDOR.json` (gleiche Paketliste, Ausschlüsse und Beschreibung).
   Das gehört zum Review jeder Änderung unter `packages/tcms-contract` und
   `packages/tcms-domain`.
-- **Stand:** Vertrag und Domain aus TCMS `4752652` (s7/s8, wird `main`;
-  davor `7a900b1`). Stufe 4: Akteursarten `KANZLEI`, `MANDANT`, `SYSTEM` mit
+- **Stand:** Vertrag und Domain aus TCMS `main` `f146a78` (s9; davor
+  `4752652` s7/s8, `7a900b1`). Stufe 4: Akteursarten `KANZLEI`, `MANDANT`, `SYSTEM` mit
   `akteure` je Endpunkt, strukturierter Postausgang; Härtungen s5/s6:
   Portal-Endpunkte nur für `MANDANT`, maschinenlesbarer Grund `fehler.grund`
   jedes 403, Rechte-Kennzeichen für Stammdaten und Kontaktrollen,
@@ -84,7 +84,11 @@ Quell-Commit und je Datei den SHA-256 fest.
   und eingefroren tolerant. s8: eine Zeichenregel aus Unicode-Eigenschaften
   (`UNZULAESSIG_KLASSE`), einzeilige Titel und Namen, Basisregel für
   Freitexte (`TEXT_UNZULAESSIG`), gespeicherte Profile tolerant
-  (`ProfilAntwortenGespeichertSchema`). Domain zusätzlich mit den Rollen der
+  (`ProfilAntwortenGespeichertSchema`). s9: Basisregel zusätzlich ohne
+  Richtungssteuerzeichen (U+202A–202E, U+2066–2069, Meldung „Unzulässige
+  Zeichen“), gespeicherte Abschnitte, Snapshots und Assistenten-Entwürfe
+  tolerant (nur Länge, `BeschreibungBlockGespeichertSchema`), Listen in fester
+  Reihenfolge. Domain zusätzlich mit den Rollen der
   Mandantenseite (`MANDANT_ROLLEN`). Vertrag und Dienst nur gemeinsam
   ausrollen: Die Schemas sind strikt, ein 403 ohne Grund ist für diesen
   Vertrag ein Protokollfehler. Die Zeichenregel folgt der Unicode-Version der

@@ -961,21 +961,44 @@ export const UNZULAESSIG_KLASSE = String.raw`\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_
 export const UNZULAESSIGE_ZEICHEN = new RegExp(`[${UNZULAESSIG_KLASSE}]`, 'u');
 
 /**
- * Basisregel jedes Texts einer Eingabe (RT4-T-08): kein NUL und keine
- * einzelnen Surrogate. PostgreSQL speichert beides nicht (TEXT kein NUL,
- * JSONB weder `\u0000` noch ein einzelnes Surrogat); ohne die Regel endete
- * eine vertragsgültige Eingabe als `500 INTERN`. Gilt für jeden Freitext
- * (`mitTextBasis`, `freitext`; Zeilenumbruch und TAB bleiben erlaubt);
- * einzeilige Texte und Dateinamen prüfen die strengere Zeichenregel, die
- * beides einschließt. `__tests__/eingabetexte.test.ts` prüft jedes
- * Zeichenkettenfeld des Endpunktregisters.
+ * Basisregel jedes Texts einer Eingabe:
+ *
+ *   - kein NUL und keine einzelnen Surrogate (RT4-T-08). PostgreSQL speichert
+ *     beides nicht (TEXT kein NUL, JSONB weder `\u0000` noch ein einzelnes
+ *     Surrogat); ohne die Regel endete eine vertragsgültige Eingabe als
+ *     `500 INTERN`.
+ *   - keine expliziten Richtungssteuerzeichen (tcms-s9): Einbettung und
+ *     Überschreibung U+202A–U+202E (LRE, RLE, PDF, LRO, RLO), Isolierung
+ *     U+2066–U+2069 (LRI, RLI, FSI, PDI). Mit ihnen zeigt ein Text etwas
+ *     anderes an, als er enthält („Trojan Source“) – in Feststellungen,
+ *     Begründungen und Sachverhalten, also Inhalten mit Beweiswert.
+ *
+ * Gilt für jeden Freitext (`mitTextBasis`, `freitext`). Zeilenumbruch, TAB,
+ * Nullbreitenverbinder (ZWJ) und Variantenselektoren bleiben in mehrzeiligen
+ * Texten erlaubt (Emoji-Sequenzen); die impliziten Richtungsmarken (LRM, RLM,
+ * ALM) ebenso, sie ordnen keinen Textabschnitt um. Einzeilige Texte und
+ * Dateinamen prüfen die strengere Zeichenregel, die alles hier einschließt.
+ * Antworten mit gespeicherten Texten prüfen nur die Länge (Altbestand bleibt
+ * lesbar). `__tests__/eingabetexte.test.ts` prüft jedes Zeichenkettenfeld des
+ * Endpunktregisters, `richtungszeichen.test.ts` den Umfang je Code Point.
  */
-export const TEXT_UNZULAESSIG = /[\u0000\p{Cs}]/u;
+export const TEXT_UNZULAESSIG = /[\u0000\p{Cs}\u202a-\u202e\u2066-\u2069]/u;
 export const TEXT_UNZULAESSIG_MELDUNG = 'Unzulässige Zeichen (NUL oder einzelnes Surrogat)';
+/** NUL und einzelne Surrogate: nur für die Wahl der Meldung (die Regel ist `TEXT_UNZULAESSIG`). */
+const NUL_ODER_SURROGAT = /[\u0000\p{Cs}]/u;
 
-/** Hängt die Basisregel an eine Zeichenkette der Eingabe an. */
+/**
+ * Hängt die Basisregel an eine Zeichenkette der Eingabe an. Meldungen wie
+ * bisher: NUL und Surrogate `TEXT_UNZULAESSIG_MELDUNG`, Richtungssteuerzeichen
+ * „Unzulässige Zeichen“ (dieselbe Meldung wie bei einzeiligen Texten).
+ */
 export function mitTextBasis(s: z.ZodString): z.ZodString {
-  return s.refine((t) => !TEXT_UNZULAESSIG.test(t), TEXT_UNZULAESSIG_MELDUNG);
+  return s.refine((t) => !TEXT_UNZULAESSIG.test(t), {
+    error: (iss) =>
+      typeof iss.input === 'string' && NUL_ODER_SURROGAT.test(iss.input)
+        ? TEXT_UNZULAESSIG_MELDUNG
+        : 'Unzulässige Zeichen',
+  });
 }
 
 // NUL und andere Steuerzeichen (außer Tab/Zeilenumbruch) sind in Freitexten nie fachlich.

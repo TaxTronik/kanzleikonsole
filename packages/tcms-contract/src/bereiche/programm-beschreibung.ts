@@ -334,18 +334,38 @@ export const KontrollenSchrittSchema = z
   .object({ kontrollen: z.record(katalogCode, EntwurfKontrolleSchema) })
   .strict();
 
+// Gespeicherte Fassung der Texte des Entwurfs (Antwort `entwurf`, Lesen im
+// Dienst): nur Längengrenzen wie `ProfilAntwortenGespeichertSchema`, damit ein
+// Entwurf aus der Zeit vor einer strengeren Eingaberegel (RT4-T-03 einzeilig,
+// tcms-s9 Richtungssteuerzeichen) lesbar bleibt und nicht still auf Startwerte
+// zurückfällt. Neue Eingaben prüfen die Schritt-Schemas oben.
+const TeilbereichGespeichertSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    abgrenzung: z.string().max(4000),
+    einschluesse: z.array(z.string().max(200)).max(30),
+    ausschluesse: z.array(z.string().max(200)).max(30),
+  })
+  .strict();
+const EntwurfZielGespeichertSchema = EntwurfZielSchema.extend({
+  text: z.string().max(1000),
+}).strict();
+const EntwurfRisikoGespeichertSchema = EntwurfRisikoSchema.extend({
+  begruendung: z.string().max(2000),
+}).strict();
+
 /** Gespeicherter Entwurf (TcmsProgramm.setupEntwurf), wie ihn der Service liefert. */
 export const SetupEntwurfSchema = z
   .object({
     v: z.literal(1),
     /** Höchster geprüft abgeschlossener Schritt (0–5). */
     abgeschlossen: z.number().int().min(0).max(5),
-    teilbereich: TeilbereichSchrittSchema.shape.teilbereich,
+    teilbereich: TeilbereichGespeichertSchema,
     zeitraum: TeilbereichSchrittSchema.shape.zeitraum,
     profil: ProfilAntwortenGespeichertSchema,
-    ziele: ZieleSchrittSchema.shape.ziele,
+    ziele: z.array(EntwurfZielGespeichertSchema).max(20),
     freigabe: ZieleSchrittSchema.shape.freigabe,
-    risiken: RisikenSchrittSchema.shape.risiken,
+    risiken: z.record(katalogCode, EntwurfRisikoGespeichertSchema),
     kontrollen: KontrollenSchrittSchema.shape.kontrollen,
     /** Person (ID), die zuletzt gespeichert hat. */
     gespeichertVon: uuid.nullable().optional(),
@@ -565,6 +585,7 @@ export const BESCHREIBUNG_MAX_TEXTBLOCK = 20_000;
 /** Höchstzahl Blöcke je Abschnitt. */
 export const BESCHREIBUNG_MAX_BLOECKE = 20;
 
+/** Block einer Eingabe (Abschnitt speichern): Text mit der Basisregel. */
 export const BeschreibungBlockSchema = z.discriminatedUnion('typ', [
   z
     .object({
@@ -574,10 +595,23 @@ export const BeschreibungBlockSchema = z.discriminatedUnion('typ', [
     .strict(),
   z.object({ typ: z.literal('baustein'), art: BeschreibungBausteinArtSchema }).strict(),
 ]);
+/**
+ * Gespeicherter Block (Antworten, eingefrorene Snapshots, Lesen im Dienst):
+ * Text nur mit Längengrenze. Texte aus der Zeit vor einer strengeren
+ * Eingaberegel (tcms-s9: Richtungssteuerzeichen) bleiben so lesbar und gehen
+ * beim Speichern eines anderen Abschnitts oder beim Anlegen der nächsten
+ * Version nicht verloren; ein eingefrorener Snapshot ist ohnehin per SHA-256
+ * festgeschrieben. Neue Texte prüft `BeschreibungBlockSchema`.
+ */
+export const BeschreibungBlockGespeichertSchema = z.discriminatedUnion('typ', [
+  z.object({ typ: z.literal('text'), text: z.string().max(BESCHREIBUNG_MAX_TEXTBLOCK) }).strict(),
+  z.object({ typ: z.literal('baustein'), art: BeschreibungBausteinArtSchema }).strict(),
+]);
+/** Gespeicherter Abschnitt einer Version (nur Antworten und Lesen; Eingaben: `bloecke`). */
 export const BeschreibungAbschnittSchema = z
   .object({
     key: BeschreibungAbschnittKeySchema,
-    bloecke: z.array(BeschreibungBlockSchema).max(BESCHREIBUNG_MAX_BLOECKE),
+    bloecke: z.array(BeschreibungBlockGespeichertSchema).max(BESCHREIBUNG_MAX_BLOECKE),
   })
   .strict();
 

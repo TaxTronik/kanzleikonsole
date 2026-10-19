@@ -3,7 +3,7 @@
   "quelle": {
     "repo": "tcms",
     "pfad": "packages/contract/src",
-    "commit": "47526522a53d31e117e1a341f060f07b2a04a601"
+    "commit": "f146a78f4d0cec7e3da37c14831a1fb6c00b4d6d"
   },
   "dateien": [
     {
@@ -20,11 +20,11 @@
     },
     {
       "pfad": "bereiche/lesepfade.ts",
-      "sha256": "debd0bd9683f4b544b58d4851cd5a34f99c393094c696d956469de52b98ffdd9"
+      "sha256": "0ab52fdb830f6e4116536c38b653c379f4d92c7585c089e4f7609f34cdf16e39"
     },
     {
       "pfad": "bereiche/programm-beschreibung.ts",
-      "sha256": "11b48060ed1c16b115612ea34b01ae430647edbf83c2b84336a5df2ba61e7770"
+      "sha256": "eca55ec39fb8498e08767af220b177cbbf54e04fe56d959cd4b1fc8fe1528c0f"
     },
     {
       "pfad": "bereiche/risiken-kontrollen.ts",
