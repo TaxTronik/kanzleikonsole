@@ -16,7 +16,7 @@
 import type { TxClient } from '@taxtronik/db';
 import type { TenantContext } from '@taxtronik/db/tenant-context';
 import { getTcmsConfig, type TcmsConfig } from '@taxtronik/config/env-schema';
-import { TcmsClient, istTcmsAktiv } from '@taxtronik/tcms-client';
+import { PERSONEN_AKTEURE, TcmsClient, istTcmsAktiv } from '@taxtronik/tcms-client';
 import { ActionError } from '@/server/actions/action-error';
 import { readModules, readModulesTx } from '@/server/settings/modules';
 
@@ -30,7 +30,12 @@ let dienst: Dienst | undefined;
 function laden(): Dienst {
   if (!dienst) {
     const config = getTcmsConfig();
-    dienst = { config, client: config ? new TcmsClient({ config }) : null };
+    // TCMS Stufe 4: Die Web-App bestätigt nur Personen; den Systemakteur bildet
+    // und signiert allein der Zustell-Worker (Guard tcms-systemakteur-guard.test.ts).
+    dienst = {
+      config,
+      client: config ? new TcmsClient({ config, akteurArten: PERSONEN_AKTEURE }) : null,
+    };
   }
   return dienst;
 }

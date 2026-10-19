@@ -9,6 +9,8 @@
 export {
   TcmsClient,
   TcmsHealthSchema,
+  NUR_SYSTEMAKTEUR,
+  PERSONEN_AKTEURE,
   STANDARD_MAX_ANTWORT_BYTES,
   type FetchImpl,
   type TcmsAkteurAngaben,
@@ -20,6 +22,12 @@ export {
 } from './client';
 export type { TcmsErgebnis } from './antwort';
 export { rufeEndpunkt, type TcmsEndpunktEingabe } from './endpunkt';
+export {
+  holeOffeneNachrichten,
+  meldeNachrichtZugestellt,
+  MAX_NACHRICHTEN_JE_ABRUF,
+  type OffeneNachricht,
+} from './nachrichten';
 export {
   TcmsFehler,
   TcmsKonflikt,

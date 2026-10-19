@@ -93,7 +93,7 @@ vi.mock('@taxtronik/tcms-client', async (original) => ({
 import { TcmsKonflikt, TcmsNichtBerechtigt, TcmsNichtVerfuegbar } from '@taxtronik/tcms-client';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { TcmsAkteurVerweigert } from '../akteur';
-import { tcmsKanzleiAktion, tcmsPortalAktion } from '../aktion';
+import { tcmsKanzleiAktion, tcmsPortalAktion, type TcmsDienst } from '../aktion';
 import { TCMS_AKTION_TEXTE, TCMS_KEIN_RECHT } from '../zustand';
 
 const TENANT = '11111111-1111-4111-8111-111111111111';
@@ -226,6 +226,23 @@ describe('tcmsKanzleiAktion', () => {
     });
     expect(liste.ok).toBe(false);
     expect(m.rufe).toHaveBeenCalledTimes(1);
+  });
+
+  it('erreicht die Nachrichten-Endpunkte des Systemakteurs nicht (Stufe 4)', async () => {
+    for (const aufruf of [
+      (dienst: TcmsDienst) =>
+        dienst.rufe(ENDPUNKTE.nachrichtZugestelltMelden, { params: { nachrichtId: 'n1' } }),
+      (dienst: TcmsDienst) => dienst.rufe(ENDPUNKTE.nachrichtenOffenLesen, {}),
+    ]) {
+      const ergebnis = await tcmsKanzleiAktion({
+        mandantId: null,
+        aufruf: async (dienst) => {
+          await aufruf(dienst);
+        },
+      });
+      expect(ergebnis.ok).toBe(false);
+    }
+    expect(m.rufe).not.toHaveBeenCalled();
   });
 
   it('Gate-Ablehnung: kein Akteur, kein Aufruf', async () => {

@@ -136,8 +136,20 @@ const { daten } = await rufeEndpunkt(client, ENDPUNKTE.kontextLesen, {
 
 `rufeEndpunkt` leitet die Typen von Eingabe und Ergebnis aus den Schemas ab
 und prüft vor dem Senden zusätzlich zum Dienst: Pfadparameter mit dem
-`paramsSchema` des Eintrags (z. B. UUIDs), Mandantenkontakte nur auf
-Endpunkten mit `portal: true`, `health` nur über `client.health()`.
+`paramsSchema` des Eintrags (z. B. UUIDs), die Akteursart nur auf Endpunkten,
+deren `akteure` sie nennen (Stufe 4; `portal` ist davon abgeleitet und nur
+noch für bestehende Aufrufer da), `health` nur über `client.health()`.
+
+- **Akteursarten je Client (Stufe 4).** Ein `TcmsClient` bestätigt nur die
+  Arten aus `akteurArten`: Standard `PERSONEN_AKTEURE` (`KANZLEI`,
+  `MANDANT`), `NUR_SYSTEMAKTEUR` (`SYSTEM`) nur allein. Die Web-App baut ihren
+  Client mit `PERSONEN_AKTEURE` (`server/tcms/dienst.ts`) und kann keinen
+  Systemakteur signieren; den bildet allein der Zustell-Worker (Abschnitt 8).
+  Der Guard `apps/web/src/__tests__/tcms-systemakteur-guard.test.ts` sperrt
+  im Quelltext der Web-App Bestätigungen der Art `SYSTEM`, eigene Clients,
+  andere Akteursarten, den Postausgang und Importe aus dem Worker.
+  Abruf und Bestätigung des Postausgangs stehen als
+  `holeOffeneNachrichten`/`meldeNachrichtZugestellt` im Client.
 
 - **Bindung.** Target und Body entstehen je Aufruf genau einmal; der Hash
   läuft über genau die gesendeten Bytes. Pfadparameter werden mit
@@ -320,8 +332,10 @@ anlegen“ bzw. „Stammdaten übernehmen“), `/staff/clients/[id]/tcms/kontakt
   gebundenen Aktionsargument (Kanzlei) oder der Sitzung (Portal); eine Seite
   oder Aktion kann `mandantId`, Akteur und Mandantenliste nicht
   überschreiben. Lesepfade erlauben nur `GET` und die lesenden POSTs
-  Portfolio und Arbeitskorb; Portalseiten und -aktionen nur Endpunkte mit
-  `portal: true`.
+  Portfolio und Arbeitskorb; Portalseiten und -aktionen nur Endpunkte, deren
+  `akteure` `MANDANT` nennen, Kanzleiseiten und -aktionen nur solche mit
+  `KANZLEI` (Stufe 4: der Postausgang des Systemakteurs ist so für beide
+  gesperrt).
 - Kein Dienstaufruf innerhalb einer Datenbank-Transaktion; keine
   Wiederholung schreibender Aufrufe; kein Caching über die Anfrage hinaus.
 - Rechte, Vier-Augen-Prinzip, §-153-Würdigung, Vertraulichkeit und Status

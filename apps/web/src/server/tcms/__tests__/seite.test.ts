@@ -303,6 +303,12 @@ describe('tcmsLesen', () => {
       /braucht tcmsKanzleiSeite/,
     );
     await expect(tcmsLesen(portal, ENDPUNKTE.kontextLesen)).rejects.toThrow(/kein Portal-Endpunkt/);
+    // Stufe 4: Der Postausgang gehört allein dem Systemakteur (Zustell-Worker).
+    for (const s of [kanzlei, mandant, portal]) {
+      await expect(tcmsLesen(s, ENDPUNKTE.nachrichtenOffenLesen)).rejects.toThrow(
+        /ist kein (Kanzlei|Portal)-Endpunkt/,
+      );
+    }
     await expect(tcmsLesen(mandant, ENDPUNKTE.mandantAnkerSetzen)).rejects.toThrow(/kein Lesepfad/);
     await expect(tcmsLesen(kanzlei, ENDPUNKTE.auditPruefen)).rejects.toThrow(/kein Lesepfad/);
     await expect(

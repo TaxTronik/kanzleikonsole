@@ -268,8 +268,13 @@ function aufrufFuer<E extends Endpunkt>(
       `${endpunkt.name} ist kein Lesepfad (Aktionen: server/tcms/aktion.ts)`,
     );
   }
-  if (seite.art === 'PORTAL' && !endpunkt.portal) {
-    throw new TcmsSeitenFehler(`${endpunkt.name} ist kein Portal-Endpunkt`);
+  // TCMS Stufe 4: Zulassung nur aus `akteure` des Registers (`portal` ist abgeleitet);
+  // Kanzleiseiten erreichen damit auch die Nachrichten-Endpunkte des Systemakteurs nicht.
+  const portalSeite = seite.art === 'PORTAL';
+  if (!endpunkt.akteure.includes(portalSeite ? 'MANDANT' : 'KANZLEI')) {
+    throw new TcmsSeitenFehler(
+      `${endpunkt.name} ist kein ${portalSeite ? 'Portal' : 'Kanzlei'}-Endpunkt`,
+    );
   }
   let params: Record<string, unknown> = { ...(eingabe.params ?? {}) };
   if (endpunkt.mandantenbezogen) {

@@ -1,6 +1,8 @@
 // TCMS Stufe 2: Client einmal je Prozess, Gate „Modul an UND Deployment aktiv".
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { TcmsUngueltig } from '@taxtronik/tcms-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const modules = vi.hoisted(() => ({ readModules: vi.fn(), readModulesTx: vi.fn() }));
 vi.mock('@/server/settings/modules', () => modules);
@@ -45,6 +47,27 @@ afterEach(() => {
 describe('tcmsClient', () => {
   it('liefert null bei TCMS_DEPLOYMENT=disabled', () => {
     expect(tcmsClient()).toBeNull();
+  });
+
+  it('signiert keinen Systemakteur: den bildet allein der Zustell-Worker (Stufe 4)', async () => {
+    konfiguriert();
+    const fehler = await tcmsClient()!
+      .aufruf({
+        methode: 'GET',
+        pfad: '/v1/nachrichten/offen',
+        antwortSchema: z.unknown(),
+        akteur: {
+          tnt: '7a1e0000-0000-4000-8000-00000000d3e0',
+          sub: 'c1000000-0000-4000-8000-0000000000aa',
+          knd: 'SYSTEM',
+          nam: 'Zustellung kanzleikonsole',
+        },
+      })
+      .catch((error: unknown) => error);
+    expect(fehler).toBeInstanceOf(TcmsUngueltig);
+    expect((fehler as TcmsUngueltig).felder).toEqual({
+      'akteur.knd': ['Akteursart für diesen Client nicht zugelassen'],
+    });
   });
 
   it('baut den Client einmal je Prozess (Schlüssel einmal geladen)', () => {

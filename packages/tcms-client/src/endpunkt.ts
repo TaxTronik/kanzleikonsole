@@ -1,13 +1,15 @@
 // =============================================================================
 // Typisierter Aufruf eines Eintrags aus dem Endpunktregister des TCMS-Vertrags
-// (`ENDPUNKTE` in @taxtronik/tcms-contract, TCMS Stufe 2).
+// (`ENDPUNKTE` in @taxtronik/tcms-contract, TCMS Stufe 2; Akteursarten Stufe 4).
 //
 // Das Register ist die eine Quelle für Methode, Pfad und Schemas; der Dienst
 // registriert seine Routen daraus und startet nicht bei Abweichung. Hier wird
 // es in den generischen `aufruf` übersetzt, mit lokalen Vorprüfungen, die der
 // Dienst ohnehin erzwingt (Verteidigung in der Tiefe, kein Ersatz):
 //   - Pfadparameter mit `paramsSchema` (streng, z. B. UUIDs) vor dem Senden;
-//   - Mandantenkontakte nur auf Endpunkten mit `portal: true`;
+//   - die Akteursart nur auf Endpunkten, deren `akteure` sie nennen (Stufe 4:
+//     Mandantenkontakte nur auf Portal-Endpunkten, der Systemakteur nur auf
+//     den zwei Nachrichten-Endpunkten, Kanzleipersonen nie auf diesen);
 //   - `health` (ohne Akteur) nur über `client.health()`.
 // Die Typen der Eingaben und des Ergebnisses folgen aus den Schemas.
 // =============================================================================
@@ -58,8 +60,14 @@ export async function rufeEndpunkt<E extends Endpunkt>(
   eingabe: TcmsEndpunktEingabe<E>,
 ): Promise<TcmsErgebnis<z.output<E['antwortSchema']>>> {
   if (!endpunkt.akteur) throw lokal('endpunkt', 'ohne Akteur nur über health()');
-  if (eingabe.akteur.knd === 'MANDANT' && !endpunkt.portal) {
-    throw lokal('akteur.knd', 'Mandantenkontakt auf Kanzlei-Endpunkt');
+  // `akteure` ist die einzige Quelle der Zulassung (ADR 0001 §7); `portal` ist abgeleitet.
+  if (!endpunkt.akteure.includes(eingabe.akteur.knd)) {
+    throw lokal(
+      'akteur.knd',
+      eingabe.akteur.knd === 'MANDANT'
+        ? 'Mandantenkontakt auf Kanzlei-Endpunkt'
+        : 'Akteursart auf diesem Endpunkt nicht zugelassen',
+    );
   }
   const params = pfadParameter(endpunkt, eingabe.params);
   return client.aufruf({

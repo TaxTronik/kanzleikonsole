@@ -9,7 +9,7 @@ import { CircuitBreaker } from '@taxtronik/http-utils/resilience';
 import { MandantenListeSchema } from '@taxtronik/tcms-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
-import { TcmsClient, type TcmsAkteurAngaben } from '../client';
+import { NUR_SYSTEMAKTEUR, PERSONEN_AKTEURE, TcmsClient, type TcmsAkteurAngaben } from '../client';
 import {
   TcmsFehler,
   TcmsKonflikt,
@@ -662,5 +662,87 @@ describe('Konstruktor', () => {
     expect(
       () => new TcmsClient({ config: { ...basis, url: 'http://127.0.0.1:3200/' } }),
     ).not.toThrow();
+  });
+});
+
+describe('Akteursarten des Clients (Stufe 4)', () => {
+  const SYSTEM: TcmsAkteurAngaben = {
+    tnt: TENANT,
+    sub: 'c1000000-0000-4000-8000-0000000000aa',
+    knd: 'SYSTEM',
+    nam: 'Zustellung kanzleikonsole',
+  };
+
+  it('bestätigt ohne Angabe nur Personen und signiert keinen Systemakteur', async () => {
+    expect(PERSONEN_AKTEURE).toEqual(['KANZLEI', 'MANDANT']);
+    const fetchImpl = vi.fn();
+    const client = new TcmsClient(
+      clientOptionen('http://127.0.0.1:9', neueSchluessel(), { fetchImpl }),
+    );
+    const fehler = await fehlerVon(
+      client.aufruf({
+        methode: 'GET',
+        pfad: '/v1/nachrichten/offen',
+        antwortSchema: Daten,
+        akteur: SYSTEM,
+      }),
+    );
+    expect(fehler).toBeInstanceOf(TcmsUngueltig);
+    expect((fehler as TcmsUngueltig).felder).toEqual({
+      'akteur.knd': ['Akteursart für diesen Client nicht zugelassen'],
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('ein Systemclient signiert nur den Systemakteur, keine Person', async () => {
+    const fetchImpl = vi.fn();
+    const client = new TcmsClient(
+      clientOptionen('http://127.0.0.1:9', neueSchluessel(), {
+        fetchImpl,
+        akteurArten: NUR_SYSTEMAKTEUR,
+      }),
+    );
+    const fehler = await fehlerVon(
+      client.aufruf({ methode: 'GET', pfad: '/v1/ich', antwortSchema: Daten, akteur: OHNE_CLI }),
+    );
+    expect((fehler as TcmsUngueltig).felder).toEqual({
+      'akteur.knd': ['Akteursart für diesen Client nicht zugelassen'],
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('ein Systemakteur mit rol oder cli wird nie signiert', async () => {
+    const fetchImpl = vi.fn();
+    const client = new TcmsClient(
+      clientOptionen('http://127.0.0.1:9', neueSchluessel(), {
+        fetchImpl,
+        akteurArten: NUR_SYSTEMAKTEUR,
+      }),
+    );
+    for (const akteur of [
+      { ...SYSTEM, rol: { adm: true, bt: true } },
+      { ...SYSTEM, cli: { id: MANDANT, bt: false, hb: false } },
+    ]) {
+      const fehler = await fehlerVon(
+        client.aufruf({
+          methode: 'GET',
+          pfad: '/v1/nachrichten/offen',
+          antwortSchema: Daten,
+          akteur,
+        }),
+      );
+      expect(fehler).toBeInstanceOf(TcmsUngueltig);
+    }
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('verweigert leere, unbekannte, doppelte und gemischte Akteursarten', () => {
+    const config = clientOptionen('http://127.0.0.1:3200', neueSchluessel()).config;
+    for (const akteurArten of [[], ['ADMIN'], ['KANZLEI', 'KANZLEI'], ['SYSTEM', 'KANZLEI']]) {
+      expect(
+        () => new TcmsClient({ config, akteurArten: akteurArten as never }),
+        JSON.stringify(akteurArten),
+      ).toThrow(/^TcmsClient: /);
+    }
   });
 });

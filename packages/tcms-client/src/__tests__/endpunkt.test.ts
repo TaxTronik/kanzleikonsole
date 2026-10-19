@@ -1,9 +1,11 @@
 // TCMS Stufe 2: typisierter Aufruf aus dem Endpunktregister des Vertrags.
-// Jede lokale Vorprüfung (Pfadparameter, Portal, health) hat einen Fall, der
-// ohne die Prüfung scheitert; die Bestätigung prüft der Code des Dienstes.
-import { ENDPUNKT_LISTE, ENDPUNKTE } from '@taxtronik/tcms-contract';
+// Jede lokale Vorprüfung (Pfadparameter, Akteursarten, health) hat einen Fall,
+// der ohne die Prüfung scheitert; die Bestätigung prüft der Code des Dienstes.
+// Stufe 4: `akteure` je Eintrag statt `portal`, Systemakteur nur auf den zwei
+// Nachrichten-Endpunkten und nur über einen Client mit `NUR_SYSTEMAKTEUR`.
+import { AKTEUR_ARTEN, ENDPUNKT_LISTE, ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TcmsClient, type TcmsAkteurAngaben } from '../client';
+import { NUR_SYSTEMAKTEUR, TcmsClient, type TcmsAkteurAngaben } from '../client';
 import { rufeEndpunkt } from '../endpunkt';
 import { TcmsProtokollFehler, TcmsUngueltig } from '../fehler';
 import {
@@ -34,6 +36,13 @@ const KONTAKT: TcmsAkteurAngaben = {
   nam: 'Jana Weller',
   cli: { id: MANDANT, bt: false, hb: false },
 };
+const SYSTEM: TcmsAkteurAngaben = {
+  tnt: TENANT,
+  sub: 'c1000000-0000-4000-8000-0000000000aa',
+  knd: 'SYSTEM',
+  nam: 'Zustellung kanzleikonsole',
+};
+const AKTEURE: Record<string, TcmsAkteurAngaben> = { KANZLEI, MANDANT: KONTAKT, SYSTEM };
 const ICH = {
   art: 'KANZLEI',
   tenantId: TENANT,
@@ -142,5 +151,85 @@ describe('rufeEndpunkt', () => {
       expect(e.pfad.startsWith('/v1/')).toBe(true);
       expect(e.mandantenbezogen).toBe(e.pfad.startsWith('/v1/mandanten/:mandantId'));
     }
+  });
+});
+
+describe('Akteursarten je Endpunkt (Stufe 4)', () => {
+  it('der Vertrag lässt den Systemakteur genau auf die zwei Nachrichten-Endpunkte', () => {
+    const system = ENDPUNKT_LISTE.filter((e) => e.akteure.includes('SYSTEM')).map((e) => e.name);
+    expect(system.sort()).toEqual(['nachrichtZugestelltMelden', 'nachrichtenOffenLesen']);
+    for (const e of ENDPUNKT_LISTE) {
+      if (e.akteure.includes('SYSTEM')) expect(e.akteure).toEqual(['SYSTEM']);
+    }
+  });
+
+  it('weist jede nicht zugelassene Akteursart jedes Registereintrags lokal ab', async () => {
+    const fetchImpl = vi.fn();
+    const personen = new TcmsClient(
+      clientOptionen('http://127.0.0.1:9', neueSchluessel(), { fetchImpl }),
+    );
+    const system = new TcmsClient(
+      clientOptionen('http://127.0.0.1:9', neueSchluessel(), {
+        fetchImpl,
+        akteurArten: NUR_SYSTEMAKTEUR,
+      }),
+    );
+    let abgewiesen = 0;
+    for (const e of ENDPUNKT_LISTE) {
+      if (!e.akteur) continue;
+      for (const art of AKTEUR_ARTEN) {
+        if (e.akteure.includes(art)) continue;
+        const fehler = await fehlerVon(
+          rufeEndpunkt(art === 'SYSTEM' ? system : personen, e, {
+            params: {} as never,
+            akteur: AKTEURE[art]!,
+          }),
+        );
+        expect(fehler, `${e.name}/${art}`).toBeInstanceOf(TcmsUngueltig);
+        expect(Object.keys((fehler as TcmsUngueltig).felder), `${e.name}/${art}`).toEqual([
+          'akteur.knd',
+        ]);
+        abgewiesen += 1;
+      }
+    }
+    // Jeder Personen-Endpunkt weist SYSTEM ab, die Nachrichten-Endpunkte jede Person.
+    expect(abgewiesen).toBeGreaterThan(ENDPUNKT_LISTE.length);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('Kanzleipersonen erreichen die Nachrichten-Endpunkte nicht', async () => {
+    const fetchImpl = vi.fn();
+    const client = new TcmsClient(
+      clientOptionen('http://127.0.0.1:9', neueSchluessel(), { fetchImpl }),
+    );
+    const fehler = await fehlerVon(
+      rufeEndpunkt(client, ENDPUNKTE.nachrichtenOffenLesen, { params: {}, akteur: KANZLEI }),
+    );
+    expect((fehler as TcmsUngueltig).felder).toEqual({
+      'akteur.knd': ['Akteursart auf diesem Endpunkt nicht zugelassen'],
+    });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('der Systemakteur ruft den Postausgang mit einer gültigen Bestätigung ohne rol und cli', async () => {
+    const s = neueSchluessel();
+    const srv = await starteServer((_a, res) =>
+      json(res, 200, { ok: true, daten: { nachrichten: [] } }),
+    );
+    server.push(srv);
+    const client = new TcmsClient(clientOptionen(srv.url, s, { akteurArten: NUR_SYSTEMAKTEUR }));
+    const ergebnis = await rufeEndpunkt(client, ENDPUNKTE.nachrichtenOffenLesen, {
+      params: {},
+      query: { limit: '50' },
+      akteur: SYSTEM,
+    });
+    expect(ergebnis.daten).toEqual({ nachrichten: [] });
+    const [anfrage] = srv.empfangen;
+    expect(anfrage!.target).toBe('/v1/nachrichten/offen?limit=50');
+    const claims = payload(anfrage!);
+    expect(claims).toMatchObject({ knd: 'SYSTEM', sub: SYSTEM.sub, nam: SYSTEM.nam });
+    expect(claims).not.toHaveProperty('rol');
+    expect(claims).not.toHaveProperty('cli');
+    expect(pruefeEmpfangen(anfrage!, s)).toMatchObject({ ok: true });
   });
 });

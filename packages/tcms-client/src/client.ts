@@ -24,6 +24,13 @@
 //
 // Der private Schlüssel liegt nur als KeyObject vor (aus getTcmsConfig) und
 // wird nie serialisiert, geloggt oder in Fehler übernommen; ebenso das Token.
+//
+// Akteursarten (TCMS Stufe 4): Ein Client bestätigt nur die Arten, mit denen er
+// gebaut wurde – Standard sind Personen (`KANZLEI`, `MANDANT`). Den
+// Systemakteur bestätigt nur ein Client mit ausdrücklich `['SYSTEM']`, und der
+// dann keine Person. Das baut allein der Zustell-Worker
+// (apps/worker/src/tcms/dienst.ts); der Client der Web-App kann einen
+// Systemakteur damit auch nicht aus Versehen signieren (ADR 0001 §3.4).
 // =============================================================================
 
 import { randomBytes, KeyObject } from 'node:crypto';
@@ -35,6 +42,7 @@ import {
   type RetryOptions,
 } from '@taxtronik/http-utils/resilience';
 import {
+  AKTEUR_ARTEN,
   AKTEUR_AUDIENCE,
   AKTEUR_HEADER,
   AKTEUR_ISSUER,
@@ -44,6 +52,7 @@ import {
   MAX_BODY_BYTES,
   bodySha256,
   signiereAkteur,
+  type AkteurArt,
   type AkteurClaims,
 } from '@taxtronik/tcms-contract';
 import { z } from 'zod';
@@ -99,7 +108,18 @@ export interface TcmsClientOptionen {
   zeitlimitMs?: number;
   /** Lebensdauer einer Bestätigung in Sekunden (1–60). */
   lebensdauerS?: number;
+  /**
+   * Akteursarten, die dieser Client bestätigt (TCMS Stufe 4). Standard:
+   * `PERSONEN_AKTEURE`. `['SYSTEM']` steht nur allein – ein Client bestätigt
+   * entweder Personen oder den Systemakteur, nie beides.
+   */
+  akteurArten?: readonly AkteurArt[];
 }
+
+/** Standard: Kanzleipersonen und Mandantenkontakte, kein Systemakteur. */
+export const PERSONEN_AKTEURE: readonly AkteurArt[] = Object.freeze(['KANZLEI', 'MANDANT']);
+/** Nur der Systemakteur (Zustell-Worker der kanzleikonsole). */
+export const NUR_SYSTEMAKTEUR: readonly AkteurArt[] = Object.freeze(['SYSTEM']);
 
 export const STANDARD_MAX_ANTWORT_BYTES = 8 * 1024 * 1024;
 const OBERGRENZE_ANTWORT_BYTES = 64 * 1024 * 1024;
@@ -122,6 +142,24 @@ function ganzzahlIn(wert: number, min: number, max: number): boolean {
 
 function lokal(feld: string, grund: string): TcmsUngueltig {
   return new TcmsUngueltig({ [feld]: [grund] }, { lokal: true });
+}
+
+/** Akteursarten eines Clients prüfen (fail closed beim Bau, wie `pruefeAkteure` im Vertrag). */
+function akteurArtenAus(wert: readonly AkteurArt[] | undefined): readonly AkteurArt[] {
+  const arten: readonly unknown[] = wert ?? PERSONEN_AKTEURE;
+  if (!Array.isArray(arten) || arten.length === 0) {
+    throw new Error('TcmsClient: mindestens eine Akteursart');
+  }
+  for (const art of arten) {
+    if (!(AKTEUR_ARTEN as readonly unknown[]).includes(art)) {
+      throw new Error('TcmsClient: unbekannte Akteursart');
+    }
+  }
+  if (new Set(arten).size !== arten.length) throw new Error('TcmsClient: Akteursart doppelt');
+  if (arten.includes('SYSTEM') && arten.length !== 1) {
+    throw new Error('TcmsClient: SYSTEM nur allein');
+  }
+  return Object.freeze([...(arten as AkteurArt[])]);
 }
 
 /** Felder einer zod-Prüfung der eigenen Eingabe (Meldungen von zod, keine Werte). */
@@ -179,6 +217,7 @@ export class TcmsClient {
   readonly #wiederholung: RetryOptions;
   readonly #zeitlimitMs: number;
   readonly #lebensdauerS: number;
+  readonly #akteurArten: readonly AkteurArt[];
 
   constructor(opts: TcmsClientOptionen) {
     const { config } = opts;
@@ -226,6 +265,7 @@ export class TcmsClient {
     this.#wiederholung = opts.wiederholung ?? STANDARD_WIEDERHOLUNG;
     this.#zeitlimitMs = zeitlimitMs;
     this.#lebensdauerS = lebensdauerS;
+    this.#akteurArten = akteurArtenAus(opts.akteurArten);
   }
 
   /** Kein Schlüssel- oder Tokenmaterial in Logs, falls jemand den Client ausgibt. */
@@ -331,6 +371,10 @@ export class TcmsClient {
   }
 
   #claims(akteur: TcmsAkteurAngaben, m: TcmsMethode, p: string, b: string): AkteurClaims {
+    // Stufe 4: nur die Arten, mit denen dieser Client gebaut wurde (vor jeder Signatur).
+    if (!this.#akteurArten.includes(akteur.knd)) {
+      throw lokal('akteur.knd', 'Akteursart für diesen Client nicht zugelassen');
+    }
     const jetzt = Math.floor(this.#uhr().getTime() / 1000);
     const claims = {
       ...akteur,

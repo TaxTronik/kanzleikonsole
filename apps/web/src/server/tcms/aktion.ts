@@ -85,8 +85,12 @@ interface Bindung {
 function dienstFuer(bindung: Bindung): TcmsDienst {
   return {
     async rufe(endpunkt, eingabe = {}) {
-      if (bindung.portal && !endpunkt.portal) {
-        throw new TcmsAktionsFehler(`${endpunkt.name} ist kein Portal-Endpunkt`);
+      // TCMS Stufe 4: Zulassung nur aus `akteure` des Registers (`portal` ist abgeleitet);
+      // Kanzlei-Aktionen erreichen damit auch die Nachrichten-Endpunkte des Systemakteurs nicht.
+      if (!endpunkt.akteure.includes(bindung.portal ? 'MANDANT' : 'KANZLEI')) {
+        throw new TcmsAktionsFehler(
+          `${endpunkt.name} ist kein ${bindung.portal ? 'Portal' : 'Kanzlei'}-Endpunkt`,
+        );
       }
       if (endpunkt.bodySchema === MandantenListeSchema) {
         throw new TcmsAktionsFehler(`${endpunkt.name} ist ein Lesepfad (tcmsLesen)`);
