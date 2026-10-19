@@ -175,7 +175,8 @@ Schritt fragt vorher nach.
 
 Je offener oder erledigter Anforderung steht der **Zustellstatus** der
 jüngsten Nachricht an die aktuelle Person (Anforderung, Bestätigungscode
-oder Neuadressierung): „noch nicht zugestellt“, „zugestellt“, „unzustellbar“
+oder Neuadressierung): „noch nicht zugestellt“, „zugestellt“ (TaxTronik hat
+die Nachricht eingeplant – siehe Abschnitt 11), „unzustellbar“
 mit Grund (Empfänger gehört nicht mehr zum Mandanten, kein bestätigter
 Portalzugang, Zustellfrist abgelaufen, sonstiger Grund) oder „nicht
 ausgeliefert“ (der Code galt nicht mehr). Hat die Person eine offene
@@ -536,6 +537,15 @@ System-Vorlagen „Tax-CMS: Freigabe angefordert“, „Tax-CMS: Bestätigungsco
 und „Tax-CMS: Freigabe neu adressiert“ mit ihren Platzhaltern. Hat Ihre
 Kanzlei keine eigene Fassung, nennt die Seite sie unter „System-Vorlagen mit
 Standardtext“; es gilt dann der Standardtext.
+
+**Was „zugestellt“ bedeutet:** Das Tax-CMS zeigt „zugestellt“, sobald
+TaxTronik die Mitteilung **eingeplant** hat – die E-Mail steht im
+Postausgang bzw. der Hinweis ist angelegt. Ob die E-Mail tatsächlich
+versendet wurde und angekommen ist, sagt „zugestellt“ nicht; scheitert der
+Versand später, bleibt im Tax-CMS „zugestellt“ stehen. Eine Statuszeile wie
+bei anderen Mandanten-E-Mails gibt es für Mitteilungen des Tax-CMS nicht; den
+Versand kann nur der Betrieb nachvollziehen. Hat ein Kontakt eine Nachricht
+nicht erhalten, adressieren Sie die Freigabe neu.
 
 **Nicht zugestellt?** Kann TaxTronik einen Empfänger nicht bestätigen (z. B.
 Kontakt ohne Portal-Anmeldung, deaktiviert, anderem Mandanten zugeordnet;
