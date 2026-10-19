@@ -166,8 +166,10 @@ Tenant-Transaktion.
 Keine Bestätigung (`TcmsAkteurVerweigert`, UI-Meldung „Kein Zugriff auf das
 Tax-CMS.“, Grund nur als Eigenschaft) bei: ungültiger oder abgelaufener
 Sitzung, Rollen der Sitzung ≠ aktuelle Rollen (veraltete Sitzung: neu
-anmelden), deaktivierter Person, Login-Sperre (`lockedUntil`), fehlendem
-Mandantenzugriff, mehr als 5 000 Mandanten, Kontakt ohne Portalzugang.
+anmelden), deaktivierter Person, fehlendem Mandantenzugriff, mehr als 5 000
+Mandanten, Kontakt ohne Portalzugang. Die Login-Sperre (`lockedUntil`) zählt
+bewusst nicht: Sie sperrt nur neue Passwort-Anmeldungen; sonst könnten
+Fehlversuche Dritter einer angemeldeten Person das TCMS sperren.
 
 ## 5. Modul, Gate und Health-Check
 

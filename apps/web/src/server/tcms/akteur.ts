@@ -16,10 +16,13 @@
 //   Existenzprüfung des Mandanten), Listen `accessibleClientsWhereFor`,
 //   zuständige Berufsträgerin `canStaffReviewGwgTx` (Zuordnung BERUFSTRAEGER
 //   und aktuell qualifiziert), Portalzugang `findPortalProfilesForContactTx`.
-// - Personen werden je Bestätigung frisch geladen: deaktivierte, gesperrte
-//   (Login-Sperre) oder tenantfremde Personen, abgelaufene Sitzungen und
-//   Sitzungen mit veraltetem Rollenstand erhalten keine Bestätigung; es kommt
-//   dann auch zu keinem Aufruf.
+// - Personen werden je Bestätigung frisch geladen: deaktivierte oder
+//   tenantfremde Personen, abgelaufene Sitzungen und Sitzungen mit veraltetem
+//   Rollenstand erhalten keine Bestätigung; es kommt dann auch zu keinem Aufruf.
+//   Die Login-Sperre (`lockedUntil`) zählt bewusst nicht: Sie sperrt in der
+//   kanzleikonsole nur neue Passwort-Anmeldungen, laufende Sitzungen bleiben
+//   gültig. Würde sie hier greifen, könnte jeder, der die E-Mail-Adresse kennt,
+//   einer angemeldeten Person per Fehlversuchen das TCMS sperren (TCMS Stufe 2).
 //
 // Abbildung (Begründung in docs/development/tcms-anbindung.md, Abschnitt 4):
 //   Kanzleiperson → knd KANZLEI, tnt Tenant, sub StaffUser-ID, nam Anzeigename,
@@ -47,7 +50,6 @@ export type TcmsVerweigerungsGrund =
   | 'SITZUNG_ABGELAUFEN'
   | 'SITZUNG_VERALTET'
   | 'PERSON_INAKTIV'
-  | 'PERSON_GESPERRT'
   | 'NAME_UNGUELTIG'
   | 'KEIN_MANDANTENZUGRIFF'
   | 'ZU_VIELE_MANDANTEN'
@@ -113,7 +115,7 @@ interface Person {
 }
 
 /**
- * Lädt die Kanzleiperson frisch und prüft Sitzung, Aktivität, Sperre, Tenant
+ * Lädt die Kanzleiperson frisch und prüft Sitzung, Aktivität, Tenant
  * und Rollenstand. `rol.adm` kommt aus `isStaffAdmin(session)`, nachdem
  * feststeht, dass die Rollen der Sitzung exakt dem aktuellen Stand entsprechen.
  */
@@ -128,12 +130,10 @@ async function ladePerson(tx: TxClient, session: StaffSession, jetzt: Date): Pro
     select: {
       fullName: true,
       isProfessional: true,
-      lockedUntil: true,
       roles: { select: { role: true } },
     },
   });
   if (!staff) throw verweigert('PERSON_INAKTIV');
-  if (staff.lockedUntil && staff.lockedUntil > jetzt) throw verweigert('PERSON_GESPERRT');
   if (
     !gleicheMenge(
       roles,

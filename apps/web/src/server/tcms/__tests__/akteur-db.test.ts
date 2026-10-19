@@ -3,7 +3,7 @@
 // über die App-Rolle (RLS). Jede Regel positiv und negativ: Mandantenbezug nur
 // mit Zugriff nach den Regeln der kanzleikonsole (OPEN/RESTRICTED/vertraulich),
 // bt/hb aus den Zuständigkeiten, Rollen und Qualifikation frisch aus der DB,
-// deaktivierte/gesperrte Personen, abgelaufene/veraltete Sitzungen, fremder
+// deaktivierte Personen (Login-Sperre zählt nicht), abgelaufene/veraltete Sitzungen, fremder
 // Tenant, Portal-Kontakte nur mit Portalzugang beim eigenen Mandanten, Listen
 // deckungsgleich mit den Einzelprüfungen. Nur die Request-Authentisierung
 // (Cookie/JWT) fehlt; sie liefert in Produktion die geprüfte Sitzung.
@@ -167,13 +167,15 @@ type Rolle = 'EMPLOYEE' | 'PARTNER' | 'ADMIN';
     await neuerKontakt('fremd', fremderTenant, 'fremd');
   });
 
+  // Das kaskadierende Löschen eines Tenants berührt alle Tabellen und dauert
+  // unter Last länger als der Standard von 10 s.
   afterAll(async () => {
     try {
       for (const id of tenants) await owner.tenant.delete({ where: { id } });
     } finally {
       await Promise.all([owner.$disconnect(), app.$disconnect()]);
     }
-  });
+  }, 60_000);
 
   async function setzeModus(mode: 'OPEN' | 'RESTRICTED') {
     await owner.tenantSetting.upsert({
@@ -357,15 +359,22 @@ type Rolle = 'EMPLOYEE' | 'PARTNER' | 'ADMIN';
       });
     });
 
-    it('verweigert deaktivierte und gesperrte Personen sowie abgelaufene Sitzungen', async () => {
+    it('verweigert deaktivierte Personen und abgelaufene Sitzungen', async () => {
       expect(await grund(kanzlei(sitzung('inaktiv')))).toBe('PERSON_INAKTIV');
-      expect(await grund(kanzlei(sitzung('gesperrt'), mandant.offen))).toBe('PERSON_GESPERRT');
       expect(
         await grund(
           kanzlei(sitzung('admin', { expires: new Date(Date.now() - 1000).toISOString() })),
         ),
       ).toBe('SITZUNG_ABGELAUFEN');
       expect(await grund(kanzlei(sitzung('admin', { expires: 'nie' })))).toBe('SITZUNG_ABGELAUFEN');
+    });
+
+    it('bestätigt trotz Login-Sperre, solange die Sitzung gültig ist (keine Sperre durch Fremde)', async () => {
+      // Die Login-Sperre gilt in der kanzleikonsole nur für neue Anmeldungen;
+      // sonst könnten Fehlversuche Dritter das TCMS einer angemeldeten Person sperren.
+      const akteur = await kanzlei(sitzung('gesperrt'), mandant.offen);
+      expect(akteur).toMatchObject({ knd: 'KANZLEI', cli: { id: mandant.offen } });
+      await expect(liste(sitzung('gesperrt'))).resolves.toBeDefined();
     });
 
     it('bestätigt keine Rollen, die die Sitzung behauptet, die DB aber nicht kennt', async () => {
@@ -438,7 +447,6 @@ type Rolle = 'EMPLOYEE' | 'PARTNER' | 'ADMIN';
 
     it('verweigert dieselben Personen und Sitzungen wie der Einzelakteur', async () => {
       expect(await grund(liste(sitzung('inaktiv')))).toBe('PERSON_INAKTIV');
-      expect(await grund(liste(sitzung('gesperrt')))).toBe('PERSON_GESPERRT');
       expect(await grund(liste(sitzung('mitarbeiter', { roles: ['ADMIN'] })))).toBe(
         'SITZUNG_VERALTET',
       );
