@@ -24,7 +24,9 @@ implementation:
     Nachweis verweist, sind Löschen und neue Versionen des Dokuments
     gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu
     einer Kontrollaufgabe hochladen. Offen gebliebene Verknüpfungen nach
-    unklarem Ausgang werden noch nicht automatisch geklärt.
+    unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung
+    über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den
+    Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort.
 sources:
   - kind: product_documentation
     citation: Leitfaden Tax-CMS-Oberflächen, Abschnitt 11 (Route Handler für Datei-Abrufe)
@@ -46,6 +48,8 @@ code_refs:
   - apps/web/src/server/tcms/durchfuehrung/sperre.ts
   - apps/web/src/server/tcms/durchfuehrung/nachweis-aktion.ts
   - apps/web/src/server/tcms/durchfuehrung/nachweis-download.ts
+  - apps/web/src/server/tcms/durchfuehrung/abgleich.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/page.tsx
   - apps/web/src/app/api/staff/clients/[id]/tcms/nachweise/[nachweisId]/route.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/actions.ts
   - apps/web/src/app/staff/(protected)/documents/actions.ts
@@ -59,6 +63,8 @@ test_refs:
   - apps/web/src/server/tcms/__tests__/bereich-c-live.test.tsx
   - apps/web/src/server/tcms/durchfuehrung/__tests__/nachweis-aktion.test.ts
   - apps/web/src/server/tcms/durchfuehrung/__tests__/nachweis-download.test.ts
+  - apps/web/src/server/tcms/durchfuehrung/__tests__/abgleich.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/__tests__/seiten.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions.test.ts
   - apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts
@@ -117,23 +123,29 @@ die fachliche Frage, welche Unterlagen eine Kontrolle belegen.
 
 ## Entscheidungslogik
 
-| Wenn                                                                                        | Dann                                                                                                                                                    | Begründung                                                       |
-| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| eine Datei als Nachweis hochgeladen wird                                                    | Ablage über die Dokumentenpipeline (Journal, Virenscan, SHA-256) am Mandanten, Verweis aus der Version                                                  | Datei und Prüfsumme gehören der kanzleikonsole                   |
-| ein Kontakt im Portal eine Anlage zu einer Kontrollaufgabe hochlädt                         | Ablage über die Portal-Dokumentenpipeline am Sitzungsmandanten, Verknüpfung in derselben Commit-Transaktion (Urheber: Kontakt), Verweis aus der Version | dieselbe Bindung wie bei Nachweisen der Kanzlei                  |
-| ein vorhandenes Dokument ausgewählt wird                                                    | nur nicht gelöschte Dokumente dieses Mandanten mit sauberer neuester Version; keine GwG-, Personal-, Lohnunterlagen                                     | keine fremden, ungeprüften oder besonders geschützten Unterlagen |
-| das Tax-CMS den Nachweis annimmt                                                            | offene Verknüpfung mit Nachweis-ID                                                                                                                      | Grundlage der Lösch- und Versionssperre                          |
-| das Tax-CMS den Nachweis eindeutig ablehnt                                                  | Verknüpfung freigeben („nicht angehängt“)                                                                                                               | kein Verweis, keine Sperre                                       |
-| der Ausgang des Anhängens offen ist (Zeitlimit, Transport)                                  | Verknüpfung bleibt offen                                                                                                                                | im Zweifel schützen statt still löschen lassen                   |
-| jemand ein Dokument mit offener Verknüpfung löschen will                                    | Löschen abweisen mit Hinweis auf den Nachweis (Ablage) bzw. Datenbankfehler (jeder andere Pfad)                                                         | ein Nachweis darf nicht still verschwinden                       |
-| jemand eine neue Version eines solchen Dokuments hochladen will                             | abweisen (409)                                                                                                                                          | der Verweis bindet genau diese Fassung                           |
-| der Nachweis im Tax-CMS entfernt wird                                                       | Verknüpfung freigeben („entfernt“)                                                                                                                      | Sperre endet mit dem Verweis                                     |
-| der Nachweis heruntergeladen wird und SHA-256 oder Größe der Version weichen vom Verweis ab | nicht ausliefern, Hinweis                                                                                                                               | nie eine andere Fassung als die verwiesene ausliefern            |
+| Wenn                                                                                                                 | Dann                                                                                                                                                                                                                     | Begründung                                                                   |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| eine Datei als Nachweis hochgeladen wird                                                                             | Ablage über die Dokumentenpipeline (Journal, Virenscan, SHA-256) am Mandanten, Verweis aus der Version                                                                                                                   | Datei und Prüfsumme gehören der kanzleikonsole                               |
+| ein Kontakt im Portal eine Anlage zu einer Kontrollaufgabe hochlädt                                                  | Ablage über die Portal-Dokumentenpipeline am Sitzungsmandanten, Verknüpfung in derselben Commit-Transaktion (Urheber: Kontakt), Verweis aus der Version                                                                  | dieselbe Bindung wie bei Nachweisen der Kanzlei                              |
+| ein vorhandenes Dokument ausgewählt wird                                                                             | nur nicht gelöschte Dokumente dieses Mandanten mit sauberer neuester Version; keine GwG-, Personal-, Lohnunterlagen                                                                                                      | keine fremden, ungeprüften oder besonders geschützten Unterlagen             |
+| das Tax-CMS den Nachweis annimmt                                                                                     | offene Verknüpfung mit Nachweis-ID                                                                                                                                                                                       | Grundlage der Lösch- und Versionssperre                                      |
+| das Tax-CMS den Nachweis eindeutig ablehnt                                                                           | Verknüpfung freigeben („nicht angehängt“)                                                                                                                                                                                | kein Verweis, keine Sperre                                                   |
+| der Ausgang des Anhängens offen ist (Zeitlimit, Transport)                                                           | Verknüpfung bleibt offen                                                                                                                                                                                                 | im Zweifel schützen statt still löschen lassen                               |
+| eine Kanzleiperson die Durchführung öffnet und eine Verknüpfung seit mindestens 5 Minuten offen ohne Nachweis-ID ist | Abgleich über „Nachweise je Dokument“: aktiver, noch nicht gebundener Nachweis dieser Durchführung → bestätigen; nur entfernt → freigeben („entfernt“); keiner → freigeben („nicht angehängt“); Lesefehler → unverändert | der Dienst führt den Nachweis oder nicht; die Sperre folgt ihm, ohne Annahme |
+| jemand ein Dokument mit offener Verknüpfung löschen will                                                             | Löschen abweisen mit Hinweis auf den Nachweis (Ablage) bzw. Datenbankfehler (jeder andere Pfad)                                                                                                                          | ein Nachweis darf nicht still verschwinden                                   |
+| jemand eine neue Version eines solchen Dokuments hochladen will                                                      | abweisen (409)                                                                                                                                                                                                           | der Verweis bindet genau diese Fassung                                       |
+| der Nachweis im Tax-CMS entfernt wird                                                                                | Verknüpfung freigeben („entfernt“)                                                                                                                                                                                       | Sperre endet mit dem Verweis                                                 |
+| der Nachweis heruntergeladen wird und SHA-256 oder Größe der Version weichen vom Verweis ab                          | nicht ausliefern, Hinweis                                                                                                                                                                                                | nie eine andere Fassung als die verwiesene ausliefern                        |
 
 ## Ausnahmen und Grenzfälle
 
 Bleibt der Ausgang des Anhängens offen, bleibt das Dokument gesperrt, bis
-die Verknüpfung geklärt ist; eine automatische Klärung gibt es noch nicht.
+die Verknüpfung geklärt ist. Geklärt wird beim Öffnen der Durchführung durch
+eine Kanzleiperson (höchstens zehn Verknüpfungen je Aufruf, erst nach fünf
+Minuten, damit ein noch laufendes Anhängen nicht freigegeben wird); eine
+Durchführung, die niemand öffnet, behält die Sperre. Einen Hintergrundjob
+gibt es nicht: Der Lesepfad ist Kanzleipersonen vorbehalten, und der
+Zustell-Worker bestätigt nur den Systemakteur (TCMS-AKTEUR-001).
 Verweise aus der Zeit vor dieser Regel (z. B. Demo-Daten mit
 Ablagepfad statt Dokument-ID) liefert die kanzleikonsole nicht aus. Die
 technische Aufbewahrungsklasse hochgeladener Nachweise ist „Allgemein“ (ohne
@@ -164,7 +176,12 @@ legt die Verknüpfung unter geteilter Zeilensperre des Dokuments in einer
 Tenant-Transaktion vor dem Dienstaufruf an (beim Hochladen in der
 Commit-Transaktion des Dokuments) und gibt sie nach eindeutiger Ablehnung oder
 Entfernung frei; `sperre.ts` enthält die Sperrprüfung für Ablage und
-Versions-Route. Die Tabelle
+Versions-Route. `abgleich.ts` klärt offene Verknüpfungen ohne Nachweis-ID
+(`offeneNachweiseAbgleichen`, aufgerufen von der Seite der Durchführung am
+aktuellen Stand): je Dokument ein Aufruf von `nachweiseJeDokumentLesen` mit
+dem Akteur der Seite, Entscheidung rein aus der geprüften Antwort
+(`abgleichEntscheidung`), Bestätigen bzw. Freigeben in eigenen kurzen
+Transaktionen; jeder Lesefehler lässt die Verknüpfung offen. Die Tabelle
 `tcms_document_reference` (Migration `20261019180000`) hält die Verknüpfung
 mit RLS je Tenant; ein Trigger lässt nur die neueste saubere Version eines
 Dokuments desselben Mandanten mit gleichem SHA-256 zu und macht Bezug und
@@ -193,7 +210,8 @@ Verknüpfung nach dem Entfernen über `nachweisEntfernenUndFreigeben` frei.
 ## Bekannte Abweichungen und Grenzen
 
 Die fachliche Freigabe steht aus. Offen gebliebene Verknüpfungen nach
-unklarem Ausgang werden nicht automatisch geklärt. Anlagen einer
+unklarem Ausgang werden nur beim Öffnen der Durchführung geklärt, nicht im
+Hintergrund. Anlagen einer
 Ereignismeldung im Portal gehören zu keiner Durchführung und werden nicht
 verknüpft; sie lassen sich in der Ablage löschen, ein späterer Abruf meldet
 dann „nicht verfügbar“ bzw. eine Abweichung. Hart gelöschte
@@ -206,7 +224,9 @@ Dokumente verhindert der Fremdschlüssel; Pfade mit eigener Vernichtung
   Tax-Compliance-Systems, oder ist eine eigene Klasse mit Object Lock nötig?
 - Soll eine neue Fassung eines Nachweises künftig als neuer Nachweis statt
   als neue Version des Dokuments entstehen (heute gesperrt)?
-- Wer klärt offen gebliebene Verknüpfungen nach einem unklaren Ausgang?
+- Genügt die Klärung beim Öffnen der Durchführung, oder braucht es einen
+  Hintergrundabgleich (dafür wäre ein Lesepfad des Systemakteurs im Tax-CMS
+  nötig)?
 
 ## Technische Nachweise
 
@@ -214,6 +234,10 @@ Dokumente verhindert der Fremdschlüssel; Pfade mit eigener Vernichtung
 Zulassung nur der neuesten sauberen Version desselben Mandanten, die
 Unveränderlichkeit, die Lösch- und Versionssperre über die Ablage und den
 Trigger sowie die Freigabe und das parallele Löschen und Verknüpfen.
+`abgleich.test.ts` belegt den Abgleich offener Verknüpfungen (Entscheidung,
+Mindestalter, Begrenzung, je Dokument ein Aufruf, unverändert bei
+Lesefehlern), `nachweis-verweis-db.test.ts` dessen Abfrage unter RLS,
+`seiten.test.tsx` der Durchführungen den Aufruf nur am aktuellen Stand.
 `nachweis-aktion.test.ts` und `nachweis-download.test.ts` belegen Upload-Weg,
 Freigabe nur nach eindeutiger Ablehnung und den Abgleich vor jeder
 Auslieferung; `bereich-c-live.test.tsx` (Opt-in gegen einen laufenden Dienst)

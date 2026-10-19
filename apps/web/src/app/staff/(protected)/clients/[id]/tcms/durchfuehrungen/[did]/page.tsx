@@ -6,9 +6,11 @@
 //   1. tcmsMandantSeite(id) als erster Aufruf
 //   2. durchfuehrungLesen und kontextLesen (Kopf, Governance-Typ, Frequenz)
 //      parallel, außerhalb jeder Transaktion
-//   3. Daten der kanzleikonsole: Abgleich der Nachweise mit der Ablage,
+//   3. aktueller Stand: offene Nachweis-Verknüpfungen mit unklarem Ausgang
+//      klären (`offeneNachweiseAbgleichen`, TCMS s7, TCMS-NACHWEIS-001)
+//   4. Daten der kanzleikonsole: Abgleich der Nachweise mit der Ablage,
 //      wählbare Dokumente, Berufsträger (Anzeige)
-//   4. Namen aus der kanzleikonsole
+//   5. Namen aus der kanzleikonsole
 //
 // Rechte, Status und Vier-Augen kommen aus `rechte` der Antwort; die Seite
 // zeigt sie an und bietet nur an, was der Dienst erlaubt.
@@ -17,6 +19,7 @@
 import { notFound } from 'next/navigation';
 import { DurchfuehrungIdSchema, ENDPUNKTE, StandSchema } from '@taxtronik/tcms-contract';
 import { TcmsZustand } from '@/components/tcms/zustand';
+import { offeneNachweiseAbgleichen } from '@/server/tcms/durchfuehrung/abgleich';
 import { durchfuehrungKanzleiDatenTx } from '@/server/tcms/durchfuehrung/kanzlei-daten';
 import { personIdsAus } from '@/server/tcms/namen';
 import {
@@ -59,6 +62,9 @@ export default async function TcmsDurchfuehrungPage({
   // Mandant ohne Tax-CMS: keine Durchführung (der Dienst hätte 404 geliefert).
   if (kontext.daten === null) notFound();
 
+  // Unklare Ausgänge beim Anhängen klären, bevor die Seite die Ablage abgleicht
+  // (nur am aktuellen Stand; wirft nie).
+  if (!d.historisch) await offeneNachweiseAbgleichen(seite, d.id);
   const anhaengbar = !d.historisch && d.rechte.bearbeiten.erlaubt && d.status !== 'GEPLANT';
   const kanzlei = await tcmsTenantLesen(seite, (tx) =>
     durchfuehrungKanzleiDatenTx(

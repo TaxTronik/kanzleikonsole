@@ -342,6 +342,11 @@ gesperrte zeigen den Grund. Ein früherer Stichtag zeigt nur an.
 - **Schutz:** Solange ein Dokument als Nachweis verknüpft ist, lässt es sich
   in der Ablage nicht löschen und keine neue Version hochladen. Entfernen Sie
   zuerst den Nachweis in der Durchführung (nur vor dem Einreichen möglich).
+- **Unklarer Ausgang:** Hat das Tax-CMS beim Anhängen nicht rechtzeitig
+  geantwortet, bleibt das Dokument vorsorglich gesperrt. Öffnet eine
+  Kanzleiperson die Durchführung später erneut (frühestens nach fünf
+  Minuten), fragt TaxTronik das Tax-CMS: Führt es den Nachweis, bleibt die
+  Sperre bestehen; sonst wird das Dokument wieder frei.
 
 ### Feststellungen und Maßnahmen
 

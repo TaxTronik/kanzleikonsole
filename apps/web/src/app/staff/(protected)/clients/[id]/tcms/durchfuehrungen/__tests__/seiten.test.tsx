@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   lesenOptional: vi.fn(),
   namen: vi.fn(),
   tenantLesen: vi.fn(),
+  abgleich: vi.fn(async () => ({ bestaetigt: 0, freigegeben: 0, offen: 0 })),
   aktion: () => vi.fn(async () => ({ ok: true })),
 }));
 
@@ -35,6 +36,9 @@ vi.mock('@/server/tcms/seite', () => ({
   tcmsLesenOptional: h.lesenOptional,
   tcmsNamenLesen: h.namen,
   tcmsTenantLesen: h.tenantLesen,
+}));
+vi.mock('@/server/tcms/durchfuehrung/abgleich', () => ({
+  offeneNachweiseAbgleichen: h.abgleich,
 }));
 vi.mock('../[did]/actions', () => ({
   durchfuehrungBeginnenAction: h.aktion(),
@@ -308,6 +312,29 @@ describe('Kontrolldurchführung', () => {
     // Toleranzkarte mit dem Wert des Dienstes.
     expect(screen.getByText(/außerhalb der Toleranz und nicht erklärt/)).toBeTruthy();
     expect(screen.getAllByText('812,40 €').length).toBeGreaterThan(0);
+  });
+
+  it('klärt offene Nachweis-Verknüpfungen beim Öffnen (TCMS s7), nur am aktuellen Stand', async () => {
+    const d = tcmsFixtures.durchfuehrungInDurchfuehrung();
+    durchfuehrung(d);
+    await detail(d.id);
+    expect(h.abgleich).toHaveBeenCalledTimes(1);
+    expect(h.abgleich).toHaveBeenCalledWith(
+      expect.objectContaining({ mandantId: DEMO.talwind }),
+      d.id,
+    );
+    // Vor dem Abgleich der Ablage (Kanzlei-Daten), damit diese den geklärten Stand sieht.
+    expect(h.abgleich.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.tenantLesen.mock.invocationCallOrder[0]!,
+    );
+    h.abgleich.mockClear();
+    document.body.innerHTML = '';
+    const alt = tcmsFixtures.durchfuehrungInDurchfuehrung();
+    alt.historisch = true;
+    alt.stand = '2026-10-01';
+    durchfuehrung(alt);
+    await detail(alt.id, { stand: '2026-10-01' });
+    expect(h.abgleich).not.toHaveBeenCalled();
   });
 
   it('historischer Stand: nur Lesen, keine Formulare, Stichtag an den Dienst', async () => {

@@ -19,6 +19,9 @@ vi.mock('@taxtronik/db/tenant-context', async (original) => ({
   withTenantContext: (ctx: TenantContext, fn: (tx: TxClient) => unknown) => fixture.run(ctx, fn),
 }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
+// Der Abgleich liest über die Seite (server-only); hier zählen nur seine
+// Datenbankteile (offene Verknüpfungen, Entscheidung).
+vi.mock('@/server/tcms/seite', () => ({ tcmsLesenOptional: vi.fn(), tcmsTenantLesen: vi.fn() }));
 
 import {
   nachweisAbgleichTx,
@@ -29,6 +32,7 @@ import {
   nachweisVerknuepfungFreigeben,
 } from '../durchfuehrung/verweis';
 import { istNachweisDokumentTx } from '../durchfuehrung/sperre';
+import { abgleichEntscheidung, offeneVerknuepfungenTx } from '../durchfuehrung/abgleich';
 
 const enabled = process.env.TCMS_SEITE_DB_TEST === '1' || process.env.DB_TESTS === '1';
 if (!enabled && process.env.CI === 'true') {
@@ -292,6 +296,61 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
       imTenant((tx) => tx.tcmsDocumentReference.delete({ where: { id: verknuepfungId } })),
     ).rejects.toThrow();
     expect(await owner.tcmsDocumentReference.count({ where: { id: verknuepfungId } })).toBe(1);
+  });
+
+  it('Abgleich (TCMS s7): nur offene ohne Nachweis-ID dieser Durchführung, älter als die Grenze; Bestätigen bzw. Freigeben', async () => {
+    const DF = 'cmvf9abgleich0001xyzabc';
+    const d1 = await dokument();
+    const d2 = await dokument();
+    const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+    const a = await imTenant((tx) => nachweisVerknuepfenTx(tx, bezug(), d1.id, DF));
+    const b = await imTenant((tx) => nachweisVerknuepfenTx(tx, bezug(), d2.id, DF));
+    // Bereits bestätigt und andere Durchführung: nicht offen im Sinne des Abgleichs.
+    const c = await imTenant((tx) => nachweisVerknuepfenTx(tx, bezug(), d1.id, DURCHF));
+    await nachweisVerknuepfungBestaetigen(ctx, c.verknuepfungId, 'nachweisccc3');
+    const jetzt = new Date(Date.now() + 1000);
+    const lesen = (bis: Date) =>
+      imTenant((tx) => offeneVerknuepfungenTx(tx, { tenantId, mandantId: mandant }, DF, bis));
+    // Jünger als die Grenze: nichts.
+    expect((await lesen(new Date(Date.now() - 60_000))).offen).toEqual([]);
+    const r = await lesen(jetzt);
+    expect(r.offen.map((v) => v.id).sort()).toEqual([a.verknuepfungId, b.verknuepfungId].sort());
+    expect(r.gebunden).toEqual(new Set(['nachweisccc3']));
+    // Fremder Tenant sieht nichts (RLS), anderer Mandant ebenso.
+    expect(
+      (
+        await imTenant((tx) =>
+          offeneVerknuepfungenTx(tx, { tenantId, mandantId: andererMandant }, DF, jetzt),
+        )
+      ).offen,
+    ).toEqual([]);
+    // Entscheidungen des Abgleichs schreiben wie die Aktionen.
+    const va = r.offen.find((v) => v.id === a.verknuepfungId)!;
+    const e = abgleichEntscheidung(
+      va,
+      {
+        dokumentId: d1.id,
+        nachweise: [{ id: 'nachweisaaa9', durchfuehrungId: DF, entfernt: false }],
+      },
+      r.gebunden,
+    );
+    expect(e).toEqual({ art: 'BESTAETIGEN', nachweisId: 'nachweisaaa9' });
+    expect(await nachweisVerknuepfungBestaetigen(ctx, va.id, 'nachweisaaa9')).toBe(true);
+    expect(
+      await nachweisVerknuepfungFreigeben(
+        ctx,
+        { verknuepfungId: b.verknuepfungId },
+        'NOT_ATTACHED',
+      ),
+    ).toBe(1);
+    expect((await lesen(jetzt)).offen).toEqual([]);
+    const zeile = await owner.tcmsDocumentReference.findUniqueOrThrow({
+      where: { id: b.verknuepfungId },
+    });
+    expect(zeile).toMatchObject({ releaseReason: 'NOT_ATTACHED', releasedBy: staffId });
+    // Bestätigt: Dokument bleibt gesperrt; freigegeben: wieder frei.
+    expect(await imTenant((tx) => istNachweisDokumentTx(tx, d1.id))).toBe(true);
+    expect(await imTenant((tx) => istNachweisDokumentTx(tx, d2.id))).toBe(false);
   });
 
   it('sperrt das Soft-Delete, solange die Verknüpfung offen ist (jeder Pfad)', async () => {
