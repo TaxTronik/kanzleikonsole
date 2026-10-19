@@ -74,39 +74,48 @@
   "rechte": {
     "beginnen": {
       "erlaubt": false,
-      "grund": "Bereits begonnen"
+      "grund": "Bereits begonnen",
+      "verweigerung": null
     },
     "bearbeiten": {
       "erlaubt": true,
-      "grund": null
+      "grund": null,
+      "verweigerung": null
     },
     "gegenzeichnen": {
       "erlaubt": false,
-      "grund": "Nur für eingereichte Durchführungen"
+      "grund": "Nur für eingereichte Durchführungen",
+      "verweigerung": null
     },
     "mandantBestaetigen": {
       "erlaubt": false,
-      "grund": "Für diese Kontrolle ist keine Bestätigung beim Mandanten vorgesehen"
+      "grund": "Für diese Kontrolle ist keine Bestätigung beim Mandanten vorgesehen",
+      "verweigerung": null
     },
     "zurueckweisen": {
       "erlaubt": false,
-      "grund": "Nur für eingereichte Durchführungen"
+      "grund": "Nur für eingereichte Durchführungen",
+      "verweigerung": null
     },
     "entfallenBeantragen": {
       "erlaubt": true,
-      "grund": null
+      "grund": null,
+      "verweigerung": null
     },
     "entfallenFreigeben": {
       "erlaubt": false,
-      "grund": "Kein Antrag offen"
+      "grund": "Kein Antrag offen",
+      "verweigerung": null
     },
     "entfallenAblehnen": {
       "erlaubt": false,
-      "grund": "Kein Antrag offen"
+      "grund": "Kein Antrag offen",
+      "verweigerung": null
     },
     "nachtrag": {
       "erlaubt": false,
-      "grund": "Nachträge nur zu abgeschlossenen Durchführungen"
+      "grund": "Nachträge nur zu abgeschlossenen Durchführungen",
+      "verweigerung": null
     }
   },
   "heute": "2026-10-19",

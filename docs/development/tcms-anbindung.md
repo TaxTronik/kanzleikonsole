@@ -69,10 +69,15 @@ Quell-Commit und je Datei den SHA-256 fest.
   dasselbe `VENDOR.json` (gleiche Paketliste, Ausschlüsse und Beschreibung).
   Das gehört zum Review jeder Änderung unter `packages/tcms-contract` und
   `packages/tcms-domain`.
-- **Stand:** Vertrag und Domain aus TCMS `main` `6af277d` (Stufe 4:
+- **Stand:** Vertrag und Domain aus TCMS `main` `7a900b1` (Stufe 4:
   Akteursarten `KANZLEI`, `MANDANT`, `SYSTEM` mit `akteure` je Endpunkt,
-  strukturierter Postausgang). `packages/domain/src` ist inhaltlich gleich
-  in `d5b6511`, `812b4d1` und `6af277d`.
+  strukturierter Postausgang; Härtungen s5/s6: Portal-Endpunkte nur für
+  `MANDANT`, maschinenlesbarer Grund `fehler.grund` jedes 403,
+  Rechte-Kennzeichen für Stammdaten und Kontaktrollen, `verweigerung` an den
+  Rechten der Durchführung, Zustellstatus an Freigaben und Risikoakzeptanzen,
+  Meldung „unzustellbar“). Domain zusätzlich mit den Rollen der Mandantenseite
+  (`MANDANT_ROLLEN`). Vertrag und Dienst nur gemeinsam ausrollen: Die Schemas
+  sind strikt, ein 403 ohne Grund ist für diesen Vertrag ein Protokollfehler.
 
 ## 2. Konfiguration
 

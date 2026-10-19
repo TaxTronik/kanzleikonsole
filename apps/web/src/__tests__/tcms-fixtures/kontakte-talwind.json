@@ -30,5 +30,8 @@
         }
       ]
     }
-  ]
+  ],
+  "rechte": {
+    "bearbeiten": true
+  }
 }

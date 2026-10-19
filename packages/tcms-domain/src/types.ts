@@ -89,6 +89,24 @@ export const AUSFUEHRUNG_LABEL: Record<Ausfuehrung, string> = {
 export type Partei = 'KANZLEI' | 'MANDANT';
 export const PARTEI_LABEL: Record<Partei, string> = { KANZLEI: 'Kanzlei', MANDANT: 'Mandant' };
 
+/**
+ * Rollen der Mandantenseite im Tax-CMS (`MandantKontaktRolle`, ADR 0001 §5).
+ * Werte und Reihenfolge wie das Prisma-Enum `MandantRolle` und das Enum im
+ * Vertrag (`KontaktRollenBodySchema`); abgeglichen in
+ * `packages/service/src/__tests__/mandant-rollen.test.ts`.
+ */
+export const MANDANT_ROLLEN = [
+  'GESETZLICHER_VERTRETER',
+  'TAX_COMPLIANCE_BEAUFTRAGTER',
+  'MITARBEITER',
+] as const;
+export type MandantRolle = (typeof MANDANT_ROLLEN)[number];
+export const MANDANT_ROLLE_LABEL: Record<MandantRolle, string> = {
+  GESETZLICHER_VERTRETER: 'Gesetzliche Vertretung',
+  TAX_COMPLIANCE_BEAUFTRAGTER: 'Tax-Compliance-Beauftragte',
+  MITARBEITER: 'Mitarbeitende',
+};
+
 export type Design = 'ANGEMESSEN' | 'NICHT_BEURTEILT' | 'MANGEL';
 export const DESIGN_LABEL: Record<Design, string> = {
   ANGEMESSEN: 'angemessen',

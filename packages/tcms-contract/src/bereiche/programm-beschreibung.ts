@@ -22,6 +22,7 @@
 import { z } from 'zod';
 import { StandSchema } from './lesepfade';
 import { ProfilAntwortenSchema } from './risiken-kontrollen';
+import { FreigabeZustellungSchema, NachrichtUnzustellbarGrundSchema } from './zustellung';
 
 const uuid = z.uuid();
 /** ID eines Tax-CMS-Objekts (cuid). */
@@ -213,6 +214,31 @@ export const NachrichtZugestelltErgebnisSchema = z
   .object({ nachrichtId: z.string(), zugestellt: z.literal(true) })
   .strict();
 export type NachrichtZugestelltErgebnis = z.infer<typeof NachrichtZugestelltErgebnisSchema>;
+
+/** Pfadparameter der Meldungen zu einer Nachricht (`/v1/nachrichten/:nachrichtId/…`). */
+export const NachrichtPfadSchema = z.object({ nachrichtId: objektId }).strict();
+
+/**
+ * Unzustellbarkeit melden (Stufe 4, nur Systemakteur): Die kanzleikonsole
+ * konnte die Nachricht nicht zustellen und schließt sie ab. Idempotent mit
+ * demselben Grund; ein anderer Grund oder eine bereits zugestellte Nachricht
+ * ergibt `409 KONFLIKT` (zugestellt und unzustellbar schließen sich aus).
+ */
+export const NachrichtUnzustellbarBodySchema = z
+  .object({ grund: NachrichtUnzustellbarGrundSchema })
+  .strict();
+export const NachrichtUnzustellbarEingabeSchema = NachrichtUnzustellbarBodySchema.extend({
+  nachrichtId: objektId,
+}).strict();
+export type NachrichtUnzustellbarEingabe = z.infer<typeof NachrichtUnzustellbarEingabeSchema>;
+export const NachrichtUnzustellbarErgebnisSchema = z
+  .object({
+    nachrichtId: z.string(),
+    unzustellbar: z.literal(true),
+    grund: NachrichtUnzustellbarGrundSchema,
+  })
+  .strict();
+export type NachrichtUnzustellbarErgebnis = z.infer<typeof NachrichtUnzustellbarErgebnisSchema>;
 
 // -----------------------------------------------------------------------------
 // Einrichtungsassistent (Schritte 1–5, Version 1)
@@ -709,6 +735,8 @@ export const BeschreibungFreigabeViewSchema = z
     codeAblauf: isoZeit.nullable(),
     anmerkung: z.string().nullable(),
     erledigtAm: isoZeit.nullable(),
+    /** Zustellung der jüngsten Nachricht an den aktuellen Empfänger (historisch: null). */
+    zustellung: FreigabeZustellungSchema.nullable(),
   })
   .strict();
 
@@ -983,6 +1011,12 @@ export const FreigabeHistorieZeileSchema = z
     anmerkung: z.string().nullable(),
     codeStatus: FreigabeCodeStatusSchema,
     codeAblauf: isoZeit.nullable(),
+    /**
+     * Zustellung der jüngsten Nachricht an den aktuellen Empfänger (offen,
+     * zugestellt, unzustellbar mit Grund, verworfen); null ohne Nachricht und im
+     * historischen Stand. Bei „unzustellbar" kann die Kanzlei neu adressieren.
+     */
+    zustellung: FreigabeZustellungSchema.nullable(),
   })
   .strict();
 export type FreigabeHistorieZeile = z.infer<typeof FreigabeHistorieZeileSchema>;

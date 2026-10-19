@@ -249,6 +249,7 @@ describe('Kontrolldurchführung', () => {
     d.rechte.beginnen = {
       erlaubt: false,
       grund: 'Durchführung durch Leon Brandt oder Vertretung Thomas Weber',
+      verweigerung: 'DURCHFUEHREN',
     };
     durchfuehrung(d);
     await detail(d.id);

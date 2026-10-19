@@ -357,7 +357,11 @@ describe('Fehlerabbildung', () => {
     const faelle: Array<[number, Record<string, unknown>, new (...a: never[]) => TcmsFehler]> = [
       [400, { code: 'UNGUELTIG', felder: { 'body.mandantIds': ['doppelt'] } }, TcmsUngueltig],
       [401, { code: 'NICHT_AUTHENTIFIZIERT' }, TcmsNichtAuthentifiziert],
-      [403, { code: 'NICHT_BERECHTIGT', meldung: GEHEIM }, TcmsNichtBerechtigt],
+      [
+        403,
+        { code: 'NICHT_BERECHTIGT', meldung: GEHEIM, grund: 'VIER_AUGEN' },
+        TcmsNichtBerechtigt,
+      ],
       [404, { code: 'NICHT_GEFUNDEN' }, TcmsNichtGefunden],
       [409, { code: 'KONFLIKT', meldung: GEHEIM }, TcmsKonflikt],
       [500, { code: 'INTERN' }, TcmsNichtVerfuegbar],
@@ -382,7 +386,10 @@ describe('Fehlerabbildung', () => {
       expect(f.message).not.toContain('doppelt');
     }
     srv.setze((_a, res) =>
-      json(res, 403, { ok: false, fehler: { code: 'NICHT_BERECHTIGT', meldung: GEHEIM } }),
+      json(res, 403, {
+        ok: false,
+        fehler: { code: 'NICHT_BERECHTIGT', meldung: GEHEIM, grund: 'VIER_AUGEN' },
+      }),
     );
     const berechtigt = (await fehlerVon(
       client.aufruf({ methode: 'GET', pfad: '/v1/audit', antwortSchema: Daten, akteur: OHNE_CLI }),

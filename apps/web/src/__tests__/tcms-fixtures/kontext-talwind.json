@@ -6,7 +6,10 @@
     "id": "a1000000-0000-4000-8000-000000004711",
     "name": "Talwind Outdoor GmbH",
     "rechtsform": "KapG",
-    "datevNr": null
+    "datevNr": null,
+    "rechte": {
+      "bearbeiten": true
+    }
   },
   "rechte": {
     "bearbeiten": true,

@@ -155,9 +155,14 @@ describe('rufeEndpunkt', () => {
 });
 
 describe('Akteursarten je Endpunkt (Stufe 4)', () => {
-  it('der Vertrag lässt den Systemakteur genau auf die zwei Nachrichten-Endpunkte', () => {
+  it('der Vertrag lässt den Systemakteur genau auf die drei Nachrichten-Endpunkte', () => {
+    // TCMS s6: zusätzlich „unzustellbar melden“.
     const system = ENDPUNKT_LISTE.filter((e) => e.akteure.includes('SYSTEM')).map((e) => e.name);
-    expect(system.sort()).toEqual(['nachrichtZugestelltMelden', 'nachrichtenOffenLesen']);
+    expect(system.sort()).toEqual([
+      'nachrichtUnzustellbarMelden',
+      'nachrichtZugestelltMelden',
+      'nachrichtenOffenLesen',
+    ]);
     for (const e of ENDPUNKT_LISTE) {
       if (e.akteure.includes('SYSTEM')) expect(e.akteure).toEqual(['SYSTEM']);
     }

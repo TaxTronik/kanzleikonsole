@@ -880,7 +880,8 @@
       "codeStatus": "KEIN",
       "codeAblauf": null,
       "anmerkung": null,
-      "erledigtAm": null
+      "erledigtAm": null,
+      "zustellung": null
     }
   ],
   "zurueckweisungen": [],

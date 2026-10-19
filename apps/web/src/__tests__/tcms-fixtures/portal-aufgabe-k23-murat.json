@@ -79,39 +79,48 @@
   "rechte": {
     "beginnen": {
       "erlaubt": false,
-      "grund": "Bereits begonnen"
+      "grund": "Bereits begonnen",
+      "verweigerung": null
     },
     "bearbeiten": {
       "erlaubt": true,
-      "grund": null
+      "grund": null,
+      "verweigerung": null
     },
     "gegenzeichnen": {
       "erlaubt": false,
-      "grund": "Nur für eingereichte Durchführungen"
+      "grund": "Nur für eingereichte Durchführungen",
+      "verweigerung": null
     },
     "mandantBestaetigen": {
       "erlaubt": false,
-      "grund": "Nur für übermittelte Aufgaben"
+      "grund": "Nur für übermittelte Aufgaben",
+      "verweigerung": null
     },
     "zurueckweisen": {
       "erlaubt": false,
-      "grund": "Nur für übermittelte Aufgaben"
+      "grund": "Nur für übermittelte Aufgaben",
+      "verweigerung": null
     },
     "entfallenBeantragen": {
       "erlaubt": false,
-      "grund": "Dieser Schritt ist zuständigen Personen vorbehalten."
+      "grund": "Dieser Schritt ist zuständigen Personen vorbehalten.",
+      "verweigerung": "PARTEI"
     },
     "entfallenFreigeben": {
       "erlaubt": false,
-      "grund": "Kein Antrag offen"
+      "grund": "Kein Antrag offen",
+      "verweigerung": null
     },
     "entfallenAblehnen": {
       "erlaubt": false,
-      "grund": "Kein Antrag offen"
+      "grund": "Kein Antrag offen",
+      "verweigerung": null
     },
     "nachtrag": {
       "erlaubt": false,
-      "grund": "Dieser Schritt ist zuständigen Personen vorbehalten."
+      "grund": "Dieser Schritt ist zuständigen Personen vorbehalten.",
+      "verweigerung": "PARTEI"
     }
   },
   "heute": "2026-10-19",

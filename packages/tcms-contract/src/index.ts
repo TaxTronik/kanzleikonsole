@@ -7,4 +7,5 @@ export * from './bereiche/risiken-kontrollen';
 export * from './bereiche/feststellungen-ereignisse';
 export * from './bereiche/programm-beschreibung';
 export * from './bereiche/lesepfade';
+export * from './bereiche/zustellung';
 export * from './endpunkte';

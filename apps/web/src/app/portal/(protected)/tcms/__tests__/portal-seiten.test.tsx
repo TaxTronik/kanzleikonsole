@@ -140,7 +140,11 @@ describe('Kontrollaufgabe im Portal', () => {
   });
 
   it('ohne Bearbeitungsrecht laut Dienst: kein Upload, kein Entfernen, Grund sichtbar', async () => {
-    aufgabe.rechte.bearbeiten = { erlaubt: false, grund: 'Nur die zugewiesene Person.' };
+    aufgabe.rechte.bearbeiten = {
+      erlaubt: false,
+      grund: 'Nur die zugewiesene Person.',
+      verweigerung: 'PORTAL_ZUGEORDNET',
+    };
     await seite();
     expect(screen.queryByLabelText('Dateien auswählen')).toBeNull();
     expect(screen.queryByRole('button', { name: /Entfernen/ })).toBeNull();

@@ -547,7 +547,7 @@ export const PORTAL_MAX_ANLAGEN = 5;
 export const PORTAL_MAX_ANLAGE_BYTES = 10 * 1024 * 1024;
 const SHA256 = /^[0-9a-f]{64}$/;
 // Wie `pruefeVerweis` (@tcms/service): Steuerzeichen, Pfadtrenner, Richtungszeichen.
-const DATEINAME_VERBOTEN = /[\u0000-\u001f\u007f/\\‪-‮⁦-⁩]/;
+const DATEINAME_VERBOTEN = /[\u0000-\u001f\u007f/\\\u202a-\u202e\u2066-\u2069]/;
 
 export const Sha256Schema = z.string().regex(SHA256, 'Ungültiger SHA-256');
 

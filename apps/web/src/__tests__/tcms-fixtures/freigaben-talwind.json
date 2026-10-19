@@ -13,7 +13,8 @@
       "erledigtAm": null,
       "anmerkung": null,
       "codeStatus": "KEIN",
-      "codeAblauf": null
+      "codeAblauf": null,
+      "zustellung": null
     },
     {
       "id": "cmvf9k8nd0095g87dk8fp5l35",
@@ -26,7 +27,8 @@
       "erledigtAm": null,
       "anmerkung": null,
       "codeStatus": "KEIN",
-      "codeAblauf": null
+      "codeAblauf": null,
+      "zustellung": null
     }
   ]
 }

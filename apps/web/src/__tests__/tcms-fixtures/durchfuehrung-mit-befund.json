@@ -122,39 +122,48 @@
   "rechte": {
     "beginnen": {
       "erlaubt": false,
-      "grund": "Abgeschlossen — unveränderlich; Korrekturen entstehen als Nachtrag"
+      "grund": "Abgeschlossen — unveränderlich; Korrekturen entstehen als Nachtrag",
+      "verweigerung": null
     },
     "bearbeiten": {
       "erlaubt": false,
-      "grund": "Abgeschlossen — unveränderlich; Korrekturen entstehen als Nachtrag"
+      "grund": "Abgeschlossen — unveränderlich; Korrekturen entstehen als Nachtrag",
+      "verweigerung": null
     },
     "gegenzeichnen": {
       "erlaubt": false,
-      "grund": "Bereits gegengezeichnet"
+      "grund": "Bereits gegengezeichnet",
+      "verweigerung": null
     },
     "mandantBestaetigen": {
       "erlaubt": false,
-      "grund": "Für diese Kontrolle ist keine Bestätigung beim Mandanten vorgesehen"
+      "grund": "Für diese Kontrolle ist keine Bestätigung beim Mandanten vorgesehen",
+      "verweigerung": null
     },
     "zurueckweisen": {
       "erlaubt": false,
-      "grund": "Bereits gegengezeichnet"
+      "grund": "Bereits gegengezeichnet",
+      "verweigerung": null
     },
     "entfallenBeantragen": {
       "erlaubt": false,
-      "grund": "Abgeschlossen — unveränderlich; Korrekturen entstehen als Nachtrag"
+      "grund": "Abgeschlossen — unveränderlich; Korrekturen entstehen als Nachtrag",
+      "verweigerung": null
     },
     "entfallenFreigeben": {
       "erlaubt": false,
-      "grund": "Kein Antrag offen"
+      "grund": "Kein Antrag offen",
+      "verweigerung": null
     },
     "entfallenAblehnen": {
       "erlaubt": false,
-      "grund": "Kein Antrag offen"
+      "grund": "Kein Antrag offen",
+      "verweigerung": null
     },
     "nachtrag": {
       "erlaubt": true,
-      "grund": null
+      "grund": null,
+      "verweigerung": null
     }
   },
   "heute": "2026-10-19",

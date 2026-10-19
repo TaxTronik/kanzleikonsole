@@ -316,7 +316,11 @@ describe('portalAufgabeSpeichernAction', () => {
 describe('portalAnlagenHochladenAction', () => {
   it('ohne Bearbeitungsrecht laut Dienst wird keine Datei abgelegt', async () => {
     const aufgabe = tcmsFixtures.portalAufgabeK23Murat();
-    aufgabe.rechte.bearbeiten = { erlaubt: false, grund: 'Nur die durchführende Person.' };
+    aufgabe.rechte.bearbeiten = {
+      erlaubt: false,
+      grund: 'Nur die durchführende Person.',
+      verweigerung: 'PORTAL_ZUGEORDNET',
+    };
     await portalAnlagenHochladenAction(AUFGABE, null, formular([['dateien', datei('a.csv')]]));
     const ablauf: string[] = [];
     const { r } = await lauf({ portalAufgabeLesen: aufgabe }, ablauf);

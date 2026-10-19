@@ -3,7 +3,7 @@
   "quelle": {
     "repo": "tcms",
     "pfad": "packages/contract/src",
-    "commit": "6af277d07047bcfd640288f53882e4cbf7e7e26b"
+    "commit": "7a900b141c4d39b97690f36ecd56d8d3a2d00e5a"
   },
   "dateien": [
     {
@@ -12,35 +12,39 @@
     },
     {
       "pfad": "bereiche/durchfuehrung.ts",
-      "sha256": "1d7a4247cdc5fbcdfb02ec2b653d30a9fc941835a3d609a1a483613819bda330"
+      "sha256": "58afdf27c2bd0671155e5aa42e2c5ebf89c41c28b61e8112f8435296b0627fc6"
     },
     {
       "pfad": "bereiche/feststellungen-ereignisse.ts",
-      "sha256": "7bf16a786caa15390c5eacb26d02ad87b812bba4cea1d2bd0dac2afa17939bd2"
+      "sha256": "ac9773298eed85a60154a810dcfa7124f8f408f4065530be8484505519463454"
     },
     {
       "pfad": "bereiche/lesepfade.ts",
-      "sha256": "dc1a0faa8668f3639805a11b9f9ee54bb33e0ee5d4bdcdcce364804fb016b953"
+      "sha256": "3266a3abdd4bed9399a903362a73e1fcbce3d408a311f20397867a2acd5c3825"
     },
     {
       "pfad": "bereiche/programm-beschreibung.ts",
-      "sha256": "892d6eca84a11682d4cf113a97ce6ab06a3a4298de26cc166191c59698086798"
+      "sha256": "a3a151ad6f9b8a7b426e237212f5c9fad5816098f21d12987a38beca3c8ddd1d"
     },
     {
       "pfad": "bereiche/risiken-kontrollen.ts",
-      "sha256": "1674a7e9f7db0868247db766b4de57ab8d6ca783c38667fb341acaece22d0f8d"
+      "sha256": "73bbb4945e286ea0c30ba87c310a7f76a771aa8180de82989f4c37b86031f943"
+    },
+    {
+      "pfad": "bereiche/zustellung.ts",
+      "sha256": "85b94a36f8470ea60ecd9d0479511442271b9edb4fd095c93b5ef6b1487e06f4"
     },
     {
       "pfad": "endpunkte.ts",
-      "sha256": "9bbe87c3094ce6f886c48d1e3647b31bed46f6e50eab4b98e3ee29634362d07d"
+      "sha256": "f120f9e81da18a1a1f8152878285f75ea31ec0b3adb2c55ee79afc4b7495cbce"
     },
     {
       "pfad": "fehler.ts",
-      "sha256": "6592c6e95bcca90a1bb6e9c3a47dab5a00eb80724ca92da48616549662645450"
+      "sha256": "6c27027d8a7e59c365b3ace97a2b97b0a2f4a9d0ca74cd340df806e4d5149ab6"
     },
     {
       "pfad": "index.ts",
-      "sha256": "c3bfc5c9c58ed798ba456adaca08ebdd4a30b906839c96438915290650f68c09"
+      "sha256": "3ff68c856476088a97ca6913d56819faf0932f14115e36a31ef1b9f04ce88e32"
     },
     {
       "pfad": "json.ts",

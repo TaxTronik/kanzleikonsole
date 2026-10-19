@@ -15,6 +15,7 @@
 // =============================================================================
 
 import { z } from 'zod';
+import { VERWEIGERUNG_GRUENDE } from '../fehler';
 import { StandSchema } from './lesepfade';
 
 // ---------------------------------------------------------------------------
@@ -260,10 +261,26 @@ export const DurchfuehrungAnzeigeSchema = z.enum([
   'ENTFALLEN',
 ]);
 
-/** Recht des Akteurs auf eine Handlung; gesperrte Bedienelemente zeigen `grund` (AGENTS.md Regel 4). */
+/**
+ * Recht des Akteurs auf eine Handlung; gesperrte Bedienelemente zeigen `grund`
+ * (AGENTS.md Regel 4). `verweigerung`: maschinenlesbarer Grund, wenn die Person
+ * den Schritt nicht darf – derselbe Wert, den die Schreiboperation als
+ * `fehler.grund` ihres `403` liefert (gleiche Rechtefunktion); `null`, wenn
+ * erlaubt oder wenn nur der Zustand entgegensteht (die Operation antwortet
+ * dann `409`). Erlaubt ⇒ weder `grund` noch `verweigerung`; verweigert ⇒
+ * `grund` (Text) gesetzt.
+ */
 export const DurchfuehrungRechtSchema = z
-  .object({ erlaubt: z.boolean(), grund: z.string().nullable() })
-  .strict();
+  .object({
+    erlaubt: z.boolean(),
+    grund: z.string().nullable(),
+    verweigerung: z.enum(VERWEIGERUNG_GRUENDE).nullable(),
+  })
+  .strict()
+  .refine((r) => (r.erlaubt ? r.grund === null && r.verweigerung === null : r.grund !== null), {
+    message: 'erlaubt ohne Grund, verweigert mit Grund',
+    path: ['verweigerung'],
+  });
 
 export const DurchfuehrungRechteSchema = z
   .object({

@@ -22,6 +22,7 @@
 
 import { z } from 'zod';
 import { StandSchema } from './lesepfade';
+import { FreigabeZustellungSchema } from './zustellung';
 
 // -----------------------------------------------------------------------------
 // Bausteine
@@ -535,6 +536,8 @@ export const RisikoakzeptanzEintragSchema = z
     empfaengerId: z.string(),
     anmerkung: z.string().nullable(),
     erledigtAm: zeitpunkt.nullable(),
+    /** Zustellung der jüngsten Nachricht an den aktuellen Empfänger (historisch: null). */
+    zustellung: FreigabeZustellungSchema.nullable(),
   })
   .strict();
 

@@ -204,15 +204,16 @@ describe('Vorprüfung und gleicher Inhalt', () => {
     d.rechte.bearbeiten = {
       erlaubt: false,
       grund: 'Einreichung liegt vor — keine Änderung mehr möglich',
+      verweigerung: null,
     };
     await expect(nachweisVorpruefung(dienst(d) as never, DID)).rejects.toThrow(
       'Upload nicht möglich: Einreichung liegt vor — keine Änderung mehr möglich',
     );
-    d.rechte.bearbeiten = { erlaubt: false, grund: null };
+    d.rechte.bearbeiten = { erlaubt: false, grund: null, verweigerung: null };
     await expect(nachweisVorpruefung(dienst(d) as never, DID)).rejects.toThrow(
       TCMS_KEIN_RECHT.DURCHFUEHREN,
     );
-    d.rechte.bearbeiten = { erlaubt: true, grund: null };
+    d.rechte.bearbeiten = { erlaubt: true, grund: null, verweigerung: null };
     await expect(nachweisVorpruefung(dienst(d) as never, DID)).resolves.toBe(d);
   });
 
