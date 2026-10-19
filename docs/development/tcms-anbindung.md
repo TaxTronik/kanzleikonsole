@@ -37,7 +37,11 @@ Quell-Commit und je Datei den SHA-256 fest.
   Das Skript verweigert bei geänderten, gestagten oder unversionierten Dateien
   im Quellbaum, kopiert nur versionierte Dateien außer `__tests__/` und
   `*.test.*`, entfernt alles andere unter `packages/tcms-contract/src` und
-  schreibt `VENDOR.json` mit `git rev-parse HEAD`. Danach Typprüfung und Tests
+  schreibt `VENDOR.json` mit `git rev-parse HEAD`. Gelesen wird nur der
+  Git-Blob des Commits (`git ls-tree`/`git cat-file`), nie der Arbeitsbaum;
+  Symlinks, ausführbare Dateien und Submodule im Vertrag brechen ab (Red Team
+  RT2-K-01: Ein Symlink-Blob sieht im Review harmlos aus, dereferenziert hätte
+  er Fremdinhalt vendored). Danach Typprüfung und Tests
   der Nutzer des Vertrags und den Vertragstest (Abschnitt 6) gegen denselben
   TCMS-Stand laufen lassen. Die Aktualisierung ist ein eigener Commit mit dem
   Quell-Commit im Text.

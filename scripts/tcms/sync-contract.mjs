@@ -11,10 +11,17 @@
 // Quellbaum (geänderte, gestagte oder unversionierte Dateien): Der Commit in
 // VENDOR.json soll den kopierten Stand exakt reproduzieren. `--ziel` (nur für
 // Tests) setzt ein anderes Paketverzeichnis. Der Checkout wird nur gelesen.
+//
+// Gelesen wird ausschließlich aus der Objektdatenbank des Commits
+// (`git ls-tree` + `git cat-file blob`), nie aus dem Arbeitsbaum: Die Kopie ist
+// damit byte-genau der auditierbare Git-Blob. Jeder Eintrag, der keine normale
+// Datei ist (Symlink 120000, ausführbar 100755, Submodul 160000), bricht ab –
+// sonst ließe sich über einen harmlos aussehenden Symlink-Blob Fremdinhalt
+// vendoren, den weder Guard noch Quellabgleich sehen (Red Team RT2-K-01).
 // =============================================================================
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -68,21 +75,43 @@ if (schmutzig.trim() !== '') {
   );
 }
 const commit = git(wurzel, ['rev-parse', 'HEAD']).trim();
-const dateien = git(wurzel, ['ls-files', '-z', '--', QUELL_PFAD])
+/** Einträge des Commits unter QUELL_PFAD: Modus, Typ, Objekt-ID, Pfad. */
+const baum = execFileSync(
+  'git',
+  ['-C', wurzel, 'ls-tree', '-r', '-z', '--full-tree', commit, '--', QUELL_PFAD],
+  {
+    encoding: 'utf8',
+  },
+)
   .split('\0')
   .filter(Boolean)
-  .map((pfad) => pfad.slice(QUELL_PFAD.length + 1))
-  .filter((pfad) => !istTestdatei(pfad))
-  .sort();
-if (dateien.length === 0) fehler(`${QUELL_PFAD} enthält keine Dateien`);
-for (const pfad of dateien) {
-  if (!istSichererPfad(pfad)) fehler(`unzulässiger Dateiname unter ${QUELL_PFAD}`);
+  .map((zeile) => {
+    const tab = zeile.indexOf('\t');
+    const [modus, typ, objekt] = zeile.slice(0, tab).split(' ');
+    return { modus, typ, objekt, pfad: zeile.slice(tab + 1).slice(QUELL_PFAD.length + 1) };
+  })
+  .filter((eintrag) => !istTestdatei(eintrag.pfad))
+  .sort((a, b) => (a.pfad < b.pfad ? -1 : a.pfad > b.pfad ? 1 : 0));
+if (baum.length === 0) fehler(`${QUELL_PFAD} enthält keine Dateien`);
+for (const eintrag of baum) {
+  if (!istSichererPfad(eintrag.pfad)) fehler(`unzulässiger Dateiname unter ${QUELL_PFAD}`);
+  if (
+    eintrag.modus !== '100644' ||
+    eintrag.typ !== 'blob' ||
+    !/^[0-9a-f]{40,64}$/.test(eintrag.objekt)
+  ) {
+    fehler(
+      `${QUELL_PFAD}/${eintrag.pfad} ist keine normale Datei (Modus ${eintrag.modus}); Symlinks, ausführbare Dateien und Submodule werden nicht übernommen`,
+    );
+  }
 }
 
 const srcZiel = join(args.ziel, 'src');
 rmSync(srcZiel, { recursive: true, force: true });
-const eintraege = dateien.map((pfad) => {
-  const bytes = readFileSync(join(wurzel, QUELL_PFAD, pfad));
+const eintraege = baum.map(({ pfad, objekt }) => {
+  const bytes = execFileSync('git', ['-C', wurzel, 'cat-file', 'blob', objekt], {
+    maxBuffer: 16 * 1024 * 1024,
+  });
   mkdirSync(dirname(join(srcZiel, pfad)), { recursive: true });
   writeFileSync(join(srcZiel, pfad), bytes);
   return { pfad, sha256: sha256(bytes) };

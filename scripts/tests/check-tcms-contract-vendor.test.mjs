@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -121,6 +122,40 @@ describe('sync-contract', () => {
     // Weder Kopie noch VENDOR.json wurden angefasst.
     assert.equal(readFileSync(join(ziel, 'VENDOR.json'), 'utf8'), vorher);
     assert.equal(existsSync(join(ziel, 'src/neu.ts')), false);
+  });
+
+  test('verweigert Symlinks und ausführbare Dateien im Vertrag (RT2-K-01)', () => {
+    for (const art of ['symlink', 'ausfuehrbar']) {
+      const { quelle, ziel } = gueltigesPaket(`modus-${art}`);
+      const vorher = readFileSync(join(ziel, 'VENDOR.json'), 'utf8');
+      if (art === 'symlink') {
+        symlinkSync('../../../README.md', join(quelle, 'packages/contract/src/leck.ts'));
+      } else {
+        chmodSync(join(quelle, 'packages/contract/src/akteur.ts'), 0o755);
+      }
+      git(quelle, 'add', '-A');
+      git(quelle, 'commit', '-q', '-m', art);
+      const r = sync(quelle, ziel);
+      assert.equal(r.status, 1, art);
+      assert.match(r.stderr, /keine normale Datei/);
+      // Die Prüfung läuft vor jedem Schreibzugriff.
+      assert.equal(readFileSync(join(ziel, 'VENDOR.json'), 'utf8'), vorher);
+      assert.deepEqual(pruefeVendor(ziel), []);
+    }
+  });
+
+  test('übernimmt den Git-Blob des Commits, nie den Arbeitsbaum (RT2-K-01)', () => {
+    // skip-worktree versteckt eine Änderung vor `git status`; gelesen werden
+    // darf trotzdem nur der Blob des aufgezeichneten Commits.
+    const quelle = quellRepo('blob-treu-quelle');
+    git(quelle, 'update-index', '--skip-worktree', 'packages/contract/src/akteur.ts');
+    schreibe(quelle, 'packages/contract/src/akteur.ts', 'export const A = 666;\n');
+    assert.equal(git(quelle, 'status', '--porcelain=v1'), '');
+    const ziel = join(temp, 'blob-treu-ziel');
+    mkdirSync(ziel);
+    const r = sync(quelle, ziel);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(readFileSync(join(ziel, 'src/akteur.ts'), 'utf8'), 'export const A = 1;\n');
   });
 
   test('verweigert ohne Git-Checkout und ohne --from', () => {
