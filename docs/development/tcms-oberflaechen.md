@@ -46,6 +46,7 @@ eine Auswahl hinausgeht, gehört als Änderungsvorschlag in das TCMS-Repo.
 | `/staff/tcms/**` (Portfolio, Korb)   | `tcmsKanzleiSeite()`   | Kanzlei, Mandantenliste der Person        |
 | `/staff/tcms/**` (Audit, Verwaltung) | `tcmsAdminSeite()`     | nur Admin/Partner, ohne Mandantenbezug    |
 | `/portal/tcms/**`                    | `tcmsPortalSeite()`    | Mandantenkontakt; Mandant nur aus Sitzung |
+| Datei-Abrufe (Route Handler)         | Abschnitt 11           | wie Mandantenseite bzw. Portal            |
 
 - **Modulbereich `tcms`** (`apps/web/src/lib/module-registry.ts`): Layout-Gate
   und `requireModulePage` liefern bei ausgeschaltetem Modul 404. Der
@@ -291,7 +292,8 @@ mindestens zwei Bereiche sie brauchen.
   erster Aufruf im Helfer, jedes Layout im Segment), `module-page-guard.test.ts`
   (Einstieg prüft den Modulbereich), `staff-page-authz.test.ts`,
   `server-action-authz.test.ts`, `server-action-style.test.ts`,
-  `client-revalidation-scope.test.ts`.
+  `client-revalidation-scope.test.ts`, für Route Handler
+  `tcms-route-authz.test.ts` (Abschnitt 11).
 - Regeln des Fachkatalogs: Testdateien, die eine Regel belegen, tragen den
   Marker `Fachkatalog: TCMS-…`.
 
@@ -324,3 +326,61 @@ Abstimmung und eigene Tests mit Mutationsnachweis:
 
 Nur **ergänzen** (keine bestehenden Einträge ändern): `TCMS_KEIN_RECHT`,
 `tcmsFixtures` und neue Fixture-Dateien, Exporte in `components/tcms`.
+
+## 11. Route Handler für Datei-Abrufe
+
+Dateien zu Verweisen des Tax-CMS (Nachweise einer Durchführung, Anlagen
+einer Meldung) liefert die kanzleikonsole über Route Handler aus, nicht über
+Seiten. Einstieg ist `server/tcms/route.ts` (gemeinsamer Baustein, zuerst von
+Bereich C gebaut, von D mitgenutzt).
+
+```ts
+// app/api/staff/clients/[id]/tcms/nachweise/[nachweisId]/route.ts
+import type { NextRequest } from 'next/server';
+import { tcmsMandantRoute } from '@/server/tcms/route';
+import { nachweisAusliefern } from '@/server/tcms/durchfuehrung/nachweis-download';
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; nachweisId: string }> },
+) {
+  const { id, nachweisId } = await params;
+  const route = await tcmsMandantRoute(id); // 1. immer zuerst
+  if (!route.ok) return route.antwort;
+  return nachweisAusliefern(req, route, nachweisId);
+}
+```
+
+| Einstieg               | Ort                                | Prüfkette                                                                                                                                                              |
+| ---------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tcmsMandantRoute(id)` | `app/api/staff/…/tcms/…/route.ts`  | `staffAuth` zuerst, gültige ID, Modulbereich `tcms`, Dienst konfiguriert; in einer Tenant-Transaktion Mandant im Tenant, `canAccessClientTx`, aktiv, `kanzleiAkteurTx` |
+| `tcmsPortalRoute()`    | `app/api/portal/…/tcms/…/route.ts` | `portalAuth` zuerst, Modulbereich `tcms`, Dienst konfiguriert; aktiv, `portalAkteurTx`; Mandant nur aus der Sitzung                                                    |
+
+- **Lesen:** `tcmsRouteLesen(route, ENDPUNKTE.x, { params })` nur für
+  GET-Endpunkte mit Mandant im Pfad (Portal-Route nur `portal: true`);
+  `mandantId` und Akteur setzt der Helfer, der Aufruf läuft außerhalb jeder
+  Transaktion. Andere Endpunkte sind Programmierfehler.
+- **Antworten:** `{ ok: false, antwort }` mit fester JSON-Antwort
+  (`TCMS_ROUTE_ANTWORTEN`: `error`-Code und deutscher Text, nie der Text des
+  Dienstes; `Cache-Control: private, no-store`, `nosniff`). Ohne Sitzung 401,
+  veraltete Sitzung 401 `session_stale`; ungültige ID, fremder oder nicht
+  zugänglicher Mandant, Modul aus, Dienst nicht konfiguriert oder inaktiv,
+  404 des Dienstes: 404 ohne Hinweis auf die Existenz; 403 des Dienstes 403;
+  400/409 des Dienstes 400; Ausfall 503 mit `requestId`.
+  `tcmsRouteAntwort(art)` liefert dieselben Antworten für Bereichs-Helfer.
+- **Bytes nur aus der kanzleikonsole:** Der Verweis des Tax-CMS nennt
+  Dokument-ID und SHA-256; ausgeliefert wird ausschließlich über
+  `loadDocumentDelivery`/`documentDownloadResponse`
+  (`server/documents/delivery.ts`) mit den Rechten der kanzleikonsole
+  (Mandant, `canAccessClientTx`, gelöscht, Scanstatus, Lohnrechte). Weicht der
+  SHA-256 (oder die Größe) der auszuliefernden Version vom Verweis ab, wird
+  nicht ausgeliefert, sondern mit Hinweis abgebrochen; der Abgleich läuft vor
+  dem Abrufnachweis und erneut an der tatsächlich gestreamten Version.
+- **Nur GET**, keine eigene Sitzung, kein direkter Client- oder Akteurzugriff
+  im Handler. Schreiben läuft über Server Actions (Abschnitt 5).
+- **Guards:** `tcms-route-authz.test.ts` (Ort unter `app/api/staff` bzw.
+  `app/api/portal`, nur `GET`, Einstieg als erster Aufruf mit der ID aus
+  `params` bzw. ohne Argument, keine Importe von Client, Dienst, Akteur,
+  Seiten-/Aktions-Helfern oder Sitzung; Reihenfolge im Einstieg selbst) und
+  `api-route-authz.test.ts` (erkennt die Einstiege nur als Import aus
+  `@/server/tcms/route`). Semantik: `server/tcms/__tests__/route.test.ts`.

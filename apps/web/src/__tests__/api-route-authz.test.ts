@@ -117,6 +117,22 @@ const ALTERNATIVE_AUTH: Record<string, AlternativeAuth> = {
   },
 };
 
+// TCMS Stufe 3: Route Handler unter …/tcms/… (Datei-Abrufe) prüfen Sitzung,
+// Modul, Mandantenzugriff und Akteur im gemeinsamen Einstieg
+// server/tcms/route.ts (staffAuth bzw. portalAuth als erster Aufruf). Import,
+// Reihenfolge und „nur GET“ prüft tcms-route-authz.test.ts.
+function tcmsAlternative(rel: string): AlternativeAuth | undefined {
+  if (!rel.split('/').slice(0, -1).includes('tcms')) return undefined;
+  const einstieg = rel.startsWith('api/staff/') ? 'tcmsMandantRoute' : 'tcmsPortalRoute';
+  return {
+    reason: `${einstieg} aus @/server/tcms/route prüft Sitzung, Modul, Mandantenzugriff und Akteur`,
+    validate: (source) =>
+      new RegExp(
+        `import\\s+\\{[^}]*\\b${einstieg}\\b[^}]*\\}\\s+from\\s+['"]@/server/tcms/route['"]`,
+      ).test(source) && new RegExp(`await\\s+${einstieg}\\s*\\(`).test(source),
+  };
+}
+
 describe('geschuetzte API-Routes sind autorisiert (Struktur-Guardrail)', () => {
   it('findet die Staff-/Portal-API-Route-Flaeche', () => {
     expect(protectedRouteFiles.length).toBeGreaterThan(20);
@@ -126,7 +142,7 @@ describe('geschuetzte API-Routes sind autorisiert (Struktur-Guardrail)', () => {
     const rel = relative(APP_DIR, file).replace(/\\/g, '/');
     const source = readFileSync(file, 'utf8');
     const expectedPrimitive = rel.startsWith('api/staff/') ? 'staffAuth' : 'portalAuth';
-    const alternative = ALTERNATIVE_AUTH[rel];
+    const alternative = ALTERNATIVE_AUTH[rel] ?? tcmsAlternative(rel);
 
     it(`${rel}: referenziert ${expectedPrimitive} oder dokumentierte Alternative`, () => {
       const hasExpected = source.includes(expectedPrimitive);
