@@ -140,7 +140,16 @@ Das Tax-CMS speichert nur Personen-IDs der kanzleikonsole. Namen kommen
   `kanzleiPersonenFuerMandantTx` (aktive Mitarbeiter mit Zugriff auf den
   Mandanten) bzw. `mandantKontakteTx` (Kontakte dieses Mandanten, optional
   inaktive). Unzulässige IDs werfen `TcmsPersonUnzulaessig` und erscheinen als
-  Feldfehler; der Dienst wird dann nicht gerufen.
+  Feldfehler; der Dienst wird dann nicht gerufen. Seit TCMS s8 prüft der Dienst
+  nicht mehr, ob ein Kontakt zum Mandanten gehört (fremde IDs behandelt er wie
+  unbekannte); die Bindung an den Mandanten der URL leistet allein die
+  kanzleikonsole – vor jedem Senden, für jede Person (Rollen setzen,
+  Zuständigkeiten, Maßnahmen, Folgen, Einrichtung, Freigaben anfordern bzw.
+  neu adressieren, Risikoakzeptanz) und jedes Dokument (Nachweise über
+  `nachweisQuelleTx` und den Trigger der Verknüpfung). Der Mandant kommt dabei
+  immer aus dem gebundenen Argument der Aktion bzw. der Portal-Sitzung, nie aus
+  dem Formular. Die Empfänger von Mitteilungen prüft der Zustell-Worker
+  ebenso gegen die kanzleikonsole (MAIL-OUTBOX-001).
 - **Auswahllisten:** `kontakteDesMandantenTx(tx, bezug)` für Kontakte;
   Mitarbeiterlisten nur mit derselben Zugriffsregel wie
   `kanzleiPersonenFuerMandantTx`.
