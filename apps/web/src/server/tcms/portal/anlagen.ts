@@ -23,6 +23,12 @@ import 'server-only';
 //     wie jeder Portal-Upload für den Mandanten freigegeben (DOC-PORTAL-SHARING-001).
 //   - Der Verweis entsteht aus der GESPEICHERTEN Fassung (Dokument-ID,
 //     erkannter Typ, Größe und SHA-256 des Commits), nie aus Formularangaben.
+//   - Anlagen einer Kontrollaufgabe sind Nachweise einer Durchführung
+//     (TCMS-NACHWEIS-001): `portalNachweisAblegen` verknüpft das Dokument in
+//     DERSELBEN Commit-Transaktion über `nachweisVerknuepfenTx` (Bereich C) –
+//     danach sind Löschen und neue Versionen gesperrt, bis der Nachweis im
+//     Tax-CMS entfernt ist. Anlagen einer Ereignismeldung (`portalAnlageAblegen`)
+//     gehören zu keiner Durchführung und bleiben unverknüpft (offener Punkt).
 // =============================================================================
 
 import { createHash } from 'node:crypto';
@@ -31,7 +37,7 @@ import {
   PORTAL_MAX_ANLAGE_BYTES,
   PORTAL_MAX_ANLAGEN,
 } from '@taxtronik/tcms-contract';
-import type { TenantContext } from '@taxtronik/db';
+import type { TenantContext, TxClient } from '@taxtronik/db';
 import { z } from 'zod';
 import {
   SERVER_ACTION_BODY_LIMIT_BYTES,
@@ -46,6 +52,8 @@ import {
   PortalFeatureDisabledError,
   readPortalFeaturesTx,
 } from '@/server/settings/portal-features';
+import { nachweisVerknuepfenTx } from '@/server/tcms/durchfuehrung/verweis';
+import type { NachweisVerknuepft } from '@/server/tcms/durchfuehrung/nachweis-aktion';
 
 export { PORTAL_MAX_ANLAGE_BYTES, PORTAL_MAX_ANLAGEN };
 
@@ -182,11 +190,43 @@ export function pruefePortalDatei(datei: File): void {
  * Legt eine Portal-Anlage als Dokument des Sitzungsmandanten ab und liefert den
  * Verweis aus der gespeicherten Fassung. Fehler kommen als UI-taugliche
  * Ursache (ActionError, UploadRejectedError) beim zentralen Fehler-Mapping an.
+ * Für Anlagen einer Ereignismeldung (keine Durchführung, keine Verknüpfung).
  */
-export async function portalAnlageAblegen(
+export function portalAnlageAblegen(
   g: PortalAblageKontext,
   datei: File,
 ): Promise<TcmsAnlageVerweis> {
+  return ablegen(g, datei, async (_tx, verweis) => verweis);
+}
+
+/**
+ * Wie `portalAnlageAblegen`, für Anlagen einer Kontrollaufgabe: verknüpft das
+ * Dokument in derselben Commit-Transaktion mit der Durchführung
+ * (TCMS-NACHWEIS-001, `created_by` = Kontakt der Sitzung) und liefert den
+ * Verweis aus der gespeicherten Version samt offener Verknüpfung. Das Anhängen
+ * im Tax-CMS und die Nachführung der Verknüpfung übernimmt
+ * `nachweisAnhaengenUndBinden` (Bereich C).
+ */
+export function portalNachweisAblegen(
+  g: PortalAblageKontext,
+  datei: File,
+  durchfuehrungId: string,
+): Promise<NachweisVerknuepft> {
+  return ablegen(g, datei, (tx, verweis) =>
+    nachweisVerknuepfenTx(
+      tx,
+      { tenantId: g.tenantId, mandantId: g.clientId, kontaktId: g.contactId },
+      verweis.dokumentId,
+      durchfuehrungId,
+    ),
+  );
+}
+
+async function ablegen<T>(
+  g: PortalAblageKontext,
+  datei: File,
+  imCommit: (tx: TxClient, verweis: TcmsAnlageVerweis) => Promise<T>,
+): Promise<T> {
   pruefePortalDatei(datei);
   const dateiname = portalDateiname(datei.name);
   const gemeldet = datei.type;
@@ -240,13 +280,13 @@ export async function portalAnlageAblegen(
             source: 'portal.tcms',
           },
         });
-        return {
+        return imCommit(tx, {
           dokumentId: document.id,
           dateiname,
           mime,
           groesse: Number(commit.sizeBytes),
           sha256,
-        };
+        });
       },
     });
     return result;

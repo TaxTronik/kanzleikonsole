@@ -1,10 +1,14 @@
-// Fachkatalog: TCMS-DIENST-001, DOC-PORTAL-SHARING-001, ACCESS-CLIENT-MODE-001
+// Fachkatalog: TCMS-DIENST-001, DOC-PORTAL-SHARING-001, ACCESS-CLIENT-MODE-001,
+// TCMS-NACHWEIS-001
 // TCMS Stufe 3, Bereich D, gegen echtes PostgreSQL über die App-Rolle (RLS):
 //   - Abruf einer Datei, auf die das Tax-CMS verweist, über die echte
 //     Dokumentauslieferung (loadDocumentDelivery): Kanzlei nur mit
 //     Mandantenzugriff und nur Dokumente dieses Mandanten; Portal nur für den
 //     Mandanten freigegebene Dokumente; bei abweichendem SHA-256 oder Größe
 //     keine Auslieferung und KEIN Abrufnachweis im Audit.
+//   - Anlagen einer Kontrollaufgabe aus dem Portal: Verknüpfung im Kontext
+//     des Kontakts (App-Rolle, RLS), Löschsperre bis zur Freigabe nach dem
+//     Entfernen; nur Dokumente des Sitzungsmandanten (Integration Stufe 3).
 //   - Ansprechpersonen (Berufsträger/Hauptbearbeitung) und Auswahl der
 //     Zuständigkeit aus der kanzleikonsole: nur aktive Personen, nur mit
 //     Zugriff auf den Mandanten.
@@ -54,6 +58,12 @@ vi.mock('@/server/documents/delivery', async (original) => ({
 }));
 
 import { tcmsVerweisAusliefern } from '../abruf/auslieferung';
+import {
+  NachweisDokumentUnzulaessig,
+  nachweisVerknuepfenTx,
+  nachweisVerknuepfungBestaetigen,
+  nachweisVerknuepfungFreigeben,
+} from '../durchfuehrung/verweis';
 import { kanzleiPersonenAuswahlTx } from '../ereignisse/personen';
 import { ansprechpersonenTx } from '../portal/ansprechpartner';
 
@@ -309,6 +319,56 @@ const REQ = { headers: new Headers(), nextUrl: new URL('http://localhost/x') } a
       });
       expect(await abrufe(geteilt)).toBe(1);
       expect(await abrufe(nichtGeteilt)).toBe(0);
+    });
+  });
+
+  describe('Portal-Anlage einer Kontrollaufgabe (TCMS-NACHWEIS-001)', () => {
+    const DURCHF = 'cmvf9ne7i007kdy7d467junj7';
+    const NACHWEIS = 'cmvf9ne96007qdy7d0c2yfigq';
+    const alsKontakt = () => ({
+      tenantId,
+      actorId: kontakt,
+      actorType: 'CLIENT_CONTACT' as const,
+    });
+    const bezug = () => ({ tenantId, mandantId: mandant.offen!, kontaktId: kontakt });
+    const loeschen = (id: string) =>
+      owner.document.update({ where: { id }, data: { deletedAt: new Date() } });
+
+    it('Verknüpfung im Kontext des Kontakts sperrt das Löschen bis zur Freigabe', async () => {
+      const id = await dokument('offen', true);
+      const { verknuepfungId, verweis: v } = (await fixture.run(alsKontakt(), (tx) =>
+        nachweisVerknuepfenTx(tx, bezug(), id, DURCHF),
+      )) as Awaited<ReturnType<typeof nachweisVerknuepfenTx>>;
+      expect(v).toMatchObject({ dokumentId: id, sha256: SHA, groesse: 7 });
+      const zeile = await owner.tcmsDocumentReference.findUniqueOrThrow({
+        where: { id: verknuepfungId },
+      });
+      expect(zeile.createdBy).toBe(kontakt);
+      expect(zeile.tcmsExecutionId).toBe(DURCHF);
+      expect(await nachweisVerknuepfungBestaetigen(alsKontakt(), verknuepfungId, NACHWEIS)).toBe(
+        true,
+      );
+      await expect(loeschen(id)).rejects.toThrow(/als Nachweis im Tax-CMS verknüpft/);
+      expect(
+        await nachweisVerknuepfungFreigeben(
+          alsKontakt(),
+          { mandantId: mandant.offen!, durchfuehrungId: DURCHF, nachweisId: NACHWEIS },
+          'REMOVED',
+        ),
+      ).toBe(1);
+      const frei = await owner.tcmsDocumentReference.findUniqueOrThrow({
+        where: { id: verknuepfungId },
+      });
+      expect(frei).toMatchObject({ releasedBy: kontakt, releaseReason: 'REMOVED' });
+      await loeschen(id);
+    });
+
+    it('nur Dokumente des Sitzungsmandanten', async () => {
+      const fremd = await dokument('vertraulich', true);
+      await expect(
+        fixture.run(alsKontakt(), (tx) => nachweisVerknuepfenTx(tx, bezug(), fremd, DURCHF)),
+      ).rejects.toBeInstanceOf(NachweisDokumentUnzulaessig);
+      expect(await owner.tcmsDocumentReference.count({ where: { documentId: fremd } })).toBe(0);
     });
   });
 

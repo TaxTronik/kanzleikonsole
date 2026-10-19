@@ -117,6 +117,18 @@ function anhaengenText(fehler: unknown): string {
 }
 
 /**
+ * Endpunkte zum Anhängen bzw. Entfernen eines Nachweises: Kanzlei
+ * (Durchführung) oder Portal (Kontrollaufgabe, Integration TCMS Stufe 3).
+ * Beide haben dieselben Parameter, Körper und Antworten.
+ */
+type AnhaengenEndpunkt =
+  | typeof ENDPUNKTE.nachweisAnhaengen
+  | typeof ENDPUNKTE.portalAnlageAnhaengen;
+type EntfernenEndpunkt =
+  | typeof ENDPUNKTE.nachweisEntfernen
+  | typeof ENDPUNKTE.portalAnlageEntfernen;
+
+/**
  * Hängt den Verweis an (Dienst) und führt die Verknüpfung nach: Annahme →
  * Nachweis-ID setzen; eindeutige Ablehnung → freigeben; sonst offen lassen.
  * Wirft den Fehler des Dienstes weiter.
@@ -126,10 +138,11 @@ export async function nachweisAnhaengenUndBinden(
   ctx: TenantContext,
   durchfuehrungId: string,
   verknuepft: NachweisVerknuepft,
+  endpunkt: AnhaengenEndpunkt = ENDPUNKTE.nachweisAnhaengen,
 ): Promise<NachweisErgebnis> {
   let ergebnis: NachweisErgebnis;
   try {
-    ({ daten: ergebnis } = await dienst.rufe(ENDPUNKTE.nachweisAnhaengen, {
+    ({ daten: ergebnis } = await dienst.rufe(endpunkt, {
       params: { durchfuehrungId },
       body: { verweis: verknuepft.verweis },
     }));
@@ -168,8 +181,9 @@ export async function nachweisEntfernenUndFreigeben(
   dienst: TcmsDienst,
   ctx: TenantContext,
   ziel: { mandantId: string; durchfuehrungId: string; nachweisId: string },
+  endpunkt: EntfernenEndpunkt = ENDPUNKTE.nachweisEntfernen,
 ): Promise<void> {
-  await dienst.rufe(ENDPUNKTE.nachweisEntfernen, {
+  await dienst.rufe(endpunkt, {
     params: { durchfuehrungId: ziel.durchfuehrungId, nachweisId: ziel.nachweisId },
   });
   await nachweisVerknuepfungFreigeben(ctx, ziel, 'REMOVED').catch((fehler: unknown) =>

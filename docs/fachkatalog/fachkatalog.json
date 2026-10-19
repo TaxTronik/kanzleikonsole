@@ -6331,7 +6331,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt. Offen gebliebene Verknüpfungen nach unklarem Ausgang werden noch nicht automatisch geklärt."
+        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe hochladen. Offen gebliebene Verknüpfungen nach unklarem Ausgang werden noch nicht automatisch geklärt."
       },
       "sources": [
         {
@@ -6365,6 +6365,8 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/actions.ts",
         "apps/web/src/app/staff/(protected)/documents/actions.ts",
         "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts",
+        "apps/web/src/server/tcms/portal/anlagen.ts",
+        "apps/web/src/app/portal/(protected)/tcms/aufgaben/[id]/actions.ts",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20261019180000_tcms_document_reference/migration.sql"
       ],
@@ -6375,7 +6377,10 @@
         "apps/web/src/server/tcms/durchfuehrung/__tests__/nachweis-download.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/__tests__/actions.test.ts",
         "apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions.test.ts",
-        "apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts"
+        "apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts",
+        "apps/web/src/server/tcms/__tests__/portal-anlagen.test.ts",
+        "apps/web/src/app/portal/(protected)/tcms/__tests__/portal-aktionen.test.ts",
+        "apps/web/src/server/tcms/__tests__/bereich-d-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
       "related_rules": [

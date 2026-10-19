@@ -6,15 +6,20 @@
 //   - Portal-Funktion „Dokumente hochladen“ muss an sein.
 //   - Verweis (ID, Typ, Größe, SHA-256) aus dem Commit, nie aus Formularangaben.
 //   - Grenzen je Datei, Anzahl und zusammen (Body-Limit der Server-Actions).
-// Fachkatalog: TCMS-DIENST-001
+//   - Anlagen einer Kontrollaufgabe werden in DERSELBEN Commit-Transaktion als
+//     Nachweis der Durchführung verknüpft (Löschsperre, TCMS-NACHWEIS-001);
+//     der Verweis kommt dann aus der Verknüpfung (gespeicherte Version).
+// Fachkatalog: TCMS-DIENST-001, TCMS-NACHWEIS-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const COMMIT_TX = vi.hoisted(() => ({ commitTx: true }));
 const h = vi.hoisted(() => ({
   erkannt: null as string | null,
   upload: true,
   audit: vi.fn(),
   anlegen: vi.fn(),
   limit: vi.fn(),
+  verknuepfen: vi.fn(),
   schritte: [] as string[],
 }));
 
@@ -26,6 +31,7 @@ vi.mock('@/server/settings/portal-features', () => ({
   PortalFeatureDisabledError: class extends Error {},
 }));
 vi.mock('@/server/documents/upload-helpers', () => ({ createDocumentWithVersion: h.anlegen }));
+vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({ nachweisVerknuepfenTx: h.verknuepfen }));
 // Ablauf von runJournaledUpload in Kurzform: check → Bytes → prepare/afterPrepare → commit.
 vi.mock('@/server/documents/journaled-upload', () => ({
   uploadFailureCause: (e: unknown) => e,
@@ -47,7 +53,7 @@ vi.mock('@/server/documents/journaled-upload', () => ({
       detectedMime: h.erkannt,
       retentionUntil: null,
     };
-    const result = await o.commitTx({}, { commit });
+    const result = await o.commitTx(COMMIT_TX, { commit });
     h.schritte.push('commit');
     return { result, commit, referenced: true };
   },
@@ -60,6 +66,7 @@ import {
   portalAnlageAblegen,
   portalDateienFeld,
   portalDateiname,
+  portalNachweisAblegen,
   TcmsAnlageAbgelehnt,
 } from '../portal/anlagen';
 import { SERVER_ACTION_BODY_LIMIT_BYTES } from '@/lib/upload-limits.mjs';
@@ -179,6 +186,53 @@ describe('portalAnlageAblegen', () => {
       G,
       expect.objectContaining({ action: 'document.upload', resourceType: 'document' }),
     );
+    // Anlage einer Meldung: keine Durchführung, keine Verknüpfung.
+    expect(h.verknuepfen).not.toHaveBeenCalled();
+  });
+
+  it('Kontrollaufgabe: Verknüpfung in derselben Commit-Transaktion, Kontakt als Urheber', async () => {
+    h.erkannt = 'application/pdf';
+    const verknuepft = {
+      verknuepfungId: 'e1000000-0000-4000-8000-0000000000a1',
+      verweis: {
+        dokumentId: 'd0c00000-0000-4000-8000-0000000000a1',
+        dateiname: 'Prüfung.pdf',
+        mime: 'application/pdf',
+        groesse: 7,
+        sha256: 'ab'.repeat(32),
+      },
+    };
+    h.verknuepfen.mockImplementation(async () => {
+      h.schritte.push('verknuepfen');
+      return verknuepft;
+    });
+    const r = await portalNachweisAblegen(
+      G,
+      datei('Prüfung.pdf', 'application/pdf', 7),
+      'cmvf9ne7i007kdy7d467junj7',
+    );
+    expect(r).toBe(verknuepft);
+    expect(h.verknuepfen).toHaveBeenCalledWith(
+      COMMIT_TX,
+      { tenantId: G.tenantId, mandantId: G.clientId, kontaktId: G.contactId },
+      'd0c00000-0000-4000-8000-0000000000a1',
+      'cmvf9ne7i007kdy7d467junj7',
+    );
+    // Verknüpft wird innerhalb des Commits (vor dessen Abschluss), nach dem Audit.
+    expect(h.schritte).toEqual(['check', 'prepare', 'verknuepfen', 'commit']);
+    expect(h.audit.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.verknuepfen.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('Kontrollaufgabe: scheitert die Verknüpfung, scheitert der Commit (keine unverknüpfte Ablage)', async () => {
+    h.erkannt = 'application/pdf';
+    const fehler = new Error('tcms_document_reference: Dokument dieses Mandanten nicht verfügbar');
+    h.verknuepfen.mockRejectedValue(fehler);
+    await expect(
+      portalNachweisAblegen(G, datei('x.pdf', 'application/pdf'), 'cmvf9ne7i007kdy7d467junj7'),
+    ).rejects.toBe(fehler);
+    expect(h.schritte).toEqual(['check', 'prepare']);
   });
 
   it('Typ nicht erlaubt: Abbruch nach dem Prüfen der Bytes, vor jedem Commit', async () => {

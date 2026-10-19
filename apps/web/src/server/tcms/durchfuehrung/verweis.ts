@@ -59,6 +59,15 @@ export interface NachweisBezug {
   staffId: string;
 }
 
+/**
+ * Wer eine Verknüpfung anlegt (`created_by`): die Kanzleiperson
+ * (`staffId`) oder – für Anlagen einer Kontrollaufgabe aus dem Portal – der
+ * Kontakt der Portal-Sitzung (`kontaktId`, Integration TCMS Stufe 3).
+ */
+export type NachweisVerknuepfer =
+  | NachweisBezug
+  | (Pick<NachweisBezug, 'tenantId' | 'mandantId'> & { kontaktId: string });
+
 /** Filter der wählbaren Dokumente eines Mandanten (ohne Versionsprüfung). */
 export function nachweisDokumentFilter(tenantId: string, mandantId: string) {
   return {
@@ -156,7 +165,7 @@ export async function nachweisQuelleTx(
  */
 export async function nachweisVerknuepfenTx(
   tx: TxClient,
-  bezug: NachweisBezug,
+  bezug: NachweisVerknuepfer,
   dokumentId: string,
   durchfuehrungId: string,
 ): Promise<{ verknuepfungId: string; verweis: NachweisVerweisEingabe }> {
@@ -169,7 +178,7 @@ export async function nachweisVerknuepfenTx(
       documentVersionId: quelle.versionId,
       sha256: Buffer.from(quelle.sha256),
       tcmsExecutionId: durchfuehrungId,
-      createdBy: bezug.staffId,
+      createdBy: 'kontaktId' in bezug ? bezug.kontaktId : bezug.staffId,
     },
     select: { id: true },
   });

@@ -9,7 +9,12 @@
 //   - Übermitteln nur ohne Mängel laut Prüfung des Dienstes.
 //   - Der Freigabe-Code geht nur in den Body des Dienstaufrufs; er erscheint
 //     in keinem Ergebnis und keiner Weiterleitung.
-// Fachkatalog: TCMS-AKTEUR-001
+//   - Anlagen einer Kontrollaufgabe sind Nachweise (TCMS-NACHWEIS-001): Das
+//     Dokument wird beim Ablegen verknüpft, nach Annahme mit der Nachweis-ID
+//     bestätigt, nach eindeutiger Ablehnung oder nach dem Entfernen
+//     freigegeben; bei offenem Ausgang bleibt die Sperre.
+// Fachkatalog: TCMS-AKTEUR-001, TCMS-NACHWEIS-001
+import { TcmsKonflikt, TcmsNichtVerfuegbar } from '@taxtronik/tcms-client';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,6 +22,9 @@ const h = vi.hoisted(() => ({
   spec: null as null | Record<string, unknown>,
   ergebnis: { ok: true } as Record<string, unknown>,
   ablegen: vi.fn(),
+  nachweisAblegen: vi.fn(),
+  bestaetigen: vi.fn(),
+  freigeben: vi.fn(),
   kontext: vi.fn(),
   ansprech: vi.fn(),
   redirect: vi.fn((ziel: string) => {
@@ -44,7 +52,14 @@ vi.mock('@/server/settings/portal-features', () => ({}));
 vi.mock('@/server/tcms/portal/anlagen', async (original) => ({
   ...(await original<typeof import('@/server/tcms/portal/anlagen')>()),
   portalAnlageAblegen: h.ablegen,
+  portalNachweisAblegen: h.nachweisAblegen,
   portalAblageKontext: h.kontext,
+}));
+// Verknüpfungen (TCMS-NACHWEIS-001) ohne Datenbank; Ablauf aus nachweis-aktion.ts echt.
+vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({
+  nachweisVerknuepfenTx: vi.fn(),
+  nachweisVerknuepfungBestaetigen: h.bestaetigen,
+  nachweisVerknuepfungFreigeben: h.freigeben,
 }));
 vi.mock('@/server/tcms/portal/ansprechpartner', () => ({ ansprechpersonenTx: h.ansprech }));
 
@@ -69,8 +84,10 @@ const FREIGABE = 'cmvf9nef30095dy7dsx5tay68';
 const CODE = '481516';
 const TX = { tx: true };
 const G = { tenantId: DEMO.tenant, contactId: DEMO.murat, clientId: DEMO.talwind };
-const K = { g: G, akteur: {}, mandantId: DEMO.talwind };
-const ABLAGE = { ...G, ctx: {} };
+const CTX = { tenantId: DEMO.tenant, actorId: DEMO.murat, actorType: 'CLIENT_CONTACT' };
+const K = { g: { ...G, ctx: CTX }, akteur: {}, mandantId: DEMO.talwind };
+const ABLAGE = { ...G, ctx: CTX };
+const VERKNUEPFUNG = 'e1000000-0000-4000-8000-0000000000c1';
 
 interface Spec {
   keinRecht?: string;
@@ -132,6 +149,18 @@ beforeEach(() => {
     groesse: f.size,
     sha256: 'cd'.repeat(32),
   }));
+  h.nachweisAblegen.mockImplementation(async (_g, f: File) => ({
+    verknuepfungId: VERKNUEPFUNG,
+    verweis: {
+      dokumentId: 'd0c00000-0000-4000-8000-0000000000c1',
+      dateiname: f.name,
+      mime: 'text/csv',
+      groesse: f.size,
+      sha256: 'cd'.repeat(32),
+    },
+  }));
+  h.bestaetigen.mockResolvedValue(true);
+  h.freigeben.mockResolvedValue(1);
   h.ansprech.mockResolvedValue({
     berufstraeger: { id: DEMO.anna, name: 'StB Dr. Anna Roth' },
     hauptbearbeitung: { id: DEMO.leon, name: 'Leon Brandt' },
@@ -164,6 +193,25 @@ describe('Mandant nur aus der Sitzung', () => {
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.portalAnlageEntfernen, {
       params: { durchfuehrungId: AUFGABE, nachweisId: NACHWEIS },
     });
+    // Freigabe der Verknüpfung mit dem Mandanten der Sitzung, nie aus dem Formular.
+    expect(h.freigeben).toHaveBeenCalledWith(
+      CTX,
+      { mandantId: DEMO.talwind, durchfuehrungId: AUFGABE, nachweisId: NACHWEIS },
+      'REMOVED',
+    );
+  });
+
+  it('Entfernen: Verknüpfung erst nach Erfolg im Tax-CMS frei (TCMS-NACHWEIS-001)', async () => {
+    await portalAnlageEntfernenAction(AUFGABE, NACHWEIS, null, new FormData());
+    const s = spec();
+    const p = s.parse!();
+    const v = await s.vorbereiten!(TX, K, p.data);
+    const fehler = new TcmsKonflikt({ status: 409 });
+    const rufe = vi.fn(async () => {
+      throw fehler;
+    });
+    await expect(s.aufruf({ rufe }, p.data, v)).rejects.toBe(fehler);
+    expect(h.freigeben).not.toHaveBeenCalled();
   });
 
   it('ungültige IDs: Ablehnung im Parse, kein Dienstaufruf', async () => {
@@ -273,6 +321,7 @@ describe('portalAnlagenHochladenAction', () => {
     const ablauf: string[] = [];
     const { r } = await lauf({ portalAufgabeLesen: aufgabe }, ablauf);
     expect(r).toMatchObject({ ok: false, errorCode: 'FORBIDDEN' });
+    expect(h.nachweisAblegen).not.toHaveBeenCalled();
     expect(h.ablegen).not.toHaveBeenCalled();
     expect(ablauf).toEqual(['portalAufgabeLesen']);
   });
@@ -292,10 +341,15 @@ describe('portalAnlagenHochladenAction', () => {
         ['dateien', schonDa],
       ]),
     );
-    const { d, r } = await lauf({ portalAufgabeLesen: aufgabe });
-    expect(h.kontext).toHaveBeenCalledWith(G);
-    expect(h.ablegen).toHaveBeenCalledTimes(1);
-    expect(h.ablegen).toHaveBeenCalledWith(ABLAGE, neu);
+    const { d, r } = await lauf({
+      portalAufgabeLesen: aufgabe,
+      portalAnlageAnhaengen: { nachweis: { id: NACHWEIS } },
+    });
+    expect(h.kontext).toHaveBeenCalledWith(K.g);
+    expect(h.ablegen).not.toHaveBeenCalled();
+    expect(h.nachweisAblegen).toHaveBeenCalledTimes(1);
+    // Ablegen und Verknüpfen mit genau dieser Durchführung (eine Commit-Transaktion).
+    expect(h.nachweisAblegen).toHaveBeenCalledWith(ABLAGE, neu, AUFGABE);
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.portalAnlageAnhaengen, {
       params: { durchfuehrungId: AUFGABE },
       body: {
@@ -309,6 +363,32 @@ describe('portalAnlagenHochladenAction', () => {
       },
     });
     expect(r).toEqual({ meldung: '1 Datei hochgeladen; bereits vorhanden: alt.csv.' });
+    // Annahme: Nachweis-ID an der Verknüpfung, keine Freigabe.
+    expect(h.bestaetigen).toHaveBeenCalledWith(CTX, VERKNUEPFUNG, NACHWEIS);
+    expect(h.freigeben).not.toHaveBeenCalled();
+  });
+
+  it('eindeutige Ablehnung: Verknüpfung frei („nicht angehängt“); offener Ausgang: Sperre bleibt', async () => {
+    const aufgabe = tcmsFixtures.portalAufgabeK23Murat();
+    const formularMitDatei = () => formular([['dateien', datei('neu.csv', 'x;y\n')]]);
+    const mitFehler = async (fehler: Error) => {
+      await portalAnlagenHochladenAction(AUFGABE, null, formularMitDatei());
+      const s = spec();
+      const p = s.parse!();
+      const v = await s.vorbereiten!(TX, K, p.data);
+      const rufe = vi.fn(async (e: { name: string }) => {
+        if (e.name === 'portalAnlageAnhaengen') throw fehler;
+        return { daten: aufgabe, requestId: 'r' };
+      });
+      await expect(s.aufruf({ rufe }, p.data, v)).rejects.toBe(fehler);
+    };
+    await mitFehler(new TcmsKonflikt({ status: 409 }));
+    expect(h.freigeben).toHaveBeenCalledWith(CTX, { verknuepfungId: VERKNUEPFUNG }, 'NOT_ATTACHED');
+    expect(h.bestaetigen).not.toHaveBeenCalled();
+    h.freigeben.mockClear();
+    await mitFehler(new TcmsNichtVerfuegbar('ZEITLIMIT'));
+    expect(h.freigeben).not.toHaveBeenCalled();
+    expect(h.bestaetigen).not.toHaveBeenCalled();
   });
 
   it('zu viele Dateien: Ablehnung im Parse', async () => {

@@ -175,6 +175,7 @@ Admins und Partner sehen unter `/staff/tcms/katalog` (Verweis im
 Einrichtungsassistenten) den Katalog des Branchenpakets: Risiken, Kontrollen,
 Ereignistypen, Häufigkeitsmatrix und Profilfragen – nur lesend und als
 **ungeprüfter Entwurf**, den Berufsträgerinnen und Berufsträger kalibrieren.
+
 ## Risiken, Kontrollen & Prüfung
 
 Diese Bereiche zeigen, welche Risiken ein Mandant hat, wie er sie mit
@@ -275,6 +276,7 @@ mit Bezug auf das Land.
   zehntausend. Uneindeutige Schreibweisen wie „1,234.56“ werden abgelehnt.
 - Ein neues Lagerland oder ein Wechsel der Schwelle legt das Tax-CMS als
   Ereignis im Ereigniseingang an. Der CSV-Import folgt.
+
 ## Ereignisse, Portal-Aufgaben und Audit
 
 Hier melden Mandanten Veränderungen, erledigen Kontrollaufgaben und geben
@@ -328,7 +330,10 @@ zu tun ist, Schritte mit Kommentaren, Kennzahlen, Anlagen und Ergebnis
   wird am Inhalt erkannt, jede Datei auf Viren geprüft. Hochgeladene Dateien
   liegen auch unter _Dokumente_ des Unternehmens. Mit dem Übermitteln werden
   die Anlagen gesperrt. Hochladen setzt voraus, dass die Kanzlei
-  Portal-Uploads freigeschaltet hat.
+  Portal-Uploads freigeschaltet hat. Solange eine Anlage zur Aufgabe gehört,
+  lässt sich das Dokument in der Ablage nicht löschen und keine neue Version
+  hochladen (wie bei Nachweisen der Kanzlei); nach **Entfernen** der Anlage
+  ist das wieder möglich.
 - Ist eine Bestätigung durch eine **zweite Person** beim Mandanten
   vorgesehen, bestätigt diese die Vollständigkeit oder gibt die Aufgabe mit
   Begründung zur Überarbeitung zurück.

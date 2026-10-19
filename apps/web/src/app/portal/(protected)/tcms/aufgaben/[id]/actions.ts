@@ -10,7 +10,9 @@
 // nimmt Dateien an (Portal-Dokumentenpipeline, server/tcms/portal/anlagen.ts)
 // – erst nachdem das Tax-CMS für diese Aufgabe das Bearbeitungsrecht meldet,
 // damit Unberechtigte keine Dateien ablegen – und hängt Verweise aus der
-// gespeicherten Fassung an.
+// gespeicherten Fassung an. Jede Anlage ist ein Nachweis der Durchführung
+// (TCMS-NACHWEIS-001): Verknüpfung beim Ablegen, Nachweis-ID nach Annahme,
+// Freigabe nach eindeutiger Ablehnung bzw. nach dem Entfernen.
 // =============================================================================
 
 import { z } from 'zod';
@@ -25,10 +27,14 @@ import type { ActionFailure } from '@/server/actions/action-runner';
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsPortalAktion } from '@/server/tcms/aktion';
 import {
+  nachweisAnhaengenUndBinden,
+  nachweisEntfernenUndFreigeben,
+} from '@/server/tcms/durchfuehrung/nachweis-aktion';
+import {
   dateiSha256,
   portalAblageKontext,
-  portalAnlageAblegen,
   portalDateienFeld,
+  portalNachweisAblegen,
 } from '@/server/tcms/portal/anlagen';
 import { koerperAusFormular, type AufgabeFormular } from '@/server/tcms/portal/aufgabe';
 
@@ -149,8 +155,16 @@ export async function portalAnlagenHochladenAction(
         };
       }
       for (const datei of neu) {
-        const verweis = await portalAnlageAblegen(g, datei);
-        await dienst.rufe(ENDPUNKTE.portalAnlageAnhaengen, { params, body: { verweis } });
+        // Ablegen und Verknüpfen in einer Commit-Transaktion, dann Anhängen und
+        // Nachführen der Verknüpfung wie bei Nachweisen der Kanzlei.
+        const verknuepft = await portalNachweisAblegen(g, datei, d.durchfuehrungId);
+        await nachweisAnhaengenUndBinden(
+          dienst,
+          g.ctx,
+          d.durchfuehrungId,
+          verknuepft,
+          ENDPUNKTE.portalAnlageAnhaengen,
+        );
       }
       const teil = neu.length === 1 ? '1 Datei hochgeladen' : `${neu.length} Dateien hochgeladen`;
       return {
@@ -169,8 +183,16 @@ export async function portalAnlageEntfernenAction(
   return tcmsPortalAktion({
     keinRecht: 'PORTAL_ZUGEORDNET',
     parse: () => parseActionInput(Anlage, { durchfuehrungId, nachweisId }, NICHT_GEFUNDEN),
-    aufruf: async (dienst, p): Promise<Lauf> => {
-      await dienst.rufe(ENDPUNKTE.portalAnlageEntfernen, { params: p });
+    // Mandant und Kontext nur aus der Portal-Sitzung.
+    vorbereiten: async (_tx, k) => ({ ctx: k.g.ctx, mandantId: k.g.clientId }),
+    aufruf: async (dienst, p, s): Promise<Lauf> => {
+      // Nach dem Entfernen im Tax-CMS die Verknüpfung freigeben (Löschsperre endet).
+      await nachweisEntfernenUndFreigeben(
+        dienst,
+        s.ctx,
+        { mandantId: s.mandantId, ...p },
+        ENDPUNKTE.portalAnlageEntfernen,
+      );
       return { meldung: 'Anlage entfernt.' };
     },
   });
