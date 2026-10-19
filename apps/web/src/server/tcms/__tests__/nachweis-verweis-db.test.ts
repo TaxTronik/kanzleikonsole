@@ -24,6 +24,9 @@ vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: 
 vi.mock('@/server/tcms/seite', () => ({ tcmsLesenOptional: vi.fn(), tcmsTenantLesen: vi.fn() }));
 
 import {
+  meldungsAnlagenFreigeben,
+  meldungsAnlagenZuordnen,
+  meldungsAnlageVerknuepfenTx,
   nachweisAbgleichTx,
   NachweisDokumentUnzulaessig,
   nachweisDokumenteTx,
@@ -42,6 +45,31 @@ if (!enabled && process.env.CI === 'true') {
 }
 
 const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
+
+/**
+ * Meldung eines Datenbankfehlers ohne den Codeausschnitt, den Prisma an die
+ * Fehlermeldung hängt: Er zeigt die Zeilen um den Aufruf – oft samt dem
+ * erwarteten Muster dieses Tests – und ließe `toThrow(/…/)` sonst auch dann
+ * bestehen, wenn die Datenbank aus einem anderen Grund ablehnt.
+ */
+function ohneCodeausschnitt(text: string): string {
+  const zeilen = text.split('\n');
+  let letzte = -1;
+  zeilen.forEach((zeile, i) => {
+    if (/^\s*(?:→\s*)?\d+\s/.test(zeile)) letzte = i;
+  });
+  return zeilen.slice(letzte + 1).join('\n');
+}
+
+/** Erwartet eine Ablehnung, deren Meldung (ohne Codeausschnitt) `muster` trifft. */
+async function abgewiesen(aufruf: Promise<unknown>, muster: RegExp): Promise<void> {
+  const fehler = await aufruf.then(
+    () => null,
+    (e: unknown) => e,
+  );
+  expect(fehler, 'erwartet: Ablehnung').toBeInstanceOf(Error);
+  expect(ohneCodeausschnitt((fehler as Error).message)).toMatch(muster);
+}
 
 (enabled ? describe : describe.skip)('Nachweis-Verknüpfungen (TCMS-NACHWEIS-001)', () => {
   // Freigegebene Clients aus @taxtronik/db (prisma-client-guard): Owner nur für
@@ -238,20 +266,18 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
             documentId: d.id,
             documentVersionId: daten.versionId,
             sha256: Buffer.alloc(32, daten.byte),
+            tcmsSubject: 'EXECUTION',
             tcmsExecutionId: DURCHF,
             createdBy: staffId,
           },
         }),
       );
-    await expect(anlegen({ versionId: d.versionen[0]!, byte: 3 })).rejects.toThrow(
-      /neueste, saubere Version/,
-    );
-    await expect(anlegen({ versionId: d.versionen[1]!, byte: 9 })).rejects.toThrow(
-      /neueste, saubere Version/,
-    );
-    await expect(
+    await abgewiesen(anlegen({ versionId: d.versionen[0]!, byte: 3 }), /neueste, saubere Version/);
+    await abgewiesen(anlegen({ versionId: d.versionen[1]!, byte: 9 }), /neueste, saubere Version/);
+    await abgewiesen(
       anlegen({ versionId: d.versionen[1]!, byte: 4, clientId: andererMandant }),
-    ).rejects.toThrow(/nicht verfügbar/);
+      /nicht verfügbar/,
+    );
     await expect(anlegen({ versionId: d.versionen[1]!, byte: 4 })).resolves.toBeTruthy();
   });
 
@@ -262,10 +288,8 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
     );
     const aendern = (data: Record<string, unknown>) =>
       imTenant((tx) => tx.tcmsDocumentReference.update({ where: { id: verknuepfungId }, data }));
-    await expect(aendern({ sha256: Buffer.alloc(32, 1) })).rejects.toThrow(/unveränderlich/);
-    await expect(aendern({ tcmsExecutionId: 'anderedurchfuehrung' })).rejects.toThrow(
-      /unveränderlich/,
-    );
+    await abgewiesen(aendern({ sha256: Buffer.alloc(32, 1) }), /unveränderlich/);
+    await abgewiesen(aendern({ tcmsExecutionId: 'anderedurchfuehrung' }), /unveränderlich/);
     expect(
       await nachweisVerknuepfungBestaetigen(
         { tenantId, actorId: staffId, actorType: 'STAFF' },
@@ -273,7 +297,7 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
         'nachweisaaa1',
       ),
     ).toBe(true);
-    await expect(aendern({ tcmsEvidenceId: 'nachweisbbb2' })).rejects.toThrow(/nur einmal/);
+    await abgewiesen(aendern({ tcmsEvidenceId: 'nachweisbbb2' }), /nur einmal/);
     expect(
       await nachweisVerknuepfungFreigeben(
         { tenantId, actorId: staffId, actorType: 'STAFF' },
@@ -281,9 +305,10 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
         'REMOVED',
       ),
     ).toBe(1);
-    await expect(
+    await abgewiesen(
       aendern({ releasedAt: null, releasedBy: null, releaseReason: null }),
-    ).rejects.toThrow(/endgültig/);
+      /endgültig/,
+    );
     // Eine zweite Freigabe (z. B. erneutes Entfernen) ändert nichts und scheitert nicht.
     expect(
       await nachweisVerknuepfungFreigeben(
@@ -365,11 +390,12 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
           data: { deletedAt: new Date(), deletedByStaff: staffId },
         }),
       );
-    await expect(loeschen()).rejects.toThrow(/als Nachweis im Tax-CMS verknüpft/);
+    await abgewiesen(loeschen(), /als Nachweis im Tax-CMS verknüpft/);
     // Auch die Owner-Rolle (Worker, Migrationen) löscht nicht still.
-    await expect(
+    await abgewiesen(
       owner.document.update({ where: { id: d.id }, data: { deletedAt: new Date() } }),
-    ).rejects.toThrow(/als Nachweis im Tax-CMS verknüpft/);
+      /als Nachweis im Tax-CMS verknüpft/,
+    );
     // Hartes Löschen verhindert der Fremdschlüssel.
     await expect(owner.document.delete({ where: { id: d.id } })).rejects.toThrow();
     // Nach eindeutiger Ablehnung des Anhängens ist das Dokument wieder frei.
@@ -380,6 +406,132 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
     );
     expect(await imTenant((tx) => istNachweisDokumentTx(tx, d.id))).toBe(false);
     await expect(loeschen()).resolves.toMatchObject({ id: d.id });
+  });
+
+  it('Meldungsanlagen (TCMS s7): genau ein Bezug, Ereignis-ID einmal, Löschsperre für App- und Owner-Rolle, Freigabe nach Verwerfen', async () => {
+    const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
+    const kontakt = randomUUID();
+    const d = await dokument();
+    const id = await imTenant((tx) =>
+      meldungsAnlageVerknuepfenTx(tx, { tenantId, mandantId: mandant, kontaktId: kontakt }, d.id),
+    );
+    expect(await owner.tcmsDocumentReference.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      tcmsSubject: 'EVENT',
+      tcmsExecutionId: null,
+      tcmsEvidenceId: null,
+      tcmsEventId: null,
+      createdBy: kontakt,
+      documentVersionId: d.versionen[0],
+    });
+    // Gesperrt, solange offen – auch ohne Ereignis-ID (Ausgang der Meldung offen).
+    expect(await imTenant((tx) => istNachweisDokumentTx(tx, d.id))).toBe(true);
+    const appLoeschen = () =>
+      imTenant((tx) =>
+        tx.document.update({
+          where: { id: d.id },
+          data: { deletedAt: new Date(), deletedByStaff: staffId },
+        }),
+      );
+    const ownerLoeschen = () =>
+      owner.document.update({ where: { id: d.id }, data: { deletedAt: new Date() } });
+    await abgewiesen(appLoeschen(), /als Nachweis im Tax-CMS verknüpft/);
+    await abgewiesen(ownerLoeschen(), /als Nachweis im Tax-CMS verknüpft/);
+
+    // Genau ein Bezug: keine Durchführung, keine Nachweis-ID, Bezug unveränderlich.
+    const aendern = (data: Record<string, unknown>) =>
+      imTenant((tx) => tx.tcmsDocumentReference.update({ where: { id }, data }));
+    await abgewiesen(aendern({ tcmsExecutionId: DURCHF }), /unveränderlich/);
+    await abgewiesen(aendern({ tcmsSubject: 'EXECUTION' }), /unveränderlich/);
+    await abgewiesen(aendern({ tcmsEvidenceId: 'nachweisfff1' }), /subject_check/);
+    const roh = (data: Record<string, unknown>) =>
+      imTenant((tx) =>
+        tx.tcmsDocumentReference.create({
+          data: {
+            tenantId,
+            clientId: mandant,
+            documentId: d.id,
+            documentVersionId: d.versionen[0]!,
+            sha256: Buffer.alloc(32, 7),
+            createdBy: staffId,
+            tcmsSubject: 'EVENT',
+            ...data,
+          },
+        }),
+      );
+    await abgewiesen(roh({ tcmsExecutionId: DURCHF }), /subject_check/);
+    await abgewiesen(roh({ tcmsSubject: 'EXECUTION' }), /subject_check/);
+    await abgewiesen(roh({ tcmsSubject: 'ANDERES' }), /subject_check/);
+
+    // Ereignis-ID: Format der Objekt-IDs, nur offene, höchstens einmal.
+    await abgewiesen(meldungsAnlagenZuordnen(ctx, [id], 'Ereignis-1'), /event_id_check/);
+    expect(await meldungsAnlagenZuordnen(ctx, [id], 'ereignisaaa1')).toBe(1);
+    expect(await meldungsAnlagenZuordnen(ctx, [id], 'ereignisbbb2')).toBe(0);
+    await abgewiesen(aendern({ tcmsEventId: 'ereignisbbb2' }), /nur einmal/);
+    // Freigabe der Nachweise trifft keine Meldungsanlage; „entfernt“ gibt es dort nicht.
+    expect(await nachweisVerknuepfungFreigeben(ctx, { verknuepfungId: id }, 'NOT_ATTACHED')).toBe(
+      0,
+    );
+    await abgewiesen(
+      aendern({ releasedAt: new Date(), releasedBy: staffId, releaseReason: 'REMOVED' }),
+      /subject_check/,
+    );
+    // Verwerfen: nur Anlagen dieses Ereignisses dieses Mandanten, nur im eigenen Tenant.
+    expect(
+      await meldungsAnlagenFreigeben(
+        ctx,
+        { mandantId: andererMandant, ereignisId: 'ereignisaaa1' },
+        'DISCARDED',
+      ),
+    ).toBe(0);
+    expect(
+      await meldungsAnlagenFreigeben(
+        { ...ctx, tenantId: fremderTenant },
+        { mandantId: mandant, ereignisId: 'ereignisaaa1' },
+        'DISCARDED',
+      ),
+    ).toBe(0);
+    expect(
+      await meldungsAnlagenFreigeben(
+        ctx,
+        { mandantId: mandant, ereignisId: 'ereignisaaa1' },
+        'DISCARDED',
+      ),
+    ).toBe(1);
+    expect(await owner.tcmsDocumentReference.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      releaseReason: 'DISCARDED',
+      releasedBy: staffId,
+      tcmsEventId: 'ereignisaaa1',
+    });
+    await abgewiesen(aendern({ tcmsEventId: null }), /nur einmal/);
+    expect(await imTenant((tx) => istNachweisDokumentTx(tx, d.id))).toBe(false);
+    await expect(appLoeschen()).resolves.toMatchObject({ id: d.id });
+
+    // Meldung nie angenommen: Freigabe der Verknüpfungen dieses Vorgangs.
+    const d2 = await dokument();
+    const offen = await imTenant((tx) =>
+      meldungsAnlageVerknuepfenTx(tx, { tenantId, mandantId: mandant, kontaktId: kontakt }, d2.id),
+    );
+    expect(await meldungsAnlagenFreigeben(ctx, { verknuepfungIds: [offen] }, 'NOT_ATTACHED')).toBe(
+      1,
+    );
+    expect(await imTenant((tx) => istNachweisDokumentTx(tx, d2.id))).toBe(false);
+
+    // Ein Nachweis einer Durchführung wird nie „verworfen“ und nie einem Ereignis zugeordnet.
+    const d3 = await dokument();
+    const n = await imTenant((tx) => nachweisVerknuepfenTx(tx, bezug(), d3.id, DURCHF));
+    const nachweisAendern = (data: Record<string, unknown>) =>
+      imTenant((tx) => tx.tcmsDocumentReference.update({ where: { id: n.verknuepfungId }, data }));
+    await abgewiesen(nachweisAendern({ tcmsEventId: 'ereignisccc3' }), /subject_check/);
+    await abgewiesen(
+      nachweisAendern({ releasedAt: new Date(), releasedBy: staffId, releaseReason: 'DISCARDED' }),
+      /subject_check/,
+    );
+    expect(await meldungsAnlagenZuordnen(ctx, [n.verknuepfungId], 'ereignisccc3')).toBe(0);
+    // Die Freigabe der Meldungsanlagen trifft nie einen Nachweis.
+    expect(
+      await meldungsAnlagenFreigeben(ctx, { verknuepfungIds: [n.verknuepfungId] }, 'NOT_ATTACHED'),
+    ).toBe(0);
+    expect(await imTenant((tx) => istNachweisDokumentTx(tx, d3.id))).toBe(true);
   });
 
   it('RLS: ein anderer Tenant sieht keine Verknüpfungen', async () => {
@@ -424,6 +576,8 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
     const d = await dokument();
     let freigeben!: () => void;
     const halten = new Promise<void>((resolve) => (freigeben = resolve));
+    let gesperrt!: () => void;
+    const sperreGehalten = new Promise<void>((resolve) => (gesperrt = resolve));
     // Löschaktion: Dokumentzeile sperren und ausblenden, Commit erst später.
     const loeschung = imTenant(async (tx) => {
       await tx.$queryRaw`SELECT d.id FROM document d WHERE d.id = ${d.id}::uuid FOR UPDATE OF d`;
@@ -431,9 +585,12 @@ const DURCHF = 'cmvf9pzy3003jfu7d4oo44g6s';
         where: { id: d.id },
         data: { deletedAt: new Date(), deletedByStaff: staffId },
       });
+      gesperrt();
       await halten;
     });
-    // Verknüpfen wartet auf die Sperre und scheitert nach dem Commit.
+    // Erst wenn die Löschaktion die Zeile hält (sonst entscheidet der Zufall die
+    // Reihenfolge): Verknüpfen wartet auf die Sperre und scheitert nach dem Commit.
+    await sperreGehalten;
     const verknuepfung = imTenant((tx) => nachweisVerknuepfenTx(tx, bezug(), d.id, DURCHF));
     const started = Date.now();
     for (;;) {

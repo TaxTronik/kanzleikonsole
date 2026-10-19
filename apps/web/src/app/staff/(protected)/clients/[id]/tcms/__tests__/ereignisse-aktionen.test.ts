@@ -6,7 +6,10 @@
 //     geprüft (Kanzlei: Zugriff, Mandant: Kontakt genau dieses Mandanten).
 //   - Vier-Augen beim Verwerfen entscheidet der Dienst; die Bestätigung bildet
 //     dessen Ablehnung auf den festen Vier-Augen-Text ab.
-// Fachkatalog: TCMS-AKTEUR-001
+//   - Nach dem bestätigten Verwerfen werden die Anlagen einer Portal-Meldung
+//     freigegeben – mit der Antwort des Dienstes und dem gebundenen Mandanten
+//     (TCMS-NACHWEIS-001; Eindeutigkeit prüft portal-meldung.test.ts).
+// Fachkatalog: TCMS-AKTEUR-001, TCMS-NACHWEIS-001
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,6 +17,7 @@ const h = vi.hoisted(() => ({
   spec: null as null | Record<string, unknown>,
   kanzlei: vi.fn(),
   kontakte: vi.fn(),
+  nachVerwerfen: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -27,6 +31,7 @@ vi.mock('@/server/tcms/aktion', () => ({
     return { ok: true };
   }),
 }));
+vi.mock('@/server/tcms/portal/meldung', () => ({ meldungsAnlagenNachVerwerfen: h.nachVerwerfen }));
 vi.mock('@/server/tcms/personen', async (original) => ({
   ...(await original<typeof import('@/server/tcms/personen')>()),
   kanzleiPersonenFuerMandantTx: h.kanzlei,
@@ -54,7 +59,8 @@ const F_PROFIL = 'cmvf9ned1008idy7ddnhhtfja';
 const F_RISIKO = 'cmvf9ned1008jdy7d547w1cbs';
 const F_KONTROLLE = 'cmvf9ned1008kdy7dhy6gg6vm';
 const TX = { tx: true };
-const K = { g: { tenantId: DEMO.tenant }, akteur: {}, mandantId: MANDANT };
+const CTX = { tenantId: DEMO.tenant, actorId: DEMO.leon, actorType: 'STAFF' };
+const K = { g: { tenantId: DEMO.tenant, ctx: CTX }, akteur: {}, mandantId: MANDANT };
 const BEGRUENDUNG = 'Die Meldung betrifft eine bereits erfasste Änderung (2026-T-0342).';
 
 interface Spec {
@@ -256,10 +262,21 @@ describe('Verwerfen mit Vier-Augen', () => {
     await ereignisVerwerfenBestaetigenAction(MANDANT, EREIGNIS, null, new FormData());
     expect(spec().keinRecht).toBe('VIER_AUGEN');
     expect(spec().mandantId).toBe(MANDANT);
-    ({ d } = await lauf({ nummer: '2026-T-0345' }));
+    const verworfen = { id: EREIGNIS, nummer: '2026-T-0345', status: 'VERWORFEN' };
+    ({ d } = await lauf(verworfen));
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.ereignisVerwerfenBestaetigen, {
       params: { ereignisId: EREIGNIS },
     });
+    // Anlagen der Meldung: Freigabe mit der Antwort, nur dieses Ereignis des
+    // gebundenen Mandanten, im Kontext der bestätigenden Person.
+    expect(h.nachVerwerfen).toHaveBeenCalledWith(
+      CTX,
+      { mandantId: MANDANT, ereignisId: EREIGNIS },
+      verworfen,
+    );
+    expect(h.nachVerwerfen.mock.invocationCallOrder[0]!).toBeGreaterThan(
+      d.rufe.mock.invocationCallOrder[0]!,
+    );
 
     await ereignisVerwerfenAblehnenAction(MANDANT, EREIGNIS, null, new FormData());
     const zurueck = await lauf({ zurueckgezogen: true });

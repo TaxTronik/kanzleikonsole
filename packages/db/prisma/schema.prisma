@@ -452,7 +452,8 @@ model MandateArtifactSource {
 /// gescannte Version eines Dokuments desselben Mandanten (Migration
 /// 20261019180000). Höchstens eine offene Verknüpfung je Nachweis-ID
 /// (partieller Unique-Index tcms_document_reference_open_evidence, nicht in
-/// Prisma abbildbar).
+/// Prisma abbildbar). Seit TCMS s7 bindet sie ebenso die Anlagen einer
+/// Ereignismeldung aus dem Portal (tcmsSubject EVENT, Migration 20261019190000).
 model TcmsDocumentReference {
   id                String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId          String          @map("tenant_id") @db.Uuid
@@ -460,15 +461,22 @@ model TcmsDocumentReference {
   documentId        String          @map("document_id") @db.Uuid
   documentVersionId String          @map("document_version_id") @db.Uuid
   sha256            Bytes
-  /// Durchführung im Tax-CMS (Objekt-ID des Dienstes).
-  tcmsExecutionId   String          @map("tcms_execution_id")
+  /// Bezug im Tax-CMS: EXECUTION (Nachweis einer Durchführung) oder EVENT
+  /// (Anlage einer Ereignismeldung aus dem Portal); CHECK
+  /// tcms_document_reference_subject_check (Migration 20261019190000).
+  tcmsSubject       String          @map("tcms_subject")
+  /// Durchführung im Tax-CMS (Objekt-ID des Dienstes); nur bei EXECUTION.
+  tcmsExecutionId   String?         @map("tcms_execution_id")
   /// Nachweis im Tax-CMS; null, solange das Anhängen aussteht oder unklar ist.
   tcmsEvidenceId    String?         @map("tcms_evidence_id")
+  /// Ereignis im Tax-CMS (nur EVENT); null, bis der Dienst die Meldung angenommen hat.
+  tcmsEventId       String?         @map("tcms_event_id")
   createdBy         String          @map("created_by") @db.Uuid
   createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   releasedAt        DateTime?       @map("released_at") @db.Timestamptz(6)
   releasedBy        String?         @map("released_by") @db.Uuid
-  /// REMOVED (Nachweis entfernt) oder NOT_ATTACHED (vom Tax-CMS abgewiesen).
+  /// REMOVED (Nachweis entfernt), NOT_ATTACHED (vom Tax-CMS abgewiesen) oder
+  /// DISCARDED (Ereignismeldung verworfen, nur EVENT).
   releaseReason     String?         @map("release_reason")
   tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   client            Client          @relation(fields: [clientId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -477,6 +485,7 @@ model TcmsDocumentReference {
 
   @@index([tenantId, documentId])
   @@index([clientId, tcmsExecutionId])
+  @@index([clientId, tcmsEventId])
   @@index([documentVersionId])
   @@map("tcms_document_reference")
 }

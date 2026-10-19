@@ -6338,7 +6338,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe hochladen. Offen gebliebene Verknüpfungen nach unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort."
+        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe hochladen, und für Anlagen einer Ereignismeldung im Portal (gebunden in der Transaktion der Ablage, frei erst nach eindeutiger Ablehnung der Meldung oder nach dem Verwerfen des Ereignisses). Offen gebliebene Verknüpfungen nach unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort."
       },
       "sources": [
         {
@@ -6375,9 +6375,13 @@
         "apps/web/src/app/staff/(protected)/documents/actions.ts",
         "apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts",
         "apps/web/src/server/tcms/portal/anlagen.ts",
+        "apps/web/src/server/tcms/portal/meldung.ts",
         "apps/web/src/app/portal/(protected)/tcms/aufgaben/[id]/actions.ts",
+        "apps/web/src/app/portal/(protected)/tcms/ereignis/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/ereignisse/actions.ts",
         "packages/db/prisma/schema.prisma",
-        "packages/db/prisma/migrations/20261019180000_tcms_document_reference/migration.sql"
+        "packages/db/prisma/migrations/20261019180000_tcms_document_reference/migration.sql",
+        "packages/db/prisma/migrations/20261019190000_tcms_document_reference_event/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/server/tcms/__tests__/nachweis-verweis-db.test.ts",
@@ -6390,7 +6394,9 @@
         "apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions.test.ts",
         "apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts",
         "apps/web/src/server/tcms/__tests__/portal-anlagen.test.ts",
+        "apps/web/src/server/tcms/__tests__/portal-meldung.test.ts",
         "apps/web/src/app/portal/(protected)/tcms/__tests__/portal-aktionen.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-aktionen.test.ts",
         "apps/web/src/server/tcms/__tests__/bereich-d-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
@@ -6404,7 +6410,7 @@
       ],
       "tags": ["tcms", "nachweis", "dokumente", "loeschsperre"],
       "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/tcms-nachweis-001-dokumentbindung.md",
-      "summary": "Das Tax-CMS speichert zu einem Nachweis einer Kontrolldurchführung nur einen Verweis (Dokument-ID, Dateiname, MIME-Typ, Größe, SHA-256); die Datei liegt in der Dokumentablage der kanzleikonsole. Die kanzleikonsole bildet diesen Verweis ausschließlich aus der gespeicherten, sauber gescannten neuesten Version eines Dokuments genau dieses Mandanten, nie aus Formularangaben. Sie liefert die Datei nur mit ihren eigenen Rechten aus und nur, wenn der SHA-256 der auszuliefernden Version dem Verweis entspricht. Solange ein Nachweis auf ein Dokument verweist, lässt sich das Dokument nicht löschen und keine neue Version hochladen."
+      "summary": "Das Tax-CMS speichert zu einem Nachweis einer Kontrolldurchführung nur einen Verweis (Dokument-ID, Dateiname, MIME-Typ, Größe, SHA-256); die Datei liegt in der Dokumentablage der kanzleikonsole. Die kanzleikonsole bildet diesen Verweis ausschließlich aus der gespeicherten, sauber gescannten neuesten Version eines Dokuments genau dieses Mandanten, nie aus Formularangaben. Sie liefert die Datei nur mit ihren eigenen Rechten aus und nur, wenn der SHA-256 der auszuliefernden Version dem Verweis entspricht. Solange ein Nachweis auf ein Dokument verweist, lässt sich das Dokument nicht löschen und keine neue Version hochladen. Dasselbe gilt seit TCMS s7 für Anlagen einer Ereignismeldung aus dem Portal: Auch sie sind im Tax-CMS nur Verweise (Dokument-ID, SHA-256) und binden das Dokument, bis die Meldung eindeutig abgelehnt oder das Ereignis verworfen ist."
     },
     {
       "id": "TCMS-SAMPLE-PROOF-001",

@@ -27,8 +27,11 @@ import 'server-only';
 //     (TCMS-NACHWEIS-001): `portalNachweisAblegen` verknüpft das Dokument in
 //     DERSELBEN Commit-Transaktion über `nachweisVerknuepfenTx` (Bereich C) –
 //     danach sind Löschen und neue Versionen gesperrt, bis der Nachweis im
-//     Tax-CMS entfernt ist. Anlagen einer Ereignismeldung (`portalAnlageAblegen`)
-//     gehören zu keiner Durchführung und bleiben unverknüpft (offener Punkt).
+//     Tax-CMS entfernt ist. Anlagen einer Ereignismeldung (`portalAnlageAblegen`,
+//     TCMS s7) verweisen im Tax-CMS ebenso über Dokument-ID und SHA-256 und
+//     werden in derselben Commit-Transaktion gebunden
+//     (`meldungsAnlageVerknuepfenTx`, Bezug „Ereignis“); die Ereignis-ID folgt
+//     nach Annahme der Meldung (server/tcms/portal/meldung.ts).
 // =============================================================================
 
 import { createHash } from 'node:crypto';
@@ -52,7 +55,10 @@ import {
   PortalFeatureDisabledError,
   readPortalFeaturesTx,
 } from '@/server/settings/portal-features';
-import { nachweisVerknuepfenTx } from '@/server/tcms/durchfuehrung/verweis';
+import {
+  meldungsAnlageVerknuepfenTx,
+  nachweisVerknuepfenTx,
+} from '@/server/tcms/durchfuehrung/verweis';
 import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
 import type { NachweisVerknuepft } from '@/server/tcms/durchfuehrung/nachweis-aktion';
 
@@ -189,17 +195,32 @@ export function pruefePortalDatei(datei: File): void {
   if (datei.size > PORTAL_MAX_ANLAGE_BYTES) throw new TcmsAnlageAbgelehnt('GROESSE');
 }
 
+/** Abgelegte Anlage einer Ereignismeldung: Verweis und offene Verknüpfung. */
+export interface MeldungsAnlageAbgelegt {
+  verweis: TcmsAnlageVerweis;
+  verknuepfungId: string;
+}
+
 /**
- * Legt eine Portal-Anlage als Dokument des Sitzungsmandanten ab und liefert den
- * Verweis aus der gespeicherten Fassung. Fehler kommen als UI-taugliche
- * Ursache (ActionError, UploadRejectedError) beim zentralen Fehler-Mapping an.
- * Für Anlagen einer Ereignismeldung (keine Durchführung, keine Verknüpfung).
+ * Legt eine Portal-Anlage einer Ereignismeldung als Dokument des
+ * Sitzungsmandanten ab und bindet es in derselben Commit-Transaktion
+ * (TCMS-NACHWEIS-001, Bezug „Ereignis“, `created_by` = Kontakt der Sitzung).
+ * Liefert den Verweis aus der gespeicherten Fassung samt offener Verknüpfung.
+ * Fehler kommen als UI-taugliche Ursache (ActionError, UploadRejectedError)
+ * beim zentralen Fehler-Mapping an.
  */
 export function portalAnlageAblegen(
   g: PortalAblageKontext,
   datei: File,
-): Promise<TcmsAnlageVerweis> {
-  return ablegen(g, datei, async (_tx, verweis) => verweis);
+): Promise<MeldungsAnlageAbgelegt> {
+  return ablegen(g, datei, async (tx, verweis) => ({
+    verweis,
+    verknuepfungId: await meldungsAnlageVerknuepfenTx(
+      tx,
+      { tenantId: g.tenantId, mandantId: g.clientId, kontaktId: g.contactId },
+      verweis.dokumentId,
+    ),
+  }));
 }
 
 /**

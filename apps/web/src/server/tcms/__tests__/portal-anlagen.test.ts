@@ -9,6 +9,8 @@
 //   - Anlagen einer Kontrollaufgabe werden in DERSELBEN Commit-Transaktion als
 //     Nachweis der Durchführung verknüpft (Löschsperre, TCMS-NACHWEIS-001);
 //     der Verweis kommt dann aus der Verknüpfung (gespeicherte Version).
+//   - Anlagen einer Ereignismeldung (TCMS s7) werden ebenso in DERSELBEN
+//     Commit-Transaktion gebunden (Bezug „Ereignis“, Kontakt als Urheber).
 // Fachkatalog: TCMS-DIENST-001, TCMS-NACHWEIS-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -20,6 +22,7 @@ const h = vi.hoisted(() => ({
   anlegen: vi.fn(),
   limit: vi.fn(),
   verknuepfen: vi.fn(),
+  meldungsAnlage: vi.fn(),
   schritte: [] as string[],
 }));
 
@@ -31,7 +34,10 @@ vi.mock('@/server/settings/portal-features', () => ({
   PortalFeatureDisabledError: class extends Error {},
 }));
 vi.mock('@/server/documents/upload-helpers', () => ({ createDocumentWithVersion: h.anlegen }));
-vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({ nachweisVerknuepfenTx: h.verknuepfen }));
+vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({
+  nachweisVerknuepfenTx: h.verknuepfen,
+  meldungsAnlageVerknuepfenTx: h.meldungsAnlage,
+}));
 // Ablauf von runJournaledUpload in Kurzform: check → Bytes → prepare/afterPrepare → commit.
 vi.mock('@/server/documents/journaled-upload', () => ({
   uploadFailureCause: (e: unknown) => e,
@@ -91,6 +97,10 @@ beforeEach(() => {
   h.schritte = [];
   h.limit.mockResolvedValue({ ok: true });
   h.anlegen.mockResolvedValue({ document: { id: 'd0c00000-0000-4000-8000-0000000000a1' } });
+  h.meldungsAnlage.mockImplementation(async () => {
+    h.schritte.push('binden');
+    return 'e2000000-0000-4000-8000-0000000000b2';
+  });
 });
 
 describe('effektiverPortalMime (Typ nach Inhalt)', () => {
@@ -169,7 +179,10 @@ describe('portalAnlageAblegen', () => {
   it('Verweis aus der gespeicherten Fassung; Dokument am Sitzungsmandanten, geteilt, auditiert', async () => {
     h.erkannt = 'application/pdf';
     // Browser meldet etwas anderes als den Inhalt: es zählt der erkannte Typ.
-    const verweis = await portalAnlageAblegen(G, datei('C:\\tmp\\Prüfung.pdf', 'text/plain', 7));
+    const { verweis, verknuepfungId } = await portalAnlageAblegen(
+      G,
+      datei('C:\\tmp\\Prüfung.pdf', 'text/plain', 7),
+    );
     expect(verweis).toEqual({
       dokumentId: 'd0c00000-0000-4000-8000-0000000000a1',
       dateiname: 'Prüfung.pdf',
@@ -177,6 +190,7 @@ describe('portalAnlageAblegen', () => {
       groesse: 7,
       sha256: 'ab'.repeat(32),
     });
+    expect(verknuepfungId).toBe('e2000000-0000-4000-8000-0000000000b2');
     const angelegt = h.anlegen.mock.calls[0]![1] as {
       documentData: Record<string, unknown>;
       createdById: string;
@@ -195,8 +209,26 @@ describe('portalAnlageAblegen', () => {
       G,
       expect.objectContaining({ action: 'document.upload', resourceType: 'document' }),
     );
-    // Anlage einer Meldung: keine Durchführung, keine Verknüpfung.
+    // Anlage einer Meldung (TCMS s7): gebunden in derselben Commit-Transaktion,
+    // Bezug „Ereignis“, Kontakt als Urheber – nie als Nachweis einer Durchführung.
     expect(h.verknuepfen).not.toHaveBeenCalled();
+    expect(h.meldungsAnlage).toHaveBeenCalledWith(
+      COMMIT_TX,
+      { tenantId: G.tenantId, mandantId: G.clientId, kontaktId: G.contactId },
+      'd0c00000-0000-4000-8000-0000000000a1',
+    );
+    expect(h.schritte).toEqual(['check', 'prepare', 'binden', 'commit']);
+    expect(h.audit.mock.invocationCallOrder[0]!).toBeLessThan(
+      h.meldungsAnlage.mock.invocationCallOrder[0]!,
+    );
+  });
+
+  it('Ereignismeldung: scheitert die Bindung, scheitert der Commit (keine ungebundene Ablage)', async () => {
+    h.erkannt = 'application/pdf';
+    const fehler = new Error('tcms_document_reference: Dokument dieses Mandanten nicht verfügbar');
+    h.meldungsAnlage.mockRejectedValue(fehler);
+    await expect(portalAnlageAblegen(G, datei('x.pdf', 'application/pdf'))).rejects.toBe(fehler);
+    expect(h.schritte).toEqual(['check', 'prepare']);
   });
 
   it('Kontrollaufgabe: Verknüpfung in derselben Commit-Transaktion, Kontakt als Urheber', async () => {

@@ -87,10 +87,11 @@ export async function offeneVerknuepfungenTx(
   durchfuehrungId: string,
   bis: Date,
 ): Promise<{ offen: OffeneVerknuepfung[]; gebunden: Set<string> }> {
-  const offen = await tx.tcmsDocumentReference.findMany({
+  const zeilen = await tx.tcmsDocumentReference.findMany({
     where: {
       tenantId: bezug.tenantId,
       clientId: bezug.mandantId,
+      tcmsSubject: 'EXECUTION',
       tcmsExecutionId: durchfuehrungId,
       releasedAt: null,
       tcmsEvidenceId: null,
@@ -98,8 +99,9 @@ export async function offeneVerknuepfungenTx(
     },
     orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: ABGLEICH_MAX_JE_AUFRUF,
-    select: { id: true, documentId: true, tcmsExecutionId: true },
+    select: { id: true, documentId: true },
   });
+  const offen = zeilen.map((v) => ({ ...v, tcmsExecutionId: durchfuehrungId }));
   const dokumente = [...new Set(offen.map((v) => v.documentId))];
   const belegt =
     dokumente.length === 0

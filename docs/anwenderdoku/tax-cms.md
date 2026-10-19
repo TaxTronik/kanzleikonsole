@@ -342,6 +342,8 @@ gesperrte zeigen den Grund. Ein früherer Stichtag zeigt nur an.
 - **Schutz:** Solange ein Dokument als Nachweis verknüpft ist, lässt es sich
   in der Ablage nicht löschen und keine neue Version hochladen. Entfernen Sie
   zuerst den Nachweis in der Durchführung (nur vor dem Einreichen möglich).
+  Dasselbe gilt für Anlagen einer Ereignismeldung aus dem Portal (siehe
+  „Ereignis melden“).
 - **Unklarer Ausgang:** Hat das Tax-CMS beim Anhängen nicht rechtzeitig
   geantwortet, bleibt das Dokument vorsorglich gesperrt. Öffnet eine
   Kanzleiperson die Durchführung später erneut (frühestens nach fünf
@@ -428,7 +430,10 @@ Klick öffnet die Triage:
 - **Anlagen** einer Portal-Meldung öffnen Sie aus der Triage. Ausgeliefert
   wird nur der Inhalt, den das Tax-CMS festgehalten hat (SHA-256 und Größe);
   wurde das Dokument in der Ablage ersetzt, erscheint ein Hinweis statt der
-  Datei.
+  Datei. Solange die Meldung auf eine Anlage verweist, lässt sich das
+  Dokument in der Ablage nicht löschen und keine neue Version hochladen; mit
+  dem bestätigten **Verwerfen** des Ereignisses wird es wieder frei
+  (Abschließen gibt die Anlagen nicht frei).
 
 ### Kontrollaufgabe im Portal
 
@@ -464,6 +469,15 @@ Tax-Compliance-Beauftragte): Art wählen, Datum, Bezeichnung und Beschreibung
 angeben, optional Anlagen (Grenzen wie oben) beifügen und senden. Die
 Vorgangsnummer vergibt das Tax-CMS; benachrichtigt wird die Hauptbearbeitung
 der Kanzlei. Darunter stehen die bisherigen Meldungen mit Bearbeitungsstand.
+
+Anlagen liegen danach auch unter _Dokumente_ des Unternehmens. Weil die
+Meldung auf genau diese Dateien verweist, lassen sie sich weder löschen noch
+durch eine neue Version ersetzen, solange die Meldung besteht; erst wenn die
+Kanzlei das Ereignis verwirft, werden sie wieder frei. Scheitert eine Datei
+(z. B. Virenfund) oder lehnt das Tax-CMS die Meldung ab, wird nichts gemeldet
+und die schon hochgeladenen Dateien bleiben ungesperrt in der Ablage. Hat das
+Tax-CMS nicht rechtzeitig geantwortet, bleiben sie vorsorglich gesperrt;
+fragen Sie dann bei der Kanzlei nach, ob die Meldung angekommen ist.
 
 ### Freigaben und Kenntnisnahmen
 

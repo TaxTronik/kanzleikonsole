@@ -13,6 +13,8 @@
 //     Dokument wird beim Ablegen verknüpft, nach Annahme mit der Nachweis-ID
 //     bestätigt, nach eindeutiger Ablehnung oder nach dem Entfernen
 //     freigegeben; bei offenem Ausgang bleibt die Sperre.
+//   - Anlagen einer Ereignismeldung (TCMS s7) ebenso: gebunden beim Ablegen,
+//     Ereignis-ID nach Annahme, Freigabe nach eindeutiger Ablehnung.
 // Fachkatalog: TCMS-AKTEUR-001, TCMS-NACHWEIS-001
 import { TcmsKonflikt, TcmsNichtVerfuegbar } from '@taxtronik/tcms-client';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
@@ -25,6 +27,8 @@ const h = vi.hoisted(() => ({
   nachweisAblegen: vi.fn(),
   bestaetigen: vi.fn(),
   freigeben: vi.fn(),
+  zuordnen: vi.fn(),
+  meldungFreigeben: vi.fn(),
   kontext: vi.fn(),
   ansprech: vi.fn(),
   redirect: vi.fn((ziel: string) => {
@@ -60,6 +64,8 @@ vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({
   nachweisVerknuepfenTx: vi.fn(),
   nachweisVerknuepfungBestaetigen: h.bestaetigen,
   nachweisVerknuepfungFreigeben: h.freigeben,
+  meldungsAnlagenZuordnen: h.zuordnen,
+  meldungsAnlagenFreigeben: h.meldungFreigeben,
 }));
 vi.mock('@/server/tcms/portal/ansprechpartner', () => ({ ansprechpersonenTx: h.ansprech }));
 
@@ -89,6 +95,8 @@ const CTX = { tenantId: DEMO.tenant, actorId: DEMO.murat, actorType: 'CLIENT_CON
 const K = { g: { ...G, ctx: CTX }, akteur: {}, mandantId: DEMO.talwind };
 const ABLAGE = { ...G, ctx: CTX };
 const VERKNUEPFUNG = 'e1000000-0000-4000-8000-0000000000c1';
+const MELDUNG_VERKNUEPFUNG = 'e2000000-0000-4000-8000-0000000000c2';
+const EREIGNIS = 'cmvf9ereignis0400abcdef';
 
 interface Spec {
   keinRecht?: string;
@@ -144,12 +152,17 @@ beforeEach(() => {
   h.ergebnis = { ok: true };
   h.kontext.mockResolvedValue(ABLAGE);
   h.ablegen.mockImplementation(async (_g, f: File) => ({
-    dokumentId: 'd0c00000-0000-4000-8000-0000000000c1',
-    dateiname: f.name,
-    mime: 'text/csv',
-    groesse: f.size,
-    sha256: 'cd'.repeat(32),
+    verknuepfungId: MELDUNG_VERKNUEPFUNG,
+    verweis: {
+      dokumentId: 'd0c00000-0000-4000-8000-0000000000c1',
+      dateiname: f.name,
+      mime: 'text/csv',
+      groesse: f.size,
+      sha256: 'cd'.repeat(32),
+    },
   }));
+  h.zuordnen.mockResolvedValue(1);
+  h.meldungFreigeben.mockResolvedValue(1);
   h.nachweisAblegen.mockImplementation(async (_g, f: File) => ({
     verknuepfungId: VERKNUEPFUNG,
     verweis: {
@@ -493,7 +506,7 @@ describe('portalEreignisMeldenAction', () => {
     const { d, r } = await lauf(
       {
         portalMeldungenLesen: tcmsFixtures.portalMeldungenJana(),
-        portalMeldungErfassen: { id: 'x', nummer: '2026-T-0400' },
+        portalMeldungErfassen: { id: EREIGNIS, nummer: '2026-T-0400' },
       },
       ablauf,
     );
@@ -511,6 +524,36 @@ describe('portalEreignisMeldenAction', () => {
       },
     });
     expect(r).toEqual({ nummer: '2026-T-0400' });
+    // TCMS-NACHWEIS-001: abgelegt im Kontext des Kontakts, gebunden; nach der
+    // Annahme trägt die Verknüpfung die Ereignis-ID des Dienstes.
+    expect(h.ablegen).toHaveBeenCalledWith(ABLAGE, expect.any(File));
+    expect(h.zuordnen).toHaveBeenCalledWith(CTX, [MELDUNG_VERKNUEPFUNG], EREIGNIS);
+    expect(h.meldungFreigeben).not.toHaveBeenCalled();
+  });
+
+  it('Anlagen (TCMS-NACHWEIS-001): eindeutige Ablehnung der Meldung → frei; offener Ausgang → Sperre bleibt', async () => {
+    const mitFehler = async (fehler: Error) => {
+      ohneWeiterleitung();
+      await portalEreignisMeldenAction(null, formular(felder));
+      const s = spec();
+      const p = s.parse!();
+      const v = await s.vorbereiten!(TX, K, p.data);
+      const rufe = vi.fn(async (e: { name: string }) => {
+        if (e.name === 'portalMeldungErfassen') throw fehler;
+        return { daten: tcmsFixtures.portalMeldungenJana(), requestId: 'r' };
+      });
+      await expect(s.aufruf({ rufe }, p.data, v)).rejects.toBe(fehler);
+    };
+    await mitFehler(new TcmsKonflikt({ status: 409 }));
+    expect(h.meldungFreigeben).toHaveBeenCalledWith(
+      CTX,
+      { verknuepfungIds: [MELDUNG_VERKNUEPFUNG] },
+      'NOT_ATTACHED',
+    );
+    h.meldungFreigeben.mockClear();
+    await mitFehler(new TcmsNichtVerfuegbar('ZEITLIMIT'));
+    expect(h.meldungFreigeben).not.toHaveBeenCalled();
+    expect(h.zuordnen).not.toHaveBeenCalled();
   });
 
   it('Titel einzeilig (TCMS s8): CR/LF und unsichtbare Zeichen als Feldfehler des Vertrags, kein Dienstaufruf', async () => {

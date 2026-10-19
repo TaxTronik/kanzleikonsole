@@ -12,6 +12,10 @@ BEGIN
   -- Mandanten mit genau diesem SHA-256 und ohne GwG-, Personal- oder
   -- Lohnbezug. Danach sind Bezug und Inhalt unveränderlich; die Nachweis-ID
   -- des Tax-CMS wird höchstens einmal gesetzt, die Freigabe ist endgültig.
+  -- TCMS s7 (Integration): Anlagen einer Ereignismeldung aus dem Portal
+  -- (tcms_subject = 'EVENT') binden das Dokument ebenso. Die Ereignis-ID
+  -- vergibt das Tax-CMS erst mit der Meldung; sie wird höchstens einmal
+  -- gesetzt, der Bezug (Durchführung oder Ereignis) nie geändert.
   IF TG_OP = 'INSERT' THEN
     IF NEW.released_at IS NOT NULL OR NEW.released_by IS NOT NULL
        OR NEW.release_reason IS NOT NULL THEN
@@ -54,16 +58,21 @@ BEGIN
   END IF;
 
   IF (NEW.id, NEW.tenant_id, NEW.client_id, NEW.document_id, NEW.document_version_id,
-      NEW.sha256, NEW.tcms_execution_id, NEW.created_by, NEW.created_at)
+      NEW.sha256, NEW.tcms_subject, NEW.tcms_execution_id, NEW.created_by, NEW.created_at)
      IS DISTINCT FROM
      (OLD.id, OLD.tenant_id, OLD.client_id, OLD.document_id, OLD.document_version_id,
-      OLD.sha256, OLD.tcms_execution_id, OLD.created_by, OLD.created_at) THEN
+      OLD.sha256, OLD.tcms_subject, OLD.tcms_execution_id, OLD.created_by, OLD.created_at) THEN
     RAISE EXCEPTION 'tcms_document_reference: Bezug und Inhalt sind unveränderlich'
       USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.tcms_evidence_id IS DISTINCT FROM OLD.tcms_evidence_id
      AND (OLD.tcms_evidence_id IS NOT NULL OR OLD.released_at IS NOT NULL) THEN
     RAISE EXCEPTION 'tcms_document_reference: die Nachweis-ID wird nur einmal gesetzt'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF NEW.tcms_event_id IS DISTINCT FROM OLD.tcms_event_id
+     AND (OLD.tcms_event_id IS NOT NULL OR OLD.released_at IS NOT NULL) THEN
+    RAISE EXCEPTION 'tcms_document_reference: die Ereignis-ID wird nur einmal gesetzt'
       USING ERRCODE = 'check_violation';
   END IF;
   IF OLD.released_at IS NOT NULL

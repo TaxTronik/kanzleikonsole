@@ -27,6 +27,7 @@ import {
 } from '@/server/actions/form-data';
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
+import { meldungsAnlagenNachVerwerfen } from '@/server/tcms/portal/meldung';
 import { vertragsZeichenMeldung } from '@/server/tcms/zeichen';
 import {
   pruefeZuweisungenTx,
@@ -338,8 +339,12 @@ export async function ereignisVerwerfenBestaetigenAction(
     // Vier-Augen: Ablehnung des Dienstes (dieselbe Person) mit festem Text.
     keinRecht: 'VIER_AUGEN',
     parse: () => ids(Ids, { ereignisId }),
-    aufruf: async (dienst, p) => {
+    vorbereiten: async (_tx, k) => k.g.ctx,
+    aufruf: async (dienst, p, ctx) => {
       const { daten: r } = await dienst.rufe(ENDPUNKTE.ereignisVerwerfenBestaetigen, { params: p });
+      // Anlagen einer Portal-Meldung erst nach der eindeutigen Antwort freigeben
+      // (TCMS-NACHWEIS-001); der Mandant ist der gebundene der Aktion.
+      await meldungsAnlagenNachVerwerfen(ctx, { mandantId, ereignisId: p.ereignisId }, r);
       return { meldung: `Ereignis ${r.nummer} verworfen.` };
     },
   });

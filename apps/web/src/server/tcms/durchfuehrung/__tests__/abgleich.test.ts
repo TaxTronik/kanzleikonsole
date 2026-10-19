@@ -109,7 +109,10 @@ describe('offeneVerknuepfungenTx', () => {
   it('nur offene ohne Nachweis-ID dieser Durchführung, älter als die Grenze, begrenzt; gebundene IDs je Dokument', async () => {
     const findMany = vi
       .fn()
-      .mockResolvedValueOnce([v('r1'), v('r2', DOK2)])
+      .mockResolvedValueOnce([
+        { id: 'r1', documentId: DOK },
+        { id: 'r2', documentId: DOK2 },
+      ])
       .mockResolvedValueOnce([{ tcmsEvidenceId: 'n9' }]);
     const tx = { tcmsDocumentReference: { findMany } } as never;
     const bis = new Date('2026-10-19T10:00:00Z');
@@ -118,6 +121,7 @@ describe('offeneVerknuepfungenTx', () => {
       where: {
         tenantId: TENANT,
         clientId: MANDANT,
+        tcmsSubject: 'EXECUTION',
         tcmsExecutionId: DF,
         releasedAt: null,
         tcmsEvidenceId: null,
@@ -125,8 +129,9 @@ describe('offeneVerknuepfungenTx', () => {
       },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       take: ABGLEICH_MAX_JE_AUFRUF,
-      select: { id: true, documentId: true, tcmsExecutionId: true },
+      select: { id: true, documentId: true },
     });
+    expect(r.offen).toEqual([v('r1'), v('r2', DOK2)]);
     expect(findMany.mock.calls[1]![0].where).toEqual({
       tenantId: TENANT,
       clientId: MANDANT,

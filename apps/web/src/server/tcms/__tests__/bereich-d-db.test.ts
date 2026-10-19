@@ -9,6 +9,8 @@
 //   - Anlagen einer Kontrollaufgabe aus dem Portal: Verknüpfung im Kontext
 //     des Kontakts (App-Rolle, RLS), Löschsperre bis zur Freigabe nach dem
 //     Entfernen; nur Dokumente des Sitzungsmandanten (Integration Stufe 3).
+//   - Anlagen einer Ereignismeldung (TCMS s7): ebenso gebunden, Ereignis-ID
+//     nach der Meldung, Freigabe nach dem Verwerfen durch die Kanzlei.
 //   - Ansprechpersonen (Berufsträger/Hauptbearbeitung) und Auswahl der
 //     Zuständigkeit aus der kanzleikonsole: nur aktive Personen, nur mit
 //     Zugriff auf den Mandanten.
@@ -59,6 +61,9 @@ vi.mock('@/server/documents/delivery', async (original) => ({
 
 import { tcmsVerweisAusliefern } from '../abruf/auslieferung';
 import {
+  meldungsAnlagenFreigeben,
+  meldungsAnlagenZuordnen,
+  meldungsAnlageVerknuepfenTx,
   NachweisDokumentUnzulaessig,
   nachweisVerknuepfenTx,
   nachweisVerknuepfungBestaetigen,
@@ -368,7 +373,41 @@ const REQ = { headers: new Headers(), nextUrl: new URL('http://localhost/x') } a
       await expect(
         fixture.run(alsKontakt(), (tx) => nachweisVerknuepfenTx(tx, bezug(), fremd, DURCHF)),
       ).rejects.toBeInstanceOf(NachweisDokumentUnzulaessig);
+      await expect(
+        fixture.run(alsKontakt(), (tx) => meldungsAnlageVerknuepfenTx(tx, bezug(), fremd)),
+      ).rejects.toBeInstanceOf(NachweisDokumentUnzulaessig);
       expect(await owner.tcmsDocumentReference.count({ where: { documentId: fremd } })).toBe(0);
+    });
+
+    it('Ereignismeldung (TCMS s7): Bindung im Kontext des Kontakts, Ereignis-ID, Sperre bis zum Verwerfen', async () => {
+      const id = await dokument('offen', true);
+      const verknuepfungId = (await fixture.run(alsKontakt(), (tx) =>
+        meldungsAnlageVerknuepfenTx(tx, bezug(), id),
+      )) as string;
+      expect(
+        await meldungsAnlagenZuordnen(alsKontakt(), [verknuepfungId], 'cmvf9ereignis0001abc'),
+      ).toBe(1);
+      expect(
+        await owner.tcmsDocumentReference.findUniqueOrThrow({ where: { id: verknuepfungId } }),
+      ).toMatchObject({
+        tcmsSubject: 'EVENT',
+        tcmsEventId: 'cmvf9ereignis0001abc',
+        createdBy: kontakt,
+      });
+      await expect(loeschen(id)).rejects.toThrow(/als Nachweis im Tax-CMS verknüpft/);
+      // Verwerfen bestätigt die Kanzlei: Freigabe im Kontext der Kanzleiperson.
+      const kanzlei = { tenantId, actorId: staff.anna!, actorType: 'STAFF' as const };
+      expect(
+        await meldungsAnlagenFreigeben(
+          kanzlei,
+          { mandantId: mandant.offen!, ereignisId: 'cmvf9ereignis0001abc' },
+          'DISCARDED',
+        ),
+      ).toBe(1);
+      expect(
+        await owner.tcmsDocumentReference.findUniqueOrThrow({ where: { id: verknuepfungId } }),
+      ).toMatchObject({ releaseReason: 'DISCARDED', releasedBy: staff.anna });
+      await loeschen(id);
     });
   });
 

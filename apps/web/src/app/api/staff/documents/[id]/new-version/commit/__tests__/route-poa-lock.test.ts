@@ -179,7 +179,7 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({
         error: 'locked_by_tcms_evidence',
-        message: expect.stringContaining('Nachweis im Tax-CMS'),
+        message: expect.stringContaining('im Tax-CMS verknüpft'),
       }),
     );
     expect(storageJournal.events).toEqual([]);

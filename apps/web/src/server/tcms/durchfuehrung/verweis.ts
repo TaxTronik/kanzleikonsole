@@ -19,6 +19,18 @@
 //             Entfernen im Tax-CMS („entfernt“). Bei offenem Ausgang bleibt die
 //             Verknüpfung bestehen (im Zweifel schützen).
 //
+// Anlagen einer Ereignismeldung aus dem Portal (TCMS s7, Integration) sind im
+// Tax-CMS ebenso Verweise (`AnlageVerweisSchema`: Dokument-ID, SHA-256) und
+// werden genauso gebunden (`tcms_subject = 'EVENT'`):
+//
+//   anlegen   in der Commit-Transaktion der Ablage, bevor die Meldung den
+//             Dienst erreicht (Ereignis-ID noch leer).
+//   zuordnen  nach Annahme der Meldung: Ereignis-ID setzen (höchstens einmal).
+//   freigeben nach eindeutiger Ablehnung der Meldung bzw. wenn die Meldung
+//             den Dienst nie erreicht hat („nicht angehängt“) und nach dem
+//             bestätigten Verwerfen des Ereignisses („verworfen“). Bei offenem
+//             Ausgang bleibt die Verknüpfung bestehen (im Zweifel schützen).
+//
 // Die Sperrprüfung für Ablage und Versions-Route steht in ./sperre.ts (ohne
 // schwere Importe).
 // =============================================================================
@@ -172,6 +184,7 @@ export async function nachweisVerknuepfenTx(
       documentId: quelle.verweis.dokumentId,
       documentVersionId: quelle.versionId,
       sha256: Buffer.from(quelle.sha256),
+      tcmsSubject: 'EXECUTION',
       tcmsExecutionId: durchfuehrungId,
       createdBy: 'kontaktId' in bezug ? bezug.kontaktId : bezug.staffId,
     },
@@ -188,7 +201,12 @@ export async function nachweisVerknuepfungBestaetigen(
 ): Promise<boolean> {
   const { count } = await withTenantContext(ctx, (tx) =>
     tx.tcmsDocumentReference.updateMany({
-      where: { id: verknuepfungId, releasedAt: null, tcmsEvidenceId: null },
+      where: {
+        id: verknuepfungId,
+        tcmsSubject: 'EXECUTION',
+        releasedAt: null,
+        tcmsEvidenceId: null,
+      },
       data: { tcmsEvidenceId: nachweisId },
     }),
   );
@@ -219,7 +237,90 @@ export async function nachweisVerknuepfungFreigeben(
         };
   const { count } = await withTenantContext(ctx, (tx) =>
     tx.tcmsDocumentReference.updateMany({
-      where: { tenantId: ctx.tenantId, releasedAt: null, ...filter },
+      where: { tenantId: ctx.tenantId, tcmsSubject: 'EXECUTION', releasedAt: null, ...filter },
+      data: { releasedAt: new Date(), releasedBy: ctx.actorId, releaseReason: grund },
+    }),
+  );
+  return count;
+}
+
+// ---------------------------------------------------------------------------
+// Anlagen einer Ereignismeldung (Portal, TCMS s7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bindet ein soeben abgelegtes Dokument als Anlage einer Ereignismeldung
+ * (`created_by` = Kontakt der Sitzung). Aufruf in der Commit-Transaktion der
+ * Ablage; Version und SHA-256 aus der gespeicherten neuesten Version, der
+ * Trigger prüft erneut.
+ */
+export async function meldungsAnlageVerknuepfenTx(
+  tx: TxClient,
+  bezug: Pick<NachweisBezug, 'tenantId' | 'mandantId'> & { kontaktId: string },
+  dokumentId: string,
+): Promise<string> {
+  const quelle = await nachweisQuelleTx(tx, bezug, dokumentId);
+  const { id } = await tx.tcmsDocumentReference.create({
+    data: {
+      tenantId: bezug.tenantId,
+      clientId: bezug.mandantId,
+      documentId: quelle.verweis.dokumentId,
+      documentVersionId: quelle.versionId,
+      sha256: Buffer.from(quelle.sha256),
+      tcmsSubject: 'EVENT',
+      createdBy: bezug.kontaktId,
+    },
+    select: { id: true },
+  });
+  return id;
+}
+
+/**
+ * Annahme der Meldung durch den Dienst: Ereignis-ID an den offenen
+ * Verknüpfungen setzen (eigene Transaktion). Liefert die Zahl der zugeordneten.
+ */
+export async function meldungsAnlagenZuordnen(
+  ctx: TenantContext,
+  verknuepfungIds: readonly string[],
+  ereignisId: string,
+): Promise<number> {
+  if (verknuepfungIds.length === 0) return 0;
+  const { count } = await withTenantContext(ctx, (tx) =>
+    tx.tcmsDocumentReference.updateMany({
+      where: {
+        tenantId: ctx.tenantId,
+        id: { in: [...verknuepfungIds] },
+        tcmsSubject: 'EVENT',
+        releasedAt: null,
+        tcmsEventId: null,
+      },
+      data: { tcmsEventId: ereignisId },
+    }),
+  );
+  return count;
+}
+
+/** NOT_ATTACHED: Meldung abgewiesen bzw. nie gesendet; DISCARDED: Ereignis verworfen. */
+export type MeldungsAnlageFreigabeGrund = 'NOT_ATTACHED' | 'DISCARDED';
+
+/**
+ * Gibt offene Verknüpfungen von Meldungsanlagen frei (eigene Transaktion):
+ * bestimmte Verknüpfungen (`verknuepfungIds`, Meldung nicht angenommen) bzw.
+ * alle Anlagen eines Ereignisses dieses Mandanten (nach dem Verwerfen).
+ */
+export async function meldungsAnlagenFreigeben(
+  ctx: TenantContext,
+  ziel: { verknuepfungIds: readonly string[] } | { mandantId: string; ereignisId: string },
+  grund: MeldungsAnlageFreigabeGrund,
+): Promise<number> {
+  if ('verknuepfungIds' in ziel && ziel.verknuepfungIds.length === 0) return 0;
+  const filter =
+    'verknuepfungIds' in ziel
+      ? { id: { in: [...ziel.verknuepfungIds] } }
+      : { clientId: ziel.mandantId, tcmsEventId: ziel.ereignisId };
+  const { count } = await withTenantContext(ctx, (tx) =>
+    tx.tcmsDocumentReference.updateMany({
+      where: { tenantId: ctx.tenantId, tcmsSubject: 'EVENT', releasedAt: null, ...filter },
       data: { releasedAt: new Date(), releasedBy: ctx.actorId, releaseReason: grund },
     }),
   );

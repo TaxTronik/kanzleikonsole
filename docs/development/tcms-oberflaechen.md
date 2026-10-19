@@ -312,14 +312,14 @@ mindestens zwei Bereiche sie brauchen.
   Fixtures; `DB_TESTS=1` bzw. das genannte Opt-in, `prismaOwner`/`prisma` aus
   `@taxtronik/db`, kein eigener `PrismaClient`):
 
-  | Suite                                                         | Inhalt                                                                  | Opt-in                   |
-  | ------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------ |
-  | `server/tcms/__tests__/akteur-db.test.ts`                     | Akteursabbildung (Stufe 2)                                              | `TCMS_AKTEUR_DB_TEST`    |
-  | `server/tcms/__tests__/namen-personen-db.test.ts`             | Personenprüfung und Namen (Fundament)                                   | `TCMS_SEITE_DB_TEST`     |
-  | `server/tcms/programm/__tests__/zustaendigkeit-db.test.ts`    | Zuständigkeiten und Freigabe-Empfänger (Bereich A)                      | `TCMS_SEITE_DB_TEST`     |
-  | `server/tcms/bereich-b/__tests__/personen-auswahl-db.test.ts` | Auswahllisten der Zuständigkeiten (Bereich B)                           | `TCMS_SEITE_DB_TEST`     |
-  | `server/tcms/__tests__/nachweis-verweis-db.test.ts`           | Verknüpfung, Lösch- und Versionssperre der Nachweise (Bereich C)        | `TCMS_SEITE_DB_TEST`     |
-  | `server/tcms/__tests__/bereich-d-db.test.ts`                  | Auslieferung, Portal-Anlagen als Nachweis, Ansprechpersonen (Bereich D) | `TCMS_BEREICH_D_DB_TEST` |
+  | Suite                                                         | Inhalt                                                                                        | Opt-in                   |
+  | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ------------------------ |
+  | `server/tcms/__tests__/akteur-db.test.ts`                     | Akteursabbildung (Stufe 2)                                                                    | `TCMS_AKTEUR_DB_TEST`    |
+  | `server/tcms/__tests__/namen-personen-db.test.ts`             | Personenprüfung und Namen (Fundament)                                                         | `TCMS_SEITE_DB_TEST`     |
+  | `server/tcms/programm/__tests__/zustaendigkeit-db.test.ts`    | Zuständigkeiten und Freigabe-Empfänger (Bereich A)                                            | `TCMS_SEITE_DB_TEST`     |
+  | `server/tcms/bereich-b/__tests__/personen-auswahl-db.test.ts` | Auswahllisten der Zuständigkeiten (Bereich B)                                                 | `TCMS_SEITE_DB_TEST`     |
+  | `server/tcms/__tests__/nachweis-verweis-db.test.ts`           | Verknüpfung, Lösch- und Versionssperre der Nachweise und Meldungsanlagen (Bereich C, TCMS s7) | `TCMS_SEITE_DB_TEST`     |
+  | `server/tcms/__tests__/bereich-d-db.test.ts`                  | Auslieferung, Portal-Anlagen (Nachweis, Meldung), Ansprechpersonen (Bereich D)                | `TCMS_BEREICH_D_DB_TEST` |
 
 - **Live-Tests** gegen einen laufenden Dienst mit Demo-Daten
   (`TCMS_LIVE_TESTS=1` plus DB-Opt-in, Start wie in
@@ -434,6 +434,13 @@ export async function GET(
   SHA-256 (oder die Größe) der auszuliefernden Version vom Verweis ab, wird
   nicht ausgeliefert, sondern mit Hinweis abgebrochen; der Abgleich läuft vor
   dem Abrufnachweis und erneut an der tatsächlich gestreamten Version.
+- **Bindung:** Ein Dokument, auf das ein Verweis des Tax-CMS zeigt, ist
+  gebunden (`tcms_document_reference`, TCMS-NACHWEIS-001): Nachweise einer
+  Durchführung (`tcms_subject = 'EXECUTION'`) wie Anlagen einer Portal-Meldung
+  (`'EVENT'`, seit TCMS s7, `server/tcms/portal/meldung.ts`). Gebunden wird in
+  der Commit-Transaktion der Ablage, also vor dem Dienstaufruf; freigegeben
+  nur nach eindeutiger Antwort (Ablehnung, Entfernen bzw. bestätigtes
+  Verwerfen), bei offenem Ausgang bleibt die Sperre.
 - **Nur GET**, keine eigene Sitzung, kein direkter Client- oder Akteurzugriff
   im Handler. Schreiben läuft über Server Actions (Abschnitt 5).
 - **Guards:** `tcms-route-authz.test.ts` (Ort unter `app/api/staff` bzw.

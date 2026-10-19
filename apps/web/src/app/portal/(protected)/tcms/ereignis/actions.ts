@@ -10,7 +10,9 @@
 // wie beim Erfassen, TCMS s7; vorher die ganze Portal-Übersicht). Die
 // kanzleikonsole nimmt Anlagen erst NACH dieser Auskunft an (keine Dateien
 // Unberechtigter in der Ablage), legt sie über die Portal-Dokumentenpipeline
-// ab und übergibt nur Verweise der gespeicherten Fassung. Wen die Kanzlei
+// ab, bindet sie in derselben Transaktion (Löschsperre, TCMS-NACHWEIS-001,
+// server/tcms/portal/meldung.ts) und übergibt nur Verweise der gespeicherten
+// Fassung. Wen die Kanzlei
 // benachrichtigt (Hauptbearbeitung), kommt aus der kanzleikonsole – Name aus
 // der Datenbank, nie aus dem Formular; er begründet kein Recht.
 // =============================================================================
@@ -23,13 +25,8 @@ import type { ActionFailure } from '@/server/actions/action-runner';
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsPortalAktion } from '@/server/tcms/aktion';
 import { ansprechpersonenTx } from '@/server/tcms/portal/ansprechpartner';
-import {
-  dateiSha256,
-  portalAblageKontext,
-  portalAnlageAblegen,
-  portalDateienFeld,
-  type TcmsAnlageVerweis,
-} from '@/server/tcms/portal/anlagen';
+import { dateiSha256, portalAblageKontext, portalDateienFeld } from '@/server/tcms/portal/anlagen';
+import { meldungErfassenUndBinden, meldungsAnlagenAblegen } from '@/server/tcms/portal/meldung';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 
 type Ergebnis = ActionResult & { meldung?: string };
@@ -86,10 +83,11 @@ export async function portalEreignisMeldenAction(
           fieldErrors: { anlagen: ['Eine Datei ist doppelt ausgewählt.'] },
         };
       }
-      const anlagen: TcmsAnlageVerweis[] = [];
-      for (const datei of d.anlagen) anlagen.push(await portalAnlageAblegen(v.ablage, datei));
-      const { daten: r } = await dienst.rufe(ENDPUNKTE.portalMeldungErfassen, {
-        body: {
+      const { anlagen, verknuepfungen } = await meldungsAnlagenAblegen(v.ablage, d.anlagen);
+      const r = await meldungErfassenUndBinden(
+        dienst,
+        v.ablage.ctx,
+        {
           typ: d.typ,
           titel: d.titel,
           beschreibung: d.beschreibung,
@@ -98,7 +96,8 @@ export async function portalEreignisMeldenAction(
           zusageAenderungen: d.zusage,
           benachrichtigen: v.benachrichtigen,
         },
-      });
+        verknuepfungen,
+      );
       return { nummer: r.nummer };
     },
   });

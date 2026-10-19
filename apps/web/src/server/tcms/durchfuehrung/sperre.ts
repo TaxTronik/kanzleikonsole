@@ -1,6 +1,7 @@
 // =============================================================================
-// Lösch- und Versionssperre für Dokumente, auf die ein Nachweis des Tax-CMS
-// verweist (TCMS Stufe 3, Fachkatalog TCMS-NACHWEIS-001). Genutzt von der
+// Lösch- und Versionssperre für Dokumente, auf die ein Nachweis oder – seit
+// TCMS s7 – die Anlage einer Ereignismeldung des Tax-CMS verweist (TCMS Stufe
+// 3, Fachkatalog TCMS-NACHWEIS-001). Genutzt von der
 // Löschaktion der Ablage (documents/actions.ts) und der Versions-Route
 // (api/staff/documents/[id]/new-version/commit). Die Datenbank sperrt das
 // Soft-Delete zusätzlich (Trigger document_tcms_reference_delete_guard).
@@ -13,11 +14,11 @@ import type { TxClient } from '@taxtronik/db';
 
 /** Löschen gesperrt (Ablage, Bulk-Aktion). */
 export const TCMS_NACHWEIS_LOESCHSPERRE =
-  'Dieses Dokument ist als Nachweis einer Kontrolldurchführung im Tax-CMS verknüpft und kann nicht gelöscht werden. Entfernen Sie zuerst den Nachweis in der Durchführung.';
+  'Dieses Dokument ist im Tax-CMS verknüpft – als Nachweis einer Kontrolldurchführung oder als Anlage einer Ereignismeldung – und kann nicht gelöscht werden. Ein Nachweis wird frei, wenn er in der Durchführung entfernt ist; eine Anlage, wenn die Meldung verworfen ist.';
 
 /** Neue Version gesperrt (Versions-Route). */
 export const TCMS_NACHWEIS_VERSIONSSPERRE =
-  'Dieses Dokument ist als Nachweis im Tax-CMS verknüpft; eine neue Version würde den Nachweis verändern. Laden Sie die neue Fassung als eigenes Dokument hoch und hängen Sie sie als weiteren Nachweis an.';
+  'Dieses Dokument ist im Tax-CMS verknüpft (Nachweis oder Anlage einer Ereignismeldung); eine neue Version würde den Verweis verändern. Laden Sie die neue Fassung als eigenes Dokument hoch – bei einem Nachweis hängen Sie sie als weiteren Nachweis an.';
 
 /**
  * Offene Verknüpfung auf das Dokument? Als eigenes Statement NACH der Sperre
