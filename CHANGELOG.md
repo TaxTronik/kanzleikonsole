@@ -23,6 +23,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- **[TCMS]** Offene Nachweis-Verknüpfungen mit unklarem Ausgang werden beim
+  Öffnen der Durchführung mit dem Tax-CMS abgeglichen („Nachweise je Dokument“,
+  nur am aktuellen Stand, höchstens zehn je Aufruf, erst nach fünf Minuten):
+  bestätigt, wenn der Dienst den Nachweis führt, sonst freigegeben; Lesefehler
+  ändern nichts (TCMS-NACHWEIS-001).
+- **[TCMS]** Anlagen von Portal-Meldungen sind wie Nachweise gegen Löschen und
+  neue Versionen gesperrt; frei nach eindeutiger Ablehnung oder bestätigtem
+  Verwerfen der Meldung (Migration 20261019190000, TCMS-NACHWEIS-001).
 - **[TCMS]** Anbindung des Tax-CMS als interner headless Dienst, Stufe 2 (noch
   ohne Oberfläche): geprüfte Kopie des TCMS-Vertrags (`packages/tcms-contract`,
   `VENDOR.json`, Guard `guard:tcms-contract`), Konfiguration `TCMS_*` mit
@@ -390,6 +398,16 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[TCMS]** Vertrag und Domain auf Tax-CMS `main` f146a78 (s7–s9): Zuständigkeiten
+  senden die gesehene Seite; gesperrte Feststellungsschritte erscheinen als
+  Feldfehler; Gegenzeichnung beim Mandanten aus dem Kennzeichen; Einrichtung mit
+  dem Kalendertag des Dienstes; Zeitraumzahlen in der Prüfung; Pflichtattribut-
+  Lücken, Listenrechte und Länderbezüge; Rechte an Ereignissen und Melderecht im
+  Portal; berechnete Kennzahlen der Kontrollaufgabe; feste Portaltexte für die
+  Code-Grenze und abgelaufene Codes, Hinweis „nur eigene Meldungen“;
+  verständliche Feldfehler beim Altbestand des Profils.
+- **[TCMS]** „Zugestellt“ bedeutet bei Tax-CMS-Mitteilungen „in TaxTronik zum
+  Versand eingeplant“ (Anwenderdoku, MAIL-OUTBOX-001).
 - **[TCMS]** Ablehnungen des Tax-CMS erscheinen mit der festen Meldung zum
   Grund, den der Dienst nennt (Bearbeiten, §-153-Würdigung, Vier-Augen,
   Verwaltung, Vertraulichkeit, Durchführung, Gegenzeichnung, andere Seite,
@@ -1124,6 +1142,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[TCMS]** Der Zustell-Worker versendet keine Tax-CMS-Mitteilung mehr, die der
+  Dienst mit 409 als abgeschlossen meldet; ein noch wartender Auftrag endet ohne
+  Inhalt und Code (MAIL-OUTBOX-001).
 - Betrieb: Starts der TCMS-Dienste und der Signal-Engine ohne App/Worker werden
   während einer offenen Migration nicht mehr fälschlich vom Writer-Guard
   blockiert.
@@ -1857,6 +1878,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[TCMS]** Eine Zeichenregel aus dem Vertrag für Stammdaten, Akteursnamen und
+  Eingaben: unsichtbare, Steuer- und Richtungszeichen werden in Stammdaten still
+  entfernt und in Eingaben mit dem Feldtext des Vertrags abgewiesen.
+- **[TCMS]** Die Prüfung der Audit-Hashkette zeigt nur feste Texte, nie den
+  Rohtext des Dienstes.
 - **[TCMS]** Bestätigungscodes des Tax-CMS liegen in TaxTronik nur
   Secret-Box-verschlüsselt im Versandauftrag und nur bis zu dessen Endstatus,
   auch bei Fehlschlag (Datenbank-CHECK, kein „Erneut senden“); sie erscheinen
