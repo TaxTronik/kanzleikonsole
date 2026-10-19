@@ -9,6 +9,14 @@
 //   - kontext-talwind.json: Listen gekürzt, Texte gekürzt, `datevNr` null,
 //     F-2026-006 so maskiert, wie Nicht-Beteiligte eine vertrauliche
 //     Feststellung erhalten (RT-01).
+//   - Bereich C (Durchführungen, Nachweise, Feststellungen, Arbeitskorb):
+//     ungekürzt aus dem Dienst (Stand d5b6511, Demo-Daten, „heute“ 19.10.2026).
+//     durchfuehrung-in-durchfuehrung.json und nachweis-lesen.json nach
+//     Beginnen, Speichern und Anhängen eines Testverweises (Dokument-ID
+//     c3000000-…-0001, SHA-256 „a…a“) durch Leon Brandt; die Nachweise der
+//     Demo-Daten tragen Ablagepfade statt Dokument-IDs (nicht abrufbar).
+//     feststellung-maskiert.json und feststellungen-talwind-thomas.json mit
+//     F-2026-006 vorübergehend vertraulich, gelesen von Thomas (nicht beteiligt).
 // Neue Fixtures: Antwort mit dem Demo-Akteur abrufen, kürzen, hier mit dem
 // Schema des Endpunkts laden (ENDPUNKTE.<name>.antwortSchema).
 // =============================================================================
@@ -19,6 +27,18 @@ import kontakteTalwind from './kontakte-talwind.json';
 import kontextTalwind from './kontext-talwind.json';
 import portalUebersichtJana from './portal-uebersicht-jana.json';
 import portfolioDemo from './portfolio-demo.json';
+import arbeitskorbAnna from './arbeitskorb-anna.json';
+import arbeitskorbLeon from './arbeitskorb-leon.json';
+import durchfuehrungFaellig from './durchfuehrung-faellig.json';
+import durchfuehrungGegenzeichnung from './durchfuehrung-gegenzeichnung.json';
+import durchfuehrungInDurchfuehrung from './durchfuehrung-in-durchfuehrung.json';
+import durchfuehrungMitBefund from './durchfuehrung-mit-befund.json';
+import feststellungMaskiert from './feststellung-maskiert.json';
+import feststellungNachkontrolle from './feststellung-nachkontrolle.json';
+import feststellungP153 from './feststellung-p153.json';
+import feststellungenTalwind from './feststellungen-talwind.json';
+import feststellungenTalwindThomas from './feststellungen-talwind-thomas.json';
+import nachweisLesen from './nachweis-lesen.json';
 
 /** Feste IDs der TCMS-Demo (gleich in der kanzleikonsole-Testdatenbank des Live-Tests). */
 export const DEMO = {
@@ -47,4 +67,25 @@ export const tcmsFixtures = {
   portfolioDemo: () => laden(ENDPUNKTE.portfolioLesen.antwortSchema, portfolioDemo),
   portalUebersichtJana: () =>
     laden(ENDPUNKTE.portalUebersichtLesen.antwortSchema, portalUebersichtJana),
+  // Bereich C
+  durchfuehrungFaellig: () =>
+    laden(ENDPUNKTE.durchfuehrungLesen.antwortSchema, durchfuehrungFaellig),
+  durchfuehrungGegenzeichnung: () =>
+    laden(ENDPUNKTE.durchfuehrungLesen.antwortSchema, durchfuehrungGegenzeichnung),
+  durchfuehrungInDurchfuehrung: () =>
+    laden(ENDPUNKTE.durchfuehrungLesen.antwortSchema, durchfuehrungInDurchfuehrung),
+  durchfuehrungMitBefund: () =>
+    laden(ENDPUNKTE.durchfuehrungLesen.antwortSchema, durchfuehrungMitBefund),
+  nachweisLesen: () => laden(ENDPUNKTE.nachweisLesen.antwortSchema, nachweisLesen),
+  feststellungenTalwind: () =>
+    laden(ENDPUNKTE.feststellungenLesen.antwortSchema, feststellungenTalwind),
+  feststellungenTalwindThomas: () =>
+    laden(ENDPUNKTE.feststellungenLesen.antwortSchema, feststellungenTalwindThomas),
+  feststellungP153: () => laden(ENDPUNKTE.feststellungLesen.antwortSchema, feststellungP153),
+  feststellungNachkontrolle: () =>
+    laden(ENDPUNKTE.feststellungLesen.antwortSchema, feststellungNachkontrolle),
+  feststellungMaskiert: () =>
+    laden(ENDPUNKTE.feststellungLesen.antwortSchema, feststellungMaskiert),
+  arbeitskorbAnna: () => laden(ENDPUNKTE.arbeitskorbLesen.antwortSchema, arbeitskorbAnna),
+  arbeitskorbLeon: () => laden(ENDPUNKTE.arbeitskorbLesen.antwortSchema, arbeitskorbLeon),
 };

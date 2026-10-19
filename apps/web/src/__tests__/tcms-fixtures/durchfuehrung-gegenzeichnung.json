@@ -1,0 +1,177 @@
+{
+  "id": "cmvf9q01f004tfu7dl6bhs0my",
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "periodeLabel": "September 2026",
+  "periodeVon": "2026-09-01",
+  "periodeBis": "2026-09-30",
+  "faelligAm": "2026-10-10",
+  "status": "ZUR_GEGENZEICHNUNG",
+  "anzeige": "ZUR_GEGENZEICHNUNG",
+  "ausserplanmaessig": false,
+  "schritte": [
+    {
+      "titel": "Ausländische Kreditoren filtern",
+      "hinweis": "Plattformen, Werbe- und SaaS-Anbieter",
+      "erledigt": true,
+      "kommentar": ""
+    },
+    {
+      "titel": "Buchung nach § 13b prüfen",
+      "hinweis": "Steuerschuldnerschaft und Vorsteuer gebucht",
+      "erledigt": true,
+      "kommentar": ""
+    }
+  ],
+  "werte": [],
+  "ergebnis": "OHNE_BEFUND",
+  "ergebnisKommentar": null,
+  "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+  "begonnenAm": "2026-10-06T09:30:00.000Z",
+  "eingereichtAm": "2026-10-09T16:12:00.000Z",
+  "mandantBestaetigtVon": null,
+  "mandantBestaetigtAm": null,
+  "gegengezeichnetVon": null,
+  "abgeschlossenAm": null,
+  "zurueckgewiesenVon": null,
+  "zurueckgewiesenAm": null,
+  "zurueckweisungsgrund": null,
+  "entfallenBegruendung": null,
+  "entfallenAm": null,
+  "createdAt": "2026-03-01T00:00:00.000Z",
+  "vorhandenZumStand": true,
+  "nachweise": [
+    {
+      "id": "cmvf9q01i004ufu7dkq0lq4k0",
+      "dokumentId": "45/456ba7a4e92195123eaedb2fe933431de50d9a74de75624c864a9ef31c93ef8a",
+      "dateiname": "K-EC-08_September_2026.csv",
+      "mime": "text/csv",
+      "groesse": 131,
+      "sha256": "456ba7a4e92195123eaedb2fe933431de50d9a74de75624c864a9ef31c93ef8a",
+      "gesperrt": true,
+      "hochgeladenVon": "b1000000-0000-4000-8000-000000000002",
+      "hochgeladenAm": "2026-10-07T11:00:00.000Z"
+    }
+  ],
+  "nachweiseAusgeblendet": 0,
+  "original": null,
+  "pruefung": {
+    "schritteErledigt": 2,
+    "schritteGesamt": 2,
+    "werteFehlend": [],
+    "ausserhalb": [],
+    "nachweise": 1,
+    "mindestNachweise": 1,
+    "ergebnis": "OHNE_BEFUND",
+    "kommentarFehlt": false,
+    "maengel": []
+  },
+  "rechte": {
+    "beginnen": {
+      "erlaubt": false,
+      "grund": "Einreichung liegt vor — keine Änderung mehr möglich"
+    },
+    "bearbeiten": {
+      "erlaubt": false,
+      "grund": "Einreichung liegt vor — keine Änderung mehr möglich"
+    },
+    "gegenzeichnen": {
+      "erlaubt": true,
+      "grund": null
+    },
+    "mandantBestaetigen": {
+      "erlaubt": false,
+      "grund": "Für diese Kontrolle ist keine Bestätigung beim Mandanten vorgesehen"
+    },
+    "zurueckweisen": {
+      "erlaubt": true,
+      "grund": null
+    },
+    "entfallenBeantragen": {
+      "erlaubt": false,
+      "grund": "Eingereicht — zuerst zurückweisen"
+    },
+    "entfallenFreigeben": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "entfallenAblehnen": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "nachtrag": {
+      "erlaubt": false,
+      "grund": "Nachträge nur zu abgeschlossenen Durchführungen"
+    }
+  },
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "namen": [],
+  "programmId": "cmvf9pzh00003fu7dz30kg9nu",
+  "kontrolle": {
+    "id": "cmvf9pzrc001vfu7d3f7xazfu",
+    "code": "K-EC-08",
+    "standId": "cmvf9pzrd001wfu7dlpnq9o2l",
+    "version": 1,
+    "gueltigAb": "2026-03-01T00:00:00.000Z",
+    "titel": "Kreditorencheck § 13b",
+    "ziel": "Kreditoren auf §-13b-Leistungen ausländischer Anbieter prüfen.",
+    "art": "D",
+    "ausfuehrung": "M",
+    "partei": "KANZLEI",
+    "schluessel": false,
+    "nachweis": "Kreditorenliste mit Kennzeichnung",
+    "mindestNachweise": 1,
+    "toleranzEur": null,
+    "faelligNachTagen": 10,
+    "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+    "vertretungId": "b1000000-0000-4000-8000-000000000003",
+    "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+    "gegenzeichnungMandant": false,
+    "kennzahlen": [],
+    "design": "ANGEMESSEN",
+    "designVon": "b1000000-0000-4000-8000-000000000001",
+    "designAm": "2026-03-11T00:00:00.000Z"
+  },
+  "anlass": null,
+  "entfallenVon": null,
+  "entfallenFreigegebenVon": null,
+  "nachtragZuId": null,
+  "feststellungen": [],
+  "risiken": [
+    {
+      "id": "cmvf9pzlc000lfu7dxv4watgq",
+      "code": "EC-UST-07",
+      "titel": "§-13b-Eingangsleistungen nicht erfasst"
+    }
+  ],
+  "letzte": [
+    {
+      "id": "cmvf9q01b004rfu7d123z1lt5",
+      "periodeLabel": "August 2026",
+      "anzeige": "OHNE_BEFUND"
+    },
+    {
+      "id": "cmvf9q015004pfu7d33dxtaqv",
+      "periodeLabel": "Juli 2026",
+      "anzeige": "OHNE_BEFUND"
+    },
+    {
+      "id": "cmvf9q010004nfu7dmioqk2v9",
+      "periodeLabel": "Juni 2026",
+      "anzeige": "OHNE_BEFUND"
+    }
+  ],
+  "nachtraege": [],
+  "verlauf": [
+    {
+      "pos": -1,
+      "at": "2026-09-30T00:00:00.000Z",
+      "actorId": null,
+      "aktion": "system.faellig",
+      "text": "fällig (Periodenende 30.09.2026)",
+      "system": true
+    }
+  ],
+  "beteiligte": ["b1000000-0000-4000-8000-000000000002"]
+}

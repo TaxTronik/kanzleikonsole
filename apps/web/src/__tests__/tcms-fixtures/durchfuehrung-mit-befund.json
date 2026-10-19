@@ -1,0 +1,267 @@
+{
+  "id": "cmvf9q02e005efu7dgfw846up",
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "periodeLabel": "Juni 2026",
+  "periodeVon": "2026-06-01",
+  "periodeBis": "2026-06-30",
+  "faelligAm": "2026-07-10",
+  "status": "MIT_BEFUND",
+  "anzeige": "MIT_BEFUND",
+  "ausserplanmaessig": false,
+  "schritte": [
+    {
+      "titel": "Shop- und Marktplatzerlöse erfassen",
+      "hinweis": "Shop- und Marktplatzerlöse aus Export des Systems abgleichen",
+      "erledigt": true,
+      "kommentar": ""
+    },
+    {
+      "titel": "Eingänge der Zahlungsdienstleister abstimmen",
+      "hinweis": "Eingänge der ZDL (PayPal, Stripe, Klarna, Amazon Pay) gegen Bankabflüsse prüfen",
+      "erledigt": true,
+      "kommentar": ""
+    },
+    {
+      "titel": "FiBu-Erlöskonten gegenüberstellen",
+      "hinweis": "Erlöskonten mit der Summe aus Shop-Export und ZDL-Eingängen abgleichen",
+      "erledigt": true,
+      "kommentar": ""
+    },
+    {
+      "titel": "Clearingkonten auf 0,00 € prüfen",
+      "hinweis": "Salden der Clearingkonten kontrollieren",
+      "erledigt": true,
+      "kommentar": ""
+    }
+  ],
+  "werte": [
+    {
+      "key": "shop",
+      "wert": 371271,
+      "bemerkung": "",
+      "erklaert": false
+    },
+    {
+      "key": "zdl",
+      "wert": 371118,
+      "bemerkung": "",
+      "erklaert": false
+    },
+    {
+      "key": "clearing_paypal",
+      "wert": 0,
+      "bemerkung": "",
+      "erklaert": false
+    },
+    {
+      "key": "clearing_stripe",
+      "wert": 0,
+      "bemerkung": "",
+      "erklaert": false
+    },
+    {
+      "key": "clearing_amazonpay",
+      "wert": 0,
+      "bemerkung": "",
+      "erklaert": false
+    }
+  ],
+  "ergebnis": "MIT_BEFUND",
+  "ergebnisKommentar": "Clearingkonto Klarna mit Restsaldo 1.214,30 €",
+  "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+  "begonnenAm": "2026-07-06T09:30:00.000Z",
+  "eingereichtAm": "2026-07-08T15:20:00.000Z",
+  "mandantBestaetigtVon": null,
+  "mandantBestaetigtAm": null,
+  "gegengezeichnetVon": "b1000000-0000-4000-8000-000000000001",
+  "abgeschlossenAm": "2026-07-09T10:00:00.000Z",
+  "zurueckgewiesenVon": null,
+  "zurueckgewiesenAm": null,
+  "zurueckweisungsgrund": null,
+  "entfallenBegruendung": null,
+  "entfallenAm": null,
+  "createdAt": "2026-03-01T00:00:00.000Z",
+  "vorhandenZumStand": true,
+  "nachweise": [
+    {
+      "id": "cmvf9q02g005ffu7dnftlacnd",
+      "dokumentId": "28/280502dd6930bcd9a51c66465a94f13410e803b6c594c17d68af004824e23c86",
+      "dateiname": "K-EC-11_Juni_2026.csv",
+      "mime": "text/csv",
+      "groesse": 137,
+      "sha256": "280502dd6930bcd9a51c66465a94f13410e803b6c594c17d68af004824e23c86",
+      "gesperrt": true,
+      "hochgeladenVon": "b1000000-0000-4000-8000-000000000002",
+      "hochgeladenAm": "2026-07-07T11:00:00.000Z"
+    },
+    {
+      "id": "cmvf9q02i005gfu7dy8vn0upb",
+      "dokumentId": "34/34b32adfe41e3f00759517b6f035bbd52876a2f3b55599b4fd08c129aa59c3f6",
+      "dateiname": "K-EC-11_Juni_2026_2.csv",
+      "mime": "text/csv",
+      "groesse": 137,
+      "sha256": "34b32adfe41e3f00759517b6f035bbd52876a2f3b55599b4fd08c129aa59c3f6",
+      "gesperrt": true,
+      "hochgeladenVon": "b1000000-0000-4000-8000-000000000002",
+      "hochgeladenAm": "2026-07-07T11:00:00.000Z"
+    }
+  ],
+  "nachweiseAusgeblendet": 0,
+  "original": null,
+  "pruefung": {
+    "schritteErledigt": 4,
+    "schritteGesamt": 4,
+    "werteFehlend": [],
+    "ausserhalb": [],
+    "nachweise": 2,
+    "mindestNachweise": 2,
+    "ergebnis": "MIT_BEFUND",
+    "kommentarFehlt": false,
+    "maengel": []
+  },
+  "rechte": {
+    "beginnen": {
+      "erlaubt": false,
+      "grund": "Abgeschlossen — unveränderlich; Korrekturen entstehen als Nachtrag"
+    },
+    "bearbeiten": {
+      "erlaubt": false,
+      "grund": "Abgeschlossen — unveränderlich; Korrekturen entstehen als Nachtrag"
+    },
+    "gegenzeichnen": {
+      "erlaubt": false,
+      "grund": "Bereits gegengezeichnet"
+    },
+    "mandantBestaetigen": {
+      "erlaubt": false,
+      "grund": "Für diese Kontrolle ist keine Bestätigung beim Mandanten vorgesehen"
+    },
+    "zurueckweisen": {
+      "erlaubt": false,
+      "grund": "Bereits gegengezeichnet"
+    },
+    "entfallenBeantragen": {
+      "erlaubt": false,
+      "grund": "Abgeschlossen — unveränderlich; Korrekturen entstehen als Nachtrag"
+    },
+    "entfallenFreigeben": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "entfallenAblehnen": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "nachtrag": {
+      "erlaubt": true,
+      "grund": null
+    }
+  },
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "namen": [],
+  "programmId": "cmvf9pzh00003fu7dz30kg9nu",
+  "kontrolle": {
+    "id": "cmvf9pzs60021fu7dyb4e8ljk",
+    "code": "K-EC-11",
+    "standId": "cmvf9pzs60022fu7db9o84otv",
+    "version": 1,
+    "gueltigAb": "2026-03-01T00:00:00.000Z",
+    "titel": "Dreifach-Abstimmung Shop/Zahlungsdienstleister/FiBu",
+    "ziel": "Vollständigkeit der Erlösdatenkette: Shop/Marktplatz ↔ Zahlungsdienstleister ↔ FiBu angleichen; Clearingkonten auf 0,00 € prüfen.",
+    "art": "D",
+    "ausfuehrung": "IT",
+    "partei": "KANZLEI",
+    "schluessel": true,
+    "nachweis": "Abstimmungsblatt, Saldenliste Clearingkonten",
+    "mindestNachweise": 2,
+    "toleranzEur": 500,
+    "faelligNachTagen": 10,
+    "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+    "vertretungId": "b1000000-0000-4000-8000-000000000003",
+    "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+    "gegenzeichnungMandant": false,
+    "kennzahlen": [
+      {
+        "key": "shop",
+        "label": "Shop- und Marktplatzerlöse",
+        "sollEur": null
+      },
+      {
+        "key": "zdl",
+        "label": "Eingänge Zahlungsdienstleister",
+        "sollEur": null
+      },
+      {
+        "key": "differenz",
+        "label": "Differenz",
+        "sollEur": null,
+        "differenzAus": ["shop", "zdl"]
+      },
+      {
+        "key": "clearing_paypal",
+        "label": "Clearingkonto PayPal",
+        "sollEur": 0
+      },
+      {
+        "key": "clearing_stripe",
+        "label": "Clearingkonto Stripe",
+        "sollEur": 0
+      },
+      {
+        "key": "clearing_amazonpay",
+        "label": "Clearingkonto Amazon Pay",
+        "sollEur": 0
+      }
+    ],
+    "design": "ANGEMESSEN",
+    "designVon": "b1000000-0000-4000-8000-000000000001",
+    "designAm": "2026-03-11T00:00:00.000Z"
+  },
+  "anlass": null,
+  "entfallenVon": null,
+  "entfallenFreigegebenVon": null,
+  "nachtragZuId": null,
+  "feststellungen": [
+    {
+      "maskiert": false,
+      "id": "cmvf9q0au007vfu7dxf0u6srl",
+      "nummer": "F-2026-004",
+      "titel": "Clearingkonto Klarna mit Restsaldo im Juni",
+      "status": "GESCHLOSSEN",
+      "schwere": "GERING",
+      "vertraulich": false
+    }
+  ],
+  "risiken": [
+    {
+      "id": "cmvf9pzna000zfu7doinn0nh3",
+      "code": "EC-GOB-01",
+      "titel": "Erlöse unvollständig gebucht"
+    },
+    {
+      "id": "cmvf9pzm0000pfu7dybe0h8v8",
+      "code": "EC-UST-09",
+      "titel": "Entgeltminderungen nicht oder falsch korrigiert"
+    },
+    {
+      "id": "cmvf9pzmc000rfu7dnvycnbfn",
+      "code": "EC-UST-10",
+      "titel": "Falsche Periodenzuordnung"
+    }
+  ],
+  "letzte": [],
+  "nachtraege": [],
+  "verlauf": [
+    {
+      "pos": -1,
+      "at": "2026-06-30T00:00:00.000Z",
+      "actorId": null,
+      "aktion": "system.faellig",
+      "text": "fällig (Periodenende 30.06.2026)",
+      "system": true
+    }
+  ],
+  "beteiligte": ["b1000000-0000-4000-8000-000000000002"]
+}

@@ -1,0 +1,121 @@
+{
+  "maskiert": false,
+  "stand": "2026-10-19",
+  "historisch": false,
+  "id": "cmvf9q0c40082fu7dh1ef2q31",
+  "programmId": "cmvf9pzh00003fu7dz30kg9nu",
+  "nummer": "F-2026-007",
+  "titel": "Lager CZ ohne Registrierung und ohne Verbringensmeldung",
+  "sachverhalt": "Der Lagerland-Monitor September zeigt Bestand in Tschechien seit 08/2026 (PAN-EU). Eine lokale USt-Registrierung in CZ liegt nicht vor; das Verbringen nach CZ ist in der ZM 08/2026 nicht enthalten.",
+  "quelle": "KONTROLLE",
+  "quelleText": "K-EC-05 September 2026",
+  "klasse": "STEUERLICHER_FEHLER",
+  "schwere": "HOCH",
+  "auswirkung": "JA",
+  "ursache": "Automatische Lagerverteilung durch PAN-EU ohne Meldung an die Kanzlei",
+  "status": "IN_WUERDIGUNG",
+  "vertraulich": false,
+  "vertraulichAktuell": false,
+  "p153": null,
+  "durchfuehrung": {
+    "id": "cmvf9pzyw003xfu7dsrm3jow5",
+    "kontrolleId": "cmvf9pzqn001pfu7dzi4im17d",
+    "code": "K-EC-05",
+    "periodeLabel": "September 2026"
+  },
+  "ereignis": null,
+  "nachkontrolle": null,
+  "verwerfen": null,
+  "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+  "erfasstAm": "2026-10-12T11:20:00.000Z",
+  "geschlossenAm": null,
+  "risiken": [
+    {
+      "id": "cmvf9pzkb000ffu7d89jo6fmr",
+      "code": "EC-UST-04"
+    },
+    {
+      "id": "cmvf9pzkm000hfu7ds4p9eigq",
+      "code": "EC-UST-05"
+    }
+  ],
+  "erklaerungen": [
+    {
+      "id": "cmvf9q0c60083fu7dpn4qw3g1",
+      "steuerart": "ZM",
+      "land": "DE",
+      "zeitraum": "08/2026",
+      "auswirkungEur": null
+    },
+    {
+      "id": "cmvf9q0c60084fu7dhymcrc5r",
+      "steuerart": "USt (ig. Erwerb)",
+      "land": "CZ",
+      "zeitraum": "08/2026",
+      "auswirkungEur": null
+    },
+    {
+      "id": "cmvf9q0c60085fu7dxts6jfcd",
+      "steuerart": "USt (ig. Erwerb)",
+      "land": "CZ",
+      "zeitraum": "09/2026",
+      "auswirkungEur": null
+    }
+  ],
+  "massnahmen": [
+    {
+      "id": "cmvf9q0c70086fu7diuf8dc0y",
+      "feststellungId": "cmvf9q0c40082fu7dh1ef2q31",
+      "wiedervorlageNr": 121,
+      "beschreibung": "Registrierung in CZ beauftragen",
+      "verantwortlich": "b1000000-0000-4000-8000-000000000001",
+      "frist": "2026-10-31",
+      "status": "OFFEN",
+      "erledigtAm": null,
+      "erledigtVon": null,
+      "createdAt": "2026-10-12T11:20:00.000Z",
+      "nachweis": null
+    },
+    {
+      "id": "cmvf9q0c70087fu7di3h3p921",
+      "feststellungId": "cmvf9q0c40082fu7dh1ef2q31",
+      "wiedervorlageNr": 122,
+      "beschreibung": "ZM 08/2026 auf Verbringen nach CZ prüfen",
+      "verantwortlich": "b1000000-0000-4000-8000-000000000002",
+      "frist": "2026-10-23",
+      "status": "OFFEN",
+      "erledigtAm": null,
+      "erledigtVon": null,
+      "createdAt": "2026-10-12T11:20:00.000Z",
+      "nachweis": null
+    },
+    {
+      "id": "cmvf9q0c70088fu7di4yrsfjp",
+      "feststellungId": "cmvf9q0c40082fu7dh1ef2q31",
+      "wiedervorlageNr": 123,
+      "beschreibung": "Risikoaufklärung Betriebsstätte CZ (K-EC-24) einholen",
+      "verantwortlich": "b1000000-0000-4000-8000-000000000001",
+      "frist": "2026-11-15",
+      "status": "OFFEN",
+      "erledigtAm": null,
+      "erledigtVon": null,
+      "createdAt": "2026-10-12T11:20:00.000Z",
+      "nachweis": null
+    }
+  ],
+  "verlauf": [
+    {
+      "pos": 13,
+      "at": "2026-10-12T11:25:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "text": "Status auf „In Würdigung\" gesetzt"
+    },
+    {
+      "pos": 12,
+      "at": "2026-10-12T11:20:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "text": "Feststellung erfasst"
+    }
+  ],
+  "namen": []
+}

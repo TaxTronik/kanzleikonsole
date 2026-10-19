@@ -1,0 +1,116 @@
+{
+  "maskiert": false,
+  "stand": "2026-10-19",
+  "historisch": false,
+  "id": "cmvf9q0bi007xfu7dqkshgfrc",
+  "programmId": "cmvf9pzh00003fu7dz30kg9nu",
+  "nummer": "F-2026-006",
+  "titel": "Erstattungen FR/IT nicht im OSS korrigiert",
+  "sachverhalt": "Bei der OSS-Abstimmung Q2 fiel auf, dass Erstattungen aus Amazon-Verkäufen nach Frankreich und Italien nicht als Entgeltminderung im OSS berücksichtigt wurden (rund 1.380 € Bemessungsgrundlage).",
+  "quelle": "KONTROLLE",
+  "quelleText": "K-EC-04 Q2 2026",
+  "klasse": "STEUERLICHER_FEHLER",
+  "schwere": "GERING",
+  "auswirkung": "JA",
+  "ursache": "Erstattungsreport der Plattform nicht in die OSS-Vorbereitung übernommen",
+  "status": "NACHKONTROLLE",
+  "vertraulich": false,
+  "vertraulichAktuell": false,
+  "p153": {
+    "entscheidung": "BERICHTIGUNG",
+    "begruendung": "Korrektur der Bemessungsgrundlagen FR/IT mit der OSS-Erklärung Q3; Betrag gering, Korrekturweg über spätere Erklärung vorgesehen.",
+    "frist": "2026-10-31",
+    "von": "b1000000-0000-4000-8000-000000000001",
+    "am": "2026-08-05T14:10:00.000Z"
+  },
+  "durchfuehrung": {
+    "id": "cmvf9pzy9003nfu7dj482qj43",
+    "kontrolleId": "cmvf9pzqd001nfu7dv1wne7oy",
+    "code": "K-EC-04",
+    "periodeLabel": "Q2 2026"
+  },
+  "ereignis": null,
+  "nachkontrolle": {
+    "id": "cmvf9pzyf003pfu7dqgrt2dbr",
+    "kontrolleId": "cmvf9pzqd001nfu7dv1wne7oy",
+    "code": "K-EC-04",
+    "titel": "OSS-Abstimmung vor Abgabe",
+    "periodeLabel": "Q3 2026",
+    "faelligAm": "2026-10-24",
+    "anzeige": "FAELLIG",
+    "ausserplanmaessig": false
+  },
+  "verwerfen": null,
+  "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+  "erfasstAm": "2026-07-28T10:00:00.000Z",
+  "geschlossenAm": null,
+  "risiken": [
+    {
+      "id": "cmvf9pzjz000dfu7dd3iop2pe",
+      "code": "EC-UST-03"
+    },
+    {
+      "id": "cmvf9pzm0000pfu7dybe0h8v8",
+      "code": "EC-UST-09"
+    }
+  ],
+  "erklaerungen": [
+    {
+      "id": "cmvf9q0bl007yfu7d5t8oam95",
+      "steuerart": "USt (OSS)",
+      "land": "FR",
+      "zeitraum": "Q2 2026",
+      "auswirkungEur": 820
+    },
+    {
+      "id": "cmvf9q0bl007zfu7dgfx2pfa7",
+      "steuerart": "USt (OSS)",
+      "land": "IT",
+      "zeitraum": "Q2 2026",
+      "auswirkungEur": 560
+    }
+  ],
+  "massnahmen": [
+    {
+      "id": "cmvf9q0bm0080fu7dsac6ndzo",
+      "feststellungId": "cmvf9q0bi007xfu7dqkshgfrc",
+      "wiedervorlageNr": 118,
+      "beschreibung": "Erstattungen FR/IT in der OSS-Erklärung Q3 korrigieren",
+      "verantwortlich": "b1000000-0000-4000-8000-000000000002",
+      "frist": "2026-10-31",
+      "status": "ERLEDIGT",
+      "erledigtAm": "2026-10-09T15:00:00.000Z",
+      "erledigtVon": "b1000000-0000-4000-8000-000000000002",
+      "createdAt": "2026-07-28T10:00:00.000Z",
+      "nachweis": null
+    },
+    {
+      "id": "cmvf9q0bm0081fu7desfqwqx1",
+      "feststellungId": "cmvf9q0bi007xfu7dqkshgfrc",
+      "wiedervorlageNr": 119,
+      "beschreibung": "Erstattungsreport fest in die OSS-Vorbereitung aufnehmen",
+      "verantwortlich": "b1000000-0000-4000-8000-000000000012",
+      "frist": "2026-09-30",
+      "status": "ERLEDIGT",
+      "erledigtAm": "2026-09-18T11:00:00.000Z",
+      "erledigtVon": "b1000000-0000-4000-8000-000000000012",
+      "createdAt": "2026-07-28T10:00:00.000Z",
+      "nachweis": null
+    }
+  ],
+  "verlauf": [
+    {
+      "pos": 11,
+      "at": "2026-08-05T14:10:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000001",
+      "text": "§-153-Würdigung dokumentiert: Berichtigung erforderlich"
+    },
+    {
+      "pos": 10,
+      "at": "2026-07-28T10:00:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "text": "Feststellung erfasst"
+    }
+  ],
+  "namen": []
+}

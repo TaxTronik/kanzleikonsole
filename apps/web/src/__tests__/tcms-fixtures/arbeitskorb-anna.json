@@ -1,0 +1,164 @@
+{
+  "heute": "2026-10-19",
+  "durchfuehrungen": [
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q0ap007ufu7dhkxbrll2",
+      "code": "K-EC-24",
+      "titel": "Gegengezeichnete Risikoaufklärung",
+      "periode": "außerplanmäßig (Lager CZ)",
+      "faelligAm": "2026-11-15T00:00:00.000Z",
+      "tage": 27,
+      "anzeige": "FAELLIG",
+      "schluessel": false,
+      "nachweise": 0,
+      "mindestNachweise": 1
+    }
+  ],
+  "gegenzeichnungen": [
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q01f004tfu7dl6bhs0my",
+      "code": "K-EC-08",
+      "titel": "Kreditorencheck § 13b",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-10T00:00:00.000Z",
+      "tage": -9,
+      "anzeige": "ZUR_GEGENZEICHNUNG",
+      "schluessel": false,
+      "nachweise": 1,
+      "mindestNachweise": 1,
+      "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+      "eingereichtAm": "2026-10-09T16:12:00.000Z"
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q02z005nfu7d89n2on3w",
+      "code": "K-EC-11",
+      "titel": "Dreifach-Abstimmung Shop/Zahlungsdienstleister/FiBu",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-10T00:00:00.000Z",
+      "tage": -9,
+      "anzeige": "ZUR_GEGENZEICHNUNG",
+      "schluessel": true,
+      "nachweise": 2,
+      "mindestNachweise": 2,
+      "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+      "eingereichtAm": "2026-10-09T16:12:00.000Z"
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q03y005zfu7dwo95smbo",
+      "code": "K-EC-12",
+      "titel": "UStVA-Plausibilisierung vor Abgabe",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-10T00:00:00.000Z",
+      "tage": -9,
+      "anzeige": "ZUR_GEGENZEICHNUNG",
+      "schluessel": true,
+      "nachweise": 1,
+      "mindestNachweise": 1,
+      "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+      "eingereichtAm": "2026-10-09T16:12:00.000Z"
+    }
+  ],
+  "vierAugen": [],
+  "p153": [
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004720",
+        "name": "Seestern Home & Living GmbH"
+      },
+      "id": "cmvf9q0kq00b6fu7dx4g4w9q5",
+      "nummer": "F-2026-001",
+      "titel": "Bundle-Angebote mit gemischten Steuersätzen",
+      "schwere": "MITTEL",
+      "auswirkung": "UNKLAR",
+      "vertraulich": false,
+      "erfasstAm": "2026-09-18T00:00:00.000Z"
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q0c40082fu7dh1ef2q31",
+      "nummer": "F-2026-007",
+      "titel": "Lager CZ ohne Registrierung und ohne Verbringensmeldung",
+      "schwere": "HOCH",
+      "auswirkung": "JA",
+      "vertraulich": false,
+      "erfasstAm": "2026-10-12T11:20:00.000Z"
+    }
+  ],
+  "p153BeiAnderen": {
+    "anzahl": 0,
+    "mandantIds": []
+  },
+  "ereignisse": [
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004733",
+        "name": "Kleinwerk Manufaktur UG (haftungsbeschränkt)"
+      },
+      "id": "cmvf9q0pt00d0fu7df06golmu",
+      "nummer": "2026-T-0340",
+      "typ": "T-04",
+      "titel": "Lieferschwelle 84 % erreicht (8.420 € von 10.000 €)",
+      "quelle": "KONTROLLE",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000002",
+      "gemeldetAm": "2026-10-07T10:00:00.000Z"
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q0cv008dfu7dgy2dcq04",
+      "nummer": "2026-T-0342",
+      "typ": "T-05",
+      "titel": "Neue Warengruppe „Outdoor-Kochbücher\" ab 11/2026",
+      "quelle": "PORTAL",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012",
+      "gemeldetAm": "2026-10-12T09:14:00.000Z"
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q0d8008hfu7d6b9w5w4h",
+      "nummer": "2026-T-0345",
+      "typ": "T-01",
+      "titel": "Start auf Kaufland.de zum 01.12.2026",
+      "quelle": "PORTAL",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012",
+      "gemeldetAm": "2026-10-14T13:02:00.000Z"
+    }
+  ],
+  "beschreibungen": [
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004720",
+        "name": "Seestern Home & Living GmbH"
+      },
+      "id": "cmvf9q0kk00b3fu7d1oaiv2ir",
+      "nummer": "1.0",
+      "angefordertVon": "b1000000-0000-4000-8000-000000000002",
+      "angefordertAm": "2026-10-06T15:00:00.000Z"
+    }
+  ],
+  "mandantenZustaendig": 4
+}

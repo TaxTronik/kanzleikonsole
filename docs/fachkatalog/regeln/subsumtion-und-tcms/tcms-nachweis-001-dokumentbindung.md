@@ -19,9 +19,11 @@ implementation:
     Nachweise einer Kontrolldurchführung verweisen auf Dokumente der
     kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der
     gespeicherten, gescannten neuesten Version eines Dokuments genau dieses
-    Mandanten. Solange ein Nachweis verweist, sind Löschen und neue
-    Versionen des Dokuments gesperrt. Oberfläche und Auslieferung über die
-    Dokumentauslieferung der kanzleikonsole folgen mit der Durchführungsseite.
+    Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der
+    kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein
+    Nachweis verweist, sind Löschen und neue Versionen des Dokuments
+    gesperrt. Offen gebliebene Verknüpfungen nach unklarem Ausgang werden
+    noch nicht automatisch geklärt.
 sources:
   - kind: product_documentation
     citation: Leitfaden Tax-CMS-Oberflächen, Abschnitt 11 (Route Handler für Datei-Abrufe)
@@ -41,12 +43,19 @@ sources:
 code_refs:
   - apps/web/src/server/tcms/durchfuehrung/verweis.ts
   - apps/web/src/server/tcms/durchfuehrung/sperre.ts
+  - apps/web/src/server/tcms/durchfuehrung/nachweis-aktion.ts
+  - apps/web/src/server/tcms/durchfuehrung/nachweis-download.ts
+  - apps/web/src/app/api/staff/clients/[id]/tcms/nachweise/[nachweisId]/route.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/actions.ts
   - apps/web/src/app/staff/(protected)/documents/actions.ts
   - apps/web/src/app/api/staff/documents/[id]/new-version/commit/route.ts
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20261019180000_tcms_document_reference/migration.sql
 test_refs:
   - apps/web/src/server/tcms/__tests__/nachweis-verweis-db.test.ts
+  - apps/web/src/server/tcms/durchfuehrung/__tests__/nachweis-aktion.test.ts
+  - apps/web/src/server/tcms/durchfuehrung/__tests__/nachweis-download.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/documents/__tests__/bulk-actions.test.ts
   - apps/web/src/app/api/staff/documents/[id]/new-version/commit/__tests__/route-poa-lock.test.ts
 feature_refs:
@@ -155,8 +164,15 @@ Inhalt unveränderlich. Der Trigger
 Dokuments mit offener Verknüpfung ab; die Löschaktion der Ablage
 (`documents/actions.ts`) prüft vorher selbst und nennt den Grund, die
 Versions-Route (`new-version/commit`) sperrt neue Versionen.
-Die Auslieferung über die Dokumentauslieferung der kanzleikonsole (Route
-Handler, server/tcms/route.ts) folgt mit der Durchführungsseite.
+`nachweis-aktion.ts` legt hochgeladene Dateien über die Dokumentenpipeline
+(`runJournaledUpload`, Klassifikation „Allgemein“) am Mandanten ab, schreibt
+in derselben Commit-Transaktion Audit und Verknüpfung, hängt danach an und
+gibt die Verknüpfung nur bei eindeutiger Ablehnung frei (4xx, offener
+Breaker); Zeitlimit, Transport, 5xx und Protokollfehler lassen sie offen.
+`nachweis-download.ts` liefert nach `tcmsMandantRoute` nur über
+`loadDocumentDelivery` und `documentDownloadResponse` aus und vergleicht
+SHA-256 und Größe vor dem Abrufnachweis und erneut an der geladenen Fassung;
+beim Streamen prüft die Ablage den Objektinhalt (R-05).
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -183,4 +199,9 @@ Unveränderlichkeit, die Lösch- und Versionssperre über die Ablage und den
 Trigger sowie die Freigabe und das parallele Löschen und Verknüpfen.
 `bulk-actions.test.ts` belegt die Löschsperre der Ablage mit Grund,
 `route-poa-lock.test.ts` die Versionssperre der Route (auch zwischen Vor- und
-Nachprüfung).
+Nachprüfung). `nachweis-aktion.test.ts` belegt Freigabe nur bei eindeutiger
+Ablehnung, Ablage über die Pipeline und Verknüpfung in der Commit-Transaktion,
+`nachweis-download.test.ts` die Auslieferung nur bei gleichem SHA-256 und
+gleicher Größe, nur für Dokumente dieses Mandanten und ohne Abrufnachweis bei
+Abweichung, `actions.test.ts` der Durchführung die Auswahl nur über die
+gespeicherte Version.

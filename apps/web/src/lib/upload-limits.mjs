@@ -40,6 +40,8 @@ export const MAX_UPLOAD_BYTES_BY_KIND = Object.freeze({
   payrollFile: STORAGE_MAX_UPLOAD_BYTES,
   /** Textübernahme in den Subsumtions-Workspace (PDF/DOCX). */
   subsumtionImport: STORAGE_MAX_UPLOAD_BYTES,
+  /** Nachweis einer Kontrolldurchführung im Tax-CMS (Dokument am Mandanten). */
+  tcmsNachweis: 20 * MIB,
 });
 
 /** Platz für Multipart-Framing und die übrigen Felder einer Upload-Action. */

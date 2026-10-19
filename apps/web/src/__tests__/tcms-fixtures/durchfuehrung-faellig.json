@@ -1,0 +1,185 @@
+{
+  "id": "cmvf9pzzo0048fu7d8zdkiu4f",
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "periodeLabel": "September 2026",
+  "periodeVon": "2026-09-01",
+  "periodeBis": "2026-09-30",
+  "faelligAm": "2026-10-25",
+  "status": "GEPLANT",
+  "anzeige": "FAELLIG",
+  "ausserplanmaessig": false,
+  "schritte": [
+    {
+      "titel": "Verbringensliste übernehmen",
+      "hinweis": "Warenbewegungen zwischen Lagerländern aus den Reports",
+      "erledigt": false,
+      "kommentar": ""
+    },
+    {
+      "titel": "Gegen ZM abstimmen",
+      "hinweis": "Innergemeinschaftliche Verbringen und Lieferungen in der ZM prüfen",
+      "erledigt": false,
+      "kommentar": ""
+    },
+    {
+      "titel": "Differenzen klären",
+      "hinweis": "Abweichungen dokumentieren",
+      "erledigt": false,
+      "kommentar": ""
+    }
+  ],
+  "werte": [],
+  "ergebnis": null,
+  "ergebnisKommentar": null,
+  "durchgefuehrtVon": null,
+  "begonnenAm": null,
+  "eingereichtAm": null,
+  "mandantBestaetigtVon": null,
+  "mandantBestaetigtAm": null,
+  "gegengezeichnetVon": null,
+  "abgeschlossenAm": null,
+  "zurueckgewiesenVon": null,
+  "zurueckgewiesenAm": null,
+  "zurueckweisungsgrund": null,
+  "entfallenBegruendung": null,
+  "entfallenAm": null,
+  "createdAt": "2026-03-01T00:00:00.000Z",
+  "vorhandenZumStand": true,
+  "nachweise": [],
+  "nachweiseAusgeblendet": 0,
+  "original": null,
+  "pruefung": {
+    "schritteErledigt": 0,
+    "schritteGesamt": 3,
+    "werteFehlend": [],
+    "ausserhalb": [],
+    "nachweise": 0,
+    "mindestNachweise": 1,
+    "ergebnis": null,
+    "kommentarFehlt": false,
+    "maengel": [
+      "3 von 3 Schritten offen",
+      "Nachweise: 0 von mindestens 1",
+      "Ergebnis nicht gewählt"
+    ]
+  },
+  "rechte": {
+    "beginnen": {
+      "erlaubt": true,
+      "grund": null
+    },
+    "bearbeiten": {
+      "erlaubt": true,
+      "grund": null
+    },
+    "gegenzeichnen": {
+      "erlaubt": false,
+      "grund": "Nur für eingereichte Durchführungen"
+    },
+    "mandantBestaetigen": {
+      "erlaubt": false,
+      "grund": "Für diese Kontrolle ist keine Bestätigung beim Mandanten vorgesehen"
+    },
+    "zurueckweisen": {
+      "erlaubt": false,
+      "grund": "Nur für eingereichte Durchführungen"
+    },
+    "entfallenBeantragen": {
+      "erlaubt": true,
+      "grund": null
+    },
+    "entfallenFreigeben": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "entfallenAblehnen": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "nachtrag": {
+      "erlaubt": false,
+      "grund": "Nachträge nur zu abgeschlossenen Durchführungen"
+    }
+  },
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "namen": [],
+  "programmId": "cmvf9pzh00003fu7dz30kg9nu",
+  "kontrolle": {
+    "id": "cmvf9pzqw001rfu7d45uz7xyz",
+    "code": "K-EC-06",
+    "standId": "cmvf9pzqw001sfu7dhdfp2onj",
+    "version": 1,
+    "gueltigAb": "2026-03-01T00:00:00.000Z",
+    "titel": "Verbringens- und ZM-Abstimmung",
+    "ziel": "Verbringensliste gegen die Zusammenfassende Meldung abstimmen.",
+    "art": "D",
+    "ausfuehrung": "M",
+    "partei": "KANZLEI",
+    "schluessel": false,
+    "nachweis": "Abstimmung Verbringensliste ↔ ZM",
+    "mindestNachweise": 1,
+    "toleranzEur": null,
+    "faelligNachTagen": 25,
+    "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+    "vertretungId": "b1000000-0000-4000-8000-000000000003",
+    "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+    "gegenzeichnungMandant": false,
+    "kennzahlen": [],
+    "design": "ANGEMESSEN",
+    "designVon": "b1000000-0000-4000-8000-000000000001",
+    "designAm": "2026-03-11T00:00:00.000Z"
+  },
+  "anlass": null,
+  "entfallenVon": null,
+  "entfallenFreigegebenVon": null,
+  "nachtragZuId": null,
+  "feststellungen": [],
+  "risiken": [
+    {
+      "id": "cmvf9pzkb000ffu7d89jo6fmr",
+      "code": "EC-UST-04",
+      "titel": "Umsätze falsch dem OSS zugeordnet"
+    },
+    {
+      "id": "cmvf9pzkm000hfu7ds4p9eigq",
+      "code": "EC-UST-05",
+      "titel": "Ausländisches Lager ohne Registrierung"
+    },
+    {
+      "id": "cmvf9pzkx000jfu7dnn2kyi54",
+      "code": "EC-UST-06",
+      "titel": "Steuerfreie ig. B2B-Lieferung ohne Nachweise"
+    }
+  ],
+  "letzte": [
+    {
+      "id": "cmvf9pzzh0046fu7dztlz041a",
+      "periodeLabel": "August 2026",
+      "anzeige": "OHNE_BEFUND"
+    },
+    {
+      "id": "cmvf9pzzb0044fu7dro3jdh87",
+      "periodeLabel": "Juli 2026",
+      "anzeige": "OHNE_BEFUND"
+    },
+    {
+      "id": "cmvf9pzz60042fu7dorjdhvn4",
+      "periodeLabel": "Juni 2026",
+      "anzeige": "OHNE_BEFUND"
+    }
+  ],
+  "nachtraege": [],
+  "verlauf": [
+    {
+      "pos": -1,
+      "at": "2026-09-30T00:00:00.000Z",
+      "actorId": null,
+      "aktion": "system.faellig",
+      "text": "fällig (Periodenende 30.09.2026)",
+      "system": true
+    }
+  ],
+  "beteiligte": []
+}

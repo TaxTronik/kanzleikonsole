@@ -1,0 +1,132 @@
+{
+  "stand": "2026-10-19",
+  "historisch": false,
+  "programmId": "cmvf9pzh00003fu7dz30kg9nu",
+  "feststellungen": [
+    {
+      "maskiert": false,
+      "id": "cmvf9q0c40082fu7dh1ef2q31",
+      "nummer": "F-2026-007",
+      "titel": "Lager CZ ohne Registrierung und ohne Verbringensmeldung",
+      "quelle": "KONTROLLE",
+      "quelleText": "K-EC-05 September 2026",
+      "klasse": "STEUERLICHER_FEHLER",
+      "schwere": "HOCH",
+      "auswirkung": "JA",
+      "status": "IN_WUERDIGUNG",
+      "vertraulich": false,
+      "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+      "erfasstAm": "2026-10-12T11:20:00.000Z",
+      "durchfuehrungId": "cmvf9pzyw003xfu7dsrm3jow5",
+      "ereignisId": null,
+      "p153": null,
+      "p153Offen": true,
+      "verwerfenOffen": false,
+      "massnahmenOffen": 3,
+      "massnahmenGesamt": 3,
+      "aeltesteFrist": "2026-10-23",
+      "risikoCodes": ["EC-UST-04", "EC-UST-05"],
+      "massnahmen": [
+        {
+          "id": "cmvf9q0c70086fu7diuf8dc0y",
+          "feststellungId": "cmvf9q0c40082fu7dh1ef2q31",
+          "wiedervorlageNr": 121,
+          "beschreibung": "Registrierung in CZ beauftragen",
+          "verantwortlich": "b1000000-0000-4000-8000-000000000001",
+          "frist": "2026-10-31",
+          "status": "OFFEN",
+          "erledigtAm": null,
+          "erledigtVon": null,
+          "createdAt": "2026-10-12T11:20:00.000Z"
+        },
+        {
+          "id": "cmvf9q0c70087fu7di3h3p921",
+          "feststellungId": "cmvf9q0c40082fu7dh1ef2q31",
+          "wiedervorlageNr": 122,
+          "beschreibung": "ZM 08/2026 auf Verbringen nach CZ prüfen",
+          "verantwortlich": "b1000000-0000-4000-8000-000000000002",
+          "frist": "2026-10-23",
+          "status": "OFFEN",
+          "erledigtAm": null,
+          "erledigtVon": null,
+          "createdAt": "2026-10-12T11:20:00.000Z"
+        },
+        {
+          "id": "cmvf9q0c70088fu7di4yrsfjp",
+          "feststellungId": "cmvf9q0c40082fu7dh1ef2q31",
+          "wiedervorlageNr": 123,
+          "beschreibung": "Risikoaufklärung Betriebsstätte CZ (K-EC-24) einholen",
+          "verantwortlich": "b1000000-0000-4000-8000-000000000001",
+          "frist": "2026-11-15",
+          "status": "OFFEN",
+          "erledigtAm": null,
+          "erledigtVon": null,
+          "createdAt": "2026-10-12T11:20:00.000Z"
+        }
+      ]
+    },
+    {
+      "maskiert": true,
+      "id": "cmvf9q0bi007xfu7dqkshgfrc",
+      "nummer": "F-2026-006",
+      "vertraulich": true,
+      "status": "NACHKONTROLLE",
+      "erfasstAm": "2026-07-28T10:00:00.000Z",
+      "massnahmen": [
+        {
+          "id": "cmvf9q0bm0080fu7dsac6ndzo",
+          "feststellungId": "cmvf9q0bi007xfu7dqkshgfrc",
+          "wiedervorlageNr": 118,
+          "frist": "2026-10-31",
+          "status": "ERLEDIGT"
+        },
+        {
+          "id": "cmvf9q0bm0081fu7desfqwqx1",
+          "feststellungId": "cmvf9q0bi007xfu7dqkshgfrc",
+          "wiedervorlageNr": 119,
+          "frist": "2026-09-30",
+          "status": "ERLEDIGT"
+        }
+      ]
+    },
+    {
+      "maskiert": false,
+      "id": "cmvf9q0au007vfu7dxf0u6srl",
+      "nummer": "F-2026-004",
+      "titel": "Clearingkonto Klarna mit Restsaldo im Juni",
+      "quelle": "KONTROLLE",
+      "quelleText": "K-EC-11 Juni 2026",
+      "klasse": "DURCHFUEHRUNGSMANGEL",
+      "schwere": "GERING",
+      "auswirkung": "NEIN",
+      "status": "GESCHLOSSEN",
+      "vertraulich": false,
+      "erfasstVon": "b1000000-0000-4000-8000-000000000002",
+      "erfasstAm": "2026-07-09T11:00:00.000Z",
+      "durchfuehrungId": "cmvf9q02e005efu7dgfw846up",
+      "ereignisId": null,
+      "p153": null,
+      "p153Offen": false,
+      "verwerfenOffen": false,
+      "massnahmenOffen": 0,
+      "massnahmenGesamt": 1,
+      "aeltesteFrist": null,
+      "risikoCodes": ["EC-GOB-01"],
+      "massnahmen": [
+        {
+          "id": "cmvf9q0ax007wfu7df3bf6m9g",
+          "feststellungId": "cmvf9q0au007vfu7dxf0u6srl",
+          "wiedervorlageNr": 104,
+          "beschreibung": "Doppelbuchung stornieren und Saldo ausgleichen",
+          "verantwortlich": "b1000000-0000-4000-8000-000000000002",
+          "frist": "2026-07-20",
+          "status": "ERLEDIGT",
+          "erledigtAm": "2026-07-14T10:00:00.000Z",
+          "erledigtVon": "b1000000-0000-4000-8000-000000000002",
+          "createdAt": "2026-07-09T11:00:00.000Z"
+        }
+      ]
+    }
+  ],
+  "namen": []
+}

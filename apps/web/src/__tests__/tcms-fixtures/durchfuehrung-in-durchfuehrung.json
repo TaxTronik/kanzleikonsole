@@ -1,0 +1,212 @@
+{
+  "id": "cmvf9pzy3003jfu7d4oo44g6s",
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "periodeLabel": "September 2026",
+  "periodeVon": "2026-09-01",
+  "periodeBis": "2026-09-30",
+  "faelligAm": "2026-10-30",
+  "status": "IN_DURCHFUEHRUNG",
+  "anzeige": "IN_DURCHFUEHRUNG",
+  "ausserplanmaessig": false,
+  "schritte": [
+    {
+      "titel": "Stichprobe ziehen",
+      "hinweis": "Bestellungen je Land und Warengruppe auswählen",
+      "erledigt": true,
+      "kommentar": "Abgleich mit Kontoauszug erledigt"
+    },
+    {
+      "titel": "Steuerausweis prüfen",
+      "hinweis": "Ausgewiesenen Satz gegen Soll-Satz vergleichen",
+      "erledigt": false,
+      "kommentar": ""
+    },
+    {
+      "titel": "Ergebnis festhalten",
+      "hinweis": "Abweichungen mit Bestellnummer dokumentieren",
+      "erledigt": false,
+      "kommentar": ""
+    }
+  ],
+  "werte": [],
+  "ergebnis": null,
+  "ergebnisKommentar": null,
+  "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000002",
+  "begonnenAm": "2026-10-19T13:07:57.942Z",
+  "eingereichtAm": null,
+  "mandantBestaetigtVon": null,
+  "mandantBestaetigtAm": null,
+  "gegengezeichnetVon": null,
+  "abgeschlossenAm": null,
+  "zurueckgewiesenVon": null,
+  "zurueckgewiesenAm": null,
+  "zurueckweisungsgrund": null,
+  "entfallenBegruendung": null,
+  "entfallenAm": null,
+  "createdAt": "2026-03-01T00:00:00.000Z",
+  "vorhandenZumStand": true,
+  "nachweise": [
+    {
+      "id": "cmvf9s01r0000lh7dmncuj80d",
+      "dokumentId": "c3000000-0000-4000-8000-000000000001",
+      "dateiname": "Kontoabstimmung September.pdf",
+      "mime": "application/pdf",
+      "groesse": 48213,
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "gesperrt": false,
+      "hochgeladenVon": "b1000000-0000-4000-8000-000000000002",
+      "hochgeladenAm": "2026-10-19T13:07:58.119Z"
+    }
+  ],
+  "nachweiseAusgeblendet": 0,
+  "original": null,
+  "pruefung": {
+    "schritteErledigt": 1,
+    "schritteGesamt": 3,
+    "werteFehlend": [],
+    "ausserhalb": [],
+    "nachweise": 1,
+    "mindestNachweise": 1,
+    "ergebnis": null,
+    "kommentarFehlt": false,
+    "maengel": ["2 von 3 Schritten offen", "Ergebnis nicht gewählt"]
+  },
+  "rechte": {
+    "beginnen": {
+      "erlaubt": false,
+      "grund": "Bereits begonnen"
+    },
+    "bearbeiten": {
+      "erlaubt": true,
+      "grund": null
+    },
+    "gegenzeichnen": {
+      "erlaubt": false,
+      "grund": "Nur für eingereichte Durchführungen"
+    },
+    "mandantBestaetigen": {
+      "erlaubt": false,
+      "grund": "Für diese Kontrolle ist keine Bestätigung beim Mandanten vorgesehen"
+    },
+    "zurueckweisen": {
+      "erlaubt": false,
+      "grund": "Nur für eingereichte Durchführungen"
+    },
+    "entfallenBeantragen": {
+      "erlaubt": true,
+      "grund": null
+    },
+    "entfallenFreigeben": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "entfallenAblehnen": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "nachtrag": {
+      "erlaubt": false,
+      "grund": "Nachträge nur zu abgeschlossenen Durchführungen"
+    }
+  },
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "namen": [],
+  "programmId": "cmvf9pzh00003fu7dz30kg9nu",
+  "kontrolle": {
+    "id": "cmvf9pzq4001lfu7dck5cto47",
+    "code": "K-EC-03",
+    "standId": "cmvf9pzq4001mfu7d29qo6lri",
+    "version": 1,
+    "gueltigAb": "2026-03-01T00:00:00.000Z",
+    "titel": "Bestellstichprobe Steuerausweis",
+    "ziel": "Steuerausweis je Land in einer Stichprobe von Bestellungen gegen den Soll-Satz prüfen.",
+    "art": "D",
+    "ausfuehrung": "M",
+    "partei": "KANZLEI",
+    "schluessel": false,
+    "nachweis": "Stichprobenliste mit Ergebnis",
+    "mindestNachweise": 1,
+    "toleranzEur": null,
+    "faelligNachTagen": 30,
+    "durchfuehrendId": "b1000000-0000-4000-8000-000000000002",
+    "vertretungId": "b1000000-0000-4000-8000-000000000003",
+    "gegenzeichnerId": "b1000000-0000-4000-8000-000000000001",
+    "gegenzeichnungMandant": false,
+    "kennzahlen": [],
+    "design": "ANGEMESSEN",
+    "designVon": "b1000000-0000-4000-8000-000000000001",
+    "designAm": "2026-03-11T00:00:00.000Z"
+  },
+  "anlass": null,
+  "entfallenVon": null,
+  "entfallenFreigegebenVon": null,
+  "nachtragZuId": null,
+  "feststellungen": [],
+  "risiken": [
+    {
+      "id": "cmvf9pzjt000bfu7d577g29ub",
+      "code": "EC-UST-02",
+      "titel": "Falscher Steuersatz in Shop- oder Marktplatzregeln"
+    },
+    {
+      "id": "cmvf9pzll000nfu7dzxg5izex",
+      "code": "EC-UST-08",
+      "titel": "Gutscheine falsch eingeordnet"
+    }
+  ],
+  "letzte": [
+    {
+      "id": "cmvf9pzxy003hfu7d353rnf3j",
+      "periodeLabel": "August 2026",
+      "anzeige": "OHNE_BEFUND"
+    },
+    {
+      "id": "cmvf9pzxu003ffu7dzqewsk10",
+      "periodeLabel": "Juli 2026",
+      "anzeige": "OHNE_BEFUND"
+    },
+    {
+      "id": "cmvf9pzxq003dfu7dj6t7dgri",
+      "periodeLabel": "Juni 2026",
+      "anzeige": "OHNE_BEFUND"
+    }
+  ],
+  "nachtraege": [],
+  "verlauf": [
+    {
+      "pos": 34,
+      "at": "2026-10-19T13:07:58.144Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "aktion": "tcms.durchfuehrung.nachweis_hochgeladen",
+      "text": "Nachweis hochgeladen: Kontoabstimmung September.pdf",
+      "system": false
+    },
+    {
+      "pos": 33,
+      "at": "2026-10-19T13:07:58.094Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "aktion": "tcms.durchfuehrung.gespeichert",
+      "text": "Entwurf gespeichert (1 von 3 Schritten)",
+      "system": false
+    },
+    {
+      "pos": 32,
+      "at": "2026-10-19T13:07:57.963Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "aktion": "tcms.durchfuehrung.begonnen",
+      "text": "Durchführung begonnen",
+      "system": false
+    },
+    {
+      "pos": -1,
+      "at": "2026-09-30T00:00:00.000Z",
+      "actorId": null,
+      "aktion": "system.faellig",
+      "text": "fällig (Periodenende 30.09.2026)",
+      "system": true
+    }
+  ],
+  "beteiligte": ["b1000000-0000-4000-8000-000000000002"]
+}

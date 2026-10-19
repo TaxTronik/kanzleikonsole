@@ -1,0 +1,186 @@
+{
+  "heute": "2026-10-19",
+  "durchfuehrungen": [
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q0260059fu7d1xfyurpl",
+      "code": "K-EC-10",
+      "titel": "Erstattungs- und Retourenabstimmung",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-10T00:00:00.000Z",
+      "tage": -9,
+      "anzeige": "UEBERFAELLIG",
+      "schluessel": false,
+      "nachweise": 0,
+      "mindestNachweise": 1
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9pzy3003jfu7d4oo44g6s",
+      "code": "K-EC-03",
+      "titel": "Bestellstichprobe Steuerausweis",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-30T00:00:00.000Z",
+      "tage": 11,
+      "anzeige": "IN_DURCHFUEHRUNG",
+      "schluessel": false,
+      "nachweise": 1,
+      "mindestNachweise": 1
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004698",
+        "name": "Pixelhafen Electronics KG"
+      },
+      "id": "cmvf9q10s00gffu7d9x3wc1gg",
+      "code": "K-EC-01",
+      "titel": "Lieferschwellen-Monitor",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-20T00:00:00.000Z",
+      "tage": 1,
+      "anzeige": "FAELLIG",
+      "schluessel": true,
+      "nachweise": 0,
+      "mindestNachweise": 1
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9pzwn002zfu7dw0w26zrp",
+      "code": "K-EC-01",
+      "titel": "Lieferschwellen-Monitor",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-20T00:00:00.000Z",
+      "tage": 1,
+      "anzeige": "FAELLIG",
+      "schluessel": true,
+      "nachweise": 0,
+      "mindestNachweise": 1
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004698",
+        "name": "Pixelhafen Electronics KG"
+      },
+      "id": "cmvf9q15s00ipfu7d49os5532",
+      "code": "K-EC-04",
+      "titel": "OSS-Abstimmung vor Abgabe",
+      "periode": "Q3 2026",
+      "faelligAm": "2026-10-24T00:00:00.000Z",
+      "tage": 5,
+      "anzeige": "FAELLIG",
+      "schluessel": true,
+      "nachweise": 0,
+      "mindestNachweise": 1
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9pzyf003pfu7dqgrt2dbr",
+      "code": "K-EC-04",
+      "titel": "OSS-Abstimmung vor Abgabe",
+      "periode": "Q3 2026",
+      "faelligAm": "2026-10-24T00:00:00.000Z",
+      "tage": 5,
+      "anzeige": "FAELLIG",
+      "schluessel": true,
+      "nachweise": 0,
+      "mindestNachweise": 1
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004698",
+        "name": "Pixelhafen Electronics KG"
+      },
+      "id": "cmvf9q17u00jlfu7dliuktk8e",
+      "code": "K-EC-06",
+      "titel": "Verbringens- und ZM-Abstimmung",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-25T00:00:00.000Z",
+      "tage": 6,
+      "anzeige": "FAELLIG",
+      "schluessel": false,
+      "nachweise": 0,
+      "mindestNachweise": 1
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9pzzo0048fu7d8zdkiu4f",
+      "code": "K-EC-06",
+      "titel": "Verbringens- und ZM-Abstimmung",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-25T00:00:00.000Z",
+      "tage": 6,
+      "anzeige": "FAELLIG",
+      "schluessel": false,
+      "nachweise": 0,
+      "mindestNachweise": 1
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004698",
+        "name": "Pixelhafen Electronics KG"
+      },
+      "id": "cmvf9q15000ibfu7dvd20yvq5",
+      "code": "K-EC-03",
+      "titel": "Bestellstichprobe Steuerausweis",
+      "periode": "September 2026",
+      "faelligAm": "2026-10-30T00:00:00.000Z",
+      "tage": 11,
+      "anzeige": "FAELLIG",
+      "schluessel": false,
+      "nachweise": 0,
+      "mindestNachweise": 1
+    }
+  ],
+  "gegenzeichnungen": [],
+  "vierAugen": [],
+  "p153": [],
+  "p153BeiAnderen": {
+    "anzahl": 2,
+    "mandantIds": ["a1000000-0000-4000-8000-000000004720", "a1000000-0000-4000-8000-000000004711"]
+  },
+  "ereignisse": [
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q0cv008dfu7dgy2dcq04",
+      "nummer": "2026-T-0342",
+      "typ": "T-05",
+      "titel": "Neue Warengruppe „Outdoor-Kochbücher\" ab 11/2026",
+      "quelle": "PORTAL",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012",
+      "gemeldetAm": "2026-10-12T09:14:00.000Z"
+    },
+    {
+      "mandant": {
+        "id": "a1000000-0000-4000-8000-000000004711",
+        "name": "Talwind Outdoor GmbH"
+      },
+      "id": "cmvf9q0d8008hfu7d6b9w5w4h",
+      "nummer": "2026-T-0345",
+      "typ": "T-01",
+      "titel": "Start auf Kaufland.de zum 01.12.2026",
+      "quelle": "PORTAL",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012",
+      "gemeldetAm": "2026-10-14T13:02:00.000Z"
+    }
+  ],
+  "beschreibungen": [],
+  "mandantenZustaendig": 2
+}

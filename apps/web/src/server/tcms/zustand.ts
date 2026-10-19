@@ -136,6 +136,12 @@ export const TCMS_KEIN_RECHT = {
   PORTAL_ZUGEORDNET: 'Dieser Schritt ist der zugeordneten Person vorbehalten.',
   /** Fallback, wenn keiner der Schlüssel passt. */
   STANDARD: 'Dieser Schritt ist zuständigen Personen vorbehalten.',
+  /** Durchführung einer Kontrolle (kannDurchfuehren im Dienst). */
+  DURCHFUEHREN:
+    'Dieser Schritt ist der zugewiesenen durchführenden Person oder ihrer Vertretung vorbehalten.',
+  /** Gegenzeichnung bzw. Zurückweisung einer eingereichten Durchführung (kannGegenzeichnen). */
+  GEGENZEICHNEN:
+    'Die Gegenzeichnung ist der vorgesehenen gegenzeichnenden Person oder zuständigen Berufsträgerinnen und Berufsträgern vorbehalten, nie der durchführenden Person.',
 } as const;
 
 export type TcmsKeinRechtGrund = keyof typeof TCMS_KEIN_RECHT;
