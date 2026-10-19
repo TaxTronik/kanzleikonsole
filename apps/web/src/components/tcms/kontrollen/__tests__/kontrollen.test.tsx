@@ -79,6 +79,35 @@ describe('ZustaendigkeitFormular', () => {
     expect(durch.getAttribute('aria-invalid')).toBe('true');
   });
 
+  it('Kanzleiseite: sendet nie „Gegenzeichnung beim Mandanten“ (TCMS s7: 400 des Vertrags)', async () => {
+    const aktion = vi.fn<Aktion>().mockResolvedValue({ ok: true, meldung: 'gespeichert' });
+    render(
+      <ZustaendigkeitFormular
+        aktion={aktion}
+        kontrolleId="K-EC-02"
+        standId="ks_2"
+        partei="KANZLEI"
+        parteiLabel="Kanzlei"
+        schluessel
+        seitePersonen={personen}
+        kanzleiPersonen={personen}
+        durchfuehrendId="A1"
+        vertretungId="B2"
+        gegenzeichnerId="A1"
+        // auch bei widersprüchlichem Altstand kein Haken auf der Kanzleiseite
+        gegenzeichnungMandant
+        gesperrt={null}
+      />,
+    );
+    const form = screen.getByRole('form', { name: 'Zuständigkeiten ändern' });
+    expect(within(form).queryByRole('checkbox')).toBeNull();
+    fireEvent.submit(form);
+    await waitFor(() => expect(aktion).toHaveBeenCalledOnce());
+    const fd = aktion.mock.calls[0]![1];
+    expect(fd.get('partei')).toBe('KANZLEI');
+    expect(fd.has('gegenzeichnungMandant')).toBe(false);
+  });
+
   it('gesperrt: alle Felder deaktiviert', () => {
     render(
       <ZustaendigkeitFormular

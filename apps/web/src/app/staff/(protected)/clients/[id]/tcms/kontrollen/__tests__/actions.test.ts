@@ -2,12 +2,13 @@
 // (Designbeurteilung, Frequenzabweichung, Zuständigkeiten). Ablauf, Gate und
 // Fehlerabbildung testet server/tcms/__tests__/aktion.test.ts. Schwerpunkt:
 // Personen aus dem Formular nur nach Prüfung in der kanzleikonsole – je nach
-// Seite der Kontrolle Kanzleiperson oder Kontakt dieses Mandanten – und kein
-// Schreiben, wenn die geprüfte Seite nicht die der Kontrolle im Dienst ist.
+// Seite der Kontrolle Kanzleiperson oder Kontakt dieses Mandanten. Die Seite
+// sendet die gelesene Seite (`partei`, TCMS s7) mit; weicht sie im Dienst ab,
+// antwortet er 409 und die Aktion zeigt eine feste Meldung (kein Vorab-Read).
 // Fachkatalog: TCMS-AKTEUR-001, TCMS-DIENST-001
+import { TcmsKonflikt } from '@taxtronik/tcms-client';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { TCMS_AKTION_TEXTE } from '@/server/tcms/zustand';
 
 const h = vi.hoisted(() => ({
   spec: null as null | Record<string, unknown>,
@@ -225,14 +226,9 @@ describe('verantwortlicheAendernAction', () => {
     ]);
   }
 
-  /** Dienst, der zuerst die Kontrolle (Seite `partei`) und dann das Ergebnis liefert. */
-  function dienstMitKontrolle(partei: string) {
-    const rufe = vi.fn(async (endpunkt: { name: string }) =>
-      endpunkt.name === ENDPUNKTE.kontrolleLesen.name
-        ? { daten: { kontrolle: { partei } }, requestId: 'r' }
-        : { daten: GEAENDERT, requestId: 'r' },
-    );
-    return { rufe };
+  /** Dienst, der das Ergebnis der Änderung liefert. */
+  function dienst() {
+    return { rufe: vi.fn(async () => ({ daten: GEAENDERT, requestId: 'r' })) };
   }
 
   it('Kanzleiseite: alle Personen als Kanzleipersonen mit Zugriff auf diesen Mandanten', async () => {
@@ -249,13 +245,11 @@ describe('verantwortlicheAendernAction', () => {
     ]);
     expect(h.kontakte).not.toHaveBeenCalled();
 
-    const d = dienstMitKontrolle('KANZLEI');
+    const d = dienst();
     await s.aufruf(d, parsed.data, personen);
+    // Ein Aufruf: die Seite kommt aus der gelesenen Antwort, kein Vorab-Read.
+    expect(d.rufe).toHaveBeenCalledTimes(1);
     expect(d.rufe.mock.calls[0]).toEqual([
-      ENDPUNKTE.kontrolleLesen,
-      { params: { kontrolleId: 'K-EC-02' } },
-    ]);
-    expect(d.rufe.mock.calls[1]).toEqual([
       ENDPUNKTE.verantwortlicheAendern,
       {
         params: { kontrolleId: 'K-EC-02' },
@@ -298,33 +292,75 @@ describe('verantwortlicheAendernAction', () => {
     await verantwortlicheAendernAction(
       MANDANT,
       null,
-      zustaendigkeit('KANZLEI', [['gegenzeichnungMandant', 'on']]),
+      formular([
+        ['kontrolleId', 'K-EC-23'],
+        ['standId', 'ks_23'],
+        ['partei', 'MANDANT'],
+        ['durchfuehrendId', JANA],
+        ['vertretungId', JANA],
+        ['gegenzeichnerId', ANNA],
+        ['gegenzeichnungMandant', 'on'],
+      ]),
     );
     const s = spec();
     const parsed = s.parse!();
     const personen = await s.vorbereiten!(TX, K, parsed.data);
-    expect(h.kanzlei).toHaveBeenCalledTimes(2);
-    expect(personen).toEqual({ durchfuehrendId: LEON, vertretungId: MURAT, gegenzeichnerId: null });
+    expect(h.kanzlei).not.toHaveBeenCalled();
+    expect(personen).toEqual({ durchfuehrendId: JANA, vertretungId: JANA, gegenzeichnerId: null });
+    const d = dienst();
+    await s.aufruf(d, parsed.data, personen);
+    expect((d.rufe.mock.calls[0] as unknown[])[1]).toMatchObject({
+      body: { partei: 'MANDANT', gegenzeichnerId: null, gegenzeichnungMandant: true },
+    });
   });
 
-  it('bricht ohne Schreiben ab, wenn die geprüfte Seite nicht die der Kontrolle ist', async () => {
-    // Manipuliertes Formular: Kontakt des Mandanten als „Kanzlei“ geprüft …
-    await verantwortlicheAendernAction(MANDANT, null, zustaendigkeit('MANDANT'));
+  it('Kanzleiseite mit Haken „beim Mandanten“: Feldfehler, kein Dienstaufruf (400 des Vertrags)', async () => {
+    // Die Seite bietet den Haken nur an Kontrollen des Mandanten an
+    // (zustaendigkeit.test.tsx); ein manipuliertes Formular scheitert hier.
+    await verantwortlicheAendernAction(
+      MANDANT,
+      null,
+      zustaendigkeit('KANZLEI', [['gegenzeichnungMandant', 'on']]),
+    );
+    const parsed = spec().parse!();
+    expect(parsed.ok).toBe(false);
+    expect(Object.keys(parsed.fieldErrors ?? {})).toEqual(['gegenzeichnungMandant']);
+  });
+
+  it('409 (Seite oder Stand im Dienst abweichend): feste Meldung, kein zweiter Aufruf', async () => {
+    // Manipuliertes Formular: Kontakt des Mandanten als „Kanzlei“ geprüft, die
+    // Kontrolle ist im Dienst eine Mandantenkontrolle – der Dienst weist ab.
+    await verantwortlicheAendernAction(MANDANT, null, zustaendigkeit('KANZLEI'));
     const s = spec();
     const parsed = s.parse!();
     const personen = await s.vorbereiten!(TX, K, parsed.data);
-    // … die Kontrolle ist im Dienst aber eine Kanzleikontrolle.
-    const d = dienstMitKontrolle('KANZLEI');
-    const ergebnis = await s.aufruf(d, parsed.data, personen);
+    const rufe = vi.fn(async () => {
+      throw new TcmsKonflikt({
+        status: 409,
+        code: 'KONFLIKT',
+        requestId: 'r',
+        meldung: 'Rohtext des Dienstes',
+      });
+    });
+    const ergebnis = await s.aufruf({ rufe }, parsed.data, personen);
     expect(ergebnis).toEqual({
       ok: false,
-      error: TCMS_AKTION_TEXTE.konflikt,
+      error:
+        'Die Kontrolle wurde zwischenzeitlich geändert. Bitte laden Sie die Seite neu und prüfen Sie die Zuständigkeiten.',
       errorCode: 'CONFLICT',
     });
-    expect(d.rufe).toHaveBeenCalledTimes(1);
-    expect(d.rufe.mock.calls.map((c) => (c[0] as { name: string }).name)).toEqual([
-      'kontrolleLesen',
-    ]);
+    expect(JSON.stringify(ergebnis)).not.toContain('Rohtext');
+    expect(rufe).toHaveBeenCalledTimes(1);
+  });
+
+  it('andere Fehler des Dienstes gehen an die gemeinsame Abbildung', async () => {
+    await verantwortlicheAendernAction(MANDANT, null, zustaendigkeit('KANZLEI'));
+    const s = spec();
+    const fehler = new Error('anders');
+    const rufe = vi.fn(async () => {
+      throw fehler;
+    });
+    await expect(s.aufruf({ rufe }, s.parse!().data, {})).rejects.toBe(fehler);
   });
 
   it('eine unzulässige Person beendet die Aktion vor dem Dienstaufruf', async () => {

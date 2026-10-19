@@ -258,7 +258,9 @@ Stände und Historie.
   Zugriff auf den Mandanten zur Auswahl, für Mandantenkontrollen Kontakte
   dieses Mandanten mit Rolle im Tax-CMS. Gegenzeichnen kann eine Person der
   Kanzlei oder – bei Mandantenkontrollen – die Vertretung beim Mandanten.
-  TaxTronik prüft jede Person beim Speichern erneut.
+  TaxTronik prüft jede Person beim Speichern erneut. Hat sich die Kontrolle
+  seit dem Laden geändert, erscheint „Die Kontrolle wurde zwischenzeitlich
+  geändert“; laden Sie die Seite neu und wählen Sie die Personen erneut.
 - Vertrauliche Feststellungen erscheinen nur mit ihrer Nummer.
 
 ### Kontrollkalender

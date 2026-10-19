@@ -10,13 +10,15 @@
 // Person aus dem Formular (TCMS-AKTEUR-001): Kanzleiseite = aktive
 // Mitarbeitende mit Zugriff auf den Mandanten, Mandantenseite = aktive
 // Kontakte genau dieses Mandanten, Gegenzeichnung = Kanzleiperson. Welche
-// Seite gilt, steht an der Kontrolle im Dienst; die Aktion liest sie vor dem
-// Schreiben nach und bricht ab, wenn sie nicht zur geprüften Seite passt –
-// sonst könnte ein manipuliertes Formular einen Mandantenkontakt ohne Rolle
-// als Kanzleiperson eintragen (der Dienst erkennt auf der Kanzleiseite nur
-// Kontakte, die bei ihm eine Rolle haben).
+// Seite gilt, steht an der Kontrolle im Dienst; die Seite sendet die gelesene
+// Seite (`partei`) mit, die Aktion prüft die Personen für genau diese Seite,
+// und der Dienst prüft sie unter der Zeilensperre gegen den Kontrollstand
+// (TCMS s7: abweichend → 409). Ein manipuliertes Formular kann so keinen
+// Mandantenkontakt als Kanzleiperson eintragen; den früheren Vorab-Read
+// braucht es nicht mehr.
 // =============================================================================
 
+import { TcmsKonflikt } from '@taxtronik/tcms-client';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { frequenzLabel } from '@taxtronik/tcms-domain';
 import { z } from 'zod';
@@ -30,7 +32,6 @@ import {
   OptionaleBegruendungFeld,
 } from '@/server/tcms/bereich-b/formular';
 import { kanzleiPersonenFuerMandantTx, mandantKontakteTx } from '@/server/tcms/personen';
-import { TCMS_AKTION_TEXTE } from '@/server/tcms/zustand';
 
 const FELDER = {
   kontrolleId: 'kontrolleId',
@@ -213,15 +214,32 @@ export async function frequenzAbweichungAufhebenAction(
 // Zuständigkeiten
 // ---------------------------------------------------------------------------
 
-const ZustaendigkeitFormular = z.object({
-  ...Kontrolle,
-  /** Seite der Kontrolle laut Seite; vor dem Schreiben gegen den Dienst geprüft. */
-  partei: z.enum(['KANZLEI', 'MANDANT']),
-  durchfuehrendId: z.uuid(),
-  vertretungId: z.uuid(),
-  gegenzeichnerId: formEmpty(null, z.uuid().nullable()),
-  gegenzeichnungMandant: HakenFeld,
-});
+const ZustaendigkeitFormular = z
+  .object({
+    ...Kontrolle,
+    /** Seite der Kontrolle aus der gelesenen Antwort; der Dienst prüft sie unter der Sperre. */
+    partei: z.enum(['KANZLEI', 'MANDANT']),
+    durchfuehrendId: z.uuid(),
+    vertretungId: z.uuid(),
+    gegenzeichnerId: formEmpty(null, z.uuid().nullable()),
+    gegenzeichnungMandant: HakenFeld,
+  })
+  .superRefine((e, ctx) => {
+    // Gegenzeichnung beim Mandanten gibt es nur an Kontrollen des Mandanten
+    // (Vertrag, TCMS s7). Die Seite bietet den Haken auf der Kanzleiseite nicht
+    // an; ein Formular, das ihn trotzdem sendet, erreicht den Dienst nicht.
+    if (e.gegenzeichnungMandant && e.partei !== 'MANDANT') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['gegenzeichnungMandant'],
+        message: 'Nur bei Kontrollen des Mandanten möglich.',
+      });
+    }
+  });
+
+/** 409 des Dienstes: Seite oder Stand der Kontrolle weichen vom gelesenen ab (TS-05). */
+const ZUSTAENDIGKEIT_KONFLIKT =
+  'Die Kontrolle wurde zwischenzeitlich geändert. Bitte laden Sie die Seite neu und prüfen Sie die Zuständigkeiten.';
 
 export async function verantwortlicheAendernAction(
   mandantId: string,
@@ -254,30 +272,29 @@ export async function verantwortlicheAendernAction(
       return { durchfuehrendId, vertretungId, gegenzeichnerId };
     },
     aufruf: async (dienst, d, personen) => {
-      // Die geprüfte Seite muss die der Kontrolle sein (sie ändert sich im
-      // Dienst nicht); sonst nichts schreiben.
-      const { daten: aktuell } = await dienst.rufe(ENDPUNKTE.kontrolleLesen, {
-        params: { kontrolleId: d.kontrolleId },
-      });
-      if (aktuell.kontrolle.partei !== d.partei) {
-        return {
-          ok: false as const,
-          error: TCMS_AKTION_TEXTE.konflikt,
-          errorCode: 'CONFLICT' as const,
-        };
+      try {
+        const { daten } = await dienst.rufe(ENDPUNKTE.verantwortlicheAendern, {
+          params: { kontrolleId: d.kontrolleId },
+          body: {
+            standId: d.standId,
+            partei: d.partei,
+            durchfuehrendId: personen.durchfuehrendId,
+            vertretungId: personen.vertretungId,
+            gegenzeichnerId: personen.gegenzeichnerId,
+            gegenzeichnungMandant: d.gegenzeichnungMandant,
+          },
+        });
+        return { meldung: geaendertMeldung('Zuständigkeiten gespeichert.', daten) };
+      } catch (fehler) {
+        if (fehler instanceof TcmsKonflikt) {
+          return {
+            ok: false as const,
+            error: ZUSTAENDIGKEIT_KONFLIKT,
+            errorCode: 'CONFLICT' as const,
+          };
+        }
+        throw fehler;
       }
-      const { daten } = await dienst.rufe(ENDPUNKTE.verantwortlicheAendern, {
-        params: { kontrolleId: d.kontrolleId },
-        body: {
-          standId: d.standId,
-          partei: d.partei,
-          durchfuehrendId: personen.durchfuehrendId,
-          vertretungId: personen.vertretungId,
-          gegenzeichnerId: personen.gegenzeichnerId,
-          gegenzeichnungMandant: d.gegenzeichnungMandant,
-        },
-      });
-      return { meldung: geaendertMeldung('Zuständigkeiten gespeichert.', daten) };
     },
   });
 }
