@@ -150,10 +150,50 @@ describe('Ereigniseingang', () => {
       am: '2026-10-19T09:00:00.000Z',
       begruendung: BEGRUENDUNG,
     };
+    ereignis.rechte.verwerfen.bestaetigen = { erlaubt: true, verweigerung: null };
     await seite();
-    expect(screen.getByRole('button', { name: 'Verwerfen bestätigen' })).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Verwerfen bestätigen' }) as HTMLButtonElement).disabled,
+    ).toBe(false);
     expect(screen.getByRole('button', { name: 'Ablehnen' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Antrag zurückziehen' })).toBeNull();
+  });
+
+  it('Rechte am Ereignis (TCMS s7): gesperrt sichtbar mit dem festen Text zum Grund des Dienstes', async () => {
+    const knopf = (name: string | RegExp) =>
+      screen.getByRole('button', { name }) as HTMLButtonElement;
+    const grund = (b: HTMLButtonElement) =>
+      document.getElementById(b.getAttribute('aria-describedby') ?? '')?.textContent ?? '';
+    // Fixture (Anna, NEU): abschließen nur am Zustand gescheitert, beantragen erlaubt.
+    await seite();
+    expect(knopf('Ereignis abschließen').disabled).toBe(true);
+    expect(grund(knopf('Ereignis abschließen'))).toContain('Erst wenn jede Folge erledigt');
+    expect(knopf('Verwerfen …').disabled).toBe(false);
+
+    // Verweigerung der Person: fester Text zum Grund, nie ein Text des Dienstes.
+    document.body.innerHTML = '';
+    ereignis.rechte.abschliessen = { erlaubt: false, verweigerung: 'BEARBEITEN' };
+    ereignis.rechte.verwerfen.beantragen = { erlaubt: false, verweigerung: 'BEARBEITEN' };
+    ereignis.verwerfenAntrag = {
+      vonId: DEMO.anna,
+      am: '2026-10-19T09:00:00.000Z',
+      begruendung: BEGRUENDUNG,
+    };
+    ereignis.rechte.verwerfen.bestaetigen = { erlaubt: false, verweigerung: 'VIER_AUGEN' };
+    await seite();
+    expect(knopf('Ereignis abschließen').disabled).toBe(true);
+    expect(grund(knopf('Ereignis abschließen'))).toBe(TCMS_KEIN_RECHT.BEARBEITEN);
+    expect(knopf('Verwerfen bestätigen').disabled).toBe(true);
+    expect(grund(knopf('Verwerfen bestätigen'))).toBe(TCMS_KEIN_RECHT.VIER_AUGEN);
+
+    // Erlaubt laut Dienst: frei, auch wenn die Vorschau der Domain anders aussähe.
+    document.body.innerHTML = '';
+    ereignis.verwerfenAntrag = null;
+    ereignis.rechte.abschliessen = { erlaubt: true, verweigerung: null };
+    ereignis.rechte.verwerfen.beantragen = { erlaubt: false, verweigerung: 'BEARBEITEN' };
+    await seite();
+    expect(knopf('Ereignis abschließen').disabled).toBe(false);
+    expect(knopf('Verwerfen …').disabled).toBe(true);
   });
 
   it('ohne Bearbeitungsrecht laut Kontext: Aktionen gesperrt mit Grund, keine Personenabfrage', async () => {

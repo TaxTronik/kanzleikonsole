@@ -4,7 +4,12 @@
 // Aktionen an Mandant, Ereignis und Folge (gebundene Argumente) und zeigt die
 // Antwort von `ereignisLesen`. Was die Oberfläche sperrt, ist Anzeige (Stichtag,
 // Rechte-Kennzeichen des Kontexts, Status der Folgen laut Dienst); entscheidend
-// bleibt das Tax-CMS, das jede Aktion selbst prüft.
+// bleibt das Tax-CMS, das jede Aktion selbst prüft. Abschließen, Verwerfen
+// beantragen und Verwerfen bestätigen folgen seit TCMS s7 den Rechten am
+// Ereignis (`rechte.abschliessen`, `rechte.verwerfen.*`: `erlaubt` und der
+// Grund `verweigerung` des 403, den der Schritt jetzt erhielte): gesperrt
+// sichtbar mit dem festen Text zum Grund (TCMS_KEIN_RECHT); steht nur der
+// Zustand entgegen (`verweigerung: null`), ein fester Zustandshinweis.
 //
 // Vier-Augen beim Verwerfen: Wer den Antrag gestellt hat, bekommt keine
 // Entscheidung angeboten, nur „Antrag zurückziehen“; die Bestätigung durch
@@ -36,6 +41,7 @@ import {
 import { FolgeZeile, VorschlagZeile, type PersonOption } from '@/components/tcms/ereignisse/folgen';
 import { quelleText, typInfo, typKurz } from '@/components/tcms/ereignisse/texte';
 import type { TcmsNamen } from '@/server/tcms/namen';
+import { keinRechtText, type TcmsKeinRechtGrund } from '@/server/tcms/zustand';
 import {
   ereignisAbschliessenAction,
   ereignisInPruefungNehmenAction,
@@ -364,7 +370,14 @@ function VerwerfenAntragBlock({
             <TcmsAktionsKnopf
               aktion={ereignisVerwerfenBestaetigenAction.bind(null, mandantId, e.id)}
               className="btn-danger-outline text-xs py-1"
-              gesperrt={sperre}
+              gesperrt={
+                sperre ??
+                ereignisSperre(
+                  e.rechte.verwerfen.bestaetigen,
+                  'VIER_AUGEN',
+                  'Der Antrag kann auf dem aktuellen Stand nicht bestätigt werden. Bitte laden Sie die Seite neu.',
+                )
+              }
               bestaetigung={{
                 titel: `Ereignis ${e.nummer} verwerfen`,
                 text: 'Das Ereignis wird verworfen; offene Vorschläge werden mit verworfen. Der Schritt wird mit Ihrem Namen protokolliert.',
@@ -388,15 +401,34 @@ function VerwerfenAntragBlock({
   );
 }
 
-/** Abschließen nur, wenn jede Folge erledigt oder verworfen ist (Anzeige-Vorschau der Domain). */
-function abschliessenGesperrt(e: EreignisDetail, sperre: string | null): string | null {
-  if (sperre) return sperre;
+type EreignisRecht = EreignisDetail['rechte']['abschliessen'];
+
+/**
+ * Sperrgrund eines Schritts am Ereignis aus dem Recht des Dienstes (TCMS s7):
+ * frei, fester Text zum Verweigerungsgrund oder – wenn nur der Zustand
+ * entgegensteht – der Zustandshinweis der Seite.
+ */
+export function ereignisSperre(
+  recht: EreignisRecht,
+  rueckfall: TcmsKeinRechtGrund,
+  zustand: string,
+): string | null {
+  if (recht.erlaubt) return null;
+  return recht.verweigerung !== null ? keinRechtText(recht.verweigerung, rueckfall) : zustand;
+}
+
+/** Zustandshinweis zum Abschließen (Anzeige-Vorschau der Domain; ob es geht, sagt das Recht). */
+function abschliessenZustand(e: EreignisDetail): string {
   if (!ereignisErledigt(e.folgen)) {
     return 'Erst wenn jede Folge erledigt oder begründet verworfen ist.';
   }
   return e.folgen.some((f) => f.status === 'ERLEDIGT')
-    ? null
+    ? 'Der Abschluss ist auf dem aktuellen Stand nicht möglich. Bitte laden Sie die Seite neu.'
     : 'Keine Folge erledigt – bitte „Verwerfen …“ (Bestätigung durch eine zweite Person).';
+}
+
+function abschliessenGesperrt(e: EreignisDetail, sperre: string | null): string | null {
+  return sperre ?? ereignisSperre(e.rechte.abschliessen, 'BEARBEITEN', abschliessenZustand(e));
 }
 
 function FussAktionen({ mandantId, e, sperre }: PanelBasis) {
@@ -419,9 +451,13 @@ function FussAktionen({ mandantId, e, sperre }: PanelBasis) {
           }}
           gesperrt={
             sperre ??
-            (folgenAngelegt
-              ? 'Folgen sind bereits angelegt – einzeln erledigen oder verwerfen.'
-              : null)
+            ereignisSperre(
+              e.rechte.verwerfen.beantragen,
+              'BEARBEITEN',
+              folgenAngelegt
+                ? 'Folgen sind bereits angelegt – einzeln erledigen oder verwerfen.'
+                : 'Verwerfen ist auf dem aktuellen Stand nicht möglich. Bitte laden Sie die Seite neu.',
+            )
           }
           erfolg="Verwerfen beantragt. Eine zweite Person muss bestätigen."
         />

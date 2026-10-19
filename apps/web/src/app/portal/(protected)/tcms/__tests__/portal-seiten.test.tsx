@@ -175,10 +175,10 @@ describe('Kontrollaufgabe im Portal', () => {
 });
 
 describe('Ereignis melden', () => {
-  function lesen(u = tcmsFixtures.portalUebersichtJana()) {
+  function lesen(u = tcmsFixtures.portalUebersichtJana(), m = tcmsFixtures.portalMeldungenJana()) {
     h.lesen.mockImplementation(async (_s, e: { name: string }) => ({
       ok: true,
-      daten: e.name === 'portalMeldungenLesen' ? tcmsFixtures.portalMeldungenJana() : u,
+      daten: e.name === 'portalMeldungenLesen' ? m : u,
       requestId: 'r',
     }));
   }
@@ -195,10 +195,11 @@ describe('Ereignis melden', () => {
     expect(screen.getByLabelText('Anlagen (optional)')).toBeTruthy();
   });
 
-  it('ohne Melderecht laut Dienst: Formular gesperrt mit festem Hinweis', async () => {
-    const u = tcmsFixtures.portalUebersichtJana();
-    u.rechte.melden = false;
-    lesen(u);
+  it('ohne Melderecht laut Dienst (`melden` der Meldungen, TCMS s7): Formular gesperrt mit festem Hinweis', async () => {
+    const m = tcmsFixtures.portalMeldungenJana();
+    m.melden = false;
+    // Die Übersicht erlaubt weiterhin – maßgeblich ist das Kennzeichen der Meldungen.
+    lesen(tcmsFixtures.portalUebersichtJana(), m);
     await renderServer(PortalEreignisPage({ searchParams: Promise.resolve({}) }));
     const senden = screen.getByRole('button', { name: /Ereignis melden/ }) as HTMLButtonElement;
     expect(senden.disabled).toBe(true);

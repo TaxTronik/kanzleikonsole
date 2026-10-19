@@ -460,36 +460,44 @@ describe('portalEreignisMeldenAction', () => {
     ['benachrichtigen', DEMO.thomas],
   ];
 
-  it('ohne Melderecht laut Dienst: keine Ablage, keine Meldung', async () => {
-    const u = tcmsFixtures.portalUebersichtJana();
-    u.rechte.melden = false;
+  it('ohne Melderecht laut Dienst (`melden` der Meldungen, TCMS s7): keine Ablage, keine Meldung', async () => {
+    const m = tcmsFixtures.portalMeldungenJana();
+    m.melden = false;
     ohneWeiterleitung();
     await portalEreignisMeldenAction(null, formular(felder));
     expect(spec().keinRecht).toBe('PORTAL_ROLLE');
     const ablauf: string[] = [];
-    const { r } = await lauf({ portalUebersichtLesen: u }, ablauf);
-    expect(r).toMatchObject({ ok: false, errorCode: 'FORBIDDEN' });
+    const { r } = await lauf({ portalMeldungenLesen: m }, ablauf);
+    expect(r).toEqual({ ok: false, error: TCMS_KEIN_RECHT.PORTAL_ROLLE, errorCode: 'FORBIDDEN' });
     expect(h.ablegen).not.toHaveBeenCalled();
-    expect(ablauf).toEqual(['portalUebersichtLesen']);
+    // Ein Lesezugriff vor dem Upload, keine Portal-Übersicht.
+    expect(ablauf).toEqual(['portalMeldungenLesen']);
   });
 
   it('ohne Programm: keine Ablage', async () => {
-    const u = tcmsFixtures.portalUebersichtJana();
-    u.programm = null;
+    const m = tcmsFixtures.portalMeldungenJana();
+    m.programmVorhanden = false;
     ohneWeiterleitung();
     await portalEreignisMeldenAction(null, formular(felder));
-    const { r } = await lauf({ portalUebersichtLesen: u });
-    expect(r).toMatchObject({ ok: false });
+    const ablauf: string[] = [];
+    const { r } = await lauf({ portalMeldungenLesen: m }, ablauf);
+    expect(r).toMatchObject({ ok: false, errorCode: 'FORBIDDEN' });
     expect(h.ablegen).not.toHaveBeenCalled();
+    expect(ablauf).toEqual(['portalMeldungenLesen']);
   });
 
   it('mit Recht: Anlagen ablegen, Meldung mit Verweisen; benachrichtigt wird die Hauptbearbeitung aus der kanzleikonsole', async () => {
     ohneWeiterleitung();
     await portalEreignisMeldenAction(null, formular(felder));
-    const { d, r } = await lauf({
-      portalUebersichtLesen: tcmsFixtures.portalUebersichtJana(),
-      portalMeldungErfassen: { id: 'x', nummer: '2026-T-0400' },
-    });
+    const ablauf: string[] = [];
+    const { d, r } = await lauf(
+      {
+        portalMeldungenLesen: tcmsFixtures.portalMeldungenJana(),
+        portalMeldungErfassen: { id: 'x', nummer: '2026-T-0400' },
+      },
+      ablauf,
+    );
+    expect(ablauf).toEqual(['portalMeldungenLesen', 'portalMeldungErfassen']);
     expect(h.ansprech).toHaveBeenCalledWith(TX, { tenantId: DEMO.tenant, mandantId: DEMO.talwind });
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.portalMeldungErfassen, {
       body: {

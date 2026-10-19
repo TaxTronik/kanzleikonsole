@@ -6,7 +6,8 @@
 //
 // Mandant und Person nur aus der Portal-Sitzung. Melden dürfen gesetzliche
 // Vertretung und Tax-Compliance-Beauftragte – das entscheidet das Tax-CMS
-// (`rechte.melden` der Portal-Übersicht, erneut beim Erfassen). Die
+// (`melden` und `programmVorhanden` von `portalMeldungenLesen`, dieselbe Regel
+// wie beim Erfassen, TCMS s7; vorher die ganze Portal-Übersicht). Die
 // kanzleikonsole nimmt Anlagen erst NACH dieser Auskunft an (keine Dateien
 // Unberechtigter in der Ablage), legt sie über die Portal-Dokumentenpipeline
 // ab und übergibt nur Verweise der gespeicherten Fassung. Wen die Kanzlei
@@ -69,9 +70,11 @@ export async function portalEreignisMeldenAction(
     },
     aufruf: async (dienst, d, v): Promise<ActionFailure | { nummer: string }> => {
       // Recht und Programm laut Dienst, bevor eine Datei angenommen wird.
-      const { daten: u } = await dienst.rufe(ENDPUNKTE.portalUebersichtLesen);
-      if (!u.programm) return { ok: false, error: KEIN_PROGRAMM, errorCode: 'FORBIDDEN' };
-      if (!u.rechte.melden) {
+      const { daten: m } = await dienst.rufe(ENDPUNKTE.portalMeldungenLesen);
+      if (!m.programmVorhanden) {
+        return { ok: false, error: KEIN_PROGRAMM, errorCode: 'FORBIDDEN' };
+      }
+      if (!m.melden) {
         return { ok: false, error: TCMS_KEIN_RECHT.PORTAL_ROLLE, errorCode: 'FORBIDDEN' };
       }
       const hashes = await Promise.all(d.anlagen.map((datei) => dateiSha256(datei)));

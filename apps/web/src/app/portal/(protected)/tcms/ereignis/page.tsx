@@ -3,8 +3,11 @@
 // aus der Demo portal/tcms/ereignis/page.tsx).
 //
 // Mandant nur aus der Portal-Sitzung. Ob die Person melden darf und ob ein
-// Programm besteht, sagt das Tax-CMS (Portal-Übersicht); bisherige Meldungen
-// aus `portalMeldungenLesen`. Ansprechperson und Namen aus der kanzleikonsole.
+// Programm besteht, sagt das Tax-CMS (`melden`, `programmVorhanden` von
+// `portalMeldungenLesen`, TCMS s7); bisherige Meldungen ebenfalls von dort –
+// ohne Leserecht im Portal (`rechte.portalLesen` der Übersicht) nur die
+// eigenen (TCMS s8), mit Hinweis. Die Übersicht liefert zudem „heute“.
+// Ansprechperson und Namen aus der kanzleikonsole.
 // =============================================================================
 
 import Link from 'next/link';
@@ -97,7 +100,7 @@ export default async function PortalEreignisPage({
   const { gemeldet: gemeldetRoh } = await searchParams;
   const gemeldet = Array.isArray(gemeldetRoh) ? gemeldetRoh[0] : gemeldetRoh;
   const bestaetigt = gemeldet ? m.meldungen.find((x) => x.nummer === gemeldet) : undefined;
-  const darf = u.rechte.melden;
+  const darf = m.melden;
   const sperrHinweis = darf ? null : TCMS_KEIN_RECHT.PORTAL_ROLLE;
   const ansprechperson = kanzlei.ansprechperson?.name ?? null;
 

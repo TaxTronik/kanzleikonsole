@@ -30,7 +30,9 @@ Eine Seite der kanzleikonsole
   Länder-Monitor `rechte.bearbeiten` (TCMS s7) –,
   Stammdaten `kontext.mandant.rechte.bearbeiten`, Kontaktrollen
   `kontakte.rechte.bearbeiten`, Durchführung `{ erlaubt, grund, verweigerung }`,
-  Portal `portalLesen`, `melden`); wo eine Antwort keine Kennzeichen trägt,
+  Ereignis `rechte.abschliessen`/`rechte.verwerfen.*` `{ erlaubt, verweigerung }`,
+  Portal `portalLesen`, `melden` – im Portal das `melden` von
+  `portalMeldungenLesen`); wo eine Antwort keine Kennzeichen trägt,
   zeigt sie die Aktion und bildet die Ablehnung des Dienstes ab,
 - nimmt Labels und Formatierung aus `@taxtronik/tcms-domain`
   (`labels.ts`, `format.ts`, `katalog.ts`, `phasen.ts`) statt eigener Texte,

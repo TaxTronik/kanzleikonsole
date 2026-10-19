@@ -416,6 +416,9 @@ Klick öffnet die Triage:
 - **Verwerfen** (nur ohne angelegte Folgen) braucht eine Begründung und die
   Bestätigung durch eine **zweite Person**. Wer den Antrag gestellt hat, kann
   ihn nur zurückziehen; andere bestätigen oder lehnen ab.
+- Ob Sie **abschließen**, **Verwerfen beantragen** oder **Verwerfen
+  bestätigen** dürfen, sagt das Tax-CMS; ein gesperrter Knopf bleibt sichtbar
+  und nennt den Grund (z. B. Vier-Augen-Prinzip oder fehlendes Recht).
 - **Anlagen** einer Portal-Meldung öffnen Sie aus der Triage. Ausgeliefert
   wird nur der Inhalt, den das Tax-CMS festgehalten hat (SHA-256 und Größe);
   wurde das Dokument in der Ablage ersetzt, erscheint ein Hinweis statt der
