@@ -3,10 +3,10 @@
 // Aktivierungs-Gate.
 //
 // Aktiv ist das TCMS für einen Tenant nur mit Modulschalter `tcms` an UND
-// TCMS_DEPLOYMENT != disabled (istTcmsAktiv aus @taxtronik/tcms-client, dieselbe
-// Regel für den Worker mit readBooleanTenantModules). Server-Aktionen rufen
-// `assertTcmsAktivTx` bzw. `assertTcmsAktiv` vor jedem TCMS-Aufruf; die
-// Akteursbestätigung kommt aus ./akteur.ts.
+// TCMS_DEPLOYMENT != disabled (istTcmsAktiv aus @taxtronik/tcms-client; dieselbe
+// Regel im Worker: isWorkerTcmsActive in apps/worker/src/module-gate.ts).
+// Server-Aktionen rufen `assertTcmsAktivTx` bzw. `assertTcmsAktiv` vor jedem
+// TCMS-Aufruf; die Akteursbestätigung kommt aus ./akteur.ts.
 //
 // Konfiguration und Client entstehen beim ersten Zugriff einmal: Der private
 // Schlüssel wird dabei genau einmal als KeyObject geladen (getTcmsConfig) und

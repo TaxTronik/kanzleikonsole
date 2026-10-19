@@ -552,6 +552,9 @@ importers:
       '@taxtronik/tax':
         specifier: workspace:*
         version: link:../../packages/tax
+      '@taxtronik/tcms-client':
+        specifier: workspace:*
+        version: link:../../packages/tcms-client
       bullmq:
         specifier: ^5.81.3
         version: 5.81.3

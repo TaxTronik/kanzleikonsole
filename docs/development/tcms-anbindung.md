@@ -173,7 +173,9 @@ Mandantenzugriff, mehr als 5 000 Mandanten, Kontakt ohne Portalzugang.
   `assertTcmsAktiv(ctx)` aus `apps/web/src/server/tcms/dienst.ts`
   (`TcmsInaktivError` mit UI-Meldung); der Modulschalter allein wirkt
   zusätzlich über die `module`-Option der Action-Guards. **Worker:**
-  `istTcmsAktiv((await readBooleanTenantModules(tx, tenantId)).tcms, getTcmsConfig())`.
+  `isWorkerTcmsActive(tenantId)` aus `apps/worker/src/module-gate.ts`
+  (Modulschalter über `isWorkerTenantModuleEnabled`, dieselbe Regel
+  `istTcmsAktiv`).
 - **Client je Prozess:** `tcmsClient()` (`null` bei `disabled`) lädt
   Konfiguration und Schlüssel beim ersten Zugriff einmal.
 - **Health-Check:** `checkTcms()` in `apps/web/src/server/health/checks.ts`:
