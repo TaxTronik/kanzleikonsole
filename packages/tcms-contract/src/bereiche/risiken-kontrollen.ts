@@ -112,6 +112,13 @@ const standId = ObjektIdSchema;
 const risiko = { mandantId, risikoId: ObjektIdSchema };
 const kontrolle = { mandantId, kontrolleId: ObjektIdSchema };
 
+/** Pfadparameter der Endpunkte (Endpunktregister, `endpunkte.ts`). */
+export const RisikoPfadSchema = z.object(risiko).strict();
+export const KontrollePfadSchema = z.object(kontrolle).strict();
+export const UebersteuerungPfadSchema = z
+  .object({ mandantId, uebersteuerungId: ObjektIdSchema })
+  .strict();
+
 // --- Risiken -----------------------------------------------------------------
 
 /** Neubewertung: S, W, R und GT; Klassen berechnet der Dienst (Regel 2). */
@@ -471,7 +478,8 @@ export const KontrollFrequenzAbleitungSchema = z
 
 export const AuditSpurZeileSchema = z
   .object({
-    seq: z.number().int(),
+    /** Position im Audit des Tenants (RT-03). */
+    pos: z.number().int(),
     at: zeitpunkt,
     actorId: personRef,
     aktion: z.string(),
@@ -713,10 +721,23 @@ export const KontrollDurchfuehrungSchema = z
     abgeschlossenAm: zeitpunkt.nullable(),
     nachweise: z.number().int(),
     mindestNachweise: z.number().int(),
-    /** Feststellung aus dieser Durchführung (Nummer ist nicht vertraulich). */
+    /**
+     * Feststellung aus dieser Durchführung (Nummer ist nicht vertraulich). Bei
+     * einer vertraulichen Feststellung, an der der Akteur nicht beteiligt ist,
+     * ohne §-153-Kennzeichen (`maskiert: true`, RT-01).
+     */
     feststellung: z
-      .object({ id: z.string(), nummer: z.string(), p153Offen: z.boolean() })
-      .strict()
+      .discriminatedUnion('maskiert', [
+        z
+          .object({
+            maskiert: z.literal(false),
+            id: z.string(),
+            nummer: z.string(),
+            p153Offen: z.boolean(),
+          })
+          .strict(),
+        z.object({ maskiert: z.literal(true), id: z.string(), nummer: z.string() }).strict(),
+      ])
       .nullable(),
   })
   .strict();

@@ -359,7 +359,9 @@ export const EinrichtungViewSchema = z
     entwurf: SetupEntwurfSchema.nullable(),
     plan: PlanViewSchema.nullable(),
     /** Offene Punkte je Schritt (leer = vollständig). */
-    pruefung: z.array(z.object({ schritt: z.number().int(), fehler: z.array(z.string()) })),
+    pruefung: z.array(
+      z.object({ schritt: z.number().int(), fehler: z.array(z.string()) }).strict(),
+    ),
     /** Gesetzliche Vertretungen des Mandanten (IDs aus MandantKontaktRolle). */
     gesetzlicheVertreter: z.array(z.string()),
     /** Darf der Akteur den Entwurf ändern (Bearbeitungsrecht)? */
@@ -806,6 +808,9 @@ export const PortalFreigabenViewSchema = z
 export type PortalFreigabenView = z.infer<typeof PortalFreigabenViewSchema>;
 
 const portalPfad = { mandantId: uuid, freigabeId: objektId };
+
+/** Pfadparameter der Freigabe-Endpunkte (Kanzlei und Portal, Endpunktregister). */
+export const FreigabePfadSchema = z.object(portalPfad).strict();
 
 export const PortalCodeAnfordernEingabeSchema = z.object(portalPfad).strict();
 export type PortalCodeAnfordernEingabe = z.infer<typeof PortalCodeAnfordernEingabeSchema>;
