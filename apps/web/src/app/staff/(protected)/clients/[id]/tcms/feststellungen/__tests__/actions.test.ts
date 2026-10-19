@@ -5,7 +5,7 @@
 // Endpunkt und Body.
 // Fachkatalog: TCMS-AKTEUR-001
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
-import { TcmsKonflikt, TcmsNichtVerfuegbar } from '@taxtronik/tcms-client';
+import { TcmsKonflikt, TcmsNichtVerfuegbar, TcmsUngueltig } from '@taxtronik/tcms-client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -140,7 +140,7 @@ describe('§-153-Würdigung', () => {
 });
 
 describe('Weiterschalten, Verwerfen, Vertraulichkeit', () => {
-  it('weiter: gesehener Status im Body; 409 mit eigenem Text', async () => {
+  it('weiter: gesehener Status im Body; 409 nur „zwischenzeitlich geändert“', async () => {
     await aktionen.feststellungWeiterAction(
       MANDANT,
       FID,
@@ -155,16 +155,61 @@ describe('Weiterschalten, Verwerfen, Vertraulichkeit', () => {
       params: { feststellungId: FID },
       body: { von: 'IN_WUERDIGUNG' },
     });
-    d = dienst(new TcmsKonflikt({ status: 409, meldung: 'Noch nicht möglich: Anna …' }));
+    d = dienst(new TcmsKonflikt({ status: 409, meldung: 'Rohtext Anna …' }));
     const r = (await spec().aufruf(d, geparst(), undefined)) as Record<string, string>;
-    expect(r).toMatchObject({ ok: false, errorCode: 'CONFLICT' });
-    expect(r.error).toMatch(
-      /noch nicht möglich oder die Feststellung wurde zwischenzeitlich geändert/,
-    );
-    expect(r.error).not.toContain('Anna');
+    expect(r).toEqual({
+      ok: false,
+      error: 'Die Feststellung wurde zwischenzeitlich geändert. Bitte laden Sie die Seite neu.',
+      errorCode: 'CONFLICT',
+    });
     // Andere Fehler gehen an die Abbildung des Helfers.
     const aus = new TcmsNichtVerfuegbar('ZEITLIMIT');
     await expect(spec().aufruf(dienst(aus), geparst(), undefined)).rejects.toBe(aus);
+  });
+
+  it('weiter: gesperrter Schritt (400 mit felder.von) als fester Feldfehler am Schritt', async () => {
+    await aktionen.feststellungWeiterAction(
+      MANDANT,
+      FID,
+      null,
+      formular([['von', 'MASSNAHMEN_OFFEN']]),
+    );
+    const gesperrt = (texte: string[], pfad = 'von') =>
+      spec().aufruf(
+        dienst(new TcmsUngueltig({ [pfad]: texte }, { status: 400, code: 'UNGUELTIG' })),
+        geparst(),
+        undefined,
+      ) as Promise<Record<string, unknown>>;
+    // Bekannter Sperrgrund der Domain: Text der kanzleikonsole mit diesem Grund.
+    const r = await gesperrt(['Noch nicht möglich: offene Maßnahmen erledigen.']);
+    expect(r).toEqual({
+      ok: false,
+      error: 'Noch nicht möglich: offene Maßnahmen erledigen.',
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { von: ['Noch nicht möglich: offene Maßnahmen erledigen.'] },
+    });
+    expect(
+      await gesperrt(
+        ['Noch nicht möglich: §-153-Würdigung durch Berufsträger steht aus.'],
+        'body.von',
+      ),
+    ).toMatchObject({
+      fieldErrors: { von: ['Noch nicht möglich: §-153-Würdigung durch Berufsträger steht aus.'] },
+    });
+    // Unbekannter Text (z. B. geschlossen): fester Rückfall, nie der Rohtext.
+    const u = await gesperrt(['Die Feststellung ist geschlossen <b>Rohtext</b>']);
+    expect(u.fieldErrors).toEqual({
+      von: [
+        'Dieser Schritt ist auf dem aktuellen Stand nicht möglich. Bitte prüfen Sie die Voraussetzungen unter „Nächster Schritt“ und laden Sie die Seite neu.',
+      ],
+    });
+    expect(JSON.stringify(u)).not.toContain('Rohtext');
+    // 400 ohne `von`: gemeinsame Abbildung (Fehler geht weiter).
+    const anders = new TcmsUngueltig({ titel: ['x'] }, { status: 400 });
+    await expect(spec().aufruf(dienst(anders), geparst(), undefined)).rejects.toBe(anders);
+    // Lokal abgewiesen (nicht gesendet): ebenfalls die gemeinsame Abbildung.
+    const lokal = new TcmsUngueltig({ von: ['x'] }, { lokal: true });
+    await expect(spec().aufruf(dienst(lokal), geparst(), undefined)).rejects.toBe(lokal);
   });
 
   it('Verwerfen beantragen mit Begründung ≥ 30; bestätigen und ablehnen ohne Body', async () => {

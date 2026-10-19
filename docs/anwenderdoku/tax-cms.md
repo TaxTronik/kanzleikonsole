@@ -360,12 +360,13 @@ Vier-Augen-Bestätigungen, §-153-Würdigungen, neue Ereignisse und
 Beschreibungen im Kanzlei-Review. Ein Klick führt in den Bereich des
 Mandanten.
 
-| Meldung                                                             | Bedeutung und was zu tun ist                                                                       |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| Entwurf gespeichert, aber noch nicht eingereicht: …                 | Die genannten Punkte fehlen noch. Ergänzen und erneut einreichen.                                  |
-| … in der Dokumentablage gespeichert, aber nicht als Nachweis …      | Die Datei liegt in der Ablage; als Nachweis später über „Vorhandenes Dokument“ erneut anhängen.    |
-| Dieses Dokument ist als Nachweis … verknüpft                        | Erst den Nachweis in der Durchführung entfernen, dann löschen bzw. eine neue Version hochladen.    |
-| Der Schritt ist noch nicht möglich oder … zwischenzeitlich geändert | Voraussetzungen des nächsten Schritts prüfen (Anzeige „Nächster Schritt“) und die Seite neu laden. |
+| Meldung                                                        | Bedeutung und was zu tun ist                                                                                                                           |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Entwurf gespeichert, aber noch nicht eingereicht: …            | Die genannten Punkte fehlen noch. Ergänzen und erneut einreichen.                                                                                      |
+| … in der Dokumentablage gespeichert, aber nicht als Nachweis … | Die Datei liegt in der Ablage; als Nachweis später über „Vorhandenes Dokument“ erneut anhängen.                                                        |
+| Dieses Dokument ist als Nachweis … verknüpft                   | Erst den Nachweis in der Durchführung entfernen, dann löschen bzw. eine neue Version hochladen.                                                        |
+| Noch nicht möglich: … (am Knopf „Weiter zu …“)                 | Der nächste Schritt der Feststellung ist gesperrt, z. B. weil die §-153-Würdigung oder eine Maßnahme fehlt. Erst die genannte Voraussetzung erledigen. |
+| Die Feststellung wurde zwischenzeitlich geändert.              | Jemand hat den Status gleichzeitig geändert. Seite neu laden.                                                                                          |
 
 ## 9. Mandanten-Portal
 

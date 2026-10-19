@@ -9,7 +9,7 @@
 // Eingaben (Vertrag) und Personen über server/tcms/personen.ts.
 // =============================================================================
 
-import { TcmsKonflikt } from '@taxtronik/tcms-client';
+import { TcmsKonflikt, TcmsUngueltig } from '@taxtronik/tcms-client';
 import {
   AuswirkungSchema,
   ENDPUNKTE,
@@ -31,6 +31,7 @@ import type { ActionFailure } from '@/server/actions/action-runner';
 import { parseFormData } from '@/server/actions/form-data';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
 import { personAusWert } from '@/server/tcms/feststellungen/personen';
+import { WEITER_KONFLIKT, weiterGesperrtText } from '@/server/tcms/feststellungen/weiter';
 import { kanzleiPersonenFuerMandantTx, mandantKontakteTx } from '@/server/tcms/personen';
 
 type Ausgang = { meldung: string } | ActionFailure;
@@ -107,9 +108,6 @@ export async function feststellungErfassenAction(
 // Status weiterschalten
 // ---------------------------------------------------------------------------
 
-const WEITER_KONFLIKT =
-  'Der Schritt ist noch nicht möglich oder die Feststellung wurde zwischenzeitlich geändert. Bitte laden Sie die Seite neu und prüfen Sie die Voraussetzungen.';
-
 const WeiterFormular = z.object({ von: FeststellungStatusSchema });
 
 export async function feststellungWeiterAction(
@@ -130,7 +128,20 @@ export async function feststellungWeiterAction(
         });
         return { meldung: `Status: ${FESTSTELLUNG_STATUS_LABEL[r.status]}.` };
       } catch (fehler) {
-        // 409: Voraussetzung fehlt oder Stand veraltet (der Dienst nennt beides KONFLIKT).
+        // TCMS s7: gesperrter Schritt auf dem gesehenen Stand = 400 mit
+        // Feldfehler `von` (fester Text der kanzleikonsole am Schritt);
+        // 409 nur noch bei gleichzeitiger Änderung.
+        if (fehler instanceof TcmsUngueltig && !fehler.lokal) {
+          const text = weiterGesperrtText(fehler.felder);
+          if (text !== null) {
+            return {
+              ok: false,
+              error: text,
+              errorCode: 'VALIDATION_ERROR',
+              fieldErrors: { von: [text] },
+            };
+          }
+        }
         if (fehler instanceof TcmsKonflikt) {
           return { ok: false, error: WEITER_KONFLIKT, errorCode: 'CONFLICT' };
         }
