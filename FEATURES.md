@@ -1212,6 +1212,11 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   (Vier-Augen), Vertraulichkeit
 - **Arbeitskorb** `/staff/tcms/arbeitskorb`: eigene Aufgaben über alle
   Mandanten
+- **Ereigniseingang** `/staff/clients/[id]/tcms/ereignisse`: Liste und Triage
+  (in Prüfung nehmen, Folgen mit Zuständigkeit und Frist anlegen, erledigen
+  oder begründet verwerfen, weitere Folge vorschlagen, abschließen); Verwerfen
+  des Ereignisses mit Vier-Augen-Bestätigung; Anlagen von Portal-Meldungen
+  über die Dokumentauslieferung mit SHA-256- und Größenabgleich
 - Unternavigation mit allen 14 Bereichen des Tax-CMS; die übrigen Bereiche
   folgen mit denselben Bausteinen
 - Feste Meldungen für fehlende Rechte, Konflikte („Wurde zwischenzeitlich

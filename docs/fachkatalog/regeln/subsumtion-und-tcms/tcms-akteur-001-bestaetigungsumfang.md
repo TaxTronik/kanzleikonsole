@@ -55,6 +55,8 @@ code_refs:
   - apps/web/src/server/tcms/bereich-b/personen-auswahl.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/risiken/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/actions.ts
+  - apps/web/src/server/tcms/ereignisse/personen.ts
+  - apps/web/src/server/tcms/abruf/einstieg.ts
 test_refs:
   - apps/web/src/server/tcms/__tests__/seite.test.ts
   - apps/web/src/server/tcms/__tests__/aktion.test.ts
@@ -76,6 +78,8 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/__tests__/actions.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/kontrollen/__tests__/seite.test.tsx
   - apps/web/src/components/tcms/kontrollen/__tests__/kontrollen.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-aktionen.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-anlage-route.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

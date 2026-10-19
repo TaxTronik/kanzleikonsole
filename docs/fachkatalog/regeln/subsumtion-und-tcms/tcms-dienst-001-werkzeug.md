@@ -68,6 +68,9 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/pruefung/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/laender/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/laender/actions.ts
+  - apps/web/src/server/tcms/abruf/auslieferung.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/ereignisse/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/ereignisse/triage.tsx
 test_refs:
   - apps/web/src/server/tcms/__tests__/zustand.test.ts
   - apps/web/src/server/tcms/__tests__/seite.test.ts
@@ -103,6 +106,8 @@ test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/laender/__tests__/actions.test.ts
   - apps/web/src/components/tcms/laender/__tests__/laender.test.tsx
   - apps/web/src/server/tcms/bereich-b/__tests__/laender-formular.test.ts
+  - apps/web/src/server/tcms/__tests__/abruf.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-seite.test.tsx
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

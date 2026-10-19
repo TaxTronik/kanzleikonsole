@@ -275,6 +275,47 @@ mit Bezug auf das Land.
   zehntausend. Uneindeutige Schreibweisen wie „1,234.56“ werden abgelehnt.
 - Ein neues Lagerland oder ein Wechsel der Schwelle legt das Tax-CMS als
   Ereignis im Ereigniseingang an. Der CSV-Import folgt.
+## Ereignisse, Portal-Aufgaben und Audit
+
+Hier triagiert die Kanzlei die Ereignisse ihrer Mandanten. Wer was darf, ob
+eine Angabe vollständig ist und was als Nächstes möglich ist, entscheidet das
+Tax-CMS; TaxTronik zeigt das Ergebnis an, gibt Personen nur aus der eigenen
+Datenbank weiter und liefert Dateien nur über die eigene Dokumentenablage aus.
+
+### Ereigniseingang (Kanzlei)
+
+_Tax-CMS → Ereignisse_ listet alle Meldungen des Mandanten – aus dem Portal,
+aus Profiländerungen und von der Kanzlei erfasst („Ereignis erfassen“). Ein
+Klick öffnet die Triage:
+
+- **In Prüfung nehmen** zeigt dem Mandanten, dass die Meldung bearbeitet wird.
+- **Folgen:** Das Tax-CMS schlägt je Ereignistyp Folgen vor (Risiko neu
+  bewerten, außerplanmäßige Kontrolle, Profil ändern, Feststellung anlegen,
+  Hinweis). Gewählte Vorschläge werden mit Zuständigkeit und Frist angelegt;
+  zur Auswahl stehen Kanzleipersonen mit Zugriff auf den Mandanten und
+  Kontakte dieses Mandanten mit Rolle im Tax-CMS. Vorschläge lassen sich
+  begründet verwerfen, weitere Folgen vorschlagen.
+- **Feststellung anlegen:** Titel, Klasse, Schwere und steuerliche Auswirkung
+  werden bewusst gewählt (keine Vorbelegung). „Keine Auswirkung“ ist der
+  §-153-Würdigung vorbehalten; ohne dieses Recht legt das Tax-CMS die
+  Feststellung mit „unklar“ an und TaxTronik weist darauf hin.
+- **Abschließen** geht, wenn jede Folge erledigt oder begründet verworfen und
+  mindestens eine erledigt ist; ein Ereignis ganz ohne erledigte Folge wird
+  verworfen.
+- **Verwerfen** (nur ohne angelegte Folgen) braucht eine Begründung und die
+  Bestätigung durch eine **zweite Person**. Wer den Antrag gestellt hat, kann
+  ihn nur zurückziehen; andere bestätigen oder lehnen ab.
+- **Anlagen** einer Portal-Meldung öffnen Sie aus der Triage. Ausgeliefert
+  wird nur der Inhalt, den das Tax-CMS festgehalten hat (SHA-256 und Größe);
+  wurde das Dokument in der Ablage ersetzt, erscheint ein Hinweis statt der
+  Datei.
+
+### Meldungen in diesen Bereichen
+
+| Meldung                                                               | Bedeutung und was zu tun ist                                                                         |
+| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Vier-Augen-Prinzip: Diesen Schritt muss eine andere Person ausführen. | Antrag und Bestätigung müssen von verschiedenen Personen kommen.                                     |
+| Die Anlage wurde nicht ausgeliefert …                                 | Die Datei in der Ablage weicht vom festgehaltenen Stand ab. Bitte an die Kanzlei bzw. Admins wenden. |
 
 ## 7. Meldungen
 
