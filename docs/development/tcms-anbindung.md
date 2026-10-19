@@ -67,11 +67,14 @@ Quell-Commit und je Datei den SHA-256 fest.
   dasselbe `VENDOR.json` (gleiche Paketliste, Ausschlüsse und Beschreibung).
   Das gehört zum Review jeder Änderung unter `packages/tcms-contract` und
   `packages/tcms-domain`.
-- **Stand:** Vertrag aus TCMS `d5b6511`, Domain aus TCMS `13e3887`
-  (Branch `wt/tcms-s3a`: `main` plus Dateimodus 100644 für
-  `packages/domain` und `vertrag-export --paket domain`). Nach dem Merge in
-  TCMS `main` (ohne Umschreiben der Commits) bleibt der Commit gültig;
-  wird umgeschrieben, ändert ein erneuter Sync nur `quelle.commit`.
+- **Stand:** Vertrag aus TCMS `d5b6511` (Stufe 2; der Vertrag der Stufe 4
+  wird gesondert mit den nötigen Client-Anpassungen nachgezogen), Domain aus
+  TCMS `6af277d` (Branch `wt/tcms-s3a`: TCMS `main` `812b4d1` plus Dateimodus
+  100644 für `packages/domain` und `vertrag-export --paket domain`;
+  `packages/domain/src` ist inhaltlich gleich in `d5b6511` und `812b4d1`).
+  Nach dem Merge in TCMS `main` ohne Umschreiben der Commits bleibt der
+  Commit gültig; wird umgeschrieben, ändert ein erneuter Sync nur
+  `quelle.commit`.
 
 ## 2. Konfiguration
 
