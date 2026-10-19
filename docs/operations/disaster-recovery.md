@@ -241,8 +241,9 @@ gestoppt.
   --confirm-overwrite RESTORE_TCMS_DATABASE
 ```
 
-Ablauf: Argumente, Bestätigung und (falls vorhanden) die SHA-256-Datei werden
-vor jeder Wirkung geprüft. Dann wird `tcms-api` gestoppt, `tcms-db`
+Ablauf: Argumente, Bestätigung und die SHA-256-Datei (Pflicht; genau eine
+Zeile, die genau diesen Dump nennt – aus dem Bucket also Dump und `.sha256`
+zusammen holen) werden vor jeder Wirkung geprüft. Dann wird `tcms-api` gestoppt, `tcms-db`
 gestartet, das Archiv gelesen und der bisherige Stand nach
 `backups/tcms-pre-restore/` gesichert. Danach werden die Rollen `tcms_owner`
 und `tcms_app` samt Passwörtern aus `.env` angelegt bzw. angeglichen (Werte

@@ -186,7 +186,8 @@ TCMS_RESTORE_CONFIRMATION="RESTORE_TCMS_DATABASE"
 TCMS_RESTORE_FILE=""
 
 # Vor jeder Seitenwirkung (auch vor load_env): Optionen, Bestaetigung, Datei,
-# Pruefsumme (falls <dump>.sha256 daneben liegt).
+# Pruefsumme. <dump>.sha256 ist Pflicht (Backup und Bucket fuehren sie mit):
+# Ein Dump ohne passende Pruefsumme wird nie eingespielt.
 validate_tcms_restore_args() {
   local file="" confirm="" seen_confirm=0
   while (( $# > 0 )); do
@@ -204,10 +205,12 @@ validate_tcms_restore_args() {
   [[ "$confirm" == "$TCMS_RESTORE_CONFIRMATION" ]] || \
     die "Der TCMS-Restore ersetzt die TCMS-Datenbank. Bestaetigung exakt: --confirm-overwrite $TCMS_RESTORE_CONFIRMATION"
   [[ -f "$file" && -r "$file" && ! -L "$file" ]] || die "Dump ist keine lesbare regulaere Datei: $file"
-  if [[ -f "$file.sha256" ]]; then
-    ( cd "$(dirname "$file")" && sha256sum --check --quiet -- "$(basename "$file").sha256" ) >/dev/null 2>&1 || \
-      die "SHA-256 des Dumps stimmt nicht mit $file.sha256 ueberein; Restore verweigert."
-  fi
+  [[ -f "$file.sha256" && ! -L "$file.sha256" ]] || \
+    die "Pruefsummen-Datei $file.sha256 fehlt; Restore verweigert (sie liegt neben jedem Backup und im Bucket)."
+  ( cd "$(dirname "$file")" && sha256sum --check --quiet -- "$(basename "$file").sha256" ) >/dev/null 2>&1 || \
+    die "SHA-256 des Dumps stimmt nicht mit $file.sha256 ueberein; Restore verweigert."
+  [[ "$(cut -d' ' -f3- "$file.sha256")" == "$(basename "$file")" && "$(wc -l <"$file.sha256")" -eq 1 ]] || \
+    die "Pruefsummen-Datei $file.sha256 muss genau den Dump nennen; Restore verweigert."
   TCMS_RESTORE_FILE="$file"
 }
 

@@ -1197,6 +1197,7 @@ test_tcms_backup_upload_passes_s3_secrets_only_by_name() {
   # Wert erst zur Laufzeit zusammensetzen, damit der Secret-Scan kein Literal meldet.
   local s3_marker="geheimnis-0123456789"
   mkdir -p "$(dirname "$file")"; printf 'x' >"$file"; : >"$calls"
+  ( cd "$(dirname "$file")" && sha256sum -- "$(basename "$file")" >"$(basename "$file").sha256" )
   (
     S3_ACCESS_KEY=wegwerfak S3_SECRET_KEY="wegwerf-s3-$s3_marker" S3_BUCKET_BACKUPS=backups
     docker() { printf 'docker %s secret=%s\n' "$*" "${AWS_SECRET_ACCESS_KEY:+gesetzt}" >>"$calls"; }
@@ -1206,8 +1207,15 @@ test_tcms_backup_upload_passes_s3_secrets_only_by_name() {
   assert_contains "$calls" "secret=gesetzt"
   assert_contains "$calls" "s3://backups/tcmsdump/"
   assert_contains "$calls" "--network taxtronik"
+  assert_contains "$calls" "--include $(basename "$file") --include $(basename "$file").sha256"
   assert_not_contains "$calls" "wegwerf-s3-$s3_marker"
-  pass "TCMS dump upload uses the backups bucket and passes S3 secrets only by name"
+  # Ohne Pruefsummen-Beidatei wird nichts hochgeladen.
+  rm -f "$file.sha256"; : >"$calls"
+  if ( docker() { printf 'docker %s\n' "$*" >>"$calls"; }; upload_tcms_backup "$file" ) >/dev/null 2>&1; then
+    test_fail "upload without checksum file succeeded"
+  fi
+  [[ ! -s "$calls" ]] || test_fail "upload without checksum file touched docker"
+  pass "TCMS dump upload sends dump and checksum to the backups bucket, S3 secrets only by name"
 }
 
 test_backup_update_and_full_backup_include_tcms() {
@@ -1274,6 +1282,31 @@ test_tcms_restore_validates_before_side_effects() {
     assert_not_contains "$out" "nicht gefunden"
   done
   assert_contains "$out" "Unbekannte Option"
+  # Pruefsumme ist Pflicht: fehlend, als Symlink oder fuer eine andere Datei.
+  local good="$TMP_DIR/restore-val/ok.dump" scenario
+  printf 'PGDMP-ok' >"$good"
+  for scenario in missing symlink other-name two-lines; do
+    rm -f "$good.sha256"
+    case "$scenario" in
+      symlink) ( cd "$(dirname "$good")" && sha256sum ok.dump >real.sha256 && ln -sf real.sha256 ok.dump.sha256 ) ;;
+      # Beidatei nennt eine andere, gueltige Datei: --check allein wuerde passen.
+      other-name) ( cd "$(dirname "$good")" && printf 'PGDMP-anders' >anders.dump && sha256sum anders.dump >ok.dump.sha256 ) ;;
+      two-lines) ( cd "$(dirname "$good")" && { sha256sum ok.dump; sha256sum ok.dump; } >ok.dump.sha256 ) ;;
+    esac
+    : >"$calls"
+    if (
+      ENVFILE="$TMP_DIR/restore-val.no-env"
+      docker() { printf 'docker %s\n' "$*" >>"$calls"; }
+      compose() { printf 'compose %s\n' "$*" >>"$calls"; }
+      cmd_tcms_restore --file "$good" --confirm-overwrite RESTORE_TCMS_DATABASE
+    ) >"$out" 2>&1; then test_fail "restore accepted checksum scenario: $scenario"; fi
+    [[ ! -s "$calls" ]] || test_fail "restore touched services in checksum scenario: $scenario"
+    # Abgewiesen von der Pruefsummenregel selbst, nicht erst von einer spaeteren Stufe.
+    case "$scenario" in
+      missing | symlink) assert_contains "$out" "Pruefsummen-Datei $good.sha256 fehlt" ;;
+      *) assert_contains "$out" "muss genau den Dump nennen" ;;
+    esac
+  done
   pass "TCMS restore validates confirmation, file and checksum before any side effect"
 }
 

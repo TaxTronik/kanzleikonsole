@@ -218,9 +218,10 @@ Volumes); gelöscht wird nur bewusst von Hand.
 Im verwalteten Modus sichert die CLI die TCMS-Datenbank wie die
 Hauptdatenbank: `pg_dump --format=custom` im Container `tcms-db` (lokaler
 Socket, kein Passwort), Datei `tcms-db-<Zeit>.dump` mit Modus `0600` und
-`.sha256` daneben unter `backups/`, danach Upload in den Bucket `backups`
-(`tcmsdump/JJJJ/MM/TT/`, 90-Tage-Lifecycle; S3-Zugang nur per Namen an den
-Container). Gesichert wird bei `./taxtronik backup`, im Update-Pflichtbackup
+`.sha256` daneben unter `backups/`, danach Upload beider Dateien in den
+Bucket `backups` (`tcmsdump/JJJJ/MM/TT/`, 90-Tage-Lifecycle; S3-Zugang nur per
+Namen an den Container). Ohne `.sha256` wird nichts hochgeladen, und ein
+Restore verlangt sie: Aus dem Bucket immer Dump und `.sha256` zusammen holen. Gesichert wird bei `./taxtronik backup`, im Update-Pflichtbackup
 vor jeder Code-Änderung, vor jedem TCMS-Migrationsschritt mit vorhandenem
 Schema und mit `./taxtronik tcms backup` (für einen Host-Cron, denn der
 tägliche Worker-Job erreicht die TCMS-Datenbank absichtlich nicht).

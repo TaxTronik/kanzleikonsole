@@ -129,10 +129,11 @@ run_backup_tcms() {
 
 # Wie der Hauptdump in den Backup-Bucket (gleiche 90-Tage-Lifecycle-Regel),
 # Schluessel tcmsdump/JJJJ/MM/TT/<datei>. S3-Zugang nur als Prozess-Env, im
-# Container per Name durchgereicht (P3-2).
+# Container per Name durchgereicht (P3-2). Die Pruefsummen-Beidatei geht mit:
+# Ein Restore aus dem Bucket verlangt sie (Red-Team-Hinweis Stufe 2).
 upload_tcms_backup() {
   local file="$1" name day
-  [[ -f "$file" ]] || return 1
+  [[ -f "$file" && -f "$file.sha256" ]] || return 1
   name="$(basename "$file")"
   day="$(date -u +'%Y/%m/%d')"
   info "TCMS-Dump in den Backup-Bucket laden: s3://${S3_BUCKET_BACKUPS:-backups}/tcmsdump/$day/$name"
@@ -147,7 +148,8 @@ upload_tcms_backup() {
     -v "$(dirname "$file"):/backup:ro" \
     "${TAXTRONIK_AWS_CLI_IMAGE:-$AWS_CLI_IMAGE_DEFAULT}" \
     --endpoint-url "${BACKUP_OBJECT_ENDPOINT:-http://seaweedfs:8333}" \
-    s3 cp "/backup/$name" "s3://${S3_BUCKET_BACKUPS:-backups}/tcmsdump/$day/$name" --only-show-errors
+    s3 cp /backup/ "s3://${S3_BUCKET_BACKUPS:-backups}/tcmsdump/$day/" --recursive \
+    --exclude '*' --include "$name" --include "$name.sha256" --only-show-errors
 }
 
 # Gibt es noch keine TCMS-Daten (Volume fehlt), gibt es nichts zu sichern.
