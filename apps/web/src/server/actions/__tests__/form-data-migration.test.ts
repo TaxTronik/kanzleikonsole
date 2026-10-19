@@ -131,8 +131,11 @@ describe('parseFormData-Migrationsrest', () => {
     // TCMS Stufe 3, Bereich B: Risiken (+8, davon Auswahl des Freigabeschritts),
     // Kontrollen (+5) und Länder (+1, Art der Erfassung) lesen von Beginn an
     // über parseFormData (+14).
+    // TCMS Stufe 3, Bereich D: Ereigniseingang (+5), Portal-Aufgaben (+3),
+    // Portal-Freigaben (+2) und Ereignismeldung im Portal (+1) lesen von Beginn
+    // an über parseFormData (+11).
     expect(direct).toHaveLength(2);
     expect(direct.filter((call) => !call.exact)).toHaveLength(1);
-    expect(shared).toBe(164);
+    expect(shared).toBe(175);
   });
 });
