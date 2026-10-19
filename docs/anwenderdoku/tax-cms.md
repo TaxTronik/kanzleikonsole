@@ -39,8 +39,11 @@ Tax-CMS stellt TaxTronik per E-Mail bzw. Hinweis zu (Abschnitt 11).
   §-153-Würdigung festhalten darf, entscheidet das Tax-CMS. Grundlage sind die
   Angaben aus TaxTronik: Rolle Admin/Partner, Berufsträgereigenschaft und die
   Zuordnung als Berufsträgerin oder Hauptbearbeitung des Mandanten. Fehlt ein
-  Recht, erscheint eine feste Meldung, etwa „Die §-153-Würdigung ist
-  zuständigen Berufsträgerinnen und Berufsträgern vorbehalten.“
+  Recht, erscheint eine feste Meldung, etwa „Dieser Schritt (§-153-Würdigung,
+  vertraulich markieren) ist den zuständigen Berufsträgerinnen und
+  Berufsträgern des Mandanten vorbehalten.“ Bei einer vertraulichen
+  Feststellung, an der Sie nicht beteiligt sind, lautet sie „Diese Feststellung
+  ist vertraulich; nur Beteiligte können sie bearbeiten.“
 - **Rollen geändert?** Wurden Ihre Rollen geändert, während Sie angemeldet
   sind, erscheint „Bitte melden Sie sich erneut an, damit Ihre aktuellen
   Rechte gelten.“

@@ -429,7 +429,9 @@ export async function vertraulichAction(
 ): Promise<TcmsErgebnis> {
   return tcmsKanzleiAktion({
     mandantId,
-    keinRecht: 'VERTRAULICH',
+    // Markieren verlangt im Dienst kannWuerdigen (Grund WUERDIGEN); VERTRAULICH
+    // nennt er nur für Nicht-Beteiligte einer vertraulichen Feststellung.
+    keinRecht: 'WUERDIGEN',
     parse: () => parseFormData(VertraulichFormular, formData),
     aufruf: async (dienst, daten) => {
       const { daten: r } = await dienst.rufe(ENDPUNKTE.feststellungVertraulichSetzen, {

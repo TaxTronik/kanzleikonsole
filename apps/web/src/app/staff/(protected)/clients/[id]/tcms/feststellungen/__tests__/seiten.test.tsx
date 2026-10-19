@@ -212,10 +212,13 @@ describe('Feststellung – Detail', () => {
     const feld = within(block).getByRole('group', { name: 'Ergebnis der §-153-Würdigung' });
     expect((feld as HTMLFieldSetElement).disabled).toBe(true);
     expect(feld.getAttribute('title')).toBe(TCMS_KEIN_RECHT.WUERDIGEN);
-    // Vertraulich markieren ebenfalls nur mit Würdigungsrecht.
-    expect(
-      (screen.getByRole('button', { name: 'Vertraulich markieren' }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    // Vertraulich markieren ebenfalls nur mit Würdigungsrecht (Grund WUERDIGEN
+    // wie im Dienst; VERTRAULICH steht für Nicht-Beteiligte).
+    const vertraulich = screen.getByRole('button', {
+      name: 'Vertraulich markieren',
+    }) as HTMLButtonElement;
+    expect(vertraulich.disabled).toBe(true);
+    expect(vertraulich.title).toBe(TCMS_KEIN_RECHT.WUERDIGEN);
   });
 
   it('nächster Schritt als Vorschau: blockiert ohne §-153-Entscheidung', async () => {

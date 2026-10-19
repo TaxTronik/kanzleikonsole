@@ -900,11 +900,7 @@ function WeitereAktionen({ l }: { l: Lage }) {
             action={l.binden(vertraulichAction)}
             wert={f.vertraulichAktuell}
             gesperrtGrund={
-              ctx.historisch
-                ? NUR_AKTUELL
-                : ctx.rechte.wuerdigen
-                  ? null
-                  : TCMS_KEIN_RECHT.VERTRAULICH
+              ctx.historisch ? NUR_AKTUELL : ctx.rechte.wuerdigen ? null : TCMS_KEIN_RECHT.WUERDIGEN
             }
           />
           <p className="text-[11px] text-muted mt-1">nur für Beteiligte sichtbar</p>

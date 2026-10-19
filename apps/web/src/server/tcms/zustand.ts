@@ -125,8 +125,12 @@ const KEIN_RECHT_JE_GRUND = {
   /** Bearbeiten im Mandanten (kannBearbeiten im Dienst). */
   BEARBEITEN:
     'Dieser Schritt ist Admins und Partnern sowie der zuständigen Berufsträgerin oder Hauptbearbeitung des Mandanten vorbehalten.',
-  /** §-153-Würdigung (kannWuerdigen im Dienst). */
-  WUERDIGEN: 'Die §-153-Würdigung ist zuständigen Berufsträgerinnen und Berufsträgern vorbehalten.',
+  /**
+   * Zuständige Berufsträger:in (kannWuerdigen im Dienst): §-153-Würdigung und
+   * vertraulich markieren.
+   */
+  WUERDIGEN:
+    'Dieser Schritt (§-153-Würdigung, vertraulich markieren) ist den zuständigen Berufsträgerinnen und Berufsträgern des Mandanten vorbehalten.',
   /**
    * Vier-Augen-Prinzip: dieselbe Person darf nicht beantragen bzw. mitwirken und
    * entscheiden (Übersteuerung, Risikofreigabe, Frequenzabweichung, Verwerfen,
@@ -135,9 +139,8 @@ const KEIN_RECHT_JE_GRUND = {
   VIER_AUGEN: 'Vier-Augen-Prinzip: Diesen Schritt muss eine andere Person ausführen.',
   /** Kanzleiweite Verwaltung (z. B. Audit). */
   VERWALTUNG: 'Dieser Schritt ist Admins und Partnern der Kanzlei vorbehalten.',
-  /** Vertrauliche Feststellung (nur Beteiligte; markieren nur zuständige BT). */
-  VERTRAULICH:
-    'Vertraulich markieren ist der zuständigen Berufsträgerin bzw. dem zuständigen Berufsträger vorbehalten.',
+  /** Vertrauliche Feststellung: nur Beteiligte (kannVertraulichLesen im Dienst). */
+  VERTRAULICH: 'Diese Feststellung ist vertraulich; nur Beteiligte können sie bearbeiten.',
   /** Durchführung einer Kontrolle (kannDurchfuehren im Dienst). */
   DURCHFUEHREN:
     'Dieser Schritt ist der zugewiesenen durchführenden Person oder ihrer Vertretung vorbehalten.',

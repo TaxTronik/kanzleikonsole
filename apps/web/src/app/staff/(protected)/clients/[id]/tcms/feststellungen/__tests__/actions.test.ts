@@ -205,7 +205,7 @@ describe('Weiterschalten, Verwerfen, Vertraulichkeit', () => {
     await aktionen.vertraulichAction(MANDANT, FID, null, formular([['vertraulich', 'ja']]));
     expect(fehler().vertraulich).toBeDefined();
     await aktionen.vertraulichAction(MANDANT, FID, null, formular([['vertraulich', '1']]));
-    expect(spec().keinRecht).toBe('VERTRAULICH');
+    expect(spec().keinRecht).toBe('WUERDIGEN');
     const d = dienst({ id: FID, vertraulich: true, geaendert: true });
     await expect(spec().aufruf(d, geparst(), undefined)).resolves.toEqual({
       meldung: 'Als vertraulich markiert – nur für Beteiligte sichtbar.',
