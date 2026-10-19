@@ -6,9 +6,7 @@
 // Dienst. Die Liste ist ein Angebot; die Aktion prüft jede ID erneut.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { PrismaClient } from '@taxtronik/db/prisma-client';
-import { createPostgresAdapter, optionalDatabaseUrl } from '@taxtronik/db/prisma-adapter';
-import type { TxClient } from '@taxtronik/db';
+import type { PrismaClient, TxClient } from '@taxtronik/db';
 
 vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => null }));
 vi.mock('@/server/auth/portal', () => ({ portalAuth: async () => null }));
@@ -24,12 +22,11 @@ if (!enabled && process.env.CI === 'true') {
 }
 
 (enabled ? describe : describe.skip)('Auswahllisten der Zuständigkeiten (TCMS Bereich B)', () => {
-  const owner = new PrismaClient({
-    adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
-  });
-  const app = new PrismaClient({
-    adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_APP_URL)),
-  });
+  // Freigegebene Clients aus @taxtronik/db (prisma-client-guard): Owner nur für
+  // Fixtures, die App-Rolle (DATABASE_APP_URL, RLS) für alle Prüfungen. Erst im
+  // beforeAll geladen, damit eine übersprungene Suite keine Verbindung braucht.
+  let owner!: PrismaClient;
+  let app!: PrismaClient;
   const tenants: string[] = [];
   let tenantId = '';
   let fremderTenant = '';
@@ -73,6 +70,7 @@ if (!enabled && process.env.CI === 'true') {
   }
 
   beforeAll(async () => {
+    ({ prismaOwner: owner, prisma: app } = await import('@taxtronik/db'));
     tenantId = await neuerTenant('TCMS S3b');
     fremderTenant = await neuerTenant('TCMS S3b fremd');
     await person('berta', tenantId, '  Berta Brandt  ');

@@ -47,8 +47,7 @@ vi.mock('@/server/rate-limit', async (original) => ({
   checkPortalWriteLimit: async () => ({ ok: true }),
 }));
 
-import { PrismaClient } from '@taxtronik/db/prisma-client';
-import { createPostgresAdapter, optionalDatabaseUrl } from '@taxtronik/db/prisma-adapter';
+import type { PrismaClient } from '@taxtronik/db';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { DEMO } from '@/__tests__/tcms-fixtures';
 import { renderServerMarkup } from '@/__tests__/render-helpers';
@@ -74,9 +73,9 @@ async function rendern(seite: ReactNode | Promise<ReactNode>) {
 const ZEIT = 60_000;
 
 (enabled ? describe : describe.skip)('Tax-CMS Bereich D gegen den laufenden Dienst', () => {
-  const owner = new PrismaClient({
-    adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
-  });
+  // Owner-Client aus @taxtronik/db (prisma-client-guard), erst im beforeAll
+  // geladen, damit eine übersprungene Suite keine Verbindung braucht.
+  let owner!: PrismaClient;
   const inEinerStunde = () => new Date(Date.now() + 3_600_000).toISOString();
 
   const staffSitzung = (staffId: string, roles: string[]) => ({
@@ -112,6 +111,7 @@ const ZEIT = 60_000;
   });
 
   beforeAll(async () => {
+    ({ prismaOwner: owner } = await import('@taxtronik/db'));
     await owner.tenant.deleteMany({ where: { id: DEMO.tenant } });
     await owner.tenant.create({
       data: { id: DEMO.tenant, slug: `tcms-demo-d-${randomUUID()}`, name: 'Kanzlei Roth (Demo)' },

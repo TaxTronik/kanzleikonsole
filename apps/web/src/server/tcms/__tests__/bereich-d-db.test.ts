@@ -11,9 +11,7 @@
 // Ersetzt werden nur Sitzung, Object Store und die Verbindungsgrenze.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PrismaClient } from '@taxtronik/db/prisma-client';
-import { createPostgresAdapter, optionalDatabaseUrl } from '@taxtronik/db/prisma-adapter';
-import type { TenantContext, TxClient } from '@taxtronik/db';
+import type { PrismaClient, TenantContext, TxClient } from '@taxtronik/db';
 import { EvidenceService, LocalTimestampAdapter, type AuditEventInput } from '@taxtronik/evidence';
 import type { PortalSession } from '@/server/auth/portal';
 import type { StaffSession } from '@/server/auth/staff';
@@ -86,12 +84,11 @@ if (enabled) {
 const REQ = { headers: new Headers(), nextUrl: new URL('http://localhost/x') } as never;
 
 (enabled ? describe : describe.skip)('TCMS Bereich D gegen PostgreSQL', () => {
-  const owner = new PrismaClient({
-    adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
-  });
-  const app = new PrismaClient({
-    adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_APP_URL)),
-  });
+  // Freigegebene Clients aus @taxtronik/db (prisma-client-guard): Owner nur für
+  // Fixtures, die App-Rolle (DATABASE_APP_URL, RLS) für alle Prüfungen. Erst im
+  // beforeAll geladen, damit eine übersprungene Suite keine Verbindung braucht.
+  let owner!: PrismaClient;
+  let app!: PrismaClient;
   const evidence = new EvidenceService(new LocalTimestampAdapter());
   let tenantId = '';
   let typ = '';
@@ -204,6 +201,7 @@ const REQ = { headers: new Headers(), nextUrl: new URL('http://localhost/x') } a
   });
 
   beforeAll(async () => {
+    ({ prismaOwner: owner, prisma: app } = await import('@taxtronik/db'));
     tenantId = (
       await owner.tenant.create({ data: { slug: `tcms-d-${randomUUID()}`, name: 'TCMS D' } })
     ).id;
