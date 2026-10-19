@@ -1,0 +1,73 @@
+{
+  "id": "cmvf9necd0089dy7dcys5yscb",
+  "nummer": "2026-T-0329",
+  "typ": "T-02",
+  "titel": "Neues Lager CZ (PAN-EU) seit 08/2026",
+  "beschreibung": "Der Lagerland-Monitor zeigt erstmals Bestand in Tschechien. Amazon hat Ware im Rahmen von PAN-EU nach CZ verteilt.",
+  "quelle": "KONTROLLE",
+  "gemeldetVon": "b1000000-0000-4000-8000-000000000012",
+  "gemeldetAm": "2026-09-30T16:40:00.000Z",
+  "ereignisDatum": "2026-08-01",
+  "status": "ERLEDIGT",
+  "verwerfenBeantragt": false,
+  "triagiertVon": "b1000000-0000-4000-8000-000000000001",
+  "triagiertAm": "2026-10-12T11:00:00.000Z",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "folgen": [
+    {
+      "id": "cmvf9necg008ady7d8z4bu2in",
+      "art": "RISIKO_NEU_BEWERTEN",
+      "ziel": "EC-UST-05",
+      "text": "Ausländisches Lager ohne Registrierung neu bewerten",
+      "zustaendig": "b1000000-0000-4000-8000-000000000001",
+      "frist": null,
+      "status": "ERLEDIGT",
+      "erledigtAm": "2026-10-12T11:40:00.000Z",
+      "objektId": null,
+      "durchfuehrung": null,
+      "feststellung": null,
+      "verwerfen": null,
+      "angelegt": null
+    },
+    {
+      "id": "cmvf9necg008bdy7dwclqliob",
+      "art": "FESTSTELLUNG_ANLEGEN",
+      "ziel": null,
+      "text": "Feststellung mit §-153-Pfad anlegen",
+      "zustaendig": "b1000000-0000-4000-8000-000000000002",
+      "frist": null,
+      "status": "ERLEDIGT",
+      "erledigtAm": "2026-10-12T11:20:00.000Z",
+      "objektId": "cmvf9nebp0082dy7dyx4go89q",
+      "durchfuehrung": null,
+      "feststellung": {
+        "id": "cmvf9nebp0082dy7dyx4go89q",
+        "nummer": "F-2026-007"
+      },
+      "verwerfen": null,
+      "angelegt": null
+    },
+    {
+      "id": "cmvf9necg008cdy7dfkv3xwwo",
+      "art": "PROFIL_AENDERN",
+      "ziel": null,
+      "text": "P2 Lagerorte um CZ ergänzen",
+      "zustaendig": "b1000000-0000-4000-8000-000000000002",
+      "frist": null,
+      "status": "ERLEDIGT",
+      "erledigtAm": "2026-10-01T10:00:00.000Z",
+      "objektId": null,
+      "durchfuehrung": null,
+      "feststellung": null,
+      "verwerfen": null,
+      "angelegt": null
+    }
+  ],
+  "anlagen": [],
+  "meldung": null,
+  "verwerfenAntrag": null,
+  "verwerfen": null,
+  "verlauf": [],
+  "namen": []
+}

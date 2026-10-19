@@ -1,0 +1,24 @@
+{
+  "programmVorhanden": true,
+  "meldungen": [
+    {
+      "id": "cmvf9ned0008hdy7dlufu2vuo",
+      "nummer": "2026-T-0345",
+      "typ": "T-01",
+      "titel": "Start auf Kaufland.de zum 01.12.2026",
+      "status": "NEU",
+      "gemeldetAm": "2026-10-14T13:02:00.000Z",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012"
+    },
+    {
+      "id": "cmvf9neco008ddy7d3h1mmhbw",
+      "nummer": "2026-T-0342",
+      "typ": "T-05",
+      "titel": "Neue Warengruppe „Outdoor-Kochbücher\" ab 11/2026",
+      "status": "NEU",
+      "gemeldetAm": "2026-10-12T09:14:00.000Z",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012"
+    }
+  ],
+  "namen": []
+}

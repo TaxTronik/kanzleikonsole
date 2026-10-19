@@ -21,6 +21,12 @@
 //     Schritt 4 (Live-Antwort des Dienstes mit dem Demo-Akteur, ungekürzt).
 //   - beschreibung-talwind.json, profil-talwind.json, freigaben-talwind.json,
 //     einrichtung-talwind.json, kontakte-bergkamm.json: ungekürzt.
+//   - portal-aufgabe-k23-murat.json (Bereich D): `nachweise[].dokumentId` durch
+//     UUIDs ersetzt (die Demo verweist auf Storage-Schlüssel; die
+//     kanzleikonsole liefert nur Dokumente mit UUID aus).
+//   - portal-freigaben-jana.json (Bereich D): `inhalt` und Abschnitte der
+//     Beschreibung gekürzt (snapshotSha256 passt deshalb nicht mehr zum Inhalt).
+//   - audit-anna.json (Bereich D): erste Seite mit `vor` (neueste zuerst), limit 5.
 // Neue Fixtures: Antwort mit dem Demo-Akteur abrufen, kürzen, hier mit dem
 // Schema des Endpunkts laden (ENDPUNKTE.<name>.antwortSchema).
 // =============================================================================
@@ -67,6 +73,14 @@ import risikenTalwind from './risiken-talwind.json';
 import risikoEcUst01 from './risiko-ec-ust-01.json';
 import risikoEcUst02 from './risiko-ec-ust-02.json';
 import risikoEcVer01 from './risiko-ec-ver-01.json';
+// Bereich D (Portal, Ereignisse, Audit)
+import auditAnna from './audit-anna.json';
+import ereignis0329 from './ereignis-0329.json';
+import ereignis0345 from './ereignis-0345.json';
+import ereignisseTalwind from './ereignisse-talwind.json';
+import portalAufgabeK23Murat from './portal-aufgabe-k23-murat.json';
+import portalFreigabenJana from './portal-freigaben-jana.json';
+import portalMeldungenJana from './portal-meldungen-jana.json';
 
 /** Feste IDs der TCMS-Demo (gleich in der kanzleikonsole-Testdatenbank des Live-Tests). */
 export const DEMO = {
@@ -133,4 +147,19 @@ export const tcmsFixtures = {
   kontrolleKEc02: () => laden(ENDPUNKTE.kontrolleLesen.antwortSchema, kontrolleKEc02),
   kontrolleKEc08: () => laden(ENDPUNKTE.kontrolleLesen.antwortSchema, kontrolleKEc08),
   laenderTalwind: () => laden(ENDPUNKTE.laenderLesen.antwortSchema, laenderTalwind),
+  // Bereich D (Portal, Ereignisse, Audit)
+  /** K-EC-23 Q3 2026 aus Sicht von Murat (durchführend, IN_DURCHFUEHRUNG, 2 Anlagen). */
+  portalAufgabeK23Murat: () =>
+    laden(ENDPUNKTE.portalAufgabeLesen.antwortSchema, portalAufgabeK23Murat),
+  portalMeldungenJana: () =>
+    laden(ENDPUNKTE.portalMeldungenLesen.antwortSchema, portalMeldungenJana),
+  /** Kenntnisnahme an Murat (für Jana gesperrt), Beschreibung v1.2 an Jana (Code KEIN). */
+  portalFreigabenJana: () =>
+    laden(ENDPUNKTE.portalFreigabenLesen.antwortSchema, portalFreigabenJana),
+  ereignisseTalwind: () => laden(ENDPUNKTE.ereignisseLesen.antwortSchema, ereignisseTalwind),
+  /** 2026-T-0345 (NEU, Portal-Meldung von Murat, 3 Vorschläge). */
+  ereignis0345: () => laden(ENDPUNKTE.ereignisLesen.antwortSchema, ereignis0345),
+  /** 2026-T-0329 (ERLEDIGT). */
+  ereignis0329: () => laden(ENDPUNKTE.ereignisLesen.antwortSchema, ereignis0329),
+  auditAnna: () => laden(ENDPUNKTE.auditLesen.antwortSchema, auditAnna),
 };

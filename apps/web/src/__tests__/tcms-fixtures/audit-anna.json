@@ -1,0 +1,90 @@
+{
+  "eintraege": [
+    {
+      "pos": 31,
+      "at": "2025-02-11T00:00:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000003",
+      "actorName": "StB Thomas Kern",
+      "aktion": "tcms.kontrollen.design",
+      "objektTyp": "TcmsProgramm",
+      "objektId": "cmvf9nerj00d5dy7d5fpoy7sw",
+      "programmId": "cmvf9nerj00d5dy7d5fpoy7sw",
+      "mandantId": "a1000000-0000-4000-8000-000000004698",
+      "detail": {
+        "beurteilt": 22
+      },
+      "prevHash": "1121b60664f50d993a5182302df06bc8fb666bb3a7af6670dafeccd970d1014f",
+      "hash": "04c77942e67a7a0c11684ef90f68d7262f6c1bfa07ddb44b92ef40fbbe57afd5"
+    },
+    {
+      "pos": 30,
+      "at": "2025-02-07T00:00:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000003",
+      "actorName": "StB Thomas Kern",
+      "aktion": "tcms.risiken.freigegeben",
+      "objektTyp": "TcmsProgramm",
+      "objektId": "cmvf9nerj00d5dy7d5fpoy7sw",
+      "programmId": "cmvf9nerj00d5dy7d5fpoy7sw",
+      "mandantId": "a1000000-0000-4000-8000-000000004698",
+      "detail": {
+        "anzahl": 19
+      },
+      "prevHash": "8d0ebd8e6159b0d3eea571f41704594fc6b5cc7cb96323f45105653a1e76e48f",
+      "hash": "1121b60664f50d993a5182302df06bc8fb666bb3a7af6670dafeccd970d1014f"
+    },
+    {
+      "pos": 29,
+      "at": "2025-02-05T00:00:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000041",
+      "actorName": "Pia Hafner",
+      "aktion": "tcms.ziele.freigegeben",
+      "objektTyp": "Teilbereich",
+      "objektId": "cmvf9nerp00d6dy7dhwevauva",
+      "programmId": "cmvf9nerj00d5dy7d5fpoy7sw",
+      "mandantId": "a1000000-0000-4000-8000-000000004698",
+      "detail": {
+        "anzahl": 3
+      },
+      "prevHash": "b28fe730c138ede6016117784f17a550a3ded2106cc91733adee715aad1b1d1d",
+      "hash": "8d0ebd8e6159b0d3eea571f41704594fc6b5cc7cb96323f45105653a1e76e48f"
+    },
+    {
+      "pos": 28,
+      "at": "2025-01-10T00:00:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "actorName": "Leon Brandt",
+      "aktion": "tcms.programm.angelegt",
+      "objektTyp": "TcmsProgramm",
+      "objektId": "cmvf9nerj00d5dy7d5fpoy7sw",
+      "programmId": "cmvf9nerj00d5dy7d5fpoy7sw",
+      "mandantId": "a1000000-0000-4000-8000-000000004698",
+      "detail": {
+        "paket": "E-Commerce 1.0"
+      },
+      "prevHash": "31120c9af356fb3dbb9974acbb9e86da408119e2d712cf393931cfdc0ed5e06e",
+      "hash": "b28fe730c138ede6016117784f17a550a3ded2106cc91733adee715aad1b1d1d"
+    },
+    {
+      "pos": 27,
+      "at": "2026-09-25T00:00:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000001",
+      "actorName": "StB Dr. Anna Roth",
+      "aktion": "tcms.kontrollen.design",
+      "objektTyp": "TcmsProgramm",
+      "objektId": "cmvf9neki00b8dy7drvwvwijs",
+      "programmId": "cmvf9neki00b8dy7drvwvwijs",
+      "mandantId": "a1000000-0000-4000-8000-000000004733",
+      "detail": {
+        "beurteilt": 0
+      },
+      "prevHash": "b4f5986327dbae0aa32cc2a91a58354e073d086ef29fbc9b63f0085f88ca1a0c",
+      "hash": "31120c9af356fb3dbb9974acbb9e86da408119e2d712cf393931cfdc0ed5e06e"
+    }
+  ],
+  "weiter": 27,
+  "kopf": {
+    "pos": 31,
+    "hash": "04c77942e67a7a0c11684ef90f68d7262f6c1bfa07ddb44b92ef40fbbe57afd5",
+    "at": "2025-02-11T00:00:00.000Z"
+  }
+}

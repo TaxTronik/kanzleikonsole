@@ -1,0 +1,130 @@
+{
+  "freigaben": [
+    {
+      "id": "cmvf9nef60096dy7d6dkom5i3",
+      "art": "KENNTNISNAHME",
+      "titel": "Steuerrichtlinie v1.1",
+      "inhalt": "Steuerrichtlinie der Talwind Outdoor GmbH (Fassung 1.1)\n\n1. Wir erfüllen unsere steuerlichen Pflichten vollständig und fristgerecht.\n2. Änderungen an Verkaufskanälen, Lagern, Zielländern, Sortiment, Zahlungswegen oder Systemen melden wir der Kanzlei vor dem Start über das Portal.\n3. Fehler werden un …",
+      "status": "OFFEN",
+      "angefordertVon": "b1000000-0000-4000-8000-000000000001",
+      "angefordertAm": "2026-09-30T09:00:00.000Z",
+      "empfaengerId": "b1000000-0000-4000-8000-000000000012",
+      "erledigtAm": null,
+      "anmerkung": null,
+      "brauchtCode": false,
+      "istEmpfaenger": false,
+      "darfFreigeben": false,
+      "darfKenntnisnehmen": false,
+      "sperrgrund": "Diese Kenntnisnahme ist an eine andere Person gerichtet.",
+      "code": null,
+      "version": null
+    },
+    {
+      "id": "cmvf9nef30095dy7dsx5tay68",
+      "art": "BESCHREIBUNG",
+      "titel": "CMS-Beschreibung v1.2",
+      "inhalt": null,
+      "status": "OFFEN",
+      "angefordertVon": "b1000000-0000-4000-8000-000000000001",
+      "angefordertAm": "2026-09-30T08:45:00.000Z",
+      "empfaengerId": "b1000000-0000-4000-8000-000000000011",
+      "erledigtAm": null,
+      "anmerkung": null,
+      "brauchtCode": true,
+      "istEmpfaenger": true,
+      "darfFreigeben": true,
+      "darfKenntnisnehmen": false,
+      "sperrgrund": null,
+      "code": {
+        "status": "KEIN",
+        "ablauf": null,
+        "verbleibendeVersuche": 5
+      },
+      "version": {
+        "id": "cmvf9neez0093dy7dczudkivi",
+        "nummer": "1.2",
+        "status": "BEIM_MANDANTEN",
+        "abschnitte": [
+          {
+            "key": "teilbereich",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die gesetzlichen Vertreter der Talwind Outdoor GmbH grenzen den Teilbereich „Umsatzsteuer & Erlös-Datenkette E-Commerce\" ab. Er umfasst die umsatzsteuerlichen Pflichten aus Online-Verkäufen im Inland und in allen Ländern mit Steuerpflicht sowie die Datenkette vom Shop bis zur Finanzbuchhaltung."
+              },
+              {
+                "typ": "baustein",
+                "art": "TEILBEREICH"
+              }
+            ]
+          },
+          {
+            "key": "kultur",
+            "bloecke": [
+              {
+                "typ": "text",
+                "text": "Die Geschäftsführung bekennt sich in der Steuerrichtlinie zur vollständigen und fristgerechten Erfüllung steuerlicher Pflichten. Verstöße werden nicht toleriert; Hinweise auf Fehler sind ausdrücklich erwünscht und haben keine Nachteile für die meldende Person."
+              }
+            ]
+          }
+        ],
+        "snapshot": {
+          "nummer": "1.2",
+          "mandant": "Talwind Outdoor GmbH",
+          "eingefroren": true,
+          "abschnitte": [
+            {
+              "key": "teilbereich",
+              "bloecke": [
+                {
+                  "typ": "text",
+                  "text": "Die gesetzlichen Vertreter der Talwind Outdoor GmbH grenzen den Teilbereich „Umsatzsteuer & Erlös-Datenkette E-Commerce\" ab. Er umfasst die umsatzsteuerlichen Pflichten aus Online-Verkäufen im Inland und in allen Ländern mit Steuerpflicht sowie die Datenkette vom Shop bis zur Finanzbuchhaltung."
+                },
+                {
+                  "typ": "baustein",
+                  "art": "TEILBEREICH"
+                }
+              ]
+            },
+            {
+              "key": "kultur",
+              "bloecke": [
+                {
+                  "typ": "text",
+                  "text": "Die Geschäftsführung bekennt sich in der Steuerrichtlinie zur vollständigen und fristgerechten Erfüllung steuerlicher Pflichten. Verstöße werden nicht toleriert; Hinweise auf Fehler sind ausdrücklich erwünscht und haben keine Nachteile für die meldende Person."
+                }
+              ]
+            }
+          ]
+        },
+        "snapshotSha256": "85050466cd367af859c683d047f4797ec64f2a757f31e84e1a4089ad34d808d3",
+        "snapshotGeprueft": true,
+        "freigegebenVon": null,
+        "freigegebenAm": null
+      }
+    }
+  ],
+  "fruehere": [
+    {
+      "id": "cmvf9neer0092dy7d2zu6rofx",
+      "nummer": "1.1",
+      "status": "FREIGEGEBEN",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000011",
+      "freigegebenAm": "2026-06-30T11:12:00.000Z",
+      "snapshotSha256": "2039b321d61b16d443509ca47c837785d5dfbd246b5d1b57adadfa25195445b2"
+    },
+    {
+      "id": "cmvf9neeo0091dy7d6fcg0tfp",
+      "nummer": "1.0",
+      "status": "ABGELOEST",
+      "freigegebenVon": "b1000000-0000-4000-8000-000000000011",
+      "freigegebenAm": "2026-03-12T00:00:00.000Z",
+      "snapshotSha256": "35dfab816a06e6bb11e44dcc2700de7e3d5562b7ae6a3bd29010a97dc01f9358"
+    }
+  ],
+  "live": null,
+  "gesetzlicheVertreter": ["b1000000-0000-4000-8000-000000000011"],
+  "istGesetzlicherVertreter": true,
+  "kannPortalLesen": true,
+  "namen": []
+}

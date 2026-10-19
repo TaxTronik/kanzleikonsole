@@ -1,0 +1,143 @@
+{
+  "id": "cmvf9ne7i007kdy7d467junj7",
+  "mandantId": "a1000000-0000-4000-8000-000000004711",
+  "periodeLabel": "Q3 2026",
+  "periodeVon": "2026-07-01",
+  "periodeBis": "2026-09-30",
+  "faelligAm": "2026-10-15",
+  "status": "IN_DURCHFUEHRUNG",
+  "anzeige": "UEBERFAELLIG",
+  "ausserplanmaessig": false,
+  "schritte": [
+    {
+      "titel": "Reports exportieren",
+      "hinweis": "Marktplätze und Zahlungsdienstleister, vollständiges Quartal",
+      "erledigt": true,
+      "kommentar": "Amazon und Shopware exportiert"
+    },
+    {
+      "titel": "Reports ablegen",
+      "hinweis": "Upload in die geschützte Ablage",
+      "erledigt": false,
+      "kommentar": ""
+    }
+  ],
+  "werte": [],
+  "ergebnis": null,
+  "ergebnisKommentar": null,
+  "durchgefuehrtVon": "b1000000-0000-4000-8000-000000000012",
+  "begonnenAm": "2026-10-08T14:00:00.000Z",
+  "eingereichtAm": null,
+  "mandantBestaetigtVon": null,
+  "mandantBestaetigtAm": null,
+  "gegengezeichnetVon": null,
+  "abgeschlossenAm": null,
+  "zurueckgewiesenVon": null,
+  "zurueckgewiesenAm": null,
+  "zurueckweisungsgrund": null,
+  "entfallenBegruendung": null,
+  "entfallenAm": null,
+  "createdAt": "2026-03-01T00:00:00.000Z",
+  "vorhandenZumStand": true,
+  "nachweise": [
+    {
+      "id": "cmvf9ne96007qdy7d0c2yfigq",
+      "dokumentId": "d0c00000-0000-4000-8000-0000000000a1",
+      "dateiname": "Amazon_VAT_Transactions_Q3-2026.csv",
+      "mime": "text/csv",
+      "groesse": 117,
+      "sha256": "885967c787dd5aad3d8e5979931499c22c355e3429110fc4447174deeb273294",
+      "gesperrt": false,
+      "hochgeladenVon": "b1000000-0000-4000-8000-000000000012",
+      "hochgeladenAm": "2026-10-08T11:00:00.000Z"
+    },
+    {
+      "id": "cmvf9ne98007rdy7d45hqi660",
+      "dokumentId": "d0c00000-0000-4000-8000-0000000000a2",
+      "dateiname": "Shopware_Bestellexport_Q3-2026.csv",
+      "mime": "text/csv",
+      "groesse": 117,
+      "sha256": "de7b62836ca012e51022e221d71aba9d7cd0692c7bf2a38a3c2b301020c6969f",
+      "gesperrt": false,
+      "hochgeladenVon": "b1000000-0000-4000-8000-000000000012",
+      "hochgeladenAm": "2026-10-08T11:00:00.000Z"
+    }
+  ],
+  "nachweiseAusgeblendet": 0,
+  "original": null,
+  "pruefung": {
+    "schritteErledigt": 1,
+    "schritteGesamt": 2,
+    "werteFehlend": [],
+    "ausserhalb": [],
+    "nachweise": 2,
+    "mindestNachweise": 1,
+    "ergebnis": null,
+    "kommentarFehlt": false,
+    "maengel": ["1 von 2 Schritten offen", "Ergebnis nicht gewählt"]
+  },
+  "rechte": {
+    "beginnen": {
+      "erlaubt": false,
+      "grund": "Bereits begonnen"
+    },
+    "bearbeiten": {
+      "erlaubt": true,
+      "grund": null
+    },
+    "gegenzeichnen": {
+      "erlaubt": false,
+      "grund": "Nur für eingereichte Durchführungen"
+    },
+    "mandantBestaetigen": {
+      "erlaubt": false,
+      "grund": "Nur für übermittelte Aufgaben"
+    },
+    "zurueckweisen": {
+      "erlaubt": false,
+      "grund": "Nur für übermittelte Aufgaben"
+    },
+    "entfallenBeantragen": {
+      "erlaubt": false,
+      "grund": "Dieser Schritt ist zuständigen Personen vorbehalten."
+    },
+    "entfallenFreigeben": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "entfallenAblehnen": {
+      "erlaubt": false,
+      "grund": "Kein Antrag offen"
+    },
+    "nachtrag": {
+      "erlaubt": false,
+      "grund": "Dieser Schritt ist zuständigen Personen vorbehalten."
+    }
+  },
+  "heute": "2026-10-19",
+  "stand": "2026-10-19",
+  "historisch": false,
+  "namen": [],
+  "kontrolle": {
+    "id": "cmvf9ndtm002pdy7dguc10g0z",
+    "code": "K-EC-23",
+    "standId": "cmvf9ndtm002qdy7d16bohlcd",
+    "version": 1,
+    "gueltigAb": "2026-03-01T00:00:00.000Z",
+    "titel": "Report-Export und geschützte Ablage",
+    "ziel": "Plattform- und Zahlungsreports quartalsweise exportieren und geschützt ablegen.",
+    "art": "P",
+    "ausfuehrung": "IT",
+    "partei": "MANDANT",
+    "schluessel": false,
+    "nachweis": "abgelegte Reports mit Hash",
+    "mindestNachweise": 1,
+    "toleranzEur": null,
+    "faelligNachTagen": 15,
+    "durchfuehrendId": "b1000000-0000-4000-8000-000000000012",
+    "vertretungId": "b1000000-0000-4000-8000-000000000013",
+    "gegenzeichnerId": "b1000000-0000-4000-8000-000000000013",
+    "gegenzeichnungMandant": true,
+    "kennzahlen": []
+  }
+}

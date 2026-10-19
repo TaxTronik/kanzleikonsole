@@ -1,0 +1,122 @@
+{
+  "stand": "2026-10-19",
+  "historisch": false,
+  "programmId": "cmvf9ndef0003dy7da8qhr5r7",
+  "ereignisse": [
+    {
+      "id": "cmvf9ned0008hdy7dlufu2vuo",
+      "nummer": "2026-T-0345",
+      "typ": "T-01",
+      "titel": "Start auf Kaufland.de zum 01.12.2026",
+      "beschreibung": "Wir starten zum 01.12.2026 auf dem Marktplatz Kaufland.de, zunächst nur Versand nach Deutschland.",
+      "quelle": "PORTAL",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012",
+      "gemeldetAm": "2026-10-14T13:02:00.000Z",
+      "ereignisDatum": "2026-12-01",
+      "status": "NEU",
+      "verwerfenBeantragt": false,
+      "triagiertVon": null,
+      "triagiertAm": null,
+      "folgen": [
+        {
+          "id": "cmvf9ned1008idy7ddnhhtfja",
+          "art": "PROFIL_AENDERN",
+          "ziel": null,
+          "status": "VORGESCHLAGEN",
+          "objektId": null
+        },
+        {
+          "id": "cmvf9ned1008jdy7d547w1cbs",
+          "art": "RISIKO_NEU_BEWERTEN",
+          "ziel": "EC-UST-13",
+          "status": "VORGESCHLAGEN",
+          "objektId": null
+        },
+        {
+          "id": "cmvf9ned1008kdy7dhy6gg6vm",
+          "art": "KONTROLLE_AUSSERPLANMAESSIG",
+          "ziel": "K-EC-02",
+          "status": "VORGESCHLAGEN",
+          "objektId": null
+        }
+      ]
+    },
+    {
+      "id": "cmvf9neco008ddy7d3h1mmhbw",
+      "nummer": "2026-T-0342",
+      "typ": "T-05",
+      "titel": "Neue Warengruppe „Outdoor-Kochbücher\" ab 11/2026",
+      "beschreibung": "Ab November nehmen wir Outdoor-Kochbücher ins Sortiment (Shop und Amazon). Bitte prüfen, welche Steuersätze in den Zielländern gelten.",
+      "quelle": "PORTAL",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012",
+      "gemeldetAm": "2026-10-12T09:14:00.000Z",
+      "ereignisDatum": "2026-11-01",
+      "status": "NEU",
+      "verwerfenBeantragt": false,
+      "triagiertVon": null,
+      "triagiertAm": null,
+      "folgen": [
+        {
+          "id": "cmvf9necp008edy7d45wdq4ad",
+          "art": "KONTROLLE_AUSSERPLANMAESSIG",
+          "ziel": "K-EC-02",
+          "status": "VORGESCHLAGEN",
+          "objektId": null
+        },
+        {
+          "id": "cmvf9necp008fdy7du5asznkn",
+          "art": "RISIKO_NEU_BEWERTEN",
+          "ziel": "EC-UST-02",
+          "status": "VORGESCHLAGEN",
+          "objektId": null
+        },
+        {
+          "id": "cmvf9necp008gdy7dp1ae0bjx",
+          "art": "PROFIL_AENDERN",
+          "ziel": null,
+          "status": "VORGESCHLAGEN",
+          "objektId": null
+        }
+      ]
+    },
+    {
+      "id": "cmvf9necd0089dy7dcys5yscb",
+      "nummer": "2026-T-0329",
+      "typ": "T-02",
+      "titel": "Neues Lager CZ (PAN-EU) seit 08/2026",
+      "beschreibung": "Der Lagerland-Monitor zeigt erstmals Bestand in Tschechien. Amazon hat Ware im Rahmen von PAN-EU nach CZ verteilt.",
+      "quelle": "KONTROLLE",
+      "gemeldetVon": "b1000000-0000-4000-8000-000000000012",
+      "gemeldetAm": "2026-09-30T16:40:00.000Z",
+      "ereignisDatum": "2026-08-01",
+      "status": "ERLEDIGT",
+      "verwerfenBeantragt": false,
+      "triagiertVon": "b1000000-0000-4000-8000-000000000001",
+      "triagiertAm": "2026-10-12T11:00:00.000Z",
+      "folgen": [
+        {
+          "id": "cmvf9necg008ady7d8z4bu2in",
+          "art": "RISIKO_NEU_BEWERTEN",
+          "ziel": "EC-UST-05",
+          "status": "ERLEDIGT",
+          "objektId": null
+        },
+        {
+          "id": "cmvf9necg008bdy7dwclqliob",
+          "art": "FESTSTELLUNG_ANLEGEN",
+          "ziel": null,
+          "status": "ERLEDIGT",
+          "objektId": "cmvf9nebp0082dy7dyx4go89q"
+        },
+        {
+          "id": "cmvf9necg008cdy7dfkv3xwwo",
+          "art": "PROFIL_AENDERN",
+          "ziel": null,
+          "status": "ERLEDIGT",
+          "objektId": null
+        }
+      ]
+    }
+  ],
+  "namen": []
+}

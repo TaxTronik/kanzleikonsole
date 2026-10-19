@@ -1,0 +1,81 @@
+{
+  "id": "cmvf9ned0008hdy7dlufu2vuo",
+  "nummer": "2026-T-0345",
+  "typ": "T-01",
+  "titel": "Start auf Kaufland.de zum 01.12.2026",
+  "beschreibung": "Wir starten zum 01.12.2026 auf dem Marktplatz Kaufland.de, zunächst nur Versand nach Deutschland.",
+  "quelle": "PORTAL",
+  "gemeldetVon": "b1000000-0000-4000-8000-000000000012",
+  "gemeldetAm": "2026-10-14T13:02:00.000Z",
+  "ereignisDatum": "2026-12-01",
+  "status": "NEU",
+  "verwerfenBeantragt": false,
+  "triagiertVon": null,
+  "triagiertAm": null,
+  "stand": "2026-10-19",
+  "historisch": false,
+  "folgen": [
+    {
+      "id": "cmvf9ned1008idy7ddnhhtfja",
+      "art": "PROFIL_AENDERN",
+      "ziel": null,
+      "text": "P1 Verkaufskanäle um den neuen Kanal ergänzen",
+      "zustaendig": null,
+      "frist": null,
+      "status": "VORGESCHLAGEN",
+      "erledigtAm": null,
+      "objektId": null,
+      "durchfuehrung": null,
+      "feststellung": null,
+      "verwerfen": null,
+      "angelegt": null
+    },
+    {
+      "id": "cmvf9ned1008jdy7d547w1cbs",
+      "art": "RISIKO_NEU_BEWERTEN",
+      "ziel": "EC-UST-13",
+      "text": "Marktplatz-Nachweise und Plattformmeldungen neu bewerten",
+      "zustaendig": null,
+      "frist": null,
+      "status": "VORGESCHLAGEN",
+      "erledigtAm": null,
+      "objektId": null,
+      "durchfuehrung": null,
+      "feststellung": null,
+      "verwerfen": null,
+      "angelegt": null
+    },
+    {
+      "id": "cmvf9ned1008kdy7dhy6gg6vm",
+      "art": "KONTROLLE_AUSSERPLANMAESSIG",
+      "ziel": "K-EC-02",
+      "text": "Steuerregeln des neuen Kanals vor Start prüfen",
+      "zustaendig": null,
+      "frist": null,
+      "status": "VORGESCHLAGEN",
+      "erledigtAm": null,
+      "objektId": null,
+      "durchfuehrung": null,
+      "feststellung": null,
+      "verwerfen": null,
+      "angelegt": null
+    }
+  ],
+  "anlagen": [],
+  "meldung": {
+    "aktion": "tcms.ereignis.gemeldet",
+    "at": "2026-10-14T13:02:00.000Z",
+    "hash": "0691313e60e7fe6130da0471aec176b55f27cc7c0a244fe1284d9c5fa88633f9"
+  },
+  "verwerfenAntrag": null,
+  "verwerfen": null,
+  "verlauf": [
+    {
+      "pos": 15,
+      "at": "2026-10-14T13:02:00.000Z",
+      "actorId": "b1000000-0000-4000-8000-000000000012",
+      "text": "Ereignis gemeldet"
+    }
+  ],
+  "namen": []
+}
