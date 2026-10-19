@@ -38,8 +38,9 @@ Quell-Commit und je Datei den SHA-256 fest.
   im Quellbaum, kopiert nur versionierte Dateien außer `__tests__/` und
   `*.test.*`, entfernt alles andere unter `packages/tcms-contract/src` und
   schreibt `VENDOR.json` mit `git rev-parse HEAD`. Danach Typprüfung und Tests
-  der Nutzer des Vertrags laufen lassen. Die Aktualisierung ist ein eigener
-  Commit mit dem Quell-Commit im Text.
+  der Nutzer des Vertrags und den Vertragstest (Abschnitt 6) gegen denselben
+  TCMS-Stand laufen lassen. Die Aktualisierung ist ein eigener Commit mit dem
+  Quell-Commit im Text.
 
 ## 2. Konfiguration
 
@@ -180,3 +181,46 @@ Mandantenzugriff, mehr als 5 000 Mandanten, Kontakt ohne Portalzugang.
   Breaker; `null` bei `disabled`. Das Ergebnis enthält nur feste Texte (kein
   Ausnahmetext, keine URL, keine Version). Noch in keine Seite und nicht in
   `/api/health/detail` eingebunden (Betrieb bzw. Stufe 3).
+
+## 6. Vertragstest gegen den echten Dienst
+
+`packages/tcms-client/src/__tests__/vertrag.contract.test.ts` läuft nur mit
+`TCMS_CONTRACT_TESTS=1` über `pnpm --filter @taxtronik/tcms-client test:contract`
+(eigene Vitest-Konfiguration, nicht im Unit-Lauf und nicht in CI). Er prüft
+gegen eine laufende TCMS-API: Health; signierter
+`GET /v1/mandanten/:id/kontext` (Demo-Mandant „Talwind“, Demo-Kanzleiperson
+„Anna Roth“, UUIDs aus `packages/db/seeds/demo.ts` des TCMS); `POST
+/v1/portfolio` mit Mandantenliste im Body; eine Query mit Umlauten und
+Sonderzeichen (400 statt 401 belegt die Bindung, weil der Dienst die
+Bestätigung vor der Query prüft); Portal-Endpunkt mit Portal-Akteur. Negativ:
+falscher Schlüssel, unbekannte kid und falsches Token (401), fremder Mandant
+(404), `cli` ≠ Mandant im Pfad (404), Portal-Akteur auf Kanzlei-Endpunkt
+(404), Body nach der Signatur verändert (401), Replay derselben Bestätigung
+(401 mit `Connection: close`), Größenlimit gegen eine echte Antwort und gegen
+einen lokalen Testserver (8 MiB).
+
+Start mit einer eigenen, nur gelesenen TCMS-Kopie (Pfade der
+Entwicklungsumgebung; `main` ist im Haupt-Checkout ausgecheckt, deshalb
+`--detach`):
+
+```bash
+git -C /home/claude/tcms worktree add --detach /home/claude/wt/tcms-kkct main
+cd /home/claude/wt/tcms-kkct
+pnpm install --frozen-lockfile && pnpm db:generate
+bash /home/claude/work/tcms-mkdb.sh tcms_kkct /home/claude/wt/tcms-kkct
+# Schlüsselpaar: Ausgabe in eine Datei mit Modus 600, nie ins Terminal-Log.
+umask 077 && node scripts/akteur-schluessel.mjs --kid kk-vertrag > ~/kkct-schluessel.txt
+# API auf freiem Port (Token zufällig, z. B. openssl rand -base64 48):
+TCMS_SERVICE_TOKENS=<token> TCMS_ACTOR_PUBLIC_KEYS=<kid>=<spki> \
+  DATABASE_URL=postgresql://tcms_app:<passwort>@127.0.0.1:55432/tcms_kkct \
+  HOST=127.0.0.1 PORT=<port> node_modules/.bin/tsx apps/api/src/server.ts
+# Vertragstest in der kanzleikonsole:
+cd <kanzleikonsole>/packages/tcms-client
+TCMS_CONTRACT_TESTS=1 TCMS_URL=http://127.0.0.1:<port> TCMS_SERVICE_TOKEN=<token> \
+  TCMS_ACTOR_PRIVATE_KEY=<pkcs8> TCMS_ACTOR_KEY_ID=<kid> pnpm test:contract
+```
+
+Die Gründe der Abweisungen stehen nur im Log des Dienstes (`grund`, z. B.
+`SIGNATUR`, `KID_UNBEKANNT`, `DIENST_TOKEN`, `REQ_BODY`, `JTI_WIEDERHOLT`) und
+lassen sich über die `requestId` zuordnen. Nach einer Aktualisierung des
+vendored Vertrags (Abschnitt 1) gegen denselben TCMS-Stand ausführen.
