@@ -64,3 +64,23 @@ sync_postgres_roles_from_env() {
     printf "DO \$\$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'n8n') THEN EXECUTE format('ALTER ROLE n8n WITH PASSWORD %%L', %s); END IF; END \$\$;\n" "$n8n_pw"
   } | docker exec -i taxtronik-postgres psql -U taxtronik -d taxtronik -v ON_ERROR_STOP=1
 }
+
+# TCMS Stufe 2 (Restore): Rollen der TCMS-Datenbank vor pg_restore aus .env
+# anlegen bzw. angleichen, Attribute wie 01_bootstrap.sql des TCMS-Repos
+# (tcms_owner ohne BYPASSRLS, tcms_app zusaetzlich NOINHERIT und nie Mitglied
+# von tcms_owner). Passwoerter nur als SQL-Literal im stdin von psql. Rechte
+# und Pruefung stellt danach der Migrationsschritt tcms-migrate her.
+sync_tcms_roles_from_env() {
+  require_env TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD
+  local owner_pw app_pw
+  owner_pw="$(sql_literal "$TCMS_DB_OWNER_PASSWORD")"
+  app_pw="$(sql_literal "$TCMS_DB_APP_PASSWORD")"
+  info "TCMS-Rollen tcms_owner/tcms_app aus .env angleichen"
+  {
+    _sync_login_role_sql tcms_owner \
+      "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS" "$owner_pw"
+    _sync_login_role_sql tcms_app \
+      "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT" "$app_pw"
+    printf "DO \$\$ BEGIN IF pg_catalog.pg_has_role('tcms_app', 'tcms_owner', 'MEMBER') THEN REVOKE tcms_owner FROM tcms_app; END IF; END \$\$;\n"
+  } | docker exec -i "$TCMS_DB_CONTAINER" psql -X -q -U tcms -d postgres -v ON_ERROR_STOP=1
+}

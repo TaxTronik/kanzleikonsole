@@ -2,7 +2,7 @@
 # =============================================================================
 # Backups — Teil der Operator-CLI (./taxtronik).
 #
-# Host-Backupverzeichnis, DB-, n8n- und Object-Store-Backup, versiegeltes
+# Host-Backupverzeichnis, DB-, n8n-, TCMS- und Object-Store-Backup, versiegeltes
 # Full-Backup mit Cold-Volumes, Offsite-Upload, S3-Preflight und die
 # backup-Kommandos.
 #
@@ -91,6 +91,87 @@ run_backup_n8n() {
   PGPASSWORD="${N8N_DB_PASSWORD:-n8n}" docker exec -i -e PGPASSWORD taxtronik-postgres \
     pg_dump -h 127.0.0.1 -U n8n -d n8n -Fc > "$out"
   info "n8n-Datenbank gesichert ($(du -h "$out" 2>/dev/null | cut -f1))."
+}
+
+# TCMS Stufe 2: Dump der verwalteten TCMS-Datenbank mit pg_dump im Container
+# (Custom-Format mit Eigentuemern und Rechten, damit ein Restore tcms_owner als
+# Eigentuemer und die Rechte von tcms_app wiederherstellt). Datei 0600 plus
+# SHA-256 daneben; das Archiv wird vor dem Ablegen mit pg_restore --list
+# gelesen. Kein Passwort: pg_dump laeuft im Container ueber den lokalen Socket.
+# Setzt _TCMS_BACKUP_FILE.
+run_backup_tcms() {
+  local dest="$1" out name
+  _TCMS_BACKUP_FILE=""
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
+  [[ "$(docker inspect --format '{{.State.Running}}' "$TCMS_DB_CONTAINER" 2>/dev/null || true)" == "true" ]] || {
+    warn "tcms-db laeuft nicht; TCMS-Backup nicht moeglich."
+    return 1
+  }
+  mkdir -p "$dest" || { warn "Backup-Verzeichnis nicht anlegbar: $dest"; return 1; }
+  name="tcms-db-$(date -u +'%Y%m%d-%H%M%S')-$(rand_b64 4 | tr -dc 'a-zA-Z0-9' | cut -c1-5).dump"
+  out="$dest/$name"
+  info "TCMS-Datenbank sichern -> $out"
+  if ! docker exec "$TCMS_DB_CONTAINER" pg_dump -U tcms -d tcms --format=custom --compress=6 >"$out.partial"; then
+    rm -f -- "$out.partial"
+    warn "pg_dump der TCMS-Datenbank fehlgeschlagen."
+    return 1
+  fi
+  if [[ ! -s "$out.partial" ]] || ! docker exec -i "$TCMS_DB_CONTAINER" pg_restore --list <"$out.partial" >/dev/null; then
+    rm -f -- "$out.partial"
+    warn "TCMS-Dump ist kein lesbares pg_dump-Archiv."
+    return 1
+  fi
+  chmod 0600 "$out.partial" && mv -f -- "$out.partial" "$out" || return 1
+  ( cd "$dest" && sha256sum -- "$name" >"$name.sha256" ) || return 1
+  chmod 0600 "$out.sha256" 2>/dev/null || true
+  _TCMS_BACKUP_FILE="$out"
+}
+
+# Wie der Hauptdump in den Backup-Bucket (gleiche 90-Tage-Lifecycle-Regel),
+# Schluessel tcmsdump/JJJJ/MM/TT/<datei>. S3-Zugang nur als Prozess-Env, im
+# Container per Name durchgereicht (P3-2).
+upload_tcms_backup() {
+  local file="$1" name day
+  [[ -f "$file" ]] || return 1
+  name="$(basename "$file")"
+  day="$(date -u +'%Y/%m/%d')"
+  info "TCMS-Dump in den Backup-Bucket laden: s3://${S3_BUCKET_BACKUPS:-backups}/tcmsdump/$day/$name"
+  AWS_ACCESS_KEY_ID="$S3_ACCESS_KEY" \
+  AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
+  AWS_DEFAULT_REGION="${S3_REGION:-us-east-1}" \
+  docker run --rm \
+    --network taxtronik \
+    -e AWS_ACCESS_KEY_ID \
+    -e AWS_SECRET_ACCESS_KEY \
+    -e AWS_DEFAULT_REGION \
+    -v "$(dirname "$file"):/backup:ro" \
+    "${TAXTRONIK_AWS_CLI_IMAGE:-$AWS_CLI_IMAGE_DEFAULT}" \
+    --endpoint-url "${BACKUP_OBJECT_ENDPOINT:-http://seaweedfs:8333}" \
+    s3 cp "/backup/$name" "s3://${S3_BUCKET_BACKUPS:-backups}/tcmsdump/$day/$name" --only-show-errors
+}
+
+# Gibt es noch keine TCMS-Daten (Volume fehlt), gibt es nichts zu sichern.
+tcms_database_volume_exists() {
+  [[ -n "$(docker volume ls -q --filter 'label=com.docker.compose.volume=tcms-db-data' 2>/dev/null | head -n1)" ]]
+}
+
+# TCMS-Dump wie der Hauptdump: lokal unter backups/ und im Backup-Bucket.
+# Startet tcms-db bei Bedarf (aendert keine Daten); ohne Volume nichts zu tun.
+backup_tcms_with_upload() {
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
+  if ! tcms_database_volume_exists; then
+    info "Noch keine TCMS-Datenbank vorhanden; TCMS-Backup entfaellt."
+    return 0
+  fi
+  if [[ "$(docker inspect --format '{{.State.Running}}' "$TCMS_DB_CONTAINER" 2>/dev/null || true)" != "true" ]]; then
+    compose --profile tcms up -d --no-deps tcms-db || return 1
+  fi
+  tcms_wait_db_healthy
+  run_backup_tcms "$(resolve_backup_host_dir)" || return 1
+  upload_tcms_backup "$_TCMS_BACKUP_FILE" || {
+    warn "TCMS-Dump liegt lokal ($_TCMS_BACKUP_FILE), der Upload in den Backup-Bucket ist fehlgeschlagen."
+    return 1
+  }
 }
 
 object_store_backup_buckets() {
@@ -224,6 +305,7 @@ restart_after_full_backup() {
   local rc=0
   info "Infra und Anwendungen nach Full-Backup wieder starten"
   restart_backup_infra || rc=$?
+  if [[ $rc -eq 0 && "$(tcms_deployment_mode)" == "managed" ]]; then tcms_restart_api || rc=$?; fi
   if [[ $rc -eq 0 ]]; then start_apps || rc=$?; fi
   if [[ $rc -eq 0 ]]; then smoke_health || rc=$?; fi
   return "$rc"
@@ -464,6 +546,7 @@ cmd_backup() {
   wait_seaweedfs_healthy
   sync_postgres_roles_from_env
   run_backup
+  backup_tcms_with_upload || die "TCMS-Backup fehlgeschlagen."
   info "Backup fertig."
 }
 
@@ -508,11 +591,19 @@ cmd_backup_full() {
   info "Schreibdienste fuer konsistenten Full-Backup-Wiederanlaufpunkt quieszieren"
   _FULL_BACKUP_SERVICES_QUIESCED=1
   compose stop app worker n8n || die "Schreibdienste konnten nicht vollstaendig gestoppt werden."
+  # TCMS Stufe 2: tcms-api schreibt in die TCMS-Datenbank und gehoert zum selben
+  # Wiederanlaufpunkt.
+  if [[ "$(tcms_deployment_mode)" == "managed" ]]; then
+    compose --profile tcms stop tcms-api || die "tcms-api konnte nicht gestoppt werden."
+  fi
   if ! run_backup "$staging/database"; then
     die "TaxTronik-DB-Dump im Full-Backup fehlgeschlagen."
   fi
   if ! run_backup_n8n "$staging/database"; then
     die "n8n-DB-Dump im Full-Backup fehlgeschlagen."
+  fi
+  if ! run_backup_tcms "$staging/database"; then
+    die "TCMS-DB-Dump im Full-Backup fehlgeschlagen."
   fi
   if ! run_backup_files "$staging/object-store-byte-export"; then
     die "Object-Store-Byte-Export im Full-Backup fehlgeschlagen."
@@ -535,7 +626,7 @@ cmd_backup_full() {
   else
     warn "Full-Backup ist lokal versiegelt, aber noch nicht offsite: $dest"
   fi
-  info "Vollbackup fertig: DB + n8n-DB + Byte-Export + Cold-Volumes + Recovery-Konfiguration gemeinsam age-verschluesselt; signiertes SHA-256-Manifest ($dest)."
+  info "Vollbackup fertig: DB + n8n-DB (+ TCMS-DB) + Byte-Export + Cold-Volumes + Recovery-Konfiguration gemeinsam age-verschluesselt; signiertes SHA-256-Manifest ($dest)."
 }
 
 cmd_backup_verify() {

@@ -211,7 +211,27 @@ die TCMS-Container und -Netze. Das Volume `tcms-db-data` und die
 `TCMS_DB_*`-Passwörter bleiben erhalten (Daten, Rollen, Superuser-Passwort des
 Volumes); gelöscht wird nur bewusst von Hand.
 
-## 7. Variablen
+## 7. Backup und Restore
+
+Im verwalteten Modus sichert die CLI die TCMS-Datenbank wie die
+Hauptdatenbank: `pg_dump --format=custom` im Container `tcms-db` (lokaler
+Socket, kein Passwort), Datei `tcms-db-<Zeit>.dump` mit Modus `0600` und
+`.sha256` daneben unter `backups/`, danach Upload in den Bucket `backups`
+(`tcmsdump/JJJJ/MM/TT/`, 90-Tage-Lifecycle; S3-Zugang nur per Namen an den
+Container). Gesichert wird bei `./taxtronik backup`, im Update-Pflichtbackup
+vor jeder Code-Änderung, vor jedem TCMS-Migrationsschritt mit vorhandenem
+Schema und mit `./taxtronik tcms backup` (für einen Host-Cron, denn der
+tägliche Worker-Job erreicht die TCMS-Datenbank absichtlich nicht).
+`backup-full` stoppt `tcms-api` zusammen mit App, Worker und n8n und legt den
+Dump in das verschlüsselte Archiv. Ohne verwaltetes Tax-CMS ändert sich an den
+Backups nichts.
+
+Wiederherstellung: `./taxtronik tcms restore --file <dump> --confirm-overwrite
+RESTORE_TCMS_DATABASE` mit festem Ablauf (Rollen und Passwörter aus `.env`,
+dann Daten, dann Migrationsschritt); Details im
+[Disaster-Recovery-Runbook](disaster-recovery.md#schritt-37-tax-cms-datenbank-verwaltet).
+
+## 8. Variablen
 
 | Variable                                                                           | Inhalt                                                                         |
 | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
@@ -223,16 +243,19 @@ Volumes); gelöscht wird nur bewusst von Hand.
 | `TCMS_API_MEM_LIMIT`, `TCMS_DB_MEM_LIMIT`, `TCMS_MIGRATE_MEM_LIMIT`                | Speichergrenzen (Standard 512m, 1g, 256m)                                      |
 | `TCMS_DB_SHARED_BUFFERS`, `TCMS_DB_MAX_CONNECTIONS`, `TCMS_LOG_LEVEL`              | Datenbank-Tuning und Log-Stufe des Dienstes                                    |
 
-## 8. Fehlerbilder
+## 9. Fehlerbilder
 
-| Meldung                                                            | Ursache und Abhilfe                                                                                                             |
-| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
-| `TCMS_… fehlt - ./taxtronik tcms setup` (bei jedem Compose-Aufruf) | `managed` ohne vollständige Konfiguration: `./taxtronik tcms setup` ausführen oder `./taxtronik tcms disable`.                  |
-| `TCMS_DEPLOYMENT muss managed, external oder disabled sein`        | Tippfehler in `.env`; Wert korrigieren.                                                                                         |
-| `Registry-Compose verweigert: … verankert kein TCMS-Release`       | Der installierte Release gibt keine TCMS-Images frei. Auf einen Release mit TCMS aktualisieren oder `tcms disable`.             |
-| `Registry-Compose verweigert: TCMS-Images … weichen … ab`          | `.env` oder Prozessumgebung nennt andere Digests als der signierte Stand. Nicht von Hand ändern; deploy/update/rollback nutzen. |
-| `TCMS-Compose-Datei fehlt im Checkout`                             | `managed` in einem Checkout ohne TCMS-Unterstützung (älterer Release): vorher `./taxtronik tcms disable`.                       |
-| `Eine Rotation (…) ist nicht abgeschlossen`                        | Denselben `rotate-…`-Befehl erneut ausführen; er setzt an der gespeicherten Phase fort.                                         |
-| `… muss vor einer Rotation genau das aktuelle … enthalten`         | Liste enthält Fremdeinträge; mit `tcms status` prüfen und die Liste auf den aktuellen Eintrag zurückführen.                     |
-| doctor: `haengt im TCMS-Backend-Netz`                              | App/Worker wurden außerhalb der CLI mit falschem Netz gestartet; `./taxtronik tcms setup managed` erzeugt sie neu.              |
-| doctor: `TCMS_HEALTH … nicht erreichbar` (external)                | URL, TLS-Kette oder Token prüfen; das externe Tax-CMS muss das Token in seiner Liste führen.                                    |
+| Meldung                                                                   | Ursache und Abhilfe                                                                                                             |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `TCMS_… fehlt - ./taxtronik tcms setup` (bei jedem Compose-Aufruf)        | `managed` ohne vollständige Konfiguration: `./taxtronik tcms setup` ausführen oder `./taxtronik tcms disable`.                  |
+| `TCMS_DEPLOYMENT muss managed, external oder disabled sein`               | Tippfehler in `.env`; Wert korrigieren.                                                                                         |
+| `Registry-Compose verweigert: … verankert kein TCMS-Release`              | Der installierte Release gibt keine TCMS-Images frei. Auf einen Release mit TCMS aktualisieren oder `tcms disable`.             |
+| `Registry-Compose verweigert: TCMS-Images … weichen … ab`                 | `.env` oder Prozessumgebung nennt andere Digests als der signierte Stand. Nicht von Hand ändern; deploy/update/rollback nutzen. |
+| `TCMS-Compose-Datei fehlt im Checkout`                                    | `managed` in einem Checkout ohne TCMS-Unterstützung (älterer Release): vorher `./taxtronik tcms disable`.                       |
+| `Eine Rotation (…) ist nicht abgeschlossen`                               | Denselben `rotate-…`-Befehl erneut ausführen; er setzt an der gespeicherten Phase fort.                                         |
+| `… muss vor einer Rotation genau das aktuelle … enthalten`                | Liste enthält Fremdeinträge; mit `tcms status` prüfen und die Liste auf den aktuellen Eintrag zurückführen.                     |
+| doctor: `haengt im TCMS-Backend-Netz`                                     | App/Worker wurden außerhalb der CLI mit falschem Netz gestartet; `./taxtronik tcms setup managed` erzeugt sie neu.              |
+| doctor: `TCMS_HEALTH … nicht erreichbar` (external)                       | URL, TLS-Kette oder Token prüfen; das externe Tax-CMS muss das Token in seiner Liste führen.                                    |
+| `TCMS-Backup vor der Migration fehlgeschlagen; tcms-migrate laeuft nicht` | Backup-Verzeichnis/S3 prüfen (`./taxtronik tcms backup`); ohne Backup wird nicht migriert.                                      |
+| `SHA-256 des Dumps stimmt nicht …` (restore)                              | Dump beschädigt oder falsche Prüfsummendatei; anderen Dump wählen.                                                              |
+| `pg_restore fehlgeschlagen; tcms-api bleibt gestoppt`                     | Der bisherige Stand liegt unter `backups/tcms-pre-restore/`; mit diesem Dump erneut `tcms restore` ausführen.                   |

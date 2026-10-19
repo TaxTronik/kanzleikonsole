@@ -23,6 +23,7 @@ ausfällt? Dieses Runbook beschreibt den Wiederherstellungs-Pfad.
 | Audit-Log (aktuell)         | Postgres `audit_log`                                             | im pg_dump enthalten                                                                                                 | mit pg_restore zurück                                  |
 | Audit-Archive (gerollt)     | SeaweedFS `gobd/tenants/.../audit-archive/...ndjson`             | Object-Lock COMPLIANCE 10 J.                                                                                         | bleibt erhalten — `verify:chain` rekonstruiert Chain   |
 | Tagesversiegelungen         | Postgres `audit_seal`                                            | im pg_dump enthalten                                                                                                 | mit pg_restore zurück                                  |
+| Tax-CMS (verwaltet)         | eigene Datenbank `tcms` im Container `tcms-db`                   | `backup`, `update`, `tcms backup`: Custom-Dump lokal + Bucket `backups` (`tcmsdump/…`); im `backup-full` quiesziert  | `./taxtronik tcms restore` (Abschnitt 3.7)             |
 | Konfiguration (.env)        | Datei am Server                                                  | außerhalb taxtronik (z. B. Ansible-Vault)                                                                            | manuell                                                |
 | TLS-Zertifikate             | Reverse-Proxy                                                    | außerhalb taxtronik                                                                                                  | manuell                                                |
 
@@ -223,6 +224,40 @@ Erwartete Ausgabe:
 ```
 
 Bei Bruch zeigt die CLI die genaue Audit-ID und den Grund.
+
+### Schritt 3.7 — Tax-CMS-Datenbank (verwaltet)
+
+Die TCMS-Datenbank ist eine eigene Datenbank mit eigenen Rollen; ihr Dump
+(`tcms-db-<Zeit>.dump`, daneben `.sha256`) entsteht mit jedem
+`./taxtronik backup`, jedem Update-Pflichtbackup, vor jedem
+TCMS-Migrationsschritt und mit `./taxtronik tcms backup` lokal unter
+`backups/` und im Bucket `backups` unter `tcmsdump/JJJJ/MM/TT/` (gleiche
+90-Tage-Lifecycle-Regel wie der Hauptdump). Im Full-Backup liegt er unter
+`database/` im verschlüsselten Archiv; `tcms-api` ist dabei wie App und Worker
+gestoppt.
+
+```bash
+./taxtronik tcms restore --file backups/tcms-db-<Zeit>.dump \
+  --confirm-overwrite RESTORE_TCMS_DATABASE
+```
+
+Ablauf: Argumente, Bestätigung und (falls vorhanden) die SHA-256-Datei werden
+vor jeder Wirkung geprüft. Dann wird `tcms-api` gestoppt, `tcms-db`
+gestartet, das Archiv gelesen und der bisherige Stand nach
+`backups/tcms-pre-restore/` gesichert. Danach werden die Rollen `tcms_owner`
+und `tcms_app` samt Passwörtern aus `.env` angelegt bzw. angeglichen (Werte
+nur über stdin), die Datenbank `tcms` neu angelegt und der Dump in einer
+Transaktion eingespielt (Abbruch beim ersten Fehler; `tcms-api` bleibt dann
+gestoppt). Zum Schluss stellt der Migrationsschritt Rechte und ausstehende
+Migrationen her und prüft die Laufzeitrolle; erst dann startet `tcms-api`.
+Aus dem Bucket wird ein Dump vorher mit `aws s3 cp` (Image wie bei
+`backup-files`) in das Backup-Verzeichnis geholt.
+
+Bei einem vollständigen DR zuerst die kanzleikonsole-Datenbank (3.5), dann den
+TCMS-Dump **desselben** Sicherungszeitpunkts einspielen: Das Tax-CMS
+referenziert Tenant-, Personen- und Mandanten-IDs der kanzleikonsole.
+`TCMS_DB_SUPERUSER_PASSWORD` muss zum Volume `tcms-db-data` passen; auf einem
+neuen, leeren Volume gilt der Wert aus der wiederhergestellten `.env`.
 
 ## 4. Restore-Procedure (SeaweedFS)
 
@@ -523,6 +558,8 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/runner.ts \
       [Datenbankverbindungen](day-2-operations.md#datenbankverbindungen)
 - [ ] n8n-DB-Dump eingespielt; n8n-Volume und `N8N_ENCRYPTION_KEY` gehören zum
       gleichen Recovery Point
+- [ ] Verwaltetes Tax-CMS: TCMS-Dump desselben Recovery Points mit
+      `./taxtronik tcms restore` eingespielt (Schritt 3.7)
 - [ ] SeaweedFS-Cold-Snapshot gestartet; Byte-Export nur als Notfallalternative
 - [ ] `pnpm verify:chain` läuft sauber durch
 - [ ] App + Worker starten: `pnpm dev` (oder Production-Setup)
@@ -571,16 +608,17 @@ N−1-Code.
 
 ## Volume-Inventar & Backup-Status
 
-| Volume / DB          | Inhalt                                         | Backup                                                        |
-| -------------------- | ---------------------------------------------- | ------------------------------------------------------------- |
-| Postgres `taxtronik` | App-Daten (Mandanten, Rechnungen, Audit-Chain) | `backup` (DB-only) und quiesziertes `backup-full`             |
-| Postgres `n8n`       | n8n-Credentials + Ausführungshistorie          | quieszierter Custom-Dump im `backup-full`                     |
-| `seaweed_data`       | GoBD-/GwG-Objekte inkl. Store-Metadaten        | Cold-Volume-Snapshot im `backup-full`; Byte-Export zusätzlich |
-| `n8n_data`           | n8n-Config inkl. `encryptionKey`               | Cold-Volume-Snapshot im gleichen `backup-full`                |
-| `redis_data`         | BullMQ-Queues (AOF)                            | Cold-Volume-Snapshot im gleichen `backup-full`                |
-| `traefik_acme`       | ACME-Konto und TLS-Zertifikate                 | bei verwaltetem Traefik im gleichen `backup-full`             |
-| `clamav_data`        | Virensignaturen                                | bewusst NICHT gesichert (Auto-Download)                       |
-| `eric_logs`          | ERiC-Protokolle (Lizenzpflicht)                | Volume-Snapshot beim Betreiber                                |
+| Volume / DB          | Inhalt                                         | Backup                                                           |
+| -------------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
+| Postgres `taxtronik` | App-Daten (Mandanten, Rechnungen, Audit-Chain) | `backup` (DB-only) und quiesziertes `backup-full`                |
+| Postgres `n8n`       | n8n-Credentials + Ausführungshistorie          | quieszierter Custom-Dump im `backup-full`                        |
+| `seaweed_data`       | GoBD-/GwG-Objekte inkl. Store-Metadaten        | Cold-Volume-Snapshot im `backup-full`; Byte-Export zusätzlich    |
+| `n8n_data`           | n8n-Config inkl. `encryptionKey`               | Cold-Volume-Snapshot im gleichen `backup-full`                   |
+| `redis_data`         | BullMQ-Queues (AOF)                            | Cold-Volume-Snapshot im gleichen `backup-full`                   |
+| `traefik_acme`       | ACME-Konto und TLS-Zertifikate                 | bei verwaltetem Traefik im gleichen `backup-full`                |
+| `clamav_data`        | Virensignaturen                                | bewusst NICHT gesichert (Auto-Download)                          |
+| `eric_logs`          | ERiC-Protokolle (Lizenzpflicht)                | Volume-Snapshot beim Betreiber                                   |
+| `tcms-db-data`       | Tax-CMS-Datenbank `tcms` (verwaltet)           | Custom-Dump in `backup`/`update`/`tcms backup` und `backup-full` |
 
 Wiederherstellung n8n: Volume `n8n_data` + Postgres-`n8n`-Dump zusammen
 einspielen; `N8N_ENCRYPTION_KEY` in der `.env` muss zum gesicherten Stand passen

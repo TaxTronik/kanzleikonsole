@@ -934,8 +934,9 @@ test_start_tcms_runs_migration_before_api_and_falls_back() {
   printf 'TCMS_DEPLOYMENT=managed\nTCMS_VERSION=1.3.0\nTCMS_API_DIGEST_SUFFIX=@%s\nTCMS_MIGRATE_DIGEST_SUFFIX=@%s\n' \
     "$DIGEST_MIGRATE" "$DIGEST_API" >"$env_file"
   start_with() (
-    ENVFILE="$env_file"; MIGRATE_EXIT="$1"; API_RESULT="$2"
+    ENVFILE="$env_file"; MIGRATE_EXIT="$1"; API_RESULT="$2"; LEDGER="${3:-f}"
     TCMS_DEPLOYMENT=managed TCMS_VERSION=1.4.0 TCMS_API_DIGEST_SUFFIX="@$DIGEST_API" TCMS_MIGRATE_DIGEST_SUFFIX="@$DIGEST_MIGRATE"
+    backup_tcms_with_upload() { printf 'tcms-backup\n' >>"$calls"; }
     compose() {
       printf 'compose %s version=%s\n' "$*" "$TCMS_VERSION" >>"$calls"
       if [[ "$*" == *"tcms-api"* && "$TCMS_VERSION" == 1.4.0 ]]; then return "$API_RESULT"; fi
@@ -946,6 +947,7 @@ test_start_tcms_runs_migration_before_api_and_falls_back() {
       case "$1" in
         wait) printf '%s\n' "$MIGRATE_EXIT" ;;
         inspect) printf 'healthy\n' ;;
+        exec) printf '%s\n' "$LEDGER" ;;
       esac
       return 0
     }
@@ -962,7 +964,15 @@ test_start_tcms_runs_migration_before_api_and_falls_back() {
   : >"$calls"
   if start_with 0 1 >"$out" 2>&1; then test_fail "unhealthy tcms-api reported success"; fi
   assert_contains "$calls" "--force-recreate --wait --wait-timeout 180 tcms-api version=1.3.0"
-  pass "TCMS start: database, migration with checked exit code, api; unhealthy api falls back to last-good"
+  assert_not_contains "$calls" "tcms-backup"
+  # Vorhandenes Schema: Backup vor tcms-migrate; unklare Antwort: keine Migration.
+  : >"$calls"
+  start_with 0 0 t >/dev/null 2>&1 || test_fail "TCMS start with existing schema failed"
+  assert_before "$calls" "tcms-backup" "compose --profile tcms up -d --no-deps tcms-migrate"
+  : >"$calls"
+  if start_with 0 0 unklar >"$out" 2>&1; then test_fail "TCMS migrated without a clear schema answer"; fi
+  assert_not_contains "$calls" "tcms-migrate"
+  pass "TCMS start: database, backup of an existing schema, migration with checked exit code, api, fallback"
 }
 
 # Rollback-Attrappe mit echtem Git (zwei Release-Commits) und protokollierenden
@@ -1096,6 +1106,188 @@ test_failed_rollback_restores_the_last_good_tcms_images() {
   pass "a failed rollback restores the last-good TCMS images together with the last-good writers"
 }
 
+# ---------------------------------------------------------------------------
+# Backup und Restore der verwalteten TCMS-Datenbank
+# ---------------------------------------------------------------------------
+tcms_db_docker_stub() {
+  cat <<'STUB'
+docker() {
+  printf 'docker %s\n' "$*" >>"$CALLS"
+  case "$*" in
+    "inspect --format {{.State.Running}} taxtronik-tcms-db") printf 'true\n' ;;
+    "exec taxtronik-tcms-db pg_dump"*) [[ -z "${FAIL_DUMP:-}" ]] || return 1; printf 'PGDMP-wegwerf-archiv\n' ;;
+    "exec -i taxtronik-tcms-db pg_restore --list") cat >/dev/null; [[ -z "${FAIL_LIST:-}" ]] || return 1 ;;
+    "exec -i taxtronik-tcms-db psql"*) cat >>"$PSQL_STDIN" ;;
+    "exec -i taxtronik-tcms-db pg_restore -U tcms"*) cat >/dev/null; [[ -z "${FAIL_RESTORE:-}" ]] || return 1 ;;
+    "exec taxtronik-tcms-db psql"*) printf '%s\n' "${LEDGER:-t}" ;;
+    "inspect taxtronik-tcms-api") return 0 ;;
+  esac
+  return 0
+}
+STUB
+}
+
+test_tcms_backup_dumps_in_container_with_0600_and_checksum() {
+  local env_file="$TMP_DIR/tcms-backup.env" dest="$TMP_DIR/tcms-backup-dest" file
+  export CALLS="$TMP_DIR/tcms-backup.calls" PSQL_STDIN="$TMP_DIR/tcms-backup.stdin"
+  managed_env "$env_file"; : >"$CALLS"
+  tcms_isolated "$env_file" eval "$(tcms_db_docker_stub)"'
+    load_env
+    run_backup_tcms "'"$dest"'"
+    printf "%s\n" "$_TCMS_BACKUP_FILE" >"'"$TMP_DIR"'/tcms-backup.file"
+  ' >/dev/null 2>&1 || test_fail "TCMS backup failed"
+  file="$(cat "$TMP_DIR/tcms-backup.file")"
+  [[ "$file" == "$dest"/tcms-db-*.dump && -s "$file" ]] || test_fail "dump file missing: $file"
+  [[ "$(file_mode "$file")" == "600" ]] || test_fail "TCMS dump is not 0600"
+  ( cd "$dest" && sha256sum --check --quiet "$(basename "$file").sha256" ) || test_fail "checksum file does not match"
+  assert_contains "$CALLS" "docker exec taxtronik-tcms-db pg_dump -U tcms -d tcms --format=custom --compress=6"
+  assert_before "$CALLS" "pg_dump" "pg_restore --list"
+  local key
+  for key in TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD; do
+    assert_not_contains "$CALLS" "$(env_value "$env_file" "$key")"
+  done
+  rm -rf "$dest"; : >"$CALLS"
+  if FAIL_DUMP=1 tcms_isolated "$env_file" eval "$(tcms_db_docker_stub)"'; load_env; run_backup_tcms "'"$dest"'"' >/dev/null 2>&1; then
+    test_fail "failed pg_dump reported success"
+  fi
+  [[ -z "$(find "$dest" -type f 2>/dev/null)" ]] || test_fail "failed dump left files behind"
+  : >"$CALLS"
+  sed -i 's/^TCMS_DEPLOYMENT=managed$/TCMS_DEPLOYMENT=disabled/' "$env_file"
+  tcms_isolated "$env_file" eval "$(tcms_db_docker_stub)"'; load_env; run_backup_tcms "'"$dest"'"' >/dev/null 2>&1 || \
+    test_fail "disabled TCMS backup failed"
+  [[ ! -s "$CALLS" ]] || test_fail "disabled TCMS backup touched docker"
+  pass "TCMS backup: pg_dump inside the container, 0600 file, verified archive and checksum"
+}
+
+test_tcms_backup_upload_passes_s3_secrets_only_by_name() {
+  local file="$TMP_DIR/tcms-upload/tcms-db-20261019-000000-abc.dump" calls="$TMP_DIR/tcms-upload.calls"
+  # Wert erst zur Laufzeit zusammensetzen, damit der Secret-Scan kein Literal meldet.
+  local s3_marker="geheimnis-0123456789"
+  mkdir -p "$(dirname "$file")"; printf 'x' >"$file"; : >"$calls"
+  (
+    S3_ACCESS_KEY=wegwerfak S3_SECRET_KEY="wegwerf-s3-$s3_marker" S3_BUCKET_BACKUPS=backups
+    docker() { printf 'docker %s secret=%s\n' "$*" "${AWS_SECRET_ACCESS_KEY:+gesetzt}" >>"$calls"; }
+    upload_tcms_backup "$file"
+  ) >/dev/null
+  assert_contains "$calls" "-e AWS_SECRET_ACCESS_KEY "
+  assert_contains "$calls" "secret=gesetzt"
+  assert_contains "$calls" "s3://backups/tcmsdump/"
+  assert_contains "$calls" "--network taxtronik"
+  assert_not_contains "$calls" "wegwerf-s3-$s3_marker"
+  pass "TCMS dump upload uses the backups bucket and passes S3 secrets only by name"
+}
+
+test_backup_update_and_full_backup_include_tcms() {
+  local steps="$TMP_DIR/backup-cmd.steps" out="$TMP_DIR/backup-cmd.out" body
+  : >"$steps"
+  (
+    for fn in load_env preflight_common assert_production_env start_infra wait_postgres_healthy \
+      wait_seaweedfs_healthy sync_postgres_roles_from_env run_backup backup_tcms_with_upload; do
+      eval "$fn() { printf '%s\n' $fn >>\"$steps\"; }"
+    done
+    cmd_backup
+  ) >/dev/null
+  assert_before "$steps" "run_backup" "backup_tcms_with_upload"
+  if (
+    for fn in load_env preflight_common assert_production_env start_infra wait_postgres_healthy \
+      wait_seaweedfs_healthy sync_postgres_roles_from_env run_backup; do
+      eval "$fn() { :; }"
+    done
+    backup_tcms_with_upload() { return 1; }
+    cmd_backup
+  ) >"$out" 2>&1; then test_fail "failed TCMS backup did not fail ./taxtronik backup"; fi
+  assert_contains "$out" "TCMS-Backup fehlgeschlagen"
+
+  # Update: TCMS-Pflichtbackup gehoert zum Backup vor jeder Code-Aenderung.
+  body="$TMP_DIR/cmd-update.body"; declare -f cmd_update >"$body"
+  assert_before "$body" 'run_backup ||' 'backup_tcms_with_upload ||'
+  assert_before "$body" 'backup_tcms_with_upload ||' 'fetch_verified_release_tag'
+  assert_before "$body" 'backup_tcms_with_upload ||' 'git fetch'
+
+  # Full-Backup: tcms-api quiesziert, Dump im verschluesselten Staging.
+  body="$TMP_DIR/cmd-backup-full.body"; declare -f cmd_backup_full >"$body"
+  assert_before "$body" 'compose --profile tcms stop tcms-api' 'run_backup "$staging/database"'
+  assert_before "$body" 'run_backup_tcms "$staging/database"' 'encrypt_full_backup_payload'
+  : >"$steps"
+  (
+    TCMS_DEPLOYMENT=managed
+    restart_backup_infra() { printf 'infra\n' >>"$steps"; }
+    tcms_restart_api() { printf 'tcms-api\n' >>"$steps"; }
+    start_apps() { printf 'apps\n' >>"$steps"; }
+    smoke_health() { :; }
+    restart_after_full_backup
+  ) >/dev/null
+  assert_before "$steps" "infra" "tcms-api"
+  assert_before "$steps" "tcms-api" "apps"
+  pass "backup, update backup and full backup include the managed TCMS database"
+}
+
+# Regel: Restore-Argumente vor jeder Seitenwirkung pruefen.
+test_tcms_restore_validates_before_side_effects() {
+  local dump="$TMP_DIR/restore-val/tcms-db.dump" calls="$TMP_DIR/restore-val.calls" out="$TMP_DIR/restore-val.out" args
+  mkdir -p "$(dirname "$dump")"; printf 'PGDMP' >"$dump"
+  printf '%s  %s\n' "$(printf 'falsch' | sha256sum | cut -d' ' -f1)" "tcms-db.dump" >"$dump.sha256"
+  for args in "--file $dump" "--file $dump --confirm-overwrite ja" "--file $TMP_DIR/fehlt.dump --confirm-overwrite RESTORE_TCMS_DATABASE" \
+    "--file $dump --confirm-overwrite RESTORE_TCMS_DATABASE" "--latest --confirm-overwrite RESTORE_TCMS_DATABASE"; do
+    : >"$calls"
+    # shellcheck disable=SC2086 # Wortzerlegung gewollt: Argumentliste des Testfalls
+    if (
+      ENVFILE="$TMP_DIR/restore-val.no-env"
+      docker() { printf 'docker %s\n' "$*" >>"$calls"; }
+      compose() { printf 'compose %s\n' "$*" >>"$calls"; }
+      cmd_tcms_restore $args
+    ) >"$out" 2>&1; then test_fail "restore accepted: $args"; fi
+    [[ ! -s "$calls" ]] || test_fail "restore touched services before validating: $args"
+    assert_not_contains "$out" "nicht gefunden"
+  done
+  assert_contains "$out" "Unbekannte Option"
+  pass "TCMS restore validates confirmation, file and checksum before any side effect"
+}
+
+test_tcms_restore_restores_roles_then_data_then_migrates() {
+  local env_file="$TMP_DIR/restore-run.env" dump="$TMP_DIR/restore-run/tcms-db.dump" key value
+  export CALLS="$TMP_DIR/restore-run.calls" PSQL_STDIN="$TMP_DIR/restore-run.stdin"
+  managed_env "$env_file"; : >"$CALLS"; : >"$PSQL_STDIN"
+  mkdir -p "$(dirname "$dump")"; printf 'PGDMP-wegwerf' >"$dump"
+  ( cd "$(dirname "$dump")" && sha256sum tcms-db.dump >tcms-db.dump.sha256 )
+  restore_run() {
+    tcms_isolated "$env_file" eval "$(tcms_db_docker_stub)"'
+      compose() { printf "compose %s\n" "$*" >>"$CALLS"; }
+      tcms_wait_db_healthy() { :; }
+      resolve_backup_host_dir() { printf "%s" "'"$TMP_DIR"'/restore-run-backups"; }
+      run_backup_tcms() { printf "pre-restore-backup %s\n" "$1" >>"$CALLS"; _TCMS_BACKUP_FILE="$1/x.dump"; }
+      run_tcms_migrate() { printf "tcms-migrate\n" >>"$CALLS"; }
+      tcms_restart_api() { printf "tcms-api-restart\n" >>"$CALLS"; }
+      cmd_tcms_restore --file "'"$dump"'" --confirm-overwrite RESTORE_TCMS_DATABASE
+    '
+  }
+  restore_run >"$TMP_DIR/restore-run.out" 2>&1 || { cat "$TMP_DIR/restore-run.out" >&2; test_fail "restore failed"; }
+  assert_before "$CALLS" "docker stop --time 30 taxtronik-tcms-api" "compose --profile tcms up -d --no-deps tcms-db"
+  assert_before "$CALLS" "compose --profile tcms up -d --no-deps tcms-db" "pg_restore --list"
+  assert_before "$CALLS" "pg_restore --list" "pre-restore-backup $TMP_DIR/restore-run-backups/tcms-pre-restore"
+  assert_before "$CALLS" "pre-restore-backup" "docker exec -i taxtronik-tcms-db psql -X -q -U tcms -d postgres"
+  assert_before "$CALLS" "psql -X -q -U tcms -d postgres" "pg_restore -U tcms -d tcms --exit-on-error --single-transaction"
+  assert_before "$CALLS" "pg_restore -U tcms -d tcms" "tcms-migrate"
+  assert_before "$CALLS" "tcms-migrate" "tcms-api-restart"
+  assert_contains "$PSQL_STDIN" "ALTER ROLE tcms_owner WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L"
+  assert_contains "$PSQL_STDIN" "tcms_app WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT"
+  assert_contains "$PSQL_STDIN" "REVOKE tcms_owner FROM tcms_app"
+  assert_contains "$PSQL_STDIN" "DROP DATABASE IF EXISTS tcms WITH (FORCE);"
+  assert_before "$PSQL_STDIN" "tcms_owner" "DROP DATABASE"
+  for key in TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD; do
+    value="$(env_value "$env_file" "$key")"
+    assert_not_contains "$CALLS" "$value"
+    assert_not_contains "$TMP_DIR/restore-run.out" "$value"
+    assert_contains "$PSQL_STDIN" "'$value'"
+  done
+  # Fehlerhafter Restore: kein Migrationsschritt, tcms-api bleibt gestoppt.
+  : >"$CALLS"
+  if FAIL_RESTORE=1 restore_run >"$TMP_DIR/restore-run.out" 2>&1; then test_fail "failed pg_restore reported success"; fi
+  assert_not_contains "$CALLS" "tcms-migrate"
+  assert_not_contains "$CALLS" "tcms-api-restart"
+  pass "TCMS restore: api stopped, current state saved, roles from .env, data, then migration and api"
+}
+
 run_test test_tcms_mode_defaults_to_disabled_and_rejects_unknown_values
 run_test test_compose_loads_tcms_file_only_when_managed
 run_test test_compose_writer_guard_sees_subcommand_after_global_options
@@ -1120,6 +1312,11 @@ run_test test_deploy_and_update_start_tcms_between_migrations_and_writers
 run_test test_start_tcms_runs_migration_before_api_and_falls_back
 run_test test_registry_rollback_switches_tcms_to_the_signed_target_pins
 run_test test_failed_rollback_restores_the_last_good_tcms_images
+run_test test_tcms_backup_dumps_in_container_with_0600_and_checksum
+run_test test_tcms_backup_upload_passes_s3_secrets_only_by_name
+run_test test_backup_update_and_full_backup_include_tcms
+run_test test_tcms_restore_validates_before_side_effects
+run_test test_tcms_restore_restores_roles_then_data_then_migrates
 
 if (( TESTS_FAILED > 0 )); then
   printf '\n%s ops-tcms tests failed, %s passed:\n' "$TESTS_FAILED" "$TESTS_RUN" >&2

@@ -539,6 +539,21 @@ tcms_restart_writers() {
   smoke_health || die "App nach dem Neustart nicht healthy."
 }
 
+# Sicherheitsnetz vor tcms-migrate (forward-only), wie backup_before_migrations:
+# Nur ein eindeutiges `f` beweist den ersten Start; jede andere Antwort
+# verhindert die Migration ohne Backup.
+tcms_backup_before_migration() {
+  local migrated
+  migrated="$(docker exec "$TCMS_DB_CONTAINER" psql -X -U tcms -d tcms -tAc \
+    "SELECT to_regclass('public._prisma_migrations') IS NOT NULL")" || \
+    die "TCMS-Schemapruefung vor der Migration fehlgeschlagen; ohne Backup wird nicht migriert."
+  case "$migrated" in
+    t) backup_tcms_with_upload || die "TCMS-Backup vor der Migration fehlgeschlagen; tcms-migrate laeuft nicht." ;;
+    f) info "Erster TCMS-Start erkannt; Backup vor der Migration entfaellt." ;;
+    *) die "TCMS-Schemapruefung lieferte '$migrated' statt t oder f; ohne Backup wird nicht migriert." ;;
+  esac
+}
+
 # Datenbank -> Migration -> Dienst. Fehler vor dem Dienstwechsel lassen den
 # laufenden tcms-api unveraendert.
 start_tcms_services() {
@@ -546,6 +561,7 @@ start_tcms_services() {
   info "TCMS-Datenbank starten"
   compose --profile tcms up -d --no-deps tcms-db || die "tcms-db konnte nicht gestartet werden."
   tcms_wait_db_healthy
+  tcms_backup_before_migration
   run_tcms_migrate
   tcms_restart_api || die "tcms-api wurde nicht healthy (Diagnose oben, ohne Werte)."
 }
@@ -613,6 +629,7 @@ start_tcms_for_deploy() {
   info "TCMS-Datenbank starten"
   compose --profile tcms up -d --no-deps tcms-db || die "tcms-db konnte nicht gestartet werden."
   tcms_wait_db_healthy
+  tcms_backup_before_migration
   run_tcms_migrate
   tcms_restart_api && return 0
   warn "Neuer tcms-api wurde nicht healthy; vorherigen Containerstand wiederherstellen."
@@ -1016,6 +1033,8 @@ cmd_tcms() {
     rotate-token) cmd_tcms_rotate token ;;
     rotate-key) cmd_tcms_rotate key ;;
     disable) load_env; cmd_tcms_disable ;;
+    backup) cmd_tcms_backup ;;
+    restore) cmd_tcms_restore "$@" ;;
     help|-h|--help)
       cat <<'USAGE'
 ./taxtronik tcms setup [managed|external|disabled] [--no-start]
@@ -1023,6 +1042,8 @@ cmd_tcms() {
 ./taxtronik tcms rotate-token     Dienst-Token mit Ueberlappung tauschen (managed)
 ./taxtronik tcms rotate-key       Akteursschluessel mit Ueberlappung tauschen (managed, >= 5 min)
 ./taxtronik tcms disable          Tax-CMS abschalten (Volume bleibt)
+./taxtronik tcms backup           TCMS-Datenbank sichern (backups/ + Backup-Bucket)
+./taxtronik tcms restore --file <dump> --confirm-overwrite RESTORE_TCMS_DATABASE
 USAGE
       ;;
     *) die "Unbekanntes tcms-Kommando: $sub (./taxtronik tcms help)" ;;

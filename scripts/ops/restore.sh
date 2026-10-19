@@ -173,3 +173,82 @@ cmd_restore() {
     info "Restore in explizites Ziel fertig."
   fi
 }
+
+# ---------------------------------------------------------------------------
+# TCMS Stufe 2: Restore der verwalteten TCMS-Datenbank
+#   ./taxtronik tcms restore --file <dump> --confirm-overwrite RESTORE_TCMS_DATABASE
+# Reihenfolge: tcms-api stoppen -> tcms-db gesund -> Archiv lesbar -> aktuellen
+# Stand sichern -> Rollen/Passwoerter aus .env -> Datenbank neu anlegen ->
+# pg_restore (eine Transaktion, Abbruch beim ersten Fehler) -> tcms-migrate
+# (Bootstrap, ausstehende Migrationen, Pruefung) -> tcms-api.
+# ---------------------------------------------------------------------------
+TCMS_RESTORE_CONFIRMATION="RESTORE_TCMS_DATABASE"
+TCMS_RESTORE_FILE=""
+
+# Vor jeder Seitenwirkung (auch vor load_env): Optionen, Bestaetigung, Datei,
+# Pruefsumme (falls <dump>.sha256 daneben liegt).
+validate_tcms_restore_args() {
+  local file="" confirm="" seen_confirm=0
+  while (( $# > 0 )); do
+    case "$1" in
+      --file)
+        [[ $# -ge 2 && -n "$2" && "$2" != --* && -z "$file" ]] || die "--file erwartet genau einen Pfad."
+        file="$2"; shift 2 ;;
+      --confirm-overwrite)
+        [[ $# -ge 2 && "$seen_confirm" == "0" ]] || die "--confirm-overwrite erwartet genau einen Wert."
+        confirm="$2"; seen_confirm=1; shift 2 ;;
+      *) die "Unbekannte Option: $1 (Nutzung: ./taxtronik tcms restore --file <dump> --confirm-overwrite $TCMS_RESTORE_CONFIRMATION)" ;;
+    esac
+  done
+  [[ -n "$file" ]] || die "Nutzung: ./taxtronik tcms restore --file <dump> --confirm-overwrite $TCMS_RESTORE_CONFIRMATION"
+  [[ "$confirm" == "$TCMS_RESTORE_CONFIRMATION" ]] || \
+    die "Der TCMS-Restore ersetzt die TCMS-Datenbank. Bestaetigung exakt: --confirm-overwrite $TCMS_RESTORE_CONFIRMATION"
+  [[ -f "$file" && -r "$file" && ! -L "$file" ]] || die "Dump ist keine lesbare regulaere Datei: $file"
+  if [[ -f "$file.sha256" ]]; then
+    ( cd "$(dirname "$file")" && sha256sum --check --quiet -- "$(basename "$file").sha256" ) >/dev/null 2>&1 || \
+      die "SHA-256 des Dumps stimmt nicht mit $file.sha256 ueberein; Restore verweigert."
+  fi
+  TCMS_RESTORE_FILE="$file"
+}
+
+cmd_tcms_restore() {
+  local file migrated
+  validate_tcms_restore_args "$@"
+  file="$TCMS_RESTORE_FILE"
+  load_env
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || die "TCMS-Restore gilt fuer TCMS_DEPLOYMENT=managed."
+  require_env TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD
+  warn "TCMS-RESTORE: tcms-api wird gestoppt und die TCMS-Datenbank aus $file ersetzt."
+  if docker inspect "$TCMS_API_CONTAINER" >/dev/null 2>&1; then
+    docker stop --time 30 "$TCMS_API_CONTAINER" >/dev/null || die "tcms-api konnte nicht gestoppt werden."
+  fi
+  compose --profile tcms up -d --no-deps tcms-db || die "tcms-db konnte nicht gestartet werden."
+  tcms_wait_db_healthy
+  docker exec -i "$TCMS_DB_CONTAINER" pg_restore --list <"$file" >/dev/null || \
+    die "Kein lesbares pg_dump-Archiv: $file; die TCMS-Datenbank bleibt unveraendert."
+  migrated="$(docker exec "$TCMS_DB_CONTAINER" psql -X -U tcms -d tcms -tAc \
+    "SELECT to_regclass('public._prisma_migrations') IS NOT NULL" 2>/dev/null || true)"
+  if [[ "$migrated" != "f" ]]; then
+    run_backup_tcms "$(resolve_backup_host_dir)/tcms-pre-restore" || \
+      die "Sicherung des bisherigen TCMS-Stands fehlgeschlagen; Restore verweigert."
+    info "Bisheriger TCMS-Stand gesichert: $_TCMS_BACKUP_FILE"
+  fi
+  sync_tcms_roles_from_env || die "TCMS-Rollen konnten nicht angeglichen werden; Restore abgebrochen."
+  printf 'DROP DATABASE IF EXISTS tcms WITH (FORCE);\nCREATE DATABASE tcms OWNER tcms;\n' | \
+    docker exec -i "$TCMS_DB_CONTAINER" psql -X -q -U tcms -d postgres -v ON_ERROR_STOP=1 || \
+    die "TCMS-Datenbank konnte nicht neu angelegt werden."
+  docker exec -i "$TCMS_DB_CONTAINER" pg_restore -U tcms -d tcms --exit-on-error --single-transaction <"$file" || \
+    die "pg_restore fehlgeschlagen; tcms-api bleibt gestoppt (vorheriger Stand: ${_TCMS_BACKUP_FILE:-keiner})."
+  run_tcms_migrate
+  tcms_restart_api || die "tcms-api nach dem Restore nicht healthy (Diagnose oben, ohne Werte)."
+  info "TCMS-Restore fertig: Datenbank aus $file, Rollen aus .env, Migrationsschritt erfolgreich."
+}
+
+cmd_tcms_backup() {
+  load_env
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || die "TCMS-Backup gilt fuer TCMS_DEPLOYMENT=managed."
+  prepare_backup_host_dir
+  ensure_s3_ready_for_backup
+  backup_tcms_with_upload || die "TCMS-Backup fehlgeschlagen."
+  info "TCMS-Backup fertig: ${_TCMS_BACKUP_FILE:-kein Dump (noch keine Daten)}"
+}

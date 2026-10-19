@@ -953,6 +953,9 @@ Bei Fehlern:
   und bei einer unterbrochenen Rotation (`./taxtronik tcms rotate-…` erneut).
 - Logs ohne Werte: `./taxtronik compose --profile tcms logs tcms-api` bzw.
   `tcms-migrate`.
+- Sicherung: `./taxtronik backup` enthält die TCMS-Datenbank; für tägliche
+  Sicherungen einen Host-Cron mit `./taxtronik tcms backup` einrichten (der
+  Worker erreicht die TCMS-Datenbank wegen der Netztrennung nicht).
 
 Einrichtung, Netze, Images, Rotation und Fehlerbilder:
 [Tax-CMS-Betrieb](tcms-betrieb.md).

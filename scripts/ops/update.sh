@@ -441,6 +441,7 @@ cmd_update() {
   wait_postgres_healthy
   sync_postgres_roles_from_env
   run_backup || die "Pflichtbackup fehlgeschlagen — Code und Arbeitsbaum bleiben unveraendert."
+  backup_tcms_with_upload || die "TCMS-Pflichtbackup fehlgeschlagen — Code und Arbeitsbaum bleiben unveraendert."
 
   info "Code auf den freigegebenen Stand aktualisieren (git ff-only)"
   # shellcheck disable=SC2164 # ops-lib.sh setzt set -e: ein cd-Fehler beendet das Update
