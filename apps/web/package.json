@@ -38,6 +38,8 @@
     "@taxtronik/rss": "workspace:*",
     "@taxtronik/storage": "workspace:*",
     "@taxtronik/tax": "workspace:*",
+    "@taxtronik/tcms-client": "workspace:*",
+    "@taxtronik/tcms-contract": "workspace:*",
     "@tesseract.js-data/deu": "1.0.0",
     "@tesseract.js-data/eng": "1.0.0",
     "@tiptap/core": "3.30.5",

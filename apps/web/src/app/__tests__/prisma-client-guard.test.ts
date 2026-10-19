@@ -71,6 +71,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // ACCESS-CLIENT-MODE-001: Owner-Fixtures in einem frischen Tenant; die App-Rolle
   // vergleicht Relationsfilter und frühere NOT-IN-Liste unter echter RLS (P-09).
   'apps/web/src/server/auth/__tests__/client-access-filter-db.test.ts',
+  // ACCESS-CLIENT-MODE-001 (TCMS Stufe 2): Owner-Fixtures in frischen Tenants; die
+  // App-Rolle bildet Sitzungen unter echter RLS auf TCMS-Akteure ab.
+  'apps/web/src/server/tcms/__tests__/akteur-db.test.ts',
   // YEAR-END-CAMPAIGN-001 (P-19): Owner-Fixtures in einem frischen Tenant; die App-Rolle
   // führt Rollout-Action und Übersichtsabfragen unter Triggern und RLS aus.
   'apps/web/src/server/workflows/__tests__/year-end-db.test.ts',

@@ -320,6 +320,12 @@ importers:
       '@taxtronik/tax':
         specifier: workspace:*
         version: link:../../packages/tax
+      '@taxtronik/tcms-client':
+        specifier: workspace:*
+        version: link:../../packages/tcms-client
+      '@taxtronik/tcms-contract':
+        specifier: workspace:*
+        version: link:../../packages/tcms-contract
       '@tesseract.js-data/deu':
         specifier: 1.0.0
         version: 1.0.0

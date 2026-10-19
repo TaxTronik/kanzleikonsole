@@ -114,7 +114,7 @@ const nextConfig = {
     '@taxtronik/rss',
     '@taxtronik/storage',
     '@taxtronik/tax',
-    // Transitiv über @taxtronik/config (TCMS-Schlüssel- und kid-Prüfung).
+    '@taxtronik/tcms-client',
     '@taxtronik/tcms-contract',
   ],
 
