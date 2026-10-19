@@ -118,4 +118,37 @@ for scenario in public changed-token extra-secret other-path; do
   fi
 done
 
-echo "8 gitleaks allowlist regression tests passed."
+# n8n-HMAC-Testwert und dedupeKey-Referenz: genau die bekannten Quellzeilen
+# bestehen, ein anderer Wert in derselben Datei wird weiterhin blockiert.
+N8N_TEST='packages/n8n-shared/src/__tests__/routing.test.ts'
+for scenario in known other-value; do
+  CASE_REPO="$TMP/n8n-$scenario"
+  mkdir -p "$CASE_REPO/$(dirname "$N8N_TEST")" "$CASE_REPO/packages/mail/src"
+  git -C "$CASE_REPO" init -q
+  git -C "$CASE_REPO" config user.email test@example.invalid
+  git -C "$CASE_REPO" config user.name 'Gitleaks Config Test'
+  if [[ "$scenario" == known ]]; then
+    # Quellzeilen erst zur Laufzeit zusammensetzen: Dieser Test liegt selbst im
+    # History-Scan und darf die Fixture-Zeilen nicht woertlich enthalten.
+    printf "    h.env.N8N_HMAC_%s = '%s';\n" SECRET "global-env-secret-with-at-least-32-chars" > "$CASE_REPO/$N8N_TEST"
+    printf '    ? { tenantId: opts.tenantId, %s: opts.n8nDedupeKey }\n' dedupeKey > "$CASE_REPO/packages/mail/src/dispatch.ts"
+  else
+    printf "    h.env.N8N_HMAC_SECRET = '%s';\n" "$SYNTHETIC_VALUE" > "$CASE_REPO/$N8N_TEST"
+  fi
+  git -C "$CASE_REPO" add .
+  git -C "$CASE_REPO" commit -qm "n8n $scenario fixture"
+  set +e
+  "$GITLEAKS" git --config "$ROOT/.gitleaks.toml" --redact --no-banner "$CASE_REPO" \
+    --report-format json --report-path "$TMP/n8n-$scenario.json" >/dev/null 2>&1
+  case_rc=$?
+  set -e
+  if [[ "$scenario" == known ]]; then
+    [[ $case_rc -eq 0 ]] || { echo 'Bekannte n8n-/dedupeKey-Zeilen wurden blockiert.' >&2; exit 1; }
+    grep -qx '\[\]' "$TMP/n8n-$scenario.json"
+  else
+    [[ $case_rc -eq 1 ]] || { echo "n8n-Gegenbeispiel wurde nicht blockiert (Exit $case_rc)." >&2; exit 1; }
+    grep -q '"RuleID": "generic-api-key"' "$TMP/n8n-$scenario.json"
+  fi
+done
+
+echo "10 gitleaks allowlist regression tests passed."

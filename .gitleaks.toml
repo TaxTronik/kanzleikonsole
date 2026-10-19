@@ -96,3 +96,25 @@ condition = "AND"
 regexTarget = "line"
 paths = ['''(^|/)packages/tax/src/screening/source\.ts$''']
 regexes = ['''^\n?  'https://webgate\.ec\.europa\.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content\?token=dG9rZW4tMjAxNw';$''']
+
+# Synthetischer n8n-HMAC-Testwert (Commit c1d0b66): kein Secret, sondern ein
+# sprechender Längen-Dummy. Nur genau diese Quellzeilen in genau diesen zwei
+# Testdateien; jeder andere Wert dort bleibt sichtbar (TCMS Stufe 2).
+[[rules.allowlists]]
+description = "synthetischer n8n-HMAC-Testwert in den n8n-Routing-Tests"
+condition = "AND"
+regexTarget = "line"
+paths = [
+  '''(^|/)apps/web/src/server/settings/__tests__/n8n-secret-precedence\.test\.ts$''',
+  '''(^|/)packages/n8n-shared/src/__tests__/routing\.test\.ts$''',
+]
+regexes = ['''^\n?\s*(h\.env\.N8N_HMAC_SECRET = |hmacSecret: )'global-env-secret-with-at-least-32-chars'[;,]$''']
+
+# generic-api-key liest den Bezeichner dedupeKey als Schlüssel; der Wert ist
+# eine Variablenreferenz. Nur genau diese Zeile in der Mail-Dispatch-Datei.
+[[rules.allowlists]]
+description = "Variablenreferenz dedupeKey im Mail-Dispatch"
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)packages/mail/src/dispatch\.ts$''']
+regexes = ['''^\n?    \? \{ tenantId: opts\.tenantId, dedupeKey: opts\.n8nDedupeKey \}$''']
