@@ -48,6 +48,7 @@ const MODULE_FLAGS = [
   'inboundMail',
   'risk',
   'signalEngine',
+  'tcms',
 ] as const satisfies readonly BooleanModuleKey[];
 type ModuleFlag = (typeof MODULE_FLAGS)[number];
 
@@ -112,6 +113,7 @@ export async function saveModulesAction(
         inboundMail: enabled('inboundMail'),
         risk: enabled('risk'),
         signalEngine: enabled('signalEngine'),
+        tcms: enabled('tcms'),
         subsumtionFloatingToolbarDefault: parsed.data.subsumtionFloatingToolbarDefault,
         poaMode: parsed.data.poaMode,
         poaPdfTemplate:

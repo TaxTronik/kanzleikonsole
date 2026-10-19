@@ -46,6 +46,7 @@ export interface ModuleConfig extends BooleanTenantModules {
   inboundMail: boolean; // E-Mail-Antworten von Mandanten → Anforderungs-Antwort (via n8n)
   risk: boolean; // Subsumtions-Workspace / TCMS (braucht zusätzlich die Risk-Engine)
   signalEngine: boolean; // Signal-Engine-Integration (externe Signale; braucht zusätzlich signalEngineConfig)
+  tcms: boolean; // Tax-CMS (braucht zusätzlich TCMS_DEPLOYMENT managed/external; Gate: server/tcms/dienst.ts)
 
   // Bedienvorgabe für den Subsumtions-Editor. Die feste Formatierleiste bleibt
   // unabhängig davon sichtbar; diese Option steuert nur die zusätzliche Leiste

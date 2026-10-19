@@ -81,6 +81,12 @@ const MODULES: Array<{ key: keyof ModuleConfig; label: string; description: stri
     description:
       'Netzinterne Engine für externe Signale (Rechtsänderungen, Fristen, Anomalien). Zeigt Status unter Einstellungen → Integrationen (erfordert die deployte Signal-Engine)',
   },
+  {
+    key: 'tcms',
+    label: 'Tax-CMS',
+    description:
+      'Anbindung des internen Tax-CMS-Dienstes (Programme, Risiken, Kontrollen). Noch ohne eigene Oberfläche; wirkt nur, wenn der Betrieb TCMS_DEPLOYMENT auf managed oder external gesetzt hat',
+  },
 ];
 
 const POA_MODES: Array<{

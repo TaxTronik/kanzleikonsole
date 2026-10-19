@@ -30,6 +30,8 @@ export const BOOLEAN_MODULE_KEYS = [
   'vdbPreparation',
   'sanctionsScreening',
   'feeCalculator',
+  // TCMS Stufe 2: Tax-CMS; wirkt nur zusammen mit TCMS_DEPLOYMENT != disabled.
+  'tcms',
 ] as const;
 
 export type BooleanTenantModuleKey = (typeof BOOLEAN_MODULE_KEYS)[number];
@@ -65,6 +67,7 @@ export const DEFAULT_BOOLEAN_TENANT_MODULES: BooleanTenantModules = {
   vdbPreparation: false,
   sanctionsScreening: false,
   feeCalculator: false,
+  tcms: false,
 };
 
 export function parseBooleanTenantModules(value: unknown): BooleanTenantModules {

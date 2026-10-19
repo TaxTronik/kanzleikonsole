@@ -13,9 +13,11 @@ import { env, riskLayerConfig } from '@taxtronik/config';
 import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
 import { createRfc3161Adapter, resolveTsaUrl } from '@taxtronik/evidence';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
+import { TcmsNichtAuthentifiziert, TcmsNichtVerfuegbar } from '@taxtronik/tcms-client';
 import { randomBytes } from 'node:crypto';
 import { safeFetchN8n } from '@/server/http/ssrf-guard';
 import { networkFailure } from '@/server/http/network-error';
+import { tcmsClient } from '@/server/tcms/dienst';
 
 export interface ServiceStatus {
   ok: boolean;
@@ -268,6 +270,36 @@ function formatSignalEngineError(e: unknown): string {
   }
 
   return e.message;
+}
+
+/**
+ * Tax-CMS (TCMS Stufe 2): `GET /v1/health` mit Dienst-Token, ohne Akteur, mit
+ * kurzem Zeitlimit und ohne Wiederholung. `null` bei TCMS_DEPLOYMENT=disabled.
+ * Ergebnis ohne Details nach außen: feste Texte, weder URL, Version noch
+ * Antwortinhalte oder Ausnahmetexte (die Meldung kann in /api/health/detail
+ * und Integrationsseiten landen).
+ */
+export async function checkTcms(): Promise<ServiceStatus | null> {
+  const start = Date.now();
+  try {
+    const client = tcmsClient();
+    if (!client) return null;
+    const { daten } = await client.health({ zeitlimitMs: 3000 });
+    if (daten.datenbank !== 'ok') return { ok: false, error: 'TCMS meldet einen Datenbankfehler.' };
+    return { ok: true, latencyMs: Date.now() - start };
+  } catch (e) {
+    return { ok: false, error: tcmsHealthFehler(e) };
+  }
+}
+
+function tcmsHealthFehler(e: unknown): string {
+  if (e instanceof TcmsNichtAuthentifiziert) return 'TCMS hat das Dienst-Token abgewiesen.';
+  if (e instanceof TcmsNichtVerfuegbar) {
+    return e.grund === 'ZEITLIMIT'
+      ? 'TCMS hat nicht rechtzeitig geantwortet.'
+      : 'TCMS nicht erreichbar.';
+  }
+  return 'TCMS-Healthcheck fehlgeschlagen.';
 }
 
 function isLoopbackUrl(rawUrl: string): boolean {

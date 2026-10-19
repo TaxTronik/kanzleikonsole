@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => ({
     url: 'http://127.0.0.1:8000',
     token: 'test-token',
   },
+  tcmsClient: vi.fn(),
 }));
 
 vi.mock('@taxtronik/config', () => ({
@@ -57,7 +58,14 @@ vi.mock('@/server/http/ssrf-guard', () => ({
   safeFetchN8n: mocks.safeFetch,
 }));
 
-import { checkN8nForTenant, checkSignalEngine, checkTsaForTenant } from '../checks';
+vi.mock('@/server/tcms/dienst', () => ({ tcmsClient: mocks.tcmsClient }));
+
+import {
+  TcmsNichtAuthentifiziert,
+  TcmsNichtVerfuegbar,
+  TcmsProtokollFehler,
+} from '@taxtronik/tcms-client';
+import { checkN8nForTenant, checkSignalEngine, checkTcms, checkTsaForTenant } from '../checks';
 
 describe('checkTsaForTenant', () => {
   beforeEach(() => {
@@ -244,5 +252,55 @@ describe('checkSignalEngine', () => {
       ok: false,
       error: 'Signal-Engine nicht erreichbar. Pruefe Container, RISK_LAYER_URL und Bearer-Token.',
     });
+  });
+});
+
+// TCMS Stufe 2: Health-Check ohne Details nach außen.
+describe('checkTcms', () => {
+  const health = vi.fn();
+  beforeEach(() => {
+    health.mockReset();
+    mocks.tcmsClient.mockReset().mockReturnValue({ health });
+  });
+
+  it('liefert null, wenn das TCMS nicht konfiguriert ist', async () => {
+    mocks.tcmsClient.mockReturnValue(null);
+    await expect(checkTcms()).resolves.toBeNull();
+  });
+
+  it('meldet ok mit Latenz, ohne Version oder Details', async () => {
+    health.mockResolvedValue({ daten: { version: '0.1.0', datenbank: 'ok' }, status: 200 });
+    const status = await checkTcms();
+    expect(status).toEqual({ ok: true, latencyMs: expect.any(Number) });
+    expect(health).toHaveBeenCalledWith({ zeitlimitMs: 3000 });
+  });
+
+  it('meldet Fehler nur mit festen Texten', async () => {
+    const faelle: Array<[unknown, string]> = [
+      [{ daten: { version: '0.1.0', datenbank: 'fehler' } }, 'TCMS meldet einen Datenbankfehler.'],
+      [new TcmsNichtAuthentifiziert({ status: 401 }), 'TCMS hat das Dienst-Token abgewiesen.'],
+      [new TcmsNichtVerfuegbar('ZEITLIMIT'), 'TCMS hat nicht rechtzeitig geantwortet.'],
+      [
+        new TcmsNichtVerfuegbar('TRANSPORT', { systemCode: 'ECONNREFUSED' }),
+        'TCMS nicht erreichbar.',
+      ],
+      [
+        new TcmsProtokollFehler('SCHEMA', { pfade: ['daten.host'] }),
+        'TCMS-Healthcheck fehlgeschlagen.',
+      ],
+      [
+        new Error('Verbindung zu http://geheim.intern:3200 fehlgeschlagen'),
+        'TCMS-Healthcheck fehlgeschlagen.',
+      ],
+    ];
+    for (const [ergebnis, text] of faelle) {
+      if (ergebnis instanceof Error) health.mockRejectedValue(ergebnis);
+      else health.mockResolvedValue(ergebnis);
+      expect(await checkTcms()).toEqual({ ok: false, error: text });
+    }
+    mocks.tcmsClient.mockImplementation(() => {
+      throw new Error('[config] TCMS_URL: geheimer-wert');
+    });
+    expect(await checkTcms()).toEqual({ ok: false, error: 'TCMS-Healthcheck fehlgeschlagen.' });
   });
 });

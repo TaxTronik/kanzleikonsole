@@ -160,3 +160,23 @@ Tax-CMS.“, Grund nur als Eigenschaft) bei: ungültiger oder abgelaufener
 Sitzung, Rollen der Sitzung ≠ aktuelle Rollen (veraltete Sitzung: neu
 anmelden), deaktivierter Person, Login-Sperre (`lockedUntil`), fehlendem
 Mandantenzugriff, mehr als 5 000 Mandanten, Kontakt ohne Portalzugang.
+
+## 5. Modul, Gate und Health-Check
+
+- **Modul `tcms`** im Modul-Register (`BOOLEAN_MODULE_KEYS`, Standard aus),
+  Tenant-Schalter unter _Einstellungen → Module_ („Tax-CMS“). Aktiv ist das
+  TCMS für einen Tenant nur mit Schalter an **und**
+  `TCMS_DEPLOYMENT != disabled` (`istTcmsAktiv` aus
+  `@taxtronik/tcms-client`).
+- **Gate für Server-Aktionen:** `assertTcmsAktivTx(tx, tenantId)` bzw.
+  `assertTcmsAktiv(ctx)` aus `apps/web/src/server/tcms/dienst.ts`
+  (`TcmsInaktivError` mit UI-Meldung); der Modulschalter allein wirkt
+  zusätzlich über die `module`-Option der Action-Guards. **Worker:**
+  `istTcmsAktiv((await readBooleanTenantModules(tx, tenantId)).tcms, getTcmsConfig())`.
+- **Client je Prozess:** `tcmsClient()` (`null` bei `disabled`) lädt
+  Konfiguration und Schlüssel beim ersten Zugriff einmal.
+- **Health-Check:** `checkTcms()` in `apps/web/src/server/health/checks.ts`:
+  `GET /v1/health` mit Dienst-Token, Zeitlimit 3 s, ohne Wiederholung und ohne
+  Breaker; `null` bei `disabled`. Das Ergebnis enthält nur feste Texte (kein
+  Ausnahmetext, keine URL, keine Version). Noch in keine Seite und nicht in
+  `/api/health/detail` eingebunden (Betrieb bzw. Stufe 3).
