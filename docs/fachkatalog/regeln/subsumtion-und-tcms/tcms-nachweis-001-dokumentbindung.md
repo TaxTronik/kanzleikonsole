@@ -53,6 +53,7 @@ code_refs:
   - packages/db/prisma/migrations/20261019180000_tcms_document_reference/migration.sql
 test_refs:
   - apps/web/src/server/tcms/__tests__/nachweis-verweis-db.test.ts
+  - apps/web/src/server/tcms/__tests__/bereich-c-live.test.tsx
   - apps/web/src/server/tcms/durchfuehrung/__tests__/nachweis-aktion.test.ts
   - apps/web/src/server/tcms/durchfuehrung/__tests__/nachweis-download.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/__tests__/actions.test.ts
