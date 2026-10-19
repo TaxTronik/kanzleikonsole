@@ -1217,6 +1217,15 @@ Technik: [Anbindung](docs/development/tcms-anbindung.md),
   oder begründet verwerfen, weitere Folge vorschlagen, abschließen); Verwerfen
   des Ereignisses mit Vier-Augen-Bestätigung; Anlagen von Portal-Meldungen
   über die Dokumentauslieferung mit SHA-256- und Größenabgleich
+- **Portal: Kontrollaufgabe** `/portal/tcms/aufgaben/[id]`: Schritte,
+  Kennzahlen, Ergebnis, Entwurf/Übermitteln nach Prüfung des Dienstes,
+  Bestätigung bzw. Rückgabe durch eine zweite Person; Anlagen über die
+  Portal-Dokumentenpipeline (Virenscan, Typ nach Inhalt, je 10 MB, höchstens
+  5, zusammen 25 MB), Abruf nur freigegebener Dokumente des Sitzungsmandanten
+- **Portal: Ereignis melden** `/portal/tcms/ereignis` mit Anlagen und
+  Benachrichtigung der Hauptbearbeitung; **Freigaben und Kenntnisnahmen**
+  `/portal/tcms/freigaben` mit Bestätigungscode per E-Mail (Code nie
+  angezeigt, Fehlversuche und Sperre im Dienst)
 - Unternavigation mit allen 14 Bereichen des Tax-CMS; die übrigen Bereiche
   folgen mit denselben Bausteinen
 - Feste Meldungen für fehlende Rechte, Konflikte („Wurde zwischenzeitlich

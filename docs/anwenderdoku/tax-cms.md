@@ -92,8 +92,8 @@ im Mandanten-Portal sieht und tun darf.
 Kontakte mit Portalzugang sehen unter **Tax-CMS** den Stand des Programms,
 ihre Aufgaben, die Möglichkeit, neue Ereignisse zu melden, und die letzten
 Meldungen. Was ein Kontakt sieht, hängt von seiner Rolle (Abschnitt 5) ab.
-Aufgaben, Meldungen und Freigaben im Portal folgen mit den weiteren
-Bereichen.
+Aufgaben, Ereignismeldungen sowie Freigaben und Kenntnisnahmen im Portal
+beschreibt der Abschnitt „Ereignisse, Portal-Aufgaben und Audit“.
 
 ## Programm & Dokumentation
 
@@ -277,10 +277,11 @@ mit Bezug auf das Land.
   Ereignis im Ereigniseingang an. Der CSV-Import folgt.
 ## Ereignisse, Portal-Aufgaben und Audit
 
-Hier triagiert die Kanzlei die Ereignisse ihrer Mandanten. Wer was darf, ob
-eine Angabe vollständig ist und was als Nächstes möglich ist, entscheidet das
+Hier melden Mandanten Veränderungen, erledigen Kontrollaufgaben und geben
+Dokumente frei; die Kanzlei triagiert die Meldungen. Wer was darf, ob eine
+Angabe vollständig ist und was als Nächstes möglich ist, entscheidet das
 Tax-CMS; TaxTronik zeigt das Ergebnis an, gibt Personen nur aus der eigenen
-Datenbank weiter und liefert Dateien nur über die eigene Dokumentenablage aus.
+Datenbank weiter und nimmt Dateien nur über die eigene Dokumentenablage an.
 
 ### Ereigniseingang (Kanzlei)
 
@@ -310,12 +311,60 @@ Klick öffnet die Triage:
   wurde das Dokument in der Ablage ersetzt, erscheint ein Hinweis statt der
   Datei.
 
+### Kontrollaufgabe im Portal
+
+Unter _Tax-CMS → Ihre Aufgaben_ öffnet ein Kontakt eine Kontrollaufgabe: Was
+zu tun ist, Schritte mit Kommentaren, Kennzahlen, Anlagen und Ergebnis
+(„ohne Befund“ bzw. „mit Befund“ mit Kommentar).
+
+- **Entwurf speichern** ist jederzeit möglich. **Übermitteln** speichert und
+  übermittelt nur, wenn das Tax-CMS keine offenen Punkte mehr nennt; sonst
+  erscheinen die offenen Punkte als Hinweis.
+- Differenzen und die Toleranzprüfung berechnet das Tax-CMS; außerhalb der
+  Toleranz liegende Werte sind markiert.
+- **Anlagen** hochladen: höchstens 5 Dateien je Vorgang, je bis 10 MB,
+  zusammen bis 25 MB (PDF, Bild, CSV, Text, Excel, Word, ZIP). Der Dateityp
+  wird am Inhalt erkannt, jede Datei auf Viren geprüft. Hochgeladene Dateien
+  liegen auch unter _Dokumente_ des Unternehmens. Mit dem Übermitteln werden
+  die Anlagen gesperrt. Hochladen setzt voraus, dass die Kanzlei
+  Portal-Uploads freigeschaltet hat.
+- Ist eine Bestätigung durch eine **zweite Person** beim Mandanten
+  vorgesehen, bestätigt diese die Vollständigkeit oder gibt die Aufgabe mit
+  Begründung zur Überarbeitung zurück.
+- Ob Sie die Aufgabe bearbeiten dürfen, entscheidet das Tax-CMS; fehlt das
+  Recht, steht der Grund an Stelle der Bedienelemente.
+
+### Ereignis melden
+
+_Tax-CMS → Ereignis melden_ (gesetzliche Vertretung und
+Tax-Compliance-Beauftragte): Art wählen, Datum, Bezeichnung und Beschreibung
+angeben, optional Anlagen (Grenzen wie oben) beifügen und senden. Die
+Vorgangsnummer vergibt das Tax-CMS; benachrichtigt wird die Hauptbearbeitung
+der Kanzlei. Darunter stehen die bisherigen Meldungen mit Bearbeitungsstand.
+
+### Freigaben und Kenntnisnahmen
+
+_Tax-CMS → Freigaben_ zeigt offene und erledigte Anforderungen der Kanzlei:
+
+- **Kenntnisnahme:** Dokument lesen, „gelesen“ ankreuzen und bestätigen.
+- **Freigabe einer CMS-Beschreibung** (nur gesetzliche Vertretung, nur die
+  angeschriebene Person): Die vorgelegte Fassung ist eingefroren und durch
+  einen SHA-256-Wert gebunden. „Bestätigungscode per E-Mail anfordern“
+  schickt einen befristeten 6-stelligen Code an Ihre E-Mail-Adresse; mit
+  diesem Code geben Sie frei. TaxTronik zeigt den Code nie an und leert das
+  Eingabefeld nach jedem Versuch. Nach mehreren Fehlversuchen sperrt das
+  Tax-CMS den Code.
+
 ### Meldungen in diesen Bereichen
 
-| Meldung                                                               | Bedeutung und was zu tun ist                                                                         |
-| --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Vier-Augen-Prinzip: Diesen Schritt muss eine andere Person ausführen. | Antrag und Bestätigung müssen von verschiedenen Personen kommen.                                     |
-| Die Anlage wurde nicht ausgeliefert …                                 | Die Datei in der Ablage weicht vom festgehaltenen Stand ab. Bitte an die Kanzlei bzw. Admins wenden. |
+| Meldung                                                                      | Bedeutung und was zu tun ist                                                                         |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Vier-Augen-Prinzip: Diesen Schritt muss eine andere Person ausführen.        | Antrag und Bestätigung müssen von verschiedenen Personen kommen.                                     |
+| Der Code stimmt nicht. Noch … Versuche.                                      | Code aus der E-Mail erneut eingeben oder einen neuen anfordern.                                      |
+| Der Bestätigungscode ist nach mehreren Fehlversuchen gesperrt.               | Bitte an die Kanzlei wenden.                                                                         |
+| Entwurf gespeichert, aber noch nicht übermittelt: …                          | Die genannten Punkte ergänzen und erneut übermitteln.                                                |
+| Die Anlage wurde nicht ausgeliefert …                                        | Die Datei in der Ablage weicht vom festgehaltenen Stand ab. Bitte an die Kanzlei bzw. Admins wenden. |
+| Zusammen höchstens 25 MB auf einmal – bitte in mehreren Schritten hochladen. | Dateien auf mehrere Uploads verteilen.                                                               |
 
 ## 7. Meldungen
 

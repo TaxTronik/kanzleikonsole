@@ -71,6 +71,12 @@ code_refs:
   - apps/web/src/server/tcms/abruf/auslieferung.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/ereignisse/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/ereignisse/triage.tsx
+  - apps/web/src/server/tcms/portal/anlagen.ts
+  - apps/web/src/server/tcms/portal/aufgabe.ts
+  - apps/web/src/app/portal/(protected)/tcms/aufgaben/[id]/actions.ts
+  - apps/web/src/app/portal/(protected)/tcms/ereignis/actions.ts
+  - apps/web/src/app/portal/(protected)/tcms/freigaben/actions.ts
+  - apps/web/src/components/tcms/portal/freigabe-formulare.tsx
 test_refs:
   - apps/web/src/server/tcms/__tests__/zustand.test.ts
   - apps/web/src/server/tcms/__tests__/seite.test.ts
@@ -108,6 +114,10 @@ test_refs:
   - apps/web/src/server/tcms/bereich-b/__tests__/laender-formular.test.ts
   - apps/web/src/server/tcms/__tests__/abruf.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-seite.test.tsx
+  - apps/web/src/server/tcms/__tests__/portal-anlagen.test.ts
+  - apps/web/src/server/tcms/__tests__/bereich-d-helfer.test.ts
+  - apps/web/src/server/tcms/__tests__/bereich-d-db.test.ts
+  - apps/web/src/app/portal/(protected)/tcms/__tests__/portal-seiten.test.tsx
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md

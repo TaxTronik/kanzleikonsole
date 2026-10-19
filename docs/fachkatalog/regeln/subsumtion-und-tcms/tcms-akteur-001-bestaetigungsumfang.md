@@ -80,6 +80,8 @@ test_refs:
   - apps/web/src/components/tcms/kontrollen/__tests__/kontrollen.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-aktionen.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-anlage-route.test.ts
+  - apps/web/src/app/portal/(protected)/tcms/__tests__/portal-aktionen.test.ts
+  - apps/web/src/app/portal/(protected)/tcms/__tests__/anlagen-route.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md
