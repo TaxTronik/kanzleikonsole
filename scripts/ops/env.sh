@@ -77,27 +77,42 @@ rand_b64() {
   fi
 }
 
+# Schreibt KEY=value woertlich: ersetzt jede Zeile KEY=..., haengt sonst an
+# (Paritaet mit scripts/env-tool.mjs, Test in scripts/tests/env-tool.test.mjs).
+# Der Wert erreicht kein externes Programm. Frueher stand er als sed-Ausdruck
+# in dessen Kommandozeile und war damit waehrend des Aufrufs fuer jeden
+# lokalen Benutzer in der Prozessliste lesbar (TCMS Stufe 2: Tokens und
+# private Schluessel werden ueber set_env geschrieben). Jetzt bleibt er in der
+# Shell; cat sieht nur den Pfad, geschrieben wird atomar ueber eine 0600-Datei
+# im selben Verzeichnis.
 set_env() {
-  local key="$1" value="$2"
-  # Ersetzungswert für den sed-Befehl unten escapen. Der Befehl nutzt `|` als
-  # Delimiter (s|...|...|), daher MUSS `|` mit escaped werden — sonst brechen
-  # Werte mit Pipe-Zeichen (z. B. Tokens) das .env-Schreiben (set -e-Abbruch).
-  # `&` ist im Replacement special, `/` unschädlich mitzunehmen.
-  local esc rc=0; esc="$(printf '%s\n' "$value" | sed -e 's/[\\\/&|]/\\&/g')"
+  local key="$1" value="$2" content line tmp found=0 rc=0
+  [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "Ungueltiger .env-Schluessel: $key"
+  [[ "$value" != *$'\n'* && "$value" != *$'\r'* ]] || \
+    die "$key: Wert darf keinen Zeilenumbruch enthalten; .env bleibt unveraendert."
   # Ein Lesefehler ist nicht "Schluessel fehlt": Anhaengen ergaebe ein Duplikat,
   # dessen neuer Wert beim Laden gewinnt, waehrend get_env den alten liest.
-  grep -qE "^${key}=" "$ENVFILE" || rc=$?
-  case "$rc" in
-    0)
-      if sed --version >/dev/null 2>&1; then
-        sed -i -E "s|^${key}=.*$|${key}=${esc}|" "$ENVFILE"
-      else
-        sed -i '' -E "s|^${key}=.*$|${key}=${esc}|" "$ENVFILE"
-      fi
-      ;;
-    1) printf '%s=%s\n' "$key" "$value" >> "$ENVFILE" ;;
-    *) die "$ENVFILE konnte nicht gelesen werden (grep-Exit $rc); $key wird nicht geschrieben." ;;
-  esac
+  # Der Punkt bewahrt abschliessende Zeilenumbrueche vor der Befehlsersetzung.
+  content="$(cat -- "$ENVFILE" && printf '.')" || rc=$?
+  (( rc == 0 )) || die "$ENVFILE konnte nicht gelesen werden (cat-Exit $rc); $key wird nicht geschrieben."
+  content="${content%.}"
+  tmp="$(mktemp "${ENVFILE}.tmp.XXXXXX")" || \
+    die "Temporaere Datei fuer $ENVFILE konnte nicht angelegt werden; $key wird nicht geschrieben."
+  {
+    if [[ -n "$content" ]]; then
+      while IFS= read -r line; do
+        if [[ "$line" == "${key}="* ]]; then
+          printf '%s=%s\n' "$key" "$value"
+          found=1
+        else
+          printf '%s\n' "$line"
+        fi
+      done <<<"${content%$'\n'}"
+    fi
+    if (( found == 0 )); then printf '%s=%s\n' "$key" "$value"; fi
+  } >"$tmp" || { rm -f -- "$tmp"; die "$ENVFILE konnte nicht geschrieben werden; $key bleibt unveraendert."; }
+  chmod 0600 "$tmp" || { rm -f -- "$tmp"; die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."; }
+  mv -f -- "$tmp" "$ENVFILE" || { rm -f -- "$tmp"; die "$ENVFILE konnte nicht ersetzt werden; $key bleibt unveraendert."; }
   chmod 0600 "$ENVFILE" || die "Dateirechte fuer $ENVFILE konnten nicht auf 0600 gesetzt werden."
 }
 

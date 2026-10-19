@@ -715,6 +715,14 @@ test_env_read_errors_never_look_like_missing_values() {
       fi
       command grep "$@"
     }
+    # set_env liest die Datei mit cat (Wert nie in einer Kommandozeile).
+    cat() {
+      if [[ "${!#}" == "$ENVFILE" ]]; then
+        printf 'cat: %s: Eingabe-/Ausgabefehler\n' "$ENVFILE" >&2
+        return 1
+      fi
+      command cat "$@"
+    }
   }
 
   rc=0
@@ -729,7 +737,7 @@ test_env_read_errors_never_look_like_missing_values() {
   if ( failing_reads; set_env AUTH_SECRET replaced-value ) >"$out" 2>&1; then
     test_fail "set_env wrote although .env was unreadable"
   fi
-  assert_contains "$out" "konnte nicht gelesen werden (grep-Exit 2); AUTH_SECRET wird nicht geschrieben."
+  assert_contains "$out" "konnte nicht gelesen werden (cat-Exit 1); AUTH_SECRET wird nicht geschrieben."
   cmp -s "$env_file" "$env_file.before" || test_fail "a read error changed .env"
 
   # Normalfall unveraendert: Wert, fehlender Schluessel (leer, rc 0), Anfuegen.
@@ -5041,6 +5049,46 @@ test_secret_files_are_mode_0600() {
   pass "operator secrets use mode 0600/umask 077 without host-side S3 copy"
 }
 
+# Externe Programme, die set_env frueher oder heute aufrufen kann, werden durch
+# Spione ersetzt, die ihre Kommandozeile protokollieren und dann das echte
+# Programm ausfuehren. Ein Wert in einer Kommandozeile ist fuer jeden lokalen
+# Benutzer in der Prozessliste lesbar (TCMS Stufe 2).
+install_argv_spies() {
+  local dir="$1" log="$2" name real
+  shift 2
+  mkdir -p "$dir"
+  for name in "$@"; do
+    real="$(command -v "$name")" || continue
+    printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" %q "$*" >>%q\nexec %q "$@"\n' \
+      "$name" "$log" "$real" >"$dir/$name"
+    chmod +x "$dir/$name"
+  done
+}
+
+test_set_env_keeps_values_out_of_process_arguments() {
+  local env_file="$TMP_DIR/argv-safe.env" spies="$TMP_DIR/argv-spies" log="$TMP_DIR/argv-spies.log"
+  local secret="wegwerf-Geheimnis|mit&Sonderzeichen/und\\Backslash-0123456789"
+  printf 'A=1\nTOKEN=alt\r\nB=2\n' >"$env_file"
+  : >"$log"
+  install_argv_spies "$spies" "$log" sed grep awk cat mv chmod mktemp tr head cut rm
+  (
+    PATH="$spies:$PATH"
+    ENVFILE="$env_file"
+    set_env TOKEN "$secret"
+    set_env NEU "$secret"
+  )
+  assert_not_contains "$log" "wegwerf-Geheimnis"
+  [[ "$(grep -c '' "$log")" -gt 0 ]] || test_fail "argv spies were not used; test would prove nothing"
+  [[ "$(grep -E '^TOKEN=' "$env_file" | cut -d= -f2-)" == "$secret" ]] || test_fail "replaced value is not literal"
+  [[ "$(grep -E '^NEU=' "$env_file" | cut -d= -f2-)" == "$secret" ]] || test_fail "appended value is not literal"
+  assert_file_equals "$env_file" "$(printf 'A=1\nTOKEN=%s\nB=2\nNEU=%s' "$secret" "$secret")"
+  [[ "$(file_mode "$env_file")" == "600" ]] || test_fail ".env mode is not 0600 after set_env"
+  if ( ENVFILE="$env_file"; set_env BAD "$(printf 'a\nb')" ) >/dev/null 2>&1; then
+    test_fail "set_env accepted a value with a line break"
+  fi
+  pass "set_env writes values literally without passing them to any external program"
+}
+
 test_ensure_secret_reports_known_dev_defaults() {
   local env_file="$TMP_DIR/weak-defaults.env" out="$TMP_DIR/weak-defaults.out"
   printf 'N8N_HMAC_SECRET=dev-only-hmac-secret-min-32-chars-long-xxx\nAUTH_SECRET=\n' >"$env_file"
@@ -5202,6 +5250,7 @@ run_test test_inherited_internal_authorization_is_sanitized
 run_test test_identical_redeploy_preserves_previous_state
 run_test test_min_previous_without_state_fails_for_existing_installation
 run_test test_secret_files_are_mode_0600
+run_test test_set_env_keeps_values_out_of_process_arguments
 run_test test_ensure_secret_reports_known_dev_defaults
 
 if (( TESTS_FAILED > 0 )); then
