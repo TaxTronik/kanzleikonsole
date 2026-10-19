@@ -222,7 +222,8 @@ jobs:
       # Ein ESLint-Lauf deckt Lint, React-Compiler-Regeln (error) und die
       # Komplexitaetsschuld je Funktion ab (taxtronik/complexity +
       # eslint-complexity-baseline.json, B-09); davor laufen die Guards
-      # guard:paranoid-e2e und guard:complexity (Regressionstests der Regel).
+      # guard:paranoid-e2e und guard:complexity (Regressionstests der Regel)
+      # sowie guard:tcms-contract (vendored TCMS-Vertrag = VENDOR.json).
       - name: Lint
         run: pnpm lint
 

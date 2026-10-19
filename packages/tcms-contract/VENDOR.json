@@ -1,0 +1,50 @@
+{
+  "beschreibung": "Exakte Kopie von packages/contract/src des TCMS-Repos ohne Tests. Nicht von Hand ändern: Aktualisieren mit scripts/tcms/sync-contract.mjs, Prüfung mit scripts/check-tcms-contract-vendor.mjs (docs/development/tcms-anbindung.md).",
+  "quelle": {
+    "repo": "tcms",
+    "pfad": "packages/contract/src",
+    "commit": "28eb850b4fae6f1e01f36099f825d14622dbca75"
+  },
+  "dateien": [
+    {
+      "pfad": "akteur.ts",
+      "sha256": "7d5ca329d7b767f0a64f255691d6c70843a298b18fffaa953bd359b0e6483ed3"
+    },
+    {
+      "pfad": "bereiche/durchfuehrung.ts",
+      "sha256": "3f768313f9e5e54a29728ad3672dbafcf856ddbcfe6cd53a4bb3e2982e4ac1ae"
+    },
+    {
+      "pfad": "bereiche/feststellungen-ereignisse.ts",
+      "sha256": "c5c86418840c0fc781f0b5a2770f2e9fd945146272288d65d3ec16105e5a2703"
+    },
+    {
+      "pfad": "bereiche/lesepfade.ts",
+      "sha256": "17b9afed01718752fde2d59ff3b3cf61d68f5b0cc02273a3c409c97a86ed1178"
+    },
+    {
+      "pfad": "bereiche/programm-beschreibung.ts",
+      "sha256": "a5bcae72cd7be7390dc32d908f021e12884434c06ae5a7860396d7edc05347ef"
+    },
+    {
+      "pfad": "bereiche/risiken-kontrollen.ts",
+      "sha256": "f0e8273064bdcc6a837d9a7434010c46baa0b17c77f08bfd5779429c9bdc4b36"
+    },
+    {
+      "pfad": "fehler.ts",
+      "sha256": "6592c6e95bcca90a1bb6e9c3a47dab5a00eb80724ca92da48616549662645450"
+    },
+    {
+      "pfad": "index.ts",
+      "sha256": "47e59a73fe71c39e4ddc7e3b28d0e43980312f9e0a4e2c668becb430528fc6fa"
+    },
+    {
+      "pfad": "json.ts",
+      "sha256": "8bebba9fea4599875b4bb0fedf7b9555cc1afb4f17ad5a809adb82f2dd2cbb8c"
+    },
+    {
+      "pfad": "signatur.ts",
+      "sha256": "046752a90e5a83fc2f60ad614e54bfcb0a3556b29d07f0936b4fa2e2a38c44b5"
+    }
+  ]
+}

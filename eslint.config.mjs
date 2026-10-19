@@ -176,6 +176,11 @@ export default [
       '.VSCodeCounter/**',
       'DEMODATEN/**',
       'infra/compose/.volumes/**',
+      // Vendored TCMS-Vertrag (TCMS Stufe 2): byte-genaue Kopie aus dem TCMS-Repo,
+      // dort mit dessen Lint-/Testregeln geprüft. Hier sichert
+      // scripts/check-tcms-contract-vendor.mjs (pnpm lint) die Unverändertheit;
+      // lokale Lint-Korrekturen würden die Kopie verfälschen.
+      'packages/tcms-contract/src/**',
     ],
   },
   js.configs.recommended,

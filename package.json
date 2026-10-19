@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "lint": "pnpm guard:paranoid-e2e && pnpm guard:complexity && eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/",
+    "lint": "pnpm guard:paranoid-e2e && pnpm guard:complexity && pnpm guard:tcms-contract && eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/",
     "lint:prune-complexity": "node scripts/eslint/complexity-baseline.mjs --prune",
     "lint:complexity-baseline": "node scripts/eslint/complexity-baseline.mjs --write",
     "typecheck": "turbo run typecheck && pnpm typecheck:scripts",
@@ -46,6 +46,7 @@
     "guard:datev": "sh scripts/check-no-real-datev.sh",
     "guard:paranoid-e2e": "node --test scripts/tests/check-paranoid-e2e.test.mjs && node scripts/check-paranoid-e2e.mjs",
     "guard:complexity": "node --test scripts/tests/complexity-baseline.test.mjs",
+    "guard:tcms-contract": "node --test scripts/tests/check-tcms-contract-vendor.test.mjs && node scripts/check-tcms-contract-vendor.mjs",
     "guard:no-focused-tests": "sh scripts/check-no-focused-tests.sh",
     "guard:ci-images": "sh scripts/check-ci-images-pinned.sh",
     "guard:docker-bases": "node scripts/check-docker-bases-pinned.mjs",

@@ -72,6 +72,7 @@ Release-Wegs. Die tatsächliche Durchführung ist jeweils separat zu belegen.
 | [Barrierefreiheit](assurance/barrierefreiheit.md)             | Ist-/Gap-Dokumentation | WCAG-2.2-AA-Ziel, technische Gates, manuellen Prüfumfang und Grenzen prüfen |
 | [Technische Modulbeschreibungen](development/module/)         | Ist-Dokumentation      | Zugriffsschutz, Archiv, Fakturierung, Audit und Backup im Detail prüfen     |
 | [pnpm-Workspace-Layout](development/workspace-injection.md)   | Entwicklerhinweis      | Symlink-Layout, Deklarationspflicht und Umstellung alter Kopien             |
+| [TCMS-Anbindung](development/tcms-anbindung.md)               | Ist-Dokumentation      | TCMS-Vertrag, Konfiguration, Client, Akteursabbildung, Vertragstest         |
 
 Die [ERiC-Integrationsregeln](development/eric-integration.md) enthalten
 verbindliche Umgangsregeln und Architekturvorgaben, aber keine Behauptung über
