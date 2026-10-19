@@ -23,6 +23,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- **[TCMS]** Anbindung des Tax-CMS als interner headless Dienst, Stufe 2 (noch
+  ohne Oberfläche): geprüfte Kopie des TCMS-Vertrags (`packages/tcms-contract`,
+  `VENDOR.json`, Guard `guard:tcms-contract`), Konfiguration `TCMS_*` mit
+  Härtungsregeln, signierender Client `@taxtronik/tcms-client`,
+  Akteursabbildung aus der geprüften Sitzung, Modul „Tax-CMS“ (Standard aus)
+  mit Gate in Web und Worker, Health-Check und Vertragstest gegen den echten
+  Dienst (`docs/development/tcms-anbindung.md`).
+- **[TCMS]** Betrieb des Tax-CMS im Modus „verwaltet“: eigenes Compose-Profil
+  mit eigener Datenbank, `./taxtronik tcms setup|status|rotate-token|rotate-key|disable|backup|restore`
+  mit Rotation in Überlappung, TCMS-Prüfungen in `doctor`, TCMS-Datenbank in
+  Backup, Update-Pflichtbackup und Restore (`docs/operations/tcms-betrieb.md`).
+
 - Mandanten-Mails bei Terminänderung oder -absage: Im Bearbeiten- und
   Absagen-Dialog des Kanzleikalenders kann die Kanzlei den Mandanten per
   E-Mail informieren (vorausgewählt bei erreichbarem Kontakt, sonst mit Grund
@@ -309,6 +321,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Release-Evidence ordnen die Nachweise nach Zielgruppe und Dokumenttyp.
 
 ### Geändert
+
+- Circuit-Breaker und Retry der internen Dienst-Clients liegen jetzt in
+  `@taxtronik/http-utils/resilience` (gemeinsam für Risk-Layer und TCMS);
+  4xx-Antworten zählen dort optional nicht als Ausfall. Das Verhalten des
+  Risk-Layers ist unverändert.
+- deploy, update und rollback binden die TCMS-Images an den signierten
+  Release-Stand (`infra/compose/tcms-release.env`); der Release-Workflow prüft
+  die Pins gegen die Registry, `update` bricht ab, wenn das TCMS-Pflichtbackup
+  scheitert, und die Einrichtung fragt den TCMS-Modus ab.
 
 - Abhängigkeiten: `undici` in `@taxtronik/http-utils` von 8.10.2 auf 8.11.2,
   dieselbe Version, die `jsdom` (Testumgebung) verlangt. Mit zwei Versionen
@@ -1028,6 +1049,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   nicht länger als bereits erbrachte Nachweise.
 
 ### Behoben
+
+- Betrieb: Starts der TCMS-Dienste und der Signal-Engine ohne App/Worker werden
+  während einer offenen Migration nicht mehr fälschlich vom Writer-Guard
+  blockiert.
 
 - **[Scope]** Restore: Datenbankbezogene Rolleneinstellungen
   (`lock_timeout` der App-Rolle), die `pg_dump` nicht sichert, werden vor
@@ -1757,6 +1782,21 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   die Cookie-Löschung (`0c1f8174`).
 
 ### Sicherheit
+
+- **[TCMS]** Anbindung des Tax-CMS mit je Anfrage einer an Methode, Pfad,
+  Query und Body gebundenen, einmaligen Ed25519-Akteursbestätigung (höchstens
+  60 s gültig) plus Dienst-Token. Mandantenbezüge werden nur im Umfang von
+  `ACCESS-CLIENT-MODE-001` bestätigt; inaktive Personen, veraltete Sitzungen
+  und fremde Tenants erhalten keine Bestätigung. Antworten sind auf 8 MiB
+  begrenzt, Redirects verboten, Rohkörper erscheinen nie in Fehlern oder Logs;
+  in Produktion nur https (Ausnahme: verwalteter Compose-Dienst).
+- **[TCMS]** Der verwaltete Dienst läuft in zwei internen Netzen: App und
+  Worker erreichen nur die TCMS-API, nie deren Datenbank. Images sind per
+  Digest an den signierten Release-Stand gebunden; Token, Schlüssel und
+  Passwörter gehen nur über stdin oder das Prozess-Env, nie über argv.
+- Betrieb: `set_env` übergibt `.env`-Werte nicht mehr in der
+  sed-Kommandozeile (sichtbar in Prozesslisten); `.env` wird atomar mit 0600
+  geschrieben.
 
 - Subsumtion: Die Textübernahme eines Mandanten-Dokuments liest nur noch die
   neueste Fassung mit abgeschlossenem, sauberem Virenscan; bei laufender

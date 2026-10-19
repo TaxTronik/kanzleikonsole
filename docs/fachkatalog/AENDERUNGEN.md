@@ -1,5 +1,49 @@
 ---
 exceptions:
+  - id: FK-EXC-20261019-001
+    date: '2026-10-19'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - .forgejo/workflows/release.yml
+      - apps/web/next.config.mjs
+      - apps/web/src/app/staff/(protected)/admin/settings/modules-actions.ts
+      - apps/web/src/server/settings/modules.ts
+      - packages/http-utils/src/index.ts
+      - scripts/release/tests/verify-tcms-pins.test.sh
+      - scripts/release/verify-tcms-pins.sh
+    rule_ids:
+      - ACCESS-CLIENT-MODE-001
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-HASH-CHAIN-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - MAIL-INBOX-001
+      - TCMS-SAMPLE-PROOF-001
+    reason: >-
+      Anbindung des Tax-CMS als interner Dienst (TCMS Stufe 2), ohne fachliche
+      Logik und ohne Oberfläche: ci.yml erhält nur einen Kommentar zum neuen
+      Guard guard:tcms-contract; next.config.mjs transpiliert zwei neue
+      Workspace-Pakete; modules.ts und modules-actions.ts führen den
+      Modulschalter tcms (Standard aus) wie die übrigen booleschen Module,
+      Zugriffsmodell und Audit in derselben Transaktion bleiben unverändert;
+      http-utils/index.ts erhält nur einen Kopfkommentar (SSRF-Guard und
+      safeFetch unverändert); release.yml und verify-tcms-pins.sh prüfen die
+      TCMS-Image-Digests aus infra/compose/tcms-release.env als weiteres
+      Release-Artefakt gegen die Registry, Signaturkette und Release-Gates
+      bleiben gleich (Bash-Test scripts/release/tests/verify-tcms-pins.test.sh
+      in test:ops). Entscheidung, Geltungsbereich, Ausnahmen und Ergebnis der
+      Regeln ändern sich nicht. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/__tests__/next-workspace-transpilation.test.ts
+      - apps/web/src/app/staff/(protected)/admin/settings/__tests__/settings-form-parsing.test.ts
+      - apps/web/src/server/actions/__tests__/module-action-gates.test.ts
+      - apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts
+      - packages/http-utils/src/__tests__/resilience.test.ts
+      - scripts/tests/ci-caches.test.mjs
+      - scripts/tests/db-suites-ci.test.mjs
+      - scripts/tests/tcms-compose.test.mjs
+      - scripts/tests/turbo-pipeline.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261014-002
     date: '2026-10-14'
     paths:
