@@ -382,16 +382,31 @@ export type NachweisAbgleich = 'OK' | 'ABWEICHUNG' | 'FEHLT';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Stand der Nachweise in der eigenen Ablage: Abgleich und Dateiname je Nachweis-ID. */
+export interface NachweisAblageStand {
+  abgleich: Map<string, NachweisAbgleich>;
+  /**
+   * RT3B-K-04: Dateiname aus der eigenen Ablage (Titel und Typ des Dokuments,
+   * wie beim Bilden des Verweises bereinigt) – nur für Nachweise, deren
+   * Dokument gefunden wurde. Die Anzeige nimmt ihn statt des Dateinamens aus
+   * der Antwort des Dienstes.
+   */
+  dateinamen: Map<string, string>;
+}
+
 /**
  * Abgleich je Nachweis: Dokument dieses Mandanten vorhanden (nicht gelöscht,
- * neueste Version sauber) und SHA-256/Größe gleich dem Verweis. Die Seite
- * zeigt danach Download, Abweichung oder „nicht verfügbar“.
+ * neueste Version sauber) und SHA-256/Größe gleich dem Verweis, mit
+ * `mitDateinamen` dazu der Dateiname aus der Ablage. `nurFreigegeben`
+ * (Portal): nur für den Mandanten freigegebene Dokumente, wie bei der
+ * Auslieferung im Portal (DOC-PORTAL-SHARING-001).
  */
-export async function nachweisAbgleichTx(
+export async function nachweisAblageStandTx(
   tx: TxClient,
   bezug: Pick<NachweisBezug, 'tenantId' | 'mandantId'>,
   nachweise: ReadonlyArray<{ id: string; dokumentId: string; sha256: string; groesse: number }>,
-): Promise<Map<string, NachweisAbgleich>> {
+  optionen: { nurFreigegeben?: boolean; mitDateinamen?: boolean } = {},
+): Promise<NachweisAblageStand> {
   const ids = [...new Set(nachweise.map((n) => n.dokumentId).filter((id) => UUID.test(id)))];
   const dokumente =
     ids.length === 0
@@ -402,9 +417,12 @@ export async function nachweisAbgleichTx(
             tenantId: bezug.tenantId,
             clientId: bezug.mandantId,
             deletedAt: null,
+            ...(optionen.nurFreigegeben ? { sharedWithClientAt: { not: null } } : {}),
           },
           select: {
             id: true,
+            title: optionen.mitDateinamen === true,
+            mimeType: optionen.mitDateinamen === true,
             versions: {
               orderBy: { versionNo: 'desc' },
               take: 1,
@@ -412,17 +430,35 @@ export async function nachweisAbgleichTx(
             },
           },
         });
-  const je = new Map(dokumente.map((d) => [d.id.toLowerCase(), d.versions[0]]));
-  const ergebnis = new Map<string, NachweisAbgleich>();
+  const je = new Map(dokumente.map((d) => [d.id.toLowerCase(), d]));
+  const abgleich = new Map<string, NachweisAbgleich>();
+  const dateinamen = new Map<string, string>();
   for (const n of nachweise) {
-    const version = UUID.test(n.dokumentId) ? je.get(n.dokumentId.toLowerCase()) : undefined;
-    if (!version || !isDocumentVersionReady(version)) ergebnis.set(n.id, 'FEHLT');
+    const dokument = UUID.test(n.dokumentId) ? je.get(n.dokumentId.toLowerCase()) : undefined;
+    if (dokument && optionen.mitDateinamen) {
+      dateinamen.set(n.id, nachweisDateiname(dokument.title, dokument.mimeType));
+    }
+    const version = dokument?.versions[0];
+    if (!version || !isDocumentVersionReady(version)) abgleich.set(n.id, 'FEHLT');
     else if (
       Buffer.from(version.sha256).toString('hex') !== n.sha256.toLowerCase() ||
       Number(version.sizeBytes) !== n.groesse
     ) {
-      ergebnis.set(n.id, 'ABWEICHUNG');
-    } else ergebnis.set(n.id, 'OK');
+      abgleich.set(n.id, 'ABWEICHUNG');
+    } else abgleich.set(n.id, 'OK');
   }
-  return ergebnis;
+  return { abgleich, dateinamen };
+}
+
+/**
+ * Abgleich je Nachweis (siehe nachweisAblageStandTx). Die Seite zeigt danach
+ * Download, Abweichung oder „nicht verfügbar“; die Route prüft vor jeder
+ * Auslieferung selbst.
+ */
+export async function nachweisAbgleichTx(
+  tx: TxClient,
+  bezug: Pick<NachweisBezug, 'tenantId' | 'mandantId'>,
+  nachweise: ReadonlyArray<{ id: string; dokumentId: string; sha256: string; groesse: number }>,
+): Promise<Map<string, NachweisAbgleich>> {
+  return (await nachweisAblageStandTx(tx, bezug, nachweise)).abgleich;
 }

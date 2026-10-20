@@ -44,6 +44,7 @@ import { canAccessClientTx } from '@/server/auth/rbac';
 import { runJournaledUpload, uploadFailureCause } from '@/server/documents/journaled-upload';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
 import { log } from '@/server/logger';
+import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
 import type { TcmsDienst } from '@/server/tcms/aktion';
 import { TcmsInaktivError } from '@/server/tcms/dienst';
 import {
@@ -243,7 +244,8 @@ export function vorhandenerNachweis(
       (merkmal.dokumentId !== undefined &&
         n.dokumentId.toLowerCase() === merkmal.dokumentId.toLowerCase()),
   );
-  return treffer ? treffer.dateiname : null;
+  // RT3B-K-04: Dateiname des Dienstes nur bereinigt (Zeichenregel) in die Meldung.
+  return treffer ? tcmsTextBereinigen(treffer.dateiname, 'DATEINAME', 255) || 'Datei' : null;
 }
 
 // ---------------------------------------------------------------------------

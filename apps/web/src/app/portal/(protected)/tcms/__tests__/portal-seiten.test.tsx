@@ -18,6 +18,8 @@ const h = vi.hoisted(() => ({
   lesen: vi.fn(),
   namen: vi.fn(),
   ansprech: vi.fn(),
+  /** Dokumente der eigenen Ablage (Dateinamen der Anlagen, RT3B-K-04). */
+  dokumente: vi.fn(),
   upload: true,
 }));
 
@@ -38,7 +40,8 @@ vi.mock('@/server/tcms/seite', () => ({
   tcmsPortalSeite: h.seite,
   tcmsLesen: h.lesen,
   tcmsNamenLesen: h.namen,
-  tcmsTenantLesen: (_seite: unknown, f: (tx: unknown) => unknown) => f({}),
+  tcmsTenantLesen: (_seite: unknown, f: (tx: unknown) => unknown) =>
+    f({ document: { findMany: h.dokumente } }),
 }));
 vi.mock('@/server/tcms/portal/ansprechpartner', () => ({ ansprechpersonenTx: h.ansprech }));
 vi.mock('@/server/settings/portal-features', () => ({
@@ -92,6 +95,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   document.body.innerHTML = '';
   h.upload = true;
+  h.dokumente.mockResolvedValue([]);
   h.namen.mockImplementation(async () => ({
     name: (id: string | null) => (id ? (NAMEN[id] ?? UNBEKANNTE_PERSON) : KEINE_PERSON),
     bekannt: (id: string | null) => !!id && id in NAMEN,
@@ -138,6 +142,38 @@ describe('Kontrollaufgabe im Portal', () => {
     }
     expect(screen.getByLabelText('Dateien auswählen')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /Entfernen/ })).toHaveLength(2);
+  });
+
+  it('RT3B-K-04: Dateinamen der Anlagen aus der eigenen Ablage, sonst bereinigt – nie der Dienstwert', async () => {
+    const [eins, zwei] = aufgabe.nachweise;
+    eins!.dateiname = 'Rechnung\u202efdp.exe';
+    zwei!.dateiname = 'Liste\u2066/../\u2069x.csv';
+    h.dokumente.mockResolvedValue([
+      {
+        id: eins!.dokumentId.toLowerCase(),
+        title: 'Kassenbericht Oktober',
+        mimeType: 'application/pdf',
+        versions: [],
+      },
+    ]);
+    await seite();
+    // Nur freigegebene Dokumente des Sitzungsmandanten (wie die Auslieferung im Portal).
+    expect(h.dokumente).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          clientId: DEMO.talwind,
+          deletedAt: null,
+          sharedWithClientAt: { not: null },
+        }),
+      }),
+    );
+    const html = document.body.innerHTML;
+    expect(html).not.toMatch(/[\u202a-\u202e\u2066-\u2069]/);
+    expect(
+      screen.getAllByRole('link', { name: /Kassenbericht Oktober\.pdf/ })[0]!.getAttribute('href'),
+    ).toBe(`/api/portal/tcms/aufgaben/${AUFGABE}/anlagen/${eins!.id}`);
+    expect(html).not.toContain('fdp.exe');
+    expect(screen.getAllByRole('link', { name: /Liste_\.\._x\.csv/ }).length).toBeGreaterThan(0);
   });
 
   it('Kennzahlen laut Dienst (TCMS s7): Differenz und Lage statt „wird berechnet“', async () => {

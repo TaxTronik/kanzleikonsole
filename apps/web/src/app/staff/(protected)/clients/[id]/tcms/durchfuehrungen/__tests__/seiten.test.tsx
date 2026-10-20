@@ -86,6 +86,7 @@ type Kanzlei = {
     erstelltAm: string;
   }>;
   berufstraeger: string[];
+  dateinamen?: Map<string, string>;
 };
 let kanzlei: Kanzlei;
 
@@ -206,6 +207,21 @@ describe('Kontrolldurchführung', () => {
     // Daten der kanzleikonsole: Abgleich und Dokumente nur dieses Mandanten.
     expect(h.tenantLesen).toHaveBeenCalledOnce();
     expect(h.lesen.mock.calls[0]![2]).toEqual({ params: { durchfuehrungId: d.id }, query: {} });
+  });
+
+  it('RT3B-K-04: Dateiname des Nachweises aus der eigenen Ablage, auch am Entfernen', async () => {
+    const d = tcmsFixtures.durchfuehrungInDurchfuehrung();
+    d.nachweise[0]!.dateiname = 'Rechnung\u202efdp.exe';
+    durchfuehrung(d);
+    kanzlei.abgleich = new Map([[d.nachweise[0]!.id, 'OK']]);
+    kanzlei.dateinamen = new Map([[d.nachweise[0]!.id, 'Kassenbericht Oktober.pdf']]);
+    const { container } = await detail(d.id);
+    const nachweise = screen.getByRole('region', { name: 'Nachweise' });
+    expect(within(nachweise).getByRole('link', { name: 'Kassenbericht Oktober.pdf' })).toBeTruthy();
+    expect(
+      within(nachweise).getByRole('button', { name: /Entfernen.*Kassenbericht Oktober\.pdf/ }),
+    ).toBeTruthy();
+    expect(container.innerHTML).not.toContain('fdp.exe');
   });
 
   it('Abweichung oder fehlendes Dokument: kein Abruf, sichtbarer Hinweis', async () => {

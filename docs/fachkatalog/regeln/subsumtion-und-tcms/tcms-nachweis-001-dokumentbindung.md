@@ -73,6 +73,11 @@ code_refs:
   - packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql
   - packages/db/prisma/migrations/20261020100100_tcms_document_version_lock/migration.sql
   - packages/db/src/database-error.ts
+  - apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx
+  - apps/web/src/components/tcms/portal/anlagen.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/ansicht.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/ereignisse/triage.tsx
+  - apps/web/src/app/portal/(protected)/tcms/aufgaben/[id]/page.tsx
 test_refs:
   - apps/web/src/server/tcms/__tests__/nachweis-verweis-db.test.ts
   - apps/web/src/server/tcms/__tests__/bereich-c-live.test.tsx
@@ -94,6 +99,9 @@ test_refs:
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts
   - packages/db/src/__tests__/tcms-document-reference-guards.test.ts
   - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
+  - apps/web/src/components/tcms/durchfuehrung/__tests__/nachweis-liste.test.tsx
+  - apps/web/src/app/portal/(protected)/tcms/__tests__/portal-seiten.test.tsx
+  - apps/web/src/server/tcms/__tests__/redteam-boeser-dienst-db.test.tsx
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md
@@ -287,6 +295,11 @@ der Dokumentsperre ab, vor Klassifikation und Frist, und damit auch
 `app.destroy_gwg_document_versions`. Alle diese Sperren meldet die Datenbank
 mit SQLSTATE 23001 und dem Marker „als Nachweis im Tax-CMS verknüpft“
 (`database-error.ts`: `TCMS_EVIDENCE_LOCKED`).
+Den Dateinamen eines Nachweises bzw. einer Portal-Anlage zeigt die
+kanzleikonsole aus der eigenen Ablage (Titel und Typ des gebundenen
+Dokuments, `nachweisAblageStandTx`; im Portal nur freigegebene Dokumente des
+Sitzungsmandanten), nicht aus der Antwort des Tax-CMS; ohne Dokument nur den
+nach der Zeichenregel bereinigten Wert des Dienstes (RT3B-K-04).
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -361,6 +374,11 @@ Umklassifizierung der Ablage mit Grund ohne Speicherzugriff, Claim und
 DB-Vernichtung, nebenläufiges Verknüpfen und Umklassifizieren),
 `redteam-dokumente-db.test.ts` (Angriffe K-01a bis K-01c),
 `retag-race.test.ts` (kein Re-Store mit neuer Version, keine Bytes gelesen),
+für RT3B-K-04 `nachweis-liste.test.tsx`, `seiten.test.tsx` der
+Durchführungen, `portal-seiten.test.tsx` und `redteam-boeser-dienst-db.test.tsx`
+(Name aus der Ablage, sonst bereinigt, nie der Dienstwert) sowie
+`nachweis-bindung-db.test.ts` (Namen nur aus Dokumenten des Mandanten, im
+Portal nur freigegebene),
 für die Härtung D3 `nachweis-bindung-db.test.ts` (neue Version für App- und
 Owner-Rolle gesperrt, nach der Freigabe möglich, nebenläufig mit dem
 Verknüpfen in beiden Reihenfolgen) und `route-poa-lock.test.ts` (Abbildung

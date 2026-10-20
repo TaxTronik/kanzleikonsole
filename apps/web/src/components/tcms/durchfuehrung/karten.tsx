@@ -31,7 +31,7 @@ import {
   type DokumentWahl,
   type TcmsFormAktion,
 } from './formulare';
-import { NachweisListe, type NachweisZustand } from './nachweis-liste';
+import { NachweisListe, nachweisAnzeigename, type NachweisZustand } from './nachweis-liste';
 
 /** Abgleich eines Nachweises mit der Ablage (aus verweis.ts, hier als Anzeige). */
 export type { NachweisZustand } from './nachweis-liste';
@@ -66,6 +66,7 @@ export function NachweiseKarte({
   d,
   namen,
   abgleich,
+  dateinamen,
   downloadHref,
   bedienung,
   gesperrtText,
@@ -73,6 +74,8 @@ export function NachweiseKarte({
   d: DurchfuehrungDetail;
   namen: TcmsNamen;
   abgleich: ReadonlyMap<string, NachweisZustand>;
+  /** Dateinamen aus der eigenen Ablage (RT3B-K-04). */
+  dateinamen?: ReadonlyMap<string, string>;
   downloadHref: (nachweisId: string) => string;
   bedienung: NachweisBedienung;
   gesperrtText: string;
@@ -89,13 +92,14 @@ export function NachweiseKarte({
       namen={namen}
       abrufHref={downloadHref}
       abgleich={abgleich}
+      dateinamen={dateinamen}
       aenderbarBis="Einreichen"
       entfernen={(n) =>
         !n.gesperrt && bedienung.erlaubt && d.status !== 'GEPLANT' ? (
           <NachweisEntfernenKnopf
             action={bedienung.entfernen}
             nachweisId={n.id}
-            dateiname={n.dateiname}
+            dateiname={nachweisAnzeigename(n, dateinamen)}
           />
         ) : null
       }

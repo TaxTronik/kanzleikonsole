@@ -9,6 +9,8 @@
 //     liefert nach dem SHA-256-Abgleich aus.
 //   - Entfernen nur über das Bedienelement der Seite (Recht und Sperre laut
 //     Dienst entscheidet die Seite).
+//   - Dateinamen aus der eigenen Ablage; ohne Dokument der Dienstwert nur
+//     bereinigt (RT3B-K-04).
 // Fachkatalog: TCMS-NACHWEIS-001
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
@@ -67,6 +69,23 @@ describe('NachweisListe', () => {
     expect(within(region).getByText('Abweichung zur Ablage – nicht abrufbar')).toBeTruthy();
     expect(within(region).getByText('Dokument in der Ablage nicht verfügbar')).toBeTruthy();
     expect(within(region).getByRole('heading', { level: 3, name: 'Nachweise' })).toBeTruthy();
+  });
+
+  it('RT3B-K-04: Dateiname aus der eigenen Ablage; ohne Ablage nur bereinigt, nie der Dienstwert', () => {
+    const [a, b] = nachweise;
+    const boese = [
+      { ...a!, dateiname: 'Rechnung\u202efdp.exe' },
+      { ...b!, dateiname: 'Liste\u2066/../\u2069x.csv\u200b' },
+    ];
+    const { container } = liste(boese, {
+      dateinamen: new Map([[a!.id, 'Kassenbericht Oktober.pdf']]),
+    });
+    const html = container.innerHTML;
+    // Steuer-, Format- und Richtungszeichen des Dienstes erreichen die Seite nicht.
+    expect(html).not.toMatch(/[\u200b\u202a-\u202e\u2066-\u2069]/);
+    expect(html).not.toContain('fdp.exe');
+    expect(screen.getAllByRole('link', { name: /Kassenbericht Oktober\.pdf/ })).toHaveLength(2);
+    expect(screen.getAllByRole('link', { name: /Liste_\.\._x\.csv/ })).toHaveLength(2);
   });
 
   it('Entfernen nur, wo die Seite ein Bedienelement liefert; Sperre sichtbar', () => {

@@ -632,6 +632,7 @@ function Hauptspalte({
           d={d}
           namen={l.namen}
           abgleich={kanzlei.abgleich}
+          dateinamen={kanzlei.dateinamen}
           downloadHref={(n) =>
             `/api/staff/clients/${mandant}/tcms/nachweise/${encodeURIComponent(n)}`
           }

@@ -9,7 +9,7 @@
 import type { TxClient } from '@taxtronik/db';
 import type { DurchfuehrungDetail } from '@taxtronik/tcms-contract';
 import {
-  nachweisAbgleichTx,
+  nachweisAblageStandTx,
   nachweisDokumenteTx,
   type NachweisAbgleich,
   type NachweisBezug,
@@ -18,6 +18,8 @@ import {
 
 export interface DurchfuehrungKanzleiDaten {
   abgleich: Map<string, NachweisAbgleich>;
+  /** RT3B-K-04: Dateinamen der Nachweise aus der eigenen Ablage (statt aus der Antwort). */
+  dateinamen: Map<string, string>;
   /** Wählbare Dokumente ohne die bereits angehängten (leer, wenn nicht anhängbar). */
   dokumente: NachweisDokumentWahl[];
   /** Staff-IDs der Berufsträger des Mandanten (Anzeige). */
@@ -30,7 +32,9 @@ export async function durchfuehrungKanzleiDatenTx(
   d: Pick<DurchfuehrungDetail, 'nachweise'>,
   optionen: { mitDokumenten: boolean },
 ): Promise<DurchfuehrungKanzleiDaten> {
-  const abgleich = await nachweisAbgleichTx(tx, bezug, d.nachweise);
+  const { abgleich, dateinamen } = await nachweisAblageStandTx(tx, bezug, d.nachweise, {
+    mitDateinamen: true,
+  });
   const angehaengt = new Set(d.nachweise.map((n) => n.dokumentId.toLowerCase()));
   const dokumente = optionen.mitDokumenten
     ? (await nachweisDokumenteTx(tx, bezug)).filter((x) => !angehaengt.has(x.id.toLowerCase()))
@@ -41,5 +45,5 @@ export async function durchfuehrungKanzleiDatenTx(
     orderBy: [{ createdAt: 'asc' }, { staffId: 'asc' }],
     take: 5,
   });
-  return { abgleich, dokumente, berufstraeger: zustaendig.map((z) => z.staffId) };
+  return { abgleich, dateinamen, dokumente, berufstraeger: zustaendig.map((z) => z.staffId) };
 }

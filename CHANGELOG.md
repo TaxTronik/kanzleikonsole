@@ -1894,6 +1894,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   SMTP-Antwortcode: Ein Provider, der beim Abweisen den Mailinhalt
   zurückgibt, brachte sonst Bestätigungscodes oder Adressen ins Worker-Log
   (RT3B-K-03, MAIL-OUTBOX-001).
+- **[TCMS]** Dateinamen von Nachweisen und Portal-Anlagen stammen in der
+  Anzeige aus der eigenen Dokumentablage, nicht aus der Antwort des Tax-CMS;
+  ohne Dokument wird der Wert des Dienstes nach der Zeichenregel bereinigt.
+  Ein kompromittierter Dienst kann so keinen Namen wie „Rechnung[U+202E]fdp.exe“
+  vortäuschen (RT3B-K-04, TCMS-NACHWEIS-001).
 - **[TCMS]** Neue Versionen eines im Tax-CMS gebundenen Dokuments sperrt
   jetzt auch die Datenbank für jede Rolle, nicht nur die Versions-Route; die
   Route meldet die Ablehnung der Datenbank wie ihre eigene Prüfung (409

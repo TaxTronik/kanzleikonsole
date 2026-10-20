@@ -42,6 +42,7 @@ import { FolgeZeile, VorschlagZeile, type PersonOption } from '@/components/tcms
 import { quelleText, typInfo, typKurz } from '@/components/tcms/ereignisse/texte';
 import type { TcmsNamen } from '@/server/tcms/namen';
 import { keinRechtText, type TcmsKeinRechtGrund } from '@/server/tcms/zustand';
+import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
 import {
   ereignisAbschliessenAction,
   ereignisInPruefungNehmenAction,
@@ -116,7 +117,7 @@ function AnlagenBlock({ e, basis }: { e: EreignisDetail; basis: string }) {
               href={`/api${basis}/ereignisse/anlage?e=${encodeURIComponent(e.id)}&h=${a.sha256}`}
               className="text-primary hover:underline break-all"
             >
-              {a.dateiname}
+              {tcmsTextBereinigen(a.dateiname, 'DATEINAME', 255) || 'Datei'}
               <span className="sr-only"> herunterladen</span>
             </a>
             <span className="badge-gray gap-1" title="SHA-256 laut Tax-CMS">

@@ -46,6 +46,7 @@ import { readPortalFeaturesTx } from '@/server/settings/portal-features';
 import { personIdsAus, type TcmsNamen } from '@/server/tcms/namen';
 import { ansprechpersonenTx } from '@/server/tcms/portal/ansprechpartner';
 import { PORTAL_ANLAGEN_GESAMT_BYTES } from '@/server/tcms/portal/anlagen';
+import { nachweisAblageStandTx } from '@/server/tcms/durchfuehrung/verweis';
 import {
   tcmsLesen,
   tcmsNamenLesen,
@@ -93,6 +94,11 @@ interface KanzleiDaten {
   ansprechpersonen: Array<{ id: string; name: string }>;
   kanzleiName: string;
   upload: boolean;
+  /**
+   * RT3B-K-04: Dateinamen der Anlagen aus der eigenen Ablage (nur für den
+   * Mandanten freigegebene Dokumente, wie die Auslieferung im Portal).
+   */
+  dateinamen: ReadonlyMap<string, string>;
 }
 
 /** Namen (kanzleikonsole) und Ansprechpersonen/Portal-Funktionen der Kanzlei. */
@@ -112,9 +118,13 @@ async function ladeKanzleiDaten(
     ),
     tcmsTenantLesen(seite, async (tx) => {
       const bezug = { tenantId: seite.session.user.tenantId, mandantId: seite.mandantId };
-      const [personen, funktionen] = await Promise.all([
+      const [personen, funktionen, ablage] = await Promise.all([
         ansprechpersonenTx(tx, bezug),
         readPortalFeaturesTx(tx, bezug.tenantId),
+        nachweisAblageStandTx(tx, bezug, d.nachweise, {
+          nurFreigegeben: true,
+          mitDateinamen: true,
+        }),
       ]);
       const liste = [personen.berufstraeger, personen.hauptbearbeitung].filter(
         (p, i, alle): p is { id: string; name: string } =>
@@ -124,6 +134,7 @@ async function ladeKanzleiDaten(
         ansprechpersonen: liste,
         kanzleiName: personen.berufstraeger?.name ?? 'Ihre Kanzlei',
         upload: funktionen.documentUpload,
+        dateinamen: ablage.dateinamen,
       };
     }),
   ]);
@@ -137,12 +148,14 @@ function Anlagen({
   namen,
   bearbeitbar,
   upload,
+  dateinamen,
 }: {
   d: Kontrollaufgabe;
   lage: AufgabeLage;
   namen: TcmsNamen;
   bearbeitbar: boolean;
   upload: boolean;
+  dateinamen: ReadonlyMap<string, string>;
 }) {
   const entfernen = Object.fromEntries(
     bearbeitbar && d.status !== 'GEPLANT'
@@ -161,6 +174,7 @@ function Anlagen({
       nachweisText={d.kontrolle.nachweis}
       ausgeblendet={d.nachweiseAusgeblendet}
       namen={namen}
+      dateinamen={dateinamen}
       abruf={(nachweisId) =>
         `/api/portal/tcms/aufgaben/${encodeURIComponent(d.id)}/anlagen/${encodeURIComponent(nachweisId)}`
       }
@@ -232,12 +246,14 @@ function Bearbeitung({
   namen,
   bearbeitbar,
   upload,
+  dateinamen,
 }: {
   d: Kontrollaufgabe;
   lage: AufgabeLage;
   namen: TcmsNamen;
   bearbeitbar: boolean;
   upload: boolean;
+  dateinamen: ReadonlyMap<string, string>;
 }) {
   const k = d.kontrolle;
   const ohneInhalt = lage.historisch && !d.begonnenAm;
@@ -262,7 +278,14 @@ function Bearbeitung({
       }
       fussleiste={lage.offen && !lage.historisch}
       anlagen={
-        <Anlagen d={d} lage={lage} namen={namen} bearbeitbar={bearbeitbar} upload={upload} />
+        <Anlagen
+          d={d}
+          lage={lage}
+          namen={namen}
+          bearbeitbar={bearbeitbar}
+          upload={upload}
+          dateinamen={dateinamen}
+        />
       }
     />
   );
@@ -360,6 +383,7 @@ export default async function PortalKontrollaufgabePage({
             namen={namen}
             bearbeitbar={bearbeitbar}
             upload={kanzlei.upload}
+            dateinamen={kanzlei.dateinamen}
           />
         </div>
         <div className="xl:col-span-4 space-y-4">

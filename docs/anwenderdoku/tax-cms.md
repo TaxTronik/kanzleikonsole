@@ -343,6 +343,7 @@ gesperrte zeigen den Grund. Ein früherer Stichtag zeigt nur an.
 - **Vorhandenes Dokument wählen:** Zur Auswahl stehen gescannte Dokumente
   dieses Mandanten ohne GwG-, Personal- oder Lohnbezug.
 - **Herunterladen:** über die Dokumentablage mit Ihren Rechten in TaxTronik.
+  Der angezeigte Dateiname stammt aus der Dokumentablage.
   Stimmt die gespeicherte Datei nicht mehr mit dem Nachweis überein, wird sie
   nicht ausgeliefert („Abweichung zur Ablage – nicht abrufbar“).
 - **Schutz:** Solange ein Dokument als Nachweis verknüpft ist, lässt es sich

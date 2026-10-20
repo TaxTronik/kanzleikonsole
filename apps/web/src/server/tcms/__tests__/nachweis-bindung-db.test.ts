@@ -54,6 +54,7 @@ vi.mock('@taxtronik/storage', async (original) => ({
 
 import {
   meldungsAnlageVerknuepfenTx,
+  nachweisAblageStandTx,
   NachweisDokumentUnzulaessig,
   nachweisVerknuepfenTx,
   nachweisVerknuepfungBestaetigen,
@@ -527,5 +528,40 @@ const GESPERRT = (was: RegExp) => ({
     await verknuepfen;
     expect(await version).toEqual(GESPERRT(/neue Version gesperrt/));
     expect(await owner.documentVersion.count({ where: { documentId: d.id } })).toBe(1);
+  });
+  it('RT3B-K-04: Dateinamen der Nachweise aus der eigenen Ablage – im Portal nur freigegebene Dokumente', async () => {
+    const intern = await dokument();
+    const freigegeben = await dokument();
+    await owner.document.update({
+      where: { id: intern.id },
+      data: { title: 'Interne Notiz/Q3\u202e' },
+    });
+    await owner.document.update({
+      where: { id: freigegeben.id },
+      data: { title: 'Kassenbericht Oktober', sharedWithClientAt: new Date() },
+    });
+    const nachweise = [
+      { id: 'n1', dokumentId: intern.id, sha256: '4b'.repeat(32), groesse: 812 },
+      { id: 'n2', dokumentId: freigegeben.id, sha256: '4b'.repeat(32), groesse: 812 },
+      { id: 'n3', dokumentId: randomUUID(), sha256: '4b'.repeat(32), groesse: 812 },
+    ];
+    const bezug = { tenantId, mandantId: mandant };
+    const kanzlei = await imTenant((tx) =>
+      nachweisAblageStandTx(tx, bezug, nachweise, { mitDateinamen: true }),
+    );
+    expect(Object.fromEntries(kanzlei.dateinamen)).toEqual({
+      // Titel und Typ der Ablage, wie beim Bilden des Verweises bereinigt.
+      n1: 'Interne Notiz_Q3.csv',
+      n2: 'Kassenbericht Oktober.csv',
+    });
+    expect(Object.fromEntries(kanzlei.abgleich)).toEqual({ n1: 'OK', n2: 'OK', n3: 'FEHLT' });
+    const portal = await imTenant((tx) =>
+      nachweisAblageStandTx(tx, bezug, nachweise, { nurFreigegeben: true, mitDateinamen: true }),
+    );
+    expect(Object.fromEntries(portal.dateinamen)).toEqual({ n2: 'Kassenbericht Oktober.csv' });
+    // Ohne `mitDateinamen` (Auslieferung): keine Namen.
+    expect(
+      (await imTenant((tx) => nachweisAblageStandTx(tx, bezug, nachweise))).dateinamen.size,
+    ).toBe(0);
   });
 });

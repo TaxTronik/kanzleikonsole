@@ -11,11 +11,17 @@
 // Seite den Abgleich mit der Ablage (Kanzlei), zeigt die Liste bei Abweichung
 // oder fehlendem Dokument keinen Link; ohne Abgleich (Portal) prüft allein die
 // Route. Entfernen und Hochladen kommen als fertige Bedienelemente der Seite.
+//
+// Dateinamen (RT3B-K-04): angezeigt wird der Name aus der eigenen Ablage
+// (`dateinamen`, Titel und Typ des gebundenen Dokuments), nie der Dateiname
+// aus der Antwort des Dienstes; fehlt das Dokument, der Dienstwert nach der
+// Zeichenregel bereinigt (ohne Steuer-, Format- und Richtungszeichen).
 // =============================================================================
 
 import type { ReactNode } from 'react';
 import { Download, FileSpreadsheet, FileText, Hash, Lock, TriangleAlert } from 'lucide-react';
 import type { DurchfuehrungDetail } from '@taxtronik/tcms-contract';
+import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
 import { HashKurz } from '../badges';
 import { isoZeitText } from '../format';
 import { fmtGroesse } from './werte';
@@ -26,11 +32,20 @@ export type Nachweis = DurchfuehrungDetail['nachweise'][number];
 /** Abgleich eines Nachweises mit der Ablage (server/tcms/durchfuehrung/verweis.ts). */
 export type NachweisZustand = 'OK' | 'ABWEICHUNG' | 'FEHLT';
 
-function DateiIcon({ n }: { n: Pick<Nachweis, 'dateiname' | 'mime'> }) {
+/**
+ * Anzeigename eines Nachweises (RT3B-K-04): Name aus der eigenen Ablage, sonst
+ * der Dateiname des Dienstes nach der Zeichenregel bereinigt.
+ */
+export function nachweisAnzeigename(
+  n: Pick<Nachweis, 'id' | 'dateiname'>,
+  dateinamen?: ReadonlyMap<string, string>,
+): string {
+  return dateinamen?.get(n.id) ?? (tcmsTextBereinigen(n.dateiname, 'DATEINAME', 255) || 'Datei');
+}
+
+function DateiIcon({ name, mime }: { name: string; mime: string }) {
   const tabelle =
-    /\.(xlsx?|csv|ods)$/i.test(n.dateiname) ||
-    n.mime.includes('spreadsheet') ||
-    n.mime === 'text/csv';
+    /\.(xlsx?|csv|ods)$/i.test(name) || mime.includes('spreadsheet') || mime === 'text/csv';
   const Icon = tabelle ? FileSpreadsheet : FileText;
   return <Icon className="h-5 w-5 mt-0.5 shrink-0 text-muted" aria-hidden="true" />;
 }
@@ -54,6 +69,8 @@ export interface NachweisListeProps {
   abrufHref: (nachweisId: string) => string;
   /** Abgleich mit der Ablage; ohne Angabe entscheidet allein die Route beim Abruf. */
   abgleich?: ReadonlyMap<string, NachweisZustand>;
+  /** Dateinamen aus der eigenen Ablage je Nachweis-ID (RT3B-K-04, `nachweisAnzeigename`). */
+  dateinamen?: ReadonlyMap<string, string>;
   /** Bis wann ungesperrte Dateien änderbar sind („Einreichen“ bzw. „Übermitteln“). */
   aenderbarBis: string;
   /** Bedienelement zum Entfernen einer Datei oder null (Recht und Sperre laut Dienst). */
@@ -73,6 +90,7 @@ export function NachweisListe({
   namen,
   abrufHref,
   abgleich,
+  dateinamen,
   aenderbarBis,
   entfernen,
   fuss,
@@ -107,25 +125,24 @@ export function NachweisListe({
           {nachweise.map((n) => {
             const zustand: NachweisZustand = abgleich ? (abgleich.get(n.id) ?? 'FEHLT') : 'OK';
             const href = zustand === 'OK' ? abrufHref(n.id) : null;
+            const name = nachweisAnzeigename(n, dateinamen);
             const knopf = entfernen(n);
             return (
               <li
                 key={n.id}
                 className="flex flex-wrap items-start gap-3 px-6 py-3 border-b border-default last:border-b-0"
               >
-                <DateiIcon n={n} />
+                <DateiIcon name={name} mime={n.mime} />
                 <div className="grow min-w-0">
                   {href ? (
                     <a
                       href={href}
                       className="text-sm font-medium text-primary underline-offset-2 hover:underline break-all"
                     >
-                      {n.dateiname}
+                      {name}
                     </a>
                   ) : (
-                    <span className="text-sm font-medium text-primary break-all">
-                      {n.dateiname}
-                    </span>
+                    <span className="text-sm font-medium text-primary break-all">{name}</span>
                   )}
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <span className="badge-gray gap-1" title="SHA-256 des Inhalts">
@@ -168,7 +185,7 @@ export function NachweisListe({
                       href={href}
                     >
                       <Download className="h-3.5 w-3.5" aria-hidden="true" /> Herunterladen
-                      <span className="sr-only"> {n.dateiname}</span>
+                      <span className="sr-only"> {name}</span>
                     </a>
                   ) : null}
                   {knopf}

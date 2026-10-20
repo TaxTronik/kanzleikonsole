@@ -499,6 +499,17 @@ kanzleikonsole übernimmt die Regel aus dem Vertrag in
   trennen. Nutzer sind `server/tcms/mandant.ts` (Anker), die Dateinamen der
   Nachweise (`durchfuehrung/verweis.ts`) und der Portal-Anlagen
   (`portal/anlagen.ts`).
+- **Dateinamen in der Anzeige (RT3B-K-04):** Nachweislisten und
+  Portal-Anlagen zeigen den Dateinamen aus der eigenen Ablage, nicht aus der
+  Antwort des Dienstes: `nachweisAblageStandTx(…, { mitDateinamen: true })`
+  (`durchfuehrung/verweis.ts`; im Portal mit `nurFreigegeben`, also nur
+  freigegebene Dokumente des Sitzungsmandanten wie bei der Auslieferung)
+  liefert ihn je Nachweis-ID, `nachweisAnzeigename` (`components/tcms/
+durchfuehrung/nachweis-liste.tsx`) nimmt ihn für Link, Entfernen und
+  Bestätigung. Fehlt das Dokument (oder gibt es nur den Dienstwert, etwa bei
+  Anlagen eines Ereignisses), wird der Dienstwert mit
+  `tcmsTextBereinigen(…, 'DATEINAME')` bereinigt – ohne Steuer-, Format- und
+  Richtungszeichen.
 - **Eingaben des Menschen** (Titel, Funktion, Begründungen, Kommentare,
   Textblöcke) werden nie still geändert: Die Formularschemas nutzen die
   Schemas des Vertrags (`einzeilig`, `freitext`, `mitTextBasis`, z. B.

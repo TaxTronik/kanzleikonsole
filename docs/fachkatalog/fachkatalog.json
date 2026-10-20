@@ -6397,7 +6397,12 @@
         "apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts",
         "packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql",
         "packages/db/prisma/migrations/20261020100100_tcms_document_version_lock/migration.sql",
-        "packages/db/src/database-error.ts"
+        "packages/db/src/database-error.ts",
+        "apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx",
+        "apps/web/src/components/tcms/portal/anlagen.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/ansicht.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/ereignisse/triage.tsx",
+        "apps/web/src/app/portal/(protected)/tcms/aufgaben/[id]/page.tsx"
       ],
       "test_refs": [
         "apps/web/src/server/tcms/__tests__/nachweis-verweis-db.test.ts",
@@ -6419,7 +6424,10 @@
         "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions-db.test.ts",
         "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts",
         "packages/db/src/__tests__/tcms-document-reference-guards.test.ts",
-        "apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts"
+        "apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts",
+        "apps/web/src/components/tcms/durchfuehrung/__tests__/nachweis-liste.test.tsx",
+        "apps/web/src/app/portal/(protected)/tcms/__tests__/portal-seiten.test.tsx",
+        "apps/web/src/server/tcms/__tests__/redteam-boeser-dienst-db.test.tsx"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
       "related_rules": [

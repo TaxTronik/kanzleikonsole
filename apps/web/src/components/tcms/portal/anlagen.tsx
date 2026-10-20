@@ -10,7 +10,7 @@
 
 import type { ReactNode } from 'react';
 import { Lock, Trash2 } from 'lucide-react';
-import { NachweisListe, type Nachweis } from '../durchfuehrung/nachweis-liste';
+import { NachweisListe, nachweisAnzeigename, type Nachweis } from '../durchfuehrung/nachweis-liste';
 import { TcmsAktionsKnopf, type TcmsFormAktion } from '../ereignisse/aktionen';
 
 /** Anlage einer Kontrollaufgabe (Nachweis der Durchführung im Vertrag). */
@@ -22,11 +22,14 @@ export function AnlagenKarte({
   nachweisText,
   ausgeblendet,
   namen,
+  dateinamen,
   abruf,
   entfernen,
   upload,
 }: {
   anlagen: readonly AnlageZeile[];
+  /** Dateinamen aus der eigenen Ablage (für den Mandanten freigegebene Dokumente, RT3B-K-04). */
+  dateinamen?: ReadonlyMap<string, string>;
   mindestAnlagen: number;
   nachweisText: string;
   ausgeblendet: number;
@@ -48,6 +51,7 @@ export function AnlagenKarte({
       anforderung={nachweisText}
       ausgeblendet={ausgeblendet}
       namen={namen}
+      dateinamen={dateinamen}
       abrufHref={abruf}
       aenderbarBis="Übermitteln"
       entfernen={(a) =>
@@ -57,13 +61,13 @@ export function AnlagenKarte({
             className="btn-secondary text-xs py-1"
             bestaetigung={{
               titel: 'Anlage entfernen',
-              text: `„${a.dateiname}“ aus dieser Aufgabe entfernen? Die Datei bleibt in Ihren Dokumenten; der Schritt wird protokolliert.`,
+              text: `„${nachweisAnzeigename(a, dateinamen)}“ aus dieser Aufgabe entfernen? Die Datei bleibt in Ihren Dokumenten; der Schritt wird protokolliert.`,
               bestaetigen: 'Entfernen',
               gefahr: true,
             }}
           >
             <Trash2 className="h-3 w-3" aria-hidden="true" /> Entfernen
-            <span className="sr-only"> {a.dateiname}</span>
+            <span className="sr-only"> {nachweisAnzeigename(a, dateinamen)}</span>
           </TcmsAktionsKnopf>
         ) : null
       }
