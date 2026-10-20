@@ -148,7 +148,7 @@ function kurzfassung(n: number, e: Entwurf, plan: PlanView, namen: TcmsNamen): R
     case 3: {
       const aktiv = e.ziele.filter((z) => z.aktiv).length;
       const freigabe = e.freigabe.anfordern
-        ? `Freigabe bei ${namen.name(e.freigabe.empfaengerId)} anfordern`
+        ? `Freigabe bei ${freigabeEmpfaenger(namen, e.freigabe.empfaengerId)} anfordern`
         : 'ohne Freigabeanforderung';
       return `${aktiv} Ziele · höchster Risikoappetit ${KLASSE_LABEL[plan.appetit]} · ${freigabe}`;
     }
@@ -205,6 +205,17 @@ function schrittAus(roh: string | undefined, max: number): EinrichtungModell['sc
   return (Number.isInteger(n) && n >= 1 ? Math.min(n, max) : max) as EinrichtungModell['schritt'];
 }
 
+/**
+ * Empfänger der Zielfreigabe in Sätzen: ohne gewählte Person (`null`) ein
+ * fester Text statt des Platzhalters „—“ der Namensliste (TCMS s10).
+ */
+function freigabeEmpfaenger(
+  namen: EinrichtungModell['namen'],
+  empfaengerId: string | null,
+): string {
+  return empfaengerId ? namen.name(empfaengerId) : 'der noch zu wählenden gesetzlichen Vertretung';
+}
+
 function zusammenfassungDaten(m: EinrichtungModell): ZusammenfassungDaten {
   const { entwurf, plan } = m;
   const uebernommen = plan.risiken.filter((r) => r.uebernehmen);
@@ -214,7 +225,9 @@ function zusammenfassungDaten(m: EinrichtungModell): ZusammenfassungDaten {
     turnus: entwurf.zeitraum.erklaerungsTurnus,
     ziele: entwurf.ziele.filter((z) => z.aktiv).length,
     appetit: plan.appetit,
-    freigabeAn: entwurf.freigabe.anfordern ? m.namen.name(entwurf.freigabe.empfaengerId) : null,
+    freigabeAn: entwurf.freigabe.anfordern
+      ? freigabeEmpfaenger(m.namen, entwurf.freigabe.empfaengerId)
+      : null,
     risiken: uebernommen.length,
     kern: uebernommen.filter((r) => r.kern).length,
     abgelehnt: plan.risiken.length - uebernommen.length,

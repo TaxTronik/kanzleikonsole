@@ -125,6 +125,12 @@ Gegenzeichnung; Frequenzen aus der Häufigkeitsmatrix).
   Mandanten, auf Mandantenseite nur Kontakte dieses Mandanten mit Rolle im
   Tax-CMS (Abschnitt 5). Berufsträgerin bzw. Berufsträger und
   Hauptbearbeitung übernimmt TaxTronik aus der Mandantenakte.
+- Fehlen sie in der Mandantenakte, schlägt das Tax-CMS keine Personen vor:
+  Die durchführende Person zeigt „Bitte wählen …“ (kein leerer Eintrag als
+  Person), die Vertretung „keine Vertretung“ und die Gegenzeichnung „keine
+  Gegenzeichnung“ bzw. bei Schlüsselkontrollen „Bitte wählen … (Pflicht bei
+  Schlüsselkontrolle)“. Ohne gewählten Empfänger der Zielfreigabe nennt die
+  Zusammenfassung „der noch zu wählenden gesetzlichen Vertretung“.
 - „Tax-CMS Version 1 anlegen“ fragt vorher nach. Danach ist der Assistent
   geschlossen; Änderungen erfolgen in Profil, Risiken und Kontrollen.
 

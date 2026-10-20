@@ -931,18 +931,31 @@ export interface KontrollGruppe {
   kontrollen: PlanKontrolle[];
 }
 
+/** Platzhalter ohne Person (TCMS s10: unbekannte Personen kommen als `null`). */
+export const PERSON_BITTE_WAEHLEN = 'Bitte wählen …';
+export const OHNE_VERTRETUNG = 'keine Vertretung';
+export const OHNE_GEGENZEICHNUNG = 'keine Gegenzeichnung';
+export const GEGENZEICHNUNG_PFLICHT = 'Bitte wählen … (Pflicht bei Schlüsselkontrolle)';
+
+/**
+ * Auswahl einer Person. `ohne`: Beschriftung der Wahl „keine Person“ (nur bei
+ * optionalen Rollen); ohne sie ist eine leere Auswahl keine Person: Ist noch
+ * niemand gesetzt (der Dienst liefert unbekannte Personen seit TCMS s10 als
+ * `null`), erscheint ein gesperrter Platzhalter „Bitte wählen …“, der sich
+ * nicht wieder auswählen lässt.
+ */
 function PersonAuswahl({
   label,
   wert,
   pool,
   onChange,
-  leer,
+  ohne,
 }: {
   label: string;
   wert: string | null;
   pool: readonly Person[];
   onChange: (id: string | null) => void;
-  leer: boolean;
+  ohne: string | null;
 }) {
   // Eine vorbelegte Person außerhalb der Auswahl bleibt sichtbar (und wird beim Speichern abgewiesen).
   const fremd = wert && !pool.some((p) => p.id === wert);
@@ -953,7 +966,13 @@ function PersonAuswahl({
       value={wert ?? ''}
       onChange={(e) => onChange(e.target.value || null)}
     >
-      {leer || !wert ? <option value="">—</option> : null}
+      {ohne !== null ? (
+        <option value="">{ohne}</option>
+      ) : !wert ? (
+        <option value="" disabled>
+          {PERSON_BITTE_WAEHLEN}
+        </option>
+      ) : null}
       {fremd ? <option value={wert}>Person ohne Zugriff – bitte ändern</option> : null}
       {pool.map((p) => (
         <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
@@ -1113,7 +1132,7 @@ export function SchrittKontrollen({
                                 label={`Durchführend ${k.code}`}
                                 wert={w.durchfuehrendId}
                                 pool={pool(w.partei)}
-                                leer={false}
+                                ohne={null}
                                 onChange={(id) => setze(k.code, { durchfuehrendId: id })}
                               />
                             </td>
@@ -1122,7 +1141,7 @@ export function SchrittKontrollen({
                                 label={`Vertretung ${k.code}`}
                                 wert={w.vertretungId}
                                 pool={pool(w.partei)}
-                                leer
+                                ohne={OHNE_VERTRETUNG}
                                 onChange={(id) => setze(k.code, { vertretungId: id })}
                               />
                             </td>
@@ -1136,7 +1155,15 @@ export function SchrittKontrollen({
                                     setze(k.code, { gegenzeichnerId: e.target.value || null })
                                   }
                                 >
-                                  <option value="">—</option>
+                                  {/* Keine Gegenzeichnung (auch `null` des Dienstes, TCMS s10): bei
+                                      Schlüsselkontrollen Pflicht, deshalb dort nur Platzhalter. */}
+                                  {k.schluessel ? (
+                                    <option value="" disabled>
+                                      {GEGENZEICHNUNG_PFLICHT}
+                                    </option>
+                                  ) : (
+                                    <option value="">{OHNE_GEGENZEICHNUNG}</option>
+                                  )}
                                   {w.gegenzeichnerId &&
                                   ![...kanzlei, ...mandant].some(
                                     (p) => p.id === w.gegenzeichnerId,

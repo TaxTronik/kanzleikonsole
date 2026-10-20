@@ -45,6 +45,12 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsEinrichtungPage from '../page';
+import {
+  GEGENZEICHNUNG_PFLICHT,
+  OHNE_GEGENZEICHNUNG,
+  OHNE_VERTRETUNG,
+  PERSON_BITTE_WAEHLEN,
+} from '../schritte';
 
 const LEA = 'b1000000-0000-4000-8000-000000000051';
 const NILS = 'b1000000-0000-4000-8000-000000000052';
@@ -227,6 +233,66 @@ describe('Einrichtungsassistent', () => {
     const sel = screen.getByRole('combobox', { name: 'Durchführend K-EC-03' }) as HTMLSelectElement;
     expect(sel.value).toBe(FREMD);
     expect(sel.selectedOptions[0]!.textContent).toBe('Person ohne Zugriff – bitte ändern');
+  });
+
+  it('unbekannte Personen kommen als null (TCMS s10): keine leere Auswahl als Person, Gegenzeichnung verständlich', async () => {
+    const e = antwort();
+    // Berufsträger:in und Hauptbearbeitung unbekannt: Der Dienst setzt nichts
+    // vor; bei Kanzleikontrollen bleibt auch die Gegenzeichnung offen.
+    for (const code of ['K-EC-03', 'K-EC-04']) {
+      const k = e.plan!.kontrollen.find((x) => x.code === code)!;
+      k.zust = { ...k.zust, durchfuehrendId: null, vertretungId: null, gegenzeichnerId: null };
+    }
+    e.entwurf!.freigabe = { anfordern: true, empfaengerId: null };
+    const { container } = await rendern();
+    const optionen = (name: string) => {
+      const sel = screen.getByRole('combobox', { name }) as HTMLSelectElement;
+      return {
+        sel,
+        texte: [...sel.options].map((o) => o.textContent),
+        leer: [...sel.options].filter((o) => o.value === ''),
+      };
+    };
+    // Durchführend (Pflicht): nur ein gesperrter Platzhalter, keine wählbare leere Person.
+    const durch = optionen('Durchführend K-EC-03');
+    expect(durch.sel.value).toBe('');
+    expect(durch.sel.selectedOptions[0]!.textContent).toBe(PERSON_BITTE_WAEHLEN);
+    expect(durch.leer).toHaveLength(1);
+    expect(durch.leer[0]!.disabled).toBe(true);
+    expect(durch.texte).not.toContain('—');
+    expect(durch.texte).toEqual([PERSON_BITTE_WAEHLEN, ...ZUST.kanzlei.map((p) => p.name)]);
+    // Vertretung (optional): „keine Vertretung“ statt eines leeren Eintrags.
+    const vertretung = optionen('Vertretung K-EC-03');
+    expect(vertretung.sel.selectedOptions[0]!.textContent).toBe(OHNE_VERTRETUNG);
+    expect(vertretung.leer[0]!.disabled).toBe(false);
+    // Gegenzeichnung null: ohne Schlüssel „keine Gegenzeichnung“ (wählbar), mit
+    // Schlüssel ein gesperrter Pflicht-Platzhalter.
+    const gegen = optionen('Gegenzeichnung K-EC-03');
+    expect(gegen.sel.value).toBe('');
+    expect(gegen.sel.selectedOptions[0]!.textContent).toBe(OHNE_GEGENZEICHNUNG);
+    expect(gegen.leer[0]!.disabled).toBe(false);
+    const pflicht = optionen('Gegenzeichnung K-EC-04 (Pflicht bei Schlüsselkontrolle)');
+    expect(pflicht.sel.selectedOptions[0]!.textContent).toBe(GEGENZEICHNUNG_PFLICHT);
+    expect(pflicht.leer[0]!.disabled).toBe(true);
+    // Nirgends ein Platzhalter „—“ als Person.
+    for (const sel of container.querySelectorAll('select')) {
+      expect([...sel.options].map((o) => o.textContent)).not.toContain('—');
+    }
+    // Zielfreigabe ohne Empfänger: fester Text statt „—“.
+    expect(container.textContent).toContain(
+      'Freigabe bei der noch zu wählenden gesetzlichen Vertretung anfordern',
+    );
+    expect(container.textContent).toContain(
+      'wird bei der noch zu wählenden gesetzlichen Vertretung angefordert',
+    );
+    expect(container.textContent).not.toContain('bei —');
+  });
+
+  it('gesetzte Personen: keine leere Auswahl bei Pflichtrollen', async () => {
+    antwort();
+    await rendern();
+    const sel = screen.getByRole('combobox', { name: 'Durchführend K-EC-03' }) as HTMLSelectElement;
+    expect([...sel.options].some((o) => o.value === '')).toBe(false);
   });
 
   it('Admin sieht den Verweis auf den Katalog', async () => {
