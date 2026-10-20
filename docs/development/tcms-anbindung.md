@@ -198,7 +198,12 @@ noch für bestehende Aufrufer da), `health` nur über `client.health()`.
   nicht gesendet), `TcmsNichtAuthentifiziert` (401), `TcmsNichtBerechtigt`
   (403, `grund` = Text des Dienstes, `verweigerung` = maschinenlesbarer Grund
   aus `fehler.grund`; ein 403 ohne gültigen Grund ist ein Protokollfehler),
-  `TcmsNichtGefunden` (404), `TcmsKonflikt` (409),
+  `TcmsNichtGefunden` (404), `TcmsKonflikt` (409, `konflikt` =
+  maschinenlesbarer Grund aus `fehler.konflikt`, TCMS s10; `rufeEndpunkt`
+  prüft jede Fehlerantwort mit `fehlerSchemaFuer(endpunkt)`: Ein 409 ohne
+  Grund an einem Endpunkt mit `konflikte`, ein Grund, den der Eintrag nicht
+  nennt, oder ein Grund an einem Endpunkt ohne `konflikte` ist ein
+  Protokollfehler `SCHEMA` mit Pfad `fehler.konflikt`),
   `TcmsNichtVerfuegbar` (Transport, Zeitlimit, 500/502/503/504, offener
   Breaker), `TcmsProtokollFehler` (alles Unerwartete). `message` enthält nur
   Status und Code, nie Antwortkörper; `meldung`/`grund`/`felder` des Dienstes

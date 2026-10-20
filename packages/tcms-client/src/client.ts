@@ -76,6 +76,12 @@ export interface TcmsEndpunkt<S extends z.ZodType = z.ZodType> {
   querySchema?: z.ZodType;
   bodySchema?: z.ZodType;
   antwortSchema: S;
+  /**
+   * Schema des Fehlerobjekts dieses Endpunkts (`fehlerSchemaFuer` des
+   * Vertrags, TCMS s10); `rufeEndpunkt` setzt es immer. Ohne Angabe gilt nur
+   * `FehlerSchema`.
+   */
+  fehlerSchema?: z.ZodType;
 }
 
 export interface TcmsAufruf<S extends z.ZodType> extends TcmsEndpunkt<S> {
@@ -202,6 +208,7 @@ interface Senden<S extends z.ZodType> {
   koerper: Uint8Array<ArrayBuffer> | null;
   bestaetigung: string | null;
   schema: S;
+  fehlerSchema?: z.ZodType | undefined;
   zeitlimitMs: number;
   maxBytes: number;
 }
@@ -301,6 +308,7 @@ export class TcmsClient {
       koerper,
       bestaetigung: null,
       schema: a.antwortSchema,
+      fehlerSchema: a.fehlerSchema,
       zeitlimitMs: this.#zeitlimit(a.zeitlimitMs),
       maxBytes: this.#maxBytes(a.maxAntwortBytes),
     };
@@ -446,6 +454,7 @@ export class TcmsClient {
       try {
         return await verarbeiteAntwort(res, {
           schema: s.schema,
+          fehlerSchema: s.fehlerSchema,
           maxBytes: s.maxBytes,
           signal: steuerung.signal,
           abbrechen: () => steuerung.abort(),

@@ -11,6 +11,10 @@
 //   `__proto__`), dann Umschlag und Daten mit zod. Unbekannte Felder behandeln
 //   die Schemas des Vertrags (dort `.strict()`: Abweichung = Protokollfehler).
 // - Fehlerumschlag über FehlerSchema; Status und Code müssen zusammenpassen.
+//   Mit `fehlerSchema` (aus `rufeEndpunkt`: `fehlerSchemaFuer(endpunkt)`,
+//   TCMS s10) zusätzlich je Endpunkt: An Endpunkten mit `konflikte` trägt
+//   jedes 409 genau einen dieser Gründe, an allen anderen keines. Eine
+//   Abweichung ist ein Protokollfehler (`SCHEMA`) wie bei den Daten.
 // Kein Rohkörper verlässt dieses Modul, auch nicht in Fehlermeldungen.
 // =============================================================================
 
@@ -112,11 +116,11 @@ async function leseKoerper(
 }
 
 /** Abweichungspfade ohne Inhalte: nur Bezeichner und Indizes, sonst `*`. */
-function pfadeAus(error: z.ZodError): string[] {
+function pfadeAus(error: z.ZodError, wurzel: 'daten' | 'fehler' = 'daten'): string[] {
   return error.issues
     .slice(0, MAX_PFADE)
     .map((issue) =>
-      ['daten', ...issue.path]
+      [wurzel, ...issue.path]
         .map((teil) =>
           typeof teil === 'number' || (typeof teil === 'string' && PFAD_SEGMENT.test(teil))
             ? String(teil)
@@ -139,7 +143,7 @@ function fehlerAusUmschlag(fehler: Fehler, details: TcmsFehlerDetails): TcmsFehl
     case 'NICHT_GEFUNDEN':
       return new TcmsNichtGefunden(mit);
     case 'KONFLIKT':
-      return new TcmsKonflikt(mit);
+      return new TcmsKonflikt({ ...mit, konflikt: fehler.konflikt ?? null });
     case 'INTERN':
       return new TcmsNichtVerfuegbar('INTERN', mit);
     default:
@@ -150,6 +154,11 @@ function fehlerAusUmschlag(fehler: Fehler, details: TcmsFehlerDetails): TcmsFehl
 
 export interface AntwortOptionen<S extends z.ZodType> {
   schema: S;
+  /**
+   * Fehlerschema des Endpunkts (`fehlerSchemaFuer`, TCMS s10); ohne Angabe nur
+   * `FehlerSchema` (Aufruf ohne Register, health).
+   */
+  fehlerSchema?: z.ZodType | undefined;
   maxBytes: number;
   signal: AbortSignal;
   abbrechen: () => void;
@@ -190,6 +199,18 @@ export async function verarbeiteAntwort<S extends z.ZodType>(
   const umschlag = FehlerUmschlag.safeParse(json.wert);
   if (!umschlag.success || FEHLER_STATUS[umschlag.data.fehler.code] !== res.status) {
     throw new TcmsProtokollFehler(umschlag.success ? 'STATUS' : 'UMSCHLAG', details);
+  }
+  if (opts.fehlerSchema) {
+    // Vertrag je Endpunkt (TCMS s10): z. B. ein 409 ohne Grund an einem
+    // Endpunkt mit `konflikte` ist eine Vertragsverletzung, kein Konflikt.
+    const geprueft = opts.fehlerSchema.safeParse(umschlag.data.fehler);
+    if (!geprueft.success) {
+      throw new TcmsProtokollFehler('SCHEMA', {
+        ...details,
+        code: umschlag.data.fehler.code,
+        pfade: pfadeAus(geprueft.error, 'fehler'),
+      });
+    }
   }
   throw fehlerAusUmschlag(umschlag.data.fehler, details);
 }

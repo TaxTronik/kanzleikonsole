@@ -28,7 +28,7 @@ import {
   TcmsProtokollFehler,
   TcmsUngueltig,
 } from '@taxtronik/tcms-client';
-import type { VerweigerungGrund } from '@taxtronik/tcms-contract';
+import type { KonfliktGrund, VerweigerungGrund } from '@taxtronik/tcms-contract';
 import type { ActionFailure } from '@/server/actions/action-runner';
 import { log } from '@/server/logger';
 import { TcmsAkteurVerweigert } from './akteur';
@@ -210,6 +210,60 @@ export const TCMS_AKTION_TEXTE = {
     'Das Tax-CMS hat nicht rechtzeitig oder nicht lesbar geantwortet. Bitte laden Sie die Seite neu und prüfen Sie, ob die Änderung übernommen wurde.',
 } as const;
 
+/**
+ * Feste Meldungen je Konfliktgrund des Dienstes (`fehler.konflikt` eines 409,
+ * TCMS s10; KONFLIKT_GRUENDE im Vertrag). Vollständig über alle Gründe
+ * (`satisfies`): Ein neuer Grund im Vertrag bricht die Typprüfung, bis er hier
+ * einen festen Text hat. Die Gründe stehen heute nur an Portal-Endpunkten
+ * (Code anfordern, Freigeben, Ereignis melden), deshalb in Sie-Form. Der Text
+ * des Dienstes (`meldung`) wird nie durchgereicht. Neue Texte werden
+ * ergänzt, nie umformuliert (Test: zustand.test.ts).
+ */
+const KONFLIKT_JE_GRUND = {
+  /** Freigabe nicht mehr offen (erteilt, abgelehnt oder gegenstandslos). */
+  BEREITS_ERLEDIGT:
+    'Diese Anforderung ist bereits erledigt oder nicht mehr offen. Bitte laden Sie die Seite neu.',
+  /** Fünf Fehlversuche; nur eine Neuadressierung durch die Kanzlei entsperrt. */
+  CODE_GESPERRT:
+    'Der Bestätigungscode ist nach mehreren Fehlversuchen gesperrt. Bitte wenden Sie sich an Ihre Kanzlei.',
+  /** Mengenbegrenzung je Stunde; der zuletzt erhaltene Code gilt weiter. */
+  ZU_VIELE_CODES:
+    'Sie haben in der letzten Stunde bereits mehrere Codes angefordert. Bitte verwenden Sie den zuletzt gesendeten Code oder versuchen Sie es später erneut.',
+  /** Freigeben ohne angeforderten Code (nie angefordert oder durch Neuadressierung geleert). */
+  CODE_FEHLT: 'Bitte fordern Sie zuerst einen Bestätigungscode an.',
+  /** Frist abgelaufen oder Code-Schlüssel im Tax-CMS gewechselt. */
+  CODE_ABGELAUFEN: 'Der Code ist nicht mehr gültig. Bitte fordern Sie einen neuen an.',
+  /** Beschreibung: Version liegt nicht (mehr) beim Mandanten. */
+  VERSION_NICHT_VORGELEGT:
+    'Diese Fassung liegt Ihnen nicht mehr zur Freigabe vor. Bitte laden Sie die Seite neu.',
+  /** Beschreibung: eingefrorener Inhalt fehlt oder passt nicht; die Kanzlei fordert neu an. */
+  INHALT_VERAENDERT:
+    'Die vorgelegte Fassung kann nicht mehr freigegeben werden. Ihre Kanzlei legt sie Ihnen erneut vor.',
+  /** Gleichzeitige Änderung (bedingtes Schreiben bzw. Schreibkonflikt im Dienst). */
+  ZWISCHENZEITLICH_GEAENDERT: TCMS_AKTION_TEXTE.konflikt,
+  /** Portal-Meldung: derselbe Idempotenzschlüssel mit anderem Inhalt (24 h). */
+  IDEMPOTENZ_ABWEICHUNG:
+    'Diese Meldung wurde bereits mit anderem Inhalt übermittelt. Bitte laden Sie die Seite neu und prüfen Sie Ihre bisherigen Meldungen.',
+} as const satisfies Readonly<Record<KonfliktGrund, string>>;
+
+/** Feste Meldungen je Konfliktgrund (siehe oben). */
+export const TCMS_KONFLIKT_TEXTE: Readonly<Record<KonfliktGrund, string>> = KONFLIKT_JE_GRUND;
+
+/**
+ * Fester Text zu einem Konflikt (409): der Grund des Dienstes zuerst, sonst der
+ * Rückfall der Aktion (Standard: „zwischenzeitlich geändert“). Unbekannte
+ * Werte und Namen aus dem Objekt-Prototyp fallen zurück (Lookup per hasOwn).
+ */
+export function konfliktText(
+  konflikt: KonfliktGrund | null | undefined,
+  rueckfall: string = TCMS_AKTION_TEXTE.konflikt,
+): string {
+  if (typeof konflikt === 'string' && Object.hasOwn(KONFLIKT_JE_GRUND, konflikt)) {
+    return KONFLIKT_JE_GRUND[konflikt];
+  }
+  return rueckfall;
+}
+
 export interface TcmsAktionsAbbildung {
   /**
    * Rückfall bei 403 ohne Grund des Dienstes (Standard `STANDARD`); mit Grund
@@ -306,7 +360,8 @@ export function aktionsFehlerAus(
     };
   }
   if (fehler instanceof TcmsKonflikt) {
-    return { ok: false, error: TCMS_AKTION_TEXTE.konflikt, errorCode: 'CONFLICT' };
+    // TCMS s10: fester Text je Grund (`fehler.konflikt`), ohne Grund der Sammeltext.
+    return { ok: false, error: konfliktText(fehler.konflikt), errorCode: 'CONFLICT' };
   }
   if (fehler instanceof TcmsNichtBerechtigt) {
     return {
@@ -351,6 +406,8 @@ export function tcmsLogFelder(fehler: unknown): Record<string, string | number |
     ...(fehler instanceof TcmsUngueltig ? { lokal: fehler.lokal ? 1 : 0 } : {}),
     // Grund eines 403 nur als Wert der festen Liste (nie der Text des Dienstes).
     ...(fehler instanceof TcmsNichtBerechtigt ? { verweigerung: fehler.verweigerung } : {}),
+    // Grund eines 409 ebenso nur als Wert der festen Liste (TCMS s10).
+    ...(fehler instanceof TcmsKonflikt ? { konflikt: fehler.konflikt } : {}),
   };
 }
 

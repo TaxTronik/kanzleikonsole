@@ -3,7 +3,11 @@
 // Oberfläche noch das Log.
 // Fachkatalog: TCMS-DIENST-001, TCMS-AKTEUR-001
 import { describe, expect, it, vi } from 'vitest';
-import { TEXT_UNZULAESSIG_MELDUNG, VERWEIGERUNG_GRUENDE } from '@taxtronik/tcms-contract';
+import {
+  KONFLIKT_GRUENDE,
+  TEXT_UNZULAESSIG_MELDUNG,
+  VERWEIGERUNG_GRUENDE,
+} from '@taxtronik/tcms-contract';
 
 const log = vi.hoisted(() => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }));
 vi.mock('@/server/logger', () => ({ log }));
@@ -25,9 +29,11 @@ import { TcmsPersonUnzulaessig } from '../personen';
 import {
   TCMS_AKTION_TEXTE,
   TCMS_KEIN_RECHT,
+  TCMS_KONFLIKT_TEXTE,
   TCMS_SEITEN_TEXTE,
   aktionsFehlerAus,
   keinRechtText,
+  konfliktText,
   protokolliereTcmsFehler,
   seitenZustandAus,
   tcmsLogFelder,
@@ -135,6 +141,49 @@ describe('aktionsFehlerAus', () => {
       error: 'Wurde zwischenzeitlich geändert – bitte neu laden.',
       errorCode: 'CONFLICT',
     });
+  });
+
+  it('409 mit Grund des Dienstes (TCMS s10): fester Text genau zu diesem Grund, nie der Text des Dienstes', () => {
+    for (const grund of KONFLIKT_GRUENDE) {
+      const fehler = new TcmsKonflikt({
+        status: 409,
+        code: 'KONFLIKT',
+        meldung: GEHEIM,
+        konflikt: grund,
+      });
+      expect(aktionsFehlerAus(fehler, schreibend), grund).toEqual({
+        ok: false,
+        error: TCMS_KONFLIKT_TEXTE[grund],
+        errorCode: 'CONFLICT',
+      });
+      expect(konfliktText(grund, 'Rückfall')).toBe(TCMS_KONFLIKT_TEXTE[grund]);
+      expect(JSON.stringify(aktionsFehlerAus(fehler, schreibend))).not.toContain('Anna');
+    }
+    // Feste Texte (nie umformulieren, nur ergänzen); jeder Grund hat einen eigenen Text.
+    expect(TCMS_KONFLIKT_TEXTE).toEqual({
+      BEREITS_ERLEDIGT:
+        'Diese Anforderung ist bereits erledigt oder nicht mehr offen. Bitte laden Sie die Seite neu.',
+      CODE_GESPERRT:
+        'Der Bestätigungscode ist nach mehreren Fehlversuchen gesperrt. Bitte wenden Sie sich an Ihre Kanzlei.',
+      ZU_VIELE_CODES:
+        'Sie haben in der letzten Stunde bereits mehrere Codes angefordert. Bitte verwenden Sie den zuletzt gesendeten Code oder versuchen Sie es später erneut.',
+      CODE_FEHLT: 'Bitte fordern Sie zuerst einen Bestätigungscode an.',
+      CODE_ABGELAUFEN: 'Der Code ist nicht mehr gültig. Bitte fordern Sie einen neuen an.',
+      VERSION_NICHT_VORGELEGT:
+        'Diese Fassung liegt Ihnen nicht mehr zur Freigabe vor. Bitte laden Sie die Seite neu.',
+      INHALT_VERAENDERT:
+        'Die vorgelegte Fassung kann nicht mehr freigegeben werden. Ihre Kanzlei legt sie Ihnen erneut vor.',
+      ZWISCHENZEITLICH_GEAENDERT: TCMS_AKTION_TEXTE.konflikt,
+      IDEMPOTENZ_ABWEICHUNG:
+        'Diese Meldung wurde bereits mit anderem Inhalt übermittelt. Bitte laden Sie die Seite neu und prüfen Sie Ihre bisherigen Meldungen.',
+    });
+    expect(new Set(Object.values(TCMS_KONFLIKT_TEXTE)).size).toBe(KONFLIKT_GRUENDE.length);
+    // Ohne Grund, unbekannter Wert und Prototyp-Schlüssel: Rückfall.
+    expect(konfliktText(null, 'Rückfall')).toBe('Rückfall');
+    expect(konfliktText(undefined)).toBe(TCMS_AKTION_TEXTE.konflikt);
+    for (const roh of ['constructor', '__proto__', 'toString', 'UNBEKANNT']) {
+      expect(konfliktText(roh as never, 'Rückfall'), roh).toBe('Rückfall');
+    }
   });
 
   it('400: Feldfehler mit deutschem Standardtext unter dem Formularfeld', () => {
@@ -292,6 +341,24 @@ describe('Protokoll', () => {
       code: null,
       tcmsRequestId: null,
       lokal: 1,
+    });
+    // Grund eines 409 (TCMS s10) nur als Wert der festen Liste, nie die Meldung.
+    expect(
+      tcmsLogFelder(
+        new TcmsKonflikt({
+          status: 409,
+          code: 'KONFLIKT',
+          requestId: 'req-2',
+          meldung: GEHEIM,
+          konflikt: 'CODE_GESPERRT',
+        }),
+      ),
+    ).toEqual({
+      fehler: 'TcmsKonflikt',
+      status: 409,
+      code: 'KONFLIKT',
+      tcmsRequestId: 'req-2',
+      konflikt: 'CODE_GESPERRT',
     });
     expect(tcmsLogFelder(new TcmsAkteurVerweigert('PERSON_INAKTIV'))).toEqual({
       fehler: 'TcmsAkteurVerweigert',

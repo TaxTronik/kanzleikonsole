@@ -11,10 +11,13 @@
 //     Mandantenkontakte nur auf Portal-Endpunkten, der Systemakteur nur auf
 //     den zwei Nachrichten-Endpunkten, Kanzleipersonen nie auf diesen);
 //   - `health` (ohne Akteur) nur über `client.health()`.
+// Fehlerantworten prüft der Client mit `fehlerSchemaFuer(endpunkt)` (TCMS
+// s10): Ein 409 ohne Grund an einem Endpunkt mit `konflikte` (oder ein Grund,
+// den der Eintrag nicht nennt) ist ein Protokollfehler, kein Konflikt.
 // Die Typen der Eingaben und des Ergebnisses folgen aus den Schemas.
 // =============================================================================
 
-import type { Endpunkt } from '@taxtronik/tcms-contract';
+import { fehlerSchemaFuer, type Endpunkt } from '@taxtronik/tcms-contract';
 import type { z } from 'zod';
 import type { TcmsErgebnis } from './antwort';
 import type { TcmsAkteurAngaben, TcmsClient } from './client';
@@ -77,6 +80,7 @@ export async function rufeEndpunkt<E extends Endpunkt>(
     ...(endpunkt.querySchema ? { querySchema: endpunkt.querySchema } : {}),
     ...(endpunkt.bodySchema ? { bodySchema: endpunkt.bodySchema } : {}),
     antwortSchema: endpunkt.antwortSchema,
+    fehlerSchema: fehlerSchemaFuer(endpunkt),
     ...(eingabe.query === undefined ? {} : { query: eingabe.query as TcmsQuery }),
     ...(eingabe.body === undefined ? {} : { body: eingabe.body }),
     akteur: eingabe.akteur,

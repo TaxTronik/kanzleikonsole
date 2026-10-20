@@ -3,11 +3,17 @@
 // der ohne die Prüfung scheitert; die Bestätigung prüft der Code des Dienstes.
 // Stufe 4: `akteure` je Eintrag statt `portal`, Systemakteur nur auf den zwei
 // Nachrichten-Endpunkten und nur über einen Client mit `NUR_SYSTEMAKTEUR`.
-import { AKTEUR_ARTEN, ENDPUNKT_LISTE, ENDPUNKTE } from '@taxtronik/tcms-contract';
+import {
+  AKTEUR_ARTEN,
+  ENDPUNKT_LISTE,
+  ENDPUNKTE,
+  KONFLIKT_GRUENDE,
+  type KonfliktGrund,
+} from '@taxtronik/tcms-contract';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NUR_SYSTEMAKTEUR, TcmsClient, type TcmsAkteurAngaben } from '../client';
 import { rufeEndpunkt } from '../endpunkt';
-import { TcmsProtokollFehler, TcmsUngueltig } from '../fehler';
+import { TcmsKonflikt, TcmsProtokollFehler, TcmsUngueltig } from '../fehler';
 import {
   clientOptionen,
   json,
@@ -236,5 +242,94 @@ describe('Akteursarten je Endpunkt (Stufe 4)', () => {
     expect(claims).not.toHaveProperty('rol');
     expect(claims).not.toHaveProperty('cli');
     expect(pruefeEmpfangen(anfrage!, s)).toMatchObject({ ok: true });
+  });
+});
+
+describe('Konfliktgründe je Endpunkt (TCMS s10)', () => {
+  const FREIGABE = 'f1000000-0000-4000-8000-000000000001';
+  const GEHEIM = 'Text-des-Dienstes-mit-Mandantenbezug';
+
+  async function konfliktVon(
+    endpunkt: typeof ENDPUNKTE.portalFreigabeErteilen | typeof ENDPUNKTE.kontaktRollenSetzen,
+    fehler: Record<string, unknown>,
+    status = 409,
+  ): Promise<Error> {
+    const srv = await starteServer((_a, res) => json(res, status, { ok: false, fehler }));
+    server.push(srv);
+    const client = new TcmsClient(clientOptionen(srv.url, neueSchluessel()));
+    return endpunkt === ENDPUNKTE.portalFreigabeErteilen
+      ? fehlerVon(
+          rufeEndpunkt(client, ENDPUNKTE.portalFreigabeErteilen, {
+            params: { mandantId: MANDANT, freigabeId: FREIGABE },
+            body: { code: '123456' },
+            akteur: KONTAKT,
+          }),
+        )
+      : fehlerVon(
+          rufeEndpunkt(client, ENDPUNKTE.kontaktRollenSetzen, {
+            params: { mandantId: MANDANT },
+            body: { kontaktId: PERSON, rollen: [], funktion: null },
+            akteur: KANZLEI,
+          }),
+        );
+  }
+
+  it('übernimmt fehler.konflikt eines 409 an einem Endpunkt mit Gründen, nie den Text', async () => {
+    for (const grund of ENDPUNKTE.portalFreigabeErteilen.konflikte) {
+      const f = await konfliktVon(ENDPUNKTE.portalFreigabeErteilen, {
+        code: 'KONFLIKT',
+        meldung: GEHEIM,
+        konflikt: grund,
+      });
+      expect(f, grund).toBeInstanceOf(TcmsKonflikt);
+      expect((f as TcmsKonflikt).konflikt).toBe(grund);
+      expect(f.message).not.toContain(GEHEIM);
+      expect(f.message).not.toContain(grund);
+    }
+  });
+
+  it('ein 409 ohne Grund an einem Endpunkt mit Gründen ist eine Vertragsverletzung', async () => {
+    const f = await konfliktVon(ENDPUNKTE.portalFreigabeErteilen, {
+      code: 'KONFLIKT',
+      meldung: GEHEIM,
+    });
+    expect(f).toBeInstanceOf(TcmsProtokollFehler);
+    expect(f).toMatchObject({ grund: 'SCHEMA', status: 409, pfade: ['fehler.konflikt'] });
+    expect(f.message).not.toContain(GEHEIM);
+  });
+
+  it('ein Grund, den der Registereintrag nicht nennt, ist eine Vertragsverletzung', async () => {
+    const fremd = KONFLIKT_GRUENDE.filter(
+      (g) => !ENDPUNKTE.portalFreigabeErteilen.konflikte.includes(g),
+    );
+    expect(fremd).toEqual(['ZU_VIELE_CODES', 'IDEMPOTENZ_ABWEICHUNG']);
+    for (const grund of fremd) {
+      const f = await konfliktVon(ENDPUNKTE.portalFreigabeErteilen, {
+        code: 'KONFLIKT',
+        konflikt: grund,
+      });
+      expect(f, grund).toMatchObject({ name: 'TcmsProtokollFehler', grund: 'SCHEMA' });
+    }
+  });
+
+  it('an Endpunkten ohne Gründe: 409 ohne Grund bleibt ein Konflikt, mit Grund ist es ein Protokollfehler', async () => {
+    expect(ENDPUNKTE.kontaktRollenSetzen.konflikte).toEqual([]);
+    const ohne = await konfliktVon(ENDPUNKTE.kontaktRollenSetzen, { code: 'KONFLIKT' });
+    expect(ohne).toBeInstanceOf(TcmsKonflikt);
+    expect((ohne as TcmsKonflikt).konflikt).toBeNull();
+    const mit = await konfliktVon(ENDPUNKTE.kontaktRollenSetzen, {
+      code: 'KONFLIKT',
+      konflikt: 'ZWISCHENZEITLICH_GEAENDERT' satisfies KonfliktGrund,
+    });
+    expect(mit).toMatchObject({ name: 'TcmsProtokollFehler', grund: 'SCHEMA' });
+  });
+
+  it('ein Grund an einem anderen Code als KONFLIKT verletzt schon das FehlerSchema', async () => {
+    const f = await konfliktVon(
+      ENDPUNKTE.portalFreigabeErteilen,
+      { code: 'NICHT_GEFUNDEN', konflikt: 'BEREITS_ERLEDIGT' },
+      404,
+    );
+    expect(f).toMatchObject({ name: 'TcmsProtokollFehler', grund: 'UMSCHLAG' });
   });
 });

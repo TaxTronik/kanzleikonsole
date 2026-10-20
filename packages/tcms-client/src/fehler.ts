@@ -10,7 +10,7 @@
 // im Log.
 // =============================================================================
 
-import type { FehlerCode, VerweigerungGrund } from '@taxtronik/tcms-contract';
+import type { FehlerCode, KonfliktGrund, VerweigerungGrund } from '@taxtronik/tcms-contract';
 
 export interface TcmsFehlerDetails {
   status?: number | null;
@@ -68,10 +68,20 @@ export class TcmsNichtBerechtigt extends TcmsFehler {
   }
 }
 
-/** 409: Zustand hat sich geändert oder Entscheidung liegt schon vor. */
+/**
+ * 409: Zustand hat sich geändert oder Entscheidung liegt schon vor.
+ * `konflikt` ist der maschinenlesbare Grund aus `fehler.konflikt` (feste Liste
+ * des Vertrags, TCMS s10), nach dem die kanzleikonsole ihre feste Meldung
+ * wählt; der Text des Dienstes (`meldung`) erscheint nie. Über
+ * `rufeEndpunkt` trägt jedes 409 eines Endpunkts mit `konflikte` genau einen
+ * davon (sonst Protokollfehler); `null` an Endpunkten ohne Gründe und ohne
+ * Antwort des Dienstes.
+ */
 export class TcmsKonflikt extends TcmsFehler {
-  constructor(details: TcmsFehlerDetails = {}) {
+  readonly konflikt: KonfliktGrund | null;
+  constructor(details: TcmsFehlerDetails & { konflikt?: KonfliktGrund | null } = {}) {
     super('TcmsKonflikt', mitStatus('TCMS: Konflikt', details), details);
+    this.konflikt = details.konflikt ?? null;
   }
 }
 

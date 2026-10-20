@@ -67,16 +67,19 @@ export function freigabeArtLabel(art: string): string {
 }
 
 /**
- * 409 auf „Code anfordern“ (TCMS s8): u. a. höchstens einige Anforderungen je
- * Stunde und Freigabe; der Dienst nennt den Grund nur als Text, der die
- * Oberfläche nie erreicht. Ein fester Text für alle Fälle.
+ * 409 auf „Code anfordern“ ohne Grund (Rückfall): Seit TCMS s10 trägt jedes
+ * 409 dieses Endpunkts einen Grund (`fehler.konflikt`), dessen fester Text
+ * gilt (TCMS_KONFLIKT_TEXTE in server/tcms/zustand.ts); ein 409 ohne Grund
+ * weist schon der Client als Vertragsverletzung ab. Der Text des Dienstes
+ * erreicht die Oberfläche nie.
  */
 export const CODE_ANFORDERN_KONFLIKT =
   'Gerade kann kein neuer Code angefordert werden – etwa weil Sie in der letzten Stunde schon mehrere Codes angefordert haben. Bitte verwenden Sie den zuletzt gesendeten Code oder versuchen Sie es später erneut; nach dem Neuladen zeigt die Seite den aktuellen Stand.';
 
 /**
- * 409 auf „Freigeben“ (TCMS s8): Code abgelaufen (auch nach einem Wechsel des
- * Code-Schlüssels im Tax-CMS), gesperrt oder Anforderung erledigt.
+ * 409 auf „Freigeben“ ohne Grund (Rückfall, wie oben): Code abgelaufen (auch
+ * nach einem Wechsel des Code-Schlüssels im Tax-CMS), gesperrt oder
+ * Anforderung erledigt. Mit Grund gilt der feste Text je Grund.
  */
 export const CODE_NICHT_MEHR_GUELTIG =
   'Dieser Code kann nicht mehr verwendet werden – er ist abgelaufen oder die Anforderung hat sich geändert. Bitte laden Sie die Seite neu und fordern Sie einen neuen Code an.';

@@ -70,7 +70,7 @@ vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({
 vi.mock('@/server/tcms/portal/ansprechpartner', () => ({ ansprechpersonenTx: h.ansprech }));
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
-import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
+import { TCMS_KEIN_RECHT, TCMS_KONFLIKT_TEXTE } from '@/server/tcms/zustand';
 import { CODE_ANFORDERN_KONFLIKT, CODE_NICHT_MEHR_GUELTIG } from '@/components/tcms/portal/texte';
 import {
   portalAnlageEntfernenAction,
@@ -642,7 +642,7 @@ describe('Freigabe mit Bestätigungscode', () => {
     expect(r).toEqual({ meldung: expect.stringContaining('gültig bis') });
   });
 
-  it('Code anfordern, 409 (TCMS s8, u. a. mehr als die erlaubten Codes je Stunde): fester Text, nie der des Dienstes', async () => {
+  it('Code anfordern, 409 ohne Grund (Rückfall; TCMS s8, u. a. mehr als die erlaubten Codes je Stunde): fester Text, nie der des Dienstes', async () => {
     await portalFreigabeCodeAnfordernAction(FREIGABE, null, new FormData());
     const s = spec();
     const p = s.parse!();
@@ -668,7 +668,44 @@ describe('Freigabe mit Bestätigungscode', () => {
     ).rejects.toBe(ausfall);
   });
 
-  it('Freigeben, 409 (Code abgelaufen – auch nach Schlüsselwechsel –, gesperrt oder erledigt): fester Text ohne Code', async () => {
+  it('Code anfordern und Freigeben, 409 mit Grund (TCMS s10): fester Text genau zu diesem Grund, nie der des Dienstes', async () => {
+    const DIENST_TEXT = 'Text des Dienstes: Anforderung von Jana Weller';
+    const faelle = [
+      [portalFreigabeCodeAnfordernAction, ENDPUNKTE.portalFreigabeCodeAnfordern],
+      [portalFreigebenAction, ENDPUNKTE.portalFreigabeErteilen],
+    ] as const;
+    for (const [aktion, endpunkt] of faelle) {
+      h.spec = null;
+      await aktion(FREIGABE, null, formular([['code', CODE]]));
+      const s = spec();
+      const p = s.parse!();
+      // Jeder Grund, den der Registereintrag nennt (ein anderer ist ein Protokollfehler des Clients).
+      expect(endpunkt.konflikte.length).toBeGreaterThan(0);
+      for (const grund of endpunkt.konflikte) {
+        const rufe = vi.fn(async () => {
+          throw new TcmsKonflikt({
+            status: 409,
+            code: 'KONFLIKT',
+            meldung: DIENST_TEXT,
+            konflikt: grund,
+          });
+        });
+        const r = await s.aufruf({ rufe }, p.data, undefined);
+        expect(r, `${endpunkt.name} ${grund}`).toEqual({
+          ok: false,
+          error: TCMS_KONFLIKT_TEXTE[grund],
+          errorCode: 'CONFLICT',
+        });
+        expect(JSON.stringify(r)).not.toContain('Jana');
+        expect(JSON.stringify(r)).not.toContain(CODE);
+      }
+    }
+    // Die Texte unterscheiden sich vom bisherigen Sammeltext.
+    expect(TCMS_KONFLIKT_TEXTE.ZU_VIELE_CODES).not.toBe(CODE_ANFORDERN_KONFLIKT);
+    expect(TCMS_KONFLIKT_TEXTE.CODE_ABGELAUFEN).not.toBe(CODE_NICHT_MEHR_GUELTIG);
+  });
+
+  it('Freigeben, 409 ohne Grund (Rückfall: Code abgelaufen – auch nach Schlüsselwechsel –, gesperrt oder erledigt): fester Text ohne Code', async () => {
     await portalFreigebenAction(FREIGABE, null, formular([['code', CODE]]));
     const s = spec();
     const p = s.parse!();

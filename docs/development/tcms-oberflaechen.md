@@ -223,6 +223,14 @@ Regeln:
   denselben Grund als `verweigerung` (`null`: nur der Zustand steht
   entgegen); Vorprüfungen vor einer Ablage wählen danach denselben Text
   (`keinRechtText`). Neue Texte werden **ergänzt**, nie umformuliert.
+- **409:** Ein Konflikt trägt an Endpunkten mit `konflikte` immer einen
+  maschinenlesbaren Grund (`fehler.konflikt`, `TcmsKonflikt.konflikt`, TCMS
+  s10; ohne Grund dort ein Protokollfehler des Clients). Der feste Text kommt
+  aus `TCMS_KONFLIKT_TEXTE[konflikt]` (ein Text je Grund des Vertrags,
+  Vollständigkeit per `satisfies`, Lookup per `hasOwn` in `konfliktText`);
+  ohne Grund gilt „Wurde zwischenzeitlich geändert – bitte neu laden.“ bzw.
+  der Rückfall der Aktion (Portal-Freigaben: `CODE_ANFORDERN_KONFLIKT`,
+  `CODE_NICHT_MEHR_GUELTIG`).
 - **`felder`** ordnet Feldnamen des Dienstes (`felder` eines 400) den
   Formularfeldern zu; nicht zugeordnete Felder ergeben die allgemeine
   Meldung.
@@ -247,7 +255,7 @@ zeigen nie den Text des Dienstes.
 | keine Bestätigung (`TcmsAkteurVerweigert`)   | „Kein Zugriff“, bei veralteter Sitzung „neu anmelden“ | „Kein Zugriff auf das Tax-CMS.“, ggf. „neu anmelden“                                                                                               |
 | 403 des Dienstes                             | „Kein Zugriff“                                        | fester Text nach `verweigerung` (Rückfall `keinRecht`)                                                                                             |
 | 404                                          | `notFound()` bzw. `daten: null`                       | „nicht gefunden – bitte neu laden“                                                                                                                 |
-| 409                                          | „Anfrage nicht möglich“ mit Vorgangsnummer            | „Wurde zwischenzeitlich geändert – bitte neu laden.“                                                                                               |
+| 409                                          | „Anfrage nicht möglich“ mit Vorgangsnummer            | fester Text nach `konflikt` (TCMS s10), ohne Grund „Wurde zwischenzeitlich geändert – bitte neu laden.“                                            |
 | 400 (mit `felder`)                           | „Anfrage nicht möglich“ mit Vorgangsnummer            | Sammelmeldung, Feldfehler „Bitte prüfen Sie diese Angabe.“ bzw. Zeichenmeldung des Vertrags (Abschnitt 12); ohne zuordenbares Feld eigener Hinweis |
 | unzulässige Person (`TcmsPersonUnzulaessig`) | –                                                     | Feldfehler am Formularfeld, kein Dienstaufruf                                                                                                      |
 | 401, 5xx, offener Breaker                    | „derzeit nicht erreichbar“ mit Vorgangsnummer         | „derzeit nicht erreichbar“                                                                                                                         |
@@ -258,8 +266,9 @@ fehlende Rechte der Person; deshalb „nicht erreichbar“ statt „Kein Zugriff
 
 Protokolliert werden nur Komponente, Endpunkt, Fehlerklasse, Status, Code,
 `requestId` und die feste Klassifikation des Clients bzw. der Akteursabbildung
-(z. B. `ZEITLIMIT`, `SITZUNG_VERALTET`; `tcmsLogFelder`), nie `meldung`,
-`felder` oder der 403-Grund des Dienstes.
+(z. B. `ZEITLIMIT`, `SITZUNG_VERALTET`; `tcmsLogFelder`) samt `verweigerung`
+und `konflikt` als Werte der festen Listen, nie `meldung`, `felder` oder der
+403-Text des Dienstes.
 
 ## 7. Bausteine (`apps/web/src/components/tcms`)
 
@@ -404,6 +413,7 @@ Abstimmung und eigene Tests mit Mutationsnachweis:
 - Guard-Tests unter `apps/web/src/__tests__/`
 
 Nur **ergänzen** (keine bestehenden Einträge ändern): `TCMS_KEIN_RECHT`,
+`TCMS_KONFLIKT_TEXTE`,
 `tcmsFixtures` und neue Fixture-Dateien, Exporte in `components/tcms`.
 
 ## 11. Route Handler für Datei-Abrufe

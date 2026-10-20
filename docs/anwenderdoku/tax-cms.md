@@ -506,12 +506,15 @@ _Tax-CMS → Freigaben_ zeigt offene und erledigte Anforderungen der Kanzlei:
   Eingabefeld nach jedem Versuch. Nach mehreren Fehlversuchen sperrt das
   Tax-CMS den Code.
 - **Grenzen beim Code:** Je Anforderung und Person lassen sich in einer
-  Stunde nur einige Codes anfordern; danach erscheint „Gerade kann kein neuer
-  Code angefordert werden …“ – nutzen Sie den zuletzt gesendeten Code oder
-  versuchen Sie es später. Ein Code kann vor seinem Ablauf ungültig werden
-  (z. B. nach einer Sicherheitsumstellung im Tax-CMS); die Seite zeigt dann
-  „Der Code ist nicht mehr gültig“ und bietet „Neuen Bestätigungscode per
-  E-Mail anfordern“ an. Ein ungültiger Code zählt nicht als Fehlversuch.
+  Stunde nur einige Codes anfordern; danach erscheint „Sie haben in der
+  letzten Stunde bereits mehrere Codes angefordert …“ – nutzen Sie den
+  zuletzt gesendeten Code oder versuchen Sie es später. Ein Code kann vor
+  seinem Ablauf ungültig werden (z. B. nach einer Sicherheitsumstellung im
+  Tax-CMS); die Seite zeigt dann „Der Code ist nicht mehr gültig“ und bietet
+  „Neuen Bestätigungscode per E-Mail anfordern“ an. Ein ungültiger Code zählt
+  nicht als Fehlversuch. Das Tax-CMS nennt seit Stufe s10 den Grund, wenn
+  Anfordern oder Freigeben nicht möglich ist; TaxTronik zeigt dazu je Grund
+  einen festen Text (Tabelle unten).
 
 ### Audit-Protokoll
 
@@ -534,6 +537,12 @@ Die Hashkette hat keinen qualifizierten Zeitstempel.
 | ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Der Code stimmt nicht. Noch … Versuche.                                      | Code aus der E-Mail erneut eingeben oder einen neuen anfordern.                                      |
 | Der Bestätigungscode ist nach mehreren Fehlversuchen gesperrt.               | Bitte an die Kanzlei wenden.                                                                         |
+| Sie haben in der letzten Stunde bereits mehrere Codes angefordert …          | Den zuletzt gesendeten Code verwenden oder später einen neuen anfordern.                             |
+| Bitte fordern Sie zuerst einen Bestätigungscode an.                          | Für die Anforderung liegt kein gültiger Code vor (nie angefordert oder neu adressiert).              |
+| Der Code ist nicht mehr gültig. Bitte fordern Sie einen neuen an.            | Der Code ist abgelaufen, auch vorzeitig nach einer Sicherheitsumstellung. Neuen Code anfordern.      |
+| Diese Anforderung ist bereits erledigt oder nicht mehr offen …               | Die Freigabe ist schon erteilt, abgelehnt oder gegenstandslos. Seite neu laden.                      |
+| Diese Fassung liegt Ihnen nicht mehr zur Freigabe vor …                      | Die Kanzlei hat die Fassung zurückgenommen oder geändert. Seite neu laden.                           |
+| Die vorgelegte Fassung kann nicht mehr freigegeben werden …                  | Der festgehaltene Stand passt nicht mehr; die Kanzlei legt die Fassung erneut vor.                   |
 | Entwurf gespeichert, aber noch nicht übermittelt: …                          | Die genannten Punkte ergänzen und erneut übermitteln.                                                |
 | Die Anlage wurde nicht ausgeliefert …                                        | Die Datei in der Ablage weicht vom festgehaltenen Stand ab. Bitte an die Kanzlei bzw. Admins wenden. |
 | Zusammen höchstens 25 MB auf einmal – bitte in mehreren Schritten hochladen. | Dateien auf mehrere Uploads verteilen.                                                               |
@@ -594,8 +603,8 @@ senden“ wiederholt werden.
 | Unzulässige Zeichen                                                   | Ein Titel, Name oder eine Funktion enthält Zeilenumbrüche oder unsichtbare Zeichen (z. B. aus kopierten Texten, Emojis mit Darstellungszusatz); ein Freitext enthält Zeichen, die die Leserichtung umkehren. Den Text neu eintippen statt einfügen. |
 | Unzulässige Zeichen (NUL oder einzelnes Surrogat)                     | Ein Freitext enthält Zeichen, die nicht gespeichert werden können. Den Text neu eintippen statt einfügen.                                                                                                                                           |
 | Die Angaben wurden nicht angenommen. …                                | Das Tax-CMS hat die Eingabe abgelehnt, ohne ein Feld zu nennen. Texte auf eingefügte Sonderzeichen prüfen und erneut speichern.                                                                                                                     |
-| Gerade kann kein neuer Code angefordert werden …                      | Im Portal: In der letzten Stunde wurden schon mehrere Codes angefordert (oder die Anforderung ist erledigt bzw. gesperrt). Den zuletzt gesendeten Code verwenden oder später erneut anfordern.                                                      |
-| Dieser Code kann nicht mehr verwendet werden …                        | Im Portal: Der Code ist abgelaufen – auch vorzeitig nach einer Sicherheitsumstellung – oder die Anforderung hat sich geändert. Seite neu laden und einen neuen Code anfordern.                                                                      |
+| Gerade kann kein neuer Code angefordert werden …                      | Im Portal, nur ohne Grund des Tax-CMS (sonst der feste Text je Grund aus Abschnitt 11): In der letzten Stunde wurden schon mehrere Codes angefordert (oder die Anforderung ist erledigt bzw. gesperrt). Den zuletzt gesendeten Code verwenden.      |
+| Dieser Code kann nicht mehr verwendet werden …                        | Im Portal, nur ohne Grund des Tax-CMS: Der Code ist abgelaufen – auch vorzeitig nach einer Sicherheitsumstellung – oder die Anforderung hat sich geändert. Seite neu laden und einen neuen Code anfordern.                                          |
 | Vier-Augen-Prinzip: Diesen Schritt muss eine andere Person ausführen. | Antrag bzw. Mitwirkung und Entscheidung (Übersteuerung, Freigabe, Abweichung, Verwerfen, Gegenzeichnung, Bestätigung) müssen von verschiedenen Personen kommen. Eine Kollegin bzw. einen Kollegen bitten.                                           |
 | Diesen Schritt führt die andere Seite aus (Kanzlei bzw. Mandant).     | Der Schritt gehört der Kanzlei bzw. dem Mandanten im Portal, z. B. eine Kontrolle, die der Mandant durchführt.                                                                                                                                      |
 

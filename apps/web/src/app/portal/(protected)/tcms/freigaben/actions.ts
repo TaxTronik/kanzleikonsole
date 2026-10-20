@@ -8,7 +8,9 @@
 // gesetzliche Vertretung – TS-06), Codes (Erzeugung, Frist, Fehlversuche unter
 // Sperre) und die Snapshot-Prüfung liegen im Tax-CMS. Die Seite fordert den
 // Code an (Zustellung über den Postausgang des Tax-CMS) und nimmt ihn
-// entgegen. Schutzregel: Der Code erscheint in keinem Ergebnis, keiner Meldung
+// entgegen. Ein 409 trägt seit TCMS s10 einen Grund (`konflikt`); die Aktion
+// zeigt den festen Text dazu (TCMS_KONFLIKT_TEXTE), ohne Grund den bisherigen
+// Sammeltext – nie den Text des Dienstes. Schutzregel: Der Code erscheint in keinem Ergebnis, keiner Meldung
 // und keinem Log der kanzleikonsole (feste Texte; Protokoll nur
 // Klassifikationen, server/tcms/zustand.ts) und wird nicht zwischengespeichert.
 // =============================================================================
@@ -27,6 +29,7 @@ import { formFlag, parseActionInput, parseFormData } from '@/server/actions/form
 import type { ActionFailure } from '@/server/actions/action-runner';
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsPortalAktion } from '@/server/tcms/aktion';
+import { konfliktText } from '@/server/tcms/zustand';
 
 type Ergebnis = ActionResult & { meldung?: string };
 /** Rückgabe des Dienstaufrufs: Fehlerergebnis oder Meldung (Nutzlast). */
@@ -53,9 +56,14 @@ export async function portalFreigabeCodeAnfordernAction(
       try {
         ({ daten } = await dienst.rufe(ENDPUNKTE.portalFreigabeCodeAnfordern, { params: p }));
       } catch (fehler) {
-        // TCMS s8: u. a. Mengenbegrenzung je Stunde – fester Text, nie der des Dienstes.
+        // TCMS s10: fester Text je Grund (erledigt, gesperrt, zu viele Codes,
+        // gleichzeitig geändert), nie der des Dienstes.
         if (fehler instanceof TcmsKonflikt) {
-          return { ok: false, error: CODE_ANFORDERN_KONFLIKT, errorCode: 'CONFLICT' };
+          return {
+            ok: false,
+            error: konfliktText(fehler.konflikt, CODE_ANFORDERN_KONFLIKT),
+            errorCode: 'CONFLICT',
+          };
         }
         throw fehler;
       }
@@ -95,12 +103,13 @@ export async function portalFreigebenAction(
           body: { code: d.code },
         }));
       } catch (fehler) {
-        // TCMS s8: abgelaufen (auch nach Schlüsselwechsel, ohne Fehlversuch),
-        // gesperrt oder erledigt – fester Text, nie der des Dienstes.
+        // TCMS s10: fester Text je Grund (abgelaufen – auch nach
+        // Schlüsselwechsel –, gesperrt, ohne Code, erledigt, Fassung nicht
+        // mehr vorgelegt oder verändert), nie der des Dienstes.
         if (fehler instanceof TcmsKonflikt) {
           return {
             ok: false as const,
-            error: CODE_NICHT_MEHR_GUELTIG,
+            error: konfliktText(fehler.konflikt, CODE_NICHT_MEHR_GUELTIG),
             errorCode: 'CONFLICT' as const,
           };
         }
