@@ -14,7 +14,11 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import type { ActionFailure } from '@/server/actions/action-runner';
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
-import { auditBruchText } from '@/server/tcms/audit';
+import {
+  AUDIT_AUFRUF_ZEITLIMIT_MS,
+  AUDIT_PRUEFUNG_BUDGET_MS,
+  auditBruchText,
+} from '@/server/tcms/audit';
 
 type Ergebnis = ActionResult & { meldung?: string; warnung?: string };
 /** Rückgabe des Dienstaufrufs: Fehlerergebnis oder Meldung (Nutzlast). */
@@ -34,7 +38,10 @@ export async function auditPruefenAction(
     aufruf: async (dienst): Promise<Lauf> => {
       let ab: number | undefined;
       let geprueft = 0;
+      const beginn = Date.now();
       for (let i = 0; i < MAX_FORTSETZUNGEN; i++) {
+        if (i > 0 && Date.now() - beginn + AUDIT_AUFRUF_ZEITLIMIT_MS > AUDIT_PRUEFUNG_BUDGET_MS)
+          break;
         const { daten: r } = await dienst.rufe(ENDPUNKTE.auditPruefen, {
           body: ab === undefined ? {} : { ab },
         });

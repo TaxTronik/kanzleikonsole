@@ -21,6 +21,18 @@ const AUDIT_BRUCH_TEXTE: Readonly<Record<string, string>> = Object.freeze({
   'Inhalt wurde verändert': 'Der Inhalt des Eintrags wurde verändert.',
 });
 
+/**
+ * Hinweis aus RT3B: Die Prüfung setzt eine abgebrochene Kette bis zu 50-mal
+ * fort, je Aufruf mit bis zu 10 s (Zeitlimit des Clients) – zusammen mehr als
+ * das Zeitlimit des Proxys für Seiten und Server-Aktionen (nginx 60 s,
+ * infra/nginx). Gesamtbudget der Prüfung: Ein weiterer Aufruf beginnt nur,
+ * wenn er samt seinem Zeitlimit noch hineinpasst; danach meldet die Aktion
+ * „nicht abgeschlossen“ und die Person startet erneut.
+ */
+export const AUDIT_PRUEFUNG_BUDGET_MS = 50_000;
+/** Zeitlimit eines Dienstaufrufs (Standard des Clients, packages/tcms-client). */
+export const AUDIT_AUFRUF_ZEITLIMIT_MS = 10_000;
+
 /** Rückfall ohne bekannten Grund. */
 export const AUDIT_BRUCH_RUECKFALL = 'Prüfung fehlgeschlagen.';
 

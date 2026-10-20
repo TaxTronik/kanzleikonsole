@@ -38,6 +38,7 @@ vi.mock('@/server/tcms/aktion', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { AUDIT_PRUEFUNG_BUDGET_MS } from '@/server/tcms/audit';
 import { auditPruefenAction } from '../audit/actions';
 import TcmsAuditPage from '../audit/page';
 
@@ -132,6 +133,32 @@ describe('auditPruefenAction', () => {
       [ENDPUNKTE.auditPruefen, { body: { ab: 20 } }],
     ]);
     expect(r).toEqual({ meldung: expect.stringContaining('31 Einträge geprüft') });
+  });
+
+  it('Hinweis RT3B: Gesamtzeitbudget – kein weiterer Aufruf, der das Budget überschreiten könnte', async () => {
+    await auditPruefenAction(null, new FormData());
+    let jetzt = Date.parse('2026-10-20T10:00:00Z');
+    const uhr = vi.spyOn(Date, 'now').mockImplementation(() => jetzt);
+    try {
+      // Der Dienst bricht jede Prüfung „ab“ und braucht je Aufruf 9 s.
+      const rufe = vi.fn(async () => {
+        jetzt += 9_000;
+        return {
+          daten: { status: 'ABGEBROCHEN', geprueft: 1, bruchBei: null, grund: null, weiterAb: 1 },
+          requestId: 'r',
+        };
+      });
+      const r = (await spec().aufruf({ rufe })) as { warnung: string };
+      // Start bei 0, 9, 18, 27, 36 s; ab 45 s passte ein weiterer Aufruf (10 s) nicht
+      // mehr in 50 s.
+      expect(rufe).toHaveBeenCalledTimes(5);
+      expect(jetzt - Date.parse('2026-10-20T10:00:00Z')).toBeLessThanOrEqual(
+        AUDIT_PRUEFUNG_BUDGET_MS,
+      );
+      expect(r.warnung).toBe('Prüfung nach 5 Einträgen nicht abgeschlossen. Bitte erneut starten.');
+    } finally {
+      uhr.mockRestore();
+    }
   });
 
   it('gebrochene Kette (RT3): Position laut Dienst, Grund nur als fester Text, nie der Rohtext', async () => {

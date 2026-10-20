@@ -523,6 +523,9 @@ Tax-CMS die Verkettung aller Einträge prüfen; das Ergebnis („intakt“ bzw.
 „gebrochen bei Eintrag #…“) stammt vom Tax-CMS. Bei einem Bruch nennt
 TaxTronik die Art des Bruchs mit einem festen Text (z. B. „Der Inhalt des
 Eintrags wurde verändert.“), bei unbekannter Art „Prüfung fehlgeschlagen.“.
+Bei sehr vielen Einträgen prüft das Tax-CMS in Abschnitten; TaxTronik setzt
+die Prüfung höchstens rund 50 Sekunden fort und meldet sonst „Prüfung nach …
+Einträgen nicht abgeschlossen. Bitte erneut starten.“
 Die Hashkette hat keinen qualifizierten Zeitstempel.
 
 ### Meldungen in diesen Bereichen

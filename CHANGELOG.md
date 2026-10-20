@@ -1153,6 +1153,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   GwG-Pflichtvernichtung löscht seine Bytes nicht: Aktion und DB-Claim weisen
   es vor jedem Object-Store-Löschen ab (RT3B-K-01, TCMS-NACHWEIS-001,
   GWG-RETENTION-DESTRUCTION-001).
+- **[TCMS]** Die Prüfung der Audit-Hashkette endet nach höchstens rund 50
+  Sekunden mit „nicht abgeschlossen“, statt bis zu 50 Fortsetzungen à 10
+  Sekunden über das Zeitlimit des Proxys hinaus zu laufen (Hinweis aus RT3B).
 - **[TCMS]** Der Zustell-Worker versendet keine Tax-CMS-Mitteilung mehr, die der
   Dienst mit 409 als abgeschlossen meldet; ein noch wartender Auftrag endet ohne
   Inhalt und Code (MAIL-OUTBOX-001).
