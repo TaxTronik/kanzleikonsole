@@ -471,9 +471,13 @@ describeWithDatabase('tcms_document_reference (TCMS-NACHWEIS-001)', () => {
         { tcmsSubject: 'EVENT', tcmsExecutionId: null, tcmsEventId: 'Ereignis-1' },
         'tcms_document_reference_event_id_check',
       ],
-      // Offener Punkt (kk-tcms-qual): Eine Freigabe ganz ohne Grund (NULL)
-      // erfüllt die Bedingung, weil `NULL = ANY (…)` NULL ergibt; geprüft
-      // werden hier die Fälle, die sie heute abweist.
+      // Freigabe ganz ohne Grund (NULL): Bis Migration 20261020200000 ergab
+      // `NULL = ANY (…)` NULL und die Bedingung galt als erfüllt (kk-tcms-qual,
+      // offener Punkt 1); jetzt `release_reason IS NOT NULL` im zweiten Zweig.
+      [
+        { releasedAt: new Date(), releasedBy: staffA, releaseReason: null },
+        'tcms_document_reference_release_check',
+      ],
       [
         { releasedAt: new Date(), releaseReason: 'REMOVED' },
         'tcms_document_reference_release_check',
@@ -516,6 +520,40 @@ describeWithDatabase('tcms_document_reference (TCMS-NACHWEIS-001)', () => {
     await expect(
       ohneTrigger((tx) => tx.tcmsDocumentReference.create({ data: basis })),
     ).resolves.toBeUndefined();
+  });
+
+  it('Freigabe ohne Grund wird für jede Rolle abgewiesen (tcms_document_reference_release_check, NULL nie erfüllt)', async () => {
+    const d = await dokument();
+    const id = await verknuepft(d);
+    const ohneGrund = { releasedAt: new Date(), releasedBy: staffA };
+    // App-Rolle unter RLS, mit Triggern (der Guard lässt die erste Freigabe zu).
+    await dbAbgewiesen(
+      alsApp(tenantA, staffA, (tx) =>
+        tx.tcmsDocumentReference.updateMany({ where: { id }, data: ohneGrund }),
+      ),
+      checkVerletzt('tcms_document_reference_release_check'),
+      'App-Rolle',
+    );
+    // Superuser ebenso (kein Trigger und keine Policy dazwischen).
+    await dbAbgewiesen(
+      ohneTrigger((tx) =>
+        tx.tcmsDocumentReference.update({
+          where: { id },
+          data: { ...ohneGrund, releaseReason: null },
+        }),
+      ),
+      checkVerletzt('tcms_document_reference_release_check'),
+      'Superuser',
+    );
+    // Gegenprobe: mit Grund geht die Freigabe durch, die Verknüpfung ist frei.
+    await alsApp(tenantA, staffA, (tx) =>
+      tx.tcmsDocumentReference.updateMany({
+        where: { id },
+        data: { ...ohneGrund, releaseReason: 'NOT_ATTACHED' },
+      }),
+    );
+    const frei = await owner.tcmsDocumentReference.findUniqueOrThrow({ where: { id } });
+    expect(frei.releaseReason).toBe('NOT_ATTACHED');
   });
 
   it('eine offene Verknüpfung je Nachweis-ID und Tenant (tcms_document_reference_open_evidence)', async () => {
@@ -786,3 +824,45 @@ describeWithDatabase('tcms_nachricht_zustellung (MAIL-OUTBOX-001)', () => {
     );
   });
 });
+
+describeWithDatabase(
+  'CHECK-Bedingungen der TCMS-Tabellen: dreiwertige Logik (kk-tcms-s10nach)',
+  () => {
+    // Ein CHECK gilt bei NULL als erfüllt. Jede Bedingung unten ist darauf
+    // geprüft, dass sie für jede Zeile TRUE oder FALSE ergibt (NOT-NULL-Spalten,
+    // `IS NULL`/`IS NOT NULL`/`IS DISTINCT FROM` statt Vergleich mit einer
+    // nullbaren Spalte). Die einzige Lücke (release_check ohne Grund) schließt
+    // Migration 20261020200000; die Fälle oben belegen jede Bedingung einzeln.
+    // Eine neue oder umbenannte Bedingung lässt diesen Test scheitern, bis sie
+    // ebenso geprüft und hier eingetragen ist.
+    const GEPRUEFT: Record<string, string> = {
+      'tcms_document_reference.tcms_document_reference_event_id_check': 'IS NULL OR ~',
+      'tcms_document_reference.tcms_document_reference_evidence_id_check': 'IS NULL OR ~',
+      'tcms_document_reference.tcms_document_reference_execution_id_check': 'IS NULL OR ~',
+      'tcms_document_reference.tcms_document_reference_release_check':
+        'IS NOT NULL vor IN (seit 20261020200000)',
+      'tcms_document_reference.tcms_document_reference_sha256_check': 'sha256 NOT NULL',
+      'tcms_document_reference.tcms_document_reference_subject_check':
+        'tcms_subject NOT NULL, IS (NOT) NULL, IS DISTINCT FROM',
+      'tcms_nachricht_zustellung.tcms_nachricht_zustellung_abschluss_check':
+        'status NOT NULL, Vergleich von IS NULL',
+      'tcms_nachricht_zustellung.tcms_nachricht_zustellung_grund_check':
+        'status NOT NULL, grund IS NULL OR = ANY',
+      'tcms_nachricht_zustellung.tcms_nachricht_zustellung_nachricht_id_check':
+        'nachricht_id NOT NULL',
+      'tcms_nachricht_zustellung.tcms_nachricht_zustellung_status_check': 'status NOT NULL',
+      'tcms_nachricht_zustellung.tcms_nachricht_zustellung_zweck_check': 'zweck NOT NULL',
+      'tcms_systemakteur.tcms_systemakteur_lauf_check': 'Vergleich von IS NULL',
+    };
+
+    it('jede CHECK-Bedingung der TCMS-Tabellen ist auf NULL geprüft und eingetragen', async () => {
+      const zeilen = await owner.$queryRaw<Array<{ name: string }>>`
+      SELECT c.conrelid::regclass::text || '.' || c.conname AS name
+        FROM pg_constraint c
+       WHERE c.contype = 'c'
+         AND c.conrelid::regclass::text LIKE 'tcms\_%'
+       ORDER BY 1`;
+      expect(zeilen.map((z) => z.name)).toEqual(Object.keys(GEPRUEFT).sort());
+    });
+  },
+);

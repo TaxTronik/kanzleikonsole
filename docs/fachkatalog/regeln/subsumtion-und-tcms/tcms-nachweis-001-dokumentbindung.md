@@ -72,6 +72,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts
   - packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql
   - packages/db/prisma/migrations/20261020100100_tcms_document_version_lock/migration.sql
+  - packages/db/prisma/migrations/20261020200000_tcms_document_reference_release_reason/migration.sql
   - packages/db/src/database-error.ts
   - apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx
   - apps/web/src/components/tcms/portal/anlagen.tsx
@@ -98,6 +99,7 @@ test_refs:
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions-db.test.ts
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts
   - packages/db/src/__tests__/tcms-document-reference-guards.test.ts
+  - packages/db/src/__tests__/tcms-db-regeln.test.ts
   - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
   - apps/web/src/components/tcms/durchfuehrung/__tests__/nachweis-liste.test.tsx
   - apps/web/src/app/portal/(protected)/tcms/__tests__/portal-seiten.test.tsx
@@ -387,3 +389,12 @@ der Datenbankablehnung als 409),
 ohne Vormerkung, Audit und Bytes; Prüfung vor jedem Object-Store-Löschen)
 sowie `tcms-document-reference-guards.test.ts` (Altbestand, Superuser,
 Einordnung über SQLSTATE und Marker).
+`packages/db/src/__tests__/tcms-db-regeln.test.ts` belegt jede Schutzregel
+der Tabelle einzeln (Trigger-Zweige, CHECK-Bedingungen ohne Trigger, RLS
+USING und WITH CHECK, Rechte); jede ist durch eine Mutation in der
+Datenbank belegt. Seit Migration `20261020200000` weist
+`tcms_document_reference_release_check` auch eine Freigabe ohne Grund ab
+(`release_reason IS NOT NULL` vor dem Vergleich: NULL erfüllt die Bedingung
+nie, dreiwertige Logik); der Test prüft das für App-Rolle und Superuser,
+und ein Inventar verlangt, dass jede CHECK-Bedingung der TCMS-Tabellen auf
+dieselbe Falle geprüft ist.

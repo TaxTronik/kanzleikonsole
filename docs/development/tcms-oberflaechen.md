@@ -356,6 +356,11 @@ mindestens zwei Bereiche sie brauchen.
   einzeln: je Regel ein Test, der nur an ihr scheitert (CHECKs mit
   abgeschalteten Triggern, Policies der Worker-Tabellen über eine Rolle ohne
   BYPASSRLS mit geliehenen Rechten, alles in zurückgerollten Transaktionen).
+  CHECK-Bedingungen müssen für jede Zeile TRUE oder FALSE ergeben: Ein CHECK
+  gilt bei NULL als erfüllt, deshalb `IS NOT NULL` vor einem Vergleich mit
+  einer nullbaren Spalte (`tcms_document_reference_release_check` seit
+  Migration `20261020200000`). Ein Inventar im Test listet jede CHECK-Bedingung
+  der TCMS-Tabellen; eine neue scheitert dort, bis sie so geprüft ist.
   Ablehnungen prüfen DB-Tests nur über `dbAbgewiesen`/`anwendungAbgewiesen`
   ([Testkonzept, Abschnitt 1](testkonzept.md#1-testarten-und-ihr-zweck)).
 
