@@ -25,7 +25,8 @@
     "./portal-session-revocation": "./src/portal-session-revocation.ts",
     "./fido-mds-snapshot": "./src/fido-mds-snapshot.ts",
     "./privacy-notice": "./src/privacy-notice.ts",
-    "./dsgvo-contact-export": "./src/dsgvo-contact-export.ts"
+    "./dsgvo-contact-export": "./src/dsgvo-contact-export.ts",
+    "./testing/db-fehler": "./src/testing/db-fehler.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
