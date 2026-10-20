@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { Client } from 'pg';
 import { describe, expect, it } from 'vitest';
+import { erwarteDbFehler } from '../testing/db-fehler';
 
 const migration034 = readFileSync(
   new URL(
@@ -130,7 +131,7 @@ describe('GwG Legacy-Guard-Recovery 044', () => {
       } catch (error) {
         failure = error;
       }
-      expect(String(failure)).toMatch(/division by zero/i);
+      erwarteDbFehler(failure, { sqlState: '22012', meldung: /division by zero/i });
       await client.query('ROLLBACK');
       expect(await snapshot()).toEqual(before);
     } finally {

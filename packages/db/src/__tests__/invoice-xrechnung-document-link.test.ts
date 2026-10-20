@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const schema = readFileSync(new URL('../../prisma/schema.prisma', import.meta.url), 'utf8');
 const migration = readFileSync(
@@ -205,23 +206,25 @@ describeWithDatabase('XRechnung-FK unter echter Owner- und App-Rolle', () => {
   }
 
   it('akzeptiert nur das exakt passende Dokument und blockiert spätere Scope-Mutationen', async () => {
-    await expect(
+    await dbAbgewiesen(
       asStaff((tx) =>
         tx.invoice.update({
           where: { id: invoiceId },
           data: { xrechnungDocumentId: otherClientDocumentId },
         }),
       ),
-    ).rejects.toThrow(/Foreign key constraint|Archivgrenze/);
+      /Foreign key constraint|Archivgrenze/,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       asStaff((tx) =>
         tx.invoice.update({
           where: { id: invoiceId },
           data: { xrechnungDocumentId: foreignTenantDocumentId },
         }),
       ),
-    ).rejects.toThrow(/Foreign key constraint|Archivgrenze/);
+      /Foreign key constraint|Archivgrenze/,
+    );
 
     let releaseMutation!: () => void;
     let mutationHasRowLock!: () => void;
@@ -257,7 +260,7 @@ describeWithDatabase('XRechnung-FK unter echter Owner- und App-Rolle', () => {
     expect(earlyState).toBe('blocked');
     releaseMutation();
     await mutate;
-    await expect(concurrentLink).rejects.toThrow(/Foreign key constraint|Archivgrenze/);
+    await dbAbgewiesen(concurrentLink, /Foreign key constraint|Archivgrenze/);
 
     await asStaff((tx) =>
       tx.invoice.update({
@@ -266,20 +269,22 @@ describeWithDatabase('XRechnung-FK unter echter Owner- und App-Rolle', () => {
       }),
     );
 
-    await expect(
+    await dbAbgewiesen(
       asStaff((tx) =>
         tx.document.update({
           where: { id: canonicalDocumentId },
           data: { mimeType: 'text/xml' },
         }),
       ),
-    ).rejects.toThrow(/Foreign key constraint|Archivgrenze/);
-    await expect(
+      /Foreign key constraint|Archivgrenze/,
+    );
+    await dbAbgewiesen(
       owner.document.update({
         where: { id: canonicalDocumentId },
         data: { deletedAt: new Date() },
       }),
-    ).rejects.toThrow(/Foreign key constraint|Archivgrenze/);
+      /Foreign key constraint|Archivgrenze/,
+    );
 
     // Detach-vor-Softdelete ist der absichtlich erlaubte Cleanup-Pfad.
     await asStaff(async (tx) => {

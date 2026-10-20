@@ -10,6 +10,7 @@ vi.mock('pg', () => ({
   },
 }));
 import { resetShadowAppSchema } from '../../scripts/drift-shadow';
+import { anwendungAbgewiesen } from '../testing/db-fehler';
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -25,7 +26,7 @@ describe('shadow identity before destructive SQL', () => {
     client.query
       .mockResolvedValueOnce({ rows: [{ database: 'office' }] })
       .mockResolvedValueOnce({ rows: [{ database: 'office' }] });
-    await expect(resetShadowAppSchema(shadow, [source])).rejects.toThrow('ausdrücklich benannte');
+    await anwendungAbgewiesen(resetShadowAppSchema(shadow, [source]), 'ausdrücklich benannte');
     expect(client.query).toHaveBeenCalledTimes(2);
     expect(client.query).toHaveBeenCalledWith('SELECT current_database() AS database');
     expect(client.end).toHaveBeenCalledTimes(2);
@@ -33,7 +34,7 @@ describe('shadow identity before destructive SQL', () => {
 
   it('resolves source pooler aliases before a shadow connection can drop their actual database', async () => {
     client.query.mockResolvedValueOnce({ rows: [{ database: 'office_shadow' }] });
-    await expect(resetShadowAppSchema(shadow, [source])).rejects.toThrow('denselben');
+    await anwendungAbgewiesen(resetShadowAppSchema(shadow, [source]), 'denselben');
     expect(client.query).toHaveBeenCalledTimes(1);
     expect(client.query).toHaveBeenCalledWith('SELECT current_database() AS database');
     expect(client.end).toHaveBeenCalledOnce();
@@ -41,7 +42,7 @@ describe('shadow identity before destructive SQL', () => {
 
   it('does not issue any SQL after a connection failure and closes the client', async () => {
     client.connect.mockRejectedValueOnce(new Error('connection refused'));
-    await expect(resetShadowAppSchema(shadow, [source])).rejects.toThrow('connection refused');
+    await anwendungAbgewiesen(resetShadowAppSchema(shadow, [source]), 'connection refused');
     expect(client.query).not.toHaveBeenCalled();
     expect(client.end).toHaveBeenCalledOnce();
   });

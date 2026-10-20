@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Client as PgClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const migration = readFileSync(
   new URL(
@@ -56,7 +57,7 @@ const INSERT = `
 async function expectRejected(sql: string, parameters: unknown[], message: RegExp) {
   await db.query('SAVEPOINT expected_rejection');
   try {
-    await expect(db.query(sql, parameters)).rejects.toThrow(message);
+    await dbAbgewiesen(db.query(sql, parameters), message);
   } finally {
     await db.query('ROLLBACK TO SAVEPOINT expected_rejection');
     await db.query('RELEASE SAVEPOINT expected_rejection');

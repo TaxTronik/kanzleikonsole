@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import type { Prisma } from '@prisma/client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 const run =
   process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL'] ? describe : describe.skip;
 
@@ -100,12 +101,8 @@ run('WORKFLOW-DEPENDENCY-001 actual period and reopen boundaries', () => {
   it('requires two explicitly confirmed identical periods', async () => {
     const unknown = await item(null);
     const otherYear = await item(2025);
-    await expect(connect(unknown.step.id, successor)).rejects.toThrow(
-      'same confirmed assessment year',
-    );
-    await expect(connect(otherYear.step.id, successor)).rejects.toThrow(
-      'same confirmed assessment year',
-    );
+    await dbAbgewiesen(connect(unknown.step.id, successor), 'same confirmed assessment year');
+    await dbAbgewiesen(connect(otherYear.step.id, successor), 'same confirmed assessment year');
     expect((await connect(predecessor, successor)).successorItemId).toBe(successor);
     expect(
       (
@@ -116,14 +113,15 @@ run('WORKFLOW-DEPENDENCY-001 actual period and reopen boundaries', () => {
     ).toBeNull();
   });
   it('keeps connected periods fixed and still rejects indirect cycles', async () => {
-    await expect(
+    await dbAbgewiesen(
       actor((tx) =>
         tx.workflowInstance.update({ where: { id: workflowId }, data: { assessmentYear: 2025 } }),
       ),
-    ).rejects.toThrow('Remove workflow dependencies');
+      'Remove workflow dependencies',
+    );
     const third = await item(2026);
     await connect(successor, third.step.id);
-    await expect(connect(third.step.id, predecessor)).rejects.toThrow('Dependency cycle');
+    await dbAbgewiesen(connect(third.step.id, predecessor), 'Dependency cycle');
   });
   it('notifies the active assignee on a real reopen without changing downstream status', async () => {
     await actor((tx) =>

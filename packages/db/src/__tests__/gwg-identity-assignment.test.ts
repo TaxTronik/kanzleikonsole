@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { Prisma, PrismaClient } from '../prisma-client';
+import { anwendungAbgewiesen, dbAbgewiesen, erwarteDbFehler } from '../testing/db-fehler';
 
 const migration = readFileSync(
   new URL(
@@ -418,7 +419,7 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
       } finally {
         await database.query('ROLLBACK TO SAVEPOINT direct_cancel');
       }
-      expect(String(directCancelFailure)).toMatch(/Vernichtungsclaim eingefroren/i);
+      erwarteDbFehler(directCancelFailure, /Vernichtungsclaim eingefroren/i);
 
       await database.query(cutoverSql);
 
@@ -456,7 +457,7 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
       } finally {
         await database.query('ROLLBACK TO SAVEPOINT bypass_is_closed');
       }
-      expect(String(postCutoverFailure)).toMatch(/Vernichtungsclaim eingefroren/i);
+      erwarteDbFehler(postCutoverFailure, /Vernichtungsclaim eingefroren/i);
     } finally {
       await database.query('ROLLBACK').catch(() => undefined);
       await database.end();
@@ -528,25 +529,51 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
       data: { slug: `test-gwg-lineage-target-${Date.now()}`, name: 'Lineage Target' },
     });
 
-    await expect(owner.gwgCheck.delete({ where: { id: predecessor.id } })).rejects.toThrow();
-    await expect(
+    await dbAbgewiesen(owner.gwgCheck.delete({ where: { id: predecessor.id } }), {
+      sqlState: '23001',
+      meldung: 'GwG-Check darf nicht hart geloescht werden; kontrollierte Vernichtung verwenden.',
+    });
+    await dbAbgewiesen(
       owner.gwgCheck.update({
         where: { id: predecessor.id },
         data: { clientId: otherClient.id },
       }),
-    ).rejects.toThrow(/unveränderlich/);
-    await expect(
+      /unveränderlich/,
+    );
+    // Ein Tenantwechsel allein bricht zuerst die Tenant-/Mandanten-Paarung
+    // (00_tenant_client_pair_integrity). Die Unveränderlichkeit des Scopes gilt
+    // auch für ein in sich stimmiges Paar eines anderen Tenants (kk-tcms-qual:
+    // der frühere Abgleich bestand nur über den Prisma-Codeausschnitt).
+    await dbAbgewiesen(
       owner.gwgCheck.update({
         where: { id: predecessor.id },
         data: { tenantId: otherTenant.id },
       }),
-    ).rejects.toThrow(/unveränderlich/);
-    await expect(
+      {
+        sqlState: '23503',
+        meldung: 'tenant_id und client_id gehören nicht zum selben Mandanten-Scope (gwg_check).',
+      },
+    );
+    const targetClient = await owner.client.create({
+      data: { tenantId: otherTenant.id, kind: 'PERSGES', name: 'Lineage Ziel GbR' },
+    });
+    await dbAbgewiesen(
+      owner.gwgCheck.update({
+        where: { id: predecessor.id },
+        data: { tenantId: otherTenant.id, clientId: targetClient.id },
+      }),
+      {
+        sqlState: '23514',
+        meldung: 'GwG-Prüfungsscope, Prüfungsanlass und Vorgänger sind nach Anlage unveränderlich.',
+      },
+    );
+    await dbAbgewiesen(
       owner.gwgCheck.update({
         where: { id: successor.id },
         data: { changeScope: 'BOTH' },
       }),
-    ).rejects.toThrow(/unveränderlich/);
+      /unveränderlich/,
+    );
     await expect(owner.tenant.delete({ where: { id: cascadeTenant.id } })).resolves.toMatchObject({
       id: cascadeTenant.id,
     });
@@ -627,7 +654,7 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
 
   it('bereinigt VERIFIED-Legacy-Dubletten atomar trotz Snapshot-Guard', async () => {
     const rollbackMarker = 'ROLLBACK_VERIFIED_LEGACY_DUPLICATE_TEST';
-    await expect(
+    await anwendungAbgewiesen(
       owner.$transaction(
         async (tx) => {
           await tx.$queryRaw(
@@ -776,7 +803,8 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
         },
         { timeout: 30_000 },
       ),
-    ).rejects.toThrow(rollbackMarker);
+      rollbackMarker,
+    );
   });
 
   it('blockiert eine neue Freigabe bis zur bestaetigten Natural-Client-Zuordnung', async () => {
@@ -803,23 +831,25 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
       },
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.gwgCheck.update({
         where: { id: check.id },
         data: { status: 'VERIFIED', verifiedAt: new Date() },
       }),
-    ).rejects.toThrow(/1:1-Identitaetszuordnung/);
+      /1:1-Identitaetszuordnung/,
+    );
 
     await owner.gwgIdDocument.update({
       where: { id: idDocument.id },
       data: { naturalClientSubjectId: client.id },
     });
-    await expect(
+    await dbAbgewiesen(
       owner.gwgCheck.update({
         where: { id: check.id },
         data: { status: 'VERIFIED', verifiedAt: new Date() },
       }),
-    ).rejects.toThrow(/1:1-Identitaetszuordnung/);
+      /1:1-Identitaetszuordnung/,
+    );
 
     const confirmedAt = new Date();
     await owner.gwgIdDocument.update({
@@ -844,12 +874,13 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
 
   it('blockiert VERIFIED fuer eine reine Dokumenthuelle ohne gescannte Version', async () => {
     const { checkId } = await createConfirmedNaturalIdentityCheck('Keine Dateiversion', []);
-    await expect(
+    await dbAbgewiesen(
       owner.gwgCheck.update({
         where: { id: checkId },
         data: { status: 'VERIFIED', verifiedAt: new Date() },
       }),
-    ).rejects.toThrow(/1:1-Identitaetszuordnung/);
+      /1:1-Identitaetszuordnung/,
+    );
   });
 
   it.each(['PENDING', 'INFECTED'] as const)(
@@ -862,12 +893,13 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
           { versionNo: 2, scanStatus },
         ],
       );
-      await expect(
+      await dbAbgewiesen(
         owner.gwgCheck.update({
           where: { id: checkId },
           data: { status: 'VERIFIED', verifiedAt: new Date() },
         }),
-      ).rejects.toThrow(/1:1-Identitaetszuordnung/);
+        /1:1-Identitaetszuordnung/,
+      );
     },
   );
 
@@ -881,7 +913,7 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
       orderBy: { versionNo: 'desc' },
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.documentVersion.create({
         data: {
           documentId: evidenceId,
@@ -896,14 +928,28 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
           createdById: staffId,
         },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23001',
+        meldung:
+          'Zugeordneter GwG-Beweisinhalt ist unveraenderlich; neues Dokument anlegen und erneut zuordnen.',
+      },
+    );
+    await dbAbgewiesen(
       owner.documentVersion.update({
         where: { id: version.id },
         data: { scanStatus: 'INFECTED', scanCompletedAt: new Date() },
       }),
-    ).rejects.toThrow();
-    await expect(owner.documentVersion.delete({ where: { id: version.id } })).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung:
+          'Zugeordneter GwG-Beweisinhalt ist unveraenderlich; neues Dokument anlegen und erneut zuordnen.',
+      },
+    );
+    await dbAbgewiesen(owner.documentVersion.delete({ where: { id: version.id } }), {
+      sqlState: '23001',
+      meldung:
+        'Zugeordneter GwG-Beweisinhalt ist unveraenderlich; neues Dokument anlegen und erneut zuordnen.',
+    });
 
     // Die Sperre veraendert die bestaetigte Ausgangsversion nicht; der Check
     // kann mit genau diesem Inhalt weiterhin regulaer freigegeben werden.
@@ -938,7 +984,7 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
     ]);
     const evidenceId = await createEvidenceDocument(clientA.id, 'Scope Ausweis');
 
-    await expect(
+    await dbAbgewiesen(
       owner.gwgIdDocument.create({
         data: {
           gwgCheckId: checkA.id,
@@ -948,9 +994,10 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
           representativeSubjectId: foreignRepresentative.id,
         },
       }),
-    ).rejects.toThrow();
+      { sqlState: '23503', meldung: 'Vertreter-Subject gehoert nicht zu dieser GwG-Pruefung.' },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.gwgIdDocument.create({
         data: {
           gwgCheckId: checkA.id,
@@ -960,7 +1007,11 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
           beneficialOwnerSubjectId: foreignOwner.id,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23503',
+        meldung: 'Wirtschaftlich-Berechtigten-Subject gehoert nicht zu dieser GwG-Pruefung.',
+      },
+    );
   });
 
   it('weist soft-geloeschte und vernichtete Evidence-Belege beim Verknuepfen zurueck', async () => {
@@ -995,7 +1046,7 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
     });
 
     for (const documentId of [deletedEvidenceId, destroyedEvidenceId]) {
-      await expect(
+      await dbAbgewiesen(
         owner.gwgIdDocument.create({
           data: {
             gwgCheckId: check.id,
@@ -1004,7 +1055,12 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
             documentId,
           },
         }),
-      ).rejects.toThrow();
+        {
+          sqlState: '23503',
+          meldung:
+            'GwG-ID-Dokument braucht einen verfügbaren GWG_EVIDENCE-Beleg aus demselben Tenant/Mandanten.',
+        },
+      );
     }
   });
 
@@ -1025,12 +1081,13 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
       },
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.document.update({
         where: { id: evidenceId },
         data: { deletedAt: new Date(), deletedByStaff: staffId },
       }),
-    ).rejects.toThrow(/GwG-Beleg/);
+      /GwG-Beleg/,
+    );
     await expect(
       owner.document.findUniqueOrThrow({ where: { id: evidenceId } }),
     ).resolves.toMatchObject({ deletedAt: null });
@@ -1161,18 +1218,20 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
     const unlinkedRepresentative = await owner.gwgRepresentative.create({
       data: { gwgCheckId: check.id, fullName: 'Ute Unverknüpft', position: 1 },
     });
-    await expect(
+    await dbAbgewiesen(
       owner.gwgBeneficialOwner.update({
         where: { id: beneficialOwner.id },
         data: { gwgCheckId: otherCheck.id },
       }),
-    ).rejects.toThrow(/anderen Prüfsnapshot/);
-    await expect(
+      /anderen Prüfsnapshot/,
+    );
+    await dbAbgewiesen(
       owner.gwgRepresentative.update({
         where: { id: unlinkedRepresentative.id },
         data: { gwgCheckId: otherCheck.id },
       }),
-    ).rejects.toThrow(/anderen Prüfsnapshot/);
+      /anderen Prüfsnapshot/,
+    );
     const [frontId, backId] = await Promise.all([
       createEvidenceDocument(client.id, 'Doppelrolle Vorderseite'),
       createEvidenceDocument(client.id, 'Doppelrolle Rueckseite'),
@@ -1280,7 +1339,7 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
     });
     await owner.gwgIdDocument.create({ data: { ...common, documentId: backId } });
 
-    await expect(
+    await anwendungAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.gwgIdDocument.create({
           data: {
@@ -1290,21 +1349,28 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
           },
         });
       }),
-    ).rejects.toThrow(/Dokumentset.*einheitlich/);
+      /Dokumentset.*einheitlich/,
+    );
 
-    await expect(
+    await anwendungAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.gwgIdDocument.create({
           data: { ...common, documentId: thirdId, number: 'ANDERE-NUMMER' },
         });
       }),
-    ).rejects.toThrow(/Ausweisdaten einheitlich abbilden/);
+      /Ausweisdaten einheitlich abbilden/,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.gwgIdDocument.create({
         data: { ...common, documentSetId: crypto.randomUUID(), documentId: frontId },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23505',
+        meldung:
+          'duplicate key value violates unique constraint "gwg_id_document_gwg_check_id_document_id_key"',
+      },
+    );
 
     await owner.gwgRepresentative.delete({ where: { id: representativeA.id } });
     const unassigned = await owner.gwgIdDocument.findUniqueOrThrow({ where: { id: front.id } });
@@ -1319,18 +1385,20 @@ describeWithDatabase('GwG-Identitaetszuordnung – DB-Invarianten', () => {
     const client = await owner.client.create({
       data: { tenantId, kind: 'NATPERS', name: 'No Shortcut' },
     });
-    await expect(
+    await dbAbgewiesen(
       owner.gwgCheck.create({
         data: { tenantId, clientId: client.id, status: 'VERIFIED', verifiedAt: new Date() },
       }),
-    ).rejects.toThrow(/zuerst als offener Check/);
+      /zuerst als offener Check/,
+    );
 
     const check = await owner.gwgCheck.create({ data: { tenantId, clientId: client.id } });
-    await expect(
+    await dbAbgewiesen(
       owner.gwgCheck.update({
         where: { id: check.id },
         data: { identityAssignmentRequired: false },
       }),
-    ).rejects.toThrow(/nach dem Cutover nicht deaktiviert/);
+      /nach dem Cutover nicht deaktiviert/,
+    );
   });
 });

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEV_SEED_GWG_LEGAL_ENTITY_SNAPSHOT, ensureDevSeedVerifiedGwgCheck } from '../../seeds/lib';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { PrismaClient } from '../prisma-client';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_URL'])),
@@ -66,9 +67,10 @@ describe('Dev-Seed GwG-Fail-closed-Reihenfolge', () => {
   it('ersetzt ein altes unvollständiges VERIFIED-Fragment und bleibt beim zweiten Lauf idempotent', async () => {
     const fragment = await createGrandfatheredLegacyFragment(new Date('2026-01-01T00:00:00.000Z'));
 
-    await expect(
+    await dbAbgewiesen(
       owner.client.update({ where: { id: clientId }, data: { allowActive: true } }),
-    ).rejects.toThrow(/vollständig verifizieren|verifizierten.*gwg_check/i);
+      /vollständig verifizieren|verifizierten.*gwg_check/i,
+    );
 
     const repaired = await ensureDevSeedVerifiedGwgCheck(owner, {
       tenantId,

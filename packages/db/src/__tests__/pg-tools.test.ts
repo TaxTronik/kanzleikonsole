@@ -17,6 +17,7 @@ import {
   type BackupRunAuditEntry,
   type PgBackupDb,
 } from '../pg-tools';
+import { anwendungAbgewiesen } from '../testing/db-fehler';
 
 describe('PostgreSQL process tools', () => {
   it('keeps credentials out of argv and preserves SSL mode', () => {
@@ -66,7 +67,7 @@ describe('PostgreSQL process tools', () => {
   it('reports missing pg_dump executables without an unhandled stream error', async () => {
     const dump = spawnPgDump({}, [], { path: 'definitely-missing-pg-dump-binary' });
     dump.stream.on('error', () => undefined);
-    await expect(dump.result()).rejects.toThrow('pg_dump konnte nicht gestartet werden');
+    await anwendungAbgewiesen(dump.result(), 'pg_dump konnte nicht gestartet werden');
   });
 });
 

@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -128,7 +129,8 @@ describeWithDatabase('document_version.pdf_page_count (P-13)', () => {
   });
 
   it('weist eine negative Seitenzahl ab', async () => {
-    await expect(evidenceWithVersion(-1)).rejects.toThrow(
+    await dbAbgewiesen(
+      evidenceWithVersion(-1),
       /document_version_pdf_page_count_check|check constraint/i,
     );
   });
@@ -138,11 +140,12 @@ describeWithDatabase('document_version.pdf_page_count (P-13)', () => {
     await owner.gwgIdDocument.create({
       data: { gwgCheckId: checkId, type: 'PERSONALAUSWEIS', ownerName: 'Test', documentId },
     });
-    await expect(
+    await dbAbgewiesen(
       inTenant(app, (tx) =>
         tx.documentVersion.update({ where: { id: versionId }, data: { pdfPageCount: 5 } }),
       ),
-    ).rejects.toThrow(/unveraenderlich/);
+      /unveraenderlich/,
+    );
     const stored = await owner.documentVersion.findUnique({
       where: { id: versionId },
       select: { pdfPageCount: true },

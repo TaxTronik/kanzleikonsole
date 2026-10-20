@@ -6,6 +6,7 @@ import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
 import { withTenantContext } from '../tenant-context';
 import { prisma as appPrisma } from '../client';
+import { anwendungAbgewiesen, dbAbgewiesen, erwarteDbFehler } from '../testing/db-fehler';
 
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env['DATABASE_URL'])),
@@ -105,11 +106,12 @@ afterAll(async () => {
 
 describe('TaxDeadline/Request-Pointer-Invariante', () => {
   it('verwirft das einseitige Clear auf der Request-Seite am Transaktionscommit', async () => {
-    await expect(
+    await anwendungAbgewiesen(
       owner.$transaction((tx) =>
         tx.request.update({ where: { id: requestId }, data: { taxDeadlineId: null } }),
       ),
-    ).rejects.toThrow(/pointer mismatch/i);
+      /pointer mismatch/i,
+    );
 
     await expect(owner.request.findUnique({ where: { id: requestId } })).resolves.toMatchObject({
       taxDeadlineId: deadlineId,
@@ -117,14 +119,15 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
   });
 
   it('verwirft das einseitige Clear auf der Deadline-Seite am Transaktionscommit', async () => {
-    await expect(
+    await anwendungAbgewiesen(
       owner.$transaction((tx) =>
         tx.taxDeadline.update({
           where: { id: deadlineId },
           data: { requestId: null },
         }),
       ),
-    ).rejects.toThrow(/pointer mismatch/i);
+      /pointer mismatch/i,
+    );
 
     await expect(
       owner.taxDeadline.findUnique({ where: { id: deadlineId } }),
@@ -132,7 +135,7 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
   });
 
   it('verwirft widersprüchliche Feldkombinationen je Benachrichtigungsstatus', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.taxDeadline.update({
         where: { id: deadlineId },
         data: {
@@ -141,9 +144,10 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
           autoRequestNotificationLastError: null,
         },
       }),
-    ).rejects.toThrow(/tax_deadline_notification_state_check/i);
+      /tax_deadline_notification_state_check/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxDeadline.update({
         where: { id: deadlineId },
         data: {
@@ -153,7 +157,8 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
           autoRequestNotificationLastError: 'Test: unzulässiger vierter Retry-Zustand.',
         },
       }),
-    ).rejects.toThrow(/tax_deadline_notification_state_check/i);
+      /tax_deadline_notification_state_check/i,
+    );
   });
 
   it('blockiert Unlink und Purge während eines aktiven Versandclaims', async () => {
@@ -166,7 +171,7 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
       },
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.request.update({ where: { id: requestId }, data: { taxDeadlineId: null } });
         await tx.$queryRaw(
@@ -186,7 +191,8 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
           },
         });
       }),
-    ).rejects.toThrow(/notification attempt is in flight/i);
+      /notification attempt is in flight/i,
+    );
 
     await expect(owner.request.findUnique({ where: { id: requestId } })).resolves.toMatchObject({
       taxDeadlineId: deadlineId,
@@ -240,7 +246,7 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
       autoRequestNotificationEscalatedAt: null,
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxDeadline.update({
         where: { id: deadlineId },
         data: {
@@ -248,17 +254,19 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
           autoRequestNotificationLastError: 'Nachträglich umgeschriebene Historie.',
         },
       }),
-    ).rejects.toThrow(/orphaned.*history is immutable/i);
+      /orphaned.*history is immutable/i,
+    );
 
-    await expect(
+    await anwendungAbgewiesen(
       owner.$transaction((tx) =>
         tx.request.update({ where: { id: requestId }, data: { status: 'OPEN' } }),
       ),
-    ).rejects.toThrow(/pointer mismatch/i);
+      /pointer mismatch/i,
+    );
   });
 
   it('erlaubt nur dem expliziten Purge-Pfad die vollständige Neutralisierung', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.$queryRaw`
             SELECT set_config('app.current_tenant_id', ${tenantId}, true),
@@ -291,7 +299,8 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
           },
         });
       }),
-    ).rejects.toThrow(/orphaned.*history is immutable/i);
+      /orphaned.*history is immutable/i,
+    );
 
     await expect(
       owner.$transaction(async (tx) => {
@@ -422,11 +431,12 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
   });
 
   it('erteilt taxtronik_app keinen Lesezugriff auf die interne Versandhistorie', async () => {
-    await expect(
+    await dbAbgewiesen(
       withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
         tx.taxDeadlineNotificationHistory.findMany({ take: 1 }),
       ),
-    ).rejects.toThrow(/permission denied/i);
+      /permission denied/i,
+    );
   });
 
   it('blockiert einen konkurrierenden Delete nach einem gewonnenen UNKNOWN-Claim', async () => {
@@ -504,7 +514,7 @@ describe('TaxDeadline/Request-Pointer-Invariante', () => {
     await claimTransaction;
     const deletion = await deleteOutcome;
     expect(deletion.ok).toBe(false);
-    expect(String(deletion.error)).toMatch(/notification attempt is in flight/i);
+    erwarteDbFehler(deletion.error, /notification attempt is in flight/i);
 
     await owner.taxDeadline.update({
       where: { id: deadline.id },

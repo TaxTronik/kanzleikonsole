@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
@@ -108,18 +109,32 @@ afterAll(async () => {
 describe('TAX-MASTER-DATA-001 PostgreSQL boundaries', () => {
   it('rejects missing active numbers, duplicate primary/number and cross-tenant client pairs', async () => {
     const base = { tenantId, clientId, label: 'Other' };
-    await expect(owner.clientTaxRegistration.create({ data: { ...base } })).rejects.toThrow();
-    await expect(
+    await dbAbgewiesen(owner.clientTaxRegistration.create({ data: { ...base } }), {
+      sqlState: '23514',
+      meldung:
+        'new row for relation "client_tax_registration" violates check constraint "client_tax_registration_active_number_check"',
+    });
+    await dbAbgewiesen(
       owner.clientTaxRegistration.create({
         data: { ...base, numberElster: '1113034567890', taxOfficeCode: '1113', isPrimary: true },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23505',
+        meldung:
+          'duplicate key value violates unique constraint "client_tax_registration_primary_idx"',
+      },
+    );
+    await dbAbgewiesen(
       owner.clientTaxRegistration.create({
         data: { ...base, numberElster: '1112034567890', taxOfficeCode: '1112' },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23505',
+        meldung:
+          'duplicate key value violates unique constraint "client_tax_registration_active_number_idx"',
+      },
+    );
+    await dbAbgewiesen(
       owner.clientTaxRegistration.create({
         data: {
           ...base,
@@ -128,7 +143,12 @@ describe('TAX-MASTER-DATA-001 PostgreSQL boundaries', () => {
           taxOfficeCode: '1114',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23503',
+        meldung:
+          'tenant_id und client_id gehören nicht zum selben Mandanten-Scope (client_tax_registration).',
+      },
+    );
   });
   it('permits own active portal reads but denies inactive contacts and canonical portal writes', async () => {
     expect(
@@ -137,7 +157,7 @@ describe('TAX-MASTER-DATA-001 PostgreSQL boundaries', () => {
     expect(
       await asActor('CLIENT_CONTACT', inactiveContactId, (tx) => tx.clientTaxRegistration.count()),
     ).toBe(0);
-    await expect(
+    await dbAbgewiesen(
       asActor('CLIENT_CONTACT', contactId, (tx) =>
         tx.clientTaxRegistration.create({
           data: {
@@ -149,7 +169,11 @@ describe('TAX-MASTER-DATA-001 PostgreSQL boundaries', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "client_tax_registration"',
+      },
+    );
     expect(
       await asActor('CLIENT_CONTACT', contactId, (tx) =>
         tx.clientTaxRegistration.updateMany({
@@ -184,7 +208,7 @@ describe('TAX-MASTER-DATA-001 PostgreSQL boundaries', () => {
     await owner.tenantSetting.create({
       data: { tenantId, key: 'access', value: { clientAccessMode: 'RESTRICTED' } },
     });
-    await expect(
+    await dbAbgewiesen(
       asActor('STAFF', otherStaffId, (tx) =>
         tx.clientTaxRegistration.create({
           data: {
@@ -196,7 +220,11 @@ describe('TAX-MASTER-DATA-001 PostgreSQL boundaries', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "client_tax_registration"',
+      },
+    );
   });
   it('binds ELSTER history to the same client and retains queried numbers after tax redaction', async () => {
     const query = {
@@ -211,9 +239,14 @@ describe('TAX-MASTER-DATA-001 PostgreSQL boundaries', () => {
       result: '<fixture />',
       requestedBy: staffId,
     };
-    await expect(
+    await dbAbgewiesen(
       owner.elsterKontoabfrage.create({ data: { ...query, clientId: otherClientId } }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23503',
+        meldung:
+          'insert or update on table "elster_kontoabfrage" violates foreign key constraint "elster_kontoabfrage_tax_registration_fkey"',
+      },
+    );
     const saved = await owner.elsterKontoabfrage.create({ data: query });
     await owner.clientTaxRegistration.update({
       where: { id: registrationId },
@@ -230,11 +263,16 @@ describe('TAX-MASTER-DATA-001 PostgreSQL boundaries', () => {
       (await owner.elsterKontoabfrage.findUniqueOrThrow({ where: { id: saved.id } }))
         .taxNumberSnapshot,
     ).toBe('1112034567890');
-    await expect(
+    await dbAbgewiesen(
       owner.clientTaxRegistration.update({
         where: { id: registrationId },
         data: { archivedAt: null },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "client_tax_registration" violates check constraint "client_tax_registration_active_number_check"',
+      },
+    );
   });
 });

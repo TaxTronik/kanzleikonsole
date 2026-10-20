@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Prisma, PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 
@@ -269,7 +270,7 @@ async function makeNaturalPersonForRetention(mandateEndedAt: string) {
 describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
   it('erzwingt DRAFT als Initialstatus und eine echte Tenant-/Client-Paarung', async () => {
     sequence += 1;
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.create({
         data: {
           tenantId,
@@ -285,7 +286,8 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
           createdByStaff: staffId,
         },
       }),
-    ).rejects.toThrow(/Status DRAFT/);
+      /Status DRAFT/,
+    );
 
     const otherTenant = await owner.tenant.create({
       data: { slug: `poa-scope-${Date.now()}`, name: 'PoA Scope Tenant' },
@@ -295,13 +297,18 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
         data: { tenantId: otherTenant.id, kind: 'NATPERS', name: 'Fremdmandant' },
       });
       const draft = await makeDraft();
-      await expect(
+      await dbAbgewiesen(
         owner.powerOfAttorney.update({
           where: { id: draft.id },
           data: { clientId: otherClient.id },
         }),
-      ).rejects.toThrow();
-      await expect(
+        {
+          sqlState: '23503',
+          meldung:
+            'tenant_id und client_id gehören nicht zum selben Mandanten-Scope (power_of_attorney).',
+        },
+      );
+      await dbAbgewiesen(
         owner.powerOfAttorney.create({
           data: {
             tenantId,
@@ -315,7 +322,12 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
             createdByStaff: staffId,
           },
         }),
-      ).rejects.toThrow(/angegebenen Tenant|Foreign key constraint/i);
+        {
+          sqlState: '23503',
+          meldung:
+            'tenant_id und client_id gehören nicht zum selben Mandanten-Scope (power_of_attorney).',
+        },
+      );
     } finally {
       await owner.tenant.delete({ where: { id: otherTenant.id } });
     }
@@ -323,15 +335,18 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
 
   it('blockiert DRAFT -> SENT ohne vollständigen Snapshot', async () => {
     const poa = await makeDraft();
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({ where: { id: poa.id }, data: { status: 'SENT' } }),
-    ).rejects.toThrow(/Snapshot|SHA-256/);
+      // kk-tcms-qual: genau diese Regel; „Snapshot|SHA-256“ traf auch die
+      // nachgelagerten Prüfungen (unvollständiger Snapshot, Hashlänge).
+      { sqlState: '23514', meldung: 'PoA-Versand erfordert Snapshot und SHA-256.' },
+    );
   });
 
   it('blockiert falsche Hashlänge und einen nicht zum JSON passenden Hash', async () => {
     const short = await makeDraft();
     const shortSnapshot = snapshotFor(short);
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: short.id },
         data: {
@@ -340,11 +355,12 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
           signingContentSha256: Buffer.alloc(31),
         },
       }),
-    ).rejects.toThrow(/32 Byte/);
+      /32 Byte/,
+    );
 
     const wrong = await makeDraft();
     const wrongSnapshot = snapshotFor(wrong);
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: wrong.id },
         data: {
@@ -353,14 +369,15 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
           signingContentSha256: Buffer.alloc(32, 0xcd),
         },
       }),
-    ).rejects.toThrow(/stimmt nicht/);
+      /stimmt nicht/,
+    );
   });
 
   it('akzeptiert nur das exakte Snapshot-Schema ohne verborgene Zusatzfelder', async () => {
     const extra = await makeDraft();
     const base = JSON.parse(snapshotFor(extra).serialized) as Record<string, unknown>;
     const withHiddenField = JSON.stringify({ ...base, hiddenEvidence: 'nicht angezeigt' });
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: extra.id },
         data: {
@@ -369,14 +386,15 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
           signingContentSha256: createHash('sha256').update(withHiddenField).digest(),
         },
       }),
-    ).rejects.toThrow(/unvollständig/);
+      /unvollständig/,
+    );
 
     const wrongType = await makeDraft();
     const wrongSchema = JSON.stringify({
       ...(JSON.parse(snapshotFor(wrongType).serialized) as Record<string, unknown>),
       schemaVersion: '1',
     });
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: wrongType.id },
         data: {
@@ -385,7 +403,8 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
           signingContentSha256: createHash('sha256').update(wrongSchema).digest(),
         },
       }),
-    ).rejects.toThrow(/unvollständig/);
+      /unvollständig/,
+    );
   });
 
   it('validiert externe Dokument-ID, Versions-ID und den echten Version-Hash', async () => {
@@ -395,7 +414,7 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
       VERSION_SHA256.toString('hex'),
       Buffer.alloc(32, 0xcd).toString('hex'),
     );
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: {
@@ -405,7 +424,8 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
           signingDocumentVersionId: versionId,
         },
       }),
-    ).rejects.toThrow(/Dokumenthash/);
+      /Dokumenthash/,
+    );
 
     await expect(sendValid(poa)).resolves.toBeTruthy();
   });
@@ -434,12 +454,13 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
         },
       }),
     ).resolves.toBeTruthy();
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: { scope: 'Nachträglich erweitert' },
       }),
-    ).rejects.toThrow(/Inhaltsfelder/);
+      /Inhaltsfelder/,
+    );
   });
 
   it('setzt den ersten Versandzeitpunkt DB-seitig und friert ihn ein', async () => {
@@ -448,12 +469,13 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
     expect(sent.sentAt).toBeInstanceOf(Date);
     expect(sent.sentAt!.getTime()).toBeGreaterThanOrEqual(poa.createdAt.getTime());
 
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: { sentAt: new Date('2000-01-01T00:00:00.000Z') },
       }),
-    ).rejects.toThrow(/Versandzeitpunkt/);
+      /Versandzeitpunkt/,
+    );
   });
 
   it('rundet sent_at wie created_at, ohne zukünftige Erstellzeiten zu übernehmen', async () => {
@@ -474,7 +496,7 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
     // darf die Versandprovenienz weder in die Zukunft ziehen noch den CHECK
     // umgehen, der sent_at an die Erstellzeit bindet.
     const future = await makeDraft({ createdAt: new Date(Date.now() + 60_000) });
-    await expect(sendValid(future)).rejects.toThrow(/poa_sent_at_after_created_check/);
+    await dbAbgewiesen(sendValid(future), /poa_sent_at_after_created_check/);
     expect(precision?.millisecondAligned).toBe(true);
   });
 });
@@ -482,7 +504,7 @@ describeWithDatabase('PoA-DB-Invarianten: Versand-Snapshot', () => {
 describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
   it('verbietet vorbefüllte oder außerhalb SENT -> SIGNED nachgetragene Signaturnachweise', async () => {
     sequence += 1;
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.create({
         data: {
           tenantId,
@@ -498,27 +520,30 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
           createdByStaff: staffId,
         },
       }),
-    ).rejects.toThrow(/Signaturnachweis|Status DRAFT/);
+      /Signaturnachweis|Status DRAFT/,
+    );
 
     const draft = await makeDraft();
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: draft.id },
         data: { signedAt: new Date(), signedByIp: '203.0.113.10' },
       }),
-    ).rejects.toThrow(/Signaturnachweis/);
+      /Signaturnachweis/,
+    );
 
     const sent = await makeDraft();
     const { snapshot } = await sendValid(sent);
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: sent.id },
         data: { signedAt: new Date(), signedContentSha256: snapshot.sha256 },
       }),
-    ).rejects.toThrow(/Signaturnachweis/);
+      /Signaturnachweis/,
+    );
 
     const terminal = await makeDraft();
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: terminal.id },
         data: {
@@ -527,13 +552,14 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
           signedContentSha256: Buffer.alloc(32, 0xaa),
         },
       }),
-    ).rejects.toThrow(/Signaturnachweis/);
+      /Signaturnachweis/,
+    );
   });
 
   it('erzwingt beim SENT -> SIGNED denselben Hash und dieselbe Dokumentversion', async () => {
     const poa = await makeDraft({ external: true });
     const { sent, snapshot } = await sendValid(poa);
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: {
@@ -543,8 +569,9 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
           signedDocumentVersionId: versionId,
         },
       }),
-    ).rejects.toThrow(/Signaturhash/);
-    await expect(
+      /Signaturhash/,
+    );
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: {
@@ -554,7 +581,8 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
           signedDocumentVersionId: '33333333-3333-4333-8333-333333333333',
         },
       }),
-    ).rejects.toThrow(/Dokumentversion/);
+      /Dokumentversion/,
+    );
     await expect(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
@@ -573,7 +601,7 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     const { sent, snapshot } = await sendValid(poa);
     expect(sent.sentAt).not.toBeNull();
 
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: {
@@ -582,7 +610,8 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
           signedContentSha256: snapshot.sha256,
         },
       }),
-    ).rejects.toThrow(/Signaturzeitpunkt/);
+      /Signaturzeitpunkt/,
+    );
 
     const signed = await owner.powerOfAttorney.update({
       where: { id: poa.id },
@@ -596,18 +625,20 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     });
     expect(signed.signedByIp).toBe('203.0.113.10');
 
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: { signedByIp: '203.0.113.11', signedByUserAgent: 'Manipuliert' },
       }),
-    ).rejects.toThrow(/Signaturnachweis/);
-    await expect(
+      /Signaturnachweis/,
+    );
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: { createdAt: new Date('2000-01-01T00:00:00.000Z') },
       }),
-    ).rejects.toThrow(/Erstellungsprovenienz/);
+      /Erstellungsprovenienz/,
+    );
   });
 
   it('friert Signaturnachweis und gebundene Unterzeichnerdaten bis zur Retention ein', async () => {
@@ -622,13 +653,14 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
         signedContentSha256: snapshot.sha256,
       },
     });
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: { signedAt: new Date('2026-08-02T12:00:00.000Z') },
       }),
-    ).rejects.toThrow(/Signaturnachweis/);
-    await expect(
+      /Signaturnachweis/,
+    );
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: {
@@ -638,7 +670,8 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
           signedByUserAgent: null,
         },
       }),
-    ).rejects.toThrow(/Inhaltsfelder/);
+      /Inhaltsfelder/,
+    );
   });
 
   it('erlaubt die exakte DSGVO-Redaktion nur nach Fristablauf und ohne Reparenting', async () => {
@@ -657,12 +690,13 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     });
     await owner.client.update({ where: { id: dueClient.id }, data: { anonymizedAt: new Date() } });
 
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: duePoa.id },
         data: { ...retentionRedaction, validFrom: new Date('2000-01-01T00:00:00.000Z') },
       }),
-    ).rejects.toThrow(/Inhaltsfelder/);
+      /Inhaltsfelder/,
+    );
 
     const recentPoa = await makeDraft({ forClientId: recentClient.id });
     const { sent: recentSent, snapshot: recentSnapshot } = await sendValid(recentPoa);
@@ -678,12 +712,13 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
       where: { id: recentClient.id },
       data: { anonymizedAt: new Date() },
     });
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: recentPoa.id },
         data: retentionRedaction,
       }),
-    ).rejects.toThrow(/Inhaltsfelder|Versand-Snapshot|Signaturnachweis|Signer-Retention/);
+      /Inhaltsfelder|Versand-Snapshot|Signaturnachweis|Signer-Retention/,
+    );
 
     const otherPoa = await makeDraft();
     const { sent: otherSent, snapshot: otherSnapshot } = await sendValid(otherPoa);
@@ -695,12 +730,11 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
         signedContentSha256: otherSnapshot.sha256,
       },
     });
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: otherPoa.id },
         data: { ...retentionRedaction, clientId: dueClient.id },
       }),
-    ).rejects.toThrow(
       /Inhaltsfelder|Versand-Snapshot|Signaturnachweis|Neuanlage\/-zuordnung|Signer-Retention/,
     );
 
@@ -759,7 +793,7 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
       signedContentSha256: null,
     });
 
-    await expect(makeDraft({ forClientId: legalClient.id })).rejects.toThrow(/Signer-Retention/);
+    await dbAbgewiesen(makeDraft({ forClientId: legalClient.id }), /Signer-Retention/);
   });
 
   it('serialisiert eine NATPERS-Retention mit paralleler PoA-Neuanlage', async () => {
@@ -837,34 +871,37 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     }
 
     await retentionTx;
-    await expect(insert).rejects.toThrow(/Signer-Retention/);
+    await dbAbgewiesen(insert, /Signer-Retention/);
     expect(await owner.powerOfAttorney.count({ where: { clientId: dueClient.id } })).toBe(0);
   }, 15_000);
 
   it('lässt Revoke/Expiry vorwärts zu, aber keine Rücktransition', async () => {
     const incompleteRevoke = await makeDraft();
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: incompleteRevoke.id },
         data: { status: 'REVOKED' },
       }),
-    ).rejects.toThrow(/Widerruf/);
+      /Widerruf/,
+    );
 
     const revokedDraft = await makeDraft();
     const revoked = await revokeWithDatabaseClock(revokedDraft.id, 'Widerruf');
     expect(revoked.revokedAt.getTime()).toBeGreaterThanOrEqual(revokedDraft.createdAt.getTime());
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: revokedDraft.id },
         data: { revokedReason: 'Nachträglich verändert' },
       }),
-    ).rejects.toThrow(/Widerrufsnachweis/);
-    await expect(
+      /Widerrufsnachweis/,
+    );
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({ where: { id: revokedDraft.id }, data: { status: 'DRAFT' } }),
-    ).rejects.toThrow(/Statuswechsel/);
+      /Statuswechsel/,
+    );
 
     const backdatedRevoke = await makeDraft();
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: backdatedRevoke.id },
         data: {
@@ -873,7 +910,8 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
           revokedReason: 'Rueckdatierter Widerruf',
         },
       }),
-    ).rejects.toThrow(/Widerrufszeitpunkt/);
+      /Widerrufszeitpunkt/,
+    );
 
     const signed = await makeDraft();
     const { sent, snapshot } = await sendValid(signed);
@@ -888,9 +926,10 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     await expect(
       owner.powerOfAttorney.update({ where: { id: signed.id }, data: { status: 'EXPIRED' } }),
     ).resolves.toBeTruthy();
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({ where: { id: signed.id }, data: { status: 'SIGNED' } }),
-    ).rejects.toThrow(/Statuswechsel/);
+      /Statuswechsel/,
+    );
   });
 });
 
@@ -909,7 +948,7 @@ describeWithDatabase('PoA-DB-Invarianten: Legacy-Kompatibilität', () => {
   it('Legacy-SENT muss separat neu versendet werden, bevor SIGNED zulässig ist', async () => {
     const poa = await makeLegacy('SENT');
     const snapshot = snapshotFor(poa);
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: {
@@ -920,7 +959,8 @@ describeWithDatabase('PoA-DB-Invarianten: Legacy-Kompatibilität', () => {
           signedContentSha256: snapshot.sha256,
         },
       }),
-    ).rejects.toThrow(/separat neu versendet|vor der Signatur/);
+      /separat neu versendet|vor der Signatur/,
+    );
 
     await expect(
       owner.powerOfAttorney.update({
@@ -944,17 +984,18 @@ describeWithDatabase('PoA-DB-Invarianten: Legacy-Kompatibilität', () => {
       },
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: { status: 'SIGNED' },
       }),
-    ).rejects.toThrow(/atomar/);
+      /atomar/,
+    );
   });
 
   it('Legacy-SIGNED ohne Snapshot bleibt expirable; Redaktion bleibt retention-gebunden', async () => {
     const poa = await makeLegacy('SIGNED');
-    await expect(
+    await dbAbgewiesen(
       owner.powerOfAttorney.update({
         where: { id: poa.id },
         data: {
@@ -964,7 +1005,8 @@ describeWithDatabase('PoA-DB-Invarianten: Legacy-Kompatibilität', () => {
           signedByUserAgent: null,
         },
       }),
-    ).rejects.toThrow(/Inhaltsfelder/);
+      /Inhaltsfelder/,
+    );
     await expect(
       owner.powerOfAttorney.update({ where: { id: poa.id }, data: { status: 'EXPIRED' } }),
     ).resolves.toBeTruthy();

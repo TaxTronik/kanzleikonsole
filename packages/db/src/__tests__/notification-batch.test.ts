@@ -23,6 +23,7 @@ import {
   upsertNotificationsTx,
   type NotificationUpsertInput,
 } from '../notification';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -220,9 +221,13 @@ describeWithDatabase('R-11: gebündelter Notification-Pfad', () => {
     await owner.notification.create({ data: { ...notice, readAt: new Date() } });
 
     // Einzel-Upsert: keine ungelesene Zeile → INSERT → Unique-Verletzung.
-    await expect(
+    await dbAbgewiesen(
       asWorker(fixture.tenantId, (tx) => upsertNotificationTx(tx, notice)),
-    ).rejects.toThrow();
+      {
+        sqlState: '23505',
+        meldung: 'duplicate key value violates unique constraint "notification_daily_dedupe"',
+      },
+    );
     await expect(
       asWorker(fixture.tenantId, async (tx) => {
         const result = await upsertNotificationsTx(tx, [notice]);
@@ -305,9 +310,10 @@ describeWithDatabase('R-11: gebündelter Notification-Pfad', () => {
           where: { tenantId: fixture.tenantId, staffId: fixture.staff.a, kind },
         }),
       ).toBe(2);
-      await expect(
-        owner.notification.create({ data: { ...notice, readAt: new Date() } }),
-      ).rejects.toThrow();
+      await dbAbgewiesen(owner.notification.create({ data: { ...notice, readAt: new Date() } }), {
+        sqlState: '23505',
+        meldung: 'duplicate key value violates unique constraint "notification_daily_dedupe"',
+      });
     },
   );
 });

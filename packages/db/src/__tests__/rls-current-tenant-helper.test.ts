@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -132,7 +133,7 @@ describeWithDatabase('RLS-Tenantkontext über app.current_tenant_id()', () => {
   });
 
   it('blockiert Schreibzugriffe ohne Kontext über die Policy, nicht über einen Cast-Fehler', async () => {
-    await expect(
+    await dbAbgewiesen(
       app.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT set_config('app.current_tenant_id', '', true)`;
         await tx.$executeRaw`
@@ -140,7 +141,8 @@ describeWithDatabase('RLS-Tenantkontext über app.current_tenant_id()', () => {
           VALUES (${tenantId}::uuid, 'ohne Kontext', 's', 'b', now())
         `;
       }),
-    ).rejects.toThrow(/row-level security/);
+      /row-level security/,
+    );
   });
 
   it('erklärt die Kontext-Helfer PARALLEL SAFE und lässt den Rest unverändert', async () => {

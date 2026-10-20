@@ -35,6 +35,7 @@ import {
   type SecretBoxRewrapOps,
   type SqlExecutor,
 } from '../secret-box-rewrap';
+import { anwendungAbgewiesen } from '../testing/db-fehler';
 
 const mockEnv = env as unknown as { SECRET_BOX_KEYRING: string[] };
 
@@ -317,9 +318,10 @@ describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
         return owner.query(text, values);
       },
     };
-    await expect(
+    await anwendungAbgewiesen(
       rewrapStoredSecrets(scopedExecutor(crashing), SLOTS, ops, { batchSize: 2 }),
-    ).rejects.toThrow('simulierter Abbruch');
+      'simulierter Abbruch',
+    );
     const newKeyId = activeKeyId();
     const partial = await storedFixtures();
     // Bereits Committetes bleibt umgestellt, Unbearbeitetes unverändert lesbar.

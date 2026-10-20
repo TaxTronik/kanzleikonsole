@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Prisma as PrismaTypes } from '@prisma/client';
 import { Prisma, PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const migration = readFileSync(
   new URL(
@@ -158,7 +159,7 @@ describe('GwG onboarding document discard migration', () => {
 
   it('verweigert denselben Hard-Delete nach dem Submit', async () => {
     const target = await createInviteDocument('SUBMITTED');
-    await expect(
+    await dbAbgewiesen(
       app.$transaction(async (tx) => {
         await tx.$queryRaw`
           SELECT set_config('app.current_tenant_id', ${tenantId}, true),
@@ -172,7 +173,8 @@ describe('GwG onboarding document discard migration', () => {
           )
         `);
       }),
-    ).rejects.toThrow(/nicht mehr verwerfbar/);
+      /nicht mehr verwerfbar/,
+    );
     expect(await owner.document.findUnique({ where: { id: target.documentId } })).not.toBeNull();
   });
 });
@@ -310,9 +312,7 @@ describe('GwG onboarding document discard über den Fremdschlüssel (D-08)', () 
       where: { id: attacker.inviteId },
       data: { uploadedDocumentIds: [attacker.documentId, victim.documentId] },
     });
-    await expect(discard(attacker.inviteId, victim.documentId)).rejects.toThrow(
-      /nicht mehr verwerfbar/,
-    );
+    await dbAbgewiesen(discard(attacker.inviteId, victim.documentId), /nicht mehr verwerfbar/);
     expect(await owner.document.findUnique({ where: { id: victim.documentId } })).not.toBeNull();
     // Aufräumen über den regulären Pfad; unveränderliche Versionen löscht nur er.
     expect(await discard(victim.inviteId, victim.documentId)).toEqual([{ discarded: 1 }]);

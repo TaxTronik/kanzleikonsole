@@ -51,6 +51,7 @@ import { answerProgressColumns, storedAnswerProgress } from '@/server/forms/answ
 import { freezeFormSchema } from '@/server/forms/schema-snapshot';
 import { campaignSubmissionPhase, formAnswerProgress } from '../dashboard-policy';
 import { ENTRIES_PER_PAGE, loadYearEndOverviewTx } from '../year-end-overview';
+import { anwendungAbgewiesen, dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 // B-02: lokal per YEAR_END_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
 // *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.
@@ -452,7 +453,7 @@ const PROGRESS_SNAPSHOT = frozen([
       formAnswerProgress(PROGRESS_SNAPSHOT, { a: 'Mara', b: 5 }),
     );
     // Die Datenbank lehnt widersprüchliche Zahlen ab.
-    await expect(
+    await dbAbgewiesen(
       owner.formSubmission.update({
         where: { id: submissionId },
         data: {
@@ -460,7 +461,8 @@ const PROGRESS_SNAPSHOT = frozen([
           answerProgressFilled: 4,
         },
       }),
-    ).rejects.toThrow(/form_submission_answer_progress_check/);
+      /form_submission_answer_progress_check/,
+    );
   });
 
   it('trägt per Migration genau dort nach, wo formAnswerProgress ohne Feldvalidierung feststeht', async () => {
@@ -510,13 +512,14 @@ const PROGRESS_SNAPSHOT = frozen([
 
     // Backfill in einer zurückgerollten Transaktion: keine Wirkung über den Test hinaus.
     let after: typeof before = [];
-    await expect(
+    await anwendungAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.$executeRawUnsafe(migrationBackfill());
         after = await tx.formSubmission.findMany({ where: { id: { in: all } } });
         throw new Error('rollback');
       }),
-    ).rejects.toThrow('rollback');
+      'rollback',
+    );
 
     for (const [name, variant] of Object.entries(variants)) {
       const row = after.find((candidate) => candidate.id === ids[name])!;

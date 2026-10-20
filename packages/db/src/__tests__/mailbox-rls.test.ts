@@ -6,6 +6,7 @@ import { beforeAll, afterAll, describe, it, expect } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import type { Prisma } from '@prisma/client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
 });
@@ -127,19 +128,21 @@ describe('mailbox storage authorization', () => {
     ).toBeNull();
   });
   it('cannot claim a scanner verdict or rewrite immutable original hashes', async () => {
-    await expect(
+    await dbAbgewiesen(
       asActor(tid, staff, 'STAFF', (tx) =>
         tx.inboundAttachment.update({
           where: { id: attachment },
           data: { status: 'CLEAN', sha256: 'b'.repeat(64) },
         }),
       ),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: 'P0001', meldung: 'immutable inbound bytes' },
+    );
+    await dbAbgewiesen(
       asActor(tid, staff, 'STAFF', (tx) =>
         tx.inboundAttachment.update({ where: { id: attachment }, data: { status: 'BLOCKED' } }),
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'scanner release required' },
+    );
   });
   it('binds security-definer helpers to the caller tenant and actor', async () => {
     expect(
@@ -198,22 +201,24 @@ describe('mailbox storage authorization', () => {
         )
       )?.id,
     ).toBe(protectedDocument);
-    await expect(
+    await dbAbgewiesen(
       asActor(tid, staff, 'STAFF', (tx) =>
         tx.document.update({
           where: { id: protectedDocument },
           data: { requiresPayrollAccess: false },
         }),
       ),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: 'P0001', meldung: 'payroll scope cannot be downgraded' },
+    );
+    await dbAbgewiesen(
       asActor(tid, staff, 'STAFF', (tx) =>
         tx.document.update({
           where: { id: protectedDocument },
           data: { sharedWithClientAt: new Date() },
         }),
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'payroll archive cannot be shared with the general portal' },
+    );
     expect(
       await asActor(tid, staff, 'CLIENT_CONTACT', (tx) =>
         tx.document.findUnique({ where: { id: protectedDocument } }),
@@ -229,22 +234,30 @@ describe('mailbox storage authorization', () => {
     ).toBeNull();
   });
   it('does not admit duplicate transport receipts', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.inboundMessage.create({ data: { mailboxId: mailbox, uidValidity: '1', uid: 10 } }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23505',
+        meldung:
+          'duplicate key value violates unique constraint "inbound_message_mailbox_id_uid_validity_uid_key"',
+      },
+    );
   });
   it('cannot erase durable receipts through bootstrap default DELETE privileges', async () => {
-    await expect(
+    await dbAbgewiesen(
       asActor(tid, staff, 'STAFF', (tx) =>
         tx.inboundAttachment.delete({ where: { id: attachment } }),
       ),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: '42501', meldung: 'permission denied for table inbound_attachment' },
+    );
+    await dbAbgewiesen(
       asActor(tid, staff, 'STAFF', (tx) => tx.inboundMessage.delete({ where: { id: message } })),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: '42501', meldung: 'permission denied for table inbound_message' },
+    );
+    await dbAbgewiesen(
       asActor(tid, staff, 'STAFF', (tx) => tx.inboundMailbox.delete({ where: { id: mailbox } })),
-    ).rejects.toThrow();
+      { sqlState: '42501', meldung: 'permission denied for table inbound_mailbox' },
+    );
     expect(await asActor(tid, staff, 'STAFF', (tx) => tx.inboundMessage.count())).toBe(1);
   });
 });

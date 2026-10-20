@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { PrismaClient } from '../prisma-client';
+import { anwendungAbgewiesen, dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 
@@ -504,44 +505,41 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
     expect(employeeState.every((credential) => credential.revokedAt instanceof Date)).toBe(true);
 
     const partnerTarget = await createHardwareOnlyStaff('PARTNER');
-    await expect(recoverCredentialsAs(partnerAId, partnerTarget.id)).rejects.toThrow(
-      /Recovery-Hierarchie/i,
-    );
+    await dbAbgewiesen(recoverCredentialsAs(partnerAId, partnerTarget.id), /Recovery-Hierarchie/i);
     await expect(recoverCredentialsAs(adminAId, partnerTarget.id)).resolves.toBe(2);
 
     const adminTarget = await createHardwareOnlyStaff('ADMIN');
-    await expect(recoverCredentialsAs(adminAId, adminTarget.id)).rejects.toThrow(
-      /Recovery-Hierarchie/i,
-    );
+    await dbAbgewiesen(recoverCredentialsAs(adminAId, adminTarget.id), /Recovery-Hierarchie/i);
   });
 
   it('verweigert die Recovery-Prozedur normalem Staff und dem Ziel selbst', async () => {
     const target = await createHardwareOnlyStaff('EMPLOYEE');
 
-    await expect(recoverCredentialsAs(staffAId, target.id)).rejects.toThrow(
+    await dbAbgewiesen(
+      recoverCredentialsAs(staffAId, target.id),
       /Hardware-Recovery ist fuer diesen Akteur nicht zulaessig/i,
     );
-    await expect(recoverCredentialsAs(target.id, target.id)).rejects.toThrow(
-      /eigene Hardware-Zugang/i,
-    );
+    await dbAbgewiesen(recoverCredentialsAs(target.id, target.id), /eigene Hardware-Zugang/i);
   });
 
   it('verhindert Rollen-Demotion als Umgehung der Recovery-Hierarchie', async () => {
-    await expect(
+    await dbAbgewiesen(
       asActor(tenantAId, adminAId, 'STAFF', (tx) =>
         tx.staffRole.deleteMany({
           where: { staffUserId: adminTargetAId, role: 'ADMIN' },
         }),
       ),
-    ).rejects.toThrow(/ADMIN-Rolle.*Staff-Akteur.*nicht entzogen/i);
+      /ADMIN-Rolle.*Staff-Akteur.*nicht entzogen/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       asActor(tenantAId, partnerAId, 'STAFF', (tx) =>
         tx.staffRole.deleteMany({
           where: { staffUserId: partnerTargetAId, role: 'PARTNER' },
         }),
       ),
-    ).rejects.toThrow(/PARTNER-Rolle.*aktiven ADMIN/i);
+      /PARTNER-Rolle.*aktiven ADMIN/i,
+    );
 
     const removedByAdmin = await asActor(tenantAId, adminAId, 'STAFF', (tx) =>
       tx.staffRole.deleteMany({
@@ -600,9 +598,10 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
       }),
     ).toBe(0);
 
-    await expect(
+    await dbAbgewiesen(
       securityResetCredentialsAs(adminAId, staleTarget.id, actor.authRevision + 1),
-    ).rejects.toThrow(/Sicherheitsreset.*nicht zulaessig/i);
+      /Sicherheitsreset.*nicht zulaessig/i,
+    );
     expect(
       await owner.staffWebAuthnCredential.count({
         where: { staffUserId: staleTarget.id, revokedAt: null },
@@ -689,9 +688,10 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
       canDelete: false,
     });
 
-    await expect(
+    await dbAbgewiesen(
       app.$queryRaw`SELECT "blob_serial" FROM public."fido_mds_trust_state"`,
-    ).rejects.toThrow(/permission denied/i);
+      /permission denied/i,
+    );
   });
 
   it('bindet einen App-Commit bis Transaktionsende an die exakt gepruefte MDS-Serie', async () => {
@@ -814,7 +814,7 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
   }, 15_000);
 
   it('blockiert Cross-Tenant-INSERT/UPDATE und verweigert physische DELETEs', async () => {
-    await expect(
+    await dbAbgewiesen(
       asActor(tenantAId, staffAId, 'STAFF', (tx) =>
         insertCredential(tx, {
           tenantId: tenantBId,
@@ -822,9 +822,13 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
           credentialId: `cross-insert-${randomUUID()}`,
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "staff_webauthn_credential"',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       asActor(tenantAId, partnerAId, 'STAFF', (tx) =>
         insertCredential(tx, {
           tenantId: tenantAId,
@@ -832,9 +836,13 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
           credentialId: `partner-foreign-insert-${randomUUID()}`,
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "staff_webauthn_credential"',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       asActor(tenantAId, adminAId, 'STAFF', (tx) =>
         insertCredential(tx, {
           tenantId: tenantAId,
@@ -842,9 +850,13 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
           credentialId: `admin-foreign-insert-${randomUUID()}`,
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "staff_webauthn_credential"',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       asActor(tenantAId, staffAId, 'CLIENT_CONTACT', (tx) =>
         insertCredential(tx, {
           tenantId: tenantAId,
@@ -852,7 +864,11 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
           credentialId: `portal-insert-${randomUUID()}`,
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "staff_webauthn_credential"',
+      },
+    );
 
     const sameTenantPeerUpdated = await asActor(
       tenantAId,
@@ -880,7 +896,7 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
     );
     expect(updated).toBe(0);
 
-    await expect(
+    await dbAbgewiesen(
       asActor(
         tenantAId,
         staffAId,
@@ -891,11 +907,12 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
            WHERE "credential_id" = ${credentialBId}
         `,
       ),
-    ).rejects.toThrow(/permission denied/i);
+      /permission denied/i,
+    );
   });
 
   it('lehnt eine Cross-Tenant-Staff-Zuordnung auch fuer den Owner per Composite-FK ab', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction((tx) =>
         insertCredential(tx, {
           tenantId: tenantAId,
@@ -903,20 +920,26 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
           credentialId: `cross-parent-${randomUUID()}`,
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23503',
+        meldung:
+          'insert or update on table "staff_webauthn_credential" violates foreign key constraint "staff_webauthn_credential_tenant_id_staff_user_id_fkey"',
+      },
+    );
   });
 
   it('aktiviert Hardware-only erst atomar mit zwei geeigneten Credentials', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_user"
            SET "hardware_only_enabled_at" = CURRENT_TIMESTAMP
          WHERE "tenant_id" = ${tenantAId}::UUID
            AND "id" = ${invariantStaffId}::UUID
       `,
-    ).rejects.toThrow(/mindestens zwei aktive, geraetegebundene Sicherheitsschluessel/i);
+      /mindestens zwei aktive, geraetegebundene Sicherheitsschluessel/i,
+    );
 
-    await expect(
+    await anwendungAbgewiesen(
       owner.$transaction(async (tx) => {
         await insertCredential(tx, {
           tenantId: tenantAId,
@@ -931,7 +954,8 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
              AND "id" = ${invariantStaffId}::UUID
         `;
       }),
-    ).rejects.toThrow(/mindestens zwei aktive, geraetegebundene Sicherheitsschluessel/i);
+      /mindestens zwei aktive, geraetegebundene Sicherheitsschluessel/i,
+    );
 
     const second = `invariant-second-${randomUUID()}`;
     await owner.$transaction(async (tx) => {
@@ -961,21 +985,23 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
     expect(enabled[0]?.hardwareOnlyEnabledAt).toBeInstanceOf(Date);
     expect(enabled[0]?.authRevision).toBe(1);
 
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_webauthn_credential"
            SET "revoked_at" = CURRENT_TIMESTAMP
          WHERE "credential_id" = ${invariantCredentialId}
       `,
-    ).rejects.toThrow(/mindestens zwei aktive, geraetegebundene Sicherheitsschluessel/i);
+      /mindestens zwei aktive, geraetegebundene Sicherheitsschluessel/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_webauthn_credential"
            SET "device_type" = 'multiDevice'
          WHERE "credential_id" = ${invariantCredentialId}
       `,
-    ).rejects.toThrow(/Credential-Identitaet ist unveraenderlich/i);
+      /Credential-Identitaet ist unveraenderlich/i,
+    );
 
     await owner.$transaction(async (tx) => {
       await tx.$executeRaw`
@@ -1070,7 +1096,8 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
     }
 
     await expect(firstRevocation).resolves.toBeUndefined();
-    await expect(secondRevocation).rejects.toThrow(
+    await anwendungAbgewiesen(
+      secondRevocation,
       /mindestens zwei aktive, geraetegebundene Sicherheitsschluessel/i,
     );
 
@@ -1197,7 +1224,7 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
     }
 
     await expect(roleChange).resolves.toBeUndefined();
-    await expect(recovery).rejects.toThrow(/Recovery-Hierarchie/i);
+    await dbAbgewiesen(recovery, /Recovery-Hierarchie/i);
 
     const activeCredentials = await owner.staffWebAuthnCredential.count({
       where: { staffUserId: target.id, revokedAt: null },
@@ -1252,9 +1279,7 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
     }
 
     await expect(deactivation).resolves.toBeUndefined();
-    await expect(recovery).rejects.toThrow(
-      /Hardware-Recovery ist fuer diesen Akteur nicht zulaessig/i,
-    );
+    await dbAbgewiesen(recovery, /Hardware-Recovery ist fuer diesen Akteur nicht zulaessig/i);
 
     const activeCredentials = await owner.staffWebAuthnCredential.count({
       where: { staffUserId: target.id, revokedAt: null },
@@ -1263,25 +1288,35 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
   }, 15_000);
 
   it('weist negative Auth-Revisionen und Signaturzaehler per CHECK ab', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_user"
            SET "auth_revision" = -1
          WHERE "id" = ${staffAId}::UUID
       `,
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "staff_user" violates check constraint "staff_user_auth_revision_check"',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_webauthn_credential"
            SET "sign_count" = -1
          WHERE "credential_id" = ${credentialAId}
       `,
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "staff_webauthn_credential" violates check constraint "staff_webauthn_sign_count_check"',
+      },
+    );
   });
 
   it('begrenzt die attestierte Authenticator-Version auf uint32', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction((tx) =>
         insertCredential(tx, {
           tenantId: tenantAId,
@@ -1290,9 +1325,14 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
           authenticatorVersion: -1n,
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "staff_webauthn_credential" violates check constraint "staff_webauthn_authenticator_version_range_check"',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction((tx) =>
         insertCredential(tx, {
           tenantId: tenantAId,
@@ -1301,7 +1341,12 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
           authenticatorVersion: 4_294_967_296n,
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "staff_webauthn_credential" violates check constraint "staff_webauthn_authenticator_version_range_check"',
+      },
+    );
 
     await expect(
       owner.$transaction((tx) =>
@@ -1316,53 +1361,59 @@ describeWithDatabase('Staff-WebAuthn RLS und Hardware-only-Invariante', () => {
   });
 
   it('macht sicherheitsentscheidende Credential-Klassifizierung unveraenderlich', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_webauthn_credential"
            SET "transports" = ARRAY['internal']::TEXT[]
          WHERE "credential_id" = ${credentialAId}
       `,
-    ).rejects.toThrow(/Credential-Identitaet ist unveraenderlich/i);
+      /Credential-Identitaet ist unveraenderlich/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_webauthn_credential"
            SET "device_type" = 'multiDevice'
          WHERE "credential_id" = ${credentialAId}
       `,
-    ).rejects.toThrow(/Credential-Identitaet ist unveraenderlich/i);
+      /Credential-Identitaet ist unveraenderlich/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_webauthn_credential"
            SET "backed_up" = TRUE,
                "device_type" = 'multiDevice'
          WHERE "credential_id" = ${credentialAId}
       `,
-    ).rejects.toThrow(/Credential-Identitaet ist unveraenderlich/i);
+      /Credential-Identitaet ist unveraenderlich/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_webauthn_credential"
            SET "attestation_format" = 'none'
          WHERE "credential_id" = ${credentialAId}
       `,
-    ).rejects.toThrow(/Credential-Identitaet ist unveraenderlich/i);
+      /Credential-Identitaet ist unveraenderlich/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_webauthn_credential"
            SET "attestation_verified_at" = "attestation_verified_at" + INTERVAL '1 second'
          WHERE "credential_id" = ${credentialAId}
       `,
-    ).rejects.toThrow(/Credential-Identitaet ist unveraenderlich/i);
+      /Credential-Identitaet ist unveraenderlich/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         UPDATE public."staff_webauthn_credential"
            SET "authenticator_version" = 2
          WHERE "credential_id" = ${credentialAId}
       `,
-    ).rejects.toThrow(/Credential-Identitaet ist unveraenderlich/i);
+      /Credential-Identitaet ist unveraenderlich/i,
+    );
   });
 });

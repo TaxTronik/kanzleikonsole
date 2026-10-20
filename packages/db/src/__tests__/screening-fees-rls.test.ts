@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import type { Prisma } from '@prisma/client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
@@ -122,14 +123,26 @@ describe('screening and fee evidence real database boundaries', () => {
     }
   });
   it('requires the current invoice grant at the SQL insert boundary', async () => {
-    await expect(
+    await dbAbgewiesen(
       actor((tx) => tx.stbvvQuote.create({ data: quoteData(deniedId) }), deniedId),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung:
+          'new row violates row-level security policy "stbvv_quote_invoice_permission" for table "stbvv_quote"',
+      },
+    );
     await owner.staffPermission.delete({
       where: { staffUserId_permission: { staffUserId: staffId, permission: 'INVOICE_MANAGE' } },
     });
     try {
-      await expect(actor((tx) => tx.stbvvQuote.create({ data: quoteData() }))).rejects.toThrow();
+      await dbAbgewiesen(
+        actor((tx) => tx.stbvvQuote.create({ data: quoteData() })),
+        {
+          sqlState: '42501',
+          meldung:
+            'new row violates row-level security policy "stbvv_quote_invoice_permission" for table "stbvv_quote"',
+        },
+      );
     } finally {
       await owner.staffPermission.create({
         data: { staffUserId: staffId, permission: 'INVOICE_MANAGE' },
@@ -137,10 +150,14 @@ describe('screening and fee evidence real database boundaries', () => {
     }
   });
   it('rejects impersonated authors and a review linked to another client', async () => {
-    await expect(
+    await dbAbgewiesen(
       actor((tx) => tx.stbvvQuote.create({ data: quoteData(deniedId) })),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "stbvv_quote"',
+      },
+    );
+    await dbAbgewiesen(
       actor((tx) =>
         tx.screeningReview.create({
           data: {
@@ -154,17 +171,24 @@ describe('screening and fee evidence real database boundaries', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23503',
+        meldung:
+          'insert or update on table "screening_review" violates foreign key constraint "screening_review_tenant_id_client_id_run_id_fkey"',
+      },
+    );
   });
   it('keeps snapshots immutable and does not grant truncate as an RLS bypass', async () => {
-    await expect(
+    await dbAbgewiesen(
       actor((tx) =>
         tx.screeningRun.update({ where: { id: runId }, data: { subject: { name: 'Changed' } } }),
       ),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: '42501', meldung: 'permission denied for table screening_run' },
+    );
+    await dbAbgewiesen(
       owner.stbvvQuote.update({ where: { id: quoteId }, data: { result: { changed: true } } }),
-    ).rejects.toThrow('Immutable snapshot');
+      'Immutable snapshot',
+    );
     const rows = await actor(
       (tx) =>
         tx.$queryRaw<
@@ -174,9 +198,13 @@ describe('screening and fee evidence real database boundaries', () => {
     expect(rows[0]?.allowed).toBe(false);
   });
   it('does not let ordinary staff replace the official source state', async () => {
-    await expect(
+    await dbAbgewiesen(
       actor((tx) => tx.sanctionsSourceState.create({ data: { tenantId, checkedAt: new Date() } })),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "sanctions_source_state"',
+      },
+    );
   });
   it('runs the actual fee export advisory lock through Prisma without deserializing PostgreSQL void', async () => {
     // Dynamic path preserves the db package rootDir while testing the production helper.

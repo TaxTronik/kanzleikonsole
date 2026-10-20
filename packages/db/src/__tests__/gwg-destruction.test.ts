@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Prisma } from '../prisma-client';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen, erwarteDbFehler } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -236,7 +237,7 @@ async function attachConfirmedNaturalIdentity(
 
 describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
   it('erzwingt für jede neue immutable Version eine konkrete Storage-VersionId', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.documentVersion.create({
         data: {
           // Unverknuepfter Beleg: Hier soll gezielt der Storage-Version-Guard
@@ -253,11 +254,12 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           createdById: staffId,
         },
       }),
-    ).rejects.toThrow(/document_version_locked_storage_version_check|check constraint/i);
+      /document_version_locked_storage_version_check|check constraint/i,
+    );
   });
 
   it('erlaubt nur den engen immutable PENDING-zu-CLEAN-Abschluss und friert die VersionId ein', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction(async (tx) => {
         const pending = await tx.documentVersion.create({
           data: {
@@ -293,14 +295,22 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           data: { storageVersionId: 'pending-intent-version-2' },
         });
       }),
-    ).rejects.toThrow(/immutable|restrict|dürfen nicht geändert/i);
+      /immutable|restrict|dürfen nicht geändert/i,
+    );
   });
 
   it('blockiert direkte Löschung und Funktionsaufruf ohne protokollierte Absicht', async () => {
-    await expect(owner.documentVersion.delete({ where: { id: versionId } })).rejects.toThrow();
-    await expect(expectDestroyCheckFunction()).rejects.toThrow();
+    await dbAbgewiesen(owner.documentVersion.delete({ where: { id: versionId } }), {
+      sqlState: '23001',
+      meldung:
+        'Zugeordneter GwG-Beweisinhalt ist unveraenderlich; neues Dokument anlegen und erneut zuordnen.',
+    });
+    await dbAbgewiesen(expectDestroyCheckFunction(), {
+      sqlState: '23514',
+      meldung: 'Es existieren noch nicht vernichtete GwG-Datei-Belege.',
+    });
 
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.$queryRaw(
           Prisma.sql`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`,
@@ -311,7 +321,8 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           Prisma.sql`SELECT app.destroy_gwg_document_versions(${documentId}::uuid)`,
         );
       }),
-    ).rejects.toThrow();
+      { sqlState: '42501', meldung: 'GwG-Vernichtungsabsicht wurde keinem Staff zugeordnet.' },
+    );
   });
 
   it('blockiert tenantfremde Invite-Verknüpfungen auf DB-Ebene', async () => {
@@ -343,45 +354,71 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           createdByStaff: otherStaff.id,
         },
       });
-      await expect(
+      await dbAbgewiesen(
         owner.document.update({
           where: { id: documentId },
           data: { gwgOnboardingInviteId: otherInvite.id },
         }),
-      ).rejects.toThrow();
+        {
+          sqlState: '23503',
+          meldung: 'GwG-Invite gehört nicht zu Tenant und Mandant des Dokuments.',
+        },
+      );
     } finally {
       await owner.tenant.delete({ where: { id: otherTenant.id } });
     }
   });
 
   it('friert Klassifikation und alle einmal verifizierten Snapshot-Teile DB-seitig ein', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.document.update({ where: { id: documentId }, data: { classification: 'GENERAL' } }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23001',
+        meldung:
+          'Verknüpfter GwG-Beleg darf Klassifikation oder Tenant-/Mandanten-Scope nicht verlassen.',
+      },
+    );
+    await dbAbgewiesen(
       owner.gwgCheck.update({ where: { id: checkId }, data: { legalForm: 'AG' } }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23001',
+        meldung: 'Einmal verifizierter GwG-Rechtstraeger-Snapshot ist unveraenderlich.',
+      },
+    );
+    await dbAbgewiesen(
       owner.gwgCheck.update({ where: { id: checkId }, data: { destroyedAt: new Date() } }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23001',
+        meldung: 'GwG-Vernichtungsvermerk darf nur kontrolliert gesetzt werden.',
+      },
+    );
+    await dbAbgewiesen(
       owner.gwgBeneficialOwner.update({
         where: { id: beneficialOwnerId },
         data: { residence: 'Hamburg' },
       }),
-    ).rejects.toThrow();
-    await expect(
-      owner.gwgBeneficialOwner.delete({ where: { id: beneficialOwnerId } }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23001',
+        meldung: 'Einmal verifizierter GwG-Berechtigten-Snapshot ist unveränderlich.',
+      },
+    );
+    await dbAbgewiesen(owner.gwgBeneficialOwner.delete({ where: { id: beneficialOwnerId } }), {
+      sqlState: '23001',
+      meldung: 'Einmal verifizierter GwG-Berechtigten-Snapshot ist unveränderlich.',
+    });
+    await dbAbgewiesen(
       owner.gwgIdDocument.update({
         where: { id: linkedIdDocumentId },
         data: { ownerName: 'Manipuliert' },
       }),
-    ).rejects.toThrow();
-    await expect(owner.gwgCheck.delete({ where: { id: checkId } })).rejects.toThrow();
+      { sqlState: '23001', meldung: 'Verifizierter GwG-Ausweis-Snapshot ist unveränderlich.' },
+    );
+    await dbAbgewiesen(owner.gwgCheck.delete({ where: { id: checkId } }), {
+      sqlState: '23001',
+      meldung: 'GwG-Check darf nicht hart geloescht werden; kontrollierte Vernichtung verwenden.',
+    });
 
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.$executeRawUnsafe(
           'CREATE TEMP TABLE "gwg_check" (LIKE public."gwg_check" INCLUDING ALL) ON COMMIT DROP',
@@ -392,7 +429,8 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
                      WHERE "id" = ${linkedIdDocumentId}::uuid`,
         );
       }),
-    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
+      /unver(?:ä|ae)nderlich/,
+    );
   });
 
   it('bricht die Client-Check-Gegenlock-Race fail-fast statt per Deadlock ab', async () => {
@@ -473,7 +511,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
     const [destroyResult, expireResult] = await Promise.allSettled([destroy, expire]);
     expect(destroyResult.status).toBe('rejected');
     if (destroyResult.status === 'rejected') {
-      expect(String(destroyResult.reason)).toMatch(/parallel bearbeitet.*erneut starten/i);
+      erwarteDbFehler(destroyResult.reason, /parallel bearbeitet.*erneut starten/i);
     }
     expect(expireResult.status).toBe('fulfilled');
     expect(
@@ -557,7 +595,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
     }
 
     await expect(destroy).resolves.toBeTruthy();
-    await expect(insert).rejects.toThrow(/unver(?:ä|ae)nderlich/);
+    await dbAbgewiesen(insert, /unver(?:ä|ae)nderlich/);
     expect(await owner.gwgBeneficialOwner.count({ where: { gwgCheckId: dueCheck.id } })).toBe(0);
   }, 15_000);
 
@@ -603,17 +641,19 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
 
     await expectDestroyCheckFunction(dueCheck.id);
 
-    await expect(
+    await dbAbgewiesen(
       owner.gwgBeneficialOwner.create({
         data: { gwgCheckId: dueCheck.id, fullName: 'Unzulässiger Berechtigter' },
       }),
-    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
-    await expect(
+      /unver(?:ä|ae)nderlich/,
+    );
+    await dbAbgewiesen(
       owner.gwgIdDocument.create({
         data: { gwgCheckId: dueCheck.id, type: 'PERSONALAUSWEIS', ownerName: 'Unzulässig' },
       }),
-    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
-    await expect(
+      /unver(?:ä|ae)nderlich/,
+    );
+    await dbAbgewiesen(
       owner.gwgOnboardingInvite.create({
         data: {
           tenantId,
@@ -627,13 +667,15 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           boundCheckRevision: 'destroyed-check-revision',
         },
       }),
-    ).rejects.toThrow(/vernichteten GwG-Check/);
-    await expect(
+      /vernichteten GwG-Check/,
+    );
+    await dbAbgewiesen(
       owner.gwgOnboardingInvite.update({
         where: { id: unlinkedInvite.id },
         data: { gwgCheckId: dueCheck.id },
       }),
-    ).rejects.toThrow(/vernichteten GwG-Check/);
+      /vernichteten GwG-Check/,
+    );
 
     expect(
       await owner.gwgOnboardingInvite.findUnique({
@@ -748,7 +790,7 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
     }
 
     await expect(claim).resolves.toBeUndefined();
-    await expect(insert).rejects.toThrow(/befindet sich in Vernichtung/);
+    await dbAbgewiesen(insert, /befindet sich in Vernichtung/);
     expect(await owner.documentVersion.count({ where: { documentId: document.id } })).toBe(0);
   }, 15_000);
 
@@ -768,29 +810,53 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
       });
     }
 
-    await expect(expectDestroyFunction(nullRetentionDocumentId)).rejects.toThrow();
-    await expect(expectDestroyFunction(futureRetentionDocumentId)).rejects.toThrow();
+    await dbAbgewiesen(expectDestroyFunction(nullRetentionDocumentId), {
+      sqlState: '23514',
+      meldung: 'Object-Lock-Aufbewahrung ist nicht nachweisbar abgelaufen.',
+    });
+    await dbAbgewiesen(expectDestroyFunction(futureRetentionDocumentId), {
+      sqlState: '23514',
+      meldung: 'Object-Lock-Aufbewahrung ist nicht nachweisbar abgelaufen.',
+    });
 
-    await expect(
+    await dbAbgewiesen(
       owner.client.update({ where: { id: clientId }, data: { mandateEndedAt: null } }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23001',
+        meldung: 'Mandant ist durch einen laufenden GwG-Vernichtungsclaim eingefroren.',
+      },
+    );
+    await dbAbgewiesen(
       owner.document.update({ where: { id: documentId }, data: { deletedAt: new Date() } }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung:
+          'Zugeordneter GwG-Beleg darf nicht ausgeblendet werden; kontrollierte GwG-Vernichtung verwenden.',
+      },
+    );
     await expect(
       owner.gwgCheck.update({ where: { id: checkId }, data: { status: 'EXPIRED' } }),
     ).resolves.toBeTruthy();
-    await expect(
+    await dbAbgewiesen(
       owner.gwgCheck.update({ where: { id: checkId }, data: { legalForm: 'AG' } }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung: 'Einmal verifizierter GwG-Rechtstraeger-Snapshot ist unveraenderlich.',
+      },
+    );
     expect(
       (await owner.client.findUnique({ where: { id: clientId }, select: { allowActive: true } }))
         ?.allowActive,
     ).toBe(false);
-    await expect(
+    await dbAbgewiesen(
       owner.client.update({ where: { id: clientId }, data: { allowActive: true } }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23514',
+        meldung:
+          'client.allow_active=TRUE erfordert einen gueltigen, verifizierten, nicht vernichteten gwg_check mit bestaetigter Identitaetszuordnung (Mandant:',
+      },
+    );
+    await dbAbgewiesen(
       owner.gwgIdDocument.create({
         data: {
           gwgCheckId: checkId,
@@ -799,9 +865,10 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           documentId,
         },
       }),
-    ).rejects.toThrow();
+      { sqlState: '23001', meldung: 'Verifizierter GwG-Ausweis-Snapshot ist unveränderlich.' },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.documentVersion.create({
         data: {
           documentId,
@@ -815,7 +882,12 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           createdById: staffId,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung:
+          'Zugeordneter GwG-Beweisinhalt ist unveraenderlich; neues Dokument anlegen und erneut zuordnen.',
+      },
+    );
 
     await expectDestroyFunction();
 
@@ -836,12 +908,19 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
         })
       )?.documentId,
     ).toBeNull();
-    await expect(
+    await dbAbgewiesen(
       owner.document.update({ where: { id: documentId }, data: { deletedAt: null } }),
-    ).rejects.toThrow();
-    await expect(owner.document.delete({ where: { id: documentId } })).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung: 'Endgültig vernichteter GwG-Beleg ist bis auf updated_at unveränderlich.',
+      },
+    );
+    await dbAbgewiesen(owner.document.delete({ where: { id: documentId } }), {
+      sqlState: '23001',
+      meldung: 'GwG-Vernichtungsclaim/-nachweis darf nicht hart gelöscht werden.',
+    });
 
-    await expect(
+    await dbAbgewiesen(
       owner.documentVersion.create({
         data: {
           documentId,
@@ -855,7 +934,11 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
           createdById: staffId,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung: 'GwG-Dokument befindet sich in Vernichtung; neue Version nicht zulässig.',
+      },
+    );
 
     await expect(expectDestroyCheckFunction()).resolves.toBeTruthy();
     const destroyedCheck = await owner.gwgCheck.findUnique({
@@ -875,21 +958,28 @@ describeWithDatabase('GwG-Vernichtung immutable DocumentVersion', () => {
         })
       )?.ownerName,
     ).toBe('VERNICHTET');
-    await expect(
+    await dbAbgewiesen(
       owner.gwgCheck.update({ where: { id: checkId }, data: { destroyedAt: null } }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23001',
+        meldung: 'Vernichteter GwG-Check ist bis auf updated_at unveraenderlich.',
+      },
+    );
+    await dbAbgewiesen(
       owner.document.update({ where: { id: documentId }, data: { title: 'Manipuliert' } }),
-    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
-    await expect(
+      /unver(?:ä|ae)nderlich/,
+    );
+    await dbAbgewiesen(
       owner.gwgCheck.update({ where: { id: checkId }, data: { status: 'REJECTED' } }),
-    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
-    await expect(
+      /unver(?:ä|ae)nderlich/,
+    );
+    await dbAbgewiesen(
       owner.gwgOnboardingInvite.update({
         where: { id: inviteId },
         data: { gwgCheckId: null },
       }),
-    ).rejects.toThrow(/unver(?:ä|ae)nderlich/);
+      /unver(?:ä|ae)nderlich/,
+    );
     await expect(
       owner.document.update({ where: { id: documentId }, data: { updatedAt: new Date() } }),
     ).resolves.toBeTruthy();

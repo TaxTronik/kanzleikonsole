@@ -25,6 +25,7 @@ import {
   markPortalSessionRevocationPendingTx,
   type PendingPortalSessionRevocation,
 } from '../portal-session-revocation';
+import { anwendungAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -113,13 +114,14 @@ describeWithDatabase('B7: Marker für ausstehende Portal-Session-Widerrufe', () 
     const clientId = await makeClient(tenantA, 'B7 Rollback');
 
     // Bricht die Transaktion nach dem Setzen ab, verschwindet der Marker mit ihr.
-    await expect(
+    await anwendungAbgewiesen(
       asWorker(tenantA, async (tx) => {
         await tx.client.update({ where: { id: clientId }, data: { name: 'B7 geändert' } });
         await markPortalSessionRevocationPendingTx(tx, { tenantId: tenantA, clientId });
         throw new Error('Abbruch nach dem Setzen');
       }),
-    ).rejects.toThrow('Abbruch nach dem Setzen');
+      'Abbruch nach dem Setzen',
+    );
     expect(await stored(clientId)).toMatchObject({
       name: 'B7 Rollback',
       portalSessionRevocationPendingAt: null,
@@ -127,12 +129,13 @@ describeWithDatabase('B7: Marker für ausstehende Portal-Session-Widerrufe', () 
 
     // Passt der Tenant nicht, wirft das Setzen und nimmt die übrigen
     // Schreibzugriffe der Transaktion (hier stellvertretend der Name) mit.
-    await expect(
+    await anwendungAbgewiesen(
       asWorker(tenantB, async (tx) => {
         await tx.client.update({ where: { id: clientId }, data: { name: 'B7 geändert' } });
         await markPortalSessionRevocationPendingTx(tx, { tenantId: tenantB, clientId });
       }),
-    ).rejects.toThrow(/Portal-Session-Widerruf: Mandant .* nicht gefunden/);
+      /Portal-Session-Widerruf: Mandant .* nicht gefunden/,
+    );
     expect(await stored(clientId)).toMatchObject({
       name: 'B7 Rollback',
       portalSessionRevocationPendingAt: null,

@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const migration = readFileSync(
   new URL(
@@ -159,7 +160,7 @@ describeWithDatabase('Prüf-Checkpoint: Rechte und Mandantentrennung', () => {
     ],
     ['DELETE', (tx: TxClient) => tx.$executeRaw`DELETE FROM audit_verify_checkpoint`],
   ])('verweigert der App-Rolle %s', async (_operation, write) => {
-    await expect(asStaffOf(tenantA, write)).rejects.toThrow(/permission denied/i);
+    await dbAbgewiesen(asStaffOf(tenantA, write), /permission denied/i);
     const rows = await owner.$queryRaw<Array<{ audit_id: bigint }>>`
       SELECT audit_id FROM audit_verify_checkpoint WHERE tenant_id = ${tenantA}::uuid
     `;
@@ -176,7 +177,7 @@ describeWithDatabase('Prüf-Checkpoint: Rechte und Mandantentrennung', () => {
     ['Vollprüfung ohne Kennung', { kind: 'FULL', sweep: null }, /sweep_check/],
     ['Zielstand ohne Kennung', { kind: 'FULL_TARGET', sweep: null }, /sweep_check/],
   ])('lehnt %s ab', async (_case, overrides, constraint) => {
-    await expect(insertCheckpoint(tenantB, overrides)).rejects.toThrow(constraint);
+    await dbAbgewiesen(insertCheckpoint(tenantB, overrides), constraint);
   });
 
   it('erlaubt im Zuwachs-Checkpoint die Kennung der laufenden Vollprüfung', async () => {

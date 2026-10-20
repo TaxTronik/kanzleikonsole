@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
+import { anwendungAbgewiesen, erwarteAnwendungsfehler } from '../testing/db-fehler';
 
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
@@ -134,7 +135,7 @@ describe('TCMS-SAMPLE-PROOF-001 real database CAS', () => {
       release.resolve();
     }
     await first;
-    expect(String(await second)).toMatch(/anderer Auftrag/);
+    erwarteAnwendungsfehler(await second, /anderer Auftrag/);
     expect(blocked).toBe(true);
     expect((await read('quantenlos.start'))?.value).toEqual(start);
   });
@@ -166,7 +167,7 @@ describe('TCMS-SAMPLE-PROOF-001 real database CAS', () => {
       release.resolve();
     }
     await first;
-    expect(String(await second)).toMatch(/bereits bearbeitet/);
+    erwarteAnwendungsfehler(await second, /bereits bearbeitet/);
     expect(blocked).toBe(true);
     expect(await read('quantenlos.pending')).toBeNull();
     expect(await owner.clientReminder.count({ where: { tenantId } })).toBe(1);
@@ -175,24 +176,27 @@ describe('TCMS-SAMPLE-PROOF-001 real database CAS', () => {
   it('preserves a newer pending job and rejects a changed frame even for the same job id', async () => {
     const newer = { ...pending, jobId: 'job-b' };
     await putPending(newer);
-    await expect(
+    await anwendungAbgewiesen(
       transaction((tx) => state.claimLosPendingTx(tx, tenantId, pending)),
-    ).rejects.toThrow(/bereits bearbeitet/);
+      /bereits bearbeitet/,
+    );
     expect((await read('quantenlos.pending'))?.value).toEqual(newer);
-    await expect(
+    await anwendungAbgewiesen(
       transaction((tx) =>
         state.claimLosPendingTx(tx, tenantId, { ...newer, rahmen: ['different'] }),
       ),
-    ).rejects.toThrow(/bereits bearbeitet/);
-    await expect(
+      /bereits bearbeitet/,
+    );
+    await anwendungAbgewiesen(
       transaction((tx) => state.reserveLosStartTx(tx, tenantId, start, staffId)),
-    ).rejects.toThrow(/anderer Auftrag/);
+      /anderer Auftrag/,
+    );
     expect((await read('quantenlos.pending'))?.value).toEqual(newer);
   });
 
   it('a failure after actual EvidenceService.record rolls back claim, task and audit together', async () => {
     await putPending();
-    await expect(
+    await anwendungAbgewiesen(
       transaction(async (tx) => {
         await state.claimLosPendingTx(tx, tenantId, pending);
         await reminder(tx);
@@ -207,7 +211,8 @@ describe('TCMS-SAMPLE-PROOF-001 real database CAS', () => {
         });
         throw new Error('after-audit failure');
       }),
-    ).rejects.toThrow('after-audit failure');
+      'after-audit failure',
+    );
     expect((await read('quantenlos.pending'))?.value).toEqual(pending);
     expect(await owner.clientReminder.count({ where: { tenantId } })).toBe(0);
     expect(await owner.auditLog.count({ where: { tenantId } })).toBe(0);
@@ -216,10 +221,11 @@ describe('TCMS-SAMPLE-PROOF-001 real database CAS', () => {
 
   it('only the original start attempt may finish and its consumed reservation rolls back on failure', async () => {
     await transaction((tx) => state.reserveLosStartTx(tx, tenantId, start, staffId));
-    await expect(
+    await anwendungAbgewiesen(
       transaction((tx) => state.claimLosStartTx(tx, tenantId, randomUUID())),
-    ).rejects.toThrow(/bereits bearbeitet/);
-    await expect(
+      /bereits bearbeitet/,
+    );
+    await anwendungAbgewiesen(
       transaction(async (tx) => {
         await state.claimLosStartTx(tx, tenantId, start.attemptId);
         await tx.tenantSetting.create({
@@ -227,7 +233,8 @@ describe('TCMS-SAMPLE-PROOF-001 real database CAS', () => {
         });
         throw new Error('audit unavailable');
       }),
-    ).rejects.toThrow('audit unavailable');
+      'audit unavailable',
+    );
     expect((await read('quantenlos.start'))?.value).toEqual(start);
     expect(await read('quantenlos.pending')).toBeNull();
   });
@@ -239,9 +246,10 @@ describe('TCMS-SAMPLE-PROOF-001 real database CAS', () => {
       where: { tenantId_key: { tenantId, key: 'quantenlos.start' } },
       data: { value: accepted },
     });
-    await expect(
+    await anwendungAbgewiesen(
       transaction((tx) => state.claimLosStartTx(tx, tenantId, start.attemptId, start)),
-    ).rejects.toThrow(/bereits bearbeitet/);
+      /bereits bearbeitet/,
+    );
     expect((await read('quantenlos.start'))?.value).toEqual(accepted);
   });
 });

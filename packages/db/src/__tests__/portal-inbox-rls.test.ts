@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 const describeWithDatabase = hasDatabase ? describe : describe.skip;
@@ -446,11 +447,12 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
       ),
     ).toEqual({ lastReadAt: newer });
 
-    await expect(
+    await dbAbgewiesen(
       asActor(tenantId, contactId, 'CLIENT_CONTACT', (tx) =>
         advancePortalInboxReadTx(tx, { ...actor, contactId: peerContactId }, thread.id, displayed),
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Portal-Kontakt darf nur eigenen Lesestand schreiben' },
+    );
     expect(
       await owner.portalInboxRead.count({
         where: { threadId: thread.id, contactId: peerContactId },
@@ -510,14 +512,15 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
     threadId = result.threadId;
     messageId = result.messageId;
 
-    await expect(
+    await dbAbgewiesen(
       asActor(tenantId, contactId, 'CLIENT_CONTACT', (tx) =>
         tx.portalInboxAttachment.update({
           where: { id: attachmentId },
           data: { sha256: Buffer.alloc(32, 0x52) },
         }),
       ),
-    ).rejects.toThrow();
+      { prismaCode: 'P2025' },
+    );
   });
 
   it('PORTAL-INBOX-SUBMISSION-001 lehnt eine echte PENDING-Reservierung atomar ab', async () => {
@@ -580,7 +583,7 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
       where: { id: hashFixture.versionId },
       data: { sha256: Buffer.alloc(32, 0x74) },
     });
-    await expect(
+    await dbAbgewiesen(
       asActor(
         tenantId,
         staffId,
@@ -593,7 +596,11 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
           )
         `,
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung: 'Reservierte Inbox-Version stimmt nicht mit dem PENDING-Intent ueberein.',
+      },
+    );
     expect(
       await owner.portalInboxAttachment.findUniqueOrThrow({
         where: { id: hashFixture.attachmentId },
@@ -641,7 +648,7 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
         createdById: staffId,
       },
     });
-    await expect(
+    await dbAbgewiesen(
       asActor(
         tenantId,
         staffId,
@@ -654,7 +661,11 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
           )
         `,
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung: 'Reserviertes Inbox-Dokument muss genau eine Version besitzen.',
+      },
+    );
     expect(
       await owner.documentVersion.count({ where: { documentId: versionFixture.documentId } }),
     ).toBe(2);
@@ -673,7 +684,7 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
     );
 
     const scopeFixture = await createPendingAcceptanceFixture({ hashByte: 0x76 });
-    await expect(
+    await dbAbgewiesen(
       asActor(
         otherTenantId,
         staffId,
@@ -686,7 +697,8 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
           )
         `,
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0002', meldung: 'Inbox-Anlage nicht gefunden.' },
+    );
     expect(
       await owner.portalInboxAttachment.findUniqueOrThrow({
         where: { id: scopeFixture.attachmentId },
@@ -1017,7 +1029,7 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
         },
       }),
     );
-    await expect(
+    await dbAbgewiesen(
       asActor(tenantId, contactId, 'CLIENT_CONTACT', async (tx) => {
         const secondThread = await tx.portalInboxThread.create({
           data: {
@@ -1039,7 +1051,12 @@ describeWithDatabase('portal inbox staging, RLS and notification scope', () => {
           },
         });
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23505',
+        meldung:
+          'duplicate key value violates unique constraint "portal_inbox_message_author_mutation_key"',
+      },
+    );
   });
 
   it('erzwingt die autorweite Mutation-ID auch bei paralleler Thread-Anlage', async () => {

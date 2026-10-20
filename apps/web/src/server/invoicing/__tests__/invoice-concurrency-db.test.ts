@@ -77,7 +77,13 @@ vi.mock('@/server/actions/staff-action', async () => {
         );
         return { ok: true };
       } catch (error) {
-        return { ok: false, error: (error as Error).message };
+        // Nur Meldungen der Anwendung weitergeben; ein Datenbankfehler erscheint
+        // als SQLSTATE, nie mit dem Codeausschnitt von Prisma (kk-tcms-qual).
+        const db = dbFehler(error);
+        return {
+          ok: false,
+          error: db ? `SQLSTATE ${db.sqlState ?? db.prismaCode}` : (error as Error).message,
+        };
       }
     },
     parseFormData: (schema: { parse(input: unknown): unknown }, data: FormData) => ({
@@ -88,6 +94,7 @@ vi.mock('@/server/actions/staff-action', async () => {
 });
 
 import { markPaidAction, markSentAction } from '@/app/staff/(protected)/invoices/actions';
+import { dbFehler } from '@taxtronik/db/testing/db-fehler';
 
 // B-02: lokal per INVOICE_CONCURRENCY_DB_TEST=1, im db-CI-Job per DB_TESTS=1 (Glob über alle
 // *-db.test.ts). In CI scheitert die Suite ohne Opt-in, statt still übersprungen zu werden.

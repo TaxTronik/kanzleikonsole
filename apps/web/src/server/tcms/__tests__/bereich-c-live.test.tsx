@@ -51,6 +51,7 @@ import { DEMO } from '@/__tests__/tcms-fixtures';
 import { renderServerMarkup } from '@/__tests__/render-helpers';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import { createVerifiedLegalEntityGwgFixture } from '../../../../../../packages/db/src/__tests__/gwg-test-fixture';
+import { dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
   JSDOM: new (html: string) => { window: { document: Document } };
@@ -320,9 +321,10 @@ let F_VERTRAULICH = '';
     ).toBe(`/api/staff/clients/${DEMO.talwind}/tcms/nachweise/${nachweisId}`);
 
     // Löschsperre: jedes Soft-Delete scheitert, solange die Verknüpfung offen ist.
-    await expect(
+    await dbAbgewiesen(
       owner.document.update({ where: { id: dokumentId }, data: { deletedAt: new Date() } }),
-    ).rejects.toThrow(/als Nachweis im Tax-CMS verknüpft/);
+      /als Nachweis im Tax-CMS verknüpft/,
+    );
 
     // Abruf: alle Prüfungen bestanden, Ende am (hier fehlenden) Object Store.
     const { GET } = await import('@/app/api/staff/clients/[id]/tcms/nachweise/[nachweisId]/route');

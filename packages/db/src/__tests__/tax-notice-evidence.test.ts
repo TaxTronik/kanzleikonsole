@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -112,7 +113,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
   });
 
   it('kennzeichnet einen rein technischen Bereitstellungsnachweis als fachlich offen', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
@@ -135,7 +136,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           manualReviewRequired: false,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_calculation_result_check"',
+      },
+    );
   });
 
   it('erlaubt im Altrecht den festgestellten Abruf bei streitiger Benachrichtigung', async () => {
@@ -176,7 +182,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       deadlineCalculationVersion: engineVersion,
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...legacyNotification(),
@@ -187,7 +193,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           manualReviewRequired: false,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_retrieval_notification_review_check"',
+      },
+    );
 
     await expect(
       owner.taxNotice.create({
@@ -236,7 +247,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       deadlineCalculationVersion: engineVersion,
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...newRetrievalNotice(),
@@ -244,9 +255,14 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           manualReviewRequired: false,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_calculation_result_check"',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...newRetrievalNotice(),
@@ -255,7 +271,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           manualReviewRequired: false,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_calculation_result_check"',
+      },
+    );
 
     await expect(
       owner.taxNotice.create({
@@ -276,7 +297,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
   });
 
   it('blockiert eine berechnete Frist ohne Nachweis und bestätigte Orte', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
@@ -288,20 +309,30 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           manualReviewRequired: false,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_calculation_result_check"',
+      },
+    );
   });
 
   it('bindet jede Zugangseinwendung an einen Nachweisstatus und verhindert Streunachweise', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
           accessStatus: 'NOT_RECEIVED_DISPUTED',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_access_evidence_check"',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
@@ -309,7 +340,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           accessEvidenceStatus: 'CLAIMED',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_access_evidence_check"',
+      },
+    );
 
     await expect(
       owner.taxNotice.create({
@@ -322,7 +358,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       }),
     ).resolves.toMatchObject({ accessStatus: 'NOT_RECEIVED_DISPUTED' });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
@@ -331,7 +367,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           accessEvidenceNote: 'Nicht zuordenbarer Nachweis.',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_access_evidence_check"',
+      },
+    );
   });
 
   it('erzwingt bei festgestelltem Zugang dieselbe Tatsachenbasis in beiden Datumsfeldern', async () => {
@@ -343,7 +384,8 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       accessEvidenceNote: 'Zugangstag anhand der Kanzleidokumentation fachlich festgestellt.',
     });
 
-    await expect(owner.taxNotice.create({ data: actualAccess() })).rejects.toThrow(
+    await dbAbgewiesen(
+      owner.taxNotice.create({ data: actualAccess() }),
       /tax_notice_notification_evidence_check/i,
     );
 
@@ -379,14 +421,19 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
   });
 
   it('blockiert §122a-Felder bei einem normalen Postbescheid', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
           retrievalIssuedAt: new Date('2026-05-31T00:00:00.000Z'),
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_retrieval_field_scope_check"',
+      },
+    );
   });
 
   it('invalidiert einen Kontrollvorschlag bei jeder fristrelevanten Tatsachenänderung', async () => {
@@ -488,18 +535,28 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       },
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: notice.id },
         data: { appealDeadline: new Date('2026-06-02T00:00:00.000Z') },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: 'P0001',
+        meldung:
+          'deadline assessment outputs cannot be edited without an authorized engine reassessment',
+      },
+    );
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: notice.id },
         data: { manualReviewRequired: true },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: 'P0001',
+        meldung:
+          'deadline assessment outputs cannot be edited without an authorized engine reassessment',
+      },
+    );
   });
 
   // Fachkatalog: TAX-NOTICE-APPEAL-001
@@ -533,7 +590,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       manualReviewRequired: true,
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: notice.id },
         data: {
@@ -545,11 +602,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           manualReviewReason: null,
         },
       }),
-    ).rejects.toThrow(/authorized engine reassessment/);
+      /authorized engine reassessment/,
+    );
 
     // Ein frei setzbarer Custom-GUC ist für sich kein Autorisierungsnachweis:
     // unter der App-Rolle muss derselbe direkte UPDATE weiterhin scheitern.
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.$queryRaw`
           SELECT set_config('app.current_tenant_id', ${tenantId}, true),
@@ -581,7 +639,8 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
            WHERE "id" = ${notice.id}::UUID
         `;
       }),
-    ).rejects.toThrow(/authorized engine reassessment/);
+      /authorized engine reassessment/,
+    );
 
     const [privilege] = await owner.$queryRaw<Array<{ allowed: boolean }>>`
       SELECT has_function_privilege(
@@ -592,7 +651,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
     `;
     expect(privilege?.allowed).toBe(false);
 
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.$queryRaw`
           SELECT set_config('app.current_tenant_id', ${tenantId}, true),
@@ -614,7 +673,8 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
             )
         `;
       }),
-    ).rejects.toThrow(/permission denied.*tax_notice_apply_calculated_reassessment/i);
+      /permission denied.*tax_notice_apply_calculated_reassessment/i,
+    );
   });
 
   it('invalidiert den Kontrollvorschlag bei Änderungen von Empfänger oder Behörde', async () => {
@@ -680,42 +740,72 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       appealDeadline: new Date('2025-07-05T00:00:00.000Z'),
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: legacyNotice.id },
         data: { dateBasis: 'PROVISION_DATE' },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: 'P0001',
+        meldung:
+          'legacy data-retrieval facts and preserved deadline are immutable until the fallback marker is removed',
+      },
+    );
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: legacyNotice.id },
         data: { retrievalIssuedAt: new Date('2025-05-31T00:00:00.000Z') },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: 'P0001',
+        meldung:
+          'legacy data-retrieval facts and preserved deadline are immutable until the fallback marker is removed',
+      },
+    );
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: legacyNotice.id },
         data: { retrievalNotificationDate: new Date('2025-06-01T00:00:00.000Z') },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: 'P0001',
+        meldung:
+          'legacy data-retrieval facts and preserved deadline are immutable until the fallback marker is removed',
+      },
+    );
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: legacyNotice.id },
         data: { retrievalNotificationDisputedOrLate: true },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: 'P0001',
+        meldung:
+          'legacy data-retrieval facts and preserved deadline are immutable until the fallback marker is removed',
+      },
+    );
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: legacyNotice.id },
         data: { retrievedAt: new Date('2025-06-04T00:00:00.000Z') },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: 'P0001',
+        meldung:
+          'legacy data-retrieval facts and preserved deadline are immutable until the fallback marker is removed',
+      },
+    );
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: legacyNotice.id },
         data: { appealDeadline: new Date('2099-01-01T00:00:00.000Z') },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: 'P0001',
+        meldung:
+          'legacy data-retrieval facts and preserved deadline are immutable until the fallback marker is removed',
+      },
+    );
   });
 
   // Fachkatalog: TAX-NOTICE-APPEAL-001, TAX-CONTROL-STATUS-001
@@ -751,7 +841,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       partialReliefReceivedBy: null,
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: legacyPartialRelief.id },
         data: {
@@ -759,7 +849,8 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           appealResolvedAt: new Date('2026-06-15T00:00:00.000Z'),
         },
       }),
-    ).rejects.toThrow(/partial relief receipt evidence must be completed/i);
+      /partial relief receipt evidence must be completed/i,
+    );
 
     await expect(
       owner.taxNotice.update({
@@ -784,13 +875,14 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       appealFiledAt: new Date('2026-06-05T00:00:00.000Z'),
       appealFiledBy: staffId,
     };
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: { ...baseNotice(), status: 'TEILABHILFE', ...filing },
       }),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'partial relief requires receipt date and documenting staff' },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
@@ -799,9 +891,14 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           partialReliefReceivedAt: new Date('2026-06-10T00:00:00.000Z'),
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_partial_relief_evidence_check"',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
@@ -811,7 +908,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           partialReliefReceivedBy: staffId,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_event_sequence_check"',
+      },
+    );
 
     const partialRelief = await owner.taxNotice.create({
       data: {
@@ -829,7 +931,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       klageDeadline: null,
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: partialRelief.id },
         data: {
@@ -837,7 +939,11 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           appealResolvedAt: new Date('2026-06-09T00:00:00.000Z'),
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: 'P0001',
+        meldung: 'procedure progress must not predate the partial relief receipt',
+      },
+    );
 
     const resolved = await owner.taxNotice.update({
       where: { id: partialRelief.id },
@@ -852,12 +958,13 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       partialReliefReceivedBy: staffId,
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: partialRelief.id },
         data: { partialReliefReceivedAt: null, partialReliefReceivedBy: null },
       }),
-    ).rejects.toThrow(/partial relief receipt evidence is immutable/i);
+      /partial relief receipt evidence is immutable/i,
+    );
   });
 
   it('trennt Teilabhilfe und Teil-Einspruchsentscheidung auf Datenbankebene', async () => {
@@ -881,7 +988,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
 
   // Fachkatalog: TAX-CONTROL-STATUS-001, TAX-NOTICE-APPEAL-001
   it('blockiert Bestandskraft ohne belastbaren Fristablauf', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
@@ -891,7 +998,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           legalFinalReason: 'Fristablauf und Aktenlage fachlich geprüft.',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_legal_final_evidence_check"',
+      },
+    );
   });
 
   it('erlaubt Bestandskraft ohne Einspruch erst am Folgetag der geprüften Frist', async () => {
@@ -913,7 +1025,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       },
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: reviewedNotice.id },
         data: {
@@ -923,7 +1035,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           legalFinalReason: 'Einspruchsfrist und Aktenlage fachlich geprüft.',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: 'P0001',
+        meldung:
+          'bestandskraft without an appeal requires the elapsed, fully calculated appeal deadline',
+      },
+    );
 
     await expect(
       owner.taxNotice.update({
@@ -952,7 +1069,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       },
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: rejectedNotice.id },
         data: {
@@ -962,9 +1079,13 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           legalFinalReason: 'Klagefrist und Aktenlage fachlich geprüft.',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: 'P0001',
+        meldung: 'bestandskraft after an appeal decision requires the elapsed court deadline',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.update({
         where: { id: rejectedNotice.id },
         data: {
@@ -975,7 +1096,11 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           legalFinalReason: 'Klagefrist und Aktenlage fachlich geprüft.',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: 'P0001',
+        meldung: 'bestandskraft after an appeal decision requires the elapsed court deadline',
+      },
+    );
 
     await expect(
       owner.taxNotice.update({
@@ -1034,7 +1159,15 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       ' 123456789 ',
       String.fromCodePoint(0x1f600).repeat(5),
     ]) {
-      await expect(finalize(reason), JSON.stringify(reason)).rejects.toThrow();
+      await dbAbgewiesen(
+        finalize(reason),
+        {
+          sqlState: '23514',
+          meldung:
+            'new row for relation "tax_notice" violates check constraint "tax_notice_legal_final_evidence_check"',
+        },
+        JSON.stringify(reason),
+      );
     }
     await expect(finalize('\n\t  Akte geprüft \t\n')).resolves.toMatchObject({
       status: 'BESTANDSKRAEFTIG',
@@ -1096,7 +1229,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       calculatedNotificationDate: new Date('2026-06-05T00:00:00.000Z'),
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...earlierAccess,
@@ -1104,7 +1237,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           receivedAt: new Date('2026-06-09T00:00:00.000Z'),
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_access_evidence_check"',
+      },
+    );
   });
 
   it('persistiert beide Szenarien bei einem substantiiert behaupteten späteren Zugang', async () => {
@@ -1134,7 +1272,7 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       alternativeClaimedAccessDeadline: new Date('2026-07-09T00:00:00.000Z'),
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
@@ -1153,9 +1291,14 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           manualReviewReason: 'LATER_ACCESS_REQUIRES_EVIDENCE_REVIEW',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_calculation_result_check"',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.taxNotice.create({
         data: {
           ...baseNotice(),
@@ -1175,7 +1318,12 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
           manualReviewReason: 'LATER_ACCESS_REQUIRES_EVIDENCE_REVIEW',
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "tax_notice" violates check constraint "tax_notice_calculation_result_check"',
+      },
+    );
   });
 
   it('erlaubt ab 2027 einen erst nach Bereitstellung zugegangenen Postantrag', async () => {
@@ -1226,7 +1374,11 @@ describeWithDatabase('Beweisorientiertes Bescheidmodell', () => {
       manualReviewReason: 'POSTAL_REQUEST_EFFECTIVE_REQUIRES_REVIEW',
     });
 
-    await expect(owner.taxNotice.create({ data: blockedPostalRequest() })).rejects.toThrow();
+    await dbAbgewiesen(owner.taxNotice.create({ data: blockedPostalRequest() }), {
+      sqlState: '23514',
+      meldung:
+        'new row for relation "tax_notice" violates check constraint "tax_notice_postal_request_evidence_check"',
+    });
 
     await expect(
       owner.taxNotice.create({

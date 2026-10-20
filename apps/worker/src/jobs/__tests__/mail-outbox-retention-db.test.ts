@@ -54,6 +54,7 @@ import {
   mailOutboxRetentionCutoff,
   runMailOutboxRetention,
 } from '../mail-outbox-retention';
+import { dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 const describeDb = enabled ? describe : describe.skip;
 const NO_LIMIT = { exhausted: () => false };
@@ -195,31 +196,35 @@ describeDb('Welle 15 mail-outbox-retention against PostgreSQL', () => {
 
   it('weist die Funktion außerhalb des SYSTEM-Kontexts und bei zu jungem Stichtag ab', async () => {
     const { tenantId, staffId } = tenants.a;
-    await expect(
+    await dbAbgewiesen(
       withTenantContext(
         { tenantId, actorId: staffId, actorType: 'STAFF' },
         (tx) => tx.$queryRaw`SELECT app.mail_outbox_purge_terminal(${cutoff}::timestamptz, 10)`,
       ),
-    ).rejects.toThrow(/MAIL_OUTBOX_PURGE_CONTEXT/);
+      /MAIL_OUTBOX_PURGE_CONTEXT/,
+    );
     // Die App-Rolle hat weiterhin kein DELETE auf mail_outbox.
-    await expect(
+    await dbAbgewiesen(
       withSystemContext(tenantId, (tx) =>
         tx.mailOutbox.deleteMany({ where: { id: ids.get('accepted-older')! } }),
       ),
-    ).rejects.toThrow(/permission denied/);
+      /permission denied/,
+    );
     const recent = new Date(now.getTime() - 300 * MS_DAY);
-    await expect(
+    await dbAbgewiesen(
       withSystemContext(
         tenantId,
         (tx) => tx.$queryRaw`SELECT app.mail_outbox_purge_terminal(${recent}::timestamptz, 10)`,
       ),
-    ).rejects.toThrow(/MAIL_OUTBOX_PURGE_CUTOFF/);
-    await expect(
+      /MAIL_OUTBOX_PURGE_CUTOFF/,
+    );
+    await dbAbgewiesen(
       withSystemContext(
         tenantId,
         (tx) => tx.$queryRaw`SELECT app.mail_outbox_purge_terminal(${cutoff}::timestamptz, 0)`,
       ),
-    ).rejects.toThrow(/MAIL_OUTBOX_PURGE_LIMIT/);
+      /MAIL_OUTBOX_PURGE_LIMIT/,
+    );
     expect(await exists('accepted-older')).toBe(true);
   });
 

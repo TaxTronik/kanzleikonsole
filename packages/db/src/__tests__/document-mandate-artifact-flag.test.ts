@@ -29,6 +29,7 @@ import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const migration = readFileSync(
   new URL(
@@ -473,12 +474,13 @@ describeWithDatabase('P-01: document.has_mandate_artifact', () => {
     await inRollback(async (tx) => {
       const fixture = await buildFixture(tx);
       await tx.$executeRawUnsafe('SAVEPOINT reset');
-      await expect(
+      await dbAbgewiesen(
         tx.$executeRaw`
           UPDATE document SET has_mandate_artifact = FALSE
            WHERE id = ${fixture.documents.structure}::uuid
         `,
-      ).rejects.toThrow(/has_mandate_artifact kann nicht zurückgesetzt werden/);
+        /has_mandate_artifact kann nicht zurückgesetzt werden/,
+      );
       await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT reset');
       // Setzen ohne Artefakt bleibt erlaubt und ist für die Sichtbarkeit neutral.
       await tx.$executeRaw`
@@ -508,7 +510,8 @@ describeWithDatabase('P-01: document.has_mandate_artifact', () => {
       expect(unmarked.visible).toContain('offboarding');
 
       await tx.$executeRawUnsafe('SAVEPOINT postcheck');
-      await expect(tx.$executeRawUnsafe(POSTCHECK)).rejects.toThrow(
+      await dbAbgewiesen(
+        tx.$executeRawUnsafe(POSTCHECK),
         /P-01: 1 Dokument\(e\) mit Mandatsartefakt sind nicht markiert/,
       );
       await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT postcheck');

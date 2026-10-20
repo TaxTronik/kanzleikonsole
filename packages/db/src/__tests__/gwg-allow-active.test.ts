@@ -19,6 +19,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Prisma, PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 
@@ -199,31 +200,51 @@ async function makeInvite(
 describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_check', () => {
   it('ohne gwg_check: Aktivierung wird vom Trigger blockiert', async () => {
     const id = await makeClient('Ohne Check');
-    await expect(activate(id)).rejects.toThrow();
+    await dbAbgewiesen(activate(id), {
+      sqlState: '23514',
+      meldung:
+        'client.allow_active=TRUE erfordert einen gueltigen, verifizierten, nicht vernichteten gwg_check mit bestaetigter Identitaetszuordnung (Mandant:',
+    });
   });
 
   it('mit DRAFT-Check: Aktivierung blockiert (nicht VERIFIED)', async () => {
     const id = await makeClient('Draft Check');
     await makeGwgCheck(id, 'DRAFT', null);
-    await expect(activate(id)).rejects.toThrow();
+    await dbAbgewiesen(activate(id), {
+      sqlState: '23514',
+      meldung:
+        'client.allow_active=TRUE erfordert einen gueltigen, verifizierten, nicht vernichteten gwg_check mit bestaetigter Identitaetszuordnung (Mandant:',
+    });
   });
 
   it('mit IN_REVIEW-Check: Aktivierung blockiert', async () => {
     const id = await makeClient('In Review');
     await makeGwgCheck(id, 'IN_REVIEW', null);
-    await expect(activate(id)).rejects.toThrow();
+    await dbAbgewiesen(activate(id), {
+      sqlState: '23514',
+      meldung:
+        'client.allow_active=TRUE erfordert einen gueltigen, verifizierten, nicht vernichteten gwg_check mit bestaetigter Identitaetszuordnung (Mandant:',
+    });
   });
 
   it('mit REJECTED-Check: Aktivierung blockiert', async () => {
     const id = await makeClient('Rejected');
     await makeGwgCheck(id, 'REJECTED', null);
-    await expect(activate(id)).rejects.toThrow();
+    await dbAbgewiesen(activate(id), {
+      sqlState: '23514',
+      meldung:
+        'client.allow_active=TRUE erfordert einen gueltigen, verifizierten, nicht vernichteten gwg_check mit bestaetigter Identitaetszuordnung (Mandant:',
+    });
   });
 
   it('mit VERIFIED, aber abgelaufenem Check: Aktivierung blockiert', async () => {
     const id = await makeClient('Verified Expired');
     await makeGwgCheck(id, 'VERIFIED', new Date(Date.now() - HOUR));
-    await expect(activate(id)).rejects.toThrow();
+    await dbAbgewiesen(activate(id), {
+      sqlState: '23514',
+      meldung:
+        'client.allow_active=TRUE erfordert einen gueltigen, verifizierten, nicht vernichteten gwg_check mit bestaetigter Identitaetszuordnung (Mandant:',
+    });
   });
 
   it('VERIFIED-Rechtsträger ohne vollständigen Snapshot bleibt fail-closed', async () => {
@@ -242,7 +263,11 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
       where: { id: check.id },
       data: { status: 'VERIFIED', verifiedAt: new Date() },
     });
-    await expect(activate(id)).rejects.toThrow();
+    await dbAbgewiesen(activate(id), {
+      sqlState: '23514',
+      meldung:
+        'client.allow_active=TRUE erfordert einen gueltigen, verifizierten, nicht vernichteten gwg_check mit bestaetigter Identitaetszuordnung (Mandant:',
+    });
   });
 
   it('mit VERIFIED + Gültigkeit in der Zukunft: Aktivierung erlaubt', async () => {
@@ -297,7 +322,10 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
     const checkId = await makeGwgCheck(id, 'VERIFIED', null);
     await activate(id);
 
-    await expect(owner.gwgCheck.delete({ where: { id: checkId } })).rejects.toThrow();
+    await dbAbgewiesen(owner.gwgCheck.delete({ where: { id: checkId } }), {
+      sqlState: '23001',
+      meldung: 'GwG-Check darf nicht hart geloescht werden; kontrollierte Vernichtung verwenden.',
+    });
 
     expect(
       (await owner.client.findUnique({ where: { id }, select: { allowActive: true } }))
@@ -310,17 +338,25 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
     const checkId = await makeGwgCheck(id, 'VERIFIED', null);
     await activate(id);
 
-    await expect(
+    await dbAbgewiesen(
       owner.gwgCheck.update({ where: { id: checkId }, data: { legalForm: null } }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung: 'Einmal verifizierter GwG-Rechtstraeger-Snapshot ist unveraenderlich.',
+      },
+    );
     expect(
       (await owner.client.findUnique({ where: { id }, select: { allowActive: true } }))
         ?.allowActive,
     ).toBe(true);
 
-    await expect(
+    await dbAbgewiesen(
       owner.gwgCheck.update({ where: { id: checkId }, data: { destroyedAt: new Date() } }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23001',
+        meldung: 'GwG-Vernichtungsvermerk darf nur kontrolliert gesetzt werden.',
+      },
+    );
 
     expect(
       (await owner.client.findUnique({ where: { id }, select: { allowActive: true } }))
@@ -331,11 +367,16 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
   it('INSERT mit allow_active=true ohne Check: vom INSERT-Trigger blockiert (iter57)', async () => {
     // Defense-in-Depth: nicht nur der UPDATE-Pfad, auch ein direktes Anlegen
     // mit allow_active=true muss an der GwG-Schranke scheitern.
-    await expect(
+    await dbAbgewiesen(
       owner.client.create({
         data: { tenantId, kind: 'JURPERS', name: 'Insert aktiv ohne Check', allowActive: true },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'client.allow_active=TRUE erfordert einen gueltigen, verifizierten, nicht vernichteten gwg_check mit bestaetigter Identitaetszuordnung (Mandant:',
+      },
+    );
   });
 
   it('Deaktivierung (allow_active=false) ist immer erlaubt — Trigger feuert nur auf TRUE', async () => {
@@ -349,12 +390,18 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
 
   it('Dokumente fuer inaktive Mandanten bleiben grundsaetzlich blockiert', async () => {
     const id = await makeClient('Dokument blockiert');
-    await expect(makeDocument(id, 'GENERAL')).rejects.toThrow();
+    await dbAbgewiesen(makeDocument(id, 'GENERAL'), {
+      sqlState: '23514',
+      meldung: 'ist nicht aktiv (GwG-Schranke). Dokumentenanlage abgewiesen.',
+    });
   });
 
   it('GWG_EVIDENCE ohne aktive Onboarding-Einladung bleibt blockiert', async () => {
     const id = await makeClient('GwG Dokument ohne Invite');
-    await expect(makeDocument(id, 'GWG_EVIDENCE')).rejects.toThrow();
+    await dbAbgewiesen(makeDocument(id, 'GWG_EVIDENCE'), {
+      sqlState: '23514',
+      meldung: 'ist nicht aktiv (GwG-Schranke). Dokumentenanlage abgewiesen.',
+    });
   });
 
   it('GWG_EVIDENCE mit aktiver Onboarding-Einladung ist vor Aktivierung erlaubt', async () => {
@@ -366,6 +413,9 @@ describeWithDatabase('GwG-Schranke: allow_active erfordert verifizierten gwg_che
   it('GWG_EVIDENCE mit erledigter Onboarding-Einladung bleibt vor Aktivierung blockiert', async () => {
     const id = await makeClient('GwG Dokument submitted Invite');
     await makeInvite(id, 'SUBMITTED');
-    await expect(makeDocument(id, 'GWG_EVIDENCE')).rejects.toThrow();
+    await dbAbgewiesen(makeDocument(id, 'GWG_EVIDENCE'), {
+      sqlState: '23514',
+      meldung: 'ist nicht aktiv (GwG-Schranke). Dokumentenanlage abgewiesen.',
+    });
   });
 });

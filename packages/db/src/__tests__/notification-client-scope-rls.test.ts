@@ -5,6 +5,7 @@ import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
 import { upsertNotificationTx } from '../notification';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -193,7 +194,7 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
     expect(scoped.clientId).toBe(clientId);
     await owner.notification.delete({ where: { id: scoped.id } });
 
-    await expect(
+    await dbAbgewiesen(
       owner.notification.create({
         data: {
           tenantId,
@@ -205,9 +206,10 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
           resourceId: noticeId,
         },
       }),
-    ).rejects.toThrow(/Unklassifizierter Notification-Ressourcentyp/i);
+      /Unklassifizierter Notification-Ressourcentyp/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.notification.create({
         data: {
           tenantId,
@@ -218,9 +220,10 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
           resourceId: 'opaque',
         },
       }),
-    ).rejects.toThrow(/Unklassifizierter Notification-Ressourcentyp/i);
+      /Unklassifizierter Notification-Ressourcentyp/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.notification.create({
         data: {
           tenantId,
@@ -232,7 +235,8 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
           resourceId: 'object-key',
         },
       }),
-    ).rejects.toThrow(/Foreign key constraint|client_id widerspricht/i);
+      /Foreign key constraint|client_id widerspricht/i,
+    );
   });
 
   it('zeigt gezielte Hinweise nur dem Empfänger und globale Hinweise allen aktiven Mitarbeitern', async () => {
@@ -369,7 +373,7 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
 
   // Fachkatalog: ACCESS-NOTIFICATION-RECIPIENT-001, ACCESS-TENANT-RLS-001
   it('verweigert Portal-Kontakten den allgemeinen Raw-INSERT-Pfad', async () => {
-    await expect(
+    await dbAbgewiesen(
       asClientContact(
         (tx) =>
           tx.$executeRaw`
@@ -387,12 +391,13 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
           )
         `,
       ),
-    ).rejects.toThrow(/row-level security|policy/i);
+      /row-level security|policy/i,
+    );
   });
 
   // Fachkatalog: ACCESS-NOTIFICATION-RECIPIENT-001, ACCESS-TENANT-RLS-001
   it('verwirft nicht freigegebene Ereignisse und fremde Ressourcen fail-closed', async () => {
-    await expect(
+    await dbAbgewiesen(
       asClientContact((tx) =>
         upsertNotificationTx(tx, {
           tenantId,
@@ -403,9 +408,10 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
           resourceId: appointmentRequestId,
         }),
       ),
-    ).rejects.toThrow(/Nicht freigegebene Portal-Notification/i);
+      /Nicht freigegebene Portal-Notification/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       asClientContact((tx) =>
         upsertNotificationTx(tx, {
           tenantId,
@@ -416,12 +422,13 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
           resourceId: foreignAppointmentRequestId,
         }),
       ),
-    ).rejects.toThrow(/Ressource gehört nicht zum Portal-Mandanten/i);
+      /Ressource gehört nicht zum Portal-Mandanten/i,
+    );
   });
 
   // Fachkatalog: ACCESS-NOTIFICATION-RECIPIENT-001, ACCESS-TENANT-RLS-001
   it('verwirft inaktive Kontakte und tenantfremde Empfänger fail-closed', async () => {
-    await expect(
+    await dbAbgewiesen(
       asClientContact(
         (tx) =>
           upsertNotificationTx(tx, {
@@ -434,9 +441,10 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
           }),
         inactiveContactId,
       ),
-    ).rejects.toThrow(/Aktiver Portal-Kontakt nicht gefunden/i);
+      /Aktiver Portal-Kontakt nicht gefunden/i,
+    );
 
-    await expect(
+    await dbAbgewiesen(
       asClientContact((tx) =>
         upsertNotificationTx(tx, {
           tenantId,
@@ -447,7 +455,8 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
           resourceId: appointmentRequestId,
         }),
       ),
-    ).rejects.toThrow(/Empfänger gehört nicht zum Tenant-Scope/i);
+      /Empfänger gehört nicht zum Tenant-Scope/i,
+    );
   });
 
   it('entzieht nach Vertraulich-Markierung sofort Lesen, Aktualisieren und Löschen', async () => {
@@ -470,14 +479,16 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
       tx.notification.findMany({ where: { id: targetB.id }, select: { id: true } }),
     );
     expect(visibleToB).toEqual([]);
-    await expect(
+    await dbAbgewiesen(
       asStaff(staffBId, (tx) =>
         tx.notification.update({ where: { id: targetB.id }, data: { readAt: new Date() } }),
       ),
-    ).rejects.toThrow();
-    await expect(
+      { prismaCode: 'P2025' },
+    );
+    await dbAbgewiesen(
       asStaff(staffBId, (tx) => tx.notification.delete({ where: { id: targetB.id } })),
-    ).rejects.toThrow();
+      { prismaCode: 'P2025' },
+    );
 
     const targetA = await owner.notification.create({
       data: {
@@ -489,10 +500,11 @@ describeWithDatabase('Notification-Mandantenscope und Empfänger-RLS', () => {
         resourceId: noticeId,
       },
     });
-    await expect(
+    await dbAbgewiesen(
       asStaff(staffAId, (tx) =>
         tx.notification.update({ where: { id: targetA.id }, data: { staffId: staffBId } }),
       ),
-    ).rejects.toThrow(/Scope und Ressourcenlink sind unveränderlich/i);
+      /Scope und Ressourcenlink sind unveränderlich/i,
+    );
   });
 });

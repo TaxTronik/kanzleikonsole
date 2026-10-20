@@ -23,6 +23,7 @@ import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
 import type { TxClient } from '../tenant-context';
+import { anwendungAbgewiesen, dbAbgewiesen, erwarteDbFehler } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 
@@ -210,54 +211,61 @@ describeWithDatabase(
     it('nach SENT: geschäftliche Felder sind blockiert (Betrag, Nummer, Datum)', async () => {
       const id = await makeInvoice();
       await setStatus(id, 'SENT');
-      await expect(
+      await dbAbgewiesen(
         owner.invoice.update({ where: { id }, data: { totalAmount: 999 } }),
-      ).rejects.toThrow(/Festschreibung/);
-      await expect(
+        /Festschreibung/,
+      );
+      await dbAbgewiesen(
         owner.invoice.update({ where: { id }, data: { number: 'MANIPULIERT' } }),
-      ).rejects.toThrow(/Festschreibung/);
-      await expect(
+        /Festschreibung/,
+      );
+      await dbAbgewiesen(
         owner.invoice.update({ where: { id }, data: { issueDate: new Date('2025-01-01') } }),
-      ).rejects.toThrow(/Festschreibung/);
+        /Festschreibung/,
+      );
     });
 
     it('nach SENT: iter102/107-Felder eingefroren (Leistungszeitraum, USt-Grund, Storno-Bezug, Reverse-Charge)', async () => {
       const id = await makeInvoice();
       await setStatus(id, 'SENT');
-      await expect(
+      await dbAbgewiesen(
         owner.invoice.update({ where: { id }, data: { reverseCharge: true } }),
-      ).rejects.toThrow(/Festschreibung/);
-      await expect(
+        /Festschreibung/,
+      );
+      await dbAbgewiesen(
         owner.invoice.update({
           where: { id },
           data: { servicePeriodStart: new Date('2026-05-01') },
         }),
-      ).rejects.toThrow(/Festschreibung/);
-      await expect(
+        /Festschreibung/,
+      );
+      await dbAbgewiesen(
         owner.invoice.update({ where: { id }, data: { servicePeriodEnd: new Date('2026-05-31') } }),
-      ).rejects.toThrow(/Festschreibung/);
-      await expect(
+        /Festschreibung/,
+      );
+      await dbAbgewiesen(
         owner.invoice.update({
           where: { id },
           data: { vatExemptionReason: 'Kleinunternehmer § 19 UStG' },
         }),
-      ).rejects.toThrow(/Festschreibung/);
-      await expect(
+        /Festschreibung/,
+      );
+      await dbAbgewiesen(
         owner.invoice.update({ where: { id }, data: { stornoOfId: id } }),
-      ).rejects.toThrow(/Festschreibung/);
+        /Festschreibung/,
+      );
     });
 
     it('nach SENT: Positionen sind weder änder- noch lösch- noch erweiterbar', async () => {
       const id = await makeInvoice();
       await setStatus(id, 'SENT');
       const pos = await owner.invoicePosition.findFirstOrThrow({ where: { invoiceId: id } });
-      await expect(
+      await dbAbgewiesen(
         owner.invoicePosition.update({ where: { id: pos.id }, data: { netAmount: 1 } }),
-      ).rejects.toThrow(/Festschreibung/);
-      await expect(owner.invoicePosition.delete({ where: { id: pos.id } })).rejects.toThrow(
         /Festschreibung/,
       );
-      await expect(
+      await dbAbgewiesen(owner.invoicePosition.delete({ where: { id: pos.id } }), /Festschreibung/);
+      await dbAbgewiesen(
         owner.invoicePosition.create({
           data: {
             invoiceId: id,
@@ -270,7 +278,8 @@ describeWithDatabase(
             vatRate: 19,
           },
         }),
-      ).rejects.toThrow(/Festschreibung/);
+        /Festschreibung/,
+      );
     });
 
     it('nach SENT: Lebenszyklus-Felder bleiben setzbar (sentAt/paidAt)', async () => {
@@ -288,12 +297,13 @@ describeWithDatabase(
       const position = await owner.invoicePosition.findFirstOrThrow({
         where: { invoiceId: issued },
       });
-      await expect(
+      await dbAbgewiesen(
         owner.invoicePosition.update({
           where: { id: position.id },
           data: { invoiceId: draft, position: 2 },
         }),
-      ).rejects.toThrow(/Festschreibung/);
+        /Festschreibung/,
+      );
       expect(
         (await owner.invoicePosition.findUniqueOrThrow({ where: { id: position.id } })).invoiceId,
       ).toBe(issued);
@@ -348,7 +358,7 @@ describeWithDatabase(
         const result = await mutation;
         expect(blocked).toBe(true);
         expect(result.ok).toBe(false);
-        if (!result.ok) expect(String(result.error)).toMatch(/Festschreibung/);
+        if (!result.ok) erwarteDbFehler(result.error, /Festschreibung/);
         expect(await owner.invoicePosition.count({ where: { invoiceId: id } })).toBe(1);
         expect(
           (
@@ -472,12 +482,13 @@ describeWithDatabase(
     it('INV-LIFECYCLE-FREEZE-001: fehlgeschlagene Nachverarbeitung rollt Zahlungsclaim vollständig zurück', async () => {
       const id = await makeInvoice();
       await setStatus(id, 'SENT');
-      await expect(
+      await anwendungAbgewiesen(
         appTransaction(async (tx) => {
           expect(await claimPayment(tx, tenantId, id, new Date())).toBeTruthy();
           throw new Error('Simulierter Auditfehler');
         }),
-      ).rejects.toThrow('Simulierter Auditfehler');
+        'Simulierter Auditfehler',
+      );
       const invoice = await owner.invoice.findUniqueOrThrow({ where: { id } });
       expect(invoice.status).toBe('SENT');
       expect(invoice.paidAt).toBeNull();
@@ -494,14 +505,14 @@ describeWithDatabase(
       // QW10: bezahlte Rechnung ist stornierbar (§ 14c/§ 17 UStG).
       await expect(setStatus(ok, 'CANCELLED')).resolves.toBeTruthy();
       // … danach ist CANCELLED terminal.
-      await expect(setStatus(ok, 'SENT')).rejects.toThrow(/Festschreibung/);
+      await dbAbgewiesen(setStatus(ok, 'SENT'), /Festschreibung/);
 
       const skip = await makeInvoice();
-      await expect(setStatus(skip, 'PAID')).rejects.toThrow(/Festschreibung/); // DRAFT → PAID verboten
+      await dbAbgewiesen(setStatus(skip, 'PAID'), /Festschreibung/); // DRAFT → PAID verboten
 
       const storno = await makeInvoice();
       await expect(setStatus(storno, 'CANCELLED')).resolves.toBeTruthy(); // DRAFT-Storno ok
-      await expect(setStatus(storno, 'SENT')).rejects.toThrow(/Festschreibung/); // CANCELLED terminal
+      await dbAbgewiesen(setStatus(storno, 'SENT'), /Festschreibung/); // CANCELLED terminal
     });
 
     it('Parallel-Storno: partieller Unique-Index erlaubt genau einen Korrekturbeleg', async () => {
@@ -566,7 +577,7 @@ describeWithDatabase(
 
       const sent = await makeInvoice();
       await setStatus(sent, 'SENT');
-      await expect(owner.invoice.delete({ where: { id: sent } })).rejects.toThrow(/Festschreibung/);
+      await dbAbgewiesen(owner.invoice.delete({ where: { id: sent } }), /Festschreibung/);
     });
   },
 );

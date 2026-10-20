@@ -1,6 +1,7 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -56,7 +57,7 @@ function baseData() {
 
 describeWithDatabase('DSGVO-Abschlussnachweis (Migration 03510)', () => {
   it('blockiert Ablehnung ohne nachgewiesenen Antwortversand', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.dsgvoRequest.create({
         data: {
           ...baseData(),
@@ -66,11 +67,16 @@ describeWithDatabase('DSGVO-Abschlussnachweis (Migration 03510)', () => {
           completedByStaff: staffId,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "dsgvo_request" violates check constraint "dsgvo_request_rejected_reason_check"',
+      },
+    );
   });
 
   it('blockiert einen Antworttag vor dem Eingang', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.dsgvoRequest.create({
         data: {
           ...baseData(),
@@ -87,11 +93,16 @@ describeWithDatabase('DSGVO-Abschlussnachweis (Migration 03510)', () => {
           completedByStaff: staffId,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "dsgvo_request" violates check constraint "dsgvo_request_completed_evidence_check"',
+      },
+    );
   });
 
   it('blockiert Ergebnis-Hashes mit falscher Länge', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.dsgvoRequest.create({
         data: {
           ...baseData(),
@@ -108,11 +119,16 @@ describeWithDatabase('DSGVO-Abschlussnachweis (Migration 03510)', () => {
           completedByStaff: staffId,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "dsgvo_request" violates check constraint "dsgvo_request_result_hash_check"',
+      },
+    );
   });
 
   it('akzeptiert keine beliebige oder tenantfremde Ergebnisdokument-ID', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.dsgvoRequest.create({
         data: {
           ...baseData(),
@@ -127,7 +143,8 @@ describeWithDatabase('DSGVO-Abschlussnachweis (Migration 03510)', () => {
           completedByStaff: staffId,
         },
       }),
-    ).rejects.toThrow(/Ergebnisdokument/i);
+      /Ergebnisdokument/i,
+    );
   });
 
   it('friert einen belastbar abgeschlossenen Nachweis ein', async () => {
@@ -148,11 +165,12 @@ describeWithDatabase('DSGVO-Abschlussnachweis (Migration 03510)', () => {
       },
     });
 
-    await expect(
+    await dbAbgewiesen(
       owner.dsgvoRequest.update({
         where: { id: request.id },
         data: { notes: 'Nachträglich verändert' },
       }),
-    ).rejects.toThrow(/unveränderlich/i);
+      /unveränderlich/i,
+    );
   });
 });

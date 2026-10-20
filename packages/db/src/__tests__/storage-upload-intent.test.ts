@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { ActorType, TxClient } from '../tenant-context';
+import { anwendungAbgewiesen, dbAbgewiesen } from '../testing/db-fehler';
 
 const migration = readFileSync(
   new URL(
@@ -204,12 +205,13 @@ afterAll(async () => {
 describeWithDatabase('Speicherabsicht: Datenbank', () => {
   it('erlaubt ABSENT nur fuer offene Absichten ohne gebundene Objektversion', async () => {
     const intent = await journalIntent({ key: storageKey() });
-    await expect(
+    await dbAbgewiesen(
       owner.storageOrphan.update({
         where: { id: intent.id },
         data: { storageVersionId: 'v-9', resolution: 'ABSENT', cleanedAt: new Date() },
       }),
-    ).rejects.toThrow(/storage_orphan_absent_intent_check/);
+      /storage_orphan_absent_intent_check/,
+    );
     await expect(
       owner.storageOrphan.update({
         where: { id: intent.id },
@@ -228,12 +230,13 @@ describeWithDatabase('Speicherabsicht: Datenbank', () => {
         immutable: false,
       },
     });
-    await expect(
+    await dbAbgewiesen(
       owner.storageOrphan.update({
         where: { id: orphan.id },
         data: { resolution: 'ABSENT', cleanedAt: new Date() },
       }),
-    ).rejects.toThrow(/storage_orphan_absent_intent_check/);
+      /storage_orphan_absent_intent_check/,
+    );
   });
 
   it.each(['STAFF', 'CLIENT_CONTACT', 'SYSTEM'] as const)(
@@ -259,13 +262,14 @@ describeWithDatabase('Speicherabsicht: Datenbank', () => {
   it('laesst die Absicht offen, wenn die Fachtransaktion zurueckrollt', async () => {
     const key = storageKey();
     const intent = await journalIntent({ key });
-    await expect(
+    await anwendungAbgewiesen(
       inContext('STAFF', async (tx) => {
         await insertVersion(tx, key, nextVersionNo++);
         await settle(tx, intent.id, key);
         throw new Error('fachlicher Abbruch nach dem Abschluss');
       }),
-    ).rejects.toThrow('fachlicher Abbruch');
+      'fachlicher Abbruch',
+    );
     await expect(
       owner.storageOrphan.findUniqueOrThrow({ where: { id: intent.id } }),
     ).resolves.toMatchObject({ resolution: null, cleanedAt: null, storageVersionId: '' });
@@ -274,19 +278,21 @@ describeWithDatabase('Speicherabsicht: Datenbank', () => {
   it('verweigert den Abschluss ohne Dokumentreferenz, fremd, beansprucht oder abgeschlossen', async () => {
     const unreferencedKey = storageKey();
     const unreferenced = await journalIntent({ key: unreferencedKey });
-    await expect(
+    await dbAbgewiesen(
       inContext('STAFF', (tx) => settle(tx, unreferenced.id, unreferencedKey)),
-    ).rejects.toThrow(/STORAGE_INTENT_UNREFERENCED/);
+      /STORAGE_INTENT_UNREFERENCED/,
+    );
 
     // Eine Referenz im eigenen Tenant schliesst keine Absicht eines anderen Tenants.
     const foreignKey = storageKey(otherTenantId);
     const foreign = await journalIntent({ key: foreignKey, tenant: otherTenantId });
-    await expect(
+    await dbAbgewiesen(
       inContext('STAFF', async (tx) => {
         await insertVersion(tx, foreignKey, nextVersionNo++);
         await settle(tx, foreign.id, foreignKey);
       }),
-    ).rejects.toThrow(/STORAGE_INTENT_NOT_OPEN/);
+      /STORAGE_INTENT_NOT_OPEN/,
+    );
 
     const claimedKey = storageKey();
     const claimed = await journalIntent({ key: claimedKey });
@@ -294,12 +300,13 @@ describeWithDatabase('Speicherabsicht: Datenbank', () => {
       where: { id: claimed.id },
       data: { cleanupClaimedAt: new Date() },
     });
-    await expect(
+    await dbAbgewiesen(
       inContext('STAFF', async (tx) => {
         await insertVersion(tx, claimedKey, nextVersionNo++);
         await settle(tx, claimed.id, claimedKey);
       }),
-    ).rejects.toThrow(/STORAGE_INTENT_NOT_OPEN/);
+      /STORAGE_INTENT_NOT_OPEN/,
+    );
 
     const closedKey = storageKey();
     const closed = await journalIntent({ key: closedKey });
@@ -307,12 +314,13 @@ describeWithDatabase('Speicherabsicht: Datenbank', () => {
       where: { id: closed.id },
       data: { resolution: 'ABSENT', cleanedAt: new Date() },
     });
-    await expect(
+    await dbAbgewiesen(
       inContext('STAFF', async (tx) => {
         await insertVersion(tx, closedKey, nextVersionNo++);
         await settle(tx, closed.id, closedKey);
       }),
-    ).rejects.toThrow(/STORAGE_INTENT_NOT_OPEN/);
+      /STORAGE_INTENT_NOT_OPEN/,
+    );
 
     // Ein nachgelagert journalisierter Orphan ist keine Speicherabsicht.
     const orphanKey = storageKey();
@@ -327,12 +335,13 @@ describeWithDatabase('Speicherabsicht: Datenbank', () => {
         immutable: false,
       },
     });
-    await expect(
+    await dbAbgewiesen(
       inContext('STAFF', async (tx) => {
         await insertVersion(tx, orphanKey, nextVersionNo++);
         await settle(tx, orphan.id, orphanKey);
       }),
-    ).rejects.toThrow(/STORAGE_INTENT_NOT_OPEN/);
+      /STORAGE_INTENT_NOT_OPEN/,
+    );
   });
 
   // K-06: Risiko-Archiv und Engine-Rohergebnis sind Verweise ohne Objektversion.
@@ -380,7 +389,8 @@ describeWithDatabase('Speicherabsicht: Datenbank', () => {
         rawResultKey: key,
       },
     });
-    await expect(inContext('STAFF', (tx) => settle(tx, intent.id, key))).rejects.toThrow(
+    await dbAbgewiesen(
+      inContext('STAFF', (tx) => settle(tx, intent.id, key)),
       /STORAGE_INTENT_UNREFERENCED/,
     );
     await expect(
@@ -391,7 +401,8 @@ describeWithDatabase('Speicherabsicht: Datenbank', () => {
   it('verlangt einen Mandantenkontext', async () => {
     const key = storageKey();
     const intent = await journalIntent({ key });
-    await expect(app.$transaction((tx) => settle(tx, intent.id, key))).rejects.toThrow(
+    await dbAbgewiesen(
+      app.$transaction((tx) => settle(tx, intent.id, key)),
       /STORAGE_INTENT_CONTEXT/,
     );
   });

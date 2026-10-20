@@ -16,6 +16,7 @@ import {
 } from '../fido-mds-snapshot';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { PrismaClient } from '../prisma-client';
+import { anwendungAbgewiesen, dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -149,9 +150,10 @@ describeWithDatabase('P-23 FIDO-MDS-Snapshot (PostgreSQL)', () => {
         ) AS "canUpdate"
     `;
     expect(privileges).toEqual({ canSelect: false, canUpdate: false });
-    await expect(
+    await dbAbgewiesen(
       app.$queryRaw`SELECT "snapshot_entries" FROM public."fido_mds_trust_state"`,
-    ).rejects.toThrow(/permission denied/i);
+      /permission denied/i,
+    );
   });
 
   it.each([
@@ -173,9 +175,7 @@ describeWithDatabase('P-23 FIDO-MDS-Snapshot (PostgreSQL)', () => {
     ],
   ])('weist einen inkonsistenten Snapshot per Constraint ab (%s)', async (_case, statement) => {
     await insertAnchor(5);
-    await expect(owner.$executeRawUnsafe(statement)).rejects.toThrow(
-      /fido_mds_trust_state_snapshot_check/,
-    );
+    await dbAbgewiesen(owner.$executeRawUnsafe(statement), /fido_mds_trust_state_snapshot_check/);
   });
 
   it('legt Snapshot und Anker ohne App-Policy an; die App liest nur freigegebene Einträge', async () => {
@@ -384,13 +384,16 @@ describeWithDatabase('P-23 FIDO-MDS-Snapshot (PostgreSQL)', () => {
   });
 
   it('weist ungültige Eingaben vor jedem Datenbankzugriff ab', async () => {
-    await expect(storeFidoMdsSnapshot(owner, snapshot({ serial: 0 }))).rejects.toThrow(
+    await anwendungAbgewiesen(
+      storeFidoMdsSnapshot(owner, snapshot({ serial: 0 })),
       /fortlaufende Version/,
     );
-    await expect(
+    await anwendungAbgewiesen(
       storeFidoMdsSnapshot(owner, snapshot({ nextUpdate: new Date(Number.NaN) })),
-    ).rejects.toThrow(/nextUpdate/);
-    await expect(storeFidoMdsSnapshot(owner, snapshot({ blobSha256: 'xyz' }))).rejects.toThrow(
+      /nextUpdate/,
+    );
+    await anwendungAbgewiesen(
+      storeFidoMdsSnapshot(owner, snapshot({ blobSha256: 'xyz' })),
       /Prüfsumme/,
     );
     expect(await anchor()).toBeUndefined();

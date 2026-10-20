@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -190,12 +191,13 @@ describeWithDatabase('GwG-Retention nie etablierter offener Erstprüfungen', () 
       },
     });
 
-    await expect(
+    await dbAbgewiesen(
       db.$transaction(async (tx) => {
         await setStaffContext(tx);
         return tx.$queryRaw`SELECT app.destroy_gwg_check(${check.id}::uuid)`;
       }),
-    ).rejects.toThrow(/etablierte|Mandatsende/i);
+      /etablierte|Mandatsende/i,
+    );
     expect(
       await db.gwgCheck.findUnique({ where: { id: check.id }, select: { destroyedAt: true } }),
     ).toEqual({ destroyedAt: null });

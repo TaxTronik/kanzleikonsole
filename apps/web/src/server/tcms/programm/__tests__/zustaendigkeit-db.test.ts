@@ -30,6 +30,7 @@ import {
   tcmsZustaendigkeitTx,
   ZU_VIELE_PERSONEN,
 } from '../zustaendigkeit';
+import { erwarteAnwendungsfehler } from '@taxtronik/db/testing/db-fehler';
 
 const enabled = process.env.TCMS_SEITE_DB_TEST === '1' || process.env.DB_TESTS === '1';
 if (!enabled && process.env.CI === 'true') {
@@ -331,8 +332,9 @@ if (!enabled && process.env.CI === 'true') {
       ];
       for (const lauf of laeufe) {
         const fehler = await imTenant(gross, lauf).catch((e: unknown) => e);
-        expect(fehler).toBeInstanceOf(ActionError);
-        expect((fehler as Error).message).toBe(ZU_VIELE_PERSONEN);
+        expect(erwarteAnwendungsfehler(fehler, { klasse: ActionError }).message).toBe(
+          ZU_VIELE_PERSONEN,
+        );
       }
     }, 60_000);
   });

@@ -54,6 +54,7 @@ import { renderServerMarkup } from '@/__tests__/render-helpers';
 import { createVerifiedLegalEntityGwgFixture } from '../../../../../../packages/db/src/__tests__/gwg-test-fixture';
 import { tcmsLesen, tcmsMandantSeite, tcmsPortalSeite } from '../seite';
 import { TCMS_KEIN_RECHT } from '../zustand';
+import { erwarteAnwendungsfehler } from '@taxtronik/db/testing/db-fehler';
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
   JSDOM: new (html: string) => { window: { document: Document } };
@@ -351,7 +352,7 @@ const ZEIT = 60_000;
       try {
         await portalEreignisMeldenAction(null, daten);
       } catch (e) {
-        ziel = (e as Error).message;
+        ziel = erwarteAnwendungsfehler(e, /^NEXT_REDIRECT:/).message;
       }
       const nummer = /^NEXT_REDIRECT:\/portal\/tcms\/ereignis\?gemeldet=(.+)$/.exec(ziel)?.[1];
       expect(nummer, ziel).toMatch(/^\d{4}-T-\d{4}$/);

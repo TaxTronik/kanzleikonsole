@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Prisma, PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 const describeWithDatabase = hasDatabase ? describe : describe.skip;
@@ -188,15 +189,15 @@ describeWithDatabase('Formular-Upload-Journal ueber die echte App-Rolle', () => 
   });
 
   it('verweigert einem Kontakt desselben Tenants den Upload eines anderen Mandanten', async () => {
-    await expect(journalAs(foreignContactId)).rejects.toThrow(/nicht mehr verwerfbar/);
+    await dbAbgewiesen(journalAs(foreignContactId), /nicht mehr verwerfbar/);
   });
 
   it('verweigert den Definer-Pfad ausserhalb eines CLIENT_CONTACT-Kontexts', async () => {
-    await expect(journalAs(contactId, 'STAFF')).rejects.toThrow(/Mandantenkontext/);
+    await dbAbgewiesen(journalAs(contactId, 'STAFF'), /Mandantenkontext/);
   });
 
   it('erzwingt DB-seitig höchstens einen lebenden Upload je Submission und Feld', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.document.create({
         data: {
           tenantId,
@@ -208,7 +209,12 @@ describeWithDatabase('Formular-Upload-Journal ueber die echte App-Rolle', () => 
           formFieldKey: 'beleg',
         },
       }),
-    ).rejects.toThrow(/Unique constraint/);
+      {
+        sqlState: '23505',
+        meldung:
+          'duplicate key value violates unique constraint "document_open_form_field_upload_unique"',
+      },
+    );
   });
 
   it('wartet auf einen parallelen Request-Close und verwirft danach fail-closed', async () => {
@@ -243,6 +249,6 @@ describeWithDatabase('Formular-Upload-Journal ueber die echte App-Rolle', () => 
 
     releaseClose();
     await close;
-    await expect(discard).rejects.toThrow(/nicht mehr verwerfbar/);
+    await dbAbgewiesen(discard, /nicht mehr verwerfbar/);
   });
 });

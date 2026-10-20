@@ -71,6 +71,7 @@ import {
 } from '../durchfuehrung/verweis';
 import { kanzleiPersonenAuswahlTx } from '../ereignisse/personen';
 import { ansprechpersonenTx } from '../portal/ansprechpartner';
+import { dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 const enabled = process.env.TCMS_BEREICH_D_DB_TEST === '1' || process.env.DB_TESTS === '1';
 if (!enabled && process.env.CI === 'true') {
@@ -353,7 +354,7 @@ const REQ = { headers: new Headers(), nextUrl: new URL('http://localhost/x') } a
       expect(await nachweisVerknuepfungBestaetigen(alsKontakt(), verknuepfungId, NACHWEIS)).toBe(
         true,
       );
-      await expect(loeschen(id)).rejects.toThrow(/als Nachweis im Tax-CMS verknüpft/);
+      await dbAbgewiesen(loeschen(id), /als Nachweis im Tax-CMS verknüpft/);
       expect(
         await nachweisVerknuepfungFreigeben(
           alsKontakt(),
@@ -394,7 +395,7 @@ const REQ = { headers: new Headers(), nextUrl: new URL('http://localhost/x') } a
         tcmsEventId: 'cmvf9ereignis0001abc',
         createdBy: kontakt,
       });
-      await expect(loeschen(id)).rejects.toThrow(/als Nachweis im Tax-CMS verknüpft/);
+      await dbAbgewiesen(loeschen(id), /als Nachweis im Tax-CMS verknüpft/);
       // Verwerfen bestätigt die Kanzlei: Freigabe im Kontext der Kanzleiperson.
       const kanzlei = { tenantId, actorId: staff.anna!, actorType: 'STAFF' as const };
       expect(

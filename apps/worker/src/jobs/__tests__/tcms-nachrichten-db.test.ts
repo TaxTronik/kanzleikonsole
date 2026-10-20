@@ -65,6 +65,7 @@ import {
   TCMS_UNZUSTELLBAR_NACH_TAGEN,
   type TcmsZustellDeps,
 } from '../tcms-nachrichten';
+import { dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 const describeDb = enabled ? describe : describe.skip;
 
@@ -764,19 +765,22 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
         nam: TCMS_SYSTEMAKTEUR_NAME,
       });
     }
-    await expect(
+    await dbAbgewiesen(
       prismaOwner.tcmsSystemakteur.update({
         where: { tenantId },
         data: { akteurId: randomUUID() },
       }),
-    ).rejects.toThrow(/TCMS_SYSTEMAKTEUR_UNVERAENDERLICH/);
+      /TCMS_SYSTEMAKTEUR_UNVERAENDERLICH/,
+    );
     // Die Web-App (App-Rolle) kann den Systemakteur nicht lesen.
-    await expect(
+    await dbAbgewiesen(
       withSystemContext(tenantId, (tx) => tx.tcmsSystemakteur.findMany()),
-    ).rejects.toThrow(/permission denied/i);
-    await expect(
+      /permission denied/i,
+    );
+    await dbAbgewiesen(
       withSystemContext(tenantId, (tx) => tx.tcmsNachrichtZustellung.findMany()),
-    ).rejects.toThrow(/permission denied/i);
+      /permission denied/i,
+    );
   });
 
   it('die Datenbank lässt keinen zweiten Auftrag je Mitteilung und keinen Code nach Endstatus zu', async () => {
@@ -784,7 +788,7 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     postausgang.nachrichten = [n];
     await lauf();
     const [auftrag] = await auftraege();
-    await expect(
+    await dbAbgewiesen(
       prismaOwner.mailOutbox.create({
         data: {
           tenantId,
@@ -797,13 +801,18 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
           payload: {},
         },
       }),
-    ).rejects.toThrow();
-    await expect(
+      {
+        sqlState: '23505',
+        meldung: 'duplicate key value violates unique constraint "mail_outbox_tcms_nachricht_key"',
+      },
+    );
+    await dbAbgewiesen(
       prismaOwner.mailOutbox.update({
         where: { id: auftrag!.id },
         data: { status: 'FAILED', nextAttemptAt: null },
       }),
-    ).rejects.toThrow(/mail_outbox_tcms_content_check/);
+      /mail_outbox_tcms_content_check/,
+    );
   });
 
   it('ruft über den echten Client nur die drei Nachrichten-Endpunkte mit dem Systemakteur', async () => {

@@ -5,6 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const migration = readFileSync(
   new URL(
@@ -112,14 +113,15 @@ describeWithDatabase('Paar-Guard-Sperre gegen PostgreSQL', () => {
   });
 
   it('serialisiert explizites FOR UPDATE weiterhin mit dem offenen Kind-Insert', async () => {
-    await expect(
+    await dbAbgewiesen(
       whileChildInsertIsOpen(() =>
         other.$transaction(async (tx) => {
           await tx.$executeRaw`SET LOCAL lock_timeout = '300ms'`;
           return tx.$queryRaw`SELECT id FROM client WHERE id = ${clientId}::uuid FOR UPDATE`;
         }),
       ),
-    ).rejects.toThrow(/55P03|lock timeout/i);
+      /55P03|lock timeout/i,
+    );
   });
 
   it('weist ein Cross-Tenant-Paar unverändert ab', async () => {

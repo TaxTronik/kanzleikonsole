@@ -5,7 +5,7 @@ import { PrismaClient } from '../prisma-client';
 import type { Prisma } from '@prisma/client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
-import { databaseErrorInfo } from '../database-error';
+import { dbAbgewiesen } from '../testing/db-fehler';
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
 });
@@ -196,22 +196,23 @@ describe('PAYROLL-INTAKE-001 live restricted app role and capability boundary', 
     expect(await guest((tx) => tx.payrollIntake.findMany())).toEqual([]);
     // RT3B-K-02: nicht per $queryRaw – Prisma 7 kann void nicht lesen, die
     // Erwartung bestünde dann auch ohne Rechteprüfung. Erwartet ist die
-    // fehlende EXECUTE-Berechtigung der App-Rolle (42501).
-    const capture = await guest(
-      (tx) => tx.$executeRaw`SELECT app.payroll_capture_revision(${intakeId}::uuid,NULL,'STAFF')`,
-    ).then(
-      () => null,
-      (e: unknown) => e,
+    // fehlende EXECUTE-Berechtigung der App-Rolle (42501) samt Meldung der
+    // Datenbank.
+    await dbAbgewiesen(
+      guest(
+        (tx) => tx.$executeRaw`SELECT app.payroll_capture_revision(${intakeId}::uuid,NULL,'STAFF')`,
+      ),
+      { sqlState: '42501', meldung: 'permission denied for function payroll_capture_revision' },
     );
-    expect(databaseErrorInfo(capture)?.sqlState).toBe('42501');
-    await expect(
+    await dbAbgewiesen(
       context(
         tenantId,
         employerId,
         'CLIENT_CONTACT',
         (tx) => tx.$queryRaw`SELECT app.payroll_guest_read(${sessionHash})`,
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Invalid capability context' },
+    );
   });
   it('restricts capability writes to frozen employee fields and the expected revision', async () => {
     expect(
@@ -224,12 +225,13 @@ describe('PAYROLL-INTAKE-001 live restricted app role and capability boundary', 
           )[0]?.saved,
       ),
     ).toBe(false);
-    await expect(
+    await dbAbgewiesen(
       guest(
         (tx) =>
           tx.$queryRaw`SELECT app.payroll_guest_save(${sessionHash},0,'{"grossPay":"99999"}'::jsonb,false)`,
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Invalid employee fields' },
+    );
     expect(
       await guest(
         async (tx) =>
@@ -253,14 +255,15 @@ describe('PAYROLL-INTAKE-001 live restricted app role and capability boundary', 
     const history = await owner.payrollRevision.findMany({ where: { intakeId } });
     expect(history).toHaveLength(1);
     expect(JSON.stringify(history[0]?.snapshot)).toContain('Submitted private name');
-    await expect(
+    await dbAbgewiesen(
       context(tenantId, staffId, 'STAFF', (tx) =>
         tx.payrollRevision.deleteMany({ where: { intakeId } }),
       ),
-    ).rejects.toThrow();
+      { sqlState: '42501', meldung: 'permission denied for table payroll_revision' },
+    );
   });
   it('blocks invented successful DATEV exports at the database boundary', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.payrollExport.create({
         data: {
           tenantId,
@@ -272,7 +275,12 @@ describe('PAYROLL-INTAKE-001 live restricted app role and capability boundary', 
           createdByStaff: staffId,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "payroll_export" violates check constraint "payroll_export_check"',
+      },
+    );
   });
   it('waits for a hidden staff source before final submission and captures private external evidence', async () => {
     const pending = await owner.payrollAttachment.create({
@@ -299,7 +307,10 @@ describe('PAYROLL-INTAKE-001 live restricted app role and capability boundary', 
         await tx.$executeRaw`SELECT app.payroll_capture_authorized_revision(${intakeId}::uuid)`;
       });
     // The employer cannot SELECT this staff source, but the final submission still waits for it.
-    await expect(submitEmployer()).rejects.toThrow();
+    await dbAbgewiesen(submitEmployer(), {
+      sqlState: 'P0001',
+      meldung: 'Finish pending payroll source uploads before submission',
+    });
     await context(tenantId, staffId, 'STAFF', (tx) =>
       tx.payrollAttachment.update({
         where: { id: pending.id },
@@ -351,7 +362,7 @@ describe('PAYROLL-INTAKE-001 live restricted app role and capability boundary', 
         tx.payrollExternalTask.findMany(),
       ),
     ).toEqual([]);
-    await expect(
+    await dbAbgewiesen(
       owner.payrollAttachment.create({
         data: {
           tenantId,
@@ -367,7 +378,8 @@ describe('PAYROLL-INTAKE-001 live restricted app role and capability boundary', 
           sizeBytes: 10n,
         },
       }),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Payroll part not open for upload' },
+    );
   });
   it('keeps the employer confirmation immutable even while waiting for employee submission', async () => {
     const draft = await owner.payrollIntake.create({
@@ -385,14 +397,15 @@ describe('PAYROLL-INTAKE-001 live restricted app role and capability boundary', 
     await owner.payrollEmployerGrant.create({
       data: { tenantId, intakeId: draft.id, contactId: employerId },
     });
-    await expect(
+    await dbAbgewiesen(
       context(tenantId, employerId, 'CLIENT_CONTACT', (tx) =>
         tx.payrollIntake.update({
           where: { id: draft.id },
           data: { revision: 1, employerAnswers: { pay: 'changed' }, employerConfirmedAt: null },
         }),
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Confirmed employer part requires staff return' },
+    );
     await context(tenantId, staffId, 'STAFF', (tx) =>
       tx.payrollIntake.update({
         where: { id: draft.id },

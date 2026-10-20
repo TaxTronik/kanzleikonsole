@@ -31,6 +31,7 @@ import {
   portalAkteurTx,
   type TcmsVerweigerungsGrund,
 } from '../akteur';
+import { erwarteAnwendungsfehler } from '@taxtronik/db/testing/db-fehler';
 
 // Quality hat Platzhalter-URLs, aber keine Datenbank: lokal TCMS_AKTEUR_DB_TEST=1,
 // im db-CI-Job DB_TESTS=1. In CI scheitert die Suite ohne Opt-in.
@@ -262,9 +263,11 @@ type Rolle = 'EMPLOYEE' | 'PARTNER' | 'ADMIN';
     try {
       await p;
     } catch (error) {
-      expect(error).toBeInstanceOf(TcmsAkteurVerweigert);
-      expect((error as Error).message).toBe('Kein Zugriff auf das Tax-CMS.');
-      return (error as TcmsAkteurVerweigert).grund;
+      const verweigert = erwarteAnwendungsfehler(error, {
+        klasse: TcmsAkteurVerweigert,
+        meldung: /^Kein Zugriff auf das Tax-CMS\.$/,
+      });
+      return (verweigert as TcmsAkteurVerweigert).grund;
     }
     throw new Error('keine Verweigerung');
   }

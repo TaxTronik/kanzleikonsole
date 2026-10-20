@@ -7,6 +7,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, requireDatabaseUrl } from '../prisma-adapter';
 import { assertRestoreRolesPresent, assertRestoreTargetSecurity } from '../restore-security';
+import { anwendungAbgewiesen } from '../testing/db-fehler';
 
 const url = requireDatabaseUrl(process.env['DATABASE_URL'], 'DATABASE_URL');
 const owner = new PrismaClient({ adapter: createPostgresAdapter(url) });
@@ -19,48 +20,59 @@ describe('Restore: effective ACLs and tenant RLS are mandatory', () => {
     await expect(assertRestoreTargetSecurity(url, createProbe)).resolves.toBeUndefined();
   });
 
-  it.each([
-    'GRANT UPDATE ON audit_log TO taxtronik_app',
-    'GRANT DELETE ON audit_log TO taxtronik_app',
-    'GRANT UPDATE ON audit_seal TO taxtronik_app',
-    'GRANT DELETE ON audit_seal TO taxtronik_app',
-    'GRANT UPDATE ON audit_archive TO taxtronik_app',
-    'GRANT DELETE ON audit_archive TO taxtronik_app',
-    'GRANT UPDATE ON audit_anchor TO taxtronik_app',
-    'GRANT DELETE ON audit_anchor TO taxtronik_app',
-    'GRANT TRUNCATE ON audit_anchor TO PUBLIC',
-    'GRANT INSERT ON audit_verify_checkpoint TO taxtronik_app',
-    'GRANT UPDATE ON audit_verify_checkpoint TO taxtronik_app',
-    'GRANT DELETE ON audit_verify_checkpoint TO taxtronik_app',
-    'GRANT TRUNCATE ON audit_verify_checkpoint TO PUBLIC',
-    'GRANT SELECT ON audit_anchor_lease TO taxtronik_app',
-    'GRANT UPDATE ON audit_anchor_lease TO PUBLIC',
+  // kk-tcms-qual: Jede Mutation nennt den Befund, an dem die Abnahme scheitert.
+  // Der frühere gemeinsame Text „Dienste nicht starten“ steht in jeder
+  // Ablehnung – auch wenn die Prüfabfrage selbst scheitert (PostgreSQL 16:
+  // MAINTAIN unbekannt) – und hätte die Erkennung nicht belegt.
+  const INVARIANTS =
+    /^Restore-Sicherheitsabnahme fehlgeschlagen: Rollen-\/Grant-\/REVOKE-Invarianten verletzt\. /;
+  const RLS_MISSING =
+    /^Restore-Sicherheitsabnahme fehlgeschlagen: ENABLE\/FORCE-RLS oder Policies fehlen\. /;
+  // PUBLIC gilt auch für die Owner-Rolle: deren Prüfung (B6) greift zuerst.
+  const OWNER_PUBLIC =
+    /^Restore-Sicherheitsabnahme fehlgeschlagen: Owner-Rolle taxtronik_owner besitzt unzulässige Rechte/;
+  it.each<[string, RegExp]>([
+    ['GRANT UPDATE ON audit_log TO taxtronik_app', INVARIANTS],
+    ['GRANT DELETE ON audit_log TO taxtronik_app', INVARIANTS],
+    ['GRANT UPDATE ON audit_seal TO taxtronik_app', INVARIANTS],
+    ['GRANT DELETE ON audit_seal TO taxtronik_app', INVARIANTS],
+    ['GRANT UPDATE ON audit_archive TO taxtronik_app', INVARIANTS],
+    ['GRANT DELETE ON audit_archive TO taxtronik_app', INVARIANTS],
+    ['GRANT UPDATE ON audit_anchor TO taxtronik_app', INVARIANTS],
+    ['GRANT DELETE ON audit_anchor TO taxtronik_app', INVARIANTS],
+    ['GRANT TRUNCATE ON audit_anchor TO PUBLIC', OWNER_PUBLIC],
+    ['GRANT INSERT ON audit_verify_checkpoint TO taxtronik_app', INVARIANTS],
+    ['GRANT UPDATE ON audit_verify_checkpoint TO taxtronik_app', INVARIANTS],
+    ['GRANT DELETE ON audit_verify_checkpoint TO taxtronik_app', INVARIANTS],
+    ['GRANT TRUNCATE ON audit_verify_checkpoint TO PUBLIC', OWNER_PUBLIC],
+    ['GRANT SELECT ON audit_anchor_lease TO taxtronik_app', INVARIANTS],
+    ['GRANT UPDATE ON audit_anchor_lease TO PUBLIC', INVARIANTS],
     // TCMS Stufe 4 (MAIL-OUTBOX-001): Zustelltabellen nur für den Worker (Owner).
-    'GRANT SELECT ON tcms_systemakteur TO taxtronik_app',
-    'GRANT UPDATE ON tcms_systemakteur TO PUBLIC',
-    'GRANT SELECT ON tcms_nachricht_zustellung TO taxtronik_app',
-    'GRANT INSERT ON tcms_nachricht_zustellung TO PUBLIC',
-    'GRANT DELETE ON document_version TO taxtronik_app',
-    'GRANT TRUNCATE ON audit_log TO PUBLIC',
-    'GRANT taxtronik TO taxtronik_app WITH INHERIT FALSE, SET TRUE',
-    'GRANT EXECUTE ON FUNCTION app.destroy_gwg_check(uuid) TO PUBLIC',
-    'GRANT SELECT ON client_reminder_counter TO taxtronik_app',
-    'GRANT UPDATE ON client_reminder_counter TO taxtronik_app',
-    'GRANT TRUNCATE ON client_reminder_counter TO PUBLIC',
-    'GRANT UPDATE ON client_reminder_reference TO taxtronik_app',
-    'GRANT DELETE ON client_reminder_reference TO taxtronik_app',
-    'GRANT TRUNCATE ON client_reminder_reference TO PUBLIC',
-    'REVOKE SELECT ON client_reminder_reference FROM taxtronik_app',
-    'REVOKE INSERT ON client_reminder_reference FROM taxtronik_app',
-    'GRANT EXECUTE ON FUNCTION app.allocate_reminder_ticket_number() TO PUBLIC',
-    'GRANT EXECUTE ON FUNCTION app.guard_reminder_ticket_identity() TO taxtronik_app',
-    'REVOKE EXECUTE ON FUNCTION app.current_tenant_id() FROM taxtronik_app, PUBLIC',
-    'ALTER TABLE client DISABLE ROW LEVEL SECURITY',
-    'ALTER TABLE client NO FORCE ROW LEVEL SECURITY',
-    'CREATE TABLE quality3_restore_unprotected (id integer)',
-    'CREATE TABLE quality3_restore_partitioned (id integer) PARTITION BY RANGE (id)',
-  ])('rejects unsafe effective state: %s', async (mutation) => {
-    await expectRejectedAfter(mutation, 'Dienste nicht starten');
+    ['GRANT SELECT ON tcms_systemakteur TO taxtronik_app', INVARIANTS],
+    ['GRANT UPDATE ON tcms_systemakteur TO PUBLIC', INVARIANTS],
+    ['GRANT SELECT ON tcms_nachricht_zustellung TO taxtronik_app', INVARIANTS],
+    ['GRANT INSERT ON tcms_nachricht_zustellung TO PUBLIC', INVARIANTS],
+    ['GRANT DELETE ON document_version TO taxtronik_app', INVARIANTS],
+    ['GRANT TRUNCATE ON audit_log TO PUBLIC', OWNER_PUBLIC],
+    ['GRANT taxtronik TO taxtronik_app WITH INHERIT FALSE, SET TRUE', INVARIANTS],
+    ['GRANT EXECUTE ON FUNCTION app.destroy_gwg_check(uuid) TO PUBLIC', INVARIANTS],
+    ['GRANT SELECT ON client_reminder_counter TO taxtronik_app', INVARIANTS],
+    ['GRANT UPDATE ON client_reminder_counter TO taxtronik_app', INVARIANTS],
+    ['GRANT TRUNCATE ON client_reminder_counter TO PUBLIC', OWNER_PUBLIC],
+    ['GRANT UPDATE ON client_reminder_reference TO taxtronik_app', INVARIANTS],
+    ['GRANT DELETE ON client_reminder_reference TO taxtronik_app', INVARIANTS],
+    ['GRANT TRUNCATE ON client_reminder_reference TO PUBLIC', OWNER_PUBLIC],
+    ['REVOKE SELECT ON client_reminder_reference FROM taxtronik_app', INVARIANTS],
+    ['REVOKE INSERT ON client_reminder_reference FROM taxtronik_app', INVARIANTS],
+    ['GRANT EXECUTE ON FUNCTION app.allocate_reminder_ticket_number() TO PUBLIC', INVARIANTS],
+    ['GRANT EXECUTE ON FUNCTION app.guard_reminder_ticket_identity() TO taxtronik_app', INVARIANTS],
+    ['REVOKE EXECUTE ON FUNCTION app.current_tenant_id() FROM taxtronik_app, PUBLIC', INVARIANTS],
+    ['ALTER TABLE client DISABLE ROW LEVEL SECURITY', RLS_MISSING],
+    ['ALTER TABLE client NO FORCE ROW LEVEL SECURITY', RLS_MISSING],
+    ['CREATE TABLE quality3_restore_unprotected (id integer)', RLS_MISSING],
+    ['CREATE TABLE quality3_restore_partitioned (id integer) PARTITION BY RANGE (id)', RLS_MISSING],
+  ])('rejects unsafe effective state: %s', async (mutation, message) => {
+    await expectRejectedAfter(mutation, message);
   });
 
   // B6 (S-01): the owner role of the containers after pg_restore. These cases
@@ -166,12 +178,13 @@ describe('Restore: cluster roles must exist with safe attributes before pg_resto
       owner.$transaction(async (tx) => {
         // Fixed local statements only; this transaction is always rolled back.
         await tx.$executeRawUnsafe(mutation);
-        await expect(
+        await anwendungAbgewiesen(
           assertRestoreRolesPresent(url, () => ({
             $queryRaw: tx.$queryRaw.bind(tx),
             $disconnect: async () => {},
           })),
-        ).rejects.toThrow(message);
+          message,
+        );
         throw rollback;
       }),
     ).rejects.toBe(rollback);
@@ -188,12 +201,13 @@ async function expectRejectedAfter(mutation: string, message: string | RegExp): 
     owner.$transaction(async (tx) => {
       // Fixed local statements only; this transaction is always rolled back.
       await tx.$executeRawUnsafe(mutation);
-      await expect(
+      await anwendungAbgewiesen(
         assertRestoreTargetSecurity(url, () => ({
           $queryRaw: tx.$queryRaw.bind(tx),
           $disconnect: async () => {},
         })),
-      ).rejects.toThrow(message);
+        message,
+      );
       throw rollback;
     }),
   ).rejects.toBe(rollback);

@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
+import { anwendungAbgewiesen, dbAbgewiesen } from '../testing/db-fehler';
 
 const migration = readFileSync(
   new URL('../../prisma/migrations/20261006120000_mail_outbox/migration.sql', import.meta.url),
@@ -150,15 +151,6 @@ async function failedWithContent(tenantId: string, clientId: string, status = 'F
   return id;
 }
 
-async function rejection(work: Promise<unknown>): Promise<string> {
-  try {
-    await work;
-  } catch (error) {
-    return error instanceof Error ? error.message : String(error);
-  }
-  throw new Error('Erwarteter Datenbankfehler blieb aus.');
-}
-
 beforeAll(async () => {
   if (!hasDatabase) return;
   const seed = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -212,31 +204,38 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
   });
 
   it('weist fremde Tenants und Cross-Tenant-Mandanten ab', async () => {
-    // Der Paar-Guard sieht den fremden Mandanten unter RLS nicht (23503),
-    // die Isolation-Policy weist den fremden Tenant ab.
-    expect(
-      await rejection(
-        asStaff(tenantA, (tx) => tx.mailOutbox.create({ data: outboxData(tenantB, clientB) })),
-      ),
-    ).toMatch(/Foreign key constraint|row-level security/);
-    expect(
-      await rejection(
-        asStaff(tenantA, (tx) => tx.mailOutbox.create({ data: outboxData(tenantA, clientB) })),
-      ),
-    ).toMatch(/Foreign key constraint/);
-    expect(
-      await rejection(
-        asStaff(
-          tenantA,
-          (tx) =>
-            tx.$executeRaw`
+    // Der Paar-Guard (BEFORE-Trigger) läuft vor der Isolation-Policy und sieht
+    // den fremden Mandanten unter RLS nicht (23503). kk-tcms-qual: Die früheren
+    // Muster („Foreign key constraint“, „row-level security“) trafen nur den
+    // Text von Prisma, nicht die Meldung der Datenbank.
+    const unsichtbar = {
+      sqlState: '23503',
+      meldung:
+        'Mandant der referenzierten client_id ist im aktuellen DB-Scope nicht vorhanden (mail_outbox).',
+    };
+    await dbAbgewiesen(
+      asStaff(tenantA, (tx) => tx.mailOutbox.create({ data: outboxData(tenantB, clientB) })),
+      unsichtbar,
+    );
+    await dbAbgewiesen(
+      asStaff(tenantA, (tx) => tx.mailOutbox.create({ data: outboxData(tenantA, clientB) })),
+      unsichtbar,
+    );
+    await dbAbgewiesen(
+      asStaff(
+        tenantA,
+        (tx) =>
+          tx.$executeRaw`
             INSERT INTO public.mail_outbox
               (tenant_id, client_id, kind, purpose, resource_type, resource_id, staff_href, payload)
             VALUES (${tenantB}::uuid, ${clientA}::uuid, 'DIRECT', 'handover-ready', 'client',
                     ${clientA}::uuid, '/staff/clients', '{}'::jsonb)`,
-        ),
       ),
-    ).toMatch(/tenant_id und client_id|row-level security|23503|42501/);
+      {
+        sqlState: '23503',
+        meldung: 'tenant_id und client_id gehören nicht zum selben Mandanten-Scope (mail_outbox).',
+      },
+    );
     expect(await owner.mailOutbox.count({ where: { clientId: clientB } })).toBe(0);
   });
 
@@ -246,30 +245,31 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
       select: { id: true },
     });
 
-    expect(
-      await rejection(
-        asStaff(tenantA, (tx) =>
-          tx.mailOutbox.updateMany({
-            where: { id },
-            data: { status: 'SENDING', nextAttemptAt: null },
-          }),
-        ),
+    await dbAbgewiesen(
+      asStaff(tenantA, (tx) =>
+        tx.mailOutbox.updateMany({
+          where: { id },
+          data: { status: 'SENDING', nextAttemptAt: null },
+        }),
       ),
-    ).toMatch(/permission denied/);
-    expect(
-      await rejection(asStaff(tenantA, (tx) => tx.mailOutbox.deleteMany({ where: { id } }))),
-    ).toMatch(/permission denied/);
+      /permission denied/,
+    );
+    await dbAbgewiesen(
+      asStaff(tenantA, (tx) => tx.mailOutbox.deleteMany({ where: { id } })),
+      /permission denied/,
+    );
   });
 
   it('rollt den Versandauftrag mit dem fachlichen Vorgang zurück', async () => {
     const marker = `/staff/clients/${clientA}/rollback`;
-    await rejection(
+    await anwendungAbgewiesen(
       asStaff(tenantA, async (tx) => {
         await tx.mailOutbox.create({
           data: { ...outboxData(tenantA, clientA), staffHref: marker },
         });
         throw new Error('fachlicher Fehler nach dem Enqueue');
       }),
+      'fachlicher Fehler nach dem Enqueue',
     );
 
     expect(await owner.mailOutbox.count({ where: { staffHref: marker } })).toBe(0);
@@ -282,27 +282,26 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
     });
 
     // Terminal mit Secret: verboten.
-    expect(
-      await rejection(
-        owner.mailOutbox.update({
-          where: { id },
-          data: { status: 'PROVIDER_ACCEPTED', nextAttemptAt: null },
-        }),
-      ),
-    ).toMatch(/mail_outbox_secret_check/);
+    await dbAbgewiesen(
+      owner.mailOutbox.update({
+        where: { id },
+        data: { status: 'PROVIDER_ACCEPTED', nextAttemptAt: null },
+      }),
+      /mail_outbox_secret_check/,
+    );
     // Wartend ohne nächsten Versuch: verboten.
-    expect(
-      await rejection(owner.mailOutbox.update({ where: { id }, data: { nextAttemptAt: null } })),
-    ).toMatch(/mail_outbox_schedule_check/);
+    await dbAbgewiesen(
+      owner.mailOutbox.update({ where: { id }, data: { nextAttemptAt: null } }),
+      /mail_outbox_schedule_check/,
+    );
     // Mehr angenommene als versuchte Empfänger: verboten.
-    expect(
-      await rejection(
-        owner.mailOutbox.update({
-          where: { id },
-          data: { recipientsAttempted: 1, recipientsAccepted: 2 },
-        }),
-      ),
-    ).toMatch(/mail_outbox_recipients_check/);
+    await dbAbgewiesen(
+      owner.mailOutbox.update({
+        where: { id },
+        data: { recipientsAttempted: 1, recipientsAccepted: 2 },
+      }),
+      /mail_outbox_recipients_check/,
+    );
 
     const terminal = await owner.mailOutbox.update({
       where: { id },
@@ -325,22 +324,20 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
       select: { id: true },
     });
 
-    expect(
-      await rejection(
-        owner.mailOutbox.update({
-          where: { id },
-          data: { status: 'SKIPPED', nextAttemptAt: null },
-        }),
-      ),
-    ).toMatch(/mail_outbox_secret_check/);
-    expect(
-      await rejection(
-        owner.mailOutbox.update({
-          where: { id },
-          data: { status: 'SKIPPED', secretVarsEnc: null, payload: {} },
-        }),
-      ),
-    ).toMatch(/mail_outbox_schedule_check/);
+    await dbAbgewiesen(
+      owner.mailOutbox.update({
+        where: { id },
+        data: { status: 'SKIPPED', nextAttemptAt: null },
+      }),
+      /mail_outbox_secret_check/,
+    );
+    await dbAbgewiesen(
+      owner.mailOutbox.update({
+        where: { id },
+        data: { status: 'SKIPPED', secretVarsEnc: null, payload: {} },
+      }),
+      /mail_outbox_schedule_check/,
+    );
 
     const skipped = await owner.mailOutbox.update({
       where: { id },
@@ -362,20 +359,18 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
   });
 
   it('nimmt nur Kanzlei-Links und gültige Anlass-Kennungen an', async () => {
-    expect(
-      await rejection(
-        owner.mailOutbox.create({
-          data: { ...outboxData(tenantA, clientA), staffHref: 'https://evil.example/' },
-        }),
-      ),
-    ).toMatch(/mail_outbox_staff_href_check/);
-    expect(
-      await rejection(
-        owner.mailOutbox.create({
-          data: { ...outboxData(tenantA, clientA), purpose: 'Rechnung versendet' },
-        }),
-      ),
-    ).toMatch(/mail_outbox_purpose_check/);
+    await dbAbgewiesen(
+      owner.mailOutbox.create({
+        data: { ...outboxData(tenantA, clientA), staffHref: 'https://evil.example/' },
+      }),
+      /mail_outbox_staff_href_check/,
+    );
+    await dbAbgewiesen(
+      owner.mailOutbox.create({
+        data: { ...outboxData(tenantA, clientA), purpose: 'Rechnung versendet' },
+      }),
+      /mail_outbox_purpose_check/,
+    );
   });
 
   it('C4: setzt einen fehlgeschlagenen Auftrag mit Inhalt im Kanzleikontext zurück', async () => {
@@ -404,10 +399,12 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
 
     expect(await asStaff(tenantB, (tx) => resend(tx, id, 'UNKNOWN'))).toBe(false);
     expect(await asStaff(tenantA, (tx) => resend(tx, id, 'FAILED'))).toBe(false);
-    expect(await rejection(asStaff(tenantA, (tx) => resend(tx, id, 'QUEUED')))).toMatch(
+    await dbAbgewiesen(
+      asStaff(tenantA, (tx) => resend(tx, id, 'QUEUED')),
       /MAIL_OUTBOX_RESEND_STATUS/,
     );
-    expect(await rejection(asSystem(tenantA, (tx) => resend(tx, id, 'UNKNOWN')))).toMatch(
+    await dbAbgewiesen(
+      asSystem(tenantA, (tx) => resend(tx, id, 'UNKNOWN')),
       /MAIL_OUTBOX_RESEND_CONTEXT/,
     );
     await owner.mailOutbox.update({ where: { id }, data: { payload: {}, secretVarsEnc: null } });
@@ -418,7 +415,8 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
   it('C4: verwirft einen nicht mehr aktuellen Auftrag mit Begründung und ohne Inhalt', async () => {
     const id = await failedWithContent(tenantA, clientA);
 
-    expect(await rejection(asStaff(tenantA, (tx) => resend(tx, id, 'FAILED', '  ')))).toMatch(
+    await dbAbgewiesen(
+      asStaff(tenantA, (tx) => resend(tx, id, 'FAILED', '  ')),
       /MAIL_OUTBOX_RESEND_REASON/,
     );
     expect(
@@ -441,8 +439,9 @@ describeWithDatabase('Mail-Outbox gegen PostgreSQL (F-08)', () => {
     expect((await owner.mailOutbox.findUniqueOrThrow({ where: { id } })).secretVarsEnc).toBe(
       'v3:synthetic',
     );
-    expect(
-      await rejection(owner.mailOutbox.update({ where: { id }, data: { status: 'NO_RECIPIENT' } })),
-    ).toMatch(/mail_outbox_secret_check/);
+    await dbAbgewiesen(
+      owner.mailOutbox.update({ where: { id }, data: { status: 'NO_RECIPIENT' } }),
+      /mail_outbox_secret_check/,
+    );
   });
 });

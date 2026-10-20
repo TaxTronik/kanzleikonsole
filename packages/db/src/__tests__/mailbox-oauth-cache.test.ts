@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import type { Prisma } from '@prisma/client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { anwendungAbgewiesen } from '../testing/db-fehler';
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
 });
@@ -74,15 +75,13 @@ describe('Microsoft OAuth cache current database authorization', () => {
   it('persists for a fresh admin but preserves prior ciphertext after role or module revocation', async () => {
     await save('synthetic-encrypted-initial');
     await owner.staffRole.deleteMany({ where: { staffUserId: staffId } });
-    await expect(save('synthetic-encrypted-revoked-role')).rejects.toThrow('authorization changed');
+    await anwendungAbgewiesen(save('synthetic-encrypted-revoked-role'), 'authorization changed');
     await owner.staffRole.create({ data: { staffUserId: staffId, role: 'ADMIN' } });
     await owner.tenantSetting.update({
       where: { tenantId_key: { tenantId, key: 'modules' } },
       data: { value: { smartMailbox: false } },
     });
-    await expect(save('synthetic-encrypted-disabled-module')).rejects.toThrow(
-      'authorization changed',
-    );
+    await anwendungAbgewiesen(save('synthetic-encrypted-disabled-module'), 'authorization changed');
     expect(
       (await owner.inboundMailbox.findUnique({ where: { id: mailboxId } }))?.oauthCacheEnc,
     ).toBe('synthetic-encrypted-initial');

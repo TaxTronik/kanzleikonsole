@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Client } from 'pg';
 import { describe, expect, it } from 'vitest';
 import { assertSeparateShadowDatabase, resetShadowAppSchema } from '../../scripts/drift-shadow';
+import { anwendungAbgewiesen } from '../testing/db-fehler';
 
 describe('isolated migration shadow reset', () => {
   const source = 'postgresql://owner:secret@localhost:5432/office';
@@ -58,7 +59,10 @@ describe('isolated migration shadow reset', () => {
           { id: 42 },
         ]);
       }
-      await expect(resetShadowAppSchema(sourceUrl, [sourceUrl])).rejects.toThrow();
+      await anwendungAbgewiesen(
+        resetShadowAppSchema(sourceUrl, [sourceUrl]),
+        'Shadow- und Ziel-Datenbank müssen unterschiedliche Datenbanknamen haben.',
+      );
       expect(
         (await owner.query("SELECT to_regclass('public.tenant') AS table_name")).rows[0].table_name,
       ).toBe('tenant');

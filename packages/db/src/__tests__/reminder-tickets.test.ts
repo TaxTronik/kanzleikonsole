@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, requireDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen, dbFehler } from '../testing/db-fehler';
 
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(requireDatabaseUrl(process.env.DATABASE_URL, 'DATABASE_URL')),
@@ -110,13 +111,14 @@ describe('REMINDER-TICKET-001 immutable tenant ticket numbers', () => {
 
   it('rejects caller-selected numbers, including negative input', async () => {
     for (const ticketNumber of [-1, 1000000]) {
-      await expect(
+      await dbAbgewiesen(
         context(tenants[0]!, (tx) =>
           tx.clientReminder.create({
             data: { ...data(), ticketNumber },
           }),
         ),
-      ).rejects.toThrow('automatisch');
+        'automatisch',
+      );
     }
   });
 
@@ -127,24 +129,27 @@ describe('REMINDER-TICKET-001 immutable tenant ticket numbers', () => {
       { tenantId: tenants[1]! },
       { id: crypto.randomUUID() },
     ]) {
-      await expect(
+      await dbAbgewiesen(
         owner.clientReminder.update({ where: { id: ticket.id }, data: change }),
-      ).rejects.toThrow('unveränderlich');
+        'unveränderlich',
+      );
     }
   });
 
   it('denies all direct app reads/writes to the allocation counter', async () => {
-    await expect(
+    await dbAbgewiesen(
       context(tenants[0]!, (tx) => tx.clientReminderCounter.findMany()),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: '42501', meldung: 'permission denied for table client_reminder_counter' },
+    );
+    await dbAbgewiesen(
       context(tenants[0]!, (tx) =>
         tx.clientReminderCounter.update({
           where: { tenantId: tenants[0]! },
           data: { lastNumber: 1 },
         }),
       ),
-    ).rejects.toThrow();
+      { sqlState: '42501', meldung: 'permission denied for table client_reminder_counter' },
+    );
   });
 });
 
@@ -174,9 +179,7 @@ describe('REMINDER-TICKET-001 archive and permanent directed references', () => 
       });
     const results = await Promise.allSettled([write(a.id, b.id), write(b.id, a.id)]);
     const failures = results.flatMap((result) =>
-      result.status === 'rejected'
-        ? [result.reason instanceof Error ? result.reason.message : String(result.reason)]
-        : [],
+      result.status === 'rejected' ? [dbFehler(result.reason) ?? 'Fehler der Anwendung'] : [],
     );
     expect(failures).toEqual([]);
     expect(
@@ -298,7 +301,7 @@ describe('REMINDER-TICKET-001 archive and permanent directed references', () => 
 
   it('rejects archive of open tickets and reopening without leaving the archive', async () => {
     const ticket = await create();
-    await expect(
+    await dbAbgewiesen(
       context(tenants[0]!, (tx) =>
         tx.clientReminder.update({
           where: { id: ticket.id },
@@ -308,7 +311,12 @@ describe('REMINDER-TICKET-001 archive and permanent directed references', () => 
           },
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "client_reminder" violates check constraint "client_reminder_archive_completed"',
+      },
+    );
     await owner.clientReminder.update({
       where: { id: ticket.id },
       data: {
@@ -318,14 +326,19 @@ describe('REMINDER-TICKET-001 archive and permanent directed references', () => 
         archivedByStaff: staffId,
       },
     });
-    await expect(
+    await dbAbgewiesen(
       owner.clientReminder.update({ where: { id: ticket.id }, data: { doneAt: null } }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "client_reminder" violates check constraint "client_reminder_archive_completed"',
+      },
+    );
   });
 
   it('requires the archive actor and timestamp as one state', async () => {
     const ticket = await create();
-    await expect(
+    await dbAbgewiesen(
       owner.clientReminder.update({
         where: { id: ticket.id },
         data: {
@@ -333,13 +346,18 @@ describe('REMINDER-TICKET-001 archive and permanent directed references', () => 
           archivedAt: new Date(),
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "client_reminder" violates check constraint "client_reminder_archive_actor"',
+      },
+    );
   });
 
   it('keeps a legacy completion without its actor outside the archive', async () => {
     const ticket = await create();
     await owner.clientReminder.update({ where: { id: ticket.id }, data: { doneAt: new Date() } });
-    await expect(
+    await dbAbgewiesen(
       owner.clientReminder.update({
         where: { id: ticket.id },
         data: {
@@ -347,7 +365,12 @@ describe('REMINDER-TICKET-001 archive and permanent directed references', () => 
           archivedByStaff: staffId,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "client_reminder" violates check constraint "client_reminder_archive_completed"',
+      },
+    );
   });
 
   it('deduplicates repeated mentions and rejects self references', async () => {
@@ -360,21 +383,33 @@ describe('REMINDER-TICKET-001 archive and permanent directed references', () => 
     expect(await owner.clientReminderReference.count({ where: { sourceReminderId: a.id } })).toBe(
       1,
     );
-    await expect(
+    await dbAbgewiesen(
       owner.clientReminderReference.create({ data: { ...edge, targetReminderId: a.id } }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23514',
+        meldung:
+          'new row for relation "client_reminder_reference" violates check constraint "client_reminder_reference_not_self"',
+      },
+    );
   });
 
   it('prevents cross-tenant links at both FK ends, even using the owner', async () => {
     const a = await create();
     const foreign = await owner.clientReminder.create({ data: data(tenants[1]!) });
-    for (const ids of [
-      { sourceReminderId: a.id, targetReminderId: foreign.id },
-      { sourceReminderId: foreign.id, targetReminderId: a.id },
-    ]) {
-      await expect(
+    for (const [ids, fk] of [
+      [
+        { sourceReminderId: a.id, targetReminderId: foreign.id },
+        'client_reminder_reference_target_fk',
+      ],
+      [
+        { sourceReminderId: foreign.id, targetReminderId: a.id },
+        'client_reminder_reference_source_fk',
+      ],
+    ] as const) {
+      await dbAbgewiesen(
         owner.clientReminderReference.create({ data: { tenantId: tenants[0]!, ...ids } }),
-      ).rejects.toThrow();
+        { sqlState: '23503', meldung: `violates foreign key constraint "${fk}"` },
+      );
     }
   });
 
@@ -413,17 +448,19 @@ describe('REMINDER-TICKET-001 archive and permanent directed references', () => 
         targetReminderId: b.id,
       },
     });
-    await expect(
+    await dbAbgewiesen(
       context(tenants[0]!, (tx) => tx.clientReminderReference.delete({ where: { id: link.id } })),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: '42501', meldung: 'permission denied for table client_reminder_reference' },
+    );
+    await dbAbgewiesen(
       context(tenants[0]!, (tx) =>
         tx.clientReminderReference.update({
           where: { id: link.id },
           data: { createdAt: new Date(0) },
         }),
       ),
-    ).rejects.toThrow();
+      { sqlState: '42501', meldung: 'permission denied for table client_reminder_reference' },
+    );
     await owner.clientReminder.delete({ where: { id: b.id } });
     expect(await owner.clientReminderReference.findUnique({ where: { id: link.id } })).toBeNull();
     expect(await owner.clientReminder.findUnique({ where: { id: a.id } })).not.toBeNull();
@@ -478,16 +515,22 @@ describe('REMINDER-TICKET-001 durable research origin', () => {
     const origin = await marking();
     const other = await marking();
     const foreign = await marking(tenants[1]!);
-    await expect(
+    await dbAbgewiesen(
       owner.clientReminder.create({ data: { ...data(), originRiskMarkingId: foreign.id } }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23503',
+        meldung:
+          'insert or update on table "client_reminder" violates foreign key constraint "client_reminder_risk_origin_fk"',
+      },
+    );
     const ticket = await owner.clientReminder.create({
       data: { ...data(), originRiskMarkingId: origin.id },
     });
     for (const originRiskMarkingId of [other.id, null]) {
-      await expect(
+      await dbAbgewiesen(
         owner.clientReminder.update({ where: { id: ticket.id }, data: { originRiskMarkingId } }),
-      ).rejects.toThrow('unveränderlich');
+        'unveränderlich',
+      );
     }
   });
 

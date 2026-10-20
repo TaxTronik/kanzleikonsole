@@ -5,6 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { APP_SESSION_LIMITS, createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { TX_OPTIONS } from '../tenant-context';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 describe('Serverseitige Grenzen des App-Clients', () => {
   it('liegen über dem Transaktionslimit und ändern damit kein heute gelingendes Ergebnis', () => {
@@ -50,7 +51,7 @@ describeWithDatabase('Serverseitige Grenzen gegen PostgreSQL', () => {
   });
 
   it('bricht eine zu lange Abfrage in der Datenbank selbst ab', async () => {
-    await expect(tiny.$queryRaw`SELECT pg_sleep(2)`).rejects.toThrow(/57014|statement timeout/i);
+    await dbAbgewiesen(tiny.$queryRaw`SELECT pg_sleep(2)`, /57014|statement timeout/i);
   });
 });
 

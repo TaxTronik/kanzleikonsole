@@ -10,6 +10,7 @@ import {
   upsertNotificationsTx,
   type NotificationUpsertInput,
 } from '../notification';
+import { anwendungAbgewiesen } from '../testing/db-fehler';
 
 function notificationTx(existing: { id: string } | null = null) {
   const tx = {
@@ -297,10 +298,12 @@ describe('upsertNotificationsTx / insertNotificationsTx', () => {
     const tx = notificationTx();
     tx.$queryRaw.mockResolvedValue([{ actorType: 'CLIENT_CONTACT' }]);
 
-    await expect(upsertNotificationsTx(tx, [input('staff-a')])).rejects.toThrow(
+    await anwendungAbgewiesen(
+      upsertNotificationsTx(tx, [input('staff-a')]),
       'NOTIFICATION_BATCH_CLIENT_CONTACT',
     );
-    await expect(insertNotificationsTx(tx, [input('staff-a')])).rejects.toThrow(
+    await anwendungAbgewiesen(
+      insertNotificationsTx(tx, [input('staff-a')]),
       'NOTIFICATION_BATCH_CLIENT_CONTACT',
     );
     expect(tx.notification.createMany).not.toHaveBeenCalled();

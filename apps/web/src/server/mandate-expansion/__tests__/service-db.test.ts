@@ -9,6 +9,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import type { Prisma } from '@prisma/client';
 import type { StaffSession } from '@/server/auth/staff';
 import type { TxClient } from '@taxtronik/db';
+import { anwendungAbgewiesen, dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 // Production SQL, scope and mutation services run unchanged; no Next request or external audit service is needed.
 vi.mock('@/server/auth/staff', () => ({ staffAuth: vi.fn() }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
@@ -142,18 +143,20 @@ if (!enabled && process.env['CI'] === 'true') {
       expect(stored?.revision).toBe(1);
       expect(stored?.input.nodes.map((n) => n.label)).toContain('Actual mandate');
       expect(stored?.input.nodes.map((n) => n.label)).not.toContain('Forged incoming root name');
-      await expect(
+      await anwendungAbgewiesen(
         actor((tx) => structure.saveStructureTx(tx, session, input(clientId, linkedClientId, 0))),
-      ).rejects.toThrow('inzwischen');
-      await expect(
+        'inzwischen',
+      );
+      await dbAbgewiesen(
         actor((tx) =>
           tx.mandateStructureVersion.update({
             where: { id: versionId },
             data: { note: 'replace' },
           }),
         ),
-      ).rejects.toThrow();
-      await expect(
+        { sqlState: '42501', meldung: 'permission denied for table mandate_structure_version' },
+      );
+      await dbAbgewiesen(
         actor((tx) =>
           tx.mandateStructureNode.create({
             data: {
@@ -167,7 +170,8 @@ if (!enabled && process.env['CI'] === 'true') {
             },
           }),
         ),
-      ).rejects.toThrow('sealed');
+        'sealed',
+      );
     });
     it('binds the exact immutable version to the concrete open check', async () => {
       bindingId = await actor((tx) =>
@@ -224,21 +228,24 @@ if (!enabled && process.env['CI'] === 'true') {
       const employee = {
         user: { tenantId, staffId: employeeId, roles: ['EMPLOYEE'], permissions: [] },
       } as unknown as StaffSession;
-      await expect(
+      await anwendungAbgewiesen(
         actor((tx) => structure.loadStructureTx(tx, employee, clientId), employeeId),
-      ).rejects.toThrow('Zugriff');
+        'Zugriff',
+      );
     });
     it('does not permit direct rewrites, deletion, or binding into another mandate', async () => {
-      await expect(
+      await dbAbgewiesen(
         actor((tx) =>
           tx.gwgStructureBinding.update({ where: { id: bindingId }, data: { note: 'forged' } }),
         ),
-      ).rejects.toThrow();
-      await expect(owner.gwgStructureBinding.delete({ where: { id: bindingId } })).rejects.toThrow(
+        { sqlState: '42501', meldung: 'permission denied for table gwg_structure_binding' },
+      );
+      await dbAbgewiesen(
+        owner.gwgStructureBinding.delete({ where: { id: bindingId } }),
         'immutable',
       );
       const other = await owner.gwgCheck.create({ data: { tenantId, clientId: linkedClientId } });
-      await expect(
+      await dbAbgewiesen(
         actor((tx) =>
           tx.gwgStructureBinding.create({
             data: {
@@ -253,7 +260,8 @@ if (!enabled && process.env['CI'] === 'true') {
             },
           }),
         ),
-      ).rejects.toThrow();
+        { sqlState: 'P0001', meldung: 'invalid bound structure version' },
+      );
     });
     it('refuses completed checks without changing the old structure use', async () => {
       const closedClient = await owner.client.create({
@@ -304,7 +312,7 @@ if (!enabled && process.env['CI'] === 'true') {
           data: { status: 'VERIFIED', verifiedAt: new Date() },
         });
       });
-      await expect(
+      await anwendungAbgewiesen(
         actor((tx) =>
           gwg.bindGwgStructureTx(tx, session, {
             clientId: closedClient.id,
@@ -315,7 +323,8 @@ if (!enabled && process.env['CI'] === 'true') {
             confirmed: true,
           }),
         ),
-      ).rejects.toThrow('abgeschlossen');
+        'abgeschlossen',
+      );
       expect((await owner.gwgCheck.findUniqueOrThrow({ where: { id: closed.id } })).status).toBe(
         'VERIFIED',
       );

@@ -12,6 +12,7 @@ import {
   riskArchiveStateHash,
   lockClientRiskAnalysesTx,
 } from '../risk-analysis';
+import { anwendungAbgewiesen, dbAbgewiesen, erwarteAnwendungsfehler } from '../testing/db-fehler';
 
 const connection = (url: string | undefined) =>
   new PrismaClient({
@@ -222,7 +223,8 @@ describe('RISK-ARCHIVE-SNAPSHOT-001 exact content compare after external I/O', (
   it.each(changes)('rejects an uploaded stale snapshot after $name', async ({ change }) => {
     const input = await pendingArchive();
     await transaction(change);
-    await expect(transaction((tx) => commitRiskArchiveTx(tx, input))).rejects.toThrow(
+    await anwendungAbgewiesen(
+      transaction((tx) => commitRiskArchiveTx(tx, input)),
       /zwischenzeitlich geändert/,
     );
     expect(
@@ -351,7 +353,7 @@ describe('RISK-ARCHIVE-SNAPSHOT-001 real concurrent writers', () => {
     const result = (await archivingResult!)[0]!;
     expect(result.status).toBe('rejected');
     if (result.status === 'rejected')
-      expect(String(result.reason)).toContain('zwischenzeitlich geändert');
+      erwarteAnwendungsfehler(result.reason, 'zwischenzeitlich geändert');
   });
 
   it('two uploads can only commit one pointer; the second waits and cannot replace it', async () => {
@@ -520,12 +522,13 @@ describe('RISK-ARCHIVE-SNAPSHOT-001 / DSGVO-MANDATE-ANONYMIZATION-001 cross-work
 describe('RISK-ARCHIVE-SNAPSHOT-001 immutable DB boundary and retention exception', () => {
   it('rolls back archive binding if subsequent audit fails in the same transaction', async () => {
     const input = await pendingArchive();
-    await expect(
+    await anwendungAbgewiesen(
       transaction(async (tx) => {
         await commitRiskArchiveTx(tx, input);
         throw new Error('synthetic audit failure');
       }),
-    ).rejects.toThrow('synthetic audit failure');
+      'synthetic audit failure',
+    );
     const live = await owner.riskAnalysis.findUniqueOrThrow({ where: { id: analysisId } });
     expect(live.archivedAt).toBeNull();
     expect(live.archiveKey).toBeNull();
@@ -534,32 +537,38 @@ describe('RISK-ARCHIVE-SNAPSHOT-001 immutable DB boundary and retention exceptio
   it('blocks core fields, reparenting, deletes and owner-worker mutations after archive', async () => {
     const input = await pendingArchive();
     await transaction((tx) => commitRiskArchiveTx(tx, input));
-    await expect(
+    await dbAbgewiesen(
       transaction((tx) =>
         tx.riskAnalysis.update({ where: { id: analysisId }, data: { title: 'bad' } }),
       ),
-    ).rejects.toThrow(/immutable/);
-    await expect(
+      /immutable/,
+    );
+    await dbAbgewiesen(
       transaction((tx) =>
         tx.riskAnalysis.update({ where: { id: analysisId }, data: { archiveKey: 'replace' } }),
       ),
-    ).rejects.toThrow(/immutable/);
-    await expect(
+      /immutable/,
+    );
+    await dbAbgewiesen(
       transaction((tx) => tx.riskAnalysis.delete({ where: { id: analysisId } })),
-    ).rejects.toThrow(/immutable/);
-    await expect(
+      /immutable/,
+    );
+    await dbAbgewiesen(
       transaction((tx) => tx.riskMarking.delete({ where: { id: markingId } })),
-    ).rejects.toThrow(/immutable/);
-    await expect(owner.riskMarking.create({ data: markingData() })).rejects.toThrow(/immutable/);
-    await expect(
+      /immutable/,
+    );
+    await dbAbgewiesen(owner.riskMarking.create({ data: markingData() }), /immutable/);
+    await dbAbgewiesen(
       owner.riskAnalysis.update({ where: { id: analysisId }, data: { llmEnrichedAt: new Date() } }),
-    ).rejects.toThrow(/immutable/);
-    await expect(
+      /immutable/,
+    );
+    await dbAbgewiesen(
       owner.riskMarking.update({
         where: { id: markingId },
         data: { analysisId: '00000000-0000-4000-8000-000000000001' },
       }),
-    ).rejects.toThrow(/identity/);
+      /identity/,
+    );
   });
 
   it('allows only the existing exact, due NATPERS live redaction; snapshot pointer remains', async () => {
@@ -570,19 +579,20 @@ describe('RISK-ARCHIVE-SNAPSHOT-001 immutable DB boundary and retention exceptio
         where: { id: analysisId },
         data: { sourceText: '', sourceDoc: Prisma.DbNull },
       });
-    await expect(transaction(redact)).rejects.toThrow(/immutable/);
+    await dbAbgewiesen(transaction(redact), /immutable/);
     await owner.client.update({
       where: { id: clientId },
       data: { mandateEndedAt: new Date('2000-01-01'), anonymizedAt: new Date() },
     });
-    await expect(
+    await dbAbgewiesen(
       transaction((tx) =>
         tx.riskAnalysis.update({
           where: { id: analysisId },
           data: { sourceText: '', sourceDoc: Prisma.DbNull, title: 'also changed' },
         }),
       ),
-    ).rejects.toThrow(/immutable/);
+      /immutable/,
+    );
     await transaction(async (tx) => {
       await redact(tx);
       await tx.riskMarking.update({
@@ -593,17 +603,19 @@ describe('RISK-ARCHIVE-SNAPSHOT-001 immutable DB boundary and retention exceptio
     const live = await owner.riskAnalysis.findUniqueOrThrow({ where: { id: analysisId } });
     expect(live.sourceText).toBe('');
     expect(live.archiveKey).toBe(input.key);
-    await expect(
+    await dbAbgewiesen(
       transaction((tx) =>
         tx.riskMarking.update({ where: { id: markingId }, data: { matchedText: 'repopulate' } }),
       ),
-    ).rejects.toThrow(/immutable/);
+      /immutable/,
+    );
   });
 
   it('RISK-AI-SUGGESTION-001 rejects stale source text after redaction even before archive', async () => {
     await owner.riskAnalysis.update({ where: { id: analysisId }, data: { sourceText: '' } });
-    await expect(
+    await anwendungAbgewiesen(
       transaction((tx) => requireWritableRiskAnalysisTx(tx, tenantId, analysisId, 'Text source')),
-    ).rejects.toThrow(/zwischenzeitlich geändert/);
+      /zwischenzeitlich geändert/,
+    );
   });
 });

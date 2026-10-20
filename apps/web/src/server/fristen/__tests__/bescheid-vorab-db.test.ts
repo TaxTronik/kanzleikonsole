@@ -27,6 +27,7 @@ import {
 } from '../eintrag';
 import { loadKontrollbuch, loadKontrollbuchSeite } from '../kontrollbuch';
 import { einspruchVorab, klageVorab } from '../quellen/bescheid';
+import { dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 // Sichtbarkeitsregel wie accessibleClientsWhereFor (ADMIN ohne Einschränkung,
 // sonst OPEN-Modus); vermeidet den Auth-Stack, die Abfragen laufen echt.
@@ -320,9 +321,7 @@ const BEGRUENDUNG = 'Fristablauf und Aktenlage fachlich geprüft.';
       if (zulaessig) {
         await expect(update, bestandskraft).resolves.toMatchObject({ status: 'BESTANDSKRAEFTIG' });
       } else {
-        await expect(update, bestandskraft).rejects.toThrow(
-          /elapsed, fully calculated appeal deadline/,
-        );
+        await dbAbgewiesen(update, /elapsed, fully calculated appeal deadline/, bestandskraft);
       }
     }
   });
@@ -356,9 +355,7 @@ const BEGRUENDUNG = 'Fristablauf und Aktenlage fachlich geprüft.';
       if (zulaessig) {
         await expect(insert, bestandskraft).resolves.toMatchObject({ status: 'BESTANDSKRAEFTIG' });
       } else {
-        await expect(insert, bestandskraft).rejects.toThrow(
-          /tax_notice_legal_final_evidence_check/,
-        );
+        await dbAbgewiesen(insert, /tax_notice_legal_final_evidence_check/, bestandskraft);
       }
     }
   });
@@ -398,7 +395,7 @@ const BEGRUENDUNG = 'Fristablauf und Aktenlage fachlich geprüft.';
       if (zulaessig) {
         await expect(update, bestandskraft).resolves.toMatchObject({ status: 'BESTANDSKRAEFTIG' });
       } else {
-        await expect(update, bestandskraft).rejects.toThrow(/elapsed court deadline/);
+        await dbAbgewiesen(update, /elapsed court deadline/, bestandskraft);
       }
     }
   });
@@ -422,7 +419,8 @@ const BEGRUENDUNG = 'Fristablauf und Aktenlage fachlich geprüft.';
     await expect(einspruch({ noticeDate: tag('2026-03-29') })).resolves.toMatchObject({
       status: 'EINSPRUCH',
     });
-    await expect(einspruch({ noticeDate: tag('2026-03-30') })).rejects.toThrow(
+    await dbAbgewiesen(
+      einspruch({ noticeDate: tag('2026-03-30') }),
       /tax_notice_event_sequence_check/,
     );
     // Teilabhilfe vom 28.03. läge vor der Einlegung am 29.03. (nach UTC-Tag zulässig).
@@ -432,7 +430,7 @@ const BEGRUENDUNG = 'Fristablauf und Aktenlage fachlich geprüft.';
         partialReliefReceivedAt: tag(ymd),
         partialReliefReceivedBy: staffId,
       });
-    await expect(teilabhilfe('2026-03-28')).rejects.toThrow(/tax_notice_event_sequence_check/);
+    await dbAbgewiesen(teilabhilfe('2026-03-28'), /tax_notice_event_sequence_check/);
     await expect(teilabhilfe('2026-03-29')).resolves.toMatchObject({ status: 'TEILABHILFE' });
   });
 
@@ -457,7 +455,8 @@ const BEGRUENDUNG = 'Fristablauf und Aktenlage fachlich geprüft.';
       });
     };
     // 23:30 Uhr MEZ am 09.02. liegt vor der Teilabhilfe vom 10.02.
-    await expect(abhilfe('2026-02-09T22:30:00.000Z')).rejects.toThrow(
+    await dbAbgewiesen(
+      abhilfe('2026-02-09T22:30:00.000Z'),
       /must not predate the partial relief receipt/,
     );
     // 00:30 Uhr MEZ am 10.02. ist der Tag der Teilabhilfe (nach UTC-Tag der 09.02.).

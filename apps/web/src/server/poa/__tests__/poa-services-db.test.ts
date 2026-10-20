@@ -105,6 +105,7 @@ import {
 } from '../create-poa';
 import { sendPoaForSignature } from '../send-for-signature';
 import { revokePoaTx } from '../revoke-poa';
+import { anwendungAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 // Der normale Qualitätsjob hat keine Datenbank; der db-Job schaltet die Suite
 // ausdrücklich zu. Dann gelten nur lokale PostgreSQL-Ziele.
@@ -356,14 +357,14 @@ const sha256Hex = (value: string) => createHash('sha256').update(value).digest('
     const prepared = { externMode: false, scope: 'Vertretung', pdf: null };
     const before = await owner.powerOfAttorney.count({ where: { tenantId } });
 
-    await expect(
+    await anwendungAbgewiesen(
       createPoaRecord(staff, input({ clientId: endedClientId, signerContactId: '' }), prepared),
-    ).rejects.toThrow(
       'Fuer ein beendetes oder anonymisiertes Mandat kann keine neue Vollmacht angelegt werden.',
     );
-    await expect(
+    await anwendungAbgewiesen(
       createPoaRecord(staff, input({ signerContactId: otherContactId }), prepared),
-    ).rejects.toThrow('Ansprechpartner gehoert nicht zum gewaehlten Mandanten.');
+      'Ansprechpartner gehoert nicht zum gewaehlten Mandanten.',
+    );
 
     expect(await owner.powerOfAttorney.count({ where: { tenantId } })).toBe(before);
   });
@@ -621,9 +622,10 @@ const sha256Hex = (value: string) => createHash('sha256').update(value).digest('
     });
 
     // REVOKED ist terminal: weder ein zweiter Widerruf noch ein erneuter Versand.
-    await expect(
+    await anwendungAbgewiesen(
       fixture.run(staff.ctx, (tx) => revokePoaTx(tx, staff, { poaId: id, reason: 'nochmals' })),
-    ).rejects.toThrow('Bereits widerrufen.');
+      'Bereits widerrufen.',
+    );
     await expect(
       sendPoaForSignature(staff, { poaId: id, expectedUpdatedAt: revoked.updatedAt }),
     ).resolves.toEqual({ ok: false, error: 'Vollmacht ist widerrufen.' });

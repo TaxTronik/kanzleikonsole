@@ -3,6 +3,7 @@ import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { withTenantContext } from '../tenant-context';
 import { prisma as appPrisma } from '../client';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 // Fachkatalog: TAX-CONTROL-STATUS-001
 
@@ -88,7 +89,7 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
     const today = berlinIsoDate();
     const tomorrow = addIsoDays(today, 1);
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -100,7 +101,8 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           entriesSnapshot: { version: 1, reviewDate: tomorrow, entries: [] },
         },
       }),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'review_date must equal the current Europe/Berlin date' },
+    );
   });
 
   it('blockiert falsche Snapshot-Version, abweichendes Datum und ungültige Einträge', async () => {
@@ -109,7 +111,7 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
     const tomorrow = addIsoDays(today, 1);
     const todayDate = reviewDate(today);
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -121,9 +123,10 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           entriesSnapshot: { version: 2, reviewDate: today, entries: [] },
         },
       }),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'entries_snapshot.version must be 1' },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -140,9 +143,10 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           },
         },
       }),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'entries_snapshot contains an invalid entry' },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -154,9 +158,10 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           entriesSnapshot: { version: 1, reviewDate: yesterday, entries: [] },
         },
       }),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'entries_snapshot.reviewDate must match review_date' },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -173,14 +178,15 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           },
         },
       }),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'entries_snapshot must not contain future deadlines' },
+    );
   });
 
   it('leitet alle Zähler exakt aus den Snapshot-Einträgen ab', async () => {
     const today = berlinIsoDate();
     const yesterday = addIsoDays(today, -1);
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -197,7 +203,11 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           },
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: 'P0001',
+        meldung: 'deadline daily review counters do not match entries_snapshot',
+      },
+    );
   });
 
   it.each([
@@ -206,7 +216,7 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
   ])('weist das Klartextfeld %s im append-only Snapshot ab', async (_field, plaintext) => {
     const today = berlinIsoDate();
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -223,7 +233,8 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           },
         },
       }),
-    ).rejects.toThrow(/only contain pseudonymous control fields/);
+      /only contain pseudonymous control fields/,
+    );
   });
 
   it.each([
@@ -233,7 +244,7 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
   ])('weist Klartext unter dem erlaubten ID-Feld %s ab', async (_field, plaintext) => {
     const today = berlinIsoDate();
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -250,7 +261,8 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           },
         },
       }),
-    ).rejects.toThrow(/identifiers must be canonical UUIDs/);
+      /identifiers must be canonical UUIDs/,
+    );
   });
 
   it.each([
@@ -266,7 +278,7 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
   ])('weist %s im Kontrollsnapshot ab', async (_case, invalidClassification) => {
     const today = berlinIsoDate();
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -283,13 +295,14 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           },
         },
       }),
-    ).rejects.toThrow(/invalid entry/);
+      /invalid entry/,
+    );
   });
 
   it('weist Klartext auch außerhalb der Eintragsliste ab', async () => {
     const today = berlinIsoDate();
 
-    await expect(
+    await dbAbgewiesen(
       owner.deadlineDailyReview.create({
         data: {
           tenantId,
@@ -306,7 +319,8 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
           },
         },
       }),
-    ).rejects.toThrow(/only contain version, reviewDate and entries/);
+      /only contain version, reviewDate and entries/,
+    );
   });
 
   it('bindet snapshot_at an die Transaktion und reviewed_at an den DB-Abschluss', async () => {
@@ -380,12 +394,13 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
       entriesSnapshot: { version: 1, reviewDate: today, entries: [] },
     };
 
-    await expect(
+    await dbAbgewiesen(
       withTenantContext(
         { tenantId: foreignTenant.id, actorId: staffId, actorType: 'STAFF' },
         (tx) => tx.deadlineDailyReview.create({ data: emptyReview }),
       ),
-    ).rejects.toThrow(/row-level security/i);
+      /row-level security/i,
+    );
 
     await owner.deadlineDailyReview.create({
       data: { ...emptyReview, reviewedBy: foreignStaff.id },
@@ -426,12 +441,13 @@ describeWithDatabase('DeadlineDailyReview DB-Invarianten', () => {
       entriesSnapshot: { version: 1, reviewDate: today, entries: [] },
     };
 
-    await expect(
+    await dbAbgewiesen(
       withTenantContext(
         { tenantId: inactiveTenant.id, actorId: inactiveStaff.id, actorType: 'STAFF' },
         (tx) => tx.deadlineDailyReview.create({ data: emptyReview }),
       ),
-    ).rejects.toThrow(/row-level security/i);
+      /row-level security/i,
+    );
 
     await owner.deadlineDailyReview.create({ data: emptyReview });
     await expect(

@@ -37,6 +37,7 @@ import {
 } from '../revisions';
 import { gwgProfessionalReviewSnapshotHash } from '../review-snapshot';
 import { DEFAULT_FACTORS } from '../risk-score';
+import { anwendungAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 // Echte Transaktionen auf einer geteilten Test-Instanz: großzügige Grenzen.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 60_000 });
@@ -296,7 +297,7 @@ const IDENTITY_SET_REVISION_SELECT = {
         where: { gwgCheckId: verified.id },
       });
 
-      await expect(
+      await anwendungAbgewiesen(
         inTx((tx) =>
           addGwgPersonTx(
             tx,
@@ -315,8 +316,9 @@ const IDENTITY_SET_REVISION_SELECT = {
             actor(),
           ),
         ),
-      ).rejects.toThrow(NOT_EDITABLE);
-      await expect(
+        NOT_EDITABLE,
+      );
+      await anwendungAbgewiesen(
         inTx((tx) =>
           saveRiskAnswersTx(
             tx,
@@ -329,7 +331,8 @@ const IDENTITY_SET_REVISION_SELECT = {
             actor(),
           ),
         ),
-      ).rejects.toThrow(NOT_EDITABLE);
+        NOT_EDITABLE,
+      );
 
       const after = await owner.gwgCheck.findUniqueOrThrow({ where: { id: verified.id } });
       expect(after.status).toBe('VERIFIED');
@@ -346,7 +349,7 @@ const IDENTITY_SET_REVISION_SELECT = {
       const checkId = await openCheck(clientId);
       const operation = vi.fn();
 
-      await expect(
+      await anwendungAbgewiesen(
         inTx((tx) =>
           withEditableGwgCheckTx(
             tx,
@@ -355,7 +358,8 @@ const IDENTITY_SET_REVISION_SELECT = {
             operation,
           ),
         ),
-      ).rejects.toThrow('GwG-Check nicht gefunden.');
+        'GwG-Check nicht gefunden.',
+      );
       expect(operation).not.toHaveBeenCalled();
     });
 
@@ -450,7 +454,7 @@ const IDENTITY_SET_REVISION_SELECT = {
           ),
         );
 
-      await expect(operation('claim')).rejects.toThrow(PARALLEL_CHANGE);
+      await anwendungAbgewiesen(operation('claim'), PARALLEL_CHANGE);
       // Der Claim hat die parallele Übergabe nicht zurückgesetzt.
       expect(await owner.gwgCheck.findUniqueOrThrow({ where: { id: checkId } })).toMatchObject({
         status: 'IN_REVIEW',
@@ -461,7 +465,7 @@ const IDENTITY_SET_REVISION_SELECT = {
         where: { id: checkId },
         data: { status: 'DRAFT', reviewSubmittedAt: null, reviewSubmittedBy: null },
       });
-      await expect(operation('confirmUnchanged')).rejects.toThrow(PARALLEL_CHANGE);
+      await anwendungAbgewiesen(operation('confirmUnchanged'), PARALLEL_CHANGE);
     });
   });
 
@@ -638,11 +642,12 @@ const IDENTITY_SET_REVISION_SELECT = {
     );
 
     // Eine veraltete Revision überschreibt nichts.
-    await expect(
+    await anwendungAbgewiesen(
       inTx((tx) =>
         updateBeneficialOwnerTx(tx, { ...correction, fullName: 'Dritte Fassung' }, actor()),
       ),
-    ).rejects.toThrow('Die Personendaten wurden zwischenzeitlich geändert.');
+      'Die Personendaten wurden zwischenzeitlich geändert.',
+    );
     expect(
       (await owner.gwgBeneficialOwner.findUniqueOrThrow({ where: { id: storedOwner.id } }))
         .fullName,
@@ -682,9 +687,10 @@ const IDENTITY_SET_REVISION_SELECT = {
     ).toMatchObject({ reviewReset: false });
 
     // Ablehnung: ohne zugeordneten Berufsträger keine Übergabe.
-    await expect(
+    await anwendungAbgewiesen(
       inTx((tx) => submitCheckForReviewTx(tx, { checkId, clientId }, actor())),
-    ).rejects.toThrow('Bitte zuerst einen verantwortlichen Berufsträger');
+      'Bitte zuerst einen verantwortlichen Berufsträger',
+    );
     expect((await owner.gwgCheck.findUniqueOrThrow({ where: { id: checkId } })).status).toBe(
       'DRAFT',
     );
@@ -712,11 +718,12 @@ const IDENTITY_SET_REVISION_SELECT = {
     ).toBe(1);
 
     // Ablehnung: ein nicht mehr angezeigter Snapshot wird nicht verifiziert.
-    await expect(
+    await anwendungAbgewiesen(
       inTx((tx) =>
         verifyCheckTx(tx, { checkId, clientId, reviewSnapshotHash: '0'.repeat(64) }, actor()),
       ),
-    ).rejects.toThrow('Der angezeigte GwG-Snapshot ist nicht mehr aktuell.');
+      'Der angezeigte GwG-Snapshot ist nicht mehr aktuell.',
+    );
     expect((await owner.gwgCheck.findUniqueOrThrow({ where: { id: checkId } })).status).toBe(
       'IN_REVIEW',
     );

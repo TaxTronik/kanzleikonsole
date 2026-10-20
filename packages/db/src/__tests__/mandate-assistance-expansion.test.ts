@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, it, expect } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import type { Prisma } from '@prisma/client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 const run =
   process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL'] ? describe : describe.skip;
 run('mandate and assistance expansion with real SQL guards', () => {
@@ -158,28 +159,31 @@ run('mandate and assistance expansion with real SQL guards', () => {
     ).toEqual([]);
   });
   it('does not rewrite revision history even with a known UUID', async () => {
-    await expect(
+    await dbAbgewiesen(
       actor((tx) =>
         tx.clientAssistanceRevision.update({
           where: { id: revisionId },
           data: { answers: { forged: 'value' } },
         }),
       ),
-    ).rejects.toThrow();
-    await expect(
+      { prismaCode: 'P2025' },
+    );
+    await dbAbgewiesen(
       owner.clientAssistanceRevision.delete({ where: { id: revisionId } }),
-    ).rejects.toThrow('append only');
+      'append only',
+    );
   });
   it('rejects source and generator substitutions on a reserved output', async () => {
-    await expect(
+    await dbAbgewiesen(
       actor((tx) =>
         tx.clientAssistanceOutput.update({
           where: { id: outputId },
           data: { generatorVersion: 'forged/2' },
         }),
       ),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: 'P0001', meldung: 'immutable output identity' },
+    );
+    await dbAbgewiesen(
       actor((tx) =>
         tx.clientAssistanceOutput.create({
           data: {
@@ -193,10 +197,11 @@ run('mandate and assistance expansion with real SQL guards', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'invalid output snapshot' },
+    );
   });
   it('does not append a revision that disagrees with the case snapshot', async () => {
-    await expect(
+    await dbAbgewiesen(
       actor((tx) =>
         tx.clientAssistanceRevision.create({
           data: {
@@ -211,7 +216,8 @@ run('mandate and assistance expansion with real SQL guards', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'invalid revision event' },
+    );
   });
   it('rejects cross-tenant structure links at the database boundary', async () => {
     const foreign = await owner.client.create({
@@ -222,7 +228,7 @@ run('mandate and assistance expansion with real SQL guards', () => {
         data: { tenantId, clientId, revision: 1, contentHash: hash, createdBy: staffId },
       }),
     );
-    await expect(
+    await dbAbgewiesen(
       actor((tx) =>
         tx.mandateStructureNode.create({
           data: {
@@ -237,7 +243,8 @@ run('mandate and assistance expansion with real SQL guards', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Invalid structure scope' },
+    );
   });
   it('serializes dependencies and rejects indirect cycles', async () => {
     for (const [from, to] of [
@@ -249,7 +256,7 @@ run('mandate and assistance expansion with real SQL guards', () => {
           data: { tenantId, predecessorItemId: from!, successorItemId: to!, createdBy: staffId },
         }),
       );
-    await expect(
+    await dbAbgewiesen(
       actor((tx) =>
         tx.workflowDependency.create({
           data: {
@@ -260,6 +267,7 @@ run('mandate and assistance expansion with real SQL guards', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Dependency cycle' },
+    );
   });
 });

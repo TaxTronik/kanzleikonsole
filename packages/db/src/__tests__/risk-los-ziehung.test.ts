@@ -25,6 +25,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -210,24 +211,28 @@ describeWithDatabase('TCMS-SAMPLE-PROOF-001: risk_los_ziehung (Welle 15, P-11)',
       { ...row, auditLogId: 999_999_999_999n },
     ];
     for (const data of attempts) {
-      await expect(
+      await dbAbgewiesen(
         inTenant(tenantA, staffA, (tx) => tx.riskLosZiehung.create({ data: data as never })),
-      ).rejects.toThrow(/bildet kein Audit-Ereignis risk\.los\.gezogen ab/);
-      await expect(superuser.riskLosZiehung.create({ data: data as never })).rejects.toThrow(
+        /bildet kein Audit-Ereignis risk\.los\.gezogen ab/,
+      );
+      await dbAbgewiesen(
+        superuser.riskLosZiehung.create({ data: data as never }),
         /bildet kein Audit-Ereignis/,
       );
     }
     // Fremder Tenant: RLS WITH CHECK der App-Rolle, Guard für BYPASSRLS-Rollen.
-    await expect(
+    await dbAbgewiesen(
       inTenant(tenantB, staffB, (tx) =>
         tx.riskLosZiehung.create({ data: { ...row, auditLogId: event2.id } as never }),
       ),
-    ).rejects.toThrow(/row-level security|bildet kein Audit-Ereignis/);
-    await expect(
+      /row-level security|bildet kein Audit-Ereignis/,
+    );
+    await dbAbgewiesen(
       owner.riskLosZiehung.create({
         data: { ...row, auditLogId: event2.id, tenantId: tenantB } as never,
       }),
-    ).rejects.toThrow(/bildet kein Audit-Ereignis/);
+      /bildet kein Audit-Ereignis/,
+    );
   });
 
   it('ist unveränderlich für App, Owner und Superuser', async () => {
@@ -241,13 +246,12 @@ describeWithDatabase('TCMS-SAMPLE-PROOF-001: risk_los_ziehung (Welle 15, P-11)',
       'TRUNCATE risk_los_ziehung',
     ];
     for (const statement of statements) {
-      await expect(
+      await dbAbgewiesen(
         inTenant(tenantA, staffA, (tx) => tx.$executeRawUnsafe(statement)),
-      ).rejects.toThrow(/permission denied|append-only/);
-      await expect(owner.$executeRawUnsafe(statement)).rejects.toThrow(
         /permission denied|append-only/,
       );
-      await expect(superuser.$executeRawUnsafe(statement)).rejects.toThrow(/append-only/);
+      await dbAbgewiesen(owner.$executeRawUnsafe(statement), /permission denied|append-only/);
+      await dbAbgewiesen(superuser.$executeRawUnsafe(statement), /append-only/);
     }
     await expect(superuser.riskLosZiehung.count({ where: { auditLogId: event.id } })).resolves.toBe(
       1,

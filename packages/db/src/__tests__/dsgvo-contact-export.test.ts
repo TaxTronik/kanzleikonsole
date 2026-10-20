@@ -23,6 +23,7 @@ import type { TxClient } from '../tenant-context';
 import { buildDsgvoContactExport, serializeDsgvoExport } from '../dsgvo-contact-export';
 import { readPrivacyConfigTx, renderPrivacyNotice } from '../privacy-notice';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -561,7 +562,7 @@ describeWithDatabase('Welle 15: DSGVO-Auskunft im Worker (P-11)', () => {
 
       const savepoint = async (sql: () => Promise<unknown>, message: RegExp) => {
         await tx.$executeRawUnsafe('SAVEPOINT w15');
-        await expect(sql()).rejects.toThrow(message);
+        await dbAbgewiesen(sql(), message);
         await tx.$executeRawUnsafe('ROLLBACK TO SAVEPOINT w15');
       };
       const base = { tenantId: f.tenantId, requestId: f.requestId, requestedBy: f.adminId };

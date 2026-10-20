@@ -49,6 +49,7 @@ import * as db from '@taxtronik/db';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { DEMO } from '@/__tests__/tcms-fixtures';
 import { renderServerMarkup } from '@/__tests__/render-helpers';
+import { erwarteAnwendungsfehler } from '@taxtronik/db/testing/db-fehler';
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
   JSDOM: new (html: string) => { window: { document: Document } };
@@ -206,7 +207,7 @@ function formular(felder: Record<string, string | string[]>): FormData {
         M,
         null,
         formular({ schritt: String(n), ziel, daten: JSON.stringify(daten) }),
-      ).catch((e: Error) => e.message);
+      ).catch((e: unknown) => erwarteAnwendungsfehler(e, /^NEXT_REDIRECT:/).message);
 
     const s1 = await schritt(1);
     expect(await weiter(1, s1.daten)).toBe(

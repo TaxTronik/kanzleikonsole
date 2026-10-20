@@ -81,6 +81,7 @@ vi.mock('@taxtronik/mail/pdf-page-count-node', () => ({
 
 import { prismaOwner } from '../../prisma-owner';
 import { runPdfPageCountBackfill } from '../pdf-page-count-backfill';
+import { dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 const describeDb = enabled ? describe : describe.skip;
 const NO_LIMIT = { exhausted: () => false };
@@ -308,12 +309,13 @@ describeDb('P-13 pdf-page-count-backfill against PostgreSQL', () => {
 
   it('lässt zugeordnete GwG-Belege aus, weil der Trigger ihre Versionen sperrt', async () => {
     const versionId = docs.get('assigned')!.versions[0]!;
-    await expect(
+    await dbAbgewiesen(
       prismaOwner.documentVersion.update({
         where: { id: versionId },
         data: { pdfPageCount: 1 },
       }),
-    ).rejects.toThrow(/unveraenderlich/);
+      /unveraenderlich/,
+    );
     expect(await versionState('assigned')).toEqual({
       pdfPageCount: null,
       pdfPageCountCheckedAt: null,

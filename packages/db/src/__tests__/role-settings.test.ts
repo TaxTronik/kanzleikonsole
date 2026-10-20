@@ -22,6 +22,7 @@ import {
   CANONICAL_ROLE_SETTINGS,
   ROLE_SETTING_ROLES,
 } from '../restore-security';
+import { anwendungAbgewiesen } from '../testing/db-fehler';
 
 const MIGRATIONS = fileURLToPath(new URL('../../prisma/migrations/', import.meta.url));
 const INIT = fileURLToPath(new URL('../../prisma/init/', import.meta.url));
@@ -163,7 +164,8 @@ describe('Welle 15: kanonische Rolleneinstellungen gegen echtes PostgreSQL', () 
       await expect(settingsOf(scratch)).resolves.toEqual([]);
 
       // Owner-Rolle ohne CREATEROLE: scheitert vor jeder Änderung.
-      await expect(applyCanonicalRoleSettings(ownerRoleUrl(scratch), writerFor)).rejects.toThrow(
+      await anwendungAbgewiesen(
+        applyCanonicalRoleSettings(ownerRoleUrl(scratch), writerFor),
         /Abbruch vor pg_restore.*Migrationsrolle bzw\. als Superuser/s,
       );
       await expect(settingsOf(scratch)).resolves.toEqual([]);
@@ -193,9 +195,8 @@ describe('Welle 15: kanonische Rolleneinstellungen gegen echtes PostgreSQL', () 
       await owner.$executeRawUnsafe(
         `ALTER ROLE taxtronik_owner IN DATABASE ${scratch} SET lock_timeout = '5s'`,
       );
-      await expect(
+      await anwendungAbgewiesen(
         applyCanonicalRoleSettings(withDatabase(url, scratch), writerFor),
-      ).rejects.toThrow(
         /abweichend oder zusätzlich: taxtronik_owner lock_timeout=5s.*RESET <parameter>/s,
       );
     } finally {

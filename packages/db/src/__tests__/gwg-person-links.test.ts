@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 const enabled = Boolean(process.env['DATABASE_URL']);
 if (process.env['CI'] === 'true' && !enabled)
   throw new Error('GWG-PERSON-LINKS-001 needs DATABASE_URL in CI.');
@@ -60,11 +61,12 @@ const db = new PrismaClient({
     expect(rep.personAnchorId).toBe(anchorA);
   });
   it('rejects cross-mandate anchor reuse while permitting same-mandate next-check lineage', async () => {
-    await expect(
+    await dbAbgewiesen(
       db.gwgBeneficialOwner.create({
         data: { gwgCheckId: checkB, fullName: 'Other', personAnchorId: anchorA },
       }),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Invalid person anchor scope' },
+    );
     const next = await db.gwgCheck.create({ data: { tenantId, clientId: clientA } });
     const owner = await db.gwgBeneficialOwner.create({
       data: { gwgCheckId: next.id, fullName: 'Local correction', personAnchorId: anchorA },

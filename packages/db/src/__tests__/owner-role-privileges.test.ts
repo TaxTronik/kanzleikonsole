@@ -28,6 +28,7 @@ import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import type { TxClient } from '../tenant-context';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const OWNER_ROLE = 'taxtronik_owner';
 const DRILL_ROLE = 'taxtronik_drill';
@@ -449,12 +450,13 @@ describeWithDatabase('S-01: Rollenmodell gegen PostgreSQL', () => {
   ])('Owner-Anmeldung verweigert: %s', async (_label, statement, error) => {
     // Fehlte eine Sperre, bliebe trotzdem nichts zurück: SET, DDL und Rollen
     // sind transaktional, die Transaktion wird in jedem Fall zurückgerollt.
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction(async (tx) => {
         await tx.$executeRawUnsafe(statement);
         throw ROLLBACK;
       }),
-    ).rejects.toThrow(error);
+      error,
+    );
   });
 
   it('Owner-Anmeldung verweigert CREATE DATABASE (kein CREATEDB)', async () => {
@@ -462,7 +464,8 @@ describeWithDatabase('S-01: Rollenmodell gegen PostgreSQL', () => {
     // entfernt der finally-Block die Probe-Datenbank sofort wieder.
     const probe = `s01_probe_${randomUUID().replaceAll('-', '')}`;
     try {
-      await expect(owner.$executeRawUnsafe(`CREATE DATABASE ${probe}`)).rejects.toThrow(
+      await dbAbgewiesen(
+        owner.$executeRawUnsafe(`CREATE DATABASE ${probe}`),
         /permission denied to create database/,
       );
     } finally {
@@ -560,7 +563,7 @@ describeWithDatabase('S-01: Rollenmodell gegen PostgreSQL', () => {
       `;
       expect(row?.status).toBe('ORPHANED');
     };
-    await expect(
+    await dbAbgewiesen(
       owner.$transaction(async (tx) => {
         await orphan(tx);
         await tx.$queryRaw`SELECT set_config('app.tax_deadline_notification_purge', 'on', true)`;
@@ -575,7 +578,8 @@ describeWithDatabase('S-01: Rollenmodell gegen PostgreSQL', () => {
         `;
         throw ROLLBACK;
       }),
-    ).rejects.toThrow(/orphaned.*history is immutable/i);
+      /orphaned.*history is immutable/i,
+    );
     await asOwnerInRollback(async (tx) => {
       await orphan(tx);
       const [purged] = await tx.$queryRaw<Array<{ count: number }>>`
@@ -588,14 +592,16 @@ describeWithDatabase('S-01: Rollenmodell gegen PostgreSQL', () => {
   });
 
   it('Purge-Funktion ist für App- und Drill-Rolle gesperrt', async () => {
-    await expect(
+    await dbAbgewiesen(
       app.$queryRaw`
         SELECT app.purge_tax_deadline_request_links(
                  ${tenantId}::uuid, ARRAY[]::uuid[], ARRAY[]::uuid[]
                )
       `,
-    ).rejects.toThrow(/permission denied for function purge_tax_deadline_request_links/);
-    await expect(drill.$queryRaw`SELECT count(*) FROM public.tenant`).rejects.toThrow(
+      /permission denied for function purge_tax_deadline_request_links/,
+    );
+    await dbAbgewiesen(
+      drill.$queryRaw`SELECT count(*) FROM public.tenant`,
       /permission denied for table tenant/,
     );
   });

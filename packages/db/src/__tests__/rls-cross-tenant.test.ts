@@ -14,6 +14,7 @@ import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { withTenantContext } from '../tenant-context';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL']);
 
@@ -340,14 +341,15 @@ describeWithDatabase('Cross-Tenant RLS', () => {
   });
 
   it('Test 4: Cross-Tenant-Update auf Client von B aus Kontext A schlägt fehl', async () => {
-    await expect(
+    await dbAbgewiesen(
       withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
         tx.client.update({
           where: { id: clientBId },
           data: { name: 'Manipuliert' },
         }),
       ),
-    ).rejects.toThrow(); // RLS-Violation oder Record not found
+      { prismaCode: 'P2025' },
+    ); // RLS-Violation oder Record not found
   });
 
   it('Test 5: Direktes findUnique auf fremden Client gibt null zurück', async () => {
@@ -402,21 +404,26 @@ describeWithDatabase('Cross-Tenant RLS', () => {
 
   it('Test 10: Cross-Tenant-Insert wird durch RLS-INSERT-Policy blockiert', async () => {
     // Versuche, im Kontext A einen Mandanten mit tenantId=B anzulegen.
-    await expect(
+    await dbAbgewiesen(
       withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
         tx.client.create({
           data: { tenantId: tenantBId, kind: 'JURPERS', name: 'Schmuggel', allowActive: false },
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "client"',
+      },
+    );
   });
 
   it('Test 11: Cross-Tenant-Delete schlägt fehl', async () => {
-    await expect(
+    await dbAbgewiesen(
       withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
         tx.client.delete({ where: { id: clientBId } }),
       ),
-    ).rejects.toThrow();
+      { prismaCode: 'P2025' },
+    );
   });
 
   it('Test 12: Parallele Sessions (Promise.all) leaken sich nicht gegenseitig', async () => {
@@ -486,21 +493,20 @@ describeWithDatabase('Cross-Tenant RLS', () => {
       // frisch erzeugten UUIDs der beiden isolierten Test-Tenants. Nur ein
       // Fehler des zentralen Paar-Triggers zaehlt: NOT-NULL/FK-Folgefehler
       // duerfen einen fehlenden Guard nicht als false positive maskieren.
-      await expect(
+      await dbAbgewiesen(
         owner.$executeRawUnsafe(
           `INSERT INTO public."${tableName}" ("tenant_id", "client_id") VALUES ('${tenantAId}'::uuid, '${clientBId}'::uuid)`,
         ),
-        tableName,
-      ).rejects.toThrow(
         new RegExp(
           `tenant_id und client_id gehören nicht zum selben Mandanten-Scope \\(${tableName}\\)`,
         ),
+        tableName,
       );
     }
   });
 
   it('Test 24: App-Role blockiert Cross-Tenant-Paarung bei INSERT auf zuvor ungeschützten Tabellen', async () => {
-    await expect(
+    await dbAbgewiesen(
       withTenantContext({ tenantId: tenantAId, actorId: staffAId, actorType: 'STAFF' }, (tx) =>
         tx.phoneNote.create({
           data: {
@@ -513,9 +519,14 @@ describeWithDatabase('Cross-Tenant RLS', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23503',
+        meldung:
+          'Mandant der referenzierten client_id ist im aktuellen DB-Scope nicht vorhanden (phone_note).',
+      },
+    );
 
-    await expect(
+    await dbAbgewiesen(
       withTenantContext({ tenantId: tenantAId, actorId: staffAId, actorType: 'STAFF' }, (tx) =>
         tx.clientReminder.create({
           data: {
@@ -527,7 +538,12 @@ describeWithDatabase('Cross-Tenant RLS', () => {
           },
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23503',
+        meldung:
+          'Mandant der referenzierten client_id ist im aktuellen DB-Scope nicht vorhanden (client_reminder).',
+      },
+    );
   });
 
   it('Test 25: App-Role blockiert Cross-Tenant-Reparenting einer sichtbaren Kindzeile', async () => {
@@ -545,26 +561,33 @@ describeWithDatabase('Cross-Tenant RLS', () => {
         }),
     );
 
-    await expect(
+    await dbAbgewiesen(
       withTenantContext({ tenantId: tenantAId, actorId: staffAId, actorType: 'STAFF' }, (tx) =>
         tx.clientReminder.update({
           where: { id: reminder.id },
           data: { clientId: clientBId },
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '23503',
+        meldung:
+          'Mandant der referenzierten client_id ist im aktuellen DB-Scope nicht vorhanden (client_reminder).',
+      },
+    );
   });
 
   it('Test 26: Client-ID und Tenant-Zuordnung sind auch für BYPASSRLS unveränderlich', async () => {
-    await expect(
+    await dbAbgewiesen(
       owner.client.update({ where: { id: clientAId }, data: { tenantId: tenantBId } }),
-    ).rejects.toThrow(/unveränderliche Scope-Identität/);
-    await expect(
+      /unveränderliche Scope-Identität/,
+    );
+    await dbAbgewiesen(
       owner.client.update({
         where: { id: clientAId },
         data: { id: '99999999-9999-4999-8999-999999999999' },
       }),
-    ).rejects.toThrow(/unveränderliche Scope-Identität/);
+      /unveränderliche Scope-Identität/,
+    );
   });
 
   it('Test 27: Parent-Lock serialisiert Kind-INSERT ohne Deadlock', async () => {
@@ -669,24 +692,29 @@ describeWithDatabase('Cross-Tenant RLS', () => {
   });
 
   it('Test 21: BwaPlanLine — Insert an Plan von B aus Kontext A wird blockiert (WITH CHECK)', async () => {
-    await expect(
+    await dbAbgewiesen(
       withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
         tx.bwaPlanLine.create({
           data: { planId: bwaPlanBId, axis: 'PERSONNEL', amount: '1' },
         }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "bwa_plan_line"',
+      },
+    );
   });
 
   it('Test 22: BwaPlanLine — Cross-Tenant-Update auf Planzeile von B schlägt fehl', async () => {
-    await expect(
+    await dbAbgewiesen(
       withTenantContext({ tenantId: tenantAId, actorId: null, actorType: 'SYSTEM' }, (tx) =>
         tx.bwaPlanLine.update({
           where: { id: bwaPlanLineBId },
           data: { amount: '999999' },
         }),
       ),
-    ).rejects.toThrow(); // RLS-Violation oder Record not found
+      { prismaCode: 'P2025' },
+    ); // RLS-Violation oder Record not found
   });
 
   // ---------------------------------------------------------------------

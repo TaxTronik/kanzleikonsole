@@ -6,6 +6,7 @@ import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
 import { createWorkflowFeedbackTx } from '../workflow-feedback';
 import { lockWorkflowInstanceTx, resumeElapsedPausedWorkflowTx } from '../workflow-lifecycle';
+import { anwendungAbgewiesen, dbAbgewiesen } from '../testing/db-fehler';
 
 const run = process.env.DATABASE_URL && process.env.DATABASE_APP_URL ? describe : describe.skip;
 run('WORKFLOW-LIFECYCLE-001 / CLIENT-FEEDBACK-001 actual database transitions', () => {
@@ -270,11 +271,15 @@ run('WORKFLOW-LIFECYCLE-001 / CLIENT-FEEDBACK-001 actual database transitions', 
     expect(await owner.workflowInstance.findUnique({ where: { id: f.workflow.id } })).toMatchObject(
       { status: 'CANCELLED', feedbackPendingAt: null },
     );
-    await expect(
+    await dbAbgewiesen(
       context((tx) =>
         tx.workflowInstance.update({ where: { id: f.workflow.id }, data: { status: 'COMPLETED' } }),
       ),
-    ).rejects.toThrow();
+      {
+        sqlState: 'P0001',
+        meldung: 'Pausierten oder abgebrochenen Workflow zuerst ausdruecklich fortsetzen.',
+      },
+    );
   });
   it('request close completes its last item and its parent, without a web callback', async () => {
     const f = await fixture(1);
@@ -480,7 +485,7 @@ run('WORKFLOW-LIFECYCLE-001 / CLIENT-FEEDBACK-001 actual database transitions', 
     await context((tx) =>
       tx.workflowItem.update({ where: { id: f.items[0]!.id }, data: { doneAt: new Date() } }),
     );
-    await expect(
+    await anwendungAbgewiesen(
       context((tx) =>
         createWorkflowFeedbackTx(
           tx,
@@ -496,7 +501,8 @@ run('WORKFLOW-LIFECYCLE-001 / CLIENT-FEEDBACK-001 actual database transitions', 
           },
         ),
       ),
-    ).rejects.toThrow('synthetic evidence failure');
+      'synthetic evidence failure',
+    );
     expect(
       await owner.clientInteraction.count({ where: { tenantId, sourceId: f.workflow.id } }),
     ).toBe(0);

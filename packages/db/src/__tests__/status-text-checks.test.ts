@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
+import { dbAbgewiesen } from '../testing/db-fehler';
 
 const hasDatabase = Boolean(process.env['DATABASE_URL']);
 if (process.env['CI'] === 'true' && !hasDatabase) {
@@ -122,9 +123,10 @@ describeWithDatabase('Status-CHECKs ohne Enum (D-07)', () => {
       await owner.inboundMessage.update({ where: { id: messageId }, data: { status } });
     }
     for (const status of ['DONE', 'complete', '']) {
-      await expect(
+      await dbAbgewiesen(
         owner.$executeRaw`UPDATE inbound_message SET status = ${status} WHERE id = ${messageId}::uuid`,
-      ).rejects.toThrow(/inbound_message_status_check/);
+        /inbound_message_status_check/,
+      );
     }
     const row = await owner.inboundMessage.findUniqueOrThrow({ where: { id: messageId } });
     expect(row.status).toBe('PENDING');
@@ -135,16 +137,18 @@ describeWithDatabase('Status-CHECKs ohne Enum (D-07)', () => {
       await owner.inboundAttachment.update({ where: { id: attachmentId }, data: { status } });
     }
     for (const status of ['DONE', 'clean', 'INFECTED', '']) {
-      await expect(
+      await dbAbgewiesen(
         owner.$executeRaw`UPDATE inbound_attachment SET status = ${status} WHERE id = ${attachmentId}::uuid`,
-      ).rejects.toThrow(/inbound_attachment_status_check/);
+        /inbound_attachment_status_check/,
+      );
     }
-    await expect(
+    await dbAbgewiesen(
       owner.$executeRaw`
         INSERT INTO inbound_attachment (message_id, part, filename, mime_type, sha256, size_bytes, status)
         VALUES (${messageId}::uuid, 1, 'x.pdf', 'application/pdf', ${'b'.repeat(64)}, 1, 'QUARANTINE')
       `,
-    ).rejects.toThrow(/inbound_attachment_status_check/);
+      /inbound_attachment_status_check/,
+    );
     const row = await owner.inboundAttachment.findUniqueOrThrow({ where: { id: attachmentId } });
     expect(row.status).toBe('PENDING');
   });
@@ -154,9 +158,10 @@ describeWithDatabase('Status-CHECKs ohne Enum (D-07)', () => {
       await owner.bwaPlan.update({ where: { id: planId }, data: { status } });
     }
     for (const status of ['ARCHIVED', 'final']) {
-      await expect(
+      await dbAbgewiesen(
         owner.$executeRaw`UPDATE bwa_plan SET status = ${status} WHERE id = ${planId}::uuid`,
-      ).rejects.toThrow(/bwa_plan_status_check/);
+        /bwa_plan_status_check/,
+      );
     }
     const row = await owner.bwaPlan.findUniqueOrThrow({ where: { id: planId } });
     expect(row.status).toBe('DRAFT');

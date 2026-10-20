@@ -4,6 +4,7 @@ import { PrismaClient } from '../prisma-client';
 import type { Prisma } from '@prisma/client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { dbAbgewiesen } from '../testing/db-fehler';
 const run =
   process.env['DATABASE_URL'] && process.env['DATABASE_APP_URL'] ? describe : describe.skip;
 run('workflow expansion against the real app role', () => {
@@ -130,12 +131,13 @@ run('workflow expansion against the real app role', () => {
     const sub = await owner.formSubmission.findUniqueOrThrow({ where: { id: submissionId } });
     expect(JSON.stringify(sub.schemaSnapshot)).toContain('Original field');
     expect(JSON.stringify(sub.schemaSnapshot)).not.toContain('Changed later');
-    await expect(
+    await dbAbgewiesen(
       owner.formSubmission.update({
         where: { id: submissionId },
         data: { schemaSnapshot: { version: 1, fields: [] } },
       }),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Frozen submission schema cannot be changed' },
+    );
   });
   it('hides a designated invitation from another contact of the same client', async () => {
     expect(
@@ -205,13 +207,14 @@ run('workflow expansion against the real app role', () => {
     });
     expect(JSON.stringify(allocation.submission.schemaSnapshot)).toContain('Original field');
     expect(JSON.stringify(allocation.submission.schemaSnapshot)).not.toContain('Changed later');
-    await expect(
+    await dbAbgewiesen(
       owner.yearEndCampaign.update({
         where: { id: campaign.id },
         data: { schemaSnapshot: { version: 1, fields: [] } },
       }),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: 'P0001', meldung: 'Campaign revision is immutable' },
+    );
+    await dbAbgewiesen(
       owner.yearEndCampaignEntry.create({
         data: {
           tenantId,
@@ -221,7 +224,12 @@ run('workflow expansion against the real app role', () => {
           requestId: allocation.entry.requestId,
         },
       }),
-    ).rejects.toThrow();
+      {
+        sqlState: '23505',
+        meldung:
+          'duplicate key value violates unique constraint "year_end_campaign_entry_submission_id_key"',
+      },
+    );
     expect(await asContact(contactId, (tx) => tx.yearEndCampaign.findMany())).toEqual([]);
   });
   it('allows one designated response, but never revision rewriting', async () => {
@@ -231,19 +239,21 @@ run('workflow expansion against the real app role', () => {
         data: { status: 'RESPONDED', response: '2', respondedAt: new Date() },
       }),
     );
-    await expect(
+    await dbAbgewiesen(
       asContact(contactId, (tx) =>
         tx.clientInteraction.update({ where: { id: interactionId }, data: { response: '5' } }),
       ),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: 'P0001', meldung: 'Response is immutable' },
+    );
+    await dbAbgewiesen(
       asContact(contactId, (tx) =>
         tx.clientInteraction.update({
           where: { id: interactionId },
           data: { snapshot: { version: 1, title: 'Changed' } },
         }),
       ),
-    ).rejects.toThrow();
+      { sqlState: 'P0001', meldung: 'Interaction snapshot is immutable' },
+    );
   });
   it('YEAR-END-CAMPAIGN-001 freezes old answers, submission time and exact file versions before correction', async () => {
     const base = await owner.formSubmission.findUniqueOrThrow({ where: { id: submissionId } });
@@ -348,21 +358,25 @@ run('workflow expansion against the real app role', () => {
     expect(old?.answers).toEqual(answers);
     expect(old?.submittedAt).toEqual(submittedAt);
     expect(old?.files[0]?.documentVersionId).toBe(document.versions[0]!.id);
-    await expect(
+    await dbAbgewiesen(
       owner.formSubmissionRevision.update({
         where: { id: revision.id },
         data: { answers: { original: 'Overwritten' } },
       }),
-    ).rejects.toThrow();
-    await expect(
-      owner.documentVersion.delete({ where: { id: document.versions[0]!.id } }),
-    ).rejects.toThrow();
-    await expect(
+      { sqlState: 'P0001', meldung: 'Submitted form revision is immutable' },
+    );
+    await dbAbgewiesen(owner.documentVersion.delete({ where: { id: document.versions[0]!.id } }), {
+      sqlState: '23503',
+      meldung:
+        'update or delete on table "document_version" violates foreign key constraint "form_submission_revision_file_document_version_id_fkey" on table "form_submission_revision_file"',
+    });
+    await dbAbgewiesen(
       owner.documentVersion.update({
         where: { id: document.versions[0]!.id },
         data: { storageKey: 'retagged-source', storageVersionId: 'replacement' },
       }),
-    ).rejects.toThrow('Submitted form source identity is immutable');
+      'Submitted form source identity is immutable',
+    );
     await owner.documentVersion.update({
       where: { id: document.versions[0]!.id },
       data: { scanStatus: 'INFECTED' },
@@ -371,11 +385,12 @@ run('workflow expansion against the real app role', () => {
       (await owner.documentVersion.findUniqueOrThrow({ where: { id: document.versions[0]!.id } }))
         .scanStatus,
     ).toBe('INFECTED');
-    await expect(
+    await dbAbgewiesen(
       asContact(contactId, (tx) =>
         tx.formSubmissionRevision.delete({ where: { id: revision.id } }),
       ),
-    ).rejects.toThrow();
+      { sqlState: '42501', meldung: 'permission denied for table form_submission_revision' },
+    );
   });
   it('TAX-NOTICE-DECISION-001 binds the current notice and shared file version without completing legal control', async () => {
     const clientId = (await owner.clientContact.findUniqueOrThrow({ where: { id: contactId } }))
@@ -471,7 +486,10 @@ run('workflow expansion against the real app role', () => {
     });
     const closed = await makeNotice('closed-request');
     await owner.request.update({ where: { id: closed.request.id }, data: { status: 'CLOSED' } });
-    await expect(respond(closed.interaction.id)).rejects.toThrow();
+    await dbAbgewiesen(respond(closed.interaction.id), {
+      sqlState: 'P0001',
+      meldung: 'Interaction request is closed',
+    });
     const changed = await makeNotice('changed-source');
     await owner.taxNotice.update({
       where: { id: changed.notice.id },
@@ -480,7 +498,10 @@ run('workflow expansion against the real app role', () => {
         reviewNotes: 'Changed source stand',
       },
     });
-    await expect(respond(changed.interaction.id)).rejects.toThrow();
+    await dbAbgewiesen(respond(changed.interaction.id), {
+      sqlState: 'P0001',
+      meldung: 'Notice revision changed',
+    });
     const replaced = await makeNotice('replaced-document');
     await owner.documentVersion.create({
       data: {
@@ -495,6 +516,9 @@ run('workflow expansion against the real app role', () => {
         createdById: staffId,
       },
     });
-    await expect(respond(replaced.interaction.id)).rejects.toThrow();
+    await dbAbgewiesen(respond(replaced.interaction.id), {
+      sqlState: 'P0001',
+      meldung: 'Notice revision changed',
+    });
   });
 });
