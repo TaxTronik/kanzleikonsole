@@ -433,6 +433,61 @@ describe('Erfassen, Würdigung, Erklärung, Nachkontrolle', () => {
     }
   });
 
+  it('erfassen: Quellangabe einzeilig (TCMS s10) – Zeilenumbruch, TAB, Richtungs- und unsichtbare Zeichen als Feldfehler des Vertrags', async () => {
+    const z = (...cps: number[]) => String.fromCodePoint(...cps);
+    for (const quelleText of [
+      'Außenprüfung\nUSt 2024',
+      'Außenprüfung\r\nUSt 2024',
+      'Außenprüfung\tUSt 2024',
+      `Außenprüfung ${z(0x202e)}USt 2024`,
+      `Außen${z(0x200b)}prüfung`,
+      `Außenprüfung${z(0x2028)}USt`,
+    ]) {
+      h.spec = null;
+      await aktionen.feststellungErfassenAction(
+        MANDANT,
+        null,
+        formular([
+          ['titel', 'Clearingkonto Klarna mit Restsaldo'],
+          ['sachverhalt', 'Restsaldo zum Monatsende auf dem Klarna-Clearingkonto.'],
+          ['quelle', 'HINWEIS'],
+          ['quelleText', quelleText],
+          ['klasse', 'DURCHFUEHRUNGSMANGEL'],
+          ['schwere', 'GERING'],
+          ['auswirkung', 'NEIN'],
+        ]),
+      );
+      expect(fehler().quelleText, JSON.stringify(quelleText)).toEqual(['Unzulässige Zeichen']);
+    }
+  });
+
+  it('Erklärung: Steuerart, Land und Zeitraum einzeilig (TCMS s10) – Feldfehler des Vertrags, kein Dienstaufruf', async () => {
+    const z = (...cps: number[]) => String.fromCodePoint(...cps);
+    const gut: Record<string, string> = { steuerart: 'USt (OSS)', land: 'CZ', zeitraum: 'Q3 2026' };
+    for (const feld of ['steuerart', 'land', 'zeitraum']) {
+      for (const schlecht of [
+        `${gut[feld]}\n2`,
+        `${gut[feld]}\t2`,
+        `${z(0x202e)}${gut[feld]}`,
+        `${gut[feld]}${z(0x200b)}`,
+      ]) {
+        h.spec = null;
+        await aktionen.erklaerungAction(
+          MANDANT,
+          FID,
+          null,
+          formular([
+            ...Object.entries({ ...gut, [feld]: schlecht }),
+            ['auswirkungEur', ''],
+          ] as Array<[string, string]>),
+        );
+        expect(fehler(), `${feld} ${JSON.stringify(schlecht)}`).toEqual({
+          [feld]: ['Unzulässige Zeichen'],
+        });
+      }
+    }
+  });
+
   it('Erklärung: deutscher Betrag, leer = zu klären, unlesbar = Feldfehler', async () => {
     const basis: Array<[string, string]> = [
       ['steuerart', 'USt (OSS)'],

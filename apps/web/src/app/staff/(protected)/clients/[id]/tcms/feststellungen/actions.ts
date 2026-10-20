@@ -13,6 +13,7 @@ import { TcmsKonflikt, TcmsUngueltig } from '@taxtronik/tcms-client';
 import {
   AuswirkungSchema,
   ENDPUNKTE,
+  ErklaerungBodySchema,
   FeststellungErfassenBodySchema,
   FeststellungKlasseSchema,
   FeststellungQuelleSchema,
@@ -58,7 +59,8 @@ const ErfassenFormular = z
     titel: FeststellungErfassenBodySchema.shape.titel,
     sachverhalt: freitext(20, 4000),
     quelle: FeststellungQuelleSchema,
-    quelleText: freitext(2, 200),
+    // Angabe zur Quelle: eine Bezeichnung, einzeilig wie im Vertrag (TCMS s10).
+    quelleText: FeststellungErfassenBodySchema.shape.quelleText,
     durchfuehrungId: z.preprocess(leerAlsUndefined, ObjektIdSchema.optional()),
     klasse: FeststellungKlasseSchema,
     schwere: SchwereSchema,
@@ -231,9 +233,11 @@ export async function wuerdigungAction(
 }
 
 const ErklaerungFormular = z.object({
-  steuerart: freitext(2, 120),
-  land: freitext(2, 40),
-  zeitraum: freitext(2, 40),
+  // Bezeichnungen, einzeilig wie im Vertrag (TCMS s10): Zeilenumbruch und
+  // unzulässige Zeichen als Feldfehler mit dem Text des Vertrags.
+  steuerart: ErklaerungBodySchema.shape.steuerart,
+  land: ErklaerungBodySchema.shape.land,
+  zeitraum: ErklaerungBodySchema.shape.zeitraum,
   auswirkungEur: z.string().transform((roh, ctx) => {
     const wert = parseDezimal(roh);
     if (wert === 'fehler') {

@@ -512,7 +512,9 @@ export async function GET(
 Der Vertrag hat eine Zeichenregel aus Unicode-Eigenschaften
 (`UNZULAESSIG_KLASSE`: Steuer-, Format-, Zeilen- und Absatztrennzeichen,
 standardmäßig unsichtbare Zeichen wie Variantenselektoren, einzelne Surrogate).
-Einzeilige Texte (Titel, Namen, Funktion, Rechtsform) und Dateinamen dürfen
+Einzeilige Texte (Titel, Namen, Funktion, Rechtsform; seit s10 auch
+Steuerart, Land und Zeitraum einer Erklärung sowie die Quellangabe einer
+Feststellung) und Dateinamen dürfen
 keines dieser Zeichen enthalten (Dateinamen zusätzlich kein `/` und `\`),
 Freitexte kein NUL, kein einzelnes Surrogat und (seit s9) keine
 Richtungssteuerzeichen U+202A–202E und U+2066–2069 (`TEXT_UNZULAESSIG`;
