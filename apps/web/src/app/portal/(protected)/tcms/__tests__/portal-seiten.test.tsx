@@ -460,6 +460,15 @@ describe('Portal – Richtungsisolation', () => {
       }),
     );
     erwarteIsoliert(container, 3);
+    // Dateinamen der Anlagen kommen aus der eigenen Ablage oder bereinigt aus
+    // dem Dienst (RT3B-K-04) und tragen deshalb keine Marke mehr; isoliert
+    // stehen sie trotzdem: an Link, Herunterladen und Entfernen in <bdi>.
+    const anlagen = within(screen.getByRole('region', { name: 'Anlagen' }));
+    for (const n of tcmsFixtures.portalAufgabeK23Murat().nachweise) {
+      const orte = anlagen.getAllByText(n.dateiname);
+      expect(orte.length, n.dateiname).toBeGreaterThanOrEqual(3);
+      for (const ort of orte) expect(ort.tagName, n.dateiname).toBe('BDI');
+    }
   });
 
   it('Ereignis melden mit bisherigen Meldungen', async () => {

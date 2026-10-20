@@ -15,6 +15,7 @@
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { tcmsFixtures } from '@/__tests__/tcms-fixtures';
+import { erwarteIsoliert, MARKE } from '@/__tests__/tcms-isolation';
 import { NachweisListe, type Nachweis, type NachweisListeProps } from '../nachweis-liste';
 
 const namen = { name: (id: string | null | undefined) => (id ? `Person ${id.slice(-2)}` : '—') };
@@ -86,6 +87,19 @@ describe('NachweisListe', () => {
     expect(html).not.toContain('fdp.exe');
     expect(screen.getAllByRole('link', { name: /Kassenbericht Oktober\.pdf/ })).toHaveLength(2);
     expect(screen.getAllByRole('link', { name: /Liste_\.\._x\.csv/ })).toHaveLength(2);
+  });
+
+  it('Richtungsisolation (kk-tcms-qual): eigener Name und bereinigter Dienstwert in <bdi>', () => {
+    const [a, b] = nachweise;
+    const { container } = liste([a!, { ...b!, dateiname: `${MARKE}Liste.csv${MARKE}` }], {
+      dateinamen: new Map([[a!.id, `${MARKE}Kassenbericht Oktober.pdf${MARKE}`]]),
+    });
+    // Name aus der eigenen Ablage: Link und Herunterladen isoliert.
+    erwarteIsoliert(container, 2);
+    // Dienstwert ohne eigenes Dokument: Marken entfallen (RT3B-K-04), isoliert bleibt er.
+    const orte = screen.getAllByText('Liste.csv');
+    expect(orte).toHaveLength(2);
+    for (const ort of orte) expect(ort.tagName).toBe('BDI');
   });
 
   it('Entfernen nur, wo die Seite ein Bedienelement liefert; Sperre sichtbar', () => {

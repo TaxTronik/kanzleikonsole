@@ -43,7 +43,7 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
-import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { erwarteIsoliert, MARKE, markiert } from '@/__tests__/tcms-isolation';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
@@ -260,5 +260,22 @@ describe('Ereigniseingang – Richtungsisolation', () => {
     }));
     const { container } = await seite({ e: ereignis.id });
     erwarteIsoliert(container, 3);
+  });
+
+  it('Anlagen: Dateiname bereinigt (RT3B-K-04) und isoliert', async () => {
+    ereignis.anlagen = [
+      {
+        dateiname: `${MARKE}Bescheid.pdf${MARKE}`,
+        mime: 'application/pdf',
+        groesse: 2048,
+        sha256: 'cd'.repeat(32),
+      },
+    ];
+    await seite();
+    // Die Zeichenregel nimmt die Marke heraus; der Name steht trotzdem in <bdi>.
+    expect(document.body.innerHTML).not.toContain(MARKE);
+    const orte = screen.getAllByText('Bescheid.pdf');
+    expect(orte.length).toBeGreaterThan(0);
+    for (const ort of orte) expect(ort.tagName).toBe('BDI');
   });
 });

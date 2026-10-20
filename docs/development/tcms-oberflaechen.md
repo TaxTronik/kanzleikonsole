@@ -558,6 +558,11 @@ außerhalb), Absätze und Zellen mit `dir="auto"` (`TcmsTextBlock` oder
 und `<textarea>`). Zusammengesetzte Zeilen isolieren nur den Teil aus dem
 Dienst (`F-2026-001 · <bdi>Titel</bdi>`), damit Nummern, Labels und
 Satzzeichen ihre Reihenfolge behalten. Attribute (`title`, `aria-label`)
-bleiben roh. Namen aus der kanzleikonsole (`tcmsNamen`, Stammdaten von
+bleiben roh. Dateinamen sind doppelt geschützt: Sie kommen aus der eigenen
+Ablage oder bereinigt aus dem Dienst (RT3B-K-04, oben) und stehen trotzdem in
+`<bdi>`. Weil die Bereinigung die Richtungsmarken entfernt, prüfen die Tests
+die Isolation der Dateinamen am Ort im DOM (Name in `<bdi>`: Portal-Anlagen,
+Ereignis-Anlagen, `NachweisListe`) bzw. mit einem markierten Namen aus der
+eigenen Ablage (Durchführung, Grenze des Mocks). Namen aus der kanzleikonsole (`tcmsNamen`, Stammdaten von
 Personen) sind keine Texte des Dienstes und fallen nicht unter diese Regel;
 sie werden bisher ohne Isolation angezeigt.
