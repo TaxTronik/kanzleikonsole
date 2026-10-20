@@ -24,6 +24,7 @@ import type { TcmsNamen } from '@/server/tcms/namen';
 import { personIdsAus } from '@/server/tcms/namen';
 import { tcmsLesen, tcmsNamenLesen, tcmsPortalSeite } from '@/server/tcms/seite';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
+import { TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS' };
 
@@ -187,7 +188,9 @@ export default async function PortalTcmsPage() {
                     <KatalogIcon name={typ?.icon ?? 'Bell'} />
                   </span>
                   <span className="grow">
-                    <span className="block text-sm font-medium text-primary">{m.titel}</span>
+                    <span className="block text-sm font-medium text-primary">
+                      <TcmsText>{m.titel}</TcmsText>
+                    </span>
                     <span className="block text-xs text-muted mt-0.5">
                       {m.typ} · gemeldet {isoDatumText(m.gemeldetAm)}
                       {m.gemeldetVon ? ` von ${namen.name(m.gemeldetVon)}` : ''} · Vorgang{' '}
@@ -221,11 +224,11 @@ function AufgabeZeile({ a, namen }: { a: Aufgabe; namen: TcmsNamen }) {
           className="block text-sm font-medium text-primary hover:underline"
         >
           {a.art === 'BESTAETIGEN' ? 'Bestätigen: ' : ''}
-          {a.titel}
+          <TcmsText>{a.titel}</TcmsText>
         </Link>
         <span className="block text-xs text-muted mt-0.5">
-          {a.periodeLabel} · fällig {isoDatumText(a.faelligAm)} · Nachweise {a.nachweise}/
-          {a.mindestNachweise}
+          <TcmsText>{a.periodeLabel}</TcmsText> · fällig {isoDatumText(a.faelligAm)} · Nachweise{' '}
+          {a.nachweise}/{a.mindestNachweise}
           {a.zustaendigId ? ` · ${namen.name(a.zustaendigId)}` : ''}
         </span>
       </span>

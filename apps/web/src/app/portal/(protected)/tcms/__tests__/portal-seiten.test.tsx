@@ -64,6 +64,8 @@ vi.mock('../freigaben/actions', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
 import { FreigabeCodeFormular, CODE_FELD } from '@/components/tcms/portal/freigabe-formulare';
 import { NUR_EIGENE_MELDUNGEN } from '@/components/tcms/portal/texte';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
@@ -131,7 +133,11 @@ describe('Kontrollaufgabe im Portal', () => {
       expect.objectContaining({ name: 'portalAufgabeLesen' }),
       { params: { durchfuehrungId: AUFGABE }, query: {} },
     );
-    expect(screen.getByText(aufgabe.pruefung.maengel.join(' · '), { exact: false })).toBeTruthy();
+    // Jeder Mangel des Dienstes steht in <bdi> (kk-tcms-qual): Abgleich auf den Absatz.
+    const offen = `Noch offen: ${aufgabe.pruefung.maengel.join(' · ')}`;
+    expect(
+      screen.getByText((_, e) => e?.tagName === 'P' && !!e.textContent?.startsWith(offen)),
+    ).toBeTruthy();
     for (const n of aufgabe.nachweise) {
       const links = screen.getAllByRole('link', {
         name: new RegExp(n.dateiname.replace('.', '\\.')),
@@ -431,5 +437,65 @@ describe('FreigabeCodeFormular', () => {
     expect(gesendet).toBe('481516');
     await waitFor(() => expect(screen.getByText(/Noch 2 Versuche/)).toBeTruthy());
     expect(document.body.innerHTML).not.toContain('481516');
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Texte des Dienstes im Portal (Aufgabe, Anlagen,
+// Meldungen, Freigaben samt vorgelegter Beschreibung) bleiben isoliert.
+describe('Portal – Richtungsisolation', () => {
+  it('Kontrollaufgabe mit Anlagen', async () => {
+    h.seite.mockResolvedValue(seiteFuer(DEMO.murat));
+    h.lesen.mockResolvedValue({
+      ok: true,
+      daten: markiert(
+        tcmsFixtures.portalAufgabeK23Murat(),
+        ENDPUNKTE.portalAufgabeLesen.antwortSchema,
+      ),
+      requestId: 'r',
+    });
+    const { container } = await renderServer(
+      PortalKontrollaufgabePage({
+        params: Promise.resolve({ id: AUFGABE }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    erwarteIsoliert(container, 3);
+  });
+
+  it('Ereignis melden mit bisherigen Meldungen', async () => {
+    h.seite.mockResolvedValue(seiteFuer(DEMO.jana));
+    const u = markiert(
+      tcmsFixtures.portalUebersichtJana(),
+      ENDPUNKTE.portalUebersichtLesen.antwortSchema,
+    );
+    const m = markiert(
+      tcmsFixtures.portalMeldungenJana(),
+      ENDPUNKTE.portalMeldungenLesen.antwortSchema,
+    );
+    h.lesen.mockImplementation(async (_s, e: { name: string }) => ({
+      ok: true,
+      daten: e.name === 'portalMeldungenLesen' ? m : u,
+      requestId: 'r',
+    }));
+    const { container } = await renderServer(
+      PortalEreignisPage({ searchParams: Promise.resolve({}) }),
+    );
+    erwarteIsoliert(container, 1);
+  });
+
+  it('Freigaben und vorgelegte Beschreibung', async () => {
+    h.seite.mockResolvedValue(seiteFuer(DEMO.jana));
+    h.lesen.mockResolvedValue({
+      ok: true,
+      daten: markiert(
+        tcmsFixtures.portalFreigabenJana(),
+        ENDPUNKTE.portalFreigabenLesen.antwortSchema,
+      ),
+      requestId: 'r',
+    });
+    const { container } = await renderServer(
+      PortalFreigabenPage({ searchParams: Promise.resolve({}) }),
+    );
+    erwarteIsoliert(container, 3);
   });
 });

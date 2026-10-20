@@ -281,6 +281,7 @@ Protokolliert werden nur Komponente, Endpunkt, Fehlerklasse, Status, Code,
 | `ergebnis.ts`      | `TcmsAktionsErgebnis` (ActionResult mit `meldung`/`warnung`), `TcmsFormAktion` – ein Typ für alle Bereiche                                                                                                    |
 | `formular.ts`      | `useTcmsFormular`: Absenden in einer Transition, Eingaben bleiben bei Ablehnung stehen, Reset nur nach Erfolg (abschaltbar), keine Doppelübermittlung, optional Gefahrendialog und `nachLesen`                |
 | `zustellung.tsx`   | `ZustellungAnzeige`, `zustellungGescheitert`, `zustellungText`: Zustellstatus der jüngsten Nachricht zu einer Freigabe (Kommunikation, Beschreibung, Risikoakzeptanz), feste Texte je Status, Grund und Zweck |
+| `text.tsx`         | `TcmsText` (`<bdi>`), `TcmsTextListe`, `TcmsTextBlock` (`dir="auto"`), `TCMS_TEXT_ISOLIERT`: richtungsisolierte Anzeige jedes Textes aus dem Dienst (Abschnitt 12)                                            |
 
 Bereichsübergreifend genutzte Bausteine in Unterordnern (eine Darstellung je
 Sache für Kanzlei und Portal, Integration Stufe 3):
@@ -311,6 +312,16 @@ mindestens zwei Bereiche sie brauchen.
   (Vorlage: `clients/[id]/tcms/__tests__/seiten.test.tsx`). Zu prüfen: Daten
   der Antwort, Zustände statt Daten, Rechte-Kennzeichen, maskierte Felder,
   Namen nur aus der kanzleikonsole.
+- **Richtungsisolation:** Jede Seite mit Texten des Dienstes hat einen Block
+  `… – Richtungsisolation`: Die Antwort aus den Fixtures läuft durch
+  `markiert` (`src/__tests__/tcms-isolation.ts`; RLM an Anfang und Ende jedes
+  Freitexts, erneut gegen das `antwortSchema` geprüft), `erwarteIsoliert`
+  verlangt für jeden markierten Textknoten ein `<bdi>` oder ein Element mit
+  `dir` darüber. Abgedeckt sind Beschreibung, Feststellungen, Durchführung samt
+  Nachweisliste, Ereignisse, Portal, Audit sowie Cockpit, Kontakte, Risiken,
+  Kontrollen, Kalender, Prüfung, Länder, Profil, Einrichtung, Kommunikation,
+  Arbeitskorb und Portfolio; Bausteine und Prüfhilfe prüft
+  `components/tcms/__tests__/isolation.test.tsx`.
 - **Aktions-Tests:** Ablauf und Fehlerabbildung testet
   `server/tcms/__tests__/aktion.test.ts`. Bereichsaktionen testen ihre
   Verdrahtung mit gemocktem `@/server/tcms/aktion` (Vorlage:
@@ -536,3 +547,17 @@ durchfuehrung/nachweis-liste.tsx`) nimmt ihn für Link, Entfernen und
   zeigt `TCMS_AKTION_TEXTE.ungueltigOhneFeld`.
 - Die Regel folgt der Unicode-Version der Laufzeit; kanzleikonsole und Dienst
   laufen auf derselben Node-Hauptversion (24).
+
+**Anzeige (kk-tcms-qual):** Weil Freitexte LRM/RLM/ALM enthalten dürfen und
+Altbestand tolerant gelesen wird, erscheint jeder Text aus dem Dienst – Titel,
+Namen, Freitexte, Begründungen, Dateinamen, Listen wie Kanäle – nur
+richtungsisoliert über `components/tcms/text.tsx`: inline als `TcmsText`
+(`<bdi>`), Listen als `TcmsTextListe` (jeder Eintrag isoliert, Trenner
+außerhalb), Absätze und Zellen mit `dir="auto"` (`TcmsTextBlock` oder
+`TCMS_TEXT_ISOLIERT` an einem Element, das nur den Text trägt, auch `<option>`
+und `<textarea>`). Zusammengesetzte Zeilen isolieren nur den Teil aus dem
+Dienst (`F-2026-001 · <bdi>Titel</bdi>`), damit Nummern, Labels und
+Satzzeichen ihre Reihenfolge behalten. Attribute (`title`, `aria-label`)
+bleiben roh. Namen aus der kanzleikonsole (`tcmsNamen`, Stammdaten von
+Personen) sind keine Texte des Dienstes und fallen nicht unter diese Regel;
+sie werden bisher ohne Isolation angezeigt.

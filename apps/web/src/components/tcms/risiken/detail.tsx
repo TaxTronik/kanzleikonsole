@@ -63,6 +63,7 @@ import {
   UEBERSTEUERUNG_STATUS_BADGE,
   UEBERSTEUERUNG_STATUS_LABEL,
 } from './labels';
+import { TcmsText } from '@/components/tcms/text';
 
 export interface RisikoAktionen {
   neuBewerten: TcmsAktion;
@@ -152,7 +153,8 @@ export function RisikoDetailBereich({
   return (
     <DetailBereich
       id={`tcms-risiko-${r.id}`}
-      titel={`${r.code} · ${r.titel}`}
+      kennung={r.code}
+      titel={r.titel}
       schliessenHref={schliessenHref}
       plaketten={
         <>
@@ -295,7 +297,7 @@ function NeuBewertenHinweis({ t }: { t: Teil }) {
                 className="underline"
                 href={t.link(`${t.basis}/ereignisse?e=${encodeURIComponent(h.ereignisId)}`)}
               >
-                {h.text}
+                <TcmsText>{h.text}</TcmsText>
               </Link>
             ) : (
               h.text
@@ -322,15 +324,18 @@ function BeschreibungAbschnitte({ t }: { t: Teil }) {
     <>
       <Abschnitt titel="Beschreibung" offen>
         <p className="text-sm text-secondary">
-          <span className="font-medium text-primary">Fehlerquelle:</span> {r.fehlerquelle} →{' '}
-          <span className="font-medium text-primary">Folge:</span> {r.folge}
+          <span className="font-medium text-primary">Fehlerquelle:</span>{' '}
+          <TcmsText>{r.fehlerquelle}</TcmsText> →{' '}
+          <span className="font-medium text-primary">Folge:</span> <TcmsText>{r.folge}</TcmsText>
         </p>
       </Abschnitt>
       <Abschnitt titel="Anwendbarkeit">
         <div className="flex flex-wrap gap-2">
           {r.kern ? <span className="badge-gray">Kernrisiko – immer aktiv</span> : null}
           {r.vorschlagsgrund && !r.kern ? (
-            <span className="badge-brand">{r.vorschlagsgrund}</span>
+            <span className="badge-brand">
+              <TcmsText>{r.vorschlagsgrund}</TcmsText>
+            </span>
           ) : null}
           {r.herkunft === 'BERATER' ? (
             <span className="badge-gray">eigenes Risiko (Herkunft Berater)</span>
@@ -351,7 +356,9 @@ function BeschreibungAbschnitte({ t }: { t: Teil }) {
                 key={n.text}
                 className="flex flex-wrap items-center justify-between gap-2 text-sm"
               >
-                <span>{n.text}</span>
+                <span>
+                  <TcmsText>{n.text}</TcmsText>
+                </span>
                 <span className={badgeKlasse(NORMSTUFE_BADGE[n.stufe])}>
                   {NORMSTUFE_LABEL[n.stufe]}
                 </span>
@@ -476,21 +483,22 @@ function BewertungAbschnitt({ t }: { t: Teil }) {
       </p>
       <ul className="text-xs text-muted space-y-0.5">
         <li>
-          <span className="font-medium text-secondary">Brutto:</span> {b.brutto.erklaerung}
+          <span className="font-medium text-secondary">Brutto:</span>{' '}
+          <TcmsText>{b.brutto.erklaerung}</TcmsText>
         </li>
         <li>
           <span className="font-medium text-secondary">Netto (Design):</span>{' '}
-          {b.nettoDesign.erklaerung}
+          <TcmsText>{b.nettoDesign.erklaerung}</TcmsText>
           {b.nettoDesign.zaehlend.length ? ` (${b.nettoDesign.zaehlend.join(', ')})` : ''}
         </li>
         <li>
           <span className="font-medium text-secondary">Netto (Betrieb):</span>{' '}
-          {b.nettoBetrieb.erklaerung}
+          <TcmsText>{b.nettoBetrieb.erklaerung}</TcmsText>
           {b.nettoBetrieb.zaehlend.length ? ` (${b.nettoBetrieb.zaehlend.join(', ')})` : ''}
         </li>
         <li>
-          Modell {b.modell} · Stand gültig ab {zeitpunkt(r.gueltigAb)} · Der Governance-Typ
-          verändert die Klasse nicht.
+          Modell <TcmsText>{b.modell}</TcmsText> · Stand gültig ab {zeitpunkt(r.gueltigAb)} · Der
+          Governance-Typ verändert die Klasse nicht.
         </li>
       </ul>
       <p className="inline-flex items-center gap-1.5 text-sm">
@@ -535,7 +543,7 @@ function HerleitungAbschnitt({ t }: { t: Teil }) {
                     href={t.link(`${t.basis}/kontrollen?kontrolle=${encodeURIComponent(k.id)}`)}
                     className="text-sm font-medium text-primary hover:underline"
                   >
-                    {k.code} · {k.titel}
+                    {k.code} · <TcmsText>{k.titel}</TcmsText>
                   </Link>
                   <span className="text-xs text-muted">
                     {KONTROLLART_LABEL[k.art]}
@@ -659,7 +667,7 @@ function AppetitAbschnitt({ t }: { t: Teil }) {
                   href={t.link(`${t.basis}/feststellungen/${encodeURIComponent(f.id)}`)}
                   className="text-sm hover:underline"
                 >
-                  <span className="font-mono">{f.nummer}</span> · {f.titel}
+                  <span className="font-mono">{f.nummer}</span> · <TcmsText>{f.titel}</TcmsText>
                 </Link>
                 <span className={f.massnahmenOffen ? 'badge-yellow' : 'badge-gray'}>
                   {f.massnahmenOffen
@@ -681,7 +689,12 @@ function AppetitAbschnitt({ t }: { t: Teil }) {
                   angefordert {zeitpunkt(a.angefordertAm)} von {namen.name(a.angefordertVon)} bei{' '}
                   {namen.name(a.empfaengerId)}
                   {a.erledigtAm ? ` · entschieden ${zeitpunkt(a.erledigtAm)}` : ''}
-                  {a.anmerkung ? ` · „${a.anmerkung}“` : ''}
+                  {a.anmerkung ? (
+                    <>
+                      {' '}
+                      · „<TcmsText>{a.anmerkung}</TcmsText>“
+                    </>
+                  ) : null}
                 </span>
                 <span className={AKZEPTANZ_STATUS_BADGE[a.status]}>
                   {AKZEPTANZ_STATUS_LABEL[a.status]}
@@ -792,7 +805,9 @@ function UebersteuerungenAbschnitt({ t }: { t: Teil }) {
                   ) : null}
                 </span>
               </div>
-              <p className="text-xs text-secondary">„{u.begruendung}“</p>
+              <p className="text-xs text-secondary">
+                „<TcmsText>{u.begruendung}</TcmsText>“
+              </p>
               <p className="text-xs text-muted">
                 beantragt von {namen.name(u.beantragtVon)} · {zeitpunkt(u.beantragtAm)}
                 {u.entschiedenVon
@@ -1008,7 +1023,7 @@ function EreignisseAbschnitt({ t }: { t: Teil }) {
                   >
                     {e.typ}
                   </Link>{' '}
-                  · {e.titel}
+                  · <TcmsText>{e.titel}</TcmsText>
                 </span>
                 <span className={badgeKlasse(EREIGNIS_STATUS_BADGE[e.status])}>
                   {EREIGNIS_STATUS_LABEL[e.status]} · {isoDatumText(e.gemeldetAm)}
@@ -1018,8 +1033,8 @@ function EreignisseAbschnitt({ t }: { t: Teil }) {
                 .filter((f) => f.ziel === r.code)
                 .map((f) => (
                   <p key={f.id} className="text-xs text-muted">
-                    Folge: {FOLGE_LABEL[f.art as FolgeArt] ?? f.art} – {f.text} (
-                    {f.status.toLowerCase()})
+                    Folge: {FOLGE_LABEL[f.art as FolgeArt] ?? f.art} – <TcmsText>{f.text}</TcmsText>{' '}
+                    ({f.status.toLowerCase()})
                   </p>
                 ))}
             </li>
@@ -1124,7 +1139,12 @@ function HistorieAbschnitt({ t }: { t: Teil }) {
                 <span className="text-xs text-secondary shrink-0">{namen.name(a.actorId)}</span>
                 <span className="grow">
                   {RISIKO_AUDIT_LABEL[a.aktion] ?? a.aktion}
-                  {zusatz ? <span className="text-xs text-muted"> · {zusatz}</span> : null}
+                  {zusatz ? (
+                    <span className="text-xs text-muted">
+                      {' '}
+                      · <TcmsText>{zusatz}</TcmsText>
+                    </span>
+                  ) : null}
                 </span>
               </li>
             );

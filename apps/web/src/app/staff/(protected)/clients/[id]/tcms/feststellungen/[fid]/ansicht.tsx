@@ -79,6 +79,7 @@ import {
   vertraulichAction,
   wuerdigungAction,
 } from '../actions';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 type Detail = z.output<typeof FeststellungDetailSchema>;
 type Lesbar = Extract<Detail, { maskiert: false }>;
@@ -265,7 +266,7 @@ function Kopf({ l }: { l: Lage }) {
       </div>
       {f.status === 'VERWORFEN' ? (
         <div className="alert-warning mb-3" role="status">
-          <strong>Verworfen.</strong> {f.verwerfen?.begruendung ?? ''}
+          <strong>Verworfen.</strong> <TcmsText>{f.verwerfen?.begruendung ?? ''}</TcmsText>
           {f.verwerfen ? (
             <span className="text-xs">
               {' '}
@@ -388,10 +389,14 @@ function Sachverhalt({ l }: { l: Lage }) {
       }
     >
       <div className="px-6 py-4 text-sm text-secondary">
-        <p className="whitespace-pre-wrap">{f.sachverhalt}</p>
+        <p className="whitespace-pre-wrap" {...TCMS_TEXT_ISOLIERT}>
+          {f.sachverhalt}
+        </p>
         <p className="mt-3">
           <span className="text-xs font-semibold">Ursache: </span>
-          <span className={f.ursache ? '' : 'text-muted'}>{f.ursache ?? 'noch nicht erfasst'}</span>
+          <span className={f.ursache ? '' : 'text-muted'} {...TCMS_TEXT_ISOLIERT}>
+            {f.ursache ?? 'noch nicht erfasst'}
+          </span>
         </p>
       </div>
     </Karte>
@@ -510,9 +515,15 @@ function Erklaerungen({ l }: { l: Lage }) {
           <tbody>
             {f.erklaerungen.map((e) => (
               <tr key={e.id} className="border-t border-default">
-                <td className="px-6 py-2.5">{e.steuerart}</td>
-                <td className="px-6 py-2.5">{e.land}</td>
-                <td className="px-6 py-2.5">{e.zeitraum}</td>
+                <td className="px-6 py-2.5" {...TCMS_TEXT_ISOLIERT}>
+                  {e.steuerart}
+                </td>
+                <td className="px-6 py-2.5" {...TCMS_TEXT_ISOLIERT}>
+                  {e.land}
+                </td>
+                <td className="px-6 py-2.5" {...TCMS_TEXT_ISOLIERT}>
+                  {e.zeitraum}
+                </td>
                 <td className={e.auswirkungEur == null ? 'td-num text-muted' : 'td-num'}>
                   {e.auswirkungEur == null ? 'zu klären' : fmtEur(e.auswirkungEur)}
                 </td>
@@ -545,7 +556,9 @@ function MassnahmeZeile({ l, m }: { l: Lage; m: Lesbar['massnahmen'][number] }) 
         aria-hidden="true"
       />
       <div className="grow min-w-0">
-        <p className="text-sm font-medium text-primary">{m.beschreibung}</p>
+        <p className="text-sm font-medium text-primary" {...TCMS_TEXT_ISOLIERT}>
+          {m.beschreibung}
+        </p>
         <p className="text-xs text-muted mt-1">
           Verantwortlich: {namen.name(m.verantwortlich)} · Frist {isoDatumText(m.frist)}
           {m.status === 'OFFEN' ? (
@@ -564,7 +577,9 @@ function MassnahmeZeile({ l, m }: { l: Lage; m: Lesbar['massnahmen'][number] }) 
           ) : null}
         </div>
         {m.status === 'ERLEDIGT' && m.nachweis ? (
-          <p className="text-xs text-secondary mt-1">Nachweis: {m.nachweis}</p>
+          <p className="text-xs text-secondary mt-1">
+            Nachweis: <TcmsText>{m.nachweis}</TcmsText>
+          </p>
         ) : null}
       </div>
       <span className="flex shrink-0 flex-col items-end gap-1">
@@ -708,10 +723,10 @@ function Nachkontrolle({ l }: { l: Lage }) {
                 href={l.mitStand(`${l.basis}/durchfuehrungen/${encodeURIComponent(nk.id)}`)}
                 className="text-sm font-medium text-primary hover:underline"
               >
-                {nk.code} · {nk.titel}
+                {nk.code} · <TcmsText>{nk.titel}</TcmsText>
               </Link>
               <p className="text-xs text-muted mt-1">
-                {nk.periodeLabel} · fällig {isoDatumText(nk.faelligAm)}
+                <TcmsText>{nk.periodeLabel}</TcmsText> · fällig {isoDatumText(nk.faelligAm)}
                 {nk.ausserplanmaessig ? ' · außerplanmäßig' : ''}
               </p>
             </div>
@@ -788,13 +803,17 @@ function Erfassung({ l }: { l: Lage }) {
             <span className="badge-gray">{QUELLE_LABEL[f.quelle]}</span>
             {verweis ? (
               <Link href={verweis.href} className="font-mono text-xs underline">
-                {verweis.text}
+                <TcmsText>{verweis.text}</TcmsText>
               </Link>
             ) : (
-              <span className="text-xs text-muted">{f.quelleText}</span>
+              <span className="text-xs text-muted" {...TCMS_TEXT_ISOLIERT}>
+                {f.quelleText}
+              </span>
             )}
             {f.durchfuehrung ? (
-              <span className="text-xs text-muted">({f.durchfuehrung.periodeLabel})</span>
+              <span className="text-xs text-muted">
+                (<TcmsText>{f.durchfuehrung.periodeLabel}</TcmsText>)
+              </span>
             ) : null}
           </>,
         )}
@@ -827,7 +846,7 @@ function Verlauf({ l }: { l: Lage }) {
             >
               <span className="font-mono text-muted">{isoZeitText(v.at)}</span> ·{' '}
               <span className="font-medium">{v.actorId ? namen.name(v.actorId) : 'System'}</span> ·{' '}
-              {v.text}
+              <TcmsText>{v.text}</TcmsText>
             </li>
           ))}
         </ol>
@@ -851,7 +870,9 @@ function VerwerfenAntrag({ l }: { l: Lage }) {
       <p>
         <strong>Verwerfen beantragt</strong> von {namen.name(antrag.beantragtVon)}:
       </p>
-      <p className="text-xs mt-1">{antrag.begruendung}</p>
+      <p className="text-xs mt-1">
+        <TcmsText>{antrag.begruendung}</TcmsText>
+      </p>
       <div className="mt-2 flex flex-wrap items-start gap-2">
         <AktionsKnopf
           action={l.binden(verwerfenBestaetigenAction)}

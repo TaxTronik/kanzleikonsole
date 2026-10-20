@@ -38,6 +38,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { UNBEKANNTE_PERSON, KEINE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsCockpitPage from '../page';
@@ -296,5 +298,40 @@ describe('Kontakte & Rollen', () => {
     expect(tx.clientContact.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: DEMO.tenant, clientId: DEMO.talwind } }),
     );
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Texte des Dienstes im Cockpit und in den
+// Kontaktrollen (Funktion) mit Richtungsmarken bleiben isoliert.
+describe('Cockpit und Kontakte – Richtungsisolation', () => {
+  it('Cockpit', async () => {
+    h.lesenOptional.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.kontextTalwind(), ENDPUNKTE.kontextLesen.antwortSchema),
+      requestId: 'r',
+    });
+    const { container } = await renderServer(
+      TcmsCockpitPage({ params, searchParams: Promise.resolve({}) }),
+    );
+    erwarteIsoliert(container, 5);
+  });
+
+  it('Kontakte & Rollen', async () => {
+    h.lesen.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.kontakteTalwind(), ENDPUNKTE.kontakteLesen.antwortSchema),
+      requestId: null,
+    });
+    h.tenantLesen.mockResolvedValue([
+      {
+        id: DEMO.jana,
+        name: 'Jana Weller',
+        email: 'jana@talwind.example',
+        aktiv: true,
+        funktion: null,
+      },
+    ]);
+    const { container } = await renderServer(TcmsKontaktePage({ params }));
+    erwarteIsoliert(container, 1);
   });
 });

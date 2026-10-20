@@ -19,6 +19,7 @@ import { kontakteDesMandantenTx } from '@/server/tcms/personen';
 import { tcmsLesen, tcmsMandantSeite, tcmsTenantLesen } from '@/server/tcms/seite';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import { RollenFormular } from './rollen-formular';
+import { TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Kontakte & Rollen' };
 
@@ -96,10 +97,14 @@ export default async function TcmsKontaktePage({ params }: { params: Promise<{ i
                 return (
                   <tr key={k.id} className="border-t border-default align-top">
                     <td className="px-6 py-3">
-                      <span className="block font-medium text-primary">{k.name}</span>
+                      <span className="block font-medium text-primary">
+                        <TcmsText>{k.name}</TcmsText>
+                      </span>
                       <span className="block text-xs text-muted">{k.email}</span>
                       {k.funktion ? (
-                        <span className="block text-xs text-muted">{k.funktion}</span>
+                        <span className="block text-xs text-muted">
+                          <TcmsText>{k.funktion}</TcmsText>
+                        </span>
                       ) : null}
                       {!k.aktiv ? <span className="badge-gray mt-1">inaktiv</span> : null}
                     </td>
@@ -116,7 +121,9 @@ export default async function TcmsKontaktePage({ params }: { params: Promise<{ i
                         </ul>
                       )}
                       {aktiv[0]?.funktion ? (
-                        <span className="block text-xs text-muted mt-1">{aktiv[0].funktion}</span>
+                        <span className="block text-xs text-muted mt-1">
+                          <TcmsText>{aktiv[0].funktion}</TcmsText>
+                        </span>
                       ) : null}
                     </td>
                     <td className="px-6 py-3 min-w-[18rem]">

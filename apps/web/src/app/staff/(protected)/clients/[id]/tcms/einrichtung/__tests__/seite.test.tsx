@@ -40,6 +40,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsEinrichtungPage from '../page';
@@ -273,5 +275,14 @@ describe('Einrichtungsassistent', () => {
     await rendern();
     expect(screen.getByRole('heading', { name: 'Tax-CMS derzeit nicht erreichbar' })).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('req-7');
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Texte des Einrichtungsentwurfs isoliert, je Schritt.
+describe('Einrichtungsassistent – Richtungsisolation', () => {
+  it.each(['1', '2', '3', '4', '5'])('Schritt %s', async (schritt) => {
+    antwort(markiert(tcmsFixtures.einrichtungBergkamm(), ENDPUNKTE.einrichtungLesen.antwortSchema));
+    const { container } = await rendern({ schritt });
+    erwarteIsoliert(container, 1);
   });
 });

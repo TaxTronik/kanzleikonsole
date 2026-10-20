@@ -103,6 +103,13 @@ describe('NachweisListe', () => {
 
   it('leer: Erwartung der Kontrolle statt Liste', () => {
     liste([]);
-    expect(screen.getByText('Noch keine Anlagen hochgeladen. Erwartet: Kontoauszug.')).toBeTruthy();
+    // Die Erwartung des Dienstes steht in <bdi> (kk-tcms-qual): ganzer Absatz.
+    expect(
+      screen.getByText(
+        (_, e) =>
+          e?.tagName === 'P' &&
+          e.textContent === 'Noch keine Anlagen hochgeladen. Erwartet: Kontoauszug.',
+      ),
+    ).toBeTruthy();
   });
 });

@@ -25,6 +25,7 @@ import {
   portalFreigebenAction,
   portalKenntnisnahmeAction,
 } from './actions';
+import { TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Freigaben und Kenntnisnahmen' };
 
@@ -112,7 +113,9 @@ export default async function PortalFreigabenPage({
         <p className="alert-success mb-4 flex items-center gap-2" role="status">
           <CheckCheck className="h-4 w-4" aria-hidden="true" />
           <span>
-            <strong>{bestaetigt.titel}</strong>{' '}
+            <strong>
+              <TcmsText>{bestaetigt.titel}</TcmsText>
+            </strong>{' '}
             {bestaetigt.art === 'KENNTNISNAHME' ? 'zur Kenntnis genommen' : 'freigegeben'} ·{' '}
             {isoZeitText(bestaetigt.erledigtAm)}. Vielen Dank – die Bestätigung ist mit Name und
             Zeitpunkt dokumentiert.

@@ -42,6 +42,7 @@ import { TcmsLeer } from '@/components/tcms/leer';
 import { badgeKlasse, tonChip } from '@/components/tcms/ton';
 import type { TcmsNamen } from '@/server/tcms/namen';
 import type { PortfolioMandant } from '@/server/tcms/portfolio';
+import { TcmsText } from '@/components/tcms/text';
 
 type Korb = z.output<typeof ArbeitskorbAntwortSchema>;
 type VierAugenArt = Korb['vierAugen'][number]['art'];
@@ -309,7 +310,7 @@ function Durchfuehrungen({ korb, mandant, ueberfaellig }: Teil & { ueberfaellig:
                       href={`${basis(d.mandant.id)}/durchfuehrungen/${encodeURIComponent(d.id)}`}
                       className="font-medium text-primary hover:underline"
                     >
-                      {d.code} · {d.titel}
+                      {d.code} · <TcmsText>{d.titel}</TcmsText>
                     </Link>
                     {d.schluessel ? (
                       <span className="ml-1.5 inline-flex text-muted" title="Schlüsselkontrolle">
@@ -318,8 +319,8 @@ function Durchfuehrungen({ korb, mandant, ueberfaellig }: Teil & { ueberfaellig:
                       </span>
                     ) : null}
                     <div className="text-[11px] text-muted mt-1">
-                      {mandant(d.mandant.id)} · {d.periode} · Nachweise {d.nachweise}/
-                      {d.mindestNachweise}
+                      {mandant(d.mandant.id)} · <TcmsText>{d.periode}</TcmsText> · Nachweise{' '}
+                      {d.nachweise}/{d.mindestNachweise}
                     </div>
                   </th>
                   <td className="px-4 py-2.5 whitespace-nowrap">
@@ -374,10 +375,10 @@ function Gegenzeichnungen({ korb, mandant, namen }: Teil & { namen: TcmsNamen })
               </span>
               <span className="grow">
                 <span className="block text-sm font-medium text-primary">
-                  {g.code} · {g.titel}
+                  {g.code} · <TcmsText>{g.titel}</TcmsText>
                 </span>
                 <span className="block text-[11px] text-muted mt-1">
-                  {mandant(g.mandant.id)} · {g.periode}
+                  {mandant(g.mandant.id)} · <TcmsText>{g.periode}</TcmsText>
                 </span>
                 <span className="block text-[11px] text-muted">
                   Durchgeführt von {namen.name(g.durchgefuehrtVon)}
@@ -505,16 +506,18 @@ function VierAugen({ korb, mandant, namen }: Teil & { namen: TcmsNamen }) {
                   <art.icon className="h-3.5 w-3.5" aria-hidden="true" />
                 </span>
                 <span className="grow min-w-0">
-                  <span className="block text-sm font-medium text-primary">{v.titel}</span>
+                  <span className="block text-sm font-medium text-primary">
+                    <TcmsText>{v.titel}</TcmsText>
+                  </span>
                   <span className="block text-[11px] text-muted mt-1">
-                    {mandant(v.mandant.id)} · {v.detail}
+                    {mandant(v.mandant.id)} · <TcmsText>{v.detail}</TcmsText>
                   </span>
                   {v.begruendung ? (
                     <span
                       className="block truncate text-[11px] text-secondary mt-1"
                       title={v.begruendung}
                     >
-                      „{v.begruendung}“
+                      „<TcmsText>{v.begruendung}</TcmsText>“
                     </span>
                   ) : null}
                   <span className="block text-[11px] text-muted">
@@ -525,7 +528,9 @@ function VierAugen({ korb, mandant, namen }: Teil & { namen: TcmsNamen }) {
                     {v.beantragtAm ? ` · ${isoZeitText(v.beantragtAm)}` : ''}
                   </span>
                 </span>
-                <span className="badge-gray shrink-0">{art.label}</span>
+                <span className="badge-gray shrink-0">
+                  <TcmsText>{art.label}</TcmsText>
+                </span>
               </Zeile>
             );
           })}
@@ -561,7 +566,7 @@ function Ereignisse({ korb, mandant, namen }: Teil & { namen: TcmsNamen }) {
                 </span>
                 <span className="grow">
                   <span className="block text-sm font-medium text-primary">
-                    {e.typ} · {e.titel}
+                    {e.typ} · <TcmsText>{e.titel}</TcmsText>
                   </span>
                   <span className="block text-[11px] text-muted mt-1">
                     {mandant(e.mandant.id)} · {EREIGNIS_QUELLE_LABEL[e.quelle]} ·{' '}

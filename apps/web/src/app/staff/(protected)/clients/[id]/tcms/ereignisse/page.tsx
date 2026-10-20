@@ -43,6 +43,7 @@ import {
 import { TCMS_KEIN_RECHT, type TcmsSeitenZustand } from '@/server/tcms/zustand';
 import { ereignisErfassenAction } from './actions';
 import { TriagePanel, type EreignisDetail, type TriagePersonen } from './triage';
+import { TCMS_TEXT_ISOLIERT } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Ereignisse' };
 
@@ -233,7 +234,7 @@ function ErfassenDialog({
               bitte wählen
             </option>
             {EREIGNISTYPEN.map((t) => (
-              <option key={t.code} value={t.code}>
+              <option {...TCMS_TEXT_ISOLIERT} key={t.code} value={t.code}>
                 {t.code} · {t.titel}
               </option>
             ))}
@@ -271,6 +272,7 @@ function ErfassenDialog({
           Beschreibung
         </label>
         <textarea
+          {...TCMS_TEXT_ISOLIERT}
           id="e-beschreibung"
           name="beschreibung"
           className="input min-h-[6rem]"

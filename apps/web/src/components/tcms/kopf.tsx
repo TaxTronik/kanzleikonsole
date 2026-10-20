@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import { History } from 'lucide-react';
 import { PHASEN } from '@taxtronik/tcms-domain';
 import { isoDatumText } from './format';
+import { TCMS_TEXT_ISOLIERT } from './text';
 
 export interface TcmsKopfDaten {
   teilbereich: { name: string } | null;
@@ -36,7 +37,11 @@ export function TcmsKopf({
       <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
         <div className="flex flex-wrap items-center gap-2">
           {titel}
-          {daten.teilbereich ? <span className="badge-brand">{daten.teilbereich.name}</span> : null}
+          {daten.teilbereich ? (
+            <span className="badge-brand" {...TCMS_TEXT_ISOLIERT}>
+              {daten.teilbereich.name}
+            </span>
+          ) : null}
           {daten.aktivePhase ? (
             <span className="badge-purple" title={PHASEN[daten.aktivePhase - 1]}>
               Phase {daten.aktivePhase} von {PHASEN.length} · {PHASEN[daten.aktivePhase - 1]}

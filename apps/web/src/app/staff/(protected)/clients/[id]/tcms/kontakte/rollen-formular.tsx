@@ -9,6 +9,7 @@ import { useId } from 'react';
 import { FieldError, fieldErrorProps, FormErrorSummary } from '@/components/form-errors';
 import { useTcmsFormular } from '@/components/tcms/formular';
 import { kontaktRollenSetzenAction } from './actions';
+import { TcmsText } from '@/components/tcms/text';
 
 export interface RollenAuswahl {
   wert: string;
@@ -81,7 +82,7 @@ export function RollenFormular({
                   defaultChecked={aktiveRollen.includes(rolle.wert)}
                   disabled={!rollenZuweisbar && !aktiveRollen.includes(rolle.wert)}
                 />
-                {rolle.label}
+                <TcmsText>{rolle.label}</TcmsText>
               </label>
             ))}
           </div>

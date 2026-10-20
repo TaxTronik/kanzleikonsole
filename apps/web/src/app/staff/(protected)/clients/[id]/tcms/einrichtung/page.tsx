@@ -69,6 +69,7 @@ import {
   SchrittZiele,
   type KontrollGruppe,
 } from './schritte';
+import { TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Einrichtung' };
 
@@ -130,11 +131,16 @@ function Eingerichtet({ seite, e }: { seite: TcmsMandantSeite; e: EinrichtungVie
   );
 }
 
-function kurzfassung(n: number, e: Entwurf, plan: PlanView, namen: TcmsNamen): string {
+function kurzfassung(n: number, e: Entwurf, plan: PlanView, namen: TcmsNamen): ReactNode {
   const anzahl = (x: number, eins_: string, viele: string) => `${x} ${x === 1 ? eins_ : viele}`;
   switch (n) {
     case 1:
-      return `${e.teilbereich.name} · Angemessenheit zum ${isoDatumText(plan.zeitraum?.stichtag)} · Wirksamkeit ${isoDatumText(plan.zeitraum?.ab)} – ${isoDatumText(plan.zeitraum?.bis)} · Erklärungsturnus ${TURNUS_LABEL[e.zeitraum.erklaerungsTurnus]}`;
+      return (
+        <>
+          <TcmsText>{e.teilbereich.name}</TcmsText>
+          {` · Angemessenheit zum ${isoDatumText(plan.zeitraum?.stichtag)} · Wirksamkeit ${isoDatumText(plan.zeitraum?.ab)} – ${isoDatumText(plan.zeitraum?.bis)} · Erklärungsturnus ${TURNUS_LABEL[e.zeitraum.erklaerungsTurnus]}`}
+        </>
+      );
     case 2: {
       const kanaele = (e.profil.p1.eigenerShop ? 1 : 0) + e.profil.p1.marktplaetze.length;
       return `${anzahl(kanaele, 'Verkaufskanal', 'Verkaufskanäle')} · ${anzahl(e.profil.p3.laender.length, 'Zielland', 'Zielländer')} · ${anzahl(e.profil.p2.lager.length, 'Lagerort', 'Lagerorte')} · ${plan.risiken.length} Risiken vorgeschlagen`;
@@ -317,7 +323,9 @@ function MandantKarte({ m }: { m: EinrichtungModell }) {
     <div className="card px-6 py-4 mb-4 flex flex-wrap items-end justify-between gap-4">
       <div>
         <p className="label">Mandant</p>
-        <p className="text-sm font-semibold">{m.seite.mandant.name}</p>
+        <p className="text-sm font-semibold">
+          <TcmsText>{m.seite.mandant.name}</TcmsText>
+        </p>
         <p className="hint">
           {m.e.programm
             ? 'Entwurf im Einrichtungsassistenten, noch keine Version'
@@ -329,9 +337,11 @@ function MandantKarte({ m }: { m: EinrichtungModell }) {
           <dl className="space-y-0.5">
             {ansprech.map((p) => (
               <div key={`${p.rolle}-${p.id}`}>
-                <dt className="inline font-medium text-secondary">{p.rolle}:</dt>{' '}
+                <dt className="inline font-medium text-secondary">
+                  <TcmsText>{p.rolle}</TcmsText>:
+                </dt>{' '}
                 <dd className="inline">
-                  {p.name}
+                  <TcmsText>{p.name}</TcmsText>
                   {p.funktion ? ` (${p.funktion})` : ''}
                 </dd>
               </div>
@@ -392,7 +402,7 @@ function OffenePunkte({ m }: { m: EinrichtungModell }) {
 
 const stufenTitel = (nr: number, t: string) => (nr === 2 ? 'Geschäftsprofil (P1–P12)' : t);
 
-function stufenText(m: EinrichtungModell, nr: number): string {
+function stufenText(m: EinrichtungModell, nr: number): ReactNode {
   if (nr <= m.entwurf.abgeschlossen) return kurzfassung(nr, m.entwurf, m.plan, m.namen);
   return nr <= m.max ? 'bereit' : 'noch offen – erst nach den vorherigen Schritten';
 }

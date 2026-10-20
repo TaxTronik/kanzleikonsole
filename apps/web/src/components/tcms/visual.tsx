@@ -9,6 +9,7 @@
 
 import { Check } from 'lucide-react';
 import { PHASEN } from '@taxtronik/tcms-domain';
+import { TCMS_TEXT_ISOLIERT } from './text';
 
 /** Kurzbezeichnungen der sieben Phasen für enge Darstellungen. */
 export const PHASEN_KURZ = [
@@ -233,7 +234,7 @@ export function ZeitraumLeiste({
                   : 'border-default text-muted'
           }`}
         >
-          <span>{m.label}</span>
+          <span {...TCMS_TEXT_ISOLIERT}>{m.label}</span>
           <span className="sr-only">
             {' '}
             – {TEXT[m.zustand]}

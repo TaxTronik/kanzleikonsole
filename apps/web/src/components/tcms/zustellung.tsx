@@ -20,6 +20,7 @@ import type {
   ZustellStatus,
 } from '@taxtronik/tcms-contract';
 import { isoZeitText } from './format';
+import { TcmsText } from '@/components/tcms/text';
 
 export const ZUSTELL_STATUS_ANZEIGE: Readonly<
   Record<ZustellStatus, { label: string; badge: string }>
@@ -87,7 +88,7 @@ export function ZustellungAnzeige({ zustellung }: { zustellung: FreigabeZustellu
     <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted">
       <span className={`${anzeige.badge} gap-1`}>
         <Icon className="h-3 w-3" aria-hidden="true" />
-        {anzeige.label}
+        <TcmsText>{anzeige.label}</TcmsText>
       </span>
       <span>
         {ZUSTELL_ZWECK_LABEL[zustellung.zweck]} · {isoZeitText(am)}

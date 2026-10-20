@@ -56,6 +56,8 @@ vi.mock('../[did]/actions', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, MARKE, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import TcmsDurchfuehrungenPage from '../page';
 import TcmsDurchfuehrungPage from '../[did]/page';
@@ -384,5 +386,60 @@ describe('Kontrolldurchführung', () => {
     await detail('cmvf9pzy3003jfu7d4oo44g6s');
     expect(screen.getByRole('status').textContent).toMatch(/Kein Zugriff/);
     expect(h.tenantLesen).not.toHaveBeenCalled();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Titel, Schritte, Befunde, Kommentare und die
+// Nachweisliste (Dateinamen) mit Richtungsmarken bleiben isoliert.
+describe('Kontrolldurchführung – Richtungsisolation', () => {
+  it.each([
+    ['in Durchführung', () => tcmsFixtures.durchfuehrungInDurchfuehrung()],
+    ['zur Gegenzeichnung', () => tcmsFixtures.durchfuehrungGegenzeichnung()],
+    ['mit Befund', () => tcmsFixtures.durchfuehrungMitBefund()],
+    ['fällig', () => tcmsFixtures.durchfuehrungFaellig()],
+  ])('%s: Texte des Dienstes isoliert', async (_fall, fixture) => {
+    const d = markiert(fixture(), ENDPUNKTE.durchfuehrungLesen.antwortSchema);
+    h.lesenOptional.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.kontextTalwind(), ENDPUNKTE.kontextLesen.antwortSchema),
+      requestId: 'r',
+    });
+    durchfuehrung(d);
+    kanzlei.abgleich = new Map(d.nachweise.map((n) => [n.id, 'OK']));
+    const { container } = await detail(d.id);
+    erwarteIsoliert(container, 2);
+  });
+
+  // Angezeigt wird der Name aus der eigenen Ablage (RT3B-K-04); der Dienstwert
+  // verliert seine Marken schon in der Zeichenregel. Der markierte Name kommt
+  // deshalb über die eigene Ablage (Grenze des Mocks): Link, Herunterladen und
+  // Entfernen isolieren ihn, unabhängig von der Bereinigung.
+  it('Nachweisliste: Dateinamen isoliert', async () => {
+    const d = markiert(
+      tcmsFixtures.durchfuehrungInDurchfuehrung(),
+      ENDPUNKTE.durchfuehrungLesen.antwortSchema,
+    );
+    durchfuehrung(d);
+    kanzlei.abgleich = new Map([[d.nachweise[0]!.id, 'OK']]);
+    kanzlei.dateinamen = new Map([
+      [d.nachweise[0]!.id, `${MARKE}Kassenbericht Oktober.pdf${MARKE}`],
+    ]);
+    await detail(d.id);
+    erwarteIsoliert(screen.getByRole('region', { name: 'Nachweise' }), 3);
+  });
+
+  it('Liste: Kontrollen und Perioden isoliert', async () => {
+    h.lesenOptional.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.kontextTalwind(), ENDPUNKTE.kontextLesen.antwortSchema),
+      requestId: 'r',
+    });
+    const { container } = await renderServer(
+      TcmsDurchfuehrungenPage({
+        params: Promise.resolve({ id: DEMO.talwind }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    erwarteIsoliert(container, 3);
   });
 });

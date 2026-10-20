@@ -4,7 +4,7 @@
 // =============================================================================
 
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import {
   ArrowRight,
   CheckCheck,
@@ -56,6 +56,7 @@ import type { TcmsNamen } from '@/server/tcms/namen';
 import type { TcmsMandantSeite } from '@/server/tcms/seite';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import { MandantAnlegenFormular } from './mandant-anlegen';
+import { TcmsText } from '@/components/tcms/text';
 
 type Durchfuehrung = KontextAntwort['durchfuehrungen'][number];
 
@@ -255,7 +256,13 @@ function P153Hinweis({ k }: { k: KartenKontext }) {
         <TriangleAlert className="h-4 w-4" aria-hidden="true" />
         <span>
           <strong>§-153-Würdigung offen</strong> –{' '}
-          {p153.map((f) => `${f.nummer} (${f.titel})`).join(', ')}.
+          {p153.map((f, i) => (
+            <Fragment key={f.id}>
+              {i > 0 ? ', ' : null}
+              {f.nummer} (<TcmsText>{f.titel}</TcmsText>)
+            </Fragment>
+          ))}
+          .
         </span>
       </span>
       <Link
@@ -289,10 +296,12 @@ function GateDetails({ k }: { k: KartenKontext }) {
             <span className="sr-only">{b.erfuellt ? 'erfüllt: ' : 'offen: '}</span>
             {b.link && !b.erfuellt ? (
               <Link className="underline" href={k.mitStand(`${k.basis}/${b.link}`)}>
-                {b.text}
+                <TcmsText>{b.text}</TcmsText>
               </Link>
             ) : (
-              <span className={b.erfuellt ? 'text-primary' : 'text-muted'}>{b.text}</span>
+              <span className={b.erfuellt ? 'text-primary' : 'text-muted'}>
+                <TcmsText>{b.text}</TcmsText>
+              </span>
             )}
           </li>
         ))}
@@ -328,7 +337,9 @@ function GrundelementeKarte({ k }: { k: KartenKontext }) {
               <span className={`kpi-chip ${g.luecken.length ? 'chip-amber' : 'chip-green'}`}>
                 <KatalogIcon name={g.icon} />
               </span>
-              <span className="text-sm grow text-primary">{g.titel}</span>
+              <span className="text-sm grow text-primary">
+                <TcmsText>{g.titel}</TcmsText>
+              </span>
               {g.luecken.length ? (
                 <span className="badge-yellow">Lücken ({g.luecken.length})</span>
               ) : (
@@ -503,10 +514,12 @@ function FaelligZeile({ k, d, namen }: { k: KartenKontext; d: Durchfuehrung; nam
           href={k.mitStand(`${k.basis}/durchfuehrungen/${encodeURIComponent(d.id)}`)}
           className="font-medium text-primary hover:underline"
         >
-          {d.code} · {d.titel}
+          {d.code} · <TcmsText>{d.titel}</TcmsText>
         </Link>
       </td>
-      <td className="px-6 py-2 text-secondary">{d.periodeLabel}</td>
+      <td className="px-6 py-2 text-secondary">
+        <TcmsText>{d.periodeLabel}</TcmsText>
+      </td>
       <td className="px-6 py-2">
         <span className={d.anzeige === 'UEBERFAELLIG' ? 'text-red-700' : undefined}>
           {isoDatumText(d.faelligAm)}
@@ -528,14 +541,18 @@ function FaelligZeile({ k, d, namen }: { k: KartenKontext; d: Durchfuehrung; nam
 
 type Feststellung = KontextAntwort['feststellungen'][number];
 
-function feststellungUnterzeile(f: Feststellung): string {
+function feststellungUnterzeile(f: Feststellung): ReactNode {
   if (f.maskiert) return `${FESTSTELLUNG_STATUS_LABEL[f.status]} · ${VERTRAULICH_HINWEIS}`;
   const p153 = f.p153Offen
     ? '§-153-Würdigung offen'
     : f.p153Entscheidung
       ? `entschieden: ${P153_LABEL[f.p153Entscheidung]}`
       : 'ohne §-153-Bezug';
-  return `${KLASSE_LABEL[f.schwere]} · ${p153} · Quelle ${f.quelleText}`;
+  return (
+    <>
+      {KLASSE_LABEL[f.schwere]} · {p153} · Quelle <TcmsText>{f.quelleText}</TcmsText>
+    </>
+  );
 }
 
 function feststellungChip(f: Feststellung): string {
@@ -617,7 +634,7 @@ function EreignisseKarte({ k, namen }: { k: KartenKontext; namen: TcmsNamen }) {
                   </span>
                   <span className="grow">
                     <span className="block text-sm font-medium text-primary">
-                      {e.typ} · {e.titel}
+                      {e.typ} · <TcmsText>{e.titel}</TcmsText>
                     </span>
                     <span className="block text-xs text-muted mt-0.5">
                       {EREIGNIS_QUELLE_LABEL[e.quelle]} · {namen.name(e.gemeldetVon)} ·{' '}
@@ -662,7 +679,9 @@ function LaenderKarte({ k }: { k: KartenKontext }) {
           <span className="text-lg font-bold font-mono text-primary">
             {fmtEurGanz(ctx.fernverkaeufeLfd)}
           </span>
-          <span className={SCHWELLE_BADGE[ctx.schwelle.status]}>{ctx.schwelle.label}</span>
+          <span className={SCHWELLE_BADGE[ctx.schwelle.status]}>
+            <TcmsText>{ctx.schwelle.label}</TcmsText>
+          </span>
         </div>
         <SchwellenAnzeige
           anteil={Math.max(ctx.schwelle.anteilLfd, ctx.schwelle.anteilVorjahr)}

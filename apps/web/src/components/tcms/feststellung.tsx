@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { Lock } from 'lucide-react';
+import { TcmsText } from './text';
 
 /** Gemeinsamer Ausschnitt aller Feststellungs-Sichten des Vertrags. */
 export type FeststellungKern =
@@ -21,9 +22,27 @@ export function feststellungText(f: FeststellungKern): string {
   return `${f.nummer} · ${f.maskiert ? VERTRAULICHE_FESTSTELLUNG : f.titel}`;
 }
 
+/**
+ * „<Nummer> · <Titel>“ als Inhalt einer Zeile; der Titel des Dienstes
+ * richtungsisoliert (kk-tcms-qual), maskiert ohne Titel.
+ */
+export function FeststellungName({ f }: { f: FeststellungKern }) {
+  return (
+    <>
+      {f.nummer} · {f.maskiert ? VERTRAULICHE_FESTSTELLUNG : <TcmsText>{f.titel}</TcmsText>}
+    </>
+  );
+}
+
 /** Bezeichnung mit Schloss bei maskierten Feststellungen. */
 export function FeststellungBezeichnung({ f }: { f: FeststellungKern }) {
-  if (!f.maskiert) return <span>{feststellungText(f)}</span>;
+  if (!f.maskiert) {
+    return (
+      <span>
+        <FeststellungName f={f} />
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1">
       <Lock className="h-3.5 w-3.5 text-muted" aria-hidden="true" />

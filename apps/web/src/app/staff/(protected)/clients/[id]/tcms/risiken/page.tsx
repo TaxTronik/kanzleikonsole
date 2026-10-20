@@ -63,6 +63,7 @@ import {
   uebersteuerungBeantragenAction,
   uebersteuerungEntscheidenAction,
 } from './actions';
+import { TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Risikoinventar' };
 
@@ -291,9 +292,10 @@ export default async function TcmsRisikenPage({
 
       <p className="text-xs text-muted mt-4 inline-flex items-start gap-1.5">
         <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden="true" />
-        Klassen berechnet das Tax-CMS (Modell {liste.risiken[0]?.bewertung.modell ?? 'ec-1.0'});
-        übersteuerte Werte tragen eine Plakette, der berechnete Wert bleibt sichtbar. Normanker und
-        Startwerte sind ungeprüfte Entwürfe. Statusangaben sind Betriebsinformationen.
+        Klassen berechnet das Tax-CMS (Modell{' '}
+        <TcmsText>{liste.risiken[0]?.bewertung.modell ?? 'ec-1.0'}</TcmsText>); übersteuerte Werte
+        tragen eine Plakette, der berechnete Wert bleibt sichtbar. Normanker und Startwerte sind
+        ungeprüfte Entwürfe. Statusangaben sind Betriebsinformationen.
       </p>
     </>
   );

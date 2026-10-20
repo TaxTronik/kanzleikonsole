@@ -32,6 +32,7 @@ import { TcmsZustand } from '@/components/tcms/zustand';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { portfolioMandanten, type PortfolioMandant } from '@/server/tcms/portfolio';
 import { tcmsKanzleiSeite, tcmsLesen } from '@/server/tcms/seite';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS' };
 
@@ -314,7 +315,7 @@ function OhneProgrammZeile({
     <tr className="border-t border-default">
       <td className="px-6 py-3">
         <Link href={mandantHref(m)} className="font-medium text-primary hover:underline">
-          {m.name}
+          <TcmsText>{m.name}</TcmsText>
         </Link>
         <span className="block text-xs text-muted">{zustand}</span>
       </td>
@@ -340,12 +341,13 @@ function PortfolioZeile({ m, z }: { m: PortfolioMandant; z: Zeile | undefined })
     <tr className="border-t border-default align-top">
       <td className="px-6 py-3">
         <Link href={href} className="font-medium text-primary hover:underline">
-          {m.name}
+          <TcmsText>{m.name}</TcmsText>
         </Link>
         {z.paket ? (
           <span
             className="block text-xs text-muted"
             title={z.teilbereich ? `Teilbereich: ${z.teilbereich}` : undefined}
+            {...TCMS_TEXT_ISOLIERT}
           >
             {z.paket}
           </span>

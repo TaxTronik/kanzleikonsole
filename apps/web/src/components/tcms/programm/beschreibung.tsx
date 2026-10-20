@@ -38,6 +38,7 @@ import {
 } from '@taxtronik/tcms-domain';
 import { GtBadge, HashKurz, KlasseBadge } from '../badges';
 import { isoDatumText } from '../format';
+import { TCMS_TEXT_ISOLIERT, TcmsText, TcmsTextListe } from '@/components/tcms/text';
 
 export type BeschreibungStatus = BeschreibungVersionView['status'];
 
@@ -153,12 +154,16 @@ function TeilbereichInhalt({ satz }: InhaltProps) {
   if (!t) return <p className="text-sm text-muted">Noch kein Teilbereich abgegrenzt.</p>;
   return (
     <div className="space-y-2">
-      <p className="text-sm font-semibold">{t.name}</p>
-      <p className="text-sm text-secondary whitespace-pre-line">{t.abgrenzung}</p>
+      <p className="text-sm font-semibold" {...TCMS_TEXT_ISOLIERT}>
+        {t.name}
+      </p>
+      <p className="text-sm text-secondary whitespace-pre-line" {...TCMS_TEXT_ISOLIERT}>
+        {t.abgrenzung}
+      </p>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs text-muted w-24">Eingeschlossen</span>
         {t.einschluesse.map((e) => (
-          <span key={e} className="badge-green">
+          <span key={e} className="badge-green" {...TCMS_TEXT_ISOLIERT}>
             {e}
           </span>
         ))}
@@ -166,7 +171,7 @@ function TeilbereichInhalt({ satz }: InhaltProps) {
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs text-muted w-24">Ausgeschlossen</span>
         {t.ausschluesse.map((e) => (
-          <span key={e} className="badge-gray">
+          <span key={e} className="badge-gray" {...TCMS_TEXT_ISOLIERT}>
             {e}
           </span>
         ))}
@@ -179,7 +184,11 @@ function TeilbereichInhalt({ satz }: InhaltProps) {
             </>
           ) : null}
           {t.zielLaender.length && t.kanaele.length ? ' · ' : ''}
-          {t.kanaele.length ? <>Kanäle: {t.kanaele.join(', ')}</> : null}
+          {t.kanaele.length ? (
+            <>
+              Kanäle: <TcmsTextListe werte={t.kanaele} />
+            </>
+          ) : null}
         </p>
       ) : null}
     </div>
@@ -194,7 +203,9 @@ function ZieleInhalt({ satz, quelle, label }: InhaltProps) {
     <Tabelle kopf={['Ziel', 'Wesentlichkeit', 'Appetit', 'Freigabe']} beschriftung={label}>
       {z.ziele.map((x, i) => (
         <tr key={i}>
-          <td className={ZELLE}>{x.text}</td>
+          <td className={ZELLE} {...TCMS_TEXT_ISOLIERT}>
+            {x.text}
+          </td>
           <td className={`${ZELLE} td-num font-mono text-xs`}>{fmtEurGanz(x.wesentlichkeitEur)}</td>
           <td className={ZELLE}>
             <KlasseBadge klasse={x.risikoappetit} />
@@ -239,7 +250,9 @@ function RisikoinventarInhalt({ satz, label }: InhaltProps) {
         {r.risiken.map((x) => (
           <tr key={x.code}>
             <td className={`${ZELLE} font-mono text-xs whitespace-nowrap`}>{x.code}</td>
-            <td className={ZELLE}>{x.titel}</td>
+            <td className={ZELLE} {...TCMS_TEXT_ISOLIERT}>
+              {x.titel}
+            </td>
             <td className={ZELLE}>
               <GtBadge gt={x.gt} />
             </td>
@@ -288,7 +301,7 @@ function KontrollmatrixInhalt({ satz, quelle, label }: InhaltProps) {
               ) : null}
             </td>
             <td className={ZELLE}>
-              {x.titel}
+              <TcmsText>{x.titel}</TcmsText>
               {x.risikoCodes.length ? (
                 <span className="block text-xs text-muted font-mono">
                   {x.risikoCodes.join(' · ')}
@@ -300,7 +313,9 @@ function KontrollmatrixInhalt({ satz, quelle, label }: InhaltProps) {
                 {x.art}
               </abbr>
             </td>
-            <td className={`${ZELLE} text-xs`}>{x.frequenz}</td>
+            <td className={`${ZELLE} text-xs`} {...TCMS_TEXT_ISOLIERT}>
+              {x.frequenz}
+            </td>
             <td className={`${ZELLE} text-xs`}>{PARTEI_LABEL[x.partei]}</td>
             <td className={`${ZELLE} text-xs`}>
               {x.design === 'ANGEMESSEN' ? (
@@ -360,8 +375,10 @@ function VerantwortungInhalt({ satz, quelle, label }: InhaltProps) {
       <ul className="flex flex-wrap gap-1.5 mb-2">
         {v.rollen.map((r, i) => (
           <li key={`${r.rolle}-${i}`} className="badge-gray">
-            {r.rolle}:{' '}
-            <strong className="font-semibold">{person(quelle, r.personId, r.name)}</strong>
+            <TcmsText>{r.rolle}</TcmsText>:{' '}
+            <strong className="font-semibold" {...TCMS_TEXT_ISOLIERT}>
+              {person(quelle, r.personId, r.name)}
+            </strong>
           </li>
         ))}
       </ul>
@@ -375,16 +392,18 @@ function VerantwortungInhalt({ satz, quelle, label }: InhaltProps) {
             return (
               <tr key={x.code}>
                 <td className={ZELLE}>
-                  <span className="font-mono text-xs">{x.code}</span> {x.titel}
+                  <span className="font-mono text-xs">{x.code}</span> <TcmsText>{x.titel}</TcmsText>
                 </td>
                 <td className={`${ZELLE} text-xs`}>{PARTEI_LABEL[x.partei]}</td>
-                <td className={`${ZELLE} text-xs`}>
+                <td className={`${ZELLE} text-xs`} {...TCMS_TEXT_ISOLIERT}>
                   {person(quelle, x.durchfuehrendId, x.durchfuehrend)}
                 </td>
-                <td className={`${ZELLE} text-xs`}>
+                <td className={`${ZELLE} text-xs`} {...TCMS_TEXT_ISOLIERT}>
                   {person(quelle, x.vertretungId, x.vertretung)}
                 </td>
-                <td className={`${ZELLE} text-xs`}>{gegen}</td>
+                <td className={`${ZELLE} text-xs`} {...TCMS_TEXT_ISOLIERT}>
+                  {gegen}
+                </td>
               </tr>
             );
           })}
@@ -408,7 +427,9 @@ function LaenderInhalt({ satz, label }: InhaltProps) {
           <tr key={x.land}>
             <td className={ZELLE}>
               <span className="font-medium">{x.land}</span>{' '}
-              <span className="text-xs text-muted">{x.name}</span>
+              <span className="text-xs text-muted" {...TCMS_TEXT_ISOLIERT}>
+                {x.name}
+              </span>
             </td>
             <td className={`${ZELLE} td-num font-mono text-xs`}>
               {fmtEurGanz(x.fernverkaeufeLfdEur)}
@@ -426,7 +447,8 @@ function LaenderInhalt({ satz, label }: InhaltProps) {
       </Tabelle>
       <p className="text-xs text-muted mt-2">
         EU-Fernverkäufe lfd. Jahr <span className="font-mono">{fmtEurGanz(l.summeLfd)}</span> ·
-        Vorjahr <span className="font-mono">{fmtEurGanz(l.summeVorjahr)}</span> · {l.schwelle}
+        Vorjahr <span className="font-mono">{fmtEurGanz(l.summeVorjahr)}</span> ·{' '}
+        <TcmsText>{l.schwelle}</TcmsText>
         {l.stand ? ` · Datenstand ${isoDatumText(l.stand)}` : ''}
       </p>
     </>
@@ -445,11 +467,15 @@ function FeststellungenInhalt({ satz, label }: InhaltProps) {
       {f.feststellungen.map((x) => (
         <tr key={x.nummer}>
           <td className={`${ZELLE} font-mono text-xs whitespace-nowrap`}>{x.nummer}</td>
-          <td className={ZELLE}>{x.titel}</td>
+          <td className={ZELLE} {...TCMS_TEXT_ISOLIERT}>
+            {x.titel}
+          </td>
           <td className={ZELLE}>
             <KlasseBadge klasse={x.schwere} />
           </td>
-          <td className={`${ZELLE} text-xs`}>{x.status}</td>
+          <td className={`${ZELLE} text-xs`} {...TCMS_TEXT_ISOLIERT}>
+            {x.status}
+          </td>
           <td className={`${ZELLE} td-num text-xs`}>{x.massnahmenOffen}</td>
         </tr>
       ))}
@@ -536,7 +562,7 @@ export function Freitext({ text }: { text: string }) {
   return (
     <>
       {absaetze.map((a, i) => (
-        <p key={i} className="text-sm mb-2.5 whitespace-pre-line">
+        <p key={i} className="text-sm mb-2.5 whitespace-pre-line" {...TCMS_TEXT_ISOLIERT}>
           {a}
         </p>
       ))}

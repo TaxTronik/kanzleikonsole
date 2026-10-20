@@ -12,6 +12,7 @@ import type { ReactNode } from 'react';
 import { Lock, Trash2 } from 'lucide-react';
 import { NachweisListe, nachweisAnzeigename, type Nachweis } from '../durchfuehrung/nachweis-liste';
 import { TcmsAktionsKnopf, type TcmsFormAktion } from '../ereignisse/aktionen';
+import { TcmsText } from '@/components/tcms/text';
 
 /** Anlage einer Kontrollaufgabe (Nachweis der Durchführung im Vertrag). */
 export type AnlageZeile = Nachweis;
@@ -67,7 +68,10 @@ export function AnlagenKarte({
             }}
           >
             <Trash2 className="h-3 w-3" aria-hidden="true" /> Entfernen
-            <span className="sr-only"> {nachweisAnzeigename(a, dateinamen)}</span>
+            <span className="sr-only">
+              {' '}
+              <TcmsText>{nachweisAnzeigename(a, dateinamen)}</TcmsText>
+            </span>
           </TcmsAktionsKnopf>
         ) : null
       }

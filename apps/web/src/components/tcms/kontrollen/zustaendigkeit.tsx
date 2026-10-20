@@ -9,6 +9,7 @@ import { useId, useState } from 'react';
 import { FieldError, fieldErrorProps, FormErrorSummary } from '@/components/form-errors';
 import type { TcmsAktion } from '../bereich-b/ergebnis';
 import { useTcmsFormular } from '../formular';
+import { TCMS_TEXT_ISOLIERT } from '@/components/tcms/text';
 
 export interface PersonOption {
   id: string;
@@ -54,7 +55,7 @@ function Personenwahl({
           {leer ?? 'bitte wählen'}
         </option>
         {personen.map((p) => (
-          <option key={p.id} value={p.id.toLowerCase()}>
+          <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id.toLowerCase()}>
             {p.name}
             {p.funktion ? ` · ${p.funktion}` : ''}
           </option>

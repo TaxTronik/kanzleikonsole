@@ -24,6 +24,7 @@ import { TcmsKnopfAktion } from '@/components/tcms/programm/knopf';
 import { ProfilAnzeige, ProfilDiffListe } from '@/components/tcms/programm/profil-anzeige';
 import type { TcmsNamen } from '@/server/tcms/namen';
 import { risikoAufnehmenAction } from './actions';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export type Stand = ProfilDaten['staende'][number];
 type Vorschlag = ProfilDaten['vorschlaege'][number];
@@ -99,7 +100,11 @@ export function StandKarte({ m }: { m: ProfilModell }) {
             <span className="font-normal text-muted"> · gültig ab {isoDatumText(s.gueltigAb)}</span>
           ) : null}
         </h3>
-        {s ? <span className={zustand(m, s).ton}>{zustand(m, s).text}</span> : null}
+        {s ? (
+          <span className={zustand(m, s).ton}>
+            <TcmsText>{zustand(m, s).text}</TcmsText>
+          </span>
+        ) : null}
       </div>
       {s ? (
         <>
@@ -154,18 +159,22 @@ export function TeilbereichZiele({ m }: { m: ProfilModell }) {
       <div className="px-4 py-3">
         {tb ? (
           <>
-            <p className="text-sm font-medium">{tb.name}</p>
-            <p className="text-xs text-muted mt-1">{tb.abgrenzung}</p>
+            <p className="text-sm font-medium">
+              <TcmsText>{tb.name}</TcmsText>
+            </p>
+            <p className="text-xs text-muted mt-1">
+              <TcmsText>{tb.abgrenzung}</TcmsText>
+            </p>
             <ul className="flex flex-wrap gap-1 mt-2" aria-label="Ein- und Ausschlüsse">
               {tb.einschluesse.map((x) => (
-                <li key={`e-${x}`} className="badge-green">
+                <li key={`e-${x}`} className="badge-green" {...TCMS_TEXT_ISOLIERT}>
                   {x}
                 </li>
               ))}
               {tb.ausschluesse.map((x) => (
                 <li key={`a-${x}`} className="badge-gray">
                   <span className="sr-only">Ausschluss: </span>
-                  {x}
+                  <TcmsText>{x}</TcmsText>
                 </li>
               ))}
             </ul>
@@ -177,7 +186,9 @@ export function TeilbereichZiele({ m }: { m: ProfilModell }) {
       <ul>
         {m.ctx.ziele.map((z) => (
           <li key={z.id} className="border-t border-default px-4 py-2">
-            <p className="text-xs">{z.text}</p>
+            <p className="text-xs">
+              <TcmsText>{z.text}</TcmsText>
+            </p>
             <p className="flex flex-wrap items-center gap-1.5 mt-1 text-xs text-muted">
               Wesentlichkeit {fmtEurGanz(z.wesentlichkeitEur)} · Appetit{' '}
               {KLASSE_LABEL[z.risikoappetit]}
@@ -215,7 +226,9 @@ function HistorienEintrag({ m, s }: { m: ProfilModell; s: Stand }) {
     >
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium">Stand {m.p.staende.indexOf(s) + 1}</span>
-        <span className={z.ton}>{z.text}</span>
+        <span className={z.ton}>
+          <TcmsText>{z.text}</TcmsText>
+        </span>
       </div>
       <p className="text-xs text-muted mt-1">
         gültig ab {isoDatumText(s.gueltigAb)}
@@ -302,7 +315,7 @@ function VorschlagKopf({ v }: { v: Vorschlag }) {
   return (
     <div className="min-w-0 grow">
       <p className="text-sm font-medium">
-        {v.code} · {kat?.titel ?? v.code}
+        {v.code} · <TcmsText>{kat?.titel ?? v.code}</TcmsText>
       </p>
       <div className="flex flex-wrap gap-1.5 mt-1">
         <span className="badge-brand" title={`Profilantwort ${v.frage}`}>
@@ -414,10 +427,10 @@ function ImInventar({ m }: { m: ProfilModell }) {
             <li key={r.id} className="flex flex-wrap items-start gap-3 px-6 py-2">
               <div className="min-w-0 grow">
                 <p className="text-sm font-medium">
-                  {r.code} · {r.titel}
+                  {r.code} · <TcmsText>{r.titel}</TcmsText>
                 </p>
                 <p className="text-xs text-muted mt-1">
-                  Ursprünglicher Grund: {r.vorschlagsgrund ?? '—'}
+                  Ursprünglicher Grund: <TcmsText>{r.vorschlagsgrund ?? '—'}</TcmsText>
                 </p>
               </div>
               <span className="badge-gray shrink-0">bleibt aktiv</span>

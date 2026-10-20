@@ -60,6 +60,7 @@ import {
 } from './labels';
 import { personKurz } from './liste';
 import { ZustaendigkeitFormular, type PersonOption } from './zustaendigkeit';
+import { TcmsText, TcmsTextListe } from '@/components/tcms/text';
 
 export interface KontrollAktionen {
   design: TcmsAktion;
@@ -159,7 +160,8 @@ export function KontrolleDetailBereich({
   return (
     <DetailBereich
       id={`tcms-kontrolle-${k.id}`}
-      titel={`${k.code} · ${k.titel}`}
+      kennung={k.code}
+      titel={k.titel}
       schliessenHref={schliessenHref}
       plaketten={
         <>
@@ -178,7 +180,7 @@ export function KontrolleDetailBereich({
       {detail && !detail.ok ? <DetailZustand zustand={detail.zustand} /> : null}
       {k.naechste?.anzeige === 'UEBERFAELLIG' ? (
         <p className="alert-error-sm" role="note">
-          <strong>Überfällig:</strong> {k.naechste.periodeLabel}, fällig{' '}
+          <strong>Überfällig:</strong> <TcmsText>{k.naechste.periodeLabel}</TcmsText>, fällig{' '}
           {isoDatumText(k.naechste.faelligAm)}.
         </p>
       ) : null}
@@ -228,7 +230,9 @@ function BeschreibungAbschnitte({ t }: { t: Teil }) {
   return (
     <>
       <Abschnitt titel="Ziel und Beschreibung" offen>
-        <p className="text-sm text-secondary">{k.ziel}</p>
+        <p className="text-sm text-secondary">
+          <TcmsText>{k.ziel}</TcmsText>
+        </p>
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Feld label="Art · Ausführung">
             {KONTROLLART_LABEL[k.art]} · {AUSFUEHRUNG_LABEL[k.ausfuehrung]}
@@ -237,7 +241,9 @@ function BeschreibungAbschnitte({ t }: { t: Teil }) {
             {PARTEI_LABEL[k.partei]}
             {kat?.review ? `, ${kat.review}` : ''}
           </Feld>
-          <Feld label="Nachweisanforderung">{k.nachweis}</Feld>
+          <Feld label="Nachweisanforderung">
+            <TcmsText>{k.nachweis}</TcmsText>
+          </Feld>
           <Feld label="Mindestnachweise · Fälligkeit">
             {k.mindestNachweise} {k.mindestNachweise === 1 ? 'Datei' : 'Dateien'} ·{' '}
             {k.faelligNachTagen} Tage nach Periodenende
@@ -249,8 +255,15 @@ function BeschreibungAbschnitte({ t }: { t: Teil }) {
         <ol className="list-decimal pl-5 space-y-1">
           {k.schritte.map((s) => (
             <li key={s.titel} className="text-sm">
-              <span className="font-medium">{s.titel}</span>
-              {s.hinweis ? <span className="text-xs text-muted"> – {s.hinweis}</span> : null}
+              <span className="font-medium">
+                <TcmsText>{s.titel}</TcmsText>
+              </span>
+              {s.hinweis ? (
+                <span className="text-xs text-muted">
+                  {' '}
+                  – <TcmsText>{s.hinweis}</TcmsText>
+                </span>
+              ) : null}
             </li>
           ))}
         </ol>
@@ -262,7 +275,9 @@ function BeschreibungAbschnitte({ t }: { t: Teil }) {
           <ul className="space-y-1">
             {k.kennzahlen.map((z) => (
               <li key={z.key} className="flex justify-between gap-3 text-sm">
-                <span>{z.label}</span>
+                <span>
+                  <TcmsText>{z.label}</TcmsText>
+                </span>
                 <span className="font-mono text-xs text-muted">
                   {z.differenzAus
                     ? `Differenz aus ${z.differenzAus.join(' − ')}`
@@ -309,7 +324,7 @@ function MatrixVorschau({ t }: { t: Teil }) {
               </th>
               {SPALTEN.map((s) => (
                 <th key={s.key} scope="col" className="th">
-                  {s.label}
+                  <TcmsText>{s.label}</TcmsText>
                 </th>
               ))}
             </tr>
@@ -393,7 +408,11 @@ function AbweichungInfo({ t }: { t: Teil }) {
           </span>
         ) : null}
       </p>
-      {a.begruendung ? <p className="text-xs mt-1">„{a.begruendung}“</p> : null}
+      {a.begruendung ? (
+        <p className="text-xs mt-1">
+          „<TcmsText>{a.begruendung}</TcmsText>“
+        </p>
+      ) : null}
       <p className="text-xs mt-1">
         {a.beantragtVon
           ? `beantragt von ${namen.name(a.beantragtVon)}${a.beantragtAm ? ` · ${zeitpunkt(a.beantragtAm)}` : ''}`
@@ -525,7 +544,7 @@ function FrequenzAbschnitt({ t }: { t: Teil }) {
         ) : (
           'Keine verknüpften Risiken – es gilt die Vorlage.'
         )}{' '}
-        „Jede Periode“ = {TURNUS_LABEL[periode]}. {k.ableitung.begruendung}
+        „Jede Periode“ = {TURNUS_LABEL[periode]}. <TcmsText>{k.ableitung.begruendung}</TcmsText>
       </p>
       <MatrixVorschau t={t} />
       <AbweichungInfo t={t} />
@@ -558,7 +577,9 @@ function DesignAbschnitt({ t }: { t: Teil }) {
         <>
           <DesignBadge design={k.design} von={namen.name(k.designVon)} am={k.designAm} />
           {k.designBegruendung ? (
-            <p className="text-xs text-secondary">„{k.designBegruendung}“</p>
+            <p className="text-xs text-secondary">
+              „<TcmsText>{k.designBegruendung}</TcmsText>“
+            </p>
           ) : null}
           <p className="text-xs text-muted">
             Designbeurteilung durch {namen.name(k.designVon)} · {zeitpunkt(k.designAm)}
@@ -650,7 +671,7 @@ function DurchfuehrungZeile({ t, d }: { t: Teil; d: Durchfuehrung }) {
         href={t.link(`${t.basis}/durchfuehrungen/${encodeURIComponent(d.id)}`)}
         className="text-sm hover:underline"
       >
-        {d.periodeLabel}
+        <TcmsText>{d.periodeLabel}</TcmsText>
         {d.ausserplanmaessig ? <span className="text-xs text-muted"> · außerplanmäßig</span> : null}
       </Link>
       <span className="flex flex-wrap items-center gap-1.5">
@@ -736,7 +757,9 @@ function StaendeAbschnitt({ t }: { t: Teil }) {
                 v{s.version}
               </span>
               <span className="flex flex-col">
-                <span className="text-sm">{s.aenderungen.join(', ') || 'Erster Stand'}</span>
+                <span className="text-sm">
+                  {s.aenderungen.length ? <TcmsTextListe werte={s.aenderungen} /> : 'Erster Stand'}
+                </span>
                 <span className="text-xs text-muted">
                   {zeitpunkt(s.gueltigAb)} – {s.gueltigBis ? zeitpunkt(s.gueltigBis) : 'aktuell'} ·{' '}
                   {namen.name(s.erstelltVon)}
@@ -777,7 +800,12 @@ function HistorieAbschnitt({ t }: { t: Teil }) {
                 <span className="text-xs text-secondary shrink-0">{namen.name(a.actorId)}</span>
                 <span className="grow">
                   {KONTROLL_AUDIT_LABEL[a.aktion] ?? a.aktion}
-                  {zusatz ? <span className="text-xs text-muted"> · {zusatz}</span> : null}
+                  {zusatz ? (
+                    <span className="text-xs text-muted">
+                      {' '}
+                      · <TcmsText>{zusatz}</TcmsText>
+                    </span>
+                  ) : null}
                 </span>
               </li>
             );

@@ -23,6 +23,7 @@ import { FieldError, fieldErrorProps } from '@/components/form-errors';
 import { TcmsErgebnisMeldung } from '../ereignisse/aktionen';
 import { useTcmsFormular, type TcmsFormAktion } from '../formular';
 import { alsEingabe, LAGE_BADGE, LAGE_TEXT, type KennzahlPruefung } from '../durchfuehrung/werte';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export interface EditorSchritt {
   titel: string;
@@ -129,7 +130,7 @@ function WerteKarte({
             return (
               <tr key={k.key} className="border-t border-default align-top">
                 <th scope="row" className="px-4 py-2 text-left font-normal">
-                  {k.label}
+                  <TcmsText>{k.label}</TcmsText>
                   {p?.lage && (p.lage !== 'OK' || k.differenzAus) ? (
                     <span className={`${LAGE_BADGE[p.lage]} ml-2`}>{LAGE_TEXT[p.lage]}</span>
                   ) : null}
@@ -291,9 +292,11 @@ export function AufgabeEditor({
                   />
                   <label htmlFor={`${formId}-schritt-${i}`} className="grow">
                     <span className="block text-sm font-medium text-primary">
-                      {i + 1} · {s.titel}
+                      {i + 1} · <TcmsText>{s.titel}</TcmsText>
                     </span>
-                    <span className="block text-xs text-muted mt-0.5">{s.hinweis}</span>
+                    <span className="block text-xs text-muted mt-0.5">
+                      <TcmsText>{s.hinweis}</TcmsText>
+                    </span>
                   </label>
                 </div>
                 {kannSenden ? (
@@ -307,7 +310,9 @@ export function AufgabeEditor({
                     maxLength={2000}
                   />
                 ) : s.kommentar ? (
-                  <p className="text-xs text-secondary mt-2">Anmerkung: {s.kommentar}</p>
+                  <p className="text-xs text-secondary mt-2">
+                    Anmerkung: <TcmsText>{s.kommentar}</TcmsText>
+                  </p>
                 ) : null}
               </li>
             ))}
@@ -364,6 +369,7 @@ export function AufgabeEditor({
                 Kommentar zu den Auffälligkeiten
               </label>
               <textarea
+                {...TCMS_TEXT_ISOLIERT}
                 id={`${formId}-kommentar`}
                 className="input min-h-[5rem]"
                 name="ergebnisKommentar"
@@ -377,7 +383,9 @@ export function AufgabeEditor({
               </p>
             </div>
           ) : ergebnisKommentar ? (
-            <p className="text-sm text-secondary whitespace-pre-wrap">{ergebnisKommentar}</p>
+            <p className="text-sm text-secondary whitespace-pre-wrap" {...TCMS_TEXT_ISOLIERT}>
+              {ergebnisKommentar}
+            </p>
           ) : null}
         </fieldset>
       </section>

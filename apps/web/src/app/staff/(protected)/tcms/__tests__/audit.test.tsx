@@ -39,6 +39,7 @@ vi.mock('@/server/tcms/aktion', () => ({
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
 import { AUDIT_PRUEFUNG_BUDGET_MS } from '@/server/tcms/audit';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
 import { auditPruefenAction } from '../audit/actions';
 import TcmsAuditPage from '../audit/page';
 
@@ -183,5 +184,19 @@ describe('auditPruefenAction', () => {
       expect(w).toContain('#8: Prüfung fehlgeschlagen.');
       if (grund) expect(w).not.toContain(grund);
     }
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Einträge des Audit-Logs (Akteure, Objekte, Texte) mit
+// Richtungsmarken bleiben isoliert.
+describe('Audit-Seite – Richtungsisolation', () => {
+  it('Einträge isoliert', async () => {
+    h.lesen.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.auditAnna(), ENDPUNKTE.auditLesen.antwortSchema),
+      requestId: null,
+    });
+    const { container } = await seite();
+    erwarteIsoliert(container, 2);
   });
 });

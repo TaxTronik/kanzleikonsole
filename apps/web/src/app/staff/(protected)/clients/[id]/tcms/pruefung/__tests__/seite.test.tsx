@@ -30,6 +30,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import TcmsPruefungPage from '../page';
 
@@ -192,5 +194,15 @@ describe('Prüfungsvorbereitung', () => {
     kontext.programm = null;
     await renderServer(TcmsPruefungPage(mit({})));
     expect(screen.getByRole('link', { name: 'Tax-CMS einrichten' })).toBeTruthy();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Gegenstand, Feststellungen und Lücken der
+// Prüfungsvorbereitung isoliert.
+describe('Prüfungsvorbereitung – Richtungsisolation', () => {
+  it('Texte des Dienstes isoliert', async () => {
+    kontext = markiert(kontext, ENDPUNKTE.kontextLesen.antwortSchema);
+    const { container } = await renderServer(TcmsPruefungPage(mit({})));
+    erwarteIsoliert(container, 3);
   });
 });

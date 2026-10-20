@@ -19,6 +19,7 @@ import {
   RISIKO_FREIGABE_BADGE,
   RISIKO_FREIGABE_LABEL,
 } from './labels';
+import { TcmsText } from '@/components/tcms/text';
 
 type Kontrolle = KontextAntwort['kontrollen'][number];
 
@@ -221,7 +222,7 @@ export function RisikoTabelle({
                     scroll={false}
                     className="font-medium text-primary hover:underline"
                   >
-                    {r.titel}
+                    <TcmsText>{r.titel}</TcmsText>
                   </Link>
                   {r.kern ? <span className="text-xs text-muted"> · Kern</span> : null}
                 </td>

@@ -24,6 +24,7 @@ import { GtBadge, KlasseBadge } from '../badges';
 import { isoDatumText } from '../format';
 import { kurzName } from '../risiken/labels';
 import { DesignBadge, DurchfuehrungBadge, SchluesselBadge } from './badges';
+import { TcmsText } from '@/components/tcms/text';
 
 type Risiko = KontextAntwort['risiken'][number];
 
@@ -87,7 +88,7 @@ function KontrolleZelle({ k, z }: { k: KontrolleEintrag; z: ZeilenKontext }) {
         {k.code}
       </Link>
       <Link href={href} scroll={false} className="font-medium text-primary hover:underline">
-        {k.titel}
+        <TcmsText>{k.titel}</TcmsText>
       </Link>
       <span className="mt-1 flex flex-wrap gap-1">
         {k.risikoIds.length > 0 ? (
@@ -414,7 +415,10 @@ export function KontrollMatrix({
                   <Link href={risikoHref(r.id)} className="hover:underline">
                     <span className="font-mono font-medium">{r.code}</span>{' '}
                     <span className="text-xs text-muted" title={r.titel}>
-                      · {r.titel.length > 34 ? `${r.titel.slice(0, 33)}…` : r.titel}
+                      ·{' '}
+                      <TcmsText>
+                        {r.titel.length > 34 ? `${r.titel.slice(0, 33)}…` : r.titel}
+                      </TcmsText>
                     </span>
                   </Link>
                   {r.kontrollIds.length === 0 ? (

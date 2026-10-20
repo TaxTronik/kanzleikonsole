@@ -27,6 +27,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import TcmsKalenderPage from '../page';
 
 const BASIS = `/staff/clients/${DEMO.talwind}/tcms`;
@@ -176,5 +178,14 @@ describe('Kontrollkalender', () => {
     });
     await renderServer(TcmsKalenderPage(mit({})));
     expect(screen.getByRole('status').textContent).toContain('req-3');
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Kontrolltitel und Perioden im Kalender isoliert.
+describe('Kontrollkalender – Richtungsisolation', () => {
+  it('Titel und Perioden isoliert', async () => {
+    kontext = markiert(kontext, ENDPUNKTE.kontextLesen.antwortSchema);
+    const { container } = await renderServer(TcmsKalenderPage(mit({})));
+    erwarteIsoliert(container, 3);
   });
 });

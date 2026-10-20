@@ -23,9 +23,10 @@ import { KlasseBadge, VertraulichBadge } from '@/components/tcms/badges';
 import { TcmsPflichthinweis } from '@/components/tcms/disclaimer';
 import {
   FeststellungBezeichnung,
-  feststellungText,
+  FeststellungName,
   VERTRAULICH_HINWEIS,
 } from '@/components/tcms/feststellung';
+import { TcmsText } from '@/components/tcms/text';
 import { ErfassenDialog } from '@/components/tcms/feststellungen/formulare';
 import {
   FeststellungStatusBadge,
@@ -361,14 +362,18 @@ function OffeneMassnahmen({
                       </span>
                     </td>
                     <td className="px-6 py-2.5">
-                      {m.beschreibung ?? <span className="text-muted">vertraulich</span>}
+                      {m.beschreibung !== null ? (
+                        <TcmsText>{m.beschreibung}</TcmsText>
+                      ) : (
+                        <span className="text-muted">vertraulich</span>
+                      )}
                     </td>
                     <td className="px-6 py-2.5">
                       <Link
                         href={href(m.feststellung.id)}
                         className="text-xs text-primary hover:underline"
                       >
-                        {feststellungText(m.feststellung)}
+                        <FeststellungName f={m.feststellung} />
                       </Link>
                     </td>
                     <td className="px-6 py-2.5">

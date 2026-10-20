@@ -54,6 +54,8 @@ vi.mock('../actions', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsFeststellungenPage from '../page';
@@ -311,5 +313,33 @@ describe('Feststellung – Detail', () => {
   it('ungültige Feststellungs-ID: 404 ohne Dienstaufruf', async () => {
     await expect(detail({}, 'x/../y')).rejects.toThrow('NEXT_NOT_FOUND');
     expect(h.lesen).not.toHaveBeenCalled();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Texte des Dienstes mit Richtungsmarken (RLM) am
+// Anfang und Ende ordnen die Anzeige nicht um – jeder steht in <bdi> bzw.
+// unter dir="auto".
+describe('Feststellungen – Richtungsisolation', () => {
+  it('Liste: Titel, Maßnahmen und Kontext isoliert', async () => {
+    kontext = markiert(kontext, ENDPUNKTE.kontextLesen.antwortSchema);
+    const { container } = await liste(
+      markiert(tcmsFixtures.feststellungenTalwind(), ENDPUNKTE.feststellungenLesen.antwortSchema),
+    );
+    erwarteIsoliert(container, 5);
+  });
+
+  it('Detail: Titel, Sachverhalt, Würdigung, Maßnahmen und Verlauf isoliert', async () => {
+    kontext = markiert(kontext, ENDPUNKTE.kontextLesen.antwortSchema);
+    for (const daten of [
+      tcmsFixtures.feststellungP153(),
+      tcmsFixtures.feststellungNachkontrolle(),
+      tcmsFixtures.feststellungMaskiert(),
+    ]) {
+      const { container, unmount } = await detail(
+        markiert(daten, ENDPUNKTE.feststellungLesen.antwortSchema),
+      );
+      erwarteIsoliert(container, 1);
+      unmount();
+    }
   });
 });

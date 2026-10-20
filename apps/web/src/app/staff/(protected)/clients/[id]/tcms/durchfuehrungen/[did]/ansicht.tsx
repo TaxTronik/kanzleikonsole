@@ -74,6 +74,7 @@ import {
   nachweisEntfernenAction,
   nachweisHochladenAction,
 } from './actions';
+import { TcmsText } from '@/components/tcms/text';
 
 const FORM_ID = 'tcms-durchfuehrung-entwurf';
 const OFFEN: readonly string[] = ['GEPLANT', 'IN_DURCHFUEHRUNG', 'ZURUECKGEWIESEN'];
@@ -252,9 +253,11 @@ function Kopfzeile({ l, gt }: { l: Lage; gt: KontextAntwort['kontrollen'][number
     <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-lg font-semibold text-primary mr-1">
-          {k.code} · {k.titel}
+          {k.code} · <TcmsText>{k.titel}</TcmsText>
         </h2>
-        <span className="badge-brand">Periode: {d.periodeLabel}</span>
+        <span className="badge-brand">
+          Periode: <TcmsText>{d.periodeLabel}</TcmsText>
+        </span>
         <AnzeigeBadge status={d.anzeige} />
         <span className="badge-gray">Partei: {PARTEI_LABEL[k.partei]}</span>
         {k.schluessel ? (
@@ -329,7 +332,7 @@ function StatusHinweise({ l }: { l: Lage }) {
           <Zeile icon={icon(Link2)}>
             <strong>Nachtrag</strong> zu{' '}
             <Link className="underline" href={lnk(d.original.id)}>
-              {d.kontrolle.code} · {d.original.periodeLabel}
+              {d.kontrolle.code} · <TcmsText>{d.original.periodeLabel}</TcmsText>
             </Link>
             {d.anlass ? ` — ${d.anlass.replace(/^Nachtrag zu [^:]+:\s*/, '')}` : ''}
           </Zeile>
@@ -343,7 +346,7 @@ function StatusHinweise({ l }: { l: Lage }) {
               <span key={n.id}>
                 {i > 0 ? ', ' : ''}
                 <Link className="underline" href={lnk(n.id)}>
-                  {n.periodeLabel}
+                  <TcmsText>{n.periodeLabel}</TcmsText>
                 </Link>
               </span>
             ))}
@@ -357,7 +360,7 @@ function StatusHinweise({ l }: { l: Lage }) {
               Zurückgewiesen von {namen.name(d.zurueckgewiesenVon)}
               {d.zurueckgewiesenAm ? ` am ${isoZeitText(d.zurueckgewiesenAm)}` : ''}:
             </strong>{' '}
-            {d.zurueckweisungsgrund}
+            <TcmsText>{d.zurueckweisungsgrund}</TcmsText>
           </Zeile>
         </div>
       ) : null}
@@ -428,7 +431,7 @@ function EntfallenHinweise({ l }: { l: Lage }) {
         <div className="alert-warning flex flex-wrap items-start justify-between gap-3">
           <Zeile icon={icon(Ban)}>
             <strong>Entfallen beantragt von {namen.name(d.entfallenVon)}:</strong>{' '}
-            {d.entfallenBegruendung}
+            <TcmsText>{d.entfallenBegruendung}</TcmsText>
           </Zeile>
           {l.aktuell ? <AntragKnoepfe l={l} /> : null}
         </div>
@@ -436,8 +439,9 @@ function EntfallenHinweise({ l }: { l: Lage }) {
       {d.status === 'ENTFALLEN' ? (
         <div className="alert-info-sm">
           <Zeile icon={icon(Ban)}>
-            <strong>Entfallen</strong> — {d.entfallenBegruendung} (beantragt von{' '}
-            {namen.name(d.entfallenVon)}, freigegeben von {namen.name(d.entfallenFreigegebenVon)}
+            <strong>Entfallen</strong> — <TcmsText>{d.entfallenBegruendung}</TcmsText> (beantragt
+            von {namen.name(d.entfallenVon)}, freigegeben von{' '}
+            {namen.name(d.entfallenFreigegebenVon)}
             {d.entfallenAm ? ` am ${isoDatumText(d.entfallenAm)}` : ''}). Zählt nicht als „ohne
             Befund“.
           </Zeile>
@@ -570,7 +574,9 @@ function ErgebnisZusatz({ l }: { l: Lage }) {
                   <Circle className="h-3.5 w-3.5 text-muted" aria-hidden="true" />
                 )}
                 <span className="sr-only">{x.ok ? 'erfüllt: ' : 'offen: '}</span>
-                <span className={x.ok ? 'text-primary' : 'text-muted'}>{x.text}</span>
+                <span className={x.ok ? 'text-primary' : 'text-muted'}>
+                  <TcmsText>{x.text}</TcmsText>
+                </span>
               </li>
             ))}
           </ul>

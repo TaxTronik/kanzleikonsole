@@ -20,6 +20,7 @@ import { useTcmsFormular, type TcmsFormAktion } from '../formular';
 import type { MeldeKachel } from '../ereignisse/texte';
 import { auswahlProblem } from './anlagen-upload';
 import { fmtGroesse } from '../durchfuehrung/werte';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 /** Warum noch nicht gesendet werden kann (Bedienhilfe), sonst null. */
 function sperrGrund(z: {
@@ -154,7 +155,11 @@ export function MeldungFormular({
             <h2 id={`${id}-art`} className="text-sm font-semibold text-primary">
               1 · Art des Ereignisses
             </h2>
-            {gewaehlt ? <span className="badge-brand">{gewaehlt.label}</span> : null}
+            {gewaehlt ? (
+              <span className="badge-brand">
+                <TcmsText>{gewaehlt.label}</TcmsText>
+              </span>
+            ) : null}
           </div>
           <div
             className="p-4 grid gap-3 grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]"
@@ -183,7 +188,7 @@ export function MeldungFormular({
                     <KatalogIcon name={k.icon} />
                   </span>
                   <span className={`block text-xs ${aktiv ? 'font-bold' : 'font-medium'}`}>
-                    {k.label}
+                    <TcmsText>{k.label}</TcmsText>
                   </span>
                 </label>
               );
@@ -240,6 +245,7 @@ export function MeldungFormular({
                 Beschreibung
               </label>
               <textarea
+                {...TCMS_TEXT_ISOLIERT}
                 id={`${id}-beschreibung`}
                 name="beschreibung"
                 className="input min-h-[6rem]"

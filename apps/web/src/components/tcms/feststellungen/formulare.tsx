@@ -33,6 +33,7 @@ import {
   type TcmsFormAktion,
 } from '@/components/tcms/durchfuehrung/formulare';
 import { useTcmsFormular } from '../formular';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 type FormularProps = ReturnType<typeof useTcmsFormular>['formular'];
 
@@ -208,7 +209,7 @@ function Auswahl({
         </option>
       ) : null}
       {werte.map(([wert, label]) => (
-        <option key={wert} value={wert}>
+        <option key={wert} value={wert} {...TCMS_TEXT_ISOLIERT}>
           {label}
         </option>
       ))}
@@ -269,6 +270,7 @@ export function ErfassenDialog({
           </Feld>
           <Feld id={id} name="sachverhalt" label="Sachverhalt" fe={fe}>
             <textarea
+              {...TCMS_TEXT_ISOLIERT}
               id={`${id}-sachverhalt`}
               name="sachverhalt"
               className="input"
@@ -442,6 +444,7 @@ export function WuerdigungDialog({
           </div>
           <Feld id={id} name="ursache" label="Ursache" fe={fe}>
             <textarea
+              {...TCMS_TEXT_ISOLIERT}
               id={`${id}-ursache`}
               name="ursache"
               className="input"
@@ -635,6 +638,7 @@ export function ErledigenDialog({
           fe={fe}
         >
           <textarea
+            {...TCMS_TEXT_ISOLIERT}
             id={`${id}-nachweis`}
             name="nachweis"
             className="input"
@@ -748,6 +752,7 @@ export function VerwerfenDialog({
           fe={fe}
         >
           <textarea
+            {...TCMS_TEXT_ISOLIERT}
             id={`${id}-begruendung`}
             name="begruendung"
             className="input"
@@ -825,11 +830,15 @@ function P153ErgebnisAnzeige({ ergebnis, offen }: { ergebnis: P153Ergebnis; offe
   return (
     <div className={offen ? 'mb-4' : ''}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="badge-green">Entschieden: {ergebnis.label}</span>
+        <span className="badge-green">
+          Entschieden: <TcmsText>{ergebnis.label}</TcmsText>
+        </span>
         <span className="text-xs text-muted">{ergebnis.beleg}</span>
       </div>
       {ergebnis.begruendung ? (
-        <p className="text-sm text-secondary mt-2 whitespace-pre-wrap">{ergebnis.begruendung}</p>
+        <p className="text-sm text-secondary mt-2 whitespace-pre-wrap" {...TCMS_TEXT_ISOLIERT}>
+          {ergebnis.begruendung}
+        </p>
       ) : null}
       {ergebnis.frist ? <p className="text-xs text-muted mt-1">Frist: {ergebnis.frist}</p> : null}
       {offen ? (
@@ -886,10 +895,10 @@ function P153Optionen({
               />
               <span>
                 <label htmlFor={option} className="block text-sm font-semibold text-primary">
-                  {o.titel}
+                  <TcmsText>{o.titel}</TcmsText>
                 </label>
                 <span id={`${option}-text`} className="block text-xs text-muted mt-0.5">
-                  {o.text}
+                  <TcmsText>{o.text}</TcmsText>
                 </span>
               </span>
             </div>
@@ -924,6 +933,7 @@ function P153Felder({
           Begründung <span className="text-muted">(mindestens {P153_MIN} Zeichen)</span>
         </label>
         <textarea
+          {...TCMS_TEXT_ISOLIERT}
           id={`${id}-begruendung`}
           name="begruendung"
           className="input"

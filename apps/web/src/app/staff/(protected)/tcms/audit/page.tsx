@@ -24,6 +24,7 @@ import { TcmsLeer } from '@/components/tcms/leer';
 import { TcmsZustand } from '@/components/tcms/zustand';
 import { tcmsAdminSeite, tcmsLesen, tcmsTenantLesen } from '@/server/tcms/seite';
 import { auditPruefenAction } from './actions';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Audit-Protokoll' };
 
@@ -113,7 +114,7 @@ export default async function TcmsAuditPage({ searchParams }: { searchParams: Pr
               >
                 <option value="">Alle</option>
                 {mandanten.map((m) => (
-                  <option key={m.id} value={m.id.toLowerCase()}>
+                  <option {...TCMS_TEXT_ISOLIERT} key={m.id} value={m.id.toLowerCase()}>
                     {m.name}
                   </option>
                 ))}
@@ -221,13 +222,18 @@ export default async function TcmsAuditPage({ searchParams }: { searchParams: Pr
                     <td className="px-3 py-2 text-xs font-mono whitespace-nowrap">
                       {isoZeitText(e.at)}
                     </td>
-                    <td className="px-3 py-2 whitespace-nowrap">{e.actorName}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <TcmsText>{e.actorName}</TcmsText>
+                    </td>
                     <td className="px-3 py-2">
-                      <span className="font-mono text-xs font-semibold">{e.aktion}</span>
+                      <span className="font-mono text-xs font-semibold">
+                        <TcmsText>{e.aktion}</TcmsText>
+                      </span>
                       {detail !== '{}' ? (
                         <span
                           className="block text-xs text-muted font-mono mt-1 max-w-xs truncate"
                           title={detail}
+                          {...TCMS_TEXT_ISOLIERT}
                         >
                           {detail}
                         </span>

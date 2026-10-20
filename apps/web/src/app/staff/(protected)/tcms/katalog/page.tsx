@@ -24,6 +24,7 @@ import {
 } from '@/components/tcms/programm/katalog';
 import { TcmsZustand } from '@/components/tcms/zustand';
 import { tcmsAdminSeite } from '@/server/tcms/seite';
+import { TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Katalog' };
 
@@ -55,7 +56,8 @@ export default async function TcmsKatalogPage({
         <div>
           <h1 className="text-2xl font-bold text-primary">Tax-CMS-Katalog</h1>
           <p className="text-sm text-muted">
-            Branchenpaket {PAKET.name} v{PAKET.version} · Startfassung · nur Lesen
+            Branchenpaket <TcmsText>{PAKET.name}</TcmsText> v{PAKET.version} · Startfassung · nur
+            Lesen
           </p>
         </div>
         <span className="badge-yellow">Status: Entwurf (ungeprüft)</span>
@@ -84,7 +86,7 @@ export default async function TcmsKatalogPage({
                 className={`${t.key === tab ? 'btn-primary' : 'btn-secondary'} text-xs py-1`}
                 aria-current={t.key === tab ? 'page' : undefined}
               >
-                {t.label}
+                <TcmsText>{t.label}</TcmsText>
                 {t.anzahl !== null ? ` (${t.anzahl})` : ''}
               </Link>
             </li>

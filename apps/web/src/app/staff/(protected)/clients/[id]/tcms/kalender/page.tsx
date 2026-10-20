@@ -53,6 +53,7 @@ import { TcmsKopf } from '@/components/tcms/kopf';
 import { TcmsLeer } from '@/components/tcms/leer';
 import { TcmsZustand } from '@/components/tcms/zustand';
 import { tcmsLesenOptional, tcmsMandantSeite } from '@/server/tcms/seite';
+import { TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Kontrollkalender' };
 
@@ -244,7 +245,10 @@ function KontrolleKopf({ k, href }: { k: Kontrolle; href: string }) {
             <span className="sr-only"> (Schlüsselkontrolle)</span>
           </>
         ) : null}
-        <span className="text-xs text-secondary"> · {k.titel}</span>
+        <span className="text-xs text-secondary">
+          {' '}
+          · <TcmsText>{k.titel}</TcmsText>
+        </span>
       </span>
       <span className="block text-xs text-muted">
         <span className="font-mono">{k.gt ?? '—'}</span> · {frequenzLabel(k.frequenz)} ·{' '}
@@ -432,7 +436,7 @@ function PruflastTabelle({
             {LAST_ZEILEN.map((z) => (
               <tr key={z.key} className="border-t border-default">
                 <th scope="row" className="px-3 py-1.5 text-left font-normal" title={z.titel}>
-                  {z.label}
+                  <TcmsText>{z.label}</TcmsText>
                 </th>
                 {last.map((l) => (
                   <td key={l.monat} className="px-1 py-1.5 text-center font-mono">

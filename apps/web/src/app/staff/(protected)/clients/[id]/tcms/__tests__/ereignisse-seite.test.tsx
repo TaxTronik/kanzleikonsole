@@ -43,6 +43,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsEreignissePage from '../ereignisse/page';
@@ -235,5 +237,28 @@ describe('Ereigniseingang', () => {
     const panel = screen.getAllByRole('region').find((r) => within(r).queryByText(ereignis.titel));
     expect(panel).toBeTruthy();
     expect(document.querySelectorAll('input[name="folge"]')).toHaveLength(0);
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Titel, Beschreibung, Anlagen, Vorschläge, Folgen und
+// Verlauf der Ereignisse mit Richtungsmarken bleiben isoliert.
+describe('Ereigniseingang – Richtungsisolation', () => {
+  it.each([
+    ['neues Ereignis (Portal-Meldung)', () => tcmsFixtures.ereignis0345()],
+    ['erledigtes Ereignis', () => tcmsFixtures.ereignis0329()],
+  ])('%s: Liste und Detail isoliert', async (_fall, fixture) => {
+    kontext = markiert(kontext, ENDPUNKTE.kontextLesen.antwortSchema);
+    const liste = markiert(
+      tcmsFixtures.ereignisseTalwind(),
+      ENDPUNKTE.ereignisseLesen.antwortSchema,
+    );
+    ereignis = markiert(fixture(), ENDPUNKTE.ereignisLesen.antwortSchema);
+    h.lesenOptional.mockImplementation(async (_s, e: { name: string }) => ({
+      ok: true,
+      daten: e.name === 'kontextLesen' ? kontext : liste,
+      requestId: 'r',
+    }));
+    const { container } = await seite({ e: ereignis.id });
+    erwarteIsoliert(container, 3);
   });
 });

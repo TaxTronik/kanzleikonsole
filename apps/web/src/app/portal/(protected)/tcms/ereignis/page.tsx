@@ -38,6 +38,7 @@ import { PORTAL_ANLAGEN_GESAMT_BYTES } from '@/server/tcms/portal/anlagen';
 import { tcmsLesen, tcmsNamenLesen, tcmsPortalSeite, tcmsTenantLesen } from '@/server/tcms/seite';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import { portalEreignisMeldenAction } from './actions';
+import { TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Ereignis melden' };
 
@@ -239,7 +240,9 @@ export default async function PortalEreignisPage({
                           <KatalogIcon name={t.icon} />
                         </span>
                         <span className="grow min-w-0">
-                          <span className="block text-sm font-medium text-primary">{x.titel}</span>
+                          <span className="block text-sm font-medium text-primary">
+                            <TcmsText>{x.titel}</TcmsText>
+                          </span>
                           <span className="block text-xs text-muted mt-0.5">
                             <span className="font-mono">{x.nummer}</span> ·{' '}
                             {isoDatumText(x.gemeldetAm)}

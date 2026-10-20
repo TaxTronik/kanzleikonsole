@@ -46,6 +46,8 @@ vi.mock('@/server/tcms/bereich-b/personen-auswahl', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsKontrollenPage from '../page';
@@ -340,5 +342,31 @@ describe('Kontrollmatrix – Zustände', () => {
   it('Liste unbekannt trotz Kontext: notFound', async () => {
     antworten({ liste: ok(null) });
     await expect(renderServer(TcmsKontrollenPage(mit({})))).rejects.toThrow('NEXT_NOT_FOUND');
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Titel, Ziele, Nachweise und Begründungen der
+// Kontrollen mit Richtungsmarken bleiben isoliert (Liste, Matrix, Detail).
+describe('Kontrollen – Richtungsisolation', () => {
+  it.each([
+    ['Liste', {}],
+    ['Matrix', { ansicht: 'matrix' }],
+    ['Detail K-EC-02', { kontrolle: 'K-EC-02' }],
+    ['Detail K-EC-08', { kontrolle: 'K-EC-08' }],
+  ])('%s', async (_fall, sp: Record<string, string>) => {
+    kontext = markiert(kontext, ENDPUNKTE.kontextLesen.antwortSchema);
+    liste = markiert(liste, ENDPUNKTE.kontrollenLesen.antwortSchema);
+    const detail =
+      sp.kontrolle === 'K-EC-02'
+        ? tcmsFixtures.kontrolleKEc02()
+        : sp.kontrolle === 'K-EC-08'
+          ? tcmsFixtures.kontrolleKEc08()
+          : null;
+    antworten(
+      detail ? { detail: ok(markiert(detail, ENDPUNKTE.kontrolleLesen.antwortSchema)) } : {},
+    );
+    const suche = sp.kontrolle ? { kontrolle: idVon(sp.kontrolle) } : sp;
+    const { container } = await renderServer(TcmsKontrollenPage(mit(suche)));
+    erwarteIsoliert(container, 5);
   });
 });

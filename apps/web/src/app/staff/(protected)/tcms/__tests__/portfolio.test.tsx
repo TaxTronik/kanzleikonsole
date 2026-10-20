@@ -17,6 +17,8 @@ vi.mock('@/server/tcms/portfolio', () => ({ portfolioMandanten: h.mandanten }));
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import TcmsPortfolioPage from '../page';
 
 const NEU = 'c1000000-0000-4000-8000-000000000001';
@@ -137,5 +139,20 @@ describe('Tax-CMS-Portfolio', () => {
     await renderServer(TcmsPortfolioPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByRole('heading', { name: 'Tax-CMS derzeit nicht erreichbar' })).toBeTruthy();
     expect(h.mandanten).not.toHaveBeenCalled();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Texte des Portfolios (Anker, Phasen, Hinweise) isoliert.
+describe('Portfolio – Richtungsisolation', () => {
+  it('Portfolio isoliert', async () => {
+    h.lesen.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.portfolioDemo(), ENDPUNKTE.portfolioLesen.antwortSchema),
+      requestId: null,
+    });
+    const { container } = await renderServer(
+      TcmsPortfolioPage({ searchParams: Promise.resolve({}) }),
+    );
+    erwarteIsoliert(container, 1);
   });
 });

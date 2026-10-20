@@ -25,6 +25,7 @@ import { AnzeigeBadge } from '../badges';
 import { isoDatumText, isoZeitText } from '../format';
 import { TcmsAktionsKnopf, TcmsFormDialog, type TcmsFormAktion } from './aktionen';
 import { FOLGE_STATUS_BADGE, FOLGE_STATUS_LABEL } from './texte';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export type FolgeDetail = z.infer<typeof FolgeDetailSchema>;
 
@@ -88,7 +89,9 @@ export function VorschlagZeile({
       <div className="grow min-w-0 space-y-2">
         <label htmlFor={`folge-${f.id}`} className="block">
           <span className="block text-sm font-medium text-primary">{titel}</span>
-          <span className="block text-xs text-muted">{f.text}</span>
+          <span className="block text-xs text-muted">
+            <TcmsText>{f.text}</TcmsText>
+          </span>
         </label>
         {hinweis ? <p className="text-xs text-red-700 dark:text-red-400">{hinweis}</p> : null}
         <div className="flex flex-wrap items-end gap-3">
@@ -105,7 +108,7 @@ export function VorschlagZeile({
             >
               <option value="">nicht festgelegt</option>
               {personen.map((p) => (
-                <option key={p.wert} value={p.wert}>
+                <option {...TCMS_TEXT_ISOLIERT} key={p.wert} value={p.wert}>
                   {p.label}
                 </option>
               ))}
@@ -232,7 +235,7 @@ function FolgeVerknuepfungen({ f, link }: { f: FolgeDetail; link: (pfad: string)
           href={link(`/risiken?risiko=${encodeURIComponent(f.ziel)}`)}
           className="badge-gray font-mono hover:underline"
         >
-          {f.ziel}
+          <TcmsText>{f.ziel}</TcmsText>
         </Link>
       ) : null}
       {f.art === 'PROFIL_AENDERN' && f.status === 'ANGELEGT' ? (
@@ -296,13 +299,15 @@ export function FolgeZeile({
       <span className={`status-dot ${punkt} mt-2`} aria-hidden="true" />
       <div className="grow min-w-0">
         <p className="text-sm font-medium text-primary">{titel}</p>
-        <p className="text-xs text-muted">{f.text}</p>
+        <p className="text-xs text-muted">
+          <TcmsText>{f.text}</TcmsText>
+        </p>
         <p className="text-xs text-muted mt-1">{folgeAngaben(f, namen)}</p>
         <FolgeVerknuepfungen f={f} link={link} />
         {f.verwerfen ? (
           <p className="text-xs text-muted mt-1">
             Verworfen · {namen.name(f.verwerfen.vonId)} · {isoZeitText(f.verwerfen.am)}:{' '}
-            {f.verwerfen.begruendung}
+            <TcmsText>{f.verwerfen.begruendung}</TcmsText>
           </p>
         ) : null}
       </div>

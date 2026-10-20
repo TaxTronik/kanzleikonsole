@@ -54,6 +54,7 @@ import {
   folgenAnlegenAction,
   folgeVerwerfenAction,
 } from './actions';
+import { TcmsText } from '@/components/tcms/text';
 
 export type EreignisDetail = z.infer<typeof EreignisDetailSchema>;
 
@@ -117,7 +118,7 @@ function AnlagenBlock({ e, basis }: { e: EreignisDetail; basis: string }) {
               href={`/api${basis}/ereignisse/anlage?e=${encodeURIComponent(e.id)}&h=${a.sha256}`}
               className="text-primary hover:underline break-all"
             >
-              {tcmsTextBereinigen(a.dateiname, 'DATEINAME', 255) || 'Datei'}
+              <TcmsText>{tcmsTextBereinigen(a.dateiname, 'DATEINAME', 255) || 'Datei'}</TcmsText>
               <span className="sr-only"> herunterladen</span>
             </a>
             <span className="badge-gray gap-1" title="SHA-256 laut Tax-CMS">
@@ -351,7 +352,9 @@ function VerwerfenAntragBlock({
         <strong>Verwerfen beantragt</strong> von {namen.name(antrag.vonId)} ·{' '}
         {isoZeitText(antrag.am)}
       </p>
-      <p className="text-xs whitespace-pre-wrap">{antrag.begruendung}</p>
+      <p className="text-xs whitespace-pre-wrap">
+        <TcmsText>{antrag.begruendung}</TcmsText>
+      </p>
       <div className="flex flex-wrap items-start gap-2">
         {eigenerAntrag ? (
           <>
@@ -507,7 +510,8 @@ function VerlaufBlock({ e, namen }: { e: EreignisDetail; namen: TcmsNamen }) {
         {e.verlauf.map((v) => (
           <li key={`${v.pos}-${v.at}`} className="text-xs">
             <span className="font-mono text-muted">{isoZeitText(v.at)}</span> ·{' '}
-            <span className="font-medium">{namen.name(v.actorId)}</span> · {v.text}
+            <span className="font-medium">{namen.name(v.actorId)}</span> ·{' '}
+            <TcmsText>{v.text}</TcmsText>
           </li>
         ))}
       </ul>
@@ -550,13 +554,17 @@ export function TriagePanel({
       <TriageKopf e={e} namen={namen} />
       <div className="p-6 space-y-5">
         <div>
-          <p className="text-sm font-medium text-primary">{e.titel}</p>
+          <p className="text-sm font-medium text-primary">
+            <TcmsText>{e.titel}</TcmsText>
+          </p>
           <p className="text-xs text-muted mt-1">
-            {t.titel} · Ereignisdatum {isoDatumText(e.ereignisDatum)} · Quelle{' '}
+            <TcmsText>{t.titel}</TcmsText> · Ereignisdatum {isoDatumText(e.ereignisDatum)} · Quelle{' '}
             {quelleText(e.quelle)}
           </p>
           <h4 className="text-xs font-semibold text-secondary mt-3 mb-1">Beschreibung</h4>
-          <p className="text-sm text-secondary whitespace-pre-wrap">{e.beschreibung}</p>
+          <p className="text-sm text-secondary whitespace-pre-wrap">
+            <TcmsText>{e.beschreibung}</TcmsText>
+          </p>
         </div>
         <AnlagenBlock e={e} basis={basis} />
         <BetroffenBlock e={e} ctx={ctx} link={link} />
@@ -592,7 +600,9 @@ export function TriagePanel({
               <strong>Verworfen</strong> · bestätigt von {namen.name(e.verwerfen.vonId)} ·{' '}
               {isoZeitText(e.verwerfen.am)}
             </p>
-            <p className="text-xs mt-1 whitespace-pre-wrap">{e.verwerfen.begruendung}</p>
+            <p className="text-xs mt-1 whitespace-pre-wrap">
+              <TcmsText>{e.verwerfen.begruendung}</TcmsText>
+            </p>
           </div>
         ) : null}
         {abgeschlossen ? <AbschlussInfo e={e} namen={namen} /> : <FussAktionen {...basisProps} />}
@@ -601,8 +611,8 @@ export function TriagePanel({
       <p className="card-footer">
         {e.meldung ? (
           <span className="text-xs font-mono text-muted">
-            Ereignis im Audit: {e.meldung.aktion} · {isoZeitText(e.meldung.at)} · Hash{' '}
-            <HashKurz wert={e.meldung.hash} />
+            Ereignis im Audit: <TcmsText>{e.meldung.aktion}</TcmsText> · {isoZeitText(e.meldung.at)}{' '}
+            · Hash <HashKurz wert={e.meldung.hash} />
           </span>
         ) : (
           <span className="text-xs text-muted">Kein Meldungseintrag im Audit.</span>

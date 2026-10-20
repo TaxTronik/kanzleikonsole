@@ -26,6 +26,7 @@ import { DetailBereich, SperrHinweis } from '../bereich-b/detail';
 import { isoDatumText, isoZeitText } from '../format';
 import { SchwellenAnzeige } from '../visual';
 import { lagerArt, profilP9, REG_BADGE, REG_LABEL, REG_LANG, standUnterschiede } from './anzeige';
+import { TcmsText } from '@/components/tcms/text';
 
 type Land = KontextAntwort['laender'][number];
 type Feststellung = Laender['feststellungen'][number]['eintraege'][number];
@@ -57,7 +58,9 @@ export function SchwellenKarte({
           EU-Fernverkäufe – Schwelle {fmtEurGanz(EU_LIEFERSCHWELLE_EUR)} (OSS)
         </h3>
         <span className="inline-flex flex-wrap items-center gap-2">
-          <span className={SCHWELLE_BADGE[s.status]}>{s.label}</span>
+          <span className={SCHWELLE_BADGE[s.status]}>
+            <TcmsText>{s.label}</TcmsText>
+          </span>
           <span className="text-xs text-muted">
             Warnung ab {Math.round(WARNSTUFE * 100)} % der Schwelle
           </span>
@@ -315,7 +318,7 @@ function RegistrierungAbschnitt({
             <span className={s.erledigt ? 'badge-green' : 'badge-gray'}>
               {s.erledigt ? <Check className="h-3 w-3" aria-hidden="true" /> : '·'}
             </span>
-            {s.text}
+            <TcmsText>{s.text}</TcmsText>
             <span className="sr-only">{s.erledigt ? ' (erledigt)' : ' (offen)'}</span>
           </li>
         ))}
@@ -500,7 +503,10 @@ function BezuegeAbschnitt({ bezug }: { bezug: LandBezugAnzeige | null }) {
                   {bezug.risiken.map((r) => (
                     <li key={`${r.code}-${r.grund}`}>
                       <BezugLink href={r.href}>{r.code}</BezugLink>
-                      <span className="text-secondary"> – {r.grund}</span>
+                      <span className="text-secondary">
+                        {' '}
+                        – <TcmsText>{r.grund}</TcmsText>
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -528,7 +534,9 @@ function BezuegeAbschnitt({ bezug }: { bezug: LandBezugAnzeige | null }) {
                 <ul className="space-y-0.5">
                   {bezug.ereignisse.map((e) => (
                     <li key={e.id}>
-                      <BezugLink href={e.href}>{e.text}</BezugLink>
+                      <BezugLink href={e.href}>
+                        <TcmsText>{e.text}</TcmsText>
+                      </BezugLink>
                     </li>
                   ))}
                 </ul>
@@ -607,7 +615,7 @@ export function LandDetailBereich({
               {f.nummer}
             </Link>
             <span className="block text-xs">
-              „{f.titel}“ · {FESTSTELLUNG_STATUS_LABEL[f.status]}
+              „<TcmsText>{f.titel}</TcmsText>“ · {FESTSTELLUNG_STATUS_LABEL[f.status]}
               {f.p153Offen ? ' · §-153-Würdigung offen' : ''}
             </span>
           </p>

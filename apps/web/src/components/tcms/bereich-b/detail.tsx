@@ -12,9 +12,11 @@ import type { ReactNode } from 'react';
 import { ChevronRight, X } from 'lucide-react';
 import { TCMS_SEITEN_TEXTE, type TcmsSeitenZustand } from '@/server/tcms/zustand';
 import { FokusBeimOeffnen } from './fokus';
+import { TcmsText } from '@/components/tcms/text';
 
 export function DetailBereich({
   id,
+  kennung,
   titel,
   unterzeile,
   schliessenHref,
@@ -23,6 +25,8 @@ export function DetailBereich({
 }: {
   /** Eindeutige ID der Überschrift (auch Sprungziel `#<id>`). */
   id: string;
+  /** Code vor dem Titel („EC-UST-01 · <Titel>“); der Titel des Dienstes isoliert. */
+  kennung?: string;
   titel: string;
   unterzeile?: ReactNode;
   schliessenHref: string;
@@ -35,7 +39,8 @@ export function DetailBereich({
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h3 id={id} tabIndex={-1} className="text-base font-semibold text-primary outline-none">
-              {titel}
+              {kennung ? `${kennung} · ` : null}
+              <TcmsText>{titel}</TcmsText>
             </h3>
             {plaketten}
           </div>
@@ -45,7 +50,7 @@ export function DetailBereich({
           href={schliessenHref}
           scroll={false}
           className="btn-secondary text-xs py-1 shrink-0"
-          aria-label={`${titel} schließen`}
+          aria-label={`${kennung ? `${kennung} · ` : ''}${titel} schließen`}
         >
           <X className="h-4 w-4" aria-hidden="true" /> Schließen
         </Link>

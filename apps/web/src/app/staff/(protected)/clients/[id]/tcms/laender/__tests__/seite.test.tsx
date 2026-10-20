@@ -31,6 +31,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsLaenderPage from '../page';
@@ -262,5 +264,16 @@ describe('Länder-Monitor', () => {
     expect(screen.getByRole('status').textContent).toContain('req-8');
     antworten({ monitor: ok(null) });
     await expect(renderServer(TcmsLaenderPage(mit({})))).rejects.toThrow('NEXT_NOT_FOUND');
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Ländernamen, Bezüge, Fristen und Hinweise isoliert.
+describe('Länder-Monitor – Richtungsisolation', () => {
+  it.each<Record<string, string>>([{}, { land: 'CZ' }])('Monitor %o isoliert', async (sp) => {
+    kontext = markiert(kontext, ENDPUNKTE.kontextLesen.antwortSchema);
+    monitor = markiert(monitor, ENDPUNKTE.laenderLesen.antwortSchema);
+    antworten();
+    const { container } = await renderServer(TcmsLaenderPage(mit(sp)));
+    erwarteIsoliert(container, 3);
   });
 });

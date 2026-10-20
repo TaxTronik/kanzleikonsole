@@ -42,6 +42,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsBeschreibungPage from '../page';
@@ -379,5 +381,51 @@ describe('CMS-Beschreibung', () => {
     await rendern();
     expect(h.lesen).not.toHaveBeenCalled();
     expect(h.tenantLesen).not.toHaveBeenCalled();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Texte der Beschreibung (Abschnitte, Bausteine,
+// eingefrorene Namen, Versionen) mit Richtungsmarken bleiben isoliert.
+describe('CMS-Beschreibung – Richtungsisolation', () => {
+  function markierteDaten() {
+    const kontext = markiert(tcmsFixtures.kontextTalwind(), ENDPUNKTE.kontextLesen.antwortSchema);
+    const b = markiert(
+      tcmsFixtures.beschreibungTalwind(),
+      ENDPUNKTE.beschreibungLesen.antwortSchema,
+    );
+    h.lesenOptional.mockResolvedValue({ ok: true, daten: kontext, requestId: 'r' });
+    h.lesen.mockResolvedValue({ ok: true, daten: b, requestId: 'r' });
+    return { kontext, b };
+  }
+
+  it.each<Record<string, string>>([{}, { abschnitt: 'organisation' }, { abschnitt: 'gesamt' }])(
+    'Entwurf %o: Abschnitte, Bausteine und Versionen isoliert',
+    async (sp) => {
+      markierteDaten();
+      const { container } = await rendern(sp);
+      erwarteIsoliert(container, 3);
+    },
+  );
+
+  it('eingefrorene Version: Inhalt und eingefrorene Namen isoliert', async () => {
+    const { b } = markierteDaten();
+    const v12 = b.versionen.find((v) => v.id === V12)!;
+    v12.snapshot!.bausteine = {
+      VERANTWORTUNG: {
+        rollen: [
+          {
+            rolle: '\u200fGesetzliche Vertretung\u200f',
+            name: '\u200fJana Weller-Alt\u200f',
+            personId: DEMO.jana,
+          },
+        ],
+        kontrollen: [],
+      },
+    } as never;
+    for (const abschnitt of ['organisation', 'gesamt']) {
+      const { container, unmount } = await rendern({ version: V12, abschnitt });
+      erwarteIsoliert(container, 2);
+      unmount();
+    }
   });
 });

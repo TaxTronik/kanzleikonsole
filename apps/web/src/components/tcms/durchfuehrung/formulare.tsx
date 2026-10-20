@@ -22,6 +22,7 @@ import { Modal } from '@/components/ui/modal';
 import type { TcmsAktionsErgebnis, TcmsFormAktion } from '../ergebnis';
 import { useTcmsFormular, type TcmsBestaetigung } from '../formular';
 import { fmtGroesse } from './werte';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 /** Ergebnis einer TCMS-Aktion: feste Meldung bei Erfolg, sonst Fehler der Abbildung. */
 export type TcmsErgebnis = TcmsAktionsErgebnis;
@@ -244,6 +245,7 @@ function BegruendungsInhalt({
             Begründung <span className="text-muted text-xs">(mindestens {min} Zeichen)</span>
           </label>
           <textarea
+            {...TCMS_TEXT_ISOLIERT}
             id={`${id}-begruendung`}
             name="begruendung"
             className="input"
@@ -443,6 +445,7 @@ function BefundDialog({
             Sachverhalt <span className="text-muted text-xs">(mindestens 20 Zeichen)</span>
           </label>
           <textarea
+            {...TCMS_TEXT_ISOLIERT}
             id={`${id}-sachverhalt`}
             name={FELD_BEFUND.sachverhalt}
             className="input"
@@ -533,7 +536,9 @@ function BefundDialog({
               <label key={r.id} className="inline-flex items-center gap-2 text-sm">
                 <input type="checkbox" name={FELD_BEFUND.risikoIds} value={r.id} defaultChecked />
                 <span className="font-mono text-xs">{r.code}</span>
-                <span className="text-secondary">{r.titel}</span>
+                <span className="text-secondary">
+                  <TcmsText>{r.titel}</TcmsText>
+                </span>
               </label>
             ))}
           </div>
@@ -585,7 +590,10 @@ export function NachweisEntfernenKnopf({
         laeuft={laeuft}
       >
         <Trash2 className="h-3.5 w-3.5" aria-hidden="true" /> Entfernen
-        <span className="sr-only"> ({dateiname})</span>
+        <span className="sr-only">
+          {' '}
+          (<TcmsText>{dateiname}</TcmsText>)
+        </span>
       </Absenden>
       {ergebnis && !ergebnis.ok ? (
         <p className="text-xs text-red-700" role="alert">
@@ -645,7 +653,7 @@ export function NachweisHochladen({
       </div>
       {datei ? (
         <p className="text-xs text-secondary">
-          {datei.name} ({fmtGroesse(datei.groesse)})
+          <TcmsText>{datei.name}</TcmsText> ({fmtGroesse(datei.groesse)})
         </p>
       ) : null}
       {zuGross ? (
@@ -709,7 +717,7 @@ export function NachweisAuswahl({
             bitte wählen
           </option>
           {dokumente.map((d) => (
-            <option key={d.id} value={d.id}>
+            <option {...TCMS_TEXT_ISOLIERT} key={d.id} value={d.id}>
               {d.titel} · {fmtGroesse(d.groesse)} · {d.erstellt}
             </option>
           ))}

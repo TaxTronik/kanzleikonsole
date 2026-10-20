@@ -27,6 +27,8 @@ vi.mock('@/server/tcms/portfolio', () => ({ portfolioMandanten: h.mandanten }));
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import TcmsArbeitskorbPage from '../page';
 
@@ -89,7 +91,11 @@ describe('Arbeitskorb', () => {
     expect(container.textContent).toContain('Talwind (kk)');
     expect(container.textContent).not.toContain('Talwind Outdoor GmbH');
     const p153 = screen.getByRole('region', { name: '§-153-Würdigungen' });
-    expect(within(p153).getByText(/F-2026-007 · Lager CZ/)).toBeTruthy();
+    // Der Titel steht richtungsisoliert in <bdi> (kk-tcms-qual): Abgleich auf die
+    // ganze Bezeichnung statt auf einen einzelnen Textknoten.
+    expect(
+      within(p153).getAllByText((_, e) => /^F-2026-007 · Lager CZ/.test(e?.textContent ?? '')),
+    ).not.toEqual([]);
   });
 
   it('vertrauliche Feststellung im Korb ohne Titel', async () => {
@@ -119,5 +125,21 @@ describe('Arbeitskorb', () => {
     await renderServer(TcmsArbeitskorbPage());
     expect(screen.getByRole('status').textContent).toMatch(/nicht eingerichtet/);
     expect(h.lesen).not.toHaveBeenCalled();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Aufgaben, Titel und Mandantenanker des Dienstes isoliert.
+describe('Arbeitskorb – Richtungsisolation', () => {
+  it.each([
+    ['Anna', () => tcmsFixtures.arbeitskorbAnna()],
+    ['Leon', () => tcmsFixtures.arbeitskorbLeon()],
+  ])('Korb %s isoliert', async (_wer, korb) => {
+    h.lesen.mockResolvedValue({
+      ok: true,
+      daten: markiert(korb(), ENDPUNKTE.arbeitskorbLesen.antwortSchema),
+      requestId: 'r',
+    });
+    const { container } = await renderServer(TcmsArbeitskorbPage());
+    erwarteIsoliert(container, 2);
   });
 });

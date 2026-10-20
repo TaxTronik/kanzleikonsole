@@ -32,6 +32,7 @@ import {
   type TcmsFormAktion,
 } from './formulare';
 import { NachweisListe, nachweisAnzeigename, type NachweisZustand } from './nachweis-liste';
+import { TcmsText } from '@/components/tcms/text';
 
 /** Abgleich eines Nachweises mit der Ablage (aus verweis.ts, hier als Anzeige). */
 export type { NachweisZustand } from './nachweis-liste';
@@ -146,9 +147,11 @@ export function KontrollbeschreibungKarte({
     <details className="details-box" open>
       <summary>Kontrollbeschreibung</summary>
       <div className="details-body flex flex-col gap-1.5 text-sm text-secondary">
-        <span>Ziel: {k.ziel}</span>
         <span>
-          Nachweis: {k.nachweis}
+          Ziel: <TcmsText>{k.ziel}</TcmsText>
+        </span>
+        <span>
+          Nachweis: <TcmsText>{k.nachweis}</TcmsText>
           {k.mindestNachweise > 0
             ? ` (mindestens ${k.mindestNachweise} ${k.mindestNachweise === 1 ? 'Datei' : 'Dateien'})`
             : ''}
@@ -190,7 +193,10 @@ export function RisikenKarte({
           d.risiken.map((r) => (
             <Link key={r.id} href={href(r.id)} className="badge-gray font-mono" title={r.titel}>
               {r.code}
-              <span className="sr-only"> {r.titel}</span>
+              <span className="sr-only">
+                {' '}
+                <TcmsText>{r.titel}</TcmsText>
+              </span>
             </Link>
           ))
         )}
@@ -213,7 +219,9 @@ export function LetzteKarte({ d, href }: { d: DurchfuehrungDetail; href: (id: st
                 href={href(x.id)}
                 className="flex items-center justify-between gap-2 px-6 py-2.5 hover:bg-surface-raised"
               >
-                <span className="text-sm text-primary">{x.periodeLabel}</span>
+                <span className="text-sm text-primary">
+                  <TcmsText>{x.periodeLabel}</TcmsText>
+                </span>
                 <AnzeigeBadge status={x.anzeige} />
               </Link>
             </li>
@@ -248,7 +256,7 @@ export function VerlaufKarte({ d, namen }: { d: DurchfuehrungDetail; namen: Tcms
                 {e.system ? isoDatumText(e.at) : isoZeitText(e.at)}
               </span>{' '}
               · <span className="font-medium">{e.system ? 'System' : namen.name(e.actorId)}</span> ·{' '}
-              {e.text}
+              <TcmsText>{e.text}</TcmsText>
             </li>
           ))}
         </ol>
@@ -306,7 +314,9 @@ export function PersonenbelegeKarte({ d, namen }: { d: DurchfuehrungDetail; name
               key={i}
               className="flex items-center justify-between gap-2 px-6 py-2.5 border-b border-default"
             >
-              <dt className="text-xs text-muted">{z.label}</dt>
+              <dt className="text-xs text-muted">
+                <TcmsText>{z.label}</TcmsText>
+              </dt>
               <dd className="text-xs font-medium text-right">
                 {z.person}
                 {z.zeit ? ` · ${isoZeitText(z.zeit)}` : ''}

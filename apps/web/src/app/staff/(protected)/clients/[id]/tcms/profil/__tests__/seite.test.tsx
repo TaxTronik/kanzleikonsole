@@ -41,6 +41,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { AUFNAHME_TEXTE } from '@/server/tcms/programm/zustaendigkeit';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
@@ -276,5 +278,24 @@ describe('Geschäftsprofil', () => {
     });
     await rendern();
     expect(screen.getByRole('heading', { name: 'Tax-CMS derzeit nicht erreichbar' })).toBeTruthy();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Antworten, Vorschläge und Historie des
+// Geschäftsprofils isoliert.
+describe('Geschäftsprofil – Richtungsisolation', () => {
+  it('Texte des Dienstes isoliert', async () => {
+    h.lesenOptional.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.kontextTalwind(), ENDPUNKTE.kontextLesen.antwortSchema),
+      requestId: 'r',
+    });
+    h.lesen.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.profilTalwind(), ENDPUNKTE.profilLesen.antwortSchema),
+      requestId: 'r',
+    });
+    const { container } = await rendern();
+    erwarteIsoliert(container, 3);
   });
 });

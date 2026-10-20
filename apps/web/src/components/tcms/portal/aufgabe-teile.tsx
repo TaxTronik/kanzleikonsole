@@ -14,6 +14,7 @@ import { AnzeigeBadge } from '../badges';
 import { isoDatumKurzText, isoDatumText, isoZeitText } from '../format';
 import { TcmsAktionsKnopf, TcmsFormDialog, type TcmsFormAktion } from '../ereignisse/aktionen';
 import { aufgabeStatusText } from './texte';
+import { TcmsText } from '@/components/tcms/text';
 
 type Namen = { name(id: string | null | undefined): string };
 
@@ -86,7 +87,7 @@ export function AufgabeKopf({
         </div>
       ) : null}
       <h1 className="text-2xl font-bold text-primary">
-        Kontrollaufgabe · {k.titel} {d.periodeLabel}
+        Kontrollaufgabe · <TcmsText>{k.titel}</TcmsText> <TcmsText>{d.periodeLabel}</TcmsText>
       </h1>
       <div className="flex flex-wrap items-center gap-2 my-3">
         <span className="badge-gray font-mono">{k.code}</span>
@@ -96,7 +97,9 @@ export function AufgabeKopf({
           Formular-Version v{k.version} · {isoDatumText(k.gueltigAb)}
         </span>
         {d.original ? (
-          <span className="badge-gray">Nachtrag zu {d.original.periodeLabel}</span>
+          <span className="badge-gray">
+            Nachtrag zu <TcmsText>{d.original.periodeLabel}</TcmsText>
+          </span>
         ) : null}
       </div>
       {d.status === 'ZURUECKGEWIESEN' && d.zurueckweisungsgrund ? (
@@ -107,7 +110,7 @@ export function AufgabeKopf({
               Zur Überarbeitung zurückgegeben von {namen.name(d.zurueckgewiesenVon)}
               {d.zurueckgewiesenAm ? ` am ${isoZeitText(d.zurueckgewiesenAm)}` : ''}:
             </strong>{' '}
-            {d.zurueckweisungsgrund}
+            <TcmsText>{d.zurueckweisungsgrund}</TcmsText>
           </span>
         </div>
       ) : null}
@@ -133,11 +136,16 @@ export function AufgabeAnleitung({
   const gzm = k.gegenzeichnungMandant;
   let text: ReactNode;
   if (lage.offen && zugewiesen) {
-    text = `${k.ziel} Bitte erledigen Sie die Schritte für ${d.periodeLabel} und laden Sie die Anlagen hoch (${k.nachweis}). Nach dem Übermitteln ${
-      gzm
-        ? 'bestätigt eine zweite Person bei Ihnen die Vollständigkeit; danach prüft die Kanzlei.'
-        : 'prüft die Kanzlei.'
-    }`;
+    text = (
+      <>
+        <TcmsText>{k.ziel}</TcmsText> Bitte erledigen Sie die Schritte für{' '}
+        <TcmsText>{d.periodeLabel}</TcmsText> und laden Sie die Anlagen hoch (
+        <TcmsText>{k.nachweis}</TcmsText>). Nach dem Übermitteln{' '}
+        {gzm
+          ? 'bestätigt eine zweite Person bei Ihnen die Vollständigkeit; danach prüft die Kanzlei.'
+          : 'prüft die Kanzlei.'}
+      </>
+    );
   } else if (lage.offen) {
     text = `Diese Aufgabe bearbeitet ${namen.name(k.durchfuehrendId)} (Vertretung ${namen.name(k.vertretungId)}). Sie sehen den ${
       lage.historisch ? `Stand zum ${isoDatumText(d.stand)}` : 'aktuellen Stand'
@@ -155,7 +163,13 @@ export function AufgabeAnleitung({
       d.status === 'OHNE_BEFUND' ? 'ohne Befund' : 'mit Befund'
     }). Die Angaben und Anlagen sind unveränderlich gespeichert.`;
   } else {
-    text = `Diese Aufgabe ist entfallen${d.entfallenBegruendung ? `: ${d.entfallenBegruendung}` : '.'}`;
+    text = d.entfallenBegruendung ? (
+      <>
+        Diese Aufgabe ist entfallen: <TcmsText>{d.entfallenBegruendung}</TcmsText>
+      </>
+    ) : (
+      'Diese Aufgabe ist entfallen.'
+    );
   }
   return <p className={lage.abgeschlossen ? 'alert-success mb-4' : 'alert-info-sm mb-4'}>{text}</p>;
 }
@@ -342,7 +356,8 @@ export function AnsprechpartnerKarte({
       <ul className="p-4 space-y-1">
         {personen.map((p) => (
           <li key={p.id} className="flex items-center gap-2 text-sm">
-            <UserRound className="h-4 w-4 text-muted" aria-hidden="true" /> {p.name}
+            <UserRound className="h-4 w-4 text-muted" aria-hidden="true" />{' '}
+            <TcmsText>{p.name}</TcmsText>
           </li>
         ))}
         {personen.length === 0 ? <li className="text-sm text-muted">Ihr Kanzleiteam</li> : null}

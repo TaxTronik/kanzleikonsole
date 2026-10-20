@@ -25,6 +25,7 @@ import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
 import { HashKurz } from '../badges';
 import { isoZeitText } from '../format';
 import { fmtGroesse } from './werte';
+import { TcmsText } from '@/components/tcms/text';
 
 /** Nachweis aus den gemeinsamen Aufgabenfeldern (Durchführung und Kontrollaufgabe). */
 export type Nachweis = DurchfuehrungDetail['nachweise'][number];
@@ -118,7 +119,7 @@ export function NachweisListe({
       </div>
       {nachweise.length === 0 ? (
         <p className="px-6 py-4 text-sm text-muted">
-          Noch keine {titel} hochgeladen. Erwartet: {anforderung}.
+          Noch keine {titel} hochgeladen. Erwartet: <TcmsText>{anforderung}</TcmsText>.
         </p>
       ) : (
         <ul>
@@ -139,10 +140,12 @@ export function NachweisListe({
                       href={href}
                       className="text-sm font-medium text-primary underline-offset-2 hover:underline break-all"
                     >
-                      {name}
+                      <TcmsText>{name}</TcmsText>
                     </a>
                   ) : (
-                    <span className="text-sm font-medium text-primary break-all">{name}</span>
+                    <span className="text-sm font-medium text-primary break-all">
+                      <TcmsText>{name}</TcmsText>
+                    </span>
                   )}
                   <div className="mt-1 flex flex-wrap items-center gap-2">
                     <span className="badge-gray gap-1" title="SHA-256 des Inhalts">
@@ -185,7 +188,10 @@ export function NachweisListe({
                       href={href}
                     >
                       <Download className="h-3.5 w-3.5" aria-hidden="true" /> Herunterladen
-                      <span className="sr-only"> {name}</span>
+                      <span className="sr-only">
+                        {' '}
+                        <TcmsText>{name}</TcmsText>
+                      </span>
                     </a>
                   ) : null}
                   {knopf}

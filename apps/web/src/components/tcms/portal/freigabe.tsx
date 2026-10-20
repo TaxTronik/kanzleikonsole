@@ -18,6 +18,7 @@ import { TcmsAktionsKnopf, type TcmsFormAktion } from '../ereignisse/aktionen';
 import { bausteinPersonIds, BeschreibungFassung } from '../programm/beschreibung';
 import { FreigabeCodeFormular, KenntnisnahmeFormular } from './freigabe-formulare';
 import { codeAbgelaufenText, freigabeArtLabel } from './texte';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 type Namen = { name(id: string | null | undefined): string };
 
@@ -68,7 +69,7 @@ function Gesperrt({ text }: { text: string }) {
   return (
     <p className="flex items-start gap-2 text-sm text-secondary">
       <Lock className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
-      {text}
+      <TcmsText>{text}</TcmsText>
     </p>
   );
 }
@@ -133,7 +134,13 @@ function FreigabeDokument({
   live: { stand: string; bausteine: BausteinSatzDaten } | null;
   namen: Namen;
 }) {
-  if (!f.version) return <p className="text-sm text-secondary whitespace-pre-wrap">{f.inhalt}</p>;
+  if (!f.version) {
+    return (
+      <p className="text-sm text-secondary whitespace-pre-wrap" {...TCMS_TEXT_ISOLIERT}>
+        {f.inhalt}
+      </p>
+    );
+  }
   const snapshot = f.version.snapshot;
   const idPraefix = `freigabe-${f.id}`;
   if (snapshot) {
@@ -197,7 +204,7 @@ export function FreigabeKarte({
         <div className="grow">
           <div className="flex flex-wrap items-center gap-2">
             <h3 id={`f-${f.id}`} className="text-base font-semibold text-primary">
-              {f.titel}
+              <TcmsText>{f.titel}</TcmsText>
             </h3>
             <span className={code ? 'badge-yellow' : 'badge-brand'}>{freigabeArtLabel(f.art)}</span>
           </div>

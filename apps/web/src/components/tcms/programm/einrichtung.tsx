@@ -12,6 +12,7 @@ import { Check, Pencil } from 'lucide-react';
 import type { PlanView } from '@taxtronik/tcms-contract';
 import { addTage, KLASSE_LABEL, MONATE, TURNUS_LABEL, type Klasse } from '@taxtronik/tcms-domain';
 import { alsDatum, isoDatumText } from '../format';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export const SCHRITTE = [
   { nr: 1, titel: 'Teilbereich', sub: 'Paketvorlage, Abgrenzung und Zeiträume' },
@@ -69,7 +70,7 @@ export function Schrittleiste({
               </span>
               <span className="step-txt">
                 <span className="step-title">
-                  {s.nr} {s.titel}
+                  {s.nr} <TcmsText>{s.titel}</TcmsText>
                   {zustand === 'done' ? <span className="sr-only"> (erledigt)</span> : null}
                 </span>
                 <span className="step-sub">
@@ -112,7 +113,7 @@ export function StufeZu({
 }: {
   nr: number;
   titel: string;
-  text: string;
+  text: ReactNode;
   erledigt: boolean;
   href: string | null;
 }) {
@@ -252,7 +253,9 @@ export function Zusammenfassung({ d }: { d: ZusammenfassungDaten }) {
             {zeilen.map(([k, v]) => (
               <div key={k} className="flex justify-between gap-3">
                 <dt className="text-sm text-secondary">{k}</dt>
-                <dd className="text-sm text-right">{v}</dd>
+                <dd className="text-sm text-right" {...TCMS_TEXT_ISOLIERT}>
+                  {v}
+                </dd>
               </div>
             ))}
           </dl>

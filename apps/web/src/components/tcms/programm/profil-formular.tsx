@@ -26,6 +26,7 @@ import {
   type Geschaeftsprofil,
   type LagerArt,
 } from '@taxtronik/tcms-domain';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 /** Person der Mandantenseite für P12 (Name aus der kanzleikonsole, Rolle aus dem Tax-CMS). */
 export interface ProfilPerson {
@@ -146,7 +147,7 @@ function Chip({
 }) {
   return (
     <li className="badge-brand gap-1" title={titel}>
-      <span>{text}</span>
+      <span {...TCMS_TEXT_ISOLIERT}>{text}</span>
       <button
         type="button"
         className="inline-flex"
@@ -796,10 +797,17 @@ export function ProfilFormular({
           <dl className="space-y-1.5">
             {personen.map((x) => (
               <div key={`${x.rolle}-${x.id}`} className="flex justify-between gap-4">
-                <dt className="text-sm text-secondary">{x.rolle}</dt>
+                <dt className="text-sm text-secondary">
+                  <TcmsText>{x.rolle}</TcmsText>
+                </dt>
                 <dd className="text-sm">
-                  {x.name}
-                  {x.funktion ? <span className="text-muted"> ({x.funktion})</span> : null}
+                  <TcmsText>{x.name}</TcmsText>
+                  {x.funktion ? (
+                    <span className="text-muted">
+                      {' '}
+                      (<TcmsText>{x.funktion}</TcmsText>)
+                    </span>
+                  ) : null}
                 </dd>
               </div>
             ))}

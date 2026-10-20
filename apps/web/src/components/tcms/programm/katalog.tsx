@@ -40,6 +40,7 @@ import {
 import { GtBadge, KlasseBadge } from '../badges';
 import { KatalogIcon } from '../icon';
 import { tonChip } from '../ton';
+import { TcmsText } from '@/components/tcms/text';
 
 export const KATALOG_TABS = [
   { key: 'risiken', label: 'Risiken', anzahl: KATALOG_RISIKEN.length },
@@ -108,7 +109,7 @@ export function KatalogKennzahlen() {
     <ul className="mini-kpis mb-4">
       <li className="mini-kpi">
         <div className="v">
-          {PAKET.name} v{PAKET.version}
+          <TcmsText>{PAKET.name}</TcmsText> v{PAKET.version}
         </div>
         <div className="l">Paket · Status Entwurf</div>
       </li>
@@ -180,9 +181,11 @@ export function RisikenTab() {
                   {r.kern ? <span className="badge-brand block mt-1 w-fit">Kern</span> : null}
                 </th>
                 <td className={`${TD} min-w-[16rem]`}>
-                  <span className="block font-medium">{r.titel}</span>
+                  <span className="block font-medium">
+                    <TcmsText>{r.titel}</TcmsText>
+                  </span>
                   <span className="block text-xs text-muted mt-1">
-                    {r.fehlerquelle} → {r.folge}
+                    <TcmsText>{r.fehlerquelle}</TcmsText> → <TcmsText>{r.folge}</TcmsText>
                   </span>
                   {r.wirktAuf.length ? (
                     <span className="block text-xs text-muted mt-1">
@@ -198,7 +201,9 @@ export function RisikenTab() {
                           <span className={`${NORMSTUFE_TON[n.stufe]} shrink-0`}>
                             {NORMSTUFE_LABEL[n.stufe]}
                           </span>
-                          <span>{n.text}</span>
+                          <span>
+                            <TcmsText>{n.text}</TcmsText>
+                          </span>
                         </li>
                       ))}
                     </ul>
@@ -206,7 +211,9 @@ export function RisikenTab() {
                     <span className="text-muted">–</span>
                   )}
                 </td>
-                <td className={`${TD} text-xs text-secondary min-w-[8rem]`}>{r.anwendbarWenn}</td>
+                <td className={`${TD} text-xs text-secondary min-w-[8rem]`}>
+                  <TcmsText>{r.anwendbarWenn}</TcmsText>
+                </td>
                 <td className={TD}>
                   <GtBadge gt={r.gt} />
                 </td>
@@ -274,8 +281,12 @@ export function KontrollenTab() {
             ) : null}
           </th>
           <td className={`${TD} min-w-[16rem]`}>
-            <span className="block font-medium">{k.titel}</span>
-            <span className="block text-xs text-muted mt-1">{k.ziel}</span>
+            <span className="block font-medium">
+              <TcmsText>{k.titel}</TcmsText>
+            </span>
+            <span className="block text-xs text-muted mt-1">
+              <TcmsText>{k.ziel}</TcmsText>
+            </span>
             <span className="block text-xs text-muted mt-1">
               {k.schritte.length} Schritte
               {k.kennzahlen.length ? ` · ${k.kennzahlen.length} Kennzahlen` : ''} · fällig{' '}
@@ -292,13 +303,15 @@ export function KontrollenTab() {
               {k.ausfuehrung}
             </abbr>
           </td>
-          <td className={`${TD} text-xs min-w-[7rem]`}>{k.frequenzText}</td>
+          <td className={`${TD} text-xs min-w-[7rem]`}>
+            <TcmsText>{k.frequenzText}</TcmsText>
+          </td>
           <td className={`${TD} text-xs min-w-[6rem]`}>
             {PARTEI_LABEL[k.partei]}
             {k.review ? <span className="block text-muted">{k.review}</span> : null}
           </td>
           <td className={`${TD} text-xs text-secondary min-w-[10rem]`}>
-            {k.nachweis}
+            <TcmsText>{k.nachweis}</TcmsText>
             <span className="block text-muted">mind. {k.mindestNachweise} Datei(en)</span>
           </td>
           <td className={`${TD} text-xs font-mono whitespace-nowrap`}>
@@ -340,16 +353,30 @@ export function EreignisseTab() {
               <span className="font-mono text-xs font-semibold">{e.code}</span>
             </span>
           </th>
-          <td className={`${TD} font-medium min-w-[12rem]`}>{e.titel}</td>
-          <td className={`${TD} text-xs text-secondary min-w-[9rem]`}>{e.quelleStufe1}</td>
-          <td className={`${TD} text-xs text-secondary min-w-[11rem]`}>{e.folgeText}</td>
+          <td className={`${TD} font-medium min-w-[12rem]`}>
+            <TcmsText>{e.titel}</TcmsText>
+          </td>
+          <td className={`${TD} text-xs text-secondary min-w-[9rem]`}>
+            <TcmsText>{e.quelleStufe1}</TcmsText>
+          </td>
+          <td className={`${TD} text-xs text-secondary min-w-[11rem]`}>
+            <TcmsText>{e.folgeText}</TcmsText>
+          </td>
           <td className={`${TD} min-w-[16rem]`}>
             <ul className="space-y-1">
               {e.folgen.map((f, i) => (
                 <li key={i} className="text-xs">
                   <span className="font-medium">{FOLGE_LABEL[f.art]}</span>
-                  {f.ziel ? <span className="font-mono text-muted"> · {f.ziel}</span> : null}
-                  <span className="text-muted"> – {f.text}</span>
+                  {f.ziel ? (
+                    <span className="font-mono text-muted">
+                      {' '}
+                      · <TcmsText>{f.ziel}</TcmsText>
+                    </span>
+                  ) : null}
+                  <span className="text-muted">
+                    {' '}
+                    – <TcmsText>{f.text}</TcmsText>
+                  </span>
                 </li>
               ))}
             </ul>
@@ -481,7 +508,9 @@ export function ProfilTab() {
                 <li key={f.nr} className="flex items-start gap-3 border-t border-default px-4 py-2">
                   <span className="badge-gray font-mono shrink-0">{f.nr}</span>
                   <span className="grow">
-                    <span className="block text-sm font-medium">{f.titel}</span>
+                    <span className="block text-sm font-medium">
+                      <TcmsText>{f.titel}</TcmsText>
+                    </span>
                     <span className="block text-xs text-muted mt-1">
                       {risiken.length
                         ? `Anwendbarkeit im Risikokatalog: ${risiken.join(', ')}`

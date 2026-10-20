@@ -13,6 +13,7 @@
 // =============================================================================
 
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { Globe, Pencil, Upload, X } from 'lucide-react';
 import {
   ENDPUNKTE,
@@ -58,6 +59,7 @@ import { TcmsZustand } from '@/components/tcms/zustand';
 import { personIdsAus } from '@/server/tcms/namen';
 import { tcmsLesenOptional, tcmsMandantSeite, tcmsNamenLesen } from '@/server/tcms/seite';
 import { landHinzufuegenAction, landStaendeSpeichernAction } from './actions';
+import { TcmsTextListe } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Länder-Monitor' };
 
@@ -84,10 +86,14 @@ function datenstandText(ctx: KontextMitProgramm): string {
   return `${basis} – Datenstand ${isoDatumText(ctx.laenderStand)} (${quelle}).`;
 }
 
-function kanaeleText(kanaele: readonly string[]): string {
-  return kanaele.length
-    ? ` Verkaufskanäle laut Geschäftsprofil (P1): ${kanaele.join(', ')} – nicht je Land erfasst.`
-    : '';
+function kanaeleText(kanaele: readonly string[]): ReactNode {
+  return kanaele.length ? (
+    <>
+      {' '}
+      Verkaufskanäle laut Geschäftsprofil (P1): <TcmsTextListe werte={kanaele} /> – nicht je Land
+      erfasst.
+    </>
+  ) : null;
 }
 
 function LandFormular({

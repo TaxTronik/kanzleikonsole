@@ -25,6 +25,7 @@ import {
   type Werte,
   type WertZeile,
 } from './werte';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export interface EditorSchritt {
   titel: string;
@@ -108,7 +109,7 @@ function WertTabellenZeile({
         scope="row"
         className={`px-6 py-3 text-left text-primary ${differenz ? 'font-medium' : 'font-normal'}`}
       >
-        {z.def.label}
+        <TcmsText>{z.def.label}</TcmsText>
       </th>
       <td className={`td-num${differenz ? ' font-semibold' : ''}`}>
         {eingebbar ? (
@@ -156,7 +157,10 @@ function WertTabellenZeile({
                     onChange={(e) => setzeErklaert(e.target.checked)}
                   />
                   Abweichung erklärt
-                  <span className="sr-only"> ({z.def.label})</span>
+                  <span className="sr-only">
+                    {' '}
+                    (<TcmsText>{z.def.label}</TcmsText>)
+                  </span>
                 </label>
                 {z.lage ? <span className={LAGE_BADGE[z.lage]}>{LAGE_TEXT[z.lage]}</span> : null}
               </span>
@@ -277,9 +281,11 @@ export function DurchfuehrungEditor({
                   htmlFor={`df-schritt-${i}`}
                   className="block text-sm font-medium text-primary"
                 >
-                  {i + 1} · {s.titel}
+                  {i + 1} · <TcmsText>{s.titel}</TcmsText>
                 </label>
-                <div className="text-xs text-muted mt-0.5">{s.hinweis}</div>
+                <div className="text-xs text-muted mt-0.5">
+                  <TcmsText>{s.hinweis}</TcmsText>
+                </div>
                 {bearbeitbar ? (
                   <input
                     className="input mt-2 py-1 text-xs"
@@ -291,7 +297,9 @@ export function DurchfuehrungEditor({
                     maxLength={2000}
                   />
                 ) : s.kommentar ? (
-                  <div className="text-xs text-secondary mt-1">Kommentar: {s.kommentar}</div>
+                  <div className="text-xs text-secondary mt-1">
+                    Kommentar: <TcmsText>{s.kommentar}</TcmsText>
+                  </div>
                 ) : null}
               </div>
             </li>
@@ -307,8 +315,15 @@ export function DurchfuehrungEditor({
     return (
       <div key={z.def.key} className="card px-6 py-4">
         <div className="text-xs font-semibold text-primary">
-          {z.def.label} {a && b ? `${a.label} / ${b.label}` : ''}:{' '}
-          <span className="font-mono">{fmtEur(z.wert)}</span> · Toleranz ±{fmtEur(toleranzEur)}
+          <TcmsText>{z.def.label}</TcmsText>{' '}
+          {a && b ? (
+            <>
+              <TcmsText>{a.label}</TcmsText> / <TcmsText>{b.label}</TcmsText>
+            </>
+          ) : (
+            ''
+          )}
+          : <span className="font-mono">{fmtEur(z.wert)}</span> · Toleranz ±{fmtEur(toleranzEur)}
         </div>
         <ToleranzSkala
           wert={z.wert ?? 0}
@@ -347,7 +362,7 @@ export function DurchfuehrungEditor({
                   Kennzahl
                 </th>
                 <th scope="col" className="th th-right">
-                  Wert {periodeKurz}
+                  Wert <TcmsText>{periodeKurz}</TcmsText>
                 </th>
                 <th scope="col" className="th th-right">
                   Soll/Toleranz
@@ -424,6 +439,7 @@ export function DurchfuehrungEditor({
               Kommentar zum Ergebnis
             </label>
             <textarea
+              {...TCMS_TEXT_ISOLIERT}
               id="df-ergebnis-kommentar"
               className="input"
               rows={3}
@@ -440,7 +456,9 @@ export function DurchfuehrungEditor({
             </p>
           </div>
         ) : ergebnisKommentar ? (
-          <p className="text-sm text-secondary mt-2 whitespace-pre-wrap">{ergebnisKommentar}</p>
+          <p className="text-sm text-secondary mt-2 whitespace-pre-wrap" {...TCMS_TEXT_ISOLIERT}>
+            {ergebnisKommentar}
+          </p>
         ) : null}
         {ergebnisZusatz}
       </div>

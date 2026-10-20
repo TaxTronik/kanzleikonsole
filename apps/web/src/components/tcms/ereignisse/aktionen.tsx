@@ -23,6 +23,7 @@ import { FormErrorSummary } from '@/components/form-errors';
 import { Modal } from '@/components/ui/modal';
 import type { TcmsAktionsErgebnis, TcmsFormAktion } from '../ergebnis';
 import { useTcmsFormular, type TcmsBestaetigung } from '../formular';
+import { TCMS_TEXT_ISOLIERT } from '@/components/tcms/text';
 
 export type { TcmsAktionsErgebnis, TcmsFormAktion } from '../ergebnis';
 export type { TcmsBestaetigung } from '../formular';
@@ -246,6 +247,7 @@ function DialogInhalt({
               Begründung
             </label>
             <textarea
+              {...TCMS_TEXT_ISOLIERT}
               id={`${id}-begruendung`}
               name="begruendung"
               className="input min-h-[6rem]"

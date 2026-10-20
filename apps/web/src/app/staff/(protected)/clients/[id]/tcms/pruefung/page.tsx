@@ -36,6 +36,7 @@ import { TcmsZustand } from '@/components/tcms/zustand';
 import type { TcmsNamen } from '@/server/tcms/namen';
 import { personIdsAus } from '@/server/tcms/namen';
 import { tcmsLesenOptional, tcmsMandantSeite, tcmsNamenLesen } from '@/server/tcms/seite';
+import { TcmsText, TcmsTextListe } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Prüfungsvorbereitung' };
 
@@ -179,7 +180,9 @@ function Gegenstand({ ctx }: Ansicht) {
         <h3 id="tcms-pruefungsgegenstand" className="text-sm font-semibold text-primary">
           Prüfungsgegenstand
         </h3>
-        <span className="text-xs text-muted">{ctx.teilbereich?.name ?? '—'}</span>
+        <span className="text-xs text-muted">
+          <TcmsText>{ctx.teilbereich?.name ?? '—'}</TcmsText>
+        </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">
         <div className="rounded-lg border border-default p-4">
@@ -266,7 +269,7 @@ function LueckeZeile({ l, begonnen, href }: { l: Luecke; begonnen: boolean; href
       <Link href={href} className="flex items-center gap-3 px-6 py-2.5 hover:bg-surface-raised">
         <span className={`status-dot ${punkt}`} aria-hidden="true" />
         <span className={`grow text-sm ${na || l.anzahl === 0 ? 'text-secondary' : ''}`}>
-          {l.text}
+          <TcmsText>{l.text}</TcmsText>
           {!na && l.codes?.length ? (
             <span className="block text-xs text-muted">{l.codes.join(', ')}</span>
           ) : null}
@@ -337,9 +340,13 @@ function Grundelemente({ ctx, link }: Ansicht) {
                 <KatalogIcon name={g.icon} />
               </span>
               <span className="grow">
-                <span className="block text-sm text-primary">{g.titel}</span>
+                <span className="block text-sm text-primary">
+                  <TcmsText>{g.titel}</TcmsText>
+                </span>
                 {g.luecken.length ? (
-                  <span className="block text-xs text-muted mt-0.5">{g.luecken.join(' · ')}</span>
+                  <span className="block text-xs text-muted mt-0.5">
+                    <TcmsTextListe werte={g.luecken} trenner=" · " />
+                  </span>
                 ) : null}
               </span>
               {g.luecken.length ? (

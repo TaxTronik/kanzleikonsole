@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { TcmsMandantNavigation } from '@/components/tcms/navigation';
 import { tcmsMandantSeite } from '@/server/tcms/seite';
+import { TcmsText } from '@/components/tcms/text';
 
 export default async function TcmsMandantLayout({
   children,
@@ -31,7 +32,11 @@ export default async function TcmsMandantLayout({
       </Link>
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-primary">Tax-CMS</h1>
-        {seite.ok ? <p className="text-sm text-muted">{seite.mandant.name}</p> : null}
+        {seite.ok ? (
+          <p className="text-sm text-muted">
+            <TcmsText>{seite.mandant.name}</TcmsText>
+          </p>
+        ) : null}
       </div>
       {seite.ok ? <TcmsMandantNavigation basis={seite.basis} /> : null}
       {children}

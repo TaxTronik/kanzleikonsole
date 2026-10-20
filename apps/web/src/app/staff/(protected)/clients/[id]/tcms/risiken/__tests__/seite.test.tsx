@@ -42,6 +42,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsRisikenPage from '../page';
@@ -463,5 +465,28 @@ describe('Risikoinventar – Zustände', () => {
     h.seite.mockResolvedValue({ ok: false, zustand: { art: 'NICHT_KONFIGURIERT' } });
     await renderServer(TcmsRisikenPage(mit({})));
     expect(h.lesenOptional).not.toHaveBeenCalled();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Titel, Beschreibungen und Begründungen der Risiken
+// mit Richtungsmarken bleiben isoliert (Inventar und Detail).
+describe('Risiken – Richtungsisolation', () => {
+  it.each(['EC-UST-01', 'EC-UST-02', 'EC-VER-01'])('Inventar und Detail %s', async (code) => {
+    kontext = markiert(kontext, ENDPUNKTE.kontextLesen.antwortSchema);
+    liste = markiert(liste, ENDPUNKTE.risikenLesen.antwortSchema);
+    const lader = {
+      'EC-UST-01': tcmsFixtures.risikoEcUst01,
+      'EC-UST-02': tcmsFixtures.risikoEcUst02,
+      'EC-VER-01': tcmsFixtures.risikoEcVer01,
+    } as const;
+    antworten({
+      detail: {
+        [idVon(code)]: ok(
+          markiert(lader[code as keyof typeof lader](), ENDPUNKTE.risikoLesen.antwortSchema),
+        ),
+      },
+    });
+    const { container } = await renderServer(TcmsRisikenPage(mit({ risiko: idVon(code) })));
+    erwarteIsoliert(container, 5);
   });
 });

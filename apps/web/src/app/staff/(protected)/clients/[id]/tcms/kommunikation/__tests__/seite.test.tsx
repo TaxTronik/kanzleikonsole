@@ -41,6 +41,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import TcmsKommunikationPage from '../page';
 
@@ -276,5 +278,26 @@ describe('Kommunikation', () => {
       screen.getByText('Für diesen Mandanten ist noch kein Tax-CMS eingerichtet.'),
     ).toBeTruthy();
     expect(h.lesen).not.toHaveBeenCalled();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Titel und Begründungen der Freigaben isoliert.
+describe('Kommunikation – Richtungsisolation', () => {
+  it('Freigaben und Historie isoliert', async () => {
+    h.lesenOptional.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.kontextTalwind(), ENDPUNKTE.kontextLesen.antwortSchema),
+      requestId: 'r',
+    });
+    h.lesen.mockResolvedValue({
+      ok: true,
+      daten: markiert(
+        tcmsFixtures.freigabenTalwind(),
+        ENDPUNKTE.freigabenHistorieLesen.antwortSchema,
+      ),
+      requestId: 'r',
+    });
+    const { container } = await rendern();
+    erwarteIsoliert(container, 2);
   });
 });

@@ -53,6 +53,7 @@ import {
 import { profilFeldBezeichnung } from '@/components/tcms/programm/profil-fehler';
 import { confirmFormSubmission } from '@/components/ui/modal';
 import { einrichtungSpeichernAction } from './actions';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export interface Person {
   id: string;
@@ -309,10 +310,12 @@ export function SchrittTeilbereich({
                 className="mt-1"
               />
               <label htmlFor={`${id}-paket`}>
-                <span className="block text-sm font-semibold text-primary">{tb.name}</span>
+                <span className="block text-sm font-semibold text-primary">
+                  <TcmsText>{tb.name}</TcmsText>
+                </span>
                 <span className="block text-xs text-muted">
-                  Paket „{paket.name} v{paket.version}“ · {paket.risiken} Risiken ·{' '}
-                  {paket.kontrollen} Kontrollvorlagen · {paket.fragen} Profilfragen
+                  Paket „<TcmsText>{paket.name}</TcmsText> v{paket.version}“ · {paket.risiken}{' '}
+                  Risiken · {paket.kontrollen} Kontrollvorlagen · {paket.fragen} Profilfragen
                 </span>
               </label>
             </div>
@@ -355,6 +358,7 @@ export function SchrittTeilbereich({
               Abgrenzungstext
             </label>
             <textarea
+              {...TCMS_TEXT_ISOLIERT}
               id={ids['teilbereich.abgrenzung']}
               className="input"
               rows={4}
@@ -556,6 +560,7 @@ export function SchrittZiele({
                     />
                     {z.eigen || bearbeiten === z.key ? (
                       <textarea
+                        {...TCMS_TEXT_ISOLIERT}
                         className="input grow"
                         rows={2}
                         maxLength={1000}
@@ -565,7 +570,9 @@ export function SchrittZiele({
                         onChange={(e) => aendere(z.key, { text: e.target.value })}
                       />
                     ) : (
-                      <p className="text-sm font-semibold grow">{z.text}</p>
+                      <p className="text-sm font-semibold grow">
+                        <TcmsText>{z.text}</TcmsText>
+                      </p>
                     )}
                     {z.eigen ? (
                       <button
@@ -701,7 +708,7 @@ export function SchrittZiele({
                   >
                     <option value="">Bitte wählen …</option>
                     {gv.map((p) => (
-                      <option key={p.id} value={p.id}>
+                      <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
                         {p.name} (gesetzliche Vertretung)
                       </option>
                     ))}
@@ -795,7 +802,7 @@ export function SchrittRisiken({
                       </td>
                       <td className="px-4 py-2">
                         <span className={r.uebernehmen ? 'font-medium' : 'text-muted'}>
-                          {z.code} · {z.titel}
+                          {z.code} · <TcmsText>{z.titel}</TcmsText>
                         </span>
                         {!r.uebernehmen ? (
                           <div className="mt-2">
@@ -803,6 +810,7 @@ export function SchrittRisiken({
                               Begründung der Ablehnung
                             </label>
                             <textarea
+                              {...TCMS_TEXT_ISOLIERT}
                               id={begruendungId}
                               className="input min-w-[20rem]"
                               rows={2}
@@ -830,7 +838,11 @@ export function SchrittRisiken({
                       </td>
                       <td className="px-4 py-2">
                         {r.uebernehmen ? (
-                          <span className="badge-brand" title={`Profilantwort ${z.frage}`}>
+                          <span
+                            className="badge-brand"
+                            title={`Profilantwort ${z.frage}`}
+                            {...TCMS_TEXT_ISOLIERT}
+                          >
                             {z.grund}
                           </span>
                         ) : (
@@ -885,11 +897,12 @@ export function SchrittRisiken({
                   {plan.nichtVorgeschlagen.map((n) => (
                     <li key={n.code} className="flex flex-wrap justify-between gap-2 text-sm">
                       <span>
-                        <span className="font-mono text-muted">{n.code}</span> {n.titel}
+                        <span className="font-mono text-muted">{n.code}</span>{' '}
+                        <TcmsText>{n.titel}</TcmsText>
                       </span>
                       {katalogRisiko(n.code)?.anwendbarWenn ? (
                         <span className="text-xs text-muted">
-                          anwendbar wenn {katalogRisiko(n.code)!.anwendbarWenn}
+                          anwendbar wenn <TcmsText>{katalogRisiko(n.code)!.anwendbarWenn}</TcmsText>
                         </span>
                       ) : null}
                     </li>
@@ -943,7 +956,7 @@ function PersonAuswahl({
       {leer || !wert ? <option value="">—</option> : null}
       {fremd ? <option value={wert}>Person ohne Zugriff – bitte ändern</option> : null}
       {pool.map((p) => (
-        <option key={p.id} value={p.id}>
+        <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
           {p.name}
         </option>
       ))}
@@ -990,7 +1003,9 @@ export function SchrittKontrollen({
                 <summary className="flex flex-wrap items-center gap-2">
                   <ChevronRight className="h-4 w-4" aria-hidden="true" />
                   {g.code ? <span className="font-mono text-muted">{g.code}</span> : null}
-                  <span className="grow">{g.titel}</span>
+                  <span className="grow">
+                    <TcmsText>{g.titel}</TcmsText>
+                  </span>
                   {g.brutto ? (
                     <KlasseBadge klasse={g.brutto} title="Bruttoklasse (Startwert)" />
                   ) : null}
@@ -1034,7 +1049,7 @@ export function SchrittKontrollen({
                         const vorlage = (
                           <th scope="row" className="px-2 py-2 text-left font-normal min-w-[12rem]">
                             <span className="block font-medium">
-                              {k.code} · {k.titel}
+                              {k.code} · <TcmsText>{k.titel}</TcmsText>
                             </span>
                             <span className="block text-xs text-muted">
                               {kat
@@ -1132,14 +1147,14 @@ export function SchrittKontrollen({
                                   ) : null}
                                   <optgroup label="Kanzlei">
                                     {kanzlei.map((p) => (
-                                      <option key={p.id} value={p.id}>
+                                      <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
                                         {p.name}
                                       </option>
                                     ))}
                                   </optgroup>
                                   <optgroup label="Mandant (zweite Person)">
                                     {mandant.map((p) => (
-                                      <option key={p.id} value={p.id}>
+                                      <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
                                         {p.name}
                                       </option>
                                     ))}
@@ -1159,7 +1174,9 @@ export function SchrittKontrollen({
                               <span className="block text-sm font-medium">
                                 {frequenzLabel(k.effektiv)}
                               </span>
-                              <span className="block text-xs text-muted">{k.begruendung}</span>
+                              <span className="block text-xs text-muted">
+                                <TcmsText>{k.begruendung}</TcmsText>
+                              </span>
                               <span className="block text-xs text-muted">
                                 {k.perioden} Durchführungen im Wirksamkeitszeitraum
                               </span>

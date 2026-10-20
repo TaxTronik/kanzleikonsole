@@ -28,6 +28,7 @@ import {
 import { Modal } from '@/components/ui/modal';
 import type { TcmsAktion } from './ergebnis';
 import { useTcmsFormular } from '../formular';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 /** Höchstlänge einer Begründung wie im Vertrag (`MAX_BEGRUENDUNG_ZEICHEN`). */
 export const MAX_BEGRUENDUNG = 2000;
@@ -158,6 +159,7 @@ function DialogFormular({
           {begruendungLabel}
         </label>
         <textarea
+          {...TCMS_TEXT_ISOLIERT}
           id={`${id}-begruendung`}
           name="begruendung"
           className="input min-h-28"
@@ -275,7 +277,7 @@ export function AuswahlFeld({
           </option>
         ) : null}
         {optionen.map((o) => (
-          <option key={o.wert} value={o.wert} disabled={o.deaktiviert}>
+          <option key={o.wert} value={o.wert} disabled={o.deaktiviert} {...TCMS_TEXT_ISOLIERT}>
             {o.label}
           </option>
         ))}
@@ -334,7 +336,7 @@ export function OptionenFeld({
         {optionen.map((o) => (
           <label key={o.wert} className="inline-flex items-center gap-2 text-sm">
             <input type="radio" name={name} value={o.wert} required />
-            {o.label}
+            <TcmsText>{o.label}</TcmsText>
           </label>
         ))}
       </div>

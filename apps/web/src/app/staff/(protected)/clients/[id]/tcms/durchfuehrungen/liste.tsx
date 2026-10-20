@@ -21,6 +21,7 @@ import { TcmsKopf } from '@/components/tcms/kopf';
 import { TcmsLeer } from '@/components/tcms/leer';
 import type { TcmsNamen } from '@/server/tcms/namen';
 import type { TcmsMandantSeite } from '@/server/tcms/seite';
+import { TcmsText } from '@/components/tcms/text';
 
 type Durchfuehrung = KontextAntwort['durchfuehrungen'][number];
 
@@ -171,7 +172,7 @@ export function DurchfuehrungenListe({
                   className={filter.gruppe === g.wert ? 'badge-brand' : 'badge-gray'}
                   aria-current={filter.gruppe === g.wert ? 'page' : undefined}
                 >
-                  {g.label} ({anzahl[g.wert]})
+                  <TcmsText>{g.label}</TcmsText> ({anzahl[g.wert]})
                 </Link>
               </li>
             ))}
@@ -211,7 +212,7 @@ export function DurchfuehrungenListe({
       <section className="card mt-4" aria-labelledby="tcms-df-liste">
         <div className="card-header">
           <h3 id="tcms-df-liste" className="text-sm font-semibold text-primary">
-            {GRUPPEN.find((g) => g.wert === filter.gruppe)?.label} · {gesamt}{' '}
+            <TcmsText>{GRUPPEN.find((g) => g.wert === filter.gruppe)?.label}</TcmsText> · {gesamt}{' '}
             {gesamt === 1 ? 'Durchführung' : 'Durchführungen'}
           </h3>
           <span className="text-xs text-muted">
@@ -264,7 +265,10 @@ export function DurchfuehrungenListe({
                           className="font-medium text-primary hover:underline"
                         >
                           {d.code}
-                          <span className="sr-only"> {d.periodeLabel}</span>
+                          <span className="sr-only">
+                            {' '}
+                            <TcmsText>{d.periodeLabel}</TcmsText>
+                          </span>
                         </Link>
                         {d.schluessel ? (
                           <span className="ml-1 inline-flex text-muted" title="Schlüsselkontrolle">
@@ -272,14 +276,19 @@ export function DurchfuehrungenListe({
                             <span className="sr-only">Schlüsselkontrolle</span>
                           </span>
                         ) : null}
-                        <span className="text-xs text-secondary"> · {d.titel}</span>
+                        <span className="text-xs text-secondary">
+                          {' '}
+                          · <TcmsText>{d.titel}</TcmsText>
+                        </span>
                         <div className="text-[11px] text-muted mt-0.5">
                           <span className="font-mono">{d.gt ?? '—'}</span>
                           {k ? ` · ${frequenzLabel(k.frequenz)}` : ''} · {PARTEI_LABEL[d.partei]}
                           {d.ausserplanmaessig ? ' · außerplanmäßig' : ''}
                         </div>
                       </th>
-                      <td className="px-6 py-3 whitespace-nowrap">{d.periodeLabel}</td>
+                      <td className="px-6 py-3 whitespace-nowrap">
+                        <TcmsText>{d.periodeLabel}</TcmsText>
+                      </td>
                       <td className="px-6 py-3 whitespace-nowrap">{isoDatumText(d.faelligAm)}</td>
                       <td className="px-6 py-3">
                         <AnzeigeBadge status={d.anzeige} />

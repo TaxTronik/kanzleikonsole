@@ -33,6 +33,7 @@ import {
 } from '@/components/tcms/programm/kontakte';
 import type { TcmsNamen } from '@/server/tcms/namen';
 import { freigabeNeuadressierenAction } from './actions';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export interface KommunikationModell {
   mandantId: string;
@@ -65,7 +66,10 @@ function NeuAdressieren({
       ausloeser={
         <>
           <Send className="h-3.5 w-3.5" aria-hidden="true" /> Neu adressieren
-          <span className="sr-only"> – {f.titel}</span>
+          <span className="sr-only">
+            {' '}
+            – <TcmsText>{f.titel}</TcmsText>
+          </span>
         </>
       }
       ausloeserKlasse="btn-secondary text-xs py-1"
@@ -104,7 +108,7 @@ function NeuAdressieren({
         <select id={feld} name="empfaengerId" className="input" defaultValue="" required>
           <option value="">Bitte wählen …</option>
           {pool.map((p) => (
-            <option key={p.id} value={p.id}>
+            <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
               {p.name}
               {p.id === f.empfaengerId.toLowerCase() ? ' (bisher)' : ''}
             </option>
@@ -128,10 +132,14 @@ function StatusZelle({ m, f }: { m: KommunikationModell; f: FreigabeHistorieZeil
       : kontaktPersonen(m.rollen, m.namen, ['GESETZLICHER_VERTRETER']);
   return (
     <td className="px-4 py-2 align-top">
-      <span className={FREIGABE_STATUS[f.status].badge}>{FREIGABE_STATUS[f.status].label}</span>
+      <span className={FREIGABE_STATUS[f.status].badge}>
+        <TcmsText>{FREIGABE_STATUS[f.status].label}</TcmsText>
+      </span>
       <span className="block text-xs text-muted mt-1">{unterzeile}</span>
       {f.anmerkung ? (
-        <span className="block text-xs text-secondary mt-1">„{f.anmerkung}“</span>
+        <span className="block text-xs text-secondary mt-1">
+          „<TcmsText>{f.anmerkung}</TcmsText>“
+        </span>
       ) : null}
       <ZustellungAnzeige zustellung={f.zustellung} />
       {offen && zustellungGescheitert(f.zustellung) ? (
@@ -190,7 +198,9 @@ export function FreigabenKarte({ m }: { m: KommunikationModell }) {
               {freigaben.map((f) => (
                 <tr key={f.id} className="border-t border-default">
                   <td className="px-4 py-2 align-top">
-                    <span className="block font-medium">{f.titel}</span>
+                    <span className="block font-medium">
+                      <TcmsText>{f.titel}</TcmsText>
+                    </span>
                     <span className="block text-xs text-muted mt-1">
                       {FREIGABE_ART_LABEL[f.art]}
                     </span>
@@ -246,7 +256,9 @@ export function KenntnisnahmenKarte({ m }: { m: KommunikationModell }) {
                     {rollenText(m.rollen, f.empfaengerId) ?? '—'}
                   </td>
                   <td className="px-4 py-2 align-top">
-                    <span className="block font-medium">{f.titel}</span>
+                    <span className="block font-medium">
+                      <TcmsText>{f.titel}</TcmsText>
+                    </span>
                     <span className="block text-xs text-muted mt-1">
                       angefordert {isoDatumText(f.angefordertAm)} von{' '}
                       {m.namen.name(f.angefordertVon)}
@@ -297,11 +309,13 @@ function ZieleListe({ m }: { m: KommunikationModell }) {
         <li key={z.id} className="flex items-start gap-2 border-t border-default px-4 py-2">
           <span className="min-w-0 grow">
             <span className="block text-sm truncate" title={z.text}>
-              {z.text}
+              <TcmsText>{z.text}</TcmsText>
             </span>
             <span className="block text-xs text-muted mt-1">{zielUnterzeile(m, z)}</span>
           </span>
-          <span className={`shrink-0 ${zielStatus(z).badge}`}>{zielStatus(z).label}</span>
+          <span className={`shrink-0 ${zielStatus(z).badge}`}>
+            <TcmsText>{zielStatus(z).label}</TcmsText>
+          </span>
         </li>
       ))}
     </ul>
@@ -386,14 +400,15 @@ function KenntnisnahmeKontrolle({ m }: { m: KommunikationModell }) {
         href={mitStand(m, `${m.basis}/kontrollen`)}
         className="block text-sm font-medium underline"
       >
-        K-EC-22 · {k22.titel}
+        K-EC-22 · <TcmsText>{k22.titel}</TcmsText>
       </Link>
       <span className="block text-xs text-muted mt-1">
         {frequenzLabel(k22.frequenz)} · {designText(m, k22)}
       </span>
       {k22.letzte ? (
         <span className="flex items-center gap-1.5 mt-1 text-xs text-muted">
-          Letzte: {k22.letzte.periodeLabel} <AnzeigeBadge status={k22.letzte.anzeige} />
+          Letzte: <TcmsText>{k22.letzte.periodeLabel}</TcmsText>{' '}
+          <AnzeigeBadge status={k22.letzte.anzeige} />
         </span>
       ) : null}
     </span>

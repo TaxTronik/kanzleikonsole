@@ -15,6 +15,7 @@ import {
   type FrageDiff,
   type Geschaeftsprofil,
 } from '@taxtronik/tcms-domain';
+import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 type Key = keyof Geschaeftsprofil;
 
@@ -38,7 +39,7 @@ function Werte({ liste, leer = 'keine' }: { liste: readonly string[]; leer?: str
   return (
     <span className="inline-flex flex-wrap justify-end gap-1">
       {liste.map((w) => (
-        <span key={w} className="badge-gray">
+        <span key={w} className="badge-gray" {...TCMS_TEXT_ISOLIERT}>
           {w}
         </span>
       ))}
@@ -50,7 +51,9 @@ function Zeile({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 py-0.5">
       <dt className="text-sm text-secondary shrink-0">{label}</dt>
-      <dd className="text-sm text-right">{children}</dd>
+      <dd className="text-sm text-right" {...TCMS_TEXT_ISOLIERT}>
+        {children}
+      </dd>
     </div>
   );
 }
@@ -109,7 +112,7 @@ const INHALT: Readonly<Record<Key, (p: Geschaeftsprofil) => ReactNode>> = {
           <span className="flex flex-col items-end gap-1">
             {p.p4.warengruppen.map((w, i) => (
               <span key={`${w.name}-${i}`}>
-                {w.name}{' '}
+                <TcmsText>{w.name}</TcmsText>{' '}
                 {w.abweichenderSatz ? (
                   <span className="badge-yellow">abweichender Satz</span>
                 ) : (
@@ -131,7 +134,9 @@ const INHALT: Readonly<Record<Key, (p: Geschaeftsprofil) => ReactNode>> = {
         <Zeile label="Import aus">
           <Laender codes={p.p5.laender} />
         </Zeile>
-        <Zeile label="Zollabwicklung">{p.p5.zollabwicklung || '—'}</Zeile>
+        <Zeile label="Zollabwicklung">
+          <TcmsText>{p.p5.zollabwicklung || '—'}</TcmsText>
+        </Zeile>
       </>
     ) : (
       <Zeile label="Drittlandimport">nein</Zeile>
@@ -152,7 +157,7 @@ const INHALT: Readonly<Record<Key, (p: Geschaeftsprofil) => ReactNode>> = {
         <span className="flex flex-col items-end gap-1">
           {p.p8.systeme.map((s, i) => (
             <span key={i}>
-              <span className="text-xs text-muted">{s.art}:</span> {s.name}
+              <span className="text-xs text-muted">{s.art}:</span> <TcmsText>{s.name}</TcmsText>
               {s.version && s.version !== '—' ? ` ${s.version}` : ''}
             </span>
           ))}
@@ -228,7 +233,7 @@ export function ProfilAnzeige({
                 className={`mb-2 border-l-2 pl-2.5 ${neu ? 'border-brand-500' : 'border-default'}`}
               >
                 <p className="label-sm flex items-center gap-1.5 mb-0.5">
-                  {f.nr} · {f.titel}
+                  {f.nr} · <TcmsText>{f.titel}</TcmsText>
                   {neu ? <span className="badge-brand">geändert</span> : null}
                 </p>
                 <dl>{INHALT[f.key](profil)}</dl>
@@ -249,7 +254,7 @@ export function ProfilDiffListe({ diff }: { diff: readonly FrageDiff[] }) {
       {diff.map((d) => (
         <li key={d.key}>
           <p className="text-xs font-semibold text-secondary">
-            {d.nr} · {d.titel}
+            {d.nr} · <TcmsText>{d.titel}</TcmsText>
           </p>
           <ul>
             {d.neu.map((z) => (

@@ -20,6 +20,8 @@ vi.mock('@/server/tcms/seite', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
+import { ENDPUNKTE } from '@taxtronik/tcms-contract';
+import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import PortalTcmsPage from '../page';
@@ -97,5 +99,18 @@ describe('Tax-CMS im Portal', () => {
     await renderServer(PortalTcmsPage());
     expect(screen.getByRole('heading', { name: 'Kein Zugriff' })).toBeTruthy();
     expect(h.lesen).not.toHaveBeenCalled();
+  });
+});
+
+// kk-tcms-qual (s9-Rest): Aufgaben und Meldungen der Übersicht bleiben isoliert.
+describe('Tax-CMS im Portal – Richtungsisolation', () => {
+  it('Übersicht mit Aufgaben und Meldungen', async () => {
+    const daten = markiert(
+      tcmsFixtures.portalUebersichtJana(),
+      ENDPUNKTE.portalUebersichtLesen.antwortSchema,
+    );
+    h.lesen.mockResolvedValue({ ok: true, daten, requestId: null });
+    const { container } = await renderServer(PortalTcmsPage());
+    erwarteIsoliert(container, 3);
   });
 });

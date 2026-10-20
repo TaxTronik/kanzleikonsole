@@ -61,6 +61,7 @@ import {
   portalAufgabeSpeichernAction,
   portalAufgabeZurueckgebenAction,
 } from './actions';
+import { TcmsTextListe } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Kontrollaufgabe' };
 
@@ -231,7 +232,8 @@ function NochOffen({ d, lage }: { d: Kontrollaufgabe; lage: AufgabeLage }) {
   if (!lage.offen || lage.historisch || d.pruefung.maengel.length === 0) return null;
   return (
     <p className="text-sm text-secondary mb-4">
-      <span className="font-medium">Noch offen:</span> {d.pruefung.maengel.join(' · ')}
+      <span className="font-medium">Noch offen:</span>{' '}
+      <TcmsTextListe werte={d.pruefung.maengel} trenner=" · " />
       {d.anzeige === 'UEBERFAELLIG'
         ? ` – die Frist ${isoDatumText(d.faelligAm)} ist überschritten.`
         : ''}

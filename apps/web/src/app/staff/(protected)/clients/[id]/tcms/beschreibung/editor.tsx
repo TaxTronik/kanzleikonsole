@@ -24,6 +24,7 @@ import { BAUSTEIN_LABEL, type BausteinArt } from '@taxtronik/tcms-domain';
 import { FieldError, fieldErrorProps, FormErrorSummary } from '@/components/form-errors';
 import type { TcmsAktionsErgebnis } from '@/components/tcms/programm/dialog';
 import { abschnittSpeichernAction } from './actions';
+import { TCMS_TEXT_ISOLIERT } from '@/components/tcms/text';
 
 export function AbschnittEditor({
   mandantId,
@@ -101,6 +102,7 @@ export function AbschnittEditor({
             Freitext
           </label>
           <textarea
+            {...TCMS_TEXT_ISOLIERT}
             id={`${id}-absatz-neu`}
             name="textNeu"
             className="input"
@@ -119,6 +121,7 @@ export function AbschnittEditor({
                 Freitext{textBloecke > 1 ? ` (Block ${nr + 1})` : ''}
               </label>
               <textarea
+                {...TCMS_TEXT_ISOLIERT}
                 id={`${id}-absatz-${nr}`}
                 name="text"
                 className="input"

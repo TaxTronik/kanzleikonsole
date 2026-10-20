@@ -57,6 +57,7 @@ import {
   zurReviewAction,
 } from './actions';
 import { AbschnittEditor } from './editor';
+import { TCMS_TEXT_ISOLIERT } from '@/components/tcms/text';
 
 export type Version = BeschreibungView['versionen'][number];
 type Freigabe = BeschreibungView['freigaben'][number];
@@ -177,6 +178,7 @@ function ZurueckDialog({ m }: { m: BeschreibungModell }) {
           Begründung (mindestens {REVIEW_MIN_BEGRUENDUNG} Zeichen)
         </label>
         <textarea
+          {...TCMS_TEXT_ISOLIERT}
           id="beschreibung-zurueck-begruendung"
           name="begruendung"
           className="input"
@@ -264,7 +266,7 @@ function FreigabeAnfordern({ m }: { m: BeschreibungModell }) {
         >
           {m.gv.length !== 1 ? <option value="">Bitte wählen …</option> : null}
           {m.gv.map((p) => (
-            <option key={p.id} value={p.id}>
+            <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
               {p.name}
             </option>
           ))}

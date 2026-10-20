@@ -15,6 +15,7 @@ import { KatalogIcon } from '../icon';
 import { TcmsLeer } from '../leer';
 import { badgeKlasse, tonChip } from '../ton';
 import { quelleText, typInfo, typKurz } from './texte';
+import { TcmsText } from '@/components/tcms/text';
 
 export type EreignisListenEintrag = z.infer<typeof EreignisListeSchema>['ereignisse'][number];
 
@@ -71,7 +72,7 @@ export function EreignisListe({
                     aria-current={gewaehlt ? 'true' : undefined}
                     className="block text-sm font-medium text-primary hover:underline"
                   >
-                    {typKurz(e.typ)} · {e.titel}
+                    {typKurz(e.typ)} · <TcmsText>{e.titel}</TcmsText>
                   </Link>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-muted mt-1">
                     <span className="badge-gray">{quelleText(e.quelle)}</span>
