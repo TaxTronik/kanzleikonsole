@@ -328,6 +328,31 @@ describe('executeWorkflowStep consistency', () => {
     expect(h.emitN8nEvent).toHaveBeenCalledOnce();
   });
 
+  it('RT3B-K-03: speichert und protokolliert eine Ablehnung des Providers ohne ihren Text', async () => {
+    const { recipients } = makeTx({
+      contacts: [{ email: 'jana@talwind.example', fullName: 'Jana' }],
+    });
+    h.sendMail.mockRejectedValueOnce(
+      Object.assign(
+        new Error('Message failed: 550 5.7.1 <jana@talwind.example>: "Ihr Code lautet 739154"'),
+        { code: 'EMESSAGE', responseCode: 550, response: '550 Ihr Code lautet 739154' },
+      ),
+    );
+
+    const ergebnis = await executeWorkflowStep({
+      tenantId: 'tenant-1',
+      staffId: 'staff-1',
+      itemId: 'item-1',
+    });
+
+    expect(ergebnis.ok).toBe(false);
+    expect(recipients[0]?.lastError).toBe('Versand gescheitert (Error, EMESSAGE, SMTP 550).');
+    const protokoll = JSON.stringify(h.logError.mock.calls);
+    expect(protokoll).toContain('Versand gescheitert (Error, EMESSAGE, SMTP 550).');
+    expect(protokoll).not.toContain('739154');
+    expect(JSON.stringify(ergebnis)).not.toContain('739154');
+  });
+
   it('sendet nach Teilfehler beim Retry nur an den noch offenen Empfänger', async () => {
     const { item, recipients } = makeTx({
       contacts: [

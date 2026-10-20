@@ -28,6 +28,7 @@ import {
   type MailN8nEmitOptions,
 } from './n8n-emitter';
 import { renderSafeMarkdown, escapeMarkdownVariable } from './markdown';
+import { mailFehlerFelder } from './mail-fehler';
 
 export interface TemplateFallback {
   subject: string;
@@ -283,7 +284,9 @@ export async function sendTemplateMail(opts: DispatchOptions): Promise<TemplateM
       attachments: opts.attachments,
     });
   } catch (err) {
-    mailLog().error({ slug: opts.slug, err: (err as Error).message }, 'mail: template send failed');
+    // RT3B-K-03: nie den Fehlertext des Providers – er kann den Inhalt der
+    // Mail (Code, Link, Adresse) zurückgeben; nur Klasse, Code, responseCode.
+    mailLog().error({ slug: opts.slug, ...mailFehlerFelder(err) }, 'mail: template send failed');
     // n8n trotzdem ansprechen — der könnte Slack-Ping o.ä. auslösen
     if (dispatch.mode === 'BOTH' && opts.n8nEvent) {
       await emitViaConfiguredN8n(opts.n8nEvent, opts.n8nPayload ?? opts.vars, n8nEmitOptions(opts));

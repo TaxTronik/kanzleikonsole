@@ -29,6 +29,7 @@ import { evidenceService } from '@/server/container';
 import { emitN8nEvent, type N8nEventName } from '@/server/n8n/emit';
 import { renderTemplate } from '@/server/mail/dispatch';
 import { sendMail } from '@/server/mail/send';
+import { mailFehlerVermerk } from '@taxtronik/mail/mail-fehler';
 import { log } from '@/server/logger';
 
 const EMAIL_CLAIM_STALE_MS = 30 * 60 * 1000;
@@ -363,6 +364,7 @@ async function finalizeClientEmail(opts: {
   const ctx = { tenantId, actorId: staffId, actorType: 'STAFF' as const };
   const settled = await Promise.all(
     mailJobs.map(async (job) => {
+      let versendet = false;
       try {
         await sendMail({
           to: job.to,
@@ -371,6 +373,7 @@ async function finalizeClientEmail(opts: {
           html: job.html,
           tenantId,
         });
+        versendet = true;
         const persisted = await withTenantContext(ctx, (tx) =>
           tx.workflowEmailRecipient.updateMany({
             where: {
@@ -387,7 +390,15 @@ async function finalizeClientEmail(opts: {
         }
         return { ok: true as const, to: job.to };
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        // RT3B-K-03 (MAIL-OUTBOX-001): Ein Fehler des Mail-Providers landet nur
+        // als fester Vermerk (Klasse, Code, SMTP-Antwortcode) in Fehlerspalte
+        // und Log, nie sein Text – er kann den Inhalt der Mail zurückgeben.
+        // Fehler nach dem Versand (Persistenz) behalten ihre Meldung.
+        const message = versendet
+          ? error instanceof Error
+            ? error.message
+            : String(error)
+          : mailFehlerVermerk(error);
         await withTenantContext(ctx, (tx) =>
           tx.workflowEmailRecipient.updateMany({
             where: {

@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { createTransport, type Transporter } from 'nodemailer';
+import { mailFehlerFelder } from '@taxtronik/mail/mail-fehler';
 import { env } from './env';
 import { log } from './logger';
 
@@ -54,7 +55,8 @@ export async function sendOpsMail(subject: string, body: string): Promise<boolea
     });
     return true;
   } catch (err) {
-    log.error({ err: (err as Error).message, subject }, 'ops-mail: send failed');
+    // RT3B-K-03: nie den Fehlertext des Providers (kann den Inhalt zurückgeben).
+    log.error({ ...mailFehlerFelder(err), subject }, 'ops-mail: send failed');
     return false;
   }
 }

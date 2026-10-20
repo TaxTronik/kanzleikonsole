@@ -1889,6 +1889,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Fehlertexte des Mail-Providers erscheinen nicht mehr im Log oder in
+  Fehlerspalten der Mail-Auslieferung, nur Fehlerklasse, Code und
+  SMTP-Antwortcode: Ein Provider, der beim Abweisen den Mailinhalt
+  zurückgibt, brachte sonst Bestätigungscodes oder Adressen ins Worker-Log
+  (RT3B-K-03, MAIL-OUTBOX-001).
 - **[TCMS]** Neue Versionen eines im Tax-CMS gebundenen Dokuments sperrt
   jetzt auch die Datenbank für jede Rolle, nicht nur die Versions-Route; die
   Route meldet die Ablehnung der Datenbank wie ihre eigene Prüfung (409

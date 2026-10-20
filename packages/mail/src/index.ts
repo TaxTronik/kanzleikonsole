@@ -20,6 +20,7 @@ export {
   type MailAttachment,
   type MailOptions,
 } from './send';
+export { mailFehlerFelder, mailFehlerVermerk, type MailFehlerFelder } from './mail-fehler';
 export {
   sendTemplateMail,
   notifyClientContacts,

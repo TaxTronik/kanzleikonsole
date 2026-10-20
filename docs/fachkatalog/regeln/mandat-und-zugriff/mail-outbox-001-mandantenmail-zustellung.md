@@ -78,6 +78,10 @@ code_refs:
   - packages/tcms-client/src/nachrichten.ts
   - packages/config/src/job-queues.ts
   - apps/web/src/app/staff/(protected)/admin/email-templates/page.tsx
+  - packages/mail/src/dispatch.ts
+  - packages/mail/src/mail-fehler.ts
+  - packages/mail/src/index.ts
+  - apps/web/src/server/workflows/execute-step.ts
   - apps/web/src/app/staff/(protected)/admin/email-templates/editor.tsx
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20261019150000_notification_kind_tcms/migration.sql
@@ -109,6 +113,9 @@ test_refs:
   - apps/web/src/app/staff/(protected)/admin/email-templates/__tests__/editor.test.tsx
   - packages/db/src/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
+  - packages/mail/src/__tests__/mail-fehler.test.ts
+  - apps/worker/src/jobs/__tests__/redteam-zustellung-db.test.ts
+  - apps/web/src/server/workflows/__tests__/execute-step.test.ts
 feature_refs:
   - docs/anwenderdoku/administration.md
   - docs/anwenderdoku/kalender-fristen-bescheide.md
@@ -354,6 +361,16 @@ geseedet, Platzhalter in der Vorlagenverwaltung erklärt) oder der
 gleichlautende Ersatztext. Logs nennen nur Tenant, Nachrichten-ID, Zweck und
 Grundcode.
 
+Lehnt der Mail-Provider eine Nachricht ab, kann sein Fehlertext den Inhalt
+zurückgeben (Bestätigungscode, Link, Empfängeradresse). Log und Persistenz der
+Mail-Auslieferung nehmen deshalb nur Fehlerklasse, Code und SMTP-Antwortcode
+auf (`packages/mail/src/mail-fehler.ts`, RT3B-K-03): `sendTemplateMail`
+protokolliert eine Ablehnung ohne Text, die Fehlerspalte des Auftrags trägt
+nur die festen Texte des Workers, und der Versand eines Workflow-Schritts
+speichert statt des Textes einen festen Vermerk wie „Versand gescheitert
+(Error, EMESSAGE, SMTP 550).“ Ob die Ablehnung eindeutig war, entscheidet
+weiter allein der SMTP-Antwortcode.
+
 Am Vorgang zeigt eine Statuszeile je Anlass den zusammengefassten Stand; bei
 `FAILED` und `UNKNOWN` mit erhaltenem Inhalt bietet sie „Erneut senden“ an.
 Das Gate entspricht der auslösenden Aktion (Einzelrecht, Modul,
@@ -426,7 +443,12 @@ den festen, unveränderlichen und für die App-Rolle
 unsichtbaren Systemakteur und mit dem echten Client nur die drei
 Nachrichten-Endpunkte (Body der Meldung nur `{ grund }`); ein Unit-Test belegt
 die vollständige, feste Abbildung der Gründe; Guards in Web und Worker belegen, dass nur der
-Worker den Systemakteur bildet. Die Restore-Abnahme (`restore-security.ts`,
+Worker den Systemakteur bildet. Der Angriffstest der Zustellung
+(`redteam-zustellung-db.test.ts`, Z6/Z6b) belegt gegen PostgreSQL, dass ein
+Providerfehler mit Code und Empfängeradresse in keiner Tabelle und keinem Log
+landet und das Log nur Klasse, Code und Antwortcode nennt; `mail-fehler.test.ts`
+die Felder und den Vermerk, `execute-step.test.ts` den Vermerk in Fehlerspalte
+und Log des Workflow-Versands. Die Restore-Abnahme (`restore-security.ts`,
 CI-Selbsttest) weist einen wiederhergestellten Stand ab, in dem die App-Rolle
 ein Recht auf `tcms_systemakteur` oder `tcms_nachricht_zustellung` hat. Eine
 Zustellung beim Mandanten

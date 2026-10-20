@@ -16,7 +16,8 @@
     "./markdown-safety": "./src/markdown-safety.ts",
     "./outbox": "./src/outbox.ts",
     "./outbox-purposes": "./src/outbox-purposes.ts",
-    "./tcms-vorlagen": "./src/tcms-vorlagen.ts"
+    "./tcms-vorlagen": "./src/tcms-vorlagen.ts",
+    "./mail-fehler": "./src/mail-fehler.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

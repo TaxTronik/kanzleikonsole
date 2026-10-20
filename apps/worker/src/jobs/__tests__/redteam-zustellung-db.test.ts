@@ -632,8 +632,50 @@ describeDb('Red Team: Zustellung mit bösartigem Dienst', () => {
     }
     await versenden();
     expect(await fundstellen(CODE)).toEqual([]);
-    // Heute: packages/mail/src/dispatch.ts protokolliert `err: error.message` des
-    // Providers wörtlich („mail: template send failed“) – mit dem Code.
+    // Vor der Behebung protokollierte packages/mail/src/dispatch.ts `err:
+    // error.message` des Providers wörtlich („mail: template send failed“) – mit dem Code.
     expect(alleLogs()).not.toContain(CODE);
+  });
+
+  it('RT3B-Z6b (Behebung K-03): Providerfehler mit Code und Empfängeradresse – nirgends gespeichert oder protokolliert, nur Klasse, Code und Antwortcode', async () => {
+    smtp.fehler = Object.assign(
+      new Error(
+        `Message failed: 550 5.1.1 <${JANA_MAIL}>: content rejected: "Ihr Bestätigungscode lautet ${CODE}"`,
+      ),
+      {
+        responseCode: 550,
+        code: 'EMESSAGE',
+        command: 'DATA',
+        response: `550 5.1.1 <${JANA_MAIL}> Ihr Bestätigungscode lautet ${CODE}`,
+      },
+    );
+    const stub = await boeserDienst(() => ({ art: 'json', nachrichten: [code()] }));
+    try {
+      await lauf(stub);
+    } finally {
+      await stub.schliessen();
+    }
+    // Fundstellen der Adresse nach der Einplanung, vor dem Versand (Kontakt und der
+    // Auftrag selbst, der seinen Empfänger kennt): Der Fehlertext darf keine
+    // weitere Tabelle hinzufügen, und kein Log darf die Adresse nennen.
+    const adresseVorher = await fundstellen(JANA_MAIL);
+    await versenden();
+    expect(smtp.versendet).toHaveLength(0);
+    // Eindeutig abgelehnt: erneuter Versuch geplant, Fehlerspalte nur mit festem Text.
+    const [auftrag] = await auftraege();
+    expect(auftrag).toMatchObject({ status: 'RETRY_PENDING' });
+    expect(auftrag?.lastError).toMatch(
+      /^Der Mail-Provider hat die Nachricht ausdrücklich abgelehnt\./,
+    );
+    expect(auftrag?.lastError).not.toContain(JANA_MAIL);
+    expect(await fundstellen(CODE)).toEqual([]);
+    expect(await fundstellen(JANA_MAIL)).toEqual(adresseVorher);
+    const logs = alleLogs();
+    expect(logs).not.toContain(CODE);
+    expect(logs).not.toContain(JANA_MAIL);
+    expect(mailLog.error).toHaveBeenCalledWith(
+      { slug: expect.any(String), errName: 'Error', code: 'EMESSAGE', responseCode: 550 },
+      'mail: template send failed',
+    );
   });
 });
