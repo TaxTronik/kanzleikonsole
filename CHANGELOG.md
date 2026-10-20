@@ -23,6 +23,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- **[TCMS]** Portal-Meldungen mit offenem Ausgang (Zeitlimit, Transport,
+  5xx) wiederholt dieselbe Person mit demselben Idempotenzschlüssel und
+  demselben Inhalt (TCMS s10): erneut absenden, automatisch beim nächsten
+  Öffnen der Meldeseite oder „Jetzt erneut übermitteln“, höchstens 23 Stunden
+  nach dem ersten Senden; das Tax-CMS liefert dann dasselbe Ereignis statt
+  eines zweiten. Den Inhalt hält TaxTronik dafür nur verschlüsselt und nur bis
+  zur Klärung (Tabelle `tcms_portal_report`, Migration 20261020200200); nach
+  Ablauf löscht ihn der Worker. Anlagen, deren Meldung nicht bestätigt wurde,
+  bleiben gebunden und erscheinen als „ungeklärte Anlage“ im Arbeitskorb und
+  im Ereigniseingang; Admins und Partner ordnen sie einem Ereignis zu, wenn
+  das Tax-CMS die Anlage dort führt (TCMS-NACHWEIS-001).
 - **[TCMS]** Offene Nachweis-Verknüpfungen mit unklarem Ausgang werden beim
   Öffnen der Durchführung mit dem Tax-CMS abgeglichen („Nachweise je Dokument“,
   nur am aktuellen Stand, höchstens zehn je Aufruf, erst nach fünf Minuten):
@@ -413,6 +424,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[TCMS]** Vertrag und Domain auf Tax-CMS `main` 92a1211 (s10):
+  maschinenlesbarer Konfliktgrund bei 409, Idempotenzschlüssel der
+  Portal-Meldung, einzeilige Steuerart, Land, Zeitraum und Quellangabe,
+  unbekannte Personen der Einrichtung als `null` (TCMS-DIENST-001).
+- **[TCMS]** Konflikte des Tax-CMS erscheinen mit einem festen Text je Grund,
+  den der Dienst nennt (etwa Code-Grenze, abgelaufener oder gesperrter Code,
+  bereits erledigte Anforderung, abweichende Meldung), statt eines
+  Sammeltexts; ein 409 ohne Grund an einem Endpunkt mit Gründen gilt als
+  Protokollfehler (TCMS-DIENST-001).
+- **[TCMS]** Steuerart, Land und Zeitraum einer Erklärung und die
+  Quellangabe einer Feststellung sind einzeilig; Zeilenumbrüche, Tabs und
+  unsichtbare Zeichen meldet das Formular vor dem Senden (TCMS-DIENST-001).
 - **[TCMS]** Vertrag und Domain auf Tax-CMS `main` f146a78 (s7–s9): Zuständigkeiten
   senden die gesehene Seite; gesperrte Feststellungsschritte erscheinen als
   Feldfehler; Gegenzeichnung beim Mandanten aus dem Kennzeichen; Einrichtung mit
@@ -1157,6 +1180,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[TCMS]** Einrichtung: Unbekannte Personen bietet der Kontrollschritt
+  nicht mehr als wählbares „—“ an; Pflichtrollen zeigen nur einen gesperrten
+  Platzhalter, Vertretung und Gegenzeichnung „keine Vertretung“ bzw. „keine
+  Gegenzeichnung“, eine Freigabe ohne Empfänger „der noch zu wählenden
+  gesetzlichen Vertretung“ (TCMS-DIENST-001).
+- **[TCMS]** Eine Freigabe einer Tax-CMS-Verknüpfung ohne Grund weist die
+  Datenbank jetzt ab: Die CHECK-Bedingung ergab mit `release_reason` NULL
+  NULL und galt damit als erfüllt (Migration 20261020200000,
+  TCMS-NACHWEIS-001).
 - **[GwG]** Die GwG-Pflichtvernichtung von Datei-Belegen ist wieder
   ausführbar: Der DB-Claim liefert `void`, das Prisma 7 nicht lesen konnte;
   jede Vernichtung (und damit die DSGVO-Anonymisierung, die vernichtete Belege
@@ -1926,6 +1958,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[TCMS]** Mandant und Tenant eines im Tax-CMS gebundenen Dokuments
+  lassen sich für keine Rolle mehr ändern, auch nicht über `ON DELETE SET
+NULL` beim Löschen des Mandanten („Mandantenwechsel gesperrt“, Migration
+  20261020200100, TCMS-NACHWEIS-001).
+- **[TCMS]** Anlagen einer Portal-Meldung werden nach Ablauf des
+  Wiederholungsfensters nie automatisch freigegeben; der zur Wiederholung
+  gespeicherte Inhalt liegt nur Secret-Box-verschlüsselt (an Tenant und Zeile
+  gebunden, CHECK auf das Format) und nur bis zur Klärung vor
+  (TCMS-NACHWEIS-001).
 - Fehlertexte des Mail-Providers erscheinen nicht mehr im Log oder in
   Fehlerspalten der Mail-Auslieferung, nur Fehlerklasse, Code und
   SMTP-Antwortcode: Ein Provider, der beim Abweisen den Mailinhalt
