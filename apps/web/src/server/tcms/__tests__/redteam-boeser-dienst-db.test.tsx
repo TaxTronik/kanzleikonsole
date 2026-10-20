@@ -64,6 +64,9 @@ if (!enabled && process.env.CI === 'true') {
   );
 }
 
+// Kalter Import der Routen und Helfer dauert unter Last länger als das Standardlimit.
+vi.setConfig({ testTimeout: 30_000 });
+
 const DID = 'cmvfboese00000000000001';
 const GEHEIM = 'STUB-GEHEIMTEXT';
 const RLO = '\u202e';
@@ -432,7 +435,7 @@ interface Antwort {
 
       // (1) Antwort nennt ein Dokument des anderen Mandanten: keine Entscheidung.
       antwort = () => ok({ dokumentId: andererMandant.id, nachweise: [] });
-      expect(await offeneNachweiseAbgleichen(seite, DID, spaeter)).toMatchObject({
+      expect(await offeneNachweiseAbgleichen(seite, DID, spaeter), 'S4: Abgleich 1').toMatchObject({
         bestaetigt: 0,
         freigegeben: 0,
       });
@@ -442,11 +445,14 @@ interface Antwort {
           dokumentId: offen.id,
           nachweise: [{ id: '../NW', durchfuehrungId: DID, entfernt: false, x: 1 }],
         });
-      expect(await offeneNachweiseAbgleichen(seite, DID, spaeter)).toMatchObject({
+      expect(await offeneNachweiseAbgleichen(seite, DID, spaeter), 'S4: Abgleich 2').toMatchObject({
         bestaetigt: 0,
         freigegeben: 0,
       });
-      expect((await zeile(offen.verknuepfungId)).releasedAt).toBeNull();
+      expect(
+        (await zeile(offen.verknuepfungId)).releasedAt,
+        'S4: ungültige Antwort ändert nichts',
+      ).toBeNull();
       // (3) Bestätigung mit einer Nachweis-ID, die schon an einer anderen Verknüpfung hängt: nicht doppelt.
       antwort = () =>
         ok({
@@ -454,7 +460,10 @@ interface Antwort {
           nachweise: [{ id: 'nwfest01', durchfuehrungId: DID, entfernt: false }],
         });
       await offeneNachweiseAbgleichen(seite, DID, spaeter);
-      expect((await zeile(offen.verknuepfungId)).tcmsEvidenceId).not.toBe('nwfest01');
+      expect(
+        (await zeile(offen.verknuepfungId)).tcmsEvidenceId,
+        'S4: keine doppelte Nachweis-ID',
+      ).not.toBe('nwfest01');
       // Bestätigte Verknüpfung und Verknüpfung des anderen Mandanten: nie berührt.
       expect(await zeile(bestaetigt.verknuepfungId)).toMatchObject({
         releasedAt: null,
@@ -502,6 +511,28 @@ interface Antwort {
       const isoliert = /<bdi[^>]*>[^<]*\u202e|dir="auto"[^>]*>[^<]*\u202e/.test(html);
       expect(html.includes(RLO) && !isoliert).toBe(false);
     });
+    it('RT3B-S5: Audit-Prüfung: Grund des Dienstes nie angezeigt, endloses „abgebrochen“ begrenzt', async () => {
+      const { auditPruefenAction } = await import('@/app/staff/(protected)/tcms/audit/actions');
+      antwort = () =>
+        ok({
+          status: 'GEBROCHEN',
+          geprueft: 7,
+          bruchBei: 3,
+          grund: `${GEHEIM} <b>x</b>`,
+          weiterAb: null,
+        });
+      const r1 = await auditPruefenAction(null, new FormData());
+      expect(r1).toMatchObject({ ok: true });
+      expect(JSON.stringify(r1)).not.toContain(GEHEIM);
+      // Der Dienst bricht jede Prüfung „ab“ und verweist auf dieselbe Stelle.
+      anfragen.length = 0;
+      antwort = () =>
+        ok({ status: 'ABGEBROCHEN', geprueft: 1, bruchBei: null, grund: null, weiterAb: 1 });
+      const r2 = await auditPruefenAction(null, new FormData());
+      expect(r2).toMatchObject({ ok: true, warnung: expect.stringMatching(/nicht abgeschlossen/) });
+      expect(anfragen.length).toBeLessThanOrEqual(50);
+    });
+
     // Zuletzt: Die Ausfälle öffnen den Circuit-Breaker des Clients (gewollt); spätere
     // Tests würden sonst nur noch die feste Ausfallantwort sehen.
     it.each([
