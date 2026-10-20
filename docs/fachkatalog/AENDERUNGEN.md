@@ -1,5 +1,41 @@
 ---
 exceptions:
+  - id: FK-EXC-20261020-001
+    date: '2026-10-20'
+    paths:
+      - apps/web/src/server/fristen/__tests__/bescheid-vorab-db.test.ts
+      - apps/web/src/server/gwg/__tests__/services-db.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts
+      - apps/web/src/server/poa/__tests__/poa-services-db.test.ts
+    rule_ids:
+      - TAX-CONTROL-STATUS-001
+      - TAX-NOTICE-APPEAL-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - INV-LIFECYCLE-FREEZE-001
+      - AUDIT-HASH-CHAIN-001
+      - POA-LIFECYCLE-001
+      - POA-SIGNING-SNAPSHOT-001
+    reason: >-
+      TCMS Stufe 3 (kk-tcms-qual, Commit edc4c1d): Nur die Form der Assertion
+      in vier Testdateien ändert sich. bescheid-vorab-db prüft Ablehnungen mit
+      dbAbgewiesen über dieselben Meldungen bzw. Namen der Bedingungen der
+      Datenbank statt über die Prisma-Meldung mit Codeausschnitt;
+      services-db (GwG) und poa-services-db prüfen dieselben Meldungen der
+      Anwendung mit anwendungAbgewiesen, das Datenbank- und Prisma-Fehler
+      zurückweist; der staffAction-Nachbau in invoice-concurrency-db gibt
+      Datenbankfehler als SQLSTATE statt als Prisma-Text weiter, die erwarteten
+      Ergebnisse bleiben gleich. Produktivcode, Eingaben, Entscheidung,
+      Geltungsbereich und Ergebnis der genannten Regeln bleiben unverändert.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/fristen/__tests__/bescheid-vorab-db.test.ts
+      - apps/web/src/server/gwg/__tests__/services-db.test.ts
+      - apps/web/src/server/invoicing/__tests__/invoice-concurrency-db.test.ts
+      - apps/web/src/server/poa/__tests__/poa-services-db.test.ts
+      - packages/db/src/__tests__/db-fehler.test.ts
+      - apps/web/src/__tests__/db-fehlerabgleich.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261019-003
     date: '2026-10-19'
     paths:

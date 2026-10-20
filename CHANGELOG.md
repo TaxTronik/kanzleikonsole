@@ -110,6 +110,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   TCMS `main` 7a900b1; der Client prüft die Akteursarten je Endpunkt und je Client
   (`MAIL-OUTBOX-001`, ungeprüft; `docs/development/tcms-anbindung.md`
   Abschnitt 8, `docs/operations/tcms-betrieb.md` Abschnitt 10).
+- **[TCMS]** Tests: Jede Schutzregel der Tabellen `tcms_document_reference`,
+  `tcms_systemakteur` und `tcms_nachricht_zustellung` (Trigger-Zweige,
+  CHECKs, RLS, Rechte) hat einen eigenen Test, der nur an ihr scheitert,
+  belegt durch Mutationen in der Datenbank
+  (`packages/db/src/__tests__/tcms-db-regeln.test.ts`; TCMS-NACHWEIS-001,
+  MAIL-OUTBOX-001, ACCESS-TENANT-RLS-001).
 
 - Mandanten-Mails bei Terminänderung oder -absage: Im Bearbeiten- und
   Absagen-Dialog des Kanzleikalenders kann die Kanzlei den Mandanten per
@@ -137,6 +143,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   `@testing-library/dom`, nur devDependencies ohne Install-Hooks), per
   Datei-Kommentar `// @vitest-environment jsdom`; die übrigen Web-Tests laufen
   weiter in Node.
+
+- Tests: Prüfhilfen `@taxtronik/db/testing/db-fehler` für Negativtests gegen
+  Datenbankregeln. `dbAbgewiesen` und `erwarteDbFehler` prüfen SQLSTATE,
+  Meldung, Bedingung und Prisma-Code der Datenbank statt der Prisma-Meldung
+  mit Codeausschnitt; `anwendungAbgewiesen` und `erwarteAnwendungsfehler`
+  prüfen Fehler der Anwendung und weisen Datenbank- und Prisma-Fehler zurück.
+  Ein Guard (`apps/web/src/__tests__/db-fehlerabgleich.test.ts`) verbietet in
+  DB-Suiten jeden anderen Abgleich abgewiesener Aufrufe
+  (`docs/development/testkonzept.md`).
 
 - CI: Die PowerShell-Tests der Windows-Hilfsskripte
   (`scripts/tests/*.test.ps1`) laufen im Job `quality` mit PowerShell 7.6.6 aus
@@ -1156,6 +1171,25 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 - **[TCMS]** Die Prüfung der Audit-Hashkette endet nach höchstens rund 50
   Sekunden mit „nicht abgeschlossen“, statt bis zu 50 Fortsetzungen à 10
   Sekunden über das Zeitlimit des Proxys hinaus zu laufen (Hinweis aus RT3B).
+- **[TCMS]** Texte aus dem Tax-CMS (Titel, Namen, Freitexte, Begründungen,
+  Dateinamen, Listen) erscheinen auf allen TCMS-Seiten von Kanzlei und Portal
+  richtungsisoliert (`<bdi>` bzw. `dir="auto"`): Richtungsmarken im Text ordnen
+  Nummern, Labels und Satzzeichen der umgebenden Zeile nicht mehr um.
+  Dateinamen kommen zusätzlich aus der eigenen Ablage bzw. bereinigt
+  (RT3B-K-04, unter „Sicherheit“).
+- Tests: DB-Negativtests konnten über den Codeausschnitt in der Meldung von
+  Prisma grün bleiben, obwohl die geprüfte Regel nicht griff. Drei Tests
+  bestanden nur so (GwG-Tenant-Umzug, PoA-Mandantenpaar,
+  Formular-Upload-Eindeutigkeit), `restore-security` prüfte 40 Fälle nur auf
+  einen Sammeltext. Alle DB-Suiten prüfen jetzt die Angaben der Datenbank,
+  auch die Angriffs- und Behebungstests aus RT3B: Das harte Löschen eines
+  Mandanten mit gebundenem Nachweis weist zuerst die GwG-Schranke ab, die
+  Sperre durch die Bindung allein belegt ein eigener Test
+  (ACCESS-TENANT-RLS-001, POA-SIGNING-SNAPSHOT-001, MAIL-OUTBOX-001,
+  GWG-IDENTIFICATION-EVIDENCE-001, GWG-RETENTION-DESTRUCTION-001,
+  TAX-NOTICE-APPEAL-001, TCMS-NACHWEIS-001).
+- Tests: Der Formular-Test „Ablehnung/Erfolg setzt zurück“ ist unter Last
+  stabil.
 - **[TCMS]** Der Zustell-Worker versendet keine Tax-CMS-Mitteilung mehr, die der
   Dienst mit 409 als abgeschlossen meldet; ein noch wartender Auftrag endet ohne
   Inhalt und Code (MAIL-OUTBOX-001).
