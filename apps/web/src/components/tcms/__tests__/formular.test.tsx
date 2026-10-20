@@ -48,6 +48,21 @@ function Formular({ aktion, optionen }: { aktion: Aktion; optionen?: TcmsFormula
   );
 }
 
+/**
+ * Klickt `knopf`, bis die Aktion zum `n`-ten Mal aufgerufen wurde. Ein Klick,
+ * während die Übermittlung noch als laufend gilt, wird vom Baustein verworfen.
+ */
+async function klickenBisAngenommen(
+  knopf: HTMLElement,
+  aktion: { mock: { calls: unknown[] } },
+  n: number,
+) {
+  await waitFor(() => {
+    if (aktion.mock.calls.length < n) fireEvent.click(knopf);
+    expect(aktion.mock.calls).toHaveLength(n);
+  });
+}
+
 function deferred() {
   let resolve!: (e: TcmsAktionsErgebnis) => void;
   const promise = new Promise<TcmsAktionsErgebnis>((r) => {
@@ -73,9 +88,14 @@ describe('useTcmsFormular', () => {
     expect(feld('Titel').value).toBe('Abstimmung September');
     expect(aktion.mock.calls[0]![1].get('absicht')).toBe('speichern');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    // Die Sperre gegen Doppelübermittlung löst ein Effekt nach dem Rendern des
+    // Ergebnisses; unter Last kommt ein sofortiger zweiter Klick davor an und
+    // wird (richtig) verworfen. Deshalb klicken, bis der Baustein die zweite
+    // Übermittlung annimmt – die Sperre verhindert dabei jede dritte (kk-tcms-qual).
+    await klickenBisAngenommen(screen.getByRole('button', { name: 'Speichern' }), aktion, 2);
     await waitFor(() => expect(screen.getByTestId('stand').textContent).toBe('true'));
     await waitFor(() => expect(feld('Titel').value).toBe(''));
+    expect(aktion).toHaveBeenCalledTimes(2);
   });
 
   it('zuruecksetzen: false – auch nach Erfolg bleiben Eingaben stehen', async () => {
