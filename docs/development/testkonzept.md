@@ -52,6 +52,31 @@ Protokoll. Suiten mit eigener Datenbank stehen begründet in
 `scripts/ci/db-suites.mjs` (`ISOLATED_DB_SUITES`) und laufen in einem eigenen
 Schritt.
 
+Negativtests gegen Datenbankregeln (Trigger, CHECK, RLS, Rechte) prüfen nur,
+was die Datenbank liefert. Prisma hängt an seine Fehlermeldung einen
+Codeausschnitt der aufrufenden Stelle (Pfad, vorangehende Zeilen, Aufruf); ein
+`rejects.toThrow(/Muster/)`, `toThrowError` oder ein Abgleich auf `e.message`
+bzw. `String(e)` besteht deshalb auch, wenn das Muster nur in diesem
+Ausschnitt steht und die Datenbank aus einem anderen Grund – oder gar nicht
+wegen der geprüften Regel – abgewiesen hat. DB-Suiten (`packages/db`,
+`*-db.test.ts(x)`, Live-Tests) nutzen deshalb
+`@taxtronik/db/testing/db-fehler`: `dbAbgewiesen(aufruf, erwartung)` prüft
+SQLSTATE, Meldung der Datenbank, Namen der Bedingung und Prisma-Code (z. B.
+P2025 für eine unter RLS unsichtbare Zeile), `anwendungAbgewiesen` einen Fehler
+der Anwendung und weist dabei Datenbank- und Prisma-Fehler zurück;
+`erwarteDbFehler`/`erwarteAnwendungsfehler` prüfen bereits gefangene Fehler
+(`Promise.allSettled`). `packages/db/src/__tests__/db-fehler.test.ts` belegt
+die Falle und die Helfer gegen PostgreSQL. Der Guard
+`apps/web/src/__tests__/db-fehlerabgleich.test.ts` liest alle DB-Suiten als
+TypeScript-AST und verbietet jeden anderen Abgleich gegen abgewiesene Aufrufe
+sowie nicht abgewartete Helfer; Ausnahmen stehen begründet in seiner
+Allowlist, ein Eintrag ohne Treffer bricht den Guard. Ein Negativtest einer
+Schutzregel gilt erst als belegt, wenn er bei gebrochener Regel (Mutation in
+der Datenbank) scheitert; eine CHECK-Bedingung, der ein Trigger vorgeschaltet
+ist, und eine `WITH CHECK`-Policy (Prisma prüft mit `RETURNING` auch die
+SELECT-Policy) brauchen dafür einen eigenen Test ohne Trigger bzw. ohne
+`RETURNING`.
+
 Pakete lesen ihre Konfiguration beim ersten Zugriff, nicht beim Import:
 `@taxtronik/storage` (Object-Store und ClamAV, `src/config.ts`) sowie die
 Risk-Layer- und ELSTER-Clients. Ihre Unit-Tests brauchen deshalb keine
