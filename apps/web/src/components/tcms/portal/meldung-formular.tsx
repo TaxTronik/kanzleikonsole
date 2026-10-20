@@ -9,7 +9,7 @@
 // das Formular gesperrt mit Hinweis.
 // =============================================================================
 
-import { useId, useState } from 'react';
+import { useId, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { Check, Send } from 'lucide-react';
 import { FieldError, fieldErrorProps } from '@/components/form-errors';
@@ -21,6 +21,18 @@ import type { MeldeKachel } from '../ereignisse/texte';
 import { auswahlProblem } from './anlagen-upload';
 import { fmtGroesse } from '../durchfuehrung/werte';
 import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
+
+/** Kein Abonnement: `useSyncExternalStore` unterscheidet nur Server und Browser. */
+function ohneAbo(): () => void {
+  return () => {};
+}
+
+/** Neuer Idempotenzschlüssel im Browser; null ohne crypto.randomUUID (unsicherer Kontext). */
+function neuerSchluessel(): string | null {
+  return typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : null;
+}
 
 /** Warum noch nicht gesendet werden kann (Bedienhilfe), sonst null. */
 function sperrGrund(z: {
@@ -102,6 +114,7 @@ function AnlagenFeld({
 
 export function MeldungFormular({
   aktion,
+  schluessel,
   kacheln,
   heute,
   darf,
@@ -112,6 +125,15 @@ export function MeldungFormular({
   uploadHinweis,
 }: {
   aktion: TcmsFormAktion;
+  /**
+   * Idempotenzschlüssel dieser Meldung (kk-tcms-s10nach, TCMS s10), vom Server
+   * für die erste Darstellung (und ohne JavaScript). Im Browser erzeugt jedes
+   * Einhängen des Formulars einen eigenen Schlüssel – auch wenn die Seite aus
+   * dem Verlauf (Zurück) mit alten Props kommt; erneutes Absenden desselben
+   * Formulars wiederholt dieselbe Meldung. Spätere Props (Revalidierung)
+   * ändern ihn nicht.
+   */
+  schluessel: string;
   kacheln: readonly MeldeKachel[];
   heute: string;
   darf: boolean;
@@ -129,6 +151,18 @@ export function MeldungFormular({
   uploadHinweis: string;
 }) {
   const id = useId();
+  // Je Einhängen ein eigener Schlüssel (nie der einer früheren Meldung, auch
+  // nicht aus einer im Verlauf gespeicherten Seite); er bleibt über
+  // Revalidierungen stehen (spätere Props ändern ihn nicht). Bis zur
+  // Hydrierung gilt der Schlüssel des Servers (gleiches Markup).
+  const [eigenerSchluessel] = useState(neuerSchluessel);
+  const [serverSchluessel] = useState(schluessel);
+  const imBrowser = useSyncExternalStore(
+    ohneAbo,
+    () => true,
+    () => false,
+  );
+  const idempotenzSchluessel = (imBrowser ? eigenerSchluessel : null) ?? serverSchluessel;
   const { ergebnis, laeuft, onSubmit } = useTcmsFormular(aktion, { zuruecksetzen: false });
   const [typ, setTyp] = useState<string | null>(null);
   const [titel, setTitel] = useState('');
@@ -149,6 +183,7 @@ export function MeldungFormular({
 
   return (
     <form onSubmit={onSubmit} className="space-y-4" aria-label="Ereignis melden">
+      <input type="hidden" name="idempotenzSchluessel" value={idempotenzSchluessel} />
       <fieldset disabled={!darf || laeuft} className="space-y-4 min-w-0">
         <section className="card" aria-labelledby={`${id}-art`}>
           <div className="card-header">

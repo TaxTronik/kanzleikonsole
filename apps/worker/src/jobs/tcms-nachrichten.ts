@@ -71,6 +71,8 @@ import {
   type TcmsMailAnlass,
 } from '@taxtronik/mail/tcms-vorlagen';
 import {
+  MELDUNG_UNGESENDET_AUFBEWAHRUNG_MS,
+  MELDUNG_WIEDERHOLUNG_FENSTER_MS,
   TcmsFehler,
   TcmsKonflikt,
   TcmsNichtGefunden,
@@ -184,7 +186,7 @@ type Db = Prisma.TransactionClient;
 
 export interface TcmsZustellDeps {
   /** Owner-Client: Tenants, Lease, Bereinigung. */
-  db: LeaseDb & Pick<Db, 'tenant' | 'tcmsNachrichtZustellung'>;
+  db: LeaseDb & Pick<Db, 'tenant' | 'tcmsNachrichtZustellung' | 'tcmsPortalReport'>;
   /** Tenant-Transaktion (Owner, Tenant-Kontext gesetzt) für Prüfung und Einplanung. */
   runAtomic: <T>(tenantId: string, fn: (tx: Db) => Promise<T>) => Promise<T>;
   /** Modul `tcms` an UND Dienst konfiguriert (isWorkerTcmsActive). */
@@ -218,6 +220,8 @@ export interface TcmsZustellErgebnis {
   /** Abruf oder Meldung gescheitert (nächster Lauf). */
   fehler: number;
   bereinigt: number;
+  /** Meldevorgänge des Portals nach Ablauf des Wiederholungsfensters gelöscht (kk-tcms-s10nach). */
+  meldungenBereinigt: number;
 }
 
 function leeresErgebnis(): TcmsZustellErgebnis {
@@ -231,6 +235,7 @@ function leeresErgebnis(): TcmsZustellErgebnis {
     gemeldet: 0,
     fehler: 0,
     bereinigt: 0,
+    meldungenBereinigt: 0,
   };
 }
 
@@ -831,12 +836,46 @@ export async function stelleTenantZu(
   }
 }
 
+/**
+ * kk-tcms-s10nach (TCMS-NACHWEIS-001): Meldevorgänge einer Portal-Meldung nach
+ * Ablauf des Wiederholungsfensters samt verschlüsseltem Inhalt löschen –
+ * tenantübergreifend über den Owner-Client und unabhängig davon, ob das
+ * Tax-CMS gerade konfiguriert ist (der Inhalt soll nie länger liegen). Die
+ * Anlagen bleiben gebunden („ungeklärte Anlage“); freigegeben wird nichts.
+ * Nie gesendete Vorgänge (Abbruch vor dem Senden) erst nach 24 h, damit die
+ * Person sie vorher selbst auflösen kann.
+ */
+export async function meldevorgaengeBereinigen(
+  db: Pick<Db, 'tcmsPortalReport'>,
+  jetzt: Date,
+): Promise<number> {
+  const { count } = await db.tcmsPortalReport.deleteMany({
+    where: {
+      OR: [
+        { sentAt: { lte: new Date(jetzt.getTime() - MELDUNG_WIEDERHOLUNG_FENSTER_MS) } },
+        {
+          sentAt: null,
+          createdAt: { lte: new Date(jetzt.getTime() - MELDUNG_UNGESENDET_AUFBEWAHRUNG_MS) },
+        },
+      ],
+    },
+  });
+  return count;
+}
+
 /** Ein Lauf über alle Tenants (Regelbetrieb) oder genau einen. */
 export async function stelleTcmsNachrichtenZu(
   deps: TcmsZustellDeps,
   input: { tenantId?: string; jetzt?: () => Date } = {},
 ): Promise<TcmsZustellErgebnis> {
   const ergebnis = leeresErgebnis();
+  try {
+    // Echte Zeit wie das 24-h-Fenster des Tax-CMS (nie die Testuhr des Laufs).
+    ergebnis.meldungenBereinigt = await meldevorgaengeBereinigen(deps.db, new Date());
+  } catch (fehler) {
+    ergebnis.fehler += 1;
+    deps.log.error({ ...fehlerFelder(fehler) }, 'tcms-nachrichten: Meldevorgänge nicht bereinigt');
+  }
   if (!deps.postausgang()) return ergebnis;
   const tenantIds = input.tenantId
     ? [input.tenantId]

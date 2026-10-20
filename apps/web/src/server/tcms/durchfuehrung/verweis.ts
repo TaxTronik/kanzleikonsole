@@ -24,8 +24,10 @@
 // werden genauso gebunden (`tcms_subject = 'EVENT'`):
 //
 //   anlegen   in der Commit-Transaktion der Ablage, bevor die Meldung den
-//             Dienst erreicht (Ereignis-ID noch leer).
-//   zuordnen  nach Annahme der Meldung: Ereignis-ID setzen (höchstens einmal).
+//             Dienst erreicht (Ereignis-ID noch leer), mit dem
+//             Idempotenzschlüssel des Meldevorgangs (kk-tcms-s10nach).
+//   zuordnen  nach Annahme der Meldung: Ereignis-ID setzen (höchstens einmal;
+//             über den Schlüssel, server/tcms/portal/meldevorgang.ts).
 //   freigeben nach eindeutiger Ablehnung der Meldung bzw. wenn die Meldung
 //             den Dienst nie erreicht hat („nicht angehängt“) und nach dem
 //             bestätigten Verwerfen des Ereignisses („verworfen“). Bei offenem
@@ -253,12 +255,14 @@ export async function nachweisVerknuepfungFreigeben(
  * Bindet ein soeben abgelegtes Dokument als Anlage einer Ereignismeldung
  * (`created_by` = Kontakt der Sitzung). Aufruf in der Commit-Transaktion der
  * Ablage; Version und SHA-256 aus der gespeicherten neuesten Version, der
- * Trigger prüft erneut.
+ * Trigger prüft erneut. `schluessel`: Idempotenzschlüssel des Meldevorgangs
+ * (kk-tcms-s10nach, server/tcms/portal/meldevorgang.ts), unveränderlich.
  */
 export async function meldungsAnlageVerknuepfenTx(
   tx: TxClient,
   bezug: Pick<NachweisBezug, 'tenantId' | 'mandantId'> & { kontaktId: string },
   dokumentId: string,
+  schluessel: string | null = null,
 ): Promise<string> {
   const quelle = await nachweisQuelleTx(tx, bezug, dokumentId);
   const { id } = await tx.tcmsDocumentReference.create({
@@ -269,6 +273,7 @@ export async function meldungsAnlageVerknuepfenTx(
       documentVersionId: quelle.versionId,
       sha256: Buffer.from(quelle.sha256),
       tcmsSubject: 'EVENT',
+      tcmsReportKey: schluessel,
       createdBy: bezug.kontaktId,
     },
     select: { id: true },

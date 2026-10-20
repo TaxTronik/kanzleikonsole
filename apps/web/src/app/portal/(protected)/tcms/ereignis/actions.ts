@@ -15,21 +15,35 @@
 // Fassung. Wen die Kanzlei
 // benachrichtigt (Hauptbearbeitung), kommt aus der kanzleikonsole – Name aus
 // der Datenbank, nie aus dem Formular; er begründet kein Recht.
+//
+// Idempotenz (kk-tcms-s10nach, TCMS s10): Jedes Formular trägt einen neuen
+// Idempotenzschlüssel (UUID); erneutes Absenden desselben Formulars ist eine
+// Wiederholung mit demselben Schlüssel und dem gespeicherten Inhalt, ohne
+// neue Ablage (server/tcms/portal/meldevorgang.ts). Ein offener Ausgang ist
+// ein Hinweis, kein Fehler: Die Seite wiederholt beim nächsten Öffnen
+// (`portalMeldungenKlaerenAction`, nur die eigenen Vorgänge der Person).
 // =============================================================================
 
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { ENDPUNKTE, PortalMeldungBodySchema } from '@taxtronik/tcms-contract';
+import {
+  MELDUNG_ABGELAUFEN,
+  MELDUNG_AUSGANG_OFFEN,
+  MELDUNG_LAEUFT,
+  meldungKlaerungText,
+} from '@/components/tcms/portal/texte';
 import { formFlag, parseFormData } from '@/server/actions/form-data';
 import type { ActionFailure } from '@/server/actions/action-runner';
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsPortalAktion } from '@/server/tcms/aktion';
 import { ansprechpersonenTx } from '@/server/tcms/portal/ansprechpartner';
 import { dateiSha256, portalAblageKontext, portalDateienFeld } from '@/server/tcms/portal/anlagen';
-import { meldungErfassenUndBinden, meldungsAnlagenAblegen } from '@/server/tcms/portal/meldung';
+import { meldungErfassen } from '@/server/tcms/portal/meldung';
+import { neuerMeldeSchluessel, offeneMeldungenKlaeren } from '@/server/tcms/portal/meldevorgang';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 
-type Ergebnis = ActionResult & { meldung?: string };
+type Ergebnis = ActionResult & { meldung?: string; warnung?: string };
 
 const MeldungFormular = z.object({
   typ: PortalMeldungBodySchema.shape.typ,
@@ -38,6 +52,12 @@ const MeldungFormular = z.object({
   datum: PortalMeldungBodySchema.shape.datum,
   zusage: formFlag('1'),
   anlagen: portalDateienFeld({ pflicht: false }),
+  // Idempotenzschlüssel des Formulars (kk-tcms-s10nach); fehlt er, ist dies
+  // das erste Absenden einer neuen Meldung.
+  idempotenzSchluessel: z.preprocess(
+    (wert) => (wert === '' || wert === null ? undefined : wert),
+    z.uuid().optional(),
+  ),
 });
 
 const KEIN_PROGRAMM =
@@ -65,7 +85,11 @@ export async function portalEreignisMeldenAction(
       });
       return { ablage, benachrichtigen: hauptbearbeitung };
     },
-    aufruf: async (dienst, d, v): Promise<ActionFailure | { nummer: string }> => {
+    aufruf: async (
+      dienst,
+      d,
+      v,
+    ): Promise<ActionFailure | { nummer: string } | { warnung: string }> => {
       // Recht und Programm laut Dienst, bevor eine Datei angenommen wird.
       const { daten: m } = await dienst.rufe(ENDPUNKTE.portalMeldungenLesen);
       if (!m.programmVorhanden) {
@@ -83,25 +107,56 @@ export async function portalEreignisMeldenAction(
           fieldErrors: { anlagen: ['Eine Datei ist doppelt ausgewählt.'] },
         };
       }
-      const { anlagen, verknuepfungen } = await meldungsAnlagenAblegen(v.ablage, d.anlagen);
-      const r = await meldungErfassenUndBinden(
-        dienst,
-        v.ablage.ctx,
-        {
+      const r = await meldungErfassen(dienst, v.ablage, {
+        schluessel: d.idempotenzSchluessel ?? neuerMeldeSchluessel(),
+        dateien: d.anlagen,
+        inhalt: {
           typ: d.typ,
           titel: d.titel,
           beschreibung: d.beschreibung,
           datum: d.datum,
-          anlagen,
           zusageAenderungen: d.zusage,
           benachrichtigen: v.benachrichtigen,
         },
-        verknuepfungen,
-      );
-      return { nummer: r.nummer };
+      });
+      switch (r.art) {
+        case 'angenommen':
+          return { nummer: r.nummer };
+        case 'offen':
+          return { warnung: MELDUNG_AUSGANG_OFFEN };
+        case 'laeuft':
+          return { warnung: MELDUNG_LAEUFT };
+        default:
+          return { ok: false, error: MELDUNG_ABGELAUFEN, errorCode: 'CONFLICT' };
+      }
     },
   });
-  if (!ergebnis.ok) return ergebnis;
+  if (!ergebnis.ok || 'warnung' in ergebnis) return ergebnis;
   // Navigation erst nach Erfolg, außerhalb des Fehler-Mappings (K-02).
   redirect(`/portal/tcms/ereignis?gemeldet=${encodeURIComponent(ergebnis.nummer)}`);
+}
+
+/**
+ * Klärt offene Meldungen der angemeldeten Person (kk-tcms-s10nach): beim
+ * Öffnen der Meldeseite automatisch und über „Jetzt erneut übermitteln“.
+ * Nur Vorgänge dieser Person bei diesem Mandanten (Sitzung), Wiederholung mit
+ * demselben Schlüssel und dem gespeicherten Inhalt; nie eine Freigabe nach
+ * Ablauf des Fensters (server/tcms/portal/meldevorgang.ts).
+ */
+export async function portalMeldungenKlaerenAction(
+  _vorher: Ergebnis | null,
+  _formData: FormData,
+): Promise<Ergebnis> {
+  return tcmsPortalAktion({
+    keinRecht: 'PORTAL_ROLLE',
+    vorbereiten: async (_tx, k) => ({
+      ctx: k.g.ctx,
+      bezug: { tenantId: k.g.tenantId, mandantId: k.mandantId, kontaktId: k.g.contactId },
+    }),
+    aufruf: async (dienst, _d, v) => {
+      const k = await offeneMeldungenKlaeren(dienst, v.ctx, v.bezug);
+      const text = meldungKlaerungText(k);
+      return k.offen > 0 || k.ungeklaert > 0 ? { warnung: text } : { meldung: text };
+    },
+  });
 }

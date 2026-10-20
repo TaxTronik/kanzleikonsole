@@ -427,3 +427,73 @@ unzustellbar. Technik: [Anbindung, Abschnitt 8](../development/tcms-anbindung.md
   (`abgerufen`, `eingeplant`, `zurueckgestellt`, `unzustellbar`, `gemeldet`,
   `fehler`); Zustellstatus der Mails in der Mail-Outbox (Anlass
   „Tax-CMS: …“).
+
+## 11. Portal-Meldungen mit offenem Ausgang (TCMS s10)
+
+Meldet ein Kontakt im Portal ein Ereignis und bleibt der Ausgang offen
+(Zeitlimit, Transport, 5xx, unlesbare Antwort), wiederholt TaxTronik die
+Meldung mit demselben Idempotenzschlüssel und demselben Inhalt – nur für
+dieselbe Person, beim erneuten Absenden des Formulars, beim nächsten Öffnen
+der Meldeseite oder über „Jetzt erneut übermitteln“, und höchstens 23 Stunden
+ab dem ersten Senden (das Tax-CMS hält den Schlüssel 24 Stunden). Technik:
+[Anbindung, Abschnitt 8](../development/tcms-anbindung.md#8-zustellung-des-postausgangs-stufe-4)
+und TCMS-NACHWEIS-001.
+
+- **Zustand:** `tcms_portal_report` je Kontakt und Schlüssel (RLS je Tenant):
+  Sendezeitpunkt, Versuche, Lease und der Inhalt der Meldung – nur
+  Secret-Box-verschlüsselt (Slot `tcmsPortalReportPayload`, Rotation über den
+  Re-Wrap wie die übrigen Secret-Spalten, [Secret-Rotation](secret-rotation.md)).
+  Die Zeile entfällt mit jeder Klärung; nach Ablauf des Fensters löscht sie
+  der Worker-Job `tcms-nachrichten-zustellen` (Zähler `meldungenBereinigt` im
+  Log `tcms-nachrichten-zustellen: done`), auch wenn das Tax-CMS gerade nicht
+  konfiguriert ist. Nie gesendete Vorgänge (Abbruch vor dem Senden) löscht er
+  nach 24 Stunden.
+- **Ungeklärte Anlagen:** Wird die Meldung im Fenster nicht angenommen (oder
+  meldet das Tax-CMS `IDEMPOTENZ_ABWEICHUNG`), bleiben ihre Anlagen gebunden
+  – nie automatisch frei, denn das Ereignis kann existieren. Die Kanzlei sieht
+  sie im Arbeitskorb („Ungeklärte Anlagen aus Portal-Meldungen“) und im
+  Ereigniseingang des Mandanten; Admins und Partner ordnen sie dort einem
+  Ereignis zu, wenn das Tax-CMS die Anlage für dieses Ereignis führt.
+- **Freigabe ohne Ereignis (nur Betrieb):** Stellt die Kanzlei fest, dass das
+  Tax-CMS keine Meldung mit dieser Anlage führt (Ereigniseingang des
+  Mandanten, Anlagen der Ereignisse), gibt der Betrieb die Verknüpfung auf
+  ihren schriftlichen Auftrag frei – als Owner, genau eine Zeile, mit der ID
+  der beauftragenden Kanzleiperson. Die Kanzlei nennt Mandant und
+  Dokumenttitel (wie im Ereigniseingang angezeigt); die Verknüpfung findet:
+
+  ```sql
+  SELECT r.id, r.document_id, d.title, r.created_at
+    FROM public.tcms_document_reference r
+    JOIN public.document d ON d.id = r.document_id
+   WHERE r.tenant_id = '<Tenant-ID>'
+     AND r.client_id = '<Mandanten-ID>'
+     AND r.tcms_subject = 'EVENT'
+     AND r.tcms_event_id IS NULL
+     AND r.released_at IS NULL;
+  ```
+
+  ```sql
+  BEGIN;
+  UPDATE public.tcms_document_reference
+     SET released_at = now(),
+         released_by = '<Staff-ID der beauftragenden Person>',
+         release_reason = 'NOT_ATTACHED'
+   WHERE id = '<Verknüpfungs-ID>'
+     AND tenant_id = '<Tenant-ID>'
+     AND tcms_subject = 'EVENT'
+     AND tcms_event_id IS NULL
+     AND released_at IS NULL;
+  -- Erwartet: UPDATE 1. Sonst ROLLBACK und Zeile prüfen.
+  COMMIT;
+  ```
+
+  Die Freigabe ist endgültig (Trigger); danach lässt sich das Dokument
+  wieder löschen und versionieren. Auftrag und Ausführung im Ticket bzw.
+  Betriebsprotokoll festhalten.
+
+- **Fehlerbilder:** App-Log `tcms-meldung: Ausgang offen, Wiederholung mit
+demselben Schlüssel` (Dienst gestört, kein Handlungsbedarf),
+  `tcms-meldung: Inhalt des Meldevorgangs nicht lesbar` (Secret-Box-Schlüssel
+  ohne Re-Wrap entfernt: Schlüsselbund prüfen; nach dem Fenster wird die
+  Anlage ungeklärt), Worker-Log `tcms-nachrichten: Meldevorgänge nicht
+bereinigt` (Datenbank; der nächste Lauf versucht es erneut).

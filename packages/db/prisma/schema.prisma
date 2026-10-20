@@ -145,6 +145,7 @@ model Tenant {
   screeningReviews               ScreeningReview[]
   stbvvQuotes                    StbvvQuote[]
   tcmsDocumentReferences         TcmsDocumentReference[]
+  tcmsPortalReports              TcmsPortalReport[]
 
   @@map("tenant")
 }
@@ -471,6 +472,9 @@ model TcmsDocumentReference {
   tcmsEvidenceId    String?         @map("tcms_evidence_id")
   /// Ereignis im Tax-CMS (nur EVENT); null, bis der Dienst die Meldung angenommen hat.
   tcmsEventId       String?         @map("tcms_event_id")
+  /// Idempotenzschlüssel des Meldevorgangs (nur EVENT, unveränderlich; Verbindung
+  /// zu TcmsPortalReport, kk-tcms-s10nach, Migration 20261020200200).
+  tcmsReportKey     String?         @map("tcms_report_key") @db.Uuid
   createdBy         String          @map("created_by") @db.Uuid
   createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   releasedAt        DateTime?       @map("released_at") @db.Timestamptz(6)
@@ -487,7 +491,39 @@ model TcmsDocumentReference {
   @@index([clientId, tcmsExecutionId])
   @@index([clientId, tcmsEventId])
   @@index([documentVersionId])
+  @@index([tenantId, tcmsReportKey])
   @@map("tcms_document_reference")
+}
+
+/// kk-tcms-s10nach (TCMS-NACHWEIS-001): Meldevorgang einer Ereignismeldung aus
+/// dem Portal mit Idempotenzschlüssel (TCMS s10). Vor dem Ablegen der Anlagen
+/// angelegt (noch nicht gesendet), vor dem ersten Senden mit Sendezeitpunkt und
+/// dem zur Wiederholung nötigen Inhalt – nur verschlüsselt (Secret-Box,
+/// SECRET_SLOTS.tcmsPortalReportPayload). Nach der Klärung bzw. nach Ablauf des
+/// Wiederholungsfensters gelöscht. RLS je Tenant, Guard
+/// tcms_portal_report_guard (Migration 20261020200200).
+model TcmsPortalReport {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  clientId       String        @map("client_id") @db.Uuid
+  contactId      String        @map("contact_id") @db.Uuid
+  idempotencyKey String        @map("idempotency_key") @db.Uuid
+  /// Secret-Box v3 (CHECK tcms_portal_report_payload_check); null bis zum ersten Senden.
+  payloadEnc     String?       @map("payload_enc")
+  sentAt         DateTime?     @map("sent_at") @db.Timestamptz(6)
+  leaseUntil     DateTime?     @map("lease_until") @db.Timestamptz(6)
+  attempts       Int           @default(0)
+  lastAttemptAt  DateTime?     @map("last_attempt_at") @db.Timestamptz(6)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  client         Client        @relation(fields: [clientId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  contact        ClientContact @relation(fields: [contactId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([tenantId, contactId, idempotencyKey])
+  @@index([clientId, contactId])
+  @@index([contactId])
+  @@index([sentAt])
+  @@map("tcms_portal_report")
 }
 
 model VdbRecord {
@@ -2091,6 +2127,7 @@ model Client {
   portalInboxAttachments   PortalInboxAttachment[]
   portalInboxReads         PortalInboxRead[]
   tcmsDocumentReferences   TcmsDocumentReference[]
+  tcmsPortalReports        TcmsPortalReport[]
 
   @@unique([tenantId, datevNo])
   @@unique([tenantId, id], map: "client_tenant_id_id_key")
@@ -2299,6 +2336,7 @@ model ClientContact {
   portalInboxThreadsCreated     PortalInboxThread[]         @relation("PortalInboxCreatedByContact")
   portalInboxUploadBatches      PortalInboxUploadBatch[]
   portalInboxReads              PortalInboxRead[]
+  tcmsPortalReports             TcmsPortalReport[]
 
   @@unique([tenantId, clientId, email])
   @@index([tenantId, email], map: "client_contact_tenant_email_idx")

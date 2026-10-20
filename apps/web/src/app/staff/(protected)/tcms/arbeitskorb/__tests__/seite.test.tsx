@@ -3,6 +3,8 @@
 // Dienstes (Demo-Daten). Einstieg tcmsKanzleiSeite (bestätigte
 // Mandantenliste), Mandantennamen und Berufsträger aus der kanzleikonsole,
 // Personennamen über tcmsNamenLesen; vertrauliche Feststellungen ohne Titel.
+// Ungeklärte Anlagen aus Portal-Meldungen (kk-tcms-s10nach) aus der
+// kanzleikonsole, nur für die Mandanten der bestätigten Liste, je Mandant.
 // Fachkatalog: TCMS-DIENST-001
 import { screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,6 +14,7 @@ const h = vi.hoisted(() => ({
   lesen: vi.fn(),
   namen: vi.fn(),
   mandanten: vi.fn(),
+  ungeklaert: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -22,8 +25,12 @@ vi.mock('@/server/tcms/seite', () => ({
   tcmsKanzleiSeite: h.seite,
   tcmsLesen: h.lesen,
   tcmsNamenLesen: h.namen,
+  tcmsTenantLesen: async (_s: unknown, fn: (tx: unknown) => Promise<unknown>) => fn({ tx: true }),
 }));
 vi.mock('@/server/tcms/portfolio', () => ({ portfolioMandanten: h.mandanten }));
+vi.mock('@/server/tcms/portal/meldevorgang', () => ({
+  ungeklaerteMeldungsAnlagenTx: h.ungeklaert,
+}));
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
@@ -51,6 +58,7 @@ const NAMEN: Record<string, string> = {
 beforeEach(() => {
   vi.clearAllMocks();
   h.seite.mockResolvedValue(seiteVon(DEMO.anna, [DEMO.talwind, DEMO.seestern]));
+  h.ungeklaert.mockResolvedValue([]);
   h.namen.mockImplementation(async () => ({
     name: (id: string | null) => (id ? (NAMEN[id] ?? UNBEKANNTE_PERSON) : KEINE_PERSON),
     bekannt: (id: string | null) => !!id && id in NAMEN,
@@ -141,5 +149,49 @@ describe('Arbeitskorb – Richtungsisolation', () => {
     });
     const { container } = await renderServer(TcmsArbeitskorbPage());
     erwarteIsoliert(container, 2);
+  });
+});
+
+describe('Arbeitskorb – ungeklärte Anlagen aus Portal-Meldungen (kk-tcms-s10nach)', () => {
+  const anlage = (mandantId: string, seit: string) => ({
+    verknuepfungId: crypto.randomUUID(),
+    mandantId,
+    dokumentId: crypto.randomUUID(),
+    titel: 'Kassenbericht.csv',
+    seit: new Date(seit),
+    kontaktId: DEMO.murat,
+  });
+
+  it('je Mandant gezählt (älteste zuerst), mit Link in den Ereigniseingang; nur Mandanten der Liste', async () => {
+    h.lesen.mockResolvedValue({ ok: true, daten: tcmsFixtures.arbeitskorbAnna(), requestId: 'r' });
+    h.ungeklaert.mockResolvedValue([
+      anlage(DEMO.seestern, '2026-10-18T07:00:00Z'),
+      anlage(DEMO.talwind, '2026-10-19T07:00:00Z'),
+      anlage(DEMO.seestern, '2026-10-20T07:00:00Z'),
+    ]);
+    await renderServer(TcmsArbeitskorbPage());
+    expect(h.ungeklaert).toHaveBeenCalledWith(
+      { tx: true },
+      { tenantId: DEMO.tenant, mandantIds: [DEMO.talwind, DEMO.seestern, DEMO.kleinwerk] },
+    );
+    const gruppe = screen.getByRole('region', { name: 'Ungeklärte Anlagen aus Portal-Meldungen' });
+    const links = within(gruppe).getAllByRole('link');
+    expect(links.map((l) => l.getAttribute('href'))).toEqual([
+      `/staff/clients/${DEMO.seestern}/tcms/ereignisse`,
+      `/staff/clients/${DEMO.talwind}/tcms/ereignisse`,
+    ]);
+    expect(links[0]!.textContent).toContain('Seestern (kk)');
+    expect(links[0]!.textContent).toContain('2 Anlagen');
+    expect(links[1]!.textContent).toContain('1 Anlage');
+    // Titel und Personen der Anlagen erscheinen hier nicht (Detail im Ereigniseingang).
+    expect(gruppe.textContent).not.toContain('Kassenbericht.csv');
+  });
+
+  it('ohne ungeklärte Anlagen keine Gruppe', async () => {
+    h.lesen.mockResolvedValue({ ok: true, daten: tcmsFixtures.arbeitskorbAnna(), requestId: 'r' });
+    await renderServer(TcmsArbeitskorbPage());
+    expect(
+      screen.queryByRole('region', { name: 'Ungeklärte Anlagen aus Portal-Meldungen' }),
+    ).toBeNull();
   });
 });

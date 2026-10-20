@@ -24,6 +24,7 @@ import { isoDatumText, isoZeitText } from '@/components/tcms/format';
 import { KatalogIcon } from '@/components/tcms/icon';
 import { TcmsLeer } from '@/components/tcms/leer';
 import { MeldungFormular } from '@/components/tcms/portal/meldung-formular';
+import { OffeneMeldungen } from '@/components/tcms/portal/offene-meldungen';
 import {
   NUR_EIGENE_MELDUNGEN,
   PORTAL_ANLAGE_ACCEPT,
@@ -35,9 +36,10 @@ import { readPortalFeaturesTx } from '@/server/settings/portal-features';
 import { personIdsAus } from '@/server/tcms/namen';
 import { ansprechpersonenTx } from '@/server/tcms/portal/ansprechpartner';
 import { PORTAL_ANLAGEN_GESAMT_BYTES } from '@/server/tcms/portal/anlagen';
+import { neuerMeldeSchluessel, offeneMeldevorgaengeTx } from '@/server/tcms/portal/meldevorgang';
 import { tcmsLesen, tcmsNamenLesen, tcmsPortalSeite, tcmsTenantLesen } from '@/server/tcms/seite';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
-import { portalEreignisMeldenAction } from './actions';
+import { portalEreignisMeldenAction, portalMeldungenKlaerenAction } from './actions';
 import { TcmsText } from '@/components/tcms/text';
 
 export const metadata = { title: 'Tax-CMS – Ereignis melden' };
@@ -95,11 +97,23 @@ export default async function PortalEreignisPage({
     tcmsNamenLesen(seite, personIdsAus(m.meldungen.map((x) => x.gemeldetVon))),
     tcmsTenantLesen(seite, async (tx) => {
       const bezug = { tenantId: seite.session.user.tenantId, mandantId: seite.mandantId };
-      const [personen, funktionen] = await Promise.all([
+      const [personen, funktionen, offen] = await Promise.all([
         ansprechpersonenTx(tx, bezug),
         readPortalFeaturesTx(tx, bezug.tenantId),
+        // Eigene Meldungen mit offenem Ausgang (kk-tcms-s10nach), ohne Inhalt.
+        offeneMeldevorgaengeTx(tx, { ...bezug, kontaktId: seite.session.user.contactId }),
       ]);
-      return { ansprechperson: personen.hauptbearbeitung, upload: funktionen.documentUpload };
+      return {
+        ansprechperson: personen.hauptbearbeitung,
+        upload: funktionen.documentUpload,
+        offen: offen.map((v) => ({
+          id: v.id,
+          gesendetAm: v.gesendetAm?.toISOString() ?? null,
+          versuche: v.versuche,
+          anlagen: v.anlagen,
+          faellig: v.faellig,
+        })),
+      };
     }),
   ]);
   const { gemeldet: gemeldetRoh } = await searchParams;
@@ -185,8 +199,13 @@ export default async function PortalEreignisPage({
                     Kanzlei.
                   </p>
                 ) : null}
+                <OffeneMeldungen vorgaenge={kanzlei.offen} aktion={portalMeldungenKlaerenAction} />
                 <MeldungFormular
+                  // Nach einer angenommenen Meldung (neue Vorgangsnummer) ein neues
+                  // Formular mit neuem Idempotenzschlüssel (kk-tcms-s10nach).
+                  key={`meldung-${gemeldet ?? ''}`}
                   aktion={portalEreignisMeldenAction}
+                  schluessel={neuerMeldeSchluessel()}
                   kacheln={PORTAL_KACHELN}
                   heute={u.heute}
                   darf={darf}

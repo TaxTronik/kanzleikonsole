@@ -240,6 +240,8 @@ SELECT concat_ws('|',
     'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.tcms_nachricht_zustellung',
     'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.tcms_portal_report',
+    'TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.document_version', 'DELETE'))::text,
   (NOT EXISTS (
     SELECT 1
@@ -268,7 +270,7 @@ SELECT concat_ws('|',
 );
 SQL
 )"
-EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true"
+EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true"
 [[ "$ACL_STATE" == "$EXPECTED_ACL_STATE" ]] || \
   die "ACL-/REVOKE-Pruefung fehlgeschlagen: $ACL_STATE"
 

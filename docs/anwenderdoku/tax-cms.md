@@ -451,6 +451,16 @@ Klick öffnet die Triage:
   Dokument in der Ablage nicht löschen und keine neue Version hochladen; mit
   dem bestätigten **Verwerfen** des Ereignisses wird es wieder frei
   (Abschließen gibt die Anlagen nicht frei).
+- **Ungeklärte Anlagen aus Portal-Meldungen:** Hat das Tax-CMS den Eingang
+  einer Meldung nicht innerhalb von 23 Stunden bestätigt, ist offen, ob sie
+  angekommen ist. Ihre Anlagen bleiben deshalb gesperrt und erscheinen oben im
+  Ereigniseingang des Mandanten und im Arbeitskorb (je Mandant gezählt).
+  Prüfen Sie die Ereignisse: Enthält eines die Anlage, ordnen Admins und
+  Partner sie mit **Ereignis zuordnen** zu – das Tax-CMS muss die Anlage für
+  dieses Ereignis führen (gleicher SHA-256, gleiches Dokument), sonst erscheint
+  „Dieses Ereignis enthält die Anlage nicht.“ Gibt es keine solche Meldung,
+  gibt der Betrieb die Anlage auf Ihren Auftrag frei; aus der Oberfläche
+  heraus geht das bewusst nicht.
 
 ### Kontrollaufgabe im Portal
 
@@ -495,9 +505,20 @@ Meldung auf genau diese Dateien verweist, lassen sie sich weder löschen noch
 durch eine neue Version ersetzen, solange die Meldung besteht; erst wenn die
 Kanzlei das Ereignis verwirft, werden sie wieder frei. Scheitert eine Datei
 (z. B. Virenfund) oder lehnt das Tax-CMS die Meldung ab, wird nichts gemeldet
-und die schon hochgeladenen Dateien bleiben ungesperrt in der Ablage. Hat das
-Tax-CMS nicht rechtzeitig geantwortet, bleiben sie vorsorglich gesperrt;
-fragen Sie dann bei der Kanzlei nach, ob die Meldung angekommen ist.
+und die schon hochgeladenen Dateien bleiben ungesperrt in der Ablage.
+
+Hat das Tax-CMS nicht rechtzeitig geantwortet, ist offen, ob die Meldung
+angekommen ist; die Anlagen bleiben vorsorglich gesperrt. Melden Sie das
+Ereignis dann **nicht neu**: Ein erneuter Klick auf „Ereignis melden“ im
+selben Formular wiederholt dieselbe Meldung mit denselben Angaben
+(Änderungen im Formular werden dabei nicht übernommen), es entsteht keine
+doppelte Meldung. Sonst wiederholt TaxTronik die Übermittlung beim nächsten
+Öffnen der Seite automatisch; der Abschnitt „Meldungen in Übermittlung“
+zeigt solche Meldungen (ohne Inhalt) mit „Jetzt erneut übermitteln“. Das
+geht nur durch dieselbe Person und nur innerhalb von 23 Stunden nach dem
+ersten Senden; die Angaben liegen bis dahin nur verschlüsselt bei TaxTronik
+und werden danach gelöscht. Ist die Meldung bis dahin nicht bestätigt,
+klärt die Kanzlei sie; fragen Sie dort nach.
 
 ### Freigaben und Kenntnisnahmen
 
@@ -539,19 +560,23 @@ Die Hashkette hat keinen qualifizierten Zeitstempel.
 
 ### Meldungen in diesen Bereichen
 
-| Meldung                                                                      | Bedeutung und was zu tun ist                                                                         |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Der Code stimmt nicht. Noch … Versuche.                                      | Code aus der E-Mail erneut eingeben oder einen neuen anfordern.                                      |
-| Der Bestätigungscode ist nach mehreren Fehlversuchen gesperrt.               | Bitte an die Kanzlei wenden.                                                                         |
-| Sie haben in der letzten Stunde bereits mehrere Codes angefordert …          | Den zuletzt gesendeten Code verwenden oder später einen neuen anfordern.                             |
-| Bitte fordern Sie zuerst einen Bestätigungscode an.                          | Für die Anforderung liegt kein gültiger Code vor (nie angefordert oder neu adressiert).              |
-| Der Code ist nicht mehr gültig. Bitte fordern Sie einen neuen an.            | Der Code ist abgelaufen, auch vorzeitig nach einer Sicherheitsumstellung. Neuen Code anfordern.      |
-| Diese Anforderung ist bereits erledigt oder nicht mehr offen …               | Die Freigabe ist schon erteilt, abgelehnt oder gegenstandslos. Seite neu laden.                      |
-| Diese Fassung liegt Ihnen nicht mehr zur Freigabe vor …                      | Die Kanzlei hat die Fassung zurückgenommen oder geändert. Seite neu laden.                           |
-| Die vorgelegte Fassung kann nicht mehr freigegeben werden …                  | Der festgehaltene Stand passt nicht mehr; die Kanzlei legt die Fassung erneut vor.                   |
-| Entwurf gespeichert, aber noch nicht übermittelt: …                          | Die genannten Punkte ergänzen und erneut übermitteln.                                                |
-| Die Anlage wurde nicht ausgeliefert …                                        | Die Datei in der Ablage weicht vom festgehaltenen Stand ab. Bitte an die Kanzlei bzw. Admins wenden. |
-| Zusammen höchstens 25 MB auf einmal – bitte in mehreren Schritten hochladen. | Dateien auf mehrere Uploads verteilen.                                                               |
+| Meldung                                                                      | Bedeutung und was zu tun ist                                                                           |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Der Code stimmt nicht. Noch … Versuche.                                      | Code aus der E-Mail erneut eingeben oder einen neuen anfordern.                                        |
+| Der Bestätigungscode ist nach mehreren Fehlversuchen gesperrt.               | Bitte an die Kanzlei wenden.                                                                           |
+| Sie haben in der letzten Stunde bereits mehrere Codes angefordert …          | Den zuletzt gesendeten Code verwenden oder später einen neuen anfordern.                               |
+| Bitte fordern Sie zuerst einen Bestätigungscode an.                          | Für die Anforderung liegt kein gültiger Code vor (nie angefordert oder neu adressiert).                |
+| Der Code ist nicht mehr gültig. Bitte fordern Sie einen neuen an.            | Der Code ist abgelaufen, auch vorzeitig nach einer Sicherheitsumstellung. Neuen Code anfordern.        |
+| Diese Anforderung ist bereits erledigt oder nicht mehr offen …               | Die Freigabe ist schon erteilt, abgelehnt oder gegenstandslos. Seite neu laden.                        |
+| Diese Fassung liegt Ihnen nicht mehr zur Freigabe vor …                      | Die Kanzlei hat die Fassung zurückgenommen oder geändert. Seite neu laden.                             |
+| Die vorgelegte Fassung kann nicht mehr freigegeben werden …                  | Der festgehaltene Stand passt nicht mehr; die Kanzlei legt die Fassung erneut vor.                     |
+| Entwurf gespeichert, aber noch nicht übermittelt: …                          | Die genannten Punkte ergänzen und erneut übermitteln.                                                  |
+| Die Anlage wurde nicht ausgeliefert …                                        | Die Datei in der Ablage weicht vom festgehaltenen Stand ab. Bitte an die Kanzlei bzw. Admins wenden.   |
+| Zusammen höchstens 25 MB auf einmal – bitte in mehreren Schritten hochladen. | Dateien auf mehrere Uploads verteilen.                                                                 |
+| Ihre Meldung konnte nicht sicher übermittelt werden …                        | Ausgang offen. Erneut auf „Ereignis melden“ klicken oder die Seite später öffnen; nicht neu melden.    |
+| Diese Meldung wird gerade übermittelt …                                      | Ein anderer Versuch läuft. Seite in einigen Minuten neu laden und die bisherigen Meldungen prüfen.     |
+| Diese Meldung kann nicht mehr wiederholt werden …                            | Das Formular ist älter als 23 Stunden. Seite neu laden und unter den bisherigen Meldungen prüfen.      |
+| Diese Meldung wurde bereits mit anderem Inhalt übermittelt …                 | Unter diesem Formular ging schon eine andere Meldung ein. Seite neu laden, bisherige Meldungen prüfen. |
 
 ## 11. Mitteilungen per E-Mail und Hinweis
 

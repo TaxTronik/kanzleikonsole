@@ -16,6 +16,9 @@ BEGIN
   -- (tcms_subject = 'EVENT') binden das Dokument ebenso. Die Ereignis-ID
   -- vergibt das Tax-CMS erst mit der Meldung; sie wird höchstens einmal
   -- gesetzt, der Bezug (Durchführung oder Ereignis) nie geändert.
+  -- kk-tcms-s10nach: Der Idempotenzschlüssel der Meldung (tcms_report_key,
+  -- nur EVENT) verbindet die Anlagen mit ihrem Meldevorgang
+  -- (tcms_portal_report); er steht ab der Anlage fest.
   IF TG_OP = 'INSERT' THEN
     IF NEW.released_at IS NOT NULL OR NEW.released_by IS NOT NULL
        OR NEW.release_reason IS NOT NULL THEN
@@ -58,10 +61,12 @@ BEGIN
   END IF;
 
   IF (NEW.id, NEW.tenant_id, NEW.client_id, NEW.document_id, NEW.document_version_id,
-      NEW.sha256, NEW.tcms_subject, NEW.tcms_execution_id, NEW.created_by, NEW.created_at)
+      NEW.sha256, NEW.tcms_subject, NEW.tcms_execution_id, NEW.tcms_report_key,
+      NEW.created_by, NEW.created_at)
      IS DISTINCT FROM
      (OLD.id, OLD.tenant_id, OLD.client_id, OLD.document_id, OLD.document_version_id,
-      OLD.sha256, OLD.tcms_subject, OLD.tcms_execution_id, OLD.created_by, OLD.created_at) THEN
+      OLD.sha256, OLD.tcms_subject, OLD.tcms_execution_id, OLD.tcms_report_key,
+      OLD.created_by, OLD.created_at) THEN
     RAISE EXCEPTION 'tcms_document_reference: Bezug und Inhalt sind unveränderlich'
       USING ERRCODE = 'check_violation';
   END IF;

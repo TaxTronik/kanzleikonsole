@@ -29,6 +29,10 @@ const h = vi.hoisted(() => ({
   freigeben: vi.fn(),
   zuordnen: vi.fn(),
   meldungFreigeben: vi.fn(),
+  beanspruchen: vi.fn(),
+  gesendet: vi.fn(),
+  nachfuehren: vi.fn(),
+  klaeren: vi.fn(),
   kontext: vi.fn(),
   ansprech: vi.fn(),
   redirect: vi.fn((ziel: string) => {
@@ -68,6 +72,14 @@ vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({
   meldungsAnlagenFreigeben: h.meldungFreigeben,
 }));
 vi.mock('@/server/tcms/portal/ansprechpartner', () => ({ ansprechpersonenTx: h.ansprech }));
+// Meldevorgang (kk-tcms-s10nach) ohne Datenbank; Ablauf aus meldung.ts echt.
+vi.mock('@/server/tcms/portal/meldevorgang', async (original) => ({
+  ...(await original<typeof import('@/server/tcms/portal/meldevorgang')>()),
+  meldevorgangBeanspruchen: h.beanspruchen,
+  meldevorgangGesendet: h.gesendet,
+  nachfuehren: h.nachfuehren,
+  offeneMeldungenKlaeren: h.klaeren,
+}));
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { TCMS_KEIN_RECHT, TCMS_KONFLIKT_TEXTE } from '@/server/tcms/zustand';
@@ -79,7 +91,12 @@ import {
   portalAufgabeSpeichernAction,
   portalAufgabeZurueckgebenAction,
 } from '../aufgaben/[id]/actions';
-import { portalEreignisMeldenAction } from '../ereignis/actions';
+import { portalEreignisMeldenAction, portalMeldungenKlaerenAction } from '../ereignis/actions';
+import {
+  MELDUNG_ABGELAUFEN,
+  MELDUNG_AUSGANG_OFFEN,
+  MELDUNG_LAEUFT,
+} from '@/components/tcms/portal/texte';
 import {
   portalFreigabeCodeAnfordernAction,
   portalFreigebenAction,
@@ -98,6 +115,8 @@ const ABLAGE = { ...G, ctx: CTX };
 const VERKNUEPFUNG = 'e1000000-0000-4000-8000-0000000000c1';
 const MELDUNG_VERKNUEPFUNG = 'e2000000-0000-4000-8000-0000000000c2';
 const EREIGNIS = 'cmvf9ereignis0400abcdef';
+const SCHLUESSEL = 'c0ffee00-0000-4000-8000-00000000a001';
+const B = { tenantId: DEMO.tenant, mandantId: DEMO.talwind, kontaktId: DEMO.murat };
 
 interface Spec {
   keinRecht?: string;
@@ -164,6 +183,13 @@ beforeEach(() => {
   }));
   h.zuordnen.mockResolvedValue(1);
   h.meldungFreigeben.mockResolvedValue(1);
+  h.beanspruchen.mockImplementation(async (_ctx, _b, schluessel: string) => ({
+    art: 'neu',
+    id: 'vorgang-1',
+    schluessel,
+  }));
+  h.gesendet.mockResolvedValue(undefined);
+  h.nachfuehren.mockResolvedValue(undefined);
   h.nachweisAblegen.mockImplementation(async (_g, f: File) => ({
     verknuepfungId: VERKNUEPFUNG,
     verweis: {
@@ -472,6 +498,7 @@ describe('portalEreignisMeldenAction', () => {
     ['anlagen', datei('plan.csv')],
     ['mandantId', DEMO.seestern],
     ['benachrichtigen', DEMO.thomas],
+    ['idempotenzSchluessel', SCHLUESSEL],
   ];
 
   it('ohne Melderecht laut Dienst (`melden` der Meldungen, TCMS s7): keine Ablage, keine Meldung', async () => {
@@ -522,17 +549,29 @@ describe('portalEreignisMeldenAction', () => {
         anlagen: [expect.objectContaining({ dateiname: 'plan.csv', sha256: 'cd'.repeat(32) })],
         zusageAenderungen: true,
         benachrichtigen: { id: DEMO.leon, name: 'Leon Brandt' },
+        // kk-tcms-s10nach: Idempotenzschlüssel des Formulars.
+        idempotenzSchluessel: SCHLUESSEL,
       },
     });
     expect(r).toEqual({ nummer: '2026-T-0400' });
-    // TCMS-NACHWEIS-001: abgelegt im Kontext des Kontakts, gebunden; nach der
-    // Annahme trägt die Verknüpfung die Ereignis-ID des Dienstes.
-    expect(h.ablegen).toHaveBeenCalledWith(ABLAGE, expect.any(File));
-    expect(h.zuordnen).toHaveBeenCalledWith(CTX, [MELDUNG_VERKNUEPFUNG], EREIGNIS);
+    // TCMS-NACHWEIS-001: Vorgang nur für die Person der Sitzung; abgelegt im
+    // Kontext des Kontakts, mit dem Schlüssel gebunden; nach der Annahme trägt
+    // die Verknüpfung die Ereignis-ID des Dienstes (über den Vorgang).
+    expect(h.beanspruchen).toHaveBeenCalledWith(CTX, B, SCHLUESSEL);
+    expect(h.ablegen).toHaveBeenCalledWith(ABLAGE, expect.any(File), SCHLUESSEL);
+    expect(h.nachfuehren).toHaveBeenCalledWith(
+      CTX,
+      B,
+      expect.objectContaining({ id: 'vorgang-1' }),
+      {
+        art: 'angenommen',
+        ereignisId: EREIGNIS,
+      },
+    );
     expect(h.meldungFreigeben).not.toHaveBeenCalled();
   });
 
-  it('Anlagen (TCMS-NACHWEIS-001): eindeutige Ablehnung der Meldung → frei; offener Ausgang → Sperre bleibt', async () => {
+  it('Anlagen (TCMS-NACHWEIS-001): eindeutige Ablehnung → Vorgang abgelehnt (frei); offener Ausgang → Hinweis, Vorgang bleibt', async () => {
     const mitFehler = async (fehler: Error) => {
       ohneWeiterleitung();
       await portalEreignisMeldenAction(null, formular(felder));
@@ -543,18 +582,83 @@ describe('portalEreignisMeldenAction', () => {
         if (e.name === 'portalMeldungErfassen') throw fehler;
         return { daten: tcmsFixtures.portalMeldungenJana(), requestId: 'r' };
       });
-      await expect(s.aufruf({ rufe }, p.data, v)).rejects.toBe(fehler);
+      return s.aufruf({ rufe }, p.data, v);
     };
-    await mitFehler(new TcmsKonflikt({ status: 409 }));
-    expect(h.meldungFreigeben).toHaveBeenCalledWith(
-      CTX,
-      { verknuepfungIds: [MELDUNG_VERKNUEPFUNG] },
-      'NOT_ATTACHED',
-    );
-    h.meldungFreigeben.mockClear();
-    await mitFehler(new TcmsNichtVerfuegbar('ZEITLIMIT'));
+    const konflikt = new TcmsKonflikt({ status: 409, konflikt: 'ZWISCHENZEITLICH_GEAENDERT' });
+    await expect(mitFehler(konflikt)).rejects.toBe(konflikt);
+    expect(h.nachfuehren).toHaveBeenLastCalledWith(CTX, B, expect.anything(), { art: 'abgelehnt' });
+    // Offener Ausgang: kein Fehler, sondern ein Hinweis (Formular bleibt mit demselben Schlüssel).
+    await expect(mitFehler(new TcmsNichtVerfuegbar('ZEITLIMIT'))).resolves.toEqual({
+      warnung: MELDUNG_AUSGANG_OFFEN,
+    });
+    expect(h.nachfuehren).toHaveBeenLastCalledWith(CTX, B, expect.anything(), { art: 'offen' });
     expect(h.meldungFreigeben).not.toHaveBeenCalled();
-    expect(h.zuordnen).not.toHaveBeenCalled();
+  });
+
+  it('Wiederholung läuft bzw. Fenster abgelaufen: Hinweis bzw. feste Meldung, kein Dienstaufruf', async () => {
+    for (const [art, erwartet] of [
+      ['laeuft', { warnung: MELDUNG_LAEUFT }],
+      ['abgelaufen', { ok: false, error: MELDUNG_ABGELAUFEN, errorCode: 'CONFLICT' }],
+    ] as const) {
+      h.spec = null;
+      h.beanspruchen.mockResolvedValueOnce({ art });
+      ohneWeiterleitung();
+      await portalEreignisMeldenAction(null, formular(felder));
+      const ablauf: string[] = [];
+      const { r } = await lauf(
+        { portalMeldungenLesen: tcmsFixtures.portalMeldungenJana() },
+        ablauf,
+      );
+      expect(r, art).toEqual(erwartet);
+      expect(ablauf).toEqual(['portalMeldungenLesen']);
+    }
+  });
+
+  it('ohne Schlüssel im Formular: neuer Schlüssel (UUID) beim ersten Absenden', async () => {
+    ohneWeiterleitung();
+    await portalEreignisMeldenAction(
+      null,
+      formular(felder.filter(([k]) => k !== 'idempotenzSchluessel')),
+    );
+    await lauf({
+      portalMeldungenLesen: tcmsFixtures.portalMeldungenJana(),
+      portalMeldungErfassen: { id: EREIGNIS, nummer: '2026-T-0400' },
+    });
+    const schluessel = h.beanspruchen.mock.calls[0]![2] as string;
+    expect(schluessel).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(schluessel).not.toBe(SCHLUESSEL);
+    // Ein ungültiger Schlüssel ist ein Formfehler, kein neuer Schlüssel.
+    h.spec = null;
+    await portalEreignisMeldenAction(
+      null,
+      formular(
+        felder.map(
+          ([k, v]) =>
+            [k, k === 'idempotenzSchluessel' ? 'kein-uuid' : v] as [string, string | File],
+        ),
+      ),
+    );
+    expect(spec().parse!().ok).toBe(false);
+  });
+
+  it('Klärung offener Meldungen: nur Vorgänge der Person der Sitzung, Ergebnis als fester Text', async () => {
+    h.klaeren.mockResolvedValue({
+      angenommen: ['2026-T-0400'],
+      aufgeloest: 0,
+      offen: 0,
+      ungeklaert: 0,
+    });
+    await portalMeldungenKlaerenAction(null, formular([['mandantId', DEMO.seestern]]));
+    expect(spec().keinRecht).toBe('PORTAL_ROLLE');
+    const { d, r } = await lauf({});
+    expect(h.klaeren).toHaveBeenCalledWith(d, CTX, B);
+    expect(r).toEqual({ meldung: 'Ihre Meldung ist eingegangen (Vorgangsnummer 2026-T-0400).' });
+    h.klaeren.mockResolvedValue({ angenommen: [], aufgeloest: 0, offen: 1, ungeklaert: 0 });
+    await portalMeldungenKlaerenAction(null, new FormData());
+    const { r: offen } = await lauf({});
+    expect(offen).toEqual({ warnung: expect.stringContaining('nicht erreichbar') });
   });
 
   it('Titel einzeilig (TCMS s8): CR/LF und unsichtbare Zeichen als Feldfehler des Vertrags, kein Dienstaufruf', async () => {

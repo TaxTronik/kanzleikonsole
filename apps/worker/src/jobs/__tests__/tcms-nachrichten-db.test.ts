@@ -59,6 +59,7 @@ import { postausgangUeber, type TcmsPostausgang } from '../../tcms/dienst';
 import { TCMS_SYSTEMAKTEUR_NAME } from '../../tcms/systemakteur';
 import { processMailOutbox, type MailOutboxDeliveryDeps } from '../mail-outbox';
 import {
+  meldevorgaengeBereinigen,
   planeTcmsNachrichtEin,
   stelleTcmsNachrichtenZu,
   TCMS_NICHT_VERSENDET_VERWORFEN,
@@ -877,6 +878,131 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
       expect(c).not.toHaveProperty('rol');
       expect(c).not.toHaveProperty('cli');
     }
+  });
+
+  it('löscht Meldevorgänge des Portals nach Ablauf des Fensters (echte Zeit), Anlagen bleiben gebunden (kk-tcms-s10nach)', async () => {
+    // Gültiger Secret-Box-v3-Wert (Format; Inhalt hier ohne Bedeutung).
+    const v3 = `v3:0123456789abcdef:${'A'.repeat(16)}:${'B'.repeat(22)}==:${'C'.repeat(40)}`;
+    const vor = (ms: number) => new Date(Date.now() - ms);
+    const STUNDE = 3_600_000;
+    async function vorgang(o: { gesendetVor?: number; angelegtVor?: number }) {
+      const schluessel = randomUUID();
+      const { id } = await prismaOwner.tcmsPortalReport.create({
+        data: {
+          tenantId,
+          clientId: mandantId,
+          contactId: kontaktId,
+          idempotencyKey: schluessel,
+          ...(o.angelegtVor === undefined ? {} : { createdAt: vor(o.angelegtVor) }),
+        },
+      });
+      if (o.gesendetVor !== undefined) {
+        await prismaOwner.tcmsPortalReport.update({
+          where: { id },
+          data: { sentAt: vor(o.gesendetVor), payloadEnc: v3 },
+        });
+      }
+      return { id, schluessel };
+    }
+    const gesendetAbgelaufen = await vorgang({ gesendetVor: 23 * STUNDE + 60_000 });
+    const gesendetImFenster = await vorgang({ gesendetVor: 22 * STUNDE });
+    const ungesendetAbgelaufen = await vorgang({ angelegtVor: 24 * STUNDE + 60_000 });
+    const ungesendetJung = await vorgang({ angelegtVor: 23 * STUNDE + 60_000 });
+
+    // Anlage des abgelaufenen Vorgangs: gebunden, ohne Ereignis-ID.
+    const typ = await prismaOwner.documentType.create({
+      data: {
+        tenantId,
+        name: `Meldung ${randomUUID()}`,
+        tier: 'NONE',
+        classificationKey: 'GENERAL',
+      },
+    });
+    const doc = await prismaOwner.document.create({
+      data: {
+        tenantId,
+        clientId: mandantId,
+        title: 'kassenbericht.csv',
+        classification: 'GENERAL',
+        documentTypeId: typ.id,
+        mimeType: 'text/csv',
+      },
+    });
+    const version = await prismaOwner.documentVersion.create({
+      data: {
+        documentId: doc.id,
+        versionNo: 1,
+        storageBucket: 'general',
+        storageKey: `tenants/${tenantId}/none/${doc.id}.csv`,
+        sha256: Buffer.alloc(32, 9),
+        sizeBytes: 812n,
+        immutable: false,
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+        createdById: adminId,
+      },
+    });
+    const anlage = await prismaOwner.tcmsDocumentReference.create({
+      data: {
+        tenantId,
+        clientId: mandantId,
+        documentId: doc.id,
+        documentVersionId: version.id,
+        sha256: Buffer.alloc(32, 9),
+        tcmsSubject: 'EVENT',
+        tcmsReportKey: gesendetAbgelaufen.schluessel,
+        createdBy: kontaktId,
+      },
+    });
+
+    // Läuft auch ohne konfigurierten Dienst und nach echter Zeit: Die Testuhr
+    // des Laufs (weit in der Zukunft) löscht nichts im Fenster.
+    jetzt = new Date(Date.now() + 30 * 86_400_000);
+    const ergebnis = await stelleTcmsNachrichtenZu(
+      { ...deps(), postausgang: () => null },
+      { tenantId, jetzt: () => jetzt },
+    );
+    expect(ergebnis.meldungenBereinigt).toBeGreaterThanOrEqual(2);
+    const uebrig = await prismaOwner.tcmsPortalReport.findMany({
+      where: { tenantId },
+      select: { id: true },
+    });
+    expect(uebrig.map((z) => z.id).sort()).toEqual(
+      [gesendetImFenster.id, ungesendetJung.id].sort(),
+    );
+    expect(
+      await prismaOwner.tcmsPortalReport.count({
+        where: { id: { in: [gesendetAbgelaufen.id, ungesendetAbgelaufen.id] } },
+      }),
+    ).toBe(0);
+    // Nie freigegeben: Die Anlage bleibt gebunden (ungeklärt, manuelle Klärung).
+    expect(
+      await prismaOwner.tcmsDocumentReference.findUniqueOrThrow({ where: { id: anlage.id } }),
+    ).toMatchObject({ releasedAt: null, releaseReason: null, tcmsEventId: null });
+
+    // Ein zweiter Durchgang findet nichts mehr; Fehler zählen, ohne zu werfen.
+    expect(await meldevorgaengeBereinigen(prismaOwner, new Date())).toBe(0);
+    const kaputt = {
+      ...deps(),
+      postausgang: () => null,
+      // Ohne Dienst endet der Lauf nach der Bereinigung; mehr braucht er nicht.
+      db: {
+        tcmsPortalReport: {
+          deleteMany: async () => {
+            throw new Error('db weg');
+          },
+        },
+      } as unknown as TcmsZustellDeps['db'],
+    };
+    expect(await stelleTcmsNachrichtenZu(kaputt, { tenantId })).toMatchObject({
+      fehler: 1,
+      meldungenBereinigt: 0,
+    });
+    expect(log.error).toHaveBeenCalledWith(
+      expect.anything(),
+      'tcms-nachrichten: Meldevorgänge nicht bereinigt',
+    );
+    await prismaOwner.tcmsPortalReport.deleteMany({ where: { tenantId } });
   });
 
   it('seedet die System-Vorlagen gleichlautend mit dem Ersatztext, idempotent', async () => {

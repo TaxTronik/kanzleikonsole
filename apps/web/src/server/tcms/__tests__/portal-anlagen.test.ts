@@ -175,6 +175,8 @@ describe('portalAblageKontext', () => {
   });
 });
 
+const SCHLUESSEL = '3f2b8c1d-6e4a-4b7f-9a0c-1d2e3f4a5b6c';
+
 describe('portalAnlageAblegen', () => {
   it('Verweis aus der gespeicherten Fassung; Dokument am Sitzungsmandanten, geteilt, auditiert', async () => {
     h.erkannt = 'application/pdf';
@@ -182,6 +184,7 @@ describe('portalAnlageAblegen', () => {
     const { verweis, verknuepfungId } = await portalAnlageAblegen(
       G,
       datei('C:\\tmp\\Prüfung.pdf', 'text/plain', 7),
+      SCHLUESSEL,
     );
     expect(verweis).toEqual({
       dokumentId: 'd0c00000-0000-4000-8000-0000000000a1',
@@ -216,6 +219,8 @@ describe('portalAnlageAblegen', () => {
       COMMIT_TX,
       { tenantId: G.tenantId, mandantId: G.clientId, kontaktId: G.contactId },
       'd0c00000-0000-4000-8000-0000000000a1',
+      // Idempotenzschlüssel des Meldevorgangs an der Anlage (kk-tcms-s10nach).
+      SCHLUESSEL,
     );
     expect(h.schritte).toEqual(['check', 'prepare', 'binden', 'commit']);
     expect(h.audit.mock.invocationCallOrder[0]!).toBeLessThan(

@@ -21,6 +21,9 @@ const h = vi.hoisted(() => ({
   /** Dokumente der eigenen Ablage (Dateinamen der Anlagen, RT3B-K-04). */
   dokumente: vi.fn(),
   upload: true,
+  /** Eigene Meldevorgänge mit offenem Ausgang (kk-tcms-s10nach). */
+  offen: vi.fn(),
+  klaeren: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -55,7 +58,14 @@ vi.mock('../aufgaben/[id]/actions', () => ({
   portalAufgabeSpeichernAction: vi.fn(),
   portalAufgabeZurueckgebenAction: vi.fn(),
 }));
-vi.mock('../ereignis/actions', () => ({ portalEreignisMeldenAction: vi.fn() }));
+vi.mock('../ereignis/actions', () => ({
+  portalEreignisMeldenAction: vi.fn(),
+  portalMeldungenKlaerenAction: h.klaeren,
+}));
+vi.mock('@/server/tcms/portal/meldevorgang', () => ({
+  offeneMeldevorgaengeTx: h.offen,
+  neuerMeldeSchluessel: () => SCHLUESSEL,
+}));
 vi.mock('../freigaben/actions', () => ({
   portalFreigabeCodeAnfordernAction: vi.fn(),
   portalFreigebenAction: vi.fn(),
@@ -75,6 +85,7 @@ import PortalEreignisPage from '../ereignis/page';
 import PortalFreigabenPage from '../freigaben/page';
 
 const AUFGABE = 'cmvf9ne7i007kdy7d467junj7';
+const SCHLUESSEL = '3f2b8c1d-6e4a-4b7f-9a0c-1d2e3f4a5b6c';
 const NAMEN: Record<string, string> = {
   [DEMO.jana]: 'Jana Weller',
   [DEMO.murat]: 'Murat Aydin',
@@ -98,6 +109,8 @@ beforeEach(() => {
   document.body.innerHTML = '';
   h.upload = true;
   h.dokumente.mockResolvedValue([]);
+  h.offen.mockResolvedValue([]);
+  h.klaeren.mockResolvedValue({ ok: true, meldung: 'Alle Meldungen sind übermittelt.' });
   h.namen.mockImplementation(async () => ({
     name: (id: string | null) => (id ? (NAMEN[id] ?? UNBEKANNTE_PERSON) : KEINE_PERSON),
     bekannt: (id: string | null) => !!id && id in NAMEN,
@@ -305,6 +318,72 @@ describe('Ereignis melden', () => {
     lesen(u);
     await renderServer(PortalEreignisPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText(NUR_EIGENE_MELDUNGEN)).toBeTruthy();
+  });
+
+  it('Idempotenzschlüssel je Formular als verstecktes Feld (kk-tcms-s10nach)', async () => {
+    lesen();
+    await renderServer(PortalEreignisPage({ searchParams: Promise.resolve({}) }));
+    const form = screen.getByRole('form', { name: 'Ereignis melden' }) as HTMLFormElement;
+    const feld = form.querySelector<HTMLInputElement>('input[name="idempotenzSchluessel"]');
+    expect(feld?.type).toBe('hidden');
+    // Im Browser je Einhängen ein eigener Schlüssel (meldung-schluessel.test.tsx).
+    expect(feld?.value).toMatch(/^[0-9a-f-]{36}$/);
+    expect(feld?.value).not.toBe(SCHLUESSEL);
+    // Ohne offene Vorgänge: kein Abschnitt, keine automatische Klärung.
+    expect(h.offen).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: DEMO.tenant,
+      mandantId: DEMO.talwind,
+      kontaktId: DEMO.jana,
+    });
+    expect(screen.queryByText('Meldungen in Übermittlung')).toBeNull();
+    expect(h.klaeren).not.toHaveBeenCalled();
+  });
+
+  it('offene Meldungen der Person: Liste ohne Inhalt, beim Öffnen genau einmal geklärt', async () => {
+    lesen();
+    h.offen.mockResolvedValue([
+      {
+        id: 'a1b2c3d4-0000-4000-8000-000000000001',
+        gesendetAm: new Date('2026-10-20T09:15:00Z'),
+        versuche: 1,
+        anlagen: 2,
+        faellig: true,
+      },
+      {
+        id: 'a1b2c3d4-0000-4000-8000-000000000002',
+        gesendetAm: null,
+        versuche: 0,
+        anlagen: 0,
+        faellig: false,
+      },
+    ]);
+    await renderServer(PortalEreignisPage({ searchParams: Promise.resolve({}) }));
+    const abschnitt = screen.getByText('Meldungen in Übermittlung').closest('section')!;
+    expect(abschnitt.textContent).toMatch(/Eingang noch nicht bestätigt · 2 Anlagen · 2\. Versuch/);
+    expect(abschnitt.textContent).toContain('Meldung wird vorbereitet · ohne Anlagen');
+    expect(abschnitt.textContent).toContain('Bitte melden Sie das Ereignis nicht erneut.');
+    await waitFor(() => expect(h.klaeren).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('Alle Meldungen sind übermittelt.')).toBeTruthy();
+    expect(h.klaeren).toHaveBeenCalledTimes(1);
+  });
+
+  it('nichts fällig (Versuch läuft): keine automatische Klärung, Knopf gesperrt', async () => {
+    lesen();
+    h.offen.mockResolvedValue([
+      {
+        id: 'a1b2c3d4-0000-4000-8000-000000000003',
+        gesendetAm: new Date('2026-10-20T09:15:00Z'),
+        versuche: 0,
+        anlagen: 1,
+        faellig: false,
+      },
+    ]);
+    await renderServer(PortalEreignisPage({ searchParams: Promise.resolve({}) }));
+    const knopf = screen.getByRole('button', {
+      name: /Jetzt erneut übermitteln/,
+    }) as HTMLButtonElement;
+    expect(knopf.disabled).toBe(true);
+    expect(h.klaeren).not.toHaveBeenCalled();
   });
 
   it('Bestätigung nur für eine Vorgangsnummer aus der eigenen Liste', async () => {

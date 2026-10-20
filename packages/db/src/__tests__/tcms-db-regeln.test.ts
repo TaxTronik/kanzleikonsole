@@ -429,6 +429,11 @@ describeWithDatabase('tcms_document_reference (TCMS-NACHWEIS-001)', () => {
     });
     const anlageAendern = (data: Record<string, unknown>) =>
       owner.tcmsDocumentReference.update({ where: { id: anlage }, data });
+    // kk-tcms-s10nach: der Schlüssel des Meldevorgangs steht ab der Anlage fest.
+    await dbAbgewiesen(
+      anlageAendern({ tcmsReportKey: randomUUID() }),
+      pruefung('tcms_document_reference: Bezug und Inhalt sind unveränderlich'),
+    );
     await expect(anlageAendern({ tcmsEventId: 'ereignisaaa1' })).resolves.toBeTruthy();
     await dbAbgewiesen(anlageAendern({ tcmsEventId: 'ereignisbbb2' }), ereignisEinmal);
     const freieAnlage = await verknuepft(await dokument(), {
@@ -508,6 +513,8 @@ describeWithDatabase('tcms_document_reference (TCMS-NACHWEIS-001)', () => {
         'tcms_document_reference_subject_check',
       ],
       [{ tcmsSubject: 'ANDERES' }, 'tcms_document_reference_subject_check'],
+      // kk-tcms-s10nach: Idempotenzschlüssel nur an Anlagen einer Meldung.
+      [{ tcmsReportKey: randomUUID() }, 'tcms_document_reference_report_key_check'],
     ];
     for (const [abweichung, constraint] of faelle) {
       await dbAbgewiesen(
@@ -825,6 +832,202 @@ describeWithDatabase('tcms_nachricht_zustellung (MAIL-OUTBOX-001)', () => {
   });
 });
 
+describeWithDatabase('tcms_portal_report (TCMS-NACHWEIS-001, kk-tcms-s10nach)', () => {
+  // Gültiger Secret-Box-v3-Wert (Format; Inhalt hier ohne Bedeutung).
+  const V3 = `v3:0123456789abcdef:${'A'.repeat(16)}:${'B'.repeat(22)}==:${'C'.repeat(40)}`;
+  let kontaktA = '';
+  let kontaktA2 = '';
+  let kontaktB = '';
+
+  const kontakt = async (tenant: string, mandant: string) =>
+    (
+      await owner.clientContact.create({
+        data: {
+          tenantId: tenant,
+          clientId: mandant,
+          email: `tcms-regeln-${randomUUID()}@example.test`,
+          fullName: 'Jana Weller',
+        },
+      })
+    ).id;
+
+  beforeAll(async () => {
+    kontaktA = await kontakt(tenantA, mandantA);
+    kontaktA2 = await kontakt(tenantA, mandantA2);
+    kontaktB = await kontakt(tenantB, mandantB);
+  });
+
+  const vorgang = (weiteres: Record<string, unknown> = {}) => ({
+    tenantId: tenantA,
+    clientId: mandantA,
+    contactId: kontaktA,
+    idempotencyKey: randomUUID(),
+    ...weiteres,
+  });
+
+  async function gesendet(): Promise<string> {
+    const { id } = await owner.tcmsPortalReport.create({ data: vorgang() });
+    await owner.tcmsPortalReport.update({
+      where: { id },
+      data: { payloadEnc: V3, sentAt: new Date() },
+    });
+    return id;
+  }
+
+  it('Trigger bei der Anlage: noch nicht gesendet, Kontakt dieses Mandanten', async () => {
+    const neu = pruefung('tcms_portal_report: ein neuer Meldevorgang ist noch nicht gesendet');
+    for (const weiteres of [
+      { sentAt: new Date(), payloadEnc: V3 },
+      { attempts: 1 },
+      { lastAttemptAt: new Date() },
+    ]) {
+      await dbAbgewiesen(
+        owner.tcmsPortalReport.create({ data: vorgang(weiteres) }),
+        neu,
+        JSON.stringify(weiteres),
+      );
+    }
+    await dbAbgewiesen(
+      owner.tcmsPortalReport.create({ data: vorgang({ contactId: kontaktA2 }) }),
+      pruefung('tcms_portal_report: Kontakt gehört nicht zu diesem Mandanten'),
+    );
+    await expect(owner.tcmsPortalReport.create({ data: vorgang() })).resolves.toBeTruthy();
+  });
+
+  it('Trigger bei Änderungen: Bezug und Schlüssel unveränderlich, Sendezeitpunkt genau einmal', async () => {
+    const id = await gesendet();
+    const aendern = (data: Record<string, unknown>) =>
+      owner.tcmsPortalReport.update({ where: { id }, data });
+    const unveraenderlich = pruefung('tcms_portal_report: Bezug und Schlüssel sind unveränderlich');
+    for (const data of [
+      { idempotencyKey: randomUUID() },
+      { contactId: kontaktA2, clientId: mandantA2 },
+      { createdAt: new Date(0) },
+    ]) {
+      await dbAbgewiesen(aendern(data), unveraenderlich, JSON.stringify(data));
+    }
+    await dbAbgewiesen(
+      aendern({ sentAt: new Date(Date.now() - 3_600_000) }),
+      pruefung('tcms_portal_report: der Sendezeitpunkt wird nur einmal gesetzt'),
+    );
+    // Lease, Versuche und Neuverschlüsselung (Re-Wrap) bleiben möglich.
+    await expect(
+      aendern({ leaseUntil: new Date(), attempts: { increment: 1 }, payloadEnc: `${V3}AAAA` }),
+    ).resolves.toBeTruthy();
+  });
+
+  it('CHECK-Bedingungen, jede für sich (Trigger abgeschaltet)', async () => {
+    const faelle: Array<[Record<string, unknown>, string]> = [
+      [{ payloadEnc: V3 }, 'tcms_portal_report_sent_check'],
+      [{ sentAt: new Date() }, 'tcms_portal_report_sent_check'],
+      // Nie Klartext: nur das Format der Secret-Box v3.
+      [
+        { sentAt: new Date(), payloadEnc: '{"titel":"Klartext"}' },
+        'tcms_portal_report_payload_check',
+      ],
+      [
+        { sentAt: new Date(), payloadEnc: `v2:${'A'.repeat(16)}:B:C` },
+        'tcms_portal_report_payload_check',
+      ],
+      [
+        { sentAt: new Date(), payloadEnc: `${V3}${'D'.repeat(65_536)}` },
+        'tcms_portal_report_payload_check',
+      ],
+      [{ attempts: -1 }, 'tcms_portal_report_attempts_check'],
+    ];
+    for (const [abweichung, constraint] of faelle) {
+      await dbAbgewiesen(
+        ohneTrigger((tx) => tx.tcmsPortalReport.create({ data: vorgang(abweichung) })),
+        checkVerletzt(constraint),
+        JSON.stringify(abweichung).slice(0, 120),
+      );
+    }
+    await expect(
+      ohneTrigger((tx) =>
+        tx.tcmsPortalReport.create({ data: vorgang({ sentAt: new Date(), payloadEnc: V3 }) }),
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('ein Vorgang je Tenant, Kontakt und Schlüssel', async () => {
+    const data = vorgang();
+    await owner.tcmsPortalReport.create({ data });
+    await dbAbgewiesen(owner.tcmsPortalReport.create({ data: { ...data } }), {
+      sqlState: '23505',
+      meldung:
+        'duplicate key value violates unique constraint "tcms_portal_report_tenant_id_contact_id_idempotency_key_key"',
+    });
+    // Derselbe Schlüssel einer anderen Person ist ein eigener Vorgang.
+    await expect(
+      owner.tcmsPortalReport.create({
+        data: { ...data, clientId: mandantA2, contactId: kontaktA2 },
+      }),
+    ).resolves.toBeTruthy();
+  });
+
+  it('Tenant und Mandant gehören zusammen (00_tenant_client_pair_integrity)', async () => {
+    await dbAbgewiesen(
+      owner.tcmsPortalReport.create({
+        data: vorgang({ clientId: mandantB, contactId: kontaktB }),
+      }),
+      {
+        sqlState: '23503',
+        meldung:
+          'tenant_id und client_id gehören nicht zum selben Mandanten-Scope (tcms_portal_report).',
+      },
+    );
+  });
+
+  it('RLS: die App-Rolle sieht und ändert nur Vorgänge des eigenen Tenants', async () => {
+    const fremd = (
+      await owner.tcmsPortalReport.create({
+        data: {
+          tenantId: tenantB,
+          clientId: mandantB,
+          contactId: kontaktB,
+          idempotencyKey: randomUUID(),
+        },
+      })
+    ).id;
+    const eigen = (await owner.tcmsPortalReport.create({ data: vorgang() })).id;
+    const sichtbar = await alsApp(tenantA, staffA, (tx) =>
+      tx.tcmsPortalReport.findMany({ where: { id: { in: [fremd, eigen] } }, select: { id: true } }),
+    );
+    expect(sichtbar.map((z) => z.id)).toEqual([eigen]);
+    expect(
+      await alsApp(tenantA, staffA, (tx) =>
+        tx.tcmsPortalReport.deleteMany({ where: { id: fremd } }),
+      ),
+    ).toEqual({ count: 0 });
+    expect(await owner.tcmsPortalReport.count({ where: { id: fremd } })).toBe(1);
+    // WITH CHECK allein (Trigger abgeschaltet, Raw-SQL ohne RETURNING).
+    await dbAbgewiesen(
+      alsAppNurPolicy(
+        tenantA,
+        'SELECT 1',
+        (tx) => tx.$executeRaw`
+          INSERT INTO public.tcms_portal_report (tenant_id, client_id, contact_id, idempotency_key)
+          VALUES (${tenantB}::uuid, ${mandantB}::uuid, ${kontaktB}::uuid, gen_random_uuid())`,
+      ),
+      {
+        sqlState: '42501',
+        meldung: 'new row violates row-level security policy for table "tcms_portal_report"',
+      },
+    );
+  });
+
+  it('Rechte: die App-Rolle legt an, ändert und löscht, kürzt aber nicht (TRUNCATE)', async () => {
+    const id = (await owner.tcmsPortalReport.create({ data: vorgang() })).id;
+    await expect(
+      alsApp(tenantA, staffA, (tx) => tx.tcmsPortalReport.delete({ where: { id } })),
+    ).resolves.toBeTruthy();
+    await dbAbgewiesen(
+      alsApp(tenantA, staffA, (tx) => tx.$executeRawUnsafe('TRUNCATE public.tcms_portal_report')),
+      { sqlState: '42501', meldung: 'permission denied for table tcms_portal_report' },
+    );
+  });
+});
+
 describeWithDatabase(
   'CHECK-Bedingungen der TCMS-Tabellen: dreiwertige Logik (kk-tcms-s10nach)',
   () => {
@@ -841,6 +1044,8 @@ describeWithDatabase(
       'tcms_document_reference.tcms_document_reference_execution_id_check': 'IS NULL OR ~',
       'tcms_document_reference.tcms_document_reference_release_check':
         'IS NOT NULL vor IN (seit 20261020200000)',
+      'tcms_document_reference.tcms_document_reference_report_key_check':
+        'IS NULL OR tcms_subject (NOT NULL) = EVENT',
       'tcms_document_reference.tcms_document_reference_sha256_check': 'sha256 NOT NULL',
       'tcms_document_reference.tcms_document_reference_subject_check':
         'tcms_subject NOT NULL, IS (NOT) NULL, IS DISTINCT FROM',
@@ -852,6 +1057,9 @@ describeWithDatabase(
         'nachricht_id NOT NULL',
       'tcms_nachricht_zustellung.tcms_nachricht_zustellung_status_check': 'status NOT NULL',
       'tcms_nachricht_zustellung.tcms_nachricht_zustellung_zweck_check': 'zweck NOT NULL',
+      'tcms_portal_report.tcms_portal_report_attempts_check': 'attempts NOT NULL',
+      'tcms_portal_report.tcms_portal_report_payload_check': 'payload_enc IS NULL OR (~ AND Länge)',
+      'tcms_portal_report.tcms_portal_report_sent_check': 'Vergleich von IS NULL',
       'tcms_systemakteur.tcms_systemakteur_lauf_check': 'Vergleich von IS NULL',
     };
 

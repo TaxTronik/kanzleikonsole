@@ -19,6 +19,7 @@ import {
   Inbox,
   KeyRound,
   ListChecks,
+  Paperclip,
   Pencil,
   SquareCheckBig,
   UserCheck,
@@ -146,12 +147,21 @@ function Zeile({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
+/** Ungeklärte Anlagen aus Portal-Meldungen je Mandant (kk-tcms-s10nach, kanzleikonsole). */
+export interface UngeklaerteJeMandant {
+  mandantId: string;
+  anzahl: number;
+  /** ISO-Zeitpunkt der ältesten Anlage. */
+  seit: string;
+}
+
 export function ArbeitskorbAnsicht({
   korb,
   mandanten,
   namen,
   nutzerId,
   berufstraeger,
+  ungeklaert = [],
 }: {
   korb: Korb;
   mandanten: readonly PortfolioMandant[];
@@ -159,6 +169,8 @@ export function ArbeitskorbAnsicht({
   nutzerId: string;
   /** Die Person ist bei mindestens einem Mandanten Berufsträger (Anzeige der Hinweise). */
   berufstraeger: boolean;
+  /** Ungeklärte Anlagen aus Portal-Meldungen der zugänglichen Mandanten. */
+  ungeklaert?: readonly UngeklaerteJeMandant[];
 }) {
   const mandantJe = new Map(mandanten.map((m) => [m.id.toLowerCase(), m]));
   const mandant = (id: string) => mandantJe.get(id.toLowerCase())?.name ?? 'Unbekannter Mandant';
@@ -256,6 +268,11 @@ export function ArbeitskorbAnsicht({
         <div className="xl:col-span-6">
           <Beschreibungen korb={korb} mandant={mandant} namen={namen} />
         </div>
+        {ungeklaert.length ? (
+          <div className="xl:col-span-12">
+            <UngeklaerteAnlagenGruppe ungeklaert={ungeklaert} mandant={mandant} />
+          </div>
+        ) : null}
       </div>
 
       <p className="text-[11px] text-muted mt-6">
@@ -579,6 +596,48 @@ function Ereignisse({ korb, mandant, namen }: Teil & { namen: TcmsNamen }) {
           })}
         </ul>
       )}
+    </Gruppe>
+  );
+}
+
+/**
+ * Ungeklärte Anlagen aus Portal-Meldungen (kk-tcms-s10nach): Daten der
+ * kanzleikonsole, nicht des Dienstes. Sie bleiben gebunden, bis jemand sie im
+ * Ereigniseingang des Mandanten klärt.
+ */
+function UngeklaerteAnlagenGruppe({
+  ungeklaert,
+  mandant,
+}: {
+  ungeklaert: readonly UngeklaerteJeMandant[];
+  mandant: (id: string) => string;
+}) {
+  const gesamt = ungeklaert.reduce((summe, u) => summe + u.anzahl, 0);
+  return (
+    <Gruppe
+      id="ungeklaerte-anlagen"
+      icon={Paperclip}
+      titel="Ungeklärte Anlagen aus Portal-Meldungen"
+      anzahl={gesamt}
+      ton="badge-yellow"
+      fuss="Das Tax-CMS hat die Meldung nicht innerhalb von 23 Stunden bestätigt; die Dokumente bleiben gesperrt, bis die Anlage im Ereigniseingang geklärt ist."
+    >
+      <ul>
+        {ungeklaert.map((u) => (
+          <Zeile key={u.mandantId} href={`${basis(u.mandantId)}/ereignisse`}>
+            <span className="kpi-chip chip-amber">
+              <Paperclip className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <span className="grow">
+              <span className="block text-sm font-medium text-primary">{mandant(u.mandantId)}</span>
+              <span className="block text-[11px] text-muted mt-1">
+                {u.anzahl} {u.anzahl === 1 ? 'Anlage' : 'Anlagen'} · seit {isoDatumText(u.seit)}
+              </span>
+            </span>
+            <span className="badge-yellow shrink-0">ungeklärt</span>
+          </Zeile>
+        ))}
+      </ul>
     </Gruppe>
   );
 }

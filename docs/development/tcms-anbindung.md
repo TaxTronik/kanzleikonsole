@@ -509,9 +509,23 @@ Fehlerklasse des Clients (Status, Code, Request-ID); nie Code, Text, Betreff, Ti
 Personen-IDs. Gemeldete Zustellzeilen (und lange nicht mehr gesehene
 zurückgestellte) löscht der Job nach 30 Tagen.
 
+**Meldevorgänge des Portals (kk-tcms-s10nach, TCMS s10).** Zu Beginn jedes
+Laufs – vor der Prüfung, ob das Tax-CMS konfiguriert ist – löscht der Job
+tenantübergreifend (Owner) die Meldevorgänge einer Portal-Meldung
+(`tcms_portal_report`), deren Wiederholungsfenster abgelaufen ist: gesendet
+vor mehr als `MELDUNG_WIEDERHOLUNG_FENSTER_MS` (23 h, 24 h des Tax-CMS minus
+1 h Uhrenabstand) bzw. nie gesendet und älter als
+`MELDUNG_UNGESENDET_AUFBEWAHRUNG_MS` (24 h), samt verschlüsseltem Inhalt
+(`meldevorgaengeBereinigen`, echte Zeit, nie die Uhr des Laufs). Die Anlagen
+fasst er nicht an: Sie bleiben gebunden und erscheinen der Kanzlei als
+ungeklärte Anlage (TCMS-NACHWEIS-001). Zähler `meldungenBereinigt`; ein Fehler
+zählt in `fehler` und hält den Lauf nicht an. Wiederholt wird nur in der
+Web-App durch die meldende Person (`server/tcms/portal/meldevorgang.ts`), nie
+im Worker: Der Schlüssel gilt im Tax-CMS nur für diese Person.
+
 **Tests.** `apps/worker/src/jobs/__tests__/tcms-nachrichten-db.test.ts`
 (PostgreSQL, In-Memory-Postausgang und echter Client gegen einen lokalen
-Server), `apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts`,
+Server, Bereinigung der Meldevorgänge nach echter Zeit ohne Freigabe), `apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts`,
 `apps/worker/src/jobs/__tests__/mail-outbox.test.ts`,
 `packages/mail/src/__tests__/outbox-relevance.test.ts`,
 `packages/tcms-client/src/__tests__/nachrichten.test.ts`.

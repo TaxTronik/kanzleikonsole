@@ -48,7 +48,12 @@ export const tcmsNachrichtenZustellenWorker = createWorker(
   JOB_QUEUES.tcmsNachrichtenZustellen.name,
   async () => {
     const ergebnis = await stelleTcmsNachrichtenZu(tcmsZustellDeps());
-    if (ergebnis.abgerufen > 0 || ergebnis.fehler > 0 || ergebnis.bereinigt > 0) {
+    if (
+      ergebnis.abgerufen > 0 ||
+      ergebnis.fehler > 0 ||
+      ergebnis.bereinigt > 0 ||
+      ergebnis.meldungenBereinigt > 0
+    ) {
       log.info({ ...ergebnis }, 'tcms-nachrichten-zustellen: done');
     }
     // Nur Zähler: Job-Ergebnisse liegen in Redis.

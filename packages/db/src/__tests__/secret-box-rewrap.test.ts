@@ -83,6 +83,9 @@ const mailboxB = randomUUID();
 const clientA = randomUUID();
 const outbox1 = randomUUID();
 const OUTBOX_SECRET = '{"link":"https://portal.example.test/gwg-onboarding?token=t0k3n"}';
+const kontaktA = randomUUID();
+const meldung1 = randomUUID();
+const MELDUNG_INHALT = '{"typ":"T-01","titel":"Start auf Kaufland.de"}';
 
 /** Key-ID des aktuell aktiven Schlüssels (aus einem frisch verschlüsselten Wert). */
 function activeKeyId(): string | null {
@@ -163,6 +166,11 @@ async function storedFixtures(): Promise<
       blob: await column('mail_outbox', 'secret_vars_enc', outbox1),
       ctx: context('mailOutboxSecretVars', tenantA, outbox1),
       plain: OUTBOX_SECRET,
+    },
+    {
+      blob: await column('tcms_portal_report', 'payload_enc', meldung1),
+      ctx: context('tcmsPortalReportPayload', tenantA, meldung1),
+      plain: MELDUNG_INHALT,
     },
   ];
 }
@@ -262,6 +270,25 @@ async function insertFixtures(): Promise<void> {
       encryptSecret(OUTBOX_SECRET, context('mailOutboxSecretVars', tenantA, outbox1)),
     ],
   );
+  // kk-tcms-s10nach: Inhalt einer Portal-Meldung mit offenem Ausgang (nur v3,
+  // CHECK tcms_portal_report_payload_check); angelegt ungesendet, dann gesendet.
+  await owner.query(
+    `INSERT INTO public.client_contact (id, tenant_id, client_id, email, full_name, updated_at)
+     VALUES ($1, $2, $3, $4, 'Jana Weller', now())`,
+    [kontaktA, tenantA, clientA, `rewrap-${seed}@example.test`],
+  );
+  await owner.query(
+    `INSERT INTO public.tcms_portal_report (id, tenant_id, client_id, contact_id, idempotency_key)
+     VALUES ($1, $2, $3, $4, gen_random_uuid())`,
+    [meldung1, tenantA, clientA, kontaktA],
+  );
+  await owner.query(
+    'UPDATE public.tcms_portal_report SET payload_enc = $2, sent_at = now() WHERE id = $1',
+    [
+      meldung1,
+      encryptSecret(MELDUNG_INHALT, context('tcmsPortalReportPayload', tenantA, meldung1)),
+    ],
+  );
 }
 
 describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
@@ -296,6 +323,7 @@ describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
         'mailboxSecret',
         'mailboxOauthCache',
         'mailOutboxSecretVars',
+        'tcmsPortalReportPayload',
       ]),
     );
   });
@@ -304,8 +332,8 @@ describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
     const before = await storedFixtures();
     const report = await rewrapStoredSecrets(scopedExecutor(), SLOTS, ops, { dryRun: true });
     const total = report.reduce((sum, stats) => sum + stats.total, 0);
-    expect(total).toBe(11);
-    expect(report.reduce((sum, stats) => sum + stats.pending, 0)).toBe(11);
+    expect(total).toBe(12);
+    expect(report.reduce((sum, stats) => sum + stats.pending, 0)).toBe(12);
     expect(report.every((stats) => stats.rewrapped === 0 && stats.failed === 0)).toBe(true);
     expect(await storedFixtures()).toEqual(before);
   });
@@ -350,7 +378,7 @@ describeWithDatabase('S-08: pnpm secret-box:rewrap gegen PostgreSQL', () => {
     const before = await storedFixtures();
     const report = await rewrapStoredSecrets(scopedExecutor(), SLOTS, ops);
     expect(report.reduce((sum, stats) => sum + stats.rewrapped, 0)).toBe(0);
-    expect(report.reduce((sum, stats) => sum + stats.current, 0)).toBe(11);
+    expect(report.reduce((sum, stats) => sum + stats.current, 0)).toBe(12);
     expect(await storedFixtures()).toEqual(before);
   });
 

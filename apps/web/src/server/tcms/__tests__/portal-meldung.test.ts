@@ -4,8 +4,10 @@
 //   - Scheitert eine Datei des Vorgangs, hat die Meldung den Dienst nie
 //     erreicht: bereits gebundene Anlagen dieses Vorgangs werden freigegeben.
 //   - Annahme der Meldung → Ereignis-ID an allen Anlagen; eindeutige
-//     Ablehnung → freigeben („nicht angehängt“); offener Ausgang (Zeitlimit,
-//     Transport, 5xx, Protokoll) → Sperre bleibt.
+//     Ablehnung des ersten Versuchs → freigeben („nicht angehängt“); offener
+//     Ausgang (Zeitlimit, Transport, 5xx, Protokoll) → Sperre bleibt, der
+//     Vorgang wird mit demselben Idempotenzschlüssel wiederholt (kk-tcms-s10nach;
+//     Datenbank und Wiederholung: meldevorgang-db.test.ts).
 //   - Verwerfen gibt die Anlagen nur nach eindeutiger Antwort frei (dasselbe
 //     Ereignis, Status „verworfen“), nur dieses Ereignis dieses Mandanten.
 // Fachkatalog: TCMS-NACHWEIS-001
@@ -23,6 +25,10 @@ const h = vi.hoisted(() => ({
   ablegen: vi.fn(),
   zuordnen: vi.fn(),
   freigeben: vi.fn(),
+  beanspruchen: vi.fn(),
+  gesendet: vi.fn(),
+  wiederholen: vi.fn(),
+  nachfuehren: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
@@ -39,9 +45,17 @@ vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({
   meldungsAnlagenZuordnen: h.zuordnen,
   meldungsAnlagenFreigeben: h.freigeben,
 }));
+// Meldevorgang (Datenbank) gemockt; Schlüssel- und Abweichungshelfer echt.
+vi.mock('@/server/tcms/portal/meldevorgang', async (original) => ({
+  ...(await original<typeof import('@/server/tcms/portal/meldevorgang')>()),
+  meldevorgangBeanspruchen: h.beanspruchen,
+  meldevorgangGesendet: h.gesendet,
+  meldevorgangWiederholen: h.wiederholen,
+  nachfuehren: h.nachfuehren,
+}));
 
 import {
-  meldungErfassenUndBinden,
+  meldungErfassen,
   meldungsAnlagenAblegen,
   meldungsAnlagenNachVerwerfen,
 } from '../portal/meldung';
@@ -49,6 +63,7 @@ import {
 const CTX = { tenantId: 't', actorId: 'k', actorType: 'CLIENT_CONTACT' as const };
 const ABLAGE = { ctx: CTX, tenantId: 't', contactId: 'k', clientId: 'm' };
 const EREIGNIS = 'cmvf9ned0008hdy7dlufu2vuo';
+const SCHLUESSEL = 'c0ffee00-0000-4000-8000-00000000a001';
 const MANDANT = 'a1000000-0000-4000-8000-000000004711';
 const BODY = {
   typ: 'T-01',
@@ -88,7 +103,7 @@ describe('meldungsAnlagenAblegen', () => {
     const r = await meldungsAnlagenAblegen(ABLAGE, [datei('a.csv'), datei('b.csv')]);
     expect(r.verknuepfungen).toEqual(['v1', 'v2']);
     expect(r.anlagen.map((a) => a.dateiname)).toEqual(['a.csv', 'b.csv']);
-    expect(h.ablegen).toHaveBeenCalledWith(ABLAGE, expect.any(File));
+    expect(h.ablegen).toHaveBeenCalledWith(ABLAGE, expect.any(File), null);
     expect(h.freigeben).not.toHaveBeenCalled();
   });
 
@@ -117,68 +132,146 @@ describe('meldungsAnlagenAblegen', () => {
   });
 });
 
-describe('meldungErfassenUndBinden', () => {
-  it('Annahme: Meldung mit dem Body, danach Ereignis-ID an allen Anlagen', async () => {
+describe('meldungErfassen (idempotent, kk-tcms-s10nach)', () => {
+  const B = { tenantId: 't', mandantId: 'm', kontaktId: 'k' };
+  const VORGANG = { id: 'vorgang-1', schluessel: SCHLUESSEL };
+  const EINGABE = {
+    schluessel: SCHLUESSEL,
+    dateien: [datei('a.csv'), datei('b.csv')],
+    inhalt: {
+      typ: BODY.typ,
+      titel: BODY.titel,
+      beschreibung: BODY.beschreibung,
+      datum: BODY.datum,
+      zusageAenderungen: true,
+      benachrichtigen: null,
+    },
+  };
+
+  beforeEach(() => {
+    h.beanspruchen.mockResolvedValue({ art: 'neu', ...VORGANG });
+    h.gesendet.mockResolvedValue(undefined);
+    h.nachfuehren.mockResolvedValue(undefined);
+  });
+
+  it('neu: Vorgang, Ablage mit Schlüssel, Inhalt vor dem Senden, Meldung mit Schlüssel, Ereignis-ID nach Annahme', async () => {
     const d = dienst(async () => ({ id: EREIGNIS, nummer: '2026-T-0400' }));
-    const r = await meldungErfassenUndBinden(d, CTX, BODY, ['v1', 'v2']);
-    expect(r).toEqual({ id: EREIGNIS, nummer: '2026-T-0400' });
-    expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.portalMeldungErfassen, { body: BODY });
-    expect(h.zuordnen).toHaveBeenCalledWith(CTX, ['v1', 'v2'], EREIGNIS);
-    expect(h.zuordnen.mock.invocationCallOrder[0]!).toBeGreaterThan(
+    const r = await meldungErfassen(d, ABLAGE, EINGABE);
+    expect(r).toEqual({ art: 'angenommen', nummer: '2026-T-0400', wiederholung: false });
+    expect(h.beanspruchen).toHaveBeenCalledWith(CTX, B, SCHLUESSEL);
+    expect(h.ablegen).toHaveBeenCalledWith(ABLAGE, expect.any(File), SCHLUESSEL);
+    const inhalt = {
+      ...EINGABE.inhalt,
+      anlagen: [
+        expect.objectContaining({ dokumentId: 'd1' }),
+        expect.objectContaining({ dokumentId: 'd2' }),
+      ],
+    };
+    expect(h.gesendet).toHaveBeenCalledWith(CTX, B, { art: 'neu', ...VORGANG }, inhalt);
+    expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.portalMeldungErfassen, {
+      body: { ...inhalt, idempotenzSchluessel: SCHLUESSEL },
+    });
+    // Reihenfolge: Inhalt festgehalten, bevor die Meldung den Dienst erreicht.
+    expect(h.gesendet.mock.invocationCallOrder[0]!).toBeLessThan(
       d.rufe.mock.invocationCallOrder[0]!,
     );
-    expect(h.freigeben).not.toHaveBeenCalled();
-    expect(h.log.error).not.toHaveBeenCalled();
+    expect(h.nachfuehren).toHaveBeenCalledWith(CTX, B, expect.objectContaining(VORGANG), {
+      art: 'angenommen',
+      ereignisId: EREIGNIS,
+    });
   });
 
-  it('Zuordnung unvollständig oder gescheitert: Meldung gilt, Sperre bleibt, Protokoll', async () => {
-    const d = dienst(async () => ({ id: EREIGNIS, nummer: '2026-T-0400' }));
-    h.zuordnen.mockResolvedValueOnce(1);
-    await expect(meldungErfassenUndBinden(d, CTX, BODY, ['v1', 'v2'])).resolves.toMatchObject({
-      nummer: '2026-T-0400',
-    });
-    h.zuordnen.mockRejectedValueOnce(new Error('db'));
-    await expect(meldungErfassenUndBinden(d, CTX, BODY, ['v1'])).resolves.toMatchObject({
-      nummer: '2026-T-0400',
-    });
-    expect(h.log.error).toHaveBeenCalledTimes(2);
-    expect(h.freigeben).not.toHaveBeenCalled();
-  });
-
-  it('eindeutige Ablehnung (400, 409, offener Breaker): Anlagen frei („nicht angehängt“)', async () => {
+  it('erster Versuch eindeutig abgelehnt (400, 409, offener Breaker): Anlagen frei, Vorgang gelöscht, Fehler weiter', async () => {
     for (const fehler of [
       new TcmsUngueltig({ titel: ['x'] }, { status: 400 }),
-      new TcmsKonflikt({ status: 409 }),
+      new TcmsKonflikt({ status: 409, konflikt: 'ZWISCHENZEITLICH_GEAENDERT' }),
       new TcmsNichtVerfuegbar('BREAKER'),
     ]) {
-      h.freigeben.mockClear();
+      h.nachfuehren.mockClear();
       const d = dienst(async () => {
         throw fehler;
       });
-      await expect(meldungErfassenUndBinden(d, CTX, BODY, ['v1', 'v2'])).rejects.toBe(fehler);
-      expect(h.freigeben).toHaveBeenCalledWith(
-        CTX,
-        { verknuepfungIds: ['v1', 'v2'] },
-        'NOT_ATTACHED',
-      );
-      expect(h.zuordnen).not.toHaveBeenCalled();
+      await expect(meldungErfassen(d, ABLAGE, EINGABE)).rejects.toBe(fehler);
+      expect(h.nachfuehren).toHaveBeenCalledWith(CTX, B, expect.objectContaining(VORGANG), {
+        art: 'abgelehnt',
+      });
     }
   });
 
-  it('offener Ausgang (Zeitlimit, Transport, 5xx, Protokoll): Sperre bleibt', async () => {
+  it('IDEMPOTENZ_ABWEICHUNG: ungeklärt (Anlagen bleiben gebunden), Fehler weiter', async () => {
+    const fehler = new TcmsKonflikt({ status: 409, konflikt: 'IDEMPOTENZ_ABWEICHUNG' });
+    const d = dienst(async () => {
+      throw fehler;
+    });
+    await expect(meldungErfassen(d, ABLAGE, EINGABE)).rejects.toBe(fehler);
+    expect(h.nachfuehren).toHaveBeenCalledWith(CTX, B, expect.objectContaining(VORGANG), {
+      art: 'ungeklaert',
+    });
+  });
+
+  it('offener Ausgang (Zeitlimit, Transport, 5xx, Protokoll): Ergebnis „offen“, Vorgang bleibt mit Inhalt', async () => {
     for (const fehler of [
       new TcmsNichtVerfuegbar('ZEITLIMIT'),
       new TcmsNichtVerfuegbar('TRANSPORT'),
       new TcmsNichtVerfuegbar('STATUS', { status: 502 }),
       new TcmsProtokollFehler('SCHEMA'),
     ]) {
+      h.nachfuehren.mockClear();
       const d = dienst(async () => {
         throw fehler;
       });
-      await expect(meldungErfassenUndBinden(d, CTX, BODY, ['v1'])).rejects.toBe(fehler);
+      await expect(meldungErfassen(d, ABLAGE, EINGABE)).resolves.toEqual({ art: 'offen' });
+      expect(h.nachfuehren).toHaveBeenCalledWith(CTX, B, expect.objectContaining(VORGANG), {
+        art: 'offen',
+      });
     }
     expect(h.freigeben).not.toHaveBeenCalled();
-    expect(h.zuordnen).not.toHaveBeenCalled();
+  });
+
+  it('Wiederholung desselben Absendens: gespeicherter Inhalt, keine neue Ablage, kein neuer Inhalt', async () => {
+    const gespeichert = { ...EINGABE.inhalt, anlagen: [] };
+    h.beanspruchen.mockResolvedValue({ art: 'wiederholung', ...VORGANG, inhalt: gespeichert });
+    h.wiederholen.mockResolvedValue({ id: EREIGNIS, nummer: '2026-T-0400' });
+    const d = dienst(async () => ({}));
+    const r = await meldungErfassen(d, ABLAGE, EINGABE);
+    expect(r).toEqual({ art: 'angenommen', nummer: '2026-T-0400', wiederholung: true });
+    expect(h.wiederholen).toHaveBeenCalledWith(
+      d,
+      CTX,
+      B,
+      expect.objectContaining(VORGANG),
+      gespeichert,
+    );
+    expect(h.ablegen).not.toHaveBeenCalled();
+    expect(h.gesendet).not.toHaveBeenCalled();
+    // Jede Ablehnung einer Wiederholung lässt den Ausgang offen; nur die Abweichung geht weiter.
+    h.wiederholen.mockRejectedValueOnce(new TcmsUngueltig({}, { status: 400 }));
+    await expect(meldungErfassen(d, ABLAGE, EINGABE)).resolves.toEqual({ art: 'offen' });
+    const abweichung = new TcmsKonflikt({ status: 409, konflikt: 'IDEMPOTENZ_ABWEICHUNG' });
+    h.wiederholen.mockRejectedValueOnce(abweichung);
+    await expect(meldungErfassen(d, ABLAGE, EINGABE)).rejects.toBe(abweichung);
+  });
+
+  it('läuft bzw. abgelaufen: kein Dienstaufruf, keine Ablage', async () => {
+    for (const art of ['laeuft', 'abgelaufen'] as const) {
+      h.beanspruchen.mockResolvedValueOnce({ art });
+      const d = dienst(async () => ({}));
+      await expect(meldungErfassen(d, ABLAGE, EINGABE)).resolves.toEqual({ art });
+      expect(d.rufe).not.toHaveBeenCalled();
+    }
+    expect(h.ablegen).not.toHaveBeenCalled();
+  });
+
+  it('scheitert die Ablage, wird nie gesendet: Vorgang aufgelöst, Fehler weiter', async () => {
+    const fehler = new Error('Virenscan');
+    h.ablegen.mockRejectedValueOnce(fehler);
+    const d = dienst(async () => ({}));
+    await expect(meldungErfassen(d, ABLAGE, EINGABE)).rejects.toBe(fehler);
+    expect(h.nachfuehren).toHaveBeenCalledWith(CTX, B, expect.objectContaining(VORGANG), {
+      art: 'abgelehnt',
+    });
+    expect(h.gesendet).not.toHaveBeenCalled();
+    expect(d.rufe).not.toHaveBeenCalled();
   });
 });
 

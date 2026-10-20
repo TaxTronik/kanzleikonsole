@@ -29,6 +29,9 @@ import { KANZLEI_QUELLEN } from '@/components/tcms/ereignisse/texte';
 import { TcmsKopf } from '@/components/tcms/kopf';
 import { TcmsLeer } from '@/components/tcms/leer';
 import { TcmsZustand } from '@/components/tcms/zustand';
+import { UngeklaerteAnlagen } from '@/components/tcms/ereignisse/ungeklaerte-anlagen';
+import { isStaffAdmin } from '@/server/auth/rbac';
+import { ungeklaerteMeldungsAnlagenTx } from '@/server/tcms/portal/meldevorgang';
 import { kanzleiPersonenAuswahlTx, zustaendigkeitTx } from '@/server/tcms/ereignisse/personen';
 import { personIdsAus } from '@/server/tcms/namen';
 import { kontakteDesMandantenTx } from '@/server/tcms/personen';
@@ -41,7 +44,7 @@ import {
   type TcmsMandantSeite,
 } from '@/server/tcms/seite';
 import { TCMS_KEIN_RECHT, type TcmsSeitenZustand } from '@/server/tcms/zustand';
-import { ereignisErfassenAction } from './actions';
+import { ereignisErfassenAction, ungeklaerteAnlageZuordnenAction } from './actions';
 import { TriagePanel, type EreignisDetail, type TriagePersonen } from './triage';
 import { TCMS_TEXT_ISOLIERT } from '@/components/tcms/text';
 
@@ -320,7 +323,20 @@ export default async function TcmsEreignissePage({
   };
 
   const sperre = sperreAus(ctx);
-  const namen = await tcmsNamenLesen(seite, personenIds(ereignisse, e));
+  // Ungeklärte Anlagen aus Portal-Meldungen (kk-tcms-s10nach) aus der kanzleikonsole.
+  const ungeklaert = await tcmsTenantLesen(seite, (tx) =>
+    ungeklaerteMeldungsAnlagenTx(tx, {
+      tenantId: seite.session.user.tenantId,
+      mandantIds: [seite.mandantId],
+    }),
+  );
+  const namen = await tcmsNamenLesen(
+    seite,
+    personIdsAus(
+      personenIds(ereignisse, e),
+      ungeklaert.map((a) => a.kontaktId),
+    ),
+  );
   // Zuständigkeiten nur, wenn Vorschläge angelegt werden können.
   const personen = brauchtPersonen(e, sperre) ? await triagePersonen(seite, ctx) : KEINE_PERSONEN;
   const nummern = new Map(ctx.feststellungen.map((f) => [f.id, f.nummer] as const));
@@ -357,6 +373,17 @@ export default async function TcmsEreignissePage({
           {anlageHinweis}
         </p>
       ) : null}
+      <UngeklaerteAnlagen
+        anlagen={ungeklaert.map((a) => ({
+          verknuepfungId: a.verknuepfungId,
+          titel: a.titel,
+          seit: a.seit.toISOString(),
+          von: namen.name(a.kontaktId),
+          zuordnen: ungeklaerteAnlageZuordnenAction.bind(null, seite.mandantId, a.verknuepfungId),
+        }))}
+        ereignisse={ereignisse.map((x) => ({ id: x.id, nummer: x.nummer, titel: x.titel }))}
+        darfZuordnen={isStaffAdmin(seite.session)}
+      />
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 mb-4">
         <div className="xl:col-span-7">
           <EreignisListe

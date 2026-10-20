@@ -8,8 +8,11 @@
 //   - Ohne Bearbeitungsrecht laut Kontext bzw. zum historischen Stichtag:
 //     Aktionen gesperrt mit sichtbarem Grund.
 //   - Anlagen nur über den Abruf mit Hash; Hinweise nur für bekannte Codes.
+//   - Ungeklärte Anlagen aus Portal-Meldungen (kk-tcms-s10nach) aus der
+//     kanzleikonsole: sichtbar mit Hinweis, zuordnen nur Admins/Partner, nur zu
+//     einem Ereignis aus der Liste, nie freigeben.
 // Fachkatalog: TCMS-DIENST-001
-import { screen, within } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -18,6 +21,8 @@ const h = vi.hoisted(() => ({
   lesenOptional: vi.fn(),
   namen: vi.fn(),
   tenantLesen: vi.fn(),
+  personen: vi.fn(),
+  ungeklaert: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -32,6 +37,13 @@ vi.mock('next/navigation', () => ({
     throw new Error('NEXT_REDIRECT');
   },
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+vi.mock('@/server/tcms/portal/meldevorgang', () => ({
+  ungeklaerteMeldungsAnlagenTx: h.ungeklaert,
+}));
+vi.mock('../ereignisse/actions', async (original) => ({
+  ...(await original<typeof import('../ereignisse/actions')>()),
+  ungeklaerteAnlageZuordnenAction: vi.fn(),
 }));
 vi.mock('@/server/tcms/seite', () => ({
   tcmsMandantSeite: h.seite,
@@ -101,7 +113,25 @@ beforeEach(() => {
     name: (id: string | null) => (id ? (NAMEN[id] ?? UNBEKANNTE_PERSON) : KEINE_PERSON),
     bekannt: (id: string | null) => !!id && id in NAMEN,
   }));
-  h.tenantLesen.mockResolvedValue(PERSONEN);
+  h.personen.mockReturnValue(PERSONEN);
+  h.ungeklaert.mockResolvedValue([]);
+  // Zwei Lesungen aus der kanzleikonsole: ungeklärte Anlagen (Funktion gemockt,
+  // berührt die Transaktion nicht) und die Personenauswahl (feste Antwort).
+  h.tenantLesen.mockImplementation(async (_s, fn: (tx: unknown) => Promise<unknown>) => {
+    const keineTx = new Proxy(
+      {},
+      {
+        get: () => {
+          throw new Error('KEINE_TX');
+        },
+      },
+    );
+    try {
+      return await fn(keineTx);
+    } catch {
+      return h.personen();
+    }
+  });
 });
 
 describe('Ereigniseingang', () => {
@@ -204,7 +234,7 @@ describe('Ereigniseingang', () => {
     const knopf = screen.getByRole('button', { name: 'In Prüfung nehmen' }) as HTMLButtonElement;
     expect(knopf.disabled).toBe(true);
     expect(screen.getAllByText(TCMS_KEIN_RECHT.BEARBEITEN).length).toBeGreaterThan(0);
-    expect(h.tenantLesen).not.toHaveBeenCalled();
+    expect(h.personen).not.toHaveBeenCalled();
   });
 
   it('Anlagen über den Abruf mit Hash; Hinweis nur für bekannte Codes', async () => {
@@ -277,5 +307,70 @@ describe('Ereigniseingang – Richtungsisolation', () => {
     const orte = screen.getAllByText('Bescheid.pdf');
     expect(orte.length).toBeGreaterThan(0);
     for (const ort of orte) expect(ort.tagName).toBe('BDI');
+  });
+});
+
+describe('Ungeklärte Anlagen aus Portal-Meldungen (kk-tcms-s10nach)', () => {
+  const ANLAGE = {
+    verknuepfungId: '0b6f3c1e-2d4a-4f5b-9c8d-7e6f5a4b3c2d',
+    mandantId: DEMO.talwind,
+    dokumentId: '5f0c7a1b-8e2d-4c3f-a1b0-9d8e7f6a5b4c',
+    titel: 'Kassenbericht Oktober.csv',
+    seit: new Date('2026-10-19T08:30:00Z'),
+    kontaktId: DEMO.murat,
+  };
+
+  it('nur dieser Mandant; ohne ungeklärte Anlagen kein Abschnitt', async () => {
+    await seite();
+    expect(h.ungeklaert).toHaveBeenCalledWith(expect.anything(), {
+      tenantId: DEMO.tenant,
+      mandantIds: [DEMO.talwind],
+    });
+    expect(screen.queryByText('Ungeklärte Anlagen aus Portal-Meldungen')).toBeNull();
+  });
+
+  it('sichtbar mit Hinweis und meldender Person; Zuordnen nur für Admins/Partner', async () => {
+    h.ungeklaert.mockResolvedValue([ANLAGE]);
+    await seite();
+    const abschnitt = screen
+      .getByText('Ungeklärte Anlagen aus Portal-Meldungen')
+      .closest('section') as HTMLElement;
+    expect(within(abschnitt).getByText('Kassenbericht Oktober.csv')).toBeTruthy();
+    expect(within(abschnitt).getByText(/gemeldet von Murat Aydin/)).toBeTruthy();
+    expect(within(abschnitt).getByText(/nicht innerhalb von 23 Stunden bestätigt/)).toBeTruthy();
+    const knopf = within(abschnitt).getByRole('button', {
+      name: 'Ereignis zuordnen',
+    }) as HTMLButtonElement;
+    expect(knopf.disabled).toBe(true);
+    expect(
+      within(abschnitt).getByText('Ungeklärte Anlagen ordnen Admins und Partner der Kanzlei zu.'),
+    ).toBeTruthy();
+    // Keine Freigabe aus der Oberfläche.
+    expect(within(abschnitt).queryByRole('button', { name: /freigeben/i })).toBeNull();
+  });
+
+  it('Admin: Auswahl nur aus den Ereignissen der Liste', async () => {
+    h.ungeklaert.mockResolvedValue([ANLAGE]);
+    h.seite.mockResolvedValue({
+      ...SEITE,
+      session: { user: { ...SEITE.session.user, roles: ['ADMIN'] } },
+    });
+    await seite();
+    const abschnitt = screen
+      .getByText('Ungeklärte Anlagen aus Portal-Meldungen')
+      .closest('section') as HTMLElement;
+    const knopf = within(abschnitt).getByRole('button', {
+      name: 'Ereignis zuordnen',
+    }) as HTMLButtonElement;
+    expect(knopf.disabled).toBe(false);
+    fireEvent.click(knopf);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/gleicher SHA-256, gleiches Dokument/)).toBeTruthy();
+    const optionen = [
+      ...dialog.querySelectorAll<HTMLOptionElement>('select[name="ereignisId"] option'),
+    ]
+      .map((o) => o.value)
+      .filter(Boolean);
+    expect(optionen).toEqual(tcmsFixtures.ereignisseTalwind().ereignisse.map((x) => x.id));
   });
 });

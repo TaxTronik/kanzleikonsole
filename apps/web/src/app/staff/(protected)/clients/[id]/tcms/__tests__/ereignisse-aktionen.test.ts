@@ -9,7 +9,11 @@
 //   - Nach dem bestätigten Verwerfen werden die Anlagen einer Portal-Meldung
 //     freigegeben – mit der Antwort des Dienstes und dem gebundenen Mandanten
 //     (TCMS-NACHWEIS-001; Eindeutigkeit prüft portal-meldung.test.ts).
+//   - Ungeklärte Anlagen einer Portal-Meldung (kk-tcms-s10nach) ordnen nur
+//     Admins/Partner zu, und nur einem Ereignis, für das das Tax-CMS dieselbe
+//     Anlage (SHA-256 und Dokument-ID) bestätigt; eine Freigabe gibt es hier nicht.
 // Fachkatalog: TCMS-AKTEUR-001, TCMS-NACHWEIS-001
+import { TcmsNichtGefunden, TcmsNichtVerfuegbar } from '@taxtronik/tcms-client';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -18,6 +22,8 @@ const h = vi.hoisted(() => ({
   kanzlei: vi.fn(),
   kontakte: vi.fn(),
   nachVerwerfen: vi.fn(),
+  ungeklaert: vi.fn(),
+  zuordnen: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -32,6 +38,10 @@ vi.mock('@/server/tcms/aktion', () => ({
   }),
 }));
 vi.mock('@/server/tcms/portal/meldung', () => ({ meldungsAnlagenNachVerwerfen: h.nachVerwerfen }));
+vi.mock('@/server/tcms/portal/meldevorgang', () => ({
+  ungeklaerteAnlageTx: h.ungeklaert,
+  ungeklaerteAnlageZuordnen: h.zuordnen,
+}));
 vi.mock('@/server/tcms/personen', async (original) => ({
   ...(await original<typeof import('@/server/tcms/personen')>()),
   kanzleiPersonenFuerMandantTx: h.kanzlei,
@@ -51,6 +61,7 @@ import {
   folgeHinzufuegenAction,
   folgenAnlegenAction,
   folgeVerwerfenAction,
+  ungeklaerteAnlageZuordnenAction,
 } from '../ereignisse/actions';
 
 const MANDANT = DEMO.talwind;
@@ -345,5 +356,132 @@ describe('übrige Triage-Schritte', () => {
 
     await ereignisAbschliessenAction(MANDANT, '../x', null, new FormData());
     expect(spec().parse!().ok).toBe(false);
+  });
+});
+
+describe('ungeklaerteAnlageZuordnenAction (kk-tcms-s10nach)', () => {
+  const VERKNUEPFUNG = '0b6f3c1e-2d4a-4f5b-9c8d-7e6f5a4b3c2d';
+  const DOKUMENT = '5f0c7a1b-8e2d-4c3f-a1b0-9d8e7f6a5b4c';
+  const SHA = 'ab'.repeat(32);
+  const ANTWORT = {
+    dokumentId: DOKUMENT.toUpperCase(),
+    dateiname: 'kasse.csv',
+    mime: 'text/csv',
+    groesse: 812,
+    sha256: SHA,
+  };
+
+  beforeEach(() => {
+    h.ungeklaert.mockResolvedValue({ dokumentId: DOKUMENT, sha256: SHA });
+    h.zuordnen.mockResolvedValue(true);
+  });
+
+  async function aufrufen(verknuepfung = VERKNUEPFUNG, ereignis = EREIGNIS) {
+    await ungeklaerteAnlageZuordnenAction(
+      MANDANT,
+      verknuepfung,
+      null,
+      formular([
+        ['ereignisId', ereignis],
+        ['mandantId', DEMO.seestern],
+        ['verknuepfungId', '11111111-1111-4111-8111-111111111111'],
+      ]),
+    );
+  }
+
+  it('nur Admin/Partner; Mandant und Verknüpfung aus den gebundenen Argumenten', async () => {
+    await aufrufen();
+    expect(spec()).toMatchObject({ mandantId: MANDANT, nurAdmin: true, keinRecht: 'VERWALTUNG' });
+    expect(spec().parse!()).toEqual({
+      ok: true,
+      data: { verknuepfungId: VERKNUEPFUNG, ereignisId: EREIGNIS },
+    });
+    const v = await spec().vorbereiten!(TX, K, {
+      verknuepfungId: VERKNUEPFUNG,
+      ereignisId: EREIGNIS,
+    });
+    expect(h.ungeklaert).toHaveBeenCalledWith(TX, {
+      tenantId: DEMO.tenant,
+      mandantId: MANDANT,
+      verknuepfungId: VERKNUEPFUNG,
+    });
+    expect(v).toMatchObject({ anlage: { dokumentId: DOKUMENT, sha256: SHA }, ctx: CTX });
+  });
+
+  it('ungültige Verknüpfung oder fehlendes Ereignis: abgewiesen vor jedem Aufruf', async () => {
+    await aufrufen('keine-uuid');
+    expect(spec().parse!()).toMatchObject({ ok: false });
+    await aufrufen(VERKNUEPFUNG, '');
+    expect(spec().parse!()).toMatchObject({ ok: false });
+  });
+
+  it('bestätigt das Tax-CMS die Anlage für dieses Ereignis, wird zugeordnet', async () => {
+    await aufrufen();
+    const { d, r } = await lauf(ANTWORT);
+    expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.ereignisAnlageLesen, {
+      params: { ereignisId: EREIGNIS, sha256: SHA },
+    });
+    expect(h.zuordnen).toHaveBeenCalledWith(CTX, {
+      tenantId: DEMO.tenant,
+      mandantId: MANDANT,
+      verknuepfungId: VERKNUEPFUNG,
+      ereignisId: EREIGNIS,
+    });
+    expect(r).toEqual({
+      meldung: 'Die Anlage ist dem Ereignis zugeordnet und bleibt mit ihm verknüpft.',
+    });
+  });
+
+  it('andere Dokument-ID oder Anlage im Ereignis unbekannt: nicht zugeordnet, Feldfehler', async () => {
+    await aufrufen();
+    const anderes = await lauf({ ...ANTWORT, dokumentId: 'e0f1a2b3-c4d5-4e6f-8a9b-0c1d2e3f4a5b' });
+    expect(anderes.r).toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { ereignisId: [expect.stringContaining('enthält die Anlage nicht')] },
+    });
+    const s = spec();
+    const v = await s.vorbereiten!(TX, K, { verknuepfungId: VERKNUEPFUNG, ereignisId: EREIGNIS });
+    const fehlt = await s.aufruf(
+      {
+        rufe: vi.fn(async () => {
+          throw new TcmsNichtGefunden({ status: 404 });
+        }),
+      },
+      { verknuepfungId: VERKNUEPFUNG, ereignisId: EREIGNIS },
+      v,
+    );
+    expect(fehlt).toMatchObject({ ok: false, errorCode: 'VALIDATION_ERROR' });
+    expect(h.zuordnen).not.toHaveBeenCalled();
+  });
+
+  it('andere Fehler des Dienstes gehen an die Fehlerabbildung; nichts zugeordnet', async () => {
+    await aufrufen();
+    const s = spec();
+    const v = await s.vorbereiten!(TX, K, { verknuepfungId: VERKNUEPFUNG, ereignisId: EREIGNIS });
+    const fehler = new TcmsNichtVerfuegbar('STATUS', { status: 503 });
+    await expect(
+      s.aufruf(
+        {
+          rufe: vi.fn(async () => {
+            throw fehler;
+          }),
+        },
+        { verknuepfungId: VERKNUEPFUNG, ereignisId: EREIGNIS },
+        v,
+      ),
+    ).rejects.toBe(fehler);
+    expect(h.zuordnen).not.toHaveBeenCalled();
+  });
+
+  it('nicht mehr ungeklärt (vorher oder zwischenzeitlich geklärt): Konflikt, kein Aufruf bzw. keine Zuordnung', async () => {
+    h.ungeklaert.mockResolvedValueOnce(null);
+    await aufrufen();
+    const { d, r } = await lauf(ANTWORT);
+    expect(d.rufe).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ ok: false, errorCode: 'CONFLICT' });
+    h.zuordnen.mockResolvedValueOnce(false);
+    const zwischendurch = await lauf(ANTWORT);
+    expect(zwischendurch.r).toMatchObject({ ok: false, errorCode: 'CONFLICT' });
   });
 });

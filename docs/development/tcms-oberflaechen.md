@@ -240,7 +240,19 @@ Regeln:
   Felder auch nach einer Ablehnung zurück.
 - **Keine Wiederholung.** Ein Schreibzugriff ohne verlässliche Antwort
   (Zeitlimit, Transport, Protokollfehler) meldet „Ausgang offen – bitte neu
-  laden“; der Helfer wiederholt nicht und nimmt keinen Erfolg an.
+  laden“; der Helfer wiederholt nicht und nimmt keinen Erfolg an. Einzige
+  Ausnahme ist die Portal-Meldung mit Idempotenzschlüssel (TCMS s10,
+  kk-tcms-s10nach, `server/tcms/portal/meldevorgang.ts`): Sie wiederholt
+  nicht der Helfer, sondern dieselbe Person mit demselben Schlüssel und dem
+  verschlüsselt gespeicherten Inhalt innerhalb von 23 Stunden (Formular
+  erneut absenden, nächstes Öffnen der Seite, „Jetzt erneut übermitteln“);
+  ein offener Ausgang ist dort ein Hinweis (`warnung`), kein Fehler. Den
+  Schlüssel erzeugt das Formular je Einhängen im Browser
+  (`MeldungFormular`, `useSyncExternalStore` bis zur Hydrierung), nie aus
+  alten Props. Ein neuer Endpunkt mit Idempotenzschlüssel folgt diesem
+  Muster: Schlüssel je Formular, Inhalt nur verschlüsselt und nur bis zur
+  Klärung, nur die Annahme klärt eine Wiederholung, nach Ablauf des Fensters
+  nie automatisch freigeben.
 - Die Guards `server-action-authz.test.ts` und `server-action-style.test.ts`
   erkennen die Helfer nur als Import aus `@/server/tcms/aktion`.
 
@@ -349,10 +361,11 @@ mindestens zwei Bereiche sie brauchen.
   | `server/tcms/bereich-b/__tests__/personen-auswahl-db.test.ts` | Auswahllisten der Zuständigkeiten (Bereich B)                                                 | `TCMS_SEITE_DB_TEST`     |
   | `server/tcms/__tests__/nachweis-verweis-db.test.ts`           | Verknüpfung, Lösch- und Versionssperre der Nachweise und Meldungsanlagen (Bereich C, TCMS s7) | `TCMS_SEITE_DB_TEST`     |
   | `server/tcms/__tests__/bereich-d-db.test.ts`                  | Auslieferung, Portal-Anlagen (Nachweis, Meldung), Ansprechpersonen (Bereich D)                | `TCMS_BEREICH_D_DB_TEST` |
+  | `server/tcms/__tests__/meldevorgang-db.test.ts`               | Idempotente Portal-Meldung: Wiederholung, Fenster, ungeklärte Anlagen (TCMS s10)              | `TCMS_BEREICH_D_DB_TEST` |
 
   Die Schutzregeln der TCMS-Tabellen in PostgreSQL (Trigger, CHECK, RLS,
   Rechte auf `tcms_document_reference`, `tcms_systemakteur`,
-  `tcms_nachricht_zustellung`) prüft `packages/db/src/__tests__/tcms-db-regeln.test.ts`
+  `tcms_nachricht_zustellung`, `tcms_portal_report`) prüft `packages/db/src/__tests__/tcms-db-regeln.test.ts`
   einzeln: je Regel ein Test, der nur an ihr scheitert (CHECKs mit
   abgeschalteten Triggern, Policies der Worker-Tabellen über eine Rolle ohne
   BYPASSRLS mit geliehenen Rechten, alles in zurückgerollten Transaktionen).
@@ -484,7 +497,12 @@ export async function GET(
   (`'EVENT'`, seit TCMS s7, `server/tcms/portal/meldung.ts`). Gebunden wird in
   der Commit-Transaktion der Ablage, also vor dem Dienstaufruf; freigegeben
   nur nach eindeutiger Antwort (Ablehnung, Entfernen bzw. bestätigtes
-  Verwerfen), bei offenem Ausgang bleibt die Sperre.
+  Verwerfen), bei offenem Ausgang bleibt die Sperre. Anlagen einer
+  Portal-Meldung tragen seit TCMS s10 den Idempotenzschlüssel
+  (`tcms_report_key`); was das Wiederholungsfenster nicht klärt, bleibt
+  gebunden und erscheint als ungeklärte Anlage (Arbeitskorb,
+  Ereigniseingang; zuordnen nur nach `ereignisAnlageLesen`, freigeben nur
+  der Betrieb).
 - **Was die Bindung sperrt (RT3B-K-01, Härtung D3):** Löschen (Ablage und
   Trigger `document_tcms_reference_delete_guard`), neue Versionen
   (Versions-Route und Trigger `document_version_tcms_reference_guard` für

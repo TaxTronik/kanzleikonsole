@@ -367,8 +367,10 @@ Betreiber gehören):
 ## Secret-Box-Schlüssel
 
 Die Secret-Box (`@taxtronik/crypto`) verschlüsselt SMTP-Passwörter, n8n-API-Keys
-und -Signatur-Secrets, den IBM-Quantum-Token sowie Zugangsdaten und Token-Cache
-der Smart Mailbox. Die vollständige Liste der Ablageorte steht in
+und -Signatur-Secrets, den IBM-Quantum-Token, Zugangsdaten und Token-Cache
+der Smart Mailbox, geheime Variablen wartender Mails sowie den Inhalt von
+Tax-CMS-Portal-Meldungen mit offenem Ausgang (`tcms_portal_report.payload_enc`,
+höchstens rund 24 Stunden). Die vollständige Liste der Ablageorte steht in
 `packages/crypto/src/secret-slots.ts`.
 
 Neue Werte werden im Format `v3:<key-id>:<iv>:<tag>:<ct>` gespeichert. Die

@@ -114,3 +114,57 @@ export function codeFehlerText(grund: 'CODE_FALSCH' | 'GESPERRT', verbleibend: n
   }
   return `Der Code stimmt nicht. Noch ${verbleibend} ${verbleibend === 1 ? 'Versuch' : 'Versuche'}.`;
 }
+
+// ---------------------------------------------------------------------------
+// Ereignismeldung mit offenem Ausgang (kk-tcms-s10nach, TCMS s10)
+// ---------------------------------------------------------------------------
+
+/**
+ * Erstes Absenden ohne verlässliche Antwort: Die Meldung hat einen
+ * Idempotenzschlüssel; erneutes Absenden desselben Formulars, das nächste
+ * Öffnen der Seite und „Jetzt erneut übermitteln“ wiederholen sie mit
+ * demselben Schlüssel – es entsteht keine doppelte Meldung.
+ */
+export const MELDUNG_AUSGANG_OFFEN =
+  'Ihre Meldung konnte nicht sicher übermittelt werden – das Tax-CMS hat nicht rechtzeitig geantwortet. Sie können erneut auf „Ereignis melden“ klicken: Die Meldung wird mit denselben Angaben wiederholt (Änderungen im Formular werden dabei nicht übernommen), eine doppelte Meldung entsteht nicht. Andernfalls wiederholt TaxTronik die Übermittlung beim nächsten Öffnen dieser Seite.';
+
+/** Ein anderer Versuch desselben Absendens läuft gerade. */
+export const MELDUNG_LAEUFT =
+  'Diese Meldung wird gerade übermittelt. Bitte laden Sie die Seite in einigen Minuten neu und prüfen Sie Ihre bisherigen Meldungen.';
+
+/** Das Formular ist älter als das Wiederholungsfenster (neuer Schlüssel nötig). */
+export const MELDUNG_ABGELAUFEN =
+  'Diese Meldung kann nicht mehr wiederholt werden. Bitte laden Sie die Seite neu und prüfen Sie unter „Ihre bisherigen Meldungen“, ob sie eingegangen ist.';
+
+/** Ergebnis einer Klärung offener Meldungen (Zahlen aus der kanzleikonsole, keine Inhalte). */
+export function meldungKlaerungText(k: {
+  angenommen: readonly string[];
+  aufgeloest: number;
+  offen: number;
+  ungeklaert: number;
+}): string {
+  const teile: string[] = [];
+  if (k.angenommen.length) {
+    teile.push(
+      k.angenommen.length === 1
+        ? `Ihre Meldung ist eingegangen (Vorgangsnummer ${k.angenommen[0]}).`
+        : `Ihre Meldungen sind eingegangen (Vorgangsnummern ${k.angenommen.join(', ')}).`,
+    );
+  }
+  if (k.aufgeloest) {
+    teile.push(
+      'Eine Meldung wurde nie übermittelt; ihre Anlagen liegen in Ihren Dokumenten. Bitte melden Sie das Ereignis erneut.',
+    );
+  }
+  if (k.offen) {
+    teile.push(
+      'Das Tax-CMS ist gerade nicht erreichbar; die Übermittlung wird beim nächsten Öffnen dieser Seite wiederholt.',
+    );
+  }
+  if (k.ungeklaert) {
+    teile.push(
+      'Eine Meldung lässt sich nicht automatisch zuordnen; Ihre Kanzlei klärt sie. Bitte melden Sie das Ereignis nicht erneut.',
+    );
+  }
+  return teile.join(' ') || 'Keine Meldung wartet auf Übermittlung.';
+}

@@ -10,6 +10,7 @@
 // =============================================================================
 
 import { z } from 'zod';
+import { TcmsNichtGefunden } from '@taxtronik/tcms-client';
 import {
   ENDPUNKTE,
   EreignisErfassenBodySchema,
@@ -28,6 +29,7 @@ import {
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
 import { meldungsAnlagenNachVerwerfen } from '@/server/tcms/portal/meldung';
+import { ungeklaerteAnlageTx, ungeklaerteAnlageZuordnen } from '@/server/tcms/portal/meldevorgang';
 import { vertragsZeichenMeldung } from '@/server/tcms/zeichen';
 import {
   pruefeZuweisungenTx,
@@ -365,6 +367,96 @@ export async function ereignisVerwerfenAblehnenAction(
       return {
         meldung: r.zurueckgezogen ? 'Antrag zurückgezogen.' : 'Antrag auf Verwerfen abgelehnt.',
       };
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ungeklärte Anlagen einer Portal-Meldung (kk-tcms-s10nach, TCMS-NACHWEIS-001)
+// ---------------------------------------------------------------------------
+
+const ANLAGE_NICHT_OFFEN = 'Diese Anlage ist nicht mehr ungeklärt. Bitte laden Sie die Seite neu.';
+const ANLAGE_NICHT_IM_EREIGNIS =
+  'Dieses Ereignis enthält die Anlage nicht. Bitte wählen Sie die Meldung, zu der sie gehört.';
+
+const ZuordnenFormular = z.object({ ereignisId: ObjektIdSchema });
+
+/**
+ * Manuelle Klärung (nur Admin/Partner): Eine Anlage, deren Meldung nicht mehr
+ * automatisch geklärt wird, einem Ereignis zuordnen – nur, wenn das Tax-CMS
+ * für genau dieses Ereignis eine Anlage mit demselben SHA-256 und derselben
+ * Dokument-ID führt (`ereignisAnlageLesen`). Danach gilt die Bindung wie bei
+ * jeder angenommenen Meldung (frei erst nach dem bestätigten Verwerfen). Eine
+ * Freigabe ohne Ereignis gibt es hier bewusst nicht (das Ereignis kann
+ * existieren).
+ */
+export async function ungeklaerteAnlageZuordnenAction(
+  mandantId: string,
+  verknuepfungId: string,
+  _vorher: Ergebnis | null,
+  formData: FormData,
+): Promise<Ergebnis> {
+  return tcmsKanzleiAktion({
+    mandantId,
+    nurAdmin: true,
+    keinRecht: 'VERWALTUNG',
+    felder: { ereignisId: 'ereignisId' },
+    parse: () => {
+      const p = parseActionInput(
+        z.object({ verknuepfungId: z.uuid() }),
+        { verknuepfungId },
+        ANLAGE_NICHT_OFFEN,
+      );
+      if (!p.ok) return p;
+      const f = parseFormData(ZuordnenFormular, formData);
+      return f.ok ? { ok: true, data: { ...p.data, ...f.data } } : f;
+    },
+    vorbereiten: async (tx, k, d) => {
+      const anlage = await ungeklaerteAnlageTx(tx, {
+        tenantId: k.g.tenantId,
+        mandantId,
+        verknuepfungId: d.verknuepfungId,
+      });
+      return { anlage, ctx: k.g.ctx, tenantId: k.g.tenantId };
+    },
+    aufruf: async (dienst, d, v) => {
+      if (!v.anlage)
+        return { ok: false as const, error: ANLAGE_NICHT_OFFEN, errorCode: 'CONFLICT' as const };
+      let dokumentId: string | undefined;
+      try {
+        ({
+          daten: { dokumentId },
+        } = await dienst.rufe(ENDPUNKTE.ereignisAnlageLesen, {
+          params: { ereignisId: d.ereignisId, sha256: v.anlage.sha256 },
+        }));
+      } catch (fehler) {
+        if (fehler instanceof TcmsNichtGefunden) {
+          return {
+            ok: false as const,
+            error: ANLAGE_NICHT_IM_EREIGNIS,
+            errorCode: 'VALIDATION_ERROR' as const,
+            fieldErrors: { ereignisId: [ANLAGE_NICHT_IM_EREIGNIS] },
+          };
+        }
+        throw fehler;
+      }
+      if (dokumentId?.toLowerCase() !== v.anlage.dokumentId.toLowerCase()) {
+        return {
+          ok: false as const,
+          error: ANLAGE_NICHT_IM_EREIGNIS,
+          errorCode: 'VALIDATION_ERROR' as const,
+          fieldErrors: { ereignisId: [ANLAGE_NICHT_IM_EREIGNIS] },
+        };
+      }
+      const zugeordnet = await ungeklaerteAnlageZuordnen(v.ctx, {
+        tenantId: v.tenantId,
+        mandantId,
+        verknuepfungId: d.verknuepfungId,
+        ereignisId: d.ereignisId,
+      });
+      return zugeordnet
+        ? { meldung: 'Die Anlage ist dem Ereignis zugeordnet und bleibt mit ihm verknüpft.' }
+        : { ok: false as const, error: ANLAGE_NICHT_OFFEN, errorCode: 'CONFLICT' as const };
     },
   });
 }

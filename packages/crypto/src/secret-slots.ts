@@ -11,7 +11,8 @@
 //   tenant_setting      <tenantId>|tenant_setting/<key>|<JSON-Feld>
 //   eine Zeile je Tenant <tenantId>|<tabelle>|<spalte>   (n8n_connection)
 //   mehrere Zeilen      <tenantId>|<tabelle>/<id>|<spalte> (inbound_mailbox,
-//                                                           mail_outbox)
+//                                                           mail_outbox,
+//                                                           tcms_portal_report)
 // =============================================================================
 
 /** Bindung eines verschlüsselten Werts an seinen Ablageort (AAD). */
@@ -78,6 +79,13 @@ export type SecretSlot =
       readonly column: 'secret_vars_enc';
       /** Ein Versandauftrag je Zeile: die Zeilen-ID gehört zum Kontext. */
       readonly row: 'id';
+    }
+  | {
+      readonly kind: 'column';
+      readonly table: 'tcms_portal_report';
+      readonly column: 'payload_enc';
+      /** Ein Meldevorgang je Zeile: die Zeilen-ID gehört zum Kontext. */
+      readonly row: 'id';
     };
 
 /**
@@ -117,6 +125,17 @@ export const SECRET_SLOTS = {
     kind: 'column',
     table: 'mail_outbox',
     column: 'secret_vars_enc',
+    row: 'id',
+  },
+  /**
+   * kk-tcms-s10nach: Inhalt einer Portal-Meldung mit offenem Ausgang, nur zur
+   * Wiederholung mit demselben Idempotenzschlüssel (TCMS s10); mit der Klärung
+   * bzw. nach Ablauf des Wiederholungsfensters samt Zeile gelöscht.
+   */
+  tcmsPortalReportPayload: {
+    kind: 'column',
+    table: 'tcms_portal_report',
+    column: 'payload_enc',
     row: 'id',
   },
 } as const satisfies Record<string, SecretSlot>;

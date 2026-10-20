@@ -204,7 +204,8 @@ export interface MeldungsAnlageAbgelegt {
 /**
  * Legt eine Portal-Anlage einer Ereignismeldung als Dokument des
  * Sitzungsmandanten ab und bindet es in derselben Commit-Transaktion
- * (TCMS-NACHWEIS-001, Bezug „Ereignis“, `created_by` = Kontakt der Sitzung).
+ * (TCMS-NACHWEIS-001, Bezug „Ereignis“, `created_by` = Kontakt der Sitzung,
+ * `schluessel` = Idempotenzschlüssel des Meldevorgangs, kk-tcms-s10nach).
  * Liefert den Verweis aus der gespeicherten Fassung samt offener Verknüpfung.
  * Fehler kommen als UI-taugliche Ursache (ActionError, UploadRejectedError)
  * beim zentralen Fehler-Mapping an.
@@ -212,6 +213,7 @@ export interface MeldungsAnlageAbgelegt {
 export function portalAnlageAblegen(
   g: PortalAblageKontext,
   datei: File,
+  schluessel: string | null = null,
 ): Promise<MeldungsAnlageAbgelegt> {
   return ablegen(g, datei, async (tx, verweis) => ({
     verweis,
@@ -219,6 +221,7 @@ export function portalAnlageAblegen(
       tx,
       { tenantId: g.tenantId, mandantId: g.clientId, kontaktId: g.contactId },
       verweis.dokumentId,
+      schluessel,
     ),
   }));
 }

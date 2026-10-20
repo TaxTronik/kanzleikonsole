@@ -52,6 +52,8 @@ describe('Restore: effective ACLs and tenant RLS are mandatory', () => {
     ['GRANT UPDATE ON tcms_systemakteur TO PUBLIC', INVARIANTS],
     ['GRANT SELECT ON tcms_nachricht_zustellung TO taxtronik_app', INVARIANTS],
     ['GRANT INSERT ON tcms_nachricht_zustellung TO PUBLIC', INVARIANTS],
+    // kk-tcms-s10nach: verschlüsselte Meldungsinhalte, kein TRUNCATE an RLS vorbei.
+    ['GRANT TRUNCATE ON tcms_portal_report TO taxtronik_app', INVARIANTS],
     ['GRANT DELETE ON document_version TO taxtronik_app', INVARIANTS],
     ['GRANT TRUNCATE ON audit_log TO PUBLIC', OWNER_PUBLIC],
     ['GRANT taxtronik TO taxtronik_app WITH INHERIT FALSE, SET TRUE', INVARIANTS],
@@ -76,7 +78,7 @@ describe('Restore: effective ACLs and tenant RLS are mandatory', () => {
   });
 
   // B6 (S-01): the owner role of the containers after pg_restore. These cases
-  // run before the 32-invariant probe and therefore also hold on PostgreSQL 16.
+  // run before the 33-invariant probe and therefore also hold on PostgreSQL 16.
   const OWNER_UNSAFE = /Owner-Rolle taxtronik_owner verletzt S-01/;
   const OWNER_EXTRA = /Owner-Rolle taxtronik_owner besitzt unzulässige Rechte/;
   const PRE_S01_DUMP =

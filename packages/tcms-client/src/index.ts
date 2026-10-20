@@ -46,3 +46,4 @@ export {
 } from './fehler';
 export { baueZiel, kodiereQueryKomponente, type TcmsQuery, type Ziel } from './ziel';
 export { istTcmsAktiv } from './gate';
+export { MELDUNG_UNGESENDET_AUFBEWAHRUNG_MS, MELDUNG_WIEDERHOLUNG_FENSTER_MS } from './meldung';
