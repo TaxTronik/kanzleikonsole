@@ -17,6 +17,13 @@
 //     Ereignismeldung) wird mit festem Grund abgewiesen – ohne Vormerkung,
 //     Audit und Object-Store-Aufruf; die Verknüpfung bleibt offen.
 //
+// Die Aktion übersetzt eine Ablehnung des Claims in einen festen Text. Welchen
+// Datenbankfehler sie dabei übersetzt hat, hält der Spion an der Einordnung
+// (`isDatabaseError`) fest; geprüft wird er mit der gemeinsamen Prüfhilfe
+// (SQLSTATE und Meldung der Datenbank, kk-tcms-qual). Sonst bliebe der Test
+// auch grün, wenn der Claim aus einem anderen Grund scheitert (vor K-02 etwa
+// am Lesen von void).
+//
 //   DB_TESTS=1 (db_suite_env) pnpm exec vitest run --config vitest.db.config.ts \
 //     'src/app/staff/(protected)/admin/gwg-retention/__tests__/actions-db.test.ts'
 // Fachkatalog: GWG-RETENTION-DESTRUCTION-001, TCMS-NACHWEIS-001
@@ -40,6 +47,8 @@ const m = vi.hoisted(() => ({
   geloescht: [] as string[],
   beobachtet: [] as unknown[],
   beobachten: null as null | ((key: string) => Promise<unknown>),
+  /** Fehler, die die Aktion über `isDatabaseError` eingeordnet hat. */
+  eingeordnet: [] as unknown[],
 }));
 
 vi.mock('server-only', () => ({}));
@@ -48,6 +57,16 @@ vi.mock('@/server/logger', () => ({
 }));
 vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => m.staff }));
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }));
+vi.mock('@/server/actions/database-error', async (original) => {
+  const echt = await original<typeof import('@/server/actions/database-error')>();
+  return {
+    ...echt,
+    isDatabaseError: (...args: Parameters<typeof echt.isDatabaseError>) => {
+      m.eingeordnet.push(args[0]);
+      return echt.isDatabaseError(...args);
+    },
+  };
+});
 vi.mock('@taxtronik/storage', async (original) => ({
   ...(await original<Record<string, unknown>>()),
   deleteObjectVersion: vi.fn(async (_bucket: string, key: string) => {
@@ -62,6 +81,7 @@ import {
 } from '@/server/tcms/durchfuehrung/verweis';
 import { TCMS_NACHWEIS_VERNICHTUNGSSPERRE } from '@/server/tcms/durchfuehrung/sperre';
 import { confirmGwgDeletionAction } from '../actions';
+import { erwarteDbFehler } from '@taxtronik/db/testing/db-fehler';
 
 const enabled = process.env.GWG_RETENTION_DB_TEST === '1' || process.env.DB_TESTS === '1';
 if (!enabled && process.env.CI === 'true') {
@@ -244,6 +264,7 @@ const DURCHF = 'cmvfgwgfix30000000001';
     m.geloescht.length = 0;
     m.beobachtet.length = 0;
     m.beobachten = null;
+    m.eingeordnet.length = 0;
   });
 
   afterAll(async () => {
@@ -265,6 +286,7 @@ const DURCHF = 'cmvfgwgfix30000000001';
     };
 
     expect(await confirmGwgDeletionAction({ documentId: beleg.id })).toEqual({ ok: true });
+    expect(m.eingeordnet, 'keine Ablehnung der Datenbank').toEqual([]);
 
     // Jede Objektversion genau einmal, jeweils nach dem committeten Claim und vor dem DB-Abschluss.
     expect([...m.geloescht].sort()).toEqual([...beleg.keys].sort());
@@ -296,6 +318,13 @@ const DURCHF = 'cmvfgwgfix30000000001';
       error:
         'Der DB-seitige Vernichtungsclaim ist nicht zulässig; es wurden keine Datei-Bytes gelöscht.',
     });
+    // Grund der Ablehnung laut Datenbank: die bestehende Geschäftsbeziehung.
+    expect(m.eingeordnet).toHaveLength(1);
+    erwarteDbFehler(m.eingeordnet[0], {
+      sqlState: '23514',
+      meldung:
+        'GwG-Beleg gehört zu einer bestehenden oder früher etablierten Geschäftsbeziehung; Mandatsende fehlt.',
+    });
     expect(m.geloescht).toEqual([]);
     expect(await audits(beleg.id, 'gwg.evidence.destroy.request')).toBe(0);
     const d = await owner.document.findUniqueOrThrow({ where: { id: beleg.id } });
@@ -326,6 +355,8 @@ const DURCHF = 'cmvfgwgfix30000000001';
         ok: false,
         error: TCMS_NACHWEIS_VERNICHTUNGSSPERRE,
       });
+      // Abgewiesen von der Vorprüfung der Aktion, nicht erst vom Claim der Datenbank.
+      expect(m.eingeordnet, 'keine Ablehnung der Datenbank').toEqual([]);
       expect(m.geloescht).toEqual([]);
       const d = await owner.document.findUniqueOrThrow({ where: { id } });
       expect(d).toMatchObject({

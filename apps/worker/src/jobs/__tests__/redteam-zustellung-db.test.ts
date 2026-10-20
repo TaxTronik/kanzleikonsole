@@ -65,7 +65,13 @@ vi.mock('nodemailer', () => {
 });
 
 import { sendTemplateMail, setMailLogger } from '@taxtronik/mail';
-import { NUR_SYSTEMAKTEUR, TcmsClient, type OffeneNachricht } from '@taxtronik/tcms-client';
+import { erwarteAnwendungsfehler } from '@taxtronik/db/testing/db-fehler';
+import {
+  NUR_SYSTEMAKTEUR,
+  TcmsClient,
+  TcmsFehler,
+  type OffeneNachricht,
+} from '@taxtronik/tcms-client';
 import { prismaOwner } from '../../prisma-owner';
 import {
   createActiveClientFixture,
@@ -483,11 +489,36 @@ describeDb('Red Team: Zustellung mit bösartigem Dienst', () => {
     'RT3B-Z2: Protokollangriff „%s“ – nichts eingeplant, nichts gemeldet',
     async (_name, abruf) => {
       const stub = await boeserDienst(abruf);
+      // Abgewiesen hat der Client des Dienstes – ein Fehler der Anwendung, kein
+      // Datenbankfehler (gemeinsame Prüfhilfe, kk-tcms-qual). Sonst bliebe der
+      // Test auch grün, wenn nach einem angenommenen Abruf erst die Datenbank
+      // das Einplanen verhindert.
+      const abgewiesen: unknown[] = [];
+      const postausgang = postausgangUeber(stub.client);
+      let ergebnis: Awaited<ReturnType<typeof stelleTcmsNachrichtenZu>>;
       try {
-        await lauf(stub).catch(() => null);
+        ergebnis = await stelleTcmsNachrichtenZu(
+          {
+            ...deps(stub),
+            postausgang: () => ({
+              ...postausgang,
+              holen: (akteur, limit) =>
+                postausgang.holen(akteur, limit).catch((fehler: unknown) => {
+                  abgewiesen.push(fehler);
+                  throw fehler;
+                }),
+            }),
+          },
+          { tenantId, jetzt: () => jetzt },
+        );
       } finally {
         await stub.schliessen();
       }
+      expect(abgewiesen).toHaveLength(1);
+      erwarteAnwendungsfehler(abgewiesen[0], { klasse: Error });
+      // TcmsFehler hat einen geschützten Konstruktor (kein `klasse`-Typ).
+      expect(abgewiesen[0]).toBeInstanceOf(TcmsFehler);
+      expect(ergebnis).toMatchObject({ abgerufen: 0, eingeplant: 0, fehler: 1 });
       // Der Abruf hat stattgefunden (sonst wäre der Test wertlos) …
       expect(stub.ziele.some((z) => z.startsWith('GET /v1/nachrichten/offen'))).toBe(true);
       // … und nichts davon wurde übernommen.

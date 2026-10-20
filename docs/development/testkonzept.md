@@ -65,7 +65,11 @@ SQLSTATE, Meldung der Datenbank, Namen der Bedingung und Prisma-Code (z. B.
 P2025 für eine unter RLS unsichtbare Zeile), `anwendungAbgewiesen` einen Fehler
 der Anwendung und weist dabei Datenbank- und Prisma-Fehler zurück;
 `erwarteDbFehler`/`erwarteAnwendungsfehler` prüfen bereits gefangene Fehler
-(`Promise.allSettled`). `packages/db/src/__tests__/db-fehler.test.ts` belegt
+(`Promise.allSettled`). Braucht ein Test den Fehler selbst – etwa für die
+Einordnung der Anwendung (`databaseErrorInfo(…).kind`) oder weil eine Aktion
+die Ablehnung in einen festen Text übersetzt und der Test den übersetzten
+Fehler über einen Spion an der Einordnung festhält –, prüft er ihn ebenfalls
+mit `erwarteDbFehler`, nie über `meta.driverAdapterError` oder die Meldung. `packages/db/src/__tests__/db-fehler.test.ts` belegt
 die Falle und die Helfer gegen PostgreSQL. Der Guard
 `apps/web/src/__tests__/db-fehlerabgleich.test.ts` liest alle DB-Suiten als
 TypeScript-AST und verbietet jeden anderen Abgleich gegen abgewiesene Aufrufe

@@ -26,6 +26,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient, TenantContext, TxClient } from '@taxtronik/db';
+import { dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 import { createVerifiedLegalEntityGwgFixture } from '../../../../../../packages/db/src/__tests__/gwg-test-fixture';
 
 const m = vi.hoisted(() => ({
@@ -272,12 +273,40 @@ const GROESSE = 4821n;
 
     it('RT3B-D2: hartes Löschen von Dokument, Version und Mandant sowie Soft-Delete der Owner-Rolle – abgewiesen', async () => {
       const d = await alsNachweis();
-      await expect(owner.documentVersion.delete({ where: { id: d.versionId } })).rejects.toThrow();
-      await expect(owner.document.delete({ where: { id: d.id } })).rejects.toThrow();
-      await expect(owner.client.delete({ where: { id: mandant } })).rejects.toThrow();
-      await expect(
+      // Geprüft wird die Angabe der Datenbank (kk-tcms-qual), nicht die Meldung
+      // von Prisma: Version und Dokument hält der Fremdschlüssel der Bindung …
+      await dbAbgewiesen(
+        owner.documentVersion.delete({ where: { id: d.versionId } }),
+        { sqlState: '23503', constraint: 'tcms_document_reference_document_version_id_fkey' },
+        'Version',
+      );
+      await dbAbgewiesen(
+        owner.document.delete({ where: { id: d.id } }),
+        { sqlState: '23503', constraint: 'tcms_document_reference_document_id_fkey' },
+        'Dokument',
+      );
+      // … den Mandanten zuerst die GwG-Schranke: Ein aktiver Mandant hat immer
+      // GwG-Belege, deren Trigger beim ON DELETE SET NULL vor der (erst am
+      // Anweisungsende geprüften) Bindung abweist. Dass die Bindung allein das
+      // Löschen hält, belegt packages/db tcms-document-reference-guards.test.ts
+      // (Mandant ohne GwG-Belege, nur mit Superuser herstellbar).
+      await dbAbgewiesen(
+        owner.client.delete({ where: { id: mandant } }),
+        {
+          sqlState: '23001',
+          meldung:
+            'Verknüpfter GwG-Beleg darf Klassifikation oder Tenant-/Mandanten-Scope nicht verlassen.',
+        },
+        'Mandant',
+      );
+      await dbAbgewiesen(
         owner.document.update({ where: { id: d.id }, data: { deletedAt: new Date() } }),
-      ).rejects.toThrow(/als Nachweis im Tax-CMS verknüpft/);
+        {
+          sqlState: '23001',
+          meldung: 'document: als Nachweis im Tax-CMS verknüpft, Löschen gesperrt',
+        },
+        'Soft-Delete',
+      );
       await auslieferbar(d);
     });
 
@@ -301,14 +330,14 @@ const GROESSE = 4821n;
       // Seit der Härtung D3 sperrt document_version_tcms_reference_guard neue
       // Versionen gebundener Dokumente auch an der Route vorbei (jede Rolle, hier
       // die Owner-Rolle); der Nachweis bleibt auslieferbar.
-      const fehler = await neueVersion().then(
-        () => null,
-        (e: unknown) => e,
+      await dbAbgewiesen(
+        neueVersion(),
+        {
+          sqlState: '23001',
+          meldung: 'document_version: als Nachweis im Tax-CMS verknüpft, neue Version gesperrt',
+        },
+        'neue Version gesperrt',
       );
-      expect(dbAbweisung(fehler), 'neue Version gesperrt').toEqual({
-        sqlState: '23001',
-        meldung: expect.stringMatching(/als Nachweis im Tax-CMS verknüpft, neue Version gesperrt/),
-      });
       await auslieferbar(d);
       // Die Auslieferung vergleicht weiter die NEUESTE Version mit dem Verweis: nach
       // der Freigabe (Nachweis entfernt) ist eine neue Version möglich, der alte
@@ -359,16 +388,6 @@ const GROESSE = 4821n;
       });
     }
 
-    /** SQLSTATE und Meldung der Datenbank (nie die zusammengesetzte Prisma-Meldung mit Codeausschnitt). */
-    function dbAbweisung(fehler: unknown): { sqlState: unknown; meldung: unknown } | null {
-      const ursache = (
-        fehler as { meta?: { driverAdapterError?: { cause?: Record<string, unknown> } } } | null
-      )?.meta?.driverAdapterError?.cause;
-      return ursache
-        ? { sqlState: ursache['originalCode'], meldung: ursache['originalMessage'] }
-        : null;
-    }
-
     /**
      * Zustand nach einem Retag GENERAL → GWG_EVIDENCE (K-01a). Seit der Behebung
      * weist die Datenbank diesen Wechsel eines gebundenen Dokuments für jede Rolle
@@ -380,14 +399,14 @@ const GROESSE = 4821n;
      * tcms-document-reference-guards.test.ts, nur mit Superuser herstellbar).
      */
     async function gebundenerFaelligerBeleg(d: { id: string }) {
-      const fehler = await faelligerGwgBeleg(d).then(
-        () => null,
-        (e: unknown) => e,
+      await dbAbgewiesen(
+        faelligerGwgBeleg(d),
+        {
+          sqlState: '23001',
+          meldung: 'document: als Nachweis im Tax-CMS verknüpft, Umklassifizieren gesperrt',
+        },
+        'Umklassifizieren gesperrt (Owner-Rolle)',
       );
-      expect(dbAbweisung(fehler), 'Umklassifizieren gesperrt (Owner-Rolle)').toEqual({
-        sqlState: '23001',
-        meldung: expect.stringMatching(/als Nachweis im Tax-CMS verknüpft/),
-      });
       await owner.document.update({
         where: { id: d.id },
         data: {
@@ -424,32 +443,51 @@ const GROESSE = 4821n;
       const d = await alsNachweis(altMandant);
       await gebundenerFaelligerBeleg(d);
       const { Prisma } = await import('@taxtronik/db/prisma-client');
-      const claimUndVernichtung = (vernichten: boolean) =>
+      const claimUndVernichtung = (schritte: { claim: boolean; vernichten: boolean }) =>
         imTenant(async (tx) => {
           await tx.document.updateMany({
             where: { id: d.id },
             data: { gwgDestructionRequestedAt: new Date(), gwgDestructionRequestedBy: admin },
           });
-          // Wie confirmGwgDeletionAction (Zeile 151), mit Cast wegen K-02.
-          await tx.$queryRaw(
-            Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${d.id}::uuid)::text AS ok`,
-          );
-          if (vernichten) {
+          if (schritte.claim) {
+            // Wie confirmGwgDeletionAction (Zeile 151), mit Cast wegen K-02.
+            await tx.$queryRaw(
+              Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${d.id}::uuid)::text AS ok`,
+            );
+          }
+          if (schritte.vernichten) {
             await tx.$queryRaw(
               Prisma.sql`SELECT app.destroy_gwg_document_versions(${d.id}::uuid) AS geloescht`,
             );
           }
-          // Nichts festschreiben: der Test prüft nur, welcher Schritt abweist.
+          // Nichts festschreiben: der Test prüft nur, welcher Schritt abweist. Ein
+          // Fehler der Anwendung ist keine Abweisung der Datenbank (dbAbgewiesen).
           throw new Error('RT3B: Rücknahme');
         });
+      // Sperre der Bindung (SQLSTATE und Meldung der Datenbank, kk-tcms-qual).
+      const gesperrt = {
+        sqlState: '23001',
+        meldung: 'document: als Nachweis im Tax-CMS verknüpft, GwG-Vernichtung gesperrt',
+      };
       // Reihenfolge der Aktion: Claim → Object-Store-Löschung → DB-Vernichtung.
-      // Die DB-Vernichtung scheitert an Fremdschlüssel/Trigger der Bindung …
-      await expect(claimUndVernichtung(true)).rejects.toThrow(
-        /tcms_document_reference|als Nachweis im Tax-CMS verknüpft/,
+      // Der Claim muss die Bindung erkennen; sonst löscht die Aktion die Bytes,
+      // bevor eine Sperre greift …
+      await dbAbgewiesen(
+        claimUndVernichtung({ claim: true, vernichten: false }),
+        gesperrt,
+        'Claim',
       );
-      // … der Claim davor muss die Bindung erkennen; sonst löscht die Aktion
-      // die Bytes, bevor eine Sperre greift.
-      await expect(claimUndVernichtung(false)).rejects.toThrow(/Tax-CMS/);
+      await dbAbgewiesen(
+        claimUndVernichtung({ claim: true, vernichten: true }),
+        gesperrt,
+        'Claim und Vernichtung',
+      );
+      // … und die DB-Vernichtung weist sie auch ohne vorherigen Claim ab.
+      await dbAbgewiesen(
+        claimUndVernichtung({ claim: false, vernichten: true }),
+        gesperrt,
+        'Vernichtung ohne Claim',
+      );
     });
 
     it('RT3B-K-02: GwG-Vernichtung eines fälligen, ungebundenen GwG-Belegs ist ausführbar (Claim liefert void)', async () => {

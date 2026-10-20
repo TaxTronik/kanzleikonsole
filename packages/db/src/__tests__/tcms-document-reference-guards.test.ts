@@ -10,11 +10,19 @@
 //   - Die Einordnung (database-error.ts) erkennt die Sperre über SQLSTATE 23001
 //     und den Marker der Migration, aus Prisma-Query (P2039) wie aus Raw-SQL
 //     (P2010).
+//   - Hartes Löschen eines Mandanten scheitert schon an der Bindung allein
+//     (Fremdschlüssel; Mandant ohne GwG-Belege, nur mit Superuser herstellbar –
+//     ein aktiver Mandant hat sonst immer GwG-Belege, deren Schranke vorher
+//     abweist, siehe redteam-dokumente-db.test.ts RT3B-D2).
+// Datenbankfehler prüft die gemeinsame Prüfhilfe (testing/db-fehler.ts,
+// kk-tcms-qual): SQLSTATE, Meldung und Prisma-Code der Datenbank, nie die
+// zusammengesetzte Prisma-Meldung.
 // Die Web-Suiten (Owner-/App-Rolle) belegen Aktionen, Retag und Nebenläufigkeit:
 // apps/web/src/server/tcms/__tests__/nachweis-bindung-db.test.ts.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseErrorInfo } from '../database-error';
+import { dbAbgewiesen, erwarteDbFehler, type DbErwartung } from '../testing/db-fehler';
 import type { Prisma as PrismaTypen } from '@prisma/client';
 import { Prisma, PrismaClient } from '../prisma-client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
@@ -37,23 +45,30 @@ let tenantId: string;
 let staffId: string;
 let clientId: string;
 
-/** Datenbankfehler eines Aufrufs (SQLSTATE, Meldung der Datenbank, Einordnung). */
-async function abweisung(aufruf: Promise<unknown>) {
-  const fehler = await aufruf.then(
-    () => null,
-    (e: unknown) => e,
+/**
+ * Sperre der Bindung: Die Datenbank weist `aufruf` ab (gemeinsame Prüfhilfe:
+ * SQLSTATE 23001, Meldung und Prisma-Code), und die Einordnung
+ * (database-error.ts) erkennt sie als TCMS_EVIDENCE_LOCKED.
+ */
+async function erwarteBindungssperre(
+  aufruf: PromiseLike<unknown>,
+  erwartung: { meldung: string; prismaCode: 'P2010' | 'P2039' },
+  hinweis: string,
+) {
+  const ausgang = await aufruf.then(
+    () => ({ abgewiesen: false, fehler: undefined as unknown }),
+    (fehler: unknown) => ({ abgewiesen: true, fehler }),
   );
-  if (fehler === null) throw new Error('Erwarteter Datenbankfehler blieb aus.');
-  const info = databaseErrorInfo(fehler);
-  const ursache = (
-    fehler as { meta?: { driverAdapterError?: { cause?: { originalMessage?: unknown } } } }
-  ).meta?.driverAdapterError?.cause;
-  return {
-    sqlState: info?.sqlState,
-    art: info?.kind,
-    prismaCode: info?.prismaCode,
-    meldung: ursache?.originalMessage,
+  expect(ausgang.abgewiesen, `${hinweis}: erwartet: Ablehnung durch die Datenbank`).toBe(true);
+  const soll: DbErwartung = {
+    sqlState: '23001',
+    prismaCode: erwartung.prismaCode,
+    meldung: new RegExp(`^${erwartung.meldung}$`),
   };
+  erwarteDbFehler(ausgang.fehler, soll, hinweis);
+  expect(databaseErrorInfo(ausgang.fehler)?.kind, `${hinweis}: Einordnung`).toBe(
+    'TCMS_EVIDENCE_LOCKED',
+  );
 }
 
 function imTenant<T>(fn: (tx: PrismaTypen.TransactionClient) => Promise<T>): Promise<T> {
@@ -183,23 +198,21 @@ describeWithDatabase('Bindung an das Tax-CMS in der Datenbank (RT3B-K-01)', () =
         return tx.$queryRaw(sql);
       });
     const erwartet = {
-      sqlState: '23001',
-      art: 'TCMS_EVIDENCE_LOCKED',
       prismaCode: 'P2010',
       meldung: 'document: als Nachweis im Tax-CMS verknüpft, GwG-Vernichtung gesperrt',
-    };
-    expect(
-      await abweisung(
-        vorgemerkt(
-          Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${beleg.id}::uuid)::text AS claim`,
-        ),
+    } as const;
+    await erwarteBindungssperre(
+      vorgemerkt(
+        Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${beleg.id}::uuid)::text AS claim`,
       ),
-    ).toEqual(erwartet);
-    expect(
-      await abweisung(
-        vorgemerkt(Prisma.sql`SELECT app.destroy_gwg_document_versions(${beleg.id}::uuid) AS n`),
-      ),
-    ).toEqual(erwartet);
+      erwartet,
+      'Claim',
+    );
+    await erwarteBindungssperre(
+      vorgemerkt(Prisma.sql`SELECT app.destroy_gwg_document_versions(${beleg.id}::uuid) AS n`),
+      erwartet,
+      'DB-Vernichtung',
+    );
     expect(await owner.documentVersion.count({ where: { documentId: beleg.id } })).toBe(1);
     expect(await owner.document.findUniqueOrThrow({ where: { id: beleg.id } })).toMatchObject({
       gwgDestroyedAt: null,
@@ -220,28 +233,61 @@ describeWithDatabase('Bindung an das Tax-CMS in der Datenbank (RT3B-K-01)', () =
   it('der Scope-Trigger gilt auch für den Superuser und wird über SQLSTATE und Marker eingeordnet', async () => {
     const d = await dokument('GENERAL');
     await binden(d);
-    expect(
-      await abweisung(
-        owner.document.update({ where: { id: d.id }, data: { classification: 'GWG_EVIDENCE' } }),
-      ),
-    ).toEqual({
-      sqlState: '23001',
-      art: 'TCMS_EVIDENCE_LOCKED',
-      prismaCode: 'P2039',
-      meldung: 'document: als Nachweis im Tax-CMS verknüpft, Umklassifizieren gesperrt',
-    });
-    expect(
-      await abweisung(
-        owner.$executeRaw`UPDATE document SET requires_payroll_access = TRUE WHERE id = ${d.id}::uuid`,
-      ),
-    ).toEqual({
-      sqlState: '23001',
-      art: 'TCMS_EVIDENCE_LOCKED',
-      prismaCode: 'P2010',
-      meldung: 'document: als Nachweis im Tax-CMS verknüpft, Umklassifizieren gesperrt',
-    });
+    await erwarteBindungssperre(
+      owner.document.update({ where: { id: d.id }, data: { classification: 'GWG_EVIDENCE' } }),
+      {
+        prismaCode: 'P2039',
+        meldung: 'document: als Nachweis im Tax-CMS verknüpft, Umklassifizieren gesperrt',
+      },
+      'Prisma-Query',
+    );
+    await erwarteBindungssperre(
+      owner.$executeRaw`UPDATE document SET requires_payroll_access = TRUE WHERE id = ${d.id}::uuid`,
+      {
+        prismaCode: 'P2010',
+        meldung: 'document: als Nachweis im Tax-CMS verknüpft, Umklassifizieren gesperrt',
+      },
+      'Raw-SQL',
+    );
     expect((await owner.document.findUniqueOrThrow({ where: { id: d.id } })).classification).toBe(
       'GENERAL',
     );
+  });
+
+  it('hartes Löschen eines Mandanten scheitert an der Bindung allein (Fremdschlüssel, ohne GwG-Belege)', async () => {
+    // Aktiver Mandant ohne GwG-Prüfung und -Belege, gebundenes Dokument mit
+    // Version: nur im Replikationsmodus des Superusers herstellbar.
+    const mandant = randomUUID();
+    const dok = randomUUID();
+    const version = randomUUID();
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe('SET LOCAL session_replication_role = replica');
+      await tx.$executeRaw`
+        INSERT INTO client (id, tenant_id, kind, name, allow_active, updated_at)
+        VALUES (${mandant}::uuid, ${tenantId}::uuid, 'JURPERS', 'Ohne GwG GmbH', TRUE, now())`;
+      await tx.$executeRaw`
+        INSERT INTO document (id, tenant_id, client_id, title, classification, mime_type, updated_at)
+        VALUES (${dok}::uuid, ${tenantId}::uuid, ${mandant}::uuid, 'Kreditorenliste', 'GENERAL',
+                'application/pdf', now())`;
+      await tx.$executeRaw`
+        INSERT INTO document_version
+          (id, document_id, version_no, storage_bucket, storage_key, sha256, size_bytes,
+           scan_status, created_by_id)
+        VALUES (${version}::uuid, ${dok}::uuid, 1, 'general', ${`tenants/${tenantId}/${dok}.pdf`},
+                ${Buffer.alloc(32, 0x4b)}, 812, 'CLEAN', ${staffId}::uuid)`;
+      await tx.$executeRaw`
+        INSERT INTO tcms_document_reference
+          (tenant_id, client_id, document_id, document_version_id, sha256,
+           tcms_subject, tcms_execution_id, created_by)
+        VALUES (${tenantId}::uuid, ${mandant}::uuid, ${dok}::uuid, ${version}::uuid,
+                ${Buffer.alloc(32, 0x4b)}, 'EXECUTION', 'cmvfohnegwg', ${staffId}::uuid)`;
+    });
+    await dbAbgewiesen(
+      owner.$executeRaw`DELETE FROM client WHERE id = ${mandant}::uuid`,
+      { sqlState: '23503', constraint: 'tcms_document_reference_client_id_fkey' },
+      'Mandant',
+    );
+    expect(await owner.client.count({ where: { id: mandant } })).toBe(1);
+    expect(await owner.document.count({ where: { id: dok, clientId: mandant } })).toBe(1);
   });
 });

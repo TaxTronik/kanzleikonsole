@@ -17,8 +17,9 @@
 // (Schicht c, die Vernichtungsaktion: admin/gwg-retention/__tests__.)
 //
 // Datenbankfehler werden über SQLSTATE und Meldung der Datenbank geprüft
-// (meta.driverAdapterError.cause), nie über die zusammengesetzte Prisma-Meldung
-// mit Codeausschnitt.
+// (gemeinsame Prüfhilfe @taxtronik/db/testing/db-fehler, kk-tcms-qual), nie
+// über die zusammengesetzte Prisma-Meldung mit Codeausschnitt; dazu die
+// Einordnung der Anwendung (database-error.ts: TCMS_EVIDENCE_LOCKED).
 //
 //   DB_TESTS=1 (db_suite_env) pnpm exec vitest run --config vitest.db.config.ts \
 //     src/server/tcms/__tests__/nachweis-bindung-db.test.ts
@@ -28,6 +29,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaClient, TxClient } from '@taxtronik/db';
 import { databaseErrorInfo } from '@taxtronik/db/database-error';
+import { erwarteDbFehler } from '@taxtronik/db/testing/db-fehler';
 import { createVerifiedLegalEntityGwgFixture } from '../../../../../../packages/db/src/__tests__/gwg-test-fixture';
 
 const m = vi.hoisted(() => ({ staff: null as unknown, speicher: [] as string[] }));
@@ -71,30 +73,27 @@ if (!enabled && process.env.CI === 'true') {
 
 const DURCHF = 'cmvfbindungfix30000001';
 
-/** SQLSTATE und Meldung der Datenbank, `null` ohne Datenbankfehler. */
-async function abweisung(
-  aufruf: Promise<unknown>,
-): Promise<{ sqlState: unknown; meldung: unknown; art: unknown } | null> {
-  const fehler = await aufruf.then(
-    () => null,
-    (e: unknown) => e,
+/**
+ * Sperre der Bindung: Die Datenbank weist `aufruf` mit SQLSTATE 23001 und der
+ * Meldung `document…: als Nachweis im Tax-CMS verknüpft, <was>` ab (gemeinsame
+ * Prüfhilfe), und die Anwendung ordnet den Fehler als TCMS_EVIDENCE_LOCKED ein.
+ * Startet die (sonst erst beim Await ausgeführte) Prisma-Abfrage sofort.
+ */
+async function erwarteBindungssperre(aufruf: PromiseLike<unknown>, was: string, hinweis: string) {
+  // `then` sofort: eine Prisma-Abfrage startet erst damit (nebenläufige Fälle).
+  const ausgang = aufruf.then(
+    () => ({ abgewiesen: false, fehler: undefined as unknown }),
+    (fehler: unknown) => ({ abgewiesen: true, fehler }),
   );
-  const ursache = (
-    fehler as { meta?: { driverAdapterError?: { cause?: Record<string, unknown> } } } | null
-  )?.meta?.driverAdapterError?.cause;
-  if (!ursache) return null;
-  return {
-    sqlState: ursache['originalCode'],
-    meldung: ursache['originalMessage'],
-    art: databaseErrorInfo(fehler)?.kind,
-  };
+  const { abgewiesen, fehler } = await ausgang;
+  expect(abgewiesen, `${hinweis}: erwartet: Ablehnung durch die Datenbank`).toBe(true);
+  erwarteDbFehler(
+    fehler,
+    { sqlState: '23001', meldung: `: als Nachweis im Tax-CMS verknüpft, ${was}` },
+    hinweis,
+  );
+  expect(databaseErrorInfo(fehler)?.kind, `${hinweis}: Einordnung`).toBe('TCMS_EVIDENCE_LOCKED');
 }
-
-const GESPERRT = (was: RegExp) => ({
-  sqlState: '23001',
-  meldung: expect.stringMatching(new RegExp(`als Nachweis im Tax-CMS verknüpft, ${was.source}`)),
-  art: 'TCMS_EVIDENCE_LOCKED',
-});
 
 (enabled ? describe : describe.skip)('Bindung an das Tax-CMS (RT3B-K-01)', () => {
   let owner!: PrismaClient;
@@ -259,13 +258,15 @@ const GESPERRT = (was: RegExp) => ({
     async (_art, binden) => {
       const d = await binden();
       for (const data of AUSGESCHLOSSEN) {
-        const appRolle = imTenant((tx) => tx.document.update({ where: { id: d.id }, data }));
-        expect(await abweisung(appRolle), `App-Rolle ${JSON.stringify(data)}`).toEqual(
-          GESPERRT(/Umklassifizieren gesperrt/),
+        await erwarteBindungssperre(
+          imTenant((tx) => tx.document.update({ where: { id: d.id }, data })),
+          'Umklassifizieren gesperrt',
+          `App-Rolle ${JSON.stringify(data)}`,
         );
-        const ownerRolle = owner.document.update({ where: { id: d.id }, data });
-        expect(await abweisung(ownerRolle), `Owner-Rolle ${JSON.stringify(data)}`).toEqual(
-          GESPERRT(/Umklassifizieren gesperrt/),
+        await erwarteBindungssperre(
+          owner.document.update({ where: { id: d.id }, data }),
+          'Umklassifizieren gesperrt',
+          `Owner-Rolle ${JSON.stringify(data)}`,
         );
       }
       expect(await owner.document.findUniqueOrThrow({ where: { id: d.id } })).toMatchObject({
@@ -354,18 +355,18 @@ const GESPERRT = (was: RegExp) => ({
           });
           return tx.$queryRaw(sql);
         });
-      expect(
-        await abweisung(
-          vorgemerkt(
-            Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${d.id}::uuid)::text AS claim`,
-          ),
+      await erwarteBindungssperre(
+        vorgemerkt(
+          Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${d.id}::uuid)::text AS claim`,
         ),
-      ).toEqual(GESPERRT(/GwG-Vernichtung gesperrt/));
-      expect(
-        await abweisung(
-          vorgemerkt(Prisma.sql`SELECT app.destroy_gwg_document_versions(${d.id}::uuid) AS n`),
-        ),
-      ).toEqual(GESPERRT(/GwG-Vernichtung gesperrt/));
+        'GwG-Vernichtung gesperrt',
+        'Claim',
+      );
+      await erwarteBindungssperre(
+        vorgemerkt(Prisma.sql`SELECT app.destroy_gwg_document_versions(${d.id}::uuid) AS n`),
+        'GwG-Vernichtung gesperrt',
+        'DB-Vernichtung',
+      );
       expect(await owner.documentVersion.count({ where: { documentId: d.id } })).toBe(1);
       expect(
         (await owner.document.findUniqueOrThrow({ where: { id: d.id } })).gwgDestructionRequestedAt,
@@ -429,14 +430,16 @@ const GESPERRT = (was: RegExp) => ({
       await halten;
     });
     await gehalten;
-    // abweisung() startet die (sonst erst beim Await ausgeführte) Prisma-Abfrage sofort.
-    const umklassifizieren = abweisung(
+    // erwarteBindungssperre() startet die (sonst erst beim Await ausgeführte) Prisma-Abfrage sofort.
+    const umklassifizieren = erwarteBindungssperre(
       owner.document.update({ where: { id: d.id }, data: { classification: 'GWG_EVIDENCE' } }),
+      'Umklassifizieren gesperrt',
+      'Umklassifizieren nach dem Verknüpfen',
     );
     await aufSperreWarten();
     freigeben();
     await verknuepfen;
-    expect(await umklassifizieren).toEqual(GESPERRT(/Umklassifizieren gesperrt/));
+    await umklassifizieren;
     expect((await owner.document.findUniqueOrThrow({ where: { id: d.id } })).classification).toBe(
       'GENERAL',
     );
@@ -448,14 +451,16 @@ const GESPERRT = (was: RegExp) => ({
     'Härtung D3: keine neue Version eines gebundenen Dokuments (%s) – App- und Owner-Rolle; nach der Freigabe möglich',
     async (art, binden) => {
       const d = await binden();
-      expect(
-        await abweisung(imTenant((tx) => tx.documentVersion.create(neueVersion(d.id)))),
+      await erwarteBindungssperre(
+        imTenant((tx) => tx.documentVersion.create(neueVersion(d.id))),
+        'neue Version gesperrt',
         'App-Rolle',
-      ).toEqual(GESPERRT(/neue Version gesperrt/));
-      expect(
-        await abweisung(owner.documentVersion.create(neueVersion(d.id)).then((v) => v)),
+      );
+      await erwarteBindungssperre(
+        owner.documentVersion.create(neueVersion(d.id)),
+        'neue Version gesperrt',
         'Owner-Rolle',
-      ).toEqual(GESPERRT(/neue Version gesperrt/));
+      );
       expect(await owner.documentVersion.count({ where: { documentId: d.id } })).toBe(1);
       const ctx = { tenantId, actorId: admin, actorType: 'STAFF' as const };
       if (art === 'Nachweis') {
@@ -522,11 +527,15 @@ const GESPERRT = (was: RegExp) => ({
       await halten;
     });
     await gehalten;
-    const version = abweisung(owner.documentVersion.create(neueVersion(d.id)).then((v) => v));
+    const version = erwarteBindungssperre(
+      owner.documentVersion.create(neueVersion(d.id)),
+      'neue Version gesperrt',
+      'neue Version nach dem Verknüpfen',
+    );
     await aufSperreWarten();
     freigeben();
     await verknuepfen;
-    expect(await version).toEqual(GESPERRT(/neue Version gesperrt/));
+    await version;
     expect(await owner.documentVersion.count({ where: { documentId: d.id } })).toBe(1);
   });
   it('RT3B-K-04: Dateinamen der Nachweise aus der eigenen Ablage – im Portal nur freigegebene Dokumente', async () => {
