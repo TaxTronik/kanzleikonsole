@@ -330,6 +330,15 @@ mindestens zwei Bereiche sie brauchen.
   | `server/tcms/__tests__/nachweis-verweis-db.test.ts`           | Verknüpfung, Lösch- und Versionssperre der Nachweise und Meldungsanlagen (Bereich C, TCMS s7) | `TCMS_SEITE_DB_TEST`     |
   | `server/tcms/__tests__/bereich-d-db.test.ts`                  | Auslieferung, Portal-Anlagen (Nachweis, Meldung), Ansprechpersonen (Bereich D)                | `TCMS_BEREICH_D_DB_TEST` |
 
+  Die Schutzregeln der TCMS-Tabellen in PostgreSQL (Trigger, CHECK, RLS,
+  Rechte auf `tcms_document_reference`, `tcms_systemakteur`,
+  `tcms_nachricht_zustellung`) prüft `packages/db/src/__tests__/tcms-db-regeln.test.ts`
+  einzeln: je Regel ein Test, der nur an ihr scheitert (CHECKs mit
+  abgeschalteten Triggern, Policies der Worker-Tabellen über eine Rolle ohne
+  BYPASSRLS mit geliehenen Rechten, alles in zurückgerollten Transaktionen).
+  Ablehnungen prüfen DB-Tests nur über `dbAbgewiesen`/`anwendungAbgewiesen`
+  ([Testkonzept, Abschnitt 1](testkonzept.md#1-testarten-und-ihr-zweck)).
+
 - **Live-Tests** gegen einen laufenden Dienst mit Demo-Daten
   (`TCMS_LIVE_TESTS=1` plus DB-Opt-in, Start wie in
   [Anbindung, Abschnitt 6](tcms-anbindung.md#6-vertragstest-gegen-den-echten-dienst)),

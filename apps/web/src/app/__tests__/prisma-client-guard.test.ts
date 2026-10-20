@@ -71,6 +71,10 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // ACCESS-CLIENT-MODE-001: Owner-Fixtures in einem frischen Tenant; die App-Rolle
   // vergleicht Relationsfilter und frühere NOT-IN-Liste unter echter RLS (P-09).
   'apps/web/src/server/auth/__tests__/client-access-filter-db.test.ts',
+  // TCMS-NACHWEIS-001 / MAIL-OUTBOX-001 (kk-tcms-qual): Superuser-Fixtures in frischen
+  // Tenants; jede Schutzregel der Tax-CMS-Tabellen einzeln, Trigger nur in
+  // zurückgerollten Transaktionen abgeschaltet, die App-Rolle unter echter RLS.
+  'packages/db/src/__tests__/tcms-db-regeln.test.ts',
   // ACCESS-TENANT-RLS-001 (kk-tcms-qual): Prüfhilfen für Datenbankfehler gegen echte
   // Fehler des Owner-Clients; ein Tenant nur in einer zurückgerollten Transaktion.
   'packages/db/src/__tests__/db-fehler.test.ts',
