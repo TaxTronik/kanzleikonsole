@@ -172,11 +172,14 @@ export const WuerdigungSchema = WuerdigungBodySchema.extend(feststellung).strict
 // ---- Betroffene Erklärung ----
 /** Spalte DECIMAL(14,2): Beträge betragsmäßig unter 10^12. */
 export const MAX_BETRAG_EUR = 999_999_999_999.99;
+// Steuerart, Land und Zeitraum sind Bezeichnungen (Tabellenspalten, Audit):
+// einzeilig wie Titel (tcms-s10). Gespeicherte Erklärungen liest der Vertrag
+// weiter ohne Zeichenregel (Altbestand, `FeststellungDetailSchema`).
 export const ErklaerungBodySchema = z
   .object({
-    steuerart: freitext(2, 120),
-    land: freitext(2, 40),
-    zeitraum: freitext(2, 40),
+    steuerart: einzeilig(2, 120),
+    land: einzeilig(2, 40),
+    zeitraum: einzeilig(2, 40),
     /** Geschätzte Auswirkung in EUR; null = noch zu klären. */
     auswirkungEur: z.number().min(-MAX_BETRAG_EUR).max(MAX_BETRAG_EUR).nullable().optional(),
   })
@@ -224,7 +227,8 @@ export const FeststellungErfassenBodySchema = z
     titel: einzeilig(5, 200),
     sachverhalt: freitext(20, 4000),
     quelle: FeststellungQuelleSchema,
-    quelleText: freitext(2, 200),
+    /** Angabe zur Quelle (Bezeichnung, z. B. „Außenprüfung USt 2024“): einzeilig (tcms-s10). */
+    quelleText: einzeilig(2, 200),
     /** Nur bei Quelle KONTROLLE: Durchführung desselben Programms. */
     durchfuehrungId: ObjektIdSchema.optional(),
     klasse: FeststellungKlasseSchema,
@@ -618,6 +622,15 @@ export const PortalMeldungBodySchema = z
       .strict()
       .nullable()
       .optional(),
+    /**
+     * Idempotenzschlüssel der kanzleikonsole (UUID, je Meldung neu, tcms-s10):
+     * Dieselbe Person meldet beim selben Mandanten mit demselben Schlüssel
+     * innerhalb von 24 h genau ein Ereignis. Eine Wiederholung mit gleichem
+     * Inhalt liefert dieselbe Antwort (`201`, dasselbe Ereignis, kein neues
+     * Audit), ein anderer Inhalt `409` mit `konflikt: IDEMPOTENZ_ABWEICHUNG`.
+     * Nach 24 h gilt der Schlüssel als verbraucht (neue Meldung).
+     */
+    idempotenzSchluessel: z.uuid().optional(),
   })
   .strict();
 export const PortalMeldungSchema = PortalMeldungBodySchema.extend(mandant).strict();

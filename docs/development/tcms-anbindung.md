@@ -69,8 +69,8 @@ Quell-Commit und je Datei den SHA-256 fest.
   dasselbe `VENDOR.json` (gleiche Paketliste, Ausschlüsse und Beschreibung).
   Das gehört zum Review jeder Änderung unter `packages/tcms-contract` und
   `packages/tcms-domain`.
-- **Stand:** Vertrag und Domain aus TCMS `main` `f146a78` (s9; davor
-  `4752652` s7/s8, `7a900b1`). Stufe 4: Akteursarten `KANZLEI`, `MANDANT`, `SYSTEM` mit
+- **Stand:** Vertrag und Domain aus TCMS `main` `92a1211` (s10; davor
+  `f146a78` s9, `4752652` s7/s8, `7a900b1`). Stufe 4: Akteursarten `KANZLEI`, `MANDANT`, `SYSTEM` mit
   `akteure` je Endpunkt, strukturierter Postausgang; Härtungen s5/s6:
   Portal-Endpunkte nur für `MANDANT`, maschinenlesbarer Grund `fehler.grund`
   jedes 403, Rechte-Kennzeichen für Stammdaten und Kontaktrollen,
@@ -89,7 +89,12 @@ Quell-Commit und je Datei den SHA-256 fest.
   Zeichen“), gespeicherte Abschnitte, Snapshots und Assistenten-Entwürfe
   tolerant (nur Länge, `BeschreibungBlockGespeichertSchema`), Listen in fester
   Reihenfolge. Domain zusätzlich mit den Rollen der
-  Mandantenseite (`MANDANT_ROLLEN`). Vertrag und Dienst nur gemeinsam
+  Mandantenseite (`MANDANT_ROLLEN`). s10: maschinenlesbarer Konfliktgrund
+  `fehler.konflikt` (feste Liste `KONFLIKT_GRUENDE`, je Endpunkt
+  `konflikte`, Prüfung mit `fehlerSchemaFuer`), Idempotenzschlüssel der
+  Portal-Meldung (`idempotenzSchluessel`, 24 h), Steuerart, Land, Zeitraum
+  und Quellangabe einzeilig; die Einrichtung liefert unbekannte Personen als
+  `null`. Vertrag und Dienst nur gemeinsam
   ausrollen: Die Schemas sind strikt, ein 403 ohne Grund ist für diesen
   Vertrag ein Protokollfehler. Die Zeichenregel folgt der Unicode-Version der
   Laufzeit: kanzleikonsole und Dienst auf derselben Node-Hauptversion (24).

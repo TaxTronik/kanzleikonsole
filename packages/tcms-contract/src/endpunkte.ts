@@ -32,6 +32,7 @@
 
 import { z } from 'zod';
 import { AKTEUR_ARTEN, type AkteurArt } from './akteur';
+import { FehlerSchema, KONFLIKT_GRUENDE, type KonfliktGrund } from './fehler';
 import {
   DurchfuehrungBegruendungBodySchema,
   DurchfuehrungDetailSchema,
@@ -229,6 +230,12 @@ export interface Endpunkt<
   /** Schema von `daten` einer Erfolgsantwort. */
   readonly antwortSchema: A;
   readonly erfolgStatus: 200 | 201;
+  /**
+   * Gründe eines `409 KONFLIKT` (`fehler.konflikt`, tcms-s10). Nicht leer: jedes
+   * `409` dieses Endpunkts trägt genau einen davon. Leer: kein `409` trägt einen
+   * Grund. Eingefroren; `fehlerSchemaFuer` prüft Fehlerantworten danach.
+   */
+  readonly konflikte: readonly KonfliktGrund[];
 }
 
 interface Definition {
@@ -242,6 +249,8 @@ interface Definition {
   body?: z.ZodType;
   antwort: z.ZodType;
   status?: 200 | 201;
+  /** Gründe eines `409` (Standard: keine). */
+  konflikte?: readonly KonfliktGrund[];
 }
 
 type Oder<T, Ersatz> = T extends z.ZodType ? T : Ersatz;
@@ -336,6 +345,49 @@ export function pruefePortal(name: string, pfad: string, akteure: readonly Akteu
   }
 }
 
+/**
+ * Konfliktgründe einer Definition, geprüft (fail closed): nur Werte aus
+ * `KONFLIKT_GRUENDE`, keine Doppelten, nie an `health` (ohne Bestätigung).
+ * Wirft beim Laden des Vertrags.
+ */
+export function pruefeKonflikte(
+  name: string,
+  akteur: boolean,
+  konflikte: readonly unknown[] | undefined,
+): readonly KonfliktGrund[] {
+  const liste = konflikte ?? [];
+  if (!Array.isArray(liste)) throw new Error(`Endpunkt ${name}: konflikte ist keine Liste`);
+  for (const k of liste) {
+    if (!(KONFLIKT_GRUENDE as readonly unknown[]).includes(k)) {
+      throw new Error(`Endpunkt ${name}: unbekannter Konfliktgrund`);
+    }
+  }
+  if (new Set(liste).size !== liste.length)
+    throw new Error(`Endpunkt ${name}: Konfliktgrund doppelt`);
+  if (!akteur && liste.length > 0)
+    throw new Error(`Endpunkt ${name}: ohne Bestätigung keine Konflikte`);
+  return Object.freeze([...(liste as KonfliktGrund[])]);
+}
+
+/**
+ * Fehlerantwort eines Endpunkts (tcms-s10): `FehlerSchema` und dazu
+ * `konflikt` genau an jedem `409`, wenn der Eintrag `konflikte` nennt (einer
+ * davon), sonst nie. Für die Vertragsprüfung des Dienstes und den Client der
+ * kanzleikonsole.
+ */
+export function fehlerSchemaFuer(e: Pick<Endpunkt, 'name' | 'konflikte'>) {
+  const erlaubt = new Set<string>(e.konflikte);
+  return FehlerSchema.refine(
+    (f) =>
+      f.code !== 'KONFLIKT'
+        ? f.konflikt === undefined
+        : erlaubt.size === 0
+          ? f.konflikt === undefined
+          : f.konflikt !== undefined && erlaubt.has(f.konflikt),
+    { message: `konflikt passt nicht zu ${e.name}`, path: ['konflikt'] },
+  );
+}
+
 function register<const D extends Record<string, Definition>>(
   definitionen: D,
 ): { readonly [N in keyof D & string]: EndpunktAus<N, D[N]> } {
@@ -356,6 +408,7 @@ function register<const D extends Record<string, Definition>>(
       bodySchema: d.body ?? null,
       antwortSchema: d.antwort,
       erfolgStatus: d.status ?? 200,
+      konflikte: pruefeKonflikte(name, akteur, d.konflikte),
     };
     return [name, Object.freeze(eintrag)] as const;
   });
@@ -1028,6 +1081,8 @@ export const ENDPUNKTE = register({
     body: PortalMeldungBodySchema,
     antwort: PortalMeldungErgebnisSchema,
     status: 201,
+    // Jedes 409 mit Grund (meldeEreignis, packages/service; tcms-s10).
+    konflikte: ['IDEMPOTENZ_ABWEICHUNG', 'ZWISCHENZEITLICH_GEAENDERT'],
   },
 
   // ---- Länder-Monitor ---------------------------------------------------------
@@ -1175,6 +1230,13 @@ export const ENDPUNKTE = register({
     akteure: NUR_MANDANT,
     params: FreigabePfadSchema,
     antwort: PortalCodeAnfordernErgebnisSchema,
+    // Jedes 409 mit Grund (fordereFreigabeCodeAn, packages/service; tcms-s10).
+    konflikte: [
+      'BEREITS_ERLEDIGT',
+      'CODE_GESPERRT',
+      'ZU_VIELE_CODES',
+      'ZWISCHENZEITLICH_GEAENDERT',
+    ],
   },
   portalFreigabeErteilen: {
     methode: 'POST',
@@ -1183,6 +1245,16 @@ export const ENDPUNKTE = register({
     params: FreigabePfadSchema,
     body: PortalFreigebenBodySchema,
     antwort: PortalFreigebenErgebnisSchema,
+    // Jedes 409 mit Grund (erteileFreigabe, packages/service; tcms-s10).
+    konflikte: [
+      'BEREITS_ERLEDIGT',
+      'CODE_GESPERRT',
+      'CODE_FEHLT',
+      'CODE_ABGELAUFEN',
+      'VERSION_NICHT_VORGELEGT',
+      'INHALT_VERAENDERT',
+      'ZWISCHENZEITLICH_GEAENDERT',
+    ],
   },
   portalKenntnisnahmeBestaetigen: {
     methode: 'POST',
