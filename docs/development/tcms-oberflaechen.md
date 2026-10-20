@@ -494,7 +494,11 @@ export async function GET(
   dürfen – GwG-, Personal-, private Unterlage, Lohn-, Onboarding- oder
   Formularbezug – (Umklassifizierung `server/documents/retag.ts` mit
   `TCMS_NACHWEIS_UMKLASSIFIZIERUNGSSPERRE`, Trigger
-  `document_tcms_reference_scope_guard` für jede Rolle) und die
+  `document_tcms_reference_scope_guard` für jede Rolle), den Wechsel von
+  Mandant (`client_id`, auch auf NULL, etwa über `ON DELETE SET NULL` beim
+  Löschen des Mandanten) und Tenant (derselbe Trigger seit Migration
+  `20261020200100`, Meldung „Mandantenwechsel gesperrt“; kein Anwendungspfad
+  ändert diese Spalten) und die
   GwG-Pflichtvernichtung (Aktion vor der Vormerkung und vor jedem
   Object-Store-Löschen, Claim `app.assert_gwg_document_destruction_due` unter
   der Dokumentsperre). Die Datenbank meldet jede dieser Sperren mit SQLSTATE

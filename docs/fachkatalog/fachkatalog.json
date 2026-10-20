@@ -6398,6 +6398,7 @@
         "packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql",
         "packages/db/prisma/migrations/20261020100100_tcms_document_version_lock/migration.sql",
         "packages/db/prisma/migrations/20261020200000_tcms_document_reference_release_reason/migration.sql",
+        "packages/db/prisma/migrations/20261020200100_tcms_document_reference_client_scope/migration.sql",
         "packages/db/src/database-error.ts",
         "apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx",
         "apps/web/src/components/tcms/portal/anlagen.tsx",

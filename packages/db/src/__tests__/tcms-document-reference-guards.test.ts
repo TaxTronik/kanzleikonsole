@@ -254,6 +254,70 @@ describeWithDatabase('Bindung an das Tax-CMS in der Datenbank (RT3B-K-01)', () =
     );
   });
 
+  it('kk-tcms-s10nach: der Scope-Trigger sperrt den Mandanten- und Tenantwechsel auch für den Superuser', async () => {
+    const d = await dokument('GENERAL');
+    const verknuepfung = await binden(d);
+    const fremdTenant = (
+      await owner.tenant.create({
+        data: { slug: `tcms-guards-fremd-${randomUUID()}`, name: 'TCMS Guards fremd' },
+      })
+    ).id;
+    const fremdMandant = (
+      await owner.client.create({
+        data: { tenantId: fremdTenant, kind: 'JURPERS', name: 'Fremd GmbH', allowActive: false },
+      })
+    ).id;
+    const meldung = 'document: als Nachweis im Tax-CMS verknüpft, Mandantenwechsel gesperrt';
+    for (const data of [
+      { clientId: null },
+      { tenantId: fremdTenant, clientId: null },
+      { tenantId: fremdTenant, clientId: fremdMandant },
+    ]) {
+      await erwarteBindungssperre(
+        owner.document.update({ where: { id: d.id }, data }),
+        { prismaCode: 'P2039', meldung },
+        `Prisma-Query ${JSON.stringify(data)}`,
+      );
+    }
+    await erwarteBindungssperre(
+      owner.$executeRaw`UPDATE document SET client_id = NULL WHERE id = ${d.id}::uuid`,
+      { prismaCode: 'P2010', meldung },
+      'Raw-SQL',
+    );
+    // Nur tenant_id: Die Paarprüfung (00_tenant_client_pair_integrity) weist
+    // das schon ab; ohne sie (zurückgerollte Superuser-Transaktion) hält der
+    // Scope-Trigger allein.
+    class Rueckrollen extends Error {}
+    await erwarteBindungssperre(
+      owner
+        .$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(
+            'ALTER TABLE public.document DISABLE TRIGGER "00_tenant_client_pair_integrity"',
+          );
+          await tx.$executeRaw`UPDATE document SET tenant_id = ${fremdTenant}::uuid WHERE id = ${d.id}::uuid`;
+          throw new Rueckrollen();
+        })
+        .catch((fehler: unknown) => {
+          if (fehler instanceof Rueckrollen) return 'zurückgerollt ohne Ablehnung';
+          throw fehler;
+        }),
+      { prismaCode: 'P2010', meldung },
+      'nur tenant_id, ohne Paarprüfung',
+    );
+    expect(await owner.document.findUniqueOrThrow({ where: { id: d.id } })).toMatchObject({
+      tenantId,
+      clientId,
+    });
+    // Nach der Freigabe greift die Sperre nicht mehr (Gegenprobe).
+    await imTenant((tx) =>
+      tx.tcmsDocumentReference.update({
+        where: { id: verknuepfung },
+        data: { releasedAt: new Date(), releasedBy: staffId, releaseReason: 'REMOVED' },
+      }),
+    );
+    await owner.document.update({ where: { id: d.id }, data: { clientId: null } });
+  });
+
   it('hartes Löschen eines Mandanten scheitert an der Bindung allein (Fremdschlüssel, ohne GwG-Belege)', async () => {
     // Aktiver Mandant ohne GwG-Prüfung und -Belege, gebundenes Dokument mit
     // Version: nur im Replikationsmodus des Superusers herstellbar.
@@ -282,10 +346,35 @@ describeWithDatabase('Bindung an das Tax-CMS in der Datenbank (RT3B-K-01)', () =
         VALUES (${tenantId}::uuid, ${mandant}::uuid, ${dok}::uuid, ${version}::uuid,
                 ${Buffer.alloc(32, 0x4b)}, 'EXECUTION', 'cmvfohnegwg', ${staffId}::uuid)`;
     });
-    await dbAbgewiesen(
+    // kk-tcms-s10nach: Das Löschen setzt document.client_id per ON DELETE SET
+    // NULL; dieses Update weist zuerst der Scope-Trigger ab (Mandantenwechsel
+    // eines gebundenen Dokuments).
+    await erwarteBindungssperre(
       owner.$executeRaw`DELETE FROM client WHERE id = ${mandant}::uuid`,
-      { sqlState: '23503', constraint: 'tcms_document_reference_client_id_fkey' },
+      {
+        prismaCode: 'P2010',
+        meldung: 'document: als Nachweis im Tax-CMS verknüpft, Mandantenwechsel gesperrt',
+      },
       'Mandant',
+    );
+    // Ohne den Scope-Trigger hält der Fremdschlüssel der Verknüpfung allein
+    // (Superuser-Transaktion, zurückgerollt).
+    class Rueckrollen extends Error {}
+    await dbAbgewiesen(
+      owner
+        .$transaction(async (tx) => {
+          await tx.$executeRawUnsafe(
+            'ALTER TABLE public.document DISABLE TRIGGER document_tcms_reference_scope_guard',
+          );
+          await tx.$executeRaw`DELETE FROM client WHERE id = ${mandant}::uuid`;
+          throw new Rueckrollen();
+        })
+        .catch((fehler: unknown) => {
+          if (fehler instanceof Rueckrollen) return 'zurückgerollt ohne Ablehnung';
+          throw fehler;
+        }),
+      { sqlState: '23503', constraint: 'tcms_document_reference_client_id_fkey' },
+      'Mandant ohne Scope-Trigger',
     );
     expect(await owner.client.count({ where: { id: mandant } })).toBe(1);
     expect(await owner.document.count({ where: { id: dok, clientId: mandant } })).toBe(1);

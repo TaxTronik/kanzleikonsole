@@ -73,6 +73,7 @@ code_refs:
   - packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql
   - packages/db/prisma/migrations/20261020100100_tcms_document_version_lock/migration.sql
   - packages/db/prisma/migrations/20261020200000_tcms_document_reference_release_reason/migration.sql
+  - packages/db/prisma/migrations/20261020200100_tcms_document_reference_client_scope/migration.sql
   - packages/db/src/database-error.ts
   - apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx
   - apps/web/src/components/tcms/portal/anlagen.tsx
@@ -182,6 +183,7 @@ oder ein Ereignis belegen.
 | jemand ein Dokument mit offener Verknüpfung löschen will                                                                  | Löschen abweisen mit Hinweis auf den Nachweis (Ablage) bzw. Datenbankfehler (jeder andere Pfad)                                                                                                                                                     | ein Nachweis darf nicht still verschwinden                                               |
 | jemand eine neue Version eines solchen Dokuments hochladen will                                                           | abweisen (409); auf jedem anderen Pfad Datenbankfehler (Trigger, jede Rolle)                                                                                                                                                                        | der Verweis bindet genau diese Fassung                                                   |
 | jemand ein solches Dokument in eine GwG-, Personal- oder private Unterlage umklassifizieren oder ihm Lohnbezug geben will | abweisen mit Hinweis (Ablage) bzw. Datenbankfehler (jeder andere Pfad); andere Umklassifizierung (z. B. Höherstufung nach GoBD) ohne neue Version zulässig                                                                                          | das Dokument bleibt im Rahmen, in dem es Nachweis sein darf                              |
+| jemand ein solches Dokument einem anderen Mandanten oder Tenant zuordnen oder seinen Mandanten entfernen will             | Datenbankfehler für jede Rolle (Trigger), auch beim Löschen des Mandanten (`ON DELETE SET NULL`); kein Anwendungspfad ändert den Mandanten                                                                                                          | der Verweis zeigt nur auf ein Dokument genau dieses Mandanten                            |
 | die GwG-Pflichtvernichtung ein solches Dokument erfasst (Altbestand vor RT3B-K-01)                                        | abweisen vor der Vormerkung, im DB-Claim und vor jedem Object-Store-Löschen; keine Bytes löschen                                                                                                                                                    | ein Nachweis darf nicht still verschwinden; Kollision mit § 8 Abs. 4 GwG fachlich klären |
 | der Nachweis im Tax-CMS entfernt wird                                                                                     | Verknüpfung freigeben („entfernt“)                                                                                                                                                                                                                  | Sperre endet mit dem Verweis                                                             |
 | der Nachweis heruntergeladen wird und SHA-256 oder Größe der Version weichen vom Verweis ab                               | nicht ausliefern, Hinweis                                                                                                                                                                                                                           | nie eine andere Fassung als die verwiesene ausliefern                                    |
@@ -289,7 +291,10 @@ GWG_EVIDENCE, PERSONNEL oder STAFF_PRIVATE sowie einen Re-Store mit neuer
 Version mit festem Grund ab, bevor der Speicher berührt wird; der Trigger
 `document_tcms_reference_scope_guard` (Migration `20261020100000`) weist
 denselben Wechsel, einen Lohnbezug sowie einen Onboarding- oder
-Formularbezug für jede Rolle ab. Die GwG-Pflichtvernichtung
+Formularbezug für jede Rolle ab; seit Migration `20261020200100`
+(kk-tcms-s10nach) ebenso den Wechsel von `client_id` (auf einen anderen
+Mandanten oder NULL, auch über `ON DELETE SET NULL` beim Löschen des
+Mandanten) und `tenant_id` („Mandantenwechsel gesperrt“). Die GwG-Pflichtvernichtung
 (`admin/gwg-retention/actions.ts`) prüft die Verknüpfung vor der Vormerkung
 und vor jedem Object-Store-Löschen; der Claim
 `app.assert_gwg_document_destruction_due` weist ein gebundenes Dokument unter
@@ -397,4 +402,9 @@ Datenbank belegt. Seit Migration `20261020200000` weist
 (`release_reason IS NOT NULL` vor dem Vergleich: NULL erfüllt die Bedingung
 nie, dreiwertige Logik); der Test prüft das für App-Rolle und Superuser,
 und ein Inventar verlangt, dass jede CHECK-Bedingung der TCMS-Tabellen auf
-dieselbe Falle geprüft ist.
+dieselbe Falle geprüft ist. Den gesperrten Mandanten- und Tenantwechsel
+belegen `nachweis-bindung-db.test.ts` (App- und Owner-Rolle, Nachweis und
+Meldungsanlage, frei nach der Freigabe) und
+`tcms-document-reference-guards.test.ts` (Superuser, nur `tenant_id` ohne
+Paarprüfung, Löschen des Mandanten: zuerst der Trigger, ohne ihn der
+Fremdschlüssel der Verknüpfung).

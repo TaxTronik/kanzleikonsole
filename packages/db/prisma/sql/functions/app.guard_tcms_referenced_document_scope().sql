@@ -12,6 +12,12 @@ BEGIN
   -- GwG-Pflichtvernichtung. Die Umklassifizierung der Ablage prüft vorher
   -- selbst und nennt den Grund; dieser Trigger ist die Rückfallebene für
   -- jeden Pfad (WHEN des Triggers: nur Wechsel in einen solchen Rahmen).
+  -- kk-tcms-s10nach: Ebenso bleibt ein gebundenes Dokument bei seinem
+  -- Mandanten und Tenant. Ein Wechsel von client_id (auf einen anderen
+  -- Mandanten oder NULL) oder tenant_id ließe den Verweis des Tax-CMS auf ein
+  -- Dokument eines anderen Mandanten zeigen; die Auslieferung prüft den
+  -- Mandanten, der Verweis wäre aber still gebrochen. Kein Anwendungspfad
+  -- ändert diese Spalten; gesperrt ist es für jede Rolle.
   IF EXISTS (
     SELECT 1
       FROM public.tcms_document_reference r
@@ -19,6 +25,11 @@ BEGIN
        AND r.tenant_id = OLD.tenant_id
        AND r.released_at IS NULL
   ) THEN
+    IF NEW.client_id IS DISTINCT FROM OLD.client_id
+       OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id THEN
+      RAISE EXCEPTION 'document: als Nachweis im Tax-CMS verknüpft, Mandantenwechsel gesperrt'
+        USING ERRCODE = 'restrict_violation';
+    END IF;
     RAISE EXCEPTION 'document: als Nachweis im Tax-CMS verknüpft, Umklassifizieren gesperrt'
       USING ERRCODE = 'restrict_violation';
   END IF;

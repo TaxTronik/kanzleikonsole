@@ -14,6 +14,9 @@
 //   Härtung D3: document_version_tcms_reference_guard sperrt neue Versionen
 //              gebundener Dokumente für jede Rolle (gleiche Abbildung wie die
 //              Löschsperre); Verknüpfen und neue Version serialisieren sich.
+//   kk-tcms-s10nach (int4, offener Punkt 1): derselbe Scope-Trigger sperrt
+//              den Wechsel von client_id (anderer Mandant oder NULL) und
+//              tenant_id gebundener Dokumente für jede Rolle.
 // (Schicht c, die Vernichtungsaktion: admin/gwg-retention/__tests__.)
 //
 // Datenbankfehler werden über SQLSTATE und Meldung der Datenbank geprüft
@@ -283,6 +286,105 @@ async function erwarteBindungssperre(aufruf: PromiseLike<unknown>, was: string, 
       );
     },
   );
+
+  /** Aktiver Mandant (mit GwG-Nachweis) in einem Tenant. */
+  async function weitererMandant(tenant: string, verifiedBy: string, name: string) {
+    const id = (
+      await owner.client.create({
+        data: { tenantId: tenant, kind: 'JURPERS', name, allowActive: false },
+      })
+    ).id;
+    await createVerifiedLegalEntityGwgFixture(owner, {
+      tenantId: tenant,
+      clientId: id,
+      verifiedBy,
+      registerNumber: `HRB-BINDUNG-${randomUUID()}`,
+    });
+    await owner.client.update({ where: { id }, data: { allowActive: true } });
+    return id;
+  }
+
+  it.each([
+    ['Nachweis', () => alsNachweis()],
+    ['Meldungsanlage', () => alsMeldungsanlage()],
+  ] as const)(
+    'kk-tcms-s10nach: App- und Owner-Rolle wechseln Mandant und Tenant eines gebundenen Dokuments (%s) nicht',
+    async (_art, binden) => {
+      const d = await binden();
+      const anderer = await weitererMandant(tenantId, admin, 'Seestern GmbH');
+      const fremdTenant = (
+        await owner.tenant.create({
+          data: { slug: `tcms-bindung-fremd-${randomUUID()}`, name: 'TCMS Bindung fremd' },
+        })
+      ).id;
+      const fremdAdmin = (
+        await owner.staffUser.create({
+          data: {
+            tenantId: fremdTenant,
+            email: `bindung-fremd-${randomUUID()}@example.test`,
+            fullName: 'Fritz Fremd',
+            passwordHash: 'synthetic',
+            roles: { create: [{ role: 'ADMIN' }] },
+          },
+        })
+      ).id;
+      const fremdMandant = await weitererMandant(fremdTenant, fremdAdmin, 'Fremd GmbH');
+      // Jeder Fall erreicht den Scope-Trigger: Ohne Mandant prüft
+      // 00_tenant_client_pair_integrity kein Paar, mit Mandant passt das Paar.
+      const wechsel = [
+        { clientId: anderer },
+        { clientId: null },
+        { tenantId: fremdTenant, clientId: null },
+      ];
+      for (const data of wechsel) {
+        await erwarteBindungssperre(
+          imTenant((tx) => tx.document.update({ where: { id: d.id }, data })),
+          'Mandantenwechsel gesperrt',
+          `App-Rolle ${JSON.stringify(data)}`,
+        );
+        await erwarteBindungssperre(
+          owner.document.update({ where: { id: d.id }, data }),
+          'Mandantenwechsel gesperrt',
+          `Owner-Rolle ${JSON.stringify(data)}`,
+        );
+      }
+      // Owner-Rolle (BYPASSRLS) mit einem passenden Paar im fremden Tenant: Nur
+      // die Bindung steht entgegen. Die App-Rolle sieht den fremden Mandanten
+      // nicht; dort weist schon die Paarprüfung ab.
+      await erwarteBindungssperre(
+        owner.document.update({
+          where: { id: d.id },
+          data: { tenantId: fremdTenant, clientId: fremdMandant },
+        }),
+        'Mandantenwechsel gesperrt',
+        'Owner-Rolle fremder Tenant mit Mandant',
+      );
+      expect(await owner.document.findUniqueOrThrow({ where: { id: d.id } })).toMatchObject({
+        tenantId,
+        clientId: mandant,
+      });
+    },
+  );
+
+  it('kk-tcms-s10nach: nach der Freigabe und ohne Bindung bleibt der Mandantenwechsel der Datenbank überlassen', async () => {
+    const anderer = await weitererMandant(tenantId, admin, 'Möwe GmbH');
+    const d = await alsNachweis();
+    await nachweisVerknuepfungFreigeben(
+      { tenantId, actorId: admin, actorType: 'STAFF' },
+      { verknuepfungId: d.verknuepfungId },
+      'REMOVED',
+    );
+    await imTenant((tx) =>
+      tx.document.update({ where: { id: d.id }, data: { clientId: anderer } }),
+    );
+    const frei = await dokument();
+    await owner.document.update({ where: { id: frei.id }, data: { clientId: null } });
+    expect(
+      (await owner.document.findMany({ where: { id: { in: [d.id, frei.id] } } }))
+        .map((x) => x.clientId)
+        .sort(),
+    ).toEqual([anderer, null].sort());
+  });
 
   it('Schicht b: nach der Freigabe ist die Einstufung wieder frei; ungebundene Dokumente sind nie betroffen', async () => {
     const d = await alsNachweis();

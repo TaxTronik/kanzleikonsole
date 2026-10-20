@@ -83,6 +83,8 @@ describe('toActionError — Datenbankfehler nach SQLSTATE', () => {
       'document: als Nachweis im Tax-CMS verknüpft, Löschen gesperrt',
       'document: als Nachweis im Tax-CMS verknüpft, Umklassifizieren gesperrt',
       'document: als Nachweis im Tax-CMS verknüpft, GwG-Vernichtung gesperrt',
+      // kk-tcms-s10nach: Mandanten- bzw. Tenantwechsel eines gebundenen Dokuments.
+      'document: als Nachweis im Tax-CMS verknüpft, Mandantenwechsel gesperrt',
     ]) {
       expect(toActionError(driverError('P2039', '23001', meldung)).error).toBe(
         'Dieses Dokument ist im Tax-CMS verknüpft (Nachweis oder Anlage einer Ereignismeldung); die Änderung ist gesperrt, bis die Verknüpfung frei ist.',
