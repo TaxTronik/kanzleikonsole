@@ -34,6 +34,8 @@ const DATABASE_MESSAGES: Record<DatabaseErrorKind, string> = {
   UNIQUE_VIOLATION: 'Eintrag existiert bereits (Eindeutigkeits-Konflikt).',
   FOREIGN_KEY_VIOLATION: 'Referenz auf nicht existierenden Datensatz.',
   GWG_CLIENT_INACTIVE: 'Mandant ist nicht aktiv (GwG-Prüfung ausstehend).',
+  TCMS_EVIDENCE_LOCKED:
+    'Dieses Dokument ist im Tax-CMS verknüpft (Nachweis oder Anlage einer Ereignismeldung); die Änderung ist gesperrt, bis die Verknüpfung frei ist.',
   // Andere Datenbankfehler nicht durchreichen — könnten DB-Internals leaken.
   OTHER: 'Datenbankfehler.',
 };
@@ -43,6 +45,7 @@ const EXPECTED_DATABASE_ERRORS: ReadonlySet<DatabaseErrorKind> = new Set([
   'NOT_FOUND',
   'UNIQUE_VIOLATION',
   'GWG_CLIENT_INACTIVE',
+  'TCMS_EVIDENCE_LOCKED',
 ]);
 
 const UPLOAD_REJECTION_MESSAGES: Partial<Record<UploadRejectedError['reason'], string>> = {

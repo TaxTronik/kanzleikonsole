@@ -26,7 +26,10 @@ implementation:
     einer Kontrollaufgabe hochladen, und für Anlagen einer Ereignismeldung
     im Portal (gebunden in der Transaktion der Ablage, frei erst nach
     eindeutiger Ablehnung der Meldung oder nach dem Verwerfen des
-    Ereignisses). Offen gebliebene Verknüpfungen nach
+    Ereignisses). Ein gebundenes Dokument lässt sich nicht in eine GwG-,
+    Personal- oder private Unterlage umklassifizieren und wird nicht von der
+    GwG-Pflichtvernichtung erfasst (Ablage, Aktion und Datenbank für jede
+    Rolle). Offen gebliebene Verknüpfungen nach
     unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung
     über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den
     Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort.
@@ -65,6 +68,10 @@ code_refs:
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20261019180000_tcms_document_reference/migration.sql
   - packages/db/prisma/migrations/20261019190000_tcms_document_reference_event/migration.sql
+  - apps/web/src/server/documents/retag.ts
+  - apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts
+  - packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql
+  - packages/db/src/database-error.ts
 test_refs:
   - apps/web/src/server/tcms/__tests__/nachweis-verweis-db.test.ts
   - apps/web/src/server/tcms/__tests__/bereich-c-live.test.tsx
@@ -80,6 +87,12 @@ test_refs:
   - apps/web/src/app/portal/(protected)/tcms/__tests__/portal-aktionen.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-aktionen.test.ts
   - apps/web/src/server/tcms/__tests__/bereich-d-db.test.ts
+  - apps/web/src/server/tcms/__tests__/nachweis-bindung-db.test.ts
+  - apps/web/src/server/tcms/__tests__/redteam-dokumente-db.test.ts
+  - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions-db.test.ts
+  - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts
+  - packages/db/src/__tests__/tcms-document-reference-guards.test.ts
+  - apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md
@@ -90,6 +103,7 @@ related_rules:
   - DOC-VERSION-IMMUTABILITY-001
   - DOC-RETENTION-CLASS-001
   - ACCESS-CLIENT-MODE-001
+  - GWG-RETENTION-DESTRUCTION-001
 tags:
   - tcms
   - nachweis
@@ -121,8 +135,9 @@ einer Kontrolldurchführung im Modul „Tax-CMS“ durch Kanzleipersonen, für
 Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe (Nachweise
 derselben Durchführung) hochladen oder entfernen, für Anlagen, die Kontakte
 im Mandantenportal einer Ereignismeldung beifügen, für das Verwerfen eines
-gemeldeten Ereignisses sowie für das Löschen und Versionieren von
-Dokumenten, auf die ein solcher Nachweis oder eine solche Anlage verweist.
+gemeldeten Ereignisses sowie für das Löschen, Versionieren, Umklassifizieren
+und die GwG-Pflichtvernichtung von Dokumenten, auf die ein solcher Nachweis
+oder eine solche Anlage verweist.
 Nicht erfasst ist die fachliche Frage, welche Unterlagen eine Kontrolle
 oder ein Ereignis belegen.
 
@@ -140,23 +155,25 @@ oder ein Ereignis belegen.
 
 ## Entscheidungslogik
 
-| Wenn                                                                                                                 | Dann                                                                                                                                                                                                                                                | Begründung                                                                   |
-| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| eine Datei als Nachweis hochgeladen wird                                                                             | Ablage über die Dokumentenpipeline (Journal, Virenscan, SHA-256) am Mandanten, Verweis aus der Version                                                                                                                                              | Datei und Prüfsumme gehören der kanzleikonsole                               |
-| ein Kontakt im Portal eine Anlage zu einer Kontrollaufgabe hochlädt                                                  | Ablage über die Portal-Dokumentenpipeline am Sitzungsmandanten, Verknüpfung in derselben Commit-Transaktion (Urheber: Kontakt), Verweis aus der Version                                                                                             | dieselbe Bindung wie bei Nachweisen der Kanzlei                              |
-| ein vorhandenes Dokument ausgewählt wird                                                                             | nur nicht gelöschte Dokumente dieses Mandanten mit sauberer neuester Version; keine GwG-, Personal-, Lohnunterlagen                                                                                                                                 | keine fremden, ungeprüften oder besonders geschützten Unterlagen             |
-| das Tax-CMS den Nachweis annimmt                                                                                     | offene Verknüpfung mit Nachweis-ID                                                                                                                                                                                                                  | Grundlage der Lösch- und Versionssperre                                      |
-| das Tax-CMS den Nachweis eindeutig ablehnt                                                                           | Verknüpfung freigeben („nicht angehängt“)                                                                                                                                                                                                           | kein Verweis, keine Sperre                                                   |
-| der Ausgang des Anhängens offen ist (Zeitlimit, Transport)                                                           | Verknüpfung bleibt offen                                                                                                                                                                                                                            | im Zweifel schützen statt still löschen lassen                               |
-| eine Kanzleiperson die Durchführung öffnet und eine Verknüpfung seit mindestens 5 Minuten offen ohne Nachweis-ID ist | Abgleich über „Nachweise je Dokument“: aktiver, noch nicht gebundener Nachweis dieser Durchführung → bestätigen; nur entfernt → freigeben („entfernt“); keiner → freigeben („nicht angehängt“); Lesefehler → unverändert                            | der Dienst führt den Nachweis oder nicht; die Sperre folgt ihm, ohne Annahme |
-| ein Kontakt im Portal einer Ereignismeldung Anlagen beifügt                                                          | Ablage über die Portal-Dokumentenpipeline am Sitzungsmandanten, Verknüpfung mit Bezug „Ereignis“ in derselben Commit-Transaktion (Urheber: Kontakt); scheitert eine weitere Datei, Freigabe der schon gebundenen („nicht angehängt“), keine Meldung | die Meldung verweist nur auf Dokument-ID und SHA-256                         |
-| das Tax-CMS die Meldung annimmt                                                                                      | Ereignis-ID an allen Anlagen der Meldung (höchstens einmal)                                                                                                                                                                                         | Grundlage der Freigabe beim Verwerfen                                        |
-| das Tax-CMS die Meldung eindeutig ablehnt (4xx, offener Breaker)                                                     | Anlagen freigeben („nicht angehängt“); bei offenem Ausgang bleiben sie gebunden                                                                                                                                                                     | kein Verweis, keine Sperre; im Zweifel schützen                              |
-| das Verwerfen eines Ereignisses bestätigt wird und der Dienst dasselbe Ereignis als verworfen meldet                 | Anlagen dieses Ereignisses des gebundenen Mandanten freigeben („verworfen“); andere Antwort → Sperre bleibt                                                                                                                                         | die Meldung verweist nicht mehr auf die Dokumente                            |
-| jemand ein Dokument mit offener Verknüpfung löschen will                                                             | Löschen abweisen mit Hinweis auf den Nachweis (Ablage) bzw. Datenbankfehler (jeder andere Pfad)                                                                                                                                                     | ein Nachweis darf nicht still verschwinden                                   |
-| jemand eine neue Version eines solchen Dokuments hochladen will                                                      | abweisen (409)                                                                                                                                                                                                                                      | der Verweis bindet genau diese Fassung                                       |
-| der Nachweis im Tax-CMS entfernt wird                                                                                | Verknüpfung freigeben („entfernt“)                                                                                                                                                                                                                  | Sperre endet mit dem Verweis                                                 |
-| der Nachweis heruntergeladen wird und SHA-256 oder Größe der Version weichen vom Verweis ab                          | nicht ausliefern, Hinweis                                                                                                                                                                                                                           | nie eine andere Fassung als die verwiesene ausliefern                        |
+| Wenn                                                                                                                      | Dann                                                                                                                                                                                                                                                | Begründung                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| eine Datei als Nachweis hochgeladen wird                                                                                  | Ablage über die Dokumentenpipeline (Journal, Virenscan, SHA-256) am Mandanten, Verweis aus der Version                                                                                                                                              | Datei und Prüfsumme gehören der kanzleikonsole                                           |
+| ein Kontakt im Portal eine Anlage zu einer Kontrollaufgabe hochlädt                                                       | Ablage über die Portal-Dokumentenpipeline am Sitzungsmandanten, Verknüpfung in derselben Commit-Transaktion (Urheber: Kontakt), Verweis aus der Version                                                                                             | dieselbe Bindung wie bei Nachweisen der Kanzlei                                          |
+| ein vorhandenes Dokument ausgewählt wird                                                                                  | nur nicht gelöschte Dokumente dieses Mandanten mit sauberer neuester Version; keine GwG-, Personal-, Lohnunterlagen                                                                                                                                 | keine fremden, ungeprüften oder besonders geschützten Unterlagen                         |
+| das Tax-CMS den Nachweis annimmt                                                                                          | offene Verknüpfung mit Nachweis-ID                                                                                                                                                                                                                  | Grundlage der Lösch- und Versionssperre                                                  |
+| das Tax-CMS den Nachweis eindeutig ablehnt                                                                                | Verknüpfung freigeben („nicht angehängt“)                                                                                                                                                                                                           | kein Verweis, keine Sperre                                                               |
+| der Ausgang des Anhängens offen ist (Zeitlimit, Transport)                                                                | Verknüpfung bleibt offen                                                                                                                                                                                                                            | im Zweifel schützen statt still löschen lassen                                           |
+| eine Kanzleiperson die Durchführung öffnet und eine Verknüpfung seit mindestens 5 Minuten offen ohne Nachweis-ID ist      | Abgleich über „Nachweise je Dokument“: aktiver, noch nicht gebundener Nachweis dieser Durchführung → bestätigen; nur entfernt → freigeben („entfernt“); keiner → freigeben („nicht angehängt“); Lesefehler → unverändert                            | der Dienst führt den Nachweis oder nicht; die Sperre folgt ihm, ohne Annahme             |
+| ein Kontakt im Portal einer Ereignismeldung Anlagen beifügt                                                               | Ablage über die Portal-Dokumentenpipeline am Sitzungsmandanten, Verknüpfung mit Bezug „Ereignis“ in derselben Commit-Transaktion (Urheber: Kontakt); scheitert eine weitere Datei, Freigabe der schon gebundenen („nicht angehängt“), keine Meldung | die Meldung verweist nur auf Dokument-ID und SHA-256                                     |
+| das Tax-CMS die Meldung annimmt                                                                                           | Ereignis-ID an allen Anlagen der Meldung (höchstens einmal)                                                                                                                                                                                         | Grundlage der Freigabe beim Verwerfen                                                    |
+| das Tax-CMS die Meldung eindeutig ablehnt (4xx, offener Breaker)                                                          | Anlagen freigeben („nicht angehängt“); bei offenem Ausgang bleiben sie gebunden                                                                                                                                                                     | kein Verweis, keine Sperre; im Zweifel schützen                                          |
+| das Verwerfen eines Ereignisses bestätigt wird und der Dienst dasselbe Ereignis als verworfen meldet                      | Anlagen dieses Ereignisses des gebundenen Mandanten freigeben („verworfen“); andere Antwort → Sperre bleibt                                                                                                                                         | die Meldung verweist nicht mehr auf die Dokumente                                        |
+| jemand ein Dokument mit offener Verknüpfung löschen will                                                                  | Löschen abweisen mit Hinweis auf den Nachweis (Ablage) bzw. Datenbankfehler (jeder andere Pfad)                                                                                                                                                     | ein Nachweis darf nicht still verschwinden                                               |
+| jemand eine neue Version eines solchen Dokuments hochladen will                                                           | abweisen (409)                                                                                                                                                                                                                                      | der Verweis bindet genau diese Fassung                                                   |
+| jemand ein solches Dokument in eine GwG-, Personal- oder private Unterlage umklassifizieren oder ihm Lohnbezug geben will | abweisen mit Hinweis (Ablage) bzw. Datenbankfehler (jeder andere Pfad); andere Umklassifizierung (z. B. Höherstufung nach GoBD) ohne neue Version zulässig                                                                                          | das Dokument bleibt im Rahmen, in dem es Nachweis sein darf                              |
+| die GwG-Pflichtvernichtung ein solches Dokument erfasst (Altbestand vor RT3B-K-01)                                        | abweisen vor der Vormerkung, im DB-Claim und vor jedem Object-Store-Löschen; keine Bytes löschen                                                                                                                                                    | ein Nachweis darf nicht still verschwinden; Kollision mit § 8 Abs. 4 GwG fachlich klären |
+| der Nachweis im Tax-CMS entfernt wird                                                                                     | Verknüpfung freigeben („entfernt“)                                                                                                                                                                                                                  | Sperre endet mit dem Verweis                                                             |
+| der Nachweis heruntergeladen wird und SHA-256 oder Größe der Version weichen vom Verweis ab                               | nicht ausliefern, Hinweis                                                                                                                                                                                                                           | nie eine andere Fassung als die verwiesene ausliefern                                    |
 
 ## Ausnahmen und Grenzfälle
 
@@ -248,6 +265,21 @@ Ereignis ohne Durchführung und ohne Nachweis-ID) und lässt „verworfen“ nur
 für Ereignisse, „entfernt“ nur für Durchführungen zu; der Trigger hält den
 Bezug unveränderlich und setzt die Ereignis-ID höchstens einmal. Löschsperre,
 RLS und Rechte gelten für beide Bezüge unverändert.
+Seit dem Angriffsdurchlauf 3b (RT3B-K-01) hält die Bindung das Dokument auch
+in seinem Rahmen: Die Umklassifizierung der Ablage (`documents/retag.ts`)
+prüft nach der Zeilensperre die Verknüpfung und weist den Wechsel nach
+GWG_EVIDENCE, PERSONNEL oder STAFF_PRIVATE sowie einen Re-Store mit neuer
+Version mit festem Grund ab, bevor der Speicher berührt wird; der Trigger
+`document_tcms_reference_scope_guard` (Migration `20261020100000`) weist
+denselben Wechsel, einen Lohnbezug sowie einen Onboarding- oder
+Formularbezug für jede Rolle ab. Die GwG-Pflichtvernichtung
+(`admin/gwg-retention/actions.ts`) prüft die Verknüpfung vor der Vormerkung
+und vor jedem Object-Store-Löschen; der Claim
+`app.assert_gwg_document_destruction_due` weist ein gebundenes Dokument unter
+der Dokumentsperre ab, vor Klassifikation und Frist, und damit auch
+`app.destroy_gwg_document_versions`. Alle diese Sperren meldet die Datenbank
+mit SQLSTATE 23001 und dem Marker „als Nachweis im Tax-CMS verknüpft“
+(`database-error.ts`: `TCMS_EVIDENCE_LOCKED`).
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -257,7 +289,10 @@ Hintergrund. Anlagen einer
 Ereignismeldung mit offenem Ausgang der Meldung bleiben ohne Abgleich
 gebunden (siehe Ausnahmen). Hart gelöschte
 Dokumente verhindert der Fremdschlüssel; Pfade mit eigener Vernichtung
-(GwG) sind von der Auswahl ausgeschlossen.
+(GwG) sind von der Auswahl ausgeschlossen, und ein gebundenes Dokument kann
+nicht in sie wechseln. Ein vor RT3B-K-01 zum GwG-Beleg umklassifiziertes,
+noch gebundenes Dokument (Altbestand) bleibt gebunden; die
+GwG-Pflichtvernichtung weist es ab, bis die Verknüpfung frei ist.
 
 ## Fachliche Prüffragen
 
@@ -270,6 +305,9 @@ Dokumente verhindert der Fremdschlüssel; Pfade mit eigener Vernichtung
   nötig)?
 - Sollen Anlagen eines abgeschlossenen (nicht verworfenen) Ereignisses
   dauerhaft gesperrt bleiben, oder endet die Bindung mit einer Frist?
+- Wie ist ein GwG-Beleg zu behandeln, der (als Altbestand) zugleich als
+  Nachweis gebunden ist und dessen Vernichtungspflicht nach § 8 Abs. 4 GwG
+  greift? Heute gewinnt die Bindung, bis der Nachweis entfernt ist.
 
 ## Technische Nachweise
 
@@ -311,3 +349,12 @@ und Owner-Rolle und die Freigabe nur dieses Ereignisses dieses Mandanten,
 `bereich-d-db.test.ts` die Bindung im Kontext des Kontakts unter RLS. Die
 Datenbanktests prüfen Meldungen der Datenbank ohne den Codeausschnitt, den
 Prisma an Fehler hängt (er enthält sonst das erwartete Muster).
+Für RT3B-K-01 belegen `nachweis-bindung-db.test.ts` (App- und Owner-Rolle,
+Umklassifizierung der Ablage mit Grund ohne Speicherzugriff, Claim und
+DB-Vernichtung, nebenläufiges Verknüpfen und Umklassifizieren),
+`redteam-dokumente-db.test.ts` (Angriffe K-01a bis K-01c),
+`retag-race.test.ts` (kein Re-Store mit neuer Version, keine Bytes gelesen),
+`actions-db.test.ts` und `actions.test.ts` der GwG-Vernichtung (Abweisung
+ohne Vormerkung, Audit und Bytes; Prüfung vor jedem Object-Store-Löschen)
+sowie `tcms-document-reference-guards.test.ts` (Altbestand, Superuser,
+Einordnung über SQLSTATE und Marker).

@@ -69,7 +69,15 @@ Vernichtungsstufen:
 1. **Datei-Belege** (`confirmGwgDeletionAction`): prüft serverseitig
    Klassifikation, gesetzliche Frist und Object-Lock-Ablauf, vernichtet
    dann die Bytes aller Versionen im Object-Store und löscht deren
-   `document_version`-Zeilen. Der `document`-Skelettdatensatz bleibt mit
+   `document_version`-Zeilen. Reihenfolge: Vormerkung und DB-Claim
+   (`app.assert_gwg_document_destruction_due`) in einer Transaktion, Commit,
+   erst danach die Bytes, zuletzt der DB-Abschluss. Ein im Tax-CMS verknüpftes
+   Dokument (Nachweis einer Kontrolldurchführung oder Anlage einer
+   Ereignismeldung, TCMS-NACHWEIS-001) wird nicht vernichtet: Die Aktion
+   prüft die Verknüpfung vor der Vormerkung und vor jedem Object-Store-Löschen,
+   der Claim unter der Dokumentsperre (RT3B-K-01). Ein gebundenes Dokument
+   kann seit TCMS Stufe 3 nicht mehr zum GwG-Beleg werden; betroffen ist nur
+   Altbestand, der vor der Behebung umklassifiziert wurde. Der `document`-Skelettdatensatz bleibt mit
    `deletedAt`/`gwgDestroyedAt` als Abschlussvermerk erhalten; auditiert wird
    als `gwg.evidence.destroy` (der Vernichtungsnachweis bleibt dauerhaft in
    der insert-only Audit-Chain).

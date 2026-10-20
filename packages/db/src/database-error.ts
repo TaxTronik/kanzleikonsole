@@ -21,6 +21,11 @@ export type DatabaseErrorKind =
   | 'FOREIGN_KEY_VIOLATION'
   /** GwG-Schranke: Dokument/Anforderung/Rechnung für nicht aktiven Mandanten. */
   | 'GWG_CLIENT_INACTIVE'
+  /**
+   * TCMS-NACHWEIS-001: Dokument im Tax-CMS verknüpft (Löschen, Umklassifizieren,
+   * neue Version, GwG-Vernichtung gesperrt).
+   */
+  | 'TCMS_EVIDENCE_LOCKED'
   | 'OTHER';
 
 export interface DatabaseErrorInfo {
@@ -35,13 +40,22 @@ export interface DatabaseErrorInfo {
 /**
  * Bekannte Trigger-Ablehnungen: SQLSTATE plus Marker aus der Trigger-Meldung.
  * Der Marker ist der stabile Vertrag der Migrationen (init, iter2, iter5,
- * iter88: `app.enforce_client_active_for_{document,request,invoice}`).
+ * iter88: `app.enforce_client_active_for_{document,request,invoice}`;
+ * TCMS-NACHWEIS-001: `app.guard_tcms_referenced_document*` und der Claim
+ * `app.assert_gwg_document_destruction_due`, restrict_violation).
  */
 const KNOWN_TRIGGER_REJECTIONS: ReadonlyArray<{
   kind: DatabaseErrorKind;
   sqlStates: readonly string[];
   marker: RegExp;
-}> = [{ kind: 'GWG_CLIENT_INACTIVE', sqlStates: ['23514'], marker: /\(GwG-Schranke\)/ }];
+}> = [
+  { kind: 'GWG_CLIENT_INACTIVE', sqlStates: ['23514'], marker: /\(GwG-Schranke\)/ },
+  {
+    kind: 'TCMS_EVIDENCE_LOCKED',
+    sqlStates: ['23001'],
+    marker: /als Nachweis im Tax-CMS verknüpft/,
+  },
+];
 
 function stringOrStringList(value: unknown): string | string[] | undefined {
   if (typeof value === 'string') return value;

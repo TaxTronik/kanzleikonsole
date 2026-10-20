@@ -78,6 +78,25 @@ describe('toActionError — Datenbankfehler nach SQLSTATE', () => {
     expect(log.warn).toHaveBeenCalledOnce();
   });
 
+  it('ordnet die Tax-CMS-Sperre (23001 + Marker, TCMS-NACHWEIS-001) mit fester Meldung ein', () => {
+    for (const meldung of [
+      'document: als Nachweis im Tax-CMS verknüpft, Löschen gesperrt',
+      'document: als Nachweis im Tax-CMS verknüpft, Umklassifizieren gesperrt',
+      'document: als Nachweis im Tax-CMS verknüpft, GwG-Vernichtung gesperrt',
+    ]) {
+      expect(toActionError(driverError('P2039', '23001', meldung)).error).toBe(
+        'Dieses Dokument ist im Tax-CMS verknüpft (Nachweis oder Anlage einer Ereignismeldung); die Änderung ist gesperrt, bis die Verknüpfung frei ist.',
+      );
+    }
+    // Ohne Marker bzw. mit anderem SQLSTATE: keine Tax-CMS-Meldung.
+    expect(toActionError(driverError('P2039', '23001', 'violates RESTRICT')).error).toBe(
+      'Datenbankfehler.',
+    );
+    expect(
+      toActionError(driverError('P2039', '23514', 'als Nachweis im Tax-CMS verknüpft')).error,
+    ).toBe('Datenbankfehler.');
+  });
+
   it('zeigt eine andere CHECK-Verletzung nicht als GwG-Schranke und ohne Rohtext', () => {
     const result = toActionError(
       driverError('P2039', '23514', 'new row violates check constraint "client_name_check"'),

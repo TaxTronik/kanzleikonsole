@@ -346,7 +346,10 @@ gesperrte zeigen den Grund. Ein früherer Stichtag zeigt nur an.
   Stimmt die gespeicherte Datei nicht mehr mit dem Nachweis überein, wird sie
   nicht ausgeliefert („Abweichung zur Ablage – nicht abrufbar“).
 - **Schutz:** Solange ein Dokument als Nachweis verknüpft ist, lässt es sich
-  in der Ablage nicht löschen und keine neue Version hochladen. Entfernen Sie
+  in der Ablage nicht löschen und keine neue Version hochladen. Es lässt sich
+  auch nicht in eine GwG-, Personal- oder private Mitarbeiterunterlage
+  umklassifizieren, und die GwG-Pflichtvernichtung erfasst es nicht. Eine
+  Höherstufung, z. B. nach GoBD, bleibt möglich. Entfernen Sie
   zuerst den Nachweis in der Durchführung (nur vor dem Einreichen möglich).
   Dasselbe gilt für Anlagen einer Ereignismeldung aus dem Portal (siehe
   „Ereignis melden“).
@@ -387,6 +390,7 @@ Mandanten.
 | Entwurf gespeichert, aber noch nicht eingereicht: …            | Die genannten Punkte fehlen noch. Ergänzen und erneut einreichen.                                                                                      |
 | … in der Dokumentablage gespeichert, aber nicht als Nachweis … | Die Datei liegt in der Ablage; als Nachweis später über „Vorhandenes Dokument“ erneut anhängen.                                                        |
 | Dieses Dokument ist als Nachweis … verknüpft                   | Erst den Nachweis in der Durchführung entfernen, dann löschen bzw. eine neue Version hochladen.                                                        |
+| Dieses Dokument ist im Tax-CMS verknüpft … (Umklassifizierung) | Für GwG-, Personal- und private Unterlagen gesperrt. Erst den Nachweis entfernen bzw. die Meldung verwerfen; sonst eine andere Klasse wählen.          |
 | Noch nicht möglich: … (am Knopf „Weiter zu …“)                 | Der nächste Schritt der Feststellung ist gesperrt, z. B. weil die §-153-Würdigung oder eine Maßnahme fehlt. Erst die genannte Voraussetzung erledigen. |
 | Die Feststellung wurde zwischenzeitlich geändert.              | Jemand hat den Status gleichzeitig geändert. Seite neu laden.                                                                                          |
 

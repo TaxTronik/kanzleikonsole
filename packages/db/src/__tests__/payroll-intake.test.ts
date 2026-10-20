@@ -5,6 +5,7 @@ import { PrismaClient } from '../prisma-client';
 import type { Prisma } from '@prisma/client';
 import { createPostgresAdapter, optionalDatabaseUrl } from '../prisma-adapter';
 import { createVerifiedLegalEntityGwgFixture } from './gwg-test-fixture';
+import { databaseErrorInfo } from '../database-error';
 const owner = new PrismaClient({
   adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_URL)),
 });
@@ -193,11 +194,16 @@ describe('PAYROLL-INTAKE-001 live restricted app role and capability boundary', 
     expect(await guest((tx) => tx.client.findMany())).toEqual([]);
     expect(await guest((tx) => tx.document.findMany())).toEqual([]);
     expect(await guest((tx) => tx.payrollIntake.findMany())).toEqual([]);
-    await expect(
-      guest(
-        (tx) => tx.$queryRaw`SELECT app.payroll_capture_revision(${intakeId}::uuid,NULL,'STAFF')`,
-      ),
-    ).rejects.toThrow();
+    // RT3B-K-02: nicht per $queryRaw – Prisma 7 kann void nicht lesen, die
+    // Erwartung bestünde dann auch ohne Rechteprüfung. Erwartet ist die
+    // fehlende EXECUTE-Berechtigung der App-Rolle (42501).
+    const capture = await guest(
+      (tx) => tx.$executeRaw`SELECT app.payroll_capture_revision(${intakeId}::uuid,NULL,'STAFF')`,
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(databaseErrorInfo(capture)?.sqlState).toBe('42501');
     await expect(
       context(
         tenantId,

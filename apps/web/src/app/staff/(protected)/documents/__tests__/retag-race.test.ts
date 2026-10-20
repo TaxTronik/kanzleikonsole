@@ -17,6 +17,8 @@ const m = vi.hoisted(() => {
     assertClientAccessTx: vi.fn(),
     revalidatePath: vi.fn(),
     logError: vi.fn(),
+    /** RT3B-K-01: offene Verknüpfung des Tax-CMS (nachweis-bindung-db.test.ts belegt die echte Prüfung). */
+    gebunden: vi.fn(),
     txInitial: {
       document: { findFirst: vi.fn() },
       documentType: { findFirst: vi.fn() },
@@ -71,6 +73,10 @@ vi.mock('@/server/actions/staff-action', async () => ({
   ActionError: (await import('@/server/actions/action-error')).ActionError,
 }));
 vi.mock('@/server/logger', () => ({ log: { error: m.logError, warn: vi.fn() } }));
+vi.mock('@/server/tcms/durchfuehrung/sperre', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  istNachweisDokumentTx: m.gebunden,
+}));
 
 import type { StaffCtx } from '@/server/actions/staff-action';
 import { retagDocument } from '@/server/documents/retag';
@@ -146,9 +152,29 @@ beforeEach(() => {
   m.txCommit.documentVersion.create.mockResolvedValue({ id: 'new-db-version' });
   m.txCommit.document.update.mockResolvedValue({});
   m.evidenceRecord.mockResolvedValue({});
+  m.gebunden.mockResolvedValue(false);
 });
 
 describe('retagDocument concurrency and immutable history', () => {
+  it('RT3B-K-01: im Tax-CMS gebunden – kein Re-Store mit neuer Version, keine Bytes gelesen', async () => {
+    m.txInitial.document.findFirst.mockResolvedValue(initialDocument(true));
+    m.txCommit.documentVersion.findFirst.mockResolvedValue(matchingLatest(true));
+    m.gebunden.mockResolvedValue(true);
+
+    const result = await retagDocument(STAFF, DOCUMENT_ID, { classification: 'GOBD_INVOICE' });
+
+    expect(result).toEqual({
+      ok: false,
+      error: (await import('@/server/tcms/durchfuehrung/sperre'))
+        .TCMS_NACHWEIS_UMKLASSIFIZIERUNGSSPERRE,
+    });
+    expect(m.gebunden).toHaveBeenCalledWith(m.txCommit, DOCUMENT_ID);
+    expect(m.fetchVerifiedObjectBytes).not.toHaveBeenCalled();
+    expect(m.prepare).not.toHaveBeenCalled();
+    expect(m.txCommit.documentVersion.create).not.toHaveBeenCalled();
+    expect(m.txCommit.document.update).not.toHaveBeenCalled();
+  });
+
   it('aborts on latest-version drift before any DB mutation or object write', async () => {
     m.txInitial.document.findFirst.mockResolvedValue(initialDocument(true));
     m.txCommit.documentVersion.findFirst.mockResolvedValue({

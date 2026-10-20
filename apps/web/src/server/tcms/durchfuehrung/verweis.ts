@@ -47,9 +47,10 @@ import { ActionError } from '@/server/actions/action-error';
 import { isDocumentVersionReady } from '@/server/documents/delivery-readiness';
 import { filenameWithExtension } from '@/server/storage/preview-mime';
 import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
+import { NACHWEIS_AUSGESCHLOSSEN } from './sperre';
 
-/** Klassifikationen, die nie Nachweis werden (eigene Vernichtungs- bzw. Zugriffsregeln). */
-export const NACHWEIS_AUSGESCHLOSSEN = ['GWG_EVIDENCE', 'PERSONNEL', 'STAFF_PRIVATE'] as const;
+// Seit RT3B-K-01 in sperre.ts (auch die Umklassifizierung der Ablage braucht sie).
+export { NACHWEIS_AUSGESCHLOSSEN };
 
 const MIME = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
 

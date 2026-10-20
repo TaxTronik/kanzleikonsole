@@ -3224,7 +3224,8 @@
         "packages/db/prisma/migrations/20260831101000_gwg_person_links/migration.sql",
         "apps/web/src/server/gwg/identity-document-links.ts",
         "packages/gwg/src/retention.ts",
-        "packages/gwg/src/review-queue.ts"
+        "packages/gwg/src/review-queue.ts",
+        "packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -3238,7 +3239,9 @@
         "packages/gwg/src/__tests__/retention.test.ts",
         "packages/gwg/src/__tests__/review-queue.test.ts",
         "packages/db/src/__tests__/gwg-retention-count.test.ts",
-        "packages/db/src/__tests__/gwg-retention-visibility.test.ts"
+        "packages/db/src/__tests__/gwg-retention-visibility.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions-db.test.ts",
+        "packages/db/src/__tests__/tcms-document-reference-guards.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md", "docs/anwenderdoku/dokumente.md"],
       "related_rules": [
@@ -3246,7 +3249,8 @@
         "GWG-IDENTIFICATION-EVIDENCE-001",
         "GWG-BENEFICIAL-OWNERS-001",
         "GWG-SELF-ONBOARDING-001",
-        "GWG-PERSON-LINKS-001"
+        "GWG-PERSON-LINKS-001",
+        "TCMS-NACHWEIS-001"
       ],
       "tags": ["aufbewahrung", "vernichtung", "zehnjahresgrenze", "object-lock"],
       "path": "docs/fachkatalog/regeln/gwg/gwg-retention-destruction-001-aufbewahrung-und-vernichtung.md",
@@ -6338,7 +6342,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe hochladen, und für Anlagen einer Ereignismeldung im Portal (gebunden in der Transaktion der Ablage, frei erst nach eindeutiger Ablehnung der Meldung oder nach dem Verwerfen des Ereignisses). Offen gebliebene Verknüpfungen nach unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort."
+        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe hochladen, und für Anlagen einer Ereignismeldung im Portal (gebunden in der Transaktion der Ablage, frei erst nach eindeutiger Ablehnung der Meldung oder nach dem Verwerfen des Ereignisses). Ein gebundenes Dokument lässt sich nicht in eine GwG-, Personal- oder private Unterlage umklassifizieren und wird nicht von der GwG-Pflichtvernichtung erfasst (Ablage, Aktion und Datenbank für jede Rolle). Offen gebliebene Verknüpfungen nach unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort."
       },
       "sources": [
         {
@@ -6381,7 +6385,11 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/ereignisse/actions.ts",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20261019180000_tcms_document_reference/migration.sql",
-        "packages/db/prisma/migrations/20261019190000_tcms_document_reference_event/migration.sql"
+        "packages/db/prisma/migrations/20261019190000_tcms_document_reference_event/migration.sql",
+        "apps/web/src/server/documents/retag.ts",
+        "apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts",
+        "packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql",
+        "packages/db/src/database-error.ts"
       ],
       "test_refs": [
         "apps/web/src/server/tcms/__tests__/nachweis-verweis-db.test.ts",
@@ -6397,7 +6405,13 @@
         "apps/web/src/server/tcms/__tests__/portal-meldung.test.ts",
         "apps/web/src/app/portal/(protected)/tcms/__tests__/portal-aktionen.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-aktionen.test.ts",
-        "apps/web/src/server/tcms/__tests__/bereich-d-db.test.ts"
+        "apps/web/src/server/tcms/__tests__/bereich-d-db.test.ts",
+        "apps/web/src/server/tcms/__tests__/nachweis-bindung-db.test.ts",
+        "apps/web/src/server/tcms/__tests__/redteam-dokumente-db.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions-db.test.ts",
+        "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts",
+        "packages/db/src/__tests__/tcms-document-reference-guards.test.ts",
+        "apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
       "related_rules": [
@@ -6406,7 +6420,8 @@
         "DOC-UPLOAD-JOURNAL-001",
         "DOC-VERSION-IMMUTABILITY-001",
         "DOC-RETENTION-CLASS-001",
-        "ACCESS-CLIENT-MODE-001"
+        "ACCESS-CLIENT-MODE-001",
+        "GWG-RETENTION-DESTRUCTION-001"
       ],
       "tags": ["tcms", "nachweis", "dokumente", "loeschsperre"],
       "path": "docs/fachkatalog/regeln/subsumtion-und-tcms/tcms-nachweis-001-dokumentbindung.md",

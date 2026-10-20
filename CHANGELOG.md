@@ -1142,6 +1142,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[GwG]** Die GwG-Pflichtvernichtung von Datei-Belegen ist wieder
+  ausführbar: Der DB-Claim liefert `void`, das Prisma 7 nicht lesen konnte;
+  jede Vernichtung (und damit die DSGVO-Anonymisierung, die vernichtete Belege
+  voraussetzt) scheiterte am Claim. Ein Guard verbietet solche Lesezugriffe im
+  ganzen Repository (RT3B-K-02, GWG-RETENTION-DESTRUCTION-001).
+- **[TCMS]** Ein als Nachweis oder Meldungsanlage im Tax-CMS verknüpftes
+  Dokument lässt sich nicht mehr zum GwG-, Personal- oder privaten Dokument
+  umklassifizieren (Ablage und Datenbank, jede Rolle), und die
+  GwG-Pflichtvernichtung löscht seine Bytes nicht: Aktion und DB-Claim weisen
+  es vor jedem Object-Store-Löschen ab (RT3B-K-01, TCMS-NACHWEIS-001,
+  GWG-RETENTION-DESTRUCTION-001).
 - **[TCMS]** Der Zustell-Worker versendet keine Tax-CMS-Mitteilung mehr, die der
   Dienst mit 409 als abgeschlossen meldet; ein noch wartender Auftrag endet ohne
   Inhalt und Code (MAIL-OUTBOX-001).

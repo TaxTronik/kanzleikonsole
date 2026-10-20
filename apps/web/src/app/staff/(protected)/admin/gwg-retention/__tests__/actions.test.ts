@@ -6,12 +6,18 @@ const m = vi.hoisted(() => ({
   deleteObjectVersion: vi.fn(),
   evidenceRecord: vi.fn(),
   revalidatePath: vi.fn(),
+  /** RT3B-K-01: offene Verknüpfung des Tax-CMS (je Aufruf von istNachweisDokumentTx). */
+  gebunden: vi.fn(),
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
 vi.mock('@taxtronik/storage', () => ({ deleteObjectVersion: m.deleteObjectVersion }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceRecord } }));
+vi.mock('@/server/tcms/durchfuehrung/sperre', async (original) => ({
+  ...(await original<Record<string, unknown>>()),
+  istNachweisDokumentTx: m.gebunden,
+}));
 vi.mock('@/server/actions/staff-action', async () => ({
   staffActionGuard: m.staffActionGuard,
   // K-02: echter mehrphasiger Ablauf über dem Gate-Mock.
@@ -22,6 +28,8 @@ vi.mock('@/server/actions/staff-action', async () => ({
   ).createActionRunner(m.staffActionGuard),
 }));
 
+import { Prisma } from '@taxtronik/db/prisma-client';
+import { TCMS_NACHWEIS_VERNICHTUNGSSPERRE } from '@/server/tcms/durchfuehrung/sperre';
 import { confirmGwgCheckDeletionAction, confirmGwgDeletionAction } from '../actions';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -85,6 +93,7 @@ beforeEach(() => {
   });
   m.evidenceRecord.mockResolvedValue({});
   m.deleteObjectVersion.mockResolvedValue(undefined);
+  m.gebunden.mockResolvedValue(false);
 });
 
 describe('confirmGwgDeletionAction', () => {
@@ -189,6 +198,120 @@ describe('confirmGwgDeletionAction', () => {
       where: { id: DOCUMENT_ID },
       select: { gwgDestroyedAt: true },
     });
+  });
+
+  it('RT3B-K-02: liest den void-Claim als Text (Prisma 7 kann void nicht deserialisieren)', async () => {
+    const tx = makeTx();
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    expect(await confirmGwgDeletionAction({ documentId: DOCUMENT_ID })).toEqual({ ok: true });
+
+    const claim = tx.$queryRaw.mock.calls[0]?.[0] as { sql: string; values: unknown[] };
+    expect(claim.sql).toMatch(/app\.assert_gwg_document_destruction_due\(\?::uuid\)::text/);
+    expect(claim.values).toEqual([DOCUMENT_ID]);
+  });
+
+  it('RT3B-K-01: weist ein im Tax-CMS gebundenes Dokument vor Vormerkung, Claim und Bytes ab', async () => {
+    const tx = makeTx();
+    m.gebunden.mockResolvedValueOnce(true);
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    expect(await confirmGwgDeletionAction({ documentId: DOCUMENT_ID })).toEqual({
+      ok: false,
+      error: TCMS_NACHWEIS_VERNICHTUNGSSPERRE,
+    });
+    expect(m.gebunden).toHaveBeenCalledWith(tx, DOCUMENT_ID);
+    expect(tx.document.findFirst).not.toHaveBeenCalled();
+    expect(tx.$executeRaw).not.toHaveBeenCalled();
+    expect(tx.document.updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+  });
+
+  it('RT3B-K-01: nennt die Bindung, wenn der DB-Claim sie meldet (23001 + Marker), ohne Bytes', async () => {
+    const tx = makeTx();
+    tx.$queryRaw.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError('Raw query failed. Code: `23001`.', {
+        code: 'P2010',
+        clientVersion: 'test',
+        meta: {
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: {
+              originalCode: '23001',
+              originalMessage:
+                'document: als Nachweis im Tax-CMS verknüpft, GwG-Vernichtung gesperrt',
+              kind: 'postgres',
+            },
+          },
+        },
+      }),
+    );
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    expect(await confirmGwgDeletionAction({ documentId: DOCUMENT_ID })).toEqual({
+      ok: false,
+      error: TCMS_NACHWEIS_VERNICHTUNGSSPERRE,
+    });
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+  });
+
+  it('RT3B-K-01: prüft die Bindung vor jedem Object-Store-Löschen und bricht ohne weitere Bytes ab', async () => {
+    const tx = makeTx();
+    tx.document.findFirst.mockReset();
+    tx.document.findFirst
+      .mockResolvedValueOnce({
+        id: DOCUMENT_ID,
+        title: 'Ausweis.pdf',
+        clientId: 'client-1',
+        createdAt: new Date('2010-01-01T00:00:00Z'),
+        retentionUntil: new Date('2015-01-01T00:00:00Z'),
+        gwgDestructionRequestedAt: null,
+        client: { mandateEndedAt: new Date('2010-01-01T00:00:00Z') },
+        gwgIdDocuments: [],
+        gwgOnboardingInvite: null,
+        versions: [],
+      })
+      .mockResolvedValueOnce({
+        versions: [
+          { id: 'v1', storageBucket: 'gwg', storageKey: 'tenant/doc/v1', storageVersionId: 's1' },
+          { id: 'v2', storageBucket: 'gwg', storageKey: 'tenant/doc/v2', storageVersionId: 's2' },
+        ],
+      });
+    // vor der Vormerkung frei, vor der ersten Version frei, vor der zweiten gebunden
+    m.gebunden.mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValue(true);
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    expect(await confirmGwgDeletionAction({ documentId: DOCUMENT_ID })).toEqual({
+      ok: false,
+      error: TCMS_NACHWEIS_VERNICHTUNGSSPERRE,
+    });
+    expect(m.gebunden).toHaveBeenCalledTimes(3);
+    expect(m.deleteObjectVersion).toHaveBeenCalledTimes(1);
+    expect(m.deleteObjectVersion).toHaveBeenCalledWith('gwg', 'tenant/doc/v1', 's1', {
+      bypassGovernanceRetention: true,
+    });
+    // Jede Prüfung liegt vor dem Löschen, das ihr folgt; danach kein Abschluss.
+    expect(m.gebunden.mock.invocationCallOrder[1]).toBeLessThan(
+      m.deleteObjectVersion.mock.invocationCallOrder[0]!,
+    );
+    expect(tx.document.updateMany).toHaveBeenLastCalledWith({
+      where: { id: DOCUMENT_ID, gwgDestructionRequestedAt: { not: null }, gwgDestroyedAt: null },
+      data: {
+        gwgDestructionError:
+          'TCMS_BINDUNG: Dokument im Tax-CMS verknüpft; Object-Store-Löschung nicht begonnen bzw. abgebrochen.',
+      },
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('löscht keine Object-Bytes, wenn der atomare DB-Claim eine neue Referenz erkennt', async () => {

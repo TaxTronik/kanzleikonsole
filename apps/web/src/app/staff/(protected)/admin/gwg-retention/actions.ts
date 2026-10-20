@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import { revalidatePath } from 'next/cache';
-import { withTenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext } from '@taxtronik/db';
 import { deleteObjectVersion } from '@taxtronik/storage';
 import { lockGwgCheckLifecycleTx } from '@/server/gwg/reverification';
 import { gwgDocumentEffectiveStart, isGwgDeletionDue } from '@/server/gwg/retention';
@@ -14,6 +14,11 @@ import {
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { audit } from '@/server/actions/audit';
+import { isDatabaseError } from '@/server/actions/database-error';
+import {
+  istNachweisDokumentTx,
+  TCMS_NACHWEIS_VERNICHTUNGSSPERRE,
+} from '@/server/tcms/durchfuehrung/sperre';
 
 export type ActionResult = BaseActionResult;
 
@@ -21,11 +26,38 @@ function safeDestructionError(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
 }
 
+/** Fester Vermerk in `gwgDestructionError`, wenn die Bindung erst nach dem Claim auffällt. */
+const TCMS_BINDUNG_VERMERK =
+  'TCMS_BINDUNG: Dokument im Tax-CMS verknüpft; Object-Store-Löschung nicht begonnen bzw. abgebrochen.';
+
+/** RT3B-K-01: Bindung an das Tax-CMS unmittelbar vor einem Object-Store-Löschen. */
+class TcmsBindungVorLoeschen extends Error {
+  constructor() {
+    super(TCMS_BINDUNG_VERMERK);
+    this.name = 'TcmsBindungVorLoeschen';
+  }
+}
+
+/**
+ * RT3B-K-01 (Schicht c, TCMS-NACHWEIS-001): offene Verknüpfung des Tax-CMS in
+ * einer eigenen kurzen Transaktion. Seit dem Claim kann keine neue entstehen
+ * (der Guard der Verknüpfung lässt keine GwG-Belege zu, der Scope-Trigger
+ * keinen Wechsel eines gebundenen Dokuments in diese Klasse); die Prüfung vor
+ * jedem Object-Store-Löschen sichert das unabhängig von der Datenbank ab.
+ */
+function gebundenVorLoeschen(ctx: TenantContext, documentId: string): Promise<boolean> {
+  return withTenantContext(ctx, (tx) => istNachweisDokumentTx(tx, documentId));
+}
+
 /**
  * Zweiphasige GwG-Pflichtvernichtung. Die Vernichtungsabsicht wird zuerst in
  * der DB und im Audit-Log festgehalten. Erst danach werden die Object-Store-
  * Objekte idempotent entfernt und die immutable DB-Versionen kontrolliert
  * über eine eng begrenzte SECURITY-DEFINER-Funktion gelöscht.
+ *
+ * RT3B-K-01 (TCMS-NACHWEIS-001): Ein im Tax-CMS verknüpftes Dokument wird in
+ * keiner Phase vernichtet – Prüfung vor der Vormerkung, im DB-Claim unter der
+ * Dokumentsperre und vor jedem Object-Store-Löschen.
  */
 export async function confirmGwgDeletionAction(input: {
   documentId: string;
@@ -39,6 +71,13 @@ export async function confirmGwgDeletionAction(input: {
       const now = new Date();
 
       const prepared = await withTenantContext(ctx, async (tx) => {
+        // RT3B-K-01 (Schicht c): Ein im Tax-CMS verknüpftes Dokument wird nicht
+        // vernichtet – geprüft vor Klassifikation, Frist, Vormerkung und Claim,
+        // damit die Ablehnung den eigentlichen Grund nennt. Der Claim prüft die
+        // Bindung unter der Dokumentsperre erneut (Schicht b).
+        if (await istNachweisDokumentTx(tx, documentId)) {
+          return { ok: false as const, error: TCMS_NACHWEIS_VERNICHTUNGSSPERRE };
+        }
         const document = await tx.document.findFirst({
           where: {
             id: documentId,
@@ -147,15 +186,21 @@ export async function confirmGwgDeletionAction(input: {
         // DB-seitiger, tenant-sicherer Eligibility-Claim in derselben Tx wie die
         // Vormerkung. Nach Commit frieren Trigger alle fristrelevanten Relationen
         // ein; erst dann dürfen externe Object-Store-Bytes gelöscht werden.
+        // RT3B-K-02: Die Funktion liefert `void`; Prisma 7 kann eine Spalte vom
+        // Typ void nicht lesen und brach JEDE Vernichtung ab. `::text` liefert
+        // eine lesbare (leere) Spalte; Ablehnungen kommen weiter als Fehler.
         await tx.$queryRaw(
-          Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${documentId}::uuid)`,
+          Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${documentId}::uuid)::text AS "claim"`,
         );
 
         return { ok: true as const, document, retentionStart, clientId: document.clientId };
-      }).catch(() => ({
+      }).catch((error: unknown) => ({
         ok: false as const,
-        error:
-          'Der DB-seitige Vernichtungsclaim ist nicht zulässig; es wurden keine Datei-Bytes gelöscht.',
+        // RT3B-K-01: Ablehnung des Claims wegen der Tax-CMS-Bindung (SQLSTATE
+        // und Marker der Migration, nie der Meldungstext von Prisma).
+        error: isDatabaseError(error, 'TCMS_EVIDENCE_LOCKED')
+          ? TCMS_NACHWEIS_VERNICHTUNGSSPERRE
+          : 'Der DB-seitige Vernichtungsclaim ist nicht zulässig; es wurden keine Datei-Bytes gelöscht.',
       }));
       if (!prepared.ok) return prepared;
 
@@ -193,6 +238,10 @@ export async function confirmGwgDeletionAction(input: {
 
       try {
         for (const version of claimed.versions) {
+          // RT3B-K-01 (Schicht c): nie Bytes löschen, solange eine Bindung besteht –
+          // unmittelbar vor JEDEM Object-Store-Löschen (Reihenfolge bleibt
+          // Claim → Commit → Bytes).
+          if (await gebundenVorLoeschen(ctx, documentId)) throw new TcmsBindungVorLoeschen();
           if (!version.storageVersionId) {
             throw new Error(
               `STORAGE_VERSION_ID_MISSING: DocumentVersion ${version.id} kann nicht physisch verifiziert gelöscht werden.`,
@@ -220,6 +269,9 @@ export async function confirmGwgDeletionAction(input: {
           }),
         );
         revalidatePath('/staff/admin/gwg-retention');
+        if (error instanceof TcmsBindungVorLoeschen) {
+          return { ok: false, error: TCMS_NACHWEIS_VERNICHTUNGSSPERRE };
+        }
         return {
           ok: false,
           error:

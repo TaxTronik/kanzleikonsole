@@ -239,6 +239,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   'packages/db/src/__tests__/owner-role-privileges.test.ts',
   // F-03: echte Trigger-/Constraint-Fehler in einem frischen Tenant belegen die Fehlerklassen.
   'packages/db/src/__tests__/database-error-classification.test.ts',
+  // TCMS-NACHWEIS-001 (RT3B-K-01): Superuser stellt Altbestand im Replikationsmodus her
+  // (gebundener GwG-Beleg); die App-Rolle belegt Claim, DB-Vernichtung und Scope-Trigger.
+  'packages/db/src/__tests__/tcms-document-reference-guards.test.ts',
   // F-08 / ACCESS-TENANT-RLS-001: Owner-Fixtures in zwei frischen Tenants; die App-Rolle
   // belegt Isolation, Paar-Guard und fehlende UPDATE/DELETE-Rechte der Mail-Outbox.
   'packages/db/src/__tests__/mail-outbox-rls.test.ts',

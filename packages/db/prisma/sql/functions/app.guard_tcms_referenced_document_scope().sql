@@ -1,0 +1,27 @@
+CREATE OR REPLACE FUNCTION app.guard_tcms_referenced_document_scope()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'pg_catalog', 'public', 'app', 'pg_temp'
+AS $function$
+BEGIN
+  -- TCMS-NACHWEIS-001 (RT3B-K-01): Ein Dokument, auf das ein offener Verweis
+  -- des Tax-CMS zeigt, bleibt in dem Rahmen, in dem es verknüpft werden durfte
+  -- (app.guard_tcms_document_reference): keine GwG-, Personal- oder private
+  -- Mitarbeiterunterlage, kein Lohnbezug, kein Onboarding- oder
+  -- Formularbezug. Sonst liefe ein Nachweis etwa als GwG-Beleg in die
+  -- GwG-Pflichtvernichtung. Die Umklassifizierung der Ablage prüft vorher
+  -- selbst und nennt den Grund; dieser Trigger ist die Rückfallebene für
+  -- jeden Pfad (WHEN des Triggers: nur Wechsel in einen solchen Rahmen).
+  IF EXISTS (
+    SELECT 1
+      FROM public.tcms_document_reference r
+     WHERE r.document_id = OLD.id
+       AND r.tenant_id = OLD.tenant_id
+       AND r.released_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'document: als Nachweis im Tax-CMS verknüpft, Umklassifizieren gesperrt'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END
+$function$;

@@ -450,6 +450,21 @@ export async function GET(
   der Commit-Transaktion der Ablage, also vor dem Dienstaufruf; freigegeben
   nur nach eindeutiger Antwort (Ablehnung, Entfernen bzw. bestätigtes
   Verwerfen), bei offenem Ausgang bleibt die Sperre.
+- **Was die Bindung sperrt (RT3B-K-01):** Löschen (Ablage und Trigger
+  `document_tcms_reference_delete_guard`), neue Versionen (Versions-Route),
+  den Wechsel in einen Rahmen, in dem das Dokument nie hätte verknüpft werden
+  dürfen – GwG-, Personal-, private Unterlage, Lohn-, Onboarding- oder
+  Formularbezug – (Umklassifizierung `server/documents/retag.ts` mit
+  `TCMS_NACHWEIS_UMKLASSIFIZIERUNGSSPERRE`, Trigger
+  `document_tcms_reference_scope_guard` für jede Rolle) und die
+  GwG-Pflichtvernichtung (Aktion vor der Vormerkung und vor jedem
+  Object-Store-Löschen, Claim `app.assert_gwg_document_destruction_due` unter
+  der Dokumentsperre). Die Datenbank meldet jede dieser Sperren mit SQLSTATE
+  23001 und dem Marker „als Nachweis im Tax-CMS verknüpft“;
+  `databaseErrorInfo` ordnet sie als `TCMS_EVIDENCE_LOCKED` ein. Neue Pfade,
+  die Dokumente ändern, prüfen die Bindung mit `istNachweisDokumentTx`
+  (`server/tcms/durchfuehrung/sperre.ts`) als eigenes Statement nach der
+  Zeilensperre und nennen den Grund selbst.
 - **Nur GET**, keine eigene Sitzung, kein direkter Client- oder Akteurzugriff
   im Handler. Schreiben läuft über Server Actions (Abschnitt 5).
 - **Guards:** `tcms-route-authz.test.ts` (Ort unter `app/api/staff` bzw.

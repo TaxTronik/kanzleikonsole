@@ -54,6 +54,23 @@ BEGIN
   IF app.current_actor_type() = 'STAFF' AND requested_by IS NULL THEN
     RAISE EXCEPTION 'GwG-Vernichtungsabsicht wurde keinem Staff zugeordnet.' USING ERRCODE = 'insufficient_privilege';
   END IF;
+  -- TCMS-NACHWEIS-001 (RT3B-K-01): Ein Dokument, auf das ein offener Verweis
+  -- des Tax-CMS zeigt (Nachweis einer Durchführung, Anlage einer
+  -- Ereignismeldung), wird nicht vernichtet – unabhängig von Klassifikation
+  -- und Frist und vor jedem Object-Store-Löschen der Aktion. Eigenes Statement
+  -- nach der Dokumentsperre: Unter READ COMMITTED sieht es eine Verknüpfung,
+  -- die während des Wartens auf die Sperre committet wurde; eine spätere
+  -- wartet auf die Sperre (FOR SHARE im Guard der Verknüpfung).
+  IF EXISTS (
+    SELECT 1
+      FROM public."tcms_document_reference" r
+     WHERE r."document_id" = p_document_id
+       AND r."tenant_id" = document_tenant
+       AND r."released_at" IS NULL
+  ) THEN
+    RAISE EXCEPTION 'document: als Nachweis im Tax-CMS verknüpft, GwG-Vernichtung gesperrt'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
   IF document_classification <> 'GWG_EVIDENCE' OR requested_at IS NULL THEN
     RAISE EXCEPTION 'GwG-Vernichtung wurde nicht ordnungsgemäß angefordert.' USING ERRCODE = 'check_violation';
   END IF;

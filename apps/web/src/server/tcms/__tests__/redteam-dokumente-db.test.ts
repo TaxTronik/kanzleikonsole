@@ -342,10 +342,51 @@ const GROESSE = 4821n;
       });
     }
 
+    /** SQLSTATE und Meldung der Datenbank (nie die zusammengesetzte Prisma-Meldung mit Codeausschnitt). */
+    function dbAbweisung(fehler: unknown): { sqlState: unknown; meldung: unknown } | null {
+      const ursache = (
+        fehler as { meta?: { driverAdapterError?: { cause?: Record<string, unknown> } } } | null
+      )?.meta?.driverAdapterError?.cause;
+      return ursache
+        ? { sqlState: ursache['originalCode'], meldung: ursache['originalMessage'] }
+        : null;
+    }
+
+    /**
+     * Zustand nach einem Retag GENERAL → GWG_EVIDENCE (K-01a). Seit der Behebung
+     * weist die Datenbank diesen Wechsel eines gebundenen Dokuments für jede Rolle
+     * ab (document_tcms_reference_scope_guard) – auch für die Owner-Rolle, mit der
+     * der Angriff ihn hergestellt hat. Der Angriff belegt das und vernichtet danach
+     * das gebundene, sonst fällige Dokument: Aktion und Claim prüfen die Bindung
+     * vor Klassifikation und Frist, also auf demselben Weg wie bei Altbestand, der
+     * vor der Behebung umklassifiziert wurde (Altbestand selbst: packages/db,
+     * tcms-document-reference-guards.test.ts, nur mit Superuser herstellbar).
+     */
+    async function gebundenerFaelligerBeleg(d: { id: string }) {
+      const fehler = await faelligerGwgBeleg(d).then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(dbAbweisung(fehler), 'Umklassifizieren gesperrt (Owner-Rolle)').toEqual({
+        sqlState: '23001',
+        meldung: expect.stringMatching(/als Nachweis im Tax-CMS verknüpft/),
+      });
+      await owner.document.update({
+        where: { id: d.id },
+        data: {
+          retentionUntil: new Date('2025-01-01T00:00:00Z'),
+          createdAt: new Date('2019-01-15T00:00:00Z'),
+        },
+      });
+      expect((await owner.document.findUniqueOrThrow({ where: { id: d.id } })).classification).toBe(
+        'GENERAL',
+      );
+    }
+
     it('RT3B-K-01b: GwG-Vernichtung eines gebundenen Nachweises wird wegen der Tax-CMS-Bindung abgewiesen, ohne Bytes zu löschen', async () => {
-      // Zustand nach einem Retag GENERAL → GWG_EVIDENCE (K-01a).
+      // Zustand nach einem Retag GENERAL → GWG_EVIDENCE (K-01a) – seit der Behebung abgewiesen.
       const d = await alsNachweis(altMandant);
-      await faelligerGwgBeleg(d);
+      await gebundenerFaelligerBeleg(d);
       const { confirmGwgDeletionAction } =
         await import('@/app/staff/(protected)/admin/gwg-retention/actions');
       const r = await confirmGwgDeletionAction({ documentId: d.id });
@@ -364,7 +405,7 @@ const GROESSE = 4821n;
 
     it('RT3B-K-01c: der DB-Claim der GwG-Vernichtung lässt einen gebundenen Nachweis zu – erst die DB-Vernichtung danach scheitert (Bytes schon weg)', async () => {
       const d = await alsNachweis(altMandant);
-      await faelligerGwgBeleg(d);
+      await gebundenerFaelligerBeleg(d);
       const { Prisma } = await import('@taxtronik/db/prisma-client');
       const claimUndVernichtung = (vernichten: boolean) =>
         imTenant(async (tx) => {

@@ -2,7 +2,7 @@
 // Umklassifizierung (Retag) von Dokumenten (Review-Finding K-03).
 //
 // Fachkatalog: DOC-VERSION-IMMUTABILITY-001, DOC-RETENTION-CLASS-001,
-// DOC-OBJECT-LOCK-001, DOC-UPLOAD-JOURNAL-001
+// DOC-OBJECT-LOCK-001, DOC-UPLOAD-JOURNAL-001, TCMS-NACHWEIS-001
 //
 // Die Bulk-Action (retagDocumentsAction) und retagDocument (ein Dokument)
 // laufen über dieselben Schritte dieses Moduls; die Action parst nur noch,
@@ -57,6 +57,11 @@ import {
   type AssertClientAccess,
   type DocumentBulkRejection,
 } from '@/server/documents/document-bulk';
+import {
+  istNachweisAusgeschlossen,
+  istNachweisDokumentTx,
+  TCMS_NACHWEIS_UMKLASSIFIZIERUNGSSPERRE,
+} from '@/server/tcms/durchfuehrung/sperre';
 
 type StaffActor = Pick<StaffCtx, 'tenantId' | 'staffId'>;
 
@@ -255,6 +260,29 @@ export function retagStep(plan: RetagPlan): RetagStep {
 }
 
 /**
+ * RT3B-K-01 (TCMS-NACHWEIS-001): Ein im Tax-CMS gebundenes Dokument wechselt
+ * nie in einen Rahmen, in dem es kein Nachweis sein darf (GwG-, Personal-,
+ * private Unterlage; als GwG-Beleg liefe es sonst in die
+ * GwG-Pflichtvernichtung), und bekommt keine neue Version (der Re-Store einer
+ * geschützten Fassung hängt eine an). Aufruf NACH der Zeilensperre (eigenes
+ * Statement, sperre.ts). Beim Re-Store ist das die Vorprüfung vor dem Lesen
+ * der Bytes: abgewiesen wird, bevor der Speicher berührt wird. Die Datenbank
+ * weist den Wechsel zusätzlich ab (document_tcms_reference_scope_guard).
+ */
+async function assertRetagTcmsBindung(
+  tx: TxClient,
+  documentId: string,
+  plan: RetagPlan,
+  restore: boolean,
+): Promise<void> {
+  const neueVersion = restore && plan.immutable;
+  if (!istNachweisAusgeschlossen(plan.newClassification) && !neueVersion) return;
+  if (await istNachweisDokumentTx(tx, documentId)) {
+    throw new ActionError(TCMS_NACHWEIS_UMKLASSIFIZIERUNGSSPERRE);
+  }
+}
+
+/**
  * Sperrt das Dokument und prüft, dass es seit dem Laden unverändert ist
  * (Mandant, Klassifikation, Typ; für den Re-Store auch die neueste Version).
  */
@@ -297,6 +325,8 @@ async function lockRetagDocument(
     );
   }
   if (locked.clientId) await assertAccess(locked.clientId);
+
+  await assertRetagTcmsBindung(tx, documentId, plan, requireLatestSnapshot);
 
   if (plan.newTypeId) {
     // Der Typ ist Teil der Storage-/Retention-Entscheidung. Ein bloßes
