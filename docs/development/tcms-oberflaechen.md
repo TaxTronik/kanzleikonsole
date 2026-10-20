@@ -450,8 +450,11 @@ export async function GET(
   der Commit-Transaktion der Ablage, also vor dem Dienstaufruf; freigegeben
   nur nach eindeutiger Antwort (Ablehnung, Entfernen bzw. bestätigtes
   Verwerfen), bei offenem Ausgang bleibt die Sperre.
-- **Was die Bindung sperrt (RT3B-K-01):** Löschen (Ablage und Trigger
-  `document_tcms_reference_delete_guard`), neue Versionen (Versions-Route),
+- **Was die Bindung sperrt (RT3B-K-01, Härtung D3):** Löschen (Ablage und
+  Trigger `document_tcms_reference_delete_guard`), neue Versionen
+  (Versions-Route und Trigger `document_version_tcms_reference_guard` für
+  jede Rolle; die Route antwortet auch auf die Ablehnung der Datenbank mit 409
+  `locked_by_tcms_evidence`),
   den Wechsel in einen Rahmen, in dem das Dokument nie hätte verknüpft werden
   dürfen – GwG-, Personal-, private Unterlage, Lohn-, Onboarding- oder
   Formularbezug – (Umklassifizierung `server/documents/retag.ts` mit

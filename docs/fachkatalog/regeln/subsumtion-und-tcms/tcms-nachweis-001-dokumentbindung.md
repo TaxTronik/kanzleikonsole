@@ -71,6 +71,7 @@ code_refs:
   - apps/web/src/server/documents/retag.ts
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts
   - packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql
+  - packages/db/prisma/migrations/20261020100100_tcms_document_version_lock/migration.sql
   - packages/db/src/database-error.ts
 test_refs:
   - apps/web/src/server/tcms/__tests__/nachweis-verweis-db.test.ts
@@ -169,7 +170,7 @@ oder ein Ereignis belegen.
 | das Tax-CMS die Meldung eindeutig ablehnt (4xx, offener Breaker)                                                          | Anlagen freigeben („nicht angehängt“); bei offenem Ausgang bleiben sie gebunden                                                                                                                                                                     | kein Verweis, keine Sperre; im Zweifel schützen                                          |
 | das Verwerfen eines Ereignisses bestätigt wird und der Dienst dasselbe Ereignis als verworfen meldet                      | Anlagen dieses Ereignisses des gebundenen Mandanten freigeben („verworfen“); andere Antwort → Sperre bleibt                                                                                                                                         | die Meldung verweist nicht mehr auf die Dokumente                                        |
 | jemand ein Dokument mit offener Verknüpfung löschen will                                                                  | Löschen abweisen mit Hinweis auf den Nachweis (Ablage) bzw. Datenbankfehler (jeder andere Pfad)                                                                                                                                                     | ein Nachweis darf nicht still verschwinden                                               |
-| jemand eine neue Version eines solchen Dokuments hochladen will                                                           | abweisen (409)                                                                                                                                                                                                                                      | der Verweis bindet genau diese Fassung                                                   |
+| jemand eine neue Version eines solchen Dokuments hochladen will                                                           | abweisen (409); auf jedem anderen Pfad Datenbankfehler (Trigger, jede Rolle)                                                                                                                                                                        | der Verweis bindet genau diese Fassung                                                   |
 | jemand ein solches Dokument in eine GwG-, Personal- oder private Unterlage umklassifizieren oder ihm Lohnbezug geben will | abweisen mit Hinweis (Ablage) bzw. Datenbankfehler (jeder andere Pfad); andere Umklassifizierung (z. B. Höherstufung nach GoBD) ohne neue Version zulässig                                                                                          | das Dokument bleibt im Rahmen, in dem es Nachweis sein darf                              |
 | die GwG-Pflichtvernichtung ein solches Dokument erfasst (Altbestand vor RT3B-K-01)                                        | abweisen vor der Vormerkung, im DB-Claim und vor jedem Object-Store-Löschen; keine Bytes löschen                                                                                                                                                    | ein Nachweis darf nicht still verschwinden; Kollision mit § 8 Abs. 4 GwG fachlich klären |
 | der Nachweis im Tax-CMS entfernt wird                                                                                     | Verknüpfung freigeben („entfernt“)                                                                                                                                                                                                                  | Sperre endet mit dem Verweis                                                             |
@@ -233,7 +234,13 @@ Inhalt unveränderlich. Der Trigger
 `document_tcms_reference_delete_guard` weist jedes Soft-Delete eines
 Dokuments mit offener Verknüpfung ab; die Löschaktion der Ablage
 (`documents/actions.ts`) prüft vorher selbst und nennt den Grund, die
-Versions-Route (`new-version/commit`) sperrt neue Versionen.
+Versions-Route (`new-version/commit`) sperrt neue Versionen; seit der
+Härtung D3 (Migration `20261020100100`) weist der Trigger
+`document_version_tcms_reference_guard` jede neue Version eines Dokuments mit
+offener Verknüpfung für jede Rolle ab. Er sperrt zuerst die Dokumentzeile
+(FOR NO KEY UPDATE), so dass sich eine neue Version und das Anlegen einer
+Verknüpfung serialisieren; die Route bildet die Ablehnung der Datenbank wie
+ihre eigene Prüfung ab (409 `locked_by_tcms_evidence`).
 `nachweis-aktion.ts` legt hochgeladene Dateien über die Dokumentenpipeline
 (`runJournaledUpload`, Klassifikation „Allgemein“) am Mandanten ab, schreibt
 in derselben Commit-Transaktion Audit und Verknüpfung, hängt danach an und
@@ -354,6 +361,10 @@ Umklassifizierung der Ablage mit Grund ohne Speicherzugriff, Claim und
 DB-Vernichtung, nebenläufiges Verknüpfen und Umklassifizieren),
 `redteam-dokumente-db.test.ts` (Angriffe K-01a bis K-01c),
 `retag-race.test.ts` (kein Re-Store mit neuer Version, keine Bytes gelesen),
+für die Härtung D3 `nachweis-bindung-db.test.ts` (neue Version für App- und
+Owner-Rolle gesperrt, nach der Freigabe möglich, nebenläufig mit dem
+Verknüpfen in beiden Reihenfolgen) und `route-poa-lock.test.ts` (Abbildung
+der Datenbankablehnung als 409),
 `actions-db.test.ts` und `actions.test.ts` der GwG-Vernichtung (Abweisung
 ohne Vormerkung, Audit und Bytes; Prüfung vor jedem Object-Store-Löschen)
 sowie `tcms-document-reference-guards.test.ts` (Altbestand, Superuser,

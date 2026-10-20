@@ -236,6 +236,42 @@ describe('Neue Dokumentversion — PoA-Snapshot-Sperre', () => {
     ]);
   });
 
+  it('Härtung D3: bildet die Versionssperre der Datenbank (23001 + Marker) wie die eigene Prüfung ab', async () => {
+    const { Prisma } = await import('@taxtronik/db/prisma-client');
+    const sperre = (sqlState: string, meldung: string) =>
+      new Prisma.PrismaClientKnownRequestError('Database error.', {
+        code: 'P2039',
+        clientVersion: 'test',
+        meta: {
+          modelName: 'DocumentVersion',
+          driverAdapterError: {
+            name: 'DriverAdapterError',
+            cause: { originalCode: sqlState, originalMessage: meldung, kind: 'postgres' },
+          },
+        },
+      });
+    const finalTx = documentTx({ classification: 'GENERAL', documentTypeId: null });
+    finalTx.documentVersion.create.mockRejectedValueOnce(
+      sperre('23001', 'document_version: als Nachweis im Tax-CMS verknüpft, neue Version gesperrt'),
+    );
+    phases(documentTx({ classification: 'GENERAL', documentTypeId: null }), finalTx);
+
+    const response = await post();
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ error: 'locked_by_tcms_evidence' }),
+    );
+    expect(storageJournal.openIntents()).toHaveLength(1);
+
+    // Gegenprobe: derselbe SQLSTATE ohne Marker ist keine Tax-CMS-Sperre.
+    storageJournal.reset();
+    const andereTx = documentTx({ classification: 'GENERAL', documentTypeId: null });
+    andereTx.documentVersion.create.mockRejectedValueOnce(sperre('23001', 'violates RESTRICT'));
+    phases(documentTx({ classification: 'GENERAL', documentTypeId: null }), andereTx);
+    expect((await post()).status).toBe(500);
+  });
+
   it('ordnet den Meldungstext des GwG-Triggers ohne Fehlerklasse nicht als Sperre ein', async () => {
     const finalTx = documentTx({ classification: 'GWG_EVIDENCE', documentTypeId: null });
     finalTx.documentVersion.create.mockRejectedValueOnce(

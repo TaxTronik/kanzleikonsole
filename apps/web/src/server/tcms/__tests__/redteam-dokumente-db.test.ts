@@ -59,6 +59,7 @@ import {
   nachweisAbgleichTx,
   nachweisVerknuepfenTx,
   nachweisVerknuepfungBestaetigen,
+  nachweisVerknuepfungFreigeben,
 } from '../durchfuehrung/verweis';
 import { istNachweisDokumentTx } from '../durchfuehrung/sperre';
 
@@ -282,22 +283,38 @@ const GROESSE = 4821n;
 
     it('RT3B-D3: neue Version an der Versions-Route vorbei – keine DB-Sperre, aber der Abgleich liefert nicht aus', async () => {
       const d = await alsNachweis();
-      // Kein Trigger sperrt neue Versionen gebundener Dokumente (nur die Route prüft);
-      // die Auslieferung vergleicht deshalb die NEUESTE Version mit dem Verweis.
-      await owner.documentVersion.create({
-        data: {
-          documentId: d.id,
-          versionNo: 2,
-          storageBucket: 'general',
-          storageKey: `tenants/${tenantId}/none/${d.id}-2.pdf`,
-          sha256: Buffer.alloc(32, 0x99),
-          sizeBytes: GROESSE,
-          immutable: false,
-          scanStatus: 'CLEAN',
-          scanCompletedAt: new Date(),
-          createdById: admin,
-        },
+      const neueVersion = () =>
+        owner.documentVersion.create({
+          data: {
+            documentId: d.id,
+            versionNo: 2,
+            storageBucket: 'general',
+            storageKey: `tenants/${tenantId}/none/${d.id}-2.pdf`,
+            sha256: Buffer.alloc(32, 0x99),
+            sizeBytes: GROESSE,
+            immutable: false,
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+            createdById: admin,
+          },
+        });
+      // Seit der Härtung D3 sperrt document_version_tcms_reference_guard neue
+      // Versionen gebundener Dokumente auch an der Route vorbei (jede Rolle, hier
+      // die Owner-Rolle); der Nachweis bleibt auslieferbar.
+      const fehler = await neueVersion().then(
+        () => null,
+        (e: unknown) => e,
+      );
+      expect(dbAbweisung(fehler), 'neue Version gesperrt').toEqual({
+        sqlState: '23001',
+        meldung: expect.stringMatching(/als Nachweis im Tax-CMS verknüpft, neue Version gesperrt/),
       });
+      await auslieferbar(d);
+      // Die Auslieferung vergleicht weiter die NEUESTE Version mit dem Verweis: nach
+      // der Freigabe (Nachweis entfernt) ist eine neue Version möglich, der alte
+      // Verweis wird dann nicht mehr ausgeliefert.
+      await nachweisVerknuepfungFreigeben(ctx(), { verknuepfungId: d.verknuepfungId }, 'REMOVED');
+      await neueVersion();
       const abgleich = await imTenant((tx) =>
         nachweisAbgleichTx(tx, { tenantId, mandantId: mandant }, [
           {

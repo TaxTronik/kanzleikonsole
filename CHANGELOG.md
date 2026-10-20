@@ -1889,6 +1889,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[TCMS]** Neue Versionen eines im Tax-CMS gebundenen Dokuments sperrt
+  jetzt auch die Datenbank für jede Rolle, nicht nur die Versions-Route; die
+  Route meldet die Ablehnung der Datenbank wie ihre eigene Prüfung (409
+  `locked_by_tcms_evidence`) (Härtung D3 aus RT3B, TCMS-NACHWEIS-001).
 - **[TCMS]** Eine Zeichenregel aus dem Vertrag für Stammdaten, Akteursnamen und
   Eingaben: unsichtbare, Steuer- und Richtungszeichen werden in Stammdaten still
   entfernt und in Eingaben mit dem Feldtext des Vertrags abgewiesen.

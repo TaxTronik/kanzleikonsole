@@ -11,6 +11,9 @@
 //              app.destroy_gwg_document_versions).
 //   Nebenläufig: Verknüpfen und Umklassifizieren serialisieren sich über die
 //              Dokumentzeile – nie beides.
+//   Härtung D3: document_version_tcms_reference_guard sperrt neue Versionen
+//              gebundener Dokumente für jede Rolle (gleiche Abbildung wie die
+//              Löschsperre); Verknüpfen und neue Version serialisieren sich.
 // (Schicht c, die Vernichtungsaktion: admin/gwg-retention/__tests__.)
 //
 // Datenbankfehler werden über SQLSTATE und Meldung der Datenbank geprüft
@@ -134,6 +137,24 @@ const GESPERRT = (was: RegExp) => ({
       },
     });
     return { id: doc.id, key: v.storageKey };
+  }
+
+  /** Daten einer neuen Version an der Versions-Route vorbei (direkter Insert). */
+  function neueVersion(documentId: string) {
+    return {
+      data: {
+        documentId,
+        versionNo: 2,
+        storageBucket: 'general',
+        storageKey: `tenants/${tenantId}/none/${documentId}-2.csv`,
+        sha256: Buffer.alloc(32, 0x99),
+        sizeBytes: 812n,
+        immutable: false,
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+        createdById: admin,
+      },
+    };
   }
 
   async function alsNachweis(o: { immutable?: boolean } = {}) {
@@ -418,5 +439,93 @@ const GESPERRT = (was: RegExp) => ({
     expect((await owner.document.findUniqueOrThrow({ where: { id: d.id } })).classification).toBe(
       'GENERAL',
     );
+  });
+  it.each([
+    ['Nachweis', () => alsNachweis()],
+    ['Meldungsanlage', () => alsMeldungsanlage()],
+  ] as const)(
+    'Härtung D3: keine neue Version eines gebundenen Dokuments (%s) – App- und Owner-Rolle; nach der Freigabe möglich',
+    async (art, binden) => {
+      const d = await binden();
+      expect(
+        await abweisung(imTenant((tx) => tx.documentVersion.create(neueVersion(d.id)))),
+        'App-Rolle',
+      ).toEqual(GESPERRT(/neue Version gesperrt/));
+      expect(
+        await abweisung(owner.documentVersion.create(neueVersion(d.id)).then((v) => v)),
+        'Owner-Rolle',
+      ).toEqual(GESPERRT(/neue Version gesperrt/));
+      expect(await owner.documentVersion.count({ where: { documentId: d.id } })).toBe(1);
+      const ctx = { tenantId, actorId: admin, actorType: 'STAFF' as const };
+      if (art === 'Nachweis') {
+        await nachweisVerknuepfungFreigeben(ctx, { verknuepfungId: d.verknuepfungId }, 'REMOVED');
+      } else {
+        await owner.tcmsDocumentReference.update({
+          where: { id: d.verknuepfungId },
+          data: { releasedAt: new Date(), releasedBy: admin, releaseReason: 'NOT_ATTACHED' },
+        });
+      }
+      await imTenant((tx) => tx.documentVersion.create(neueVersion(d.id)));
+      expect(await owner.documentVersion.count({ where: { documentId: d.id } })).toBe(2);
+    },
+  );
+
+  it('Härtung D3, nebenläufig: neue Version zuerst – das Verknüpfen wartet und bindet die neue Fassung', async () => {
+    const d = await dokument();
+    let freigeben!: () => void;
+    const halten = new Promise<void>((r) => (freigeben = r));
+    let gesperrt!: () => void;
+    const gehalten = new Promise<void>((r) => (gesperrt = r));
+    const version = imTenant(async (tx) => {
+      await tx.documentVersion.create(neueVersion(d.id));
+      gesperrt();
+      await halten;
+    });
+    await gehalten;
+    // Das Verknüpfen sperrt die Dokumentzeile geteilt, bevor es den Verweis aus
+    // der neuesten Version bildet; es wartet auf die Sperre der neuen Version
+    // und verweist danach auf Version 2 – nie auf die überholte Version 1.
+    const verknuepfen = imTenant((tx) =>
+      nachweisVerknuepfenTx(tx, { tenantId, mandantId: mandant, staffId: admin }, d.id, DURCHF),
+    ).then(
+      () => null,
+      (e: unknown) => e,
+    );
+    await aufSperreWarten();
+    freigeben();
+    await version;
+    expect(await verknuepfen).toBeNull();
+    const neueste = await owner.documentVersion.findFirstOrThrow({
+      where: { documentId: d.id },
+      orderBy: { versionNo: 'desc' },
+    });
+    const zeilen = await owner.tcmsDocumentReference.findMany({ where: { documentId: d.id } });
+    expect(neueste.versionNo).toBe(2);
+    expect(zeilen.map((z) => z.documentVersionId)).toEqual([neueste.id]);
+  }, 15_000);
+
+  it('Härtung D3, nebenläufig: Verknüpfen zuerst – die neue Version wartet und scheitert', async () => {
+    const d = await dokument();
+    let freigeben!: () => void;
+    const halten = new Promise<void>((r) => (freigeben = r));
+    let gesperrt!: () => void;
+    const gehalten = new Promise<void>((r) => (gesperrt = r));
+    const verknuepfen = imTenant(async (tx) => {
+      await nachweisVerknuepfenTx(
+        tx,
+        { tenantId, mandantId: mandant, staffId: admin },
+        d.id,
+        DURCHF,
+      );
+      gesperrt();
+      await halten;
+    });
+    await gehalten;
+    const version = abweisung(owner.documentVersion.create(neueVersion(d.id)).then((v) => v));
+    await aufSperreWarten();
+    freigeben();
+    await verknuepfen;
+    expect(await version).toEqual(GESPERRT(/neue Version gesperrt/));
+    expect(await owner.documentVersion.count({ where: { documentId: d.id } })).toBe(1);
   });
 });

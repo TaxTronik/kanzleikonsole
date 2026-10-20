@@ -6389,6 +6389,7 @@
         "apps/web/src/server/documents/retag.ts",
         "apps/web/src/app/staff/(protected)/admin/gwg-retention/actions.ts",
         "packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql",
+        "packages/db/prisma/migrations/20261020100100_tcms_document_version_lock/migration.sql",
         "packages/db/src/database-error.ts"
       ],
       "test_refs": [

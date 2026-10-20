@@ -24,6 +24,7 @@ import { JournaledUploadError, runJournaledUpload } from '@/server/documents/jou
 import { evidenceService } from '@/server/container';
 import { identityPdfPageCountForUpload } from '@/server/gwg/identity-pdf-pages';
 import { log } from '@/server/logger';
+import { isDatabaseError } from '@/server/actions/database-error';
 import {
   istNachweisDokumentTx,
   TCMS_NACHWEIS_VERSIONSSPERRE,
@@ -347,6 +348,12 @@ function uploadErrorResponse(error: unknown, tenantId: string): NextResponse {
   // F-03: nur über die Klasse der eigenen Prüfung, nicht über Trigger-Meldungstexte.
   if (cause instanceof GwgEvidenceLockedError) return lockedByGwgResponse();
   if (cause instanceof TcmsEvidenceLockedError) return lockedByTcmsResponse();
+  // Härtung D3 (TCMS-NACHWEIS-001): Rückfallebene der Datenbank
+  // (document_version_tcms_reference_guard) – dieselbe Antwort wie die eigene
+  // Prüfung, eingeordnet über SQLSTATE und Marker, nie über den Meldungstext.
+  if (phase === 'commit' && isDatabaseError(cause, 'TCMS_EVIDENCE_LOCKED')) {
+    return lockedByTcmsResponse();
+  }
   if (cause instanceof DocumentReferenceChangedError) {
     return NextResponse.json(
       {
