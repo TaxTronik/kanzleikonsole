@@ -498,6 +498,27 @@ describeDb('Red Team: Zustellung mit bösartigem Dienst', () => {
     30_000,
   );
 
+  it('Hinweis RT3B (Behebung): mehr Mitteilungen als angefragt (51 bei Limit 50, Vertrag erlaubt 100) – nichts eingeplant, Protokollfehler', async () => {
+    const stub = await boeserDienst(() => ({
+      art: 'json',
+      nachrichten: Array.from({ length: 51 }, () => code()),
+    }));
+    let ergebnis: Awaited<ReturnType<typeof lauf>>;
+    try {
+      ergebnis = await lauf(stub);
+    } finally {
+      await stub.schliessen();
+    }
+    expect(stub.ziele).toEqual(['GET /v1/nachrichten/offen?limit=50']);
+    expect(ergebnis).toMatchObject({ abgerufen: 0, eingeplant: 0, gemeldet: 0, fehler: 1 });
+    expect(await auftraege()).toEqual([]);
+    expect(await zustellungen()).toEqual([]);
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ fehler: 'TcmsProtokollFehler', grund: 'SCHEMA' }),
+      'tcms-nachrichten: Abruf gescheitert',
+    );
+  }, 30_000);
+
   it('RT3B-Z3: Titel mit Link/HTML/Markdown/Encoded-Word, Betreff und Text des Dienstes mit Code – gesendete Mail aus der kanzleikonsole', async () => {
     const titel =
       'Freigabe https://evil.example/login <a href="https://evil.example">hier</a> [klick](https://evil.example) =?UTF-8?B?QmNjOiBldmls?=';

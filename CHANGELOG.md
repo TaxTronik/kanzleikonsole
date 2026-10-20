@@ -1894,6 +1894,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   SMTP-Antwortcode: Ein Provider, der beim Abweisen den Mailinhalt
   zurückgibt, brachte sonst Bestätigungscodes oder Adressen ins Worker-Log
   (RT3B-K-03, MAIL-OUTBOX-001).
+- **[TCMS]** Der Zustell-Worker übernimmt keine Antwort des Tax-CMS mit mehr
+  Mitteilungen als angefragt (50; der Vertrag erlaubt 100); der Abruf zählt
+  als Protokollfehler (Hinweis aus RT3B, MAIL-OUTBOX-001).
 - **[TCMS]** Dateinamen von Nachweisen und Portal-Anlagen stammen in der
   Anzeige aus der eigenen Dokumentablage, nicht aus der Antwort des Tax-CMS;
   ohne Dokument wird der Wert des Dienstes nach der Zeichenregel bereinigt.

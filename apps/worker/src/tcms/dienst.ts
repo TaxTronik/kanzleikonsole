@@ -15,6 +15,7 @@ import {
   meldeNachrichtZugestellt,
   NUR_SYSTEMAKTEUR,
   TcmsClient,
+  TcmsProtokollFehler,
   type NachrichtUnzustellbarGrund,
   type OffeneNachricht,
   type TcmsAkteurAngaben,
@@ -40,8 +41,16 @@ export interface TcmsPostausgang {
 /** Postausgang über einen Client, der nur den Systemakteur bestätigt. */
 export function postausgangUeber(client: TcmsClient): TcmsPostausgang {
   return {
-    holen: async (akteur, limit) =>
-      (await holeOffeneNachrichten(client, { akteur, limit })).daten.nachrichten,
+    holen: async (akteur, limit) => {
+      const { nachrichten } = (await holeOffeneNachrichten(client, { akteur, limit })).daten;
+      // Hinweis aus RT3B: Der Vertrag erlaubt bis zu 100 Mitteilungen je Antwort,
+      // der Worker fragt TCMS_ZUSTELL_LIMIT (50) an. Mehr als angefragt ist eine
+      // Verletzung des Abrufs durch den Dienst: fail closed, nichts übernehmen.
+      if (nachrichten.length > limit) {
+        throw new TcmsProtokollFehler('SCHEMA', { pfade: ['nachrichten'] });
+      }
+      return nachrichten;
+    },
     melden: async (akteur, nachrichtId) => {
       await meldeNachrichtZugestellt(client, { akteur, nachrichtId });
     },

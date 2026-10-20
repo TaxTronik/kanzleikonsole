@@ -416,7 +416,12 @@ noch signieren (Abschnitt 3, Guards in Web und Worker).
 `tcms_systemakteur` hält (`lauf_halter`/`lauf_bis`, 2 Minuten, vor jeder
 Mitteilung verlängert):
 
-1. `GET /v1/nachrichten/offen?limit=50` (älteste zuerst).
+1. `GET /v1/nachrichten/offen?limit=50` (älteste zuerst). Der Vertrag
+   erlaubt bis zu 100 je Antwort; eine Antwort mit mehr Mitteilungen als
+   angefragt gilt als Protokollfehler (`SCHEMA`), nichts wird übernommen
+   (`apps/worker/src/tcms/dienst.ts`, Hinweis aus RT3B). Bei 50 bleibt es
+   bewusst: Ein Lauf je Minute und Tenant hält die Lease kurz, der Rest folgt
+   im nächsten Lauf.
 2. Je Mitteilung eine Tenant-Transaktion: Zustellzeile
    `tcms_nachricht_zustellung` (eindeutig je Tenant und Nachrichten-ID) sperren
    bzw. mit `ON CONFLICT DO NOTHING` anlegen, Empfänger prüfen, einplanen.

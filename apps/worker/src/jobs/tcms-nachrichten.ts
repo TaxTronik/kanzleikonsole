@@ -86,7 +86,13 @@ import type { NotifyInput, NotifyOptions } from '../notify';
 import type { TcmsPostausgang } from '../tcms/dienst';
 import { beanspruche, type LeaseDb } from '../tcms/systemakteur';
 
-/** Mitteilungen je Abruf (Vertrag: 1–100, Standard 50). */
+/**
+ * Mitteilungen je Abruf (Vertrag: 1–100, Standard 50). Entscheidung zum
+ * Hinweis aus RT3B: bei 50 bleiben – ein Lauf je Minute und Tenant mit je
+ * Mitteilung einer Transaktion und einem Dienstaufruf hält die Lease kurz;
+ * der Rest folgt im nächsten Lauf. Eine Antwort mit mehr Mitteilungen als
+ * angefragt weist der Postausgang ab (tcms/dienst.ts).
+ */
 export const TCMS_ZUSTELL_LIMIT = 50;
 /**
  * Gültigkeitsfenster einer Anforderung bzw. Neuadressierung ab Anlage im

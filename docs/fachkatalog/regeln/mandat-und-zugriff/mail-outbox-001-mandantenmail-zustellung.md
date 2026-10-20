@@ -359,7 +359,9 @@ ihn (Datenbank-CHECK). Texte und Betreff des Tax-CMS werden nicht übernommen;
 es gelten die System-Vorlagen „Tax-CMS: …“ (für bestehende Kanzleien
 geseedet, Platzhalter in der Vorlagenverwaltung erklärt) oder der
 gleichlautende Ersatztext. Logs nennen nur Tenant, Nachrichten-ID, Zweck und
-Grundcode.
+Grundcode. Der Worker fragt je Lauf 50 Mitteilungen an (Vertrag: bis 100);
+liefert das Tax-CMS mehr als angefragt, übernimmt er nichts und zählt den
+Abruf als Protokollfehler.
 
 Lehnt der Mail-Provider eine Nachricht ab, kann sein Fehlertext den Inhalt
 zurückgeben (Bestätigungscode, Link, Empfängeradresse). Log und Persistenz der
@@ -446,7 +448,8 @@ die vollständige, feste Abbildung der Gründe; Guards in Web und Worker belegen
 Worker den Systemakteur bildet. Der Angriffstest der Zustellung
 (`redteam-zustellung-db.test.ts`, Z6/Z6b) belegt gegen PostgreSQL, dass ein
 Providerfehler mit Code und Empfängeradresse in keiner Tabelle und keinem Log
-landet und das Log nur Klasse, Code und Antwortcode nennt; `mail-fehler.test.ts`
+landet und das Log nur Klasse, Code und Antwortcode nennt, sowie, dass eine
+Antwort mit mehr Mitteilungen als angefragt nichts einplant; `mail-fehler.test.ts`
 die Felder und den Vermerk, `execute-step.test.ts` den Vermerk in Fehlerspalte
 und Log des Workflow-Versands. Die Restore-Abnahme (`restore-security.ts`,
 CI-Selbsttest) weist einen wiederhergestellten Stand ab, in dem die App-Rolle
