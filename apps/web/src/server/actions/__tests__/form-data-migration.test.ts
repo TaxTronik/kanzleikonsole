@@ -134,8 +134,10 @@ describe('parseFormData-Migrationsrest', () => {
     // TCMS Stufe 3, Bereich D: Ereigniseingang (+5), Portal-Aufgaben (+3),
     // Portal-Freigaben (+2) und Ereignismeldung im Portal (+1) lesen von Beginn
     // an über parseFormData (+11).
+    // kk-tcms-s10nach: Zuordnen einer ungeklärten Meldungsanlage im
+    // Ereigniseingang liest von Beginn an über parseFormData (+1).
     expect(direct).toHaveLength(2);
     expect(direct.filter((call) => !call.exact)).toHaveLength(1);
-    expect(shared).toBe(175);
+    expect(shared).toBe(176);
   });
 });

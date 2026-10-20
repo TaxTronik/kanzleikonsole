@@ -6429,6 +6429,7 @@
         "apps/web/src/server/tcms/__tests__/portal-anlagen.test.ts",
         "apps/web/src/server/tcms/__tests__/portal-meldung.test.ts",
         "apps/web/src/server/tcms/__tests__/meldevorgang-db.test.ts",
+        "apps/web/src/server/tcms/__tests__/bereich-d-live.test.tsx",
         "apps/web/src/components/tcms/__tests__/meldung-schluessel.test.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-seite.test.tsx",
         "apps/web/src/app/staff/(protected)/tcms/arbeitskorb/__tests__/seite.test.tsx",

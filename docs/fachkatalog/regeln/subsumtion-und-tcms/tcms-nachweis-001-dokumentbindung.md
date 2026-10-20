@@ -107,6 +107,7 @@ test_refs:
   - apps/web/src/server/tcms/__tests__/portal-anlagen.test.ts
   - apps/web/src/server/tcms/__tests__/portal-meldung.test.ts
   - apps/web/src/server/tcms/__tests__/meldevorgang-db.test.ts
+  - apps/web/src/server/tcms/__tests__/bereich-d-live.test.tsx
   - apps/web/src/components/tcms/__tests__/meldung-schluessel.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/__tests__/ereignisse-seite.test.tsx
   - apps/web/src/app/staff/(protected)/tcms/arbeitskorb/__tests__/seite.test.tsx
@@ -492,6 +493,11 @@ klärt nichts; Ablehnung des ersten Versuchs gibt frei;
 `IDEMPOTENZ_ABWEICHUNG` lässt gebunden; nach Ablauf des Fensters keine
 Wiederholung und nie frei; nie gesendete Vorgänge geben frei; nur die eigene
 Person; Inhalt nur verschlüsselt und an seine Zeile gebunden),
+`bereich-d-live.test.tsx` (Opt-in gegen den laufenden Dienst) dasselbe mit
+dem echten Tax-CMS: Antwort der ersten Meldung verloren, das erneute
+Absenden liefert dasselbe Ereignis (mit dem gespeicherten Inhalt, auch wenn
+das Formular inzwischen geändert ist), anderer Inhalt mit demselben
+Schlüssel ergibt den festen Text zu `IDEMPOTENZ_ABWEICHUNG`,
 `portal-meldung.test.ts` den Ablauf je Ausgang, `portal-aktionen.test.ts`
 den Schlüssel aus dem Formular und die Abbildung der Ausgänge,
 `meldung-schluessel.test.tsx` den Schlüssel je Einhängen (auch nach der

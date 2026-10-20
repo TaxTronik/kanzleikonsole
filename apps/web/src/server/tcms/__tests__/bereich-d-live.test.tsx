@@ -11,7 +11,7 @@
 // Zustand im Dienst: Der Vier-Augen-Test stellt den Ausgangszustand wieder her
 // (Antrag zurückgezogen); Code anfordern und ein Fehlversuch zählen im Dienst
 // (neuer Code setzt die Versuche zurück); die Meldung legt je Lauf ein
-// Ereignis an.
+// Ereignis an, die idempotente Meldung (TCMS s10) ein weiteres.
 //
 // Start (Dienst und Umgebung: docs/development/tcms-anbindung.md §6):
 //   cd apps/web && TCMS_LIVE_TESTS=1 DB_TESTS=1 TCMS_DEPLOYMENT=external \
@@ -362,6 +362,100 @@ const ZEIT = 60_000;
       );
       expect(container.textContent).toContain(`Vorgangsnummer: ${nummer}`);
       expect(container.textContent).toContain('Leon Brandt');
+    },
+    ZEIT,
+  );
+
+  it(
+    'Idempotente Meldung (TCMS s10, kk-tcms-s10nach): Antwort verloren, das erneute Absenden liefert dasselbe Ereignis; anderer Inhalt mit demselben Schlüssel → fester Text',
+    async () => {
+      sitzung.portal = portalSitzung(DEMO.jana);
+      const { portalEreignisMeldenAction } =
+        await import('@/app/portal/(protected)/tcms/ereignis/actions');
+      const { MELDUNG_AUSGANG_OFFEN } = await import('@/components/tcms/portal/texte');
+      const { TCMS_KONFLIKT_TEXTE } = await import('../zustand');
+      const schluessel = randomUUID();
+      const titel = `Live-Test idempotent ${schluessel.slice(0, 8)}`;
+      const formular = (beschreibung: string) => {
+        const daten = new FormData();
+        daten.set('typ', 'T-01');
+        daten.set('titel', titel);
+        daten.set('beschreibung', beschreibung);
+        daten.set('datum', '2026-12-02');
+        daten.set('zusage', '1');
+        daten.set('idempotenzSchluessel', schluessel);
+        return daten;
+      };
+      const BESCHREIBUNG =
+        'Live-Test der kanzleikonsole: Antwort der ersten Meldung geht verloren.';
+      // Die erste Meldung erreicht den Dienst, ihre Antwort geht verloren.
+      const echt = globalThis.fetch;
+      let verloren = 0;
+      const spion = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+        const antwort = await echt(url, init);
+        if (
+          verloren === 0 &&
+          init?.method === 'POST' &&
+          String(url).endsWith('/portal/ereignisse')
+        ) {
+          verloren += 1;
+          await antwort.arrayBuffer();
+          throw new TypeError('fetch failed');
+        }
+        return antwort;
+      });
+      try {
+        expect(await portalEreignisMeldenAction(null, formular(BESCHREIBUNG))).toEqual({
+          ok: true,
+          warnung: MELDUNG_AUSGANG_OFFEN,
+        });
+      } finally {
+        spion.mockRestore();
+      }
+      expect(verloren).toBe(1);
+      expect(
+        await owner.tcmsPortalReport.count({
+          where: { tenantId: DEMO.tenant, contactId: DEMO.jana, idempotencyKey: schluessel },
+        }),
+      ).toBe(1);
+
+      // Dasselbe Formular erneut (inzwischen geändert): gesendet wird der
+      // gespeicherte Inhalt – dasselbe Ereignis, kein zweites, keine Abweichung.
+      let ziel = '';
+      try {
+        await portalEreignisMeldenAction(null, formular(`${BESCHREIBUNG} Nachtrag im Formular.`));
+      } catch (e) {
+        ziel = erwarteAnwendungsfehler(e, /^NEXT_REDIRECT:/).message;
+      }
+      const nummer = /^NEXT_REDIRECT:\/portal\/tcms\/ereignis\?gemeldet=(.+)$/.exec(ziel)?.[1];
+      expect(nummer, ziel).toMatch(/^\d{4}-T-\d{4}$/);
+      const seite = await tcmsPortalSeite();
+      if (!seite.ok) throw new Error(seite.zustand.art);
+      const meldungen = await tcmsLesen(seite, ENDPUNKTE.portalMeldungenLesen);
+      if (!meldungen.ok) throw new Error(meldungen.zustand.art);
+      expect(meldungen.daten.meldungen.filter((m) => m.titel === titel)).toHaveLength(1);
+      expect(meldungen.daten.meldungen.find((m) => m.titel === titel)?.nummer).toBe(nummer);
+      // Geklärt: der Meldevorgang samt Inhalt ist gelöscht.
+      expect(
+        await owner.tcmsPortalReport.count({
+          where: { tenantId: DEMO.tenant, idempotencyKey: schluessel },
+        }),
+      ).toBe(0);
+
+      // Derselbe Schlüssel mit anderem Inhalt: der Dienst weist ab, fester Text.
+      const r = await portalEreignisMeldenAction(
+        null,
+        formular('Live-Test der kanzleikonsole: anderer Inhalt mit demselben Schlüssel.'),
+      );
+      expect(r).toMatchObject({
+        ok: false,
+        error: TCMS_KONFLIKT_TEXTE.IDEMPOTENZ_ABWEICHUNG,
+      });
+      expect(
+        await owner.tcmsPortalReport.count({
+          where: { tenantId: DEMO.tenant, idempotencyKey: schluessel },
+        }),
+      ).toBe(0);
     },
     ZEIT,
   );
