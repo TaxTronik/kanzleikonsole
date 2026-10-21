@@ -474,9 +474,13 @@ dem Endstatus (`auftragsAbschluss`): `FAILED`/`NO_RECIPIENT`/`PARTIAL_FAILURE`
 `AUFTRAG_FEHLT`, `SKIPPED` → der Grund der Aktualitätsprüfung
 (`TCMS_VERWORFEN_TEXTE` in `packages/mail/src/outbox-relevance.ts`, aus dem
 Vermerk `Nicht versendet: …` gelesen: abgelaufen → `ABGELAUFEN`, Empfänger
-inaktiv bzw. unbestätigt → `KONTAKT_INAKTIV`/`KONTAKT_UNBESTAETIGT`, fremd →
+inaktiv bzw. unbestätigt → `KONTAKT_INAKTIV`/`KONTAKT_UNBESTAETIGT`, Adresse
+ohne zustellbare Form → `KONTAKT_OHNE_EMAIL`, fremd →
 `KONTAKT_ANDERER_MANDANT`, Mandat inaktiv → `MANDANT_INAKTIV`, sonst
-`VERSAND_VERWORFEN`). Die Mail-Outbox entfernt Inhalt und Code bei jedem
+`VERSAND_VERWORFEN`). Ob der Empfänger noch aktiven Portalzugang hat, prüft die
+Aktualitätsprüfung seit kk-tcms-fix5 mit derselben Regel wie die Einplanung
+(`@taxtronik/db/portal-zugang`: Mandant, Kontakt, Adressform, Anmeldung) und
+verlangt zusätzlich, dass die Adresse noch die des Auftrags ist. Die Mail-Outbox entfernt Inhalt und Code bei jedem
 Endstatus unverändert (`mail_outbox_tcms_content_check`).
 
 Das Tax-CMS reserviert beim Abruf nichts. Doppelte schließen die eindeutige

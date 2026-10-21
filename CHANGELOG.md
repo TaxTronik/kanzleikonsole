@@ -2024,6 +2024,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   (Release-Rehearsal, day-2-operations). Die S3-Zugangsdaten der App brauchen
   `s3:GetObjectRetention` und `s3:PutObjectRetention` auf dem GwG-Bucket
   (TCMS-NACHWEIS-001, GWG-RETENTION-DESTRUCTION-001).
+- **[TCMS]** Die Aktualitätsprüfung vor dem Versand einer Tax-CMS-Mitteilung
+  prüft den Empfänger mit derselben Regel „aktiver Portalzugang“
+  (`@taxtronik/db/portal-zugang`) wie die Einplanung statt mit einer eigenen
+  Kopie; zusätzlich muss die Adresse noch die des Auftrags sein. Neu verworfen
+  werden damit auch Adressen ohne zustellbare Form (dem Tax-CMS als „kein
+  Portalzugang“ gemeldet) und Kontakte eines anonymisierten Mandanten; liegen
+  mehrere Gründe vor, nennt der Vermerk wie bei der Einplanung zuerst die
+  Mandantsperre (s11 offener Punkt 5, MAIL-OUTBOX-001, TCMS-AKTEUR-001).
 - **[TCMS]** Eine Portal-Meldung, die zwischen dem Lesen und dem
   Beanspruchen durch die Klärung gesendet wurde, gilt nicht mehr als „nie
   gesendet“: Ihre Anlagen werden nicht freigegeben, obwohl das Ereignis im

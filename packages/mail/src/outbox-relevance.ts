@@ -17,10 +17,17 @@
 // TCMS Stufe 4: Mitteilungen des Tax-CMS prüfen dagegen fail-closed: Ohne
 // angekündigtes Gültigkeitsende, nach seinem Ablauf, mit fremdem Vorgangstyp
 // oder wenn der Empfänger nicht mehr bestätigt zu diesem Mandanten gehört,
-// geht nichts hinaus (MAIL-OUTBOX-001).
+// geht nichts hinaus (MAIL-OUTBOX-001). „Bestätigt“ heißt aktiver
+// Portalzugang nach der gemeinsamen Regel @taxtronik/db/portal-zugang
+// (kk-tcms-fix5, s11 offener Punkt 5), dieselbe wie bei der Einplanung.
 // =============================================================================
 
 import type { Prisma } from '@prisma/client';
+import {
+  PORTAL_ZUGANG_SELECT,
+  portalZugangMangel,
+  type PortalZugangMangel,
+} from '@taxtronik/db/portal-zugang';
 import { MAIL_OUTBOX_PURPOSES, type MailOutboxPurpose } from './outbox-purposes';
 import { istTcmsMailAnlass, TCMS_NACHRICHT_RESSOURCE } from './tcms-vorlagen';
 
@@ -103,6 +110,7 @@ export const TCMS_VERWORFEN_TEXTE = {
   EMPFAENGER_FREMD: 'Der Empfänger gehört nicht (mehr) zu diesem Mandanten.',
   EMPFAENGER_INAKTIV: 'Der Empfänger ist nicht mehr aktiv.',
   ADRESSE_UNBESTAETIGT: 'Die Adresse des Empfängers ist nicht bestätigt.',
+  ADRESSE_UNZUSTELLBAR: 'Die Adresse des Empfängers hat keine zustellbare Form.',
   MANDAT_INAKTIV: 'Das Mandat ist nicht mehr aktiv.',
   ADRESSE_GEAENDERT: 'Die E-Mail-Adresse des Empfängers hat sich geändert.',
 } as const;
@@ -363,12 +371,25 @@ function payloadTo(payload: unknown): string | null {
 }
 
 /**
+ * kk-tcms-fix5: Grund eines verworfenen Auftrags je Mangel der gemeinsamen
+ * Regel „aktiver Portalzugang“ (@taxtronik/db/portal-zugang; Reihenfolge der
+ * Prüfung wie dort: Mandant, Kontakt, Adressform, Anmeldung).
+ */
+const VERWERF_GRUND_JE_MANGEL = {
+  MANDANT_INAKTIV: 'MANDAT_INAKTIV',
+  KONTAKT_INAKTIV: 'EMPFAENGER_INAKTIV',
+  KONTAKT_OHNE_EMAIL: 'ADRESSE_UNZUSTELLBAR',
+  KONTAKT_UNBESTAETIGT: 'ADRESSE_UNBESTAETIGT',
+} as const satisfies Readonly<Record<PortalZugangMangel, TcmsVerwerfGrund>>;
+
+/**
  * TCMS Stufe 4: Mitteilung des Tax-CMS an einen Mandantenkontakt. Gewollt nur
  * bis zum angekündigten Gültigkeitsende (`relevance.bis`: Ablauf des Codes bzw.
  * Anforderung plus Code-Lebensdauer) und nur, solange der Empfänger ein
- * aktiver, per Portal-Anmeldung bestätigter Kontakt genau dieses Mandanten mit
- * unveränderter Adresse ist und das Mandat aktiv ist – dieselben Bedingungen,
- * unter denen der Worker den Auftrag angelegt hat. Fehlt eine Angabe: verworfen.
+ * Kontakt genau dieses Mandanten mit aktivem Portalzugang ist – dieselbe Regel
+ * (@taxtronik/db/portal-zugang), unter der der Worker den Auftrag angelegt hat
+ * – und seine Adresse noch die des Auftrags (`to`) ist. Fehlt eine Angabe:
+ * verworfen.
  */
 const tcmsMitteilungAktuell: Check = async (db, ref, now, announced, payload) => {
   const bis = typeof announced?.['bis'] === 'string' ? Date.parse(announced['bis']) : NaN;
@@ -381,19 +402,12 @@ const tcmsMitteilungAktuell: Check = async (db, ref, now, announced, payload) =>
   }
   const kontakt = await db.clientContact.findFirst({
     where: { id: kontaktId, tenantId: ref.tenantId, clientId: ref.clientId },
-    select: {
-      active: true,
-      email: true,
-      lastLoginAt: true,
-      client: { select: { allowActive: true, mandateEndedAt: true } },
-    },
+    select: PORTAL_ZUGANG_SELECT,
   });
   if (!kontakt) return obsolete(TCMS_VERWORFEN_TEXTE.EMPFAENGER_FREMD);
-  if (!kontakt.active) return obsolete(TCMS_VERWORFEN_TEXTE.EMPFAENGER_INAKTIV);
-  if (!kontakt.lastLoginAt) return obsolete(TCMS_VERWORFEN_TEXTE.ADRESSE_UNBESTAETIGT);
-  if (!kontakt.client.allowActive || kontakt.client.mandateEndedAt) {
-    return obsolete(TCMS_VERWORFEN_TEXTE.MANDAT_INAKTIV);
-  }
+  const mangel = portalZugangMangel(kontakt);
+  if (mangel) return obsolete(TCMS_VERWORFEN_TEXTE[VERWERF_GRUND_JE_MANGEL[mangel]]);
+  // Zusätzlich zur gemeinsamen Regel: Die Adresse ist noch die des Auftrags.
   if (kontakt.email.trim().toLowerCase() !== to.trim().toLowerCase()) {
     return obsolete(TCMS_VERWORFEN_TEXTE.ADRESSE_GEAENDERT);
   }

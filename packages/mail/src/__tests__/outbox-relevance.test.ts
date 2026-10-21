@@ -3,9 +3,11 @@
 // → versenden; Vorgang erledigt, zurückgezogen oder abgesagt → verwerfen mit
 // Begründung. Die Prüfung setzt den Tenant-Filter selbst.
 // TCMS Stufe 4: Mitteilungen des Tax-CMS fail-closed (Gültigkeitsende,
-// bestätigter Empfänger dieses Mandanten mit unveränderter Adresse).
+// bestätigter Empfänger dieses Mandanten mit unveränderter Adresse). Seit
+// kk-tcms-fix5 heißt „bestätigt“ aktiver Portalzugang nach der gemeinsamen
+// Regel @taxtronik/db/portal-zugang (wie bei der Einplanung im Worker).
 //
-// Fachkatalog: MAIL-OUTBOX-001
+// Fachkatalog: MAIL-OUTBOX-001, TCMS-AKTEUR-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -14,6 +16,7 @@ import {
   type MailOutboxPurpose,
   type MailOutboxRelevanceReader,
 } from '../outbox';
+import { PORTAL_ZUGANG_SELECT } from '@taxtronik/db/portal-zugang';
 import { istTcmsMailAnlass, TCMS_MAIL_ANLAESSE } from '../tcms-vorlagen';
 
 const NOW = new Date('2026-10-07T10:00:00.000Z');
@@ -81,7 +84,7 @@ function TCMS_KONTAKT(overrides: Record<string, unknown> = {}) {
     active: true,
     email: 'Jana.Weller@talwind.example',
     lastLoginAt: new Date('2026-10-01T08:00:00.000Z'),
-    client: { allowActive: true, mandateEndedAt: null },
+    client: { allowActive: true, anonymizedAt: null, mandateEndedAt: null },
     ...overrides,
   };
 }
@@ -441,9 +444,11 @@ describe('Mitteilungen des Tax-CMS (TCMS Stufe 4, fail-closed)', () => {
           wanted: true,
         },
       );
-      expect(h.findFirst['clientContact']).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { id: KONTAKT, tenantId: TENANT, clientId: CLIENT } }),
-      );
+      // kk-tcms-fix5: gelesen werden genau die Felder der gemeinsamen Regel.
+      expect(h.findFirst['clientContact']).toHaveBeenCalledWith({
+        where: { id: KONTAKT, tenantId: TENANT, clientId: CLIENT },
+        select: PORTAL_ZUGANG_SELECT,
+      });
     },
   );
 
@@ -491,12 +496,27 @@ describe('Mitteilungen des Tax-CMS (TCMS Stufe 4, fail-closed)', () => {
     ],
     [
       'Mandat beendet',
-      TCMS_KONTAKT({ client: { allowActive: true, mandateEndedAt: NOW } }),
+      TCMS_KONTAKT({ client: { allowActive: true, anonymizedAt: null, mandateEndedAt: NOW } }),
       'Das Mandat ist nicht mehr aktiv.',
     ],
     [
       'Mandant gesperrt',
-      TCMS_KONTAKT({ client: { allowActive: false, mandateEndedAt: null } }),
+      TCMS_KONTAKT({ client: { allowActive: false, anonymizedAt: null, mandateEndedAt: null } }),
+      'Das Mandat ist nicht mehr aktiv.',
+    ],
+    // kk-tcms-fix5: gemeinsame Regel @taxtronik/db/portal-zugang.
+    [
+      'Mandant anonymisiert',
+      TCMS_KONTAKT({ client: { allowActive: true, anonymizedAt: NOW, mandateEndedAt: null } }),
+      'Das Mandat ist nicht mehr aktiv.',
+    ],
+    [
+      'inaktiv bei beendetem Mandat (die Mandantsperre zuerst, wie bei der Einplanung)',
+      TCMS_KONTAKT({
+        active: false,
+        lastLoginAt: null,
+        client: { allowActive: true, anonymizedAt: null, mandateEndedAt: NOW },
+      }),
       'Das Mandat ist nicht mehr aktiv.',
     ],
     [
@@ -509,6 +529,19 @@ describe('Mitteilungen des Tax-CMS (TCMS Stufe 4, fail-closed)', () => {
     await expect(
       checkMailOutboxRelevanceTx(h.db, row('tcms-freigabe-angefordert', payload()), NOW),
     ).resolves.toEqual({ wanted: false, reason });
+  });
+
+  it('kk-tcms-fix5: verwirft eine Adresse ohne zustellbare Form, auch wenn sie dem Auftrag gleicht', async () => {
+    for (const email of ['jana.weller@talwind', 'jana.weller@talwind.example\nBcc: x@evil.test']) {
+      h.findFirst['clientContact']!.mockResolvedValue(TCMS_KONTAKT({ email }));
+      await expect(
+        checkMailOutboxRelevanceTx(h.db, row('tcms-freigabe-code', payload(undefined, email)), NOW),
+        email,
+      ).resolves.toEqual({
+        wanted: false,
+        reason: 'Die Adresse des Empfängers hat keine zustellbare Form.',
+      });
+    }
   });
 
   it('verwirft eine TCMS-Mitteilung mit fremdem Vorgangstyp (kein Rückfall auf „gewollt“)', async () => {

@@ -8,12 +8,11 @@
 // über die Adresse, mehrere Adressen, Vorrang der Mandantsperre, fehlende
 // Anmeldung) als grüne Regression.
 //
-// Beobachtung (kein Befund, s11 offener Punkt 5): packages/mail prüft dieselbe
-// Mitteilung vor dem Versand mit einer EIGENEN, nicht auf portal-zugang
-// umgestellten Kopie (tcmsMitteilungAktuell). Beide prüfen active, lastLoginAt,
-// allowActive, mandateEndedAt; die Adressform prüft nur portal-zugang, die
-// Adressgleichheit (to) nur packages/mail. Die Doppelung ist ein
-// Wartungsrisiko, hier nicht als scheiternder Test geführt.
+// Beobachtung (kein Befund, s11 offener Punkt 5): packages/mail prüfte dieselbe
+// Mitteilung vor dem Versand mit einer EIGENEN Kopie der Regel
+// (tcmsMitteilungAktuell); die Adressform prüfte nur portal-zugang. Seit
+// kk-tcms-fix5 nutzt auch packages/mail diese Regel und prüft zusätzlich die
+// Adressgleichheit (to) – belegt in packages/mail outbox-relevance.test.ts.
 //
 // Fachkatalog: TCMS-AKTEUR-001, MAIL-OUTBOX-001
 // =============================================================================
