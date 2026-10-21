@@ -3,7 +3,7 @@
   "quelle": {
     "repo": "tcms",
     "pfad": "packages/contract/src",
-    "commit": "bfdfdd262c2fcd51dccb025ccbbd66ebd22c7aca"
+    "commit": "2cafc99667f0b49c6c98caf50bddabe7f7ab1c6a"
   },
   "dateien": [
     {
@@ -16,11 +16,11 @@
     },
     {
       "pfad": "bereiche/feststellungen-ereignisse.ts",
-      "sha256": "a55710aa656012daac27b9e3326ee94fc4138c6a70e090d0329fa5104a553265"
+      "sha256": "be8619634c860a97e65bd3ce691b43859a035bc686a2a35ca0fe2127198c4606"
     },
     {
       "pfad": "bereiche/lesepfade.ts",
-      "sha256": "a6376db01143b9e927af62c763fea08f4b8931b03c2bfde37ef56b4f4600f81b"
+      "sha256": "2daa8a8c0701ee791fe73ca06f0f0bbbd9c29b190470c8760d6c116bbc55ab0b"
     },
     {
       "pfad": "bereiche/programm-beschreibung.ts",

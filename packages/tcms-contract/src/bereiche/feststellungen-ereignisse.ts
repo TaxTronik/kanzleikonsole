@@ -949,7 +949,10 @@ export const LaenderSchema = z
     rechte: BearbeitenRechteSchema,
     /** Stände je Land bis zum Stichtag, neueste zuerst. */
     historie: z.array(z.object({ land: z.string(), staende: z.array(LandStandSchema) }).strict()),
-    /** Nicht vertrauliche Feststellungen mit Länderbezug. */
+    /**
+     * Feststellungen mit Länderbezug; vertrauliche nur für die Kanzleileitung
+     * (Admins/Partner, tcms-s12), für alle anderen nie (RT-01).
+     */
     feststellungen: z.array(
       z
         .object({

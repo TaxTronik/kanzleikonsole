@@ -1247,7 +1247,8 @@ const auditEintragOffen = z
  * Eintrag zu einer vertraulichen Feststellung (bzw. ihrer Maßnahmen) für
  * Nicht-Beteiligte (`kannVertraulichLesen` mit dem Mandantenbezug der Anfrage,
  * tcms-s11): Positivliste aus Ereignisart, Zeitpunkt, Akteursart, Objekt und
- * „vertraulich“ – ohne Namen, Personen-IDs, Detail und Hashes.
+ * „vertraulich“ – ohne Namen, Personen-IDs, Detail und Hashes. Die
+ * Kanzleileitung erhält ihn nie (tcms-s12).
  */
 const auditEintragMaskiert = z
   .object({
@@ -1268,10 +1269,14 @@ export type AuditListenEintrag = z.infer<typeof auditEintrag>;
 
 /**
  * Antwort von `GET /v1/audit`: eine Seite und der Cursor für die nächste.
- * Inhalte vertraulicher Feststellungen sehen nur Beteiligte (tcms-s11, ADR
- * 0001 §10.2): für alle anderen maskierte Einträge und keine Hashes ab der
- * ersten maskierten Position. Die Kettenprüfung (`POST /v1/audit/pruefen`)
- * rechnet unverändert über die vollständigen Einträge.
+ * Inhalte vertraulicher Feststellungen sehen nur Personen mit
+ * `kannVertraulichLesen` (tcms-s11, ADR 0001 §5.1): für alle anderen maskierte
+ * Einträge und keine Hashes ab der ersten maskierten Position. Die
+ * Kanzleileitung (Admins/Partner) liest alles, auch ohne `cli` – mit Namen,
+ * Details und allen Hashes (tcms-s12); da nur sie das Audit liest, enthält die
+ * Antwort derzeit keine maskierten Einträge. Die Kettenprüfung
+ * (`POST /v1/audit/pruefen`) rechnet unverändert über die vollständigen
+ * Einträge.
  */
 export const AuditListeAntwortSchema = z
   .object({

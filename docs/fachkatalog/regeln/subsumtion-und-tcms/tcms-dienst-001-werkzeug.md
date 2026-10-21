@@ -213,11 +213,13 @@ Mandantenakte erscheinen nur bei eingeschaltetem Modul und konfiguriertem
 Dienst (`dienst: 'tcms'` in `lib/navigation-registry.ts`, gespeist in den
 geschützten Layouts und der Mandantenakte aus `tcmsKonfiguriert()`); das
 Tax-CMS-Audit zusätzlich nur für Admins und Partner. Die Audit-Seite ist
-mandantenübergreifend und sendet keinen Mandantenbezug; Einträge zu
-vertraulichen Feststellungen liefert der Dienst deshalb maskiert, und die
-Seite zeigt davon nur die Felder der maskierten Variante, die Akteursart als
-festen Text und „vertraulich“, Hashes ab der ersten maskierten Position als
-„nicht angezeigt“ (TCMS s11, kk-tcms-s11). Gleiche Antwortfelder
+mandantenübergreifend und sendet keinen Mandantenbezug. Produktentscheidung
+(Rey Koxha, 21.10.2026, fachlich ungeprüft): Die Kanzleileitung liest
+vertrauliche Feststellungen vollständig; der Dienst liefert ihr das Audit
+deshalb unmaskiert mit allen Hashes (TCMS s12). Liefert der Dienst dennoch
+maskierte Einträge, zeigt die Seite nur deren Felder, die Akteursart als festen
+Text und „vertraulich“, Hashes ab der ersten maskierten Position als „nicht
+angezeigt“ (TCMS s11, kk-tcms-s11). Gleiche Antwortfelder
 zeigen Kanzlei und Portal mit denselben Bausteinen (Nachweisliste,
 Beschreibung, Formular-Baustein `useTcmsFormular`).
 

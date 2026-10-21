@@ -98,7 +98,10 @@ Quell-Commit und je Datei den SHA-256 fest.
   Dokument, nur Kanzlei; Grundlage für „Ungeklärte Anlage freigeben“), Audit-Liste
   als nach `maskiert` diskriminierte Union (vertrauliche Feststellungen für
   Nicht-Beteiligte ohne Person, Detail und Hashes; `prevHash`, `hash` und
-  `kopf.hash` nullbar). Vertrag und Dienst nur gemeinsam
+  `kopf.hash` nullbar). s12: Die Kanzleileitung (`rol.adm`, in der
+  kanzleikonsole Admin und Partner) liest vertrauliche Inhalte auf allen
+  Lesepfaden unabhängig von Beteiligung und Mandatsbezug; das Audit liefert ihr
+  keine maskierten Einträge (Schema unverändert). Vertrag und Dienst nur gemeinsam
   ausrollen: Die Schemas sind strikt, ein 403 ohne Grund ist für diesen
   Vertrag ein Protokollfehler. Die Zeichenregel folgt der Unicode-Version der
   Laufzeit: kanzleikonsole und Dienst auf derselben Node-Hauptversion (24).

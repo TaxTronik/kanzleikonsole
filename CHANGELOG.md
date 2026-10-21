@@ -441,9 +441,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 - **[TCMS]** Tax-CMS-Mitteilungen gelten erst als zugestellt, wenn der Mailserver des
   Anbieters angenommen hat; jeder andere Endstatus wird als unzustellbar mit festem Grund
   gemeldet (Migration 20261021150100, MAIL-OUTBOX-001).
-- **[Scope] [TCMS]** Vertrag auf Tax-CMS bfdfdd2: Die Audit-Seite zeigt Einträge zu
-  vertraulichen Feststellungen ohne Mandatsbezug als „vertraulich“ ohne Namen, Detail und
-  Hash (TCMS-DIENST-001).
+- **[Scope] [TCMS]** Vertrag auf Tax-CMS 2cafc99: Die Kanzleileitung (Admin, Partner) liest
+  vertrauliche Feststellungen auf allen Lesepfaden einschließlich des Audits mit Namen,
+  Details und Hashes (Produktentscheidung, fachlich ungeprüft); für alle anderen bleibt die
+  Beschränkung auf Beteiligte. Die Audit-Seite zeigt maskierte Einträge weiterhin als
+  „vertraulich“, falls der Dienst solche liefert (TCMS-DIENST-001).
 - **[Scope] [TCMS]** Freigaben, Risikoakzeptanzen und die Zielfreigabe gehen nur an Kontakte
   mit aktivem Portalzugang; die Oberfläche zeigt „ohne Portalzugang – kann nicht
   freigeben“. Die offenen Fragen der Stufe 3a sind als Produktentscheidung eingetragen
