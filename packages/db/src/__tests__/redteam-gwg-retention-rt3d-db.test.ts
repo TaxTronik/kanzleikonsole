@@ -14,16 +14,19 @@
 // kurz (5 Jahre + 1 Tag, s11 offener Punkt 2); die steuerliche Frist hält allein
 // die Datenbank (retention_until und der Claim).
 //
-// Schutzziele (grün) und ein Befund (rot, scheitert heute) in diesem File:
+// Schutzziele in diesem File (alle grün):
 //   - Die Steuerfrist ist jahresgenau und zeitzonenunabhängig; NULL-created_at
 //     (Altbestand) ist an der Spalte ausgeschlossen (NOT NULL).
 //   - raise hebt retention_until auf die Steuerfrist und senkt nie.
 //   - Ein gebundener (auch freigegebener) Beleg wird vor der Steuerfrist nicht
 //     vernichtet.
-//   - BEFUND RT3D-K-01: Für einen gebundenen, noch nicht vorgemerkten GwG-Beleg
-//     sind created_at und retention_until unter der App-Rolle frei änderbar und
-//     die Verknüpfungszeile ist nicht gegen hartes DELETE geschützt; damit lässt
-//     sich der Vernichtungs-Claim vor Ablauf der Steuerfrist passieren.
+//   - BEFUND RT3D-K-01 (behoben in kk-tcms-fix5): Für einen gebundenen, noch
+//     nicht vorgemerkten GwG-Beleg waren created_at und retention_until unter
+//     der App-Rolle frei änderbar; damit ließ sich der Vernichtungs-Claim vor
+//     Ablauf der Steuerfrist passieren. Heute weist die Datenbank das
+//     Umschreiben ab; die Verknüpfungszeile löscht keine Rolle (App-Rolle:
+//     Rechte; jede andere: tcms_document_reference_no_delete). Weitere Regeln
+//     und Rollen: tcms-gwg-aufbewahrung.test.ts.
 //
 //   DB_TESTS=1 (DATABASE_URL + DATABASE_APP_URL) \
 //     pnpm exec vitest run --config vitest.db.config.ts \
@@ -213,22 +216,36 @@ d('RT3D: Aufbewahrung gebundener GwG-Belege', () => {
   });
 
   // --------------------------------------------------------------------------
-  // BEFUND RT3D-K-01 (scheitert heute): Die Steuerfrist hängt an den unter der
-  // App-Rolle frei änderbaren Spalten created_at/retention_until und an einer
-  // nicht DELETE-geschützten Verknüpfungszeile. Solange der Beleg nicht
-  // vorgemerkt ist (erst dann friert der Guard beide Spalten ein), kann der
-  // Aufrufer sie vor dem Vormerken umschreiben und so den SECURITY-DEFINER-Claim
-  // vor Ablauf der Steuerfrist passieren – der Object-Lock backstoppt nicht.
+  // BEFUND RT3D-K-01 (behoben in kk-tcms-fix5, Migration 20261021171000): Die
+  // Steuerfrist hing an den unter der App-Rolle frei änderbaren Spalten
+  // created_at/retention_until. Solange der Beleg nicht vorgemerkt war (erst
+  // dann fror der Guard beide Spalten ein), konnte der Aufrufer sie vor dem
+  // Vormerken umschreiben und so den SECURITY-DEFINER-Claim vor Ablauf der
+  // Steuerfrist passieren. Derselbe Angriff: Die Datenbank weist das
+  // Umschreiben ab (23001, document_tcms_retention_guard), gemeinsam und je
+  // Spalte, und die Vernichtung bleibt vor der Steuerfrist gesperrt.
   // --------------------------------------------------------------------------
   it('BEFUND RT3D-K-01: created_at + retention_until unter der App-Rolle gesenkt → Vernichtung vor Steuerfrist', async () => {
     const docId = await gebundenerBeleg({ createdAt: '2020-05-01', retentionUntil: '2025-06-01' });
     await inApp((tx) => tx.$queryRaw`SELECT app.raise_tcms_gwg_evidence_retention(${docId}::uuid)`);
-    // Noch nicht vorgemerkt → Guard friert created_at/retention_until nicht ein.
-    await inApp(
-      (tx) =>
-        tx.$executeRaw`UPDATE document SET created_at = '2010-01-01', retention_until = '2015-01-01' WHERE id = ${docId}::uuid`,
+    // Noch nicht vorgemerkt: Das Umschreiben scheitert trotzdem an der Datenbank.
+    const umschreiben = [
+      { sql: `created_at = '2010-01-01', retention_until = '2015-01-01'`, meldung: /Anlagedatum/ },
+      { sql: `created_at = '2010-01-01'`, meldung: /Anlagedatum unveränderlich$/ },
+      { sql: `retention_until = '2015-01-01'`, meldung: /Aufbewahrungsende nie früher$/ },
+      { sql: `retention_until = NULL`, meldung: /Aufbewahrungsende nie früher$/ },
+    ];
+    for (const { sql, meldung } of umschreiben) {
+      await dbAbgewiesen(
+        inApp((tx) => tx.$executeRawUnsafe(`UPDATE document SET ${sql} WHERE id = '${docId}'`)),
+        { sqlState: '23001', meldung },
+        sql,
+      );
+    }
+    expect((await retentionUntil(docId))[0]!.retention_until?.toISOString()).toBe(
+      '2031-01-01T00:00:00.000Z',
     );
-    // Schutzziel: trotz Manipulation darf vor der Steuerfrist nicht vernichtet werden.
+    // Schutzziel: trotz Manipulationsversuch darf vor der Steuerfrist nicht vernichtet werden.
     await dbAbgewiesen(vernichte(docId), { sqlState: '23514' });
     expect((await retentionUntil(docId))[0]!.gwg_destroyed_at).toBeNull();
   });

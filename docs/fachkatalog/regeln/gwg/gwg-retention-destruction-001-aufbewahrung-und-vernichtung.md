@@ -48,6 +48,7 @@ code_refs:
   - packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql
   - packages/db/prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql
   - apps/web/src/server/tcms/durchfuehrung/sperre.ts
+  - packages/db/prisma/migrations/20261021171000_tcms_gwg_evidence_retention_lock/migration.sql
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
@@ -63,6 +64,8 @@ test_refs:
   - packages/db/src/__tests__/gwg-retention-visibility.test.ts
   - apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions-db.test.ts
   - packages/db/src/__tests__/tcms-document-reference-guards.test.ts
+  - packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts
+  - packages/db/src/__tests__/redteam-gwg-retention-rt3d-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -136,6 +139,8 @@ im konkreten Fall die zulässige oder erforderliche Speicherdauer bestimmt.
 | Datei-Beleg ist im Tax-CMS verknüpft (Altbestand)                                 | Vernichtung blockieren, keine Bytes löschen, bis die Verknüpfung frei ist                                                        | Nachweisbezug (TCMS-NACHWEIS-001)                                                               |
 | Datei-Beleg ist oder war als Nachweis im Tax-CMS verknüpft (Altbestand)           | Aufbewahrungsende auf die GoBD-Frist der Steuerunterlage anheben; fällig erst nach Ablauf beider Fristen, auch nach der Freigabe | Produktentscheidung (Rey Koxha, 21.10.2026): zugleich steuerliche Unterlage; fachlich ungeprüft |
 | Aufbewahrungsende (`retention_until`) des Belegs liegt in der Zukunft             | nicht löschreif: nicht in Queue, Kachel und Hinweis; Aktion und Claim weisen ab                                                  | eine längere Aufbewahrung geht vor (Maximum)                                                    |
+| Beleg mit Verweis des Tax-CMS, Mandat endet                                       | Aufbewahrungsende zusätzlich auf das Ende der GwG-Frist anheben; ein späteres Zurücknehmen oder Vordatieren verkürzt nicht       | Frist hängt nicht an später änderbaren Angaben (RT3D-K-01)                                      |
+| Verweis des Tax-CMS: Änderung senkt Anlagedatum, Ende, Mandant oder Klasse        | für jede Rolle abweisen; Aufbewahrungsende nur anheben                                                                           | Steuerfrist und GwG-Frist dürfen nicht unterlaufen werden (RT3D-K-01)                           |
 | Noch ein nicht vernichteter Datei-Beleg zum Check existiert                       | Vernichtung der strukturierten Check-Aufzeichnungen blockieren                                                                   | Reihenfolge und Nachweisbezug                                                                   |
 | Alle Datei-Belege sind vernichtet und DB-Fristprüfung besteht                     | Personen- und Inhaltsdaten des Checks vernichten; Abschluss protokollieren                                                       | Zweite Vernichtungsstufe                                                                        |
 
@@ -238,6 +243,27 @@ ein Beleg für Kachel, Queue und Worker erst nach seinem Aufbewahrungsende
 (`gwgAufbewahrungAbgelaufen`, `dueGwgDeletionDocsWhere`) – dieselbe Grenze wie
 in Action und Claim; ein Beleg ohne Aufbewahrungsende bleibt sichtbar.
 
+Seit dem Angriffsdurchlauf 3d (RT3D-K-01, kk-tcms-fix5, Migration
+`20261021171000`) lässt sich die Frist eines solchen Belegs ab der ersten
+Bindung von keiner Rolle mehr senken; vorher waren `created_at` (Anker der
+Steuerfrist) und `retention_until` unter der App-Rolle bis zum Vormerken frei
+änderbar. Der Trigger `document_tcms_retention_guard`
+(`app.guard_tcms_referenced_document_retention`) hält `created_at` und
+`tenant_id` jedes Dokuments mit Verweis fest, einen GwG-Beleg mit Verweis in
+seiner Klasse und bei seinem Mandanten, und sein Aufbewahrungsende sinkt nie,
+wird nie leer, ein fehlendes ersetzt nur ein Ende ab der Steuerfrist (SQLSTATE
+23001). Verweise werden nie gelöscht, nur freigegeben
+(`tcms_document_reference_no_delete`; Ausnahmen: Tenant-Kaskade und die
+freigegebenen Verweise in `app.destroy_gwg_document_versions`); die App-Rolle hat
+ohnehin kein `DELETE` (Restore-Invariante). `app.raise_tcms_gwg_evidence_retention`
+hebt bei beendetem Mandat zusätzlich auf das Ende der GwG-Frist (1. Januar des
+sechsten Jahres nach dem Mandatsende, mindestens nach deutschem Kalenderjahr),
+der Trigger `client_tcms_gwg_evidence_retention` bei jedem neuen Mandatsende und
+`document_tcms_gwg_evidence_retention`, wenn ein früherer Nachweis zum GwG-Beleg
+wird. Ein später zurückgenommenes oder früher eingetragenes Mandatsende verkürzt
+die Aufbewahrung dieser Belege damit nicht mehr. Einen Wartungsweg gibt es
+nicht; kein Anwendungspfad ändert diese Spalten so.
+
 Beim Ersetzen eines Nachweises bleibt die abgelöste Prüfzuordnung ausdrücklich
 als historische `GwgIdDocument`-Zeile erhalten. Das Lösen einer irrtümlichen
 Zuordnung entfernt dagegen nur diese Verknüpfungszeile; das Dokument und seine
@@ -309,7 +335,14 @@ auch ohne angehobenes Aufbewahrungsende, DB-Vernichtung samt freigegebener
 Verweise), `actions-db.test.ts` (Abweisung nach der Freigabe, vollständige
 Vernichtung nach Ablauf beider Fristen, Stichtag gleich der GoBD-Höherstufung)
 und `gwg-retention-count.test.ts` (löschreif erst nach dem Aufbewahrungsende,
-Queue und Zählung gleich). Action- und DB-Tests prüfen
+Queue und Zählung gleich). RT3D-K-01 belegen `tcms-gwg-aufbewahrung.test.ts`
+(jede Regel des Triggers für App-Rolle, Owner-Rolle und Superuser samt
+Gegenprobe ohne Verweis, Löschsperre der Verweise mit Tenant-Kaskade und
+vorgetäuschtem Vernichtungskontext, Mandatsende samt Zurücknehmen, Vordatieren
+und Jahreswechsel, Umklassifizierung zum GwG-Beleg, Datenschritt der Migration)
+und `redteam-gwg-retention-rt3d-db.test.ts` (der Angriff: Umschreiben abgewiesen,
+Vernichtung vor der Steuerfrist gesperrt); jede Regel ist durch eine Mutation in
+der Datenbank belegt. Action- und DB-Tests prüfen
 Object-Lock, zweiphasigen Claim, konkrete Storage-Versionen, Tenant- und
 Fristgrenzen sowie die geplante Bereinigung von Personen- und Checkdaten. Der
 DB-Test bestätigt dabei auch, dass der kontrollierte

@@ -103,6 +103,8 @@ code_refs:
   - packages/db/prisma/migrations/20261021100000_tcms_portal_report_lease_token/migration.sql
   - packages/db/prisma/migrations/20261021100100_tcms_portal_report_payload_guard/migration.sql
   - packages/db/prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql
+  - packages/db/prisma/migrations/20261021171000_tcms_gwg_evidence_retention_lock/migration.sql
+  - packages/db/src/restore-security.ts
   - packages/db/src/database-error.ts
   - apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx
   - apps/web/src/components/tcms/portal/anlagen.tsx
@@ -145,6 +147,10 @@ test_refs:
   - apps/web/src/server/tcms/__tests__/redteam-boeser-dienst-db.test.tsx
   - apps/web/src/server/tcms/__tests__/redteam-anlage-freigeben-db.test.ts
   - apps/web/src/server/tcms/__tests__/hochgeladen-db.test.ts
+  - packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts
+  - packages/db/src/__tests__/redteam-gwg-retention-rt3d-db.test.ts
+  - packages/db/src/__tests__/restore-security.test.ts
+  - apps/web/src/server/backup/__tests__/restore-security.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md
@@ -240,6 +246,7 @@ oder ein Ereignis belegen.
 | jemand ein solches Dokument einem anderen Mandanten oder Tenant zuordnen oder seinen Mandanten entfernen will                                          | Datenbankfehler für jede Rolle (Trigger), auch beim Löschen des Mandanten (`ON DELETE SET NULL`); kein Anwendungspfad ändert den Mandanten                                                                                                                                                                          | der Verweis zeigt nur auf ein Dokument genau dieses Mandanten                                                                                                |
 | die GwG-Pflichtvernichtung ein solches Dokument erfasst (Altbestand vor RT3B-K-01)                                                                     | abweisen vor der Vormerkung, im DB-Claim und vor jedem Object-Store-Löschen; keine Bytes löschen                                                                                                                                                                                                                    | ein Nachweis darf nicht still verschwinden; nach der Freigabe gilt die nächste Zeile                                                                         |
 | ein GwG-Beleg als Nachweis gebunden ist oder war (Altbestand; neue Bindungen von GwG-Belegen bleiben ausgeschlossen)                                   | Aufbewahrungsende auf die GoBD-Frist der Steuerunterlage anheben (zehn Jahre ab dem Anlagejahr, 1. Januar des Folgejahres), nie herab; GwG-Vernichtung erst nach Ablauf beider Fristen, auch nach der Freigabe; freigegebene Verweise werden mit dem Beleg vernichtet                                               | Produktentscheidung (Rey Koxha, 21.10.2026): zugleich steuerliche Unterlage, es greift die nächsthöhere Klasse des Aufbewahrungsmodells (fachlich ungeprüft) |
+| ein Dokument mit (auch freigegebenem) Verweis: Anlagedatum oder Tenant, beim GwG-Beleg Klasse oder Mandant ändern oder sein Aufbewahrungsende senken   | für jede Rolle abweisen (Datenbankfehler); Verweise nie löschen, nur freigeben; ein Mandatsende hebt das Ende eines solchen GwG-Belegs auf die GwG-Frist, eine Umklassifizierung zum GwG-Beleg auf die Steuerfrist                                                                                                  | sonst ließe sich die Steuerfrist durch Zurückdatieren oder Senken unterlaufen (RT3D-K-01)                                                                    |
 | der Nachweis im Tax-CMS entfernt wird                                                                                                                  | Verknüpfung freigeben („entfernt“)                                                                                                                                                                                                                                                                                  | Sperre endet mit dem Verweis                                                                                                                                 |
 | der Nachweis heruntergeladen wird und SHA-256 oder Größe der Version weichen vom Verweis ab                                                            | nicht ausliefern, Hinweis                                                                                                                                                                                                                                                                                           | nie eine andere Fassung als die verwiesene ausliefern                                                                                                        |
 
@@ -418,6 +425,24 @@ festem Text (`nachweisSteuerfristTx`, `tcmsNachweisSteuerfristText` in
 vor den Versionen (Fremdschlüssel `document_version_id` ohne Kaskade); bis
 dahin scheiterte der DB-Abschluss einer Vernichtung nach der Freigabe, nachdem
 die Bytes schon gelöscht waren.
+Seit dem Angriffsdurchlauf 3d (RT3D-K-01, kk-tcms-fix5, Migration
+`20261021171000`) lassen sich diese Fristen ab der ersten Bindung von keiner
+Rolle mehr senken; vorher waren `created_at` und `retention_until` bis zum
+Vormerken unter der App-Rolle frei änderbar. Der Trigger
+`document_tcms_retention_guard` hält `created_at` und `tenant_id` jedes
+Dokuments mit (auch freigegebenem) Verweis fest – nach der Freigabe kann ein
+Nachweis noch GwG-Beleg werden –, einen GwG-Beleg mit Verweis in seiner Klasse
+und bei seinem Mandanten, und sein Aufbewahrungsende sinkt nie und wird nie
+leer; ein fehlendes ersetzt nur ein Ende ab der Steuerfrist. Verweise werden
+nie gelöscht, nur freigegeben (`tcms_document_reference_no_delete`, jede Rolle;
+Ausnahmen: Tenant-Kaskade, freigegebene Verweise in der kontrollierten
+Vernichtung). Bei beendetem Mandat hebt `app.raise_tcms_gwg_evidence_retention`
+zusätzlich auf das Ende der GwG-Frist (Trigger
+`client_tcms_gwg_evidence_retention` bei jedem neuen Mandatsende), und der
+Trigger `document_tcms_gwg_evidence_retention` hebt an, wenn ein freigegebener
+Nachweis zum GwG-Beleg wird. Alle Ablehnungen meldet die Datenbank mit SQLSTATE
+23001; die Anwendung erreicht sie nicht (die Ablage verlässt die GwG-Stufe nie,
+neue Versionen heben nur an).
 Die idempotente Meldung (kk-tcms-s10nach, TCMS s10) setzt
 `portal/meldevorgang.ts` um: `meldevorgangBeanspruchen` legt den Vorgang
 (`tcms_portal_report`, Migration `20261020200200`) vor der Ablage an bzw.
@@ -496,8 +521,11 @@ Produktentscheidung, nicht eine fachliche Prüfung. Die Steuerfrist hält allein
 die Datenbank (Aufbewahrungsende, Claim): Der GOVERNANCE-Lock des
 GwG-Buckets wird nicht verlängert; ihn übersteuert nur die geprüfte
 Vernichtungsaktion. Wird ein früherer Nachweis erst nach der Freigabe zum
-GwG-Beleg umklassifiziert, hebt nichts sein Aufbewahrungsende an; der Claim
-und die Aktion halten die Steuerfrist trotzdem.
+GwG-Beleg umklassifiziert, steigt sein Aufbewahrungsende seit RT3D-K-01 wie bei
+einer Bindung. Die Erkennung einer noch laufenden Geschäftsbeziehung
+(Mandatsende leer, Mandant zugelassen, Erstprüfung abgeschlossen, verifizierte
+Prüfung) bleibt an Angaben, die die Anwendung selbst ändert; sie hält die
+GwG-Frist eines solchen Belegs nur bis zur Steuerfrist fest.
 
 ## Fachliche Prüffragen
 
@@ -591,7 +619,14 @@ freigegebener Bindung, nie herab, nicht bei leerem Aufbewahrungsende,
 Vormerkung oder ohne Verweis; Datenschritt der Migration idempotent; Trigger
 bei einer Bindung; Claim vor dem Stichtag auch ohne angehobenes
 Aufbewahrungsende; DB-Vernichtung nach Ablauf beider Fristen samt
-freigegebener Verweise), `actions-db.test.ts` der GwG-Vernichtung (Aktion nach
+freigegebener Verweise), `tcms-gwg-aufbewahrung.test.ts` (RT3D-K-01: jede Regel
+des Triggers `document_tcms_retention_guard` für App-Rolle, Owner-Rolle und
+Superuser samt Gegenprobe ohne Verweis, Löschsperre der Verweise, Mandatsende,
+Umklassifizierung zum GwG-Beleg, Datenschritt der Migration),
+`redteam-gwg-retention-rt3d-db.test.ts` (der Angriff RT3D-K-01 scheitert am
+Umschreiben, die Vernichtung bleibt gesperrt), `restore-security.test.ts`
+(packages/db und apps/web: Restore-Invariante ohne `DELETE` und `TRUNCATE` der
+App-Rolle auf den Verweisen, gleich im CI-Selbsttest), `actions-db.test.ts` der GwG-Vernichtung (Aktion nach
 der Freigabe mit festem Text ohne Vormerkung, Audit und Bytes; vollständige
 Vernichtung nach Ablauf beider Fristen; Stichtag der Datenbank gleich
 `retentionUntilForYears(10, Anlage)`), `actions.test.ts` (Abweisung vor der

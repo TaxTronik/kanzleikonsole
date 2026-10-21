@@ -1,5 +1,5 @@
 // Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001, REMINDER-TICKET-001,
-// MAIL-OUTBOX-001.
+// MAIL-OUTBOX-001, TCMS-NACHWEIS-001.
 // Real PostgreSQL privilege/policy regressions. Every mutation rolls back,
 // including the cluster-wide role changes (ALTER ROLE/GRANT role are transactional).
 // The cases that probe MAINTAIN need PostgreSQL 17+ (CI: 18).
@@ -55,6 +55,9 @@ describe('Restore: effective ACLs and tenant RLS are mandatory', () => {
     // kk-tcms-s10nach: verschlüsselte Meldungsinhalte, kein TRUNCATE an RLS vorbei.
     ['GRANT TRUNCATE ON tcms_portal_report TO taxtronik_app', INVARIANTS],
     ['GRANT DELETE ON document_version TO taxtronik_app', INVARIANTS],
+    // RT3D-K-01 (kk-tcms-fix5): Verweise des Tax-CMS werden nie gelöscht.
+    ['GRANT DELETE ON tcms_document_reference TO taxtronik_app', INVARIANTS],
+    ['GRANT TRUNCATE ON tcms_document_reference TO taxtronik_app', INVARIANTS],
     ['GRANT TRUNCATE ON audit_log TO PUBLIC', OWNER_PUBLIC],
     ['GRANT taxtronik TO taxtronik_app WITH INHERIT FALSE, SET TRUE', INVARIANTS],
     ['GRANT EXECUTE ON FUNCTION app.destroy_gwg_check(uuid) TO PUBLIC', INVARIANTS],

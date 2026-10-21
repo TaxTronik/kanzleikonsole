@@ -1,0 +1,1 @@
+CREATE TRIGGER client_tcms_gwg_evidence_retention AFTER UPDATE OF mandate_ended_at ON public.client FOR EACH ROW WHEN (((new.mandate_ended_at IS NOT NULL) AND (old.mandate_ended_at IS DISTINCT FROM new.mandate_ended_at))) EXECUTE FUNCTION app.tcms_gwg_evidence_mandate_end_retention();

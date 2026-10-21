@@ -1994,6 +1994,21 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[Scope] [TCMS]** Die Aufbewahrung eines GwG-Belegs, der als Nachweis im
+  Tax-CMS verknüpft ist oder war, lässt sich ab der ersten Bindung von keiner
+  Rolle mehr verkürzen (RT3D-K-01, Migration 20261021171000): Anlagedatum und
+  Tenant eines Dokuments mit Verweis sind unveränderlich, ein solcher
+  GwG-Beleg bleibt GwG-Beleg und bei seinem Mandanten, sein Aufbewahrungsende
+  sinkt nie und wird nie leer, und Verweise des Tax-CMS werden nie gelöscht,
+  nur freigegeben. Bisher konnte die App-Rolle Anlagedatum und
+  Aufbewahrungsende bis zum Vormerken umschreiben und die Bytes so Jahre vor
+  der Steuerfrist vernichten lassen. Ein Mandatsende hebt das
+  Aufbewahrungsende zusätzlich auf das Ende der GwG-Frist; ein später
+  zurückgenommenes oder früher eingetragenes Mandatsende verkürzt es nicht
+  mehr. Wird ein freigegebener Nachweis zum GwG-Beleg, steigt sein
+  Aufbewahrungsende wie bei einer Bindung. Neue Restore-Invariante: die
+  App-Rolle hat kein `DELETE` oder `TRUNCATE` auf `tcms_document_reference`
+  (TCMS-NACHWEIS-001, GWG-RETENTION-DESTRUCTION-001).
 - **[TCMS]** Eine Portal-Meldung, die zwischen dem Lesen und dem
   Beanspruchen durch die Klärung gesendet wurde, gilt nicht mehr als „nie
   gesendet“: Ihre Anlagen werden nicht freigegeben, obwohl das Ereignis im

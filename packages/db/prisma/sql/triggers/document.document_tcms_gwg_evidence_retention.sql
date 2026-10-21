@@ -1,0 +1,1 @@
+CREATE TRIGGER document_tcms_gwg_evidence_retention AFTER UPDATE OF classification ON public.document FOR EACH ROW WHEN (((new.classification = 'GWG_EVIDENCE'::public.document_classification) AND (old.classification IS DISTINCT FROM new.classification))) EXECUTE FUNCTION app.tcms_gwg_evidence_classification_retention();

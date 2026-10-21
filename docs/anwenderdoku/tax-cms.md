@@ -390,7 +390,13 @@ gesperrte zeigen den Grund. Ein früherer Stichtag zeigt nur an.
   läuft bis zum 1. Januar des elften Jahres nach seiner Anlage (Klasse
   Steuerunterlage, zehn Jahre). Die GwG-Pflichtvernichtung (_Administration →
   GwG-Pflichtlöschung_) zeigt und vernichtet ihn erst, wenn beide Fristen
-  abgelaufen sind – auch nachdem der Nachweis entfernt wurde.
+  abgelaufen sind – auch nachdem der Nachweis entfernt wurde. Ist das Mandat
+  beendet, gilt die längere der beiden Fristen bereits als Aufbewahrungsende;
+  ein später zurückgenommenes oder geändertes Mandatsende verkürzt es nicht
+  mehr. Anlagedatum, Aufbewahrungsende, Mandant und Einstufung eines solchen
+  Belegs lassen sich nicht mehr so ändern, dass die Aufbewahrung kürzer würde.
+  Dasselbe gilt für ein Dokument, das erst nach dem Entfernen des Nachweises
+  als GwG-Beleg eingestuft wird.
 - **Unklarer Ausgang:** Hat das Tax-CMS beim Anhängen nicht rechtzeitig
   geantwortet, bleibt das Dokument vorsorglich gesperrt. Öffnet eine
   Kanzleiperson die Durchführung später erneut (frühestens nach fünf

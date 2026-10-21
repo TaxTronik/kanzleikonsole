@@ -111,7 +111,10 @@ const GROESSE = 4821n;
       return clientId;
     }
 
-    async function dokument(clientId = mandant) {
+    async function dokument(
+      clientId = mandant,
+      daten: { createdAt?: Date; retentionUntil?: Date } = {},
+    ) {
       const doc = await owner.document.create({
         data: {
           tenantId,
@@ -120,6 +123,7 @@ const GROESSE = 4821n;
           classification: 'GENERAL',
           documentTypeId: typAllgemein,
           mimeType: 'application/pdf',
+          ...daten,
         },
       });
       const version = await owner.documentVersion.create({
@@ -141,8 +145,11 @@ const GROESSE = 4821n;
     }
 
     /** Nachweis einer Durchführung, vom Dienst angenommen (Nachweis-ID gesetzt). */
-    async function alsNachweis(clientId = mandant) {
-      const d = await dokument(clientId);
+    async function alsNachweis(
+      clientId = mandant,
+      daten: { createdAt?: Date; retentionUntil?: Date } = {},
+    ) {
+      const d = await dokument(clientId, daten);
       const { verknuepfungId } = await imTenant((tx) =>
         nachweisVerknuepfenTx(tx, { tenantId, mandantId: clientId, staffId: admin }, d.id, DURCHF),
       );
@@ -378,16 +385,17 @@ const GROESSE = 4821n;
       },
     );
 
+    /** Anlage 2019, Object-Lock seit 2025 abgelaufen. */
+    const FAELLIG = {
+      retentionUntil: new Date('2025-01-01T00:00:00Z'),
+      createdAt: new Date('2019-01-15T00:00:00Z'),
+    };
+
     /** GwG-Beleg eines seit 2019 beendeten Mandats, Object-Lock abgelaufen (Vernichtung fällig). */
     async function faelligerGwgBeleg(d: { id: string }) {
       await owner.document.update({
         where: { id: d.id },
-        data: {
-          classification: 'GWG_EVIDENCE',
-          documentTypeId: typGwg,
-          retentionUntil: new Date('2025-01-01T00:00:00Z'),
-          createdAt: new Date('2019-01-15T00:00:00Z'),
-        },
+        data: { classification: 'GWG_EVIDENCE', documentTypeId: typGwg, ...FAELLIG },
       });
     }
 
@@ -400,6 +408,9 @@ const GROESSE = 4821n;
      * vor Klassifikation und Frist, also auf demselben Weg wie bei Altbestand, der
      * vor der Behebung umklassifiziert wurde (Altbestand selbst: packages/db,
      * tcms-document-reference-guards.test.ts, nur mit Superuser herstellbar).
+     * Anlagedatum und Aufbewahrungsende eines gebundenen Dokuments stehen seit
+     * RT3D-K-01 ab der Bindung fest; den fälligen Stand legt deshalb schon die
+     * Anlage an (`alsNachweis(…, FAELLIG)`).
      */
     async function gebundenerFaelligerBeleg(d: { id: string }) {
       await dbAbgewiesen(
@@ -410,13 +421,6 @@ const GROESSE = 4821n;
         },
         'Umklassifizieren gesperrt (Owner-Rolle)',
       );
-      await owner.document.update({
-        where: { id: d.id },
-        data: {
-          retentionUntil: new Date('2025-01-01T00:00:00Z'),
-          createdAt: new Date('2019-01-15T00:00:00Z'),
-        },
-      });
       expect((await owner.document.findUniqueOrThrow({ where: { id: d.id } })).classification).toBe(
         'GENERAL',
       );
@@ -424,7 +428,7 @@ const GROESSE = 4821n;
 
     it('RT3B-K-01b: GwG-Vernichtung eines gebundenen Nachweises wird wegen der Tax-CMS-Bindung abgewiesen, ohne Bytes zu löschen', async () => {
       // Zustand nach einem Retag GENERAL → GWG_EVIDENCE (K-01a) – seit der Behebung abgewiesen.
-      const d = await alsNachweis(altMandant);
+      const d = await alsNachweis(altMandant, FAELLIG);
       await gebundenerFaelligerBeleg(d);
       const { confirmGwgDeletionAction } =
         await import('@/app/staff/(protected)/admin/gwg-retention/actions');
@@ -443,7 +447,7 @@ const GROESSE = 4821n;
     });
 
     it('RT3B-K-01c: der DB-Claim der GwG-Vernichtung lässt einen gebundenen Nachweis zu – erst die DB-Vernichtung danach scheitert (Bytes schon weg)', async () => {
-      const d = await alsNachweis(altMandant);
+      const d = await alsNachweis(altMandant, FAELLIG);
       await gebundenerFaelligerBeleg(d);
       const { Prisma } = await import('@taxtronik/db/prisma-client');
       const claimUndVernichtung = (schritte: { claim: boolean; vernichten: boolean }) =>

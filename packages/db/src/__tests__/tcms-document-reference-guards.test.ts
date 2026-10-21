@@ -550,10 +550,23 @@ describeWithDatabase('Bindung an das Tax-CMS in der Datenbank (RT3B-K-01)', () =
       sqlState: '23514',
       meldung: /^Object-Lock-Aufbewahrung ist nicht nachweisbar abgelaufen\.$/,
     });
-    // Aufbewahrungsende nachträglich verkürzt (nur Superuser): der Claim hält die Frist selbst.
-    await owner.document.update({
-      where: { id: beleg.id },
-      data: { retentionUntil: new Date('2025-01-01T00:00:00Z') },
+    // Aufbewahrungsende nachträglich verkürzt: Das weist seit RT3D-K-01 jede
+    // Rolle ab (document_tcms_retention_guard); nur mit abgeschalteten Triggern
+    // (Superuser) herstellbar. Der Claim hält die Frist dann selbst.
+    await dbAbgewiesen(
+      owner.document.update({
+        where: { id: beleg.id },
+        data: { retentionUntil: new Date('2025-01-01T00:00:00Z') },
+      }),
+      {
+        sqlState: '23001',
+        meldung: /^document: GwG-Beleg mit Verweis des Tax-CMS, Aufbewahrungsende nie früher$/,
+      },
+      'Superuser ohne abgeschaltete Trigger',
+    );
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe('SET LOCAL session_replication_role = replica');
+      await tx.$executeRaw`UPDATE document SET retention_until = '2025-01-01' WHERE id = ${beleg.id}::uuid`;
     });
     await dbAbgewiesen(
       claim(),

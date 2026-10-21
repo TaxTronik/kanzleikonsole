@@ -85,6 +85,17 @@ Vernichtungsstufen:
    `app.tcms_gwg_evidence_tax_retention_until`), und die Vernichtung ist erst
    nach Ablauf beider Fristen zulässig – auch nach der Freigabe der
    Verknüpfung (Aktion mit festem Text, Claim unter der Dokumentsperre).
+   Seit RT3D-K-01 (kk-tcms-fix5, Migration `20261021171000`) lässt sich diese
+   Frist ab der ersten Bindung von keiner Rolle mehr senken: `created_at` und
+   `tenant_id` eines Dokuments mit Verweis sind unveränderlich, ein GwG-Beleg
+   mit Verweis bleibt GwG-Beleg und bei seinem Mandanten, sein
+   Aufbewahrungsende sinkt nie und wird nie leer (Trigger
+   `document_tcms_retention_guard`), und Verweise werden nie gelöscht, nur
+   freigegeben (`tcms_document_reference_no_delete`). Mit einem Mandatsende
+   steigt das Aufbewahrungsende zusätzlich auf das Ende der GwG-Frist; ein
+   später zurückgenommenes oder früher eingetragenes Mandatsende verkürzt es
+   nicht mehr. Wird ein früherer Nachweis nach der Freigabe zum GwG-Beleg,
+   steigt sein Aufbewahrungsende wie bei einer Bindung.
    Freigegebene Verweise des Tax-CMS werden mit dem Beleg vernichtet. Der
    `document`-Skelettdatensatz bleibt mit
    `deletedAt`/`gwgDestroyedAt` als Abschlussvermerk erhalten; auditiert wird
