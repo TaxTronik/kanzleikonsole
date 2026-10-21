@@ -187,9 +187,11 @@ beforeEach(() => {
     art: 'neu',
     id: 'vorgang-1',
     schluessel,
+    token: 'lease-1',
   }));
-  h.gesendet.mockResolvedValue(undefined);
-  h.nachfuehren.mockResolvedValue(undefined);
+  // Markiert in eigener Lease (kk-tcms-fix4: `false` = Lease verloren, nicht senden).
+  h.gesendet.mockResolvedValue(true);
+  h.nachfuehren.mockResolvedValue(true);
   h.nachweisAblegen.mockImplementation(async (_g, f: File) => ({
     verknuepfungId: VERKNUEPFUNG,
     verweis: {

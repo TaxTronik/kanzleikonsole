@@ -41,7 +41,29 @@ import 'server-only';
 //     abgelaufen), gibt seine Anlagen frei: Ohne Sendezeitpunkt hat der Dienst
 //     die Meldung nie erhalten.
 // Kein Dienstaufruf innerhalb einer Transaktion; Nebenläufigkeit über eine
-// Lease je Vorgang (bedingtes Update).
+// Lease je Vorgang mit Besitz (`lease_until` + `lease_token`).
+//
+// Nebenläufigkeit (RT3C-K-01, kk-tcms-fix4): Jeder Übergang entscheidet über
+// den Zustand in der Bedingung seines schreibenden Statements (READ COMMITTED
+// prüft sie unter der Zeilensperre gegen die neueste Fassung), nie über einen
+// vorher gelesenen Wert:
+//   - Jede Beanspruchung setzt eine neue Lease mit eigenem Token. Als gesendet
+//     markieren und jede Klärung außer der Annahme verlangen das eigene Token:
+//     Wer seine Lease verloren hat (abgelaufen und fremd beansprucht), ändert
+//     nichts mehr und sendet nicht.
+//   - Beanspruchen trägt die Klasse des Kandidaten in der Bedingung
+//     (`sent_at IS NULL` bzw. gesendet im Fenster); den Inhalt einer
+//     Wiederholung liefert dasselbe Statement (RETURNING).
+//   - „Nie gesendet“ gibt nur frei, wenn der Vorgang in derselben Transaktion
+//     bedingt mit `sent_at IS NULL` gelöscht wurde (zuerst löschen, nur bei
+//     Treffer freigeben) – getrennt von „beim ersten Versuch eindeutig
+//     abgelehnt“ (gesendet, eigene Lease).
+//   - Annahme: zuerst genau diesen Vorgang löschen, die Ereignis-ID nur bei
+//     Treffer setzen (ein späterer Vorgang desselben Schlüssels bleibt
+//     unberührt).
+//   - Unter einem Schlüssel mit noch offenen Anlagen eines früheren Vorgangs
+//     beginnt kein neuer: Seine Freigabe „nie gesendet“ träfe sonst Anlagen
+//     einer gesendeten Meldung.
 // =============================================================================
 
 import { randomUUID } from 'node:crypto';
@@ -87,6 +109,8 @@ export interface MeldevorgangBezug {
 export interface Meldevorgang {
   id: string;
   schluessel: string;
+  /** Token der eigenen Lease (Beanspruchung): nur sein Besitzer markiert und klärt. */
+  token: string;
 }
 
 function inhaltKontext(tenantId: string, id: string) {
@@ -95,6 +119,20 @@ function inhaltKontext(tenantId: string, id: string) {
 
 function vorgangFilter(b: MeldevorgangBezug) {
   return { tenantId: b.tenantId, clientId: b.mandantId, contactId: b.kontaktId };
+}
+
+/** Lease frei: nie gesetzt bzw. freigegeben oder abgelaufen. */
+function leaseFrei(jetzt: Date) {
+  return { OR: [{ leaseUntil: null }, { leaseUntil: { lt: jetzt } }] };
+}
+
+/** Neue Lease mit eigenem Token (jede Beanspruchung). */
+function neueLease(jetzt: Date, dauerMs: number): { leaseUntil: Date; leaseToken: string } {
+  return { leaseUntil: new Date(jetzt.getTime() + dauerMs), leaseToken: randomUUID() };
+}
+
+function fensterBeginn(jetzt: Date): Date {
+  return new Date(jetzt.getTime() - MELDUNG_WIEDERHOLUNG_FENSTER_MS);
 }
 
 /** Anlagen eines Vorgangs: offene Verknüpfungen mit diesem Schlüssel, ohne Ereignis-ID. */
@@ -111,7 +149,7 @@ function anlagenFilter(b: MeldevorgangBezug, schluessel: string) {
 }
 
 function imFenster(gesendet: Date, jetzt: Date): boolean {
-  return gesendet.getTime() > jetzt.getTime() - MELDUNG_WIEDERHOLUNG_FENSTER_MS;
+  return gesendet.getTime() > fensterBeginn(jetzt).getTime();
 }
 
 export type Beanspruchung =
@@ -119,16 +157,22 @@ export type Beanspruchung =
   | ({ art: 'wiederholung'; inhalt: MeldungInhalt } & Meldevorgang)
   /** Ein anderer Versuch desselben Vorgangs läuft gerade (Lease). */
   | { art: 'laeuft' }
-  /** Fenster abgelaufen: keine Wiederholung mehr mit diesem Schlüssel. */
+  /**
+   * Fenster abgelaufen bzw. Schlüssel verbraucht (offene Anlagen eines
+   * früheren Vorgangs): keine Wiederholung und kein neuer Vorgang mit diesem
+   * Schlüssel.
+   */
   | { art: 'abgelaufen' };
 
 /**
  * Beginnt ein Absenden mit `schluessel` bzw. erkennt die Wiederholung
  * desselben Absendens (gleicher Schlüssel derselben Person): neu (Vorgang
- * angelegt, noch nicht gesendet, mit Lease), Wiederholung (gesendet, im
- * Fenster, Lease übernommen, Inhalt entschlüsselt), läuft oder abgelaufen.
+ * angelegt, noch nicht gesendet, mit eigener Lease), Wiederholung (gesendet,
+ * im Fenster, Lease übernommen, Inhalt entschlüsselt), läuft oder abgelaufen
+ * (auch: Schlüssel mit offenen Anlagen eines früheren Vorgangs verbraucht).
  * Ein nie gesendeter Vorgang mit abgelaufener Lease wird aufgelöst
- * (Anlagen frei) und neu begonnen.
+ * (Anlagen frei) und neu begonnen. Der erste Lesezugriff wählt nur den Weg;
+ * entschieden wird in der Bedingung des jeweiligen Statements (RT3C-K-01).
  */
 export async function meldevorgangBeanspruchen(
   ctx: TenantContext,
@@ -137,41 +181,39 @@ export async function meldevorgangBeanspruchen(
   jetzt: Date = new Date(),
 ): Promise<Beanspruchung> {
   return withTenantContext(ctx, async (tx) => {
-    const lease = new Date(jetzt.getTime() + MELDUNG_ABSENDEN_LEASE_MS);
     const vorhanden = await tx.tcmsPortalReport.findFirst({
       where: { ...vorgangFilter(b), idempotencyKey: schluessel },
-      select: { id: true, sentAt: true, leaseUntil: true, payloadEnc: true },
+      select: { id: true, sentAt: true },
     });
-    if (!vorhanden) {
-      const { id } = await tx.tcmsPortalReport.create({
-        data: { ...vorgangFilter(b), idempotencyKey: schluessel, leaseUntil: lease },
-        select: { id: true },
-      });
-      return { art: 'neu', id, schluessel };
-    }
-    const frei = { OR: [{ leaseUntil: null }, { leaseUntil: { lt: jetzt } }] };
+    if (!vorhanden) return neuBeginnenTx(tx, b, schluessel, jetzt);
     if (vorhanden.sentAt === null) {
-      // Nie gesendet: nach Ablauf der Lease auflösen und neu beginnen.
+      // Nie gesendet: nach Ablauf der Lease auflösen und neu beginnen. Zuerst
+      // bedingt löschen (noch ungesendet, Lease frei), nur bei Treffer frei:
+      // Markiert der bisherige Besitzer gleichzeitig, trifft das Löschen nicht.
       const { count } = await tx.tcmsPortalReport.deleteMany({
-        where: { id: vorhanden.id, sentAt: null, ...frei },
+        where: { id: vorhanden.id, ...vorgangFilter(b), sentAt: null, ...leaseFrei(jetzt) },
       });
       if (count !== 1) return { art: 'laeuft' };
-      await nieGesendetFreigebenTx(tx, ctx, b, schluessel, jetzt);
-      const { id } = await tx.tcmsPortalReport.create({
-        data: { ...vorgangFilter(b), idempotencyKey: schluessel, leaseUntil: lease },
-        select: { id: true },
-      });
-      return { art: 'neu', id, schluessel };
+      await anlagenFreigebenTx(tx, ctx, b, schluessel, jetzt);
+      return neuBeginnenTx(tx, b, schluessel, jetzt);
     }
+    // Der Sendezeitpunkt ist unveränderlich (Guard): das Fenster aus dem Lesen gilt.
     if (!imFenster(vorhanden.sentAt, jetzt)) return { art: 'abgelaufen' };
-    const { count } = await tx.tcmsPortalReport.updateMany({
-      where: { id: vorhanden.id, ...frei },
-      data: { leaseUntil: new Date(jetzt.getTime() + MELDUNG_WIEDERHOLUNG_LEASE_MS) },
+    const lease = neueLease(jetzt, MELDUNG_WIEDERHOLUNG_LEASE_MS);
+    const [beansprucht] = await tx.tcmsPortalReport.updateManyAndReturn({
+      where: {
+        id: vorhanden.id,
+        ...vorgangFilter(b),
+        sentAt: { gt: fensterBeginn(jetzt) },
+        ...leaseFrei(jetzt),
+      },
+      data: lease,
+      select: { payloadEnc: true },
     });
-    if (count !== 1) return { art: 'laeuft' };
+    if (!beansprucht?.payloadEnc) return { art: 'laeuft' };
     let inhalt: MeldungInhalt;
     try {
-      inhalt = inhaltLesen(b.tenantId, vorhanden.id, vorhanden.payloadEnc!);
+      inhalt = inhaltLesen(b.tenantId, vorhanden.id, beansprucht.payloadEnc);
     } catch (fehler) {
       // Nicht entschlüsselbar (Schlüsselbund ohne Re-Wrap): Lease läuft ab, die
       // Klärung versucht es erneut; nach dem Fenster räumt der Worker auf.
@@ -181,8 +223,37 @@ export async function meldevorgangBeanspruchen(
       );
       return { art: 'laeuft' };
     }
-    return { art: 'wiederholung', id: vorhanden.id, schluessel, inhalt };
+    return { art: 'wiederholung', id: vorhanden.id, schluessel, token: lease.leaseToken, inhalt };
   });
+}
+
+/**
+ * Legt einen neuen Vorgang an (noch nicht gesendet, Lease des Absendens).
+ * Offene Anlagen dieses Schlüssels stammen aus einem früheren Vorgang, der
+ * gesendet und danach ohne Annahme gelöscht wurde (Fenster abgelaufen,
+ * IDEMPOTENZ_ABWEICHUNG): Der Schlüssel ist verbraucht, sonst gäbe die
+ * Freigabe „nie gesendet“ des neuen Vorgangs auch diese Anlagen frei bzw. die
+ * Annahme ordnete sie seinem Ereignis zu. Neue Anlagen mit diesem Schlüssel
+ * bindet nur das Absenden eines bestehenden Vorgangs; der gleichzeitige erste
+ * Versuch desselben Absendens scheitert am eindeutigen Schlüssel.
+ */
+async function neuBeginnenTx(
+  tx: TxClient,
+  b: MeldevorgangBezug,
+  schluessel: string,
+  jetzt: Date,
+): Promise<Beanspruchung> {
+  if ((await tx.tcmsDocumentReference.count({ where: anlagenFilter(b, schluessel) })) > 0) {
+    return { art: 'abgelaufen' };
+  }
+  const id = randomUUID();
+  const lease = neueLease(jetzt, MELDUNG_ABSENDEN_LEASE_MS);
+  const { count } = await tx.tcmsPortalReport.createMany({
+    data: [{ id, ...vorgangFilter(b), idempotencyKey: schluessel, ...lease }],
+    skipDuplicates: true,
+  });
+  if (count !== 1) return { art: 'laeuft' };
+  return { art: 'neu', id, schluessel, token: lease.leaseToken };
 }
 
 /**
@@ -195,8 +266,11 @@ function inhaltLesen(tenantId: string, id: string, payload: string): MeldungInha
   return roh as MeldungInhalt;
 }
 
-/** Anlagen eines nie gesendeten Vorgangs freigeben („nicht angehängt“). */
-async function nieGesendetFreigebenTx(
+/**
+ * Anlagen des Schlüssels freigeben („nicht angehängt“). Nur nach einem
+ * Treffer des bedingten Löschens desselben Vorgangs in derselben Transaktion.
+ */
+async function anlagenFreigebenTx(
   tx: TxClient,
   ctx: TenantContext,
   b: MeldevorgangBezug,
@@ -212,7 +286,12 @@ async function nieGesendetFreigebenTx(
 
 /**
  * Unmittelbar vor dem ersten Senden: Sendezeitpunkt und verschlüsselten
- * Inhalt festhalten (eigene Transaktion, vor dem Dienstaufruf committet).
+ * Inhalt festhalten (eigene Transaktion, vor dem Dienstaufruf committet) –
+ * nur, solange der Vorgang ungesendet in der EIGENEN Lease ist (Token in der
+ * Bedingung; RT3C-K-01, zweites Fenster). `false`: Lease verloren (abgelaufen
+ * und fremd beansprucht) bzw. Vorgang aufgelöst – dann darf nicht gesendet
+ * werden, denn eine Klärung kann ihn als „nie gesendet“ auflösen. Für den
+ * ersten Dienstaufruf gilt danach eine neue Lease (ein Aufruf mit Zeitlimit).
  */
 export async function meldevorgangGesendet(
   ctx: TenantContext,
@@ -220,57 +299,108 @@ export async function meldevorgangGesendet(
   vorgang: Meldevorgang,
   inhalt: MeldungInhalt,
   jetzt: Date = new Date(),
-): Promise<void> {
+): Promise<boolean> {
   // Prüfen, aber unverändert speichern: die Wiederholung sendet dieselben Werte.
   InhaltSchema.parse(inhalt);
   const payloadEnc = encryptSecret(JSON.stringify(inhalt), inhaltKontext(b.tenantId, vorgang.id));
   const { count } = await withTenantContext(ctx, (tx) =>
     tx.tcmsPortalReport.updateMany({
-      where: { id: vorgang.id, ...vorgangFilter(b), sentAt: null },
-      data: { payloadEnc, sentAt: jetzt },
+      where: { id: vorgang.id, ...vorgangFilter(b), sentAt: null, leaseToken: vorgang.token },
+      data: {
+        payloadEnc,
+        sentAt: jetzt,
+        leaseUntil: new Date(jetzt.getTime() + MELDUNG_WIEDERHOLUNG_LEASE_MS),
+      },
     }),
   );
-  if (count !== 1) throw new Error('tcms-meldung: Meldevorgang nicht mehr vorhanden');
+  return count === 1;
 }
 
 export type MeldevorgangAusgang =
-  /** Angenommen: Ereignis-ID an den Anlagen, Vorgang samt Inhalt gelöscht. */
+  /** Angenommen: Vorgang samt Inhalt gelöscht, Ereignis-ID an den Anlagen (jeder Versuch). */
   | { art: 'angenommen'; ereignisId: string }
-  /** Eindeutig abgelehnt (nur erster Versuch) bzw. nie gesendet: Anlagen frei, Vorgang gelöscht. */
+  /** Erster Versuch eindeutig abgelehnt (gesendet, eigene Lease): Vorgang gelöscht, Anlagen frei. */
   | { art: 'abgelehnt' }
-  /** Mit diesem Schlüssel existiert eine andere Meldung: Vorgang gelöscht, Anlagen gebunden. */
+  /** Nie gesendet (eigene Lease): Vorgang gelöscht, Anlagen frei. */
+  | { art: 'nieGesendet' }
+  /** Mit diesem Schlüssel existiert eine andere Meldung (eigene Lease): Vorgang gelöscht, Anlagen gebunden. */
   | { art: 'ungeklaert' }
-  /** Ausgang weiter offen: Lease frei, Versuch gezählt, Inhalt bleibt. */
+  /** Ausgang weiter offen (eigene Lease): Lease frei, Versuch gezählt, Inhalt bleibt. */
   | { art: 'offen' };
 
-/** Führt den Vorgang nach einem Versuch nach (eigene Transaktion). Liefert die Zahl betroffener Anlagen. */
+/** Ergebnis einer Nachführung. */
+export interface Nachfuehrung {
+  /** Der Übergang hat gegriffen (sonst: Lease nicht mehr eigen bzw. Vorgang schon geklärt). */
+  wirksam: boolean;
+  /** Zugeordnete bzw. freigegebene Anlagen. */
+  anlagen: number;
+}
+
+/**
+ * Führt den Vorgang nach einem Versuch nach (eigene Transaktion). Jeder
+ * Ausgang entscheidet in der Bedingung seines Statements: „offen“,
+ * „ungeklärt“, „abgelehnt“ und „nie gesendet“ nur mit dem eigenen
+ * Lease-Token; „nie gesendet“ nur mit `sent_at IS NULL`, „abgelehnt“ nur
+ * gesendet. Freigegeben bzw. zugeordnet wird erst nach dem Treffer des
+ * bedingten Löschens in derselben Transaktion.
+ */
 export async function meldevorgangAbschliessen(
   ctx: TenantContext,
   b: MeldevorgangBezug,
   vorgang: Meldevorgang,
   ausgang: MeldevorgangAusgang,
   jetzt: Date = new Date(),
-): Promise<number> {
+): Promise<Nachfuehrung> {
   return withTenantContext(ctx, async (tx) => {
-    if (ausgang.art === 'offen') {
-      await tx.tcmsPortalReport.updateMany({
-        where: { id: vorgang.id, ...vorgangFilter(b) },
-        data: { leaseUntil: null, attempts: { increment: 1 }, lastAttemptAt: jetzt },
-      });
-      return 0;
+    const zeile = { id: vorgang.id, ...vorgangFilter(b) };
+    const eigen = { ...zeile, leaseToken: vorgang.token };
+    const ohneAnlagen = (count: number): Nachfuehrung => ({ wirksam: count === 1, anlagen: 0 });
+    switch (ausgang.art) {
+      case 'offen': {
+        const { count } = await tx.tcmsPortalReport.updateMany({
+          where: eigen,
+          data: {
+            leaseUntil: null,
+            leaseToken: null,
+            attempts: { increment: 1 },
+            lastAttemptAt: jetzt,
+          },
+        });
+        return ohneAnlagen(count);
+      }
+      case 'ungeklaert': {
+        // Mit der Klärung entfällt der Inhalt sofort; die Anlagen bleiben gebunden.
+        const { count } = await tx.tcmsPortalReport.deleteMany({
+          where: { ...eigen, sentAt: { not: null } },
+        });
+        return ohneAnlagen(count);
+      }
+      case 'angenommen': {
+        // Das Ereignis existiert: jeder Versuch darf abschließen, aber nur
+        // solange genau dieser Vorgang besteht – sonst gehören offene Anlagen
+        // des Schlüssels womöglich schon einem späteren Vorgang.
+        const { count } = await tx.tcmsPortalReport.deleteMany({
+          where: { ...zeile, sentAt: { not: null } },
+        });
+        if (count !== 1) return { wirksam: false, anlagen: 0 };
+        const { count: anlagen } = await tx.tcmsDocumentReference.updateMany({
+          where: anlagenFilter(b, vorgang.schluessel),
+          data: { tcmsEventId: ausgang.ereignisId },
+        });
+        return { wirksam: true, anlagen };
+      }
+      case 'abgelehnt':
+      case 'nieGesendet': {
+        const { count } = await tx.tcmsPortalReport.deleteMany({
+          where: { ...eigen, sentAt: ausgang.art === 'nieGesendet' ? null : { not: null } },
+        });
+        if (count !== 1) return { wirksam: false, anlagen: 0 };
+        return {
+          wirksam: true,
+          anlagen: await anlagenFreigebenTx(tx, ctx, b, vorgang.schluessel, jetzt),
+        };
+      }
     }
-    let anlagen = 0;
-    if (ausgang.art === 'angenommen') {
-      ({ count: anlagen } = await tx.tcmsDocumentReference.updateMany({
-        where: anlagenFilter(b, vorgang.schluessel),
-        data: { tcmsEventId: ausgang.ereignisId },
-      }));
-    } else if (ausgang.art === 'abgelehnt') {
-      anlagen = await nieGesendetFreigebenTx(tx, ctx, b, vorgang.schluessel, jetzt);
-    }
-    // Mit der Klärung entfällt der Inhalt sofort.
-    await tx.tcmsPortalReport.deleteMany({ where: { id: vorgang.id, ...vorgangFilter(b) } });
-    return anlagen;
   });
 }
 
@@ -347,44 +477,59 @@ export interface Klaerung {
   ungeklaert: number;
 }
 
+/** Von der Klärung beanspruchter Vorgang: nie gesendet bzw. gesendet mit Inhalt. */
+interface FaelligerVorgang {
+  vorgang: Meldevorgang;
+  /** Verschlüsselter Inhalt aus der Beanspruchung; `null` = beansprucht mit `sent_at IS NULL`. */
+  inhalt: string | null;
+}
+
 /**
- * Beansprucht bis zu `max` fällige Vorgänge der Person (Lease), ohne Dienst:
- * gesendete im Fenster (mit Inhalt) bzw. nie gesendete mit abgelaufener Lease.
+ * Beansprucht bis zu `max` fällige Vorgänge der Person (eigene Lease), ohne
+ * Dienst: gesendete im Fenster bzw. nie gesendete mit abgelaufener Lease.
+ * Die Kandidatenliste wählt nur aus; die Klasse steht in der Bedingung des
+ * beanspruchenden Updates (RT3C-K-01): Wurde ein als „nie gesendet“ gelesener
+ * Vorgang inzwischen gesendet, trifft `sent_at IS NULL` nicht, und er wird
+ * nicht beansprucht. Den Inhalt eines gesendeten liefert dasselbe Update.
  */
 async function faelligeBeanspruchen(
   ctx: TenantContext,
   b: MeldevorgangBezug,
   jetzt: Date,
   max: number,
-): Promise<Array<Meldevorgang & { inhalt: string | null }>> {
+): Promise<FaelligerVorgang[]> {
   return withTenantContext(ctx, async (tx) => {
-    const frei = { OR: [{ leaseUntil: null }, { leaseUntil: { lt: jetzt } }] };
     const kandidaten = await tx.tcmsPortalReport.findMany({
       where: {
         ...vorgangFilter(b),
         AND: [
-          frei,
-          {
-            OR: [
-              { sentAt: { gt: new Date(jetzt.getTime() - MELDUNG_WIEDERHOLUNG_FENSTER_MS) } },
-              { sentAt: null },
-            ],
-          },
+          leaseFrei(jetzt),
+          { OR: [{ sentAt: { gt: fensterBeginn(jetzt) } }, { sentAt: null }] },
         ],
       },
-      select: { id: true, idempotencyKey: true, payloadEnc: true, sentAt: true },
+      select: { id: true, idempotencyKey: true, sentAt: true },
       orderBy: { createdAt: 'asc' },
       take: max,
     });
-    const beansprucht: Array<Meldevorgang & { inhalt: string | null }> = [];
+    const beansprucht: FaelligerVorgang[] = [];
     for (const k of kandidaten) {
-      const { count } = await tx.tcmsPortalReport.updateMany({
-        where: { id: k.id, ...frei },
-        data: { leaseUntil: new Date(jetzt.getTime() + MELDUNG_WIEDERHOLUNG_LEASE_MS) },
-      });
-      if (count === 1) {
-        beansprucht.push({ id: k.id, schluessel: k.idempotencyKey, inhalt: k.payloadEnc });
+      const lease = neueLease(jetzt, MELDUNG_WIEDERHOLUNG_LEASE_MS);
+      const vorgang = { id: k.id, schluessel: k.idempotencyKey, token: lease.leaseToken };
+      const zeile = { id: k.id, ...vorgangFilter(b), ...leaseFrei(jetzt) };
+      if (k.sentAt === null) {
+        const { count } = await tx.tcmsPortalReport.updateMany({
+          where: { ...zeile, sentAt: null },
+          data: lease,
+        });
+        if (count === 1) beansprucht.push({ vorgang, inhalt: null });
+        continue;
       }
+      const [z] = await tx.tcmsPortalReport.updateManyAndReturn({
+        where: { ...zeile, sentAt: { gt: fensterBeginn(jetzt) } },
+        data: lease,
+        select: { payloadEnc: true },
+      });
+      if (z?.payloadEnc) beansprucht.push({ vorgang, inhalt: z.payloadEnc });
     }
     return beansprucht;
   });
@@ -421,19 +566,30 @@ export async function meldevorgangWiederholen(
   return r;
 }
 
-/** Nachführen ohne Fehler zu werfen (der Vorgang bleibt sonst offen und wird erneut versucht). */
+/**
+ * Nachführen ohne Fehler zu werfen (der Vorgang bleibt sonst offen und wird
+ * erneut versucht). Liefert, ob der Übergang gegriffen hat.
+ */
 export async function nachfuehren(
   ctx: TenantContext,
   b: MeldevorgangBezug,
   vorgang: Meldevorgang,
   ausgang: MeldevorgangAusgang,
-): Promise<void> {
+): Promise<boolean> {
   try {
-    const anlagen = await meldevorgangAbschliessen(ctx, b, vorgang, ausgang);
-    log.info(
-      { component: 'tcms-meldung', ausgang: ausgang.art, anlagen },
-      'tcms-meldung: Meldevorgang nachgeführt',
-    );
+    const { wirksam, anlagen } = await meldevorgangAbschliessen(ctx, b, vorgang, ausgang);
+    if (wirksam) {
+      log.info(
+        { component: 'tcms-meldung', ausgang: ausgang.art, anlagen },
+        'tcms-meldung: Meldevorgang nachgeführt',
+      );
+    } else {
+      log.warn(
+        { component: 'tcms-meldung', ausgang: ausgang.art },
+        'tcms-meldung: Meldevorgang nicht nachgeführt (Lease nicht mehr eigen bzw. schon geklärt)',
+      );
+    }
+    return wirksam;
   } catch (fehler) {
     log.error(
       {
@@ -443,6 +599,7 @@ export async function nachfuehren(
       },
       'tcms-meldung: Meldevorgang nicht nachgeführt (bleibt offen)',
     );
+    return false;
   }
 }
 
@@ -458,15 +615,21 @@ export async function offeneMeldungenKlaeren(
   jetzt: Date = new Date(),
 ): Promise<Klaerung> {
   const ergebnis: Klaerung = { angenommen: [], aufgeloest: 0, offen: 0, ungeklaert: 0 };
-  for (const v of await faelligeBeanspruchen(ctx, b, jetzt, MELDUNG_KLAERUNG_MAX)) {
-    if (v.inhalt === null) {
-      await nachfuehren(ctx, b, v, { art: 'abgelehnt' });
-      ergebnis.aufgeloest += 1;
+  for (const { vorgang: v, inhalt: verschluesselt } of await faelligeBeanspruchen(
+    ctx,
+    b,
+    jetzt,
+    MELDUNG_KLAERUNG_MAX,
+  )) {
+    if (verschluesselt === null) {
+      // Beansprucht mit sent_at IS NULL; frei nur, wenn das bedingte Löschen trifft.
+      if (await nachfuehren(ctx, b, v, { art: 'nieGesendet' })) ergebnis.aufgeloest += 1;
+      else ergebnis.offen += 1;
       continue;
     }
     let inhalt: MeldungInhalt;
     try {
-      inhalt = inhaltLesen(b.tenantId, v.id, v.inhalt);
+      inhalt = inhaltLesen(b.tenantId, v.id, verschluesselt);
     } catch (fehler) {
       // Nicht entschlüsselbar (z. B. Schlüsselbund ohne Re-Wrap): offen lassen,
       // nach Ablauf des Fensters räumt der Worker auf.

@@ -252,7 +252,9 @@ Regeln:
   alten Props. Ein neuer Endpunkt mit Idempotenzschlüssel folgt diesem
   Muster: Schlüssel je Formular, Inhalt nur verschlüsselt und nur bis zur
   Klärung, nur die Annahme klärt eine Wiederholung, nach Ablauf des Fensters
-  nie automatisch freigeben.
+  nie automatisch freigeben; jeder Übergang entscheidet in der Bedingung
+  seines schreibenden Statements (Lease mit Besitzer-Token, bedingtes Löschen
+  vor jeder Freigabe; RT3C-K-01).
 - Die Guards `server-action-authz.test.ts` und `server-action-style.test.ts`
   erkennen die Helfer nur als Import aus `@/server/tcms/aktion`.
 
@@ -362,6 +364,7 @@ mindestens zwei Bereiche sie brauchen.
   | `server/tcms/__tests__/nachweis-verweis-db.test.ts`           | Verknüpfung, Lösch- und Versionssperre der Nachweise und Meldungsanlagen (Bereich C, TCMS s7) | `TCMS_SEITE_DB_TEST`     |
   | `server/tcms/__tests__/bereich-d-db.test.ts`                  | Auslieferung, Portal-Anlagen (Nachweis, Meldung), Ansprechpersonen (Bereich D)                | `TCMS_BEREICH_D_DB_TEST` |
   | `server/tcms/__tests__/meldevorgang-db.test.ts`               | Idempotente Portal-Meldung: Wiederholung, Fenster, ungeklärte Anlagen (TCMS s10)              | `TCMS_BEREICH_D_DB_TEST` |
+  | `server/tcms/__tests__/meldevorgang-wettlauf-db.test.ts`      | Meldevorgang: Wettläufe und Lease-Besitz, getaktet über Zeilensperren (RT3C-K-01)             | `TCMS_BEREICH_D_DB_TEST` |
 
   Die Schutzregeln der TCMS-Tabellen in PostgreSQL (Trigger, CHECK, RLS,
   Rechte auf `tcms_document_reference`, `tcms_systemakteur`,

@@ -910,9 +910,14 @@ describeWithDatabase('tcms_portal_report (TCMS-NACHWEIS-001, kk-tcms-s10nach)', 
       aendern({ sentAt: new Date(Date.now() - 3_600_000) }),
       pruefung('tcms_portal_report: der Sendezeitpunkt wird nur einmal gesetzt'),
     );
-    // Lease, Versuche und Neuverschlüsselung (Re-Wrap) bleiben möglich.
+    // Lease (mit Besitz), Versuche und Neuverschlüsselung (Re-Wrap) bleiben möglich.
     await expect(
-      aendern({ leaseUntil: new Date(), attempts: { increment: 1 }, payloadEnc: `${V3}AAAA` }),
+      aendern({
+        leaseUntil: new Date(),
+        leaseToken: randomUUID(),
+        attempts: { increment: 1 },
+        payloadEnc: `${V3}AAAA`,
+      }),
     ).resolves.toBeTruthy();
   });
 
@@ -934,6 +939,9 @@ describeWithDatabase('tcms_portal_report (TCMS-NACHWEIS-001, kk-tcms-s10nach)', 
         'tcms_portal_report_payload_check',
       ],
       [{ attempts: -1 }, 'tcms_portal_report_attempts_check'],
+      // kk-tcms-fix4: keine Lease ohne Besitzer und kein Besitzer ohne Lease.
+      [{ leaseUntil: new Date() }, 'tcms_portal_report_lease_check'],
+      [{ leaseToken: randomUUID() }, 'tcms_portal_report_lease_check'],
     ];
     for (const [abweichung, constraint] of faelle) {
       await dbAbgewiesen(
@@ -1058,6 +1066,7 @@ describeWithDatabase(
       'tcms_nachricht_zustellung.tcms_nachricht_zustellung_status_check': 'status NOT NULL',
       'tcms_nachricht_zustellung.tcms_nachricht_zustellung_zweck_check': 'zweck NOT NULL',
       'tcms_portal_report.tcms_portal_report_attempts_check': 'attempts NOT NULL',
+      'tcms_portal_report.tcms_portal_report_lease_check': 'Vergleich von IS NULL',
       'tcms_portal_report.tcms_portal_report_payload_check': 'payload_enc IS NULL OR (~ AND Länge)',
       'tcms_portal_report.tcms_portal_report_sent_check': 'Vergleich von IS NULL',
       'tcms_systemakteur.tcms_systemakteur_lauf_check': 'Vergleich von IS NULL',

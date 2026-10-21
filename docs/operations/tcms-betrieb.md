@@ -440,9 +440,11 @@ ab dem ersten Senden (das Tax-CMS hält den Schlüssel 24 Stunden). Technik:
 und TCMS-NACHWEIS-001.
 
 - **Zustand:** `tcms_portal_report` je Kontakt und Schlüssel (RLS je Tenant):
-  Sendezeitpunkt, Versuche, Lease und der Inhalt der Meldung – nur
-  Secret-Box-verschlüsselt (Slot `tcmsPortalReportPayload`, Rotation über den
-  Re-Wrap wie die übrigen Secret-Spalten, [Secret-Rotation](secret-rotation.md)).
+  Sendezeitpunkt, Versuche, Lease (mit Besitzer-Token `lease_token`: nur wer
+  sie hält, markiert als gesendet und führt nach) und der Inhalt der
+  Meldung – nur Secret-Box-verschlüsselt (Slot `tcmsPortalReportPayload`,
+  Rotation über den Re-Wrap wie die übrigen Secret-Spalten,
+  [Secret-Rotation](secret-rotation.md)).
   Die Zeile entfällt mit jeder Klärung; nach Ablauf des Fensters löscht sie
   der Worker-Job `tcms-nachrichten-zustellen` (Zähler `meldungenBereinigt` im
   Log `tcms-nachrichten-zustellen: done`), auch wenn das Tax-CMS gerade nicht

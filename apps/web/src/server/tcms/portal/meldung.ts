@@ -16,9 +16,14 @@ import 'server-only';
 //   1. Ablegen und Binden je Datei in der Commit-Transaktion der Ablage
 //      (`portalAnlageAblegen`, mit Schlüssel). Scheitert eine Datei, hat die
 //      Meldung den Dienst nie erreicht: bereits gebundene Anlagen dieses
-//      Vorgangs werden freigegeben („nicht angehängt“), der Vorgang entfällt;
-//      die Dokumente bleiben in der Ablage.
-//   2. Sendezeitpunkt und verschlüsselten Inhalt am Vorgang festhalten.
+//      Vorgangs werden freigegeben („nicht angehängt“), der Vorgang entfällt
+//      (bedingt: ungesendet, eigene Lease); die Dokumente bleiben in der
+//      Ablage.
+//   2. Sendezeitpunkt und verschlüsselten Inhalt am Vorgang festhalten – nur
+//      in eigener Lease (RT3C-K-01). Hat eine Klärung den Vorgang nach Ablauf
+//      der Lease übernommen oder aufgelöst, wird nicht gesendet: die eigenen
+//      Anlagen werden freigegeben („nicht angehängt“, gesendet hat sie
+//      niemand), Ergebnis „läuft“.
 //   3. Melden (Dienstaufruf außerhalb jeder Transaktion, mit Schlüssel).
 //        angenommen        → Ereignis-ID an den Anlagen, Vorgang gelöscht;
 //        eindeutig abgelehnt (nur erster Versuch: 4xx, offener Breaker,
@@ -116,7 +121,10 @@ export type MeldungAusgang =
   | { art: 'angenommen'; nummer: string; wiederholung: boolean }
   /** Ausgang offen; der Vorgang wird mit demselben Schlüssel wiederholt. */
   | { art: 'offen' }
-  /** Ein anderer Versuch desselben Absendens läuft (bzw. Inhalt gerade nicht lesbar). */
+  /**
+   * Ein anderer Versuch desselben Absendens läuft (bzw. Inhalt gerade nicht
+   * lesbar, oder die Lease ging während der Ablage verloren – nicht gesendet).
+   */
   | { art: 'laeuft' }
   /** Wiederholungsfenster abgelaufen: Formular neu laden (neuer Schlüssel). */
   | { art: 'abgelaufen' };
@@ -186,16 +194,26 @@ export async function meldungErfassen(
       return offen(fehler);
     }
   }
-  let anlagen: TcmsAnlageVerweis[];
+  let abgelegt: MeldungsAnlagen;
   try {
-    ({ anlagen } = await meldungsAnlagenAblegen(ablage, e.dateien, vorgang.schluessel));
+    abgelegt = await meldungsAnlagenAblegen(ablage, e.dateien, vorgang.schluessel);
   } catch (fehler) {
     // Nie gesendet: Vorgang auflösen (gebundene Anlagen sind schon frei).
-    await nachfuehren(ctx, b, vorgang, { art: 'abgelehnt' });
+    await nachfuehren(ctx, b, vorgang, { art: 'nieGesendet' });
     throw fehler;
   }
-  const inhalt: MeldungInhalt = { ...e.inhalt, anlagen };
-  await meldevorgangGesendet(ctx, b, vorgang, inhalt);
+  const inhalt: MeldungInhalt = { ...e.inhalt, anlagen: abgelegt.anlagen };
+  if (!(await meldevorgangGesendet(ctx, b, vorgang, inhalt))) {
+    // Lease verloren (RT3C-K-01): nicht senden. Die Anlagen dieses Absendens
+    // stehen in keinem gesendeten Inhalt (nur der Besitzer markiert und
+    // sendet), sie werden freigegeben.
+    log.warn(
+      { component: 'tcms-meldung', anlagen: abgelegt.verknuepfungen.length },
+      'tcms-meldung: Lease des Meldevorgangs verloren, nicht gesendet',
+    );
+    await freigeben(ctx, { verknuepfungIds: abgelegt.verknuepfungen }, 'NOT_ATTACHED');
+    return { art: 'laeuft' };
+  }
   return erstesSenden(dienst, ctx, b, vorgang, inhalt);
 }
 

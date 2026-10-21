@@ -134,7 +134,7 @@ describe('meldungsAnlagenAblegen', () => {
 
 describe('meldungErfassen (idempotent, kk-tcms-s10nach)', () => {
   const B = { tenantId: 't', mandantId: 'm', kontaktId: 'k' };
-  const VORGANG = { id: 'vorgang-1', schluessel: SCHLUESSEL };
+  const VORGANG = { id: 'vorgang-1', schluessel: SCHLUESSEL, token: 'lease-1' };
   const EINGABE = {
     schluessel: SCHLUESSEL,
     dateien: [datei('a.csv'), datei('b.csv')],
@@ -150,8 +150,8 @@ describe('meldungErfassen (idempotent, kk-tcms-s10nach)', () => {
 
   beforeEach(() => {
     h.beanspruchen.mockResolvedValue({ art: 'neu', ...VORGANG });
-    h.gesendet.mockResolvedValue(undefined);
-    h.nachfuehren.mockResolvedValue(undefined);
+    h.gesendet.mockResolvedValue(true);
+    h.nachfuehren.mockResolvedValue(true);
   });
 
   it('neu: Vorgang, Ablage mit Schlüssel, Inhalt vor dem Senden, Meldung mit Schlüssel, Ereignis-ID nach Annahme', async () => {
@@ -268,10 +268,33 @@ describe('meldungErfassen (idempotent, kk-tcms-s10nach)', () => {
     const d = dienst(async () => ({}));
     await expect(meldungErfassen(d, ABLAGE, EINGABE)).rejects.toBe(fehler);
     expect(h.nachfuehren).toHaveBeenCalledWith(CTX, B, expect.objectContaining(VORGANG), {
-      art: 'abgelehnt',
+      art: 'nieGesendet',
     });
     expect(h.gesendet).not.toHaveBeenCalled();
     expect(d.rufe).not.toHaveBeenCalled();
+  });
+
+  it('Lease während der Ablage verloren (RT3C-K-01): nicht gesendet, eigene Anlagen frei, „läuft“', async () => {
+    h.gesendet.mockResolvedValueOnce(false);
+    const d = dienst(async () => ({ id: EREIGNIS, nummer: '2026-T-0400' }));
+    await expect(meldungErfassen(d, ABLAGE, EINGABE)).resolves.toEqual({ art: 'laeuft' });
+    expect(d.rufe).not.toHaveBeenCalled();
+    expect(h.freigeben).toHaveBeenCalledWith(
+      CTX,
+      { verknuepfungIds: ['v1', 'v2'] },
+      'NOT_ATTACHED',
+    );
+    expect(h.nachfuehren).not.toHaveBeenCalled();
+  });
+
+  it('scheitert das Markieren mit einem Fehler (Ausgang unbekannt), bleibt alles gebunden', async () => {
+    const fehler = new Error('Verbindung');
+    h.gesendet.mockRejectedValueOnce(fehler);
+    const d = dienst(async () => ({}));
+    await expect(meldungErfassen(d, ABLAGE, EINGABE)).rejects.toBe(fehler);
+    expect(d.rufe).not.toHaveBeenCalled();
+    expect(h.freigeben).not.toHaveBeenCalled();
+    expect(h.nachfuehren).not.toHaveBeenCalled();
   });
 });
 

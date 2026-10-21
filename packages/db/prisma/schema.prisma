@@ -512,6 +512,8 @@ model TcmsPortalReport {
   payloadEnc     String?       @map("payload_enc")
   sentAt         DateTime?     @map("sent_at") @db.Timestamptz(6)
   leaseUntil     DateTime?     @map("lease_until") @db.Timestamptz(6)
+  /// Besitz der Lease (RT3C-K-01): je Beanspruchung neu; nur sein Besitzer markiert und klärt.
+  leaseToken     String?       @map("lease_token") @db.Uuid
   attempts       Int           @default(0)
   lastAttemptAt  DateTime?     @map("last_attempt_at") @db.Timestamptz(6)
   createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
