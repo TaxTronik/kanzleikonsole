@@ -1180,6 +1180,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[TCMS]** Dauert die Ablage der Anlagen einer Portal-Meldung länger als
+  die Lease von zehn Minuten und übernimmt in dieser Zeit eine Klärung oder
+  ein erneutes Absenden den Vorgang, sendet der ursprüngliche Versuch nicht
+  mehr („wird gerade übermittelt“) und gibt seine nie gesendeten Anlagen frei;
+  bisher blieben danach gebundene Dateien als „ungeklärt“ liegen
+  (TCMS-NACHWEIS-001).
+- **[TCMS]** Das Zuordnen einer ungeklärten Anlage zu einem Ereignis prüft
+  neben der Dokument-ID auch den SHA-256 in der Antwort des Tax-CMS, wie die
+  Datei-Route (TCMS-NACHWEIS-001).
 - **[TCMS]** Einrichtung: Unbekannte Personen bietet der Kontrollschritt
   nicht mehr als wählbares „—“ an; Pflichtrollen zeigen nur einen gesperrten
   Platzhalter, Vertretung und Gegenzeichnung „keine Vertretung“ bzw. „keine
@@ -1958,6 +1967,21 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- **[TCMS]** Eine Portal-Meldung, die zwischen dem Lesen und dem
+  Beanspruchen durch die Klärung gesendet wurde, gilt nicht mehr als „nie
+  gesendet“: Ihre Anlagen werden nicht freigegeben, obwohl das Ereignis im
+  Tax-CMS existieren kann (RT3C-K-01). Jeder Übergang des Meldevorgangs
+  entscheidet in der Bedingung seines schreibenden Statements; die Lease hat
+  einen Besitzer (`lease_token`, Migration 20261021100000), nur er markiert als
+  gesendet und führt nach. „Nie gesendet“ gibt nur nach dem bedingten Löschen
+  der ungesendeten Zeile frei, eine Ablehnung des ersten Versuchs nur in
+  eigener Lease, eine späte Annahme ordnet nur Anlagen ihres eigenen Vorgangs
+  zu, und unter einem Schlüssel mit offenen Anlagen einer früheren, gesendeten
+  Meldung beginnt kein neuer Vorgang (TCMS-NACHWEIS-001).
+- **[TCMS]** Den gespeicherten Inhalt einer gesendeten Portal-Meldung kann die
+  App-Rolle nicht mehr überschreiben; ändern darf ihn nur der Re-Wrap der
+  Secret-Box über eine Rolle mit BYPASSRLS (Migration 20261021100100,
+  TCMS-NACHWEIS-001).
 - **[TCMS]** Mandant und Tenant eines im Tax-CMS gebundenen Dokuments
   lassen sich für keine Rolle mehr ändern, auch nicht über `ON DELETE SET
 NULL` beim Löschen des Mandanten („Mandantenwechsel gesperrt“, Migration
