@@ -249,6 +249,14 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // TCMS-NACHWEIS-001 (RT3B-K-01): Superuser stellt Altbestand im Replikationsmodus her
   // (gebundener GwG-Beleg); die App-Rolle belegt Claim, DB-Vernichtung und Scope-Trigger.
   'packages/db/src/__tests__/tcms-document-reference-guards.test.ts',
+  // TCMS-NACHWEIS-001 / GWG-RETENTION-DESTRUCTION-001 (RT3D-K-01): Angriff des
+  // Red-Teams 3d gegen die Steuerfrist gebundener GwG-Belege – Superuser stellt
+  // Altbestand im Replikationsmodus her, die App-Rolle greift unter RLS an.
+  'packages/db/src/__tests__/redteam-gwg-retention-rt3d-db.test.ts',
+  // TCMS-NACHWEIS-001 / GWG-RETENTION-DESTRUCTION-001 (RT3D-K-01, kk-tcms-fix5):
+  // Superuser-Fixtures in frischen Tenants; jede Fristsperre für App-Rolle,
+  // Owner-Rolle (SET ROLE) und Superuser, Tabelle gwg_object_lock_extension.
+  'packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts',
   // F-08 / ACCESS-TENANT-RLS-001: Owner-Fixtures in zwei frischen Tenants; die App-Rolle
   // belegt Isolation, Paar-Guard und fehlende UPDATE/DELETE-Rechte der Mail-Outbox.
   'packages/db/src/__tests__/mail-outbox-rls.test.ts',
