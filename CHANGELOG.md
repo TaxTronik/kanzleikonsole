@@ -1206,6 +1206,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Bestätigungs- und Eingabedialoge (`ConfirmModal`, `InputModal`, u. a. Vollmacht
+  widerrufen, Portal-Kontakt anonymisieren) zeigen eine Fehlermeldung erst zusammen
+  mit dem wieder bedienbaren Button; bisher stand sie kurz neben „Bitte warten…“, und
+  ein erneuter Versuch ließ die alte Meldung bis zum Ergebnis stehen.
 - **[Scope]** Die GwG-Vernichtung löscht freigegebene Tax-CMS-Verweise vor den Versionen;
   bisher scheiterte der letzte Datenbankschritt nach dem Löschen der Bytes
   (GWG-RETENTION-DESTRUCTION-001).

@@ -239,14 +239,20 @@ export function ConfirmModal({
         <button
           type="button"
           disabled={busy}
-          onClick={() =>
+          onClick={() => {
+            // Ein alter Fehler verschwindet sofort (dringend, nicht Teil der
+            // Transition, sonst bliebe er bis zum Ende stehen). Nach dem `await`
+            // gehören die Updates wieder in eine Transition: Ergebnis und Ende
+            // des Wartezustands erscheinen dann in einem Commit.
+            setErr(null);
             start(async () => {
-              setErr(null);
               const r = await onConfirm();
-              if (r.ok) onClose();
-              else setErr(r.error ?? 'Fehler.');
-            })
-          }
+              start(() => {
+                if (r.ok) onClose();
+                else setErr(r.error ?? 'Fehler.');
+              });
+            });
+          }}
           className={`btn-primary flex-1 ${danger ? '!bg-red-600 hover:!bg-red-700' : ''}`}
         >
           {busy ? busyLabel : confirmLabel}
@@ -293,11 +299,15 @@ export function InputModal({
   const submit = () => {
     const v = value.trim();
     if (!v || busy) return;
+    // Wie ConfirmModal: alter Fehler sofort weg, Ergebnis zusammen mit dem
+    // Ende des Wartezustands.
+    setErr(null);
     start(async () => {
-      setErr(null);
       const r = await onSubmit(v);
-      if (r.ok) onClose();
-      else setErr(r.error ?? 'Fehler.');
+      start(() => {
+        if (r.ok) onClose();
+        else setErr(r.error ?? 'Fehler.');
+      });
     });
   };
   return (
