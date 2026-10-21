@@ -247,11 +247,63 @@ cmd_tcms_restore() {
   info "TCMS-Restore fertig: Datenbank aus $file, Rollen aus .env, Migrationsschritt erfolgreich."
 }
 
+# ./taxtronik tcms backup [--zeitplan]: --zeitplan ist der taegliche Lauf aus
+# der crontab (kk-tcms-s11): Dump in backups/tcms-zeitplan/, danach Rotation
+# dort (neueste TCMS_BACKUP_KEEP behalten). Ohne Option wie bisher unter
+# backups/, ohne Rotation.
 cmd_tcms_backup() {
+  local zeitplan=0 dest="" keep
+  case "${1:-}" in
+    "") ;;
+    --zeitplan) zeitplan=1 ;;
+    *) die "Nutzung: ./taxtronik tcms backup [--zeitplan]" ;;
+  esac
   load_env
   [[ "$(tcms_deployment_mode)" == "managed" ]] || die "TCMS-Backup gilt fuer TCMS_DEPLOYMENT=managed."
+  if (( zeitplan == 1 )); then
+    keep="$(tcms_backup_keep)" || die "TCMS_BACKUP_KEEP muss eine Ganzzahl von 1 bis 365 sein."
+    info "Zeitplan-Lauf der TCMS-Sicherung ($(date -u +'%Y-%m-%dT%H:%M:%SZ'))"
+  fi
   prepare_backup_host_dir
+  if (( zeitplan == 1 )); then
+    dest="$(resolve_backup_host_dir)/$TCMS_BACKUP_SCHEDULE_DIR"
+    mkdir -p "$dest" && chmod 0700 "$dest" || die "Verzeichnis des Zeitplans nicht anlegbar: $dest"
+  fi
   ensure_s3_ready_for_backup
-  backup_tcms_with_upload || die "TCMS-Backup fehlgeschlagen."
+  backup_tcms_with_upload "$dest" || die "TCMS-Backup fehlgeschlagen."
+  if (( zeitplan == 1 )) && [[ -n "${_TCMS_BACKUP_FILE:-}" ]]; then
+    tcms_backup_rotate "$dest" "$keep" || die "Rotation der TCMS-Sicherungen fehlgeschlagen ($dest)."
+  fi
   info "TCMS-Backup fertig: ${_TCMS_BACKUP_FILE:-kein Dump (noch keine Daten)}"
+}
+
+# ./taxtronik tcms backup-schedule [status|install|remove]
+cmd_tcms_backup_schedule() {
+  local sub="${1:-status}" rc=0 zeit
+  load_env
+  case "$sub" in
+    install)
+      [[ "$(tcms_deployment_mode)" == "managed" ]] || die "Zeitplan gilt fuer TCMS_DEPLOYMENT=managed."
+      tcms_backup_schedule_install || die "TCMS-Zeitplan nicht eingetragen (Hinweis oben)."
+      ;;
+    remove) tcms_backup_schedule_remove || die "TCMS-Zeitplan nicht entfernt." ;;
+    status)
+      printf 'Modus            : %s\n' "$(tcms_deployment_mode 2>/dev/null || printf 'ungueltig')"
+      printf 'Planung          : %s\n' "$(tcms_backup_schedule_mode 2>/dev/null || printf 'ungueltig (TCMS_BACKUP_SCHEDULE)')"
+      tcms_backup_schedule_installed || rc=$?
+      case "$rc" in
+        0) printf 'Zeitplan         : eingetragen (%s Host-Zeit)\n' "$TCMS_BACKUP_SCHEDULE_TIME" ;;
+        2) printf 'Zeitplan         : crontab fehlt\n' ;;
+        *) printf 'Zeitplan         : fehlt (./taxtronik tcms backup-schedule install)\n' ;;
+      esac
+      printf 'Aufbewahrung     : lokal %s Sicherungen in %s/, Bucket 90 Tage\n' \
+        "$(tcms_backup_keep 2>/dev/null || printf 'ungueltig')" "$TCMS_BACKUP_SCHEDULE_DIR"
+      if zeit="$(tcms_backup_stamp_time)"; then
+        printf 'Letzte Sicherung : %s\n' "$(tcms_format_epoch "$zeit")"
+      else
+        printf 'Letzte Sicherung : keine erfasst\n'
+      fi
+      ;;
+    *) die "Nutzung: ./taxtronik tcms backup-schedule [status|install|remove]" ;;
+  esac
 }

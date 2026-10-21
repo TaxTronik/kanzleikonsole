@@ -267,6 +267,40 @@ _doctor_tcms_live() {
   done
 }
 
+# Sicherung der verwalteten TCMS-Datenbank (kk-tcms-s11 Punkt 6): Zeitplan
+# eingetragen (bzw. bewusst abgeschaltet) und letzte erfolgreiche Sicherung
+# nicht aelter als 26 h – dieselbe Grenze wie der Staleness-Alarm der
+# Hauptdatenbank (BACKUP_MAX_AGE_MS im health-alert). Nur Zeitpunkte, keine Werte.
+_doctor_tcms_backup() {
+  local mode rc=0 zeit alter
+  [[ "${_TAXTRONIK_INTERNAL_DOCTOR_CONFIG_ONLY:-0}" == "1" ]] && return 0
+  if ! mode="$(tcms_backup_schedule_mode)"; then
+    _doctor_tcms_row "WARN" "TCMS_BACKUP_SCHEDULE" "ungueltig (auto oder off)"
+  elif [[ "$mode" == "off" ]]; then
+    _doctor_tcms_row "INFO" "TCMS_BACKUP_ZEITPLAN" "abgeschaltet (TCMS_BACKUP_SCHEDULE=off); eigene Planung von ./taxtronik tcms backup noetig"
+  else
+    tcms_backup_schedule_installed || rc=$?
+    case "$rc" in
+      0) _doctor_tcms_row "OK" "TCMS_BACKUP_ZEITPLAN" "taeglich ($TCMS_BACKUP_SCHEDULE_TIME Host-Zeit)" ;;
+      2) _doctor_tcms_row "WARN" "TCMS_BACKUP_ZEITPLAN" "crontab fehlt; keine taegliche TCMS-Sicherung (cron installieren, dann ./taxtronik tcms backup-schedule install)" ;;
+      *) _doctor_tcms_row "WARN" "TCMS_BACKUP_ZEITPLAN" "fehlt oder veraltet -> ./taxtronik tcms backup-schedule install" ;;
+    esac
+  fi
+  if ! tcms_backup_keep >/dev/null; then
+    _doctor_tcms_row "WARN" "TCMS_BACKUP_KEEP" "ungueltig (1-365)"
+  fi
+  if ! zeit="$(tcms_backup_stamp_time)"; then
+    _doctor_tcms_row "WARN" "TCMS_BACKUP" "keine erfolgreiche TCMS-Sicherung erfasst -> ./taxtronik tcms backup"
+    return 0
+  fi
+  alter=$(( $(tcms_now) - zeit ))
+  if (( alter > TCMS_BACKUP_MAX_AGE_SECONDS )); then
+    _doctor_tcms_row "WARN" "TCMS_BACKUP" "letzte Sicherung $(tcms_format_epoch "$zeit"), aelter als 26 h -> ./taxtronik tcms backup, Zeitplan pruefen"
+  else
+    _doctor_tcms_row "OK" "TCMS_BACKUP" "letzte Sicherung $(tcms_format_epoch "$zeit")"
+  fi
+}
+
 # Token nur ueber stdin an curl (Konfiguration -K -), nie als Argument; die
 # Antwort wird verworfen.
 _doctor_tcms_external_health() {
@@ -325,6 +359,7 @@ _doctor_tcms() {
       _doctor_tcms_code_key
       _doctor_tcms_images
       _doctor_tcms_live
+      _doctor_tcms_backup
       ;;
   esac
 }

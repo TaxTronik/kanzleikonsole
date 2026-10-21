@@ -957,9 +957,14 @@ Bei Fehlern:
   Start). Den Termin beim Start als Erinnerung eintragen.
 - Logs ohne Werte: `./taxtronik compose --profile tcms logs tcms-api` bzw.
   `tcms-migrate`.
-- Sicherung: `./taxtronik backup` enthält die TCMS-Datenbank; für tägliche
-  Sicherungen einen Host-Cron mit `./taxtronik tcms backup` einrichten (der
-  Worker erreicht die TCMS-Datenbank wegen der Netztrennung nicht).
+- Sicherung: `./taxtronik backup` enthält die TCMS-Datenbank. Die tägliche
+  Sicherung plant die CLI selbst als Host-Cron (`./taxtronik tcms backup
+--zeitplan`, 01:30 Host-Zeit; eingetragen von `tcms setup managed`, deploy
+  und update, Status mit `./taxtronik tcms backup-schedule status`), weil der
+  Worker die TCMS-Datenbank wegen der Netztrennung nicht erreicht. Lokal
+  bleiben die neuesten `TCMS_BACKUP_KEEP` (14) Läufe, im Bucket 90 Tage;
+  `doctor` warnt, wenn die letzte TCMS-Sicherung älter als 26 Stunden ist
+  ([Tax-CMS-Betrieb, Abschnitt 7](tcms-betrieb.md#7-backup-und-restore)).
 
 Einrichtung, Netze, Images, Rotation und Fehlerbilder:
 [Tax-CMS-Betrieb](tcms-betrieb.md).

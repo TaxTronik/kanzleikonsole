@@ -319,11 +319,47 @@ Bucket `backups` (`tcmsdump/JJJJ/MM/TT/`, 90-Tage-Lifecycle; S3-Zugang nur per
 Namen an den Container). Ohne `.sha256` wird nichts hochgeladen, und ein
 Restore verlangt sie: Aus dem Bucket immer Dump und `.sha256` zusammen holen. Gesichert wird bei `./taxtronik backup`, im Update-Pflichtbackup
 vor jeder Code-Änderung, vor jedem TCMS-Migrationsschritt mit vorhandenem
-Schema und mit `./taxtronik tcms backup` (für einen Host-Cron, denn der
-tägliche Worker-Job erreicht die TCMS-Datenbank absichtlich nicht).
-`backup-full` stoppt `tcms-api` zusammen mit App, Worker und n8n und legt den
-Dump in das verschlüsselte Archiv. Ohne verwaltetes Tax-CMS ändert sich an den
-Backups nichts.
+Schema, mit `./taxtronik tcms backup` und **täglich nach Zeitplan**.
+
+**Zeitplan (kk-tcms-s11).** Die Hauptdatenbank sichert der Worker-Job
+`backup-run` täglich um 01:00 UTC; der Staleness-Alarm des `health-alert`
+meldet, wenn die letzte Sicherung älter als 26 Stunden ist. Der Worker
+erreicht die TCMS-Datenbank wegen der Netztrennung absichtlich nicht; den
+täglichen TCMS-Lauf plant deshalb die CLI als Host-Cron des Benutzers, der
+`./taxtronik` ausführt:
+
+```
+# >>> taxtronik tcms-backup (verwaltet von ./taxtronik, nicht von Hand aendern) >>>
+30 1 * * * cd '<Checkout>' && ./taxtronik tcms backup --zeitplan >'<backups>/tcms-zeitplan/zeitplan.log' 2>&1
+# <<< taxtronik tcms-backup <<<
+```
+
+- Eingetragen bzw. aktualisiert wird der Block automatisch von
+  `./taxtronik tcms setup managed`, `deploy` und `update` (nach einem gesunden
+  `tcms-api`); `./taxtronik tcms disable` entfernt ihn. Andere Einträge der
+  crontab bleiben unberührt. Von Hand: `./taxtronik tcms backup-schedule
+install|remove|status`. 01:30 Host-Zeit, also nach dem Hauptdump; das
+  Protokoll enthält nur den letzten Lauf (ohne Werte).
+- Wer selbst plant (systemd-Timer, externe Orchestrierung), setzt
+  `TCMS_BACKUP_SCHEDULE=off` und ruft `./taxtronik tcms backup --zeitplan`
+  täglich auf. Fehlt `crontab` auf dem Host, bricht deploy nicht ab; doctor
+  meldet dann den fehlenden Zeitplan.
+- **Aufbewahrung:** im Bucket wie der Hauptdump 90 Tage (Lifecycle
+  `expire-backups-90d`, gilt für alle Präfixe); lokal hält der Zeitplan in
+  `backups/tcms-zeitplan/` die neuesten `TCMS_BACKUP_KEEP` Sicherungen
+  (Standard 14, 1–365) und löscht ältere Paare aus Dump und `.sha256` – erst
+  nach einem erfolgreichen Lauf samt Upload und nur in diesem Verzeichnis.
+  Manuelle, Update- und Vor-Migrations-Dumps unter `backups/` rotiert
+  TaxTronik nicht.
+- **Überwachung:** Nach jedem erfolgreichen TCMS-Dump samt Upload (jeder
+  Anlass außer `backup-full`) hält `.taxtronik.tcms-backup-stamp` (Modus
+  `0600`, nur Zeitpunkt und Dateiname) die Sicherung fest. `./taxtronik doctor`
+  meldet `WARN TCMS_BACKUP`, wenn sie älter als 26 Stunden ist oder keine
+  erfasst ist, und `WARN TCMS_BACKUP_ZEITPLAN`, wenn der Zeitplan fehlt oder
+  veraltet ist (bei `TCMS_BACKUP_SCHEDULE=off` nur `INFO`).
+  `backup-full` stoppt `tcms-api` zusammen mit App, Worker und n8n und legt den
+  Dump in das verschlüsselte Archiv. Ohne verwaltetes Tax-CMS ändert sich an den
+  Backups nichts.
 
 Wiederherstellung: `./taxtronik tcms restore --file <dump> --confirm-overwrite
 RESTORE_TCMS_DATABASE` mit festem Ablauf (Rollen und Passwörter aus `.env`,
@@ -367,6 +403,8 @@ gewollt.
 | `TCMS_VERSION`, `TCMS_API_DIGEST_SUFFIX`, `TCMS_MIGRATE_DIGEST_SUFFIX`             | Image-Tag und `@sha256:…`-Suffixe; im Release-Kanal aus dem signierten Stand         |
 | `TCMS_API_MEM_LIMIT`, `TCMS_DB_MEM_LIMIT`, `TCMS_MIGRATE_MEM_LIMIT`                | Speichergrenzen (Standard 512m, 1g, 256m)                                            |
 | `TCMS_DB_SHARED_BUFFERS`, `TCMS_DB_MAX_CONNECTIONS`, `TCMS_LOG_LEVEL`              | Datenbank-Tuning und Log-Stufe des Dienstes                                          |
+| `TCMS_BACKUP_SCHEDULE`                                                             | `auto` (Standard: täglicher Host-Cron der CLI) oder `off` (eigene Planung)           |
+| `TCMS_BACKUP_KEEP`                                                                 | lokal behaltene Sicherungen des Zeitplans in `backups/tcms-zeitplan/` (Standard 14)  |
 
 ## 9. Fehlerbilder
 
@@ -386,6 +424,9 @@ gewollt.
 | doctor: `haengt im TCMS-Backend-Netz`                                                                    | App/Worker wurden außerhalb der CLI mit falschem Netz gestartet; `./taxtronik tcms setup managed` erzeugt sie neu.                                                                                                                                                                                 |
 | doctor: `TCMS_HEALTH … nicht erreichbar` (external)                                                      | URL, TLS-Kette oder Token prüfen; das externe Tax-CMS muss das Token in seiner Liste führen.                                                                                                                                                                                                       |
 | `TCMS-Backup vor der Migration fehlgeschlagen; tcms-migrate laeuft nicht`                                | Backup-Verzeichnis/S3 prüfen (`./taxtronik tcms backup`); ohne Backup wird nicht migriert.                                                                                                                                                                                                         |
+| doctor: `WARN TCMS_BACKUP … aelter als 26 h` bzw. `keine erfolgreiche TCMS-Sicherung erfasst`            | Der tägliche Lauf fehlt oder scheitert: `backups/tcms-zeitplan/zeitplan.log` lesen, `./taxtronik tcms backup-schedule status` prüfen, einmal `./taxtronik tcms backup` von Hand ausführen.                                                                                                         |
+| doctor: `WARN TCMS_BACKUP_ZEITPLAN fehlt oder veraltet` bzw. `crontab fehlt`                             | `./taxtronik tcms backup-schedule install` (nach einem Umzug des Checkouts ebenso); ohne cron auf dem Host selbst planen und `TCMS_BACKUP_SCHEDULE=off` setzen.                                                                                                                                    |
+| `TCMS_BACKUP_KEEP muss eine Ganzzahl von 1 bis 365 sein`                                                 | Wert in `.env` korrigieren; der Zeitplan-Lauf sichert vorher nicht.                                                                                                                                                                                                                                |
 | `SHA-256 des Dumps stimmt nicht …` (restore)                                                             | Dump beschädigt oder falsche Prüfsummendatei; anderen Dump wählen.                                                                                                                                                                                                                                 |
 | `pg_restore fehlgeschlagen; tcms-api bleibt gestoppt`                                                    | Der bisherige Stand liegt unter `backups/tcms-pre-restore/`; mit diesem Dump erneut `tcms restore` ausführen.                                                                                                                                                                                      |
 | Worker-Log `tcms-nachrichten: Abruf gescheitert` (`fehler`, `status`, `grund`)                           | Dienst nicht erreichbar, Token/Schlüssel falsch (401) oder Antwort außerhalb des Vertrags. Der nächste Lauf (1 min) versucht es erneut; `tcmsRequestId` im Log des Dienstes nachsehen.                                                                                                             |

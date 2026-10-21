@@ -59,6 +59,8 @@ infra/compose/.volumes/
 /.taxtronik.tcms-rotation
 # Laufende Rotation des TCMS-Code-Schluessels (Kennungen, Zeitpunkte).
 /.taxtronik.tcms-code-key-rotation
+/.taxtronik.tcms-backup-stamp
+/.taxtronik.tcms-backup-stamp.tmp.*
 # Protokoll ungeprüft übernommener Source-Updates (Opt-out, siehe release.md 2.2).
 /.taxtronik.source-update-audit.log
 # Regenerierbare, sehr große lokale Signal-LLM-Artefakte (GGUF + llama.cpp).

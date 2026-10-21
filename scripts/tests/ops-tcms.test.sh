@@ -421,8 +421,29 @@ tcms_isolated() {
     TCMS_CODE_KEY_ROTATION_STATE="${CODE_ROTATION_STATE:-$TMP_DIR/no-code-rotation}"
     ENVFILE="$env_file"
     STATE="${INSTALL_STATE:-$TMP_DIR/no-install-state}"
+    # kk-tcms-s11: nie die echte crontab, der echte Stempel oder backups/ des Checkouts.
+    TCMS_BACKUP_STAMP="${BACKUP_STAMP:-$TMP_DIR/no-backup-stamp}"
+    export BACKUP_HOST_DIR="${BACKUP_HOST_DIR:-$TMP_DIR/backups-host}"
+    eval "$(fake_crontab_stubs)"
     "$@"
   )
+}
+
+# Attrappe der crontab des Benutzers: eine Datei (FAKE_CRONTAB); KEIN_CRONTAB=1
+# simuliert ein fehlendes crontab-Programm.
+fake_crontab_stubs() {
+  cat <<'STUB'
+tcms_crontab_available() { [[ -z "${KEIN_CRONTAB:-}" ]]; }
+tcms_crontab() {
+  local datei="${FAKE_CRONTAB:-$TMP_DIR/crontab.default}"
+  case "${1:-}" in
+    -l) [[ -f "$datei" ]] || { printf 'no crontab for test\n' >&2; return 1; }; cat "$datei" ;;
+    -r) rm -f -- "$datei" ;;
+    -) cat >"$datei" ;;
+    *) return 2 ;;
+  esac
+}
+STUB
 }
 
 managed_env() {
@@ -1811,6 +1832,219 @@ test_tcms_restore_restores_roles_then_data_then_migrates() {
   pass "TCMS restore: api stopped, current state saved, roles from .env, data, then migration and api"
 }
 
+# ---------------------------------------------------------------------------
+# kk-tcms-s11 Punkt 6: Zeitplan, Rotation und Alter der TCMS-Sicherung
+# ---------------------------------------------------------------------------
+test_tcms_backup_schedule_installs_idempotently_and_keeps_other_entries() {
+  local env_file="$TMP_DIR/sched.env" out="$TMP_DIR/sched.out" line log
+  export FAKE_CRONTAB="$TMP_DIR/sched.crontab"
+  managed_env "$env_file"
+  printf '# eigene Eintraege\n0 3 * * * /usr/local/bin/eigener-job\n' >"$FAKE_CRONTAB"
+  tcms_isolated "$env_file" eval 'load_env; tcms_backup_schedule_install' >"$out" 2>&1 || test_fail "install failed"
+  log="$TMP_DIR/backups-host/tcms-zeitplan/zeitplan.log"
+  line="30 1 * * * cd '$REPO_ROOT' && ./taxtronik tcms backup --zeitplan >'$log' 2>&1"
+  assert_contains "$FAKE_CRONTAB" "0 3 * * * /usr/local/bin/eigener-job"
+  assert_contains "$FAKE_CRONTAB" "# >>> taxtronik tcms-backup"
+  assert_contains "$FAKE_CRONTAB" "$line"
+  assert_contains "$FAKE_CRONTAB" "# <<< taxtronik tcms-backup <<<"
+  [[ "$(grep -c -- '--zeitplan' "$FAKE_CRONTAB")" == "1" ]] || test_fail "schedule line missing or duplicated"
+  [[ "$(file_mode "$TMP_DIR/backups-host/tcms-zeitplan")" == "700" ]] || test_fail "schedule directory is not 0700"
+  # Zweiter Lauf: unveraendert, kein zweiter Block.
+  cp "$FAKE_CRONTAB" "$TMP_DIR/sched.vorher"
+  tcms_isolated "$env_file" eval 'load_env; tcms_backup_schedule_install; tcms_backup_schedule_installed' >"$out" 2>&1 || \
+    test_fail "second install or status failed"
+  cmp -s "$FAKE_CRONTAB" "$TMP_DIR/sched.vorher" || test_fail "second install changed the crontab"
+  # Ein veralteter Block (andere Zeile) wird ersetzt, nicht verdoppelt.
+  sed -i 's/^30 1 \* \* \* /15 4 * * * /' "$FAKE_CRONTAB"
+  if tcms_isolated "$env_file" eval 'load_env; tcms_backup_schedule_installed' >/dev/null 2>&1; then
+    test_fail "changed block counted as installed"
+  fi
+  tcms_isolated "$env_file" eval 'load_env; tcms_backup_schedule_install' >"$out" 2>&1 || test_fail "reinstall failed"
+  assert_contains "$FAKE_CRONTAB" "$line"
+  assert_not_contains "$FAKE_CRONTAB" "15 4 * * *"
+  [[ "$(grep -c -- '# >>> taxtronik tcms-backup' "$FAKE_CRONTAB")" == "1" ]] || test_fail "block duplicated"
+  # Entfernen: nur der Block, eigene Eintraege bleiben; zweites Entfernen ist ein No-op.
+  tcms_isolated "$env_file" eval 'load_env; tcms_backup_schedule_remove; tcms_backup_schedule_remove' >"$out" 2>&1 || \
+    test_fail "remove failed"
+  assert_contains "$FAKE_CRONTAB" "0 3 * * * /usr/local/bin/eigener-job"
+  assert_not_contains "$FAKE_CRONTAB" "taxtronik tcms-backup"
+  assert_not_contains "$FAKE_CRONTAB" "--zeitplan"
+  # Nur der Block in der crontab: Entfernen loescht die crontab.
+  : >"$FAKE_CRONTAB"
+  tcms_isolated "$env_file" eval 'load_env; tcms_backup_schedule_install; tcms_backup_schedule_remove' >"$out" 2>&1
+  [[ ! -s "$FAKE_CRONTAB" ]] || test_fail "remove left a block behind"
+  # Nur managed; ohne crontab-Programm keine Aenderung.
+  sed -i 's/^TCMS_DEPLOYMENT=managed$/TCMS_DEPLOYMENT=disabled/' "$env_file"
+  if tcms_isolated "$env_file" eval 'load_env; tcms_backup_schedule_install' >"$out" 2>&1; then
+    test_fail "schedule installed without managed TCMS"
+  fi
+  sed -i 's/^TCMS_DEPLOYMENT=disabled$/TCMS_DEPLOYMENT=managed/' "$env_file"
+  rm -f "$FAKE_CRONTAB"
+  if KEIN_CRONTAB=1 tcms_isolated "$env_file" eval 'load_env; tcms_backup_schedule_install' >"$out" 2>&1; then
+    test_fail "install without crontab reported success"
+  fi
+  assert_contains "$out" "crontab fehlt"
+  [[ ! -e "$FAKE_CRONTAB" ]] || test_fail "crontab written without crontab program"
+  # Pfade, die cron bzw. /bin/sh anders lesen: abgewiesen statt maskiert.
+  local bad
+  for bad in "/srv/tax%tronik" "/srv/o'neil" $'/srv/zeile\nzwei' '/srv/back\slash' ""; do
+    if tcms_backup_cron_line "$bad" "/tmp/x.log" >/dev/null 2>&1; then test_fail "unsafe path accepted: $bad"; fi
+    if tcms_backup_cron_line "/srv/ok" "$bad" >/dev/null 2>&1; then test_fail "unsafe log path accepted: $bad"; fi
+  done
+  pass "TCMS backup schedule: one managed crontab block, idempotent, replaced when stale, removed alone"
+}
+
+test_setup_deploy_and_disable_manage_the_backup_schedule() {
+  local env_file="$TMP_DIR/sched-setup.env" out="$TMP_DIR/sched-setup.out" body
+  export FAKE_CRONTAB="$TMP_DIR/sched-setup.crontab"
+  rm -f "$FAKE_CRONTAB"
+  tcms_base_env "$env_file"
+  tcms_isolated "$env_file" cmd_tcms_setup managed --no-start </dev/null >"$out" 2>&1 || test_fail "setup managed failed"
+  assert_contains "$FAKE_CRONTAB" "./taxtronik tcms backup --zeitplan"
+  assert_contains "$out" "TCMS-Sicherung geplant"
+  # Abgeschaltet: kein Eintrag, Hinweis auf eigene Planung.
+  rm -f "$FAKE_CRONTAB"
+  printf 'TCMS_BACKUP_SCHEDULE=off\n' >>"$env_file"
+  tcms_isolated "$env_file" eval 'load_env; tcms_ensure_backup_schedule' >"$out" 2>&1 || test_fail "ensure with off failed"
+  [[ ! -e "$FAKE_CRONTAB" ]] || test_fail "schedule installed although TCMS_BACKUP_SCHEDULE=off"
+  assert_contains "$out" "TCMS_BACKUP_SCHEDULE=off"
+  sed -i 's/^TCMS_BACKUP_SCHEDULE=off$/TCMS_BACKUP_SCHEDULE=jaja/' "$env_file"
+  tcms_isolated "$env_file" eval 'load_env; tcms_ensure_backup_schedule' >"$out" 2>&1 || test_fail "ensure with invalid value aborted"
+  [[ ! -e "$FAKE_CRONTAB" ]] || test_fail "schedule installed with invalid TCMS_BACKUP_SCHEDULE"
+  assert_contains "$out" "TCMS_BACKUP_SCHEDULE ist ungueltig"
+  sed -i '/^TCMS_BACKUP_SCHEDULE=/d' "$env_file"
+  # Fehlendes crontab-Programm bricht deploy/setup nicht ab.
+  KEIN_CRONTAB=1 tcms_isolated "$env_file" eval 'load_env; tcms_ensure_backup_schedule' >"$out" 2>&1 || \
+    test_fail "missing crontab aborted ensure"
+  # Deploy/Update: Zeitplan nach einem gesunden tcms-api; disable entfernt ihn.
+  body="$TMP_DIR/start-tcms-deploy.body"; declare -f start_tcms_for_deploy >"$body"
+  assert_before "$body" "tcms_restart_api" "tcms_ensure_backup_schedule"
+  assert_before "$body" "tcms_ensure_backup_schedule" "warn \"Neuer tcms-api wurde nicht healthy"
+  body="$TMP_DIR/cmd-tcms-setup.body"; declare -f cmd_tcms_setup >"$body"
+  assert_before "$body" "tcms_configure_managed" "tcms_ensure_backup_schedule"
+  tcms_isolated "$env_file" eval 'load_env; tcms_ensure_backup_schedule' >"$out" 2>&1
+  assert_contains "$FAKE_CRONTAB" "--zeitplan"
+  tcms_isolated "$env_file" eval '
+    tcms_installed() { return 1; }
+    tcms_remove_containers() { :; }
+    load_env; cmd_tcms_disable' >"$out" 2>&1 || test_fail "disable failed"
+  assert_not_contains "$FAKE_CRONTAB" "--zeitplan"
+  assert_contains "$out" "TCMS-Zeitplan entfernt"
+  pass "setup managed and deploy install the TCMS backup schedule (unless off), disable removes it"
+}
+
+test_scheduled_tcms_backup_rotates_only_its_directory_and_stamps() {
+  local env_file="$TMP_DIR/rot.env" host="$TMP_DIR/rot-host" dir out="$TMP_DIR/rot.out" i name neu
+  export CALLS="$TMP_DIR/rot.calls" PSQL_STDIN="$TMP_DIR/rot.stdin" BACKUP_STAMP="$TMP_DIR/rot.stamp"
+  managed_env "$env_file"; : >"$CALLS"
+  printf 'TCMS_BACKUP_KEEP=3\n' >>"$env_file"
+  dir="$host/tcms-zeitplan"
+  mkdir -p "$dir"
+  # Aeltere Laeufe (Zeitstempel im Namen), eine fremde Datei und manuelle Dumps darueber.
+  for i in 1 2 3 4 5; do
+    name="tcms-db-2026010$i-013000-abc$i.dump"
+    printf 'alt\n' >"$dir/$name"; printf 'x  %s\n' "$name" >"$dir/$name.sha256"
+  done
+  printf 'eigene Notiz\n' >"$dir/notiz.txt"
+  printf 'manuell\n' >"$host/tcms-db-20250101-000000-manu.dump"
+  rotation_run() {
+    BACKUP_HOST_DIR="$host" tcms_isolated "$env_file" eval "$(tcms_db_docker_stub)"'
+      tcms_now() { printf "%s" "${FAKE_NOW:-1792540800}"; }
+      prepare_backup_host_dir() { :; }
+      ensure_s3_ready_for_backup() { :; }
+      tcms_prepare_db_for_backup() { return 0; }
+      upload_tcms_backup() { [[ -z "${FAIL_UPLOAD:-}" ]]; }
+      cmd_tcms_backup --zeitplan'
+  }
+  # Fehlgeschlagener Upload: keine Rotation, kein Stempel.
+  if FAIL_UPLOAD=1 rotation_run >"$out" 2>&1; then test_fail "failed upload reported success"; fi
+  [[ "$(find "$dir" -name 'tcms-db-*.dump' | wc -l)" == "6" ]] || test_fail "rotation ran after a failed upload"
+  [[ ! -e "$BACKUP_STAMP" ]] || test_fail "stamp written after a failed upload"
+  # Der Lauf mit gescheitertem Upload hat seinen Dump lokal hinterlassen.
+  local ungeladen
+  ungeladen="$(find "$dir" -name 'tcms-db-*.dump' ! -name 'tcms-db-2026010*' -printf '%f\n')"
+  [[ -n "$ungeladen" ]] || test_fail "dump of the failed upload missing"
+  rotation_run >"$out" 2>&1 || { sed -n '1,80p' "$out" >&2; test_fail "scheduled backup failed"; }
+  # Neueste 3 Paare bleiben (neuer Lauf, Dump des gescheiterten Uploads, 05), aeltere sind weg.
+  neu="$(sed -n 's/^datei=//p' "$BACKUP_STAMP")"
+  [[ -f "$dir/$neu" && -f "$dir/$neu.sha256" ]] || test_fail "new dump missing in the schedule directory: $neu"
+  [[ "$neu" != "$ungeladen" && -f "$dir/$ungeladen" ]] || test_fail "newer local dump was removed"
+  [[ "$(find "$dir" -name 'tcms-db-*.dump' | wc -l)" == "3" ]] || test_fail "rotation kept a wrong number of dumps"
+  [[ -f "$dir/tcms-db-20260105-013000-abc5.dump" && -f "$dir/tcms-db-20260105-013000-abc5.dump.sha256" ]] || \
+    test_fail "third newest dump was removed"
+  for i in 1 2 3 4; do
+    [[ ! -e "$dir/tcms-db-2026010$i-013000-abc$i.dump" && ! -e "$dir/tcms-db-2026010$i-013000-abc$i.dump.sha256" ]] || \
+      test_fail "old dump $i was kept"
+  done
+  [[ -f "$dir/notiz.txt" && -f "$host/tcms-db-20250101-000000-manu.dump" ]] || test_fail "rotation touched files outside its pattern or directory"
+  # Stempel: Zeitpunkt und Datei, 0600, keine Werte.
+  assert_contains "$BACKUP_STAMP" "zeit=1792540800"
+  [[ "$(file_mode "$BACKUP_STAMP")" == "600" ]] || test_fail "stamp is not 0600"
+  local key
+  for key in TCMS_DB_SUPERUSER_PASSWORD TCMS_DB_OWNER_PASSWORD TCMS_DB_APP_PASSWORD TCMS_SERVICE_TOKEN; do
+    assert_not_contains "$BACKUP_STAMP" "$(env_value "$env_file" "$key")"
+    assert_not_contains "$out" "$(env_value "$env_file" "$key")"
+  done
+  # Ungueltige Aufbewahrung: Abbruch vor jedem Dump.
+  : >"$CALLS"
+  sed -i 's/^TCMS_BACKUP_KEEP=3$/TCMS_BACKUP_KEEP=0/' "$env_file"
+  if rotation_run >"$out" 2>&1; then test_fail "invalid TCMS_BACKUP_KEEP accepted"; fi
+  assert_not_contains "$CALLS" "pg_dump"
+  # Ohne --zeitplan: Dump unter backups/, keine Rotation.
+  sed -i 's/^TCMS_BACKUP_KEEP=0$/TCMS_BACKUP_KEEP=1/' "$env_file"
+  BACKUP_HOST_DIR="$host" tcms_isolated "$env_file" eval "$(tcms_db_docker_stub)"'
+    prepare_backup_host_dir() { :; }; ensure_s3_ready_for_backup() { :; }
+    tcms_prepare_db_for_backup() { return 0; }; upload_tcms_backup() { return 0; }
+    cmd_tcms_backup' >"$out" 2>&1 || test_fail "manual backup failed"
+  [[ "$(find "$dir" -name 'tcms-db-*.dump' | wc -l)" == "3" ]] || test_fail "manual backup rotated the schedule directory"
+  [[ "$(find "$host" -maxdepth 1 -name 'tcms-db-*.dump' | wc -l)" == "2" ]] || test_fail "manual dump not in backups/"
+  pass "scheduled TCMS backup: own directory, newest TCMS_BACKUP_KEEP kept after upload, stamp 0600"
+}
+
+test_doctor_checks_tcms_backup_schedule_and_age() {
+  local env_file="$TMP_DIR/doc-bak.env" out="$TMP_DIR/doc-bak.out" jetzt=1792540800
+  export FAKE_CRONTAB="$TMP_DIR/doc-bak.crontab" BACKUP_STAMP="$TMP_DIR/doc-bak.stamp"
+  managed_env "$env_file"; rm -f "$FAKE_CRONTAB" "$BACKUP_STAMP"
+  doctor_run() {
+    run_tcms_doctor "$env_file" "$out" 'docker() { return 1; }; tcms_now() { printf "%s" '"$jetzt"'; }'
+  }
+  stempel() { printf 'zeit=%s\ndatei=tcms-db-x.dump\n' "$1" >"$BACKUP_STAMP"; }
+  doctor_run
+  assert_contains "$out" "WARN     TCMS_BACKUP_ZEITPLAN"
+  assert_contains "$out" "WARN     TCMS_BACKUP            keine erfolgreiche TCMS-Sicherung"
+  tcms_isolated "$env_file" eval 'load_env; tcms_backup_schedule_install' >/dev/null 2>&1
+  stempel $((jetzt - 3600))
+  doctor_run
+  assert_contains "$out" "OK       TCMS_BACKUP_ZEITPLAN"
+  assert_contains "$out" "OK       TCMS_BACKUP "
+  # Grenze 26 h wie der Staleness-Alarm der Hauptdatenbank.
+  stempel $((jetzt - 26 * 3600))
+  doctor_run
+  assert_contains "$out" "OK       TCMS_BACKUP "
+  stempel $((jetzt - 26 * 3600 - 1))
+  doctor_run
+  assert_contains "$out" "WARN     TCMS_BACKUP            letzte Sicherung"
+  assert_contains "$out" "aelter als 26 h"
+  printf 'zeit=bald\n' >"$BACKUP_STAMP"
+  doctor_run
+  assert_contains "$out" "keine erfolgreiche TCMS-Sicherung"
+  # Zeitplan veraltet bzw. crontab fehlt bzw. bewusst abgeschaltet.
+  sed -i 's/^30 1 /45 2 /' "$FAKE_CRONTAB"
+  doctor_run
+  assert_contains "$out" "WARN     TCMS_BACKUP_ZEITPLAN   fehlt oder veraltet"
+  KEIN_CRONTAB=1 doctor_run
+  assert_contains "$out" "crontab fehlt"
+  printf 'TCMS_BACKUP_SCHEDULE=off\n' >>"$env_file"
+  doctor_run
+  assert_contains "$out" "INFO     TCMS_BACKUP_ZEITPLAN   abgeschaltet"
+  # Nicht verwaltet: keine Sicherungszeilen.
+  sed -i 's/^TCMS_DEPLOYMENT=managed$/TCMS_DEPLOYMENT=disabled/' "$env_file"
+  sed -i -E 's/^(TCMS_URL|TCMS_SERVICE_TOKEN|TCMS_ACTOR_PRIVATE_KEY|TCMS_ACTOR_KEY_ID)=.*/\1=/' "$env_file"
+  doctor_run
+  assert_not_contains "$out" "TCMS_BACKUP"
+  pass "doctor: TCMS backup schedule present and last backup not older than 26 h"
+}
+
 run_test test_tcms_mode_defaults_to_disabled_and_rejects_unknown_values
 run_test test_compose_loads_tcms_file_only_when_managed
 run_test test_compose_writer_guard_sees_subcommand_after_global_options
@@ -1848,6 +2082,10 @@ run_test test_backup_update_and_full_backup_include_tcms
 run_test test_full_backup_keeps_env_and_a_running_code_key_rotation
 run_test test_tcms_restore_validates_before_side_effects
 run_test test_tcms_restore_restores_roles_then_data_then_migrates
+run_test test_tcms_backup_schedule_installs_idempotently_and_keeps_other_entries
+run_test test_setup_deploy_and_disable_manage_the_backup_schedule
+run_test test_scheduled_tcms_backup_rotates_only_its_directory_and_stamps
+run_test test_doctor_checks_tcms_backup_schedule_and_age
 
 if (( TESTS_FAILED > 0 )); then
   printf '\n%s ops-tcms tests failed, %s passed:\n' "$TESTS_FAILED" "$TESTS_RUN" >&2

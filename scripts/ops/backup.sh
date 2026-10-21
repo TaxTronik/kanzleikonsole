@@ -168,17 +168,201 @@ tcms_prepare_db_for_backup() {
 }
 
 # TCMS-Dump wie der Hauptdump: lokal unter backups/ und im Backup-Bucket.
+# Mit Ziel (kk-tcms-s11): taeglicher Lauf des Zeitplans in sein eigenes
+# Unterverzeichnis, danach Rotation nur dort. Nach dem Upload haelt
+# TCMS_BACKUP_STAMP Zeitpunkt und Datei fest (fuer doctor).
 backup_tcms_with_upload() {
+  local dest="${1:-}"
   [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
   if ! tcms_prepare_db_for_backup; then
     info "Noch keine TCMS-Datenbank vorhanden; TCMS-Backup entfaellt."
     return 0
   fi
-  run_backup_tcms "$(resolve_backup_host_dir)" || return 1
+  [[ -n "$dest" ]] || dest="$(resolve_backup_host_dir)" || return 1
+  run_backup_tcms "$dest" || return 1
   upload_tcms_backup "$_TCMS_BACKUP_FILE" || {
     warn "TCMS-Dump liegt lokal ($_TCMS_BACKUP_FILE), der Upload in den Backup-Bucket ist fehlgeschlagen."
     return 1
   }
+  tcms_backup_stamp_write "$_TCMS_BACKUP_FILE" || warn "Zeitpunkt der TCMS-Sicherung nicht festgehalten ($TCMS_BACKUP_STAMP)."
+}
+
+# ---------------------------------------------------------------------------
+# Zeitplan der TCMS-Sicherung (kk-tcms-s11 Punkt 6).
+#
+# Die kanzleikonsole sichert ihre Datenbank taeglich automatisch (Worker-Job
+# backup-run, 01:00 UTC, Staleness-Alarm nach 26 h im health-alert). Der Worker
+# erreicht die TCMS-Datenbank wegen der Netztrennung absichtlich nicht; den
+# taeglichen TCMS-Lauf plant deshalb die Operator-CLI als Host-Cron
+# (`./taxtronik tcms backup --zeitplan`, 01:30 Host-Zeit, nach dem Hauptdump),
+# automatisch bei `tcms setup managed`, deploy und update, entfernt bei
+# disable/external. Abschalten nur ausdruecklich: TCMS_BACKUP_SCHEDULE=off
+# (eigene Planung, doctor prueft dann nur das Alter).
+#
+# Aufbewahrung wie beim Hauptdump: im Backup-Bucket 90 Tage (Lifecycle
+# expire-backups-90d, alle Praefixe); lokal haelt der Zeitplan in
+# backups/tcms-zeitplan/ die neuesten TCMS_BACKUP_KEEP Sicherungen (Standard
+# 14) und loescht aeltere Paare (Dump + .sha256) – erst nach einem
+# erfolgreichen Lauf samt Upload und nur in diesem Verzeichnis. Manuelle,
+# Update- und Vor-Migrations-Dumps unter backups/ bleiben unberuehrt.
+# doctor warnt, wenn die letzte TCMS-Sicherung aelter als 26 h ist (wie der
+# Staleness-Alarm der Hauptdatenbank).
+# ---------------------------------------------------------------------------
+TCMS_BACKUP_SCHEDULE_BEGIN="# >>> taxtronik tcms-backup (verwaltet von ./taxtronik, nicht von Hand aendern) >>>"
+TCMS_BACKUP_SCHEDULE_END="# <<< taxtronik tcms-backup <<<"
+TCMS_BACKUP_SCHEDULE_TIME="30 1 * * *"
+TCMS_BACKUP_SCHEDULE_DIR="tcms-zeitplan"
+TCMS_BACKUP_KEEP_DEFAULT=14
+TCMS_BACKUP_MAX_AGE_SECONDS=$((26 * 60 * 60))
+
+# Zugriff auf die crontab des ausfuehrenden Benutzers nur ueber diese beiden
+# Funktionen (Tests ersetzen sie; nie die echte crontab im Test).
+tcms_crontab_available() { command -v crontab >/dev/null 2>&1; }
+tcms_crontab() { crontab "$@"; }
+
+# TCMS_BACKUP_SCHEDULE: leer/auto (Zeitplan der CLI) oder off.
+tcms_backup_schedule_mode() {
+  case "${TCMS_BACKUP_SCHEDULE:-auto}" in
+    ""|auto) printf 'auto\n' ;;
+    off) printf 'off\n' ;;
+    *) return 1 ;;
+  esac
+}
+
+# TCMS_BACKUP_KEEP: 1-365 lokale Sicherungen des Zeitplans.
+tcms_backup_keep() {
+  local keep="${TCMS_BACKUP_KEEP:-$TCMS_BACKUP_KEEP_DEFAULT}"
+  [[ "$keep" =~ ^[1-9][0-9]{0,2}$ ]] && (( keep <= 365 )) || return 1
+  printf '%s\n' "$keep"
+}
+
+# Cron-Zeile: cd in den Checkout, Lauf mit --zeitplan, Ausgabe des letzten
+# Laufs (ohne Werte) ins Protokoll des Zeitplans. cron behandelt % als
+# Zeilenende und die Zeile laeuft unter /bin/sh: Pfade mit ', %, Zeilenumbruch
+# oder Backslash werden abgewiesen statt falsch maskiert.
+tcms_backup_cron_line() {
+  local root="$1" log="$2" pfad
+  for pfad in "$root" "$log"; do
+    case "$pfad" in
+      *"'"*|*%*|*$'\n'*|*\\*|"") return 1 ;;
+    esac
+  done
+  printf "%s cd '%s' && ./taxtronik tcms backup --zeitplan >'%s' 2>&1\n" \
+    "$TCMS_BACKUP_SCHEDULE_TIME" "$root" "$log"
+}
+
+# Aktuelle crontab ohne den verwalteten Block (leer, wenn es keine gibt).
+tcms_crontab_without_block() {
+  tcms_crontab -l 2>/dev/null | awk -v b="$TCMS_BACKUP_SCHEDULE_BEGIN" -v e="$TCMS_BACKUP_SCHEDULE_END" '
+    $0 == b { skip = 1; next }
+    $0 == e { skip = 0; next }
+    !skip { print }
+  ' || true
+}
+
+# Verwalteter Block in der crontab: 0 = eingetragen (Zeile wie erwartet),
+# 1 = fehlt bzw. abweichend, 2 = kein crontab-Programm.
+tcms_backup_schedule_installed() {
+  local line block
+  tcms_crontab_available || return 2
+  line="$(tcms_backup_cron_line "$ROOT" "$(tcms_backup_schedule_log)")" || return 1
+  block="$(tcms_crontab -l 2>/dev/null | awk -v b="$TCMS_BACKUP_SCHEDULE_BEGIN" -v e="$TCMS_BACKUP_SCHEDULE_END" '
+    $0 == b { inside = 1; next }
+    $0 == e { inside = 0; next }
+    inside { print }
+  ' || true)"
+  [[ "$block" == "$line" ]]
+}
+
+tcms_backup_schedule_log() {
+  printf '%s/%s/zeitplan.log\n' "$(resolve_backup_host_dir)" "$TCMS_BACKUP_SCHEDULE_DIR"
+}
+
+# Traegt den Zeitplan ein bzw. aktualisiert ihn (idempotent). Nur managed.
+tcms_backup_schedule_install() {
+  local line log rest
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || { warn "TCMS-Zeitplan nur bei TCMS_DEPLOYMENT=managed."; return 1; }
+  tcms_crontab_available || { warn "crontab fehlt; TCMS-Sicherung nicht geplant (cron installieren oder eigene Planung, TCMS_BACKUP_SCHEDULE=off)."; return 1; }
+  log="$(tcms_backup_schedule_log)" || return 1
+  line="$(tcms_backup_cron_line "$ROOT" "$log")" || { warn "Pfad des Checkouts bzw. der Sicherungen ist fuer cron ungeeignet (', %, Zeilenumbruch); TCMS-Sicherung bitte selbst planen."; return 1; }
+  mkdir -p "$(dirname "$log")" || return 1
+  chmod 0700 "$(dirname "$log")" 2>/dev/null || true
+  if tcms_backup_schedule_installed; then
+    info "TCMS-Sicherung ist geplant (taeglich, $TCMS_BACKUP_SCHEDULE_TIME Host-Zeit)."
+    return 0
+  fi
+  rest="$(tcms_crontab_without_block)"
+  { [[ -z "$rest" ]] || printf '%s\n' "$rest"
+    printf '%s\n%s\n%s\n' "$TCMS_BACKUP_SCHEDULE_BEGIN" "$line" "$TCMS_BACKUP_SCHEDULE_END"
+  } | tcms_crontab - || { warn "crontab konnte nicht geschrieben werden; TCMS-Sicherung nicht geplant."; return 1; }
+  info "TCMS-Sicherung geplant: taeglich ($TCMS_BACKUP_SCHEDULE_TIME Host-Zeit), Protokoll des letzten Laufs in $log."
+}
+
+# Entfernt nur den verwalteten Block; andere Eintraege bleiben.
+tcms_backup_schedule_remove() {
+  local rest
+  tcms_crontab_available || return 0
+  tcms_crontab -l 2>/dev/null | grep -Fqx -- "$TCMS_BACKUP_SCHEDULE_BEGIN" || return 0
+  rest="$(tcms_crontab_without_block)"
+  if [[ -z "$rest" ]]; then
+    tcms_crontab -r 2>/dev/null || printf '' | tcms_crontab -
+  else
+    printf '%s\n' "$rest" | tcms_crontab -
+  fi || { warn "TCMS-Zeitplan konnte nicht entfernt werden (crontab)."; return 1; }
+  info "TCMS-Zeitplan entfernt."
+}
+
+# deploy/update/setup managed: Zeitplan sicherstellen, ohne den Lauf
+# abzubrechen (fehlt cron, meldet doctor den fehlenden Zeitplan).
+tcms_ensure_backup_schedule() {
+  local mode
+  [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
+  mode="$(tcms_backup_schedule_mode)" || { warn "TCMS_BACKUP_SCHEDULE ist ungueltig (auto|off); Zeitplan unveraendert."; return 0; }
+  if [[ "$mode" == "off" ]]; then
+    info "TCMS-Zeitplan abgeschaltet (TCMS_BACKUP_SCHEDULE=off); Sicherung bitte selbst planen (./taxtronik tcms backup)."
+    return 0
+  fi
+  tcms_backup_schedule_install || true
+}
+
+# Zeitpunkt (UTC-Epoche) und Datei der letzten erfolgreichen TCMS-Sicherung
+# (lokal + Bucket), atomar und 0600; keine Geheimnisse.
+tcms_backup_stamp_write() {
+  local file="$1" tmp
+  tmp="$TCMS_BACKUP_STAMP.tmp.$$"
+  printf 'zeit=%s\ndatei=%s\n' "$(tcms_now)" "$(basename "$file")" >"$tmp" && \
+    chmod 0600 "$tmp" && mv -f -- "$tmp" "$TCMS_BACKUP_STAMP" || { rm -f -- "$tmp"; return 1; }
+}
+
+# Epoche der letzten Sicherung; rc 1 ohne bzw. mit ungueltigem Stempel.
+tcms_backup_stamp_time() {
+  local zeit
+  [[ -f "$TCMS_BACKUP_STAMP" ]] || return 1
+  zeit="$(sed -n 's/^zeit=\([0-9]\{1,12\}\)$/\1/p' "$TCMS_BACKUP_STAMP" | head -n1)"
+  [[ -n "$zeit" ]] || return 1
+  printf '%s\n' "$zeit"
+}
+
+# Lokale Rotation des Zeitplans: die neuesten <keep> Paare behalten. Nur
+# vollstaendige Dateinamen des Dumps (tcms-db-JJJJMMTT-HHMMSS-xxxxx.dump), die
+# Reihenfolge ergibt sich aus dem Zeitstempel im Namen.
+tcms_backup_rotate() {
+  local dir="$1" keep="$2" file name count=0
+  local -a namen=()
+  [[ -d "$dir" ]] || return 0
+  for file in "$dir"/tcms-db-*.dump; do
+    [[ -f "$file" ]] || continue
+    name="${file##*/}"
+    [[ "$name" =~ ^tcms-db-[0-9]{8}-[0-9]{6}-[A-Za-z0-9]{1,5}\.dump$ ]] || continue
+    namen+=("$name")
+  done
+  (( ${#namen[@]} > keep )) || return 0
+  while IFS= read -r name; do
+    count=$((count + 1))
+    (( count > keep )) || continue
+    rm -f -- "$dir/$name" "$dir/$name.sha256" || return 1
+    info "Alte TCMS-Sicherung entfernt: $name"
+  done < <(printf '%s\n' "${namen[@]}" | LC_ALL=C sort -r)
 }
 
 object_store_backup_buckets() {

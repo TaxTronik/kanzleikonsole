@@ -792,7 +792,11 @@ start_tcms_for_deploy() {
   tcms_wait_db_healthy
   tcms_backup_before_migration
   run_tcms_migrate
-  tcms_restart_api && return 0
+  if tcms_restart_api; then
+    # kk-tcms-s11: Zeitplan der taeglichen Sicherung sicherstellen (idempotent).
+    tcms_ensure_backup_schedule
+    return 0
+  fi
   warn "Neuer tcms-api wurde nicht healthy; vorherigen Containerstand wiederherstellen."
   if [[ -n "$previous_version" && \
         "$previous_version$previous_api$previous_migrate" != "${TCMS_VERSION:-}${TCMS_API_DIGEST_SUFFIX:-}${TCMS_MIGRATE_DIGEST_SUFFIX:-}" ]]; then
@@ -1369,6 +1373,8 @@ cmd_tcms_setup() {
       else
         info "Tax-CMS ist konfiguriert (managed); Start mit ./taxtronik deploy."
       fi
+      # kk-tcms-s11: taegliche Sicherung wie die der Hauptdatenbank.
+      tcms_ensure_backup_schedule
       ;;
     external)
       [[ "$current" != "managed" ]] || die "Vom verwalteten Modus zuerst ./taxtronik tcms disable ausfuehren (Daten bleiben im Volume tcms-db-data)."
@@ -1399,6 +1405,8 @@ cmd_tcms_disable() {
   # Erst app/worker ohne TCMS neu starten, dann den Dienst entfernen.
   if tcms_installed; then tcms_restart_writers; fi
   tcms_remove_containers
+  # Ohne verwalteten Dienst gibt es nichts mehr zu sichern (vorhandene Dumps bleiben).
+  tcms_backup_schedule_remove || true
   info "Tax-CMS deaktiviert. Das Volume tcms-db-data und TCMS_DB_* bleiben erhalten (Daten, Rollen); Loeschen nur bewusst von Hand."
 }
 
@@ -1486,7 +1494,8 @@ cmd_tcms() {
     rotate-key) cmd_tcms_rotate key ;;
     rotate-code-key) cmd_tcms_rotate_code_key "$@" ;;
     disable) load_env; cmd_tcms_disable ;;
-    backup) cmd_tcms_backup ;;
+    backup) cmd_tcms_backup "$@" ;;
+    backup-schedule) cmd_tcms_backup_schedule "$@" ;;
     restore) cmd_tcms_restore "$@" ;;
     help|-h|--help)
       cat <<'USAGE'
@@ -1499,6 +1508,8 @@ cmd_tcms() {
 ./taxtronik tcms rotate-code-key --finish --force --confirm-expiry OFFENE_CODES_LAUFEN_AB
 ./taxtronik tcms disable          Tax-CMS abschalten (Volume bleibt)
 ./taxtronik tcms backup           TCMS-Datenbank sichern (backups/ + Backup-Bucket)
+./taxtronik tcms backup --zeitplan  Taeglicher Lauf aus der crontab (backups/tcms-zeitplan/, Rotation)
+./taxtronik tcms backup-schedule [status|install|remove]  Zeitplan der TCMS-Sicherung (Host-Cron)
 ./taxtronik tcms restore --file <dump> --confirm-overwrite RESTORE_TCMS_DATABASE
 USAGE
       ;;
