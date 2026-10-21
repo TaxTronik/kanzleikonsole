@@ -19,6 +19,7 @@ vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => null }));
 vi.mock('@/server/auth/portal', () => ({ portalAuth: async () => null }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
+import { anwendungAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 import { ActionError } from '@/server/actions/action-error';
 import { mandantAnkerTx } from '../mandant';
 import { pruefeFreigabeEmpfaengerTx } from '../programm/einrichtung';
@@ -343,33 +344,35 @@ if (!enabled && process.env.CI === 'true') {
         ['offen', 'gesperrt'],
         ['beendet', 'beendet'],
       ] as const) {
-        await expect(
+        const abgewiesen = await anwendungAbgewiesen(
           imTenant(tenantId, (tx) =>
             freigabeEmpfaengerTx(tx, bezug(mandantKey), kontakt[key]!, { feld: 'empfaengerId' }),
           ),
+          { klasse: TcmsPersonUnzulaessig, meldung: TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL },
           key,
-        ).rejects.toMatchObject({
-          name: 'TcmsPersonUnzulaessig',
-          message: TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL,
-          feld: 'empfaengerId',
-        });
+        );
+        expect(abgewiesen, key).toMatchObject({ feld: 'empfaengerId' });
       }
       // Inaktiv, anderer Mandant, anderer Tenant: wie bisher „gehört nicht zu diesem Mandanten“.
       for (const key of ['portalInaktiv', 'aktiv', 'fremd'] as const) {
-        await expect(
+        const abgewiesen = await anwendungAbgewiesen(
           imTenant(tenantId, (tx) => freigabeEmpfaengerTx(tx, bezug('portal'), kontakt[key]!)),
+          { klasse: TcmsPersonUnzulaessig, meldung: TCMS_PERSON_UNZULAESSIG_TEXTE.KONTAKT },
           key,
-        ).rejects.toMatchObject({ message: TCMS_PERSON_UNZULAESSIG_TEXTE.KONTAKT, feld: null });
+        );
+        expect(abgewiesen, key).toMatchObject({ feld: null });
       }
       // Einrichtung, Schritt 3: nur mit angeforderter Freigabe zählt der Portalzugang.
-      await expect(
+      const schritt3 = await anwendungAbgewiesen(
         imTenant(tenantId, (tx) =>
           pruefeFreigabeEmpfaengerTx(tx, bezug('portal'), {
             anfordern: true,
             empfaengerId: kontakt.unbestaetigt!,
           }),
         ),
-      ).rejects.toMatchObject({ message: TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL, feld: 'freigabe' });
+        { klasse: TcmsPersonUnzulaessig, meldung: TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL },
+      );
+      expect(schritt3).toMatchObject({ feld: 'freigabe' });
       await expect(
         imTenant(tenantId, (tx) =>
           pruefeFreigabeEmpfaengerTx(tx, bezug('portal'), {

@@ -35,7 +35,7 @@ import type { TcmsAktionsErgebnis } from '@/components/tcms/programm/dialog';
 import type { ActionParseResult } from '@/server/actions/action-runner';
 import { parseActionInput, parseFormData } from '@/server/actions/form-data';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
-import { TcmsPersonUnzulaessig } from '@/server/tcms/personen';
+import { TCMS_PERSON_UNZULAESSIG_TEXTE, TcmsPersonUnzulaessig } from '@/server/tcms/personen';
 import {
   einrichtungsPersonen,
   pruefeFreigabeEmpfaengerTx,
@@ -155,7 +155,7 @@ export async function einrichtungSpeichernAction(
             if (!(fehler instanceof TcmsPersonUnzulaessig)) throw fehler;
             return {
               ok: false as const,
-              error: `Schritt 3 (Freigabe der Ziele): ${fehler.message}`,
+              error: `Schritt 3 (Freigabe der Ziele): ${TCMS_PERSON_UNZULAESSIG_TEXTE[fehler.art]}`,
               errorCode: 'VALIDATION_ERROR' as const,
             };
           }

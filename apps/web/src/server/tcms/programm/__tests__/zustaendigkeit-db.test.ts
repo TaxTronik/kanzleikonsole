@@ -21,6 +21,7 @@ vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => null }));
 vi.mock('@/server/auth/portal', () => ({ portalAuth: async () => null }));
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
+import { createVerifiedLegalEntityGwgFixture } from '../../../../../../../packages/db/src/__tests__/gwg-test-fixture';
 import { ActionError } from '@/server/actions/action-error';
 import { TcmsPersonUnzulaessig } from '../../personen';
 import { pruefeFreigabeEmpfaengerTx, pruefeKontrollPersonenTx } from '../einrichtung';
@@ -95,7 +96,14 @@ if (!enabled && process.env.CI === 'true') {
     });
   }
 
-  async function neuerKontakt(key: string, tenant: string, clientKey: string, active = true) {
+  async function neuerKontakt(
+    key: string,
+    tenant: string,
+    clientKey: string,
+    active = true,
+    // Erste Anmeldung im Portal bestätigt die Adresse (aktiver Portalzugang, kk-tcms-s11).
+    lastLoginAt: Date | null = new Date(),
+  ) {
     kontakt[key] = (
       await owner.clientContact.create({
         data: {
@@ -104,6 +112,7 @@ if (!enabled && process.env.CI === 'true') {
           email: `${key}-${randomUUID()}@example.test`,
           fullName: `  Kontakt ${key} `,
           active,
+          lastLoginAt,
         },
       })
     ).id;
@@ -138,8 +147,21 @@ if (!enabled && process.env.CI === 'true') {
     await zuordnen('vertraulich', 'bt', 'BERUFSTRAEGER');
     await zuordnen('vertraulich', 'hbInaktiv', 'HAUPTBEARBEITER');
     await zuordnen('vertraulich', 'hb', 'HAUPTBEARBEITER');
+    // Für das Portal zugelassen (verlangt eine verifizierte GwG-Prüfung): Die
+    // Zielfreigabe geht nur an Kontakte mit aktivem Portalzugang (kk-tcms-s11).
+    await createVerifiedLegalEntityGwgFixture(owner as never, {
+      tenantId,
+      clientId: mandant.vertraulich!,
+      verifiedBy: staff.admin!,
+      registerNumber: `HRB-${randomUUID().slice(0, 8)}`,
+    });
+    await owner.client.update({
+      where: { id: mandant.vertraulich! },
+      data: { allowActive: true },
+    });
     await neuerKontakt('aktiv', tenantId, 'vertraulich');
     await neuerKontakt('inaktiv', tenantId, 'vertraulich', false);
+    await neuerKontakt('ohnePortal', tenantId, 'vertraulich', true, null);
     await neuerKontakt('andererMandant', tenantId, 'offen');
     await neuerKontakt('fremd', fremderTenant, 'fremd');
   });
@@ -273,7 +295,7 @@ if (!enabled && process.env.CI === 'true') {
       },
     );
 
-    it('Empfänger der Zielfreigabe: nur aktiver Kontakt dieses Mandanten', async () => {
+    it('Empfänger der Zielfreigabe: nur aktiver Kontakt dieses Mandanten mit Portalzugang', async () => {
       await expect(
         imTenant(tenantId, (tx) =>
           pruefeFreigabeEmpfaengerTx(tx, bezug('vertraulich'), {
@@ -299,7 +321,17 @@ if (!enabled && process.env.CI === 'true') {
         ).catch((e: unknown) => e);
         expect(fehler).toBeInstanceOf(TcmsPersonUnzulaessig);
         expect((fehler as TcmsPersonUnzulaessig).feld).toBe('freigabe');
+        expect((fehler as TcmsPersonUnzulaessig).art).toBe('KONTAKT');
       }
+      // kk-tcms-s11 Punkt 4: aktiver Kontakt dieses Mandanten ohne Portalzugang.
+      const ohnePortal = await imTenant(tenantId, (tx) =>
+        pruefeFreigabeEmpfaengerTx(tx, bezug('vertraulich'), {
+          anfordern: true,
+          empfaengerId: kontakt.ohnePortal!,
+        }),
+      ).catch((e: unknown) => e);
+      expect(ohnePortal).toBeInstanceOf(TcmsPersonUnzulaessig);
+      expect(ohnePortal).toMatchObject({ art: 'PORTAL', feld: 'freigabe' });
     });
   });
 

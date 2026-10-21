@@ -48,10 +48,13 @@ export const TCMS_PERSON_UNZULAESSIG_TEXTE = {
 
 /** Fachfehler mit fester, UI-tauglicher Meldung; `feld` ordnet ihn einem Formularfeld zu. */
 export class TcmsPersonUnzulaessig extends ActionError {
+  /** Grund als Schlüssel der festen Texte (`TCMS_PERSON_UNZULAESSIG_TEXTE`). */
+  readonly art: keyof typeof TCMS_PERSON_UNZULAESSIG_TEXTE;
   readonly feld: string | null;
   constructor(art: keyof typeof TCMS_PERSON_UNZULAESSIG_TEXTE, feld: string | null = null) {
     super(TCMS_PERSON_UNZULAESSIG_TEXTE[art]);
     this.name = 'TcmsPersonUnzulaessig';
+    this.art = art;
     this.feld = feld;
   }
 }

@@ -136,8 +136,11 @@ describe('parseFormData-Migrationsrest', () => {
     // an über parseFormData (+11).
     // kk-tcms-s10nach: Zuordnen einer ungeklärten Meldungsanlage im
     // Ereigniseingang liest von Beginn an über parseFormData (+1).
+    // kk-tcms-s11: Freigeben einer ungeklärten Meldungsanlage im
+    // Ereigniseingang (Pflichtbegründung) liest von Beginn an über
+    // parseFormData (+1).
     expect(direct).toHaveLength(2);
     expect(direct.filter((call) => !call.exact)).toHaveLength(1);
-    expect(shared).toBe(176);
+    expect(shared).toBe(177);
   });
 });
