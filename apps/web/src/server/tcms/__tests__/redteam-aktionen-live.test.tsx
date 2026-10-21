@@ -73,6 +73,8 @@ const ERSATZ_FREIGABE = 'freigabe0000000000000001';
   /** Dieselbe Person (gleiche E-Mail) als Kontakt von Pixelhafen. */
   const janaAnders = randomUUID();
   const JANA_MAIL = 'jana.weller@talwind.example';
+  /** kk-tcms-s11 Punkt 4: Kontakt von Talwind ohne Portalzugang (nie angemeldet). */
+  const ohneZugang = randomUUID();
   let dokTalwind = '';
   let dokAnders = '';
   // IDs des Dienstes (der Seed vergibt sie je Datenbank neu).
@@ -263,10 +265,23 @@ const ERSATZ_FREIGABE = 'freigabe0000000000000001';
       clientId: string,
       fullName: string,
       email: string,
-    ) => owner.clientContact.create({ data: { id, tenantId, clientId, fullName, email } });
+      // Erste Anmeldung im Portal bestätigt die Adresse (aktiver Portalzugang).
+      lastLoginAt: Date | null = new Date(),
+    ) =>
+      owner.clientContact.create({
+        data: { id, tenantId, clientId, fullName, email, lastLoginAt },
+      });
     await kontakt(DEMO.jana, DEMO.tenant, DEMO.talwind, 'Jana Weller', JANA_MAIL);
     await kontakt(DEMO.murat, DEMO.tenant, DEMO.talwind, 'Murat Yilmaz', 'murat@talwind.example');
     await kontakt(janaAnders, DEMO.tenant, ANDERER, 'Jana Weller', JANA_MAIL);
+    await kontakt(
+      ohneZugang,
+      DEMO.tenant,
+      DEMO.talwind,
+      'Olaf Ohnezugang',
+      'olaf@talwind.example',
+      null,
+    );
     await kontakt(
       fremderKontakt,
       fremderTenant,
@@ -523,8 +538,8 @@ const ERSATZ_FREIGABE = 'freigabe0000000000000001';
     anna();
     const { freigabeNeuadressierenAction } =
       await import('@/app/staff/(protected)/clients/[id]/tcms/kommunikation/actions');
-    // Empfänger ist ein gültiger Kontakt des gebundenen Mandanten: die
-    // kanzleikonsole lässt ihn zu, der Angriff erreicht den Dienst.
+    // Empfänger ist ein gültiger Kontakt des gebundenen Mandanten (mit aktivem
+    // Portalzugang): die kanzleikonsole lässt ihn zu, der Angriff erreicht den Dienst.
     const vorher = dienstAufrufe();
     expect(
       await freigabeNeuadressierenAction(
@@ -534,6 +549,22 @@ const ERSATZ_FREIGABE = 'freigabe0000000000000001';
       ),
     ).toMatchObject({ ok: false });
     expect(dienstAufrufe()).toBeGreaterThan(vorher);
+  });
+
+  it('S11-P4: Freigabe an einen Kontakt dieses Mandanten ohne Portalzugang adressieren – kein Dienstaufruf', async () => {
+    anna();
+    const { freigabeNeuadressierenAction } =
+      await import('@/app/staff/(protected)/clients/[id]/tcms/kommunikation/actions');
+    const { TCMS_PERSON_UNZULAESSIG_TEXTE } = await import('@/server/tcms/personen');
+    expect(
+      await ohneDienst(() =>
+        freigabeNeuadressierenAction(
+          DEMO.talwind,
+          null,
+          formular({ freigabeId: freigabeTalwind || ERSATZ_FREIGABE, empfaengerId: ohneZugang }),
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL });
   });
 
   it('RT3B-P1: Portal-Kontakt mit gewechselter Mandantenauswahl (dieselbe Person bei zwei Mandanten) – kein Dienstaufruf', async () => {

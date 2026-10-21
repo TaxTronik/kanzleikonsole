@@ -50,6 +50,7 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { DEMO } from '@/__tests__/tcms-fixtures';
 import { renderServerMarkup } from '@/__tests__/render-helpers';
 import { erwarteAnwendungsfehler } from '@taxtronik/db/testing/db-fehler';
+import { createVerifiedLegalEntityGwgFixture } from '../../../../../../../packages/db/src/__tests__/gwg-test-fixture';
 
 const { JSDOM } = createRequire(import.meta.url)('jsdom') as {
   JSDOM: new (html: string) => { window: { document: Document } };
@@ -81,6 +82,8 @@ function formular(felder: Record<string, string | string[]>): FormData {
   const neuerKontakt = randomUUID();
   const einrichtungMandant = randomUUID();
   const gerda = randomUUID();
+  // kk-tcms-s11 Punkt 4: Kontakt dieses Mandanten ohne Portalzugang (nie angemeldet).
+  const otto = randomUUID();
   const inEinerStunde = () => new Date(Date.now() + 3_600_000).toISOString();
   const staffSitzung = (staffId: string, roles: string[]) => ({
     user: {
@@ -127,6 +130,15 @@ function formular(felder: Record<string, string | string[]>): FormData {
     ];
     for (const [id, name] of mandanten) {
       await owner.client.create({ data: { id, tenantId: DEMO.tenant, kind: 'JURPERS', name } });
+      // Für das Portal zugelassen (verlangt eine verifizierte GwG-Prüfung): Freigaben
+      // gehen nur an Kontakte mit aktivem Portalzugang (kk-tcms-s11 Punkt 4).
+      await createVerifiedLegalEntityGwgFixture(owner as never, {
+        tenantId: DEMO.tenant,
+        clientId: id,
+        verifiedBy: DEMO.anna,
+        registerNumber: `HRB-${randomUUID().slice(0, 8)}`,
+      });
+      await owner.client.update({ where: { id }, data: { allowActive: true } });
     }
     const zu = (clientId: string, staffId: string, role: 'BERUFSTRAEGER' | 'HAUPTBEARBEITER') => ({
       tenantId: DEMO.tenant,
@@ -143,15 +155,24 @@ function formular(felder: Record<string, string | string[]>): FormData {
         zu(einrichtungMandant, DEMO.leon, 'HAUPTBEARBEITER'),
       ],
     });
-    const kontakt = (id: string, clientId: string, fullName: string) =>
+    const kontakt = (id: string, clientId: string, fullName: string, portal = true) =>
       owner.clientContact.create({
-        data: { id, tenantId: DEMO.tenant, clientId, fullName, email: `${id}@mandant.example` },
+        data: {
+          id,
+          tenantId: DEMO.tenant,
+          clientId,
+          fullName,
+          email: `${id}@mandant.example`,
+          // Erste Anmeldung im Portal bestätigt die Adresse (aktiver Portalzugang).
+          lastLoginAt: portal ? new Date() : null,
+        },
       });
     await kontakt(DEMO.jana, DEMO.talwind, 'Jana Weller');
     await kontakt(DEMO.murat, DEMO.talwind, 'Murat Yilmaz');
     await kontakt(DEMO.sabine, DEMO.talwind, 'Sabine Berg');
     await kontakt(neuerKontakt, neuerMandant, 'Nina Neu');
     await kontakt(gerda, einrichtungMandant, 'Gerda Grund');
+    await kontakt(otto, einrichtungMandant, 'Otto Ohnezugang', false);
     await owner.tenantSetting.create({
       data: { tenantId: DEMO.tenant, key: 'modules', value: { tcms: true } },
     });
@@ -175,6 +196,7 @@ function formular(felder: Record<string, string | string[]>): FormData {
       await import('@/app/staff/(protected)/clients/[id]/tcms/einrichtung/page');
     const { einrichtungSpeichernAction } =
       await import('@/app/staff/(protected)/clients/[id]/tcms/einrichtung/actions');
+    const { TCMS_PERSON_UNZULAESSIG_TEXTE } = await import('@/server/tcms/personen');
     const M = einrichtungMandant;
     expect(await mandantImTcmsAnlegenAction(M, null, new FormData())).toMatchObject({ ok: true });
     expect(
@@ -236,6 +258,10 @@ function formular(felder: Record<string, string | string[]>): FormData {
       ok: false,
       error: 'Der gewählte Kontakt gehört nicht zu diesem Mandanten.',
     });
+    // kk-tcms-s11 Punkt 4: Kontakt dieses Mandanten ohne Portalzugang – abgewiesen.
+    expect(
+      await weiter(3, { ...ziele, freigabe: { anfordern: true, empfaengerId: otto } }),
+    ).toMatchObject({ ok: false, error: TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL });
     expect(await weiter(3, ziele)).toBe(
       `NEXT_REDIRECT:/staff/clients/${M}/tcms/einrichtung?schritt=4`,
     );
@@ -263,6 +289,17 @@ function formular(felder: Record<string, string | string[]>): FormData {
       ziel: 'speichern',
       schritt: 5,
     });
+    // kk-tcms-s11 Punkt 4: Verliert der gespeicherte Empfänger der Zielfreigabe
+    // den Portalzugang, legt die kanzleikonsole Version 1 nicht an (der Dienst
+    // würde mit ihr die Freigabe anfordern) – erneut geprüft gegen den Entwurf
+    // des Dienstes.
+    const gerdaLogin = { where: { id: gerda } } as const;
+    await owner.clientContact.update({ ...gerdaLogin, data: { lastLoginAt: null } });
+    expect(await weiter(5, s5.daten, 'anlegen')).toMatchObject({
+      ok: false,
+      error: `Schritt 3 (Freigabe der Ziele): ${TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL}`,
+    });
+    await owner.clientContact.update({ ...gerdaLogin, data: { lastLoginAt: new Date() } });
     expect(await weiter(5, s5.daten, 'anlegen')).toBe(
       `NEXT_REDIRECT:/staff/clients/${M}/tcms/einrichtung`,
     );
