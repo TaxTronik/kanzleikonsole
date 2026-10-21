@@ -23,6 +23,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Hinzugefügt
 
+- **[Scope] [TCMS]** Admins und Partner geben ungeklärte Anlagen einer Portal-Meldung frei,
+  wenn das Tax-CMS bestätigt, dass kein Ereignis die Datei führt: Pflichtbegründung,
+  Audit `tcms.anlage.freigegeben`, frühestens 23 h 10 min nach dem ersten Senden; der
+  SQL-Ablauf im Betrieb ist nur noch Notfallweg (TCMS-NACHWEIS-001).
+- **[TCMS]** `document.uploaded` auch für Tax-CMS-Nachweise (`source: tcms-nachweis`) und
+  Anlagen von Portal-Meldungen (`tcms-meldung`), ohne Inhalte (TCMS-NACHWEIS-001).
+- **[Scope] [TCMS]** Tägliche Sicherung des verwalteten Tax-CMS per Host-Crontab (01:30),
+  Rotation in `backups/tcms-zeitplan/` (`TCMS_BACKUP_KEEP`, Standard 14), Zeitstempel,
+  `doctor`-Warnung nach 26 h und Kommando `tcms backup-schedule`.
 - **[TCMS]** Portal-Meldungen mit offenem Ausgang (Zeitlimit, Transport,
   5xx) wiederholt dieselbe Person mit demselben Idempotenzschlüssel und
   demselben Inhalt (TCMS s10): erneut absenden, automatisch beim nächsten
@@ -424,6 +433,21 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[Scope] [TCMS]** GwG-Belege, die als Tax-CMS-Nachweis verknüpft sind oder waren, gelten
+  zugleich als steuerliche Unterlage (Produktentscheidung, fachlich ungeprüft): Ihr
+  Aufbewahrungsende steigt auf die GoBD-Frist der Steuerunterlage (Migration
+  20261021150000); vernichtet wird erst nach Ablauf beider Fristen, auch nach der Freigabe
+  (TCMS-NACHWEIS-001, GWG-RETENTION-DESTRUCTION-001).
+- **[TCMS]** Tax-CMS-Mitteilungen gelten erst als zugestellt, wenn der Mailserver des
+  Anbieters angenommen hat; jeder andere Endstatus wird als unzustellbar mit festem Grund
+  gemeldet (Migration 20261021150100, MAIL-OUTBOX-001).
+- **[Scope] [TCMS]** Vertrag auf Tax-CMS bfdfdd2: Die Audit-Seite zeigt Einträge zu
+  vertraulichen Feststellungen ohne Mandatsbezug als „vertraulich“ ohne Namen, Detail und
+  Hash (TCMS-DIENST-001).
+- **[Scope] [TCMS]** Freigaben, Risikoakzeptanzen und die Zielfreigabe gehen nur an Kontakte
+  mit aktivem Portalzugang; die Oberfläche zeigt „ohne Portalzugang – kann nicht
+  freigeben“. Die offenen Fragen der Stufe 3a sind als Produktentscheidung eingetragen
+  (TCMS-AKTEUR-001).
 - **[TCMS]** Vertrag und Domain auf Tax-CMS `main` 92a1211 (s10):
   maschinenlesbarer Konfliktgrund bei 409, Idempotenzschlüssel der
   Portal-Meldung, einzeilige Steuerart, Land, Zeitraum und Quellangabe,
@@ -1180,6 +1204,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[Scope]** Die GwG-Vernichtung löscht freigegebene Tax-CMS-Verweise vor den Versionen;
+  bisher scheiterte der letzte Datenbankschritt nach dem Löschen der Bytes
+  (GWG-RETENTION-DESTRUCTION-001).
 - **[TCMS]** Dauert die Ablage der Anlagen einer Portal-Meldung länger als
   die Lease von zehn Minuten und übernimmt in dieser Zeit eine Klärung oder
   ein erneutes Absenden den Vorgang, sendet der ursprüngliche Versuch nicht
