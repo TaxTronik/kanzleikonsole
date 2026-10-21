@@ -16,7 +16,10 @@
 //     Vordatieren verkürzt es nicht;
 //   - document_tcms_gwg_evidence_retention: Ein freigegebener Nachweis, der
 //     zum GwG-Beleg wird, bekommt die Steuerfrist;
-//   - Datenschritt der Migration (Altbestand samt GwG-Frist, idempotent).
+//   - Datenschritt der Migration (Altbestand samt GwG-Frist, idempotent);
+//   - gwg_object_lock_extension (Migration 20261021171200, Stand des
+//     verlängerten Object-Locks je Objektversion): nur für den Worker (keine
+//     Rechte der App-Rolle), jede CHECK-Bedingung einzeln, RLS je Tenant.
 // Den Angriff selbst hält redteam-gwg-retention-rt3d-db.test.ts fest, die
 // Vernichtung samt freigegebener Verweise tcms-document-reference-guards.test.ts.
 // Datenbankfehler prüft die gemeinsame Prüfhilfe (testing/db-fehler.ts).
@@ -503,5 +506,121 @@ describeWithDatabase('RT3D-K-01: Fristen gebundener GwG-Belege in der Datenbank'
     await owner.$executeRawUnsafe(datenschritt);
     expect((await stand(beleg.id)).retentionUntil).toEqual(new Date('2033-01-01T00:00:00Z'));
     expect((await stand(ohne.id)).retentionUntil).toEqual(new Date('2025-01-01T00:00:00Z'));
+  });
+});
+
+describeWithDatabase('gwg_object_lock_extension (RT3D-K-01, nur für den Worker)', () => {
+  async function zeile(daten: Record<string, unknown> = {}) {
+    const d = await dokument('GWG_EVIDENCE');
+    return {
+      documentVersionId: d.versionId,
+      tenantId,
+      retainUntil: new Date('2030-01-01T00:00:00Z'),
+      ...daten,
+    };
+  }
+
+  it('die App-Rolle hat keine Rechte (lesen, anlegen)', async () => {
+    const rechte: DbErwartung = {
+      sqlState: '42501',
+      meldung: 'permission denied for table gwg_object_lock_extension',
+    };
+    await dbAbgewiesen(
+      als('App-Rolle', (tx) => tx.$queryRaw`SELECT 1 FROM gwg_object_lock_extension`),
+      rechte,
+      'lesen',
+    );
+    const z = await zeile();
+    await dbAbgewiesen(
+      als('App-Rolle', (tx) => tx.gwgObjectLockExtension.create({ data: z })),
+      rechte,
+      'anlegen',
+    );
+    // Die Owner-Rolle (Worker) legt an.
+    await expect(
+      als('Owner-Rolle', (tx) => tx.gwgObjectLockExtension.create({ data: z })),
+    ).resolves.toMatchObject({ documentVersionId: z.documentVersionId, failedAttempts: 0 });
+  });
+
+  it('CHECK-Bedingungen, jede für sich (NULL erfüllt keine Bedingung still)', async () => {
+    const faelle: Array<[Record<string, unknown>, string]> = [
+      [{ failedAttempts: -1 }, 'gwg_object_lock_extension_fehler_check'],
+      [{ failedAttempts: 1 }, 'gwg_object_lock_extension_fehler_check'],
+      [
+        { failedAttempts: 1, failedSince: new Date(), lastError: null },
+        'gwg_object_lock_extension_fehler_check',
+      ],
+      [
+        { failedAttempts: 0, failedSince: new Date(), lastError: 'AccessDenied' },
+        'gwg_object_lock_extension_fehler_check',
+      ],
+      [{ lastError: 'AccessDenied' }, 'gwg_object_lock_extension_fehler_check'],
+      [
+        { failedAttempts: 1, failedSince: new Date(), lastError: 'Access Denied' },
+        'gwg_object_lock_extension_last_error_check',
+      ],
+      [
+        { failedAttempts: 1, failedSince: new Date(), lastError: 'A'.repeat(65) },
+        'gwg_object_lock_extension_last_error_check',
+      ],
+    ];
+    for (const [daten, constraint] of faelle) {
+      const z = await zeile(daten);
+      await dbAbgewiesen(
+        owner.gwgObjectLockExtension.create({ data: z }),
+        { sqlState: '23514', meldung: `violates check constraint "${constraint}"` },
+        JSON.stringify(daten),
+      );
+    }
+    // Gültig: Erfolg ohne Fehlerangaben, Fehlschlag mit allen drei.
+    await expect(
+      owner.gwgObjectLockExtension.create({
+        data: await zeile({
+          retainUntil: null,
+          failedAttempts: 2,
+          failedSince: new Date(),
+          lastError: 'OBJECT_LOCK_EXTEND_UNVERIFIED',
+        }),
+      }),
+    ).resolves.toMatchObject({ failedAttempts: 2 });
+  });
+
+  it('RLS: eine Rolle ohne BYPASSRLS sieht und schreibt nur den eigenen Tenant', async () => {
+    const eigen = await zeile();
+    await owner.gwgObjectLockExtension.create({ data: eigen });
+    const fremd = (
+      await owner.tenant.create({
+        data: { slug: `rt3d-fix5-rls-${randomUUID()}`, name: 'RT3D fix5 RLS' },
+      })
+    ).id;
+    try {
+      await zurueckgerollt(async (tx) => {
+        await tx.$executeRawUnsafe('SET LOCAL session_replication_role = replica');
+        await tx.$executeRawUnsafe(
+          'GRANT SELECT, INSERT, UPDATE ON gwg_object_lock_extension TO taxtronik_app',
+        );
+        await tx.$executeRawUnsafe('SET LOCAL ROLE taxtronik_app');
+        const sichtbar = async (tenant: string) => {
+          await tx.$queryRaw`SELECT set_config('app.current_tenant_id', ${tenant}, true)`;
+          const [z] = await tx.$queryRaw<Array<{ n: bigint }>>`
+            SELECT count(*)::bigint AS n FROM gwg_object_lock_extension
+             WHERE document_version_id = ${eigen.documentVersionId}::uuid`;
+          return Number(z!.n);
+        };
+        expect(await sichtbar(tenantId), 'eigener Tenant').toBe(1);
+        expect(await sichtbar(fremd), 'fremder Tenant').toBe(0);
+        await dbAbgewiesen(
+          tx.$executeRaw`INSERT INTO gwg_object_lock_extension (document_version_id, tenant_id)
+                         VALUES (${eigen.documentVersionId}::uuid, ${tenantId}::uuid)`,
+          {
+            sqlState: '42501',
+            meldung:
+              'new row violates row-level security policy for table "gwg_object_lock_extension"',
+          },
+        );
+      });
+    } finally {
+      await owner.tenant.delete({ where: { id: fremd } });
+    }
   });
 });

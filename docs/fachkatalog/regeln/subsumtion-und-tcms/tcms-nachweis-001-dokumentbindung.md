@@ -105,6 +105,9 @@ code_refs:
   - packages/db/prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql
   - packages/db/prisma/migrations/20261021171000_tcms_gwg_evidence_retention_lock/migration.sql
   - packages/db/src/restore-security.ts
+  - packages/db/prisma/migrations/20261021171200_gwg_object_lock_extension/migration.sql
+  - packages/storage/src/object-lock-extension.ts
+  - apps/worker/src/jobs/gwg-object-lock-extend.ts
   - packages/db/src/database-error.ts
   - apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx
   - apps/web/src/components/tcms/portal/anlagen.tsx
@@ -151,6 +154,8 @@ test_refs:
   - packages/db/src/__tests__/redteam-gwg-retention-rt3d-db.test.ts
   - packages/db/src/__tests__/restore-security.test.ts
   - apps/web/src/server/backup/__tests__/restore-security.test.ts
+  - packages/storage/src/__tests__/object-lock-extension.test.ts
+  - apps/worker/src/jobs/__tests__/gwg-object-lock-extend-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md
@@ -442,7 +447,11 @@ zusätzlich auf das Ende der GwG-Frist (Trigger
 Trigger `document_tcms_gwg_evidence_retention` hebt an, wenn ein freigegebener
 Nachweis zum GwG-Beleg wird. Alle Ablehnungen meldet die Datenbank mit SQLSTATE
 23001; die Anwendung erreicht sie nicht (die Ablage verlässt die GwG-Stufe nie,
-neue Versionen heben nur an).
+neue Versionen heben nur an). Der Worker-Job `gwg-object-lock-extend` zieht den
+GOVERNANCE-Lock der Objektversionen eines solchen Belegs im GwG-Bucket nach dem
+Commit bis zum Aufbewahrungsende nach (nur verlängern, Stand und Fehlschläge in
+`gwg_object_lock_extension`, Alarm wie die Wartungsjobs); die GwG-Vernichtung
+übersteuert diesen Lock nicht (GWG-RETENTION-DESTRUCTION-001).
 Die idempotente Meldung (kk-tcms-s10nach, TCMS s10) setzt
 `portal/meldevorgang.ts` um: `meldevorgangBeanspruchen` legt den Vorgang
 (`tcms_portal_report`, Migration `20261020200200`) vor der Ablage an bzw.
@@ -517,10 +526,12 @@ noch gebundenes Dokument (Altbestand) bleibt gebunden; die
 GwG-Pflichtvernichtung weist es ab, bis die Verknüpfung frei ist, und danach
 bis zum Ablauf der Steuerfrist (kk-tcms-s11). Die GwG-Frist wird dabei
 überschritten, auch über die absolute Zehnjahresgrenze hinaus; das trägt die
-Produktentscheidung, nicht eine fachliche Prüfung. Die Steuerfrist hält allein
-die Datenbank (Aufbewahrungsende, Claim): Der GOVERNANCE-Lock des
-GwG-Buckets wird nicht verlängert; ihn übersteuert nur die geprüfte
-Vernichtungsaktion. Wird ein früherer Nachweis erst nach der Freigabe zum
+Produktentscheidung, nicht eine fachliche Prüfung. Die Steuerfrist hält die
+Datenbank (Aufbewahrungsende, Claim) und seit RT3D-K-01 als zweite Linie der
+bis zum Aufbewahrungsende verlängerte GOVERNANCE-Lock (Job
+`gwg-object-lock-extend`), den auch die Vernichtungsaktion nicht übersteuert;
+scheitert das Verlängern, hält bis zur Behebung allein die Datenbank (Alarm).
+Das Verlängern ist nur gegen eine Speicherschicht-Attrappe getestet. Wird ein früherer Nachweis erst nach der Freigabe zum
 GwG-Beleg umklassifiziert, steigt sein Aufbewahrungsende seit RT3D-K-01 wie bei
 einer Bindung. Die Erkennung einer noch laufenden Geschäftsbeziehung
 (Mandatsende leer, Mandant zugelassen, Erstprüfung abgeschlossen, verifizierte

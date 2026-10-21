@@ -1,7 +1,8 @@
 // Fachkatalog: ACCESS-TENANT-RLS-001, AUDIT-HASH-CHAIN-001, REMINDER-TICKET-001,
 // MAIL-OUTBOX-001 (Zustelltabellen des Tax-CMS nur für den Worker),
 // TCMS-NACHWEIS-001 (Meldevorgänge des Portals ohne TRUNCATE/REFERENCES/TRIGGER/MAINTAIN,
-// Verweise des Tax-CMS ohne DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN, RT3D-K-01).
+// Verweise des Tax-CMS ohne DELETE/TRUNCATE/REFERENCES/TRIGGER/MAINTAIN und
+// Object-Lock-Stand gebundener GwG-Belege nur für den Worker, RT3D-K-01).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
@@ -36,7 +37,7 @@ function aclInvariants(source: string, end: string): string[] {
 const OWNER_OK = [{ roleSafe: true, grantsPresent: true, writeLocks: true }];
 /** Welle 15: pg_db_role_setting der Ziel-DB mit genau den kanonischen Einstellungen. */
 const ROLE_SETTINGS_OK = [{ role: 'taxtronik_app', setting: 'lock_timeout=5s' }];
-const ALL_34 = [{ aclState: Array(34).fill('true').join('|') }];
+const ALL_35 = [{ aclState: Array(35).fill('true').join('|') }];
 const PRE_S01_PROCEDURE =
   'Dumps von vor Migration 20261006160000 (S-01) mit dem passenden alten Release ' +
   'wiederherstellen und anschließend per ./taxtronik update anheben.';
@@ -65,6 +66,10 @@ const TCMS_PORTAL_REPORT_DML_ONLY =
 /** RT3D-K-01 (kk-tcms-fix5): Verweise des Tax-CMS – nie gelöscht, nur freigegeben. */
 const TCMS_REFERENCE_NO_DELETE =
   "(NOT has_table_privilege('taxtronik_app', 'public.tcms_document_reference', 'DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))";
+
+/** RT3D-K-01 (kk-tcms-fix5): Object-Lock-Stand gebundener GwG-Belege, nur für den Worker. */
+const GWG_OBJECT_LOCK_OWNER_ONLY =
+  "(NOT has_table_privilege('taxtronik_app', 'public.gwg_object_lock_extension', 'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))";
 
 const AUDIT_WRITE_LOCKS = [
   "(NOT has_table_privilege('taxtronik_app', 'public.audit_anchor', 'UPDATE'))",
@@ -128,8 +133,8 @@ describe('Restore security probe failures', () => {
     ).rejects.toThrow('Dienste nicht starten');
   });
 
-  it('accepts exactly 34 satisfied invariants with a safe owner role and a non-empty RLS inventory', async () => {
-    const probe = probeReturning(OWNER_OK, ROLE_SETTINGS_OK, ALL_34, [
+  it('accepts exactly 35 satisfied invariants with a safe owner role and a non-empty RLS inventory', async () => {
+    const probe = probeReturning(OWNER_OK, ROLE_SETTINGS_OK, ALL_35, [
       { checked: 3, violations: 0 },
     ]);
     await expect(
@@ -156,7 +161,7 @@ describe('Restore security probe failures', () => {
       /abweichend oder zusätzlich: taxtronik_owner lock_timeout=5s/,
     ],
   ])('rejects missing or deviating role settings: %j', async (settingRows, message) => {
-    const probe = probeReturning(OWNER_OK, settingRows, ALL_34, [{ checked: 3, violations: 0 }]);
+    const probe = probeReturning(OWNER_OK, settingRows, ALL_35, [{ checked: 3, violations: 0 }]);
     const failure = assertRestoreTargetSecurity('postgresql://synthetic/test', probe.factory);
     await expect(failure).rejects.toThrow(message);
     await expect(failure).rejects.toThrow('Dienste nicht starten');
@@ -168,7 +173,7 @@ describe('Restore security probe failures', () => {
     const probe = probeReturning(
       OWNER_OK,
       [...ROLE_SETTINGS_OK, { role: 'taxtronik', setting: 'work_mem=64MB' }],
-      ALL_34,
+      ALL_35,
       [{ checked: 3, violations: 0 }],
     );
     await expect(
@@ -176,7 +181,7 @@ describe('Restore security probe failures', () => {
     ).resolves.toBeUndefined();
   });
 
-  // B6 (S-01): die Owner-Rolle der Container wird vor den 34 Invarianten geprüft.
+  // B6 (S-01): die Owner-Rolle der Container wird vor den 35 Invarianten geprüft.
   it.each([
     [[], /Owner-Rolle taxtronik_owner fehlt \(S-01\)/],
     [[{ roleSafe: false, grantsPresent: true, writeLocks: true }], /verletzt S-01/],
@@ -188,7 +193,7 @@ describe('Restore security probe failures', () => {
     [[{ roleSafe: true, grantsPresent: true, writeLocks: false }], /besitzt unzulässige Rechte/],
     [[OWNER_OK[0], OWNER_OK[0]], /verletzt S-01/],
   ])('rejects an unsafe or missing owner role: %j', async (ownerRows, message) => {
-    const probe = probeReturning(ownerRows, ALL_34, [{ checked: 3, violations: 0 }]);
+    const probe = probeReturning(ownerRows, ALL_35, [{ checked: 3, violations: 0 }]);
     const failure = assertRestoreTargetSecurity('postgresql://synthetic/test', probe.factory);
     await expect(failure).rejects.toThrow(message);
     await expect(failure).rejects.toThrow('Dienste nicht starten');
@@ -274,18 +279,19 @@ describe('Restore security invariants of CLI and CI self-test', () => {
   const selftestSource = repoFile('scripts/restore-selftest.sh');
   const selftest = aclInvariants(selftestSource, '\n);\nSQL');
 
-  it('check the same 34 invariants including the owner-only audit and tax-cms write locks', () => {
-    expect(cli).toHaveLength(34);
+  it('check the same 35 invariants including the owner-only audit and tax-cms write locks', () => {
+    expect(cli).toHaveLength(35);
     expect(selftest).toEqual(cli);
     for (const invariant of AUDIT_WRITE_LOCKS) expect(cli).toContain(invariant);
     for (const invariant of TCMS_OWNER_ONLY) expect(cli).toContain(invariant);
     expect(cli).toContain(TCMS_PORTAL_REPORT_DML_ONLY);
     expect(cli).toContain(TCMS_REFERENCE_NO_DELETE);
+    expect(cli).toContain(GWG_OBJECT_LOCK_OWNER_ONLY);
   });
 
-  it('expects all 34 invariants to hold in the self-test', () => {
+  it('expects all 35 invariants to hold in the self-test', () => {
     const expected = /^EXPECTED_ACL_STATE="([^"]*)"$/m.exec(selftestSource)?.[1];
-    expect(expected?.split('|')).toEqual(Array(34).fill('true'));
+    expect(expected?.split('|')).toEqual(Array(35).fill('true'));
   });
 });
 

@@ -70,6 +70,8 @@ const LEGACY_CONCURRENCY: Record<string, number | undefined> = {
   'portal-inbox-cleanup': 1,
   // P-13: new queue.
   'pdf-page-count-backfill': 1,
+  // RT3D-K-01 (kk-tcms-fix5): new queue.
+  'gwg-object-lock-extend': 1,
   'n8n-retention': 1,
   'risk-analyse-llm': 1,
   'reminder-done-notify': 4,

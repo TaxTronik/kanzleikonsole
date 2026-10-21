@@ -125,13 +125,14 @@ Bytes, SHA-256, Berechtigungen, getrennte Parallelkopien und Fehler-Cleanup.
 
 Ein vorbereiteter Zielserver kann über Defaultprivilegien beim Neuanlegen der
 Tabellen Rechte vergeben, die im Quellsystem entzogen waren. Deshalb prüft
-`restore-security.ts` nach `pg_restore` die 34 effektiven Rollen-/ACL-/REVOKE-
+`restore-security.ts` nach `pg_restore` die 35 effektiven Rollen-/ACL-/REVOKE-
 Invarianten des CI-Selbsttests (darunter keine Rechte der App-Rolle auf die
 Zustelltabellen des Tax-CMS `tcms_systemakteur` und
 `tcms_nachricht_zustellung`, kein `TRUNCATE`, `REFERENCES` oder `TRIGGER`
 auf den verschlüsselten Meldungsinhalten `tcms_portal_report` und kein
 `DELETE` oder `TRUNCATE` auf den Verweisen des Tax-CMS
-`tcms_document_reference`, RT3D-K-01), einschließlich erreichbarer privilegierter
+`tcms_document_reference` und keine Rechte auf den Object-Lock-Stand
+`gwg_object_lock_extension`, RT3D-K-01), einschließlich erreichbarer privilegierter
 `SET ROLE`-Ziele, den S-01-Zustand der Owner-Rolle `taxtronik_owner`
 (Attribute, kein Objektbesitz, Grants aus dem Dump, Audit-Schreibsperren)
 sowie ENABLE/FORCE RLS und Policies aller

@@ -60,6 +60,7 @@ model Tenant {
   auditAnchorLease               AuditAnchorLease?
   tcmsSystemakteur               TcmsSystemakteur?
   tcmsNachrichtZustellungen      TcmsNachrichtZustellung[]
+  gwgObjectLockExtensions        GwgObjectLockExtension[]
   backupRecords                  BackupRecord[]
   bwaPeriods                     BwaPeriod[]
   bwaPlans                       BwaPlan[]
@@ -2578,6 +2579,7 @@ model DocumentVersion {
   assistanceSourceRevisions   ClientAssistanceRevision[]   @relation("assistance_revision_original")
   assistanceExternalRevisions ClientAssistanceRevision[]   @relation("assistance_revision_external")
   tcmsReferences              TcmsDocumentReference[]
+  gwgObjectLockExtension      GwgObjectLockExtension?
 
   @@unique([documentId, versionNo])
   @@index([storageBucket, storageKey, storageVersionId], map: "document_version_storage_identity_idx")
@@ -2708,6 +2710,27 @@ model TcmsNachrichtZustellung {
 
   @@unique([tenantId, nachrichtId], map: "tcms_nachricht_zustellung_tenant_nachricht_key")
   @@map("tcms_nachricht_zustellung")
+}
+
+/// RT3D-K-01 (kk-tcms-fix5, TCMS-NACHWEIS-001, GWG-RETENTION-DESTRUCTION-001):
+/// Verlängerter Object-Lock je Objektversion eines GwG-Belegs mit Verweis des
+/// Tax-CMS (Worker-Job gwg-object-lock-extend). `retainUntil`: zuletzt
+/// nachgelesenes Lock-Ende (NULL: nie bestätigt); offen ist eine Version, solange
+/// es vor dem Aufbewahrungsende des Dokuments liegt. Fehler nur als fester Code.
+/// Owner-only: nur der Worker.
+model GwgObjectLockExtension {
+  documentVersionId String          @id @map("document_version_id") @db.Uuid
+  tenantId          String          @map("tenant_id") @db.Uuid
+  retainUntil       DateTime?       @map("retain_until")
+  checkedAt         DateTime        @default(now()) @map("checked_at") @db.Timestamptz(6)
+  failedSince       DateTime?       @map("failed_since") @db.Timestamptz(6)
+  failedAttempts    Int             @default(0) @map("failed_attempts")
+  lastError         String?         @map("last_error")
+  documentVersion   DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_object_lock_extension_document_version_id_fkey")
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_object_lock_extension_tenant_id_fkey")
+
+  @@index([tenantId], map: "gwg_object_lock_extension_tenant_id_idx")
+  @@map("gwg_object_lock_extension")
 }
 
 model AuditAnchorLease {
@@ -4600,6 +4623,9 @@ enum NotificationKind {
   TCMS_EREIGNIS_GEMELDET
   /// TCMS Stufe 4: Mitteilung des Tax-CMS nicht zustellbar (einmal je Mitteilung an Admins).
   TCMS_ZUSTELLUNG_GESCHEITERT
+  /// RT3D-K-01 (kk-tcms-fix5): Object-Lock gebundener GwG-Belege nicht verlängert
+  /// (Rückstand des Wartungsjobs gwg-object-lock-extend, B14).
+  SYSTEM_GWG_OBJECT_LOCK_BACKLOG
 
   @@map("notification_kind")
 }

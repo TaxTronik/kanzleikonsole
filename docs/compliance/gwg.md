@@ -44,6 +44,14 @@ bleibt organisatorische Pflicht der Kanzlei.
   Löschung, erlaubt aber die kontrollierte Löschung am von der Review-Queue
   ermittelten Fristende (`s3:BypassGovernanceRetention`). GoBD-Belege bleiben
   davon unberührt (COMPLIANCE, je Datei-Typ 6/8/10 Jahre).
+- Ein GwG-Beleg mit Verweis des Tax-CMS (zugleich steuerliche Unterlage,
+  TCMS-NACHWEIS-001) bekommt einen längeren Lock: Der Worker-Job
+  `gwg-object-lock-extend` verlängert den GOVERNANCE-Lock jeder Objektversion
+  stündlich bis zu seinem Aufbewahrungsende (nur verlängern, nie verkürzen,
+  Stand je Version in `gwg_object_lock_extension`, Alarm bei Fehlschlag), und
+  die Vernichtung übersteuert diesen Lock nicht (RT3D-K-01, zweite Linie neben
+  der Datenbank; Betrieb: day-2-operations, „Object-Lock gebundener
+  GwG-Belege“).
 
 ## 3. Vernichtungspflicht (§ 8 Abs. 4 GwG)
 

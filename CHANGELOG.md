@@ -2009,6 +2009,21 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Aufbewahrungsende wie bei einer Bindung. Neue Restore-Invariante: die
   App-Rolle hat kein `DELETE` oder `TRUNCATE` auf `tcms_document_reference`
   (TCMS-NACHWEIS-001, GWG-RETENTION-DESTRUCTION-001).
+- **[Scope] [TCMS]** Object-Lock als zweite Linie für GwG-Belege mit Verweis
+  des Tax-CMS (RT3D-K-01): Der neue Worker-Job `gwg-object-lock-extend`
+  (stündlich) verlängert den GOVERNANCE-Lock jeder Objektversion im GwG-Bucket
+  bis zum Aufbewahrungsende des Belegs – nur die exakte Version, nur
+  verlängern, nie mit Bypass, nachgelesen. Den Stand je Version hält
+  `gwg_object_lock_extension` (Migrationen 20261021171100/171200, nur für den
+  Worker, Restore-Invariante); ein Fehlschlag kommt im nächsten Lauf wieder
+  und alarmiert wie die übrigen Wartungsjobs (Hinweis „Rückstand Object-Lock
+  gebundener GwG-Belege“, Mail an `OPS_ALERT_EMAIL`). Den Altbestand
+  verlängert der erste Lauf nach dem Update. Die GwG-Pflichtvernichtung
+  übersteuert den Lock eines solchen Belegs nicht mehr; nach Ablauf beider
+  Fristen ist er abgelaufen. Ungeprüft gegen den echten Object Store
+  (Release-Rehearsal, day-2-operations). Die S3-Zugangsdaten der App brauchen
+  `s3:GetObjectRetention` und `s3:PutObjectRetention` auf dem GwG-Bucket
+  (TCMS-NACHWEIS-001, GWG-RETENTION-DESTRUCTION-001).
 - **[TCMS]** Eine Portal-Meldung, die zwischen dem Lesen und dem
   Beanspruchen durch die Klärung gesendet wurde, gilt nicht mehr als „nie
   gesendet“: Ihre Anlagen werden nicht freigegeben, obwohl das Ereignis im

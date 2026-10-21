@@ -246,7 +246,7 @@ export async function assertRestoreTargetSecurity(
     await assertOwnerRoleRestored(probe);
     // Welle 15: pg_db_role_setting gehört nicht zum Dump. Fehlt etwa das
     // lock_timeout der App-Rolle (F-06), warten Requests wieder unbegrenzt auf
-    // Sperren; deshalb fail-closed wie fehlende Grants. Vor den 34 Invarianten,
+    // Sperren; deshalb fail-closed wie fehlende Grants. Vor den 35 Invarianten,
     // damit die Prüfung auch auf PostgreSQL 16 (ohne MAINTAIN) greift.
     const deviation = roleSettingsDeviation(await readServiceRoleSettings(probe));
     if (deviation) {
@@ -254,7 +254,7 @@ export async function assertRestoreTargetSecurity(
         `Rolleneinstellungen der Ziel-Datenbank weichen ab (${deviation}). ` + ROLE_SETTINGS_REMEDY,
       );
     }
-    // Same 34 effective privilege invariants as scripts/restore-selftest.sh:
+    // Same 35 effective privilege invariants as scripts/restore-selftest.sh:
     // the original 17, five for the counter and permanent ticket links, seven
     // for the append-only rolling anchors (audit_anchor) and the owner-only
     // verification checkpoints (audit_verify_checkpoint), one for the
@@ -265,7 +265,9 @@ export async function assertRestoreTargetSecurity(
     // which would bypass RLS; kk-tcms-s10nach, TCMS-NACHWEIS-001) and one for
     // the tax-cms document references, the anchor of the evidence locks and of
     // the tax retention of gwg evidence (tcms_document_reference: no DELETE and
-    // no TRUNCATE, which would bypass the row trigger; RT3D-K-01, kk-tcms-fix5).
+    // no TRUNCATE, which would bypass the row trigger; RT3D-K-01, kk-tcms-fix5)
+    // and one for the owner-only object lock state of that evidence
+    // (gwg_object_lock_extension, worker job gwg-object-lock-extend).
     // Target default privileges may re-grant permissions while pg_restore
     // recreates tables; a successful process exit does not prove safe ACLs.
     const rows = await probe.$queryRaw<Array<{ aclState: string }>>`
@@ -320,6 +322,8 @@ SELECT concat_ws('|',
   (NOT has_table_privilege('taxtronik_app', 'public.document_version', 'DELETE'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.tcms_document_reference',
     'DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.gwg_object_lock_extension',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
   (NOT EXISTS (
     SELECT 1
       FROM pg_catalog.pg_proc p
@@ -346,7 +350,7 @@ SELECT concat_ws('|',
     AND NOT has_function_privilege('taxtronik_app', 'app.guard_reminder_ticket_identity()', 'EXECUTE'))::text
 ) AS "aclState";
     `;
-    if (rows.length !== 1 || rows[0]?.aclState !== Array(34).fill('true').join('|')) {
+    if (rows.length !== 1 || rows[0]?.aclState !== Array(35).fill('true').join('|')) {
       throw new Error('Rollen-/Grant-/REVOKE-Invarianten verletzt.');
     }
     // Match verify-rls.ts's documented global exceptions. Include partitioned

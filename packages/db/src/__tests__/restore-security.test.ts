@@ -58,6 +58,8 @@ describe('Restore: effective ACLs and tenant RLS are mandatory', () => {
     // RT3D-K-01 (kk-tcms-fix5): Verweise des Tax-CMS werden nie gelöscht.
     ['GRANT DELETE ON tcms_document_reference TO taxtronik_app', INVARIANTS],
     ['GRANT TRUNCATE ON tcms_document_reference TO taxtronik_app', INVARIANTS],
+    ['GRANT SELECT ON gwg_object_lock_extension TO taxtronik_app', INVARIANTS],
+    ['GRANT UPDATE ON gwg_object_lock_extension TO PUBLIC', INVARIANTS],
     ['GRANT TRUNCATE ON audit_log TO PUBLIC', OWNER_PUBLIC],
     ['GRANT taxtronik TO taxtronik_app WITH INHERIT FALSE, SET TRUE', INVARIANTS],
     ['GRANT EXECUTE ON FUNCTION app.destroy_gwg_check(uuid) TO PUBLIC', INVARIANTS],

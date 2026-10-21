@@ -245,6 +245,8 @@ SELECT concat_ws('|',
   (NOT has_table_privilege('taxtronik_app', 'public.document_version', 'DELETE'))::text,
   (NOT has_table_privilege('taxtronik_app', 'public.tcms_document_reference',
     'DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
+  (NOT has_table_privilege('taxtronik_app', 'public.gwg_object_lock_extension',
+    'SELECT,INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER,MAINTAIN'))::text,
   (NOT EXISTS (
     SELECT 1
       FROM pg_catalog.pg_proc p
@@ -272,7 +274,7 @@ SELECT concat_ws('|',
 );
 SQL
 )"
-EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true"
+EXPECTED_ACL_STATE="true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true|true"
 [[ "$ACL_STATE" == "$EXPECTED_ACL_STATE" ]] || \
   die "ACL-/REVOKE-Pruefung fehlgeschlagen: $ACL_STATE"
 

@@ -47,6 +47,15 @@ export {
   type ScanResult,
 } from './service';
 export {
+  extendObjectLockRetention,
+  readObjectLock,
+  ObjectLockExtensionError,
+  type ObjectLockExtension,
+  type ObjectLockMode,
+  type ObjectLockState,
+  type ObjectVersionRef,
+} from './object-lock-extension';
+export {
   checkDeployReadiness,
   type ReadinessReport,
   type ReadinessCheck,

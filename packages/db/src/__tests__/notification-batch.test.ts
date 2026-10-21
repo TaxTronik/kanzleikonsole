@@ -267,53 +267,55 @@ describeWithDatabase('R-11: gebündelter Notification-Pfad', () => {
     ]);
   });
 
-  it.each(['SYSTEM_AUDIT_ARCHIVE_BACKLOG', 'SYSTEM_STORAGE_CLEANUP_BACKLOG'] as const)(
-    'B14: legt %s je Empfänger und UTC-Tag höchstens einmal neu an',
-    async (kind) => {
-      const fixture = await createFixture(`backlog-${kind.toLowerCase()}`);
-      const notice: NotificationUpsertInput = {
-        tenantId: fixture.tenantId,
-        staffId: fixture.staff.a,
-        kind,
-        title: 'Wartungsrückstand',
-        href: '/staff/admin/jobs',
-        resourceType: 'tenant',
-        resourceId: fixture.tenantId,
-      };
-      // Der Hinweis von gestern ist gelesen und zählt für heute nicht.
-      await owner.notification.create({
-        data: { ...notice, createdAt: new Date(Date.now() - 86_400_000), readAt: new Date() },
-      });
-      const upsert = () =>
-        asWorker(fixture.tenantId, (tx) =>
-          upsertNotificationsTx(tx, [{ ...notice, body: 'aktuelle Zahlen' }]),
-        );
+  it.each([
+    'SYSTEM_AUDIT_ARCHIVE_BACKLOG',
+    'SYSTEM_STORAGE_CLEANUP_BACKLOG',
+    // RT3D-K-01 (kk-tcms-fix5): Object-Lock gebundener GwG-Belege.
+    'SYSTEM_GWG_OBJECT_LOCK_BACKLOG',
+  ] as const)('B14: legt %s je Empfänger und UTC-Tag höchstens einmal neu an', async (kind) => {
+    const fixture = await createFixture(`backlog-${kind.toLowerCase()}`);
+    const notice: NotificationUpsertInput = {
+      tenantId: fixture.tenantId,
+      staffId: fixture.staff.a,
+      kind,
+      title: 'Wartungsrückstand',
+      href: '/staff/admin/jobs',
+      resourceType: 'tenant',
+      resourceId: fixture.tenantId,
+    };
+    // Der Hinweis von gestern ist gelesen und zählt für heute nicht.
+    await owner.notification.create({
+      data: { ...notice, createdAt: new Date(Date.now() - 86_400_000), readAt: new Date() },
+    });
+    const upsert = () =>
+      asWorker(fixture.tenantId, (tx) =>
+        upsertNotificationsTx(tx, [{ ...notice, body: 'aktuelle Zahlen' }]),
+      );
 
-      await expect(upsert()).resolves.toEqual({ created: 1, updated: 0 });
-      // Ungelesen: derselbe Hinweis wird aktualisiert, nicht dupliziert.
-      await expect(upsert()).resolves.toEqual({ created: 0, updated: 1 });
-      await owner.notification.updateMany({
-        where: { tenantId: fixture.tenantId, kind, readAt: null },
-        data: { readAt: new Date() },
-      });
-      // Heute gelesen: der Tages-Index lässt keine zweite Neuanlage zu.
-      await expect(upsert()).resolves.toEqual({ created: 0, updated: 0 });
-      // Ein anderer Empfänger ist ein eigener Schlüssel.
-      await expect(
-        asWorker(fixture.tenantId, (tx) =>
-          upsertNotificationsTx(tx, [{ ...notice, staffId: fixture.staff.b }]),
-        ),
-      ).resolves.toEqual({ created: 1, updated: 0 });
+    await expect(upsert()).resolves.toEqual({ created: 1, updated: 0 });
+    // Ungelesen: derselbe Hinweis wird aktualisiert, nicht dupliziert.
+    await expect(upsert()).resolves.toEqual({ created: 0, updated: 1 });
+    await owner.notification.updateMany({
+      where: { tenantId: fixture.tenantId, kind, readAt: null },
+      data: { readAt: new Date() },
+    });
+    // Heute gelesen: der Tages-Index lässt keine zweite Neuanlage zu.
+    await expect(upsert()).resolves.toEqual({ created: 0, updated: 0 });
+    // Ein anderer Empfänger ist ein eigener Schlüssel.
+    await expect(
+      asWorker(fixture.tenantId, (tx) =>
+        upsertNotificationsTx(tx, [{ ...notice, staffId: fixture.staff.b }]),
+      ),
+    ).resolves.toEqual({ created: 1, updated: 0 });
 
-      expect(
-        await owner.notification.count({
-          where: { tenantId: fixture.tenantId, staffId: fixture.staff.a, kind },
-        }),
-      ).toBe(2);
-      await dbAbgewiesen(owner.notification.create({ data: { ...notice, readAt: new Date() } }), {
-        sqlState: '23505',
-        meldung: 'duplicate key value violates unique constraint "notification_daily_dedupe"',
-      });
-    },
-  );
+    expect(
+      await owner.notification.count({
+        where: { tenantId: fixture.tenantId, staffId: fixture.staff.a, kind },
+      }),
+    ).toBe(2);
+    await dbAbgewiesen(owner.notification.create({ data: { ...notice, readAt: new Date() } }), {
+      sqlState: '23505',
+      meldung: 'duplicate key value violates unique constraint "notification_daily_dedupe"',
+    });
+  });
 });

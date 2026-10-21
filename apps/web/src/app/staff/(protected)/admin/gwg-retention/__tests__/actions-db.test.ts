@@ -53,6 +53,8 @@ interface Beobachtung {
 const m = vi.hoisted(() => ({
   staff: null as unknown,
   geloescht: [] as string[],
+  /** RT3D-K-01: Übersteuerung des GOVERNANCE-Locks je gelöschtem Schlüssel. */
+  bypass: new Map<string, boolean | undefined>(),
   beobachtet: [] as unknown[],
   beobachten: null as null | ((key: string) => Promise<unknown>),
   /** Fehler, die die Aktion über `isDatabaseError` eingeordnet hat. */
@@ -77,10 +79,18 @@ vi.mock('@/server/actions/database-error', async (original) => {
 });
 vi.mock('@taxtronik/storage', async (original) => ({
   ...(await original<Record<string, unknown>>()),
-  deleteObjectVersion: vi.fn(async (_bucket: string, key: string) => {
-    if (m.beobachten) m.beobachtet.push(await m.beobachten(key));
-    m.geloescht.push(key);
-  }),
+  deleteObjectVersion: vi.fn(
+    async (
+      _bucket: string,
+      key: string,
+      _version: string,
+      options: { bypassGovernanceRetention?: boolean } = {},
+    ) => {
+      if (m.beobachten) m.beobachtet.push(await m.beobachten(key));
+      m.geloescht.push(key);
+      m.bypass.set(key, options.bypassGovernanceRetention);
+    },
+  ),
 }));
 
 import {
@@ -274,6 +284,7 @@ const DURCHF = 'cmvfgwgfix30000000001';
 
   beforeEach(() => {
     m.geloescht.length = 0;
+    m.bypass.clear();
     m.beobachtet.length = 0;
     m.beobachten = null;
     m.eingeordnet.length = 0;
@@ -302,6 +313,8 @@ const DURCHF = 'cmvfgwgfix30000000001';
 
     // Jede Objektversion genau einmal, jeweils nach dem committeten Claim und vor dem DB-Abschluss.
     expect([...m.geloescht].sort()).toEqual([...beleg.keys].sort());
+    // Ohne Verweis des Tax-CMS übersteuert der Fachpfad den GOVERNANCE-Lock (wie bisher).
+    expect([...m.bypass.values()]).toEqual(beleg.keys.map(() => true));
     for (const b of m.beobachtet as Beobachtung[]) {
       expect(b).toMatchObject({
         vorgemerkt: true,
@@ -438,6 +451,8 @@ const DURCHF = 'cmvfgwgfix30000000001';
     expect(await confirmGwgDeletionAction({ documentId: id })).toEqual({ ok: true });
     expect(m.eingeordnet, 'keine Ablehnung der Datenbank').toEqual([]);
     expect(m.geloescht).toEqual([`tenants/${tenantId}/none/${id}.pdf`]);
+    // RT3D-K-01: Den Object-Lock einer steuerlichen Unterlage übersteuert die Aktion nicht.
+    expect(m.bypass.get(`tenants/${tenantId}/none/${id}.pdf`)).toBe(false);
     const nachher = await owner.document.findUniqueOrThrow({ where: { id } });
     expect(nachher).toMatchObject({ title: 'VERNICHTET', gwgDestructionError: null });
     expect(nachher.gwgDestroyedAt).not.toBeNull();

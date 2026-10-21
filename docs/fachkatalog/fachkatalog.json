@@ -3228,7 +3228,14 @@
         "packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql",
         "packages/db/prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql",
         "apps/web/src/server/tcms/durchfuehrung/sperre.ts",
-        "packages/db/prisma/migrations/20261021171000_tcms_gwg_evidence_retention_lock/migration.sql"
+        "packages/db/prisma/migrations/20261021171000_tcms_gwg_evidence_retention_lock/migration.sql",
+        "packages/db/prisma/migrations/20261021171100_notification_kind_gwg_object_lock/migration.sql",
+        "packages/db/prisma/migrations/20261021171200_gwg_object_lock_extension/migration.sql",
+        "packages/storage/src/object-lock-extension.ts",
+        "packages/storage/src/index.ts",
+        "apps/worker/src/jobs/gwg-object-lock-extend.ts",
+        "apps/worker/src/maintenance-backlog.ts",
+        "packages/config/src/job-queues.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -3246,7 +3253,10 @@
         "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions-db.test.ts",
         "packages/db/src/__tests__/tcms-document-reference-guards.test.ts",
         "packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts",
-        "packages/db/src/__tests__/redteam-gwg-retention-rt3d-db.test.ts"
+        "packages/db/src/__tests__/redteam-gwg-retention-rt3d-db.test.ts",
+        "packages/storage/src/__tests__/object-lock-extension.test.ts",
+        "apps/worker/src/jobs/__tests__/gwg-object-lock-extend.test.ts",
+        "apps/worker/src/jobs/__tests__/gwg-object-lock-extend-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/compliance/gwg.md", "docs/anwenderdoku/dokumente.md"],
       "related_rules": [
@@ -6447,6 +6457,9 @@
         "packages/db/prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql",
         "packages/db/prisma/migrations/20261021171000_tcms_gwg_evidence_retention_lock/migration.sql",
         "packages/db/src/restore-security.ts",
+        "packages/db/prisma/migrations/20261021171200_gwg_object_lock_extension/migration.sql",
+        "packages/storage/src/object-lock-extension.ts",
+        "apps/worker/src/jobs/gwg-object-lock-extend.ts",
         "packages/db/src/database-error.ts",
         "apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx",
         "apps/web/src/components/tcms/portal/anlagen.tsx",
@@ -6493,7 +6506,9 @@
         "packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts",
         "packages/db/src/__tests__/redteam-gwg-retention-rt3d-db.test.ts",
         "packages/db/src/__tests__/restore-security.test.ts",
-        "apps/web/src/server/backup/__tests__/restore-security.test.ts"
+        "apps/web/src/server/backup/__tests__/restore-security.test.ts",
+        "packages/storage/src/__tests__/object-lock-extension.test.ts",
+        "apps/worker/src/jobs/__tests__/gwg-object-lock-extend-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
       "related_rules": [

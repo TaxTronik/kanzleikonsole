@@ -128,6 +128,7 @@ describe('shared BullMQ metadata', () => {
       'storage-orphan-cleanup @ every 6 h',
       'portal-inbox-cleanup @ every 6 h',
       'pdf-page-count-backfill @ 04:30 UTC daily',
+      'gwg-object-lock-extend @ every 1 h',
       'n8n-retention @ 03:45 UTC daily',
       'mail-outbox-deliver @ every 1 min',
       'mail-outbox-retention @ 04:15 UTC daily',

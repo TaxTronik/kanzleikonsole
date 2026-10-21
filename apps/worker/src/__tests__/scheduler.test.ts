@@ -75,6 +75,8 @@ const LEGACY_SCHEDULES: Record<string, [string, object, object | undefined]> = {
     { pattern: '30 4 * * *', tz: UTC },
     DAILY_RETRY,
   ],
+  // RT3D-K-01 (kk-tcms-fix5): hourly, no retry (state lives in gwg_object_lock_extension).
+  gwgObjectLockExtend: ['gwg-object-lock-extend', { every: 60 * MINUTE }, undefined],
   n8nRetention: ['daily-n8n-retention', { pattern: '45 3 * * *', tz: UTC }, DAILY_RETRY],
   // F-08: new scheduler, no retry (state lives in mail_outbox; runs every minute).
   mailOutboxDeliver: ['mail-outbox-deliver', { every: MINUTE }, undefined],

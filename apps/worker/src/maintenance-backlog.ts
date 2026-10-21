@@ -1,8 +1,9 @@
 // =============================================================================
 // Rückstand der Wartungsjobs: Health-Kennzahl und Alarm (P-17 / B14).
 //
-// audit-rotate und storage-orphan-cleanup arbeiten je Lauf bis zu einem
-// Zeitbudget (run-budget.ts) und melden, was danach weiterhin fällig ist. Bisher
+// audit-rotate, storage-orphan-cleanup und gwg-object-lock-extend (RT3D-K-01)
+// arbeiten je Lauf bis zu einem Zeitbudget (run-budget.ts) und melden, was
+// danach weiterhin fällig ist. Bisher
 // stand nur diese Anzahl auf „System → Jobs“; ein Rückstand, der Lauf um Lauf
 // bestehen blieb, fiel niemandem auf. Jeder vollständige Lauf übergibt hier
 // seinen Rückstand je Tenant und erhält die Kennzahl für sein Job-Ergebnis
@@ -61,7 +62,7 @@ export const MAINTENANCE_BACKLOG_ALARM_THRESHOLD: Readonly<MaintenanceBacklogThr
   Object.freeze({ consecutiveRuns: 3, maxOverdueMs: 7 * DAY_MS });
 
 /** Wartungsjobs mit Rückstandsmeldung (Schlüssel aus JOB_QUEUES). */
-export type MaintenanceJob = 'auditRotate' | 'storageOrphanCleanup';
+export type MaintenanceJob = 'auditRotate' | 'storageOrphanCleanup' | 'gwgObjectLockExtend';
 
 interface JobAlarm {
   kind: NotificationKind;
@@ -80,6 +81,15 @@ const JOB_ALARM: Readonly<Record<MaintenanceJob, JobAlarm>> = {
     kind: 'SYSTEM_STORAGE_CLEANUP_BACKLOG',
     label: 'Bereinigung verwaister Speicherobjekte',
     pending: 'Fällige, noch nicht bereinigte Speicherobjekte Ihrer Kanzlei',
+  },
+  // RT3D-K-01 (kk-tcms-fix5): Der Object-Lock gebundener GwG-Belege (steuerliche
+  // Unterlage) ließ sich nicht bis zum Aufbewahrungsende verlängern; die Frist
+  // hält dann allein die Datenbank.
+  gwgObjectLockExtend: {
+    kind: 'SYSTEM_GWG_OBJECT_LOCK_BACKLOG',
+    label: 'Object-Lock gebundener GwG-Belege',
+    pending:
+      'Objektversionen gebundener GwG-Belege Ihrer Kanzlei, deren Object-Lock noch nicht bis zum Aufbewahrungsende verlängert ist',
   },
 };
 

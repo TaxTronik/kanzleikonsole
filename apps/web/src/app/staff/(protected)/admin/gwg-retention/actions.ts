@@ -236,6 +236,8 @@ export async function confirmGwgDeletionAction(input: {
                 storageVersionId: true,
               },
             },
+            // RT3D-K-01: (auch freigegebener) Verweis des Tax-CMS = steuerliche Unterlage.
+            tcmsReferences: { select: { id: true }, take: 1 },
           },
         }),
       );
@@ -247,6 +249,14 @@ export async function confirmGwgDeletionAction(input: {
         };
       }
 
+      // RT3D-K-01 (kk-tcms-fix5, TCMS-NACHWEIS-001): Für einen Beleg mit Verweis
+      // des Tax-CMS (steuerliche Unterlage) ist der bis zum Aufbewahrungsende
+      // verlängerte Object-Lock die zweite Linie neben der Datenbank
+      // (gwg-object-lock-extend). Die Aktion übersteuert ihn deshalb nicht: Nach
+      // Ablauf beider Fristen ist auch der Lock abgelaufen; ließe eine
+      // manipulierte Datenbank die Vernichtung vorher zu, weist der Speicher
+      // das Löschen ab, und der Vorgang bleibt mit Fehler vorgemerkt.
+      const steuerlicheUnterlage = claimed.tcmsReferences.length > 0;
       try {
         for (const version of claimed.versions) {
           // RT3B-K-01 (Schicht c): nie Bytes löschen, solange eine Bindung besteht –
@@ -264,8 +274,9 @@ export async function confirmGwgDeletionAction(input: {
             version.storageVersionId,
             // Ausschließlich dieser doppelt fristgeprüfte und atomar geclaimte
             // Fachpfad darf den GOVERNANCE-Lock am tatsächlichen gesetzlichen
-            // Fristende übersteuern. Alle übrigen Löschpfade bleiben ohne Bypass.
-            { bypassGovernanceRetention: true },
+            // Fristende übersteuern – nicht bei einer steuerlichen Unterlage
+            // (RT3D-K-01, oben). Alle übrigen Löschpfade bleiben ohne Bypass.
+            { bypassGovernanceRetention: !steuerlicheUnterlage },
           );
         }
       } catch (error) {

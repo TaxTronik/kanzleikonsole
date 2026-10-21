@@ -127,6 +127,7 @@ export const NOTIFICATION_KIND_LABELS: Readonly<Record<string, string>> = {
   SYSTEM_AUDIT_OK: 'Audit-Chain intakt',
   SYSTEM_AUDIT_ARCHIVE_BACKLOG: 'Rückstand Audit-Archivierung',
   SYSTEM_STORAGE_CLEANUP_BACKLOG: 'Rückstand Speicherbereinigung',
+  SYSTEM_GWG_OBJECT_LOCK_BACKLOG: 'Rückstand Object-Lock gebundener GwG-Belege',
   TCMS_EREIGNIS_GEMELDET: 'Tax-CMS: Ereignis gemeldet',
   TCMS_ZUSTELLUNG_GESCHEITERT: 'Tax-CMS: Mitteilung nicht zustellbar',
 };

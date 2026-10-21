@@ -44,6 +44,8 @@ const CHECK_ID = '22222222-2222-4222-8222-222222222222';
 function makeTx(
   claimedStorageKey = 'tenant/doc/version-1',
   claimedStorageVersionId: string | null = 'storage-version-claimed',
+  /** RT3D-K-01: (auch freigegebene) Verweise des Tax-CMS nach dem Claim. */
+  tcmsReferences: Array<{ id: string }> = [],
 ) {
   return {
     document: {
@@ -77,6 +79,7 @@ function makeTx(
               storageVersionId: claimedStorageVersionId,
             },
           ],
+          tcmsReferences,
         })
         .mockResolvedValueOnce({ id: DOCUMENT_ID }),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -322,6 +325,7 @@ describe('confirmGwgDeletionAction', () => {
           { id: 'v1', storageBucket: 'gwg', storageKey: 'tenant/doc/v1', storageVersionId: 's1' },
           { id: 'v2', storageBucket: 'gwg', storageKey: 'tenant/doc/v2', storageVersionId: 's2' },
         ],
+        tcmsReferences: [],
       });
     // vor der Vormerkung frei, vor der ersten Version frei, vor der zweiten gebunden
     m.gebunden.mockResolvedValueOnce(false).mockResolvedValueOnce(false).mockResolvedValue(true);
@@ -386,6 +390,45 @@ describe('confirmGwgDeletionAction', () => {
       expect.anything(),
       expect.anything(),
     );
+  });
+
+  it('RT3D-K-01: übersteuert den Object-Lock einer steuerlichen Unterlage (Verweis des Tax-CMS) nicht', async () => {
+    const tx = makeTx('tenant/doc/version-1', 'storage-version-claimed', [{ id: 'verweis-1' }]);
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+
+    expect(await confirmGwgDeletionAction({ documentId: DOCUMENT_ID })).toEqual({ ok: true });
+
+    // Die Verweise liest die Aktion nach dem Claim mit der Versionsliste.
+    expect(tx.document.findFirst.mock.calls[1]![0]).toMatchObject({
+      select: { tcmsReferences: { select: { id: true }, take: 1 } },
+    });
+    expect(m.deleteObjectVersion).toHaveBeenCalledWith(
+      'gwg',
+      'tenant/doc/version-1',
+      'storage-version-claimed',
+      { bypassGovernanceRetention: false },
+    );
+  });
+
+  it('RT3D-K-01: weist der Speicher das Löschen einer steuerlichen Unterlage ab (Lock läuft), bleibt sie vorgemerkt', async () => {
+    const tx = makeTx('tenant/doc/version-1', 'storage-version-claimed', [{ id: 'verweis-1' }]);
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+    m.deleteObjectVersion.mockRejectedValueOnce(
+      Object.assign(new Error('Access Denied'), { name: 'AccessDenied' }),
+    );
+
+    const result = await confirmGwgDeletionAction({ documentId: DOCUMENT_ID });
+
+    expect(result).toEqual({
+      ok: false,
+      error:
+        'Vernichtung im Object-Store fehlgeschlagen. Der Vorgang bleibt vorgemerkt und kann erneut ausgeführt werden.',
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it('behält bei Object-Store-Fehler den wiederaufnehmbaren Pending-Zustand', async () => {

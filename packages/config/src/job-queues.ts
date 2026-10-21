@@ -363,6 +363,20 @@ export const JOB_QUEUES = {
       expectedMaxGapMs: DAY,
     },
   },
+  gwgObjectLockExtend: {
+    name: 'gwg-object-lock-extend',
+    schedule: {
+      // RT3D-K-01 (kk-tcms-fix5): verlängert den Object-Lock gebundener
+      // GwG-Belege (steuerliche Unterlage) bis zu ihrem Aufbewahrungsende,
+      // nachdem die Datenbank es angehoben hat. Stündlich; kein BullMQ-Retry:
+      // der Stand liegt je Objektversion in gwg_object_lock_extension, der
+      // nächste Lauf setzt fort. Der erste Lauf nach dem Update verlängert den
+      // Altbestand.
+      schedulerId: 'gwg-object-lock-extend',
+      repeat: { every: HOUR },
+      expectedMaxGapMs: HOUR,
+    },
+  },
   n8nRetention: {
     name: 'n8n-retention',
     schedule: {
@@ -588,6 +602,7 @@ export type QueueJobDataByName = {
   [JOB_QUEUES.storageOrphanCleanup.name]: EmptyJob;
   [JOB_QUEUES.portalInboxCleanup.name]: EmptyJob;
   [JOB_QUEUES.pdfPageCountBackfill.name]: EmptyJob;
+  [JOB_QUEUES.gwgObjectLockExtend.name]: EmptyJob;
   [JOB_QUEUES.n8nRetention.name]: EmptyJob;
   [JOB_QUEUES.riskAnalyseLlm.name]: RiskAnalyseLlmJob;
   [JOB_QUEUES.reminderDoneNotify.name]: ReminderDoneNotifyJob;

@@ -314,6 +314,37 @@ describe('B14: recordMaintenanceBacklog', () => {
     );
   });
 
+  it('RT3D-K-01: gwg-object-lock-extend alarmiert mit eigener Art, eigenem Text und eigener Zählung', async () => {
+    h.store.set('taxtronik:maintenance-backlog:gwg-object-lock-extend:runs', '2');
+
+    const status = await recordMaintenanceBacklog(
+      'gwgObjectLockExtend',
+      [backlog(TENANT_A, 2, 3 * HOUR)],
+      NOW,
+    );
+
+    expect(status).toMatchObject({ count: 2, consecutiveRuns: 3, alarm: true });
+    expect(h.notify).toHaveBeenCalledTimes(1);
+    const [, inputs] = h.notify.mock.calls[0] as unknown as [
+      unknown,
+      Array<Record<string, unknown>>,
+    ];
+    expect(inputs[0]).toMatchObject({
+      tenantId: TENANT_A,
+      kind: 'SYSTEM_GWG_OBJECT_LOCK_BACKLOG',
+      title: 'Wartungsrückstand: Object-Lock gebundener GwG-Belege',
+      body: expect.stringContaining(
+        'Objektversionen gebundener GwG-Belege Ihrer Kanzlei, deren Object-Lock noch nicht bis zum Aufbewahrungsende verlängert ist: 2 (ältester fällig seit 3 Stunden)',
+      ),
+      resourceType: 'tenant',
+      resourceId: TENANT_A,
+    });
+    const [subject] = h.sendOpsMail.mock.calls[0] as [string, string];
+    expect(subject).toBe('[TaxTronik] Wartungsrückstand: gwg-object-lock-extend');
+    // Die Zählung der übrigen Wartungsjobs bleibt unberührt.
+    expect(h.store.has(RUNS_AUDIT)).toBe(false);
+  });
+
   it('Dedupe: höchstens eine Mail je Job und UTC-Tag, am nächsten Tag wieder', async () => {
     const old = [backlog(TENANT_A, 4, 8 * DAY)];
 

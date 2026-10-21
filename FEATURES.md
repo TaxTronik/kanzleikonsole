@@ -1781,8 +1781,10 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `pdf-page-count-backfill` (04:30 UTC, trägt fehlende Seitenzahlen von
   PDF-Ausweisquellen nach) und `mail-outbox-retention` (04:15 UTC, löscht
   Mail-Outbox-Versandaufträge ein Jahr nach dem letzten Statuswechsel im
-  Endstatus) sowie `tcms-nachrichten-zustellen` (minütlich, Postausgang des
-  Tax-CMS zustellen).
+  Endstatus), `tcms-nachrichten-zustellen` (minütlich, Postausgang des
+  Tax-CMS zustellen) sowie `gwg-object-lock-extend` (stündlich, verlängert den
+  Object-Lock von GwG-Belegen mit Tax-CMS-Verweis bis zu ihrem
+  Aufbewahrungsende, RT3D-K-01).
   Ein asynchroner Virus-Scan-Job existiert bewusst nicht — Scans laufen
   ausschließlich synchron beim Upload-Commit in `@taxtronik/storage`.
   Die Worker-Jobs haben eigene Unit-Tests

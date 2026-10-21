@@ -49,6 +49,13 @@ code_refs:
   - packages/db/prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql
   - apps/web/src/server/tcms/durchfuehrung/sperre.ts
   - packages/db/prisma/migrations/20261021171000_tcms_gwg_evidence_retention_lock/migration.sql
+  - packages/db/prisma/migrations/20261021171100_notification_kind_gwg_object_lock/migration.sql
+  - packages/db/prisma/migrations/20261021171200_gwg_object_lock_extension/migration.sql
+  - packages/storage/src/object-lock-extension.ts
+  - packages/storage/src/index.ts
+  - apps/worker/src/jobs/gwg-object-lock-extend.ts
+  - apps/worker/src/maintenance-backlog.ts
+  - packages/config/src/job-queues.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
@@ -66,6 +73,9 @@ test_refs:
   - packages/db/src/__tests__/tcms-document-reference-guards.test.ts
   - packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts
   - packages/db/src/__tests__/redteam-gwg-retention-rt3d-db.test.ts
+  - packages/storage/src/__tests__/object-lock-extension.test.ts
+  - apps/worker/src/jobs/__tests__/gwg-object-lock-extend.test.ts
+  - apps/worker/src/jobs/__tests__/gwg-object-lock-extend-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -262,7 +272,19 @@ der Trigger `client_tcms_gwg_evidence_retention` bei jedem neuen Mandatsende und
 `document_tcms_gwg_evidence_retention`, wenn ein früherer Nachweis zum GwG-Beleg
 wird. Ein später zurückgenommenes oder früher eingetragenes Mandatsende verkürzt
 die Aufbewahrung dieser Belege damit nicht mehr. Einen Wartungsweg gibt es
-nicht; kein Anwendungspfad ändert diese Spalten so.
+nicht; kein Anwendungspfad ändert diese Spalten so. Als zweite Linie verlängert
+der Worker-Job `gwg-object-lock-extend` (stündlich, Migration
+`20261021171200`) den GOVERNANCE-Lock jeder Objektversion eines solchen Belegs
+im GwG-Bucket bis zu seinem Aufbewahrungsende
+(`extendObjectLockRetention`, `packages/storage/src/object-lock-extension.ts`:
+exakte Version, nur verlängern, nie mit Bypass, nachlesen); den Stand je Version
+hält die Owner-only-Tabelle `gwg_object_lock_extension`, ein Fehlschlag kommt im
+nächsten Lauf wieder und alarmiert ab der Schwelle der Wartungsjobs
+(`SYSTEM_GWG_OBJECT_LOCK_BACKLOG`, Mail an `OPS_ALERT_EMAIL`). Den Altbestand
+verlängert der erste Lauf nach dem Update. Die Vernichtungsaktion übersteuert den
+Lock eines Belegs mit Verweis nicht mehr (`bypassGovernanceRetention: false`);
+nach Ablauf beider Fristen ist er abgelaufen, vorher weist der Speicher das
+Löschen ab und der Vorgang bleibt vorgemerkt.
 
 Beim Ersetzen eines Nachweises bleibt die abgelöste Prüfzuordnung ausdrücklich
 als historische `GwgIdDocument`-Zeile erhalten. Das Lösen einer irrtümlichen
@@ -293,8 +315,11 @@ Verbindungen speichern keine gemeinsamen Namen, Ausweise oder Freigaben.
 - Ein GwG-Beleg, der als Altbestand im Tax-CMS verknüpft ist oder war, wird
   erst nach der Freigabe der Verknüpfung und nach Ablauf auch der Steuerfrist
   vernichtet (Produktentscheidung); die Zehnjahresgrenze wird dabei bewusst
-  überschritten. Die Steuerfrist hält allein die Datenbank: Der
-  GOVERNANCE-Lock des GwG-Buckets wird nicht verlängert.
+  überschritten. Neben der Datenbank hält seit RT3D-K-01 der verlängerte
+  GOVERNANCE-Lock die Frist (Job `gwg-object-lock-extend`); scheitert das
+  Verlängern, hält sie bis zur Behebung allein die Datenbank (Alarm). Dass der
+  eingesetzte Object Store das Verlängern je Objektversion umsetzt, ist nur
+  gegen eine Speicherschicht-Attrappe getestet.
 
 Der Implementierungsstatus ist deshalb **teilweise**.
 
@@ -342,7 +367,14 @@ vorgetäuschtem Vernichtungskontext, Mandatsende samt Zurücknehmen, Vordatieren
 und Jahreswechsel, Umklassifizierung zum GwG-Beleg, Datenschritt der Migration)
 und `redteam-gwg-retention-rt3d-db.test.ts` (der Angriff: Umschreiben abgewiesen,
 Vernichtung vor der Steuerfrist gesperrt); jede Regel ist durch eine Mutation in
-der Datenbank belegt. Action- und DB-Tests prüfen
+der Datenbank belegt. Den verlängerten Object-Lock belegen
+`object-lock-extension.test.ts` (Speicherschicht-Attrappe: nur verlängern, ohne
+Bypass, Modus bleibt, Nachlesen, exakte Version), `gwg-object-lock-extend-db.test.ts`
+(Auswahl, Buchführung, Wiederholung, Nachlauf nach angehobenem Ende, Kaskade bei
+der Vernichtung), `gwg-object-lock-extend.test.ts` (Ablauf, Keyset, Zeitbudget,
+Protokoll ohne Speicherangaben), `tcms-gwg-aufbewahrung.test.ts` (Rechte, CHECKs
+und RLS der Tabelle) und `actions.test.ts`/`actions-db.test.ts` (kein Bypass bei
+einem Beleg mit Verweis). Action- und DB-Tests prüfen
 Object-Lock, zweiphasigen Claim, konkrete Storage-Versionen, Tenant- und
 Fristgrenzen sowie die geplante Bereinigung von Personen- und Checkdaten. Der
 DB-Test bestätigt dabei auch, dass der kontrollierte

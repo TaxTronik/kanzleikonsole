@@ -601,6 +601,53 @@ braucht mehr Durchsatz (Object-Store, TSA) oder einen zusätzlichen Lauf, kein
 Abschalten des Alarms. Zum Ändern der Schwelle genügt die Konstante; nach dem
 Worker-Update gilt sie ab dem nächsten Lauf.
 
+### Object-Lock gebundener GwG-Belege (gwg-object-lock-extend)
+
+Ein GwG-Beleg, der als Nachweis im Tax-CMS verknüpft ist oder war, gilt
+zugleich als steuerliche Unterlage; die Datenbank hebt sein Aufbewahrungsende
+auf die Steuerfrist bzw. das Ende der GwG-Frist (TCMS-NACHWEIS-001,
+RT3D-K-01). Der GOVERNANCE-Lock seiner Objektversionen im GwG-Bucket endet
+dagegen 5 Jahre und 1 Tag nach dem Upload. Der Worker-Job
+`gwg-object-lock-extend` (stündlich) verlängert ihn je Objektversion bis zum
+Aufbewahrungsende: nur die exakte Version, nur verlängern (nie mit
+`BypassGovernanceRetention`), danach nachlesen. Er liest nur festgeschriebene
+Stände, läuft idempotent und hält den Stand je Version in
+`gwg_object_lock_extension` fest (bestätigtes Lock-Ende; bei Fehlschlag Zahl,
+Beginn und fester Code). Den Altbestand verlängert der erste Lauf nach dem
+Update; danach kommen nur Versionen dazu, deren Aufbewahrungsende die
+Datenbank neu anhebt (Mandatsende, Umklassifizierung zum GwG-Beleg). Die
+GwG-Pflichtvernichtung übersteuert den Lock eines solchen Belegs nicht mehr;
+nach Ablauf beider Fristen ist er ohnehin abgelaufen.
+
+**Status und Alarm** wie oben: „System → Jobs“ (verlängert, unverändert,
+gescheitert, Rückstand), Benachrichtigung „Rückstand Object-Lock gebundener
+GwG-Belege“ an ADMIN/PARTNER der Kanzlei und Mail an `OPS_ALERT_EMAIL`. Bei
+stündlichem Lauf heißt die Schwelle: Alarm nach etwa drei Stunden anhaltendem
+Fehlschlag. Jeder Fehlschlag steht zusätzlich als Fehler im Worker-Log
+(`gwg-object-lock-extend: Object-Lock nicht verlängert`, mit Dokument- und
+Versions-ID und Code, ohne Schlüssel oder Antworttext).
+
+**Vorgehen bei Alarm.** Code im Log bzw. in `gwg_object_lock_extension.last_error`
+prüfen:
+
+- `AccessDenied`: Die S3-Zugangsdaten der App brauchen
+  `s3:GetObjectRetention` und `s3:PutObjectRetention` auf dem GwG-Bucket.
+- `NoSuchObjectLockConfiguration`/`InvalidRequest`: Der Bucket ist ohne
+  Object-Lock angelegt (`./taxtronik doctor`, Deploy-Readiness).
+- `STORAGE_VERSION_ID_MISSING`: Altbestand ohne gespeicherte Objektversion;
+  ohne exakte Version verlängert der Job nicht (fachlich klären).
+- `OBJECT_LOCK_EXTEND_UNVERIFIED`: Der Speicher bestätigt das neue Ende nicht.
+
+Bis zur Behebung hält allein die Datenbank die Frist (unveränderlich ab der
+Bindung, Claim der Vernichtung); der Job versucht es jede Stunde erneut.
+**Nicht automatisch geprüft:** Die Tests laufen gegen eine
+Speicherschicht-Attrappe. Dass die eingesetzte Object-Store-Version
+(SeaweedFS) `PutObjectRetention` für einzelne Objektversionen umsetzt und ein
+Verkürzen ohne Bypass abweist, ist vor dem Release gegen den echten Speicher zu
+belegen (Release-Rehearsal: Beleg mit Verweis anlegen, Job laufen lassen,
+`GetObjectRetention` der Version vergleichen, Verkürzen und Löschen ohne Bypass
+müssen scheitern).
+
 ## SMTP
 
 Mailhog ist nur Dev. Produktion benötigt ein echtes SMTP-Relay:
