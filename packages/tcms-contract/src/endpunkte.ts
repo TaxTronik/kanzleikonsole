@@ -61,6 +61,9 @@ import {
   AnlageGespeichertSchema,
   EreignisAktionSchema,
   EreignisAnlageLesenSchema,
+  EreignisAnlagenJeDokumentPfadSchema,
+  EreignisAnlagenJeDokumentQuerySchema,
+  EreignisAnlagenJeDokumentSchema,
   EreignisDetailSchema,
   EreignisErfassenBodySchema,
   EreignisErfasstSchema,
@@ -998,6 +1001,20 @@ export const ENDPUNKTE = register({
     pfad: `${E}/anlagen/:sha256`,
     params: EreignisAnlageLesenSchema,
     antwort: AnlageGespeichertSchema,
+  },
+  /**
+   * Ereignis-Anlagen je Dokument-ID (Abgleich der kanzleikonsole, tcms-s11);
+   * nur Kanzlei. Eigenes Segment statt `ereignisse/anlagen`: Das Muster wäre
+   * mehrdeutig zu `ereignisse/:ereignisId` (Register und Routentabelle weisen
+   * mehrdeutige Muster ab).
+   */
+  ereignisAnlagenJeDokumentLesen: {
+    methode: 'GET',
+    pfad: `${M}/ereignis-anlagen`,
+    akteure: NUR_KANZLEI,
+    params: EreignisAnlagenJeDokumentPfadSchema,
+    query: EreignisAnlagenJeDokumentQuerySchema,
+    antwort: EreignisAnlagenJeDokumentSchema,
   },
   ereignisErfassen: {
     methode: 'POST',

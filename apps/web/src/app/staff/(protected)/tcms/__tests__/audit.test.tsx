@@ -7,6 +7,10 @@
 //     Prüfung mit `weiterAb` fort und rechnet nichts nach.
 //   - Personen mit dem im Protokoll festgehaltenen Namen; Filter nur in
 //     gültiger Form (sonst ohne Filter).
+//   - kk-tcms-s11 Punkt 7 (TCMS s11): maskierte Einträge nur mit den Feldern
+//     ihrer Variante – Akteursart als fester Text und „vertraulich“, kein Name,
+//     kein Detail, kein Hash; Hashes `null` als „nicht angezeigt“ mit festem
+//     Hinweis auf die Kettenprüfung.
 // Fachkatalog: TCMS-DIENST-001
 import { screen, within } from '@testing-library/react';
 import { ENDPUNKTE, MAX_AUDIT_POS } from '@taxtronik/tcms-contract';
@@ -38,7 +42,11 @@ vi.mock('@/server/tcms/aktion', () => ({
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
-import { AUDIT_PRUEFUNG_BUDGET_MS } from '@/server/tcms/audit';
+import {
+  AUDIT_HASH_VERBORGEN,
+  AUDIT_PRUEFUNG_BUDGET_MS,
+  AUDIT_VERTRAULICH_HINWEIS,
+} from '@/server/tcms/audit';
 import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
 import { auditPruefenAction } from '../audit/actions';
 import TcmsAuditPage from '../audit/page';
@@ -82,7 +90,9 @@ describe('Audit-Seite', () => {
     const zeilen = screen.getAllByRole('row').slice(1);
     expect(zeilen).toHaveLength(daten.eintraege.length);
     const erste = within(zeilen[0]!);
-    expect(erste.getByText(daten.eintraege[0]!.actorName)).toBeTruthy();
+    const neuester = daten.eintraege[0]!;
+    if (neuester.maskiert) throw new Error('Fixture: neuester Eintrag offen');
+    expect(erste.getByText(neuester.actorName)).toBeTruthy();
     expect(erste.getByText('Pixelhafen GmbH')).toBeTruthy();
     expect(screen.getByRole('link', { name: /ältere/ }).getAttribute('href')).toBe(
       `/staff/tcms/audit?vor=${daten.weiter}`,
@@ -99,6 +109,92 @@ describe('Audit-Seite', () => {
     expect(h.lesen).toHaveBeenLastCalledWith(SEITE, ENDPUNKTE.auditLesen, {
       query: { mandantId: DEMO.talwind, vor: String(MAX_AUDIT_POS), limit: '50' },
     });
+  });
+});
+
+describe('Audit-Seite – vertrauliche Feststellungen (TCMS s11)', () => {
+  const vertraulich = () => tcmsFixtures.auditAnnaVertraulich();
+
+  it('ohne maskierte Einträge und mit allen Hashes: kein Hinweis, Hash des Kettenendes', async () => {
+    const daten = tcmsFixtures.auditAnna();
+    await seite();
+    expect(screen.queryByText(AUDIT_VERTRAULICH_HINWEIS)).toBeNull();
+    expect(screen.queryByText(AUDIT_HASH_VERBORGEN)).toBeNull();
+    expect(screen.getAllByText(daten.kopf!.hash!).length).toBeGreaterThan(0);
+  });
+
+  it('maskierter Eintrag: Akteursart und „vertraulich“, kein Name, kein Detail, kein Hash', async () => {
+    const daten = vertraulich();
+    const maskiert = daten.eintraege[0]!;
+    expect(maskiert.maskiert).toBe(true);
+    expect(maskiert.mandantId).toBe(DEMO.talwind);
+    h.mandanten.mockResolvedValue([{ id: DEMO.talwind, name: 'Talwind Logistik GmbH' }]);
+    h.lesen.mockResolvedValue({ ok: true, daten, requestId: null });
+    const { container } = await seite();
+    const zeilen = screen.getAllByRole('row').slice(1);
+    expect(zeilen).toHaveLength(daten.eintraege.length);
+    const erste = within(zeilen[0]!);
+    expect(erste.getByText('Kanzleiperson')).toBeTruthy();
+    expect(erste.getByText('vertraulich')).toBeTruthy();
+    expect(erste.getByText(AUDIT_HASH_VERBORGEN)).toBeTruthy();
+    expect(erste.getByText(maskiert.aktion)).toBeTruthy();
+    expect(erste.getByText('Talwind Logistik GmbH')).toBeTruthy();
+    // Kein Detail-Block in der maskierten Zeile, nur die Felder ihrer Variante.
+    expect(zeilen[0]!.querySelector('[title^="{"]')).toBeNull();
+    expect(zeilen[0]!.querySelectorAll('[title*="Vorgänger"]')).toHaveLength(0);
+    // Offene Einträge nach der ersten maskierten Position: Name und Detail ja,
+    // Hash „nicht angezeigt“.
+    const zweite = within(zeilen[1]!);
+    const offen = daten.eintraege[1]!;
+    if (offen.maskiert) throw new Error('Fixture: zweiter Eintrag offen');
+    expect(zweite.getByText(offen.actorName)).toBeTruthy();
+    expect(zweite.getByText(AUDIT_HASH_VERBORGEN)).toBeTruthy();
+    // Kettenende ohne Hash, Hinweis auf die Kettenprüfung.
+    expect(screen.getByText(AUDIT_VERTRAULICH_HINWEIS)).toBeTruthy();
+    expect(screen.getByText(/Kettenende #32/).textContent).toContain(AUDIT_HASH_VERBORGEN);
+    expect(container.textContent).not.toMatch(/[0-9a-f]{64}/);
+  });
+
+  it('Akteursart MANDANT, SYSTEM und ohne Akteur als feste Texte', async () => {
+    const daten = vertraulich();
+    const m = daten.eintraege[0]!;
+    if (!m.maskiert) throw new Error('Fixture: erster Eintrag maskiert');
+    daten.eintraege = [
+      { ...m, pos: 40, akteurArt: 'MANDANT' },
+      { ...m, pos: 39, akteurArt: 'SYSTEM' },
+      { ...m, pos: 38, akteurArt: null },
+    ];
+    h.lesen.mockResolvedValue({ ok: true, daten, requestId: null });
+    await seite();
+    const zeilen = screen.getAllByRole('row').slice(1);
+    expect(within(zeilen[0]!).getByText('Mandantenkontakt')).toBeTruthy();
+    expect(within(zeilen[1]!).getByText('System')).toBeTruthy();
+    expect(within(zeilen[2]!).getByText('ohne Akteur')).toBeTruthy();
+  });
+
+  it('nur ein Hash des Kettenendes verborgen: Hinweis trotzdem', async () => {
+    const daten = tcmsFixtures.auditAnna();
+    daten.kopf = { ...daten.kopf!, hash: null };
+    h.lesen.mockResolvedValue({ ok: true, daten, requestId: null });
+    await seite();
+    expect(screen.getByText(AUDIT_VERTRAULICH_HINWEIS)).toBeTruthy();
+    expect(screen.getByText(/Kettenende #31/).textContent).toContain(AUDIT_HASH_VERBORGEN);
+  });
+
+  it('Vertrag (vendort): maskierter Eintrag mit Name, Detail oder Hash und Eintrag ohne `maskiert` werden abgewiesen', () => {
+    const schema = ENDPUNKTE.auditLesen.antwortSchema;
+    const daten = vertraulich();
+    const m = daten.eintraege[0]!;
+    for (const zusatz of [
+      { actorName: 'StB Dr. Anna Roth' },
+      { actorId: DEMO.anna },
+      { detail: { vertraulich: true } },
+      { hash: 'a'.repeat(64) },
+    ]) {
+      expect(schema.safeParse({ ...daten, eintraege: [{ ...m, ...zusatz }] }).success).toBe(false);
+    }
+    const { maskiert: _weg, ...ohne } = tcmsFixtures.auditAnna().eintraege[0]!;
+    expect(schema.safeParse({ ...daten, eintraege: [ohne] }).success).toBe(false);
   });
 });
 
@@ -194,6 +290,16 @@ describe('Audit-Seite – Richtungsisolation', () => {
     h.lesen.mockResolvedValue({
       ok: true,
       daten: markiert(tcmsFixtures.auditAnna(), ENDPUNKTE.auditLesen.antwortSchema),
+      requestId: null,
+    });
+    const { container } = await seite();
+    erwarteIsoliert(container, 2);
+  });
+
+  it('maskierte Einträge isoliert', async () => {
+    h.lesen.mockResolvedValue({
+      ok: true,
+      daten: markiert(tcmsFixtures.auditAnnaVertraulich(), ENDPUNKTE.auditLesen.antwortSchema),
       requestId: null,
     });
     const { container } = await seite();

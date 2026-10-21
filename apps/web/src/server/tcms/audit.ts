@@ -11,6 +11,8 @@
 // neuer Grund im Dienst erscheint bis zur Ergänzung hier als Rückfall.
 // =============================================================================
 
+import type { AkteurArt } from '@taxtronik/tcms-contract';
+
 /** Wert des Dienstes → fester Text der kanzleikonsole. */
 const AUDIT_BRUCH_TEXTE: Readonly<Record<string, string>> = Object.freeze({
   'Reihenfolge der Einträge passt nicht': 'Die Reihenfolge der Einträge passt nicht.',
@@ -42,3 +44,32 @@ export function auditBruchText(grund: string | null | undefined): string {
     ? AUDIT_BRUCH_TEXTE[grund]!
     : AUDIT_BRUCH_RUECKFALL;
 }
+
+// -----------------------------------------------------------------------------
+// Maskierte Einträge (TCMS s11, Vendoring bfdfdd2; kk-tcms-s11 Punkt 7). Der
+// Dienst liefert Einträge zu vertraulichen Feststellungen und ihren Maßnahmen
+// an Nicht-Beteiligte als `maskiert: true` – nur Position, Zeit, Ereignisart,
+// Objekt, Programm, Mandant, Akteursart und „vertraulich“, ohne Namen,
+// Personen-ID, Detail und Hashes; ab der ersten maskierten Position auch für
+// alle späteren Einträge keine Hashes (`null`). Die mandantenübergreifende
+// Audit-Seite sendet keinen Mandantenbezug und zeigt deshalb maskiert an; die
+// Oberfläche ergänzt nur feste Texte und nichts aus anderen Quellen.
+// -----------------------------------------------------------------------------
+
+/** Akteursart eines maskierten Eintrags → fester Text (`null`: ohne Akteur). */
+export const AUDIT_AKTEUR_ART_TEXTE: Readonly<Record<AkteurArt, string>> = Object.freeze({
+  KANZLEI: 'Kanzleiperson',
+  MANDANT: 'Mandantenkontakt',
+  SYSTEM: 'System',
+});
+
+export function auditAkteurArtText(art: AkteurArt | null): string {
+  return art === null ? 'ohne Akteur' : AUDIT_AKTEUR_ART_TEXTE[art];
+}
+
+/** Anstelle eines Hashes, den der Dienst nicht mitteilt. */
+export const AUDIT_HASH_VERBORGEN = 'nicht angezeigt';
+
+/** Hinweis, sobald die Seite maskierte Einträge oder verborgene Hashes enthält. */
+export const AUDIT_VERTRAULICH_HINWEIS =
+  'Einträge zu vertraulichen Feststellungen und ihren Maßnahmen erscheinen ohne Person und Inhalt. Ab dem ersten solchen Eintrag zeigt die Liste keine Hashes; die Integrität der ganzen Kette prüft „Hashkette prüfen“.';

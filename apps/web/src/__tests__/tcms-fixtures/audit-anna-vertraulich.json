@@ -1,0 +1,90 @@
+{
+  "eintraege": [
+    {
+      "maskiert": true,
+      "pos": 32,
+      "at": "2026-10-21T13:45:07.607Z",
+      "aktion": "tcms.feststellung.vertraulich",
+      "objektTyp": "Feststellung",
+      "objektId": "cmvi5xeu6007x9r7d64pjpu4i",
+      "programmId": "cmvi5xdtn00039r7dodfem2jw",
+      "mandantId": "a1000000-0000-4000-8000-000000004711",
+      "akteurArt": "KANZLEI",
+      "vertraulich": true
+    },
+    {
+      "maskiert": false,
+      "pos": 31,
+      "at": "2025-02-11T00:00:00.000Z",
+      "aktion": "tcms.kontrollen.design",
+      "objektTyp": "TcmsProgramm",
+      "objektId": "cmvi5xfc400d59r7dmlw69epw",
+      "programmId": "cmvi5xfc400d59r7dmlw69epw",
+      "mandantId": "a1000000-0000-4000-8000-000000004698",
+      "actorId": "b1000000-0000-4000-8000-000000000003",
+      "actorName": "StB Thomas Kern",
+      "detail": {
+        "beurteilt": 22
+      },
+      "prevHash": null,
+      "hash": null
+    },
+    {
+      "maskiert": false,
+      "pos": 30,
+      "at": "2025-02-07T00:00:00.000Z",
+      "aktion": "tcms.risiken.freigegeben",
+      "objektTyp": "TcmsProgramm",
+      "objektId": "cmvi5xfc400d59r7dmlw69epw",
+      "programmId": "cmvi5xfc400d59r7dmlw69epw",
+      "mandantId": "a1000000-0000-4000-8000-000000004698",
+      "actorId": "b1000000-0000-4000-8000-000000000003",
+      "actorName": "StB Thomas Kern",
+      "detail": {
+        "anzahl": 19
+      },
+      "prevHash": null,
+      "hash": null
+    },
+    {
+      "maskiert": false,
+      "pos": 29,
+      "at": "2025-02-05T00:00:00.000Z",
+      "aktion": "tcms.ziele.freigegeben",
+      "objektTyp": "Teilbereich",
+      "objektId": "cmvi5xfcb00d69r7dijacz60i",
+      "programmId": "cmvi5xfc400d59r7dmlw69epw",
+      "mandantId": "a1000000-0000-4000-8000-000000004698",
+      "actorId": "b1000000-0000-4000-8000-000000000041",
+      "actorName": "Pia Hafner",
+      "detail": {
+        "anzahl": 3
+      },
+      "prevHash": null,
+      "hash": null
+    },
+    {
+      "maskiert": false,
+      "pos": 28,
+      "at": "2025-01-10T00:00:00.000Z",
+      "aktion": "tcms.programm.angelegt",
+      "objektTyp": "TcmsProgramm",
+      "objektId": "cmvi5xfc400d59r7dmlw69epw",
+      "programmId": "cmvi5xfc400d59r7dmlw69epw",
+      "mandantId": "a1000000-0000-4000-8000-000000004698",
+      "actorId": "b1000000-0000-4000-8000-000000000002",
+      "actorName": "Leon Brandt",
+      "detail": {
+        "paket": "E-Commerce 1.0"
+      },
+      "prevHash": null,
+      "hash": null
+    }
+  ],
+  "weiter": 28,
+  "kopf": {
+    "pos": 32,
+    "hash": null,
+    "at": "2026-10-21T13:45:07.607Z"
+  }
+}

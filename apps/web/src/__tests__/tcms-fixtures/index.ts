@@ -26,7 +26,13 @@
 //     kanzleikonsole liefert nur Dokumente mit UUID aus).
 //   - portal-freigaben-jana.json (Bereich D): `inhalt` und Abschnitte der
 //     Beschreibung gekürzt (snapshotSha256 passt deshalb nicht mehr zum Inhalt).
-//   - audit-anna.json (Bereich D): erste Seite mit `vor` (neueste zuerst), limit 5.
+//   - audit-anna.json (Bereich D): erste Seite mit `vor` (neueste zuerst), limit 5;
+//     seit TCMS s11 (Vendoring bfdfdd2) je Eintrag `maskiert: false` ergänzt –
+//     so antwortet der Dienst, solange keine Feststellung vertraulich ist.
+//   - audit-anna-vertraulich.json (kk-tcms-s11): Live-Antwort des Dienstes
+//     (bfdfdd2, frischer Demo-Seed) an Anna Roth ohne Mandantenbezug, nachdem
+//     sie F-2026-006 als vertraulich markiert hat: Position 32 maskiert, die
+//     Hashes ab der ersten maskierten Position und `kopf.hash` null.
 //   - Felder aus TCMS s7/s8 (Vendoring 4752652) aus einem Abruf des Dienstes
 //     mit frischem Demo-Seed ergänzt, zugeordnet über Codes und Nummern statt
 //     IDs (der Seed vergibt IDs je Datenbank neu): `heute` der Einrichtung,
@@ -85,6 +91,7 @@ import risikoEcUst02 from './risiko-ec-ust-02.json';
 import risikoEcVer01 from './risiko-ec-ver-01.json';
 // Bereich D (Portal, Ereignisse, Audit)
 import auditAnna from './audit-anna.json';
+import auditAnnaVertraulich from './audit-anna-vertraulich.json';
 import ereignis0329 from './ereignis-0329.json';
 import ereignis0345 from './ereignis-0345.json';
 import ereignisseTalwind from './ereignisse-talwind.json';
@@ -172,4 +179,5 @@ export const tcmsFixtures = {
   /** 2026-T-0329 (ERLEDIGT). */
   ereignis0329: () => laden(ENDPUNKTE.ereignisLesen.antwortSchema, ereignis0329),
   auditAnna: () => laden(ENDPUNKTE.auditLesen.antwortSchema, auditAnna),
+  auditAnnaVertraulich: () => laden(ENDPUNKTE.auditLesen.antwortSchema, auditAnnaVertraulich),
 };

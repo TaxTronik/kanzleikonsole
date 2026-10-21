@@ -638,6 +638,33 @@ export const PortalMeldungenLesenSchema = z.object(mandant).strict();
 
 export const EreignisAnlageLesenSchema = z.object({ ...ereignis, sha256: Sha256Schema }).strict();
 
+// ---- Ereignis-Anlagen je Dokument (Abgleich der kanzleikonsole, tcms-s11) ----
+/**
+ * Dokument-ID der kanzleikonsole (UUID), kanonisch in Kleinbuchstaben. Nur
+ * UUIDs: Andere Formen, die eine Meldung tragen kann (Ablagepfade der Demo),
+ * sind hier nicht abfragbar (`400`) – eine Freigabe ohne bestätigte Antwort
+ * bleibt so aus (fail closed).
+ */
+const AnlageDokumentIdSchema = z.uuid().transform((s) => s.toLowerCase());
+
+/**
+ * Ereignis-Anlagen je Dokument (`GET …/ereignis-anlagen?dokumentId=`):
+ * Gegenstück zu „Nachweise je Dokument“ (ADR 0001 §6). Nur Kanzleipersonen mit
+ * Leserecht. `dokumentId` ist Pflicht (der Dienst antwortet sonst `400`); im
+ * Query-Schema optional, weil das Register jede Query ohne Parameter zulässt
+ * und die Pflicht im Service prüft.
+ */
+export const EreignisAnlagenJeDokumentQuerySchema = z
+  .object({ dokumentId: AnlageDokumentIdSchema.optional() })
+  .strict();
+export const EreignisAnlagenJeDokumentPfadSchema = z.object(mandant).strict();
+export const EreignisAnlagenJeDokumentEingabeSchema = z
+  .object({ ...mandant, dokumentId: AnlageDokumentIdSchema })
+  .strict();
+/** Eingabe aus Pfad und Query (Pflicht von `dokumentId` prüft der Dienst mit dem Eingabeschema). */
+export type EreignisAnlagenJeDokumentEingabe = z.input<typeof EreignisAnlagenJeDokumentPfadSchema> &
+  z.input<typeof EreignisAnlagenJeDokumentQuerySchema>;
+
 // ---- Antworten ----
 export const EreignisListenEintragSchema = z
   .object({
@@ -783,6 +810,40 @@ export const FolgenAngelegtSchema = z
   .strict();
 export const FolgeErgebnisSchema = z.object({ id: z.string(), status: FolgeStatusSchema }).strict();
 export const AnlageVerweisErgebnisSchema = AnlageGespeichertSchema;
+
+/**
+ * Jede Anlage einer Meldung eines Ereignisses dieses Mandanten, die die
+ * Dokument-ID nennt (Vergleich ohne Groß-/Kleinschreibung), auch an
+ * verworfenen Ereignissen. Eine leere Liste heißt: Kein Ereignis dieses
+ * Mandanten referenziert die Dokument-ID – nur dann darf die kanzleikonsole
+ * eine „ungeklärte Anlage“ freigeben. Eine Dokument-ID eines anderen Mandanten
+ * oder eine unbekannte ergibt dieselbe leere Liste (kein Existenz-Orakel).
+ *
+ * Ereignisse kennen keine Vertraulichkeit (RT-01 gilt für Feststellungen, ADR
+ * 0001 §10.2); ausgegeben werden nur ID, Nummer und Status des Ereignisses
+ * (wie die Ereignisliste) und der SHA-256 der Anlage (wie das Detail) – keine
+ * Titel, Beschreibungen, Dateinamen, Personen und nichts aus Feststellungen,
+ * die aus dem Ereignis entstanden. `entfernt`: Anlagen einer Meldung stehen im
+ * unveränderlichen Meldungs-Audit und lassen sich nicht entfernen; derzeit
+ * immer `false`.
+ */
+export const EreignisAnlagenJeDokumentSchema = z
+  .object({
+    dokumentId: z.string(),
+    anlagen: z.array(
+      z
+        .object({
+          ereignisId: z.string(),
+          nummer: z.string(),
+          /** Aktueller Status des Ereignisses (auch `VERWORFEN`). */
+          status: EreignisStatusSchema,
+          sha256: Sha256Schema,
+          entfernt: z.boolean(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
 export const PortalMeldungErgebnisSchema = z
   .object({ id: z.string(), nummer: z.string() })
   .strict();
@@ -982,6 +1043,7 @@ export type AnlageVerweis = z.infer<typeof AnlageVerweisSchema>;
 export type PortalMeldung = z.infer<typeof PortalMeldungSchema>;
 export type PortalMeldungenLesen = z.infer<typeof PortalMeldungenLesenSchema>;
 export type EreignisAnlageLesen = z.infer<typeof EreignisAnlageLesenSchema>;
+export type EreignisAnlagenJeDokument = z.infer<typeof EreignisAnlagenJeDokumentSchema>;
 export type EreignisListenEintrag = z.infer<typeof EreignisListenEintragSchema>;
 export type EreignisListe = z.infer<typeof EreignisListeSchema>;
 export type FolgeDetail = z.infer<typeof FolgeDetailSchema>;

@@ -567,6 +567,16 @@ die Prüfung höchstens rund 50 Sekunden fort und meldet sonst „Prüfung nach 
 Einträgen nicht abgeschlossen. Bitte erneut starten.“
 Die Hashkette hat keinen qualifizierten Zeitstempel.
 
+Einträge zu **vertraulichen Feststellungen** und ihren Maßnahmen zeigt die
+Seite ohne Inhalt: Zeit, Aktion, Objekt und Mandant, statt der Person nur die
+Art des Handelnden („Kanzleiperson“, „Mandantenkontakt“, „System“) und das
+Kennzeichen „vertraulich“. Die Seite gilt für alle Mandanten der Kanzlei und
+zeigt deshalb auch Admins und Partnern keine vertraulichen Inhalte; diese
+sehen die Beteiligten in der Feststellung selbst. Ab dem ersten solchen
+Eintrag zeigt die Liste keine Hashes („nicht angezeigt“), weil sich aus ihnen
+vertrauliche Angaben erraten ließen. Die Prüfung mit **Hashkette prüfen**
+umfasst trotzdem alle Einträge.
+
 ### Meldungen in diesen Bereichen
 
 | Meldung                                                                      | Bedeutung und was zu tun ist                                                                                                                                                                                 |

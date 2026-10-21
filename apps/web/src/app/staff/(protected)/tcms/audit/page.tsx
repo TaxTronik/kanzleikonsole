@@ -11,17 +11,35 @@
 // des gehashten Eintrags, aus der Akteursbestätigung der kanzleikonsole zum
 // Zeitpunkt der Handlung) – bewusst nicht mit dem heutigen Namen. Mandanten
 // mit dem Namen aus der kanzleikonsole.
+//
+// Vertrauliche Feststellungen (TCMS s11, kk-tcms-s11 Punkt 7): Die Seite ist
+// mandantenübergreifend und sendet keinen Mandantenbezug; der Dienst liefert
+// Einträge zu vertraulichen Feststellungen und ihren Maßnahmen deshalb
+// maskiert. Angezeigt werden nur die Felder der maskierten Variante, die
+// Akteursart als fester Text und „vertraulich“ – kein Name, kein Detail, kein
+// Hash. Hashes, die der Dienst nicht mitteilt (`null`), erscheinen als „nicht
+// angezeigt“, mit einem festen Hinweis auf die Kettenprüfung.
 // =============================================================================
 
 import Link from 'next/link';
 import { ShieldCheck } from 'lucide-react';
-import { AuditQuerySchema, ENDPUNKTE, MAX_AUDIT_POS } from '@taxtronik/tcms-contract';
+import {
+  AuditQuerySchema,
+  ENDPUNKTE,
+  MAX_AUDIT_POS,
+  type AuditListenEintrag,
+} from '@taxtronik/tcms-contract';
 import { AdminKopf, Blaettern } from '@/components/tcms/admin/teile';
-import { HashKurz } from '@/components/tcms/badges';
+import { HashKurz, VertraulichBadge } from '@/components/tcms/badges';
 import { TcmsAktionsKnopf } from '@/components/tcms/ereignisse/aktionen';
 import { isoZeitText } from '@/components/tcms/format';
 import { TcmsLeer } from '@/components/tcms/leer';
 import { TcmsZustand } from '@/components/tcms/zustand';
+import {
+  AUDIT_HASH_VERBORGEN,
+  AUDIT_VERTRAULICH_HINWEIS,
+  auditAkteurArtText,
+} from '@/server/tcms/audit';
 import { tcmsAdminSeite, tcmsLesen, tcmsTenantLesen } from '@/server/tcms/seite';
 import { auditPruefenAction } from './actions';
 import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
@@ -60,6 +78,71 @@ function href(f: Filter, vor: number | null): string {
   return q ? `/staff/tcms/audit?${q}` : '/staff/tcms/audit';
 }
 
+/** Hash laut Dienst; `null` (vertrauliche Einträge in der Kette) als fester Text. */
+function Hash({ wert, vorgaenger }: { wert: string | null; vorgaenger: string | null }) {
+  if (wert === null) return <span className="text-xs text-muted">{AUDIT_HASH_VERBORGEN}</span>;
+  return (
+    <span className="badge-gray" title={vorgaenger ? `Vorgänger ${vorgaenger}` : undefined}>
+      <HashKurz wert={wert} />
+    </span>
+  );
+}
+
+/**
+ * Eine Zeile. Maskierte Einträge nur mit den Feldern ihrer Variante: Akteursart
+ * als fester Text und „vertraulich“ statt Person, Detail und Hash.
+ */
+function AuditZeile({ e, mandant }: { e: AuditListenEintrag; mandant: string | null }) {
+  const detail = e.maskiert ? '{}' : JSON.stringify(e.detail ?? {});
+  return (
+    <tr id={`pos-${e.pos}`} className="border-t border-default align-top">
+      <td className="px-3 py-2 td-num text-xs">{e.pos}</td>
+      <td className="px-3 py-2 text-xs font-mono whitespace-nowrap">{isoZeitText(e.at)}</td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        {e.maskiert ? (
+          <span className="text-muted">{auditAkteurArtText(e.akteurArt)}</span>
+        ) : (
+          <TcmsText>{e.actorName}</TcmsText>
+        )}
+      </td>
+      <td className="px-3 py-2">
+        <span className="font-mono text-xs font-semibold">
+          <TcmsText>{e.aktion}</TcmsText>
+        </span>
+        {e.maskiert ? (
+          <span className="block mt-1">
+            <VertraulichBadge />
+          </span>
+        ) : detail !== '{}' ? (
+          <span
+            className="block text-xs text-muted font-mono mt-1 max-w-xs truncate"
+            title={detail}
+            {...TCMS_TEXT_ISOLIERT}
+          >
+            {detail}
+          </span>
+        ) : null}
+      </td>
+      <td className="px-3 py-2 text-xs">
+        {e.objektTyp}
+        <span className="block font-mono text-muted" title={e.objektId}>
+          …{e.objektId.slice(-8)}
+        </span>
+      </td>
+      <td className="px-3 py-2 text-xs text-secondary">
+        {mandant ?? <span className="text-muted">–</span>}
+      </td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        {e.maskiert ? (
+          <Hash wert={null} vorgaenger={null} />
+        ) : (
+          <Hash wert={e.hash} vorgaenger={e.prevHash} />
+        )}
+      </td>
+    </tr>
+  );
+}
+
 export default async function TcmsAuditPage({ searchParams }: { searchParams: Promise<SP> }) {
   const seite = await tcmsAdminSeite();
   if (!seite.ok) return <TcmsZustand zustand={seite.zustand} />;
@@ -88,6 +171,7 @@ export default async function TcmsAuditPage({ searchParams }: { searchParams: Pr
     ...new Set(eintraege.flatMap((e) => [e.aktion.split('.').slice(0, 2).join('.'), e.aktion])),
   ].sort();
   const gefiltert = f.mandantId !== '' || f.aktion !== '';
+  const verborgen = kopf?.hash === null || eintraege.some((e) => e.maskiert || e.hash === null);
 
   return (
     <div className="p-8">
@@ -159,7 +243,9 @@ export default async function TcmsAuditPage({ searchParams }: { searchParams: Pr
           <p className="text-xs text-muted mt-1 mb-3">
             {kopf ? (
               <>
-                Kettenende #{kopf.pos} · <HashKurz wert={kopf.hash} /> · {isoZeitText(kopf.at)}
+                Kettenende #{kopf.pos} ·{' '}
+                {kopf.hash === null ? AUDIT_HASH_VERBORGEN : <HashKurz wert={kopf.hash} />} ·{' '}
+                {isoZeitText(kopf.at)}
               </>
             ) : (
               'noch keine Einträge'
@@ -175,6 +261,11 @@ export default async function TcmsAuditPage({ searchParams }: { searchParams: Pr
         Hashkette ohne qualifizierten Zeitstempel. Ein Hash bindet Inhalte, er authentifiziert keine
         Person. Einträge werden nie geändert oder gelöscht.
       </p>
+      {verborgen ? (
+        <p className="alert-info-sm mb-4" role="note">
+          {AUDIT_VERTRAULICH_HINWEIS}
+        </p>
+      ) : null}
 
       <section className="card overflow-x-auto" aria-labelledby="tcms-audit-liste">
         <h2 id="tcms-audit-liste" className="sr-only">
@@ -213,49 +304,15 @@ export default async function TcmsAuditPage({ searchParams }: { searchParams: Pr
               </tr>
             </thead>
             <tbody>
-              {eintraege.map((e) => {
-                const detail = JSON.stringify(e.detail ?? {});
-                const mandant = e.mandantId ? mandantName.get(e.mandantId.toLowerCase()) : null;
-                return (
-                  <tr key={e.pos} id={`pos-${e.pos}`} className="border-t border-default align-top">
-                    <td className="px-3 py-2 td-num text-xs">{e.pos}</td>
-                    <td className="px-3 py-2 text-xs font-mono whitespace-nowrap">
-                      {isoZeitText(e.at)}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <TcmsText>{e.actorName}</TcmsText>
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="font-mono text-xs font-semibold">
-                        <TcmsText>{e.aktion}</TcmsText>
-                      </span>
-                      {detail !== '{}' ? (
-                        <span
-                          className="block text-xs text-muted font-mono mt-1 max-w-xs truncate"
-                          title={detail}
-                          {...TCMS_TEXT_ISOLIERT}
-                        >
-                          {detail}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-3 py-2 text-xs">
-                      {e.objektTyp}
-                      <span className="block font-mono text-muted" title={e.objektId}>
-                        …{e.objektId.slice(-8)}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-secondary">
-                      {mandant ?? <span className="text-muted">–</span>}
-                    </td>
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span className="badge-gray" title={`Vorgänger ${e.prevHash}`}>
-                        <HashKurz wert={e.hash} />
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
+              {eintraege.map((e) => (
+                <AuditZeile
+                  key={e.pos}
+                  e={e}
+                  mandant={
+                    e.mandantId ? (mandantName.get(e.mandantId.toLowerCase()) ?? null) : null
+                  }
+                />
+              ))}
             </tbody>
           </table>
         )}

@@ -8,6 +8,7 @@
 // =============================================================================
 
 import { z } from 'zod';
+import { AKTEUR_ARTEN } from '../akteur';
 import { MAX_MANDANTEN_JE_ANFRAGE } from '../fehler';
 
 /**
@@ -1208,36 +1209,80 @@ export const AuditQuerySchema = z
   .strict()
   .superRefine(auditRegeln);
 
-const auditEintrag = z
+const kettenHash = z.string().regex(/^[0-9a-f]{64}$/);
+
+/** Felder jedes Eintrags, ob maskiert oder nicht (keine Inhalte, keine Personen). */
+const auditRahmen = {
+  /** Laufende Position im Tenant (1, 2, 3, …). */
+  pos: z.number().int().min(1),
+  at: zeitpunkt,
+  /** Ereignisart (`tcms.<bereich>.<aktion>`). */
+  aktion: text(200),
+  objektTyp: text(200),
+  objektId: text(200),
+  programmId: text(200).nullable(),
+  /** Mandant des Programms (Zuordnung für die Anzeige), sonst null. */
+  mandantId: z.uuid().nullable(),
+};
+
+/**
+ * Eintrag mit Inhalt. `prevHash`/`hash` sind `null` ab der ersten Position, die
+ * für den Lesenden maskiert ist (tcms-s11): Jeder spätere Hash hängt vom
+ * maskierten Inhalt ab und erlaubte, geratene Inhalte mit wenigen Werten
+ * (§-153-Entscheidung, Auswirkung, Schwere) offline zu bestätigen.
+ */
+const auditEintragOffen = z
   .object({
-    /** Laufende Position im Tenant (1, 2, 3, …). */
-    pos: z.number().int().min(1),
-    at: zeitpunkt,
+    maskiert: z.literal(false),
+    ...auditRahmen,
     actorId: text(200).nullable(),
     actorName: text(200),
-    aktion: text(200),
-    objektTyp: text(200),
-    objektId: text(200),
-    programmId: text(200).nullable(),
-    /** Mandant des Programms (Zuordnung für die Anzeige), sonst null. */
-    mandantId: z.uuid().nullable(),
     detail: z.json(),
-    prevHash: z.string().regex(/^[0-9a-f]{64}$/),
-    hash: z.string().regex(/^[0-9a-f]{64}$/),
+    prevHash: kettenHash.nullable(),
+    hash: kettenHash.nullable(),
   })
   .strict();
 
-/** Antwort von `GET /v1/audit`: eine Seite und der Cursor für die nächste. */
+/**
+ * Eintrag zu einer vertraulichen Feststellung (bzw. ihrer Maßnahmen) für
+ * Nicht-Beteiligte (`kannVertraulichLesen` mit dem Mandantenbezug der Anfrage,
+ * tcms-s11): Positivliste aus Ereignisart, Zeitpunkt, Akteursart, Objekt und
+ * „vertraulich“ – ohne Namen, Personen-IDs, Detail und Hashes.
+ */
+const auditEintragMaskiert = z
+  .object({
+    maskiert: z.literal(true),
+    ...auditRahmen,
+    /**
+     * Akteursart: `SYSTEM` nach der Kennzeichnung durch `mitAudit`, `MANDANT`
+     * bei einer Kontakt-ID mit Rolle im Tenant, sonst `KANZLEI`; `null` ohne
+     * Akteur-ID.
+     */
+    akteurArt: z.enum(AKTEUR_ARTEN).nullable(),
+    vertraulich: z.literal(true),
+  })
+  .strict();
+
+const auditEintrag = z.discriminatedUnion('maskiert', [auditEintragOffen, auditEintragMaskiert]);
+export type AuditListenEintrag = z.infer<typeof auditEintrag>;
+
+/**
+ * Antwort von `GET /v1/audit`: eine Seite und der Cursor für die nächste.
+ * Inhalte vertraulicher Feststellungen sehen nur Beteiligte (tcms-s11, ADR
+ * 0001 §10.2): für alle anderen maskierte Einträge und keine Hashes ab der
+ * ersten maskierten Position. Die Kettenprüfung (`POST /v1/audit/pruefen`)
+ * rechnet unverändert über die vollständigen Einträge.
+ */
 export const AuditListeAntwortSchema = z
   .object({
     eintraege: z.array(auditEintrag),
     /** Position für `nach` bzw. `vor` der nächsten Seite; null = keine weitere. */
     weiter: z.number().int().nullable(),
-    /** Letzter Eintrag der Kette (unabhängig vom Filter). */
+    /** Letzter Eintrag der Kette (unabhängig vom Filter); `hash` wie bei den Einträgen. */
     kopf: z
       .object({
         pos: z.number().int().min(1),
-        hash: z.string().regex(/^[0-9a-f]{64}$/),
+        hash: kettenHash.nullable(),
         at: zeitpunkt,
       })
       .strict()
