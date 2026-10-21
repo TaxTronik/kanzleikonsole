@@ -5,14 +5,15 @@
 // Echt sind: der Zustell-Worker (tcms-nachrichten), die Mail-Outbox
 // (processMailOutbox mit Aktualitätsprüfung, Claim, Endstatus und
 // Inhalts-Leerung) und der Versand über @taxtronik/mail (nodemailer, SMTP aus
-// der ENV, Klartext nur gegen 127.0.0.1:1025 außerhalb von Produktion). Das
-// Tax-CMS ist ein In-Memory-Postausgang; die Senke ist ein minimaler
-// SMTP-Server in diesem Test, der annimmt oder jeden Empfänger abweist.
+// der ENV, mit Pflicht-STARTTLS wie in Produktion). Das Tax-CMS ist ein
+// In-Memory-Postausgang; die Senke ist ein minimaler SMTP-Server in diesem
+// Test, der annimmt oder jeden Empfänger abweist.
 //
 // Belegt:
 //   - Annahme durch den Mailserver: Die Mail mit dem Code erreicht die Senke
-//     (Code im Text, nie im Betreff), der Auftrag endet PROVIDER_ACCEPTED ohne
-//     Inhalt, erst danach meldet der Worker „zugestellt“ (vorher nichts).
+//     (Code im Text, nie im Betreff, nur nach STARTTLS übertragen), der
+//     Auftrag endet PROVIDER_ACCEPTED ohne Inhalt, erst danach meldet der
+//     Worker „zugestellt“ (vorher nichts).
 //   - Ablehnung durch den Mailserver: Nach dem letzten Versuch FAILED, der
 //     Worker meldet „unzustellbar“ (SONSTIGES), nie „zugestellt“; der Code
 //     liegt danach nirgends mehr in der Datenbank.
@@ -20,23 +21,83 @@
 //     erhält nichts, gemeldet wird „unzustellbar“ (KEIN_PORTALZUGANG).
 //   - Logs ohne Code, Adresse und Personen-IDs.
 //
-// Läuft mit der Worker-DB-Suite (DB_TESTS=1 bzw. WORKER_DB_TEST=1) und
-// braucht den freien Port 1025 auf 127.0.0.1 (in CI: Job „db“ ohne MailHog).
+// Läuft mit der Worker-DB-Suite (DB_TESTS=1 bzw. WORKER_DB_TEST=1). Die Senke
+// lauscht auf einem freien Port von 127.0.0.1, nicht auf 1025: Im Host-Netz des
+// CI-Runners belegt der MailHog des parallel laufenden E2E-Jobs 1025 (Lauf
+// 3894). Abseits von 1025 verlangt @taxtronik/mail STARTTLS (requireTLS); die
+// Senke bietet es mit einem Einmal-Zertifikat (openssl), dem nur dieser
+// Testprozess vertraut.
 //
 // Fachkatalog: MAIL-OUTBOX-001
 // =============================================================================
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { createServer, type Server, type Socket } from 'node:net';
+import type { AddressInfo, Server, Socket } from 'node:net';
+import { TLSSocket, createSecureContext } from 'node:tls';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-const SENKE_PORT = 1025;
-
-vi.hoisted(() => {
+const senkeBasis = await vi.hoisted(async () => {
   // Vor dem ersten Import der Konfiguration: Versand an die Senke dieses Tests.
   process.env['SMTP_HOST'] = '127.0.0.1';
-  process.env['SMTP_PORT'] = '1025';
   process.env['SMTP_FROM'] = 'kanzlei@example.test';
+  process.env['SMTP_PORT'] = '1025';
+  if (process.env['WORKER_DB_TEST'] !== '1' && process.env['DB_TESTS'] !== '1') return null;
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, readFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const net = await import('node:net');
+  const tls = await import('node:tls');
+  // Selbstsigniertes Einmal-Zertifikat für 127.0.0.1; der Schlüssel liegt nur
+  // im Speicher dieses Prozesses, das Verzeichnis wird sofort gelöscht.
+  const ordner = mkdtempSync(join(tmpdir(), 'smtp-senke-'));
+  let schluessel: string;
+  let zertifikat: string;
+  try {
+    execFileSync(
+      'openssl',
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'ec',
+        '-pkeyopt',
+        'ec_paramgen_curve:prime256v1',
+        '-nodes',
+        '-days',
+        '1',
+        '-subj',
+        '/CN=senke.test',
+        '-addext',
+        'subjectAltName=IP:127.0.0.1',
+        '-addext',
+        'basicConstraints=critical,CA:TRUE',
+        '-addext',
+        'keyUsage=critical,digitalSignature,keyCertSign',
+        '-keyout',
+        join(ordner, 'schluessel.pem'),
+        '-out',
+        join(ordner, 'zertifikat.pem'),
+      ],
+      { stdio: 'ignore' },
+    );
+    schluessel = readFileSync(join(ordner, 'schluessel.pem'), 'utf8');
+    zertifikat = readFileSync(join(ordner, 'zertifikat.pem'), 'utf8');
+  } finally {
+    rmSync(ordner, { recursive: true, force: true });
+  }
+  // Nur dieser Testprozess vertraut der Senke; rejectUnauthorized bleibt an.
+  tls.setDefaultCACertificates([...tls.getCACertificates('default'), zertifikat]);
+  // Den Server hier binden (Port 0 = frei) und offen an die Senke übergeben:
+  // kein Fenster, in dem ein anderer Prozess den Port nehmen könnte.
+  const server = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve());
+  });
+  server.unref();
+  process.env['SMTP_PORT'] = String((server.address() as AddressInfo).port);
+  return { server, schluessel, zertifikat };
 });
 
 const enabled = process.env['WORKER_DB_TEST'] === '1' || process.env['DB_TESTS'] === '1';
@@ -83,50 +144,46 @@ interface Sitzung {
   von: string | null;
   an: string[];
   daten: string | null;
+  /** Nach STARTTLS (TLS-Handshake abgeschlossen). */
+  verschluesselt: boolean;
 }
 
 /**
- * Minimaler SMTP-Server (RFC 5321, ohne STARTTLS und AUTH): EHLO/HELO, MAIL,
- * RCPT, DATA, RSET, NOOP, QUIT. `ablehnen`: jeder Empfänger 550 (eindeutige
- * Ablehnung des Providers).
+ * Minimaler SMTP-Server (RFC 5321 mit STARTTLS nach RFC 3207, ohne AUTH):
+ * EHLO/HELO, STARTTLS, MAIL, RCPT, DATA, RSET, NOOP, QUIT. `ablehnen`: jeder
+ * Empfänger 550 (eindeutige Ablehnung des Providers).
  */
 class SmtpSenke {
   readonly sitzungen: Sitzung[] = [];
   ablehnen = false;
-  private server: Server | null = null;
   private readonly sockets = new Set<Socket>();
 
-  async starte(): Promise<void> {
-    this.server = createServer((socket) => this.bediene(socket));
-    await new Promise<void>((resolve, reject) => {
-      this.server!.once('error', (fehler: NodeJS.ErrnoException) =>
-        reject(
-          fehler.code === 'EADDRINUSE'
-            ? new Error(`SMTP-Senke: Port ${SENKE_PORT} auf 127.0.0.1 ist belegt.`)
-            : fehler,
-        ),
-      );
-      this.server!.listen(SENKE_PORT, '127.0.0.1', () => resolve());
-    });
+  constructor(
+    private readonly basis: { server: Server; schluessel: string; zertifikat: string } | null,
+  ) {}
+
+  starte(): void {
+    if (!this.basis) throw new Error('SMTP-Senke: ohne DB-Suite nicht vorbereitet.');
+    this.basis.server.on('connection', (socket: Socket) => this.bediene(socket));
   }
 
   async stoppe(): Promise<void> {
     for (const s of this.sockets) s.destroy();
     await new Promise<void>((resolve) =>
-      this.server ? this.server.close(() => resolve()) : resolve(),
+      this.basis?.server.listening ? this.basis.server.close(() => resolve()) : resolve(),
     );
   }
 
-  private bediene(socket: Socket): void {
+  private bediene(socket: Socket, bestehend?: Sitzung): void {
     this.sockets.add(socket);
     socket.on('close', () => this.sockets.delete(socket));
     socket.setEncoding('utf8');
-    const sitzung: Sitzung = { von: null, an: [], daten: null };
-    this.sitzungen.push(sitzung);
+    const sitzung: Sitzung = bestehend ?? { von: null, an: [], daten: null, verschluesselt: false };
+    if (!bestehend) this.sitzungen.push(sitzung);
     let puffer = '';
     let imDaten = false;
     const antworte = (zeile: string) => socket.write(`${zeile}\r\n`);
-    antworte('220 senke.test ESMTP');
+    if (!bestehend) antworte('220 senke.test ESMTP');
     socket.on('data', (teil: string) => {
       puffer += teil;
       for (;;) {
@@ -145,7 +202,28 @@ class SmtpSenke {
         puffer = puffer.slice(zeilenende + 2);
         const befehl = zeile.slice(0, 4).toUpperCase();
         if (befehl === 'EHLO') {
-          socket.write('250-senke.test\r\n250 8BITMIME\r\n');
+          socket.write(
+            sitzung.verschluesselt
+              ? '250-senke.test\r\n250 8BITMIME\r\n'
+              : '250-senke.test\r\n250-8BITMIME\r\n250 STARTTLS\r\n',
+          );
+        } else if (befehl === 'STAR' && !sitzung.verschluesselt) {
+          // STARTTLS: ab hier spricht der Client TLS auf demselben Socket.
+          antworte('220 2.0.0 TLS bereit');
+          socket.removeAllListeners('data');
+          const sicher = new TLSSocket(socket, {
+            isServer: true,
+            secureContext: createSecureContext({
+              key: this.basis!.schluessel,
+              cert: this.basis!.zertifikat,
+              minVersion: 'TLSv1.2',
+            }),
+          });
+          sicher.once('secure', () => {
+            sitzung.verschluesselt = true;
+          });
+          this.bediene(sicher, sitzung);
+          return;
         } else if (befehl === 'HELO') {
           antworte('250 senke.test');
         } else if (befehl === 'MAIL') {
@@ -201,7 +279,7 @@ class Postausgang implements TcmsPostausgang {
 }
 
 describeDb('kk-tcms-s11: Zustellung Ende zu Ende mit SMTP-Senke', () => {
-  const senke = new SmtpSenke();
+  const senke = new SmtpSenke(senkeBasis);
   let tenantId = '';
   let mandantId = '';
   let kontaktId = '';
@@ -282,7 +360,7 @@ describeDb('kk-tcms-s11: Zustellung Ende zu Ende mit SMTP-Senke', () => {
   }
 
   beforeAll(async () => {
-    await senke.starte();
+    senke.starte();
     tenantId = await createTenantFixture(prismaOwner, 'tcms-e2e');
     const admin = (
       await prismaOwner.staffUser.create({
@@ -336,6 +414,8 @@ describeDb('kk-tcms-s11: Zustellung Ende zu Ende mit SMTP-Senke', () => {
     const [mail] = senke.nachrichten;
     expect(senke.nachrichten).toHaveLength(1);
     expect(mail!.an).toEqual(['<marta@seestern.example>']);
+    // Pflicht-STARTTLS wie in Produktion: der Code ging nur verschlüsselt über die Leitung.
+    expect(mail!.verschluesselt).toBe(true);
     const betreff = /^Subject: (.*)$/im.exec(mail!.daten!)?.[1] ?? '';
     expect(betreff).not.toBe('');
     expect(betreff).not.toContain(CODE);
