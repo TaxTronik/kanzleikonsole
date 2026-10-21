@@ -440,6 +440,14 @@ describe('ungeklaerteAnlageZuordnenAction (kk-tcms-s10nach)', () => {
       errorCode: 'VALIDATION_ERROR',
       fieldErrors: { ereignisId: [expect.stringContaining('enthält die Anlage nicht')] },
     });
+    // kk-tcms-fix4: Auch der SHA-256 der Antwort muss der Anlage entsprechen
+    // (wie in der Datei-Route), nicht nur der angefragte Pfad.
+    const andererHash = await lauf({ ...ANTWORT, sha256: 'cd'.repeat(32) });
+    expect(andererHash.r).toMatchObject({
+      ok: false,
+      errorCode: 'VALIDATION_ERROR',
+      fieldErrors: { ereignisId: [expect.stringContaining('enthält die Anlage nicht')] },
+    });
     const s = spec();
     const v = await s.vorbereiten!(TX, K, { verknuepfungId: VERKNUEPFUNG, ereignisId: EREIGNIS });
     const fehlt = await s.aufruf(

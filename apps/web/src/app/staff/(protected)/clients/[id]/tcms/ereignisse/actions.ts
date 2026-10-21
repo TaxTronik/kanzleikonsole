@@ -385,7 +385,8 @@ const ZuordnenFormular = z.object({ ereignisId: ObjektIdSchema });
  * Manuelle Klärung (nur Admin/Partner): Eine Anlage, deren Meldung nicht mehr
  * automatisch geklärt wird, einem Ereignis zuordnen – nur, wenn das Tax-CMS
  * für genau dieses Ereignis eine Anlage mit demselben SHA-256 und derselben
- * Dokument-ID führt (`ereignisAnlageLesen`). Danach gilt die Bindung wie bei
+ * Dokument-ID führt (`ereignisAnlageLesen`; beides wird an der Antwort
+ * geprüft, nicht nur am angefragten Pfad). Danach gilt die Bindung wie bei
  * jeder angenommenen Meldung (frei erst nach dem bestätigten Verwerfen). Eine
  * Freigabe ohne Ereignis gibt es hier bewusst nicht (das Ereignis kann
  * existieren).
@@ -423,9 +424,10 @@ export async function ungeklaerteAnlageZuordnenAction(
       if (!v.anlage)
         return { ok: false as const, error: ANLAGE_NICHT_OFFEN, errorCode: 'CONFLICT' as const };
       let dokumentId: string | undefined;
+      let sha256: string | undefined;
       try {
         ({
-          daten: { dokumentId },
+          daten: { dokumentId, sha256 },
         } = await dienst.rufe(ENDPUNKTE.ereignisAnlageLesen, {
           params: { ereignisId: d.ereignisId, sha256: v.anlage.sha256 },
         }));
@@ -440,7 +442,13 @@ export async function ungeklaerteAnlageZuordnenAction(
         }
         throw fehler;
       }
-      if (dokumentId?.toLowerCase() !== v.anlage.dokumentId.toLowerCase()) {
+      // Der Verweis des Dienstes muss die Anlage selbst bezeichnen: dieselbe
+      // Dokument-ID UND derselbe SHA-256 (wie die Datei-Route), nicht nur ein
+      // Treffer unter dem angefragten Pfad (kk-tcms-fix4, Härtung).
+      if (
+        sha256 !== v.anlage.sha256 ||
+        dokumentId?.toLowerCase() !== v.anlage.dokumentId.toLowerCase()
+      ) {
         return {
           ok: false as const,
           error: ANLAGE_NICHT_IM_EREIGNIS,

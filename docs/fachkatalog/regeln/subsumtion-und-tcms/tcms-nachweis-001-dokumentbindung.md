@@ -369,7 +369,9 @@ konfigurierten Dienst) löscht Vorgänge nach dem Fenster; Anlagen fasst er
 nicht an. `ungeklaerteMeldungsAnlagenTx` liefert offene Anlagen ohne
 Ereignis-ID, die kein laufender Vorgang mehr klärt, für Arbeitskorb und
 Ereigniseingang; `ungeklaerteAnlageZuordnenAction` setzt die Ereignis-ID nur
-nach `ereignisAnlageLesen`. In der Datenbank hält ein Guard den Vorgang
+nach `ereignisAnlageLesen`, wenn dessen Antwort dieselbe Dokument-ID und
+denselben SHA-256 trägt wie die Verknüpfung (wie die Datei-Route; nicht nur
+ein Treffer unter dem angefragten Pfad, kk-tcms-fix4). In der Datenbank hält ein Guard den Vorgang
 (neu nur ungesendet und mit einem Kontakt dieses Mandanten; Bezug, Schlüssel
 und Anlage unveränderlich; Sendezeitpunkt genau einmal), CHECKs verlangen
 Inhalt genau dann, wenn gesendet, und nur im Format der Secret-Box (nie
@@ -531,7 +533,8 @@ Hydrierung, stabil über Revalidierungen), `portal-seiten.test.tsx` die
 offenen Meldungen und die einmalige automatische Klärung,
 `ereignisse-aktionen.test.ts`, `ereignisse-seite.test.tsx` und
 `seite.test.tsx` des Arbeitskorbs die ungeklärten Anlagen (Zuordnen nur für
-Admins/Partner und nur nach Bestätigung durch das Tax-CMS, keine Freigabe),
+Admins/Partner und nur nach Bestätigung durch das Tax-CMS mit derselben
+Dokument-ID und demselben SHA-256 in der Antwort, keine Freigabe),
 `tcms-nachrichten-db.test.ts` des Workers die Bereinigung nach echter Zeit
 ohne Freigabe sowie `tcms-db-regeln.test.ts` Guard, CHECKs, Eindeutigkeit,
 Paarprüfung, RLS und Rechte von `tcms_portal_report` und den Schlüssel an der
