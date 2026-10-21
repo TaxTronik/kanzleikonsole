@@ -14,12 +14,20 @@
 //     (Fremdschlüssel; Mandant ohne GwG-Belege, nur mit Superuser herstellbar –
 //     ein aktiver Mandant hat sonst immer GwG-Belege, deren Schranke vorher
 //     abweist, siehe redteam-dokumente-db.test.ts RT3B-D2).
+//   - kk-tcms-s11 (Produktentscheidung Rey Koxha, 21.10.2026): Ein GwG-Beleg
+//     mit (auch freigegebenem) Verweis gilt zugleich als steuerliche
+//     Unterlage. app.raise_tcms_gwg_evidence_retention hebt sein
+//     Aufbewahrungsende auf die GoBD-Frist der Steuerunterlage (Migration für
+//     Altbestand, Trigger bei jeder Bindung), nie herab; der Claim weist vor
+//     Ablauf dieser Frist ab, auch ohne angehobenes Aufbewahrungsende; die
+//     DB-Vernichtung entfernt freigegebene Verweise mit (Fremdschlüssel).
 // Datenbankfehler prüft die gemeinsame Prüfhilfe (testing/db-fehler.ts,
 // kk-tcms-qual): SQLSTATE, Meldung und Prisma-Code der Datenbank, nie die
 // zusammengesetzte Prisma-Meldung.
 // Die Web-Suiten (Owner-/App-Rolle) belegen Aktionen, Retag und Nebenläufigkeit:
 // apps/web/src/server/tcms/__tests__/nachweis-bindung-db.test.ts.
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseErrorInfo } from '../database-error';
 import { dbAbgewiesen, erwarteDbFehler, type DbErwartung } from '../testing/db-fehler';
@@ -81,7 +89,10 @@ function imTenant<T>(fn: (tx: PrismaTypen.TransactionClient) => Promise<T>): Pro
 }
 
 /** Dokument mit einer sauberen Version; Klassifikation und Daten frei wählbar. */
-async function dokument(classification: 'GENERAL' | 'GWG_EVIDENCE') {
+async function dokument(
+  classification: 'GENERAL' | 'GWG_EVIDENCE',
+  daten: { createdAt?: Date; retentionUntil?: Date | null } = {},
+) {
   const doc = await owner.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true),
       set_config('app.current_actor_id', ${staffId}, true),
@@ -95,6 +106,7 @@ async function dokument(classification: 'GENERAL' | 'GWG_EVIDENCE') {
         mimeType: 'application/pdf',
         retentionUntil: new Date('2025-01-01T00:00:00Z'),
         createdAt: new Date('2019-01-15T00:00:00Z'),
+        ...daten,
       },
     });
   });
@@ -134,6 +146,37 @@ async function binden(d: { id: string; versionId: string }) {
       }),
     )
   ).id;
+}
+
+/** Verknüpfung wie vor RT3B-K-01 (Altbestand; nur im Replikationsmodus herstellbar). */
+async function altbestandBinden(
+  d: { id: string; versionId: string },
+  freigabe: { releasedAt: Date } | null = null,
+) {
+  await owner.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe('SET LOCAL session_replication_role = replica');
+    await tx.$executeRaw`
+      INSERT INTO tcms_document_reference
+        (tenant_id, client_id, document_id, document_version_id, sha256,
+         tcms_subject, tcms_execution_id, tcms_evidence_id, created_by,
+         released_at, released_by, release_reason)
+      VALUES (${tenantId}::uuid, ${clientId}::uuid, ${d.id}::uuid,
+              ${d.versionId}::uuid, ${Buffer.alloc(32, 0x4b)},
+              'EXECUTION', 'cmvfaltbestand', ${`nw${randomUUID().replaceAll('-', '')}`},
+              ${staffId}::uuid, ${freigabe?.releasedAt ?? null}, ${freigabe ? staffId : null}::uuid,
+              ${freigabe ? 'REMOVED' : null})`;
+  });
+}
+
+/** Wie die Migration 20261021150000: Aufbewahrung des Altbestands anheben. */
+async function anheben(documentId: string): Promise<number> {
+  const [r] = await owner.$queryRaw<Array<{ n: number }>>`
+    SELECT app.raise_tcms_gwg_evidence_retention(${documentId}::uuid) AS n`;
+  return r!.n;
+}
+
+async function aufbewahrung(documentId: string): Promise<Date | null> {
+  return (await owner.document.findUniqueOrThrow({ where: { id: documentId } })).retentionUntil;
 }
 
 beforeAll(async () => {
@@ -220,13 +263,23 @@ describeWithDatabase('Bindung an das Tax-CMS in der Datenbank (RT3B-K-01)', () =
       gwgDestructionRequestedAt: null,
     });
 
-    // Gegenprobe: nach der Freigabe läuft derselbe Beleg durch den Claim.
+    // Nach der Freigabe sperrt nicht mehr die Bindung, sondern die steuerliche
+    // Frist des früheren Nachweises (kk-tcms-s11: Anlage 2019 → bis 1.1.2030);
+    // die Vernichtung nach Ablauf beider Fristen belegt der Test unten.
     await owner.tcmsDocumentReference.updateMany({
       where: { documentId: beleg.id },
       data: { releasedAt: new Date(), releasedBy: staffId, releaseReason: 'REMOVED' },
     });
-    await vorgemerkt(
-      Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${beleg.id}::uuid)::text AS claim`,
+    await dbAbgewiesen(
+      vorgemerkt(
+        Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${beleg.id}::uuid)::text AS claim`,
+      ),
+      {
+        sqlState: '23514',
+        meldung:
+          /^GwG-Beleg ist als Nachweis des Tax-CMS zugleich steuerliche Unterlage; deren Aufbewahrungsfrist ist nicht abgelaufen\.$/,
+      },
+      'Claim nach der Freigabe',
     );
   });
 
@@ -378,5 +431,166 @@ describeWithDatabase('Bindung an das Tax-CMS in der Datenbank (RT3B-K-01)', () =
     );
     expect(await owner.client.count({ where: { id: mandant } })).toBe(1);
     expect(await owner.document.count({ where: { id: dok, clientId: mandant } })).toBe(1);
+  });
+
+  it('kk-tcms-s11: GwG-Beleg mit Verweis – Aufbewahrung steigt auf die Steuerfrist, nie herab, nicht bei NULL, Vormerkung oder ohne Verweis', async () => {
+    const steuerfrist = new Date('2030-01-01T00:00:00Z'); // Anlage 2019: 2019 + 10 + 1
+    // Offen gebundener Altbestand: angehoben.
+    const offen = await dokument('GWG_EVIDENCE');
+    await altbestandBinden(offen);
+    expect(await anheben(offen.id)).toBe(1);
+    expect(await aufbewahrung(offen.id)).toEqual(steuerfrist);
+    expect(await anheben(offen.id), 'idempotent').toBe(0);
+    // Freigegebene Bindung: ebenso (auch nach der Freigabe).
+    const frei = await dokument('GWG_EVIDENCE');
+    await altbestandBinden(frei, { releasedAt: new Date('2024-05-01T00:00:00Z') });
+    expect(await anheben(frei.id)).toBe(1);
+    expect(await aufbewahrung(frei.id)).toEqual(steuerfrist);
+    // Längeres Aufbewahrungsende bleibt (nie herab).
+    const laenger = await dokument('GWG_EVIDENCE', {
+      retentionUntil: new Date('2040-01-01T00:00:00Z'),
+    });
+    await altbestandBinden(laenger);
+    expect(await anheben(laenger.id)).toBe(0);
+    expect(await aufbewahrung(laenger.id)).toEqual(new Date('2040-01-01T00:00:00Z'));
+    // Fehlendes Aufbewahrungsende bleibt NULL (Vernichtung bleibt fail closed gesperrt).
+    const ohneEnde = await dokument('GWG_EVIDENCE', { retentionUntil: null });
+    await altbestandBinden(ohneEnde);
+    expect(await anheben(ohneEnde.id)).toBe(0);
+    expect(await aufbewahrung(ohneEnde.id)).toBeNull();
+    // Vorgemerkter Beleg ist eingefroren: nicht angehoben (der Claim hält die Frist).
+    const vorgemerkt = await dokument('GWG_EVIDENCE');
+    await altbestandBinden(vorgemerkt);
+    await owner.document.update({
+      where: { id: vorgemerkt.id },
+      data: { gwgDestructionRequestedAt: new Date(), gwgDestructionRequestedBy: staffId },
+    });
+    expect(await anheben(vorgemerkt.id)).toBe(0);
+    // Ohne Verweis und als allgemeines Dokument: unverändert.
+    const ohneVerweis = await dokument('GWG_EVIDENCE');
+    expect(await anheben(ohneVerweis.id)).toBe(0);
+    const allgemein = await dokument('GENERAL');
+    await binden(allgemein);
+    expect(await anheben(allgemein.id)).toBe(0);
+    for (const d of [ohneVerweis, allgemein]) {
+      expect(await aufbewahrung(d.id)).toEqual(new Date('2025-01-01T00:00:00Z'));
+    }
+  });
+
+  it('kk-tcms-s11: die Migration hebt den Altbestand an (Datenschritt der Migration 20261021150000)', async () => {
+    const migration = readFileSync(
+      new URL(
+        '../../prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const datenschritt = migration.slice(
+      migration.indexOf('DO $migration$'),
+      migration.lastIndexOf('$migration$;') + '$migration$;'.length,
+    );
+    expect(datenschritt).toMatch(/^DO \$migration\$[\s\S]+\$migration\$;$/);
+    const offen = await dokument('GWG_EVIDENCE');
+    await altbestandBinden(offen);
+    const frei = await dokument('GWG_EVIDENCE');
+    await altbestandBinden(frei, { releasedAt: new Date('2024-05-01T00:00:00Z') });
+    const ohneVerweis = await dokument('GWG_EVIDENCE');
+    // Idempotent und nur für GwG-Belege mit Verweis (die Test-DB teilt sich der Lauf).
+    await owner.$executeRawUnsafe(datenschritt);
+    await owner.$executeRawUnsafe(datenschritt);
+    expect(await aufbewahrung(offen.id)).toEqual(new Date('2030-01-01T00:00:00Z'));
+    expect(await aufbewahrung(frei.id)).toEqual(new Date('2030-01-01T00:00:00Z'));
+    expect(await aufbewahrung(ohneVerweis.id)).toEqual(new Date('2025-01-01T00:00:00Z'));
+  });
+
+  it('kk-tcms-s11: die Bindung eines GwG-Belegs hebt die Aufbewahrung an (Trigger, ohne den Guard der Verknüpfung)', async () => {
+    // Heute weist der Guard GwG-Belege ab; der Trigger hält die Regel für jeden
+    // Pfad, der sie künftig zulässt (zurückgerollte Superuser-Transaktion).
+    const beleg = await dokument('GWG_EVIDENCE');
+    class Rueckrollen extends Error {}
+    let gesehen: Date | null = null;
+    await owner
+      .$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          'ALTER TABLE public.tcms_document_reference DISABLE TRIGGER tcms_document_reference_guard',
+        );
+        await tx.$executeRaw`
+          INSERT INTO tcms_document_reference
+            (tenant_id, client_id, document_id, document_version_id, sha256,
+             tcms_subject, tcms_execution_id, created_by)
+          VALUES (${tenantId}::uuid, ${clientId}::uuid, ${beleg.id}::uuid,
+                  ${beleg.versionId}::uuid, ${Buffer.alloc(32, 0x4b)},
+                  'EXECUTION', 'cmvftrigger', ${staffId}::uuid)`;
+        gesehen = (await tx.document.findUniqueOrThrow({ where: { id: beleg.id } })).retentionUntil;
+        throw new Rueckrollen();
+      })
+      .catch((fehler: unknown) => {
+        if (!(fehler instanceof Rueckrollen)) throw fehler;
+      });
+    expect(gesehen).toEqual(new Date('2030-01-01T00:00:00Z'));
+    expect(await aufbewahrung(beleg.id)).toEqual(new Date('2025-01-01T00:00:00Z'));
+  });
+
+  it('kk-tcms-s11: der Claim weist einen früheren Nachweis vor Ablauf der Steuerfrist ab, auch ohne angehobenes Aufbewahrungsende', async () => {
+    const beleg = await dokument('GWG_EVIDENCE');
+    await altbestandBinden(beleg, { releasedAt: new Date('2024-05-01T00:00:00Z') });
+    const claim = () =>
+      imTenant(async (tx) => {
+        await tx.document.updateMany({
+          where: { id: beleg.id },
+          data: { gwgDestructionRequestedAt: new Date(), gwgDestructionRequestedBy: staffId },
+        });
+        return tx.$queryRaw(
+          Prisma.sql`SELECT app.assert_gwg_document_destruction_due(${beleg.id}::uuid)::text AS claim`,
+        );
+      });
+    // Angehoben: der Claim nennt das laufende Aufbewahrungsende.
+    expect(await anheben(beleg.id)).toBe(1);
+    await dbAbgewiesen(claim(), {
+      sqlState: '23514',
+      meldung: /^Object-Lock-Aufbewahrung ist nicht nachweisbar abgelaufen\.$/,
+    });
+    // Aufbewahrungsende nachträglich verkürzt (nur Superuser): der Claim hält die Frist selbst.
+    await owner.document.update({
+      where: { id: beleg.id },
+      data: { retentionUntil: new Date('2025-01-01T00:00:00Z') },
+    });
+    await dbAbgewiesen(
+      claim(),
+      {
+        sqlState: '23514',
+        meldung:
+          /^GwG-Beleg ist als Nachweis des Tax-CMS zugleich steuerliche Unterlage; deren Aufbewahrungsfrist ist nicht abgelaufen\.$/,
+      },
+      'Claim ohne angehobenes Aufbewahrungsende',
+    );
+    expect(await owner.document.findUniqueOrThrow({ where: { id: beleg.id } })).toMatchObject({
+      gwgDestructionRequestedAt: null,
+      gwgDestroyedAt: null,
+    });
+  });
+
+  it('kk-tcms-s11: nach Ablauf beider Fristen vernichtet die Datenbank einen früheren Nachweis samt freigegebener Verweise', async () => {
+    // Anlage 2014: Steuerfrist 1.1.2025, GwG-Frist (Mandatsende 2019) 1.1.2025 – beide abgelaufen.
+    const beleg = await dokument('GWG_EVIDENCE', {
+      createdAt: new Date('2014-03-01T00:00:00Z'),
+    });
+    await altbestandBinden(beleg, { releasedAt: new Date('2016-05-01T00:00:00Z') });
+    expect(await anheben(beleg.id)).toBe(0); // Steuerfrist (2025) nicht später als das Ende
+    const vernichtet = (await imTenant(async (tx) => {
+      await tx.document.updateMany({
+        where: { id: beleg.id },
+        data: { gwgDestructionRequestedAt: new Date(), gwgDestructionRequestedBy: staffId },
+      });
+      return tx.$queryRaw(
+        Prisma.sql`SELECT app.destroy_gwg_document_versions(${beleg.id}::uuid) AS n`,
+      );
+    })) as Array<{ n: number }>;
+    expect(vernichtet).toEqual([{ n: 1 }]);
+    expect(await owner.documentVersion.count({ where: { documentId: beleg.id } })).toBe(0);
+    expect(await owner.tcmsDocumentReference.count({ where: { documentId: beleg.id } })).toBe(0);
+    expect(
+      (await owner.document.findUniqueOrThrow({ where: { id: beleg.id } })).gwgDestroyedAt,
+    ).not.toBeNull();
   });
 });

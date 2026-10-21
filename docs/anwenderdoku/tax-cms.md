@@ -360,6 +360,14 @@ gesperrte zeigen den Grund. Ein früherer Stichtag zeigt nur an.
   zuerst den Nachweis in der Durchführung (nur vor dem Einreichen möglich).
   Dasselbe gilt für Anlagen einer Ereignismeldung aus dem Portal (siehe
   „Ereignis melden“).
+- **GwG-Beleg als Nachweis (nur ältere Bestände):** Neue GwG-Belege lassen
+  sich nicht als Nachweis verknüpfen. Ist ein GwG-Beleg aus der Zeit davor
+  noch oder früher als Nachweis verknüpft, gilt er zugleich als steuerliche
+  Unterlage (Produktentscheidung, fachlich ungeprüft): Seine Aufbewahrung
+  läuft bis zum 1. Januar des elften Jahres nach seiner Anlage (Klasse
+  Steuerunterlage, zehn Jahre). Die GwG-Pflichtvernichtung (_Administration →
+  GwG-Pflichtlöschung_) zeigt und vernichtet ihn erst, wenn beide Fristen
+  abgelaufen sind – auch nachdem der Nachweis entfernt wurde.
 - **Unklarer Ausgang:** Hat das Tax-CMS beim Anhängen nicht rechtzeitig
   geantwortet, bleibt das Dokument vorsorglich gesperrt. Öffnet eine
   Kanzleiperson die Durchführung später erneut (frühestens nach fünf

@@ -16,6 +16,14 @@
 //   - K-01: Ein im Tax-CMS verknüpftes Dokument (Nachweis oder Anlage einer
 //     Ereignismeldung) wird mit festem Grund abgewiesen – ohne Vormerkung,
 //     Audit und Object-Store-Aufruf; die Verknüpfung bleibt offen.
+//   - kk-tcms-s11 (Produktentscheidung Rey Koxha, 21.10.2026): Ein GwG-Beleg,
+//     der als Nachweis gebunden war, gilt zugleich als steuerliche Unterlage.
+//     Nach der Freigabe der Bindung weist die Aktion ihn bis zum Ablauf der
+//     GoBD-Frist der Steuerunterlage ab (fester Text, ohne Vormerkung, Audit
+//     und Bytes); nach Ablauf beider Fristen vernichtet sie ihn vollständig,
+//     samt der freigegebenen Verweise (deren Fremdschlüssel ließ den
+//     DB-Abschluss vorher nach dem Löschen der Bytes scheitern). Der Stichtag
+//     der Datenbank ist derselbe wie retentionUntilForYears(10, Anlage).
 //
 // Die Aktion übersetzt eine Ablehnung des Claims in einen festen Text. Welchen
 // Datenbankfehler sie dabei übersetzt hat, hält der Spion an der Einordnung
@@ -79,7 +87,11 @@ import {
   meldungsAnlageVerknuepfenTx,
   nachweisVerknuepfenTx,
 } from '@/server/tcms/durchfuehrung/verweis';
-import { TCMS_NACHWEIS_VERNICHTUNGSSPERRE } from '@/server/tcms/durchfuehrung/sperre';
+import {
+  TCMS_NACHWEIS_VERNICHTUNGSSPERRE,
+  tcmsNachweisSteuerfristText,
+} from '@/server/tcms/durchfuehrung/sperre';
+import { gobdRetentionYears, retentionUntilForYears } from '@taxtronik/storage';
 import { confirmGwgDeletionAction } from '../actions';
 import { erwarteDbFehler } from '@taxtronik/db/testing/db-fehler';
 
@@ -163,7 +175,7 @@ const DURCHF = 'cmvfgwgfix30000000001';
   }
 
   /** Gescanntes allgemeines Dokument (als Nachweis verknüpfbar). */
-  async function allgemein(clientId: string) {
+  async function allgemein(clientId: string, createdAt = new Date('2019-01-15T00:00:00Z')) {
     const doc = await owner.document.create({
       data: {
         tenantId,
@@ -173,7 +185,7 @@ const DURCHF = 'cmvfgwgfix30000000001';
         documentTypeId: typAllgemein,
         mimeType: 'application/pdf',
         retentionUntil: new Date('2025-01-01T00:00:00Z'),
-        createdAt: new Date('2019-01-15T00:00:00Z'),
+        createdAt,
       },
     });
     await owner.documentVersion.create({
@@ -372,4 +384,82 @@ const DURCHF = 'cmvfgwgfix30000000001';
       expect(await owner.documentVersion.count({ where: { documentId: id } })).toBe(1);
     },
   );
+
+  /**
+   * Früherer Nachweis als GwG-Beleg: gebunden über den echten Pfad, nach der
+   * Freigabe zum GwG-Beleg umklassifiziert (wie der Altbestand vor RT3B-K-01)
+   * und wie durch die Migration 20261021150000 angehoben.
+   */
+  async function fruehererNachweis(createdAt: Date) {
+    const id = await allgemein(altMandant, createdAt);
+    const { verknuepfungId } = await imTenant((tx) =>
+      nachweisVerknuepfenTx(tx, { tenantId, mandantId: altMandant, staffId: admin }, id, DURCHF),
+    );
+    await owner.tcmsDocumentReference.update({
+      where: { id: verknuepfungId },
+      data: { releasedAt: new Date(), releasedBy: admin, releaseReason: 'REMOVED' },
+    });
+    await owner.document.update({
+      where: { id },
+      data: { classification: 'GWG_EVIDENCE', documentTypeId: typGwg },
+    });
+    await owner.$queryRaw`SELECT app.raise_tcms_gwg_evidence_retention(${id}::uuid)::text AS n`;
+    return { id, verknuepfungId };
+  }
+
+  it('kk-tcms-s11: ein früherer Nachweis wird nach der Freigabe erst nach Ablauf der steuerlichen Frist vernichtet', async () => {
+    // Anlage 2019: GwG-Frist (Mandatsende 2019) seit 1.1.2025 abgelaufen, Steuerfrist bis 1.1.2030.
+    const { id, verknuepfungId } = await fruehererNachweis(new Date('2019-01-15T00:00:00Z'));
+    const steuerfrist = new Date('2030-01-01T00:00:00Z');
+    expect((await owner.document.findUniqueOrThrow({ where: { id } })).retentionUntil).toEqual(
+      steuerfrist,
+    );
+
+    expect(await confirmGwgDeletionAction({ documentId: id })).toEqual({
+      ok: false,
+      error: tcmsNachweisSteuerfristText(steuerfrist),
+    });
+    expect(m.eingeordnet, 'Vorprüfung der Aktion, nicht erst der Claim').toEqual([]);
+    expect(m.geloescht).toEqual([]);
+    expect(await audits(id, 'gwg.evidence.destroy.request')).toBe(0);
+    expect(await owner.document.findUniqueOrThrow({ where: { id } })).toMatchObject({
+      gwgDestructionRequestedAt: null,
+      gwgDestroyedAt: null,
+      deletedAt: null,
+    });
+    expect(await owner.documentVersion.count({ where: { documentId: id } })).toBe(1);
+    expect(await owner.tcmsDocumentReference.count({ where: { id: verknuepfungId } })).toBe(1);
+  });
+
+  it('kk-tcms-s11: nach Ablauf beider Fristen vernichtet die Aktion den früheren Nachweis vollständig, samt freigegebenem Verweis', async () => {
+    // Anlage 2014: Steuerfrist 1.1.2025 und GwG-Frist 1.1.2025 abgelaufen.
+    const { id, verknuepfungId } = await fruehererNachweis(new Date('2014-03-01T00:00:00Z'));
+
+    expect(await confirmGwgDeletionAction({ documentId: id })).toEqual({ ok: true });
+    expect(m.eingeordnet, 'keine Ablehnung der Datenbank').toEqual([]);
+    expect(m.geloescht).toEqual([`tenants/${tenantId}/none/${id}.pdf`]);
+    const nachher = await owner.document.findUniqueOrThrow({ where: { id } });
+    expect(nachher).toMatchObject({ title: 'VERNICHTET', gwgDestructionError: null });
+    expect(nachher.gwgDestroyedAt).not.toBeNull();
+    expect(await owner.documentVersion.count({ where: { documentId: id } })).toBe(0);
+    expect(await owner.tcmsDocumentReference.count({ where: { id: verknuepfungId } })).toBe(0);
+    expect(await audits(id, 'gwg.evidence.destroy')).toBe(1);
+  });
+
+  it('kk-tcms-s11: der Stichtag der Datenbank ist der der GoBD-Höherstufung (Steuerunterlage, zehn Jahre)', async () => {
+    for (const iso of [
+      '2014-03-01T00:00:00Z',
+      '2019-01-01T00:00:00Z',
+      '2019-12-31T23:59:59.999Z',
+      '2026-10-21T12:00:00Z',
+    ]) {
+      const anlage = new Date(iso);
+      const zeilen = await owner.$queryRaw<Array<{ bis: Date }>>`
+        SELECT app.tcms_gwg_evidence_tax_retention_until(${anlage}::timestamptz AT TIME ZONE 'UTC') AS bis`;
+      expect(zeilen, iso).toEqual([
+        { bis: retentionUntilForYears(gobdRetentionYears('GOBD_TAX'), anlage) },
+      ]);
+    }
+    expect(gobdRetentionYears('GOBD_TAX')).toBe(10);
+  });
 });

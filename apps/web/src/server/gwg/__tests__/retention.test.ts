@@ -155,6 +155,7 @@ describe('findDueGwgDeletionDocs', () => {
             title: 'Ausweiskopie',
             clientId: 'client-1',
             createdAt,
+            retentionUntil: null,
             gwgDestructionRequestedAt: null,
             client: {
               name: 'Nie gegründet GmbH',

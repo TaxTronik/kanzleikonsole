@@ -8,6 +8,8 @@ const m = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   /** RT3B-K-01: offene Verknüpfung des Tax-CMS (je Aufruf von istNachweisDokumentTx). */
   gebunden: vi.fn(),
+  /** kk-tcms-s11: Ende der steuerlichen Aufbewahrung eines (früheren) Nachweises. */
+  steuerfrist: vi.fn(),
 }));
 
 vi.mock('next/cache', () => ({ revalidatePath: m.revalidatePath }));
@@ -17,6 +19,7 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: m.evidenceReco
 vi.mock('@/server/tcms/durchfuehrung/sperre', async (original) => ({
   ...(await original<Record<string, unknown>>()),
   istNachweisDokumentTx: m.gebunden,
+  nachweisSteuerfristTx: m.steuerfrist,
 }));
 vi.mock('@/server/actions/staff-action', async () => ({
   staffActionGuard: m.staffActionGuard,
@@ -29,7 +32,10 @@ vi.mock('@/server/actions/staff-action', async () => ({
 }));
 
 import { Prisma } from '@taxtronik/db/prisma-client';
-import { TCMS_NACHWEIS_VERNICHTUNGSSPERRE } from '@/server/tcms/durchfuehrung/sperre';
+import {
+  TCMS_NACHWEIS_VERNICHTUNGSSPERRE,
+  tcmsNachweisSteuerfristText,
+} from '@/server/tcms/durchfuehrung/sperre';
 import { confirmGwgCheckDeletionAction, confirmGwgDeletionAction } from '../actions';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -94,9 +100,41 @@ beforeEach(() => {
   m.evidenceRecord.mockResolvedValue({});
   m.deleteObjectVersion.mockResolvedValue(undefined);
   m.gebunden.mockResolvedValue(false);
+  m.steuerfrist.mockResolvedValue(null);
 });
 
 describe('confirmGwgDeletionAction', () => {
+  it('kk-tcms-s11: ein früherer Nachweis des Tax-CMS wird vor Ablauf der steuerlichen Frist nicht vorgemerkt', async () => {
+    const tx = makeTx();
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn(tx),
+    );
+    const bis = new Date(Date.now() + 86_400_000);
+    m.steuerfrist.mockResolvedValue(bis);
+
+    const result = await confirmGwgDeletionAction({ documentId: DOCUMENT_ID });
+
+    expect(result).toEqual({ ok: false, error: tcmsNachweisSteuerfristText(bis) });
+    expect(m.steuerfrist).toHaveBeenCalledWith(tx, DOCUMENT_ID);
+    expect(tx.document.updateMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
+    expect(m.deleteObjectVersion).not.toHaveBeenCalled();
+  });
+
+  it('kk-tcms-s11: nach Ablauf der steuerlichen Frist läuft die Vernichtung wie sonst', async () => {
+    const tx = makeTx();
+    m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
+      fn({ ...tx }),
+    );
+    m.steuerfrist.mockResolvedValue(new Date('2021-01-01T00:00:00Z'));
+
+    await expect(confirmGwgDeletionAction({ documentId: DOCUMENT_ID })).resolves.toEqual({
+      ok: true,
+    });
+    expect(m.deleteObjectVersion).toHaveBeenCalledOnce();
+  });
+
   it('blockiert fail-closed bei fehlendem Object-Lock-Stichtag vor der Vormerkung', async () => {
     const tx = makeTx();
     tx.document.findFirst.mockReset().mockResolvedValue({

@@ -3225,7 +3225,9 @@
         "apps/web/src/server/gwg/identity-document-links.ts",
         "packages/gwg/src/retention.ts",
         "packages/gwg/src/review-queue.ts",
-        "packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql"
+        "packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql",
+        "packages/db/prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql",
+        "apps/web/src/server/tcms/durchfuehrung/sperre.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
@@ -6349,7 +6351,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe hochladen, und für Anlagen einer Ereignismeldung im Portal (gebunden in der Transaktion der Ablage, frei erst nach eindeutiger Ablehnung der Meldung oder nach dem Verwerfen des Ereignisses). Ein gebundenes Dokument lässt sich nicht in eine GwG-, Personal- oder private Unterlage umklassifizieren und wird nicht von der GwG-Pflichtvernichtung erfasst (Ablage, Aktion und Datenbank für jede Rolle). Offen gebliebene Verknüpfungen nach unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort. Eine Ereignismeldung mit offenem Ausgang wiederholt dieselbe Person mit demselben Idempotenzschlüssel und dem verschlüsselt gespeicherten Inhalt innerhalb von 23 Stunden (TCMS s10); danach bleiben die Anlagen gebunden und erscheinen der Kanzlei als ungeklärte Anlage – nie automatisch frei."
+        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe hochladen, und für Anlagen einer Ereignismeldung im Portal (gebunden in der Transaktion der Ablage, frei erst nach eindeutiger Ablehnung der Meldung oder nach dem Verwerfen des Ereignisses). Ein gebundenes Dokument lässt sich nicht in eine GwG-, Personal- oder private Unterlage umklassifizieren und wird nicht von der GwG-Pflichtvernichtung erfasst (Ablage, Aktion und Datenbank für jede Rolle). Ein GwG-Beleg, der als Nachweis gebunden ist oder war (nur Altbestand), gilt nach einer Produktentscheidung zugleich als steuerliche Unterlage: Seine Aufbewahrung steigt auf die GoBD-Frist der Steuerunterlage, die GwG-Vernichtung ist erst nach Ablauf beider Fristen fällig, auch nach der Freigabe. Offen gebliebene Verknüpfungen nach unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort. Eine Ereignismeldung mit offenem Ausgang wiederholt dieselbe Person mit demselben Idempotenzschlüssel und dem verschlüsselt gespeicherten Inhalt innerhalb von 23 Stunden (TCMS s10); danach bleiben die Anlagen gebunden und erscheinen der Kanzlei als ungeklärte Anlage – nie automatisch frei."
       },
       "sources": [
         {
@@ -6411,6 +6413,7 @@
         "packages/db/prisma/migrations/20261020200200_tcms_portal_report/migration.sql",
         "packages/db/prisma/migrations/20261021100000_tcms_portal_report_lease_token/migration.sql",
         "packages/db/prisma/migrations/20261021100100_tcms_portal_report_payload_guard/migration.sql",
+        "packages/db/prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql",
         "packages/db/src/database-error.ts",
         "apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx",
         "apps/web/src/components/tcms/portal/anlagen.tsx",
@@ -6447,6 +6450,7 @@
         "apps/web/src/app/staff/(protected)/admin/gwg-retention/__tests__/actions.test.ts",
         "packages/db/src/__tests__/tcms-document-reference-guards.test.ts",
         "packages/db/src/__tests__/tcms-db-regeln.test.ts",
+        "packages/db/src/__tests__/gwg-retention-count.test.ts",
         "apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts",
         "apps/web/src/components/tcms/durchfuehrung/__tests__/nachweis-liste.test.tsx",
         "apps/web/src/app/portal/(protected)/tcms/__tests__/portal-seiten.test.tsx",

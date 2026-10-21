@@ -123,6 +123,24 @@ BEGIN
   IF document_retention_until IS NULL OR document_retention_until > now_utc THEN
     RAISE EXCEPTION 'Object-Lock-Aufbewahrung ist nicht nachweisbar abgelaufen.' USING ERRCODE = 'check_violation';
   END IF;
+  -- TCMS-NACHWEIS-001, GWG-RETENTION-DESTRUCTION-001 (kk-tcms-s11,
+  -- Produktentscheidung Rey Koxha, 21.10.2026): Ein GwG-Beleg, auf den ein
+  -- Verweis des Tax-CMS zeigt oder zeigte (auch freigegeben), gilt zugleich als
+  -- steuerliche Unterlage; vernichtet wird erst, wenn auch deren GoBD-Frist
+  -- abgelaufen ist (Maximum beider Fristen). retention_until trägt sie in der
+  -- Regel schon (app.raise_tcms_gwg_evidence_retention); diese Prüfung hält sie
+  -- auch, wo das Aufbewahrungsende nicht angehoben werden konnte (vorgemerkter
+  -- Beleg) oder später verändert wurde.
+  IF now_utc < app.tcms_gwg_evidence_tax_retention_until(document_created)
+     AND EXISTS (
+       SELECT 1
+         FROM public."tcms_document_reference" r
+        WHERE r."document_id" = p_document_id
+          AND r."tenant_id" = document_tenant
+     ) THEN
+    RAISE EXCEPTION 'GwG-Beleg ist als Nachweis des Tax-CMS zugleich steuerliche Unterlage; deren Aufbewahrungsfrist ist nicht abgelaufen.'
+      USING ERRCODE = 'check_violation';
+  END IF;
 
   retention_start := mandate_ended_at;
   IF retention_start IS NULL THEN

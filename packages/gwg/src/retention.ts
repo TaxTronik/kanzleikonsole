@@ -151,6 +151,20 @@ export function gwgDeletionDueStartCutoff(now: Date): Date {
   return new Date(Date.UTC(now.getUTCFullYear() - GWG_RETENTION_YEARS, 0, 1));
 }
 
+/**
+ * kk-tcms-s11 (TCMS-NACHWEIS-001, Produktentscheidung Rey Koxha, 21.10.2026):
+ * Ein Beleg ist erst löschreif, wenn auch sein Aufbewahrungsende
+ * (`document.retention_until`) erreicht ist – dieselbe Grenze prüfen die
+ * Vernichtungsaktion und der Claim der Datenbank. Sie trägt neben dem
+ * technischen GwG-Lock auch eine längere Aufbewahrung, etwa die steuerliche
+ * eines GwG-Belegs, der als Nachweis im Tax-CMS gebunden war (Maximum beider
+ * Fristen). Ohne Aufbewahrungsende bleibt der Beleg sichtbar: Die Aktion weist
+ * ihn dann mit Hinweis auf den fehlenden Stichtag ab (fail closed).
+ */
+export function gwgAufbewahrungAbgelaufen(retentionUntil: Date | null, now: Date): boolean {
+  return retentionUntil === null || retentionUntil.getTime() <= now.getTime();
+}
+
 const VERIFIED_GWG_CHECK: Prisma.GwgCheckWhereInput = {
   OR: [{ status: 'VERIFIED' }, { verifiedAt: { not: null } }],
 };
@@ -168,6 +182,9 @@ export function dueGwgDeletionDocsWhere(now: Date = new Date()): Prisma.Document
   return {
     classification: 'GWG_EVIDENCE',
     deletedAt: null,
+    // kk-tcms-s11: fällig erst nach Ablauf des Aufbewahrungsendes
+    // (gwgAufbewahrungAbgelaufen).
+    AND: [{ OR: [{ retentionUntil: null }, { retentionUntil: { lte: now } }] }],
     OR: [
       { client: { is: { mandateEndedAt: { lt: cutoff } } } },
       {

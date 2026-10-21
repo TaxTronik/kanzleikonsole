@@ -124,6 +124,11 @@ deshalb höher sein; Belege, die die Prüfliste nicht anzeigen kann
 (Übergabe-Archive, deren Quelldokumente nicht mehr vollständig sind oder deren
 Mandant anonymisiert ist), nennt sie gesondert.
 
+Fällig ist ein Beleg erst, wenn auch sein Aufbewahrungsende erreicht ist. War
+ein GwG-Beleg (ältere Bestände) als Nachweis im Tax-CMS verknüpft, gilt er
+zugleich als steuerliche Unterlage; er erscheint erst nach Ablauf beider
+Fristen in der Prüfliste (Tax-CMS-Handbuch, „Nachweise“).
+
 ## 5. Häufige Meldungen
 
 | Meldung/Situation                            | Bedeutung                                                        | Was tun                                             |

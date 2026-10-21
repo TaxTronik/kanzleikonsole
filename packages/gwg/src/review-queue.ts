@@ -20,6 +20,7 @@ import {
   gwgDeletionDeadline,
   gwgDeletionDueStartCutoff,
   gwgDocumentEffectiveStart,
+  gwgAufbewahrungAbgelaufen,
   gwgEffectiveStart,
   gwgMaximumDeletionDeadline,
 } from './retention';
@@ -78,6 +79,7 @@ export async function findDueGwgDeletionDocs(
       title: true,
       clientId: true,
       createdAt: true,
+      retentionUntil: true,
       gwgDestructionRequestedAt: true,
       client: {
         select: {
@@ -109,6 +111,9 @@ export async function findDueGwgDeletionDocs(
   const out: GwgDeletionItem[] = [];
   for (const d of documents) {
     if (!d.clientId || !d.client) continue;
+    // kk-tcms-s11: erst nach dem Aufbewahrungsende (z. B. steuerliche Frist eines
+    // früheren Tax-CMS-Nachweises) fällig – wie Aktion und Claim.
+    if (!gwgAufbewahrungAbgelaufen(d.retentionUntil, now)) continue;
     const start = gwgDocumentEffectiveStart(
       {
         createdAt: d.createdAt,

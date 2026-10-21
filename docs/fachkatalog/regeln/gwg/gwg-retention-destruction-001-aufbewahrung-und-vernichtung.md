@@ -46,6 +46,8 @@ code_refs:
   - packages/gwg/src/retention.ts
   - packages/gwg/src/review-queue.ts
   - packages/db/prisma/migrations/20261020100000_tcms_document_reference_gwg_destruction/migration.sql
+  - packages/db/prisma/migrations/20261021150000_tcms_gwg_evidence_tax_retention/migration.sql
+  - apps/web/src/server/tcms/durchfuehrung/sperre.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
@@ -122,18 +124,20 @@ im konkreten Fall die zulässige oder erforderliche Speicherdauer bestimmt.
 
 ## Entscheidungslogik
 
-| Wenn                                                                              | Dann                                                                                  | Begründung                                  |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------- |
-| Geschäftsbeziehung wurde beendet                                                  | Fristbeginn ist der Schluss dieses Kalenderjahres                                     | § 8 Abs. 4 GwG                              |
-| Keine Geschäftsbeziehung kam zustande                                             | Fristbeginn ist der Schluss des Jahres der jeweiligen Feststellung                    | Übriger Fall nach § 8 Abs. 4 GwG            |
-| Fünf Jahre sind noch nicht vollständig abgelaufen                                 | Vernichtung blockieren                                                                | Mindestaufbewahrung                         |
-| Andere gesetzliche Pflicht verlangt längere Aufbewahrung                          | Bis zu deren Ende aufbewahren, absolute Zehnjahresgrenze fachlich prüfen              | Kollisionsprüfung erforderlich              |
-| Reguläre Frist ist abgelaufen                                                     | Eintrag in manuelle Review-Queue aufnehmen                                            | Kontrollierte Vernichtungsentscheidung      |
-| Zehnjahresgrenze ist erreicht                                                     | Späteste Vernichtung ist fällig                                                       | § 8 Abs. 4 Satz 2 GwG                       |
-| Datei-Beleg ist fällig, Object Lock abgelaufen und keine neue Referenz entstanden | Vernichtungsabsicht committen, exakte Objektversionen löschen und DB-Abschluss setzen | Zweiphasige physische Vernichtung           |
-| Datei-Beleg ist im Tax-CMS verknüpft (Altbestand)                                 | Vernichtung blockieren, keine Bytes löschen, bis die Verknüpfung frei ist             | Nachweisbezug; Kollision fachlich zu prüfen |
-| Noch ein nicht vernichteter Datei-Beleg zum Check existiert                       | Vernichtung der strukturierten Check-Aufzeichnungen blockieren                        | Reihenfolge und Nachweisbezug               |
-| Alle Datei-Belege sind vernichtet und DB-Fristprüfung besteht                     | Personen- und Inhaltsdaten des Checks vernichten; Abschluss protokollieren            | Zweite Vernichtungsstufe                    |
+| Wenn                                                                              | Dann                                                                                                                             | Begründung                                                                                      |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Geschäftsbeziehung wurde beendet                                                  | Fristbeginn ist der Schluss dieses Kalenderjahres                                                                                | § 8 Abs. 4 GwG                                                                                  |
+| Keine Geschäftsbeziehung kam zustande                                             | Fristbeginn ist der Schluss des Jahres der jeweiligen Feststellung                                                               | Übriger Fall nach § 8 Abs. 4 GwG                                                                |
+| Fünf Jahre sind noch nicht vollständig abgelaufen                                 | Vernichtung blockieren                                                                                                           | Mindestaufbewahrung                                                                             |
+| Andere gesetzliche Pflicht verlangt längere Aufbewahrung                          | Bis zu deren Ende aufbewahren, absolute Zehnjahresgrenze fachlich prüfen                                                         | Kollisionsprüfung erforderlich                                                                  |
+| Reguläre Frist ist abgelaufen                                                     | Eintrag in manuelle Review-Queue aufnehmen                                                                                       | Kontrollierte Vernichtungsentscheidung                                                          |
+| Zehnjahresgrenze ist erreicht                                                     | Späteste Vernichtung ist fällig                                                                                                  | § 8 Abs. 4 Satz 2 GwG                                                                           |
+| Datei-Beleg ist fällig, Object Lock abgelaufen und keine neue Referenz entstanden | Vernichtungsabsicht committen, exakte Objektversionen löschen und DB-Abschluss setzen                                            | Zweiphasige physische Vernichtung                                                               |
+| Datei-Beleg ist im Tax-CMS verknüpft (Altbestand)                                 | Vernichtung blockieren, keine Bytes löschen, bis die Verknüpfung frei ist                                                        | Nachweisbezug (TCMS-NACHWEIS-001)                                                               |
+| Datei-Beleg ist oder war als Nachweis im Tax-CMS verknüpft (Altbestand)           | Aufbewahrungsende auf die GoBD-Frist der Steuerunterlage anheben; fällig erst nach Ablauf beider Fristen, auch nach der Freigabe | Produktentscheidung (Rey Koxha, 21.10.2026): zugleich steuerliche Unterlage; fachlich ungeprüft |
+| Aufbewahrungsende (`retention_until`) des Belegs liegt in der Zukunft             | nicht löschreif: nicht in Queue, Kachel und Hinweis; Aktion und Claim weisen ab                                                  | eine längere Aufbewahrung geht vor (Maximum)                                                    |
+| Noch ein nicht vernichteter Datei-Beleg zum Check existiert                       | Vernichtung der strukturierten Check-Aufzeichnungen blockieren                                                                   | Reihenfolge und Nachweisbezug                                                                   |
+| Alle Datei-Belege sind vernichtet und DB-Fristprüfung besteht                     | Personen- und Inhaltsdaten des Checks vernichten; Abschluss protokollieren                                                       | Zweite Vernichtungsstufe                                                                        |
 
 ## Ausnahmen und Grenzfälle
 
@@ -151,6 +155,14 @@ im konkreten Fall die zulässige oder erforderliche Speicherdauer bestimmt.
 - Andere Rechtsgrundlagen können längere Speicherung verlangen; ob und wie sie
   mit der absoluten GwG-Vernichtungspflicht zusammenwirken, ist fachlich zu
   prüfen.
+- Ein GwG-Beleg, der als Nachweis im Tax-CMS gebunden ist oder war (nur
+  Altbestand vor RT3B-K-01), gilt nach der Produktentscheidung (Rey Koxha,
+  21.10.2026) zugleich als steuerliche Unterlage. Es greift die nächsthöhere
+  Klasse des Aufbewahrungsmodells: GoBD mit dem Intervall der Steuerunterlage
+  (zehn Jahre ab dem Anlagejahr, Stichtag 1. Januar des Folgejahres; Anlage
+  2019 → 1. Januar 2030). Vernichtet wird erst nach Ablauf beider Fristen, auch
+  nach der Freigabe der Verknüpfung; die absolute Zehnjahresgrenze der GwG-Frist
+  kann dadurch überschritten werden.
 
 ## Beispiele
 
@@ -212,7 +224,19 @@ Verknüpfung vor der Vormerkung und vor jedem Object-Store-Löschen, der Claim
 weist es unter der Dokumentsperre mit SQLSTATE 23001 ab (Migration
 `20261020100000`), und damit auch `app.destroy_gwg_document_versions`. Ein
 gebundenes Dokument kann seit dieser Migration nicht mehr zum GwG-Beleg
-werden; betroffen ist nur Altbestand.
+werden; betroffen ist nur Altbestand. Für ihn gilt seit kk-tcms-s11 (Migration
+`20261021150000`) die Steuerfrist: Die Migration hebt das Aufbewahrungsende
+jedes GwG-Belegs mit offenem oder freigegebenem Verweis auf
+`app.tcms_gwg_evidence_tax_retention_until(Anlage)` an (nie herab, nicht bei
+leerem Aufbewahrungsende, nicht bei vorgemerkten oder vernichteten Belegen),
+ebenso ein Trigger bei jeder künftigen Bindung. Der Claim weist einen solchen
+Beleg vor diesem Stichtag unabhängig vom Aufbewahrungsende ab, die Action nennt
+den Grund vorher mit festem Text, und `app.destroy_gwg_document_versions`
+entfernt freigegebene Verweise vor den Versionen (deren Fremdschlüssel ließ
+den DB-Abschluss nach dem Löschen der Bytes sonst scheitern). Löschreif ist
+ein Beleg für Kachel, Queue und Worker erst nach seinem Aufbewahrungsende
+(`gwgAufbewahrungAbgelaufen`, `dueGwgDeletionDocsWhere`) – dieselbe Grenze wie
+in Action und Claim; ein Beleg ohne Aufbewahrungsende bleibt sichtbar.
 
 Beim Ersetzen eines Nachweises bleibt die abgelöste Prüfzuordnung ausdrücklich
 als historische `GwgIdDocument`-Zeile erhalten. Das Lösen einer irrtümlichen
@@ -240,9 +264,11 @@ Verbindungen speichern keine gemeinsamen Namen, Ausweise oder Freigaben.
 - Fristen werden auf Aggregat- statt Einzelaufzeichnungsebene berechnet.
 - Die physische Löschung aus Backups und wiederhergestellten Altständen ist
   kein Bestandteil des interaktiven Vernichtungspfads.
-- Ein GwG-Beleg, der als Altbestand zugleich im Tax-CMS verknüpft ist, wird
-  erst nach der Freigabe der Verknüpfung vernichtet; bis dahin kann die
-  Zehnjahresgrenze überschritten werden.
+- Ein GwG-Beleg, der als Altbestand im Tax-CMS verknüpft ist oder war, wird
+  erst nach der Freigabe der Verknüpfung und nach Ablauf auch der Steuerfrist
+  vernichtet (Produktentscheidung); die Zehnjahresgrenze wird dabei bewusst
+  überschritten. Die Steuerfrist hält allein die Datenbank: Der
+  GOVERNANCE-Lock des GwG-Buckets wird nicht verlängert.
 
 Der Implementierungsstatus ist deshalb **teilweise**.
 
@@ -257,9 +283,14 @@ Der Implementierungsstatus ist deshalb **teilweise**.
 - Wie werden Backups, Replikate und Auditdaten in die vollständige Vernichtung
   einbezogen?
 - Wer bestätigt und kontrolliert `mandateEndedAt`?
-- Darf die Bindung als Nachweis im Tax-CMS die Vernichtungspflicht eines
-  GwG-Belegs aufschieben, oder muss der Nachweis vor Fristablauf ersetzt
-  werden?
+- Bindung als Nachweis im Tax-CMS: durch Produktentscheidung (Rey Koxha,
+  21.10.2026) ersetzt – der Beleg gilt zugleich als steuerliche Unterlage,
+  vernichtet wird nach Ablauf beider Fristen. Fachlich zu prüfen bleibt
+  (ungeprüft): Trägt § 8 Abs. 4 Satz 2 GwG („andere Aufbewahrungspflichten
+  bleiben unberührt“) zusammen mit § 147 AO die längere Aufbewahrung über die
+  Zehnjahresgrenze hinaus? Die Entscheidungslogik oben ordnet § 8 Abs. 4
+  Satz 2 GwG die Zehnjahresgrenze zu; die Zuordnung des Satzes ist zu klären.
+  Sind zehn Jahre (Steuerunterlage) ab der Dokumentanlage das richtige Maß?
 
 ## Technische Nachweise
 
@@ -272,7 +303,13 @@ Vernichtung eines fälligen Belegs in der Reihenfolge Claim → Commit → Bytes
 DB-Abschluss, Rücknahme der Vormerkung bei abgelehntem Claim und Abweisung
 eines im Tax-CMS verknüpften Dokuments ohne Vormerkung, Audit und Bytes;
 `tcms-document-reference-guards.test.ts` den Claim und die DB-Vernichtung bei
-gebundenem Altbestand. Action- und DB-Tests prüfen
+gebundenem Altbestand. Die Steuerfrist (kk-tcms-s11) belegen
+`tcms-document-reference-guards.test.ts` (Anheben, Migration, Trigger, Claim
+auch ohne angehobenes Aufbewahrungsende, DB-Vernichtung samt freigegebener
+Verweise), `actions-db.test.ts` (Abweisung nach der Freigabe, vollständige
+Vernichtung nach Ablauf beider Fristen, Stichtag gleich der GoBD-Höherstufung)
+und `gwg-retention-count.test.ts` (löschreif erst nach dem Aufbewahrungsende,
+Queue und Zählung gleich). Action- und DB-Tests prüfen
 Object-Lock, zweiphasigen Claim, konkrete Storage-Versionen, Tenant- und
 Fristgrenzen sowie die geplante Bereinigung von Personen- und Checkdaten. Der
 DB-Test bestätigt dabei auch, dass der kontrollierte

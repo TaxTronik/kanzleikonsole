@@ -313,3 +313,111 @@ describeWithDatabase('GwG-Löschreife: COUNT-Filter = Fristlogik (P-21)', () => 
     },
   );
 });
+
+// kk-tcms-s11 (TCMS-NACHWEIS-001, GWG-RETENTION-DESTRUCTION-001): löschreif erst,
+// wenn auch das Aufbewahrungsende erreicht ist (Maximum mit einer längeren
+// Aufbewahrung, etwa der steuerlichen eines früheren Tax-CMS-Nachweises).
+// Eigener Tenant, damit die Zählungen oben unverändert bleiben.
+describeWithDatabase('GwG-Löschreife: Aufbewahrungsende (kk-tcms-s11)', () => {
+  let t = '';
+  let s = '';
+  const ids: Record<'steuerfrist' | 'ohneEnde' | 'abgelaufen', string> = {
+    steuerfrist: '',
+    ohneEnde: '',
+    abgelaufen: '',
+  };
+
+  function imTenant<T>(fn: (tx: TxClient) => Promise<T>): Promise<T> {
+    return app.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT set_config('app.current_tenant_id',${t},true), set_config('app.current_actor_id',${s},true), set_config('app.current_actor_type','STAFF',true)`;
+      return fn(tx);
+    });
+  }
+
+  beforeAll(async () => {
+    retention = (await import(
+      new URL('../../../gwg/src/index.ts', import.meta.url).href
+    )) as Retention;
+    const suffix = randomUUID();
+    t = (
+      await owner.tenant.create({
+        data: { slug: `gwg-retention-until-${suffix}`, name: 'Synthetic retention-until tenant' },
+      })
+    ).id;
+    s = (
+      await owner.staffUser.create({
+        data: {
+          tenantId: t,
+          email: `${suffix}@example.test`,
+          fullName: 'Synthetic administrator',
+          passwordHash: 'x',
+          roles: { create: { role: 'ADMIN' } },
+        },
+      })
+    ).id;
+    // Mandat 2019 beendet: GwG-Frist ab 2025 abgelaufen.
+    const mandant = (
+      await owner.client.create({
+        data: {
+          tenantId: t,
+          name: 'Beendet 2019',
+          kind: 'JURPERS',
+          mandateEndedAt: new Date('2019-06-30T00:00:00Z'),
+        },
+      })
+    ).id;
+    await owner.gwgCheck.create({
+      data: {
+        tenantId: t,
+        clientId: mandant,
+        status: 'DRAFT',
+        legalForm: 'GmbH',
+        registerNumber: 'HRB 1',
+        registerAuthority: 'AG Test',
+        representativeNames: ['Test'],
+      },
+    });
+    const beleg = (retentionUntil: Date | null) =>
+      owner.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT set_config('app.current_tenant_id',${t},true), set_config('app.current_actor_id',${s},true), set_config('app.current_actor_type','STAFF',true)`;
+        return (
+          await tx.document.create({
+            data: {
+              tenantId: t,
+              clientId: mandant,
+              title: 'Ausweiskopie',
+              classification: 'GWG_EVIDENCE',
+              mimeType: 'image/jpeg',
+              createdAt: new Date('2019-01-15T00:00:00Z'),
+              retentionUntil,
+            },
+          })
+        ).id;
+      });
+    // Steuerliche Frist eines früheren Nachweises: 1.1.2030 (Anlage 2019 + 10 + 1).
+    ids.steuerfrist = await beleg(new Date('2030-01-01T00:00:00Z'));
+    ids.ohneEnde = await beleg(null);
+    ids.abgelaufen = await beleg(new Date('2025-01-01T00:00:00Z'));
+  }, 60_000);
+
+  afterAll(async () => {
+    if (t) await owner.tenant.delete({ where: { id: t } });
+  });
+
+  it.each([
+    ['2026-10-05T12:00:00Z', ['ohneEnde', 'abgelaufen']],
+    ['2029-12-31T23:59:59Z', ['ohneEnde', 'abgelaufen']],
+    ['2030-01-01T00:00:00Z', ['ohneEnde', 'abgelaufen', 'steuerfrist']],
+  ] as const)(
+    'zum Stichtag %s: Queue und COUNT nur nach dem Aufbewahrungsende',
+    async (iso, soll) => {
+      const now = new Date(iso);
+      const [due, count] = await imTenant(async (tx) => [
+        await retention.findDueGwgDeletionDocs(tx, now),
+        await retention.countDueGwgDeletionDocs(tx, now),
+      ]);
+      expect(due.map((d) => d.documentId).sort()).toEqual(soll.map((k) => ids[k]).sort());
+      expect(count).toBe(soll.length);
+    },
+  );
+});

@@ -27,6 +27,7 @@ function documentRow(client: {
     title: 'Ausweiskopie',
     clientId: 'client-1',
     createdAt: new Date('2020-05-01T00:00:00Z'),
+    retentionUntil: null as Date | null,
     gwgDestructionRequestedAt: null,
     client: { name: 'Muster GmbH', ...client },
     gwgIdDocuments: [],
@@ -83,6 +84,33 @@ describe('Review-Queue der GwG-Löschprüfung', () => {
     ]);
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { classification: 'GWG_EVIDENCE', deletedAt: null } }),
+    );
+  });
+
+  // kk-tcms-s11 (TCMS-NACHWEIS-001): Ein Beleg mit späterem Aufbewahrungsende –
+  // etwa der Steuerfrist eines früheren Tax-CMS-Nachweises – ist erst danach fällig.
+  it('überspringt einen Beleg bis zu seinem Aufbewahrungsende (Maximum beider Fristen)', async () => {
+    const ende = new Date('2033-01-01T00:00:00Z');
+    const findMany = vi.fn().mockResolvedValue([
+      {
+        ...documentRow({
+          mandateEndedAt: new Date('2025-06-30T00:00:00Z'),
+          allowActive: true,
+          onboardingCompletedAt: null,
+        }),
+        retentionUntil: ende,
+      },
+    ]);
+    const tx = { document: { findMany } } as unknown as TxClient;
+
+    expect(await findDueGwgDeletionDocs(tx, new Date('2032-12-31T23:59:59Z'))).toEqual([]);
+    expect(await findDueGwgDeletionDocs(tx, ende)).toEqual([
+      expect.objectContaining({ documentId: 'doc-1', retentionReason: 'MANDATE_ENDED' }),
+    ]);
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ retentionUntil: true }),
+      }),
     );
   });
 

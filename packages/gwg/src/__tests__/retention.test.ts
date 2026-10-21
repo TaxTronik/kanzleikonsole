@@ -118,6 +118,8 @@ describe('Datenbankfilter (Web-Kachel, Review-Queue, Worker-Benachrichtigung)', 
     expect(dueGwgDeletionDocsWhere(now)).toEqual({
       classification: 'GWG_EVIDENCE',
       deletedAt: null,
+      // kk-tcms-s11: erst nach dem Aufbewahrungsende (ohne Ende sichtbar).
+      AND: [{ OR: [{ retentionUntil: null }, { retentionUntil: { lte: now } }] }],
       OR: [
         { client: { is: { mandateEndedAt: { lt: cutoff } } } },
         {

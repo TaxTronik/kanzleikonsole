@@ -64,3 +64,38 @@ export async function istNachweisDokumentTx(tx: TxClient, documentId: string): P
   `;
   return rows[0]?.verknuepft === true;
 }
+
+/**
+ * kk-tcms-s11 (TCMS-NACHWEIS-001, GWG-RETENTION-DESTRUCTION-001;
+ * Produktentscheidung Rey Koxha, 21.10.2026): Ende der steuerlichen
+ * Aufbewahrung eines Dokuments, auf das ein Verweis des Tax-CMS zeigt oder
+ * zeigte (auch freigegeben), sonst `null`. Ein solcher GwG-Beleg gilt zugleich
+ * als steuerliche Unterlage; die GwG-Vernichtung ist erst nach Ablauf beider
+ * Fristen fällig. Der Stichtag kommt aus der Datenbank
+ * (app.tcms_gwg_evidence_tax_retention_until: GoBD-Intervall der
+ * Steuerunterlage, zehn Jahre ab dem Anlagejahr, 1. Januar des Folgejahres) –
+ * dieselbe Funktion prüft der Claim der Vernichtung.
+ */
+export async function nachweisSteuerfristTx(
+  tx: TxClient,
+  documentId: string,
+): Promise<Date | null> {
+  const rows = await tx.$queryRaw<Array<{ bis: Date | null }>>`
+    SELECT app.tcms_gwg_evidence_tax_retention_until(d.created_at) AS bis
+      FROM document d
+     WHERE d.id = ${documentId}::uuid
+       AND EXISTS (
+         SELECT 1
+           FROM tcms_document_reference r
+          WHERE r.document_id = d.id
+            AND r.tenant_id = d.tenant_id
+       )
+  `;
+  return rows[0]?.bis ?? null;
+}
+
+/** GwG-Pflichtvernichtung vor Ablauf der steuerlichen Aufbewahrung (kk-tcms-s11). */
+export function tcmsNachweisSteuerfristText(bis: Date): string {
+  const [jahr, monat, tag] = bis.toISOString().slice(0, 10).split('-');
+  return `Dieser GwG-Beleg war im Tax-CMS als Nachweis verknüpft und gilt zugleich als steuerliche Unterlage. Er wird erst vernichtet, wenn auch deren Aufbewahrungsfrist abgelaufen ist – frühestens am ${tag}.${monat}.${jahr}. Es wurden keine Datei-Bytes gelöscht.`;
+}

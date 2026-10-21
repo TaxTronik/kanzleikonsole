@@ -77,7 +77,16 @@ Vernichtungsstufen:
    prüft die Verknüpfung vor der Vormerkung und vor jedem Object-Store-Löschen,
    der Claim unter der Dokumentsperre (RT3B-K-01). Ein gebundenes Dokument
    kann seit TCMS Stufe 3 nicht mehr zum GwG-Beleg werden; betroffen ist nur
-   Altbestand, der vor der Behebung umklassifiziert wurde. Der `document`-Skelettdatensatz bleibt mit
+   Altbestand, der vor der Behebung umklassifiziert wurde. Ein solcher
+   GwG-Beleg gilt zugleich als steuerliche Unterlage (Produktentscheidung
+   Rey Koxha, 21.10.2026, fachlich ungeprüft; kk-tcms-s11): Sein
+   Aufbewahrungsende (`retention_until`) steigt auf die GoBD-Frist der
+   Steuerunterlage (zehn Jahre ab dem Anlagejahr, 1. Januar des Folgejahres;
+   `app.tcms_gwg_evidence_tax_retention_until`), und die Vernichtung ist erst
+   nach Ablauf beider Fristen zulässig – auch nach der Freigabe der
+   Verknüpfung (Aktion mit festem Text, Claim unter der Dokumentsperre).
+   Freigegebene Verweise des Tax-CMS werden mit dem Beleg vernichtet. Der
+   `document`-Skelettdatensatz bleibt mit
    `deletedAt`/`gwgDestroyedAt` als Abschlussvermerk erhalten; auditiert wird
    als `gwg.evidence.destroy` (der Vernichtungsnachweis bleibt dauerhaft in
    der insert-only Audit-Chain).
@@ -94,6 +103,12 @@ idempotente `GWG_DELETION_DUE`-Notification an alle ADMIN/PARTNER, sobald
 Belege oder Aufzeichnungen beendeter Mandate oder nie zustande gekommener
 Beziehungen nach dem jeweils maßgeblichen Fristbeginn löschreif sind
 (Tages-Dedupe pro Tenant), mit Link auf die Review-Queue.
+
+**Aufbewahrungsende (kk-tcms-s11):** Ein Datei-Beleg ist erst löschreif, wenn
+auch sein Aufbewahrungsende (`retention_until`) erreicht ist – dieselbe Grenze
+prüfen Aktion und Claim. Vorher erscheint er weder in der Queue noch in Kachel
+und Benachrichtigung. Ein Beleg ohne Aufbewahrungsende bleibt sichtbar; die
+Aktion weist ihn mit Hinweis auf den fehlenden Stichtag ab.
 
 **Zählungen (Welle 15):** Admin-Kachel, Review-Queue und Benachrichtigung
 zählen Datei-Belege und Aufzeichnungen mit denselben Filtern

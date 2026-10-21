@@ -9,6 +9,15 @@ DECLARE
 BEGIN
   PERFORM app.assert_gwg_document_destruction_due(p_document_id);
   PERFORM set_config('app.gwg_destroy_document_id', p_document_id::TEXT, TRUE);
+  -- TCMS-NACHWEIS-001 (kk-tcms-s11): Freigegebene Verweise des Tax-CMS zeigen
+  -- über document_version_id (Fremdschlüssel ohne Kaskade) auf die Versionen.
+  -- Der Claim hat unter der Dokumentsperre keine offene Verknüpfung gefunden und
+  -- beide Fristen geprüft; die freigegebenen Verweise werden mit dem Beleg
+  -- vernichtet. Sonst scheiterte der DB-Abschluss, nachdem die Aktion die Bytes
+  -- schon gelöscht hat.
+  DELETE FROM public."tcms_document_reference"
+   WHERE "document_id" = p_document_id
+     AND "released_at" IS NOT NULL;
   DELETE FROM public."document_version" WHERE "document_id" = p_document_id;
   GET DIAGNOSTICS deleted_count = ROW_COUNT;
   UPDATE public."gwg_id_document" SET "document_id" = NULL

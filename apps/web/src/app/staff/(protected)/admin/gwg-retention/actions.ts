@@ -17,7 +17,9 @@ import { audit } from '@/server/actions/audit';
 import { isDatabaseError } from '@/server/actions/database-error';
 import {
   istNachweisDokumentTx,
+  nachweisSteuerfristTx,
   TCMS_NACHWEIS_VERNICHTUNGSSPERRE,
+  tcmsNachweisSteuerfristText,
 } from '@/server/tcms/durchfuehrung/sperre';
 
 export type ActionResult = BaseActionResult;
@@ -147,6 +149,15 @@ export async function confirmGwgDeletionAction(input: {
             ok: false as const,
             error: 'Löschfrist noch nicht abgelaufen – Vernichtung nicht zulässig.',
           };
+        }
+        // kk-tcms-s11 (TCMS-NACHWEIS-001, Produktentscheidung 21.10.2026): War
+        // der Beleg als Nachweis im Tax-CMS gebunden (auch freigegeben), gilt er
+        // zugleich als steuerliche Unterlage – fällig erst nach Ablauf beider
+        // Fristen. retention_until trägt die Frist in der Regel schon; der feste
+        // Text nennt den Grund. Der Claim prüft dasselbe in der Datenbank.
+        const steuerfrist = await nachweisSteuerfristTx(tx, documentId);
+        if (steuerfrist && now.getTime() < steuerfrist.getTime()) {
+          return { ok: false as const, error: tcmsNachweisSteuerfristText(steuerfrist) };
         }
         if (!document.retentionUntil || document.retentionUntil.getTime() > now.getTime()) {
           return {
