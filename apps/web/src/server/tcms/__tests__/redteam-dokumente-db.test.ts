@@ -285,17 +285,20 @@ const GROESSE = 4821n;
         { sqlState: '23503', constraint: 'tcms_document_reference_document_id_fkey' },
         'Dokument',
       );
-      // … den Mandanten zuerst die GwG-Schranke: Ein aktiver Mandant hat immer
-      // GwG-Belege, deren Trigger beim ON DELETE SET NULL vor der (erst am
-      // Anweisungsende geprüften) Bindung abweist. Dass die Bindung allein das
-      // Löschen hält, belegt packages/db tcms-document-reference-guards.test.ts
-      // (Mandant ohne GwG-Belege, nur mit Superuser herstellbar).
+      // … den Mandanten hält beim ON DELETE SET NULL eine von zwei Zeilensperren
+      // auf `document`: die GwG-Schranke (ein aktiver Mandant hat immer
+      // GwG-Belege) oder die Mandantensperre der Bindung (TCMS-NACHWEIS-001).
+      // Welche zuerst greift, hängt von der physischen Reihenfolge der
+      // Dokumentzeilen ab, also vom Datenbankstand – beide sind genau benannt,
+      // jede andere Abweisung (oder keine) lässt den Test scheitern. Dass die
+      // Bindung allein das Löschen hält, belegt packages/db
+      // tcms-document-reference-guards.test.ts (Mandant ohne GwG-Belege).
       await dbAbgewiesen(
         owner.client.delete({ where: { id: mandant } }),
         {
           sqlState: '23001',
           meldung:
-            'Verknüpfter GwG-Beleg darf Klassifikation oder Tenant-/Mandanten-Scope nicht verlassen.',
+            /^(?:Verknüpfter GwG-Beleg darf Klassifikation oder Tenant-\/Mandanten-Scope nicht verlassen\.|document: als Nachweis im Tax-CMS verknüpft, Mandantenwechsel gesperrt)$/,
         },
         'Mandant',
       );
