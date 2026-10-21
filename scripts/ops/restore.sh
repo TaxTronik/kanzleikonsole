@@ -267,7 +267,9 @@ cmd_tcms_backup() {
   prepare_backup_host_dir
   if (( zeitplan == 1 )); then
     dest="$(resolve_backup_host_dir)/$TCMS_BACKUP_SCHEDULE_DIR"
-    mkdir -p "$dest" && chmod 0700 "$dest" || die "Verzeichnis des Zeitplans nicht anlegbar: $dest"
+    if ! { mkdir -p "$dest" && chmod 0700 "$dest"; }; then
+      die "Verzeichnis des Zeitplans nicht anlegbar: $dest"
+    fi
   fi
   ensure_s3_ready_for_backup
   backup_tcms_with_upload "$dest" || die "TCMS-Backup fehlgeschlagen."

@@ -963,6 +963,79 @@ test_code_key_rotation_state_and_refusals() {
   pass "code key rotation state holds only ids and times; refusals happen before any side effect"
 }
 
+# Regel: Eine vorbereitete Rotation startet tcms-api nur mit genau NEU,ALT
+# laut Zustand. Vertauscht, fremd, unvollstaendig oder mit drittem Eintrag:
+# Abbruch vor dem Neustart; .env und Zustand bleiben, wie sie sind.
+test_code_key_rotation_publish_refuses_a_list_that_does_not_match_the_state() {
+  local env_file="$TMP_DIR/ck-pub.env" out="$TMP_DIR/ck-pub.out" list new old fremd state_before falsch
+  export CALLS="$TMP_DIR/ck-pub.calls" CLOCK="$TMP_DIR/ck-pub.clock"
+  export CODE_ROTATION_STATE="$TMP_DIR/ck-pub.rotation" INSTALL_STATE="$TMP_DIR/ck-pub.state"
+  managed_env "$env_file"; : >"$CALLS"; printf '1700000000' >"$CLOCK"
+  if FAIL_API_ONCE="$TMP_DIR/ck-pub.api-failed" run_code_rotation "$env_file" >"$out" 2>&1; then
+    test_fail "rotation reported success although tcms-api did not become healthy"
+  fi
+  grep -qx 'phase=prepared' "$CODE_ROTATION_STATE" || test_fail "state is not prepared after a failed restart"
+  list="$(code_key_of "$env_file")"; new="${list%%,*}"; old="${list#*,}"
+  [[ -n "$new" && -n "$old" && "$old" != *,* ]] || test_fail "prepared list is not new,old"
+  fremd="fremderSchluesselFuerDenTest$(printf '%s' 0123456789abcdefgh)"
+  state_before="$(cat "$CODE_ROTATION_STATE")"
+  for falsch in "$old,$new" "$new" "$fremd,$old" "$new,$fremd" "$new,$old,$fremd"; do
+    sed -i "s|^TCMS_CODE_SCHLUESSEL=.*|TCMS_CODE_SCHLUESSEL=$falsch|" "$env_file"; : >"$CALLS"
+    if run_code_rotation "$env_file" >"$out" 2>&1; then
+      test_fail "publish accepted a key list that does not match the state ($(tcms_code_key_ids "$falsch"))"
+    fi
+    assert_contains "$out" "passt nicht zum Rotationszustand"
+    [[ ! -s "$CALLS" ]] || test_fail "tcms-api restarted with a list that does not match the state ($(tcms_code_key_ids "$falsch"))"
+    [[ "$(code_key_of "$env_file")" == "$falsch" ]] || test_fail "refused publish rewrote TCMS_CODE_SCHLUESSEL"
+    [[ "$(cat "$CODE_ROTATION_STATE")" == "$state_before" ]] || test_fail "refused publish changed the rotation state"
+  done
+  # Gegenprobe: mit der passenden Liste laeuft dieselbe Rotation weiter.
+  sed -i "s|^TCMS_CODE_SCHLUESSEL=.*|TCMS_CODE_SCHLUESSEL=$new,$old|" "$env_file"; : >"$CALLS"
+  run_code_rotation "$env_file" >"$out" 2>&1 || { cat "$out" >&2; test_fail "publish with the matching list failed"; }
+  [[ "$(cat "$CALLS")" == "API t=1700000000 codes=$(tcms_code_key_id "$new"), $(tcms_code_key_id "$old")" ]] || {
+    cat "$CALLS" >&2; test_fail "tcms-api was not restarted with new,old"; }
+  grep -qx 'phase=published' "$CODE_ROTATION_STATE" || test_fail "matching publish did not reach phase published"
+  pass "a prepared rotation restarts tcms-api only with exactly new,old from the state"
+}
+
+# Regel: Ein neuer Code-Schluessel ist genau 43 Zeichen base64url (32 Byte)
+# und ein gueltiges Geheimnis; sonst neuer Versuch, nach fuenf Fehlversuchen
+# Abbruch statt eines schwachen Schluessels.
+test_new_code_keys_are_43_char_base64url_and_valid() {
+  local seq="$TMP_DIR/ck-gen.seq" out="$TMP_DIR/ck-gen.out" gut ergebnis schlecht
+  gut="gueltigerCodeSchluesselFuerTest$(printf '%s' 0123456789AB)"
+  [[ ${#gut} == 43 ]] || test_fail "test value has the wrong length"
+  # Je ein Fehlerfall vor einem gueltigen Wert: der gueltige gewinnt.
+  for schlecht in \
+    "$(printf 'A%.0s' {1..43})" \
+    "${gut:0:42}" \
+    "${gut}x" \
+    "${gut:0:41}+/" \
+    "${gut:0:42}="; do
+    printf '0\n' >"$seq"
+    ergebnis="$(
+      unset "${TCMS_CONFIG_VARS[@]}"
+      rand_b64() {
+        local n; n="$(cat "$seq")"; printf '%s\n' $(( n + 1 )) >"$seq"
+        if (( n == 0 )); then printf '%s' "$schlecht"; else printf '%s' "$gut"; fi
+      }
+      tcms_generate_code_key ""
+    )" || test_fail "generator gave up after one rejected candidate"
+    [[ "$ergebnis" == "$gut" ]] || test_fail "generator accepted an invalid candidate (${#schlecht} chars)"
+  done
+  # Nur ungueltige Werte: Abbruch, keine Ausgabe auf stdout.
+  if ergebnis="$(
+    unset "${TCMS_CONFIG_VARS[@]}"
+    rand_b64() { printf '%s' "${gut:0:42}"; }
+    tcms_generate_code_key "" 2>"$out"
+  )"; then
+    test_fail "generator returned a key although every candidate was invalid"
+  fi
+  [[ -z "$ergebnis" ]] || test_fail "generator printed a value although it failed"
+  assert_contains "$out" "konnte nicht sicher erzeugt werden"
+  pass "new code keys are 43-char base64url and valid tokens; invalid candidates are never used"
+}
+
 test_rotation_refuses_inconsistent_or_unmanaged_configuration() {
   local env_file="$TMP_DIR/rot-refuse.env" out="$TMP_DIR/rot-refuse.out"
   export CALLS="$TMP_DIR/rot-refuse.calls" CLOCK="$TMP_DIR/rot-refuse.clock"
@@ -2001,6 +2074,38 @@ test_scheduled_tcms_backup_rotates_only_its_directory_and_stamps() {
   pass "scheduled TCMS backup: own directory, newest TCMS_BACKUP_KEEP kept after upload, stamp 0600"
 }
 
+# Regel: Der Stempel entsteht atomar (Temp-Datei, 0600, mv). Scheitert ein
+# Schritt, meldet die Funktion den Fehler, raeumt die Temp-Datei weg und
+# laesst den bisherigen Stempel stehen (doctor misst weiter das echte Alter).
+test_tcms_backup_stamp_is_written_atomically_or_not_at_all() {
+  local dir="$TMP_DIR/stamp-atomar" schritt rest
+  mkdir -p "$dir"
+  stempel_schreiben() {
+    (
+      TCMS_BACKUP_STAMP="$dir/stamp"
+      tcms_now() { printf '1792540800'; }
+      case "$1" in
+        chmod) chmod() { return 1; } ;;
+        mv) mv() { return 1; } ;;
+        printf) TCMS_BACKUP_STAMP="$dir/fehlt/stamp" ;;
+      esac
+      tcms_backup_stamp_write "/irgendwo/tcms-db-neu.dump"
+    )
+  }
+  ( umask 0022; stempel_schreiben ok ) || test_fail "stamp write failed"
+  assert_contains "$dir/stamp" "zeit=1792540800"
+  assert_contains "$dir/stamp" "datei=tcms-db-neu.dump"
+  [[ "$(file_mode "$dir/stamp")" == "600" ]] || test_fail "stamp is not 0600 under umask 022"
+  printf 'zeit=1700000000\ndatei=tcms-db-alt.dump\n' >"$dir/stamp"
+  for schritt in chmod mv printf; do
+    if stempel_schreiben "$schritt"; then test_fail "stamp write reported success although $schritt failed"; fi
+    rest="$(find "$dir" -name 'stamp.tmp.*' | wc -l)"
+    [[ "$rest" == "0" ]] || test_fail "temporary stamp left behind after a failed $schritt"
+    assert_contains "$dir/stamp" "zeit=1700000000"
+  done
+  pass "TCMS backup stamp is written atomically with 0600 or not at all"
+}
+
 test_doctor_checks_tcms_backup_schedule_and_age() {
   local env_file="$TMP_DIR/doc-bak.env" out="$TMP_DIR/doc-bak.out" jetzt=1792540800
   export FAKE_CRONTAB="$TMP_DIR/doc-bak.crontab" BACKUP_STAMP="$TMP_DIR/doc-bak.stamp"
@@ -2061,6 +2166,8 @@ run_test test_rotation_resumes_after_interruptions
 run_test test_code_key_rotation_keeps_the_old_key_for_seven_days
 run_test test_code_key_rotation_resumes_and_forces_only_with_the_word
 run_test test_code_key_rotation_state_and_refusals
+run_test test_code_key_rotation_publish_refuses_a_list_that_does_not_match_the_state
+run_test test_new_code_keys_are_43_char_base64url_and_valid
 run_test test_rotation_refuses_inconsistent_or_unmanaged_configuration
 run_test test_external_setup_requires_https_and_prints_only_the_public_key
 run_test test_disable_restarts_writers_first_and_keeps_the_database_volume
@@ -2085,6 +2192,7 @@ run_test test_tcms_restore_restores_roles_then_data_then_migrates
 run_test test_tcms_backup_schedule_installs_idempotently_and_keeps_other_entries
 run_test test_setup_deploy_and_disable_manage_the_backup_schedule
 run_test test_scheduled_tcms_backup_rotates_only_its_directory_and_stamps
+run_test test_tcms_backup_stamp_is_written_atomically_or_not_at_all
 run_test test_doctor_checks_tcms_backup_schedule_and_age
 
 if (( TESTS_FAILED > 0 )); then

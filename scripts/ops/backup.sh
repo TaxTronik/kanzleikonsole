@@ -17,6 +17,7 @@ resolve_backup_host_dir() {
     printf '%s\n' "$dir"
   else
     # Compose loest relative Bind-Mounts relativ zum Compose-File auf.
+    # shellcheck disable=SC2153 # ROOT setzt scripts/ops-lib.sh (Repository-Wurzel)
     (cd "$ROOT/infra/compose" && mkdir -p "$dir" && cd "$dir" && pwd -P)
   fi
 }
@@ -171,6 +172,7 @@ tcms_prepare_db_for_backup() {
 # Mit Ziel (kk-tcms-s11): taeglicher Lauf des Zeitplans in sein eigenes
 # Unterverzeichnis, danach Rotation nur dort. Nach dem Upload haelt
 # TCMS_BACKUP_STAMP Zeitpunkt und Datei fest (fuer doctor).
+# shellcheck disable=SC2120 # Ziel optional: restore.sh uebergibt es, alle anderen Aufrufer nutzen das Standardverzeichnis
 backup_tcms_with_upload() {
   local dest="${1:-}"
   [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
@@ -213,6 +215,7 @@ TCMS_BACKUP_SCHEDULE_END="# <<< taxtronik tcms-backup <<<"
 TCMS_BACKUP_SCHEDULE_TIME="30 1 * * *"
 TCMS_BACKUP_SCHEDULE_DIR="tcms-zeitplan"
 TCMS_BACKUP_KEEP_DEFAULT=14
+# shellcheck disable=SC2034 # liest doctor.sh (Warnung bei zu alter TCMS-Sicherung)
 TCMS_BACKUP_MAX_AGE_SECONDS=$((26 * 60 * 60))
 
 # Zugriff auf die crontab des ausfuehrenden Benutzers nur ueber diese beiden
@@ -330,8 +333,12 @@ tcms_ensure_backup_schedule() {
 tcms_backup_stamp_write() {
   local file="$1" tmp
   tmp="$TCMS_BACKUP_STAMP.tmp.$$"
-  printf 'zeit=%s\ndatei=%s\n' "$(tcms_now)" "$(basename "$file")" >"$tmp" && \
-    chmod 0600 "$tmp" && mv -f -- "$tmp" "$TCMS_BACKUP_STAMP" || { rm -f -- "$tmp"; return 1; }
+  if printf 'zeit=%s\ndatei=%s\n' "$(tcms_now)" "$(basename "$file")" >"$tmp" &&
+    chmod 0600 "$tmp" && mv -f -- "$tmp" "$TCMS_BACKUP_STAMP"; then
+    return 0
+  fi
+  rm -f -- "$tmp"
+  return 1
 }
 
 # Epoche der letzten Sicherung; rc 1 ohne bzw. mit ungueltigem Stempel.
@@ -741,6 +748,7 @@ cmd_backup() {
   wait_seaweedfs_healthy
   sync_postgres_roles_from_env
   run_backup
+  # shellcheck disable=SC2119 # ohne Ziel: Standardverzeichnis
   backup_tcms_with_upload || die "TCMS-Backup fehlgeschlagen."
   info "Backup fertig."
 }

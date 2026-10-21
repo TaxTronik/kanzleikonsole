@@ -370,7 +370,9 @@ tcms_generate_code_key() {
   local avoid="${1:-}" candidate
   for _ in 1 2 3 4 5; do
     candidate="$(rand_b64 32)"
-    [[ "$candidate" =~ $TCMS_CODE_KEY_GENERATED_PATTERN ]] && tcms_valid_token "$candidate" || continue
+    if ! [[ "$candidate" =~ $TCMS_CODE_KEY_GENERATED_PATTERN ]] || ! tcms_valid_token "$candidate"; then
+      continue
+    fi
     ! tcms_token_list_contains "$avoid" "$candidate" || continue
     [[ -z "$(tcms_code_key_collision "$candidate")" ]] || continue
     printf '%s' "$candidate"
@@ -1212,10 +1214,11 @@ tcms_code_key_rotation_publish() {
     list="$TCMS_CODE_SCHLUESSEL"
     IFS=',' read -r -a entries <<<"$list"
   fi
-  (( ${#entries[@]} == 2 )) && \
-    [[ "$(tcms_code_key_id "${entries[0]}")" == "$_TCMS_CKR_NEW" && \
-       "$(tcms_code_key_id "${entries[1]}")" == "$_TCMS_CKR_OLD" ]] || \
+  if (( ${#entries[@]} != 2 )) || \
+    ! [[ "$(tcms_code_key_id "${entries[0]}")" == "$_TCMS_CKR_NEW" && \
+         "$(tcms_code_key_id "${entries[1]}")" == "$_TCMS_CKR_OLD" ]]; then
     die "TCMS_CODE_SCHLUESSEL passt nicht zum Rotationszustand ($_TCMS_CKR_OLD -> $_TCMS_CKR_NEW); nicht raten, manuell pruefen."
+  fi
   problem="$(tcms_code_key_problem "$list")"
   [[ -z "$problem" ]] || die "TCMS_CODE_SCHLUESSEL: $problem; Rotation angehalten."
   tcms_restart_api || \
