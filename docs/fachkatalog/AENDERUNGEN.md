@@ -1,5 +1,30 @@
 ---
 exceptions:
+  - id: FK-EXC-20261022-001
+    date: '2026-10-22'
+    paths:
+      - .forgejo/workflows/ci.yml
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - TCMS-SAMPLE-PROOF-001
+    reason: >-
+      TCMS Stufe 3 (Commit 1347309, CI-Lauf 3895): Nur die Paketinstallation
+      der CI-Werkzeuge ändert sich. Die Schritte für shellcheck, ssh-keygen
+      und Java rufen apt-get über scripts/ci/apt.sh auf, das nur Quellen des
+      Ubuntu-Archivs und von PGDG zulässt und update dreimal versucht; Pakete,
+      Versionsprüfungen, Jobs, Reihenfolge, Testbefehle und Artefakte der
+      Workflow-Datei bleiben gleich. Die Release-, Zeitanker-, Prüflauf- und
+      Stichprobenschritte der genannten Regeln sind nicht berührt;
+      Entscheidung, Geltungsbereich, Ausnahmen und Ergebnis ändern sich nicht.
+      Das Verhalten des Hilfsskripts belegt der Bash-Test
+      scripts/tests/ci-apt.test.sh in test:ops. Keine fachliche Freigabe.
+    tests:
+      - scripts/tests/ci-caches.test.mjs
+      - scripts/tests/db-suites-ci.test.mjs
+      - scripts/tests/check-paranoid-e2e.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261020-001
     date: '2026-10-20'
     paths:
