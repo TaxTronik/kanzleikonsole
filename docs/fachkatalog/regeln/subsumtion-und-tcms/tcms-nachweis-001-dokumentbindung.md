@@ -89,6 +89,7 @@ code_refs:
   - packages/db/prisma/migrations/20261020200100_tcms_document_reference_client_scope/migration.sql
   - packages/db/prisma/migrations/20261020200200_tcms_portal_report/migration.sql
   - packages/db/prisma/migrations/20261021100000_tcms_portal_report_lease_token/migration.sql
+  - packages/db/prisma/migrations/20261021100100_tcms_portal_report_payload_guard/migration.sql
   - packages/db/src/database-error.ts
   - apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx
   - apps/web/src/components/tcms/portal/anlagen.tsx
@@ -371,10 +372,12 @@ Ereignis-ID, die kein laufender Vorgang mehr klärt, für Arbeitskorb und
 Ereigniseingang; `ungeklaerteAnlageZuordnenAction` setzt die Ereignis-ID nur
 nach `ereignisAnlageLesen`, wenn dessen Antwort dieselbe Dokument-ID und
 denselben SHA-256 trägt wie die Verknüpfung (wie die Datei-Route; nicht nur
-ein Treffer unter dem angefragten Pfad, kk-tcms-fix4). In der Datenbank hält ein Guard den Vorgang
-(neu nur ungesendet und mit einem Kontakt dieses Mandanten; Bezug, Schlüssel
-und Anlage unveränderlich; Sendezeitpunkt genau einmal), CHECKs verlangen
-Inhalt genau dann, wenn gesendet, und nur im Format der Secret-Box (nie
+ein Treffer unter dem angefragten Pfad, kk-tcms-fix4). In der Datenbank hält
+ein Guard den Vorgang (neu nur ungesendet und mit einem Kontakt dieses
+Mandanten; Bezug, Schlüssel und Anlage unveränderlich; Sendezeitpunkt genau
+einmal; der Inhalt ändert sich nur mit dem ersten Senden oder in der Form des
+Re-Wraps durch eine Rolle mit BYPASSRLS, nie durch die App-Rolle – Migration
+`20261021100100`), CHECKs verlangen Inhalt genau dann, wenn gesendet, und nur im Format der Secret-Box (nie
 Klartext); RLS, Paarprüfung und Rechte wie die Nachbartabellen, ohne
 TRUNCATE, REFERENCES, TRIGGER und MAINTAIN für die App-Rolle
 (Restore-Invariante). `tcms_document_reference.tcms_report_key` (nur EVENT,
@@ -554,5 +557,6 @@ gerade markierten Vorgang; eine Ablehnung des ersten Versuchs nach Verlust der
 Lease gibt nicht frei; Nachführungen mit verlorener Lease ändern nichts; eine
 späte Annahme ordnet keine Anlagen eines späteren Vorgangs zu; ein Schlüssel
 mit offenen Anlagen beginnt keinen neuen Vorgang. `tcms-db-regeln.test.ts`
-belegt den CHECK der Lease. Jede dieser Bedingungen ist durch eine Mutation
-belegt.
+belegt den CHECK der Lease und den unveränderlichen Inhalt (App-Rolle
+abgewiesen, Re-Wrap über Superuser und Owner-Rolle nur in seiner Form). Jede
+dieser Bedingungen ist durch eine Mutation belegt.

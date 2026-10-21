@@ -6410,6 +6410,7 @@
         "packages/db/prisma/migrations/20261020200100_tcms_document_reference_client_scope/migration.sql",
         "packages/db/prisma/migrations/20261020200200_tcms_portal_report/migration.sql",
         "packages/db/prisma/migrations/20261021100000_tcms_portal_report_lease_token/migration.sql",
+        "packages/db/prisma/migrations/20261021100100_tcms_portal_report_payload_guard/migration.sql",
         "packages/db/src/database-error.ts",
         "apps/web/src/components/tcms/durchfuehrung/nachweis-liste.tsx",
         "apps/web/src/components/tcms/portal/anlagen.tsx",

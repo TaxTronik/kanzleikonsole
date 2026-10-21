@@ -437,6 +437,11 @@ vorab vermerken.
    wie sie `./taxtronik reset-admin-password` installiert, und die
    Host-Verbindung `DATABASE_URL` aus `.env` (Superuser `taxtronik`; die
    Container nutzen seit S-01 `taxtronik_owner`).
+   Den Inhalt offener Portal-Meldungen (`tcms_portal_report.payload_enc`)
+   ändert die Datenbank nur in genau dieser Form (nur der Wert, Zeile
+   gesendet) und nur für eine Rolle mit BYPASSRLS (Superuser bzw.
+   `taxtronik_owner`); die App-Rolle kann ihn nach dem ersten Senden nicht
+   mehr ändern (Guard, kk-tcms-fix4).
 
 6. Alte Einträge aus `SECRET_BOX_KEYRING` entfernen und `./taxtronik deploy`.
    Die Wurzel bleibt implizit Teil des Schlüsselbunds.

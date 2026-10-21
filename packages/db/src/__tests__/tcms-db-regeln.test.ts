@@ -910,15 +910,55 @@ describeWithDatabase('tcms_portal_report (TCMS-NACHWEIS-001, kk-tcms-s10nach)', 
       aendern({ sentAt: new Date(Date.now() - 3_600_000) }),
       pruefung('tcms_portal_report: der Sendezeitpunkt wird nur einmal gesetzt'),
     );
-    // Lease (mit Besitz), Versuche und Neuverschlüsselung (Re-Wrap) bleiben möglich.
+    // Lease (mit Besitz) und Versuche bleiben änderbar.
     await expect(
-      aendern({
-        leaseUntil: new Date(),
-        leaseToken: randomUUID(),
-        attempts: { increment: 1 },
-        payloadEnc: `${V3}AAAA`,
-      }),
+      aendern({ leaseUntil: new Date(), leaseToken: randomUUID(), attempts: { increment: 1 } }),
     ).resolves.toBeTruthy();
+  });
+
+  it('Trigger: der Inhalt ändert sich nur mit dem ersten Senden oder durch den Re-Wrap (kk-tcms-fix4)', async () => {
+    const inhalt = pruefung(
+      'tcms_portal_report: der Inhalt ändert sich nur mit dem ersten Senden oder durch den Re-Wrap',
+    );
+    // Erstes Senden durch die App-Rolle: Sendezeitpunkt und Inhalt zusammen.
+    const { id } = await owner.tcmsPortalReport.create({ data: vorgang() });
+    await expect(
+      alsApp(tenantA, staffA, (tx) =>
+        tx.tcmsPortalReport.update({ where: { id }, data: { payloadEnc: V3, sentAt: new Date() } }),
+      ),
+    ).resolves.toBeTruthy();
+    // Danach überschreibt die App-Rolle den gespeicherten Inhalt nicht, auch
+    // nicht in der Form des Re-Wraps.
+    await dbAbgewiesen(
+      alsApp(tenantA, staffA, (tx) =>
+        tx.tcmsPortalReport.update({ where: { id }, data: { payloadEnc: `${V3}AAAA` } }),
+      ),
+      inhalt,
+      'App-Rolle',
+    );
+    // Re-Wrap über DATABASE_URL: Superuser und Owner-Rolle (BYPASSRLS), nur payload_enc.
+    await expect(
+      owner.tcmsPortalReport.update({ where: { id }, data: { payloadEnc: `${V3}AAAA` } }),
+    ).resolves.toBeTruthy();
+    await expect(
+      zurueckgerollt(async (tx) => {
+        await tx.$executeRawUnsafe('SET LOCAL ROLE taxtronik_owner');
+        expect(
+          await tx.$executeRaw`UPDATE public.tcms_portal_report SET payload_enc = ${`${V3}BBBB`} WHERE id = ${id}::uuid`,
+        ).toBe(1);
+      }),
+    ).resolves.toBeUndefined();
+    // Nicht in anderer Form: zusammen mit Versuchen bzw. Lease, auch nicht als Superuser.
+    for (const data of [
+      { payloadEnc: `${V3}CCCC`, attempts: { increment: 1 } },
+      { payloadEnc: `${V3}CCCC`, leaseUntil: new Date(), leaseToken: randomUUID() },
+    ]) {
+      await dbAbgewiesen(
+        owner.tcmsPortalReport.update({ where: { id }, data }),
+        inhalt,
+        JSON.stringify(data).slice(0, 80),
+      );
+    }
   });
 
   it('CHECK-Bedingungen, jede für sich (Trigger abgeschaltet)', async () => {

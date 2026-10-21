@@ -40,6 +40,33 @@ BEGIN
     RAISE EXCEPTION 'tcms_portal_report: der Sendezeitpunkt wird nur einmal gesetzt'
       USING ERRCODE = 'check_violation';
   END IF;
+  -- kk-tcms-fix4 (Härtung): Der gespeicherte Inhalt ändert sich nur mit dem
+  -- ersten Senden (sent_at wird im selben Statement gesetzt) oder durch den
+  -- Re-Wrap der Secret-Box (`pnpm secret-box:rewrap`, secret-box-rewrap.ts):
+  -- nur payload_enc neu verschlüsselt, die Zeile gesendet, alles andere
+  -- unverändert, über DATABASE_URL (Superuser `taxtronik` laut
+  -- secret-rotation.md bzw. Owner-Verbindung). Der Re-Wrap liest alle Tenants
+  -- dieser Tabelle mit FORCE RLS und braucht dafür BYPASSRLS; die App-Rolle
+  -- (RLS) ändert einen gespeicherten Inhalt deshalb nie.
+  IF NEW.payload_enc IS DISTINCT FROM OLD.payload_enc
+     AND NOT (OLD.sent_at IS NULL AND NEW.sent_at IS NOT NULL)
+     AND NOT (
+       OLD.sent_at IS NOT NULL
+       AND OLD.payload_enc IS NOT NULL
+       AND NEW.payload_enc IS NOT NULL
+       AND (NEW.sent_at, NEW.lease_until, NEW.lease_token, NEW.attempts, NEW.last_attempt_at)
+           IS NOT DISTINCT FROM
+           (OLD.sent_at, OLD.lease_until, OLD.lease_token, OLD.attempts, OLD.last_attempt_at)
+       AND EXISTS (
+         SELECT 1
+           FROM pg_catalog.pg_roles r
+          WHERE r.rolname = current_user
+            AND (r.rolsuper OR r.rolbypassrls)
+       )
+     ) THEN
+    RAISE EXCEPTION 'tcms_portal_report: der Inhalt ändert sich nur mit dem ersten Senden oder durch den Re-Wrap'
+      USING ERRCODE = 'check_violation';
+  END IF;
   RETURN NEW;
 END
 $function$;
