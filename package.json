@@ -17,7 +17,7 @@
     "typecheck": "turbo run typecheck && pnpm typecheck:scripts",
     "typecheck:scripts": "tsc -p scripts",
     "test": "turbo run test",
-    "test:ops": "bash scripts/tests/ops-lib.test.sh && bash scripts/tests/ops-tcms.test.sh && bash scripts/tests/redteam-ops-tcms.test.sh && bash scripts/release/tests/verify-tcms-pins.test.sh && node --test scripts/tests/tcms-compose.test.mjs && node --test scripts/tests/env-tool.test.mjs && bash scripts/tests/migrate-deploy-recovery.test.sh && pnpm --filter @taxtronik/db test:migrate-deploy",
+    "test:ops": "bash scripts/tests/ops-lib.test.sh && bash scripts/tests/ops-tcms.test.sh && bash scripts/tests/redteam-ops-tcms.test.sh && bash scripts/tests/redteam-ops-backup-rt3d.test.sh && bash scripts/release/tests/verify-tcms-pins.test.sh && node --test scripts/tests/tcms-compose.test.mjs && node --test scripts/tests/env-tool.test.mjs && bash scripts/tests/migrate-deploy-recovery.test.sh && pnpm --filter @taxtronik/db test:migrate-deploy",
     "e2e": "pnpm --filter @taxtronik/e2e e2e",
     "e2e:ui": "pnpm --filter @taxtronik/e2e e2e:ui",
     "e2e:headed": "pnpm --filter @taxtronik/e2e e2e:headed",
