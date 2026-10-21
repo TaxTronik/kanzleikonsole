@@ -4,7 +4,9 @@
 // Aktion dem Helfer übergibt – Mandant aus dem gebundenen Argument, Schritt
 // streng aus JSON gelesen, Personen der Kanzlei aus der kanzleikonsole statt
 // aus dem Formular, Personen aus dem Formular vor dem Dienstaufruf geprüft,
-// Weiterleitung nur nach Erfolg.
+// Weiterleitung nur nach Erfolg. kk-tcms-s11: Vor dem Anlegen (der Dienst
+// versendet dann die Zielfreigabe) prüft die Aktion den gespeicherten
+// Empfänger erneut (Kontakt mit aktivem Portalzugang).
 // Fachkatalog: TCMS-AKTEUR-001, TCMS-DIENST-001
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,6 +17,7 @@ const h = vi.hoisted(() => ({
   zust: vi.fn(),
   freigabe: vi.fn(),
   kontrollen: vi.fn(),
+  vorAnlegen: vi.fn(),
   redirect: vi.fn((url: string) => {
     throw new Error(`NEXT_REDIRECT ${url}`);
   }),
@@ -36,6 +39,7 @@ vi.mock('@/server/tcms/programm/einrichtung', async (orig) => ({
   ...(await orig<typeof import('@/server/tcms/programm/einrichtung')>()),
   pruefeFreigabeEmpfaengerTx: h.freigabe,
   pruefeKontrollPersonenTx: h.kontrollen,
+  pruefeZielfreigabeVorAnlegen: h.vorAnlegen,
 }));
 
 import { tcmsFixtures } from '@/__tests__/tcms-fixtures';
@@ -49,7 +53,9 @@ const LEON = 'b1000000-0000-4000-8000-000000000002';
 const THOMAS = 'b1000000-0000-4000-8000-000000000003';
 const LEA = 'b1000000-0000-4000-8000-000000000051';
 const TX = { tx: true };
-const K = { g: { tenantId: TENANT }, akteur: {}, mandantId: MANDANT };
+const CTX = { tenantId: TENANT, actorId: ANNA, actorType: 'STAFF' };
+const K = { g: { tenantId: TENANT, ctx: CTX }, akteur: {}, mandantId: MANDANT };
+const BEZUG = { tenantId: TENANT, mandantId: MANDANT };
 const ZUST = {
   berufstraeger: { id: ANNA, name: 'StB Dr. Anna Roth' },
   bearbeitung: { id: LEON, name: 'Leon Brandt' },
@@ -107,6 +113,7 @@ beforeEach(() => {
   h.zust.mockResolvedValue(ZUST);
   h.freigabe.mockResolvedValue(undefined);
   h.kontrollen.mockResolvedValue(undefined);
+  h.vorAnlegen.mockResolvedValue(undefined);
 });
 
 describe('einrichtungSpeichernAction', () => {
@@ -122,19 +129,16 @@ describe('einrichtungSpeichernAction', () => {
     const parsed = s.parse();
     expect(parsed.ok).toBe(true);
 
-    const personen = await s.vorbereiten(TX, K, parsed.data);
+    const v = await s.vorbereiten(TX, K, parsed.data);
     expect(h.zust).toHaveBeenCalledWith(TX, { tenantId: TENANT, mandantId: MANDANT });
-    expect(personen).toEqual({
-      berufstraegerId: ANNA,
-      bearbeitungId: LEON,
-      kanzlei: [ANNA, LEON, THOMAS],
-    });
+    const personen = { berufstraegerId: ANNA, bearbeitungId: LEON, kanzlei: [ANNA, LEON, THOMAS] };
+    expect(v).toEqual({ personen, ctx: CTX, bezug: BEZUG });
     // Schritt 1: weder Freigabeempfänger noch Kontrollpersonen zu prüfen.
     expect(h.freigabe).not.toHaveBeenCalled();
     expect(h.kontrollen).not.toHaveBeenCalled();
 
     const d = dienst({ programmId: 'p', angelegt: false, abgeschlossen: 4, geaendert: true });
-    await expect(s.aufruf(d, parsed.data, personen)).resolves.toEqual({
+    await expect(s.aufruf(d, parsed.data, v)).resolves.toEqual({
       ziel: 'speichern',
       schritt: 1,
       meldung: 'Entwurf gespeichert.',
@@ -156,7 +160,9 @@ describe('einrichtungSpeichernAction', () => {
     const s = spec();
     const parsed = s.parse();
     const d = dienst({ programmId: 'p', angelegt: false, abgeschlossen: 4, geaendert: false });
-    await expect(s.aufruf(d, parsed.data, {})).resolves.toMatchObject({
+    await expect(
+      s.aufruf(d, parsed.data, { personen: {}, ctx: CTX, bezug: BEZUG }),
+    ).resolves.toMatchObject({
       meldung: 'Keine Änderungen – der Entwurf ist unverändert.',
     });
   });
@@ -214,7 +220,7 @@ describe('einrichtungSpeichernAction', () => {
     const s = spec();
     const parsed = s.parse();
     expect(parsed.ok).toBe(true);
-    const personen = await s.vorbereiten(TX, K, parsed.data);
+    const v = (await s.vorbereiten(TX, K, parsed.data)) as { personen: unknown };
     expect(h.kontrollen).toHaveBeenCalledWith(
       TX,
       { tenantId: TENANT, mandantId: MANDANT },
@@ -227,12 +233,68 @@ describe('einrichtungSpeichernAction', () => {
       kontrollen: 1,
       durchfuehrungen: 1,
     });
-    await expect(s.aufruf(d, parsed.data, personen)).resolves.toMatchObject({
+    await expect(s.aufruf(d, parsed.data, v)).resolves.toMatchObject({
       ziel: 'anlegen',
       meldung: 'Version 1 des Tax-CMS ist angelegt.',
     });
-    expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.programmAnlegen, {
-      body: { daten: { kontrollen }, personen },
+    // kk-tcms-s11: zuerst den Entwurf lesen (Empfänger der Zielfreigabe), dann anlegen.
+    expect(d.rufe.mock.calls).toEqual([
+      [ENDPUNKTE.einrichtungLesen, { query: {} }],
+      [ENDPUNKTE.programmAnlegen, { body: { daten: { kontrollen }, personen: v.personen } }],
+    ]);
+    // Ohne angeforderte Freigabe im Entwurf: keine erneute Prüfung.
+    expect(h.vorAnlegen).not.toHaveBeenCalled();
+  });
+
+  describe('kk-tcms-s11: Empfänger der Zielfreigabe vor dem Anlegen erneut prüfen', () => {
+    const kontrollen = {};
+    async function anlegen(freigabe: { anfordern: boolean; empfaengerId: string | null }) {
+      h.ergebnis = { ok: false, error: 'x' };
+      await einrichtungSpeichernAction(MANDANT, null, formular(5, 'anlegen', { kontrollen }));
+      const s = spec();
+      const parsed = s.parse();
+      const v = await s.vorbereiten(TX, K, parsed.data);
+      const view = { ...tcmsFixtures.einrichtungBergkamm() };
+      view.entwurf = { ...view.entwurf!, freigabe };
+      const rufe = vi.fn(async (endpunkt: { name?: string }) => ({
+        daten: endpunkt === ENDPUNKTE.einrichtungLesen ? view : { programmId: 'p' },
+        requestId: 'r',
+      }));
+      return { r: await s.aufruf({ rufe }, parsed.data, v), rufe };
+    }
+
+    it('Freigabe angefordert: Empfänger mit Kontext und Mandant der Aktion geprüft, dann angelegt', async () => {
+      const freigabe = { anfordern: true, empfaengerId: LEA };
+      const { r, rufe } = await anlegen(freigabe);
+      expect(h.vorAnlegen).toHaveBeenCalledWith(CTX, BEZUG, freigabe);
+      expect(r).toMatchObject({ meldung: 'Version 1 des Tax-CMS ist angelegt.' });
+      expect(rufe).toHaveBeenLastCalledWith(ENDPUNKTE.programmAnlegen, expect.anything());
+    });
+
+    it('Empfänger ohne Portalzugang (bzw. nicht mehr beim Mandanten): fester Text, kein Anlegen', async () => {
+      const { TcmsPersonUnzulaessig, TCMS_PERSON_UNZULAESSIG_TEXTE } =
+        await import('@/server/tcms/personen');
+      h.vorAnlegen.mockRejectedValueOnce(new TcmsPersonUnzulaessig('PORTAL', 'freigabe'));
+      const { r, rufe } = await anlegen({ anfordern: true, empfaengerId: LEA });
+      expect(r).toEqual({
+        ok: false,
+        error: `Schritt 3 (Freigabe der Ziele): ${TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL}`,
+        errorCode: 'VALIDATION_ERROR',
+      });
+      expect(rufe).toHaveBeenCalledTimes(1);
+      expect(rufe).not.toHaveBeenCalledWith(ENDPUNKTE.programmAnlegen, expect.anything());
+    });
+
+    it('andere Fehler der Prüfung gehen an die Fehlerabbildung; kein Anlegen', async () => {
+      const fehler = new Error('Datenbank');
+      h.vorAnlegen.mockRejectedValueOnce(fehler);
+      await expect(anlegen({ anfordern: true, empfaengerId: LEA })).rejects.toBe(fehler);
+    });
+
+    it('nicht angefordert bzw. ohne Empfänger: keine Prüfung', async () => {
+      await anlegen({ anfordern: false, empfaengerId: LEA });
+      await anlegen({ anfordern: true, empfaengerId: null });
+      expect(h.vorAnlegen).not.toHaveBeenCalled();
     });
   });
 

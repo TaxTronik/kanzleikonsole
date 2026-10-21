@@ -7,8 +7,9 @@
 // kanzleikonsole, „Neu adressieren“ nur für offene Anforderungen mit Recht und
 // nur an Kontakte dieses Mandanten mit passender Rolle; Zustellstatus der
 // jüngsten Nachricht je Anforderung (TCMS s6) mit Hinweis auf die
-// Neuadressierung, wenn die Person sie nicht erhalten hat.
-// Fachkatalog: TCMS-DIENST-001
+// Neuadressierung, wenn die Person sie nicht erhalten hat; nur an Kontakte mit
+// aktivem Portalzugang (kk-tcms-s11), andere mit Hinweis und nicht wählbar.
+// Fachkatalog: TCMS-DIENST-001, TCMS-AKTEUR-001
 import { fireEvent, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,6 +18,7 @@ const h = vi.hoisted(() => ({
   lesen: vi.fn(),
   lesenOptional: vi.fn(),
   namen: vi.fn(),
+  portal: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -37,7 +39,9 @@ vi.mock('@/server/tcms/seite', () => ({
   tcmsLesen: h.lesen,
   tcmsLesenOptional: h.lesenOptional,
   tcmsNamenLesen: h.namen,
+  tcmsTenantLesen: async (_seite: unknown, f: (tx: unknown) => unknown) => f({ tx: true }),
 }));
+vi.mock('@/server/tcms/personen', () => ({ kontakteMitPortalzugangTx: h.portal }));
 
 import { DEMO, tcmsFixtures } from '@/__tests__/tcms-fixtures';
 import { renderServer } from '@/__tests__/render-helpers';
@@ -45,6 +49,7 @@ import { erwarteIsoliert, markiert } from '@/__tests__/tcms-isolation';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import TcmsKommunikationPage from '../page';
+import { KEIN_EMPFAENGER_MIT_PORTALZUGANG, OHNE_PORTALZUGANG } from '@/components/tcms/empfaenger';
 
 const BASIS = `/staff/clients/${DEMO.talwind}/tcms`;
 const SEITE = {
@@ -83,6 +88,7 @@ async function rendern(sp: Record<string, string> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   h.seite.mockResolvedValue(SEITE);
+  h.portal.mockResolvedValue(new Set([DEMO.jana, DEMO.murat, DEMO.sabine]));
   h.namen.mockImplementation(async () => ({
     name: (id: string | null) => (id ? (NAMEN[id] ?? UNBEKANNTE_PERSON) : KEINE_PERSON),
     bekannt: (id: string | null) => !!id && id in NAMEN,
@@ -143,6 +149,40 @@ describe('Kommunikation', () => {
       'Murat Yilmaz (bisher)',
       'Sabine Kraus',
     ]);
+  });
+
+  it('kk-tcms-s11: Kontakt ohne Portalzugang nicht wählbar, mit Hinweis; ohne jeden Zugang gesperrt', async () => {
+    daten();
+    h.portal.mockResolvedValue(new Set([DEMO.jana]));
+    await rendern();
+    expect(h.portal).toHaveBeenCalledWith(
+      { tx: true },
+      { tenantId: DEMO.tenant, mandantId: DEMO.talwind },
+      expect.arrayContaining([DEMO.jana, DEMO.murat]),
+    );
+    fireEvent.click(
+      within(screen.getByRole('table', { name: 'Kenntnisnahmen' })).getByRole('button'),
+    );
+    const auswahl = within(screen.getByRole('dialog')).getByRole('combobox', {
+      name: 'Empfänger (Kontakt mit Rolle)',
+    }) as HTMLSelectElement;
+    expect([...auswahl.options].map((o) => [o.textContent, o.disabled])).toEqual([
+      ['Bitte wählen …', false],
+      ['Jana Weller', false],
+      [`Murat Yilmaz (bisher) (${OHNE_PORTALZUGANG})`, true],
+      [`Sabine Kraus (${OHNE_PORTALZUGANG})`, true],
+    ]);
+  });
+
+  it('kk-tcms-s11: keine gesetzliche Vertretung mit Portalzugang: Neu adressieren gesperrt mit Grund', async () => {
+    daten();
+    h.portal.mockResolvedValue(new Set());
+    await rendern();
+    const knopf = within(screen.getByRole('table', { name: 'Freigaben' })).getByRole('button');
+    expect(knopf).toHaveProperty('disabled', true);
+    expect(document.getElementById(knopf.getAttribute('aria-describedby')!)!.textContent).toContain(
+      KEIN_EMPFAENGER_MIT_PORTALZUGANG,
+    );
   });
 
   it('ohne gesetzliche Vertretung: Neu adressieren gesperrt mit Grund', async () => {

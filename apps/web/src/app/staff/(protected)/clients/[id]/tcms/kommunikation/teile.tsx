@@ -29,10 +29,15 @@ import {
   kontaktPersonen,
   rollenText,
   type KontaktRolle,
-  type Person,
 } from '@/components/tcms/programm/kontakte';
 import type { TcmsNamen } from '@/server/tcms/namen';
 import { freigabeNeuadressierenAction } from './actions';
+import {
+  empfaengerLabel,
+  KEIN_EMPFAENGER_MIT_PORTALZUGANG,
+  mitPortalzugang,
+  type Empfaenger,
+} from '@/components/tcms/empfaenger';
 import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 
 export interface KommunikationModell {
@@ -44,6 +49,8 @@ export interface KommunikationModell {
   rollen: readonly KontaktRolle[];
   /** Offene Anforderungen dürfen neu adressiert werden (Recht laut Dienst, aktueller Stand). */
   neuAdressierbar: boolean;
+  /** Kontakte (IDs klein) mit aktivem Portalzugang – nur sie sind wählbar (kk-tcms-s11). */
+  portalzugang: ReadonlySet<string>;
 }
 
 const mitStand = (m: KommunikationModell, href: string) =>
@@ -57,10 +64,18 @@ function NeuAdressieren({
 }: {
   mandantId: string;
   f: FreigabeHistorieZeile;
-  pool: readonly Person[];
+  pool: readonly Empfaenger[];
   name: string;
 }) {
   const feld = `neuadressierung-${f.id}`;
+  const grund =
+    pool.length === 0
+      ? f.art === 'KENNTNISNAHME'
+        ? 'Kein Kontakt dieses Mandanten mit Rolle im Tax-CMS.'
+        : 'Keine gesetzliche Vertretung dieses Mandanten im Tax-CMS hinterlegt.'
+      : pool.every((p) => !p.portal)
+        ? KEIN_EMPFAENGER_MIT_PORTALZUGANG
+        : null;
   return (
     <TcmsAktionsDialog
       ausloeser={
@@ -88,15 +103,8 @@ function NeuAdressieren({
       aktion={freigabeNeuadressierenAction.bind(null, mandantId)}
       versteckt={{ freigabeId: f.id }}
       erfolg="Die Anforderung ist neu adressiert."
-      deaktiviert={pool.length === 0}
-      {...(pool.length === 0
-        ? {
-            deaktiviertGrund:
-              f.art === 'KENNTNISNAHME'
-                ? 'Kein Kontakt dieses Mandanten mit Rolle im Tax-CMS.'
-                : 'Keine gesetzliche Vertretung dieses Mandanten im Tax-CMS hinterlegt.',
-          }
-        : {})}
+      deaktiviert={grund !== null}
+      {...(grund ? { deaktiviertGrund: grund } : {})}
       fieldIds={{ empfaengerId: feld }}
     >
       <div>
@@ -108,9 +116,12 @@ function NeuAdressieren({
         <select id={feld} name="empfaengerId" className="input" defaultValue="" required>
           <option value="">Bitte wählen …</option>
           {pool.map((p) => (
-            <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
-              {p.name}
-              {p.id === f.empfaengerId.toLowerCase() ? ' (bisher)' : ''}
+            <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id} disabled={!p.portal}>
+              {empfaengerLabel(
+                p.name,
+                p.portal,
+                p.id === f.empfaengerId.toLowerCase() ? ' (bisher)' : '',
+              )}
             </option>
           ))}
         </select>
@@ -126,10 +137,12 @@ function StatusZelle({ m, f }: { m: KommunikationModell; f: FreigabeHistorieZeil
     : offen && !m.h.historisch
       ? codeText(f, isoDatumText)
       : '';
-  const pool =
+  const pool = mitPortalzugang(
     f.art === 'KENNTNISNAHME'
       ? kontaktPersonen(m.rollen, m.namen)
-      : kontaktPersonen(m.rollen, m.namen, ['GESETZLICHER_VERTRETER']);
+      : kontaktPersonen(m.rollen, m.namen, ['GESETZLICHER_VERTRETER']),
+    m.portalzugang,
+  );
   return (
     <td className="px-4 py-2 align-top">
       <span className={FREIGABE_STATUS[f.status].badge}>

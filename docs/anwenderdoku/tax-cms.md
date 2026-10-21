@@ -94,6 +94,18 @@ im Mandanten-Portal sieht und tun darf.
 
 - Zur Auswahl stehen nur Kontakte dieses Mandanten; Rollen erhalten nur
   aktive Kontakte. Rollen entfernen geht auch bei inaktiven Kontakten.
+- Auch Kontakte **ohne Portalzugang** können Rollen erhalten. Sie tragen den
+  Hinweis „ohne Portalzugang – kann nicht freigeben“: Freigaben,
+  Risikoakzeptanzen und Kenntnisnahmen bestätigt ein Kontakt im
+  Mandanten-Portal mit einem Code per E-Mail, deshalb lassen sie sich nur an
+  Kontakte mit aktivem Portalzugang richten. Aktiv ist der Portalzugang, wenn
+  der Kontakt aktiv ist, der Mandant für das Portal freigeschaltet und das
+  Mandat nicht beendet ist, die E-Mail-Adresse eine gültige Form hat und der
+  Kontakt sich mindestens einmal im Portal angemeldet hat (damit ist die
+  Adresse bestätigt). In jeder Empfängerauswahl erscheinen Kontakte ohne
+  Portalzugang mit diesem Hinweis und sind nicht wählbar; TaxTronik prüft
+  das vor dem Senden erneut und meldet sonst „Der gewählte Kontakt hat keinen
+  aktiven Portalzugang und kann nicht freigeben.“
 - Die Kontaktdaten selbst pflegen Sie wie gewohnt in der Mandantenakte.
 - Ob Sie Rollen pflegen dürfen, entscheidet das Tax-CMS. Ohne dieses Recht
   sehen Sie die Rollen und Formulare gesperrt, mit dem Grund über der
@@ -131,8 +143,16 @@ Gegenzeichnung; Frequenzen aus der Häufigkeitsmatrix).
   Gegenzeichnung“ bzw. bei Schlüsselkontrollen „Bitte wählen … (Pflicht bei
   Schlüsselkontrolle)“. Ohne gewählten Empfänger der Zielfreigabe nennt die
   Zusammenfassung „der noch zu wählenden gesetzlichen Vertretung“.
-- „Tax-CMS Version 1 anlegen“ fragt vorher nach. Danach ist der Assistent
-  geschlossen; Änderungen erfolgen in Profil, Risiken und Kontrollen.
+- Empfänger der Zielfreigabe kann nur eine gesetzliche Vertretung mit
+  aktivem Portalzugang sein (Abschnitt 5). Hat keine einen, lässt sich die
+  Freigabe in der Einrichtung nicht anfordern; sie kann später angefordert
+  werden.
+- „Tax-CMS Version 1 anlegen“ fragt vorher nach. Mit Version 1 geht die
+  Anforderung der Zielfreigabe hinaus; TaxTronik prüft deshalb unmittelbar
+  vorher erneut, ob der gespeicherte Empfänger noch aktiven Portalzugang hat,
+  und nennt sonst den Grund („Schritt 3 (Freigabe der Ziele): …“). Danach ist
+  der Assistent geschlossen; Änderungen erfolgen in Profil, Risiken und
+  Kontrollen.
 
 ### Geschäftsprofil
 
@@ -166,8 +186,9 @@ Verantwortung, Länder, Feststellungen), die das Tax-CMS automatisch füllt.
   Abschluss nicht angeboten) oder „Zurück in den Entwurf“ mit Begründung
   (mindestens 30 Zeichen) → „Freigabe beim Mandanten anfordern“.
 - **Freigabe anfordern** friert den Inhalt ein und bindet ihn mit SHA-256.
-  Empfänger ist eine gesetzliche Vertretung dieses Mandanten; sie gibt im
-  Mandanten-Portal mit E-Mail-Code frei. Eine offene Anforderung einer
+  Empfänger ist eine gesetzliche Vertretung dieses Mandanten mit aktivem
+  Portalzugang (Abschnitt 5); sie gibt im Mandanten-Portal mit E-Mail-Code
+  frei. Eine offene Anforderung einer
   älteren Version wird dabei zurückgezogen.
 - **Eingefrorene Versionen** (beim Mandanten, freigegeben, abgelöst) zeigen
   genau den eingefrorenen Inhalt mit Hash und Prüfergebnis und lassen sich
@@ -180,7 +201,8 @@ Verantwortung, Länder, Feststellungen), die das Tax-CMS automatisch füllt.
 _Tax-CMS → Kommunikation_ listet Freigaben und Kenntnisnahmen mit Status zum
 Stichtag, die Freigabestände von Zielen und Beschreibung sowie Kultur und
 Meldewege. **Neu adressieren** richtet eine offene Anforderung an eine andere
-Person dieses Mandanten (Freigaben nur an gesetzliche Vertretungen); ein
+Person dieses Mandanten mit aktivem Portalzugang (Freigaben nur an
+gesetzliche Vertretungen); ein
 bereits ausgestellter Code verfällt, die Person erhält eine Nachricht. Der
 Schritt fragt vorher nach.
 
@@ -249,7 +271,7 @@ Feld der Heatmap filtert die Liste.
   Person; der berechnete Wert bleibt sichtbar.
 - **Risikoakzeptanz anfordern:** Liegt ein Risiko über dem Appetit, fordern
   Sie die Akzeptanz bei einer gesetzlichen Vertretung an (aktiver Kontakt
-  dieses Mandanten mit dieser Rolle, Abschnitt 5). Die Freigabe erfolgt im
+  dieses Mandanten mit dieser Rolle und aktivem Portalzugang, Abschnitt 5). Die Freigabe erfolgt im
   Portal mit Bestätigung per E-Mail-Code. Jede Anforderung zeigt ihren
   Zustellstatus; ist die Nachricht nicht angekommen, führt ein Verweis zur
   Neuadressierung unter _Kommunikation_.

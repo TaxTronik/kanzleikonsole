@@ -10,11 +10,16 @@
 //   - Kanzleipersonen: aktive Mitarbeiter des Tenants mit Zugriff auf den
 //     Mandanten nach ACCESS-CLIENT-MODE-001 (filterStaffAccessClientTx).
 //   - Kontakte: Kontakte genau dieses Mandanten (Standard: nur aktive).
+//   - Empfänger einer Freigabe, Risikoakzeptanz oder Kenntnisnahme
+//     (Bestätigung im Portal per Code): zusätzlich mit aktivem Portalzugang
+//     (kk-tcms-s11, @taxtronik/db/portal-zugang – dieselbe Regel wie der
+//     Zustell-Worker). Rollen dürfen auch Kontakte ohne Portalzugang haben.
 // Eine unzulässige ID bricht die ganze Aktion ab (TcmsPersonUnzulaessig, feste
 // Meldung, Feld optional), statt sie still zu entfernen.
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
+import { PORTAL_ZUGANG_SELECT, portalZugangMangel } from '@taxtronik/db/portal-zugang';
 import { ActionError } from '@/server/actions/action-error';
 import { filterStaffAccessClientTx } from '@/server/auth/rbac';
 import { anzeigename } from './akteur';
@@ -33,15 +38,19 @@ export interface TcmsMandantBezug {
   mandantId: string;
 }
 
+/** Texte der Ablehnung je Art (fest, ohne Angaben zur Person). */
+export const TCMS_PERSON_UNZULAESSIG_TEXTE = {
+  KANZLEI: 'Die gewählte Person hat keinen Zugriff auf diesen Mandanten.',
+  KONTAKT: 'Der gewählte Kontakt gehört nicht zu diesem Mandanten.',
+  PORTAL:
+    'Der gewählte Kontakt hat keinen aktiven Portalzugang und kann nicht freigeben. Bitte wählen Sie eine Person mit Portalzugang.',
+} as const;
+
 /** Fachfehler mit fester, UI-tauglicher Meldung; `feld` ordnet ihn einem Formularfeld zu. */
 export class TcmsPersonUnzulaessig extends ActionError {
   readonly feld: string | null;
-  constructor(art: 'KANZLEI' | 'KONTAKT', feld: string | null = null) {
-    super(
-      art === 'KANZLEI'
-        ? 'Die gewählte Person hat keinen Zugriff auf diesen Mandanten.'
-        : 'Der gewählte Kontakt gehört nicht zu diesem Mandanten.',
-    );
+  constructor(art: keyof typeof TCMS_PERSON_UNZULAESSIG_TEXTE, feld: string | null = null) {
+    super(TCMS_PERSON_UNZULAESSIG_TEXTE[art]);
     this.name = 'TcmsPersonUnzulaessig';
     this.feld = feld;
   }
@@ -148,6 +157,8 @@ export interface MandantKontaktAnzeige {
   name: string;
   email: string;
   aktiv: boolean;
+  /** Aktiver Portalzugang (kann Freigaben im Portal erteilen; kk-tcms-s11). */
+  portal: boolean;
   /** Funktion aus der kanzleikonsole (ClientContact.role), nur Anzeige. */
   funktion: string | null;
 }
@@ -159,7 +170,7 @@ export async function kontakteDesMandantenTx(
 ): Promise<MandantKontaktAnzeige[]> {
   const kontakte = await tx.clientContact.findMany({
     where: { tenantId: bezug.tenantId, clientId: bezug.mandantId },
-    select: { id: true, fullName: true, email: true, active: true, role: true },
+    select: { id: true, fullName: true, role: true, ...PORTAL_ZUGANG_SELECT },
     orderBy: [{ active: 'desc' }, { fullName: 'asc' }],
     take: 500,
   });
@@ -168,6 +179,52 @@ export async function kontakteDesMandantenTx(
     name: k.fullName.trim() || k.email,
     email: k.email,
     aktiv: k.active,
+    portal: portalZugangMangel(k) === null,
     funktion: k.role?.trim() || null,
   }));
+}
+
+/**
+ * Kontakt-IDs (Kleinschreibung) dieses Mandanten mit aktivem Portalzugang –
+ * für Auswahllisten von Empfängern (Hinweis „ohne Portalzugang – kann nicht
+ * freigeben“). Ohne `ids`: alle Kontakte des Mandanten (höchstens 500).
+ */
+export async function kontakteMitPortalzugangTx(
+  tx: TxClient,
+  bezug: TcmsMandantBezug,
+  ids?: readonly string[],
+): Promise<Set<string>> {
+  const gefiltert = ids?.filter((id) => typeof id === 'string' && UUID.test(id));
+  if (gefiltert && gefiltert.length === 0) return new Set();
+  const kontakte = await tx.clientContact.findMany({
+    where: {
+      tenantId: bezug.tenantId,
+      clientId: bezug.mandantId,
+      ...(gefiltert ? { id: { in: gefiltert.map((id) => id.toLowerCase()) } } : {}),
+    },
+    select: { id: true, ...PORTAL_ZUGANG_SELECT },
+    take: gefiltert ? MAX_PERSONEN : 500,
+  });
+  return new Set(
+    kontakte.filter((k) => portalZugangMangel(k) === null).map((k) => k.id.toLowerCase()),
+  );
+}
+
+/**
+ * Empfänger einer Anforderung, die der Kontakt im Portal per Code bestätigt
+ * (Freigabe, Risikoakzeptanz, Kenntnisnahme, Zielfreigabe): Kontakt genau
+ * dieses Mandanten (sonst `KONTAKT`) mit aktivem Portalzugang (sonst
+ * `PORTAL`). Liefert den Namenseintrag aus der kanzleikonsole.
+ */
+export async function freigabeEmpfaengerTx(
+  tx: TxClient,
+  bezug: TcmsMandantBezug,
+  id: string,
+  opts: { feld?: string } = {},
+): Promise<TcmsNamensEintrag> {
+  const feld = opts.feld ?? null;
+  const [kontakt] = await mandantKontakteTx(tx, bezug, [id], opts.feld ? { feld: opts.feld } : {});
+  const zugang = await kontakteMitPortalzugangTx(tx, bezug, [kontakt!.id]);
+  if (!zugang.has(kontakt!.id)) throw new TcmsPersonUnzulaessig('PORTAL', feld);
+  return { id: kontakt!.id, name: kontakt!.name };
 }

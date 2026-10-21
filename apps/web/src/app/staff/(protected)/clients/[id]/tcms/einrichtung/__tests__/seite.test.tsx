@@ -15,6 +15,8 @@ const h = vi.hoisted(() => ({
   lesenOptional: vi.fn(),
   namen: vi.fn(),
   tenantLesen: vi.fn(),
+  zust: vi.fn(),
+  portal: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -29,6 +31,11 @@ vi.mock('next/navigation', () => ({
     throw new Error('NEXT_REDIRECT');
   },
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
+vi.mock('@/server/tcms/programm/zustaendigkeit', () => ({ tcmsZustaendigkeitTx: h.zust }));
+vi.mock('@/server/tcms/personen', async (orig) => ({
+  ...(await orig<typeof import('@/server/tcms/personen')>()),
+  kontakteMitPortalzugangTx: h.portal,
 }));
 vi.mock('@/server/tcms/seite', () => ({
   tcmsMandantSeite: h.seite,
@@ -45,6 +52,7 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsEinrichtungPage from '../page';
+import { KEIN_EMPFAENGER_MIT_PORTALZUGANG, OHNE_PORTALZUGANG } from '@/components/tcms/empfaenger';
 import {
   GEGENZEICHNUNG_PFLICHT,
   OHNE_GEGENZEICHNUNG,
@@ -98,7 +106,12 @@ async function rendern(sp: Record<string, string> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   h.seite.mockResolvedValue(seiteMit());
-  h.tenantLesen.mockResolvedValue(ZUST);
+  // Tenant-Lesen führt die Funktion aus; die Datenzugriffe dahinter sind gemockt.
+  h.tenantLesen.mockImplementation(async (_seite: unknown, f: (tx: unknown) => unknown) =>
+    f({ tx: true }),
+  );
+  h.zust.mockResolvedValue(ZUST);
+  h.portal.mockResolvedValue(new Set([LEA, NILS]));
   h.lesen.mockResolvedValue({ ok: true, daten: tcmsFixtures.kontakteBergkamm(), requestId: 'r' });
   h.namen.mockImplementation(async () => ({
     name: (id: string | null) => (id ? (NAMEN[id] ?? UNBEKANNTE_PERSON) : KEINE_PERSON),
@@ -212,6 +225,35 @@ describe('Einrichtungsassistent', () => {
       'Bitte wählen …',
       'Lea Berg (gesetzliche Vertretung)',
     ]);
+  });
+
+  it('kk-tcms-s11: gesetzliche Vertretung ohne Portalzugang nicht wählbar, mit Hinweis', async () => {
+    const e = antwort();
+    e.entwurf!.freigabe = { anfordern: true, empfaengerId: null };
+    h.portal.mockResolvedValue(new Set());
+    await rendern({ schritt: '3' });
+    expect(h.portal).toHaveBeenCalledWith(
+      { tx: true },
+      { tenantId: DEMO.tenant, mandantId: DEMO.bergkamm },
+      e.gesetzlicheVertreter,
+    );
+    const gv = screen.getByRole('combobox', { name: 'Empfänger' }) as HTMLSelectElement;
+    expect([...gv.options].map((o) => [o.textContent, o.disabled])).toEqual([
+      ['Bitte wählen …', false],
+      [`Lea Berg (gesetzliche Vertretung) (${OHNE_PORTALZUGANG})`, true],
+    ]);
+    expect(screen.getByText(new RegExp(KEIN_EMPFAENGER_MIT_PORTALZUGANG))).toBeTruthy();
+  });
+
+  it('kk-tcms-s11: ohne Portalzugang lässt sich die Freigabe nicht neu anfordern (Kästchen gesperrt)', async () => {
+    const e = antwort();
+    e.entwurf!.freigabe = { anfordern: false, empfaengerId: null };
+    h.portal.mockResolvedValue(new Set());
+    await rendern({ schritt: '3' });
+    const kaestchen = screen.getByRole('checkbox', {
+      name: 'Freigabe beim Mandanten anfordern',
+    }) as HTMLInputElement;
+    expect(kaestchen.disabled).toBe(true);
   });
 
   it('ohne Schreibrecht des Dienstes: Hinweis, Formular gesperrt, keine Knöpfe aktiv', async () => {

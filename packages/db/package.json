@@ -16,6 +16,7 @@
     "./risk-analysis": "./src/risk-analysis.ts",
     "./notification": "./src/notification.ts",
     "./staff-client-access": "./src/staff-client-access.ts",
+    "./portal-zugang": "./src/portal-zugang.ts",
     "./tenant-settings": "./src/tenant-settings.ts",
     "./tenant-modules": "./src/tenant-modules.ts",
     "./workflow-lifecycle": "./src/workflow-lifecycle.ts",

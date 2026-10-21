@@ -26,6 +26,8 @@ import {
   type BausteinQuelle,
 } from '@/components/tcms/programm/beschreibung';
 import { kontaktPersonen, rollenAusKontext } from '@/components/tcms/programm/kontakte';
+import { mitPortalzugang } from '@/components/tcms/empfaenger';
+import { kontakteMitPortalzugangTx } from '@/server/tcms/personen';
 import { TcmsZustand } from '@/components/tcms/zustand';
 import { personIdsAus, type TcmsNamen } from '@/server/tcms/namen';
 import { tcmsZustaendigkeitTx } from '@/server/tcms/programm/zustaendigkeit';
@@ -264,9 +266,18 @@ export default async function TcmsBeschreibungPage({
       </Leer>
     );
   }
-  const gv = kontaktPersonen(rollen, namen, ['GESETZLICHER_VERTRETER']).filter((p) =>
+  const vertreter = kontaktPersonen(rollen, namen, ['GESETZLICHER_VERTRETER']).filter((p) =>
     b.gesetzlicheVertreter.some((x) => x.toLowerCase() === p.id),
   );
+  // kk-tcms-s11: Nur Kontakte mit aktivem Portalzugang sind wählbar.
+  const zugang = await tcmsTenantLesen(seite, (tx) =>
+    kontakteMitPortalzugangTx(
+      tx,
+      { tenantId: seite.session.user.tenantId, mandantId: seite.mandantId },
+      vertreter.map((p) => p.id),
+    ),
+  );
+  const gv = mitPortalzugang(vertreter, zugang);
   const m = modell(seite, b, aktuell, sp, namen, gv);
 
   return (

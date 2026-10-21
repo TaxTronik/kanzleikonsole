@@ -44,7 +44,9 @@ import {
   ansprechpersonen,
   kontaktPersonen,
 } from '@/components/tcms/programm/kontakte';
+import { mitPortalzugang } from '@/components/tcms/empfaenger';
 import { TcmsZustand } from '@/components/tcms/zustand';
+import { kontakteMitPortalzugangTx } from '@/server/tcms/personen';
 import { isStaffAdmin } from '@/server/auth/rbac';
 import { personIdsAus, type TcmsNamen } from '@/server/tcms/namen';
 import { einrichtungLesenQuery } from '@/server/tcms/programm/einrichtung';
@@ -194,6 +196,8 @@ interface EinrichtungModell {
   rollen: ReturnType<typeof aktiveRollen>;
   namen: TcmsNamen;
   kanzlei: TcmsZustaendigkeit['kanzlei'];
+  /** Kontakte (IDs klein) mit aktivem Portalzugang (kk-tcms-s11). */
+  portalzugang: ReadonlySet<string>;
   schritt: 1 | 2 | 3 | 4 | 5;
   /** Höchster erreichbarer Schritt. */
   max: number;
@@ -276,8 +280,11 @@ function SchrittInhalt({ m }: { m: EinrichtungModell }) {
         <SchrittZiele
           {...basis}
           start={{ ziele: entwurf.ziele, freigabe: entwurf.freigabe }}
-          gv={kontaktPersonen(rollen, namen, ['GESETZLICHER_VERTRETER']).filter((p) =>
-            m.e.gesetzlicheVertreter.some((x) => x.toLowerCase() === p.id),
+          gv={mitPortalzugang(
+            kontaktPersonen(rollen, namen, ['GESETZLICHER_VERTRETER']).filter((p) =>
+              m.e.gesetzlicheVertreter.some((x) => x.toLowerCase() === p.id),
+            ),
+            m.portalzugang,
           )}
         />
       );
@@ -490,6 +497,10 @@ export default async function TcmsEinrichtungPage({
     rollen,
     namen,
     kanzlei: zust.kanzlei,
+    // kk-tcms-s11: Empfänger der Zielfreigabe nur mit aktivem Portalzugang.
+    portalzugang: await tcmsTenantLesen(seite, (tx) =>
+      kontakteMitPortalzugangTx(tx, bezug, e.gesetzlicheVertreter),
+    ),
     schritt: schrittAus(eins((await searchParams).schritt), max),
     max,
     href: (n) => `${seite.basis}/einrichtung?schritt=${n}`,

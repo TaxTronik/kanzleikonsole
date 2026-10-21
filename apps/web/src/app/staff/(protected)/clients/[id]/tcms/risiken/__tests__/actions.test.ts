@@ -20,7 +20,8 @@ vi.mock('@/server/tcms/aktion', () => ({
     return { ok: true };
   }),
 }));
-vi.mock('@/server/tcms/personen', () => ({ mandantKontakteTx: h.kontakte }));
+// kk-tcms-s11: Empfängerin einer Risikoakzeptanz = Kontakt mit aktivem Portalzugang.
+vi.mock('@/server/tcms/personen', () => ({ freigabeEmpfaengerTx: h.kontakte }));
 
 import {
   risikenFreigabeSchrittAction,
@@ -87,10 +88,11 @@ const NEU_BEWERTET = {
 beforeEach(() => {
   vi.clearAllMocks();
   h.spec = null;
-  // Wie mandantKontakteTx: IDs in der Form der Datenbank (klein geschrieben).
-  h.kontakte.mockImplementation(async (_tx, _bezug, ids: string[]) =>
-    ids.map((id) => ({ id: id.toLowerCase(), name: 'Jana Weller', aktiv: true })),
-  );
+  // Wie freigabeEmpfaengerTx: ID in der Form der Datenbank (klein geschrieben).
+  h.kontakte.mockImplementation(async (_tx, _bezug, id: string) => ({
+    id: id.toLowerCase(),
+    name: 'Jana Weller',
+  }));
 });
 
 describe('risikoNeuBewertenAction', () => {
@@ -338,7 +340,7 @@ describe('risikoZurueckweisenAction', () => {
 });
 
 describe('risikoakzeptanzAnfordernAction', () => {
-  it('prüft die Empfängerin als aktiven Kontakt genau dieses Mandanten; Name aus der kanzleikonsole', async () => {
+  it('prüft die Empfängerin als aktiven Kontakt genau dieses Mandanten mit Portalzugang; Name aus der kanzleikonsole', async () => {
     await risikoakzeptanzAnfordernAction(
       MANDANT,
       null,
@@ -358,7 +360,7 @@ describe('risikoakzeptanzAnfordernAction', () => {
     expect(h.kontakte).toHaveBeenCalledWith(
       TX,
       { tenantId: TENANT, mandantId: MANDANT },
-      [KONTAKT.toUpperCase()],
+      KONTAKT.toUpperCase(),
       { feld: 'empfaengerId' },
     );
     const d = dienst({ id: 'ak_1' });
@@ -371,7 +373,7 @@ describe('risikoakzeptanzAnfordernAction', () => {
     expect((ergebnis as { meldung: string }).meldung).not.toContain('Gefälscht');
   });
 
-  it('ein unzulässiger Kontakt beendet die Aktion vor dem Dienstaufruf', async () => {
+  it('ein unzulässiger Kontakt (fremd, inaktiv, ohne Portalzugang) beendet die Aktion vor dem Dienstaufruf', async () => {
     const fehler = new Error('unzulässig');
     h.kontakte.mockRejectedValue(fehler);
     await risikoakzeptanzAnfordernAction(

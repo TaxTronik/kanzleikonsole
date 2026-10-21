@@ -67,6 +67,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { MailOutboxStatus, Prisma } from '@prisma/client';
+import { PORTAL_ZUGANG_SELECT, portalZugangMangel } from '@taxtronik/db/portal-zugang';
 import { canStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import {
   enqueueDirectMailTx,
@@ -264,9 +265,6 @@ const MAIL_ANLASS: Readonly<Record<OffeneNachricht['zweck'], TcmsMailAnlass | nu
   EREIGNIS_GEMELDET: null,
 };
 
-/** Pragmatische Adressprüfung wie im Formular (genau ein @, kein Leerraum). */
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 type Db = Prisma.TransactionClient;
 
 export interface TcmsZustellDeps {
@@ -416,14 +414,14 @@ async function pruefeEmpfaenger(tx: Db, tenantId: string, n: OffeneNachricht): P
   if (!mandant.allowActive || mandant.mandateEndedAt) return abgelehnt('MANDANT_INAKTIV', true);
   const kontakt = await tx.clientContact.findFirst({
     where: { id: n.empfaengerId, tenantId },
-    select: { clientId: true, active: true, email: true, fullName: true, lastLoginAt: true },
+    select: { clientId: true, fullName: true, ...PORTAL_ZUGANG_SELECT },
   });
   if (!kontakt) return abgelehnt('KONTAKT_UNBEKANNT', true);
   if (kontakt.clientId !== mandant.id) return abgelehnt('KONTAKT_ANDERER_MANDANT', true);
-  if (!kontakt.active) return abgelehnt('KONTAKT_INAKTIV', true);
+  // Dieselbe Regel, mit der die Web-App Anforderungen adressiert (kk-tcms-s11).
+  const mangel = portalZugangMangel(kontakt);
+  if (mangel) return abgelehnt(mangel, true);
   const email = kontakt.email.trim();
-  if (!EMAIL.test(email)) return abgelehnt('KONTAKT_OHNE_EMAIL', true);
-  if (!kontakt.lastLoginAt) return abgelehnt('KONTAKT_UNBESTAETIGT', true);
   return {
     ok: true,
     empfaenger: {

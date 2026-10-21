@@ -15,6 +15,7 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { MANDANT_ROLLE_LABEL, MANDANT_ROLLEN } from '@taxtronik/tcms-domain';
 import { TcmsLeer } from '@/components/tcms/leer';
 import { TcmsZustand } from '@/components/tcms/zustand';
+import { OHNE_PORTALZUGANG } from '@/components/tcms/empfaenger';
 import { kontakteDesMandantenTx } from '@/server/tcms/personen';
 import { tcmsLesen, tcmsMandantSeite, tcmsTenantLesen } from '@/server/tcms/seite';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
@@ -61,8 +62,10 @@ export default async function TcmsKontaktePage({ params }: { params: Promise<{ i
       <p className="text-sm text-muted mb-4 max-w-3xl">
         Rollen der Mandantenseite im Tax-CMS. Die gesetzliche Vertretung und die
         Tax-Compliance-Beauftragten sehen im Portal alle Aufgaben, Mitarbeitende nur ihre eigenen.
-        Ohne aktive Rolle hat ein Kontakt keinen Zugriff auf das Tax-CMS. Kontakte selbst pflegen
-        Sie in der Mandantenakte.
+        Ohne aktive Rolle hat ein Kontakt keinen Zugriff auf das Tax-CMS. Rollen erhalten auch
+        Kontakte ohne Portalzugang; Freigaben und Risikoakzeptanzen lassen sich aber nur an Kontakte
+        mit aktivem Portalzugang (bestätigte Anmeldung im Mandantenportal) richten. Kontakte selbst
+        pflegen Sie in der Mandantenakte.
       </p>
       {gesperrt ? (
         <p id={GESPERRT_ID} className="alert-info mb-4" role="note">
@@ -107,6 +110,10 @@ export default async function TcmsKontaktePage({ params }: { params: Promise<{ i
                         </span>
                       ) : null}
                       {!k.aktiv ? <span className="badge-gray mt-1">inaktiv</span> : null}
+                      {k.aktiv && !k.portal ? (
+                        // kk-tcms-s11: Rollen ja, Freigaben im Portal nein.
+                        <span className="badge-yellow mt-1">{OHNE_PORTALZUGANG}</span>
+                      ) : null}
                     </td>
                     <td className="px-6 py-3">
                       {aktiv.length === 0 ? (

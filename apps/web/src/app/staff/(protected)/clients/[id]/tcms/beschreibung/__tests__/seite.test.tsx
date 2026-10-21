@@ -6,8 +6,9 @@
 // eingefrorene Versionen zeigen genau den eingefrorenen Inhalt mit Hash und
 // bieten keine Bearbeitung an; lebende Bausteine zeigen Namen der
 // kanzleikonsole; Aktionen je Status, Vier-Augen-Hinweis, Empfänger der
-// Freigabe nur gesetzliche Vertretungen dieses Mandanten.
-// Fachkatalog: TCMS-DIENST-001
+// Freigabe nur gesetzliche Vertretungen dieses Mandanten; ohne aktiven
+// Portalzugang nicht wählbar, mit Hinweis (kk-tcms-s11).
+// Fachkatalog: TCMS-DIENST-001, TCMS-AKTEUR-001
 import { fireEvent, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -17,6 +18,8 @@ const h = vi.hoisted(() => ({
   lesenOptional: vi.fn(),
   namen: vi.fn(),
   tenantLesen: vi.fn(),
+  zust: vi.fn(),
+  portal: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -32,6 +35,8 @@ vi.mock('next/navigation', () => ({
   },
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
+vi.mock('@/server/tcms/programm/zustaendigkeit', () => ({ tcmsZustaendigkeitTx: h.zust }));
+vi.mock('@/server/tcms/personen', () => ({ kontakteMitPortalzugangTx: h.portal }));
 vi.mock('@/server/tcms/seite', () => ({
   tcmsMandantSeite: h.seite,
   tcmsLesen: h.lesen,
@@ -47,6 +52,7 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsBeschreibungPage from '../page';
+import { KEIN_EMPFAENGER_MIT_PORTALZUGANG, OHNE_PORTALZUGANG } from '@/components/tcms/empfaenger';
 
 const BASIS = `/staff/clients/${DEMO.talwind}/tcms`;
 const V12 = 'cmvf9k8n20093g87donaw4i34';
@@ -97,7 +103,12 @@ function abschnitt() {
 beforeEach(() => {
   vi.clearAllMocks();
   h.seite.mockResolvedValue(SEITE);
-  h.tenantLesen.mockResolvedValue(ZUST);
+  // Tenant-Lesen führt die Funktion aus; die Datenzugriffe dahinter sind gemockt.
+  h.tenantLesen.mockImplementation(async (_seite: unknown, f: (tx: unknown) => unknown) =>
+    f({ tx: true }),
+  );
+  h.zust.mockResolvedValue(ZUST);
+  h.portal.mockResolvedValue(new Set([DEMO.jana, DEMO.murat]));
   h.namen.mockImplementation(async () => ({
     name: (id: string | null) =>
       id ? (NAMEN[id.toLowerCase()] ?? UNBEKANNTE_PERSON) : KEINE_PERSON,
@@ -325,6 +336,56 @@ describe('CMS-Beschreibung', () => {
       'Die offene Anforderung für Version 1.2 wird zurückgezogen.',
     );
     expect((dialog.querySelector('input[name="versionId"]') as HTMLInputElement).value).toBe(V13);
+  });
+
+  it('kk-tcms-s11: gesetzliche Vertretung ohne Portalzugang nicht wählbar, mit Hinweis', async () => {
+    const { b, kontext } = daten();
+    Object.assign(b.versionen.at(-1)!, {
+      status: 'KANZLEI_REVIEW',
+      anzeige: 'KANZLEI_REVIEW',
+      reviewVon: DEMO.leon,
+      reviewAm: '2026-10-18T10:00:00.000Z',
+    });
+    // Murat ist ebenfalls gesetzliche Vertretung, hat aber keinen Portalzugang.
+    kontext.kontaktRollen.push({
+      kontaktId: DEMO.murat,
+      rolle: 'GESETZLICHER_VERTRETER',
+      funktion: null,
+    });
+    b.gesetzlicheVertreter.push(DEMO.murat);
+    h.portal.mockResolvedValue(new Set([DEMO.jana]));
+    await rendern();
+    expect(h.portal).toHaveBeenCalledWith(
+      { tx: true },
+      { tenantId: DEMO.tenant, mandantId: DEMO.talwind },
+      expect.arrayContaining([DEMO.jana, DEMO.murat]),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Freigabe beim Mandanten anfordern/ }));
+    const auswahl = within(screen.getByRole('dialog')).getByRole('combobox', {
+      name: 'Empfänger (gesetzliche Vertretung)',
+    }) as HTMLSelectElement;
+    const optionen = [...auswahl.options].map((o) => [o.textContent, o.disabled]);
+    expect(optionen).toEqual([
+      ['Jana Weller', false],
+      [`Murat Yilmaz (${OHNE_PORTALZUGANG})`, true],
+    ]);
+    // Einzige wählbare Person: vorausgewählt.
+    expect(auswahl.value).toBe(DEMO.jana);
+  });
+
+  it('kk-tcms-s11: ohne Portalzugang aller gesetzlichen Vertretungen ist „Freigabe anfordern“ gesperrt', async () => {
+    const { b } = daten();
+    Object.assign(b.versionen.at(-1)!, {
+      status: 'KANZLEI_REVIEW',
+      anzeige: 'KANZLEI_REVIEW',
+      reviewVon: DEMO.leon,
+      reviewAm: '2026-10-18T10:00:00.000Z',
+    });
+    h.portal.mockResolvedValue(new Set());
+    await rendern();
+    const knopf = screen.getByRole('button', { name: /Freigabe beim Mandanten anfordern/ });
+    expect(knopf).toHaveProperty('disabled', true);
+    expect(screen.getByText(KEIN_EMPFAENGER_MIT_PORTALZUGANG)).toBeTruthy();
   });
 
   it('ohne Schreibrecht: Aktionen gesperrt mit Grund, keine Bearbeitung', async () => {

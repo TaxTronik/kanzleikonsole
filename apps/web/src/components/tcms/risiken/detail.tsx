@@ -41,6 +41,7 @@ import type { TcmsNamen } from '@/server/tcms/namen';
 import type { TcmsSeitenZustand } from '@/server/tcms/zustand';
 import { KlasseBadge } from '../badges';
 import { AktionsKnopf, AuswahlFeld, BegruendungsDialog } from '../bereich-b/aktion';
+import { empfaengerLabel, KEIN_EMPFAENGER_MIT_PORTALZUGANG } from '../empfaenger';
 import { Abschnitt, DetailBereich, DetailZustand, SperrHinweis } from '../bereich-b/detail';
 import type { TcmsAktion } from '../bereich-b/ergebnis';
 import { mitStand, selbstBeantragt } from '../bereich-b/seite';
@@ -79,6 +80,8 @@ export interface GesetzlicheVertretung {
   id: string;
   name: string;
   funktion: string | null;
+  /** Aktiver Portalzugang (kk-tcms-s11): sonst nicht wählbar, mit Hinweis. */
+  portal: boolean;
 }
 
 /** Gemeinsame Angaben aller Abschnitte des Detailbereichs. */
@@ -599,7 +602,9 @@ function AkzeptanzDialog({ t }: { t: Teil }) {
         }`
       : t.vertretung.length === 0
         ? 'Beim Mandanten ist keine gesetzliche Vertretung mit aktiver Rolle hinterlegt.'
-        : null);
+        : t.vertretung.every((p) => !p.portal)
+          ? KEIN_EMPFAENGER_MIT_PORTALZUGANG
+          : null);
   return (
     <BegruendungsDialog
       ausloeser={
@@ -622,7 +627,8 @@ function AkzeptanzDialog({ t }: { t: Teil }) {
         platzhalter="bitte wählen"
         optionen={t.vertretung.map((p) => ({
           wert: p.id,
-          label: p.funktion ? `${p.name} (${p.funktion})` : p.name,
+          label: empfaengerLabel(p.name, p.portal, p.funktion ? ` (${p.funktion})` : ''),
+          deaktiviert: !p.portal,
         }))}
       />
     </BegruendungsDialog>

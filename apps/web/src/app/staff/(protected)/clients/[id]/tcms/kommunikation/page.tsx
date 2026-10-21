@@ -24,8 +24,10 @@ import {
   tcmsLesenOptional,
   tcmsMandantSeite,
   tcmsNamenLesen,
+  tcmsTenantLesen,
   type TcmsMandantSeite,
 } from '@/server/tcms/seite';
+import { kontakteMitPortalzugangTx } from '@/server/tcms/personen';
 import {
   FreigabenKarte,
   FreigabestaendeKarte,
@@ -107,6 +109,17 @@ export default async function TcmsKommunikationPage({
       ctx.kontrollen.find((k) => k.code === 'K-EC-22')?.designVon,
     ),
   );
+  const neuAdressierbar = ctx.rechte.bearbeiten && !h.historisch;
+  // kk-tcms-s11: Neu adressiert wird nur an Kontakte mit aktivem Portalzugang.
+  const portalzugang = neuAdressierbar
+    ? await tcmsTenantLesen(seite, (tx) =>
+        kontakteMitPortalzugangTx(
+          tx,
+          { tenantId: seite.session.user.tenantId, mandantId: seite.mandantId },
+          rollen.map((r) => r.kontaktId),
+        ),
+      )
+    : new Set<string>();
   const m: KommunikationModell = {
     mandantId: seite.mandantId,
     basis: seite.basis,
@@ -114,7 +127,8 @@ export default async function TcmsKommunikationPage({
     h,
     namen,
     rollen,
-    neuAdressierbar: ctx.rechte.bearbeiten && !h.historisch,
+    neuAdressierbar,
+    portalzugang,
   };
 
   return (

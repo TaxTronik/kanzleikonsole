@@ -19,7 +19,8 @@ vi.mock('@/server/tcms/aktion', () => ({
     return { ok: true };
   }),
 }));
-vi.mock('@/server/tcms/personen', () => ({ mandantKontakteTx: h.kontakte }));
+// kk-tcms-s11: neu adressiert wird nur an Kontakte mit aktivem Portalzugang.
+vi.mock('@/server/tcms/personen', () => ({ freigabeEmpfaengerTx: h.kontakte }));
 
 import { DEMO } from '@/__tests__/tcms-fixtures';
 import { freigabeNeuadressierenAction } from '../actions';
@@ -45,11 +46,11 @@ function formular(felder: Record<string, string>): FormData {
 beforeEach(() => {
   vi.clearAllMocks();
   h.spec = null;
-  h.kontakte.mockResolvedValue([{ id: DEMO.murat, name: 'Murat Yilmaz', aktiv: true }]);
+  h.kontakte.mockResolvedValue({ id: DEMO.murat, name: 'Murat Yilmaz' });
 });
 
 describe('freigabeNeuadressierenAction', () => {
-  it('prüft den Empfänger beim Mandanten der Aktion und adressiert die Anforderung neu', async () => {
+  it('prüft den Empfänger beim Mandanten der Aktion (mit Portalzugang) und adressiert die Anforderung neu', async () => {
     await freigabeNeuadressierenAction(
       DEMO.talwind,
       null,
@@ -72,7 +73,7 @@ describe('freigabeNeuadressierenAction', () => {
     expect(h.kontakte).toHaveBeenCalledWith(
       TX,
       { tenantId: DEMO.tenant, mandantId: DEMO.talwind },
-      [DEMO.murat],
+      DEMO.murat,
       { feld: 'empfaengerId' },
     );
     const rufe = vi.fn(async () => ({

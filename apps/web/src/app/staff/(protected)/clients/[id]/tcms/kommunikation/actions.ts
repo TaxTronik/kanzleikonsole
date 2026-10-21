@@ -17,7 +17,7 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import type { TcmsAktionsErgebnis } from '@/components/tcms/programm/dialog';
 import { parseFormData } from '@/server/actions/form-data';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
-import { mandantKontakteTx } from '@/server/tcms/personen';
+import { freigabeEmpfaengerTx } from '@/server/tcms/personen';
 
 const Formular = z.object({
   freigabeId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'Ungültige Auswahl.'),
@@ -34,15 +34,12 @@ export async function freigabeNeuadressierenAction(
     keinRecht: 'BEARBEITEN',
     felder: { empfaengerId: 'empfaengerId' },
     parse: () => parseFormData(Formular, formData, { absentAsNull: true }),
-    vorbereiten: async (tx, k, daten) => {
-      const [kontakt] = await mandantKontakteTx(
-        tx,
-        { tenantId: k.g.tenantId, mandantId },
-        [daten.empfaengerId],
-        { feld: 'empfaengerId' },
-      );
-      return kontakt!;
-    },
+    // Empfänger: Kontakt genau dieses Mandanten mit aktivem Portalzugang
+    // (kk-tcms-s11) – er bestätigt im Portal per Code.
+    vorbereiten: (tx, k, daten) =>
+      freigabeEmpfaengerTx(tx, { tenantId: k.g.tenantId, mandantId }, daten.empfaengerId, {
+        feld: 'empfaengerId',
+      }),
     aufruf: async (dienst, { freigabeId }, kontakt) => {
       await dienst.rufe(ENDPUNKTE.freigabeNeuadressieren, {
         params: { freigabeId },

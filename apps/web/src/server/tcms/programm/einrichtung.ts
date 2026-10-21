@@ -7,7 +7,10 @@
 // Rollen der Mandantenseite (pruefeKontrollZustaendigkeiten, pruefeSchritt3).
 // Die kanzleikonsole lässt zusätzlich nur Personen dieses Mandanten durch
 // (server/tcms/personen.ts) und bricht sonst vor dem Dienstaufruf ab:
-//   - Schritt 3: Empfänger der Zielfreigabe = Kontakt dieses Mandanten.
+//   - Schritt 3: Empfänger der Zielfreigabe = Kontakt dieses Mandanten; ist
+//     die Freigabe angefordert, mit aktivem Portalzugang (kk-tcms-s11) – beim
+//     Speichern und erneut vor dem Anlegen (dann versendet der Dienst die
+//     Anforderung).
 //   - Schritt 5 / Version 1: durchführende Person und Vertretung je Partei
 //     (Kanzlei: Mitarbeiter mit Zugriff, Mandant: Kontakt dieses Mandanten),
 //     Gegenzeichnung durch einen Kontakt dieses Mandanten oder eine
@@ -16,9 +19,11 @@
 // der Dienst.
 // =============================================================================
 
-import type { TxClient } from '@taxtronik/db';
+import type { TenantContext, TxClient } from '@taxtronik/db';
+import { withTenantContext } from '@taxtronik/db/tenant-context';
 import type { EinrichtungPersonen, EntwurfKontrolle } from '@taxtronik/tcms-contract';
 import {
+  freigabeEmpfaengerTx,
   kanzleiPersonenFuerMandantTx,
   mandantKontakteTx,
   type TcmsMandantBezug,
@@ -88,12 +93,34 @@ export async function pruefeKontrollPersonenTx(
   await mandantKontakteTx(tx, bezug, [...kontakte], { feld: FELD_KONTROLLEN });
 }
 
-/** Empfänger der Zielfreigabe (Schritt 3) gegen die Kontakte dieses Mandanten prüfen. */
+/**
+ * Empfänger der Zielfreigabe (Schritt 3) gegen die Kontakte dieses Mandanten
+ * prüfen; mit `anfordern` zusätzlich aktiver Portalzugang (kk-tcms-s11).
+ */
 export async function pruefeFreigabeEmpfaengerTx(
   tx: TxClient,
   bezug: TcmsMandantBezug,
   freigabe: { anfordern: boolean; empfaengerId: string | null },
 ): Promise<void> {
   if (!freigabe.empfaengerId) return;
-  await mandantKontakteTx(tx, bezug, [freigabe.empfaengerId], { feld: FELD_FREIGABE });
+  if (freigabe.anfordern) {
+    await freigabeEmpfaengerTx(tx, bezug, freigabe.empfaengerId, { feld: FELD_FREIGABE });
+  } else {
+    await mandantKontakteTx(tx, bezug, [freigabe.empfaengerId], { feld: FELD_FREIGABE });
+  }
+}
+
+/**
+ * Vor dem Anlegen von Version 1 (der Dienst versendet dann die Zielfreigabe):
+ * den im Entwurf gespeicherten Empfänger erneut prüfen, in eigener
+ * Transaktion zwischen Lesen des Entwurfs und Anlegen (kk-tcms-s11). Wirft
+ * `TcmsPersonUnzulaessig` (Kontakt nicht mehr beim Mandanten bzw. ohne
+ * aktiven Portalzugang).
+ */
+export function pruefeZielfreigabeVorAnlegen(
+  ctx: TenantContext,
+  bezug: TcmsMandantBezug,
+  freigabe: { anfordern: boolean; empfaengerId: string | null },
+): Promise<void> {
+  return withTenantContext(ctx, (tx) => pruefeFreigabeEmpfaengerTx(tx, bezug, freigabe));
 }

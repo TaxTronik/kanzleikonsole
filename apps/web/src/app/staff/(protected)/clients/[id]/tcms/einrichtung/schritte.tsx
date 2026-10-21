@@ -54,6 +54,11 @@ import { profilFeldBezeichnung } from '@/components/tcms/programm/profil-fehler'
 import { confirmFormSubmission } from '@/components/ui/modal';
 import { einrichtungSpeichernAction } from './actions';
 import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
+import {
+  empfaengerLabel,
+  KEIN_EMPFAENGER_MIT_PORTALZUGANG,
+  type Empfaenger,
+} from '@/components/tcms/empfaenger';
 
 export interface Person {
   id: string;
@@ -522,10 +527,14 @@ export function SchrittZiele({
   ...b
 }: Basis & {
   start: Pick<SetupEntwurf, 'ziele' | 'freigabe'>;
-  /** Gesetzliche Vertretungen (Kontakte dieses Mandanten mit Rolle im Tax-CMS). */
-  gv: readonly Person[];
+  /**
+   * Gesetzliche Vertretungen (Kontakte dieses Mandanten mit Rolle im Tax-CMS)
+   * mit Kennzeichen für den aktiven Portalzugang (kk-tcms-s11).
+   */
+  gv: readonly Empfaenger[];
 }) {
   const id = useId();
+  const mitZugang = gv.filter((p) => p.portal);
   const [ziele, setZiele] = useState<EntwurfZiel[]>(start.ziele);
   const [freigabe, setFreigabe] = useState(start.freigabe);
   const [bearbeiten, setBearbeiten] = useState<string | null>(null);
@@ -683,11 +692,11 @@ export function SchrittZiele({
                 <input
                   type="checkbox"
                   checked={freigabe.anfordern}
-                  disabled={gv.length === 0}
+                  disabled={mitZugang.length === 0 && !freigabe.anfordern}
                   onChange={(e) =>
                     setFreigabe({
                       anfordern: e.target.checked,
-                      empfaengerId: freigabe.empfaengerId ?? gv[0]?.id ?? null,
+                      empfaengerId: freigabe.empfaengerId ?? mitZugang[0]?.id ?? null,
                     })
                   }
                 />
@@ -708,8 +717,8 @@ export function SchrittZiele({
                   >
                     <option value="">Bitte wählen …</option>
                     {gv.map((p) => (
-                      <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
-                        {p.name} (gesetzliche Vertretung)
+                      <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id} disabled={!p.portal}>
+                        {empfaengerLabel(p.name, p.portal, ' (gesetzliche Vertretung)')}
                       </option>
                     ))}
                   </select>
@@ -719,7 +728,9 @@ export function SchrittZiele({
             <p className="hint">
               {gv.length === 0
                 ? 'Für diesen Mandanten ist im Tax-CMS keine gesetzliche Vertretung hinterlegt (Kontakte & Rollen); die Freigabe kann später angefordert werden.'
-                : 'Die Anforderung entsteht mit Version 1; die Freigabe erteilt die gesetzliche Vertretung im Mandantenportal (Bestätigung per E-Mail-Code).'}
+                : mitZugang.length === 0
+                  ? `${KEIN_EMPFAENGER_MIT_PORTALZUGANG} Die Freigabe kann später angefordert werden.`
+                  : 'Die Anforderung entsteht mit Version 1; die Freigabe erteilt die gesetzliche Vertretung im Mandantenportal (Bestätigung per E-Mail-Code).'}
             </p>
           </fieldset>
         </div>

@@ -108,7 +108,12 @@ async function gesetzlicheVertretung(
   );
   return kontakte
     .filter((k) => k.aktiv && rolle.has(k.id.toLowerCase()))
-    .map((k) => ({ id: k.id, name: k.name, funktion: rolle.get(k.id.toLowerCase()) ?? null }));
+    .map((k) => ({
+      id: k.id,
+      name: k.name,
+      funktion: rolle.get(k.id.toLowerCase()) ?? null,
+      portal: k.portal,
+    }));
 }
 
 function InventarLeiste({

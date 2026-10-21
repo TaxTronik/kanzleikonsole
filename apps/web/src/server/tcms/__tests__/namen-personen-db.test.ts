@@ -4,6 +4,9 @@
 // und Kontakte nur des Mandanten; Personen aus Formularen nur mit Zugriff auf
 // den Mandanten (OPEN/RESTRICTED/vertraulich) bzw. als Kontakt genau dieses
 // Mandanten; Stammdaten des Ankers aus Mandant und verifizierter GwG-Prüfung.
+// kk-tcms-s11 Punkt 4: Empfänger einer Freigabe nur mit aktivem Portalzugang
+// (aktiv, Mandant zugelassen und Mandat nicht beendet, zustellbare Adresse,
+// mindestens einmal angemeldet); Rollen bleiben davon unberührt.
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PrismaClient } from '@taxtronik/db/prisma-client';
@@ -18,11 +21,15 @@ vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn(), info: 
 
 import { ActionError } from '@/server/actions/action-error';
 import { mandantAnkerTx } from '../mandant';
+import { pruefeFreigabeEmpfaengerTx } from '../programm/einrichtung';
 import { tcmsNamen, UNBEKANNTE_PERSON } from '../namen';
 import {
+  freigabeEmpfaengerTx,
   kanzleiPersonenFuerMandantTx,
   kontakteDesMandantenTx,
+  kontakteMitPortalzugangTx,
   mandantKontakteTx,
+  TCMS_PERSON_UNZULAESSIG_TEXTE,
   TcmsPersonUnzulaessig,
 } from '../personen';
 
@@ -68,7 +75,13 @@ if (!enabled && process.env.CI === 'true') {
     ).id;
   }
 
-  async function neuerKontakt(key: string, tenant: string, clientKey: string, active = true) {
+  async function neuerKontakt(
+    key: string,
+    tenant: string,
+    clientKey: string,
+    active = true,
+    daten: { lastLoginAt?: Date; email?: string } = {},
+  ) {
     kontakt[key] = (
       await owner.clientContact.create({
         data: {
@@ -77,6 +90,7 @@ if (!enabled && process.env.CI === 'true') {
           email: `${key}-${randomUUID()}@example.test`,
           fullName: `Kontakt ${key}`,
           active,
+          ...daten,
         },
       })
     ).id;
@@ -123,6 +137,34 @@ if (!enabled && process.env.CI === 'true') {
     await neuerKontakt('inaktiv', tenantId, 'offen', false);
     await neuerKontakt('andererMandant', tenantId, 'vertraulich');
     await neuerKontakt('fremd', fremderTenant, 'fremd');
+    // kk-tcms-s11: zugelassener Mandant mit Kontakten in jedem Zustand des Portalzugangs.
+    const zugelassen = async (key: string) => {
+      await neu(key, tenantId);
+      await createVerifiedLegalEntityGwgFixture(owner as never, {
+        tenantId,
+        clientId: mandant[key]!,
+        verifiedBy: staff.mitarbeiter!,
+        registerNumber: `HRB-${randomUUID().slice(0, 8)}`,
+      });
+      await owner.client.update({ where: { id: mandant[key] }, data: { allowActive: true } });
+    };
+    await zugelassen('portal');
+    await zugelassen('beendet');
+    const angemeldet = new Date('2026-10-01T08:00:00Z');
+    await neuerKontakt('mitZugang', tenantId, 'portal', true, { lastLoginAt: angemeldet });
+    await neuerKontakt('unbestaetigt', tenantId, 'portal');
+    await neuerKontakt('ohneAdresse', tenantId, 'portal', true, {
+      lastLoginAt: angemeldet,
+      email: `ohne-punkt-${randomUUID()}@localhost`,
+    });
+    await neuerKontakt('portalInaktiv', tenantId, 'portal', false, { lastLoginAt: angemeldet });
+    // Angemeldet, aber beim nicht zugelassenen Mandanten bzw. nach Mandatsende.
+    await neuerKontakt('gesperrt', tenantId, 'offen', true, { lastLoginAt: angemeldet });
+    await neuerKontakt('beendet', tenantId, 'beendet', true, { lastLoginAt: angemeldet });
+    await owner.client.update({
+      where: { id: mandant.beendet },
+      data: { mandateEndedAt: new Date('2026-10-15T00:00:00Z') },
+    });
   });
 
   afterAll(async () => {
@@ -243,8 +285,111 @@ if (!enabled && process.env.CI === 'true') {
 
     it('listet für die Anzeige nur Kontakte dieses Mandanten', async () => {
       const kontakte = await imTenant(tenantId, (tx) => kontakteDesMandantenTx(tx, bezug('offen')));
-      expect(kontakte.map((k) => k.id).sort()).toEqual([kontakt.aktiv, kontakt.inaktiv].sort());
+      expect(kontakte.map((k) => k.id).sort()).toEqual(
+        [kontakt.aktiv, kontakt.inaktiv, kontakt.gesperrt].sort(),
+      );
       expect(kontakte[0]!.aktiv).toBe(true);
+      // Mandant nicht zugelassen: niemand hat Portalzugang, auch nach Anmeldung.
+      expect(kontakte.every((k) => !k.portal)).toBe(true);
+    });
+
+    it('kk-tcms-s11: Portalzugang je Kontakt (Anzeige und Menge für Auswahllisten)', async () => {
+      const kontakte = await imTenant(tenantId, (tx) =>
+        kontakteDesMandantenTx(tx, bezug('portal')),
+      );
+      expect(Object.fromEntries(kontakte.map((k) => [k.id, k.portal]))).toEqual({
+        [kontakt.mitZugang!]: true,
+        [kontakt.unbestaetigt!]: false,
+        [kontakt.ohneAdresse!]: false,
+        [kontakt.portalInaktiv!]: false,
+      });
+      await expect(
+        imTenant(tenantId, (tx) => kontakteMitPortalzugangTx(tx, bezug('portal'))),
+      ).resolves.toEqual(new Set([kontakt.mitZugang]));
+      // Mit ID-Liste: nur Kontakte dieses Mandanten, Großschreibung egal, Unsinn ignoriert.
+      await expect(
+        imTenant(tenantId, (tx) =>
+          kontakteMitPortalzugangTx(tx, bezug('portal'), [
+            kontakt.mitZugang!.toUpperCase(),
+            kontakt.gesperrt!,
+            kontakt.fremd!,
+            'keine-uuid',
+          ]),
+        ),
+      ).resolves.toEqual(new Set([kontakt.mitZugang]));
+      await expect(
+        imTenant(tenantId, (tx) => kontakteMitPortalzugangTx(tx, bezug('portal'), ['x'])),
+      ).resolves.toEqual(new Set());
+      for (const key of ['offen', 'beendet'] as const) {
+        await expect(
+          imTenant(tenantId, (tx) => kontakteMitPortalzugangTx(tx, bezug(key))),
+          key,
+        ).resolves.toEqual(new Set());
+      }
+    });
+
+    it('kk-tcms-s11: Empfänger einer Freigabe nur mit aktivem Portalzugang', async () => {
+      await expect(
+        imTenant(tenantId, (tx) =>
+          freigabeEmpfaengerTx(tx, bezug('portal'), kontakt.mitZugang!.toUpperCase(), {
+            feld: 'empfaengerId',
+          }),
+        ),
+      ).resolves.toEqual({ id: kontakt.mitZugang, name: 'Kontakt mitZugang' });
+      // Ohne Portalzugang: eigener Text, Feld bleibt zugeordnet.
+      for (const [mandantKey, key] of [
+        ['portal', 'unbestaetigt'],
+        ['portal', 'ohneAdresse'],
+        ['offen', 'gesperrt'],
+        ['beendet', 'beendet'],
+      ] as const) {
+        await expect(
+          imTenant(tenantId, (tx) =>
+            freigabeEmpfaengerTx(tx, bezug(mandantKey), kontakt[key]!, { feld: 'empfaengerId' }),
+          ),
+          key,
+        ).rejects.toMatchObject({
+          name: 'TcmsPersonUnzulaessig',
+          message: TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL,
+          feld: 'empfaengerId',
+        });
+      }
+      // Inaktiv, anderer Mandant, anderer Tenant: wie bisher „gehört nicht zu diesem Mandanten“.
+      for (const key of ['portalInaktiv', 'aktiv', 'fremd'] as const) {
+        await expect(
+          imTenant(tenantId, (tx) => freigabeEmpfaengerTx(tx, bezug('portal'), kontakt[key]!)),
+          key,
+        ).rejects.toMatchObject({ message: TCMS_PERSON_UNZULAESSIG_TEXTE.KONTAKT, feld: null });
+      }
+      // Einrichtung, Schritt 3: nur mit angeforderter Freigabe zählt der Portalzugang.
+      await expect(
+        imTenant(tenantId, (tx) =>
+          pruefeFreigabeEmpfaengerTx(tx, bezug('portal'), {
+            anfordern: true,
+            empfaengerId: kontakt.unbestaetigt!,
+          }),
+        ),
+      ).rejects.toMatchObject({ message: TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL, feld: 'freigabe' });
+      await expect(
+        imTenant(tenantId, (tx) =>
+          pruefeFreigabeEmpfaengerTx(tx, bezug('portal'), {
+            anfordern: false,
+            empfaengerId: kontakt.unbestaetigt!,
+          }),
+        ),
+      ).resolves.toBeUndefined();
+      await expect(
+        imTenant(tenantId, (tx) =>
+          pruefeFreigabeEmpfaengerTx(tx, bezug('portal'), {
+            anfordern: true,
+            empfaengerId: kontakt.mitZugang!,
+          }),
+        ),
+      ).resolves.toBeUndefined();
+      // Rollen und andere Personenfelder bleiben ohne Portalzugang möglich.
+      await expect(
+        imTenant(tenantId, (tx) => mandantKontakteTx(tx, bezug('portal'), [kontakt.unbestaetigt!])),
+      ).resolves.toEqual([{ id: kontakt.unbestaetigt, name: 'Kontakt unbestaetigt', aktiv: true }]);
     });
   });
 

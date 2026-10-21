@@ -32,7 +32,7 @@ import type { ActionParseResult } from '@/server/actions/action-runner';
 import { formList, formOptional, parseFormData } from '@/server/actions/form-data';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
 import { vertragsZeichenMeldung } from '@/server/tcms/zeichen';
-import { mandantKontakteTx } from '@/server/tcms/personen';
+import { freigabeEmpfaengerTx } from '@/server/tcms/personen';
 import { freigabeNamenTx, tcmsZustaendigkeitTx } from '@/server/tcms/programm/zustaendigkeit';
 
 const VERSION_ID = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/, 'Ungültige Auswahl.');
@@ -270,16 +270,17 @@ export async function freigabeAnfordernAction(
     parse: () => parseFormData(FreigabeFormular, formData, { absentAsNull: true }),
     vorbereiten: async (tx, k, daten) => {
       const bezug = { tenantId: k.g.tenantId, mandantId };
-      // Nur aktive Kontakte genau dieses Mandanten; die Rolle prüft der Dienst.
-      const [empfaenger] = await mandantKontakteTx(tx, bezug, [daten.empfaengerId], {
+      // Nur aktive Kontakte genau dieses Mandanten mit aktivem Portalzugang
+      // (kk-tcms-s11); die Rolle prüft der Dienst.
+      const empfaenger = await freigabeEmpfaengerTx(tx, bezug, daten.empfaengerId, {
         feld: 'empfaengerId',
       });
       const zust = await tcmsZustaendigkeitTx(tx, bezug);
       const namen = await freigabeNamenTx(tx, bezug);
       return {
-        empfaenger: empfaenger!,
+        empfaenger,
         body: {
-          empfaengerId: empfaenger!.id,
+          empfaengerId: empfaenger.id,
           verantwortung: { berufstraeger: zust.berufstraeger, bearbeitung: zust.bearbeitung },
           namen,
         },

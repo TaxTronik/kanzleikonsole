@@ -150,9 +150,19 @@ Das Tax-CMS speichert nur Personen-IDs der kanzleikonsole. Namen kommen
   immer aus dem gebundenen Argument der Aktion bzw. der Portal-Sitzung, nie aus
   dem Formular. Die Empfänger von Mitteilungen prüft der Zustell-Worker
   ebenso gegen die kanzleikonsole (MAIL-OUTBOX-001).
-- **Auswahllisten:** `kontakteDesMandantenTx(tx, bezug)` für Kontakte;
-  Mitarbeiterlisten nur mit derselben Zugriffsregel wie
-  `kanzleiPersonenFuerMandantTx`.
+- **Empfänger mit Code im Portal (kk-tcms-s11):** Wer eine Anforderung im
+  Portal per Code bestätigt (Freigabe, Risikoakzeptanz, Kenntnisnahme,
+  Zielfreigabe), braucht aktiven Portalzugang. Solche Empfänger prüft die
+  Aktion mit `freigabeEmpfaengerTx` (Kontakt dieses Mandanten und
+  `@taxtronik/db/portal-zugang`, dieselbe Regel wie der Zustell-Worker;
+  sonst `TcmsPersonUnzulaessig('PORTAL')`), nicht mit `mandantKontakteTx`.
+  Kontaktrollen und andere Personenfelder bleiben ohne Portalzugang möglich.
+- **Auswahllisten:** `kontakteDesMandantenTx(tx, bezug)` für Kontakte (mit
+  `portal` je Kontakt); Empfängerlisten markieren Kontakte ohne Portalzugang
+  über `components/tcms/empfaenger.ts` (`mitPortalzugang`,
+  `empfaengerLabel`, Menge aus `kontakteMitPortalzugangTx`) als gesperrt mit
+  „ohne Portalzugang – kann nicht freigeben“. Mitarbeiterlisten nur mit
+  derselben Zugriffsregel wie `kanzleiPersonenFuerMandantTx`.
 
 ## 5. Eine Aktion schreiben
 

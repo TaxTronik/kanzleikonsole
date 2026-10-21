@@ -46,7 +46,12 @@ import {
 } from '@/components/tcms/programm/beschreibung';
 import { TcmsAktionsDialog } from '@/components/tcms/programm/dialog';
 import { TcmsKnopfAktion } from '@/components/tcms/programm/knopf';
-import type { Person } from '@/components/tcms/programm/kontakte';
+import {
+  einzigerEmpfaenger,
+  empfaengerLabel,
+  KEIN_EMPFAENGER_MIT_PORTALZUGANG,
+  type Empfaenger,
+} from '@/components/tcms/empfaenger';
 import { zustellungGescheitert, ZustellungAnzeige } from '@/components/tcms/zustellung';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import {
@@ -91,8 +96,11 @@ export interface BeschreibungModell {
   bearbeitenGrund: string | null;
   bearbeiten: boolean;
   offeneFreigabe: Freigabe | null;
-  /** Gesetzliche Vertretungen: Kontakte dieses Mandanten mit Rolle im Tax-CMS. */
-  gv: readonly Person[];
+  /**
+   * Gesetzliche Vertretungen: Kontakte dieses Mandanten mit Rolle im Tax-CMS,
+   * mit Kennzeichen für den aktiven Portalzugang (kk-tcms-s11).
+   */
+  gv: readonly Empfaenger[];
   /** Personen-ID der angemeldeten Person (klein). */
   me: string;
   name: (id: string | null) => string;
@@ -217,7 +225,14 @@ function ReviewAbschliessen({ m }: { m: BeschreibungModell }) {
 
 function FreigabeAnfordern({ m }: { m: BeschreibungModell }) {
   const andere = m.b.versionen.filter((x) => x.status === 'BEIM_MANDANTEN' && x.id !== m.v.id);
-  const grund = !m.b.darfBearbeiten ? grundOhneRecht(m.b) : m.gv.length === 0 ? KEINE_GV : null;
+  const grund = !m.b.darfBearbeiten
+    ? grundOhneRecht(m.b)
+    : m.gv.length === 0
+      ? KEINE_GV
+      : m.gv.every((p) => !p.portal)
+        ? KEIN_EMPFAENGER_MIT_PORTALZUGANG
+        : null;
+  const vorauswahl = einzigerEmpfaenger(m.gv);
   return (
     <TcmsAktionsDialog
       ausloeser={
@@ -261,13 +276,13 @@ function FreigabeAnfordern({ m }: { m: BeschreibungModell }) {
           id="beschreibung-empfaenger"
           name="empfaengerId"
           className="input"
-          defaultValue={m.gv.length === 1 ? m.gv[0]!.id : ''}
+          defaultValue={vorauswahl}
           required
         >
-          {m.gv.length !== 1 ? <option value="">Bitte wählen …</option> : null}
+          {vorauswahl === '' ? <option value="">Bitte wählen …</option> : null}
           {m.gv.map((p) => (
-            <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id}>
-              {p.name}
+            <option {...TCMS_TEXT_ISOLIERT} key={p.id} value={p.id} disabled={!p.portal}>
+              {empfaengerLabel(p.name, p.portal)}
             </option>
           ))}
         </select>

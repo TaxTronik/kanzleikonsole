@@ -30,16 +30,17 @@ import {
   RisikenSchrittSchema,
   TeilbereichSchrittSchema,
   ZieleSchrittSchema,
-  type EinrichtungPersonen,
 } from '@taxtronik/tcms-contract';
 import type { TcmsAktionsErgebnis } from '@/components/tcms/programm/dialog';
 import type { ActionParseResult } from '@/server/actions/action-runner';
 import { parseActionInput, parseFormData } from '@/server/actions/form-data';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
+import { TcmsPersonUnzulaessig } from '@/server/tcms/personen';
 import {
   einrichtungsPersonen,
   pruefeFreigabeEmpfaengerTx,
   pruefeKontrollPersonenTx,
+  pruefeZielfreigabeVorAnlegen,
 } from '@/server/tcms/programm/einrichtung';
 import { tcmsZustaendigkeitTx } from '@/server/tcms/programm/zustaendigkeit';
 
@@ -124,14 +125,14 @@ export async function einrichtungSpeichernAction(
     // nur die Sammelmeldung; die offenen Punkte zeigt die Seite (`pruefung`).
     felder: {},
     parse: () => eingabeAus(formData),
-    vorbereiten: async (tx, k, e: Eingabe): Promise<EinrichtungPersonen> => {
+    vorbereiten: async (tx, k, e: Eingabe) => {
       const bezug = { tenantId: k.g.tenantId, mandantId };
       const zust = await tcmsZustaendigkeitTx(tx, bezug);
       if (e.schritt === 3) await pruefeFreigabeEmpfaengerTx(tx, bezug, e.daten.freigabe);
       if (e.schritt === 5) await pruefeKontrollPersonenTx(tx, bezug, e.daten.kontrollen);
-      return einrichtungsPersonen(zust);
+      return { personen: einrichtungsPersonen(zust), ctx: k.g.ctx, bezug };
     },
-    aufruf: async (dienst, e: Eingabe, personen) => {
+    aufruf: async (dienst, e: Eingabe, { personen, ctx, bezug }) => {
       const weiter = { ziel: e.ziel, schritt: e.schritt };
       if (e.ziel === 'anlegen') {
         if (e.schritt !== 5) {
@@ -140,6 +141,24 @@ export async function einrichtungSpeichernAction(
             error: 'Version 1 wird im letzten Schritt angelegt.',
             errorCode: 'VALIDATION_ERROR' as const,
           };
+        }
+        // kk-tcms-s11: Mit Version 1 versendet der Dienst die Zielfreigabe aus
+        // Schritt 3. Vorher den gespeicherten Empfänger erneut prüfen (Kontakt
+        // dieses Mandanten mit aktivem Portalzugang) – er kann seit dem
+        // Speichern den Zugang verloren haben.
+        const { daten: stand } = await dienst.rufe(ENDPUNKTE.einrichtungLesen, { query: {} });
+        const freigabe = stand.entwurf?.freigabe;
+        if (freigabe?.anfordern && freigabe.empfaengerId) {
+          try {
+            await pruefeZielfreigabeVorAnlegen(ctx, bezug, freigabe);
+          } catch (fehler) {
+            if (!(fehler instanceof TcmsPersonUnzulaessig)) throw fehler;
+            return {
+              ok: false as const,
+              error: `Schritt 3 (Freigabe der Ziele): ${fehler.message}`,
+              errorCode: 'VALIDATION_ERROR' as const,
+            };
+          }
         }
         await dienst.rufe(ENDPUNKTE.programmAnlegen, { body: { daten: e.daten, personen } });
         return { ...weiter, meldung: 'Version 1 des Tax-CMS ist angelegt.' };

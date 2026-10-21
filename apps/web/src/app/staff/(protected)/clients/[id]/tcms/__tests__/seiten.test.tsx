@@ -44,6 +44,7 @@ import { UNBEKANNTE_PERSON, KEINE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsCockpitPage from '../page';
 import TcmsKontaktePage from '../kontakte/page';
+import { OHNE_PORTALZUGANG } from '@/components/tcms/empfaenger';
 
 const BASIS = `/staff/clients/${DEMO.talwind}/tcms`;
 const SEITE = {
@@ -210,6 +211,7 @@ describe('Kontakte & Rollen', () => {
         name: 'Jana Weller',
         email: 'jana@talwind.example',
         aktiv: true,
+        portal: true,
         funktion: null,
       },
       {
@@ -217,6 +219,7 @@ describe('Kontakte & Rollen', () => {
         name: 'Murat Yilmaz',
         email: 'murat@talwind.example',
         aktiv: false,
+        portal: false,
         funktion: null,
       },
       {
@@ -224,9 +227,28 @@ describe('Kontakte & Rollen', () => {
         name: 'Neu Kontakt',
         email: 'neu@talwind.example',
         aktiv: true,
+        portal: false,
         funktion: 'Einkauf',
       },
     ]);
+  });
+
+  it('kk-tcms-s11: aktiver Kontakt ohne Portalzugang behält Rollen, mit Hinweis „kann nicht freigeben“', async () => {
+    await renderServer(TcmsKontaktePage({ params }));
+    const zeilen = screen.getAllByRole('row').slice(1);
+    // Jana (Zugang): kein Hinweis; Murat (inaktiv): nur „inaktiv“; Neu Kontakt: Hinweis.
+    expect(within(zeilen[0]!).queryByText(OHNE_PORTALZUGANG)).toBeNull();
+    expect(within(zeilen[1]!).queryByText(OHNE_PORTALZUGANG)).toBeNull();
+    expect(within(zeilen[2]!).getByText(OHNE_PORTALZUGANG)).toBeTruthy();
+    // Rollen bleiben zuweisbar.
+    const formular = within(zeilen[2]!).getByRole('form', { name: /Neu Kontakt/ });
+    expect(
+      (
+        within(formular).getByRole('checkbox', {
+          name: 'Gesetzliche Vertretung',
+        }) as HTMLInputElement
+      ).disabled,
+    ).toBe(false);
   });
 
   it('zeigt nur Kontakte dieses Mandanten mit ihren Rollen aus dem Tax-CMS', async () => {

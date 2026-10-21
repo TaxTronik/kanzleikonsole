@@ -47,6 +47,7 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsRisikenPage from '../page';
+import { KEIN_EMPFAENGER_MIT_PORTALZUGANG, OHNE_PORTALZUGANG } from '@/components/tcms/empfaenger';
 
 const BASIS = `/staff/clients/${DEMO.talwind}/tcms`;
 const PFAD = `${BASIS}/risiken`;
@@ -323,9 +324,30 @@ describe('Risikoinventar – Detail', () => {
 
   it('Risikoakzeptanz: nur aktive Kontakte dieses Mandanten mit Rolle laut Dienst', async () => {
     h.tenantLesen.mockResolvedValue([
-      { id: DEMO.jana, name: 'Jana Weller', email: 'j@x', aktiv: true, funktion: null },
-      { id: DEMO.murat, name: 'Murat Yilmaz', email: 'm@x', aktiv: true, funktion: null },
-      { id: DEMO.sabine, name: 'Sabine Inaktiv', email: 's@x', aktiv: false, funktion: null },
+      {
+        id: DEMO.jana,
+        name: 'Jana Weller',
+        email: 'j@x',
+        aktiv: true,
+        portal: true,
+        funktion: null,
+      },
+      {
+        id: DEMO.murat,
+        name: 'Murat Yilmaz',
+        email: 'm@x',
+        aktiv: true,
+        portal: true,
+        funktion: null,
+      },
+      {
+        id: DEMO.sabine,
+        name: 'Sabine Inaktiv',
+        email: 's@x',
+        aktiv: false,
+        portal: false,
+        funktion: null,
+      },
     ]);
     kontext.kontaktRollen.push({
       kontaktId: DEMO.sabine,
@@ -345,6 +367,57 @@ describe('Risikoinventar – Detail', () => {
       .getAllByRole('option')
       .map((o) => o.textContent);
     expect(optionen).toEqual(['bitte wählen', 'Jana Weller (Geschäftsführerin)']);
+  });
+
+  it('kk-tcms-s11: gesetzliche Vertretung ohne Portalzugang nicht wählbar, mit Hinweis; ohne jeden Zugang gesperrt', async () => {
+    kontext.kontaktRollen.push({
+      kontaktId: DEMO.murat,
+      rolle: 'GESETZLICHER_VERTRETER',
+      funktion: 'Prokura',
+    });
+    const ust05 = liste.risiken.find((r) => r.code === 'EC-UST-05')!;
+    const mitZugang = (jana: boolean) =>
+      h.tenantLesen.mockResolvedValue([
+        {
+          id: DEMO.jana,
+          name: 'Jana Weller',
+          email: 'j@x',
+          aktiv: true,
+          portal: jana,
+          funktion: null,
+        },
+        {
+          id: DEMO.murat,
+          name: 'Murat Yilmaz',
+          email: 'm@x',
+          aktiv: true,
+          portal: false,
+          funktion: null,
+        },
+      ]);
+    mitZugang(true);
+    antworten({ detail: { [ust05.id]: ok({ ...tcmsFixtures.risikoEcVer01(), risiko: ust05 }) } });
+    const { unmount } = await renderServer(TcmsRisikenPage(mit({ risiko: ust05.id })));
+    let detail = screen.getByRole('region', { name: /^EC-UST-05 · / });
+    fireEvent.click(within(detail).getByRole('button', { name: /Risikoakzeptanz anfordern/ }));
+    const auswahl = within(screen.getByRole('dialog')).getByRole('combobox', {
+      name: /Gesetzliche Vertretung/,
+    }) as HTMLSelectElement;
+    expect([...auswahl.options].map((o) => [o.textContent, o.disabled])).toEqual([
+      ['bitte wählen', true],
+      ['Jana Weller (Geschäftsführerin)', false],
+      [`Murat Yilmaz (Prokura) (${OHNE_PORTALZUGANG})`, true],
+    ]);
+    unmount();
+    // Keine gesetzliche Vertretung mit Portalzugang: Anfordern gesperrt, fester Grund.
+    mitZugang(false);
+    await renderServer(TcmsRisikenPage(mit({ risiko: ust05.id })));
+    detail = screen.getByRole('region', { name: /^EC-UST-05 · / });
+    const knopf = within(detail).getByRole('button', {
+      name: /Risikoakzeptanz anfordern/,
+    }) as HTMLButtonElement;
+    expect(knopf.disabled).toBe(true);
+    expect(knopf.title).toBe(KEIN_EMPFAENGER_MIT_PORTALZUGANG);
   });
 
   it('offene Akzeptanz: kein zweites Anfordern, Grund mit Namen aus der kanzleikonsole', async () => {

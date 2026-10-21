@@ -35,7 +35,8 @@ vi.mock('@/server/tcms/aktion', () => ({
     return h.ergebnis;
   }),
 }));
-vi.mock('@/server/tcms/personen', () => ({ mandantKontakteTx: h.kontakte }));
+// kk-tcms-s11: Empfänger einer Freigabe = Kontakt mit aktivem Portalzugang.
+vi.mock('@/server/tcms/personen', () => ({ freigabeEmpfaengerTx: h.kontakte }));
 vi.mock('@/server/tcms/programm/zustaendigkeit', () => ({
   tcmsZustaendigkeitTx: h.zust,
   freigabeNamenTx: h.namen,
@@ -309,12 +310,12 @@ describe('freigabeAnfordernAction', () => {
   ];
 
   beforeEach(() => {
-    h.kontakte.mockResolvedValue([JANA]);
+    h.kontakte.mockResolvedValue(JANA);
     h.zust.mockResolvedValue(ZUST);
     h.namen.mockResolvedValue(NAMEN);
   });
 
-  it('Empfänger nur als aktiver Kontakt dieses Mandanten; Zuständigkeit und Namen aus der kanzleikonsole', async () => {
+  it('Empfänger nur als aktiver Kontakt dieses Mandanten mit Portalzugang; Zuständigkeit und Namen aus der kanzleikonsole', async () => {
     await freigabeAnfordernAction(
       MANDANT,
       null,
@@ -331,7 +332,7 @@ describe('freigabeAnfordernAction', () => {
     const parsed = s.parse!();
     expect(parsed).toEqual({ ok: true, data: { versionId: VERSION, empfaengerId: DEMO.jana } });
     const v = await s.vorbereiten!(TX, K, parsed.data);
-    expect(h.kontakte).toHaveBeenCalledWith(TX, BEZUG, [DEMO.jana], { feld: 'empfaengerId' });
+    expect(h.kontakte).toHaveBeenCalledWith(TX, BEZUG, DEMO.jana, { feld: 'empfaengerId' });
     expect(h.zust).toHaveBeenCalledWith(TX, BEZUG);
     expect(h.namen).toHaveBeenCalledWith(TX, BEZUG);
     const d = dienst({ freigabeId: 'f', nummer: '1.3', zurueckgezogen: ['1.2'] });
@@ -349,7 +350,7 @@ describe('freigabeAnfordernAction', () => {
     });
   });
 
-  it('abgelehnter Kontakt: kein Laden weiterer Daten, kein Dienstaufruf', async () => {
+  it('abgelehnter Kontakt (fremd, inaktiv oder ohne Portalzugang): kein Laden weiterer Daten, kein Dienstaufruf', async () => {
     const fehler = new Error('Kontakt unzulässig');
     h.kontakte.mockRejectedValueOnce(fehler);
     await freigabeAnfordernAction(

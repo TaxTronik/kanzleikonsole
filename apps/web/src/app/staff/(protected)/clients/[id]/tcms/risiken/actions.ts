@@ -33,7 +33,7 @@ import {
 } from '@/server/tcms/bereich-b/formular';
 import { SICHT_LABEL } from '@/components/tcms/risiken/labels';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
-import { mandantKontakteTx } from '@/server/tcms/personen';
+import { freigabeEmpfaengerTx } from '@/server/tcms/personen';
 
 const FELDER = {
   risikoId: 'risikoId',
@@ -316,17 +316,13 @@ export async function risikoakzeptanzAnfordernAction(
     keinRecht: 'BEARBEITEN',
     felder: FELDER,
     parse: () => parseFormData(AkzeptanzFormular, formData),
-    // Empfängerin: aktiver Kontakt genau dieses Mandanten; Name aus der
-    // kanzleikonsole (Meldung), nie aus dem Formular.
-    vorbereiten: async (tx, k, d) => {
-      const [kontakt] = await mandantKontakteTx(
-        tx,
-        { tenantId: k.g.tenantId, mandantId },
-        [d.empfaengerId],
-        { feld: 'empfaengerId' },
-      );
-      return kontakt!;
-    },
+    // Empfängerin: aktiver Kontakt genau dieses Mandanten mit aktivem
+    // Portalzugang (kk-tcms-s11); Name aus der kanzleikonsole (Meldung), nie
+    // aus dem Formular.
+    vorbereiten: (tx, k, d) =>
+      freigabeEmpfaengerTx(tx, { tenantId: k.g.tenantId, mandantId }, d.empfaengerId, {
+        feld: 'empfaengerId',
+      }),
     aufruf: async (dienst, d, kontakt) => {
       await dienst.rufe(ENDPUNKTE.risikoakzeptanzAnfordern, {
         params: { risikoId: d.risikoId },
