@@ -44,7 +44,11 @@ import {
   type TcmsMandantSeite,
 } from '@/server/tcms/seite';
 import { TCMS_KEIN_RECHT, type TcmsSeitenZustand } from '@/server/tcms/zustand';
-import { ereignisErfassenAction, ungeklaerteAnlageZuordnenAction } from './actions';
+import {
+  ereignisErfassenAction,
+  ungeklaerteAnlageFreigebenAction,
+  ungeklaerteAnlageZuordnenAction,
+} from './actions';
 import { TriagePanel, type EreignisDetail, type TriagePersonen } from './triage';
 import { TCMS_TEXT_ISOLIERT } from '@/components/tcms/text';
 
@@ -380,6 +384,7 @@ export default async function TcmsEreignissePage({
           seit: a.seit.toISOString(),
           von: namen.name(a.kontaktId),
           zuordnen: ungeklaerteAnlageZuordnenAction.bind(null, seite.mandantId, a.verknuepfungId),
+          freigeben: ungeklaerteAnlageFreigebenAction.bind(null, seite.mandantId, a.verknuepfungId),
         }))}
         ereignisse={ereignisse.map((x) => ({ id: x.id, nummer: x.nummer, titel: x.titel }))}
         darfZuordnen={isStaffAdmin(seite.session)}

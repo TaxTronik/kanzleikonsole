@@ -467,9 +467,25 @@ Klick öffnet die Triage:
   Prüfen Sie die Ereignisse: Enthält eines die Anlage, ordnen Admins und
   Partner sie mit **Ereignis zuordnen** zu – das Tax-CMS muss die Anlage für
   dieses Ereignis führen (gleicher SHA-256, gleiches Dokument), sonst erscheint
-  „Dieses Ereignis enthält die Anlage nicht.“ Gibt es keine solche Meldung,
-  gibt der Betrieb die Anlage auf Ihren Auftrag frei; aus der Oberfläche
-  heraus geht das bewusst nicht.
+  „Dieses Ereignis enthält die Anlage nicht.“ Führt kein Ereignis die
+  Anlage, geben Admins und Partner mit Zugriff auf den Mandanten sie mit
+  **Freigeben** frei (Begründung Pflicht, 20 bis 1000 Zeichen). Vorher fragt
+  TaxTronik das Tax-CMS, ob ein Ereignis des Mandanten diese Anlage führt –
+  auch ein verworfenes. Nur wenn das Tax-CMS keines nennt, wird die Anlage
+  freigegeben; die Freigabe ist endgültig und steht mit Ihrer Begründung im
+  Audit-Protokoll der Kanzlei. Danach lässt sich das Dokument wieder löschen
+  und versionieren. Meldungen dazu:
+
+  | Meldung                                                     | Bedeutung                                                                                                                                        |
+  | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | Das Tax-CMS führt diese Anlage an einem Ereignis …          | Ein Ereignis (auch ein verworfenes) enthält die Anlage. Ordnen Sie sie dem Ereignis zu.                                                          |
+  | Die Meldung zu dieser Anlage kann noch übermittelt werden … | Die automatische Wiederholung der Meldung ist noch möglich (bis rund 23 Stunden und 10 Minuten nach dem ersten Senden). Später erneut versuchen. |
+  | Das Tax-CMS hat nicht bestätigt, dass keine Meldung …       | Die Antwort des Tax-CMS passte nicht zur Anlage. Die Anlage bleibt gesperrt; bitte den Betrieb informieren.                                      |
+  | Diese Anlage ist nicht mehr ungeklärt …                     | Jemand hat sie inzwischen zugeordnet oder freigegeben. Seite neu laden.                                                                          |
+
+  Ist das Tax-CMS nicht erreichbar, bleibt die Anlage gesperrt; der Betrieb
+  kann sie in Ausnahmefällen auf Ihren schriftlichen Auftrag freigeben
+  (Tax-CMS-Betrieb, Notfallweg).
 
 ### Kontrollaufgabe im Portal
 

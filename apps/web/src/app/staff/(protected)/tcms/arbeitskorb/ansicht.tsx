@@ -620,7 +620,7 @@ function UngeklaerteAnlagenGruppe({
       titel="Ungeklärte Anlagen aus Portal-Meldungen"
       anzahl={gesamt}
       ton="badge-yellow"
-      fuss="Das Tax-CMS hat die Meldung nicht innerhalb von 23 Stunden bestätigt; die Dokumente bleiben gesperrt, bis die Anlage im Ereigniseingang geklärt ist."
+      fuss="Das Tax-CMS hat die Meldung nicht innerhalb von 23 Stunden bestätigt; die Dokumente bleiben gesperrt, bis die Anlage im Ereigniseingang zugeordnet oder freigegeben ist."
     >
       <ul>
         {ungeklaert.map((u) => (

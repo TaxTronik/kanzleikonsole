@@ -77,6 +77,7 @@ import {
   SECRET_SLOTS,
   secretSlotContext,
 } from '@/server/crypto/secret-box';
+import { audit } from '@/server/actions/audit';
 import { log } from '@/server/logger';
 import type { TcmsAktionsEingabe, TcmsDienst } from '@/server/tcms/aktion';
 import { tcmsLogFelder } from '@/server/tcms/zustand';
@@ -787,4 +788,145 @@ export async function ungeklaerteAnlageZuordnen(
     }),
   );
   return count === 1;
+}
+
+// ---------------------------------------------------------------------------
+// Ungeklärte Anlage ohne Ereignis freigeben (kk-tcms-s11 Punkt 3,
+// TCMS-NACHWEIS-001; Produktentscheidung Rey Koxha, 21.10.2026)
+// ---------------------------------------------------------------------------
+
+/**
+ * Frühestens so lange nach dem ersten Senden ist eine Freigabe möglich:
+ * Wiederholungsfenster plus Lease des Absendens. Ein Versuch beansprucht den
+ * Vorgang nur im Fenster und hält die Lease höchstens so lange; danach kann
+ * keine Übermittlung dieses Vorgangs mehr unterwegs sein – auch bei leicht
+ * abweichenden Uhren der App-Instanzen. Bis dahin (und solange eine Lease
+ * besteht oder der Vorgang nie gesendet wurde) gilt die Anlage als „in
+ * Klärung“, auch wenn die Liste sie schon als ungeklärt zeigt.
+ */
+export const ANLAGE_FREIGABE_SPERRE_MS =
+  MELDUNG_WIEDERHOLUNG_FENSTER_MS + MELDUNG_ABSENDEN_LEASE_MS;
+
+/** Meldevorgang, der die Freigabe seiner Anlagen (noch) sperrt. */
+function sperrtFreigabe(jetzt: Date) {
+  return {
+    OR: [
+      { sentAt: null },
+      { sentAt: { gt: new Date(jetzt.getTime() - ANLAGE_FREIGABE_SPERRE_MS) } },
+      { leaseUntil: { gte: jetzt } },
+    ],
+  };
+}
+
+/** Offene Anlage ohne Ereignis-ID genau dieses Tenants und Mandanten. */
+function offeneAnlage(a: { tenantId: string; mandantId: string; verknuepfungId: string }) {
+  return {
+    id: a.verknuepfungId,
+    tenantId: a.tenantId,
+    clientId: a.mandantId,
+    tcmsSubject: 'EVENT',
+    releasedAt: null,
+    tcmsEventId: null,
+  };
+}
+
+export type AnlageFreigabeStand =
+  /** Ungeklärt und kein Meldevorgang kann sie noch klären: Dienst fragen. */
+  | { art: 'offen'; dokumentId: string }
+  /** Der Meldevorgang kann noch übermittelt werden (Fenster, Lease, nie gesendet). */
+  | { art: 'inKlaerung' }
+  /** Nicht (mehr) ungeklärt: zugeordnet, freigegeben, anderer Mandant oder unbekannt. */
+  | { art: 'nichtOffen' };
+
+async function freigabeStandTx(
+  tx: TxClient,
+  a: { tenantId: string; mandantId: string; verknuepfungId: string },
+  jetzt: Date,
+): Promise<AnlageFreigabeStand> {
+  const r = await tx.tcmsDocumentReference.findFirst({
+    where: offeneAnlage(a),
+    select: { documentId: true, createdBy: true, tcmsReportKey: true },
+  });
+  if (!r) return { art: 'nichtOffen' };
+  if (r.tcmsReportKey !== null) {
+    const sperrend = await tx.tcmsPortalReport.count({
+      where: {
+        tenantId: a.tenantId,
+        contactId: r.createdBy,
+        idempotencyKey: r.tcmsReportKey,
+        ...sperrtFreigabe(jetzt),
+      },
+    });
+    if (sperrend > 0) return { art: 'inKlaerung' };
+  }
+  return { art: 'offen', dokumentId: r.documentId };
+}
+
+/**
+ * Vorprüfung vor dem Dienstaufruf (Transaktion der Aktion): Ist die Anlage
+ * ungeklärt und kann kein Meldevorgang sie mehr klären? Liefert die
+ * Dokument-ID, nach der die Aktion das Tax-CMS fragt.
+ */
+export function anlageFreigabeStandTx(
+  tx: TxClient,
+  a: { tenantId: string; mandantId: string; verknuepfungId: string },
+  jetzt: Date = new Date(),
+): Promise<AnlageFreigabeStand> {
+  return freigabeStandTx(tx, a, jetzt);
+}
+
+/** Ergebnis der Freigabe. */
+export type AnlageFreigabe =
+  | { art: 'freigegeben' }
+  | Exclude<AnlageFreigabeStand, { art: 'offen' }>;
+
+/**
+ * Gibt eine ungeklärte Anlage frei („NOT_ATTACHED“), nachdem das Tax-CMS für
+ * ihre Dokument-ID KEINE Ereignis-Anlage gemeldet hat
+ * (`ereignisAnlagenJeDokumentLesen`, Aufrufer; auch verworfene Ereignisse
+ * zählen). Eigene Transaktion: Stand erneut prüfen (Vorgang kann seit der
+ * Vorprüfung nicht wieder sendebereit werden, s. ANLAGE_FREIGABE_SPERRE_MS),
+ * dann bedingt freigeben – nur noch offen, ohne Ereignis-ID, mit genau der
+ * geprüften Dokument-ID; eine gleichzeitige Zuordnung gewinnt bzw. verliert
+ * über die Zeilensperre (READ COMMITTED prüft die Bedingung gegen die neueste
+ * Fassung). Das Audit (Begründung, Prüfung des Dienstes) entsteht in derselben
+ * Transaktion und nur bei Treffer.
+ */
+export async function ungeklaerteAnlageFreigeben(
+  ctx: TenantContext,
+  a: {
+    tenantId: string;
+    mandantId: string;
+    verknuepfungId: string;
+    dokumentId: string;
+    begruendung: string;
+    /** Vorgangsnummer der Antwort des Dienstes (Nachvollziehbarkeit). */
+    requestId: string | null;
+  },
+  jetzt: Date = new Date(),
+): Promise<AnlageFreigabe> {
+  return withTenantContext(ctx, async (tx) => {
+    const stand = await freigabeStandTx(tx, a, jetzt);
+    if (stand.art !== 'offen') return stand;
+    if (stand.dokumentId.toLowerCase() !== a.dokumentId.toLowerCase()) return { art: 'nichtOffen' };
+    const { count } = await tx.tcmsDocumentReference.updateMany({
+      where: { ...offeneAnlage(a), documentId: stand.dokumentId },
+      data: { releasedAt: jetzt, releasedBy: ctx.actorId, releaseReason: 'NOT_ATTACHED' },
+    });
+    if (count !== 1) return { art: 'nichtOffen' };
+    await audit(tx, ctx, {
+      action: 'tcms.anlage.freigegeben',
+      resourceType: 'tcms_document_reference',
+      resourceId: a.verknuepfungId,
+      after: {
+        clientId: a.mandantId,
+        documentId: stand.dokumentId,
+        releaseReason: 'NOT_ATTACHED',
+        begruendung: a.begruendung,
+        tcmsPruefung: { endpunkt: 'ereignisAnlagenJeDokumentLesen', anlagen: 0 },
+        tcmsRequestId: a.requestId,
+      },
+    });
+    return { art: 'freigegeben' };
+  });
 }

@@ -493,6 +493,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'risk.embedding.refresh.cancel.requested':
     'Abbruch der Signal-Embedding-Aktualisierung angefordert',
   'risk.embedding.schedule.updated': 'Signal-Embedding-Zeitplan geändert',
+  // Tax-CMS: ungeklärte Anlage einer Portal-Meldung ohne Ereignis freigegeben (kk-tcms-s11)
+  'tcms.anlage.freigegeben': 'Ungeklärte Tax-CMS-Anlage freigegeben',
   'tenant.settings.quantenlos_ibm.update': 'IBM-Quantum-Zugang (Quantenlos) hinterlegt',
   'tenant.settings.quantenlos_ibm.reset': 'IBM-Quantum-Zugang (Quantenlos) entfernt',
 };
@@ -554,6 +556,7 @@ export const RESOURCE_TYPE_LABELS: Record<string, string> = {
   risk_research_result: 'Rechercheergebnis',
   quantenlos: 'Quantenlos-Ziehung',
   signal_embedding: 'Signal-Embedding',
+  tcms_document_reference: 'Tax-CMS-Verknüpfung',
 };
 
 export function actionLabel(action: string): string {

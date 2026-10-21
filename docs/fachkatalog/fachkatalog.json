@@ -6355,7 +6355,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe hochladen, und für Anlagen einer Ereignismeldung im Portal (gebunden in der Transaktion der Ablage, frei erst nach eindeutiger Ablehnung der Meldung oder nach dem Verwerfen des Ereignisses). Ein gebundenes Dokument lässt sich nicht in eine GwG-, Personal- oder private Unterlage umklassifizieren und wird nicht von der GwG-Pflichtvernichtung erfasst (Ablage, Aktion und Datenbank für jede Rolle). Ein GwG-Beleg, der als Nachweis gebunden ist oder war (nur Altbestand), gilt nach einer Produktentscheidung zugleich als steuerliche Unterlage: Seine Aufbewahrung steigt auf die GoBD-Frist der Steuerunterlage, die GwG-Vernichtung ist erst nach Ablauf beider Fristen fällig, auch nach der Freigabe. Offen gebliebene Verknüpfungen nach unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort. Eine Ereignismeldung mit offenem Ausgang wiederholt dieselbe Person mit demselben Idempotenzschlüssel und dem verschlüsselt gespeicherten Inhalt innerhalb von 23 Stunden (TCMS s10); danach bleiben die Anlagen gebunden und erscheinen der Kanzlei als ungeklärte Anlage – nie automatisch frei."
+        "summary": "Nachweise einer Kontrolldurchführung verweisen auf Dokumente der kanzleikonsole. Der Verweis an das Tax-CMS entsteht nur aus der gespeicherten, gescannten neuesten Version eines Dokuments genau dieses Mandanten; ausgeliefert wird nur über die Dokumentauslieferung der kanzleikonsole bei gleichem SHA-256 und gleicher Größe. Solange ein Nachweis verweist, sind Löschen und neue Versionen des Dokuments gesperrt; das gilt auch für Anlagen, die Kontakte im Mandantenportal zu einer Kontrollaufgabe hochladen, und für Anlagen einer Ereignismeldung im Portal (gebunden in der Transaktion der Ablage, frei erst nach eindeutiger Ablehnung der Meldung oder nach dem Verwerfen des Ereignisses). Ein gebundenes Dokument lässt sich nicht in eine GwG-, Personal- oder private Unterlage umklassifizieren und wird nicht von der GwG-Pflichtvernichtung erfasst (Ablage, Aktion und Datenbank für jede Rolle). Ein GwG-Beleg, der als Nachweis gebunden ist oder war (nur Altbestand), gilt nach einer Produktentscheidung zugleich als steuerliche Unterlage: Seine Aufbewahrung steigt auf die GoBD-Frist der Steuerunterlage, die GwG-Vernichtung ist erst nach Ablauf beider Fristen fällig, auch nach der Freigabe. Offen gebliebene Verknüpfungen nach unklarem Ausgang klärt die kanzleikonsole beim Öffnen der Durchführung über „Nachweise je Dokument“ des Tax-CMS: bestätigen, wenn der Dienst den Nachweis führt, freigeben, wenn nicht – nur nach eindeutiger Antwort. Eine Ereignismeldung mit offenem Ausgang wiederholt dieselbe Person mit demselben Idempotenzschlüssel und dem verschlüsselt gespeicherten Inhalt innerhalb von 23 Stunden (TCMS s10); danach bleiben die Anlagen gebunden und erscheinen der Kanzlei als ungeklärte Anlage – nie automatisch frei. Admins und Partner mit Zugriff auf den Mandanten ordnen sie einem Ereignis zu oder geben sie mit Pflichtbegründung frei, wenn das Tax-CMS bestätigt, dass kein Ereignis die Dokument-ID führt (TCMS s11)."
       },
       "sources": [
         {
@@ -6398,6 +6398,10 @@
         "apps/web/src/components/tcms/portal/offene-meldungen.tsx",
         "apps/web/src/app/portal/(protected)/tcms/ereignis/page.tsx",
         "apps/web/src/components/tcms/ereignisse/ungeklaerte-anlagen.tsx",
+        "apps/web/src/components/tcms/ereignisse/anlage-texte.ts",
+        "apps/web/src/app/staff/(protected)/tcms/arbeitskorb/ansicht.tsx",
+        "apps/web/src/server/audit/labels.ts",
+        "apps/web/src/server/audit/query.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/ereignisse/page.tsx",
         "apps/web/src/app/staff/(protected)/tcms/arbeitskorb/page.tsx",
         "apps/worker/src/jobs/tcms-nachrichten.ts",
@@ -6458,7 +6462,8 @@
         "apps/web/src/app/staff/(protected)/documents/__tests__/retag-race.test.ts",
         "apps/web/src/components/tcms/durchfuehrung/__tests__/nachweis-liste.test.tsx",
         "apps/web/src/app/portal/(protected)/tcms/__tests__/portal-seiten.test.tsx",
-        "apps/web/src/server/tcms/__tests__/redteam-boeser-dienst-db.test.tsx"
+        "apps/web/src/server/tcms/__tests__/redteam-boeser-dienst-db.test.tsx",
+        "apps/web/src/server/tcms/__tests__/redteam-anlage-freigeben-db.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/anwenderdoku/tax-cms.md"],
       "related_rules": [

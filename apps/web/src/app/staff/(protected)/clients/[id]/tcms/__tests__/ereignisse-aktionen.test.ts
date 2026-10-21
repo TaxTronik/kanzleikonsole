@@ -11,7 +11,11 @@
 //     (TCMS-NACHWEIS-001; Eindeutigkeit prüft portal-meldung.test.ts).
 //   - Ungeklärte Anlagen einer Portal-Meldung (kk-tcms-s10nach) ordnen nur
 //     Admins/Partner zu, und nur einem Ereignis, für das das Tax-CMS dieselbe
-//     Anlage (SHA-256 und Dokument-ID) bestätigt; eine Freigabe gibt es hier nicht.
+//     Anlage (SHA-256 und Dokument-ID) bestätigt.
+//   - Freigeben (kk-tcms-s11) nur Admins/Partner mit Pflichtbegründung, nur
+//     bei leerer Liste des Dienstes zu genau dieser Dokument-ID; sonst und bei
+//     jedem Fehler bleibt die Anlage gesperrt (Ende-zu-Ende mit bösartigem
+//     Dienst: server/tcms/__tests__/redteam-anlage-freigeben-db.test.ts).
 // Fachkatalog: TCMS-AKTEUR-001, TCMS-NACHWEIS-001
 import { TcmsNichtGefunden, TcmsNichtVerfuegbar } from '@taxtronik/tcms-client';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
@@ -24,6 +28,8 @@ const h = vi.hoisted(() => ({
   nachVerwerfen: vi.fn(),
   ungeklaert: vi.fn(),
   zuordnen: vi.fn(),
+  stand: vi.fn(),
+  freigeben: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -41,6 +47,8 @@ vi.mock('@/server/tcms/portal/meldung', () => ({ meldungsAnlagenNachVerwerfen: h
 vi.mock('@/server/tcms/portal/meldevorgang', () => ({
   ungeklaerteAnlageTx: h.ungeklaert,
   ungeklaerteAnlageZuordnen: h.zuordnen,
+  anlageFreigabeStandTx: h.stand,
+  ungeklaerteAnlageFreigeben: h.freigeben,
 }));
 vi.mock('@/server/tcms/personen', async (original) => ({
   ...(await original<typeof import('@/server/tcms/personen')>()),
@@ -61,8 +69,16 @@ import {
   folgeHinzufuegenAction,
   folgenAnlegenAction,
   folgeVerwerfenAction,
+  ungeklaerteAnlageFreigebenAction,
   ungeklaerteAnlageZuordnenAction,
 } from '../ereignisse/actions';
+import {
+  ANLAGE_FREIGEGEBEN,
+  ANLAGE_IM_EREIGNIS,
+  ANLAGE_IN_KLAERUNG,
+  ANLAGE_NICHT_BESTAETIGT,
+  ANLAGE_NICHT_OFFEN,
+} from '@/components/tcms/ereignisse/anlage-texte';
 
 const MANDANT = DEMO.talwind;
 const EREIGNIS = 'cmvf9ned0008hdy7dlufu2vuo';
@@ -491,5 +507,149 @@ describe('ungeklaerteAnlageZuordnenAction (kk-tcms-s10nach)', () => {
     h.zuordnen.mockResolvedValueOnce(false);
     const zwischendurch = await lauf(ANTWORT);
     expect(zwischendurch.r).toMatchObject({ ok: false, errorCode: 'CONFLICT' });
+  });
+});
+
+describe('ungeklaerteAnlageFreigebenAction (kk-tcms-s11)', () => {
+  const VERKNUEPFUNG = '0b6f3c1e-2d4a-4f5b-9c8d-7e6f5a4b3c2d';
+  const DOKUMENT = '5f0c7a1b-8e2d-4c3f-a1b0-9d8e7f6a5b4c';
+  const GRUND = 'Kein Ereignis im Tax-CMS führt diese Anlage; Meldung nie eingegangen.';
+  const DATEN = { verknuepfungId: VERKNUEPFUNG, begruendung: GRUND };
+  const anlage = (o: Record<string, unknown> = {}) => ({
+    ereignisId: EREIGNIS,
+    nummer: '2026-T-0345',
+    status: 'VERWORFEN',
+    sha256: 'ab'.repeat(32),
+    entfernt: false,
+    ...o,
+  });
+
+  beforeEach(() => {
+    h.stand.mockResolvedValue({ art: 'offen', dokumentId: DOKUMENT });
+    h.freigeben.mockResolvedValue({ art: 'freigegeben' });
+  });
+
+  async function aufrufen(verknuepfung = VERKNUEPFUNG, grund = GRUND) {
+    await ungeklaerteAnlageFreigebenAction(
+      MANDANT,
+      verknuepfung,
+      null,
+      formular([
+        ['begruendung', grund],
+        ['mandantId', DEMO.seestern],
+        ['verknuepfungId', '11111111-1111-4111-8111-111111111111'],
+        ['dokumentId', '22222222-2222-4222-8222-222222222222'],
+      ]),
+    );
+  }
+
+  it('nur Admin/Partner; Mandant und Verknüpfung aus den gebundenen Argumenten, Begründung Pflicht', async () => {
+    await aufrufen();
+    expect(spec()).toMatchObject({ mandantId: MANDANT, nurAdmin: true, keinRecht: 'VERWALTUNG' });
+    expect(spec().parse!()).toEqual({ ok: true, data: DATEN });
+    const v = await spec().vorbereiten!(TX, K, DATEN);
+    expect(h.stand).toHaveBeenCalledWith(TX, {
+      tenantId: DEMO.tenant,
+      mandantId: MANDANT,
+      verknuepfungId: VERKNUEPFUNG,
+    });
+    expect(v).toMatchObject({ stand: { art: 'offen', dokumentId: DOKUMENT }, ctx: CTX });
+    for (const [verknuepfung, grund] of [
+      ['keine-uuid', GRUND],
+      [VERKNUEPFUNG, ''],
+      [VERKNUEPFUNG, 'zu kurz'],
+      [VERKNUEPFUNG, 'x'.repeat(1001)],
+      [VERKNUEPFUNG, `Richtungswechsel \u202e im Text der Begründung`],
+    ] as const) {
+      await aufrufen(verknuepfung, grund);
+      expect(spec().parse!(), `${verknuepfung}/${grund.length}`).toMatchObject({ ok: false });
+    }
+  });
+
+  it('leere Liste zu genau dieser Dokument-ID (Schreibweise egal) → freigegeben mit Begründung und Vorgangsnummer', async () => {
+    await aufrufen();
+    const { d, r } = await lauf({ dokumentId: DOKUMENT.toUpperCase(), anlagen: [] });
+    expect(d.rufe).toHaveBeenCalledTimes(1);
+    expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.ereignisAnlagenJeDokumentLesen, {
+      query: { dokumentId: DOKUMENT },
+    });
+    expect(h.freigeben).toHaveBeenCalledWith(CTX, {
+      tenantId: DEMO.tenant,
+      mandantId: MANDANT,
+      verknuepfungId: VERKNUEPFUNG,
+      dokumentId: DOKUMENT,
+      begruendung: GRUND,
+      requestId: 'r',
+    });
+    expect(r).toEqual({ meldung: ANLAGE_FREIGEGEBEN });
+  });
+
+  it('jeder Eintrag der Liste zählt (auch verworfen, auch entfernt) → nur zuordnen', async () => {
+    await aufrufen();
+    for (const eintrag of [anlage(), anlage({ entfernt: true }), anlage({ status: 'NEU' })]) {
+      const { r } = await lauf({ dokumentId: DOKUMENT, anlagen: [eintrag] });
+      expect(r).toEqual({ ok: false, error: ANLAGE_IM_EREIGNIS, errorCode: 'CONFLICT' });
+    }
+    expect(h.freigeben).not.toHaveBeenCalled();
+  });
+
+  it('bösartige Antwort: leere Liste zu einem anderen Dokument → gesperrt', async () => {
+    await aufrufen();
+    const { r } = await lauf({ dokumentId: 'e0f1a2b3-c4d5-4e6f-8a9b-0c1d2e3f4a5b', anlagen: [] });
+    expect(r).toEqual({ ok: false, error: ANLAGE_NICHT_BESTAETIGT, errorCode: 'CONFLICT' });
+    expect(h.freigeben).not.toHaveBeenCalled();
+  });
+
+  it('nicht offen bzw. in Klärung: Konflikt ohne Dienstaufruf', async () => {
+    for (const [stand, text] of [
+      [{ art: 'nichtOffen' }, ANLAGE_NICHT_OFFEN],
+      [{ art: 'inKlaerung' }, ANLAGE_IN_KLAERUNG],
+    ] as const) {
+      h.stand.mockResolvedValueOnce(stand);
+      await aufrufen();
+      const { d, r } = await lauf({ dokumentId: DOKUMENT, anlagen: [] });
+      expect(d.rufe).not.toHaveBeenCalled();
+      expect(r).toEqual({ ok: false, error: text, errorCode: 'CONFLICT' });
+    }
+    expect(h.freigeben).not.toHaveBeenCalled();
+  });
+
+  it('Fehler des Dienstes gehen an die Fehlerabbildung (auch 404); nichts freigegeben', async () => {
+    await aufrufen();
+    const s = spec();
+    const v = await s.vorbereiten!(TX, K, DATEN);
+    for (const fehler of [
+      new TcmsNichtGefunden({ status: 404 }),
+      new TcmsNichtVerfuegbar('STATUS', { status: 503 }),
+    ]) {
+      await expect(
+        s.aufruf(
+          {
+            rufe: vi.fn(async () => {
+              throw fehler;
+            }),
+          },
+          DATEN,
+          v,
+        ),
+      ).rejects.toBe(fehler);
+    }
+    expect(h.freigeben).not.toHaveBeenCalled();
+  });
+
+  it('zwischenzeitlich zugeordnet bzw. wieder in Klärung: Konflikt mit festem Text', async () => {
+    await aufrufen();
+    h.freigeben.mockResolvedValueOnce({ art: 'nichtOffen' });
+    expect((await lauf({ dokumentId: DOKUMENT, anlagen: [] })).r).toEqual({
+      ok: false,
+      error: ANLAGE_NICHT_OFFEN,
+      errorCode: 'CONFLICT',
+    });
+    h.freigeben.mockResolvedValueOnce({ art: 'inKlaerung' });
+    expect((await lauf({ dokumentId: DOKUMENT, anlagen: [] })).r).toEqual({
+      ok: false,
+      error: ANLAGE_IN_KLAERUNG,
+      errorCode: 'CONFLICT',
+    });
   });
 });

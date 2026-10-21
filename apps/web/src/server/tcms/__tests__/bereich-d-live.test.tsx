@@ -13,6 +13,11 @@
 // (neuer Code setzt die Versuche zurück); die Meldung legt je Lauf ein
 // Ereignis an, die idempotente Meldung (TCMS s10) ein weiteres.
 //
+// Die Freigabe einer ungeklärten Anlage (kk-tcms-s11) schreibt ein
+// Audit-Ereignis; das Aufräumen löscht die Audit-Einträge des Demo-Tenants
+// (nur anhängend) und braucht dafür als `DATABASE_URL` eine Verbindung, die
+// `session_replication_role` setzen darf (wie bereich-c-live.test.tsx).
+//
 // Start (Dienst und Umgebung: docs/development/tcms-anbindung.md §6):
 //   cd apps/web && TCMS_LIVE_TESTS=1 DB_TESTS=1 TCMS_DEPLOYMENT=external \
 //     pnpm exec vitest run src/server/tcms/__tests__/bereich-d-live.test.tsx
@@ -111,9 +116,18 @@ const ZEIT = 60_000;
     expires: inEinerStunde(),
   });
 
+  /** Tenant entfernen; Audit-Einträge (audit_log, nur anhängend) vorher im Testlauf löschen. */
+  async function aufraeumen() {
+    await owner.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe("SET LOCAL session_replication_role = 'replica'");
+      await tx.$executeRaw`DELETE FROM audit_log WHERE tenant_id = ${DEMO.tenant}::uuid`;
+    });
+    await owner.tenant.deleteMany({ where: { id: DEMO.tenant } });
+  }
+
   beforeAll(async () => {
     ({ prismaOwner: owner } = await import('@taxtronik/db'));
-    await owner.tenant.deleteMany({ where: { id: DEMO.tenant } });
+    await aufraeumen();
     await owner.tenant.create({
       data: { id: DEMO.tenant, slug: `tcms-demo-d-${randomUUID()}`, name: 'Kanzlei Roth (Demo)' },
     });
@@ -179,7 +193,7 @@ const ZEIT = 60_000;
 
   afterAll(async () => {
     try {
-      await owner.tenant.deleteMany({ where: { id: DEMO.tenant } });
+      await aufraeumen();
     } finally {
       await owner.$disconnect();
     }
@@ -456,6 +470,136 @@ const ZEIT = 60_000;
           where: { tenantId: DEMO.tenant, idempotencyKey: schluessel },
         }),
       ).toBe(0);
+    },
+    ZEIT,
+  );
+
+  it(
+    'Ungeklärte Anlage freigeben (TCMS s11, kk-tcms-s11): ohne Ereignis frei, mit Ereignis-Anlage nur zuordnen',
+    async () => {
+      sitzung.staff = staffSitzung(DEMO.anna, ['ADMIN']);
+      const { withTenantContext } = await import('@taxtronik/db/tenant-context');
+      const { meldungsAnlageVerknuepfenTx } = await import('../durchfuehrung/verweis');
+      const { ungeklaerteAnlageFreigebenAction } =
+        await import('@/app/staff/(protected)/clients/[id]/tcms/ereignisse/actions');
+      const texte = await import('@/components/tcms/ereignisse/anlage-texte');
+      const typ = await owner.documentType.create({
+        data: {
+          tenantId: DEMO.tenant,
+          name: `Allgemein ${randomUUID().slice(0, 8)}`,
+          tier: 'NONE',
+          classificationKey: 'GENERAL',
+        },
+      });
+      /** Dokument von Talwind, als ungeklärte Anlage einer Meldung von Jana gebunden. */
+      const ungeklaert = async (byte: number) => {
+        const doc = await owner.document.create({
+          data: {
+            tenantId: DEMO.tenant,
+            clientId: DEMO.talwind,
+            title: `Kassenbericht ${byte}.pdf`,
+            classification: 'GENERAL',
+            documentTypeId: typ.id,
+            mimeType: 'application/pdf',
+            sharedWithClientAt: new Date(),
+          },
+        });
+        const sha = Buffer.alloc(32, byte);
+        await owner.documentVersion.create({
+          data: {
+            documentId: doc.id,
+            versionNo: 1,
+            storageBucket: 'general',
+            storageKey: `tenants/${DEMO.tenant}/none/${doc.id}.pdf`,
+            sha256: sha,
+            sizeBytes: 812n,
+            immutable: false,
+            scanStatus: 'CLEAN',
+            scanCompletedAt: new Date(),
+            createdById: DEMO.anna,
+          },
+        });
+        const verknuepfungId = await withTenantContext(
+          { tenantId: DEMO.tenant, actorId: DEMO.jana, actorType: 'CLIENT_CONTACT' },
+          (tx) =>
+            meldungsAnlageVerknuepfenTx(
+              tx,
+              { tenantId: DEMO.tenant, mandantId: DEMO.talwind, kontaktId: DEMO.jana },
+              doc.id,
+              randomUUID(),
+            ),
+        );
+        return { id: doc.id, sha: sha.toString('hex'), verknuepfungId };
+      };
+      const freigeben = (verknuepfungId: string) => {
+        const fd = new FormData();
+        fd.set('begruendung', 'Live-Test: Das Tax-CMS führt keine Meldung mit dieser Anlage.');
+        return ungeklaerteAnlageFreigebenAction(DEMO.talwind, verknuepfungId, null, fd);
+      };
+
+      // (1) Das Tax-CMS kennt das Dokument nicht: freigegeben, mit Audit.
+      const frei = await ungeklaert(0x61);
+      expect(await freigeben(frei.verknuepfungId)).toMatchObject({
+        ok: true,
+        meldung: texte.ANLAGE_FREIGEGEBEN,
+      });
+      expect(
+        await owner.tcmsDocumentReference.findUniqueOrThrow({ where: { id: frei.verknuepfungId } }),
+      ).toMatchObject({ releasedBy: DEMO.anna, releaseReason: 'NOT_ATTACHED' });
+      expect(
+        await owner.auditLog.count({
+          where: {
+            tenantId: DEMO.tenant,
+            action: 'tcms.anlage.freigegeben',
+            resourceId: frei.verknuepfungId,
+          },
+        }),
+      ).toBe(1);
+
+      // (2) Eine Meldung im Tax-CMS führt das Dokument (ID groß geschrieben, am
+      // Dienst vorbei gemeldet): gesperrt, nur „zuordnen“.
+      const gebunden = await ungeklaert(0x62);
+      const { getTcmsConfig } = await import('@taxtronik/config/env-schema');
+      const { TcmsClient, rufeEndpunkt } = await import('@taxtronik/tcms-client');
+      const config = getTcmsConfig({ ...process.env, TCMS_DEPLOYMENT: 'external' });
+      if (!config) throw new Error('TCMS nicht konfiguriert');
+      const client = new TcmsClient({ config, wiederholung: { retries: 0, baseDelayMs: 0 } });
+      await rufeEndpunkt(client, ENDPUNKTE.portalMeldungErfassen, {
+        akteur: {
+          tnt: DEMO.tenant,
+          sub: DEMO.jana,
+          knd: 'MANDANT',
+          nam: 'Jana Weller',
+          cli: { id: DEMO.talwind, bt: false, hb: false },
+        },
+        params: { mandantId: DEMO.talwind },
+        body: {
+          typ: 'T-01',
+          titel: `Live-Test Anlage ${gebunden.id.slice(0, 8)}`,
+          beschreibung: 'Live-Test der kanzleikonsole: Meldung mit einer Anlage.',
+          datum: '2026-12-03',
+          anlagen: [
+            {
+              dokumentId: gebunden.id.toUpperCase(),
+              dateiname: 'Kassenbericht.pdf',
+              mime: 'application/pdf',
+              groesse: 812,
+              sha256: gebunden.sha,
+            },
+          ],
+          zusageAenderungen: true,
+          idempotenzSchluessel: randomUUID(),
+        },
+      });
+      expect(await freigeben(gebunden.verknuepfungId)).toMatchObject({
+        ok: false,
+        error: texte.ANLAGE_IM_EREIGNIS,
+      });
+      expect(
+        await owner.tcmsDocumentReference.findUniqueOrThrow({
+          where: { id: gebunden.verknuepfungId },
+        }),
+      ).toMatchObject({ releasedAt: null, tcmsEventId: null });
     },
     ZEIT,
   );

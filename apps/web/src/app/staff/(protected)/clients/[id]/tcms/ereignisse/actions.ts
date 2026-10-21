@@ -16,6 +16,7 @@ import {
   EreignisErfassenBodySchema,
   FolgeAnlegenSchema,
   FolgeHinzufuegenBodySchema,
+  freitext,
   ObjektIdSchema,
   VerwerfenBeantragenBodySchema,
 } from '@taxtronik/tcms-contract';
@@ -29,7 +30,21 @@ import {
 import type { ActionResult } from '@/server/actions/types';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
 import { meldungsAnlagenNachVerwerfen } from '@/server/tcms/portal/meldung';
-import { ungeklaerteAnlageTx, ungeklaerteAnlageZuordnen } from '@/server/tcms/portal/meldevorgang';
+import {
+  anlageFreigabeStandTx,
+  ungeklaerteAnlageFreigeben,
+  ungeklaerteAnlageTx,
+  ungeklaerteAnlageZuordnen,
+} from '@/server/tcms/portal/meldevorgang';
+import { log } from '@/server/logger';
+import {
+  ANLAGE_FREIGEGEBEN,
+  ANLAGE_IM_EREIGNIS,
+  ANLAGE_IN_KLAERUNG,
+  ANLAGE_NICHT_BESTAETIGT,
+  ANLAGE_NICHT_OFFEN,
+  FREIGABE_BEGRUENDUNG,
+} from '@/components/tcms/ereignisse/anlage-texte';
 import { vertragsZeichenMeldung } from '@/server/tcms/zeichen';
 import {
   pruefeZuweisungenTx,
@@ -375,7 +390,6 @@ export async function ereignisVerwerfenAblehnenAction(
 // Ungeklärte Anlagen einer Portal-Meldung (kk-tcms-s10nach, TCMS-NACHWEIS-001)
 // ---------------------------------------------------------------------------
 
-const ANLAGE_NICHT_OFFEN = 'Diese Anlage ist nicht mehr ungeklärt. Bitte laden Sie die Seite neu.';
 const ANLAGE_NICHT_IM_EREIGNIS =
   'Dieses Ereignis enthält die Anlage nicht. Bitte wählen Sie die Meldung, zu der sie gehört.';
 
@@ -387,9 +401,9 @@ const ZuordnenFormular = z.object({ ereignisId: ObjektIdSchema });
  * für genau dieses Ereignis eine Anlage mit demselben SHA-256 und derselben
  * Dokument-ID führt (`ereignisAnlageLesen`; beides wird an der Antwort
  * geprüft, nicht nur am angefragten Pfad). Danach gilt die Bindung wie bei
- * jeder angenommenen Meldung (frei erst nach dem bestätigten Verwerfen). Eine
- * Freigabe ohne Ereignis gibt es hier bewusst nicht (das Ereignis kann
- * existieren).
+ * jeder angenommenen Meldung (frei erst nach dem bestätigten Verwerfen). Ohne
+ * Ereignis gibt `ungeklaerteAnlageFreigebenAction` frei – nur, wenn das
+ * Tax-CMS bestätigt, dass kein Ereignis die Anlage führt.
  */
 export async function ungeklaerteAnlageZuordnenAction(
   mandantId: string,
@@ -465,6 +479,101 @@ export async function ungeklaerteAnlageZuordnenAction(
       return zugeordnet
         ? { meldung: 'Die Anlage ist dem Ereignis zugeordnet und bleibt mit ihm verknüpft.' }
         : { ok: false as const, error: ANLAGE_NICHT_OFFEN, errorCode: 'CONFLICT' as const };
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Ungeklärte Anlage freigeben (kk-tcms-s11 Punkt 3, TCMS-NACHWEIS-001;
+// Produktentscheidung Rey Koxha, 21.10.2026)
+// ---------------------------------------------------------------------------
+
+const FreigebenFormular = z.object({
+  begruendung: freitext(FREIGABE_BEGRUENDUNG.min, FREIGABE_BEGRUENDUNG.max),
+});
+
+/**
+ * Manuelle Freigabe einer ungeklärten Anlage ohne Ereignis (nur Admin/Partner
+ * mit Zugriff auf den Mandanten, Pflichtbegründung). Ablauf:
+ *   1. Vorprüfung in der Transaktion der Aktion: noch ungeklärt und kein
+ *      Meldevorgang kann sie mehr klären (sonst fester Text, kein Aufruf).
+ *   2. Das Tax-CMS meldet zur Dokument-ID alle Ereignis-Anlagen des Mandanten
+ *      (`ereignisAnlagenJeDokumentLesen`, auch an verworfenen Ereignissen).
+ *      Freigegeben wird nur bei einer leeren Liste UND derselben Dokument-ID
+ *      in der Antwort; jede andere Antwort und jeder Fehler (404, 5xx,
+ *      Zeitlimit, Protokollfehler) lässt die Anlage gesperrt (fail closed).
+ *   3. Eigene Transaktion: Stand erneut prüfen, bedingt freigeben
+ *      („NOT_ATTACHED“), Audit mit Begründung – nur bei Treffer.
+ * Enthält ein Ereignis die Anlage, bleibt nur „Ereignis zuordnen“.
+ */
+export async function ungeklaerteAnlageFreigebenAction(
+  mandantId: string,
+  verknuepfungId: string,
+  _vorher: Ergebnis | null,
+  formData: FormData,
+): Promise<Ergebnis> {
+  return tcmsKanzleiAktion({
+    mandantId,
+    nurAdmin: true,
+    keinRecht: 'VERWALTUNG',
+    felder: { begruendung: 'begruendung' },
+    parse: () => {
+      const p = parseActionInput(
+        z.object({ verknuepfungId: z.uuid() }),
+        { verknuepfungId },
+        ANLAGE_NICHT_OFFEN,
+      );
+      if (!p.ok) return p;
+      const f = parseFormData(FreigebenFormular, formData);
+      return f.ok ? { ok: true, data: { ...p.data, ...f.data } } : f;
+    },
+    vorbereiten: async (tx, k, d) => ({
+      stand: await anlageFreigabeStandTx(tx, {
+        tenantId: k.g.tenantId,
+        mandantId,
+        verknuepfungId: d.verknuepfungId,
+      }),
+      ctx: k.g.ctx,
+      tenantId: k.g.tenantId,
+    }),
+    aufruf: async (dienst, d, v) => {
+      const konflikt = (error: string) => ({
+        ok: false as const,
+        error,
+        errorCode: 'CONFLICT' as const,
+      });
+      if (v.stand.art === 'nichtOffen') return konflikt(ANLAGE_NICHT_OFFEN);
+      if (v.stand.art === 'inKlaerung') return konflikt(ANLAGE_IN_KLAERUNG);
+      const dokumentId = v.stand.dokumentId;
+      const { daten, requestId } = await dienst.rufe(ENDPUNKTE.ereignisAnlagenJeDokumentLesen, {
+        query: { dokumentId },
+      });
+      // Die Antwort muss genau diese Anlage betreffen (Dokument-ID wie gefragt);
+      // eine Liste zu einem anderen Dokument bestätigt nichts.
+      if (daten.dokumentId.toLowerCase() !== dokumentId.toLowerCase()) {
+        log.warn(
+          { component: 'tcms-anlage', requestId },
+          'tcms-anlage: Antwort betrifft ein anderes Dokument, Anlage bleibt gesperrt',
+        );
+        return konflikt(ANLAGE_NICHT_BESTAETIGT);
+      }
+      if (daten.anlagen.length > 0) return konflikt(ANLAGE_IM_EREIGNIS);
+      const r = await ungeklaerteAnlageFreigeben(v.ctx, {
+        tenantId: v.tenantId,
+        mandantId,
+        verknuepfungId: d.verknuepfungId,
+        dokumentId,
+        begruendung: d.begruendung,
+        requestId,
+      });
+      switch (r.art) {
+        case 'freigegeben':
+          return { meldung: ANLAGE_FREIGEGEBEN };
+        case 'inKlaerung':
+          return konflikt(ANLAGE_IN_KLAERUNG);
+        case 'nichtOffen':
+          return konflikt(ANLAGE_NICHT_OFFEN);
+      }
     },
   });
 }

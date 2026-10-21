@@ -25,7 +25,7 @@ function knownCategory(action: string): AuditCategory {
   )
     return 'gwg';
   if (/^(dsgvo\.|client\.anonymize|poa\.signer\.anonymize)/.test(action)) return 'privacy';
-  if (/^(risk\.|subsumtion\.)/.test(action)) return 'tcms';
+  if (/^(risk\.|subsumtion\.|tcms\.)/.test(action)) return 'tcms';
   if (/^(tax_|tax\.|elster\.|deadline\.|deadline_)/.test(action)) return 'taxes';
   if (/^(invoice\.|invoice_category\.|time_entry\.|bwa_|bwa\.)/.test(action)) return 'billing';
   if (

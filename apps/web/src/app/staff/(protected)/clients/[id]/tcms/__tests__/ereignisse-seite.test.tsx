@@ -10,9 +10,10 @@
 //   - Anlagen nur über den Abruf mit Hash; Hinweise nur für bekannte Codes.
 //   - Ungeklärte Anlagen aus Portal-Meldungen (kk-tcms-s10nach) aus der
 //     kanzleikonsole: sichtbar mit Hinweis, zuordnen nur Admins/Partner, nur zu
-//     einem Ereignis aus der Liste, nie freigeben.
+//     einem Ereignis aus der Liste; freigeben (kk-tcms-s11) nur Admins/Partner,
+//     mit Pflichtbegründung über die gebundene Aktion.
 // Fachkatalog: TCMS-DIENST-001
-import { fireEvent, screen, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const h = vi.hoisted(() => ({
@@ -44,6 +45,7 @@ vi.mock('@/server/tcms/portal/meldevorgang', () => ({
 vi.mock('../ereignisse/actions', async (original) => ({
   ...(await original<typeof import('../ereignisse/actions')>()),
   ungeklaerteAnlageZuordnenAction: vi.fn(),
+  ungeklaerteAnlageFreigebenAction: vi.fn(),
 }));
 vi.mock('@/server/tcms/seite', () => ({
   tcmsMandantSeite: h.seite,
@@ -60,6 +62,13 @@ import { ENDPUNKTE } from '@taxtronik/tcms-contract';
 import { KEINE_PERSON, UNBEKANNTE_PERSON } from '@/server/tcms/namen';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
 import TcmsEreignissePage from '../ereignisse/page';
+import { ungeklaerteAnlageFreigebenAction } from '../ereignisse/actions';
+import {
+  FREIGABE_BEGRUENDUNG,
+  FREIGEBEN_HINWEIS,
+  UNGEKLAERT_TEXT,
+  ZUORDNEN_NUR_ADMIN,
+} from '@/components/tcms/ereignisse/anlage-texte';
 
 const BASIS = `/staff/clients/${DEMO.talwind}/tcms`;
 const SEITE = {
@@ -342,11 +351,47 @@ describe('Ungeklärte Anlagen aus Portal-Meldungen (kk-tcms-s10nach)', () => {
       name: 'Ereignis zuordnen',
     }) as HTMLButtonElement;
     expect(knopf.disabled).toBe(true);
-    expect(
-      within(abschnitt).getByText('Ungeklärte Anlagen ordnen Admins und Partner der Kanzlei zu.'),
-    ).toBeTruthy();
-    // Keine Freigabe aus der Oberfläche.
-    expect(within(abschnitt).queryByRole('button', { name: /freigeben/i })).toBeNull();
+    // kk-tcms-s11: Freigeben ebenfalls nur für Admins/Partner (gesperrt mit Grund).
+    const frei = within(abschnitt).getByRole('button', { name: 'Freigeben' }) as HTMLButtonElement;
+    expect(frei.disabled).toBe(true);
+    expect(within(abschnitt).getAllByText(ZUORDNEN_NUR_ADMIN)).toHaveLength(2);
+  });
+
+  it('Admin: Freigeben mit Hinweis auf die Prüfung im Tax-CMS und Pflichtbegründung (kk-tcms-s11)', async () => {
+    h.ungeklaert.mockResolvedValue([ANLAGE]);
+    h.seite.mockResolvedValue({
+      ...SEITE,
+      session: { user: { ...SEITE.session.user, roles: ['ADMIN'] } },
+    });
+    await seite();
+    const abschnitt = screen
+      .getByText('Ungeklärte Anlagen aus Portal-Meldungen')
+      .closest('section') as HTMLElement;
+    expect(within(abschnitt).getByText(UNGEKLAERT_TEXT)).toBeTruthy();
+    const frei = within(abschnitt).getByRole('button', { name: 'Freigeben' }) as HTMLButtonElement;
+    expect(frei.disabled).toBe(false);
+    fireEvent.click(frei);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(FREIGEBEN_HINWEIS)).toBeTruthy();
+    const begruendung = dialog.querySelector<HTMLTextAreaElement>('textarea[name="begruendung"]');
+    expect(begruendung?.required).toBe(true);
+    expect(begruendung?.minLength).toBe(FREIGABE_BEGRUENDUNG.min);
+    expect(begruendung?.maxLength).toBe(FREIGABE_BEGRUENDUNG.max);
+    // Gebunden an Mandant und Verknüpfung der Seite; die Begründung kommt aus dem Formular.
+    const aktion = vi.mocked(ungeklaerteAnlageFreigebenAction);
+    aktion.mockResolvedValue({ ok: true });
+    const text = 'Kein Ereignis führt die Anlage; Meldung nie eingegangen.';
+    fireEvent.change(begruendung!, { target: { value: text } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Freigeben' }));
+    await waitFor(() => expect(aktion).toHaveBeenCalledTimes(1));
+    const [mandant, verknuepfung, , formData] = aktion.mock.calls[0]! as unknown as [
+      string,
+      string,
+      unknown,
+      FormData,
+    ];
+    expect([mandant, verknuepfung]).toEqual([DEMO.talwind, ANLAGE.verknuepfungId]);
+    expect(formData.get('begruendung')).toBe(text);
   });
 
   it('Admin: Auswahl nur aus den Ereignissen der Liste', async () => {

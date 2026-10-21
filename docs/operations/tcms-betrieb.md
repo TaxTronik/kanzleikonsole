@@ -463,11 +463,27 @@ und TCMS-NACHWEIS-001.
   sie im Arbeitskorb („Ungeklärte Anlagen aus Portal-Meldungen“) und im
   Ereigniseingang des Mandanten; Admins und Partner ordnen sie dort einem
   Ereignis zu, wenn das Tax-CMS die Anlage für dieses Ereignis führt.
-- **Freigabe ohne Ereignis (nur Betrieb):** Stellt die Kanzlei fest, dass das
-  Tax-CMS keine Meldung mit dieser Anlage führt (Ereigniseingang des
-  Mandanten, Anlagen der Ereignisse), gibt der Betrieb die Verknüpfung auf
+- **Freigabe ohne Ereignis (Oberfläche, kk-tcms-s11):** Admins und Partner
+  mit Zugriff auf den Mandanten geben eine ungeklärte Anlage im
+  Ereigniseingang mit **Freigeben** frei (Pflichtbegründung). TaxTronik fragt
+  vorher das Tax-CMS (`GET /v1/mandanten/:mandantId/ereignis-anlagen?dokumentId=`,
+  ab TCMS s11) und gibt nur frei, wenn es für die Dokument-ID keine
+  Ereignis-Anlage nennt – auch keine an einem verworfenen Ereignis – und die
+  Antwort genau diese Dokument-ID trägt; jeder Fehler lässt die Anlage
+  gesperrt. Frühestens 23 Stunden und 10 Minuten nach dem ersten Senden der
+  Meldung (Wiederholungsfenster plus Lease), nie bei einem laufenden oder nie
+  gesendeten Meldevorgang. Die Freigabe setzt `release_reason = 'NOT_ATTACHED'`
+  und `released_by` = handelnde Person und schreibt das Audit-Ereignis
+  `tcms.anlage.freigegeben` (Begründung, Vorgangsnummer der Antwort des
+  Dienstes).
+- **Notfallweg (nur Betrieb):** Nur wenn die Freigabe in der Oberfläche nicht
+  möglich ist (z. B. Tax-CMS dauerhaft nicht erreichbar oder abgeschaltet)
+  und die Kanzlei auf anderem Weg festgestellt hat, dass das Tax-CMS keine
+  Meldung mit dieser Anlage führt, gibt der Betrieb die Verknüpfung auf
   ihren schriftlichen Auftrag frei – als Owner, genau eine Zeile, mit der ID
-  der beauftragenden Kanzleiperson. Die Kanzlei nennt Mandant und
+  der beauftragenden Kanzleiperson. Dieser Weg schreibt kein Audit-Ereignis
+  der kanzleikonsole; Auftrag, Begründung und Ausführung gehören deshalb ins
+  Ticket bzw. Betriebsprotokoll. Die Kanzlei nennt Mandant und
   Dokumenttitel (wie im Ereigniseingang angezeigt); die Verknüpfung findet:
 
   ```sql

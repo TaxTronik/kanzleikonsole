@@ -5,6 +5,8 @@
 // gebunden – nie automatisch frei, denn das Ereignis kann existieren – und
 // werden hier zur manuellen Klärung gezeigt. Zuordnen dürfen Admins und
 // Partner, und nur zu einem Ereignis, das die Anlage laut Tax-CMS enthält.
+// kk-tcms-s11 Punkt 3: Freigeben (Pflichtbegründung) dürfen sie, wenn das
+// Tax-CMS bestätigt, dass kein Ereignis die Anlage führt (prüft die Aktion).
 // =============================================================================
 
 import { Paperclip } from 'lucide-react';
@@ -12,6 +14,12 @@ import type { TcmsFormAktion } from '../ergebnis';
 import { isoZeitText } from '../format';
 import { TCMS_TEXT_ISOLIERT } from '../text';
 import { TcmsFormDialog } from './aktionen';
+import {
+  FREIGABE_BEGRUENDUNG,
+  FREIGEBEN_HINWEIS,
+  UNGEKLAERT_TEXT,
+  ZUORDNEN_NUR_ADMIN,
+} from './anlage-texte';
 
 export interface UngeklaerteAnlageAnzeige {
   verknuepfungId: string;
@@ -22,12 +30,9 @@ export interface UngeklaerteAnlageAnzeige {
   von: string;
   /** Gebundene Aktion „Ereignis zuordnen“ (Mandant und Verknüpfung gebunden). */
   zuordnen: TcmsFormAktion;
+  /** Gebundene Aktion „Freigeben“ (Mandant und Verknüpfung gebunden). */
+  freigeben: TcmsFormAktion;
 }
-
-export const UNGEKLAERT_TEXT =
-  'Für diese Anlagen aus Portal-Meldungen hat das Tax-CMS den Eingang der Meldung nicht innerhalb von 23 Stunden bestätigt. Ob die Meldung eingegangen ist, ist offen; die Dokumente bleiben deshalb gegen Löschen und neue Versionen gesperrt. Bitte prüfen Sie den Ereigniseingang: Enthält ein Ereignis die Anlage, ordnen Sie sie ihm zu. Gibt es keine solche Meldung, gibt der Betrieb die Verknüpfung frei (Tax-CMS-Betrieb).';
-
-export const ZUORDNEN_NUR_ADMIN = 'Ungeklärte Anlagen ordnen Admins und Partner der Kanzlei zu.';
 
 export function UngeklaerteAnlagen({
   anlagen,
@@ -96,6 +101,16 @@ export function UngeklaerteAnlagen({
                   ))}
                 </select>
               </TcmsFormDialog>
+              <TcmsFormDialog
+                aktion={a.freigeben}
+                ausloeser="Freigeben"
+                titel="Anlage ohne Ereignis freigeben"
+                hinweis={FREIGEBEN_HINWEIS}
+                bestaetigen="Freigeben"
+                gefahr
+                begruendung={{ min: FREIGABE_BEGRUENDUNG.min, max: FREIGABE_BEGRUENDUNG.max }}
+                gesperrt={darfZuordnen ? null : ZUORDNEN_NUR_ADMIN}
+              />
             </li>
           ))}
         </ul>
