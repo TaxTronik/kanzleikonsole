@@ -31,6 +31,10 @@ export {
 } from './outbox-purposes';
 export {
   checkMailOutboxRelevanceTx,
+  mailOutboxSkipVermerk,
+  TCMS_VERWORFEN_TEXTE,
+  tcmsVerwerfGrund,
+  type TcmsVerwerfGrund,
   type AnnouncedAppointment,
   type MailOutboxRelevance,
   type MailOutboxRelevanceReader,

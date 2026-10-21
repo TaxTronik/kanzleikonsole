@@ -389,10 +389,11 @@ gewollt.
 | `SHA-256 des Dumps stimmt nicht …` (restore)                                                             | Dump beschädigt oder falsche Prüfsummendatei; anderen Dump wählen.                                                                                                                                                                                                                                 |
 | `pg_restore fehlgeschlagen; tcms-api bleibt gestoppt`                                                    | Der bisherige Stand liegt unter `backups/tcms-pre-restore/`; mit diesem Dump erneut `tcms restore` ausführen.                                                                                                                                                                                      |
 | Worker-Log `tcms-nachrichten: Abruf gescheitert` (`fehler`, `status`, `grund`)                           | Dienst nicht erreichbar, Token/Schlüssel falsch (401) oder Antwort außerhalb des Vertrags. Der nächste Lauf (1 min) versucht es erneut; `tcmsRequestId` im Log des Dienstes nachsehen.                                                                                                             |
-| Worker-Log `Zustellung nicht gemeldet, nächster Lauf`                                                    | Die Mitteilung ist eingeplant, die Bestätigung kam nicht an. Kein Handlungsbedarf: Der nächste Lauf meldet, ohne erneut zuzustellen.                                                                                                                                                               |
+| Worker-Log `Zustellung nicht gemeldet, nächster Lauf`                                                    | Die Mitteilung ist angenommen bzw. gescheitert, die Meldung kam nicht an. Kein Handlungsbedarf: Der nächste Lauf meldet, ohne erneut zuzustellen.                                                                                                                                                  |
+| Worker-Log `Versand nicht angenommen` (`grund`, `auftrag`)                                               | Der Versandauftrag einer Mitteilung endete ohne Annahme durch den Mailserver (z. B. `FAILED`, `UNKNOWN`, `SKIPPED`). Das Tax-CMS zeigt „unzustellbar“; die Kanzlei adressiert neu. Bei `FAILED`/`UNKNOWN` den Mailversand der Kanzlei prüfen (Hinweis „E-Mail nicht versendet“ am Vorgang).        |
 | Worker-Log `Mitteilung nicht zugestellt` (`grund`) und Hinweis „Mitteilung des Tax-CMS nicht zugestellt“ | Empfänger in TaxTronik nicht bestätigt (z. B. `KONTAKT_UNBESTAETIGT`: Kontakt hat sich nie im Portal angemeldet). Kontaktdaten korrigieren; nach 7 Tagen wird die Mitteilung als unzustellbar abgeschlossen und dem Tax-CMS so gemeldet (die Kanzlei sieht es an der Freigabe und adressiert neu). |
 | Worker-Log `Mitteilung im Tax-CMS bereits abgeschlossen` (`meldung`, `status` 409)                       | Das Tax-CMS kannte die Mitteilung schon als zugestellt bzw. unzustellbar (z. B. Meldung eines früheren Laufs). Gilt als erledigt; kein Handlungsbedarf. Häufen sich die Einträge, `tcmsRequestId` im Log des Dienstes prüfen.                                                                      |
-| Worker-Log `voller Abruf ohne Einplanung`                                                                | 50 zurückgestellte Mitteilungen belegen den Postausgang (älteste zuerst); neue kommen erst nach Korrektur oder nach 7 Tagen dran. Empfänger der Hinweise korrigieren.                                                                                                                              |
+| Worker-Log `voller Abruf ohne Einplanung`                                                                | 50 zurückgestellte oder noch nicht versendete Mitteilungen belegen den Postausgang (älteste zuerst); neue kommen erst nach Korrektur, Versand oder nach 7 Tagen dran. Empfänger der Hinweise korrigieren bzw. den Mailversand prüfen.                                                              |
 | Worker-Log `Lease verloren, Lauf beendet`                                                                | Ein Lauf dauerte länger als der Lease (2 min, je Mitteilung verlängert) – meist ein sehr langsamer Dienst. Der nächste Lauf setzt fort; Doppelte schließt die Zustellzeile aus.                                                                                                                    |
 
 ## 10. Zustellung der Mitteilungen (Stufe 4)
@@ -400,9 +401,13 @@ gewollt.
 Der Worker-Job `tcms-nachrichten-zustellen` holt jede Minute den Postausgang
 des Tax-CMS ab (Freigabe angefordert, Bestätigungscode, Neuadressierung,
 gemeldetes Ereignis), prüft die Empfänger gegen TaxTronik und plant Mails über
-die Mail-Outbox bzw. In-App-Hinweise ein; danach bestätigt er die Zustellung
-beim Dienst bzw. meldet eine nicht zustellbare Mitteilung mit festem Grund als
-unzustellbar. Technik: [Anbindung, Abschnitt 8](../development/tcms-anbindung.md#8-zustellung-des-postausgangs-stufe-4).
+die Mail-Outbox bzw. In-App-Hinweise ein. „Zugestellt“ meldet er dem Dienst
+erst, wenn der Mailserver des Anbieters die Mail angenommen hat
+(`PROVIDER_ACCEPTED`; ein Hinweis an eine Kanzleiperson ist mit dem Anlegen
+zugestellt) – mehr ist ohne Zustellbericht nicht feststellbar. Endet der
+Versandauftrag anders (`FAILED`, `NO_RECIPIENT`, `PARTIAL_FAILURE`, `UNKNOWN`,
+`SKIPPED`, auch nach Ablauf) oder ist die Mitteilung nicht zustellbar, meldet
+er sie mit festem Grund als unzustellbar (kk-tcms-s11). Technik: [Anbindung, Abschnitt 8](../development/tcms-anbindung.md#8-zustellung-des-postausgangs-stufe-4).
 
 - **Voraussetzungen:** Modul „Tax-CMS“ des Tenants an, `TCMS_DEPLOYMENT`
   `managed` oder `external`, Worker mit derselben `TCMS_*`-Konfiguration wie
@@ -414,8 +419,10 @@ unzustellbar. Technik: [Anbindung, Abschnitt 8](../development/tcms-anbindung.md
 - **Ein Lauf je Tenant:** Lease in `tcms_systemakteur` (2 Minuten, vor jeder
   Mitteilung verlängert). Mehrere Worker-Instanzen sind zulässig.
 - **Zustand:** `tcms_nachricht_zustellung` (nur Owner): je Mitteilung Status
-  `EINGEPLANT`, `ZURUECKGESTELLT` oder `UNZUSTELLBAR`, fester Grund, Zeitpunkte;
-  keine Inhalte. Gemeldete Zeilen werden nach 30 Tagen gelöscht. Wird die
+  `EINGEPLANT` (Versand läuft), `ANGENOMMEN`, `GESCHEITERT`, `ZURUECKGESTELLT`
+  oder `UNZUSTELLBAR`, fester Grund, Zeitpunkte; keine Inhalte
+  ([Anbindung, Abschnitt 8](../development/tcms-anbindung.md#8-zustellung-des-postausgangs-stufe-4)).
+  Gemeldete Zeilen werden nach 30 Tagen gelöscht. Wird die
   Datenbank des Tax-CMS auf einen Stand vor einer Meldung zurückgesetzt, liefert
   sie gemeldete Mitteilungen erneut; innerhalb der 30 Tage verhindert die
   Zustellzeile eine zweite Zustellung, danach nicht.
@@ -424,9 +431,9 @@ unzustellbar. Technik: [Anbindung, Abschnitt 8](../development/tcms-anbindung.md
   „Erneut senden“. Ein Neuversand entsteht im Tax-CMS (neuer Code bzw.
   Neuadressierung).
 - **Prüfen:** Worker-Log `tcms-nachrichten-zustellen: done` mit Zählern
-  (`abgerufen`, `eingeplant`, `zurueckgestellt`, `unzustellbar`, `gemeldet`,
-  `fehler`); Zustellstatus der Mails in der Mail-Outbox (Anlass
-  „Tax-CMS: …“).
+  (`abgerufen`, `eingeplant`, `angenommen`, `gescheitert`, `zurueckgestellt`,
+  `unzustellbar`, `gemeldet`, `fehler`); Zustellstatus der Mails in der
+  Mail-Outbox (Anlass „Tax-CMS: …“).
 
 ## 11. Portal-Meldungen mit offenem Ausgang (TCMS s10)
 

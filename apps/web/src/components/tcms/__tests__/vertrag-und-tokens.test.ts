@@ -121,7 +121,7 @@ describe('Zustellstatus (Vertrag bereiche/zustellung.ts)', () => {
     }
     expect(zustellungGescheitert(null)).toBe(false);
     expect(zustellungText(faelle[2][0])).toBe(
-      'Anforderung: Nachricht unzustellbar (sonstiger Grund)',
+      'Anforderung: Nachricht unzustellbar (sonstiger Grund, z. B. vom Mailserver nicht angenommen)',
     );
   });
 });

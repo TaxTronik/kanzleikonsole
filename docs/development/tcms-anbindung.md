@@ -435,12 +435,45 @@ Mitteilung verlängert):
 2. Je Mitteilung eine Tenant-Transaktion: Zustellzeile
    `tcms_nachricht_zustellung` (eindeutig je Tenant und Nachrichten-ID) sperren
    bzw. mit `ON CONFLICT DO NOTHING` anlegen, Empfänger prüfen, einplanen.
-3. Nach dem Commit melden: eingeplant → `POST /v1/nachrichten/:id/zugestellt`,
-   unzustellbar → `POST /v1/nachrichten/:id/unzustellbar` mit `{ grund }`
-   (TCMS s6). 404 und 409 (dort bereits zugestellt bzw. unzustellbar, auch mit
-   anderem Grund) gelten als erledigt; jeder andere Fehler lässt die Zeile
-   ungemeldet – der nächste Lauf erhält die Mitteilung erneut, findet die
-   Zeile und meldet nur, mit demselben Grund.
+3. Nach dem Commit melden – „zugestellt“ erst, wenn zugestellt ist
+   (kk-tcms-s11, Zustandsmaschine unten): angenommen →
+   `POST /v1/nachrichten/:id/zugestellt`, gescheitert bzw. unzustellbar →
+   `POST /v1/nachrichten/:id/unzustellbar` mit `{ grund }` (TCMS s6). 404 und
+   409 (dort bereits zugestellt bzw. unzustellbar, auch mit anderem Grund)
+   gelten als erledigt; jeder andere Fehler lässt die Zeile ungemeldet – jeder
+   Lauf führt offene Zeilen nach und meldet nur, mit demselben Grund.
+4. Nachführen (kk-tcms-s11): Nach dem Abruf geht der Lauf die übrigen
+   Zeilen ohne Meldung durch (älteste zuerst, höchstens 50): Eine eingeplante
+   Mail übernimmt den Endstatus ihres Versandauftrags, eine abgeschlossene
+   wird gemeldet. So erreicht die Meldung das Tax-CMS auch für Mitteilungen,
+   die der Abruf nicht mehr liefert (im Tax-CMS inzwischen verworfen; nach
+   dem Ausliefern bleibt sie dort meldbar).
+
+**Zustandsmaschine** von `tcms_nachricht_zustellung` (Migration
+`20261021150100`, CHECKs `…_status_check`, `…_grund_check`,
+`…_abschluss_check`, `…_mail_check`):
+
+| Status            | Bedeutung                                                                                                                     | offen | Grund       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----- | ----------- |
+| `EINGEPLANT`      | Versandauftrag in der Mail-Outbox angelegt, Versand läuft (nur Mitteilungen an Kontakte)                                      | ja    | –           |
+| `ANGENOMMEN`      | Auftrag `PROVIDER_ACCEPTED` (der Mailserver des Anbieters hat angenommen) bzw. In-App-Hinweis an die Kanzleiperson angelegt   | nein  | –           |
+| `GESCHEITERT`     | Auftrag ohne Annahme beendet: `FAILED`, `NO_RECIPIENT`, `PARTIAL_FAILURE`, `UNKNOWN`, `SKIPPED` (auch nach Ablauf) oder fehlt | nein  | fester Code |
+| `ZURUECKGESTELLT` | Empfängerprüfung vor der Einplanung gescheitert, nächster Lauf prüft erneut                                                   | ja    | fester Code |
+| `UNZUSTELLBAR`    | Empfängerprüfung nach `TCMS_UNZUSTELLBAR_NACH_TAGEN` bzw. Fenster abgelaufen, nie eingeplant                                  | nein  | fester Code |
+
+`gemeldet_am` setzt der Worker, sobald die Meldung angekommen ist (oder 404/409),
+nur für abgeschlossene Zeilen. „Zugestellt“ heißt damit: Der Mailserver des
+Anbieters hat die Mail angenommen – ob sie im Postfach ankam, ist ohne
+Zustellbericht nicht feststellbar. Der Grund eines Scheiterns folgt fest aus
+dem Endstatus (`auftragsAbschluss`): `FAILED`/`NO_RECIPIENT`/`PARTIAL_FAILURE`
+→ `VERSAND_GESCHEITERT`, `UNKNOWN` → `VERSAND_UNKLAR`, fehlender Auftrag →
+`AUFTRAG_FEHLT`, `SKIPPED` → der Grund der Aktualitätsprüfung
+(`TCMS_VERWORFEN_TEXTE` in `packages/mail/src/outbox-relevance.ts`, aus dem
+Vermerk `Nicht versendet: …` gelesen: abgelaufen → `ABGELAUFEN`, Empfänger
+inaktiv bzw. unbestätigt → `KONTAKT_INAKTIV`/`KONTAKT_UNBESTAETIGT`, fremd →
+`KONTAKT_ANDERER_MANDANT`, Mandat inaktiv → `MANDANT_INAKTIV`, sonst
+`VERSAND_VERWORFEN`). Die Mail-Outbox entfernt Inhalt und Code bei jedem
+Endstatus unverändert (`mail_outbox_tcms_content_check`).
 
 Das Tax-CMS reserviert beim Abruf nichts. Doppelte schließen die eindeutige
 Zustellzeile, ein partieller eindeutiger Index auf `mail_outbox`
@@ -497,12 +530,15 @@ Grund idempotent an).
 | `KONTAKT_UNBESTAETIGT`, `KONTAKT_INAKTIV`, `KONTAKT_OHNE_EMAIL`                                             | `KEIN_PORTALZUGANG`    |
 | `KONTAKT_UNBEKANNT`, `KONTAKT_ANDERER_MANDANT`, `PERSON_UNBEKANNT`, `PERSON_INAKTIV`, `PERSON_OHNE_ZUGRIFF` | `EMPFAENGER_UNGUELTIG` |
 | `MANDANT_UNBEKANNT`, `MANDANT_INAKTIV`                                                                      | `SONSTIGES`            |
+| `VERSAND_GESCHEITERT`, `VERSAND_UNKLAR`, `VERSAND_VERWORFEN`, `AUFTRAG_FEHLT` (kk-tcms-s11)                 | `SONSTIGES`            |
 
 Das Tax-CMS zeigt den Zustellstatus an Freigabenhistorie, Beschreibung und
 Risikoakzeptanz; die kanzleikonsole bietet dort die Neuadressierung an
-(`components/tcms/zustellung.tsx`). „Zugestellt“ heißt: in TaxTronik als
-Auftrag bzw. Hinweis eingeplant; ein späteres `SKIPPED`/`FAILED` der
-Mail-Outbox wird nicht zurückgemeldet.
+(`components/tcms/zustellung.tsx`, „Nachricht zugestellt (vom Mailserver
+angenommen)“). „Zugestellt“ heißt seit kk-tcms-s11: Der Mailserver des
+Anbieters hat die Mail angenommen (bzw. der Hinweis an die Kanzleiperson ist
+angelegt); bis dahin bleibt die Mitteilung im Tax-CMS offen, jeder andere
+Endstatus des Versandauftrags wird als unzustellbar gemeldet.
 
 **Logs** nennen Tenant, Nachrichten-ID, Zweck, Grund, Art der Meldung und die
 Fehlerklasse des Clients (Status, Code, Request-ID); nie Code, Text, Betreff, Titel, Namen, Adressen, Mandanten- oder
@@ -525,7 +561,13 @@ im Worker: Der Schlüssel gilt im Tax-CMS nur für diese Person.
 
 **Tests.** `apps/worker/src/jobs/__tests__/tcms-nachrichten-db.test.ts`
 (PostgreSQL, In-Memory-Postausgang und echter Client gegen einen lokalen
-Server, Bereinigung der Meldevorgänge nach echter Zeit ohne Freigabe), `apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts`,
+Server, Zustandsmaschine und Nachführung, Bereinigung der Meldevorgänge nach
+echter Zeit ohne Freigabe),
+`apps/worker/src/jobs/__tests__/tcms-zustellung-e2e-db.test.ts` (Ende zu Ende
+mit echter Mail-Outbox und lokaler SMTP-Senke auf 127.0.0.1:1025: Annahme,
+Ablehnung bis FAILED, Verwerfen vor dem Versand),
+`apps/worker/src/jobs/__tests__/tcms-nachrichten-meldegrund.test.ts`
+(Abbildung der Endstatus und Gründe), `apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts`,
 `apps/worker/src/jobs/__tests__/mail-outbox.test.ts`,
 `packages/mail/src/__tests__/outbox-relevance.test.ts`,
 `packages/tcms-client/src/__tests__/nachrichten.test.ts`.

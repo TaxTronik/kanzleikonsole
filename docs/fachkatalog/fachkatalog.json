@@ -4226,7 +4226,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter Wiederholung und Eskalation zu, der Status steht am Vorgang, und fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden. Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach dem letzten Statuswechsel. Terminänderung und -absage im Kanzleikalender lösen auf ausdrücklichen Wunsch eine Mail aus. Mitteilungen des Tax-CMS (Freigabe angefordert, Bestätigungscode, Neuadressierung) stellt ein Worker mit einem Systemakteur je Tenant über die Outbox zu, nur an bestätigte Kontakte genau dieses Mandanten, ohne Doppelzustellung und mit Code nur verschlüsselt bis zum Endstatus; gemeldete Ereignisse gehen als Hinweis an Kanzleipersonen mit Zugriff. „Zugestellt“ meldet der Worker dem Tax-CMS, sobald TaxTronik die Mitteilung eingeplant hat (Auftrag im Postausgang bzw. Hinweis angelegt) – nicht, wenn die E-Mail versendet oder angekommen ist. Die technische Annahme ist kein Zugangsnachweis; die fachliche Freigabe der Fristen fehlt."
+        "summary": "Vorgangsmails an Mandanten entstehen als Versandauftrag im fachlichen Commit; ein Worker stellt sie mit Aktualitätsprüfung, begrenzter Wiederholung und Eskalation zu, der Status steht am Vorgang, und fehlgeschlagene oder unklare Aufträge lassen sich berechtigt erneut senden. Auftragsmetadaten im Endstatus löscht ein täglicher Worker ein Jahr nach dem letzten Statuswechsel. Terminänderung und -absage im Kanzleikalender lösen auf ausdrücklichen Wunsch eine Mail aus. Mitteilungen des Tax-CMS (Freigabe angefordert, Bestätigungscode, Neuadressierung) stellt ein Worker mit einem Systemakteur je Tenant über die Outbox zu, nur an bestätigte Kontakte genau dieses Mandanten, ohne Doppelzustellung und mit Code nur verschlüsselt bis zum Endstatus; gemeldete Ereignisse gehen als Hinweis an Kanzleipersonen mit Zugriff. „Zugestellt“ meldet der Worker dem Tax-CMS erst, wenn der Mailserver des Anbieters die Mail angenommen hat (Auftrag PROVIDER_ACCEPTED; ein Hinweis ist mit dem Anlegen zugestellt); jeder andere Endstatus des Auftrags wird als unzustellbar gemeldet. Die technische Annahme ist kein Zugangsnachweis; die fachliche Freigabe der Fristen fehlt."
       },
       "sources": [
         {
@@ -4289,7 +4289,9 @@
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20261019150000_notification_kind_tcms/migration.sql",
         "packages/db/prisma/migrations/20261019150100_tcms_nachrichten_zustellung/migration.sql",
-        "packages/db/prisma/migrations/20261019150200_tcms_mail_templates/migration.sql"
+        "packages/db/prisma/migrations/20261019150200_tcms_mail_templates/migration.sql",
+        "packages/db/prisma/migrations/20261021150100_tcms_nachricht_zustellung_angenommen/migration.sql",
+        "apps/web/src/components/tcms/zustellung.tsx"
       ],
       "test_refs": [
         "packages/mail/src/__tests__/outbox.test.ts",
@@ -4311,6 +4313,8 @@
         "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-mails.test.tsx",
         "apps/worker/src/jobs/__tests__/tcms-nachrichten-db.test.ts",
         "apps/worker/src/jobs/__tests__/tcms-nachrichten-meldegrund.test.ts",
+        "apps/worker/src/jobs/__tests__/tcms-zustellung-e2e-db.test.ts",
+        "packages/db/src/__tests__/tcms-db-regeln.test.ts",
         "apps/worker/src/__tests__/tcms-systemakteur-guard.test.ts",
         "apps/web/src/__tests__/tcms-systemakteur-guard.test.ts",
         "packages/tcms-client/src/__tests__/nachrichten.test.ts",

@@ -413,7 +413,7 @@ describe('Risikoinventar – Detail', () => {
     };
     await renderServer(TcmsRisikenPage(mit({ risiko: ver01.id })));
     const detail = screen.getByRole('region', { name: /^EC-VER-01 · / });
-    expect(detail.textContent).toContain('Nachricht zugestellt');
+    expect(detail.textContent).toContain('Nachricht zugestellt (vom Mailserver angenommen)');
     expect(detail.textContent).not.toContain('nicht erhalten');
     const knopf = within(detail).getByRole('button', { name: /Risikoakzeptanz anfordern/ });
     expect(knopf.title).not.toContain('neu adressieren');

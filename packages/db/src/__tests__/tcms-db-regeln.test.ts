@@ -728,12 +728,13 @@ describeWithDatabase('tcms_systemakteur (MAIL-OUTBOX-001)', () => {
 });
 
 describeWithDatabase('tcms_nachricht_zustellung (MAIL-OUTBOX-001)', () => {
-  // Gültige Basis: eingeplant ist abgeschlossen (nur ZURUECKGESTELLT ist offen).
+  // Gültige Basis: angenommen ist abgeschlossen und ohne Grund (kk-tcms-s11:
+  // offen sind nur EINGEPLANT und ZURUECKGESTELLT).
   const zustellung = (weiteres: Record<string, unknown> = {}) => ({
     tenantId: tenantA,
     nachrichtId: `n_${randomUUID().slice(0, 8)}`,
     zweck: 'FREIGABE_CODE',
-    status: 'EINGEPLANT',
+    status: 'ANGENOMMEN',
     abgeschlossenAm: new Date(),
     ...weiteres,
   });
@@ -749,6 +750,16 @@ describeWithDatabase('tcms_nachricht_zustellung (MAIL-OUTBOX-001)', () => {
         { status: 'UNZUSTELLBAR', grund: 'UNBEKANNT', abgeschlossenAm: new Date() },
         'tcms_nachricht_zustellung_grund_check',
       ],
+      // kk-tcms-s11: gescheitert nur mit Grund, Versandgründe nur für GESCHEITERT.
+      [{ status: 'GESCHEITERT', grund: null }, 'tcms_nachricht_zustellung_grund_check'],
+      [
+        { status: 'UNZUSTELLBAR', grund: 'VERSAND_GESCHEITERT' },
+        'tcms_nachricht_zustellung_grund_check',
+      ],
+      [
+        { status: 'ZURUECKGESTELLT', grund: 'AUFTRAG_FEHLT', abgeschlossenAm: null },
+        'tcms_nachricht_zustellung_grund_check',
+      ],
       [
         { status: 'UNZUSTELLBAR', grund: 'KONTAKT_INAKTIV', abgeschlossenAm: null },
         'tcms_nachricht_zustellung_abschluss_check',
@@ -762,6 +773,22 @@ describeWithDatabase('tcms_nachricht_zustellung (MAIL-OUTBOX-001)', () => {
         },
         'tcms_nachricht_zustellung_abschluss_check',
       ],
+      // kk-tcms-s11: eingeplant ist offen, angenommen abgeschlossen.
+      [{ status: 'EINGEPLANT' }, 'tcms_nachricht_zustellung_abschluss_check'],
+      [{ abgeschlossenAm: null }, 'tcms_nachricht_zustellung_abschluss_check'],
+      [
+        { status: 'EINGEPLANT', abgeschlossenAm: null, gemeldetAm: new Date() },
+        'tcms_nachricht_zustellung_abschluss_check',
+      ],
+      // kk-tcms-s11: über die Mail-Outbox nur Mitteilungen an Kontakte.
+      [
+        { status: 'EINGEPLANT', abgeschlossenAm: null, zweck: 'EREIGNIS_GEMELDET' },
+        'tcms_nachricht_zustellung_mail_check',
+      ],
+      [
+        { status: 'GESCHEITERT', grund: 'VERSAND_UNKLAR', zweck: 'EREIGNIS_GEMELDET' },
+        'tcms_nachricht_zustellung_mail_check',
+      ],
       [{ nachrichtId: 'nachricht/1' }, 'tcms_nachricht_zustellung_nachricht_id_check'],
       [{ nachrichtId: '' }, 'tcms_nachricht_zustellung_nachricht_id_check'],
     ];
@@ -772,9 +799,25 @@ describeWithDatabase('tcms_nachricht_zustellung (MAIL-OUTBOX-001)', () => {
         JSON.stringify(abweichung),
       );
     }
-    await expect(
-      owner.tcmsNachrichtZustellung.create({ data: zustellung() }),
-    ).resolves.toBeTruthy();
+    // Jeder zulässige Zustand (kk-tcms-s11): eingeplant offen, angenommen und
+    // gescheitert abgeschlossen, ein Hinweis an die Kanzlei angenommen.
+    for (const gueltig of [
+      {},
+      { status: 'EINGEPLANT', abgeschlossenAm: null },
+      { zweck: 'EREIGNIS_GEMELDET' },
+      { status: 'GESCHEITERT', grund: 'VERSAND_GESCHEITERT', gemeldetAm: new Date() },
+      { status: 'GESCHEITERT', grund: 'VERSAND_UNKLAR' },
+      { status: 'GESCHEITERT', grund: 'VERSAND_VERWORFEN' },
+      { status: 'GESCHEITERT', grund: 'AUFTRAG_FEHLT' },
+      { status: 'GESCHEITERT', grund: 'KONTAKT_INAKTIV' },
+      { status: 'UNZUSTELLBAR', grund: 'ABGELAUFEN', zweck: 'EREIGNIS_GEMELDET' },
+      { status: 'ZURUECKGESTELLT', grund: 'KONTAKT_UNBESTAETIGT', abgeschlossenAm: null },
+    ]) {
+      await expect(
+        owner.tcmsNachrichtZustellung.create({ data: zustellung(gueltig) }),
+        JSON.stringify(gueltig),
+      ).resolves.toBeTruthy();
+    }
   });
 
   it('höchstens eine Zustellung je Tenant und Mitteilung', async () => {
@@ -1100,7 +1143,9 @@ describeWithDatabase(
       'tcms_nachricht_zustellung.tcms_nachricht_zustellung_abschluss_check':
         'status NOT NULL, Vergleich von IS NULL',
       'tcms_nachricht_zustellung.tcms_nachricht_zustellung_grund_check':
-        'status NOT NULL, grund IS NULL OR = ANY',
+        'status NOT NULL, grund IS NULL OR = ANY; Versandgründe: status = OR IS NULL OR <> ALL',
+      'tcms_nachricht_zustellung.tcms_nachricht_zustellung_mail_check':
+        'status und zweck NOT NULL (kk-tcms-s11)',
       'tcms_nachricht_zustellung.tcms_nachricht_zustellung_nachricht_id_check':
         'nachricht_id NOT NULL',
       'tcms_nachricht_zustellung.tcms_nachricht_zustellung_status_check': 'status NOT NULL',

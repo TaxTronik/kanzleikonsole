@@ -51,6 +51,7 @@ import {
   MAIL_OUTBOX_NO_RESEND_RESOURCE_TYPES,
   MAIL_OUTBOX_PURPOSE_LABELS,
   mailOutboxDispatch,
+  mailOutboxSkipVermerk,
   openMailOutboxSecretVars,
   parseMailOutboxPayload,
   type MailOutboxPurpose,
@@ -311,7 +312,7 @@ async function claimOrSkip(
         data: {
           ...CLEARED_CONTENT,
           status: 'SKIPPED',
-          lastError: `Nicht versendet: ${relevance.reason}`,
+          lastError: mailOutboxSkipVermerk(relevance.reason),
         },
       });
       return skipped.count === 1 ? { kind: 'skipped', reason: relevance.reason } : { kind: 'lost' };

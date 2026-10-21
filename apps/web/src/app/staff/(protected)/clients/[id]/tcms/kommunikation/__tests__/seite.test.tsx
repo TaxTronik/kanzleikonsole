@@ -204,7 +204,7 @@ describe('Kommunikation', () => {
     const zugestellt = within(screen.getByRole('table', { name: 'Kenntnisnahmen' }))
       .getAllByRole('row')
       .at(1)!;
-    expect(zugestellt.textContent).toContain('Nachricht zugestellt');
+    expect(zugestellt.textContent).toContain('Nachricht zugestellt (vom Mailserver angenommen)');
     expect(zugestellt.textContent).not.toContain('nicht erhalten');
   });
 

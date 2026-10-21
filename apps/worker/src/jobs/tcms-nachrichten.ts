@@ -13,16 +13,21 @@
 //      Empfänger allein aus den Daten der kanzleikonsole prüfen und einplanen:
 //      Kontakte über die Mail-Outbox (Transaktionsmail, Code nur als geheime
 //      Variable), Kanzleipersonen als In-App-Hinweis.
-//   3. Erst nach dem Commit melden: eingeplant → `POST …/zugestellt`,
-//      unzustellbar → `POST …/unzustellbar` mit festem Grund (TCMS s6); 404
-//      und 409 = erledigt. Ein anderer Fehler lässt die Zeile ungemeldet: Der
-//      nächste Lauf sieht die Mitteilung wieder, findet die Zeile und meldet
-//      nur – nie eine zweite Einplanung, nie ein anderer Grund. Antwortet der
-//      Dienst auf „zugestellt“ mit 409 (TCMS s8: im Tax-CMS verworfen, bevor
-//      sie ausgeliefert wurde, oder anders abgeschlossen), wird die Mail nicht
-//      versendet: Ein noch wartender Auftrag endet als SKIPPED (Inhalt und
-//      Code entfernt); ein Auftrag, dessen Versand schon läuft oder erfolgt
-//      ist, bleibt unberührt.
+//   3. Erst nach dem Commit melden, und „zugestellt“ erst, wenn zugestellt
+//      ist (kk-tcms-s11, Produktentscheidung Rey Koxha, 21.10.2026): Ein
+//      Hinweis an eine Kanzleiperson ist mit der Einplanung zugestellt
+//      (ANGENOMMEN). Eine Mail an einen Kontakt bleibt EINGEPLANT, bis ihr
+//      Versandauftrag einen Endstatus hat: PROVIDER_ACCEPTED (der Mailserver
+//      des Anbieters hat sie angenommen – mehr ist ohne Zustellbericht nicht
+//      feststellbar) → ANGENOMMEN → `POST …/zugestellt`; FAILED,
+//      NO_RECIPIENT, PARTIAL_FAILURE, UNKNOWN, SKIPPED (auch nach Ablauf des
+//      Fensters) oder fehlender Auftrag → GESCHEITERT mit festem Grund →
+//      `POST …/unzustellbar`. Unzustellbar vor jeder Einplanung bleibt
+//      UNZUSTELLBAR (TCMS s6). 404 und 409 = erledigt (gemeldet_am). Ein
+//      anderer Fehler lässt die Zeile ungemeldet; jeder Lauf führt offene
+//      Zeilen nach (auch ohne erneuten Abruf, etwa wenn das Tax-CMS die
+//      Mitteilung inzwischen verworfen hat) – nie eine zweite Einplanung,
+//      nie ein anderer Grund.
 //
 // Das Tax-CMS reserviert beim Abruf nichts; zwei gleichzeitige Läufe sähen
 // dieselbe Mitteilung. Doppelte schließen der eindeutige Schlüssel der
@@ -61,9 +66,13 @@
 // =============================================================================
 
 import { randomUUID } from 'node:crypto';
-import type { Prisma } from '@prisma/client';
+import type { MailOutboxStatus, Prisma } from '@prisma/client';
 import { canStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
-import { enqueueDirectMailTx } from '@taxtronik/mail/outbox';
+import {
+  enqueueDirectMailTx,
+  tcmsVerwerfGrund,
+  type TcmsVerwerfGrund,
+} from '@taxtronik/mail/outbox';
 import {
   TCMS_FREIGABE_ART_LABEL,
   TCMS_MAIL_VORLAGEN,
@@ -131,6 +140,11 @@ export const TCMS_ZUSTELL_GRUENDE = {
   PERSON_UNBEKANNT: 'Die Kanzleiperson ist in TaxTronik nicht vorhanden.',
   PERSON_INAKTIV: 'Die Kanzleiperson ist deaktiviert.',
   PERSON_OHNE_ZUGRIFF: 'Die Kanzleiperson hat keinen Zugriff auf diesen Mandanten.',
+  // kk-tcms-s11: Versandauftrag ohne Annahme durch den Mailserver (GESCHEITERT).
+  VERSAND_GESCHEITERT: 'Der Mailserver hat die Nachricht nicht angenommen.',
+  VERSAND_UNKLAR: 'Der Versandversuch wurde abgebrochen; ob die Nachricht ankam, ist unklar.',
+  VERSAND_VERWORFEN: 'Der Versandauftrag wurde vor dem Versand verworfen.',
+  AUFTRAG_FEHLT: 'Der Versandauftrag ist nicht (mehr) vorhanden.',
 } as const;
 export type TcmsZustellGrund = keyof typeof TCMS_ZUSTELL_GRUENDE;
 
@@ -156,7 +170,78 @@ export const TCMS_MELDEGRUND = {
   PERSON_UNBEKANNT: 'EMPFAENGER_UNGUELTIG',
   PERSON_INAKTIV: 'EMPFAENGER_UNGUELTIG',
   PERSON_OHNE_ZUGRIFF: 'EMPFAENGER_UNGUELTIG',
+  VERSAND_GESCHEITERT: 'SONSTIGES',
+  VERSAND_UNKLAR: 'SONSTIGES',
+  VERSAND_VERWORFEN: 'SONSTIGES',
+  AUFTRAG_FEHLT: 'SONSTIGES',
 } as const satisfies Readonly<Record<TcmsZustellGrund, NachrichtUnzustellbarGrund>>;
+
+/**
+ * kk-tcms-s11: Grund der Zeile, wenn die Mail-Outbox den Auftrag vor dem
+ * Versand verworfen hat (SKIPPED; Vermerk aus outbox-relevance.ts). Wo die
+ * Aktualitätsprüfung den Empfänger oder das Fenster nennt, gilt derselbe Grund
+ * wie bei der Prüfung vor der Einplanung; sonst VERSAND_VERWORFEN (SONSTIGES).
+ */
+const VERWORFEN_GRUND = {
+  ABGELAUFEN: 'ABGELAUFEN',
+  EMPFAENGER_FREMD: 'KONTAKT_ANDERER_MANDANT',
+  EMPFAENGER_INAKTIV: 'KONTAKT_INAKTIV',
+  ADRESSE_UNBESTAETIGT: 'KONTAKT_UNBESTAETIGT',
+  MANDAT_INAKTIV: 'MANDANT_INAKTIV',
+  MANDANT_ANONYMISIERT: 'MANDANT_INAKTIV',
+  MANDANT_FEHLT: 'MANDANT_UNBEKANNT',
+  ADRESSE_GEAENDERT: 'VERSAND_VERWORFEN',
+  EMPFAENGER_UNBESTIMMT: 'VERSAND_VERWORFEN',
+  OHNE_ENDE: 'VERSAND_VERWORFEN',
+  FREMDER_VORGANG: 'VERSAND_VERWORFEN',
+} as const satisfies Readonly<Record<TcmsVerwerfGrund, TcmsZustellGrund>>;
+
+/** Abschluss einer Zeile aus dem Stand ihres Versandauftrags; `null`: Versand läuft noch. */
+export type AuftragsAbschluss =
+  | { status: 'ANGENOMMEN'; grund: null }
+  | { status: 'GESCHEITERT'; grund: TcmsZustellGrund };
+
+const ABSCHLUSS_JE_STATUS = {
+  QUEUED: null,
+  SENDING: null,
+  RETRY_PENDING: null,
+  PROVIDER_ACCEPTED: 'ANGENOMMEN',
+  FAILED: 'VERSAND_GESCHEITERT',
+  NO_RECIPIENT: 'VERSAND_GESCHEITERT',
+  PARTIAL_FAILURE: 'VERSAND_GESCHEITERT',
+  UNKNOWN: 'VERSAND_UNKLAR',
+  SKIPPED: 'VERWORFEN',
+} as const satisfies Readonly<
+  Record<MailOutboxStatus, null | 'ANGENOMMEN' | 'VERWORFEN' | TcmsZustellGrund>
+>;
+
+/**
+ * kk-tcms-s11: „Zugestellt“ heißt, der Mailserver des Anbieters hat die
+ * Nachricht angenommen (PROVIDER_ACCEPTED); ohne Zustellbericht ist mehr
+ * nicht feststellbar. Jeder andere Endstatus – auch ein unklarer Ausgang
+ * (UNKNOWN) – ist gescheitert, ebenso ein fehlender Auftrag (fail closed).
+ */
+export function auftragsAbschluss(
+  auftrag: { status: MailOutboxStatus; lastError: string | null } | null,
+): AuftragsAbschluss | null {
+  if (!auftrag) return { status: 'GESCHEITERT', grund: 'AUFTRAG_FEHLT' };
+  const abschluss: null | 'ANGENOMMEN' | 'VERWORFEN' | TcmsZustellGrund = Object.hasOwn(
+    ABSCHLUSS_JE_STATUS,
+    auftrag.status,
+  )
+    ? ABSCHLUSS_JE_STATUS[auftrag.status]
+    : 'VERSAND_UNKLAR';
+  if (abschluss === null) return null;
+  if (abschluss === 'ANGENOMMEN') return { status: 'ANGENOMMEN', grund: null };
+  if (abschluss === 'VERWORFEN') {
+    const verworfen = tcmsVerwerfGrund(auftrag.lastError);
+    return {
+      status: 'GESCHEITERT',
+      grund: verworfen ? VERWORFEN_GRUND[verworfen] : 'VERSAND_VERWORFEN',
+    };
+  }
+  return { status: 'GESCHEITERT', grund: abschluss };
+}
 
 /** Meldegrund einer abgeschlossenen Zeile; unbekannte Werte (nur bei Drift) → SONSTIGES. */
 export function meldegrund(grund: string | null): NachrichtUnzustellbarGrund {
@@ -217,6 +302,10 @@ export interface TcmsZustellErgebnis {
   zurueckgestellt: number;
   unzustellbar: number;
   gemeldet: number;
+  /** kk-tcms-s11: Mail vom Mailserver angenommen bzw. Hinweis angelegt (ANGENOMMEN). */
+  angenommen: number;
+  /** kk-tcms-s11: Versandauftrag ohne Annahme beendet (GESCHEITERT). */
+  gescheitert: number;
   /** Abruf oder Meldung gescheitert (nächster Lauf). */
   fehler: number;
   bereinigt: number;
@@ -233,6 +322,8 @@ function leeresErgebnis(): TcmsZustellErgebnis {
     zurueckgestellt: 0,
     unzustellbar: 0,
     gemeldet: 0,
+    angenommen: 0,
+    gescheitert: 0,
     fehler: 0,
     bereinigt: 0,
     meldungenBereinigt: 0,
@@ -481,9 +572,22 @@ export type Meldung =
   | { art: 'ZUGESTELLT' }
   | { art: 'UNZUSTELLBAR'; grund: NachrichtUnzustellbarGrund };
 
+/**
+ * Ergebnis der Einplanung bzw. Nachführung einer Mitteilung. `eingeplant`:
+ * neu eingeplant (Mail: wartet auf ihren Versandauftrag, keine Meldung;
+ * Hinweis an eine Kanzleiperson: zugestellt, Meldung ZUGESTELLT).
+ * `angenommen`/`gescheitert`: Endstatus des Versandauftrags übernommen.
+ * `wartet`: Versand läuft noch. `bereits`: abgeschlossen, Meldung wie beim
+ * ersten Mal (Grund aus der Zeile).
+ */
 export type Einplanung =
-  | { art: 'eingeplant' | 'unzustellbar' | 'bereits'; zeileId: string; meldung: Meldung }
-  | { art: 'zurueckgestellt' | 'konkurrenz'; meldung: null };
+  | { art: 'eingeplant'; zeileId: string; meldung: Meldung | null }
+  | {
+      art: 'angenommen' | 'gescheitert' | 'unzustellbar' | 'bereits';
+      zeileId: string;
+      meldung: Meldung;
+    }
+  | { art: 'wartet' | 'zurueckgestellt' | 'konkurrenz'; meldung: null };
 
 const zeileSelect = {
   id: true,
@@ -495,18 +599,40 @@ const zeileSelect = {
 type Zeile = Prisma.TcmsNachrichtZustellungGetPayload<{ select: typeof zeileSelect }>;
 
 /** Vorhandene Zustellzeile sperren: Ein paralleler Lauf wartet hier bis zum Commit. */
-async function sperreZeile(tx: Db, tenantId: string, nachrichtId: string): Promise<Zeile | null> {
-  const [vorhanden] = await tx.$queryRaw<Array<{ id: string }>>`
-    SELECT id::text AS id FROM tcms_nachricht_zustellung
-     WHERE tenant_id = ${tenantId}::uuid AND nachricht_id = ${nachrichtId}
-     FOR UPDATE
-  `;
+async function sperreZeile(
+  tx: Db,
+  tenantId: string,
+  ziel: { nachrichtId: string } | { zeileId: string },
+): Promise<Zeile | null> {
+  const [vorhanden] =
+    'zeileId' in ziel
+      ? await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id::text AS id FROM tcms_nachricht_zustellung
+           WHERE tenant_id = ${tenantId}::uuid AND id = ${ziel.zeileId}::uuid
+           FOR UPDATE`
+      : await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT id::text AS id FROM tcms_nachricht_zustellung
+           WHERE tenant_id = ${tenantId}::uuid AND nachricht_id = ${ziel.nachrichtId}
+           FOR UPDATE`;
   return vorhanden
     ? tx.tcmsNachrichtZustellung.findUniqueOrThrow({
         where: { id: vorhanden.id },
         select: zeileSelect,
       })
     : null;
+}
+
+/** Meldung einer abgeschlossenen Zeile; `null`, solange sie offen ist. */
+export function meldungAus(zeile: { status: string; grund: string | null }): Meldung | null {
+  switch (zeile.status) {
+    case 'ANGENOMMEN':
+      return { art: 'ZUGESTELLT' };
+    case 'GESCHEITERT':
+    case 'UNZUSTELLBAR':
+      return { art: 'UNZUSTELLBAR', grund: meldegrund(zeile.grund) };
+    default:
+      return null;
+  }
 }
 
 interface Kontext {
@@ -531,28 +657,38 @@ async function schreibeZeile(
   return legeAn(k.tx, k.tenantId, id, k.n, daten);
 }
 
-/** Empfänger bestätigt: Zeile EINGEPLANT und Mail bzw. Hinweis in derselben Transaktion. */
+/**
+ * Empfänger bestätigt: Mail bzw. Hinweis in derselben Transaktion wie die
+ * Zeile. Eine Mail ist erst zugestellt, wenn ihr Versandauftrag angenommen ist
+ * (EINGEPLANT, offen); ein In-App-Hinweis ist mit dem Commit zugestellt
+ * (ANGENOMMEN).
+ */
 async function planeZustellungEin(
   k: Kontext,
   e: KontaktEmpfaenger | KanzleiEmpfaenger,
   bis: Date | null,
 ): Promise<Einplanung> {
   const zeileId = k.zeile?.id ?? randomUUID();
+  const { n } = k;
+  const mail = e.art === 'KONTAKT' && n.zweck !== 'EREIGNIS_GEMELDET' && bis;
+  const hinweis = e.art === 'KANZLEI' && n.zweck === 'EREIGNIS_GEMELDET';
+  if (!mail && !hinweis) {
+    // Der Vertrag bindet die Empfängerart an den Zweck; sonst nichts einplanen.
+    throw new Error('tcms-nachrichten: Zweck und Empfängerart passen nicht zusammen');
+  }
   const daten = {
-    status: 'EINGEPLANT',
+    status: mail ? 'EINGEPLANT' : 'ANGENOMMEN',
     grund: null,
     geprueftAm: k.jetzt,
-    abgeschlossenAm: k.jetzt,
+    abgeschlossenAm: mail ? null : k.jetzt,
   };
   if (!(await schreibeZeile(k, zeileId, daten))) return { art: 'konkurrenz', meldung: null };
-  const { n } = k;
   if (e.art === 'KONTAKT' && n.zweck !== 'EREIGNIS_GEMELDET' && bis) {
     await planeMailEin(k.deps, k.tx, k.tenantId, zeileId, n, e, bis);
-  } else if (e.art === 'KANZLEI' && n.zweck === 'EREIGNIS_GEMELDET') {
+    return { art: 'eingeplant', zeileId, meldung: null };
+  }
+  if (e.art === 'KANZLEI' && n.zweck === 'EREIGNIS_GEMELDET') {
     await planeHinweisEin(k.deps, k.tx, k.tenantId, n, e);
-  } else {
-    // Der Vertrag bindet die Empfängerart an den Zweck; sonst nichts einplanen (Rollback).
-    throw new Error('tcms-nachrichten: Zweck und Empfängerart passen nicht zusammen');
   }
   return { art: 'eingeplant', zeileId, meldung: { art: 'ZUGESTELLT' } };
 }
@@ -594,6 +730,49 @@ async function stelleZurueck(
 }
 
 /**
+ * kk-tcms-s11: Eine eingeplante Mail (Zeile gesperrt) übernimmt den Endstatus
+ * ihres Versandauftrags (eindeutig je Zeile, mail_outbox_tcms_nachricht_key):
+ * angenommen → ANGENOMMEN, sonst GESCHEITERT mit festem Grund; solange der
+ * Versand läuft, bleibt sie offen. Bedingt auf EINGEPLANT: Ein Übergang
+ * geschieht genau einmal.
+ */
+async function uebernimmAuftrag(
+  deps: TcmsZustellDeps,
+  tx: Db,
+  tenantId: string,
+  zeile: Zeile,
+  nachrichtId: string,
+  jetzt: Date,
+): Promise<Einplanung> {
+  const auftrag = await tx.mailOutbox.findFirst({
+    where: { tenantId, resourceType: TCMS_NACHRICHT_RESSOURCE, resourceId: zeile.id },
+    select: { status: true, lastError: true },
+  });
+  const abschluss = auftragsAbschluss(auftrag);
+  if (!abschluss) return { art: 'wartet', meldung: null };
+  const { count } = await tx.tcmsNachrichtZustellung.updateMany({
+    where: { id: zeile.id, tenantId, status: 'EINGEPLANT' },
+    data: {
+      status: abschluss.status,
+      grund: abschluss.grund,
+      geprueftAm: jetzt,
+      abgeschlossenAm: jetzt,
+    },
+  });
+  if (count !== 1) return { art: 'konkurrenz', meldung: null };
+  if (abschluss.status === 'GESCHEITERT') {
+    deps.log.info(
+      { tenantId, nachrichtId, grund: abschluss.grund, auftrag: auftrag?.status ?? null },
+      'tcms-nachrichten: Versand nicht angenommen',
+    );
+  }
+  const meldung = meldungAus(abschluss)!;
+  return abschluss.status === 'ANGENOMMEN'
+    ? { art: 'angenommen', zeileId: zeile.id, meldung }
+    : { art: 'gescheitert', zeileId: zeile.id, meldung };
+}
+
+/**
  * Prüfen und einplanen in EINER Tenant-Transaktion (siehe Kopf). Exportiert
  * für den Nachweis, dass zwei gleichzeitige Einplanungen derselben Mitteilung
  * genau einen Auftrag ergeben – auch ohne den Lease des Laufs.
@@ -605,17 +784,15 @@ export async function planeTcmsNachrichtEin(
   jetzt: Date,
 ): Promise<Einplanung> {
   return deps.runAtomic(tenantId, async (tx): Promise<Einplanung> => {
-    const zeile = await sperreZeile(tx, tenantId, n.id);
+    const zeile = await sperreZeile(tx, tenantId, { nachrichtId: n.id });
+    if (zeile?.status === 'EINGEPLANT') {
+      return uebernimmAuftrag(deps, tx, tenantId, zeile, n.id, jetzt);
+    }
     if (zeile && zeile.status !== 'ZURUECKGESTELLT') {
       // Abgeschlossen: dieselbe Meldung wie beim ersten Mal (Grund aus der Zeile).
-      return {
-        art: 'bereits',
-        zeileId: zeile.id,
-        meldung:
-          zeile.status === 'UNZUSTELLBAR'
-            ? { art: 'UNZUSTELLBAR', grund: meldegrund(zeile.grund) }
-            : { art: 'ZUGESTELLT' },
-      };
+      const meldung = meldungAus(zeile);
+      if (!meldung) throw new Error('tcms-nachrichten: unbekannter Status der Zustellzeile');
+      return { art: 'bereits', zeileId: zeile.id, meldung };
     }
     const k: Kontext = { deps, tx, tenantId, n, zeile, jetzt };
     const bis = gueltigBis(n);
@@ -628,6 +805,33 @@ export async function planeTcmsNachrichtEin(
     return pruefung.ok
       ? planeZustellungEin(k, pruefung.empfaenger, bis)
       : stelleZurueck(k, pruefung.grund, pruefung.mandantVorhanden);
+  });
+}
+
+/**
+ * kk-tcms-s11: Eine Zeile ohne die Mitteilung nachführen (gesperrt): eine
+ * eingeplante Mail übernimmt den Endstatus ihres Auftrags; eine
+ * abgeschlossene, noch nicht gemeldete liefert ihre Meldung. So meldet der
+ * Worker auch Mitteilungen, die der Abruf nicht mehr liefert (im Tax-CMS
+ * inzwischen verworfen, nach dem Ausliefern weiter meldbar) oder die hinter
+ * dem Limit liegen.
+ */
+export async function fuehreZustellungNach(
+  deps: TcmsZustellDeps,
+  tenantId: string,
+  ziel: { zeileId: string; nachrichtId: string },
+  jetzt: Date,
+): Promise<Einplanung> {
+  return deps.runAtomic(tenantId, async (tx): Promise<Einplanung> => {
+    const zeile = await sperreZeile(tx, tenantId, { zeileId: ziel.zeileId });
+    if (!zeile) return { art: 'konkurrenz', meldung: null };
+    if (zeile.status === 'EINGEPLANT') {
+      return uebernimmAuftrag(deps, tx, tenantId, zeile, ziel.nachrichtId, jetzt);
+    }
+    const meldung = meldungAus(zeile);
+    return meldung
+      ? { art: 'bereits', zeileId: zeile.id, meldung }
+      : { art: 'zurueckgestellt', meldung: null };
   });
 }
 
@@ -664,7 +868,10 @@ async function legeAn(
 /**
  * Nach dem Commit: Zustellung bzw. Unzustellbarkeit melden. 404 (unbekannt
  * oder fremd) und 409 (im Tax-CMS bereits abgeschlossen: zugestellt bzw.
- * unzustellbar, auch mit anderem Grund) = erledigt; sonst nächster Lauf.
+ * unzustellbar, auch mit anderem Grund, oder verworfen, bevor ausgeliefert)
+ * = erledigt; sonst nächster Lauf. Gemeldet wird „zugestellt“ erst nach der
+ * Annahme durch den Mailserver (kk-tcms-s11); ein Versandauftrag wartet zu
+ * diesem Zeitpunkt nie mehr.
  */
 async function melde(
   deps: TcmsZustellDeps,
@@ -676,7 +883,6 @@ async function melde(
   meldung: Meldung,
   jetzt: Date,
 ): Promise<boolean> {
-  let nichtVersenden = false;
   try {
     if (meldung.art === 'UNZUSTELLBAR') {
       await postausgang.unzustellbar(akteur, nachrichtId, meldung.grund);
@@ -690,7 +896,6 @@ async function melde(
         { tenantId, nachrichtId, meldung: meldung.art, ...fehlerFelder(fehler) },
         'tcms-nachrichten: Mitteilung im Tax-CMS bereits abgeschlossen',
       );
-      nichtVersenden = meldung.art === 'ZUGESTELLT';
     } else if (!(fehler instanceof TcmsNichtGefunden)) {
       deps.log.warn(
         { tenantId, nachrichtId, meldung: meldung.art, ...fehlerFelder(fehler) },
@@ -699,43 +904,14 @@ async function melde(
       return false;
     }
   }
-  await deps.runAtomic(tenantId, async (tx) => {
-    await tx.tcmsNachrichtZustellung.updateMany({
+  await deps.runAtomic(tenantId, (tx) =>
+    tx.tcmsNachrichtZustellung.updateMany({
       where: { id: zeileId, tenantId, gemeldetAm: null, abgeschlossenAm: { not: null } },
       data: { gemeldetAm: jetzt },
-    });
-    if (nichtVersenden) {
-      // Nur wartende Aufträge (QUEUED, RETRY_PENDING); der Claim der Mail-Outbox
-      // ist an den gelesenen Status gebunden und geht danach ins Leere.
-      const { count } = await tx.mailOutbox.updateMany({
-        where: {
-          tenantId,
-          resourceType: TCMS_NACHRICHT_RESSOURCE,
-          resourceId: zeileId,
-          status: { in: ['QUEUED', 'RETRY_PENDING'] },
-        },
-        data: {
-          payload: {},
-          secretVarsEnc: null,
-          nextAttemptAt: null,
-          status: 'SKIPPED',
-          lastError: TCMS_NICHT_VERSENDET_VERWORFEN,
-        },
-      });
-      if (count > 0) {
-        deps.log.info(
-          { tenantId, nachrichtId, auftraege: count },
-          'tcms-nachrichten: Mail nicht versendet, Mitteilung im Tax-CMS abgeschlossen',
-        );
-      }
-    }
-  });
+    }),
+  );
   return true;
 }
-
-/** Grund am Auftrag, wenn das Tax-CMS „zugestellt“ mit 409 beantwortet (kein Inhalt). */
-export const TCMS_NICHT_VERSENDET_VERWORFEN =
-  'Nicht versendet: Die Mitteilung ist im Tax-CMS bereits abgeschlossen oder verworfen.';
 
 /** Gemeldete und lange nicht mehr gesehene Zeilen entfernen (keine Inhalte, nur Koordination). */
 async function bereinige(deps: TcmsZustellDeps, tenantId: string, jetzt: Date): Promise<number> {
@@ -752,7 +928,157 @@ async function bereinige(deps: TcmsZustellDeps, tenantId: string, jetzt: Date): 
   return count;
 }
 
-/** Ein Lauf für einen Tenant (Lease, Abruf, je Mitteilung Einplanung und Meldung). */
+/** Zähler des Laufs nach einer Einplanung bzw. Nachführung. */
+function zaehle(ergebnis: TcmsZustellErgebnis, e: Einplanung): void {
+  if (e.art === 'eingeplant') {
+    ergebnis.eingeplant += 1;
+    if (e.meldung) ergebnis.angenommen += 1;
+  } else if (e.art === 'angenommen') {
+    ergebnis.angenommen += 1;
+  } else if (e.art === 'gescheitert') {
+    ergebnis.gescheitert += 1;
+  } else if (e.art === 'zurueckgestellt') {
+    ergebnis.zurueckgestellt += 1;
+  } else if (e.art === 'unzustellbar') {
+    ergebnis.unzustellbar += 1;
+  }
+}
+
+/** Gemeinsamer Zustand eines Laufs für einen Tenant. */
+interface TenantLauf {
+  deps: TcmsZustellDeps;
+  tenantId: string;
+  postausgang: TcmsPostausgang;
+  lauf: NonNullable<Awaited<ReturnType<typeof beanspruche>>>;
+  ergebnis: TcmsZustellErgebnis;
+  jetzt: () => Date;
+}
+
+/** Meldet nach dem Commit und zählt das Ergebnis. */
+async function meldeUndZaehle(
+  t: TenantLauf,
+  zeileId: string,
+  nachrichtId: string,
+  meldung: Meldung,
+): Promise<void> {
+  const ok = await melde(
+    t.deps,
+    t.postausgang,
+    t.lauf.akteur,
+    t.tenantId,
+    zeileId,
+    nachrichtId,
+    meldung,
+    t.jetzt(),
+  );
+  if (ok) t.ergebnis.gemeldet += 1;
+  else t.ergebnis.fehler += 1;
+}
+
+/**
+ * Abruf und je Mitteilung Einplanung bzw. Nachführung samt Meldung. Liefert
+ * die geführten Zeilen (für die Nachführung), ob neue Mails anstehen und ob
+ * der Lauf weitergeht (nicht nach gescheitertem Abruf oder verlorener Lease).
+ */
+async function planeAbgerufeneEin(
+  t: TenantLauf,
+): Promise<{ gesehen: Set<string>; neueMails: boolean; weiter: boolean }> {
+  const { deps, tenantId, ergebnis } = t;
+  const gesehen = new Set<string>();
+  let neueMails = false;
+  let nachrichten: OffeneNachricht[];
+  try {
+    nachrichten = await t.postausgang.holen(t.lauf.akteur, TCMS_ZUSTELL_LIMIT);
+  } catch (fehler) {
+    ergebnis.fehler += 1;
+    deps.log.warn({ tenantId, ...fehlerFelder(fehler) }, 'tcms-nachrichten: Abruf gescheitert');
+    return { gesehen, neueMails, weiter: false };
+  }
+  ergebnis.abgerufen += nachrichten.length;
+  let fortschritt = 0;
+  for (const n of nachrichten) {
+    if (!(await t.lauf.bestaetigen())) {
+      deps.log.warn({ tenantId }, 'tcms-nachrichten: Lease verloren, Lauf beendet');
+      return { gesehen, neueMails, weiter: false };
+    }
+    let einplanung: Einplanung;
+    try {
+      einplanung = await planeTcmsNachrichtEin(deps, tenantId, n, t.jetzt());
+    } catch (fehler) {
+      // Rollback: nichts eingeplant, nichts gemeldet; der nächste Lauf prüft erneut.
+      ergebnis.fehler += 1;
+      deps.log.error(
+        { tenantId, nachrichtId: n.id, zweck: n.zweck, ...fehlerFelder(fehler) },
+        'tcms-nachrichten: Einplanung gescheitert',
+      );
+      continue;
+    }
+    zaehle(ergebnis, einplanung);
+    if (['eingeplant', 'angenommen', 'gescheitert'].includes(einplanung.art)) fortschritt += 1;
+    if (einplanung.art === 'eingeplant' && !einplanung.meldung) neueMails = true;
+    if (!('zeileId' in einplanung)) continue;
+    gesehen.add(einplanung.zeileId);
+    if (einplanung.meldung) await meldeUndZaehle(t, einplanung.zeileId, n.id, einplanung.meldung);
+  }
+  if (nachrichten.length >= TCMS_ZUSTELL_LIMIT && fortschritt === 0) {
+    deps.log.warn(
+      { tenantId, anzahl: nachrichten.length },
+      'tcms-nachrichten: voller Abruf ohne Einplanung – zurückgestellte oder noch nicht versendete Mitteilungen belegen den Postausgang',
+    );
+  }
+  return { gesehen, neueMails, weiter: true };
+}
+
+/**
+ * kk-tcms-s11: offene Zeilen ohne Abruf nachführen (Endstatus des Auftrags,
+ * ausstehende Meldungen), älteste zuerst, höchstens ein Abruf-Limit je Lauf.
+ * `false`, wenn die Lease verloren ging.
+ */
+async function fuehreOffeneNach(t: TenantLauf, gesehen: ReadonlySet<string>): Promise<boolean> {
+  const { deps, tenantId, ergebnis } = t;
+  const offen = await deps.runAtomic(tenantId, (tx) =>
+    tx.tcmsNachrichtZustellung.findMany({
+      where: {
+        tenantId,
+        gemeldetAm: null,
+        status: { in: ['EINGEPLANT', 'ANGENOMMEN', 'GESCHEITERT', 'UNZUSTELLBAR'] },
+        id: { notIn: [...gesehen] },
+      },
+      select: { id: true, nachrichtId: true },
+      orderBy: [{ erstmalsAm: 'asc' }, { id: 'asc' }],
+      take: TCMS_ZUSTELL_LIMIT,
+    }),
+  );
+  for (const z of offen) {
+    if (!(await t.lauf.bestaetigen())) {
+      deps.log.warn({ tenantId }, 'tcms-nachrichten: Lease verloren, Lauf beendet');
+      return false;
+    }
+    let nachgefuehrt: Einplanung;
+    try {
+      nachgefuehrt = await fuehreZustellungNach(
+        deps,
+        tenantId,
+        { zeileId: z.id, nachrichtId: z.nachrichtId },
+        t.jetzt(),
+      );
+    } catch (fehler) {
+      ergebnis.fehler += 1;
+      deps.log.error(
+        { tenantId, nachrichtId: z.nachrichtId, ...fehlerFelder(fehler) },
+        'tcms-nachrichten: Nachführung gescheitert',
+      );
+      continue;
+    }
+    zaehle(ergebnis, nachgefuehrt);
+    if (nachgefuehrt.meldung) {
+      await meldeUndZaehle(t, nachgefuehrt.zeileId, z.nachrichtId, nachgefuehrt.meldung);
+    }
+  }
+  return true;
+}
+
+/** Ein Lauf für einen Tenant (Lease, Abruf, je Mitteilung Einplanung und Meldung, Nachführung). */
 export async function stelleTenantZu(
   deps: TcmsZustellDeps,
   tenantId: string,
@@ -767,68 +1093,12 @@ export async function stelleTenantZu(
     ergebnis.gesperrt += 1;
     return;
   }
+  const t: TenantLauf = { deps, tenantId, postausgang, lauf, ergebnis, jetzt };
   let neueMails = false;
-  let eingeplantHier = 0;
   try {
-    let nachrichten: OffeneNachricht[];
-    try {
-      nachrichten = await postausgang.holen(lauf.akteur, TCMS_ZUSTELL_LIMIT);
-    } catch (fehler) {
-      ergebnis.fehler += 1;
-      deps.log.warn({ tenantId, ...fehlerFelder(fehler) }, 'tcms-nachrichten: Abruf gescheitert');
-      return;
-    }
-    ergebnis.abgerufen += nachrichten.length;
-    for (const n of nachrichten) {
-      if (!(await lauf.bestaetigen())) {
-        deps.log.warn({ tenantId }, 'tcms-nachrichten: Lease verloren, Lauf beendet');
-        break;
-      }
-      let einplanung: Einplanung;
-      try {
-        einplanung = await planeTcmsNachrichtEin(deps, tenantId, n, jetzt());
-      } catch (fehler) {
-        // Rollback: nichts eingeplant, nichts gemeldet; der nächste Lauf prüft erneut.
-        ergebnis.fehler += 1;
-        deps.log.error(
-          { tenantId, nachrichtId: n.id, zweck: n.zweck, ...fehlerFelder(fehler) },
-          'tcms-nachrichten: Einplanung gescheitert',
-        );
-        continue;
-      }
-      if (einplanung.art === 'eingeplant') {
-        ergebnis.eingeplant += 1;
-        eingeplantHier += 1;
-        if (n.empfaengerArt === 'KONTAKT') neueMails = true;
-      } else if (einplanung.art === 'zurueckgestellt') {
-        ergebnis.zurueckgestellt += 1;
-      } else if (einplanung.art === 'unzustellbar') {
-        ergebnis.unzustellbar += 1;
-      }
-      if (!einplanung.meldung) continue;
-      if (
-        await melde(
-          deps,
-          postausgang,
-          lauf.akteur,
-          tenantId,
-          einplanung.zeileId,
-          n.id,
-          einplanung.meldung,
-          jetzt(),
-        )
-      ) {
-        ergebnis.gemeldet += 1;
-      } else {
-        ergebnis.fehler += 1;
-      }
-    }
-    if (nachrichten.length >= TCMS_ZUSTELL_LIMIT && eingeplantHier === 0) {
-      deps.log.warn(
-        { tenantId, anzahl: nachrichten.length },
-        'tcms-nachrichten: voller Abruf ohne Einplanung – zurückgestellte Mitteilungen belegen den Postausgang',
-      );
-    }
+    const abruf = await planeAbgerufeneEin(t);
+    neueMails = abruf.neueMails;
+    if (!abruf.weiter || !(await fuehreOffeneNach(t, abruf.gesehen))) return;
     ergebnis.bereinigt += await bereinige(deps, tenantId, jetzt());
   } finally {
     await lauf.freigeben().catch(() => undefined);

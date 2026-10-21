@@ -7,7 +7,9 @@
 //
 // Den Status setzt allein der Dienst (Meldung des Zustell-Workers bzw.
 // Verwerfen eines ungültigen Codes); die Antwort nennt nie Inhalte der
-// Nachricht. Gescheitert (unzustellbar oder verworfen) heißt: die Person hat
+// Nachricht. „Zugestellt“ meldet der Worker erst, wenn der Mailserver des
+// Anbieters die Mail angenommen hat (kk-tcms-s11); mehr ist ohne
+// Zustellbericht nicht feststellbar, das sagt die Anzeige ausdrücklich. Gescheitert (unzustellbar oder verworfen) heißt: die Person hat
 // die Anforderung nicht erhalten – die Seite bietet dann die Neuadressierung
 // an (Kommunikation), sofern der Dienst sie erlaubt. Feste Texte je Wert,
 // kein Text des Dienstes.
@@ -26,7 +28,7 @@ export const ZUSTELL_STATUS_ANZEIGE: Readonly<
   Record<ZustellStatus, { label: string; badge: string }>
 > = {
   OFFEN: { label: 'Nachricht noch nicht zugestellt', badge: 'badge-gray' },
-  ZUGESTELLT: { label: 'Nachricht zugestellt', badge: 'badge-green' },
+  ZUGESTELLT: { label: 'Nachricht zugestellt (vom Mailserver angenommen)', badge: 'badge-green' },
   UNZUSTELLBAR: { label: 'Nachricht unzustellbar', badge: 'badge-red' },
   VERWORFEN: { label: 'Nachricht nicht ausgeliefert', badge: 'badge-yellow' },
 };
@@ -35,7 +37,7 @@ export const UNZUSTELLBAR_GRUND_LABEL: Readonly<Record<NachrichtUnzustellbarGrun
   EMPFAENGER_UNGUELTIG: 'Empfänger gehört nicht (mehr) zu diesem Mandanten',
   KEIN_PORTALZUGANG: 'Empfänger hat keinen bestätigten Portalzugang',
   ABGELAUFEN: 'Zustellfrist abgelaufen',
-  SONSTIGES: 'sonstiger Grund',
+  SONSTIGES: 'sonstiger Grund, z. B. vom Mailserver nicht angenommen',
 };
 
 export const ZUSTELL_ZWECK_LABEL: Readonly<Record<FreigabeZustellung['zweck'], string>> = {

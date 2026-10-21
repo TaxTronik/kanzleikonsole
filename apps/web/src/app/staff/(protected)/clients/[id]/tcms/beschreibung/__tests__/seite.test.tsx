@@ -248,7 +248,7 @@ describe('CMS-Beschreibung', () => {
     const hinweis = screen
       .getAllByRole('note')
       .find((n) => n.textContent?.includes('Zur Freigabe'))!;
-    expect(hinweis.textContent).toContain('Nachricht zugestellt');
+    expect(hinweis.textContent).toContain('Nachricht zugestellt (vom Mailserver angenommen)');
     expect(hinweis.textContent).not.toContain('nicht erhalten');
     expect(within(hinweis).getByRole('link').textContent).toBe('Empfänger ändern (Kommunikation)');
   });

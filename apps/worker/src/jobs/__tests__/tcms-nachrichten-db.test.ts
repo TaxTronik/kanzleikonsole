@@ -6,7 +6,10 @@
 //
 // Belegt: Empfänger nur aus der kanzleikonsole (Kontakt genau dieses
 // Mandanten, aktiv, bestätigt; Kanzleiperson mit Zugriff), Code nur
-// verschlüsselt und nach dem Versand weg, Meldung erst nach dem Commit, 404 =
+// verschlüsselt und nach dem Versand weg, Meldung erst nach dem Commit und
+// „zugestellt“ erst nach der Annahme durch den Mailserver (kk-tcms-s11:
+// EINGEPLANT → ANGENOMMEN/GESCHEITERT → gemeldet, jeder Endstatus des
+// Versandauftrags mit festem Grund, Nachführung ohne erneuten Abruf), 404 =
 // erledigt, keine Doppelzustellung (zweiter Lauf, zwei gleichzeitige
 // Einplanungen, zwei gleichzeitige Läufe), einmaliger Admin-Hinweis ohne
 // Inhalt, Abschluss als unzustellbar mit Meldung „unzustellbar“ und festem
@@ -62,11 +65,11 @@ import {
   meldevorgaengeBereinigen,
   planeTcmsNachrichtEin,
   stelleTcmsNachrichtenZu,
-  TCMS_NICHT_VERSENDET_VERWORFEN,
   TCMS_UNZUSTELLBAR_NACH_TAGEN,
   type TcmsZustellDeps,
 } from '../tcms-nachrichten';
 import { dbAbgewiesen } from '@taxtronik/db/testing/db-fehler';
+import { mailOutboxSkipVermerk, TCMS_VERWORFEN_TEXTE } from '@taxtronik/mail/outbox';
 
 const describeDb = enabled ? describe : describe.skip;
 
@@ -227,6 +230,41 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     });
   }
 
+  function outboxDeps(sendTemplateMail = vi.fn()): MailOutboxDeliveryDeps {
+    return {
+      db: prismaOwner,
+      runAtomic: (t, fn) => withWorkerTenantContext(t, fn),
+      sendTemplateMail,
+      notifyClientContacts: vi.fn(),
+      loadAttachment: vi.fn(),
+      notifyStaff: (tx, input) => notify(tx, input),
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    };
+  }
+
+  /** Die Mail-Outbox versendet (Provider nimmt an): Auftrag PROVIDER_ACCEPTED, Inhalt entfernt. */
+  async function versende() {
+    const sendTemplateMail = vi.fn().mockResolvedValue({
+      ok: true,
+      sentViaTemplate: false,
+      uncertainFailure: false,
+    });
+    await processMailOutbox(outboxDeps(sendTemplateMail), { tenantId, now: new Date() });
+    return sendTemplateMail;
+  }
+
+  /** Endstatus eines Auftrags direkt setzen (Inhalt und Code entfernt, wie die CHECK verlangt). */
+  async function auftragEndet(
+    status: 'FAILED' | 'NO_RECIPIENT' | 'PARTIAL_FAILURE' | 'UNKNOWN' | 'SKIPPED',
+    lastError: string | null = null,
+  ) {
+    const [auftrag] = await auftraege();
+    await prismaOwner.mailOutbox.update({
+      where: { id: auftrag!.id },
+      data: { status, lastError, payload: {}, secretVarsEnc: null, nextAttemptAt: null },
+    });
+  }
+
   async function hinweise(kind: 'TCMS_ZUSTELLUNG_GESCHEITERT' | 'TCMS_EREIGNIS_GEMELDET') {
     return prismaOwner.notification.findMany({ where: { tenantId, kind } });
   }
@@ -346,24 +384,31 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     });
   });
 
-  it('plant den Code an den bestätigten Kontakt ein: nur verschlüsselt, Meldung nach dem Commit', async () => {
+  it('plant den Code an den bestätigten Kontakt ein: nur verschlüsselt; „zugestellt“ erst nach der Annahme durch den Mailserver', async () => {
     const n = code();
     postausgang.nachrichten = [n];
-    let beimMeldenSichtbar = 0;
-    // Die Meldung darf erst kommen, wenn die Einplanung für andere sichtbar committet ist.
+    let beimMeldenSichtbar: unknown = null;
+    // Die Meldung darf erst kommen, wenn die Annahme für andere sichtbar committet ist.
     postausgang.beimMelden = async () => {
-      beimMeldenSichtbar = await prismaOwner.mailOutbox.count({
-        where: { tenantId, resourceType: 'tcms_nachricht' },
+      beimMeldenSichtbar = await prismaOwner.tcmsNachrichtZustellung.findFirst({
+        where: { tenantId, nachrichtId: n.id },
+        select: { status: true, abgeschlossenAm: true },
       });
     };
 
+    // Erster Lauf: eingeplant, Versand läuft – noch keine Meldung (kk-tcms-s11).
     const ergebnis = await lauf();
 
-    expect(ergebnis).toMatchObject({ abgerufen: 1, eingeplant: 1, gemeldet: 1, fehler: 0 });
-    expect(beimMeldenSichtbar).toBe(1);
+    expect(ergebnis).toMatchObject({ abgerufen: 1, eingeplant: 1, gemeldet: 0, fehler: 0 });
+    expect(postausgang.melden).not.toHaveBeenCalled();
     const z = await zeile(n.id);
-    expect(z).toMatchObject({ status: 'EINGEPLANT', grund: null, zweck: 'FREIGABE_CODE' });
-    expect(z?.gemeldetAm).toBeInstanceOf(Date);
+    expect(z).toMatchObject({
+      status: 'EINGEPLANT',
+      grund: null,
+      zweck: 'FREIGABE_CODE',
+      abgeschlossenAm: null,
+      gemeldetAm: null,
+    });
     const [auftrag] = await auftraege();
     expect(auftrag).toMatchObject({
       purpose: 'tcms-freigabe-code',
@@ -389,24 +434,13 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     });
     expect(postausgang.akteure[0]).toMatchObject({ tnt: tenantId, knd: 'SYSTEM' });
     expect(kickMail).toHaveBeenCalledOnce();
-    logOhneInhalt();
+
+    // Solange der Auftrag wartet, meldet auch der nächste Lauf nichts.
+    expect(await lauf()).toMatchObject({ eingeplant: 0, angenommen: 0, gemeldet: 0 });
+    expect(postausgang.melden).not.toHaveBeenCalled();
 
     // Versand durch die Mail-Outbox: Code eingesetzt, danach kein Inhalt mehr in der DB.
-    const sendTemplateMail = vi.fn().mockResolvedValue({
-      ok: true,
-      sentViaTemplate: false,
-      uncertainFailure: false,
-    });
-    const outboxDeps: MailOutboxDeliveryDeps = {
-      db: prismaOwner,
-      runAtomic: (t, fn) => withWorkerTenantContext(t, fn),
-      sendTemplateMail,
-      notifyClientContacts: vi.fn(),
-      loadAttachment: vi.fn(),
-      notifyStaff: (tx, input) => notify(tx, input),
-      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    };
-    await processMailOutbox(outboxDeps, { tenantId, now: new Date() });
+    const sendTemplateMail = await versende();
     expect(sendTemplateMail).toHaveBeenCalledWith(
       expect.objectContaining({
         slug: 'tcms-freigabe-code',
@@ -416,15 +450,29 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     );
     const danach = await prismaOwner.mailOutbox.findUniqueOrThrow({ where: { id: auftrag!.id } });
     expect(danach).toMatchObject({ status: 'PROVIDER_ACCEPTED', payload: {}, secretVarsEnc: null });
+
+    // Der nächste Lauf übernimmt die Annahme und meldet „zugestellt“ nach dem Commit.
+    expect(await lauf()).toMatchObject({ angenommen: 1, gescheitert: 0, gemeldet: 1, fehler: 0 });
+    expect(beimMeldenSichtbar).toEqual({ status: 'ANGENOMMEN', abgeschlossenAm: expect.any(Date) });
+    expect(postausgang.melden).toHaveBeenCalledExactlyOnceWith(expect.anything(), n.id);
+    expect(postausgang.unzustellbar).not.toHaveBeenCalled();
+    expect(await zeile(n.id)).toMatchObject({ status: 'ANGENOMMEN', grund: null });
+    expect((await zeile(n.id))?.gemeldetAm).toBeInstanceOf(Date);
+    // Weitere Läufe: nichts mehr.
+    expect(await lauf()).toMatchObject({ angenommen: 0, gemeldet: 0 });
+    expect(postausgang.melden).toHaveBeenCalledOnce();
+    logOhneInhalt();
   });
 
   it('stellt nie doppelt zu: zweiter Lauf, nicht angekommene Meldung, 404', async () => {
     const n = code();
     postausgang.nachrichten = [n];
+    expect(await lauf()).toMatchObject({ eingeplant: 1, gemeldet: 0 });
+    await versende();
     postausgang.meldenFehler = new TcmsNichtVerfuegbar('TRANSPORT');
 
     const erster = await lauf();
-    expect(erster).toMatchObject({ eingeplant: 1, gemeldet: 0, fehler: 1 });
+    expect(erster).toMatchObject({ eingeplant: 0, angenommen: 1, gemeldet: 0, fehler: 1 });
     expect((await zeile(n.id))?.gemeldetAm).toBeNull();
     expect(log.warn).toHaveBeenCalledWith(
       expect.objectContaining({ fehler: 'TcmsNichtVerfuegbar', grund: 'TRANSPORT' }),
@@ -448,7 +496,8 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
       planeTcmsNachrichtEin(deps(), tenantId, n, jetzt),
     ]);
     expect(ergebnisse.filter((e) => e.art === 'eingeplant')).toHaveLength(1);
-    expect(ergebnisse.every((e) => ['eingeplant', 'bereits', 'konkurrenz'].includes(e.art))).toBe(
+    // Wer nach der Einplanung kommt, findet den wartenden Auftrag (kk-tcms-s11).
+    expect(ergebnisse.every((e) => ['eingeplant', 'wartet', 'konkurrenz'].includes(e.art))).toBe(
       true,
     );
     expect(await auftraege()).toHaveLength(1);
@@ -541,7 +590,8 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
       data: { lastLoginAt: jetzt },
     });
     const danach = await lauf();
-    expect(danach).toMatchObject({ eingeplant: 1, gemeldet: 1, zurueckgestellt: 1 });
+    // Eingeplant, aber noch nicht versendet: keine Meldung (kk-tcms-s11).
+    expect(danach).toMatchObject({ eingeplant: 1, gemeldet: 0, zurueckgestellt: 1 });
     expect(await zeile(korrigiert.id)).toMatchObject({ status: 'EINGEPLANT', grund: null });
     expect(await auftraege()).toHaveLength(1);
 
@@ -666,67 +716,156 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     logOhneInhalt();
   });
 
-  it('409 bei „zugestellt“ (TCMS s8: verworfen, bevor ausgeliefert): erledigt, nicht wiederholt, nicht versendet', async () => {
+  it('409 bei „zugestellt“ nach der Annahme (im Tax-CMS schon abgeschlossen): erledigt, nicht wiederholt', async () => {
     const n = code();
     postausgang.nachrichten = [n];
+    await lauf();
+    await versende();
     postausgang.meldenFehler = new TcmsKonflikt({ status: 409, requestId: 'req-409z' });
 
-    expect(await lauf()).toMatchObject({ eingeplant: 1, gemeldet: 1, fehler: 0 });
+    expect(await lauf()).toMatchObject({ angenommen: 1, gemeldet: 1, fehler: 0 });
     expect((await zeile(n.id))?.gemeldetAm).toBeInstanceOf(Date);
-    // Der wartende Auftrag endet ohne Versand; Inhalt und Code sind entfernt.
-    const [auftrag] = await auftraege();
-    expect(auftrag).toMatchObject({
-      status: 'SKIPPED',
-      payload: {},
-      secretVarsEnc: null,
-      lastError: TCMS_NICHT_VERSENDET_VERWORFEN,
-    });
     expect(log.info).toHaveBeenCalledWith(
       expect.objectContaining({ meldung: 'ZUGESTELLT', fehler: 'TcmsKonflikt', status: 409 }),
       'tcms-nachrichten: Mitteilung im Tax-CMS bereits abgeschlossen',
     );
-    const sendTemplateMail = vi.fn();
-    await processMailOutbox(
-      {
-        db: prismaOwner,
-        runAtomic: (t, fn) => withWorkerTenantContext(t, fn),
-        sendTemplateMail,
-        notifyClientContacts: vi.fn(),
-        loadAttachment: vi.fn(),
-        notifyStaff: (tx, input) => notify(tx, input),
-        log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-      },
-      { tenantId, now: new Date() },
-    );
-    expect(sendTemplateMail).not.toHaveBeenCalled();
     // Weitere Läufe melden nichts erneut und planen nichts neu ein.
     postausgang.nachrichten = [];
     expect(await lauf()).toMatchObject({ eingeplant: 0, gemeldet: 0, fehler: 0 });
     expect(postausgang.melden).toHaveBeenCalledOnce();
-    expect(await auftraege()).toHaveLength(1);
+    expect(await auftraege()).toEqual([expect.objectContaining({ status: 'PROVIDER_ACCEPTED' })]);
     logOhneInhalt();
   });
 
-  it('409 bei „zugestellt“ lässt einen bereits laufenden oder angenommenen Versand unberührt', async () => {
+  it.each(['QUEUED', 'SENDING', 'RETRY_PENDING'] as const)(
+    'kk-tcms-s11: ein wartender Auftrag (%s) wird nie als zugestellt oder unzustellbar gemeldet',
+    async (status) => {
+      const n = code();
+      postausgang.nachrichten = [n];
+      await lauf();
+      const [auftrag] = await auftraege();
+      await prismaOwner.mailOutbox.update({
+        where: { id: auftrag!.id },
+        data: {
+          status,
+          // Zeitplan wie der Zustandsautomat: SENDING ohne nächsten Versuch.
+          nextAttemptAt: status === 'SENDING' ? null : new Date(Date.now() + 3_600_000),
+        },
+      });
+      expect(await lauf()).toMatchObject({ angenommen: 0, gescheitert: 0, gemeldet: 0 });
+      postausgang.nachrichten = [];
+      expect(await lauf()).toMatchObject({ angenommen: 0, gescheitert: 0, gemeldet: 0 });
+      expect(postausgang.melden).not.toHaveBeenCalled();
+      expect(postausgang.unzustellbar).not.toHaveBeenCalled();
+      expect(await zeile(n.id)).toMatchObject({ status: 'EINGEPLANT', abgeschlossenAm: null });
+    },
+  );
+
+  it.each([
+    ['FAILED', null, 'VERSAND_GESCHEITERT', 'SONSTIGES'],
+    ['NO_RECIPIENT', null, 'VERSAND_GESCHEITERT', 'SONSTIGES'],
+    ['PARTIAL_FAILURE', null, 'VERSAND_GESCHEITERT', 'SONSTIGES'],
+    ['UNKNOWN', null, 'VERSAND_UNKLAR', 'SONSTIGES'],
+    ['SKIPPED', TCMS_VERWORFEN_TEXTE.ABGELAUFEN, 'ABGELAUFEN', 'ABGELAUFEN'],
+    ['SKIPPED', TCMS_VERWORFEN_TEXTE.EMPFAENGER_INAKTIV, 'KONTAKT_INAKTIV', 'KEIN_PORTALZUGANG'],
+    [
+      'SKIPPED',
+      TCMS_VERWORFEN_TEXTE.EMPFAENGER_FREMD,
+      'KONTAKT_ANDERER_MANDANT',
+      'EMPFAENGER_UNGUELTIG',
+    ],
+    ['SKIPPED', TCMS_VERWORFEN_TEXTE.ADRESSE_GEAENDERT, 'VERSAND_VERWORFEN', 'SONSTIGES'],
+  ] as const)(
+    'kk-tcms-s11: Endstatus %s (%s) → gescheitert (%s), gemeldet als unzustellbar (%s)',
+    async (status, vermerk, grund, gemeldet) => {
+      const n = code();
+      postausgang.nachrichten = [n];
+      await lauf();
+      await auftragEndet(status, vermerk === null ? null : mailOutboxSkipVermerk(vermerk));
+
+      expect(await lauf()).toMatchObject({ gescheitert: 1, angenommen: 0, gemeldet: 1 });
+      expect(await zeile(n.id)).toMatchObject({ status: 'GESCHEITERT', grund });
+      expect(postausgang.unzustellbar).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ knd: 'SYSTEM' }),
+        n.id,
+        gemeldet,
+      );
+      expect(postausgang.melden).not.toHaveBeenCalled();
+      // Inhalt und Code bleiben entfernt (Endstatus, CHECK der Outbox).
+      expect(await auftraege()).toEqual([
+        expect.objectContaining({ status, payload: {}, secretVarsEnc: null }),
+      ]);
+      logOhneInhalt();
+    },
+  );
+
+  it('kk-tcms-s11: fehlt der Auftrag, ist die Mitteilung gescheitert (fail closed)', async () => {
     const n = code();
     postausgang.nachrichten = [n];
-    // Erster Lauf: Meldung scheitert vorübergehend; der Auftrag wird inzwischen versendet.
-    postausgang.meldenFehler = new TcmsNichtVerfuegbar('TRANSPORT');
     await lauf();
-    const [auftrag] = await auftraege();
+    await prismaOwner.mailOutbox.deleteMany({ where: { tenantId } });
+    expect(await lauf()).toMatchObject({ gescheitert: 1, gemeldet: 1 });
+    expect(await zeile(n.id)).toMatchObject({ status: 'GESCHEITERT', grund: 'AUFTRAG_FEHLT' });
+    expect(postausgang.unzustellbar).toHaveBeenCalledExactlyOnceWith(
+      expect.anything(),
+      n.id,
+      'SONSTIGES',
+    );
+  });
+
+  it('kk-tcms-s11: führt ohne erneuten Abruf nach (im Tax-CMS verworfen) und wiederholt eine gescheiterte Meldung mit demselben Grund', async () => {
+    const angenommen = code();
+    const gescheitert = anforderung();
+    postausgang.nachrichten = [angenommen, gescheitert];
+    expect(await lauf()).toMatchObject({ eingeplant: 2, gemeldet: 0 });
+    // Das Tax-CMS liefert beide nicht mehr aus (z. B. Code ersetzt); die Zeilen bleiben offen.
+    postausgang.nachrichten = [];
+    const [a, b] = await auftraege();
+    const zeileA = await zeile(angenommen.id);
+    const [annehmen, scheitern] = a!.resourceId === zeileA!.id ? [a!, b!] : [b!, a!];
     await prismaOwner.mailOutbox.update({
-      where: { id: auftrag!.id },
+      where: { id: annehmen.id },
       data: { status: 'PROVIDER_ACCEPTED', payload: {}, secretVarsEnc: null, nextAttemptAt: null },
     });
-    postausgang.meldenFehler = new TcmsKonflikt({ status: 409 });
-    expect(await lauf()).toMatchObject({ eingeplant: 0, gemeldet: 1, fehler: 0 });
-    expect(await auftraege()).toEqual([expect.objectContaining({ status: 'PROVIDER_ACCEPTED' })]);
+    await prismaOwner.mailOutbox.update({
+      where: { id: scheitern.id },
+      data: { status: 'FAILED', payload: {}, secretVarsEnc: null, nextAttemptAt: null },
+    });
+    postausgang.unzustellbarFehler = new TcmsNichtVerfuegbar('TRANSPORT');
+
+    expect(await lauf()).toMatchObject({
+      abgerufen: 0,
+      angenommen: 1,
+      gescheitert: 1,
+      gemeldet: 1,
+      fehler: 1,
+    });
+    expect(postausgang.melden).toHaveBeenCalledExactlyOnceWith(expect.anything(), angenommen.id);
+    expect((await zeile(gescheitert.id))?.gemeldetAm).toBeNull();
+
+    // Der nächste Lauf meldet nur noch, mit demselben Grund – ohne neuen Übergang.
+    postausgang.unzustellbarFehler = null;
+    expect(await lauf()).toMatchObject({ angenommen: 0, gescheitert: 0, gemeldet: 1, fehler: 0 });
+    expect(postausgang.unzustellbar.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+      [gescheitert.id, 'SONSTIGES'],
+      [gescheitert.id, 'SONSTIGES'],
+    ]);
+    expect(await zeile(gescheitert.id)).toMatchObject({
+      status: 'GESCHEITERT',
+      grund: 'VERSAND_GESCHEITERT',
+    });
+    expect((await zeile(gescheitert.id))?.gemeldetAm).toBeInstanceOf(Date);
+    expect(await lauf()).toMatchObject({ gemeldet: 0 });
+    logOhneInhalt();
   });
 
   it('meldet ein Ereignis nur der Kanzleiperson mit Zugriff (Nummer und Titel)', async () => {
     const zuBearbeiter = ereignis(bearbeiterId);
     postausgang.nachrichten = [zuBearbeiter];
-    expect(await lauf()).toMatchObject({ eingeplant: 1, gemeldet: 1 });
+    // Ein In-App-Hinweis ist mit der Einplanung zugestellt (ANGENOMMEN, kk-tcms-s11).
+    expect(await lauf()).toMatchObject({ eingeplant: 1, angenommen: 1, gemeldet: 1 });
+    expect(await zeile(zuBearbeiter.id)).toMatchObject({ status: 'ANGENOMMEN', grund: null });
+    expect(postausgang.melden).toHaveBeenCalledExactlyOnceWith(expect.anything(), zuBearbeiter.id);
     const [h] = await hinweise('TCMS_EREIGNIS_GEMELDET');
     expect(h).toMatchObject({
       staffId: bearbeiterId,
@@ -822,6 +961,8 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
     const targets: string[] = [];
     const bodies: string[] = [];
     const claims: Array<Record<string, unknown>> = [];
+    /** Wie der Dienst: gemeldete Mitteilungen liefert der Abruf nicht mehr. */
+    const gemeldet = new Set<string>();
     const server: Server = createServer((req, res) => {
       targets.push(`${req.method} ${req.url}`);
       const token = String(req.headers['x-tcms-akteur'] ?? '');
@@ -832,8 +973,10 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
         bodies.push(Buffer.concat(teile).toString('utf8'));
         res.setHeader('content-type', 'application/json');
         if (req.method === 'GET') {
-          res.end(JSON.stringify({ ok: true, daten: { nachrichten: [n, abgelaufen] } }));
+          const offen = [n, abgelaufen].filter((x) => !gemeldet.has(x.id));
+          res.end(JSON.stringify({ ok: true, daten: { nachrichten: offen } }));
         } else if (req.url?.endsWith('/unzustellbar')) {
+          gemeldet.add(abgelaufen.id);
           res.end(
             JSON.stringify({
               ok: true,
@@ -841,6 +984,7 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
             }),
           );
         } else {
+          gemeldet.add(n.id);
           res.end(JSON.stringify({ ok: true, daten: { nachrichtId: n.id, zugestellt: true } }));
         }
       });
@@ -860,18 +1004,22 @@ describeDb('TCMS Stufe 4: tcms-nachrichten-zustellen gegen PostgreSQL', () => {
       expect(await lauf(postausgangUeber(client))).toMatchObject({
         eingeplant: 1,
         unzustellbar: 1,
-        gemeldet: 2,
+        gemeldet: 1,
       });
+      // „zugestellt“ erst nach der Annahme durch den Mailserver (kk-tcms-s11).
+      await versende();
+      expect(await lauf(postausgangUeber(client))).toMatchObject({ angenommen: 1, gemeldet: 1 });
     } finally {
       server.closeAllConnections();
       await new Promise<void>((r) => server.close(() => r()));
     }
     expect(targets).toEqual([
       'GET /v1/nachrichten/offen?limit=50',
-      `POST /v1/nachrichten/${n.id}/zugestellt`,
       `POST /v1/nachrichten/${abgelaufen.id}/unzustellbar`,
+      'GET /v1/nachrichten/offen?limit=50',
+      `POST /v1/nachrichten/${n.id}/zugestellt`,
     ]);
-    expect(bodies.slice(1)).toEqual(['', JSON.stringify({ grund: 'ABGELAUFEN' })]);
+    expect([bodies[1], bodies[3]]).toEqual([JSON.stringify({ grund: 'ABGELAUFEN' }), '']);
     const akteur = await prismaOwner.tcmsSystemakteur.findUniqueOrThrow({ where: { tenantId } });
     for (const c of claims) {
       expect(c).toMatchObject({ knd: 'SYSTEM', tnt: tenantId, sub: akteur.akteurId });

@@ -75,6 +75,53 @@ function obsolete(reason: string): MailOutboxRelevance {
   return { wanted: false, reason };
 }
 
+/**
+ * Vermerk in `last_error` eines vor dem Versand verworfenen Auftrags (SKIPPED);
+ * der Worker setzt ihn beim Claim (apps/worker/src/jobs/mail-outbox.ts).
+ */
+export function mailOutboxSkipVermerk(reason: string): string {
+  return `${SKIP_PRAEFIX}${reason}`;
+}
+const SKIP_PRAEFIX = 'Nicht versendet: ';
+
+/**
+ * kk-tcms-s11 (MAIL-OUTBOX-001): feste Gründe, aus denen die
+ * Aktualitätsprüfung eine Mitteilung des Tax-CMS verwirft (SKIPPED), ohne
+ * personenbezogene Angaben. Der Zustell-Worker meldet dem Tax-CMS eine
+ * verworfene Mitteilung als unzustellbar und liest den Grund dafür aus dem
+ * Vermerk des Auftrags (`tcmsVerwerfGrund`); Prüfung und Abbildung nutzen
+ * deshalb dieselben Texte.
+ */
+export const TCMS_VERWORFEN_TEXTE = {
+  // Die beiden ersten gelten für jeden Anlass (checkMailOutboxRelevanceTx).
+  MANDANT_FEHLT: 'Der Mandant existiert nicht mehr.',
+  MANDANT_ANONYMISIERT: 'Der Mandant wurde anonymisiert.',
+  FREMDER_VORGANG: 'Der Auftrag gehört zu keiner Mitteilung des Tax-CMS.',
+  OHNE_ENDE: 'Die Mitteilung des Tax-CMS hat kein Gültigkeitsende.',
+  ABGELAUFEN: 'Die Mitteilung des Tax-CMS ist abgelaufen.',
+  EMPFAENGER_UNBESTIMMT: 'Der Empfänger der Mitteilung ist nicht bestimmt.',
+  EMPFAENGER_FREMD: 'Der Empfänger gehört nicht (mehr) zu diesem Mandanten.',
+  EMPFAENGER_INAKTIV: 'Der Empfänger ist nicht mehr aktiv.',
+  ADRESSE_UNBESTAETIGT: 'Die Adresse des Empfängers ist nicht bestätigt.',
+  MANDAT_INAKTIV: 'Das Mandat ist nicht mehr aktiv.',
+  ADRESSE_GEAENDERT: 'Die E-Mail-Adresse des Empfängers hat sich geändert.',
+} as const;
+export type TcmsVerwerfGrund = keyof typeof TCMS_VERWORFEN_TEXTE;
+
+/**
+ * Grund eines verworfenen Auftrags zu einer Mitteilung des Tax-CMS aus seinem
+ * Vermerk; `null`, wenn der Vermerk keiner der festen Gründe ist (etwa ein
+ * anderer Verwerfer).
+ */
+export function tcmsVerwerfGrund(lastError: string | null): TcmsVerwerfGrund | null {
+  if (!lastError?.startsWith(SKIP_PRAEFIX)) return null;
+  const text = lastError.slice(SKIP_PRAEFIX.length);
+  for (const [grund, vermerk] of Object.entries(TCMS_VERWORFEN_TEXTE)) {
+    if (vermerk === text) return grund as TcmsVerwerfGrund;
+  }
+  return null;
+}
+
 function scope(ref: ResourceRef) {
   return { id: ref.id, tenantId: ref.tenantId, clientId: ref.clientId };
 }
@@ -325,13 +372,12 @@ function payloadTo(payload: unknown): string | null {
  */
 const tcmsMitteilungAktuell: Check = async (db, ref, now, announced, payload) => {
   const bis = typeof announced?.['bis'] === 'string' ? Date.parse(announced['bis']) : NaN;
-  if (!Number.isFinite(bis))
-    return obsolete('Die Mitteilung des Tax-CMS hat kein Gültigkeitsende.');
-  if (now.getTime() >= bis) return obsolete('Die Mitteilung des Tax-CMS ist abgelaufen.');
+  if (!Number.isFinite(bis)) return obsolete(TCMS_VERWORFEN_TEXTE.OHNE_ENDE);
+  if (now.getTime() >= bis) return obsolete(TCMS_VERWORFEN_TEXTE.ABGELAUFEN);
   const kontaktId = announced?.['kontaktId'];
   const to = payloadTo(payload);
   if (typeof kontaktId !== 'string' || !UUID.test(kontaktId) || !to) {
-    return obsolete('Der Empfänger der Mitteilung ist nicht bestimmt.');
+    return obsolete(TCMS_VERWORFEN_TEXTE.EMPFAENGER_UNBESTIMMT);
   }
   const kontakt = await db.clientContact.findFirst({
     where: { id: kontaktId, tenantId: ref.tenantId, clientId: ref.clientId },
@@ -342,14 +388,14 @@ const tcmsMitteilungAktuell: Check = async (db, ref, now, announced, payload) =>
       client: { select: { allowActive: true, mandateEndedAt: true } },
     },
   });
-  if (!kontakt) return obsolete('Der Empfänger gehört nicht (mehr) zu diesem Mandanten.');
-  if (!kontakt.active) return obsolete('Der Empfänger ist nicht mehr aktiv.');
-  if (!kontakt.lastLoginAt) return obsolete('Die Adresse des Empfängers ist nicht bestätigt.');
+  if (!kontakt) return obsolete(TCMS_VERWORFEN_TEXTE.EMPFAENGER_FREMD);
+  if (!kontakt.active) return obsolete(TCMS_VERWORFEN_TEXTE.EMPFAENGER_INAKTIV);
+  if (!kontakt.lastLoginAt) return obsolete(TCMS_VERWORFEN_TEXTE.ADRESSE_UNBESTAETIGT);
   if (!kontakt.client.allowActive || kontakt.client.mandateEndedAt) {
-    return obsolete('Das Mandat ist nicht mehr aktiv.');
+    return obsolete(TCMS_VERWORFEN_TEXTE.MANDAT_INAKTIV);
   }
   if (kontakt.email.trim().toLowerCase() !== to.trim().toLowerCase()) {
-    return obsolete('Die E-Mail-Adresse des Empfängers hat sich geändert.');
+    return obsolete(TCMS_VERWORFEN_TEXTE.ADRESSE_GEAENDERT);
   }
   return WANTED;
 };
@@ -411,15 +457,13 @@ export async function checkMailOutboxRelevanceTx(
     where: { id: row.clientId, tenantId: row.tenantId },
     select: { anonymizedAt: true },
   });
-  if (!client) return obsolete('Der Mandant existiert nicht mehr.');
-  if (client.anonymizedAt) return obsolete('Der Mandant wurde anonymisiert.');
+  if (!client) return obsolete(TCMS_VERWORFEN_TEXTE.MANDANT_FEHLT);
+  if (client.anonymizedAt) return obsolete(TCMS_VERWORFEN_TEXTE.MANDANT_ANONYMISIERT);
   if (!isKnownPurpose(row.purpose)) return WANTED;
   const entry = CHECKS[row.purpose];
   if (entry.resourceType !== row.resourceType) {
     // TCMS-Mitteilungen fail-closed: nie ohne ihre Zustellzeile.
-    return istTcmsMailAnlass(row.purpose)
-      ? obsolete('Der Auftrag gehört zu keiner Mitteilung des Tax-CMS.')
-      : WANTED;
+    return istTcmsMailAnlass(row.purpose) ? obsolete(TCMS_VERWORFEN_TEXTE.FREMDER_VORGANG) : WANTED;
   }
   return entry.check(
     db,
