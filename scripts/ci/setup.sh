@@ -28,6 +28,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
+# Signaturschluessel von apt.postgresql.org (Hauptschluessel ACCC4CF8).
+PGDG_KEY_FINGERPRINT=B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8
+
 log() { printf '[ci-setup] %s\n' "$*"; }
 die() {
   printf 'FEHLER: %s\n' "$*" >&2
@@ -66,25 +69,33 @@ phase_pg_client() {
     log "PostgreSQL-Client vorhanden: $(psql --version)"
     return
   fi
-  local sudo=""
+  local sudo="" apt="$ROOT/scripts/ci/apt.sh" schluessel haupt
   if command -v sudo >/dev/null 2>&1; then sudo=sudo; fi
-  $sudo apt-get update
+  # Nur Ubuntu-Archiv und PGDG, update mit Wiederholung (scripts/ci/apt.sh).
+  bash "$apt" update
   if [ -z "${PG_CLIENT_MAJOR:-}" ]; then
-    $sudo apt-get install -y postgresql-client
+    bash "$apt" install -y postgresql-client
   else
     # pg_dump bricht hart ab, wenn der Server neuer ist als der Client
     # ("aborting because of server version mismatch"); die Distro-Pakete sind
     # aelter als der PostgreSQL-18-Service. Daher der Client aus dem PGDG-Repo.
-    $sudo apt-get install -y curl ca-certificates
-    $sudo install -d /usr/share/postgresql-common/pgdg
-    $sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
-      https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    # Dessen Schluessel gilt erst, wenn der Hauptschluessel den gepinnten
+    # Fingerabdruck hat (wie im TCMS-CI).
+    bash "$apt" install -y curl ca-certificates gnupg
+    schluessel="$(mktemp)"
+    curl -fsSL -o "$schluessel" https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    haupt="$(gpg --show-keys --with-colons "$schluessel" |
+      awk -F: '$1 == "pub" { p = 1; next } p && $1 == "fpr" { print $10; p = 0 }')"
+    [ "$haupt" = "$PGDG_KEY_FINGERPRINT" ] ||
+      die "PGDG-Schluessel hat einen unerwarteten Fingerabdruck: ${haupt:-keiner}"
+    $sudo install -D -m 0644 "$schluessel" /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+    rm -f -- "$schluessel"
     # shellcheck disable=SC1091
     . /etc/os-release
     echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" |
       $sudo tee /etc/apt/sources.list.d/pgdg.list
-    $sudo apt-get update
-    $sudo apt-get install -y "postgresql-client-$PG_CLIENT_MAJOR"
+    bash "$apt" update
+    bash "$apt" install -y "postgresql-client-$PG_CLIENT_MAJOR"
   fi
   pg_client_ready || die 'PostgreSQL-Client ist nach der Installation unvollstaendig.'
   log "PostgreSQL-Client: $(psql --version)"

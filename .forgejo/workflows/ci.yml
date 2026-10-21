@@ -151,10 +151,8 @@ jobs:
       - name: shellcheck
         run: |
           if ! command -v shellcheck >/dev/null 2>&1; then
-            SUDO=""
-            if command -v sudo >/dev/null 2>&1; then SUDO=sudo; fi
-            $SUDO apt-get update
-            $SUDO apt-get install -y --no-install-recommends shellcheck
+            bash scripts/ci/apt.sh update
+            bash scripts/ci/apt.sh install -y --no-install-recommends shellcheck
           fi
           shellcheck --version
           shellcheck taxtronik scripts/*.sh scripts/ops/*.sh infra/scripts/*.sh
@@ -164,10 +162,8 @@ jobs:
       - name: ssh-keygen installieren
         run: |
           if ! command -v ssh-keygen >/dev/null 2>&1; then
-            SUDO=""
-            if command -v sudo >/dev/null 2>&1; then SUDO=sudo; fi
-            $SUDO apt-get update
-            $SUDO apt-get install -y --no-install-recommends openssh-client
+            bash scripts/ci/apt.sh update
+            bash scripts/ci/apt.sh install -y --no-install-recommends openssh-client
           fi
           ssh-keygen -V 2>/dev/null || command -v ssh-keygen
 
@@ -1202,10 +1198,8 @@ jobs:
       - name: Java + unzip + curl installieren
         run: |
           if ! command -v java >/dev/null 2>&1 || ! command -v unzip >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
-            SUDO=""
-            if command -v sudo >/dev/null 2>&1; then SUDO=sudo; fi
-            $SUDO apt-get update
-            $SUDO apt-get install -y default-jre-headless unzip curl ca-certificates
+            bash scripts/ci/apt.sh update
+            bash scripts/ci/apt.sh install -y default-jre-headless unzip curl ca-certificates
           fi
           java -version
 
