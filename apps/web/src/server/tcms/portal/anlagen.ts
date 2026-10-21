@@ -32,6 +32,9 @@ import 'server-only';
 //     werden in derselben Commit-Transaktion gebunden
 //     (`meldungsAnlageVerknuepfenTx`, Bezug „Ereignis“); die Ereignis-ID folgt
 //     nach Annahme der Meldung (server/tcms/portal/meldung.ts).
+//   - Nach dem Commit dasselbe n8n-Ereignis wie jeder Portal-Upload
+//     (`document.uploaded`, Quelle `tcms-nachweis` bzw. `tcms-meldung`, ohne
+//     Dateiname und Angaben des Tax-CMS; server/tcms/hochgeladen.ts).
 // =============================================================================
 
 import { createHash } from 'node:crypto';
@@ -60,6 +63,7 @@ import {
   nachweisVerknuepfenTx,
 } from '@/server/tcms/durchfuehrung/verweis';
 import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
+import { tcmsDokumentHochgeladen, type TcmsUploadQuelle } from '@/server/tcms/hochgeladen';
 import type { NachweisVerknuepft } from '@/server/tcms/durchfuehrung/nachweis-aktion';
 
 export { PORTAL_MAX_ANLAGE_BYTES, PORTAL_MAX_ANLAGEN };
@@ -215,7 +219,7 @@ export function portalAnlageAblegen(
   datei: File,
   schluessel: string | null = null,
 ): Promise<MeldungsAnlageAbgelegt> {
-  return ablegen(g, datei, async (tx, verweis) => ({
+  return ablegen(g, datei, 'tcms-meldung', async (tx, verweis) => ({
     verweis,
     verknuepfungId: await meldungsAnlageVerknuepfenTx(
       tx,
@@ -239,7 +243,7 @@ export function portalNachweisAblegen(
   datei: File,
   durchfuehrungId: string,
 ): Promise<NachweisVerknuepft> {
-  return ablegen(g, datei, (tx, verweis) =>
+  return ablegen(g, datei, 'tcms-nachweis', (tx, verweis) =>
     nachweisVerknuepfenTx(
       tx,
       { tenantId: g.tenantId, mandantId: g.clientId, kontaktId: g.contactId },
@@ -252,11 +256,13 @@ export function portalNachweisAblegen(
 async function ablegen<T>(
   g: PortalAblageKontext,
   datei: File,
+  quelle: TcmsUploadQuelle,
   imCommit: (tx: TxClient, verweis: TcmsAnlageVerweis) => Promise<T>,
 ): Promise<T> {
   pruefePortalDatei(datei);
   const dateiname = portalDateiname(datei.name);
   const gemeldet = datei.type;
+  let abgelegt: { wert: T; dokumentId: string };
   try {
     const { result } = await runJournaledUpload({
       context: g.ctx,
@@ -307,18 +313,28 @@ async function ablegen<T>(
             source: 'portal.tcms',
           },
         });
-        return imCommit(tx, {
+        const wert = await imCommit(tx, {
           dokumentId: document.id,
           dateiname,
           mime,
           groesse: Number(commit.sizeBytes),
           sha256,
         });
+        return { wert, dokumentId: document.id };
       },
     });
-    return result;
+    abgelegt = result;
   } catch (fehler) {
     // Ursache statt Phasen-Hülle: ActionError mit Text, Virenscan/Größe über toActionError.
     throw uploadFailureCause(fehler);
   }
+  // kk-tcms-s11: dasselbe n8n-Ereignis wie jeder Portal-Upload, nach dem Commit.
+  await tcmsDokumentHochgeladen({
+    tenantId: g.tenantId,
+    mandantId: g.clientId,
+    dokumentId: abgelegt.dokumentId,
+    classification: 'GENERAL',
+    quelle,
+  });
+  return abgelegt.wert;
 }

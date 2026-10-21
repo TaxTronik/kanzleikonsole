@@ -2,7 +2,9 @@
 // Nachweisen (server/tcms/durchfuehrung/nachweis-aktion.ts). Die
 // Verknüpfungstabelle selbst prüft nachweis-verweis-db.test.ts gegen
 // PostgreSQL; hier: Ausgang des Dienstaufrufs → Verknüpfung, Ablage über die
-// Dokumentenpipeline, Verweis nur aus der gespeicherten Version.
+// Dokumentenpipeline, Verweis nur aus der gespeicherten Version; nach dem
+// Commit das n8n-Ereignis `document.uploaded` mit Quelle `tcms-nachweis`, ohne
+// Titel und ohne Daten des Tax-CMS (kk-tcms-s11 Punkt 5).
 // Fachkatalog: TCMS-NACHWEIS-001
 import {
   TcmsKonflikt,
@@ -24,6 +26,7 @@ const h = vi.hoisted(() => ({
   zugriff: vi.fn(),
   audit: vi.fn(),
   dokumentAnlegen: vi.fn(),
+  emit: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
@@ -36,6 +39,7 @@ vi.mock('@/server/actions/audit', () => ({ audit: h.audit }));
 vi.mock('@/server/documents/upload-helpers', () => ({
   createDocumentWithVersion: h.dokumentAnlegen,
 }));
+vi.mock('@/server/n8n/emit', () => ({ emitN8nEvent: h.emit }));
 vi.mock('@/server/documents/journaled-upload', async () => {
   class JournaledUploadError extends Error {
     constructor(
@@ -314,6 +318,40 @@ describe('nachweisDateiAblegen', () => {
       'd0000000-0000-4000-8000-000000000001',
       DID,
     );
+  });
+
+  it('kk-tcms-s11: nach dem Commit `document.uploaded` mit Quelle tcms-nachweis, ohne Titel und Tax-CMS-Daten', async () => {
+    h.upload.mockResolvedValue({ result: { verknuepfungId: 'v', dokumentId: 'neu' } });
+    await expect(nachweisDateiAblegen(G as never, BEZUG, DID, DATEI)).resolves.toEqual({
+      verknuepfungId: 'v',
+      dokumentId: 'neu',
+    });
+    expect(h.emit).toHaveBeenCalledOnce();
+    expect(h.emit).toHaveBeenCalledWith(
+      'document.uploaded',
+      {
+        tenantId: TENANT,
+        documentId: 'neu',
+        classification: 'GENERAL',
+        clientId: MANDANT,
+        isGobd: false,
+        source: 'tcms-nachweis',
+      },
+      { tenantId: TENANT, dedupeKey: 'document.uploaded:neu' },
+    );
+    const nutzlast = JSON.stringify(h.emit.mock.calls[0]);
+    expect(nutzlast).not.toContain('Liste');
+    expect(nutzlast).not.toContain(DID);
+    // Erst nach dem Commit: Die Pipeline ist vollständig durchlaufen.
+    expect(h.upload.mock.invocationCallOrder[0]).toBeLessThan(h.emit.mock.invocationCallOrder[0]!);
+  });
+
+  it('kk-tcms-s11: gescheiterter Upload löst kein Ereignis aus', async () => {
+    h.upload.mockRejectedValue(new ActionError('Die Datei wurde vom Virenscanner abgewiesen.'));
+    await expect(nachweisDateiAblegen(G as never, BEZUG, DID, DATEI)).rejects.toThrow(
+      /Virenscanner/,
+    );
+    expect(h.emit).not.toHaveBeenCalled();
   });
 
   it('Vorprüfung: Mandant nur mit Zugriff der kanzleikonsole; Typänderung zwischen Vor- und Nachprüfung', async () => {

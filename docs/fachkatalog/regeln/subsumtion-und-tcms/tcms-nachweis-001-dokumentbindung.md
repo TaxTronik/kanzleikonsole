@@ -79,6 +79,7 @@ code_refs:
   - apps/web/src/app/portal/(protected)/tcms/ereignis/page.tsx
   - apps/web/src/components/tcms/ereignisse/ungeklaerte-anlagen.tsx
   - apps/web/src/components/tcms/ereignisse/anlage-texte.ts
+  - apps/web/src/server/tcms/hochgeladen.ts
   - apps/web/src/app/staff/(protected)/tcms/arbeitskorb/ansicht.tsx
   - apps/web/src/server/audit/labels.ts
   - apps/web/src/server/audit/query.ts
@@ -143,6 +144,7 @@ test_refs:
   - apps/web/src/app/portal/(protected)/tcms/__tests__/portal-seiten.test.tsx
   - apps/web/src/server/tcms/__tests__/redteam-boeser-dienst-db.test.tsx
   - apps/web/src/server/tcms/__tests__/redteam-anlage-freigeben-db.test.ts
+  - apps/web/src/server/tcms/__tests__/hochgeladen-db.test.ts
 feature_refs:
   - FEATURES.md
   - docs/anwenderdoku/tax-cms.md
@@ -320,6 +322,11 @@ Abweichung.
 
 ## Umsetzung in TaxTronik
 
+Neu abgelegte Nachweise (Kanzlei und Kontrollaufgabe im Portal) und Anlagen
+einer Ereignismeldung lösen nach dem Commit dasselbe n8n-Ereignis aus wie jeder
+andere Upload (`document.uploaded`, `server/tcms/hochgeladen.ts`, Quelle
+`tcms-nachweis` bzw. `tcms-meldung`, ein Ereignis je Dokument), ohne Titel,
+Inhalt oder Angaben des Tax-CMS (Produktentscheidung Rey Koxha, 21.10.2026).
 `server/tcms/durchfuehrung/verweis.ts` bildet Verweise aus der Datenbank,
 legt die Verknüpfung unter geteilter Zeilensperre des Dokuments in einer
 Tenant-Transaktion vor dem Dienstaufruf an (beim Hochladen in der

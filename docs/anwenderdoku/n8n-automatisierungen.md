@@ -242,7 +242,13 @@ sind in Schema-Version 1 insbesondere diese `payload`-Schlüssel vorgesehen:
 
 - `client.created`: `tenantId`, `clientId`
 - `client.handover.ready`: `tenantId`, `clientId`, `handoverId`, `label`
-- `document.uploaded`: `tenantId`, `documentId`, `clientId`, `classification`, `isGobd`
+- `document.uploaded`: `tenantId`, `documentId`, `clientId`, `classification`, `isGobd`;
+  bei Uploads außerhalb der Dokumentablage zusätzlich `source`: `portal`
+  (Dokumente im Mandantenportal), `tcms-nachweis` (Nachweis einer
+  Tax-CMS-Durchführung, Kanzlei oder Kontrollaufgabe im Portal) bzw.
+  `tcms-meldung` (Anlage einer Ereignismeldung im Portal). Dateiname, Inhalt
+  und Angaben des Tax-CMS (Durchführung, Ereignis, Texte) sind nicht
+  enthalten; je Dokument entsteht höchstens ein Ereignis
 - `request.opened`: `tenantId`, `requestId`, `clientId`, `priority` —
   wird auch bei automatisch erzeugten Anforderungen aus Steuerterminen
   emittiert (täglicher `tax-deadline-materialize`-Lauf), nicht nur beim

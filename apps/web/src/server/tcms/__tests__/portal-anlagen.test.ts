@@ -11,6 +11,9 @@
 //     der Verweis kommt dann aus der Verknüpfung (gespeicherte Version).
 //   - Anlagen einer Ereignismeldung (TCMS s7) werden ebenso in DERSELBEN
 //     Commit-Transaktion gebunden (Bezug „Ereignis“, Kontakt als Urheber).
+//   - kk-tcms-s11 Punkt 5: nach dem Commit das n8n-Ereignis `document.uploaded`
+//     wie jeder Portal-Upload, Quelle `tcms-nachweis` bzw. `tcms-meldung`, ohne
+//     Dateiname und ohne Daten des Tax-CMS; ohne Ablage kein Ereignis.
 // Fachkatalog: TCMS-DIENST-001, TCMS-NACHWEIS-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -23,6 +26,7 @@ const h = vi.hoisted(() => ({
   limit: vi.fn(),
   verknuepfen: vi.fn(),
   meldungsAnlage: vi.fn(),
+  emit: vi.fn(),
   schritte: [] as string[],
 }));
 
@@ -34,6 +38,12 @@ vi.mock('@/server/settings/portal-features', () => ({
   PortalFeatureDisabledError: class extends Error {},
 }));
 vi.mock('@/server/documents/upload-helpers', () => ({ createDocumentWithVersion: h.anlegen }));
+vi.mock('@/server/n8n/emit', () => ({
+  emitN8nEvent: vi.fn(async (...a: unknown[]) => {
+    h.schritte.push('ereignis');
+    return h.emit(...a);
+  }),
+}));
 vi.mock('@/server/tcms/durchfuehrung/verweis', () => ({
   nachweisVerknuepfenTx: h.verknuepfen,
   meldungsAnlageVerknuepfenTx: h.meldungsAnlage,
@@ -177,6 +187,50 @@ describe('portalAblageKontext', () => {
 
 const SCHLUESSEL = '3f2b8c1d-6e4a-4b7f-9a0c-1d2e3f4a5b6c';
 
+describe('n8n-Ereignis nach der Ablage (kk-tcms-s11)', () => {
+  const DOK = 'd0c00000-0000-4000-8000-0000000000a1';
+  const erwartet = (quelle: string) => [
+    'document.uploaded',
+    {
+      tenantId: G.tenantId,
+      documentId: DOK,
+      classification: 'GENERAL',
+      clientId: G.clientId,
+      isGobd: false,
+      source: quelle,
+    },
+    { tenantId: G.tenantId, dedupeKey: `document.uploaded:${DOK}` },
+  ];
+
+  it('Anlage einer Ereignismeldung: Quelle tcms-meldung, nach dem Commit, ohne Dateiname', async () => {
+    h.erkannt = 'application/pdf';
+    await portalAnlageAblegen(G, datei('Kasse Oktober.pdf', 'application/pdf'), 'k');
+    expect(h.emit.mock.calls).toEqual([erwartet('tcms-meldung')]);
+    expect(h.schritte.slice(-2)).toEqual(['commit', 'ereignis']);
+    expect(JSON.stringify(h.emit.mock.calls)).not.toContain('Kasse');
+  });
+
+  it('Anlage einer Kontrollaufgabe: Quelle tcms-nachweis, ohne Durchführungs-ID', async () => {
+    h.erkannt = 'application/pdf';
+    h.verknuepfen.mockResolvedValue({ verknuepfungId: 'v', verweis: { dokumentId: DOK } });
+    const did = 'cmvf9ne7i007kdy7d467junj7';
+    await portalNachweisAblegen(G, datei('Beleg.pdf', 'application/pdf'), did);
+    expect(h.emit.mock.calls).toEqual([erwartet('tcms-nachweis')]);
+    expect(JSON.stringify(h.emit.mock.calls)).not.toContain(did);
+  });
+
+  it('ohne Ablage (Typ abgewiesen, Bindung gescheitert) kein Ereignis', async () => {
+    h.erkannt = 'application/x-msdownload';
+    await expect(portalAnlageAblegen(G, datei('x.pdf', 'application/pdf'))).rejects.toThrow();
+    h.erkannt = 'application/pdf';
+    h.meldungsAnlage.mockRejectedValueOnce(new Error('Bindung'));
+    await expect(portalAnlageAblegen(G, datei('x.pdf', 'application/pdf'))).rejects.toThrow(
+      'Bindung',
+    );
+    expect(h.emit).not.toHaveBeenCalled();
+  });
+});
+
 describe('portalAnlageAblegen', () => {
   it('Verweis aus der gespeicherten Fassung; Dokument am Sitzungsmandanten, geteilt, auditiert', async () => {
     h.erkannt = 'application/pdf';
@@ -222,7 +276,7 @@ describe('portalAnlageAblegen', () => {
       // Idempotenzschlüssel des Meldevorgangs an der Anlage (kk-tcms-s10nach).
       SCHLUESSEL,
     );
-    expect(h.schritte).toEqual(['check', 'prepare', 'binden', 'commit']);
+    expect(h.schritte).toEqual(['check', 'prepare', 'binden', 'commit', 'ereignis']);
     expect(h.audit.mock.invocationCallOrder[0]!).toBeLessThan(
       h.meldungsAnlage.mock.invocationCallOrder[0]!,
     );
@@ -265,7 +319,7 @@ describe('portalAnlageAblegen', () => {
       'cmvf9ne7i007kdy7d467junj7',
     );
     // Verknüpft wird innerhalb des Commits (vor dessen Abschluss), nach dem Audit.
-    expect(h.schritte).toEqual(['check', 'prepare', 'verknuepfen', 'commit']);
+    expect(h.schritte).toEqual(['check', 'prepare', 'verknuepfen', 'commit', 'ereignis']);
     expect(h.audit.mock.invocationCallOrder[0]!).toBeLessThan(
       h.verknuepfen.mock.invocationCallOrder[0]!,
     );

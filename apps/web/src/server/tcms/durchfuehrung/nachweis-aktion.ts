@@ -47,6 +47,7 @@ import { log } from '@/server/logger';
 import { tcmsTextBereinigen } from '@/server/tcms/zeichen';
 import type { TcmsDienst } from '@/server/tcms/aktion';
 import { TcmsInaktivError } from '@/server/tcms/dienst';
+import { tcmsDokumentHochgeladen } from '@/server/tcms/hochgeladen';
 import {
   aktionsFehlerAus,
   keinRechtText,
@@ -328,6 +329,7 @@ export async function nachweisDateiAblegen(
   const titel = titelAus(datei.fileName);
   const gemeldet = datei.mimeType.trim().toLowerCase();
   const rueckfallMime = gemeldet.length <= 255 && MIME.test(gemeldet) ? gemeldet : null;
+  let ablage: NachweisVerknuepft & { dokumentId: string };
   try {
     const { result } = await runJournaledUpload<
       UploadPruefung,
@@ -378,10 +380,19 @@ export async function nachweisDateiAblegen(
         return { ...verknuepft, dokumentId: document.id };
       },
     });
-    return result;
+    ablage = result;
   } catch (fehler) {
     throw uploadFailureCause(fehler);
   }
+  // kk-tcms-s11: dasselbe n8n-Ereignis wie jeder Upload, nach dem Commit.
+  await tcmsDokumentHochgeladen({
+    tenantId: bezug.tenantId,
+    mandantId: bezug.mandantId,
+    dokumentId: ablage.dokumentId,
+    classification: NACHWEIS_KLASSIFIKATION,
+    quelle: 'tcms-nachweis',
+  });
+  return ablage;
 }
 
 /** Verknüpfung eines vorhandenen Dokuments in eigener Transaktion (vor dem Dienstaufruf). */
