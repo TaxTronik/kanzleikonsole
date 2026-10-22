@@ -97,12 +97,74 @@ export function cropIdentityImage(
   return canvas;
 }
 
+/**
+ * Vergrößerungsfaktor für die OCR: kleine Aufnahmen (z. B. ~1000 px breit) auf
+ * etwa 2000 px, höchstens doppelt; große Aufnahmen bleiben, MAX_PIXELS gilt.
+ */
+export function ocrScale(width: number, height: number): number {
+  const target = Math.min(2, Math.max(1, 2000 / Math.max(width, height, 1)));
+  return Math.min(target, Math.sqrt(MAX_PIXELS / Math.max(1, width * height)));
+}
+
+/** Luminanz nach ITU-R BT.601; Farbhintergründe (Guillochen) stören die OCR weniger. */
+export function grayscaleInPlace(data: Uint8ClampedArray): void {
+  for (let index = 0; index < data.length; index += 4) {
+    const luma = Math.round(
+      0.299 * data[index]! + 0.587 * data[index + 1]! + 0.114 * data[index + 2]!,
+    );
+    data[index] = luma;
+    data[index + 1] = luma;
+    data[index + 2] = luma;
+  }
+}
+
+/**
+ * Kontrast auf das 1.–99. Perzentil der Graustufen strecken (nach
+ * grayscaleInPlace). Mit dem Muster des Bundes las Tesseract danach die
+ * Namenszeile der maschinenlesbaren Zone sauber.
+ */
+export function stretchContrastInPlace(data: Uint8ClampedArray): void {
+  const histogram = new Array<number>(256).fill(0);
+  for (let index = 0; index < data.length; index += 4) histogram[data[index]!]!++;
+  const clip = (data.length / 4) * 0.01;
+  let low = 0;
+  for (let sum = 0; low < 255 && (sum += histogram[low]!) < clip; ) low++;
+  let high = 255;
+  for (let sum = 0; high > 0 && (sum += histogram[high]!) < clip; ) high--;
+  if (high <= low) return;
+  const factor = 255 / (high - low);
+  for (let index = 0; index < data.length; index += 4) {
+    const value = Math.max(0, Math.min(255, Math.round((data[index]! - low) * factor)));
+    data[index] = value;
+    data[index + 1] = value;
+    data[index + 2] = value;
+  }
+}
+
+/** Nur für die Erkennung: das Original und der gespeicherte Ausschnitt bleiben unverändert. */
+function prepareForOcr(source: HTMLCanvasElement): HTMLCanvasElement {
+  const scale = ocrScale(source.width, source.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(source.width * scale));
+  canvas.height = Math.max(1, Math.round(source.height * scale));
+  const context = canvas.getContext('2d', { willReadFrequently: true })!;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  grayscaleInPlace(pixels.data);
+  stretchContrastInPlace(pixels.data);
+  context.putImageData(pixels, 0, 0);
+  return canvas;
+}
+
 export async function recognizeIdentityImage(
-  canvas: HTMLCanvasElement,
+  source: HTMLCanvasElement,
   signal: AbortSignal,
   onProgress: (progress: number) => void,
 ): Promise<IdentityOcrResult> {
   signal.throwIfAborted();
+  const canvas = prepareForOcr(source);
   const blob = await new Promise<Blob>((resolve, reject) =>
     canvas.toBlob(
       (value) => (value ? resolve(value) : reject(new Error('Bild nicht lesbar.'))),

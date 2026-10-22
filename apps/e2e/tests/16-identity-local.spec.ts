@@ -35,6 +35,28 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
     });
   }
 
+  test('Rückseite: maschinenlesbare Zone mit Prüfziffern, ohne geratenes Jahrhundert', async ({
+    page,
+  }) => {
+    await page.goto(fixture);
+    await page.getByRole('combobox', { name: 'Testformat' }).selectOption('mrz');
+    await page.getByRole('button', { name: 'Ausweis zuschneiden und Daten erkennen' }).click();
+    await page.getByRole('button', { name: 'Daten erkennen', exact: true }).click();
+    await expect(page.getByRole('checkbox', { name: 'Ausweisnummer: L01X00T47' })).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(
+      page.getByRole('checkbox', { name: 'Staatsangehörigkeit: DEUTSCH' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('checkbox', { name: 'Ausstellende Behörde: STADT KÖLN' }),
+    ).toBeVisible();
+    // Daten der MRZ nur als Hinweis: zweistellige Jahreszahl, kein Vorschlag.
+    await expect(page.getByText(/Geburtsdatum bitte von der ausgeschriebenen/)).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: /^Geburtsdatum:/ })).toHaveCount(0);
+    await expect(page.locator('output')).toHaveText('{"fullName":"Vorhandener Name"}');
+  });
+
   test('zwei PDF-Seiten binden dieselbe Quelle mit eigener Drehung und Ausschnitt', async ({
     page,
   }) => {

@@ -29,14 +29,30 @@ await writeFile(
 import React, { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IdentityCapture } from '@/components/gwg/identity-capture';
+import { mrzCheckDigit } from '@/lib/gwg/identity-mrz';
+// Synthetische TD1-Zone (keine reale Person): Nummer, Daten und Gesamtprüfziffer nach ICAO 9303.
+const mrz1 = ('IDD<<L01X00T47' + mrzCheckDigit('L01X00T47')).padEnd(30, '<');
+const mrz2Body = ('640812' + mrzCheckDigit('640812') + '<301231' + mrzCheckDigit('301231') + 'D<<').padEnd(29, '<');
+const mrz2 = mrz2Body + mrzCheckDigit(mrz1.slice(5) + mrz2Body.slice(0, 7) + mrz2Body.slice(8, 15) + mrz2Body.slice(18, 29));
+const mrz3 = 'MUSTERMANN<<ERIKA'.padEnd(30, '<');
 function Fixture() {
  const [values, setValues] = useState({fullName:'Vorhandener Name'});
  const [views, setViews] = useState([]);
  const [kind,setKind] = useState('pdf');
+ const [file,setFile] = useState(null);
  const versionId = '00000000-0000-4000-8000-000000000010';
  async function load() {
    if(kind === 'broken') return {blob:new Blob(['synthetic-invalid-pdf'],{type:'application/pdf'}),versionId};
    if(kind === 'pdf') return {blob:await (await fetch('/synthetic.pdf')).blob(),versionId};
+   // Nur lokal: eigene Testdatei (z. B. veröffentlichtes Muster), bleibt im Browser.
+   if(kind === 'file') { if(!file) throw new Error('Bitte zuerst eine Testdatei wählen.'); return {blob:file,versionId}; }
+   if(kind === 'mrz') {
+     const c=document.createElement('canvas'); c.width=1300;c.height=520;
+     const x=c.getContext('2d');x.fillStyle='white';x.fillRect(0,0,c.width,c.height);x.fillStyle='black';
+     x.font='34px Arial';x.fillText('Behörde/Authority/Autorité',50,70);x.font='40px Arial';x.fillText('STADT KÖLN',50,125);
+     x.font='44px monospace';[mrz1,mrz2,mrz3].forEach((line,i)=>x.fillText(line,50,300+i*70));
+     return {blob:await new Promise(resolve=>c.toBlob(resolve,'image/png')),versionId};
+   }
    const c=document.createElement('canvas'); c.width=1200;c.height=600;
    const x=c.getContext('2d');x.fillStyle='white';x.fillRect(0,0,c.width,c.height);x.fillStyle='black';x.font='40px Arial';
    ['Name: MUSTERMANN','Vornamen: ERIKA','Geburtsdatum: 12.08.1964'].forEach((line,i)=>x.fillText(line,50,100+i*80));
@@ -44,8 +60,9 @@ function Fixture() {
  }
  return <main style={{maxWidth:1000,margin:'32px auto',fontFamily:'sans-serif'}}><h1>Synthetischer Ausweistest</h1>
  <p>Keine echten Personendaten. Übernahmen und Seitenverweise bleiben nur im Arbeitsspeicher.</p>
- <label>Testformat<select value={kind} onChange={e=>{setKind(e.target.value);setViews([])}}><option value="pdf">PDF mit zwei Seiten</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="broken">Unlesbare PDF</option></select></label>
- <IdentityCapture key={kind} sources={[{id:versionId,label:'Synthetisches Muster',load}]} current={values} onApply={data=>setValues({...values,...data})} initialViews={views} onViewChange={v=>setViews([...views.filter(x=>x.side!==v.side),v])}/>
+ <label>Testformat<select value={kind} onChange={e=>{setKind(e.target.value);setViews([])}}><option value="pdf">PDF mit zwei Seiten</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="broken">Unlesbare PDF</option><option value="mrz">Rückseite mit MRZ</option><option value="file">Eigene Testdatei (nur lokal)</option></select></label>
+ {kind === 'file' && <label> Testdatei <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e=>setFile(e.target.files?.[0] ?? null)}/></label>}
+ <IdentityCapture key={kind + (file?.name ?? '')} sources={[{id:versionId,label:'Synthetisches Muster',load}]} current={values} onApply={data=>setValues({...values,...data})} initialViews={views} onViewChange={v=>setViews([...views.filter(x=>x.side!==v.side),v])}/>
  <h2>Übernommene Angaben</h2><output>{JSON.stringify(values)}</output><h2>Gespeicherte Seitenverweise</h2><pre>{JSON.stringify(views,null,2)}</pre>
  </main>;
 }

@@ -88,6 +88,30 @@ strukturierte Felder. Die CSP erlaubt WASM nur auf den eigenen Assetantworten,
 nicht globales JavaScript-eval. Ein kurzlebiger übergeordneter Worker beendet
 die Erkennung auch während der Initialisierung. PDFs werden lokal gerendert.
 
+Vor der Erkennung entsteht eine Arbeitskopie im Browser: kleine Aufnahmen
+werden auf etwa 2000 px vergrößert (höchstens doppelt, Pixelgrenze wie beim
+Rendern), in Graustufen gewandelt und auf das 1.–99. Perzentil kontrastgestreckt.
+Original und gespeicherter Ausschnitt bleiben unverändert. Der Parser
+(`identity-ocr.ts`) kennt das Layout des aktuellen Personalausweises
+(„[a]“/„[b]“-Marker, dreisprachige und zweispaltige Beschriftungen) und entfernt
+Störzeichen am Rand der Werte. Die maschinenlesbare Zone (`identity-mrz.ts`,
+ICAO 9303 TD1) wird an festen Positionen gelesen; als K, L oder S gelesene
+Füllzeichen stören nicht, Ziffernfelder werden auf Ziffern abgebildet, und
+T/7 bzw. Z/2 in der Ausweisnummer werden nur korrigiert, wenn genau eine Lesart
+Einzel- und Gesamtprüfziffer erfüllt. Die Erfassung gleicht die gesicherte Zone
+der Rückseite mit den Angaben der Vorderseite bzw. bereits übernommenen Werten ab
+und warnt bei Widerspruch. Ein zweiter, auf die Zone beschränkter
+OCR-Durchlauf wurde mit dem Muster erprobt und verworfen: im Browser las er die
+Zone schlechter als der erste Durchlauf nach der Kontraststreckung.
+
+Ergebnis mit dem veröffentlichten Musterausweis (Erika Mustermann) im echten
+Browserablauf, 2026-10-22: vorher ein falsches Ablaufdatum (07.05. statt
+01.05.2034) sowie PLZ/Ort; danach Name und Ablaufdatum von der Vorderseite und
+Behörde, PLZ, Ort (ohne Umlaut), Ausweisnummer, Staatsangehörigkeit und Name
+von der Rückseite, ohne Widerspruch im Abgleich. Geburtsdatum und -ort liegen
+beim Muster unter dem Stempel „MUSTER“. Reale Scans sind davon getrennt zu
+prüfen; eine Erkennungsquote wird nicht zugesagt.
+
 Die bestehende Storage-Lese-API adressiert Bucket und eindeutigen Objektschlüssel.
 Zusätzlich werden Länge und SHA-256 gegen die gespeicherte Quellversion geprüft;
 ein abweichendes Objekt wird abgewiesen, niemals stillschweigend verwendet.
@@ -160,11 +184,16 @@ unter einer CSP mit ausschließlich lokalen Quellen. Er testet die OCR-/PDF-
 Runtime ohne Schreibzugriff auf Kanzleidaten. Ein fachlicher Test mit geeigneten
 realen Nachweisen und die organisatorische Freigabe bleiben davon getrennt.
 
-Die sechs Browser-E2E-Fälle in `apps/e2e/tests/16-identity-local.spec.ts` waren
-erfolgreich: JPG, PNG, PDF mit zwei Seiten, Ausschnitt/Drehung, selektive
-Feldübernahme ohne Überschreiben, Abbruch während Initialisierung sowie
-unlesbare PDF und neuer manueller Versuch. Die Netzwerkbeobachtung im Test
-erlaubte ausschließlich den lokalen Ursprung. Nach Start des Fixtures:
+Die sieben Browser-E2E-Fälle in `apps/e2e/tests/16-identity-local.spec.ts` waren
+erfolgreich (zuletzt 2026-10-22 lokal unter Windows/Chromium): JPG, PNG, PDF mit
+zwei Seiten, eine synthetische Rückseite mit MRZ (Nummer über Prüfziffer,
+Staatsangehörigkeit, Behörde, kein geratenes Jahrhundert), Ausschnitt/Drehung,
+selektive Feldübernahme ohne Überschreiben, Abbruch während Initialisierung
+sowie unlesbare PDF und neuer manueller Versuch. Die Netzwerkbeobachtung im Test
+erlaubte ausschließlich den lokalen Ursprung. Für lokale Proben mit eigenen
+Dateien (etwa dem veröffentlichten Muster) bietet der Fixture zusätzlich
+„Eigene Testdatei (nur lokal)“; die Datei bleibt im Browser. Nach Start des
+Fixtures:
 
 ```powershell
 $env:E2E_IDENTITY_FIXTURE_URL = 'http://localhost:4319'

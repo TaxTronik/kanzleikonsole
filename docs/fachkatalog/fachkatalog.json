@@ -2991,7 +2991,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe. Originale bleiben unverändert; Seitenansichten binden Quelle, Version, PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität."
+        "summary": "Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe. Originale bleiben unverändert; Seitenansichten binden Quelle, Version, PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität. Nur für die Erkennung wird eine Kopie vergrößert, in Graustufen gewandelt und im Kontrast gestreckt. Der Parser kennt das Layout des aktuellen Personalausweises; die maschinenlesbare Zone wird tolerant gegen gelesene Füllzeichen ausgewertet, übernommen wird nur, was eine gültige Prüfziffer hat. Die Angaben beider Ausweisseiten werden gegen diese Zone abgeglichen."
       },
       "sources": [
         {
@@ -3007,6 +3007,7 @@
         "apps/web/src/lib/gwg/identity-image.ts",
         "apps/web/src/lib/gwg/identity-ocr-worker.ts",
         "apps/web/src/lib/gwg/identity-ocr.ts",
+        "apps/web/src/lib/gwg/identity-mrz.ts",
         "apps/web/src/lib/gwg/identity-viewport.ts",
         "apps/web/src/server/gwg/identity-source.ts",
         "apps/web/src/server/gwg-onboarding/identity-persistence.ts",
@@ -3021,6 +3022,7 @@
         "apps/web/src/app/api/staff/gwg/identity-source/__tests__/route.test.ts",
         "apps/web/src/server/gwg/__tests__/identity-source.test.ts",
         "apps/web/src/lib/gwg/__tests__/identity-ocr.test.ts",
+        "apps/web/src/lib/gwg/__tests__/identity-mrz.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"

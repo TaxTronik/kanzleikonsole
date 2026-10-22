@@ -433,6 +433,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[GwG]** Die lokale Ausweishilfe erkennt den aktuellen Personalausweis deutlich
+  besser: Eine Arbeitskopie wird vergrößert, in Graustufen gewandelt und im
+  Kontrast gestreckt; der Parser kennt Marker sowie dreisprachige und
+  zweispaltige Beschriftungen und entfernt Störzeichen. Die maschinenlesbare Zone
+  wird trotz als Buchstaben gelesener Füllzeichen ausgewertet; verwechselbare
+  Zeichen in der Ausweisnummer werden nur korrigiert, wenn genau eine Lesart die
+  Prüfziffern erfüllt. Die Erfassung gleicht die Zone der Rückseite mit der
+  Vorderseite bzw. übernommenen Angaben ab und warnt bei Widerspruch. Mit dem
+  Musterausweis des Bundes: vorher ein falsches Ablaufdatum und PLZ/Ort, jetzt
+  Name, Ablaufdatum, Behörde, PLZ, Ort, Ausweisnummer und Staatsangehörigkeit.
+  Weiterhin nur ungeprüfte Vorschläge, kein geratenes Jahrhundert
+  (GWG-OCR-ASSIST-001).
 - Mandantenakte übersichtlicher: Die Bereiche stehen thematisch gruppiert
   (Steuern, Compliance, Abrechnung, Abläufe, Verlauf) als ruhige Links statt
   als Reihe umrandeter Buttons, die wie Aktionen wirkten; leere Gruppen

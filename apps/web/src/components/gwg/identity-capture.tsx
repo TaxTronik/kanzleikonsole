@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
+  compareWithMrz,
   IDENTITY_FIELD_LABELS,
   type IdentityField,
   type IdentityOcrResult,
@@ -55,6 +56,10 @@ export function IdentityCapture({
   const controller = useRef<AbortController | null>(null);
   const drag = useRef<{ x: number; y: number } | null>(null);
   const sourceRef = useRef<IdentityImage | null>(null);
+  // Abgleich der Ausweisseiten: Vorschläge der Sichtseite und die
+  // prüfziffergesicherte MRZ der Rückseite aus früheren Erkennungen.
+  const lastFields = useRef<IdentitySuggestions>({});
+  const lastMrz = useRef<IdentityOcrResult['mrz']>(undefined);
   useEffect(
     () => () => {
       request.current++;
@@ -180,7 +185,25 @@ export function IdentityCapture({
         abort.signal,
         setProgress,
       );
-      if (!abort.signal.aborted) setResult(next);
+      if (!abort.signal.aborted) {
+        // Bisherige Angaben (auch manuell eingegebene) gehen vor frühere Vorschläge.
+        const crossCheck = next.mrz
+          ? compareWithMrz({ ...lastFields.current, ...current }, next.mrz)
+          : lastMrz.current
+            ? compareWithMrz(next.fields, lastMrz.current)
+            : [];
+        if (next.mrz) lastMrz.current = next.mrz;
+        else lastFields.current = next.fields;
+        setResult({
+          ...next,
+          warnings: [
+            ...new Set([
+              ...next.warnings,
+              ...crossCheck.map((warning) => `Abgleich der Ausweisseiten: ${warning}`),
+            ]),
+          ],
+        });
+      }
     } catch {
       setError(
         abort.signal.aborted

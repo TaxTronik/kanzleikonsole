@@ -19,6 +19,11 @@ implementation:
     Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe.
     Originale bleiben unverändert; Seitenansichten binden Quelle, Version,
     PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität.
+    Nur für die Erkennung wird eine Kopie vergrößert, in Graustufen gewandelt und
+    im Kontrast gestreckt. Der Parser kennt das Layout des aktuellen
+    Personalausweises; die maschinenlesbare Zone wird tolerant gegen gelesene
+    Füllzeichen ausgewertet, übernommen wird nur, was eine gültige Prüfziffer hat.
+    Die Angaben beider Ausweisseiten werden gegen diese Zone abgeglichen.
 sources:
   - kind: product_documentation
     citation: Umsetzung und Betriebsgrenzen der GwG-Erweiterung
@@ -30,6 +35,7 @@ code_refs:
   - apps/web/src/lib/gwg/identity-image.ts
   - apps/web/src/lib/gwg/identity-ocr-worker.ts
   - apps/web/src/lib/gwg/identity-ocr.ts
+  - apps/web/src/lib/gwg/identity-mrz.ts
   - apps/web/src/lib/gwg/identity-viewport.ts
   - apps/web/src/server/gwg/identity-source.ts
   - apps/web/src/server/gwg-onboarding/identity-persistence.ts
@@ -43,6 +49,7 @@ test_refs:
   - apps/web/src/app/api/staff/gwg/identity-source/__tests__/route.test.ts
   - apps/web/src/server/gwg/__tests__/identity-source.test.ts
   - apps/web/src/lib/gwg/__tests__/identity-ocr.test.ts
+  - apps/web/src/lib/gwg/__tests__/identity-mrz.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
@@ -85,6 +92,10 @@ Drehung. Die Hilfe verarbeitet höchstens 25 MiB und 100 PDF-Seiten; der
 | OCR liefert Werte                                          | Als ungeprüfte, einzeln auswählbare Vorschläge zeigen                            |
 | Bestehender Wert unterscheidet sich                        | Bestehenden Wert zeigen; nur ausgewählte Felder ersetzen                         |
 | Datum, Prüfziffer oder Feld ist widersprüchlich            | Warnen; keine Bestätigung ableiten                                               |
+| MRZ-Wert hat eine gültige Prüfziffer                       | Als Vorschlag nutzen; abweichende Sichtnummer ersetzen und warnen                |
+| Verwechselbare Zeichen (T/7, Z/2, O/0, I/1, S/5, B/8)      | Nur korrigieren, wenn genau eine Lesart die Prüfziffern erfüllt                  |
+| Andere Seite oder bisherige Angabe widerspricht der MRZ    | Warnen; keinen Wert ersetzen                                                     |
+| Ausstellungsdatum mit zweistelliger Jahreszahl             | Kein Vorschlag; Hinweis, vom Original zu übernehmen                              |
 | Zwei Seiten stammen aus derselben Quelle                   | Nur bei verschiedenen Seiten oder Ausschnitten derselben Version akzeptieren     |
 | Quelle ist fremd, veraltet oder nicht sauber               | Ansicht bzw. Speicherung abweisen; manuelle Neuerfassung bleibt möglich          |
 | Daten werden übernommen oder gespeichert                   | Prüfbestätigung nicht setzen; eine bestehende Bestätigung bei Änderung entwerten |
@@ -92,8 +103,13 @@ Drehung. Die Hilfe verarbeitet höchstens 25 MiB und 100 PDF-Seiten; der
 
 ## Ausnahmen und Grenzfälle
 
-Ein Jahrhundert wird nicht aus einer zweistelligen MRZ-Jahreszahl erraten.
-Transliterierte Namen müssen am Original geprüft werden. OCR kann Felder
+Ein Jahrhundert wird nicht aus einer zweistelligen MRZ-Jahreszahl erraten,
+ebenso wenig aus dem auf dem Ausweis zweistellig gedruckten Ausstellungsdatum.
+Transliterierte Namen müssen am Original geprüft werden. G und 6 ändern keine
+Prüfziffer; diese Verwechslung wird daher nie korrigiert, die gelesene Fassung
+bleibt. Eine Staatsangehörigkeit wird nur in Adjektivform (z. B. DEUTSCH) oder
+aus dem MRZ-Code D übernommen. Umlaute, die die OCR verliert (KOLN statt KÖLN),
+werden nicht ergänzt. OCR kann Felder
 auslassen oder falsch lesen. Ein Erkennungsfehler oder Abbruch verhindert die
 manuelle Eingabe nicht. Unlesbare oder verschlüsselte PDFs müssen durch einen
 lesbaren Nachweis ersetzt werden, falls eine verlässliche Ansicht benötigt wird.
@@ -141,3 +157,13 @@ Mehrsprachige Namensüberschriften werden vollständig als Beschriftung erkannt;
 eine folgende Beschriftung wird nicht als fehlender Namenswert übernommen.
 Bei gültiger MRZ-Prüfziffer wird YYMMDD mit dem erkannten Sichtdatum verglichen:
 eine Abweichung erzeugt eine Warnung und überschreibt weder Datum noch Jahrhundert.
+Derselbe Abgleich läuft zwischen den Ausweisseiten: die MRZ der Rückseite gegen
+übernommene oder eingegebene Angaben und gegen die Vorschläge der Vorderseite.
+Testgrundlage sind echte Tesseract-Ausgaben des veröffentlichten Musterausweises
+(nur Text, kein Bild) sowie gelesene Füllzeichen, Ziffernverwechslungen,
+mehrdeutige Lesarten mit gleicher Prüfziffer und das zweispaltige Layout. Eine
+synthetische Rückseite mit MRZ läuft als Browserfall durch den echten Worker.
+Mit dem Muster lieferte die Hilfe im Browser vorher ein falsches Ablaufdatum und
+PLZ/Ort, danach Name und Ablaufdatum (Vorderseite) sowie Behörde, PLZ, Ort,
+Ausweisnummer, Staatsangehörigkeit und Name (Rückseite) ohne Widerspruch. Eine
+Erkennungsquote wird damit nicht zugesagt; reale Scans sind gesondert zu prüfen.

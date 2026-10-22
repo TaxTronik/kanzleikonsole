@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // Fachkatalog: GWG-OCR-ASSIST-001, GWG-IDENTIFICATION-EVIDENCE-001
-import { mrzCheckDigit, parseGermanIdentityText } from '../identity-ocr';
+import { compareWithMrz, mrzCheckDigit, parseGermanIdentityText } from '../identity-ocr';
 import {
   fullIdentityViewport,
   IdentitySourceViewsSchema,
@@ -85,6 +85,167 @@ describe('GWG-OCR-ASSIST-001 local unverified suggestions', () => {
     );
     expect(matching.fields).toMatchObject({ birthDate: '1864-08-12', idExpiryDate: '2130-12-31' });
     expect(matching.warnings).toEqual([]);
+  });
+});
+
+// Echte Tesseract-Ausgaben (deu+eng, LSTM) des veröffentlichten Musterausweises
+// „Erika Mustermann“ mit der Aufbereitung der Ausweishilfe (Browser-Canvas,
+// Graustufen, Kontraststreckung, ~2000 px). Der Stempel „MUSTER“ überdeckt dort
+// Geburtsdatum, -ort und Teile der Anschrift; ein echter Ausweis hat ihn nicht.
+const SPECIMEN_FRONT = `Dee 7683118087
+PERSONALAUSWEIS wow LL
+
+IDENTITY CARD / CARTE D'IDENTITE |
+
+[a] Name/Surname/Nom
+[b] Geburtsname/Name at birth/Nom de naissance %
+
+[a3] MUSTERMANN
+
+IGABLER
+Vornamen/Given names/Prénoms
+
+ERIKA x
+BER of / NONE
+12 EN EUTSCH
+
+Gebu of /Lieu de naissance
+
+BE
+
+Gültig bis/Date of expiry/
+
+| 01.05.2034 SZ
+
+AA`;
+const SPECIMEN_BACK = `A Augenfarbe/Colour of eyes/Couleur des yeux Anschrift/Address/Adresse
+
+GRUN 51147 KOLN
+
+GroBe/Height/Taille
+
+160 cm jm HE IDESTRASSE \\ &
+Datum/Date/Date (0) 1 If) a 1 i A A
+02.05.24 if £3 WS »
+Behdrde/Authority/Autorité ET Hi kn De Fi Doctoral degree/Grade bos cig
+STADT KOLN
+
+snr name/Nom de religion ou nom d'artiste (
+LZ63117475<<MUSTERMANN<<ERIKA<<<<<<<<<<<<<
+
+IDD<<LZ6311T475<<<<<<LLLL<LL<L<L<<
+8308126<3405019D<<2405<<<<<<<3
+MUSTERMANN<<ERIKA<S<<<S<<<<S<<<<<`;
+// Dieselbe Vorderseite ohne Kontraststreckung: Ausweisnummer mit T als 7 gelesen.
+const SPECIMEN_FRONT_T_AS_7 = `FEDERAL REPUBLIC OF GERMANY / REPUBLIQUE FEDERALE D’ALLEMAGNE
+
+BUNDESREPUBLIK DEUTSCHLAND LZ6311747 X
+
+PERSONALAUSWEIS
+
+IDENTITY CARD / CARTE D'IDENTITE
+
+[a] Name/Surname/Nom
+[b] Geburtsname/Name at birth/Nom de naissance
+
+aIMUSTERMANN «Co
+BIGABLER
+Vornamen/Given names/Prenoms N
+
+ERIKA
+
+Geburtstag/Date of / angehörigkeit/Nationality/
+Date de naissa alite ;
+| 12, oo: EUTSCH
+Gebu of /Lieu de naissance >
+BE
+
+Gültig bis/Date of expiry/
+
+| 01.05.2034 938568`;
+
+describe('GWG-OCR-ASSIST-001 aktueller Personalausweis (Muster des Bundes)', () => {
+  it('Vorderseite: Name trotz Markern und Störzeichen, Ablaufdatum über der französischen Zeile', () => {
+    const result = parseGermanIdentityText(SPECIMEN_FRONT);
+    expect(result.fields).toEqual({ fullName: 'ERIKA MUSTERMANN', idExpiryDate: '2034-05-01' });
+    expect(result.mrz).toBeUndefined();
+    expect(parseGermanIdentityText(SPECIMEN_FRONT_T_AS_7).fields).toEqual({
+      fullName: 'ERIKA MUSTERMANN',
+      idExpiryDate: '2034-05-01',
+      // Sichttext ohne Prüfziffer; der Abgleich mit der Rückseite warnt.
+      idNumber: 'LZ6311747',
+    });
+  });
+
+  it('Rückseite: Behörde, PLZ/Ort, prüfziffergesicherte Nummer, Staatsangehörigkeit, Name aus der MRZ', () => {
+    const result = parseGermanIdentityText(SPECIMEN_BACK);
+    expect(result.fields).toEqual({
+      idIssuedBy: 'STADT KOLN',
+      postalCode: '51147',
+      city: 'KOLN',
+      idNumber: 'LZ6311T47',
+      nationality: 'DEUTSCH',
+      fullName: 'ERIKA MUSTERMANN',
+    });
+    expect(result.mrz).toEqual({
+      documentNumber: 'LZ6311T47',
+      birthDate: '830812',
+      expiryDate: '340501',
+    });
+    // Kein geratenes Jahrhundert – weder aus der MRZ noch aus „02.05.24“.
+    expect(result.fields.birthDate).toBeUndefined();
+    expect(result.fields.idIssueDate).toBeUndefined();
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('zweistelliger Jahreszahl'),
+        expect.stringContaining('Jahrhundert in MRZ fehlt'),
+        expect.stringContaining('Name aus maschinenlesbarer Zeile'),
+      ]),
+    );
+  });
+
+  it('warnt beim Abgleich der Seiten über die gesicherte MRZ, ohne Werte zu ersetzen', () => {
+    const front = parseGermanIdentityText(SPECIMEN_FRONT_T_AS_7).fields;
+    const back = parseGermanIdentityText(SPECIMEN_BACK).mrz!;
+    expect(compareWithMrz(front, back)).toEqual([
+      expect.stringContaining('Ausweisnummer: LZ6311747 widerspricht'),
+    ]);
+    expect(compareWithMrz({ ...front, idExpiryDate: '2034-05-07' }, back)).toEqual(
+      expect.arrayContaining([expect.stringContaining('Gültig bis: Sichttext')]),
+    );
+    expect(
+      compareWithMrz(
+        { birthDate: '1983-08-12', idExpiryDate: '2034-05-01', idNumber: 'LZ6311T47' },
+        back,
+      ),
+    ).toEqual([]);
+  });
+
+  it('liest Geburtstag und Staatsangehörigkeit aus der zweispaltigen Zeile', () => {
+    const result = parseGermanIdentityText(
+      'Geburtstag/Date of birth/ Staatsangehörigkeit/Nationality/\nDate de naissance Nationalité\n12.08.1983 DEUTSCH\nGeburtsort/Place of birth/Lieu de naissance\nBERLIN',
+    );
+    expect(result.fields).toMatchObject({
+      birthDate: '1983-08-12',
+      nationality: 'DEUTSCH',
+      birthPlace: 'BERLIN',
+    });
+    // Abgeschnittene Angaben sind keine Staatsangehörigkeit.
+    expect(
+      parseGermanIdentityText('Staatsangehörigkeit/Nationality\nEUTSCH').fields.nationality,
+    ).toBeUndefined();
+  });
+
+  it('entfernt Störzeichen am Rand und hält Werte in Versalien von Beschriftungen getrennt', () => {
+    expect(
+      parseGermanIdentityText('Anschrift/Address/Adresse\n51147 KÖLN f\nHEIDESTRASSE 17-').fields,
+    ).toEqual({ postalCode: '51147', city: 'KÖLN', street: 'HEIDESTRASSE 17' });
+    expect(
+      parseGermanIdentityText('Name/Surname/Nom\nNOMURA\nVornamen/Given names/Prénoms\nAKI').fields
+        .fullName,
+    ).toBe('AKI NOMURA');
+    // Füllzeichen, als Buchstaben gelesen, sind keine Ausweisnummer.
+    expect(parseGermanIdentityText('LKLKKLKLK').fields.idNumber).toBeUndefined();
   });
 });
 
