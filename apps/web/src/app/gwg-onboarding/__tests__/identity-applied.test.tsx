@@ -25,18 +25,26 @@ vi.mock('@/components/gwg/identity-capture', () => ({
   }) => {
     h.audiences.push(props.audience ?? 'staff');
     return (
-      <button
-        type="button"
-        onClick={() =>
-          props.onApply({
-            fullName: 'ERIKA MUSTERMANN',
-            idNumber: 'LZ6311T47',
-            idExpiryDate: '2034-05-01',
-          })
-        }
-      >
-        Vorschläge übernehmen (Test)
-      </button>
+      <>
+        <button
+          type="button"
+          onClick={() =>
+            props.onApply({
+              fullName: 'ERIKA MUSTERMANN',
+              idNumber: 'LZ6311T47',
+              idExpiryDate: '2034-05-01',
+            })
+          }
+        >
+          Vorschläge übernehmen (Test)
+        </button>
+        <button
+          type="button"
+          onClick={() => props.onApply({ idIssuedBy: 'STADT KOLN', idNumber: 'LZ6311T47' })}
+        >
+          Rückseite übernehmen (Test)
+        </button>
+      </>
     );
   },
 }));
@@ -143,5 +151,20 @@ describe('GWG-OCR-ASSIST-001 sichtbare Übernahme im Mandanten-Onboarding', () =
     expect(number.getAttribute('aria-describedby')).toBeNull();
     expect(name.dataset.identityApplied).toBe('true');
     expect(within(card).getAllByText('Aus dem Ausweis übernommen – bitte prüfen.')).toHaveLength(2);
+  });
+
+  it('behält Markierungen der Vorderseite, wenn danach die Rückseite übernommen wird', () => {
+    const card = renderOwnersStep();
+    fireEvent.click(within(card).getByRole('button', { name: 'Vorschläge übernehmen (Test)' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Rückseite übernehmen (Test)' }));
+
+    const marked = (label: RegExp) =>
+      (within(card).getByLabelText(label) as HTMLInputElement).dataset.identityApplied;
+    // Unbearbeitete Felder der ersten Übernahme bleiben markiert, neue kommen hinzu.
+    expect(marked(/Gültig bis/)).toBe('true');
+    expect(marked(/Vollständiger Name/)).toBe('true');
+    expect(marked(/Ausstellende Behörde/)).toBe('true');
+    expect(marked(/Ausweisnummer/)).toBe('true');
+    expect(marked(/Geburtsort/)).toBeUndefined();
   });
 });

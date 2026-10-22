@@ -702,7 +702,10 @@ function useIdentityApplied<T extends object>(person: T, onPatch: (patch: Partia
   }
   function applyFromIdentity(fields: IdentitySuggestions) {
     onPatch(fields as Partial<T>);
-    setApplied(new Set(Object.keys(fields).filter((key) => fields[key as keyof typeof fields])));
+    // Markierungen früherer Übernahmen (andere Ausweisseite) bleiben bis zur
+    // eigenen Bearbeitung bestehen.
+    const keys = Object.keys(fields).filter((key) => fields[key as keyof typeof fields]);
+    setApplied((previous) => new Set([...previous, ...keys]));
     setRevision((value) => value + 1);
   }
   return { bind, applyFromIdentity, container };

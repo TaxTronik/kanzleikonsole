@@ -438,7 +438,8 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   als TT.MM.JJJJ, „Bitte selbst eintragen“ nur für noch leere Felder. Der
   Ausweisausschnitt steht neben den Vorschlägen (auch in der Kanzlei). Übernommene
   Angaben werden im Formular grün markiert („Aus dem Ausweis übernommen – bitte
-  prüfen“), bis der Mandant das Feld selbst bearbeitet; die Erfassung meldet die
+  prüfen“), bis der Mandant das Feld selbst bearbeitet – auch wenn danach die
+  andere Ausweisseite übernommen wird; die Erfassung meldet die
   Übernahme und scrollt zum ersten Feld. Beschriftungen und Eingaben im Wizard sind
   jetzt verknüpft. Weiterhin keine Vorauswahl und keine Bestätigung
   (GWG-OCR-ASSIST-001).

@@ -179,4 +179,5 @@ Hinweise tragen einen festen Code; Kanzlei und Mandant sehen zum selben Code
 eine fachliche bzw. verständliche Fassung (Test: jeder Code hat eine eigene
 Mandantenfassung ohne Begriffe wie MRZ oder Prüfziffer). Ein Komponententest des
 Wizards prüft die Mandantenfassung, die Markierung übernommener Felder samt
-zugeordnetem Hinweis und ihr Ende bei eigener Bearbeitung.
+zugeordnetem Hinweis und ihr Ende bei eigener Bearbeitung; eine weitere
+Übernahme (zweite Ausweisseite) hebt frühere Markierungen nicht auf.

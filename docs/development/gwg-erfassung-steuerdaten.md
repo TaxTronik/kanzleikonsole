@@ -111,7 +111,8 @@ derselben Hinweis-Codes (`identity-hints.ts`), Daten als TT.MM.JJJJ und unter
 Ausweisausschnitt neben den Vorschlägen. Übernommene Felder markiert der Wizard
 grün mit „Aus dem Ausweis übernommen – bitte prüfen“ (per `aria-describedby`
 zugeordnet), scrollt zum ersten und hebt die Markierung je Feld bei eigener
-Bearbeitung auf; die Erfassung meldet die Übernahme zusätzlich in einer
+Bearbeitung auf. Eine weitere Übernahme (die andere Ausweisseite) ergänzt die
+Markierungen, statt frühere aufzuheben. Die Erfassung meldet die Übernahme zusätzlich in einer
 Live-Region. Vorschläge bleiben einzeln anzuhaken. Im Fixture lässt sich die
 Zielgruppe umschalten. Ein vollständiger Durchlauf des Wizards im lokalen
 Dev-Stack setzt vollständige Datenschutzhinweise der Kanzlei voraus; sonst
@@ -124,6 +125,14 @@ Behörde, PLZ, Ort (ohne Umlaut), Ausweisnummer, Staatsangehörigkeit und Name
 von der Rückseite, ohne Widerspruch im Abgleich. Geburtsdatum und -ort liegen
 beim Muster unter dem Stempel „MUSTER“. Reale Scans sind davon getrennt zu
 prüfen; eine Erkennungsquote wird nicht zugesagt.
+
+Vollständiger Mandantendurchlauf im lokalen Dev-Stack, 2026-10-22 (Dev-Kanzlei
+mit als Testdaten gekennzeichneten Datenschutzangaben, Einladung aus der
+Mandantenakte, Musterausweis als zwei Bilder): Nach beiden Seiten waren sieben
+Felder übernommen und grün markiert (Name, Staatsangehörigkeit, PLZ, Ort,
+Ausweisnummer, Behörde, Gültig bis). Geburtsdatum, Geburtsort, Straße und
+Ausstellungsdatum blieben selbst einzutragen. Vor der Korrektur hob die
+Übernahme der Rückseite die Markierung von „Gültig bis“ auf.
 
 Die bestehende Storage-Lese-API adressiert Bucket und eindeutigen Objektschlüssel.
 Zusätzlich werden Länge und SHA-256 gegen die gespeicherte Quellversion geprüft;
