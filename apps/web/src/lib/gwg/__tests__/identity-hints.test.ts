@@ -53,6 +53,8 @@ describe('GWG-OCR-ASSIST-001 Hinweise der Ausweishilfe je Zielgruppe', () => {
       client.compare,
       client.apply,
       client.imageAlt,
+      client.printed('STADT KOLN'),
+      client.matching(['Ort']),
     ])
       expect(text).not.toMatch(JARGON);
     expect(client.applied(['Gültig bis'])).toMatch(

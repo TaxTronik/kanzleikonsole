@@ -45,6 +45,10 @@ export const IDENTITY_UI_TEXT = {
     noneMissing: 'keine fehlenden Felder',
     compare: 'Mit dem Original vergleichen und gewünschte Felder auswählen:',
     previous: (value: string) => `Bisher: ${value} — wird nur nach Auswahl ersetzt.`,
+    printed: (value: string) =>
+      `Ausweis: ${value} — Groß-/Kleinschreibung angepasst; Umlaute und ß am Original prüfen.`,
+    matching: (labels: string[]) =>
+      `Entspricht der bisherigen Angabe (abweichend nur Groß-/Kleinschreibung oder Umlaute), nicht zum Ersetzen angeboten: ${labels.join(', ')}.`,
     apply: 'Ausgewählte Daten übernehmen (ungeprüft)',
     imageAlt: 'Ausweisausschnitt zum Vergleich',
     applied: (labels: string[]) => `Übernommen (ungeprüft): ${labels.join(', ')}.`,
@@ -57,6 +61,10 @@ export const IDENTITY_UI_TEXT = {
     compare: 'Bitte vergleichen Sie jede Angabe mit Ihrem Ausweis und haken Sie an, was stimmt:',
     previous: (value: string) =>
       `Bisher eingetragen: ${value} – wird nur ersetzt, wenn Sie hier anhaken.`,
+    printed: (value: string) =>
+      `Auf dem Ausweis steht ${value}. Bitte prüfen Sie die Schreibweise, besonders ä, ö, ü und ß.`,
+    matching: (labels: string[]) =>
+      `Passt bereits zu Ihrer Eingabe: ${labels.join(', ')}. Ihre Schreibweise bleibt erhalten.`,
     apply: 'Angehakte Angaben übernehmen',
     imageAlt: 'Ihr Ausweis zum Vergleich',
     applied: (labels: string[]) =>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
+import { useEffect, useId, useRef, useState, type PointerEvent } from 'react';
 import {
   compareWithMrz,
   IDENTITY_FIELD_LABELS,
@@ -10,6 +10,7 @@ import {
   type IdentityWarning,
 } from '@/lib/gwg/identity-ocr';
 import { IDENTITY_UI_TEXT, warningText, type IdentityAudience } from '@/lib/gwg/identity-hints';
+import { suggestionRows } from '@/lib/gwg/identity-suggestions';
 import {
   fullIdentityViewport,
   type IdentitySourceView,
@@ -34,6 +35,89 @@ function displayValue(field: IdentityField, value: string, audience: IdentityAud
   return audience === 'client' && DATE_FIELDS.has(field) && iso
     ? `${iso[3]}.${iso[2]}.${iso[1]}`
     : value;
+}
+
+/**
+ * Vorschläge zum Anhaken, in üblicher Schreibweise. Was der bisherigen Angabe
+ * bis auf Groß-/Kleinschreibung oder Umlaute entspricht, erscheint nur als Hinweis.
+ */
+export function SuggestionChoices({
+  fields,
+  current,
+  audience,
+  selected,
+  onSelect,
+  onApply,
+}: {
+  fields: IdentitySuggestions;
+  current: IdentitySuggestions;
+  audience: IdentityAudience;
+  selected: IdentityField[];
+  onSelect: (field: IdentityField, checked: boolean) => void;
+  onApply: (values: IdentitySuggestions) => void;
+}) {
+  const text = IDENTITY_UI_TEXT[audience];
+  const rowId = useId();
+  const { offered, matching } = suggestionRows(fields, current);
+  return (
+    <>
+      {matching.length > 0 && (
+        <p className="text-xs text-muted">
+          {text.matching(matching.map((field) => IDENTITY_FIELD_LABELS[field]))}
+        </p>
+      )}
+      {offered.length > 0 && <p className="text-xs font-medium">{text.compare}</p>}
+      {offered.map(({ field, value, printed }) => {
+        // Hinweise als Beschreibung: der Name der Checkbox bleibt „Feld: Wert“.
+        const notes = [
+          printed && {
+            id: `${rowId}-${field}-printed`,
+            text: text.printed(printed),
+            tone: 'text-muted',
+          },
+          current[field] && {
+            id: `${rowId}-${field}-previous`,
+            text: text.previous(displayValue(field, current[field]!, audience)),
+            tone: 'text-amber-700',
+          },
+        ].filter((note) => typeof note === 'object');
+        return (
+          <div key={field} className="text-sm">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={selected.includes(field)}
+                aria-describedby={notes.map((note) => note.id).join(' ') || undefined}
+                onChange={(event) => onSelect(field, event.target.checked)}
+              />
+              <span>
+                {IDENTITY_FIELD_LABELS[field]}:{' '}
+                <strong>{displayValue(field, value, audience)}</strong>
+              </span>
+            </label>
+            {notes.map((note) => (
+              <p key={note.id} id={note.id} className={`ml-6 text-xs ${note.tone}`}>
+                {note.text}
+              </p>
+            ))}
+          </div>
+        );
+      })}
+      {offered.length > 0 && (
+        <button
+          type="button"
+          className="btn-secondary text-xs"
+          disabled={!selected.length}
+          onClick={() => {
+            const values = new Map(offered.map((row) => [row.field, row.value]));
+            onApply(Object.fromEntries(selected.map((field) => [field, values.get(field)])));
+          }}
+        >
+          {text.apply}
+        </button>
+      )}
+    </>
+  );
 }
 
 export interface IdentityCaptureSource {
@@ -216,6 +300,7 @@ export function IdentityCapture({
         if (next.mrz) lastMrz.current = next.mrz;
         else lastFields.current = next.fields;
         const seen = new Set<string>();
+        const { matching } = suggestionRows(next.fields, current);
         const warnings: IdentityWarning[] = [
           ...next.warnings,
           ...crossCheck.map((warning) => ({ ...warning, acrossSides: true })),
@@ -224,6 +309,9 @@ export function IdentityCapture({
           // eingetragen ist; ein Widerspruch dazu meldet der Seitenabgleich.
           if (warning.code === 'mrz-date-century' && warning.field && current[warning.field])
             return false;
+          // Schreibweisenhinweis zum Namen entfällt, wenn der Name nicht
+          // angeboten wird, weil er der bisherigen Angabe entspricht.
+          if (warning.code === 'mrz-name' && matching.includes('fullName')) return false;
           const key = `${warning.code}:${warning.field ?? ''}:${warning.acrossSides ?? false}`;
           return !seen.has(key) && Boolean(seen.add(key));
         });
@@ -481,50 +569,29 @@ export function IdentityCapture({
                       .join(', ') || text.noneMissing}
                     .
                   </p>
-                  <p className="text-xs font-medium">{text.compare}</p>
-                  {(Object.entries(result.fields) as [IdentityField, string][]).map(
-                    ([field, value]) => (
-                      <label key={field} className="flex items-start gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={selected.includes(field)}
-                          onChange={(event) =>
-                            setSelected((previous) =>
-                              event.target.checked
-                                ? [...previous, field]
-                                : previous.filter((key) => key !== field),
-                            )
-                          }
-                        />
-                        <span>
-                          {IDENTITY_FIELD_LABELS[field]}:{' '}
-                          <strong>{displayValue(field, value, audience)}</strong>
-                          {current[field] && current[field] !== value && (
-                            <span className="block text-xs text-amber-700">
-                              {text.previous(displayValue(field, current[field]!, audience))}
-                            </span>
-                          )}
-                        </span>
-                      </label>
-                    ),
-                  )}
-                  <button
-                    type="button"
-                    className="btn-secondary text-xs"
-                    disabled={!selected.length}
-                    onClick={() => {
-                      onApply(
-                        Object.fromEntries(selected.map((field) => [field, result.fields[field]])),
-                      );
+                  <SuggestionChoices
+                    fields={result.fields}
+                    current={current}
+                    audience={audience}
+                    selected={selected}
+                    onSelect={(field, checked) =>
+                      setSelected((previous) =>
+                        checked ? [...previous, field] : previous.filter((key) => key !== field),
+                      )
+                    }
+                    onApply={(values) => {
+                      onApply(values);
                       setAppliedNote(
-                        text.applied(selected.map((field) => IDENTITY_FIELD_LABELS[field])),
+                        text.applied(
+                          (Object.keys(values) as IdentityField[]).map(
+                            (field) => IDENTITY_FIELD_LABELS[field],
+                          ),
+                        ),
                       );
                       setSelected([]);
                       setResult(null);
                     }}
-                  >
-                    {text.apply}
-                  </button>
+                  />
                 </div>
               </div>
             </div>

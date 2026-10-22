@@ -433,6 +433,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[GwG]** Die Ausweishilfe schlägt in Großbuchstaben gedruckte Namen, Orte,
+  Straßen und Behörden in üblicher Schreibweise vor („Erika Mustermann“,
+  „Frankfurt am Main“, „Ursula von der Leyen“) und zeigt die Ausweisfassung
+  daneben; Umlaute und ß werden nicht ergänzt. Unterscheidet sich eine bisherige
+  Angabe nur in Groß-/Kleinschreibung oder in von der Erkennung verlorenen
+  Umlauten (Köln ↔ KOLN, DE ↔ DEUTSCH), bietet die Hilfe keinen Ersatz mehr an,
+  sondern nennt das Feld als passend (GWG-OCR-ASSIST-001).
 - **[GwG]** Die Ausweishilfe spricht Mandanten im öffentlichen Onboarding verständlich
   an: Hinweise ohne Fachbegriffe (statt „MRZ“, „Prüfziffer“, „Jahrhundert“), Daten
   als TT.MM.JJJJ, „Bitte selbst eintragen“ nur für noch leere Felder. Der

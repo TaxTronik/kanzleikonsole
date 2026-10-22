@@ -113,7 +113,14 @@ grün mit „Aus dem Ausweis übernommen – bitte prüfen“ (per `aria-describ
 zugeordnet), scrollt zum ersten und hebt die Markierung je Feld bei eigener
 Bearbeitung auf. Eine weitere Übernahme (die andere Ausweisseite) ergänzt die
 Markierungen, statt frühere aufzuheben. Die Erfassung meldet die Übernahme zusätzlich in einer
-Live-Region. Vorschläge bleiben einzeln anzuhaken. Im Fixture lässt sich die
+Live-Region. Vorschläge bleiben einzeln anzuhaken. In Großbuchstaben gelesene
+Namen, Orte, Straßen und Behörden schlägt die Hilfe in üblicher Schreibweise vor
+(`identity-suggestions.ts`); die Ausweisfassung steht als Beschreibung der
+Auswahl daneben, Umlaute und ß werden nicht ergänzt. Entspricht eine bisherige
+Angabe dem Vorschlag bis auf Groß-/Kleinschreibung oder von der Erkennung
+verlorene Umlaute (Köln ↔ KOLN, Heidestraße ↔ HEIDESTRASSE, DE ↔ DEUTSCH), wird
+sie nicht zum Ersetzen angeboten, sondern als passend genannt; der Hinweis auf
+die Schreibweise des aus der Rückseite gelesenen Namens entfällt dann. Im Fixture lässt sich die
 Zielgruppe umschalten. Ein vollständiger Durchlauf des Wizards im lokalen
 Dev-Stack setzt vollständige Datenschutzhinweise der Kanzlei voraus; sonst
 zeigt der Wizard „Das Onboarding ist noch nicht freigegeben“.
@@ -132,7 +139,12 @@ Mandantenakte, Musterausweis als zwei Bilder): Nach beiden Seiten waren sieben
 Felder übernommen und grün markiert (Name, Staatsangehörigkeit, PLZ, Ort,
 Ausweisnummer, Behörde, Gültig bis). Geburtsdatum, Geburtsort, Straße und
 Ausstellungsdatum blieben selbst einzutragen. Vor der Korrektur hob die
-Übernahme der Rückseite die Markierung von „Gültig bis“ auf.
+Übernahme der Rückseite die Markierung von „Gültig bis“ auf. Mit angepasster
+Schreibweise (gleicher Tag, erneuter Durchlauf): Der Name aus der Einladung
+(„Erika Mustermann“) und die vorbelegte Staatsangehörigkeit DE galten als
+passend und blieben unverändert; angeboten und übernommen wurden Gültig bis
+(Vorderseite) sowie Behörde „Stadt Koln“, Ausweisnummer, PLZ und Ort „Koln“
+mit Hinweis auf die Ausweisfassung (Rückseite), fünf Felder grün markiert.
 
 Die bestehende Storage-Lese-API adressiert Bucket und eindeutigen Objektschlüssel.
 Zusätzlich werden Länge und SHA-256 gegen die gespeicherte Quellversion geprüft;

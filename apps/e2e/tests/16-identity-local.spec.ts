@@ -42,7 +42,10 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
     await page.getByRole('combobox', { name: 'Testformat' }).selectOption('mrz');
     await page.getByRole('button', { name: 'Ausweis zuschneiden und Daten erkennen' }).click();
     await page.getByRole('button', { name: 'Daten erkennen', exact: true }).click();
-    await expect(page.getByRole('checkbox', { name: 'Staatsangehörigkeit: DEUTSCH' })).toBeVisible({
+    // Großbuchstaben des Ausweises erscheinen in üblicher Schreibweise.
+    await expect(
+      page.getByRole('checkbox', { name: 'Staatsangehörigkeit: deutsch', exact: true }),
+    ).toBeVisible({
       timeout: 90_000,
     });
     // Je nach Systemschrift liest Tesseract die Nummer mal exakt, mal mit einem
@@ -54,9 +57,12 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
       await expect(
         page.getByText('Prüfziffer der maschinenlesbaren Ausweisnummer stimmt nicht.'),
       ).toBeVisible();
-    await expect(
-      page.getByRole('checkbox', { name: 'Ausstellende Behörde: STADT KÖLN' }),
-    ).toBeVisible();
+    const authority = page.getByRole('checkbox', {
+      name: 'Ausstellende Behörde: Stadt Köln',
+      exact: true,
+    });
+    await expect(authority).toBeVisible();
+    await expect(authority).toHaveAccessibleDescription(/^Ausweis: STADT KÖLN — /);
     // Daten der MRZ nur als Hinweis: zweistellige Jahreszahl, kein Vorschlag.
     await expect(page.getByText(/Geburtsdatum bitte von der ausgeschriebenen/)).toBeVisible();
     await expect(page.getByRole('checkbox', { name: /^Geburtsdatum:/ })).toHaveCount(0);

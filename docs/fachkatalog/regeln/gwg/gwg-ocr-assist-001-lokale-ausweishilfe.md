@@ -27,6 +27,11 @@ implementation:
     Mandanten sehen im öffentlichen Wizard verständliche Hinweise ohne
     Fachbegriffe, den Ausweisausschnitt neben den Vorschlägen und die
     übernommenen Felder grün markiert, bis sie sie selbst bearbeiten.
+    In Großbuchstaben gelesene Namen, Orte und Behörden werden in üblicher
+    Schreibweise vorgeschlagen, die Ausweisfassung bleibt daneben sichtbar.
+    Eine bisherige Angabe, die sich nur in Groß-/Kleinschreibung oder in von
+    der Erkennung verlorenen Umlauten unterscheidet, wird nicht zum Ersetzen
+    angeboten.
 sources:
   - kind: product_documentation
     citation: Umsetzung und Betriebsgrenzen der GwG-Erweiterung
@@ -36,6 +41,7 @@ sources:
 code_refs:
   - apps/web/src/components/gwg/identity-capture.tsx
   - apps/web/src/lib/gwg/identity-hints.ts
+  - apps/web/src/lib/gwg/identity-suggestions.ts
   - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
   - apps/web/src/lib/gwg/identity-image.ts
   - apps/web/src/lib/gwg/identity-ocr-worker.ts
@@ -56,6 +62,8 @@ test_refs:
   - apps/web/src/lib/gwg/__tests__/identity-ocr.test.ts
   - apps/web/src/lib/gwg/__tests__/identity-mrz.test.ts
   - apps/web/src/lib/gwg/__tests__/identity-hints.test.ts
+  - apps/web/src/lib/gwg/__tests__/identity-suggestions.test.ts
+  - apps/web/src/components/gwg/__tests__/identity-suggestion-choices.test.tsx
   - apps/web/src/app/gwg-onboarding/__tests__/identity-applied.test.tsx
   - apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts
@@ -94,20 +102,22 @@ Drehung. Die Hilfe verarbeitet höchstens 25 MiB und 100 PDF-Seiten; der
 
 ## Entscheidungslogik
 
-| Wenn                                                       | Dann                                                                             |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| OCR liefert Werte                                          | Als ungeprüfte, einzeln auswählbare Vorschläge zeigen                            |
-| Bestehender Wert unterscheidet sich                        | Bestehenden Wert zeigen; nur ausgewählte Felder ersetzen                         |
-| Datum, Prüfziffer oder Feld ist widersprüchlich            | Warnen; keine Bestätigung ableiten                                               |
-| MRZ-Wert hat eine gültige Prüfziffer                       | Als Vorschlag nutzen; abweichende Sichtnummer ersetzen und warnen                |
-| Verwechselbare Zeichen (T/7, Z/2, O/0, I/1, S/5, B/8)      | Nur korrigieren, wenn genau eine Lesart die Prüfziffern erfüllt                  |
-| Andere Seite oder bisherige Angabe widerspricht der MRZ    | Warnen; keinen Wert ersetzen                                                     |
-| Ausstellungsdatum mit zweistelliger Jahreszahl             | Kein Vorschlag; Hinweis, vom Original zu übernehmen                              |
-| Mandant übernimmt Vorschläge im öffentlichen Wizard        | Felder markieren, bis er sie bearbeitet; keine Vorauswahl, keine Bestätigung     |
-| Zwei Seiten stammen aus derselben Quelle                   | Nur bei verschiedenen Seiten oder Ausschnitten derselben Version akzeptieren     |
-| Quelle ist fremd, veraltet oder nicht sauber               | Ansicht bzw. Speicherung abweisen; manuelle Neuerfassung bleibt möglich          |
-| Daten werden übernommen oder gespeichert                   | Prüfbestätigung nicht setzen; eine bestehende Bestätigung bei Änderung entwerten |
-| Mitarbeiter bestätigt den gespeicherten Stand ausdrücklich | Identitätsprüfung nach den bestehenden Gates dokumentieren                       |
+| Wenn                                                         | Dann                                                                             |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| OCR liefert Werte                                            | Als ungeprüfte, einzeln auswählbare Vorschläge zeigen                            |
+| Bestehender Wert unterscheidet sich                          | Bestehenden Wert zeigen; nur ausgewählte Felder ersetzen                         |
+| Unterschied nur Groß-/Kleinschreibung oder Umlaut im Bestand | Nicht zum Ersetzen anbieten; als übereinstimmend nennen                          |
+| Name, Ort oder Behörde in Großbuchstaben gelesen             | In üblicher Schreibweise vorschlagen; Ausweisfassung daneben zeigen              |
+| Datum, Prüfziffer oder Feld ist widersprüchlich              | Warnen; keine Bestätigung ableiten                                               |
+| MRZ-Wert hat eine gültige Prüfziffer                         | Als Vorschlag nutzen; abweichende Sichtnummer ersetzen und warnen                |
+| Verwechselbare Zeichen (T/7, Z/2, O/0, I/1, S/5, B/8)        | Nur korrigieren, wenn genau eine Lesart die Prüfziffern erfüllt                  |
+| Andere Seite oder bisherige Angabe widerspricht der MRZ      | Warnen; keinen Wert ersetzen                                                     |
+| Ausstellungsdatum mit zweistelliger Jahreszahl               | Kein Vorschlag; Hinweis, vom Original zu übernehmen                              |
+| Mandant übernimmt Vorschläge im öffentlichen Wizard          | Felder markieren, bis er sie bearbeitet; keine Vorauswahl, keine Bestätigung     |
+| Zwei Seiten stammen aus derselben Quelle                     | Nur bei verschiedenen Seiten oder Ausschnitten derselben Version akzeptieren     |
+| Quelle ist fremd, veraltet oder nicht sauber                 | Ansicht bzw. Speicherung abweisen; manuelle Neuerfassung bleibt möglich          |
+| Daten werden übernommen oder gespeichert                     | Prüfbestätigung nicht setzen; eine bestehende Bestätigung bei Änderung entwerten |
+| Mitarbeiter bestätigt den gespeicherten Stand ausdrücklich   | Identitätsprüfung nach den bestehenden Gates dokumentieren                       |
 
 ## Ausnahmen und Grenzfälle
 
@@ -117,7 +127,16 @@ Transliterierte Namen müssen am Original geprüft werden. G und 6 ändern keine
 Prüfziffer; diese Verwechslung wird daher nie korrigiert, die gelesene Fassung
 bleibt. Eine Staatsangehörigkeit wird nur in Adjektivform (z. B. DEUTSCH) oder
 aus dem MRZ-Code D übernommen. Umlaute, die die OCR verliert (KOLN statt KÖLN),
-werden nicht ergänzt. OCR kann Felder
+werden nicht ergänzt. Die übliche Schreibweise ist eine Regel, kein Wissen über
+den Namen: Kleingeschrieben werden in Namen nur von, vom, zu, zum, zur (samt
+folgendem der/den/dem), in Orten, Straßen und Behörden Bindewörter wie am, an der,
+v. d.; Namensteile wie „Van“ oder „Le“ bleiben groß. Abweichende Schreibweisen
+korrigiert der Nutzer im Formular. Die Staatsangehörigkeit erscheint als Adjektiv
+(„deutsch“); eine bisherige Angabe D, DE, DEU oder Deutschland gilt dafür als
+übereinstimmend. Als gleich
+gilt eine bisherige Angabe nur, wenn ihre Umlaute oder ihr ß im Vorschlag als
+Grundbuchstabe, ae/oe/ue oder ss stehen; umgekehrt bleibt ein Vorschlag mit
+Umlaut ein Ersatzangebot. OCR kann Felder
 auslassen oder falsch lesen. Ein Erkennungsfehler oder Abbruch verhindert die
 manuelle Eingabe nicht. Unlesbare oder verschlüsselte PDFs müssen durch einen
 lesbaren Nachweis ersetzt werden, falls eine verlässliche Ansicht benötigt wird.
@@ -181,3 +200,12 @@ Mandantenfassung ohne Begriffe wie MRZ oder Prüfziffer). Ein Komponententest de
 Wizards prüft die Mandantenfassung, die Markierung übernommener Felder samt
 zugeordnetem Hinweis und ihr Ende bei eigener Bearbeitung; eine weitere
 Übernahme (zweite Ausweisseite) hebt frühere Markierungen nicht auf.
+Tests der Schreibweise decken Namen mit und ohne Adelsprädikat, Orte mit
+Bindewörtern, Straßen mit Hausnummernzusatz und unveränderte Nummern und Daten
+ab; der Abgleich unterscheidet verlorene Umlaute von echten Abweichungen
+(Michal ↔ MICHAEL bleibt ein Ersatzangebot). Ein Komponententest prüft, dass
+Übereinstimmungen nur als Hinweis erscheinen, der Name der Auswahl „Feld: Wert“
+bleibt und Ausweisfassung sowie bisherige Angabe als Beschreibung zugeordnet sind.
+Im Mandantendurchlauf mit dem Muster blieben der Name aus der Einladung und die
+vorbelegte Staatsangehörigkeit DE unverändert; der Schreibweisenhinweis zum Namen
+aus der Rückseite entfällt dann, weil der Name nicht angeboten wird.
