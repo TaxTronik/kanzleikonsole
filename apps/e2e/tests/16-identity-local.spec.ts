@@ -42,12 +42,18 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
     await page.getByRole('combobox', { name: 'Testformat' }).selectOption('mrz');
     await page.getByRole('button', { name: 'Ausweis zuschneiden und Daten erkennen' }).click();
     await page.getByRole('button', { name: 'Daten erkennen', exact: true }).click();
-    await expect(page.getByRole('checkbox', { name: 'Ausweisnummer: L01X00T47' })).toBeVisible({
+    await expect(page.getByRole('checkbox', { name: 'Staatsangehörigkeit: DEUTSCH' })).toBeVisible({
       timeout: 90_000,
     });
-    await expect(
-      page.getByRole('checkbox', { name: 'Staatsangehörigkeit: DEUTSCH' }),
-    ).toBeVisible();
+    // Je nach Systemschrift liest Tesseract die Nummer mal exakt, mal mit einem
+    // Zeichen, das keine Lesart der Prüfziffer erfüllt (Linux-CI). Zugesagt ist:
+    // nie eine falsche Nummer – entweder die richtige oder der Prüfziffer-Hinweis.
+    const number = page.getByRole('checkbox', { name: /^Ausweisnummer:/ });
+    if (await number.count()) await expect(number).toHaveAccessibleName('Ausweisnummer: L01X00T47');
+    else
+      await expect(
+        page.getByText('Prüfziffer der maschinenlesbaren Ausweisnummer stimmt nicht.'),
+      ).toBeVisible();
     await expect(
       page.getByRole('checkbox', { name: 'Ausstellende Behörde: STADT KÖLN' }),
     ).toBeVisible();
