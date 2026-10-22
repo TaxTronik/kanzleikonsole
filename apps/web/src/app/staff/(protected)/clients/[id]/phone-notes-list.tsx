@@ -52,11 +52,14 @@ export function PhoneNotesList({
   staffOptions,
   currentStaffId,
   todayYmd,
+  compactEmpty = false,
 }: {
   notes: PhoneNoteItem[];
   staffOptions: StaffOption[];
   currentStaffId: string;
   todayYmd: string;
+  /** Im Mandanten-Cockpit: leerer Zustand als eine Zeile statt großer Fläche. */
+  compactEmpty?: boolean;
 }) {
   const router = useRouter();
   const [isMutating, startMut] = useTransition();
@@ -113,7 +116,15 @@ export function PhoneNotesList({
   return (
     <div>
       {open_items.length === 0 && done_items.length === 0 ? (
-        <p className="px-6 py-8 text-sm text-disabled text-center">Keine Telefonzettel.</p>
+        <p
+          className={
+            compactEmpty
+              ? 'px-6 py-3 text-sm text-disabled'
+              : 'px-6 py-8 text-sm text-disabled text-center'
+          }
+        >
+          Keine Telefonzettel.
+        </p>
       ) : (
         <ul className="divide-y divide-border-subtle">
           {open_items.map((p) => (

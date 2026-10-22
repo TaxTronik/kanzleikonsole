@@ -326,7 +326,7 @@ export function RemindersBlock({
       )}
 
       {open_items.length === 0 ? (
-        <p className="px-6 py-6 text-sm text-disabled text-center">Keine offenen Wiedervorlagen.</p>
+        <p className="px-6 py-3 text-sm text-disabled">Keine offenen Wiedervorlagen.</p>
       ) : (
         <ul className="divide-y divide-border-subtle">
           {open_items.map((r) => {

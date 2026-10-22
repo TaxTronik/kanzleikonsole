@@ -103,7 +103,7 @@ export function ClientStatusFlowCard<
       {createOpen && renderCreateForm(() => setCreateOpen(false))}
 
       {active.length === 0 ? (
-        <p className="px-6 py-6 text-sm text-disabled text-center">{emptyText}</p>
+        <p className="px-6 py-3 text-sm text-disabled">{emptyText}</p>
       ) : (
         <ul className="divide-y divide-border-subtle">
           {active.map((item) => {

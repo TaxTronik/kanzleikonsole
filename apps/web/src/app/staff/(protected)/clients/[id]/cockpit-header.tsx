@@ -5,7 +5,7 @@
 // den Healthcheck der Signal-Engine wartet.
 // =============================================================================
 
-import { Suspense } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { randomUUID } from 'node:crypto';
 import Link from 'next/link';
 import { ArrowLeft, Wand2 } from 'lucide-react';
@@ -160,9 +160,11 @@ export function ClientOnboardingBanner({ client }: { client: ClientCockpitClient
 }
 
 /**
- * Navigation als horizontale Pill-Leiste — spart vertikalen Platz.
- * Modulabhängige Reiter kommen aus der Modul-Registry (wie Route-Gate und
- * Seiten-Gate der Zielseiten).
+ * Navigation der Mandantenakte, thematisch gruppiert (Steuern, Compliance,
+ * Abrechnung, Abläufe, Verlauf) und als ruhige Links statt einer Reihe
+ * umrandeter Buttons, die wie Aktionen wirkten. Modulabhängige Reiter kommen
+ * aus der Modul-Registry (wie Route-Gate und Seiten-Gate der Zielseiten);
+ * leere Gruppen entfallen.
  */
 export function ClientCockpitNav({
   client,
@@ -175,79 +177,140 @@ export function ClientCockpitNav({
   pendingChangeRequests: number;
   canSubsumtion: boolean;
 }) {
+  const base = `/staff/clients/${client.id}`;
+  const groups: Array<{ id: string; label: string; links: ReactNode[] }> = [
+    {
+      id: 'steuern',
+      label: 'Steuern',
+      links: [
+        clientNav['tax-schedule'] && (
+          <NavLink key="tax-schedule" href={clientNav['tax-schedule']}>
+            Steuertermine
+          </NavLink>
+        ),
+        clientNav.notices && (
+          <NavLink key="notices" href={clientNav.notices}>
+            Bescheide
+          </NavLink>
+        ),
+        isElsterConfigured() && (
+          <NavLink key="elster" href={`${base}/elster`}>
+            Steuerkonto (ELSTER)
+          </NavLink>
+        ),
+      ],
+    },
+    {
+      id: 'compliance',
+      label: 'Compliance',
+      links: [
+        <NavLink key="gwg" href={`${base}/gwg`}>
+          GwG-Prüfung
+        </NavLink>,
+        <NavLink key="privacy" href={`${base}/privacy`}>
+          Datenschutz
+        </NavLink>,
+        clientNav.poa && (
+          <NavLink key="poa" href={clientNav.poa}>
+            Vollmachten
+            {client._count.poas > 0 && (
+              <span className="badge-gray ml-2">{client._count.poas}</span>
+            )}
+          </NavLink>
+        ),
+        clientNav.tcms && (
+          <NavLink key="tcms" href={clientNav.tcms}>
+            Tax-CMS
+          </NavLink>
+        ),
+        clientNav.subsumtion && canSubsumtion && (
+          // Der Engine-Healthcheck (HTTP) hält nur diesen Link auf, nicht die Seite.
+          <Suspense key="subsumtion" fallback={null}>
+            <SubsumtionNavLink clientId={client.id} />
+          </Suspense>
+        ),
+      ],
+    },
+    {
+      id: 'abrechnung',
+      label: 'Abrechnung',
+      links: [
+        clientNav.billing && (
+          <NavLink key="billing" href={clientNav.billing}>
+            Stunden abrechnen
+          </NavLink>
+        ),
+        clientNav.bwa && (
+          <NavLink key="bwa" href={clientNav.bwa}>
+            BWA & Auswertungen
+          </NavLink>
+        ),
+      ],
+    },
+    {
+      id: 'ablaeufe',
+      label: 'Abläufe',
+      links: [
+        clientNav.workflows && (
+          <NavLink key="workflows" href={clientNav.workflows}>
+            Workflows
+          </NavLink>
+        ),
+        clientNav.forms && (
+          <NavLink key="forms" href={clientNav.forms}>
+            Formulare
+          </NavLink>
+        ),
+        <NavLink key="change-requests" href={`${base}/change-requests`}>
+          Stammdaten-Änderungen
+          {pendingChangeRequests > 0 && (
+            <span className="badge-yellow ml-2">{pendingChangeRequests}</span>
+          )}
+        </NavLink>,
+      ],
+    },
+    {
+      id: 'verlauf',
+      label: 'Verlauf',
+      links: [
+        <NavLink key="timeline" href={`${base}/timeline`}>
+          Aktivitätsstrom
+        </NavLink>,
+      ],
+    },
+  ];
   return (
-    <nav className="flex flex-wrap gap-2 mb-6">
-      <Link href={`/staff/clients/${client.id}/timeline`} className="btn-secondary text-xs py-1">
-        Aktivitätsstrom
-      </Link>
-      {clientNav.billing && (
-        <Link href={clientNav.billing} className="btn-secondary text-xs py-1">
-          Stunden abrechnen
-        </Link>
-      )}
-      {clientNav.bwa && (
-        <Link href={clientNav.bwa} className="btn-secondary text-xs py-1">
-          BWA & Auswertungen
-        </Link>
-      )}
-      <Link href={`/staff/clients/${client.id}/gwg`} className="btn-secondary text-xs py-1">
-        GwG-Prüfung
-      </Link>
-      <Link href={`/staff/clients/${client.id}/privacy`} className="btn-secondary text-xs py-1">
-        Datenschutz
-      </Link>
-      {clientNav.poa && (
-        <Link href={clientNav.poa} className="btn-secondary text-xs py-1">
-          Vollmachten
-          {client._count.poas > 0 && <span className="badge-gray ml-2">{client._count.poas}</span>}
-        </Link>
-      )}
-      {clientNav.subsumtion && canSubsumtion && (
-        // Der Engine-Healthcheck (HTTP) hält nur diese Pill auf, nicht die Seite.
-        <Suspense fallback={null}>
-          <SubsumtionNavLink clientId={client.id} />
-        </Suspense>
-      )}
-      {clientNav['tax-schedule'] && (
-        <Link href={clientNav['tax-schedule']} className="btn-secondary text-xs py-1">
-          Steuertermine
-        </Link>
-      )}
-      {clientNav.notices && (
-        <Link href={clientNav.notices} className="btn-secondary text-xs py-1">
-          Bescheide
-        </Link>
-      )}
-      {isElsterConfigured() && (
-        <Link href={`/staff/clients/${client.id}/elster`} className="btn-secondary text-xs py-1">
-          Steuerkonto (ELSTER)
-        </Link>
-      )}
-      {clientNav.workflows && (
-        <Link href={clientNav.workflows} className="btn-secondary text-xs py-1">
-          Workflows
-        </Link>
-      )}
-      {clientNav.forms && (
-        <Link href={clientNav.forms} className="btn-secondary text-xs py-1">
-          Formulare
-        </Link>
-      )}
-      {clientNav.tcms && (
-        <Link href={clientNav.tcms} className="btn-secondary text-xs py-1">
-          Tax-CMS
-        </Link>
-      )}
-      <Link
-        href={`/staff/clients/${client.id}/change-requests`}
-        className="btn-secondary text-xs py-1"
-      >
-        Stammdaten-Änderungen
-        {pendingChangeRequests > 0 && (
-          <span className="badge-yellow ml-2">{pendingChangeRequests}</span>
-        )}
-      </Link>
+    <nav aria-label="Bereiche der Mandantenakte" className="mb-6 flex flex-wrap gap-x-6 gap-y-2">
+      {groups.map((group) => {
+        const links = group.links.filter(Boolean);
+        if (links.length === 0) return null;
+        const labelId = `client-nav-${group.id}`;
+        return (
+          <div
+            key={group.id}
+            role="group"
+            aria-labelledby={labelId}
+            className="flex flex-wrap items-center gap-x-0.5 gap-y-1"
+          >
+            <span id={labelId} className="eyebrow mb-0 mr-1.5">
+              {group.label}
+            </span>
+            {links}
+          </div>
+        );
+      })}
     </nav>
+  );
+}
+
+const NAV_LINK =
+  'inline-flex items-center rounded px-2 py-1 text-sm text-secondary hover:bg-gray-50 hover:text-primary';
+
+function NavLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Link href={href} className={NAV_LINK}>
+      {children}
+    </Link>
   );
 }
 
@@ -255,7 +318,7 @@ export function ClientCockpitNav({
 async function SubsumtionNavLink({ clientId }: { clientId: string }) {
   if (!(await isRiskLayerAvailable())) return null;
   return (
-    <Link href={`/staff/clients/${clientId}/subsumtion`} className="btn-secondary text-xs py-1">
+    <Link href={`/staff/clients/${clientId}/subsumtion`} className={NAV_LINK}>
       Subsumtion / TCMS
     </Link>
   );

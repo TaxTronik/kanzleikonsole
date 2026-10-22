@@ -415,7 +415,9 @@ describe('gestreamte Cockpit-Blöcke', () => {
 
 describe('Tax-CMS-Reiter der Mandantenakte (TCMS Stufe 3)', () => {
   // Fachkatalog: TCMS-DIENST-001 – Modul an, Dienst nicht konfiguriert: kein Reiter.
-  const reiter = '<a class="btn-secondary text-xs py-1" href="/staff/clients/client-1/tcms">';
+  // Der Reiter ist ein Link in der Navigation der Mandantenakte (Gruppe Compliance);
+  // geprüft wird der Link selbst, nicht seine Gestaltung.
+  const reiter = /<a [^>]*href="\/staff\/clients\/client-1\/tcms">Tax-CMS<\/a>/;
 
   it.each([
     [true, true, true],
@@ -425,7 +427,12 @@ describe('Tax-CMS-Reiter der Mandantenakte (TCMS Stufe 3)', () => {
     h.modules = { ...ALL_MODULES, tcms: modul };
     h.tcmsKonfiguriert.mockReturnValue(dienst);
     const html = await render();
-    expect(html.includes(reiter)).toBe(sichtbar);
+    expect(reiter.test(html)).toBe(sichtbar);
+    if (sichtbar) {
+      expect(html).toMatch(
+        /<nav aria-label="Bereiche der Mandantenakte"[^>]*>(?:(?!<\/nav>).)*href="\/staff\/clients\/client-1\/tcms"/s,
+      );
+    }
     if (sichtbar) expect(html).toContain('Tax-CMS');
   });
 });

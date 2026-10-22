@@ -433,6 +433,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Mandantenakte übersichtlicher: Die Bereiche stehen thematisch gruppiert
+  (Steuern, Compliance, Abrechnung, Abläufe, Verlauf) als ruhige Links statt
+  als Reihe umrandeter Buttons, die wie Aktionen wirkten; leere Gruppen
+  entfallen. Leere Blöcke (Termine, Workflows, Wiedervorlagen, Pendelordner,
+  Anlieferungen, Telefonzettel) zeigen ihren Hinweis als eine Zeile statt als
+  große Fläche; ihre „Neu“-Aktionen bleiben im Kopf.
 - n8n-Einstellungen flacher: Die fünf Stufen stehen ohne umschließende
   Abschnittskarte und ohne zusätzlichen Rahmen im Stufeninhalt. Aufgeklappt
   sind zunächst nur die aktive Stufe und „Betrieb“, solange Zustellungen

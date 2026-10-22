@@ -164,7 +164,7 @@ export async function UpcomingCockpitBlock({
         </div>
       )}
       {rows.length === 0 ? (
-        <p className="px-6 py-8 text-sm text-disabled text-center">Keine anstehenden Termine.</p>
+        <p className="px-6 py-3 text-sm text-disabled">Keine anstehenden Termine.</p>
       ) : (
         <ul className="divide-y divide-border-subtle">
           {rows.map((r) => (
@@ -239,7 +239,7 @@ export async function WorkflowsCockpitBlock({
         </Link>
       </div>
       {workflowInstances.length === 0 ? (
-        <p className="px-6 py-6 text-sm text-disabled text-center">
+        <p className="px-6 py-3 text-sm text-disabled">
           Keine laufenden Workflows.{' '}
           <Link
             href={`/staff/clients/${clientId}/workflows`}
@@ -418,6 +418,7 @@ export async function PhoneNotesCockpitBlock({
         currentStaffId={staffId}
       />
       <PhoneNotesList
+        compactEmpty
         currentStaffId={staffId}
         staffOptions={staffList}
         todayYmd={berlinYmd(new Date())}
