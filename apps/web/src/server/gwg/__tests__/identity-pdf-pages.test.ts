@@ -78,8 +78,15 @@ describe('P-13 countIdentityPdfPages', () => {
     expect(
       await countIdentityPdfPages(bytes, { ...IDENTITY_PDF_PAGE_COUNT_LIMITS, timeoutMs: 1 }),
     ).toBeNull();
+    // Ein Budget, das jede RSS-Differenz überschreitet: -1 genügte nicht, weil
+    // der Hauptprozess zwischen Basiswert und Antwort Speicher freigeben kann
+    // (z. B. nach dem Ende des ersten Threads); dann ist die Differenz kleiner
+    // als -1 und das Ergebnis galt als gelesen (CI-Lauf 3918).
     expect(
-      await countIdentityPdfPages(bytes, { ...IDENTITY_PDF_PAGE_COUNT_LIMITS, rssBudgetBytes: -1 }),
+      await countIdentityPdfPages(bytes, {
+        ...IDENTITY_PDF_PAGE_COUNT_LIMITS,
+        rssBudgetBytes: Number.NEGATIVE_INFINITY,
+      }),
     ).toBeNull();
   });
 });

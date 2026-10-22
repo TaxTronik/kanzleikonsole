@@ -1,5 +1,24 @@
 ---
 exceptions:
+  - id: FK-EXC-20261022-002
+    date: '2026-10-22'
+    paths:
+      - apps/web/src/server/gwg/__tests__/identity-pdf-pages.test.ts
+    rule_ids:
+      - GWG-IDENTIFICATION-EVIDENCE-001
+    reason: >-
+      TCMS Stufe 3 (CI-Lauf 3918): Nur eine Testeingabe ändert sich. Der Fall
+      „Speichergrenze überschritten“ setzte das RSS-Budget auf -1; gibt der
+      Hauptprozess zwischen Basiswert und Antwort Speicher frei, ist die
+      Differenz kleiner als -1 und die Seitenzahl galt als gelesen. Der Test
+      nutzt jetzt ein Budget von minus unendlich, das jede Differenz
+      überschreitet. Produktivcode, Grenzen der Zählung, Entscheidung,
+      Geltungsbereich und Ergebnis von GWG-IDENTIFICATION-EVIDENCE-001 bleiben
+      unverändert; ohne die Speicherprüfung des Worker-Threads wird der Test
+      rot. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/gwg/__tests__/identity-pdf-pages.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261022-001
     date: '2026-10-22'
     paths:
