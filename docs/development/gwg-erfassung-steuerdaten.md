@@ -152,9 +152,12 @@ dem Wiederherstellen. Die Action nimmt vor dem Schreiben denselben
 Lifecycle-Lock wie der Upload (`revalidateOpenGwgInviteRevisionTx`) und
 schreibt nur auf die erwartete Revision; sonst meldet der Wizard den Konflikt
 mit „Neu laden“. Die Einreichung löscht den Zwischenstand in ihrer
-Transaktion, die Vernichtung der Prüfung per Trigger, die Anonymisierung des
-Mandanten per Cascade über die Einladung; eine Löschung nach Zeitablauf gibt es
-bewusst nicht. „Auf dem Smartphone fortsetzen“ (nur bei Maus/Trackpad und ab
+Transaktion. Widerruf und Ablösung (`status` → `CANCELLED`, alle Pfade in
+`invite-lifecycle.ts` und `invite-actions.ts`) sowie die Vernichtung der
+Prüfung (`token_hash` „vernichtet-…“) löscht der Trigger
+`gwg_onboarding_draft_drop_on_invite_closed` (Migration 20261022203601), die
+Anonymisierung des Mandanten die Cascade über die Einladung. Eine abgelaufene
+Einladung behält ihn; eine Löschung nach Zeitablauf gibt es bewusst nicht. „Auf dem Smartphone fortsetzen“ (nur bei Maus/Trackpad und ab
 640 px Breite, nicht auf Touch-Geräten) erzeugt den QR-Code erst auf Klick im Browser (`qrcode`,
 dynamischer Import) aus `window.location.href`. Der Browser fragt beim
 Verlassen nur nach (`beforeunload`), solange etwas nicht zwischengespeichert

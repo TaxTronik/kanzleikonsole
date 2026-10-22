@@ -68,9 +68,10 @@ code_refs:
   - packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql
   - packages/db/prisma/migrations/20261022190000_gwg_identity_assisted_fields/migration.sql
   - packages/db/prisma/migrations/20261022200000_gwg_onboarding_draft/migration.sql
-  - packages/db/prisma/sql/functions/app.gwg_onboarding_draft_drop_on_invite_destroyed().sql
+  - packages/db/prisma/migrations/20261022203601_gwg_onboarding_draft_drop_on_invite_closed/migration.sql
+  - packages/db/prisma/sql/functions/app.gwg_onboarding_draft_drop_on_invite_closed().sql
   - packages/db/prisma/sql/policies/gwg_onboarding_draft.gwg_onboarding_draft_isolation.sql
-  - packages/db/prisma/sql/triggers/gwg_onboarding_invite.gwg_onboarding_draft_drop_on_invite_destroyed.sql
+  - packages/db/prisma/sql/triggers/gwg_onboarding_invite.gwg_onboarding_draft_drop_on_invite_closed.sql
   - packages/db/prisma/schema.prisma
   - packages/gwg/src/check-lifecycle.ts
 test_refs:
@@ -96,6 +97,7 @@ test_refs:
   - apps/web/src/app/gwg-onboarding/__tests__/draft-action.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/draft.test.ts
   - apps/web/src/server/privacy/__tests__/consent-policy-ui.test.ts
+  - packages/db/src/__tests__/gwg-onboarding-draft.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -259,13 +261,17 @@ anderes Gerät inzwischen gespeichert, bleibt der fremde Stand erhalten und der
 Wizard bietet das Neuladen an. Der Zwischenstand ist kein Teil des
 Prüfentwurfs und für die Kanzlei nicht sichtbar.
 
-Lebensdauer (Produktentscheidung vom 22.10.2026, fachliche und
+Lebensdauer (Produktentscheidungen vom 22.10.2026, fachliche und
 datenschutzrechtliche Prüfung offen): Es gibt keine Löschung nach Zeitablauf;
-eine nie eingereichte Einladung bleibt samt Zwischenstand und Uploads stehen
-und zeigt nach Ablauf „Abgelaufen“. Der Zwischenstand endet mit der
-Einreichung (in derselben Transaktion), mit der Einladung (Löschung bei der
-Anonymisierung des Mandanten) und bei der Vernichtung der Prüfung (Trigger auf
-die Anonymisierung der Einladung).
+eine abgelaufene, nie eingereichte Einladung bleibt samt Zwischenstand und
+Uploads stehen und zeigt „Abgelaufen“. Der Zwischenstand endet mit der
+Einreichung (in derselben Transaktion), sobald die Einladung widerrufen oder
+abgelöst wird (Zurückziehen, neue Einladung, Einreichung einer anderen
+Einladung, veraltete Revision, „In der Kanzlei erfassen“), bei der Vernichtung
+der Prüfung und mit der Einladung selbst (Anonymisierung des Mandanten).
+Widerruf, Ablösung und Vernichtung löscht ein Datenbank-Trigger auf die
+Einladung, damit kein Pfad ihn vergisst; die Uploads einer widerrufenen
+Einladung bleiben davon unberührt.
 
 Beide Wege nutzen dieselbe lokale Ausweishilfe (GWG-OCR-ASSIST-001). Zwei
 Seitenverweise dürfen dasselbe PDF-Original verwenden, wenn Version und
@@ -314,8 +320,9 @@ Grenzen:
   GwG-Richtigkeit der Angaben.
 - Wer den QR-Code oder Link hat, sieht und ändert den Zwischenstand; der Link
   ist das einzige Zugangsmerkmal.
-- Ein nie eingereichter Zwischenstand wird nicht nach Zeitablauf gelöscht und
-  ist nicht Teil des DSGVO-Exports (siehe Prüffragen).
+- Der Zwischenstand einer abgelaufenen, nie eingereichten Einladung wird nicht
+  nach Zeitablauf gelöscht und ist nicht Teil des DSGVO-Exports (siehe
+  Prüffragen).
 
 ## Fachliche Prüffragen
 
@@ -345,4 +352,6 @@ den Zwischenstand: nur eigene Dateiverweise, Revision und Konflikt zwischen
 zwei Geräten, Lock vor dem Schreiben, keine Speicherung für geschlossene
 Einladungen, Wiederherstellen höchstens bis zum Datenschutz-Schritt und den
 QR-Code mit dem Link der Seite. `bound-draft-submit.test.ts` belegt das Löschen
-mit der Einreichung.
+mit der Einreichung, `gwg-onboarding-draft.test.ts` gegen PostgreSQL die
+Mandantentrennung, die Grenzen des Inhalts und das Löschen bei Widerruf,
+Ablösung, Vernichtung und Löschung der Einladung, nicht aber bei Ablauf.

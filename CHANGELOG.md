@@ -29,9 +29,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Link. Gespeichert werden Angaben und Verweise auf hochgeladene Dateien, nie die
   Datenschutzerklärung. Haben zwei Geräte parallel geändert, wird nichts still
   überschrieben; der Wizard bietet das Neuladen an. Der Zwischenstand endet mit
-  der Einreichung, der Vernichtung der Prüfung oder der Anonymisierung des
-  Mandanten, nicht nach Zeitablauf (Tabelle `gwg_onboarding_draft`, Migration
-  20261022200000; GWG-SELF-ONBOARDING-001).
+  der Einreichung, sobald die Kanzlei die Einladung zurückzieht oder durch eine
+  neue ersetzt, mit der Vernichtung der Prüfung oder der Anonymisierung des
+  Mandanten; eine abgelaufene Einladung behält ihn, es gibt keine Löschung nach
+  Zeitablauf (Tabelle `gwg_onboarding_draft`, Migrationen 20261022200000 und
+  20261022203601; GWG-SELF-ONBOARDING-001).
 - **[Scope] [TCMS]** Admins und Partner geben ungeklärte Anlagen einer Portal-Meldung frei,
   wenn das Tax-CMS bestätigt, dass kein Ereignis die Datei führt: Pflichtbegründung,
   Audit `tcms.anlage.freigegeben`, frühestens 23 h 10 min nach dem ersten Senden; der

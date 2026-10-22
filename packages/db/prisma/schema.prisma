@@ -4170,8 +4170,9 @@ model GwgOnboardingInvite {
 
 /// GWG-SELF-ONBOARDING-001: Zwischenstand der Online-Einreichung je Einladung,
 /// damit der Mandant auf jedem Gerät weitermachen kann. Gelöscht mit der
-/// Einreichung, der Einladung (Anonymisierung) und bei der Vernichtung der
-/// Prüfung (Trigger); keine Löschung nach Zeitablauf.
+/// Einreichung, bei Widerruf oder Ablösung der Einladung und bei der
+/// Vernichtung der Prüfung (Trigger) sowie mit der Einladung (Anonymisierung);
+/// keine Löschung nach Zeitablauf.
 model GwgOnboardingDraft {
   inviteId  String              @id @map("invite_id") @db.Uuid
   tenantId  String              @map("tenant_id") @db.Uuid
