@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 // Fachkatalog: GWG-OCR-ASSIST-001, GWG-IDENTIFICATION-EVIDENCE-001
-import { compareWithMrz, mrzCheckDigit, parseGermanIdentityText } from '../identity-ocr';
+import {
+  compareWithMrz,
+  detectedSide,
+  mrzCheckDigit,
+  parseGermanIdentityText,
+} from '../identity-ocr';
 import {
   fullIdentityViewport,
   IdentitySourceViewsSchema,
@@ -305,5 +310,18 @@ describe('GWG-IDENTIFICATION-EVIDENCE-001 immutable source view contract', () =>
     expect(
       distinctIdentityViews(front, { ...front, side: 'back', page: 2, versionId: 'other' }),
     ).toBe(false);
+  });
+});
+
+describe('GWG-OCR-ASSIST-001 Ausweisseite aus dem Inhalt', () => {
+  it('erkennt die Rückseite an Zeichenreihen oder Anschrift, die Vorderseite an Geburtsangaben', () => {
+    expect(detectedSide({ fields: {}, mrz: { documentNumber: 'X' } })).toBe('back');
+    expect(detectedSide({ fields: { postalCode: '51147', city: 'KOLN' } })).toBe('back');
+    expect(detectedSide({ fields: { birthDate: '1983-08-12', idExpiryDate: '2034-05-01' } })).toBe(
+      'front',
+    );
+    // Gemischt oder leer: keine Aussage, kein Hinweis.
+    expect(detectedSide({ fields: { city: 'KOLN', birthPlace: 'BERLIN' } })).toBeNull();
+    expect(detectedSide({ fields: { fullName: 'ERIKA MUSTERMANN' } })).toBeNull();
   });
 });

@@ -16,8 +16,8 @@ import type { LoadedInviteDraft } from '@/server/gwg-onboarding/service';
 import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 import {
   onboardingLegalEntityStepError,
-  onboardingOwnersStepError,
-  onboardingRepresentativesStepError,
+  onboardingPersonIssueText,
+  onboardingPersonIssues,
 } from '@/server/gwg-onboarding/wizard-validation';
 import {
   DocumentsStep,
@@ -40,6 +40,7 @@ import {
   type OpenPerson,
   type Representative,
 } from './wizard-steps';
+import { useLeaveWarning } from './wizard-shared';
 
 type OnboardingUploadResult =
   | { ok: true; documentId: string; versionId?: string }
@@ -122,6 +123,10 @@ export function OnboardingWizard({
   consentDisplayRevision: string;
 }) {
   const [step, setStep] = useState(0);
+  // Weitester geprüfter Schritt: bleibt in der Fortschrittsleiste erledigt.
+  const [reached, setReached] = useState(0);
+  // Nach dem ersten Weiter im Personenschritt: offene Angaben laufend anzeigen.
+  const [personCheck, setPersonCheck] = useState(false);
 
   // Datenschutz-Einwilligungen (Teil B) + Bestätigung + Unterschrift.
   const [consent, setConsent] = useState<ConsentSelections>(() => consentForNewDeclaration());
@@ -178,6 +183,7 @@ export function OnboardingWizard({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  useLeaveWarning(!submitted);
   const [isPending, start] = useTransition();
 
   function patchOwner(i: number, patch: Partial<BeneficialOwner>) {
@@ -299,6 +305,7 @@ export function OnboardingWizard({
                 documentId: result.documentId,
                 fileName: file.name,
                 localFile: file,
+                previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
                 versionId: result.versionId,
                 viewport,
               },
@@ -317,12 +324,15 @@ export function OnboardingWizard({
     setIdError(subjectId, side, null);
     const person = [...owners, ...representatives].find((entry) => entry.id === subjectId);
     const otherSide = side === 'front' ? person?.idBack : person?.idFront;
+    const removed = side === 'front' ? person?.idFront : person?.idBack;
     const discardError =
       otherSide?.documentId === documentId ? null : await discardDocuments([documentId]);
     if (discardError) {
       setIdError(subjectId, side, discardError);
       return;
     }
+    if (removed?.previewUrl && otherSide?.documentId !== documentId)
+      URL.revokeObjectURL(removed.previewUrl);
     setSubjects((current) =>
       current.map((subject) =>
         subject.id === subjectId
@@ -363,14 +373,11 @@ export function OnboardingWizard({
       if (!city.trim()) return 'Ort ist erforderlich.';
     }
     if (step === 1) {
-      const ownerError = onboardingOwnersStepError(owners);
-      if (ownerError) return ownerError;
-      const representativeError = onboardingRepresentativesStepError(
-        client.kind,
-        owners,
-        representatives,
-      );
-      if (representativeError) return representativeError;
+      const issues = onboardingPersonIssues(client.kind, owners, representatives);
+      if (issues.persons.length || issues.general) {
+        setPersonCheck(true);
+        return issues.general ?? 'Bei einigen Personen fehlen noch Angaben – siehe Liste oben.';
+      }
     }
     if (ONBOARDING_STEPS[step]?.key === 'documents' && client.kind !== 'NATPERS') {
       const legalEntityError = onboardingLegalEntityStepError({
@@ -401,7 +408,9 @@ export function OnboardingWizard({
       return;
     }
     setStepError(null);
-    setStep((s) => (returnToSummary ? ONBOARDING_STEPS.length - 1 : s + 1));
+    const target = returnToSummary ? ONBOARDING_STEPS.length - 1 : step + 1;
+    setStep(target);
+    setReached((current) => Math.max(current, target));
     setReturnToSummary(false);
   }
   function prev() {
@@ -414,8 +423,7 @@ export function OnboardingWizard({
     setSubmitError(null);
     const err =
       validateStep() ??
-      onboardingOwnersStepError(owners) ??
-      onboardingRepresentativesStepError(client.kind, owners, representatives);
+      onboardingPersonIssueText(onboardingPersonIssues(client.kind, owners, representatives));
     if (err) {
       setSubmitError(err);
       return;
@@ -483,10 +491,12 @@ export function OnboardingWizard({
   }
 
   if (submitted) return <OnboardingSubmitted />;
+  // Während eine Person bearbeitet wird, führt nur deren Bearbeitung.
+  const editingPerson = step === 1 && openPerson !== null;
 
   return (
     <div>
-      <WizardStepper step={step} />
+      <WizardStepper step={step} reached={reached} />
 
       {step === 0 && (
         <MasterDataStep
@@ -510,6 +520,7 @@ export function OnboardingWizard({
           owners={owners}
           representatives={representatives}
           openPerson={openPerson}
+          issues={personCheck ? onboardingPersonIssues(client.kind, owners, representatives) : null}
           onOpenPerson={setOpenPerson}
           idUploadErrors={idUploadErrors}
           discardingDocumentIds={discardingDocumentIds}
@@ -594,8 +605,8 @@ export function OnboardingWizard({
         />
       )}
 
-      {stepError && <div className="alert-error-sm mt-6">{stepError}</div>}
-      {!(step === 1 && openPerson) && (
+      {stepError && !editingPerson && <div className="alert-error-sm mt-6">{stepError}</div>}
+      {!editingPerson && (
         <WizardNavigation
           step={step}
           onPrevious={prev}

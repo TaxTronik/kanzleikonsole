@@ -48,12 +48,20 @@ export async function loadIdentityImage(blob: Blob): Promise<IdentityImage> {
       },
     };
   }
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(blob.type)) {
+  // HEIC (iPhone) lesen nur manche Browser, etwa Safari; sonst manuell erfassen.
+  const heic = ['image/heic', 'image/heif'].includes(blob.type);
+  if (!heic && !['image/jpeg', 'image/png', 'image/webp'].includes(blob.type)) {
     throw new Error(
       'Die Ausweishilfe unterstützt JPG, PNG und PDF. Diese Datei bitte manuell erfassen.',
     );
   }
-  const bitmap = await createImageBitmap(blob);
+  const bitmap = await createImageBitmap(blob).catch(() => {
+    throw new Error(
+      heic
+        ? 'Dieses iPhone-Fotoformat (HEIC) kann dieser Browser nicht lesen. Bitte ein JPG-Foto verwenden oder die Angaben selbst eintragen.'
+        : 'Das Bild konnte nicht gelesen werden. Bitte die Angaben selbst eintragen.',
+    );
+  });
   return {
     pages: 1,
     async render() {

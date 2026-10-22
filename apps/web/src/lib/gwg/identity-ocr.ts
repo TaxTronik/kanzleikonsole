@@ -32,13 +32,30 @@ export type IdentityWarningCode =
   | 'mrz-number-invalid'
   | 'mrz-date-century'
   | 'mrz-name'
-  | 'nothing-found';
+  | 'nothing-found'
+  | 'side-mismatch';
 export interface IdentityWarning {
   code: IdentityWarningCode;
   text: string;
   field?: IdentityField;
   /** Widerspruch zwischen Vorder- und Rückseite bzw. bisherigen Angaben. */
   acrossSides?: boolean;
+  /** side-mismatch: die Seite, nach der der Inhalt aussieht. */
+  side?: 'front' | 'back';
+}
+
+/**
+ * Nach welcher Ausweisseite der erkannte Inhalt aussieht: Die maschinenlesbare
+ * Zone und Anschrift/Behörde stehen nur hinten, Geburtsangaben und „Gültig bis“
+ * nur vorne. Bei gemischtem oder leerem Ergebnis keine Aussage.
+ */
+export function detectedSide(result: Pick<IdentityOcrResult, 'fields' | 'mrz'>) {
+  if (result.mrz) return 'back' as const;
+  const { fields } = result;
+  const back = Boolean(fields.street || fields.postalCode || fields.city || fields.idIssuedBy);
+  const front = Boolean(fields.birthDate || fields.birthPlace || fields.idExpiryDate);
+  if (back === front) return null;
+  return back ? ('back' as const) : ('front' as const);
 }
 
 export interface IdentityOcrResult {

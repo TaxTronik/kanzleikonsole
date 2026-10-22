@@ -158,7 +158,7 @@ function field(scope: HTMLElement, label: string): HTMLInputElement {
 }
 
 function uploadInput(scope: HTMLElement, label: string): HTMLInputElement {
-  const element = [...scope.querySelectorAll('label')].find(
+  const element = [...scope.querySelectorAll('label, p')].find(
     (entry) => entry.textContent?.replace('*', '').trim() === label,
   );
   return element!.parentElement!.querySelector('input[type="file"]') as HTMLInputElement;
@@ -190,6 +190,9 @@ let uploadSeq = 0;
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
   window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as never;
+  // jsdom kennt keine Objekt-URLs; der Wizard nutzt sie für Vorschaubilder.
+  URL.createObjectURL = vi.fn(() => 'blob:vorschau');
+  URL.revokeObjectURL = vi.fn();
 });
 
 beforeEach(() => {
@@ -270,14 +273,17 @@ describe('GwG-Onboarding – explizite Doppelrollen-UX', () => {
 
     backToOverview();
     next();
-    expect(
-      screen.getByText(
-        'Vertretung 1: Bitte entscheiden Sie ausdrücklich, ob dieselbe Person bereits wirtschaftlich berechtigt ist.',
-      ),
-    ).toBeTruthy();
+    // Die Übersicht nennt die offene Entscheidung und springt in den Abschnitt „Rolle“.
+    const issues = screen.getByRole('heading', { name: 'Bitte noch ergänzen' })
+      .parentElement as HTMLElement;
+    expect(issues.textContent).toContain(
+      'Vertretung 1: Entscheidung, ob die Person bereits wirtschaftlich berechtigt ist',
+    );
     expect(stepHeading('Wirtschaftlich Berechtigte')).toBeTruthy();
 
-    fireEvent.change(identitySelect(openPerson('Vertretung 1')), { target: { value: OWNER.id } });
+    fireEvent.click(within(issues).getByRole('button', { name: 'Vertretung 1 ergänzen' }));
+    expect(within(editor('Vertretung 1')).getByText(/^Hier fehlt noch: Entscheidung/)).toBeTruthy();
+    fireEvent.change(identitySelect(editor('Vertretung 1')), { target: { value: OWNER.id } });
     const linked = editor('Vertretung 1');
     expect(linked.textContent).toContain('Max Muster wird mit beiden Rollen gespeichert');
     expect(linked.querySelector('input[type="file"]')).toBeNull();
@@ -437,10 +443,27 @@ describe('GwG-Onboarding – Personenübersicht', () => {
     );
     // Die neue Person öffnet sich direkt im Personenschritt.
     fireEvent.click(within(editor('Person 2')).getByRole('button', { name: 'Zur Übersicht' }));
+    // Bereits geprüfte Schritte bleiben in der Fortschrittsleiste erledigt.
+    const circle = (label: string) =>
+      [...screen.getByRole('list', { name: 'Fortschritt' }).querySelectorAll('li')].find((item) =>
+        item.textContent?.includes(label),
+      )!.firstElementChild!.textContent;
+    expect([circle('Nachweise'), circle('Datenschutz'), circle('Übermitteln')]).toEqual([
+      '',
+      '',
+      '5',
+    ]);
     const back = screen.getByRole('button', { name: 'Weiter zur Zusammenfassung' });
     // Die Pflichtprüfung gilt auch auf dem Rückweg.
     fireEvent.click(back);
-    expect(screen.getByText(/^Person 2: .* fehlt oder ist ungültig\.$/)).toBeTruthy();
+    // Alle offenen Angaben auf einmal, verständlich und ohne Paragrafen.
+    const issues = screen.getByRole('heading', { name: 'Bitte noch ergänzen' })
+      .parentElement as HTMLElement;
+    expect(issues.textContent).toContain(
+      'Person 2: Foto der Vorderseite, Foto der Rückseite, Name, Geburtsdatum, Geburtsort, Wohnanschrift',
+    );
+    expect(issues.textContent).not.toMatch(/§|GwG/);
+    expect(within(issues).getByRole('button', { name: 'Person 2 ergänzen' })).toBeTruthy();
     expect(stepHeading('Wirtschaftlich Berechtigte')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Person 2 entfernen' }));
@@ -451,6 +474,73 @@ describe('GwG-Onboarding – Personenübersicht', () => {
     // Nachweise und Datenschutz bleiben erhalten; es geht direkt zurück.
     expect(stepHeading('Zusammenfassung')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Weiter zur Zusammenfassung' })).toBeNull();
+  });
+});
+
+describe('GwG-Onboarding – Fotos, Seitentausch und Verlassen', () => {
+  const slot = (scope: HTMLElement, label: string) =>
+    [...scope.querySelectorAll('p')].find(
+      (entry) => entry.textContent?.replace('*', '').trim() === label,
+    )!.parentElement as HTMLElement;
+
+  it('zeigt Vorschaubilder und tauscht vertauschte Ausweisseiten', async () => {
+    renderWizard(null);
+    next();
+    const person = openPerson('Person 1');
+    selectFile(
+      uploadInput(person, 'Personalausweis Vorderseite'),
+      new File(['hinten'], 'eigentlich-hinten.jpg', { type: 'image/jpeg' }),
+    );
+    await waitFor(() =>
+      expect(
+        within(editor('Person 1')).getByAltText('Vorschau: Personalausweis Vorderseite'),
+      ).toBeTruthy(),
+    );
+    selectFile(
+      uploadInput(editor('Person 1'), 'Personalausweis Rückseite'),
+      new File(['vorne'], 'eigentlich-vorne.jpg', { type: 'image/jpeg' }),
+    );
+    await waitFor(() =>
+      expect(within(editor('Person 1')).getByText('eigentlich-vorne.jpg')).toBeTruthy(),
+    );
+
+    fireEvent.click(within(editor('Person 1')).getByRole('button', { name: 'Seiten tauschen' }));
+    expect(slot(editor('Person 1'), 'Personalausweis Vorderseite').textContent).toContain(
+      'eigentlich-vorne.jpg',
+    );
+    expect(slot(editor('Person 1'), 'Personalausweis Rückseite').textContent).toContain(
+      'eigentlich-hinten.jpg',
+    );
+  });
+
+  it('fragt vor dem Verlassen nach, bis die Angaben übermittelt sind', async () => {
+    const leave = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    renderWizard(
+      draft({
+        noRegisterEntry: false,
+        representatives: [representative({ id: 'rep-linked', linkedOwnerId: OWNER.id })],
+        extraDocuments: [
+          { documentId: uuid(5), fileName: 'hr.pdf', type: 'HANDELSREGISTERAUSZUG' },
+        ],
+      }),
+    );
+    expect(leave()).toBe(true);
+    next();
+    next();
+    next();
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Ich habe die Datenschutzhinweise zur Kenntnis genommen.',
+      }),
+    );
+    next();
+    fireEvent.click(screen.getByRole('button', { name: 'Jetzt übermitteln' }));
+    expect(await screen.findByRole('heading', { name: 'Vielen Dank!' })).toBeTruthy();
+    expect(leave()).toBe(false);
   });
 });
 

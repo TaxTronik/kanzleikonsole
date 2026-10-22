@@ -3597,7 +3597,8 @@
         "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts",
         "apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts",
         "apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts",
-        "apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx"
+        "apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx",
+        "apps/web/src/server/gwg-onboarding/__tests__/wizard-person-issues.test.ts"
       ],
       "feature_refs": [
         "FEATURES.md",

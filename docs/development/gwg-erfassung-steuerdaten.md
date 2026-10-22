@@ -133,7 +133,14 @@ Der Name steht über den Abschnitten, damit Uploads dem Personenordner zugeordne
 werden und eine übernommene Schreibweise in jedem Abschnitt sichtbar bleibt.
 Solange eine Person offen ist, ruht die Schrittnavigation des Wizards. Aus der
 Zusammenfassung lassen sich vergessene Personen ergänzen; „Weiter zur
-Zusammenfassung“ prüft danach den Personenschritt und springt direkt zurück. Mandanten
+Zusammenfassung“ prüft danach den Personenschritt und springt direkt zurück.
+Beim Weiter listet `onboardingPersonIssues` alle offenen Angaben je Person in
+Alltagssprache mit Sprung in den Abschnitt der ersten Lücke; im Abschnitt steht
+„Hier fehlt noch: …“. Upload-Felder zeigen ein Vorschaubild (Objekt-URL der
+gewählten Datei) und bieten auf Touch-Geräten „Foto aufnehmen“ (`capture`,
+JPG); die Dateiauswahl nimmt kein HEIC mehr an, damit iPhones JPG liefern.
+„Seiten tauschen“ vertauscht Dateien und Seitenverweise. Bis zum Übermitteln
+fragt der Browser beim Verlassen nach (`beforeunload`). Mandanten
 lesen jede Seite mit „Vorderseite auslesen“ bzw. „Rückseite auslesen“ aus
 (`sideSources`); Original, Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen
 eingeklappt unter „Ausschnitt anpassen“. Die Kanzlei behält die bisherige,

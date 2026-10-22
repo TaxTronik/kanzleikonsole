@@ -27,6 +27,8 @@ export interface OnboardingIdentityFile {
   versionId?: string;
   viewport?: IdentityViewport;
   localFile?: File;
+  /** Vorschaubild der frisch gewählten Datei (Objekt-URL), nur im Browser. */
+  previewUrl?: string;
 }
 
 export interface BeneficialOwner {
@@ -99,12 +101,13 @@ export function OnboardingSubmitted() {
   );
 }
 
-export function WizardStepper({ step }: { step: number }) {
+/** `reached`: weitester bereits geprüfter Schritt; bleibt erledigt, wenn man zurückgeht. */
+export function WizardStepper({ step, reached = step }: { step: number; reached?: number }) {
   return (
     <div className="mb-8">
       <ol className="flex items-center justify-between" aria-label="Fortschritt">
         {ONBOARDING_STEPS.map((entry, index) => {
-          const done = index < step;
+          const done = index !== step && index < Math.max(step, reached);
           const current = index === step;
           return (
             <li key={entry.key} className="flex-1 min-w-0 flex items-center">

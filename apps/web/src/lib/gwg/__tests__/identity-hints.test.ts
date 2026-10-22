@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 // Fachkatalog: GWG-OCR-ASSIST-001
-import { clientWarningText, IDENTITY_UI_TEXT, warningText } from '../identity-hints';
+import { clientWarningText, IDENTITY_UI_TEXT, warningText, warningTone } from '../identity-hints';
 import type { IdentityWarning, IdentityWarningCode } from '../identity-ocr';
 
 const CODES: IdentityWarningCode[] = [
@@ -12,6 +12,7 @@ const CODES: IdentityWarningCode[] = [
   'mrz-date-century',
   'mrz-name',
   'nothing-found',
+  'side-mismatch',
 ];
 // Fachbegriffe der Kanzleifassung, die Mandanten nicht kennen müssen.
 const JARGON = /MRZ|maschinenlesbar|Prüfziffer|Sichttext|Jahrhundert|ungeprüft/i;
@@ -63,5 +64,18 @@ describe('GWG-OCR-ASSIST-001 Hinweise der Ausweishilfe je Zielgruppe', () => {
     expect(client.applied(['Name', 'PLZ'])).toMatch(/^2 Angaben/);
     // Die E2E-Suite und die Kanzleiabläufe hängen an diesen Beschriftungen.
     expect(IDENTITY_UI_TEXT.staff.apply).toBe('Ausgewählte Daten übernehmen (ungeprüft)');
+  });
+
+  it('hebt nur Widersprüche und eine vertauschte Seite hervor', () => {
+    const tone = (code: IdentityWarningCode) => warningTone({ code, text: '' });
+    expect(CODES.filter((code) => tone(code) === 'attention')).toEqual([
+      'date-conflict',
+      'number-conflict',
+      'mrz-number-invalid',
+      'side-mismatch',
+    ]);
+    expect(clientWarningText({ code: 'side-mismatch', text: '', side: 'back' })).toMatch(
+      /^Das sieht nach der Rückseite Ihres Ausweises aus\./,
+    );
   });
 });

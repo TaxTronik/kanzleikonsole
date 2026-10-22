@@ -28,7 +28,21 @@ export function clientWarningText(warning: IdentityWarning): string {
       return 'Ihr Name wurde aus den Zeichenreihen der Rückseite gelesen. Dort fehlen Umlaute (ä, ö, ü) und ß – bitte prüfen Sie die Schreibweise.';
     case 'nothing-found':
       return 'Wir konnten leider keine Angaben sicher erkennen. Bitte tragen Sie die Daten selbst ein – das geht genauso.';
+    case 'side-mismatch':
+      return `Das sieht nach der ${warning.side === 'back' ? 'Rückseite' : 'Vorderseite'} Ihres Ausweises aus. Falls die Fotos vertauscht sind, tauschen Sie sie mit „Seiten tauschen“.`;
   }
+}
+
+/**
+ * Widersprüche und eine vertauschte Seite verlangen Aufmerksamkeit; alles andere
+ * ist ein ruhiger Hinweis, damit ein gut gelesener Ausweis nicht wie ein Fehler wirkt.
+ */
+export function warningTone(warning: IdentityWarning): 'attention' | 'info' {
+  return ['date-conflict', 'number-conflict', 'mrz-number-invalid', 'side-mismatch'].includes(
+    warning.code,
+  )
+    ? 'attention'
+    : 'info';
 }
 
 export function warningText(warning: IdentityWarning, audience: IdentityAudience): string {

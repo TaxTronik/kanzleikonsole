@@ -433,6 +433,16 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[GwG]** Mandanten-Onboarding bedienbarer: Beim Weiter nennt der Personenschritt
+  alle offenen Angaben je Person verständlich und ohne Paragrafen und springt
+  per „Person 2 ergänzen“ in den passenden Abschnitt. Ausweisfotos lassen sich auf
+  dem Handy direkt aufnehmen (mit Tipps für ein gut lesbares Foto); ein
+  Vorschaubild zeigt die hochgeladene Seite, und „Seiten tauschen“ korrigiert
+  vertauschte Fotos. Die Ausweishilfe erkennt, wenn ein Foto nach der anderen
+  Seite aussieht, hebt nur Widersprüche hervor und zeigt übrige Hinweise ruhig.
+  iPhones liefern im Wizard JPG statt HEIC. Der Browser fragt vor dem Verlassen
+  nach, solange nichts übermittelt ist; die Fortschrittsleiste behält geprüfte
+  Schritte als erledigt (GWG-SELF-ONBOARDING-001, GWG-OCR-ASSIST-001).
 - **[GwG]** Der Personenschritt im Mandanten-Onboarding ist entzerrt: Eine
   Übersicht zeigt je Person den Stand (Ausweis, Angaben, Beteiligung und PEP bzw.
   Rolle bei Vertretungen). Bearbeitet wird eine Person nach der anderen in diesen

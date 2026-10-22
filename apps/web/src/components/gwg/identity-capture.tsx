@@ -3,13 +3,19 @@
 import { useEffect, useId, useRef, useState, type PointerEvent } from 'react';
 import {
   compareWithMrz,
+  detectedSide,
   IDENTITY_FIELD_LABELS,
   type IdentityField,
   type IdentityOcrResult,
   type IdentitySuggestions,
   type IdentityWarning,
 } from '@/lib/gwg/identity-ocr';
-import { IDENTITY_UI_TEXT, warningText, type IdentityAudience } from '@/lib/gwg/identity-hints';
+import {
+  IDENTITY_UI_TEXT,
+  warningText,
+  warningTone,
+  type IdentityAudience,
+} from '@/lib/gwg/identity-hints';
 import { suggestionRows } from '@/lib/gwg/identity-suggestions';
 import {
   fullIdentityViewport,
@@ -37,6 +43,53 @@ function displayValue(field: IdentityField, value: string, audience: IdentityAud
   return audience === 'client' && DATE_FIELDS.has(field) && iso
     ? `${iso[3]}.${iso[2]}.${iso[1]}`
     : value;
+}
+
+const SIDE_LABEL = { front: 'Vorderseite', back: 'Rückseite' } as const;
+
+/** Hinweis, wenn der Inhalt nach der anderen Ausweisseite aussieht als gewählt. */
+function sideMismatch(result: IdentityOcrResult, chosen: IdentitySide): IdentityWarning[] {
+  const side = detectedSide(result);
+  if (!side || side === chosen) return [];
+  return [
+    {
+      code: 'side-mismatch',
+      side,
+      text: `Der Inhalt sieht nach der ${SIDE_LABEL[side]} aus, gewählt ist die ${SIDE_LABEL[chosen]}. Ausweisseite bzw. Zuordnung der Dateien prüfen.`,
+    },
+  ];
+}
+
+/** Widersprüche auffällig, übrige Hinweise ruhig – ein gut gelesener Ausweis ist kein Fehler. */
+function WarningList({
+  warnings,
+  audience,
+}: {
+  warnings: IdentityWarning[];
+  audience: IdentityAudience;
+}) {
+  const key = (warning: IdentityWarning) =>
+    `${warning.code}-${warning.field ?? ''}-${warning.acrossSides ?? false}`;
+  const attention = warnings.filter((warning) => warningTone(warning) === 'attention');
+  const info = warnings.filter((warning) => warningTone(warning) === 'info');
+  return (
+    <>
+      {attention.length > 0 && (
+        <div className="space-y-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+          {attention.map((warning) => (
+            <p key={key(warning)}>{warningText(warning, audience)}</p>
+          ))}
+        </div>
+      )}
+      {info.length > 0 && (
+        <ul className="list-disc space-y-1 pl-4 text-xs text-muted">
+          {info.map((warning) => (
+            <li key={key(warning)}>{warningText(warning, audience)}</li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
 }
 
 /**
@@ -329,6 +382,7 @@ export function IdentityCapture({
         const seen = new Set<string>();
         const { matching } = suggestionRows(next.fields, current);
         const warnings: IdentityWarning[] = [
+          ...sideMismatch(next, target.view.side),
           ...next.warnings,
           ...crossCheck.map((warning) => ({ ...warning, acrossSides: true })),
         ].filter((warning) => {
@@ -591,14 +645,7 @@ export function IdentityCapture({
           )}
           {result && (
             <div className="@container space-y-2">
-              {result.warnings.map((warning) => (
-                <p
-                  className="text-xs text-amber-700"
-                  key={`${warning.code}-${warning.field ?? ''}-${warning.acrossSides ?? false}`}
-                >
-                  {warningText(warning, audience)}
-                </p>
-              ))}
+              <WarningList warnings={result.warnings} audience={audience} />
               {/* Ausweis neben den Vorschlägen: der Abgleich mit dem Original
                   ist der eigentliche Prüfschritt (GWG-OCR-ASSIST-001). */}
               <div className="grid gap-3 @lg:grid-cols-2">

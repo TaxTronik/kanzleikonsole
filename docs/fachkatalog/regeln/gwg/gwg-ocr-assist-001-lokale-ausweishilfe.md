@@ -118,6 +118,7 @@ Drehung. Die Hilfe verarbeitet höchstens 25 MiB und 100 PDF-Seiten; der
 | Ausstellungsdatum mit zweistelliger Jahreszahl               | Kein Vorschlag; Hinweis, vom Original zu übernehmen                              |
 | Mandant übernimmt Vorschläge im öffentlichen Wizard          | Felder markieren, bis er sie bearbeitet; keine Vorauswahl, keine Bestätigung     |
 | Zwei Seiten stammen aus derselben Quelle                     | Nur bei verschiedenen Seiten oder Ausschnitten derselben Version akzeptieren     |
+| Inhalt passt zur anderen Ausweisseite als gewählt            | Hervorgehoben hinweisen; im Wizard „Seiten tauschen“ anbieten, nichts ändern     |
 | Quelle ist fremd, veraltet oder nicht sauber                 | Ansicht bzw. Speicherung abweisen; manuelle Neuerfassung bleibt möglich          |
 | Daten werden übernommen oder gespeichert                     | Prüfbestätigung nicht setzen; eine bestehende Bestätigung bei Änderung entwerten |
 | Mitarbeiter bestätigt den gespeicherten Stand ausdrücklich   | Identitätsprüfung nach den bestehenden Gates dokumentieren                       |
@@ -139,7 +140,14 @@ korrigiert der Nutzer im Formular. Die Staatsangehörigkeit erscheint als Adjekt
 übereinstimmend. Als gleich
 gilt eine bisherige Angabe nur, wenn ihre Umlaute oder ihr ß im Vorschlag als
 Grundbuchstabe, ae/oe/ue oder ss stehen; umgekehrt bleibt ein Vorschlag mit
-Umlaut ein Ersatzangebot. OCR kann Felder
+Umlaut ein Ersatzangebot. Ob ein Ausschnitt nach der anderen Ausweisseite aussieht,
+folgt nur aus seinem Inhalt (Zeichenreihen, Anschrift und Behörde hinten;
+Geburtsangaben und „Gültig bis“ vorne); bei gemischtem oder leerem Ergebnis
+entfällt der Hinweis. Widersprüche und eine vertauschte Seite erscheinen
+hervorgehoben, übrige Hinweise ruhig als Liste. HEIC-Fotos liest die Hilfe nur,
+wenn der Browser das Format dekodieren kann; sonst erscheint ein Hinweis und
+die manuelle Erfassung bleibt. Im Wizard nehmen die Upload-Felder kein HEIC an,
+damit iPhones JPG liefern. OCR kann Felder
 auslassen oder falsch lesen. Ein Erkennungsfehler oder Abbruch verhindert die
 manuelle Eingabe nicht. Unlesbare oder verschlüsselte PDFs müssen durch einen
 lesbaren Nachweis ersetzt werden, falls eine verlässliche Ansicht benötigt wird.
@@ -212,6 +220,11 @@ bleibt und Ausweisfassung sowie bisherige Angabe als Beschreibung zugeordnet sin
 Im Mandantendurchlauf mit dem Muster blieben der Name aus der Einladung und die
 vorbelegte Staatsangehörigkeit DE unverändert; der Schreibweisenhinweis zum Namen
 aus der Rückseite entfällt dann, weil der Name nicht angeboten wird.
+Tests prüfen die Erkennung der Ausweisseite aus dem Inhalt (auch den Fall ohne
+Aussage) und welche Hinweise hervorgehoben werden; ein Wizard-Test prüft das
+Tauschen vertauschter Fotos samt Seitenverweisen. Im Mandantendurchlauf mit dem
+Muster wurde eine absichtlich vertauscht hochgeladene Rückseite als solche erkannt
+und nach „Seiten tauschen“ korrekt ausgelesen.
 Ein Browserfall prüft die Mandantenfassung mit dem echten Worker: Auslesen der
 Seite per Klick, eingeklappter Zuschnitt, Datum als TT.MM.JJJJ und Übernahme
 als ISO-Datum.

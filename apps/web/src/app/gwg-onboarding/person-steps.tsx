@@ -4,14 +4,37 @@
 // Schritt „Wirtschaftlich Berechtigte“: Übersicht aller Personen mit Stand und
 // Bearbeitung einer Person nach der anderen – wirtschaftlich Berechtigte in
 // Ausweis → Angaben → Beteiligung und PEP, Vertretungen in Rolle → Ausweis →
-// Angaben. Pflichtprüfung beim Weiter bleibt onboardingOwnersStepError.
+// Angaben. Beim Weiter nennt onboardingPersonIssues alle offenen Angaben je
+// Person; die Übersicht führt von dort direkt in den passenden Abschnitt.
 // =============================================================================
 
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { ArrowLeft, ArrowRight, Check, Loader, Plus, Trash2, Upload } from 'lucide-react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ReactNode,
+  type RefObject,
+} from 'react';
+import {
+  ArrowLeft,
+  ArrowLeftRight,
+  ArrowRight,
+  Camera,
+  Check,
+  FileText,
+  Loader,
+  Plus,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import { IdentityCapture } from '@/components/gwg/identity-capture';
 import type { IdentitySuggestions } from '@/lib/gwg/identity-ocr';
 import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
+import type {
+  OnboardingPersonIssue,
+  OnboardingPersonSection,
+} from '@/server/gwg-onboarding/wizard-validation';
 import { loadOnboardingIdentitySourceAction } from './actions';
 import { Field, MAX_UPLOAD_LABEL } from './wizard-shared';
 import type {
@@ -26,6 +49,14 @@ import type {
 export interface OpenPerson {
   role: 'owner' | 'representative';
   id: string;
+  /** Abschnitt, in dem die Bearbeitung beginnt (z. B. der mit offenen Angaben). */
+  section?: OnboardingPersonSection;
+}
+
+/** Offene Angaben nach dem ersten Weiter; null, solange noch nicht geprüft wurde. */
+export interface PersonIssues {
+  persons: OnboardingPersonIssue[];
+  general: string | null;
 }
 
 // Stabile React-Keys für Personen (Add/Remove) — kein key={index}.
@@ -72,7 +103,7 @@ export function emptyRepresentative(name: string): Representative {
   };
 }
 
-type SectionKey = 'role' | 'id' | 'details' | 'share';
+type SectionKey = OnboardingPersonSection;
 interface PersonSection {
   key: SectionKey;
   label: string;
@@ -145,6 +176,7 @@ interface OwnersStepProps {
   owners: BeneficialOwner[];
   representatives: Representative[];
   openPerson: OpenPerson | null;
+  issues: PersonIssues | null;
   idUploadErrors: Record<string, string | null>;
   discardingDocumentIds: ReadonlySet<string>;
   onOpenPerson: (person: OpenPerson | null) => void;
@@ -167,6 +199,7 @@ interface OwnersStepProps {
 export function OwnersStep(props: OwnersStepProps) {
   const { openPerson, owners, representatives, idUploadErrors, onOpenPerson } = props;
   const close = () => onOpenPerson(null);
+  const missing = props.issues?.persons.find((issue) => issue.id === openPerson?.id)?.bySection;
   const ownerIndex =
     openPerson?.role === 'owner' ? owners.findIndex((entry) => entry.id === openPerson.id) : -1;
   const owner = owners[ownerIndex];
@@ -183,6 +216,8 @@ export function OwnersStep(props: OwnersStepProps) {
         discardingDocumentIds={props.discardingDocumentIds}
         frontError={idUploadErrors[`${owner.id}:front`] ?? null}
         backError={idUploadErrors[`${owner.id}:back`] ?? null}
+        initialSection={openPerson?.section}
+        missing={missing}
         onClose={close}
       />
     );
@@ -208,6 +243,8 @@ export function OwnersStep(props: OwnersStepProps) {
         discardingDocumentIds={props.discardingDocumentIds}
         frontError={idUploadErrors[`${representative.id}:front`] ?? null}
         backError={idUploadErrors[`${representative.id}:back`] ?? null}
+        initialSection={openPerson?.section}
+        missing={missing}
         onClose={close}
       />
     );
@@ -219,6 +256,7 @@ function PersonOverview({
   clientKind,
   owners,
   representatives,
+  issues,
   onOpenPerson,
   onRemoveOwner,
   onAddOwner,
@@ -235,6 +273,7 @@ function PersonOverview({
           Rückseite), die Angaben dazu sowie Beteiligung und PEP-Status.
         </p>
       </div>
+      {issues && <IssueList issues={issues} onOpenPerson={onOpenPerson} />}
       <ul className="space-y-3">
         {owners.map((owner, index) => (
           <PersonRow
@@ -349,6 +388,41 @@ function PersonRow({
   );
 }
 
+/** Alle offenen Angaben nach dem Weiter, je Person mit Sprung in den passenden Abschnitt. */
+function IssueList({
+  issues,
+  onOpenPerson,
+}: {
+  issues: PersonIssues;
+  onOpenPerson: (person: OpenPerson) => void;
+}) {
+  if (!issues.persons.length && !issues.general) return null;
+  return (
+    <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+      <h3 className="font-medium">Bitte noch ergänzen</h3>
+      <ul className="mt-2 space-y-2">
+        {issues.persons.map((issue) => (
+          <li key={issue.id} className="flex flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 [overflow-wrap:anywhere]">
+              <strong>{issue.title}:</strong> {issue.items.join(', ')}
+            </span>
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              onClick={() =>
+                onOpenPerson({ role: issue.role, id: issue.id, section: issue.section })
+              }
+            >
+              {issue.title} ergänzen
+            </button>
+          </li>
+        ))}
+        {issues.general && <li>{issues.general}</li>}
+      </ul>
+    </div>
+  );
+}
+
 /** Rahmen der Personenbearbeitung: Name, Abschnitte, Vor/Zurück, Fertig. */
 function PersonEditorFrame({
   kicker,
@@ -356,6 +430,8 @@ function PersonEditorFrame({
   header,
   sections,
   container,
+  initialSection,
+  missing,
   onClose,
   children,
 }: {
@@ -364,10 +440,18 @@ function PersonEditorFrame({
   header?: ReactNode;
   sections: PersonSection[];
   container: RefObject<HTMLDivElement | null>;
+  initialSection?: SectionKey;
+  /** Offene Angaben je Abschnitt (nach dem ersten Weiter). */
+  missing?: Partial<Record<SectionKey, string[]>>;
   onClose: () => void;
   children: (key: SectionKey) => ReactNode;
 }) {
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() =>
+    Math.max(
+      0,
+      sections.findIndex((section) => section.key === initialSection),
+    ),
+  );
   const position = Math.min(index, sections.length - 1);
   const current = sections[position]!;
   const next = sections[position + 1];
@@ -412,6 +496,11 @@ function PersonEditorFrame({
       </ol>
       <section className="space-y-4">
         <h3 className="text-base font-semibold text-primary">{current.label}</h3>
+        {missing?.[current.key]?.length ? (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            Hier fehlt noch: {missing[current.key]!.join(', ')}
+          </p>
+        ) : null}
         {children(current.key)}
       </section>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-default pt-4">
@@ -460,18 +549,27 @@ interface IdentityUploadProps {
   backError: string | null;
 }
 
+/** Einstieg in die Bearbeitung: Startabschnitt und offene Angaben je Abschnitt. */
+interface EditorEntry {
+  initialSection?: SectionKey;
+  missing?: Partial<Record<SectionKey, string[]>>;
+}
+
 function OwnerEditor({
   index,
   owner,
   onPatch,
   onClose,
+  initialSection,
+  missing,
   ...upload
-}: IdentityUploadProps & {
-  index: number;
-  owner: BeneficialOwner;
-  onPatch: (patch: Partial<BeneficialOwner>) => void;
-  onClose: () => void;
-}) {
+}: IdentityUploadProps &
+  EditorEntry & {
+    index: number;
+    owner: BeneficialOwner;
+    onPatch: (patch: Partial<BeneficialOwner>) => void;
+    onClose: () => void;
+  }) {
   const { bind, applyFromIdentity, container } = useIdentityApplied(owner, onPatch);
   return (
     <PersonEditorFrame
@@ -480,6 +578,8 @@ function OwnerEditor({
       header={<Field label="Vollständiger Name" {...bind('fullName')} required />}
       sections={ownerSections(owner)}
       container={container}
+      initialSection={initialSection}
+      missing={missing}
       onClose={onClose}
     >
       {(key) =>
@@ -601,14 +701,17 @@ function RepresentativeEditor({
   owners,
   onPatch,
   onClose,
+  initialSection,
+  missing,
   ...upload
-}: IdentityUploadProps & {
-  index: number;
-  representative: Representative;
-  owners: BeneficialOwner[];
-  onPatch: (patch: Partial<Representative>) => void;
-  onClose: () => void;
-}) {
+}: IdentityUploadProps &
+  EditorEntry & {
+    index: number;
+    representative: Representative;
+    owners: BeneficialOwner[];
+    onPatch: (patch: Partial<Representative>) => void;
+    onClose: () => void;
+  }) {
   const { bind, applyFromIdentity, container } = useIdentityApplied(representative, onPatch);
   return (
     <PersonEditorFrame
@@ -621,6 +724,8 @@ function RepresentativeEditor({
       }
       sections={representativeSections(representative)}
       container={container}
+      initialSection={initialSection}
+      missing={missing}
       onClose={onClose}
     >
       {(key) =>
@@ -721,13 +826,23 @@ function IdentitySection({
 }) {
   const deleting = (file: OnboardingIdentityFile | null) =>
     Boolean(file && discardingDocumentIds.has(file.documentId));
+  const { idFront, idBack } = person;
+  // Vertauschte Fotos: Dateien und Seitenverweise wechseln die Seite.
+  const swap = () =>
+    idFront &&
+    idBack &&
+    onPatch({
+      idFront: { ...idBack, viewport: idBack.viewport && { ...idBack.viewport, side: 'front' } },
+      idBack: { ...idFront, viewport: idFront.viewport && { ...idFront.viewport, side: 'back' } },
+    });
   return (
     <>
       <p className="text-sm text-muted">
-        Bitte laden Sie Vorder- und Rückseite des Personalausweises hoch, als Foto oder PDF. Die
-        Angaben lassen sich danach direkt vom Ausweis auslesen – oder Sie tragen sie im nächsten
-        Abschnitt selbst ein.
+        Bitte fotografieren Sie Vorder- und Rückseite des Personalausweises oder laden Sie ein Foto
+        bzw. eine PDF hoch. Die Angaben lassen sich danach direkt vom Ausweis auslesen – oder Sie
+        tragen sie im nächsten Abschnitt selbst ein.
       </p>
+      <PhotoTips />
       <div className="grid gap-4 sm:grid-cols-2">
         <IdUploadField
           label="Personalausweis Vorderseite"
@@ -746,6 +861,15 @@ function IdentitySection({
           error={backError}
         />
       </div>
+      {idFront && idBack && (
+        <button
+          type="button"
+          onClick={swap}
+          className="inline-flex items-center gap-1 text-sm text-secondary underline-offset-2 hover:underline"
+        >
+          <ArrowLeftRight className="h-4 w-4" /> Seiten tauschen
+        </button>
+      )}
       <OnboardingIdentityCapture
         token={token}
         person={person}
@@ -753,6 +877,21 @@ function IdentitySection({
         onApplyFields={onApplyFields}
       />
     </>
+  );
+}
+
+/** Kurz und konkret: was ein gut lesbares Ausweisfoto ausmacht. */
+function PhotoTips() {
+  return (
+    <div className="rounded-md border border-default bg-surface-raised p-3 text-sm">
+      <p className="font-medium text-primary">So gelingt das Foto</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-secondary">
+        <li>Ausweis auf eine dunkle, ruhige Unterlage legen</li>
+        <li>Gerade von oben fotografieren, der ganze Ausweis im Bild</li>
+        <li>Ohne Blitz und ohne Spiegelung, gutes Tageslicht hilft</li>
+        <li>Vor dem Auslösen kurz auf den Ausweis tippen, damit das Bild scharf wird</li>
+      </ul>
+    </div>
   );
 }
 
@@ -885,6 +1024,12 @@ function OnboardingIdentityCapture({
   );
 }
 
+/**
+ * Ausweisseite hochladen. Auf Touch-Geräten zuerst „Foto aufnehmen“ (Kamera des
+ * Geräts, liefert JPG – auch auf iPhones, die sonst HEIC speichern); daneben
+ * Foto oder PDF aus den Dateien. Nach dem Upload zeigt ein Vorschaubild, ob die
+ * richtige Seite drin ist.
+ */
 function IdUploadField({
   label,
   file,
@@ -894,51 +1039,88 @@ function IdUploadField({
   error,
 }: {
   label: string;
-  file: { documentId: string; fileName: string } | null;
+  file: Pick<OnboardingIdentityFile, 'documentId' | 'fileName' | 'previewUrl'> | null;
   onUpload: (file: File) => void;
   onRemove: () => void;
   deleting: boolean;
   error: string | null;
 }) {
+  const pick = (event: ChangeEvent<HTMLInputElement>) => {
+    const chosen = event.target.files?.[0];
+    if (chosen) onUpload(chosen);
+    event.target.value = '';
+  };
   return (
     <div>
-      <label className="block text-sm font-medium text-primary mb-1">
+      <p className="block text-sm font-medium text-primary mb-1">
         {label} <span className="text-red-700">*</span>
-      </label>
+      </p>
       {file ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 inline-flex items-center gap-2">
-          <Check className="h-4 w-4" />
-          <span className="truncate max-w-[180px]">{file.fileName}</span>
-          <button
-            type="button"
-            onClick={onRemove}
-            disabled={deleting}
-            className="ml-1 text-red-700 hover:text-red-900 disabled:opacity-50"
-            aria-label={`${label} entfernen`}
-          >
-            {deleting ? (
-              <Loader className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-          </button>
+        <div className="flex items-start gap-3">
+          {file.previewUrl ? (
+            // Lokale Objekt-URL der gewählten Datei; kein Bildoptimierer.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={file.previewUrl}
+              alt={`Vorschau: ${label}`}
+              className="h-24 w-36 shrink-0 rounded border border-default object-cover"
+            />
+          ) : (
+            <div className="flex h-24 w-36 shrink-0 items-center justify-center rounded border border-default bg-surface-raised">
+              <FileText className="h-6 w-6 text-muted" aria-hidden="true" />
+            </div>
+          )}
+          <div className="min-w-0 space-y-1 text-sm">
+            <p className="inline-flex items-center gap-1 text-emerald-800 dark:text-emerald-300">
+              <Check className="h-4 w-4" /> Hochgeladen
+            </p>
+            <p className="truncate text-xs text-muted">{file.fileName}</p>
+            <button
+              type="button"
+              onClick={onRemove}
+              disabled={deleting}
+              className="inline-flex items-center gap-1 text-xs text-red-700 hover:text-red-900 disabled:opacity-50"
+              aria-label={`${label} entfernen`}
+            >
+              {deleting ? (
+                <Loader className="h-3 w-3 animate-spin" />
+              ) : (
+                <Trash2 className="h-3 w-3" />
+              )}
+              Entfernen
+            </button>
+          </div>
         </div>
       ) : (
-        <label className="block">
-          <span className="btn-secondary cursor-pointer inline-flex">
-            <Upload className="h-4 w-4" /> Foto hochladen
-          </span>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/heic,image/webp,application/pdf"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) onUpload(file);
-              event.target.value = '';
-            }}
-          />
-        </label>
+        <div className="flex flex-wrap gap-2">
+          <label className="hidden pointer-coarse:block">
+            <span className="btn-primary cursor-pointer inline-flex">
+              <Camera className="h-4 w-4" /> Foto aufnehmen
+            </span>
+            <input
+              type="file"
+              accept="image/jpeg"
+              capture="environment"
+              className="sr-only"
+              onChange={pick}
+            />
+          </label>
+          <label className="block">
+            <span className="btn-secondary cursor-pointer inline-flex">
+              <Upload className="h-4 w-4" />
+              <span className="pointer-coarse:hidden">Foto oder PDF hochladen</span>
+              <span className="hidden pointer-coarse:inline">Datei wählen</span>
+            </span>
+            {/* Ohne image/heic: iPhones liefern dann JPG, das jeder Browser und die
+                Ausweishilfe lesen können. */}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              className="sr-only"
+              onChange={pick}
+            />
+          </label>
+        </div>
       )}
       {error && <p className="text-xs text-red-700 mt-1">{error}</p>}
       <p className="text-xs text-muted mt-1">JPG / PNG / PDF, max. {MAX_UPLOAD_LABEL}</p>

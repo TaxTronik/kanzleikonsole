@@ -79,6 +79,7 @@ test_refs:
   - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
   - apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts
   - apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx
+  - apps/web/src/server/gwg-onboarding/__tests__/wizard-person-issues.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -199,6 +200,17 @@ und erlaubt, vergessene Personen zu ergänzen: Der Wizard öffnet die neue Perso
 im Personenschritt und führt nach dessen Pflichtprüfung direkt zur
 Zusammenfassung zurück; Nachweise und Datenschutzerklärung bleiben dabei
 unverändert erhalten.
+
+Beim Weiter nennt der Personenschritt alle offenen Angaben je Person auf einmal,
+in Alltagssprache und ohne Normzitate, und springt von dort in den Abschnitt der
+ersten Lücke; die Liste aktualisiert sich beim Ergänzen. Grundlage bleibt derselbe
+Vertrag wie beim Submit: Fehlende Felder werden benannt, ungültige mit der
+konkreten Begründung (z. B. Datum in der Zukunft). Solange nicht übermittelt
+ist, fragt der Browser beim Schließen oder Neuladen nach, weil Eingaben bisher
+nur im Tab liegen. Ausweisfotos lassen sich auf Touch-Geräten direkt mit der
+Kamera aufnehmen; ein Vorschaubild zeigt die hochgeladene Seite, und vertauschte
+Fotos lassen sich samt Seitenverweisen tauschen. Die Fortschrittsleiste behält
+bereits geprüfte Schritte als erledigt.
 
 Beide Wege nutzen dieselbe lokale Ausweishilfe (GWG-OCR-ASSIST-001). Zwei
 Seitenverweise dürfen dasselbe PDF-Original verwenden, wenn Version und
