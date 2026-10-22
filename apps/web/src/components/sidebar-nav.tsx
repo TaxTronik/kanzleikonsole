@@ -191,7 +191,9 @@ export function GroupedSidebarNav({ groups }: { groups: NavGroup[] }) {
                 })
               }
             >
-              <span className="min-w-0 break-words">{group.label}</span>
+              {/* Versalien mit Sperrung: „Kanzleiorganisation“ passt bei großer
+                  Schrift nicht in die Leiste und wird nach Silben getrennt. */}
+              <span className="min-w-0 break-words hyphens-auto">{group.label}</span>
               <ChevronDown
                 className={
                   open

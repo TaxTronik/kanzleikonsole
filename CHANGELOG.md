@@ -1206,6 +1206,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Im persönlichen barrierearmen Anzeigemodus zerreißen Buttons, Navigation,
+  KPI-Labels und Kontomenü Wörter nicht mehr ohne Trennstrich („Anlege|n“,
+  „MANDANT|EN“); nur E-Mail-Adressen dürfen weiter überall umbrechen. Der
+  Stepper (z. B. n8n-Einrichtung) bricht ganze Schritte in die nächste Zeile
+  statt die Schrittnamen zu quetschen, und die Gruppenüberschriften der
+  Seitenleiste werden nach Silben getrennt („KANZLEIORGANISA-TION“).
+- Die Dokumententabelle der Mandantenakte bleibt in ihrer Spalte und scrollt
+  bei Bedarf in der Karte; bisher schob sie Datum, Aktionen und „Gelöschte
+  anzeigen“ rechts aus dem sichtbaren Bereich.
+- Offene Terminanfragen in der halben Cockpit-Karte stehen über statt neben
+  den Buttons „Annehmen“/„Ablehnen“ (Container-Query statt Fensterbreite);
+  bisher wurde der Anfragetext auf eine schmale Spalte gequetscht.
 - Bestätigungs- und Eingabedialoge (`ConfirmModal`, `InputModal`, u. a. Vollmacht
   widerrufen, Portal-Kontakt anonymisieren) zeigen eine Fehlermeldung erst zusammen
   mit dem wieder bedienbaren Button; bisher stand sie kurz neben „Bitte warten…“, und

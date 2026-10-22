@@ -73,8 +73,10 @@ export function RequestDecision({
   }
 
   return (
-    <li className="px-5 py-3">
-      <div className="flex flex-col items-start justify-between gap-3 sm:flex-row">
+    // Container-Query statt sm:: In der halben Cockpit-Karte quetschte die
+    // Zeilenansicht den Anfragetext neben die Buttons, obwohl das Fenster breit ist.
+    <li className="@container px-5 py-3">
+      <div className="flex flex-col items-start justify-between gap-3 @lg:flex-row">
         <div className="min-w-0 flex-1 break-words">
           <p className="text-sm font-medium text-primary">{request.subject}</p>
           <p className="text-xs text-muted">
@@ -92,7 +94,7 @@ export function RequestDecision({
           <ul className="mt-2 space-y-1">
             {request.slots.map((s, i) => (
               <li key={i} className="text-xs flex items-center gap-2">
-                <Calendar className="h-3 w-3 text-disabled" />
+                <Calendar className="h-3 w-3 shrink-0 text-disabled" />
                 <span className="text-secondary">
                   {fmtDateTimeShort(new Date(s.startsAt))} – {fmtDateTimeShort(new Date(s.endsAt))}
                 </span>
@@ -101,7 +103,7 @@ export function RequestDecision({
           </ul>
         </div>
         {mode === null && (
-          <div className="flex flex-wrap items-center gap-1 sm:shrink-0">
+          <div className="flex flex-wrap items-center gap-1 @lg:shrink-0">
             <button
               type="button"
               onClick={() => setMode('accept')}
@@ -126,7 +128,7 @@ export function RequestDecision({
 
       {mode === 'accept' && (
         <div className="mt-3 p-3 rounded bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 space-y-2">
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 @md:grid-cols-2">
             <label className="min-w-0 text-xs">
               Wunschtermin
               <select

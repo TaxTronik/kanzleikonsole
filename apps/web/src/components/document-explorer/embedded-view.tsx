@@ -220,7 +220,9 @@ export function EmbeddedView({
   }
 
   return (
-    <div className="grid grid-cols-[240px_1fr] gap-4">
+    // minmax(0,1fr): sonst wächst die Spalte auf die Mindestbreite der Tabelle und
+    // schiebt Datum, Aktionen und „Gelöschte anzeigen“ aus dem sichtbaren Bereich.
+    <div className="grid grid-cols-[240px_minmax(0,1fr)] gap-4">
       {/* ---- Ordnerbaum ---- */}
       <div className="card p-2 self-start">
         <div className="flex items-center justify-between px-2 py-1.5 mb-1">
@@ -336,7 +338,7 @@ export function EmbeddedView({
 
         {truncated && <TruncationHint shown={documents.length} totalCount={totalCount} />}
 
-        <div className="card overflow-hidden">
+        <div className="card overflow-x-auto">
           {shown.length === 0 ? (
             <div className="px-6 py-14 text-center">
               <FileText className="h-10 w-10 text-disabled mx-auto mb-2" />

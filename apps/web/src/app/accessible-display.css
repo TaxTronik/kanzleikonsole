@@ -150,11 +150,14 @@ html:has([data-accessible-display='true'])
   min-inline-size: 44px;
 }
 
+/* break-word statt anywhere: `anywhere` senkt die Mindestbreite auf ein
+ * Zeichen, Flex-Elemente schrumpfen dann und zerreißen Wörter ohne Trennstrich
+ * („Anlege|n“). break-word bricht nur, was wirklich nicht in die Zeile passt. */
 html:has([data-accessible-display='true'])
   :where(.btn, .btn-primary, .btn-secondary, .btn-danger-outline, .nav-item, .side-action) {
   height: auto;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 html:has([data-accessible-display='true'])
@@ -312,8 +315,29 @@ html:has([data-accessible-display='true']) .app-topbar {
 }
 
 html:has([data-accessible-display='true'])
-  :where(.hint, .ud-head .uname, .ud-head .umail, .step-title, .step-sub) {
+  :where(.hint, .ud-head .uname, .ud-head .umail, .step-sub) {
   white-space: normal;
+  overflow-wrap: break-word;
+}
+
+/* Stepper: Mit großer Schrift passen fünf Schritte nicht in eine Zeile. Statt
+ * jeden Schritt per min-width: 0 auf seinen Anteil zu quetschen („Verbin|den“),
+ * brechen ganze Schritte in die nächste Zeile; Schrittnamen bleiben einzeilig. */
+html:has([data-accessible-display='true']) .stepper {
+  flex-wrap: wrap;
+  row-gap: 0.75rem;
+}
+
+html:has([data-accessible-display='true']) .step {
+  min-width: auto;
+}
+
+html:has([data-accessible-display='true']) .step-title {
+  white-space: nowrap;
+}
+
+/* E-Mail-Adressen haben keine Umbruchstellen; nur sie dürfen überall brechen. */
+html:has([data-accessible-display='true']) .ud-head .umail {
   overflow-wrap: anywhere;
 }
 
@@ -334,7 +358,7 @@ html:has([data-accessible-display='true']) .user-dropdown {
 
 html:has([data-accessible-display='true']) .ud-item {
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 html:has([data-accessible-display='true']) .ud-item > svg {
@@ -351,7 +375,7 @@ html:has([data-accessible-display='true']) .widget-shell > a.card {
 html:has([data-accessible-display='true']) .widget-shell > a.card .truncate {
   white-space: normal;
   overflow: visible;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
   text-overflow: clip;
   letter-spacing: normal;
 }

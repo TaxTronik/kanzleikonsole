@@ -221,12 +221,37 @@ describe('persönlicher Anzeigemodus: CSS-Vertrag, keine Konformitätsprüfung',
     expect(declarations(label)).toMatchObject({
       'white-space': 'normal',
       overflow: 'visible',
-      'overflow-wrap': 'anywhere',
+      'overflow-wrap': 'break-word',
       'text-overflow': 'clip',
     });
     const card = rules().find(
       (rule) => rule.selector === `${modeSelector} .widget-shell > a.card`,
     )!;
     expect(declarations(card)).toMatchObject({ overflow: 'auto' });
+  });
+
+  it('zerreißt Wörter in Buttons, Navigation, Stepper, Menüs und KPI-Labels nicht', () => {
+    // `anywhere` senkt die Mindestbreite von Flex-Elementen auf ein Zeichen
+    // („Anlege|n“); break-word hält Wörter zusammen. Silbentrennung hätte
+    // denselben Effekt („Anle-gen“) und bleibt deshalb außen vor.
+    const wrapping = rules().filter((rule) => {
+      const values = declarations(rule);
+      return values['overflow-wrap'] === 'anywhere';
+    });
+    expect(wrapping.map((rule) => rule.selector)).toEqual([`${modeSelector} .ud-head .umail`]);
+    const buttons = rules().find((rule) =>
+      rule.selector.includes('.btn-danger-outline, .nav-item, .side-action)'),
+    )!;
+    expect(declarations(buttons)).toMatchObject({
+      'white-space': 'normal',
+      'overflow-wrap': 'break-word',
+    });
+    expect(rules().filter((rule) => declarations(rule)['hyphens'] === 'auto')).toEqual([]);
+    // Stepper: ganze Schritte umbrechen statt Schrittnamen zu zerreißen.
+    const byStepperSelector = (suffix: string) =>
+      declarations(rules().find((rule) => rule.selector === `${modeSelector} ${suffix}`)!);
+    expect(byStepperSelector('.stepper')).toMatchObject({ 'flex-wrap': 'wrap' });
+    expect(byStepperSelector('.step')).toMatchObject({ 'min-width': 'auto' });
+    expect(byStepperSelector('.step-title')).toMatchObject({ 'white-space': 'nowrap' });
   });
 });
