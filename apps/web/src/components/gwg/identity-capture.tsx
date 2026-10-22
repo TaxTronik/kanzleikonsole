@@ -7,7 +7,9 @@ import {
   type IdentityField,
   type IdentityOcrResult,
   type IdentitySuggestions,
+  type IdentityWarning,
 } from '@/lib/gwg/identity-ocr';
+import { IDENTITY_UI_TEXT, warningText, type IdentityAudience } from '@/lib/gwg/identity-hints';
 import {
   fullIdentityViewport,
   type IdentitySourceView,
@@ -19,6 +21,20 @@ import {
   recognizeIdentityImage,
   type IdentityImage,
 } from '@/lib/gwg/identity-image';
+
+const DATE_FIELDS: ReadonlySet<IdentityField> = new Set([
+  'birthDate',
+  'idIssueDate',
+  'idExpiryDate',
+]);
+
+/** Mandanten sehen Daten wie auf dem Ausweis (TT.MM.JJJJ); übernommen wird ISO. */
+function displayValue(field: IdentityField, value: string, audience: IdentityAudience): string {
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return audience === 'client' && DATE_FIELDS.has(field) && iso
+    ? `${iso[3]}.${iso[2]}.${iso[1]}`
+    : value;
+}
 
 export interface IdentityCaptureSource {
   id: string;
@@ -33,13 +49,18 @@ export function IdentityCapture({
   onApply,
   onViewChange,
   initialViews = [],
+  audience = 'staff',
 }: {
   sources: IdentityCaptureSource[];
   current: IdentitySuggestions;
   onApply: (fields: IdentitySuggestions) => void;
   onViewChange: (view: IdentitySourceView) => void;
   initialViews?: IdentitySourceView[];
+  /** Mandanten im öffentlichen Onboarding erhalten verständliche Texte. */
+  audience?: IdentityAudience;
 }) {
+  const text = IDENTITY_UI_TEXT[audience];
+  const [appliedNote, setAppliedNote] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [sourceId, setSourceId] = useState('');
   const [source, setSource] = useState<IdentityImage | null>(null);
@@ -194,15 +215,20 @@ export function IdentityCapture({
             : [];
         if (next.mrz) lastMrz.current = next.mrz;
         else lastFields.current = next.fields;
-        setResult({
-          ...next,
-          warnings: [
-            ...new Set([
-              ...next.warnings,
-              ...crossCheck.map((warning) => `Abgleich der Ausweisseiten: ${warning}`),
-            ]),
-          ],
+        const seen = new Set<string>();
+        const warnings: IdentityWarning[] = [
+          ...next.warnings,
+          ...crossCheck.map((warning) => ({ ...warning, acrossSides: true })),
+        ].filter((warning) => {
+          // „Datum von der Vorderseite übernehmen“ entfällt, wenn es schon
+          // eingetragen ist; ein Widerspruch dazu meldet der Seitenabgleich.
+          if (warning.code === 'mrz-date-century' && warning.field && current[warning.field])
+            return false;
+          const key = `${warning.code}:${warning.field ?? ''}:${warning.acrossSides ?? false}`;
+          return !seen.has(key) && Boolean(seen.add(key));
         });
+        setAppliedNote(null);
+        setResult({ ...next, warnings });
       }
     } catch {
       setError(
@@ -237,10 +263,7 @@ export function IdentityCapture({
       </button>
       {open && (
         <>
-          <p className="text-xs text-muted">
-            Die Erkennung erfolgt nur auf diesem Gerät. Vorschläge sind ungeprüft. Originaldateien
-            bleiben unverändert.
-          </p>
+          <p className="text-xs text-muted">{text.intro}</p>
           <div className="flex flex-wrap gap-3">
             <label className="text-xs">
               Original
@@ -424,64 +447,92 @@ export function IdentityCapture({
             </p>
           )}
           {result && (
-            <div className="space-y-2">
+            <div className="@container space-y-2">
               {result.warnings.map((warning) => (
-                <p className="text-xs text-amber-700" key={warning}>
-                  {warning}
+                <p
+                  className="text-xs text-amber-700"
+                  key={`${warning.code}-${warning.field ?? ''}-${warning.acrossSides ?? false}`}
+                >
+                  {warningText(warning, audience)}
                 </p>
               ))}
-              <p className="text-xs text-muted">
-                Nicht erkannt, bitte manuell ergänzen oder andere Ausweisseite erfassen:{' '}
-                {Object.entries(IDENTITY_FIELD_LABELS)
-                  .filter(([key]) => !result.fields[key as IdentityField])
-                  .map(([, label]) => label)
-                  .join(', ') || 'keine fehlenden Felder'}
-                .
-              </p>
-              <p className="text-xs font-medium">
-                Mit dem Original vergleichen und gewünschte Felder auswählen:
-              </p>
-              {(Object.entries(result.fields) as [IdentityField, string][]).map(
-                ([field, value]) => (
-                  <label key={field} className="flex items-start gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(field)}
-                      onChange={(event) =>
-                        setSelected((previous) =>
-                          event.target.checked
-                            ? [...previous, field]
-                            : previous.filter((key) => key !== field),
-                        )
-                      }
-                    />
-                    <span>
-                      {IDENTITY_FIELD_LABELS[field]}: <strong>{value}</strong>
-                      {current[field] && current[field] !== value && (
-                        <span className="block text-xs text-amber-700">
-                          Bisher: {current[field]} — wird nur nach Auswahl ersetzt.
+              {/* Ausweis neben den Vorschlägen: der Abgleich mit dem Original
+                  ist der eigentliche Prüfschritt (GWG-OCR-ASSIST-001). */}
+              <div className="grid gap-3 @lg:grid-cols-2">
+                {croppedPreview && (
+                  /* eslint-disable-next-line @next/next/no-img-element -- lokales Speicherbild */
+                  <img
+                    src={croppedPreview}
+                    alt={text.imageAlt}
+                    className="w-full self-start rounded border border-default"
+                  />
+                )}
+                <div className="space-y-2">
+                  <p className="text-xs text-muted">
+                    {text.missing}{' '}
+                    {Object.entries(IDENTITY_FIELD_LABELS)
+                      .filter(
+                        ([key]) =>
+                          !result.fields[key as IdentityField] &&
+                          // Mandanten: nur, was im Formular noch fehlt.
+                          (audience === 'staff' || !current[key as IdentityField]),
+                      )
+                      .map(([, label]) => label)
+                      .join(', ') || text.noneMissing}
+                    .
+                  </p>
+                  <p className="text-xs font-medium">{text.compare}</p>
+                  {(Object.entries(result.fields) as [IdentityField, string][]).map(
+                    ([field, value]) => (
+                      <label key={field} className="flex items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(field)}
+                          onChange={(event) =>
+                            setSelected((previous) =>
+                              event.target.checked
+                                ? [...previous, field]
+                                : previous.filter((key) => key !== field),
+                            )
+                          }
+                        />
+                        <span>
+                          {IDENTITY_FIELD_LABELS[field]}:{' '}
+                          <strong>{displayValue(field, value, audience)}</strong>
+                          {current[field] && current[field] !== value && (
+                            <span className="block text-xs text-amber-700">
+                              {text.previous(displayValue(field, current[field]!, audience))}
+                            </span>
+                          )}
                         </span>
-                      )}
-                    </span>
-                  </label>
-                ),
-              )}
-              <button
-                type="button"
-                className="btn-secondary text-xs"
-                disabled={!selected.length}
-                onClick={() => {
-                  onApply(
-                    Object.fromEntries(selected.map((field) => [field, result.fields[field]])),
-                  );
-                  setSelected([]);
-                  setResult(null);
-                }}
-              >
-                Ausgewählte Daten übernehmen (ungeprüft)
-              </button>
+                      </label>
+                    ),
+                  )}
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    disabled={!selected.length}
+                    onClick={() => {
+                      onApply(
+                        Object.fromEntries(selected.map((field) => [field, result.fields[field]])),
+                      );
+                      setAppliedNote(
+                        text.applied(selected.map((field) => IDENTITY_FIELD_LABELS[field])),
+                      );
+                      setSelected([]);
+                      setResult(null);
+                    }}
+                  >
+                    {text.apply}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
+          {/* Live-Region existiert vor der Meldung, damit Screenreader sie ansagen. */}
+          <p role="status" className="text-xs text-emerald-700 dark:text-emerald-300">
+            {appliedNote}
+          </p>
         </>
       )}
     </section>

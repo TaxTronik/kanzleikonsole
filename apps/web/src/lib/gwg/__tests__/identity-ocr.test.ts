@@ -38,12 +38,25 @@ describe('GWG-OCR-ASSIST-001 local unverified suggestions', () => {
     );
     expect(result.fields.birthDate).toBeUndefined();
     expect(result.fields.idExpiryDate).toBeUndefined();
-    expect(result.warnings.some((warning) => warning.includes('Jahrhundert'))).toBe(true);
+    expect(result.warnings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: 'mrz-date-century',
+          field: 'birthDate',
+          text: expect.stringContaining('Jahrhundert'),
+        }),
+      ]),
+    );
   });
   it('gives a manual fallback for illegible input', () => {
     expect(parseGermanIdentityText('???')).toEqual({
       fields: {},
-      warnings: ['Keine sicheren Feldvorschläge erkannt. Bitte manuell erfassen.'],
+      warnings: [
+        {
+          code: 'nothing-found',
+          text: 'Keine sicheren Feldvorschläge erkannt. Bitte manuell erfassen.',
+        },
+      ],
     });
   });
   it('removes complete trilingual name labels without treating the labels as a person name', () => {
@@ -76,8 +89,16 @@ describe('GWG-OCR-ASSIST-001 local unverified suggestions', () => {
     expect(result.fields).toMatchObject({ birthDate: '1964-08-13', idExpiryDate: '2030-12-30' });
     expect(result.warnings).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('Geburtsdatum: Sichttext'),
-        expect.stringContaining('Gültig bis: Sichttext'),
+        expect.objectContaining({
+          code: 'date-conflict',
+          field: 'birthDate',
+          text: expect.stringContaining('Geburtsdatum: Sichttext'),
+        }),
+        expect.objectContaining({
+          code: 'date-conflict',
+          field: 'idExpiryDate',
+          text: expect.stringContaining('Gültig bis: Sichttext'),
+        }),
       ]),
     );
     const matching = parseGermanIdentityText(
@@ -195,7 +216,13 @@ describe('GWG-OCR-ASSIST-001 aktueller Personalausweis (Muster des Bundes)', () 
     // Kein geratenes Jahrhundert – weder aus der MRZ noch aus „02.05.24“.
     expect(result.fields.birthDate).toBeUndefined();
     expect(result.fields.idIssueDate).toBeUndefined();
-    expect(result.warnings).toEqual(
+    expect(result.warnings.map((warning) => warning.code)).toEqual([
+      'issue-date-short-year',
+      'mrz-date-century',
+      'mrz-date-century',
+      'mrz-name',
+    ]);
+    expect(result.warnings.map((warning) => warning.text)).toEqual(
       expect.arrayContaining([
         expect.stringContaining('zweistelliger Jahreszahl'),
         expect.stringContaining('Jahrhundert in MRZ fehlt'),
@@ -208,10 +235,16 @@ describe('GWG-OCR-ASSIST-001 aktueller Personalausweis (Muster des Bundes)', () 
     const front = parseGermanIdentityText(SPECIMEN_FRONT_T_AS_7).fields;
     const back = parseGermanIdentityText(SPECIMEN_BACK).mrz!;
     expect(compareWithMrz(front, back)).toEqual([
-      expect.stringContaining('Ausweisnummer: LZ6311747 widerspricht'),
+      {
+        code: 'number-conflict',
+        field: 'idNumber',
+        text: expect.stringContaining('Ausweisnummer: LZ6311747 widerspricht'),
+      },
     ]);
     expect(compareWithMrz({ ...front, idExpiryDate: '2034-05-07' }, back)).toEqual(
-      expect.arrayContaining([expect.stringContaining('Gültig bis: Sichttext')]),
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'date-conflict', field: 'idExpiryDate' }),
+      ]),
     );
     expect(
       compareWithMrz(

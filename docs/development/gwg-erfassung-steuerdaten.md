@@ -104,6 +104,19 @@ und warnt bei Widerspruch. Ein zweiter, auf die Zone beschränkter
 OCR-Durchlauf wurde mit dem Muster erprobt und verworfen: im Browser las er die
 Zone schlechter als der erste Durchlauf nach der Kontraststreckung.
 
+Die Erfassung kennt zwei Zielgruppen (`audience`): Die Kanzlei sieht die
+fachlichen Hinweise, Mandanten im öffentlichen Wizard verständliche Fassungen
+derselben Hinweis-Codes (`identity-hints.ts`), Daten als TT.MM.JJJJ und unter
+„Bitte selbst eintragen“ nur noch leere Felder. In beiden Fassungen steht der
+Ausweisausschnitt neben den Vorschlägen. Übernommene Felder markiert der Wizard
+grün mit „Aus dem Ausweis übernommen – bitte prüfen“ (per `aria-describedby`
+zugeordnet), scrollt zum ersten und hebt die Markierung je Feld bei eigener
+Bearbeitung auf; die Erfassung meldet die Übernahme zusätzlich in einer
+Live-Region. Vorschläge bleiben einzeln anzuhaken. Im Fixture lässt sich die
+Zielgruppe umschalten. Ein vollständiger Durchlauf des Wizards im lokalen
+Dev-Stack setzt vollständige Datenschutzhinweise der Kanzlei voraus; sonst
+zeigt der Wizard „Das Onboarding ist noch nicht freigegeben“.
+
 Ergebnis mit dem veröffentlichten Musterausweis (Erika Mustermann) im echten
 Browserablauf, 2026-10-22: vorher ein falsches Ablaufdatum (07.05. statt
 01.05.2034) sowie PLZ/Ort; danach Name und Ablaufdatum von der Vorderseite und

@@ -433,6 +433,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[GwG]** Die Ausweishilfe spricht Mandanten im öffentlichen Onboarding verständlich
+  an: Hinweise ohne Fachbegriffe (statt „MRZ“, „Prüfziffer“, „Jahrhundert“), Daten
+  als TT.MM.JJJJ, „Bitte selbst eintragen“ nur für noch leere Felder. Der
+  Ausweisausschnitt steht neben den Vorschlägen (auch in der Kanzlei). Übernommene
+  Angaben werden im Formular grün markiert („Aus dem Ausweis übernommen – bitte
+  prüfen“), bis der Mandant das Feld selbst bearbeitet; die Erfassung meldet die
+  Übernahme und scrollt zum ersten Feld. Beschriftungen und Eingaben im Wizard sind
+  jetzt verknüpft. Weiterhin keine Vorauswahl und keine Bestätigung
+  (GWG-OCR-ASSIST-001).
 - **[GwG]** Die lokale Ausweishilfe erkennt den aktuellen Personalausweis deutlich
   besser: Eine Arbeitskopie wird vergrößert, in Graustufen gewandelt und im
   Kontrast gestreckt; der Parser kennt Marker sowie dreisprachige und

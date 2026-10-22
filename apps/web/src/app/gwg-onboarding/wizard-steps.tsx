@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useId, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Loader, Plus, Trash2, Upload } from 'lucide-react';
 import { ConsentFields } from '@/components/consent-fields';
 import { NoticeView } from '@/components/notice-view';
@@ -632,6 +633,7 @@ function Field({
   type = 'text',
   required,
   placeholder,
+  highlighted = false,
 }: {
   label: string;
   value: string;
@@ -639,23 +641,71 @@ function Field({
   type?: string;
   required?: boolean;
   placeholder?: string;
+  /** Aus der Ausweishilfe übernommen und noch nicht bearbeitet. */
+  highlighted?: boolean;
 }) {
+  const id = useId();
   return (
     <div>
-      <label className="label">
+      <label className="label" htmlFor={id}>
         {label}
         {required && <span className="text-red-700 ml-1">*</span>}
       </label>
       <input
+        id={id}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         required={required}
         placeholder={placeholder}
-        className="input"
+        className={highlighted ? 'input border-emerald-600 ring-2 ring-emerald-500/40' : 'input'}
+        data-identity-applied={highlighted || undefined}
+        aria-describedby={highlighted ? `${id}-applied` : undefined}
       />
+      {highlighted && (
+        <p id={`${id}-applied`} className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+          Aus dem Ausweis übernommen – bitte prüfen.
+        </p>
+      )}
     </div>
   );
+}
+
+type StringFieldOf<T> = { [K in keyof T]: T[K] extends string ? K : never }[keyof T] & string;
+
+/**
+ * GWG-OCR-ASSIST-001: Felder, die der Mandant aus der Ausweishilfe übernommen
+ * hat, bleiben grün markiert, bis er sie selbst bearbeitet. Nach der Übernahme
+ * scrollt die Karte zum ersten markierten Feld. Eine Bestätigung entsteht nicht.
+ */
+function useIdentityApplied<T extends object>(person: T, onPatch: (patch: Partial<T>) => void) {
+  const [applied, setApplied] = useState<ReadonlySet<string>>(() => new Set());
+  const [revision, setRevision] = useState(0);
+  const container = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!revision) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    container.current
+      ?.querySelector<HTMLElement>('[data-identity-applied="true"]')
+      ?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+  }, [revision]);
+  function bind(key: StringFieldOf<T>) {
+    return {
+      value: person[key] as string,
+      highlighted: applied.has(key),
+      onChange: (value: string) => {
+        onPatch({ [key]: value } as Partial<T>);
+        if (applied.has(key))
+          setApplied((previous) => new Set([...previous].filter((entry) => entry !== key)));
+      },
+    };
+  }
+  function applyFromIdentity(fields: IdentitySuggestions) {
+    onPatch(fields as Partial<T>);
+    setApplied(new Set(Object.keys(fields).filter((key) => fields[key as keyof typeof fields])));
+    setRevision((value) => value + 1);
+  }
+  return { bind, applyFromIdentity, container };
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -690,8 +740,9 @@ function OwnerCard({
   frontError: string | null;
   backError: string | null;
 }) {
+  const { bind, applyFromIdentity, container } = useIdentityApplied(owner, onPatch);
   return (
-    <div className="card p-6 space-y-4">
+    <div ref={container} className="card p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-primary">Person {index + 1}</h3>
         {onRemove && (
@@ -704,35 +755,13 @@ function OwnerCard({
           </button>
         )}
       </div>
-      <Field
-        label="Vollständiger Name"
-        value={owner.fullName}
-        onChange={(value) => onPatch({ fullName: value })}
-        required
-      />
+      <Field label="Vollständiger Name" {...bind('fullName')} required />
       <div className="grid grid-cols-2 gap-3">
-        <Field
-          label="Geburtsdatum"
-          type="date"
-          value={owner.birthDate}
-          onChange={(value) => onPatch({ birthDate: value })}
-          required
-        />
-        <Field
-          label="Geburtsort"
-          value={owner.birthPlace}
-          onChange={(value) => onPatch({ birthPlace: value })}
-          required
-        />
+        <Field label="Geburtsdatum" type="date" {...bind('birthDate')} required />
+        <Field label="Geburtsort" {...bind('birthPlace')} required />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field
-          label="Staatsangehörigkeit"
-          value={owner.nationality}
-          onChange={(value) => onPatch({ nationality: value })}
-          placeholder="DE"
-          required
-        />
+        <Field label="Staatsangehörigkeit" {...bind('nationality')} placeholder="DE" required />
         <Field
           label={'Anteil (z. B. 50% oder „Alleingesellschafter")'}
           value={owner.sharePercent}
@@ -764,12 +793,7 @@ function OwnerCard({
         </p>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field
-          label="Straße + Hausnr."
-          value={owner.street}
-          onChange={(value) => onPatch({ street: value })}
-          required
-        />
+        <Field label="Straße + Hausnr." {...bind('street')} required />
         <Field
           label="Land"
           value={owner.countryIso}
@@ -778,18 +802,8 @@ function OwnerCard({
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field
-          label="PLZ"
-          value={owner.postalCode}
-          onChange={(value) => onPatch({ postalCode: value })}
-          required
-        />
-        <Field
-          label="Ort"
-          value={owner.city}
-          onChange={(value) => onPatch({ city: value })}
-          required
-        />
+        <Field label="PLZ" {...bind('postalCode')} required />
+        <Field label="Ort" {...bind('city')} required />
       </div>
 
       <div className="rounded-md border border-default bg-surface-raised p-4 space-y-3">
@@ -800,34 +814,12 @@ function OwnerCard({
           </p>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field
-            label="Ausweisnummer"
-            value={owner.idNumber}
-            onChange={(value) => onPatch({ idNumber: value })}
-            required
-          />
-          <Field
-            label="Ausstellende Behörde"
-            value={owner.idIssuedBy}
-            onChange={(value) => onPatch({ idIssuedBy: value })}
-            required
-          />
+          <Field label="Ausweisnummer" {...bind('idNumber')} required />
+          <Field label="Ausstellende Behörde" {...bind('idIssuedBy')} required />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field
-            label="Ausgestellt am"
-            type="date"
-            value={owner.idIssueDate}
-            onChange={(value) => onPatch({ idIssueDate: value })}
-            required
-          />
-          <Field
-            label="Gültig bis"
-            type="date"
-            value={owner.idExpiryDate}
-            onChange={(value) => onPatch({ idExpiryDate: value })}
-            required
-          />
+          <Field label="Ausgestellt am" type="date" {...bind('idIssueDate')} required />
+          <Field label="Gültig bis" type="date" {...bind('idExpiryDate')} required />
         </div>
       </div>
 
@@ -849,7 +841,12 @@ function OwnerCard({
           error={backError}
         />
       </div>
-      <OnboardingIdentityCapture token={token} person={owner} onPatch={onPatch} />
+      <OnboardingIdentityCapture
+        token={token}
+        person={owner}
+        onPatch={onPatch}
+        onApplyFields={applyFromIdentity}
+      />
     </div>
   );
 }
@@ -882,9 +879,10 @@ function RepresentativeCard({
   const linkedOwner = representative.linkedOwnerId
     ? owners.find((owner) => owner.id === representative.linkedOwnerId)
     : null;
+  const { bind, applyFromIdentity, container } = useIdentityApplied(representative, onPatch);
 
   return (
-    <div className="card p-6 space-y-4">
+    <div ref={container} className="card p-6 space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold text-primary">Vertretung {index + 1}</h3>
         {onRemove && (
@@ -939,12 +937,7 @@ function RepresentativeCard({
         </div>
       ) : (
         <>
-          <Field
-            label="Vollständiger Name"
-            value={representative.fullName}
-            onChange={(value) => onPatch({ fullName: value })}
-            required
-          />
+          <Field label="Vollständiger Name" {...bind('fullName')} required />
           <div className="rounded-md border border-default bg-surface-raised p-4 space-y-3">
             <div>
               <h4 className="text-sm font-medium text-primary">Ausweisdaten der Vertretung</h4>
@@ -954,34 +947,12 @@ function RepresentativeCard({
               </p>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field
-                label="Ausweisnummer"
-                value={representative.idNumber}
-                onChange={(value) => onPatch({ idNumber: value })}
-                required
-              />
-              <Field
-                label="Ausstellende Behörde"
-                value={representative.idIssuedBy}
-                onChange={(value) => onPatch({ idIssuedBy: value })}
-                required
-              />
+              <Field label="Ausweisnummer" {...bind('idNumber')} required />
+              <Field label="Ausstellende Behörde" {...bind('idIssuedBy')} required />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field
-                label="Ausgestellt am"
-                type="date"
-                value={representative.idIssueDate}
-                onChange={(value) => onPatch({ idIssueDate: value })}
-                required
-              />
-              <Field
-                label="Gültig bis"
-                type="date"
-                value={representative.idExpiryDate}
-                onChange={(value) => onPatch({ idExpiryDate: value })}
-                required
-              />
+              <Field label="Ausgestellt am" type="date" {...bind('idIssueDate')} required />
+              <Field label="Gültig bis" type="date" {...bind('idExpiryDate')} required />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4 pt-2">
@@ -1008,7 +979,12 @@ function RepresentativeCard({
               error={backError}
             />
           </div>
-          <OnboardingIdentityCapture token={token} person={representative} onPatch={onPatch} />
+          <OnboardingIdentityCapture
+            token={token}
+            person={representative}
+            onPatch={onPatch}
+            onApplyFields={applyFromIdentity}
+          />
         </>
       )}
     </div>
@@ -1019,6 +995,7 @@ function OnboardingIdentityCapture({
   token,
   person,
   onPatch,
+  onApplyFields,
 }: {
   token: string;
   person: Pick<BeneficialOwner, 'idType' | 'idFront' | 'idBack'> & IdentitySuggestions;
@@ -1028,6 +1005,8 @@ function OnboardingIdentityCapture({
       idBack?: OnboardingIdentityFile;
     },
   ) => void;
+  /** Übernahme aus der Ausweishilfe; markiert die Felder sichtbar. */
+  onApplyFields: (fields: IdentitySuggestions) => void;
 }) {
   const files = [person.idFront, person.idBack].filter(
     (file): file is OnboardingIdentityFile => !!file,
@@ -1066,11 +1045,12 @@ function OnboardingIdentityCapture({
             };
           },
         }))}
+        audience="client"
         current={person}
         initialViews={files.flatMap((file) =>
           file.viewport ? [{ ...file.viewport, documentId: file.documentId }] : [],
         )}
-        onApply={onPatch}
+        onApply={onApplyFields}
         onViewChange={(view) => {
           const file = unique.find((entry) => entry.documentId === view.documentId);
           if (file)

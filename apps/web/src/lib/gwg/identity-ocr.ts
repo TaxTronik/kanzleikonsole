@@ -19,9 +19,31 @@ export const IDENTITY_FIELD_LABELS = {
 } as const;
 export type IdentityField = keyof typeof IDENTITY_FIELD_LABELS;
 export type IdentitySuggestions = Partial<Record<IdentityField, string>>;
+
+/**
+ * Hinweise mit stabilem Code: die Kanzlei sieht `text` (fachlich präzise), der
+ * Mandant eine verständliche Fassung (identity-hints.ts).
+ */
+export type IdentityWarningCode =
+  | 'low-confidence'
+  | 'issue-date-short-year'
+  | 'date-conflict'
+  | 'number-conflict'
+  | 'mrz-number-invalid'
+  | 'mrz-date-century'
+  | 'mrz-name'
+  | 'nothing-found';
+export interface IdentityWarning {
+  code: IdentityWarningCode;
+  text: string;
+  field?: IdentityField;
+  /** Widerspruch zwischen Vorder- und Rückseite bzw. bisherigen Angaben. */
+  acrossSides?: boolean;
+}
+
 export interface IdentityOcrResult {
   fields: IdentitySuggestions;
-  warnings: string[];
+  warnings: IdentityWarning[];
   /**
    * Prüfziffergesicherte Werte der maschinenlesbaren Zone (Daten als YYMMDD),
    * nur für den Abgleich mit der anderen Ausweisseite bzw. bisherigen Angaben.
@@ -47,55 +69,71 @@ function isoDate(text: string): string | undefined {
 export function compareWithMrz(
   fields: IdentitySuggestions,
   mrz: NonNullable<IdentityOcrResult['mrz']>,
-): string[] {
-  const warnings: string[] = [];
+): IdentityWarning[] {
+  const warnings: IdentityWarning[] = [];
   for (const [key, value] of [
     ['birthDate', mrz.birthDate],
     ['idExpiryDate', mrz.expiryDate],
   ] as const) {
     const visual = fields[key];
     if (value && visual && visual.replace(/-/g, '').slice(2) !== value)
-      warnings.push(
-        `${IDENTITY_FIELD_LABELS[key]}: Sichttext und maschinenlesbares Datum widersprechen sich. Bitte am Original prüfen.`,
-      );
+      warnings.push({
+        code: 'date-conflict',
+        field: key,
+        text: `${IDENTITY_FIELD_LABELS[key]}: Sichttext und maschinenlesbares Datum widersprechen sich. Bitte am Original prüfen.`,
+      });
   }
   if (mrz.documentNumber && fields.idNumber && fields.idNumber !== mrz.documentNumber)
-    warnings.push(
-      `Ausweisnummer: ${fields.idNumber} widerspricht der maschinenlesbaren Zone (${mrz.documentNumber}). Bitte am Original prüfen.`,
-    );
+    warnings.push({
+      code: 'number-conflict',
+      field: 'idNumber',
+      text: `Ausweisnummer: ${fields.idNumber} widerspricht der maschinenlesbaren Zone (${mrz.documentNumber}). Bitte am Original prüfen.`,
+    });
   return warnings;
 }
+
+const MRZ_NUMBER_INVALID: IdentityWarning = {
+  code: 'mrz-number-invalid',
+  field: 'idNumber',
+  text: 'Prüfziffer der maschinenlesbaren Ausweisnummer stimmt nicht.',
+};
 
 function applyMrzSuggestions(
   lines: string[],
   fields: IdentitySuggestions,
-  warnings: string[],
+  warnings: IdentityWarning[],
 ): IdentityOcrResult['mrz'] {
   const mrz = parseGermanTd1(lines);
   if (!mrz) {
     if (lines.some((line) => /^[I1][D0O][D0O]/.test(line.replace(/\s/g, '').toUpperCase())))
-      warnings.push('Prüfziffer der maschinenlesbaren Ausweisnummer stimmt nicht.');
+      warnings.push(MRZ_NUMBER_INVALID);
     return;
   }
   warnings.push(...compareWithMrz(fields, mrz));
   if (mrz.documentNumber) {
     // Gültige Prüfziffer schlägt den ungesicherten Sichttext; der Widerspruch ist gewarnt.
     fields.idNumber = mrz.documentNumber;
-  } else warnings.push('Prüfziffer der maschinenlesbaren Ausweisnummer stimmt nicht.');
+  } else warnings.push(MRZ_NUMBER_INVALID);
   for (const [key, value] of [
     ['birthDate', mrz.birthDate],
     ['idExpiryDate', mrz.expiryDate],
   ] as const) {
     // The century is not encoded. Never guess it from today's year.
     if (value && !fields[key])
-      warnings.push(
-        `${IDENTITY_FIELD_LABELS[key]} bitte von der ausgeschriebenen Datumsangabe übernehmen (Jahrhundert in MRZ fehlt).`,
-      );
+      warnings.push({
+        code: 'mrz-date-century',
+        field: key,
+        text: `${IDENTITY_FIELD_LABELS[key]} bitte von der ausgeschriebenen Datumsangabe übernehmen (Jahrhundert in MRZ fehlt).`,
+      });
   }
   if (!fields.nationality && mrz.nationality === 'D') fields.nationality = 'DEUTSCH';
   if (!fields.fullName && mrz.surname && mrz.givenNames) {
     fields.fullName = `${mrz.givenNames} ${mrz.surname}`;
-    warnings.push('Name aus maschinenlesbarer Zeile: Umlaute und Schreibweise am Original prüfen.');
+    warnings.push({
+      code: 'mrz-name',
+      field: 'fullName',
+      text: 'Name aus maschinenlesbarer Zeile: Umlaute und Schreibweise am Original prüfen.',
+    });
   }
   return {
     ...(mrz.documentNumber && { documentNumber: mrz.documentNumber }),
@@ -239,7 +277,11 @@ function textFields(lines: string[], fields: IdentitySuggestions): void {
   fields.idIssuedBy = valueAfter(lines, LABEL.issuedBy, COMPANION.issuedBy);
 }
 
-function dateFields(lines: string[], fields: IdentitySuggestions, warnings: string[]): void {
+function dateFields(
+  lines: string[],
+  fields: IdentitySuggestions,
+  warnings: IdentityWarning[],
+): void {
   fields.birthDate = dateAfter(lines, LABEL.birthDate, COMPANION.birthDate);
   fields.idExpiryDate = dateAfter(lines, LABEL.expiry, COMPANION.expiry);
   fields.idIssueDate = dateAfter(lines, LABEL.issueDate);
@@ -253,9 +295,11 @@ function dateFields(lines: string[], fields: IdentitySuggestions, warnings: stri
       .slice(issueIndex, issueIndex + 3)
       .some((line) => /\b\d{2}\.\d{2}\.\d{2}\b(?!\.?\d)/.test(line))
   )
-    warnings.push(
-      'Ausgestellt am steht mit zweistelliger Jahreszahl auf dem Ausweis. Bitte vom Original übernehmen.',
-    );
+    warnings.push({
+      code: 'issue-date-short-year',
+      field: 'idIssueDate',
+      text: 'Ausgestellt am steht mit zweistelliger Jahreszahl auf dem Ausweis. Bitte vom Original übernehmen.',
+    });
 }
 
 /**
@@ -322,7 +366,7 @@ export function parseGermanIdentityText(text: string): IdentityOcrResult {
     .map((line) => stripMarker(line.trim()))
     .filter(Boolean);
   const fields: IdentitySuggestions = {};
-  const warnings: string[] = [];
+  const warnings: IdentityWarning[] = [];
   textFields(lines, fields);
   dateFields(lines, fields, warnings);
   fields.nationality = nationalityField(lines);
@@ -334,6 +378,9 @@ export function parseGermanIdentityText(text: string): IdentityOcrResult {
     else fields[key] = fields[key]!.slice(0, key === 'street' ? 255 : 200);
   }
   if (!Object.keys(fields).length)
-    warnings.push('Keine sicheren Feldvorschläge erkannt. Bitte manuell erfassen.');
+    warnings.push({
+      code: 'nothing-found',
+      text: 'Keine sicheren Feldvorschläge erkannt. Bitte manuell erfassen.',
+    });
   return mrz && Object.keys(mrz).length ? { fields, warnings, mrz } : { fields, warnings };
 }

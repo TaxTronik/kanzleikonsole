@@ -29,9 +29,10 @@ self.onmessage = async (event: MessageEvent<{ image: Uint8Array; assets: string 
     );
     const result = parseGermanIdentityText(data.text);
     if (data.confidence < 75)
-      result.warnings.unshift(
-        'Geringe Erkennungssicherheit. Bitte alle Vorschläge sorgfältig vergleichen.',
-      );
+      result.warnings.unshift({
+        code: 'low-confidence',
+        text: 'Geringe Erkennungssicherheit. Bitte alle Vorschläge sorgfältig vergleichen.',
+      });
     self.postMessage({ result });
   } catch {
     self.postMessage({ error: true });

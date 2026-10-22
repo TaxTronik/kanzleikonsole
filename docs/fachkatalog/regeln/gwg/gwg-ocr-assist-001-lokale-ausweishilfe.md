@@ -24,6 +24,9 @@ implementation:
     Personalausweises; die maschinenlesbare Zone wird tolerant gegen gelesene
     Füllzeichen ausgewertet, übernommen wird nur, was eine gültige Prüfziffer hat.
     Die Angaben beider Ausweisseiten werden gegen diese Zone abgeglichen.
+    Mandanten sehen im öffentlichen Wizard verständliche Hinweise ohne
+    Fachbegriffe, den Ausweisausschnitt neben den Vorschlägen und die
+    übernommenen Felder grün markiert, bis sie sie selbst bearbeiten.
 sources:
   - kind: product_documentation
     citation: Umsetzung und Betriebsgrenzen der GwG-Erweiterung
@@ -32,6 +35,8 @@ sources:
     primary: true
 code_refs:
   - apps/web/src/components/gwg/identity-capture.tsx
+  - apps/web/src/lib/gwg/identity-hints.ts
+  - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
   - apps/web/src/lib/gwg/identity-image.ts
   - apps/web/src/lib/gwg/identity-ocr-worker.ts
   - apps/web/src/lib/gwg/identity-ocr.ts
@@ -50,6 +55,8 @@ test_refs:
   - apps/web/src/server/gwg/__tests__/identity-source.test.ts
   - apps/web/src/lib/gwg/__tests__/identity-ocr.test.ts
   - apps/web/src/lib/gwg/__tests__/identity-mrz.test.ts
+  - apps/web/src/lib/gwg/__tests__/identity-hints.test.ts
+  - apps/web/src/app/gwg-onboarding/__tests__/identity-applied.test.tsx
   - apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts
   - apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
@@ -96,6 +103,7 @@ Drehung. Die Hilfe verarbeitet höchstens 25 MiB und 100 PDF-Seiten; der
 | Verwechselbare Zeichen (T/7, Z/2, O/0, I/1, S/5, B/8)      | Nur korrigieren, wenn genau eine Lesart die Prüfziffern erfüllt                  |
 | Andere Seite oder bisherige Angabe widerspricht der MRZ    | Warnen; keinen Wert ersetzen                                                     |
 | Ausstellungsdatum mit zweistelliger Jahreszahl             | Kein Vorschlag; Hinweis, vom Original zu übernehmen                              |
+| Mandant übernimmt Vorschläge im öffentlichen Wizard        | Felder markieren, bis er sie bearbeitet; keine Vorauswahl, keine Bestätigung     |
 | Zwei Seiten stammen aus derselben Quelle                   | Nur bei verschiedenen Seiten oder Ausschnitten derselben Version akzeptieren     |
 | Quelle ist fremd, veraltet oder nicht sauber               | Ansicht bzw. Speicherung abweisen; manuelle Neuerfassung bleibt möglich          |
 | Daten werden übernommen oder gespeichert                   | Prüfbestätigung nicht setzen; eine bestehende Bestätigung bei Änderung entwerten |
@@ -167,3 +175,8 @@ Mit dem Muster lieferte die Hilfe im Browser vorher ein falsches Ablaufdatum und
 PLZ/Ort, danach Name und Ablaufdatum (Vorderseite) sowie Behörde, PLZ, Ort,
 Ausweisnummer, Staatsangehörigkeit und Name (Rückseite) ohne Widerspruch. Eine
 Erkennungsquote wird damit nicht zugesagt; reale Scans sind gesondert zu prüfen.
+Hinweise tragen einen festen Code; Kanzlei und Mandant sehen zum selben Code
+eine fachliche bzw. verständliche Fassung (Test: jeder Code hat eine eigene
+Mandantenfassung ohne Begriffe wie MRZ oder Prüfziffer). Ein Komponententest des
+Wizards prüft die Mandantenfassung, die Markierung übernommener Felder samt
+zugeordnetem Hinweis und ihr Ende bei eigener Bearbeitung.

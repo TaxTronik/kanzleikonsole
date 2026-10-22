@@ -2991,7 +2991,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe. Originale bleiben unverändert; Seitenansichten binden Quelle, Version, PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität. Nur für die Erkennung wird eine Kopie vergrößert, in Graustufen gewandelt und im Kontrast gestreckt. Der Parser kennt das Layout des aktuellen Personalausweises; die maschinenlesbare Zone wird tolerant gegen gelesene Füllzeichen ausgewertet, übernommen wird nur, was eine gültige Prüfziffer hat. Die Angaben beider Ausweisseiten werden gegen diese Zone abgeglichen."
+        "summary": "Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe. Originale bleiben unverändert; Seitenansichten binden Quelle, Version, PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität. Nur für die Erkennung wird eine Kopie vergrößert, in Graustufen gewandelt und im Kontrast gestreckt. Der Parser kennt das Layout des aktuellen Personalausweises; die maschinenlesbare Zone wird tolerant gegen gelesene Füllzeichen ausgewertet, übernommen wird nur, was eine gültige Prüfziffer hat. Die Angaben beider Ausweisseiten werden gegen diese Zone abgeglichen. Mandanten sehen im öffentlichen Wizard verständliche Hinweise ohne Fachbegriffe, den Ausweisausschnitt neben den Vorschlägen und die übernommenen Felder grün markiert, bis sie sie selbst bearbeiten."
       },
       "sources": [
         {
@@ -3004,6 +3004,8 @@
       ],
       "code_refs": [
         "apps/web/src/components/gwg/identity-capture.tsx",
+        "apps/web/src/lib/gwg/identity-hints.ts",
+        "apps/web/src/app/gwg-onboarding/wizard-steps.tsx",
         "apps/web/src/lib/gwg/identity-image.ts",
         "apps/web/src/lib/gwg/identity-ocr-worker.ts",
         "apps/web/src/lib/gwg/identity-ocr.ts",
@@ -3023,6 +3025,8 @@
         "apps/web/src/server/gwg/__tests__/identity-source.test.ts",
         "apps/web/src/lib/gwg/__tests__/identity-ocr.test.ts",
         "apps/web/src/lib/gwg/__tests__/identity-mrz.test.ts",
+        "apps/web/src/lib/gwg/__tests__/identity-hints.test.ts",
+        "apps/web/src/app/gwg-onboarding/__tests__/identity-applied.test.tsx",
         "apps/web/src/server/gwg-onboarding/__tests__/identity-persistence.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts"
