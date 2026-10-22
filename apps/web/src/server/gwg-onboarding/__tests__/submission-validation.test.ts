@@ -9,6 +9,7 @@ import {
 function owner(overrides: Partial<OnboardingSubmissionOwner> = {}): OnboardingSubmissionOwner {
   return {
     localId: 'owner-1',
+    identityAssistedFields: [],
     fullName: 'Erika Muster',
     birthDate: '1980-01-01',
     birthPlace: 'Berlin',
@@ -47,6 +48,7 @@ describe('onboarding submission preflight', () => {
       representatives: [
         {
           localId: 'rep-1',
+          identityAssistedFields: [],
           fullName: 'Erika Muster',
           linkedOwnerLocalId: 'owner-1',
           idType: 'PERSONALAUSWEIS',

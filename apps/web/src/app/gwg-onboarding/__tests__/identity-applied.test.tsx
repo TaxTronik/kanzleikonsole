@@ -175,4 +175,19 @@ describe('GWG-OCR-ASSIST-001 sichtbare Übernahme im Mandanten-Onboarding', () =
     expect(marked(/Ausweisnummer/)).toBe('true');
     expect(marked(/Geburtsort/)).toBeUndefined();
   });
+
+  it('behält Markierungen, wenn die Person geschlossen und wieder geöffnet wird', () => {
+    const card = renderOwnersStep();
+    fireEvent.click(within(card).getByRole('button', { name: 'Vorschläge übernehmen (Test)' }));
+    fireEvent.click(within(card).getByRole('button', { name: 'Zur Übersicht' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Person 1: / }));
+    const reopened = screen
+      .getByRole('heading', { level: 2, name: 'Person 1' })
+      .closest('.card') as HTMLElement;
+    toDetails(reopened);
+    expect(
+      (within(reopened).getByLabelText(/Ausweisnummer/) as HTMLInputElement).dataset
+        .identityApplied,
+    ).toBe('true');
+  });
 });

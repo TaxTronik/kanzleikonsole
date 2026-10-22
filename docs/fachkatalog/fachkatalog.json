@@ -2991,7 +2991,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe. Originale bleiben unverändert; Seitenansichten binden Quelle, Version, PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität. Nur für die Erkennung wird eine Kopie vergrößert, in Graustufen gewandelt und im Kontrast gestreckt. Der Parser kennt das Layout des aktuellen Personalausweises; die maschinenlesbare Zone wird tolerant gegen gelesene Füllzeichen ausgewertet, übernommen wird nur, was eine gültige Prüfziffer hat. Die Angaben beider Ausweisseiten werden gegen diese Zone abgeglichen. Mandanten sehen im öffentlichen Wizard verständliche Hinweise ohne Fachbegriffe, den Ausweisausschnitt neben den Vorschlägen und die übernommenen Felder grün markiert, bis sie sie selbst bearbeiten. Im Wizard lesen sie jede Ausweisseite mit einem Klick aus; Original, Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen eingeklappt unter „Ausschnitt anpassen“. In Großbuchstaben gelesene Namen, Orte und Behörden werden in üblicher Schreibweise vorgeschlagen, die Ausweisfassung bleibt daneben sichtbar. Eine bisherige Angabe, die sich nur in Groß-/Kleinschreibung oder in von der Erkennung verlorenen Umlauten unterscheidet, wird nicht zum Ersetzen angeboten."
+        "summary": "Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe. Originale bleiben unverändert; Seitenansichten binden Quelle, Version, PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität. Nur für die Erkennung wird eine Kopie vergrößert, in Graustufen gewandelt und im Kontrast gestreckt. Der Parser kennt das Layout des aktuellen Personalausweises; die maschinenlesbare Zone wird tolerant gegen gelesene Füllzeichen ausgewertet, übernommen wird nur, was eine gültige Prüfziffer hat. Die Angaben beider Ausweisseiten werden gegen diese Zone abgeglichen. Mandanten sehen im öffentlichen Wizard verständliche Hinweise ohne Fachbegriffe, den Ausweisausschnitt neben den Vorschlägen und die übernommenen Felder grün markiert, bis sie sie selbst bearbeiten. Im Wizard lesen sie jede Ausweisseite mit einem Klick aus; Original, Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen eingeklappt unter „Ausschnitt anpassen“. Bei der Einreichung speichert der Server je Person, welche Felder aus der Ausweishilfe übernommen und danach nicht mehr geändert wurden (nur Feldnamen); die Kanzlei sieht das als Herkunftsangabe. In Großbuchstaben gelesene Namen, Orte und Behörden werden in üblicher Schreibweise vorgeschlagen, die Ausweisfassung bleibt daneben sichtbar. Eine bisherige Angabe, die sich nur in Groß-/Kleinschreibung oder in von der Erkennung verlorenen Umlauten unterscheidet, wird nicht zum Ersetzen angeboten."
       },
       "sources": [
         {
@@ -3017,10 +3017,17 @@
         "apps/web/src/app/gwg-onboarding/actions.ts",
         "apps/web/src/app/api/staff/gwg/identity-source/route.ts",
         "apps/web/scripts/prepare-identity-assets.mjs",
-        "packages/db/prisma/migrations/20260831103000_gwg_identity_viewports/migration.sql"
+        "packages/db/prisma/migrations/20260831103000_gwg_identity_viewports/migration.sql",
+        "packages/db/prisma/migrations/20261022190000_gwg_identity_assisted_fields/migration.sql",
+        "packages/db/prisma/schema.prisma",
+        "apps/web/src/server/gwg-onboarding/owner-submission.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx"
       ],
       "test_refs": [
         "apps/e2e/tests/16-identity-local.spec.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts",
+        "apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/app/gwg-onboarding/__tests__/identity-source.test.ts",
         "apps/web/src/app/api/staff/gwg/identity-source/__tests__/route.test.ts",
         "apps/web/src/server/gwg/__tests__/identity-source.test.ts",
@@ -3579,6 +3586,7 @@
         "apps/web/src/server/gwg/reverification.ts",
         "packages/db/prisma/migrations/20260801004100_onboarding_gwg_review_workflow/migration.sql",
         "packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql",
+        "packages/db/prisma/migrations/20261022190000_gwg_identity_assisted_fields/migration.sql",
         "packages/gwg/src/check-lifecycle.ts"
       ],
       "test_refs": [

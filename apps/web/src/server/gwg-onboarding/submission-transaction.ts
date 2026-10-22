@@ -298,6 +298,10 @@ async function replaceSubmittedPeopleTx(
         linkedBeneficialOwnerId: representative.linkedOwnerLocalId
           ? ownerDbIds.get(representative.linkedOwnerLocalId)!
           : null,
+        // Bei der Doppelrolle stammen die Angaben vom verknüpften Berechtigten.
+        identityAssistedFields: representative.linkedOwnerLocalId
+          ? []
+          : representative.identityAssistedFields,
       })),
     });
   }

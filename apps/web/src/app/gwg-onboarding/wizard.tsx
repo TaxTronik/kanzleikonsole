@@ -454,6 +454,7 @@ export function OnboardingWizard({
           idBackDocumentId: o.idBack!.documentId,
           idFrontViewport: o.idFront!.viewport!,
           idBackViewport: o.idBack!.viewport!,
+          identityAssistedFields: o.identityApplied ?? [],
         })),
         representatives: representatives.map((representative) => ({
           localId: representative.id,
@@ -470,6 +471,7 @@ export function OnboardingWizard({
           idBackDocumentId: representative.idBack?.documentId ?? null,
           idFrontViewport: representative.idFront?.viewport,
           idBackViewport: representative.idBack?.viewport,
+          identityAssistedFields: representative.identityApplied ?? [],
         })),
         extraDocuments: extraDocs.map((document) => ({
           documentId: document.documentId,

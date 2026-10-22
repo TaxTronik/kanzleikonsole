@@ -61,6 +61,7 @@ code_refs:
   - apps/web/src/server/gwg/reverification.ts
   - packages/db/prisma/migrations/20260801004100_onboarding_gwg_review_workflow/migration.sql
   - packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql
+  - packages/db/prisma/migrations/20261022190000_gwg_identity_assisted_fields/migration.sql
   - packages/gwg/src/check-lifecycle.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
@@ -214,7 +215,9 @@ bereits geprüfte Schritte als erledigt. Länder werden als Auswahl mit deutsche
 Namen erfasst und als ISO-Code gespeichert (Wohnsitz, Sitz); die
 Staatsangehörigkeit erlaubt mehrere Einträge („DE, TR“) sowie „staatenlos“ und
 „ungeklärt“. Ältere Freitextangaben bleiben als „bisherige Angabe“ sichtbar und
-werden nicht still ersetzt.
+werden nicht still ersetzt. Mit der Einreichung geht je Person mit, welche Felder
+aus der lokalen Ausweishilfe übernommen und nicht mehr geändert wurden
+(GWG-OCR-ASSIST-001); der Server nimmt nur bekannte Feldnamen an.
 
 Beide Wege nutzen dieselbe lokale Ausweishilfe (GWG-OCR-ASSIST-001). Zwei
 Seitenverweise dürfen dasselbe PDF-Original verwenden, wenn Version und

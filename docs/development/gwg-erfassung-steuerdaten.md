@@ -145,7 +145,12 @@ Staatsangehörigkeit sind Auswahlfelder (`lib/countries.ts`, statische deutsche
 Namen zu ISO-Codes, damit Server und Browser gleich rendern); mehrere
 Staatsangehörigkeiten werden als „DE, TR“ gespeichert. Die Ausweishilfe schlägt
 DEUTSCH als DE vor und ergänzt das zweistellige Ausstellungsjahr nur, wenn es
-eindeutig ist (`completeIssueYear`). Mandanten
+eindeutig ist (`completeIssueYear`). Die grünen Markierungen gehören zur Person
+(`identityApplied`) und gehen bei der Einreichung als `identityAssistedFields`
+an den Server; gespeichert werden nur Feldnamen
+(`gwg_beneficial_owner/gwg_representative.identity_assisted_fields`, Migration
+20261022190000). Die GwG-Seite der Kanzlei zeigt sie je Person als „Aus dem
+Ausweis übernommen“ mit dem Hinweis, dass das keine Prüfung ist. Mandanten
 lesen jede Seite mit „Vorderseite auslesen“ bzw. „Rückseite auslesen“ aus
 (`sideSources`); Original, Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen
 eingeklappt unter „Ausschnitt anpassen“. Die Kanzlei behält die bisherige,

@@ -29,7 +29,9 @@ implementation:
     übernommenen Felder grün markiert, bis sie sie selbst bearbeiten.
     Im Wizard lesen sie jede Ausweisseite mit einem Klick aus; Original,
     Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen eingeklappt unter
-    „Ausschnitt anpassen“.
+    „Ausschnitt anpassen“. Bei der Einreichung speichert der Server je Person,
+    welche Felder aus der Ausweishilfe übernommen und danach nicht mehr
+    geändert wurden (nur Feldnamen); die Kanzlei sieht das als Herkunftsangabe.
     In Großbuchstaben gelesene Namen, Orte und Behörden werden in üblicher
     Schreibweise vorgeschlagen, die Ausweisfassung bleibt daneben sichtbar.
     Eine bisherige Angabe, die sich nur in Groß-/Kleinschreibung oder in von
@@ -57,8 +59,15 @@ code_refs:
   - apps/web/src/app/api/staff/gwg/identity-source/route.ts
   - apps/web/scripts/prepare-identity-assets.mjs
   - packages/db/prisma/migrations/20260831103000_gwg_identity_viewports/migration.sql
+  - packages/db/prisma/migrations/20261022190000_gwg_identity_assisted_fields/migration.sql
+  - packages/db/prisma/schema.prisma
+  - apps/web/src/server/gwg-onboarding/owner-submission.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-persons.tsx
 test_refs:
   - apps/e2e/tests/16-identity-local.spec.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/owner-submission.test.ts
+  - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/app/gwg-onboarding/__tests__/identity-source.test.ts
   - apps/web/src/app/api/staff/gwg/identity-source/__tests__/route.test.ts
   - apps/web/src/server/gwg/__tests__/identity-source.test.ts
@@ -118,6 +127,7 @@ Drehung. Die Hilfe verarbeitet höchstens 25 MiB und 100 PDF-Seiten; der
 | Ausstellungsdatum mit zweistelliger Jahreszahl, Jahr eindeutig  | Jahr ergänzen, Ausweisfassung zeigen; nur ausdrücklich übernehmen                |
 | Ausstellungsdatum mit zweistelliger Jahreszahl, nicht eindeutig | Kein Vorschlag; Hinweis, vom Original zu übernehmen                              |
 | Mandant übernimmt Vorschläge im öffentlichen Wizard             | Felder markieren, bis er sie bearbeitet; keine Vorauswahl, keine Bestätigung     |
+| Einreichung mit noch markierten Feldern                         | Feldnamen an der Person speichern; Kanzlei sieht „Aus dem Ausweis übernommen“    |
 | Zwei Seiten stammen aus derselben Quelle                        | Nur bei verschiedenen Seiten oder Ausschnitten derselben Version akzeptieren     |
 | Inhalt passt zur anderen Ausweisseite als gewählt               | Hervorgehoben hinweisen; im Wizard „Seiten tauschen“ anbieten, nichts ändern     |
 | Quelle ist fremd, veraltet oder nicht sauber                    | Ansicht bzw. Speicherung abweisen; manuelle Neuerfassung bleibt möglich          |
@@ -239,6 +249,12 @@ Aussage) und welche Hinweise hervorgehoben werden; ein Wizard-Test prüft das
 Tauschen vertauschter Fotos samt Seitenverweisen. Im Mandantendurchlauf mit dem
 Muster wurde eine absichtlich vertauscht hochgeladene Rückseite als solche erkannt
 und nach „Seiten tauschen“ korrekt ausgelesen.
+Die Herkunftsangabe enthält nur Feldnamen, keine Werte, und beschreibt den Stand
+der Einreichung; spätere Änderungen in der Kanzlei heben sie nicht auf, sie ist
+ausdrücklich kein Prüfnachweis. Bei einer Doppelrolle trägt nur der
+wirtschaftlich Berechtigte die Angabe. Tests prüfen den Vertrag (nur bekannte
+Feldnamen, ohne Doppelte), das Speichern bei der Einreichung, die Doppelrolle und
+die Anzeige auf der GwG-Seite der Kanzlei.
 Ein Browserfall prüft die Mandantenfassung mit dem echten Worker: Auslesen der
 Seite per Klick, eingeklappter Zuschnitt, Datum als TT.MM.JJJJ und Übernahme
 als ISO-Datum.

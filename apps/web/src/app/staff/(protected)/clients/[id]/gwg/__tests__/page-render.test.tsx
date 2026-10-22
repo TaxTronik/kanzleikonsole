@@ -269,6 +269,26 @@ describe('GWG-RISK-REVIEW-001 / GWG-SELF-ONBOARDING-001: page workflow and revie
     expect(registerSummary).toBeDefined();
     expect(registerSummary).not.toMatch(/<details[^>]*\bopen=/);
   });
+  it('GWG-OCR-ASSIST-001 nennt bei der Person, was der Mandant aus dem Ausweis übernommen hat', async () => {
+    mocks.client.mockResolvedValue({ id: clientId, tenantId, name: 'Test GmbH', kind: 'JURPERS' });
+    mocks.history.mockResolvedValue([check()]);
+    const html = await renderPage(
+      check({
+        status: 'DRAFT',
+        reviewSubmittedAt: null,
+        representatives: [{ ...representative(), identityAssistedFields: [] }],
+        beneficialOwners: [{ ...owner(), identityAssistedFields: ['fullName', 'idNumber'] }],
+      }),
+    );
+    expect(html).toContain('Aus dem Ausweis übernommen: ');
+    expect(html).toContain('Vollständiger Name, Ausweisnummer. Der Mandant hat diese Angaben');
+    expect(html).toContain('das ist keine Prüfung');
+    // Ohne Herkunftsangabe kein Hinweis.
+    const plain = await renderPage(
+      check({ status: 'DRAFT', reviewSubmittedAt: null, beneficialOwners: [owner()] }),
+    );
+    expect(plain).not.toContain('Aus dem Ausweis übernommen');
+  });
   it('binds professional confirmation to the unchanged persisted snapshot', async () => {
     const value = check({ status: 'IN_REVIEW' });
     const html = await renderPage(value);

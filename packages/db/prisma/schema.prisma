@@ -999,6 +999,8 @@ model GwgRepresentative {
   residence               String?
   nationality             String?
   isPep                   Boolean?            @map("is_pep")
+  /// GWG-OCR-ASSIST-001: wie GwgBeneficialOwner.identityAssistedFields.
+  identityAssistedFields  String[]            @default([]) @map("identity_assisted_fields")
   position                Int
   /// Explizite Rollenidentität: derselbe Mensch kann Vertreter und zugleich
   /// wirtschaftlich Berechtigter sein. Keine heuristische Namensverknüpfung.
@@ -1031,6 +1033,10 @@ model GwgBeneficialOwner {
   nationality         String?
   ownershipPct        Decimal?            @map("ownership_pct") @db.Decimal(5, 2)
   isPep               Boolean             @default(false) @map("is_pep")
+  /// GWG-OCR-ASSIST-001: Felder, die der Mandant bei der Online-Einreichung aus
+  /// der lokalen Ausweishilfe übernommen hat (nur Feldnamen, keine Werte; kein
+  /// Prüfnachweis).
+  identityAssistedFields String[]           @default([]) @map("identity_assisted_fields")
   notes               String?
   personAnchorId      String?             @map("person_anchor_id") @db.Uuid
   personAnchor        GwgPersonAnchor?    @relation(fields: [personAnchorId], references: [id], onDelete: SetNull, onUpdate: NoAction)

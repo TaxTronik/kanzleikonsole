@@ -29,7 +29,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { IdentityCapture } from '@/components/gwg/identity-capture';
-import type { IdentitySuggestions } from '@/lib/gwg/identity-ocr';
+import type { IdentityField, IdentitySuggestions } from '@/lib/gwg/identity-ocr';
 import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
 import type {
   OnboardingPersonIssue,
@@ -902,8 +902,13 @@ type StringFieldOf<T> = { [K in keyof T]: T[K] extends string ? K : never }[keyo
  * hat, bleiben grün markiert, bis er sie selbst bearbeitet – auch über die
  * Abschnitte einer Person hinweg. Eine Bestätigung entsteht nicht.
  */
-function useIdentityApplied<T extends object>(person: T, onPatch: (patch: Partial<T>) => void) {
-  const [applied, setApplied] = useState<ReadonlySet<string>>(() => new Set());
+function useIdentityApplied<T extends { identityApplied?: IdentityField[] }>(
+  person: T,
+  onPatch: (patch: Partial<T>) => void,
+) {
+  // Die Markierungen gehören zur Person: Sie überdauern das Schließen der
+  // Bearbeitung und gehen als Herkunftsangabe mit der Einreichung an die Kanzlei.
+  const applied = new Set<string>(person.identityApplied ?? []);
   const [revision, setRevision] = useState(0);
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -917,19 +922,20 @@ function useIdentityApplied<T extends object>(person: T, onPatch: (patch: Partia
     return {
       value: person[key] as string,
       highlighted: applied.has(key),
-      onChange: (value: string) => {
-        onPatch({ [key]: value } as Partial<T>);
-        if (applied.has(key))
-          setApplied((previous) => new Set([...previous].filter((entry) => entry !== key)));
-      },
+      onChange: (value: string) =>
+        onPatch({
+          [key]: value,
+          ...(applied.has(key) && {
+            identityApplied: [...applied].filter((entry) => entry !== key),
+          }),
+        } as Partial<T>),
     };
   }
   function applyFromIdentity(fields: IdentitySuggestions) {
-    onPatch(fields as Partial<T>);
     // Markierungen früherer Übernahmen (andere Ausweisseite) bleiben bis zur
     // eigenen Bearbeitung bestehen.
-    const keys = Object.keys(fields).filter((key) => fields[key as keyof typeof fields]);
-    setApplied((previous) => new Set([...previous, ...keys]));
+    const keys = (Object.keys(fields) as IdentityField[]).filter((key) => fields[key]);
+    onPatch({ ...fields, identityApplied: [...new Set([...applied, ...keys])] } as Partial<T>);
     setRevision((value) => value + 1);
   }
   return { bind, applyFromIdentity, container };

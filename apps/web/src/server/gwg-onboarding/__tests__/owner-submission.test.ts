@@ -96,4 +96,18 @@ describe('öffentliches GwG-Onboarding – PEP-Snapshot', () => {
       GwgOnboardingOwnerSchema.safeParse({ ...validOwner, idIssueDate: '1979-12-31' }).success,
     ).toBe(false);
   });
+
+  it('GWG-OCR-ASSIST-001 nimmt nur bekannte Feldnamen als Herkunft aus der Ausweishilfe an', () => {
+    expect(GwgOnboardingOwnerSchema.parse(validOwner).identityAssistedFields).toEqual([]);
+    expect(
+      GwgOnboardingOwnerSchema.parse({
+        ...validOwner,
+        identityAssistedFields: ['idNumber', 'city', 'idNumber'],
+      }).identityAssistedFields,
+    ).toEqual(['idNumber', 'city']);
+    expect(
+      GwgOnboardingOwnerSchema.safeParse({ ...validOwner, identityAssistedFields: ['verifiedAt'] })
+        .success,
+    ).toBe(false);
+  });
 });

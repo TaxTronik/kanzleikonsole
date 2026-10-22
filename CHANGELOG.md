@@ -433,6 +433,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[GwG]** Die Kanzlei sieht bei jeder Person, welche Angaben der Mandant bei der
+  Online-Einreichung aus der lokalen Ausweishilfe übernommen hat („Aus dem
+  Ausweis übernommen: Vollständiger Name, Ausweisnummer …“), mit dem Hinweis,
+  dass das keine Prüfung ist. Gespeichert werden nur Feldnamen (Migration
+  20261022190000). Im Wizard bleiben die grünen Markierungen jetzt auch beim
+  Schließen und Wiederöffnen einer Person erhalten (GWG-OCR-ASSIST-001).
 - **[GwG]** Mandanten-Onboarding: Land und Staatsangehörigkeit sind Auswahlfelder
   mit deutschen Ländernamen statt Freitext („Land (ISO 2)“); gespeichert wird der
   ISO-Code, mehrere Staatsangehörigkeiten sowie „staatenlos“/„ungeklärt“ sind

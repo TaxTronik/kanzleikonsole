@@ -5,6 +5,7 @@ import { ConsentFields } from '@/components/consent-fields';
 import { NoticeView } from '@/components/notice-view';
 import type { ConsentSelections, ResolvedConsentOption } from '@/server/privacy/consent';
 import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
+import type { IdentityField } from '@/lib/gwg/identity-ocr';
 import { countryName } from '@/lib/countries';
 import { CountrySelect, Field } from './wizard-shared';
 import type { OpenPerson } from './person-steps';
@@ -51,6 +52,8 @@ export interface BeneficialOwner {
   idExpiryDate: string;
   idFront: OnboardingIdentityFile | null;
   idBack: OnboardingIdentityFile | null;
+  /** Aus der Ausweishilfe übernommen und seitdem nicht geändert (grün markiert). */
+  identityApplied?: IdentityField[];
 }
 
 export interface Representative {
@@ -64,6 +67,7 @@ export interface Representative {
   idExpiryDate: string;
   idFront: OnboardingIdentityFile | null;
   idBack: OnboardingIdentityFile | null;
+  identityApplied?: IdentityField[];
 }
 
 export type EntityEvidenceType =

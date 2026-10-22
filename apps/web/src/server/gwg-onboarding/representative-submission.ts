@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { IdentityViewportSchema, distinctIdentityViews } from '@/lib/gwg/identity-viewport';
 import { validateIdentityDates } from '@/server/gwg/identity-date-validation';
+import { IdentityAssistedFieldsSchema } from './owner-submission';
 
 export const GwgOnboardingLocalPersonIdSchema = z.string().min(1).max(100);
 
@@ -18,6 +19,7 @@ export const GwgOnboardingRepresentativeSchema = z
     idBackDocumentId: z.string().uuid().nullable(),
     idFrontViewport: IdentityViewportSchema.optional(),
     idBackViewport: IdentityViewportSchema.optional(),
+    identityAssistedFields: IdentityAssistedFieldsSchema,
   })
   .superRefine((representative, ctx) => {
     if (representative.linkedOwnerLocalId) return;

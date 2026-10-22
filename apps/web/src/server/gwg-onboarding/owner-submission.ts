@@ -1,6 +1,18 @@
 import { z } from 'zod';
 import { IdentityViewportSchema, distinctIdentityViews } from '@/lib/gwg/identity-viewport';
 import { validateIdentityDates } from '@/server/gwg/identity-date-validation';
+import { IDENTITY_FIELD_LABELS, type IdentityField } from '@/lib/gwg/identity-ocr';
+
+/**
+ * GWG-OCR-ASSIST-001: Felder, die der Mandant aus der lokalen Ausweishilfe
+ * übernommen und danach nicht selbst geändert hat. Nur Feldnamen; dient der
+ * Kanzlei als Herkunftsangabe, nicht als Prüfnachweis.
+ */
+export const IdentityAssistedFieldsSchema = z
+  .array(z.enum(Object.keys(IDENTITY_FIELD_LABELS) as [IdentityField, ...IdentityField[]]))
+  .max(Object.keys(IDENTITY_FIELD_LABELS).length * 2)
+  .default([])
+  .transform((fields) => [...new Set(fields)]);
 
 /**
  * Serverseitiger Vertrag fuer eine im oeffentlichen GwG-Onboarding erfasste
@@ -28,6 +40,7 @@ export const GwgOnboardingOwnerSchema = z
     idBackDocumentId: z.string().uuid(),
     idFrontViewport: IdentityViewportSchema,
     idBackViewport: IdentityViewportSchema,
+    identityAssistedFields: IdentityAssistedFieldsSchema,
   })
   .superRefine((owner, ctx) => {
     if (
@@ -88,5 +101,6 @@ export function toBeneficialOwnerSnapshot(owner: GwgOnboardingOwnerInput) {
     ownershipPct,
     isPep: owner.isPep,
     notes,
+    identityAssistedFields: owner.identityAssistedFields,
   };
 }

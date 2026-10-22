@@ -1,5 +1,6 @@
 import { ChevronRight } from 'lucide-react';
 import { Stage } from '@/components/stage';
+import { IDENTITY_FIELD_LABELS, type IdentityField } from '@/lib/gwg/identity-ocr';
 import { gwgLegalEntityRevision } from '@/server/gwg/revisions';
 import { NewGwgPersonForm } from './new-gwg-person-form';
 import { PersonGeneralForm } from './person-general-form';
@@ -66,6 +67,12 @@ export function GwgPersons({ model, canVerify }: { model: GwgPageModel; canVerif
                 </span>
               </summary>
               <div className="details-body space-y-4 pt-2">
+                <IdentityAssistedNote
+                  fields={[
+                    ...(person.owner?.identityAssistedFields ?? []),
+                    ...(person.representative?.identityAssistedFields ?? []),
+                  ]}
+                />
                 <PersonGeneralForm
                   ownerId={person.owner?.id ?? null}
                   representativeId={person.representative?.id ?? null}
@@ -179,5 +186,24 @@ export function GwgPersons({ model, canVerify }: { model: GwgPageModel; canVerif
         )}
       </Stage>
     </div>
+  );
+}
+
+/**
+ * GWG-OCR-ASSIST-001: Welche Angaben der Mandant bei der Online-Einreichung aus
+ * der lokalen Ausweishilfe übernommen hat. Herkunftsangabe zum Stand der
+ * Einreichung, kein Prüfnachweis.
+ */
+function IdentityAssistedNote({ fields }: { fields: string[] }) {
+  const labels = [...new Set(fields)].map(
+    (field) => IDENTITY_FIELD_LABELS[field as IdentityField] ?? field,
+  );
+  if (!labels.length) return null;
+  return (
+    <p className="rounded-md border border-default bg-surface-raised px-3 py-2 text-xs text-secondary">
+      <span className="font-medium text-primary">Aus dem Ausweis übernommen: </span>
+      {labels.join(', ')}. Der Mandant hat diese Angaben bei der Online-Einreichung aus der lokalen
+      Ausweishilfe angehakt; das ist keine Prüfung – bitte am Ausweis abgleichen.
+    </p>
   );
 }

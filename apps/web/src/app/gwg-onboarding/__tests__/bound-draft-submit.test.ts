@@ -109,6 +109,7 @@ function owner(
 ) {
   return {
     localId,
+    identityAssistedFields: [],
     fullName: name,
     birthDate: '1980-01-01',
     birthPlace: 'Berlin',
@@ -143,12 +144,17 @@ function validSubmission(): Parameters<typeof submitOnboardingAction>[0] {
     },
     legalEntity: { noRegisterEntry: true },
     owners: [
-      owner(OWNER_ONE, 'Erika Eins', DOCUMENT_IDS[0], DOCUMENT_IDS[1]),
+      {
+        ...owner(OWNER_ONE, 'Erika Eins', DOCUMENT_IDS[0], DOCUMENT_IDS[1]),
+        identityAssistedFields: ['fullName', 'idNumber', 'fullName'],
+      },
       owner(OWNER_TWO, 'Peter Zwei', DOCUMENT_IDS[2], DOCUMENT_IDS[3], 'REISEPASS'),
     ],
     representatives: [
       {
         localId: REP_ONE,
+        // Doppelrolle: eigene Angaben gibt es nicht, also auch keine Herkunft.
+        identityAssistedFields: ['idNumber'],
         fullName: 'Erika Eins',
         linkedOwnerLocalId: OWNER_ONE,
         idType: 'PERSONALAUSWEIS',
@@ -161,6 +167,7 @@ function validSubmission(): Parameters<typeof submitOnboardingAction>[0] {
       },
       {
         localId: REP_TWO,
+        identityAssistedFields: ['idIssuedBy'],
         fullName: 'Rita Vertretung',
         linkedOwnerLocalId: null,
         idType: 'PERSONALAUSWEIS',
@@ -373,17 +380,30 @@ describe('gebundener GwG-DRAFT Submit', () => {
     }
     expect(tx.gwgBeneficialOwner.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
-        expect.objectContaining({ id: OWNER_ONE }),
+        // GWG-OCR-ASSIST-001: Herkunft aus der Ausweishilfe, nur Feldnamen, ohne Doppelte.
+        expect.objectContaining({
+          id: OWNER_ONE,
+          identityAssistedFields: ['fullName', 'idNumber'],
+        }),
         expect.objectContaining({
           id: OWNER_TWO,
           notes: 'Kanzleivermerk Owner 2',
+          identityAssistedFields: [],
         }),
       ]),
     });
     expect(tx.gwgRepresentative.createMany).toHaveBeenCalledWith({
       data: expect.arrayContaining([
-        expect.objectContaining({ id: REP_ONE, linkedBeneficialOwnerId: OWNER_ONE }),
-        expect.objectContaining({ id: REP_TWO, linkedBeneficialOwnerId: null }),
+        expect.objectContaining({
+          id: REP_ONE,
+          linkedBeneficialOwnerId: OWNER_ONE,
+          identityAssistedFields: [],
+        }),
+        expect.objectContaining({
+          id: REP_TWO,
+          linkedBeneficialOwnerId: null,
+          identityAssistedFields: ['idIssuedBy'],
+        }),
       ]),
     });
     expect(tx.gwgIdDocument.createMany).not.toHaveBeenCalled();
