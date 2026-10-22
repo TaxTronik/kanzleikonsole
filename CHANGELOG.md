@@ -2099,6 +2099,16 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Next.js 16.4.1 statt 16.3.8: schließt eine kritische Remote Code Execution
+  ohne Anmeldung über die Bildoptimierung mit SVG-Dateien (GHSA-2464-fhr4-w9xw,
+  GHSA-673q-mjm6-r5xr) und eine Denial-of-Service-Lücke in Server Actions
+  (GHSA-p3m5-59mp-jv5r); `@next/eslint-plugin-next` zieht mit. 16.4.2 liegt noch
+  innerhalb der siebentägigen Mindestreife, 16.4.1 enthält beide Fixes. Dazu im
+  Entwicklungs- und Testwerkzeug Vite 8.1.6 (u. a. GHSA-587h-7wmj-h5pm), Vitest
+  4.1.12 (GHSA-qxg6-89mg-rqv8, GHSA-xp26-3454-mjgp) und transitiv `ip-address`
+  10.7.4 (GHSA-rxp7-6hxx-x8q5). Keine neuen Install-Hooks; frische
+  Linux-Installation ohne `--ignore-scripts` geprüft. Offen ohne Fix:
+  `sprintf-js` (mittel, über mammoth) und `braces` (nur Entwicklung).
 - CI/Container/Host: Node.js 24.22.1 (Sicherheitsrelease vom 20. Oktober
   2026, LTS „Krypton“) in `.nvmrc` und im Host-Setup
   (`HOST_NODE_VERSION` samt SHA-256 der Linux-Tarballs für x64 und arm64 aus

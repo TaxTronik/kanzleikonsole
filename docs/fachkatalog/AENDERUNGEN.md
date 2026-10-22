@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20261022-003
+    date: '2026-10-22'
+    paths:
+      - packages/gwg/package.json
+      - packages/tax/package.json
+    rule_ids:
+      - GWG-SCREENING-001
+    reason: >-
+      Sicherheitsupdate des Testwerkzeugs: In beiden Paketen ändert sich nur die
+      Dev-Abhängigkeit vitest von 4.1.11 auf 4.1.12 (GHSA-qxg6-89mg-rqv8,
+      GHSA-xp26-3454-mjgp), zusammen mit Next.js 16.4.1, Vite 8.1.6 und ip-address
+      10.7.4 im selben Commit. Produktivcode, Laufzeitabhängigkeiten und Fachlogik
+      der Pakete bleiben unverändert; die Paket-Tests laufen unverändert. Keine
+      fachliche Freigabe.
+    tests:
+      - packages/gwg/src/__tests__/check-lifecycle.test.ts
+      - packages/tax/src/__tests__/engine.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261022-002
     date: '2026-10-22'
     paths:
