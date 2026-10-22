@@ -176,7 +176,8 @@ export function EmbeddedView({
     return (
       <>
         <span className="text-xs text-disabled">{countIn(f.id) || ''}</span>
-        <span className="hidden group-hover:flex items-center gap-0.5">
+        {/* Auch per Tastatur erreichbar: sichtbar, sobald die Zeile den Fokus hat. */}
+        <span className="hidden group-hover:flex group-focus-within:flex items-center gap-0.5">
           <button
             type="button"
             title="Unterordner"

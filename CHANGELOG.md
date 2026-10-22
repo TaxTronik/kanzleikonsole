@@ -1212,6 +1212,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Ordnerbäume (Dokumente der Mandantenakte, Verschieben-Dialoge): Eine
+  Ordnerzeile war ein `role="button"` mit weiteren Buttons darin (Aufklappen,
+  Unterordner, Umbenennen, Löschen), die ein Screenreader nicht einzeln
+  ansteuern konnte; Auswahl und Aktionen sind jetzt nebeneinanderliegende
+  Buttons. Die Ordneraktionen erscheinen auch bei Tastaturfokus, nicht nur bei
+  Mausberührung.
 - Die Image-Builds (Web und Worker) versuchen `corepack install` bis zu dreimal
   mit 15 bzw. 30 Sekunden Pause; bisher brach ein einzelner Timeout der
   npm-Registry beim Laden der pnpm-Binary den ganzen Build ab. Der Docker-Guard

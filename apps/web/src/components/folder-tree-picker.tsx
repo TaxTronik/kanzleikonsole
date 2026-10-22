@@ -62,29 +62,25 @@ export function FolderTreePicker({
     const dis = disabledIds?.has(f.id) ?? false;
     return (
       <div key={f.id}>
+        {/* Die Zeile ist kein Button: Auswahl, Auf-/Zuklappen und die Aktionen
+            aus rowExtra sind Geschwister. Verschachtelte Bedienelemente
+            (role="button" um weitere Buttons) kann ein Screenreader nicht
+            einzeln ansteuern (axe: nested-interactive). Der Auswahl-Button
+            füllt die Zeile bis auf Zähler und Aktionen. */}
         <div
-          role="button"
-          tabIndex={dis ? -1 : 0}
-          aria-disabled={dis || undefined}
-          aria-pressed={isSel}
-          onClick={() => !dis && onSelect(f.id)}
-          onKeyDown={(e) => !dis && keySelect(e, f.id)}
           className={`flex items-center gap-1 rounded px-2 py-1.5 text-sm group ${
             dis
-              ? 'opacity-40 cursor-not-allowed'
+              ? 'opacity-40'
               : isSel
-                ? 'bg-brand-50 text-brand-700 cursor-pointer'
-                : 'hover:bg-gray-50 text-secondary cursor-pointer'
+                ? 'bg-brand-50 text-brand-700'
+                : 'hover:bg-gray-50 text-secondary'
           }`}
           style={{ paddingLeft: `${depth * indent + 8}px` }}
         >
           <button
             type="button"
             aria-label={open ? 'Zuklappen' : 'Aufklappen'}
-            onClick={(e) => {
-              e.stopPropagation();
-              setExpanded((x) => ({ ...x, [f.id]: !x[f.id] }));
-            }}
+            onClick={() => setExpanded((x) => ({ ...x, [f.id]: !x[f.id] }))}
             tabIndex={kids.length ? 0 : -1}
             className={kids.length ? 'text-disabled' : 'invisible'}
           >
@@ -94,12 +90,20 @@ export function FolderTreePicker({
               <ChevronRight className="h-3.5 w-3.5" />
             )}
           </button>
-          {isSel ? (
-            <FolderOpen className="h-4 w-4 shrink-0" />
-          ) : (
-            <Folder className="h-4 w-4 shrink-0" />
-          )}
-          <span className="truncate flex-1">{f.name}</span>
+          <button
+            type="button"
+            disabled={dis}
+            aria-pressed={isSel}
+            onClick={() => onSelect(f.id)}
+            className="flex min-w-0 flex-1 items-center gap-1 text-left disabled:cursor-not-allowed"
+          >
+            {isSel ? (
+              <FolderOpen className="h-4 w-4 shrink-0" />
+            ) : (
+              <Folder className="h-4 w-4 shrink-0" />
+            )}
+            <span className="truncate flex-1">{f.name}</span>
+          </button>
           {rowExtra?.(f)}
           {showCheck && isSel && <Check className="h-3.5 w-3.5" />}
         </div>
