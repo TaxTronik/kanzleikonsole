@@ -22,8 +22,17 @@ FROM ${NODE_BASE_IMAGE} AS builder
 RUN apk add --no-cache libc6-compat openssl
 WORKDIR /repo
 # pnpm-Version ausschliesslich aus packageManager in package.json (Corepack).
+# corepack install wiederholt selbst nicht: ein einzelner Registry-Aussetzer
+# (CI-Lauf 1151: 30-s-Timeout) brach sonst den ganzen Image-Build ab.
 COPY package.json ./
-RUN corepack enable && corepack install && pnpm --version
+RUN corepack enable && \
+    for attempt in 1 2 3; do \
+      corepack install && break; \
+      [ "$attempt" = 3 ] && exit 1; \
+      echo "corepack install fehlgeschlagen (Versuch $attempt/3), neuer Versuch in $((attempt * 15)) s" >&2; \
+      sleep $((attempt * 15)); \
+    done && \
+    pnpm --version
 
 # Paket-Store als eigene Schicht (statt Cache-Mount), damit auch ein
 # exportierter Layer-Cache die Downloads enthaelt. fetch prueft den Lockfile

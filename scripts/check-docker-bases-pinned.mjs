@@ -208,6 +208,35 @@ export function checkRuntimePackageManagersRemoved(source, fileName = '<Dockerfi
   return true;
 }
 
+// corepack install hat keine eigene Wiederholung; ein einzelner Registry-
+// Timeout brach den Image-Build ab (CI-Lauf 1151). Jeder RUN mit
+// `corepack install` muss es in der Drei-Versuche-Schleife ausfuehren und nach
+// dem letzten Fehlschlag mit Exit 1 enden (sonst liefe pnpm --version weiter).
+export function runInstructions(source) {
+  return source
+    .replace(/\\\r?\n/g, ' ')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^RUN\s/i.test(line));
+}
+
+export function checkCorepackInstallRetried(source, fileName = '<Dockerfile>') {
+  const runs = runInstructions(source).filter((run) => /\bcorepack\s+install\b/.test(run));
+  for (const run of runs) {
+    const retried =
+      /\bfor\s+attempt\s+in\s+1\s+2\s+3\s*;\s*do\b/.test(run) &&
+      /\bcorepack\s+install\s*&&\s*break\s*;/.test(run) &&
+      /\[\s*"\$attempt"\s*=\s*3\s*\]\s*&&\s*exit\s+1\s*;/.test(run) &&
+      /\bsleep\s/.test(run);
+    if (!retried) {
+      throw new Error(
+        `${fileName}: corepack install muss in der Schleife "for attempt in 1 2 3" mit break, exit 1 nach dem dritten Versuch und Pause laufen.`,
+      );
+    }
+  }
+  return runs.length;
+}
+
 export function checkBuilderSourcePermissions(source, fileName = '<Dockerfile>') {
   const copyMatch = /^COPY\s+\.\s+\.\s*$/m.exec(source);
   if (!copyMatch) {
@@ -412,6 +441,7 @@ function main() {
     for (const file of files) {
       checkRuntimePackageManagersRemoved(file.source, file.name);
       checkBuilderSourcePermissions(file.source, file.name);
+      checkCorepackInstallRetried(file.source, file.name);
     }
     checkWebRuntimeDockerfile(readFileSync(`${directory}/Dockerfile.web`, 'utf8'));
     const dockerignore = readFileSync('.dockerignore', 'utf8');
@@ -423,7 +453,7 @@ function main() {
     });
     checkRequiredComposeSecrets(readFileSync('infra/compose/docker-compose.app.yml', 'utf8'));
     process.stdout.write(
-      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases (Web und Worker gemeinsam ueber ${SHARED_BASE_ARG}), kopieren nur vorhandene Build-Kontext-Quellen, Web-Quellen importieren nichts Ausgeschlossenes, normalisieren Builder-Quellmodi und entfernen Runtime-Paketmanager; Web-Liveness ist erreichbar, lokale Betriebsdaten sind ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
+      `OK: ${names.length} Dockerfiles verwenden nur digest-gepinnte Bases (Web und Worker gemeinsam ueber ${SHARED_BASE_ARG}), kopieren nur vorhandene Build-Kontext-Quellen, Web-Quellen importieren nichts Ausgeschlossenes, normalisieren Builder-Quellmodi, wiederholen corepack install bei Registry-Fehlern und entfernen Runtime-Paketmanager; Web-Liveness ist erreichbar, lokale Betriebsdaten sind ignoriert und produktive Compose-Secrets sind fail-closed.\n`,
     );
   } catch (error) {
     process.stderr.write(`FEHLER: ${error.message}\n`);

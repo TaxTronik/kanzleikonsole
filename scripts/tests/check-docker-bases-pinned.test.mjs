@@ -4,6 +4,7 @@ import {
   checkBuildContextCopySources,
   checkBuildContextImports,
   checkBuilderSourcePermissions,
+  checkCorepackInstallRetried,
   checkDockerfiles,
   checkDockerignore,
   checkRequiredComposeSecrets,
@@ -137,6 +138,33 @@ assert.throws(
   () => checkRuntimePackageManagersRemoved(minimizedRuntime.replace(' /opt/yarn-*', '')),
   /\/opt\/yarn-/,
 );
+// corepack install: drei Versuche mit Pause, exit 1 nach dem letzten (CI-Lauf 1151).
+const retriedCorepack = [
+  'FROM node:24 AS builder',
+  'COPY package.json ./',
+  'RUN corepack enable && \\',
+  '    for attempt in 1 2 3; do \\',
+  '      corepack install && break; \\',
+  '      [ "$attempt" = 3 ] && exit 1; \\',
+  '      sleep $((attempt * 15)); \\',
+  '    done && \\',
+  '    pnpm --version',
+].join('\n');
+assert.equal(checkCorepackInstallRetried(retriedCorepack), 1);
+assert.equal(checkCorepackInstallRetried('FROM node:24\nRUN corepack enable'), 0);
+for (const broken of [
+  'FROM node:24\nRUN corepack enable && corepack install && pnpm --version',
+  retriedCorepack.replace('      [ "$attempt" = 3 ] && exit 1; \\\n', ''),
+  retriedCorepack.replace('corepack install && break', 'corepack install'),
+  retriedCorepack.replace('      sleep $((attempt * 15)); \\\n', ''),
+  retriedCorepack.replace('1 2 3', '1 2'),
+]) {
+  assert.throws(
+    () => checkCorepackInstallRetried(broken, 'Dockerfile'),
+    /Dockerfile: corepack install/,
+  );
+}
+
 const normalizedBuilder = [
   'FROM node:24 AS builder',
   'WORKDIR /repo',

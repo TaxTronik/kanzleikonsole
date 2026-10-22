@@ -1206,6 +1206,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Die Image-Builds (Web und Worker) versuchen `corepack install` bis zu dreimal
+  mit 15 bzw. 30 Sekunden Pause; bisher brach ein einzelner Timeout der
+  npm-Registry beim Laden der pnpm-Binary den ganzen Build ab. Der Docker-Guard
+  prüft die Wiederholung.
 - Im persönlichen barrierearmen Anzeigemodus zerreißen Buttons, Navigation,
   KPI-Labels und Kontomenü Wörter nicht mehr ohne Trennstrich („Anlege|n“,
   „MANDANT|EN“); nur E-Mail-Adressen und, unter 640 px Breite, Buttons dürfen
