@@ -3571,6 +3571,9 @@
         "apps/web/src/app/gwg-onboarding/person-steps.tsx",
         "apps/web/src/app/gwg-onboarding/wizard-shared.tsx",
         "apps/web/src/app/gwg-onboarding/wizard.tsx",
+        "apps/web/src/app/gwg-onboarding/draft-sync.tsx",
+        "apps/web/src/app/gwg-onboarding/page.tsx",
+        "apps/web/src/server/gwg-onboarding/draft.ts",
         "apps/web/src/server/gwg-onboarding/invite-lifecycle.ts",
         "apps/web/src/server/gwg-onboarding/owner-submission.ts",
         "apps/web/src/server/gwg-onboarding/representative-submission.ts",
@@ -3589,6 +3592,8 @@
         "packages/db/prisma/migrations/20260801004100_onboarding_gwg_review_workflow/migration.sql",
         "packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql",
         "packages/db/prisma/migrations/20261022190000_gwg_identity_assisted_fields/migration.sql",
+        "packages/db/prisma/migrations/20261022200000_gwg_onboarding_draft/migration.sql",
+        "packages/db/prisma/schema.prisma",
         "packages/gwg/src/check-lifecycle.ts"
       ],
       "test_refs": [
@@ -3609,7 +3614,11 @@
         "apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts",
         "apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx",
         "apps/web/src/server/gwg-onboarding/__tests__/wizard-person-issues.test.ts",
-        "apps/web/src/lib/__tests__/gwg-invite-status.test.ts"
+        "apps/web/src/lib/__tests__/gwg-invite-status.test.ts",
+        "apps/web/src/app/gwg-onboarding/__tests__/draft-sync.test.tsx",
+        "apps/web/src/app/gwg-onboarding/__tests__/draft-action.test.ts",
+        "apps/web/src/server/gwg-onboarding/__tests__/draft.test.ts",
+        "apps/web/src/server/privacy/__tests__/consent-policy-ui.test.ts"
       ],
       "feature_refs": [
         "FEATURES.md",

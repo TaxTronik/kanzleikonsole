@@ -117,7 +117,13 @@ vi.mock('@/app/staff/(protected)/clients/[id]/privacy/actions', () => ({
   revokeAllConsentAction: vi.fn(),
 }));
 vi.mock('@taxtronik/db', () => ({
-  withSystemContext: vi.fn(async (_tenant: unknown, fn: (tx: unknown) => unknown) => fn({})),
+  // Onboarding-Seite: keine Uploads und kein Zwischenstand (GWG-SELF-ONBOARDING-001).
+  withSystemContext: vi.fn(async (_tenant: unknown, fn: (tx: unknown) => unknown) =>
+    fn({
+      document: { findMany: vi.fn(async () => []) },
+      gwgOnboardingDraft: { findUnique: vi.fn(async () => null) },
+    }),
+  ),
   withTenantContext: vi.fn(async (_ctx: unknown, fn: (tx: unknown) => unknown) =>
     fn({
       clientContact: {

@@ -13,6 +13,8 @@ import { GENERIC_TOKEN_ERROR, loadInviteByRawToken } from '@/server/gwg-onboardi
 import { renderNoticeForTenantTx } from '@/server/privacy/service';
 import { readResolvedConsentOptionsTx } from '@/server/privacy/consent-catalog';
 import { consentDisplayRevision, visibleConsentOptions } from '@/server/privacy/consent-display';
+import { draftDocumentIds, loadOnboardingDraftTx } from '@/server/gwg-onboarding/draft';
+import { FINALIZED_INVITE_UPLOAD } from '@/server/gwg-onboarding/invite-uploads';
 import { OnboardingWizard } from './wizard';
 
 export default async function GwgOnboardingPage({
@@ -59,10 +61,24 @@ export default async function GwgOnboardingPage({
     // Dienstleister-Verknüpfung muss zuerst im ACP repariert werden und darf
     // den Mandanten nicht erst beim finalen Absenden scheitern lassen.
     const visibleOptions = visibleConsentOptions(consentOptions);
+    // Zwischenstand (GWG-SELF-ONBOARDING-001): Verweise nur auf finalisierte
+    // Uploads dieser Einladung oder Belege des gebundenen Prüfentwurfs.
+    const uploads = await tx.document.findMany({
+      where: { gwgOnboardingInviteId: invite.inviteId, ...FINALIZED_INVITE_UPLOAD },
+      select: { id: true },
+    });
+    const savedDraft = await loadOnboardingDraftTx(tx, {
+      inviteId: invite.inviteId,
+      allowedDocumentIds: new Set([
+        ...uploads.map((document) => document.id),
+        ...draftDocumentIds(invite.draft),
+      ]),
+    });
     return {
       notice,
       consentOptions: visibleOptions,
       displayRevision: consentDisplayRevision(notice, visibleOptions),
+      savedDraft,
     };
   });
 
@@ -96,6 +112,7 @@ export default async function GwgOnboardingPage({
           inviteName={invite.inviteName}
           client={invite.client}
           initialDraft={invite.draft}
+          savedDraft={privacy.savedDraft}
           noticeBody={privacy.notice.body}
           noticeVersion={privacy.notice.version}
           consentOptions={privacy.consentOptions}

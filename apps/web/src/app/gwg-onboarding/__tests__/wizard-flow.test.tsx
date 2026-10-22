@@ -28,6 +28,11 @@ vi.mock('../actions', () => ({
   uploadIdImageAction: h.upload,
   discardOnboardingUploadAction: h.discard,
   submitOnboardingAction: h.submit,
+  saveOnboardingDraftAction: vi.fn(async () => ({
+    ok: true,
+    revision: 1,
+    updatedAt: '2026-10-22T10:00:00.000Z',
+  })),
   loadOnboardingIdentitySourceAction: vi.fn(),
 }));
 // Die Ausweishilfe (PDF-/Bildvorschau) ist für diese Abläufe nicht nötig.
@@ -549,7 +554,7 @@ describe('GwG-Onboarding – Fotos, Seitentausch und Verlassen', () => {
     );
   });
 
-  it('fragt vor dem Verlassen nach, bis die Angaben übermittelt sind', async () => {
+  it('fragt vor dem Verlassen nur bei Ungespeichertem nach und nach dem Übermitteln nicht mehr', async () => {
     const leave = () => {
       const event = new Event('beforeunload', { cancelable: true });
       window.dispatchEvent(event);
@@ -564,8 +569,11 @@ describe('GwG-Onboarding – Fotos, Seitentausch und Verlassen', () => {
         ],
       }),
     );
-    expect(leave()).toBe(true);
+    // Noch nichts geändert: nichts, was verloren gehen könnte.
+    expect(leave()).toBe(false);
     next();
+    // Der neue Stand ist noch nicht zwischengespeichert.
+    expect(leave()).toBe(true);
     next();
     next();
     fireEvent.click(
@@ -576,7 +584,8 @@ describe('GwG-Onboarding – Fotos, Seitentausch und Verlassen', () => {
     next();
     fireEvent.click(screen.getByRole('button', { name: 'Jetzt übermitteln' }));
     expect(await screen.findByRole('heading', { name: 'Vielen Dank!' })).toBeTruthy();
-    expect(leave()).toBe(false);
+    // React baut den Listener im Effekt nach dem Commit ab, ggf. einen Takt später.
+    await waitFor(() => expect(leave()).toBe(false));
   });
 });
 

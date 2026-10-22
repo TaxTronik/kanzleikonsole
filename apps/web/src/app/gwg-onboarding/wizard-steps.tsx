@@ -11,7 +11,13 @@ import { CountrySelect, Field } from './wizard-shared';
 import type { OpenPerson } from './person-steps';
 
 export { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from './wizard-shared';
-export { OwnersStep, emptyOwner, emptyRepresentative, type OpenPerson } from './person-steps';
+export {
+  OwnersStep,
+  emptyOwner,
+  emptyRepresentative,
+  reservePersonIds,
+  type OpenPerson,
+} from './person-steps';
 
 export const ONBOARDING_STEPS = [
   { key: 'master', label: 'Stammdaten' },

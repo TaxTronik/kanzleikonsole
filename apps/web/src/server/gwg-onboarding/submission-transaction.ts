@@ -508,6 +508,8 @@ async function linkClaimedInviteToReviewTx(
     where: { id: input.inviteId },
     data: { gwgCheckId: input.checkId },
   });
+  // Der Zwischenstand ist mit der Einreichung in die Prüfung übergegangen.
+  await tx.gwgOnboardingDraft.deleteMany({ where: { inviteId: input.inviteId } });
 }
 
 async function recordSubmissionAuditTx(

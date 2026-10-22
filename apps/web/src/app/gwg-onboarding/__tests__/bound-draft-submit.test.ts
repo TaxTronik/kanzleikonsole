@@ -269,6 +269,7 @@ function submissionTx(findDocument: DocumentLookup = imageSource) {
       deleteMany: vi.fn(),
     },
     gwgOnboardingInvite: { update: vi.fn() },
+    gwgOnboardingDraft: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
     document: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       findFirst: vi.fn().mockImplementation(findDocument),
@@ -409,6 +410,10 @@ describe('gebundener GwG-DRAFT Submit', () => {
     expect(tx.gwgIdDocument.createMany).not.toHaveBeenCalled();
     expect(tx.gwgIdDocument.create).not.toHaveBeenCalled();
     expect(tx.gwgIdDocument.deleteMany).not.toHaveBeenCalled();
+    // GWG-SELF-ONBOARDING-001: Der Zwischenstand endet mit der Einreichung.
+    expect(tx.gwgOnboardingDraft.deleteMany).toHaveBeenCalledWith({
+      where: { inviteId: expect.any(String) },
+    });
     expect(m.ensureGwgRootFolder).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ tenantId: 'tenant-1', clientId: 'client-1' }),

@@ -46,6 +46,9 @@ code_refs:
   - apps/web/src/app/gwg-onboarding/person-steps.tsx
   - apps/web/src/app/gwg-onboarding/wizard-shared.tsx
   - apps/web/src/app/gwg-onboarding/wizard.tsx
+  - apps/web/src/app/gwg-onboarding/draft-sync.tsx
+  - apps/web/src/app/gwg-onboarding/page.tsx
+  - apps/web/src/server/gwg-onboarding/draft.ts
   - apps/web/src/server/gwg-onboarding/invite-lifecycle.ts
   - apps/web/src/server/gwg-onboarding/owner-submission.ts
   - apps/web/src/server/gwg-onboarding/representative-submission.ts
@@ -64,6 +67,8 @@ code_refs:
   - packages/db/prisma/migrations/20260801004100_onboarding_gwg_review_workflow/migration.sql
   - packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql
   - packages/db/prisma/migrations/20261022190000_gwg_identity_assisted_fields/migration.sql
+  - packages/db/prisma/migrations/20261022200000_gwg_onboarding_draft/migration.sql
+  - packages/db/prisma/schema.prisma
   - packages/gwg/src/check-lifecycle.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
@@ -84,6 +89,10 @@ test_refs:
   - apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx
   - apps/web/src/server/gwg-onboarding/__tests__/wizard-person-issues.test.ts
   - apps/web/src/lib/__tests__/gwg-invite-status.test.ts
+  - apps/web/src/app/gwg-onboarding/__tests__/draft-sync.test.tsx
+  - apps/web/src/app/gwg-onboarding/__tests__/draft-action.test.ts
+  - apps/web/src/server/gwg-onboarding/__tests__/draft.test.ts
+  - apps/web/src/server/privacy/__tests__/consent-policy-ui.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -150,6 +159,7 @@ zulässig.
 | Dokument ist mehreren Personen oder Zwecken zugeordnet                       | Submit ablehnen                                                                                             | Eindeutige Nachweiszuordnung                             |
 | Pflichtangaben oder erforderliche Ausweisseiten fehlen                       | Submit ablehnen                                                                                             | Unvollständiger Prüfentwurf                              |
 | Noch nicht eingereichter Upload wird bewusst verworfen                       | Exakte Objektversion und DB-Verknüpfung kontrolliert entfernen                                              | Mandant darf Vorab-Fehler korrigieren                    |
+| Zwischenstand baut nicht auf der zuletzt gelesenen Revision auf              | Nicht speichern; Wizard bietet Neuladen an                                                                  | Zwei Geräte überschreiben sich nicht still               |
 | Alle Prüfungen bestehen                                                      | Einladung einmalig claimen und alle Phasen in einer Transaktion ausführen                                   | Atomarer Submit                                          |
 | Submit erfolgreich                                                           | Daten als `DRAFT` speichern, Risiko zurücksetzen, Audit/Einwilligung persistieren und Staff benachrichtigen | Noch keine fachliche Entscheidung                        |
 
@@ -215,9 +225,10 @@ Beim Weiter nennt der Personenschritt alle offenen Angaben je Person auf einmal,
 in Alltagssprache und ohne Normzitate, und springt von dort in den Abschnitt der
 ersten Lücke; die Liste aktualisiert sich beim Ergänzen. Grundlage bleibt derselbe
 Vertrag wie beim Submit: Fehlende Felder werden benannt, ungültige mit der
-konkreten Begründung (z. B. Datum in der Zukunft). Solange nicht übermittelt
-ist, fragt der Browser beim Schließen oder Neuladen nach, weil Eingaben bisher
-nur im Tab liegen. Ausweisfotos lassen sich auf Touch-Geräten direkt mit der
+konkreten Begründung (z. B. Datum in der Zukunft). Der Browser fragt beim
+Schließen oder Neuladen nur nach, solange Änderungen noch nicht
+zwischengespeichert sind oder die Datenschutzerklärung schon abgegeben, aber
+noch nicht übermittelt ist. Ausweisfotos lassen sich auf Touch-Geräten direkt mit der
 Kamera aufnehmen; ein Vorschaubild zeigt die hochgeladene Seite, und vertauschte
 Fotos lassen sich samt Seitenverweisen tauschen. Die Fortschrittsleiste behält
 bereits geprüfte Schritte als erledigt. Länder werden als Auswahl mit deutschen
@@ -227,6 +238,31 @@ Staatsangehörigkeit erlaubt mehrere Einträge („DE, TR“) sowie „staatenlo
 werden nicht still ersetzt. Mit der Einreichung geht je Person mit, welche Felder
 aus der lokalen Ausweishilfe übernommen und nicht mehr geändert wurden
 (GWG-OCR-ASSIST-001); der Server nimmt nur bekannte Feldnamen an.
+
+Zwischenstand und Gerätewechsel: Der Wizard speichert seinen Formularstand
+kurz nach jeder Änderung je Einladung (`gwg_onboarding_draft`) und stellt ihn
+beim Öffnen des Links wieder her – nach einem Neuladen oder auf einem anderen
+Gerät. Am Rechner zeigt „Auf dem Smartphone fortsetzen“ auf Wunsch einen
+QR-Code mit dem persönlichen Einladungslink, etwa um die Ausweisfotos mit der
+Kamera aufzunehmen. Gespeichert werden nur Formularangaben, der Schritt und
+Verweise auf bereits hochgeladene Dateien, keine Dateien. Beim Laden gelten nur
+Verweise auf finalisierte Uploads dieser Einladung oder auf Belege des
+gebundenen Prüfentwurfs; ein ungültiger Stand wird ignoriert. Datenschutz-
+Bestätigung, Auswahl und Name werden nie gespeichert: Ein wiederhergestellter
+Stand beginnt höchstens beim Schritt „Datenschutz“. Jeder Speichervorgang
+prüft die offene, aktuelle Einladung unter demselben Lifecycle-Lock wie Upload
+und Einreichung und schreibt nur auf die zuletzt gelesene Revision; hat ein
+anderes Gerät inzwischen gespeichert, bleibt der fremde Stand erhalten und der
+Wizard bietet das Neuladen an. Der Zwischenstand ist kein Teil des
+Prüfentwurfs und für die Kanzlei nicht sichtbar.
+
+Lebensdauer (Produktentscheidung vom 22.10.2026, fachliche und
+datenschutzrechtliche Prüfung offen): Es gibt keine Löschung nach Zeitablauf;
+eine nie eingereichte Einladung bleibt samt Zwischenstand und Uploads stehen
+und zeigt nach Ablauf „Abgelaufen“. Der Zwischenstand endet mit der
+Einreichung (in derselben Transaktion), mit der Einladung (Löschung bei der
+Anonymisierung des Mandanten) und bei der Vernichtung der Prüfung (Trigger auf
+die Anonymisierung der Einladung).
 
 Beide Wege nutzen dieselbe lokale Ausweishilfe (GWG-OCR-ASSIST-001). Zwei
 Seitenverweise dürfen dasselbe PDF-Original verwenden, wenn Version und
@@ -273,6 +309,10 @@ Grenzen:
   nicht automatisch.
 - Eine Bestätigung der Datenschutzhinweise ist keine Aussage über die
   GwG-Richtigkeit der Angaben.
+- Wer den QR-Code oder Link hat, sieht und ändert den Zwischenstand; der Link
+  ist das einzige Zugangsmerkmal.
+- Ein nie eingereichter Zwischenstand wird nicht nach Zeitablauf gelöscht und
+  ist nicht Teil des DSGVO-Exports (siehe Prüffragen).
 
 ## Fachliche Prüffragen
 
@@ -283,6 +323,9 @@ Grenzen:
   unabhängig beschaffen?
 - Welche Angaben dürfen bei einem Re-Onboarding aus dem alten Entwurf
   vorausgefüllt werden?
+- Wie lange dürfen Zwischenstand und Uploads einer nie eingereichten oder
+  abgelaufenen Einladung gespeichert bleiben, und gehört der Zwischenstand in
+  eine Auskunft nach Art. 15 DSGVO?
 
 ## Technische Nachweise
 
@@ -293,3 +336,10 @@ Phasenreihenfolge. Die Tests prüfen invitefremde und doppelte Dokumente,
 abgelaufene Links, geänderte gebundene Entwürfe, stabile Personen-IDs,
 Upload-Cleanup und die Claim-zuerst-/Einwilligung-zuletzt-Reihenfolge. Sie
 belegen keine fachliche Wahrheit der eingereichten Angaben.
+
+`draft.test.ts`, `draft-action.test.ts` und `draft-sync.test.tsx` belegen für
+den Zwischenstand: nur eigene Dateiverweise, Revision und Konflikt zwischen
+zwei Geräten, Lock vor dem Schreiben, keine Speicherung für geschlossene
+Einladungen, Wiederherstellen höchstens bis zum Datenschutz-Schritt und den
+QR-Code mit dem Link der Seite. `bound-draft-submit.test.ts` belegt das Löschen
+mit der Einreichung.

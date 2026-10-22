@@ -13,6 +13,7 @@ import {
   type ResolvedConsentOption,
 } from '@/server/privacy/consent';
 import type { LoadedInviteDraft } from '@/server/gwg-onboarding/service';
+import type { LoadedOnboardingDraft } from '@/server/gwg-onboarding/draft';
 import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 import {
   onboardingLegalEntityStepError,
@@ -41,6 +42,13 @@ import {
   type Representative,
 } from './wizard-steps';
 import { useLeaveWarning } from './wizard-shared';
+import {
+  ContinueOnPhone,
+  DraftStatus,
+  buildDraftPayload,
+  initialWizardState,
+  useDraftSync,
+} from './draft-sync';
 
 type OnboardingUploadResult =
   | { ok: true; documentId: string; versionId?: string }
@@ -106,6 +114,7 @@ export function OnboardingWizard({
   inviteName,
   client,
   initialDraft,
+  savedDraft,
   noticeBody,
   noticeVersion,
   consentOptions,
@@ -115,6 +124,8 @@ export function OnboardingWizard({
   inviteName: string;
   client: ClientShape;
   initialDraft: LoadedInviteDraft | null;
+  /** Zwischenstand dieser Einladung (GWG-SELF-ONBOARDING-001). */
+  savedDraft?: LoadedOnboardingDraft | null;
   /** Gerenderte Datenschutzhinweise (Teil A) — kanzleispezifisch. */
   noticeBody: string;
   noticeVersion: number;
@@ -122,9 +133,13 @@ export function OnboardingWizard({
   /** SHA-256-Bindung an exakt den gerenderten Hinweis und Optionskatalog. */
   consentDisplayRevision: string;
 }) {
-  const [step, setStep] = useState(0);
+  // Gespeicherter Zwischenstand (anderes Gerät, Neuladen) vor dem Prüfentwurf.
+  const [initial] = useState(() =>
+    initialWizardState({ savedDraft, initialDraft, client, inviteName }),
+  );
+  const [step, setStep] = useState(initial.step);
   // Weitester geprüfter Schritt: bleibt in der Fortschrittsleiste erledigt.
-  const [reached, setReached] = useState(0);
+  const [reached, setReached] = useState(initial.reached);
   // Nach dem ersten Weiter im Personenschritt: offene Angaben laufend anzeigen.
   const [personCheck, setPersonCheck] = useState(false);
 
@@ -134,40 +149,26 @@ export function OnboardingWizard({
   const [signedByName, setSignedByName] = useState(inviteName);
 
   // Stammdaten
-  const [companyName, setCompanyName] = useState(client.name);
-  const [street, setStreet] = useState(client.street ?? '');
-  const [postalCode, setPostalCode] = useState(client.postalCode ?? '');
-  const [city, setCity] = useState(client.city ?? '');
-  const [countryIso, setCountryIso] = useState(client.countryIso ?? 'DE');
+  const [companyName, setCompanyName] = useState(initial.master.companyName);
+  const [street, setStreet] = useState(initial.master.street);
+  const [postalCode, setPostalCode] = useState(initial.master.postalCode);
+  const [city, setCity] = useState(initial.master.city);
+  const [countryIso, setCountryIso] = useState(initial.master.countryIso);
 
   // Wirtschaftlich Berechtigte
-  const [owners, setOwners] = useState<BeneficialOwner[]>(() =>
-    initialDraft?.owners.length
-      ? initialDraft.owners.map((owner) => ({ ...owner }))
-      : [emptyOwner(inviteName)],
-  );
+  const [owners, setOwners] = useState<BeneficialOwner[]>(initial.owners);
   // Personenschritt: Übersicht oder Bearbeitung genau einer Person.
   const [openPerson, setOpenPerson] = useState<OpenPerson | null>(null);
   // Person aus der Zusammenfassung ergänzt: „Weiter“ führt direkt dorthin zurück.
   const [returnToSummary, setReturnToSummary] = useState(false);
-  const [representatives, setRepresentatives] = useState<Representative[]>(() =>
-    initialDraft
-      ? initialDraft.representatives.map((representative) => ({ ...representative }))
-      : client.kind === 'NATPERS'
-        ? []
-        : [emptyRepresentative(inviteName)],
-  );
+  const [representatives, setRepresentatives] = useState<Representative[]>(initial.representatives);
 
   // Sonstige Dokumente
-  const [extraDocs, setExtraDocs] = useState<EntityEvidenceDocument[]>(
-    () => initialDraft?.extraDocuments.map((document) => ({ ...document })) ?? [],
-  );
+  const [extraDocs, setExtraDocs] = useState<EntityEvidenceDocument[]>(initial.extraDocs);
   const [extraType, setExtraType] = useState<EntityEvidenceType>(
     client.kind === 'NATPERS' ? 'SONSTIGES' : 'GESELLSCHAFTSVERTRAG',
   );
-  const [noRegisterEntry, setNoRegisterEntry] = useState<boolean | null>(
-    initialDraft?.noRegisterEntry ?? null,
-  );
+  const [noRegisterEntry, setNoRegisterEntry] = useState<boolean | null>(initial.noRegisterEntry);
   const [extraUploadError, setExtraUploadError] = useState<string | null>(null);
   const [discardingDocumentIds, setDiscardingDocumentIds] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -183,7 +184,22 @@ export function OnboardingWizard({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
-  useLeaveWarning(!submitted);
+  const draftSync = useDraftSync({
+    token,
+    savedDraft,
+    active: !submitted,
+    payload: buildDraftPayload({
+      step,
+      reached,
+      master: { companyName, street, postalCode, city, countryIso },
+      owners,
+      representatives,
+      extraDocs,
+      noRegisterEntry,
+    }),
+  });
+  // Gespeichertes bleibt erhalten; die Datenschutz-Erklärung wird nie gespeichert.
+  useLeaveWarning(!submitted && (draftSync.unsaved || noticeAck));
   const [isPending, start] = useTransition();
 
   function patchOwner(i: number, patch: Partial<BeneficialOwner>) {
@@ -499,6 +515,10 @@ export function OnboardingWizard({
   return (
     <div>
       <WizardStepper step={step} reached={reached} />
+      <div className="-mt-2 mb-6 flex flex-wrap items-center justify-between gap-3">
+        <DraftStatus status={draftSync.status} savedAt={draftSync.savedAt} />
+        <ContinueOnPhone />
+      </div>
 
       {step === 0 && (
         <MasterDataStep

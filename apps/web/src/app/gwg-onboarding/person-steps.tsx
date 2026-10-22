@@ -65,6 +65,17 @@ const nextOwnerId = () => `owner-${++ownerIdSeq}`;
 let representativeIdSeq = 0;
 const nextRepresentativeId = () => `representative-${++representativeIdSeq}`;
 
+/** Nach dem Wiederherstellen eines Zwischenstands: neue IDs nicht doppelt vergeben. */
+export function reservePersonIds(ids: readonly string[]): void {
+  for (const id of ids) {
+    const match = /^(owner|representative)-(\d+)$/.exec(id);
+    if (!match) continue;
+    const seq = Number(match[2]);
+    if (match[1] === 'owner') ownerIdSeq = Math.max(ownerIdSeq, seq);
+    else representativeIdSeq = Math.max(representativeIdSeq, seq);
+  }
+}
+
 export function emptyOwner(name: string): BeneficialOwner {
   return {
     id: nextOwnerId(),

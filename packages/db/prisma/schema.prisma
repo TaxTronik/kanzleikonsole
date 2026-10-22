@@ -86,6 +86,7 @@ model Tenant {
   formTemplates                  FormTemplate[]
   gwgChecks                      GwgCheck[]
   gwgInvites                     GwgOnboardingInvite[]
+  gwgOnboardingDrafts            GwgOnboardingDraft[]
   gwgPersonAnchors               GwgPersonAnchor[]
   gwgPersonLinks                 GwgPersonLink[]
   invoices                       Invoice[]
@@ -4160,10 +4161,28 @@ model GwgOnboardingInvite {
   tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_invite_tenant_fkey")
   gwgCheck            GwgCheck?       @relation(fields: [gwgCheckId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "gwg_invite_check_fkey")
   uploadedDocuments   Document[]
+  draft               GwgOnboardingDraft?
 
   @@index([tenantId, clientId, status], map: "gwg_invite_tenant_id_client_id_status_idx")
   @@index([tokenHash], map: "gwg_invite_token_hash_idx")
   @@map("gwg_onboarding_invite")
+}
+
+/// GWG-SELF-ONBOARDING-001: Zwischenstand der Online-Einreichung je Einladung,
+/// damit der Mandant auf jedem Gerät weitermachen kann. Gelöscht mit der
+/// Einreichung, der Einladung (Anonymisierung) und bei der Vernichtung der
+/// Prüfung (Trigger); keine Löschung nach Zeitablauf.
+model GwgOnboardingDraft {
+  inviteId  String              @id @map("invite_id") @db.Uuid
+  tenantId  String              @map("tenant_id") @db.Uuid
+  payload   Json
+  revision  Int                 @default(1)
+  updatedAt DateTime            @default(now()) @map("updated_at") @db.Timestamptz(6)
+  invite    GwgOnboardingInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_onboarding_draft_invite_id_fkey")
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "gwg_onboarding_draft_tenant_id_fkey")
+
+  @@index([tenantId], map: "gwg_onboarding_draft_tenant_id_idx")
+  @@map("gwg_onboarding_draft")
 }
 
 model ClientMasterChangeRequest {

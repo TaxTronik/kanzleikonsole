@@ -11,6 +11,7 @@ import {
   type PreparedBytesCommit,
 } from '@taxtronik/storage';
 import { readUploadFile } from '@/server/documents/upload-file';
+import { parseActionInput, type ValidationFailure } from '@/server/actions/form-data';
 import { evidenceService } from '@/server/container';
 import { withSystemContext, type TxClient } from '@taxtronik/db';
 import {
@@ -47,6 +48,7 @@ import {
   GwgOnboardingRepresentativeSchema,
 } from '@/server/gwg-onboarding/representative-submission';
 import { validateOnboardingSubmission } from '@/server/gwg-onboarding/submission-validation';
+import { OnboardingDraftPayloadSchema, saveOnboardingDraftTx } from '@/server/gwg-onboarding/draft';
 import {
   FINALIZED_INVITE_UPLOAD,
   FINALIZED_INVITE_UPLOAD_IDS,
@@ -169,7 +171,10 @@ function toAnonymousActionError(e: unknown): ActionResult {
  * Einladungen sind erwartbar; jeder andere Fehler (Datenbank, Redis) gehört ins
  * Log — ohne Token, nur Fehlerklasse und -meldung.
  */
-function logInviteLoadFailure(action: 'upload' | 'discard' | 'submit', error: unknown): void {
+function logInviteLoadFailure(
+  action: 'upload' | 'discard' | 'submit' | 'draft',
+  error: unknown,
+): void {
   if (error instanceof InviteUnavailableError) return;
   log.error(
     {
@@ -815,6 +820,84 @@ async function discardOpenInviteDocumentTx(
     after: { discarded: true },
   });
   return 'DISCARDED';
+}
+
+// ----------------------------------------------------------------------------
+// Zwischenstand (GWG-SELF-ONBOARDING-001): laufendes Speichern des Wizards
+// ----------------------------------------------------------------------------
+
+const SaveDraftSchema = z.object({
+  token: z.string().min(10),
+  revision: z.number().int().min(0),
+  payload: OnboardingDraftPayloadSchema,
+});
+
+export type SaveOnboardingDraftActionResult =
+  | { ok: true; revision: number; updatedAt: string }
+  | { ok: false; conflict?: true; revision?: number; error?: string }
+  | ValidationFailure;
+
+/**
+ * Speichert den Formularstand einer offenen Einladung. Baut er nicht auf der
+ * zuletzt gelesenen Revision auf, hat ein anderes Gerät gespeichert; dann wird
+ * nichts überschrieben und der Wizard bietet das Neuladen an.
+ */
+export async function saveOnboardingDraftAction(
+  input: z.input<typeof SaveDraftSchema>,
+): Promise<SaveOnboardingDraftActionResult> {
+  const parsed = parseActionInput(SaveDraftSchema, input);
+  if (!parsed.ok) return parsed;
+  const { token, revision, payload } = parsed.data;
+
+  // Autosave speichert oft; großzügig, aber gegen Skripte gedeckelt.
+  const ip = getClientIp(await headers());
+  const ipRl = await checkIpOrGlobalLimit('gwg-draft-ip', ip, { max: 600, windowSec: 600 });
+  const tokenRl = await checkRateLimit(`gwg-draft-token:${hashInviteToken(token).slice(0, 16)}`, {
+    max: 300,
+    windowSec: 600,
+  });
+  if (!ipRl.ok || !tokenRl.ok) {
+    return { ok: false, error: 'Zu viele Speicherversuche. Bitte kurz warten.' };
+  }
+
+  let invite: Awaited<ReturnType<typeof loadInviteForWrite>>;
+  try {
+    invite = await loadInviteForWrite(token);
+  } catch (e) {
+    logInviteLoadFailure('draft', e);
+    return { ok: false, error: GENERIC_TOKEN_ERROR };
+  }
+  try {
+    // Dieselbe Sperre wie Upload und Einreichung: Ein Zwischenstand entsteht nie
+    // neben oder nach einer Einreichung, die ihn gerade löscht.
+    return await withSystemContext(invite.tenantId, async (tx) => {
+      const inviteStillOpen = await revalidateOpenGwgInviteRevisionTx(tx, {
+        inviteId: invite.id,
+        tenantId: invite.tenantId,
+        clientId: invite.clientId,
+        tokenHash: hashInviteToken(token),
+        now: new Date(),
+      });
+      if (!inviteStillOpen) return { ok: false, error: GENERIC_TOKEN_ERROR } as const;
+      return saveOnboardingDraftTx(tx, {
+        inviteId: invite.id,
+        tenantId: invite.tenantId,
+        expectedRevision: revision,
+        payload,
+      });
+    });
+  } catch (error) {
+    log.error(
+      {
+        component: 'gwg-onboarding-draft',
+        inviteId: invite.id,
+        tenantId: invite.tenantId,
+        err: (error as Error).message,
+      },
+      'GwG onboarding draft save failed',
+    );
+    return { ok: false, error: 'Zwischenstand konnte nicht gespeichert werden.' };
+  }
 }
 
 export async function discardOnboardingUploadAction(input: {

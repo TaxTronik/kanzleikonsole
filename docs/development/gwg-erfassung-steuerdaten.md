@@ -139,8 +139,26 @@ Alltagssprache mit Sprung in den Abschnitt der ersten Lücke; im Abschnitt steht
 „Hier fehlt noch: …“. Upload-Felder zeigen ein Vorschaubild (Objekt-URL der
 gewählten Datei) und bieten auf Touch-Geräten „Foto aufnehmen“ (`capture`,
 JPG); die Dateiauswahl nimmt kein HEIC mehr an, damit iPhones JPG liefern.
-„Seiten tauschen“ vertauscht Dateien und Seitenverweise. Bis zum Übermitteln
-fragt der Browser beim Verlassen nach (`beforeunload`). Land und
+„Seiten tauschen“ vertauscht Dateien und Seitenverweise. Der Zwischenstand
+(`draft-sync.tsx`, `server/gwg-onboarding/draft.ts`, Tabelle
+`gwg_onboarding_draft`, Migration 20261022200000) wird 1,5 s nach der letzten
+Änderung per `saveOnboardingDraftAction` gespeichert (nach einem Fehler alle
+10 s erneut) und von `page.tsx` beim Öffnen des Links geladen. Er hat Vorrang
+vor dem Prüfentwurf der Kanzlei. Gespeichert werden Angaben, Schritt und
+Dateiverweise ohne `localFile`/`previewUrl`; Datenschutz-Bestätigung und
+Auswahl nie, deshalb beginnt ein wiederhergestellter Stand höchstens beim
+Datenschutz-Schritt. `reservePersonIds` verhindert doppelte lokale IDs nach
+dem Wiederherstellen. Die Action nimmt vor dem Schreiben denselben
+Lifecycle-Lock wie der Upload (`revalidateOpenGwgInviteRevisionTx`) und
+schreibt nur auf die erwartete Revision; sonst meldet der Wizard den Konflikt
+mit „Neu laden“. Die Einreichung löscht den Zwischenstand in ihrer
+Transaktion, die Vernichtung der Prüfung per Trigger, die Anonymisierung des
+Mandanten per Cascade über die Einladung; eine Löschung nach Zeitablauf gibt es
+bewusst nicht. „Auf dem Smartphone fortsetzen“ (nur bei Maus/Trackpad und ab
+640 px Breite, nicht auf Touch-Geräten) erzeugt den QR-Code erst auf Klick im Browser (`qrcode`,
+dynamischer Import) aus `window.location.href`. Der Browser fragt beim
+Verlassen nur nach (`beforeunload`), solange etwas nicht zwischengespeichert
+oder die Datenschutzerklärung schon abgegeben ist. Land und
 Staatsangehörigkeit sind Auswahlfelder (`lib/countries.ts`, statische deutsche
 Namen zu ISO-Codes, damit Server und Browser gleich rendern); mehrere
 Staatsangehörigkeiten werden als „DE, TR“ gespeichert. Die Ausweishilfe schlägt
