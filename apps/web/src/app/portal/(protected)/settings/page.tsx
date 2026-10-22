@@ -66,7 +66,7 @@ export default async function PortalSettingsPage() {
           oder Bescheid-Eingänge. Alle Inhalte bleiben weiterhin im Portal sichtbar.
         </p>
         <ActionForm action={saveNotificationSettingAction} errorDisplay="inline">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <label className="flex items-center gap-3 text-sm">
               <input
                 type="checkbox"

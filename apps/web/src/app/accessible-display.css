@@ -387,6 +387,14 @@ html:has([data-accessible-display='true']) .widget-shell > a.card .truncate {
     padding: 1rem;
   }
 
+  /* Auf schmalen Displays hat Reflow ohne seitliches Scrollen Vorrang
+   * (WCAG 1.4.10): Ein langes Wort in einem Button einer nicht umbrechenden
+   * Zeile darf dort umbrechen, statt die Seite zu verbreitern. */
+  html:has([data-accessible-display='true'])
+    :where(.btn, .btn-primary, .btn-secondary, .btn-danger-outline, .nav-item, .side-action) {
+    overflow-wrap: anywhere;
+  }
+
   html:has([data-accessible-display='true']) :where(.card.p-6, .card.p-8, .card.p-12) {
     padding: 1rem;
   }

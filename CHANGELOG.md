@@ -1208,7 +1208,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 - Im persönlichen barrierearmen Anzeigemodus zerreißen Buttons, Navigation,
   KPI-Labels und Kontomenü Wörter nicht mehr ohne Trennstrich („Anlege|n“,
-  „MANDANT|EN“); nur E-Mail-Adressen dürfen weiter überall umbrechen. Der
+  „MANDANT|EN“); nur E-Mail-Adressen und, unter 640 px Breite, Buttons dürfen
+  weiter überall umbrechen, damit nichts seitlich übersteht. Im Portal
+  umbricht die Zeile „Benachrichtigungen per E-Mail erhalten“/„Speichern“. Der
   Stepper (z. B. n8n-Einrichtung) bricht ganze Schritte in die nächste Zeile
   statt die Schrittnamen zu quetschen, und die Gruppenüberschriften der
   Seitenleiste werden nach Silben getrennt („KANZLEIORGANISA-TION“).

@@ -234,11 +234,21 @@ describe('persönlicher Anzeigemodus: CSS-Vertrag, keine Konformitätsprüfung',
     // `anywhere` senkt die Mindestbreite von Flex-Elementen auf ein Zeichen
     // („Anlege|n“); break-word hält Wörter zusammen. Silbentrennung hätte
     // denselben Effekt („Anle-gen“) und bleibt deshalb außen vor.
+    // Ausnahmen: E-Mail-Adressen haben keine Umbruchstellen, und unter 640 px
+    // hat Reflow ohne seitliches Scrollen Vorrang (WCAG 1.4.10).
     const wrapping = rules().filter((rule) => {
       const values = declarations(rule);
       return values['overflow-wrap'] === 'anywhere';
     });
-    expect(wrapping.map((rule) => rule.selector)).toEqual([`${modeSelector} .ud-head .umail`]);
+    const mobileOnly = (rule: Rule) =>
+      rule.parent?.type === 'atrule' &&
+      (rule.parent as { params?: string }).params === '(max-width: 640px)';
+    expect(wrapping.filter((rule) => !mobileOnly(rule)).map((rule) => rule.selector)).toEqual([
+      `${modeSelector} .ud-head .umail`,
+    ]);
+    const mobileButtons = wrapping.filter(mobileOnly);
+    expect(mobileButtons).toHaveLength(1);
+    expect(mobileButtons[0]!.selector).toContain('.btn-danger-outline, .nav-item, .side-action)');
     const buttons = rules().find((rule) =>
       rule.selector.includes('.btn-danger-outline, .nav-item, .side-action)'),
     )!;
