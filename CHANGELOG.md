@@ -440,8 +440,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   sich direkt. Mandanten lesen jede Ausweisseite mit einem Klick aus, Zuschnitt,
   Drehung und PDF-Seite liegen unter „Ausschnitt anpassen“. Auf schmalen
   Bildschirmen ragt die Fortschrittsleiste nicht mehr über den Rand. Die
-  Pflichtprüfung beim Weiter ist unverändert (GWG-SELF-ONBOARDING-001,
-  GWG-OCR-ASSIST-001).
+  Pflichtprüfung beim Weiter ist unverändert. Die Zusammenfassung nennt die
+  Personen mit Namen und erlaubt, vergessene Personen zu ergänzen; danach geht es
+  direkt zurück zur Zusammenfassung (GWG-SELF-ONBOARDING-001, GWG-OCR-ASSIST-001).
 - **[GwG]** Die Ausweishilfe schlägt in Großbuchstaben gedruckte Namen, Orte,
   Straßen und Behörden in üblicher Schreibweise vor („Erika Mustermann“,
   „Frankfurt am Main“, „Ursula von der Leyen“) und zeigt die Ausweisfassung

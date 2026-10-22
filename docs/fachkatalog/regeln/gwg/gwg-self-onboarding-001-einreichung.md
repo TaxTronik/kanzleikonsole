@@ -194,7 +194,11 @@ Der Personenschritt des Wizards zeigt eine Übersicht mit dem Stand je Person
 wird eine Person nach der anderen in diesen Abschnitten. Der Stand ist nur eine
 Orientierung: Beim Weiter prüft der Wizard wie bisher alle Pflichtangaben nach
 demselben Vertrag wie der Submit, und die Rollenentscheidung bei Vertretungen
-bleibt ausdrücklich.
+bleibt ausdrücklich. Die Zusammenfassung nennt die erfassten Personen mit Namen
+und erlaubt, vergessene Personen zu ergänzen: Der Wizard öffnet die neue Person
+im Personenschritt und führt nach dessen Pflichtprüfung direkt zur
+Zusammenfassung zurück; Nachweise und Datenschutzerklärung bleiben dabei
+unverändert erhalten.
 
 Beide Wege nutzen dieselbe lokale Ausweishilfe (GWG-OCR-ASSIST-001). Zwei
 Seitenverweise dürfen dasselbe PDF-Original verwenden, wenn Version und

@@ -408,6 +408,50 @@ describe('GwG-Onboarding – Personenübersicht', () => {
     backToOverview();
     expect(screen.getByRole('button', { name: 'Person 2: Angaben ergänzen' })).toBeTruthy();
   });
+
+  it('ergänzt vergessene Personen aus der Zusammenfassung und kehrt dorthin zurück', async () => {
+    renderWizard(
+      draft({
+        noRegisterEntry: false,
+        representatives: [representative({ id: 'rep-linked', linkedOwnerId: OWNER.id })],
+        extraDocuments: [
+          { documentId: uuid(5), fileName: 'hr.pdf', type: 'HANDELSREGISTERAUSZUG' },
+        ],
+      }),
+    );
+    next();
+    next();
+    next();
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Ich habe die Datenschutzhinweise zur Kenntnis genommen.',
+      }),
+    );
+    next();
+    const summary = stepHeading('Zusammenfassung').closest('.card') as HTMLElement;
+    // Namen statt bloßer Anzahl, damit eine fehlende Person auffällt.
+    expect(summary.textContent).toContain('Max Muster (Doppelrolle)');
+
+    fireEvent.click(
+      within(summary).getByRole('button', { name: /Wirtschaftlich berechtigte Person hinzufügen/ }),
+    );
+    // Die neue Person öffnet sich direkt im Personenschritt.
+    fireEvent.click(within(editor('Person 2')).getByRole('button', { name: 'Zur Übersicht' }));
+    const back = screen.getByRole('button', { name: 'Weiter zur Zusammenfassung' });
+    // Die Pflichtprüfung gilt auch auf dem Rückweg.
+    fireEvent.click(back);
+    expect(screen.getByText(/^Person 2: .* fehlt oder ist ungültig\.$/)).toBeTruthy();
+    expect(stepHeading('Wirtschaftlich Berechtigte')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Person 2 entfernen' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { level: 3, name: 'Person 2' })).toBeNull(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter zur Zusammenfassung' }));
+    // Nachweise und Datenschutz bleiben erhalten; es geht direkt zurück.
+    expect(stepHeading('Zusammenfassung')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Weiter zur Zusammenfassung' })).toBeNull();
+  });
 });
 
 describe('GwG-Onboarding – Datenschutz-Auswahl', () => {

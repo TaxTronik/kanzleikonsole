@@ -28,6 +28,50 @@ export interface OpenPerson {
   id: string;
 }
 
+// Stabile React-Keys für Personen (Add/Remove) — kein key={index}.
+let ownerIdSeq = 0;
+const nextOwnerId = () => `owner-${++ownerIdSeq}`;
+let representativeIdSeq = 0;
+const nextRepresentativeId = () => `representative-${++representativeIdSeq}`;
+
+export function emptyOwner(name: string): BeneficialOwner {
+  return {
+    id: nextOwnerId(),
+    fullName: name,
+    birthDate: '',
+    birthPlace: '',
+    nationality: 'DE',
+    street: '',
+    postalCode: '',
+    city: '',
+    countryIso: 'DE',
+    sharePercent: '',
+    isPep: null,
+    idType: 'PERSONALAUSWEIS',
+    idNumber: '',
+    idIssuedBy: '',
+    idIssueDate: '',
+    idExpiryDate: '',
+    idFront: null,
+    idBack: null,
+  };
+}
+
+export function emptyRepresentative(name: string): Representative {
+  return {
+    id: nextRepresentativeId(),
+    fullName: name,
+    linkedOwnerId: undefined,
+    idType: 'PERSONALAUSWEIS',
+    idNumber: '',
+    idIssuedBy: '',
+    idIssueDate: '',
+    idExpiryDate: '',
+    idFront: null,
+    idBack: null,
+  };
+}
+
 type SectionKey = 'role' | 'id' | 'details' | 'share';
 interface PersonSection {
   key: SectionKey;

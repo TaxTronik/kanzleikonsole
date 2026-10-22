@@ -1,14 +1,15 @@
 'use client';
 
-import { ArrowLeft, ArrowRight, Check, Loader, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader, Plus, Trash2, Upload } from 'lucide-react';
 import { ConsentFields } from '@/components/consent-fields';
 import { NoticeView } from '@/components/notice-view';
 import type { ConsentSelections, ResolvedConsentOption } from '@/server/privacy/consent';
 import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
 import { Field } from './wizard-shared';
+import type { OpenPerson } from './person-steps';
 
 export { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from './wizard-shared';
-export { OwnersStep, type OpenPerson } from './person-steps';
+export { OwnersStep, emptyOwner, emptyRepresentative, type OpenPerson } from './person-steps';
 
 export const ONBOARDING_STEPS = [
   { key: 'master', label: 'Stammdaten' },
@@ -426,6 +427,8 @@ interface SubmitStepProps {
   submitError: string | null;
   isPending: boolean;
   onSubmit: () => void;
+  /** Vergessene Person ergänzen; der Wizard kehrt danach hierher zurück. */
+  onAddPerson: (role: OpenPerson['role']) => void;
 }
 
 export function SubmitStep({
@@ -442,10 +445,16 @@ export function SubmitStep({
   submitError,
   isPending,
   onSubmit,
+  onAddPerson,
 }: SubmitStepProps) {
-  const linkedRepresentatives = representatives.filter(
-    (representative) => representative.linkedOwnerId,
-  ).length;
+  // Namen statt nur Anzahl: Wer fehlt, fällt in der Zusammenfassung auf.
+  const ownerNames = owners.map((owner, index) => owner.fullName.trim() || `Person ${index + 1}`);
+  const representativeNames = representatives.map((representative, index) => {
+    const linked = owners.findIndex((owner) => owner.id === representative.linkedOwnerId);
+    return linked >= 0
+      ? `${ownerNames[linked]} (Doppelrolle)`
+      : representative.fullName.trim() || `Vertretung ${index + 1}`;
+  });
 
   return (
     <div className="card p-6 space-y-4">
@@ -453,14 +462,11 @@ export function SubmitStep({
       <dl className="space-y-2 text-sm">
         <SummaryRow label="Firma" value={companyName} />
         <SummaryRow label="Adresse" value={`${street}, ${postalCode} ${city}, ${countryIso}`} />
-        <SummaryRow
-          label="Wirtschaftlich Berechtigte"
-          value={`${owners.length} Person${owners.length === 1 ? '' : 'en'}`}
-        />
+        <SummaryRow label="Wirtschaftlich Berechtigte" value={ownerNames.join(', ')} />
         {clientKind !== 'NATPERS' && (
           <SummaryRow
             label="Gesetzliche Vertretung"
-            value={`${representatives.length} Person${representatives.length === 1 ? '' : 'en'}, davon ${linkedRepresentatives} Doppelrolle${linkedRepresentatives === 1 ? '' : 'n'}`}
+            value={representativeNames.join(', ') || 'keine'}
           />
         )}
         <SummaryRow
@@ -479,6 +485,29 @@ export function SubmitStep({
         )}
         <SummaryRow label="Weitere Nachweise" value={`${extraDocs.length} hochgeladen`} />
       </dl>
+      <div className="rounded-md border border-default bg-surface-raised p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-medium text-primary">Jemanden vergessen?</h3>
+          <p className="text-xs text-muted mt-0.5">
+            Sie können hier noch Personen ergänzen. Danach geht es direkt zurück zu dieser
+            Zusammenfassung.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-secondary" onClick={() => onAddPerson('owner')}>
+            <Plus className="h-4 w-4" /> Wirtschaftlich berechtigte Person hinzufügen
+          </button>
+          {clientKind !== 'NATPERS' && (
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => onAddPerson('representative')}
+            >
+              <Plus className="h-4 w-4" /> Vertretung hinzufügen
+            </button>
+          )}
+        </div>
+      </div>
       {submitError && <div className="alert-error-sm">{submitError}</div>}
       <button type="button" onClick={onSubmit} disabled={isPending} className="btn-primary w-full">
         {isPending ? (
@@ -500,9 +529,15 @@ interface WizardNavigationProps {
   step: number;
   onPrevious: () => void;
   onNext: () => void;
+  nextLabel?: string;
 }
 
-export function WizardNavigation({ step, onPrevious, onNext }: WizardNavigationProps) {
+export function WizardNavigation({
+  step,
+  onPrevious,
+  onNext,
+  nextLabel = 'Weiter',
+}: WizardNavigationProps) {
   return (
     <div className="flex items-center justify-between mt-6">
       <button
@@ -515,7 +550,7 @@ export function WizardNavigation({ step, onPrevious, onNext }: WizardNavigationP
       </button>
       {step < ONBOARDING_STEPS.length - 1 && (
         <button type="button" onClick={onNext} className="btn-primary">
-          Weiter <ArrowRight className="h-4 w-4" />
+          {nextLabel} <ArrowRight className="h-4 w-4" />
         </button>
       )}
     </div>
@@ -526,7 +561,9 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4">
       <dt className="text-muted">{label}</dt>
-      <dd className="text-primary font-medium text-right">{value}</dd>
+      <dd className="min-w-0 text-primary font-medium text-right [overflow-wrap:anywhere]">
+        {value}
+      </dd>
     </div>
   );
 }

@@ -27,6 +27,8 @@ import {
   ONBOARDING_STEPS,
   OnboardingSubmitted,
   OwnersStep,
+  emptyOwner,
+  emptyRepresentative,
   PrivacyStep,
   SubmitStep,
   WizardNavigation,
@@ -38,12 +40,6 @@ import {
   type OpenPerson,
   type Representative,
 } from './wizard-steps';
-
-// Stabile React-Keys für Owner-Cards (Add/Remove) — kein key={index}.
-let ownerIdSeq = 0;
-const nextOwnerId = () => `owner-${++ownerIdSeq}`;
-let representativeIdSeq = 0;
-const nextRepresentativeId = () => `representative-${++representativeIdSeq}`;
 
 type OnboardingUploadResult =
   | { ok: true; documentId: string; versionId?: string }
@@ -147,6 +143,8 @@ export function OnboardingWizard({
   );
   // Personenschritt: Übersicht oder Bearbeitung genau einer Person.
   const [openPerson, setOpenPerson] = useState<OpenPerson | null>(null);
+  // Person aus der Zusammenfassung ergänzt: „Weiter“ führt direkt dorthin zurück.
+  const [returnToSummary, setReturnToSummary] = useState(false);
   const [representatives, setRepresentatives] = useState<Representative[]>(() =>
     initialDraft
       ? initialDraft.representatives.map((representative) => ({ ...representative }))
@@ -403,10 +401,12 @@ export function OnboardingWizard({
       return;
     }
     setStepError(null);
-    setStep((s) => Math.min(ONBOARDING_STEPS.length - 1, s + 1));
+    setStep((s) => (returnToSummary ? ONBOARDING_STEPS.length - 1 : s + 1));
+    setReturnToSummary(false);
   }
   function prev() {
     setStepError(null);
+    setReturnToSummary(false);
     setStep((s) => Math.max(0, s - 1));
   }
 
@@ -585,51 +585,24 @@ export function OnboardingWizard({
           submitError={submitError}
           isPending={isPending}
           onSubmit={submit}
+          onAddPerson={(role) => {
+            setStep(ONBOARDING_STEPS.findIndex((entry) => entry.key === 'owners'));
+            setReturnToSummary(true);
+            if (role === 'owner') addOwner();
+            else addRepresentative();
+          }}
         />
       )}
 
       {stepError && <div className="alert-error-sm mt-6">{stepError}</div>}
       {!(step === 1 && openPerson) && (
-        <WizardNavigation step={step} onPrevious={prev} onNext={next} />
+        <WizardNavigation
+          step={step}
+          onPrevious={prev}
+          onNext={next}
+          nextLabel={returnToSummary ? 'Weiter zur Zusammenfassung' : undefined}
+        />
       )}
     </div>
   );
-}
-
-function emptyOwner(name: string): BeneficialOwner {
-  return {
-    id: nextOwnerId(),
-    fullName: name,
-    birthDate: '',
-    birthPlace: '',
-    nationality: 'DE',
-    street: '',
-    postalCode: '',
-    city: '',
-    countryIso: 'DE',
-    sharePercent: '',
-    isPep: null,
-    idType: 'PERSONALAUSWEIS',
-    idNumber: '',
-    idIssuedBy: '',
-    idIssueDate: '',
-    idExpiryDate: '',
-    idFront: null,
-    idBack: null,
-  };
-}
-
-function emptyRepresentative(name: string): Representative {
-  return {
-    id: nextRepresentativeId(),
-    fullName: name,
-    linkedOwnerId: undefined,
-    idType: 'PERSONALAUSWEIS',
-    idNumber: '',
-    idIssuedBy: '',
-    idIssueDate: '',
-    idExpiryDate: '',
-    idFront: null,
-    idBack: null,
-  };
 }

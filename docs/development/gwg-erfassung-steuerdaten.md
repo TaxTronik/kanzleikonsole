@@ -131,7 +131,9 @@ anderen: wirtschaftlich Berechtigte in Ausweis → Angaben → Beteiligung und P
 Vertretungen in Rolle → Ausweis → Angaben (bei der Doppelrolle nur die Rolle).
 Der Name steht über den Abschnitten, damit Uploads dem Personenordner zugeordnet
 werden und eine übernommene Schreibweise in jedem Abschnitt sichtbar bleibt.
-Solange eine Person offen ist, ruht die Schrittnavigation des Wizards. Mandanten
+Solange eine Person offen ist, ruht die Schrittnavigation des Wizards. Aus der
+Zusammenfassung lassen sich vergessene Personen ergänzen; „Weiter zur
+Zusammenfassung“ prüft danach den Personenschritt und springt direkt zurück. Mandanten
 lesen jede Seite mit „Vorderseite auslesen“ bzw. „Rückseite auslesen“ aus
 (`sideSources`); Original, Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen
 eingeklappt unter „Ausschnitt anpassen“. Die Kanzlei behält die bisherige,
