@@ -3593,6 +3593,9 @@
         "packages/db/prisma/migrations/20260819000000_gwg_onboarding_document_discard/migration.sql",
         "packages/db/prisma/migrations/20261022190000_gwg_identity_assisted_fields/migration.sql",
         "packages/db/prisma/migrations/20261022200000_gwg_onboarding_draft/migration.sql",
+        "packages/db/prisma/sql/functions/app.gwg_onboarding_draft_drop_on_invite_destroyed().sql",
+        "packages/db/prisma/sql/policies/gwg_onboarding_draft.gwg_onboarding_draft_isolation.sql",
+        "packages/db/prisma/sql/triggers/gwg_onboarding_invite.gwg_onboarding_draft_drop_on_invite_destroyed.sql",
         "packages/db/prisma/schema.prisma",
         "packages/gwg/src/check-lifecycle.ts"
       ],

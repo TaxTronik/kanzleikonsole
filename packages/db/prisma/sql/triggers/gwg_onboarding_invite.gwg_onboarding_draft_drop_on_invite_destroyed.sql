@@ -1,0 +1,1 @@
+CREATE TRIGGER gwg_onboarding_draft_drop_on_invite_destroyed AFTER UPDATE OF token_hash ON public.gwg_onboarding_invite FOR EACH ROW WHEN (((new.token_hash ~~ 'vernichtet-%'::text) AND (old.token_hash IS DISTINCT FROM new.token_hash))) EXECUTE FUNCTION app.gwg_onboarding_draft_drop_on_invite_destroyed();
