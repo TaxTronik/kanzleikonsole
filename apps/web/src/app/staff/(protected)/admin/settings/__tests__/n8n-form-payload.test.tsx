@@ -97,6 +97,14 @@ describe('n8n-Verbindung: Speichern und API-Test mit demselben Payload', () => {
         bundledWorkflows={[]}
       />,
     );
+    // Eine erledigte Stufe ist zugeklappt; wie ein Nutzer erst aufklappen.
+    const toggle = screen.getByRole('button', {
+      name: 'Anzeigen',
+      description: 'n8n-Instanz verbinden',
+    });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
     fireEvent.change(screen.getByLabelText(/^n8n-Oberfläche/), {
       target: { value: 'https://ui.kanzlei.example' },
     });

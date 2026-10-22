@@ -1,6 +1,6 @@
 'use client';
 
-import { ExternalLink, Trash2 } from 'lucide-react';
+import { ChevronDown, ExternalLink, Trash2 } from 'lucide-react';
 import { useActionState, useEffect, useReducer, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import type { N8nEventCatalogEntry } from '@taxtronik/n8n-shared';
@@ -48,6 +48,45 @@ interface Props {
   status: N8nSetupStatus;
   events: readonly N8nEventCatalogEntry[];
   bundledWorkflows: BundledWorkflowSummary[];
+}
+
+/**
+ * Aufgeklappt sind zunächst nur die aktive Stufe und der Betrieb, solange
+ * Zustellungen fehlschlagen oder Events ohne Route liegen; die übrigen zeigen
+ * Kopf und Status. Ein Klick überschreibt das je Stufe bis zum Neuladen.
+ */
+function useStageDisclosure(defaultOpen: readonly boolean[]) {
+  const [overrides, setOverrides] = useState<Record<number, boolean>>({});
+  const isOpen = (index: number) => overrides[index] ?? defaultOpen[index] ?? true;
+  const toggle = (index: number) =>
+    setOverrides((current) => ({ ...current, [index]: !isOpen(index) }));
+  return { isOpen, toggle };
+}
+
+// Der Stufentitel (Stage: `${bodyId}-title`) beschreibt den Button für
+// Screenreader, ohne den Titel ein zweites Mal ins Markup zu schreiben.
+function StageToggle({
+  open,
+  controls,
+  onToggle,
+}: {
+  open: boolean;
+  controls: string;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="btn-secondary inline-flex shrink-0 items-center gap-1.5 text-xs"
+      aria-expanded={open}
+      aria-controls={controls}
+      aria-describedby={`${controls}-title`}
+      onClick={onToggle}
+    >
+      {open ? 'Einklappen' : 'Anzeigen'}
+      <ChevronDown className={open ? 'h-3.5 w-3.5 rotate-180' : 'h-3.5 w-3.5'} aria-hidden="true" />
+    </button>
+  );
 }
 
 function urlOrigin(value: string): string {
@@ -140,6 +179,19 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
     callback.callbackConfigured,
   );
   const stageStates = withActiveStep(setupSteps);
+  const deliveryProblems = status.deliveryCounts.failed + status.deliveryCounts.unrouted > 0;
+  const disclosure = useStageDisclosure(
+    stageStates.map(
+      (stage, index) => stage.state === 'active' || (index === 4 && deliveryProblems),
+    ),
+  );
+  const stageToggle = (index: number) => (
+    <StageToggle
+      open={disclosure.isOpen(index)}
+      controls={`n8n-stage-${index + 1}`}
+      onToggle={() => disclosure.toggle(index)}
+    />
+  );
 
   function testApi() {
     setApiResult(null);
@@ -181,17 +233,22 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
           )
         }
         action={
-          uiBaseUrl ? (
-            <a
-              className="btn-secondary inline-flex shrink-0 items-center gap-1.5 text-xs"
-              href={uiBaseUrl}
-              target="_blank"
-              rel="noreferrer"
-            >
-              n8n öffnen <ExternalLink className="h-3 w-3" />
-            </a>
-          ) : undefined
+          <>
+            {uiBaseUrl ? (
+              <a
+                className="btn-secondary inline-flex shrink-0 items-center gap-1.5 text-xs"
+                href={uiBaseUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                n8n öffnen <ExternalLink className="h-3 w-3" />
+              </a>
+            ) : null}
+            {stageToggle(0)}
+          </>
         }
+        bodyId="n8n-stage-1"
+        collapsed={!disclosure.isOpen(0)}
       >
         <N8nConnectionSection
           initial={initial}
@@ -222,6 +279,9 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
             <span className="badge badge-gray">Offen</span>
           )
         }
+        action={stageToggle(1)}
+        bodyId="n8n-stage-2"
+        collapsed={!disclosure.isOpen(1)}
       >
         <N8nCallbackCredentialsSection
           initial={initial}
@@ -251,6 +311,9 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
             <span className="badge badge-gray">Offen</span>
           )
         }
+        action={stageToggle(2)}
+        bodyId="n8n-stage-3"
+        collapsed={!disclosure.isOpen(2)}
       >
         <N8nWorkflowsSection
           initial={initial}
@@ -291,6 +354,9 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
             <span className="badge badge-gray">Keine aktive</span>
           )
         }
+        action={stageToggle(3)}
+        bodyId="n8n-stage-4"
+        collapsed={!disclosure.isOpen(3)}
       >
         <RouteEditorSection
           endpoints={status.endpoints}
@@ -324,6 +390,9 @@ export function N8nForm({ initial, status, events, bundledWorkflows }: Props) {
             <span className="badge badge-green">Ohne Befund</span>
           )
         }
+        action={stageToggle(4)}
+        bodyId="n8n-stage-5"
+        collapsed={!disclosure.isOpen(4)}
       >
         <DeliveryOperationsSection
           status={status}

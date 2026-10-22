@@ -433,6 +433,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- n8n-Einstellungen flacher: Die fünf Stufen stehen ohne umschließende
+  Abschnittskarte und ohne zusätzlichen Rahmen im Stufeninhalt. Aufgeklappt
+  sind zunächst nur die aktive Stufe und „Betrieb“, solange Zustellungen
+  fehlschlagen oder Events ohne Route liegen; die übrigen zeigen Kopf und Status
+  und lassen sich per „Anzeigen“ öffnen (Inhalt bleibt im DOM). Die Raster in
+  den Stufen richten sich nach der Breite der Stufe statt nach dem Fenster.
 - **[Scope] [TCMS]** GwG-Belege, die als Tax-CMS-Nachweis verknüpft sind oder waren, gelten
   zugleich als steuerliche Unterlage (Produktentscheidung, fachlich ungeprüft): Ihr
   Aufbewahrungsende steigt auf die GoBD-Frist der Steuerunterlage (Migration

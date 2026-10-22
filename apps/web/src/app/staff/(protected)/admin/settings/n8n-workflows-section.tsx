@@ -65,8 +65,8 @@ export function N8nWorkflowsSection({
         Rückkanal automatisch ein; andernfalls erscheint das Token einmalig zur manuellen Übergabe.
         Kein Workflow wird automatisch aktiviert oder überschrieben.
       </p>
-      <div className="rounded-lg border border-default p-4 space-y-4">
-        <div className="grid gap-3 lg:grid-cols-2">
+      <div className="space-y-4">
+        <div className="grid gap-3 @2xl:grid-cols-2">
           {bundledWorkflows.map((workflow) => (
             <div
               key={workflow.templateId}
@@ -130,7 +130,7 @@ export function N8nWorkflowsSection({
         </p>
         {(selectedTemplates.includes('taxtronik.request-reminder') ||
           selectedTemplates.includes('taxtronik.gwg-expiry-check')) && (
-          <div className="grid gap-4 rounded-md border border-default p-3 md:grid-cols-2">
+          <div className="grid gap-4 rounded-md border border-default p-3 @xl:grid-cols-2">
             <label className="block">
               <span className="label">Mail-Absender in n8n</span>
               <input
@@ -160,7 +160,7 @@ export function N8nWorkflowsSection({
                 </span>
               </label>
             )}
-            <p className="text-xs text-muted md:col-span-2">
+            <p className="text-xs text-muted @xl:col-span-2">
               Diese nicht geheimen Werte werden beim Import direkt in die Vorlage eingesetzt.
               Secrets bleiben ausschließlich verschlüsselte n8n-Credentials bzw. werden bei
               fehlendem API-Recht nur einmalig angezeigt.

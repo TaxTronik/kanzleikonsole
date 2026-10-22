@@ -188,11 +188,7 @@ export function N8nConnectionSection({
     <section className="space-y-4">
       <ManagedN8nProvisionNotice initial={initial} />
 
-      <form
-        action={saveAction}
-        onSubmit={submit}
-        className="rounded-lg border border-default p-4 space-y-4"
-      >
+      <form action={saveAction} onSubmit={submit} className="space-y-4">
         {/* Text-/URL-/Secret-Felder tragen ihr name-Attribut DIREKT am
     sichtbaren Input (kein Hidden-Mirror): ein Submit vor bzw. ohne
     Hydration postete sonst die server-gerenderten Alt-Werte statt
@@ -206,7 +202,7 @@ export function N8nConnectionSection({
         {keepApiKey && <input type="hidden" name="keepApiKey" value="on" />}
         {keepHmac && <input type="hidden" name="keepHmac" value="on" />}
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 @xl:grid-cols-2">
           <label className="block">
             <span className="label">Bezeichnung</span>
             <input
@@ -240,7 +236,7 @@ export function N8nConnectionSection({
 
         <fieldset>
           <legend className="label">Routing</legend>
-          <div className="grid gap-2 md:grid-cols-3">
+          <div className="grid gap-2 @2xl:grid-cols-3">
             <ModeOption
               checked={routingMode === 'EXPLICIT'}
               onChange={() =>
@@ -277,7 +273,7 @@ export function N8nConnectionSection({
           </div>
         </fieldset>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 @xl:grid-cols-2">
           <label className="block">
             <span className="label">n8n-Oberfläche</span>
             <input

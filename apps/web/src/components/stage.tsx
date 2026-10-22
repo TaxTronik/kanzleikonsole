@@ -15,6 +15,8 @@ export function Stage({
   state = 'open',
   badge,
   action,
+  bodyId,
+  collapsed = false,
   children,
 }: {
   /** Schritt-Nummer (wird bei state='done' durch ein Häkchen ersetzt).
@@ -27,6 +29,11 @@ export function Stage({
   badge?: ReactNode;
   /** Rechte Seite des Headers: Aktions-Button/Link (nach dem Badge). */
   action?: ReactNode;
+  /** id des Inhalts, damit ein Auf-/Zuklapp-Button ihn per aria-controls benennt. */
+  bodyId?: string;
+  /** Zugeklappt: nur der Kopf ist sichtbar; der Inhalt bleibt im DOM (hidden),
+   *  damit Formularzustand und laufende Eingaben erhalten bleiben. */
+  collapsed?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -38,13 +45,19 @@ export function Stage({
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <div className="stage-title">{title}</div>
+          <div className="stage-title" id={bodyId ? `${bodyId}-title` : undefined}>
+            {title}
+          </div>
           {sub ? <div className="stage-sub">{sub}</div> : null}
         </div>
         {badge}
         {action}
       </div>
-      <div className="stage-body with-rule">{children}</div>
+      {/* @container: Raster im Inhalt richten sich nach der Breite der Stufe,
+          nicht nach dem Fenster (Sidebar, Einstellungsnavigation, große Schrift). */}
+      <div id={bodyId} className="stage-body with-rule @container" hidden={collapsed}>
+        {children}
+      </div>
     </div>
   );
 }

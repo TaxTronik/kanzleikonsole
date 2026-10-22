@@ -279,7 +279,7 @@ export function RouteEditorSection({
                 <strong>Route speichern</strong>.
               </p>
             )}
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 @xl:grid-cols-2">
               <label className="block">
                 <span className="label">Name</span>
                 <input
@@ -317,7 +317,7 @@ export function RouteEditorSection({
                   Test-Modus (Zustellung an /webhook-test)
                 </label>
               </div>
-              <label className="block md:col-span-2">
+              <label className="block @xl:col-span-2">
                 <span className="label">Exakte Produktions-URL</span>
                 <input
                   className="input"
@@ -330,7 +330,7 @@ export function RouteEditorSection({
                   placeholder="https://n8n.example.de/webhook/der-pfad-dieses-workflows"
                 />
               </label>
-              <label className="block md:col-span-2">
+              <label className="block @xl:col-span-2">
                 <span className="label">
                   Separate Test-URL{' '}
                   {routeRequiresTestUrl
@@ -358,7 +358,7 @@ export function RouteEditorSection({
 
             <fieldset>
               <legend className="label">TaxTronik-Events</legend>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 @xl:grid-cols-2 @4xl:grid-cols-3">
                 {[...groupedEvents.entries()].map(([category, categoryEvents]) => (
                   <div key={category} className="rounded border border-default p-2">
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">

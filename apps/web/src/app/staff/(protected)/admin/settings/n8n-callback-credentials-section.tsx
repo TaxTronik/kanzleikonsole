@@ -45,8 +45,8 @@ export function N8nCallbackCredentialsSection({
 }: Props) {
   return (
     <section className="space-y-4">
-      <div className="rounded-lg border border-default p-4 space-y-4">
-        <div className="grid gap-3 md:grid-cols-2">
+      <div className="space-y-4">
+        <div className="grid gap-3 @xl:grid-cols-2">
           <div>
             <ReadOnlyValue
               label="Callback-Basis-URL"
@@ -72,7 +72,7 @@ export function N8nCallbackCredentialsSection({
         </p>
         <fieldset>
           <legend className="label">Berechtigungen des neuen Tokens</legend>
-          <div className="grid gap-2 sm:grid-cols-2">
+          <div className="grid gap-2 @lg:grid-cols-2">
             {Object.entries(CALLBACK_SCOPE_LABELS).map(([scope, label]) => (
               <label key={scope} className="inline-flex items-center gap-2 text-xs text-primary">
                 <input

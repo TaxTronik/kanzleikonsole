@@ -46,6 +46,7 @@ export default async function N8nSettingsPage() {
       <SectionCard
         title="Automatisierungen mit n8n"
         description="Geführte Einrichtung, konkrete Workflow-URLs, tenantgebundene Rückkanäle und nachvollziehbarer Zustellstatus für mitgelieferte und eigene n8n-Workflows."
+        bare
       >
         <N8nForm
           initial={browserConfig}

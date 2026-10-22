@@ -214,11 +214,33 @@ describe('n8n-Adminformular — geführte Stufen', () => {
   it('rahmt die fünf Sektionen als Stufen und zeigt jeden Titel genau einmal', () => {
     const html = renderForm();
 
-    for (const title of STAGE_TITLES) {
-      expect(count(html, `<div class="stage-title">${title}</div>`), title).toBe(1);
+    STAGE_TITLES.forEach((title, index) => {
+      expect(
+        count(html, `<div class="stage-title" id="n8n-stage-${index + 1}-title">${title}</div>`),
+        title,
+      ).toBe(1);
       expect(count(html, title), title).toBe(1);
-    }
+    });
     expect(count(html, 'class="card stage ')).toBe(5);
+  });
+
+  it('klappt nur die aktive Stufe und den Betrieb bei Zustellproblemen auf', () => {
+    const html = renderForm();
+    // Jede Stufe hat einen Umschalter, der ihren Inhalt per aria-controls benennt.
+    for (let stage = 1; stage <= 5; stage++) {
+      expect(count(html, `aria-controls="n8n-stage-${stage}"`), `Stufe ${stage}`).toBe(1);
+      expect(count(html, `aria-describedby="n8n-stage-${stage}-title"`), `Stufe ${stage}`).toBe(1);
+    }
+    const opened = [1, 2, 3, 4, 5].filter((stage) =>
+      new RegExp(`aria-expanded="true" aria-controls="n8n-stage-${stage}"`).test(html),
+    );
+    const hidden = [1, 2, 3, 4, 5].filter((stage) =>
+      new RegExp(`id="n8n-stage-${stage}" class="stage-body[^"]*" hidden`).test(html),
+    );
+    expect(hidden).toEqual([1, 2, 3, 4, 5].filter((stage) => !opened.includes(stage)));
+    // Die Fixture hat Zustellprobleme: der Betrieb ist offen, dazu höchstens die aktive Stufe.
+    expect(opened).toContain(5);
+    expect(opened.length).toBeLessThanOrEqual(2);
   });
 
   it('bildet die Stufen 1:1 im Stepper ab und markiert genau eine als aktiv', () => {
