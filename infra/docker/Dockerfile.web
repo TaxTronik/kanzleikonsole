@@ -18,7 +18,7 @@
 # Worker; der Wert muss in Dockerfile.worker identisch sein (Guard:
 # scripts/check-docker-bases-pinned.mjs). Alpine 3.23, weil
 # postgresql18-client erst ab 3.23 in main liegt.
-ARG NODE_BASE_IMAGE=node:24-alpine3.23@sha256:595398b0081eacda8e1c4c5b97b76cd1020e4d58a8ebcb4843b9bca1e79e7436
+ARG NODE_BASE_IMAGE=node:24-alpine3.23@sha256:0468540aa58203ff9e40c2aab3907c52644ab818af6176b1c70a026137dc92a2
 
 FROM ${NODE_BASE_IMAGE} AS builder
 RUN apk add --no-cache libc6-compat openssl

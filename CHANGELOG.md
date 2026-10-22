@@ -2075,6 +2075,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- CI/Container/Host: Node.js 24.22.1 (Sicherheitsrelease vom 20. Oktober
+  2026, LTS „Krypton“) in `.nvmrc` und im Host-Setup
+  (`HOST_NODE_VERSION` samt SHA-256 der Linux-Tarballs für x64 und arm64 aus
+  der signierten `SHASUMS256.txt`). Web- und Worker-Image nutzen als
+  gemeinsame Basis `node:24-alpine3.23@sha256:0468540a…92a2` (Node 24.22.1,
+  Alpine 3.23).
 - **[Scope] [TCMS]** Die Aufbewahrung eines GwG-Belegs, der als Nachweis im
   Tax-CMS verknüpft ist oder war, lässt sich ab der ersten Bindung von keiner
   Rolle mehr verkürzen (RT3D-K-01, Migration 20261021171000): Anlagedatum und
@@ -2360,7 +2366,8 @@ NULL` beim Löschen des Mandanten („Mandantenwechsel gesperrt“, Migration
   `RENOVATE_ENABLED`. Das Alpine-Hilfsimage für Volume-Backups ist auf 3.24
   digest-gepinnt (3.20 ohne Sicherheitsupdates) und wird nirgends mehr
   ungepinnt verwendet (`FK-EXC-20261005-043`).
-- CI/Container: exakte Node-Version 24.19.0 in `.nvmrc` für alle Workflows;
+- CI/Container: exakte Node-Version in `.nvmrc` für alle Workflows (derzeit
+  24.22.1, siehe oben);
   Web- und Worker-Image auf derselben digest-gepinnten Basis
   (`NODE_BASE_IMAGE`, Alpine 3.23), pnpm aus `packageManager`. CI und Images
   installieren mit den in `allowBuilds` geprüften Install-Skripten statt
