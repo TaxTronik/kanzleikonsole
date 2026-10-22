@@ -69,6 +69,29 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
     await expect(page.locator('output')).toHaveText('{"fullName":"Vorhandener Name"}');
   });
 
+  test('Mandantenfassung: Seite mit einem Klick auslesen, Zuschnitt eingeklappt', async ({
+    page,
+  }) => {
+    await page.goto(fixture);
+    await page.getByRole('combobox', { name: 'Zielgruppe' }).selectOption('client');
+    await page.getByRole('combobox', { name: 'Testformat' }).selectOption('png');
+    await expect(
+      page.getByRole('button', { name: 'Ausweis zuschneiden und Daten erkennen' }),
+    ).toHaveCount(0);
+    await page.getByRole('button', { name: 'Vorderseite auslesen' }).click();
+    // Mandanten sehen Daten wie auf dem Ausweis; übernommen wird ISO.
+    const birth = page.getByRole('checkbox', { name: 'Geburtsdatum: 12.08.1964', exact: true });
+    await expect(birth).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByRole('spinbutton', { name: 'Breite %' })).toBeHidden();
+    await page.getByText('Ausschnitt anpassen', { exact: true }).click();
+    await expect(page.getByRole('spinbutton', { name: 'Breite %' })).toBeVisible();
+    await birth.check();
+    await page.getByRole('button', { name: 'Angehakte Angaben übernehmen' }).click();
+    await expect(page.locator('output')).toHaveText(
+      '{"fullName":"Vorhandener Name","birthDate":"1964-08-12"}',
+    );
+  });
+
   test('zwei PDF-Seiten binden dieselbe Quelle mit eigener Drehung und Ausschnitt', async ({
     page,
   }) => {

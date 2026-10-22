@@ -27,6 +27,9 @@ implementation:
     Mandanten sehen im öffentlichen Wizard verständliche Hinweise ohne
     Fachbegriffe, den Ausweisausschnitt neben den Vorschlägen und die
     übernommenen Felder grün markiert, bis sie sie selbst bearbeiten.
+    Im Wizard lesen sie jede Ausweisseite mit einem Klick aus; Original,
+    Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen eingeklappt unter
+    „Ausschnitt anpassen“.
     In Großbuchstaben gelesene Namen, Orte und Behörden werden in üblicher
     Schreibweise vorgeschlagen, die Ausweisfassung bleibt daneben sichtbar.
     Eine bisherige Angabe, die sich nur in Groß-/Kleinschreibung oder in von
@@ -42,7 +45,7 @@ code_refs:
   - apps/web/src/components/gwg/identity-capture.tsx
   - apps/web/src/lib/gwg/identity-hints.ts
   - apps/web/src/lib/gwg/identity-suggestions.ts
-  - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
+  - apps/web/src/app/gwg-onboarding/person-steps.tsx
   - apps/web/src/lib/gwg/identity-image.ts
   - apps/web/src/lib/gwg/identity-ocr-worker.ts
   - apps/web/src/lib/gwg/identity-ocr.ts
@@ -209,3 +212,6 @@ bleibt und Ausweisfassung sowie bisherige Angabe als Beschreibung zugeordnet sin
 Im Mandantendurchlauf mit dem Muster blieben der Name aus der Einladung und die
 vorbelegte Staatsangehörigkeit DE unverändert; der Schreibweisenhinweis zum Namen
 aus der Rückseite entfällt dann, weil der Name nicht angeboten wird.
+Ein Browserfall prüft die Mandantenfassung mit dem echten Worker: Auslesen der
+Seite per Klick, eingeklappter Zuschnitt, Datum als TT.MM.JJJJ und Übernahme
+als ISO-Datum.

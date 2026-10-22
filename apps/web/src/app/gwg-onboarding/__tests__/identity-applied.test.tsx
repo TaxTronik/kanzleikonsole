@@ -112,10 +112,15 @@ function renderOwnersStep() {
     />,
   );
   fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+  // Person aus der Übersicht öffnen; der Ausweis ist ihr erster Abschnitt.
+  fireEvent.click(screen.getByRole('button', { name: /^Person 1: / }));
   return screen
-    .getByRole('heading', { level: 3, name: 'Person 1' })
+    .getByRole('heading', { level: 2, name: 'Person 1' })
     .closest('.card') as HTMLElement;
 }
+
+const toDetails = (card: HTMLElement) =>
+  fireEvent.click(within(card).getByRole('button', { name: /Weiter: Angaben/ }));
 
 describe('GWG-OCR-ASSIST-001 sichtbare Übernahme im Mandanten-Onboarding', () => {
   it('nutzt die Mandantenfassung und markiert übernommene Felder bis zur eigenen Bearbeitung', () => {
@@ -124,6 +129,8 @@ describe('GWG-OCR-ASSIST-001 sichtbare Übernahme im Mandanten-Onboarding', () =
     expect(card.querySelectorAll('[data-identity-applied="true"]')).toHaveLength(0);
 
     fireEvent.click(within(card).getByRole('button', { name: 'Vorschläge übernehmen (Test)' }));
+    // Die Markierung bleibt über den Wechsel in den Abschnitt „Angaben“ erhalten.
+    toDetails(card);
 
     const name = within(card).getByLabelText(/Vollständiger Name/) as HTMLInputElement;
     const number = within(card).getByLabelText(/Ausweisnummer/) as HTMLInputElement;
@@ -157,6 +164,7 @@ describe('GWG-OCR-ASSIST-001 sichtbare Übernahme im Mandanten-Onboarding', () =
     const card = renderOwnersStep();
     fireEvent.click(within(card).getByRole('button', { name: 'Vorschläge übernehmen (Test)' }));
     fireEvent.click(within(card).getByRole('button', { name: 'Rückseite übernehmen (Test)' }));
+    toDetails(card);
 
     const marked = (label: RegExp) =>
       (within(card).getByLabelText(label) as HTMLInputElement).dataset.identityApplied;

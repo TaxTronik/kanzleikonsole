@@ -64,7 +64,7 @@ function Fixture() {
  <label>Testformat<select value={kind} onChange={e=>{setKind(e.target.value);setViews([])}}><option value="pdf">PDF mit zwei Seiten</option><option value="png">PNG</option><option value="jpg">JPG</option><option value="broken">Unlesbare PDF</option><option value="mrz">Rückseite mit MRZ</option><option value="file">Eigene Testdatei (nur lokal)</option></select></label>
  <label> Zielgruppe <select value={audience} onChange={e=>setAudience(e.target.value)}><option value="staff">Kanzlei</option><option value="client">Mandant (Onboarding)</option></select></label>
  {kind === 'file' && <label> Testdatei <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e=>setFile(e.target.files?.[0] ?? null)}/></label>}
- <IdentityCapture key={kind + audience + (file?.name ?? '')} audience={audience} sources={[{id:versionId,label:'Synthetisches Muster',load}]} current={values} onApply={data=>setValues({...values,...data})} initialViews={views} onViewChange={v=>setViews([...views.filter(x=>x.side!==v.side),v])}/>
+ <IdentityCapture key={kind + audience + (file?.name ?? '')} audience={audience} sideSources={audience === 'client' ? {[kind === 'mrz' ? 'back' : 'front']: versionId} : undefined} sources={[{id:versionId,label:'Synthetisches Muster',load}]} current={values} onApply={data=>setValues({...values,...data})} initialViews={views} onViewChange={v=>setViews([...views.filter(x=>x.side!==v.side),v])}/>
  <h2>Übernommene Angaben</h2><output>{JSON.stringify(values)}</output><h2>Gespeicherte Seitenverweise</h2><pre>{JSON.stringify(views,null,2)}</pre>
  </main>;
 }

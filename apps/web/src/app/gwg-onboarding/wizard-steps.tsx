@@ -1,19 +1,14 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Check, Loader, Plus, Trash2, Upload } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, Loader, Trash2, Upload } from 'lucide-react';
 import { ConsentFields } from '@/components/consent-fields';
 import { NoticeView } from '@/components/notice-view';
 import type { ConsentSelections, ResolvedConsentOption } from '@/server/privacy/consent';
-import { IdentityCapture } from '@/components/gwg/identity-capture';
 import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
-import type { IdentitySuggestions } from '@/lib/gwg/identity-ocr';
-import { loadOnboardingIdentitySourceAction } from './actions';
-import { MAX_UPLOAD_BYTES_BY_KIND, formatUploadLimit } from '@/lib/upload-limits.mjs';
+import { Field } from './wizard-shared';
 
-// F-09: dieselbe Grenze wie die serverseitige Prüfung (binärer FormData-Upload).
-export const MAX_UPLOAD_BYTES = MAX_UPLOAD_BYTES_BY_KIND.gwgOnboardingFile;
-export const MAX_UPLOAD_LABEL = formatUploadLimit(MAX_UPLOAD_BYTES);
+export { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from './wizard-shared';
+export { OwnersStep, type OpenPerson } from './person-steps';
 
 export const ONBOARDING_STEPS = [
   { key: 'master', label: 'Stammdaten' },
@@ -105,37 +100,44 @@ export function OnboardingSubmitted() {
 
 export function WizardStepper({ step }: { step: number }) {
   return (
-    <ol className="flex items-center justify-between mb-8">
-      {ONBOARDING_STEPS.map((entry, index) => {
-        const done = index < step;
-        const current = index === step;
-        return (
-          <li key={entry.key} className="flex-1 flex items-center">
-            <div
-              className={
-                done
-                  ? 'w-8 h-8 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center'
-                  : current
-                    ? 'w-8 h-8 rounded-full bg-brand-600 text-on-brand text-sm font-bold flex items-center justify-center'
-                    : 'w-8 h-8 rounded-full bg-gray-200 text-muted text-sm font-bold flex items-center justify-center'
-              }
-            >
-              {done ? <Check className="h-4 w-4" /> : index + 1}
-            </div>
-            <span
-              className={
-                current ? 'ml-2 text-sm font-medium text-primary' : 'ml-2 text-sm text-muted'
-              }
-            >
-              {entry.label}
-            </span>
-            {index < ONBOARDING_STEPS.length - 1 && (
-              <div className="flex-1 h-px bg-gray-200 mx-3" />
-            )}
-          </li>
-        );
-      })}
-    </ol>
+    <div className="mb-8">
+      <ol className="flex items-center justify-between" aria-label="Fortschritt">
+        {ONBOARDING_STEPS.map((entry, index) => {
+          const done = index < step;
+          const current = index === step;
+          return (
+            <li key={entry.key} className="flex-1 min-w-0 flex items-center">
+              <div
+                className={
+                  done
+                    ? 'w-8 h-8 shrink-0 rounded-full bg-emerald-600 text-white text-sm font-bold flex items-center justify-center'
+                    : current
+                      ? 'w-8 h-8 shrink-0 rounded-full bg-brand-600 text-on-brand text-sm font-bold flex items-center justify-center'
+                      : 'w-8 h-8 shrink-0 rounded-full bg-gray-200 text-muted text-sm font-bold flex items-center justify-center'
+                }
+              >
+                {done ? <Check className="h-4 w-4" /> : index + 1}
+              </div>
+              {/* Schmale Bildschirme: Namen unter der Leiste (s. u.); für
+                Screenreader bleiben sie in der Liste. */}
+              <span
+                className={`sr-only sm:not-sr-only sm:ml-2 text-sm ${
+                  current ? 'font-medium text-primary' : 'text-muted'
+                }`}
+              >
+                {entry.label}
+              </span>
+              {index < ONBOARDING_STEPS.length - 1 && (
+                <div className="flex-1 h-px bg-gray-200 mx-1 sm:mx-3" />
+              )}
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-3 text-sm font-medium text-primary sm:hidden" aria-hidden="true">
+        Schritt {step + 1} von {ONBOARDING_STEPS.length}: {ONBOARDING_STEPS[step]?.label}
+      </p>
+    </div>
   );
 }
 
@@ -179,112 +181,6 @@ export function MasterDataStep({
         <Field label="Ort" value={city} onChange={onCityChange} required />
         <Field label="Land (ISO 2)" value={countryIso} onChange={onCountryIsoChange} required />
       </div>
-    </div>
-  );
-}
-
-interface OwnersStepProps {
-  token: string;
-  clientKind: OnboardingClientKind;
-  owners: BeneficialOwner[];
-  representatives: Representative[];
-  idUploadErrors: Record<string, string | null>;
-  discardingDocumentIds: ReadonlySet<string>;
-  onPatchOwner: (index: number, patch: Partial<BeneficialOwner>) => void;
-  onRemoveOwner: (index: number) => void;
-  onAddOwner: () => void;
-  onOwnerUpload: (ownerId: string, side: IdentitySide, file: File) => void;
-  onOwnerUploadRemove: (ownerId: string, side: IdentitySide, documentId: string) => void;
-  onPatchRepresentative: (index: number, patch: Partial<Representative>) => void;
-  onRemoveRepresentative: (index: number) => void;
-  onAddRepresentative: () => void;
-  onRepresentativeUpload: (representativeId: string, side: IdentitySide, file: File) => void;
-  onRepresentativeUploadRemove: (
-    representativeId: string,
-    side: IdentitySide,
-    documentId: string,
-  ) => void;
-}
-
-export function OwnersStep({
-  token,
-  clientKind,
-  owners,
-  representatives,
-  idUploadErrors,
-  discardingDocumentIds,
-  onPatchOwner,
-  onRemoveOwner,
-  onAddOwner,
-  onOwnerUpload,
-  onOwnerUploadRemove,
-  onPatchRepresentative,
-  onRemoveRepresentative,
-  onAddRepresentative,
-  onRepresentativeUpload,
-  onRepresentativeUploadRemove,
-}: OwnersStepProps) {
-  return (
-    <div className="space-y-4">
-      <div className="card p-6">
-        <h2 className="text-lg font-semibold text-primary">Wirtschaftlich Berechtigte</h2>
-        <p className="text-sm text-muted mt-1">
-          Bitte erfassen Sie alle Personen, die direkt oder indirekt mehr als 25 % der Anteile
-          halten oder Kontrolle ausüben. Pro Person bitte den Personalausweis (Vorder- und
-          Rückseite) hochladen.
-        </p>
-      </div>
-      {owners.map((owner, index) => (
-        <OwnerCard
-          token={token}
-          key={owner.id}
-          index={index}
-          owner={owner}
-          onPatch={(patch) => onPatchOwner(index, patch)}
-          onRemove={owners.length > 1 ? () => onRemoveOwner(index) : null}
-          onUpload={(side, file) => onOwnerUpload(owner.id, side, file)}
-          onUploadRemove={(side, documentId) => onOwnerUploadRemove(owner.id, side, documentId)}
-          discardingDocumentIds={discardingDocumentIds}
-          frontError={idUploadErrors[`${owner.id}:front`] ?? null}
-          backError={idUploadErrors[`${owner.id}:back`] ?? null}
-        />
-      ))}
-      <button type="button" onClick={onAddOwner} className="btn-secondary">
-        <Plus className="h-4 w-4" /> Weitere Person hinzufügen
-      </button>
-      {clientKind !== 'NATPERS' && (
-        <div className="space-y-4 pt-4">
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-primary">Gesetzliche Vertretung</h2>
-            <p className="text-sm text-muted mt-1">
-              Erfassen Sie alle vertretungsberechtigten Personen. Ist eine Person bereits oben
-              wirtschaftlich berechtigt, verknüpfen Sie beide Rollen ausdrücklich. Name und Ausweis
-              werden dann nur einmal erfasst.
-            </p>
-          </div>
-          {representatives.map((representative, index) => (
-            <RepresentativeCard
-              token={token}
-              key={representative.id}
-              index={index}
-              representative={representative}
-              owners={owners}
-              onPatch={(patch) => onPatchRepresentative(index, patch)}
-              onRemove={representatives.length > 1 ? () => onRemoveRepresentative(index) : null}
-              onUpload={(side, file) => onRepresentativeUpload(representative.id, side, file)}
-              onUploadRemove={(side, documentId) =>
-                onRepresentativeUploadRemove(representative.id, side, documentId)
-              }
-              discardingDocumentIds={discardingDocumentIds}
-              frontError={idUploadErrors[`${representative.id}:front`] ?? null}
-              backError={idUploadErrors[`${representative.id}:back`] ?? null}
-            />
-          ))}
-          <button type="button" onClick={onAddRepresentative} className="btn-secondary">
-            <Plus className="h-4 w-4" /> Weitere Vertretung hinzufügen
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -626,515 +522,11 @@ export function WizardNavigation({ step, onPrevious, onNext }: WizardNavigationP
   );
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = 'text',
-  required,
-  placeholder,
-  highlighted = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  required?: boolean;
-  placeholder?: string;
-  /** Aus der Ausweishilfe übernommen und noch nicht bearbeitet. */
-  highlighted?: boolean;
-}) {
-  const id = useId();
-  return (
-    <div>
-      <label className="label" htmlFor={id}>
-        {label}
-        {required && <span className="text-red-700 ml-1">*</span>}
-      </label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        required={required}
-        placeholder={placeholder}
-        className={highlighted ? 'input border-emerald-600 ring-2 ring-emerald-500/40' : 'input'}
-        data-identity-applied={highlighted || undefined}
-        aria-describedby={highlighted ? `${id}-applied` : undefined}
-      />
-      {highlighted && (
-        <p id={`${id}-applied`} className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
-          Aus dem Ausweis übernommen – bitte prüfen.
-        </p>
-      )}
-    </div>
-  );
-}
-
-type StringFieldOf<T> = { [K in keyof T]: T[K] extends string ? K : never }[keyof T] & string;
-
-/**
- * GWG-OCR-ASSIST-001: Felder, die der Mandant aus der Ausweishilfe übernommen
- * hat, bleiben grün markiert, bis er sie selbst bearbeitet. Nach der Übernahme
- * scrollt die Karte zum ersten markierten Feld. Eine Bestätigung entsteht nicht.
- */
-function useIdentityApplied<T extends object>(person: T, onPatch: (patch: Partial<T>) => void) {
-  const [applied, setApplied] = useState<ReadonlySet<string>>(() => new Set());
-  const [revision, setRevision] = useState(0);
-  const container = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!revision) return;
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    container.current
-      ?.querySelector<HTMLElement>('[data-identity-applied="true"]')
-      ?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
-  }, [revision]);
-  function bind(key: StringFieldOf<T>) {
-    return {
-      value: person[key] as string,
-      highlighted: applied.has(key),
-      onChange: (value: string) => {
-        onPatch({ [key]: value } as Partial<T>);
-        if (applied.has(key))
-          setApplied((previous) => new Set([...previous].filter((entry) => entry !== key)));
-      },
-    };
-  }
-  function applyFromIdentity(fields: IdentitySuggestions) {
-    onPatch(fields as Partial<T>);
-    // Markierungen früherer Übernahmen (andere Ausweisseite) bleiben bis zur
-    // eigenen Bearbeitung bestehen.
-    const keys = Object.keys(fields).filter((key) => fields[key as keyof typeof fields]);
-    setApplied((previous) => new Set([...previous, ...keys]));
-    setRevision((value) => value + 1);
-  }
-  return { bind, applyFromIdentity, container };
-}
-
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between gap-4">
       <dt className="text-muted">{label}</dt>
       <dd className="text-primary font-medium text-right">{value}</dd>
-    </div>
-  );
-}
-
-function OwnerCard({
-  token,
-  index,
-  owner,
-  onPatch,
-  onRemove,
-  onUpload,
-  onUploadRemove,
-  discardingDocumentIds,
-  frontError,
-  backError,
-}: {
-  token: string;
-  index: number;
-  owner: BeneficialOwner;
-  onPatch: (patch: Partial<BeneficialOwner>) => void;
-  onRemove: (() => void) | null;
-  onUpload: (side: IdentitySide, file: File) => void;
-  onUploadRemove: (side: IdentitySide, documentId: string) => void;
-  discardingDocumentIds: ReadonlySet<string>;
-  frontError: string | null;
-  backError: string | null;
-}) {
-  const { bind, applyFromIdentity, container } = useIdentityApplied(owner, onPatch);
-  return (
-    <div ref={container} className="card p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-primary">Person {index + 1}</h3>
-        {onRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="text-disabled hover:text-red-700 text-xs inline-flex items-center gap-1"
-          >
-            <Trash2 className="h-3 w-3" /> entfernen
-          </button>
-        )}
-      </div>
-      <Field label="Vollständiger Name" {...bind('fullName')} required />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Geburtsdatum" type="date" {...bind('birthDate')} required />
-        <Field label="Geburtsort" {...bind('birthPlace')} required />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Staatsangehörigkeit" {...bind('nationality')} placeholder="DE" required />
-        <Field
-          label={'Anteil (z. B. 50% oder „Alleingesellschafter")'}
-          value={owner.sharePercent}
-          onChange={(value) => onPatch({ sharePercent: value })}
-          required
-        />
-      </div>
-      <div>
-        <label className="label" htmlFor={`owner-${owner.id}-pep`}>
-          Politisch exponierte Person (PEP) oder enges Familienmitglied
-        </label>
-        <select
-          id={`owner-${owner.id}-pep`}
-          className="input"
-          value={owner.isPep === null ? '' : owner.isPep ? 'true' : 'false'}
-          onChange={(event) =>
-            onPatch({ isPep: event.target.value === '' ? null : event.target.value === 'true' })
-          }
-          required
-        >
-          <option value="" disabled>
-            — bitte auswählen —
-          </option>
-          <option value="false">Nein</option>
-          <option value="true">Ja</option>
-        </select>
-        <p className="text-xs text-muted mt-1">
-          Die Angabe ist für verstärkte Sorgfaltspflichten und die Risikoeinstufung erforderlich.
-        </p>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Straße + Hausnr." {...bind('street')} required />
-        <Field
-          label="Land"
-          value={owner.countryIso}
-          onChange={(value) => onPatch({ countryIso: value })}
-          required
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="PLZ" {...bind('postalCode')} required />
-        <Field label="Ort" {...bind('city')} required />
-      </div>
-
-      <div className="rounded-md border border-default bg-surface-raised p-4 space-y-3">
-        <div>
-          <h4 className="text-sm font-medium text-primary">Ausweisdaten</h4>
-          <p className="text-xs text-muted mt-0.5">
-            Bitte alle Angaben direkt vom Ausweis übernehmen.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Ausweisnummer" {...bind('idNumber')} required />
-          <Field label="Ausstellende Behörde" {...bind('idIssuedBy')} required />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Ausgestellt am" type="date" {...bind('idIssueDate')} required />
-          <Field label="Gültig bis" type="date" {...bind('idExpiryDate')} required />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 pt-2">
-        <IdUploadField
-          label="Personalausweis Vorderseite"
-          file={owner.idFront}
-          onUpload={(file) => onUpload('front', file)}
-          onRemove={() => onUploadRemove('front', owner.idFront!.documentId)}
-          deleting={Boolean(owner.idFront && discardingDocumentIds.has(owner.idFront.documentId))}
-          error={frontError}
-        />
-        <IdUploadField
-          label="Personalausweis Rückseite"
-          file={owner.idBack}
-          onUpload={(file) => onUpload('back', file)}
-          onRemove={() => onUploadRemove('back', owner.idBack!.documentId)}
-          deleting={Boolean(owner.idBack && discardingDocumentIds.has(owner.idBack.documentId))}
-          error={backError}
-        />
-      </div>
-      <OnboardingIdentityCapture
-        token={token}
-        person={owner}
-        onPatch={onPatch}
-        onApplyFields={applyFromIdentity}
-      />
-    </div>
-  );
-}
-
-function RepresentativeCard({
-  token,
-  index,
-  representative,
-  owners,
-  onPatch,
-  onRemove,
-  onUpload,
-  onUploadRemove,
-  discardingDocumentIds,
-  frontError,
-  backError,
-}: {
-  token: string;
-  index: number;
-  representative: Representative;
-  owners: BeneficialOwner[];
-  onPatch: (patch: Partial<Representative>) => void;
-  onRemove: (() => void) | null;
-  onUpload: (side: IdentitySide, file: File) => void;
-  onUploadRemove: (side: IdentitySide, documentId: string) => void;
-  discardingDocumentIds: ReadonlySet<string>;
-  frontError: string | null;
-  backError: string | null;
-}) {
-  const linkedOwner = representative.linkedOwnerId
-    ? owners.find((owner) => owner.id === representative.linkedOwnerId)
-    : null;
-  const { bind, applyFromIdentity, container } = useIdentityApplied(representative, onPatch);
-
-  return (
-    <div ref={container} className="card p-6 space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-primary">Vertretung {index + 1}</h3>
-        {onRemove && (
-          <button
-            type="button"
-            onClick={onRemove}
-            className="text-disabled hover:text-red-700 text-xs inline-flex items-center gap-1"
-          >
-            <Trash2 className="h-3 w-3" /> entfernen
-          </button>
-        )}
-      </div>
-
-      <div>
-        <label className="label" htmlFor={`representative-${representative.id}-identity`}>
-          Ist diese Person bereits wirtschaftlich berechtigt?
-        </label>
-        <select
-          id={`representative-${representative.id}-identity`}
-          className="input"
-          value={
-            representative.linkedOwnerId === undefined
-              ? ''
-              : representative.linkedOwnerId === null
-                ? 'SEPARATE'
-                : representative.linkedOwnerId
-          }
-          onChange={(event) => {
-            const linkedOwnerId =
-              event.target.value === 'SEPARATE' ? null : event.target.value || undefined;
-            const owner = owners.find((entry) => entry.id === linkedOwnerId);
-            onPatch({ linkedOwnerId, ...(owner ? { fullName: owner.fullName } : {}) });
-          }}
-        >
-          <option value="" disabled>
-            — bitte ausdrücklich auswählen —
-          </option>
-          <option value="SEPARATE">Nein – eigenständige Person erfassen</option>
-          {owners.map((owner, ownerIndex) => (
-            <option key={owner.id} value={owner.id}>
-              Ja – {owner.fullName || `Person ${ownerIndex + 1}`} (dieselbe Person)
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {linkedOwner ? (
-        <div className="rounded-md border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-100">
-          <strong>{linkedOwner.fullName}</strong> wird mit beiden Rollen gespeichert. Die bereits
-          hochgeladenen Ausweisseiten werden derselben stabilen Personen-ID zugeordnet und nicht
-          doppelt verlangt.
-        </div>
-      ) : (
-        <>
-          <Field label="Vollständiger Name" {...bind('fullName')} required />
-          <div className="rounded-md border border-default bg-surface-raised p-4 space-y-3">
-            <div>
-              <h4 className="text-sm font-medium text-primary">Ausweisdaten der Vertretung</h4>
-              <p className="text-xs text-muted mt-0.5">
-                Diese Angaben entfallen, wenn Sie oben dieselbe wirtschaftlich berechtigte Person
-                auswählen.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Ausweisnummer" {...bind('idNumber')} required />
-              <Field label="Ausstellende Behörde" {...bind('idIssuedBy')} required />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Ausgestellt am" type="date" {...bind('idIssueDate')} required />
-              <Field label="Gültig bis" type="date" {...bind('idExpiryDate')} required />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            <IdUploadField
-              label="Personalausweis Vorderseite"
-              file={representative.idFront}
-              onUpload={(file) => onUpload('front', file)}
-              onRemove={() => onUploadRemove('front', representative.idFront!.documentId)}
-              deleting={Boolean(
-                representative.idFront &&
-                discardingDocumentIds.has(representative.idFront.documentId),
-              )}
-              error={frontError}
-            />
-            <IdUploadField
-              label="Personalausweis Rückseite"
-              file={representative.idBack}
-              onUpload={(file) => onUpload('back', file)}
-              onRemove={() => onUploadRemove('back', representative.idBack!.documentId)}
-              deleting={Boolean(
-                representative.idBack &&
-                discardingDocumentIds.has(representative.idBack.documentId),
-              )}
-              error={backError}
-            />
-          </div>
-          <OnboardingIdentityCapture
-            token={token}
-            person={representative}
-            onPatch={onPatch}
-            onApplyFields={applyFromIdentity}
-          />
-        </>
-      )}
-    </div>
-  );
-}
-
-function OnboardingIdentityCapture({
-  token,
-  person,
-  onPatch,
-  onApplyFields,
-}: {
-  token: string;
-  person: Pick<BeneficialOwner, 'idType' | 'idFront' | 'idBack'> & IdentitySuggestions;
-  onPatch: (
-    patch: IdentitySuggestions & {
-      idFront?: OnboardingIdentityFile;
-      idBack?: OnboardingIdentityFile;
-    },
-  ) => void;
-  /** Übernahme aus der Ausweishilfe; markiert die Felder sichtbar. */
-  onApplyFields: (fields: IdentitySuggestions) => void;
-}) {
-  const files = [person.idFront, person.idBack].filter(
-    (file): file is OnboardingIdentityFile => !!file,
-  );
-  const unique = [...new Map(files.map((file) => [file.documentId, file])).values()];
-  if (person.idType !== 'PERSONALAUSWEIS' || !unique.length) return null;
-  return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted">
-        Die Angaben können ohne Erkennung manuell erfasst werden. Ohne Ausschnitt bleibt die
-        unveränderte Originaldatei zugeordnet; eine nicht lesbare PDF-Vorschau verhindert die
-        manuelle Erfassung nicht.
-      </p>
-      <p className="text-sm text-muted">
-        Eine PDF genügt für beide Seiten. In der Ausweishilfe jeweils die Seite oder den Ausschnitt
-        wählen und ausdrücklich zuordnen. Originaldateien bleiben unverändert.
-      </p>
-      <IdentityCapture
-        sources={unique.map((file) => ({
-          id: file.documentId,
-          label: file.fileName,
-          async load() {
-            if (file.localFile && file.versionId)
-              return { blob: file.localFile, versionId: file.versionId };
-            const result = await loadOnboardingIdentitySourceAction({
-              token,
-              documentId: file.documentId,
-            });
-            if (!result.ok) throw new Error(result.error);
-            const binary = atob(result.base64);
-            return {
-              blob: new Blob([Uint8Array.from(binary, (character) => character.charCodeAt(0))], {
-                type: result.mimeType,
-              }),
-              versionId: result.versionId,
-            };
-          },
-        }))}
-        audience="client"
-        current={person}
-        initialViews={files.flatMap((file) =>
-          file.viewport ? [{ ...file.viewport, documentId: file.documentId }] : [],
-        )}
-        onApply={onApplyFields}
-        onViewChange={(view) => {
-          const file = unique.find((entry) => entry.documentId === view.documentId);
-          if (file)
-            onPatch({
-              [view.side === 'front' ? 'idFront' : 'idBack']: {
-                ...file,
-                versionId: view.versionId,
-                viewport: view,
-              },
-            });
-        }}
-      />
-      {files
-        .filter((file) => file.viewport)
-        .map((file) => (
-          <p key={file.viewport!.side} className="text-xs text-muted">
-            {file.viewport!.side === 'front' ? 'Vorderseite' : 'Rückseite'}: {file.fileName}, Seite{' '}
-            {file.viewport!.page}, Drehung {file.viewport!.rotation}°
-          </p>
-        ))}
-    </div>
-  );
-}
-
-function IdUploadField({
-  label,
-  file,
-  onUpload,
-  onRemove,
-  deleting,
-  error,
-}: {
-  label: string;
-  file: { documentId: string; fileName: string } | null;
-  onUpload: (file: File) => void;
-  onRemove: () => void;
-  deleting: boolean;
-  error: string | null;
-}) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-primary mb-1">
-        {label} <span className="text-red-700">*</span>
-      </label>
-      {file ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 inline-flex items-center gap-2">
-          <Check className="h-4 w-4" />
-          <span className="truncate max-w-[180px]">{file.fileName}</span>
-          <button
-            type="button"
-            onClick={onRemove}
-            disabled={deleting}
-            className="ml-1 text-red-700 hover:text-red-900 disabled:opacity-50"
-            aria-label={`${label} entfernen`}
-          >
-            {deleting ? (
-              <Loader className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-          </button>
-        </div>
-      ) : (
-        <label className="block">
-          <span className="btn-secondary cursor-pointer inline-flex">
-            <Upload className="h-4 w-4" /> Foto hochladen
-          </span>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/heic,image/webp,application/pdf"
-            className="sr-only"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) onUpload(file);
-              event.target.value = '';
-            }}
-          />
-        </label>
-      )}
-      {error && <p className="text-xs text-red-700 mt-1">{error}</p>}
-      <p className="text-xs text-muted mt-1">JPG / PNG / PDF, max. {MAX_UPLOAD_LABEL}</p>
     </div>
   );
 }

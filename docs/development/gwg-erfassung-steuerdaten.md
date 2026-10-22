@@ -125,6 +125,20 @@ Zielgruppe umschalten. Ein vollständiger Durchlauf des Wizards im lokalen
 Dev-Stack setzt vollständige Datenschutzhinweise der Kanzlei voraus; sonst
 zeigt der Wizard „Das Onboarding ist noch nicht freigegeben“.
 
+Im Personenschritt des Wizards (`person-steps.tsx`) steht zuerst eine Übersicht
+aller Personen mit dem Stand je Abschnitt; bearbeitet wird eine Person nach der
+anderen: wirtschaftlich Berechtigte in Ausweis → Angaben → Beteiligung und PEP,
+Vertretungen in Rolle → Ausweis → Angaben (bei der Doppelrolle nur die Rolle).
+Der Name steht über den Abschnitten, damit Uploads dem Personenordner zugeordnet
+werden und eine übernommene Schreibweise in jedem Abschnitt sichtbar bleibt.
+Solange eine Person offen ist, ruht die Schrittnavigation des Wizards. Mandanten
+lesen jede Seite mit „Vorderseite auslesen“ bzw. „Rückseite auslesen“ aus
+(`sideSources`); Original, Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen
+eingeklappt unter „Ausschnitt anpassen“. Die Kanzlei behält die bisherige,
+ausgeklappte Erfassung. Auf schmalen Bildschirmen nennt die Fortschrittsleiste
+nur den aktuellen Schritt („Schritt 2 von 5: …“); vorher ragte sie bei 375 px
+über den Rand.
+
 Ergebnis mit dem veröffentlichten Musterausweis (Erika Mustermann) im echten
 Browserablauf, 2026-10-22: vorher ein falsches Ablaufdatum (07.05. statt
 01.05.2034) sowie PLZ/Ort; danach Name und Ablaufdatum von der Vorderseite und

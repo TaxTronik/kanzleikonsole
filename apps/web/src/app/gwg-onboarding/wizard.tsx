@@ -35,6 +35,7 @@ import {
   type EntityEvidenceDocument,
   type EntityEvidenceType,
   type OnboardingClientKind,
+  type OpenPerson,
   type Representative,
 } from './wizard-steps';
 
@@ -144,6 +145,8 @@ export function OnboardingWizard({
       ? initialDraft.owners.map((owner) => ({ ...owner }))
       : [emptyOwner(inviteName)],
   );
+  // Personenschritt: Übersicht oder Bearbeitung genau einer Person.
+  const [openPerson, setOpenPerson] = useState<OpenPerson | null>(null);
   const [representatives, setRepresentatives] = useState<Representative[]>(() =>
     initialDraft
       ? initialDraft.representatives.map((representative) => ({ ...representative }))
@@ -183,7 +186,9 @@ export function OnboardingWizard({
     setOwners((s) => s.map((o, idx) => (idx === i ? { ...o, ...patch } : o)));
   }
   function addOwner() {
-    setOwners((s) => [...s, emptyOwner('')]);
+    const owner = emptyOwner('');
+    setOwners((s) => [...s, owner]);
+    setOpenPerson({ role: 'owner', id: owner.id });
   }
 
   async function discardDocuments(documentIds: Array<string | undefined>): Promise<string | null> {
@@ -245,7 +250,9 @@ export function OnboardingWizard({
     );
   }
   function addRepresentative() {
-    setRepresentatives((current) => [...current, emptyRepresentative('')]);
+    const representative = emptyRepresentative('');
+    setRepresentatives((current) => [...current, representative]);
+    setOpenPerson({ role: 'representative', id: representative.id });
   }
   async function removeRepresentative(i: number) {
     const representative = representatives[i];
@@ -502,6 +509,8 @@ export function OnboardingWizard({
           clientKind={client.kind}
           owners={owners}
           representatives={representatives}
+          openPerson={openPerson}
+          onOpenPerson={setOpenPerson}
           idUploadErrors={idUploadErrors}
           discardingDocumentIds={discardingDocumentIds}
           onPatchOwner={patchOwner}
@@ -580,7 +589,9 @@ export function OnboardingWizard({
       )}
 
       {stepError && <div className="alert-error-sm mt-6">{stepError}</div>}
-      <WizardNavigation step={step} onPrevious={prev} onNext={next} />
+      {!(step === 1 && openPerson) && (
+        <WizardNavigation step={step} onPrevious={prev} onNext={next} />
+      )}
     </div>
   );
 }

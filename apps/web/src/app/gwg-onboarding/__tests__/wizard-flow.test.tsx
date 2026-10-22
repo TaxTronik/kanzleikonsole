@@ -5,9 +5,10 @@
 // Übermittlung mit stabilen lokalen IDs, generische Ausweis-Uploads für beide
 // Rollen und die gekoppelte Register-/Dokumenttyp-Auswahl. Ersetzt
 // wizard-representatives.test.ts und die Verhaltensteile von
-// wizard-steps-structure.test.ts (dort bleibt nur der Architektur-Guard).
+// wizard-steps-structure.test.ts (dort bleibt nur der Architektur-Guard). Der
+// Personenschritt zeigt eine Übersicht; bearbeitet wird eine Person nach der anderen.
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fullIdentityViewport } from '@/lib/gwg/identity-viewport';
 import type { ResolvedConsentOption } from '@/server/privacy/consent';
 import type {
@@ -126,9 +127,21 @@ function renderWizard(
 const next = () => fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 const stepHeading = (name: string) => screen.getByRole('heading', { level: 2, name });
 
-function card(name: string): HTMLElement {
-  return screen.getByRole('heading', { level: 3, name }).closest('.card') as HTMLElement;
+/** Öffnet eine Person aus der Übersicht und liefert ihre Bearbeitung. */
+function openPerson(title: string): HTMLElement {
+  fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${title}: `) }));
+  return editor(title);
 }
+
+function editor(title: string): HTMLElement {
+  return screen.getByRole('heading', { level: 2, name: title }).closest('.card') as HTMLElement;
+}
+
+function section(scope: HTMLElement, label: string) {
+  fireEvent.click(within(scope).getByRole('button', { name: new RegExp(`^\\d\\. ${label}`) }));
+}
+
+const backToOverview = () => fireEvent.click(screen.getByRole('button', { name: 'Zur Übersicht' }));
 
 function identitySelect(scope: HTMLElement): HTMLSelectElement {
   return within(scope).getByLabelText(
@@ -174,6 +187,11 @@ function uploadedFile(call: number): File {
 
 let uploadSeq = 0;
 
+beforeAll(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+  window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as never;
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   h.calls.length = 0;
@@ -199,7 +217,7 @@ describe('GwG-Onboarding – Schrittfolge', () => {
       }),
     );
     const current = () =>
-      [...screen.getByRole('list').querySelectorAll('span')]
+      [...screen.getByRole('list', { name: 'Fortschritt' }).querySelectorAll('span')]
         .filter((span) => span.className.includes('font-medium'))
         .map((span) => span.textContent);
 
@@ -234,7 +252,7 @@ describe('GwG-Onboarding – explizite Doppelrollen-UX', () => {
   it('startet neutral mit ausdrücklicher Auswahl zwischen eigener Person und Doppelrolle', () => {
     renderWizard(null);
     next();
-    const select = identitySelect(card('Vertretung 1'));
+    const select = identitySelect(openPerson('Vertretung 1'));
     expect(select.value).toBe('');
     expect([...select.options].map((option) => [option.textContent, option.disabled])).toEqual([
       ['— bitte ausdrücklich auswählen —', true],
@@ -246,9 +264,11 @@ describe('GwG-Onboarding – explizite Doppelrollen-UX', () => {
   it('blockiert Weiter ohne bewusste Rollenentscheidung', () => {
     renderWizard(draft());
     next();
+    // Eine neue Vertretung öffnet sich direkt zur Bearbeitung.
     fireEvent.click(screen.getByRole('button', { name: /Weitere Vertretung hinzufügen/ }));
-    expect(identitySelect(card('Vertretung 1')).value).toBe('');
+    expect(identitySelect(editor('Vertretung 1')).value).toBe('');
 
+    backToOverview();
     next();
     expect(
       screen.getByText(
@@ -257,10 +277,12 @@ describe('GwG-Onboarding – explizite Doppelrollen-UX', () => {
     ).toBeTruthy();
     expect(stepHeading('Wirtschaftlich Berechtigte')).toBeTruthy();
 
-    fireEvent.change(identitySelect(card('Vertretung 1')), { target: { value: OWNER.id } });
-    const linked = card('Vertretung 1');
+    fireEvent.change(identitySelect(openPerson('Vertretung 1')), { target: { value: OWNER.id } });
+    const linked = editor('Vertretung 1');
     expect(linked.textContent).toContain('Max Muster wird mit beiden Rollen gespeichert');
     expect(linked.querySelector('input[type="file"]')).toBeNull();
+    // Bei der Doppelrolle bleibt nur die Rollenentscheidung.
+    fireEvent.click(within(linked).getByRole('button', { name: /Fertig – zur Übersicht/ }));
     next();
     expect(stepHeading('Rechtsträgernachweise')).toBeTruthy();
   });
@@ -324,6 +346,67 @@ describe('GwG-Onboarding – explizite Doppelrollen-UX', () => {
       }),
     ]);
     expect(await screen.findByRole('heading', { name: 'Vielen Dank!' })).toBeTruthy();
+  });
+});
+
+describe('GwG-Onboarding – Personenübersicht', () => {
+  const chips = (title: string) =>
+    [
+      ...(
+        screen.getByRole('heading', { level: 3, name: title }).closest('li') as HTMLElement
+      ).querySelectorAll('ul > li'),
+    ].map((chip) => chip.textContent);
+
+  it('zeigt je Person den Stand und führt durch Ausweis, Angaben, Beteiligung und PEP', () => {
+    renderWizard(null);
+    next();
+    expect(chips('Person 1')).toEqual([
+      'Ausweis offen',
+      'Angaben offen',
+      'Beteiligung und PEP offen',
+    ]);
+
+    const person = openPerson('Person 1');
+    // Während der Bearbeitung führt nur die Person; die Schrittnavigation ruht.
+    expect(screen.queryByRole('button', { name: 'Weiter' })).toBeNull();
+    expect(
+      within(person)
+        .getAllByRole('button', { name: /^\d\. / })
+        .map((button) => button.textContent),
+    ).toEqual(['1. Ausweis', '2. Angaben', '3. Beteiligung und PEP']);
+    expect(within(person).getByRole('heading', { level: 3, name: 'Ausweis' })).toBeTruthy();
+    expect(within(person).queryByLabelText(/Geburtsort/)).toBeNull();
+
+    fireEvent.click(within(person).getByRole('button', { name: /Weiter: Angaben/ }));
+    expect(within(person).getByLabelText(/Geburtsort/)).toBeTruthy();
+    fireEvent.click(within(person).getByRole('button', { name: /Weiter: Beteiligung und PEP/ }));
+    fireEvent.change(field(person, 'Anteil (z. B. 50% oder „Alleingesellschafter")'), {
+      target: { value: '100%' },
+    });
+    fireEvent.change(within(person).getByLabelText(/Politisch exponierte Person/), {
+      target: { value: 'false' },
+    });
+    fireEvent.click(within(person).getByRole('button', { name: /Fertig – zur Übersicht/ }));
+
+    expect(chips('Person 1')).toEqual([
+      'Ausweis offen',
+      'Angaben offen',
+      'Beteiligung und PEP erledigt',
+    ]);
+    expect(screen.getByRole('button', { name: 'Weiter' })).toBeTruthy();
+  });
+
+  it('öffnet eine neue Person direkt und bietet vollständige Personen zum Bearbeiten an', () => {
+    renderWizard(draft({ representatives: [representative({ linkedOwnerId: OWNER.id })] }));
+    next();
+    expect(screen.getByRole('button', { name: 'Person 1: Bearbeiten' })).toBeTruthy();
+    expect(chips('Vertretung 1')).toEqual(['Rolle erledigt']);
+
+    fireEvent.click(screen.getByRole('button', { name: /Weitere Person hinzufügen/ }));
+    const added = editor('Person 2');
+    expect((field(added, 'Vollständiger Name') as HTMLInputElement).value).toBe('');
+    backToOverview();
+    expect(screen.getByRole('button', { name: 'Person 2: Angaben ergänzen' })).toBeTruthy();
   });
 });
 
@@ -391,33 +474,41 @@ describe('GwG-Onboarding – Ausweis- und Nachweis-Uploads', () => {
     renderWizard(null);
     next();
 
+    // Der Ausweis ist der erste Abschnitt einer Person.
     const ownerFront = new File(['vorne'], 'vorne.png', { type: 'image/png' });
-    selectFile(uploadInput(card('Person 1'), 'Personalausweis Vorderseite'), ownerFront);
-    await waitFor(() => expect(within(card('Person 1')).getByText('vorne.png')).toBeTruthy());
+    selectFile(uploadInput(openPerson('Person 1'), 'Personalausweis Vorderseite'), ownerFront);
+    await waitFor(() => expect(within(editor('Person 1')).getByText('vorne.png')).toBeTruthy());
     expect(h.upload).toHaveBeenLastCalledWith(
       { token: 'token-1', kind: 'ID_DOCUMENT', personName: 'Max Muster' },
       expect.any(FormData),
     );
     expect(uploadedFile(0)).toBe(ownerFront);
 
-    fireEvent.change(identitySelect(card('Vertretung 1')), { target: { value: 'SEPARATE' } });
-    fireEvent.change(field(card('Vertretung 1'), 'Vollständiger Name'), {
+    backToOverview();
+    const representativeEditor = openPerson('Vertretung 1');
+    fireEvent.change(identitySelect(representativeEditor), { target: { value: 'SEPARATE' } });
+    fireEvent.change(field(representativeEditor, 'Vollständiger Name'), {
       target: { value: 'Erika Beispiel' },
     });
+    section(representativeEditor, 'Ausweis');
     const representativeBack = new File(['hinten'], 'hinten.png', { type: 'image/png' });
-    selectFile(uploadInput(card('Vertretung 1'), 'Personalausweis Rückseite'), representativeBack);
-    await waitFor(() => expect(within(card('Vertretung 1')).getByText('hinten.png')).toBeTruthy());
+    selectFile(uploadInput(representativeEditor, 'Personalausweis Rückseite'), representativeBack);
+    await waitFor(() =>
+      expect(within(editor('Vertretung 1')).getByText('hinten.png')).toBeTruthy(),
+    );
     expect(h.upload).toHaveBeenLastCalledWith(
       { token: 'token-1', kind: 'ID_DOCUMENT', personName: 'Erika Beispiel' },
       expect.any(FormData),
     );
     expect(uploadedFile(1)).toBe(representativeBack);
-    expect(within(card('Person 1')).queryByText('hinten.png')).toBeNull();
     expect(h.calls).toEqual(['upload', 'reset:', 'upload', 'reset:']);
+    backToOverview();
+    expect(within(openPerson('Person 1')).queryByText('hinten.png')).toBeNull();
+    backToOverview();
 
     // Wird die Vertretung nachträglich mit dem Berechtigten verknüpft, verwirft
     // der Wizard ihren eigenen Ausweis.
-    const select = identitySelect(card('Vertretung 1'));
+    const select = identitySelect(openPerson('Vertretung 1'));
     const ownerOption = [...select.options].find(
       (option) => option.textContent === 'Ja – Max Muster (dieselbe Person)',
     )!;

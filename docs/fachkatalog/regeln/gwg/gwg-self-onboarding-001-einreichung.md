@@ -41,6 +41,8 @@ code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-invitation.tsx
   - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
+  - apps/web/src/app/gwg-onboarding/person-steps.tsx
+  - apps/web/src/app/gwg-onboarding/wizard-shared.tsx
   - apps/web/src/app/gwg-onboarding/wizard.tsx
   - apps/web/src/server/gwg-onboarding/invite-lifecycle.ts
   - apps/web/src/server/gwg-onboarding/owner-submission.ts
@@ -76,6 +78,7 @@ test_refs:
   - apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts
   - apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts
   - apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts
+  - apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -185,6 +188,13 @@ legt nach einem abgeschlossenen Stand einen neuen Entwurf an. Offene Links
 werden unter dem Mandanten-Lifecycle-Lock mit Grund widerrufen und auditiert;
 Kontakte, Aktivierungsbedingungen und Berufsträgerfreigabe werden nicht
 übersprungen. Es erfolgt kein automatischer Versand eines Ersatzlinks.
+
+Der Personenschritt des Wizards zeigt eine Übersicht mit dem Stand je Person
+(Ausweis, Angaben, Beteiligung und PEP bzw. Rolle bei Vertretungen); bearbeitet
+wird eine Person nach der anderen in diesen Abschnitten. Der Stand ist nur eine
+Orientierung: Beim Weiter prüft der Wizard wie bisher alle Pflichtangaben nach
+demselben Vertrag wie der Submit, und die Rollenentscheidung bei Vertretungen
+bleibt ausdrücklich.
 
 Beide Wege nutzen dieselbe lokale Ausweishilfe (GWG-OCR-ASSIST-001). Zwei
 Seitenverweise dürfen dasselbe PDF-Original verwenden, wenn Version und

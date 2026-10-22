@@ -433,6 +433,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[GwG]** Der Personenschritt im Mandanten-Onboarding ist entzerrt: Eine
+  Übersicht zeigt je Person den Stand (Ausweis, Angaben, Beteiligung und PEP bzw.
+  Rolle bei Vertretungen). Bearbeitet wird eine Person nach der anderen in diesen
+  Abschnitten statt in einer langen Karte; eine neu hinzugefügte Person öffnet
+  sich direkt. Mandanten lesen jede Ausweisseite mit einem Klick aus, Zuschnitt,
+  Drehung und PDF-Seite liegen unter „Ausschnitt anpassen“. Auf schmalen
+  Bildschirmen ragt die Fortschrittsleiste nicht mehr über den Rand. Die
+  Pflichtprüfung beim Weiter ist unverändert (GWG-SELF-ONBOARDING-001,
+  GWG-OCR-ASSIST-001).
 - **[GwG]** Die Ausweishilfe schlägt in Großbuchstaben gedruckte Namen, Orte,
   Straßen und Behörden in üblicher Schreibweise vor („Erika Mustermann“,
   „Frankfurt am Main“, „Ursula von der Leyen“) und zeigt die Ausweisfassung

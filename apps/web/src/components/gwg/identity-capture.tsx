@@ -23,6 +23,8 @@ import {
   type IdentityImage,
 } from '@/lib/gwg/identity-image';
 
+type IdentitySide = IdentityViewport['side'];
+
 const DATE_FIELDS: ReadonlySet<IdentityField> = new Set([
   'birthDate',
   'idIssueDate',
@@ -134,6 +136,7 @@ export function IdentityCapture({
   onViewChange,
   initialViews = [],
   audience = 'staff',
+  sideSources,
 }: {
   sources: IdentityCaptureSource[];
   current: IdentitySuggestions;
@@ -142,6 +145,12 @@ export function IdentityCapture({
   initialViews?: IdentitySourceView[];
   /** Mandanten im öffentlichen Onboarding erhalten verständliche Texte. */
   audience?: IdentityAudience;
+  /**
+   * Original je Ausweisseite. Mandanten lesen eine Seite dann mit einem Klick
+   * aus; Original, Seite und Ausschnitt liegen eingeklappt unter
+   * „Ausschnitt anpassen“.
+   */
+  sideSources?: Partial<Record<IdentitySide, string>>;
 }) {
   const text = IDENTITY_UI_TEXT[audience];
   const [appliedNote, setAppliedNote] = useState<string | null>(null);
@@ -188,9 +197,12 @@ export function IdentityCapture({
     setError('Vorgang abgebrochen. Manuelle Erfassung bleibt möglich.');
   }
 
-  async function openSource(id: string) {
+  async function openSource(
+    id: string,
+    side?: IdentitySide,
+  ): Promise<{ canvas: HTMLCanvasElement; view: IdentityViewport } | null> {
     const chosen = sources.find((entry) => entry.id === id);
-    if (!chosen) return;
+    if (!chosen) return null;
     const revision = ++request.current;
     controller.current?.abort();
     setOpen(true);
@@ -201,28 +213,33 @@ export function IdentityCapture({
     setSourceId(id);
     try {
       const loaded = await chosen.load();
-      if (revision !== request.current) return;
+      if (revision !== request.current) return null;
       const image = await loadIdentityImage(loaded.blob);
       if (revision !== request.current) {
         image.dispose();
-        return;
+        return null;
       }
       sourceRef.current?.dispose();
       sourceRef.current = image;
       setSource(image);
       const saved = initialViews.find(
-        (entry) => entry.documentId === id && entry.versionId === loaded.versionId,
+        (entry) =>
+          entry.documentId === id &&
+          entry.versionId === loaded.versionId &&
+          (!side || entry.side === side),
       );
-      const next = saved ?? fullIdentityViewport(loaded.versionId, 'front');
+      const next = saved ?? fullIdentityViewport(loaded.versionId, side ?? 'front');
       const rendered = await image.render(next.page);
-      if (revision !== request.current) return;
+      if (revision !== request.current) return null;
       setView(next);
       setCanvas(rendered);
       setPreview(rendered.toDataURL('image/png'));
       setCroppedPreview(cropIdentityImage(rendered, next).toDataURL('image/png'));
+      return { canvas: rendered, view: next };
     } catch (cause) {
       if (revision === request.current)
         setError(cause instanceof Error ? cause.message : 'Datei konnte nicht geöffnet werden.');
+      return null;
     } finally {
       if (revision === request.current) setBusy(false);
     }
@@ -274,8 +291,18 @@ export function IdentityCapture({
     if (width > 0.01 && height > 0.01)
       changeView({ x: Math.min(start.x, end.x), y: Math.min(start.y, end.y), width, height });
   }
-  async function recognize() {
-    if (!canvas || !view) return;
+  /** Mandanten: Seite öffnen und auslesen; ein angepasster Ausschnitt dieser Seite bleibt. */
+  async function readSide(side: IdentitySide) {
+    const id = sideSources?.[side];
+    if (!id || busy) return;
+    const target =
+      id === sourceId && view?.side === side && canvas
+        ? { canvas, view }
+        : await openSource(id, side);
+    if (target) await recognize(target);
+  }
+  async function recognize(target = canvas && view ? { canvas, view } : null) {
+    if (!target) return;
     const abort = new AbortController();
     controller.current = abort;
     setBusy(true);
@@ -286,7 +313,7 @@ export function IdentityCapture({
     const timeout = window.setTimeout(() => abort.abort(), 120_000);
     try {
       const next = await recognizeIdentityImage(
-        cropIdentityImage(canvas, view),
+        cropIdentityImage(target.canvas, target.view),
         abort.signal,
         setProgress,
       );
@@ -332,193 +359,221 @@ export function IdentityCapture({
   }
 
   if (!sources.length) return null;
+  const sides = (['front', 'back'] as const).filter((side) => sideSources?.[side]);
+  const simple = audience === 'client' && sides.length > 0;
+  // Original, Seite, Drehung und Ausschnitt; für Mandanten eingeklappt.
+  const viewControls = () => (
+    <>
+      <div className="flex flex-wrap gap-3">
+        <label className="text-xs">
+          Original
+          <select
+            className="input"
+            value={sourceId}
+            disabled={busy}
+            onChange={(event) => void openSource(event.target.value)}
+          >
+            {sources.map((entry) => (
+              <option key={entry.id} value={entry.id}>
+                {entry.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {view && (
+          <>
+            <label className="text-xs">
+              Ausweisseite
+              <select
+                className="input"
+                value={view.side}
+                disabled={busy}
+                onChange={(event) => changeView({ side: event.target.value as 'front' | 'back' })}
+              >
+                <option value="front">Vorderseite</option>
+                <option value="back">Rückseite</option>
+              </select>
+            </label>
+            {source && source.pages > 1 && (
+              <label className="text-xs">
+                PDF-Seite
+                <select
+                  className="input"
+                  value={view.page}
+                  disabled={busy}
+                  onChange={(event) => void changePage(Number(event.target.value))}
+                >
+                  {Array.from({ length: source.pages }, (_, index) => (
+                    <option key={index} value={index + 1}>
+                      {index + 1}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <button
+              className="btn-secondary text-xs"
+              type="button"
+              disabled={busy}
+              onClick={() =>
+                changeView({
+                  rotation: ((view.rotation + 90) % 360) as IdentityViewport['rotation'],
+                })
+              }
+            >
+              90° drehen
+            </button>
+            <button
+              className="btn-secondary text-xs"
+              type="button"
+              disabled={busy}
+              onClick={() => changeView({ x: 0, y: 0, width: 1, height: 1, rotation: 0 })}
+            >
+              Ganzes Original
+            </button>
+          </>
+        )}
+      </div>
+      {view && canvas && (
+        <>
+          <p className="text-xs text-muted">
+            Im Original einen Ausschnitt ziehen oder die Prozentwerte darunter einstellen.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div
+              className="relative self-start touch-none cursor-crosshair"
+              role="group"
+              aria-label="Original mit Ausschnitt"
+              onPointerDown={(event) => {
+                if (!busy) {
+                  drag.current = point(event);
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }
+              }}
+              onPointerUp={finishDrag}
+              onPointerCancel={() => {
+                drag.current = null;
+              }}
+            >
+              {/* Local memory-only images; no remote image optimizer. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={preview}
+                alt="Unveränderte Originalseite"
+                className="block w-full"
+                draggable={false}
+              />
+              <div
+                className="absolute border-2 border-blue-600 bg-blue-400/10 pointer-events-none"
+                style={{
+                  left: `${view.x * 100}%`,
+                  top: `${view.y * 100}%`,
+                  width: `${view.width * 100}%`,
+                  height: `${view.height * 100}%`,
+                }}
+              />
+            </div>
+            <div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={croppedPreview}
+                alt="Gedrehter Ausweisausschnitt"
+                className="w-full border border-default"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {(['x', 'y', 'width', 'height'] as const).map((key) => (
+              <label key={key} className="text-xs">
+                {{ x: 'Links %', y: 'Oben %', width: 'Breite %', height: 'Höhe %' }[key]}
+                <input
+                  className="input"
+                  type="number"
+                  step="1"
+                  min={key === 'width' || key === 'height' ? 1 : 0}
+                  max={100}
+                  value={Math.round(view[key] * 100)}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const minimum = key === 'width' || key === 'height' ? 0.01 : 0;
+                    const value = Math.min(1, Math.max(minimum, Number(event.target.value) / 100));
+                    const next = { ...view, [key]: value };
+                    next.width = Math.min(next.width, 1 - next.x);
+                    next.height = Math.min(next.height, 1 - next.y);
+                    if (next.width > 0 && next.height > 0) changeView(next);
+                  }}
+                />
+              </label>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-secondary text-xs"
+              disabled={busy}
+              onClick={() => onViewChange({ ...view, documentId: sourceId })}
+            >
+              Ausschnitt als {view.side === 'front' ? 'Vorderseite' : 'Rückseite'} übernehmen
+            </button>
+            <button
+              type="button"
+              className="btn-primary text-xs"
+              disabled={busy}
+              onClick={() => void recognize()}
+            >
+              Daten erkennen
+            </button>
+          </div>
+        </>
+      )}
+    </>
+  );
   return (
     <section
       className="rounded-md border border-default bg-surface-raised p-3 space-y-3"
       aria-label="Lokale Ausweishilfe"
     >
-      <button
-        type="button"
-        className="btn-secondary text-xs"
-        onClick={() => {
-          if (open) {
-            if (busy) cancel();
-            setOpen(false);
-          } else void openSource(sourceId || sources[0]!.id);
-        }}
-      >
-        {open ? 'Ausweishilfe schließen' : 'Ausweis zuschneiden und Daten erkennen'}
-      </button>
-      {open && (
+      {simple ? (
         <>
           <p className="text-xs text-muted">{text.intro}</p>
-          <div className="flex flex-wrap gap-3">
-            <label className="text-xs">
-              Original
-              <select
-                className="input"
-                value={sourceId}
+          <div className="flex flex-wrap gap-2">
+            {sides.map((side) => (
+              <button
+                key={side}
+                type="button"
+                className="btn-secondary text-xs"
                 disabled={busy}
-                onChange={(event) => void openSource(event.target.value)}
+                onClick={() => void readSide(side)}
               >
-                {sources.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {view && (
-              <>
-                <label className="text-xs">
-                  Ausweisseite
-                  <select
-                    className="input"
-                    value={view.side}
-                    disabled={busy}
-                    onChange={(event) =>
-                      changeView({ side: event.target.value as 'front' | 'back' })
-                    }
-                  >
-                    <option value="front">Vorderseite</option>
-                    <option value="back">Rückseite</option>
-                  </select>
-                </label>
-                {source && source.pages > 1 && (
-                  <label className="text-xs">
-                    PDF-Seite
-                    <select
-                      className="input"
-                      value={view.page}
-                      disabled={busy}
-                      onChange={(event) => void changePage(Number(event.target.value))}
-                    >
-                      {Array.from({ length: source.pages }, (_, index) => (
-                        <option key={index} value={index + 1}>
-                          {index + 1}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                <button
-                  className="btn-secondary text-xs"
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    changeView({
-                      rotation: ((view.rotation + 90) % 360) as IdentityViewport['rotation'],
-                    })
-                  }
-                >
-                  90° drehen
-                </button>
-                <button
-                  className="btn-secondary text-xs"
-                  type="button"
-                  disabled={busy}
-                  onClick={() => changeView({ x: 0, y: 0, width: 1, height: 1, rotation: 0 })}
-                >
-                  Ganzes Original
-                </button>
-              </>
-            )}
+                {side === 'front' ? 'Vorderseite auslesen' : 'Rückseite auslesen'}
+              </button>
+            ))}
           </div>
-          {view && canvas && (
-            <>
-              <p className="text-xs text-muted">
-                Im Original einen Ausschnitt ziehen oder die Prozentwerte darunter einstellen.
-              </p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div
-                  className="relative self-start touch-none cursor-crosshair"
-                  role="group"
-                  aria-label="Original mit Ausschnitt"
-                  onPointerDown={(event) => {
-                    if (!busy) {
-                      drag.current = point(event);
-                      event.currentTarget.setPointerCapture(event.pointerId);
-                    }
-                  }}
-                  onPointerUp={finishDrag}
-                  onPointerCancel={() => {
-                    drag.current = null;
-                  }}
-                >
-                  {/* Local memory-only images; no remote image optimizer. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={preview}
-                    alt="Unveränderte Originalseite"
-                    className="block w-full"
-                    draggable={false}
-                  />
-                  <div
-                    className="absolute border-2 border-blue-600 bg-blue-400/10 pointer-events-none"
-                    style={{
-                      left: `${view.x * 100}%`,
-                      top: `${view.y * 100}%`,
-                      width: `${view.width * 100}%`,
-                      height: `${view.height * 100}%`,
-                    }}
-                  />
-                </div>
-                <div>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={croppedPreview}
-                    alt="Gedrehter Ausweisausschnitt"
-                    className="w-full border border-default"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-4 gap-2">
-                {(['x', 'y', 'width', 'height'] as const).map((key) => (
-                  <label key={key} className="text-xs">
-                    {{ x: 'Links %', y: 'Oben %', width: 'Breite %', height: 'Höhe %' }[key]}
-                    <input
-                      className="input"
-                      type="number"
-                      step="1"
-                      min={key === 'width' || key === 'height' ? 1 : 0}
-                      max={100}
-                      value={Math.round(view[key] * 100)}
-                      disabled={busy}
-                      onChange={(event) => {
-                        const minimum = key === 'width' || key === 'height' ? 0.01 : 0;
-                        const value = Math.min(
-                          1,
-                          Math.max(minimum, Number(event.target.value) / 100),
-                        );
-                        const next = { ...view, [key]: value };
-                        next.width = Math.min(next.width, 1 - next.x);
-                        next.height = Math.min(next.height, 1 - next.y);
-                        if (next.width > 0 && next.height > 0) changeView(next);
-                      }}
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className="btn-secondary text-xs"
-                  disabled={busy}
-                  onClick={() => onViewChange({ ...view, documentId: sourceId })}
-                >
-                  Ausschnitt als {view.side === 'front' ? 'Vorderseite' : 'Rückseite'} übernehmen
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary text-xs"
-                  disabled={busy}
-                  onClick={() => void recognize()}
-                >
-                  Daten erkennen
-                </button>
-              </div>
-            </>
+          {open && view && (
+            <details className="text-xs">
+              <summary className="cursor-pointer text-secondary">Ausschnitt anpassen</summary>
+              <div className="mt-3 space-y-3">{viewControls()}</div>
+            </details>
           )}
+        </>
+      ) : (
+        <button
+          type="button"
+          className="btn-secondary text-xs"
+          onClick={() => {
+            if (open) {
+              if (busy) cancel();
+              setOpen(false);
+            } else void openSource(sourceId || sources[0]!.id);
+          }}
+        >
+          {open ? 'Ausweishilfe schließen' : 'Ausweis zuschneiden und Daten erkennen'}
+        </button>
+      )}
+      {open && (
+        <>
+          {!simple && <p className="text-xs text-muted">{text.intro}</p>}
+          {!simple && viewControls()}
           {busy && (
             <div>
               <p className="text-xs" role="status">

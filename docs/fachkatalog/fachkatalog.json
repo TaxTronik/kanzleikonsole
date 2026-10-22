@@ -2991,7 +2991,7 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe. Originale bleiben unverändert; Seitenansichten binden Quelle, Version, PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität. Nur für die Erkennung wird eine Kopie vergrößert, in Graustufen gewandelt und im Kontrast gestreckt. Der Parser kennt das Layout des aktuellen Personalausweises; die maschinenlesbare Zone wird tolerant gegen gelesene Füllzeichen ausgewertet, übernommen wird nur, was eine gültige Prüfziffer hat. Die Angaben beider Ausweisseiten werden gegen diese Zone abgeglichen. Mandanten sehen im öffentlichen Wizard verständliche Hinweise ohne Fachbegriffe, den Ausweisausschnitt neben den Vorschlägen und die übernommenen Felder grün markiert, bis sie sie selbst bearbeiten. In Großbuchstaben gelesene Namen, Orte und Behörden werden in üblicher Schreibweise vorgeschlagen, die Ausweisfassung bleibt daneben sichtbar. Eine bisherige Angabe, die sich nur in Groß-/Kleinschreibung oder in von der Erkennung verlorenen Umlauten unterscheidet, wird nicht zum Ersetzen angeboten."
+        "summary": "Kanzlei und öffentlicher Wizard verwenden dieselbe lokale Ausweishilfe. Originale bleiben unverändert; Seitenansichten binden Quelle, Version, PDF-Seite, Ausschnitt und Drehung. OCR und Speichern bestätigen keine Identität. Nur für die Erkennung wird eine Kopie vergrößert, in Graustufen gewandelt und im Kontrast gestreckt. Der Parser kennt das Layout des aktuellen Personalausweises; die maschinenlesbare Zone wird tolerant gegen gelesene Füllzeichen ausgewertet, übernommen wird nur, was eine gültige Prüfziffer hat. Die Angaben beider Ausweisseiten werden gegen diese Zone abgeglichen. Mandanten sehen im öffentlichen Wizard verständliche Hinweise ohne Fachbegriffe, den Ausweisausschnitt neben den Vorschlägen und die übernommenen Felder grün markiert, bis sie sie selbst bearbeiten. Im Wizard lesen sie jede Ausweisseite mit einem Klick aus; Original, Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen eingeklappt unter „Ausschnitt anpassen“. In Großbuchstaben gelesene Namen, Orte und Behörden werden in üblicher Schreibweise vorgeschlagen, die Ausweisfassung bleibt daneben sichtbar. Eine bisherige Angabe, die sich nur in Groß-/Kleinschreibung oder in von der Erkennung verlorenen Umlauten unterscheidet, wird nicht zum Ersetzen angeboten."
       },
       "sources": [
         {
@@ -3006,7 +3006,7 @@
         "apps/web/src/components/gwg/identity-capture.tsx",
         "apps/web/src/lib/gwg/identity-hints.ts",
         "apps/web/src/lib/gwg/identity-suggestions.ts",
-        "apps/web/src/app/gwg-onboarding/wizard-steps.tsx",
+        "apps/web/src/app/gwg-onboarding/person-steps.tsx",
         "apps/web/src/lib/gwg/identity-image.ts",
         "apps/web/src/lib/gwg/identity-ocr-worker.ts",
         "apps/web/src/lib/gwg/identity-ocr.ts",
@@ -3559,6 +3559,8 @@
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-invitation.tsx",
         "apps/web/src/app/gwg-onboarding/wizard-steps.tsx",
+        "apps/web/src/app/gwg-onboarding/person-steps.tsx",
+        "apps/web/src/app/gwg-onboarding/wizard-shared.tsx",
         "apps/web/src/app/gwg-onboarding/wizard.tsx",
         "apps/web/src/server/gwg-onboarding/invite-lifecycle.ts",
         "apps/web/src/server/gwg-onboarding/owner-submission.ts",
@@ -3594,7 +3596,8 @@
         "apps/web/src/server/gwg-onboarding/__tests__/submission-transaction-structure.test.ts",
         "apps/web/src/server/gwg-onboarding/__tests__/submission-validation.test.ts",
         "apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts",
-        "apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts"
+        "apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts",
+        "apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx"
       ],
       "feature_refs": [
         "FEATURES.md",
