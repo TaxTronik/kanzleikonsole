@@ -5,7 +5,8 @@ import { ConsentFields } from '@/components/consent-fields';
 import { NoticeView } from '@/components/notice-view';
 import type { ConsentSelections, ResolvedConsentOption } from '@/server/privacy/consent';
 import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
-import { Field } from './wizard-shared';
+import { countryName } from '@/lib/countries';
+import { CountrySelect, Field } from './wizard-shared';
 import type { OpenPerson } from './person-steps';
 
 export { MAX_UPLOAD_BYTES, MAX_UPLOAD_LABEL } from './wizard-shared';
@@ -183,7 +184,7 @@ export function MasterDataStep({
       <div className="grid grid-cols-3 gap-3">
         <Field label="PLZ" value={postalCode} onChange={onPostalCodeChange} required />
         <Field label="Ort" value={city} onChange={onCityChange} required />
-        <Field label="Land (ISO 2)" value={countryIso} onChange={onCountryIsoChange} required />
+        <CountrySelect label="Land" value={countryIso} onChange={onCountryIsoChange} required />
       </div>
     </div>
   );
@@ -464,7 +465,10 @@ export function SubmitStep({
       <h2 className="text-lg font-semibold text-primary">Zusammenfassung</h2>
       <dl className="space-y-2 text-sm">
         <SummaryRow label="Firma" value={companyName} />
-        <SummaryRow label="Adresse" value={`${street}, ${postalCode} ${city}, ${countryIso}`} />
+        <SummaryRow
+          label="Adresse"
+          value={`${street}, ${postalCode} ${city}, ${countryName(countryIso) ?? countryIso}`}
+        />
         <SummaryRow label="Wirtschaftlich Berechtigte" value={ownerNames.join(', ')} />
         {clientKind !== 'NATPERS' && (
           <SummaryRow

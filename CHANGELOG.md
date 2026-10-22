@@ -433,6 +433,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[GwG]** Mandanten-Onboarding: Land und Staatsangehörigkeit sind Auswahlfelder
+  mit deutschen Ländernamen statt Freitext („Land (ISO 2)“); gespeichert wird der
+  ISO-Code, mehrere Staatsangehörigkeiten sowie „staatenlos“/„ungeklärt“ sind
+  möglich, ältere Freitextangaben bleiben sichtbar. Die Ausweishilfe schlägt
+  DEUTSCH als „Deutschland“ (DE) vor und ergänzt beim zweistellig gedruckten
+  Ausstellungsdatum das Jahr, wenn es eindeutig ist (höchstens zehn Jahre alt),
+  mit sichtbarer Ausweisfassung; die fachliche Prüfung dieser Ergänzung steht
+  aus (GWG-OCR-ASSIST-001, GWG-SELF-ONBOARDING-001).
 - **[GwG]** Mandanten-Onboarding bedienbarer: Beim Weiter nennt der Personenschritt
   alle offenen Angaben je Person verständlich und ohne Paragrafen und springt
   per „Person 2 ergänzen“ in den passenden Abschnitt. Ausweisfotos lassen sich auf

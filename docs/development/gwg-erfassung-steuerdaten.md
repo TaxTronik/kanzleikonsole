@@ -140,7 +140,12 @@ Alltagssprache mit Sprung in den Abschnitt der ersten Lücke; im Abschnitt steht
 gewählten Datei) und bieten auf Touch-Geräten „Foto aufnehmen“ (`capture`,
 JPG); die Dateiauswahl nimmt kein HEIC mehr an, damit iPhones JPG liefern.
 „Seiten tauschen“ vertauscht Dateien und Seitenverweise. Bis zum Übermitteln
-fragt der Browser beim Verlassen nach (`beforeunload`). Mandanten
+fragt der Browser beim Verlassen nach (`beforeunload`). Land und
+Staatsangehörigkeit sind Auswahlfelder (`lib/countries.ts`, statische deutsche
+Namen zu ISO-Codes, damit Server und Browser gleich rendern); mehrere
+Staatsangehörigkeiten werden als „DE, TR“ gespeichert. Die Ausweishilfe schlägt
+DEUTSCH als DE vor und ergänzt das zweistellige Ausstellungsjahr nur, wenn es
+eindeutig ist (`completeIssueYear`). Mandanten
 lesen jede Seite mit „Vorderseite auslesen“ bzw. „Rückseite auslesen“ aus
 (`sideSources`); Original, Ausweisseite, PDF-Seite, Drehung und Ausschnitt liegen
 eingeklappt unter „Ausschnitt anpassen“. Die Kanzlei behält die bisherige,

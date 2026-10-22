@@ -36,7 +36,7 @@ import type {
   OnboardingPersonSection,
 } from '@/server/gwg-onboarding/wizard-validation';
 import { loadOnboardingIdentitySourceAction } from './actions';
-import { Field, MAX_UPLOAD_LABEL } from './wizard-shared';
+import { CountrySelect, Field, MAX_UPLOAD_LABEL, NationalitySelect } from './wizard-shared';
 import type {
   BeneficialOwner,
   IdentitySide,
@@ -614,7 +614,7 @@ function OwnerDetails({
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Geburtsdatum" type="date" {...bind('birthDate')} required />
         <Field label="Geburtsort" {...bind('birthPlace')} required />
-        <Field label="Staatsangehörigkeit" {...bind('nationality')} placeholder="DE" required />
+        <NationalitySelect label="Staatsangehörigkeit" {...bind('nationality')} required />
       </div>
       <fieldset className="space-y-3">
         <legend className="text-sm font-medium text-primary">Wohnanschrift</legend>
@@ -622,7 +622,7 @@ function OwnerDetails({
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="PLZ" {...bind('postalCode')} required />
           <Field label="Ort" {...bind('city')} required />
-          <Field
+          <CountrySelect
             label="Land"
             value={owner.countryIso}
             onChange={(value) => onPatch({ countryIso: value })}

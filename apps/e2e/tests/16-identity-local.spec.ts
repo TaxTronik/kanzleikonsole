@@ -42,9 +42,10 @@ test.describe('lokale Ausweiserfassung mit synthetischen Dateien', () => {
     await page.getByRole('combobox', { name: 'Testformat' }).selectOption('mrz');
     await page.getByRole('button', { name: 'Ausweis zuschneiden und Daten erkennen' }).click();
     await page.getByRole('button', { name: 'Daten erkennen', exact: true }).click();
-    // Großbuchstaben des Ausweises erscheinen in üblicher Schreibweise.
+    // Großbuchstaben des Ausweises erscheinen in üblicher Schreibweise, die
+    // Staatsangehörigkeit als Ländername (übernommen wird der ISO-Code).
     await expect(
-      page.getByRole('checkbox', { name: 'Staatsangehörigkeit: deutsch', exact: true }),
+      page.getByRole('checkbox', { name: 'Staatsangehörigkeit: Deutschland', exact: true }),
     ).toBeVisible({
       timeout: 90_000,
     });

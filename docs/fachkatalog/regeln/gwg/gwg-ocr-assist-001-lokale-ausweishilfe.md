@@ -105,28 +105,35 @@ Drehung. Die Hilfe verarbeitet höchstens 25 MiB und 100 PDF-Seiten; der
 
 ## Entscheidungslogik
 
-| Wenn                                                         | Dann                                                                             |
-| ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
-| OCR liefert Werte                                            | Als ungeprüfte, einzeln auswählbare Vorschläge zeigen                            |
-| Bestehender Wert unterscheidet sich                          | Bestehenden Wert zeigen; nur ausgewählte Felder ersetzen                         |
-| Unterschied nur Groß-/Kleinschreibung oder Umlaut im Bestand | Nicht zum Ersetzen anbieten; als übereinstimmend nennen                          |
-| Name, Ort oder Behörde in Großbuchstaben gelesen             | In üblicher Schreibweise vorschlagen; Ausweisfassung daneben zeigen              |
-| Datum, Prüfziffer oder Feld ist widersprüchlich              | Warnen; keine Bestätigung ableiten                                               |
-| MRZ-Wert hat eine gültige Prüfziffer                         | Als Vorschlag nutzen; abweichende Sichtnummer ersetzen und warnen                |
-| Verwechselbare Zeichen (T/7, Z/2, O/0, I/1, S/5, B/8)        | Nur korrigieren, wenn genau eine Lesart die Prüfziffern erfüllt                  |
-| Andere Seite oder bisherige Angabe widerspricht der MRZ      | Warnen; keinen Wert ersetzen                                                     |
-| Ausstellungsdatum mit zweistelliger Jahreszahl               | Kein Vorschlag; Hinweis, vom Original zu übernehmen                              |
-| Mandant übernimmt Vorschläge im öffentlichen Wizard          | Felder markieren, bis er sie bearbeitet; keine Vorauswahl, keine Bestätigung     |
-| Zwei Seiten stammen aus derselben Quelle                     | Nur bei verschiedenen Seiten oder Ausschnitten derselben Version akzeptieren     |
-| Inhalt passt zur anderen Ausweisseite als gewählt            | Hervorgehoben hinweisen; im Wizard „Seiten tauschen“ anbieten, nichts ändern     |
-| Quelle ist fremd, veraltet oder nicht sauber                 | Ansicht bzw. Speicherung abweisen; manuelle Neuerfassung bleibt möglich          |
-| Daten werden übernommen oder gespeichert                     | Prüfbestätigung nicht setzen; eine bestehende Bestätigung bei Änderung entwerten |
-| Mitarbeiter bestätigt den gespeicherten Stand ausdrücklich   | Identitätsprüfung nach den bestehenden Gates dokumentieren                       |
+| Wenn                                                            | Dann                                                                             |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| OCR liefert Werte                                               | Als ungeprüfte, einzeln auswählbare Vorschläge zeigen                            |
+| Bestehender Wert unterscheidet sich                             | Bestehenden Wert zeigen; nur ausgewählte Felder ersetzen                         |
+| Unterschied nur Groß-/Kleinschreibung oder Umlaut im Bestand    | Nicht zum Ersetzen anbieten; als übereinstimmend nennen                          |
+| Name, Ort oder Behörde in Großbuchstaben gelesen                | In üblicher Schreibweise vorschlagen; Ausweisfassung daneben zeigen              |
+| Datum, Prüfziffer oder Feld ist widersprüchlich                 | Warnen; keine Bestätigung ableiten                                               |
+| MRZ-Wert hat eine gültige Prüfziffer                            | Als Vorschlag nutzen; abweichende Sichtnummer ersetzen und warnen                |
+| Verwechselbare Zeichen (T/7, Z/2, O/0, I/1, S/5, B/8)           | Nur korrigieren, wenn genau eine Lesart die Prüfziffern erfüllt                  |
+| Andere Seite oder bisherige Angabe widerspricht der MRZ         | Warnen; keinen Wert ersetzen                                                     |
+| Ausstellungsdatum mit zweistelliger Jahreszahl, Jahr eindeutig  | Jahr ergänzen, Ausweisfassung zeigen; nur ausdrücklich übernehmen                |
+| Ausstellungsdatum mit zweistelliger Jahreszahl, nicht eindeutig | Kein Vorschlag; Hinweis, vom Original zu übernehmen                              |
+| Mandant übernimmt Vorschläge im öffentlichen Wizard             | Felder markieren, bis er sie bearbeitet; keine Vorauswahl, keine Bestätigung     |
+| Zwei Seiten stammen aus derselben Quelle                        | Nur bei verschiedenen Seiten oder Ausschnitten derselben Version akzeptieren     |
+| Inhalt passt zur anderen Ausweisseite als gewählt               | Hervorgehoben hinweisen; im Wizard „Seiten tauschen“ anbieten, nichts ändern     |
+| Quelle ist fremd, veraltet oder nicht sauber                    | Ansicht bzw. Speicherung abweisen; manuelle Neuerfassung bleibt möglich          |
+| Daten werden übernommen oder gespeichert                        | Prüfbestätigung nicht setzen; eine bestehende Bestätigung bei Änderung entwerten |
+| Mitarbeiter bestätigt den gespeicherten Stand ausdrücklich      | Identitätsprüfung nach den bestehenden Gates dokumentieren                       |
 
 ## Ausnahmen und Grenzfälle
 
-Ein Jahrhundert wird nicht aus einer zweistelligen MRZ-Jahreszahl erraten,
-ebenso wenig aus dem auf dem Ausweis zweistellig gedruckten Ausstellungsdatum.
+Ein Jahrhundert wird nicht aus einer zweistelligen MRZ-Jahreszahl erraten.
+Beim auf dem Ausweis zweistellig gedruckten Ausstellungsdatum (TT.MM.JJ) wird das
+Jahr nur ergänzt, wenn genau eine Lesart nicht in der Zukunft liegt und höchstens
+zehn Jahre zurückliegt (längste Gültigkeit eines Personalausweises); die
+Ausweisfassung steht neben dem Vorschlag, der wie jeder Vorschlag nur ausdrücklich
+übernommen wird. Ältere oder ungültige Daten bleiben ohne Vorschlag. Diese
+Ergänzung ist eine Produktentscheidung vom 2026-10-22; ihre fachliche Prüfung
+steht aus (siehe Prüffragen).
 Transliterierte Namen müssen am Original geprüft werden. G und 6 ändern keine
 Prüfziffer; diese Verwechslung wird daher nie korrigiert, die gelesene Fassung
 bleibt. Eine Staatsangehörigkeit wird nur in Adjektivform (z. B. DEUTSCH) oder
@@ -135,9 +142,10 @@ werden nicht ergänzt. Die übliche Schreibweise ist eine Regel, kein Wissen üb
 den Namen: Kleingeschrieben werden in Namen nur von, vom, zu, zum, zur (samt
 folgendem der/den/dem), in Orten, Straßen und Behörden Bindewörter wie am, an der,
 v. d.; Namensteile wie „Van“ oder „Le“ bleiben groß. Abweichende Schreibweisen
-korrigiert der Nutzer im Formular. Die Staatsangehörigkeit erscheint als Adjektiv
-(„deutsch“); eine bisherige Angabe D, DE, DEU oder Deutschland gilt dafür als
-übereinstimmend. Als gleich
+korrigiert der Nutzer im Formular. Die Staatsangehörigkeit DEUTSCH wird als
+ISO-Code DE vorgeschlagen und als „Deutschland“ angezeigt; eine bisherige Angabe,
+die D, DE, DEU, deutsch oder Deutschland enthält (auch neben weiteren
+Staatsangehörigkeiten), gilt als übereinstimmend. Als gleich
 gilt eine bisherige Angabe nur, wenn ihre Umlaute oder ihr ß im Vorschlag als
 Grundbuchstabe, ae/oe/ue oder ss stehen; umgekehrt bleibt ein Vorschlag mit
 Umlaut ein Ersatzangebot. Ob ein Ausschnitt nach der anderen Ausweisseite aussieht,
@@ -184,6 +192,8 @@ Nutzung sind Kanzleiablauf und Aufbewahrung fachlich zu beurteilen.
 
 - Welche organisatorischen Anforderungen gelten für die Sichtprüfung?
 - Sind Hinweise und manuelle Korrekturen für die eingesetzten Scans ausreichend?
+- Ist die Ergänzung des zweistellig gedruckten Ausstellungsjahres (nur eindeutig,
+  höchstens zehn Jahre alt, ausdrückliche Übernahme) fachlich vertretbar?
 
 ## Technische Nachweise
 
@@ -220,6 +230,10 @@ bleibt und Ausweisfassung sowie bisherige Angabe als Beschreibung zugeordnet sin
 Im Mandantendurchlauf mit dem Muster blieben der Name aus der Einladung und die
 vorbelegte Staatsangehörigkeit DE unverändert; der Schreibweisenhinweis zum Namen
 aus der Rückseite entfällt dann, weil der Name nicht angeboten wird.
+Tests prüfen die Ergänzung des Ausstellungsjahres (eindeutig, älter als zehn
+Jahre, in der Zukunft, kein Kalenderdatum) und dass ohne eindeutiges Jahr nur der
+Hinweis bleibt; beim Muster wird „02.05.24“ zu 2024-05-02 mit sichtbarer
+Ausweisfassung.
 Tests prüfen die Erkennung der Ausweisseite aus dem Inhalt (auch den Fall ohne
 Aussage) und welche Hinweise hervorgehoben werden; ein Wizard-Test prüft das
 Tauschen vertauschter Fotos samt Seitenverweisen. Im Mandantendurchlauf mit dem

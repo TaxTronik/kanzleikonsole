@@ -15,7 +15,8 @@ describe('GWG-OCR-ASSIST-001 Schreibweise der Ausweisvorschläge', () => {
     expect(naturalCase('idIssuedBy', 'LANDRATSAMT RHEIN-NECKAR-KREIS')).toBe(
       'Landratsamt Rhein-Neckar-Kreis',
     );
-    expect(naturalCase('nationality', 'DEUTSCH')).toBe('deutsch');
+    // Gespeichert wird der ISO-Code; die Anzeige nennt den Ländernamen.
+    expect(naturalCase('nationality', 'DEUTSCH')).toBe('DE');
   });
 
   it('setzt in Namen nur deutsche Adelsprädikate klein', () => {
@@ -71,7 +72,23 @@ describe('GWG-OCR-ASSIST-001 Abgleich mit bisherigen Angaben', () => {
     expect(rows.matching).toEqual(['fullName', 'nationality', 'city']);
     expect(rows.offered).toEqual([
       { field: 'idNumber', value: 'LZ6311T47' },
-      { field: 'idIssuedBy', value: 'Stadt Koln', printed: 'STADT KOLN' },
+      { field: 'idIssuedBy', value: 'Stadt Koln', printed: 'STADT KOLN', adjusted: 'case' },
     ]);
+  });
+});
+
+describe('GWG-OCR-ASSIST-001 ergänztes Ausstellungsjahr und mehrere Staatsangehörigkeiten', () => {
+  it('zeigt beim ergänzten Jahr die Ausweisfassung und übernimmt das ISO-Datum', () => {
+    expect(suggestionRows({ idIssueDate: '2024-05-02' }, {}, { idIssueDate: '02.05.24' })).toEqual({
+      offered: [
+        { field: 'idIssueDate', value: '2024-05-02', printed: '02.05.24', adjusted: 'year' },
+      ],
+      matching: [],
+    });
+  });
+
+  it('erkennt DE in einer Liste bisheriger Staatsangehörigkeiten als übereinstimmend', () => {
+    expect(sameIdentityValue('nationality', 'DE, TR', 'DEUTSCH')).toBe(true);
+    expect(sameIdentityValue('nationality', 'TR', 'DEUTSCH')).toBe(false);
   });
 });

@@ -477,6 +477,42 @@ describe('GwG-Onboarding – Personenübersicht', () => {
   });
 });
 
+describe('GwG-Onboarding – Länder als Auswahl', () => {
+  it('erfasst Land und Staatsangehörigkeiten mit ISO-Codes und deutschen Namen', async () => {
+    renderWizard(null);
+    next();
+    const person = openPerson('Person 1');
+    fireEvent.click(within(person).getByRole('button', { name: /Weiter: Angaben/ }));
+    const nationality = within(person).getByLabelText(/^Staatsangehörigkeit/) as HTMLSelectElement;
+    expect(nationality.value).toBe('DE');
+    expect(nationality.selectedOptions[0]!.textContent).toBe('Deutschland');
+    expect((within(person).getByLabelText(/^Land/) as HTMLSelectElement).value).toBe('DE');
+
+    fireEvent.click(within(person).getByRole('button', { name: /Weitere Staatsangehörigkeit/ }));
+    fireEvent.change(within(person).getByLabelText('Weitere Staatsangehörigkeit'), {
+      target: { value: 'TR' },
+    });
+    const second = within(person).getByLabelText(
+      'Weitere Staatsangehörigkeit 1',
+    ) as HTMLSelectElement;
+    expect(second.selectedOptions[0]!.textContent).toBe('Türkei');
+    fireEvent.click(
+      within(person).getByRole('button', { name: 'Weitere Staatsangehörigkeit 1 entfernen' }),
+    );
+    expect(within(person).queryByLabelText('Weitere Staatsangehörigkeit 1')).toBeNull();
+  });
+
+  it('zeigt eine ältere Freitextangabe weiter an, statt sie still zu verwerfen', () => {
+    renderWizard(draft({ owners: [{ ...OWNER, nationality: 'deutsch' }] }));
+    next();
+    const person = openPerson('Person 1');
+    fireEvent.click(within(person).getByRole('button', { name: /^2\. Angaben/ }));
+    const nationality = within(person).getByLabelText(/^Staatsangehörigkeit/) as HTMLSelectElement;
+    expect(nationality.value).toBe('deutsch');
+    expect(nationality.selectedOptions[0]!.textContent).toBe('deutsch (bisherige Angabe)');
+  });
+});
+
 describe('GwG-Onboarding – Fotos, Seitentausch und Verlassen', () => {
   const slot = (scope: HTMLElement, label: string) =>
     [...scope.querySelectorAll('p')].find(

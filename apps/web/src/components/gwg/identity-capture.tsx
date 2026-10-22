@@ -17,6 +17,7 @@ import {
   type IdentityAudience,
 } from '@/lib/gwg/identity-hints';
 import { suggestionRows } from '@/lib/gwg/identity-suggestions';
+import { countryName } from '@/lib/countries';
 import {
   fullIdentityViewport,
   type IdentitySourceView,
@@ -39,6 +40,12 @@ const DATE_FIELDS: ReadonlySet<IdentityField> = new Set([
 
 /** Mandanten sehen Daten wie auf dem Ausweis (TT.MM.JJJJ); übernommen wird ISO. */
 function displayValue(field: IdentityField, value: string, audience: IdentityAudience): string {
+  // Staatsangehörigkeit als Ländername („DE, TR“ → „Deutschland, Türkei“).
+  if (field === 'nationality')
+    return value
+      .split(',')
+      .map((part) => countryName(part) ?? part.trim())
+      .join(', ');
   const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   return audience === 'client' && DATE_FIELDS.has(field) && iso
     ? `${iso[3]}.${iso[2]}.${iso[1]}`
@@ -98,6 +105,7 @@ function WarningList({
  */
 export function SuggestionChoices({
   fields,
+  derived,
   current,
   audience,
   selected,
@@ -105,6 +113,8 @@ export function SuggestionChoices({
   onApply,
 }: {
   fields: IdentitySuggestions;
+  /** Ausweisfassung abgeleiteter Werte (ergänztes Jahr). */
+  derived?: IdentityOcrResult['printed'];
   current: IdentitySuggestions;
   audience: IdentityAudience;
   selected: IdentityField[];
@@ -113,7 +123,7 @@ export function SuggestionChoices({
 }) {
   const text = IDENTITY_UI_TEXT[audience];
   const rowId = useId();
-  const { offered, matching } = suggestionRows(fields, current);
+  const { offered, matching } = suggestionRows(fields, current, derived);
   return (
     <>
       {matching.length > 0 && (
@@ -122,12 +132,12 @@ export function SuggestionChoices({
         </p>
       )}
       {offered.length > 0 && <p className="text-xs font-medium">{text.compare}</p>}
-      {offered.map(({ field, value, printed }) => {
+      {offered.map(({ field, value, printed, adjusted }) => {
         // Hinweise als Beschreibung: der Name der Checkbox bleibt „Feld: Wert“.
         const notes = [
           printed && {
             id: `${rowId}-${field}-printed`,
-            text: text.printed(printed),
+            text: adjusted === 'year' ? text.yearCompleted(printed) : text.printed(printed),
             tone: 'text-muted',
           },
           current[field] && {
@@ -380,7 +390,7 @@ export function IdentityCapture({
         if (next.mrz) lastMrz.current = next.mrz;
         else lastFields.current = next.fields;
         const seen = new Set<string>();
-        const { matching } = suggestionRows(next.fields, current);
+        const { matching } = suggestionRows(next.fields, current, next.printed);
         const warnings: IdentityWarning[] = [
           ...sideMismatch(next, target.view.side),
           ...next.warnings,
@@ -673,6 +683,7 @@ export function IdentityCapture({
                   </p>
                   <SuggestionChoices
                     fields={result.fields}
+                    derived={result.printed}
                     current={current}
                     audience={audience}
                     selected={selected}

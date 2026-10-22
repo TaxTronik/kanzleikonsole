@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 // Fachkatalog: GWG-OCR-ASSIST-001, GWG-IDENTIFICATION-EVIDENCE-001
 import {
   compareWithMrz,
+  completeIssueYear,
   detectedSide,
   mrzCheckDigit,
   parseGermanIdentityText,
@@ -204,32 +205,32 @@ describe('GWG-OCR-ASSIST-001 aktueller Personalausweis (Muster des Bundes)', () 
   });
 
   it('Rückseite: Behörde, PLZ/Ort, prüfziffergesicherte Nummer, Staatsangehörigkeit, Name aus der MRZ', () => {
-    const result = parseGermanIdentityText(SPECIMEN_BACK);
+    const result = parseGermanIdentityText(SPECIMEN_BACK, new Date('2026-10-22T12:00:00Z'));
     expect(result.fields).toEqual({
       idIssuedBy: 'STADT KOLN',
+      idIssueDate: '2024-05-02',
       postalCode: '51147',
       city: 'KOLN',
       idNumber: 'LZ6311T47',
       nationality: 'DEUTSCH',
       fullName: 'ERIKA MUSTERMANN',
     });
+    // Ausstellungsdatum „02.05.24“: Jahr eindeutig ergänzt, Ausweisfassung bleibt sichtbar.
+    expect(result.printed).toEqual({ idIssueDate: '02.05.24' });
     expect(result.mrz).toEqual({
       documentNumber: 'LZ6311T47',
       birthDate: '830812',
       expiryDate: '340501',
     });
-    // Kein geratenes Jahrhundert – weder aus der MRZ noch aus „02.05.24“.
+    // Kein geratenes Jahrhundert aus der MRZ.
     expect(result.fields.birthDate).toBeUndefined();
-    expect(result.fields.idIssueDate).toBeUndefined();
     expect(result.warnings.map((warning) => warning.code)).toEqual([
-      'issue-date-short-year',
       'mrz-date-century',
       'mrz-date-century',
       'mrz-name',
     ]);
     expect(result.warnings.map((warning) => warning.text)).toEqual(
       expect.arrayContaining([
-        expect.stringContaining('zweistelliger Jahreszahl'),
         expect.stringContaining('Jahrhundert in MRZ fehlt'),
         expect.stringContaining('Name aus maschinenlesbarer Zeile'),
       ]),
@@ -323,5 +324,25 @@ describe('GWG-OCR-ASSIST-001 Ausweisseite aus dem Inhalt', () => {
     // Gemischt oder leer: keine Aussage, kein Hinweis.
     expect(detectedSide({ fields: { city: 'KOLN', birthPlace: 'BERLIN' } })).toBeNull();
     expect(detectedSide({ fields: { fullName: 'ERIKA MUSTERMANN' } })).toBeNull();
+  });
+});
+
+describe('GWG-OCR-ASSIST-001 Ausstellungsdatum mit zweistelliger Jahreszahl', () => {
+  const now = new Date('2026-10-22T12:00:00Z');
+
+  it('ergänzt das Jahr nur, wenn genau eine Lesart höchstens zehn Jahre zurückliegt', () => {
+    expect(completeIssueYear('02.05.24', now)).toBe('2024-05-02');
+    expect(completeIssueYear('22.10.16', now)).toBe('2016-10-22');
+    // Älter als zehn Jahre, in der Zukunft oder kein Kalenderdatum: kein Vorschlag.
+    expect(completeIssueYear('21.10.16', now)).toBeUndefined();
+    expect(completeIssueYear('05.11.26', now)).toBeUndefined();
+    expect(completeIssueYear('31.02.24', now)).toBeUndefined();
+  });
+
+  it('lässt ohne eindeutiges Jahr den Hinweis stehen und schlägt nichts vor', () => {
+    const later = parseGermanIdentityText(SPECIMEN_BACK, new Date('2035-01-01T12:00:00Z'));
+    expect(later.fields.idIssueDate).toBeUndefined();
+    expect(later.printed).toBeUndefined();
+    expect(later.warnings.map((warning) => warning.code)).toContain('issue-date-short-year');
   });
 });

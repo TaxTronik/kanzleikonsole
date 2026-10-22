@@ -81,8 +81,9 @@ function naturalWords(value: string, field: IdentityField): string {
 export function naturalCase(field: IdentityField, value: string): string {
   const text = value.trim().replace(/\s+/g, ' ');
   if (!isUppercaseText(text)) return value;
-  // Staatsangehörigkeit steht als Adjektiv auf dem Ausweis: „deutsch“.
-  if (field === 'nationality') return lower(text);
+  // Staatsangehörigkeit steht als Adjektiv auf dem Ausweis; gespeichert wird
+  // der ISO-Code (DEUTSCH → DE), andere Adjektive klein wie im Fließtext.
+  if (field === 'nationality') return lower(text) === 'deutsch' ? 'DE' : lower(text);
   return CASED_FIELDS.has(field) ? naturalWords(text, field) : value;
 }
 
@@ -104,7 +105,12 @@ export function sameIdentityValue(
   const before = folded(existing);
   const after = folded(suggestion);
   if (before === after) return true;
-  if (field === 'nationality') return GERMAN_NATIONALITY.has(before) && after === 'deutsch';
+  if (field === 'nationality')
+    // Bisherige Angabe kann mehrere Staatsangehörigkeiten nennen („DE, TR“).
+    return (
+      GERMAN_NATIONALITY.has(after) &&
+      before.split(/[,;/]/).some((entry) => GERMAN_NATIONALITY.has(entry.trim()))
+    );
   const withoutUmlauts = before.replace(/[äöü]/g, (c) => ({ ä: 'a', ö: 'o', ü: 'u' })[c]!);
   const transliterated = before.replace(/[äöü]/g, (c) => ({ ä: 'ae', ö: 'oe', ü: 'ue' })[c]!);
   return after === withoutUmlauts || after === transliterated;
@@ -114,8 +120,10 @@ export interface IdentitySuggestionRow {
   field: IdentityField;
   /** Wird übernommen: übliche Schreibweise. */
   value: string;
-  /** Wie auf dem Ausweis gelesen, wenn die Schreibweise angepasst wurde. */
+  /** Wie auf dem Ausweis gelesen, wenn der Wert angepasst wurde. */
   printed?: string;
+  /** Was angepasst wurde: Schreibweise oder ergänztes Jahr (Ausstellungsdatum). */
+  adjusted?: 'case' | 'year';
 }
 
 /**
@@ -125,18 +133,27 @@ export interface IdentitySuggestionRow {
 export function suggestionRows(
   fields: IdentitySuggestions,
   current: IdentitySuggestions,
+  /** Ausweisfassung abgeleiteter Werte aus der Erkennung (z. B. „02.05.24“). */
+  derived: Partial<Record<IdentityField, string>> = {},
 ): { offered: IdentitySuggestionRow[]; matching: IdentityField[] } {
   const offered: IdentitySuggestionRow[] = [];
   const matching: IdentityField[] = [];
-  for (const [field, printed] of Object.entries(fields) as [IdentityField, string][]) {
-    if (!printed) continue;
+  for (const [field, read] of Object.entries(fields) as [IdentityField, string][]) {
+    if (!read) continue;
     const existing = current[field];
-    if (existing && sameIdentityValue(field, existing, printed)) {
+    if (existing && sameIdentityValue(field, existing, read)) {
       matching.push(field);
       continue;
     }
-    const value = naturalCase(field, printed);
-    offered.push(value === printed ? { field, value } : { field, value, printed });
+    const year = derived[field];
+    const value = naturalCase(field, read);
+    offered.push(
+      year
+        ? { field, value: read, printed: year, adjusted: 'year' }
+        : value === read
+          ? { field, value }
+          : { field, value, printed: read, adjusted: 'case' },
+    );
   }
   return { offered, matching };
 }

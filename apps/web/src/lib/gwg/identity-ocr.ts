@@ -66,6 +66,29 @@ export interface IdentityOcrResult {
    * nur für den Abgleich mit der anderen Ausweisseite bzw. bisherigen Angaben.
    */
   mrz?: Pick<IdentityMrz, 'documentNumber' | 'birthDate' | 'expiryDate'>;
+  /**
+   * Ausweisfassung abgeleiteter Werte (z. B. „02.05.24“ für ein Ausstellungs-
+   * datum mit ergänztem Jahr); die Erfassung zeigt sie neben dem Vorschlag.
+   */
+  printed?: Partial<Record<IdentityField, string>>;
+}
+
+const MAX_ID_VALIDITY_YEARS = 10;
+
+/**
+ * Ausstellungsdatum TT.MM.JJ vom Ausweis: Das Jahrhundert ist eindeutig, wenn
+ * genau eine Lesart nicht in der Zukunft liegt und höchstens zehn Jahre
+ * zurückliegt (längste Gültigkeit eines Personalausweises). Sonst kein Wert.
+ */
+export function completeIssueYear(short: string, now: Date): string | undefined {
+  const match = /^(\d{2})\.(\d{2})\.(\d{2})$/.exec(short);
+  if (!match) return;
+  const today = now.toISOString().slice(0, 10);
+  const oldest = `${now.getUTCFullYear() - MAX_ID_VALIDITY_YEARS}${today.slice(4)}`;
+  const candidates = ['19', '20']
+    .map((century) => isoDate(`${match[1]}.${match[2]}.${century}${match[3]}`))
+    .filter((iso): iso is string => Boolean(iso && iso <= today && iso >= oldest));
+  return candidates.length === 1 ? candidates[0] : undefined;
 }
 
 function isoDate(text: string): string | undefined {
@@ -298,20 +321,30 @@ function dateFields(
   lines: string[],
   fields: IdentitySuggestions,
   warnings: IdentityWarning[],
+  printed: Partial<Record<IdentityField, string>>,
+  now: Date,
 ): void {
   fields.birthDate = dateAfter(lines, LABEL.birthDate, COMPANION.birthDate);
   fields.idExpiryDate = dateAfter(lines, LABEL.expiry, COMPANION.expiry);
   fields.idIssueDate = dateAfter(lines, LABEL.issueDate);
   if (fields.idIssueDate) return;
-  // Auf dem Ausweis steht das Ausstellungsdatum mit zweistelliger Jahreszahl;
-  // ein Jahrhundert wird nicht geraten (wie bei der MRZ).
+  // Auf dem Ausweis steht das Ausstellungsdatum mit zweistelliger Jahreszahl.
+  // Das Jahr wird nur ergänzt, wenn es eindeutig ist; die Ausweisfassung bleibt
+  // sichtbar, übernommen wird nur ausdrücklich (wie jeder Vorschlag).
   const issueIndex = lines.findIndex((line) => LABEL.issueDate.test(line));
-  if (
-    issueIndex >= 0 &&
-    lines
-      .slice(issueIndex, issueIndex + 3)
-      .some((line) => /\b\d{2}\.\d{2}\.\d{2}\b(?!\.?\d)/.test(line))
-  )
+  const short =
+    issueIndex < 0
+      ? undefined
+      : lines
+          .slice(issueIndex, issueIndex + 3)
+          .map((line) => /\b(\d{2}\.\d{2}\.\d{2})\b(?!\.?\d)/.exec(line)?.[1])
+          .find(Boolean);
+  if (!short) return;
+  const completed = completeIssueYear(short, now);
+  if (completed) {
+    fields.idIssueDate = completed;
+    printed.idIssueDate = short;
+  } else
     warnings.push({
       code: 'issue-date-short-year',
       field: 'idIssueDate',
@@ -377,15 +410,16 @@ function addressFields(lines: string[], fields: IdentitySuggestions): void {
     );
 }
 
-export function parseGermanIdentityText(text: string): IdentityOcrResult {
+export function parseGermanIdentityText(text: string, now = new Date()): IdentityOcrResult {
   const lines = text
     .split(/\r?\n/)
     .map((line) => stripMarker(line.trim()))
     .filter(Boolean);
   const fields: IdentitySuggestions = {};
   const warnings: IdentityWarning[] = [];
+  const printed: Partial<Record<IdentityField, string>> = {};
   textFields(lines, fields);
-  dateFields(lines, fields, warnings);
+  dateFields(lines, fields, warnings, printed, now);
   fields.nationality = nationalityField(lines);
   fields.idNumber = visualIdNumber(lines);
   addressFields(lines, fields);
@@ -399,5 +433,10 @@ export function parseGermanIdentityText(text: string): IdentityOcrResult {
       code: 'nothing-found',
       text: 'Keine sicheren Feldvorschläge erkannt. Bitte manuell erfassen.',
     });
-  return mrz && Object.keys(mrz).length ? { fields, warnings, mrz } : { fields, warnings };
+  return {
+    fields,
+    warnings,
+    ...(mrz && Object.keys(mrz).length ? { mrz } : {}),
+    ...(Object.keys(printed).length ? { printed } : {}),
+  };
 }

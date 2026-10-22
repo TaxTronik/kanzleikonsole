@@ -210,7 +210,11 @@ ist, fragt der Browser beim Schließen oder Neuladen nach, weil Eingaben bisher
 nur im Tab liegen. Ausweisfotos lassen sich auf Touch-Geräten direkt mit der
 Kamera aufnehmen; ein Vorschaubild zeigt die hochgeladene Seite, und vertauschte
 Fotos lassen sich samt Seitenverweisen tauschen. Die Fortschrittsleiste behält
-bereits geprüfte Schritte als erledigt.
+bereits geprüfte Schritte als erledigt. Länder werden als Auswahl mit deutschen
+Namen erfasst und als ISO-Code gespeichert (Wohnsitz, Sitz); die
+Staatsangehörigkeit erlaubt mehrere Einträge („DE, TR“) sowie „staatenlos“ und
+„ungeklärt“. Ältere Freitextangaben bleiben als „bisherige Angabe“ sichtbar und
+werden nicht still ersetzt.
 
 Beide Wege nutzen dieselbe lokale Ausweishilfe (GWG-OCR-ASSIST-001). Zwei
 Seitenverweise dürfen dasselbe PDF-Original verwenden, wenn Version und
