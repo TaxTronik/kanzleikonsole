@@ -196,6 +196,9 @@ const ALLOWED_PRISMA_CLIENT_FILES = new Set<string>([
   // Invite-Discard-Regression: Owner für Fixtures und App-Rolle für den
   // SECURITY-DEFINER-/RLS-Nachweis auf einer isolierten Testdatenbank.
   'packages/db/src/__tests__/gwg-onboarding-document-discard.test.ts',
+  // GWG-SELF-ONBOARDING-001: Owner für Fixtures und App-Rolle für den Nachweis
+  // von RLS, CHECKs und Lösch-Trigger des Zwischenstands auf einer Test-DB.
+  'packages/db/src/__tests__/gwg-onboarding-draft.test.ts',
   // GwG-Zuordnungsinvarianten: eigener Owner-Client gegen eine isolierte
   // Test-DB, damit auch direkte SQL-Umgehungsversuche geprüft werden.
   'packages/db/src/__tests__/gwg-identity-assignment.test.ts',
