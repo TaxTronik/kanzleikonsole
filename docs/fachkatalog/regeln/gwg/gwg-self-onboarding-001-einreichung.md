@@ -40,6 +40,8 @@ sources:
 code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-invitation.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts
+  - apps/web/src/lib/domain-labels.ts
   - apps/web/src/app/gwg-onboarding/wizard-steps.tsx
   - apps/web/src/app/gwg-onboarding/person-steps.tsx
   - apps/web/src/app/gwg-onboarding/wizard-shared.tsx
@@ -81,6 +83,7 @@ test_refs:
   - apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts
   - apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx
   - apps/web/src/server/gwg-onboarding/__tests__/wizard-person-issues.test.ts
+  - apps/web/src/lib/__tests__/gwg-invite-status.test.ts
 feature_refs:
   - FEATURES.md
   - docs/compliance/gwg.md
@@ -183,6 +186,12 @@ Einreichung ab und überschreibt weder Personen noch Dokumentzuordnungen.
 ## Umsetzung in TaxTronik
 
 Die Staff-Einladung ist ein eigener Darstellungsabschnitt mit unveränderten Statussperren und vorhandenen Kontakten/Einladungen. Die Seite verwendet direkt die tatsächlich sichtbaren Angaben der jüngsten Einladung; ein zuvor nur für eine ungenutzte Zusammenfassungsprojektion ausgeführter zusätzlicher Dokumentabruf entfällt.
+
+Die Kanzleiansicht zeigt den wirksamen Status einer Einladung: Eine offene
+Einladung, deren Gültigkeit abgelaufen ist, erscheint als „Abgelaufen“, zählt
+nicht mehr als offen und bietet kein Zurückziehen mehr an – auch wenn der Link
+nie wieder aufgerufen wurde und der gespeicherte Status deshalb noch auf
+„Versendet“ oder „In Bearbeitung“ steht. Daten werden dabei nicht gelöscht.
 
 Einladung und „In der Kanzlei erfassen“ sind gleichwertige Einstiege. Der
 Kanzleiweg öffnet einen vorhandenen DRAFT-/IN_REVIEW-Stand unverändert oder

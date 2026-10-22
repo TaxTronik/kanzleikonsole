@@ -13,7 +13,7 @@ import {
   gwgPersonGeneralRevision,
   gwgBeneficialOwnerRevision,
 } from '@/server/gwg/revisions';
-import { GWG_CHECK_STATUS_LABELS } from '@/lib/domain-labels';
+import { GWG_CHECK_STATUS_LABELS, effectiveGwgInviteStatus } from '@/lib/domain-labels';
 import type { IdentityReviewDocument, IdentityReviewGroup } from './identity-document-review';
 import {
   isSupersededEvidence,
@@ -73,8 +73,11 @@ export function buildGwgPageModel(data: GwgPageData, now = new Date()) {
     persons,
     eingereicht,
     isLegalEntity,
-    openInvites: invites.filter(
-      (invite) => invite.status === 'PENDING' || invite.status === 'STARTED',
+    // Abgelaufene, nie abgeschlossene Einladungen zählen nicht mehr als offen.
+    openInvites: invites.filter((invite) =>
+      ['PENDING', 'STARTED'].includes(
+        effectiveGwgInviteStatus(invite.status, invite.expiresAt, now),
+      ),
     ).length,
     latestInvite: invites[0] ?? null,
     gwgSteps: gwgProgressSteps(check, isLegalEntity, eingereicht, availability.displayStatus),

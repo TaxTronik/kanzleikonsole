@@ -3565,6 +3565,8 @@
       "code_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-data.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-invitation.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts",
+        "apps/web/src/lib/domain-labels.ts",
         "apps/web/src/app/gwg-onboarding/wizard-steps.tsx",
         "apps/web/src/app/gwg-onboarding/person-steps.tsx",
         "apps/web/src/app/gwg-onboarding/wizard-shared.tsx",
@@ -3606,7 +3608,8 @@
         "apps/web/src/app/gwg-onboarding/__tests__/bound-draft-submit.test.ts",
         "apps/web/src/app/gwg-onboarding/__tests__/actions-expiry.test.ts",
         "apps/web/src/app/gwg-onboarding/__tests__/wizard-flow.test.tsx",
-        "apps/web/src/server/gwg-onboarding/__tests__/wizard-person-issues.test.ts"
+        "apps/web/src/server/gwg-onboarding/__tests__/wizard-person-issues.test.ts",
+        "apps/web/src/lib/__tests__/gwg-invite-status.test.ts"
       ],
       "feature_refs": [
         "FEATURES.md",

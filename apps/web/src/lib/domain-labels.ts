@@ -166,6 +166,21 @@ export const GWG_INVITE_STATUS_LABELS: Readonly<Record<string, string>> = {
   CANCELLED: 'Abgebrochen',
 };
 
+/**
+ * GWG-SELF-ONBOARDING-001: Wirksamer Status einer Einladung. Der gespeicherte
+ * Status wechselt erst beim nächsten Aufruf des Links auf EXPIRED; eine nie
+ * geöffnete oder nie abgeschlossene Einladung ist nach Ablauf trotzdem
+ * abgelaufen und wird so angezeigt. Daten bleiben unverändert.
+ */
+export function effectiveGwgInviteStatus(
+  status: string,
+  expiresAt: Date | string,
+  now: Date = new Date(),
+): string {
+  const open = status === 'PENDING' || status === 'STARTED';
+  return open && new Date(expiresAt).getTime() <= now.getTime() ? 'EXPIRED' : status;
+}
+
 export const FORM_SUBMISSION_STATUS_LABELS: Readonly<Record<string, string>> = {
   PENDING: 'Ausstehend',
   DRAFT: 'Entwurf',

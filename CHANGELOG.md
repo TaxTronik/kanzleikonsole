@@ -1281,6 +1281,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- **[GwG]** Die Kanzleiansicht zeigte eine nie abgeschlossene Einladung nach
+  Ablauf weiter als „Versendet“ bzw. „In Bearbeitung“ mit „Zurückziehen“, solange
+  der Link nicht noch einmal aufgerufen wurde. Sie erscheint jetzt als
+  „Abgelaufen“ (auch „Gültig bis … · abgelaufen“) und zählt nicht mehr als offene
+  Einladung; Daten werden dabei nicht gelöscht (GWG-SELF-ONBOARDING-001).
 - Ordnerbäume (Dokumente der Mandantenakte, Verschieben-Dialoge): Eine
   Ordnerzeile war ein `role="button"` mit weiteren Buttons darin (Aufklappen,
   Unterordner, Umbenennen, Löschen), die ein Screenreader nicht einzeln

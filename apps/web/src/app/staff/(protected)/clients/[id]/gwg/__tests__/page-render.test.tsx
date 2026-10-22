@@ -356,6 +356,26 @@ describe('GWG-RISK-REVIEW-001 / GWG-SELF-ONBOARDING-001: page workflow and revie
     expect(html).toContain('test@example.test');
     expect(mocks.uploads).not.toHaveBeenCalled();
   });
+  // Fachkatalog: GWG-SELF-ONBOARDING-001
+  it('zeigt eine nie abgeschlossene Einladung nach Ablauf als abgelaufen statt als offen', async () => {
+    mocks.invites.mockResolvedValue([
+      {
+        id: 'invite-expired',
+        status: 'PENDING',
+        inviteName: 'Nie geöffnet',
+        inviteEmail: 'nie@example.test',
+        createdAt: new Date(now.getTime() - 10 * 86_400_000),
+        expiresAt: new Date(now.getTime() - 86_400_000),
+        submittedAt: null,
+      },
+    ]);
+    const html = await renderPage(check({ status: 'DRAFT', reviewSubmittedAt: null }));
+    expect(html).toContain('Keine Einladung');
+    expect(html).not.toContain('Einladung offen');
+    expect(html).toContain(' · abgelaufen');
+    expect(html).toContain('Abgelaufen');
+    expect(html).not.toContain('Zurückziehen');
+  });
   it('F-08: zeigt den Zustellstatus der Einladungsmail statt eines pauschalen Versands', async () => {
     mocks.invites.mockResolvedValue([
       {

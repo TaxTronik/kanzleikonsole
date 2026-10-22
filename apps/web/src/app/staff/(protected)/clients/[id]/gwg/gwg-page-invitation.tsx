@@ -1,11 +1,16 @@
 import { Stage } from '@/components/stage';
 import { fmtDateTimeShort } from '@/lib/fmt';
+import { effectiveGwgInviteStatus } from '@/lib/domain-labels';
 import { InviteSection } from './invite-section';
 import type { GwgPageModel } from './gwg-page-model';
 import type { GwgPageData } from './gwg-page-data';
 export function GwgInvitation({ model, data }: { model: GwgPageModel; data: GwgPageData }) {
   const { client, check, gwgSteps, eingereicht, openInvites, latestInvite } = model;
   const { contacts, invites, inviteMail } = data;
+  const now = new Date();
+  const latestExpired =
+    latestInvite &&
+    effectiveGwgInviteStatus(latestInvite.status, latestInvite.expiresAt, now) === 'EXPIRED';
   return (
     <div className="mb-6">
       <Stage
@@ -37,6 +42,7 @@ export function GwgInvitation({ model, data }: { model: GwgPageModel; data: GwgP
               <dt className="text-xs text-muted">Gültig bis</dt>
               <dd className="text-sm font-medium text-primary">
                 {latestInvite.expiresAt ? fmtDateTimeShort(new Date(latestInvite.expiresAt)) : '—'}
+                {latestExpired && ' · abgelaufen'}
               </dd>
             </div>
             <div>
@@ -65,7 +71,7 @@ export function GwgInvitation({ model, data }: { model: GwgPageModel; data: GwgP
             id: i.id,
             inviteName: i.inviteName,
             inviteEmail: i.inviteEmail,
-            status: i.status,
+            status: effectiveGwgInviteStatus(i.status, i.expiresAt, now),
             createdAt: i.createdAt.toISOString(),
             expiresAt: i.expiresAt.toISOString(),
             submittedAt: i.submittedAt?.toISOString() ?? null,
