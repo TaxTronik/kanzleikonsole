@@ -689,7 +689,7 @@ greift nicht aufs Netz zu. Das Supply-Chain-Gate prüft den Versionspin und
 diesen Aufrufvertrag anhand fester Härtungsmarker im Repository-Code.
 
 Der technische Paketmanager-Pin wird für Repository, CI, Container und
-One-Click-Host synchron auf pnpm `12.4.1` geführt und im Supply-Chain-Gate
+One-Click-Host synchron auf pnpm `12.14.0` geführt und im Supply-Chain-Gate
 geprüft. Die Build-Script-Sollliste enthält die versionsgebundene Entscheidung
 `tesseract.js@7.0.0: false`: Dessen Postinstall zeigt ausschließlich einen
 OpenCollective-Spendenhinweis und erstellt keine OCR-Artefakte. Unbekannte

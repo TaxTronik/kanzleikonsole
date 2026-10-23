@@ -2131,6 +2131,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   der signierten `SHASUMS256.txt`). Web- und Worker-Image nutzen als
   gemeinsame Basis `node:24-alpine3.23@sha256:0468540a…92a2` (Node 24.22.1,
   Alpine 3.23).
+- Repository/CI/Container/Host: pnpm 12.14.0 statt 12.4.1 (`packageManager`,
+  Lockfile-Pin mit Integrität, `HOST_PNPM_VERSION`, Supply-Chain-Gate). Bringt
+  u. a. die Sicherheitskorrekturen aus 12.6.0 (`minimumReleaseAge` griff bei
+  manchen Registry-Antworten nicht), 12.7.0 (Manifeste im Store galten als
+  Workspace-Projekte, deren Skripte ohne Freigabe laufen konnten) und 12.10.0
+  (Prüfung gesperrter Config-Abhängigkeiten gegen den Registry). 12.15.0 liegt
+  noch innerhalb der siebentägigen Mindestreife. Die Install-Hooks von pnpm
+  sind unverändert (`node install.js`) und laufen über Corepack bzw. die
+  Selbstverwaltung von pnpm nicht; keine neue `allowBuilds`-Entscheidung.
 - **[Scope] [TCMS]** Die Aufbewahrung eines GwG-Belegs, der als Nachweis im
   Tax-CMS verknüpft ist oder war, lässt sich ab der ersten Bindung von keiner
   Rolle mehr verkürzen (RT3D-K-01, Migration 20261021171000): Anlagedatum und

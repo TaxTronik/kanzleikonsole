@@ -29,8 +29,8 @@ require_line() {
   fi
 }
 
-require_line package.json '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@12\.4\.1"' \
-  "Root packageManager muss auf pnpm@12.4.1 gepinnt sein."
+require_line package.json '"packageManager"[[:space:]]*:[[:space:]]*"pnpm@12\.14\.0"' \
+  "Root packageManager muss auf pnpm@12.14.0 gepinnt sein."
 
 require_line pnpm-workspace.yaml '^minimumReleaseAge:[[:space:]]*10080([[:space:]]*#.*)?$' \
   "minimumReleaseAge muss auf 10080 Minuten (7 Tage) stehen."
