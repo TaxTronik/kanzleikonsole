@@ -2,6 +2,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
+import { gotoReady } from './helpers/page-ready';
 import { loginAsMandant } from './helpers/portal-auth';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -87,7 +88,7 @@ test.describe('Sicherer Mandantenposteingang', () => {
 
     // Der Seed aktiviert clientInbox nur fuer den synthetischen Testtenant.
     await expect(page.getByRole('link', { name: 'Nachrichten', exact: true })).toBeVisible();
-    await page.goto('/portal/inbox', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/portal/inbox');
     await expect(page.getByRole('heading', { name: 'Nachrichten', exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Nachricht an Kanzlei' })).toBeVisible();
 
@@ -109,7 +110,7 @@ test.describe('Sicherer Mandantenposteingang', () => {
     await expect(page.getByRole('heading', { name: subject, exact: true })).toBeVisible();
     await expect(page.getByText(message, { exact: true })).toBeVisible();
 
-    await page.goto('/portal/inbox', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/portal/inbox');
     await expect(portalThreadLink(page, subject)).toBeVisible();
 
     await page.setViewportSize({ width: 320, height: 800 });
@@ -120,7 +121,7 @@ test.describe('Sicherer Mandantenposteingang', () => {
     const staffPage = await page.context().newPage();
     try {
       await loginAsAdmin(staffPage);
-      await staffPage.goto('/staff/inbox', { waitUntil: 'networkidle' });
+      await gotoReady(staffPage, '/staff/inbox');
       await expect(staffPage.getByRole('heading', { name: 'Mandantenpost' })).toBeVisible();
 
       const workNavigation = staffPage.getByRole('navigation', { name: 'Arbeitsbereich' });
@@ -136,21 +137,21 @@ test.describe('Sicherer Mandantenposteingang', () => {
 
       // Der Dev-Seed routet genau einen Hauptbearbeiter automatisch. Fuer den
       // Teamkorb wird derselbe Verlauf explizit freigegeben und danach geclaimt.
-      await staffPage.goto('/staff/inbox', { waitUntil: 'networkidle' });
+      await gotoReady(staffPage, '/staff/inbox');
       await staffThreadLink(staffPage, subject).click();
       await expect(staffPage.getByRole('heading', { name: subject, exact: true })).toBeVisible();
       await staffPage.getByLabel('Zuweisung').selectOption({ label: 'Teamkorb' });
       await staffPage.getByRole('button', { name: 'Zuweisen' }).click();
       await expect(staffPage.getByRole('button', { name: 'Übernehmen' })).toBeVisible();
 
-      await staffPage.goto('/staff/inbox', { waitUntil: 'networkidle' });
+      await gotoReady(staffPage, '/staff/inbox');
       await expect(staffThreadLink(staffPage, subject)).toHaveCount(0);
-      await staffPage.goto('/staff/inbox?scope=team', { waitUntil: 'networkidle' });
+      await gotoReady(staffPage, '/staff/inbox?scope=team');
       await staffThreadLink(staffPage, subject).click();
       await staffPage.getByRole('button', { name: 'Übernehmen' }).click();
       await expect(staffPage.getByRole('button', { name: 'Übernehmen' })).toHaveCount(0);
 
-      await staffPage.goto('/staff/inbox', { waitUntil: 'networkidle' });
+      await gotoReady(staffPage, '/staff/inbox');
       await expect(staffThreadLink(staffPage, subject)).toBeVisible();
       await staffPage
         .getByRole('navigation', { name: 'Arbeitsbereich' })

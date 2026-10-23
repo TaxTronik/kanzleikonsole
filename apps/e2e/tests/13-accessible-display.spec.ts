@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
+import { gotoReady, reloadReady } from './helpers/page-ready';
 import { loginAsMandant } from './helpers/portal-auth';
 
 const DISPLAY_LABEL = 'Barrierearmen Anzeigemodus aktivieren';
@@ -85,7 +86,7 @@ async function setDisplayMode(page: Page, enabled: boolean): Promise<void> {
 }
 
 async function expectServerRenderedMode(page: Page, path: string, enabled: boolean): Promise<void> {
-  const response = await page.goto(path, { waitUntil: 'networkidle' });
+  const response = await gotoReady(page, path, displayCheckbox(page));
   expect(response?.ok(), `${path}: Dokument muss erfolgreich ausgeliefert werden`).toBe(true);
   const html = await response!.text();
   // Nur ein echtes HTML-Attribut zählt, kein Wert in einem Hydration-Script.
@@ -97,12 +98,12 @@ async function expectServerRenderedMode(page: Page, path: string, enabled: boole
 }
 
 async function restoreStaffMode(page: Page, original: boolean): Promise<void> {
-  await page.goto(STAFF_PROFILE, { waitUntil: 'networkidle' });
+  await gotoReady(page, STAFF_PROFILE);
   // Der reguläre Logout widerruft alle Staff-Sessions; auch im Fehlerfall
   // darf deshalb ein frischer Seed-Login für die Wiederherstellung nötig sein.
   if (new URL(page.url()).pathname === '/staff/login') {
     await loginAsAdmin(page);
-    await page.goto(STAFF_PROFILE, { waitUntil: 'networkidle' });
+    await gotoReady(page, STAFF_PROFILE, displayCheckbox(page));
   }
   await setDisplayMode(page, original);
 }
@@ -112,10 +113,10 @@ async function restorePortalMode(
   request: APIRequestContext,
   original: boolean,
 ): Promise<void> {
-  await page.goto(PORTAL_SETTINGS, { waitUntil: 'networkidle' });
+  await gotoReady(page, PORTAL_SETTINGS);
   if (new URL(page.url()).pathname === '/portal/login') {
     await loginAsMandant(page, request);
-    await page.goto(PORTAL_SETTINGS, { waitUntil: 'networkidle' });
+    await gotoReady(page, PORTAL_SETTINGS, displayCheckbox(page));
   }
   await setDisplayMode(page, original);
 }
@@ -281,7 +282,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
     baseURL,
   }) => {
     await loginAsAdmin(page);
-    await page.goto(STAFF_PROFILE, { waitUntil: 'networkidle' });
+    await gotoReady(page, STAFF_PROFILE, displayCheckbox(page));
     const original = await displayCheckbox(page).isChecked();
 
     try {
@@ -292,7 +293,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
       await expectSaved(page, true);
       await expect(displayCheckbox(page)).toBeFocused();
 
-      await page.reload({ waitUntil: 'networkidle' });
+      await reloadReady(page, displayCheckbox(page));
       await expect(displayCheckbox(page)).toBeChecked();
       await expectServerRenderedMode(page, STAFF_PROFILE, true);
 
@@ -347,7 +348,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
     page,
   }) => {
     await loginAsAdmin(page);
-    await page.goto(STAFF_PROFILE, { waitUntil: 'networkidle' });
+    await gotoReady(page, STAFF_PROFILE, displayCheckbox(page));
     const original = await displayCheckbox(page).isChecked();
 
     try {
@@ -363,7 +364,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
           ['dashboard', '/staff/dashboard'],
         ] as const) {
           await page.setViewportSize({ width: 1280, height: 900 });
-          await page.goto(path, { waitUntil: 'networkidle' });
+          await gotoReady(page, path);
           await expectDisplayMode(page, true);
           await expectCenteredAvatar(page);
           await expectNoWcagViolations(page, `accessible-${name}-${theme}`);
@@ -405,18 +406,18 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
     request,
   }) => {
     await loginAsAdmin(page);
-    await page.goto(STAFF_PROFILE, { waitUntil: 'networkidle' });
+    await gotoReady(page, STAFF_PROFILE, displayCheckbox(page));
     const staffOriginal = await displayCheckbox(page).isChecked();
     let portalOriginal: boolean | undefined;
 
     try {
       await setDisplayMode(page, false);
       await loginAsMandant(page, request);
-      await page.goto(PORTAL_SETTINGS, { waitUntil: 'networkidle' });
+      await gotoReady(page, PORTAL_SETTINGS, displayCheckbox(page));
       portalOriginal = await displayCheckbox(page).isChecked();
       await setDisplayMode(page, true);
 
-      await page.reload({ waitUntil: 'networkidle' });
+      await reloadReady(page, displayCheckbox(page));
       await expect(displayCheckbox(page)).toBeChecked();
       await expectServerRenderedMode(page, PORTAL_SETTINGS, true);
       await expectNoWcagViolations(page, 'accessible-portal-settings');
@@ -428,7 +429,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
       await expect(displayCheckbox(page)).not.toBeChecked();
       await setDisplayMode(page, true);
 
-      await page.goto(PORTAL_SETTINGS, { waitUntil: 'networkidle' });
+      await gotoReady(page, PORTAL_SETTINGS, displayCheckbox(page));
       await setDisplayMode(page, false);
       await expectServerRenderedMode(page, PORTAL_SETTINGS, false);
       await expectServerRenderedMode(page, STAFF_PROFILE, true);
@@ -450,7 +451,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
     request,
   }) => {
     await loginAsAdmin(page);
-    await page.goto(STAFF_PROFILE, { waitUntil: 'networkidle' });
+    await gotoReady(page, STAFF_PROFILE, displayCheckbox(page));
     const staffOriginal = await displayCheckbox(page).isChecked();
     let portalOriginal: boolean | undefined;
 
@@ -465,7 +466,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
       }
       await page.setViewportSize({ width: 1280, height: 900 });
       await loginAsMandant(page, request);
-      await page.goto(PORTAL_SETTINGS, { waitUntil: 'networkidle' });
+      await gotoReady(page, PORTAL_SETTINGS, displayCheckbox(page));
       portalOriginal = await displayCheckbox(page).isChecked();
       await setDisplayMode(page, true);
       await expectShortViewportMenu(page, 'accessible-portal-menu-320x240');
@@ -487,7 +488,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
     request,
   }) => {
     await loginAsAdmin(page);
-    await page.goto(STAFF_PROFILE, { waitUntil: 'networkidle' });
+    await gotoReady(page, STAFF_PROFILE, displayCheckbox(page));
     const staffMode = await displayCheckbox(page).isChecked();
     const staffOptions = await readOptions(page);
     let portalMode: boolean | undefined;
@@ -501,7 +502,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
     try {
       await setDisplayMode(page, true);
       await setOptions(page, custom);
-      await page.reload({ waitUntil: 'networkidle' });
+      await reloadReady(page, displayCheckbox(page));
       expect(await readOptions(page)).toEqual(custom);
       expect(
         await page.locator('html').evaluate((element) => getComputedStyle(element).fontSize),
@@ -516,7 +517,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
 
       // Optionen überleben auch das Ausschalten des übergeordneten Modus.
       await setDisplayMode(page, false);
-      await page.reload({ waitUntil: 'networkidle' });
+      await reloadReady(page, displayCheckbox(page));
       expect(await readOptions(page)).toEqual(custom);
       expect(
         await page.locator('html').evaluate((element) => getComputedStyle(element).fontSize),
@@ -543,7 +544,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
       }
 
       await loginAsMandant(page, request);
-      await page.goto(PORTAL_SETTINGS, { waitUntil: 'networkidle' });
+      await gotoReady(page, PORTAL_SETTINGS, displayCheckbox(page));
       portalMode = await displayCheckbox(page).isChecked();
       portalOptions = await readOptions(page);
       const portalCustom = {
@@ -554,9 +555,9 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
       };
       await setDisplayMode(page, true);
       await setOptions(page, portalCustom);
-      await page.reload({ waitUntil: 'networkidle' });
+      await reloadReady(page, displayCheckbox(page));
       expect(await readOptions(page)).toEqual(portalCustom);
-      await page.goto(STAFF_PROFILE, { waitUntil: 'networkidle' });
+      await gotoReady(page, STAFF_PROFILE, displayCheckbox(page));
       expect(await readOptions(page)).toEqual(custom);
       await setOptions(page, custom);
       await page

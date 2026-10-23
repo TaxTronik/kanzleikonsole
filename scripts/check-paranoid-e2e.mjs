@@ -89,6 +89,12 @@ export function checkWorkflow(source) {
 export const NON_WAITING_VISIBILITY_TIMEOUT =
   /\.\s*is(?:Visible|Hidden)\s*\(\s*\{[^)}]*?\btimeout\b/;
 
+// networkidle ist kein Bereitschaftssignal: Playwright zählt verworfene
+// Next-Prefetches dauerhaft als offen (CI-Lauf 1207: 180 s Timeout, obwohl der
+// Server längst geantwortet hatte). Erfasst den Ladezustand als Zeichenkette,
+// gleich ob für goto, reload, waitForLoadState oder über eine Variable.
+export const NETWORK_IDLE_WAIT = /(['"`])networkidle\1/;
+
 export function scanTestSources(testDir) {
   const specs = [];
   // Preserve the source guard, including markers inside helpers and describe chains.
@@ -110,6 +116,12 @@ export function scanTestSources(testDir) {
           `E2E: isVisible()/isHidden() warten nicht, die Option timeout wird ignoriert: ${path}. ` +
             'Erwartete Elemente mit expect(locator).toBeVisible() prüfen; echte Verzweigungen erst ' +
             'auf einen Seitenanker warten lassen oder becomesVisible() aus tests/helpers/visibility.ts nutzen.',
+        );
+        requireThat(
+          !NETWORK_IDLE_WAIT.test(source),
+          `E2E: networkidle ist kein Bereitschaftssignal, verworfene Prefetches gelten als offen: ${path}. ` +
+            'Mit gotoReady()/expectPageReady() aus tests/helpers/page-ready.ts auf load, Lade-Platzhalter ' +
+            'und Hydration warten; Abrufe der Seite per waitForResponse oder am konkreten Element prüfen.',
         );
         if (/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(entry.name)) specs.push(path);
       }

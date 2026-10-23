@@ -2,12 +2,22 @@
 // E2E-Helper: Portal-Login via Magic-Link (MailHog)
 // =============================================================================
 import { type Page, type APIRequestContext, expect } from '@playwright/test';
+import { expectPageReady, gotoReady } from './page-ready';
 import { flushRedisDb } from './redis';
 
 const MAILHOG_URL = process.env['E2E_MAILHOG_URL'] ?? 'http://127.0.0.1:8025';
 const BASE_URL = process.env['E2E_BASE_URL'] ?? 'http://localhost:3000';
 
 export const PORTAL_EMAIL = process.env['E2E_PORTAL_EMAIL'] ?? 'mandant@taxtronik.local';
+
+/** Portal-Anmeldung eingabebereit: Das Formular sendet über React (Server Action). */
+export async function openPortalLogin(page: Page): Promise<void> {
+  await gotoReady(
+    page,
+    '/portal/login',
+    page.getByRole('button', { name: /Login-Link anfordern/i }),
+  );
+}
 
 export async function loginAsMandant(page: Page, request: APIRequestContext): Promise<void> {
   await flushRedisDb();
@@ -17,7 +27,7 @@ export async function loginAsMandant(page: Page, request: APIRequestContext): Pr
   const previousMailIds = await existingMailIds(request);
 
   // Schritt 1: Magic-Link anfordern
-  await page.goto('/portal/login', { waitUntil: 'networkidle' });
+  await openPortalLogin(page);
   await page.getByLabel('E-Mail-Adresse').fill(PORTAL_EMAIL);
   await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
   await expect(page.getByText(/Login-Link verschickt/i)).toBeVisible({ timeout: 5000 });
@@ -54,7 +64,6 @@ export async function loginAsMandant(page: Page, request: APIRequestContext): Pr
 
 export async function expectPortalDashboardReady(page: Page, timeout = 20_000): Promise<void> {
   await expect(page).toHaveURL(/\/portal\/dashboard/, { timeout });
-  await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {});
 
   const dashboardShell = page
     .getByRole('heading', { name: /Hallo/i })
@@ -67,6 +76,9 @@ export async function expectPortalDashboardReady(page: Page, timeout = 20_000): 
       'Portal-Dashboard muss nach Magic-Link-Login gerendert sein',
     ).toBeVisible({ timeout });
     await expect(page.getByRole('link', { name: /Dokumente/i })).toBeVisible({ timeout: 10_000 });
+    // Nach der Profilwahl navigiert der Router clientseitig; die Seite gilt
+    // erst mit hydriertem Inhalt als bereit für den nächsten Schritt.
+    await expectPageReady(page);
   } catch (e) {
     const body = await page
       .locator('body')
@@ -143,7 +155,7 @@ async function fetchMagicLink(
 /** Nur Magic-Link anfordern, kein Login (für negative Tests) */
 export async function requestMagicLink(page: Page): Promise<void> {
   await flushRedisDb();
-  await page.goto('/portal/login', { waitUntil: 'networkidle' });
+  await openPortalLogin(page);
   await page.getByLabel('E-Mail-Adresse').fill(PORTAL_EMAIL);
   await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
   await expect(page.getByText(/Login-Link verschickt/i)).toBeVisible({ timeout: 5000 });

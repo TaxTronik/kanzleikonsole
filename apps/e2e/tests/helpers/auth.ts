@@ -3,6 +3,7 @@ import { generateSync } from 'otplib';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gotoReady } from './page-ready';
 import { becomesVisible } from './visibility';
 
 function readLocalSeedCredentials(): { email?: string; password?: string } {
@@ -119,8 +120,39 @@ async function assertDashboardAcceptsStaffSession(page: Page): Promise<void> {
   );
 }
 
+/**
+ * Öffnet die Staff-Anmeldung eingabebereit. Nach der Hydration fragt die Seite
+ * per Server Action, ob Sicherheitsschlüssel eingerichtet sind, und blendet
+ * dann einen weiteren Anmeldeweg über dem Passwortformular ein. Auf genau diese
+ * Antwort und ihr Ergebnis warten: Formular, Axe und Layoutmessungen sehen so
+ * den endgültigen Zustand.
+ */
+export async function openStaffLogin(page: Page): Promise<void> {
+  const [availability] = await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/staff/login' &&
+        'next-action' in response.request().headers(),
+    ),
+    gotoReady(page, '/staff/login', page.getByRole('button', { name: 'Weiter', exact: true })),
+  ]);
+  // Ende und Body eines vom Browser gestreamten RSC-Abrufs meldet Playwright
+  // nicht zuverlässig (dieselbe Ursache wie bei networkidle). Die lesende
+  // Action deshalb mit derselben Anfrage erneut stellen und am DOM prüfen,
+  // dass die Seite ihr Ergebnis anzeigt; die Seite selbst bleibt unbeeinflusst.
+  const replay = await page.request.fetch(availability.request());
+  expect(replay.ok(), 'Abfrage der Sicherheitsschlüssel muss antworten').toBe(true);
+  const hardwareLogin = page.getByRole('button', { name: 'Mit Sicherheitsschlüssel anmelden' });
+  if (/"available":true\b/.test(await replay.text())) {
+    await expect(hardwareLogin).toBeVisible();
+  } else {
+    await expect(hardwareLogin).toHaveCount(0);
+  }
+}
+
 export async function loginAsAdmin(page: Page): Promise<void> {
-  await page.goto('/staff/login', { waitUntil: 'networkidle' });
+  await openStaffLogin(page);
 
   await page.getByLabel('E-Mail').fill(ADMIN_EMAIL);
   await page.getByLabel('Passwort').fill(ADMIN_PASSWORD);

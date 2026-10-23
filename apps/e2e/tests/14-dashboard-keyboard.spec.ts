@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
+import { gotoReady } from './helpers/page-ready';
 
 async function startPageAuditAtTop(page: Page): Promise<void> {
   // Resizing a focused form preserves its scroll position. Start the page-wide
@@ -31,7 +32,8 @@ test('Dashboard-Layout: Tastatur, Eingabeentwurf, Fehlerstatus und schmale Vorsc
 }) => {
   test.setTimeout(180_000);
   await loginAsAdmin(page);
-  await page.goto('/staff/dashboard', { waitUntil: 'networkidle' });
+  const editButton = page.getByRole('button', { name: 'Anpassen', exact: true });
+  await gotoReady(page, '/staff/dashboard', editButton);
   let interceptedSaves = 0;
   // Exercise the real save attempt and visible failure without changing the
   // shared development user's personal dashboard layout.
@@ -44,7 +46,6 @@ test('Dashboard-Layout: Tastatur, Eingabeentwurf, Fehlerstatus und schmale Vorsc
     }
   });
 
-  const editButton = page.getByRole('button', { name: 'Anpassen', exact: true });
   await editButton.focus();
   await page.keyboard.press('Enter');
   const controls = page.getByRole('region', { name: 'Position und Größe ohne Ziehen' });
@@ -122,13 +123,15 @@ test('Dashboard-Layout: Tastatur, Eingabeentwurf, Fehlerstatus und schmale Vorsc
   await expect(page.getByRole('button', { name: 'Fertig', exact: true })).toBeFocused();
   // Explicitly navigate away before cleanup, discarding the local draft and
   // its pending debounce. All write requests remained intercepted throughout.
-  await page.goto('/staff/profile', { waitUntil: 'networkidle' });
+  // The dashboard document is gone once the navigation has loaded.
+  await page.goto('/staff/profile', { waitUntil: 'load' });
 });
 
 test('ACP-Mandantenlayout: benannte Block-Steuerung ohne Ziehen bei 320px', async ({ page }) => {
   test.setTimeout(180_000);
   await loginAsAdmin(page);
-  await page.goto('/staff/admin/settings/modules', { waitUntil: 'networkidle' });
+  const edit = page.getByRole('button', { name: 'Anpassen', exact: true });
+  await gotoReady(page, '/staff/admin/settings/modules', edit);
   let interceptedSaves = 0;
   await page.route('**/staff/admin/settings/modules', async (route) => {
     if (route.request().method() === 'POST') {
@@ -138,7 +141,6 @@ test('ACP-Mandantenlayout: benannte Block-Steuerung ohne Ziehen bei 320px', asyn
       await route.continue();
     }
   });
-  const edit = page.getByRole('button', { name: 'Anpassen', exact: true });
   await edit.focus();
   await page.keyboard.press('Enter');
   const controls = page.getByRole('region', { name: 'Position und Größe ohne Ziehen' });
@@ -183,5 +185,5 @@ test('ACP-Mandantenlayout: benannte Block-Steuerung ohne Ziehen bei 320px', asyn
     body: await page.screenshot(),
     contentType: 'image/png',
   });
-  await page.goto('/staff/profile', { waitUntil: 'networkidle' });
+  await page.goto('/staff/profile', { waitUntil: 'load' });
 });

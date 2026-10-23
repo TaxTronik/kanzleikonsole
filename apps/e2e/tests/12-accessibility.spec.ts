@@ -1,12 +1,13 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
-import { loginAsAdmin } from './helpers/auth';
-import { loginAsMandant } from './helpers/portal-auth';
+import { loginAsAdmin, openStaffLogin } from './helpers/auth';
+import { gotoReady } from './helpers/page-ready';
+import { loginAsMandant, openPortalLogin } from './helpers/portal-auth';
 
 const WCAG_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
 
 async function visitPage(page: Page, path: string): Promise<void> {
-  const response = await page.goto(path, { waitUntil: 'networkidle' });
+  const response = await gotoReady(page, path);
   expect(response?.status(), `${path}: Die angeforderte Seite muss erfolgreich laden.`).toBe(200);
   await expect(page).toHaveURL((url) => url.pathname === path);
 }
@@ -58,10 +59,10 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
   test('öffentliche Login-Seiten enthalten keine automatisiert erkennbaren Verstöße', async ({
     page,
   }) => {
-    await page.goto('/staff/login', { waitUntil: 'networkidle' });
+    await openStaffLogin(page);
     await expectNoWcagViolations(page, 'staff-login');
 
-    await page.goto('/portal/login', { waitUntil: 'networkidle' });
+    await openPortalLogin(page);
     await expectNoWcagViolations(page, 'portal-login');
   });
 
@@ -109,14 +110,17 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
       await expectNoWcagViolations(page, name);
     }
 
-    await page.goto('/staff/clients', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/staff/clients');
     await page
       .getByRole('link', { name: /Mustermann GmbH/i })
       .first()
       .click();
     await expect(page).toHaveURL(/\/staff\/clients\/[^/]+/);
     const clientPath = new URL(page.url()).pathname.replace(/\/$/, '');
-    await page.goto(`${clientPath}/gwg`, { waitUntil: 'networkidle' });
+    await gotoReady(page, `${clientPath}/gwg`);
+    // Ausweisvorschauen laden erst nach der Hydration (preview-url bzw.
+    // identity-source); geprüft wird der geladene Zustand.
+    await expect(page.locator('#main-content .animate-spin')).toHaveCount(0);
     await expectNoWcagViolations(page, 'gwg');
   });
 
@@ -161,7 +165,7 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
 
   test('Login und Dashboard bestehen die Axe-Prüfung auch im Dark Mode', async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem('theme', 'dark'));
-    await page.goto('/staff/login', { waitUntil: 'networkidle' });
+    await openStaffLogin(page);
     await expect(page.locator('html')).toHaveClass(/dark/);
     await expectNoWcagViolations(page, 'staff-login-dark');
 
@@ -182,7 +186,7 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
     page,
   }) => {
     await page.setViewportSize({ width: 320, height: 800 });
-    await page.goto('/staff/login', { waitUntil: 'networkidle' });
+    await openStaffLogin(page);
     await expectNoPageOverflow(page, 'staff-login-320');
 
     await loginAsAdmin(page);
@@ -215,7 +219,7 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
 
   test('Skip-Link erreicht den Hauptinhalt per Tastatur', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto('/staff/dashboard', { waitUntil: 'networkidle' });
+    await gotoReady(page, '/staff/dashboard');
 
     await page.keyboard.press('Tab');
     const skipLink = page.getByRole('link', { name: /zum hauptinhalt/i });
@@ -227,9 +231,9 @@ test.describe('Barrierefreiheit — WCAG 2.2 AA Baseline', () => {
   test('mobile Navigation meldet und verwaltet ihren Zustand', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await loginAsAdmin(page);
-    await page.goto('/staff/dashboard', { waitUntil: 'networkidle' });
-
     const menuButton = page.locator('button[aria-controls="app-sidebar"]');
+    await gotoReady(page, '/staff/dashboard', menuButton);
+
     await expect(menuButton).toHaveAttribute('aria-label', 'Menü öffnen');
     await expect(menuButton).toHaveAttribute('aria-expanded', 'false');
     await menuButton.focus();

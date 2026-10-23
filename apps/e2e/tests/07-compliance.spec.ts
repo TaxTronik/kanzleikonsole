@@ -16,6 +16,7 @@ import {
   clearMailhogMessages,
   expectPortalDashboardReady,
   loginAsMandant,
+  openPortalLogin,
   PORTAL_EMAIL,
 } from './helpers/portal-auth';
 import { flushRedisDb } from './helpers/redis';
@@ -1655,7 +1656,7 @@ test.describe('Magic Link Security', () => {
     const mhCheck = await request.get(`${mailhogUrl}/api/v1/health`).catch(() => null);
     expect(mhCheck, 'MailHog muss erreichbar sein (Pflichtservice)').not.toBeNull();
 
-    await page.goto('/portal/login', { waitUntil: 'networkidle' });
+    await openPortalLogin(page);
     await page.getByLabel('E-Mail-Adresse').fill(PORTAL_EMAIL);
     await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
 
@@ -1685,7 +1686,7 @@ test.describe('Magic Link Security', () => {
 
     const mailhogUrl = process.env['E2E_MAILHOG_URL'] ?? 'http://127.0.0.1:8025';
 
-    await page.goto('/portal/login', { waitUntil: 'networkidle' });
+    await openPortalLogin(page);
     await page.getByLabel('E-Mail-Adresse').fill(PORTAL_EMAIL);
     await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
 

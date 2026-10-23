@@ -1292,6 +1292,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- CI-E2E: Nach einem reinen pnpm-Update lief `15-search-notifications-a11y`
+  in CI-Lauf 1207 in den 180-s-Timeout, weil `page.goto` auf `networkidle`
+  wartete und Playwright verworfene Next-Prefetches dauerhaft als offen zählte.
+  Keine der 51 Stellen wartet mehr darauf: Eine Seite gilt als bereit, wenn das
+  Dokument geladen ist, kein `aria-busy`-Platzhalter mehr steht und React den
+  Inhalt hydriert hat (`tests/helpers/page-ready.ts`). Die Staff-Anmeldung
+  wartet zusätzlich auf die Antwort der Sicherheitsschlüssel-Abfrage, die
+  GwG-Axe-Prüfung auf geladene Ausweisvorschauen. Bestehende Assertions bleiben
+  unverändert; `guard:paranoid-e2e` verbietet `networkidle` in den E2E-Quellen.
 - **[GwG]** Die Kanzleiansicht zeigte eine nie abgeschlossene Einladung nach
   Ablauf weiter als „Versendet“ bzw. „In Bearbeitung“ mit „Zurückziehen“, solange
   der Link nicht noch einmal aufgerufen wurde. Sie erscheint jetzt als

@@ -253,7 +253,37 @@ test('accepts waiting alternatives and isVisible without options', (t) => {
   assert.equal(scanTestSources(f.tests).length, 1);
 });
 
-test('the real E2E sources contain no non-waiting visibility check with timeout', () => {
+// networkidle zählt verworfene Next-Prefetches als offen (CI-Lauf 1207).
+for (const call of [
+  "await page.goto('/staff/profile', { waitUntil: 'networkidle' })",
+  'await page.reload({ waitUntil: "networkidle" })',
+  "await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {})",
+  'await page.waitForLoadState(`networkidle`)',
+  "const state = 'networkidle';\nawait page.goto(url, { waitUntil: state })",
+]) {
+  test(`rejects waiting for networkidle: ${JSON.stringify(call)}`, (t) => {
+    const f = fixture(t);
+    f.write('test.spec.ts');
+    f.write('helpers/fixture.ts', `${call};`);
+    assert.throws(() => scanTestSources(f.tests), /networkidle ist kein Bereitschaftssignal/);
+  });
+}
+
+test('accepts deterministic readiness signals and prose about networkidle', (t) => {
+  const f = fixture(t);
+  f.write(
+    'test.spec.ts',
+    [
+      "await page.goto('/x', { waitUntil: 'load' });",
+      "await gotoReady(page, '/staff/profile', checkbox);",
+      "await page.waitForResponse((response) => response.url().endsWith('/api/x'));",
+      '// Der Ladezustand networkidle zählt verworfene Prefetches als offen.',
+    ].join('\n'),
+  );
+  assert.equal(scanTestSources(f.tests).length, 1);
+});
+
+test('the real E2E sources contain no non-waiting visibility check and no networkidle wait', () => {
   assert.doesNotThrow(() => scanTestSources(resolve(ROOT, 'apps/e2e/tests')));
 });
 

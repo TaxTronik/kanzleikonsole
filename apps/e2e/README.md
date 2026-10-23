@@ -82,7 +82,13 @@ Filter und `test.only`/`test.skip`/`test.fixme`-Marker sind nicht erlaubt,
 ebenso `isVisible`/`isHidden` mit der Option `timeout` (Playwright ignoriert sie,
 die Prüfung wartet nicht). Erwartete Elemente mit `expect(locator).toBeVisible()`
 prüfen; echte Verzweigungen erst auf einen Seitenanker warten lassen oder
-`becomesVisible()` aus `tests/helpers/visibility.ts` nutzen. Der
+`becomesVisible()` aus `tests/helpers/visibility.ts` nutzen. Ebenfalls verboten
+ist der Ladezustand `networkidle`: Playwright zählt verworfene Next-Prefetches
+dauerhaft als offene Anfragen (CI-Lauf 1207). Navigationen nutzen stattdessen
+`gotoReady()`/`reloadReady()` aus `tests/helpers/page-ready.ts` (Dokument
+geladen, kein `aria-busy`-Platzhalter, Inhalt hydriert), optional mit dem
+Element, an dem der Test weiterarbeitet; Abrufe nach der Hydration prüfen die
+Specs per `waitForResponse` oder am Ergebnis im DOM. Der
 Guard und seine Regressionstests laufen in CI unmittelbar nach der Installation
 und lokal als Teil von `pnpm lint` im Repository-Root. Beide Aufrufe funktionieren
 auch unter Windows ohne `sh`.

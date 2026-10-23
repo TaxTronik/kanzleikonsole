@@ -1,6 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
+import { gotoReady, reloadReady } from './helpers/page-ready';
 
 const PROFILE = '/staff/profile';
 const DISPLAY_LABEL = 'Barrierearmen Anzeigemodus aktivieren';
@@ -83,7 +84,7 @@ async function setMode(page: Page, enabled: boolean): Promise<void> {
 async function startProfile(page: Page) {
   const notifications = await installReadOnlyFixtures(page);
   await loginAsAdmin(page);
-  await page.goto(PROFILE, { waitUntil: 'networkidle' });
+  await gotoReady(page, PROFILE, modeCheckbox(page));
   const originalMode = await modeCheckbox(page).isChecked();
   const originalOptions = await currentOptions(page);
   const unexpectedWrites: string[] = [];
@@ -103,7 +104,7 @@ async function startProfile(page: Page) {
     notifications,
     async restore() {
       await page.setViewportSize({ width: 1280, height: 900 });
-      await page.goto(PROFILE, { waitUntil: 'networkidle' });
+      await gotoReady(page, PROFILE, modeCheckbox(page));
       await setMode(page, originalMode);
       expect(await currentOptions(page), 'Individuelle Anzeigeoptionen unverändert lassen').toEqual(
         originalOptions,
@@ -323,8 +324,13 @@ test.describe('Such- und Benachrichtigungspanels: Tastatur und Lesen', () => {
       await setMode(page, false);
       await page.clock.install({ time: new Date() });
       clockInstalled = true;
-      // A fresh document creates the actual polling timers under clock control.
-      await page.reload({ waitUntil: 'networkidle' });
+      // A fresh document creates the actual polling timers under clock control:
+      // the bell subscribes to the poller right after React hydrates it, and
+      // publishThroughPolling advances the clock until the poll has run.
+      await reloadReady(
+        page,
+        page.getByRole('button', { name: /^(?:\d+ ungelesene )?Benachrichtigungen$/ }),
+      );
       await page.clock.pauseAt(new Date(Date.now() + 1000));
       const search = page.getByRole('combobox', { name: 'Globale Suche' });
       const toast = page.getByRole('status').filter({ hasText: 'Neue Benachrichtigung' });

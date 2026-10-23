@@ -4,6 +4,7 @@
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
 import { chooseClient } from './helpers/client-combobox';
+import { gotoReady } from './helpers/page-ready';
 import { expectPortalDashboardReady, loginAsMandant } from './helpers/portal-auth';
 import { anyVisible, firstVisibleCandidate, PAGE_READY_TIMEOUT } from './helpers/visibility';
 import { execSync } from 'node:child_process';
@@ -415,7 +416,7 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await expect(btn).toBeVisible({ timeout: 5000 });
     await btn.click();
     await expect(appointmentDialog).toBeHidden({ timeout: 10_000 });
-    await page.goto(`/staff/calendar?month=${s.slice(0, 7)}`, { waitUntil: 'networkidle' });
+    await gotoReady(page, `/staff/calendar?month=${s.slice(0, 7)}`);
 
     // FIX 2: Statt body-visible — der Termin MUSS im Kalender/der Liste
     // auftauchen, sonst wurde er nicht persistiert.
