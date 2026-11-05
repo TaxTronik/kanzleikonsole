@@ -33,7 +33,7 @@
     "@taxtronik/tcms-client": "workspace:*",
     "bullmq": "^5.81.3",
     "ioredis": "^5.11.1",
-    "nodemailer": "10.0.10",
+    "nodemailer": "10.2.1",
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3"
   },

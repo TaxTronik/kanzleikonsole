@@ -46,6 +46,7 @@ code_refs:
 test_refs:
   - packages/mail/src/__tests__/imap.test.ts
   - packages/mail/src/__tests__/microsoft-cache.test.ts
+  - packages/mail/src/__tests__/msal-compat.test.ts
   - packages/mail/src/__tests__/attachments.test.ts
   - packages/mail/src/__tests__/attachment-resource-limits.test.ts
   - apps/web/src/__tests__/next-workspace-transpilation.test.ts
@@ -173,3 +174,11 @@ Status nach Abschluss des alten Scans. Ein verzögerter Logout darf außerdem
 den neueren Postfach-Claim nicht freigeben.
 Ein alter erfolgreicher Poll darf neueren Cursor/Fehlerstatus nicht überschreiben;
 ein alter Authentifizierungsfehler darf den neuen Claim nicht deaktivieren.
+
+Der MSAL-Vertragstest läuft mit der echten Bibliothek und ersetzt nur den
+Netzwerk-Client. Er belegt für den in Dependency-Audit 4230 aktualisierten Stand,
+dass ein von MSAL Node 5.6.0 gespeicherter Token-Cache weiterhin Konto und Token
+liefert, abgelaufene Token über den Refresh-Token erneuert werden und der
+PKCE-Codefluss die Antwort weiter per Query an den GET-Callback leitet. Auch dieser
+Nachweis ersetzt die offene Live-Abnahme mit Microsoft 365 nicht. Die Regel selbst
+ändert sich dadurch nicht.

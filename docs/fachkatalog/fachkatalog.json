@@ -4246,6 +4246,7 @@
       "test_refs": [
         "packages/mail/src/__tests__/imap.test.ts",
         "packages/mail/src/__tests__/microsoft-cache.test.ts",
+        "packages/mail/src/__tests__/msal-compat.test.ts",
         "packages/mail/src/__tests__/attachments.test.ts",
         "packages/mail/src/__tests__/attachment-resource-limits.test.ts",
         "apps/web/src/__tests__/next-workspace-transpilation.test.ts",

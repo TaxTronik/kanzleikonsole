@@ -94,9 +94,11 @@ overrides:
   # (GHSA-2883-xcg3-v3hh); den gepatchten v4-Stand auch transitiv erzwingen.
   js-yaml: '4.3.2'
   # Auch Mailparser und Auth.js muessen die SMTP-/Addressparser-Fixes erhalten
-  # (u. a. GHSA-v53p-9fqp-m79j, GHSA-g57g-f23g-4646). 10.0.10 behebt zudem
-  # quadratischen Aufwand beim DKIM-/SMTP-Parsing; MIME-Roundtrip testen.
-  nodemailer: '10.0.10'
+  # (u. a. GHSA-v53p-9fqp-m79j, GHSA-g57g-f23g-4646; ab 10.1.4 GHSA-85x2-q946-cp5h,
+  # GHSA-8c8m-p3m8-cjg8, GHSA-m943-m63m-w62w; ab 10.0.13 GHSA-g73g-hqqh-jr95,
+  # GHSA-4ffr-jq9g-5ffx). MIME-Roundtrip und Empfaengerparser testen
+  # (nodemailer-compat.test.ts).
+  nodemailer: '10.2.1'
   # Next.js erlaubt noch den verwundbaren 2.10-Zweig
   # (GHSA-w5vr-8v7q-w6rv); den bereits fuer browserslist aufgeloesten
   # gepatchten Stand einheitlich verwenden.
@@ -111,11 +113,12 @@ overrides:
   # ausgeführt.
   deepmerge-ts: '8.0.0'
   uuid: '^11.1.1'
-  # fast-uri <3.1.8 ist verwundbar (Host-Confusion und Authority-Injection,
-  # u. a. GHSA-qw65-cvwx-89v3, GHSA-hrr3-gc8f-f4qj);
-  # transitiv via Prisma -> @prisma/streams-local -> ajv. 3.x-Zweig halten,
-  # ajv erwartet ^3.
-  fast-uri: '3.1.8'
+  # fast-uri <3.1.9 ist verwundbar (Host-Confusion, Scheme-Spoofing und
+  # Pfad-Aequivalenz, u. a. GHSA-qw65-cvwx-89v3, GHSA-hrr3-gc8f-f4qj,
+  # GHSA-w74x-v6f9-j3xg, GHSA-wjr9-j795-jxcr, GHSA-xhq7-xmqj-769h,
+  # GHSA-333x-w4r6-6crp); transitiv via Prisma -> @prisma/streams-local -> ajv.
+  # 3.x-Zweig halten, ajv erwartet ^3.
+  fast-uri: '3.1.9'
   # ip-address <=10.7.0 kann IP-Familien bei Subnetzpruefungen verwechseln
   # und unbeschraenkte Parse-Diagnosen erzeugen (GHSA-j6r3-76f7-8jcv,
   # GHSA-h3mg-xc3c-68pw); <=10.7.3 prueft Zonen-IDs in quadratischer Zeit
@@ -155,6 +158,22 @@ overrides:
   # GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr).
   brace-expansion@1: '1.1.21'
   brace-expansion@5: '5.0.12'
+  # undici <8.12.2: TLS-Pruefung ueber verworfene Agent-Optionen, Cache-Poisoning
+  # ueber Cross-Origin-Redirects und mehrere DoS (u. a. GHSA-2m5v-pch6-74hx,
+  # GHSA-4w7w-5xrc-9h26, GHSA-qrxm-fqhp-jwvm, GHSA-xjj6-f33q-929c). Exakter Pin
+  # wie in @taxtronik/http-utils (safeFetch); jsdom zieht sonst die alte Kopie.
+  undici: '8.12.3'
+  # zod <4.6.6 sammelt je fehlerhaftem Array-Element Issues ohne Obergrenze und
+  # kann so den Speicher erschoepfen (GHSA-mrhx-c7xc-m3w5). Transitiv haelt sonst
+  # eslint-plugin-react-hooks die alte Kopie. Bereich wie in den Manifesten.
+  zod: '^4.6.7'
+  # minimatch >=7 <11.0.1 erlaubt CPU-/Speicher-DoS ueber globparts-Verstaerkung
+  # (GHSA-g3hv-75wg-m249); nur Entwicklung, ueber ESLint und typescript-estree.
+  # Deren Bereiche enden bei ^10 und kein Upstream-Release erlaubt 11. Sie nutzen
+  # nur `Minimatch`/`minimatch()`, nicht die in 11 entfernten APIs. minimatch@3
+  # (eslint-plugin-jsx-a11y, eslintrc) ist nicht betroffen und bleibt getrennt.
+  # 11.0.4 liegt noch in der Mindestreife.
+  minimatch@10: '11.0.3'
 
 # Workspace-Pakete werden per Symlink nur im node_modules ihrer deklarierten
 # Abhaengigen verlinkt, nicht als Hardlink-Kopie injiziert: Quellaenderungen

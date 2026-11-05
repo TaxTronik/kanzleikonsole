@@ -25,7 +25,7 @@
     "test:db": "vitest run --config vitest.db.config.ts"
   },
   "dependencies": {
-    "@azure/msal-node": "5.6.0",
+    "@azure/msal-node": "7.1.2",
     "@prisma/client": "7.9.1",
     "@taxtronik/config": "workspace:*",
     "@taxtronik/crypto": "workspace:*",
@@ -34,7 +34,7 @@
     "@taxtronik/storage": "workspace:*",
     "imapflow": "1.7.2",
     "mailparser": "3.9.15",
-    "nodemailer": "10.0.10",
+    "nodemailer": "10.2.1",
     "pdf-lib": "1.17.1"
   },
   "devDependencies": {

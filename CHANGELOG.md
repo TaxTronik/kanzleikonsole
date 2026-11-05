@@ -2124,6 +2124,22 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Dependency Audit 4230: Alle 20 Befunde (6 hoch, 12 mittel, 2 niedrig)
+  geschlossen; die Audits von Produktion und Gesamtgraph melden nichts mehr.
+  Undici `8.12.3` (u. a. TLS-Prüfung über verworfene Agent-Optionen,
+  Cache-Poisoning über Cross-Origin-Redirects), zod `4.6.7`
+  (GHSA-mrhx-c7xc-m3w5), `@azure/msal-node` `7.1.2` (GHSA-xcx6-jx8p-x3h5),
+  Nodemailer `10.2.1` (Empfängerparser: Zustellung an eine nicht im Header
+  genannte Domain, GHSA-85x2-q946-cp5h, GHSA-8c8m-p3m8-cjg8, GHSA-m943-m63m-w62w,
+  GHSA-g73g-hqqh-jr95; SMTP-DoS GHSA-4ffr-jq9g-5ffx), fast-uri `3.1.9` und in der
+  Entwicklung minimatch `11.0.3` (GHSA-g3hv-75wg-m249). Der MSAL-Vertragstest
+  (`MAIL-INBOX-001`) belegt, dass von 5.6.0 gespeicherte Token-Caches lesbar
+  bleiben, verbundene Postfächer also nicht neu verbunden werden müssten; die
+  Live-Abnahme mit Microsoft 365 bleibt offen. Die neuen Tests laufen gegen echte
+  Bibliotheken, auch der gepinnte `safeFetch`-Pfad.
+  Nodemailer 10.3 und minimatch 11.0.4 liegen noch innerhalb der siebentägigen
+  Mindestreife. Keine neuen Install-Hooks. Siehe
+  [Dependency-Audit 4230](docs/reviews/2026-11-05-dependency-audit-4230.md).
 - Next.js 16.4.1 statt 16.3.8: schließt eine kritische Remote Code Execution
   ohne Anmeldung über die Bildoptimierung mit SVG-Dateien (GHSA-2464-fhr4-w9xw,
   GHSA-673q-mjm6-r5xr) und eine Denial-of-Service-Lücke in Server Actions
