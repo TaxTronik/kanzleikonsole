@@ -172,3 +172,8 @@ Worker-Tests belegen die einmalige Listenvorbereitung je Lauf, Hinweise je
 Mandant nur bei Namenskandidaten, den Sammelhinweis für Folgeläufe ohne
 Kandidaten und keine Hinweise bei unverändertem, abgearbeitetem Stand.
 Die verlinkte Modulbeschreibung dokumentiert Datenwege und Grenzen.
+
+Im Dependency-Audit vom 17.11.2026 ist fast-xml-parser, mit dem `source.ts` die
+EU-Liste liest, von 5.11.0 auf 5.12.0 gehoben (GHSA-474x-hrwr-fgx4; der Parser
+nutzt keine Stop-Nodes). Die Parser- und Matcher-Tests des Tax-Pakets laufen mit
+dem neuen Stand unverändert. Die Regel selbst ändert sich dadurch nicht.

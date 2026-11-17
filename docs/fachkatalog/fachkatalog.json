@@ -1737,6 +1737,7 @@
       "test_refs": [
         "packages/storage/src/__tests__/object-lock-policy.test.ts",
         "packages/storage/src/__tests__/object-version.test.ts",
+        "packages/storage/src/__tests__/s3-xml-compat.test.ts",
         "apps/web/src/server/documents/__tests__/upload-helpers.test.ts"
       ],
       "feature_refs": ["docs/development/module/dokumentenarchiv.md", "docs/compliance/gobd.md"],

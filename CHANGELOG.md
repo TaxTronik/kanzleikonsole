@@ -2124,6 +2124,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Dependency-Audit vom 17.11.2026: Next.js `16.4.6` statt 16.4.1 schließt zwei
+  Cache-Lecks über Root-Parameter in `'use cache'`-Funktionen (GHSA-mfr8-8qww-v76h,
+  GHSA-vc7v-qv4w-wrv8); `@next/eslint-plugin-next` folgt. fast-xml-parser `5.12.0`
+  (GHSA-474x-hrwr-fgx4, quadratische Laufzeit bei offenen Stop-Node-Tags) direkt im
+  Tax-Paket und als exakter Override für `@aws-sdk/xml-builder`, das 5.7.3 pinnt.
+  Ein neuer S3-Vertragstest (`DOC-OBJECT-LOCK-001`) schickt typische Antworten des
+  Object Stores durch den echten AWS-Client; alte und neue Fassung lesen sie gleich.
+  Der Produktionsaudit meldet nichts mehr. Offen bleibt picomatch (GHSA-fc5q-39xc-vjpf,
+  nur Entwicklung über Vite, Vitest und ESLint), für das es noch keinen Fixstand
+  gibt. Keine neuen Install-Hooks. Siehe
+  [Dependency-Audit 2026-11-17](docs/reviews/2026-11-17-dependency-audit.md).
 - Dependency Audit 4230: Alle 20 Befunde (6 hoch, 12 mittel, 2 niedrig)
   geschlossen; die Audits von Produktion und Gesamtgraph melden nichts mehr.
   Undici `8.12.3` (u. a. TLS-Prüfung über verworfene Agent-Optionen,

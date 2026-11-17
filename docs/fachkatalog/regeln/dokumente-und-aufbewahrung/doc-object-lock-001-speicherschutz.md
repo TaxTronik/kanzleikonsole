@@ -43,6 +43,7 @@ code_refs:
 test_refs:
   - packages/storage/src/__tests__/object-lock-policy.test.ts
   - packages/storage/src/__tests__/object-version.test.ts
+  - packages/storage/src/__tests__/s3-xml-compat.test.ts
   - apps/web/src/server/documents/__tests__/upload-helpers.test.ts
 feature_refs:
   - docs/development/module/dokumentenarchiv.md
@@ -150,3 +151,11 @@ Object-Lock-Policy-Tests prüfen Modus und Defaultlaufzeit. Storage-Tests
 belegen vorbereitete Hash-/Bucket-/Tenant-Invarianten, Version-ID-Auflösung,
 Recovery nach verlorener Antwort und fail-closed Mehrfachversionen. Die Tests
 laufen gegen Mocks und ersetzen keinen Abnahmetest des produktiven Speichers.
+
+Der S3-Vertragstest schickt typische XML-Antworten durch den echten AWS-Client und
+ersetzt nur die Netzwerkschicht: Versionslisten mit Entitäten im Schlüssel,
+Object-Lock-Frist und Bucket-Konfiguration, Abschluss eines Multipart-Uploads und
+die abgewiesene Löschung einer gesperrten Fassung. Er belegt für den im
+Dependency-Audit vom 17.11.2026 erzwungenen Stand von fast-xml-parser, dass diese
+Antworten wie zuvor ausgewertet werden. Einen Abnahmetest gegen den produktiven
+Speicher ersetzt er nicht. Die Regel selbst ändert sich dadurch nicht.
