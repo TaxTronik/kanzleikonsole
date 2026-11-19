@@ -33,4 +33,36 @@ describe('requireStaffPage', () => {
     mocks.isStaffAdmin.mockReturnValue(false);
     await expect(requireStaffPage({ admin: true })).rejects.toThrow('redirect:/staff/dashboard');
   });
+
+  it('redirects non-admins to an internal deniedRedirect path', async () => {
+    mocks.staffAuth.mockResolvedValue({ user: { roles: ['STAFF'] } });
+    mocks.isStaffAdmin.mockReturnValue(false);
+    await expect(requireStaffPage({ admin: true, deniedRedirect: '/staff/poa' })).rejects.toThrow(
+      'redirect:/staff/poa',
+    );
+  });
+
+  it.each([
+    'https://evil.example/staff/poa',
+    '//evil.example',
+    '/\\evil.example',
+    '/staff//evil.example',
+    '/staff/../..//evil.example',
+    '/staff/poa?next=https://evil.example',
+    '/staff/poa#x',
+    '/staff',
+    '/portal/dashboard',
+    'javascript:alert(1)',
+  ])('rejects the off-surface deniedRedirect %s before any redirect', async (target) => {
+    mocks.staffAuth.mockResolvedValue({ user: { roles: ['STAFF'] } });
+    mocks.isStaffAdmin.mockReturnValue(false);
+    await expect(
+      requireStaffPage({
+        admin: true,
+        deniedRedirect: target as `/staff/${string}`,
+      }),
+    ).rejects.toThrow('deniedRedirect muss ein Pfad unter /staff/ sein');
+    expect(mocks.redirect).not.toHaveBeenCalled();
+    expect(mocks.staffAuth).not.toHaveBeenCalled();
+  });
 });

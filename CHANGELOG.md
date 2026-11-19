@@ -2124,6 +2124,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Staff-Seitenschutz: `requireStaffPage` nimmt als `deniedRedirect` nur noch
+  feste Pfade unter `/staff/` an (Typ `/staff/${string}` und Laufzeitprüfung
+  gegen fremde Hosts, `//`, Backslashes, Punktsegmente, Query und Fragment);
+  ein ungültiges Ziel bricht vor jeder Sitzungsprüfung ab, statt umzuleiten.
+  Schließt den Open-Redirect-Befund des Scanners. Die beiden bisherigen Aufrufer
+  (`/staff/poa`, `/staff/tcms`) übergeben feste Pfade, ausnutzbar war die Stelle
+  deshalb nicht.
 - Dependency-Audit vom 17.11.2026: Next.js `16.4.6` statt 16.4.1 schließt zwei
   Cache-Lecks über Root-Parameter in `'use cache'`-Funktionen (GHSA-mfr8-8qww-v76h,
   GHSA-vc7v-qv4w-wrv8); `@next/eslint-plugin-next` folgt. fast-xml-parser `5.12.0`
