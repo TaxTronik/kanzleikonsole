@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20261119-011
+    date: '2026-11-19'
+    paths:
+      - apps/worker/src/jobs/backup-drill.ts
+    rule_ids:
+      - BACKUP-DRILL-INTEGRITY-001
+    reason: >-
+      Härtung des pg_restore-Aufrufs im Restore-Drill (SAST-Befund
+      Kommandoinjektion): Der Drill startet das feste Programm pg_restore aus dem
+      Worker-Image ohne Shell und liest PG_RESTORE_PATH nicht mehr; keine
+      Worker-Konfiguration setzte es. Ein nicht absoluter Pfad der Laufkopie
+      wird vor Wegwerf-DB und pg_restore abgelehnt, damit das positionale
+      Argument nie als Option gelesen wird. Prüfung der Laufkopie gegen Hash und
+      Größe vor pg_restore, Flag-Liste, Drill-Rolle und Ergebnis von
+      BACKUP-DRILL-INTEGRITY-001 bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/worker/src/jobs/__tests__/backup-drill-integrity.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261022-003
     date: '2026-10-22'
     paths:

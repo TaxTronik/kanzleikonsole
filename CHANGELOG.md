@@ -2124,6 +2124,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Restore-Drill (`BACKUP-DRILL-INTEGRITY-001`): Der Worker startet `pg_restore`
+  als festes Programm aus dem Worker-Image ohne Shell und liest
+  `PG_RESTORE_PATH` nicht mehr; keine Worker-Konfiguration setzte es. Die
+  Restore-CLI (`restore.ts`, `restore.sh`) behält die Variable. Ein relativer
+  Pfad der Laufkopie (relatives `BACKUP_DRILL_TMP_DIR`) wird vor Wegwerf-DB
+  und `pg_restore` abgelehnt, damit das positionale Argument nie als Option
+  gelesen wird. Schließt den Kommandoinjektions-Befund des Scanners;
+  Anfragedaten erreichten den Aufruf schon vorher nicht.
 - Staff-Seitenschutz: `requireStaffPage` nimmt als `deniedRedirect` nur noch
   feste Pfade unter `/staff/` an (Typ `/staff/${string}` und Laufzeitprüfung
   gegen fremde Hosts, `//`, Backslashes, Punktsegmente, Query und Fragment);

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pgRestoreArgs } from '@taxtronik/db/pg-tools';
@@ -81,7 +81,7 @@ vi.mock('../../tsa-port', () => ({ timestampPortFor: vi.fn() }));
 vi.mock('../../logger', () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import { processors } from './mocks/bullmq';
-import { drillRestoreList } from '../backup-drill';
+import { drillRestoreList, PG_RESTORE_PROGRAM } from '../backup-drill';
 
 const OWNER_URL =
   'postgresql://taxtronik_owner:owner-password@postgres:5432/taxtronik?schema=public';
@@ -264,6 +264,50 @@ describe('BACKUP-DRILL-INTEGRITY-001: real job rejects altered S3 bytes before p
         }),
       }),
     );
+  });
+
+  it('starts the fixed pg_restore program without a shell and ignores PG_RESTORE_PATH', async () => {
+    vi.stubEnv('PG_RESTORE_PATH', '/tmp/x; touch /tmp/pwned');
+    await expect(processors.get('backup-drill')!({ data: {} })).resolves.toMatchObject({
+      ok: true,
+    });
+    expect(h.spawn).toHaveBeenCalledTimes(2);
+    for (const [program, args, options] of h.spawn.mock.calls as [
+      string,
+      string[],
+      { shell?: unknown },
+    ][]) {
+      expect(program).toBe(PG_RESTORE_PROGRAM);
+      expect(options.shell).toBe(false);
+      expect(isAbsolute(args.at(-1)!)).toBe(true);
+    }
+  });
+
+  it('rejects a relative spool path before creating a scratch database or starting pg_restore', async () => {
+    // Relatives BACKUP_DRILL_TMP_DIR mit führendem `-`: Als positionales
+    // Argument läse pg_restore den Dateipfad sonst als Option.
+    const cwd = process.cwd();
+    process.chdir(directory);
+    try {
+      vi.stubEnv('BACKUP_DRILL_TMP_DIR', '-spool');
+      await expect(processors.get('backup-drill')!({ data: {} })).resolves.toMatchObject({
+        ok: false,
+      });
+    } finally {
+      process.chdir(cwd);
+    }
+    expect(h.spawn).not.toHaveBeenCalled();
+    expect(h.ddl.mock.calls.some(([sql]) => String(sql).startsWith('CREATE DATABASE'))).toBe(false);
+    expect(h.record).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        action: 'backup.drill.failed',
+        after: expect.objectContaining({
+          error: expect.stringContaining('absoluter Pfad'),
+        }),
+      }),
+    );
+    expect(await readdir(join(directory, '-spool'))).toEqual([]);
   });
 
   it('reports a missing S3 response body without creating a scratch database', async () => {

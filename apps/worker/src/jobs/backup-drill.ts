@@ -41,6 +41,7 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
+import { isAbsolute } from 'node:path';
 import type { Readable } from 'node:stream';
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { createWorker } from '../worker-factory';
@@ -194,6 +195,12 @@ async function restoreIntoDrill(
     expectedSha,
     expectedSize,
     restore: async (path) => {
+      // Die Datei ist das einzige positionale pg_restore-Argument. Ein
+      // relativer Pfad (relatives BACKUP_DRILL_TMP_DIR) könnte mit `-` beginnen
+      // und würde dann als Option gelesen. Geprüft vor der Wegwerf-DB.
+      if (!isAbsolute(path)) {
+        throw new Error('Restore-Drill-Datei muss ein absoluter Pfad sein.');
+      }
       await recreateDrillDb(drillUrl, database);
       await restoreVerifiedFile(drillUrl, path, database);
     },
@@ -206,14 +213,12 @@ async function restoreVerifiedFile(
   database: string,
 ): Promise<void> {
   const conn = pgConnArgs(withDbName(drillUrl, database));
-  const pgRestorePath = process.env['PG_RESTORE_PATH'] ?? 'pg_restore';
   // Liste und Restore lesen dieselbe, bereits gegen den BackupRecord geprüfte
   // Datei; die Liste liegt im selben privaten Laufordner (wird mit entfernt).
-  const toc = await runPgRestore(pgRestorePath, ['--list', path], process.env, true);
+  const toc = await runPgRestore(['--list', path], process.env, true);
   const listPath = `${path}.list`;
   await writeFile(listPath, drillRestoreList(toc), { flag: 'wx', mode: 0o600 });
   await runPgRestore(
-    pgRestorePath,
     // R-02: dieselbe Flag-Liste wie der Produktiv-Restore (pgRestoreArgs aus
     // @taxtronik/db/pg-tools), angewendet auf die bereits vollständig gegen den
     // BackupRecord geprüfte Datei. ACLs/REVOKEs gehoeren zum wiederhergestellten
@@ -226,13 +231,23 @@ async function restoreVerifiedFile(
   );
 }
 
+/**
+ * Fester Programmname aus dem Worker-Image (postgresql18-client, siehe Kopf),
+ * aufgelöst über PATH. Anders als die Restore-CLI (restore.ts) liest der Drill
+ * kein PG_RESTORE_PATH: Keine Worker-Konfiguration setzt es, und so bestimmt
+ * keine Laufzeitvariable, welches Programm startet.
+ */
+export const PG_RESTORE_PROGRAM = 'pg_restore';
+
 async function runPgRestore(
-  pgRestorePath: string,
   args: string[],
   childEnv: NodeJS.ProcessEnv,
   captureStdout: boolean,
 ): Promise<string> {
-  const child = spawn(pgRestorePath, args, {
+  // Ohne Shell: Argumente gehen unverändert als argv an pg_restore, Shell-
+  // Metazeichen in Pfaden oder Verbindungswerten haben keine Wirkung.
+  const child = spawn(PG_RESTORE_PROGRAM, args, {
+    shell: false,
     stdio: ['ignore', captureStdout ? 'pipe' : 'ignore', 'pipe'],
     env: childEnv,
   });
@@ -244,7 +259,7 @@ async function runPgRestore(
   child.stderr?.on('data', (c: Buffer) => {
     if (stderr.length < 1500) stderr += c.toString('utf8').slice(0, 1500 - stderr.length);
   });
-  // Spawn-Fehler (ENOENT: pg_restore nicht im PATH / falscher PG_RESTORE_PATH)
+  // Spawn-Fehler (ENOENT: pg_restore nicht im PATH)
   // emittiert 'error' — ohne Listener würde das unbehandelte Event den GESAMTEN
   // Worker-Prozess töten (uncaughtException → process.exit(1) in index.ts).
   // Gleiches Muster wie in backup-run.ts für pg_dump.
