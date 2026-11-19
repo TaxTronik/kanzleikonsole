@@ -58,6 +58,15 @@ export function documentsDownloadUrl(fileIds: string[], folderIds: string[]): st
   return `/api/staff/documents/download?${params.toString()}`;
 }
 
+/**
+ * Startet den Download im aktuellen Fenster. Die Funktion nimmt IDs statt einer
+ * URL: Ziel ist immer die feste Route oben, kein Aufrufer kann ein freies
+ * Navigationsziel übergeben (Scanner-Befund: XSS über window.location.href).
+ */
+export function startDocumentsDownload(fileIds: string[], folderIds: string[]): void {
+  window.location.assign(documentsDownloadUrl(fileIds, folderIds));
+}
+
 /** Standardtyp für Datei-Drops: GENERAL, sonst der erste ohne Schutzstufe, sonst der erste. */
 export function defaultDropTypeId(
   types: Array<{ id: string; classificationKey: string | null; tier: string }>,

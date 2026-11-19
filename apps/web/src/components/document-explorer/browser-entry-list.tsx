@@ -28,6 +28,7 @@ import {
   type Entry,
 } from '@/components/document-browser-utils';
 import { ShareBadge, type DocumentOps } from './ops';
+import { documentsDownloadUrl } from './browser-operations';
 import type { BrowserSelection, FileEntry } from './browser-selection';
 import type { BrowserProps } from './types';
 
@@ -41,7 +42,6 @@ export interface BrowserEntryHandlers {
   /** Zeilenbefehl „Verschieben“: genau diese Datei. */
   moveFile: (id: string) => void;
   deleteFile: (file: FileEntry) => void;
-  folderDownloadHref: (folderId: string) => string;
 }
 
 export function BrowserEntryList({
@@ -210,7 +210,7 @@ function BrowserEntryRow({
       {e.kind === 'folder' && (
         <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100">
           <a
-            href={handlers.folderDownloadHref(e.id)}
+            href={documentsDownloadUrl([], [e.id])}
             className="text-disabled hover:text-primary p-1.5 inline-flex items-center"
             title="Ordner als ZIP herunterladen"
           >

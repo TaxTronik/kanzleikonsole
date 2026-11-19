@@ -2124,6 +2124,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Dokument-Explorer: Ordner- und Sammel-Downloads starten nur noch über
+  `startDocumentsDownload`, das Datei- und Ordner-IDs statt einer URL nimmt und
+  stets `/api/staff/documents/download` dieses Origins ansteuert. Rechtsklick-Menü
+  und Eintragsliste erhalten keine URL-Callback-Prop (`folderDownloadHref`) mehr.
+  Schließt den XSS-Befund des Scanners zu `window.location.href` im
+  Rechtsklick-Menü. Der einzige Aufrufer baute das Ziel bereits aus festem Pfad
+  und kodierten IDs, ausnutzbar war die Stelle deshalb nicht.
 - Restore-Drill (`BACKUP-DRILL-INTEGRITY-001`): Der Worker startet `pg_restore`
   als festes Programm aus dem Worker-Image ohne Shell und liest
   `PG_RESTORE_PATH` nicht mehr; keine Worker-Konfiguration setzte es. Die

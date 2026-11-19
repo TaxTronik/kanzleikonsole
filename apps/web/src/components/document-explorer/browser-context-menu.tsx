@@ -17,6 +17,7 @@ import {
 import { entryLabel } from '@/components/document-browser-utils';
 import type { DocumentOps } from './ops';
 import type { ContextMenuState } from './browser-dialogs';
+import { startDocumentsDownload } from './browser-operations';
 import type { FileEntry } from './browser-selection';
 
 export interface BrowserContextMenuActions {
@@ -24,7 +25,6 @@ export interface BrowserContextMenuActions {
   openMove: () => void;
   deleteFolder: (id: string, name: string) => void;
   softDelete: (files: FileEntry[]) => void;
-  folderDownloadHref: (folderId: string) => string;
 }
 
 export function BrowserContextMenu({
@@ -70,7 +70,7 @@ function FolderMenu({
         icon={Download}
         label="Als ZIP laden"
         onClick={() => {
-          window.location.href = actions.folderDownloadHref(menu.e.id);
+          startDocumentsDownload([], [menu.e.id]);
           actions.close();
         }}
       />

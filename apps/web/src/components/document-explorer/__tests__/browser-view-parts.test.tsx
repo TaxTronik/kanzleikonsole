@@ -24,6 +24,7 @@ import {
   dropUploadFormData,
   isOsFileDrag,
   splitMoveItems,
+  startDocumentsDownload,
   useBrowserOperations,
   type BrowserActions,
 } from '../browser-operations';
@@ -140,6 +141,37 @@ describe('Such-Ziel und Downloads', () => {
     expect(documentsDownloadUrl(['f1'], ['a'])).toBe(
       '/api/staff/documents/download?ids=f1&folders=a',
     );
+  });
+
+  it('bleibt auch mit fremden IDs auf der festen Download-Route dieses Origins', () => {
+    const origin = 'https://kanzlei.example';
+    const hostile = [
+      '//evil.example',
+      'javascript:alert(1)',
+      '../../x?y=1#z',
+      'https://evil.example',
+    ];
+    const target = new URL(documentsDownloadUrl(hostile, hostile), origin);
+    expect(target.origin).toBe(origin);
+    expect(target.pathname).toBe('/api/staff/documents/download');
+    expect(target.hash).toBe('');
+    expect([...target.searchParams.keys()]).toEqual(['ids', 'folders']);
+    expect(target.searchParams.get('folders')).toBe(hostile.join(','));
+  });
+
+  it('startet den Download nur über die feste Route', () => {
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    try {
+      startDocumentsDownload([], ['a']);
+      startDocumentsDownload(['f1', 'f2'], []);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(assign.mock.calls).toEqual([
+      ['/api/staff/documents/download?folders=a'],
+      ['/api/staff/documents/download?ids=f1%2Cf2'],
+    ]);
   });
 
   it('wählt für Datei-Drops GENERAL, sonst den ersten Typ ohne Schutzstufe, sonst den ersten', () => {

@@ -35,7 +35,7 @@ import { useBrowserSelection } from './browser-selection';
 import { useBrowserSearch } from './browser-navigation';
 import { useBrowserDialogs } from './browser-dialogs';
 import {
-  documentsDownloadUrl,
+  startDocumentsDownload,
   useBrowserOperations,
   useOsFileDrop,
   type BrowserActions,
@@ -139,9 +139,7 @@ export function BrowserView({
         search={search}
         actions={{
           move: dialogs.openMove,
-          download: () => {
-            window.location.href = documentsDownloadUrl(selection.fileIds(), selection.folderIds());
-          },
+          download: () => startDocumentsDownload(selection.fileIds(), selection.folderIds()),
           retag: () => {
             const ids = selection.fileIds();
             ops.setRetag({ ids, title: `${ids.length} Dokument(e)`, onDone: selection.clear });
@@ -178,7 +176,6 @@ export function BrowserView({
             dialogs.openMove();
           },
           deleteFile: (file) => dialogs.softDelete([file]),
-          folderDownloadHref: (folderId) => documentsDownloadUrl([], [folderId]),
         }}
       />
 
@@ -192,7 +189,6 @@ export function BrowserView({
             openMove: dialogs.openMove,
             deleteFolder: operations.deleteFolder,
             softDelete: dialogs.softDelete,
-            folderDownloadHref: (folderId) => documentsDownloadUrl([], [folderId]),
           }}
         />
       )}
