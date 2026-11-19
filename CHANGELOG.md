@@ -2198,6 +2198,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   noch innerhalb der siebentägigen Mindestreife. Die Install-Hooks von pnpm
   sind unverändert (`node install.js`) und laufen über Corepack bzw. die
   Selbstverwaltung von pnpm nicht; keine neue `allowBuilds`-Entscheidung.
+- Entwicklung/Test: Vite 8.3.8 statt 8.1.6 (exakter Override, aktuelle stabile
+  Linie) mit rolldown 1.2.19 und lightningcss 1.33.0. Gegen 8.1.6 ist kein
+  offener Hinweis bekannt; das Update holt die Korrekturen der 8.2-/8.3-Linie
+  nach, u. a. lehnt der Dev-Server seit 8.3.6 `.wasm` außerhalb von `server.fs`
+  ab und escaped HTML-Attribute. Vite verlangt postcss `^8.5.32`, deshalb steigt
+  der exakte postcss-Pin von 8.5.23 auf 8.5.32 und gilt auch für Next.js und
+  `@tailwindcss/postcss`. 8.5.32 liegt außerhalb der siebentägigen Mindestreife;
+  die Release-Age-Ausnahme `postcss@8.5.23` entfällt samt Soll-Liste im
+  Supply-Chain-Gate (FK-EXC-20261119-001). Das wasm32-Binding von rolldown pinnt
+  `@emnapi/core`/`@emnapi/runtime` 2.0.0-beta.2; es wird auf den genutzten
+  Plattformen nicht installiert. Keine neuen Install-Hooks, `allowBuilds`
+  unverändert.
 - **[Scope] [TCMS]** Die Aufbewahrung eines GwG-Belegs, der als Nachweis im
   Tax-CMS verknüpft ist oder war, lässt sich ab der ersten Bindung von keiner
   Rolle mehr verkürzen (RT3D-K-01, Migration 20261021171000): Anlagedatum und

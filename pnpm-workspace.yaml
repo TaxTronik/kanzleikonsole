@@ -79,7 +79,7 @@ overrides:
   # ebenfalls nur ueber @prisma/dev.
   valibot: '^1.4.2'
   ioredis: '^5.11.1'
-  # postcss <=8.5.22 ist verwundbar. Vite 8.3.8 verlangt ^8.5.32, Next.js 16.4.1
+  # postcss <=8.5.22 ist verwundbar. Vite 8.3.8 verlangt ^8.5.32, Next.js 16.4.6
   # pinnt 8.5.23 exakt; ein exakter Pin haelt beide auf derselben geprueften
   # Version. 8.5.32 liegt ausserhalb der Mindestreife, daher keine Ausnahme.
   postcss: '8.5.32'
@@ -87,8 +87,8 @@ overrides:
   esbuild: '0.28.1'
   # vite <=8.1.5 is vulnerable (u. a. GHSA-fx2h-pf6j-xcff, GHSA-v6wh-96g9-6wx3,
   # GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw); nur Dev/Test.
-  # Exakter Pin auf die aktuelle stabile Linie (8.3.x enthaelt u. a. die Haertung
-  # gegen GHSA-vfpm-58rq-9qcg und weitere server.fs-Korrekturen).
+  # Exakter Pin auf die aktuelle stabile Linie. Gegen 8.1.6 ist kein offener
+  # Hinweis bekannt; 8.3.x bringt die laufenden Dev-Server-Korrekturen mit.
   vite: '8.3.8'
   # tmp 0.2.6 is vulnerable (GHSA-7c78-jf6q-g5cm); force the patched release.
   tmp: '0.2.7'

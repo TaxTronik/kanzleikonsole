@@ -1,5 +1,23 @@
 ---
 exceptions:
+  - id: FK-EXC-20261119-001
+    date: '2026-11-19'
+    paths:
+      - scripts/check-pnpm-supply-chain.sh
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Die Soll-Liste der Release-Age-Ausnahmen im Supply-Chain-Guard verliert den
+      versionsgebundenen Eintrag postcss@8.5.23. Mit dem Update des Dev-/Test-
+      Werkzeugs Vite auf 8.3.8 (verlangt postcss ^8.5.32) steigt der postcss-Pin
+      auf 8.5.32, das bereits außerhalb der siebentägigen Mindestwartezeit liegt;
+      die Ausnahme wird nicht mehr gebraucht und ist zusammen damit auch aus
+      pnpm-workspace.yaml entfernt. Die WebAuthn-, Ketten- und CRL-Prüfungen des
+      Guards, die Build-Script-Sollliste sowie Zugriffsschutz und RLS bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - packages/crypto/src/__tests__/certificate-path.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261119-011
     date: '2026-11-19'
     paths:
