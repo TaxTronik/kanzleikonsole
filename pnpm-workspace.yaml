@@ -19,7 +19,6 @@ minimumReleaseAgeExclude:
   # Version-scoped security hotfix exceptions; keep this list short.
   - nodemailer@9.0.1
   - undici@8.9.0
-  - postcss@8.5.23
   - nanoid@3.3.18
   - deepmerge-ts@8.0.0
   # Beide von ESLint benoetigten Zweige muessen in EINER Regel stehen: pnpm
@@ -80,14 +79,17 @@ overrides:
   # ebenfalls nur ueber @prisma/dev.
   valibot: '^1.4.2'
   ioredis: '^5.11.1'
-  # postcss <=8.5.22 ist verwundbar; der exakte Pin verhindert, dass die
-  # Hotfix-Ausnahme unbemerkt auf spätere frische Releases ausgedehnt wird.
-  postcss: '8.5.23'
+  # postcss <=8.5.22 ist verwundbar. Vite 8.3.8 verlangt ^8.5.32, Next.js 16.4.1
+  # pinnt 8.5.23 exakt; ein exakter Pin haelt beide auf derselben geprueften
+  # Version. 8.5.32 liegt ausserhalb der Mindestreife, daher keine Ausnahme.
+  postcss: '8.5.32'
   # esbuild 0.28.0 is vulnerable (GHSA-gv7w-rqvm-qjhr); force the patched release.
   esbuild: '0.28.1'
   # vite <=8.1.5 is vulnerable (u. a. GHSA-fx2h-pf6j-xcff, GHSA-v6wh-96g9-6wx3,
   # GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw); nur Dev/Test.
-  vite: '8.1.6'
+  # Exakter Pin auf die aktuelle stabile Linie (8.3.x enthaelt u. a. die Haertung
+  # gegen GHSA-vfpm-58rq-9qcg und weitere server.fs-Korrekturen).
+  vite: '8.3.8'
   # tmp 0.2.6 is vulnerable (GHSA-7c78-jf6q-g5cm); force the patched release.
   tmp: '0.2.7'
   # js-yaml <4.3.2 erlaubt CPU-DoS ueber leere Merge-Quellen
