@@ -2146,6 +2146,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Schließt den Open-Redirect-Befund des Scanners. Die beiden bisherigen Aufrufer
   (`/staff/poa`, `/staff/tcms`) übergeben feste Pfade, ausnutzbar war die Stelle
   deshalb nicht.
+- Ausweishilfe (`GWG-OCR-ASSIST-001`): pdfjs-dist `6.5.438` statt 6.2.108
+  (Mindestversion `^6.4.299`), optional mit `@napi-rs/canvas` `1.1.1`. Schließt
+  zwei Befunde, die bisher nur Aikido führt, ohne CVE- oder GHSA-Kennung:
+  AIKIDO-2026-169371 (hoch, behoben in 6.3.289: CSS-Injektion über
+  Schriftnamen aus der PDF, super-lineare reguläre Ausdrücke, AcroForm-Ketten
+  ohne Zykluserkennung) und AIKIDO-2026-990697 (mittel, behoben in 6.4.299:
+  unbegrenzte Schleife bei automatischer Schriftgröße in AcroForm-Textfeldern).
+  pdf.js rendert nur im Browser der Nutzer, die einen Ausweis als PDF erfassen;
+  XFA ist dort abgeschaltet. `pnpm audit` und Trivy kannten beide Befunde
+  nicht, weil sie nur GitHub-Advisories auswerten. Keine neuen Install-Hooks,
+  `allowBuilds` unverändert; Optionen von `getDocument` und Asset-Layout gleich.
 - Dependency-Audit vom 17.11.2026: Next.js `16.4.6` statt 16.4.1 schließt zwei
   Cache-Lecks über Root-Parameter in `'use cache'`-Funktionen (GHSA-mfr8-8qww-v76h,
   GHSA-vc7v-qv4w-wrv8); `@next/eslint-plugin-next` folgt. fast-xml-parser `5.12.0`
