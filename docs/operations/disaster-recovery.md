@@ -326,9 +326,34 @@ Für `redis-data.tar.gz`, `n8n-data.tar.gz` und – falls vorhanden –
 Postgres-Infrastruktur mit der wiederhergestellten `.env` starten, den
 TaxTronik-Dump über `./taxtronik restore --file … --target-url …` und den
 n8n-Dump per `pg_restore --single-transaction --exit-on-error` einspielen.
+Vor dem Start von App und Worker `./taxtronik revoke-all-sessions` ausführen
+(siehe [Redis-Stand und Sitzungen](#redis-stand-und-sitzungen)).
 Erst danach App/Worker/n8n starten. Pflichtprüfungen: `restore-selftest`/
 Audit-Chain, App-Health + Deploy-Readiness, Login, n8n-Credential-Entschlüsselung,
 Dokument-Download sowie Stichproben von VersionId/Retention/Delete Markern.
+
+### Redis-Stand und Sitzungen
+
+`redis_data` enthält neben den BullMQ-Queues die Sitzungswiderrufe, den
+TOTP-Wiederholschutz und Anmeldesperren. Ein älterer Redis-Stand kennt
+spätere Abmeldungen, Deaktivierungen und Sperren nicht mehr. Bereits
+widerrufene Mitarbeiter- und Portalsitzungen wären dann bis zum Ende ihrer
+24-Stunden-Lebensdauer wieder gültig; die CVP-Nachprüfung vom 20.11.2026 hat
+das mit zwei Webinstanzen nachgewiesen.
+
+Nach jedem Zurückspielen von `redis_data` und nach jedem Redis-Failover deshalb
+vor dem Start von App und Worker:
+
+```bash
+./taxtronik revoke-all-sessions
+```
+
+Das Kommando setzt im laufenden Redis-Container den globalen Stichtag
+`revoke:all` auf die Redis-Serverzeit und liest ihn nach. Alle bis dahin
+ausgestellten Sitzungen beider Oberflächen sind danach ungültig; neue
+Anmeldungen funktionieren sofort. Der Stichtag gilt 30 Tage und wird nie
+zurückgesetzt. Den TOTP-Wiederholschutz (90 Sekunden) und abgelaufene
+Anmeldesperren stellt das Kommando nicht wieder her.
 
 Das Verfahren stellt Werkzeuge und eine versionstreue Cold-Quelle bereit. Eine
 belastbare Wiederanlaufgarantie entsteht erst durch den unten beschriebenen
@@ -562,6 +587,8 @@ pnpm --filter @taxtronik/web exec tsx src/server/backup/runner.ts \
 - [ ] Leere `seaweed_data`-/`redis_data`-/`n8n_data`-Volumes aus Cold-Snapshots
       rehydriert; Version-/Retention-Stichprobe vorbereitet
 - [ ] `docker compose up -d postgres redis seaweedfs clamav` (Infra)
+- [ ] `./taxtronik revoke-all-sessions` nach dem Rehydrieren von `redis_data`
+      ([Redis-Stand und Sitzungen](#redis-stand-und-sitzungen))
 - [ ] `pnpm install`
 - [ ] `pnpm db:migrate:deploy` (DB-Schema bauen)
 - [ ] `./taxtronik restore --latest --target-url <postgres-url>`
@@ -623,17 +650,17 @@ N−1-Code.
 
 ## Volume-Inventar & Backup-Status
 
-| Volume / DB          | Inhalt                                         | Backup                                                           |
-| -------------------- | ---------------------------------------------- | ---------------------------------------------------------------- |
-| Postgres `taxtronik` | App-Daten (Mandanten, Rechnungen, Audit-Chain) | `backup` (DB-only) und quiesziertes `backup-full`                |
-| Postgres `n8n`       | n8n-Credentials + Ausführungshistorie          | quieszierter Custom-Dump im `backup-full`                        |
-| `seaweed_data`       | GoBD-/GwG-Objekte inkl. Store-Metadaten        | Cold-Volume-Snapshot im `backup-full`; Byte-Export zusätzlich    |
-| `n8n_data`           | n8n-Config inkl. `encryptionKey`               | Cold-Volume-Snapshot im gleichen `backup-full`                   |
-| `redis_data`         | BullMQ-Queues (AOF)                            | Cold-Volume-Snapshot im gleichen `backup-full`                   |
-| `traefik_acme`       | ACME-Konto und TLS-Zertifikate                 | bei verwaltetem Traefik im gleichen `backup-full`                |
-| `clamav_data`        | Virensignaturen                                | bewusst NICHT gesichert (Auto-Download)                          |
-| `eric_logs`          | ERiC-Protokolle (Lizenzpflicht)                | Volume-Snapshot beim Betreiber                                   |
-| `tcms-db-data`       | Tax-CMS-Datenbank `tcms` (verwaltet)           | Custom-Dump in `backup`/`update`/`tcms backup` und `backup-full` |
+| Volume / DB          | Inhalt                                          | Backup                                                           |
+| -------------------- | ----------------------------------------------- | ---------------------------------------------------------------- |
+| Postgres `taxtronik` | App-Daten (Mandanten, Rechnungen, Audit-Chain)  | `backup` (DB-only) und quiesziertes `backup-full`                |
+| Postgres `n8n`       | n8n-Credentials + Ausführungshistorie           | quieszierter Custom-Dump im `backup-full`                        |
+| `seaweed_data`       | GoBD-/GwG-Objekte inkl. Store-Metadaten         | Cold-Volume-Snapshot im `backup-full`; Byte-Export zusätzlich    |
+| `n8n_data`           | n8n-Config inkl. `encryptionKey`                | Cold-Volume-Snapshot im gleichen `backup-full`                   |
+| `redis_data`         | BullMQ-Queues, Sitzungswiderrufe, Sperren (AOF) | Cold-Volume-Snapshot im gleichen `backup-full`                   |
+| `traefik_acme`       | ACME-Konto und TLS-Zertifikate                  | bei verwaltetem Traefik im gleichen `backup-full`                |
+| `clamav_data`        | Virensignaturen                                 | bewusst NICHT gesichert (Auto-Download)                          |
+| `eric_logs`          | ERiC-Protokolle (Lizenzpflicht)                 | Volume-Snapshot beim Betreiber                                   |
+| `tcms-db-data`       | Tax-CMS-Datenbank `tcms` (verwaltet)            | Custom-Dump in `backup`/`update`/`tcms backup` und `backup-full` |
 
 Wiederherstellung n8n: Volume `n8n_data` + Postgres-`n8n`-Dump zusammen
 einspielen; `N8N_ENCRYPTION_KEY` in der `.env` muss zum gesicherten Stand passen

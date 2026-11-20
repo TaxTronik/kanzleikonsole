@@ -507,9 +507,21 @@ export async function restoreRetagDocument(
         data: {
           classification: plan.newClassification as never,
           documentTypeId: plan.newTypeId,
-          retentionUntil: commit.retentionUntil,
         },
       });
+      if (commit.retentionUntil) {
+        // DOC-RETENTION-CLASS-001: Der Retag ankert an der ursprünglichen
+        // Anlage. Eine spätere Version kann das Aufbewahrungsende bereits
+        // weiter hinausgeschoben haben; ihr Object-Lock bleibt bestehen. Wie
+        // die Route für neue Versionen deshalb nur monoton verlängern.
+        await tx.document.updateMany({
+          where: {
+            id: documentId,
+            OR: [{ retentionUntil: null }, { retentionUntil: { lt: commit.retentionUntil } }],
+          },
+          data: { retentionUntil: commit.retentionUntil },
+        });
+      }
       await evidenceService.record(tx, {
         tenantId,
         actorType: 'STAFF',

@@ -12,6 +12,12 @@
 //   - fail-closed: ohne belastbar erreichbares Redis wird weder ein Widerruf
 //     als erfolgreich bestätigt noch ein Token als gültig behandelt.
 // Der Redis-Client kommt vom Aufrufer (Web-Singleton bzw. BullMQ-Verbindung).
+//
+// Globaler Stichtag `revoke:all`: Geht in Redis Zustand verloren (älterer
+// Snapshot zurückgespielt, Failover auf ein Replikat ohne die letzten
+// Schreibvorgänge), würden bereits widerrufene Sitzungen wieder gültig. Der
+// Betreiber setzt dann mit `./taxtronik revoke-all-sessions` einen Stichtag,
+// der für alle Personen beider Oberflächen gilt. Jede Prüfung liest ihn mit.
 // =============================================================================
 
 export type SessionSurface = 'staff' | 'portal';
@@ -31,11 +37,13 @@ local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
 `;
 
 const READ_REVOCATION_STATE = `${REDIS_TIME_MS}
-return {redis.call('GET', KEYS[1]), nowMs}
+return {redis.call('GET', KEYS[1]), redis.call('GET', KEYS[2]), nowMs}
 `;
 
 // Compare and write atomically; keep unreadable stored state fail-closed.
-const ADVANCE_REVOCATION = `${REDIS_TIME_MS}
+// scripts/ops/sessions.sh führt für `revoke:all` wörtlich dasselbe Skript aus
+// (geprüft in session-revocation.test.ts).
+export const ADVANCE_REVOCATION = `${REDIS_TIME_MS}
 local stored = redis.call('GET', KEYS[1])
 local incoming = nowMs
 if stored then
@@ -61,6 +69,30 @@ export class SessionRevocationUnavailableError extends Error {
 /** Redis-Key-Schema `revoke:<surface>:<userId>` (ohne Prefix, gleiche REDIS_URL in Web und Worker). */
 export function sessionRevocationKey(surface: SessionSurface, userId: string): string {
   return `revoke:${surface}:${userId}`;
+}
+
+/** Globaler Stichtag für alle Personen beider Oberflächen (Betreiber, nach Redis-Verlust). */
+export const GLOBAL_SESSION_REVOCATION_KEY = 'revoke:all';
+
+/**
+ * Widerruft alle bis zur Redis-Serverzeit ausgestellten Sitzungen beider
+ * Oberflächen. Monoton und fail-closed wie `advanceSessionRevocation`.
+ */
+export async function advanceGlobalSessionRevocation(
+  redis: SessionRevocationRedis | null | undefined,
+): Promise<void> {
+  if (!redis) throw new SessionRevocationUnavailableError();
+  try {
+    const result = await redis.eval(
+      ADVANCE_REVOCATION,
+      1,
+      GLOBAL_SESSION_REVOCATION_KEY,
+      SESSION_REVOCATION_TTL_SEC,
+    );
+    if (result !== 'OK') throw new Error(`unexpected Redis revocation result: ${String(result)}`);
+  } catch (e) {
+    throw new SessionRevocationUnavailableError(undefined, { cause: e });
+  }
 }
 
 /**
@@ -89,9 +121,10 @@ export async function advanceSessionRevocation(
 }
 
 /**
- * ms-Zeitstempel, ab dem Tokens für (surface, userId) als widerrufen gelten;
- * 0 = kein Widerruf. Wirft `SessionRevocationUnavailableError` bei Ausfall
- * oder unlesbarem Wert (der Aufrufer behandelt das als widerrufen).
+ * ms-Zeitstempel, ab dem Tokens für (surface, userId) als widerrufen gelten:
+ * der spätere aus persönlichem und globalem Stichtag; 0 = kein Widerruf.
+ * Wirft `SessionRevocationUnavailableError` bei Ausfall oder unlesbarem Wert
+ * (der Aufrufer behandelt das als widerrufen).
  */
 export async function readSessionRevocationTimestamp(
   redis: SessionRevocationRedis | null | undefined,
@@ -100,7 +133,9 @@ export async function readSessionRevocationTimestamp(
 ): Promise<number> {
   if (!redis) throw new SessionRevocationUnavailableError();
   try {
-    return parseCutoff(await redis.get(sessionRevocationKey(surface, userId)));
+    const personal = parseCutoff(await redis.get(sessionRevocationKey(surface, userId)));
+    const global = parseCutoff(await redis.get(GLOBAL_SESSION_REVOCATION_KEY));
+    return Math.max(personal, global);
   } catch (e) {
     throw new SessionRevocationUnavailableError(undefined, { cause: e });
   }
@@ -115,7 +150,10 @@ function parseCutoff(value: unknown): number {
   return timestamp;
 }
 
-/** Ein Redis-Aufruf liefert Widerruf und Vergleichsuhr für präzise Anmeldeanker. */
+/**
+ * Ein Redis-Aufruf liefert persönlichen und globalen Widerruf sowie die
+ * Vergleichsuhr für präzise Anmeldeanker. `cutoffMs` ist der spätere Stichtag.
+ */
 export async function readSessionRevocationState(
   redis: SessionRevocationRedis | null | undefined,
   surface: SessionSurface,
@@ -123,12 +161,17 @@ export async function readSessionRevocationState(
 ): Promise<{ cutoffMs: number; nowMs: number }> {
   if (!redis) throw new SessionRevocationUnavailableError();
   try {
-    const state = await redis.eval(READ_REVOCATION_STATE, 1, sessionRevocationKey(surface, userId));
-    if (!Array.isArray(state) || state.length !== 2) throw new Error('invalid Redis state');
-    const [cutoff, nowMs] = state;
+    const state = await redis.eval(
+      READ_REVOCATION_STATE,
+      2,
+      sessionRevocationKey(surface, userId),
+      GLOBAL_SESSION_REVOCATION_KEY,
+    );
+    if (!Array.isArray(state) || state.length !== 3) throw new Error('invalid Redis state');
+    const [personal, global, nowMs] = state;
     if (typeof nowMs !== 'number' || !Number.isSafeInteger(nowMs) || nowMs <= 0)
       throw new Error('invalid Redis time');
-    return { cutoffMs: parseCutoff(cutoff), nowMs };
+    return { cutoffMs: Math.max(parseCutoff(personal), parseCutoff(global)), nowMs };
   } catch (cause) {
     throw new SessionRevocationUnavailableError(undefined, { cause });
   }

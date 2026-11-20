@@ -71,6 +71,7 @@ code_refs:
   - apps/web/src/types/next-auth.d.ts
   - packages/crypto/src/session-revocation.ts
   - apps/web/src/server/auth/revocation.ts
+  - scripts/ops/sessions.sh
   - packages/db/src/tenant-context.ts
   - packages/db/prisma/schema.prisma
   - packages/db/prisma/migrations/20260907013230_reminder_tickets/migration.sql
@@ -494,8 +495,21 @@ reaktivieren. Nur ein bestätigter Redis-null-Wert bedeutet fehlenden Cutoff;
 leere, beschädigte oder nicht sicher ganzzahlige Werte sperren Sitzungen und
 werden beim Widerruf nicht als gültiger Zustand überschrieben.
 
+Jede Prüfung liest zusätzlich den globalen Stichtag `revoke:all` und verwendet
+den späteren der beiden Werte. Geht in Redis Zustand verloren, etwa durch einen
+zurückgespielten älteren Stand oder einen Failover, setzt der Betreiber ihn mit
+`./taxtronik revoke-all-sessions` auf die Redis-Serverzeit. Danach sind alle
+bis dahin ausgestellten Sitzungen beider Oberflächen ungültig. Ohne diesen
+Schritt wären bereits widerrufene Sitzungen bis zum Ende ihrer 24-Stunden-
+Lebensdauer wieder gültig; das Desaster-Recovery-Runbook schreibt ihn nach
+jedem Zurückspielen von `redis_data` und nach jedem Failover vor. Das
+Kommando führt wörtlich dasselbe monotone Lua-Skript aus wie die Anwendung.
+
 Die Regression belegt einen absichtlich verzögerten alten Schreibvorgang
-gegen eine isolierte echte Redis-Instanz. Portaltests führen echte Action,
+gegen eine isolierte echte Redis-Instanz. Dieselbe Suite belegt, dass nach einem
+gelöschten persönlichen Cutoff der globale Stichtag ältere Sitzungen beider
+Oberflächen sperrt und neue Anmeldungen zulässt. Ein Shell-Test prüft, dass das
+Betreiberkommando nur nach belastbarem Nachlesen Erfolg meldet. Portaltests führen echte Action,
 Profilresolver, JWT-Codec und Server-Hydration gegen simulierte DB-/Redis-
 Grenzen aus; sie prüfen Ziel-/Quellwiderruf, E-Mail-Wechsel, mehrfachen
 Profilwechsel, Logout-Anker und die Ablehnung historischer Cookies.

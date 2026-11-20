@@ -131,3 +131,5 @@ source "$ROOT/scripts/ops/deploy.sh"
 source "$ROOT/scripts/ops/update.sh"
 # shellcheck source=ops/rollback.sh
 source "$ROOT/scripts/ops/rollback.sh"
+# shellcheck source=ops/sessions.sh
+source "$ROOT/scripts/ops/sessions.sh"

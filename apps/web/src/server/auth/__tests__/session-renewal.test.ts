@@ -71,7 +71,8 @@ vi.mock('@/server/redis', () => ({
   getRedis: () => ({
     eval: async () => {
       if (h.redisFailure) throw new Error('fixture Redis unavailable');
-      return [h.cutoff, Date.now() + h.redisOffsetMs];
+      // Persönlicher und globaler Stichtag (revoke:all), dann die Redis-Uhr.
+      return [h.cutoff, null, Date.now() + h.redisOffsetMs];
     },
     time: async () => {
       if (h.redisFailure) throw new Error('fixture Redis unavailable');

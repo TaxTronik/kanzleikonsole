@@ -16,6 +16,7 @@
 #   ./taxtronik restore --list       Backups auflisten / Restore starten
 #   ./taxtronik rollback [<version>] zurueck auf vorherigen Stand (keine Migration)
 #   ./taxtronik reset-admin-password Admin-Passwort neu setzen (Recovery)
+#   ./taxtronik revoke-all-sessions  alle Sitzungen widerrufen (Pflicht nach Redis-Restore)
 #   ./taxtronik doctor [--fix]       .env vorab validieren / Secrets generieren
 #   ./taxtronik tcms <kommando>      Tax-CMS einrichten, pruefen, rotieren, abschalten
 #   ./taxtronik up|down|ps|logs|exec|pull ...   docker-compose-Passthrough
@@ -58,6 +59,8 @@ Nutze:
                                     Prod-Writer stoppen; bleiben danach gestoppt
   ./taxtronik rollback [<version>]  zurueck; nach Prod-Restore ist <version> Pflicht
   ./taxtronik reset-admin-password  Admin-Passwort neu setzen (Recovery)
+  ./taxtronik revoke-all-sessions   Alle Mitarbeiter- und Portalsitzungen widerrufen
+                                    (Pflicht nach Redis-Restore oder -Failover)
   ./taxtronik doctor [--fix]        .env-Validierung; --fix generiert fehlende Secrets
   ./taxtronik tcms setup [managed|external|disabled] [--no-start]
                                     Tax-CMS einrichten (Geheimnisse, Netze, Start)
@@ -98,6 +101,7 @@ case "$cmd" in
     cmd_rollback "${1:-}"
     ;;
   reset-admin-password) cmd_reset_admin_password ;;
+  revoke-all-sessions) shift || true; cmd_revoke_all_sessions "$@" ;;
   doctor)    shift || true; doctor "$@" ;;
   tcms)      shift || true; cmd_tcms "$@" ;;
   compose)

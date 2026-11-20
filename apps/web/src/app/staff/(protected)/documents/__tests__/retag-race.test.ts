@@ -28,7 +28,7 @@ const m = vi.hoisted(() => {
       $executeRaw: vi.fn(),
       documentType: { findFirst: vi.fn() },
       documentVersion: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
-      document: { update: vi.fn() },
+      document: { update: vi.fn(), updateMany: vi.fn() },
     },
   };
 });
@@ -151,6 +151,7 @@ beforeEach(() => {
   m.fetchVerifiedObjectBytes.mockResolvedValue(Buffer.from('document bytes'));
   m.txCommit.documentVersion.create.mockResolvedValue({ id: 'new-db-version' });
   m.txCommit.document.update.mockResolvedValue({});
+  m.txCommit.document.updateMany.mockResolvedValue({ count: 1 });
   m.evidenceRecord.mockResolvedValue({});
   m.gebunden.mockResolvedValue(false);
 });

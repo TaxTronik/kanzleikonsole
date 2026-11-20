@@ -51,8 +51,9 @@ vi.mock('@/server/rate-limit', () => ({ getClientIp: vi.fn(), checkIpOrGlobalLim
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.record } }));
 vi.mock('@/server/redis', () => ({
   getRedis: () => ({
-    eval: async (_script: string, _keyCount: number, key: string) => [
+    eval: async (_script: string, _keyCount: number, key: string, globalKey: string) => [
       h.cutoffs.get(key) ?? null,
+      h.cutoffs.get(globalKey) ?? null,
       Date.now(),
     ],
     get: async (key: string) => h.cutoffs.get(key) ?? null,

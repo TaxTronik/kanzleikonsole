@@ -1338,6 +1338,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Eine Umklassifizierung (Retag) senkte das gespeicherte Aufbewahrungsende
+  einer GoBD-Akte, wenn eine spätere Version es bereits angehoben hatte. Die
+  Akte zeigte dann ein zu frühes Datum, etwa 2029 statt 2033; der Object-Lock
+  der späteren Version blieb unverändert. Der Retag verlängert jetzt nur noch
+  (`DOC-RETENTION-CLASS-001`).
 - Die SQL-Gegenproben der Browsertests verwenden dieselbe konfigurierte
   Datenbank wie die Anwendung. Bei widersprüchlichen Datenbanknamen bricht
   die Testvorbereitung vor der ersten Abfrage ab.
@@ -2239,6 +2244,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   die Cookie-Löschung (`0c1f8174`).
 
 ### Sicherheit
+
+- Nach dem Zurückspielen eines älteren Redis-Stands oder einem Failover waren
+  bereits abgemeldete Sitzungen bis zum Ende ihrer 24-Stunden-Lebensdauer
+  wieder gültig. Neues Betreiberkommando `./taxtronik revoke-all-sessions` setzt
+  einen globalen Widerrufsstichtag für Mitarbeiter- und Portalsitzungen. Das
+  Desaster-Recovery-Runbook schreibt es nach jedem Redis-Restore und Failover
+  vor (`ACCESS-TENANT-RLS-001`).
 
 - Hinweise auf externe Rechercheantworten berücksichtigen jetzt die separat
   gesetzte Vertraulichkeit einer Subsumtion. Nach einem Zuständigkeitswechsel

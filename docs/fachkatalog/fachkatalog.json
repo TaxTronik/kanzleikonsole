@@ -559,6 +559,7 @@
         "apps/web/src/types/next-auth.d.ts",
         "packages/crypto/src/session-revocation.ts",
         "apps/web/src/server/auth/revocation.ts",
+        "scripts/ops/sessions.sh",
         "packages/db/src/tenant-context.ts",
         "packages/db/prisma/schema.prisma",
         "packages/db/prisma/migrations/20260907013230_reminder_tickets/migration.sql",
@@ -1964,13 +1965,15 @@
         "packages/storage/src/service.ts",
         "apps/web/src/server/storage/document-type.ts",
         "apps/web/src/server/inbox/accept-attachment.ts",
+        "apps/web/src/server/documents/retag.ts",
         "packages/db/prisma/migrations/20260801003520_document_type_retention_years/migration.sql"
       ],
       "test_refs": [
         "packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts",
         "packages/storage/src/__tests__/retention.test.ts",
         "apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts",
-        "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts"
+        "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts",
+        "apps/web/src/server/documents/__tests__/retag-db.test.ts"
       ],
       "feature_refs": ["docs/anwenderdoku/dokumente.md", "docs/compliance/gobd.md"],
       "related_rules": [

@@ -5,9 +5,13 @@
 // apps/web/src/server/auth/__tests__/revocation.redis.test.ts (opt-in).
 // =============================================================================
 
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  ADVANCE_REVOCATION,
+  advanceGlobalSessionRevocation,
   advanceSessionRevocation,
+  GLOBAL_SESSION_REVOCATION_KEY,
   isIssuedBeforeRevocation,
   readSessionRevocationTimestamp,
   readSessionRevocationState,
@@ -64,6 +68,44 @@ describe('advanceSessionRevocation', () => {
   });
 });
 
+describe('advanceGlobalSessionRevocation', () => {
+  it('setzt revoke:all mit demselben monotonen Skript und 30 Tagen TTL', async () => {
+    const client = redis();
+
+    await advanceGlobalSessionRevocation(client);
+
+    expect(GLOBAL_SESSION_REVOCATION_KEY).toBe('revoke:all');
+    expect(client.eval).toHaveBeenCalledWith(
+      ADVANCE_REVOCATION,
+      1,
+      'revoke:all',
+      SESSION_REVOCATION_TTL_SEC,
+    );
+  });
+
+  it('bestätigt ohne Redis oder bei unerwarteter Antwort keinen Widerruf', async () => {
+    await expect(advanceGlobalSessionRevocation(null)).rejects.toBeInstanceOf(
+      SessionRevocationUnavailableError,
+    );
+    await expect(
+      advanceGlobalSessionRevocation(redis({ eval: vi.fn(async () => 'QUEUED') })),
+    ).rejects.toBeInstanceOf(SessionRevocationUnavailableError);
+  });
+
+  it('das Betreiberkommando führt wörtlich dasselbe Skript für revoke:all aus', () => {
+    // CVP-Nachprüfung 20.11.2026, Befund 2: ./taxtronik revoke-all-sessions
+    // schreibt den Stichtag per redis-cli EVAL im Redis-Container.
+    const ops = readFileSync(
+      new URL('../../../../scripts/ops/sessions.sh', import.meta.url),
+      'utf8',
+    );
+    const lua = /<<'LUA'\n([\s\S]*?)\nLUA\n/.exec(ops)?.[1];
+    expect(lua?.trim()).toBe(ADVANCE_REVOCATION.trim());
+    expect(ops).toContain(GLOBAL_SESSION_REVOCATION_KEY);
+    expect(ops).toContain(String(SESSION_REVOCATION_TTL_SEC));
+  });
+});
+
 describe('readSessionRevocationTimestamp', () => {
   it('liefert 0 ohne Widerruf und den gespeicherten Cutoff', async () => {
     await expect(readSessionRevocationTimestamp(redis(), 'staff', 's')).resolves.toBe(0);
@@ -72,6 +114,32 @@ describe('readSessionRevocationTimestamp', () => {
       1_780_000_000_123,
     );
     expect(client.get).toHaveBeenCalledWith(sessionRevocationKey('staff', 's'));
+    expect(client.get).toHaveBeenCalledWith(GLOBAL_SESSION_REVOCATION_KEY);
+  });
+
+  it('liefert den späteren aus persönlichem und globalem Stichtag', async () => {
+    const stored: Record<string, string | null> = {
+      'revoke:staff:s': '1780000000123',
+      'revoke:all': '1780000005000',
+    };
+    const client = redis({ get: vi.fn(async (key: string) => stored[key] ?? null) });
+    await expect(readSessionRevocationTimestamp(client, 'staff', 's')).resolves.toBe(
+      1_780_000_005_000,
+    );
+    stored['revoke:all'] = null;
+    await expect(readSessionRevocationTimestamp(client, 'staff', 's')).resolves.toBe(
+      1_780_000_000_123,
+    );
+    stored['revoke:staff:s'] = null;
+    stored['revoke:all'] = '1780000005000';
+    await expect(readSessionRevocationTimestamp(client, 'staff', 's')).resolves.toBe(
+      1_780_000_005_000,
+    );
+    // Ein unlesbarer globaler Wert sperrt fail-closed.
+    stored['revoke:all'] = 'kaputt';
+    await expect(readSessionRevocationTimestamp(client, 'staff', 's')).rejects.toBeInstanceOf(
+      SessionRevocationUnavailableError,
+    );
   });
 
   it.each(['abc', '-5', '0', '1.5', '9007199254740993'])(
@@ -129,24 +197,46 @@ describe('isIssuedBeforeRevocation', () => {
 });
 
 describe('readSessionRevocationState', () => {
-  it('liest Zeit und optionalen Cutoff atomar', async () => {
+  it('liest Zeit, persönlichen und globalen Cutoff atomar', async () => {
     const now = 1_780_000_000_700;
-    for (const cutoffMs of [0, now - 100]) {
-      const client = redis({ eval: vi.fn(async () => [cutoffMs ? String(cutoffMs) : null, now]) });
+    for (const [personal, global, expected] of [
+      [0, 0, 0],
+      [now - 100, 0, now - 100],
+      [0, now - 50, now - 50],
+      [now - 100, now - 50, now - 50],
+      [now - 50, now - 100, now - 50],
+    ]) {
+      const client = redis({
+        eval: vi.fn(async () => [
+          personal ? String(personal) : null,
+          global ? String(global) : null,
+          now,
+        ]),
+      });
       await expect(readSessionRevocationState(client, 'portal', 'c')).resolves.toEqual({
-        cutoffMs,
+        cutoffMs: expected,
         nowMs: now,
       });
       expect(client.eval).toHaveBeenCalledWith(
         expect.stringContaining("redis.call('TIME')"),
-        1,
+        2,
         'revoke:portal:c',
+        'revoke:all',
       );
     }
   });
 
   it.each(
-    [[], [null], ['bad', 1000], [null, 0], [null, '1000'], [null, 123.5]].map((reply) => ({
+    [
+      [],
+      [null],
+      [null, 1000],
+      ['bad', null, 1000],
+      [null, 'bad', 1000],
+      [null, null, 0],
+      [null, null, '1000'],
+      [null, null, 123.5],
+    ].map((reply) => ({
       reply,
     })),
   )('verwirft eine unlesbare Antwort ($reply)', async ({ reply }) => {

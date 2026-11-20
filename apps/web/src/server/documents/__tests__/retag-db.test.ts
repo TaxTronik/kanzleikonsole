@@ -514,6 +514,59 @@ const VERSION_DRIFT =
     expect(store.deleted).toEqual([]);
   });
 
+  it('DOC-RETENTION-CLASS-001: verkürzt beim Retag kein von einer späteren Version angehobenes Aufbewahrungsende', async () => {
+    // CVP-Nachprüfung 20.11.2026, Befund 1: Anlage 2020, eine zweite geschützte
+    // Version (2026, sechs Jahre) hat das Aufbewahrungsende auf 2033 gehoben.
+    // Der Retag auf acht Jahre ankert an der Anlage und ergäbe 2029.
+    const doc = await document('Vertrag 2020', {
+      typeId: contractType,
+      classification: 'GOBD_CONTRACT',
+      immutable: true,
+    });
+    const angehoben = new Date('2033-01-01T00:00:00.000Z');
+    await owner.document.update({
+      where: { id: doc.id },
+      data: { createdAt: new Date('2020-02-10T09:00:00.000Z'), retentionUntil: angehoben },
+    });
+    await owner.documentVersion.create({
+      data: {
+        documentId: doc.id,
+        versionNo: 2,
+        storageBucket: 'gobd',
+        storageKey: `tenants/${tenantId}/seed/${doc.id}-v2.bin`,
+        storageVersionId: `seed-version-${randomUUID()}`,
+        sha256: createHash('sha256').update('Vertrag 2026').digest(),
+        sizeBytes: 12n,
+        immutable: true,
+        scanStatus: 'CLEAN',
+        scanCompletedAt: new Date(),
+        createdById: staffId,
+      },
+    });
+
+    const result = await retagDocument(staff, doc.id, { documentTypeId: invoiceType });
+
+    expect(result).toEqual({ ok: true, changed: true, clientId: openClient });
+    expect(store.prepared).toEqual([
+      expect.objectContaining({
+        retentionYears: 8,
+        retentionAnchor: new Date('2020-02-10T09:00:00.000Z'),
+      }),
+    ]);
+    // Die neue Version trägt 2029; das Dokument behält das spätere Ende.
+    expect(
+      await owner.document.findUnique({
+        where: { id: doc.id },
+        select: { classification: true, documentTypeId: true, retentionUntil: true },
+      }),
+    ).toEqual({
+      classification: 'GOBD_INVOICE',
+      documentTypeId: invoiceType,
+      retentionUntil: angehoben,
+    });
+    expect((await versions(doc.id)).map((v) => v.versionNo)).toEqual([1, 2, 3]);
+  });
+
   it('erkennt eine neue Version nach dem Object-Write: kein Commit, die Absicht bleibt offen', async () => {
     const doc = await document('Paralleler Upload');
     let parallelKey = '';

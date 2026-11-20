@@ -51,12 +51,14 @@ code_refs:
   - packages/storage/src/service.ts
   - apps/web/src/server/storage/document-type.ts
   - apps/web/src/server/inbox/accept-attachment.ts
+  - apps/web/src/server/documents/retag.ts
   - packages/db/prisma/migrations/20260801003520_document_type_retention_years/migration.sql
 test_refs:
   - packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts
   - packages/storage/src/__tests__/retention.test.ts
   - apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts
   - apps/web/src/server/inbox/__tests__/accept-attachment.test.ts
+  - apps/web/src/server/documents/__tests__/retag-db.test.ts
 feature_refs:
   - docs/anwenderdoku/dokumente.md
   - docs/compliance/gobd.md
@@ -144,6 +146,11 @@ um 00:00 UTC. Beispielsweise fällt ein Buchungsbeleg vom 31.12.2026 um
 01.01.2036. Frühere Berechnung und Tests verwendeten das UTC-Ankerjahr.
 Upload, ursprüngliche Dokumentanlage beim Retag und Zeitpunkt der
 Mandantenangaben-Revision sind unterschiedliche, jeweils gespeicherte Anker.
+Das gespeicherte Aufbewahrungsende eines Dokuments wird bei neuen Versionen
+und beim Retag nur verlängert, nie verkürzt. Ein Retag am Anker der
+ursprünglichen Anlage kann deshalb ein von einer späteren Version angehobenes
+Ende nicht zurücknehmen; der Object-Lock älterer Versionen bleibt ohnehin
+bestehen.
 Ob diese das fachliche Ereignis treffen, muss die Kanzlei prüfen. Bei den in
 § 257 Abs. 4 Satz 2 HGB genannten Instituten können für Buchungsbelege zehn
 Jahre gelten. Die Produktklasse „Rechnung“ erkennt diesen Branchenfall nicht.
@@ -174,7 +181,10 @@ Fristen werden nicht vollständig modelliert.
 
 Die Retention-Tests belegen die 6/8/10-Zuordnung, Jahresende-Arithmetik,
 konservativen Default und unzulässige Intervalle. Der Route-Test belegt, dass
-Typ und Frist zwischen Prüfung und Commit stabilisiert werden. Kein Test liest
+Typ und Frist zwischen Prüfung und Commit stabilisiert werden. Der
+Retag-Test gegen PostgreSQL belegt, dass eine Höherstufung von sechs auf acht
+Jahre ein durch eine spätere Version auf 2033 angehobenes Aufbewahrungsende
+nicht auf 2029 senkt (CVP-Nachprüfung vom 20.11.2026, Befund 1). Kein Test liest
 oder klassifiziert den fachlichen Inhalt einer Datei.
 
 Inbox-Staging-Anlagen erhalten vor einer ausdrücklichen Kanzleiannahme keine

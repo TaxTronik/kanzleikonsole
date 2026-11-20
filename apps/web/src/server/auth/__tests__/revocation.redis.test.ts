@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({ redis: null as unknown }));
 vi.mock('@/server/redis', () => ({ getRedis: () => h.redis }));
 vi.mock('@/server/logger', () => ({ log: { warn: vi.fn() } }));
 
+import { advanceGlobalSessionRevocation } from '@taxtronik/crypto';
 import { getRevocationTimestamp, isTokenRevoked, revokeAllSessions } from '../revocation';
 import { newSessionIssueTime } from '../session-issued-at';
 
@@ -134,4 +135,44 @@ describe.skipIf(!redisUrl)('ACCESS-TENANT-RLS-001: real Redis revocation orderin
       );
     },
   );
+
+  it('sperrt nach verlorenem Redis-Zustand alle älteren Sitzungen über den globalen Stichtag', async () => {
+    // CVP-Nachprüfung 20.11.2026, Befund 2: Ein zurückgespielter älterer
+    // Redis-Stand enthält den persönlichen Widerruf nicht mehr.
+    h.redis = redis;
+    keys.push('revoke:all');
+    const loggedOut = user();
+    const other = user();
+    const first = await newSessionIssueTime();
+    const second = await newSessionIssueTime();
+    await revokeAllSessions('staff', loggedOut);
+    expect(
+      await isTokenRevoked('staff', loggedOut, first.sessionIssuedAt, first.sessionIssuedAtMs),
+    ).toBe(true);
+    // Verlust wie nach dem Restore: der persönliche Stichtag fehlt.
+    await redis.del(`revoke:staff:${loggedOut}`);
+    expect(
+      await isTokenRevoked('staff', loggedOut, first.sessionIssuedAt, first.sessionIssuedAtMs),
+    ).toBe(false);
+
+    await advanceGlobalSessionRevocation(redis);
+    for (const [surface, id, issued] of [
+      ['staff', loggedOut, first],
+      ['portal', other, second],
+    ] as const) {
+      expect(
+        await isTokenRevoked(surface, id, issued.sessionIssuedAt, issued.sessionIssuedAtMs),
+      ).toBe(true);
+      expect(await isTokenRevoked(surface, id, issued.sessionIssuedAt)).toBe(true);
+    }
+    const global = Number(await redis.get('revoke:all'));
+    expect(await redis.ttl('revoke:all')).toBeGreaterThan(24 * 60 * 60);
+    await expect
+      .poll(async () => (await newSessionIssueTime()).sessionIssuedAtMs)
+      .toBeGreaterThan(global);
+    const fresh = await newSessionIssueTime();
+    expect(
+      await isTokenRevoked('staff', loggedOut, fresh.sessionIssuedAt, fresh.sessionIssuedAtMs),
+    ).toBe(false);
+  });
 });

@@ -203,6 +203,27 @@ class FakeDb {
           Object.assign(doc, data);
           return doc;
         },
+        // DOC-RETENTION-CLASS-001: der Retag verlängert das Aufbewahrungsende nur.
+        updateMany: async ({
+          where,
+          data,
+        }: {
+          where: { id: string; OR?: Array<{ retentionUntil: null | { lt: Date } }> };
+          data: Partial<DocRow>;
+        }) => {
+          const doc = s().docs[where.id];
+          const matches =
+            doc &&
+            (!where.OR ||
+              where.OR.some((condition) =>
+                condition.retentionUntil === null
+                  ? doc.retentionUntil === null
+                  : doc.retentionUntil !== null && doc.retentionUntil < condition.retentionUntil.lt,
+              ));
+          if (!matches) return { count: 0 };
+          Object.assign(doc, data);
+          return { count: 1 };
+        },
       },
       riskResearchResult: { updateMany: async () => ({ count: 0 }) },
       documentType: {
