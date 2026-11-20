@@ -32,6 +32,36 @@ exceptions:
       - scripts/tests/ci-caches.test.mjs
       - apps/web/src/__tests__/next-build-typecheck.test.ts
     reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20261120-002
+    date: '2026-11-20'
+    paths:
+      - packages/gwg/vitest.config.ts
+      - packages/tax/vitest.config.ts
+    rule_ids:
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-RISK-REVIEW-001
+      - GWG-SCREENING-001
+      - STBVV-CALCULATION-001
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - TAX-DEADLINE-WORKDAY-001
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+    reason: >-
+      Nur das Zeitlimit je Test der Vitest-Konfiguration steigt von der Vorgabe
+      5 s auf 20 s, wie bereits in apps/web und packages/config. Seit alle
+      CI-Jobs parallel laufen (FK-EXC-20261120-001), teilen sie sich die
+      Runner-CPU; einzelne Tests wurden 2- bis 3-mal langsamer und rissen das
+      Limit, ohne dass sich ihr Ergebnis änderte. Testauswahl, Prüfaussagen,
+      Pool und Fachlogik der Pakete gwg und tax bleiben unverändert; ein
+      hängender Test scheitert weiterhin, nach 20 statt 5 s. Keine fachliche
+      Freigabe.
+    tests:
+      - packages/gwg/src/__tests__/retention.test.ts
+      - packages/gwg/src/__tests__/check-lifecycle.test.ts
+      - packages/tax/src/__tests__/engine.test.ts
+      - packages/tax/src/stbvv/calculator.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261119-001
     date: '2026-11-19'
     paths:

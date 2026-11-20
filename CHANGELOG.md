@@ -459,7 +459,10 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   erste parallele Lauf brauchte 17 statt 20 bis 23 Minuten; die Jobs teilen
   sich die CPU der Runner und werden einzeln langsamer. Der Test der
   PDF-Seitenzählung im Worker-Thread (`packages/mail`) lief dabei 5,1 statt 2
-  bis 3 Sekunden in das Standardlimit und hat jetzt 30 Sekunden.
+  bis 3 Sekunden in das Standardlimit und hat jetzt 30 Sekunden. Weil im
+  nächsten Lauf ein anderer Test (`audit-rotate`, 1,9 statt 5,1 Sekunden)
+  dasselbe Limit riss, setzen alle Vitest-Konfigurationen wie bereits
+  `apps/web` und `packages/config` ein Testlimit von 20 Sekunden.
 - **[GwG]** Die Kanzlei sieht bei jeder Person, welche Angaben der Mandant bei der
   Online-Einreichung aus der lokalen Ausweishilfe übernommen hat („Aus dem
   Ausweis übernommen: Vollständiger Name, Ausweisnummer …“), mit dem Hinweis,
