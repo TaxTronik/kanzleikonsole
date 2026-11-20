@@ -1,5 +1,22 @@
 ---
 exceptions:
+  - id: FK-EXC-20261120-007
+    date: '2026-11-20'
+    paths:
+      - packages/tax/src/screening/prepared.test.ts
+    rule_ids:
+      - GWG-SCREENING-001
+    reason: >-
+      Nur das Zeitlimit des Äquivalenztests der vorbereiteten EU-Liste steigt
+      von 30 auf 120 s. In CI-Lauf 1276 lief derselbe unveränderte Test
+      parallel zu Image-Builds, E2E- und DB-Jobs auf demselben Runner 33 s
+      statt isoliert rund 3 s und riss das Limit. Fixture, Referenzabgleich,
+      Prüfaussagen und der Screening-Code bleiben unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - packages/tax/src/screening/prepared.test.ts
+      - packages/tax/src/screening/screening.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261120-006
     date: '2026-11-20'
     paths:
