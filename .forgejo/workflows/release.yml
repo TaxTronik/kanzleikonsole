@@ -51,6 +51,7 @@ jobs:
           set -euo pipefail
           node scripts/release/check-release-gates.mjs
           node scripts/release/tests/check-release-gates.test.mjs
+          node --test scripts/release/tests/smoke-preflight.test.mjs
           node scripts/release/tests/verify-release-config.test.mjs
           node scripts/release/verify-release-version.mjs --tag "$GITHUB_REF_NAME"
           node scripts/release/tests/verify-release-version.test.mjs

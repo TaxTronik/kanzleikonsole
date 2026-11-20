@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@prisma/client": "^7.9.1",
+    "@taxtronik/config": "workspace:*",
     "@taxtronik/db": "workspace:*"
   },
   "devDependencies": {

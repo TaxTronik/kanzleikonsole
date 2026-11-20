@@ -1,10 +1,13 @@
 'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { Link2, Loader2, Save } from 'lucide-react';
 import { startTransition, type Dispatch, type FormEvent } from 'react';
 import type { ActionResult } from './n8n-actions';
 import {
   n8nConnectionFormData,
+  n8nConnectionReducer,
   type N8nConnectionAction,
   type N8nConnectionState,
 } from './n8n-connection-state';
@@ -188,7 +191,14 @@ export function N8nConnectionSection({
     <section className="space-y-4">
       <ManagedN8nProvisionNotice initial={initial} />
 
-      <form action={saveAction} onSubmit={submit} className="space-y-4">
+      <SettingsForm
+        result={saveState}
+        pending={saving}
+        savedData={() => n8nConnectionFormData(n8nConnectionReducer(connection, { type: 'saved' }))}
+        action={saveAction}
+        onSubmit={submit}
+        className="space-y-4"
+      >
         {/* Text-/URL-/Secret-Felder tragen ihr name-Attribut DIREKT am
     sichtbaren Input (kein Hidden-Mirror): ein Submit vor bzw. ohne
     Hydration postete sonst die server-gerenderten Alt-Werte statt
@@ -448,7 +458,7 @@ export function N8nConnectionSection({
           <N8nActionResult result={saveState} />
           <N8nActionResult result={apiResult} />
         </div>
-      </form>
+      </SettingsForm>
     </section>
   );
 }

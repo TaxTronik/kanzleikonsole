@@ -320,6 +320,12 @@ entscheidet die Kanzlei.
 
 ## Umsetzung in TaxTronik
 
+Bei Terminänderungen verwendet die Versandentscheidung die gespeicherten
+Zeitpunkte. Lässt die Kanzlei eine Uhrzeit im Formular stehen, bleibt auch in
+der doppelten Herbststunde ihr ursprünglicher Zeitpunkt erhalten. Der
+Action-Test prüft einen Termin, der in der ersten 02-Uhr-Stunde beginnt und
+in der zweiten endet.
+
 Die Web-App legt Aufträge über `enqueueDirectMailTx` (eine Adresse) oder
 `enqueueClientContactsMailTx` (alle Kontakte, Auflösung beim Versand) in der
 Tenant-Transaktion des Vorgangs an und stößt den Worker nach dem Commit an; ein

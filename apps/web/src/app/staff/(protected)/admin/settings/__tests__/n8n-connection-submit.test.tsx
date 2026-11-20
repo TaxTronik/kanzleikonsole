@@ -32,6 +32,7 @@ vi.mock('react', async (importOriginal) => {
 });
 
 import { N8nConnectionSection } from '../n8n-connection-section';
+import { SettingsForm } from '@/components/settings-form-guard';
 import {
   createN8nConnectionState,
   n8nConnectionReducer,
@@ -140,7 +141,7 @@ describe('n8n-Verbindung speichern (K-04)', () => {
     });
     const saveAction = recordingSaveAction();
     const tree = N8nConnectionSection(props(initial, connection, saveAction));
-    const form = find(tree, (element) => element.type === 'form')!;
+    const form = find(tree, (element) => element.type === SettingsForm)!;
     const select = find(
       tree,
       (element) => element.type === 'select' && element.props.name === 'kind',
@@ -168,7 +169,7 @@ describe('n8n-Verbindung speichern (K-04)', () => {
     const saveAction = recordingSaveAction();
     const sectionProps = props(initial, connection, saveAction);
 
-    submit(find(N8nConnectionSection(sectionProps), (element) => element.type === 'form')!);
+    submit(find(N8nConnectionSection(sectionProps), (element) => element.type === SettingsForm)!);
 
     const posted = saveAction.mock.calls[0]![0];
     const html = renderToStaticMarkup(<N8nConnectionSection {...sectionProps} />);

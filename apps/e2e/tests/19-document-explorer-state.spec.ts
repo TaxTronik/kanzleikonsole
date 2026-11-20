@@ -10,6 +10,35 @@ import {
 } from './helpers/document-explorer';
 
 test.describe('Dokumentenansichten: isolierte echte Komponenten ohne App-/DB-Dienste', () => {
+  test('Ordnerwahl per Tastatur: aufklappen, Ziel wählen und mit Escape zum Auslöser zurückkehren', async ({
+    page,
+  }) => {
+    const child = { id: 'child', name: 'Unterlagen', parentId: folderB.id };
+    await mountDocumentExplorer(page, { ...browserProps, folders: [folderA, folderB, child] });
+    const opener = page
+      .locator('[data-document-id="file-a"]')
+      .getByTitle('Verschieben', { exact: true });
+    await opener.focus();
+    await page.keyboard.press('Enter');
+    const dialog = page.getByRole('dialog', { name: 'Verschieben nach…' });
+    const expand = dialog.getByRole('button', { name: 'Zielordner aufklappen', expanded: false });
+    await expand.focus();
+    await page.keyboard.press('Space');
+    await expect(
+      dialog.getByRole('button', { name: 'Zielordner zuklappen', expanded: true }),
+    ).toBeFocused();
+    await page.keyboard.press('Tab');
+    await page.keyboard.press('Tab');
+    const option = dialog.getByRole('button', { name: child.name });
+    await expect(option).toBeFocused();
+    await page.keyboard.press('Space');
+    await expect(option).toHaveAttribute('aria-pressed', 'true');
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    expect(await page.evaluate('globalThis.__documentActions')).toEqual([]);
+  });
+
   for (const selected of [false, true]) {
     test(`Zeilenbefehl verschiebt genau die Datei, vorausgewählt: ${selected}`, async ({
       page,
@@ -60,6 +89,10 @@ test.describe('Dokumentenansichten: isolierte echte Komponenten ohne App-/DB-Die
     await page.getByRole('button', { name: 'Freigeben', exact: true }).click();
     await expect(page.getByText('1 freigegeben, 1 abgelehnt:')).toBeVisible();
     await expect(page.getByText('Kein Zugriff auf diesen Mandanten.')).toBeVisible();
+    await expect(
+      page.locator('[data-document-id="file-a"]').getByRole('checkbox'),
+    ).not.toBeChecked();
+    await expect(page.locator('[data-document-id="file-b"]').getByRole('checkbox')).toBeChecked();
 
     await page.evaluate(() => {
       (globalThis as { __bulkRejections?: Record<string, string> }).__bulkRejections = {};

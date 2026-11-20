@@ -55,6 +55,12 @@ code_refs:
   - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts
   - apps/web/src/server/auth/client-page-access.ts
   - apps/web/src/server/auth/client-access-filter.ts
+  - apps/web/src/server/requests/list-filters.ts
+  - apps/web/src/app/staff/(protected)/requests/page.tsx
+  - apps/web/src/app/api/staff/requests/export/route.ts
+  - apps/web/src/app/staff/(protected)/clients/list-query.ts
+  - apps/web/src/app/staff/(protected)/clients/page.tsx
+  - apps/web/src/app/api/staff/clients/export/route.ts
 test_refs:
   - apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts
   - apps/web/src/server/settings/__tests__/settings-atomicity-ci.test.ts
@@ -64,6 +70,8 @@ test_refs:
   - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
   - apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx
   - apps/web/src/server/auth/__tests__/invoice-selection-ci.test.ts
+  - apps/web/src/app/staff/(protected)/requests/__tests__/list-pagination.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/__tests__/list-document-count.test.tsx
   - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/__tests__/route.test.ts
 feature_refs:
   - FEATURES.md
@@ -157,6 +165,15 @@ Bedarf Verantwortungen. `rbac.ts` stellt Einzel-, Batch- und Prisma-Filter für
 Seiten, Actions, Exporte und Empfängerlisten bereit. Ein ungültiger
 Konfigurationswert wird derzeit wie OPEN behandelt.
 
+Die Einzelprüfung für lesende und schreibende Zugriffe bindet die Mandanten-ID
+an den Tenant der aktiven Sitzung. Für ADMIN und PARTNER entfallen
+Vertraulichkeits- und Zuständigkeitsfilter nach erfolgreichem Ziellookup.
+Bei Mengenabfragen liefert die tenantgebundene Datenbankabfrage bereits die
+vorhandenen Ziele. Die Listen und CSV-Downloads für Anforderungen und Mandanten
+verwenden dieselbe Suche, Statusauswahl, Mitarbeiterzuständigkeit und
+Sortierung. Bei Mandanten gelten zusätzlich die Filter für Rechtsform und
+Onboarding. Alle ausgewählten Filter gelten gemeinsam.
+
 Die Mandantenauswahl bei neuer Rechnung und externem Rechnungsupload wendet
 `accessibleClientsWhereFor` bereits in der Datenbankabfrage zusätzlich zu
 `allowActive` an. Ein Rechnungsrecht ersetzt den Mandantenzugriff nicht.
@@ -177,6 +194,15 @@ ein berechtigter Export nicht mehr beim Aufbau des HTTP-Headers; die
 Zugriffsvoraussetzungen bleiben unverändert.
 
 ## Bekannte Abweichungen und Grenzen
+
+Bei der Nachprüfung erlaubten die Web-Einzelprüfungen ADMIN und PARTNER den
+sofortigen Erfolg auch für eine fehlende Mandanten-ID. Ein Unit-Test setzte
+diesen Kurzschluss ausdrücklich voraus. Dies widersprach dem Katalogeintrag
+zum fehlenden Ziel. Die Prüfung verlangt jetzt einen im Sitzungstenant
+gefundenen Mandanten. Der Anforderungs-CSV-Export ignorierte außerdem Suche
+und Mitarbeiterfilter der Oberfläche. Der Mandantenexport ignorierte sämtliche
+Listenfilter. Berechtigte konnten dadurch mehr
+Vorgänge exportieren, als die gefilterte Ansicht erwarten ließ.
 
 Bei der UX-Nachprüfung am 14. September 2026 widersprach die Rechnungsanlage
 dieser Policy: Ihre Auswahl lud alle aktiven Mandanten im Tenant, obwohl
@@ -214,6 +240,18 @@ Inhaltstyp, internationalen Dateinamen und Audit-Ereignis sowie die Abweisung
 eines fremden URL-Mandanten und einer vertraulichen Analyse ohne Schreibrecht.
 Renderer, Datenbank und Authentifizierung sind in diesen Transporttests
 ersetzt; die zentralen Berechtigungs- und RLS-Tests bleiben zusätzlich nötig.
+
+Die PostgreSQL-Regression in `invoice-selection-db.test.tsx` prüft
+Administrator- und Partnerzugriffe mit der App-Rolle für vorhandene
+vertrauliche, fremde und fehlende Mandanten. Sie ruft außerdem den CSV-Endpunkt
+mit Anforderungstiteln verschiedener Mandanten auf, prüft die tatsächliche
+Reihenfolge sowie den Ausschluss durch Status, Suchbegriff, Vertraulichkeit
+und Mitarbeiterzuständigkeit.
+Für die Mandanten-CSV prüft dieselbe Suite auch Aktivierung, Rechtsform,
+Onboarding und widersprüchliche Filterauswahlen mit echten Datensätzen.
+Seitentests prüfen bei überhöhter Seitenzahl und leeren Treffermengen den
+tatsächlich abgefragten Offset. Seitendaten und Trefferzahl werden unter
+demselben Datenbanksnapshot gelesen.
 
 SSR-Tests der Rechnungsanlage prüfen die tatsächliche zentrale Policy,
 Moduswahl und Aufnahmeberechtigung. Fünf zusätzliche Tests führen die echte

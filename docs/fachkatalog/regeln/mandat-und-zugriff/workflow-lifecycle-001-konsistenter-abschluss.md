@@ -36,6 +36,7 @@ code_refs:
   - apps/worker/src/jobs/workflow-feedback.ts
   - apps/worker/src/jobs/workflow-auto-resume.ts
 test_refs:
+  - apps/web/src/server/actions/__tests__/calendar-date-input.test.ts
   - apps/web/src/app/staff/(protected)/interactions/__tests__/feedback-configure.test.ts
   - packages/db/src/__tests__/workflow-lifecycle.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/workflows/__tests__/actions-lifecycle.test.ts
@@ -87,6 +88,11 @@ Ein bereits bestätigter externer Versand kann durch einen anschließend abgebro
 Zwei Mitarbeiter erledigen gleichzeitig die letzten zwei Schritte. Nach beiden Transaktionen ist die Instanz abgeschlossen. Eine während eines pausierten Workflows eingereichte Portalantwort erledigt den zugehörigen Schritt; die Instanz bleibt pausiert, bis sie ausdrücklich fortgesetzt wird.
 
 ## Umsetzung in TaxTronik
+
+Die manuelle Schrittanlage, eine Terminänderung und das Pausieren prüfen
+eingetragene Tage vor der Statusänderung. Die frühere Musterprüfung ließ
+ein unmögliches Datum wie den 31. April als 1. Mai speichern. Die
+Action-Tests prüfen die Ablehnung und einen gültigen Schalttag.
 
 Die Forward-Migration installiert gemeinsame Sperr- und Reconcile-Trigger. Der Webadapter verwendet dieselbe Sperrreihenfolge für das atomare Statusgate. Die gespeicherten Felder feedbackPendingAt und feedbackProcessedAt bilden eine begrenzte interne Dispatch-Queue; der minütliche Worker revalidiert Kontakt, Mandat, Modul und aktuellen Zugriff des Workflow-Erstellers. Technische Fehler bleiben mit verzögertem erneutem Versuch offen, ohne spätere Vorgänge dauerhaft zu blockieren.
 

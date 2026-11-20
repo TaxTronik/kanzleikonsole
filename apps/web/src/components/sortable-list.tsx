@@ -1,21 +1,12 @@
 ﻿'use client';
 
 /**
- * Schlanke Sortable-Liste mit Pointer-Events (funktioniert mit Maus + Touch).
- * Bewusst KEIN react-dnd / dnd-kit — die wären 30 kB Bundle für einen Effekt,
- * der nativ in ~80 Zeilen geht.
- *
- * Strategie:
- *   - Drag-Handle ruft `onPointerDown(index)` auf
- *   - Beim Pointer-Move wird das Element unter dem Cursor ermittelt
- *   - Beim Release: `onReorder(from, to)`
- *
- * Visuell: das gedraggte Item wird halb-transparent, der Drop-Target-Bereich
- * bekommt einen blauen Top-Border-Indikator.
+ * Sortierbare Vorlagenfelder und Arbeitsschritte mit Zeigergriff und
+ * Schaltflächen für das schrittweise Verschieben.
  */
 
-import { useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
-import { GripVertical } from 'lucide-react';
+import { useRef, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
+import { ChevronDown, ChevronUp, GripVertical } from 'lucide-react';
 
 interface Props {
   count: number;
@@ -26,72 +17,64 @@ interface Props {
 }
 
 export interface DragHandleProps {
-  onPointerDown: (e: ReactPointerEvent) => void;
-  className: string;
-  title: string;
-  role: string;
-  'aria-label': string;
+  onReorder: Props['onReorder'];
+  index: number;
+  count: number;
 }
 
 export function SortableList({ count, onReorder, renderItem, className }: Props) {
+  const drag = useRef<{ pointerId: number; from: number; to: number } | null>(null);
   const [draggingFrom, setDraggingFrom] = useState<number | null>(null);
   const [hoverTarget, setHoverTarget] = useState<number | null>(null);
 
-  function startDrag(index: number, e: ReactPointerEvent) {
-    const container = e.currentTarget.closest('[data-sortable-list]');
-    if (!container) return;
-    let currentTarget = index;
+  function startDrag(e: ReactPointerEvent<HTMLDivElement>) {
+    if (drag.current || e.button !== 0) return;
+    const grip = (e.target as Element).closest<HTMLElement>('[data-sortable-grip]');
+    if (!grip || grip.closest('[data-sortable-list]') !== e.currentTarget) return;
+    const index = Number(grip.dataset.sortableGrip);
+    grip.setPointerCapture(e.pointerId);
+    drag.current = { from: index, to: index, pointerId: e.pointerId };
     setDraggingFrom(index);
     setHoverTarget(index);
-    (e.target as Element).setPointerCapture?.(e.pointerId);
+  }
 
-    function onMove(ev: globalThis.PointerEvent) {
-      const items = Array.from(container!.querySelectorAll<HTMLElement>('[data-sortable-index]'));
-      let target = index;
-      for (const el of items) {
-        const r = el.getBoundingClientRect();
-        if (ev.clientY >= r.top && ev.clientY <= r.bottom) {
-          target = Number(el.dataset['sortableIndex']);
-          break;
-        }
-      }
-      // Außerhalb? Top/Bottom clampen
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (first && ev.clientY < first.getBoundingClientRect().top) target = 0;
-      if (last && ev.clientY > last.getBoundingClientRect().bottom) target = items.length - 1;
-      currentTarget = target;
-      setHoverTarget(target);
+  function onMove(e: ReactPointerEvent<HTMLDivElement>) {
+    const active = drag.current;
+    if (!active || active.pointerId !== e.pointerId) return;
+    const items = Array.from(e.currentTarget.children);
+    const index = items.findIndex((item) => e.clientY <= item.getBoundingClientRect().bottom);
+    active.to = index < 0 ? items.length - 1 : index;
+    setHoverTarget(active.to);
+  }
+
+  function endDrag(e: ReactPointerEvent, commit: boolean) {
+    const active = drag.current;
+    if (!active || active.pointerId !== e.pointerId) return;
+    drag.current = null;
+    setDraggingFrom(null);
+    setHoverTarget(null);
+    if (commit && active.from !== active.to && active.from < count && active.to < count) {
+      onReorder(active.from, active.to);
     }
-
-    function onUp(ev: globalThis.PointerEvent) {
-      document.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerup', onUp);
-      setDraggingFrom(null);
-      setHoverTarget(null);
-      // Seiteneffekt AUSSERHALB jeder setState-Updater-Funktion.
-      if (index !== currentTarget) {
-        onReorder(index, currentTarget);
-      }
-      void ev;
-    }
-
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
   }
 
   return (
-    <div data-sortable-list className={className ?? 'space-y-3'}>
+    <div
+      data-sortable-list
+      className={className ?? 'space-y-3'}
+      onPointerDown={startDrag}
+      onPointerMove={onMove}
+      onPointerUp={(e) => endDrag(e, true)}
+      onPointerCancel={(e) => endDrag(e, false)}
+      onLostPointerCapture={(e) => endDrag(e, false)}
+    >
       {Array.from({ length: count }, (_, i) => i).map((i) => {
         const isDragging = draggingFrom === i;
         const isDropTarget = draggingFrom !== null && hoverTarget === i && draggingFrom !== i;
         const handle: DragHandleProps = {
-          onPointerDown: (e) => startDrag(i, e),
-          className:
-            'text-disabled hover:text-secondary cursor-grab active:cursor-grabbing touch-none p-1',
-          title: 'Ziehen zum Verschieben',
-          role: 'button',
-          'aria-label': 'Element verschieben',
+          onReorder,
+          index: i,
+          count,
         };
         return (
           <div
@@ -112,13 +95,48 @@ export function SortableList({ count, onReorder, renderItem, className }: Props)
 }
 
 /**
- * Vorgefertigtes Drag-Icon zum Einsatz in `renderItem`. Nimmt
- * dragHandleProps + zusätzliche Visibility-Klasse.
+ * Ziehgriff und schrittweise Bedienung per Tastatur oder Klick.
  */
 export function DragHandle({ handle }: { handle: DragHandleProps }) {
+  function move(button: HTMLButtonElement, step: -1 | 1) {
+    const target = handle.index + step;
+    handle.onReorder(handle.index, target);
+    const nextStep = target + step < 0 || target + step >= handle.count ? -step : step;
+    button
+      .closest('[data-sortable-list]')
+      ?.children[target]?.querySelector<HTMLElement>(`[data-sort-step="${nextStep}"]`)
+      ?.focus();
+  }
   return (
-    <span {...handle}>
-      <GripVertical className="h-4 w-4" />
-    </span>
+    <div className="flex flex-col items-center">
+      <button
+        type="button"
+        className="p-1 disabled:opacity-30"
+        data-sort-step={-1}
+        aria-label={`Element ${handle.index + 1} nach oben verschieben`}
+        disabled={handle.index === 0}
+        onClick={(event) => move(event.currentTarget, -1)}
+      >
+        <ChevronUp aria-hidden="true" className="h-4 w-4" />
+      </button>
+      <span
+        aria-hidden="true"
+        title="Ziehen zum Verschieben"
+        data-sortable-grip={handle.index}
+        className="text-muted cursor-grab active:cursor-grabbing touch-none p-1"
+      >
+        <GripVertical className="h-4 w-4" />
+      </span>
+      <button
+        type="button"
+        className="p-1 disabled:opacity-30"
+        data-sort-step={1}
+        aria-label={`Element ${handle.index + 1} nach unten verschieben`}
+        disabled={handle.index === handle.count - 1}
+        onClick={(event) => move(event.currentTarget, 1)}
+      >
+        <ChevronDown aria-hidden="true" className="h-4 w-4" />
+      </button>
+    </div>
   );
 }

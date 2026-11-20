@@ -444,6 +444,20 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Der Webserver im Compose-Betrieb hält ungenutzte HTTP-Verbindungen standardmäßig
+  95 Sekunden offen. Damit können nginx (60 Sekunden) und Traefik (90 Sekunden)
+  Verbindungen zuerst aus ihrem Pool nehmen. Der Wert lässt sich für andere
+  Proxys über `KEEP_ALIVE_TIMEOUT` in Millisekunden einstellen.
+
+- Die Mandanten- und Anforderungslisten übernehmen Filter und Sortierung in
+  den CSV-Export. Bei gleichen Sortierwerten bleibt die Reihenfolge über die
+  Seitengrenze stabil. Mehrere Ordner lassen sich auch in großen Aktenbäumen
+  ohne wiederholtes Durchsuchen aller Teilbäume verschieben.
+- Die Tabellenvorschau begrenzt die dargestellten Zeilen und Spalten und
+  formatiert die sichtbaren Zellen des ausgewählten Arbeitsblatts. Bei den betroffenen
+  Einstellungsformularen bleibt die Warnung vor ungespeicherten Eingaben nach
+  einem fehlgeschlagenen Speicherversuch erhalten.
+
 - CI (`.forgejo/workflows/ci.yml`): Alle Jobs starten ohne `needs` sofort und
   parallel. Bisher warteten DB, Restore, Upgrade-Pfad, E2E und XRechnung auf
   den 8 bis 10 Minuten langen Job `quality`; der Lauf dauerte 20 bis 23
@@ -1324,6 +1338,76 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Die SQL-Gegenproben der Browsertests verwenden dieselbe konfigurierte
+  Datenbank wie die Anwendung. Bei widersprüchlichen Datenbanknamen bricht
+  die Testvorbereitung vor der ersten Abfrage ab.
+- Der Release-Test prüft vor dem Start, ob der Docker-Daemon erreichbar und
+  die Umgebung frei ist. Bei Abbruch bleiben vorhandene Container und Volumes
+  erhalten. Jeder Testlauf verwendet eigene Projektnamen und Image-Tags und
+  initialisiert die Schutz-Buckets vor dem Start von Web und Worker.
+- **[Scope] Sofortige Wiederanmeldung.** Nach einer Abmeldung konnten Staff
+  und Portal eine erfolgreiche Wiederanmeldung in derselben Sekunde sofort
+  wieder verwerfen. Neue Sitzungen berücksichtigen den ursprünglichen
+  Anmeldezeitpunkt millisekundengenau (`ACCESS-TENANT-RLS-001`).
+
+- **[Scope] Restore-Selbsttest.** Jeder Lauf erhält eine eigene temporäre
+  Datenbank. Bei einer Namenskollision bleibt die vorhandene Datenbank
+  erhalten. Leere Audit-Logs werden als fehlender Kettennachweis ausgewiesen.
+  Die CI prüft die Wiederherstellung zweier verketteter Ereignisse gegen
+  eine vorab festgehaltene Quellspitze und einen abweichenden Kontrollwert
+  (`BACKUP-DRILL-INTEGRITY-001`, `AUDIT-HASH-CHAIN-001`).
+- **BWA-Jahreshochrechnung.** Kanzlei- und Portalansicht verwenden für die
+  lineare Hochrechnung die jüngste unterjährige BWA, die vollständig im
+  Zieljahr liegt. Nach dem Berliner Jahreswechsel zeigt das Dashboard sofort
+  das neue Jahr. Jahresschätzungen enthielten zuvor unter Umständen Monate
+  des Folgejahrs (`BWA-PROJECTION-001`).
+- **[Scope] Aufbewahrung und Redaktion.** Bei Zeitpunkten zwischen Berliner
+  und UTC-Jahreswechsel gilt das deutsche Kalenderjahr für GoBD- und
+  GwG-Schutzfristen, GwG-Vernichtung und die personenbezogene Redaktion nach
+  Mandatsende. Ein betroffener Fall konnte bisher ein Jahr zu früh fällig
+  werden. Zwei Migrationen gleichen die Datenbankprüfungen an und heben zu
+  kurze berechenbare Fristen bestehender TCMS-GwG-Belege an. Für vorhandene
+  GoBD-Objektversionen beschreibt die Modulbeschreibung zum Dokumentenarchiv
+  die Prüfung der gespeicherten Locks (`DOC-RETENTION-CLASS-001`, `DOC-OBJECT-LOCK-001`,
+  `GWG-RETENTION-DESTRUCTION-001`, `TCMS-NACHWEIS-001`,
+  `DSGVO-MANDATE-ANONYMIZATION-001`, `POA-SIGNER-RETENTION-001`,
+  `CLIENT-MANDATE-LIFECYCLE-001`).
+- **[Scope] StBVV.** Die elektronische Dokumentenpauschale lässt mehrere
+  dokumentierte Arbeitsgänge derselben Angelegenheit zu. Der Rechner
+  berücksichtigt je Arbeitsgang die 5-Euro-Grenze nach VV 7000 Nr. 2 RVG
+  und einen gegebenenfalls höheren Scan-Mindestbetrag in ganzen Cent
+  (`STBVV-CALCULATION-001`).
+
+- **[Scope]** Kanzlei- und Portalansicht berücksichtigen bei der Anzeige
+  überfälliger Rechnungen denselben Stornobezug wie der Worker.
+  Storno- und Korrekturbelege erscheinen damit nicht mehr als überfällig
+  (`INV-DUE-OVERDUE-001`).
+- Fristen berücksichtigen die regionalen Einführungsjahre und einmaligen
+  Feiertage, darunter den 8. Mai 2025 in Berlin. Bei beratenen kalenderjährigen
+  Jahreserklärungen berücksichtigt die Berechnung auch die Sonderfrist für 2019. Erfasste Abgabetage und Wiedervorlagen weisen unmögliche Kalenderdaten
+  ab. Termine und personenbezogene Tagesgrenzen berücksichtigen die Berliner
+  Zeitumstellung (`TAX-DEADLINE-WORKDAY-001`, `TAX-DEADLINE-ANNUAL-001`,
+  `TAX-CONTROL-STATUS-001`).
+- Die BWA-Steuerschätzung prüft Zeitraum, Tarifjahr und Hebesatz. Für
+  unvollständige Kalenderjahre und nicht unterstützte Eingaben weist die
+  Oberfläche die fehlende Berechnungsgrundlage aus
+  (`BWA-TAX-ESTIMATE-001`).
+- **[Scope]** Datenbank- und Dateisicherungen melden Fehler beim Erzeugen,
+  Prüfen und Veröffentlichen. Ein fehlgeschlagener Bucket-Export oder eine
+  fehlgeschlagene Docker-Volume-Abfrage verhindert die Erfolgsmeldung.
+  Der TCMS-Zeitplan erhält fremde Cronjobs auch bei Lesefehlern oder
+  unvollständigen Blockmarkierungen. Beim Entschlüsseln einer Vollsicherung
+  prüft der Operator auch die Haupt- und n8n-Dumps. Ein gültig signiertes
+  Archiv mit fehlendem oder leerem Dump wird als unvollständig gemeldet.
+- Verschachtelte Dialoge und Bestätigungen führen den Tastaturfokus zum
+  passenden Auslöser zurück. Ein Fehler beim Nachladen von Benachrichtigungen
+  bleibt sichtbar. Im Portal-Kalender bleiben kopierte mehrzeilige Titel und
+  Ortsangaben gültige iCalendar-Textfelder.
+- Gespeicherte Filteransichten behalten Änderungen aus parallelen Tabs.
+  Ist der Browserspeicher voll, bleibt die Auswahl im laufenden Tab nutzbar.
+  Die GwG-Ausweisvorschau gibt ihren lokalen Bildspeicher beim Schließen frei
+  (`ACCESS-SEARCH-SCOPE-001`, `GWG-SELF-ONBOARDING-001`).
+
 - CI-E2E: Nach einem reinen pnpm-Update lief `15-search-notifications-a11y`
   in CI-Lauf 1207 in den 180-s-Timeout, weil `page.goto` auf `networkidle`
   wartete und Playwright verworfene Next-Prefetches dauerhaft als offen zählte.
@@ -2156,6 +2240,59 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Sicherheit
 
+- Hinweise auf externe Rechercheantworten berücksichtigen jetzt die separat
+  gesetzte Vertraulichkeit einer Subsumtion. Nach einem Zuständigkeitswechsel
+  erhält der frühere Bearbeiter keinen neuen Hinweis. Bereits vorhandene
+  Hinweise verschwinden aus Liste und Zähler, sobald der Zugriff entfällt.
+  (`ACCESS-NOTIFICATION-RECIPIENT-001`, `RISK-ARCHIVE-SNAPSHOT-001`)
+
+- Web- und Worker-Images verlangen in Build und Laufzeit mindestens das
+  von Alpine für CVE-2026-4738 korrigierte Systempaket `zlib 1.4-r0`.
+  [Alpine-Sicherheitseintrag](https://security.alpinelinux.org/vuln/CVE-2026-4738).
+
+- **[Scope]** Mandantenberechtigungen privilegierter Aufrufer werden an den
+  Tenant gebunden (`ACCESS-CLIENT-MODE-001`). Archivierte Subsumtionen sperren
+  auch die nachträgliche manuelle Ergebnisbearbeitung und die Neuanlage von
+  Rechercheaufträgen (`RISK-ARCHIVE-SNAPSHOT-001`).
+- **[Scope]** Die ClamAV-Bereitschaftsprüfung wertet die Antwort des Dienstes
+  aus. Nach einer Störung prüft genau ein Aufruf, ob der Scanner wieder
+  verfügbar ist. Der Docker-Build schließt lokale Schlüssel, Zugangsdaten und
+  Umgebungsdateien auch aus Unterverzeichnissen aus.
+- Der verwaltete Signal-Dienst prüft neue Engine- und Modellbestände vor dem
+  Umschalten. Ein fehlgeschlagenes Update erhält die bisherige Installation.
+
+- Prisma-Operator-Injection (`ACCESS-TENANT-RLS-001`, `RISK-AI-SUGGESTION-001`):
+  Server-Action-Argumente sind zur Laufzeit untypisiert; ein Objekt wie
+  `{ not: '' }` statt einer Kennung wäre in `findFirst`/`deleteMany` ein
+  Filteroperator (FK-EXC-20261119-030). Der öffentliche Staff-Passwortschritt
+  reichte den Kanzlei-Slug ungeprüft an `prismaOwner.tenant.findFirst` weiter
+  (RLS-freier Owner-Client); Slug und E-Mail erreichen die Lookups jetzt nur
+  noch als Strings, sonst gleiche generische Ablehnung mit genau einem
+  Dummy-Vergleich. `deletePromptTemplateAction` hätte mit einem Operator-Objekt
+  als `id` alle Prompt-Vorlagen der Kanzlei gelöscht, `llmStatusAction` las den
+  KI-Status einer nicht genannten Analyse; beide prüfen ihre Kennungen jetzt
+  vorab als UUID. Die übrigen gemeldeten `updateMany`/`deleteMany`-Stellen des
+  Scanners erhalten ihre Filterwerte aus Zod-geprüften Eingaben, der Sitzung
+  oder Datenbankzeilen und waren nicht ausnutzbar.
+- HTML-Einfügestellen der Web-App (SAST-Befund `dangerouslySetInnerHTML`):
+  Markdown aus Vollmachtsumfang (Unterschrifts- und Staff-Detailseite,
+  `POA-SIGNING-SNAPSHOT-001`, `POA-LIFECYCLE-001`), Wissensartikeln,
+  Kanzleileitfäden (`KNOWLEDGE-CONTEXT-001`), Rechercheergebnissen
+  (`RISK-AI-SUGGESTION-001`), Datenschutzhinweisen und der Dokumentvorschau
+  läuft über die eine Komponente `MarkdownContent`, die nur Quelltext annimmt
+  und unverändert `renderMarkdown` nutzt. Der Leitfaden-Ladepfad liefert
+  Markdown statt vorgerendertem HTML. Die Treffer der Wissenssuche kommen als
+  Textsegmente und werden ohne HTML gerendert. Die ESLint-Regel
+  `html-sink/no-html-sink` sperrt neue HTML-Einfügestellen außerhalb einer
+  begründeten Ausnahmeliste (FK-EXC-20261119-020). Ein ausnutzbarer Pfad
+  bestand nicht: Alle Stellen escapeten bereits vorher.
+- Mitwirkungsvorgänge, Word-Reimport (`CLIENT-ASSISTANCE-001`): Der SHA-256 der
+  gewählten DOCX-Version wird über `timingSafeEqual` statt `===` mit dem
+  gespeicherten `externalDocumentHash` verglichen (FK-EXC-20261119-012).
+  Schließt den Timing-Befund des Scanners. Ausnutzbar war die Stelle nicht:
+  Verglichen werden Inhaltshashes von Dateien, die der Aufrufer bereits lesen
+  darf, kein Geheimnis, und das Ergebnis meldet die Aktion ohnehin offen.
+  Unveränderte Inhalte werden weiter abgelehnt.
 - Dokument-Explorer: Ordner- und Sammel-Downloads starten nur noch über
   `startDocumentsDownload`, das Datei- und Ordner-IDs statt einer URL nimmt und
   stets `/api/staff/documents/download` dieses Origins ansteuert. Rechtsklick-Menü
@@ -2163,6 +2300,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Schließt den XSS-Befund des Scanners zu `window.location.href` im
   Rechtsklick-Menü. Der einzige Aufrufer baute das Ziel bereits aus festem Pfad
   und kodierten IDs, ausnutzbar war die Stelle deshalb nicht.
+- Secret-Box-Re-Wrap (S-08): Die SQL-Texte für Spalten-Ablageorte entstehen
+  einmalig aus der festen Liste in `secret-box-rewrap.ts`; Tabelle und Spalte
+  eines übergebenen Slots dienen nur noch als Nachschlageschlüssel und gelangen
+  nicht mehr in den SQL-Text. Unbekannte Ablageorte, auch `__proto__` oder Namen
+  mit Anführungszeichen, brechen vor jeder Abfrage mit einer eindeutigen Meldung
+  ab. Antwort auf den SQL-Injection-Befund des Scanners; ausnutzbar war die
+  Stelle nicht, weil die Namen schon vorher gegen dieselbe Liste geprüft wurden
+  und nur aus `SECRET_SLOTS` stammen. SQL-Texte und Verhalten bleiben gleich.
 - Restore-Drill (`BACKUP-DRILL-INTEGRITY-001`): Der Worker startet `pg_restore`
   als festes Programm aus dem Worker-Image ohne Shell und liest
   `PG_RESTORE_PATH` nicht mehr; keine Worker-Konfiguration setzte es. Die

@@ -302,7 +302,10 @@ const ZEIT = 60_000;
       if (!seite.ok) throw new Error(seite.zustand.art);
       const u = await tcmsLesen(seite, ENDPUNKTE.portalUebersichtLesen);
       if (!u.ok) throw new Error(u.zustand.art);
-      const aufgabe = u.daten.aufgaben.find((a) => a.code === 'K-EC-23' && a.eigene);
+      // Der Demo-Seed hängt die beiden Teil-Uploads ausschließlich an Q3 2026.
+      const aufgabe = u.daten.aufgaben.find(
+        (a) => a.code === 'K-EC-23' && a.periodeLabel === 'Q3 2026' && a.eigene,
+      );
       expect(aufgabe).toBeTruthy();
       const { default: Seite } = await import('@/app/portal/(protected)/tcms/aufgaben/[id]/page');
       const { container } = await rendern(

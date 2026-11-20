@@ -32,6 +32,7 @@ code_refs:
   - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
   - apps/web/src/components/requests/new-request-form.tsx
+  - apps/web/src/lib/fmt.ts
 test_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
@@ -125,6 +126,12 @@ nicht zu einem falschen Audit führt. Statuswechsel und Evidence-Einträge
 liegen in Tenant-Transaktionen. Die GwG-Verknüpfung wird zusätzlich durch
 einen partiellen Unique-Backstop geschützt.
 
+Wählt die Kanzlei beim Anlegen einen Zieltermin, prüft die Action die Berliner
+Ortszeit vor dem Schreiben. Ein unmöglicher Kalendertag oder eine fehlende
+Stunde beim Wechsel auf Sommerzeit ergibt einen Feldfehler. In der doppelten
+Herbststunde gilt für die Eingabe das spätere Vorkommen. Neuanlage,
+Wiederholungsprüfung und Mandantenmail verwenden denselben Zeitpunkt.
+
 ## Bekannte Abweichungen und Grenzen
 
 Keine bekannte Abweichung im beschriebenen Statusworkflow. Die Portalantwort-
@@ -144,3 +151,5 @@ bewertet weder fachliche Vollständigkeit noch Fristgerechtigkeit einer Antwort.
 Die Staff-Tests belegen erlaubte Ausgangsstatus, exakte CAS-Übergänge, Audit,
 CANCELLED und den GwG-Konflikt. Formular-Tests belegen atomaren Submit,
 Request-Bindung und fail-closed Verhalten bei parallelem Abschluss.
+Der Anlagetest prüft, dass die fehlende Frühjahrsstunde als Feldfehler vor
+der Transaktion zurückkommt.

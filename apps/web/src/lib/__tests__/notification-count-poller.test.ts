@@ -138,6 +138,26 @@ describe('createNotificationCountPoller', () => {
     expect(fetchSummary).not.toHaveBeenCalled();
   });
 
+  it('liefert nach vollständiger Abmeldung keine laufende Antwort an neue Abonnenten', async () => {
+    let finish!: (summary: UnreadSummary) => void;
+    fetchSummary.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const poller = createPoller();
+    const off = poller.subscribe(vi.fn());
+    const first = poller.pollNow();
+    off();
+    const next = vi.fn();
+    poller.subscribe(next);
+    const second = poller.pollNow();
+    finish({ unread: 7, latestUnreadAt: null });
+    await Promise.all([first, second]);
+    expect(next.mock.calls).toEqual([[{ unread: 1, latestUnreadAt: null }]]);
+  });
+
   it('übersteht Fehler und leere Antworten ohne den Takt zu verlieren', async () => {
     fetchSummary.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(null);
     const poller = createPoller();

@@ -66,6 +66,11 @@ export function useBrowserSelection(entries: Entry[]) {
       setSelection((previous) => toggleSelection(previous, kind, id)),
     selectOnly: (kind: SelectableKind, id: string) => setSelection([{ kind, id }]),
     clear: () => setSelection([]),
+    remove: (completed: SelectionItem[]) => {
+      if (!completed.length) return;
+      const keys = new Set(completed.map(selectionKey));
+      setSelection((previous) => previous.filter((item) => !keys.has(selectionKey(item))));
+    },
     fileIds: () => idsOfKind(selection, 'file'),
     folderIds: () => idsOfKind(selection, 'folder'),
     /** Nur Dateien ausgewählt (dann gibt es Typ ändern, Freigeben, Löschen). */

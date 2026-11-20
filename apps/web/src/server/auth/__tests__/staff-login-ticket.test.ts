@@ -81,6 +81,7 @@ vi.mock('@/server/container', () => ({ evidenceService: { record: h.evidence } }
 vi.mock('@/server/logger', () => ({ log: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('@/server/redis', () => ({
   getRedis: () => ({
+    time: async () => [String(Math.floor(Date.now() / 1000)), String((Date.now() % 1000) * 1000)],
     eval: async (_script: string, _keys: number, key: string, window: string) => {
       let entry = h.counters.get(key);
       if (!entry || entry.until <= Date.now()) {

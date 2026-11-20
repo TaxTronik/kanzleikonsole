@@ -2,7 +2,7 @@
 // E2E-Helper: Portal-Login via Magic-Link (MailHog)
 // =============================================================================
 import { type Page, type APIRequestContext, expect } from '@playwright/test';
-import { expectPageReady, gotoReady } from './page-ready';
+import { expectPageReady, expectServerActionResponse, gotoReady } from './page-ready';
 import { flushRedisDb } from './redis';
 
 const MAILHOG_URL = process.env['E2E_MAILHOG_URL'] ?? 'http://127.0.0.1:8025';
@@ -27,10 +27,7 @@ export async function loginAsMandant(page: Page, request: APIRequestContext): Pr
   const previousMailIds = await existingMailIds(request);
 
   // Schritt 1: Magic-Link anfordern
-  await openPortalLogin(page);
-  await page.getByLabel('E-Mail-Adresse').fill(PORTAL_EMAIL);
-  await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
-  await expect(page.getByText(/Login-Link verschickt/i)).toBeVisible({ timeout: 5000 });
+  await submitMagicLink(page);
 
   // Schritt 2: Magic-Link aus MailHog holen (via APIRequestContext)
   let link: string | null = null;
@@ -155,8 +152,14 @@ async function fetchMagicLink(
 /** Nur Magic-Link anfordern, kein Login (für negative Tests) */
 export async function requestMagicLink(page: Page): Promise<void> {
   await flushRedisDb();
+  await submitMagicLink(page);
+}
+
+async function submitMagicLink(page: Page): Promise<void> {
   await openPortalLogin(page);
   await page.getByLabel('E-Mail-Adresse').fill(PORTAL_EMAIL);
-  await page.getByRole('button', { name: /Login-Link anfordern/i }).click();
+  await expectServerActionResponse(page, () =>
+    page.getByRole('button', { name: /Login-Link anfordern/i }).click(),
+  );
   await expect(page.getByText(/Login-Link verschickt/i)).toBeVisible({ timeout: 5000 });
 }

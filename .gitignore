@@ -74,6 +74,7 @@ infra/scripts/seaweedfs-s3.generated.json
 
 # S-4: Lizenz-Private-Keys (siehe scripts/license-keygen.ts).
 licensing-private-*.pem
+backup-manifest-private.pem
 
 # U-3: Seed-generierte Admin-Credentials.
 .admin-credentials.txt
@@ -96,4 +97,5 @@ test-results/.auth/
 # IDE-/Agent-Spuren — lokale Caches, gehören nicht ins Repo
 .codex-run/
 .claude/
+.claude-stage/
 .VSCodeCounter/

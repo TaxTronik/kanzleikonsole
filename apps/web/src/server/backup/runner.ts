@@ -16,8 +16,8 @@
 // `backups` mit kurzer Retention konfigurierbar.
 // =============================================================================
 
-import { createWriteStream } from 'node:fs';
-import { pipeline } from 'node:stream/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { env } from '@taxtronik/config';
@@ -27,6 +27,7 @@ import {
   pgDumpArgs,
   runPgBackup,
   spawnPgDump,
+  writeLocalPgDump,
 } from '@taxtronik/db/pg-tools';
 import { prismaOwner as ownerSingleton } from '@/server/db/prisma-owner';
 import { evidenceService } from '@/server/container';
@@ -140,36 +141,30 @@ async function dumpToFile(outFile: string): Promise<BackupResult> {
 
   const dump = spawnPgDump(connArgs.env, args);
 
-  // Stream → lokale Datei (Mode 0o600). Hash + Größe laufen über das
-  // PassThrough nebenher und stehen nach result() bereit.
   try {
-    await pipeline(dump.stream, createWriteStream(outFile, { mode: 0o600 }));
+    const { sha, sizeBytes } = await writeLocalPgDump(dump, outFile, 'replace');
+    return { ok: true, sizeBytes, sha256: sha.toString('hex') };
   } catch (e) {
-    dump.abort();
-    await dump.result().catch(() => undefined);
     return {
       ok: false,
       error: `Schreiben nach ${outFile} fehlgeschlagen: ${(e as Error).message}`,
     };
   }
+}
 
-  let sha: Buffer;
-  let sizeBytes: number;
-  try {
-    ({ sha, sizeBytes } = await dump.result());
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
+export function backupOutputFile(argv: string[], envPath?: string): string | undefined {
+  if (!argv.length) return envPath || undefined;
+  const [option, path] = argv;
+  if (argv.length !== 2 || option !== '--out-file' || !path?.trim() || path.startsWith('--')) {
+    throw new Error('Erwartet: --out-file <Dateipfad> oder keine Argumente.');
   }
-
-  return { ok: true, sizeBytes, sha256: sha.toString('hex') };
+  return path;
 }
 
 // CLI-Eintritt
 async function main() {
   // --out-file / BACKUP_OUT_FILE: reiner lokaler Dump-Export (kein S3/Record).
-  const argv = process.argv.slice(2);
-  const flagIdx = argv.indexOf('--out-file');
-  const outFile = flagIdx >= 0 ? argv[flagIdx + 1] : process.env['BACKUP_OUT_FILE'];
+  const outFile = backupOutputFile(process.argv.slice(2), process.env['BACKUP_OUT_FILE']);
   if (outFile) {
     console.log(`[backup] Dump-Export nach ${outFile} (lokal, kein S3/Record)…`);
     const r = await dumpToFile(outFile);
@@ -194,7 +189,7 @@ async function main() {
   );
 }
 
-if (process.argv[1]?.endsWith('runner.ts') || process.argv[1]?.endsWith('runner.js')) {
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main().catch((e) => {
     console.error(`[backup] Fehler: ${(e as Error).message}`);
     process.exit(1);

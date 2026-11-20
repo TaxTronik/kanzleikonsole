@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { open, unlink } from 'node:fs/promises';
+import { open, rename, unlink } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { PassThrough, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { Prisma } from '@prisma/client';
@@ -221,6 +222,37 @@ export interface PgBackupSink {
   store(dump: PgDumpProcess, key: string): Promise<PgBackupStored>;
 }
 
+/**
+ * Generated backup names must be new. For an explicit --out-file destination,
+ * publish the private sibling file only once both the stream and pg_dump finish.
+ */
+export async function writeLocalPgDump(
+  dump: PgDumpProcess,
+  destination: string,
+  mode: 'create' | 'replace',
+): Promise<PgDumpResult> {
+  const path =
+    mode === 'replace'
+      ? join(dirname(destination), `.taxtronik-${randomUUID()}.partial`)
+      : destination;
+  const file = createWriteStream(path, { flags: 'wx', mode: 0o600 });
+  let owned = false;
+  file.once('open', () => {
+    owned = true;
+  });
+  try {
+    await pipeline(dump.stream, file);
+    const result = await dump.result();
+    if (mode === 'replace') await rename(path, destination);
+    return result;
+  } catch (error) {
+    dump.abort();
+    await dump.result().catch(() => undefined);
+    if (owned) await unlink(path);
+    throw error;
+  }
+}
+
 /** Object-Store-Zugriff des Aufrufers (Multipart-Upload per @aws-sdk/lib-storage). */
 export interface BackupObjectStore {
   upload(body: Readable, key: string): Promise<void>;
@@ -273,23 +305,7 @@ export function localCopyBackupSink(
       }
     },
     async store(dump, key) {
-      try {
-        await pipeline(dump.stream, createWriteStream(localPath, { mode: 0o600 }));
-      } catch (e) {
-        dump.abort();
-        await dump.result().catch(() => undefined);
-        await unlink(localPath).catch(() => undefined);
-        throw new Error(`Lokaler Backup-Write fehlgeschlagen: ${(e as Error).message}`, {
-          cause: e,
-        });
-      }
-      let result: PgDumpResult;
-      try {
-        result = await dump.result();
-      } catch (e) {
-        await unlink(localPath).catch(() => undefined);
-        throw e;
-      }
+      const result = await writeLocalPgDump(dump, localPath, 'create');
       let body: Readable | undefined;
       try {
         // Datei vor dem Upload öffnen: Bricht der Upload früh ab, schließt

@@ -37,10 +37,16 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - scripts/release/smoke-release-images.sh
+  - scripts/release/check-release-gates.mjs
+  - packages/config/src/retention-calendar.ts
   - packages/storage/src/service.ts
   - packages/storage/src/object-lock-policy.ts
   - apps/web/src/server/documents/upload-helpers.ts
 test_refs:
+  - scripts/release/tests/check-release-gates.test.mjs
+  - apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts
+  - packages/storage/src/__tests__/retention.test.ts
   - packages/storage/src/__tests__/object-lock-policy.test.ts
   - packages/storage/src/__tests__/object-version.test.ts
   - packages/storage/src/__tests__/s3-xml-compat.test.ts
@@ -123,6 +129,16 @@ mehrere Versionen oder ein Delete Marker führen zum harten Fehler.
 
 ## Umsetzung in TaxTronik
 
+Bei neuen GoBD- und GwG-Objekten bestimmt das deutsche Kalenderjahr des
+Ankers den technischen Stichtag. Bestehende COMPLIANCE-Locks und ihre
+Versionskennungen bleiben im Object Store gespeichert. Ein damals nach
+UTC-Jahr berechneter Lock kann im Zeitraum zwischen Berliner und
+UTC-Jahreswechsel um ein Jahr zu kurz sein. Die Korrektur neuer Uploads
+verlängert bestehende S3-Versionen nicht. Die Anwendung entfernt gebundene
+GoBD-Objektversionen weder beim Ausblenden noch bei Höherstufung. Der
+Orphan-Worker kontrolliert den dauerhaften Bezug vor dem physischen Löschen.
+Die konkrete Bestandsprüfung ist im Dokumentenarchiv-Modul beschrieben.
+
 `service.ts` bereitet den Commit vor, prüft Bytes und Speicherziel erneut,
 setzt den stufenabhängigen Lock und löst die konkrete Version-ID auf.
 `object-lock-policy.ts` bewertet die tatsächlich gemeldete Bucket-
@@ -146,6 +162,10 @@ GwG-Frühvernichtung mit Governance-Bypass.
 - Welche Schutz- und Löschregeln gelten für Replikate und Backups?
 
 ## Technische Nachweise
+
+Der Release-Smoke führt die reguläre Bucket-Initialisierung vor dem Start
+von Web und Worker aus. Ein Regressionstest prüft diese Reihenfolge.
+Ein eigenes Readiness-Gate prüft die tatsächlichen Bucket-Schutzmodi.
 
 Object-Lock-Policy-Tests prüfen Modus und Defaultlaufzeit. Storage-Tests
 belegen vorbereitete Hash-/Bucket-/Tenant-Invarianten, Version-ID-Auflösung,

@@ -68,11 +68,16 @@ export interface IcalEvent {
 }
 
 function escapeText(s: string): string {
-  return s
-    .replace(/\\/g, '\\\\')
-    .replace(/;/g, '\\;')
-    .replace(/,/g, '\\,')
-    .replace(/\r?\n/g, '\\n');
+  return (
+    s
+      .replace(/\\/g, '\\\\')
+      .replace(/;/g, '\\;')
+      .replace(/,/g, '\\,')
+      .replace(/\r\n|[\r\n]/g, '\\n')
+      // RFC 5545 §3.3.11 erlaubt Tabulatoren, aber keine weiteren ASCII-Steuerzeichen.
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
+  );
 }
 
 function pad(n: number): string {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { formatXlsxCell } from '@/lib/xlsx/format-cell';
+import type { XlsxSheet } from '@/lib/xlsx/read-xlsx';
 
 /**
  * Inline-Viewer für Excel-Dateien direkt im Browser, ohne
@@ -21,38 +22,35 @@ export function OfficeViewer({ url }: { url: string }) {
 function OfficeDocument({ url }: { url: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sheets, setSheets] = useState<XlsxSheet[]>([]);
+  const [sheets, setSheets] = useState<PreviewSheet[]>([]);
   const [activeSheet, setActiveSheet] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
+    const { signal } = controller;
 
     (async () => {
       try {
-        const res = await fetch(url);
+        const res = await fetch(url, { signal });
         if (!res.ok) throw new Error(`Datei laden: HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
-        if (cancelled) return;
+        if (signal.aborted) return;
 
         const { readXlsx } = await import('@/lib/xlsx/read-xlsx');
-        const result: XlsxSheet[] = readXlsx(buf).map((ws) => ({
-          name: ws.name,
-          rows: ws.rows.map((row) => row.map(formatXlsxCell)),
-        }));
-        if (cancelled) return;
-        setSheets(result);
+        if (signal.aborted) return;
+        setSheets(readXlsx(buf).map(previewSheet));
         setActiveSheet(0);
       } catch (e) {
-        console.error('[OfficeViewer]', e);
-        if (!cancelled) setError((e as Error).message);
+        if (!signal.aborted) {
+          console.error('[OfficeViewer]', e);
+          setError((e as Error).message);
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!signal.aborted) setLoading(false);
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [url]);
 
   // XLSX: erst Loader, dann Sheets
@@ -81,6 +79,7 @@ function OfficeDocument({ url }: { url: string }) {
             <button
               key={s.name + i}
               type="button"
+              aria-pressed={i === activeSheet}
               onClick={() => setActiveSheet(i)}
               className={
                 i === activeSheet
@@ -93,9 +92,7 @@ function OfficeDocument({ url }: { url: string }) {
           ))}
         </div>
       )}
-      <div className="flex-1 overflow-auto p-2">
-        {sheet ? <XlsxTable rows={sheet.rows} /> : null}
-      </div>
+      <div className="flex-1 overflow-auto p-2">{sheet ? <XlsxTable sheet={sheet} /> : null}</div>
     </div>
   );
 }
@@ -115,11 +112,6 @@ const SHEET_TEXT = 'text-[#111827]';
 const SHEET_TEXT_MUTED = 'text-[#4b5563]';
 const SHEET_ROW_HOVER = 'hover:bg-[#f9fafb]';
 
-interface XlsxSheet {
-  name: string;
-  rows: string[][];
-}
-
 // Anzeigegrenzen. Der Reader laesst bis zu 4 Mio. Zellen durch — die alle als
 // <td> samt title-Attribut zu materialisieren, legt den Browser-Tab lahm. Eine
 // Vorschau muss nicht vollstaendig sein; wer die ganze Mappe braucht, laedt sie
@@ -127,32 +119,44 @@ interface XlsxSheet {
 const PREVIEW_MAX_ROWS = 500;
 const PREVIEW_MAX_COLUMNS = 100;
 
-function XlsxTable({ rows }: { rows: string[][] }) {
+interface PreviewSheet extends XlsxSheet {
+  totalRows: number;
+  totalColumns: number;
+}
+
+function previewSheet({ name, rows }: XlsxSheet): PreviewSheet {
+  return {
+    name,
+    totalRows: rows.length,
+    totalColumns: rows[0]?.length ?? 0,
+    rows: rows.slice(0, PREVIEW_MAX_ROWS + 1).map((row) => row.slice(0, PREVIEW_MAX_COLUMNS)),
+  };
+}
+
+function XlsxTable({ sheet }: { sheet: PreviewSheet }) {
+  const { rows, totalRows, totalColumns } = sheet;
   if (rows.length === 0) return <p className="text-sm text-[#6b7280]">Leere Tabelle.</p>;
-  const [head, ...body] = rows;
-  const columnCount = Math.min(head!.length, PREVIEW_MAX_COLUMNS);
-  const shownBody = body.slice(0, PREVIEW_MAX_ROWS);
-  const hiddenRows = body.length - shownBody.length;
-  const hiddenColumns = head!.length - columnCount;
+  const [head, ...shownBody] = rows;
+  const columnCount = head!.length;
 
   return (
     <>
-      {(hiddenRows > 0 || hiddenColumns > 0) && (
+      {(rows.length < totalRows || columnCount < totalColumns) && (
         <p className={`mb-2 text-xs ${SHEET_TEXT_MUTED}`}>
-          Vorschau gekürzt: zeigt {shownBody.length} von {body.length} Zeilen
-          {hiddenColumns > 0 ? ` und ${columnCount} von ${head!.length} Spalten` : ''}. Die
+          Vorschau gekürzt: zeigt {shownBody.length} von {totalRows - 1} Zeilen
+          {columnCount < totalColumns ? ` und ${columnCount} von ${totalColumns} Spalten` : ''}. Die
           vollständige Mappe steht über den Download bereit.
         </p>
       )}
       <table className="text-xs border-collapse">
         <thead className={`${SHEET_HEADER} sticky top-0`}>
           <tr>
-            {head!.slice(0, columnCount).map((c, i) => (
+            {head!.map((cell, i) => (
               <th
                 key={i}
                 className={`border ${SHEET_BORDER} px-2 py-1 text-left font-medium ${SHEET_TEXT_MUTED} whitespace-nowrap`}
               >
-                {c}
+                {formatXlsxCell(cell)}
               </th>
             ))}
           </tr>
@@ -160,7 +164,7 @@ function XlsxTable({ rows }: { rows: string[][] }) {
         <tbody>
           {shownBody.map((row, ri) => (
             <tr key={ri} className={SHEET_ROW_HOVER}>
-              {row.slice(0, columnCount).map((c, ci) => (
+              {row.map(formatXlsxCell).map((c, ci) => (
                 <td
                   key={ci}
                   className={`border ${SHEET_BORDER_SUBTLE} px-2 py-1 ${SHEET_TEXT} whitespace-nowrap max-w-[24rem] overflow-hidden text-ellipsis`}

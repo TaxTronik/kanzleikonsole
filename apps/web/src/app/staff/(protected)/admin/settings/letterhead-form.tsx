@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState } from 'react';
 import { saveLetterheadAction, type ActionResult } from './actions';
 import type { LetterheadConfig } from '@/server/settings/letterhead';
@@ -11,7 +13,7 @@ export function LetterheadForm({ initial }: { initial: LetterheadConfig }) {
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <SettingsForm result={state} pending={isPending} action={formAction} className="space-y-4">
       <div>
         <label className="label" htmlFor="lh-org">
           Kanzlei-Name
@@ -88,6 +90,6 @@ export function LetterheadForm({ initial }: { initial: LetterheadConfig }) {
         {state?.ok && <span className="text-sm text-emerald-700">Gespeichert.</span>}
         {state && !state.ok && <span className="text-sm text-red-700">{state.error}</span>}
       </div>
-    </form>
+    </SettingsForm>
   );
 }

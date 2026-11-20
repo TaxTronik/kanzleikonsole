@@ -12,11 +12,18 @@ export const REQUIRED_RECURSIVE_DOCKERIGNORE_PATTERNS = [
   '**/build',
   '**/out',
   '**/coverage',
+  '**/.env',
+  '**/.env.*',
+  '**/.admin-credentials.txt',
+  '**/licensing-private-*.pem',
+  '**/backup-manifest-private.pem',
   '/apps/web/backups',
   '.taxtronik.state',
   '.taxtronik.migration-pending',
   '.taxtronik.database-restored',
   '.codex-run',
+  '.claude-stage',
+  '/.taxtronik/signal-llm',
 ];
 export const REQUIRED_COMPOSE_SECRETS = ['AUTH_SECRET', 'N8N_ENCRYPTION_KEY'];
 

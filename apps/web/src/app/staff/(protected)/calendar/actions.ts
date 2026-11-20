@@ -33,7 +33,12 @@ import {
   loadAppointmentMailOptionTx,
   type AppointmentClientMailOption,
 } from '@/server/appointments/client-mail';
-import { fmtDateTimeShort, fmtDateTimeMedium, berlinWallClockToUtc } from '@/lib/fmt';
+import {
+  fmtDateTimeShort,
+  fmtDateTimeMedium,
+  berlinWallClock,
+  berlinWallClockToUtc,
+} from '@/lib/fmt';
 import { audit } from '@/server/actions/audit';
 
 const withAppointmentsStaff = withStaffModule('appointments');
@@ -206,8 +211,8 @@ function parseAppointmentUpdate(formData: FormData): ActionParseResult<Appointme
   if (Number.isNaN(startsAt.getTime())) {
     return fieldFailure('startsAt', 'Bitte wählen Sie einen gültigen Startzeitpunkt.');
   }
-  if (Number.isNaN(endsAt.getTime()) || endsAt.getTime() <= startsAt.getTime()) {
-    return fieldFailure('endsAt', 'Das Ende muss nach dem Start liegen.');
+  if (Number.isNaN(endsAt.getTime())) {
+    return fieldFailure('endsAt', 'Bitte wählen Sie einen gültigen Endzeitpunkt.');
   }
   // C1: Absagen ist ein eigener, auditierter Schritt (cancelAppointmentAction)
   // statt eines Statuswerts im Bearbeiten-Formular.
@@ -359,15 +364,25 @@ function finishAppointmentAction(
 async function updateAppointmentTx(
   tx: TxClient,
   g: StaffCtx,
-  next: AppointmentNext,
+  submitted: AppointmentNext,
   notifyClient: boolean,
-): Promise<AppointmentTxOutcome> {
+): Promise<AppointmentTxOutcome | ActionFailure> {
   const before = await tx.appointment.findUnique({
-    where: { id: next.id },
+    where: { id: submitted.id },
     select: BEFORE_UPDATE_SELECT,
   });
   if (!before) throw new ActionError('Termin nicht gefunden.');
+  // Das Formular überträgt Berliner Uhrzeiten minutengenau ohne Offset. Beim
+  // Bearbeiten bleiben das gespeicherte Vorkommen der Herbststunde und etwaige
+  // Sekunden erhalten, solange die angezeigte Minute gleich bleibt.
+  const next = {
+    ...submitted,
+    startsAt: retainSameWallMinute(before.startsAt, submitted.startsAt),
+    endsAt: retainSameWallMinute(before.endsAt, submitted.endsAt),
+  };
   await assertAppointmentUpdateAllowedTx(tx, g, before, next);
+  if (next.endsAt <= next.startsAt)
+    return fieldFailure('endsAt', 'Das Ende muss nach dem Start liegen.');
   // Welle 15: Empfänger für den NEUEN Mandantenbezug vor jedem Schreibzugriff.
   const mailOption = await mailOptionTx(tx, notifyClient, {
     id: next.id,
@@ -428,6 +443,10 @@ async function updateAppointmentTx(
   return { kind: 'saved', clientMails };
 }
 
+function retainSameWallMinute(stored: Date, submitted: Date): Date {
+  return berlinWallClock(stored) === berlinWallClock(submitted) ? stored : submitted;
+}
+
 /**
  * Speichert den Bearbeiten-Dialog. Welle 15: Mit „Mandant per E-Mail
  * informieren“ entsteht im selben Commit je Empfänger ein Versandauftrag
@@ -459,7 +478,7 @@ export async function updateAppointmentAction(
       const outcome = await withTenantContext(g.ctx, (tx) =>
         updateAppointmentTx(tx, g, next, input.notifyClient),
       );
-      return finishAppointmentAction(outcome);
+      return 'ok' in outcome ? outcome : finishAppointmentAction(outcome);
     },
   });
 }
@@ -663,8 +682,12 @@ export async function acceptAppointmentRequestAction(input: {
       // als Berlin→UTC konvertieren, konsistent zu parseLocal.
       const startsAt = berlinWallClockToUtc(slot.startsAt) ?? new Date(NaN);
       const endsAt = berlinWallClockToUtc(slot.endsAt) ?? new Date(NaN);
-      if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime())) {
-        throw new ActionError('Slot-Zeitstempel kaputt.');
+      if (
+        Number.isNaN(startsAt.getTime()) ||
+        Number.isNaN(endsAt.getTime()) ||
+        endsAt <= startsAt
+      ) {
+        throw new ActionError('Der Wunschtermin enthält keine gültige Berliner Zeitspanne.');
       }
 
       // TOCTOU-Schutz: Anfrage zuerst atomar claimen (PENDING → ACCEPTED),

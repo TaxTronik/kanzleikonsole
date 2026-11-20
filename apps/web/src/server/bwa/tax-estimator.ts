@@ -34,7 +34,7 @@ export interface TaxEstimationInput {
   vatPaid: number | null;
   // Gewerbesteuer-Hebesatz der Gemeinde (in %, z.B. 400 für 400%)
   gewerbesteuerHebesatzPct: number;
-  // Bei Personengesellschaften: Anzahl Gesellschafter (für Freibetrag)
+  // Optionale Kennzeichnung eines Personenunternehmens aus älteren Aufrufen.
   isPersonengesellschaft?: boolean;
   /** True bei freiberuflicher Tätigkeit (§ 18 EStG) — keine Gewerbesteuer
    *  (§ 2 GewStG erfasst nur den Gewerbebetrieb). */
@@ -102,6 +102,52 @@ const GRUNDTARIF: Record<number, GrundtarifParameters> = {
   },
 };
 
+/** BWA-TAX-ESTIMATE-001 erfasst das vollständige Kalenderjahr 2025 oder 2026. */
+export function bwaCalendarYear(from: Date, to: Date): number | null {
+  const year = to.getUTCFullYear();
+  return from.getTime() === Date.UTC(year, 0, 1) && to.getTime() === Date.UTC(year, 11, 31)
+    ? year
+    : null;
+}
+
+export function isSupportedBwaTaxYear(year: number | null): year is 2025 | 2026 {
+  return year === 2025 || year === 2026;
+}
+
+export function isBwaCapitalCompany(form: LegalForm): boolean {
+  return form === 'GMBH' || form === 'AG' || form === 'UG';
+}
+
+export const UNSUPPORTED_TAX_YEAR =
+  'Die Steuerschätzung ist nur für vollständige Kalenderjahre 2025 und 2026 hinterlegt.';
+
+export function taxEstimateInputError(input: TaxEstimationInput): string | null {
+  if (!isSupportedBwaTaxYear(input.taxYear)) return UNSUPPORTED_TAX_YEAR;
+  if (input.resultIsAfterTax || !Number.isFinite(input.result)) {
+    return 'Für die Steuerschätzung ist ein Ergebnis vor Steuern erforderlich. Ein Nachsteuerergebnis darf es nicht ersetzen.';
+  }
+  if (
+    [input.revenue, input.inputVat, input.vatPaid].some((v) => v !== null && !Number.isFinite(v))
+  ) {
+    return 'Bitte die Umsatzsteuer-Ausgangswerte prüfen.';
+  }
+  if (
+    isBwaCapitalCompany(input.legalForm) &&
+    (input.isFreiberufler || input.isPersonengesellschaft)
+  ) {
+    return 'Rechtsform und Tätigkeitsangaben widersprechen sich.';
+  }
+  if (
+    !input.isFreiberufler &&
+    (!Number.isFinite(input.gewerbesteuerHebesatzPct) ||
+      input.gewerbesteuerHebesatzPct < 200 ||
+      input.gewerbesteuerHebesatzPct > 900)
+  ) {
+    return 'Bitte den Hebesatz der Gemeinde eingeben. Das Modell unterstützt 200 bis 900 %.';
+  }
+  return null;
+}
+
 /** Grundtarif (Single) nach § 32a Abs. 1; Ergebnis auf volle Euro abgerundet. */
 export function einkommensteuerGrundtarif(taxYear: number, zvE: number): number | null {
   const p = GRUNDTARIF[taxYear];
@@ -143,17 +189,14 @@ function estimateVat(
 }
 
 export function estimateTaxes(input: TaxEstimationInput): TaxEstimationResult {
-  if (input.resultIsAfterTax) {
-    throw new Error(
-      'Für die Steuerschätzung ist ein Ergebnis vor Steuern erforderlich. Ein Nachsteuerergebnis darf es nicht ersetzen.',
-    );
-  }
+  const inputError = taxEstimateInputError(input);
+  if (inputError) throw new Error(inputError);
   const disclaimers: string[] = [
     'Diese Schätzung ist eine grobe Orientierung und ersetzt keine fachliche Beurteilung.',
     `Werte basieren auf der vorläufigen BWA; Einkommensteuer-Grundtarif ${input.taxYear}.`,
   ];
 
-  const isKap = input.legalForm === 'GMBH' || input.legalForm === 'AG' || input.legalForm === 'UG';
+  const isKap = isBwaCapitalCompany(input.legalForm);
   const isPnP =
     input.isPersonengesellschaft ||
     input.legalForm === 'GBR' ||
@@ -173,9 +216,9 @@ export function estimateTaxes(input: TaxEstimationInput): TaxEstimationResult {
     ? Math.max(0, gewerbeertragAbgerundet - gewerbesteuerFreibetrag)
     : 0;
   const gewerbesteuerMessbetrag = gewerbesteuerBemessung * GEWST_MESSZAHL;
-  const gewerbesteuer = Math.round(
-    gewerbesteuerMessbetrag * (input.gewerbesteuerHebesatzPct / 100),
-  );
+  const gewerbesteuer = gewerbesteuerpflichtig
+    ? Math.round(gewerbesteuerMessbetrag * (input.gewerbesteuerHebesatzPct / 100))
+    : 0;
   if (input.isFreiberufler) {
     disclaimers.push('Freiberufliche Tätigkeit (§ 18 EStG): keine Gewerbesteuer angesetzt.');
   } else {

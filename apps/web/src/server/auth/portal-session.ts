@@ -7,7 +7,11 @@
 
 import type { JWT } from 'next-auth/jwt';
 import { env } from '@taxtronik/config';
-import { getSessionIssuedAt } from './session-issued-at';
+import {
+  getSessionIssuedAt,
+  newSessionIssueTime,
+  type SessionIssueTime,
+} from './session-issued-at';
 import {
   PORTAL_SESSION_COOKIE,
   PORTAL_SESSION_COOKIE_BASE,
@@ -35,8 +39,7 @@ export interface PortalSessionContact {
   fullName: string;
 }
 
-export interface PortalSessionIdentity {
-  sessionIssuedAt: number;
+export interface PortalSessionIdentity extends SessionIssueTime {
   sessionOriginContactId: string;
 }
 
@@ -54,6 +57,7 @@ export function portalSessionToken(
     clientId: contact.clientId,
     fullName: contact.fullName,
     sessionIssuedAt: identity.sessionIssuedAt,
+    sessionIssuedAtMs: identity.sessionIssuedAtMs,
     sessionOriginContactId: identity.sessionOriginContactId,
   };
 }
@@ -61,11 +65,12 @@ export function portalSessionToken(
 /** New mailbox authentication starts an identity; profile switches preserve it. */
 export async function writePortalSession(
   contact: PortalSessionContact,
-  identity: PortalSessionIdentity = {
-    sessionIssuedAt: Math.floor(Date.now() / 1000),
-    sessionOriginContactId: contact.id,
-  },
+  originalIdentity?: PortalSessionIdentity,
 ): Promise<void> {
+  const identity = originalIdentity ?? {
+    ...(await newSessionIssueTime()),
+    sessionOriginContactId: contact.id,
+  };
   if (getSessionIssuedAt(identity) === undefined || !identity.sessionOriginContactId) {
     throw new Error('Invalid original portal session identity');
   }

@@ -82,17 +82,25 @@ run_backup() {
 # Backup. Dump landet als Custom-Format im lokalen Backup-Verzeichnis.
 # Wiederherstellung manuell: pg_restore -h 127.0.0.1 -U n8n -d n8n <dump>
 # (plus n8n_data-Volume; N8N_ENCRYPTION_KEY muss zum Dump passen).
-run_backup_n8n() {
-  local dest="${1:-${BACKUP_LOCAL_DIR:-$ROOT/backups}}"
-  mkdir -p "$dest"
-  # shellcheck disable=SC2155 # date ohne Fehlerpfad; run_backup_n8n hat keinen Test, daher unveraendert
-  local out="$dest/n8n-db-$(date -u +'%Y%m%dT%H%M%SZ').dump"
+run_backup_n8n() (
+  local dest="${1:-${BACKUP_LOCAL_DIR:-$ROOT/backups}}" out partial
+  mkdir -p -- "$dest" || return 1
+  out="$dest/n8n-db-$(date -u +'%Y%m%dT%H%M%SZ').dump"
+  partial="$(mktemp -- "$dest/.n8n-db-XXXXXXXX")" || return 1
+  trap 'rm -f -- "$partial"' EXIT
   info "n8n-Datenbank sichern -> $out"
   # Secret nur im Prozess-Env (nicht in der Container-argv, vgl. P3-2).
   PGPASSWORD="${N8N_DB_PASSWORD:-n8n}" docker exec -i -e PGPASSWORD taxtronik-postgres \
-    pg_dump -h 127.0.0.1 -U n8n -d n8n -Fc > "$out"
+    pg_dump -h 127.0.0.1 -U n8n -d n8n -Fc > "$partial" || return 1
+  if [[ ! -s "$partial" ]] || ! docker exec -i taxtronik-postgres pg_restore --list < "$partial" >/dev/null; then
+    warn "n8n-Dump ist kein lesbares pg_dump-Archiv."
+    return 1
+  fi
+  # Erst das geprüfte Archiv veröffentlichen. Ein gleichzeitiger Lauf oder
+  # ein bereits vorhandener Dump derselben Sekunde behält seine Datei.
+  ln -T -- "$partial" "$out" || return 1
   info "n8n-Datenbank gesichert ($(du -h "$out" 2>/dev/null | cut -f1))."
-}
+)
 
 # TCMS Stufe 2: Dump der verwalteten TCMS-Datenbank mit pg_dump im Container
 # (Custom-Format mit Eigentuemern und Rechten, damit ein Restore tcms_owner als
@@ -101,32 +109,53 @@ run_backup_n8n() {
 # gelesen. Kein Passwort: pg_dump laeuft im Container ueber den lokalen Socket.
 # Setzt _TCMS_BACKUP_FILE.
 run_backup_tcms() {
-  local dest="$1" out name
+  local dest="$1" name stamp suffix
   _TCMS_BACKUP_FILE=""
   [[ "$(tcms_deployment_mode)" == "managed" ]] || return 0
   [[ "$(docker inspect --format '{{.State.Running}}' "$TCMS_DB_CONTAINER" 2>/dev/null || true)" == "true" ]] || {
     warn "tcms-db laeuft nicht; TCMS-Backup nicht moeglich."
     return 1
   }
-  mkdir -p "$dest" || { warn "Backup-Verzeichnis nicht anlegbar: $dest"; return 1; }
-  name="tcms-db-$(date -u +'%Y%m%d-%H%M%S')-$(rand_b64 4 | tr -dc 'a-zA-Z0-9' | cut -c1-5).dump"
-  out="$dest/$name"
-  info "TCMS-Datenbank sichern -> $out"
-  if ! docker exec "$TCMS_DB_CONTAINER" pg_dump -U tcms -d tcms --format=custom --compress=6 >"$out.partial"; then
-    rm -f -- "$out.partial"
+  mkdir -p -- "$dest" || { warn "Backup-Verzeichnis nicht anlegbar: $dest"; return 1; }
+  stamp="$(date -u +'%Y%m%d-%H%M%S')" || return 1
+  suffix="$(rand_b64 4 | tr -dc 'a-zA-Z0-9' | cut -c1-5)" || return 1
+  [[ "$suffix" =~ ^[a-zA-Z0-9]{1,5}$ ]] || return 1
+  name="tcms-db-$stamp-$suffix.dump"
+  info "TCMS-Datenbank sichern -> $dest/$name"
+  publish_tcms_dump "$dest" "$name" || return 1
+  _TCMS_BACKUP_FILE="$dest/$name"
+}
+
+publish_tcms_dump() (
+  local dest="$1" name="$2" stage
+  umask 077
+  stage="$(mktemp -d -- "$dest/.tcms-db-XXXXXXXX")" || return 1
+  # shellcheck disable=SC2317 # Der EXIT-Trap ruft die Aufraeumfunktion auf.
+  cleanup_tcms_dump() {
+    # Nur die eigene Beidatei entfernen, falls der abschließende Link scheitert.
+    if [[ "$stage/$name.sha256" -ef "$dest/$name.sha256" && ! "$stage/$name" -ef "$dest/$name" ]]; then
+      rm -f -- "$dest/$name.sha256"
+    fi
+    rm -f -- "$stage/$name" "$stage/$name.sha256"
+    rmdir -- "$stage"
+  }
+  trap cleanup_tcms_dump EXIT
+  trap 'exit 1' HUP INT TERM
+  if ! docker exec "$TCMS_DB_CONTAINER" pg_dump -U tcms -d tcms --format=custom --compress=6 >"$stage/$name"; then
     warn "pg_dump der TCMS-Datenbank fehlgeschlagen."
     return 1
   fi
-  if [[ ! -s "$out.partial" ]] || ! docker exec -i "$TCMS_DB_CONTAINER" pg_restore --list <"$out.partial" >/dev/null; then
-    rm -f -- "$out.partial"
+  if [[ ! -s "$stage/$name" ]] || ! docker exec -i "$TCMS_DB_CONTAINER" pg_restore --list <"$stage/$name" >/dev/null; then
     warn "TCMS-Dump ist kein lesbares pg_dump-Archiv."
     return 1
   fi
-  chmod 0600 "$out.partial" && mv -f -- "$out.partial" "$out" || return 1
-  ( cd "$dest" && sha256sum -- "$name" >"$name.sha256" ) || return 1
-  chmod 0600 "$out.sha256" 2>/dev/null || true
-  _TCMS_BACKUP_FILE="$out"
-}
+  ( cd -- "$stage" && sha256sum -- "$name" >"$name.sha256" ) || return 1
+  [[ ! -e "$dest/$name" && ! -L "$dest/$name" ]] || return 1
+  # Erst der Dumpname macht die Sicherung für Restore und Rotation sichtbar.
+  # Beide Links sind exklusiv, auch bei einer Namenskollision paralleler Läufe.
+  ln -T -- "$stage/$name.sha256" "$dest/$name.sha256" &&
+    ln -T -- "$stage/$name" "$dest/$name"
+)
 
 # Wie der Hauptdump in den Backup-Bucket (gleiche 90-Tage-Lifecycle-Regel),
 # Schluessel tcmsdump/JJJJ/MM/TT/<datei>. S3-Zugang nur als Prozess-Env, im
@@ -155,7 +184,10 @@ upload_tcms_backup() {
 
 # Gibt es noch keine TCMS-Daten (Volume fehlt), gibt es nichts zu sichern.
 tcms_database_volume_exists() {
-  [[ -n "$(docker volume ls -q --filter 'label=com.docker.compose.volume=tcms-db-data' 2>/dev/null | head -n1)" ]]
+  local volumes
+  volumes="$(docker volume ls -q --filter 'label=com.docker.compose.volume=tcms-db-data')" ||
+    die "TCMS-Datenvolumes konnten nicht abgefragt werden."
+  [[ -n "$volumes" ]]
 }
 
 # tcms-db fuer eine Sicherung bereitstellen; startet den Container bei Bedarf
@@ -254,26 +286,44 @@ tcms_backup_cron_line() {
     "$TCMS_BACKUP_SCHEDULE_TIME" "$root" "$log"
 }
 
-# Aktuelle crontab ohne den verwalteten Block (leer, wenn es keine gibt).
-tcms_crontab_without_block() {
-  tcms_crontab -l 2>/dev/null | awk -v b="$TCMS_BACKUP_SCHEDULE_BEGIN" -v e="$TCMS_BACKUP_SCHEDULE_END" '
-    $0 == b { skip = 1; next }
-    $0 == e { skip = 0; next }
-    !skip { print }
-  ' || true
+# crontab liefert auch bei Lesefehlern Status 1. Nur die ausdrückliche
+# Meldung für eine fehlende Benutzertabelle erlaubt eine Erstinstallation.
+tcms_crontab_read() (
+  local errors table status
+  errors="$(mktemp)" || return 1
+  trap 'rm -f -- "$errors"' EXIT
+  if table="$(LC_ALL=C tcms_crontab -l 2>"$errors")"; then
+    printf '%s\n' "$table"
+    return 0
+  else
+    status=$?
+  fi
+  if [[ "$status" == 1 && -z "$table" && "$(<"$errors")" =~ ^no\ crontab\ for\ [^[:space:]]+$ ]]; then
+    return 0
+  fi
+  warn "Bestehende crontab konnte nicht gelesen werden." >&2
+  return 1
+)
+
+# Prüft beide Markierungen, bevor ein Aufrufer die fremden Jobs zurückschreibt.
+# Die Argumente inside/outside wählen die Zeilen des bzw. außerhalb des Blocks.
+tcms_crontab_part() {
+  awk -v part="$1" -v b="$TCMS_BACKUP_SCHEDULE_BEGIN" -v e="$TCMS_BACKUP_SCHEDULE_END" '
+    $0 == b { if (seen) exit 1; seen = inside = 1; next }
+    $0 == e { if (!inside) exit 1; inside = 0; next }
+    (part == "inside") == (inside == 1) { print }
+    END { if (inside) exit 1 }
+  ' || { warn "Unvollstaendige oder mehrfache TCMS-Markierung in der crontab." >&2; return 1; }
 }
 
 # Verwalteter Block in der crontab: 0 = eingetragen (Zeile wie erwartet),
-# 1 = fehlt bzw. abweichend, 2 = kein crontab-Programm.
+# 1 = fehlt bzw. abweichend, 2 = kein crontab-Programm, 3 = nicht lesbar/zuordenbar.
 tcms_backup_schedule_installed() {
-  local line block
+  local line block table
   tcms_crontab_available || return 2
   line="$(tcms_backup_cron_line "$ROOT" "$(tcms_backup_schedule_log)")" || return 1
-  block="$(tcms_crontab -l 2>/dev/null | awk -v b="$TCMS_BACKUP_SCHEDULE_BEGIN" -v e="$TCMS_BACKUP_SCHEDULE_END" '
-    $0 == b { inside = 1; next }
-    $0 == e { inside = 0; next }
-    inside { print }
-  ' || true)"
+  table="$(tcms_crontab_read)" || return 3
+  block="$(tcms_crontab_part inside <<<"$table")" || return 3
   [[ "$block" == "$line" ]]
 }
 
@@ -283,18 +333,20 @@ tcms_backup_schedule_log() {
 
 # Traegt den Zeitplan ein bzw. aktualisiert ihn (idempotent). Nur managed.
 tcms_backup_schedule_install() {
-  local line log rest
+  local line log rest table block
   [[ "$(tcms_deployment_mode)" == "managed" ]] || { warn "TCMS-Zeitplan nur bei TCMS_DEPLOYMENT=managed."; return 1; }
   tcms_crontab_available || { warn "crontab fehlt; TCMS-Sicherung nicht geplant (cron installieren oder eigene Planung, TCMS_BACKUP_SCHEDULE=off)."; return 1; }
   log="$(tcms_backup_schedule_log)" || return 1
   line="$(tcms_backup_cron_line "$ROOT" "$log")" || { warn "Pfad des Checkouts bzw. der Sicherungen ist fuer cron ungeeignet (', %, Zeilenumbruch); TCMS-Sicherung bitte selbst planen."; return 1; }
   mkdir -p "$(dirname "$log")" || return 1
   chmod 0700 "$(dirname "$log")" 2>/dev/null || true
-  if tcms_backup_schedule_installed; then
+  table="$(tcms_crontab_read)" || return 1
+  block="$(tcms_crontab_part inside <<<"$table")" || return 1
+  if [[ "$block" == "$line" ]]; then
     info "TCMS-Sicherung ist geplant (taeglich, $TCMS_BACKUP_SCHEDULE_TIME Host-Zeit)."
     return 0
   fi
-  rest="$(tcms_crontab_without_block)"
+  rest="$(tcms_crontab_part outside <<<"$table")" || return 1
   { [[ -z "$rest" ]] || printf '%s\n' "$rest"
     printf '%s\n%s\n%s\n' "$TCMS_BACKUP_SCHEDULE_BEGIN" "$line" "$TCMS_BACKUP_SCHEDULE_END"
   } | tcms_crontab - || { warn "crontab konnte nicht geschrieben werden; TCMS-Sicherung nicht geplant."; return 1; }
@@ -303,10 +355,11 @@ tcms_backup_schedule_install() {
 
 # Entfernt nur den verwalteten Block; andere Eintraege bleiben.
 tcms_backup_schedule_remove() {
-  local rest
+  local rest table
   tcms_crontab_available || return 0
-  tcms_crontab -l 2>/dev/null | grep -Fqx -- "$TCMS_BACKUP_SCHEDULE_BEGIN" || return 0
-  rest="$(tcms_crontab_without_block)"
+  table="$(tcms_crontab_read)" || return 1
+  rest="$(tcms_crontab_part outside <<<"$table")" || return 1
+  grep -Fqx -- "$TCMS_BACKUP_SCHEDULE_BEGIN" <<<"$table" || return 0
   if [[ -z "$rest" ]]; then
     tcms_crontab -r 2>/dev/null || printf '' | tcms_crontab -
   else
@@ -373,30 +426,46 @@ tcms_backup_rotate() {
 }
 
 object_store_backup_buckets() {
-  # shellcheck disable=SC2086 # Wortzerlegung gewollt: Leerzeichen-getrennte Bucket-Liste (S3-Namen ohne Glob-Zeichen)
-  printf '%s\n' ${BACKUP_OBJECT_BUCKETS:-${S3_BUCKET_GOBD:-gobd} ${S3_BUCKET_GWG:-gwg} ${S3_BUCKET_GENERAL:-general} ${S3_BUCKET_STAFF_PRIVATE:-staff-private}}
+  local bucket
+  local -a buckets=("${S3_BUCKET_GOBD:-gobd}" "${S3_BUCKET_GWG:-gwg}" "${S3_BUCKET_GENERAL:-general}" "${S3_BUCKET_STAFF_PRIVATE:-staff-private}")
+  if [[ -n "${BACKUP_OBJECT_BUCKETS:-}" ]]; then
+    IFS=$' \t' read -r -a buckets <<< "${BACKUP_OBJECT_BUCKETS//$'\n'/ }"
+  fi
+  (( ${#buckets[@]} > 0 )) || { warn "Bucket-Liste fuer den Export ist leer." >&2; return 1; }
+  for bucket in "${buckets[@]}"; do
+    # Jeder Bucket entspricht genau einem Unterverzeichnis neben den beiden Inventardateien.
+    if [[ ! "$bucket" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]*$ || "$bucket" == buckets.txt || "$bucket" == manifest.txt ]]; then
+      warn "Ungueltiger oder reservierter Bucket-Name fuer den Export." >&2
+      return 1
+    fi
+  done
+  printf '%s\n' "${buckets[@]}"
 }
 
 run_backup_files() {
   require_cmd docker
-  local host_dir stamp dest bucket endpoint buckets_file
+  local host_dir stamp dest bucket buckets endpoint buckets_file
+  buckets="$(object_store_backup_buckets)" || return 1
   prepare_backup_host_dir
   host_dir="$(resolve_backup_host_dir)"
   stamp="$(date -u +'%Y%m%d-%H%M%S')"
   dest="${1:-$host_dir/object-store/$stamp}"
-  mkdir -p "$dest" || die "Object-Store-Backup-Ziel konnte nicht angelegt werden: $dest"
-  chmod 0700 "$dest" 2>/dev/null || true
+  if [[ -z "${1:-}" ]]; then
+    mkdir -p -- "$host_dir/object-store" && mkdir -m 0700 -- "$dest" || return 1
+  else
+    mkdir -p -- "$dest" && chmod 0700 -- "$dest" || return 1
+  fi
 
   endpoint="${BACKUP_OBJECT_ENDPOINT:-http://seaweedfs:8333}"
   buckets_file="$dest/buckets.txt"
-  : > "$buckets_file"
+  : > "$buckets_file" || return 1
 
   info "Kanzleidateien aus SeaweedFS exportieren: $dest"
   info "Hinweis: Dies ist eine Byte-Kopie der Buckets. Fuer Object-Lock-/Versioning-Metadaten zusaetzlich SeaweedFS-Replikation oder Volume-Snapshots nutzen."
 
   while IFS= read -r bucket; do
     [[ -z "$bucket" ]] && continue
-    printf '%s\n' "$bucket" >> "$buckets_file"
+    printf '%s\n' "$bucket" >> "$buckets_file" || return 1
     info "Bucket exportieren: $bucket"
     # P3-2: Secrets NICHT als `-e VAR=wert` (landet in der Container-argv, per
     # `docker inspect`/`ps` lesbar) — stattdessen im Prozess-Env setzen und per
@@ -411,15 +480,18 @@ run_backup_files() {
       -e AWS_DEFAULT_REGION \
       -v "$dest:/backup" \
       "${TAXTRONIK_AWS_CLI_IMAGE:-$AWS_CLI_IMAGE_DEFAULT}" \
-      --endpoint-url "$endpoint" s3 sync "s3://$bucket" "/backup/$bucket" --only-show-errors
-  done < <(object_store_backup_buckets)
+      --endpoint-url "$endpoint" s3 sync "s3://$bucket" "/backup/$bucket" --only-show-errors || {
+        warn "Object-Store-Export fuer Bucket $bucket fehlgeschlagen."
+        return 1
+      }
+  done <<<"$buckets"
 
   {
     printf 'created_utc=%s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
     printf 'endpoint=%s\n' "$endpoint"
     printf 'buckets='
     paste -sd, "$buckets_file"
-  } > "$dest/manifest.txt"
+  } > "$dest/manifest.txt" || return 1
   info "Kanzleidateien-Export fertig: $dest"
 }
 
@@ -845,6 +917,27 @@ cmd_backup_verify() {
     --public-key "$public_key"
 }
 
+check_full_backup_dumps() {
+  local dir="$1" file name kind main=0 n8n=0
+  # Ältere Hauptdumps tragen nur Stunde/Minute; aktuelle zusätzlich Sekunden
+  # und sechs Hexzeichen. Auch die Endung .sql.gz bezeichnet ein Custom-Archiv.
+  local main_name='^taxtronik-[0-9]{8}-([0-9]{4}|[0-9]{6}-[[:xdigit:]]{6})\.(sql\.gz|dump)$'
+  local n8n_name='^n8n-db-[0-9]{8}T[0-9]{6}Z\.dump$'
+  [[ -d "$dir" && ! -L "$dir" ]] || die "Datenbankverzeichnis mit Haupt- und n8n-Dump fehlt."
+  for file in "$dir"/*; do
+    name="${file##*/}"
+    if [[ "$name" =~ $main_name ]]; then kind=main
+    elif [[ "$name" =~ $n8n_name ]]; then kind=n8n
+    else continue
+    fi
+    if [[ ! -f "$file" || -L "$file" ]] || ! cmp -s <(printf 'PGDMP') <(head -c 5 -- "$file"); then
+      die "Datei ist kein PostgreSQL-Custom-Dump: $name"
+    fi
+    if [[ "$kind" == main ]]; then main=1; else n8n=1; fi
+  done
+  (( main && n8n )) || die "Entschluesseltes Full-Backup braucht einen Hauptdump und einen n8n-Dump."
+}
+
 cmd_backup_decrypt() {
   local dest="${1:-}" target="${2:-}" identity="${3:-${BACKUP_AGE_IDENTITY_FILE:-}}" public_key="${4:-${BACKUP_MANIFEST_PUBLIC_KEY_FILE:-}}"
   [[ -n "$dest" && -d "$dest" && -f "$dest/full-backup.tar.age" ]] || \
@@ -865,7 +958,8 @@ cmd_backup_decrypt() {
   info "Full-Backup in isoliertes Ziel entschluesseln: $target"
   age --decrypt --identity "$identity" "$dest/full-backup.tar.age" | \
     tar --extract --file - --directory "$target" --no-same-owner --no-same-permissions
-  [[ -d "$target/database" && -f "$target/volumes/seaweedfs-data.tar.gz" && \
+  check_full_backup_dumps "$target/database"
+  [[ -f "$target/volumes/seaweedfs-data.tar.gz" && \
      -f "$target/volumes/redis-data.tar.gz" && -f "$target/volumes/n8n-data.tar.gz" && \
      -f "$target/.env" ]] || die "Entschluesseltes Full-Backup ist unvollstaendig."
   tar -tzf "$target/volumes/seaweedfs-data.tar.gz" >/dev/null

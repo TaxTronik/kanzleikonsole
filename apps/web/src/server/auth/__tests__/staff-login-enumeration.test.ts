@@ -31,6 +31,8 @@ const h = vi.hoisted(() => ({
   compare: vi.fn(),
   evidence: vi.fn(),
   counters: new Map<string, { count: number; until: number }>(),
+  // Werte, die Kanzlei- und Kontolookup am Owner-Client tatsächlich erreichen.
+  lookups: [] as unknown[],
 }));
 
 vi.mock('next/headers', () => ({
@@ -112,14 +114,18 @@ function update({ data }: { data: Record<string, unknown> }) {
 vi.mock('@/server/db/prisma-owner', () => ({
   prismaOwner: {
     tenant: {
-      findFirst: async ({ where }: { where: { slug: string } }) =>
-        where.slug === 'default' ? { id: 'tenant-1' } : null,
+      findFirst: async ({ where }: { where: { slug: string } }) => {
+        h.lookups.push(where.slug);
+        return where.slug === 'default' ? { id: 'tenant-1' } : null;
+      },
     },
     staffUser: {
-      findFirst: async ({ where }: { where: { tenantId: string; email: string } }) =>
-        where.tenantId === h.account.tenantId && where.email === h.account.email
+      findFirst: async ({ where }: { where: { tenantId: string; email: string } }) => {
+        h.lookups.push(where.email);
+        return where.tenantId === h.account.tenantId && where.email === h.account.email
           ? structuredClone(h.account)
-          : null,
+          : null;
+      },
       update: async (args: { data: Record<string, unknown> }) => update(args),
     },
     $transaction: async (fn: (tx: unknown) => unknown) => fn({ staffUser: { update } }),
@@ -237,6 +243,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW);
   vi.clearAllMocks();
   h.counters.clear();
+  h.lookups.length = 0;
   h.compare.mockImplementation(async (plain: string, hashed: string) => hashed === `hash:${plain}`);
   h.evidence.mockResolvedValue(undefined);
 });
@@ -299,6 +306,43 @@ describe('S-09: Staff-Konten sind weder über Meldung noch Antwortzeit ermittelb
       expect(h.evidence).not.toHaveBeenCalled();
       expect(CASES['falsches Passwort']!.account.failedLoginCount).toBe(failedBefore);
       expect(h.compare).toHaveBeenCalledTimes(2 * Object.keys(CASES).length);
+    },
+  );
+
+  // ACCESS-TENANT-RLS-001: Kanzlei- und Kontolookup laufen am RLS-freien
+  // Owner-Client. Server-Action-Argumente sind zur Laufzeit untypisiert; ein
+  // Prisma-Operator wie `{ not: '' }` statt eines Werts darf weder eine Kanzlei
+  // noch ein Konto auswählen und ändert weder Meldung noch Hashaufwand.
+  const OPERATOR = { not: '' } as unknown as string;
+  it.each([
+    [
+      'Kanzlei',
+      { tenantSlug: OPERATOR, email: 'ziel@example.test', password: 'richtiges-passwort' },
+      DUMMY_PASSWORD_HASH,
+    ],
+    [
+      'E-Mail',
+      { tenantSlug: 'default', email: OPERATOR, password: 'richtiges-passwort' },
+      DUMMY_PASSWORD_HASH,
+    ],
+    [
+      'Passwort',
+      { tenantSlug: 'default', email: 'ziel@example.test', password: OPERATOR },
+      ACCOUNT_HASH,
+    ],
+  ])(
+    'Operator-Objekt als %s: generische Ablehnung, kein Operator erreicht den Owner-Client',
+    async (name, raw, expectedHash) => {
+      h.account = account();
+      await expect(checkPasswordAction(raw.email, raw.password, raw.tenantSlug)).resolves.toEqual(
+        EXPECTED_REJECTION.checkPasswordAction,
+      );
+      expect(h.lookups.every((value) => typeof value === 'string')).toBe(true);
+      expect(h.compare).toHaveBeenCalledTimes(1);
+      const [plain, hash] = h.compare.mock.calls[0]!;
+      expect(hash).toBe(expectedHash);
+      // Nur ein nicht-String-Passwort wird durch die leere Zeichenkette ersetzt.
+      expect(plain).toBe(name === 'Passwort' ? '' : raw.password);
     },
   );
 

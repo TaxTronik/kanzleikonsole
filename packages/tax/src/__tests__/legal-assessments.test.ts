@@ -35,6 +35,22 @@ function confirmedContext(
 }
 
 describe('TAX-DEADLINE-WORKDAY-001 — beweisorientierte §-108-Vorprüfung', () => {
+  it.each([
+    ['DE-BE', '2020-05-08', '2020-05-11'],
+    ['DE-BE', '2025-05-08', '2025-05-09'],
+    ['DE-BB', '2025-05-08', '2025-05-08'],
+    ['DE-MV', '2022-03-08', '2022-03-08'],
+    ['DE-NW', '2017-10-31', '2017-11-02'],
+  ] as const)('verwendet für %s am %s den damaligen Stand', (region, date, expected) => {
+    const result = assessWorkdayShift({
+      date: utc(date),
+      applicationType: 'STANDARD_DEADLINE_END',
+      holidayContext: confirmedContext(region),
+    });
+    expect(result.status).toBe('CALCULATED');
+    expect(ymd(result.date)).toBe(expected);
+  });
+
   it('berechnet nur den bestätigten Standardfall abschließend', () => {
     const result = assessWorkdayShift({
       date: utc('2025-06-19'), // Fronleichnam in Nordrhein-Westfalen

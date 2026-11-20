@@ -17,7 +17,7 @@
 // dessen 30-s-Takt begänne jedes Mal neu.
 // =============================================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { useRouter } from 'next/navigation';
 import { playNotificationSound } from '@/lib/notification-sound';
 import {
@@ -42,10 +42,28 @@ import {
   type RecentResponse,
 } from './notifications-bell-model';
 
-async function fetchRecent(): Promise<RecentResponse | null> {
-  const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store' });
-  if (!res.ok) return null;
+async function fetchRecent(signal: AbortSignal): Promise<RecentResponse> {
+  const res = await fetch('/api/staff/notifications/recent', { cache: 'no-store', signal });
+  if (!res.ok) throw new Error('NOTIFICATION_RECENT_FETCH_FAILED');
   return (await res.json()) as RecentResponse;
+}
+
+function visibleCompletion(items: NotificationItem[], pathname: string) {
+  return completionToAcknowledge(items, {
+    pathname,
+    hidden: document.hidden,
+    typing: isUserTyping(),
+  });
+}
+
+function refreshVisiblePage(
+  router: ReturnType<typeof useRouter>,
+  pathname: string,
+  targets: Array<string | null>,
+) {
+  if (shouldRefreshForNotifications(pathname, targets) && !document.hidden && !isUserTyping()) {
+    router.refresh();
+  }
 }
 
 export function useNotificationFeed({
@@ -64,6 +82,7 @@ export function useNotificationFeed({
 }) {
   const [unread, setUnread] = useState(initialUnread);
   const [items, setItems] = useState<NotificationItem[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [now, setNow] = useState(Date.now);
   // Zuletzt bekannter Stand (race-arm gegenüber parallelen Polls) — Quelle der
   // Wahrheit für die "es kam etwas Neues"-Erkennung (Ton + Live-Refresh). Eine
@@ -71,6 +90,18 @@ export function useNotificationFeed({
   // gleichzeitig eine neue erzeugt, bleibt sie gleich; der jüngste Zeitpunkt
   // ist die monotone zweite Signalkomponente.
   const knownRef = useRef(knownUnread(initialUnread, initialLatestUnreadAt));
+  const currentPath = useRef(pathname);
+  const pending = useRef<{ controller: AbortController; since?: number } | null>(null);
+  useLayoutEffect(() => {
+    currentPath.current = pathname;
+  }, [pathname]);
+  useLayoutEffect(
+    () => () => {
+      pending.current?.controller.abort();
+      pending.current = null;
+    },
+    [],
+  );
   const [previousServerCount, setPreviousServerCount] = useState({
     initialUnread,
     initialLatestUnreadAt,
@@ -88,22 +119,35 @@ export function useNotificationFeed({
   // (P-08, lib/live-refresh-policy.ts). Guards wie AutoRefresh: nicht bei
   // verstecktem Tab und nicht während der Nutzer tippt.
   // `previousLatestUnreadAt`: jüngster ungelesener Zeitpunkt VOR dem Zuwachs.
-  const onUnreadGrew = useCallback(
-    (previousLatestUnreadAt: number) => {
-      // Die Kurzliste sagt, WEN der Zuwachs betrifft: nur die betroffenen
-      // Blöcke laden dann nach (Mandanten-Cockpit). Sie landet gleich im
-      // Dropdown-Zustand — ein späteres Öffnen zeigt sie ohne Roundtrip.
+  const loadRecent = useCallback(
+    (previousLatestUnreadAt?: number) => {
+      // Ein neuer Abruf ersetzt die alte Momentaufnahme, übernimmt aber einen
+      // noch nicht angekündigten Zuwachs.
+      const previous = pending.current;
+      previous?.controller.abort();
+      const request = {
+        controller: new AbortController(),
+        since: previous?.since ?? previousLatestUnreadAt,
+      };
+      pending.current = request;
+      setLoadFailed(false);
+      const { signal } = request.controller;
       void (async () => {
         try {
-          const data = await fetchRecent();
-          if (!data) throw new Error('NOTIFICATION_RECENT_FETCH_FAILED');
+          const data = await fetchRecent(signal);
+          if (signal.aborted) return;
+          const step = advanceKnownUnread(knownRef.current, data);
+          knownRef.current = step.known;
           setNow(Date.now());
-          const completion = completionToAcknowledge(data.items, {
-            pathname,
-            hidden: document.hidden,
-            typing: isUserTyping(),
-          });
-          if (completion && (await confirmRead(completion.id))) {
+          setUnread(data.unread);
+          setItems(data.items);
+          const since = request.since ?? (step.grew ? step.previousLatestUnreadAt : undefined);
+          const newest = newestUnread(data.items);
+          if (since === undefined || !newest) return;
+          const completion = visibleCompletion(data.items, currentPath.current);
+          const acknowledged = completion && (await confirmRead(completion.id).catch(() => false));
+          if (signal.aborted) return;
+          if (acknowledged) {
             const acknowledgedItems = withItemRead(
               data.items,
               completion.id,
@@ -114,35 +158,30 @@ export function useNotificationFeed({
             setUnread(nextUnread);
             setItems(acknowledgedItems);
             emitNotificationsGrew(buildNotificationSignal(acknowledgedItems));
-            router.refresh();
+            if (visibleCompletion(data.items, currentPath.current)) router.refresh();
             return;
           }
 
-          setItems(data.items);
           playNotificationSound();
-          const targets = growthTargets(data.items, previousLatestUnreadAt);
-          if (
-            shouldRefreshForNotifications(pathname, targets) &&
-            !document.hidden &&
-            !isUserTyping()
-          ) {
-            router.refresh();
-          }
-          const newest = newestUnread(data.items);
-          if (newest) onAlert(newest);
+          const targets = growthTargets(data.items, since);
+          refreshVisiblePage(router, currentPath.current, targets);
+          onAlert(newest);
           emitNotificationsGrew(buildNotificationSignal(data.items));
         } catch {
+          if (signal.aborted) return;
+          setLoadFailed(true);
+          if (request.since === undefined) return;
           // Der Detailabruf ist nur Zusatzkomfort. Ton + ggf. Refresh bleiben
           // erhalten, damit die Notification nicht still verloren geht (Ziele
           // unbekannt: Voll-Refresh nur auf Live-Seiten).
           playNotificationSound();
-          if (shouldRefreshForNotifications(pathname, []) && !document.hidden && !isUserTyping()) {
-            router.refresh();
-          }
+          refreshVisiblePage(router, currentPath.current, []);
+        } finally {
+          if (pending.current === request) pending.current = null;
         }
       })();
     },
-    [pathname, router, onAlert],
+    [router, onAlert],
   );
 
   // Server-Refreshes (z. B. Formular auf /staff/notifications) liefern einen
@@ -154,8 +193,8 @@ export function useNotificationFeed({
       latestUnreadAt: initialLatestUnreadAt,
     });
     knownRef.current = step.known;
-    if (step.grew) onUnreadGrew(step.previousLatestUnreadAt);
-  }, [initialUnread, initialLatestUnreadAt, onUnreadGrew]);
+    if (step.grew) loadRecent(step.previousLatestUnreadAt);
+  }, [initialUnread, initialLatestUnreadAt, loadRecent]);
 
   // Neuer Zählerstand (Poller oder Kurzliste): Ein höherer Zeitstempel erkennt
   // auch einen Austausch 1 offen → 1 offen. Genau dieser Fall ging beim reinen
@@ -163,26 +202,17 @@ export function useNotificationFeed({
   const applyUnreadSummary = useCallback(
     (data: UnreadSummary) => {
       setNow(Date.now());
+      const previousUnread = knownRef.current.unread;
       const step = advanceKnownUnread(knownRef.current, data);
       knownRef.current = step.known;
       setUnread(data.unread);
-      if (step.grew) onUnreadGrew(step.previousLatestUnreadAt);
+      if (step.grew) loadRecent(step.previousLatestUnreadAt);
+      else if (pending.current && previousUnread !== data.unread) loadRecent();
     },
-    [onUnreadGrew],
+    [loadRecent],
   );
 
-  const refreshRecent = useCallback(() => {
-    void (async () => {
-      try {
-        const data = await fetchRecent();
-        if (!data) return;
-        setItems(data.items);
-        applyUnreadSummary(data);
-      } catch {
-        // silent
-      }
-    })();
-  }, [applyUnreadSummary]);
+  const refreshRecent = useCallback(() => loadRecent(), [loadRecent]);
 
   useEffect(() => onNotificationsChanged(refreshRecent), [refreshRecent]);
 
@@ -200,6 +230,7 @@ export function useNotificationFeed({
   return {
     unread,
     items,
+    loadFailed,
     now,
     /** Relative Zeiten beim Öffnen auf den aktuellen Stand bringen. */
     touchNow: () => setNow(Date.now()),

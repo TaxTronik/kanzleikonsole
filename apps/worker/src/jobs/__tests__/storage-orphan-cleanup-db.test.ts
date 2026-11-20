@@ -224,7 +224,7 @@ describeDb('K-06 storage-orphan-cleanup resolves journaled upload intents (Postg
     });
   });
 
-  it('(3) markiert eine committete Referenz als REFERENCED und loescht nichts', async () => {
+  it('(3) erkennt die Version eines ausgeblendeten Dokuments als REFERENCED und löscht nichts', async () => {
     const { row, bytes } = await journalIntent({ content: 'committed, settle lost' });
     const versionId = putObject(row, bytes);
     await prismaOwner.documentVersion.create({
@@ -241,6 +241,10 @@ describeDb('K-06 storage-orphan-cleanup resolves journaled upload intents (Postg
         scanCompletedAt: CREATED_AT,
         createdById: staffId,
       },
+    });
+    await prismaOwner.document.update({
+      where: { id: documentId },
+      data: { deletedAt: CREATED_AT, deletedByStaff: staffId, deleteReason: 'Test Papierkorb' },
     });
 
     const result = await runStorageOrphanCleanup(NOW);

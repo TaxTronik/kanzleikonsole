@@ -25,24 +25,30 @@ export interface SessionRevocationRedis {
 /** 30 Tage — länger als die Token-TTL (24 h), damit auch noch gültige Tokens erfasst bleiben. */
 export const SESSION_REVOCATION_TTL_SEC = 30 * 24 * 60 * 60;
 
+const REDIS_TIME_MS = `
+local now = redis.call('TIME')
+local nowMs = tonumber(now[1]) * 1000 + math.floor(tonumber(now[2]) / 1000)
+`;
+
+const READ_REVOCATION_STATE = `${REDIS_TIME_MS}
+return {redis.call('GET', KEYS[1]), nowMs}
+`;
+
 // Compare and write atomically; keep unreadable stored state fail-closed.
-const ADVANCE_REVOCATION = `
+const ADVANCE_REVOCATION = `${REDIS_TIME_MS}
 local stored = redis.call('GET', KEYS[1])
-local incoming = tonumber(ARGV[1])
-if not incoming or incoming <= 0 or incoming > 9007199254740991 or incoming ~= math.floor(incoming) then
-  return redis.error_reply('invalid incoming revocation timestamp')
-end
+local incoming = nowMs
 if stored then
   local current = tonumber(stored)
   if not current or current <= 0 or current > 9007199254740991 or current ~= math.floor(current) then
     return redis.error_reply('invalid existing revocation timestamp')
   end
   if current > incoming then
-    redis.call('EXPIRE', KEYS[1], ARGV[2])
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
     return 'OK'
   end
 end
-return redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2])
+return redis.call('SET', KEYS[1], string.format('%.0f', incoming), 'EX', ARGV[1])
 `;
 
 export class SessionRevocationUnavailableError extends Error {
@@ -58,7 +64,7 @@ export function sessionRevocationKey(surface: SessionSurface, userId: string): s
 }
 
 /**
- * Markiert alle bis `nowMs` ausgestellten Sessions von (surface, userId) als
+ * Markiert alle bis zur Redis-Serverzeit ausgestellten Sessions von (surface, userId) als
  * widerrufen. Monoton: ein bereits jüngerer Cutoff bleibt bestehen (nur die
  * TTL wird verlängert). Wirft bei jedem Fehler — auch ohne Redis-Client —
  * `SessionRevocationUnavailableError`; ein Widerruf gilt nur nach Rückgabe.
@@ -67,7 +73,6 @@ export async function advanceSessionRevocation(
   redis: SessionRevocationRedis | null | undefined,
   surface: SessionSurface,
   userId: string,
-  nowMs: number = Date.now(),
 ): Promise<void> {
   if (!redis) throw new SessionRevocationUnavailableError();
   try {
@@ -75,7 +80,6 @@ export async function advanceSessionRevocation(
       ADVANCE_REVOCATION,
       1,
       sessionRevocationKey(surface, userId),
-      String(nowMs),
       SESSION_REVOCATION_TTL_SEC,
     );
     if (result !== 'OK') throw new Error(`unexpected Redis revocation result: ${String(result)}`);
@@ -96,28 +100,55 @@ export async function readSessionRevocationTimestamp(
 ): Promise<number> {
   if (!redis) throw new SessionRevocationUnavailableError();
   try {
-    const value = await redis.get(sessionRevocationKey(surface, userId));
-    if (value === null) return 0;
-    const timestamp = Number(value);
-    if (!Number.isSafeInteger(timestamp) || timestamp <= 0) {
-      throw new Error('invalid revocation timestamp');
-    }
-    return timestamp;
+    return parseCutoff(await redis.get(sessionRevocationKey(surface, userId)));
   } catch (e) {
     throw new SessionRevocationUnavailableError(undefined, { cause: e });
+  }
+}
+
+function parseCutoff(value: unknown): number {
+  if (value === null) return 0;
+  const timestamp = Number(value);
+  if (typeof value !== 'string' || !Number.isSafeInteger(timestamp) || timestamp <= 0) {
+    throw new Error('invalid revocation timestamp');
+  }
+  return timestamp;
+}
+
+/** Ein Redis-Aufruf liefert Widerruf und Vergleichsuhr für präzise Anmeldeanker. */
+export async function readSessionRevocationState(
+  redis: SessionRevocationRedis | null | undefined,
+  surface: SessionSurface,
+  userId: string,
+): Promise<{ cutoffMs: number; nowMs: number }> {
+  if (!redis) throw new SessionRevocationUnavailableError();
+  try {
+    const state = await redis.eval(READ_REVOCATION_STATE, 1, sessionRevocationKey(surface, userId));
+    if (!Array.isArray(state) || state.length !== 2) throw new Error('invalid Redis state');
+    const [cutoff, nowMs] = state;
+    if (typeof nowMs !== 'number' || !Number.isSafeInteger(nowMs) || nowMs <= 0)
+      throw new Error('invalid Redis time');
+    return { cutoffMs: parseCutoff(cutoff), nowMs };
+  } catch (cause) {
+    throw new SessionRevocationUnavailableError(undefined, { cause });
   }
 }
 
 /**
  * True, wenn ein Token mit `tokenIatSec` (JWT-iat, Sekunden) vor dem Cutoff
  * `revokedMs` ausgestellt wurde. Ohne belastbares iat gilt ein vorhandener
- * Cutoff als greifend; die gesamte Cutoff-Sekunde gilt als widerrufen.
+ * Cutoff als greifend. Ohne Millisekundenangabe bleibt die gesamte
+ * Cutoff-Sekunde widerrufen.
  */
 export function isIssuedBeforeRevocation(
   revokedMs: number,
   tokenIatSec: number | undefined,
+  tokenIatMs?: number,
 ): boolean {
-  if (revokedMs === 0) return false;
-  if (typeof tokenIatSec !== 'number' || !Number.isFinite(tokenIatSec)) return true;
-  return tokenIatSec <= Math.floor(revokedMs / 1000);
+  if (revokedMs === 0 && tokenIatMs === undefined) return false;
+  if (typeof tokenIatSec !== 'number' || !Number.isSafeInteger(tokenIatSec)) return true;
+  if (tokenIatMs === undefined) return tokenIatSec <= Math.floor(revokedMs / 1000);
+  if (!Number.isSafeInteger(tokenIatMs) || Math.floor(tokenIatMs / 1000) !== tokenIatSec)
+    return true;
+  return tokenIatMs <= revokedMs;
 }

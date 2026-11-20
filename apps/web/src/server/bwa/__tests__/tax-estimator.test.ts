@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   einkommensteuerGrundtarif,
+  bwaCalendarYear,
   estimateTaxes,
   type TaxEstimationInput,
 } from '../tax-estimator';
@@ -35,9 +36,7 @@ describe('§ 32a EStG — jahrgangsbezogener Grundtarif', () => {
 
   it('wendet keinen veralteten Tarif auf unbekannte Jahre an', () => {
     expect(einkommensteuerGrundtarif(2027, 100_000)).toBeNull();
-    const result = estimateTaxes({ ...base, taxYear: 2027 });
-    expect(result.einkommensteuerSchaetzung).toBeNull();
-    expect(result.disclaimers.join(' ')).toContain('kein verifizierter');
+    expect(() => estimateTaxes({ ...base, taxYear: 2027 })).toThrow('2025 und 2026');
   });
 });
 
@@ -48,12 +47,7 @@ describe('estimateTaxes — Einzelunternehmen § 35 EStG', () => {
     expect(r.gewerbesteuer).toBe(10_570);
     // § 35: Anrechnung = min(4 × 2642,5 = 10570, GewSt 10570, tarifliche ESt).
     // Die ESt darf NICHT auf (Ergebnis − GewSt) bemessen sein.
-    const estOhneAnrechnung = estimateTaxes({
-      ...base,
-      gewerbesteuerHebesatzPct: 0,
-    }).einkommensteuerSchaetzung!;
-    // Ohne GewSt (Hebesatz 0) gibt es keine Anrechnung → das ist die volle
-    // tarifliche ESt auf 100.000. Mit Hebesatz 400 muss die ESt niedriger sein.
+    const estOhneAnrechnung = einkommensteuerGrundtarif(base.taxYear, base.result)!;
     expect(r.einkommensteuerSchaetzung!).toBeLessThan(estOhneAnrechnung);
     // Anrechnung ist auf die tatsächliche GewSt gedeckelt.
     expect(estOhneAnrechnung - r.einkommensteuerSchaetzung!).toBeLessThanOrEqual(r.gewerbesteuer);
@@ -78,17 +72,71 @@ describe('estimateTaxes — Freiberufler § 18 EStG (keine GewSt)', () => {
     expect(r.gewerbesteuer).toBe(0);
     expect(r.gewerbesteuerBemessung).toBe(0);
     expect(r.gewerbesteuerFreibetrag).toBe(0);
-    // Volle tarifliche ESt: ohne GewSt gibt es keine § 35-Anrechnung. Muss
-    // identisch zum Einzelunternehmen mit Hebesatz 0 sein (dort ebenfalls
-    // GewSt 0 → Anrechnung 0).
-    const estVollTariflich = estimateTaxes({
-      ...base,
-      gewerbesteuerHebesatzPct: 0,
-    }).einkommensteuerSchaetzung!;
+    const estVollTariflich = einkommensteuerGrundtarif(base.taxYear, base.result)!;
     expect(r.einkommensteuerSchaetzung!).toBe(estVollTariflich);
     // Und höher als beim gewerblichen Einzelunternehmen mit Anrechnung.
     expect(r.einkommensteuerSchaetzung!).toBeGreaterThan(
       estimateTaxes(base).einkommensteuerSchaetzung!,
     );
+  });
+});
+
+describe('BWA-TAX-ESTIMATE-001: Geltungsbereich der Jahresschätzung', () => {
+  // § 23 Abs. 1 KStG: https://www.gesetze-im-internet.de/kstg_1977/__23.html
+  it.each([2024, 2027, 2028, 2032])(
+    'liefert für die GmbH im Jahr %i keine Teil- oder Gesamtsumme',
+    (taxYear) => {
+      expect(() => estimateTaxes({ ...base, taxYear, legalForm: 'GMBH' })).toThrow('2025 und 2026');
+    },
+  );
+
+  it.each([2025, 2026])(
+    'berechnet für die GmbH im unterstützten Jahr %i KSt und SolZ',
+    (taxYear) => {
+      expect(estimateTaxes({ ...base, taxYear, legalForm: 'GMBH' })).toMatchObject({
+        gewerbesteuer: 14_000,
+        koerperschaftsteuer: 15_000,
+        solidaritaetszuschlag: 825,
+        gesamt: 29_825,
+      });
+    },
+  );
+
+  // Erhebungsjahr der Hebesatzänderung: https://www.gesetze-im-internet.de/gewstg/__36.html
+  it.each([Number.NaN, Infinity, -1, 0, 199, 901])(
+    'weist den Modell-Hebesatz %s zurück',
+    (rate) => {
+      expect(() => estimateTaxes({ ...base, gewerbesteuerHebesatzPct: rate })).toThrow('Hebesatz');
+    },
+  );
+  it.each([200, 411, 900])(
+    'akzeptiert den unterstützten Hebesatz %i einschließlich der Ränder',
+    (rate) => {
+      expect(estimateTaxes({ ...base, gewerbesteuerHebesatzPct: rate }).gewerbesteuer).toBe(
+        Math.round(2642.5 * (rate / 100)),
+      );
+    },
+  );
+  it('ignoriert bei ausschließlich freiberuflicher Tätigkeit den entbehrlichen Hebesatz', () => {
+    expect(
+      estimateTaxes({ ...base, isFreiberufler: true, gewerbesteuerHebesatzPct: NaN }).gewerbesteuer,
+    ).toBe(0);
+  });
+  it('verwirft widersprüchliche Kapitalgesellschaftsangaben', () => {
+    expect(() => estimateTaxes({ ...base, legalForm: 'GMBH', isFreiberufler: true })).toThrow(
+      'widersprechen',
+    );
+    expect(() =>
+      estimateTaxes({ ...base, legalForm: 'GMBH', isPersonengesellschaft: true }),
+    ).toThrow('widersprechen');
+  });
+  it.each([
+    ['2025-01-01', '2025-12-31', 2025],
+    ['2026-03-01', '2026-03-31', null],
+    ['2026-01-01', '2026-09-30', null],
+    ['2025-07-01', '2026-06-30', null],
+    ['2025-01-01', '2026-12-31', null],
+  ] as const)('prüft die tatsächlichen BWA-Grenzen %s bis %s', (from, to, expected) => {
+    expect(bwaCalendarYear(new Date(from), new Date(to))).toBe(expected);
   });
 });

@@ -1604,6 +1604,57 @@ test_traefik_lifecycle_is_part_of_activation() {
   pass "managed Traefik is pulled and activated with the application"
 }
 
+test_full_backup_decrypt_requires_both_database_archives() {
+  local root="$TMP_DIR/decrypt-required-dumps" payload sealed target sample main n8n volume
+  payload="$root/payload"
+  sealed="$root/sealed"
+  mkdir -p "$payload/volumes" "$sealed"
+  printf 'SYNTHETIC=true\n' >"$payload/.env"
+  touch "$root/identity" "$root/public.pem"
+  for volume in seaweedfs redis n8n; do
+    tar -czf "$payload/volumes/$volume-data.tar.gz" -C "$payload" .env
+  done
+  # Diese Probe isoliert die Inhaltsprüfung nach Entschlüsselung. Der
+  # produktive Pfad liest die Archivformaterkennung, führt den Dump nicht aus.
+  # shellcheck disable=SC2317 # cmd_backup_decrypt ruft die Testdoubles auf.
+  age() { cat -- "${!#}"; }
+  # shellcheck disable=SC2317
+  cmd_backup_verify() { :; }
+  for sample in current minute documented no-main no-n8n empty-directory zero-bytes wrong-format stray-files; do
+    target="$root/$sample"
+    mkdir -p "$payload/database"
+    main=taxtronik-20260510-030000-ffa012.sql.gz
+    n8n='n8n-db-20260510T030000Z.dump'
+    case "$sample" in
+      minute) main=taxtronik-20260510-0300.sql.gz ;;
+      documented) main=taxtronik-20260510-0300.dump ;;
+    esac
+    case "$sample" in
+      no-main|empty-directory) ;;
+      zero-bytes) : >"$payload/database/$main" ;;
+      wrong-format) printf 'plaintext' >"$payload/database/$main" ;;
+      stray-files) printf 'PGDMPfixture' >"$payload/database/taxtronik-readme.txt" ;;
+      *) printf 'PGDMPfixture' >"$payload/database/$main" ;;
+    esac
+    case "$sample" in
+      no-n8n|empty-directory) ;;
+      *) printf 'PGDMPfixture' >"$payload/database/$n8n" ;;
+    esac
+    tar -cf "$sealed/full-backup.tar.age" -C "$payload" .
+    if (cmd_backup_decrypt "$sealed" "$target" "$root/identity" "$root/public.pem") >"$root/log" 2>&1; then
+      case "$sample" in
+        current|minute|documented) cmp "$payload/database/$main" "$target/database/$main" ;;
+        *) test_fail "accepted incomplete database backup: $sample" ;;
+      esac
+    else
+      case "$sample" in current|minute|documented) test_fail "rejected valid archive names: $sample";; esac
+      assert_contains "$root/log" "Dump"
+    fi
+    rm -f -- "$payload/database/$main" "$payload/database/$n8n" "$payload/database/taxtronik-readme.txt"
+  done
+  pass "decrypted full backups require both PostgreSQL dump files, including historic names"
+}
+
 test_full_backup_snapshots_managed_traefik_acme_volume() {
   local calls="$TMP_DIR/traefik-backup.calls"
   : >"$calls"
@@ -1890,6 +1941,51 @@ test_managed_signal_lifecycle_uses_pinned_release() {
   assert_contains "$calls" "$TMP_DIR/managed-lifecycle-signal-llm:/managed-llm"
   assert_contains "$calls" "compose --profile risk-layer up -d --force-recreate --no-deps --wait --wait-timeout 300 risk-layer"
   pass "managed Signal validates quantum-capable self-contained releases before start"
+}
+
+test_signal_llm_validates_host_mount() {
+  local base="$TMP_DIR/signal-llm-host" dir
+  mkdir -p "$base/real"
+  ln -s "$base/real" "$base/alias"
+  : >"$base/file"
+  validate_signal_llm_dir "$base/real/model/" || test_fail "valid operator path rejected"
+  for dir in "$base/alias/model" "$ROOT/." "$ROOT/../$(basename "$ROOT")" "$base/file" /; do
+    if validate_signal_llm_dir "$dir"; then test_fail "invalid Signal host directory accepted: $dir"; fi
+  done
+  pass "managed Signal validates the actual host mount including parent directories"
+}
+
+test_signal_healthcheck_recovers_artifacts_with_same_image() {
+  local calls="$TMP_DIR/signal-health-rollback.calls"
+  (
+    SIGNAL_DEPLOYMENT="managed"
+    SIGNAL_DEPLOY_CHANNEL="image"
+    SIGNAL_IMAGE="$SIGNAL_MANAGED_IMAGE_DEFAULT"
+    SIGNAL_LLM_DIR="$TMP_DIR/signal-health-rollback"
+    local token
+    token="$(printf '%064x:%064x' 1 2)"
+    mkdir -p "$SIGNAL_LLM_DIR/.signal-llm.current"
+    printf '%s\n' "$token" >"$SIGNAL_LLM_DIR/.signal-llm.current/.activation-pending"
+    prepare_signal_managed_environment() { :; }
+    run_signal_llm_installer() { printf 'installer %s\n' "$*" >>"$calls"; }
+    docker() { printf '%s\n' "$SIGNAL_IMAGE"; }
+    compose() {
+      if [[ " $* " == *" up "* ]]; then
+        printf 'start\n' >>"$calls"
+        grep -q -- '--rollback' "$calls"
+      fi
+    }
+    provision_signal_managed_llm "$SIGNAL_IMAGE"
+    if start_signal_for_deploy; then test_fail "failed deployment returned success"; fi
+    assert_contains "$calls" "--rollback $token"
+    [[ "$(grep -c '^start$' "$calls")" == 2 ]] || test_fail "previous artifacts not restarted"
+    # A successful healthcheck confirms the same durable receipt.
+    compose() { return 0; }
+    provision_signal_managed_llm "$SIGNAL_IMAGE"
+    start_signal_for_deploy
+    assert_contains "$calls" "--confirm $token"
+  ) >/dev/null 2>&1 || return 1
+  pass "managed Signal restores or confirms the matching artifacts after the compose healthcheck"
 }
 
 test_managed_signal_source_build_skips_registry_pull() {
@@ -2709,6 +2805,79 @@ test_host_tool_deps_refresh_stale_checkout() {
     test_fail "expected freshness probes before and after pnpm install"
   }
   pass "host tools refresh stale injected workspace dependencies"
+}
+
+test_n8n_dump_publishes_only_a_complete_archive() {
+  local dest="$TMP_DIR/n8n-dumps" mode out="$TMP_DIR/n8n-result"
+  mkdir -p "$dest"
+  for mode in interrupted empty unreadable valid; do
+    if (
+      docker() {
+        case " $* " in
+          *' pg_dump '*)
+            [[ "$mode" == empty ]] || printf 'dump-%s' "$mode"
+            [[ "$mode" != interrupted ]] ;;
+          *' pg_restore --list '*) [[ "$(cat)" == dump-valid ]] ;;
+          *) return 1 ;;
+        esac
+      }
+      run_backup_n8n "$dest"
+    ) >"$out" 2>&1; then
+      [[ "$mode" == valid ]] || test_fail "n8n backup reported success for $mode"
+    else
+      [[ "$mode" != valid ]] || test_fail "valid n8n backup failed"
+      [[ -z "$(ls -A "$dest")" ]] || test_fail "$mode left an incomplete n8n backup"
+    fi
+  done
+  local dumps=("$dest"/n8n-db-*.dump)
+  [[ "${#dumps[@]}" == 1 && -f "${dumps[0]}" ]] || test_fail "missing n8n dump"
+  assert_file_equals "${dumps[0]}" dump-valid
+  [[ "$(file_mode "${dumps[0]}")" == 600 ]] || test_fail "n8n dump is not private"
+  pass "n8n backup publishes a private archive only after dump and archive check succeed"
+}
+
+test_object_export_propagates_bucket_failure() {
+  local dest="$TMP_DIR/object-export" calls="$TMP_DIR/object-export-calls"
+  if (
+    require_cmd() { :; }
+    prepare_backup_host_dir() { :; }
+    resolve_backup_host_dir() { printf '%s\n' "$TMP_DIR"; }
+    S3_ACCESS_KEY=test S3_SECRET_KEY=test BACKUP_OBJECT_BUCKETS='first second'
+    docker() { printf '%s\n' "$*" >>"$calls"; return 1; }
+    run_backup_files "$dest"
+  ) >/dev/null 2>&1; then test_fail "failed object export reported success"; fi
+  assert_contains "$calls" 's3://first'
+  assert_not_contains "$calls" 's3://second'
+  [[ ! -e "$dest/manifest.txt" ]] || test_fail "incomplete export has a manifest"
+  pass "failed bucket transfer stops the full-backup export before the manifest"
+}
+
+test_object_export_validates_bucket_paths_before_transfer() {
+  local invalid calls="$TMP_DIR/invalid-bucket-calls" dest="$TMP_DIR/invalid-bucket-export"
+  for invalid in '  ' '*' 'good ../bad' 'buckets.txt' 'manifest.txt'; do
+    if (
+      require_cmd() { :; }
+      prepare_backup_host_dir() { :; }
+      resolve_backup_host_dir() { echo "$TMP_DIR"; }
+      docker() { echo called >>"$calls"; }
+      BACKUP_OBJECT_BUCKETS="$invalid" S3_ACCESS_KEY=test S3_SECRET_KEY=test run_backup_files "$dest"
+    ) >/dev/null 2>&1; then test_fail "invalid bucket list accepted"; fi
+  done
+  [[ ! -e "$calls" && ! -e "$dest" ]] || test_fail "invalid list already started the export"
+  local actual
+  actual="$(BACKUP_OBJECT_BUCKETS=$'first\tsecond\nthird' object_store_backup_buckets)"
+  [[ "$actual" == $'first\nsecond\nthird' ]] || test_fail "custom bucket list misread"
+  pass "object export checks literal bucket paths before creating any files"
+}
+
+test_tcms_backup_rejects_unavailable_volume_inventory() {
+  if (
+    tcms_deployment_mode() { echo managed; }
+    docker() { return 1; }
+    backup_tcms_with_upload "$TMP_DIR/tcms-unavailable"
+  ) >"$TMP_DIR/tcms-inventory.log" 2>&1; then test_fail "unknown TCMS volume state treated as empty"; fi
+  assert_contains "$TMP_DIR/tcms-inventory.log" 'TCMS-Datenvolumes konnten nicht abgefragt werden'
+  pass "TCMS backup stops when Docker cannot report its volumes"
 }
 
 test_run_backup_uses_resolved_host_path() {
@@ -5145,6 +5314,7 @@ run_test test_one_click_replaces_incomplete_docker_only_after_blank_host_gate
 run_test test_one_click_installs_openssh_client
 run_test test_traefik_dynamic_route_and_compose_contract_are_socketless
 run_test test_traefik_lifecycle_is_part_of_activation
+run_test test_full_backup_decrypt_requires_both_database_archives
 run_test test_full_backup_snapshots_managed_traefik_acme_volume
 run_test test_doctor_accepts_internal_risk_layer_without_fetch_allowlist
 run_test test_doctor_shows_target_image_schema_rows
@@ -5162,6 +5332,8 @@ run_test test_managed_signal_requires_distinct_generated_tokens
 run_test test_external_signal_lifecycle_never_touches_docker
 run_test test_legacy_native_signal_is_inferred_as_external
 run_test test_managed_signal_lifecycle_uses_pinned_release
+run_test test_signal_llm_validates_host_mount
+run_test test_signal_healthcheck_recovers_artifacts_with_same_image
 run_test test_managed_signal_source_build_skips_registry_pull
 run_test test_managed_signal_source_build_accepts_fresh_no_checkout_clone
 run_test test_managed_signal_source_update_skips_unchanged_image_unless_requested
@@ -5200,6 +5372,10 @@ run_test test_pre_migration_backup_requires_a_proven_first_deploy
 run_test test_backup_manifest_detects_tampering
 run_test test_host_tool_deps_refresh_stale_checkout
 run_test test_run_backup_uses_resolved_host_path
+run_test test_n8n_dump_publishes_only_a_complete_archive
+run_test test_object_export_propagates_bucket_failure
+run_test test_object_export_validates_bucket_paths_before_transfer
+run_test test_tcms_backup_rejects_unavailable_volume_inventory
 run_test test_run_backup_respects_explicit_staging_path
 run_test test_update_backs_up_old_checkout_before_fetch
 run_test test_update_schema_error_stops_before_migration

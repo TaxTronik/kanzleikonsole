@@ -70,6 +70,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // S-05: Cookie-Name, -Optionen, Codec und Claims aus der Staff-Session-
   // Fabrik — dieselbe Implementierung, mit der Auth.js die Session ausstellt.
   const response = relativeRedirect(returnTo);
-  await staffSessionFactory.issue(staffSessionToken(user), { request: req, response });
+  await staffSessionFactory.issue(await staffSessionToken(user), { request: req, response });
   return response;
 }

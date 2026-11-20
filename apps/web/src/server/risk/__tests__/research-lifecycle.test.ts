@@ -1,11 +1,16 @@
+// Fachkatalog: RISK-ARCHIVE-SNAPSHOT-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   evidenceRecord: vi.fn(),
+  requireWritableRiskAnalysisTx: vi.fn(),
 }));
 
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
+vi.mock('@taxtronik/db/risk-analysis', () => ({
+  requireWritableRiskAnalysisTx: mocks.requireWritableRiskAnalysisTx,
+}));
 vi.mock('@/server/container', () => ({
   evidenceService: { record: mocks.evidenceRecord },
 }));
@@ -19,6 +24,7 @@ const ctx: TenantContext = {
   actorType: 'STAFF',
 };
 const resultId = '86db52b7-84e4-4169-a127-40872a0a35d5';
+const target = { resultId, analysisId: 'analysis-1' };
 
 function mockTx() {
   const tx = {
@@ -41,6 +47,28 @@ describe('Rechercheergebnis-Lebenszyklus', () => {
     vi.clearAllMocks();
   });
 
+  it.each([
+    ['archivieren', () => setResearchResultArchived(ctx, target, true)],
+    ['reaktivieren', () => setResearchResultArchived(ctx, target, false)],
+    ['löschen', () => deleteResearchResult(ctx, target)],
+  ] as const)(
+    'prüft vor der Aktion „%s“ den Archivstand in der Schreibtransaktion',
+    async (_name, run) => {
+      const tx = mockTx();
+      mocks.requireWritableRiskAnalysisTx.mockRejectedValueOnce(new Error('Analyse archiviert.'));
+      await expect(run()).rejects.toThrow(/archiviert/);
+      expect(mocks.requireWritableRiskAnalysisTx).toHaveBeenCalledWith(
+        tx,
+        ctx.tenantId,
+        target.analysisId,
+      );
+      expect(tx.riskResearchResult.update).not.toHaveBeenCalled();
+      expect(tx.riskResearchResult.delete).not.toHaveBeenCalled();
+      expect(tx.notification.updateMany).not.toHaveBeenCalled();
+      expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+    },
+  );
+
   it('archiviert ein Ergebnis reversibel und protokolliert den Vorgang', async () => {
     const tx = mockTx();
     tx.riskResearchResult.findUnique.mockResolvedValue({
@@ -50,7 +78,7 @@ describe('Rechercheergebnis-Lebenszyklus', () => {
       researchRequestId: 'request-1',
     });
 
-    await setResearchResultArchived(ctx, resultId, true);
+    await setResearchResultArchived(ctx, target, true);
 
     expect(tx.riskResearchResult.update).toHaveBeenCalledWith({
       where: { id: resultId },
@@ -71,7 +99,7 @@ describe('Rechercheergebnis-Lebenszyklus', () => {
       researchRequestId: 'request-1',
     });
 
-    await setResearchResultArchived(ctx, resultId, false);
+    await setResearchResultArchived(ctx, target, false);
 
     expect(tx.riskResearchResult.update).toHaveBeenCalledWith({
       where: { id: resultId },
@@ -95,7 +123,7 @@ describe('Rechercheergebnis-Lebenszyklus', () => {
       shelfDocumentId: 'document-1',
     });
 
-    await deleteResearchResult(ctx, resultId);
+    await deleteResearchResult(ctx, target);
 
     expect(tx.riskResearchResult.delete).toHaveBeenCalledWith({ where: { id: resultId } });
     expect(mocks.evidenceRecord).toHaveBeenCalledWith(

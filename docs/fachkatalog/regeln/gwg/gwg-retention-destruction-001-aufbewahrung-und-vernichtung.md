@@ -25,9 +25,14 @@ sources:
   - kind: official_law
     citation: § 8 Abs. 1 bis 5 GwG
     url: https://www.gesetze-im-internet.de/gwg_2017/__8.html
-    checked_at: '2026-08-24'
+    checked_at: '2026-11-20'
     primary: true
 code_refs:
+  - packages/config/src/retention-calendar.ts
+  - packages/db/prisma/migrations/20261120120000_berlin_retention_year/migration.sql
+  - packages/db/prisma/sql/functions/app.retention_until_from_utc(timestamp,int4).sql
+  - packages/db/prisma/sql/functions/app.assert_gwg_document_destruction_due(uuid).sql
+  - packages/db/prisma/sql/functions/app.destroy_gwg_check_locked_impl(uuid).sql
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-status.tsx
@@ -57,6 +62,7 @@ code_refs:
   - apps/worker/src/maintenance-backlog.ts
   - packages/config/src/job-queues.ts
 test_refs:
+  - packages/db/src/__tests__/gwg-open-first-check-retention.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts
@@ -198,6 +204,14 @@ fachliche Einzelprüfung.
 
 ## Umsetzung in TaxTronik
 
+Mandatsende (`timestamptz`) und Feststellungen (als UTC gespeicherte
+Zeitstempel) werden dem Kalenderjahr in Europe/Berlin zugeordnet. Das
+technische Fristende bleibt am 1. Januar um 00:00 UTC. Queue, Zähler und
+Vernichtung prüfen diese Grenze auch für vorhandene Fälle. Bisher setzten
+Code und einzelne Tests bereits um 23:00 UTC am deutschen Neujahrsbeginn
+noch das Vorjahr an. Satz 3 und 4 des § 8 Abs. 4 GwG benennen die beiden
+Fristanker. Die Prüfung zur Durchführung der Vernichtung bleibt manuell.
+
 Ein mit `destroyedAt` markiertes Prüfskelett erscheint in der Staff-Einzelprüfung ausdrücklich als vernichtet. Historische Status-/Verlaufsdaten begründen keinen grünen Freigabehinweis und keinen Onboarding-Fortsetzungslink. Personen-, Register-, Nachweis-, Risiko-, Einladungs- und Entscheidungsbereiche werden nicht aus dem Skelett oder aktuellen Mandantenstammdaten rekonstruiert. Der vorhandene Start eines neuen Zyklus bleibt für terminale Status erhalten; die bestehende Kopierlogik übernimmt aus vernichteten Quellen keine Identifizierungsdaten. Für nichtterminale vernichtete Skelette wird keine zusätzliche Wiederaufnahmeentscheidung eingeführt.
 
 `retention.ts` berechnet den regulären Stichtag als 1. Januar nach fünf vollen
@@ -337,13 +351,17 @@ Der Implementierungsstatus ist deshalb **teilweise**.
 - Bindung als Nachweis im Tax-CMS: durch Produktentscheidung (Rey Koxha,
   21.10.2026) ersetzt – der Beleg gilt zugleich als steuerliche Unterlage,
   vernichtet wird nach Ablauf beider Fristen. Fachlich zu prüfen bleibt
-  (ungeprüft): Trägt § 8 Abs. 4 Satz 2 GwG („andere Aufbewahrungspflichten
-  bleiben unberührt“) zusammen mit § 147 AO die längere Aufbewahrung über die
-  Zehnjahresgrenze hinaus? Die Entscheidungslogik oben ordnet § 8 Abs. 4
-  Satz 2 GwG die Zehnjahresgrenze zu; die Zuordnung des Satzes ist zu klären.
+  (ungeprüft): § 8 Abs. 4 Satz 1 GwG verweist auf andere gesetzliche
+  Aufbewahrungspflichten, Satz 2 verlangt die Vernichtung nach spätestens
+  zehn Jahren. Wie ist eine zugleich steuerlich benötigte Unterlage nach
+  Ablauf dieser Höchstfrist rechtmäßig zu behandeln?
   Sind zehn Jahre (Steuerunterlage) ab der Dokumentanlage das richtige Maß?
 
 ## Technische Nachweise
+
+`gwg-expiry-check.test.ts` prüft die tatsächlichen Abfragegrenzen des
+Worker-Hinweises für Belege und Aufzeichnungen. Das Ankerjahr 2021 beginnt
+am 31.12.2020 um 23:00 UTC. Der frühere Testwert lag eine Stunde später.
 
 `page-render.test.tsx`: Gerenderte Regressionen decken vernichtete VERIFIED-, DRAFT- und IN_REVIEW-Skelette sowie verbliebene Vertreter-/WB-/Dokumentdaten ab: keine Bearbeitungs- oder Freigabebereiche und keine erneut sichtbaren Personen-/Dokumentdetails.
 

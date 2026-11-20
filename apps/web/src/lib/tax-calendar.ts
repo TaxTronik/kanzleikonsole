@@ -6,7 +6,22 @@
 // =============================================================================
 
 import type { TaxScheduleKind } from '@prisma/client';
-import { berlinDayStartUtc, berlinYmd } from '@/lib/fmt';
+import { berlinDayEndUtc, berlinDayStartUtc, berlinYmd } from '@/lib/fmt';
+
+/** Date.UTC interpretiert die Jahre 0 bis 99 als 1900 bis 1999. */
+export function utcCalendarDay(year: number, month0: number, day = 1): Date {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month0, day);
+  return date;
+}
+
+export function calendarMonthKey(year: number, month0: number): string {
+  return utcCalendarDay(year, month0).toISOString().split('T')[0]!.slice(0, -3);
+}
+
+export function isCalendarMonth(value: unknown): value is string {
+  return typeof value === 'string' && /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
 
 /**
  * UTC-Instants des gewaehlten Europe/Berlin-Kalendermonats. Das Ende ist
@@ -18,12 +33,16 @@ export function berlinMonthBoundsUtc(
   year: number,
   month0: number,
 ): { start: Date; endExclusive: Date } {
-  const normalizedStart = new Date(Date.UTC(year, month0, 1));
-  const normalizedEnd = new Date(Date.UTC(year, month0 + 1, 1));
-  const asYmd = (date: Date) =>
-    `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-01`;
-  const start = berlinDayStartUtc(asYmd(normalizedStart));
-  const endExclusive = berlinDayStartUtc(asYmd(normalizedEnd));
+  const start = berlinDayStartUtc(`${calendarMonthKey(year, month0)}-01`);
+  let endExclusive = berlinDayStartUtc(`${calendarMonthKey(year, month0 + 1)}-01`);
+  if (!endExclusive) {
+    // Im Dezember 9999 liegt der Folgemonat außerhalb des Eingabeformats.
+    const lastDay = utcCalendarDay(year, month0 + 1, 0)
+      .toISOString()
+      .split('T')[0]!;
+    const lastInstant = berlinDayEndUtc(lastDay);
+    if (lastInstant) endExclusive = new Date(lastInstant.getTime() + 1);
+  }
   if (!start || !endExclusive) {
     throw new RangeError('Ungueltiger Kalendermonat.');
   }
@@ -35,7 +54,7 @@ export function berlinMonthBoundsUtc(
  * Monat (Europe/Berlin). Rückgabe ist 0-basiert für JS-Date-Konsumenten.
  */
 export function parseMonth(s: string | undefined): { year: number; month0: number } {
-  if (s && /^\d{4}-\d{2}$/.test(s)) {
+  if (isCalendarMonth(s)) {
     const [y, m] = s.split('-').map(Number);
     return { year: y!, month0: (m ?? 1) - 1 };
   }
@@ -90,11 +109,11 @@ export function buildMonthGridCells(
   month0: number,
   todayKey: string,
 ): MonthGridCell[] {
-  const firstDayWeekday = (new Date(Date.UTC(year, month0, 1)).getUTCDay() + 6) % 7; // 0=Mo
-  const gridStart = Date.UTC(year, month0, 1 - firstDayWeekday);
+  const firstDayWeekday = (utcCalendarDay(year, month0).getUTCDay() + 6) % 7; // 0=Mo
+  const gridStart = utcCalendarDay(year, month0, 1 - firstDayWeekday).getTime();
   return Array.from({ length: 42 }, (_, index) => {
     const date = new Date(gridStart + index * DAY_MS);
-    const dayKey = date.toISOString().slice(0, 10);
+    const dayKey = date.toISOString().split('T')[0]!;
     return { date, dayKey, inMonth: date.getUTCMonth() === month0, isToday: dayKey === todayKey };
   });
 }

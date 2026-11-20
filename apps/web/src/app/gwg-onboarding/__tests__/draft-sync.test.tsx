@@ -269,6 +269,13 @@ describe('GwG-Onboarding – Gerätewechsel', () => {
   });
 
   it('speichert nur Angaben und Dateiverweise, keine lokalen Dateien oder Vorschaubilder', () => {
+    const localImage = {
+      documentId: uuid(1),
+      fileName: 'vorne.jpg',
+      versionId: uuid(101),
+      localFile: new File(['x'], 'vorne.jpg'),
+      previewUrl: 'blob:vorschau',
+    };
     const payload = buildDraftPayload({
       step: 1,
       reached: 1,
@@ -276,13 +283,7 @@ describe('GwG-Onboarding – Gerätewechsel', () => {
       owners: [
         {
           ...savedPayload().owners[0]!,
-          idFront: {
-            documentId: uuid(1),
-            fileName: 'vorne.jpg',
-            versionId: uuid(101),
-            localFile: new File(['x'], 'vorne.jpg'),
-            previewUrl: 'blob:vorschau',
-          },
+          idFront: localImage,
           idBack: null,
         },
       ],

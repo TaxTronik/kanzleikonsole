@@ -44,15 +44,32 @@ code_refs:
   - apps/web/src/server/risk/markings.ts
   - apps/web/src/server/risk/norms.ts
   - apps/web/src/server/risk/reformat.ts
+  - apps/web/src/server/risk/research.ts
+  - apps/web/src/server/risk/index.ts
+  - apps/web/src/server/risk/research-lifecycle.ts
+  - apps/web/src/server/risk/research-shelf.ts
   - apps/worker/src/jobs/risk-analyse-llm.ts
   - apps/web/src/server/dsgvo/anonymize-client-data.ts
   - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/_guards.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-view.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-results-block.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-review.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-selection-panel.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-workspace.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/marking-panel.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
 test_refs:
+  - apps/web/src/server/n8n/__tests__/research-result-db.test.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/guards-tx.test.ts
   - apps/web/src/server/risk/__tests__/archive.test.ts
   - apps/web/src/server/risk/__tests__/reanalyze.test.ts
+  - apps/web/src/server/risk/__tests__/research-lifecycle.test.ts
+  - apps/web/src/server/risk/__tests__/research-payload.test.ts
+  - apps/web/src/server/risk/__tests__/research-verwerfen.test.ts
+  - apps/web/src/server/risk/__tests__/research-shelf.test.ts
+  - apps/web/src/app/staff/(protected)/__tests__/destructive-action-confirmations.test.tsx
   - apps/web/src/server/risk/__tests__/delegate.test.ts
   - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/tax-data-actions.test.ts
   - apps/web/src/server/dsgvo/__tests__/client-retention.test.ts
@@ -164,6 +181,12 @@ gilt erst mit gebundenem Archivverweis als abgeschlossen.
 
 ## Umsetzung in TaxTronik
 
+Für eingehende Ergebnisse einer bereits beauftragten externen Recherche gilt
+die aktuelle Sichtbarkeit des Hinweises nach `ACCESS-NOTIFICATION-RECIPIENT-001`.
+Bei einer geänderten Zuständigkeit kann der Auftrag als beantwortet abgeschlossen
+werden, obwohl der frühere Bearbeiter keinen Hinweis mehr erhält. Die fachliche
+Behandlung eines nach Archivierung eintreffenden Folgeobjekts ist weiter offen.
+
 `archive.ts` lädt Analyse, Mandantenname und nach Start/Ende/ID sortierte
 Markierungen unter dem gemeinsamen Analyse-Row-Lock. Es baut den JSON-Payload,
 hasht und komprimiert ihn, journalisiert die Speicherabsicht und schreibt ihn
@@ -195,6 +218,23 @@ mehr lauffähige Backfill-Skript erhält ebenfalls einen Archivguard und wird
 hierdurch nicht reaktiviert.
 `_guards.ts` prüft `archivedAt` bei den zentralen Analyse-, Markierungs- und
 Recherche-Schreibpfaden und weist dort Mutationen zurück.
+Bei Rechercheergebnissen bestimmt der Auftrag oder ersatzweise die Markierung
+die zugehörige Analyse. Nach Archivierung können Mitarbeitende die Ergebnisse
+einsehen. Neue Rechercheaufträge, manuelle Prüfentscheidungen, das Archivieren
+oder Reaktivieren einzelner Ergebnisse, Löschen und Ablage im Aktenregal
+verlangen eine offene Analyse. Bei diesen Aktionen sperrt die Schreibtransaktion
+die Analyse. Die Aktenablage prüft sie vor dem Upload und erneut vor dem Binden
+des Dokuments. Wird die Analyse während des Uploads archiviert, bleibt die
+Speicherabsicht zur Bereinigung offen.
+
+Vor der Archivierung darf die zuständige Person auch eine mittels
+Korrelations-ID automatisch zugeordnete Antwort an ihrer Markierung verwerfen.
+Für die Übernahme oder Ablehnung prüft die Schreibtransaktion unter der
+Analysesperre die aktuelle Ergebnisbindung, die Zuständigkeit der Person
+und die Zielmarkierung. Eine inzwischen geänderte Zuständigkeit oder
+Zuordnung wird damit vor dem Speichern berücksichtigt.
+Der im Markierungspanel sichtbare Status „zugeordnet“ beschreibt die Verbindung
+mit der Markierung. Eine automatische Zuordnung enthält keine manuelle Prüfung.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -219,6 +259,9 @@ Engine-Aufruf nicht nachträglich zurücknehmen.
 - Welche Ursprungsobjekte und formatierten Inhalte müssen zwingend im Snapshot
   selbst enthalten sein?
 - Welche Mutationen sind nach Archivierung als reine Zugriffspflege zulässig?
+- Wie soll ein bereits vor der Archivierung erteilter Rechercheauftrag behandelt
+  werden, dessen Antwort erst danach eingeht? Die Antwort wird derzeit als
+  separates Folgeobjekt zum Auftrag gespeichert.
 - Wie werden Store-Orphans und unklare Parallelarchivierungen abgeglichen?
 - Welche Aufbewahrungsdauer gilt für welche Subsumtion und wer gibt sie frei?
 - Wie wird die spätere Lesbarkeit und Hashprüfung regelmäßig nachgewiesen?
@@ -227,6 +270,12 @@ Engine-Aufruf nicht nachträglich zurücknehmen.
 
 Der referenzierte Guard-Test belegt einzelne Autorisierungsentscheidungen und
 zeigt, dass die Vertraulichkeit archivierter Analysen bewusst änderbar bleibt.
+Er prüft den Lese- und Schreibzugang zu Ergebnissen über Auftrag und Markierung.
+Die Tests für manuelle Ergebnisaktionen und Aufträge prüfen, dass eine inzwischen
+archivierte Analyse die Schreibtransaktion vor dem Fach- und Audit-Eintrag
+abbricht. Der Aktenregal-Test simuliert eine Archivierung während des PUT und
+prüft die offen gebliebene Speicherabsicht. Der Oberflächentest prüft die
+Leseansicht für aktive und bereits einzeln archivierte Ergebnisse.
 `archive.test.ts` prüft gzip-Inhalt einschließlich Rich-Doc, Hash, eindeutige
 Versuchsschlüssel, geänderten Stand während des Uploads und Storagefehler
 sowie die Journal-Reihenfolge, Journal- und PUT-Fehler und einen Abbruch

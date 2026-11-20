@@ -11,7 +11,7 @@
 #   C) verify:chain auf der wiederhergestellten DB (Audit-Hash-Chain intakt?)
 #
 # Läuft eigenständig — KEINE Prod-.env nötig. Quelle = $DATABASE_URL, das Ziel
-# wird daraus abgeleitet (gleiche Verbindung, DB-Name `taxtronik_restore`).
+# erhält auf derselben Instanz einen zufälligen Namen pro Lauf.
 #
 # Lokal:   DATABASE_URL=postgresql://… DATABASE_APP_URL=postgresql://… \
 #            bash scripts/restore-selftest.sh
@@ -40,8 +40,14 @@ require_cmd node
 [[ -n "${DATABASE_APP_URL:-}" ]] || die "DATABASE_APP_URL nicht gesetzt (App-Rollen-Pruefung des Selbsttests)."
 
 SRC_URL="$DATABASE_URL"
-APP_URL="$DATABASE_APP_URL"
-TARGET_DB="taxtronik_restore"
+TARGET_DB="taxtronik_restore_$(node -p 'require("node:crypto").randomBytes(12).toString("hex")')"
+TARGET_CREATED=0
+EXPECTED_HEAD=""
+if (( $# )); then
+  [[ $# == 2 && $1 == --expect-audit-head ]] || die "Erwartet: [--expect-audit-head Tenant-UUID:SHA256]"
+  [[ $2 =~ ^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}:[0-9a-f]{64}$ ]] || die "Ungültige Referenz für Audit-Kettenspitze."
+  EXPECTED_HEAD="$2"
+fi
 
 # -----------------------------------------------------------------------------
 # DATABASE_URL zerlegen. Prisma-URLs tragen Query-Parameter (?schema=…), die
@@ -54,13 +60,13 @@ TARGET_DB="taxtronik_restore"
 # -----------------------------------------------------------------------------
 url_part() {
   node -e '
-    const u = new URL(process.argv[1]);
+    const u = new URL(process.env[process.argv[1]]);
     const part = {
       host: u.hostname,
       port: u.port || "5432",
       user: decodeURIComponent(u.username),
       password: decodeURIComponent(u.password),
-      dbname: u.pathname.slice(1),
+      dbname: decodeURIComponent(u.pathname.slice(1)),
       sslmode: u.searchParams.get("sslmode") || "",
     }[process.argv[2]];
     if (part === undefined) { console.error("url_part: unbekannter Teil"); process.exit(1); }
@@ -68,22 +74,22 @@ url_part() {
   ' "$1" "$2"
 }
 
-PG_HOST="$(url_part "$SRC_URL" host)"
-PG_PORT="$(url_part "$SRC_URL" port)"
-PG_USER="$(url_part "$SRC_URL" user)"
-SRC_DBNAME="$(url_part "$SRC_URL" dbname)"
+PG_HOST="$(url_part DATABASE_URL host)"
+PG_PORT="$(url_part DATABASE_URL port)"
+PG_USER="$(url_part DATABASE_URL user)"
+SRC_DBNAME="$(url_part DATABASE_URL dbname)"
 # Getrennt zuweisen + exportieren: `export VAR=$(cmd)` würde unter set -e einen
 # Fehler von cmd verschlucken (Exit-Status des export zählt).
-PG_PASSWORD="$(url_part "$SRC_URL" password)"
+PG_PASSWORD="$(url_part DATABASE_URL password)"
 export PGPASSWORD="$PG_PASSWORD"
-PG_SSLMODE="$(url_part "$SRC_URL" sslmode)"
+PG_SSLMODE="$(url_part DATABASE_URL sslmode)"
 if [[ -n "$PG_SSLMODE" ]]; then export PGSSLMODE="$PG_SSLMODE"; fi
 
-APP_PG_HOST="$(url_part "$APP_URL" host)"
-APP_PG_PORT="$(url_part "$APP_URL" port)"
-APP_PG_USER="$(url_part "$APP_URL" user)"
-APP_PG_PASSWORD="$(url_part "$APP_URL" password)"
-APP_PG_SSLMODE="$(url_part "$APP_URL" sslmode)"
+APP_PG_HOST="$(url_part DATABASE_APP_URL host)"
+APP_PG_PORT="$(url_part DATABASE_APP_URL port)"
+APP_PG_USER="$(url_part DATABASE_APP_URL user)"
+APP_PG_PASSWORD="$(url_part DATABASE_APP_URL password)"
+APP_PG_SSLMODE="$(url_part DATABASE_APP_URL sslmode)"
 [[ "$APP_PG_USER" == "taxtronik_app" ]] || die "DATABASE_APP_URL muss fuer den Selftest die Rolle taxtronik_app verwenden."
 
 [[ "$SRC_DBNAME" != "$TARGET_DB" ]] || die "Quelle ist bereits '$TARGET_DB' — Abbruch (würde Quelle zerstören)."
@@ -97,17 +103,17 @@ TARGET_URL="${SRC_BASE%/*}/${TARGET_DB}${SRC_QUERY}"
 # psql gegen eine benannte DB derselben Verbindung (Teile s. o.).
 psql_db() {
   local db="$1"; shift
-  psql -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
+  psql -X -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
 }
 
 psql_app_db() {
   local db="$1"; shift
   if [[ -n "$APP_PG_SSLMODE" ]]; then
     PGPASSWORD="$APP_PG_PASSWORD" PGSSLMODE="$APP_PG_SSLMODE" \
-      psql -h "$APP_PG_HOST" -p "$APP_PG_PORT" -U "$APP_PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
+      psql -X -h "$APP_PG_HOST" -p "$APP_PG_PORT" -U "$APP_PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
   else
     PGPASSWORD="$APP_PG_PASSWORD" \
-      psql -h "$APP_PG_HOST" -p "$APP_PG_PORT" -U "$APP_PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
+      psql -X -h "$APP_PG_HOST" -p "$APP_PG_PORT" -U "$APP_PG_USER" -d "$db" -v ON_ERROR_STOP=1 "$@"
   fi
 }
 
@@ -120,9 +126,9 @@ DUMP_FILE="$TMP/selftest.dump"
 cleanup() {
   local rc=$?
   rm -rf "$TMP" 2>/dev/null || true
-  # Ziel-DB best-effort droppen; Fehler hier dürfen den Exit-Code nicht ändern.
-  psql_db postgres -q \
-    -c "DROP DATABASE IF EXISTS $TARGET_DB WITH (FORCE)" >/dev/null 2>&1 || true
+  if (( TARGET_CREATED )); then
+    psql_db postgres -q -c "DROP DATABASE $TARGET_DB" || rc=1
+  fi
   exit "$rc"
 }
 trap cleanup EXIT
@@ -137,9 +143,8 @@ count_rows() {
 # 1./2. Ziel-DB frisch anlegen. Rollen sind cluster-global → schon vorhanden.
 # -----------------------------------------------------------------------------
 info "Ziel-DB '$TARGET_DB' neu anlegen…"
-psql_db postgres -q \
-  -c "DROP DATABASE IF EXISTS $TARGET_DB WITH (FORCE)" \
-  -c "CREATE DATABASE $TARGET_DB"
+psql_db postgres -q -v VERBOSITY=verbose -c "CREATE DATABASE $TARGET_DB"
+TARGET_CREATED=1
 
 # -----------------------------------------------------------------------------
 # 3. Dump der Quelle erzeugen (echter runner-Code, lokaler Datei-Sink).
@@ -155,17 +160,16 @@ info "Dump der Quelle erzeugen (runner.ts --out-file)…"
 
 # -----------------------------------------------------------------------------
 # 4. Restore in die Ziel-DB (echter restore-Code, lokale Datei-Quelle).
-#    --confirm-overwrite, weil die CREATE DATABASE eine frische, aber nicht
-#    zwingend „leere" (im Sinne von _prisma_migrations) DB liefert.
+#    Die CLI prüft die frisch erstellte Datenbank zusätzlich auf Fremdobjekte.
 #    Harmlose pg_restore-Notices (DROP … IF EXISTS auf nicht existente Objekte)
 #    sind in eine frische DB NORMAL und kein Fehler — --single-transaction +
 #    --exit-on-error behandeln nur echte Fehler.
 # -----------------------------------------------------------------------------
 info "Restore in '$TARGET_DB' (restore.ts --file)…"
-( cd "$ROOT/apps/web" && DATABASE_URL="$TARGET_URL" \
+( cd "$ROOT/apps/web" && DATABASE_URL="$TARGET_URL" RESTORE_TARGET_URL="$TARGET_URL" \
     pnpm exec tsx --env-file-if-exists=../../.env \
       src/server/backup/restore.ts --file "$DUMP_FILE" \
-        --target-url "$TARGET_URL" --confirm-overwrite )
+        --target-url env:RESTORE_TARGET_URL )
 
 # -----------------------------------------------------------------------------
 # 5. Assertion A — Zeilenzahl-Vergleich für die wichtigsten Tabellen.
@@ -298,6 +302,16 @@ echo "  ✓ taxtronik_app funktionsfähig; kritische Grants/REVOKEs, RLS und loc
 info "Assertion C: verify:chain auf '$TARGET_DB'…"
 ( cd "$ROOT" && DATABASE_URL="$TARGET_URL" pnpm verify:chain )
 
+audit_rows="$(count_rows "$TARGET_DB" audit_log)"
+if [[ -n "$EXPECTED_HEAD" ]]; then
+  expected_tenant="${EXPECTED_HEAD%%:*}"
+  expected_hash="${EXPECTED_HEAD#*:}"
+  fixture_state="$(psql_db "$TARGET_DB" -tA -c "
+    SELECT count(*) OVER () || ':' || encode(this_hash, 'hex')
+    FROM audit_log WHERE tenant_id='$expected_tenant' ORDER BY id DESC LIMIT 1")"
+  [[ "$fixture_state" == "2:$expected_hash" ]] || die "Die erwartete zweigliedrige Auditkette oder ihre Quellspitze fehlt im Restore."
+fi
+
 # -----------------------------------------------------------------------------
 # Erfolg.
 # -----------------------------------------------------------------------------
@@ -307,4 +321,8 @@ echo "  Verglichene Tabellen (Zeilen):"
 for t in "${TABLES[@]}"; do
   echo "    $t = $(count_rows "$TARGET_DB" "$t")"
 done
-echo "  Audit-Hash-Chain auf der wiederhergestellten DB: intakt."
+if [[ "$audit_rows" == 0 ]]; then
+  echo "  Audit-Log im Ziel leer. Kein Nachweis einer wiederhergestellten Ereigniskette."
+else
+  echo "  Audit-Log im Ziel: $audit_rows Einträge. verify:chain erfolgreich beendet."
+fi

@@ -19,6 +19,8 @@ describe('Portal-Listenparameter', () => {
     expect(parsePortalListPage(undefined)).toBe(1);
     expect(parsePortalListPage('-4')).toBe(1);
     expect(parsePortalListPage('2')).toBe(2);
+    expect(parsePortalListPage('2rest')).toBe(1);
+    expect(parsePortalListPage('9007199254740992')).toBe(1);
     expect(parsePortalListPage(['3', '99'])).toBe(3);
   });
 

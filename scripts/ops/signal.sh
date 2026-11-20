@@ -92,8 +92,12 @@ signal_llm_dir() {
 }
 
 validate_signal_llm_dir() {
-  local dir="${1:-}"
-  [[ "$dir" == /* && "$dir" != "/" && "$dir" != "$ROOT" && ! -L "$dir" ]]
+  local dir="${1:-}" absolute physical root_dir
+  [[ "$dir" == /* && "/${dir#/}/" != *"/../"* ]] || return 1
+  absolute="$(realpath -ms -- "$dir")" && physical="$(realpath -m -- "$dir")" &&
+    root_dir="$(realpath -m -- "$ROOT")" || return 1
+  [[ "$absolute" == "$physical" && "$physical" != "/" && "$physical" != "$root_dir" &&
+     "$root_dir" != "$physical/"* && ( ! -e "$physical" || -d "$physical" ) ]]
 }
 
 validate_signal_source_image() {
@@ -286,8 +290,21 @@ verify_signal_managed_image() {
     die "Signal-Image ist kein vollstaendiger Managed-Stand (Graph, Offline-Modell, Embedding- oder Quanten-Runtime fehlt)."
 }
 
+run_signal_llm_installer() {
+  local image="$1" dir="$2"
+  shift 2
+  docker run --rm \
+    --user "$(id -u):$(id -g)" \
+    --memory 1g --memory-swap 1g \
+    -e LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/torch/lib \
+    -v "$dir:/managed-llm" \
+    -v "$ROOT/scripts/provision-signal-llm.py:/opt/taxtronik/provision-signal-llm.py:ro" \
+    --entrypoint python \
+    "$image" /opt/taxtronik/provision-signal-llm.py --output /managed-llm "$@"
+}
+
 provision_signal_managed_llm() {
-  local image="$1" dir cpu_count="" mem_total_kib="" memory_limit="1g" size_gib=""
+  local image="$1" dir cpu_count="" mem_total_kib="" size_gib="" receipt
   dir="$(signal_llm_dir)"
   validate_signal_llm_dir "$dir" || \
     die "SIGNAL_LLM_DIR muss ein absolutes, nicht verlinktes Verzeichnis sein (nicht / oder Repository-Wurzel)."
@@ -309,15 +326,16 @@ provision_signal_managed_llm() {
   size_gib="$(awk -v bytes="$SIGNAL_MANAGED_LLM_SIZE_BYTES" 'BEGIN { printf "%.1f", bytes / 1024 / 1024 / 1024 }')"
   info "Lokale KI-Vertiefung provisionieren: $SIGNAL_MANAGED_LLM_MODEL (CPU, ${size_gib} GiB)"
   info "Performance-Hinweis: Ohne GPU ist die generative Vertiefung der erwartete Bottleneck; Signal-Kern und Embeddings bleiben davon unabhängig nutzbar."
-  docker run --rm \
-    --user "$(id -u):$(id -g)" \
-    --memory "$memory_limit" --memory-swap "$memory_limit" \
-    -e LD_LIBRARY_PATH=/usr/local/lib/python3.12/site-packages/torch/lib \
-    -v "$dir:/managed-llm" \
-    -v "$ROOT/scripts/provision-signal-llm.py:/opt/taxtronik/provision-signal-llm.py:ro" \
-    --entrypoint python \
-    "$image" /opt/taxtronik/provision-signal-llm.py --output /managed-llm || \
+  run_signal_llm_installer "$image" "$dir" || \
     die "Signal CPU-LLM konnte nicht vollständig und integer provisioniert werden; laufender Dienst bleibt unverändert."
+  _SIGNAL_LLM_ACTIVATION=""
+  receipt="$dir/.signal-llm.current/.activation-pending"
+  if [[ -f "$receipt" && ! -L "$receipt" ]]; then
+    if ! IFS= read -r _SIGNAL_LLM_ACTIVATION <"$receipt" ||
+        [[ ! "$_SIGNAL_LLM_ACTIVATION" =~ ^[[:xdigit:]]{64}:[[:xdigit:]]{64}$ ]]; then
+      die "Ungültige Aktivierungsquittung des verwalteten Signal-LLM."
+    fi
+  fi
 
   export SIGNAL_LLM_DIR="$dir"
   export RISK_LAYER_LLM_BACKEND="cpu"
@@ -366,6 +384,10 @@ start_signal_for_deploy() {
   info "Verwaltetes Signal starten und API-Liveness pruefen"
   if compose --profile risk-layer up -d --force-recreate --no-deps \
       --wait --wait-timeout 300 risk-layer; then
+    if [[ -n "${_SIGNAL_LLM_ACTIVATION:-}" ]]; then
+      run_signal_llm_installer "$SIGNAL_IMAGE" "$SIGNAL_LLM_DIR" --confirm "$_SIGNAL_LLM_ACTIVATION" || return 1
+      _SIGNAL_LLM_ACTIVATION=""
+    fi
     if [[ "$(signal_deploy_channel)" == "source" ]]; then
       set_env SIGNAL_IMAGE "$SIGNAL_IMAGE"
     fi
@@ -379,7 +401,16 @@ start_signal_for_deploy() {
     taxtronik-risk-layer >&2 2>/dev/null || true
   compose --profile risk-layer logs --no-color --tail 120 risk-layer >&2 || true
   warn "Neues Signal-Release wurde nicht bereit; versuche den vorherigen Containerstand wiederherzustellen."
-  if [[ -n "$previous_image" && "$previous_image" != "$SIGNAL_IMAGE" ]]; then
+  local artifacts_restored=false
+  if [[ -n "${_SIGNAL_LLM_ACTIVATION:-}" ]]; then
+    if ! run_signal_llm_installer "$SIGNAL_IMAGE" "$SIGNAL_LLM_DIR" --rollback "$_SIGNAL_LLM_ACTIVATION"; then
+      warn "Vorherige Signal-Artefakte konnten nicht verifiziert und wiederhergestellt werden."
+      return 1
+    fi
+    artifacts_restored=true
+    _SIGNAL_LLM_ACTIVATION=""
+  fi
+  if [[ -n "$previous_image" && ( "$previous_image" != "$SIGNAL_IMAGE" || "$artifacts_restored" == true ) ]]; then
     export SIGNAL_IMAGE="$previous_image"
     compose --profile risk-layer up -d --force-recreate --no-deps \
       --wait --wait-timeout 300 risk-layer \

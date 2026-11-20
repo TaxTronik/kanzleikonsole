@@ -16,7 +16,7 @@ import { AppointmentRequestForm } from './request-form';
 import { CancelRequestButton } from './cancel-request-button';
 import { IcalSubscribe } from './ical-subscribe';
 import { signIcalToken } from '@/server/ical/feed';
-import { fmtDateMedium, fmtDateTimeMedium } from '@/lib/fmt';
+import { fmtAppointmentSlot, fmtDateMedium, fmtDateTimeMedium } from '@/lib/fmt';
 import { readAppointmentStaffOptionsTx } from './staff-options';
 import { portalRequestView, type PortalRequestBadge } from './request-view';
 
@@ -177,8 +177,8 @@ export default async function PortalAppointmentsPage() {
                       <ul className="mt-1 text-xs text-secondary dark:text-disabled space-y-0.5">
                         {slots.map((s, i) => (
                           <li key={i}>
-                            {fmtDateTimeMedium(new Date(s.startsAt))} –{' '}
-                            {fmtDateTimeMedium(new Date(s.endsAt))}
+                            {fmtAppointmentSlot(s.startsAt, fmtDateTimeMedium)} –{' '}
+                            {fmtAppointmentSlot(s.endsAt, fmtDateTimeMedium)}
                           </li>
                         ))}
                       </ul>

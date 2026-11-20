@@ -176,3 +176,44 @@ dauerhaft fehlender/mehrdeutiger Objekte blockiert damit keine späteren
 bereinigungsfähigen Objekte. Ab fünf Fehlern wird ein manueller
 Untersuchungsbedarf geloggt. Referenzprüfung, Retention und eindeutige
 Storage-Version bleiben unveränderte Löschvoraussetzungen.
+
+## Jahreswechsel und bereits gespeicherte Schutzfristen
+
+Neue GoBD- und GwG-Uploads bestimmen das deutsche Kalenderjahr in
+Europe/Berlin. Die technische Freigabe bleibt am 1. Januar um 00:00 UTC.
+Der Standardupload verwendet den Zeitpunkt der Vorbereitung, eine Höherstufung
+die ursprüngliche Dokumentanlage und eine Ausgabe aus Mandantenangaben die
+gebundene Revision. Der UTC-Jahresordner im Objektschlüssel dient der Ablage
+und belegt keinen fachlichen Fristbeginn.
+
+Für bereits gespeicherte Objekte kann der zwischen Berliner und
+UTC-Jahreswechsel gewählte Anker zu einem ein Jahr zu kurzen technischen
+Lock geführt haben. Eine Änderung am Datenbank-Datum verlängert den Lock
+im Object Store nicht. Für die Bestandsprüfung:
+
+1. Geschützte Objektversionen mit Bucket, Schlüssel und Versions-ID aus den
+   Dokumentversionen, Archivverweisen und offenen Speicherabsichten inventarisieren.
+   Auch ausgeblendete Dokumente und ältere Versionen einbeziehen.
+2. Pro Version den damaligen Pfad, die damalige Klasse und den tatsächlichen
+   Anker nachvollziehen. Besonders betroffen sind Zeitpunkte vom 31. Dezember
+   ab 23:00 UTC bis unmittelbar vor dem 1. Januar 00:00 UTC in modernen Jahren.
+   Der Uploadzeitpunkt ist bei Retag und Revisionsausgaben nur ein Suchhinweis.
+   Zusätzlich andere Aufbewahrungszwecke, Holds und Sonderfristen klären.
+3. Den tatsächlichen Modus und das Ablaufdatum mit `GetObjectRetention` für
+   exakt diese Versions-ID auslesen. Einen fachlich bestätigten zu kurzen
+   Lock im passenden bisherigen Modus auf den belegten späteren Stichtag
+   verlängern und für dieselbe Version nachlesen. Bei fehlender Version,
+   unbekanntem Anker oder unerwartetem Modus den Fall zur Klärung festhalten.
+4. Bei TCMS-GwG-Belegen hebt Migration `20261120120000_berlin_retention_year`
+   berechenbare Datenbankfristen an. Der Job `gwg-object-lock-extend` führt
+   die Versionslocks nach; pro Version den erfolgreichen Lauf oder Fehler im
+   Betriebsnachweis prüfen. Bereits angeforderte Vernichtungen durchlaufen den
+   Fristclaim erneut. Für reguläre GoBD-Versionen ist die Prüfung gesondert
+   durchzuführen.
+
+Die Ablage blendet GoBD-Dokumente im Papierkorb aus. Der Orphan-Worker prüft
+auch ausgeblendete Dokumentversionen auf dauerhafte Referenzen. Bei einem
+Re-Store bleibt die bisherige geschützte Version erhalten. Der ausgelieferte
+S3-Lifecycle gilt ausschließlich für den Backup-Bucket. Direkt am Speicher
+konfigurierte Löschrechte, eigene Lifecycle-Regeln und Replikate sind daher
+bei der Bestandsprüfung getrennt einzubeziehen.

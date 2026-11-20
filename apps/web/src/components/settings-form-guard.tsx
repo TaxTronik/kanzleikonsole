@@ -25,31 +25,86 @@
 // tragen (z. B. SMTP-Testmail oder Autosave-Layouts).
 // =============================================================================
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  startTransition,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type FormEvent,
+} from 'react';
 import { Check } from 'lucide-react';
 import { confirmDialog } from '@/components/ui/modal';
 
+function serializeData(data: FormData): string {
+  const entries = [...data].filter(
+    ([name, value]) => typeof value === 'string' && !name.startsWith('$ACTION_'),
+  );
+  // Ein kontrolliertes Formular kann seine Daten in anderer Reihenfolge bauen.
+  return JSON.stringify(entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
 function serialize(form: HTMLFormElement): string {
-  const parts: string[] = [];
-  for (const el of Array.from(form.elements)) {
-    if (el instanceof HTMLInputElement) {
-      if (!el.name) continue;
-      const t = el.type;
-      if (t === 'file' || t === 'submit' || t === 'button') continue;
-      if (t === 'checkbox' || t === 'radio') {
-        if (el.checked) parts.push(`${el.name}=${el.value || 'on'}`);
-      } else {
-        // text/hidden/number/email/date/color usf. — hidden bewusst inklusive,
-        // weil darüber React-State-Felder (z. B. logoDataUrl, accentColor) fließen.
-        parts.push(`${el.name}=${el.value}`);
-      }
-    } else if (el instanceof HTMLTextAreaElement && el.name) {
-      parts.push(`${el.name}=${el.value}`);
-    } else if (el instanceof HTMLSelectElement && el.name) {
-      parts.push(`${el.name}=${el.value}`);
+  return serializeData(new FormData(form));
+}
+
+const SettingsSaveResult = createContext<
+  ((form: HTMLFormElement, snapshot: string | null) => void) | null
+>(null);
+
+/** Speichert die bestätigten Werte und bewahrt unkontrollierte Eingaben bei Fehlern. */
+export function SettingsForm({
+  action,
+  result,
+  pending,
+  children,
+  className,
+  onSubmit,
+  savedData,
+}: {
+  action: (data: FormData) => void;
+  result: { ok: boolean } | null;
+  pending: boolean;
+  children: ReactNode;
+  className: string;
+  onSubmit?: (event: FormEvent<HTMLFormElement>) => void;
+  /** Einige Integrationen leeren gespeicherte Secrets und setzen Keep-Flags. */
+  savedData?: () => FormData;
+}) {
+  const formRef = useRef<HTMLFormElement>(null);
+  const submitted = useRef<string | null>(null);
+  const settle = useContext(SettingsSaveResult);
+  useEffect(() => {
+    if (pending || result === null || submitted.current === null) return;
+    if (formRef.current) settle?.(formRef.current, result.ok ? submitted.current : null);
+    submitted.current = null;
+  }, [pending, result, settle]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitted.current !== null || pending) return;
+    const form = event.currentTarget;
+    submitted.current = savedData ? serializeData(savedData()) : serialize(form);
+    if (onSubmit) onSubmit(event);
+    else {
+      const data = new FormData(form, (event.nativeEvent as SubmitEvent).submitter);
+      startTransition(() => action(data));
     }
   }
-  return parts.join('&');
+  return (
+    <form
+      ref={formRef}
+      action={action}
+      onSubmit={submit}
+      aria-busy={pending || undefined}
+      className={className}
+    >
+      {children}
+    </form>
+  );
 }
 
 function isSaveable(form: HTMLFormElement): boolean {
@@ -60,28 +115,51 @@ function isSaveable(form: HTMLFormElement): boolean {
 export function SettingsFormGuard({ children }: { children: ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const snapshots = useRef<WeakMap<HTMLFormElement, string>>(new WeakMap());
+  const discardConfirmed = useRef(false);
   const [dirtyCount, setDirtyCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const recompute = useCallback(() => {
+    const forms = containerRef.current?.querySelectorAll('form');
+    let dirty = 0;
+    let busy = false;
+    for (const form of forms ?? []) {
+      if (!isSaveable(form)) continue;
+      const value = serialize(form);
+      if (!snapshots.current.has(form)) snapshots.current.set(form, value);
+      const changed = value !== snapshots.current.get(form);
+      form.classList.toggle('settings-dirty', changed);
+      if (changed) dirty++;
+      if (form.getAttribute('aria-busy') === 'true') busy = true;
+    }
+    setDirtyCount(dirty);
+    setSaving(busy);
+  }, []);
+
+  const settle = useCallback(
+    (form: HTMLFormElement, snapshot: string | null) => {
+      if (snapshot !== null) snapshots.current.set(form, snapshot);
+      recompute();
+      setJustSaved(snapshot !== null);
+    },
+    [recompute],
+  );
+
+  useEffect(() => {
+    if (!justSaved) return;
+    const timer = setTimeout(() => setJustSaved(false), 2600);
+    return () => clearTimeout(timer);
+  }, [justSaved]);
 
   useEffect(() => {
     const root = containerRef.current;
     if (!root) return;
 
-    function recompute() {
-      const forms = Array.from(root!.querySelectorAll('form'));
-      let count = 0;
-      for (const f of forms) {
-        if (!isSaveable(f)) continue;
-        if (!snapshots.current.has(f)) snapshots.current.set(f, serialize(f));
-        const dirty = serialize(f) !== snapshots.current.get(f)!;
-        f.classList.toggle('settings-dirty', dirty);
-        if (dirty) count += 1;
-      }
-      setDirtyCount(count);
-    }
-
     function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (discardConfirmed.current) {
+        discardConfirmed.current = false;
+        return;
+      }
       const forms = Array.from(root!.querySelectorAll('form'));
       if (forms.some((f) => isSaveable(f) && f.classList.contains('settings-dirty'))) {
         e.preventDefault();
@@ -92,7 +170,12 @@ export function SettingsFormGuard({ children }: { children: ReactNode }) {
     root.addEventListener('change', recompute);
     window.addEventListener('beforeunload', onBeforeUnload);
     const mo = new MutationObserver(recompute);
-    mo.observe(root, { childList: true, subtree: true });
+    mo.observe(root, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['value', 'checked', 'selected', 'aria-busy', 'disabled'],
+    });
     recompute();
     return () => {
       root.removeEventListener('input', recompute);
@@ -100,7 +183,7 @@ export function SettingsFormGuard({ children }: { children: ReactNode }) {
       window.removeEventListener('beforeunload', onBeforeUnload);
       mo.disconnect();
     };
-  }, []);
+  }, [recompute]);
 
   function saveAll() {
     const root = containerRef.current;
@@ -109,22 +192,9 @@ export function SettingsFormGuard({ children }: { children: ReactNode }) {
       (f) => isSaveable(f) && f.classList.contains('settings-dirty'),
     );
     if (forms.length === 0) return;
-    setSaving(true);
-    // Optimistisch als clean markieren (eingereichte Werte = Snapshot). Schlägt
-    // eine Action fehl, zeigt das Formular inline ihren eigenen Fehler.
-    for (const f of forms) {
-      snapshots.current.set(f, serialize(f));
-      f.classList.remove('settings-dirty');
-      try {
-        f.requestSubmit();
-      } catch {
-        /* ältere Browser: ohne Request-Action-Konsole kein Submit möglich */
-      }
-    }
-    setDirtyCount(0);
-    setJustSaved(true);
-    setTimeout(() => setSaving(false), 1500);
-    setTimeout(() => setJustSaved(false), 2600);
+    if (!forms.every((form) => form.reportValidity())) return;
+    setJustSaved(false);
+    for (const form of forms) form.requestSubmit();
   }
 
   async function discardAll() {
@@ -136,34 +206,58 @@ export function SettingsFormGuard({ children }: { children: ReactNode }) {
       }))
     )
       return;
+    discardConfirmed.current = true;
     window.location.reload();
   }
 
   return (
     <div ref={containerRef} className="settings-form-guard min-w-0">
-      {children}
-      {dirtyCount > 0 ? (
-        <div className="settings-pill fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-full py-2 pl-4 pr-2">
-          <span className="flex items-center gap-2 text-[13px]">
-            <span className="settings-pill-dot" aria-hidden />
-            <span className="font-medium">
-              {dirtyCount} ungespeicherte{dirtyCount === 1 ? 's' : ''} Änderung
-              {dirtyCount === 1 ? '' : 'en'}
-            </span>
-          </span>
-          <button type="button" onClick={discardAll} className="settings-pill-ghost">
-            Verwerfen
-          </button>
-          <button type="button" onClick={saveAll} disabled={saving} className="settings-pill-save">
-            {saving ? 'Speichert …' : 'Speichern'}
-          </button>
-        </div>
-      ) : justSaved ? (
-        <div className="settings-pill settings-pill-success fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium">
-          <Check className="h-4 w-4" aria-hidden />
-          Gespeichert
-        </div>
-      ) : null}
+      <SettingsSaveResult.Provider value={settle}>{children}</SettingsSaveResult.Provider>
+      <div
+        className={
+          dirtyCount > 0
+            ? 'settings-pill fixed bottom-4 right-4 z-40 flex items-center gap-3 rounded-full py-2 pl-4 pr-2'
+            : justSaved
+              ? 'settings-pill settings-pill-success fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium'
+              : 'sr-only'
+        }
+      >
+        <span role="status" aria-atomic="true" className="flex items-center gap-2 text-[13px]">
+          {dirtyCount > 0 ? (
+            <>
+              <span className="settings-pill-dot" aria-hidden />
+              <span className="font-medium">
+                {dirtyCount}{' '}
+                {dirtyCount === 1 ? 'ungespeicherte Änderung' : 'ungespeicherte Änderungen'}
+              </span>
+            </>
+          ) : justSaved ? (
+            <>
+              <Check className="h-4 w-4" aria-hidden /> Gespeichert
+            </>
+          ) : null}
+        </span>
+        {dirtyCount > 0 && (
+          <>
+            <button
+              type="button"
+              onClick={discardAll}
+              disabled={saving}
+              className="settings-pill-ghost"
+            >
+              Verwerfen
+            </button>
+            <button
+              type="button"
+              onClick={saveAll}
+              disabled={saving}
+              className="settings-pill-save"
+            >
+              {saving ? 'Speichert …' : 'Speichern'}
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }

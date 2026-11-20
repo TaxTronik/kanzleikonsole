@@ -957,6 +957,25 @@ revisions-/SHA-256-gepinnte Granite-4.1-8B-GGUF und die gepinnte CPU-Engine unte
 ein. Das große Modell liegt bewusst nicht in jedem OCI-Layer: Ein unveränderter
 Stand wird beim Update vollständig verifiziert, aber weder erneut geladen noch
 mit jedem Image dupliziert. Diese Prüfung geschieht vor dem Containerwechsel.
+
+Für Updates hält der Installer zwei feste Verzeichnisse innerhalb von
+`SIGNAL_LLM_DIR`. Er prüft die Modellbytes und alle Engine-Dateien gegen die
+im Release hinterlegten Hashes und startet die Engine mit `--version`, bevor
+er den vollständigen Stand mit Linux `renameat2(RENAME_EXCHANGE)` umschaltet.
+Das lokale Dateisystem muss diesen Austausch und Hardlinks unterstützen.
+Compose bindet denselben vorbereiteten Hostpfad wie bei der Erstinstallation
+ein. Die bisherigen Dateinamen funktionieren auch bei einem direkten
+`docker compose up` und während einer unterbrochenen Migration weiter.
+
+Bei einem reinen Enginewechsel teilen die beiden Stände dieselben Modellbytes
+per Hardlink. Bei einem Modellwechsel benötigen altes und neues GGUF zusammen
+rund 12,5 GB, zuzüglich Engine, Entpackplatz und 2 GiB freier Reserve.
+Abgebrochene Downloads werden im Kandidaten fortgesetzt. Nach einem Fehler
+beim Download oder Engine-Selbsttest bleibt der vorige Stand aktiv und der
+normale Deploy kann wiederholt werden. Scheitert der anschließende Compose-Healthcheck,
+prüft der Deploy den gesicherten Stand gegen das vor der Aktivierung erfasste
+Manifest, schaltet die Artefakte zurück und startet das zuvor eingesetzte
+Containerimage erneut, sofern es verfügbar ist.
 Der Docker-Healthcheck bildet nur die API-Liveness ab; der getrennte Embedding-
 und LLM-Status macht degradierte Zusatzfähigkeiten sichtbar, ohne eine
 erreichbare deterministische Engine oder deren Rollback abzuschießen.

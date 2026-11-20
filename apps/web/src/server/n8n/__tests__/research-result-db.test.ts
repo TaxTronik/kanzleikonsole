@@ -1,4 +1,5 @@
-// Fachkatalog: ACCESS-TENANT-RLS-001, RISK-EXTERNAL-ANONYMIZATION-001
+// Fachkatalog: ACCESS-TENANT-RLS-001, RISK-EXTERNAL-ANONYMIZATION-001,
+// ACCESS-NOTIFICATION-RECIPIENT-001, RISK-ARCHIVE-SNAPSHOT-001
 // =============================================================================
 // S-01 (Folgearbeit): n8n-Rechercheergebnis (v1-Callback) über die App-Rolle.
 //
@@ -165,6 +166,207 @@ describeDb('S-01 n8n research result via the app role', () => {
     connectionId: fixture.connection,
     requestId,
     operation: N8N_CALLBACK_OPERATIONS.researchResult,
+  });
+
+  it('wertet fehlende und nichtkanonische Ergebnis-IDs ohne Hinweis aus und verwendet ausschließlich App-Rechte', async () => {
+    const f = {} as Fixture;
+    await seed(f, 'kennungen');
+    const actor = { tenantId: f.tenant, actorId: f.staff, actorType: 'STAFF' as const };
+    const result = await fixtures.riskResearchResult.create({
+      data: {
+        id: 'a' + randomUUID().slice(1),
+        tenantId: f.tenant,
+        researchRequestId: f.request,
+        body: 'Synthetische Antwort',
+      },
+    });
+    const rows = await db.withTenantContext(
+      actor,
+      (tx) => tx.$queryRaw<Array<{ visible: boolean }>>`
+      SELECT app.risk_research_notification_visible(${f.tenant}::uuid, candidate, ${f.staff}::uuid) AS visible
+      FROM (VALUES (1, ${result.id}::text), (2, NULL::text), (3, ''), (4, 'kein-ergebnis'),
+        (5, upper(${result.id}::text)), (6, ${randomUUID()}::text)) ids(position, candidate) ORDER BY position`,
+    );
+    expect(rows).toEqual([
+      { visible: true },
+      ...Array.from({ length: 5 }, () => ({ visible: false })),
+    ]);
+    const [acl] = await db.withTenantContext(
+      actor,
+      (tx) => tx.$queryRaw<Array<{ definer: boolean; app: boolean; public_execute: boolean }>>`
+      SELECT p.prosecdef AS definer,
+        has_function_privilege(current_user,p.oid,'EXECUTE') AS app,
+        EXISTS (SELECT FROM aclexplode(p.proacl) acl WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE') AS public_execute
+      FROM pg_proc p WHERE oid = 'app.risk_research_notification_visible(uuid,text,uuid)'::regprocedure`,
+    );
+    expect(acl).toEqual({ definer: false, app: true, public_execute: false });
+  });
+
+  it('wendet auf Hinweise zur vertraulichen Analyse im OPEN-Mandat die aktuelle Markierungszuständigkeit an', async () => {
+    const f = {} as Fixture;
+    await seed(f, 'scope');
+    const tenantId = f.tenant;
+    const employee = (label: string) =>
+      fixtures.staffUser.create({
+        data: {
+          tenantId,
+          email: `${label}-${tenantId}@example.test`,
+          fullName: label,
+          passwordHash: 'synthetic',
+          roles: { create: { role: 'EMPLOYEE' } },
+        },
+      });
+    const first = await employee('Erste');
+    const next = await employee('Zweite');
+    const client = await fixtures.client.create({
+      data: { tenantId, name: 'Synthetisches Mandat', kind: 'NATPERS' },
+    });
+    await fixtures.tenantSetting.create({
+      data: { tenantId, key: 'access', value: { clientAccessMode: 'OPEN' } },
+    });
+    const { analysisId } = await fixtures.riskResearchRequest.findUniqueOrThrow({
+      where: { id: f.request },
+    });
+    await fixtures.riskAnalysis.update({
+      where: { id: analysisId },
+      data: { clientId: client.id, vertraulich: true, sourceText: 'A😀B' },
+    });
+    // Das abschließende B steht bei JavaScript-Offset 3, PostgreSQL zählt drei Unicode-Zeichen.
+    const marking = await fixtures.riskMarking.create({
+      data: {
+        tenantId,
+        analysisId,
+        start: 3,
+        end: 4,
+        matchedText: 'B',
+        herkunft: 'BERATER',
+        begriff: 'Beispiel',
+        normAnker: [],
+        verantwortlichId: first.id,
+      },
+    });
+    const request = (staffId: string) =>
+      fixtures.riskResearchRequest.create({
+        data: {
+          tenantId,
+          analysisId,
+          markingId: marking.id,
+          title: 'Synthetische Recherche',
+          anonymizedPayload: {},
+          mapping: {},
+          createdById: staffId,
+        },
+      });
+    const deliver = async (id: string) => {
+      const callback = await receiveResearchResultForTenant(
+        tenantId,
+        {
+          researchRequestId: id,
+          body: 'Synthetische Antwort',
+          source: 'Testdienst',
+        },
+        receipt(f, randomUUID()),
+      );
+      expect(callback).toEqual({ resultId: expect.any(String), duplicate: false });
+      return callback!.resultId;
+    };
+    const unread = (staffId: string) =>
+      db.withTenantContext({ tenantId, actorType: 'STAFF', actorId: staffId }, async (tx) => ({
+        badge: await tx.notification.count({ where: { readAt: null } }),
+        resources: (
+          await tx.notification.findMany({ where: { readAt: null }, select: { resourceId: true } })
+        )
+          .map((row) => row.resourceId)
+          .sort(),
+      }));
+    const firstRequest = await request(first.id);
+    const delayedRequest = await request(first.id);
+    const early = await deliver(firstRequest.id);
+    expect(await unread(first.id)).toEqual({ badge: 1, resources: [early] });
+
+    await fixtures.riskMarking.update({
+      where: { id: marking.id },
+      data: { verantwortlichId: next.id },
+    });
+    const late = await deliver(delayedRequest.id);
+    expect(
+      await fixtures.riskResearchResult.findUniqueOrThrow({
+        where: { id: late },
+        select: { status: true, markingId: true },
+      }),
+    ).toEqual({ status: 'ZUGEORDNET', markingId: marking.id });
+    expect(await fixtures.notification.count({ where: { tenantId, resourceId: late } })).toBe(0);
+    expect(
+      await fixtures.notification.count({
+        where: { tenantId, resourceId: early, staffId: first.id },
+      }),
+    ).toBe(1);
+    expect(await unread(first.id)).toEqual({ badge: 0, resources: [] });
+    expect(
+      await db.withTenantContext({ tenantId, actorType: 'STAFF', actorId: first.id }, (tx) =>
+        tx.notification.updateMany({ where: { resourceId: early }, data: { readAt: new Date() } }),
+      ),
+    ).toEqual({ count: 0 });
+
+    const newResult = await deliver((await request(next.id)).id);
+    expect(await unread(next.id)).toEqual({ badge: 1, resources: [newResult] });
+    await fixtures.riskMarking.update({ where: { id: marking.id }, data: { start: 4, end: 6 } });
+    expect(await unread(next.id)).toEqual({ badge: 0, resources: [] });
+    await fixtures.clientResponsibility.create({
+      data: { tenantId, clientId: client.id, staffId: next.id, role: 'HAUPTBEARBEITER' },
+    });
+    expect(await unread(next.id)).toEqual({ badge: 1, resources: [newResult] });
+    const adminResult = await deliver(f.request);
+    expect(await unread(f.staff)).toEqual({ badge: 1, resources: [adminResult] });
+  });
+
+  it('unterscheidet kanzleiweite Eingänge von verwaisten persönlichen Hinweisen und erhält technische Hinweise', async () => {
+    const f = {} as Fixture;
+    await seed(f, 'eingang');
+    const actor = { tenantId: f.tenant, actorId: f.staff, actorType: 'STAFF' as const };
+    const deliver = (researchRequestId?: string) =>
+      receiveResearchResultForTenant(
+        f.tenant,
+        {
+          ...(researchRequestId ? { researchRequestId } : {}),
+          body: 'Synthetische Rückmeldung',
+        },
+        receipt(f, randomUUID()),
+      );
+    const personal = await deliver(f.request);
+    const broadcast = await deliver();
+    const ordinary = await fixtures.notification.create({
+      data: {
+        tenantId: f.tenant,
+        staffId: f.staff,
+        title: 'Technische Meldung',
+        kind: 'SYSTEM_AUDIT_OK',
+      },
+    });
+    const list = () =>
+      db.withTenantContext(actor, (tx) =>
+        tx.notification.findMany({ select: { resourceId: true, staffId: true } }),
+      );
+    expect(await list()).toHaveLength(3);
+    await fixtures.riskResearchRequest.delete({ where: { id: f.request } });
+    expect(
+      await fixtures.riskResearchResult.findUniqueOrThrow({
+        where: { id: personal!.resultId },
+        select: { researchRequestId: true },
+      }),
+    ).toEqual({ researchRequestId: null });
+    expect(await list()).toEqual(
+      expect.arrayContaining([
+        { resourceId: broadcast!.resultId, staffId: null },
+        { resourceId: null, staffId: f.staff },
+      ]),
+    );
+    expect(await list()).toHaveLength(2);
+    expect(
+      await db.withTenantContext(actor, (tx) =>
+        tx.notification.updateMany({ where: { id: ordinary.id }, data: { readAt: new Date() } }),
+      ),
+    ).toEqual({ count: 1 });
   });
 
   it('speichert das korrelierte Ergebnis wie bisher, ohne Owner-Zugriff', async () => {

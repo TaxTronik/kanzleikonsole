@@ -19,6 +19,9 @@ describe('formatXlsxDate', () => {
 });
 
 describe('formatXlsxCell', () => {
+  it('hält die Vorschau bei einer nicht darstellbaren Datumszelle lesbar', () => {
+    expect(formatXlsxCell(new Date(Number.NaN))).toBe('Ungültiges Datum');
+  });
   it('bildet die uebrigen Zelltypen ab', () => {
     expect(formatXlsxCell(null)).toBe('');
     expect(formatXlsxCell('Text')).toBe('Text');

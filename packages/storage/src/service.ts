@@ -5,6 +5,7 @@ import {
   ListObjectVersionsCommand,
   type PutObjectCommandOutput,
 } from '@aws-sdk/client-s3';
+import { retentionAfterBerlinYear } from '@taxtronik/config/retention-calendar';
 import { createHash } from 'node:crypto';
 import { createConnection } from 'node:net';
 import { Readable } from 'node:stream';
@@ -34,9 +35,7 @@ export {
  * potenziell VOR Ende der gesetzlichen Frist.
  */
 export function gobdRetentionUntil(now: Date = new Date()): Date {
-  // Jahresende des Erstellungsjahres + 10 volle Jahre + 1 Tag-Puffer.
-  const startYear = now.getUTCFullYear();
-  return new Date(Date.UTC(startYear + 10 + 1, 0, 1, 0, 0, 0, 0));
+  return retentionAfterBerlinYear(now, 10);
 }
 
 /**
@@ -58,7 +57,7 @@ const GOBD_RETENTION_YEARS_BY_CLASSIFICATION: Record<string, number> = {
 };
 
 export function gobdRetentionYears(classification?: string): number {
-  if (classification && classification in GOBD_RETENTION_YEARS_BY_CLASSIFICATION) {
+  if (classification && Object.hasOwn(GOBD_RETENTION_YEARS_BY_CLASSIFICATION, classification)) {
     return GOBD_RETENTION_YEARS_BY_CLASSIFICATION[classification]!;
   }
   return 10;
@@ -66,8 +65,7 @@ export function gobdRetentionYears(classification?: string): number {
 
 /** Wie gobdRetentionUntil, aber belegart-abhängig (8 J. für Rechnungen). */
 export function gobdRetentionUntilFor(classification?: string, now: Date = new Date()): Date {
-  const startYear = now.getUTCFullYear();
-  return new Date(Date.UTC(startYear + gobdRetentionYears(classification) + 1, 0, 1, 0, 0, 0, 0));
+  return retentionAfterBerlinYear(now, gobdRetentionYears(classification));
 }
 
 /** Friststichtag für einen fachlich klassifizierten 6-/8-/10-Jahres-Typ. */
@@ -75,7 +73,7 @@ export function retentionUntilForYears(years: number, now: Date = new Date()): D
   if (![5, 6, 8, 10].includes(years)) {
     throw new Error('INVALID_RETENTION_YEARS: Erlaubt sind 5, 6, 8 oder 10 Jahre.');
   }
-  return new Date(Date.UTC(now.getUTCFullYear() + years + 1, 0, 1, 0, 0, 0, 0));
+  return retentionAfterBerlinYear(now, years);
 }
 
 /**
@@ -86,10 +84,8 @@ export function retentionUntilForYears(years: number, now: Date = new Date()): D
  * der GwG-Retention-Queue geführt — dieser technische Lock ab Upload ist nur
  * eine zusätzliche Mindestbarriere, nicht die Löschentscheidung.
  *
- * Wir setzen Object-Lock-Retain-Until daher auf 5 Jahre + 1 Tag (Jahresende
- * basierte Berechnung wäre für GwG-Akten weniger relevant — Frist beginnt
- * mit Ende der Geschäftsbeziehung, nicht mit Erstellungsjahr; das ist eine
- * Operations-Sache, nicht Object-Lock-Sache).
+ * Der technische Upload-Lock schützt fünf volle Jahre ab dem Ende des deutschen
+ * Uploadjahres. Das wirksame Ende der Geschäftsbeziehung prüft der Vernichtungspfad.
  *
  * Object-Lock-Modus je Stufe (siehe lockModeForTier): GwG-Belege werden im
  * Modus GOVERNANCE geschrieben, GOBD in COMPLIANCE. GOVERNANCE erlaubt die
@@ -101,13 +97,12 @@ export function retentionUntilForYears(years: number, now: Date = new Date()): D
  * Object-Lock-Emulation gegen reales S3-GOVERNANCE-Verhalten prüfen.
  */
 export function gwgRetentionUntil(now: Date = new Date()): Date {
-  const startYear = now.getUTCFullYear();
-  return new Date(Date.UTC(startYear + 5 + 1, 0, 1, 0, 0, 0, 0));
+  return retentionAfterBerlinYear(now, 5);
 }
 
-export function retentionForTier(tier: ProtectionTier): Date | null {
-  if (tier === 'GOBD') return gobdRetentionUntil();
-  if (tier === 'GWG') return gwgRetentionUntil();
+export function retentionForTier(tier: ProtectionTier, now: Date = new Date()): Date | null {
+  if (tier === 'GOBD') return gobdRetentionUntil(now);
+  if (tier === 'GWG') return gwgRetentionUntil(now);
   return null;
 }
 
@@ -911,7 +906,7 @@ export async function prepareBytesCommitWithTier(input: {
       ? retentionYears
         ? retentionUntilForYears(retentionYears, retentionAnchor ?? uploadNow)
         : gobdRetentionUntilFor(classification, retentionAnchor ?? uploadNow)
-      : retentionForTier(tier);
+      : retentionForTier(tier, uploadNow);
   const locked = tier !== 'NONE';
 
   return {

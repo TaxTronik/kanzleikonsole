@@ -65,6 +65,7 @@ export async function switchPortalProfileAction(formData: FormData): Promise<voi
     },
     {
       sessionIssuedAt: session.user.sessionIssuedAt,
+      sessionIssuedAtMs: session.user.sessionIssuedAtMs,
       sessionOriginContactId: session.user.sessionOriginContactId,
     },
   );

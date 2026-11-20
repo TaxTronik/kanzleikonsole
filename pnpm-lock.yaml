@@ -758,6 +758,9 @@ importers:
       '@prisma/client':
         specifier: ^7.9.1
         version: 7.9.1(prisma@7.9.1(@types/node@24.19.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@6.0.3))(typescript@6.0.3)
+      '@taxtronik/config':
+        specifier: workspace:*
+        version: link:../config
       '@taxtronik/db':
         specifier: workspace:*
         version: link:../db

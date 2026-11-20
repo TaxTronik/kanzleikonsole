@@ -499,7 +499,6 @@ describe('STAGE3 — Ablauf (RF-8: Statuswechsel + Audit in EINER Tx)', () => {
       expect.stringContaining('if current > incoming then'),
       1,
       'revoke:portal:contact-1',
-      String(FIXED_NOW.getTime()),
       30 * 24 * 60 * 60,
     );
     // B7: erst nach dem bestätigten Widerruf wird der Marker gelöscht, und
@@ -609,7 +608,6 @@ describe('B7: ausstehender Portal-Session-Widerruf (Marker, Nachholen zuerst)', 
       expect.stringContaining('if current > incoming then'),
       1,
       'revoke:portal:contact-1',
-      String(FIXED_NOW.getTime()),
       30 * 24 * 60 * 60,
     );
     // Zuerst: vor der ersten Tenant-Abfrage des Wiederholungslaufs.
@@ -667,8 +665,7 @@ describe('B7: ausstehender Portal-Session-Widerruf (Marker, Nachholen zuerst)', 
       expect.any(String),
       1,
       'revoke:portal:contact-1',
-      expect.any(String),
-      expect.any(Number),
+      30 * 24 * 60 * 60,
     );
     expect(h.withSystemContext).toHaveBeenCalledWith('tenant-2', expect.any(Function));
     expect(markers.size).toBe(0);
@@ -860,8 +857,8 @@ describe('GwG-Lösch-Queue (§ 8 Abs. 1 und 4): GWG_DELETION_DUE', () => {
     expect(h.tx.gwgCheck.count).toHaveBeenCalledWith({
       where: { tenantId: TENANT, ...dueGwgCheckDeletionsWhere(FIXED_NOW) },
     });
-    // Frist-Cutoff: Fristbeginn vor dem 1.1.(Jahr(now) − 5) — exakt, kein Grobfilter
-    const cutoff = new Date(Date.UTC(2021, 0, 1));
+    // GWG-RETENTION-DESTRUCTION-001: Für das Ankerjahr zählt der 1. Januar in Berlin.
+    const cutoff = new Date('2021-01-01T00:00:00+01:00');
     const documentQuery = h.prismaOwner.document.count.mock.calls[0]?.[0] as {
       where: { OR: Array<Record<string, unknown>> };
     };

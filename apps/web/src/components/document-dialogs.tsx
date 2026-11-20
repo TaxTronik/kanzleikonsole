@@ -75,10 +75,13 @@ export function MoveDialog({
   const [busy, start] = useTransition();
 
   return (
-    <Modal title="Dokument verschieben" onClose={onClose}>
+    <Modal title="Dokument verschieben" onClose={onClose} closeDisabled={busy}>
       <h2 className="text-base font-semibold text-primary mb-1">Verschieben</h2>
       <p className="text-xs text-muted mb-3 truncate">„{documentTitle}"</p>
-      <div className="border border-default rounded-md max-h-72 overflow-auto p-1">
+      <fieldset
+        disabled={busy}
+        className="border border-default rounded-md max-h-72 overflow-auto p-1"
+      >
         <FolderTreePicker
           folders={folders}
           value={target}
@@ -87,8 +90,12 @@ export function MoveDialog({
           showCheck
           emptyLabel="Noch keine Ordner in diesem Bereich."
         />
-      </div>
-      {err && <div className="rounded bg-red-50 p-2 text-xs text-red-700 mt-3">{err}</div>}
+      </fieldset>
+      {err && (
+        <div role="alert" className="rounded bg-red-50 p-2 text-xs text-red-700 mt-3">
+          {err}
+        </div>
+      )}
       <div className="flex gap-2 mt-4">
         <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
           Abbrechen
@@ -99,7 +106,12 @@ export function MoveDialog({
           onClick={() =>
             start(async () => {
               setErr(null);
-              const r = await setDocumentFolderAction({ documentId, folderId: target });
+              const r = await setDocumentFolderAction({ documentId, folderId: target }).catch(
+                () => ({
+                  ok: false,
+                  error: 'Verschieben konnte nicht bestätigt werden. Bitte die Liste prüfen.',
+                }),
+              );
               if (r.ok) onDone();
               else setErr(r.error ?? 'Fehler.');
             })
@@ -133,6 +145,52 @@ const tierShort = (type: RetagType) =>
     ? 'kein Lock'
     : `${type.tier === 'GOBD' ? 'GoBD' : 'GwG'} ${type.retentionYears ?? '?'} J.`;
 
+function useRetagTypes() {
+  const [types, setTypes] = useState<RetagType[]>([]);
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  useEffect(() => {
+    if (status !== 'loading') return;
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const res = await fetch('/api/staff/document-types', { signal: controller.signal });
+        if (!res.ok) throw new Error();
+        const data = (await res.json()) as { types: RetagType[] };
+        if (!Array.isArray(data.types)) throw new Error('Ungültige Typauswahl');
+        if (!controller.signal.aborted) {
+          setTypes(data.types);
+          setStatus('ready');
+        }
+      } catch {
+        if (!controller.signal.aborted) setStatus('error');
+      }
+    }
+    void load();
+    return () => controller.abort();
+  }, [status]);
+  return { types, status, retry: () => setStatus('loading') };
+}
+
+function RetagTypesFeedback({
+  status,
+  retry,
+}: Pick<ReturnType<typeof useRetagTypes>, 'status' | 'retry'>) {
+  if (status === 'error')
+    return (
+      <div role="alert" className="px-2 py-2 text-xs">
+        Datei-Typen konnten nicht geladen werden.{' '}
+        <button type="button" className="underline" onClick={retry}>
+          Erneut laden
+        </button>
+      </div>
+    );
+  return (
+    <p role="status" className="px-2 py-2 text-xs text-muted">
+      {status === 'loading' ? 'Lädt Typen…' : 'Keine Datei-Typen verfügbar.'}
+    </p>
+  );
+}
+
 export function RetagDialog({
   documentIds,
   documentTitle,
@@ -150,27 +208,10 @@ export function RetagDialog({
   onDone: () => void;
 }) {
   const multi = documentIds.length > 1 || currentTier === undefined;
-  const [types, setTypes] = useState<RetagType[]>([]);
+  const { types, status, retry } = useRetagTypes();
   const [sel, setSel] = useState<string>(currentTypeId ?? '');
   const [err, setErr] = useState<string | null>(null);
   const [busy, start] = useTransition();
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/staff/document-types');
-        if (!res.ok) return;
-        const data = (await res.json()) as { types: RetagType[] };
-        if (!cancelled) setTypes(data.types);
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const curRank = currentTier ? tierRank(currentTier) : 0;
   const selType = types.find((t) => t.id === sel);
@@ -179,7 +220,7 @@ export function RetagDialog({
   const isRestore = !multi && selRank > curRank;
 
   return (
-    <Modal title="Datei-Typ ändern" onClose={onClose}>
+    <Modal title="Datei-Typ ändern" onClose={onClose} closeDisabled={busy}>
       <h2 className="text-base font-semibold text-primary mb-1">
         Typ ändern{multi ? ` — ${documentIds.length} Dokument(e)` : ''}
       </h2>
@@ -189,7 +230,7 @@ export function RetagDialog({
           : `„${documentTitle}"`}
       </p>
       <div className="space-y-1 mb-3 max-h-64 overflow-auto">
-        {types.length === 0 && <p className="px-2 py-2 text-xs text-disabled">Lädt Typen…</p>}
+        {types.length === 0 && <RetagTypesFeedback status={status} retry={retry} />}
         {types.map((t) => {
           const down = !multi && tierRank(t.tier) < curRank;
           return (
@@ -204,7 +245,7 @@ export function RetagDialog({
                 name="retag"
                 value={t.id}
                 checked={sel === t.id}
-                disabled={down}
+                disabled={down || busy}
                 onChange={() => setSel(t.id)}
               />
               <span className="flex-1">{t.name}</span>
@@ -232,6 +273,7 @@ export function RetagDialog({
       )}
       {err && (
         <div
+          role="alert"
           className={`rounded p-2 text-xs mb-3 whitespace-pre-line ${
             multi ? 'bg-amber-50 text-amber-800' : 'bg-red-50 text-red-700'
           }`}
@@ -245,11 +287,15 @@ export function RetagDialog({
         </button>
         <button
           type="button"
-          disabled={busy || !sel || (!multi && (sel === currentTypeId || isDowngrade))}
+          disabled={busy || !selType || (!multi && (sel === currentTypeId || isDowngrade))}
           onClick={() =>
             start(async () => {
               setErr(null);
-              const result = await retagDocuments(documentIds, sel);
+              const result = await retagDocuments(documentIds, sel).catch(() => ({
+                done: 0,
+                rejected: [],
+                error: 'Die Typänderung konnte nicht bestätigt werden. Bitte die Liste prüfen.',
+              }));
               const message = bulkResultMessage(result, documentIds.length, 'geändert');
               if (message) setErr(message);
               else onDone();
@@ -274,24 +320,25 @@ export function MoveTargetDialog({
   movingFolderIds,
   onClose,
   onPick,
+  busy,
 }: {
   folders: FolderNode[];
   movingFolderIds: string[];
   onClose: () => void;
   onPick: (target: string | null) => void;
+  busy: boolean;
 }) {
   const [target, setTarget] = useState<string | null>(null);
   // Ziele, die im Teilbaum eines zu verschiebenden Ordners liegen, sperren.
-  const blocked = useMemo(() => {
-    const b = new Set<string>();
-    for (const id of movingFolderIds) for (const d of descendants(folders, id)) b.add(d);
-    return b;
-  }, [folders, movingFolderIds]);
+  const blocked = useMemo(() => descendants(folders, movingFolderIds), [folders, movingFolderIds]);
 
   return (
-    <Modal title="Verschieben nach…" onClose={onClose}>
+    <Modal title="Verschieben nach…" onClose={onClose} closeDisabled={busy}>
       <h2 className="text-base font-semibold text-primary mb-3">Verschieben nach…</h2>
-      <div className="border border-default rounded-md max-h-72 overflow-auto p-1">
+      <fieldset
+        disabled={busy}
+        className="border border-default rounded-md max-h-72 overflow-auto p-1"
+      >
         <FolderTreePicker
           folders={folders}
           value={target}
@@ -300,13 +347,18 @@ export function MoveTargetDialog({
           disabledIds={blocked}
           showCheck
         />
-      </div>
+      </fieldset>
       <div className="flex gap-2 mt-4">
-        <button type="button" onClick={onClose} className="btn-secondary flex-1">
+        <button type="button" onClick={onClose} disabled={busy} className="btn-secondary flex-1">
           Abbrechen
         </button>
-        <button type="button" onClick={() => onPick(target)} className="btn-primary flex-1">
-          Hierher verschieben
+        <button
+          type="button"
+          onClick={() => onPick(target)}
+          disabled={busy || (target !== null && blocked.has(target))}
+          className="btn-primary flex-1"
+        >
+          {busy ? 'Verschiebt…' : 'Hierher verschieben'}
         </button>
       </div>
     </Modal>

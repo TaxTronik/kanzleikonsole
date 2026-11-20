@@ -10,6 +10,7 @@ import { createPostgresAdapter, optionalDatabaseUrl } from '@taxtronik/db/prisma
 import type { Prisma } from '@prisma/client';
 import type { StaffSession } from '@/server/auth/staff';
 import { createVerifiedLegalEntityGwgFixture } from '../../../../../../packages/db/src/__tests__/gwg-test-fixture';
+import { anwendungAbgewiesen } from '@taxtronik/db/testing/db-fehler';
 
 const fixture = vi.hoisted(() => ({
   session: {} as StaffSession,
@@ -22,7 +23,10 @@ vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => fixture.session }
 vi.mock('@/server/logger', () => ({ log: { error: vi.fn(), warn: vi.fn() } }));
 vi.mock('@/server/rate-limit', () => ({
   checkStaffClientPickerLimit: async () => ({ ok: true, remaining: 1, retryAfter: 0 }),
+  checkStaffExportLimit: async () => ({ ok: true }),
+  getClientIp: () => null,
 }));
+vi.mock('@/server/container', () => ({ evidenceService: { record: vi.fn() } }));
 vi.mock('@/server/settings/modules', () => ({
   readModules: async () => ({ invoiceMode: fixture.mode }),
 }));
@@ -39,7 +43,14 @@ vi.mock('@/app/staff/(protected)/invoices/new/external-form', () => ({
 }));
 import NewInvoicePage from '@/app/staff/(protected)/invoices/new/page';
 import { GET as searchClients } from '@/app/api/staff/clients/search/route';
-import { accessibleClientsWhereFor } from '@/server/auth/rbac';
+import {
+  accessibleClientsWhereFor,
+  assertClientAccessTx,
+  canAccessClientTx,
+  canWriteClientTx,
+} from '@/server/auth/rbac';
+import { GET as exportRequests } from '@/app/api/staff/requests/export/route';
+import { GET as exportClients } from '@/app/api/staff/clients/export/route';
 import { suggestInboundClientsTx } from '@/server/mailbox/suggestions';
 
 // Quality has URL placeholders but no database service. The required db-job
@@ -84,7 +95,11 @@ async function searchNames(params: Record<string, string>): Promise<string[]> {
     const app = new PrismaClient({
       adapter: createPostgresAdapter(optionalDatabaseUrl(process.env.DATABASE_APP_URL)),
     });
-    let tenantId: string, foreignTenantId: string, staffId: string, confidentialId: string;
+    let tenantId: string,
+      foreignTenantId: string,
+      staffId: string,
+      confidentialId: string,
+      foreignClientId: string;
 
     beforeAll(async () => {
       const suffix = randomUUID();
@@ -136,9 +151,10 @@ async function searchNames(params: Record<string, string>): Promise<string[]> {
       }
       // Nicht freigegeben (GwG offen) und ein gleichnamiger fremder Tenant.
       await owner.client.create({ data: { tenantId, kind: 'NATPERS', name: 'Pending fixture' } });
-      await owner.client.create({
+      const foreign = await owner.client.create({
         data: { tenantId: foreignTenantId, kind: 'NATPERS', name: 'Foreign fixture' },
       });
+      foreignClientId = foreign.id;
       fixture.run = async (_ctx, run) =>
         app.$transaction(async (tx) => {
           await tx.$queryRaw`SELECT set_config('app.current_tenant_id',${tenantId},true), set_config('app.current_actor_id',${staffId},true), set_config('app.current_actor_type','STAFF',true)`;
@@ -179,6 +195,96 @@ async function searchNames(params: Record<string, string>): Promise<string[]> {
         data: { value: { clientAccessMode: 'OPEN' } },
       });
     }
+
+    it('ACCESS-CLIENT-MODE-001: Mandanten-CSV bindet aktive Listenfilter an den aktuellen Zugriff', async () => {
+      await openMode();
+      const csv = async (filters: Record<string, string>) => {
+        const searchParams = new URLSearchParams(filters);
+        const response = await exportClients({
+          nextUrl: { searchParams },
+          headers: new Headers(),
+        } as never);
+        expect(response.status).toBe(200);
+        return response.text();
+      };
+      expect(
+        await csv({ q: 'fixture', kind: 'NATPERS', status: 'pending', onboarding: 'open' }),
+      ).toContain('Pending fixture');
+      expect(await csv({ q: 'fixture', status: 'active', onboarding: 'open' })).not.toContain(
+        'fixture',
+      );
+      const visible = await csv({ q: 'fixture', status: 'active', kind: 'JURPERS' });
+      expect(visible).toContain('Public fixture');
+      expect(visible).not.toContain('Confidential fixture');
+      expect(visible).not.toContain('Pending fixture');
+      expect(visible).not.toContain('Foreign fixture');
+      fixture.session.user.roles = ['ADMIN'];
+      expect(await csv({ q: 'Confidential' })).toContain('Confidential fixture');
+      expect(await csv({ q: 'fixture', mine: '1' })).not.toContain('fixture');
+    });
+
+    it.each(['ADMIN', 'PARTNER'])(
+      'ACCESS-CLIENT-MODE-001: %s braucht ein vorhandenes Ziel im Sitzungstenant',
+      async (role) => {
+        fixture.session.user.roles = [role];
+        await fixture.run({}, async (tx) => {
+          await expect(canAccessClientTx(tx, fixture.session, confidentialId)).resolves.toBe(true);
+          await expect(canWriteClientTx(tx, fixture.session, confidentialId)).resolves.toBe(true);
+          for (const id of [foreignClientId, randomUUID()]) {
+            await expect(canAccessClientTx(tx, fixture.session, id)).resolves.toBe(false);
+            await expect(canWriteClientTx(tx, fixture.session, id)).resolves.toBe(false);
+            await anwendungAbgewiesen(
+              assertClientAccessTx(tx, fixture.session, id),
+              'Kein Zugriff',
+            );
+          }
+        });
+      },
+    );
+
+    it('ACCESS-CLIENT-MODE-001: der CSV-Download behält Suche, Zuordnung, Status und Listenreihenfolge bei', async () => {
+      const publicClient = await owner.client.findFirstOrThrow({
+        where: { tenantId, name: 'Public fixture' },
+      });
+      await openMode();
+      await owner.clientResponsibility.create({
+        data: { tenantId, staffId, clientId: publicClient.id, role: 'HAUPTBEARBEITER' },
+      });
+      await owner.request.createMany({
+        data: [
+          { title: 'Auswahl A', clientId: publicClient.id, dueAt: new Date('2026-01-02') },
+          { title: 'Auswahl B', clientId: publicClient.id, dueAt: new Date('2026-01-01') },
+          { title: 'Anderer Betreff', clientId: publicClient.id },
+          { title: 'Auswahl geschlossen', clientId: publicClient.id, status: 'CLOSED' as const },
+          { title: 'Auswahl vertraulich', clientId: confidentialId },
+        ].map((data) => ({ ...data, tenantId, createdByStaff: staffId, description: 'fixture' })),
+      });
+      const csv = async (mine: boolean) => {
+        const searchParams = new URLSearchParams({
+          q: 'Auswahl',
+          status: 'OPEN',
+          sort: 'due',
+          dir: 'asc',
+        });
+        if (mine) searchParams.set('mine', '1');
+        const response = await exportRequests({
+          headers: new Headers(),
+          nextUrl: { searchParams },
+        } as never);
+        expect(response.status).toBe(200);
+        return response.text();
+      };
+      const employee = await csv(false);
+      expect(employee).toContain('Auswahl A');
+      expect(employee).toContain('Auswahl B');
+      expect(employee.indexOf('Auswahl B')).toBeLessThan(employee.indexOf('Auswahl A'));
+      expect(employee).not.toContain('Anderer Betreff');
+      expect(employee).not.toContain('geschlossen');
+      expect(employee).not.toContain('vertraulich');
+      fixture.session.user.roles = ['ADMIN'];
+      expect(await csv(false)).toContain('Auswahl vertraulich');
+      expect(await csv(true)).not.toContain('Auswahl vertraulich');
+    });
 
     it.each(['IN_APP', 'EXTERNAL'])(
       'reveals neither unassigned client in %s mode',

@@ -21,7 +21,8 @@
 ARG NODE_BASE_IMAGE=node:24-alpine3.23@sha256:3946fb783fdce8a2812136ea694bc95c698c4f4096f3fd18568dc27a8ac389dc
 
 FROM ${NODE_BASE_IMAGE} AS builder
-RUN apk add --no-cache libc6-compat openssl
+# Alpine 3.23 secfix for CVE-2026-4738 is newer than zlib in the pinned base.
+RUN apk add --no-cache libc6-compat openssl 'zlib>=1.4-r0'
 WORKDIR /repo
 # pnpm-Version ausschliesslich aus packageManager in package.json (Corepack);
 # --version laedt bereits hier die pnpm-Binary in diesen Layer.
@@ -116,7 +117,7 @@ LABEL org.opencontainers.image.title="taxtronik-web" \
 # mit; ~270 KB Overhead sind gegenüber dem Operability-Gewinn vernachlässigbar.
 # tzdata: ohne zoneinfo kann musl libc TZ=Europe/Berlin nicht auflösen, Date-
 # Lokalzeit bliebe UTC (Intl funktioniert dank Node-ICU unabhängig davon).
-RUN apk add --no-cache openssl wget postgresql18-client tzdata && \
+RUN apk add --no-cache openssl wget postgresql18-client tzdata 'zlib>=1.4-r0' && \
     rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /opt/yarn-* && \
     rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
       /usr/local/bin/yarn /usr/local/bin/yarnpkg

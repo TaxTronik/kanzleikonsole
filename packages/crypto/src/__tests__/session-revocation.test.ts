@@ -10,6 +10,7 @@ import {
   advanceSessionRevocation,
   isIssuedBeforeRevocation,
   readSessionRevocationTimestamp,
+  readSessionRevocationState,
   SESSION_REVOCATION_TTL_SEC,
   SessionRevocationUnavailableError,
   sessionRevocationKey,
@@ -24,23 +25,22 @@ describe('advanceSessionRevocation', () => {
   it('schreibt den Cutoff atomar per Lua-Skript mit 30 Tagen TTL', async () => {
     const client = redis();
 
-    await advanceSessionRevocation(client, 'portal', 'contact-1', 1_780_000_000_123);
+    await advanceSessionRevocation(client, 'portal', 'contact-1');
 
     expect(SESSION_REVOCATION_TTL_SEC).toBe(30 * 24 * 60 * 60);
     expect(client.eval).toHaveBeenCalledWith(
       expect.any(String),
       1,
       'revoke:portal:contact-1',
-      '1780000000123',
       SESSION_REVOCATION_TTL_SEC,
     );
     const script = vi.mocked(client.eval).mock.calls[0]![0];
     // Monoton: ein jüngerer gespeicherter Cutoff wird nur verlängert, nie überschrieben.
     expect(script).toContain('if current > incoming then');
-    expect(script).toContain("redis.call('EXPIRE', KEYS[1], ARGV[2])");
-    // Fail-closed: unlesbare gespeicherte oder eingehende Werte sind ein Fehler.
+    expect(script).toContain("redis.call('EXPIRE', KEYS[1], ARGV[1])");
+    // Eingehende Uhrzeit aus Redis, gespeicherte Werte werden validiert.
     expect(script).toContain('invalid existing revocation timestamp');
-    expect(script).toContain('invalid incoming revocation timestamp');
+    expect(script).toContain("redis.call('TIME')");
   });
 
   it('bestätigt ohne Redis-Client keinen Widerruf', async () => {
@@ -105,14 +105,53 @@ describe('isIssuedBeforeRevocation', () => {
     expect(isIssuedBeforeRevocation(0, undefined)).toBe(false);
   });
 
-  it('widerruft die gesamte Cutoff-Sekunde und alles davor', () => {
+  it('widerruft bei Bestands-Tokens die gesamte Cutoff-Sekunde und alles davor', () => {
     expect(isIssuedBeforeRevocation(cutoffMs, 1_779_999_999)).toBe(true);
     expect(isIssuedBeforeRevocation(cutoffMs, 1_780_000_000)).toBe(true);
     expect(isIssuedBeforeRevocation(cutoffMs, 1_780_000_001)).toBe(false);
   });
 
+  it('unterscheidet Neuanmeldungen nach dem Widerruf in derselben Sekunde (ACCESS-TENANT-RLS-001)', () => {
+    const sec = Math.floor(cutoffMs / 1000);
+    expect(isIssuedBeforeRevocation(cutoffMs, sec, cutoffMs - 1)).toBe(true);
+    expect(isIssuedBeforeRevocation(cutoffMs, sec, cutoffMs)).toBe(true);
+    expect(isIssuedBeforeRevocation(cutoffMs, sec, cutoffMs + 1)).toBe(false);
+    expect(isIssuedBeforeRevocation(cutoffMs, sec, cutoffMs + 1000)).toBe(true);
+    expect(isIssuedBeforeRevocation(cutoffMs, sec, Number.NaN)).toBe(true);
+    expect(isIssuedBeforeRevocation(0, sec, cutoffMs + 1000)).toBe(true);
+    expect(isIssuedBeforeRevocation(0, sec, Number.NaN)).toBe(true);
+  });
+
   it('lässt ein Token ohne belastbares iat einen Cutoff nicht umgehen', () => {
     expect(isIssuedBeforeRevocation(cutoffMs, undefined)).toBe(true);
     expect(isIssuedBeforeRevocation(cutoffMs, Number.NaN)).toBe(true);
+  });
+});
+
+describe('readSessionRevocationState', () => {
+  it('liest Zeit und optionalen Cutoff atomar', async () => {
+    const now = 1_780_000_000_700;
+    for (const cutoffMs of [0, now - 100]) {
+      const client = redis({ eval: vi.fn(async () => [cutoffMs ? String(cutoffMs) : null, now]) });
+      await expect(readSessionRevocationState(client, 'portal', 'c')).resolves.toEqual({
+        cutoffMs,
+        nowMs: now,
+      });
+      expect(client.eval).toHaveBeenCalledWith(
+        expect.stringContaining("redis.call('TIME')"),
+        1,
+        'revoke:portal:c',
+      );
+    }
+  });
+
+  it.each(
+    [[], [null], ['bad', 1000], [null, 0], [null, '1000'], [null, 123.5]].map((reply) => ({
+      reply,
+    })),
+  )('verwirft eine unlesbare Antwort ($reply)', async ({ reply }) => {
+    await expect(
+      readSessionRevocationState(redis({ eval: vi.fn(async () => reply) }), 'staff', 's'),
+    ).rejects.toBeInstanceOf(SessionRevocationUnavailableError);
   });
 });

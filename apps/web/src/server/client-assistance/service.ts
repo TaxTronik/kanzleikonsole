@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { withTenantContext, type TxClient, type TenantContext } from '@taxtronik/db';
 import { staffActionGuard } from '@/server/actions/staff-action';
@@ -358,6 +359,15 @@ export async function reviewAssistance(raw: unknown) {
   });
 }
 
+// Exakter Stringvergleich wie zuvor, aber in konstanter Zeit, damit
+// Hashvergleiche einheitlich über timingSafeEqual laufen.
+function sameStoredHash(candidate: string, stored: string | null): boolean {
+  if (stored === null) return false;
+  const a = Buffer.from(candidate, 'utf8');
+  const b = Buffer.from(stored, 'utf8');
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
 export async function reimportAssistance(surface: Surface, raw: unknown) {
   const input = z
     .object({
@@ -398,7 +408,7 @@ export async function reimportAssistance(surface: Surface, raw: unknown) {
         'Eine geprüfte Word-Datei desselben Mandanten aus der Dokumentablage auswählen.',
       );
     const hash = Buffer.from(version.sha256).toString('hex');
-    if (hash === item.externalDocumentHash)
+    if (sameStoredHash(hash, item.externalDocumentHash))
       throw new ActionError('Diese unveränderten Word-Inhalte sind bereits die aktuelle Fassung.');
     const changed = await tx.clientAssistanceCase.updateMany({
       where: { id: item.id, revision: input.expectedRevision },

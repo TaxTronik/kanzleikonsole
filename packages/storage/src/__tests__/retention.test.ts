@@ -1,6 +1,7 @@
 // =============================================================================
 // Unit-Tests: § 147 AO / § 8 Abs. 4 GwG Aufbewahrungsfristen & Object-Lock-Modus.
 // Fachkatalog: DOC-RETENTION-CLASS-001
+// Fachkatalog: DOC-OBJECT-LOCK-001
 //
 // Getestet werden ausschließlich REINE Funktionen aus service.ts, die ohne
 // S3/ClamAV/Netzwerk laufen:
@@ -63,6 +64,7 @@ describe('gobdRetentionUntilFor — BEG IV, belegart-abhängig (8 J. Rechnungen)
   it('ohne/unbekannte Klassifikation → 10 Jahre (konservativer Default)', () => {
     expect(gobdRetentionYears()).toBe(10);
     expect(gobdRetentionYears('SONSTIGE')).toBe(10);
+    expect(gobdRetentionYears('constructor')).toBe(10);
     expect(gobdRetentionUntilFor(undefined, new Date(Date.UTC(2026, 2, 15))).getTime()).toBe(
       gobdRetentionUntil(new Date(Date.UTC(2026, 2, 15))).getTime(),
     );
@@ -95,7 +97,7 @@ describe('gobdRetentionUntil — § 147 AO, 10 Jahre ab Jahresende', () => {
     // Egal ob Beleg am 1.1. oder 31.12. des Jahres — die Frist hängt am
     // KALENDERJAHR, nicht am Tag. Beide müssen dasselbe Datum liefern.
     const early = gobdRetentionUntil(new Date(Date.UTC(2026, 0, 1)));
-    const late = gobdRetentionUntil(new Date(Date.UTC(2026, 11, 31, 23, 59, 59, 999)));
+    const late = gobdRetentionUntil(new Date(Date.UTC(2026, 11, 31, 22, 59, 59, 999)));
     expect(early.toISOString()).toBe('2037-01-01T00:00:00.000Z');
     expect(late.toISOString()).toBe('2037-01-01T00:00:00.000Z');
     expect(early.getTime()).toBe(late.getTime());
@@ -154,9 +156,25 @@ describe('gwgRetentionUntil — § 8 Abs. 4 GwG, 5 Jahre', () => {
 
   it('am Jahresanfang und Jahresende identisch (Kalenderjahr-Anker)', () => {
     const early = gwgRetentionUntil(new Date(Date.UTC(2027, 0, 1)));
-    const late = gwgRetentionUntil(new Date(Date.UTC(2027, 11, 31, 23, 59, 59, 999)));
+    const late = gwgRetentionUntil(new Date(Date.UTC(2027, 11, 31, 22, 59, 59, 999)));
     expect(early.getTime()).toBe(late.getTime());
     expect(early.toISOString()).toBe('2033-01-01T00:00:00.000Z');
+  });
+});
+
+describe('Schutz ab dem Berliner Kalenderjahr des tatsächlichen Ankers', () => {
+  it.each([
+    ['2026-12-31T22:59:59.999Z', 2026],
+    ['2026-12-31T23:00:00.000Z', 2027],
+    ['2027-01-01T00:00:00.000Z', 2027],
+  ])('%s wird dem deutschen Jahr %i zugeordnet', (instant, year) => {
+    const anchor = new Date(instant);
+    expect(gobdRetentionUntilFor('GOBD_INVOICE', anchor)).toEqual(
+      new Date(Date.UTC(year + 9, 0, 1)),
+    );
+    expect(retentionUntilForYears(6, anchor)).toEqual(new Date(Date.UTC(year + 7, 0, 1)));
+    expect(gobdRetentionUntil(anchor)).toEqual(new Date(Date.UTC(year + 11, 0, 1)));
+    expect(gwgRetentionUntil(anchor)).toEqual(new Date(Date.UTC(year + 6, 0, 1)));
   });
 });
 

@@ -304,6 +304,13 @@ describe('Steuertermine — Monatsansicht (P-20)', () => {
 });
 
 describe('Kalender-Ansichtsschalter', () => {
+  it('behält Suche und Bereich beim Wechsel auf den aktuellen Berliner Monat', async () => {
+    const html = await render({ month: '2026-03', scope: 'mine', q: 'ABC' });
+    expect(html).toMatch(
+      /href="\/staff\/tax-deadlines\?view=month&amp;scope=mine&amp;q=ABC"[^>]*>Heute</,
+    );
+  });
+
   it('steht am selben Bedienort wie im Kanzleikalender, mit dem angezeigten Monat', async () => {
     const html = await render({ month: '2026-04' });
     expect(html).toContain('role="group" aria-label="Kalenderansicht"');

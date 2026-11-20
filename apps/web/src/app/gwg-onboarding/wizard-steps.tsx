@@ -35,8 +35,6 @@ export interface OnboardingIdentityFile {
   versionId?: string;
   viewport?: IdentityViewport;
   localFile?: File;
-  /** Vorschaubild der frisch gewählten Datei (Objekt-URL), nur im Browser. */
-  previewUrl?: string;
 }
 
 export interface BeneficialOwner {

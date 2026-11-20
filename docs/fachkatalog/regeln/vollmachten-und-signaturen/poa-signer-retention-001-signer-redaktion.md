@@ -24,7 +24,7 @@ sources:
   - kind: official_law
     citation: § 66 StBerG, Handakten und Aufbewahrung
     url: https://www.gesetze-im-internet.de/stberg/__66.html
-    checked_at: '2026-08-24'
+    checked_at: '2026-11-20'
     primary: true
   - kind: official_law
     citation: Art. 5 Abs. 1 Buchst. e und Art. 17 DSGVO
@@ -42,6 +42,9 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - packages/config/src/retention-calendar.ts
+  - packages/db/prisma/migrations/20261120120100_berlin_mandate_redaction/migration.sql
+  - packages/db/prisma/sql/functions/app.poa_protect_integrity().sql
   - apps/web/src/server/dsgvo/client-retention.ts
   - apps/web/src/server/dsgvo/anonymize-client-data.ts
   - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts
@@ -137,6 +140,13 @@ bietet die Redigierung trotzdem an. Die Kanzlei muss die Aktion außerhalb des
 Systems sperren und die einschlägige Frist fachlich bestimmen.
 
 ## Umsetzung in TaxTronik
+
+Bei natürlichen Personen und Gesellschaften prüfen Queue, Redaktion und
+Datenbank das deutsche Kalenderjahr des gespeicherten Mandatsendes. Ein
+Ende am 31.12.2026 um 23:00 UTC fällt bereits ins Jahr 2027. Die technische
+Redaktionsgrenze ist damit der 01.01.2038 um 00:00 UTC. Die bisherige
+Berechnung konnte die Redaktion bereits 2037 anbieten. Der DB-Trigger
+prüft dieselbe Grenze auch bei Anlage oder Neuzuordnung.
 
 `client-retention.ts` berechnet den Stichtag als 1. Januar nach zehn vollen
 Kalenderjahren ab dem Jahr des Mandatsendes. Der NATPERS-Pfad anonymisiert den

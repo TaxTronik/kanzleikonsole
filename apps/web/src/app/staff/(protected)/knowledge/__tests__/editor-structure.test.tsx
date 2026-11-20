@@ -149,7 +149,10 @@ describe('Wissensdatenbank UI', () => {
         id: 'article-1',
         title: 'Reisekosten',
         slug: 'reisekosten',
-        snippet: '<mark>Pauschalen</mark>',
+        snippet: [
+          { text: '<img src=x onerror=alert(1)> ', mark: false },
+          { text: 'Pauschalen', mark: true },
+        ],
         rank: 1,
         categoryName: 'Lohn',
         authorName: 'Erika Muster',
@@ -161,6 +164,10 @@ describe('Wissensdatenbank UI', () => {
     const hit = screen.getByText('Reisekosten').closest('li')!;
     expect(within(hit).getByText('Erika Muster')).toBeTruthy();
     expect(within(hit).getByText(CREATED)).toBeTruthy();
+    // Snippet als Text: Treffer in <mark>, Artikel-HTML bleibt Klartext.
+    expect(within(hit).getByText('Pauschalen').tagName).toBe('MARK');
+    expect(hit.querySelector('img')).toBeNull();
+    expect(hit.textContent).toContain('<img src=x onerror=alert(1)>');
   });
 
   it('zeigt Verfasser und Erstellungsdatum in der Artikelansicht', async () => {

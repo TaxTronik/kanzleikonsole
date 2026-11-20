@@ -26,17 +26,23 @@ async function setStaffContext(tx: Prisma.TransactionClient): Promise<void> {
   await tx.$queryRawUnsafe("SELECT set_config('app.current_actor_id', $1, true)", staffId);
 }
 
-async function createNeverEstablishedCase(status: 'DRAFT' | 'IN_REVIEW') {
-  const client = await db.client.create({
+async function createNeverEstablishedCase(
+  tx: Prisma.TransactionClient,
+  status: 'DRAFT' | 'IN_REVIEW',
+  anchors: { mandateEndedAt?: Date; findingAt?: Date } = {},
+) {
+  await setStaffContext(tx);
+  const client = await tx.client.create({
     data: {
       tenantId,
       kind: 'JURPERS',
       name: `Nie etablierte ${status} GmbH`,
       allowActive: false,
+      mandateEndedAt: anchors.mandateEndedAt,
       createdAt: OLD,
     },
   });
-  const check = await db.gwgCheck.create({
+  const check = await tx.gwgCheck.create({
     data: {
       tenantId,
       clientId: client.id,
@@ -46,7 +52,7 @@ async function createNeverEstablishedCase(status: 'DRAFT' | 'IN_REVIEW') {
       updatedAt: OLD,
     },
   });
-  const invite = await db.gwgOnboardingInvite.create({
+  const invite = await tx.gwgOnboardingInvite.create({
     data: {
       tenantId,
       clientId: client.id,
@@ -62,46 +68,41 @@ async function createNeverEstablishedCase(status: 'DRAFT' | 'IN_REVIEW') {
     },
   });
 
-  const document = await db.$transaction(async (tx) => {
-    await setStaffContext(tx);
-    const created = await tx.document.create({
-      data: {
-        tenantId,
-        clientId: client.id,
-        gwgOnboardingInviteId: invite.id,
-        title: `${status} Altbeleg`,
-        classification: 'GWG_EVIDENCE',
-        mimeType: 'application/pdf',
-        retentionUntil: PAST_RETENTION,
-        createdAt: OLD,
-      },
-    });
-    await tx.documentVersion.create({
-      data: {
-        documentId: created.id,
-        versionNo: 1,
-        storageBucket: 'gwg-retention-test',
-        storageKey: `gwg-retention-test/${created.id}`,
-        storageVersionId: `version-${created.id}`,
-        sha256: Buffer.alloc(32, status === 'DRAFT' ? 0x41 : 0x42),
-        sizeBytes: 1n,
-        immutable: true,
-        scanStatus: 'CLEAN',
-        scanCompletedAt: OLD,
-        createdById: staffId,
-        createdAt: OLD,
-      },
-    });
-    await tx.document.update({
-      where: { id: created.id },
-      data: {
-        gwgDestructionRequestedAt: new Date(),
-        gwgDestructionRequestedBy: staffId,
-      },
-    });
-    return created;
+  const document = await tx.document.create({
+    data: {
+      tenantId,
+      clientId: client.id,
+      gwgOnboardingInviteId: invite.id,
+      title: `${status} Altbeleg`,
+      classification: 'GWG_EVIDENCE',
+      mimeType: 'application/pdf',
+      retentionUntil: PAST_RETENTION,
+      createdAt: anchors.findingAt ?? OLD,
+    },
   });
-
+  await tx.documentVersion.create({
+    data: {
+      documentId: document.id,
+      versionNo: 1,
+      storageBucket: 'gwg-retention-test',
+      storageKey: `gwg-retention-test/${document.id}`,
+      storageVersionId: `version-${document.id}`,
+      sha256: Buffer.alloc(32, status === 'DRAFT' ? 0x41 : 0x42),
+      sizeBytes: 1n,
+      immutable: true,
+      scanStatus: 'CLEAN',
+      scanCompletedAt: OLD,
+      createdById: staffId,
+      createdAt: OLD,
+    },
+  });
+  await tx.document.update({
+    where: { id: document.id },
+    data: {
+      gwgDestructionRequestedAt: new Date(),
+      gwgDestructionRequestedBy: staffId,
+    },
+  });
   return { client, check, invite, document };
 }
 
@@ -132,7 +133,7 @@ describeWithDatabase('GwG-Retention nie etablierter offener Erstprüfungen', () 
 
   for (const status of ['DRAFT', 'IN_REVIEW'] as const) {
     it(`vernichtet fälligen Beleg und danach die nie verifizierte ${status}-Erstprüfung`, async () => {
-      const fixture = await createNeverEstablishedCase(status);
+      const fixture = await db.$transaction((tx) => createNeverEstablishedCase(tx, status));
 
       const deletedVersions = await db.$transaction(async (tx) => {
         await setStaffContext(tx);
@@ -168,6 +169,55 @@ describeWithDatabase('GwG-Retention nie etablierter offener Erstprüfungen', () 
       ).toEqual({ destroyedAt: expect.any(Date), status });
     });
   }
+
+  it.each(['Mandatsende', 'Feststellung'])(
+    'GWG-RETENTION-DESTRUCTION-001: %s in der Berliner Neujahrsstunde sperrt Beleg und Check',
+    async (quelle) => {
+      const jahr = new Date().getUTCFullYear() - 6;
+      const anker = new Date(`${jahr}-12-31T23:30:00Z`);
+      const mandateEndedAt = quelle === 'Mandatsende' ? anker : undefined;
+      for (const zone of ['UTC', 'America/Los_Angeles', 'Asia/Tokyo']) {
+        const frist = { sqlState: '23514', meldung: /fünfjährige GwG-Aufbewahrungsfrist/ };
+        await dbAbgewiesen(
+          db.$transaction(async (tx) => {
+            const testfall = await createNeverEstablishedCase(tx, 'DRAFT', {
+              mandateEndedAt,
+              findingAt: anker,
+            });
+            await tx.$queryRaw`SELECT set_config('TimeZone', ${zone}, true)`;
+            return tx.$queryRaw`SELECT app.assert_gwg_document_destruction_due(${testfall.document.id}::uuid)::text`;
+          }),
+          frist,
+        );
+        await dbAbgewiesen(
+          db.$transaction(async (tx) => {
+            await setStaffContext(tx);
+            const client = await tx.client.create({
+              data: {
+                tenantId,
+                kind: 'JURPERS',
+                name: 'Stichtag',
+                allowActive: false,
+                mandateEndedAt,
+              },
+            });
+            const check = await tx.gwgCheck.create({
+              data: {
+                tenantId,
+                clientId: client.id,
+                status: 'REJECTED',
+                createdAt: OLD,
+                updatedAt: mandateEndedAt ? OLD : anker,
+              },
+            });
+            await tx.$queryRaw`SELECT set_config('TimeZone', ${zone}, true)`;
+            return tx.$queryRaw`SELECT app.destroy_gwg_check(${check.id}::uuid)`;
+          }),
+          frist,
+        );
+      }
+    },
+  );
 
   it('blockiert eine DRAFT-Prüfung einer bereits etablierten Beziehung ohne Mandatsende', async () => {
     const client = await db.client.create({

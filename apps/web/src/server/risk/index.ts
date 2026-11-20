@@ -110,7 +110,7 @@ export {
   receiveResearchResult,
   receiveTenantResearchResult,
   suggestMarkingsForResult,
-  assignResultToMarking,
+  assignResultToMarkingTx,
 } from './research';
 export type { ResearchInput, ResearchPreview, ResearchScope, InboundResult } from './research';
 
@@ -123,7 +123,7 @@ export type {
 export {
   deleteResearchResult,
   setResearchResultArchived,
-  setResearchResultVerworfen,
+  setResearchResultVerworfenTx,
 } from './research-lifecycle';
 
 export { scoreMarkingSuggestions, extractNormRefs } from './suggest';

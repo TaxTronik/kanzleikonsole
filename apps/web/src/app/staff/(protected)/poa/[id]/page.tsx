@@ -4,7 +4,7 @@ import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
-import { renderMarkdown } from '@/lib/markdown';
+import { MarkdownContent } from '@/components/markdown-content';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import { DocumentPreviewButton } from '@/components/document-preview';
 import { canAccessClientTx, isStaffAdmin } from '@/server/auth/rbac';
@@ -40,7 +40,6 @@ export default async function PoaDetailPage({ params }: { params: Promise<{ id: 
 
   if (!poa) notFound();
 
-  const html = renderMarkdown(poa.scope);
   const canManagePoa = isStaffAdmin(session);
   const expiredByDate = isPoaExpired(poa.validUntil);
 
@@ -148,9 +147,9 @@ export default async function PoaDetailPage({ params }: { params: Promise<{ id: 
             <span className="text-xs text-muted">Externe Vollmacht (PDF)</span>
           </div>
         ) : (
-          <div
+          <MarkdownContent
             className="prose prose-sm max-w-none [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_p]:my-3 [&_ul]:list-disc [&_ul]:ml-6"
-            dangerouslySetInnerHTML={{ __html: html }}
+            source={poa.scope}
           />
         )}
       </div>

@@ -288,9 +288,12 @@ nötig):
   /offline/age-identity.txt /offline/backup-manifest-public.pem
 ```
 
-`backup-decrypt` verweigert nicht-leere Ziele, prüft vorab Signatur und alle
-Hashes und testet anschließend die Pflicht-Volume-TARs sowie ein vorhandenes
-Traefik-ACME-TAR strukturell. Danach enthält
+`backup-decrypt` verlangt ein leeres Ziel und prüft vor dem Entschlüsseln die
+Signatur und alle Hashes. Danach prüft es die Dateinamen und die
+PostgreSQL-Custom-Formatkennung der Haupt- und n8n-Dumps sowie die
+Archivstruktur der Pflicht-Volume-TARs und eines vorhandenen Traefik-ACME-TARs.
+Ob die Datenbanken vollständig wiederherstellbar sind, zeigt der Restore-Drill.
+Nach erfolgreicher Strukturprüfung enthält
 `/restore/<id>` unter anderem:
 
 ```text
@@ -502,7 +505,7 @@ Code-Pfad — kein Parallel-Reimplementat:
    Produktiv-Backup) der migrierten + geseedeten Quell-DB als lokale Datei.
 2. `restore.ts --file` spielt diese Datei via `pg_restore` (identische Flags,
    `--single-transaction --exit-on-error`, Smoke-Test) in eine frische
-   Ziel-DB `taxtronik_restore` ein.
+   Ziel-DB `taxtronik_restore_<Zufallskennung>` ein.
 3. **Assertion A:** Zeilenzahl-Vergleich Quelle ↔ Ziel für die wichtigsten
    Tabellen (`tenant`, `audit_log`, `client`, `document`, `invoice`).
 4. **Assertion B:** Verbindung als `taxtronik_app`, RLS sowie kritische
@@ -510,7 +513,9 @@ Code-Pfad — kein Parallel-Reimplementat:
    neue App-Verbindung muss die von `restore.ts` gesetzte Rolleneinstellung
    `lock_timeout = 5s` sehen (Welle 15).
 5. **Assertion C (compliance-kritisch):** `verify:chain` auf der
-   wiederhergestellten DB — die Audit-Hash-Chain MUSS intakt sein.
+   wiederhergestellten DB. Die CI ergänzt zwei verkettete Ereignisse auf
+   einer eigenen Quellkopie. Der richtige vorab festgehaltene Hash muss
+   nach dem Restore übereinstimmen, ein abweichender Kontrollwert scheitern.
 6. **Assertion D (S-01):** Worker-Backup und Restore-Drill ohne Superuser —
    `pg_dump` als `taxtronik_owner`, Wegwerf-DB und `pg_restore` als
    `taxtronik_drill` ohne die `DEFAULT ACL`-Einträge, Zeilenzahl-Vergleich für
@@ -520,8 +525,9 @@ Code-Pfad — kein Parallel-Reimplementat:
 > harmlose Notices (`DROP … IF EXISTS` auf noch nicht existente Objekte). Das
 > ist normal; nur echte Fehler brechen den Restore via `--exit-on-error`.
 
-**Lokal ausführen** (gegen eine Dev- oder Test-DB; legt `taxtronik_restore`
-temporär an und droppt sie wieder):
+**Lokal ausführen**. Der Test liest die angegebene Dev- oder Test-DB, erstellt
+ein zufällig benanntes Ziel und entfernt es nach seinem Lauf. Bei leerem
+Audit-Log weist der Bericht die fehlende Nachweismöglichkeit für die Kette aus.
 
 ```bash
 DATABASE_URL=postgresql://taxtronik:…@localhost:5432/taxtronik \

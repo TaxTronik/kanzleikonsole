@@ -96,6 +96,10 @@ export async function runScheduledBackup(
 
 export const backupRunWorker = createWorker<ChecksJob>(
   JOB_QUEUES.backupRun.name,
-  async () => runScheduledBackup(),
+  async () => {
+    const result = await runScheduledBackup();
+    if (!result.ok) throw new Error(result.error ?? 'Backup fehlgeschlagen');
+    return result;
+  },
   { connection, concurrency: 1 },
 );

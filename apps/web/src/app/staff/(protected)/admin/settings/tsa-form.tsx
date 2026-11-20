@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState, useState, useTransition } from 'react';
 import { CheckCircle2, AlertCircle, ShieldCheck, ExternalLink, Send } from 'lucide-react';
 import { saveTsaAction, testTsaAction, type ActionResult } from './actions';
@@ -67,7 +69,7 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
         </div>
       )}
 
-      <form action={saveAction} className="space-y-4">
+      <SettingsForm result={saveState} pending={isSaving} action={saveAction} className="space-y-4">
         {/* Provider-Liste als Cards */}
         <fieldset className="space-y-2">
           <legend className="label mb-2">Anbieter</legend>
@@ -203,7 +205,7 @@ export function TsaForm({ initial, providers, envFallback, production }: Props) 
             </span>
           )}
         </div>
-      </form>
+      </SettingsForm>
 
       {/* Test-Roundtrip */}
       <div className="rounded-md border border-default bg-surface-raised p-4 space-y-2">

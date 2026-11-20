@@ -101,10 +101,11 @@ export default async function KnowledgePage({
                         Erstellt am {fmtDateShort(h.createdAt)}
                       </span>
                     </div>
-                    <p
-                      className="text-sm text-secondary [&_mark]:bg-yellow-200 [&_mark]:px-0.5"
-                      dangerouslySetInnerHTML={{ __html: h.snippet }}
-                    />
+                    <p className="text-sm text-secondary [&_mark]:bg-yellow-200 [&_mark]:px-0.5">
+                      {h.snippet.map((segment, index) =>
+                        segment.mark ? <mark key={index}>{segment.text}</mark> : segment.text,
+                      )}
+                    </p>
                   </Link>
                 </li>
               ))}

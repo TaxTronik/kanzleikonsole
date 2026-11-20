@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState, useState, useTransition, type SubmitEvent } from 'react';
 import { Send, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { saveSmtpAction, sendTestMailAction, resetSmtpAction, type ActionResult } from './actions';
@@ -96,7 +98,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
         </div>
       )}
 
-      <form action={saveAction} className="space-y-4">
+      <SettingsForm result={saveState} pending={isSaving} action={saveAction} className="space-y-4">
         {/* Anbieter-Presets */}
         <div>
           <div className="text-xs text-muted mb-1.5">Anbieter-Schnellwahl</div>
@@ -259,7 +261,7 @@ export function SmtpForm({ initial, envFallback, defaultTestTo }: Props) {
             </span>
           )}
         </div>
-      </form>
+      </SettingsForm>
 
       {/* Test-Versand */}
       <form

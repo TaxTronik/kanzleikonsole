@@ -7,15 +7,10 @@
 // =============================================================================
 import { expect, test } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { execSync } from 'node:child_process';
+import { psql } from './helpers/postgres';
 import { loginAsAdmin } from './helpers/auth';
 
 const BASE_ORIGIN = process.env['E2E_BASE_URL'] ?? 'http://localhost:3000';
-const PG_CONTAINER = process.env['E2E_POSTGRES_CONTAINER'] ?? 'taxtronik-postgres';
-const PG_USER = process.env['E2E_POSTGRES_USER'] ?? 'taxtronik';
-const PG_DB = process.env['E2E_POSTGRES_DB'] ?? 'taxtronik';
-const PG_HOST = process.env['E2E_POSTGRES_HOST'] ?? 'localhost';
-const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
 
 const CASES = [
   {
@@ -71,25 +66,6 @@ function createPdf(marker: string): Buffer {
 
 function sha256Hex(buf: Buffer): string {
   return createHash('sha256').update(buf).digest('hex');
-}
-
-function psql(query: string): string {
-  const oneLine = query.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
-  try {
-    return execSync(
-      `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`,
-      {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      },
-    ).trim();
-  } catch {
-    return execSync(`psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
-      encoding: 'utf-8',
-      env: { ...process.env, PGPASSWORD: PG_PASSWORD },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-  }
 }
 
 test.describe.serial('Differential invariants', () => {

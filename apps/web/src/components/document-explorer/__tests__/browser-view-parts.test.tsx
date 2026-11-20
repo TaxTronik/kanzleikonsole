@@ -235,6 +235,24 @@ describe('Verschieben: Teilbaum-Sperre', () => {
     expect(splitMoveItems(items, null, FOLDERS).blocked).toEqual([]);
     expect(splitMoveItems([{ kind: 'folder', id: 'b' }], 'b', FOLDERS).movable).toEqual([]);
   });
+
+  it('erhält Reihenfolge und Teilbaum-Sperre bei Zyklen und fehlenden Eltern', () => {
+    const folders = [
+      { id: 'x', name: 'X', parentId: 'y' },
+      { id: 'y', name: 'Y', parentId: 'x' },
+      { id: 'z', name: 'Z', parentId: 'missing' },
+    ];
+    const items: SelectionItem[] = [
+      { kind: 'folder', id: 'y' },
+      { kind: 'file', id: 'doc' },
+      { kind: 'folder', id: 'missing' },
+      { kind: 'folder', id: 'x' },
+    ];
+    const cycle = splitMoveItems(items, 'x', folders);
+    expect(cycle.blocked.map(({ id }) => id)).toEqual(['y', 'x']);
+    expect(cycle.movable).toEqual([items[1], items[2]]);
+    expect(splitMoveItems(items, 'z', folders).blocked.map(({ id }) => id)).toEqual(['missing']);
+  });
 });
 
 function bulkResult(overrides: Partial<DocumentBulkResult> = {}): DocumentBulkResult {
@@ -318,7 +336,7 @@ describe('Sammelaktionen (P-18)', () => {
   });
 
   it('meldet gesperrte und abgelehnte Einträge gesammelt', async () => {
-    const { operations, actions, ops, settle } = probeOperations({
+    const { operations, actions, ops, onMoved, settle } = probeOperations({
       actions: {
         moveItems: vi.fn(async () =>
           bulkResult({ ok: false, done: 1, rejected: [{ id: 'f2', error: 'Kein Zugriff.' }] }),
@@ -344,6 +362,17 @@ describe('Sammelaktionen (P-18)', () => {
     expect(ops.setOpError).toHaveBeenLastCalledWith(
       '1 verschoben, 2 abgelehnt:\nOrdner kann nicht in seinen eigenen Unterbaum.\nKein Zugriff.',
     );
+    expect(onMoved).toHaveBeenCalledWith([{ kind: 'file', id: 'f1' }]);
+  });
+
+  it('bewahrt bei einem abgebrochenen Verschiebeaufruf die Auswahl zur erneuten Bearbeitung', async () => {
+    const { operations, ops, onMoved, settle } = probeOperations({
+      actions: { moveItems: vi.fn().mockRejectedValue(new Error('Netzwerk getrennt')) },
+    });
+    operations.moveSet([{ kind: 'file', id: 'f1' }], 'b');
+    await settle();
+    expect(ops.setOpError).toHaveBeenLastCalledWith(expect.stringContaining('Verschieben'));
+    expect(onMoved).toHaveBeenCalledWith([]);
   });
 
   it('ruft keine Action, wenn nur gesperrte Ordner übrig bleiben', async () => {

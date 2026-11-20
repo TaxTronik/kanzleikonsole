@@ -260,6 +260,18 @@ describe('readXlsx', () => {
     expect(sheets[1]!.rows).toEqual([[2]]);
   });
 
+  it('BWA-IMPORT-MAPPING-001: teilt das Rasterbudget zwischen allen Blättern einschließlich leerer Rasterzellen auf', () => {
+    const data = buildXlsx({
+      sheets: [
+        sheetXml('<row r="2"><c r="B2"><v>5</v></c></row>'),
+        sheetXml(''),
+        sheetXml('<row><c r="A1"><v>2</v></c></row>'),
+      ],
+    });
+    expect(readXlsx(data, 5).map((sheet) => sheet.rows.length)).toEqual([2, 0, 1]);
+    expect(() => readXlsx(data, 4)).toThrow(/Zellbudget der Arbeitsmappe/);
+  });
+
   it('BWA-IMPORT-MAPPING-001: ordnet Blattnamen den Relationship-Zielen statt Dateinummern zu', () => {
     const data = zipSync({
       'xl/workbook.xml': strToU8(workbookXml('Umsatz', 'Vorjahr')),

@@ -161,8 +161,8 @@ d('RT3D: Aufbewahrung gebundener GwG-Belege', () => {
     }
   });
 
-  it('Steuerfrist ist jahresgenau (Anlagejahr + 11, 1. Januar) und zeitzonenunabhängig', async () => {
-    // timestamp without time zone → keine Umrechnung, egal welche Session-Zeitzone.
+  it('TCMS-NACHWEIS-001: Steuerfrist nutzt das Berliner Anlagejahr unabhängig von der Sitzung', async () => {
+    // Der UTC-kodierte Erstellzeitpunkt liegt in Berlin bereits am 1. Januar 2020.
     for (const tz of ['UTC', 'Pacific/Kiritimati', 'Etc/GMT+12']) {
       const a = await owner.$transaction(async (tx) => {
         await tx.$executeRawUnsafe(`SET LOCAL TimeZone = '${tz}'`);
@@ -171,7 +171,7 @@ d('RT3D: Aufbewahrung gebundener GwG-Belege', () => {
         );
         return r[0]!.bis.toISOString();
       });
-      expect(a, tz).toBe('2030-01-01T00:00:00.000Z');
+      expect(a, tz).toBe('2031-01-01T00:00:00.000Z');
     }
     // NULL-Eingang bleibt NULL (Altbestand ohne created_at wäre ungeschützt) …
     const nullBis = await owner.$queryRaw<Array<{ bis: Date | null }>>`

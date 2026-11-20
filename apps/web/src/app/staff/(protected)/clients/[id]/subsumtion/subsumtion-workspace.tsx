@@ -175,6 +175,8 @@ function SubsumtionReviewWorkspace({
   floatingToolbarDefault = false,
   initial,
 }: SubsumtionWorkspaceProps & { initial: AnalysisDTO }) {
+  const archived = Boolean(initial.archivedAt);
+  const canEdit = canWrite && !archived;
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -486,6 +488,7 @@ function SubsumtionReviewWorkspace({
         <ResearchView
           clientId={clientId}
           analysisId={initial.id}
+          readOnly={archived}
           requests={researchRequests}
           results={researchResults}
           archivedResults={archivedResearchResults}
@@ -521,7 +524,7 @@ function SubsumtionReviewWorkspace({
           markings={markings}
         />
 
-        {showCaseResearch && (
+        {showCaseResearch && canEdit && (
           <div>
             <ResearchComposer
               clientId={clientId}
@@ -549,7 +552,7 @@ function SubsumtionReviewWorkspace({
           requestLlm={requestLlm}
           pending={pending}
           engineConfigured={engineConfigured}
-          archived={!!initial.archivedAt}
+          archived={archived}
         />
 
         <div
@@ -565,7 +568,7 @@ function SubsumtionReviewWorkspace({
           <SubsumtionDocument
             ref={editorRef}
             analyzed
-            canEdit={!initial.archivedAt && canWrite}
+            canEdit={canEdit}
             initialDoc={initial.sourceDoc ?? null}
             initialText={initial.sourceText}
             sourceText={initial.sourceText}
@@ -597,9 +600,11 @@ function SubsumtionReviewWorkspace({
               onNext={() => stepMarking(1)}
             />
             <SubsumtionSelectionPanel
+              key={String(archived)}
               clientId={clientId}
               analysisId={initial.id}
               manualSel={manualSel}
+              archived={archived}
               canWrite={canWrite}
               currentStaffId={currentStaffId}
               selected={selected}

@@ -23,7 +23,7 @@
 // Anker, Backup-Status) ohne Mandantendaten: liest über den Owner-Client.
 // =============================================================================
 
-import { Socket } from 'node:net';
+import { pingClamAv } from '@taxtronik/storage/clamav-ping';
 import { ListBucketsCommand, S3Client } from '@aws-sdk/client-s3';
 import { createWorker } from '../worker-factory';
 import { env } from '../env';
@@ -215,28 +215,13 @@ async function checkAuditAnchor(): Promise<boolean> {
 }
 
 /** zPING → PONG auf dem clamd-Socket (wie der App-Healthcheck). */
-function checkClamAV(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const sock = new Socket();
-    let answered = false;
-    const done = (ok: boolean) => {
-      if (!answered) {
-        answered = true;
-        sock.destroy();
-        resolve(ok);
-      }
-    };
-    const fail = (err: unknown) => {
-      if (!answered) checkFailed('clamav', err);
-      done(false);
-    };
-    sock.setTimeout(CHECK_TIMEOUT_MS, () => fail(new Error(`Timeout nach ${CHECK_TIMEOUT_MS} ms`)));
-    sock.on('error', fail);
-    sock.connect(env.CLAMAV_PORT, env.CLAMAV_HOST, () => {
-      sock.write('zPING\0');
-    });
-    sock.on('data', (d) => done(d.toString('utf8').includes('PONG')));
-  });
+async function checkClamAV(): Promise<boolean> {
+  try {
+    await pingClamAv(env.CLAMAV_HOST, env.CLAMAV_PORT, CHECK_TIMEOUT_MS);
+    return true;
+  } catch (err) {
+    return checkFailed('clamav', err);
+  }
 }
 
 async function loadState(): Promise<HealthState> {

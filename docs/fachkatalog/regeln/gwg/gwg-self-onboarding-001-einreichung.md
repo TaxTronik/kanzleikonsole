@@ -244,6 +244,11 @@ werden nicht still ersetzt. Mit der Einreichung geht je Person mit, welche Felde
 aus der lokalen Ausweishilfe übernommen und nicht mehr geändert wurden
 (GWG-OCR-ASSIST-001); der Server nimmt nur bekannte Feldnamen an.
 
+Das Vorschaubild verwendet eine lokale Objekt-URL für die Dauer seiner
+Anzeige. Beim Verlassen der Personenansicht oder beim Entfernen des Fotos gibt
+der Browser die URL frei. Beim erneuten Öffnen derselben Person im laufenden
+Wizard erzeugt er die Vorschau aus der noch gewählten Datei ohne erneuten Upload.
+
 Zwischenstand und Gerätewechsel: Der Wizard speichert seinen Formularstand
 kurz nach jeder Änderung je Einladung (`gwg_onboarding_draft`) und stellt ihn
 beim Öffnen des Links wieder her – nach einem Neuladen oder auf einem anderen
@@ -338,6 +343,12 @@ Grenzen:
   eine Auskunft nach Art. 15 DSGVO?
 
 ## Technische Nachweise
+
+`wizard-flow.test.tsx` verfolgt unter React Strict Mode die Objekt-URLs eines
+hochgeladenen Ausweisfotos. Der Test prüft die Freigabe bei Rückkehr zur
+Übersicht, beim Entfernen und beim Verlassen des Wizards sowie das erneute
+Anzeigen ohne zweiten Upload. `draft-sync.test.tsx` prüft die gespeicherten
+Dateiverweise einschließlich des Ausschlusses von lokaler Datei und Objekt-URL.
 
 `page-render.test.tsx`: Der gerenderte Seitentest prüft die sichtbare jüngste Einladung und bestätigt, dass die nur noch für den Rollback gepflegte Upload-Liste der Einladung keinen weiteren Dokumentabruf auslöst.
 

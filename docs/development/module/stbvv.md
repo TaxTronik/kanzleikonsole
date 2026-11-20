@@ -104,7 +104,9 @@ und automatisch rechtssichere Honorarvereinbarungen sind nicht enthalten.
 Dokumentenpauschalen nach [VV 7000 RVG](https://www.gesetze-im-internet.de/rvg/anlage_1.html)
 sind der einzige automatisch berechnete RVG-Verweis. Berechtigte Seiten und
 elektronische Überlassungen, einschließlich der §-17-Voraussetzungen und etwaiger
-100-Seiten-Grenzen, sind fachlich vorab zu bestimmen.
+100-Seiten-Grenzen, sind fachlich vorab zu bestimmen. Bei elektronischer Überlassung
+fasst jede Auslagenzeile die Dateien eines Arbeitsganges zusammen. Getrennte
+Arbeitsgänge derselben Angelegenheit haben jeweils eine eigene 5-Euro-Grenze.
 
 ## Technische Validierung und Betriebsgrenzen
 

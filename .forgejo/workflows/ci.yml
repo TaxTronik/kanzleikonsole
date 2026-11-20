@@ -455,7 +455,7 @@ jobs:
       - name: Backup→Restore self-test
         run: |
           set -o pipefail
-          bash scripts/restore-selftest.sh 2>&1 | tee testbericht-restore.log
+          bash scripts/ci/restore-roundtrip.sh 2>&1 | tee testbericht-restore.log
 
       # S-01: Worker-Backup und Restore-Drill ohne Superuser auf PostgreSQL 18:
       # pg_dump als taxtronik_owner (BYPASSRLS + SELECT), Wegwerf-DB und
@@ -466,18 +466,22 @@ jobs:
         run: |
           set -euo pipefail
           work="$(mktemp -d)"
-          drill_db=taxtronik_drill_ci
+          drill_db="taxtronik_drill_ci_$(node -p 'require("node:crypto").randomBytes(12).toString("hex")')"
+          drill_created=0
           cleanup() {
-            PGPASSWORD=taxtronik_drill psql -h localhost -p 15434 -U taxtronik_drill -d postgres \
-              -c "DROP DATABASE IF EXISTS $drill_db WITH (FORCE)" >/dev/null 2>&1 || true
+            rc=$?
+            if (( drill_created )); then
+              PGPASSWORD=taxtronik_drill dropdb -h localhost -p 15434 -U taxtronik_drill "$drill_db" || rc=1
+            fi
             rm -rf "$work"
+            exit "$rc"
           }
           trap cleanup EXIT
+          PGPASSWORD=taxtronik_drill createdb -h localhost -p 15434 -U taxtronik_drill "$drill_db"
+          drill_created=1
           {
             PGPASSWORD=taxtronik_owner pg_dump --format=custom --no-owner --compress=6 \
               -h localhost -p 15434 -U taxtronik_owner -d taxtronik -f "$work/owner.dump"
-            PGPASSWORD=taxtronik_drill psql -h localhost -p 15434 -U taxtronik_drill -d postgres \
-              -v ON_ERROR_STOP=1 -c "CREATE DATABASE $drill_db"
             pg_restore --list "$work/owner.dump" > "$work/full.list"
             grep -Ev '^[0-9]+; [0-9]+ [0-9]+ DEFAULT ACL ' "$work/full.list" > "$work/drill.list"
             echo "TOC: $(grep -c '^[0-9]' "$work/full.list") Einträge, Drill: $(grep -c '^[0-9]' "$work/drill.list")"
@@ -491,8 +495,6 @@ jobs:
               test "$source_rows" = "$drill_rows"
               echo "$table: $source_rows Zeilen (Quelle = Drill)"
             done
-            PGPASSWORD=taxtronik_drill psql -h localhost -p 15434 -U taxtronik_drill -d postgres \
-              -v ON_ERROR_STOP=1 -c "DROP DATABASE $drill_db WITH (FORCE)"
           } 2>&1 | tee testbericht-restore-drill.log
 
       - name: Testnachweis hochladen

@@ -4,12 +4,12 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Archive, Check, FolderCheck, FolderOpen, Inbox, Sparkles, Trash2 } from 'lucide-react';
 import { assignResultAction, saveResultToShelfAction } from './research-actions';
-import { renderMarkdown } from '@/lib/markdown';
+import { MarkdownContent } from '@/components/markdown-content';
 import type { ResearchResultDTO, MarkingDTO } from './_ui';
 
 // Recherche-Ergebnisse kommen (v. a. aus n8n) als Markdown — inkl. Überschriften,
-// Tabellen und Zitaten. renderMarkdown escapet jeden Textblock (kein
-// HTML-Passthrough), daher ist dangerouslySetInnerHTML hier sicher.
+// Tabellen und Zitaten. MarkdownContent escapet jeden Textblock (kein
+// HTML-Passthrough).
 const RESULT_PROSE_CLASS =
   'mt-2 text-sm text-secondary space-y-2 leading-relaxed ' +
   '[&_h1]:text-lg [&_h1]:font-bold [&_h1]:text-primary [&_h1]:mt-4 ' +
@@ -30,10 +30,7 @@ export function ResearchResultDetails({ body }: { body: string }) {
   return (
     <details className="text-xs">
       <summary className="cursor-pointer text-muted">Ergebnis anzeigen</summary>
-      <div
-        className={RESULT_PROSE_CLASS}
-        dangerouslySetInnerHTML={{ __html: renderMarkdown(body) }}
-      />
+      <MarkdownContent className={RESULT_PROSE_CLASS} source={body} />
     </details>
   );
 }
@@ -43,6 +40,7 @@ export function ResearchResultsBlock(props: {
   analysisId: string;
   results: ResearchResultDTO[];
   markingsById: Record<string, MarkingDTO>;
+  readOnly: boolean;
   pending: boolean;
   start: (cb: () => void) => void;
   onFlash: (r: { ok: boolean; error?: string }, ok?: string) => void;
@@ -57,6 +55,7 @@ export function ResearchResultsBlock(props: {
     source: ResearchResultDTO[];
   } | null>(null);
   if (props.results.length === 0) return null;
+  const actionsDisabled = props.pending || props.readOnly;
 
   function assign(resultId: string, markingId: string) {
     props.start(async () => {
@@ -131,7 +130,7 @@ export function ResearchResultsBlock(props: {
                   <button
                     type="button"
                     onClick={() => saveToShelf(res.id)}
-                    disabled={props.pending || savingToShelf || savedToShelf}
+                    disabled={actionsDisabled || savingToShelf || savedToShelf}
                     className="btn-secondary text-[11px] py-0.5"
                     title={
                       savedToShelf
@@ -154,7 +153,7 @@ export function ResearchResultsBlock(props: {
               </div>
               <ResearchResultDetails body={res.body} />
 
-              {res.status === 'NEU' && (
+              {!props.readOnly && res.status === 'NEU' && (
                 <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                   <span className="text-[11px] text-muted inline-flex items-center gap-1">
                     <Sparkles className="h-3 w-3" /> zuordnen:
@@ -181,7 +180,7 @@ export function ResearchResultsBlock(props: {
                 <button
                   type="button"
                   onClick={() => props.onArchive(res)}
-                  disabled={props.pending}
+                  disabled={actionsDisabled}
                   className="text-[11px] text-muted hover:text-primary inline-flex items-center gap-1"
                 >
                   <Archive className="h-3 w-3" /> Archivieren
@@ -189,7 +188,7 @@ export function ResearchResultsBlock(props: {
                 <button
                   type="button"
                   onClick={() => props.onDelete(res)}
-                  disabled={props.pending}
+                  disabled={actionsDisabled}
                   className="text-[11px] text-red-600 hover:text-red-700 inline-flex items-center gap-1"
                 >
                   <Trash2 className="h-3 w-3" /> Löschen

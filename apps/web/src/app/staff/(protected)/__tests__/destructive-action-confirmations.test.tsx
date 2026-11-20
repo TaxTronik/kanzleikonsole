@@ -13,6 +13,7 @@ const h = vi.hoisted(() => ({
   sendPoa: vi.fn(),
   anonymize: vi.fn(),
   archiveResult: vi.fn(),
+  discardResult: vi.fn(),
   deleteResult: vi.fn(),
   refresh: vi.fn(),
   row: null as unknown,
@@ -56,6 +57,7 @@ vi.mock('../admin/dsgvo/actions', () => ({
 }));
 vi.mock('../clients/[id]/subsumtion/research-actions', () => ({
   archiveResultAction: h.archiveResult,
+  setResultVerworfenAction: h.discardResult,
   deleteResultAction: h.deleteResult,
   assignResultAction: vi.fn(),
   saveResultToShelfAction: vi.fn(),
@@ -66,6 +68,7 @@ import PoaDetailPage from '../poa/[id]/page';
 import { RevokePoaForm, SendPoaForm } from '../poa/[id]/revoke-poa-form';
 import DsgvoDetailPage from '../admin/dsgvo/[id]/page';
 import { ResearchView } from '../clients/[id]/subsumtion/research-view';
+import { ResearchReviewSection } from '../clients/[id]/subsumtion/research-review';
 import type { ResearchResultDTO } from '../clients/[id]/subsumtion/_ui';
 
 const DANGER = '!bg-red-600';
@@ -322,7 +325,37 @@ describe('Portal-Kontakt anonymisieren (DSGVO)', () => {
 });
 
 describe('Recherche archivieren und löschen', () => {
-  function renderView(archivedResults: ResearchResultDTO[] = []) {
+  it('erlaubt die fachliche Ablehnung einer bereits automatisch zugeordneten Antwort', async () => {
+    const assigned = result({ markingId: 'm1', status: 'ZUGEORDNET' });
+    const props = {
+      clientId: 'c1',
+      analysisId: 'a1',
+      markingId: 'm1',
+      results: [assigned],
+      canReview: true,
+      canShelve: false,
+      pending: false,
+      start: (run: () => void) => run(),
+      onChanged: vi.fn(),
+      flash: vi.fn(),
+    };
+    const view = render(<ResearchReviewSection {...props} />);
+    expect(screen.getByText('zugeordnet')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Übernehmen' })).toBeNull();
+    h.discardResult.mockResolvedValueOnce({ ok: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Verwerfen' }));
+    await waitFor(() => expect(props.onChanged).toHaveBeenCalledOnce());
+    expect(h.discardResult).toHaveBeenCalledWith({
+      clientId: 'c1',
+      analysisId: 'a1',
+      markingId: 'm1',
+      resultId: assigned.id,
+    });
+    view.rerender(<ResearchReviewSection {...props} canReview={false} />);
+    expect(screen.queryByRole('button', { name: 'Verwerfen' })).toBeNull();
+  });
+
+  function renderView(archivedResults: ResearchResultDTO[] = [], readOnly = false) {
     const start = vi.fn((callback: () => void) => callback());
     const onFlash = vi.fn();
     render(
@@ -332,6 +365,7 @@ describe('Recherche archivieren und löschen', () => {
         requests={[]}
         results={[result()]}
         archivedResults={archivedResults}
+        readOnly={readOnly}
         markingsById={{}}
         staffOptions={[]}
         engineConfigured
@@ -343,6 +377,17 @@ describe('Recherche archivieren und löschen', () => {
     );
     return { onFlash };
   }
+
+  it('RISK-ARCHIVE-SNAPSHOT-001: Archivierte Analysen zeigen Ergebnisse schreibgeschützt', () => {
+    renderView([result({ id: 'old', title: 'Frühere Recherche', archivedAt: '2026-10-01' })], true);
+    expect(screen.getAllByText('Ergebnis anzeigen')).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: 'Neue Recherche-Frage' })).toBeNull();
+    for (const name of ['Archivieren', 'Reaktivieren', 'Löschen', 'Ins Aktenregal']) {
+      for (const button of screen.queryAllByRole('button', { name, hidden: true })) {
+        expect((button as HTMLButtonElement).disabled).toBe(true);
+      }
+    }
+  });
 
   it('trennt reversibles Archivieren vom endgültigen Löschen', async () => {
     h.archiveResult.mockResolvedValue({ ok: true });

@@ -241,77 +241,66 @@ export function fmtMonthYear(d: Date): string {
 // UTC-Instants um. Ohne das mischen Filter sonst UTC-Mitternacht mit
 // server-lokaler Uhrzeit → Einträge von 00:00–02:00 Berlin landen im Vortag.
 
-/** Berlin-Offset (ms) am gegebenen Instant, DST-korrekt via Intl. */
-function berlinOffsetMs(instant: Date): number {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: TIME_ZONE,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const p = Object.fromEntries(dtf.formatToParts(instant).map((x) => [x.type, x.value]));
-  // `hour` kann bei Mitternacht als '24' formatiert werden → auf 0 normalisieren.
-  const hour = p.hour === '24' ? 0 : Number(p.hour);
-  const asUtc = Date.UTC(
-    Number(p.year),
-    Number(p.month) - 1,
-    Number(p.day),
-    hour,
-    Number(p.minute),
-    Number(p.second),
-  );
-  return asUtc - instant.getTime();
-}
+const berlinOffsetFormatter = new Intl.DateTimeFormat('en-US', {
+  timeZone: TIME_ZONE,
+  timeZoneName: 'longOffset',
+});
 
-/** Parst `YYYY-MM-DD`; null bei ungültigem Format. */
-function parseYmd(s: string): { y: number; m: number; d: number } | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return null;
-  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]) };
+/** IANA-Offset von Berlin in Millisekunden. Historische Offsets enthalten auch Sekunden. */
+function berlinOffsetMs(instant: number): number {
+  const offset = berlinOffsetFormatter
+    .formatToParts(instant)
+    .find((p) => p.type === 'timeZoneName')!;
+  const [hours, minutes, seconds = 0] = offset.value.slice(4).split(':').map(Number);
+  return (
+    (offset.value[3] === '-' ? -1 : 1) *
+    ((hours ?? 0) * 3600 + (minutes ?? 0) * 60 + seconds) *
+    1000
+  );
 }
 
 /** UTC-Instant für 00:00:00.000 Berlin-Zeit des Kalendertags (oder null). */
 export function berlinDayStartUtc(dateStr: string): Date | null {
-  const p = parseYmd(dateStr);
-  if (!p) return null;
-  const guess = Date.UTC(p.y, p.m - 1, p.d, 0, 0, 0, 0);
-  return new Date(guess - berlinOffsetMs(new Date(guess)));
+  return berlinWallClockToUtc(`${dateStr}T00:00`);
 }
 
 /** UTC-Instant für 23:59:59.999 Berlin-Zeit des Kalendertags (oder null). */
 export function berlinDayEndUtc(dateStr: string): Date | null {
-  const p = parseYmd(dateStr);
-  if (!p) return null;
-  const guess = Date.UTC(p.y, p.m - 1, p.d, 23, 59, 59, 999);
-  return new Date(guess - berlinOffsetMs(new Date(guess)));
+  const lastSecond = berlinWallClockToUtc(`${dateStr}T23:59:59`);
+  return lastSecond && new Date(lastSecond.getTime() + 999);
 }
 
 /**
  * Interpretiert einen zeitzonenlosen `YYYY-MM-DDTHH:MM`(:SS)-Stempel (wie ihn
  * `<input type="datetime-local">` liefert) als Europe/Berlin-Wanduhrzeit und
- * gibt den zugehörigen UTC-Instant zurück. `null` bei ungültigem Format.
+ * gibt den zugehörigen UTC-Instant zurück. Ungültige Tage und die fehlende
+ * Stunde beim Vorstellen der Uhr liefern `null`. In der doppelten Herbststunde
+ * gilt bei Neueingabe das spätere Vorkommen wie bisher.
  *
  * WICHTIG: NICHT `new Date(s)` verwenden — das interpretiert den String als
  * Server-Local-Time. Läuft der Container in UTC (Default), verschiebt das jeden
  * Termin um den Berlin-Offset (1–2 h), da die Anzeige fest Europe/Berlin nutzt.
  */
 export function berlinWallClockToUtc(s: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(s);
-  if (!m) return null;
-  const guess = Date.UTC(
-    Number(m[1]),
-    Number(m[2]) - 1,
-    Number(m[3]),
-    Number(m[4]),
-    Number(m[5]),
-    Number(m[6] ?? '0'),
-    0,
-  );
-  return new Date(guess - berlinOffsetMs(new Date(guess)));
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(s)) return null;
+  const iso = `${s.length === 16 ? s + ':00' : s}.000Z`;
+  const wall = Date.parse(iso);
+  if (!Number.isFinite(wall) || new Date(wall).toISOString() !== iso) return null;
+
+  // Zuerst den Offset NACH einem möglichen Uhrenwechsel versuchen. Die
+  // Rückprüfung unterscheidet die doppelte Stunde von der Frühjahrslücke.
+  const laterOffset = berlinOffsetMs(wall + 86_400_000);
+  const candidate = wall - laterOffset;
+  const actualOffset = berlinOffsetMs(candidate);
+  if (actualOffset === laterOffset) return new Date(candidate);
+  const other = wall - actualOffset;
+  return berlinOffsetMs(other) === actualOffset ? new Date(other) : null;
+}
+
+/** Anzeige gespeicherter Terminvorschläge aus dem datetime-local-Eingabefeld. */
+export function fmtAppointmentSlot(value: string, format: (instant: Date) => string): string {
+  const instant = berlinWallClockToUtc(value);
+  return instant ? format(instant) : 'Ungültige Ortszeit';
 }
 
 const wallClockBerlinFormatter = new Intl.DateTimeFormat('en-US', {

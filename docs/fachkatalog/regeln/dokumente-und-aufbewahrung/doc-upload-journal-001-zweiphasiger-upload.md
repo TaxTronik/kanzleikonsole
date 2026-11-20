@@ -29,6 +29,7 @@ sources:
     checked_at: '2026-08-24'
     primary: true
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/actions.ts
   - apps/web/src/server/documents/delivery-readiness.ts
   - apps/web/src/server/documents/delivery.ts
   - apps/web/src/app/api/staff/documents/download/route.ts
@@ -54,6 +55,7 @@ code_refs:
   - apps/web/src/server/risk/persistence.ts
   - packages/db/prisma/migrations/20261007150000_storage_intent_risk_references/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/__tests__/actions-journal.test.ts
   - apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts
   - apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts
   - apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts
@@ -159,6 +161,11 @@ finalisiert sie. Existieren zwei Versionen, erfolgt kein automatischer
 Gewinnerentscheid.
 
 ## Umsetzung in TaxTronik
+
+Bei der Ablage einer Steuererklärung wird das optionale Abgabedatum auf
+einen tatsächlich existierenden Kalendertag geprüft. Die bisherige
+Musterprüfung konnte etwa den 29. Februar 2026 als 1. März speichern. Der
+Action-Test prüft die Ablehnung vor Datenbankzugriff und PDF-Journal.
 
 Allgemeiner Download und Vorschau für Staff und Portal sowie Sammeldownload
 und DATEV-Belegexport verlangen an der neuesten Dokumentversion `CLEAN` und

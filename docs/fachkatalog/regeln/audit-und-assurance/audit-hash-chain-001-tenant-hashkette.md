@@ -28,6 +28,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - scripts/ci/restore-roundtrip.sh
+  - apps/web/scripts/ci-restore-audit.ts
   - apps/web/src/app/staff/(protected)/admin/settings/modules-actions.ts
   - apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts
   - apps/web/src/app/staff/(protected)/admin/settings/mail-actions.ts
@@ -334,6 +336,13 @@ serialisierte Archivkopien können fehlende Daten nicht rekonstruieren
   aus?
 
 ## Technische Nachweise
+
+Der Restore-CI-Test schreibt zwei Ereignisse für einen neuen synthetischen
+Tenant in seiner Wegwerfquelle. Er prüft die Vorgängerverbindung bereits beim
+Schreiben, rechnet nach dem Restore mit `verify:chain` nach und vergleicht die
+Spitze mit dem vorab festgehaltenen SHA-256. Ein zweiter Restore verwirft den
+um ein Hexzeichen abweichenden Erwartungswert. Ein leeres Audit-Log enthält
+keine Ereignisfolge, deren Wiederherstellung sich so nachweisen ließe.
 
 Die Service- und Hash-Ketten-Tests prüfen Vorgängerbindung, Tenant-Serialisierung
 und Brucherkennung. Der Walker-Test belegt, dass Vollprüfung und

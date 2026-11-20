@@ -218,6 +218,9 @@ test('erzeugt deterministische Indizes und erkennt Drift', async () => {
     const rules = loadCatalog(root);
     await writeIndexes(root, rules);
     assert.equal(await checkIndexes(root, rules), true);
+    const index = readFileSync(join(root, 'docs', 'fachkatalog', 'INDEX.md'), 'utf8');
+    assert.match(index, /Aktive Regeln insgesamt: 1/);
+    assert.match(index, /Aktive Regeln im Fachbereich: 1/);
     const fullExport = JSON.parse(
       readFileSync(join(root, 'docs', 'fachkatalog', 'fachkatalog-voll.json'), 'utf8'),
     );
@@ -426,6 +429,23 @@ test('akzeptiert amtliche Landesverwaltungsvorschriften vom freigegebenen Host',
       );
     writeRule(root, source);
     assert.doesNotThrow(() => loadCatalog(root));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('TAX-DEADLINE-WORKDAY-001 trennt Landesgesetzblatt, Verwaltungsauskunft und fremden Host', () => {
+  const root = makeRoot();
+  try {
+    const law = ruleSource()
+      .replace('kind: product_documentation', 'kind: official_law')
+      .replace('path: FEATURES.md', 'url: https://www.gesetzblatt.bremen.de/gesetz');
+    writeRule(root, law);
+    assert.doesNotThrow(() => loadCatalog(root));
+    for (const host of ['www.mi.niedersachsen.de', 'www.gesetzblatt.bremen.de.example.org']) {
+      writeRule(root, law.replace('www.gesetzblatt.bremen.de', host));
+      assert.throws(() => loadCatalog(root), /keine freigegebene amtliche Domain/);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

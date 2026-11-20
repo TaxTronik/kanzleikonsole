@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState } from 'react';
 import { saveSellerInfoAction, type ActionResult } from './actions';
 import type { SellerInfo } from '@/server/settings/tenant-settings';
@@ -11,7 +13,7 @@ export function SellerForm({ initial }: { initial: SellerInfo }) {
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <SettingsForm result={state} pending={isPending} action={formAction} className="space-y-4">
       <div>
         <label className="label" htmlFor="name">
           Kanzlei-Name
@@ -202,6 +204,6 @@ export function SellerForm({ initial }: { initial: SellerInfo }) {
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Speichern'}
       </button>
-    </form>
+    </SettingsForm>
   );
 }

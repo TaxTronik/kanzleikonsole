@@ -61,6 +61,9 @@ sources:
     checked_at: '2026-10-19'
     primary: false
 code_refs:
+  - packages/db/prisma/migrations/20261120120000_berlin_retention_year/migration.sql
+  - packages/db/prisma/sql/functions/app.tcms_gwg_evidence_tax_retention_until(timestamp).sql
+  - packages/db/prisma/sql/functions/app.raise_tcms_gwg_evidence_retention(uuid).sql
   - apps/web/src/server/tcms/durchfuehrung/verweis.ts
   - apps/web/src/server/tcms/durchfuehrung/sperre.ts
   - apps/web/src/server/tcms/durchfuehrung/nachweis-aktion.ts
@@ -334,6 +337,14 @@ Abweichung.
 
 ## Umsetzung in TaxTronik
 
+Bei gebundenen oder früher als Nachweis verwendeten GwG-Belegen bestimmt
+die Datenbank das deutsche Kalenderjahr der Dokumentanlage und des
+Mandatsendes unabhängig von der Sitzungszeitzone. Der Datenschritt hebt zu
+kurze berechenbare Stichtage an. Unbekannte, vorgemerkte oder vernichtete
+Stände behandelt die Fachmigration getrennt. Auch der Vernichtungsclaim
+prüft die Steuerfrist. Die Reihenfolge zwischen Steuerzweck und Höchstfrist
+nach § 8 Abs. 4 GwG ist fachlich offen.
+
 Neu abgelegte Nachweise (Kanzlei und Kontrollaufgabe im Portal) und Anlagen
 einer Ereignismeldung lösen nach dem Commit dasselbe n8n-Ereignis aus wie jeder
 andere Upload (`document.uploaded`, `server/tcms/hochgeladen.ts`, Quelle
@@ -558,11 +569,10 @@ GwG-Frist eines solchen Belegs nur bis zur Steuerfrist fest.
 - GwG-Beleg als Nachweis: durch Produktentscheidung (Rey Koxha, 21.10.2026)
   ersetzt – zugleich steuerliche Unterlage, Aufbewahrung bis zum Ablauf beider
   Fristen (Ausnahmen und Grenzfälle). Fachlich zu prüfen bleibt (ungeprüft):
-  Trägt § 8 Abs. 4 Satz 2 GwG („andere Aufbewahrungspflichten bleiben
-  unberührt“) zusammen mit § 147 AO diese längere Aufbewahrung, auch über die
-  absolute Zehnjahresgrenze hinaus? GWG-RETENTION-DESTRUCTION-001 ordnet
-  derselben Stelle die Zehnjahresgrenze zu; die Zuordnung des Satzes ist zu
-  klären. Ist das Intervall der Steuerunterlage (zehn Jahre) das richtige,
+  § 8 Abs. 4 Satz 1 GwG berücksichtigt längere gesetzliche Pflichten, Satz 2
+  verlangt die Vernichtung nach spätestens zehn Jahren. Wie sind konkurrierende
+  Zwecke und gegebenenfalls getrennte Ausfertigungen nach dieser Grenze zu
+  behandeln? Ist das Intervall der Steuerunterlage (zehn Jahre) das richtige,
   oder genügt eine kürzere GoBD-Klasse des Modells (sechs oder acht Jahre),
   und ist die Dokumentanlage der richtige Anker?
 

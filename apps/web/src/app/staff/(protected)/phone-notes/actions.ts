@@ -370,7 +370,7 @@ export async function phoneNoteToReminderAction(input: {
   const parsed = z
     .object({
       id: z.string().uuid(),
-      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      dueDate: z.iso.date(),
       assigneeStaffId: z.string().uuid().nullable().optional(),
     })
     .safeParse(input);

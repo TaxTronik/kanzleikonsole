@@ -130,6 +130,35 @@ test('separates saved names and search strings by staff and tenant, preserving t
   await expect(page.getByRole('button', { name: 'Mandat A intern', exact: true })).toHaveCount(0);
 });
 
+test('preserves a view saved in a second tab while the name prompt is open', async ({
+  page,
+  context,
+}) => {
+  await mount(page);
+  await page.evaluate(() => {
+    const state = globalThis as unknown as {
+      __viewName: Promise<string>;
+      __finishNaming: (name: string) => void;
+    };
+    state.__viewName = new Promise((resolve) => {
+      state.__finishNaming = resolve;
+    });
+  });
+  await page.getByRole('button', { name: 'Aktuelle speichern' }).click();
+  const second = await context.newPage();
+  await mount(second);
+  await second.getByRole('button', { name: 'Aktuelle speichern' }).click();
+  const savedInSecond = page.getByRole('button', { name: 'Mandat A intern', exact: true });
+  await expect(savedInSecond).toBeVisible();
+  await page.evaluate(() => {
+    (globalThis as unknown as { __finishNaming: (name: string) => void }).__finishNaming('Fristen');
+  });
+  await expect(page.getByRole('button', { name: 'Fristen', exact: true })).toBeVisible();
+  await expect(savedInSecond).toBeVisible();
+  await expect(second.getByRole('button', { name: 'Fristen', exact: true })).toBeVisible();
+  await expect(second.getByRole('button', { name: 'Mandat A intern', exact: true })).toBeVisible();
+});
+
 test('ignores malformed entries and duplicate names without crashing the list', async ({
   page,
 }) => {

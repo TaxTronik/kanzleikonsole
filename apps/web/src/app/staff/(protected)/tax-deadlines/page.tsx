@@ -13,7 +13,13 @@
 // =============================================================================
 
 import type { ReactNode } from 'react';
-import { buildMonthGridCells, parseMonth } from '@/lib/tax-calendar';
+import {
+  buildMonthGridCells,
+  calendarMonthKey,
+  isCalendarMonth,
+  parseMonth,
+  utcCalendarDay,
+} from '@/lib/tax-calendar';
 import Link from 'next/link';
 import { SavedViews } from '@/components/saved-views';
 import { OffsetPagination } from '@/components/offset-pagination';
@@ -104,8 +110,8 @@ async function renderMonth(
 ) {
   const { tenantId, staffId } = session.user;
   // Monatsanfang/-ende UTC
-  const start = new Date(Date.UTC(year, month0, 1));
-  const end = new Date(Date.UTC(year, month0 + 1, 0, 23, 59, 59, 999));
+  const start = utcCalendarDay(year, month0);
+  const end = new Date(utcCalendarDay(year, month0 + 1).getTime() - 1);
 
   // P-20: In der Datenbank pro Tag × Art × Periode × Status zählen (wie der
   // Kanzleikalender) statt alle Termine des Monats samt Mandant zu laden.
@@ -120,13 +126,9 @@ async function renderMonth(
       }),
   );
 
-  const currentMonthQs = `${year}-${String(month0 + 1).padStart(2, '0')}`;
-  const prevYear = month0 === 0 ? year - 1 : year;
-  const prevM = month0 === 0 ? 12 : month0;
-  const prevMonthQs = `${prevYear}-${String(prevM).padStart(2, '0')}`;
-  const nextYear = month0 === 11 ? year + 1 : year;
-  const nextM = month0 === 11 ? 1 : month0 + 2;
-  const nextMonthQs = `${nextYear}-${String(nextM).padStart(2, '0')}`;
+  const currentMonthQs = calendarMonthKey(year, month0);
+  const prevMonthQs = calendarMonthKey(year, month0 - 1);
+  const nextMonthQs = calendarMonthKey(year, month0 + 1);
 
   // Berlin-Tag (nicht Server-Local): Grid-Zellen sind Kalendertage.
   const cells = buildMonthGridCells(year, month0, berlinYmd(new Date()));
@@ -144,29 +146,32 @@ async function renderMonth(
 
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
-          <Link
-            href={qs({ view: 'month', scope, month: prevMonthQs, q })}
-            className="btn-secondary shrink-0 text-xs px-2 py-1"
-            aria-label="Vorheriger Monat"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Link>
+          {isCalendarMonth(prevMonthQs) && (
+            <Link
+              href={qs({ view: 'month', scope, month: prevMonthQs, q })}
+              className="btn-secondary shrink-0 text-xs px-2 py-1"
+              aria-label="Vorheriger Monat"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Link>
+          )}
           <h2 className="min-w-0 flex-1 text-lg font-semibold text-primary text-center sm:min-w-[200px]">
-            {fmtMonthYear(new Date(Date.UTC(year, month0, 15)))}
+            {fmtMonthYear(start)}
           </h2>
-          <Link
-            href={qs({ view: 'month', scope, month: nextMonthQs, q })}
-            className="btn-secondary shrink-0 text-xs px-2 py-1"
-            aria-label="Nächster Monat"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Link>
+          {isCalendarMonth(nextMonthQs) && (
+            <Link
+              href={qs({ view: 'month', scope, month: nextMonthQs, q })}
+              className="btn-secondary shrink-0 text-xs px-2 py-1"
+              aria-label="Nächster Monat"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          )}
         </div>
         <Link
           href={qs({
             view: 'month',
             scope,
-            month: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
             q,
           })}
           className="btn-secondary text-xs"
@@ -213,7 +218,7 @@ async function renderList(
   requestedPages: DeadlineListPages,
 ) {
   const { tenantId, staffId } = session.user;
-  const currentMonthQs = `${year}-${String(month0 + 1).padStart(2, '0')}`;
+  const currentMonthQs = calendarMonthKey(year, month0);
   const { overdue, overdueCount, upcoming, upcomingCount, doneCount, pages } =
     await withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, async (tx) =>
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Termine gesperrter

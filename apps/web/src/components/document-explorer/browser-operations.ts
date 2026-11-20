@@ -12,11 +12,7 @@
 // =============================================================================
 
 import { useState, type DragEvent } from 'react';
-import {
-  bulkResultMessage,
-  descendants,
-  type FolderNode,
-} from '@/components/document-browser-utils';
+import { bulkResultMessage, type FolderNode } from '@/components/document-browser-utils';
 import type { DocumentBulkResult } from '@/server/documents/document-bulk';
 import type { DocumentOps } from './ops';
 import type { SelectionItem } from './browser-selection';
@@ -34,20 +30,42 @@ export interface BrowserActions {
 
 const OWN_SUBTREE_ERROR = 'Ordner kann nicht in seinen eigenen Unterbaum.';
 
+function completedItems(
+  items: SelectionItem[],
+  result: Pick<DocumentBulkResult, 'rejected' | 'error' | 'pending'>,
+) {
+  if (result.error) return [];
+  const remaining = new Set(result.rejected.map(({ id }) => id));
+  for (const id of result.pending ?? []) remaining.add(id);
+  return items.filter(({ id }) => !remaining.has(id));
+}
+
 /** Trennt Ordner, die in ihren eigenen Teilbaum wandern würden (der Server prüft erneut). */
 export function splitMoveItems(
   items: SelectionItem[],
   target: string | null,
   folders: FolderNode[],
 ): { movable: SelectionItem[]; blocked: Array<{ id: string; error: string }> } {
-  const intoOwnSubtree = (item: SelectionItem) =>
-    item.kind === 'folder' && target !== null && descendants(folders, item.id).has(target);
-  return {
-    movable: items.filter((item) => !intoOwnSubtree(item)),
-    blocked: items
-      .filter(intoOwnSubtree)
-      .map((item) => ({ id: item.id, error: OWN_SUBTREE_ERROR })),
-  };
+  if (target === null || !items.some((item) => item.kind === 'folder')) {
+    return { movable: [...items], blocked: [] };
+  }
+  const parents = new Map(folders.map((folder) => [folder.id, folder.parentId]));
+  const ancestors = new Set<string>();
+  let current: string | null = target;
+  while (current !== null && !ancestors.has(current)) {
+    ancestors.add(current);
+    current = parents.get(current) ?? null;
+  }
+  const movable: SelectionItem[] = [];
+  const blocked: Array<{ id: string; error: string }> = [];
+  for (const item of items) {
+    if (item.kind === 'folder' && ancestors.has(item.id)) {
+      blocked.push({ id: item.id, error: OWN_SUBTREE_ERROR });
+    } else {
+      movable.push(item);
+    }
+  }
+  return { movable, blocked };
 }
 
 /** Download-Ziel für Dateien und Ordner (mehrere oder Ordner: ZIP). */
@@ -117,10 +135,10 @@ export function useBrowserOperations({
   scope: BrowserProps['scope'];
   deleted: boolean;
   currentFolderId: string | null;
-  /** Nach dem Verschieben: Auswahl leeren, Dialog schließen. */
-  onMoved: () => void;
+  /** Bestätigte Einträge aus der Auswahl nehmen und den Dialog schließen. */
+  onMoved: (completed: SelectionItem[]) => void;
   /** Nach Freigeben/Privat: Auswahl leeren. */
-  onShared: () => void;
+  onShared: (completed: SelectionItem[]) => void;
 }) {
   const { router, start } = ops;
 
@@ -132,11 +150,17 @@ export function useBrowserOperations({
       ops.setOpError(null);
       const result =
         movable.length > 0
-          ? await actions.moveItems({
-              documentIds: movable.filter((it) => it.kind === 'file').map((it) => it.id),
-              folderIds: movable.filter((it) => it.kind === 'folder').map((it) => it.id),
-              targetFolderId: target,
-            })
+          ? await actions
+              .moveItems({
+                documentIds: movable.filter((it) => it.kind === 'file').map((it) => it.id),
+                folderIds: movable.filter((it) => it.kind === 'folder').map((it) => it.id),
+                targetFolderId: target,
+              })
+              .catch(() => ({
+                done: 0,
+                rejected: [],
+                error: 'Verschieben konnte nicht bestätigt werden. Bitte die Liste prüfen.',
+              }))
           : { done: 0, rejected: [] };
       const message = bulkResultMessage(
         { ...result, rejected: [...blocked, ...result.rejected] },
@@ -144,7 +168,7 @@ export function useBrowserOperations({
         'verschoben',
       );
       if (message) ops.setOpError(message);
-      onMoved();
+      onMoved(completedItems(movable, result));
     });
   }
 
@@ -165,14 +189,23 @@ export function useBrowserOperations({
     if (ids.length === 0) return;
     start(async () => {
       ops.setOpError(null);
-      const result = await actions.setShare({ documentIds: ids, share });
+      const result = await actions.setShare({ documentIds: ids, share }).catch(() => ({
+        done: 0,
+        rejected: [],
+        error: 'Die Freigabeänderung konnte nicht bestätigt werden. Bitte die Liste prüfen.',
+      }));
       const message = bulkResultMessage(
         result,
         ids.length,
         share ? 'freigegeben' : 'auf privat gesetzt',
       );
       if (message) ops.setOpError(message);
-      onShared();
+      onShared(
+        completedItems(
+          ids.map((id) => ({ kind: 'file', id })),
+          result,
+        ),
+      );
     });
   }
 

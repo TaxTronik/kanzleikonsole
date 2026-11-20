@@ -58,14 +58,17 @@ Cookies ohne Anmeldezeitpunkt werden nie verlängert. Ein `updateAge` ist nicht
 konfiguriert, weil Auth.js es für JWT-Sessions nicht auswertet.
 
 **Session-Revocation**: Server-side via Redis-Key
-`revoke:{surface}:{userId}` mit Timestamp. Wegen der Sekundengenauigkeit des
-JWT-Claims wird die gesamte Sekunde des Widerrufs einschließlich aller Tokens
-mit älterem `iat` vom Session-Callback abgelehnt — sofortiger Logout möglich,
-ohne auf JWT-Expiry warten zu müssen. Widerrufsschreibvorgänge und das Lesen des
+`revoke:{surface}:{userId}` mit Zeitstempel in Millisekunden. Neue Sitzungen
+tragen den signierten ursprünglichen Anmeldezeitpunkt `sessionIssuedAtMs`.
+Neue Anmeldeanker und das atomare Widerrufsskript verwenden die Zeit der
+gemeinsamen Redis-Instanz. Ein
+Widerruf zum gleichen oder zu einem späteren Zeitpunkt sperrt die Sitzung beim
+nächsten Zugriff. Bei Bestands-Cookies mit sekundengenauem Anmeldezeitpunkt
+bleibt die gesamte Widerrufssekunde gesperrt. Widerrufsschreibvorgänge und das Lesen des
 Widerrufszeitpunkts sind fail-closed: Ist Redis nicht verfügbar, wird eine
 betroffene Session nicht akzeptiert und die Sicherheitsaktion nicht als Erfolg
 gemeldet. Das schützt nur, solange `AUTH_SECRET` nicht kompromittiert ist: Mit
-dem Schlüssel könnte ein Angreifer ein neues JWE mit jüngerem `iat` erzeugen.
+dem Schlüssel könnte ein Angreifer ein neues JWE mit jüngerem Anmeldezeitpunkt erzeugen.
 In diesem Fall ist die Secret-Rotation die entscheidende Eindämmungsmaßnahme.
 
 ## Auth.js-Helper-Cookies

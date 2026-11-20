@@ -9,9 +9,9 @@ vi.mock('@/server/redis', () => ({ getRedis: () => h.redis }));
 vi.mock('@/server/logger', () => ({ log: { warn: vi.fn() } }));
 
 import { getRevocationTimestamp, isTokenRevoked, revokeAllSessions } from '../revocation';
+import { newSessionIssueTime } from '../session-issued-at';
 
 const redisUrl = process.env.AUTH_REVOCATION_TEST_REDIS_URL;
-const NOW = new Date('2026-09-06T12:00:00Z');
 
 describe.skipIf(!redisUrl)('ACCESS-TENANT-RLS-001: real Redis revocation ordering', () => {
   let redis: Redis;
@@ -43,9 +43,9 @@ describe.skipIf(!redisUrl)('ACCESS-TENANT-RLS-001: real Redis revocation orderin
   });
 
   it('does not resurrect a revoked token when an older write arrives after a newer cutoff', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(NOW);
     const id = user();
+    h.redis = redis;
+    const issued = await newSessionIssueTime();
     let release!: () => void;
     const delayed = new Promise<void>((resolve) => {
       release = resolve;
@@ -58,7 +58,7 @@ describe.skipIf(!redisUrl)('ACCESS-TENANT-RLS-001: real Redis revocation orderin
           return typeof value === 'function' ? value.bind(target) : value;
         }
         return async (...args: unknown[]) => {
-          if (firstWrite) {
+          if (firstWrite && typeof args[0] === 'string' && args[0].includes("redis.call('SET'")) {
             firstWrite = false;
             await delayed;
           }
@@ -68,14 +68,20 @@ describe.skipIf(!redisUrl)('ACCESS-TENANT-RLS-001: real Redis revocation orderin
     });
     const olderWrite = revokeAllSessions('portal', id);
     try {
-      vi.setSystemTime(new Date(NOW.getTime() + 2_000));
       await revokeAllSessions('portal', id);
-      const tokenIssuedBetweenCutoffs = NOW.getTime() / 1000 + 1;
-      expect(await isTokenRevoked('portal', id, tokenIssuedBetweenCutoffs)).toBe(true);
+      expect(
+        await isTokenRevoked('portal', id, issued.sessionIssuedAt, issued.sessionIssuedAtMs),
+      ).toBe(true);
+      // Ein jüngerer, bereits gespeicherter Cutoff bleibt auch nach einem
+      // verzögerten Schreibvorgang oder rückwärts gestellter Redis-Uhr erhalten.
+      const newerCutoff = (await getRevocationTimestamp('portal', id)) + 60_000;
+      await redis.set(`revoke:portal:${id}`, String(newerCutoff));
       release();
       await olderWrite;
-      expect(await isTokenRevoked('portal', id, tokenIssuedBetweenCutoffs)).toBe(true);
-      expect(await getRevocationTimestamp('portal', id)).toBe(NOW.getTime() + 2_000);
+      expect(
+        await isTokenRevoked('portal', id, issued.sessionIssuedAt, issued.sessionIssuedAtMs),
+      ).toBe(true);
+      expect(await getRevocationTimestamp('portal', id)).toBe(newerCutoff);
       expect(await redis.ttl(`revoke:portal:${id}`)).toBeGreaterThan(2_591_990);
       expect(await getRevocationTimestamp('staff', id)).toBe(0);
     } finally {
@@ -92,4 +98,40 @@ describe.skipIf(!redisUrl)('ACCESS-TENANT-RLS-001: real Redis revocation orderin
     expect(await redis.get(`revoke:portal:${id}`)).toBe('invalid-existing-cutoff');
     expect(await isTokenRevoked('portal', id, Math.floor(Date.now() / 1000) + 1)).toBe(true);
   });
+
+  it.each(['staff', 'portal'] as const)(
+    'compares precise and legacy %s logins with a real cutoff',
+    async (surface) => {
+      const id = user();
+      h.redis = redis;
+      vi.useFakeTimers({ toFake: ['Date'] });
+      const actualTime = await newSessionIssueTime();
+      expect(
+        await isTokenRevoked(surface, id, actualTime.sessionIssuedAt, actualTime.sessionIssuedAtMs),
+      ).toBe(false);
+      const future = actualTime.sessionIssuedAtMs + 60_000;
+      expect(await isTokenRevoked(surface, id, Math.floor(future / 1000), future)).toBe(true);
+      vi.setSystemTime(new Date(actualTime.sessionIssuedAtMs + 300));
+      const login = await newSessionIssueTime();
+      vi.setSystemTime(new Date(actualTime.sessionIssuedAtMs - 300));
+      await revokeAllSessions(surface, id);
+      const cutoff = await getRevocationTimestamp(surface, id);
+      expect(cutoff).toBeGreaterThanOrEqual(login.sessionIssuedAtMs);
+      expect(
+        await isTokenRevoked(surface, id, login.sessionIssuedAt, login.sessionIssuedAtMs),
+      ).toBe(true);
+      const sec = Math.floor(cutoff / 1000);
+      expect(await isTokenRevoked(surface, id, sec)).toBe(true);
+      expect(await isTokenRevoked(surface, id, Math.floor((cutoff - 1) / 1000), cutoff - 1)).toBe(
+        true,
+      );
+      expect(await isTokenRevoked(surface, id, sec, cutoff)).toBe(true);
+      await expect
+        .poll(async () => (await newSessionIssueTime()).sessionIssuedAtMs)
+        .toBeGreaterThan(cutoff);
+      expect(await isTokenRevoked(surface, id, Math.floor((cutoff + 1) / 1000), cutoff + 1)).toBe(
+        false,
+      );
+    },
+  );
 });

@@ -5,6 +5,7 @@ import { requireStaffPage } from '@/server/auth/staff-page';
 import { requireModulePage } from '@/server/settings/module-page';
 import { accessibleClientsWhereFor, hasStaffPermission } from '@/server/auth/rbac';
 import { clientAccessFilter } from '@/server/auth/client-access-filter';
+import { isSentInvoicePastDue } from '@/server/invoicing/due-status';
 import { withTenantContext } from '@taxtronik/db';
 import { Pagination } from '@/components/pagination';
 import type { Prisma, InvoiceStatus } from '@prisma/client';
@@ -140,7 +141,7 @@ export default async function InvoicesPage({
                 </thead>
                 <tbody className="divide-y divide-border-subtle">
                   {visible.map((i) => {
-                    const overdue = i.status === 'SENT' && i.dueDate < today;
+                    const overdue = isSentInvoicePastDue(i, today);
                     return (
                       <tr key={i.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 font-medium text-primary">

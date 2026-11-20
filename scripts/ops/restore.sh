@@ -296,6 +296,7 @@ cmd_tcms_backup_schedule() {
       case "$rc" in
         0) printf 'Zeitplan         : eingetragen (%s Host-Zeit)\n' "$TCMS_BACKUP_SCHEDULE_TIME" ;;
         2) printf 'Zeitplan         : crontab fehlt\n' ;;
+        3) printf 'Zeitplan         : crontab nicht lesbar oder TCMS-Markierung unklar\n' ;;
         *) printf 'Zeitplan         : fehlt (./taxtronik tcms backup-schedule install)\n' ;;
       esac
       printf 'Aufbewahrung     : lokal %s Sicherungen in %s/, Bucket 90 Tage\n' \

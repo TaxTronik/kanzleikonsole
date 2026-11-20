@@ -480,6 +480,54 @@ describeWithDatabase('RT3D-K-01: Fristen gebundener GwG-Belege in der Datenbank'
     expect((await stand(ohne.id)).retentionUntil).toEqual(new Date('2025-01-01T00:00:00Z'));
   });
 
+  it('DOC-RETENTION-CLASS-001, TCMS-NACHWEIS-001: Berliner Anlagejahr und monotone Bestandskorrektur', async () => {
+    const alt = new Date('2037-01-01T00:00:00Z');
+    const neu = new Date('2038-01-01T00:00:00Z');
+    const anlage = new Date('2026-12-31T23:30:00Z');
+    const beleg = await dokument('GWG_EVIDENCE', { createdAt: anlage, retentionUntil: alt });
+    await altbestandBinden(beleg);
+    const laenger = await gebundenerBeleg({
+      createdAt: anlage,
+      retentionUntil: new Date('2042-01-01T00:00:00Z'),
+    });
+    const unbelegt = await gebundenerBeleg({ createdAt: anlage, retentionUntil: null });
+    const davor = await gebundenerBeleg({ createdAt: new Date('2026-12-31T22:59:59Z') });
+    expect((await stand(davor.id)).retentionUntil).toEqual(alt);
+    for (const zone of ['UTC', 'America/Los_Angeles', 'Asia/Tokyo']) {
+      const rows = await als('App-Rolle', async (tx) => {
+        await tx.$queryRaw`SELECT set_config('TimeZone', ${zone}, true)`;
+        return tx.$queryRaw<Array<{ anlage: string; ende: string; steuerfrist: Date }>>`
+          SELECT pg_typeof(d.created_at)::text AS anlage, pg_typeof(c.mandate_ended_at)::text AS ende,
+                 app.tcms_gwg_evidence_tax_retention_until(d.created_at) AS steuerfrist
+            FROM document d JOIN client c ON c.id = d.client_id WHERE d.id = ${beleg.id}::uuid`;
+      });
+      expect(rows).toEqual([
+        {
+          anlage: 'timestamp without time zone',
+          ende: 'timestamp with time zone',
+          steuerfrist: neu,
+        },
+      ]);
+    }
+    const migration = readFileSync(
+      new URL(
+        '../../prisma/migrations/20261120120000_berlin_retention_year/migration.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    const sql = migration
+      .slice(migration.lastIndexOf('UPDATE public.document d'), migration.lastIndexOf('COMMIT;'))
+      .trim();
+    expect(sql).toMatch(/^UPDATE public\.document d\s+SET retention_until/);
+    await owner.$executeRawUnsafe(sql);
+    expect((await stand(beleg.id)).retentionUntil).toEqual(neu);
+    expect((await stand(laenger.id)).retentionUntil).toEqual(new Date('2042-01-01T00:00:00Z'));
+    expect((await stand(unbelegt.id)).retentionUntil).toBeNull();
+    await owner.$executeRawUnsafe(sql);
+    expect((await stand(beleg.id)).retentionUntil).toEqual(neu);
+  });
+
   it('der Datenschritt der Migration 20261021171000 hebt den Altbestand samt GwG-Frist an (idempotent)', async () => {
     const migration = readFileSync(
       new URL(

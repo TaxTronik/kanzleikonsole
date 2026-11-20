@@ -29,6 +29,7 @@ code_refs:
   - apps/web/src/server/payroll/definition.ts
   - apps/web/src/server/payroll/capability.ts
   - apps/web/src/server/payroll/service.ts
+  - apps/web/src/lib/fmt.ts
   - apps/web/src/server/payroll/storage.ts
   - apps/web/src/server/payroll/export.ts
   - apps/web/src/server/payroll/pdf.ts
@@ -46,6 +47,7 @@ code_refs:
   - packages/db/prisma/migrations/20260831240000_payroll_pending_sources/migration.sql
 test_refs:
   - apps/web/src/server/payroll/__tests__/definition.test.ts
+  - apps/web/src/lib/__tests__/fmt.test.ts
   - apps/web/src/server/payroll/__tests__/pdf.test.ts
   - apps/web/src/server/payroll/__tests__/storage.test.ts
   - apps/web/src/server/payroll/__tests__/export.test.ts
@@ -98,6 +100,11 @@ Ein abgelaufener, widerrufener, deaktivierter oder beendeter Vorgang sperrt Gast
 Ein ausgewählter Arbeitgeberkontakt bestätigt Arbeitsbeginn und Vergütung. Ein zweiter Kontakt desselben Mandanten sieht den Vorgang nicht. Die beschäftigte Person trägt über ihren Link IBAN und Versicherungsnummer ein; diese Antworten und Anlagen bleiben dem Arbeitgeber verborgen. Nach beiderseitiger Abgabe erzeugt die Kanzlei einen geprüften PDF-Stand. Trotz bestätigter DATEV-Nummern bleibt der DATEV-Import ohne reale Formatabnahme gesperrt.
 
 ## Umsetzung in TaxTronik
+
+Bei der Anlage wird die Ablaufzeit auf 23:59:59,999 Uhr des ausgewählten
+Berliner Kalendertags gesetzt. Die frühere Offsetberechnung addierte die
+Millisekunden zweimal und ließ den Vorgang bis in den Folgetag reichen.
+Die Zeitgrenzentests prüfen die Tage beider Uhrenwechsel.
 
 Die Kanzleiansicht begrenzt die Formularspalten auf schmalen Bildschirmen und
 bricht lange Feldbezeichnungen um. Externe Prüfung, Nachweis, Dateiauswahl,

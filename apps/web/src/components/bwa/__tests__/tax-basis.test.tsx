@@ -11,6 +11,14 @@ const props = {
   taxYear: 2026,
 };
 describe('BWA-TAX-ESTIMATE-001: tax card requires a known pre-tax basis', () => {
+  it.each([2028, 2024, null])('hides all estimates for an unsupported period (%s)', (taxYear) => {
+    const html = renderToStaticMarkup(
+      <TaxEstimatorCard {...props} taxYear={taxYear} resultBeforeTax={100_000} />,
+    );
+    expect(html).toContain('nur für vollständige Kalenderjahre 2025 und 2026');
+    expect(html).not.toContain('<button');
+    expect(html).not.toContain('€');
+  });
   it.each([null, undefined, Number.NaN])(
     'shows an unavailable state without estimating from another result (%s)',
     (resultBeforeTax) => {

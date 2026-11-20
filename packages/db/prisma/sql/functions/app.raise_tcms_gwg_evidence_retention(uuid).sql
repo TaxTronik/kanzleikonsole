@@ -17,8 +17,8 @@ BEGIN
   -- nach der Freigabe der Verknüpfung.
   -- RT3D-K-01 (kk-tcms-fix5): Ist das Mandat beendet, steigt das Ende
   -- zusätzlich auf das Ende der GwG-Frist: 1. Januar des sechsten Jahres nach
-  -- dem Jahr des Mandatsendes, wie im Claim (dort in der Zeitzone der Sitzung),
-  -- mindestens nach dem deutschen Kalenderjahr. Da retention_until dieser
+  -- dem Berliner Kalenderjahr des Mandatsendes, wie im Claim.
+  -- Da retention_until dieser
   -- Belege nie sinkt (app.guard_tcms_referenced_document_retention), verkürzt
   -- ein später zurückgenommenes oder früher eingetragenes Mandatsende die
   -- Aufbewahrung nicht mehr; der Trigger client_tcms_gwg_evidence_retention
@@ -32,14 +32,7 @@ BEGIN
   -- verkürzen nie.
   SELECT GREATEST(
            app.tcms_gwg_evidence_tax_retention_until(doc.created_at),
-           make_date(
-             GREATEST(
-               EXTRACT(YEAR FROM c.mandate_ended_at::timestamp),
-               EXTRACT(YEAR FROM c.mandate_ended_at AT TIME ZONE 'Europe/Berlin')
-             )::integer + 6,
-             1,
-             1
-           )::timestamp
+           app.retention_until_from_utc(c.mandate_ended_at AT TIME ZONE 'UTC', 5)
          )
     INTO ziel
     FROM public.document doc

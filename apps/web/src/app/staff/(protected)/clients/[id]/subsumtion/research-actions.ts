@@ -7,13 +7,13 @@ import { parseActionInput } from '@/server/actions/form-data';
 import {
   previewResearch,
   sendResearchToN8n,
-  assignResultToMarking,
+  assignResultToMarkingTx,
   listPromptTemplates,
   createPromptTemplate,
   deletePromptTemplate,
   saveResearchResultToShelf,
   setResearchResultArchived,
-  setResearchResultVerworfen,
+  setResearchResultVerworfenTx,
   deleteResearchResult,
   type ResearchPreview,
   type PromptTemplateDTO,
@@ -112,14 +112,22 @@ export async function createPromptTemplateAction(
   }
 }
 
+// `id` landet in deleteMany: ohne Laufzeitprüfung wäre ein Objekt wie
+// `{ not: '' }` ein Prisma-Operator und löschte alle Vorlagen der Kanzlei.
+const DeletePromptTemplateSchema = z.object({
+  clientId: z.string().uuid(),
+  id: z.string().uuid(),
+});
+
 /** Löscht eine Prompt-Vorlage. */
-export async function deletePromptTemplateAction(input: {
-  clientId: string;
-  id: string;
-}): Promise<OkActionResult> {
+export async function deletePromptTemplateAction(
+  input: z.infer<typeof DeletePromptTemplateSchema>,
+): Promise<OkActionResult> {
   try {
-    const { ctx } = await guardWrite(input.clientId);
-    await deletePromptTemplate(ctx, input.id);
+    const checked = parseActionInput(DeletePromptTemplateSchema, input);
+    if (!checked.ok) return checked;
+    const { ctx } = await guardWrite(checked.data.clientId);
+    await deletePromptTemplate(ctx, checked.data.id);
     return { ok: true };
   } catch (e) {
     return toActionError(e);
@@ -179,13 +187,13 @@ export async function setResultVerworfenAction(input: {
   try {
     // Komplette Pruefkette (Zugriff, Recherche-Recht, Ergebnis-Bindung,
     // Ziel-Analyse) in EINER Guard-Tx — siehe guardResultReview.
-    const { ctx, clientId, analysisId } = await guardResultReview(
+    const target = await guardResultReview(
       input.resultId,
       input.markingId,
       'verwerfen',
+      setResearchResultVerworfenTx,
     );
-    await setResearchResultVerworfen(ctx, input.resultId);
-    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
+    revalidatePath(`/staff/clients/${target.clientId}/subsumtion/${target.analysisId}`);
     return { ok: true };
   } catch (e) {
     return toActionError(e);
@@ -202,13 +210,13 @@ export async function assignResultAction(input: {
     // Ergebnis der eigenen zugewiesenen Markierung zuordnen darf auch die
     // recherchierende Person; fremde Markierungen nur die volle Stufe.
     // Pruefkette inkl. Ergebnis-Bindung + Ziel-Analyse in EINER Guard-Tx.
-    const { ctx, clientId, analysisId } = await guardResultReview(
+    const target = await guardResultReview(
       input.resultId,
       input.markingId,
       'uebernehmen',
+      assignResultToMarkingTx,
     );
-    await assignResultToMarking(ctx, input.resultId, input.markingId);
-    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
+    revalidatePath(`/staff/clients/${target.clientId}/subsumtion/${target.analysisId}`);
     return { ok: true };
   } catch (e) {
     return toActionError(e);
@@ -220,9 +228,9 @@ export async function archiveResultAction(input: {
   archived: boolean;
 }): Promise<OkActionResult> {
   try {
-    const { ctx, clientId, analysisId } = await guardResultWrite(input.resultId);
-    await setResearchResultArchived(ctx, input.resultId, input.archived);
-    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
+    const target = await guardResultWrite(input.resultId);
+    await setResearchResultArchived(target.ctx, target, input.archived);
+    revalidatePath(`/staff/clients/${target.clientId}/subsumtion/${target.analysisId}`);
     return { ok: true };
   } catch (e) {
     return toActionError(e);
@@ -231,9 +239,9 @@ export async function archiveResultAction(input: {
 
 export async function deleteResultAction(input: { resultId: string }): Promise<OkActionResult> {
   try {
-    const { ctx, clientId, analysisId } = await guardResultWrite(input.resultId);
-    await deleteResearchResult(ctx, input.resultId);
-    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
+    const target = await guardResultWrite(input.resultId);
+    await deleteResearchResult(target.ctx, target);
+    revalidatePath(`/staff/clients/${target.clientId}/subsumtion/${target.analysisId}`);
     return { ok: true };
   } catch (e) {
     return toActionError(e);
@@ -249,15 +257,10 @@ export async function saveResultToShelfAction(input: {
   resultId: string;
 }): Promise<OkActionResult<{ documentId: string | null; alreadySaved: boolean }>> {
   try {
-    const { ctx, staffId, clientId, analysisId } = await guardResultWrite(input.resultId);
-    const saved = await saveResearchResultToShelf(ctx, {
-      resultId: input.resultId,
-      clientId,
-      analysisId,
-      staffId,
-    });
+    const target = await guardResultWrite(input.resultId);
+    const saved = await saveResearchResultToShelf(target.ctx, target);
 
-    revalidatePath(`/staff/clients/${clientId}/subsumtion/${analysisId ?? ''}`);
+    revalidatePath(`/staff/clients/${target.clientId}/subsumtion/${target.analysisId}`);
     return { ok: true, ...saved };
   } catch (e) {
     return toActionError(e);

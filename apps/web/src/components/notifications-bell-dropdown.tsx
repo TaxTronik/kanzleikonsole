@@ -76,6 +76,8 @@ export function NotificationsDropdown({
   panelStyle,
   unread,
   items,
+  loadFailed,
+  onRetry,
   now,
   accessibleDisplay,
   soundOn,
@@ -89,6 +91,8 @@ export function NotificationsDropdown({
   panelStyle: CSSProperties | undefined;
   unread: number;
   items: NotificationItem[] | null;
+  loadFailed: boolean;
+  onRetry: () => void;
   now: number;
   accessibleDisplay: boolean;
   soundOn: boolean;
@@ -133,10 +137,20 @@ export function NotificationsDropdown({
       </div>
 
       <div>
+        {loadFailed && (
+          <div className="px-4 py-3 text-sm text-secondary">
+            <p role="status">Die Benachrichtigungen konnten nicht geladen werden.</p>
+            <button type="button" className="btn-secondary mt-2" onClick={onRetry}>
+              Erneut laden
+            </button>
+          </div>
+        )}
         {items === null ? (
-          <p role="status" className="px-4 py-8 text-sm text-disabled text-center">
-            Lade…
-          </p>
+          !loadFailed && (
+            <p role="status" className="px-4 py-8 text-sm text-disabled text-center">
+              Lade…
+            </p>
+          )
         ) : items.length === 0 ? (
           <p className="px-4 py-8 text-sm text-disabled text-center">Keine Benachrichtigungen.</p>
         ) : (

@@ -320,7 +320,6 @@ export function OnboardingWizard({
                 documentId: result.documentId,
                 fileName: file.name,
                 localFile: file,
-                previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
                 versionId: result.versionId,
                 viewport,
               },
@@ -339,15 +338,12 @@ export function OnboardingWizard({
     setIdError(subjectId, side, null);
     const person = [...owners, ...representatives].find((entry) => entry.id === subjectId);
     const otherSide = side === 'front' ? person?.idBack : person?.idFront;
-    const removed = side === 'front' ? person?.idFront : person?.idBack;
     const discardError =
       otherSide?.documentId === documentId ? null : await discardDocuments([documentId]);
     if (discardError) {
       setIdError(subjectId, side, discardError);
       return;
     }
-    if (removed?.previewUrl && otherSide?.documentId !== documentId)
-      URL.revokeObjectURL(removed.previewUrl);
     setSubjects((current) =>
       current.map((subject) =>
         subject.id === subjectId

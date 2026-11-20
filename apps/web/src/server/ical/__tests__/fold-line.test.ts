@@ -16,7 +16,7 @@ vi.mock('@taxtronik/config', () => ({
   env: { AUTH_SECRET: 'test-secret-mit-mindestens-32-zeichen!!' },
 }));
 
-import { foldLine } from '../feed';
+import { buildIcs, foldLine } from '../feed';
 
 /** Kehrt die Faltung um: CRLF + führendes Leerzeichen entfernen. */
 function unfold(folded: string): string {
@@ -29,6 +29,22 @@ function maxOctets(folded: string): number {
 }
 
 describe('foldLine', () => {
+  it('schreibt kopierte mehrzeilige Texte als gültige iCalendar-Werte', () => {
+    const calendar = buildIcs('Kanzlei\rWest', [
+      {
+        uid: 'appointment-1',
+        allDay: true,
+        start: new Date('2026-01-08'),
+        summary: 'Termin\r\nTeil 2\nTeil 3\rTeil 4',
+        description: 'Vorlage\tA' + String.fromCharCode(7, 127) + ', Ende',
+      },
+    ]);
+    const lines = calendar.split('\r\n');
+    expect(lines).toContain('X-WR-CALNAME:Kanzlei\\nWest');
+    expect(lines).toContain('SUMMARY:Termin\\nTeil 2\\nTeil 3\\nTeil 4');
+    expect(lines).toContain('DESCRIPTION:Vorlage\tA\\, Ende');
+  });
+
   it('kurze ASCII-Zeile bleibt unverändert (keine Faltung)', () => {
     const line = 'SUMMARY:Kurzer Termin';
     expect(foldLine(line)).toBe(line);

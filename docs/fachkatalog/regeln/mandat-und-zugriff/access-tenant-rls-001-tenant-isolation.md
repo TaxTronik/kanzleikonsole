@@ -68,6 +68,8 @@ code_refs:
   - apps/web/src/app/staff/(auth)/login/actions.ts
   - apps/web/src/app/staff/(auth)/login/password/route.ts
   - apps/web/src/server/auth/session-issued-at.ts
+  - apps/web/src/types/next-auth.d.ts
+  - packages/crypto/src/session-revocation.ts
   - apps/web/src/server/auth/revocation.ts
   - packages/db/src/tenant-context.ts
   - packages/db/prisma/schema.prisma
@@ -137,6 +139,8 @@ test_refs:
   - packages/db/src/__tests__/role-settings.test.ts
   - apps/web/src/server/auth/__tests__/revocation.test.ts
   - apps/web/src/server/auth/__tests__/revocation.redis.test.ts
+  - apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts
+  - packages/crypto/src/__tests__/session-revocation.test.ts
   - apps/web/src/server/auth/__tests__/portal-profile-session.test.ts
   - apps/web/src/server/auth/__tests__/portal-profiles.test.ts
   - apps/web/src/app/portal/(protected)/profile-actions.test.ts
@@ -219,6 +223,7 @@ test_refs:
   - packages/db/src/__tests__/portal-inbox-contact-search-candidates.test.ts
   - apps/web/src/server/inbox/__tests__/portal-search-db.test.ts
 feature_refs:
+  - docs/compliance/cookie-config.md
   - docs/architecture.md
   - docs/adr/0002-rls-und-app-level-tenancy.md
   - docs/development/module/zugriffsschutz.md
@@ -402,6 +407,30 @@ setzen ihn beim Ausstellen des JWT. Ein erfolgreiches
 Login darf kein Cookie erzeugen, das die unmittelbar folgende Server-Auth
 wegen eines fehlenden ursprünglichen Anmeldezeitpunkts wieder verwirft.
 Die strikte Ablehnung bestehender Tokens ohne diesen Claim bleibt erhalten.
+
+Neue Staff- und Portal-Sitzungen binden den Abschluss der Authentifizierung
+zusätzlich millisekundengenau in `sessionIssuedAtMs`. Eine Anmeldung nach dem
+in Redis gespeicherten Widerruf ist damit auch innerhalb derselben Sekunde
+gültig. Bei gleichem oder früherem Zeitpunkt bleibt die Sitzung gesperrt.
+Bestandscookies mit ausschließlich sekundengenauem Anmeldeanker bleiben für
+die gesamte Widerrufssekunde gesperrt. Ungültige, widersprüchliche oder in
+der Zukunft liegende Zeitangaben führen zur Abweisung. Eine Erneuerung oder
+ein Portal-Profilwechsel übernimmt die Originalwerte. Das fünfminütige Ticket
+zwischen Passwortprüfung und zweitem Anmeldefaktor ist eine laufende
+Anmeldung. Der hier beschriebene Sitzungswiderruf greift für abgeschlossene
+Anmeldungen. Neue Sitzungen erhalten den Zeitanker von der gemeinsamen
+Redis-Instanz (`TIME`). Web und Worker ermitteln den Zeitpunkt des Widerrufs
+mit derselben Uhr atomar beim Fortschreiben des Cutoffs. Bei fehlender oder
+unlesbarer Redis-Zeit wird kein neuer Anker ausgestellt. Ein Integrationstest
+versetzt die Uhr der ausstellenden Anwendung um 300 Millisekunden vor und
+die Uhr der widerrufenden Anwendung um 300 Millisekunden zurück.
+Bei der Sitzungsprüfung liest eine Redis-Abfrage Vergleichszeit und Cutoff
+gemeinsam. Damit bleibt die Neuanmeldung auch bei einer um 750 Millisekunden
+nachgehenden Web-Uhr nutzbar. Präzise Anker nach Redis-Zeit sowie ein
+erreichtes absolutes Laufzeitende werden abgewiesen.
+Regressionen prüfen die Millisekunde vor, bei und nach einem echten
+Redis-Widerruf, neu ausgestellte verschlüsselte Cookies beider Oberflächen,
+Erneuerung sowie einen anschließenden Portal-Profilwechsel.
 
 Sitzungen beider Oberflächen enden absolut 24 Stunden nach dem signierten
 ursprünglichen Anmeldezeitpunkt. Seitenaufrufe erneuern das Cookie nicht;

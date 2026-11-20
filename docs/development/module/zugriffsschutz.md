@@ -436,6 +436,21 @@ Tokens ohne diesen Wert werden verworfen: Ihr `iat` kann durch die bisherige
 Erneuerung bereits verschoben sein. Nach dem Deployment ist deshalb für
 bestehende Staff- und Portal-Sitzungen einmalig eine neue Anmeldung nötig.
 Auch ein parallel gesetzter Widerruf wird nicht durch ein frisches `iat` überholt.
+
+Für neue Staff- und Portal-Sitzungen hält `sessionIssuedAtMs` den Abschluss der
+Anmeldung millisekundengenau fest. Eine erneute Anmeldung eine Millisekunde
+nach einem Widerruf ist gültig. Ein zeitgleicher oder späterer Widerruf sperrt
+die Sitzung. Für Bestands-Cookies, die nur `sessionIssuedAt` in Sekunden
+enthalten, gilt die gesamte Widerrufssekunde als gesperrt. Das Ausstellen
+eines Ersatzcookies und der Profilwechsel übernehmen den ursprünglichen
+Anmeldezeitpunkt einschließlich der vorhandenen Genauigkeit.
+Web und Worker verwenden die Zeit der gemeinsamen Redis-Instanz. Beim
+Widerruf liest das atomare Schreibskript `TIME` auf dem Redis-Server. Eine
+einzelne Abfrage liefert der Sitzungsprüfung Vergleichszeit und Cutoff. Eine
+auseinanderlaufende Uhr der Anwendungsprozesse kann dadurch keine bereits
+widerrufene Sitzung wieder gültig machen. Ein vorgehender Redis-Server
+führt bei einer gültigen Neuanmeldung nicht zu einem scheinbar zukünftigen
+Anmeldezeitpunkt.
 Redis- und DB-Ausfälle erlauben keine Erneuerung. Der reale Auth.js-HTTP-Pfad
 wird in `session-renewal.test.ts` mit simulierten Persistenzgrenzen geprüft.
 

@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState } from 'react';
 import { saveMailDispatchAction, type ActionResult } from './actions';
 import type { MailDispatchConfig } from '@/server/settings/mail-dispatch';
@@ -11,7 +13,7 @@ export function MailDispatchForm({ initial }: { initial: MailDispatchConfig }) {
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <SettingsForm result={state} pending={isPending} action={formAction} className="space-y-4">
       <fieldset className="space-y-3">
         <legend className="sr-only">Mail-Dispatch-Modus</legend>
 
@@ -80,6 +82,6 @@ export function MailDispatchForm({ initial }: { initial: MailDispatchConfig }) {
           </span>
         )}
       </div>
-    </form>
+    </SettingsForm>
   );
 }

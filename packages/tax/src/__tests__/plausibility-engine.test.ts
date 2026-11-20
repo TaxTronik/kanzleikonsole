@@ -89,6 +89,43 @@ describe('Gauß-Osterformel — bekannte Ostertermine (Golden)', () => {
 });
 
 describe('Landesfeiertage — Exklusivität (Feiertagsgesetze der Länder)', () => {
+  // TAX-DEADLINE-WORKDAY-001 führt die Verkündungsblätter der Länder und den
+  // amtlichen Nachweis zum Reformationsjubiläum mit Fundstellen und Links.
+  it.each([
+    ['DE-BE', '2018-03-08', false],
+    ['DE-BE', '2019-03-08', true],
+    ['DE-MV', '2022-03-08', false],
+    ['DE-MV', '2023-03-08', true],
+    ['DE-TH', '2018-09-20', false],
+    ['DE-TH', '2019-09-20', true],
+    ['DE-BE', '2020-05-08', true],
+    ['DE-BE', '2024-05-08', false],
+    ['DE-BE', '2025-05-08', true],
+    ['DE-BB', '2025-05-08', false],
+    ['DE-BE', '2026-05-08', false],
+    ['DE-BE', '2028-06-17', true],
+    ['DE-BB', '2028-06-17', false],
+    ['DE-BE', '2029-06-17', false],
+  ] as const)('prüft den historischen Feiertagsstand in %s am %s', (region, stamp, expected) => {
+    expect(isGermanHoliday(utc(stamp), region)).toBe(expected);
+  });
+
+  it('trennt das bundesweite Reformationsjubiläum 2017 von der Landesregel ab 2018', () => {
+    const eastern = new Set<GermanRegion | null>(['DE-BB', 'DE-MV', 'DE-SN', 'DE-ST', 'DE-TH']);
+    const northern = new Set<GermanRegion | null>(['DE-HB', 'DE-HH', 'DE-NI', 'DE-SH']);
+    for (const region of [null, ...ALL_REGIONS]) {
+      expect(isGermanHoliday(utc('2016-10-31'), region)).toBe(eastern.has(region));
+      expect(
+        germanHolidays(2017, region)
+          .map(ymd)
+          .filter((date) => date === '2017-10-31'),
+      ).toHaveLength(1);
+      expect(isGermanHoliday(utc('2018-10-31'), region)).toBe(
+        eastern.has(region) || northern.has(region),
+      );
+    }
+  });
+
   it('Buß- und Bettag ist NUR in Sachsen gesetzlicher Feiertag (§ 1 SächsSFG)', () => {
     // 2025: Mittwoch vor dem 23.11. = 19.11.2025
     for (const region of ALL_REGIONS) {

@@ -68,13 +68,22 @@ export function bulkResultMessage(
   return `${result.done} ${verb}, ${result.rejected.length} abgelehnt:\n${reasons.join('\n')}`;
 }
 
-/** Nachfahren (inkl. self) — Cycle-Schutz beim Ordner-Verschieben. */
-export function descendants(all: FolderNode[], root: string): Set<string> {
+export function foldersByParent(all: FolderNode[]): Map<string | null, FolderNode[]> {
   const byParent = new Map<string | null, FolderNode[]>();
-  for (const folder of all)
-    byParent.set(folder.parentId, [...(byParent.get(folder.parentId) ?? []), folder]);
-  const acc = new Set([root]);
-  const stack = [root];
+  for (const folder of all) {
+    const siblings = byParent.get(folder.parentId);
+    if (siblings) siblings.push(folder);
+    else byParent.set(folder.parentId, [folder]);
+  }
+  return byParent;
+}
+
+/** Teilbäume einschließlich Wurzel, auch wenn sich Auswahlen überschneiden. */
+export function descendants(all: FolderNode[], roots: string | string[]): Set<string> {
+  const acc = new Set(typeof roots === 'string' ? [roots] : roots);
+  if (!acc.size) return acc;
+  const byParent = foldersByParent(all);
+  const stack = [...acc];
   while (stack.length) {
     const current = stack.pop()!;
     for (const child of byParent.get(current) ?? []) {

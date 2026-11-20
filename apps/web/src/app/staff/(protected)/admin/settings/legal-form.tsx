@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState } from 'react';
 import { saveLegalAction, type ActionResult } from './actions';
 import type { LegalLinks } from '@/server/settings/legal';
@@ -11,7 +13,7 @@ export function LegalForm({ initial }: { initial: LegalLinks }) {
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <SettingsForm result={state} pending={isPending} action={formAction} className="space-y-4">
       <div>
         <label className="label" htmlFor="legal-impressum">
           Impressum-URL
@@ -55,6 +57,6 @@ export function LegalForm({ initial }: { initial: LegalLinks }) {
         {state?.ok && <span className="text-sm text-emerald-700">Gespeichert.</span>}
         {state && !state.ok && <span className="text-sm text-red-700">{state.error}</span>}
       </div>
-    </form>
+    </SettingsForm>
   );
 }

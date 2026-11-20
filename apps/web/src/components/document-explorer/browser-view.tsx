@@ -79,11 +79,11 @@ export function BrowserView({
     scope,
     deleted,
     currentFolderId,
-    onMoved: () => {
-      selection.clear();
+    onMoved: (completed) => {
+      selection.remove(completed);
       dialogs.closeMove();
     },
-    onShared: selection.clear,
+    onShared: selection.remove,
   });
   const osDrop = useOsFileDrop(Boolean(scope) && !deleted, operations.uploadDropped);
 
@@ -205,6 +205,7 @@ export function BrowserView({
       )}
       {dialogs.moveOpen && (
         <MoveTargetDialog
+          busy={busy}
           folders={folders}
           movingFolderIds={selection.folderIds()}
           onClose={dialogs.closeMove}

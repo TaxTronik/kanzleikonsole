@@ -23,9 +23,15 @@ sources:
     checked_at: '2026-10-01'
     primary: true
 code_refs:
+  - scripts/restore-selftest.sh
+  - .forgejo/workflows/ci.yml
+  - scripts/ci/restore-roundtrip.sh
+  - apps/web/scripts/ci-restore-audit.ts
+  - apps/web/src/server/backup/restore.ts
   - apps/worker/src/jobs/backup-drill.ts
   - apps/worker/src/jobs/backup-drill-file.ts
 test_refs:
+  - apps/web/src/server/backup/__tests__/restore.test.ts
   - apps/worker/src/jobs/__tests__/backup-drill.test.ts
   - apps/worker/src/jobs/__tests__/backup-drill-file.test.ts
   - apps/worker/src/jobs/__tests__/backup-drill-integrity.test.ts
@@ -119,6 +125,20 @@ Diesen Nachweis führt die Restore-CLI (`ACCESS-TENANT-RLS-001`).
 - Welche weiteren Prüfungen sind für eine belastbare Wiederanlauffreigabe nötig?
 
 ## Technische Nachweise
+
+Der separate CI-Selbsttest verwendet einen lokalen Dump einer eigens geklonten
+Testdatenbank. `EvidenceService.record` schreibt dort zwei synthetische
+Ereignisse. Vor dem Dump hält die CI die Tenant-ID und den Hash des zweiten
+Ereignisses außerhalb der Datenbank fest. Zwei parallele Roundtrips prüfen
+Zeilenzahlen, Zielrechte und die nachgerechnete Kette. Nur die richtige
+Quellspitze besteht den anschließenden Vergleich. Ein weiterer Lauf erzwingt
+eine Namenskollision beim Anlegen und prüft die OID der erhaltenen Datenbank.
+Der gewöhnliche Selbsttest liest seine Quelle und weist ein leeres Audit-Log
+als fehlenden Nachweis einer wiederhergestellten Ereigniskette aus. Jeder Lauf
+räumt ausschließlich die erfolgreich selbst angelegte Wegwerfdatenbank auf.
+Der Test der Zieloption prüft die explizite URL-Übergabe per Umgebungsvariable
+einschließlich fehlender und ungültiger Werte. Der monatliche S3-Drill hat den
+separaten Byte- und Hashnachweis seiner Laufkopie.
 
 Tests verwenden echte Dateien und Streams. Sie prüfen Byteidentität vor dem
 Restorecallback, POSIX-Zugriffsmodi, manipulierte und unvollständige Dumps,

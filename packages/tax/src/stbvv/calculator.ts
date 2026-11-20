@@ -468,7 +468,9 @@ function validateExpense(
     'Auslage erfordert eine vorhandene Angelegenheit und Nachweis / Begründung.',
   );
   const key = `${expense.matter}:${expense.kind.startsWith('POST_') ? 'POST' : expense.kind}`;
-  const repeatable = ['ACTUAL', 'TRAVEL_KM', 'ABSENCE'].includes(expense.kind);
+  const repeatable = ['ACTUAL', 'TRAVEL_KM', 'ABSENCE', 'ELECTRONIC_DOCUMENTS'].includes(
+    expense.kind,
+  );
   if (!repeatable)
     check(
       !expenseKeys.has(key),
@@ -489,10 +491,9 @@ function electronicDocumentExpenseCents(expense: FeeExpenseInput): number {
     Number.isInteger(expense.files) && expense.files! >= 1 && expense.files! <= 100000,
     'Dateianzahl fehlt.',
   );
-  return Math.max(
-    Math.min(expense.files! * 150, 500),
-    feeNumber(expense.scanEquivalentCents ?? 0, 'Scanäquivalent in Cent', 1e7),
-  );
+  const scanCents = feeNumber(expense.scanEquivalentCents ?? 0, 'Scanäquivalent in Cent', 1e7);
+  check(Number.isInteger(scanCents), 'Scanäquivalent in ganzen Cent angeben.');
+  return Math.max(Math.min(expense.files! * 150, 500), scanCents);
 }
 
 function expenseNetCents(

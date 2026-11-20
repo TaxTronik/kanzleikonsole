@@ -3,22 +3,38 @@
 import { useCallback, useSyncExternalStore } from 'react';
 
 const CHANGE_EVENT = 'taxtronik-browser-storage-change';
-const fallbackValues = new Map<string, string>();
+const fallbackValues = new Map<
+  string,
+  { value: string; storedAtWrite: string | null | undefined }
+>();
 
-export function readBrowserStorage(key: string): string | null {
+function persistedValue(key: string): string | null | undefined {
   try {
     return localStorage.getItem(key);
   } catch {
-    return fallbackValues.get(key) ?? null;
+    return undefined;
   }
 }
 
+export function readBrowserStorage(key: string): string | null {
+  const stored = persistedValue(key);
+  const fallback = fallbackValues.get(key);
+  if (stored === undefined) return fallback?.value ?? null;
+  if (fallback) {
+    if (fallback.storedAtWrite === stored) return fallback.value;
+    fallbackValues.delete(key);
+  }
+  return stored;
+}
+
 export function writeBrowserStorage(key: string, value: string): void {
-  fallbackValues.set(key, value);
   try {
     localStorage.setItem(key, value);
+    fallbackValues.set(key, { value, storedAtWrite: value });
   } catch {
-    // Keep the current browser session usable when persistent storage is blocked.
+    // At quota, reads still return the old persisted value. A later write in
+    // another tab takes precedence once that persisted value actually changes.
+    fallbackValues.set(key, { value, storedAtWrite: persistedValue(key) });
   }
   window.dispatchEvent(new CustomEvent(CHANGE_EVENT, { detail: key }));
 }

@@ -96,6 +96,7 @@ beforeEach(() => {
       number: `RE-${index + 1}`,
       subject: 'Beratung',
       status: 'SENT',
+      stornoOfId: null,
       issueDate: new Date('2026-10-01T00:00:00.000Z'),
       dueDate: new Date('2026-10-15T00:00:00.000Z'),
       totalAmount: 100,
@@ -110,6 +111,30 @@ async function render(name: keyof typeof pages, searchParams: Record<string, str
 }
 
 describe('Portal-Listen UX und Zugriffsscope', () => {
+  it('INV-DUE-OVERDUE-001: markiert auf Karte und Tabellenzeile nur die Originalrechnung als überfällig', async () => {
+    const sent = {
+      subject: 'Beratung',
+      status: 'SENT',
+      issueDate: new Date('2000-01-01T00:00:00.000Z'),
+      dueDate: new Date('2000-01-31T00:00:00.000Z'),
+      document: null,
+    };
+    h.invoice.count.mockResolvedValue(2);
+    h.invoice.findMany.mockResolvedValue([
+      { ...sent, id: 'original', number: 'RE-1', totalAmount: 119, stornoOfId: null },
+      { ...sent, id: 'storno', number: 'RE-2', totalAmount: -119, stornoOfId: 'original' },
+    ]);
+
+    const { container } = await render('invoices');
+    for (const selector of ['ul > li', 'tbody > tr']) {
+      const [original, storno] = container.querySelectorAll(selector);
+      expect(original?.textContent).toContain('Überfällig');
+      expect(storno?.textContent).toContain('RE-2');
+      expect(storno?.textContent).not.toContain('Überfällig');
+      expect(storno?.querySelector('.text-red-700')).toBeNull();
+    }
+  });
+
   it.each(Object.keys(pages) as (keyof typeof pages)[])(
     '%s nutzt serverseitige 25er-URL-Pagination, GET-Suche und mobile Karten',
     async (name) => {

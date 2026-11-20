@@ -102,7 +102,7 @@ export type DocumentOps = ReturnType<typeof useDocumentOps>;
 export function OpErrorBanner({ ops }: { ops: DocumentOps }) {
   if (!ops.opError) return null;
   return (
-    <div className="alert-error-sm mb-3 flex items-start justify-between gap-3">
+    <div role="alert" className="alert-error-sm mb-3 flex items-start justify-between gap-3">
       <span className="whitespace-pre-line">{ops.opError}</span>
       <button
         type="button"

@@ -80,6 +80,25 @@ describe('private restore download', () => {
 });
 
 describe('parseRestoreArgs', () => {
+  it('BACKUP-DRILL-INTEGRITY-001: resolves only the explicitly selected environment target', () => {
+    const option = ['--file', 'test.dump', '--target-url', 'env:RESTORE_TARGET_URL'];
+    try {
+      vi.stubEnv('RESTORE_TARGET_URL', '');
+      expect(() => parseRestoreArgs(option)).toThrow('RESTORE_TARGET_URL fehlt');
+      vi.stubEnv('RESTORE_TARGET_URL', 'https://db.example/test');
+      expect(() => parseRestoreArgs(option)).toThrow('--target-url muss mit postgres');
+      vi.stubEnv('RESTORE_TARGET_URL', 'postgresql://db.example/temporary');
+      expect(parseRestoreArgs(option)).toMatchObject({
+        targetUrl: 'postgresql://db.example/temporary',
+        productionTarget: false,
+        confirmOverwrite: false,
+      });
+      expect(() => parseRestoreArgs(['--file', 'test.dump'])).toThrow('Genau ein Ziel');
+      expect(() => parseRestoreArgs([...option, '--production-target'])).toThrow('Genau ein Ziel');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
   it('accepts read-only list without a target', () => {
     expect(parseRestoreArgs(['--list'])).toMatchObject({
       list: true,

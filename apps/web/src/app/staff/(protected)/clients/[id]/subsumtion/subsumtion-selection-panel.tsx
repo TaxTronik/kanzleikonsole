@@ -50,7 +50,8 @@ export function SubsumtionSelectionPanel({
   clientId,
   analysisId,
   manualSel,
-  canWrite,
+  archived,
+  canWrite: hasWriteAccess,
   currentStaffId,
   selected,
   researchResults,
@@ -70,6 +71,7 @@ export function SubsumtionSelectionPanel({
   clientId: string;
   analysisId: string;
   manualSel: ManualSelection | null;
+  archived: boolean;
   canWrite: boolean;
   currentStaffId?: string;
   selected: MarkingDTO | null;
@@ -87,6 +89,7 @@ export function SubsumtionSelectionPanel({
   llmJobState: string | null;
   llmWorkerAvailable: boolean | null;
 }) {
+  const canWrite = hasWriteAccess && !archived;
   return (
     <>
       {manualSel && canWrite ? (
@@ -113,7 +116,7 @@ export function SubsumtionSelectionPanel({
           // würde ein späteres „Speichern" die Zuweisung überschreiben).
           key={`${selected.id}:${selected.status}:${selected.verantwortlichId ?? ''}`}
           canWrite={canWrite}
-          isAssignee={selected.verantwortlichId === currentStaffId}
+          isAssignee={!archived && !!currentStaffId && selected.verantwortlichId === currentStaffId}
           // Ergebnisse dieser Markierung — die Prüfung findet dort statt,
           // wo die Zuweisung hinführt, nicht in einem separaten Tab.
           results={researchResults.filter((r) => r.markingId === selected.id)}

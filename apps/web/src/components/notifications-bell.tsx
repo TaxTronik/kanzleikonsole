@@ -113,6 +113,8 @@ export function NotificationsBell({ initialUnread, initialLatestUnreadAt }: Prop
           panelStyle={panelStyle}
           unread={unread}
           items={feed.items}
+          loadFailed={feed.loadFailed}
+          onRetry={feed.refreshRecent}
           now={feed.now}
           accessibleDisplay={accessibleDisplay}
           soundOn={sound.soundOn}

@@ -1,4 +1,6 @@
 import type { TenantContext, TxClient } from '@taxtronik/db';
+import { requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
+import type { ResearchResultTarget } from './research-lifecycle';
 import { ActionError } from '@/server/actions/action-error';
 import { evidenceService } from '@/server/container';
 import { createDocumentWithVersion } from '@/server/documents/upload-helpers';
@@ -16,10 +18,8 @@ interface LockedResearchResult {
   shelfDocumentId: string | null;
 }
 
-export interface SaveResearchResultToShelfInput {
-  resultId: string;
+export interface SaveResearchResultToShelfInput extends ResearchResultTarget {
   clientId: string;
-  analysisId: string | null;
   staffId: string;
 }
 
@@ -75,6 +75,7 @@ async function checkShelfTx(
   input: SaveResearchResultToShelfInput,
   pre?: ShelfCheck,
 ): Promise<ShelfCheck> {
+  await requireWritableRiskAnalysisTx(tx, ctx.tenantId, input.analysisId);
   const result = await lockResearchResult(tx, ctx.tenantId, input.resultId);
   if (!result) throw new ActionError('Ergebnis nicht gefunden.');
 

@@ -293,7 +293,7 @@ export function FeeCalculatorForm({
                 <option value="POST_ACTUAL">§ 16: tatsächliche Postkosten</option>
                 <option value="DOCUMENTS">§ 17 / VV 7000: erstattungsfähige Papierseiten</option>
                 <option value="ELECTRONIC_DOCUMENTS">
-                  § 17 / VV 7000: elektronische Dateien, eine Überlassung
+                  § 17 / VV 7000: elektronische Dateien je Arbeitsgang
                 </option>
                 <option value="TRAVEL_KM">§ 18: Fahrtkosten 0,42 €/km</option>
                 <option value="ABSENCE">§ 18: Abwesenheit je Tag</option>
@@ -327,7 +327,7 @@ export function FeeCalculatorForm({
             )}
             {e.kind === 'ELECTRONIC_DOCUMENTS' && (
               <>
-                {numeric('Dateien bei dieser Überlassung', e.files, (v) =>
+                {numeric('Anzahl der Dateien in diesem Arbeitsgang', e.files, (v) =>
                   updateExpense(i, { files: v }),
                 )}
                 {numeric(

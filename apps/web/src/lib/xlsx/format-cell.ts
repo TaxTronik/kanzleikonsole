@@ -26,6 +26,7 @@ const DATE_TIME_UTC = new Intl.DateTimeFormat('de-DE', {
 });
 
 export function formatXlsxDate(value: Date): string {
+  if (!Number.isFinite(value.getTime())) return 'Ungültiges Datum';
   const midnight =
     value.getUTCHours() === 0 &&
     value.getUTCMinutes() === 0 &&

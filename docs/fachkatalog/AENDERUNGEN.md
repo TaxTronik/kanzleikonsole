@@ -1,5 +1,68 @@
 ---
 exceptions:
+  - id: FK-EXC-20261120-006
+    date: '2026-11-20'
+    paths:
+      - packages/gwg/package.json
+    rule_ids:
+      - GWG-RETENTION-DESTRUCTION-001
+      - DSGVO-MANDATE-ANONYMIZATION-001
+    reason: >-
+      Das GwG-Paket verwendet denselben reinen Kalenderhelfer wie die
+      Aufbewahrungs- und Anonymisierungsprüfung. Sein Manifest deklariert
+      dazu den internen Workspace-Link auf config. Es werden weder neue
+      Fremdpakete noch Installations-Hooks eingeführt.
+    tests:
+      - packages/gwg/src/__tests__/retention.test.ts
+      - apps/web/src/server/dsgvo/__tests__/client-retention.test.ts
+    reviewer: Codex (technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20261120-005
+    date: '2026-11-20'
+    paths:
+      - apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
+    rule_ids:
+      - TAX-DEADLINE-AUTOREQUEST-001
+      - ACCESS-SEARCH-SCOPE-001
+    reason: >-
+      Die Monatsansicht bestimmt die Suchgrenzen aus einem gültigen
+      Kalendermonat. Der Heute-Link verwendet den aktuellen Berliner Monat.
+      Die Änderung betrifft die Datumsauswahl im Kalender. Sie löst keine
+      Anforderung aus und verändert keine Zuständigkeit oder Zugriffsprüfung.
+    tests:
+      - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
+      - apps/web/src/app/staff/(protected)/calendar/__tests__/page-render.test.tsx
+    reviewer: Codex (technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20261120-004
+    date: '2026-11-20'
+    paths:
+      - apps/web/src/server/ical/feed.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+    reason: >-
+      Der Kalenderexport kodiert Zeilenumbrüche und Steuerzeichen im iCalendar-
+      TEXT-Feld gemäß RFC 5545. Diese Ausgabekodierung betrifft nur bereits
+      ausgewählte Termine. Tokenprüfung, Kontaktzugriff und mandantenbezogene
+      Datenbankabfrage werden durch sie nicht verändert.
+    tests:
+      - apps/web/src/server/ical/__tests__/fold-line.test.ts
+      - apps/web/src/server/ical/__tests__/feed.test.ts
+    reviewer: Codex (technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20261120-003
+    date: '2026-11-20'
+    paths:
+      - packages/storage/src/clamav-ping.ts
+      - packages/storage/src/__tests__/clamav-ping.test.ts
+    rule_ids:
+      - DOC-UPLOAD-JOURNAL-001
+    reason: >-
+      App und Betriebsalarm prüfen die Erreichbarkeit von clamd mit zPING und
+      erwarten ein vollständiges PONG innerhalb des Zeitlimits. Die Probe
+      überträgt keine Dokumente und schreibt keine Scan- oder Freigabestatus.
+      Die Uploadpipeline prüft Dokumentinhalte weiterhin beim eigentlichen Scan.
+    tests:
+      - packages/storage/src/__tests__/clamav-ping.test.ts
+    reviewer: Codex (technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261120-001
     date: '2026-11-20'
     paths:
@@ -183,6 +246,79 @@ exceptions:
       unverändert. Keine fachliche Freigabe.
     tests:
       - packages/crypto/src/__tests__/certificate-path.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20261119-030
+    date: '2026-11-19'
+    paths:
+      - apps/web/src/server/auth/staff-login.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-actions.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/operator-injection.test.ts
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - RISK-AI-SUGGESTION-001
+    reason: >-
+      Laufzeitprüfung untypisierter Server-Action-Argumente (SAST-Befund
+      NoSQL-/Prisma-Operator-Injection): Der Staff-Passwortschritt reicht
+      Kanzlei-Slug und E-Mail nur noch als Strings an die Lookups am
+      Owner-Client weiter; Nicht-Strings finden weder Kanzlei noch Konto und
+      laufen über denselben einen Dummy-Vergleich mit derselben generischen
+      Ablehnung. llmStatusAction und deletePromptTemplateAction prüfen
+      clientId, analysisId und id als UUID, bevor Guard, findFirst bzw.
+      deleteMany sie sehen. Gültige Eingaben, Kontolookup, genau ein
+      bcrypt-Vergleich, Limits, Lockout, Audit, Zugriffsprüfung und
+      LLM-Statusabbildung bleiben unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/auth/__tests__/staff-login-enumeration.test.ts
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/operator-injection.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20261119-020
+    date: '2026-11-19'
+    paths:
+      - apps/web/src/app/poa/sign/page.tsx
+      - apps/web/src/app/staff/(protected)/poa/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-results-block.tsx
+      - apps/web/src/components/knowledge-context.tsx
+      - apps/web/src/app/staff/(protected)/knowledge/context/actions.ts
+    rule_ids:
+      - POA-SIGNING-SNAPSHOT-001
+      - POA-LIFECYCLE-001
+      - RISK-AI-SUGGESTION-001
+      - KNOWLEDGE-CONTEXT-001
+    reason: >-
+      Bündelung der HTML-Einfügestellen (SAST-Befund dangerouslySetInnerHTML):
+      Vollmachtsumfang auf Unterschrifts- und Staff-Detailseite,
+      Rechercheergebnisse und Kanzleileitfäden rendern ihr Markdown über die
+      neue Komponente MarkdownContent, die denselben unveränderten Renderer
+      renderMarkdown aufruft und dieselbe Ausgabe einfügt. Die
+      Unterschriftsseite zeigt weiterhin ausschließlich den Snapshot-Text aus
+      loadPoaForSigning. Der Leitfaden-Ladepfad liefert statt vorgerendertem
+      HTML den Markdown-Quelltext der weiterhin nur veröffentlichten Artikel;
+      gerendert wird er mit demselben Renderer im Client. Zugriffsprüfung,
+      Modulgates, Artikelauswahl, Snapshot-Bindung und Statusführung bleiben
+      unverändert. Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/__tests__/html-sinks.test.ts
+      - apps/web/src/components/__tests__/markdown-content.test.tsx
+      - apps/web/src/lib/__tests__/markdown.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20261119-012
+    date: '2026-11-19'
+    paths:
+      - apps/web/src/server/client-assistance/service.ts
+    rule_ids:
+      - CLIENT-ASSISTANCE-001
+    reason: >-
+      Vereinheitlichung des Hashvergleichs beim Word-Reimport (SAST-Befund
+      Timing-Vergleich): Der SHA-256-Hex-Hash der gewählten DOCX-Version wird
+      statt mit === über timingSafeEqual mit dem gespeicherten
+      externalDocumentHash verglichen; ein fehlender Hash gilt weiterhin als
+      ungleich. Der Vergleich bleibt ein exakter Stringvergleich, sodass
+      unveränderte Word-Inhalte wie bisher abgelehnt und abweichende als neue
+      eingereichte Revision mit erneuter Prüfpflicht übernommen werden.
+      Keine fachliche Freigabe.
+    tests:
+      - apps/web/src/server/client-assistance/__tests__/service.test.ts
     reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261119-011
     date: '2026-11-19'
@@ -5834,6 +5970,147 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- 20.11.2026 · `ASSURANCE-RELEASE-EVIDENCE-001`. Der Stack-Smoke bricht bei
+  belegter Umgebung oder fehlgeschlagener Bestandsabfrage vor jeder
+  Bereinigung ab. Der Release-Workflow prüft beide Fälle. Der lokale
+  Wiederholungslauf an einem vorhandenen Testcontainer bestätigte dessen
+  ursprüngliche ID und den gespeicherten Volumeninhalt. SQL-Gegenproben der
+  Browsertests prüfen ihre Zieldatenbank vor dem Zugriff und wiederholen
+  eine fehlgeschlagene Anweisung nicht an anderer Stelle.
+
+- 2026-11-20 · `ACCESS-NOTIFICATION-RECIPIENT-001`, `RISK-ARCHIVE-SNAPSHOT-001` ·
+  Externe Rechercheantworten prüfen die aktuelle Berechtigung an der Analyse
+  und der konkreten Markierung bei der Zustellung und beim späteren Lesen des
+  Hinweises. PostgreSQL-Regressionen mit der App-Rolle prüfen Wechsel im
+  OPEN-Mandat, kanzleiweite Eingänge und verwaiste persönliche Hinweise.
+  Die Behandlung eines Rücklaufs nach Archivierung bleibt eine fachliche Prüffrage.
+
+- 2026-11-20 · `ACCESS-TENANT-RLS-001` · Die unmittelbar nach einer Abmeldung
+  neu ausgestellte Sitzung wird auch innerhalb derselben Sekunde akzeptiert.
+  Neue Cookies binden den ursprünglichen Anmeldezeitpunkt millisekundengenau.
+  Web und Worker setzen Widerrufe mit derselben Redis-Uhr wie die Ausstellung.
+  Regressionen prüfen die Widerrufsgrenzen in Redis und die Gültigkeit
+  verschlüsselter Cookies vor und nach Erneuerung und Portal-Profilwechsel.
+
+- 2026-11-20: `DOC-OBJECT-LOCK-001`. Der Release-Stack führt die
+  Bucket-Initialisierung vor Web und Worker aus. Die Reihenfolge ist im
+  Release-Guard belegt. Zuvor konnten Web und Worker Bereitschaft melden,
+  während ein geschützter Upload im neu gestarteten Speicher fehlschlug.
+
+- 2026-11-20 · `BACKUP-DRILL-INTEGRITY-001`, `AUDIT-HASH-CHAIN-001` ·
+  Der Selbsttest bescheinigt einer leeren Ereignistabelle keine Kettenintegrität
+  mehr. Zwei CI-Roundtrips mit vorab gespeicherter synthetischer Kettenspitze
+  bestätigen den richtigen Wert und weisen einen abweichenden zurück.
+  Wegwerfziele erhalten Zufallsnamen. Bei fehlgeschlagenem CREATE bleibt die
+  vorhandene Datenbank erhalten, geprüft über ihre PostgreSQL-OID.
+- 2026-11-20 · `BWA-PROJECTION-001` · Die lineare Hochrechnung prüft Anfang
+  und Ende der BWA-Periode gegen das Zieljahr. Ein November-bis-Februar-Import
+  konnte bisher eine geeignete Halbjahres-BWA verdrängen und Umsatz des
+  Folgejahrs einrechnen. Die gemeinsame Dashboardansicht wechselt das Zieljahr
+  um Berliner Mitternacht. Vier Tests führen ADDISON-CSV-Daten bis zur
+  gerenderten Jahresüberschrift, Periodenangabe und Umsatzschätzung.
+
+- 2026-11-20 · `DOC-RETENTION-CLASS-001`, `DOC-OBJECT-LOCK-001`,
+  `GWG-RETENTION-DESTRUCTION-001`, `TCMS-NACHWEIS-001`,
+  `DSGVO-MANDATE-ANONYMIZATION-001`, `POA-SIGNER-RETENTION-001` und
+  `CLIENT-MANDATE-LIFECYCLE-001` · Die Zuordnung von Upload, Feststellung
+  und Mandatsende zum deutschen Kalenderjahr steuert Schutzstichtage,
+  Queue-Filter, Claims und personenbezogene Redaktion. Frühere Tests legten
+  UTC als Ankerjahr zugrunde und konnten die Freigabe um ein Jahr vorziehen.
+  Die technische Freigabe bleibt am 1. Januar um 00:00 UTC. Die zwei
+  Fachmigrationen unterscheiden gespeicherte Zeitpunkte und Sitzungseinstellungen.
+  Der Worker-Test prüft die frühere Berliner Mitternacht im Filter für das
+  Ankerjahr. Seine bisherige Erwartung setzte diese Grenze eine Stunde zu spät.
+  § 8 Abs. 4 GwG unterscheidet in Satz 1 längere gesetzliche Pflichten, in
+  Satz 2 die Höchstfrist und in Satz 3 und 4 die Ereignisse. Offen bleibt die
+  Behandlung doppelfunktionaler TCMS-Unterlagen nach zehn Jahren.
+- 2026-11-20 · `STBVV-CALCULATION-001` · Die elektronische Dokumentenpauschale
+  wird nach § 17 StBVV und VV 7000 Nr. 2 RVG je dokumentiertem Arbeitsgang
+  berechnet. Frühere Eingabeprüfungen ließen nur einen Arbeitsgang je
+  Angelegenheit zu. Der Scan-Mindestbetrag erfordert ganze Cent. Die
+  277 Standardstufen und vier Quellenhashes wurden mit den amtlichen Anlagen
+  abgeglichen.
+
+- 2026-11-20 · `GWG-SELF-ONBOARDING-001` · Die lokale Objekt-URL eines
+  Ausweisfotos endet mit seiner Anzeige im Wizard. Ein Strict-Mode-Test deckt
+  Schließen der Personenansicht, Wiederöffnen, Entfernen und Verlassen ab.
+  Der Entwurfstest prüft die Beschränkung auf Dateiverweise.
+- 2026-11-20 · `ACCESS-SEARCH-SCOPE-001` · Der Namensdialog für persönliche
+  Filteransichten übernimmt beim Bestätigen den aktuellen Speicherstand
+  desselben Kontos. Der Browsertest deckt eine zwischenzeitliche Speicherung
+  in einem zweiten Tab ab. Ein Speichertest belegt die sitzungslokale Anzeige
+  bei voller Browserquote und die Übernahme eines neueren persistierten Werts.
+- 2026-11-20 · `RISK-EXTERNAL-ANONYMIZATION-001` · Featureübersicht und
+  Scope-Matrix beschrieben noch ungeschützte Normanker und separate
+  Platzhalter. Sie dokumentieren jetzt die Ersetzung aller ausgehenden
+  Freitextfelder im gemeinsamen Kontext, die vorhandenen Prüfgrenzen und
+  die fehlende Bindung an die Vorschau.
+- 2026-11-20 · `RISK-ARCHIVE-SNAPSHOT-001` · Die Archivierung sperrt manuelle
+  Änderungen an Rechercheergebnissen und neue Rechercheaufträge. Die
+  Schreibprüfung verwendet die Zeilensperre der Analyse, bei Aktenablage
+  nochmals nach dem Speichervorgang. Das Markierungspanel kennzeichnet
+  automatisch zugeordnete n8n-Antworten als „zugeordnet“ und ermöglicht
+  Berechtigten die fachliche Ablehnung. Tests belegen die betroffenen Pfade.
+  Der Umgang mit späteren Antworten auf bereits erteilte Aufträge bleibt
+  fachlich zu klären.
+- 2026-11-20 · `REMINDER-TICKET-001`, `WORKFLOW-LIFECYCLE-001`,
+  `TAX-CONTROL-STATUS-001`, `DOC-UPLOAD-JOURNAL-001` · Die Erfassung von
+  Wiedervorlagen, Workflowterminen, Pendelordnerrückgaben und
+  Steuererklärungsabgaben lehnt unmögliche Kalendertage ab. Die bisherigen
+  Zeichenmuster ließen den 31. April als 1. Mai speichern. Die Nachweise
+  prüfen die Serveraktionen und die Ablehnung vor dem PDF-Journal.
+- 2026-11-20 · `TAX-DEADLINE-ANNUAL-001` · Der ungeprüfte Regelentwurf
+  beschreibt den Kontrolltermin für kalenderjährige Jahreserklärungen.
+  Für 2019 berücksichtigt der Generator bei beauftragter Erstellung im
+  Regelfall den 31.08.2021 nach Art. 97 § 36 Abs. 1 EGAO. Vier Tests
+  prüfen beratene und unberatene Fristen. Die Konfiguration nennt die
+  individuell und landwirtschaftlich zu prüfenden Sonderfälle.
+- 2026-11-20 · `TAX-DEADLINE-WORKDAY-001` · Die Fristenberechnung berücksichtigt
+  die einmaligen Feiertage in Berlin 2020, 2025 und 2028, die Einführung
+  von Frauen- und Weltkindertag in den jeweiligen Ländern sowie den
+  bundesweiten Reformationstag 2017 und die anschließenden Landesregelungen.
+  Grenztests prüfen Landeszugehörigkeit, Einführungsjahr, Einmaligkeit und
+  die resultierenden Standard-Fristenden bei bestätigtem Kalender. Für die
+  Stichtagsquellen akzeptiert der Katalog acht weitere konkrete Landeshosts
+  getrennt nach Gesetz und Verwaltungsauskunft (`ASSURANCE-PROFESSIONAL-REVIEW-001`).
+- 2026-11-20 · `ACCESS-CLIENT-MODE-001` · Die Einzelprüfung für ADMIN und
+  PARTNER verlangt eine vorhandene Mandanten-ID des Sitzungstenants. Der
+  Anforderungsexport verwendet die Listenfilter einschließlich Suche und
+  Mitarbeiterzuständigkeit sowie dieselbe Sortierung. Die Mandanten-CSV
+  berücksichtigt unter anderem Aktivierungsstatus, Rechtsform und Onboarding.
+  Die Kombination „aktiv“ und „Onboarding offen“ ergibt die leere Schnittmenge.
+  Die Regel nennt den bisherigen Widerspruch und die zugehörigen Prüfungen.
+- 2026-11-20 · `BWA-TAX-ESTIMATE-001` · Die Periodenansicht übernahm das
+  Endjahr auch für Monate und abweichende Wirtschaftsjahre, der Rechner den
+  KSt-Satz von 15 Prozent auch für 2028 und spätere Jahre. Eingabe und
+  Berechnung beachten nun den Geltungsbereich der Regel. Außerhalb der
+  vollständigen Kalenderjahre 2025 und 2026 entfällt die Jahresschätzung.
+  Leere oder außerhalb des Eingabebereichs liegende Hebesätze ergeben keine
+  Teil- oder Gesamtsumme. Die Regel enthält die amtlichen Quellen zur
+  jahresbezogenen Abgrenzung und die Regressionsnachweise.
+- 2026-11-20 · `BWA-IMPORT-MAPPING-001` · Die Grenze von vier Millionen
+  Rasterzellen gilt beim XLSX-Einlesen für die gesamte Arbeitsmappe.
+  Eingeschlossen sind leere Zellen innerhalb eines belegten Rechtecks. Der
+  Reader-Test prüft das gemeinsame Budget über mehrere Tabellenblätter.
+- 2026-11-20 · `REQ-LIFECYCLE-001`, `TAX-NOTICE-DECISION-001`,
+  `PAYROLL-INTAKE-001`, `MAIL-OUTBOX-001` · Vor der Zeitumstellung lag die
+  Umrechnung gültiger Berliner Eingaben um eine Stunde daneben. Ein früherer
+  Test akzeptierte für die fehlende Stunde jeden gültigen UTC-Zeitpunkt, auch
+  wenn er beim Anzeigen eine andere Uhrzeit ergab. Der Parser weist fehlende
+  Stunden und ungültige Kalendertage jetzt ab. Für neue mehrdeutige Eingaben
+  gilt weiter das spätere Vorkommen. Ein unverändert übermittelter Termin
+  behält den gespeicherten Zeitpunkt. Wunschterminlisten und Terminbestätigung
+  verwenden dieselbe Zeitzone. Das Tagesende für Personalfragebögen liegt
+  genau auf der letzten Millisekunde des gewählten Tages.
+- 2026-11-20 · `INV-DUE-OVERDUE-001` · Die Kanzlei- und Portalansicht
+  berücksichtigten bei der Überfälligkeitsanzeige das Korrekturkennzeichen
+  eines versendeten Belegs nicht. Beide prüfen jetzt wie der Tagesjob die
+  Referenz auf das Original. Seitentests prüfen Karte und Tabelle im Portal
+  sowie die Rechnungszeile der Kanzlei.
+- 2026-11-20 · `ASSURANCE-PROFESSIONAL-REVIEW-001` · Die manuelle Übersicht
+  zählte 85 aktive Regeln. Der Export enthielt 86. Der Regelindex zählt sie
+  jetzt aus den Regeldateien insgesamt und je Fachbereich.
 
 - 2026-10-14: `FK-EXC-20261014-002` dokumentiert die Umstellung der
   UI-Quelltexttests auf Render- und Verhaltenstests (B-08).

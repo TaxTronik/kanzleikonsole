@@ -1,11 +1,13 @@
 'use client';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
+import { MarkdownContent } from './markdown-content';
 
 interface KnowledgeContextArticle {
   id: string;
   title: string;
-  html: string;
+  /** Markdown-Quelltext; gerendert und escapet wird erst in MarkdownContent. */
+  body: string;
   updatedAt: string;
 }
 
@@ -62,7 +64,7 @@ export function KnowledgeContext({
               <Link className="font-semibold underline" href={`/staff/knowledge/${a.id}`}>
                 {a.title}
               </Link>
-              <div className="prose prose-sm" dangerouslySetInnerHTML={{ __html: a.html }} />
+              <MarkdownContent className="prose prose-sm" source={a.body} />
             </section>
           ))}
         </aside>

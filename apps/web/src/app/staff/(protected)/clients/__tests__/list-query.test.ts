@@ -30,6 +30,6 @@ describe('Mandantenlisten-Query', () => {
   });
 
   it('sortiert Typgruppen stabil nach Mandantenname', () => {
-    expect(clientOrderBy('kind', 'asc')).toEqual([{ kind: 'asc' }, { name: 'asc' }]);
+    expect(clientOrderBy('kind', 'asc')).toEqual([{ kind: 'asc' }, { name: 'asc' }, { id: 'asc' }]);
   });
 });

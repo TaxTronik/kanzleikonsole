@@ -33,6 +33,7 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/e2e/tests/helpers/postgres.ts
   - apps/e2e/tests/helpers/redis.ts
   - packages/db/scripts/verify-drift.ts
   - packages/db/scripts/drift-shadow.ts
@@ -40,14 +41,17 @@ code_refs:
   - apps/web/src/server/update/manifest.ts
   - .forgejo/workflows/release.yml
   - scripts/release/check-release-gates.mjs
+  - scripts/release/smoke-release-images.sh
   - scripts/release/verify-release-config.mjs
 test_refs:
+  - apps/e2e/unit/postgres.test.ts
   - apps/e2e/unit/redis.test.ts
   - apps/e2e/tests/inbox-composer-state.spec.ts
   - packages/db/src/__tests__/drift-shadow.test.ts
   - packages/db/src/__tests__/drift-shadow-identity.test.ts
   - apps/web/src/server/update/__tests__/manifest.test.ts
   - scripts/release/tests/check-release-gates.test.mjs
+  - scripts/release/tests/smoke-preflight.test.mjs
   - scripts/release/tests/verify-release-config.test.mjs
 feature_refs:
   - docs/assurance/ps880-release-evidence.md
@@ -169,6 +173,17 @@ IDW-PS-880-Erfüllung, Zertifizierung oder Softwarebescheinigung.
   und regelmäßig wiederhergestellt?
 
 ## Technische Nachweise
+
+Die PostgreSQL-Gegenproben der Browsertests gleichen den konfigurierten
+Datenbanknamen mit der Anwendungs-URL ab. Der Fixture-Test erfasst auch
+ein widersprüchliches Ziel und die Behandlung einer fehlgeschlagenen
+SQL-Anweisung. Ein solcher Fehler darf keine Wiederholung auf einem anderen
+Zugangsweg auslösen.
+
+Der Stack-Smoke prüft vor dem ersten Containerstart, ob die Umgebung frei
+und der Docker-Daemon erreichbar ist. In beiden Abbruchfällen prüft
+`smoke-preflight.test.mjs`, dass nur die Bestandsabfrage erfolgt. Ein gestarteter
+Testlauf verwendet eigene Namen für sein Compose-Projekt und seine Hilfsimages.
 
 Die E2E-Testbereinigung verwendet ausdrücklich die Datenbanknummer aus der
 Redis-URL. Sie bestätigt `SELECT`, bevor sie `FLUSHDB` sendet; ein fehlerhafter

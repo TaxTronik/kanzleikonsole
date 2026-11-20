@@ -40,10 +40,7 @@ const SaveSchema = z.object({
   clientId: z.string().uuid(),
   kind: z.enum(KIND_VALUES),
   period: z.string().min(4).max(20),
-  filingDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .nullable(),
+  filingDate: z.iso.date('Bitte ein gültiges Abgabedatum angeben.').nullable(),
   expectedAssessed: z.number().nullable(),
   expectedPrepaid: z.number().nullable(),
   expectedRefund: z.number().nullable(),

@@ -488,6 +488,12 @@ describe('Anforderungsabschluss und Wiedereröffnung', () => {
 });
 
 describe('Quick-Anforderung', () => {
+  it('REQ-LIFECYCLE-001: lehnt einen Zieltermin in der fehlenden Berliner Stunde vor dem Schreiben ab', async () => {
+    const result = await createQuickRequestAction(null, requestData({ dueAt: '2026-03-29T02:30' }));
+    expect(result).toMatchObject({ ok: false, fieldErrors: { dueAt: expect.any(Array) } });
+    expect(mocks.withTenantContext).not.toHaveBeenCalled();
+  });
+
   it('verwendet Access-Gate, Transaktion, Audit und denselben Benachrichtigungspfad', async () => {
     const tx = makeTx();
     mocks.withTenantContext.mockImplementation(

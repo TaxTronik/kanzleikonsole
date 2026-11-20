@@ -113,6 +113,16 @@ beforeEach(() => {
 });
 
 describe('saveTaxFilingAction — Erklaerungs-PDF journal-first', () => {
+  it('lehnt einen unmöglichen Abgabetag vor Speicherung und PDF-Journal ab', async () => {
+    const data = { ...input(), filingDate: '2026-02-29' };
+    await expect(saveTaxFilingAction(data, pdfUpload())).resolves.toEqual({
+      ok: false,
+      error: 'Bitte ein gültiges Abgabedatum angeben.',
+    });
+    expect(m.withTenantContext).not.toHaveBeenCalled();
+    expect(storageJournal.events).toEqual([]);
+  });
+
   it('lehnt einen belegten Zeitraum vor Scan, Journal und Object-Lock-Write ab', async () => {
     const existing = tx({ id: 'filing-0' });
     m.withTenantContext.mockImplementation(async (_ctx: unknown, fn: (value: unknown) => unknown) =>

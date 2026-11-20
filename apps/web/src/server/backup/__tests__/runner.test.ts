@@ -8,7 +8,7 @@
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { EventEmitter } from 'node:events';
 import { PassThrough, type Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -77,7 +77,7 @@ vi.mock('node:child_process', () => ({
   },
 }));
 
-import { runBackup } from '../runner';
+import { backupOutputFile, runBackup } from '../runner';
 
 let backupDir = '';
 
@@ -102,13 +102,19 @@ afterEach(() => {
 });
 
 describe('runBackup (Betreiber-Lauf)', () => {
+  it('ordnet den Dateiexport nur einer vollständigen CLI-Option zu', () => {
+    expect(backupOutputFile([], 'existing.dump')).toBe('existing.dump');
+    expect(backupOutputFile(['--out-file', 'new.dump'], 'existing.dump')).toBe('new.dump');
+    expect(() => backupOutputFile(['--out-file'], 'existing.dump')).toThrow('--out-file');
+    expect(() => backupOutputFile(['--out-fiel', 'new.dump'])).toThrow('--out-file');
+  });
+
   it('legt die lokale Kopie an, lädt sie hoch und auditiert den Lauf', async () => {
     const result = await runBackup();
 
     expect(result).toMatchObject({ ok: true, recordId: 'rec-tenant-1', sizeBytes: 9 });
-    expect(result.localPath).toMatch(
-      new RegExp(`^${backupDir}/taxtronik-\\d{8}-\\d{6}-[0-9a-f]{6}\\.sql\\.gz$`),
-    );
+    expect(dirname(result.localPath!)).toBe(backupDir);
+    expect(basename(result.localPath!)).toMatch(/^taxtronik-\d{8}-\d{6}-[0-9a-f]{6}\.sql\.gz$/);
     expect(readFileSync(result.localPath!, 'utf8')).toBe('DUMPBYTES');
     expect(h.uploads).toEqual([{ key: result.key, body: 'DUMPBYTES' }]);
     expect(h.txUpdate).toHaveBeenCalledWith({

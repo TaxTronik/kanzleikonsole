@@ -5,6 +5,11 @@ import { accessibleClientsWhereFor } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import {
+  clientListWhere,
+  clientOrderBy,
+  parseClientListFilters,
+} from '@/app/staff/(protected)/clients/list-query';
+import {
   toCsv,
   csvResponse,
   truncationNote,
@@ -24,16 +29,38 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'rate_limited', retryAfter: rl.retryAfter }, { status: 429 });
   }
 
+  const sp = req.nextUrl.searchParams;
+  const filters = parseClientListFilters({
+    q: sp.get('q'),
+    status: sp.get('status'),
+    onboarding: sp.get('onboarding'),
+    kind: sp.get('kind'),
+    mine: sp.get('mine'),
+    sort: sp.get('sort'),
+    dir: sp.get('dir'),
+  });
   const { rows, truncated } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): gesperrte Mandanten
       // tauchen nicht im CSV auf.
       const list = await tx.client.findMany({
-        where: await accessibleClientsWhereFor(tx, session),
-        orderBy: { name: 'asc' },
+        where: clientListWhere(filters, staffId, await accessibleClientsWhereFor(tx, session)),
+        orderBy: clientOrderBy(filters.sort, filters.dir),
         take: MAX_EXPORT_ROWS + 1, // +1 zur Trunkierungs-Erkennung
-        include: {
+        select: {
+          datevNo: true,
+          addisonNo: true,
+          name: true,
+          kind: true,
+          allowActive: true,
+          street: true,
+          postalCode: true,
+          city: true,
+          countryIso: true,
+          vatId: true,
+          invoiceEmail: true,
+          createdAt: true,
           _count: {
             select: { documents: { where: { deletedAt: null } }, invoices: true, requests: true },
           },
@@ -46,7 +73,15 @@ export async function GET(req: NextRequest) {
         actorId: staffId,
         action: 'clients.export.csv',
         resourceType: 'client',
-        after: { rows: out.length, truncated },
+        after: {
+          rows: out.length,
+          truncated,
+          searchApplied: Boolean(filters.q),
+          mine: filters.mine,
+          status: filters.status ?? 'all',
+          onboarding: filters.onboarding ?? 'all',
+          kind: filters.kind ?? 'all',
+        },
         ip: getClientIp(req.headers),
         userAgent: req.headers.get('user-agent'),
       });

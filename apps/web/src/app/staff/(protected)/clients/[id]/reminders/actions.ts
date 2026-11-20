@@ -37,7 +37,7 @@ const CreateSchema = z.object({
     const roh = String(value ?? '').trim();
     return roh === '' || roh === 'intern' ? null : roh;
   }, z.string().uuid().nullable()),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Bitte ein gültiges Datum angeben.'),
+  dueDate: z.iso.date('Bitte ein gültiges Datum angeben.'),
   subject: z.string().min(1).max(200),
   notes: formDefault('', z.string().max(2000).optional().or(z.literal(''))),
   // Mehrfachauswahl (repeatable): sonst käme nur die erste Person an.
@@ -134,7 +134,7 @@ export async function cloneReminderAction(input: {
       id: z.string().uuid(),
       alsNachfrage: z.boolean(),
       alsVerknuepftesTicket: z.boolean().optional(),
-      dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Bitte ein gültiges Datum angeben.'),
+      dueDate: z.iso.date('Bitte ein gültiges Datum angeben.'),
       subject: z.string().max(200).optional(),
       notes: z.string().max(2000).nullable().optional(),
       assigneeStaffIds: z.array(z.string().uuid()).max(20).optional(),

@@ -31,7 +31,9 @@ describe('Bausteine der Richtungsisolation', () => {
     const { container } = render(
       <>
         <TcmsTextBlock als="td">Sachverhalt</TcmsTextBlock>
-        <span {...TCMS_TEXT_ISOLIERT}>Badge</span>
+        <td>
+          <span {...TCMS_TEXT_ISOLIERT}>Badge</span>
+        </td>
       </>,
       { container: document.createElement('tr') },
     );

@@ -5,7 +5,7 @@ import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { computeBwaKpis } from '@/server/bwa/addison-parser';
-import type { LegalForm } from '@/server/bwa/tax-estimator';
+import { bwaCalendarYear, type LegalForm } from '@/server/bwa/tax-estimator';
 import { TaxEstimatorCard } from './tax-estimator-card';
 
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
@@ -76,7 +76,7 @@ export default async function BwaPeriodDetailPage({
       </div>
 
       <TaxEstimatorCard
-        taxYear={period.toDate.getUTCFullYear()}
+        taxYear={bwaCalendarYear(period.fromDate, period.toDate)}
         resultBeforeTax={kpis.resultBeforeTax}
         revenue={kpis.revenue}
         inputVat={(() => {

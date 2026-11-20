@@ -162,6 +162,59 @@ describe('Zählerabgleich über den geteilten Tab-Poller (P-08)', () => {
 });
 
 describe('Zuwachs', () => {
+  it('wertet einen verspäteten Abruf auf der inzwischen sichtbaren Seite aus', async () => {
+    let finish!: () => void;
+    recent = {
+      unread: 3,
+      latestUnreadAt: T1,
+      items: [
+        item('audit', {
+          kind: 'SYSTEM_AUDIT_OK',
+          href: '/staff/admin/audit',
+        }),
+      ],
+    };
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ ok: true, json: async () => recent });
+        }),
+    );
+    m.pathname = '/staff/admin/audit';
+    const view = render(bell());
+    await poll({ unread: 3, latestUnreadAt: T1 });
+    m.pathname = '/staff/clients';
+    view.rerender(bell());
+    await act(async () => finish());
+    expect(m.markRead).not.toHaveBeenCalled();
+    expect(screen.getByText('Aufgabe audit')).toBeTruthy();
+  });
+
+  it('führt bei einer verspäteten Antwort nach dem Unmount keine Quittung oder Hinweise aus', async () => {
+    let finish!: () => void;
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({ ok: true, json: async () => recent });
+        }),
+    );
+    const view = render(bell());
+    await poll({ unread: 3, latestUnreadAt: T1 });
+    view.unmount();
+    await act(async () => finish());
+    expect(m.sound).not.toHaveBeenCalled();
+    expect(m.emitGrew).not.toHaveBeenCalled();
+    expect(m.refresh).not.toHaveBeenCalled();
+  });
+
+  it('verarbeitet einen beim Öffnen erkannten Zuwachs aus derselben Kurzliste', async () => {
+    render(bell());
+    fireEvent.click(screen.getByRole('button', { name: /ungelesene Benachrichtigungen/ }));
+    await waitFor(() => expect(m.emitGrew).toHaveBeenCalledOnce());
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(screen.getByRole('button', { name: '3 ungelesene Benachrichtigungen' })).toBeTruthy();
+  });
+
   it('lädt die Kurzliste, meldet die betroffenen Ziele und lädt nur eine betroffene Seite neu', async () => {
     m.pathname = '/staff/requests/neu';
     render(bell());
@@ -170,6 +223,7 @@ describe('Zuwachs', () => {
     await waitFor(() => expect(m.emitGrew).toHaveBeenCalledOnce());
     expect(fetchMock).toHaveBeenCalledWith('/api/staff/notifications/recent', {
       cache: 'no-store',
+      signal: expect.any(AbortSignal),
     });
     // Ziele seit dem bekannten Zeitpunkt T0: nur der neue Eintrag.
     expect(m.shouldRefresh).toHaveBeenCalledWith('/staff/requests/neu', ['/staff/requests/neu']);
@@ -222,6 +276,16 @@ describe('Zuwachs', () => {
 });
 
 describe('Hinweis und Dropdown', () => {
+  it('ersetzt den Ladehinweis nach einem Fehler und lädt die Kurzliste auf Wunsch erneut', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('offline'));
+    render(bell());
+    fireEvent.click(screen.getByRole('button', { name: /ungelesene Benachrichtigungen/ }));
+    const retry = await screen.findByRole('button', { name: 'Erneut laden' });
+    expect(screen.queryByText('Lade…')).toBeNull();
+    fireEvent.click(retry);
+    await screen.findByText('Aufgabe neu');
+    expect(screen.queryByRole('button', { name: 'Erneut laden' })).toBeNull();
+  });
   it('hält den Hinweis im Profilmodus offen und pausiert ihn bei Interaktion und offenem Dropdown', async () => {
     render(bell(true));
     await poll({ unread: 3, latestUnreadAt: T1 });

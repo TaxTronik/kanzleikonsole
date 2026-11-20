@@ -157,6 +157,55 @@ const surfacePlugin = {
   },
 };
 
+// HTML-Einfügestellen (SAST-Befund XSS): dangerouslySetInnerHTML,
+// innerHTML-/outerHTML-Zuweisungen und insertAdjacentHTML gibt es in der
+// Web-App nur in den unten begründeten Dateien. Markdown läuft ausschließlich
+// über components/markdown-content.tsx; neue Stellen schlagen im Lint fehl.
+const HTML_SINK_MESSAGE =
+  'Kein HTML einfügen: Markdown über <MarkdownContent source={…} /> (components/markdown-content.tsx) rendern, sonst Text als React-Kinder. Ausnahmen nur begründet in HTML_SINK_ALLOWLIST (eslint.config.mjs).';
+
+/**
+ * Begründete HTML-Einfügestellen. Fällt eine Stelle weg, wird der Eintrag
+ * gelöscht (apps/web/src/__tests__/html-sinks.test.ts prüft das).
+ */
+export const HTML_SINK_ALLOWLIST = [
+  {
+    file: 'apps/web/src/components/markdown-content.tsx',
+    reason:
+      'Einzige Markdown-Einfügestelle; nimmt nur Quelltext an, renderMarkdown escapet jeden Textblock.',
+  },
+  {
+    file: 'apps/web/src/app/layout.tsx',
+    reason: 'Statisches Theme-Bootstrap-Skript mit CSP-Nonce, ohne Anfragedaten.',
+  },
+  {
+    file: 'apps/web/src/app/portal/(protected)/forms/[id]/page.tsx',
+    reason:
+      'Formular-Einleitung über renderSafeMarkdown (@taxtronik/mail), escapet vorab und erzeugt nur p, br, strong, em, ul, li, a.',
+  },
+];
+
+const htmlSinkPlugin = {
+  rules: {
+    'no-html-sink': {
+      meta: { type: 'problem', schema: [], messages: { sink: HTML_SINK_MESSAGE } },
+      create(context) {
+        const report = (node) => context.report({ node, messageId: 'sink' });
+        const istSchluessel = (key, computed) =>
+          (!computed && key.type === 'Identifier' && key.name === 'dangerouslySetInnerHTML') ||
+          (key.type === 'Literal' && key.value === 'dangerouslySetInnerHTML');
+        return {
+          "JSXAttribute[name.name='dangerouslySetInnerHTML']": report,
+          Property: (node) => istSchluessel(node.key, node.computed) && report(node),
+          'AssignmentExpression > MemberExpression.left[property.name=/^(?:inner|outer)HTML$/]':
+            report,
+          "CallExpression > MemberExpression.callee[property.name='insertAdjacentHTML']": report,
+        };
+      },
+    },
+  },
+};
+
 export default [
   {
     ignores: [
@@ -173,6 +222,8 @@ export default [
       '**/playwright-report/**',
       '**/test-results/**',
       '.codex-run/**',
+      '.claude/**',
+      '.claude-stage/**',
       '.VSCodeCounter/**',
       'DEMODATEN/**',
       'infra/compose/.volumes/**',
@@ -186,6 +237,7 @@ export default [
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  { languageOptions: { parserOptions: { tsconfigRootDir: import.meta.dirname } } },
   {
     files: ['**/*.{ts,tsx}'],
     plugins: { taxtronik: complexityPlugin },
@@ -243,6 +295,16 @@ export default [
     plugins: { surface: surfacePlugin },
     rules: { 'surface/no-portal-import': ['error', modules] },
   })),
+  {
+    files: ['apps/web/**/*.{ts,tsx}'],
+    ignores: [
+      '**/__tests__/**',
+      '**/*.test.{ts,tsx}',
+      ...HTML_SINK_ALLOWLIST.map(({ file }) => literalGlob(file)),
+    ],
+    plugins: { 'html-sink': htmlSinkPlugin },
+    rules: { 'html-sink/no-html-sink': 'error' },
+  },
   {
     files: ['apps/web/src/server/auth/rbac.ts'],
     rules: {

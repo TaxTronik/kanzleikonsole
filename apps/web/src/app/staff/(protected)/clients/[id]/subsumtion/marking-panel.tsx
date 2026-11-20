@@ -68,6 +68,7 @@ export function MarkingPanel(props: {
     onClose,
     flash,
   } = props;
+  const canResearch = canWrite || isAssignee;
 
   // Tatsächlich markierter Text (Fundstelle) — Whitespace geglättet, gekappt.
   // Nur zeigen, wenn er sich vom Begriff unterscheidet (sonst redundant, z. B. wörtlich).
@@ -186,7 +187,7 @@ export function MarkingPanel(props: {
         refs={m.normRefs}
         fallback={m.normAnker}
         engineConfigured={engineConfigured}
-        pending={pending}
+        pending={pending || !canWrite}
         start={start}
         flash={flash}
         onChanged={onChanged}
@@ -314,7 +315,7 @@ export function MarkingPanel(props: {
           clientId={clientId}
           analysisId={analysisId}
           markingId={m.id}
-          canReview={canWrite || isAssignee}
+          canReview={canResearch}
           canShelve={canWrite}
           pending={pending}
           start={start}
@@ -337,7 +338,7 @@ export function MarkingPanel(props: {
         )}
         {/* Recherche ist die Aufgabe der zugewiesenen Person — der einzige
             schreibende Weg, der ihr offensteht. */}
-        {(canWrite || isAssignee) && (
+        {canResearch && (
           <button
             type="button"
             onClick={() => setShowResearch((v) => !v)}
@@ -366,7 +367,7 @@ export function MarkingPanel(props: {
             </button>
           </>
         )}
-        {!canWrite && !isAssignee && (
+        {!canResearch && (
           <span className="text-xs text-muted">
             Leseansicht — Bearbeitung durch zuständige Berufsträger.
           </span>

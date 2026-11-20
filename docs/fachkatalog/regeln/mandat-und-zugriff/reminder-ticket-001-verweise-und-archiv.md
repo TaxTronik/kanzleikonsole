@@ -41,6 +41,7 @@ code_refs:
   - apps/worker/src/jobs/reminders-daily.ts
   - apps/worker/src/jobs/reminder-done-notify.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts
+  - apps/web/src/app/staff/(protected)/phone-notes/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/_data.ts
   - apps/web/src/server/risk/delegate.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
@@ -58,6 +59,7 @@ code_refs:
   - apps/web/src/app/staff/(protected)/reminders/[id]/ticket-forms.tsx
   - apps/web/src/app/staff/(protected)/reminders/[id]/ticket-history-pagination.tsx
 test_refs:
+  - apps/web/src/server/actions/__tests__/calendar-date-input.test.ts
   - apps/web/src/lib/__tests__/reminder-ticket-references.test.ts
   - apps/web/src/server/documents/__tests__/reminder-upload-guard.test.ts
   - apps/web/src/server/risk/__tests__/delegate.test.ts
@@ -160,6 +162,13 @@ ihr weder den Titel noch die Inhalte von #12. Der selbst geschriebene Text in
 #18 wird durch eine spätere Rechteänderung nicht rückwirkend umgeschrieben.
 
 ## Umsetzung in TaxTronik
+
+Bei Anlage, Kopie und Übernahme einer Telefonnotiz prüft der Server die
+Fälligkeit als echten Kalendertag. Die frühere Musterprüfung ließ etwa
+den 29. Februar 2026 zu, den die Datumskonvertierung anschließend auf den
+
+1. März verschob. Die Action-Tests grenzen diese Eingabe und den
+2. April vom gültigen 29. Februar 2024 ab.
 
 Nummern werden in der Datenbank für alle Producer vergeben. Tenantgebundene
 Fremdschlüssel sichern Referenzen ab. Der Server löst explizite Nummern in

@@ -39,7 +39,9 @@ und ist keine Liquiditätsrechnung.
 
 TaxTronik stellt zwei Rechenwege nebeneinander dar:
 
-- **Lineare Run-rate:** Der bisherige Periodenverlauf wird mit
+- **Lineare Run-rate:** Beginn und Ende der verwendeten unterjährigen BWA
+  müssen im angezeigten Kalenderjahr liegen. Das Dashboard wechselt um
+  Berliner Mitternacht ins neue Jahr. Die jüngste passende Periode wird mit
   `12 / erfasste Monate` auf das Gesamtjahr fortgeschrieben. Die Spanne wird
   mit zunehmender Datenabdeckung enger; eine Saisongewichtung findet nicht
   statt.
@@ -57,6 +59,15 @@ Ohne vorhandenes Ergebnis vor Steuern werden weder dessen Hochrechnung noch
 eine darauf aufbauende Steuerpauschale angezeigt. Auch die Steuerschätzung in
 der Periodenansicht verwendet kein vorläufiges Nachsteuerergebnis als Ersatz
 (`BWA-TAX-ESTIMATE-001`).
+
+Für die Jahresschätzung benötigt die Periodenansicht eine BWA vom 1. Januar
+bis zum 31. Dezember 2025 oder 2026. Bei Teilperioden, abweichenden
+Wirtschaftsjahren und anderen Jahren zeigt die Karte den Grund für die
+fehlende Schätzung. Bei gewerblicher Tätigkeit lässt sich der voreingestellte
+Hebesatz von 400 Prozent durch den Gemeindesatz im Modellbereich von 200 bis
+900 Prozent ersetzen. Die ausgewiesene Summe umfasst die berechneten
+Ertragsteuern und gegebenenfalls den Solidaritätszuschlag. Umsatzsteuerbeträge
+stehen gesondert in der Tabelle.
 
 ## 3. Planungen und Szenarien
 

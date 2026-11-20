@@ -31,6 +31,7 @@ declare module 'next-auth' {
       contactId?: string;
       clientId?: string;
       sessionIssuedAt?: number;
+      sessionIssuedAtMs?: number;
       sessionOriginContactId?: string;
     };
   }

@@ -8,7 +8,7 @@
 //   - Handakten/§ 66 StBerG: 10 Jahre ab Schluss des Mandatsende-Jahres
 //   - GwG § 8 Abs. 4: 5 Jahre ab Schluss des Kalenderjahres des Mandatsendes
 // Die LÄNGSTE Frist gewinnt → 10 Jahre ab Jahresende des Mandatsendes. Danach
-// entfällt die Rechtsgrundlage und die Stammdaten sind zu anonymisieren.
+// folgt die manuelle Prüfung weiterer Aufbewahrungs- und Beweisgründe.
 //
 // Diese Datei liefert die reine Fristlogik + die Such-Query für die
 // Review-Queue (/staff/admin/dsgvo-retention); die eigentliche Anonymisierung
@@ -16,6 +16,10 @@
 // Fristmechanik analog server/gwg/retention.ts (Jahresende-Rundung).
 // =============================================================================
 
+import {
+  dueRetentionAnchorCutoff,
+  retentionAfterBerlinYear,
+} from '@taxtronik/config/retention-calendar';
 import type { Prisma } from '@prisma/client';
 import type { TxClient } from '@taxtronik/db';
 import { GWG_RETENTION_YEARS } from '@/server/gwg/retention';
@@ -37,7 +41,7 @@ export const CLIENT_ANONYMIZATION_YEARS = Math.max(HAND_FILE_RETENTION_YEARS, GW
  * mandateEnd 2026-03-15 → Frist 2026-12-31 … 2036-12-31 → fällig ab 2037-01-01.
  */
 export function clientAnonymizationDeadline(mandateEndedAt: Date): Date {
-  return new Date(Date.UTC(mandateEndedAt.getUTCFullYear() + CLIENT_ANONYMIZATION_YEARS + 1, 0, 1));
+  return retentionAfterBerlinYear(mandateEndedAt, CLIENT_ANONYMIZATION_YEARS);
 }
 
 /** True, wenn die Stammdaten des Mandats (zum Zeitpunkt `now`) anonymisierungsreif sind. */
@@ -82,7 +86,7 @@ export interface PoaSignerAnonymizationItem {
  * 1.1. des elften Folgejahres des Mandatsende-Jahres.
  */
 export function dueClientAnonymizationsWhere(now: Date = new Date()): Prisma.ClientWhereInput {
-  const cutoff = new Date(Date.UTC(now.getUTCFullYear() - CLIENT_ANONYMIZATION_YEARS, 0, 1));
+  const cutoff = dueRetentionAnchorCutoff(now, CLIENT_ANONYMIZATION_YEARS);
   return { kind: 'NATPERS', anonymizedAt: null, mandateEndedAt: { lt: cutoff } };
 }
 
@@ -142,7 +146,7 @@ export async function findDuePoaSignerAnonymizations(
   tx: TxClient,
   now: Date = new Date(),
 ): Promise<PoaSignerAnonymizationItem[]> {
-  const cutoff = new Date(Date.UTC(now.getUTCFullYear() - CLIENT_ANONYMIZATION_YEARS, 0, 1));
+  const cutoff = dueRetentionAnchorCutoff(now, CLIENT_ANONYMIZATION_YEARS);
   const clients = await tx.client.findMany({
     where: {
       kind: { in: ['JURPERS', 'PERSGES'] },

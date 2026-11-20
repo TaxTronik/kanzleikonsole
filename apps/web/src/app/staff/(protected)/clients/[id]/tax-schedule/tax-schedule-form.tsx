@@ -73,7 +73,7 @@ export function TaxScheduleForm({
               </th>
               <th
                 className="text-left px-3 py-3 text-xs font-medium text-muted uppercase whitespace-nowrap"
-                title="Beratene Erklärungsfrist § 149 Abs. 3 AO — Ende Februar des zweiten Folgejahres"
+                title="Beratene Jahreserklärung nach § 149 Abs. 3 AO, einschließlich der Übergangsfristen für 2019 bis 2024"
               >
                 Beraten (§ 149 (3))
               </th>
@@ -104,6 +104,12 @@ export function TaxScheduleForm({
           </tbody>
         </table>
       </div>
+
+      <p className="text-xs text-muted">
+        Die Jahresfristen gelten für kalenderjährige Regelfälle. Prüfen Sie Vorabanforderungen,
+        individuelle Fristverlängerungen, abweichende land- und forstwirtschaftliche
+        Wirtschaftsjahre und die Umsatzsteuer bei Beendigung der Tätigkeit gesondert.
+      </p>
 
       <p className="text-xs text-muted">
         Ablauf der Auto-Anforderung: Die Zuständigen werden zuerst intern vorgewarnt

@@ -6,7 +6,11 @@
 > „Umgesetzt“ bedeutet nicht „fachlich freigegeben“.
 > `approved` authentifiziert die eingetragene Person nur mit separater Repository-Governance oder signierter Attestation.
 
+Aktive Regeln insgesamt: 87
+
 ## Audit und Software-Assurance
+
+Aktive Regeln im Fachbereich: 7
 
 ### [ASSURANCE-PROFESSIONAL-REVIEW-001 — Fachliche Freigabe von technischer Umsetzung und KI-Beiträgen trennen](regeln/audit-und-assurance/assurance-professional-review-001-fachreview.md)
 
@@ -59,6 +63,8 @@
 
 ## BWA und Planung
 
+Aktive Regeln im Fachbereich: 3
+
 ### [BWA-IMPORT-MAPPING-001 — DATEV- und Addison-BWA nur anhand bekannter Strukturen importieren](regeln/bwa-und-planung/bwa-import-mapping-001-strukturimport.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
@@ -81,6 +87,8 @@
 - Kurzfassung: TaxTronik berechnet eine unverbindliche Orientierung aus einem vorläufigen BWA-Ergebnis. Einzelne gesetzliche Parameter sind für 2025 und 2026 im Code hinterlegt; die erforderlichen steuerlichen Bemessungsgrundlagen werden aber nicht aus einem vollständigen Steuerfall ermittelt. Deshalb ist der Stand nur teilweise umgesetzt und ungeprüft. Ein Disclaimer, die Bezeichnung „Beta“ oder eine plausible Zahl macht eine sachlich unvollständige Berechnung nicht richtig.
 
 ## Datenschutz
+
+Aktive Regeln im Fachbereich: 6
 
 ### [DSGVO-CONSENT-SNAPSHOT-001 — Angezeigte Einwilligungs- und Hinweisfassung unverändert nachweisen](regeln/datenschutz/dsgvo-consent-snapshot-001-einwilligungsnachweis.md)
 
@@ -125,6 +133,8 @@
 - Kurzfassung: TaxTronik lässt einen Betroffenenantrag nur mit einem strukturierten technischen Nachweis auf COMPLETED oder REJECTED wechseln. Auskunft und Datenübertragbarkeit benötigen ein Ergebnisartefakt, eine dokumentierte personelle Prüfung und einen Versandnachweis; eine Ablehnung benötigt eine Begründung und den bestätigten Hinweis auf Rechtsbehelfe. Das Produkt beurteilt nicht, ob Inhalt und Rechtsauffassung fachlich richtig sind.
 
 ## Dokumente und Aufbewahrung
+
+Aktive Regeln im Fachbereich: 9
 
 ### [CLIENT-ASSISTANCE-001 — Mandantenangaben und externe Word-Fassungen getrennt dokumentieren](regeln/dokumente-und-aufbewahrung/client-assistance-001-versionierte-mandantenangaben.md)
 
@@ -191,12 +201,21 @@
 
 ## Fristen und Bescheide
 
+Aktive Regeln im Fachbereich: 7
+
 ### [TAX-CONTROL-STATUS-001 — Offene und erledigte Fristen beweisorientiert aus dem Quellvorgang ableiten](regeln/fristen-und-bescheide/tax-control-status-001-fristenkontrollbuch.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
 - Umsetzung: **Teilweise umgesetzt**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Das Fristenkontrollbuch führt keinen frei editierbaren parallelen „Erledigt“-Schalter, sondern leitet seine Sicht aus dem jeweiligen Fachvorgang ab. Ein Statusname allein ist dafür nicht immer ausreichend: Eine relevante Frist soll erst geschlossen werden, wenn Erledigungsgrund und erforderlicher Nachweis im Quellvorgang dokumentiert sind.
+
+### [TAX-DEADLINE-ANNUAL-001 — Kontrolltermin für kalenderjährige Jahressteuererklärungen bestimmen](regeln/fristen-und-bescheide/tax-deadline-annual-001-jahreserklaerungen.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Teilweise umgesetzt**
+- Geltung: ab 2019-01-01
+- Kurzfassung: Für eine kalenderjährige Pflichtsteuererklärung ergibt sich der Regeltermin aus dem Besteuerungsjahr und der qualifizierten Beauftragung zur Erstellung. Für 2019 bis 2024 gelten je nach Fall Übergangsfristen. Die Kanzlei prüft besondere Abgabepflichten, abweichende Fristen und den örtlichen Kalender.
 
 ### [TAX-DEADLINE-AUTOREQUEST-001 — Automatische Mandantenanforderung vor Steuerterminen steuern](regeln/fristen-und-bescheide/tax-deadline-autorequest-001-automatische-anforderung.md)
 
@@ -234,6 +253,8 @@
 - Kurzfassung: Eine berechtigte Kanzleiperson erstellt zu einem GEPRUEFT-Bescheid mit berechnetem Fristvorschlag ohne offenen manuellen Prüfbedarf eine persönliche Rückfrage. Erforderlich sind eine Erklärung, ein aktiver Mandantenkontakt, eine bereits geteilte saubere Dokumentfassung und eine künftige Antwortfrist, die den gespeicherten Einspruchsfristtag nicht überschreitet.
 
 ## Geldwäschegesetz
+
+Aktive Regeln im Fachbereich: 12
 
 ### [GWG-ACTIVATION-GATE-001 — Operative Aktivierung nur nach gültiger GwG-Freigabe](regeln/gwg/gwg-activation-gate-001-operative-aktivierung.md)
 
@@ -320,6 +341,8 @@
 - Kurzfassung: Der öffentliche GwG-Wizard erlaubt einer eingeladenen Person, Stammdaten, wirtschaftlich Berechtigte, Vertreter, Identitätsbelege und Zusatzunterlagen ohne Portal-Konto zu übermitteln. Jeder Schreibzugriff ist an den geheimen, noch gültigen Link, den Mandanten und einen bei Einladungsausgabe gebundenen Ausgangsstand gekoppelt.
 
 ## Mandat und Zugriff
+
+Aktive Regeln im Fachbereich: 21
 
 ### [ACCESS-CLIENT-MODE-001 — Kanzleiweiten Mandantenzugriff nach OPEN, RESTRICTED und Vertraulichkeit steuern](regeln/mandat-und-zugriff/access-client-mode-001-zugriffsmodus.md)
 
@@ -470,6 +493,8 @@
 
 ## Rechnungen
 
+Aktive Regeln im Fachbereich: 9
+
 ### [INV-ARCHIVE-EINVOICE-001 — E-Rechnungsformate aus einer kanonischen Archivfassung bereitstellen](regeln/rechnungen/inv-archive-einvoice-001-kanonische-archivfassung.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
@@ -535,6 +560,8 @@
 
 ## Subsumtion und TCMS-Produktgrenzen
 
+Aktive Regeln im Fachbereich: 8
+
 ### [RISK-AI-SUGGESTION-001 — Automatische Risiko- und Normmarkierungen nur als Vorschläge behandeln](regeln/subsumtion-und-tcms/risk-ai-suggestion-001-vorschlagscharakter.md)
 
 - Fachprüfung: **Ungeprüfter Entwurf**
@@ -592,6 +619,8 @@
 - Kurzfassung: TaxTronik erstellt für einen gewählten Zeitraum einen sortierten Rahmen aus Subsumtions- oder Audit-IDs und übergibt nur diese opaken IDs an den Risk-Layer. Nachweis, Rahmen, Backend-Metadaten und Treffer werden gemeinsam im Audit gespeichert und können später gegen genau diesen gespeicherten Rahmen geprüft werden. Damit ist die Ziehung nachvollziehbar, nicht aber die Vollständigkeit oder fachliche Eignung der Grundgesamtheit und Nachschau.
 
 ## Vollmachten und Signaturen
+
+Aktive Regeln im Fachbereich: 5
 
 ### [POA-LIFECYCLE-001 — Vollmachten kontrolliert durch DRAFT, SENT, SIGNED, REVOKED und EXPIRED führen](regeln/vollmachten-und-signaturen/poa-lifecycle-001-statusmaschine.md)
 

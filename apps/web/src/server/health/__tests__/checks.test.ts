@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  redis: vi.fn(),
+  s3Send: vi.fn(),
   health: vi.fn(),
   riskLayerClient: vi.fn(),
   safeFetch: vi.fn(),
@@ -29,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   tcmsClient: vi.fn(),
 }));
 
+vi.mock('@/server/redis', () => ({ getRedis: mocks.redis }));
+vi.mock('@taxtronik/storage/client', () => ({ getS3Client: () => ({ send: mocks.s3Send }) }));
 vi.mock('@taxtronik/config', () => ({
   env: mocks.env,
   riskLayerConfig: mocks.riskLayerConfig,
@@ -65,7 +69,33 @@ import {
   TcmsNichtVerfuegbar,
   TcmsProtokollFehler,
 } from '@taxtronik/tcms-client';
-import { checkN8nForTenant, checkSignalEngine, checkTcms, checkTsaForTenant } from '../checks';
+import {
+  checkN8nForTenant,
+  checkObjectStore,
+  checkRedis,
+  checkSignalEngine,
+  checkTcms,
+  checkTsaForTenant,
+} from '../checks';
+
+describe('readiness', () => {
+  it('requires an authenticated Redis PONG', async () => {
+    const ping = vi.fn().mockResolvedValueOnce('PONG').mockRejectedValueOnce(new Error('NOAUTH'));
+    mocks.redis.mockReturnValue({ ping });
+    await expect(checkRedis()).resolves.toMatchObject({ ok: true });
+    await expect(checkRedis()).resolves.toMatchObject({ ok: false, error: 'NOAUTH' });
+    mocks.redis.mockReturnValue(null);
+    await expect(checkRedis()).resolves.toMatchObject({ ok: false });
+  });
+
+  it('uses the shared object-store connection with a probe deadline', async () => {
+    mocks.s3Send.mockResolvedValue({});
+    await expect(checkObjectStore()).resolves.toMatchObject({ ok: true });
+    expect(mocks.s3Send).toHaveBeenCalledWith(expect.anything(), {
+      abortSignal: expect.any(AbortSignal),
+    });
+  });
+});
 
 describe('checkTsaForTenant', () => {
   beforeEach(() => {

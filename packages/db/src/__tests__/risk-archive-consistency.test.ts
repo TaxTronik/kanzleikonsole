@@ -580,9 +580,23 @@ describe('RISK-ARCHIVE-SNAPSHOT-001 immutable DB boundary and retention exceptio
         data: { sourceText: '', sourceDoc: Prisma.DbNull },
       });
     await dbAbgewiesen(transaction(redact), /immutable/);
+    const jahr = new Date().getUTCFullYear() - 11;
     await owner.client.update({
       where: { id: clientId },
-      data: { mandateEndedAt: new Date('2000-01-01'), anonymizedAt: new Date() },
+      data: { mandateEndedAt: new Date(`${jahr}-12-31T23:00:00Z`), anonymizedAt: new Date() },
+    });
+    // DSGVO-MANDATE-ANONYMIZATION-001: dieselbe Sekunde gehört in Berlin
+    // schon zum Folgejahr, auch wenn die DB-Sitzung westlich von UTC liegt.
+    await dbAbgewiesen(
+      transaction(async (tx) => {
+        await tx.$executeRaw`SET LOCAL TIME ZONE 'America/Los_Angeles'`;
+        return redact(tx);
+      }),
+      /immutable/,
+    );
+    await owner.client.update({
+      where: { id: clientId },
+      data: { mandateEndedAt: new Date(`${jahr}-12-31T22:59:59Z`) },
     });
     await dbAbgewiesen(
       transaction((tx) =>

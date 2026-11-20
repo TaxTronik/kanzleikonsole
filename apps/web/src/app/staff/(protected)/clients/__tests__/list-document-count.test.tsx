@@ -58,6 +58,17 @@ beforeEach(() => {
 });
 
 describe('Mandantenliste — Dokumentzähler', () => {
+  it.each([
+    ['1000000000', 52, 50],
+    ['0', 52, 0],
+    ['2.5', 52, 0],
+    ['2', 0, 0],
+  ])('begrenzt Seite %s bereits bei der Datenabfrage für %i Treffer', async (page, count, skip) => {
+    h.tx.client.count.mockResolvedValue(count);
+    await ClientsPage({ searchParams: Promise.resolve({ page }) });
+    expect(h.tx.client.findMany).toHaveBeenCalledWith(expect.objectContaining({ skip, take: 50 }));
+  });
+
   it('zählt nur nicht gelöschte Dokumente und zeigt den Zähler unverändert an', async () => {
     const html = renderToStaticMarkup(await ClientsPage({ searchParams: Promise.resolve({}) }));
 

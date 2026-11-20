@@ -24,29 +24,36 @@ sources:
   - kind: official_law
     citation: § 147 Abs. 1 bis 4 AO
     url: https://www.gesetze-im-internet.de/ao_1977/__147.html
-    checked_at: '2026-08-24'
+    checked_at: '2026-11-20'
     primary: true
   - kind: official_law
     citation: § 14b UStG
     url: https://www.gesetze-im-internet.de/ustg_1980/__14b.html
-    checked_at: '2026-08-24'
+    checked_at: '2026-11-20'
     primary: false
   - kind: official_law
     citation: Art. 97 § 19a EGAO, Übergang zur Achtjahresfrist
     url: https://www.gesetze-im-internet.de/aoeg_1977/art_97__19a.html
     checked_at: '2026-08-24'
     primary: false
+  - kind: official_law
+    citation: § 257 Abs. 4 und 5 HGB, einschließlich Sonderregel für beaufsichtigte Institute
+    url: https://www.gesetze-im-internet.de/hgb/__257.html
+    checked_at: '2026-11-20'
+    primary: true
   - kind: product_documentation
     citation: Benutzerhandbuch Dokumente und Archiv
     path: docs/anwenderdoku/dokumente.md
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - packages/config/src/retention-calendar.ts
   - packages/storage/src/service.ts
   - apps/web/src/server/storage/document-type.ts
   - apps/web/src/server/inbox/accept-attachment.ts
   - packages/db/prisma/migrations/20260801003520_document_type_retention_years/migration.sql
 test_refs:
+  - packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts
   - packages/storage/src/__tests__/retention.test.ts
   - apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts
   - apps/web/src/server/inbox/__tests__/accept-attachment.test.ts
@@ -130,6 +137,17 @@ eine andere Klasse oder ein zusätzlicher Schutz erforderlich.
 
 ## Umsetzung in TaxTronik
 
+Der Produktanker ist ein Zeitpunkt. Die Rechnung verwendet dessen Kalenderjahr
+in Europe/Berlin und setzt die technische Freigabe am folgenden 1. Januar
+um 00:00 UTC. Beispielsweise fällt ein Buchungsbeleg vom 31.12.2026 um
+23:00 UTC in das deutsche Jahr 2027 und erhält im Achtjahrestyp den
+01.01.2036. Frühere Berechnung und Tests verwendeten das UTC-Ankerjahr.
+Upload, ursprüngliche Dokumentanlage beim Retag und Zeitpunkt der
+Mandantenangaben-Revision sind unterschiedliche, jeweils gespeicherte Anker.
+Ob diese das fachliche Ereignis treffen, muss die Kanzlei prüfen. Bei den in
+§ 257 Abs. 4 Satz 2 HGB genannten Instituten können für Buchungsbelege zehn
+Jahre gelten. Die Produktklasse „Rechnung“ erkennt diesen Branchenfall nicht.
+
 `document-type.ts` erhält für benutzerdefinierte Typen die gewählte
 Schutzstufe über eine Carrier-Klassifikation. `service.ts` akzeptiert bei GOBD
 nur sechs, acht oder zehn Jahre, berechnet jahresende-basiert den Stichtag und
@@ -164,3 +182,5 @@ Dokumentklasse und keine daraus abgeleitete Aufbewahrungsfrist. Ein Portal-
 Kontakt kann weder Schutzstufe noch bindende Dokumentart festlegen. Erst der
 getrennte Annahmepfad darf ein klassifiziertes Dokument erzeugen; dessen
 fachliche Einordnung bleibt von einer berechtigten Kanzleiperson zu prüfen.
+
+Die Tests vergleichen den letzten Millisekundenwert vor und den ersten Zeitpunkt ab dem deutschen Jahreswechsel. Unbekannte Typnamen fallen auch bei Namensgleichheit mit einem JavaScript-Objektfeld auf zehn Jahre zurück.

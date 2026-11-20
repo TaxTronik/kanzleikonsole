@@ -19,6 +19,7 @@
 // nebeneinander an und der Mandant kann sich seine Meinung bilden.
 // =============================================================================
 
+import { berlinYmd } from '@/lib/fmt';
 import { computeBwaKpis, type BwaKpis } from './addison-parser';
 
 export type Axis = 'revenue' | 'costs' | 'result' | 'resultBeforeTax' | 'personnelCost';
@@ -108,7 +109,9 @@ export function linearSeasonalProjection(
   // Aktuelle YTD-Daten suchen: jüngste Periode im targetYear, die nicht
   // bereits das ganze Jahr abdeckt.
   const inYear = periods
-    .filter((p) => p.fromDate.getUTCFullYear() === targetYear)
+    .filter(
+      (p) => p.fromDate.getUTCFullYear() === targetYear && p.toDate.getUTCFullYear() === targetYear,
+    )
     .sort((a, b) => b.toDate.getTime() - a.toDate.getTime());
   const ytdMaybe = inYear.find((p) => monthsCovered(p) < 12);
   if (!ytdMaybe) return null;
@@ -254,10 +257,8 @@ export function projectCurrentYear(periods: PeriodInput[]): {
   linear: YearProjection | null;
   trend: YearProjection | null;
 } {
-  // Zieljahr: Jahr der jüngsten Periode (auch wenn die ein abgeschlossenes
-  // Vorjahr ist, planen wir aufs aktuelle Kalenderjahr)
-  const now = new Date();
-  const targetYear = now.getUTCFullYear();
+  // Das Dashboard plant für das aktuelle Kalenderjahr der Kanzlei.
+  const targetYear = Number(berlinYmd(new Date()).slice(0, 4));
 
   return {
     targetYear,

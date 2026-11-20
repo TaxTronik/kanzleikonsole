@@ -16,6 +16,7 @@ import { ForbiddenError, requireStaffSession, canAccessClientTx } from '@/server
 import type { ActionErrorResult } from '@/server/auth/rbac';
 import type { StaffSession } from '@/server/auth/staff';
 import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
+import { lockRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { readModules } from '@/server/settings/modules';
 import { isRiskLayerConfigured } from '@taxtronik/risk-layer';
 import {
@@ -177,8 +178,38 @@ export async function guardMarkingWrite(
 // `resultMarkingId` ist die Markierung, an der das Ergebnis HÄNGT (null =
 // unzugeordnet) — die Prüf-Actions binden ihre Entscheidung daran.
 interface ResultGuardResult extends GuardResult {
-  analysisId: string | null;
+  analysisId: string;
+  resultId: string;
   resultMarkingId: string | null;
+}
+
+async function loadResultScopeTx(
+  tx: TxClient,
+  session: StaffSession,
+  resultId: string,
+  writing: boolean,
+) {
+  const analysisFields = { id: true, clientId: true, archivedAt: true } as const;
+  const result = await tx.riskResearchResult.findUnique({
+    where: { id: resultId },
+    select: {
+      markingId: true,
+      request: { select: { analysis: { select: analysisFields } } },
+      marking: { select: { analysis: { select: analysisFields } } },
+    },
+  });
+  const analysis = result?.request?.analysis ?? result?.marking?.analysis;
+  if (!analysis?.clientId)
+    throw new ForbiddenError('Ergebnis nicht gefunden oder ohne Mandantenbezug.');
+  await checkAccessTx(tx, session, analysis.clientId);
+  if (writing && analysis.archivedAt)
+    throw new ForbiddenError('Diese Subsumtion ist archiviert (schreibgeschützt).');
+  return {
+    resultId,
+    clientId: analysis.clientId,
+    analysisId: analysis.id,
+    resultMarkingId: result?.markingId ?? null,
+  };
 }
 
 async function resultGuard(
@@ -187,24 +218,9 @@ async function resultGuard(
 ): Promise<ResultGuardResult> {
   const { session, ctx, staffId } = await sessionCtx();
   const res = await withTenantContext(ctx, async (tx) => {
-    const result = await tx.riskResearchResult.findUnique({
-      where: { id: resultId },
-      select: {
-        markingId: true,
-        request: { select: { analysis: { select: { id: true, clientId: true } } } },
-        marking: { select: { analysis: { select: { id: true, clientId: true } } } },
-      },
-    });
-    const analysis = result?.request?.analysis ?? result?.marking?.analysis ?? null;
-    if (!analysis?.clientId)
-      throw new ForbiddenError('Ergebnis nicht gefunden oder ohne Mandantenbezug.');
-    await checkAccessTx(tx, session, analysis.clientId);
-    if (kind) await requireRightsTx(tx, session, analysis.clientId, analysis.id, kind);
-    return {
-      clientId: analysis.clientId,
-      analysisId: analysis.id,
-      resultMarkingId: result?.markingId ?? null,
-    };
+    const scope = await loadResultScopeTx(tx, session, resultId, kind !== null);
+    if (kind) await requireRightsTx(tx, session, scope.clientId, scope.analysisId, kind);
+    return scope;
   });
   return { ctx, staffId, ...res };
 }
@@ -230,33 +246,44 @@ export async function guardResultReview(
   resultId: string,
   markingId: string,
   kind: 'uebernehmen' | 'verwerfen',
-): Promise<GuardResult & { analysisId: string | null }> {
+  applyReview: (
+    tx: TxClient,
+    ctx: TenantContext,
+    resultId: string,
+    markingId: string,
+  ) => Promise<void>,
+): Promise<ResultGuardResult> {
   const { session, ctx, staffId } = await sessionCtx();
   const res = await withTenantContext(ctx, async (tx) => {
-    const result = await tx.riskResearchResult.findUnique({
+    // Die erste Abfrage bestimmt nur die Sperre. Ergebniszuordnung und Rechte
+    // müssen den Zustand NACH einer ggf. konkurrierenden Bearbeitung sehen.
+    const origin = await tx.riskResearchResult.findUnique({
       where: { id: resultId },
       select: {
-        markingId: true,
-        request: { select: { analysis: { select: { id: true, clientId: true } } } },
-        marking: { select: { analysis: { select: { id: true, clientId: true } } } },
+        request: { select: { analysisId: true } },
+        marking: { select: { analysisId: true } },
       },
     });
-    const analysis = result?.request?.analysis ?? result?.marking?.analysis ?? null;
-    if (!analysis?.clientId)
+    const analysisId = origin?.request?.analysisId ?? origin?.marking?.analysisId;
+    if (!analysisId || !(await lockRiskAnalysisTx(tx, ctx.tenantId, analysisId))) {
       throw new ForbiddenError('Ergebnis nicht gefunden oder ohne Mandantenbezug.');
-    await checkAccessTx(tx, session, analysis.clientId);
+    }
+    const scope = await loadResultScopeTx(tx, session, resultId, true);
+    if (scope.analysisId !== analysisId) {
+      throw new ForbiddenError('Ergebnis wurde inzwischen einer anderen Analyse zugeordnet.');
+    }
     const rights = await requireRightsTx(
       tx,
       session,
-      analysis.clientId,
-      analysis.id,
+      scope.clientId,
+      scope.analysisId,
       'recherche',
       markingId,
     );
     // Entscheidung ans ERGEBNIS binden, nicht nur an die mitgeschickte
     // markingId: sonst liesse sich mit der eigenen Markierung als Feigenblatt
     // das Ergebnis einer fremden Markierung derselben Analyse pruefen.
-    if (!decideResultReview(rights, kind, result?.markingId ?? null, markingId)) {
+    if (!decideResultReview(rights, kind, scope.resultMarkingId, markingId)) {
       throw new ForbiddenError('Das Ergebnis gehört nicht zu deiner Markierung.');
     }
     // Ziel-Markierung muss zur SELBEN Analyse gehören — sonst liesse sich ein
@@ -265,10 +292,11 @@ export async function guardResultReview(
       where: { id: markingId },
       select: { analysisId: true },
     });
-    if (!target || target.analysisId !== analysis.id) {
+    if (!target || target.analysisId !== scope.analysisId) {
       throw new ForbiddenError('Markierung gehört nicht zu dieser Analyse.');
     }
-    return { clientId: analysis.clientId, analysisId: analysis.id };
+    await applyReview(tx, ctx, resultId, markingId);
+    return scope;
   });
   return { ctx, staffId, ...res };
 }

@@ -115,6 +115,9 @@ verweigert den veralteten Freigabestand.
 Inhaltshash, trennt Implementierungs- von Reviewmetadaten und verwirft stale
 Hashes. `cli.mjs` kann den prüfbaren Hash ausgeben und weist ausdrücklich auf
 die fehlende Identitätswirkung hin. CI prüft Struktur und Drift des Katalogs.
+Der Regelindex zählt die aktiven Regeln insgesamt und je Fachbereich direkt aus
+den Regeldateien. Als abgelöst gekennzeichnete Regeln bleiben im Index
+auffindbar und werden im JSON-Export gesondert gezählt.
 
 Das Diff-Gate verlangt für neue technische Ausnahmen dieselbe Pfadabdeckung
 wie für fachliche Änderungen: statische Fachpfade sowie katalogisierte
@@ -130,6 +133,12 @@ Für den konsolidierten EU-Sanktionsdatenbestand ist außerdem der amtliche
 EU-Datenkatalog `data.europa.eu` ausdrücklich zugelassen. Ähnlich benannte
 Fremddomains werden nicht akzeptiert. Ein zugelassener Host bestätigt
 nicht automatisch die fachliche Aussage einer konkreten Quelle.
+
+Für die Feiertagsänderungen in `TAX-DEADLINE-WORKDAY-001` sind die
+Veröffentlichungshosts der Gesetzblätter von Berlin, Mecklenburg-Vorpommern,
+Thüringen, Bremen, Niedersachsen und Schleswig-Holstein als Gesetzesquellen
+zugelassen. Die Übersicht der Stadt Hamburg und die Hinweise des
+niedersächsischen Innenministeriums zählen als amtliche Auskünfte.
 
 Die konkret zur Laufzeit verwendete StBVV-Tabelle
 `packages/tax/src/stbvv/tables.json` und die zugehörige Paketkonfiguration

@@ -1,5 +1,6 @@
 // Fachkatalog: DSGVO-MANDATE-ANONYMIZATION-001
 // Fachkatalog: CLIENT-MANDATE-LIFECYCLE-001
+// Fachkatalog: POA-SIGNER-RETENTION-001
 import { describe, it, expect, vi } from 'vitest';
 import { Prisma } from '@taxtronik/db/prisma-client';
 import type { TxClient } from '@taxtronik/db';
@@ -33,9 +34,15 @@ describe('clientAnonymizationDeadline — Art. 17 (Jahresende + längste Frist)'
   });
 
   it('Silvester 2026-12-31 → noch Kalenderjahr 2026 → 2037-01-01', () => {
-    expect(clientAnonymizationDeadline(new Date('2026-12-31T23:59:00Z')).toISOString()).toBe(
+    expect(clientAnonymizationDeadline(new Date('2026-12-31T22:59:59.999Z')).toISOString()).toBe(
       '2037-01-01T00:00:00.000Z',
     );
+  });
+
+  it('beginnt mit dem neuen deutschen Jahr bei einem Mandatsende um Berliner Mitternacht', () => {
+    const mandateEnd = new Date('2026-12-31T23:00:00Z');
+    expect(clientAnonymizationDeadline(mandateEnd).toISOString()).toBe('2038-01-01T00:00:00.000Z');
+    expect(isClientAnonymizationDue(mandateEnd, new Date('2037-01-01T00:00:00Z'))).toBe(false);
   });
 
   it('die längste Aufbewahrungsfrist gewinnt (§ 66 StBerG 10 J. > GwG 5 J.)', () => {
@@ -91,7 +98,7 @@ describe('findDueClientAnonymizations — Review-Queue (NATPERS, Fristablauf)', 
         where: {
           kind: 'NATPERS',
           anonymizedAt: null,
-          mandateEndedAt: { lt: new Date(Date.UTC(2027, 0, 1)) },
+          mandateEndedAt: { lt: new Date('2026-12-31T23:00:00Z') },
         },
       }),
     );
@@ -133,7 +140,7 @@ describe('countDueClientAnonymizations — Admin-Kachel per COUNT (P-21)', () =>
     expect(dueClientAnonymizationsWhere(NOW)).toEqual({
       kind: 'NATPERS',
       anonymizedAt: null,
-      mandateEndedAt: { lt: new Date(Date.UTC(2027, 0, 1)) },
+      mandateEndedAt: { lt: new Date('2026-12-31T23:00:00Z') },
     });
   });
 
@@ -143,6 +150,8 @@ describe('countDueClientAnonymizations — Admin-Kachel per COUNT (P-21)', () =>
       '2025-12-31T23:59:59Z',
       '2026-01-01T00:00:00Z',
       '2026-06-15T12:00:00Z',
+      '2026-12-31T22:59:59.999Z',
+      '2026-12-31T23:00:00Z',
       '2026-12-31T23:59:59Z',
       '2027-01-01T00:00:00Z',
     ];
@@ -188,7 +197,7 @@ describe('findDuePoaSignerAnonymizations — JURPERS/PERSGES-Signer', () => {
       expect.objectContaining({
         where: {
           kind: { in: ['JURPERS', 'PERSGES'] },
-          mandateEndedAt: { lt: new Date(Date.UTC(2027, 0, 1)) },
+          mandateEndedAt: { lt: new Date('2026-12-31T23:00:00Z') },
           poas: { some: POA_PERSONAL_DATA_PRESENT_WHERE },
         },
       }),

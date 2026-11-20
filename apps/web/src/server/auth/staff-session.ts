@@ -13,6 +13,7 @@ import {
   USE_SECURE_COOKIES,
 } from './session-cookie';
 import { createSessionFactory } from './session-factory';
+import { newSessionIssueTime } from './session-issued-at';
 import type { StaffAuthMethod } from './staff-auth-state';
 
 export const staffSessionFactory = createSessionFactory({
@@ -45,7 +46,7 @@ export interface StaffSessionUser {
  * ursprüngliche Anmeldezeitpunkt, gegen den Widerrufe geprüft werden
  * (ACCESS-TENANT-RLS-001); spätere Erneuerungen behalten ihn bei.
  */
-export function staffSessionClaims(user: StaffSessionUser): JWT {
+export async function staffSessionClaims(user: StaffSessionUser): Promise<JWT> {
   return {
     staffId: user.staffId,
     tenantId: user.tenantId,
@@ -54,11 +55,11 @@ export function staffSessionClaims(user: StaffSessionUser): JWT {
     permissions: user.permissions ?? [],
     authMethod: user.authMethod,
     authRevision: user.authRevision,
-    sessionIssuedAt: Math.floor(Date.now() / 1000),
+    ...(await newSessionIssueTime()),
   };
 }
 
 /** Vollständiges JWT für eine direkte Ausstellung — dieselben Claims wie über Auth.js. */
-export function staffSessionToken(user: StaffSessionUser): JWT {
-  return { sub: user.id, email: user.email, name: user.name, ...staffSessionClaims(user) };
+export async function staffSessionToken(user: StaffSessionUser): Promise<JWT> {
+  return { sub: user.id, email: user.email, name: user.name, ...(await staffSessionClaims(user)) };
 }

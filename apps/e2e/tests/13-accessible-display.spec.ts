@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
-import { gotoReady, reloadReady } from './helpers/page-ready';
+import { expectServerActionResponse, gotoReady, reloadReady } from './helpers/page-ready';
 import { loginAsMandant } from './helpers/portal-auth';
 
 const DISPLAY_LABEL = 'Barrierearmen Anzeigemodus aktivieren';
@@ -42,14 +42,14 @@ async function setOptions(page: Page, options: DisplayOptions): Promise<void> {
   ] as const) {
     const select = details.getByRole('combobox', { name: label, exact: true });
     if ((await select.inputValue()) !== value) {
-      await select.selectOption(value);
+      await expectServerActionResponse(page, () => select.selectOption(value));
       await expectSaved(page, await displayCheckbox(page).isChecked());
     }
     await expect(select).toHaveValue(value);
   }
   const motion = details.getByRole('checkbox', { name: 'Bewegung reduzieren', exact: true });
   if ((await motion.isChecked()) !== options.reduceMotion) {
-    await motion.setChecked(options.reduceMotion);
+    await expectServerActionResponse(page, () => motion.setChecked(options.reduceMotion));
     await expectSaved(page, await displayCheckbox(page).isChecked());
   }
 }
@@ -79,7 +79,7 @@ async function setDisplayMode(page: Page, enabled: boolean): Promise<void> {
   await expect(checkbox).toBeVisible();
   await expect(checkbox).toBeEnabled();
   if ((await checkbox.isChecked()) !== enabled) {
-    await checkbox.setChecked(enabled);
+    await expectServerActionResponse(page, () => checkbox.setChecked(enabled));
     await expectSaved(page, enabled);
   }
   await expectDisplayMode(page, enabled);
@@ -289,7 +289,7 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
       await setDisplayMode(page, false);
       await displayCheckbox(page).focus();
       await expect(displayCheckbox(page)).toBeFocused();
-      await page.keyboard.press('Space');
+      await expectServerActionResponse(page, () => page.keyboard.press('Space'));
       await expectSaved(page, true);
       await expect(displayCheckbox(page)).toBeFocused();
 
@@ -560,9 +560,11 @@ test.describe('Persönlicher barrierearmer Anzeigemodus', () => {
       await gotoReady(page, STAFF_PROFILE, displayCheckbox(page));
       expect(await readOptions(page)).toEqual(custom);
       await setOptions(page, custom);
-      await page
-        .getByRole('button', { name: 'Empfohlene Anzeige wiederherstellen', exact: true })
-        .click();
+      await expectServerActionResponse(page, () =>
+        page
+          .getByRole('button', { name: 'Empfohlene Anzeige wiederherstellen', exact: true })
+          .click(),
+      );
       await expectSaved(page, true);
       expect(await readOptions(page)).toEqual({
         fontSize: 'large',

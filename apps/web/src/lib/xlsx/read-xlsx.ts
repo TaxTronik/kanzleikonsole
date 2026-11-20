@@ -32,7 +32,7 @@ const MAX_ROWS = 1_048_576;
 const MAX_COLUMNS = 16_384;
 
 /**
- * Obergrenze fuer das materialisierte Raster. Eine praeparierte Datei kann mit
+ * Obergrenze fuer alle materialisierten Raster einer Arbeitsmappe. Eine Datei kann mit
  * wenigen Bytes eine Zelle bei `XFD1048576` deklarieren; ohne Budget wuerde das
  * Raster den Prozess sprengen. Uploads stammen von Mandanten — also nicht
  * vertrauenswuerdig.
@@ -71,7 +71,10 @@ export class XlsxReadError extends Error {
   }
 }
 
-export function readXlsx(data: Uint8Array | ArrayBuffer): XlsxSheet[] {
+export function readXlsx(data: Uint8Array | ArrayBuffer, maxCells = MAX_CELLS): XlsxSheet[] {
+  if (!Number.isSafeInteger(maxCells) || maxCells < 0 || maxCells > MAX_CELLS) {
+    throw new XlsxReadError('Ungültiges Zellbudget für die Arbeitsmappe.');
+  }
   const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
 
   let files: Record<string, Uint8Array>;
@@ -110,15 +113,15 @@ export function readXlsx(data: Uint8Array | ArrayBuffer): XlsxSheet[] {
   const dateStyles = parseDateStyles(readEntry(files, 'xl/styles.xml'));
 
   const sheets: XlsxSheet[] = [];
+  let remainingCells = maxCells;
   parseSheetIndex(workbookXml).forEach((entry, index) => {
     const target = entry.relationId ? relations.get(entry.relationId) : undefined;
     // Ohne Relationship greifen wir auf die konventionelle Ablage zurueck.
     const path = target ? resolveSheetPath(target) : `xl/worksheets/sheet${index + 1}.xml`;
     const xml = readEntry(files, path);
-    sheets.push({
-      name: entry.name,
-      rows: xml === null ? [] : parseSheet(xml, sharedStrings, dateStyles),
-    });
+    const rows = xml === null ? [] : parseSheet(xml, sharedStrings, dateStyles, remainingCells);
+    remainingCells -= rows.length * (rows[0]?.length ?? 0);
+    sheets.push({ name: entry.name, rows });
   });
   return sheets;
 }
@@ -282,7 +285,12 @@ interface PendingCell {
   inlineText: string[];
 }
 
-function parseSheet(xml: string, sharedStrings: string[], dateStyles: Set<number>): XlsxValue[][] {
+function parseSheet(
+  xml: string,
+  sharedStrings: string[],
+  dateStyles: Set<number>,
+  remainingCells: number,
+): XlsxValue[][] {
   const cells = new Map<number, Map<number, XlsxValue>>();
   let maxRow = -1;
   let maxColumn = -1;
@@ -344,14 +352,19 @@ function parseSheet(xml: string, sharedStrings: string[], dateStyles: Set<number
           if (!cell) break;
           const value = materializeCell(cell, sharedStrings, dateStyles);
           if (value !== null && cell.row >= 0 && cell.row < MAX_ROWS && cell.column < MAX_COLUMNS) {
+            maxRow = Math.max(maxRow, cell.row);
+            maxColumn = Math.max(maxColumn, cell.column);
+            if ((maxRow + 1) * (maxColumn + 1) > remainingCells) {
+              throw new XlsxReadError(
+                'Arbeitsblatt zu gross für das verbleibende Zellbudget der Arbeitsmappe.',
+              );
+            }
             let rowCells = cells.get(cell.row);
             if (!rowCells) {
               rowCells = new Map();
               cells.set(cell.row, rowCells);
             }
             rowCells.set(cell.column, value);
-            if (cell.row > maxRow) maxRow = cell.row;
-            if (cell.column > maxColumn) maxColumn = cell.column;
           }
           cell = null;
           break;
@@ -370,12 +383,6 @@ function parseSheet(xml: string, sharedStrings: string[], dateStyles: Set<number
 
   const width = maxColumn + 1;
   const height = maxRow + 1;
-  if (height * width > MAX_CELLS) {
-    throw new XlsxReadError(
-      `Arbeitsblatt ist mit ${height}x${width} Zellen zu gross fuer die Verarbeitung.`,
-    );
-  }
-
   const rows: XlsxValue[][] = [];
   for (let r = 0; r < height; r++) {
     const rowCells = cells.get(r);

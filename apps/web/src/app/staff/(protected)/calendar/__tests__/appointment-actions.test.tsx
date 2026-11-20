@@ -311,6 +311,27 @@ describe('cancelAppointmentAction (Absagen statt Löschen)', () => {
 });
 
 describe('updateAppointmentAction (Bearbeiten-Dialog)', () => {
+  it('erhält bei unveränderten Uhrzeiten einen Termin über beide Vorkommen der Herbststunde', async () => {
+    const startsAt = new Date('2026-10-25T00:50:00.000Z');
+    const endsAt = new Date('2026-10-25T01:10:00.000Z');
+    const tx = appointmentTx(stored({ startsAt, endsAt }));
+    const result = await updateAppointmentAction(
+      null,
+      editForm({ startsAt: '2026-10-25T02:50', endsAt: '2026-10-25T02:10' }),
+    );
+    expect(result).toEqual({ ok: true, clientMails: 0 });
+    expect(tx.appointment.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ startsAt, endsAt }) }),
+    );
+  });
+
+  it('weist ein neues Ende vor dem gespeicherten Beginn feldbezogen zurück', async () => {
+    const tx = appointmentTx(stored());
+    const result = await updateAppointmentAction(null, editForm({ endsAt: '2026-10-20T09:59' }));
+    expect(result).toMatchObject({ ok: false, fieldErrors: { endsAt: expect.any(Array) } });
+    expect(tx.appointment.updateMany).not.toHaveBeenCalled();
+  });
+
   it('nimmt CANCELLED nicht als Formularstatus an — abgesagt wird nur über die eigene Aktion', async () => {
     const result = await updateAppointmentAction(null, editForm({ status: 'CANCELLED' }));
 

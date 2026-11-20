@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, statSync, existsSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  existsSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
@@ -14,6 +22,7 @@ import {
   runPgBackup,
   spawnPgDump,
   streamingBackupSink,
+  writeLocalPgDump,
   type BackupRunAuditEntry,
   type PgBackupDb,
 } from '../pg-tools';
@@ -332,6 +341,40 @@ describe('runPgBackup', () => {
     });
     afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+    it('replaces an explicit existing file only after a successful pg_dump', async () => {
+      const path = join(dir, 'latest.dump');
+      writeFileSync(path, 'previous backup', { mode: 0o644 });
+      await anwendungAbgewiesen(
+        writeLocalPgDump(
+          fakeDump('process.stdout.write("partial"); process.exitCode = 4')(),
+          path,
+          'replace',
+        ),
+        'pg_dump exit 4',
+      );
+      expect(readFileSync(path, 'utf8')).toBe('previous backup');
+      expect(readdirSync(dir)).toEqual(['latest.dump']);
+
+      await writeLocalPgDump(fakeDump()(), path, 'replace');
+      expect(readFileSync(path, 'utf8')).toBe(DUMP);
+      if (process.platform !== 'win32') expect(statSync(path).mode & 0o777).toBe(0o600);
+      expect(readdirSync(dir)).toEqual(['latest.dump']);
+    });
+
+    it('leaves a colliding generated file alone and never starts the upload', async () => {
+      const path = join(dir, 'existing.dump');
+      writeFileSync(path, 'previous backup');
+      const upload = vi.fn();
+      const sink = localCopyBackupSink(
+        { upload, remove: vi.fn() },
+        { localPathFor: async () => path },
+      );
+      await sink.prepare!('key');
+      await anwendungAbgewiesen(sink.store(fakeDump()(), 'key'), 'EEXIST');
+      expect(readFileSync(path, 'utf8')).toBe('previous backup');
+      expect(upload).not.toHaveBeenCalled();
+    });
+
     it('writes a private local copy first, uploads it and reports its path', async () => {
       const { db, audits, recordAudit } = fakeDb(['t-1']);
       const uploaded: string[] = [];
@@ -351,7 +394,7 @@ describe('runPgBackup', () => {
       const localPath = join(dir, 'dump.sql.gz');
       expect(result).toMatchObject({ ok: true, localPath });
       expect(readFileSync(localPath, 'utf8')).toBe(DUMP);
-      expect(statSync(localPath).mode & 0o777).toBe(0o600);
+      if (process.platform !== 'win32') expect(statSync(localPath).mode & 0o777).toBe(0o600);
       expect(uploaded).toEqual([DUMP]);
       expect(audits[0]).toMatchObject({ after: { status: 'SUCCESS', localPath } });
     });

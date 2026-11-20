@@ -1,5 +1,7 @@
 'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState } from 'react';
 import { saveAccessPolicyAction, type ActionResult } from './actions';
 import type { AccessPolicy } from '@/server/settings/access-policy';
@@ -26,7 +28,7 @@ export function AccessPolicyForm({ initial }: { initial: AccessPolicy }) {
   );
 
   return (
-    <form action={formAction} className="space-y-5">
+    <SettingsForm result={state} pending={isPending} action={formAction} className="space-y-5">
       <fieldset className="space-y-2">
         <legend className="sr-only">Zugriffsmodell für Mandanten</legend>
         {MODES.map((m) => (
@@ -66,6 +68,6 @@ export function AccessPolicyForm({ initial }: { initial: AccessPolicy }) {
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Speichern'}
       </button>
-    </form>
+    </SettingsForm>
   );
 }

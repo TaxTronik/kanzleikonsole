@@ -20,6 +20,7 @@ import {
   type TxClient,
 } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
+import { requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { filterStaffAccessClientTx } from '@taxtronik/db/staff-client-access';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { enqueueN8nEvent, type N8nEnqueueResult } from '@/server/n8n/outbox';
@@ -242,6 +243,7 @@ export async function sendResearchToN8n(
   scope: ResearchScope = OFFEN,
 ): Promise<{ requestId: string; sentText: string; delivery: N8nEnqueueResult }> {
   const prepared = await withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskAnalysisTx(tx, ctx.tenantId, input.analysisId);
     const raw = await buildRaw(tx, ctx.tenantId, input, scope);
     const { analysis, marking, normAnker, governanceTyp } = raw;
     // RISK-EXTERNAL-ANONYMIZATION-001: Preserve preview tokens and allocate
@@ -351,6 +353,27 @@ interface ResearchCorrelation {
   createdById: string;
   analysisId: string;
   analysis: { clientId: string | null } | null;
+}
+
+async function mayNotifyResearchRecipient(
+  tx: TxClient,
+  tenantId: string,
+  resultId: string,
+  correlation: ResearchCorrelation | null,
+): Promise<boolean> {
+  // Ohne Auftrag und Mandantenbezug ist der Eingang kanzleiweit.
+  if (!correlation) return true;
+  const { createdById, analysis } = correlation;
+  if (analysis?.clientId) {
+    const allowed = await filterStaffAccessClientTx(tx, tenantId, [createdById], analysis.clientId);
+    if (!allowed.has(createdById)) return false;
+  }
+  // Ein OPEN-Mandat kann eine separat vertrauliche Analyse enthalten. Die
+  // Notification-RLS wendet dieselbe Detailprüfung bei jedem späteren Abruf an.
+  const [scope] = await tx.$queryRaw<Array<{ visible: boolean }>>`
+    SELECT app.risk_research_notification_visible(${tenantId}::uuid, ${resultId}, ${createdById}::uuid) AS visible
+  `;
+  return scope?.visible === true;
 }
 
 /**
@@ -494,13 +517,7 @@ async function storeResearchResult(
     // historisch gespeichert, bekommt ohne JETZIGEN Zugriff aber weder Titel
     // noch Quellenangabe. Unkorrelierte Ergebnisse ohne Mandantenbezug bleiben
     // wie bisher eine kanzleiweite Eingangsmeldung.
-    const mayNotify = hrefClientId
-      ? recipientStaffId !== null &&
-        (await filterStaffAccessClientTx(tx, tenantId, [recipientStaffId], hrefClientId)).has(
-          recipientStaffId,
-        )
-      : true;
-    if (mayNotify) {
+    if (await mayNotifyResearchRecipient(tx, tenantId, created.id, correlation)) {
       await notify(tx, {
         tenantId,
         staffId: recipientStaffId,
@@ -552,28 +569,27 @@ export async function suggestMarkingsForResult(
 }
 
 /** Ordnet ein Ergebnis manuell einer Markierung zu. */
-export async function assignResultToMarking(
+export async function assignResultToMarkingTx(
+  tx: TxClient,
   ctx: TenantContext,
   resultId: string,
   markingId: string,
 ): Promise<void> {
-  await withTenantContext(ctx, async (tx) => {
-    await tx.riskResearchResult.update({
-      where: { id: resultId },
-      data: { markingId, status: 'ZUGEORDNET' },
-    });
-    await resolveNotificationsTx(tx, {
-      tenantId: ctx.tenantId,
-      resources: [{ resourceType: 'risk_research_result', resourceId: resultId }],
-    });
-    await evidenceService.record(tx, {
-      tenantId: ctx.tenantId,
-      actorType: 'STAFF',
-      actorId: ctx.actorId,
-      action: 'risk.research.assigned',
-      resourceType: 'risk_research_result',
-      resourceId: resultId,
-      after: { markingId },
-    });
+  await tx.riskResearchResult.update({
+    where: { id: resultId },
+    data: { markingId, status: 'ZUGEORDNET' },
+  });
+  await resolveNotificationsTx(tx, {
+    tenantId: ctx.tenantId,
+    resources: [{ resourceType: 'risk_research_result', resourceId: resultId }],
+  });
+  await evidenceService.record(tx, {
+    tenantId: ctx.tenantId,
+    actorType: 'STAFF',
+    actorId: ctx.actorId,
+    action: 'risk.research.assigned',
+    resourceType: 'risk_research_result',
+    resourceId: resultId,
+    after: { markingId },
   });
 }

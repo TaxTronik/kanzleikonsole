@@ -21,12 +21,14 @@
 import {
   advanceSessionRevocation,
   isIssuedBeforeRevocation,
+  readSessionRevocationState,
   readSessionRevocationTimestamp,
   SessionRevocationUnavailableError,
   type SessionSurface,
 } from '@taxtronik/crypto';
 import { log } from '@/server/logger';
 import { getRedis } from '@/server/redis';
+import { SESSION_MAX_AGE_SECONDS } from './session-factory';
 
 // R-02: Lua-Skript (monoton, ACCESS-TENANT-RLS-001), Key-Schema, TTL und
 // Fehlerklasse liegen in @taxtronik/crypto — derselbe Kern schreibt auch die
@@ -77,23 +79,31 @@ export async function getRevocationTimestamp(
 }
 
 /**
- * Prüft, ob ein Token mit `tokenIatSec` (iat-Claim in Sekunden seit Epoch)
- * für (surface, userId) revoked ist.
+ * Prüft den ursprünglichen, signierten Anmeldezeitpunkt gegen den Widerruf.
  */
 export async function isTokenRevoked(
   surface: SessionSurface,
   userId: string,
   tokenIatSec: number | undefined,
+  tokenIatMs?: number,
 ): Promise<boolean> {
   let revokedMs: number;
   try {
-    revokedMs = await getRevocationTimestamp(surface, userId);
+    if (tokenIatMs === undefined) {
+      revokedMs = await getRevocationTimestamp(surface, userId);
+    } else {
+      const state = await readSessionRevocationState(getRedis(), surface, userId);
+      if (
+        tokenIatSec === undefined ||
+        tokenIatMs > state.nowMs ||
+        Math.floor(state.nowMs / 1000) - tokenIatSec >= SESSION_MAX_AGE_SECONDS
+      )
+        return true;
+      revokedMs = state.cutoffMs;
+    }
   } catch (error) {
     if (error instanceof SessionRevocationUnavailableError) return true;
     throw error;
   }
-  // Ein signiertes Legacy-/Fehlformat-Token ohne belastbares iat darf einen
-  // vorhandenen Account-Cutoff nicht umgehen. JWT-iat hat nur Sekunden-
-  // praezision: die gesamte Cutoff-Sekunde gilt als widerrufen.
-  return isIssuedBeforeRevocation(revokedMs, tokenIatSec);
+  return isIssuedBeforeRevocation(revokedMs, tokenIatSec, tokenIatMs);
 }

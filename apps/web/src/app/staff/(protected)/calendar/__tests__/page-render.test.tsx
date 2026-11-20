@@ -105,6 +105,7 @@ afterAll(() => {
   vi.useRealTimers();
 });
 beforeEach(() => {
+  vi.setSystemTime(NOW);
   vi.clearAllMocks();
   h.modules = { taxNotices: true, appointments: true };
   h.pills.length = 0;
@@ -136,6 +137,31 @@ describe('Kalender-Steuertermine (P-20)', () => {
 });
 
 describe('Kalender-Termine: Europe/Berlin-Monatsgrenzen', () => {
+  it('zeigt offene Abwesenheiten in der Berliner Nacht am neuen Monatsersten', async () => {
+    vi.setSystemTime(new Date('2026-03-31T22:30:00Z'));
+    h.tx.absence.findMany.mockResolvedValue([
+      { startDate: new Date('2026-03-30T00:00:00Z'), endDate: null, staff: STAFF_LIST[0] },
+    ]);
+    const html = await render('2026-00');
+    expect(html).toContain('April 2026');
+    expect(html).toContain('Erika Muster abw.');
+    expect(html).toMatch(/href="\/staff\/calendar"[^>]*>Heute</);
+  });
+
+  it.each([
+    ['0001-01', 'Vorheriger Monat'],
+    ['0099-02', null],
+    ['9999-12', 'Nächster Monat'],
+  ] as const)(
+    'rendert den vierstelligen Monat %s mit seinen tatsächlichen Datenbankgrenzen',
+    async (month, missingLink) => {
+      const html = await render(month);
+      const bounds = h.loadDayGroups.mock.calls[0]![1].dueDate;
+      expect(bounds.gte.toISOString()).toBe(`${month}-01T00:00:00.000Z`);
+      if (missingLink) expect(html).not.toContain(`aria-label="${missingLink}"`);
+    },
+  );
+
   it('wendet die halb-offenen Berlin-Grenzen auf die Terminabfrage an und lädt Absagen mit', async () => {
     await render();
     const { start, endExclusive } = berlinMonthBoundsUtc(2026, 2);

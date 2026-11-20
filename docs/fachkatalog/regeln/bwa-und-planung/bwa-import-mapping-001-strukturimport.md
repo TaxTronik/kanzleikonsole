@@ -213,6 +213,12 @@ erhalten. Der XML-Attributscanner konsumiert fehlerhafte Namen fortlaufend;
 unbekannte benannte Entities bleiben Quelltext. Perioden-, Positions- und
 Kennzahlabbildung ändern sich durch diese technische Lesekorrektur nicht.
 
+Der Leser begrenzt die Summe der Zellraster auf vier Millionen Zellen pro
+Arbeitsmappe. Er zählt auch leere Positionen innerhalb eines belegten
+Rechtecks. Ein leeres Blatt verbraucht keine Rasterzellen. Überschreitet das
+nächste Blatt das verbleibende Budget, endet der Import mit einer Fehlermeldung
+vor der Anlage dieses Rasters.
+
 Manuelle BWA-Daten (`MANUAL`) besitzen keine dokumentierte automatische Positionszuordnung. Die Planbasis bleibt daher vollständig unbekannt und kann nur manuell erfasst werden; sie wird nicht still als Addison- oder DATEV-Schema behandelt. Beide Planseiten transportieren diesen Zustand unverändert in den Assistenten.
 
 ## Bekannte Abweichungen und Grenzen
@@ -277,3 +283,5 @@ vertauschten Relationship-Zielen, individuellen Blattpfaden und einer
 Prozess für ein langes fehlerhaftes Attribut zeitlich und prüft unbekannte
 Entities einschließlich geerbter Objektnamen. Diese Nachweise betreffen die
 technisch richtige Quellzuordnung, keine fachliche Freigabe des BWA-Mappings.
+Ein Mehrblatttest prüft mit kleinem Zellbudget die exakte Grenze, eine
+Überschreitung um eine Zelle und ein leeres Blatt.

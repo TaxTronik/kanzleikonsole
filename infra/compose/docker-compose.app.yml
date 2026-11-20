@@ -60,6 +60,9 @@ services:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
+      # Der Proxy soll eine ungenutzte Verbindung zuerst aus seinem Pool nehmen.
+      # Das nginx-Beispiel nutzt 60 s, der Traefik-Standardtransport 90 s.
+      KEEP_ALIVE_TIMEOUT: ${KEEP_ALIVE_TIMEOUT:-95000}
       # Container-Zeitzone fix auf Europe/Berlin. Der Code rechnet Datums-/Zeit-
       # grenzen zwar explizit in Berlin (lib/fmt.ts), aber TZ ist Defense-in-Depth
       # für jede Stelle, die doch server-lokale Zeit nutzt (z. B. DOS-Timestamps

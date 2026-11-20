@@ -20,12 +20,12 @@ sources:
   - kind: official_law
     citation: 'StBVV § 17 in Verbindung mit RVG Anlage 1, VV 7000 Dokumentenpauschale'
     url: https://www.gesetze-im-internet.de/rvg/anlage_1.html
-    checked_at: '2026-08-31'
+    checked_at: '2026-11-20'
     primary: true
   - kind: official_law
     citation: StBVV, konsolidierte Fassung, zuletzt geändert durch Art. 5 V vom 19.12.2025, BGBl. 2025 I Nr. 372; Anlagen 1 bis 4
     url: https://www.gesetze-im-internet.de/stbgebv/BJNR014420981.html
-    checked_at: '2026-08-31'
+    checked_at: '2026-11-20'
     primary: true
   - kind: product_documentation
     citation: Technische Modulbeschreibung und Betriebsgrenzen
@@ -33,6 +33,7 @@ sources:
     checked_at: '2026-08-31'
     primary: true
 code_refs:
+  - apps/web/src/app/staff/(protected)/stbvv/calculator-form.tsx
   - packages/tax/src/stbvv/catalog.ts
   - packages/tax/src/stbvv/calculator.ts
   - packages/tax/src/stbvv/tables.json
@@ -126,6 +127,14 @@ wird durch eine neue Tabelle nicht verändert.
 
 ## Umsetzung in TaxTronik
 
+Für elektronische Dokumente nach § 17 StBVV in Verbindung mit VV 7000
+Nr. 2 RVG bildet eine Auslagenzeile genau einen dokumentierten Arbeitsgang.
+Die 5-Euro-Obergrenze wird für die darin überlassenen Dateien berechnet.
+Der Rechner sperrte zuvor einen zweiten Arbeitsgang derselben Angelegenheit.
+Ein höheres Papieräquivalent für Scans erfordert eine Angabe in ganzen Cent.
+Die jeweiligen Voraussetzungen und die Abgrenzung der Arbeitsgänge bleiben
+fachlich zu bestätigen.
+
 Reine Rechenfunktionen im Tax-Paket, vollständiger UI-Katalog, serverseitige
 Validierung, append-only Quotes, expliziter JSON-Nachweis und idempotente
 DRAFT-Übernahme. Aus Tabellen-HTML importierte Zahlen enthalten Quellenhashes.
@@ -188,3 +197,5 @@ Der echte PDF-Test umfasst auch die Reparatur eines alten Zeitgebühren-
 Entwurfs mit ursprünglich nicht darstellbarem Pfeil im generierten Text.
 ein echter PostgreSQL-Test führt den Produktions-Lock mit dem Prisma-Adapter aus,
 ohne den PostgreSQL-Rückgabewert `void` zu deserialisieren.
+
+Am 20.11.2026 ergab der erneute Import aus den vier amtlichen HTML-Anlagen dieselben 277 Tabellenstufen und vier Quellenhashes. Vier und zwei Dateien in zwei getrennten Arbeitsgängen ergeben im Test 5,00 und 3,00 Euro. Sechs Dateien in einem Arbeitsgang ergeben 5,00 Euro vor einem gegebenenfalls höheren Papieräquivalent.

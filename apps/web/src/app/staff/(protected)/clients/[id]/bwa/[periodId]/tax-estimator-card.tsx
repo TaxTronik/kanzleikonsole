@@ -1,8 +1,15 @@
 ﻿'use client';
 
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Calculator } from 'lucide-react';
-import { estimateTaxes, type LegalForm } from '@/server/bwa/tax-estimator';
+import {
+  estimateTaxes,
+  isBwaCapitalCompany,
+  isSupportedBwaTaxYear,
+  taxEstimateInputError,
+  UNSUPPORTED_TAX_YEAR,
+  type LegalForm,
+} from '@/server/bwa/tax-estimator';
 
 import { fmtEURRound } from '@/lib/fmt';
 interface Props {
@@ -12,7 +19,7 @@ interface Props {
   inputVat: number | null;
   vatPaid: number | null;
   defaultLegalForm: LegalForm;
-  taxYear: number;
+  taxYear: number | null;
 }
 
 export function TaxEstimatorCard({
@@ -24,7 +31,7 @@ export function TaxEstimatorCard({
   taxYear,
 }: Props) {
   const [legalForm, setLegalForm] = useState<LegalForm>(defaultLegalForm);
-  const [hebesatz, setHebesatz] = useState<number>(400);
+  const [hebesatz, setHebesatz] = useState('400');
   const [isFreiberufler, setIsFreiberufler] = useState(false);
   const [show, setShow] = useState(false);
 
@@ -34,35 +41,34 @@ export function TaxEstimatorCard({
     resultBeforeTax != null && Number.isFinite(resultBeforeTax) ? resultBeforeTax : null;
   // Freiberufler-Option nur bei Nicht-Kapitalformen sinnvoll (eine GmbH ist
   // stets Gewerbebetrieb kraft Rechtsform, § 2 Abs. 2 GewStG).
-  const isKapitalform = legalForm === 'GMBH' || legalForm === 'AG' || legalForm === 'UG';
+  const isKapitalform = isBwaCapitalCompany(legalForm);
   const freiberuflich = !isKapitalform && isFreiberufler;
-  const est = useMemo(
-    () =>
-      basis === null
-        ? null
-        : estimateTaxes({
-            taxYear,
-            legalForm,
-            result: basis,
-            revenue,
-            inputVat,
-            vatPaid,
-            gewerbesteuerHebesatzPct: hebesatz,
-            isFreiberufler: freiberuflich,
-          }),
-    [legalForm, hebesatz, basis, revenue, inputVat, vatPaid, freiberuflich, taxYear],
-  );
-
-  if (!est) {
+  const supportedYear = isSupportedBwaTaxYear(taxYear);
+  if (basis === null || !supportedYear) {
     return (
       <div className="card p-6 mb-6">
         <h2 className="text-sm font-medium text-primary">Steuerschätzung {taxYear} (Beta)</h2>
         <p className="text-sm text-muted mt-2">
-          Für die Steuerschätzung fehlt ein belastbares Ergebnis vor Steuern.
+          {!supportedYear
+            ? UNSUPPORTED_TAX_YEAR
+            : 'Für die Steuerschätzung fehlt ein belastbares Ergebnis vor Steuern.'}
         </p>
       </div>
     );
   }
+
+  const input = {
+    taxYear,
+    legalForm,
+    result: basis,
+    revenue,
+    inputVat,
+    vatPaid,
+    gewerbesteuerHebesatzPct: Number(hebesatz),
+    isFreiberufler: freiberuflich,
+  };
+  const inputError = taxEstimateInputError(input);
+  const est = show && !inputError ? estimateTaxes(input) : null;
 
   return (
     <div className="card p-6 mb-6">
@@ -109,10 +115,11 @@ export function TaxEstimatorCard({
                 type="number"
                 min="200"
                 max="900"
-                step="10"
+                step="any"
                 className="input"
                 value={hebesatz}
-                onChange={(e) => setHebesatz(Number(e.target.value))}
+                onChange={(e) => setHebesatz(e.target.value)}
+                disabled={freiberuflich}
               />
               <p className="text-xs text-muted mt-1">
                 Mit 400 % vorbelegt — den aktuell geltenden Hebesatz der Gemeinde prüfen.
@@ -131,59 +138,77 @@ export function TaxEstimatorCard({
             </label>
           )}
 
-          <div className="overflow-hidden rounded-md border border-default">
-            <table className="w-full text-sm">
-              <tbody className="divide-y divide-border-subtle">
-                <Row
-                  label="Gewerbesteuer-Bemessung"
-                  value={fmtEURRound(est.gewerbesteuerBemessung)}
-                  muted
-                />
-                {est.gewerbesteuerFreibetrag > 0 && (
-                  <Row
-                    label="abzgl. Freibetrag"
-                    value={`-${fmtEURRound(est.gewerbesteuerFreibetrag)}`}
-                    muted
-                  />
-                )}
-                <Row label="Gewerbesteuer" value={fmtEURRound(est.gewerbesteuer)} bold />
-                {est.koerperschaftsteuer !== null && (
-                  <>
+          {inputError && (
+            <p role="status" className="text-sm text-secondary">
+              {inputError}
+            </p>
+          )}
+          {est && (
+            <>
+              <div className="overflow-hidden rounded-md border border-default">
+                <table className="w-full text-sm">
+                  <tbody className="divide-y divide-border-subtle">
                     <Row
-                      label="Körperschaftsteuer (15 %)"
-                      value={fmtEURRound(est.koerperschaftsteuer)}
+                      label="Gewerbesteuer-Bemessung"
+                      value={fmtEURRound(est.gewerbesteuerBemessung)}
+                      muted
                     />
+                    {est.gewerbesteuerFreibetrag > 0 && (
+                      <Row
+                        label="abzgl. Freibetrag"
+                        value={`-${fmtEURRound(est.gewerbesteuerFreibetrag)}`}
+                        muted
+                      />
+                    )}
+                    <Row label="Gewerbesteuer" value={fmtEURRound(est.gewerbesteuer)} bold />
+                    {est.koerperschaftsteuer !== null && (
+                      <>
+                        <Row
+                          label="Körperschaftsteuer (15 %)"
+                          value={fmtEURRound(est.koerperschaftsteuer)}
+                        />
+                        <Row
+                          label="Solidaritätszuschlag (5,5 %)"
+                          value={fmtEURRound(est.solidaritaetszuschlag)}
+                        />
+                      </>
+                    )}
+                    {est.einkommensteuerSchaetzung !== null && (
+                      <Row
+                        label="Einkommensteuer (Single, vereinfacht)"
+                        value={fmtEURRound(est.einkommensteuerSchaetzung)}
+                      />
+                    )}
+                    {est.ustZahllast !== null && (
+                      <Row
+                        label="USt-Zahllast (Jahr, vereinfacht)"
+                        value={fmtEURRound(est.ustZahllast)}
+                      />
+                    )}
+                    {est.ustOffenerSaldo !== null && (
+                      <Row
+                        label="… davon noch offen"
+                        value={fmtEURRound(est.ustOffenerSaldo)}
+                        muted
+                      />
+                    )}
                     <Row
-                      label="Solidaritätszuschlag (5,5 %)"
-                      value={fmtEURRound(est.solidaritaetszuschlag)}
+                      label="Summe der geschätzten Ertragsteuern einschließlich SolZ"
+                      value={fmtEURRound(est.gesamt)}
+                      bold
+                      highlight
                     />
-                  </>
-                )}
-                {est.einkommensteuerSchaetzung !== null && (
-                  <Row
-                    label="Einkommensteuer (Single, vereinfacht)"
-                    value={fmtEURRound(est.einkommensteuerSchaetzung)}
-                  />
-                )}
-                {est.ustZahllast !== null && (
-                  <Row
-                    label="USt-Zahllast (Jahr, vereinfacht)"
-                    value={fmtEURRound(est.ustZahllast)}
-                  />
-                )}
-                {est.ustOffenerSaldo !== null && (
-                  <Row label="… davon noch offen" value={fmtEURRound(est.ustOffenerSaldo)} muted />
-                )}
-                <Row label="Gesamt" value={fmtEURRound(est.gesamt)} bold highlight />
-              </tbody>
-            </table>
-          </div>
+                  </tbody>
+                </table>
+              </div>
 
-          <ul className="text-xs text-muted space-y-1">
-            {est.disclaimers.map((d, i) => (
-              <li key={i}>· {d}</li>
-            ))}
-          </ul>
+              <ul className="text-xs text-muted space-y-1">
+                {est.disclaimers.map((d, i) => (
+                  <li key={i}>· {d}</li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       )}
     </div>

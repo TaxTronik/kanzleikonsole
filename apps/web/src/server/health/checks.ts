@@ -8,9 +8,10 @@
 
 import { prisma, withTenantContext } from '@taxtronik/db';
 import { readTenantSettingValue } from '@taxtronik/db/tenant-settings';
-import { createConnection } from 'node:net';
 import { env, riskLayerConfig } from '@taxtronik/config';
-import { S3Client, ListBucketsCommand } from '@aws-sdk/client-s3';
+import { ListBucketsCommand } from '@aws-sdk/client-s3';
+import { getS3Client } from '@taxtronik/storage/client';
+import { pingClamAv } from '@taxtronik/storage/clamav-ping';
 import { createRfc3161Adapter, resolveTsaUrl } from '@taxtronik/evidence';
 import { RiskLayerClient } from '@taxtronik/risk-layer';
 import { TcmsNichtAuthentifiziert, TcmsNichtVerfuegbar } from '@taxtronik/tcms-client';
@@ -18,6 +19,7 @@ import { randomBytes } from 'node:crypto';
 import { safeFetchN8n } from '@/server/http/ssrf-guard';
 import { networkFailure } from '@/server/http/network-error';
 import { tcmsClient } from '@/server/tcms/dienst';
+import { getRedis } from '@/server/redis';
 
 export interface ServiceStatus {
   ok: boolean;
@@ -43,19 +45,13 @@ export async function checkPostgres(): Promise<ServiceStatus> {
 }
 
 export async function checkRedis(): Promise<ServiceStatus> {
-  return new Promise((resolve) => {
-    const start = Date.now();
-    const url = new URL(env.REDIS_URL);
-    const socket = createConnection({ host: url.hostname, port: Number(url.port) || 6379 }, () => {
-      socket.destroy();
-      resolve({ ok: true, latencyMs: Date.now() - start });
-    });
-    socket.on('error', (e) => resolve({ ok: false, error: e.message }));
-    socket.setTimeout(3000, () => {
-      socket.destroy();
-      resolve({ ok: false, error: 'Timeout' });
-    });
-  });
+  const start = Date.now();
+  try {
+    if ((await getRedis()?.ping()) !== 'PONG') return { ok: false, error: 'Kein Redis-PONG' };
+    return { ok: true, latencyMs: Date.now() - start };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 /**
@@ -65,13 +61,9 @@ export async function checkRedis(): Promise<ServiceStatus> {
 export async function checkObjectStore(): Promise<ServiceStatus> {
   const start = Date.now();
   try {
-    const client = new S3Client({
-      endpoint: env.S3_ENDPOINT,
-      region: env.S3_REGION,
-      credentials: { accessKeyId: env.S3_ACCESS_KEY, secretAccessKey: env.S3_SECRET_KEY },
-      forcePathStyle: true,
+    await getS3Client().send(new ListBucketsCommand({}), {
+      abortSignal: AbortSignal.timeout(3_000),
     });
-    await client.send(new ListBucketsCommand({}));
     return { ok: true, latencyMs: Date.now() - start };
   } catch (e) {
     return { ok: false, error: (e as Error).message };
@@ -79,25 +71,13 @@ export async function checkObjectStore(): Promise<ServiceStatus> {
 }
 
 export async function checkClamAV(): Promise<ServiceStatus> {
-  return new Promise((resolve) => {
-    const start = Date.now();
-    const socket = createConnection({ host: env.CLAMAV_HOST, port: env.CLAMAV_PORT }, () => {
-      socket.write('PING\n');
-    });
-    let response = '';
-    socket.on('data', (d: Buffer) => {
-      response += d.toString();
-      if (response.includes('PONG')) {
-        socket.destroy();
-        resolve({ ok: true, latencyMs: Date.now() - start });
-      }
-    });
-    socket.on('error', (e) => resolve({ ok: false, error: e.message }));
-    socket.setTimeout(3000, () => {
-      socket.destroy();
-      resolve({ ok: false, error: 'Timeout' });
-    });
-  });
+  const start = Date.now();
+  try {
+    await pingClamAv(env.CLAMAV_HOST, env.CLAMAV_PORT, 3_000);
+    return { ok: true, latencyMs: Date.now() - start };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
 }
 
 export async function checkN8n(): Promise<ServiceStatus> {

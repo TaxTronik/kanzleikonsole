@@ -75,6 +75,7 @@ sources:
     checked_at: '2026-10-07'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/binders/actions.ts
   - packages/db/prisma/schema.prisma
   - apps/web/src/server/fristen/eintrag.ts
   - apps/web/src/server/fristen/kontrollbuch.ts
@@ -102,6 +103,7 @@ code_refs:
   - packages/db/prisma/migrations/20261007110000_tax_notice_berlin_filing_day/migration.sql
   - packages/db/prisma/sql/functions/app.tax_notice_require_progress_evidence().sql
 test_refs:
+  - apps/web/src/server/actions/__tests__/calendar-date-input.test.ts
   - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/tax-notice-evidence.test.ts
   - packages/db/src/__tests__/tax-notice-partial-relief-migration.test.ts
@@ -321,6 +323,11 @@ Ein Berufsträger entscheidet begründet, keinen Einspruch einzulegen.
 dokumentierte Disposition geschlossen.
 
 ## Umsetzung in TaxTronik
+
+Beim Anlegen eines Pendelordners prüft die Webanwendung den optionalen
+Rückgabetag, bevor er zur Fristenüberwachung gespeichert wird. Die frühere
+Musterprüfung ließ den 31. April als 1. Mai erscheinen. Ein Action-Test
+unterscheidet solche Eingaben von einem gültigen Schalttag.
 
 Die Kontrollübersicht verwendet auf schmalen Bildschirmen kleinere Seitenabstände
 und eine umbrechende Kopfzeile. Breite Fristentabellen sind innerhalb einer

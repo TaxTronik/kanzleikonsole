@@ -18,14 +18,7 @@ const CreateSchema = z.object({
   clientId: z.string().uuid(),
   label: z.string().min(1).max(200),
   contents: formDefault('', z.string().max(4000).optional().or(z.literal(''))),
-  expectedReturnAt: formDefault(
-    '',
-    z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional()
-      .or(z.literal('')),
-  ),
+  expectedReturnAt: formDefault('', z.iso.date().optional().or(z.literal(''))),
 });
 
 export async function createBinderAction(

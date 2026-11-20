@@ -25,11 +25,8 @@ BEGIN
   IF validate_client_scope THEN
     SELECT (
       c."mandate_ended_at" IS NOT NULL
-      AND make_date(
-            EXTRACT(YEAR FROM c."mandate_ended_at")::INTEGER + 11,
-            1,
-            1
-          ) <= CURRENT_DATE
+      AND app.retention_until_from_utc(c."mandate_ended_at" AT TIME ZONE 'UTC', 10)
+          <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
       AND (
         (c."kind" = 'NATPERS' AND c."anonymized_at" IS NOT NULL) OR
         (
@@ -138,11 +135,8 @@ BEGIN
          WHERE c."id" = NEW."client_id"
            AND c."tenant_id" = NEW."tenant_id"
            AND c."mandate_ended_at" IS NOT NULL
-           AND make_date(
-                 EXTRACT(YEAR FROM c."mandate_ended_at")::INTEGER + 11,
-                 1,
-                 1
-               ) <= CURRENT_DATE
+           AND app.retention_until_from_utc(c."mandate_ended_at" AT TIME ZONE 'UTC', 10)
+               <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
            AND (
              (c."kind" = 'NATPERS' AND c."anonymized_at" IS NOT NULL) OR
              (

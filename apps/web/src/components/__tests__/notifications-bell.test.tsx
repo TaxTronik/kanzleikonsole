@@ -203,6 +203,8 @@ function dropdown(overrides: Partial<Parameters<typeof NotificationsDropdown>[0]
       panelStyle={{ top: 10, maxHeight: 300 }}
       unread={2}
       items={[item('a'), item('b', { href: null, body: null }), item('c', { readAt: T0 })]}
+      loadFailed={false}
+      onRetry={vi.fn()}
       now={Date.parse(T0) + 5 * 60_000}
       accessibleDisplay={false}
       soundOn

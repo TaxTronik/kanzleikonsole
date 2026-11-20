@@ -12,8 +12,8 @@ E2E ist bewusst aus dem Standard-`pnpm test` ausgeklammert:
    (App + Postgres + Redis + SeaweedFS + ClamAV) und einen geseedeten Tenant
    voraus. Das ist kein Unit-Test-Setup.
 
-Das `test`-Skript in `apps/e2e/package.json` ist deshalb ein No-Op, der nur
-einen Hinweis druckt. Echter Lauf via `pnpm e2e` (Root) oder
+Das `test`-Skript in `apps/e2e/package.json` prüft die Testhelfer ohne Dienste.
+Die Browsersuite läuft via `pnpm e2e` (Root) oder
 `pnpm --filter @taxtronik/e2e e2e`.
 
 ## Voraussetzungen
@@ -25,6 +25,22 @@ einen Hinweis druckt. Echter Lauf via `pnpm e2e` (Root) oder
   <http://127.0.0.1:4319>. Sie verwendet weder Kanzlei- noch Mandantendaten.
 
 ## Setup
+
+SQL-Fixtures und Browser müssen auf denselben geseedeten Testbestand zeigen.
+Die vier Specs mit direktem SQL verwenden den gemeinsamen PostgreSQL-Helfer.
+Für die Datenbank gilt zuerst `E2E_POSTGRES_DB`, dann `PGDATABASE`, dann der
+Datenbankname aus `DATABASE_URL` und zuletzt der Dev-Standard `taxtronik`.
+Bei einem Widerspruch zwischen gewähltem Datenbanknamen und `DATABASE_URL`
+bricht der Helfer vor dem ersten SQL-Aufruf ab. Für Host, Port, Benutzer und
+Passwort gilt dieselbe Reihenfolge mit `E2E_POSTGRES_HOST/PORT/USER/PASSWORD`
+und `PGHOST/PGPORT/PGUSER/PGPASSWORD`. Für separate Fixture-Zugangsdaten
+können die Benutzerrollen vom App-Login abweichen. Beim Testen eines Klons
+müssen App und Fixtures auch denselben PostgreSQL-Server erreichen.
+
+Mit `E2E_POSTGRES_CONTAINER` läuft `psql` direkt im angegebenen Testcontainer.
+Sonst verwendet der Helfer das lokale `psql`. Nur wenn das Clientprogramm beim
+lokalen Standardport 5432 fehlt, übernimmt der Dev-Container `taxtronik-postgres`.
+Ein SQL-Fehler wird unmittelbar an den Test weitergegeben.
 
 Browser-Install passiert automatisch beim ersten `pnpm e2e`-Aufruf
 (`playwright install chromium --with-deps`). Manuell:

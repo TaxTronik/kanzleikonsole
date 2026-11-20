@@ -95,12 +95,23 @@ export async function authenticateStaffPassword(input: {
   tenantSlug: string;
   ip: string | null;
 }): Promise<StaffPasswordStepResult> {
-  const tenant = await prismaOwner.tenant.findFirst({ where: { slug: input.tenantSlug } });
-  const candidate = tenant
-    ? await prismaOwner.staffUser.findFirst({
-        where: { tenantId: tenant.id, email: input.email.toLowerCase() },
-      })
-    : null;
+  // Server-Action-Argumente sind zur Laufzeit nicht typisiert. Ein Objekt wie
+  // `{ not: '' }` wäre in findFirst ein Prisma-Operator statt eines Werts und
+  // wählte am RLS-freien Owner-Client eine nicht genannte Kanzlei bzw. ein
+  // nicht genanntes Konto (Operator-Injection). Nicht-Strings finden deshalb
+  // weder Kanzlei noch Konto und laufen wie jede andere Ablehnung über genau
+  // einen Dummy-Vergleich.
+  const tenantSlug = typeof input.tenantSlug === 'string' ? input.tenantSlug : null;
+  const email = typeof input.email === 'string' ? input.email.toLowerCase() : null;
+  const password = typeof input.password === 'string' ? input.password : '';
+  const tenant =
+    tenantSlug === null
+      ? null
+      : await prismaOwner.tenant.findFirst({ where: { slug: tenantSlug } });
+  const candidate =
+    tenant && email !== null
+      ? await prismaOwner.staffUser.findFirst({ where: { tenantId: tenant.id, email } })
+      : null;
 
   const account = passwordLoginAccount(candidate);
   if (account) {
@@ -113,7 +124,7 @@ export async function authenticateStaffPassword(input: {
 
   let passwordOk: boolean;
   try {
-    passwordOk = await verifyStaffPassword(input.password, account);
+    passwordOk = await verifyStaffPassword(password, account);
   } catch (error) {
     // Pool ausgelastet oder gestört: dieselbe generische Ablehnung für jedes
     // Konto, aber kein Fehlversuch (das Passwort wurde nicht geprüft). Unter

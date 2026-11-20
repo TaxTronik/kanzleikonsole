@@ -21,9 +21,9 @@ implementation:
     Bemessungsgrundlagen gleich. Persönliche Faktoren, zahlreiche
     Gewinnkorrekturen, gemischte Umsatzsteuersachverhalte und Sonderfälle
     fehlen. DATEV-Umsatzerlöse werden getrennt von Gesamtleistung verwendet;
-    eine fehlende Vorsteuerposition wird nicht ersetzt und eine als nachsteuerlich
-    gekennzeichnete Eingabe abgewiesen. Hinweise oder Beta-Kennzeichnung heilen
-    die verbleibenden Modelllücken nicht.
+    erforderlich ist ein Ergebnis vor Ertragsteuern für ein vollständiges
+    Kalenderjahr 2025 oder 2026. Bei anderen Zeiträumen unterbleibt die
+    Schätzung einschließlich der Summe.
 sources:
   - kind: official_guidance
     citation: Amtliches Lohnsteuer-Handbuch 2025, § 32a EStG mit Tarifparametern 2025
@@ -33,7 +33,7 @@ sources:
   - kind: official_law
     citation: § 32a EStG, Einkommensteuertarif ab Veranlagungszeitraum 2026
     url: https://www.gesetze-im-internet.de/estg/__32a.html
-    checked_at: '2026-08-24'
+    checked_at: '2026-11-20'
     primary: true
   - kind: official_law
     citation: § 35 EStG, Steuerermäßigung bei Einkünften aus Gewerbebetrieb
@@ -51,9 +51,39 @@ sources:
     checked_at: '2026-08-24'
     primary: true
   - kind: official_law
-    citation: § 23 KStG, Körperschaftsteuersatz nach Veranlagungszeitraum
+    citation: § 23 Abs. 1 KStG, Körperschaftsteuersatz nach Veranlagungszeitraum
     url: https://www.gesetze-im-internet.de/kstg_1977/__23.html
-    checked_at: '2026-08-24'
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: § 16 Abs. 4 Satz 2 GewStG, kommunaler Gewerbesteuer-Hebesatz
+    url: https://www.gesetze-im-internet.de/gewstg/__16.html
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: § 36 Abs. 5b GewStG, neuer Mindesthebesatz erstmals für den Erhebungszeitraum 2027
+    url: https://www.gesetze-im-internet.de/gewstg/__36.html
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_guidance
+    citation: Bundesfinanzministerium, Glossar Gewerbesteuer, zeitliche Einordnung der Mindesthebesätze
+    url: https://www.bundesfinanzministerium.de/Content/DE/Glossareintraege/G/gewerbesteuer.html?view=renderHelp
+    checked_at: '2026-11-20'
+    primary: false
+  - kind: official_law
+    citation: § 4a Abs. 2 EStG, Gewinn bei abweichendem Wirtschaftsjahr
+    url: https://www.gesetze-im-internet.de/estg/__4a.html
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: § 7 Abs. 3 und 4 KStG, Jahressteuer und abweichendes Wirtschaftsjahr
+    url: https://www.gesetze-im-internet.de/kstg_1977/__7.html
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: § 10 Abs. 2 GewStG, Gewerbeertrag bei abweichendem Wirtschaftsjahr
+    url: https://www.gesetze-im-internet.de/gewstg/__10.html
+    checked_at: '2026-11-20'
     primary: true
   - kind: official_law
     citation: §§ 3 und 4 SolzG 1995, Bemessungsgrundlage und Zuschlagsatz
@@ -113,8 +143,8 @@ richtig.
 
 ## Wann gilt die Regel?
 
-Der dokumentierte ESt-Teil gilt nur für die Veranlagungszeiträume 2025 und
-2026 und nur für die technische Annahme eines alleinstehenden
+Die Schätzung setzt eine BWA vom 1. Januar bis zum 31. Dezember desselben
+Kalenderjahres 2025 oder 2026 voraus. Der ESt-Teil verwendet die technische Annahme eines alleinstehenden
 Einzelunternehmers, dessen positives BWA-Ergebnis zugleich das gesamte zu
 versteuernde Einkommen darstellt. Der KSt-/SolZ-Teil ist als grobe Rechnung
 für GmbH, AG und UG angelegt. Der GewSt-Teil setzt einen inländischen
@@ -143,7 +173,8 @@ Sachverhalte erfordern eine gesonderte Berechnung.
 | Wenn                                                                             | Dann                                                                                                                                      | Begründung                                                                                                          |
 | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
 | Jahr 2025 oder 2026 und Einzelunternehmen                                        | hinterlegten Grundtarif auf das abgerundete positive BWA-Ergebnis anwenden                                                                | technische Annahme eines alleinstehenden Steuerpflichtigen ohne weitere Faktoren                                    |
-| anderes ESt-Jahr                                                                 | Einkommensteuer `null` lassen und fehlenden verifizierten Tarif anzeigen                                                                  | ein alter Tarif darf nicht still fortgeschrieben werden                                                             |
+| anderes Jahr, Teilperiode oder abweichendes Wirtschaftsjahr                      | Grund für die fehlende Jahresschätzung anzeigen, alle Beträge einschließlich der Summe auslassen                                          | Geltungszeitraum und Periodenbasis des Modells                                                                      |
+| gewerblicher Hebesatz fehlt oder liegt außerhalb von 200 bis 900 Prozent         | Eingabe korrigieren lassen, vorübergehend keine Beträge anzeigen                                                                          | 200 Prozent sind der Mindesthebesatz der beiden Modelljahre, 900 Prozent die Obergrenze des Eingabefelds            |
 | gewerbliche Tätigkeit                                                            | positives Ergebnis auf volle 100 Euro abrunden, gegebenenfalls 24.500 Euro Freibetrag abziehen und mit 3,5 Prozent sowie Hebesatz rechnen | vereinfachte Abbildung von § 11 GewStG                                                                              |
 | Einzelunternehmen mit positiver Gewerbesteuer                                    | ESt technisch um höchstens das Vierfache des Messbetrags, die berechnete GewSt und die tarifliche ESt mindern                             | begrenzte Produktabbildung des § 35 EStG                                                                            |
 | `isFreiberufler` gesetzt                                                         | keine Gewerbesteuer und keine §-35-Anrechnung ansetzen                                                                                    | Produktannahme für reine freiberufliche Tätigkeit                                                                   |
@@ -163,9 +194,21 @@ Solidaritätszuschlag auf Einkommensteuer.
 
 Für Körperschaften fehlen unter anderem steuerliche Gewinnkorrekturen,
 nichtabziehbare Aufwendungen, Beteiligungserträge, Verlustvorträge und
-Organschaft. Der Code verwendet unabhängig vom Jahr 15 Prozent KSt, obwohl
-§ 23 KStG nach heutigem Stand ab 2028 andere Sätze vorsieht. Für
+Organschaft. Der frühere Code verwendete unabhängig vom Jahr 15 Prozent KSt.
+§ 23 Abs. 1 KStG sieht diesen Satz bis 2027 und ab 2028 abgestufte Sätze vor.
+Die Schätzung endet mit dem dokumentierten Produktstand 2026. Für
 Personengesellschaften wird keine individuelle ESt berechnet.
+
+Für 2025 und 2026 gilt der Mindesthebesatz von 200 Prozent. Die in § 16
+Abs. 4 Satz 2 GewStG genannten 280 Prozent gelten nach § 36 Abs. 5b erstmals
+für den Erhebungszeitraum 2027. Die technische Obergrenze von 900 Prozent
+beschreibt die Eingabe im Produkt. Höhe und Anwendbarkeit eines kommunalen
+Satzes sind gesondert zu prüfen.
+
+Die Zeitgrenze ist eine Produktentscheidung. § 4a Abs. 2 EStG, § 7 Abs. 4
+KStG und § 10 Abs. 2 GewStG regeln die Zuordnung eines abweichenden
+Wirtschaftsjahrs abhängig von Steuersubjekt und Einkunftsart. Das Produkt
+modelliert diese Zuordnung und Rumpfwirtschaftsjahre bisher nicht.
 
 Bei der Gewerbesteuer fehlen die Ermittlung nach § 7 GewStG,
 Hinzurechnungen und Kürzungen, Gewerbeverluste, Zerlegung, mehrere Gemeinden
@@ -213,7 +256,10 @@ KSt- noch die USt-Bemessungsgrundlage dieses Sachverhalts ab.
 `null`. `estimateTaxes` verzweigt nach Rechtsform, verwendet positive
 BWA-Ergebnisse, einen übergebenen Hebesatz, feste KSt-/SolZ-/Messzahl-Sätze
 und eine 19-Prozent-USt-Pauschale auf das intern als `revenue` bezeichnete
-Feld. Die Kennzahlenübergabe verwendet für DATEV 1020 und strikt 1345; ein
+Feld. Die Periodenseite prüft die tatsächlichen Anfangs- und Enddaten.
+Ein als `YEAR` gespeicherter Juli–Juni-Zeitraum genügt nicht. Die Engine
+weist jedes Jahr außerhalb der beiden Modelljahre auch bei direktem Aufruf
+ab. Die Kennzahlenübergabe verwendet für DATEV 1020 und strikt 1345; ein
 Betriebsergebnis 1300 ersetzt keine fehlende 1345. Die Karte zeigt bei fehlender
 geeigneter Vorsteuerbasis einen Hinweis und ruft die Engine nicht mit dem
 vorläufigen Ergebnis auf. Auch ein direkter Engine-Aufruf mit
@@ -232,8 +278,10 @@ Deckelungen sind technisch getestet. Die zentrale Abweichung bleibt, dass
 vorläufige BWA-Werte ohne vollständige steuerliche Überleitung als
 Bemessungsgrundlagen verwendet werden. Die bekannte Nachsteuerbasis wird
 inzwischen abgewiesen; eine lediglich falsch als vorsteuerlich deklarierte
-Eingabe kann die Engine nicht fachlich erkennen. Unplausible Hebesätze oder
-widersprüchliche Flags werden noch nicht konsequent fail-closed abgewiesen.
+Eingabe kann die Engine nicht fachlich erkennen. Ein Hebesatz innerhalb der
+Eingabegrenzen belegt noch nicht den gültigen Gemeindesatz. Widersprüchliche
+Freiberufler- oder Personengesellschaftsangaben für eine Kapitalgesellschaft
+weist die Engine ab.
 Die Korrektur der DATEV-Ausgangspositionen verändert keine importierten
 Rohdaten oder gespeicherten Planwerte. Vor einer produktiven fachlichen Freigabe sind
 Eingaben, Überleitungen, Gültigkeitsjahre und Sonderfälle neu zu entscheiden.
@@ -266,3 +314,9 @@ anstelle von Gesamtleistung in die USt-Pauschale. Fehlende 1345 liefert auch
 in beiden Projektionsstrategien keine Ergebnis- oder Steuerersatzachse.
 Diese Positions- und Eingabekorrektur ist keine Freigabe der verbleibenden
 steuerlichen Vereinfachungen.
+
+Die Regressionsfälle vergleichen beide Modelljahre mit vor- und nachgelagerten
+Jahren, Monats- und Rumpfperioden, einem abweichenden Wirtschaftsjahr und einem
+Mehrjahreszeitraum. Der Browserfall leert den Hebesatz und gibt anschließend
+411 Prozent ein. Der Rechner blendet die Beträge mit leerem Feld aus und nach
+der Korrektur wieder ein.

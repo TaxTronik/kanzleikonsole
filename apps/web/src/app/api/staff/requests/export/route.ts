@@ -2,7 +2,11 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { getClientIp, checkStaffExportLimit } from '@/server/rate-limit';
 import { staffAuth } from '@/server/auth/staff';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
-import { clientAccessFilter } from '@/server/auth/client-access-filter';
+import {
+  parseRequestListFilters,
+  requestListWhere,
+  requestListOrder,
+} from '@/server/requests/list-filters';
 import { withTenantContext } from '@taxtronik/db';
 import { evidenceService } from '@/server/container';
 import {
@@ -26,7 +30,13 @@ export async function GET(req: NextRequest) {
   }
 
   const sp = req.nextUrl.searchParams;
-  const status = sp.get('status');
+  const filters = parseRequestListFilters({
+    status: sp.get('status'),
+    q: sp.get('q'),
+    mine: sp.get('mine'),
+    sort: sp.get('sort'),
+    dir: sp.get('dir'),
+  });
 
   const { rows, truncated } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
@@ -34,15 +44,16 @@ export async function GET(req: NextRequest) {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Anforderungen
       // gesperrter Mandanten tauchen nicht im CSV auf.
       const list = await tx.request.findMany({
-        where: {
-          ...clientAccessFilter(await accessibleClientsWhereFor(tx, session)),
-          ...(status && ['OPEN', 'IN_PROGRESS', 'RESPONDED', 'CLOSED', 'CANCELLED'].includes(status)
-            ? { status: status as 'OPEN' | 'IN_PROGRESS' | 'RESPONDED' | 'CLOSED' | 'CANCELLED' }
-            : {}),
-        },
-        orderBy: [{ status: 'asc' }, { dueAt: 'asc' }, { createdAt: 'desc' }],
+        where: requestListWhere(filters, staffId, await accessibleClientsWhereFor(tx, session)),
+        orderBy: requestListOrder(filters),
         take: MAX_EXPORT_ROWS + 1, // +1 zur Trunkierungs-Erkennung
-        include: {
+        select: {
+          createdAt: true,
+          title: true,
+          status: true,
+          priority: true,
+          dueAt: true,
+          closedAt: true,
           client: { select: { name: true, datevNo: true } },
           _count: { select: { responses: true } },
         },
@@ -54,7 +65,13 @@ export async function GET(req: NextRequest) {
         actorId: staffId,
         action: 'requests.export.csv',
         resourceType: 'request',
-        after: { rows: out.length, truncated, status: status ?? 'all' },
+        after: {
+          rows: out.length,
+          truncated,
+          status: filters.status ?? 'all',
+          mine: filters.mine,
+          searchApplied: Boolean(filters.q),
+        },
         ip: getClientIp(req.headers),
         userAgent: req.headers.get('user-agent'),
       });

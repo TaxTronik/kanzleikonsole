@@ -10,6 +10,8 @@ fachlich geprüft werden.
 Unter **Kalender** werden Kanzleitermine, Steuertermine und weitere
 fristenführende Einträge in einer Monatsansicht zusammengeführt. Die fokussierte
 Ansicht **Steuertermine** gruppiert nach Steuerart und Zeitraum.
+**Heute** öffnet in beiden Ansichten den aktuellen Berliner Monat. Eine
+laufende Abwesenheit ohne Enddatum wird bis zum aktuellen Berliner Tag angezeigt.
 
 Ein Klick auf einen Termin öffnet **Termin bearbeiten**: Titel, Art, Status,
 Bearbeiter, Mandant, Zeitraum, Ort und Notizen lassen sich mit denselben
@@ -57,7 +59,20 @@ Mitarbeiter angeboten. Im eingeschränkten Modus und bei vertraulichen Mandanten
 beschränkt sich die Auswahl auf Admin/Partner und zuständige Mitarbeiter; die
 gleiche Prüfung erfolgt nochmals serverseitig.
 
+Für Start, Ende und Terminvorschläge gilt die Berliner Ortszeit. In der Nacht
+der Umstellung auf Sommerzeit ist beispielsweise 02:30 Uhr keine gültige
+Eingabe. Kommt eine Uhrzeit im Herbst zweimal vor, verwendet eine neue Eingabe
+das spätere Vorkommen. Beim Bearbeiten behält eine unveränderte Uhrzeit ihren
+gespeicherten Zeitpunkt.
+
 ## 2. Steuertermine und Auto-Anforderungen
+
+Bei Einkommen-, Körperschaft-, Gewerbe- und Umsatzsteuer-Jahreserklärungen
+liefert die Einstellung **Beraten** den Kontrolltermin für kalenderjährige
+Regelfälle. Für 2019 bis 2024 gelten je nach Jahr und Beauftragung
+Übergangsfristen. Prüfen Sie insbesondere Vorabanforderungen, individuelle
+Fristverlängerungen, land- und forstwirtschaftliche Sonderfristen und die
+Umsatzsteuer bei Beendigung der Tätigkeit gesondert.
 
 Der Worker materialisiert Termine aus der aktiven Kanzleikonfiguration. Vor
 einer automatischen Mandantenanforderung erscheint eine interne Vorwarnung; die
@@ -186,6 +201,11 @@ ausdrückliche Angabe zu Mariä Himmelfahrt; zusätzliche örtliche Feiertage
 können vorgangsbezogen eingetragen werden. Historisch ungeprüfte,
 landesweit unvollständige oder ausländische Kalender führen zur manuellen
 Prüfung.
+
+Beispiel für einen einmaligen Feiertag: Beim bestätigten
+Standard-Fristende am Donnerstag, 8. Mai 2025, schlägt die Konsole für
+Berlin Freitag, 9. Mai, vor. In Brandenburg bleibt es bei Donnerstag, 8. Mai. Für bereits gespeicherte Fristen ist bei einer historischen
+Überprüfung der zum Vorgang gehörende Kalenderstand maßgeblich.
 
 Ein früher tatsächlich dokumentierter Zugang wird getrennt erfasst und
 verkürzt die gesetzliche Bekanntgabefiktion nicht. Ein behaupteter Nichtzugang

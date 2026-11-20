@@ -39,6 +39,34 @@ describe('browser preferences and client hydration', () => {
     expect(readBrowserStorage('test:private-session')).toBe('two');
   });
 
+  it('ACCESS-SEARCH-SCOPE-001: shows pending choices at quota and resumes persistence after recovery', () => {
+    const key = 'test:quota-session';
+    const values = new Map([[key, 'previous']]);
+    let quotaFull = true;
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        if (quotaFull) throw new DOMException('Full', 'QuotaExceededError');
+        values.set(key, value);
+      },
+    });
+    vi.stubGlobal('window', new EventTarget());
+    writeBrowserStorage(key, 'new choice');
+    expect(readBrowserStorage(key)).toBe('new choice');
+    expect(values.get(key)).toBe('previous');
+    values.set(key, 'other tab');
+    expect(readBrowserStorage(key)).toBe('other tab');
+    values.set(key, 'previous');
+    expect(readBrowserStorage(key)).toBe('previous');
+    writeBrowserStorage(key, 'pending again');
+    expect(readBrowserStorage(key)).toBe('pending again');
+    quotaFull = false;
+    writeBrowserStorage(key, 'persistent choice');
+    expect(values.get(key)).toBe('persistent choice');
+    values.set(key, 'other tab');
+    expect(readBrowserStorage(key)).toBe('other tab');
+  });
+
   it('renders a stable server snapshot without reading browser-only preferences', () => {
     const getItem = vi.fn(() => 'browser-only data');
     vi.stubGlobal('localStorage', { getItem });

@@ -4,7 +4,6 @@ import { z } from 'zod';
 import { withStaff, ActionError } from '@/server/actions/staff-action';
 import { assertClientAccessTx } from '@/server/auth/rbac';
 import { assertModuleEnabledTx } from '@/server/settings/modules';
-import { renderMarkdown } from '@/lib/markdown';
 import { audit } from '@/server/actions/audit';
 
 const targetSchema = z.object({
@@ -77,11 +76,13 @@ export async function loadKnowledgeContextAction(input: { type: 'ITEM' | 'REQUES
         where: { id: { in: articleIds }, published: true },
         select: { id: true, title: true, body: true, updatedAt: true },
       });
+      // Markdown-Quelltext statt HTML: Der Client rendert ihn über
+      // MarkdownContent, der einzigen geprüften HTML-Einfügestelle.
       return {
         articles: articles.map((a) => ({
           id: a.id,
           title: a.title,
-          html: renderMarkdown(a.body),
+          body: a.body,
           updatedAt: a.updatedAt.toISOString(),
         })),
       };

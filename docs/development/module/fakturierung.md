@@ -63,7 +63,7 @@ deaktiviert das Modul.
   GwG- und Vollmachtswarnungen, `INV-DUE-OVERDUE-001`).
 - **Überfälligkeitsanzeige (`INV-DUE-OVERDUE-001`):** Staff- und Portalübersicht
   vergleichen `dueDate` als `@db.Date` mit `berlinTodayUtcMidnight()` aus
-  `@taxtronik/tax`. Noch als SENT gespeicherte Rechnungen erscheinen erst ab dem
+  `@taxtronik/tax`. Nur als SENT gespeicherte Originalrechnungen erscheinen ab dem
   folgenden Berliner Kalendertag als überfällig, ohne dabei Status oder Audit zu
   schreiben. Die Staff-Seitenregression prüft Tagesgrenzen, Zeitumstellungen und
   unterschiedliche Serverzeitzonen mit dem echten gemeinsamen Helper.

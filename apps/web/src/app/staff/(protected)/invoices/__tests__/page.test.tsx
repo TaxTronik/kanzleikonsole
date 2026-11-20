@@ -37,7 +37,11 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-async function renderInvoice(dueDay: string, status: InvoiceStatus = 'SENT') {
+async function renderInvoice(
+  dueDay: string,
+  status: InvoiceStatus = 'SENT',
+  stornoOfId: string | null = null,
+) {
   fixture.findMany.mockResolvedValue([
     {
       id: 'invoice-test',
@@ -48,6 +52,7 @@ async function renderInvoice(dueDay: string, status: InvoiceStatus = 'SENT') {
       dueDate: new Date(`${dueDay}T00:00:00.000Z`),
       totalAmount: '119.00',
       status,
+      stornoOfId,
     },
   ]);
   const html = renderToStaticMarkup(await InvoicesPage({ searchParams: Promise.resolve({}) }));
@@ -55,6 +60,13 @@ async function renderInvoice(dueDay: string, status: InvoiceStatus = 'SENT') {
 }
 
 describe('Rechnungsanzeige — INV-DUE-OVERDUE-001', () => {
+  it('zeigt einen versendeten Korrekturbeleg auch nach dem Fälligkeitstag als versendet', async () => {
+    vi.setSystemTime(new Date('2026-09-16T00:00:00.000Z'));
+    const row = await renderInvoice('2026-09-14', 'SENT', 'originalrechnung');
+    expect(row).toContain('<span class="badge-yellow">Versendet</span>');
+    expect(row).not.toContain('text-red-700');
+  });
+
   it.each([
     ['am Fälligkeitstag mittags', '2026-09-14', '2026-09-14T12:00:00.000Z', false],
     ['am Fälligkeitstag bis 23:59:59,999 CEST', '2026-09-14', '2026-09-14T21:59:59.999Z', false],

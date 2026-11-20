@@ -15,7 +15,7 @@ AS $function$
       SELECT 1 FROM public.client c WHERE c.id = cid AND c.tenant_id = tid
         AND c.kind = 'NATPERS' AND c.anonymized_at IS NOT NULL
         AND c.mandate_ended_at IS NOT NULL
-        AND make_date(EXTRACT(YEAR FROM c.mandate_ended_at)::integer + 11, 1, 1)
-          <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date
+        AND app.retention_until_from_utc(c.mandate_ended_at AT TIME ZONE 'UTC', 10)
+          <= (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
     )
 $function$;

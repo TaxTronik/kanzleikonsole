@@ -4,8 +4,8 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:7368347d5f48230b4ff158958b618f05fe801da17010905cae15d63987dabeca",
-    "expected_active_rule_count": 86,
+    "definition_sha256": "sha256:3e1b065338befc6e7a7282c658d054c8073ee04ff29a6b7962482d9f5ee3f55a",
+    "expected_active_rule_count": 87,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
       "ACCESS-CLIENT-MODE-001",
@@ -80,6 +80,7 @@
       "RISK-EXTERNAL-ANONYMIZATION-001",
       "STBVV-CALCULATION-001",
       "TAX-CONTROL-STATUS-001",
+      "TAX-DEADLINE-ANNUAL-001",
       "TAX-DEADLINE-AUTOREQUEST-001",
       "TAX-DEADLINE-WORKDAY-001",
       "TAX-MASTER-DATA-001",
@@ -107,8 +108,8 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 86,
-  "active_rule_count": 86,
+  "rule_count": 87,
+  "active_rule_count": 87,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
@@ -175,7 +176,13 @@
         "apps/web/src/app/staff/(protected)/invoices/new/page.tsx",
         "apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts",
         "apps/web/src/server/auth/client-page-access.ts",
-        "apps/web/src/server/auth/client-access-filter.ts"
+        "apps/web/src/server/auth/client-access-filter.ts",
+        "apps/web/src/server/requests/list-filters.ts",
+        "apps/web/src/app/staff/(protected)/requests/page.tsx",
+        "apps/web/src/app/api/staff/requests/export/route.ts",
+        "apps/web/src/app/staff/(protected)/clients/list-query.ts",
+        "apps/web/src/app/staff/(protected)/clients/page.tsx",
+        "apps/web/src/app/api/staff/clients/export/route.ts"
       ],
       "test_refs": [
         "apps/web/src/server/settings/__tests__/settings-atomicity-db.test.ts",
@@ -186,6 +193,8 @@
         "apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx",
         "apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx",
         "apps/web/src/server/auth/__tests__/invoice-selection-ci.test.ts",
+        "apps/web/src/app/staff/(protected)/requests/__tests__/list-pagination.test.tsx",
+        "apps/web/src/app/staff/(protected)/clients/__tests__/list-document-count.test.tsx",
         "apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/__tests__/route.test.ts"
       ],
       "feature_refs": ["FEATURES.md", "docs/development/module/zugriffsschutz.md"],
@@ -254,6 +263,10 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/risk/research.ts",
+        "packages/db/prisma/migrations/20261120120200_risk_research_notification_scope/migration.sql",
+        "packages/db/prisma/sql/functions/app.risk_research_notification_visible(uuid,text,uuid).sql",
+        "packages/db/prisma/sql/policies/notification.notification_risk_research_scope.sql",
         "apps/worker/src/jobs/poa-expiry-check.ts",
         "packages/db/src/staff-client-access.ts",
         "packages/db/src/notification.ts",
@@ -274,6 +287,8 @@
         "apps/worker/src/jobs/invoice-overdue-check.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/n8n/__tests__/research-result-db.test.ts",
+        "apps/web/src/server/n8n/__tests__/research-callback-idempotency.test.ts",
         "apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts",
         "apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts",
         "apps/worker/src/jobs/__tests__/reminders-daily.test.ts",
@@ -341,6 +356,7 @@
       "code_refs": [
         "apps/web/src/components/recent-clients.tsx",
         "apps/web/src/components/saved-views.tsx",
+        "apps/web/src/components/use-browser-storage.ts",
         "apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/page.tsx",
@@ -363,6 +379,7 @@
       "test_refs": [
         "apps/e2e/tests/recent-clients-state.spec.ts",
         "apps/e2e/tests/saved-views-state.spec.ts",
+        "apps/web/src/components/__tests__/browser-storage.test.tsx",
         "apps/e2e/tests/12-accessibility.spec.ts",
         "packages/db/src/__tests__/portal-inbox-rls.test.ts",
         "packages/db/src/__tests__/portal-inbox-staff-search-candidates.test.ts",
@@ -539,6 +556,8 @@
         "apps/web/src/app/staff/(auth)/login/actions.ts",
         "apps/web/src/app/staff/(auth)/login/password/route.ts",
         "apps/web/src/server/auth/session-issued-at.ts",
+        "apps/web/src/types/next-auth.d.ts",
+        "packages/crypto/src/session-revocation.ts",
         "apps/web/src/server/auth/revocation.ts",
         "packages/db/src/tenant-context.ts",
         "packages/db/prisma/schema.prisma",
@@ -609,6 +628,8 @@
         "packages/db/src/__tests__/role-settings.test.ts",
         "apps/web/src/server/auth/__tests__/revocation.test.ts",
         "apps/web/src/server/auth/__tests__/revocation.redis.test.ts",
+        "apps/worker/src/jobs/__tests__/gwg-expiry-check.test.ts",
+        "packages/crypto/src/__tests__/session-revocation.test.ts",
         "apps/web/src/server/auth/__tests__/portal-profile-session.test.ts",
         "apps/web/src/server/auth/__tests__/portal-profiles.test.ts",
         "apps/web/src/app/portal/(protected)/profile-actions.test.ts",
@@ -692,6 +713,7 @@
         "apps/web/src/server/inbox/__tests__/portal-search-db.test.ts"
       ],
       "feature_refs": [
+        "docs/compliance/cookie-config.md",
         "docs/architecture.md",
         "docs/adr/0002-rls-und-app-level-tenancy.md",
         "docs/development/module/zugriffsschutz.md",
@@ -796,6 +818,7 @@
         }
       ],
       "code_refs": [
+        "apps/e2e/tests/helpers/postgres.ts",
         "apps/e2e/tests/helpers/redis.ts",
         "packages/db/scripts/verify-drift.ts",
         "packages/db/scripts/drift-shadow.ts",
@@ -803,15 +826,18 @@
         "apps/web/src/server/update/manifest.ts",
         ".forgejo/workflows/release.yml",
         "scripts/release/check-release-gates.mjs",
+        "scripts/release/smoke-release-images.sh",
         "scripts/release/verify-release-config.mjs"
       ],
       "test_refs": [
+        "apps/e2e/unit/postgres.test.ts",
         "apps/e2e/unit/redis.test.ts",
         "apps/e2e/tests/inbox-composer-state.spec.ts",
         "packages/db/src/__tests__/drift-shadow.test.ts",
         "packages/db/src/__tests__/drift-shadow-identity.test.ts",
         "apps/web/src/server/update/__tests__/manifest.test.ts",
         "scripts/release/tests/check-release-gates.test.mjs",
+        "scripts/release/tests/smoke-preflight.test.mjs",
         "scripts/release/tests/verify-release-config.test.mjs"
       ],
       "feature_refs": [
@@ -937,6 +963,8 @@
         }
       ],
       "code_refs": [
+        "scripts/ci/restore-roundtrip.sh",
+        "apps/web/scripts/ci-restore-audit.ts",
         "apps/web/src/app/staff/(protected)/admin/settings/modules-actions.ts",
         "apps/web/src/app/staff/(protected)/admin/settings/branding-actions.ts",
         "apps/web/src/app/staff/(protected)/admin/settings/mail-actions.ts",
@@ -1198,10 +1226,16 @@
         }
       ],
       "code_refs": [
+        "scripts/restore-selftest.sh",
+        ".forgejo/workflows/ci.yml",
+        "scripts/ci/restore-roundtrip.sh",
+        "apps/web/scripts/ci-restore-audit.ts",
+        "apps/web/src/server/backup/restore.ts",
         "apps/worker/src/jobs/backup-drill.ts",
         "apps/worker/src/jobs/backup-drill-file.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/backup/__tests__/restore.test.ts",
         "apps/worker/src/jobs/__tests__/backup-drill.test.ts",
         "apps/worker/src/jobs/__tests__/backup-drill-file.test.ts",
         "apps/worker/src/jobs/__tests__/backup-drill-integrity.test.ts"
@@ -1297,14 +1331,14 @@
       },
       "implementation": {
         "status": "implemented",
-        "summary": "Die lineare Run-rate und die begrenzte Trendregression sind als Szenariorechnungen umgesetzt. Die Regression verwendet ausschließlich vollständige Jahresperioden vor dem Zieljahr; Ziel- und Zukunftsjahre werden durch Code und Regressionstest ausgeschlossen."
+        "summary": "Die lineare Run-rate verwendet die jüngste unterjährige Periode mit Beginn und Ende im aktuellen Berliner Kalenderjahr. Die Regression verwendet ausschließlich vollständige Jahresperioden vor dem Zieljahr; Ziel- und Zukunftsjahre werden durch Code und Regressionstest ausgeschlossen."
       },
       "sources": [
         {
           "kind": "product_documentation",
           "citation": "Anwenderdokumentation BWA und Planung, Abschnitt Hochrechnung und Grenzen",
           "path": "docs/anwenderdoku/bwa-planung.md",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-11-20",
           "primary": true
         }
       ],
@@ -1319,6 +1353,7 @@
         "apps/web/src/server/bwa/plan-basis.ts"
       ],
       "test_refs": [
+        "apps/web/src/components/bwa/__tests__/dashboard-projection.test.tsx",
         "apps/web/src/components/bwa/__tests__/projection-snapshot.test.ts",
         "apps/e2e/tests/21-bwa-basis-state.spec.ts",
         "apps/web/src/server/bwa/__tests__/projection.test.ts",
@@ -1347,7 +1382,7 @@
       },
       "implementation": {
         "status": "partial",
-        "summary": "Der Produktstand bildet einzelne Tarife und Rechenschritte für 2025 und 2026 nach, setzt aber das BWA-Ergebnis vereinfachend mit steuerlichen Bemessungsgrundlagen gleich. Persönliche Faktoren, zahlreiche Gewinnkorrekturen, gemischte Umsatzsteuersachverhalte und Sonderfälle fehlen. DATEV-Umsatzerlöse werden getrennt von Gesamtleistung verwendet; eine fehlende Vorsteuerposition wird nicht ersetzt und eine als nachsteuerlich gekennzeichnete Eingabe abgewiesen. Hinweise oder Beta-Kennzeichnung heilen die verbleibenden Modelllücken nicht."
+        "summary": "Der Produktstand bildet einzelne Tarife und Rechenschritte für 2025 und 2026 nach, setzt aber das BWA-Ergebnis vereinfachend mit steuerlichen Bemessungsgrundlagen gleich. Persönliche Faktoren, zahlreiche Gewinnkorrekturen, gemischte Umsatzsteuersachverhalte und Sonderfälle fehlen. DATEV-Umsatzerlöse werden getrennt von Gesamtleistung verwendet; erforderlich ist ein Ergebnis vor Ertragsteuern für ein vollständiges Kalenderjahr 2025 oder 2026. Bei anderen Zeiträumen unterbleibt die Schätzung einschließlich der Summe."
       },
       "sources": [
         {
@@ -1361,7 +1396,7 @@
           "kind": "official_law",
           "citation": "§ 32a EStG, Einkommensteuertarif ab Veranlagungszeitraum 2026",
           "url": "https://www.gesetze-im-internet.de/estg/__32a.html",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-11-20",
           "primary": true
         },
         {
@@ -1387,9 +1422,51 @@
         },
         {
           "kind": "official_law",
-          "citation": "§ 23 KStG, Körperschaftsteuersatz nach Veranlagungszeitraum",
+          "citation": "§ 23 Abs. 1 KStG, Körperschaftsteuersatz nach Veranlagungszeitraum",
           "url": "https://www.gesetze-im-internet.de/kstg_1977/__23.html",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 16 Abs. 4 Satz 2 GewStG, kommunaler Gewerbesteuer-Hebesatz",
+          "url": "https://www.gesetze-im-internet.de/gewstg/__16.html",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 36 Abs. 5b GewStG, neuer Mindesthebesatz erstmals für den Erhebungszeitraum 2027",
+          "url": "https://www.gesetze-im-internet.de/gewstg/__36.html",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "Bundesfinanzministerium, Glossar Gewerbesteuer, zeitliche Einordnung der Mindesthebesätze",
+          "url": "https://www.bundesfinanzministerium.de/Content/DE/Glossareintraege/G/gewerbesteuer.html?view=renderHelp",
+          "checked_at": "2026-11-20",
+          "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 4a Abs. 2 EStG, Gewinn bei abweichendem Wirtschaftsjahr",
+          "url": "https://www.gesetze-im-internet.de/estg/__4a.html",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 7 Abs. 3 und 4 KStG, Jahressteuer und abweichendes Wirtschaftsjahr",
+          "url": "https://www.gesetze-im-internet.de/kstg_1977/__7.html",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 10 Abs. 2 GewStG, Gewerbeertrag bei abweichendem Wirtschaftsjahr",
+          "url": "https://www.gesetze-im-internet.de/gewstg/__10.html",
+          "checked_at": "2026-11-20",
           "primary": true
         },
         {
@@ -1601,6 +1678,7 @@
         }
       ],
       "code_refs": [
+        "packages/config/src/retention-calendar.ts",
         "apps/web/src/app/api/portal/ical/[token]/route.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts",
         "apps/web/src/server/dsgvo/client-retention.ts",
@@ -1730,11 +1808,17 @@
         }
       ],
       "code_refs": [
+        "scripts/release/smoke-release-images.sh",
+        "scripts/release/check-release-gates.mjs",
+        "packages/config/src/retention-calendar.ts",
         "packages/storage/src/service.ts",
         "packages/storage/src/object-lock-policy.ts",
         "apps/web/src/server/documents/upload-helpers.ts"
       ],
       "test_refs": [
+        "scripts/release/tests/check-release-gates.test.mjs",
+        "apps/worker/src/jobs/__tests__/storage-orphan-cleanup-db.test.ts",
+        "packages/storage/src/__tests__/retention.test.ts",
         "packages/storage/src/__tests__/object-lock-policy.test.ts",
         "packages/storage/src/__tests__/object-version.test.ts",
         "packages/storage/src/__tests__/s3-xml-compat.test.ts",
@@ -1843,14 +1927,14 @@
           "kind": "official_law",
           "citation": "§ 147 Abs. 1 bis 4 AO",
           "url": "https://www.gesetze-im-internet.de/ao_1977/__147.html",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-11-20",
           "primary": true
         },
         {
           "kind": "official_law",
           "citation": "§ 14b UStG",
           "url": "https://www.gesetze-im-internet.de/ustg_1980/__14b.html",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-11-20",
           "primary": false
         },
         {
@@ -1861,6 +1945,13 @@
           "primary": false
         },
         {
+          "kind": "official_law",
+          "citation": "§ 257 Abs. 4 und 5 HGB, einschließlich Sonderregel für beaufsichtigte Institute",
+          "url": "https://www.gesetze-im-internet.de/hgb/__257.html",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
           "kind": "product_documentation",
           "citation": "Benutzerhandbuch Dokumente und Archiv",
           "path": "docs/anwenderdoku/dokumente.md",
@@ -1869,12 +1960,14 @@
         }
       ],
       "code_refs": [
+        "packages/config/src/retention-calendar.ts",
         "packages/storage/src/service.ts",
         "apps/web/src/server/storage/document-type.ts",
         "apps/web/src/server/inbox/accept-attachment.ts",
         "packages/db/prisma/migrations/20260801003520_document_type_retention_years/migration.sql"
       ],
       "test_refs": [
+        "packages/db/src/__tests__/tcms-gwg-aufbewahrung.test.ts",
         "packages/storage/src/__tests__/retention.test.ts",
         "apps/web/src/app/api/staff/documents/commit/__tests__/route-toctou.test.ts",
         "apps/web/src/server/inbox/__tests__/accept-attachment.test.ts"
@@ -1918,6 +2011,7 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/actions.ts",
         "apps/web/src/server/documents/delivery-readiness.ts",
         "apps/web/src/server/documents/delivery.ts",
         "apps/web/src/app/api/staff/documents/download/route.ts",
@@ -1944,6 +2038,7 @@
         "packages/db/prisma/migrations/20261007150000_storage_intent_risk_references/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/__tests__/actions-journal.test.ts",
         "apps/web/src/server/documents/__tests__/delivery-lifecycle.test.ts",
         "apps/web/src/app/api/staff/documents/__tests__/delivery-access.test.ts",
         "apps/web/src/app/api/staff/documents/__tests__/bulk-download-readiness.test.ts",
@@ -2257,7 +2352,7 @@
           "kind": "official_law",
           "citation": "§ 66 Abs. 1, 2 und 4 StBerG",
           "url": "https://www.gesetze-im-internet.de/stberg/__66.html",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-11-20",
           "primary": true
         },
         {
@@ -2269,6 +2364,9 @@
         }
       ],
       "code_refs": [
+        "packages/config/src/retention-calendar.ts",
+        "packages/db/prisma/migrations/20261120120100_berlin_mandate_redaction/migration.sql",
+        "packages/db/prisma/sql/functions/app.risk_retention_redaction_allowed(uuid,uuid).sql",
         "apps/web/src/server/dsgvo/client-retention.ts",
         "apps/web/src/server/dsgvo/anonymize-client-data.ts",
         "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts"
@@ -3220,11 +3318,16 @@
           "kind": "official_law",
           "citation": "§ 8 Abs. 1 bis 5 GwG",
           "url": "https://www.gesetze-im-internet.de/gwg_2017/__8.html",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-11-20",
           "primary": true
         }
       ],
       "code_refs": [
+        "packages/config/src/retention-calendar.ts",
+        "packages/db/prisma/migrations/20261120120000_berlin_retention_year/migration.sql",
+        "packages/db/prisma/sql/functions/app.retention_until_from_utc(timestamp,int4).sql",
+        "packages/db/prisma/sql/functions/app.assert_gwg_document_destruction_due(uuid).sql",
+        "packages/db/prisma/sql/functions/app.destroy_gwg_check_locked_impl(uuid).sql",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-model.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/gwg-page-status.tsx",
@@ -3255,6 +3358,7 @@
         "packages/config/src/job-queues.ts"
       ],
       "test_refs": [
+        "packages/db/src/__tests__/gwg-open-first-check-retention.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/server/mandate-expansion/__tests__/service-db.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/actions.test.ts",
@@ -3751,12 +3855,15 @@
       "code_refs": [
         "apps/worker/src/jobs/invoice-overdue-check.ts",
         "apps/web/src/app/staff/(protected)/invoices/page.tsx",
+        "apps/web/src/app/portal/(protected)/invoices/page.tsx",
+        "apps/web/src/server/invoicing/due-status.ts",
         "apps/worker/src/notification-recipients.ts"
       ],
       "test_refs": [
         "apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts",
         "apps/worker/src/__tests__/notification-recipients.test.ts",
         "apps/web/src/app/staff/(protected)/invoices/__tests__/page.test.tsx",
+        "apps/web/src/app/portal/(protected)/__tests__/list-ux.test.ts",
         "apps/e2e/tests/12-accessibility.spec.ts"
       ],
       "feature_refs": [
@@ -4485,6 +4592,7 @@
         "apps/web/src/server/payroll/definition.ts",
         "apps/web/src/server/payroll/capability.ts",
         "apps/web/src/server/payroll/service.ts",
+        "apps/web/src/lib/fmt.ts",
         "apps/web/src/server/payroll/storage.ts",
         "apps/web/src/server/payroll/export.ts",
         "apps/web/src/server/payroll/pdf.ts",
@@ -4503,6 +4611,7 @@
       ],
       "test_refs": [
         "apps/web/src/server/payroll/__tests__/definition.test.ts",
+        "apps/web/src/lib/__tests__/fmt.test.ts",
         "apps/web/src/server/payroll/__tests__/pdf.test.ts",
         "apps/web/src/server/payroll/__tests__/storage.test.ts",
         "apps/web/src/server/payroll/__tests__/export.test.ts",
@@ -4624,7 +4733,7 @@
           "kind": "official_law",
           "citation": "§ 66 StBerG, Handakten und Aufbewahrung",
           "url": "https://www.gesetze-im-internet.de/stberg/__66.html",
-          "checked_at": "2026-08-24",
+          "checked_at": "2026-11-20",
           "primary": true
         },
         {
@@ -4650,6 +4759,9 @@
         }
       ],
       "code_refs": [
+        "packages/config/src/retention-calendar.ts",
+        "packages/db/prisma/migrations/20261120120100_berlin_mandate_redaction/migration.sql",
+        "packages/db/prisma/sql/functions/app.poa_protect_integrity().sql",
         "apps/web/src/server/dsgvo/client-retention.ts",
         "apps/web/src/server/dsgvo/anonymize-client-data.ts",
         "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts",
@@ -4982,6 +5094,7 @@
         "apps/worker/src/jobs/reminders-daily.ts",
         "apps/worker/src/jobs/reminder-done-notify.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts",
+        "apps/web/src/app/staff/(protected)/phone-notes/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/_data.ts",
         "apps/web/src/server/risk/delegate.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts",
@@ -5000,6 +5113,7 @@
         "apps/web/src/app/staff/(protected)/reminders/[id]/ticket-history-pagination.tsx"
       ],
       "test_refs": [
+        "apps/web/src/server/actions/__tests__/calendar-date-input.test.ts",
         "apps/web/src/lib/__tests__/reminder-ticket-references.test.ts",
         "apps/web/src/server/documents/__tests__/reminder-upload-guard.test.ts",
         "apps/web/src/server/risk/__tests__/delegate.test.ts",
@@ -5118,7 +5232,8 @@
         "apps/web/src/app/portal/(protected)/requests/[id]/actions.ts",
         "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts",
-        "apps/web/src/components/requests/new-request-form.tsx"
+        "apps/web/src/components/requests/new-request-form.tsx",
+        "apps/web/src/lib/fmt.ts"
       ],
       "test_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts",
@@ -5248,16 +5363,33 @@
         "apps/web/src/server/risk/markings.ts",
         "apps/web/src/server/risk/norms.ts",
         "apps/web/src/server/risk/reformat.ts",
+        "apps/web/src/server/risk/research.ts",
+        "apps/web/src/server/risk/index.ts",
+        "apps/web/src/server/risk/research-lifecycle.ts",
+        "apps/web/src/server/risk/research-shelf.ts",
         "apps/worker/src/jobs/risk-analyse-llm.ts",
         "apps/web/src/server/dsgvo/anonymize-client-data.ts",
         "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/_guards.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-view.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-results-block.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/research-review.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-selection-panel.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-workspace.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/marking-panel.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/n8n/__tests__/research-result-db.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/guards-tx.test.ts",
         "apps/web/src/server/risk/__tests__/archive.test.ts",
         "apps/web/src/server/risk/__tests__/reanalyze.test.ts",
+        "apps/web/src/server/risk/__tests__/research-lifecycle.test.ts",
+        "apps/web/src/server/risk/__tests__/research-payload.test.ts",
+        "apps/web/src/server/risk/__tests__/research-verwerfen.test.ts",
+        "apps/web/src/server/risk/__tests__/research-shelf.test.ts",
+        "apps/web/src/app/staff/(protected)/__tests__/destructive-action-confirmations.test.tsx",
         "apps/web/src/server/risk/__tests__/delegate.test.ts",
         "apps/web/src/app/staff/(protected)/admin/dsgvo-retention/__tests__/tax-data-actions.test.ts",
         "apps/web/src/server/dsgvo/__tests__/client-retention.test.ts",
@@ -5418,14 +5550,14 @@
           "kind": "official_law",
           "citation": "StBVV § 17 in Verbindung mit RVG Anlage 1, VV 7000 Dokumentenpauschale",
           "url": "https://www.gesetze-im-internet.de/rvg/anlage_1.html",
-          "checked_at": "2026-08-31",
+          "checked_at": "2026-11-20",
           "primary": true
         },
         {
           "kind": "official_law",
           "citation": "StBVV, konsolidierte Fassung, zuletzt geändert durch Art. 5 V vom 19.12.2025, BGBl. 2025 I Nr. 372; Anlagen 1 bis 4",
           "url": "https://www.gesetze-im-internet.de/stbgebv/BJNR014420981.html",
-          "checked_at": "2026-08-31",
+          "checked_at": "2026-11-20",
           "primary": true
         },
         {
@@ -5437,6 +5569,7 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/stbvv/calculator-form.tsx",
         "packages/tax/src/stbvv/catalog.ts",
         "packages/tax/src/stbvv/calculator.ts",
         "packages/tax/src/stbvv/tables.json",
@@ -5557,6 +5690,7 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/binders/actions.ts",
         "packages/db/prisma/schema.prisma",
         "apps/web/src/server/fristen/eintrag.ts",
         "apps/web/src/server/fristen/kontrollbuch.ts",
@@ -5585,6 +5719,7 @@
         "packages/db/prisma/sql/functions/app.tax_notice_require_progress_evidence().sql"
       ],
       "test_refs": [
+        "apps/web/src/server/actions/__tests__/calendar-date-input.test.ts",
         "apps/e2e/tests/12-accessibility.spec.ts",
         "packages/db/src/__tests__/tax-notice-evidence.test.ts",
         "packages/db/src/__tests__/tax-notice-partial-relief-migration.test.ts",
@@ -5609,6 +5744,70 @@
       "tags": ["fristenkontrollbuch", "erledigung", "status"],
       "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-control-status-001-fristenkontrollbuch.md",
       "summary": "Das Fristenkontrollbuch führt keinen frei editierbaren parallelen „Erledigt“-Schalter, sondern leitet seine Sicht aus dem jeweiligen Fachvorgang ab. Ein Statusname allein ist dafür nicht immer ausreichend: Eine relevante Frist soll erst geschlossen werden, wenn Erledigungsgrund und erforderlicher Nachweis im Quellvorgang dokumentiert sind."
+    },
+    {
+      "id": "TAX-DEADLINE-ANNUAL-001",
+      "title": "Kontrolltermin für kalenderjährige Jahressteuererklärungen bestimmen",
+      "domain": "fristen-und-bescheide",
+      "rule_type": "statute",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": "2019-01-01", "valid_until": null },
+      "professional_owner_role": "Berufsträger Steuerrecht",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "partial",
+        "summary": "Der Steuertermingenerator berechnet für vier Jahreserklärungsarten einen Kontrolltermin aus Besteuerungsjahr, Beratungskennzeichen und Tenant-Kalender. Sonderfälle mit anderen Fristen erfordern eigene Prüfung."
+      },
+      "sources": [
+        {
+          "kind": "official_law",
+          "citation": "§ 149 Abs. 2 bis 5 AO, Abgabe der Steuererklärungen",
+          "url": "https://www.gesetze-im-internet.de/ao_1977/__149.html",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Art. 97 § 36 Abs. 1 und Abs. 3 Nr. 1 bis 4 EGAO, Übergangsfristen",
+          "url": "https://www.gesetze-im-internet.de/aoeg_1977/art_97__36.html",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "§ 18 Abs. 3 UStG, Umsatzsteuererklärung und kürzerer Besteuerungszeitraum",
+          "url": "https://www.gesetze-im-internet.de/ustg_1980/__18.html",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "AEAO zu § 149 AO, Ausgabe 2026, Abgabefristen und Fallunterscheidungen",
+          "url": "https://ao.bundesfinanzministerium.de/ao/2026/Abgabenordnung/Vierter-Teil/Zweiter-Abschnitt/Zweiter-Unterabschnitt/Paragraf-149/inhalt.html",
+          "checked_at": "2026-11-20",
+          "primary": false
+        }
+      ],
+      "code_refs": [
+        "packages/tax/src/engine.ts",
+        "packages/tax/src/materialize.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tax-schedule/tax-schedule-form.tsx"
+      ],
+      "test_refs": ["packages/tax/src/__tests__/engine.test.ts"],
+      "feature_refs": ["docs/anwenderdoku/kalender-fristen-bescheide.md"],
+      "related_rules": [
+        "TAX-DEADLINE-WORKDAY-001",
+        "TAX-DEADLINE-AUTOREQUEST-001",
+        "TAX-CONTROL-STATUS-001"
+      ],
+      "tags": ["jahreserklaerung", "beratungsfrist"],
+      "path": "docs/fachkatalog/regeln/fristen-und-bescheide/tax-deadline-annual-001-jahreserklaerungen.md",
+      "summary": "Für eine kalenderjährige Pflichtsteuererklärung ergibt sich der Regeltermin aus dem Besteuerungsjahr und der qualifizierten Beauftragung zur Erstellung. Für 2019 bis 2024 gelten je nach Fall Übergangsfristen. Die Kanzlei prüft besondere Abgabepflichten, abweichende Fristen und den örtlichen Kalender."
     },
     {
       "id": "TAX-DEADLINE-AUTOREQUEST-001",
@@ -5762,6 +5961,69 @@
           "url": "https://bravors.brandenburg.de/verwaltungsvorschriften/feiertagsrecht",
           "checked_at": "2026-08-23",
           "primary": false
+        },
+        {
+          "kind": "official_law",
+          "citation": "Berlin, Gesetz vom 30.01.2019, Art. 1–3, GVBl. S. 22 (Frauentag und 08.05.2020)",
+          "url": "https://www.berlin.de/sen/justiz/service/gesetze-und-verordnungen/2019/ausgabe-nr-3-vom-6-2-2019-s-21-32.pdf",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Berlin, Gesetz vom 10.07.2024, Art. 1–4, GVBl. S. 460 (08.05.2025 und 17.06.2028)",
+          "url": "https://www.berlin.de/sen/justiz/service/gesetze-und-verordnungen/2024/ausgabe-nr-28-vom-2072024-s-457-484.pdf",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Mecklenburg-Vorpommern, Viertes Änderungsgesetz zum Feiertagsgesetz vom 07.07.2022, Art. 1 und 2, GVOBl. S. 427 (Frauentag)",
+          "url": "https://www.regierung-mv.de/static/Regierungsportal/Justizministerium/Inhalte/Rechtliches/GVOBI.M-V/GVOBl.%20Nr.%2031%20v.%2012.7.2022.pdf",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Thüringen, Drittes Änderungsgesetz zum Thüringer Feier- und Gedenktagsgesetz vom 19.03.2019, Art. 1 und 2, GVBl. S. 22 (Weltkindertag)",
+          "url": "https://parldok.thueringer-landtag.de/ParlDok/dokument/70512/gesetz_und_verordnungsblatt_nr_2_2019.pdf",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "Niedersächsisches Innenministerium, einmaliger bundesweiter Feiertag am 31.10.2017",
+          "url": "https://www.mi.niedersachsen.de/startseite/aktuelles/presseinformationen/reformationstag-ist-im-jahr-2017-ein-arbeitsfreier-gesetzlicher-feiertag--148206.html",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Bremen, Gesetz vom 26.06.2018, Art. 1 und 2, Brem.GBl. S. 302 (Reformationstag)",
+          "url": "https://www.gesetzblatt.bremen.de/fastmedia/218/2018_06_28_GBl_Nr_0063_signed.pdf",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_guidance",
+          "citation": "Hamburg, Übersicht über die gesetzlichen Feiertage in der Bundesrepublik Deutschland, Stand September 2018 (31. Oktober)",
+          "url": "https://www.hamburg.de/contentblob/70230/7a4a9de67fd46caec0947c11bf23316d/data/bsb-feiertage.pdf",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Niedersachsen, Gesetz vom 22.06.2018, Art. 1 und 2, Nds. GVBl. S. 121 (Reformationstag)",
+          "url": "https://www.niedersachsen.de/download/132379/Nds._GVBl._Nr._7_2018_vom_28.06.2018_S._111-154.pdf",
+          "checked_at": "2026-11-20",
+          "primary": true
+        },
+        {
+          "kind": "official_law",
+          "citation": "Schleswig-Holstein, Gesetz zur Änderung des Sonn- und Feiertagsgesetzes vom 21.03.2018, GVOBl. S. 69 (Reformationstag)",
+          "url": "https://www.schleswig-holstein.de/DE/landesregierung/ministerien-behoerden/IV/Service/GVOBl/GVOBl/2018/gvobl_6_2018.pdf?__blob=publicationFile&v=3",
+          "checked_at": "2026-11-20",
+          "primary": true
         }
       ],
       "code_refs": [
@@ -6145,12 +6407,14 @@
       "code_refs": [
         "apps/web/src/app/portal/(protected)/requests/[id]/page.tsx",
         "apps/web/src/app/staff/(protected)/interactions/actions.ts",
+        "apps/web/src/lib/fmt.ts",
         "apps/web/src/app/portal/(protected)/interactions/actions.ts",
         "apps/web/src/app/api/portal/interactions/[id]/document/route.ts",
         "packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql"
       ],
       "test_refs": [
         "apps/web/src/server/workflows/__tests__/interaction-policy.test.ts",
+        "apps/web/src/lib/__tests__/fmt.test.ts",
         "packages/db/src/__tests__/workflow-expansion.test.ts"
       ],
       "feature_refs": ["docs/development/module/workflow-expansion.md"],
@@ -6453,6 +6717,9 @@
         }
       ],
       "code_refs": [
+        "packages/db/prisma/migrations/20261120120000_berlin_retention_year/migration.sql",
+        "packages/db/prisma/sql/functions/app.tcms_gwg_evidence_tax_retention_until(timestamp).sql",
+        "packages/db/prisma/sql/functions/app.raise_tcms_gwg_evidence_retention(uuid).sql",
         "apps/web/src/server/tcms/durchfuehrung/verweis.ts",
         "apps/web/src/server/tcms/durchfuehrung/sperre.ts",
         "apps/web/src/server/tcms/durchfuehrung/nachweis-aktion.ts",
@@ -6766,6 +7033,7 @@
         "apps/worker/src/jobs/workflow-auto-resume.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/actions/__tests__/calendar-date-input.test.ts",
         "apps/web/src/app/staff/(protected)/interactions/__tests__/feedback-configure.test.ts",
         "packages/db/src/__tests__/workflow-lifecycle.test.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/workflows/__tests__/actions-lifecycle.test.ts",

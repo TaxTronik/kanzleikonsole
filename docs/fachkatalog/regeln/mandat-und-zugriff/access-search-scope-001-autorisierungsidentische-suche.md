@@ -36,6 +36,7 @@ sources:
 code_refs:
   - apps/web/src/components/recent-clients.tsx
   - apps/web/src/components/saved-views.tsx
+  - apps/web/src/components/use-browser-storage.ts
   - apps/web/src/app/staff/(protected)/tax-deadlines/page.tsx
   - apps/web/src/app/staff/(protected)/clients/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/page.tsx
@@ -57,6 +58,7 @@ code_refs:
 test_refs:
   - apps/e2e/tests/recent-clients-state.spec.ts
   - apps/e2e/tests/saved-views-state.spec.ts
+  - apps/web/src/components/__tests__/browser-storage.test.tsx
   - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/portal-inbox-rls.test.ts
   - packages/db/src/__tests__/portal-inbox-staff-search-candidates.test.ts
@@ -168,6 +170,13 @@ keine Ansichten des vorherigen Kontos an. Ungebundene Altbestände werden ohne
 Einträge werden verworfen. Suchansichten sind persönliche Filtervorlagen;
 der erneute Seitenaufruf prüft die aktuelle serverseitige Berechtigung.
 
+Beim Bestätigen des Ansichtsnamens liest der Browser den aktuellen Stand des
+Kontos erneut. So bleibt eine zwischen Öffnen und Bestätigen des Dialogs in
+einem anderen Tab gespeicherte Ansicht mit anderem Namen erhalten. Schlägt das
+Schreiben wegen voller Browser-Speicherquote fehl, hält der laufende Tab die
+Einstellung im Arbeitsspeicher. Ein geänderter persistierter Wert hat Vorrang,
+sobald der Tab ihn liest.
+
 Die Kopfzeile der Mandantenliste ordnet Titel und Aktionen auf schmalen
 Bildschirmen untereinander an; die Aktionsgruppe kann umbrechen. Diese reine
 Darstellungsänderung belässt Suchfilter, Trefferzähler, Aktionsziele,
@@ -240,6 +249,11 @@ die getrennte Speicherung und Anzeige von Ansichtsname und Suchbegriffen,
 Tenant-/Mitarbeiterwechsel, Altbestandsbereinigung, Wiederaufruf der eigenen
 Ansichten und beschädigte Einträge. Die Navigation wird als UI-Grenze
 simuliert; dieser Test ersetzt keine serverseitige Suchautorisierung.
+
+Ein weiterer Fall derselben Spec öffnet zwei Chromium-Tabs und prüft nach
+beiden Speichervorgängen, dass beide Ansichten in beiden Tabs sichtbar sind.
+`browser-storage.test.tsx` prüft das Lesen bei voller Speicherquote, die
+Übernahme einer fremden Tab-Änderung und das erneute erfolgreiche Speichern.
 
 `12-accessibility.spec.ts` verlangt beim Aufruf der Mandantenliste eine
 erfolgreiche Antwort auf der angeforderten Route. Bei 320 Pixeln prüft die

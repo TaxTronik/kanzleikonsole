@@ -130,6 +130,12 @@ function requireAskpass(block, name) {
 }
 
 export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
+  const initStorage = smoke.match(/^"\$\{COMPOSE\[@\]\}" run --rm --no-deps seaweedfs-init$/m);
+  const startApps = smoke.match(/^"\$\{COMPOSE\[@\]\}" up [^\n]* app worker n8n$/m);
+  invariant(
+    initStorage && startApps && initStorage.index < startApps.index,
+    'Release-Image-Smoke muss den Object Store vor App und Worker initialisieren',
+  );
   invariant(
     /docker compose --project-name "\$SMOKE_PROJECT_NAME"/.test(smoke) &&
       /down -v --remove-orphans/.test(smoke),

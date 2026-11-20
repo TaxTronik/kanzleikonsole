@@ -14,6 +14,7 @@
     "./profiles/cli-secret-box": "./src/profiles/cli-secret-box.ts",
     "./profiles/cli-storage": "./src/profiles/cli-storage.ts",
     "./job-queues": "./src/job-queues.ts",
+    "./retention-calendar": "./src/retention-calendar.ts",
     "./logger": "./src/logger.ts",
     "./update-manifest": "./src/update-manifest.ts"
   },

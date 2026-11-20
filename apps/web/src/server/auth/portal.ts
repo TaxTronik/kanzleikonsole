@@ -23,7 +23,7 @@ import NextAuth, { type NextAuthConfig, type Session } from 'next-auth';
 import type { JWT } from 'next-auth/jwt';
 import { env } from '@taxtronik/config';
 import { isTokenRevoked } from './revocation';
-import { getSessionIssuedAt } from './session-issued-at';
+import { getSessionIssuedAt, getSessionIssueTime } from './session-issued-at';
 import { portalSessionFactory } from './portal-session';
 import { restrictAuthJsRoute, type AuthJsRouteSpec } from './authjs-route';
 import { prismaOwner } from '@/server/db/prisma-owner';
@@ -87,12 +87,13 @@ function hasPortalSessionFields(session: Session | null): session is PortalSessi
 async function hydratePortalSessionFromToken(session: Session, token: unknown): Promise<Session> {
   if (!isPortalTokenPayload(token)) return session;
 
-  const tokenIat = getSessionIssuedAt(token);
-  if (tokenIat === undefined) return session;
+  const issued = getSessionIssueTime(token);
+  if (!issued) return session;
   const originContactId = portalOriginContactId(token);
   if (!originContactId) return session;
   for (const contactId of unique([token.contactId, originContactId])) {
-    if (await isTokenRevoked('portal', contactId, tokenIat)) return session;
+    if (await isTokenRevoked('portal', contactId, issued.sessionIssuedAt, issued.sessionIssuedAtMs))
+      return session;
     if (!(await hasCurrentPortalIdentity(token, contactId))) return session;
   }
 
@@ -101,7 +102,8 @@ async function hydratePortalSessionFromToken(session: Session, token: unknown): 
   session.user.clientId = token.clientId;
   session.user.fullName = token.fullName;
   session.user.email = normalizePortalEmail(token.email)!;
-  session.user.sessionIssuedAt = tokenIat;
+  session.user.sessionIssuedAt = issued.sessionIssuedAt;
+  session.user.sessionIssuedAtMs = issued.sessionIssuedAtMs;
   session.user.sessionOriginContactId = originContactId;
   return session;
 }

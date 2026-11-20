@@ -2,6 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
+import { expectServerActionResponse } from './helpers/page-ready';
 
 function exactTitle(title: string): RegExp {
   return new RegExp(`^#([1-9]\\d*) ${title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
@@ -78,9 +79,13 @@ test('REMINDER-TICKET-001 – Tickets anlegen, erwähnen, verknüpfen, archivier
       .getByRole('link', { name: `#${source} ${sourceTitle}` }),
   ).toBeVisible();
   await expect(page.getByText('Verweist auf dieses Ticket', { exact: false })).toBeVisible();
-  await page.getByRole('button', { name: 'Erledigt', exact: true }).click();
+  await expectServerActionResponse(page, () =>
+    page.getByRole('button', { name: 'Erledigt', exact: true }).click(),
+  );
   await expect(page.getByRole('button', { name: 'Archivieren', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Archivieren', exact: true }).click();
+  await expectServerActionResponse(page, () =>
+    page.getByRole('button', { name: 'Archivieren', exact: true }).click(),
+  );
   await expect(page.getByRole('button', { name: 'Wiederherstellen', exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Kommentar', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Datei anhängen', exact: true })).toHaveCount(0);
@@ -98,7 +103,10 @@ test('REMINDER-TICKET-001 – Tickets anlegen, erwähnen, verknüpfen, archivier
   );
   await expect(page.getByRole('link', { name: exactTitle(targetTitle) })).toBeVisible();
   await page.getByRole('link', { name: exactTitle(targetTitle) }).click();
-  await page.getByRole('button', { name: 'Wiederherstellen', exact: true }).click();
+  await expect(page).toHaveURL(new URL(`/staff/reminders/${target}`, page.url()).href);
+  await expectServerActionResponse(page, () =>
+    page.getByRole('button', { name: 'Wiederherstellen', exact: true }).click(),
+  );
   await expect(page.getByRole('button', { name: 'Zurückholen', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Erledigt', exact: true })).toHaveCount(0);
   await page.reload();

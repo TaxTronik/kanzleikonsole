@@ -225,7 +225,14 @@ const LLM_JOB_RUNNING_STATES = new Set([
   'prioritized',
 ]);
 
-export async function llmStatusAction(input: { clientId: string; analysisId?: string }): Promise<
+// `analysisId` landet in findFirst: ohne Laufzeitprüfung wäre ein Objekt wie
+// `{ not: '' }` ein Prisma-Operator statt einer Kennung.
+const LlmStatusSchema = z.object({
+  clientId: z.string().uuid(),
+  analysisId: z.string().uuid().optional(),
+});
+
+export async function llmStatusAction(rawInput: z.infer<typeof LlmStatusSchema>): Promise<
   OkActionResult<{
     status: LlmStatusDTO | null;
     enrichedAt: string | null;
@@ -237,6 +244,9 @@ export async function llmStatusAction(input: { clientId: string; analysisId?: st
   }>
 > {
   try {
+    const checked = parseActionInput(LlmStatusSchema, rawInput);
+    if (!checked.ok) return checked;
+    const input = checked.data;
     const { ctx } = await guard(input.clientId);
     let status: LlmStatusDTO | null = null;
     try {

@@ -9,6 +9,7 @@
 // =============================================================================
 
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -1050,12 +1051,22 @@ function IdUploadField({
   error,
 }: {
   label: string;
-  file: Pick<OnboardingIdentityFile, 'documentId' | 'fileName' | 'previewUrl'> | null;
+  file: Pick<OnboardingIdentityFile, 'fileName' | 'localFile'> | null;
   onUpload: (file: File) => void;
   onRemove: () => void;
   deleting: boolean;
   error: string | null;
 }) {
+  const localFile = file?.localFile;
+  const previewRef = useCallback(
+    (image: HTMLImageElement | null) => {
+      if (!image || !localFile) return;
+      const url = URL.createObjectURL(localFile);
+      image.src = url;
+      return () => URL.revokeObjectURL(url);
+    },
+    [localFile],
+  );
   const pick = (event: ChangeEvent<HTMLInputElement>) => {
     const chosen = event.target.files?.[0];
     if (chosen) onUpload(chosen);
@@ -1068,11 +1079,11 @@ function IdUploadField({
       </p>
       {file ? (
         <div className="flex items-start gap-3">
-          {file.previewUrl ? (
+          {localFile?.type.startsWith('image/') ? (
             // Lokale Objekt-URL der gewählten Datei; kein Bildoptimierer.
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={file.previewUrl}
+              ref={previewRef}
               alt={`Vorschau: ${label}`}
               className="h-24 w-36 shrink-0 rounded border border-default object-cover"
             />

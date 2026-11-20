@@ -23,6 +23,10 @@
 // review-queue.ts. Rein funktional, Prisma nur als Typ.
 // =============================================================================
 
+import {
+  dueRetentionAnchorCutoff,
+  retentionAfterBerlinYear,
+} from '@taxtronik/config/retention-calendar';
 import type { Prisma } from '@prisma/client';
 
 export const GWG_RETENTION_YEARS = 5;
@@ -43,14 +47,12 @@ export const GWG_UNESTABLISHED_CHECK_STATUSES = [
  * mandateEnd 2026-03-15 → Frist 2026-12-31 … 2031-12-31 → fällig ab 2032-01-01.
  */
 export function gwgDeletionDeadline(mandateEndedAt: Date): Date {
-  return new Date(Date.UTC(mandateEndedAt.getUTCFullYear() + GWG_RETENTION_YEARS + 1, 0, 1));
+  return retentionAfterBerlinYear(mandateEndedAt, GWG_RETENTION_YEARS);
 }
 
 /** Absolute Vernichtungsgrenze ab dem maßgeblichen Fristbeginn (§ 8 Abs. 4 GwG). */
 export function gwgMaximumDeletionDeadline(retentionStartedAt: Date): Date {
-  return new Date(
-    Date.UTC(retentionStartedAt.getUTCFullYear() + GWG_MAX_RETENTION_YEARS + 1, 0, 1),
-  );
+  return retentionAfterBerlinYear(retentionStartedAt, GWG_MAX_RETENTION_YEARS);
 }
 
 /** True, wenn die GwG-Belege des Mandats (zum Zeitpunkt `now`) löschreif sind. */
@@ -63,7 +65,7 @@ export function isGwgDeletionDue(
 }
 
 /**
- * § 8 Abs. 4 S. 2 GwG: Der Fristbeginn ist das Ende der Geschäftsbeziehung.
+ * § 8 Abs. 4 S. 3 und 4 GwG: Der Fristbeginn ist das Ende der Geschäftsbeziehung.
  * Kam KEINE Geschäftsbeziehung zustande (Onboarding abgelehnt/abgelaufen,
  * Mandat nie aktiviert), beginnt die Frist mit dem Schluss des Kalenderjahres
  * der FESTSTELLUNG (Erfassung der Identifizierungsdaten). Sonst würden abgelehnte
@@ -145,10 +147,10 @@ export function gwgDocumentEffectiveStart(
 
 /**
  * Erster Fristbeginn, der zum Zeitpunkt `now` NICHT mehr löschreif ist:
- * gwgDeletionDeadline(start) <= now  ⇔  start < 1.1.(Jahr(now) − 5) (UTC).
+ * gwgDeletionDeadline(start) <= now  ⇔  start < 1.1.(UTC-Jahr(now) − 5) um Berliner Mitternacht.
  */
 export function gwgDeletionDueStartCutoff(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear() - GWG_RETENTION_YEARS, 0, 1));
+  return dueRetentionAnchorCutoff(now, GWG_RETENTION_YEARS);
 }
 
 /**

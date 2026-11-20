@@ -27,11 +27,13 @@ sources:
 code_refs:
   - apps/web/src/app/portal/(protected)/requests/[id]/page.tsx
   - apps/web/src/app/staff/(protected)/interactions/actions.ts
+  - apps/web/src/lib/fmt.ts
   - apps/web/src/app/portal/(protected)/interactions/actions.ts
   - apps/web/src/app/api/portal/interactions/[id]/document/route.ts
   - packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql
 test_refs:
   - apps/web/src/server/workflows/__tests__/interaction-policy.test.ts
+  - apps/web/src/lib/__tests__/fmt.test.ts
   - packages/db/src/__tests__/workflow-expansion.test.ts
 feature_refs:
   - docs/development/module/workflow-expansion.md
@@ -78,6 +80,11 @@ Fehlender Zugriff, ungültiger oder veränderter Quellstand und geschlossene Vor
 Ein berechtigter Mitarbeiter bereitet den beschriebenen Vorgang vor und prüft seine Auswahl. Ein zweiter Kontakt erhält dadurch keine zusätzlichen Rechte; ein später geänderter Quellstand wird nicht still als ursprüngliche Grundlage dargestellt.
 
 ## Umsetzung in TaxTronik
+
+Die eingegebene Antwortzeit bezieht sich auf die Berliner Uhr. In der fehlenden
+Frühjahrsstunde muss die Kanzlei eine gültige Zeit wählen. In der doppelten
+Herbststunde gilt für die Eingabe das spätere Vorkommen. Die technische
+Zeitumrechnung ist für beide Uhrenwechsel mit UTC-Vergleichswerten geprüft.
 
 Personenbezogene Fachdaten gehören zum privaten Workflowbestand des bestehenden Löschkonzepts. Verbundene Requests sind gemäß DSGVO-OPERATIONAL-RETENTION-001 vom automatischen Request-Purge ausgenommen, bis der gesamte verbundene Fachvorgang in einem geprüften Löschprozess bewertet wird. Diese Regel begründet keine neue Aufbewahrungsdauer. Unveränderliche Evidenz enthält IDs und knappe Statusmerkmale, keine Nachrichtentexte. Vor einer produktiven Nutzung sind Datenbankmigration, negative Zugriffsprüfungen und organisatorische Zuständigkeiten abzunehmen.
 

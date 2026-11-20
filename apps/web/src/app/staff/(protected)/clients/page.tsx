@@ -1,4 +1,4 @@
-﻿import { requireStaffPage } from '@/server/auth/staff-page';
+import { requireStaffPage } from '@/server/auth/staff-page';
 import { hasStaffPermission } from '@/server/auth/rbac';
 import { randomUUID } from 'node:crypto';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
@@ -7,7 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import Link from 'next/link';
 import { Plus, User, FileDown, Search, Wand2 } from 'lucide-react';
 import { OffsetPagination } from '@/components/offset-pagination';
-import type { Prisma } from '@prisma/client';
+import { clampListPage, parseListPage, firstListParam } from '@/lib/list-page';
 import { computeOnboardingStatus, type OnboardingStatus } from '@/server/onboarding/status';
 import { RecentClients } from '@/components/recent-clients';
 import { SavedViews } from '@/components/saved-views';
@@ -18,8 +18,8 @@ import {
   CLIENT_KIND_LABELS,
   CLIENT_KIND_OPTIONS,
   clientOrderBy,
-  parseClientKind,
-  parseClientSort,
+  clientListWhere,
+  parseClientListFilters,
   type ClientListSearchParams,
 } from './list-query';
 
@@ -33,98 +33,57 @@ export default async function ClientsPage({
   const session = await requireStaffPage();
   const darfAnlegen = hasStaffPermission(session, 'CLIENT_CREATE');
 
-  const sp = await searchParams;
+  const params = await searchParams;
+  const sp = parseClientListFilters(params);
   const { tenantId, staffId } = session.user;
-  const { sort, dir } = parseClientSort(sp);
-  const kind = parseClientKind(sp.kind);
-  const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
-  const mine = sp.mine === '1';
+  const { sort, dir, kind, mine } = sp;
+  const requestedPage = parseListPage(params.page);
 
-  const where: Prisma.ClientWhereInput = {};
-  if (sp.q) {
-    where.OR = [
-      { name: { contains: sp.q, mode: 'insensitive' } },
-      { datevNo: { contains: sp.q, mode: 'insensitive' } },
-      { addisonNo: { contains: sp.q, mode: 'insensitive' } },
-      { vatId: { contains: sp.q, mode: 'insensitive' } },
-    ];
-  }
-  if (sp.status === 'active') where.allowActive = true;
-  if (sp.status === 'pending') where.allowActive = false;
-  if (kind) where.kind = kind;
-  if (mine) {
-    where.responsibilities = { some: { staffId } };
-  }
-
-  // Onboarding-Filter
-  if (sp.onboarding === 'complete') {
-    where.onboardingCompletedAt = { not: null };
-  } else if (sp.onboarding === 'open') {
-    where.onboardingCompletedAt = null;
-    where.allowActive = false;
-    where.contacts = { none: { active: true } };
-    where.gwgChecks = { none: {} };
-    where.gwgInvites = { none: {} };
-    where.poas = { none: {} };
-    where.requests = { none: {} };
-  } else if (sp.onboarding === 'in_progress') {
-    where.AND = [
-      { onboardingCompletedAt: null },
-      {
-        OR: [
-          { allowActive: true },
-          { contacts: { some: { active: true } } },
-          { gwgChecks: { some: {} } },
-          { gwgInvites: { some: {} } },
-          { poas: { some: {} } },
-          { requests: { some: {} } },
-        ],
-      },
-    ];
-  }
-
-  const [clients, totalCount, requestCreationOptions] = await withTenantContext(
+  const { clients, totalCount, page, requestCreationOptions } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): gesperrte Mandanten
       // erscheinen gar nicht erst in der Liste (konsistent zu Suche/Export).
       // AND statt Spread: Filter und Regel können beide ein OR enthalten.
-      const visible: Prisma.ClientWhereInput = {
-        AND: [where, await accessibleClientsWhereFor(tx, session)],
-      };
-      return Promise.all([
-        tx.client.findMany({
-          where: visible,
-          orderBy: clientOrderBy(sort, dir),
-          skip: (page - 1) * PAGE_SIZE,
-          take: PAGE_SIZE,
-          select: {
-            id: true,
-            name: true,
-            kind: true,
-            datevNo: true,
-            addisonNo: true,
-            allowActive: true,
-            onboardingCompletedAt: true,
-            priority: true,
-            createdAt: true,
-            _count: {
-              select: {
-                // Wie Cockpit und CSV-Export: Papierkorb (soft-gelöscht) zählt nicht mit.
-                documents: { where: { deletedAt: null } },
-                contacts: { where: { active: true } },
-                gwgChecks: true,
-                gwgInvites: true,
-                poas: true,
-                requests: true,
-              },
+      const visible = clientListWhere(sp, staffId, await accessibleClientsWhereFor(tx, session));
+      const totalCount = await tx.client.count({ where: visible });
+      const page = clampListPage(requestedPage, totalCount, PAGE_SIZE);
+      const clients = await tx.client.findMany({
+        where: visible,
+        orderBy: clientOrderBy(sort, dir),
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          datevNo: true,
+          addisonNo: true,
+          allowActive: true,
+          onboardingCompletedAt: true,
+          priority: true,
+          createdAt: true,
+          _count: {
+            select: {
+              // Wie Cockpit und CSV-Export: Papierkorb (soft-gelöscht) zählt nicht mit.
+              documents: { where: { deletedAt: null } },
+              contacts: { where: { active: true } },
+              gwgChecks: true,
+              gwgInvites: true,
+              poas: true,
+              requests: true,
             },
           },
-        }),
-        tx.client.count({ where: visible }),
-        readRequestCreationOptionsTx(tx),
-      ]);
+        },
+      });
+      return {
+        clients,
+        page,
+        totalCount,
+        requestCreationOptions: await readRequestCreationOptionsTx(tx),
+      };
     },
+    { isolationLevel: 'RepeatableRead' },
   );
   const { requestTemplates, requestFormTemplates, templatesLimited, formTemplatesLimited } =
     requestCreationOptions;
@@ -143,7 +102,7 @@ export default async function ClientsPage({
 
   return (
     <div className="p-8">
-      {sp.denied === '1' && (
+      {firstListParam(params.denied) === '1' && (
         <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
           Kein Zugriff auf diesen Mandanten — er ist als vertraulich markiert oder Ihnen nicht
           zugeordnet.

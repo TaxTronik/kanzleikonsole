@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState, useState } from 'react';
 import { saveTaxRegionAction, type ActionResult } from './actions';
 import type { GermanRegion } from '@taxtronik/tax';
@@ -23,7 +25,7 @@ export function TaxRegionForm({
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <SettingsForm result={state} pending={isPending} action={formAction} className="space-y-4">
       <div>
         <label className="label" htmlFor="tax-region">
           Bundesland der Kanzlei
@@ -79,6 +81,6 @@ export function TaxRegionForm({
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Speichern'}
       </button>
-    </form>
+    </SettingsForm>
   );
 }

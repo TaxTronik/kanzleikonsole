@@ -9,6 +9,7 @@ import { OffsetPagination } from '@/components/offset-pagination';
 import { INVOICE_STATUS_LABELS } from '@/lib/domain-labels';
 import { berlinTodayUtcMidnight, fmtDateShort, fmtEUR } from '@/lib/fmt';
 import { portalAuth } from '@/server/auth/portal';
+import { isSentInvoicePastDue } from '@/server/invoicing/due-status';
 import { requireModulePage } from '@/server/settings/module-page';
 import { portalInvoiceVisibilityWhere } from '@/server/invoicing/portal-visibility';
 import {
@@ -165,7 +166,7 @@ export default async function PortalInvoicesPage({
           <>
             <ul className="divide-y divide-border-subtle md:hidden">
               {invoices.map((invoice) => {
-                const overdue = invoice.status === 'SENT' && invoice.dueDate < today;
+                const overdue = isSentInvoicePastDue(invoice, today);
                 return (
                   <li key={invoice.id} className="p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -228,7 +229,7 @@ export default async function PortalInvoicesPage({
               </thead>
               <tbody className="divide-y divide-border-subtle">
                 {invoices.map((invoice) => {
-                  const overdue = invoice.status === 'SENT' && invoice.dueDate < today;
+                  const overdue = isSentInvoicePastDue(invoice, today);
                   return (
                     <tr key={invoice.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4 font-medium text-primary">{invoice.number}</td>

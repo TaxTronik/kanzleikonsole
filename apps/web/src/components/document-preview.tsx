@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react';
 import { X, Download, Eye, Loader2 } from 'lucide-react';
 import { OfficeViewer } from './office-viewer';
 import { detectInlineOfficeKind } from './document-preview-kind';
-import { renderMarkdown } from '@/lib/markdown';
+import { MarkdownContent } from './markdown-content';
 import { Modal } from '@/components/ui/modal';
 
 // Prose-Styling für die Markdown-Inline-Vorschau (z. B. im Aktenregal
-// gespeicherte Rechercheergebnisse). renderMarkdown escapet jeden Textblock —
-// kein HTML-Passthrough, daher ist dangerouslySetInnerHTML sicher.
+// gespeicherte Rechercheergebnisse). MarkdownContent escapet jeden Textblock —
+// kein HTML-Passthrough.
 const MD_PROSE_CLASS =
   'text-sm text-secondary space-y-2 leading-relaxed ' +
   '[&_h1]:text-lg [&_h1]:font-bold [&_h1]:text-primary [&_h1]:mt-4 ' +
@@ -165,10 +165,7 @@ function DocumentPreviewContent({
                     <Loader2 className="h-6 w-6 text-disabled animate-spin" />
                   </div>
                 ) : (
-                  <div
-                    className={MD_PROSE_CLASS}
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(mdText) }}
-                  />
+                  <MarkdownContent className={MD_PROSE_CLASS} source={mdText} />
                 )}
               </div>
             ) : isImage ? (

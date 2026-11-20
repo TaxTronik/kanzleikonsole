@@ -674,9 +674,10 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
     );
   });
 
-  it('erlaubt die exakte DSGVO-Redaktion nur nach Fristablauf und ohne Reparenting', async () => {
-    const dueClient = await makeNaturalPersonForRetention('2010-06-30T00:00:00.000Z');
-    const recentClient = await makeNaturalPersonForRetention('2025-06-30T00:00:00.000Z');
+  it('POA-SIGNER-RETENTION-001: exakte Redaktion nur nach Berliner Fristablauf und ohne Reparenting', async () => {
+    const jahr = new Date().getUTCFullYear() - 11;
+    const dueClient = await makeNaturalPersonForRetention(`${jahr}-12-31T22:59:59.000Z`);
+    const recentClient = await makeNaturalPersonForRetention(`${jahr}-12-31T23:00:00.000Z`);
 
     const duePoa = await makeDraft({ forClientId: dueClient.id });
     const { sent: dueSent, snapshot: dueSnapshot } = await sendValid(duePoa);
@@ -713,9 +714,9 @@ describeWithDatabase('PoA-DB-Invarianten: Signatur und Terminalstatus', () => {
       data: { anonymizedAt: new Date() },
     });
     await dbAbgewiesen(
-      owner.powerOfAttorney.update({
-        where: { id: recentPoa.id },
-        data: retentionRedaction,
+      owner.$transaction(async (tx) => {
+        await tx.$executeRaw`SET LOCAL TIME ZONE 'America/Los_Angeles'`;
+        return tx.powerOfAttorney.update({ where: { id: recentPoa.id }, data: retentionRedaction });
       }),
       /Inhaltsfelder|Versand-Snapshot|Signaturnachweis|Signer-Retention/,
     );

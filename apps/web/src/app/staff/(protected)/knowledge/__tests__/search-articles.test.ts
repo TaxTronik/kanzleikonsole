@@ -22,6 +22,7 @@ vi.mock('@/server/actions/staff-action', () => ({
 }));
 
 import { searchArticles } from '../actions';
+import { SNIPPET_START_SEL, SNIPPET_STOP_SEL } from '../search-snippet';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -36,7 +37,7 @@ describe('Wissensdatenbank-Suche', () => {
         id: 'article-1',
         title: 'Reisekosten',
         slug: 'reisekosten',
-        snippet: '<mark>Pauschalen</mark>',
+        snippet: '<b onmouseover=x>Die</b> <mark>Pauschalen</mark>',
         rank: 0.5,
         category_name: 'Lohn',
         author_name: 'Erika Muster',
@@ -50,9 +51,16 @@ describe('Wissensdatenbank-Suche', () => {
     expect(sql).toMatch(/COALESCE\(s\.full_name, 'Unbekannter Verfasser'\) AS author_name/);
     expect(sql).toMatch(/a\.created_at\s/);
     expect(sql).toMatch(/s\.tenant_id = a\.tenant_id/);
+    // Die Trenner der Abfrage müssen zu parseSearchSnippet passen.
+    expect(sql).toContain(`StartSel=${SNIPPET_START_SEL}, StopSel=${SNIPPET_STOP_SEL}`);
     expect(values).toContain('Pauschale');
     expect(hits).toEqual([
       expect.objectContaining({ authorName: 'Erika Muster', createdAt, categoryName: 'Lohn' }),
+    ]);
+    // Snippet als Klartextsegmente: Artikel-HTML bleibt Text (SAST-Befund XSS).
+    expect(hits[0]!.snippet).toEqual([
+      { text: '<b onmouseover=x>Die</b> ', mark: false },
+      { text: 'Pauschalen', mark: true },
     ]);
   });
 

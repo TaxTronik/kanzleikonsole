@@ -308,10 +308,21 @@ test.describe('BWA-TAX-ESTIMATE-001: tatsächliche Steuerkarten-Interaktion', ()
     await expect(
       page
         .getByRole('row')
-        .filter({ has: page.getByRole('cell', { name: 'Gesamt', exact: true }) })
+        .filter({
+          has: page.getByRole('cell', {
+            name: 'Summe der geschätzten Ertragsteuern einschließlich SolZ',
+            exact: true,
+          }),
+        })
         .getByRole('cell')
         .last(),
     ).toContainText('0');
     await expect(page.getByLabel('Rechtsform')).toBeVisible();
+    const hebesatz = page.getByLabel('GewSt-Hebesatz (%)');
+    await hebesatz.fill('');
+    await expect(page.getByRole('status')).toContainText('Hebesatz der Gemeinde');
+    await expect(page.getByRole('table')).toHaveCount(0);
+    await hebesatz.fill('411');
+    await expect(page.getByRole('table')).toBeVisible();
   });
 });

@@ -22,6 +22,8 @@ packages/tcms-domain/
 
 .VSCodeCounter/
 .codex-run/
+.claude/
+.claude-stage/
 coverage/
 .pytest_cache/
 playwright-report/

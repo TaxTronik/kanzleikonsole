@@ -30,7 +30,7 @@ sources:
   - kind: official_law
     citation: § 66 Abs. 1, 2 und 4 StBerG
     url: https://www.gesetze-im-internet.de/stberg/__66.html
-    checked_at: '2026-08-24'
+    checked_at: '2026-11-20'
     primary: true
   - kind: product_documentation
     citation: DSGVO-Konzept, Mandanten-Anonymisierung nach Fristablauf
@@ -38,6 +38,9 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - packages/config/src/retention-calendar.ts
+  - packages/db/prisma/migrations/20261120120100_berlin_mandate_redaction/migration.sql
+  - packages/db/prisma/sql/functions/app.risk_retention_redaction_allowed(uuid,uuid).sql
   - apps/web/src/server/dsgvo/client-retention.ts
   - apps/web/src/server/dsgvo/anonymize-client-data.ts
   - apps/web/src/app/staff/(protected)/admin/dsgvo-retention/actions.ts
@@ -128,6 +131,15 @@ unterbleiben.
 
 ## Umsetzung in TaxTronik
 
+Der ältere Stammdatenpfad setzt den tatsächlichen Zeitpunkt des Mandatsendes.
+Der Offboardingpfad übernimmt ein bestätigtes Kalenderdatum um 00:00 UTC,
+das in Berlin denselben Tag bezeichnet. Beide stehen in derselben
+`timestamptz`-Spalte. Der Konflikt betraf Zeitpunkte zwischen Berliner
+und UTC-Jahreswechsel: Der bisherige Stichtag ließ die Anonymisierung ein
+Jahr zu früh zu. Datenbankfilter und abschließende Einzelprüfung der
+Aktion verwenden jetzt das Berliner Ankerjahr. Die technische Freigabe
+bleibt 00:00 UTC am 1. Januar.
+
 `client-retention.ts` berechnet den jahresende-basierten Stichtag und liefert
 Kandidaten. `anonymize-client-data.ts` leert oder ersetzt fest definierte
 personenbezogene Felder in Stammdaten, Kontakten, Vollmachten, Formularen,
@@ -146,7 +158,7 @@ noch eine Erweiterung des Aufbewahrungsnachweises.
 Die Sperrfolge ist Mandant vor Risikoanalyse vor Audit. Der Hauptpfad sperrt
 die Analyse-Parents deshalb bereits vor dem ersten Kontakt-Audit und nicht
 erst bei der späteren Nebentabellenredaktion. Der DB-Stichtag verwendet
-denselben UTC-Jahreswechsel wie `isClientAnonymizationDue`.
+das Berliner Mandatsendejahr und dieselbe UTC-Freigabe wie `isClientAnonymizationDue`.
 
 Der NATPERS-Pfad leert außerdem USt-ID und die nur noch zur Migration vorhandene
 `Client.steuernummer`. Er redigiert alle aktiven und archivierten

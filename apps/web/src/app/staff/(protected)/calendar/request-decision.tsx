@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Check, X, Calendar } from 'lucide-react';
 import { acceptAppointmentRequestAction, rejectAppointmentRequestAction } from './actions';
-import { fmtDateTimeShort } from '@/lib/fmt';
+import { fmtAppointmentSlot, fmtDateTimeShort } from '@/lib/fmt';
 import { noticeDialog } from '@/components/ui/modal';
 
 interface StaffOption {
@@ -96,7 +96,8 @@ export function RequestDecision({
               <li key={i} className="text-xs flex items-center gap-2">
                 <Calendar className="h-3 w-3 shrink-0 text-disabled" />
                 <span className="text-secondary">
-                  {fmtDateTimeShort(new Date(s.startsAt))} – {fmtDateTimeShort(new Date(s.endsAt))}
+                  {fmtAppointmentSlot(s.startsAt, fmtDateTimeShort)} –{' '}
+                  {fmtAppointmentSlot(s.endsAt, fmtDateTimeShort)}
                 </span>
               </li>
             ))}
@@ -138,7 +139,7 @@ export function RequestDecision({
               >
                 {request.slots.map((s, i) => (
                   <option key={i} value={i}>
-                    {fmtDateTimeShort(new Date(s.startsAt))}
+                    {fmtAppointmentSlot(s.startsAt, fmtDateTimeShort)}
                   </option>
                 ))}
               </select>

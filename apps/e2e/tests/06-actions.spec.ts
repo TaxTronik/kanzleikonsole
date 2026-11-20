@@ -7,7 +7,7 @@ import { chooseClient } from './helpers/client-combobox';
 import { gotoReady } from './helpers/page-ready';
 import { expectPortalDashboardReady, loginAsMandant } from './helpers/portal-auth';
 import { anyVisible, firstVisibleCandidate, PAGE_READY_TIMEOUT } from './helpers/visibility';
-import { execSync } from 'node:child_process';
+import { psql } from './helpers/postgres';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -16,11 +16,6 @@ import path from 'node:path';
 const AUTH_DIR = path.join(os.tmpdir(), 'taxtronik-e2e-auth');
 const STAFF_AUTH = path.join(AUTH_DIR, 'staff.json');
 const MANDANT_AUTH = path.join(AUTH_DIR, 'mandant.json');
-const PG_CONTAINER = process.env['E2E_POSTGRES_CONTAINER'] ?? 'taxtronik-postgres';
-const PG_USER = process.env['E2E_POSTGRES_USER'] ?? 'taxtronik';
-const PG_DB = process.env['E2E_POSTGRES_DB'] ?? 'taxtronik';
-const PG_HOST = process.env['E2E_POSTGRES_HOST'] ?? 'localhost';
-const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
 let uploadedDocumentId: string | null = null;
 
 function createMinimalPdf(): Buffer {
@@ -75,25 +70,6 @@ async function openMustermannDocuments(page: import('@playwright/test').Page): P
   throw new Error(
     `Mustermann-Dokumenten-Scope nicht gefunden. Sichtbarer Inhalt: ${text.slice(0, 500)}`,
   );
-}
-
-function psql(query: string): string {
-  const oneLine = query.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
-  try {
-    return execSync(
-      `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`,
-      {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      },
-    ).trim();
-  } catch {
-    return execSync(`psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
-      encoding: 'utf-8',
-      env: { ...process.env, PGPASSWORD: PG_PASSWORD },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-  }
 }
 
 function ensureStartableWorkflowTemplate(templateName: string): void {

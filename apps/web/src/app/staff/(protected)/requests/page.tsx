@@ -1,56 +1,28 @@
 ﻿import { requireStaffPage } from '@/server/auth/staff-page';
 import { randomUUID } from 'node:crypto';
 import { accessibleClientsWhereFor } from '@/server/auth/rbac';
-import { clientAccessFilter } from '@/server/auth/client-access-filter';
+import {
+  parseRequestListFilters,
+  requestListWhere,
+  requestListOrder,
+  type RequestListParams,
+} from '@/server/requests/list-filters';
 import { withTenantContext } from '@taxtronik/db';
 
 import Link from 'next/link';
 import { Inbox, FileDown, Search } from 'lucide-react';
 import { OffsetPagination } from '@/components/offset-pagination';
 import { BulkToolbar } from './bulk-toolbar';
-import type { Prisma, RequestStatus } from '@prisma/client';
 import { fmtDateShort } from '@/lib/fmt';
+import { clampListPage, parseListPage, type ListParam } from '@/lib/list-page';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
 import { createQuickRequestAction } from '@/app/staff/(protected)/clients/[id]/requests/actions';
 import { readRequestCreationOptionsTx } from '@/server/request-creation-options';
 import { REQUEST_STATUS_LABELS, PRIORITY_LABELS } from '@/lib/domain-labels';
 
 const PAGE_SIZE = 50;
-type SortKey = 'created' | 'due' | 'client' | 'datev' | 'addison';
-type SortDir = 'asc' | 'desc';
-
-interface Search {
-  status?: string;
-  q?: string;
-  sort?: SortKey;
-  dir?: SortDir;
-  mine?: '1';
-  page?: string;
-}
-
-function parseSort(sp: Search): { sort: SortKey; dir: SortDir } {
-  const sort: SortKey =
-    sp.sort === 'due' || sp.sort === 'client' || sp.sort === 'datev' || sp.sort === 'addison'
-      ? sp.sort
-      : 'created';
-  const dir: SortDir = sp.dir === 'asc' ? 'asc' : 'desc';
-  return { sort, dir };
-}
-
-function orderByFor(sort: SortKey, dir: SortDir): Prisma.RequestOrderByWithRelationInput[] {
-  switch (sort) {
-    case 'due':
-      return [{ dueAt: { sort: dir, nulls: 'last' } }, { createdAt: 'desc' }];
-    case 'client':
-      return [{ client: { name: dir } }, { createdAt: 'desc' }];
-    case 'datev':
-      return [{ client: { datevNo: { sort: dir, nulls: 'last' } } }, { createdAt: 'desc' }];
-    case 'addison':
-      return [{ client: { addisonNo: { sort: dir, nulls: 'last' } } }, { createdAt: 'desc' }];
-    case 'created':
-    default:
-      return [{ createdAt: dir }];
-  }
+interface Search extends RequestListParams {
+  page?: ListParam;
 }
 
 export default async function RequestsOverviewPage({
@@ -61,63 +33,55 @@ export default async function RequestsOverviewPage({
   const session = await requireStaffPage();
 
   const sp = await searchParams;
-  const filterStatus =
-    sp.status && Object.keys(REQUEST_STATUS_LABELS).includes(sp.status)
-      ? (sp.status as keyof typeof REQUEST_STATUS_LABELS)
-      : null;
-  const { sort, dir } = parseSort(sp);
-  const page = Math.max(1, Number.parseInt(sp.page ?? '1', 10) || 1);
-  const mine = sp.mine === '1';
+  const filters = parseRequestListFilters(sp);
+  const { status: filterStatus, sort, dir, q, mine } = filters;
+  const requestedPage = parseListPage(sp.page);
 
   const { tenantId, staffId } = session.user;
 
-  const where: Prisma.RequestWhereInput = {};
-  if (filterStatus) where.status = filterStatus as RequestStatus;
-  const clientFilters: Prisma.ClientWhereInput[] = [];
-  if (sp.q) {
-    where.OR = [
-      { title: { contains: sp.q, mode: 'insensitive' } },
-      { client: { name: { contains: sp.q, mode: 'insensitive' } } },
-      { client: { datevNo: { contains: sp.q, mode: 'insensitive' } } },
-      { client: { addisonNo: { contains: sp.q, mode: 'insensitive' } } },
-    ];
-  }
-  if (mine) {
-    clientFilters.push({ responsibilities: { some: { staffId } } });
-  }
-
-  const [requests, totalCount, requestCreationOptions] = await withTenantContext(
+  const { requests, page, totalCount, requestCreationOptions } = await withTenantContext(
     { tenantId, actorId: staffId, actorType: 'STAFF' },
     async (tx) => {
       // Zugriffsmodell (vertraulich-Flag / RESTRICTED): Anforderungen
       // gesperrter Mandanten ausblenden (konsistent zum CSV-Export); Regel und
       // Seitenfilter in EINEM `client`-Filter.
-      Object.assign(
-        where,
-        clientAccessFilter(await accessibleClientsWhereFor(tx, session), ...clientFilters),
+      const where = requestListWhere(
+        filters,
+        staffId,
+        await accessibleClientsWhereFor(tx, session),
       );
-      return Promise.all([
-        tx.request.findMany({
-          where,
-          orderBy: orderByFor(sort, dir),
-          skip: (page - 1) * PAGE_SIZE,
-          take: PAGE_SIZE,
-          include: {
-            client: { select: { id: true, name: true, datevNo: true, addisonNo: true } },
-            _count: { select: { responses: true } },
-          },
-        }),
-        tx.request.count({ where }),
-        readRequestCreationOptionsTx(tx),
-      ]);
+      const totalCount = await tx.request.count({ where });
+      const page = clampListPage(requestedPage, totalCount, PAGE_SIZE);
+      const requests = await tx.request.findMany({
+        where,
+        orderBy: requestListOrder(filters),
+        skip: (page - 1) * PAGE_SIZE,
+        take: PAGE_SIZE,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          dueAt: true,
+          client: { select: { id: true, name: true, datevNo: true, addisonNo: true } },
+          _count: { select: { responses: true } },
+        },
+      });
+      return {
+        requests,
+        page,
+        totalCount,
+        requestCreationOptions: await readRequestCreationOptionsTx(tx),
+      };
     },
+    { isolationLevel: 'RepeatableRead' },
   );
   const { requestTemplates, requestFormTemplates, templatesLimited, formTemplatesLimited } =
     requestCreationOptions;
 
   const baseQs = new URLSearchParams();
   if (filterStatus) baseQs.set('status', filterStatus);
-  if (sp.q) baseQs.set('q', sp.q);
+  if (q) baseQs.set('q', q);
   if (sort !== 'created') baseQs.set('sort', sort);
   if (dir !== 'desc') baseQs.set('dir', dir);
   if (mine) baseQs.set('mine', '1');
@@ -202,7 +166,7 @@ export default async function RequestsOverviewPage({
               aria-label="Anforderungen durchsuchen"
               className="input pl-9"
               placeholder="Titel, Mandant, DATEV- oder Addison-Nr.…"
-              defaultValue={sp.q ?? ''}
+              defaultValue={q ?? ''}
             />
           </div>
           <select name="sort" aria-label="Sortierung" className="input w-44" defaultValue={sort}>
@@ -234,7 +198,7 @@ export default async function RequestsOverviewPage({
             Nur meine Mandanten
           </label>
           <div className="flex flex-wrap gap-2">
-            {(sp.q || sort !== 'created' || dir !== 'desc' || mine) && (
+            {(q || sort !== 'created' || dir !== 'desc' || mine) && (
               <Link
                 href={filterStatus ? `/staff/requests?status=${filterStatus}` : '/staff/requests'}
                 className="btn-secondary"

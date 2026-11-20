@@ -4,7 +4,7 @@ Inventurstand: 2026-09-06
 Technischer Bezugspunkt: Ausbau-Arbeitsbaum auf `599c969c` einschließlich übernommener GwG-/Steuerstammdatenänderungen
 Status: ungeprüfte Scope-Inventur, keine fachliche Freigabe
 
-<!-- fachkatalog-scope: version=1; active=86; reserved=8 -->
+<!-- fachkatalog-scope: version=1; active=87; reserved=8 -->
 
 ## Zweck und belastbare Vollständigkeitsgrenze
 
@@ -32,21 +32,21 @@ jedoch in scope.
 
 ### Umfang des vollständigen Produkt-Scope-Exports
 
-| Regelbereich                            | Atomare Regeln | Einordnung                                                                      |
-| --------------------------------------- | -------------: | ------------------------------------------------------------------------------- |
-| Fristen und Bescheide                   |              6 | Bestand einschließlich persönlicher Bescheidentscheidung                        |
-| Geldwäschegesetz                        |             12 | GwG-Inventur mit OCR, Kontrollliste und lokalem Screening                       |
-| Datenschutz und Betroffenenrechte       |              6 | Abschnitt 1                                                                     |
-| Dokumente und Aufbewahrung              |              9 | Abschnitt 2 und Opt-in-Assistenten                                              |
-| Mandat, Zugriff und Anforderungen       |             21 | Abschnitt 3, Steuerverbindungen, Workflow-Abschluss, Tickets und Opt-in-Abläufe |
-| Vollmachten und Signaturen              |              5 | Abschnitt 4 einschließlich getrennter VDB-Nachweise                             |
-| Audit und Software-Assurance            |              7 | Abschnitt 5                                                                     |
-| Rechnungslogik                          |              9 | Abschnitt 6 einschließlich StBVV-Vorschlägen                                    |
-| BWA, Subsumtion und TCMS-Produktgrenzen |             10 | Abschnitt 7 einschließlich Modul „Tax-CMS“ (übernommen, Regeln ungeprüft)       |
-| **Gesamt**                              |         **85** | Export der definierten Produktlogik einschließlich ungeprüfter Erweiterungen    |
+| Regelbereich                            | Einordnung                                                                      |
+| --------------------------------------- | ------------------------------------------------------------------------------- |
+| Fristen und Bescheide                   | Bestand einschließlich persönlicher Bescheidentscheidung                        |
+| Geldwäschegesetz                        | GwG-Inventur mit OCR, Kontrollliste und lokalem Screening                       |
+| Datenschutz und Betroffenenrechte       | Abschnitt 1                                                                     |
+| Dokumente und Aufbewahrung              | Abschnitt 2 und Opt-in-Assistenten                                              |
+| Mandat, Zugriff und Anforderungen       | Abschnitt 3, Steuerverbindungen, Workflow-Abschluss, Tickets und Opt-in-Abläufe |
+| Vollmachten und Signaturen              | Abschnitt 4 einschließlich getrennter VDB-Nachweise                             |
+| Audit und Software-Assurance            | Abschnitt 5                                                                     |
+| Rechnungslogik                          | Abschnitt 6 einschließlich StBVV-Vorschlägen                                    |
+| BWA, Subsumtion und TCMS-Produktgrenzen | Abschnitt 7 einschließlich Modul „Tax-CMS“ (übernommen, Regeln ungeprüft)       |
 
-Die acht reservierten IDs in Abschnitt 8 zählen nicht zu diesen 85 Regeln.
-Sie kennzeichnen bewusst nicht behauptete Rechts- oder Organisationsabdeckung.
+Der [Regelindex](INDEX.md) zählt die aktiven Regeln insgesamt und je Fachbereich
+aus den Regeldateien. Reservierte IDs in Abschnitt 8 kennzeichnen offene Fragen
+zur Rechts- oder Organisationsabdeckung und werden gesondert geführt.
 
 ### Separat inventarisierte Regelblöcke
 
@@ -56,6 +56,7 @@ Abschnitten 1 bis 7 aber nicht erneut fachlich beschrieben:
 | Bereich               | Regel-ID                           |
 | --------------------- | ---------------------------------- |
 | Fristen und Bescheide | `TAX-CONTROL-STATUS-001`           |
+| Fristen und Bescheide | `TAX-DEADLINE-ANNUAL-001`          |
 | Fristen und Bescheide | `TAX-DEADLINE-AUTOREQUEST-001`     |
 | Fristen und Bescheide | `TAX-DEADLINE-WORKDAY-001`         |
 | Fristen und Bescheide | `TAX-NOTICE-APPEAL-001`            |
@@ -187,7 +188,7 @@ Ergänzung vom 7. September 2026:
 | G/R + P | `BWA-TAX-ESTIMATE-001`            | **Teilweise und fachlich hoch priorisiert.** Die Engine enthält jahrgangsbezogene ESt-Parameter sowie vereinfachte KSt-, SolZ-, GewSt- und USt-Ansätze und verweigert unbekannte ESt-Jahre. Persönliche Faktoren, steuerliche Überleitungen und Sonderfälle fehlen; im DATEV-Pfad kann die USt-Pauschale auf Gesamtleistung rechnen. | `apps/web/src/server/bwa/tax-estimator.ts`                                                                                            | `apps/web/src/server/bwa/__tests__/tax-estimator.test.ts`                                                                                                                                    |
 | P + K   | `RISK-AI-SUGGESTION-001`          | **Teilweise.** Deterministische und optionale LLM-Markierungen bleiben Vorschläge; Beratermarkierungen und Prüfentscheidungen werden getrennt. Der Worker archiviert den LLM-Enrichment-Rohoutput nicht; die fachliche Qualität der Engine-/Norminhalte ist nicht durch Anwendungstests validiert.                                   | `apps/web/src/server/risk/run-analysis.ts`<br>`apps/web/src/server/risk/persistence.ts`<br>`apps/worker/src/jobs/risk-analyse-llm.ts` | `apps/web/src/server/risk/__tests__/llm.test.ts`<br>`apps/worker/src/jobs/__tests__/risk-analyse-llm.test.ts`<br>`apps/web/src/server/risk/__tests__/norms-core.test.ts`                     |
 | K + P   | `RISK-CATALOG-FOUR-EYES-001`      | **Implementiert im Integrationsscope.** Katalogstatus läuft nur vorwärts, der Autor darf nicht selbst freigeben, Engine-Fehler erzeugen keinen falschen Audit-Erfolg. Das ist nicht der Berufsträger-Review des Fachkatalogs unter `docs/fachkatalog`.                                                                               | `apps/web/src/server/risk/catalog-review.ts`<br>`apps/web/src/server/risk/catalog-norms.ts`                                           | `apps/web/src/server/risk/__tests__/catalog-review.test.ts`<br>`apps/web/src/server/risk/__tests__/catalog-norms.test.ts`                                                                    |
-| G/R + P | `RISK-EXTERNAL-ANONYMIZATION-001` | **Teilweise.** Text, Rechtsfrage und Auftrag werden vor n8n reduziert, aber Normanker gehen unverändert hinaus, die Vorschau ist serverseitig nicht gebunden und getrennte Platzhaltermappings können kollidieren. Der enge Vertraulichkeitsausschnitt gewährleistet weder Anonymität noch zulässige Offenbarung.                    | `apps/web/src/server/risk/anonymize.ts`<br>`apps/web/src/server/risk/research.ts`                                                     | `apps/web/src/server/risk/__tests__/anonymize.test.ts`<br>`apps/web/src/server/risk/__tests__/research-payload.test.ts`<br>`apps/web/src/server/risk/__tests__/research-vertraulich.test.ts` |
+| G/R + P | `RISK-EXTERNAL-ANONYMIZATION-001` | **Teilweise.** Text, Rechtsfrage, Auftrag, Normanker und Governance-Typ verwenden vor n8n ein gemeinsames Platzhalter-Mapping. Die Vorschau ist serverseitig nicht gebunden. Unbekannte und kontextuell erkennbare Geheimnisse erfordern weiterhin manuelle Prüfung.                                                                 | `apps/web/src/server/risk/anonymize.ts`<br>`apps/web/src/server/risk/research.ts`                                                     | `apps/web/src/server/risk/__tests__/anonymize.test.ts`<br>`apps/web/src/server/risk/__tests__/research-payload.test.ts`<br>`apps/web/src/server/risk/__tests__/research-vertraulich.test.ts` |
 | S + P   | `RISK-ARCHIVE-SNAPSHOT-001`       | **Teilweise.** Ein selbsttragender gzip-JSON-Snapshot wird mit Hash in den GoBD-Bucket geschrieben und die Live-Analyse anschließend schreibgeschützt. Direkte End-to-End-, Parallelitäts- und Storage/DB-Kompensationstests für `archiveAnalysis` fehlen.                                                                           | `apps/web/src/server/risk/archive.ts`<br>`apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/_guards.ts`                      | `apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/guards-tx.test.ts`                                                                                                     |
 | S + P   | `TCMS-SAMPLE-PROOF-001`           | **Teilweise.** Eine Stichprobe bindet den vorher festgelegten Rahmen und speichert Backend-Metadaten, Nachweis und Treffer im Audit. Sie beweist weder Vollständigkeit der Grundgesamtheit noch fachliche Angemessenheit von Zeitraum/Stichprobengröße oder korrekte Nachschau.                                                      | `apps/web/src/server/risk/los.ts`<br>`apps/web/src/app/staff/(protected)/admin/quantenlos/actions.ts`                                 | `apps/web/src/server/risk/__tests__/los.test.ts`                                                                                                                                             |
 

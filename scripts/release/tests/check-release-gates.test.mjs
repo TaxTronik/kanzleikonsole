@@ -255,4 +255,14 @@ assert.throws(
   /Trivy muss im Forgejo-Job nativ/,
 );
 
-process.stdout.write('23 release-gate structure tests passed.\n');
+// DOC-OBJECT-LOCK-001: Ein laufendes S3-Gateway allein bestätigt keine Schutz-Buckets.
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      smoke: workflows.smoke.replace('run --rm --no-deps seaweedfs-init', 'ps seaweedfs-init'),
+    }),
+  /Object Store vor App und Worker initialisieren/,
+);
+
+process.stdout.write('24 release-gate structure tests passed.\n');

@@ -50,6 +50,10 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/server/risk/research.ts
+  - packages/db/prisma/migrations/20261120120200_risk_research_notification_scope/migration.sql
+  - packages/db/prisma/sql/functions/app.risk_research_notification_visible(uuid,text,uuid).sql
+  - packages/db/prisma/sql/policies/notification.notification_risk_research_scope.sql
   - apps/worker/src/jobs/poa-expiry-check.ts
   - packages/db/src/staff-client-access.ts
   - packages/db/src/notification.ts
@@ -69,6 +73,8 @@ code_refs:
   - apps/worker/src/notify.ts
   - apps/worker/src/jobs/invoice-overdue-check.ts
 test_refs:
+  - apps/web/src/server/n8n/__tests__/research-result-db.test.ts
+  - apps/web/src/server/n8n/__tests__/research-callback-idempotency.test.ts
   - apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts
   - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts
   - apps/worker/src/jobs/__tests__/reminders-daily.test.ts
@@ -165,6 +171,18 @@ Fachressource und der gemeinsame Accessfilter verwirft den alten Empfänger;
 eine schon vorhandene Notification wird durch RLS unsichtbar.
 
 ## Umsetzung in TaxTronik
+
+Bei externen Rechercheantworten prüft die Zustellung zusätzlich die Sichtbarkeit
+des Ergebnisses in der zugehörigen Analyse. Ist eine Analyse separat vertraulich,
+sehen sie aktive ADMIN/PARTNER und die Hauptbearbeiter oder Berufsträger des
+Mandats vollständig. Andere Mandatsberechtigte dürfen den Hinweis nur erhalten,
+wenn ihnen die zugehörige, im Sachverhalt sichtbare Markierung zugewiesen ist.
+Diese Prüfung gilt auch im OPEN-Mandat. Dieselbe PostgreSQL-Funktion schützt
+vorhandene Hinweise beim Zählen, Auflisten und Markieren als gelesen. Nach einem
+Zuständigkeitswechsel verschwindet daher ein zuvor berechtigt zugestellter Hinweis.
+Ein eigenständiger Eingang ohne Auftrag, Markierung und Ablage erzeugt weiterhin
+einen kanzleiweiten Hinweis. Ein persönlicher Hinweis braucht eine auflösbare Analyse.
+Der App-Rollen-Test prüft diese Fälle sowie weiterhin sichtbare technische Hinweise.
 
 Die Öffnen-Verknüpfung in der Benachrichtigungsübersicht ist dauerhaft
 unterstrichen und damit unabhängig von Farbe erkennbar. Ziel, Lesebestätigung

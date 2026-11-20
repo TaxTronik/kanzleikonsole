@@ -1,8 +1,8 @@
 // =============================================================================
 // Object-Lock einer Objektversion verlängern (RT3D-K-01, kk-tcms-fix5).
 //
-// GwG-Belege liegen im GwG-Bucket unter einem GOVERNANCE-Lock von 5 Jahren und
-// 1 Tag ab Upload (gwgRetentionUntil). Gilt ein Beleg als steuerliche Unterlage
+// GwG-Belege erhalten einen GOVERNANCE-Lock bis zum Ablauf von fünf vollen
+// Jahren nach dem deutschen Uploadjahr. Gilt ein Beleg als steuerliche Unterlage
 // (Verweis des Tax-CMS, TCMS-NACHWEIS-001), steigt sein Aufbewahrungsende in
 // der Datenbank auf die Steuerfrist bzw. das Ende der GwG-Frist. Der Worker-Job
 // gwg-object-lock-extend zieht den Lock jeder Objektversion bis zu diesem Ende

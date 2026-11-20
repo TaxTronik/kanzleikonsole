@@ -36,6 +36,14 @@ done
   exit 2
 }
 
+# Vor jedem Containerstart und vor dem Cleanup prüfen. Ein nicht erreichbarer
+# Daemon darf ebenfalls nicht als leere Umgebung gelten.
+existing_containers="$(docker ps -a --format '{{.Names}}')"
+if grep -E '^taxtronik-' <<<"$existing_containers" >&2; then
+  echo "Bestehende taxtronik-Container gefunden; Smoke verweigert destruktives Aufräumen." >&2
+  exit 1
+fi
+
 for ref in "$WEB_IMAGE" "$WORKER_IMAGE"; do
   docker image inspect "$ref" >/dev/null 2>&1 || {
     echo "Release-Image ist nicht lokal geladen: $ref" >&2
@@ -68,7 +76,8 @@ OVERRIDE="$TMP_DIR/smoke.override.yml"
 
 export TAXTRONIK_SMOKE_WEB_IMAGE="$WEB_IMAGE"
 export TAXTRONIK_SMOKE_WORKER_IMAGE="$WORKER_IMAGE"
-SMOKE_IMAGE_SUFFIX="${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}"
+run_nonce="${TMP_DIR##*.}"
+SMOKE_IMAGE_SUFFIX="${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}-${run_nonce,,}"
 export TAXTRONIK_SMOKE_POSTGRES_IMAGE="taxtronik-postgres-release-smoke:$SMOKE_IMAGE_SUFFIX"
 export TAXTRONIK_SMOKE_SEAWEEDFS_IMAGE="taxtronik-seaweedfs-release-smoke:$SMOKE_IMAGE_SUFFIX"
 export TAXTRONIK_SMOKE_AWSCLI_IMAGE="taxtronik-awscli-release-smoke:$SMOKE_IMAGE_SUFFIX"
@@ -138,7 +147,7 @@ EOF
 
 # Ein eigener Projektname verhindert, dass `down -v --remove-orphans` auf
 # wiederverwendeten Runnern Ressourcen eines fremden Compose-Projekts trifft.
-SMOKE_PROJECT_NAME="taxtronik-release-smoke-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-0}"
+SMOKE_PROJECT_NAME="taxtronik-release-smoke-$SMOKE_IMAGE_SUFFIX"
 # Die CI-Datei folgt der App-Datei, damit ihr gebautes n8n-Image (inklusive
 # Workflows) das digest-gepinnte Basisimage ersetzt; der letzte Smoke-Override
 # setzt ausschließlich die beiden zu prüfenden Release-Images und Volumes.
@@ -165,12 +174,6 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-if docker ps -a --format '{{.Names}}' | grep -q '^taxtronik-'; then
-  echo "Bestehende taxtronik-Container gefunden; Smoke verweigert destruktives Aufräumen." >&2
-  docker ps -a --format 'table {{.Names}}\t{{.Status}}' | grep -E '(^NAMES|^taxtronik-)' >&2 || true
-  exit 1
-fi
-
 "${COMPOSE[@]}" config --quiet
 
 # Gepinnte Infrastruktur darf einmalig geladen werden. Die CI-Override-Images
@@ -181,6 +184,8 @@ fi
 # gebauten lokalen Images und nicht gleichnamige Registry-Artefakte verwenden.
 "${COMPOSE[@]}" pull redis
 "${COMPOSE[@]}" build postgres seaweedfs seaweedfs-init clamav n8n
+"${COMPOSE[@]}" up --pull never -d --wait --wait-timeout "$SMOKE_TIMEOUT" seaweedfs
+"${COMPOSE[@]}" run --rm --no-deps seaweedfs-init
 "${COMPOSE[@]}" up --pull never -d --wait --wait-timeout "$SMOKE_TIMEOUT" app worker n8n
 
 payload="$(curl --fail --silent --show-error --max-time 10 "http://127.0.0.1:${SMOKE_APP_PORT}/api/health")"

@@ -16,15 +16,15 @@ professional_review:
 implementation:
   status: implemented
   summary: >-
-    Die lineare Run-rate und die begrenzte Trendregression sind als
-    Szenariorechnungen umgesetzt. Die Regression verwendet ausschließlich
+    Die lineare Run-rate verwendet die jüngste unterjährige Periode mit Beginn
+    und Ende im aktuellen Berliner Kalenderjahr. Die Regression verwendet ausschließlich
     vollständige Jahresperioden vor dem Zieljahr; Ziel- und Zukunftsjahre
     werden durch Code und Regressionstest ausgeschlossen.
 sources:
   - kind: product_documentation
     citation: Anwenderdokumentation BWA und Planung, Abschnitt Hochrechnung und Grenzen
     path: docs/anwenderdoku/bwa-planung.md
-    checked_at: '2026-08-24'
+    checked_at: '2026-11-20'
     primary: true
 code_refs:
   - apps/web/src/components/bwa/projection-snapshot.ts
@@ -36,6 +36,7 @@ code_refs:
   - apps/web/src/server/bwa/projection.ts
   - apps/web/src/server/bwa/plan-basis.ts
 test_refs:
+  - apps/web/src/components/bwa/__tests__/dashboard-projection.test.tsx
   - apps/web/src/components/bwa/__tests__/projection-snapshot.test.ts
   - apps/e2e/tests/21-bwa-basis-state.spec.ts
   - apps/web/src/server/bwa/__tests__/projection.test.ts
@@ -66,8 +67,9 @@ Ergebnis, Steuer, Liquidität oder Saisonalität.
 
 ## Wann gilt die Regel?
 
-Die lineare Hochrechnung gilt nur, wenn im Zieljahr eine Periode mit weniger
-als zwölf abgedeckten Monaten vorhanden ist. Die Trendregression soll nur bei
+Die lineare Hochrechnung gilt nur für die jüngste Periode mit weniger als
+zwölf abgedeckten Monaten, deren erster und letzter Tag im Zieljahr liegen.
+Das Dashboard verwendet das aktuelle Kalenderjahr in Europe/Berlin. Die Trendregression soll nur bei
 mindestens zwei als `YEAR` erfassten Perioden gelten, die rechnerisch zwölf
 Monate umfassen und vor dem Zieljahr liegen. Der aktuelle Code erzwingt die
 zeitliche Lage vor dem Zieljahr ausdrücklich. Eingaben müssen zuvor nach
@@ -131,6 +133,12 @@ verwendet werden.
 
 ## Umsetzung in TaxTronik
 
+Früher genügte für die lineare Hochrechnung der Beginn im Zieljahr. Dadurch
+konnte ein Import von November bis Februar die Zahlen des Folgejahrs in die
+angezeigte Jahreserwartung einrechnen. Das Dashboard wechselte außerdem sein
+Zieljahr erst um UTC-Mitternacht. Jetzt bestimmen beide Grenzen der
+gespeicherten Kalenderperiode ihre Eignung und die Berliner Uhr das Zieljahr.
+
 `linearSeasonalProjection` wählt die jüngste unterjährige Periode des
 Zieljahrs, zählt UTC-Kalendermonate und rechnet jede vorhandene Kennzahl linear
 hoch. `trendRegressionProjection` verwendet vollständige Jahresperioden und
@@ -176,6 +184,12 @@ werden.
   von einer fachlich geprüften Steuerrechnung ersetzt werden?
 
 ## Technische Nachweise
+
+`dashboard-projection.test.tsx` führt ADDISON-CSV durch den echten Parser
+bis zur gerenderten gemeinsamen Kanzlei- und Portalansicht. Die Tests
+belegen die Auswahl der passenden Halbjahresperiode bei einem überlappenden
+jahresübergreifenden Import, die fehlende Run-rate ohne geeignete
+Periode und den Wechsel der Jahresüberschrift genau um Berliner Mitternacht.
 
 Der referenzierte Test belegt für synthetische DATEV-Werte, dass die
 Vorsteuerposition projiziert, die Steuerpauschale nur einmal abgezogen und die

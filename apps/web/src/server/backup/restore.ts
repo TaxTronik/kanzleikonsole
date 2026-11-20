@@ -82,6 +82,13 @@ function assertPostgresTargetUrl(value: string): void {
   }
 }
 
+function explicitTargetUrl(value: string): string {
+  const url = value === 'env:RESTORE_TARGET_URL' ? process.env['RESTORE_TARGET_URL'] : value;
+  if (!url) throw new Error('RESTORE_TARGET_URL fehlt für die explizite Zieloption.');
+  assertPostgresTargetUrl(url);
+  return url;
+}
+
 /**
  * Strikter, side-effect-freier Parser. Der Operator-Wrapper validiert dieselben
  * Invarianten vor jedem Containerstart/-stop; diese zweite Schicht schuetzt
@@ -120,8 +127,7 @@ export function parseRestoreArgs(argv: string[]): CliArgs {
       i++;
     } else if (a === '--target-url') {
       claim(a);
-      out.targetUrl = requiredOptionValue(argv, i, a);
-      assertPostgresTargetUrl(out.targetUrl);
+      out.targetUrl = explicitTargetUrl(requiredOptionValue(argv, i, a));
       i++;
     } else if (a === '--production-target') {
       claim(a);

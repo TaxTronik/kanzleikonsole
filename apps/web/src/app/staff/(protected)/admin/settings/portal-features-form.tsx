@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState } from 'react';
 import { savePortalFeaturesAction, type ActionResult } from './actions';
 import type { PortalFeatures } from '@/server/settings/portal-features';
@@ -70,7 +72,7 @@ export function PortalFeaturesForm({
   );
 
   return (
-    <form action={formAction} className="space-y-4">
+    <SettingsForm result={state} pending={isPending} action={formAction} className="space-y-4">
       <div className="space-y-3">
         {FEATURES.map((f) => (
           <label
@@ -163,6 +165,6 @@ export function PortalFeaturesForm({
           <FormErrorSummary error={state.error} fieldErrors={state.fieldErrors} />
         )}
       </div>
-    </form>
+    </SettingsForm>
   );
 }

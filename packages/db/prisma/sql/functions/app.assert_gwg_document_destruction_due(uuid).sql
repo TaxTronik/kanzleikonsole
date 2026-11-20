@@ -24,7 +24,7 @@ DECLARE
   has_verified_reference BOOLEAN;
 BEGIN
   SELECT d."tenant_id", d."client_id", d."classification", d."created_at", d."retention_until",
-         d."deleted_at", d."gwg_destroyed_at", c."mandate_ended_at",
+         d."deleted_at", d."gwg_destroyed_at", c."mandate_ended_at" AT TIME ZONE 'UTC',
          c."allow_active", c."onboarding_completed_at",
          inv."id", inv."gwg_check_id",
          d."gwg_destruction_requested_at", d."gwg_destruction_requested_by"
@@ -104,7 +104,7 @@ BEGIN
   -- Re-read all relationship facts after the relation locks. Under READ
   -- COMMITTED this observes writers that committed while the NOWAIT locks were
   -- acquired and closes the same TOCTOU window as the canonical predecessor.
-  SELECT c."mandate_ended_at", c."allow_active", c."onboarding_completed_at",
+  SELECT c."mandate_ended_at" AT TIME ZONE 'UTC', c."allow_active", c."onboarding_completed_at",
          inv."id", inv."gwg_check_id"
     INTO mandate_ended_at, client_allow_active, client_onboarding_completed_at,
          invite_id, invite_check_id
@@ -181,7 +181,7 @@ BEGIN
   IF retention_start IS NULL THEN
     RAISE EXCEPTION 'Gesetzlicher GwG-Fristbeginn ist nicht belegt.' USING ERRCODE = 'check_violation';
   END IF;
-  IF now_utc < make_date(EXTRACT(YEAR FROM retention_start)::INTEGER + 6, 1, 1)::TIMESTAMP THEN
+  IF now_utc < app.retention_until_from_utc(retention_start, 5) THEN
     RAISE EXCEPTION 'Reguläre fünfjährige GwG-Aufbewahrungsfrist ist noch nicht abgelaufen.' USING ERRCODE = 'check_violation';
   END IF;
 

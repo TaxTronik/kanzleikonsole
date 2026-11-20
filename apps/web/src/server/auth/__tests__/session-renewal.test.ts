@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   configs: {} as Record<'staff' | 'portal', NextAuthConfig>,
   cookie: '',
   cutoff: null as string | null,
+  redisOffsetMs: 0,
   redisFailure: false,
   accountActive: true,
   dbFailure: false,
@@ -68,6 +69,15 @@ vi.mock('@/server/rate-limit', () => ({
 }));
 vi.mock('@/server/redis', () => ({
   getRedis: () => ({
+    eval: async () => {
+      if (h.redisFailure) throw new Error('fixture Redis unavailable');
+      return [h.cutoff, Date.now() + h.redisOffsetMs];
+    },
+    time: async () => {
+      if (h.redisFailure) throw new Error('fixture Redis unavailable');
+      const time = Date.now() + h.redisOffsetMs;
+      return [String(Math.floor(time / 1000)), String((time % 1000) * 1000)];
+    },
     get: async () => {
       if (h.redisFailure) throw new Error('fixture Redis unavailable');
       return h.cutoff;
@@ -128,6 +138,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
   h.cutoff = null;
+  h.redisOffsetMs = 0;
   h.redisFailure = false;
   h.dbFailure = false;
   h.accountActive = true;
@@ -223,6 +234,11 @@ async function renew(surface: Surface) {
 
 describe.each<Surface>(['portal', 'staff'])('%s session renewal', (surface) => {
   it('accepts a directly issued login cookie and preserves its revocation time after renewal', async () => {
+    // ACCESS-TENANT-RLS-001: Abmeldung und erneute Anmeldung in derselben Sekunde.
+    const loginMs = NOW.getTime() + 501;
+    h.redisOffsetMs = 750;
+    vi.setSystemTime(new Date(loginMs - h.redisOffsetMs));
+    h.cutoff = String(loginMs - 1);
     if (surface === 'staff') {
       const response = await staffPasswordPost(
         new NextRequest('http://localhost:3000/staff/login/password', {
@@ -246,9 +262,11 @@ describe.each<Surface>(['portal', 'staff'])('%s session renewal', (surface) => {
     }
 
     expect(await readSession[surface]()).not.toBeNull();
+    expect(await decodeCookie(surface)).toMatchObject({ sessionIssuedAtMs: loginMs });
     vi.setSystemTime(new Date(NOW.getTime() + 60_000));
     expect(await renew(surface)).not.toBeNull();
-    h.cutoff = String(NOW.getTime() + 30_000);
+    expect(await decodeCookie(surface)).toMatchObject({ sessionIssuedAtMs: loginMs });
+    h.cutoff = String(loginMs);
     expect(await readSession[surface]()).toBeNull();
     expect(await renew(surface)).toBeNull();
     expect(h.cookie).toBe('');
@@ -312,6 +330,15 @@ describe.each<Surface>(['portal', 'staff'])('%s session renewal', (surface) => {
     await issueCookie(surface, { sessionIssuedAt: 'invalid' }, 60_000, 'legacy');
     expect(await renew(surface)).toBeNull();
   });
+
+  it.each(['invalid', NOW.getTime() - 1_000, NOW.getTime() + 1])(
+    'rejects a malformed, inconsistent or future millisecond login anchor %s',
+    async (sessionIssuedAtMs) => {
+      await issueCookie(surface, { sessionIssuedAtMs }, 0, 'legacy');
+      expect(await readSession[surface]()).toBeNull();
+      expect(await renew(surface)).toBeNull();
+    },
+  );
 
   it('clears expired cookies', async () => {
     await issueCookie(surface, {}, 2 * 86_400_000);

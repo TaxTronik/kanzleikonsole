@@ -26,12 +26,24 @@ import {
   firstVisibleCandidate,
   PAGE_READY_TIMEOUT,
 } from './helpers/visibility';
-import { execSync } from 'node:child_process';
+import { psql } from './helpers/postgres';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 const AUTH_DIR = path.join(os.tmpdir(), 'taxtronik-e2e-auth');
+
+/** ACCESS-CLIENT-MODE-001: Detailseite und Layout können die Freigabe verweigern. */
+async function expectClientPageDenied(page: Page, id: string) {
+  const res = await page.goto(`/staff/clients/${id}`);
+  expect([200, 403, 404]).toContain(res?.status());
+  const denied = page.getByText(/^Kein Zugriff auf diesen Mandanten/);
+  const missing = page.getByRole('heading', { name: 'Seite nicht gefunden' });
+  await expect(denied.or(missing)).toBeVisible();
+  if (await denied.isVisible()) {
+    await expect(page).toHaveURL(/\/staff\/clients\?denied=1$/);
+  }
+}
 const STAFF_AUTH = path.join(AUTH_DIR, 'staff.json');
 const MANDANT_AUTH = path.join(AUTH_DIR, 'mandant.json');
 let complianceDocumentTitle = '';
@@ -106,33 +118,7 @@ function createEicarBuffer(): Buffer {
 
 // =============================================================================
 // FIX 3: Direkter DB-Zugriff für echte Tenant-Isolation.
-// Unterstützt BOTH: docker exec (lokales Dev) UND psql -h localhost (CI).
-// In CI läuft Postgres als Service-Container, nicht als docker-exec-barer Container.
 // =============================================================================
-const PG_CONTAINER = process.env['E2E_POSTGRES_CONTAINER'] ?? 'taxtronik-postgres';
-const PG_USER = process.env['E2E_POSTGRES_USER'] ?? 'taxtronik';
-const PG_DB = process.env['E2E_POSTGRES_DB'] ?? 'taxtronik';
-const PG_HOST = process.env['E2E_POSTGRES_HOST'] ?? 'localhost';
-const PG_PASSWORD = process.env['E2E_POSTGRES_PASSWORD'] ?? 'taxtronik';
-
-function psql(query: string): string {
-  const oneLine = query.replace(/\r?\n/g, ' ').replace(/"/g, '\\"');
-  try {
-    return execSync(
-      `docker exec ${PG_CONTAINER} psql -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`,
-      {
-        encoding: 'utf-8',
-        stdio: ['pipe', 'pipe', 'pipe'],
-      },
-    ).trim();
-  } catch {
-    return execSync(`psql -h ${PG_HOST} -U ${PG_USER} -d ${PG_DB} -t -A -c "${oneLine}"`, {
-      encoding: 'utf-8',
-      env: { ...process.env, PGPASSWORD: PG_PASSWORD },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    }).trim();
-  }
-}
 
 function psqlAvailable(): boolean {
   try {
@@ -1050,7 +1036,8 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     await ctx.close();
   });
 
-  test('5.2 Cross-tenant access via fabricated UUID returns 404', async ({ browser }) => {
+  // Fachkatalog: ACCESS-CLIENT-MODE-001. Layout und Detailseite prüfen den Zugriff.
+  test('5.2 Unbekannte Mandanten-ID führt zur Sperrmeldung oder 404', async ({ browser }) => {
     if (!fs.existsSync(STAFF_AUTH)) {
       throw new Error(
         'Staff-Login fehlgeschlagen — StorageState nicht vorhanden. Login-Test im selben serial-Block prüfen.',
@@ -1060,20 +1047,7 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     const page = await ctx.newPage();
 
     const fakeUuid = '00000000-0000-4000-8000-000000000999';
-    const res = await page.goto(`/staff/clients/${fakeUuid}`);
-    await page.waitForTimeout(2000);
-
-    if (res) {
-      const status = res.status();
-      expect([200, 404, 302]).toContain(status);
-    }
-
-    if (page.url().includes('/staff/login') || page.url().includes('/staff/dashboard')) {
-      // Redirect means no data shown — acceptable
-    } else {
-      const notFoundText = page.getByText(/nicht gefunden|404|Not Found/i);
-      await expect(notFoundText.first()).toBeVisible({ timeout: 3000 });
-    }
+    await expectClientPageDenied(page, fakeUuid);
 
     await ctx.close();
   });
@@ -1125,28 +1099,10 @@ test.describe.serial('Tenant Isolation — §203 StGB Mandantentrennung', () => 
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    // (1) UI-Versuch: /staff/clients/<Tenant-B-Client-ID>
-    const uiRes = await page.goto(`/staff/clients/${TENANT_B_CLIENT_ID}`);
-    await page.waitForTimeout(2000);
-    const uiStatus = uiRes?.status() ?? 200;
-    // Next App Router kann in Dev eine 404-Shell mit HTTP 200 ausliefern.
-    // Sicherheitsrelevant ist: niemals 200 mit Fremddaten. Daher ist 200 nur
-    // erlaubt, wenn die sichtbare Seite eindeutig Not Found ist.
-    expect(
-      [200, 403, 404, 302],
-      'UI muss blocken oder eine Not-Found-Shell rendern (§203 StGB)',
-    ).toContain(uiStatus);
-
-    // Falls kein Redirect: sicherstellen, dass KEINE Fremddaten gerendert werden.
-    if (!page.url().includes('/staff/login') && !page.url().includes('/staff/dashboard')) {
-      // Erst muss die Not-Found-Seite stehen (gestreamt), dann 2 s
-      // Beobachtungsfenster für den fremden Mandantennamen.
-      const notFoundText = page.getByText(/nicht gefunden|404|Not Found/i);
-      await expect(notFoundText.first()).toBeVisible({ timeout: 3000 });
-      const foreignData = page.getByText('Fremd Mandant GmbH');
-      const leaked = await becomesVisible(foreignData, 2000);
-      expect(leaked, 'Fremder Mandantenname darf nicht im DOM auftauchen').toBe(false);
-    }
+    await expectClientPageDenied(page, TENANT_B_CLIENT_ID);
+    const foreignData = page.getByText('Fremd Mandant GmbH');
+    const leaked = await becomesVisible(foreignData, 2000);
+    expect(leaked, 'Fremder Mandantenname darf nicht im DOM auftauchen').toBe(false);
 
     // (2) API-Versuch: GET /api/staff/clients/<Tenant-B-Client-ID>/export
     const apiRes = await page.request.get(`/api/staff/clients/${TENANT_B_CLIENT_ID}/export`, {

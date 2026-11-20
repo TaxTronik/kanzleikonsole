@@ -211,6 +211,31 @@ describe('STBVV-CALCULATION-001: source tables and full fee inventory', () => {
       }),
     ).toThrow('nicht kombinieren');
   });
+  it('berechnet die elektronische Überlassung nach VV 7000 Nr. 2 je dokumentiertem Arbeitsgang', () => {
+    const fee = line('24-1-1');
+    const first = {
+      id: 'vormittag',
+      kind: 'ELECTRONIC_DOCUMENTS' as const,
+      matter: fee.matter,
+      files: 4,
+      justification: 'Vier Dateien am Vormittag bereitgestellt.',
+    };
+    const second = {
+      ...first,
+      id: 'nachmittag',
+      files: 2,
+      justification: 'Zwei weitere Dateien am Nachmittag bereitgestellt.',
+    };
+    const result = calc([fee], { expenses: [first, second] });
+    expect(result.expenses.map((expense) => expense.netCents)).toEqual([500, 300]);
+    expect(calc([fee], { expenses: [{ ...first, files: 6 }] }).expenses[0]!.netCents).toBe(500);
+    expect(
+      calc([fee], { expenses: [{ ...first, scanEquivalentCents: 520 }] }).expenses[0]!.netCents,
+    ).toBe(520);
+    expect(() => calc([fee], { expenses: [{ ...first, scanEquivalentCents: 520.5 }] })).toThrow(
+      'ganzen Cent',
+    );
+  });
   it('rejects unreviewed law selection, unsupported rates and non-finite money', () => {
     expect(() => calc([line('24-1-1')], { currentLawConfirmed: false })).toThrow('Rechtsstand');
     expect(() => calc([line('24-1-1')], { lawVersion: '2020' })).toThrow('Rechtsstand');

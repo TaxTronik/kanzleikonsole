@@ -284,10 +284,7 @@ export async function setItemDueDateAction(input: {
   const parsed = z
     .object({
       id: z.string().uuid(),
-      dueDate: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/, 'Datum als YYYY-MM-DD')
-        .nullable(),
+      dueDate: z.iso.date('Bitte ein gültiges Datum angeben.').nullable(),
     })
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
@@ -465,10 +462,7 @@ export async function pauseInstanceAction(input: {
     .object({
       instanceId: z.string().uuid(),
       reason: z.string().max(2000).optional().or(z.literal('')),
-      until: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .nullable(),
+      until: z.iso.date().nullable(),
     })
     .safeParse(input);
   if (!parsed.success) return { ok: false as const, error: 'Validierungsfehler.' };
@@ -575,11 +569,7 @@ export async function addItemToInstanceAction(input: {
       instanceId: z.string().uuid(),
       title: z.string().min(1).max(200),
       description: z.string().max(1000).optional(),
-      dueDate: z
-        .string()
-        .regex(/^\d{4}-\d{2}-\d{2}$/)
-        .nullable()
-        .optional(),
+      dueDate: z.iso.date().nullable().optional(),
       kind: z
         .enum([
           'TASK',

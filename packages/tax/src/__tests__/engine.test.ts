@@ -1,6 +1,7 @@
 // =============================================================================
 // Unit-Tests für Tax-Deadline-Engine
 // Fachkatalog: TAX-DEADLINE-WORKDAY-001
+// Fachkatalog: TAX-DEADLINE-ANNUAL-001
 //
 // Kritische Pfade:
 //   - § 108 (3) AO Werktagsverschiebung (Sa/So + Feiertage)
@@ -421,7 +422,27 @@ describe('generateDeadlines — beratene Erklärungsfrist (§ 149 (3) AO)', () =
   });
 });
 
-describe('generateDeadlines — EGAO-Übergangsfristen (Art. 97 § 36 Abs. 3 EGAO)', () => {
+describe('generateDeadlines — EGAO-Übergangsfristen (Art. 97 § 36 Abs. 1 und 3 EGAO)', () => {
+  // https://www.gesetze-im-internet.de/aoeg_1977/art_97__36.html
+  it.each(['EST_ERKLAERUNG', 'KST_ERKLAERUNG', 'GEWST_ERKLAERUNG', 'USTA_JAEHRLICH'] as const)(
+    '%s verwendet im beratenen Regelfall für 2019 den 31.08.2021, im unberatenen den 31.07.2020',
+    (kind) => {
+      const candidates = (advised: boolean) =>
+        generateDeadlines(
+          kind,
+          new Date(Date.UTC(2020, 0, 1)),
+          new Date(Date.UTC(2021, 11, 31)),
+          false,
+          'DE-BE',
+          advised,
+        )
+          .filter((candidate) => candidate.period === '2019')
+          .map((candidate) => ymd(candidate.dueDate));
+      expect(candidates(true)).toEqual(['2021-08-31']);
+      expect(candidates(false)).toEqual(['2020-07-31']);
+    },
+  );
+
   it('VZ 2023 beraten → 31.05.2025 (Sa) → Mo 02.06.2025 (nicht Ende Februar 2025)', () => {
     const from = new Date(Date.UTC(2025, 0, 1));
     const to = new Date(Date.UTC(2025, 11, 31));

@@ -1,13 +1,14 @@
 // =============================================================================
 // NoticeView — rendert die Datenschutzhinweise (Markdown) lesbar & freundlich.
 //
-// Nutzt den geteilten, HTML-escapenden Mini-Markdown-Renderer (lib/markdown).
+// Nutzt den geteilten, HTML-escapenden Mini-Markdown-Renderer über
+// MarkdownContent, die einzige geprüfte HTML-Einfügestelle.
 // Bewusst OHNE 'use client': als reine Präsentation ohne Hooks funktioniert die
 // Komponente sowohl im Server- (Staff-Vorschau) als auch im Client-Tree (Portal-
 // Wizard). Das Prose-Styling ist identisch zum KB-Artikel-Renderer.
 // =============================================================================
 
-import { renderMarkdown } from '@/lib/markdown';
+import { MarkdownContent } from './markdown-content';
 
 const PROSE_CLASSES =
   'prose prose-sm max-w-none text-secondary ' +
@@ -18,11 +19,10 @@ const PROSE_CLASSES =
   '[&_strong]:text-primary [&_a]:text-brand-700 [&_a:hover]:underline';
 
 export function NoticeView({ body, className }: { body: string; className?: string }) {
-  const html = renderMarkdown(body);
   return (
-    <div
+    <MarkdownContent
       className={className ? `${PROSE_CLASSES} ${className}` : PROSE_CLASSES}
-      dangerouslySetInnerHTML={{ __html: html }}
+      source={body}
     />
   );
 }

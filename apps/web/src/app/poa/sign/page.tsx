@@ -1,5 +1,5 @@
 ﻿import { loadPoaForSigning } from '@/app/staff/(protected)/poa/sign-actions';
-import { renderMarkdown } from '@/lib/markdown';
+import { MarkdownContent } from '@/components/markdown-content';
 import { SignFlow } from './sign-flow';
 import { fmtDateShort } from '@/lib/fmt';
 
@@ -25,7 +25,6 @@ export default async function PoaSignPage({
   }
 
   const { poa, tenantName } = result;
-  const html = renderMarkdown(poa.scope);
 
   return (
     <div className="min-h-screen bg-surface-page py-12 px-4">
@@ -78,9 +77,9 @@ export default async function PoaSignPage({
               </a>
             </div>
           ) : (
-            <div
+            <MarkdownContent
               className="prose prose-sm max-w-none [&_h1]:text-xl [&_h1]:font-bold [&_h2]:text-lg [&_h2]:font-semibold [&_p]:my-3 [&_ul]:list-disc [&_ul]:ml-6 mb-6"
-              dangerouslySetInnerHTML={{ __html: html }}
+              source={poa.scope}
             />
           )}
         </div>

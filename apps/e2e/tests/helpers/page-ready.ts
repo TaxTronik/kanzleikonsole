@@ -20,6 +20,30 @@ import { PAGE_READY_TIMEOUT } from './visibility';
 // später). Ein Element mit Props steht samt Inhalt unter React-Kontrolle.
 const REACT_PROPS = '__reactProps$';
 
+/** Wartet auf die Server-Antwort zur Bedienhandlung, bevor die UI-Rückmeldung geprüft wird. */
+export async function expectServerActionResponse(
+  page: Page,
+  trigger: () => Promise<unknown>,
+): Promise<void> {
+  const current = new URL(page.url());
+  const [response] = await Promise.all([
+    page.waitForResponse((response) => {
+      const request = response.request();
+      const url = new URL(response.url());
+      return (
+        url.origin === current.origin &&
+        url.pathname === current.pathname &&
+        request.method() === 'POST' &&
+        'next-action' in request.headers()
+      );
+    }),
+    trigger(),
+  ]);
+  expect(response.ok(), `Server-Aktion für ${current.pathname} (HTTP ${response.status()})`).toBe(
+    true,
+  );
+}
+
 /** Wartet, bis React das Element samt Inhalt hydriert hat. */
 export async function expectHydrated(locator: Locator, message: string): Promise<void> {
   await expect

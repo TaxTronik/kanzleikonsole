@@ -17,6 +17,7 @@
 // =============================================================================
 
 export type CircuitState = 'closed' | 'open' | 'half-open';
+type RequestOutcome = 'success' | 'failure' | 'ignored';
 
 const DEFAULT_OPEN_MESSAGE = 'Circuit ist offen — Dienst gilt als nicht erreichbar.';
 
@@ -42,6 +43,8 @@ export class CircuitBreaker {
   private state: CircuitState = 'closed';
   private failures = 0;
   private openedAt = 0;
+  private generation = 0;
+  private probeInFlight = false;
   private readonly now: () => number;
 
   constructor(private readonly opts: CircuitBreakerOptions) {
@@ -58,10 +61,27 @@ export class CircuitBreaker {
 
   /** Wirft CircuitOpenError, wenn aktuell kein Call erlaubt ist. */
   assertCanRequest(): void {
-    if (this.getState() === 'open') throw new CircuitOpenError(this.opts.openMessage);
+    if (this.getState() === 'open' || this.probeInFlight) {
+      throw new CircuitOpenError(this.opts.openMessage);
+    }
+  }
+
+  /** Reserve a half-open probe and bind its result to the current outage. */
+  beginRequest(): (outcome: RequestOutcome) => void {
+    this.assertCanRequest();
+    const generation = this.generation;
+    if (this.state === 'half-open') this.probeInFlight = true;
+    return (outcome) => {
+      if (this.generation !== generation) return;
+      this.probeInFlight = false;
+      if (outcome === 'success') this.onSuccess();
+      if (outcome === 'failure') this.onFailure();
+    };
   }
 
   onSuccess(): void {
+    if (this.state !== 'closed') this.generation += 1;
+    this.probeInFlight = false;
     this.failures = 0;
     this.state = 'closed';
   }
@@ -70,6 +90,8 @@ export class CircuitBreaker {
     this.failures += 1;
     // Ein Fehler im half-open-Probe-Call öffnet sofort wieder.
     if (this.state === 'half-open' || this.failures >= this.opts.failureThreshold) {
+      this.generation += 1;
+      this.probeInFlight = false;
       this.state = 'open';
       this.openedAt = this.now();
     }
@@ -124,15 +146,16 @@ export async function executeResilient<T>(
   fn: () => Promise<T>,
   countsAsFailure: (err: unknown) => boolean = () => true,
 ): Promise<T> {
-  breaker.assertCanRequest();
+  const finish = breaker.beginRequest();
+  let outcome: RequestOutcome = 'ignored';
   try {
     const result = await withRetry(fn, retry, shouldRetry);
-    breaker.onSuccess();
+    outcome = 'success';
     return result;
   } catch (err) {
-    if (err instanceof CircuitOpenError) throw err;
-    if (countsAsFailure(err)) breaker.onFailure();
-    else breaker.onSuccess();
+    if (!(err instanceof CircuitOpenError)) outcome = countsAsFailure(err) ? 'failure' : 'success';
     throw err;
+  } finally {
+    finish(outcome);
   }
 }

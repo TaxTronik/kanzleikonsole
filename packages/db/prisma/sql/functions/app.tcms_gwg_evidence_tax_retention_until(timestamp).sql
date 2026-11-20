@@ -13,5 +13,5 @@ AS $function$
   -- GoBD-Höherstufung der Ablage (retentionUntilForYears(10, Anlage),
   -- packages/storage/src/service.ts): Jahr der Dokumentanlage plus zehn volle
   -- Jahre, Stichtag 1. Januar des Folgejahres, 00:00 UTC. NULL bleibt NULL.
-  SELECT make_date(EXTRACT(YEAR FROM p_created_at)::integer + 11, 1, 1)::timestamp without time zone
+  SELECT app.retention_until_from_utc(p_created_at, 10)
 $function$;

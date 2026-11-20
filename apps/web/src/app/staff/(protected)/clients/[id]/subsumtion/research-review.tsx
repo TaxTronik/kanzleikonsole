@@ -61,28 +61,30 @@ export function ResearchReviewSection(props: {
               }
             >
               {r.status === 'ZUGEORDNET'
-                ? 'übernommen'
+                ? 'zugeordnet'
                 : r.status === 'VERWORFEN'
                   ? 'verworfen'
                   : 'ungeprüft'}
             </span>
           </div>
           <ResearchResultDetails body={r.body} />
-          {canReview && r.status !== 'ZUGEORDNET' && (
+          {canReview && (
             <div className="flex flex-wrap gap-2 pt-1">
-              <button
-                type="button"
-                disabled={pending}
-                className="btn-primary text-[11px]"
-                onClick={() =>
-                  run(
-                    () => assignResultAction({ clientId, analysisId, resultId: r.id, markingId }),
-                    'Ergebnis übernommen.',
-                  )
-                }
-              >
-                Übernehmen
-              </button>
+              {r.status !== 'ZUGEORDNET' && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  className="btn-primary text-[11px]"
+                  onClick={() =>
+                    run(
+                      () => assignResultAction({ clientId, analysisId, resultId: r.id, markingId }),
+                      'Ergebnis übernommen.',
+                    )
+                  }
+                >
+                  Übernehmen
+                </button>
+              )}
               {r.status !== 'VERWORFEN' && (
                 <button
                   type="button"

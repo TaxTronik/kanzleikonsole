@@ -15,6 +15,7 @@ import {
   revokeAllSessions,
   SessionRevocationUnavailableError,
 } from '../revocation';
+import { newSessionIssueTime } from '../session-issued-at';
 
 const FIXED_NOW = new Date('2026-06-09T12:00:00.000Z');
 const REVOKE_TTL_SEC = 30 * 24 * 60 * 60;
@@ -37,6 +38,45 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('ACCESS-TENANT-RLS-001: Zeitanker einer neuen Sitzung', () => {
+  it('übernimmt dieselbe Redis-Uhr wie der Widerruf, auch bei abweichender Web-Uhr', async () => {
+    m.getRedis.mockReturnValue({ time: async () => ['1780000000', '125999'] });
+    await expect(newSessionIssueTime()).resolves.toEqual({
+      sessionIssuedAt: 1_780_000_000,
+      sessionIssuedAtMs: 1_780_000_000_125,
+    });
+  });
+
+  it.each(
+    [
+      null,
+      '11',
+      [],
+      ['1'],
+      ['0', '0'],
+      ['1', '1000000'],
+      ['x', '3'],
+      ['999999999999999999', '0'],
+    ].map((reply) => ({ reply })),
+  )(
+    'weist eine fehlerhafte Redis-Zeit ohne Ersatz durch die lokale Uhr ab ($reply)',
+    async ({ reply }) => {
+      m.getRedis.mockReturnValue({ time: async () => reply });
+      await expect(newSessionIssueTime()).rejects.toBeInstanceOf(SessionRevocationUnavailableError);
+    },
+  );
+
+  it('stellt bei fehlendem Redis oder nicht lesbarer Zeit keinen Zeitanker aus', async () => {
+    await expect(newSessionIssueTime()).rejects.toBeInstanceOf(SessionRevocationUnavailableError);
+    m.getRedis.mockReturnValue({
+      time: async () => {
+        throw new Error('TIME unavailable');
+      },
+    });
+    await expect(newSessionIssueTime()).rejects.toBeInstanceOf(SessionRevocationUnavailableError);
+  });
+});
+
 describe('revokeAllSessions', () => {
   it('writes a per-surface user timestamp with a 30 day ttl', async () => {
     const redis = makeRedis();
@@ -46,10 +86,9 @@ describe('revokeAllSessions', () => {
     await revokeAllSessions('staff', 'staff-1');
 
     expect(redis.eval).toHaveBeenCalledWith(
-      expect.any(String),
+      expect.stringContaining("redis.call('TIME')"),
       1,
       'revoke:staff:staff-1',
-      String(FIXED_NOW.getTime()),
       REVOKE_TTL_SEC,
     );
   });

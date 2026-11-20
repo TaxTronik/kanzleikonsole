@@ -114,6 +114,7 @@ function draft(overrides: Partial<LoadedInviteDraft> = {}): LoadedInviteDraft {
 function renderWizard(
   initialDraft: LoadedInviteDraft | null,
   consentOptions: ResolvedConsentOption[] = [],
+  reactStrictMode = false,
 ) {
   return render(
     <OnboardingWizard
@@ -126,6 +127,7 @@ function renderWizard(
       consentOptions={consentOptions}
       consentDisplayRevision="rev-1"
     />,
+    { reactStrictMode },
   );
 }
 
@@ -196,7 +198,8 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
   window.matchMedia = vi.fn().mockReturnValue({ matches: false }) as never;
   // jsdom kennt keine Objekt-URLs; der Wizard nutzt sie für Vorschaubilder.
-  URL.createObjectURL = vi.fn(() => 'blob:vorschau');
+  let previewSequence = 0;
+  URL.createObjectURL = vi.fn(() => `blob:vorschau-${++previewSequence}`);
   URL.revokeObjectURL = vi.fn();
 });
 
@@ -552,6 +555,34 @@ describe('GwG-Onboarding – Fotos, Seitentausch und Verlassen', () => {
     expect(slot(editor('Person 1'), 'Personalausweis Rückseite').textContent).toContain(
       'eigentlich-hinten.jpg',
     );
+  });
+
+  it('hält eine lokale Foto-URL nur solange ihre Ausweisvorschau sichtbar ist', async () => {
+    const { unmount } = renderWizard(null, [], true);
+    const created = () => vi.mocked(URL.createObjectURL).mock.results.map((call) => call.value);
+    const revoked = () => vi.mocked(URL.revokeObjectURL).mock.calls.map(([url]) => url);
+    const live = () => created().filter((url) => !revoked().includes(url));
+    const label = 'Personalausweis Vorderseite';
+    const preview = () => screen.findByRole('img', { name: `Vorschau: ${label}` });
+    const photo = new File(['Foto'], 'vorne.jpg', { type: 'image/jpeg' });
+    next();
+    selectFile(uploadInput(openPerson('Person 1'), label), photo);
+    const firstPreview = await preview();
+    expect(live()).toEqual([firstPreview.getAttribute('src')]);
+
+    backToOverview();
+    expect(live()).toEqual([]);
+    openPerson('Person 1');
+    const reopened = await preview();
+    expect(live()).toEqual([reopened.getAttribute('src')]);
+    expect(h.upload).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: `${label} entfernen` }));
+    await waitFor(() => expect(live()).toEqual([]));
+
+    selectFile(uploadInput(editor('Person 1'), label), photo);
+    await preview();
+    unmount();
+    expect(revoked().sort()).toEqual(created().sort());
   });
 
   it('fragt vor dem Verlassen nur bei Ungespeichertem nach und nach dem Übermitteln nicht mehr', async () => {

@@ -16,6 +16,7 @@ import {
   type ActionResult as BaseActionResult,
 } from '@/server/actions/staff-action';
 import { audit } from '@/server/actions/audit';
+import { parseSearchSnippet, type SnippetSegment } from './search-snippet';
 
 const withKnowledgeStaff = withStaffModule('knowledge');
 
@@ -308,7 +309,11 @@ export interface SearchHit {
   id: string;
   title: string;
   slug: string;
-  snippet: string;
+  /**
+   * Klartextsegmente statt HTML (Stored-XSS-Schutz, C1): ts_headline escapet
+   * den Artikeltext nicht. Die Seite rendert die Segmente als Textknoten.
+   */
+  snippet: SnippetSegment[];
   rank: number;
   categoryName: string | null;
   authorName: string;
@@ -316,28 +321,9 @@ export interface SearchHit {
 }
 
 /**
- * Defense gegen Stored-XSS (C1): ts_headline escaped die Quelle nicht — es
- * wickelt nur `<mark>` um Treffer. Wenn der Artikel-Body HTML/JS enthält
- * (Markdown-Source darf vieles), würde ein dangerouslySetInnerHTML im
- * Such-Snippet das ausführen.
- *
- * Strategie: das gesamte Snippet HTML-escapen, anschließend nur die
- * literalen `<mark>`/`</mark>`-Marker zurück-konvertieren. Alle anderen
- * `<`/`>`/`&`/`"`/`'`-Vorkommen bleiben escaped.
- */
-function sanitizeSearchSnippet(raw: string): string {
-  const escaped = raw
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-  return escaped.replace(/&lt;mark&gt;/g, '<mark>').replace(/&lt;\/mark&gt;/g, '</mark>');
-}
-
-/**
  * Volltextsuche mit ts_rank + ts_headline für Snippet.
  * Query wird per `plainto_tsquery` aus User-Input erzeugt (sicher gegen TS-Syntax-Injection).
+ * StartSel/StopSel entsprechen SNIPPET_START_SEL/SNIPPET_STOP_SEL (search-snippet.ts).
  */
 export async function searchArticles(query: string): Promise<SearchHit[]> {
   const g = await staffActionGuard({ module: 'knowledge' });
@@ -384,7 +370,7 @@ export async function searchArticles(query: string): Promise<SearchHit[]> {
       id: r.id,
       title: r.title,
       slug: r.slug,
-      snippet: sanitizeSearchSnippet(r.snippet),
+      snippet: parseSearchSnippet(r.snippet),
       rank: r.rank,
       categoryName: r.category_name,
       authorName: r.author_name,

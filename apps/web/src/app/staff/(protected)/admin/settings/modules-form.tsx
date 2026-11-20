@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState } from 'react';
 import { saveModulesAction, type ActionResult } from './actions';
 import type { ModuleConfig } from '@/server/settings/modules';
@@ -137,7 +139,7 @@ export function ModulesForm({ initial }: { initial: ModuleConfig }) {
   );
 
   return (
-    <form action={formAction} className="space-y-5">
+    <SettingsForm result={state} pending={isPending} action={formAction} className="space-y-5">
       <div className="space-y-3">
         {MODULES.map((m) => (
           <label
@@ -331,6 +333,6 @@ export function ModulesForm({ initial }: { initial: ModuleConfig }) {
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Speichern'}
       </button>
-    </form>
+    </SettingsForm>
   );
 }

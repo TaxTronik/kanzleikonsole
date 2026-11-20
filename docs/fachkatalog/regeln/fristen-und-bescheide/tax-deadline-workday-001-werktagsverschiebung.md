@@ -47,6 +47,51 @@ sources:
     url: https://bravors.brandenburg.de/verwaltungsvorschriften/feiertagsrecht
     checked_at: '2026-08-23'
     primary: false
+  - kind: official_law
+    citation: Berlin, Gesetz vom 30.01.2019, Art. 1–3, GVBl. S. 22 (Frauentag und 08.05.2020)
+    url: https://www.berlin.de/sen/justiz/service/gesetze-und-verordnungen/2019/ausgabe-nr-3-vom-6-2-2019-s-21-32.pdf
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: Berlin, Gesetz vom 10.07.2024, Art. 1–4, GVBl. S. 460 (08.05.2025 und 17.06.2028)
+    url: https://www.berlin.de/sen/justiz/service/gesetze-und-verordnungen/2024/ausgabe-nr-28-vom-2072024-s-457-484.pdf
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: Mecklenburg-Vorpommern, Viertes Änderungsgesetz zum Feiertagsgesetz vom 07.07.2022, Art. 1 und 2, GVOBl. S. 427 (Frauentag)
+    url: https://www.regierung-mv.de/static/Regierungsportal/Justizministerium/Inhalte/Rechtliches/GVOBI.M-V/GVOBl.%20Nr.%2031%20v.%2012.7.2022.pdf
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: Thüringen, Drittes Änderungsgesetz zum Thüringer Feier- und Gedenktagsgesetz vom 19.03.2019, Art. 1 und 2, GVBl. S. 22 (Weltkindertag)
+    url: https://parldok.thueringer-landtag.de/ParlDok/dokument/70512/gesetz_und_verordnungsblatt_nr_2_2019.pdf
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_guidance
+    citation: Niedersächsisches Innenministerium, einmaliger bundesweiter Feiertag am 31.10.2017
+    url: https://www.mi.niedersachsen.de/startseite/aktuelles/presseinformationen/reformationstag-ist-im-jahr-2017-ein-arbeitsfreier-gesetzlicher-feiertag--148206.html
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: Bremen, Gesetz vom 26.06.2018, Art. 1 und 2, Brem.GBl. S. 302 (Reformationstag)
+    url: https://www.gesetzblatt.bremen.de/fastmedia/218/2018_06_28_GBl_Nr_0063_signed.pdf
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_guidance
+    citation: Hamburg, Übersicht über die gesetzlichen Feiertage in der Bundesrepublik Deutschland, Stand September 2018 (31. Oktober)
+    url: https://www.hamburg.de/contentblob/70230/7a4a9de67fd46caec0947c11bf23316d/data/bsb-feiertage.pdf
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: Niedersachsen, Gesetz vom 22.06.2018, Art. 1 und 2, Nds. GVBl. S. 121 (Reformationstag)
+    url: https://www.niedersachsen.de/download/132379/Nds._GVBl._Nr._7_2018_vom_28.06.2018_S._111-154.pdf
+    checked_at: '2026-11-20'
+    primary: true
+  - kind: official_law
+    citation: Schleswig-Holstein, Gesetz zur Änderung des Sonn- und Feiertagsgesetzes vom 21.03.2018, GVOBl. S. 69 (Reformationstag)
+    url: https://www.schleswig-holstein.de/DE/landesregierung/ministerien-behoerden/IV/Service/GVOBl/GVOBl/2018/gvobl_6_2018.pdf?__blob=publicationFile&v=3
+    checked_at: '2026-11-20'
+    primary: true
 code_refs:
   - packages/tax/src/engine.ts
   - packages/tax/src/index.ts
@@ -204,6 +249,18 @@ Kontrollwert mit Begründung gespeichert, kein scheinbar festgestelltes
 Rechtsdatum. Auch ein als bestätigt markierter Kalenderkontext ohne konkret
 dokumentierten Ort bleibt mit `HOLIDAY_LOCALITY_UNKNOWN` in manueller Prüfung.
 
+Bislang wendete die Engine mehrere Landesfeiertage rückwirkend an und ließ
+einmalige Feiertage aus. Der Landesstand berücksichtigt den Frauentag ab 2019
+in Berlin und ab 2023 in Mecklenburg-Vorpommern sowie den Weltkindertag ab
+2019 in Thüringen. Der 31. Oktober ist 2017 bundesweit und in Bremen,
+Hamburg, Niedersachsen und Schleswig-Holstein ab 2018 jährlich enthalten.
+Berlin berücksichtigt zusätzlich den 8. Mai 2020 und 2025 sowie den 17. Juni 2028 jeweils nur am gesetzlich bezeichneten Datum. Der 17. Juni 2028 fällt auf einen Sonnabend. Weitere historische Rechtsstände
+bedürfen der fallbezogenen Prüfung.
+
+Für Hamburg führt § 1 Nr. 8 des Feiertagsgesetzes den 31. Oktober.
+Das Fünfte Änderungsgesetz vom 12. März 2018 steht im
+[Hamburgischen Gesetz- und Verordnungsblatt, Seite 63](https://www.luewu.de/wp-content/uploads/2025/08/GVBL_HH_2018-9.pdf).
+
 Daneben verwendet die allgemeine Steuertermin-Engine weiterhin
 `shiftToNextWorkday` mit der Tenant-Steuerregion. Dieser Pfad kennt weder die
 vorgelagerte Einordnung nach § 108 Abs. 3 bis 6 AO noch einen konkreten
@@ -254,3 +311,9 @@ historisch ungeprüfte Kontexte, lokale Feiertagsketten, Bayern und
 Auslandsfälle. `engine.ts` und `materialize.ts` belegen den fortbestehenden
 Tenant-Standardpfad. Nicht getestet oder implementiert sind eine amtliche
 Kalenderquellen-Verifikation und eine rollenabhängige fachliche Freigabe.
+
+Die Plausibilitätstests grenzen die genannten Rechtsänderungen nach Jahr und
+Land ab und prüfen den Reformationstag 2016, 2017 und 2018 für alle
+Bundesländer. Die Assessment-Tests prüfen die Vorschläge für den 8. Mai 2025
+in Berlin (9. Mai) und Brandenburg (8. Mai), den 8. Mai 2020 in Berlin
+(11. Mai), den 8. März 2022 in Mecklenburg-Vorpommern (8. März) und den 31. Oktober 2017 in Nordrhein-Westfalen (2. November nach Allerheiligen).

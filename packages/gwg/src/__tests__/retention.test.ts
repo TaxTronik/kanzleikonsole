@@ -26,10 +26,19 @@ const UTC = (iso: string) => new Date(iso);
 describe('Fristen nach § 8 Abs. 4 GwG', () => {
   it('beginnt mit dem Schluss des Kalenderjahres und endet regulär nach fünf Jahren', () => {
     expect(gwgDeletionDeadline(UTC('2026-03-15T10:00:00Z'))).toEqual(UTC('2032-01-01T00:00:00Z'));
-    expect(gwgDeletionDeadline(UTC('2026-12-31T23:59:59Z'))).toEqual(UTC('2032-01-01T00:00:00Z'));
+    expect(gwgDeletionDeadline(UTC('2026-12-31T22:59:59.999Z'))).toEqual(
+      UTC('2032-01-01T00:00:00Z'),
+    );
     expect(isGwgDeletionDue(UTC('2026-03-15T10:00:00Z'), UTC('2031-12-31T23:59:59Z'))).toBe(false);
     expect(isGwgDeletionDue(UTC('2026-03-15T10:00:00Z'), UTC('2032-01-01T00:00:00Z'))).toBe(true);
     expect(isGwgDeletionDue(null, UTC('2045-01-01T00:00:00Z'))).toBe(false);
+  });
+
+  it('ordnet einen Zeitpunkt ab Mitternacht in Berlin dem neuen Jahr zu', () => {
+    const anchor = UTC('2026-12-31T23:00:00Z');
+    expect(gwgDeletionDeadline(anchor)).toEqual(UTC('2033-01-01T00:00:00Z'));
+    expect(gwgMaximumDeletionDeadline(anchor)).toEqual(UTC('2038-01-01T00:00:00Z'));
+    expect(isGwgDeletionDue(anchor, UTC('2032-01-01T00:00:00Z'))).toBe(false);
   });
 
   it('setzt die absolute Höchstgrenze zehn Jahre nach demselben Fristbeginn', () => {
@@ -40,7 +49,13 @@ describe('Fristen nach § 8 Abs. 4 GwG', () => {
 
   it('bildet „Frist abgelaufen" exakt als Vergleich mit dem Stichtags-Cutoff ab', () => {
     // gwgDeletionDeadline(start) <= now  ⇔  start < gwgDeletionDueStartCutoff(now)
-    const starts = ['2019-12-31T23:59:59Z', '2020-01-01T00:00:00Z', '2020-07-01T00:00:00Z'];
+    const starts = [
+      '2019-12-31T22:59:59.999Z',
+      '2019-12-31T23:00:00Z',
+      '2019-12-31T23:59:59Z',
+      '2020-01-01T00:00:00Z',
+      '2020-07-01T00:00:00Z',
+    ];
     const nows = ['2025-12-31T23:59:59Z', '2026-01-01T00:00:00Z', '2026-06-30T12:00:00Z'];
     for (const start of starts.map(UTC)) {
       for (const now of nows.map(UTC)) {
@@ -112,7 +127,7 @@ describe('Fristbeginn eines GwG-Dateibelegs', () => {
 
 describe('Datenbankfilter (Web-Kachel, Review-Queue, Worker-Benachrichtigung)', () => {
   const now = UTC('2032-06-01T08:00:00Z');
-  const cutoff = UTC('2027-01-01T00:00:00Z');
+  const cutoff = UTC('2026-12-31T23:00:00Z');
 
   it('filtert Belege nach Mandatsende oder — ohne Beziehung — nach Erfassung', () => {
     expect(dueGwgDeletionDocsWhere(now)).toEqual({

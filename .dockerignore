@@ -34,9 +34,9 @@ out
 *.tsbuildinfo
 
 # Secrets & lokale Konfiguration
-.env
-.env.*
-.admin-credentials.txt
+**/.env
+**/.env.*
+**/.admin-credentials.txt
 .taxtronik.state
 .taxtronik.migration-pending
 .taxtronik.database-restored
@@ -44,7 +44,8 @@ out
 .taxtronik.tcms-rotation
 .taxtronik.tcms-code-key-rotation
 .taxtronik.tcms-backup-stamp
-licensing-private-*.pem
+**/licensing-private-*.pem
+**/backup-manifest-private.pem
 infra/scripts/seaweedfs-s3.generated.json
 .taxtronik.traefik-dynamic.yml
 
@@ -87,6 +88,9 @@ DEMODATEN
 # CI- / lokale Notes
 install.log
 .claude
+.claude-stage
+# Regenerierbarer Signal-Modellcache (mehrere GiB auf dem Host).
+/.taxtronik/signal-llm
 # Lokale QA-Zustände, Zugangsdaten, Logs und Test-Fixtures.
 .codex-run
 

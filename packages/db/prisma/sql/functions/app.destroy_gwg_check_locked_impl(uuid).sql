@@ -165,7 +165,7 @@ BEGIN
   END IF;
 
   IF retention_start IS NULL
-     OR now_utc < make_date(EXTRACT(YEAR FROM retention_start)::INTEGER + 6, 1, 1)::TIMESTAMP
+     OR now_utc < app.retention_until_from_utc(retention_start, 5)
   THEN
     RAISE EXCEPTION 'Reguläre fünfjährige GwG-Aufbewahrungsfrist ist noch nicht abgelaufen.'
       USING ERRCODE = 'check_violation';
@@ -182,7 +182,7 @@ BEGIN
          "submitted_ip" = NULL,
          "submitted_ua" = NULL,
          "uploaded_document_ids" = '[]'::JSONB,
-         "updated_at" = CURRENT_TIMESTAMP
+         "updated_at" = now_utc
    WHERE "gwg_check_id" = p_check_id
      AND "tenant_id" = check_tenant
      AND "client_id" = check_client;
@@ -212,8 +212,8 @@ BEGIN
          "no_register_entry" = FALSE,
          "representative_names" = ARRAY[]::TEXT[],
          "ownership_structure_notes" = NULL,
-         "destroyed_at" = destroyed_at_utc,
-         "updated_at" = CURRENT_TIMESTAMP
+         "destroyed_at" = now_utc,
+         "updated_at" = now_utc
    WHERE "id" = p_check_id;
 
   PERFORM set_config('app.gwg_destroy_check_id', '', TRUE);

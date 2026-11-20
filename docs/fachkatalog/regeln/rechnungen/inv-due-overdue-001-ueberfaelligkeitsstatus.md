@@ -35,11 +35,14 @@ sources:
 code_refs:
   - apps/worker/src/jobs/invoice-overdue-check.ts
   - apps/web/src/app/staff/(protected)/invoices/page.tsx
+  - apps/web/src/app/portal/(protected)/invoices/page.tsx
+  - apps/web/src/server/invoicing/due-status.ts
   - apps/worker/src/notification-recipients.ts
 test_refs:
   - apps/worker/src/jobs/__tests__/invoice-overdue-check.test.ts
   - apps/worker/src/__tests__/notification-recipients.test.ts
   - apps/web/src/app/staff/(protected)/invoices/__tests__/page.test.tsx
+  - apps/web/src/app/portal/(protected)/__tests__/list-ux.test.ts
   - apps/e2e/tests/12-accessibility.spec.ts
 feature_refs:
   - docs/development/module/fakturierung.md
@@ -149,6 +152,8 @@ UTC-Mitternacht passend zu `dueDate` als `@db.Date`. Dieser Tageswert wird einma
 je Seitenaufruf berechnet. Die Anzeige kann dadurch ab dem Folgetag bereits vor
 dem nächsten Worker-Lauf „Überfällig“ zeigen; sie schreibt weder Rechnungsstatus
 noch Audit oder Benachrichtigungen. Gespeicherte andere Status bleiben erhalten.
+Beide Ansichten prüfen dazu auch die Originalreferenz. Nur Belege ohne
+Originalreferenz kommen für die Überfälligkeitsanzeige in Betracht.
 
 Die Rechnungsübersicht lässt auf schmalen Bildschirmen Kopfzeile und Statusfilter
 umbrechen. Die Tabelle bleibt in einer eigenen benannten, per Tastatur
@@ -158,6 +163,10 @@ Seitenüberlauf einschließlich des Hauptinhalts. Die Layoutanpassung ändert we
 Statusberechnung noch Filter, Berechtigungen oder Rechnungsaktionen.
 
 ## Bekannte Abweichungen und Grenzen
+
+Die Kanzlei- und Portalansicht kennzeichneten versendete Korrekturbelege nach
+dem Fälligkeitsdatum als überfällig. Der Worker schloss solche Belege bereits
+aus. Die beiden Ansichten verwenden jetzt ebenfalls diesen Ausschluss.
 
 Der am 14. September 2026 festgestellte Konflikt zwischen Regel und Staff-Anzeige
 ist korrigiert: Die Übersicht verglich `dueDate` bisher mit dem aktuellen
@@ -199,3 +208,6 @@ gemeinsamen Datumshilfsdienst. Sie prüfen Fälligkeitstag und Folgetag an den
 exakten CET-/CEST-Tagesgrenzen, die 23- und 25-Stunden-Tage der Zeitumstellung,
 zukünftige Fälligkeit, abweichende Serverzeitzonen sowie die unveränderte Anzeige
 von `DRAFT`, `PAID`, `CANCELLED` und `OVERDUE`.
+Ein zusätzlicher Kanzleiseitentest prüft den versendeten Korrekturbeleg nach
+Fälligkeit. Der Portaltest vergleicht Original und Korrektur bei gleichem
+Fälligkeitsdatum sowohl in der mobilen Karte als auch in der Tabelle.

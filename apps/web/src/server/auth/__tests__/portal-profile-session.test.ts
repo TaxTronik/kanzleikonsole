@@ -50,7 +50,14 @@ vi.mock('@/server/logger', () => ({ log: { warn: vi.fn() } }));
 vi.mock('@/server/rate-limit', () => ({ getClientIp: vi.fn(), checkIpOrGlobalLimit: vi.fn() }));
 vi.mock('@/server/container', () => ({ evidenceService: { record: h.record } }));
 vi.mock('@/server/redis', () => ({
-  getRedis: () => ({ get: async (key: string) => h.cutoffs.get(key) ?? null }),
+  getRedis: () => ({
+    eval: async (_script: string, _keyCount: number, key: string) => [
+      h.cutoffs.get(key) ?? null,
+      Date.now(),
+    ],
+    get: async (key: string) => h.cutoffs.get(key) ?? null,
+    time: async () => [String(Math.floor(Date.now() / 1000)), String((Date.now() % 1000) * 1000)],
+  }),
 }));
 vi.mock('@/server/db/prisma-owner', () => ({
   prismaOwner: {
@@ -126,6 +133,22 @@ beforeEach(async () => {
 afterEach(() => vi.useRealTimers());
 
 describe('Portal profile switch retains its authenticated identity', () => {
+  it('preserves a login following the cutoff in the same second across a switch', async () => {
+    const loginMs = NOW.getTime() + 125;
+    vi.setSystemTime(new Date(loginMs));
+    h.cutoffs.set(`revoke:portal:${A}`, String(loginMs - 1));
+    await login();
+    vi.setSystemTime(new Date(loginMs + 300));
+    await switchTo(B);
+    expect((await portalAuth())?.user).toMatchObject({
+      contactId: B,
+      sessionOriginContactId: A,
+      sessionIssuedAtMs: loginMs,
+    });
+    h.cutoffs.set(`revoke:portal:${B}`, String(loginMs + 1));
+    expect(await portalAuth()).toBeNull();
+  });
+
   it('cannot bypass an existing target cutoff without another Magic-Link login', async () => {
     h.cutoffs.set(`revoke:portal:${B}`, String(NOW.getTime() - 30_000));
     await switchTo(B);

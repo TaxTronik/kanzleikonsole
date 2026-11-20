@@ -437,7 +437,13 @@ tcms_crontab_available() { [[ -z "${KEIN_CRONTAB:-}" ]]; }
 tcms_crontab() {
   local datei="${FAKE_CRONTAB:-$TMP_DIR/crontab.default}"
   case "${1:-}" in
-    -l) [[ -f "$datei" ]] || { printf 'no crontab for test\n' >&2; return 1; }; cat "$datei" ;;
+    -l)
+      if [[ -n "${CRONTAB_READ_FAILED:-}" ]]; then
+        printf 'cannot read spool\n' >&2
+        return 1
+      fi
+      [[ -f "$datei" ]] || { printf 'no crontab for test\n' >&2; return 1; }
+      cat "$datei" ;;
     -r) rm -f -- "$datei" ;;
     -) cat >"$datei" ;;
     *) return 2 ;;
@@ -1691,6 +1697,7 @@ test_tcms_backup_dumps_in_container_with_0600_and_checksum() {
   file="$(cat "$TMP_DIR/tcms-backup.file")"
   [[ "$file" == "$dest"/tcms-db-*.dump && -s "$file" ]] || test_fail "dump file missing: $file"
   [[ "$(file_mode "$file")" == "600" ]] || test_fail "TCMS dump is not 0600"
+  [[ "$(file_mode "$file.sha256")" == "600" ]] || test_fail "TCMS checksum is not 0600"
   ( cd "$dest" && sha256sum --check --quiet "$(basename "$file").sha256" ) || test_fail "checksum file does not match"
   assert_contains "$CALLS" "docker exec taxtronik-tcms-db pg_dump -U tcms -d tcms --format=custom --compress=6"
   assert_before "$CALLS" "pg_dump" "pg_restore --list"
@@ -1709,6 +1716,54 @@ test_tcms_backup_dumps_in_container_with_0600_and_checksum() {
     test_fail "disabled TCMS backup failed"
   [[ ! -s "$CALLS" ]] || test_fail "disabled TCMS backup touched docker"
   pass "TCMS backup: pg_dump inside the container, 0600 file, verified archive and checksum"
+}
+
+test_tcms_backup_publishes_only_complete_pairs_and_preserves_collisions() {
+  local dest="$TMP_DIR/tcms-backup-pair" name="tcms-db-20261020-120000-abcde.dump" mode
+  local CALLS="$TMP_DIR/tcms-backup-pair.calls"
+  mkdir -p "$dest"
+  tcms_deployment_mode() { printf 'managed'; }
+  date() {
+    if [[ "${1:-}" == -u ]]; then printf '20261020-120000'; else command date "$@"; fi
+  }
+  rand_b64() { printf 'abcde'; }
+  eval "$(tcms_db_docker_stub)"
+  for mode in list hash publish checksum-exists dump-exists; do
+    (
+      umask 000
+      case "$mode" in
+        list) FAIL_LIST=1 ;;
+        hash) sha256sum() {
+          [[ "$(file_mode "$name")" == 600 ]] || test_fail "temporary TCMS dump was readable during hashing"
+          printf 'hash-started\n' >>"$CALLS"
+          return 1
+        } ;;
+        publish) ln() {
+          if [[ "${!#}" == "$dest/$name" ]]; then
+            [[ -f "$dest/$name.sha256" ]] || test_fail "dump visible before checksum"
+            printf 'final-link\n' >>"$CALLS"
+            return 1
+          fi
+          command ln "$@"
+        } ;;
+        checksum-exists) printf 'old checksum' >"$dest/$name.sha256" ;;
+        dump-exists) printf 'old dump' >"$dest/$name" ;;
+      esac
+      if run_backup_tcms "$dest" >/dev/null 2>&1; then test_fail "unexpected success for $mode"; fi
+      [[ -z "${_TCMS_BACKUP_FILE:-}" ]] || test_fail "failed TCMS backup advertised an archive"
+      if [[ "$mode" == checksum-exists ]]; then
+        [[ "$(cat "$dest/$name.sha256")" == 'old checksum' ]] || test_fail "previous checksum changed"
+        rm -- "$dest/$name.sha256"
+      elif [[ "$mode" == dump-exists ]]; then
+        [[ "$(cat "$dest/$name")" == 'old dump' ]] || test_fail "previous dump changed"
+        rm -- "$dest/$name"
+      fi
+      [[ -z "$(find "$dest" -mindepth 1 -print -quit)" ]] || test_fail "failed TCMS backup left public or staging data"
+    )
+  done
+  assert_contains "$CALLS" "hash-started"
+  assert_contains "$CALLS" "final-link"
+  pass "TCMS dump and checksum are private before publication and survive failed or colliding backups"
 }
 
 test_tcms_backup_upload_passes_s3_secrets_only_by_name() {
@@ -1967,6 +2022,27 @@ test_tcms_backup_schedule_installs_idempotently_and_keeps_other_entries() {
   pass "TCMS backup schedule: one managed crontab block, idempotent, replaced when stale, removed alone"
 }
 
+test_tcms_backup_schedule_preserves_crontab_on_read_or_marker_errors() {
+  local env_file="$TMP_DIR/sched-read.env" action out="$TMP_DIR/sched-read.out"
+  export FAKE_CRONTAB="$TMP_DIR/sched-read.crontab"
+  managed_env "$env_file"
+  for action in install remove; do
+    printf '0 3 * * * /local/other-job\n' >"$FAKE_CRONTAB"
+    cp -- "$FAKE_CRONTAB" "$TMP_DIR/sched-read.before"
+    if CRONTAB_READ_FAILED=1 tcms_isolated "$env_file" eval "load_env; tcms_backup_schedule_$action" >"$out" 2>&1; then
+      test_fail "$action accepted an unreadable crontab"
+    fi
+    cmp -s "$FAKE_CRONTAB" "$TMP_DIR/sched-read.before" || test_fail "$action changed unreadable crontab"
+    printf '%s\n0 4 * * * /local/second-job\n' "$TCMS_BACKUP_SCHEDULE_BEGIN" >>"$FAKE_CRONTAB"
+    cp -- "$FAKE_CRONTAB" "$TMP_DIR/sched-read.before"
+    if tcms_isolated "$env_file" eval "load_env; tcms_backup_schedule_$action" >"$out" 2>&1; then
+      test_fail "$action accepted an unclosed block"
+    fi
+    cmp -s "$FAKE_CRONTAB" "$TMP_DIR/sched-read.before" || test_fail "$action changed malformed crontab"
+  done
+  pass "TCMS schedule preserves unrelated jobs on spool errors and malformed markers"
+}
+
 test_setup_deploy_and_disable_manage_the_backup_schedule() {
   local env_file="$TMP_DIR/sched-setup.env" out="$TMP_DIR/sched-setup.out" body
   export FAKE_CRONTAB="$TMP_DIR/sched-setup.crontab"
@@ -2184,12 +2260,14 @@ run_test test_start_tcms_runs_migration_before_api_and_falls_back
 run_test test_registry_rollback_switches_tcms_to_the_signed_target_pins
 run_test test_failed_rollback_restores_the_last_good_tcms_images
 run_test test_tcms_backup_dumps_in_container_with_0600_and_checksum
+run_test test_tcms_backup_publishes_only_complete_pairs_and_preserves_collisions
 run_test test_tcms_backup_upload_passes_s3_secrets_only_by_name
 run_test test_backup_update_and_full_backup_include_tcms
 run_test test_full_backup_keeps_env_and_a_running_code_key_rotation
 run_test test_tcms_restore_validates_before_side_effects
 run_test test_tcms_restore_restores_roles_then_data_then_migrates
 run_test test_tcms_backup_schedule_installs_idempotently_and_keeps_other_entries
+run_test test_tcms_backup_schedule_preserves_crontab_on_read_or_marker_errors
 run_test test_setup_deploy_and_disable_manage_the_backup_schedule
 run_test test_scheduled_tcms_backup_rotates_only_its_directory_and_stamps
 run_test test_tcms_backup_stamp_is_written_atomically_or_not_at_all

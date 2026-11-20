@@ -17,8 +17,8 @@
 //   - ESt/KSt/GewSt-Erklärung: gesetzlich 31.07. d. Folgejahres
 //   - Beratene Fälle (advised, § 149 (3) AO): Erklärung bis zum letzten Tag
 //     des Monats Februar des ZWEITEN Folgejahres
-//   - Übergangsrecht Art. 97 § 36 Abs. 3 EGAO (Corona): abweichende
-//     Erklärungsfristen für die VZ 2020–2024 (s. EGAO_ERKLAERUNG_*)
+//   - Übergangsrecht Art. 97 § 36 Abs. 1 und 3 EGAO: abweichende
+//     Erklärungsfristen für die VZ 2019–2024 (s. EGAO_ERKLAERUNG_*)
 //
 // Wenn Fälligkeit auf Sa/So/Feiertag fällt, verschiebt sich gem. § 108 (3) AO
 // auf den nächsten Werktag. Feiertagslogik: bundeseinheitliche Feiertage
@@ -155,7 +155,7 @@ export function generateDeadlines(
       // Beratene Fälle (§ 149 (3) AO): letzter Tag des Monats Februar des
       // ZWEITEN Folgejahres — Date.UTC(year, 2, 0) ist Schaltjahr-sicher
       // (Tag 0 im März = 28. oder 29. Februar).
-      // VZ 2020–2024: verlängerte Fristen nach Art. 97 § 36 Abs. 3 EGAO
+      // VZ 2019–2024: verlängerte Fristen nach Art. 97 § 36 Abs. 1 und 3 EGAO
       // (Override-Tabellen unten; § 108 (3) AO wird danach normal angewandt).
       iterateYears(from, to, (year) => {
         // Der Termin gehört zum *Veranlagungsjahr* (Vorjahr, bei beratener
@@ -182,7 +182,7 @@ export function generateDeadlines(
 }
 
 // ---------------------------------------------------------------------------
-// Art. 97 § 36 Abs. 3 EGAO — Corona-bedingt verlängerte Erklärungsfristen.
+// Art. 97 § 36 Abs. 1 und 3 EGAO — Corona-bedingt verlängerte Erklärungsfristen.
 //
 // Gesetzliche BASIS-Termine (vor § 108 (3)-Verschiebung) je Veranlagungs-
 // zeitraum, als [Monat 0-basiert, Tag] im Fälligkeitsjahr. Ab VZ 2024 (nicht
@@ -199,10 +199,12 @@ const EGAO_ERKLAERUNG_NICHT_BERATEN: Record<number, [number, number]> = {
   2023: [7, 31],
 };
 
-/** Beratene Fälle (§ 149 (3) AO): VZ 2020: 31.08.2022; VZ 2021: 31.08.2023;
+/** Beratene Regelfälle (§ 149 Abs. 3 AO): VZ 2019: 31.08.2021;
+ * VZ 2020: 31.08.2022; VZ 2021: 31.08.2023;
  * VZ 2022: 31.07.2024; VZ 2023: 31.05.2025 (Sa → 02.06.2025);
  * VZ 2024: 30.04.2026. */
 const EGAO_ERKLAERUNG_BERATEN: Record<number, [number, number]> = {
+  2019: [7, 31],
   2020: [7, 31],
   2021: [7, 31],
   2022: [6, 31],
@@ -489,11 +491,32 @@ export function isGermanHoliday(
   return keys.has(utcDayKey(d));
 }
 
+/** Regionale Einführungstermine und gesetzlich einmalige Feiertage. */
+function datedHolidays(year: number, region: GermanRegion | null): Date[] {
+  const dates: Date[] = [];
+  const easternReformation =
+    region !== null && ['DE-BB', 'DE-MV', 'DE-SN', 'DE-ST', 'DE-TH'].includes(region);
+  const northernReformation =
+    region !== null && ['DE-HB', 'DE-HH', 'DE-NI', 'DE-SH'].includes(region);
+  if (year === 2017 || easternReformation || (year >= 2018 && northernReformation)) {
+    dates.push(new Date(Date.UTC(year, 9, 31)));
+  }
+  if ((region === 'DE-BE' && year >= 2019) || (region === 'DE-MV' && year >= 2023)) {
+    dates.push(new Date(Date.UTC(year, 2, 8)));
+  }
+  if (region === 'DE-TH' && year >= 2019) dates.push(new Date(Date.UTC(year, 8, 20)));
+  if (region === 'DE-BE') {
+    if (year === 2020 || year === 2025) dates.push(new Date(Date.UTC(year, 4, 8)));
+    if (year === 2028) dates.push(new Date(Date.UTC(year, 5, 17)));
+  }
+  return dates;
+}
+
 /**
  * Liefert alle Feiertage eines Jahres. Bundeseinheitliche immer; bei
  * gesetztem `region` zusätzlich die landesspezifischen.
  *
- * Quelle: Feiertagsgesetze der Länder, Stand 2025.
+ * Rechtsstände und Grenzen des historischen Kalenders: TAX-DEADLINE-WORKDAY-001.
  */
 export function germanHolidays(
   year: number,
@@ -514,17 +537,14 @@ export function germanHolidays(
     new Date(Date.UTC(year, 9, 3)), // Tag der Deutschen Einheit
     new Date(Date.UTC(year, 11, 25)), // 1. Weihnachtstag
     new Date(Date.UTC(year, 11, 26)), // 2. Weihnachtstag
+    ...datedHolidays(year, region),
   ];
-
   if (!region) return out;
 
   // Landesspezifisch
   const epiphany = new Date(Date.UTC(year, 0, 6)); // Heilige Drei Könige
-  const womenDay = new Date(Date.UTC(year, 2, 8)); // Internationaler Frauentag
   const corpusChristi = new Date(easter.getTime() + 60 * ms); // Fronleichnam
   const assumption = new Date(Date.UTC(year, 7, 15)); // Mariä Himmelfahrt
-  const worldChildren = new Date(Date.UTC(year, 8, 20)); // Weltkindertag
-  const reformation = new Date(Date.UTC(year, 9, 31)); // Reformationstag
   const allSaints = new Date(Date.UTC(year, 10, 1)); // Allerheiligen
   const repentance = wednesdayBefore(new Date(Date.UTC(year, 10, 23))); // Buß- und Bettag
 
@@ -539,26 +559,8 @@ export function germanHolidays(
       // der Tenant steuert das per tax_assumption_holiday (Default an).
       if (bavariaAssumption) out.push(assumption);
       break;
-    case 'DE-BE':
-      out.push(womenDay);
-      break;
-    case 'DE-BB':
-      out.push(reformation);
-      break;
-    case 'DE-HB':
-      out.push(reformation);
-      break;
-    case 'DE-HH':
-      out.push(reformation);
-      break;
     case 'DE-HE':
       out.push(corpusChristi);
-      break;
-    case 'DE-MV':
-      out.push(womenDay, reformation);
-      break;
-    case 'DE-NI':
-      out.push(reformation);
       break;
     case 'DE-NW':
       out.push(corpusChristi, allSaints);
@@ -570,16 +572,10 @@ export function germanHolidays(
       out.push(corpusChristi, assumption, allSaints);
       break;
     case 'DE-SN':
-      out.push(reformation, repentance);
+      out.push(repentance);
       break;
     case 'DE-ST':
-      out.push(epiphany, reformation);
-      break;
-    case 'DE-SH':
-      out.push(reformation);
-      break;
-    case 'DE-TH':
-      out.push(worldChildren, reformation);
+      out.push(epiphany);
       break;
   }
   return out;

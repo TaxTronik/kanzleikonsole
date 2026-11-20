@@ -82,6 +82,13 @@ const AUTHORITATIVE_SOURCE_HOSTS = {
     'eur-lex.europa.eu',
     'gesetze-bayern.de',
     'recht.nrw.de',
+    // Landesgesetzblätter für die Feiertagsänderungen in TAX-DEADLINE-WORKDAY-001.
+    'www.berlin.de',
+    'www.regierung-mv.de',
+    'parldok.thueringer-landtag.de',
+    'www.gesetzblatt.bremen.de',
+    'www.niedersachsen.de',
+    'www.schleswig-holstein.de',
   ],
   official_guidance: [
     // Official EU open-data catalogue: consolidated financial-sanctions source.
@@ -94,6 +101,8 @@ const AUTHORITATIVE_SOURCE_HOSTS = {
     'bundesanzeiger.de',
     'elster.de',
     'bravors.brandenburg.de',
+    'www.mi.niedersachsen.de',
+    'www.hamburg.de',
     'verwaltungsvorschriften-im-internet.de',
   ],
   case_law: [
@@ -1071,10 +1080,18 @@ export function renderMarkdownIndex(rules) {
     '> „Umgesetzt“ bedeutet nicht „fachlich freigegeben“.',
     '> `approved` authentifiziert die eingetragene Person nur mit separater Repository-Governance oder signierter Attestation.',
     '',
+    `Aktive Regeln insgesamt: ${exportCounts(rules).active_rule_count}`,
+    '',
   ];
   for (const domain of [...groups.keys()].sort((left, right) => left.localeCompare(right, 'de'))) {
-    lines.push(`## ${DOMAIN_LABELS[domain] ?? domain}`, '');
-    for (const rule of groups.get(domain)) {
+    const domainRules = groups.get(domain);
+    lines.push(
+      `## ${DOMAIN_LABELS[domain] ?? domain}`,
+      '',
+      `Aktive Regeln im Fachbereich: ${exportCounts(domainRules).active_rule_count}`,
+      '',
+    );
+    for (const rule of domainRules) {
       const link = rule.path.replace(/^docs\/fachkatalog\//, '');
       lines.push(
         `### [${rule.id} — ${rule.title}](${link})`,

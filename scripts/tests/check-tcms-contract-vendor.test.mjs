@@ -5,7 +5,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
-  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -69,6 +68,9 @@ function quellRepo(name) {
   const wurzel = join(temp, name);
   mkdirSync(wurzel);
   git(wurzel, 'init', '-q', '-b', 'main');
+  // Der Guard liest den Modus aus Git. Das Test-Repository muss auch auf
+  // Dateisystemen ohne POSIX-Ausführungsbit denselben Commit erzeugen.
+  git(wurzel, 'config', 'core.filemode', 'false');
   schreibe(wurzel, 'packages/contract/src/index.ts', "export * from './akteur';\n");
   schreibe(wurzel, 'packages/contract/src/akteur.ts', 'export const A = 1;\n');
   schreibe(wurzel, 'packages/contract/src/bereiche/lesen.ts', 'export const L = 2;\n');
@@ -146,10 +148,10 @@ describe('sync-contract', () => {
       const vorher = readFileSync(join(ziel, 'VENDOR.json'), 'utf8');
       if (art === 'symlink') {
         symlinkSync('../../../README.md', join(quelle, 'packages/contract/src/leck.ts'));
+        git(quelle, 'add', '-A');
       } else {
-        chmodSync(join(quelle, 'packages/contract/src/akteur.ts'), 0o755);
+        git(quelle, 'update-index', '--chmod=+x', 'packages/contract/src/akteur.ts');
       }
-      git(quelle, 'add', '-A');
       git(quelle, 'commit', '-q', '-m', art);
       const r = sync(quelle, ziel);
       assert.equal(r.status, 1, art);
@@ -263,8 +265,8 @@ describe('sync-contract mit mehreren Paketen (TCMS Stufe 3)', () => {
     );
     // Der Vertrag (erstes Paket) wäre gültig; das Domain-Paket bricht ab.
     schreibe(quelle, 'packages/contract/src/akteur.ts', 'export const A = 7;\n');
-    chmodSync(join(quelle, 'packages/domain/src/format.ts'), 0o755);
     git(quelle, 'add', '-A');
+    git(quelle, 'update-index', '--chmod=+x', 'packages/domain/src/format.ts');
     git(quelle, 'commit', '-q', '-m', 'ausfuehrbar');
     const r = spawnSync(process.execPath, [SYNC, '--from', quelle, '--wurzel', wurzel], {
       encoding: 'utf8',

@@ -24,6 +24,7 @@ import type { TxClient } from '@taxtronik/db';
 import { filterStaffAccessClientTx as filterStaffAccessClientSharedTx } from '@taxtronik/db/staff-client-access';
 import { ForbiddenError, UnauthorizedError } from '@/server/actions/action-error';
 import { readAccessPolicyTx, decideClientAccess } from '@/server/settings/access-policy';
+import { isUuid } from '@/lib/uuid';
 import type { ClientAccessWhere } from './client-access-filter';
 import { staffAuth, type StaffSession } from './staff';
 
@@ -101,7 +102,6 @@ export async function requireStaffAdmin(): Promise<StaffSession> {
  * globale Suche und CSV-Exporte (Mandanten/Rechnungen/Anforderungen).
  */
 export async function canAccessClient(session: StaffSession, clientId: string): Promise<boolean> {
-  if (isStaffAdmin(session)) return true;
   const { tenantId, staffId } = session.user;
   return withTenantContext({ tenantId, actorId: staffId, actorType: 'STAFF' }, (tx) =>
     canAccessClientTx(tx, session, clientId),
@@ -119,14 +119,15 @@ export async function canAccessClientTx(
   session: StaffSession,
   clientId: string,
 ): Promise<boolean> {
-  if (isStaffAdmin(session)) return true;
+  if (!isUuid(clientId)) return false;
   const { tenantId, staffId } = session.user;
-  const policy = await readAccessPolicyTx(tx, tenantId);
   const client = await tx.client.findUnique({
-    where: { id: clientId },
+    where: { id: clientId, tenantId },
     select: { vertraulich: true },
   });
   if (!client) return false;
+  if (isStaffAdmin(session)) return true;
+  const policy = await readAccessPolicyTx(tx, tenantId);
   // Responsibility nur abfragen, wenn sie überhaupt entscheiden kann
   // (RESTRICTED oder vertraulicher Mandant) — spart im OPEN-Normalfall eine Query.
   const needResponsibility = policy.clientAccessMode === 'RESTRICTED' || client.vertraulich;
@@ -242,10 +243,6 @@ export async function assertClientAccessTx(
   session: StaffSession,
   clientId: string,
 ): Promise<void> {
-  // Admin/Partner haben stets Zugriff (Kurzschluss wie in `canAccessClient`);
-  // `canAccessClientTx` selbst wertet bewusst mit isAdmin:false und würde einen
-  // Admin auf einem vertraulichen Mandanten ohne Zuordnung sonst fälschlich sperren.
-  if (isStaffAdmin(session)) return;
   if (!(await canAccessClientTx(tx, session, clientId))) {
     throw new ForbiddenError('Kein Zugriff auf diesen Mandanten.');
   }
@@ -275,13 +272,12 @@ export async function canWriteClientTx(
   session: StaffSession,
   clientId: string,
 ): Promise<boolean> {
-  if (isStaffAdmin(session)) return true;
-  const { staffId } = session.user;
-  return (
-    (await tx.clientResponsibility.findFirst({
-      where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
-      select: { id: true },
-    })) !== null
+  return hasClientWriteTarget(
+    tx,
+    session.user.tenantId,
+    session.user.staffId,
+    clientId,
+    isStaffAdmin(session),
   );
 }
 
@@ -302,10 +298,36 @@ export async function canStaffWriteClientTx(
     select: { roles: { select: { role: true } } },
   });
   if (!staff) return false;
-  if (staff.roles.some((r) => r.role === 'ADMIN' || r.role === 'PARTNER')) return true;
+  return hasClientWriteTarget(
+    tx,
+    tenantId,
+    staffId,
+    clientId,
+    staff.roles.some((r) => r.role === 'ADMIN' || r.role === 'PARTNER'),
+  );
+}
+
+async function hasClientWriteTarget(
+  tx: TxClient,
+  tenantId: string,
+  staffId: string,
+  clientId: string,
+  isAdmin: boolean,
+): Promise<boolean> {
+  if (!isUuid(clientId)) return false;
   return (
-    (await tx.clientResponsibility.findFirst({
-      where: { clientId, staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+    (await tx.client.findUnique({
+      where: {
+        id: clientId,
+        tenantId,
+        ...(isAdmin
+          ? {}
+          : {
+              responsibilities: {
+                some: { staffId, role: { in: ['BERUFSTRAEGER', 'HAUPTBEARBEITER'] } },
+              },
+            }),
+      },
       select: { id: true },
     })) !== null
   );

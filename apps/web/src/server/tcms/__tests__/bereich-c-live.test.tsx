@@ -70,7 +70,7 @@ async function rendern(seite: ReactNode | Promise<ReactNode>) {
 
 // IDs der Demo-Objekte liest beforeAll aus dem Kontext des Dienstes: Der Seed
 // des Tax-CMS vergibt sie je Datenbank neu (Integration TCMS Stufe 3).
-/** K-EC-06 September 2026 (Demo): fällig, durchführende Person Leon Brandt. */
+/** Reguläre, vom Dienst für Leon Brandt zur Bearbeitung freigegebene K-EC-06-Periode. */
 let K_EC_06 = '';
 /** F-2026-007 (§-153-Folgeentscheidung). */
 let F_P153 = '';
@@ -230,16 +230,34 @@ let F_VERTRAULICH = '';
     const kontext = await tcmsLesen(seite, ENDPUNKTE.kontextLesen);
     if (!kontext.ok) throw new Error(`Kontext: ${kontext.zustand.art}`);
     const ctx = kontext.daten;
-    const d = ctx.durchfuehrungen.find(
-      (x) => x.code === 'K-EC-06' && x.periodeLabel === 'September 2026' && !x.ausserplanmaessig,
-    );
     const feststellung = (nummer: string) => ctx.feststellungen.find((f) => f.nummer === nummer);
-    if (!d || !feststellung('F-2026-007') || !feststellung('F-2026-006')) {
-      throw new Error('Demo-Daten des Tax-CMS unvollständig (K-EC-06 September, F-2026-006/007)');
+    if (!feststellung('F-2026-007') || !feststellung('F-2026-006')) {
+      throw new Error('Demo-Feststellungen F-2026-006/007 fehlen.');
     }
-    K_EC_06 = d.id;
     F_P153 = feststellung('F-2026-007')!.id;
     F_VERTRAULICH = feststellung('F-2026-006')!.id;
+    leon();
+    const bearbeiter = await tcmsMandantSeite(DEMO.talwind);
+    if (!bearbeiter.ok) throw new Error(`Bearbeiter: ${bearbeiter.zustand.art}`);
+    const kandidaten = ctx.durchfuehrungen.filter(
+      (x) =>
+        x.code === 'K-EC-06' &&
+        x.durchfuehrendId === DEMO.leon &&
+        !x.ausserplanmaessig &&
+        ['GEPLANT', 'IN_DURCHFUEHRUNG', 'ZURUECKGEWIESEN'].includes(x.status),
+    );
+    for (const kandidat of kandidaten) {
+      const detail = await tcmsLesen(bearbeiter, ENDPUNKTE.durchfuehrungLesen, {
+        params: { durchfuehrungId: kandidat.id },
+      });
+      if (!detail.ok) throw new Error(`Durchführung: ${detail.zustand.art}`);
+      if (!detail.daten.historisch && detail.daten.rechte.bearbeiten.erlaubt) {
+        K_EC_06 = kandidat.id;
+        break;
+      }
+    }
+    if (!K_EC_06)
+      throw new Error('Demo benötigt eine bearbeitbare reguläre K-EC-06-Durchführung für Leon.');
   }, 60_000);
 
   afterAll(async () => {

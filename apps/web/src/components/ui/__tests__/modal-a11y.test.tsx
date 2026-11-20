@@ -105,6 +105,94 @@ describe('Modal', () => {
     screen.getByRole('button', { name: 'Erste Aktion' }).focus();
     expect(fireEvent.keyDown(document, { key: 'Tab' })).toBe(true);
   });
+
+  it('schließt mit Escape nur den oberen Dialog und gibt den Fokus schrittweise zurück', () => {
+    const lower = open();
+    const opener = screen.getByRole('button', { name: 'Erste Aktion' });
+    opener.focus();
+    const closeUpper = vi.fn();
+    const upper = render(
+      <Modal title="Weitere Auswahl" onClose={closeUpper}>
+        Inhalt
+      </Modal>,
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(closeUpper).toHaveBeenCalledOnce();
+    upper.unmount();
+    expect(document.activeElement).toBe(opener);
+    expect(lower.container.hasAttribute('inert')).toBe(true);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(document.activeElement).toBe(lower.trigger);
+    expect(lower.container.hasAttribute('inert')).toBe(false);
+  });
+
+  it('gibt den Hintergrund auch dann frei, wenn der untere Dialog zuerst verschwindet', () => {
+    const lower = open();
+    const upper = render(
+      <Modal title="Weitere Auswahl" onClose={() => {}}>
+        Inhalt
+      </Modal>,
+    );
+    lower.rerender(<button type="button">Neue Ansicht</button>);
+    expect(lower.container.hasAttribute('inert')).toBe(true);
+    upper.unmount();
+    expect(lower.container.hasAttribute('inert')).toBe(false);
+    expect(lower.container.getAttribute('aria-hidden')).toBeNull();
+  });
+
+  it('isoliert während des Dialogs neu gemountete Seitenelemente und gibt sie wieder frei', async () => {
+    const { dialog } = open();
+    const extra = document.createElement('button');
+    document.body.append(extra);
+    try {
+      await waitFor(() => expect(extra.hasAttribute('inert')).toBe(true));
+      expect(extra.getAttribute('aria-hidden')).toBe('true');
+      fireEvent.keyDown(dialog, { key: 'Escape' });
+      expect(extra.hasAttribute('inert')).toBe(false);
+    } finally {
+      extra.remove();
+    }
+  });
+
+  it('umläuft nur erreichbare Steuerelemente, auch nach einem deaktivierten Formular', () => {
+    render(
+      <Modal title="Auswahl" onClose={() => {}} showCloseButton={false}>
+        <button type="button" tabIndex={-1}>
+          Programmfokus
+        </button>
+        <button type="button">Erreichbar</button>
+        <fieldset disabled>
+          <button type="button">Gespeichert</button>
+        </fieldset>
+      </Modal>,
+    );
+    const active = screen.getByRole('button', { name: 'Erreichbar' });
+    expect(document.activeElement).toBe(active);
+    expect(fireEvent.keyDown(active, { key: 'Tab' })).toBe(false);
+    expect(document.activeElement).toBe(active);
+    screen.getByRole('dialog').focus();
+    expect(fireEvent.keyDown(document, { key: 'Tab', shiftKey: true })).toBe(false);
+    expect(document.activeElement).toBe(active);
+  });
+
+  it('misst beim Tab-Umlauf nur die Ränder einer langen Ordnerliste', () => {
+    render(
+      <Modal title="Lange Liste" onClose={() => {}} showCloseButton={false}>
+        {Array.from({ length: 150 }, (_, i) => (
+          <button key={i} type="button">
+            Ordner {i}
+          </button>
+        ))}
+      </Modal>,
+    );
+    const buttons = screen.getAllByRole('button');
+    buttons.at(-1)!.focus();
+    const measure = vi.mocked(Element.prototype.getClientRects);
+    measure.mockClear();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    expect(document.activeElement).toBe(buttons[0]);
+    expect(measure.mock.calls.length).toBeLessThan(5);
+  });
 });
 
 describe('InputModal', () => {
@@ -186,5 +274,23 @@ describe('confirmFormSubmission', () => {
     });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(requestSubmit).not.toHaveBeenCalled();
+  });
+
+  it('fordert nach einem durch Validierung verhinderten Submit erneut die Bestätigung an', async () => {
+    // Ein natives requestSubmit führt bei ungültigen Feldern keinen Submit-Handler aus.
+    vi.spyOn(HTMLFormElement.prototype, 'requestSubmit').mockImplementation(() => {});
+    render(
+      <form aria-label="Änderung" onSubmit={(event) => confirmFormSubmission(event, 'Übernehmen?')}>
+        <button type="submit">Ausführen</button>
+      </form>,
+    );
+    const form = screen.getByRole('form');
+    expect(fireEvent.submit(form)).toBe(false);
+    await screen.findByRole('dialog');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Bestätigen' })));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(fireEvent.submit(form)).toBe(false);
+    await screen.findByRole('dialog');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' })));
   });
 });

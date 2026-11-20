@@ -33,8 +33,15 @@ const CreateSchema = z.object({
   dueAt: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'YYYY-MM-DDTHH:MM')
+    .transform((value, ctx) => {
+      const instant = berlinWallClockToUtc(value);
+      if (instant) return instant;
+      ctx.addIssue({ code: 'custom', message: 'Bitte eine gültige Berliner Ortszeit wählen.' });
+      return z.NEVER;
+    })
     .optional()
-    .or(z.literal('')),
+    .or(z.literal(''))
+    .transform((value) => value || null),
   // Optional: Anforderungs-Vorlage (rein informativ, wird im Audit gespeichert)
   templateId: z.string().uuid().optional().or(z.literal('')),
   // Optional: Formular-Template, das mit der Anforderung verschickt wird
@@ -88,7 +95,7 @@ async function enqueueRequestOpenedMailTx(
       title: data.title,
       description: data.description,
       priority: data.priority,
-      dueAtIso: data.dueAt ? (berlinWallClockToUtc(data.dueAt)?.toISOString() ?? null) : null,
+      dueAtIso: data.dueAt?.toISOString() ?? null,
     }),
   );
 }
@@ -148,7 +155,7 @@ async function createRequestCore(formData: FormData): Promise<RequestActionResul
             !Array.isArray(creationAudit.after)
               ? (creationAudit.after as Record<string, unknown>)
               : null;
-          const requestedDueAt = data.dueAt ? berlinWallClockToUtc(data.dueAt) : null;
+          const requestedDueAt = data.dueAt;
           const replayDueAtMatches =
             replay.dueAt === null
               ? requestedDueAt === null
@@ -228,7 +235,7 @@ async function createRequestCore(formData: FormData): Promise<RequestActionResul
             wikiArticleIds,
             description: data.description,
             priority: data.priority,
-            dueAt: data.dueAt ? berlinWallClockToUtc(data.dueAt) : null,
+            dueAt: data.dueAt,
             formSubmissionId,
             createdByStaff: staffId,
           },

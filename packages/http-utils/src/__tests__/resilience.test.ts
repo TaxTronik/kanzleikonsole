@@ -62,6 +62,59 @@ describe('withRetry', () => {
 });
 
 describe('executeResilient', () => {
+  it('admits only one recovery probe and ignores completions from before the outage', async () => {
+    let now = 0;
+    const cb = new CircuitBreaker({ failureThreshold: 1, resetTimeoutMs: 100, now: () => now });
+    const run = (fn: () => Promise<void>) =>
+      executeResilient(cb, { retries: 0, baseDelayMs: 0 }, () => false, fn);
+    let finishOld!: () => void;
+    const old = run(
+      () =>
+        new Promise<void>((resolve) => {
+          finishOld = resolve;
+        }),
+    );
+    await expect(
+      run(async () => {
+        throw new Error('offline');
+      }),
+    ).rejects.toThrow('offline');
+    now = 100;
+    let finishProbe!: () => void;
+    const probe = run(
+      () =>
+        new Promise<void>((resolve) => {
+          finishProbe = resolve;
+        }),
+    );
+
+    finishOld();
+    await old;
+    expect(cb.getState()).toBe('half-open');
+    const next = vi.fn(async () => {});
+    await expect(run(next)).rejects.toBeInstanceOf(CircuitOpenError);
+    expect(next).not.toHaveBeenCalled();
+    finishProbe();
+    await probe;
+    await run(next);
+    expect(next).toHaveBeenCalledOnce();
+    expect(cb.getState()).toBe('closed');
+  });
+
+  it('releases an inconclusive probe so that the next request can check recovery', async () => {
+    const cb = new CircuitBreaker({ failureThreshold: 1, resetTimeoutMs: 0 });
+    cb.onFailure();
+    const run = (fn: () => Promise<string>) =>
+      executeResilient(cb, { retries: 0, baseDelayMs: 0 }, () => false, fn);
+    await expect(
+      run(async () => {
+        throw new CircuitOpenError();
+      }),
+    ).rejects.toBeInstanceOf(CircuitOpenError);
+    expect(cb.getState()).toBe('half-open');
+    await expect(run(async () => 'ok')).resolves.toBe('ok');
+  });
+
   it('lehnt bei offenem Breaker sofort ab, ohne fn aufzurufen', async () => {
     const cb = new CircuitBreaker({ failureThreshold: 1, resetTimeoutMs: 10_000, now: () => 0 });
     cb.onFailure();

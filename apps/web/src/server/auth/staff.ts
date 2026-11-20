@@ -4,7 +4,7 @@ import type { JWT } from 'next-auth/jwt';
 import Credentials from 'next-auth/providers/credentials';
 import { env } from '@taxtronik/config';
 import { isTokenRevoked } from './revocation';
-import { getSessionIssuedAt } from './session-issued-at';
+import { getSessionIssuedAt, getSessionIssueTime } from './session-issued-at';
 import { staffSessionClaims, staffSessionFactory, type StaffSessionUser } from './staff-session';
 import { prismaOwner } from '@/server/db/prisma-owner';
 import { log } from '@/server/logger';
@@ -102,9 +102,11 @@ function hasStaffSessionFields(session: Session | null): session is StaffSession
 async function hydrateStaffSessionFromToken(session: Session, token: unknown): Promise<Session> {
   if (!isStaffTokenPayload(token)) return session;
 
-  const tokenIat = getSessionIssuedAt(token);
-  if (tokenIat === undefined) return session;
-  if (await isTokenRevoked('staff', token.staffId, tokenIat)) {
+  const issued = getSessionIssueTime(token);
+  if (!issued) return session;
+  if (
+    await isTokenRevoked('staff', token.staffId, issued.sessionIssuedAt, issued.sessionIssuedAtMs)
+  ) {
     return session;
   }
 
@@ -251,7 +253,7 @@ const staffConfig: NextAuthConfig = {
   callbacks: {
     async jwt({ token, user }) {
       // Neue Anmeldung: dieselben Claims wie bei direkter Ausstellung.
-      if (user) return { ...token, ...staffSessionClaims(user as StaffSessionUser) };
+      if (user) return { ...token, ...(await staffSessionClaims(user as StaffSessionUser)) };
       // ACCESS-TENANT-RLS-001: Reject before Auth.js issues another cookie.
       // Preserve the original time even if revocation races with this refresh.
       const issuedAt = getSessionIssuedAt(token);

@@ -35,6 +35,76 @@ export function AppPortal({
   return createPortal(children, target ?? document.body);
 }
 
+const dialogStack: Array<{ node: HTMLElement; opener: HTMLElement | null }> = [];
+const backgroundStates = new Map<HTMLElement, { hadInert: boolean; ariaHidden: string | null }>();
+let bodyObserver: MutationObserver | undefined;
+
+function syncDialogBackground() {
+  const active = dialogStack.at(-1)?.node;
+  for (const [element, state] of backgroundStates) {
+    if (active && element.isConnected && !element.contains(active)) continue;
+    if (!state.hadInert) element.removeAttribute('inert');
+    if (state.ariaHidden === null) element.removeAttribute('aria-hidden');
+    else element.setAttribute('aria-hidden', state.ariaHidden);
+    backgroundStates.delete(element);
+  }
+  if (!active) {
+    bodyObserver?.disconnect();
+    bodyObserver = undefined;
+    return;
+  }
+  if (!bodyObserver) {
+    bodyObserver = new MutationObserver(syncDialogBackground);
+    bodyObserver.observe(document.body, { childList: true });
+  }
+  for (const element of document.body.children) {
+    if (
+      !(element instanceof HTMLElement) ||
+      element.contains(active) ||
+      backgroundStates.has(element) ||
+      ['SCRIPT', 'STYLE', 'LINK'].includes(element.tagName)
+    )
+      continue;
+    backgroundStates.set(element, {
+      hadInert: element.hasAttribute('inert'),
+      ariaHidden: element.getAttribute('aria-hidden'),
+    });
+    element.setAttribute('inert', '');
+    element.setAttribute('aria-hidden', 'true');
+  }
+}
+
+function focusCandidates(node: HTMLElement) {
+  return Array.from(
+    node.querySelectorAll<HTMLElement>(
+      'a[href],button,textarea,input,select,summary,[contenteditable]:not([contenteditable="false"]),[tabindex]',
+    ),
+  );
+}
+
+function isTabStop(element: HTMLElement) {
+  return (
+    !element.matches(':disabled, input[type="hidden"]') &&
+    !(element.hasAttribute('tabindex') && element.tabIndex < 0) &&
+    !element.closest('[inert]') &&
+    element.getClientRects().length > 0 &&
+    getComputedStyle(element).visibility === 'visible'
+  );
+}
+
+function restoreDialogFocus(entry: (typeof dialogStack)[number]) {
+  const at = dialogStack.indexOf(entry);
+  if (at === -1) return;
+  const next = dialogStack[at + 1];
+  if (next?.opener && entry.node.contains(next.opener)) next.opener = entry.opener;
+  dialogStack.splice(at, 1);
+  syncDialogBackground();
+  if (next) return;
+  const active = dialogStack.at(-1)?.node;
+  if (entry.opener?.isConnected && !entry.opener.closest('[inert]')) entry.opener.focus();
+  if (active && !active.contains(document.activeElement)) active.focus();
+}
+
 /** Modal-A11y: Esc schließt, Tab bleibt im Dialog gefangen, Initial-Fokus aufs
  *  erste Element (bzw. [autofocus]), beim Schließen kehrt der Fokus zum
  *  Auslöser zurück. */
@@ -56,72 +126,39 @@ export function useDialogA11y(onClose: () => void, closeDisabled = false) {
   useEffect(() => {
     const node = ref.current;
     if (!node) return;
-    const backdrop = node.closest<HTMLElement>('.modal-backdrop');
-    const backgroundStates = Array.from(document.body.children)
-      .filter(
-        (element): element is HTMLElement =>
-          element instanceof HTMLElement &&
-          element !== backdrop &&
-          !element.contains(backdrop) &&
-          !['SCRIPT', 'STYLE', 'LINK'].includes(element.tagName),
-      )
-      .map((element) => ({
-        element,
-        hadInert: element.hasAttribute('inert'),
-        ariaHidden: element.getAttribute('aria-hidden'),
-      }));
+    const entry = { node, opener: prevFocus };
+    dialogStack.push(entry);
+    syncDialogBackground();
 
-    for (const { element } of backgroundStates) {
-      element.setAttribute('inert', '');
-      element.setAttribute('aria-hidden', 'true');
-    }
-
-    const focusables = () =>
-      Array.from(
-        node.querySelectorAll<HTMLElement>(
-          'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),summary,[contenteditable]:not([contenteditable="false"]),[tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((element) => element.getClientRects().length > 0 && !element.closest('[inert]'));
     // Ein per autoFocus bereits fokussiertes Dialogelement behält den Fokus;
     // sonst [autofocus] (SSR-Markup), das erste sichtbare Element oder der Dialog.
     const focused = document.activeElement;
     if (!(focused instanceof HTMLElement && focused !== node && node.contains(focused))) {
       const auto = node.querySelector<HTMLElement>('[autofocus]');
-      (auto ?? focusables()[0] ?? node).focus();
+      (auto ?? focusCandidates(node).find(isTabStop) ?? node).focus();
     }
     const onKey = (e: KeyboardEvent) => {
+      if (dialogStack.at(-1) !== entry || e.defaultPrevented) return;
       if (e.key === 'Escape') {
         e.preventDefault();
         if (!closeDisabledRef.current) closeRef.current();
         return;
       }
       if (e.key !== 'Tab') return;
-      const f = focusables();
-      if (f.length === 0) {
-        e.preventDefault();
-        node.focus();
-        return;
-      }
-      const first = f[0]!,
-        last = f[f.length - 1]!;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
+      const candidates = focusCandidates(node);
+      const first = candidates.find(isTabStop);
+      const last = first && candidates.reverse().find(isTabStop);
+      const edge = e.shiftKey ? first : last;
+      const current = document.activeElement;
+      if (edge && current !== edge && current !== node && node.contains(current)) return;
+      e.preventDefault();
+      const next = e.shiftKey ? last : first;
+      (next ?? node).focus();
     };
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
-      for (const { element, hadInert, ariaHidden } of backgroundStates) {
-        if (hadInert) element.setAttribute('inert', '');
-        else element.removeAttribute('inert');
-        if (ariaHidden === null) element.removeAttribute('aria-hidden');
-        else element.setAttribute('aria-hidden', ariaHidden);
-      }
-      if (prevFocus?.isConnected && !prevFocus.closest('[inert]')) prevFocus?.focus?.();
+      restoreDialogFocus(entry);
     };
   }, [prevFocus]);
   return ref;
@@ -488,6 +525,7 @@ export function promptDialog(message: ReactNode, options: PromptDialogOptions = 
 }
 
 const confirmedForms = new WeakSet<HTMLFormElement>();
+const awaitingConfirmation = new WeakSet<HTMLFormElement>();
 
 /**
  * Bestätigt ein React-Formular, ohne dessen Server-Action oder nativen
@@ -503,14 +541,22 @@ export function confirmFormSubmission(
   if (confirmedForms.delete(form)) return;
 
   event.preventDefault();
+  if (awaitingConfirmation.has(form)) return;
+  awaitingConfirmation.add(form);
   const nativeSubmitter = (event.nativeEvent as SubmitEvent).submitter;
   const submitter =
     nativeSubmitter instanceof HTMLButtonElement || nativeSubmitter instanceof HTMLInputElement
       ? nativeSubmitter
       : undefined;
   void confirmDialog(message, options).then((confirmed) => {
-    if (!confirmed || !form.isConnected) return;
+    awaitingConfirmation.delete(form);
+    if (!confirmed || !form.isConnected || (submitter && submitter.form !== form)) return;
     confirmedForms.add(form);
-    form.requestSubmit(submitter);
+    try {
+      form.requestSubmit(submitter);
+    } finally {
+      // Native Validierung kann den synchronen Submit-Event verhindern.
+      confirmedForms.delete(form);
+    }
   });
 }

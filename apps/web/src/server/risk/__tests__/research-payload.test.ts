@@ -11,6 +11,7 @@ const m = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
   enqueueN8nEvent: vi.fn(),
   evidenceRecord: vi.fn(),
+  requireWritableRiskAnalysisTx: vi.fn(),
 }));
 
 vi.mock('@taxtronik/db', () => ({
@@ -18,6 +19,9 @@ vi.mock('@taxtronik/db', () => ({
   withSystemContext: vi.fn(),
 }));
 vi.mock('@/server/db/prisma-owner', () => ({ prismaOwner: {} }));
+vi.mock('@taxtronik/db/risk-analysis', () => ({
+  requireWritableRiskAnalysisTx: m.requireWritableRiskAnalysisTx,
+}));
 vi.mock('@/server/n8n/outbox', () => ({ enqueueN8nEvent: m.enqueueN8nEvent }));
 vi.mock('@/server/n8n/callback-receipts', () => ({
   claimN8nCallbackReceipt: vi.fn(),
@@ -70,6 +74,25 @@ beforeEach(() => {
 });
 
 describe('sendResearchToN8n — Payload-Vertrag', () => {
+  it('RISK-ARCHIVE-SNAPSHOT-001: legt nach paralleler Archivierung keinen Auftrag an', async () => {
+    const tx = makeTx();
+    m.withTenantContext.mockImplementation(async (_ctx, fn) => fn(tx));
+    m.requireWritableRiskAnalysisTx.mockRejectedValueOnce(new Error('Analyse archiviert.'));
+    await expect(
+      sendResearchToN8n(TENANT, {
+        analysisId: 'analysis-1',
+        markingId: null,
+        sachverhalt: 'full',
+        finalText: 'Recherche',
+        finalPrompt: null,
+      }),
+    ).rejects.toThrow(/archiviert/);
+    expect(m.requireWritableRiskAnalysisTx).toHaveBeenCalledWith(tx, TENANT.tenantId, 'analysis-1');
+    expect(tx.riskResearchRequest.create).not.toHaveBeenCalled();
+    expect(m.evidenceRecord).not.toHaveBeenCalled();
+    expect(m.enqueueN8nEvent).not.toHaveBeenCalled();
+  });
+
   it('RISK-EXTERNAL-ANONYMIZATION-001: schwärzt auch frei befüllte Norm- und Governance-Felder', async () => {
     const tx = makeTx();
     tx.riskMarking.findFirst.mockResolvedValue({

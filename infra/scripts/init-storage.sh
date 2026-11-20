@@ -4,16 +4,17 @@
 # taxtronik — Object-Store-Bucket-Initialisierung (SeaweedFS / S3-API)
 #
 # Legt folgende Buckets an (S3-Standard, kompatibel zu jeder S3-Engine):
-#   - gobd            Object-Lock COMPLIANCE, 10 Jahre — GoBD/§ 147 AO
-#   - gwg             Object-Lock GOVERNANCE, 5 Jahre  — § 8 Abs. 4 GwG
-#                     B-1: GwG-Daten dürfen NICHT 10 Jahre aufbewahrt werden.
-#                     Eigener Bucket statt gobd, kürzere Default-Retention.
+#   - gobd            Object-Lock COMPLIANCE, Bucket-Standard 10 Jahre
+#   - gwg             Object-Lock GOVERNANCE, Bucket-Standard 5 Jahre
+#                     Den konkreten Stichtag setzt die Anwendung pro Version.
+#                     Fristbeginn und weitere gesetzliche Aufbewahrungspflichten
+#                     beschreibt GWG-RETENTION-DESTRUCTION-001 (§ 8 Abs. 4 GwG).
 #   - general         transiente Anhänge, KB-Bilder
 #   - staff-private   privater Mitarbeiter-Storage (mit Versioning)
 #   - backups         DB-Dumps (90-Tage-Lifecycle; Audit-Archive liegen in gobd)
 #
-# Object-Lock muss bei der Bucket-Anlage aktiviert werden — nachträglich
-# nicht möglich. Das Skript ist idempotent; bestehende Buckets bleiben.
+# Neue Schutz-Buckets erhalten Object Lock bereits bei der Anlage. Bei
+# bestehenden Schutz-Buckets setzt das Skript die Standardkonfiguration erneut.
 #
 # Bewusst KEIN CORS und KEIN Browser-Ziel-Bucket (Security-Audit 2026-06,
 # Befund 1): Die frühere Presigned-Upload-Architektur (Browser-PUT in einen

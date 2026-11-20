@@ -1,4 +1,4 @@
-// Fachkatalog: ACCESS-TENANT-RLS-001
+// Fachkatalog: ACCESS-TENANT-RLS-001, ACCESS-NOTIFICATION-RECIPIENT-001
 // S-01: the legacy callback resolves the correlation through the owner client
 // (tenant unknown); the v1 callback reads it in the authenticated tenant's
 // SYSTEM context. Module switch and writes always use the SYSTEM context
@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   claimReceipt: vi.fn(),
   setReceiptResult: vi.fn(),
   filterStaffAccessClientTx: vi.fn(),
+  notificationScope: vi.fn(),
 }));
 
 vi.mock('@taxtronik/db', () => ({
@@ -52,6 +53,7 @@ const callbackReceipt = {
   operation: 'research-result' as const,
 };
 const tx = {
+  $queryRaw: h.notificationScope,
   riskResearchRequest: { updateMany: h.requestUpdateMany, findFirst: h.tenantRequestFindFirst },
   riskResearchResult: { create: h.resultCreate },
 };
@@ -69,6 +71,7 @@ beforeEach(() => {
   h.setReceiptResult.mockResolvedValue(undefined);
   h.evidenceRecord.mockResolvedValue({ id: randomUUID() });
   h.notify.mockResolvedValue(undefined);
+  h.notificationScope.mockResolvedValue([{ visible: true }]);
   h.filterStaffAccessClientTx.mockImplementation(
     async (_tx: unknown, _tenantId: string, ids: readonly string[]) => new Set(ids),
   );

@@ -283,6 +283,7 @@ _doctor_tcms_backup() {
     case "$rc" in
       0) _doctor_tcms_row "OK" "TCMS_BACKUP_ZEITPLAN" "taeglich ($TCMS_BACKUP_SCHEDULE_TIME Host-Zeit)" ;;
       2) _doctor_tcms_row "WARN" "TCMS_BACKUP_ZEITPLAN" "crontab fehlt; keine taegliche TCMS-Sicherung (cron installieren, dann ./taxtronik tcms backup-schedule install)" ;;
+      3) _doctor_tcms_row "WARN" "TCMS_BACKUP_ZEITPLAN" "crontab nicht lesbar oder TCMS-Markierung unklar; Eintraege pruefen" ;;
       *) _doctor_tcms_row "WARN" "TCMS_BACKUP_ZEITPLAN" "fehlt oder veraltet -> ./taxtronik tcms backup-schedule install" ;;
     esac
   fi
@@ -874,7 +875,7 @@ doctor() {
     elif [[ -f "$signal_llm_dir/$SIGNAL_MANAGED_LLM_FILE" && \
             -x "$signal_llm_dir/runtime/llama-server" && \
             -f "$signal_llm_dir/managed-llm.json" ]]; then
-      _dr_row "OK" "SIGNAL_LLM" "$SIGNAL_MANAGED_LLM_MODEL bereit (CPU-Bottleneck)"
+      _dr_row "OK" "SIGNAL_LLM" "$SIGNAL_MANAGED_LLM_MODEL gefunden; Hash- und Startprüfung beim Deploy"
     else
       _dr_row "WARN" "SIGNAL_LLM" "wird beim Deploy hash-gepinnt provisioniert (~6,25 GB; CPU-Bottleneck)"; _DOCTOR_WARNS=$((_DOCTOR_WARNS+1))
     fi

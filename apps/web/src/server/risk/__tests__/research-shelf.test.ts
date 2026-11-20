@@ -1,14 +1,18 @@
-// Fachkatalog: DOC-UPLOAD-JOURNAL-001
+// Fachkatalog: DOC-UPLOAD-JOURNAL-001, RISK-ARCHIVE-SNAPSHOT-001
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   withTenantContext: vi.fn(),
+  requireWritableRiskAnalysisTx: vi.fn(),
   prepare: vi.fn(),
   createDocumentWithVersion: vi.fn(),
   evidenceRecord: vi.fn(),
 }));
 
 vi.mock('@taxtronik/db', () => ({ withTenantContext: mocks.withTenantContext }));
+vi.mock('@taxtronik/db/risk-analysis', () => ({
+  requireWritableRiskAnalysisTx: mocks.requireWritableRiskAnalysisTx,
+}));
 vi.mock('@taxtronik/storage', async () => {
   const { storageJournal } = await import('@/server/documents/__tests__/storage-journal-fake');
   return {
@@ -130,6 +134,27 @@ describe('saveResearchResultToShelf', () => {
     });
     expect(tx.client.findUnique).not.toHaveBeenCalled();
     expect(storageJournal.events).toEqual([]);
+    expect(mocks.createDocumentWithVersion).not.toHaveBeenCalled();
+    expect(tx.riskResearchResult.update).not.toHaveBeenCalled();
+    expect(mocks.evidenceRecord).not.toHaveBeenCalled();
+  });
+
+  it('bindet nach Archivierung während des PUT kein Dokument an das Ergebnis', async () => {
+    const tx = mockTx();
+    tx.$queryRaw.mockResolvedValue([row()]);
+    tx.client.findUnique.mockResolvedValue({ allowActive: true });
+    mocks.requireWritableRiskAnalysisTx
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('Diese Subsumtion ist archiviert.'));
+
+    await expect(saveResearchResultToShelf(ctx, input)).rejects.toThrow(/archiviert/);
+    expect(mocks.requireWritableRiskAnalysisTx).toHaveBeenLastCalledWith(
+      tx,
+      ctx.tenantId,
+      input.analysisId,
+    );
+    expect(puts()).toBe(1);
+    expect(storageJournal.openIntents()).toHaveLength(1);
     expect(mocks.createDocumentWithVersion).not.toHaveBeenCalled();
     expect(tx.riskResearchResult.update).not.toHaveBeenCalled();
     expect(mocks.evidenceRecord).not.toHaveBeenCalled();

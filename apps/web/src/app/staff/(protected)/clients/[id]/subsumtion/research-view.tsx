@@ -63,6 +63,7 @@ function ArchivedResultRow(props: {
 export function ResearchView(props: {
   clientId: string;
   analysisId: string;
+  readOnly: boolean;
   requests: ResearchRequestDTO[];
   results: ResearchResultDTO[];
   archivedResults: ResearchResultDTO[];
@@ -93,47 +94,49 @@ export function ResearchView(props: {
 
   return (
     <div className="space-y-4">
-      <div className="card p-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 className="text-sm font-medium text-primary inline-flex items-center gap-2">
-            <Webhook className="h-4 w-4 text-disabled" /> Rechercheauftrag
-          </h2>
-          {!composing && (
-            <button
-              type="button"
-              onClick={() => setComposing(true)}
-              disabled={!props.engineConfigured}
-              className="btn-primary text-xs"
-              title={props.engineConfigured ? undefined : 'Engine nicht konfiguriert'}
-            >
-              <MessageSquarePlus className="h-3.5 w-3.5" /> Neue Recherche-Frage
-            </button>
+      {!props.readOnly && (
+        <div className="card p-4">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-medium text-primary inline-flex items-center gap-2">
+              <Webhook className="h-4 w-4 text-disabled" /> Rechercheauftrag
+            </h2>
+            {!composing && (
+              <button
+                type="button"
+                onClick={() => setComposing(true)}
+                disabled={!props.engineConfigured}
+                className="btn-primary text-xs"
+                title={props.engineConfigured ? undefined : 'Engine nicht konfiguriert'}
+              >
+                <MessageSquarePlus className="h-3.5 w-3.5" /> Neue Recherche-Frage
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-muted mt-1">
+            Eine gezielte Recherche mit eigenem, reduziertem Sachverhalt erstellen. Der vollständige
+            Sachverhalt wird nur nach bewusster Auswahl übermittelt.
+          </p>
+          {composing && (
+            <div className="mt-3">
+              <ResearchComposer
+                clientId={props.clientId}
+                analysisId={props.analysisId}
+                markingId={null}
+                pending={props.pending}
+                start={props.start}
+                onClose={() => setComposing(false)}
+                onDone={(response) => {
+                  props.onFlash(response, 'Anonymisierter Rechercheauftrag an n8n gesendet.');
+                  if (response.ok) {
+                    setComposing(false);
+                    router.refresh();
+                  }
+                }}
+              />
+            </div>
           )}
         </div>
-        <p className="text-xs text-muted mt-1">
-          Eine gezielte Recherche mit eigenem, reduziertem Sachverhalt erstellen. Der vollständige
-          Sachverhalt wird nur nach bewusster Auswahl übermittelt.
-        </p>
-        {composing && (
-          <div className="mt-3">
-            <ResearchComposer
-              clientId={props.clientId}
-              analysisId={props.analysisId}
-              markingId={null}
-              pending={props.pending}
-              start={props.start}
-              onClose={() => setComposing(false)}
-              onDone={(response) => {
-                props.onFlash(response, 'Anonymisierter Rechercheauftrag an n8n gesendet.');
-                if (response.ok) {
-                  setComposing(false);
-                  router.refresh();
-                }
-              }}
-            />
-          </div>
-        )}
-      </div>
+      )}
 
       {props.results.length === 0 ? (
         <div className="card p-4">
@@ -146,6 +149,7 @@ export function ResearchView(props: {
           analysisId={props.analysisId}
           results={props.results}
           markingsById={props.markingsById}
+          readOnly={props.readOnly}
           pending={props.pending}
           start={props.start}
           onFlash={props.onFlash}
@@ -221,7 +225,7 @@ export function ResearchView(props: {
                           <ArchivedResultRow
                             key={result.id}
                             result={result}
-                            pending={props.pending}
+                            pending={props.pending || props.readOnly}
                             onRestore={() => setArchived(result, false)}
                             onDelete={() => setDeleteTarget(result)}
                           />
@@ -244,7 +248,7 @@ export function ResearchView(props: {
                 <ArchivedResultRow
                   key={result.id}
                   result={result}
-                  pending={props.pending}
+                  pending={props.pending || props.readOnly}
                   onRestore={() => setArchived(result, false)}
                   onDelete={() => setDeleteTarget(result)}
                 />
@@ -254,7 +258,7 @@ export function ResearchView(props: {
         )}
       </details>
 
-      {deleteTarget && (
+      {deleteTarget && !props.readOnly && (
         <ConfirmModal
           danger
           title="Recherche löschen"

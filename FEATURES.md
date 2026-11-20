@@ -1087,11 +1087,11 @@ Kanzlei nicht.
   (Firma, IBAN, Steuernummer, Betrag, Datum, **E-Mail**) in einer
   hervorgehobenen, **editierbaren Vorschau**; das Platzhalter→Original-Mapping
   verlässt die Kanzlei nie (RLS-geschützt gespeichert)
-- Bekannte Versandgrenzen: frei befüllbare Normanker werden unverändert
-  übertragen; die Vorschau ist serverseitig nicht per Token/Hash gebunden und
-  getrennte Mappings für Text, Rechtsfrage und Auftrag können bei gleichen
-  Platzhalternamen kollidieren. Die Funktion gewährleistet daher weder
-  vollständige Anonymität noch die Zulässigkeit der Offenbarung.
+- Vor dem Versand durchlaufen Text, Rechtsfrage, Auftrag, Normanker und
+  Governance-Typ dieselbe Ersetzung. Ein gemeinsames Mapping ordnet die
+  Platzhalter den Originalen zu. Die Vorschau bindet den Versandstand
+  serverseitig nicht. Unbekannte oder allein aus dem Kontext erkennbare
+  Geheimnisse erfordern eine manuelle Prüfung.
 - **Kanzleiweite, selbst anlegbare Prompt-Vorlagen**
 - **Rechercheergebnisse-Ablage**: tenantgebundener n8n-Callback
   (Bearer-Credential, `research:write`-Scope, einmalige Request-ID);
@@ -1928,12 +1928,11 @@ bleibt das Modul inaktiv (gleiches Muster wie der Risk-Layer).
   `replyTo` durch CRLF-Stripping, Markdown-Renderer escapt user-supplied
   Variablen vor `{{var}}`-Substitution
 - **Technische Pseudonymisierung vor dem Recherche-Egress, kein
-  §-203-Nachweis**: Text, Rechtsfrage und Auftrag werden vor dem n8n-Relay
-  deterministisch (bekannte Stammdaten) plus heuristisch
-  (Firma/IBAN/Steuernummer/Betrag/Datum/E-Mail) reduziert; Normanker bleiben
-  derzeit unverändert, Vorschau und Versand sind serverseitig nicht gebunden
-  und getrennte Platzhaltermappings können kollidieren. Das Mapping bleibt
-  RLS-lokal; scoped n8n-Inbound nutzt tenantgebundene Key-ID, Bearer-Token und
+  §-203-Nachweis**: Text, Rechtsfrage, Auftrag, Normanker und Governance-Typ
+  verwenden vor dem n8n-Relay dieselben Platzhalter für bekannte Stammdaten
+  und heuristische Treffer (Firma/IBAN/Steuernummer/Betrag/Datum/E-Mail).
+  Vorschau und Versand sind serverseitig nicht gebunden. Das gemeinsame
+  Mapping bleibt RLS-lokal. Scoped n8n-Inbound nutzt tenantgebundene Key-ID, Bearer-Token und
   einmalige Request-ID im Redis-Replay-Store (fail-closed).
 - **Security Policy**: `SECURITY.md` mit vertraulichem Reporting-Kanal
   (E-Mail), Response-SLA (2/5 Werktage), Scope-Definition und Hinweis auf

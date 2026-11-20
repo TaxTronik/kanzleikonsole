@@ -16,6 +16,7 @@ const m = vi.hoisted(() => {
     withTenantContext: vi.fn(),
     canAccessClientTx: vi.fn(),
     loadSubsumtionRights: vi.fn(),
+    lockRiskAnalysisTx: vi.fn(),
     requireStaffSession: vi.fn(),
     ForbiddenError,
   };
@@ -27,6 +28,7 @@ vi.mock('@/server/auth/rbac', () => ({
   canAccessClientTx: m.canAccessClientTx,
 }));
 vi.mock('@taxtronik/db', () => ({ withTenantContext: m.withTenantContext }));
+vi.mock('@taxtronik/db/risk-analysis', () => ({ lockRiskAnalysisTx: m.lockRiskAnalysisTx }));
 vi.mock('@/server/settings/modules', () => ({
   readModules: vi.fn().mockResolvedValue({ risk: true }),
 }));
@@ -43,6 +45,8 @@ import {
   guardWrite,
   guardMarking,
   guardMarkingWrite,
+  guardResult,
+  guardResultWrite,
   guardResultReview,
   guardResearch,
   guardAnalysisVertraulich,
@@ -66,7 +70,7 @@ function mockTx(over: Record<string, unknown> = {}) {
       findUnique: vi.fn().mockResolvedValue({
         markingId: 'm1',
         request: null,
-        marking: { analysis: ANALYSIS },
+        marking: { analysisId: ANALYSIS.id, analysis: ANALYSIS },
       }),
     },
     ...over,
@@ -74,10 +78,12 @@ function mockTx(over: Record<string, unknown> = {}) {
 }
 
 let tx: ReturnType<typeof mockTx>;
+const applyReview = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
   tx = mockTx();
+  m.lockRiskAnalysisTx.mockResolvedValue(ANALYSIS);
   m.requireStaffSession.mockResolvedValue(SESSION);
   m.canAccessClientTx.mockResolvedValue(true);
   m.loadSubsumtionRights.mockResolvedValue({ canWrite: true, assignedMarkingIds: [] });
@@ -100,11 +106,28 @@ describe('Guards oeffnen genau EINE Tenant-Transaktion', () => {
   });
 
   it('guardResultReview: komplette Pruefkette in einer Tx', async () => {
-    const r = await guardResultReview('r1', 'm1', 'verwerfen');
+    const r = await guardResultReview('r1', 'm1', 'verwerfen', applyReview);
     expect(m.withTenantContext).toHaveBeenCalledTimes(1);
     expect(r.analysisId).toBe('an1');
     // Ziel-Check lief mit (Markierung derselben Analyse).
     expect(tx.riskMarking.findUnique).toHaveBeenCalled();
+    expect(applyReview).toHaveBeenCalledWith(tx, r.ctx, 'r1', 'm1');
+  });
+
+  it('prüft die neue Ergebniszuordnung nach einer konkurrierenden Mitarbeiterentscheidung', async () => {
+    m.loadSubsumtionRights.mockResolvedValue({ canWrite: false, assignedMarkingIds: ['m1'] });
+    m.lockRiskAnalysisTx.mockImplementationOnce(async () => {
+      tx.riskResearchResult.findUnique.mockResolvedValue({
+        markingId: 'm2',
+        request: null,
+        marking: { analysisId: 'an1', analysis: ANALYSIS },
+      });
+      return ANALYSIS;
+    });
+    await expect(guardResultReview('r1', 'm1', 'verwerfen', applyReview)).rejects.toThrow(
+      /gehört nicht zu deiner Markierung/,
+    );
+    expect(applyReview).not.toHaveBeenCalled();
   });
 
   it('guardAnalysisVertraulich: laesst archivierte Analysen zu (eigene Regel)', async () => {
@@ -120,6 +143,24 @@ describe('Guards oeffnen genau EINE Tenant-Transaktion', () => {
 });
 
 describe('Entscheidungen unveraendert', () => {
+  it.each(['request', 'marking'] as const)(
+    'RISK-ARCHIVE-SNAPSHOT-001: Ergebnisse einer archivierten Analyse über %s bleiben lesbar',
+    async (relation) => {
+      tx.riskResearchResult.findUnique.mockResolvedValue({
+        markingId: 'm1',
+        [relation]: { analysisId: ANALYSIS.id, analysis: { ...ANALYSIS, archivedAt: new Date() } },
+      });
+      await expect(guardResult('r1')).resolves.toMatchObject({ analysisId: 'an1' });
+      await expect(guardResultWrite('r1')).rejects.toThrow(/archiviert/);
+      await expect(guardResultReview('r1', 'm1', 'uebernehmen', applyReview)).rejects.toThrow(
+        /archiviert/,
+      );
+      await expect(guardResultReview('r1', 'm1', 'verwerfen', applyReview)).rejects.toThrow(
+        /archiviert/,
+      );
+    },
+  );
+
   it('ohne Schreibrecht: guardMarkingWrite lehnt ab, guardMarking (lesen) nicht', async () => {
     m.loadSubsumtionRights.mockResolvedValue({ canWrite: false, assignedMarkingIds: ['m1'] });
     await expect(guardMarkingWrite('m1')).rejects.toThrow(/Berufsträger/);
@@ -132,16 +173,16 @@ describe('Entscheidungen unveraendert', () => {
     tx.riskResearchResult.findUnique.mockResolvedValue({
       markingId: 'fremd',
       request: null,
-      marking: { analysis: ANALYSIS },
+      marking: { analysisId: ANALYSIS.id, analysis: ANALYSIS },
     });
-    await expect(guardResultReview('r1', 'm1', 'verwerfen')).rejects.toThrow(
+    await expect(guardResultReview('r1', 'm1', 'verwerfen', applyReview)).rejects.toThrow(
       /gehört nicht zu deiner Markierung/,
     );
   });
 
   it('guardResultReview: Ziel-Markierung fremder Analyse wird abgelehnt', async () => {
     tx.riskMarking.findUnique.mockResolvedValue({ analysisId: 'andere-analyse' });
-    await expect(guardResultReview('r1', 'm1', 'uebernehmen')).rejects.toThrow(
+    await expect(guardResultReview('r1', 'm1', 'uebernehmen', applyReview)).rejects.toThrow(
       /gehört nicht zu dieser Analyse/,
     );
   });

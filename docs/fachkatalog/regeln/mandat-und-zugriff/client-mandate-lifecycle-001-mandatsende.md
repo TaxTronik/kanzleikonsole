@@ -38,6 +38,7 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - packages/config/src/retention-calendar.ts
   - apps/web/src/app/api/portal/ical/[token]/route.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts
   - apps/web/src/server/dsgvo/client-retention.ts
@@ -134,6 +135,11 @@ vor einer Retention-Entscheidung fachlich korrigiert oder anderweitig
 dokumentiert werden; die Action bietet keine Rückdatierung.
 
 ## Umsetzung in TaxTronik
+
+Für die Fristberechnung zählt das Kalenderjahr des gespeicherten Mandatsendes
+in Europe/Berlin. Die Zeit der Bedienhandlung kann kurz vor UTC-Mitternacht
+bereits zum neuen deutschen Jahr gehören. Der DATE-Wert aus dem Offboarding
+bezeichnet nach Übernahme um 00:00 UTC denselben Berliner Kalendertag.
 
 Auch bestehende, von Portal-Cookies unabhängige iCal-Abonnements prüfen
 `mandateEndedAt` vor jeder Datenabfrage. Ein beendetes Mandat erhält dieselbe

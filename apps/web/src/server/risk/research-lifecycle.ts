@@ -1,14 +1,22 @@
-import { withTenantContext, type TenantContext } from '@taxtronik/db';
+import { withTenantContext, type TenantContext, type TxClient } from '@taxtronik/db';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
+import { requireWritableRiskAnalysisTx } from '@taxtronik/db/risk-analysis';
 import { ActionError } from '@/server/actions/action-error';
 import { evidenceService } from '@/server/container';
 
+/** Das serverseitig vom Ergebnis abgeleitete Ziel der Mitarbeiteraktion. */
+export interface ResearchResultTarget {
+  analysisId: string;
+  resultId: string;
+}
+
 export async function setResearchResultArchived(
   ctx: TenantContext,
-  resultId: string,
+  { analysisId, resultId }: ResearchResultTarget,
   archived: boolean,
 ): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskAnalysisTx(tx, ctx.tenantId, analysisId);
     const result = await tx.riskResearchResult.findUnique({
       where: { id: resultId },
       select: { id: true, title: true, archivedAt: true, researchRequestId: true },
@@ -51,41 +59,44 @@ export async function setResearchResultArchived(
  * nur noch löschen. Verwerfen ist die fachliche Alternative zum Löschen: die
  * Prüfentscheidung bleibt nachvollziehbar erhalten.
  */
-export async function setResearchResultVerworfen(
+export async function setResearchResultVerworfenTx(
+  tx: TxClient,
   ctx: TenantContext,
   resultId: string,
 ): Promise<void> {
-  await withTenantContext(ctx, async (tx) => {
-    const result = await tx.riskResearchResult.findUnique({
-      where: { id: resultId },
-      select: { id: true, title: true, status: true, markingId: true },
-    });
-    if (!result) throw new ActionError('Rechercheergebnis nicht gefunden.');
-    if (result.status === 'VERWORFEN') return;
+  const result = await tx.riskResearchResult.findUnique({
+    where: { id: resultId },
+    select: { id: true, title: true, status: true, markingId: true },
+  });
+  if (!result) throw new ActionError('Rechercheergebnis nicht gefunden.');
+  if (result.status === 'VERWORFEN') return;
 
-    await tx.riskResearchResult.update({
-      where: { id: resultId },
-      data: { status: 'VERWORFEN' },
-    });
-    await resolveNotificationsTx(tx, {
-      tenantId: ctx.tenantId,
-      resources: [{ resourceType: 'risk_research_result', resourceId: resultId }],
-    });
-    await evidenceService.record(tx, {
-      tenantId: ctx.tenantId,
-      actorType: 'STAFF',
-      actorId: ctx.actorId,
-      action: 'risk.research.verworfen',
-      resourceType: 'risk_research_result',
-      resourceId: resultId,
-      before: { status: result.status, title: result.title },
-      after: { status: 'VERWORFEN', markingId: result.markingId },
-    });
+  await tx.riskResearchResult.update({
+    where: { id: resultId },
+    data: { status: 'VERWORFEN' },
+  });
+  await resolveNotificationsTx(tx, {
+    tenantId: ctx.tenantId,
+    resources: [{ resourceType: 'risk_research_result', resourceId: resultId }],
+  });
+  await evidenceService.record(tx, {
+    tenantId: ctx.tenantId,
+    actorType: 'STAFF',
+    actorId: ctx.actorId,
+    action: 'risk.research.verworfen',
+    resourceType: 'risk_research_result',
+    resourceId: resultId,
+    before: { status: result.status, title: result.title },
+    after: { status: 'VERWORFEN', markingId: result.markingId },
   });
 }
 
-export async function deleteResearchResult(ctx: TenantContext, resultId: string): Promise<void> {
+export async function deleteResearchResult(
+  ctx: TenantContext,
+  { analysisId, resultId }: ResearchResultTarget,
+): Promise<void> {
   await withTenantContext(ctx, async (tx) => {
+    await requireWritableRiskAnalysisTx(tx, ctx.tenantId, analysisId);
     const result = await tx.riskResearchResult.findUnique({
       where: { id: resultId },
       select: {

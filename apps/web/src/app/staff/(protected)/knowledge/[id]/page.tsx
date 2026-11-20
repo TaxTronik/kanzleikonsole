@@ -16,7 +16,7 @@ import { requireModulePage } from '@/server/settings/module-page';
 import { withTenantContext } from '@taxtronik/db';
 import { deleteArticleAction } from '../actions';
 import { ActionForm } from '@/components/action-form';
-import { renderMarkdown } from '@/lib/markdown';
+import { MarkdownContent } from '@/components/markdown-content';
 import { fmtDateShort } from '@/lib/fmt';
 
 export default async function KbArticlePage({ params }: { params: Promise<{ id: string }> }) {
@@ -55,8 +55,6 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
   );
 
   if (!article) notFound();
-
-  const html = renderMarkdown(article.body);
 
   return (
     <div className="mx-auto max-w-6xl p-8">
@@ -108,9 +106,10 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      <article
+      <MarkdownContent
+        as="article"
         className="card prose max-w-none p-10 [&_a:hover]:underline [&_a]:text-brand-700 [&_blockquote]:border-l-4 [&_blockquote]:border-strong [&_blockquote]:pl-4 [&_blockquote]:text-secondary [&_code]:rounded [&_code]:bg-gray-100 [&_code]:px-1 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:text-xl [&_h2]:font-semibold [&_h3]:text-lg [&_h3]:font-semibold [&_img]:my-8 [&_img]:max-h-[44rem] [&_img]:max-w-full [&_img]:rounded-xl [&_img]:border [&_img]:border-default [&_img]:object-contain [&_li]:my-1 [&_ol]:ml-6 [&_ol]:list-decimal [&_p]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-gray-100 [&_pre]:p-3 [&_ul]:ml-6 [&_ul]:list-disc"
-        dangerouslySetInnerHTML={{ __html: html }}
+        source={article.body}
       />
 
       {article.attachments.length > 0 && (

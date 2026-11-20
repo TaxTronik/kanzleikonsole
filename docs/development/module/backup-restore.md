@@ -92,7 +92,11 @@ monatlich per Restore-Drill (Art. 32 Abs. 1 lit. d DSGVO).
   automatischen Zugriff auf eine ungeprüfte Restdatei.
 - **CI-Selbsttest** (`scripts/restore-selftest.sh`, Job `restore`): echter
   runner→restore-Roundtrip je Commit mit Zeilenzahl-, App-Rollen-/ACL-/REVOKE-
-  Assertions + Chain-Verifikation; Protokoll als CI-Artefakt.
+  Assertions und Kettenprüfung. Die CI schreibt auf einer eigenen Quellkopie
+  zwei über den Evidence-Service verkettete Testereignisse. Zwei parallele
+  Läufe prüfen richtige und abweichende Quellspitzen. Ein belegter Zielname
+  führt zum Abbruch. Der lokale Aufruf liest die angegebene Quelle und weist
+  leere Auditdaten im Protokoll gesondert aus.
 - **Operator/Admin:** automatischer Tagesjob im Worker; `./taxtronik backup`
   erzeugt bei Bedarf eine zusätzliche manuelle Sicherung samt lokaler
   Operator-Kopie. Start und Abruf vollständiger Dumps bleiben dem

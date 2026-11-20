@@ -69,8 +69,13 @@ export function SavedViews({ tenantId, staffId }: SavedViewScope) {
 
   const currentQuery = searchParams.toString();
 
-  function persist(next: SavedView[]) {
+  function persist(name: string, query?: string) {
     const all = readAll(readBrowserStorage(key));
+    const next = (all[pathname] ?? []).filter((view) => view.name !== name);
+    if (query !== undefined) {
+      next.push({ name, query });
+      next.sort((a, b) => a.name.localeCompare(b.name, 'de-DE'));
+    }
     if (next.length === 0) delete all[pathname];
     else all[pathname] = next;
     writeAll(key, all);
@@ -84,13 +89,7 @@ export function SavedViews({ tenantId, staffId }: SavedViewScope) {
       })
     )?.trim();
     if (!name) return;
-    const next = [...views.filter((v) => v.name !== name), { name, query: currentQuery }];
-    next.sort((a, b) => a.name.localeCompare(b.name, 'de-DE'));
-    persist(next);
-  }
-
-  function remove(name: string) {
-    persist(views.filter((v) => v.name !== name));
+    persist(name, currentQuery);
   }
 
   return (
@@ -118,7 +117,7 @@ export function SavedViews({ tenantId, staffId }: SavedViewScope) {
             </button>
             <button
               type="button"
-              onClick={() => remove(v.name)}
+              onClick={() => persist(v.name)}
               aria-label={`Ansicht „${v.name}“ löschen`}
               className="px-1 py-1 text-disabled hover:text-red-600"
             >

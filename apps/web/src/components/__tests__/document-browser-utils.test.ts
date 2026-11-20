@@ -25,4 +25,14 @@ describe('document-browser-utils', () => {
 
     expect(result).toEqual(new Set(['root', 'a', 'b']));
   });
+
+  it('vereinigt überlappende Teilbäume auch bei zyklischen Altdaten', () => {
+    const folders = [
+      { id: 'a', name: 'A', parentId: 'b' },
+      { id: 'b', name: 'B', parentId: 'a' },
+      { id: 'c', name: 'C', parentId: 'b' },
+    ];
+    expect(descendants(folders, ['b', 'a', 'd'])).toEqual(new Set(['a', 'b', 'c', 'd']));
+    expect(descendants(folders, [])).toEqual(new Set());
+  });
 });

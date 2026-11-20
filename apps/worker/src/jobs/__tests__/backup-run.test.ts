@@ -94,6 +94,7 @@ vi.mock('node:child_process', () => ({
 }));
 
 import { runScheduledBackup } from '../backup-run';
+import { processors } from './mocks/bullmq';
 
 const NOW = new Date('2026-07-07T01:00:00.000Z');
 
@@ -118,6 +119,11 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('runScheduledBackup', () => {
+  it('meldet einen fehlgeschlagenen Lauf auch dem Queue-Processor als Fehler', async () => {
+    h.child.exitCode = 3;
+    await expect(processors.get('backup-run')!({ data: {} })).rejects.toThrow('pg_dump exit 3');
+  });
+
   it('Erfolg: SUCCESS je Tenant + backup.run-Audit + Key-Format', async () => {
     const r = await runScheduledBackup(NOW);
     expect(r.ok).toBe(true);

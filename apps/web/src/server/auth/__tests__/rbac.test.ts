@@ -1,6 +1,6 @@
 // =============================================================================
 // Unit-Test: toActionError aus rbac.ts.
-// Fachkatalog: ACCESS-STAFF-PERMISSION-001
+// Fachkatalog: ACCESS-STAFF-PERMISSION-001, ACCESS-CLIENT-MODE-001
 //
 // Audit Round 14, Finding 3: Unbekannte Errors dürfen NIE direkt ans UI
 // durchgereicht werden — könnten Stacktraces oder DB-Internals leaken.
@@ -37,6 +37,8 @@ import {
   UnauthorizedError,
   ForbiddenError,
   canAccessClientTx,
+  assertClientAccessTx,
+  canWriteClientTx,
   canOtherStaffAccessClientTx,
   filterStaffAccessClientTx,
   accessibleClientsWhereFor,
@@ -281,26 +283,45 @@ function makeTx(cfg: StubTxConfig) {
 }
 
 describe('canAccessClientTx', () => {
-  it('Admin/Partner → Zugriff ohne jede Query', async () => {
-    const { tx, responsibilityFindFirst } = makeTx({});
-    await expect(canAccessClientTx(tx, makeSession(['ADMIN']), 'c1')).resolves.toBe(true);
-    expect(responsibilityFindFirst).not.toHaveBeenCalled();
-  });
+  const clientId = '00000000-0000-4000-8000-000000000001';
+
+  it.each(['ADMIN', 'PARTNER'])(
+    'ACCESS-CLIENT-MODE-001: %s benötigt ein vorhandenes Ziel im Sitzungstenant',
+    async (role) => {
+      const session = makeSession([role]);
+      const present = makeTx({ client: { vertraulich: true } });
+      await expect(canAccessClientTx(present.tx, session, clientId)).resolves.toBe(true);
+      await expect(canWriteClientTx(present.tx, session, clientId)).resolves.toBe(true);
+      expect(present.settingFindUnique).not.toHaveBeenCalled();
+      expect(present.responsibilityFindFirst).not.toHaveBeenCalled();
+      const absent = makeTx({});
+      await expect(canAccessClientTx(absent.tx, session, clientId)).resolves.toBe(false);
+      await expect(canWriteClientTx(absent.tx, session, clientId)).resolves.toBe(false);
+      await expect(assertClientAccessTx(absent.tx, session, clientId)).rejects.toBeInstanceOf(
+        ForbiddenError,
+      );
+      await expect(canAccessClientTx(present.tx, session, 'kein-mandant')).resolves.toBe(false);
+    },
+  );
 
   it('OPEN + nicht vertraulich → Zugriff, Responsibility wird NICHT abgefragt', async () => {
     const { tx, responsibilityFindFirst } = makeTx({
       mode: 'OPEN',
       client: { vertraulich: false },
     });
-    await expect(canAccessClientTx(tx, makeSession(['STAFF']), 'c1')).resolves.toBe(true);
+    await expect(canAccessClientTx(tx, makeSession(['STAFF']), clientId)).resolves.toBe(true);
     expect(responsibilityFindFirst).not.toHaveBeenCalled();
   });
 
   it('OPEN + vertraulich → nur mit Zuordnung', async () => {
     const denied = makeTx({ mode: 'OPEN', client: { vertraulich: true }, responsible: false });
-    await expect(canAccessClientTx(denied.tx, makeSession(['STAFF']), 'c1')).resolves.toBe(false);
+    await expect(canAccessClientTx(denied.tx, makeSession(['STAFF']), clientId)).resolves.toBe(
+      false,
+    );
     const granted = makeTx({ mode: 'OPEN', client: { vertraulich: true }, responsible: true });
-    await expect(canAccessClientTx(granted.tx, makeSession(['STAFF']), 'c1')).resolves.toBe(true);
+    await expect(canAccessClientTx(granted.tx, makeSession(['STAFF']), clientId)).resolves.toBe(
+      true,
+    );
   });
 
   it('RESTRICTED → nur mit Zuordnung, auch ohne vertraulich-Flag', async () => {
@@ -309,18 +330,22 @@ describe('canAccessClientTx', () => {
       client: { vertraulich: false },
       responsible: false,
     });
-    await expect(canAccessClientTx(denied.tx, makeSession(['STAFF']), 'c1')).resolves.toBe(false);
+    await expect(canAccessClientTx(denied.tx, makeSession(['STAFF']), clientId)).resolves.toBe(
+      false,
+    );
     const granted = makeTx({
       mode: 'RESTRICTED',
       client: { vertraulich: false },
       responsible: true,
     });
-    await expect(canAccessClientTx(granted.tx, makeSession(['STAFF']), 'c1')).resolves.toBe(true);
+    await expect(canAccessClientTx(granted.tx, makeSession(['STAFF']), clientId)).resolves.toBe(
+      true,
+    );
   });
 
   it('Mandant existiert nicht (oder fremder Tenant via RLS) → kein Zugriff', async () => {
     const { tx } = makeTx({ mode: 'OPEN', client: null });
-    await expect(canAccessClientTx(tx, makeSession(['STAFF']), 'c1')).resolves.toBe(false);
+    await expect(canAccessClientTx(tx, makeSession(['STAFF']), clientId)).resolves.toBe(false);
   });
 });
 

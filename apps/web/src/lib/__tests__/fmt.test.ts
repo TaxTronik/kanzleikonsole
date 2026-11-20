@@ -13,6 +13,8 @@ import {
   fmtIsoDate,
   berlinWallClock,
   berlinWallClockToUtc,
+  berlinDayStartUtc,
+  berlinDayEndUtc,
   berlinYmd,
   berlinTodayUtcMidnight,
 } from '../fmt';
@@ -129,12 +131,35 @@ describe('berlinWallClockToUtc', () => {
     expect(berlinWallClockToUtc('')).toBeNull();
   });
 
-  it('liefert für gültiges Format nie null (DST-Lückenstunde crasht nicht)', () => {
-    // 29.03.2026 ist der Sommerzeit-Übergang; 02:30 existiert lokal nicht.
-    // Erwartung: ein wohldefinierter Instant (kein Wurf, kein null).
-    const d = berlinWallClockToUtc('2026-03-29T02:30');
-    expect(d).not.toBeNull();
-    expect(Number.isNaN(d!.getTime())).toBe(false);
+  // Fachkatalog: TAX-NOTICE-DECISION-001, REQ-LIFECYCLE-001
+  it.each([
+    ['2026-03-29T01:30', '2026-03-29T00:30:00.000Z'],
+    ['2026-03-29T03:30', '2026-03-29T01:30:00.000Z'],
+    ['2026-10-25T01:30', '2026-10-24T23:30:00.000Z'],
+    ['2026-10-25T02:30', '2026-10-25T01:30:00.000Z'],
+    ['2026-10-25T03:30', '2026-10-25T02:30:00.000Z'],
+  ])('löst den existierenden Berliner Zeitpunkt %s in %s auf', (input, expected) => {
+    expect(berlinWallClockToUtc(input)?.toISOString()).toBe(expected);
+  });
+
+  it.each(['2026-03-29T02:30', '2026-02-29T10:00', '2026-07-01T24:00', '2026-12-01T14:90'])(
+    'weist die nicht existierende Berliner Ortszeit %s zurück',
+    (input) => expect(berlinWallClockToUtc(input)).toBeNull(),
+  );
+});
+
+describe('Berliner Tagesgrenzen — PAYROLL-INTAKE-001', () => {
+  it.each([
+    ['2026-03-29', '2026-03-28T23:00:00.000Z', '2026-03-29T21:59:59.999Z'],
+    ['2026-10-25', '2026-10-24T22:00:00.000Z', '2026-10-25T22:59:59.999Z'],
+  ])('berechnet die exakten Grenzen von %s', (day, first, last) => {
+    expect(berlinDayStartUtc(day)?.toISOString()).toBe(first);
+    expect(berlinDayEndUtc(day)?.toISOString()).toBe(last);
+  });
+
+  it('meldet einen ungültigen Kalendertag in beiden Richtungen', () => {
+    expect(berlinDayStartUtc('2026-02-29')).toBeNull();
+    expect(berlinDayEndUtc('2026-02-29')).toBeNull();
   });
 });
 

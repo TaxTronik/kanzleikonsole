@@ -26,7 +26,7 @@ export interface UnreadSummary {
 }
 
 export interface NotificationCountPollerOptions {
-  fetchSummary: () => Promise<UnreadSummary | null>;
+  fetchSummary: (signal: AbortSignal) => Promise<UnreadSummary | null>;
   intervalMs?: number;
   resumeAfterHiddenMs?: number;
   /** Standard: `document`, erst beim ersten Abonnenten gelesen (SSR-sicher). */
@@ -52,20 +52,28 @@ export function createNotificationCountPoller(
   const listeners = new Set<(summary: UnreadSummary) => void>();
   let schedule: VisibilityInterval | null = null;
   let inFlight: Promise<void> | null = null;
+  let active: AbortController | null = null;
+  let deferredTick: ReturnType<typeof setTimeout> | null = null;
   let freshAt = Number.NEGATIVE_INFINITY;
 
   function poll(): Promise<void> {
     if (inFlight) return inFlight;
+    const controller = new AbortController();
+    active = controller;
     inFlight = (async () => {
       try {
-        const summary = await options.fetchSummary();
-        if (summary) for (const listener of [...listeners]) listener(summary);
+        const summary = await options.fetchSummary(controller.signal);
+        if (summary && !controller.signal.aborted) {
+          for (const listener of [...listeners]) listener(summary);
+        }
       } catch {
         // Nächster Takt versucht es erneut.
-      } finally {
-        inFlight = null;
       }
-    })();
+    })().finally(() => {
+      if (active !== controller) return;
+      active = null;
+      inFlight = null;
+    });
     return inFlight;
   }
 
@@ -74,8 +82,10 @@ export function createNotificationCountPoller(
   // unabhängig davon, welcher Listener zuerst läuft.
   function onTick(): void {
     const tickAt = now();
-    setTimeout(() => {
-      if (freshAt < tickAt) void poll();
+    if (deferredTick !== null) clearTimeout(deferredTick);
+    deferredTick = setTimeout(() => {
+      deferredTick = null;
+      if (freshAt < tickAt && !(options.source?.() ?? document).hidden) void poll();
     }, 0);
   }
 
@@ -94,6 +104,11 @@ export function createNotificationCountPoller(
         if (listeners.size > 0 || !schedule) return;
         schedule.stop();
         schedule = null;
+        if (deferredTick !== null) clearTimeout(deferredTick);
+        deferredTick = null;
+        active?.abort();
+        active = null;
+        inFlight = null;
       };
     },
     pollNow() {
@@ -107,8 +122,8 @@ export function createNotificationCountPoller(
   };
 }
 
-async function fetchUnreadSummary(): Promise<UnreadSummary | null> {
-  const res = await fetch('/api/staff/notifications/count', { cache: 'no-store' });
+async function fetchUnreadSummary(signal: AbortSignal): Promise<UnreadSummary | null> {
+  const res = await fetch('/api/staff/notifications/count', { cache: 'no-store', signal });
   if (!res.ok) return null;
   return (await res.json()) as UnreadSummary;
 }

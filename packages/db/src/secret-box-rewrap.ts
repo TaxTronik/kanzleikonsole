@@ -77,13 +77,51 @@ export interface RewrapOptions {
   onFailure?: (failure: RewrapFailure) => void;
 }
 
-// Nur diese Tabellen/Spalten werden als Bezeichner in SQL eingesetzt.
-const SUPPORTED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
-  n8n_connection: ['api_key_encrypted', 'signing_secret_encrypted'],
-  inbound_mailbox: ['secret_enc', 'oauth_cache_enc'],
-  mail_outbox: ['secret_vars_enc'],
-  tcms_portal_report: ['payload_enc'],
-};
+// Unterstützte Spalten-Ablageorte. Nur diese Literale werden als Bezeichner in
+// SQL eingesetzt; Tabelle und Spalte eines übergebenen Slots dienen allein als
+// Nachschlageschlüssel und erreichen den SQL-Text nie.
+const SUPPORTED_COLUMNS = [
+  ['n8n_connection', 'api_key_encrypted'],
+  ['n8n_connection', 'signing_secret_encrypted'],
+  ['inbound_mailbox', 'secret_enc'],
+  ['inbound_mailbox', 'oauth_cache_enc'],
+  ['mail_outbox', 'secret_vars_enc'],
+  ['tcms_portal_report', 'payload_enc'],
+] as const;
+
+const PLAIN_IDENTIFIER = /^[a-z_][a-z0-9_]*$/u;
+
+interface ColumnStatements {
+  readonly read: string;
+  readonly write: string;
+}
+
+function columnStatements(tableName: string, columnName: string): ColumnStatements {
+  // Schutz gegen künftige Einträge: Anführungszeichen o. Ä. würden das Quoting brechen.
+  if (!PLAIN_IDENTIFIER.test(tableName) || !PLAIN_IDENTIFIER.test(columnName)) {
+    throw new Error(`Ungültiger Bezeichner im Secret-Box-Ablageort ${tableName}.${columnName}.`);
+  }
+  const table = `public."${tableName}"`;
+  const column = `"${columnName}"`;
+  return Object.freeze({
+    read: `SELECT id::text AS id, tenant_id::text AS tenant_id, ${column} AS secret
+           FROM ${table}
+          WHERE ${column} IS NOT NULL
+            AND ${column} <> ''
+            AND ($1::uuid IS NULL OR id > $1::uuid)
+          ORDER BY id
+          LIMIT $2`,
+    write: `UPDATE ${table} SET ${column} = $2 WHERE id = $1::uuid AND ${column} = $3 RETURNING 1 AS updated`,
+  });
+}
+
+/** Feste SQL-Texte je Ablageort, Schlüssel `<tabelle>.<spalte>`. */
+const COLUMN_STATEMENTS: ReadonlyMap<string, ColumnStatements> = new Map(
+  SUPPORTED_COLUMNS.map(([table, column]) => [
+    `${table}.${column}`,
+    columnStatements(table, column),
+  ]),
+);
 
 interface StoredValue {
   tenantId: string;
@@ -95,10 +133,6 @@ interface StoredValue {
 interface SlotAccess {
   read(after: string | null, limit: number): Promise<StoredValue[]>;
   write(value: StoredValue, next: string): Promise<boolean>;
-}
-
-function quoted(identifier: string): string {
-  return `"${identifier}"`;
 }
 
 function slotAccess(db: SqlExecutor, slot: RewrapSlot): SlotAccess {
@@ -135,23 +169,13 @@ function slotAccess(db: SqlExecutor, slot: RewrapSlot): SlotAccess {
       },
     };
   }
-  if (!SUPPORTED_COLUMNS[slot.table]?.includes(slot.column)) {
+  const statements = COLUMN_STATEMENTS.get(`${slot.table}.${slot.column}`);
+  if (!statements) {
     throw new Error(`Nicht unterstützter Secret-Box-Ablageort ${slot.table}.${slot.column}.`);
   }
-  const table = `public.${quoted(slot.table)}`;
-  const column = quoted(slot.column);
   return {
     async read(after, limit) {
-      const result = await db.query(
-        `SELECT id::text AS id, tenant_id::text AS tenant_id, ${column} AS secret
-           FROM ${table}
-          WHERE ${column} IS NOT NULL
-            AND ${column} <> ''
-            AND ($1::uuid IS NULL OR id > $1::uuid)
-          ORDER BY id
-          LIMIT $2`,
-        [after, limit],
-      );
+      const result = await db.query(statements.read, [after, limit]);
       return (result.rows as Array<{ id: string; tenant_id: string; secret: string }>).map(
         (row) => ({
           tenantId: row.tenant_id,
@@ -162,10 +186,7 @@ function slotAccess(db: SqlExecutor, slot: RewrapSlot): SlotAccess {
       );
     },
     async write(value, next) {
-      const result = await db.query(
-        `UPDATE ${table} SET ${column} = $2 WHERE id = $1::uuid AND ${column} = $3 RETURNING 1 AS updated`,
-        [value.rowId, next, value.secret],
-      );
+      const result = await db.query(statements.write, [value.rowId, next, value.secret]);
       return result.rows.length === 1;
     },
   };

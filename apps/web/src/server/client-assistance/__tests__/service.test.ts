@@ -110,6 +110,23 @@ describe('CLIENT-ASSISTANCE-001 external Word revisions', () => {
       }),
     });
   });
+  it('rejects re-importing Word content whose hash is already current', async () => {
+    const { db, current } = fixture();
+    current.externalDocumentHash = Buffer.alloc(32, 1).toString('hex') as never;
+    await expect(reimportAssistance('staff', input)).rejects.toThrow('bereits die aktuelle');
+    expect(db.clientAssistanceCase.updateMany).not.toHaveBeenCalled();
+    expect(db.clientAssistanceRevision.create).not.toHaveBeenCalled();
+  });
+  it('accepts Word content whose hash differs from the stored one', async () => {
+    const { db, current } = fixture();
+    current.externalDocumentHash = Buffer.alloc(32, 2).toString('hex') as never;
+    await reimportAssistance('staff', input);
+    expect(db.clientAssistanceCase.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ externalDocumentHash: '01'.repeat(32) }),
+      }),
+    );
+  });
   it('rejects stale reimports before appending a revision', async () => {
     const { db } = fixture();
     db.clientAssistanceCase.findFirst.mockResolvedValue(null as never);

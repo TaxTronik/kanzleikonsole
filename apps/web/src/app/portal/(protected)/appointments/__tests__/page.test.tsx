@@ -58,6 +58,17 @@ beforeEach(() => {
 });
 
 describe('Portal-Termine', () => {
+  it('zeigt Wunschzeiten auch bei UTC-Serverzeit nach Berliner Uhr an', async () => {
+    vi.stubEnv('TZ', 'UTC');
+    try {
+      h.tx.appointmentRequest.findMany.mockResolvedValue([request({ status: 'PENDING' })]);
+      const html = renderToStaticMarkup(await PortalAppointmentsPage());
+      expect(html).toContain('20.10.2026, 10:00 – 20.10.2026, 11:00');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('lädt nur nicht abgesagte Termine und liest den Stand der angenommenen Termine', async () => {
     h.tx.appointmentRequest.findMany.mockResolvedValue([]);
 

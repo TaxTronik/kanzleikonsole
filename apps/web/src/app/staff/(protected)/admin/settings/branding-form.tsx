@@ -1,5 +1,7 @@
 ﻿'use client';
 
+import { SettingsForm } from '@/components/settings-form-guard';
+
 import { useActionState, useState } from 'react';
 import { saveBrandingAction, type ActionResult } from './actions';
 import type { BrandingInfo } from '@/server/settings/branding';
@@ -58,7 +60,7 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
       : `Auf der Akzentfarbe verwendet die Oberfläche automatisch weiße Beschriftung mit ${contrast.onBrandContrast.toFixed(2)}:1 Kontrast.`;
 
   return (
-    <form action={formAction} className="space-y-4">
+    <SettingsForm result={state} pending={isPending} action={formAction} className="space-y-4">
       <div>
         <label className="label" htmlFor="displayName">
           Anzeige-Name
@@ -256,6 +258,6 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
       <button type="submit" className="btn-primary" disabled={isPending}>
         {isPending ? 'Speichert…' : 'Branding speichern'}
       </button>
-    </form>
+    </SettingsForm>
   );
 }
