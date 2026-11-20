@@ -455,7 +455,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Entscheidung B-07). `check-release-gates.mjs` verlangt die neuen Jobs und
   verbietet `needs` in `ci.yml`; die Prüfungen, dass lokale DB-Test-Schalter
   nur im db-Job gesetzt sind, decken jetzt alle übrigen Jobs ab statt nur
-  `quality` (`ASSURANCE-RELEASE-EVIDENCE-001`, `FK-EXC-20261120-001`).
+  `quality` (`ASSURANCE-RELEASE-EVIDENCE-001`, `FK-EXC-20261120-001`). Der
+  erste parallele Lauf brauchte 17 statt 20 bis 23 Minuten; die Jobs teilen
+  sich die CPU der Runner und werden einzeln langsamer. Der Test der
+  PDF-Seitenzählung im Worker-Thread (`packages/mail`) lief dabei 5,1 statt 2
+  bis 3 Sekunden in das Standardlimit und hat jetzt 30 Sekunden.
 - **[GwG]** Die Kanzlei sieht bei jeder Person, welche Angaben der Mandant bei der
   Online-Einreichung aus der lokalen Ausweishilfe übernommen hat („Aus dem
   Ausweis übernommen: Vollständiger Name, Ausweisnummer …“), mit dem Hinweis,

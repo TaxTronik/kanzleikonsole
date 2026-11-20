@@ -71,34 +71,46 @@ describe('P-13 pdfPageCountOutcome', () => {
 });
 
 describe('P-13 countPdfPagesInWorkerThread', () => {
-  it('liefert dieselbe Seitenzahl bzw. Ablehnung wie pdf-lib im Hauptthread', async () => {
-    const threePages = await pdfWithPages(3);
-    const classic = await pdfWithPages(2, false);
-    const encrypted = Buffer.from(
-      classic
-        .toString('latin1')
-        .replace(/trailer\s*<</, 'trailer\n<<\n/Encrypt << /Filter /Standard /V 1 /R 2 >>'),
-      'latin1',
-    );
-    const corpus: Array<[string, Buffer]> = [
-      ['ohne Seiten', await pdfWithPages(0)],
-      ['drei Seiten', threePages],
-      ['klassische Xref', classic],
-      ['verschlüsselt', encrypted],
-      ['abgeschnitten', threePages.subarray(0, Math.floor(threePages.length / 2))],
-      ['kein PDF', Buffer.from('kein PDF')],
-    ];
-    for (const [label, bytes] of corpus) {
-      const outcome = await countPdfPagesInWorkerThread(bytes);
-      expect(outcome.status, label).not.toBe('unavailable');
-      expect(pdfPageCountValue(outcome), label).toBe(await mainThreadPageCount(bytes));
-    }
-    expect(await countPdfPagesInWorkerThread(threePages)).toEqual({ status: 'counted', pages: 3 });
-    expect(await countPdfPagesInWorkerThread(encrypted)).toEqual({
-      status: 'unreadable',
-      reason: 'parser',
-    });
-  });
+  // Acht Worker-Threads nacheinander, jeder lädt pdf-lib neu: allein 2,1 bis
+  // 2,8 s in CI, 5,06 s, als die CI-Jobs parallel liefen (Lauf 1263,
+  // 2026-11-20). Die Dauer ist nicht Prüfgegenstand; die Zeitgrenze des
+  // Workers prüft der folgende Test, deshalb hier mehr Luft als die 5 s Standard.
+  const corpusTimeoutMs = 30_000;
+  it(
+    'liefert dieselbe Seitenzahl bzw. Ablehnung wie pdf-lib im Hauptthread',
+    { timeout: corpusTimeoutMs },
+    async () => {
+      const threePages = await pdfWithPages(3);
+      const classic = await pdfWithPages(2, false);
+      const encrypted = Buffer.from(
+        classic
+          .toString('latin1')
+          .replace(/trailer\s*<</, 'trailer\n<<\n/Encrypt << /Filter /Standard /V 1 /R 2 >>'),
+        'latin1',
+      );
+      const corpus: Array<[string, Buffer]> = [
+        ['ohne Seiten', await pdfWithPages(0)],
+        ['drei Seiten', threePages],
+        ['klassische Xref', classic],
+        ['verschlüsselt', encrypted],
+        ['abgeschnitten', threePages.subarray(0, Math.floor(threePages.length / 2))],
+        ['kein PDF', Buffer.from('kein PDF')],
+      ];
+      for (const [label, bytes] of corpus) {
+        const outcome = await countPdfPagesInWorkerThread(bytes);
+        expect(outcome.status, label).not.toBe('unavailable');
+        expect(pdfPageCountValue(outcome), label).toBe(await mainThreadPageCount(bytes));
+      }
+      expect(await countPdfPagesInWorkerThread(threePages)).toEqual({
+        status: 'counted',
+        pages: 3,
+      });
+      expect(await countPdfPagesInWorkerThread(encrypted)).toEqual({
+        status: 'unreadable',
+        reason: 'parser',
+      });
+    },
+  );
 
   it('wertet eine überschrittene Zeitgrenze als nicht lesbar', async () => {
     expect(
