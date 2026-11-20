@@ -463,6 +463,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   nächsten Lauf ein anderer Test (`audit-rotate`, 1,9 statt 5,1 Sekunden)
   dasselbe Limit riss, setzen alle Vitest-Konfigurationen wie bereits
   `apps/web` und `packages/config` ein Testlimit von 20 Sekunden.
+- pnpm `12.20.0` statt 12.14.0 (`ACCESS-TENANT-RLS-001`): `packageManager`
+  (Corepack in CI und beiden Dockerfiles), `HOST_PNPM_VERSION` des
+  Betriebsskripts, Sollwert im Supply-Chain-Guard und die Test-Attrappe der
+  Windows-Skripte ziehen gemeinsam nach. Der Lockfile pinnt in pnpm 12 auch die
+  pnpm-Binaries selbst; er ändert sich nur in diesen Einträgen. 12.20.0 ist mit
+  Provenance veröffentlicht; `allowBuilds`, `strictDepBuilds` und die übrigen
+  Supply-Chain-Einstellungen bleiben unverändert.
 - **[GwG]** Die Kanzlei sieht bei jeder Person, welche Angaben der Mandant bei der
   Online-Einreichung aus der lokalen Ausweishilfe übernommen hat („Aus dem
   Ausweis übernommen: Vollständiger Name, Ausweisnummer …“), mit dem Hinweis,
