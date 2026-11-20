@@ -2157,6 +2157,15 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   XFA ist dort abgeschaltet. `pnpm audit` und Trivy kannten beide Befunde
   nicht, weil sie nur GitHub-Advisories auswerten. Keine neuen Install-Hooks,
   `allowBuilds` unverändert; Optionen von `getDocument` und Asset-Layout gleich.
+- Prisma-Config: effect `3.22.4` statt 3.20.0 als exakter Override, weil
+  `@prisma/config` (7.9.1, auch noch 7.10.1) 3.20.0 exakt pinnt. effect bis
+  3.22.0 prüft `Schema.TemplateLiteral` mit mehreren String-Spannen per Regex
+  in kubischer Zeit (GHSA-7589-6fvf-x4pw, CVE-2026-121707, hoch; seit
+  19.11.2026 in der GitHub-Advisory-Datenbank). Der blockierende
+  Produktionsaudit war deshalb rot. Einziger Nutzer ist das Laden der
+  Prisma-Config aus unserer eigenen `prisma.config.ts`, ausnutzbar war die
+  Stelle nicht. Config-Laden, `prisma validate` und `prisma generate` laufen
+  unverändert; keine Install-Hooks.
 - Dependency-Audit vom 17.11.2026: Next.js `16.4.6` statt 16.4.1 schließt zwei
   Cache-Lecks über Root-Parameter in `'use cache'`-Funktionen (GHSA-mfr8-8qww-v76h,
   GHSA-vc7v-qv4w-wrv8); `@next/eslint-plugin-next` folgt. fast-xml-parser `5.12.0`
