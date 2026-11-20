@@ -43,8 +43,9 @@
       "dependencyDashboardApproval": true
     },
     {
-      "description": "Siehe vorige Regel (pnpm-Pin in packageManager).",
+      "description": "Siehe vorige Regel (pnpm-Pin in packageManager). Eigene Gruppe: In der Gruppe npm minor/patch würde die Freigabepflicht die ganze Gruppe anhalten.",
       "matchDepTypes": ["packageManager"],
+      "groupName": "pnpm",
       "dependencyDashboardApproval": true
     },
     {

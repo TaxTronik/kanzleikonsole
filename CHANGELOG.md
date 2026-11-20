@@ -2515,6 +2515,11 @@ NULL` beim Löschen des Mandanten („Mandantenwechsel gesperrt“, Migration
   `RENOVATE_ENABLED`. Das Alpine-Hilfsimage für Volume-Backups ist auf 3.24
   digest-gepinnt (3.20 ohne Sicherheitsupdates) und wird nirgends mehr
   ungepinnt verwendet (`FK-EXC-20261005-043`).
+- Renovate: Das pnpm-Update aus `packageManager` bildet eine eigene,
+  weiterhin freigabepflichtige Gruppe. Bisher landete es in der wöchentlichen
+  Gruppe „npm minor/patch“ und machte damit die ganze Gruppe
+  freigabepflichtig; der erste Lauf am 20.11.2026 führte sie deshalb nur unter
+  „Pending Approval“ statt im Montagsfenster.
 - CI/Container: exakte Node-Version in `.nvmrc` für alle Workflows (derzeit
   24.22.1, siehe oben);
   Web- und Worker-Image auf derselben digest-gepinnten Basis
