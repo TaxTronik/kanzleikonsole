@@ -2539,6 +2539,14 @@ NULL` beim Löschen des Mandanten („Mandantenwechsel gesperrt“, Migration
   Gruppe „npm minor/patch“ und machte damit die ganze Gruppe
   freigabepflichtig; der erste Lauf am 20.11.2026 führte sie deshalb nur unter
   „Pending Approval“ statt im Montagsfenster.
+- Renovate: Prisma (CLI, Client, Adapter) nur gemeinsam und nach Freigabe,
+  weil `prisma` 7.10.0 und 7.10.1 ohne npm-Provenance veröffentlicht wurden und
+  pnpm (`trustPolicy: no-downgrade`) sie als mögliche Paketübernahme ablehnt.
+  Minor-Sprünge bei 0.x-Versionen gelten wie Majors (Freigabe, eigene Gruppe).
+  Die zweig- bzw. linientreu gepinnten Overrides `brace-expansion@1/@5`,
+  `nanoid@3/@5`, `effect` und `fast-uri` bekommen keine Major-Vorschläge mehr.
+  Werkzeuge (ESLint, Prettier, Turbo, tsx, Typen) und Test-Werkzeuge
+  (Playwright, Axe, jsdom, fast-check, Vitest) kommen als eigene Wochen-PRs.
 - CI/Container: exakte Node-Version in `.nvmrc` für alle Workflows (derzeit
   24.22.1, siehe oben);
   Web- und Worker-Image auf derselben digest-gepinnten Basis

@@ -21,6 +21,53 @@
       "groupName": "npm minor/patch"
     },
     {
+      "description": "npm: Werkzeuge (Lint, Format, Build, Typen) als eigener wöchentlicher PR, damit ein Bruch dort nicht die Laufzeit-Updates aufhält.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": [
+        "eslint",
+        "@eslint/**",
+        "typescript-eslint",
+        "@typescript-eslint/**",
+        "prettier",
+        "turbo",
+        "tsx",
+        "@types/**"
+      ],
+      "groupName": "npm Werkzeuge minor/patch"
+    },
+    {
+      "description": "npm: Test-Werkzeuge (Playwright, Axe, jsdom, fast-check, Vitest) als eigener wöchentlicher PR.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": [
+        "@playwright/test",
+        "playwright",
+        "playwright-core",
+        "@axe-core/**",
+        "jsdom",
+        "fast-check",
+        "vitest",
+        "@vitest/**"
+      ],
+      "groupName": "npm Tests minor/patch"
+    },
+    {
+      "description": "Prisma (CLI, Client, Adapter, Engines) nur gemeinsam und nach Freigabe: prisma 7.10.0 und 7.10.1 wurden ohne npm-Provenance veröffentlicht, pnpm (trustPolicy no-downgrade) lehnt sie ab. Vor der Freigabe die Provenance prüfen (npm view prisma@<Version> dist.attestations).",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["prisma", "@prisma/**"],
+      "groupName": "Prisma",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "0.x-Versionen: Nach SemVer kann jedes Minor brechen (z. B. @xmldom/xmldom 0.8 → 0.9, pdfkit 0.18 → 0.20, esbuild). Wie Majors nur nach Freigabe und getrennt von den Wochengruppen.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor"],
+      "matchCurrentVersion": "<1.0.0",
+      "groupName": "npm 0.x minor",
+      "dependencyDashboardApproval": true
+    },
+    {
       "description": "Forgejo-Actions: neue Commit-SHAs (mit Versionskommentar) gesammelt.",
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["minor", "patch", "digest"],
@@ -51,6 +98,19 @@
     {
       "description": "engines.node bleibt die bewusst gewählte LTS-Spanne.",
       "matchDepTypes": ["engines"],
+      "enabled": false
+    },
+    {
+      "description": "Bewusst zweig- oder linientreu gehaltene Overrides bekommen keine Major-Vorschläge: brace-expansion@1/@5 und nanoid@3/@5 sind je Zweig gepinnt (ESLint bzw. PostCSS/docx brauchen die jeweilige API), effect bleibt 3.x für @prisma/config, fast-uri 3.x für ajv (^3).",
+      "matchDepNames": [
+        "brace-expansion@1",
+        "brace-expansion@5",
+        "nanoid@3",
+        "nanoid@5",
+        "effect",
+        "fast-uri"
+      ],
+      "matchUpdateTypes": ["major"],
       "enabled": false
     }
   ],
