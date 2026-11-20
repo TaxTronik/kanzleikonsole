@@ -2185,6 +2185,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Prisma-Config aus unserer eigenen `prisma.config.ts`, ausnutzbar war die
   Stelle nicht. Config-Laden, `prisma validate` und `prisma generate` laufen
   unverändert; keine Install-Hooks.
+- Node.js `24.22.3` statt 24.22.1 (Sicherheitsrelease vom 10.11.2026): `.nvmrc`
+  für alle Workflows, die vom Betriebsskript installierte Host-Laufzeit
+  (`HOST_NODE_VERSION` mit den SHA-256-Werten aus `SHASUMS256.txt` von
+  nodejs.org für linux-x64 und linux-arm64) und das gemeinsame Basis-Image von
+  Web und Worker (`node:24-alpine3.23`, neuer Digest mit Node 24.22.3 auf
+  Alpine 3.23.8).
 - Dependency-Audit vom 17.11.2026: Next.js `16.4.6` statt 16.4.1 schließt zwei
   Cache-Lecks über Root-Parameter in `'use cache'`-Funktionen (GHSA-mfr8-8qww-v76h,
   GHSA-vc7v-qv4w-wrv8); `@next/eslint-plugin-next` folgt. fast-xml-parser `5.12.0`
