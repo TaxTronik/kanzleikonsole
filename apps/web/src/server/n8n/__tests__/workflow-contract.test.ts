@@ -43,8 +43,7 @@ function node(workflow: Workflow, id: string): WorkflowNode {
 
 function headers(candidate: WorkflowNode): Array<{ name?: string; value?: string }> {
   const container = candidate.parameters?.['headerParameters'] as
-    | { parameters?: Array<{ name?: string; value?: string }> }
-    | undefined;
+    { parameters?: Array<{ name?: string; value?: string }> } | undefined;
   return container?.parameters ?? [];
 }
 

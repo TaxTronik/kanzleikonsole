@@ -26,8 +26,7 @@ export interface OnboardingExtraDocument {
 }
 
 export type OnboardingSubmissionValidation =
-  | { ok: false; error: string }
-  | { ok: true; linkedOwnerLocalIds: string[] };
+  { ok: false; error: string } | { ok: true; linkedOwnerLocalIds: string[] };
 
 /** Pure preflight for every cross-reference submitted by the public wizard. */
 export function validateOnboardingSubmission(input: {

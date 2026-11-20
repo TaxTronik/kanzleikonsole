@@ -12,10 +12,7 @@ import {
 export const NOTICE_DEADLINE_CALCULATION_VERSION = 'tax-legal-assessment/2026-08-23-v1';
 
 export type NoticeDateBasis =
-  | 'DISPATCH_DATE'
-  | 'PROVISION_DATE'
-  | 'ACTUAL_ACCESS_DETERMINED'
-  | 'DOCUMENT_DATE_RISK_ONLY';
+  'DISPATCH_DATE' | 'PROVISION_DATE' | 'ACTUAL_ACCESS_DETERMINED' | 'DOCUMENT_DATE_RISK_ONLY';
 export type EvidenceStatus = 'CLAIMED' | 'SUBSTANTIATED' | 'PROFESSIONALLY_DETERMINED';
 export type AccessStatus =
   | 'UNCONTESTED'

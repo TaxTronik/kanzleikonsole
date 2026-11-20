@@ -125,11 +125,9 @@ function anhaengenText(fehler: unknown): string {
  * Beide haben dieselben Parameter, Körper und Antworten.
  */
 type AnhaengenEndpunkt =
-  | typeof ENDPUNKTE.nachweisAnhaengen
-  | typeof ENDPUNKTE.portalAnlageAnhaengen;
+  typeof ENDPUNKTE.nachweisAnhaengen | typeof ENDPUNKTE.portalAnlageAnhaengen;
 type EntfernenEndpunkt =
-  | typeof ENDPUNKTE.nachweisEntfernen
-  | typeof ENDPUNKTE.portalAnlageEntfernen;
+  typeof ENDPUNKTE.nachweisEntfernen | typeof ENDPUNKTE.portalAnlageEntfernen;
 
 /**
  * Hängt den Verweis an (Dienst) und führt die Verknüpfung nach: Annahme →

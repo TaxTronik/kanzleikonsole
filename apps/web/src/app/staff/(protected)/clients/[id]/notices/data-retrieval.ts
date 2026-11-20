@@ -3,10 +3,7 @@
 export type RetrievalConsentStatus = 'NOT_APPLICABLE' | 'CONFIRMED' | 'NOT_GIVEN' | 'UNKNOWN';
 export type RetrievalEligibilityStatus = 'NOT_APPLICABLE' | 'CONFIRMED' | 'NOT_MET' | 'UNKNOWN';
 export type RetrievalPostalRequestStatus =
-  | 'NOT_APPLICABLE'
-  | 'NONE_EFFECTIVE'
-  | 'EFFECTIVE'
-  | 'UNKNOWN';
+  'NOT_APPLICABLE' | 'NONE_EFFECTIVE' | 'EFFECTIVE' | 'UNKNOWN';
 export type RetrievalNotificationStatus = 'NOT_RECORDED' | 'SENT' | 'FAILED' | 'UNKNOWN';
 
 export interface DataRetrievalEvidenceInput {

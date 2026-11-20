@@ -219,8 +219,7 @@ function parseAppointmentUpdate(formData: FormData): ActionParseResult<Appointme
 
 /** Ergebnis der Termin-Transaktion: ohne erreichbaren Empfänger wird nichts geschrieben. */
 type AppointmentTxOutcome =
-  | { kind: 'saved'; clientMails: number }
-  | { kind: 'no-recipient'; reason: string };
+  { kind: 'saved'; clientMails: number } | { kind: 'no-recipient'; reason: string };
 
 const BEFORE_UPDATE_SELECT = {
   title: true,

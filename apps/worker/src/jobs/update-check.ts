@@ -64,12 +64,10 @@ const defaultDeps: UpdateCheckDeps = {
 export async function runUpdateCheck(
   deps: UpdateCheckDeps = defaultDeps,
 ): Promise<PersistedUpdateCheck> {
-  const result = await deps.check().catch(
-    (error: unknown): CheckResult => ({
-      ok: false,
-      error: `Update-Prüfung fehlgeschlagen: ${(error as Error).message}`,
-    }),
-  );
+  const result = await deps.check().catch((error: unknown): CheckResult => ({
+    ok: false,
+    error: `Update-Prüfung fehlgeschlagen: ${(error as Error).message}`,
+  }));
   const persisted = toPersistedUpdateCheck(result, deps.now());
   const tenantIds = await deps.tenantIds();
   for (const tenantId of tenantIds) await deps.store(tenantId, persisted);

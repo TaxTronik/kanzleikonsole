@@ -136,9 +136,9 @@ export function stretchContrastInPlace(data: Uint8ClampedArray): void {
   for (let index = 0; index < data.length; index += 4) histogram[data[index]!]!++;
   const clip = (data.length / 4) * 0.01;
   let low = 0;
-  for (let sum = 0; low < 255 && (sum += histogram[low]!) < clip; ) low++;
+  for (let sum = 0; low < 255 && (sum += histogram[low]!) < clip;) low++;
   let high = 255;
-  for (let sum = 0; high > 0 && (sum += histogram[high]!) < clip; ) high--;
+  for (let sum = 0; high > 0 && (sum += histogram[high]!) < clip;) high--;
   if (high <= low) return;
   const factor = 255 / (high - low);
   for (let index = 0; index < data.length; index += 4) {

@@ -12,12 +12,7 @@ import {
 } from '@/lib/workflow-step-kinds';
 
 type StepKind =
-  | 'TASK'
-  | 'DOCUMENT_UPLOAD'
-  | 'CLIENT_REQUEST'
-  | 'CLIENT_FORM'
-  | 'CLIENT_EMAIL'
-  | 'N8N_TRIGGER';
+  'TASK' | 'DOCUMENT_UPLOAD' | 'CLIENT_REQUEST' | 'CLIENT_FORM' | 'CLIENT_EMAIL' | 'N8N_TRIGGER';
 
 const ALL_KINDS: StepKind[] = [
   'TASK',

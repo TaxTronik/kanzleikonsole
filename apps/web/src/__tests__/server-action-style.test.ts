@@ -225,7 +225,7 @@ export function wrapperCarryingNames(
   }
   const { functions } = topLevelFunctions(source);
   const references = new Map([...functions].map(([name, fn]) => [name, referencedNames(fn.node)]));
-  for (let before = -1; before !== carrying.size; ) {
+  for (let before = -1; before !== carrying.size;) {
     before = carrying.size;
     for (const [name, names] of references) {
       if (!carrying.has(name) && [...carrying].some((wrapper) => names.has(wrapper))) {

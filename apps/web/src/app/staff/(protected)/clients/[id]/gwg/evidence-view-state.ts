@@ -1,9 +1,5 @@
 export type PersonIdentityEvidenceStatus =
-  | 'bestaetigt'
-  | 'mehrfach'
-  | 'abgelaufen'
-  | 'offen'
-  | 'fehlt';
+  'bestaetigt' | 'mehrfach' | 'abgelaufen' | 'offen' | 'fehlt';
 
 interface EvidenceWithSupersession {
   /** Während eines Rolling Deployments kann ein alter Prozess das neue Feld

@@ -23,8 +23,7 @@ export type KontextMitProgramm = KontextAntwort & {
 };
 
 export type Geladen<T> =
-  | { ok: true; ctx: KontextMitProgramm; daten: T }
-  | { ok: false; anzeige: ReactNode };
+  { ok: true; ctx: KontextMitProgramm; daten: T } | { ok: false; anzeige: ReactNode };
 
 /** Query der Lesezugriffe: nur ein gültiger Stichtag wird weitergegeben. */
 export function standQuery(sp: SuchParameter): { stand?: string } {
@@ -87,9 +86,7 @@ export function kopfDaten(ctx: KontextAntwort): TcmsKopfDaten {
 
 /** Ergebnis eines optionalen Detail-Lesezugriffs für einen Detailbereich. */
 export type DetailErgebnis<T> =
-  | { ok: true; daten: T }
-  | { ok: false; zustand: TcmsSeitenZustand }
-  | null;
+  { ok: true; daten: T } | { ok: false; zustand: TcmsSeitenZustand } | null;
 
 export function detailAus<T>(ergebnis: TcmsLeseErgebnis<T | null> | null): DetailErgebnis<T> {
   if (ergebnis === null) return null;

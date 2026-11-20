@@ -266,7 +266,7 @@ function authCarryingFns(file: string, seen: Set<string> = new Set()): Set<strin
   }
 
   // Fixpunkt: Helfer, die auth-tragende Helfer aufrufen, tragen selbst.
-  for (let davor = -1; davor !== auth.size; ) {
+  for (let davor = -1; davor !== auth.size;) {
     davor = auth.size;
     for (const f of fns) {
       if (auth.has(f.name)) continue;

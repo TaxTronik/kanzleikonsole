@@ -462,8 +462,7 @@ export interface ChecksJob {
 
 /** New jobs address one delivery; outboxId tolerates queued legacy jobs. */
 export type N8nDeliverJob =
-  | { deliveryId: string; outboxId?: never }
-  | { outboxId: string; deliveryId?: never };
+  { deliveryId: string; outboxId?: never } | { outboxId: string; deliveryId?: never };
 
 /**
  * Delayed completion notification to the delegating staff member (`staffId`).

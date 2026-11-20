@@ -21,14 +21,7 @@ export default async function CustomFieldsAdminPage() {
     key: f.key,
     label: f.label,
     type: f.type as
-      | 'TEXT'
-      | 'TEXTAREA'
-      | 'NUMBER'
-      | 'MONEY'
-      | 'DATE'
-      | 'SELECT'
-      | 'CHECKBOX'
-      | 'URL',
+      'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'SELECT' | 'CHECKBOX' | 'URL',
     helpText: f.helpText,
     appliesTo: f.appliesTo as Array<'NATPERS' | 'JURPERS' | 'PERSGES'>,
     options: Array.isArray(f.options)

@@ -243,8 +243,7 @@ export interface TcmsLeseEingabe<E extends Endpunkt> {
 }
 
 export type TcmsLeseErgebnis<T> =
-  | { ok: true; daten: T; requestId: string | null }
-  | { ok: false; zustand: TcmsSeitenZustand };
+  { ok: true; daten: T; requestId: string | null } | { ok: false; zustand: TcmsSeitenZustand };
 
 /** POST-Endpunkte, die nur lesen (Body = Mandantenliste der Seite). */
 const LESENDE_POST = new Set(['portfolioLesen', 'arbeitskorbLesen']);

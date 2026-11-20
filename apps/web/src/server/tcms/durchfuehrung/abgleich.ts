@@ -56,8 +56,7 @@ export interface OffeneVerknuepfung {
 }
 
 export type AbgleichEntscheidung =
-  | { art: 'BESTAETIGEN'; nachweisId: string }
-  | { art: 'FREIGEBEN'; grund: NachweisFreigabeGrund };
+  { art: 'BESTAETIGEN'; nachweisId: string } | { art: 'FREIGEBEN'; grund: NachweisFreigabeGrund };
 
 /**
  * Entscheidung für eine offene Verknüpfung aus der geprüften Antwort des

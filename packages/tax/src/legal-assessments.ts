@@ -204,10 +204,7 @@ export type NoticeAccessSituation =
   | { kind: 'ACTUAL_ACCESS_DETERMINED'; date: Date };
 
 export type AppealDeliveryMethod =
-  | 'DOMESTIC_POST'
-  | 'DIRECT_ELECTRONIC'
-  | 'POST_ABROAD'
-  | 'DETERMINED_NOTIFICATION';
+  'DOMESTIC_POST' | 'DIRECT_ELECTRONIC' | 'POST_ABROAD' | 'DETERMINED_NOTIFICATION';
 
 export type AppealManualReviewReason =
   | 'DISPATCH_DATE_UNKNOWN'
@@ -334,8 +331,7 @@ function assessFictionDate(
 }
 
 type DeadlineManualReviewReason =
-  | 'LEGAL_REMEDY_INSTRUCTION_UNCLEAR'
-  | 'DEADLINE_WORKDAY_REVIEW_REQUIRED';
+  'LEGAL_REMEDY_INSTRUCTION_UNCLEAR' | 'DEADLINE_WORKDAY_REVIEW_REQUIRED';
 
 interface NotificationDeadlineResolution {
   deadline: Date | null;
@@ -597,20 +593,13 @@ export function assessAppealDeadline(
 // Fachkatalog: TAX-NOTICE-DATARETRIEVAL-001
 
 export type ProvisionEvidenceStatus =
-  | 'TECHNICALLY_EVIDENCED'
-  | 'PROFESSIONALLY_DETERMINED'
-  | 'CLAIMED'
-  | 'UNKNOWN';
+  'TECHNICALLY_EVIDENCED' | 'PROFESSIONALLY_DETERMINED' | 'CLAIMED' | 'UNKNOWN';
 
 export type Consent2026Status = 'ACTIVE_DOCUMENTED' | 'ABSENT' | 'UNKNOWN';
 export type DataRetrievalEligibility2027Status = 'CONFIRMED' | 'NOT_MET' | 'UNKNOWN';
 export type PostalRequestStatus = 'NO_EFFECTIVE_REQUEST' | 'EFFECTIVE_REQUEST' | 'UNKNOWN';
 export type RetrievalNotificationStatus =
-  | 'SAME_DAY_CONFIRMED'
-  | 'FAILED'
-  | 'NOT_RECEIVED'
-  | 'LATE'
-  | 'UNKNOWN';
+  'SAME_DAY_CONFIRMED' | 'FAILED' | 'NOT_RECEIVED' | 'LATE' | 'UNKNOWN';
 
 export type DataRetrievalManualReviewReason =
   | 'ISSUED_AT_UNKNOWN'

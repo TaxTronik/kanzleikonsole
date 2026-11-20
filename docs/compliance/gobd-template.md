@@ -71,7 +71,7 @@ Beispiel:
 | Vollsystem-Drill    | DB + Dokument-Store + Konfiguration/n8n           | quartalsweise           | **\*\***\_\_\_**\*\*** |
 | Letzter Drill       | TT.MM.JJJJ                                        | —                       | **\*\***\_\_\_**\*\*** |
 
-Backup-Aufbewahrung: **_ Tage rolling + _** Tage Monats-Snapshots + \_\_\_ Jahre
+Backup-Aufbewahrung: **\_ Tage rolling + _** Tage Monats-Snapshots + \_\_\_ Jahre
 Jahres-Snapshots.
 
 ## 4. Datenzugriff der Finanzverwaltung

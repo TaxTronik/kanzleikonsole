@@ -43,8 +43,7 @@ const HARDWARE_SETUP_LIMIT = { max: 10, windowSec: 15 * 60 };
 const PROFILE = '/staff/profile';
 
 type HardwareMutationResult =
-  | { ok: true; success: string; forceLogout?: boolean }
-  | { ok: false; error: string };
+  { ok: true; success: string; forceLogout?: boolean } | { ok: false; error: string };
 
 /** Typisierte WebAuthn-Fehler mit fester Meldung; alles andere ordnet staffAction ein. */
 function hardwareError(error: unknown): ActionFailure | undefined {

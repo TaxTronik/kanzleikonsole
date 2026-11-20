@@ -57,12 +57,7 @@ export interface OutboxEnqueueDeps {
 }
 
 export type N8nEnqueueStatus =
-  | 'PENDING'
-  | 'UNROUTED'
-  | 'SKIPPED'
-  | 'DUPLICATE'
-  | 'INVALID_EVENT'
-  | 'WRITE_FAILED';
+  'PENDING' | 'UNROUTED' | 'SKIPPED' | 'DUPLICATE' | 'INVALID_EVENT' | 'WRITE_FAILED';
 
 export interface N8nEnqueueResult {
   /** ID des persistierten Outbox-Events; bei Validierungs-/DB-Fehlern null. */

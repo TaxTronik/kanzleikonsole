@@ -19,8 +19,7 @@ export interface BoundedWorkerLimits {
 export type BoundedWorkerFailure = 'spawn' | 'timeout' | 'memory' | 'error' | 'exit';
 
 export type BoundedWorkerResult<T> =
-  | { ok: true; value: T }
-  | { ok: false; reason: BoundedWorkerFailure };
+  { ok: true; value: T } | { ok: false; reason: BoundedWorkerFailure };
 
 /**
  * Führt ein festes Programm (`program`, nie die Eingabedaten) in einem eigenen

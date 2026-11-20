@@ -78,8 +78,7 @@ export interface NachweisBezug {
  * Kontakt der Portal-Sitzung (`kontaktId`, Integration TCMS Stufe 3).
  */
 export type NachweisVerknuepfer =
-  | NachweisBezug
-  | (Pick<NachweisBezug, 'tenantId' | 'mandantId'> & { kontaktId: string });
+  NachweisBezug | (Pick<NachweisBezug, 'tenantId' | 'mandantId'> & { kontaktId: string });
 
 /** Filter der wählbaren Dokumente eines Mandanten (ohne Versionsprüfung). */
 export function nachweisDokumentFilter(tenantId: string, mandantId: string) {
@@ -226,8 +225,7 @@ export type NachweisFreigabeGrund = 'REMOVED' | 'NOT_ATTACHED';
 export async function nachweisVerknuepfungFreigeben(
   ctx: TenantContext,
   ziel:
-    | { verknuepfungId: string }
-    | { mandantId: string; durchfuehrungId: string; nachweisId: string },
+    { verknuepfungId: string } | { mandantId: string; durchfuehrungId: string; nachweisId: string },
   grund: NachweisFreigabeGrund,
 ): Promise<number> {
   const filter =

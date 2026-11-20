@@ -52,16 +52,11 @@ import { discardNeverSentDraftArchiveTx } from '@/server/invoicing/draft-archive
 
 /** Fehlende Pflichtangaben für die Erzeugung von XRechnung/ZUGFeRD. */
 export type ArchiveInputFailure =
-  | 'seller_incomplete'
-  | 'reverse_charge_seller_no_vatid'
-  | 'buyer_incomplete';
+  'seller_incomplete' | 'reverse_charge_seller_no_vatid' | 'buyer_incomplete';
 
 /** Alle fachlichen Ablehnungsgründe des Archivpfads (ohne technische Fehler). */
 export type ArchiveFailureCode =
-  | 'not_found'
-  | 'not_applicable'
-  | ArchiveInputFailure
-  | 'status_conflict';
+  'not_found' | 'not_applicable' | ArchiveInputFailure | 'status_conflict';
 
 /**
  * Gebundene Archivfassung: Ort plus Größe und SHA-256 der Dokumentversion, gegen

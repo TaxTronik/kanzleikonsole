@@ -39,8 +39,7 @@ export interface MailResendInput {
 }
 
 export type MailResendOutcome =
-  | { kind: 'requeued'; count: number }
-  | { kind: 'skipped'; count: number; reason: string };
+  { kind: 'requeued'; count: number } | { kind: 'skipped'; count: number; reason: string };
 
 type ResendActor = Pick<StaffCtx, 'session' | 'tenantId' | 'staffId' | 'ctx'>;
 

@@ -543,13 +543,7 @@ interface FieldBinding {
 }
 type IdentityDetailKey = 'idNumber' | 'idIssuedBy' | 'idIssueDate' | 'idExpiryDate';
 type OwnerDetailKey =
-  | IdentityDetailKey
-  | 'birthDate'
-  | 'birthPlace'
-  | 'nationality'
-  | 'street'
-  | 'postalCode'
-  | 'city';
+  IdentityDetailKey | 'birthDate' | 'birthPlace' | 'nationality' | 'street' | 'postalCode' | 'city';
 
 interface IdentityUploadProps {
   token: string;

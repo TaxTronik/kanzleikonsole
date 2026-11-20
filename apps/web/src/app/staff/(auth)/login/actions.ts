@@ -430,8 +430,7 @@ function safeStaffReturnTo(raw: unknown): string {
 }
 
 export type BeginHardwareLoginResult =
-  | { ceremonyId: string; options: PublicKeyCredentialRequestOptionsJSON }
-  | { error: string };
+  { ceremonyId: string; options: PublicKeyCredentialRequestOptionsJSON } | { error: string };
 
 export async function hardwareLoginAvailabilityAction(): Promise<{ available: boolean }> {
   return { available: isHardwareAccessConfigured() };

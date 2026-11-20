@@ -56,8 +56,7 @@ export default async function PortalBwaPage() {
           status: p.status,
           updatedAt: p.updatedAt,
           createdByType: (p.createdByType === 'STAFF' ? 'STAFF' : 'CLIENT_CONTACT') as
-            | 'STAFF'
-            | 'CLIENT_CONTACT',
+            'STAFF' | 'CLIENT_CONTACT',
           updatedByType:
             p.updatedByType === 'STAFF'
               ? 'STAFF'

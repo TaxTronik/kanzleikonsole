@@ -182,8 +182,7 @@ export interface LosZiehung {
 }
 
 export type LosZiehungErgebnis =
-  | { status: 'fertig'; ziehung: LosZiehung }
-  | { status: 'wartet'; pending: PendingLos };
+  { status: 'fertig'; ziehung: LosZiehung } | { status: 'wartet'; pending: PendingLos };
 
 export class LosRahmenLeerError extends ActionError {
   constructor(typ: LosRahmenTyp = 'subsumtion') {

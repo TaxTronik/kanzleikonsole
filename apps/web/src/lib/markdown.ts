@@ -106,15 +106,7 @@ const UNORDERED_LIST = /^[-*]\s+/;
 const ORDERED_LIST = /^\d+\.\s+/;
 
 type BlockKind =
-  | 'code'
-  | 'heading'
-  | 'hr'
-  | 'table'
-  | 'quote'
-  | 'ul'
-  | 'ol'
-  | 'blank'
-  | 'paragraph';
+  'code' | 'heading' | 'hr' | 'table' | 'quote' | 'ul' | 'ol' | 'blank' | 'paragraph';
 type RenderedBlock = { html: string; next: number };
 
 // Dieselbe Erkennung steuert Blockauswahl und Absatzende. Ein einzelnes "|"

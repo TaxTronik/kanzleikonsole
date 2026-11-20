@@ -249,8 +249,7 @@ export interface TcmsRouteLeseEingabe<E extends Endpunkt> {
 }
 
 export type TcmsRouteLeseErgebnis<T> =
-  | { ok: true; daten: T; requestId: string | null }
-  | TcmsRouteAbbruch;
+  { ok: true; daten: T; requestId: string | null } | TcmsRouteAbbruch;
 
 /**
  * Liest einen GET-Endpunkt mit Mandant im Pfad für die geprüfte Route,

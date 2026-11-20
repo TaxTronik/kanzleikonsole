@@ -74,8 +74,7 @@ function sessionExpires(token: JWT): string {
 
 function hasPortalSessionFields(session: Session | null): session is PortalSession {
   const u = session?.user as
-    | { contactId?: unknown; clientId?: unknown; tenantId?: unknown; fullName?: unknown }
-    | undefined;
+    { contactId?: unknown; clientId?: unknown; tenantId?: unknown; fullName?: unknown } | undefined;
   return (
     !!u &&
     typeof u.contactId === 'string' &&

@@ -244,9 +244,7 @@ async function resolveHttpTarget(
  */
 export type N8nTargetKind = 'api' | 'webhook' | 'webhook-test' | 'health';
 export type HttpTargetPolicy =
-  | { mode: 'trusted-internal' }
-  | { mode: 'public' }
-  | { mode: 'n8n'; kind: N8nTargetKind };
+  { mode: 'trusted-internal' } | { mode: 'public' } | { mode: 'n8n'; kind: N8nTargetKind };
 
 /**
  * Einzige private Ausnahme fuer Tenant-konfigurierbare n8n-Ziele im

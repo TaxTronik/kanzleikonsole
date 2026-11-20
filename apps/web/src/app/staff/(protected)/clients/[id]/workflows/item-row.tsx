@@ -28,12 +28,7 @@ import { HandoverButton } from './handover-button';
 import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 
 type StepKind =
-  | 'TASK'
-  | 'DOCUMENT_UPLOAD'
-  | 'CLIENT_REQUEST'
-  | 'CLIENT_FORM'
-  | 'CLIENT_EMAIL'
-  | 'N8N_TRIGGER';
+  'TASK' | 'DOCUMENT_UPLOAD' | 'CLIENT_REQUEST' | 'CLIENT_FORM' | 'CLIENT_EMAIL' | 'N8N_TRIGGER';
 
 const KIND_ICON: Record<StepKind, typeof ListChecks> = {
   TASK: ListChecks,

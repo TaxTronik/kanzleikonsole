@@ -17,12 +17,7 @@ export interface ReverificationResult {
 }
 
 export type GwgChangeScopeInput =
-  | 'INITIAL'
-  | 'CLIENT_MASTER_DATA'
-  | 'ROUTINE'
-  | 'BENEFICIAL_OWNERS'
-  | 'REPRESENTATIVES'
-  | 'BOTH';
+  'INITIAL' | 'CLIENT_MASTER_DATA' | 'ROUTINE' | 'BENEFICIAL_OWNERS' | 'REPRESENTATIVES' | 'BOTH';
 
 export const GWG_SNAPSHOT_COPY_INCLUDE = {
   beneficialOwners: true,

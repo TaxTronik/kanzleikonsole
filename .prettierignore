@@ -13,6 +13,12 @@ out/
 # Von ESLint (--suppress-rule/--prune-suppressions) geschrieben, ohne
 # abschließenden Zeilenumbruch; Prettier würde jede Neuerzeugung bemängeln.
 eslint-suppressions.json
+# Von pnpm geschrieben; Prettier 3.10 formatiert YAML anders als pnpm.
+pnpm-lock.yaml
+# Aus dem TCMS-Repository vendort und über VENDOR.json an die Quelle gebunden
+# (guard:tcms-contract); die Formatierung folgt der Quelle, nicht diesem Repo.
+packages/tcms-contract/
+packages/tcms-domain/
 
 .VSCodeCounter/
 .codex-run/

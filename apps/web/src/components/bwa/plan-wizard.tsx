@@ -6,13 +6,7 @@ import { fmtEURRound } from '@/lib/fmt';
 import type { BwaPlanBasis } from '@/server/bwa/plan-basis';
 
 export type PlanAxis =
-  | 'REVENUE'
-  | 'PERSONNEL'
-  | 'OTHER_COSTS'
-  | 'DEPRECIATION'
-  | 'MATERIAL'
-  | 'OTHER_INCOME'
-  | 'TAXES';
+  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
 
 export interface CreatePlanInput {
   name: string;
@@ -35,13 +29,7 @@ type Base = BwaPlanBasis & {
 };
 
 type Axis =
-  | 'REVENUE'
-  | 'PERSONNEL'
-  | 'OTHER_COSTS'
-  | 'DEPRECIATION'
-  | 'MATERIAL'
-  | 'OTHER_INCOME'
-  | 'TAXES';
+  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
 
 const AXIS_LABELS: Record<Axis, string> = {
   REVENUE: 'Erlöse',

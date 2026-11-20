@@ -14,11 +14,7 @@
 import { berlinCalendarDate } from '@taxtronik/tax';
 
 export type FristQuelle =
-  | 'STEUERTERMIN'
-  | 'EINSPRUCHSFRIST'
-  | 'KLAGEFRIST'
-  | 'ANFORDERUNG'
-  | 'WIEDERVORLAGE';
+  'STEUERTERMIN' | 'EINSPRUCHSFRIST' | 'KLAGEFRIST' | 'ANFORDERUNG' | 'WIEDERVORLAGE';
 
 export const QUELLE_LABELS: Record<FristQuelle, string> = {
   STEUERTERMIN: 'Steuertermin',
@@ -57,11 +53,7 @@ export interface FristEintrag {
   erledigt: boolean;
   /** Aus dem Quellvorgang abgeleiteter Kontrollzustand; kein frei editierbarer Parallelstatus. */
   kontrollzustand:
-    | 'OPEN'
-    | 'CLOSED_FULFILLED'
-    | 'CLOSED_DISPOSITION'
-    | 'CLOSED_NOT_APPLICABLE'
-    | 'SUPERSEDED';
+    'OPEN' | 'CLOSED_FULFILLED' | 'CLOSED_DISPOSITION' | 'CLOSED_NOT_APPLICABLE' | 'SUPERSEDED';
   /** Warum ein Status trotz scheinbarem Abschluss weiter offen bleibt. */
   kontrollhinweis: string | null;
   erledigtAm: Date | null;

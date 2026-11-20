@@ -28,8 +28,7 @@ import { createVerifiedLegalEntityGwgFixture } from '../../../../../../packages/
 
 const m = vi.hoisted(() => ({
   ablegen: null as
-    | null
-    | ((g: PortalAblageKontext, datei: File, schluessel: string | null) => Promise<unknown>),
+    null | ((g: PortalAblageKontext, datei: File, schluessel: string | null) => Promise<unknown>),
 }));
 
 vi.mock('server-only', () => ({}));

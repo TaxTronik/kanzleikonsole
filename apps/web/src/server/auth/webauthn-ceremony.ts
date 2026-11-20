@@ -29,11 +29,7 @@ const RESPONSE_JSON_MAX_CHARS = 128 * 1024;
 const CEREMONY_ID_PATTERN = /^[A-Za-z0-9_-]{32}$/;
 
 export type HardwareCeremonyPurpose =
-  | 'login'
-  | 'register'
-  | 'mode-enable'
-  | 'mode-disable'
-  | 'admin-recovery';
+  'login' | 'register' | 'mode-enable' | 'mode-disable' | 'admin-recovery';
 
 export type HardwareCeremony = {
   version: 1;

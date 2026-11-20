@@ -201,8 +201,7 @@ const VERWORFEN_GRUND = {
 
 /** Abschluss einer Zeile aus dem Stand ihres Versandauftrags; `null`: Versand läuft noch. */
 export type AuftragsAbschluss =
-  | { status: 'ANGENOMMEN'; grund: null }
-  | { status: 'GESCHEITERT'; grund: TcmsZustellGrund };
+  { status: 'ANGENOMMEN'; grund: null } | { status: 'GESCHEITERT'; grund: TcmsZustellGrund };
 
 const ABSCHLUSS_JE_STATUS = {
   QUEUED: null,
@@ -569,8 +568,7 @@ async function hinweisAnAdmins(
 
 /** Was nach dem Commit an das Tax-CMS geht. */
 export type Meldung =
-  | { art: 'ZUGESTELLT' }
-  | { art: 'UNZUSTELLBAR'; grund: NachrichtUnzustellbarGrund };
+  { art: 'ZUGESTELLT' } | { art: 'UNZUSTELLBAR'; grund: NachrichtUnzustellbarGrund };
 
 /**
  * Ergebnis der Einplanung bzw. Nachführung einer Mitteilung. `eingeplant`:

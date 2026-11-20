@@ -248,14 +248,7 @@ export default async function ClientEditPage({ params }: { params: Promise<{ id:
               key: d.key,
               label: d.label,
               type: d.type as
-                | 'TEXT'
-                | 'TEXTAREA'
-                | 'NUMBER'
-                | 'MONEY'
-                | 'DATE'
-                | 'SELECT'
-                | 'CHECKBOX'
-                | 'URL',
+                'TEXT' | 'TEXTAREA' | 'NUMBER' | 'MONEY' | 'DATE' | 'SELECT' | 'CHECKBOX' | 'URL',
               helpText: d.helpText,
               options: Array.isArray(d.options)
                 ? (d.options as Array<{ value: string; label: string }>)

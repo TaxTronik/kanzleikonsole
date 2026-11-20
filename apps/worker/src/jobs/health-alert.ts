@@ -34,14 +34,7 @@ import { sendOpsMail } from '../mailer';
 import { log } from '../logger';
 
 export type ServiceName =
-  | 'postgres'
-  | 'redis'
-  | 'objectStore'
-  | 'clamav'
-  | 'backup'
-  | 'app'
-  | 'n8n'
-  | 'auditAnchor';
+  'postgres' | 'redis' | 'objectStore' | 'clamav' | 'backup' | 'app' | 'n8n' | 'auditAnchor';
 
 const SERVICE_LABEL: Record<ServiceName, string> = {
   postgres: 'Postgres (Datenbank)',

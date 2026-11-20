@@ -5,12 +5,7 @@
 // =============================================================================
 
 export type StoredObjectErrorReason =
-  | 'MISSING_BODY'
-  | 'TOO_LARGE'
-  | 'LENGTH_MISMATCH'
-  | 'OVERFLOW'
-  | 'SIZE_MISMATCH'
-  | 'HASH_MISMATCH';
+  'MISSING_BODY' | 'TOO_LARGE' | 'LENGTH_MISMATCH' | 'OVERFLOW' | 'SIZE_MISMATCH' | 'HASH_MISMATCH';
 
 const INTEGRITY_REASONS: ReadonlySet<StoredObjectErrorReason> = new Set([
   'LENGTH_MISMATCH',
@@ -36,10 +31,7 @@ export class StoredObjectError extends Error {
 }
 
 export type UploadRejectionReason =
-  | 'TOO_LARGE'
-  | 'INFECTED'
-  | 'SCAN_ERROR'
-  | 'INVALID_RETENTION_YEARS';
+  'TOO_LARGE' | 'INFECTED' | 'SCAN_ERROR' | 'INVALID_RETENTION_YEARS';
 
 /**
  * Abgewiesener Schreibvorgang (Limit, Virenscan, unzulässige Frist). Die

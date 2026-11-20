@@ -877,8 +877,7 @@ export function anlageFreigabeStandTx(
 
 /** Ergebnis der Freigabe. */
 export type AnlageFreigabe =
-  | { art: 'freigegeben' }
-  | Exclude<AnlageFreigabeStand, { art: 'offen' }>;
+  { art: 'freigegeben' } | Exclude<AnlageFreigabeStand, { art: 'offen' }>;
 
 /**
  * Gibt eine ungeklärte Anlage frei („NOT_ATTACHED“), nachdem das Tax-CMS für

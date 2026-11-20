@@ -39,8 +39,7 @@ export const MAX_MULTIPART_BODY_BYTES = MAX_UPLOAD_BYTES + 1024 * 1024;
  * Discriminated Union: bei `ok: false` die fertige Fehler-Response zurückgeben.
  */
 export type ParsedUpload =
-  | { ok: true; form: FormData; file: Blob }
-  | { ok: false; response: NextResponse };
+  { ok: true; form: FormData; file: Blob } | { ok: false; response: NextResponse };
 
 export async function parseMultipartUpload(req: NextRequest): Promise<ParsedUpload> {
   let form: FormData;

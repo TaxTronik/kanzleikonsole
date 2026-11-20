@@ -11,8 +11,7 @@ import { TcmsText } from './text';
 
 /** Gemeinsamer Ausschnitt aller Feststellungs-Sichten des Vertrags. */
 export type FeststellungKern =
-  | { maskiert: true; nummer: string }
-  | { maskiert: false; nummer: string; titel: string };
+  { maskiert: true; nummer: string } | { maskiert: false; nummer: string; titel: string };
 
 export const VERTRAULICHE_FESTSTELLUNG = 'Vertrauliche Feststellung';
 export const VERTRAULICH_HINWEIS = 'Inhalt nur für Beteiligte sichtbar';

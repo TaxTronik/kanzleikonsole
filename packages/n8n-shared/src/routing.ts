@@ -301,8 +301,7 @@ export const N8N_ROUTE_CHANGE_REASONS = {
 } as const;
 
 export type N8nRouteCheck =
-  | { ok: true; targetUrl: string; useTestUrl: boolean }
-  | { ok: false; reason: string };
+  { ok: true; targetUrl: string; useTestUrl: boolean } | { ok: false; reason: string };
 
 function explicitRouteChanged(
   delivery: N8nPlannedDeliverySnapshot,

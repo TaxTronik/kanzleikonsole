@@ -240,7 +240,7 @@ describe('Feiertagsprüfung mit Jahrescache', () => {
       for (const region of [null, ...ALL_REGIONS]) {
         for (const bavariaAssumption of [true, false]) {
           const expected = new Set(germanHolidays(year, region, bavariaAssumption).map(ymd));
-          for (let day = new Date(Date.UTC(year, 0, 1)); day.getUTCFullYear() === year; ) {
+          for (let day = new Date(Date.UTC(year, 0, 1)); day.getUTCFullYear() === year;) {
             expect(isGermanHoliday(day, region, bavariaAssumption), `${region} ${ymd(day)}`).toBe(
               expected.has(ymd(day)),
             );

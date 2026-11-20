@@ -165,7 +165,7 @@ export function parseNameStatus(output) {
   const fields = output.split('\0');
   if (fields.at(-1) === '') fields.pop();
   const changes = [];
-  for (let index = 0; index < fields.length; ) {
+  for (let index = 0; index < fields.length;) {
     const status = fields[index++];
     const firstPath = fields[index++];
     if (!status || !firstPath) throw new Error('Unerwartete NUL-getrennte git-diff-Ausgabe.');

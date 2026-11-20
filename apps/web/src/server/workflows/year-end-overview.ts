@@ -32,13 +32,7 @@ export const CAMPAIGNS_PER_PAGE = 5;
 export const ENTRIES_PER_PAGE = 50;
 
 export type CampaignPhase =
-  | 'PENDING'
-  | 'IN_PROGRESS'
-  | 'RETURNED'
-  | 'SUBMITTED'
-  | 'REVIEWED'
-  | 'CLOSED'
-  | 'CANCELLED';
+  'PENDING' | 'IN_PROGRESS' | 'RETURNED' | 'SUBMITTED' | 'REVIEWED' | 'CLOSED' | 'CANCELLED';
 
 const OPEN_REQUEST: Prisma.RequestWhereInput = { status: { notIn: ['CANCELLED', 'CLOSED'] } };
 const NOT_CANCELLED: Prisma.RequestWhereInput = { status: { not: 'CANCELLED' } };

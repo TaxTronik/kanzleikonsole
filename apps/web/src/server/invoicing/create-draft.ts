@@ -74,8 +74,7 @@ export type DraftInvoiceSource =
   | { kind: 'stbvv_quote'; quoteId: string };
 
 export type CheckedDraftInvoice =
-  | { ok: true; positions: DraftInvoicePosition[]; totals: VatTotals }
-  | { ok: false; error: string };
+  { ok: true; positions: DraftInvoicePosition[]; totals: VatTotals } | { ok: false; error: string };
 
 export interface CreatedDraftInvoice {
   id: string;

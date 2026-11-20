@@ -7,13 +7,7 @@ import { fmtEURRound, fmtTimeMedium } from '@/lib/fmt';
 import { confirmDialog } from '@/components/ui/modal';
 
 export type PlanAxis =
-  | 'REVENUE'
-  | 'PERSONNEL'
-  | 'OTHER_COSTS'
-  | 'DEPRECIATION'
-  | 'MATERIAL'
-  | 'OTHER_INCOME'
-  | 'TAXES';
+  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
 
 export type UpdatePlanFn = (input: {
   planId: string;
@@ -26,13 +20,7 @@ export type UpdatePlanFn = (input: {
 export type DeletePlanFn = (input: { planId: string }) => Promise<{ ok: boolean; error?: string }>;
 
 type Axis =
-  | 'REVENUE'
-  | 'PERSONNEL'
-  | 'OTHER_COSTS'
-  | 'DEPRECIATION'
-  | 'MATERIAL'
-  | 'OTHER_INCOME'
-  | 'TAXES';
+  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
 
 const AXIS_LABELS: Record<Axis, string> = {
   REVENUE: 'Erlöse',

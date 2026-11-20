@@ -62,6 +62,110 @@ exceptions:
       - packages/tax/src/__tests__/engine.test.ts
       - packages/tax/src/stbvv/calculator.test.ts
     reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
+  - id: FK-EXC-20261120-040
+    date: '2026-11-20'
+    paths:
+      - apps/web/src/app/gwg-onboarding/person-steps.tsx
+      - apps/web/src/app/gwg-onboarding/wizard.tsx
+      - 'apps/web/src/app/portal/(protected)/bwa/page.tsx'
+      - 'apps/web/src/app/staff/(auth)/login/actions.ts'
+      - 'apps/web/src/app/staff/(protected)/calendar/actions.ts'
+      - 'apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/page.tsx'
+      - 'apps/web/src/app/staff/(protected)/clients/[id]/gwg/evidence-view-state.ts'
+      - 'apps/web/src/app/staff/(protected)/clients/[id]/notices/data-retrieval.ts'
+      - 'apps/web/src/app/staff/(protected)/clients/[id]/notices/notice-assessment.ts'
+      - 'apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/[analysisId]/page.tsx'
+      - 'apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/marking-panel.tsx'
+      - 'apps/web/src/app/staff/(protected)/clients/[id]/workflows/actions.ts'
+      - 'apps/web/src/app/staff/(protected)/profile/actions.ts'
+      - apps/web/src/components/bwa/plan-comparison.tsx
+      - apps/web/src/components/bwa/plan-wizard.tsx
+      - apps/web/src/components/tcms/bereich-b/laden.tsx
+      - apps/web/src/components/tcms/feststellung.tsx
+      - apps/web/src/lib/gwg/identity-image.ts
+      - apps/web/src/server/auth/portal.ts
+      - apps/web/src/server/auth/staff-login.ts
+      - apps/web/src/server/documents/pdf-fonts.ts
+      - apps/web/src/server/documents/upload-helpers.ts
+      - apps/web/src/server/dsgvo/workflow.ts
+      - apps/web/src/server/fristen/eintrag.ts
+      - apps/web/src/server/gwg-onboarding/submission-validation.ts
+      - apps/web/src/server/gwg/reverification.ts
+      - apps/web/src/server/invoicing/archive.ts
+      - apps/web/src/server/invoicing/create-draft.ts
+      - apps/web/src/server/mail/resend.ts
+      - apps/web/src/server/risk/los.ts
+      - apps/web/src/server/tcms/durchfuehrung/abgleich.ts
+      - apps/web/src/server/tcms/durchfuehrung/nachweis-aktion.ts
+      - apps/web/src/server/tcms/durchfuehrung/verweis.ts
+      - apps/web/src/server/tcms/portal/meldevorgang.ts
+      - apps/web/src/server/tcms/route.ts
+      - apps/web/src/server/tcms/seite.ts
+      - apps/web/src/server/workflows/year-end-overview.ts
+      - apps/worker/src/jobs/mail-outbox.ts
+      - apps/worker/src/jobs/tcms-nachrichten.ts
+      - packages/config/src/job-queues.ts
+      - packages/db/src/portal-zugang.ts
+      - packages/evidence/src/__tests__/service-anchor.test.ts
+      - packages/evidence/src/__tests__/service-seal-trust.test.ts
+      - packages/http-utils/src/index.ts
+      - packages/mail/src/outbox.ts
+      - packages/storage/src/errors.ts
+      - packages/tax/src/__tests__/plausibility-engine.test.ts
+      - packages/tax/src/legal-assessments.ts
+      - scripts/fachkatalog/diff-guard.mjs
+    rule_ids:
+      - ACCESS-TENANT-RLS-001
+      - ASSURANCE-PROFESSIONAL-REVIEW-001
+      - AUDIT-HASH-CHAIN-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - BWA-IMPORT-MAPPING-001
+      - BWA-PROJECTION-001
+      - CLIENT-ASSISTANCE-001
+      - CLIENT-MANDATE-LIFECYCLE-001
+      - CLIENT-OFFBOARDING-001
+      - DOC-OBJECT-LOCK-001
+      - DOC-UPLOAD-JOURNAL-001
+      - DOC-VERSION-IMMUTABILITY-001
+      - DSGVO-REQUEST-EVIDENCE-001
+      - GWG-BENEFICIAL-OWNERS-001
+      - GWG-IDENTIFICATION-EVIDENCE-001
+      - GWG-OCR-ASSIST-001
+      - GWG-PERSON-LINKS-001
+      - GWG-RETENTION-DESTRUCTION-001
+      - GWG-REVERIFICATION-VALIDITY-001
+      - GWG-SELF-ONBOARDING-001
+      - INV-ARCHIVE-EINVOICE-001
+      - INV-NUMBER-ALLOCATION-001
+      - INV-PORTAL-SHARING-001
+      - MAIL-OUTBOX-001
+      - MANDATE-STRUCTURE-001
+      - PAYROLL-INTAKE-001
+      - RISK-AI-SUGGESTION-001
+      - TAX-CONTROL-STATUS-001
+      - TAX-DEADLINE-WORKDAY-001
+      - TAX-NOTICE-APPEAL-001
+      - TAX-NOTICE-DATARETRIEVAL-001
+      - TCMS-AKTEUR-001
+      - TCMS-DIENST-001
+      - TCMS-NACHWEIS-001
+      - TCMS-SAMPLE-PROOF-001
+      - WORKFLOW-LIFECYCLE-001
+      - YEAR-END-CAMPAIGN-001
+    reason: >-
+      Reine Formatierung durch das Prettier-Update 3.8.3 → 3.10.1: Typ- und
+      String-Unions stehen einzeilig, `for`-Köpfe ohne Leerzeichen vor der
+      schließenden Klammer, in der GoBD-Vorlage ist ein Unterstrich im
+      Platzhalter maskiert. Logik, Typen, Texte, Tests und Regeln bleiben
+      unverändert; Lint, Typecheck und Unit-Tests laufen unverändert grün.
+      pnpm-lock.yaml und die vendorten TCMS-Pakete sind von Prettier
+      ausgenommen. Keine fachliche Freigabe.
+    tests:
+      - packages/tax/src/__tests__/plausibility-engine.test.ts
+      - packages/evidence/src/__tests__/service-anchor.test.ts
+      - apps/web/src/server/tcms/__tests__/meldevorgang-db.test.ts
+      - scripts/tests/fachkatalog.test.mjs
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261119-001
     date: '2026-11-19'
     paths:

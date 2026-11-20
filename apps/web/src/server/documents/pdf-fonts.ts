@@ -8,10 +8,7 @@ import { ActionError } from '../actions/action-error';
 export const PDF_FONT_DIRECTORY = 'assets/fonts/noto';
 
 export type PdfFontFace =
-  | 'NotoSans-Regular.ttf'
-  | 'NotoSans-Bold.ttf'
-  | 'NotoSansSC-Regular.otf'
-  | 'NotoSansSC-Bold.otf';
+  'NotoSans-Regular.ttf' | 'NotoSans-Bold.ttf' | 'NotoSansSC-Regular.otf' | 'NotoSansSC-Bold.otf';
 type Face = PdfFontFace;
 type Run = { face: Face; text: string };
 const files = new Map(manifest.fonts.map((f) => [f.file, f]));

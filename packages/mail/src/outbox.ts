@@ -97,12 +97,7 @@ export interface OutboxDirectMail extends OutboxMailBase {
 export type OutboxContactMail = OutboxMailBase;
 
 export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [key: string]: JsonValue };
+  string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type JsonObject = { [key: string]: JsonValue };
 
 /** Gespeicherte Form (Version 1); bis zum Terminalstatus im Auftrag. */

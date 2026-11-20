@@ -89,9 +89,7 @@ export async function acknowledgeN8nDelivery(
 }
 
 type RetryReset =
-  | { kind: 'missing' }
-  | { kind: 'stale' }
-  | { kind: 'ready'; id: string; outboxId: string };
+  { kind: 'missing' } | { kind: 'stale' } | { kind: 'ready'; id: string; outboxId: string };
 
 /**
  * Setzt eine fehlgeschlagene Zustellung auf PENDING zurück, wenn ihr

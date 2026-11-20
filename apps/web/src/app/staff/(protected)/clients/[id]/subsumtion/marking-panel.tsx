@@ -98,11 +98,7 @@ export function MarkingPanel(props: {
         governanceTyp: (gov || null) as 'FP' | 'FF' | 'IN' | null,
         schadensintensitaet: (intens || null) as 'NIEDRIG' | 'MITTEL' | 'HOCH' | null,
         wahrscheinlichkeit: (wk || null) as
-          | 'SELTEN'
-          | 'MOEGLICH'
-          | 'WAHRSCHEINLICH'
-          | 'HAEUFIG'
-          | null,
+          'SELTEN' | 'MOEGLICH' | 'WAHRSCHEINLICH' | 'HAEUFIG' | null,
         kaskadenreichweite: kask.trim() === '' ? null : Number(kask),
         kontrolle: kontrolle.trim() || null,
         status,

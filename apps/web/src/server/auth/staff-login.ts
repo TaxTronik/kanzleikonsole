@@ -81,8 +81,7 @@ type StaffAccount = StaffUser & {
 };
 
 export type StaffPasswordStepResult =
-  | { ok: true; account: StaffUser; tenantId: string }
-  | { ok: false };
+  { ok: true; account: StaffUser; tenantId: string } | { ok: false };
 
 /**
  * Schritt 1. S-09/M2: unbekannte Kanzlei, unbekanntes, deaktiviertes,

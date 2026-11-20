@@ -19,7 +19,7 @@ const css = parse(readFileSync(join(APP_DIR, 'globals.css'), 'utf8'));
 /** Kontext einer Regel: umschließende At-Regeln, z. B. ['@layer base']. */
 function context(rule: Rule): string[] {
   const chain: string[] = [];
-  for (let node: Container | undefined = rule.parent; node && node.type !== 'root'; ) {
+  for (let node: Container | undefined = rule.parent; node && node.type !== 'root';) {
     if (node.type === 'atrule') {
       const at = node as AtRule;
       chain.unshift(`@${at.name} ${at.params}`);

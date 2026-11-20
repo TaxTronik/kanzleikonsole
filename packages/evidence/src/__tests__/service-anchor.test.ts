@@ -19,14 +19,12 @@ const tenantId = '00000000-0000-4000-8000-000000000001';
 
 class AnchorTsa implements TimestampPort {
   readonly mode = 'rfc3161' as const;
-  readonly timestamp = vi.fn(
-    async (payload: Uint8Array): Promise<TimestampResult> => ({
-      timestampedAt: '2026-08-21T10:00:01.000Z',
-      tsaRequestBlob: Buffer.from('request'),
-      tsaResponseBlob: createHash('sha256').update(payload).digest(),
-      tsaSerial: '42',
-    }),
-  );
+  readonly timestamp = vi.fn(async (payload: Uint8Array): Promise<TimestampResult> => ({
+    timestampedAt: '2026-08-21T10:00:01.000Z',
+    tsaRequestBlob: Buffer.from('request'),
+    tsaResponseBlob: createHash('sha256').update(payload).digest(),
+    tsaSerial: '42',
+  }));
   readonly verify = vi.fn(async () => true);
   readonly verifyDetailed = vi.fn(async () => ({ ok: true, trustAnchored: true }));
 }

@@ -7,13 +7,7 @@ import { ActorBadge } from '@/components/bwa/actor-badge';
 import type { ProjectionSnapshot } from '@/components/bwa/projection-snapshot';
 
 type Axis =
-  | 'REVENUE'
-  | 'PERSONNEL'
-  | 'OTHER_COSTS'
-  | 'DEPRECIATION'
-  | 'MATERIAL'
-  | 'OTHER_INCOME'
-  | 'TAXES';
+  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
 
 const AXIS_LABELS: Record<Axis, string> = {
   REVENUE: 'Erlöse',
@@ -208,8 +202,7 @@ function ComparisonTable({
 
   // Spalten-Reihenfolge mit chronologisch eingefügter Hochrechnung
   type Col =
-    | { kind: 'plan'; plan: PlanForCompare; year: number }
-    | { kind: 'projection'; year: number };
+    { kind: 'plan'; plan: PlanForCompare; year: number } | { kind: 'projection'; year: number };
   const cols: Col[] = plans.map((p) => ({ kind: 'plan' as const, plan: p, year: p.year }));
   if (projection) {
     cols.push({ kind: 'projection', year: projection.year });

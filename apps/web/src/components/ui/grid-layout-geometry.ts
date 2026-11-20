@@ -16,8 +16,7 @@ export interface GridGeometry {
   h: number;
 }
 export type GridAdjustmentResult<T> =
-  | { ok: true; items: T[]; item: T }
-  | { ok: false; error: string };
+  { ok: true; items: T[]; item: T } | { ok: false; error: string };
 
 /**
  * Same collision handling and vertical compaction as pointer editing in RGL.

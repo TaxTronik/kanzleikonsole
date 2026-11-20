@@ -1,11 +1,6 @@
 export type DsgvoWorkflowStatus = 'RECEIVED' | 'IN_PROGRESS' | 'COMPLETED' | 'REJECTED';
 export type DsgvoWorkflowType =
-  | 'ACCESS'
-  | 'RECTIFICATION'
-  | 'ERASURE'
-  | 'RESTRICTION'
-  | 'PORTABILITY'
-  | 'OBJECTION';
+  'ACCESS' | 'RECTIFICATION' | 'ERASURE' | 'RESTRICTION' | 'PORTABILITY' | 'OBJECTION';
 
 const TRANSITIONS: Record<DsgvoWorkflowStatus, readonly DsgvoWorkflowStatus[]> = {
   RECEIVED: ['RECEIVED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED'],

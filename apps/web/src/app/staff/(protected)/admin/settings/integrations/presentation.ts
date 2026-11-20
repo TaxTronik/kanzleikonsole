@@ -7,9 +7,7 @@ export interface AttentionStatus {
 }
 
 export type IntegrationRowStatus =
-  | ServiceStatus
-  | { skipped: true; reason: string }
-  | AttentionStatus;
+  ServiceStatus | { skipped: true; reason: string } | AttentionStatus;
 
 export interface N8nHealthPresentation {
   endpoint: string;

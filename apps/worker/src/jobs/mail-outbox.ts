@@ -282,9 +282,7 @@ async function escalateStrandedSending(
 }
 
 type ClaimOutcome =
-  | { kind: 'claimed'; row: Claimed }
-  | { kind: 'skipped'; reason: string }
-  | { kind: 'lost' };
+  { kind: 'claimed'; row: Claimed } | { kind: 'skipped'; reason: string } | { kind: 'lost' };
 
 /**
  * Prüft den Vorgang und beansprucht den Auftrag in EINER Tenant-Transaktion:

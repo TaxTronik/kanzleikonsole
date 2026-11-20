@@ -44,10 +44,7 @@ export function aktiverPortalzugangWhere(tenantId: string, mandantId: string) {
 
 /** Grund, warum ein Kontakt keinen aktiven Portalzugang hat (Reihenfolge wie der Worker). */
 export type PortalZugangMangel =
-  | 'MANDANT_INAKTIV'
-  | 'KONTAKT_INAKTIV'
-  | 'KONTAKT_OHNE_EMAIL'
-  | 'KONTAKT_UNBESTAETIGT';
+  'MANDANT_INAKTIV' | 'KONTAKT_INAKTIV' | 'KONTAKT_OHNE_EMAIL' | 'KONTAKT_UNBESTAETIGT';
 
 export interface PortalZugangDaten {
   active: boolean;

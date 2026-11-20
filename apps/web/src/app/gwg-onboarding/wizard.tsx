@@ -51,8 +51,7 @@ import {
 } from './draft-sync';
 
 type OnboardingUploadResult =
-  | { ok: true; documentId: string; versionId?: string }
-  | { ok: false; error: string };
+  { ok: true; documentId: string; versionId?: string } | { ok: false; error: string };
 
 async function uploadOnboardingFile(
   token: string,

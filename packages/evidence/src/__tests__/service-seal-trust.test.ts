@@ -6,14 +6,12 @@ const tenantId = '00000000-0000-4000-8000-000000000001';
 
 class UntrustedTsa implements TimestampPort {
   readonly mode = 'rfc3161' as const;
-  readonly timestamp = vi.fn(
-    async (): Promise<TimestampResult> => ({
-      timestampedAt: '2026-08-22T12:00:00.000Z',
-      tsaRequestBlob: Buffer.from('request'),
-      tsaResponseBlob: Buffer.from('untrusted-response'),
-      tsaSerial: '1',
-    }),
-  );
+  readonly timestamp = vi.fn(async (): Promise<TimestampResult> => ({
+    timestampedAt: '2026-08-22T12:00:00.000Z',
+    tsaRequestBlob: Buffer.from('request'),
+    tsaResponseBlob: Buffer.from('untrusted-response'),
+    tsaSerial: '1',
+  }));
   readonly verify = vi.fn(async () => false);
 }
 

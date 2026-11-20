@@ -12,11 +12,7 @@
 import { berlinWallClockToUtc } from '@/lib/fmt';
 
 export type PortalRequestBadge =
-  | 'PENDING'
-  | 'ACCEPTED'
-  | 'APPOINTMENT_CANCELLED'
-  | 'REJECTED'
-  | 'CANCELLED';
+  'PENDING' | 'ACCEPTED' | 'APPOINTMENT_CANCELLED' | 'REJECTED' | 'CANCELLED';
 
 export interface PortalRequestView {
   badge: PortalRequestBadge;

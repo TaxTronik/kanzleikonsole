@@ -470,6 +470,12 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   pnpm-Binaries selbst; er ändert sich nur in diesen Einträgen. 12.20.0 ist mit
   Provenance veröffentlicht; `allowBuilds`, `strictDepBuilds` und die übrigen
   Supply-Chain-Einstellungen bleiben unverändert.
+- Prettier `3.10.1` statt 3.8.3 (Nachzug zur Renovate-Gruppe „npm minor/patch“):
+  76 Dateien sind neu formatiert, vor allem einzeilige Typ- und String-Unions
+  und `for`-Köpfe; Logik, Typen und Texte bleiben gleich
+  (`FK-EXC-20261120-040`). `pnpm-lock.yaml` (von pnpm geschrieben) und die
+  vendorten Pakete `tcms-contract`/`tcms-domain` (an `VENDOR.json` gebunden)
+  sind jetzt von Prettier ausgenommen.
 - **[GwG]** Die Kanzlei sieht bei jeder Person, welche Angaben der Mandant bei der
   Online-Einreichung aus der lokalen Ausweishilfe übernommen hat („Aus dem
   Ausweis übernommen: Vollständiger Name, Ausweisnummer …“), mit dem Hinweis,

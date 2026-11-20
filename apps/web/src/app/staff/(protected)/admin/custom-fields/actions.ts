@@ -67,8 +67,7 @@ export async function saveFieldDefAction(input: z.infer<typeof SaveSchema>): Pro
             helpText: data.helpText,
             appliesTo: data.appliesTo,
             options: (data.options ?? null) as
-              | Prisma.NullableJsonNullValueInput
-              | Prisma.InputJsonValue,
+              Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue,
             active: data.active,
           },
         });
@@ -101,8 +100,7 @@ export async function saveFieldDefAction(input: z.infer<typeof SaveSchema>): Pro
             helpText: data.helpText,
             appliesTo: data.appliesTo,
             options: (data.options ?? null) as
-              | Prisma.NullableJsonNullValueInput
-              | Prisma.InputJsonValue,
+              Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue,
             active: data.active,
             position: (last?.position ?? 0) + 10,
           },

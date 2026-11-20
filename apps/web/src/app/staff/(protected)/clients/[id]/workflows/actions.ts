@@ -565,12 +565,7 @@ export async function addItemToInstanceAction(input: {
   description?: string;
   dueDate?: string | null;
   kind?:
-    | 'TASK'
-    | 'DOCUMENT_UPLOAD'
-    | 'CLIENT_REQUEST'
-    | 'CLIENT_FORM'
-    | 'CLIENT_EMAIL'
-    | 'N8N_TRIGGER';
+    'TASK' | 'DOCUMENT_UPLOAD' | 'CLIENT_REQUEST' | 'CLIENT_FORM' | 'CLIENT_EMAIL' | 'N8N_TRIGGER';
   config?: unknown;
   n8nEvent?: string | null;
   assigneeStaffId?: string | null;
