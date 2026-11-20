@@ -15,11 +15,11 @@
     "install:browsers": "playwright install chromium"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
-    "@playwright/test": "^1.60.0",
-    "@types/node": "^24.13.2",
-    "esbuild": "0.28.1",
-    "otplib": "^13.4.0",
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^24.19.2",
+    "esbuild": "0.28.2",
+    "otplib": "^13.6.0",
     "typescript": "^6.0.3"
   }
 }

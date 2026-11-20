@@ -74,7 +74,7 @@ peerDependencyRules:
 overrides:
   # Runtime und Typoberfläche müssen dieselbe LTS-Linie verwenden. Ohne Override
   # zieht Vite seinen optionalen Peer sonst auf die jeweils neueste Node-Major.
-  '@types/node': '24.13.2'
+  '@types/node': '24.19.2'
   # valibot <=1.4.1 ist verwundbar (flatten() wirft bei record()-Pfaden);
   # ebenfalls nur ueber @prisma/dev.
   valibot: '^1.4.2'
@@ -84,7 +84,7 @@ overrides:
   # Version. 8.5.32 liegt ausserhalb der Mindestreife, daher keine Ausnahme.
   postcss: '8.5.32'
   # esbuild 0.28.0 is vulnerable (GHSA-gv7w-rqvm-qjhr); force the patched release.
-  esbuild: '0.28.1'
+  esbuild: '0.28.2'
   # vite <=8.1.5 is vulnerable (u. a. GHSA-fx2h-pf6j-xcff, GHSA-v6wh-96g9-6wx3,
   # GHSA-587h-7wmj-h5pm, GHSA-698v-4r3x-3vcv, GHSA-r825-w8mm-5pxw); nur Dev/Test.
   # Exakter Pin auf die aktuelle stabile Linie. Gegen 8.1.6 ist kein offener
@@ -100,20 +100,20 @@ overrides:
   # GHSA-8c8m-p3m8-cjg8, GHSA-m943-m63m-w62w; ab 10.0.13 GHSA-g73g-hqqh-jr95,
   # GHSA-4ffr-jq9g-5ffx). MIME-Roundtrip und Empfaengerparser testen
   # (nodemailer-compat.test.ts).
-  nodemailer: '10.2.1'
+  nodemailer: '10.5.0'
   # Next.js erlaubt noch den verwundbaren 2.10-Zweig
   # (GHSA-w5vr-8v7q-w6rv); den bereits fuer browserslist aufgeloesten
   # gepatchten Stand einheitlich verwenden.
-  baseline-browser-mapping: '2.11.4'
-  # Beide von PostCSS bzw. docx benoetigten nanoid-Zweige separat auf die
-  # kleinsten Releases mit den jeweiligen Security-Fixes pinnen.
-  nanoid@3: '3.3.18'
+  baseline-browser-mapping: '2.11.37'
+  # Beide von PostCSS bzw. docx benoetigten nanoid-Zweige separat pinnen,
+  # jeweils auf einen Stand mit den Security-Fixes des Zweigs.
+  nanoid@3: '3.3.20'
   nanoid@5: '5.1.16'
   # @prisma/config 7.9.1 pinnt noch den verwundbaren 7.x-Zweig exakt. 8.0.0
   # behebt die Stack-Erschöpfung bei rekursiven Objektgraphen; Prisma-Config-
   # Laden und -Generierung werden nach dem Override als Kompatibilitätsgate
   # ausgeführt.
-  deepmerge-ts: '8.0.0'
+  deepmerge-ts: '8.0.2'
   # @prisma/config 7.9.1 (auch noch 7.10.1) pinnt effect 3.20.0 exakt. effect
   # <=3.22.0 prueft Schema.TemplateLiteral mit mehreren String-Spannen per Regex
   # in kubischer Zeit (GHSA-7589-6fvf-x4pw, ReDoS). Einziger Nutzer ist das
@@ -131,23 +131,23 @@ overrides:
   # und unbeschraenkte Parse-Diagnosen erzeugen (GHSA-j6r3-76f7-8jcv,
   # GHSA-h3mg-xc3c-68pw); <=10.7.3 prueft Zonen-IDs in quadratischer Zeit
   # (GHSA-rxp7-6hxx-x8q5). Transitiv ueber socks in Prisma und imapflow.
-  ip-address: '10.7.4'
+  ip-address: '10.7.6'
   # browserslist <=4.28.6 kann durch nicht vertrauenswuerdige Custom-Stats
   # abstuerzen oder unbeschraenkt Speicher belegen (GHSA-73wf-gq98-2v4g,
-  # GHSA-c83g-rgw3-j3cx). Den kleinsten gepatchten 4.x-Stand erzwingen.
-  browserslist: '4.28.7'
+  # GHSA-c83g-rgw3-j3cx). Einen gepatchten 4.x-Stand erzwingen.
+  browserslist: '4.29.5'
   # Prisma zieht mysql2 nur transitiv ein. Versionen <3.22.0 akzeptieren einen
   # unsicheren Auth-Plugin-Downgrade; bis 3.23.0 ist ausserdem ein DoS durch
   # komprimierte Protokolldaten moeglich (GHSA-3f6p-5ww8-9rcr,
   # GHSA-rgwj-5xj2-c3m3).
-  mysql2: '3.23.1'
+  mysql2: '3.24.6'
   # @xmldom/xmldom <=0.8.14 erlaubt beim Serialisieren ungueltiger Entity-
   # Referenzen XML-Fragment-Injection (GHSA-6gmq-8vp8-gcm6).
   '@xmldom/xmldom': '0.8.15'
-  # Tiptap 3.30.5 benoetigt diese ProseMirror-Patchstaende. Eine zweite,
+  # Tiptap 3.33.1 benoetigt diese ProseMirror-Patchstaende. Eine zweite,
   # aeltere Kopie erzeugt inkompatible nominale Node-/View-Typen im Editor.
-  prosemirror-model: '1.25.11'
-  prosemirror-view: '1.42.3'
+  prosemirror-model: '1.25.13'
+  prosemirror-view: '1.42.9'
   # sharp <0.35.4 erbt libheif-Schwachstellen (GHSA-rgj7-g3m4-5g8c), <0.35.5
   # die librsvg-Schwachstelle CVE-2026-96889 (GHSA-wq5f-xc86-pv6w); Next.js
   # zieht sharp fuer die Bildoptimierung auch in den Produktionsgraphen.
@@ -159,18 +159,18 @@ overrides:
   source-map-js: '1.2.2'
   # fast-copy 4.0.x erschoepft bei tief verschachtelten Werten den Stack
   # (GHSA-jggr-w7fw-pc2j); transitiv ueber pino-pretty in Web und Worker.
-  fast-copy: '4.1.1'
+  fast-copy: '4.3.1'
   # brace-expansion zweig-genau pinnen: minimatch@3 braucht die Callable-API
   # aus 1.x, minimatch@10 die 5.x-API. Ein pauschaler 5.x-Force bricht ESLint.
   # Beide Fixstaende schliessen Rekursions-/CPU-DoS (u. a.
   # GHSA-qhr7-859c-m2p7, GHSA-6j4f-fj2g-mc7p, GHSA-q2hr-2g5m-vwhr).
-  brace-expansion@1: '1.1.21'
-  brace-expansion@5: '5.0.12'
+  brace-expansion@1: '1.1.22'
+  brace-expansion@5: '5.0.13'
   # undici <8.12.2: TLS-Pruefung ueber verworfene Agent-Optionen, Cache-Poisoning
   # ueber Cross-Origin-Redirects und mehrere DoS (u. a. GHSA-2m5v-pch6-74hx,
   # GHSA-4w7w-5xrc-9h26, GHSA-qrxm-fqhp-jwvm, GHSA-xjj6-f33q-929c). Exakter Pin
   # wie in @taxtronik/http-utils (safeFetch); jsdom zieht sonst die alte Kopie.
-  undici: '8.12.3'
+  undici: '8.12.4'
   # zod <4.6.6 sammelt je fehlerhaftem Array-Element Issues ohne Obergrenze und
   # kann so den Speicher erschoepfen (GHSA-mrhx-c7xc-m3w5). Transitiv haelt sonst
   # eslint-plugin-react-hooks die alte Kopie. Bereich wie in den Manifesten.

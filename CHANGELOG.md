@@ -2198,6 +2198,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   nodejs.org für linux-x64 und linux-arm64) und das gemeinsame Basis-Image von
   Web und Worker (`node:24-alpine3.23`, neuer Digest mit Node 24.22.3 auf
   Alpine 3.23.8).
+- Abhängigkeiten: 61 Minor-/Patch-Updates aus Renovates Gruppe „npm
+  minor/patch“ vom 20.11.2026, u. a. React 19.3, Tiptap 3.33, ESLint 10.14,
+  typescript-eslint 8.72, Playwright 1.65, Turbo 2.11, AWS SDK, nodemailer
+  10.5 und mailparser 3.14 sowie die Sicherheits-Overrides (esbuild,
+  undici, mysql2, ip-address, browserslist u. a.) auf ihren aktuellen
+  Patchständen. Keine neuen Install-Hooks; `allowBuilds` unverändert. Bewusst
+  ausgelassen: die Prisma-Familie (fehlende Provenance von `prisma` 7.10.x),
+  `@xmldom/xmldom` 0.9 und `pdfkit` 0.20 (0.x-Minor-Sprünge; mit xmldom 0.9 las
+  die DOCX-Extraktion keine Datei mehr) und `asn1js` 3.1 (hätte neben der von
+  `pkijs` genutzten 3.0.10 eine zweite, typinkompatible Kopie erzeugt) sowie
+  Prettier 3.10, das 77 Dateien anders formatiert und dafür einen eigenen
+  Schritt braucht. Die vendorten TCMS-Pakete bleiben unverändert.
 - Dependency-Audit vom 17.11.2026: Next.js `16.4.6` statt 16.4.1 schließt zwei
   Cache-Lecks über Root-Parameter in `'use cache'`-Funktionen (GHSA-mfr8-8qww-v76h,
   GHSA-vc7v-qv4w-wrv8); `@next/eslint-plugin-next` folgt. fast-xml-parser `5.12.0`
