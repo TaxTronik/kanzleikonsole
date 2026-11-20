@@ -444,6 +444,18 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- CI (`.forgejo/workflows/ci.yml`): Alle Jobs starten ohne `needs` sofort und
+  parallel. Bisher warteten DB, Restore, Upgrade-Pfad, E2E und XRechnung auf
+  den 8 bis 10 Minuten langen Job `quality`; der Lauf dauerte 20 bis 23
+  Minuten. `quality` prüft nur noch Format, Dokumentationslinks, Fachkatalog
+  und Guards; Lint, Typecheck, Unit-Tests und Ops-Skripte (shellcheck,
+  Operator-CLI, PowerShell) laufen als eigene Jobs `lint`, `typecheck`,
+  `unit-tests` und `ops`. Der Produktions-Build im E2E-Job prüft die Typen
+  wieder selbst, weil er nicht mehr nach dem Typecheck läuft (ersetzt die
+  Entscheidung B-07). `check-release-gates.mjs` verlangt die neuen Jobs und
+  verbietet `needs` in `ci.yml`; die Prüfungen, dass lokale DB-Test-Schalter
+  nur im db-Job gesetzt sind, decken jetzt alle übrigen Jobs ab statt nur
+  `quality` (`ASSURANCE-RELEASE-EVIDENCE-001`, `FK-EXC-20261120-001`).
 - **[GwG]** Die Kanzlei sieht bei jeder Person, welche Angaben der Mandant bei der
   Online-Einreichung aus der lokalen Ausweishilfe übernommen hat („Aus dem
   Ausweis übernommen: Vollständiger Name, Ausweisnummer …“), mit dem Hinweis,

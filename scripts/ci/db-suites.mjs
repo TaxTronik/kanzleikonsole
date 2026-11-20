@@ -193,13 +193,20 @@ export function checkDbSuiteFile({ workflow, file, read }) {
   return problems;
 }
 
-/** Ob der Quality-Job (oder der ganze Workflow) DB-Suiten einschaltet. */
+/**
+ * Ob ein anderer Job als db (oder der ganze Workflow) DB-Suiten einschaltet,
+ * vor allem der Unit-Job unit-tests.
+ */
 export function dbSwitchOutsideDbJob(workflow) {
-  const quality = workflow?.jobs?.quality;
+  const others = Object.entries(workflow?.jobs ?? {})
+    .filter(([id]) => id !== 'db')
+    .map(([, job]) => job);
   return [
     workflow?.env?.[DB_SUITES_SWITCH],
-    quality?.env?.[DB_SUITES_SWITCH],
-    ...(quality?.steps ?? []).map((step) => step.env?.[DB_SUITES_SWITCH]),
+    ...others.flatMap((job) => [
+      job?.env?.[DB_SUITES_SWITCH],
+      ...(job?.steps ?? []).map((step) => step.env?.[DB_SUITES_SWITCH]),
+    ]),
   ].some((value) => value !== undefined);
 }
 
@@ -222,7 +229,7 @@ export function checkDbSuiteWiring({ workflow, files, read }) {
     problems.push('ci.yml: db-Job laedt testbericht-db nicht mit if: always() hoch');
   }
   if (dbSwitchOutsideDbJob(workflow)) {
-    problems.push(`ci.yml: ${DB_SUITES_SWITCH} gehoert nur in den db-Job, nicht in Quality`);
+    problems.push(`ci.yml: ${DB_SUITES_SWITCH} gehoert nur in den db-Job, in keinen anderen Job`);
   }
   for (const file of files) problems.push(...checkDbSuiteFile({ workflow, file, read }));
   for (const isolated of Object.keys(ISOLATED_DB_SUITES)) {

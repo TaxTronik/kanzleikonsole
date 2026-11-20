@@ -138,12 +138,27 @@ test('meldet einen Glob-Schritt ohne DB_TESTS, mit Bedingung, vor den Migratione
   );
 });
 
-test('meldet DB_TESTS im Quality-Job und isolierte Suiten ohne eigenen Schritt', () => {
-  const quality = freshWorkflow();
-  quality.jobs.quality.env = { DB_TESTS: '1' };
+test('meldet DB_TESTS ausserhalb des db-Jobs und isolierte Suiten ohne eigenen Schritt', () => {
+  const unitJob = freshWorkflow();
+  unitJob.jobs['unit-tests'].env = { ...unitJob.jobs['unit-tests'].env, DB_TESTS: '1' };
   assert.match(
-    checkDbSuiteWiring({ workflow: quality, files, read }).join('\n'),
+    checkDbSuiteWiring({ workflow: unitJob, files, read }).join('\n'),
     /DB_TESTS gehoert nur in den db-Job/,
+  );
+  const unitStep = freshWorkflow();
+  const run = unitStep.jobs['unit-tests'].steps.find((step) =>
+    (step.run ?? '').includes('turbo run test'),
+  );
+  run.env = { DB_TESTS: '1' };
+  assert.match(
+    checkDbSuiteWiring({ workflow: unitStep, files, read }).join('\n'),
+    /DB_TESTS gehoert nur in den db-Job/,
+  );
+  assert.equal(
+    checkDbSuiteWiring({ workflow: freshWorkflow(), files, read }).some((problem) =>
+      problem.includes('gehoert nur in den db-Job'),
+    ),
+    false,
   );
 
   const isolated = Object.keys(ISOLATED_DB_SUITES)[0];

@@ -22,7 +22,8 @@ Der Tag-Push löst `.forgejo/workflows/release.yml` aus:
 1. Verifiziert einen annotierten, strikten SemVer-Tag, den exakten Event-SHA
    und dass der Commit Bestandteil von `main` ist.
 2. Ruft im selben Release-DAG die vollständigen Workflows `ci.yml` und
-   `security.yml` auf genau diesem Tag-Commit auf. Damit sind Quality, DB/RLS,
+   `security.yml` auf genau diesem Tag-Commit auf. Damit sind Quality (Format,
+   Guards, Fachkatalog), Lint, Typecheck, Unit-Tests, Ops-Skripte, DB/RLS,
    Backup→Restore, Upgrade-Pfad ab dem vorherigen Tag, die vollständige E2E-Suite,
    KoSIT-XRechnung, Deploy-Readiness, Dependency-Audit und Gitleaks zwingende
    Promotion-Gates.

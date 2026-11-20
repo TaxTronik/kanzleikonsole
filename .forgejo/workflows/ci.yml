@@ -50,13 +50,9 @@ env:
 
 jobs:
   quality:
-    name: Format, Lint, Typecheck, Unit Tests
+    name: Format, Guards, Fachkatalog
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      # B-03: fester Ort des Turbo-Caches (ohne Wert legt Turbo ihn in einem
-      # Git-Worktree beim Haupt-Checkout ab); Schritt "Turbo-Cache".
-      TURBO_CACHE_DIR: .turbo/cache
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -145,130 +141,12 @@ jobs:
       - name: Migration ledger unit tests
         run: pnpm --filter @taxtronik/db test:migration-ledger
 
-      # B-05: Shell-Skripte der Operator-CLI, der Guards und der Infra-Container
-      # statisch pruefen. Projektoptionen stehen in .shellcheckrc, bewusste
-      # Ausnahmen begruendet als Direktive an der Fundstelle.
-      - name: shellcheck
-        run: |
-          if ! command -v shellcheck >/dev/null 2>&1; then
-            bash scripts/ci/apt.sh update
-            bash scripts/ci/apt.sh install -y --no-install-recommends shellcheck
-          fi
-          shellcheck --version
-          shellcheck taxtronik scripts/*.sh scripts/ops/*.sh infra/scripts/*.sh
-
-      # S-04: Die Signaturtests des Source-Updates brauchen ssh-keygen
-      # (openssh-client) und sind in CI Pflicht.
-      - name: ssh-keygen installieren
-        run: |
-          if ! command -v ssh-keygen >/dev/null 2>&1; then
-            bash scripts/ci/apt.sh update
-            bash scripts/ci/apt.sh install -y --no-install-recommends openssh-client
-          fi
-          ssh-keygen -V 2>/dev/null || command -v ssh-keygen
-
-      - name: Operator CLI tests
-        run: |
-          set -o pipefail
-          pnpm test:ops 2>&1 | tee testbericht-ops.log
-
-      - name: Ops-Testnachweis hochladen
-        if: always()
-        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3.2.1
-        with:
-          name: testbericht-ops
-          retention-days: 90
-          path: testbericht-ops.log
-          if-no-files-found: ignore
-
-      # R-10: Regressionstests der Windows-Hilfsskripte (scripts/tests/*.test.ps1,
-      # docs/development/windows-hilfsskripte.md) mit PowerShell 7 unter Linux.
-      # Release-Archiv mit gepinnter Version und SHA-256 wie gitleaks in
-      # security.yml; Docker und pnpm sind in den Tests Attrappen. Fehlt ICU im
-      # Runner-Image, läuft PowerShell im invarianten Globalisierungsmodus.
-      - name: PowerShell installieren (Version + SHA-256 gepinnt)
-        env:
-          PWSH_VERSION: 7.6.6
-          PWSH_LINUX_X64_SHA256: ddbc4a2d113bbd46d283cfedcbcd117a70caefd7673f41f2b4e0000badf103bc
-        run: |
-          set -euo pipefail
-          pwsh_dir="$(mktemp -d)"
-          curl -fsSL \
-            "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz" \
-            -o "$pwsh_dir/pwsh.tar.gz"
-          echo "${PWSH_LINUX_X64_SHA256}  $pwsh_dir/pwsh.tar.gz" | sha256sum -c -
-          tar -xzf "$pwsh_dir/pwsh.tar.gz" -C "$pwsh_dir"
-          rm "$pwsh_dir/pwsh.tar.gz"
-          chmod +x "$pwsh_dir/pwsh"
-          if ! ldconfig -p 2>/dev/null | grep -q 'libicuuc\.so'; then
-            echo 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1' >> "$GITHUB_ENV"
-            export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
-          fi
-          "$pwsh_dir/pwsh" -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()'
-          echo "PWSH=$pwsh_dir/pwsh" >> "$GITHUB_ENV"
-
-      - name: PowerShell-Tests der Windows-Skripte
-        run: |
-          set -euo pipefail
-          for test in scripts/tests/*.test.ps1; do
-            echo "== $test"
-            "$PWSH" -NoProfile -NonInteractive -File "$test"
-          done
-
-      # Ein ESLint-Lauf deckt Lint, React-Compiler-Regeln (error) und die
-      # Komplexitaetsschuld je Funktion ab (taxtronik/complexity +
-      # eslint-complexity-baseline.json, B-09); davor laufen die Guards
-      # guard:paranoid-e2e und guard:complexity (Regressionstests der Regel)
-      # sowie guard:tcms-contract (vendored TCMS-Vertrag = VENDOR.json).
-      - name: Lint
-        run: pnpm lint
-
-      # B-03: Turbo-Cache für `pnpm typecheck`; `test` spielt Turbo nie aus dem
-      # Cache ab (turbo.json). Turbo prüft jeden Eintrag über den eigenen Task-
-      # Hash (Paketdateien, Abhängigkeiten über transit, deklarierte externe
-      # Eingaben, Lockfile-Auflösung, globalEnv); ein älterer Cache kann daher
-      # kein veraltetes Ergebnis liefern. Der Schlüssel dient nur dem Auffinden:
-      # je Commit gespeichert, wiederhergestellt vom jüngsten Stand desselben
-      # Lockfiles, sonst von irgendeinem.
-      - name: Turbo-Cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: .turbo/cache
-          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
-          restore-keys: |
-            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
-            turbo-${{ runner.os }}-
-
-      - name: Typecheck
-        run: pnpm typecheck
-
-      # ALLE Pakete außer @taxtronik/db (dessen RLS-Tests brauchen die echte
-      # Postgres-Instanz → Job `db`). Vorher liefen hier nur 4 von 11 Test-
-      # Paketen — Worker/Crypto/Risk-Layer & Co. waren in CI ungetestet.
-      # Das Protokoll ist der Testnachweis je Lauf (docs/development/
-      # testkonzept.md, Abschnitt 4) und wird als Artefakt archiviert.
-      # turbo direkt aufrufen: `pnpm test -- --filter=…` würde den Filter an
-      # vitest durchreichen statt an turbo (Paket-Scope bliebe ungefiltert).
-      - name: Unit tests (alle Pakete ohne DB-Bedarf)
-        run: |
-          set -o pipefail
-          pnpm exec turbo run test --filter='!@taxtronik/db' 2>&1 | tee testbericht-unit.log
-
-      - name: Testnachweis hochladen
-        if: always()
-        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3.2.1
-        with:
-          name: testbericht-unit
-          retention-days: 90
-          path: testbericht-unit.log
-          if-no-files-found: ignore
-
   # Forgejo `act_runner` startet Services eines wiederverwendeten Workflows im
   # Host-Netz. Jeder Job mit PostgreSQL-Service nutzt deshalb einen eigenen
   # Port (PGPORT des Service = Host-Port = PGPORT/DATABASE_URL im Job-env),
   # Redis, MailHog und ClamAV nutzt nur e2e-paranoid. So laufen db, restore,
-  # upgrade-path und e2e-paranoid parallel nach quality, ohne dass sich ihre
-  # Services auf demselben Runner-Host ins Gehege kommen. Die Eindeutigkeit
+  # upgrade-path und e2e-paranoid parallel (ohne needs, ab Laufbeginn), ohne
+  # dass sich ihre Services auf demselben Runner-Host ins Gehege kommen. Die Eindeutigkeit
   # der Host-Ports prueft scripts/release/check-release-gates.mjs.
   # Zwei Laeufe desselben Jobs (z. B. zwei Pull Requests oder Release-Aufruf
   # neben einem Push) auf demselben Runner-Host belegen dieselben Ports, und
@@ -278,7 +156,6 @@ jobs:
   db:
     name: Migrations, RLS, Drift
     runs-on: ubuntu-latest
-    needs: quality
     timeout-minutes: 20
     services:
       postgres:
@@ -520,7 +397,6 @@ jobs:
   restore:
     name: Backup→Restore Roundtrip
     runs-on: ubuntu-latest
-    needs: quality
     timeout-minutes: 20
     services:
       postgres:
@@ -646,7 +522,6 @@ jobs:
   upgrade-path:
     name: Upgrade-Pfad (letztes Release → HEAD)
     runs-on: ubuntu-latest
-    needs: quality
     timeout-minutes: 20
     services:
       postgres:
@@ -801,7 +676,6 @@ jobs:
   e2e-paranoid:
     name: E2E Paranoid (Rate-Limit, Actions, Compliance)
     runs-on: ubuntu-latest
-    needs: quality
     timeout-minutes: 45
     services:
       postgres:
@@ -1055,14 +929,13 @@ jobs:
 
       # Wie Dockerfile.web als Produktions-Build: NODE_ENV=production bindet
       # HSTS und das Prod-Gate in das Artefakt; NEXTAUTH_URL muss dort https sein.
-      # B-07: Der Job quality desselben Commits (needs) hat mit `pnpm typecheck`
-      # dasselbe TypeScript-Programm geprüft (Web: next typegen + tsc); der Build
-      # prüft die Typen deshalb nicht ein zweites Mal (next.config.mjs).
+      # Der Build prüft die Typen selbst: e2e-paranoid startet ohne needs
+      # parallel zum Job typecheck und darf sich nicht auf dessen Ergebnis
+      # verlassen (ersetzt B-07; der Schalter aus next.config.mjs bleibt aus).
       - name: Build web app (Produktion)
         env:
           NODE_ENV: production
           NEXTAUTH_URL: https://localhost:3000
-          TAXTRONIK_SKIP_BUILD_TYPECHECK: '1'
         run: pnpm --filter @taxtronik/web build
 
       # B-03: Browser-Binaries je Revision. browsers.json des installierten
@@ -1175,7 +1048,6 @@ jobs:
   e-rechnung:
     name: XRechnung-Konformität (KoSIT)
     runs-on: ubuntu-latest
-    needs: quality
     timeout-minutes: 15
     env:
       VALIDATOR_URL: https://github.com/itplr-kosit/validator/releases/download/v1.6.2/validator-1.6.2-standalone.jar
@@ -1372,3 +1244,204 @@ jobs:
       - name: Infra abräumen
         if: always()
         run: $COMPOSE down -v --remove-orphans || true
+
+  # Lint, Typecheck, Unit-Tests und Ops-Skripte liefen bis 2026-11 nacheinander
+  # im Job quality (8 bis 10 Minuten) und hielten alle Service-Jobs per needs
+  # zurueck. Jetzt startet jeder Job sofort; keiner haengt an einem anderen
+  # (scripts/release/check-release-gates.mjs). Ein rot endender Job macht den
+  # Lauf weiterhin rot, und der Release verlangt den gesamten Workflow. Die
+  # kurzen Jobs stehen am Dateiende: Forgejo vergibt wartende Jobs in ihrer
+  # Reihenfolge, bei knappen Runnern starten so die langen Service-Jobs zuerst.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Setup (Abhängigkeiten, Prisma-Client)
+        run: bash scripts/ci/setup.sh install prisma
+
+      # Ein ESLint-Lauf deckt Lint, React-Compiler-Regeln (error) und die
+      # Komplexitaetsschuld je Funktion ab (taxtronik/complexity +
+      # eslint-complexity-baseline.json, B-09); davor laufen die Guards
+      # guard:paranoid-e2e und guard:complexity (Regressionstests der Regel)
+      # sowie guard:tcms-contract (vendored TCMS-Vertrag = VENDOR.json).
+      - name: Lint
+        run: pnpm lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # B-03: fester Ort des Turbo-Caches (ohne Wert legt Turbo ihn in einem
+      # Git-Worktree beim Haupt-Checkout ab); Schritt "Turbo-Cache".
+      TURBO_CACHE_DIR: .turbo/cache
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Setup (Abhängigkeiten, Prisma-Client)
+        run: bash scripts/ci/setup.sh install prisma
+
+      # B-03: Turbo-Cache für `pnpm typecheck`; `test` spielt Turbo nie aus dem
+      # Cache ab (turbo.json). Turbo prüft jeden Eintrag über den eigenen Task-
+      # Hash (Paketdateien, Abhängigkeiten über transit, deklarierte externe
+      # Eingaben, Lockfile-Auflösung, globalEnv); ein älterer Cache kann daher
+      # kein veraltetes Ergebnis liefern. Der Schlüssel dient nur dem Auffinden:
+      # je Commit gespeichert, wiederhergestellt vom jüngsten Stand desselben
+      # Lockfiles, sonst von irgendeinem.
+      - name: Turbo-Cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+            turbo-${{ runner.os }}-
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+  unit-tests:
+    name: Unit Tests (ohne DB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # B-03: fester Ort des Turbo-Caches (ohne Wert legt Turbo ihn in einem
+      # Git-Worktree beim Haupt-Checkout ab); Schritt "Turbo-Cache".
+      TURBO_CACHE_DIR: .turbo/cache
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Setup (Abhängigkeiten, Prisma-Client)
+        run: bash scripts/ci/setup.sh install prisma
+
+      # ALLE Pakete außer @taxtronik/db (dessen RLS-Tests brauchen die echte
+      # Postgres-Instanz → Job `db`). Vorher liefen hier nur 4 von 11 Test-
+      # Paketen — Worker/Crypto/Risk-Layer & Co. waren in CI ungetestet.
+      # Das Protokoll ist der Testnachweis je Lauf (docs/development/
+      # testkonzept.md, Abschnitt 4) und wird als Artefakt archiviert.
+      # turbo direkt aufrufen: `pnpm test -- --filter=…` würde den Filter an
+      # vitest durchreichen statt an turbo (Paket-Scope bliebe ungefiltert).
+      - name: Unit tests (alle Pakete ohne DB-Bedarf)
+        run: |
+          set -o pipefail
+          pnpm exec turbo run test --filter='!@taxtronik/db' 2>&1 | tee testbericht-unit.log
+
+      - name: Testnachweis hochladen
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3.2.1
+        with:
+          name: testbericht-unit
+          retention-days: 90
+          path: testbericht-unit.log
+          if-no-files-found: ignore
+
+  ops:
+    name: Ops-Skripte (shellcheck, Operator-CLI, PowerShell)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Setup (Abhängigkeiten, Prisma-Client)
+        run: bash scripts/ci/setup.sh install prisma
+
+      # B-05: Shell-Skripte der Operator-CLI, der Guards und der Infra-Container
+      # statisch pruefen. Projektoptionen stehen in .shellcheckrc, bewusste
+      # Ausnahmen begruendet als Direktive an der Fundstelle.
+      - name: shellcheck
+        run: |
+          if ! command -v shellcheck >/dev/null 2>&1; then
+            bash scripts/ci/apt.sh update
+            bash scripts/ci/apt.sh install -y --no-install-recommends shellcheck
+          fi
+          shellcheck --version
+          shellcheck taxtronik scripts/*.sh scripts/ops/*.sh infra/scripts/*.sh
+
+      # S-04: Die Signaturtests des Source-Updates brauchen ssh-keygen
+      # (openssh-client) und sind in CI Pflicht.
+      - name: ssh-keygen installieren
+        run: |
+          if ! command -v ssh-keygen >/dev/null 2>&1; then
+            bash scripts/ci/apt.sh update
+            bash scripts/ci/apt.sh install -y --no-install-recommends openssh-client
+          fi
+          ssh-keygen -V 2>/dev/null || command -v ssh-keygen
+
+      - name: Operator CLI tests
+        run: |
+          set -o pipefail
+          pnpm test:ops 2>&1 | tee testbericht-ops.log
+
+      - name: Ops-Testnachweis hochladen
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3.2.1
+        with:
+          name: testbericht-ops
+          retention-days: 90
+          path: testbericht-ops.log
+          if-no-files-found: ignore
+
+      # R-10: Regressionstests der Windows-Hilfsskripte (scripts/tests/*.test.ps1,
+      # docs/development/windows-hilfsskripte.md) mit PowerShell 7 unter Linux.
+      # Release-Archiv mit gepinnter Version und SHA-256 wie gitleaks in
+      # security.yml; Docker und pnpm sind in den Tests Attrappen. Fehlt ICU im
+      # Runner-Image, läuft PowerShell im invarianten Globalisierungsmodus.
+      - name: PowerShell installieren (Version + SHA-256 gepinnt)
+        env:
+          PWSH_VERSION: 7.6.6
+          PWSH_LINUX_X64_SHA256: ddbc4a2d113bbd46d283cfedcbcd117a70caefd7673f41f2b4e0000badf103bc
+        run: |
+          set -euo pipefail
+          pwsh_dir="$(mktemp -d)"
+          curl -fsSL \
+            "https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz" \
+            -o "$pwsh_dir/pwsh.tar.gz"
+          echo "${PWSH_LINUX_X64_SHA256}  $pwsh_dir/pwsh.tar.gz" | sha256sum -c -
+          tar -xzf "$pwsh_dir/pwsh.tar.gz" -C "$pwsh_dir"
+          rm "$pwsh_dir/pwsh.tar.gz"
+          chmod +x "$pwsh_dir/pwsh"
+          if ! ldconfig -p 2>/dev/null | grep -q 'libicuuc\.so'; then
+            echo 'DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1' >> "$GITHUB_ENV"
+            export DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+          fi
+          "$pwsh_dir/pwsh" -NoProfile -NonInteractive -Command '$PSVersionTable.PSVersion.ToString()'
+          echo "PWSH=$pwsh_dir/pwsh" >> "$GITHUB_ENV"
+
+      - name: PowerShell-Tests der Windows-Skripte
+        run: |
+          set -euo pipefail
+          for test in scripts/tests/*.test.ps1; do
+            echo "== $test"
+            "$PWSH" -NoProfile -NonInteractive -File "$test"
+          done

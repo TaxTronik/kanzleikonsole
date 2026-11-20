@@ -74,23 +74,25 @@ Die tatsächlich ausgeführten Jobs des Release-DAG werden eingetragen. Die
 aktuellen Workflow-Bezeichnungen unten sind eine Orientierung und vor dem
 Ausfüllen gegen den gebundenen Workflow-Commit zu prüfen.
 
-| Gate / Job                                  | Run-/Job-URL | Ergebnis | Beginn/Ende UTC | Artefakt oder Log + SHA-256       | Bemerkung                                               |
-| ------------------------------------------- | ------------ | -------- | --------------- | --------------------------------- | ------------------------------------------------------- |
-| Release-Preflight (Tag, SHA, Manifest-Ziel) | `…`          | `…`      | `…`             | `…`                               | `…`                                                     |
-| Format, Lint, Typecheck, Unit Tests         | `…`          | `…`      | `…`             | `testbericht-unit`: `…`           | `…`                                                     |
-| Operator-CLI-Tests                          | `…`          | `…`      | `…`             | `testbericht-ops`: `…`            | Bestandteil des Quality-Jobs                            |
-| Fachkatalog-Prüfung und Diff-Gate           | `…`          | `…`      | `…`             | Joblog: `…`                       | Review-Stände nicht mit technischer Prüfung verwechseln |
-| Migrations, RLS, Drift                      | `…`          | `…`      | `…`             | `testbericht-db`: `…`             | `…`                                                     |
-| Backup→Restore Roundtrip                    | `…`          | `…`      | `…`             | `testbericht-restore`: `…`        | `…`                                                     |
-| Upgrade-Pfad                                | `…`          | `…`      | `…`             | `…`                               | Ausgangsrelease: `…`                                    |
-| E2E Paranoid                                | `…`          | `…`      | `…`             | `playwright-report-paranoid`: `…` | `…`                                                     |
-| XRechnung-Konformität (KoSIT)               | `…`          | `…`      | `…`             | `kosit-pruefbericht`: `…`         | Details in Abschnitt 5                                  |
-| Deploy-Readiness                            | `…`          | `…`      | `…`             | `…`                               | `…`                                                     |
-| Dependency Audit                            | `…`          | `…`      | `…`             | `security-audit-prod`: `…`        | Details in Abschnitt 7                                  |
-| Secret Scan                                 | `…`          | `…`      | `…`             | `security-gitleaks`: `…`          | Details in Abschnitt 7                                  |
-| Release-Image-Smoke                         | `…`          | `…`      | `…`             | Joblog: `…`                       | geprüfte Digests: `…`                                   |
-| Images bauen, scannen und publizieren       | `…`          | `…`      | `…`             | Joblog: `…`                       | `…`                                                     |
-| Signiertes Update-Manifest publizieren      | `…`          | `…`      | `…`             | Manifest/Signatur: `…`            | Ziel-Commit: `…`                                        |
+| Gate / Job                                         | Run-/Job-URL | Ergebnis | Beginn/Ende UTC | Artefakt oder Log + SHA-256       | Bemerkung                                                                                  |
+| -------------------------------------------------- | ------------ | -------- | --------------- | --------------------------------- | ------------------------------------------------------------------------------------------ |
+| Release-Preflight (Tag, SHA, Manifest-Ziel)        | `…`          | `…`      | `…`             | `…`                               | `…`                                                                                        |
+| Format, Guards, Fachkatalog                        | `…`          | `…`      | `…`             | Joblog: `…`                       | Fachkatalog-Prüfung und Diff-Gate; Review-Stände nicht mit technischer Prüfung verwechseln |
+| Lint                                               | `…`          | `…`      | `…`             | Joblog: `…`                       | `…`                                                                                        |
+| Typecheck                                          | `…`          | `…`      | `…`             | Joblog: `…`                       | `…`                                                                                        |
+| Unit Tests (ohne DB)                               | `…`          | `…`      | `…`             | `testbericht-unit`: `…`           | `…`                                                                                        |
+| Ops-Skripte (shellcheck, Operator-CLI, PowerShell) | `…`          | `…`      | `…`             | `testbericht-ops`: `…`            | `…`                                                                                        |
+| Migrations, RLS, Drift                             | `…`          | `…`      | `…`             | `testbericht-db`: `…`             | `…`                                                                                        |
+| Backup→Restore Roundtrip                           | `…`          | `…`      | `…`             | `testbericht-restore`: `…`        | `…`                                                                                        |
+| Upgrade-Pfad                                       | `…`          | `…`      | `…`             | `…`                               | Ausgangsrelease: `…`                                                                       |
+| E2E Paranoid                                       | `…`          | `…`      | `…`             | `playwright-report-paranoid`: `…` | `…`                                                                                        |
+| XRechnung-Konformität (KoSIT)                      | `…`          | `…`      | `…`             | `kosit-pruefbericht`: `…`         | Details in Abschnitt 5                                                                     |
+| Deploy-Readiness                                   | `…`          | `…`      | `…`             | `…`                               | `…`                                                                                        |
+| Dependency Audit                                   | `…`          | `…`      | `…`             | `security-audit-prod`: `…`        | Details in Abschnitt 7                                                                     |
+| Secret Scan                                        | `…`          | `…`      | `…`             | `security-gitleaks`: `…`          | Details in Abschnitt 7                                                                     |
+| Release-Image-Smoke                                | `…`          | `…`      | `…`             | Joblog: `…`                       | geprüfte Digests: `…`                                                                      |
+| Images bauen, scannen und publizieren              | `…`          | `…`      | `…`             | Joblog: `…`                       | `…`                                                                                        |
+| Signiertes Update-Manifest publizieren             | `…`          | `…`      | `…`             | Manifest/Signatur: `…`            | Ziel-Commit: `…`                                                                           |
 
 „Grün“ wird nur aus dem Abschlussstatus des gebundenen Jobs übernommen. Ein
 Artefakt-Upload mit `if: always()` beweist für sich allein nicht, dass der

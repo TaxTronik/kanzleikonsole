@@ -33,7 +33,7 @@ const read = repositoryReader(ROOT);
 
 /**
  * Prüft, dass der db-Job die Suite `spec` (Pfad relativ zum Repository)
- * ausführt und dass ihr lokales Flag `flag` im Quality-Job nie gesetzt ist.
+ * ausführt und dass ihr lokales Flag `flag` in keinem anderen Job gesetzt ist.
  */
 export function describeDbSuiteInCi(title: string, spec: string, flag: string): void {
   describe(title, () => {
@@ -42,12 +42,15 @@ export function describeDbSuiteInCi(title: string, spec: string, flag: string): 
       expect(dbJobStepFor(workflow, spec)).not.toBeNull();
     });
 
-    it('bleibt im Quality-Job ohne Datenbank abgeschaltet', () => {
+    it('bleibt außerhalb des db-Jobs (u. a. im Unit-Job) ohne Datenbank abgeschaltet', () => {
       expect(dbSwitchOutsideDbJob(workflow)).toBe(false);
-      const quality = workflow.jobs['quality']!;
       expect(workflow.env?.[flag]).toBeUndefined();
-      expect(quality.env?.[flag]).toBeUndefined();
-      for (const step of quality.steps) expect(step.env?.[flag]).toBeUndefined();
+      expect(workflow.jobs['unit-tests']).toBeDefined();
+      for (const [id, job] of Object.entries(workflow.jobs)) {
+        if (id === 'db') continue;
+        expect(job.env?.[flag], id).toBeUndefined();
+        for (const step of job.steps) expect(step.env?.[flag], id).toBeUndefined();
+      }
       // Lokal schaltet weiter das eigene Flag die Suite ein.
       expect(read(spec)).toMatch(new RegExp(`process\\.env(?:\\.${flag}|\\['${flag}'\\]) === '1'`));
     });

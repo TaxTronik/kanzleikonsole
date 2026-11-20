@@ -226,7 +226,7 @@ Der Datenbanktest läuft lokal mit `INVOICE_SELECTION_DB_TEST=1`, in CI im
 verpflichtenden `db`-Job mit `DB_TESTS=1` im Glob-Schritt der Web-DB-Suiten
 nach den Migrationen; das Protokoll wird als `testbericht-web-db.log`
 archiviert. Ungültige oder fehlende Datenbank-URLs führen bei aktiviertem Test
-zum Fehler. Der Unit-Lauf des Quality-Jobs schließt `*-db.test.ts(x)` aus; mit
+zum Fehler. Der Unit-Lauf im Job `unit-tests` schließt `*-db.test.ts(x)` aus; mit
 `CI=true` scheitert die Datei ohne Opt-in, statt übersprungen zu werden. Ein
 regulärer Unit-Test prüft die verbindliche CI-Zuordnung, das Opt-in und die
 Logarchivierung.

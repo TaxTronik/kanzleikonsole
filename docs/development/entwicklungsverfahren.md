@@ -116,22 +116,31 @@ Freigabe-Evidence vom formalen Scope ausgeschlossen.
 CI-Pipeline (`.forgejo/workflows/ci.yml`), läuft bei Pull Requests, Pushes auf
 `main`/`develop` und als wiederverwendeter Workflow im Release-Lauf:
 
-| Gate               | Inhalt                                                                                                                                                                                                                           |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `quality`          | Lint, Typecheck, vollständige Unit-/Komponententests aller Pakete (außer DB-gebundenen), Operator-CLI-Tests (`pnpm test:ops`), Schutzprüfung gegen reale DATEV-Kennungen in Testdaten                                            |
-| `db`               | Migrationen auf frischer DB, RLS-Cross-Tenant-Tests, Schema-Drift-Check (Schema ↔ Migrationshistorie), kanonische SQL-Quellen, Audit-Chain-CLI                                                                                   |
-| `restore`          | echter Backup→Restore-Roundtrip mit Zeilenzahl-Assertions und Chain-Verifikation auf der wiederhergestellten DB                                                                                                                  |
-| `upgrade-path`     | Migrationsstand des letzten Releases → aktuelle Migrationen → RLS-Tests (simuliert das Kunden-Update); unabhängig vom Tag Altbestandstests vor Datenmigrationen (`scripts/ci/migration-cutoff.sh`)                               |
-| `e2e-paranoid`     | vollständige Playwright-Suite (inkl. Smoke) gegen die gebaute App: Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency und Upload-Fuzz                                                                            |
-| `security.yml`     | täglich, bei Pull Requests und Pushes auf `main`/`develop`: Dependency-Audit (blockierend prod/high, zusätzlich nicht-blockierender Vollauf über den gesamten Graphen inkl. Dev), Secret-Scanning (gitleaks), Logs als Artefakte |
-| `build-images.yml` | Validierung der Produktions-Image-Builds                                                                                                                                                                                         |
+| Gate               | Inhalt                                                                                                                                                                                                                                                     |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `quality`          | Format-Baseline, Dokumentationslinks, Fachkatalog (`fachkatalog:check`, `fachkatalog:diff`), Guards (u. a. reale DATEV-Kennungen in Testdaten, gepinnte Images und Actions, Turbo-Pipeline, CI-Caches, Verdrahtung der DB-Suiten), Migrations-Ledger-Tests |
+| `lint`             | ESLint mit Komplexitäts-Baseline sowie `guard:paranoid-e2e`, `guard:complexity` und `guard:tcms-contract` (`pnpm lint`)                                                                                                                                    |
+| `typecheck`        | `pnpm typecheck` aller Pakete mit Turbo-Cache                                                                                                                                                                                                              |
+| `unit-tests`       | vollständige Unit-/Komponententests aller Pakete (außer DB-gebundenen)                                                                                                                                                                                     |
+| `ops`              | shellcheck, Operator-CLI-Tests (`pnpm test:ops`), PowerShell-Tests der Windows-Hilfsskripte                                                                                                                                                                |
+| `db`               | Migrationen auf frischer DB, RLS-Cross-Tenant-Tests, Schema-Drift-Check (Schema ↔ Migrationshistorie), kanonische SQL-Quellen, Audit-Chain-CLI                                                                                                             |
+| `restore`          | echter Backup→Restore-Roundtrip mit Zeilenzahl-Assertions und Chain-Verifikation auf der wiederhergestellten DB                                                                                                                                            |
+| `upgrade-path`     | Migrationsstand des letzten Releases → aktuelle Migrationen → RLS-Tests (simuliert das Kunden-Update); unabhängig vom Tag Altbestandstests vor Datenmigrationen (`scripts/ci/migration-cutoff.sh`)                                                         |
+| `e2e-paranoid`     | vollständige Playwright-Suite (inkl. Smoke) gegen die gebaute App: Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency und Upload-Fuzz                                                                                                      |
+| `security.yml`     | täglich, bei Pull Requests und Pushes auf `main`/`develop`: Dependency-Audit (blockierend prod/high, zusätzlich nicht-blockierender Vollauf über den gesamten Graphen inkl. Dev), Secret-Scanning (gitleaks), Logs als Artefakte                           |
+| `build-images.yml` | Validierung der Produktions-Image-Builds                                                                                                                                                                                                                   |
+
+Alle Jobs von `ci.yml` starten ohne `needs` sofort und parallel. Ein
+fehlschlagender Job lässt keinen anderen als übersprungen zurück, macht den
+Lauf aber rot; der Release verlangt den gesamten Workflow
+(`scripts/release/check-release-gates.mjs`).
 
 Zusätzlich **Guard-Tests**, die Verfahrensregeln maschinell erzwingen
 (Beispiele: keine ungeprüfte `PrismaClient`-Instanz außerhalb der Allowlist;
 ENV-Schema-Validierung; Audit-Trigger-Verhalten). Testnachweise je Lauf
 werden als zeitlich begrenzte CI-Artefakte gespeichert (siehe
 [testkonzept.md](testkonzept.md), Abschnitt „Testnachweise").
-Der Quality-Job validiert außerdem den Fachkatalog, seine lokalen Nachweise und
+Der Job `quality` validiert außerdem den Fachkatalog, seine lokalen Nachweise und
 die deterministisch erzeugten Mensch-/KI-Indizes (`pnpm fachkatalog:check`). Das
 zusätzliche Diff-Gate ordnet Änderungen an überwachten Fach- und Prisma-Pfaden
 konkret einer geänderten Regel oder einer strukturierten, unveränderlichen
@@ -157,17 +166,19 @@ zwei Läufe auf einem Host. Der Kopf von `.forgejo/workflows/ci.yml` hält diese
 Damit läuft dasselbe TypeScript-Programm wie in `next build` (dieselbe
 tsconfig, dieselben Dateien und Optionen; der Build blendet zusätzlich Befunde
 in Testdateien aus). Pakete, die nur TypeScript-Quellen exportieren, haben kein
-`build`-Skript. Der Produktions-Build im Job `e2e-paranoid` läuft erst nach
-`quality` desselben Commits und überspringt die zweite Typprüfung
-(`TAXTRONIK_SKIP_BUILD_TYPECHECK=1`); Image-Builds und lokale Builds prüfen
-selbst. In Turbo hängen `typecheck` und `test` über den leeren Task `transit`
+`build`-Skript. Der Produktions-Build im Job `e2e-paranoid` startet parallel
+zum Job `typecheck` und prüft die Typen deshalb selbst, wie Image-Builds und
+lokale Builds. Den Schalter `TAXTRONIK_SKIP_BUILD_TYPECHECK=1` in
+`next.config.mjs` setzt kein Workflow mehr (bis 2026-11 nutzte ihn der
+E2E-Build, als sein Job noch nach `quality` lief). In Turbo hängen
+`typecheck` und `test` über den leeren Task `transit`
 an ihren Abhängigkeiten, damit eine Änderung an einem genutzten Paket den
 Cache-Schlüssel ändert; `test` wird nie aus dem Cache abgespielt, weil Tests
 Dateien außerhalb ihres Pakets lesen und jeder Lauf ein eigenes Testprotokoll
 braucht. `scripts/tests/turbo-pipeline.test.mjs` und
 `apps/web/src/__tests__/next-build-typecheck.test.ts` halten diese Regeln fest.
 
-**CI-Caches:** Der Job `quality` speichert den Turbo-Cache (`.turbo/cache`) je
+**CI-Caches:** Der Job `typecheck` speichert den Turbo-Cache (`.turbo/cache`) je
 Commit und stellt den jüngsten Stand wieder her; Turbo verwendet daraus nur
 Einträge mit identischem Task-Hash. Der Job `e2e-paranoid` speichert den
 Turbopack-Cache des Produktions-Builds (`apps/web/.next/cache`, je Lockfile und

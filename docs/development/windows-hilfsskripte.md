@@ -53,7 +53,7 @@ pwsh.exe -NoProfile -File scripts/tests/windows-setup-reset.test.ps1
 pwsh.exe -NoProfile -File scripts/tests/windows-scripts-parse.test.ps1
 ```
 
-Im CI-Job `quality` laufen alle `scripts/tests/*.test.ps1` mit PowerShell 7
+Im CI-Job `ops` laufen alle `scripts/tests/*.test.ps1` mit PowerShell 7
 unter Linux; das Release-Archiv ist mit Version und SHA-256 gepinnt
 (`.forgejo/workflows/ci.yml`, Schritt „PowerShell installieren“). Windows
 PowerShell 5.1 bleibt eine manuelle Prüfung auf Windows.

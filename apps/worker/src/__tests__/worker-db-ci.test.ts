@@ -2,7 +2,7 @@
 // Die PostgreSQL-Suiten der Worker-Jobs findet der db-Job per Glob
 // (scripts/ci/db-suites.mjs, B-02) und führt sie mit DB_TESTS=1 nach den
 // Migrationen aus; lokal schaltet WORKER_DB_TEST=1 sie ein. Dieser Test bindet
-// die Nachweise an die Suiten und hält das Opt-in aus dem Quality-Job heraus.
+// die Nachweise an die Suiten und hält das Opt-in aus allen anderen Jobs heraus.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -49,11 +49,15 @@ describe('Worker-PostgreSQL-Suiten im CI', () => {
     }
   });
 
-  it('bleiben im Quality-Job ohne Datenbank abgeschaltet', () => {
+  it('bleiben außerhalb des db-Jobs (u. a. im Unit-Job) ohne Datenbank abgeschaltet', () => {
     expect(dbSuites.dbSwitchOutsideDbJob(workflow)).toBe(false);
     expect(workflow.env?.[flag]).toBeUndefined();
-    expect(workflow.jobs['quality']!.env?.[flag]).toBeUndefined();
-    for (const step of workflow.jobs['quality']!.steps) expect(step.env?.[flag]).toBeUndefined();
+    expect(workflow.jobs['unit-tests']).toBeDefined();
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      if (id === 'db') continue;
+      expect(job.env?.[flag], id).toBeUndefined();
+      for (const step of job.steps) expect(step.env?.[flag], id).toBeUndefined();
+    }
     for (const spec of specs) {
       expect(read(spec)).toContain("process.env['WORKER_DB_TEST'] === '1'");
     }

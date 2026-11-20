@@ -43,12 +43,14 @@ test('jede Cache-Action ist dieselbe gepinnte v4.3.0', () => {
 });
 
 test('Turbo-Cache liegt am TURBO_CACHE_DIR und kommt vor pnpm typecheck', () => {
-  const quality = workflow.jobs.quality;
-  assert.equal(quality.env?.TURBO_CACHE_DIR, '.turbo/cache');
+  const typecheck = workflow.jobs.typecheck;
+  assert.equal(typecheck.env?.TURBO_CACHE_DIR, '.turbo/cache');
+  // Der Unit-Job nutzt denselben Ort; `test` spielt Turbo nie aus dem Cache ab.
+  assert.equal(workflow.jobs['unit-tests'].env?.TURBO_CACHE_DIR, '.turbo/cache');
   const turbo = JSON.parse(readFileSync(join(ROOT, 'turbo.json'), 'utf8'));
   assert.equal(turbo.cacheDir, undefined, 'turbo.json darf den Ort nicht abweichend setzen');
-  const step = cacheStep('quality', quality.env.TURBO_CACHE_DIR);
-  assert.ok(quality.steps.indexOf(step) < indexOfRun('quality', 'pnpm typecheck'));
+  const step = cacheStep('typecheck', typecheck.env.TURBO_CACHE_DIR);
+  assert.ok(typecheck.steps.indexOf(step) < indexOfRun('typecheck', 'pnpm typecheck'));
   assert.ok(step.with.key.includes(LOCKFILE_HASH) && step.with.key.includes('github.sha'));
   assert.ok(step.with['restore-keys'].includes(LOCKFILE_HASH));
 });

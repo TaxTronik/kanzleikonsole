@@ -15,7 +15,7 @@ Ist-Zustand; Änderungen am Testverfahren werden hier nachgezogen.
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Unit-/Komponententests            | Vitest, `**/__tests__/` in allen Paketen                                                                     | Verarbeitungslogik, Validierungen, Mapping, Fehlerpfade                                                                                             | jeder CI-Lauf                                                            |
 | Guard-Tests                       | Vitest (z. B. `prisma-client-guard`, ENV-Schema-Tests)                                                       | erzwingen Verfahrensregeln maschinell (kein DB-Zugriff am Kontrollsystem vorbei, keine ungültige Konfiguration)                                     | jeder CI-Lauf                                                            |
-| Operator-CLI-Tests                | `scripts/tests/ops-lib.test.sh`                                                                              | `./taxtronik doctor`, SMTP-Prod-Gates, Risk-Layer-Paarung und Build-Cache-Prune ohne echten Docker-Deploy                                           | CI-Job `quality`                                                         |
+| Operator-CLI-Tests                | `scripts/tests/ops-lib.test.sh`                                                                              | `./taxtronik doctor`, SMTP-Prod-Gates, Risk-Layer-Paarung und Build-Cache-Prune ohne echten Docker-Deploy                                           | CI-Job `ops`                                                             |
 | RLS-/Integrationstests            | Vitest gegen echte Postgres-Instanz (`packages/db`)                                                          | Mandantentrennung auf Datenbankebene (Cross-Tenant-Zugriffe müssen scheitern), GwG-Schranken, Audit-Trigger                                         | CI-Job `db`                                                              |
 | Migrations-/Drift-Tests           | Prisma + Drift-Check-Skript                                                                                  | Migrationshistorie erzeugt exakt das deklarierte Schema                                                                                             | CI-Job `db`                                                              |
 | Restore-Roundtrip                 | `scripts/restore-selftest.sh` (echter Produktionscode-Pfad)                                                  | Backup ist wiederherstellbar UND inhaltlich intakt (Zeilenzahlen, Audit-Hash-Chain auf der wiederhergestellten DB)                                  | CI-Job `restore`                                                         |
@@ -27,7 +27,7 @@ Ist-Zustand; Änderungen am Testverfahren werden hier nachgezogen.
 | Dependency-/Secret-Scans          | gitleaks, `pnpm audit`                                                                                       | Secrets und verwundbare Abhängigkeiten                                                                                                              | täglich; Pull Requests; Pushes auf `main`/`develop`; Release-Aufruf      |
 | Release-Image-Scan                | Trivy gegen die gebauten Release-Images                                                                      | Image-CVEs vor der Veröffentlichung                                                                                                                 | ausschließlich im Release-Workflow                                       |
 | Strukturierte Sicherheits-Reviews | adversariale Mehrfach-Reviews mit dokumentierten Befunden                                                    | Angriffsflächen-Prüfung über automatisierte Tests hinaus                                                                                            | anlassbezogen; Ergebnisse in Commit-Historie und Befundkennungen am Code |
-| Statische A11Y-Prüfung            | `eslint-plugin-jsx-a11y` im Repository-Lint                                                                  | statisch erkennbare Barrieren bei Semantik, Namen, Labels, Rollen und Tastaturereignissen                                                           | jeder CI-Lauf im Job `quality`                                           |
+| Statische A11Y-Prüfung            | `eslint-plugin-jsx-a11y` im Repository-Lint                                                                  | statisch erkennbare Barrieren bei Semantik, Namen, Labels, Rollen und Tastaturereignissen                                                           | jeder CI-Lauf im Job `lint`                                              |
 | A11Y-End-to-End                   | Playwright + Axe (`apps/e2e/tests/12-accessibility.spec.ts`)                                                 | ausgewählte öffentliche und authentifizierte Kernseiten gegen WCAG-A/AA-Tags, Dark Mode, 320-Pixel-Reflow, Skip-Link und mobile Navigation          | CI-Job `e2e-paranoid`; lokal gezielt mit `pnpm a11y:e2e`                 |
 | Manuelle Abnahme                  | Verantwortlicher Entwickler                                                                                  | Bedien-/Sichtprüfung neuer bzw. geänderter Oberflächen vor Freigabe                                                                                 | je Release                                                               |
 
@@ -35,7 +35,7 @@ Die Anzahl erfolgreicher Testfälle ist kein dauerhafter Dokumentationswert und
 keine aktuelle Freigabegarantie. Ein belastbarer Stand muss aus einem
 reproduzierbaren vollständigen CI-Lauf für einen benannten Commit samt
 Testreport abgeleitet werden. DB-gebundene Tests laufen im Job `db` gegen eine
-echte Postgres-Instanz, die übrigen Pakete im Job `quality`.
+echte Postgres-Instanz, die übrigen Pakete im Job `unit-tests`.
 Plattformabhängige Evidence-Tests dürfen lokal nur mit ausgewiesenem
 Skip-Grund fehlen; in CI ist die erforderliche OpenSSL-Unterstützung ein Gate.
 
@@ -113,12 +113,12 @@ ESLint-Kernregel `complexity` und vergleicht jeden Treffer mit
 Der Funktionsbezeichner ist unabhängig von Zeilennummern (Pfad aus Klasse,
 Funktion, Variable, Eigenschaft, Aufrufer oder JSX-Attribut; gleichnamige
 Geschwister mit `#2`). Eine neue Funktion über der Grenze und eine
-verschlimmerte Altlast brechen `pnpm lint` und damit den Quality-Job;
+verschlimmerte Altlast brechen `pnpm lint` und damit den Job `lint`;
 Verbesserungen nicht. `pnpm lint:prune-complexity` senkt die Einträge auf den
 Ist-Stand und entfernt erledigte, ohne neue aufzunehmen;
 `pnpm lint:complexity-baseline` übernimmt den gesamten Ist-Stand und ist nur
 für eine bewusste, im Review begründete Ausnahme gedacht. Beide starten einen
-eigenen ESLint-Lauf nur für diese Regel; im Quality-Job bleibt es bei einem
+eigenen ESLint-Lauf nur für diese Regel; im Job `lint` bleibt es bei einem
 ESLint-Lauf. `pnpm guard:complexity` (Teil von `pnpm lint`) prüft Regel,
 Bezeichner, Baseline-Datei und Konfiguration
 (`scripts/tests/complexity-baseline.test.mjs`). Wird eine anonyme Funktion vor
@@ -274,7 +274,7 @@ bestandener E2E-Tests.
 Nachvollziehbarkeit je Lauf/Release (erwartetes vs. erzieltes Ergebnis,
 Vollständigkeit, Abweichungen):
 
-1. **CI-Artefakte je Lauf:** die Jobs `quality`, `db` und `restore` laden
+1. **CI-Artefakte je Lauf:** die Jobs `unit-tests`, `ops`, `db` und `restore` laden
    ihre vollständigen Testprotokolle als Artefakte hoch
    (`testbericht-unit`, `testbericht-ops`, `testbericht-db`,
    `testbericht-restore`); die E2E-Jobs archivieren Playwright-Reports. Ein

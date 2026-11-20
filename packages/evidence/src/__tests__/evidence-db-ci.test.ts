@@ -3,7 +3,7 @@
 // Rolling-Anchor-Takts (P-05) findet der db-Job per Glob (scripts/ci/db-suites.mjs,
 // B-02) und führt sie mit DB_TESTS=1 nach den Migrationen aus; lokal schaltet
 // EVIDENCE_DB_TEST=1 sie ein. Dieser Test stellt sicher, dass beide blockierend
-// laufen und der Quality-Job sie nicht ohne Datenbank einschaltet.
+// laufen und kein anderer Job sie ohne Datenbank einschaltet.
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
@@ -46,11 +46,15 @@ describe('Evidence-PostgreSQL-Suiten im CI', () => {
     }
   });
 
-  it('bleiben im Quality-Job ohne Datenbank abgeschaltet', () => {
+  it('bleiben außerhalb des db-Jobs (u. a. im Unit-Job) ohne Datenbank abgeschaltet', () => {
     expect(dbSuites.dbSwitchOutsideDbJob(workflow)).toBe(false);
     expect(workflow.env?.[flag]).toBeUndefined();
-    expect(workflow.jobs['quality']!.env?.[flag]).toBeUndefined();
-    for (const step of workflow.jobs['quality']!.steps) expect(step.env?.[flag]).toBeUndefined();
+    expect(workflow.jobs['unit-tests']).toBeDefined();
+    for (const [id, job] of Object.entries(workflow.jobs)) {
+      if (id === 'db') continue;
+      expect(job.env?.[flag], id).toBeUndefined();
+      for (const step of job.steps) expect(step.env?.[flag], id).toBeUndefined();
+    }
     for (const spec of specs) {
       expect(read(spec)).toContain("process.env['EVIDENCE_DB_TEST'] === '1'");
     }

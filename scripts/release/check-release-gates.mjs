@@ -45,9 +45,9 @@ function serviceHostPorts(block) {
 }
 
 // Forgejo startet Services eines wiederverwendeten Workflows im Host-Netz. Die
-// servicebasierten Jobs laufen parallel nach quality und brauchen deshalb
-// eindeutige Host-Ports. PostgreSQL hoert per PGPORT genau auf dem Port, den
-// Mapping, Job-env und DATABASE_URL des Jobs verwenden.
+// servicebasierten Jobs laufen parallel zu allen anderen Jobs und brauchen
+// deshalb eindeutige Host-Ports. PostgreSQL hoert per PGPORT genau auf dem Port,
+// den Mapping, Job-env und DATABASE_URL des Jobs verwenden.
 const CI_SERVICE_JOBS = ['db', 'restore', 'upgrade-path', 'e2e-paranoid'];
 
 function requireIsolatedServicePorts(ci, jobs) {
@@ -63,10 +63,6 @@ function requireIsolatedServicePorts(ci, jobs) {
   }
   for (const job of CI_SERVICE_JOBS) {
     const block = jobBlock(ci, job);
-    invariant(
-      /^ {4}needs: (?:quality|\[[^\]\n]*\bquality\b[^\]\n]*\])\s*$/m.test(block),
-      `ci.yml: ${job} muss quality benoetigen`,
-    );
     const port = /^\s+PGPORT: '?(\d+)'?\s*$/m.exec(indentedSection(block, 'services'))?.[1];
     const env = indentedSection(block, 'env');
     invariant(
@@ -187,9 +183,17 @@ export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
     'e2e-paranoid',
     'e-rechnung',
     'deploy-readiness',
+    'lint',
+    'typecheck',
+    'unit-tests',
+    'ops',
   ];
   for (const job of ciJobs) jobBlock(ci, job);
   requireIsolatedServicePorts(ci, ciJobs);
+  // Alle CI-Jobs starten ab Laufbeginn parallel. Ein Job mit needs wuerde beim
+  // Fehlschlag seines Vorgaengers uebersprungen und fehlte damit als Nachweis;
+  // der Release verlangt ohnehin den gesamten Workflow.
+  invariant(!/^ {4}needs:/m.test(ci), 'ci.yml: CI-Jobs duerfen nicht per needs aufeinander warten');
   for (const job of ['dependencies', 'secrets']) jobBlock(security, job);
   invariant(
     !/^\s+continue-on-error:/m.test(ci) && !/^\s+continue-on-error:/m.test(security),

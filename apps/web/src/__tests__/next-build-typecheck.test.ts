@@ -1,16 +1,18 @@
 // =============================================================================
-// Typprüfung im `next build` nur, wo CI denselben Stand schon geprüft hat
-// (Review-Befund B-07).
+// Typprüfung im `next build` (Review-Befund B-07, Stand 2026-11).
 //
 // `next build` prüft die Typen, außer TAXTRONIK_SKIP_BUILD_TYPECHECK=1 ist
 // gesetzt. Das ist nur sicher, wenn derselbe Code vorher dasselbe TypeScript-
-// Programm durchlaufen hat. Geprüft wird deshalb:
+// Programm durchlaufen hat. Bis 2026-11 setzte der E2E-Build den Schalter, weil
+// sein Job per needs nach quality lief. Seit alle CI-Jobs ohne needs parallel
+// starten, wäre das nicht mehr gewährleistet; kein Workflow setzt ihn mehr.
+// Geprüft wird deshalb:
 //   1. Der Schalter wirkt genau über next.config.mjs.
 //   2. `pnpm typecheck` prüft dasselbe Programm wie `next build`: dieselben
 //      Wurzeldateien und dieselben Optionen, die Next erzwingt (Next-Interna,
 //      die beim Next-Upgrade bewusst mitgeprüft werden).
-//   3. Nur der E2E-Build in ci.yml setzt den Schalter, und sein Job hängt an
-//      quality, das `pnpm typecheck` bedingungslos ausführt.
+//   3. Kein Workflow und kein Image-Build setzt den Schalter; der E2E-Build in
+//      ci.yml prüft die Typen selbst.
 // =============================================================================
 
 import { readFileSync } from 'node:fs';
@@ -111,7 +113,7 @@ describe('Typprüfung im next build', () => {
     expect(rootScripts['typecheck']).not.toContain('--filter');
   });
 
-  it('nur der E2E-Build nach dem Typecheck im Job quality setzt den Schalter', () => {
+  it('kein Workflow setzt den Schalter, der E2E-Build prüft die Typen selbst', () => {
     const ci = workflow('ci.yml');
     const setters = Object.entries(ci.jobs).flatMap(([job, definition]) => [
       ...(definition.env?.[SWITCH] !== undefined ? [`${job} (Job)`] : []),
@@ -120,22 +122,30 @@ describe('Typprüfung im next build', () => {
         .map((step) => `${job}: ${step.run?.trim()}`),
     ]);
     expect(ci.env?.[SWITCH]).toBeUndefined();
-    expect(setters).toEqual(['e2e-paranoid: pnpm --filter @taxtronik/web build']);
+    expect(setters).toEqual([]);
     const build = ci.jobs['e2e-paranoid']!.steps.find(
       (step) => step.run?.trim() === 'pnpm --filter @taxtronik/web build',
-    )!;
-    expect(build.env?.[SWITCH]).toBe('1');
+    );
+    expect(build).toBeDefined();
+    // Ohne Schalter dürfte e2e-paranoid auch nach einem anderen Job laufen; die
+    // CI hält aber alle Jobs ohne needs parallel (check-release-gates.mjs).
+    expect(ci.jobs['e2e-paranoid']!.needs).toBeUndefined();
 
-    const needs = ci.jobs['e2e-paranoid']!.needs;
-    expect(Array.isArray(needs) ? needs : [needs]).toContain('quality');
-    const quality = ci.jobs['quality']!;
-    expect(quality.if).toBeUndefined();
-    expect(quality['continue-on-error']).toBeFalsy();
-    const typecheck = quality.steps.filter((step) => step.run?.trim() === 'pnpm typecheck');
+    // Der Typecheck bleibt ein eigener, bedingungsloser Pflichtjob.
+    const typecheckJob = ci.jobs['typecheck']!;
+    expect(typecheckJob.if).toBeUndefined();
+    expect(typecheckJob['continue-on-error']).toBeFalsy();
+    const typecheck = typecheckJob.steps.filter((step) => step.run?.trim() === 'pnpm typecheck');
     expect(typecheck).toHaveLength(1);
     expect(typecheck[0]!.if).toBeUndefined();
 
-    for (const file of ['release.yml', 'build-images.yml', 'security.yml', 'renovate.yml']) {
+    for (const file of [
+      'ci.yml',
+      'release.yml',
+      'build-images.yml',
+      'security.yml',
+      'renovate.yml',
+    ]) {
       expect(read(`.forgejo/workflows/${file}`), file).not.toContain(SWITCH);
     }
     // Images (auch Quell-Builds beim Betreiber) prüfen weiter selbst.

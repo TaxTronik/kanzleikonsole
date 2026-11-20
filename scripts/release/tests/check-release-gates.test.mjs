@@ -167,7 +167,7 @@ assert.throws(
 );
 
 // Parallele servicebasierte Jobs: eindeutige Host-Ports, PGPORT/DATABASE_URL
-// passend zum Service und Start erst nach quality.
+// passend zum Service; kein CI-Job wartet per needs auf einen anderen.
 assert.throws(
   () =>
     checkReleaseGates({
@@ -194,12 +194,24 @@ assert.throws(
     checkReleaseGates({
       ...workflows,
       ci: workflows.ci.replace(
+        '    timeout-minutes: 45\n',
         '    needs: quality\n    timeout-minutes: 45\n',
-        '    needs: db\n    timeout-minutes: 45\n',
       ),
     }),
-  /e2e-paranoid muss quality benoetigen/,
+  /CI-Jobs duerfen nicht per needs aufeinander warten/,
 );
+
+// Die frueher in quality gebuendelten Pruefungen bleiben Pflichtjobs.
+for (const job of ['lint', 'typecheck', 'unit-tests', 'ops']) {
+  assert.throws(
+    () =>
+      checkReleaseGates({
+        ...workflows,
+        ci: workflows.ci.replace(`\n  ${job}:\n`, `\n  ${job}-entfernt:\n`),
+      }),
+    new RegExp(`Job ${job} fehlt`),
+  );
+}
 
 assert.throws(
   () =>

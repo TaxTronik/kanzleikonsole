@@ -1,5 +1,37 @@
 ---
 exceptions:
+  - id: FK-EXC-20261120-001
+    date: '2026-11-20'
+    paths:
+      - .forgejo/workflows/ci.yml
+      - scripts/release/check-release-gates.mjs
+      - scripts/release/tests/check-release-gates.test.mjs
+      - packages/evidence/src/__tests__/evidence-db-ci.test.ts
+    rule_ids:
+      - ASSURANCE-RELEASE-EVIDENCE-001
+      - AUDIT-RFC3161-ANCHOR-001
+      - AUDIT-VERIFY-ALERT-001
+      - TCMS-SAMPLE-PROOF-001
+    reason: >-
+      Parallelisierung der CI ohne Änderung der geprüften Inhalte. Alle Jobs von
+      ci.yml starten ohne needs; der bisherige Job quality ist in quality
+      (Format, Dokumentationslinks, Fachkatalog, Guards), lint, typecheck,
+      unit-tests und ops aufgeteilt, mit denselben Befehlen wie vorher. Der
+      Release ruft weiterhin den gesamten Workflow als Pflicht-Gate auf;
+      check-release-gates.mjs verlangt die neuen Jobs und verbietet needs, damit
+      kein Job wegen eines anderen übersprungen wird und als Nachweis fehlt. Der
+      E2E-Produktionsbuild prüft die Typen wieder selbst, weil er nicht mehr nach
+      dem Typecheck läuft (ersetzt B-07). Die Prüfung, dass EVIDENCE_DB_TEST nur
+      im db-Job gesetzt ist, deckt jetzt alle übrigen Jobs ab statt nur quality.
+      Die DB-Schritte für Kettenprüfung und Rolling-Anchor (db-Job) sowie der
+      Cutoff-Test im Job upgrade-path bleiben unverändert. Keine fachliche
+      Freigabe.
+    tests:
+      - scripts/release/tests/check-release-gates.test.mjs
+      - packages/evidence/src/__tests__/evidence-db-ci.test.ts
+      - scripts/tests/ci-caches.test.mjs
+      - apps/web/src/__tests__/next-build-typecheck.test.ts
+    reviewer: Claude (automatisierter technischer Abgleich ohne fachliche Freigabe)
   - id: FK-EXC-20261119-001
     date: '2026-11-19'
     paths:
