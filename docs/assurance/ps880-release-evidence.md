@@ -156,17 +156,21 @@ Get-FileHash -Algorithm SHA256 -LiteralPath 'relative\path\to\artifact'
 | Produktionsabhängigkeiten      | `pnpm audit`: `…` | `…`                    | `…`                   | `…`                             |
 | Vollständiger Dependency-Graph | `pnpm audit`: `…` | `…`                    | `…`                   | nicht blockierender Lauf; `…`   |
 | Secret Scan                    | Gitleaks `…`      | `…`                    | `…`                   | `…`                             |
+| Produktive Fremdimages         | Trivy `…`         | `…`                    | `…`                   | `…`                             |
 | Web-Image                      | Trivy `…`         | `…`                    | `…`                   | `…`                             |
 | Worker-Image                   | Trivy `…`         | `…`                    | `…`                   | `…`                             |
 | Release-Stack-Smoke            | Skript/Commit `…` | `…`                    | `…`                   | `…`                             |
 
-Die Gate-Semantik wird aus dem gebundenen Workflow dokumentiert. Im derzeitigen
-Release-Workflow wird ein HIGH/CRITICAL-Überblick nicht blockierend ausgegeben;
-der zweite Trivy-Lauf blockiert CRITICAL-Befunde mit verfügbarem Fix, weil er
-mit `--severity CRITICAL --ignore-unfixed --exit-code 1` läuft. Daraus darf
-nicht pauschal „keine Schwachstellen“ abgeleitet werden. Nicht blockierende,
-unfixbare oder akzeptierte Befunde bleiben sichtbar und werden bei Bedarf in
-Abschnitt 8 bewertet.
+Für die produktiven Fremdimages den Paketbericht und `scan-summary.json`
+des gebundenen Laufs referenzieren. Für jeden als `not_affected` bewerteten
+Befund CVE, Image-Digest, Plattform, Datei, SHA-256 und Paketversion aus dem
+Nachweis übernehmen. Die Rohzahl der behebbaren CRITICAL-Befunde und die Zahl
+der tatsächlich sperrenden Befunde getrennt eintragen. [Prüfkriterien für die Serviceimages](../operations/release.md)
+
+Für Web- und Worker-Releaseimages dokumentiert der erste Trivy-Lauf HIGH und
+CRITICAL. Der zweite Aufruf mit `--severity CRITICAL --ignore-unfixed --exit-code 1`
+sperrt jeden CRITICAL-Befund mit verfügbarem Fix. Weitere offene Befunde
+gehören mit ihrer Bewertung in Abschnitt 8.
 
 ## 8. Abweichungen und Risikoentscheidungen
 

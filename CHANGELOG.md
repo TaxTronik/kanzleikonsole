@@ -2338,8 +2338,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Die Security-CI scannt die sieben fest gepinnten Fremdimages im produktiven Compose-Stack,
   prüft die tatsächliche ClamAV-Engine gegen Herstellerreleases, Supportfristen und die
   NVD-Versionsbereiche und bewahrt die Scanberichte auf.
-  Behebbare kritische Paketbefunde und technische Scanfehler sperren die Freigabe
-  (ASSURANCE-RELEASE-EVIDENCE-001).
+  Der Service-Image-Scan bewertet CVE-2025-68121 für die geprüfte gosu-Binärdatei
+  im PostgreSQL-18.7-Digest auf Linux/amd64 als `not_affected`. Der Trivy-Befund
+  bleibt sichtbar. Die Zusammenfassung weist den Prüfnachweis und die Zahl der
+  sperrenden Befunde aus. Alle anderen behebbaren kritischen Befunde und technisch
+  unvollständige Prüfungen sperren die Freigabe (ASSURANCE-RELEASE-EVIDENCE-001).
 - PostgreSQL 18.7 (Alpine 3.23), n8n 2.48.7, SeaweedFS 4.54 und Traefik 3.7.19
   schließen die meisten kritischen Paketbefunde der bisherigen Serviceimages. Mit
   Redis 7.4.12 und AWS-CLI 2.42.1 entfallen dort weitere 216 HIGH-Paketbefunde.

@@ -44,6 +44,7 @@ code_refs:
   - .forgejo/workflows/release.yml
   - .forgejo/workflows/security.yml
   - scripts/ci/scan-service-images.mjs
+  - scripts/ci/postgres-gosu-assessment.mjs
   - scripts/ci/clamav-advisories.mjs
   - scripts/ci/setup-trivy.sh
   - scripts/release/check-release-gates.mjs
@@ -61,6 +62,7 @@ test_refs:
   - apps/web/src/server/update/__tests__/manifest.test.ts
   - scripts/release/tests/check-release-gates.test.mjs
   - scripts/tests/service-image-security.test.mjs
+  - scripts/tests/postgres-gosu-assessment.test.mjs
   - scripts/release/tests/smoke-preflight.test.mjs
   - scripts/release/tests/verify-release-config.test.mjs
 feature_refs:
@@ -106,6 +108,8 @@ gleichwertig eingefroren werden.
 - Run-/Job-IDs, Abschlussstatus, Logs und Artefakthashes aller relevanten Gates
 - konkrete KoSIT-Konfiguration, Fälle und Einzelberichte
 - CycloneDX-SBOMs und Security-Ergebnisse einschließlich nicht blockierender Befunde
+- Bei einer Einzelbewertung im Service-Image-Scan zusätzlich Rohbefund, Image-Digest,
+  Plattform, Prüfnachweis und Anzahl der nach der Bewertung sperrenden Befunde
 - benannte Abweichungen, Entscheidungen und getrennte technische, betriebliche
   und fachliche Freigaben
 - geschützte Ablage, Aufbewahrung und Wiederherstellungsnachweis des Dossiers
@@ -118,6 +122,7 @@ gleichwertig eingefroren werden.
 | Pflichtjob fehlt, ist übersprungen oder fehlgeschlagen          | als fehlenden oder negativen Nachweis erfassen, nicht als bestanden markieren |
 | Image-Tag existiert bereits                                     | Publikation fail-closed stoppen statt den Versionsstand zu überschreiben      |
 | Trivy meldet nicht blockierende oder nicht behebbare Befunde    | Befund und Gate-Semantik im Dossier sichtbar halten                           |
+| Der gosu-Befund erfüllt alle Kriterien der Einzelbewertung      | Rohbefund, Nachweis und Zahl der sperrenden Treffer dokumentieren             |
 | KoSIT-Fall ist akzeptiert                                       | nur den konkreten Formatfall und Validatorstand belegen                       |
 | Dossier-Vorlage ist leer oder nur teilweise befüllt             | keinen Release-Nachweis oder Readiness-Status behaupten                       |
 | unabhängige Prüfung ist nicht erfolgt                           | keine Softwarebescheinigung oder Zertifizierung behaupten                     |
@@ -129,6 +134,16 @@ bestanden wurde. Ein SemVer-Tag ohne Digest ist keine unveränderliche
 Artefaktidentität. Ein wiederholter oder teilweise publizierter Lauf muss als
 eigener Verlauf erhalten bleiben und darf nicht nachträglich zu einem
 einheitlich grünen Lauf zusammengesetzt werden.
+
+Die Einzelbewertung betrifft CVE-2025-68121 im offiziellen PostgreSQL-Image
+`postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0`
+für `linux/amd64`. Trivy meldet `stdlib` in Version `v1.24.6` für
+`/usr/local/bin/gosu`. Der SHA-256 der geprüften Binärdatei lautet
+`b1892636c281590f34bc63c1118f058cd9de66c4ea463772e3909672d8b302ac`.
+Die Symbolprüfung am ausgelieferten Programm bestätigte, dass die vom
+Go-Advisory betroffene Funktionalität aus `crypto/tls` fehlt. Nur für diese
+Kombination gilt `not_affected`. Bei einem neuen Image-Digest muss die
+technische Release-Verantwortung den Befund neu bewerten. [Go-Advisory](https://pkg.go.dev/vuln/GO-2026-4337) · [Dokumentierter Binärnachweis](../../../reviews/2026-11-21-nachpruefung-imagepflege-und-codeabbau.md#nachtrag-zur-gosu-sicherheitsrichtlinie-am-21-november)
 
 ## Beispiele
 
@@ -192,9 +207,15 @@ Patchpflege ihrer Wartungslinie. Die NVD-Abfrage zur ausgeführten Version
 dokumentiert eigenständige Engine-Treffer und zusätzliche Produktbedingungen.
 CVEs aus anderen Herstellerlinien ohne eindeutigen Treffer oder Nachweis
 in der eigenen Linie erscheinen zur Nachprüfung. Eindeutige NVD-Treffer,
-behebbare CRITICAL-Befunde, ausstehende
-Engine-Patches, abgelaufene Patchpflege und technisch
-unvollständige Prüfungen sperren die Promotion. Die zugehörigen Tests
+ausstehende Engine-Patches, abgelaufene Patchpflege und technisch
+unvollständige Prüfungen sperren die Promotion. Bei Paketbefunden sperrt
+jeder behebbare CRITICAL-Treffer außer der oben gebundenen Einzelbewertung.
+Der Service-Image-Scan behält den Trivy-Bericht und die Rohzahlen. Seine
+Zusammenfassung enthält die Bewertung, den Binärnachweis und die Zahl der
+effektiv sperrenden Befunde. Ein abweichender Binärhash sperrt den Befund
+(Exit 1). Kann der Job den Nachweis nicht lesen, sperrt er die Freigabe als
+technisch unvollständig (Exit 2). Der gesonderte Scan der Web- und
+Worker-Releaseimages sperrt jeden behebbaren CRITICAL-Befund. Die zugehörigen Tests
 prüfen auch voneinander abweichende Compose-Varianten, fehlende
 Paketabdeckung und einen fehlenden Herstellerbeleg.
 

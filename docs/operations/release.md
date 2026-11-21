@@ -44,13 +44,36 @@ Der Security-Job `service-images` liest die im Produkt ausgelieferten
 Compose-Konfigurationen mit und ohne Traefik und TCMS. Er scannt jeden
 festen Drittanbieter-Digest einmal für `linux/amd64`. Das Artefakt
 `security-service-images` enthält die Zuordnung zu Diensten, den
-Trivy-Datenbankstand und die einzelnen Paketberichte. Jeder CRITICAL-Befund
-mit verfügbarer Korrektur blockiert. HIGH und ungefixte CRITICAL bleiben
-sichtbar. Image-, Datenbank- und Auswertungsfehler lassen den Job scheitern.
+Trivy-Datenbankstand und die unveränderten Paketberichte. In `scan-summary.json`
+zählt `criticalWithFix` alle behebbaren CRITICAL-Befunde. `blockingCriticalWithFix`
+zählt die nach der Bewertung sperrenden Treffer. Jeder behebbare CRITICAL-Befund sperrt (Exit 1),
+sofern die nachstehende Einzelbewertung auf ihn nicht zutrifft. HIGH und
+ungefixte CRITICAL bleiben sichtbar. Ein technisch unvollständiger Scan
+oder ein unlesbarer Prüfnachweis ergibt Exit 2 und sperrt die Freigabe.
 Der nächste tägliche Lauf prüft offene Paketbefunde erneut. Für einen Release
 übernimmt die technische Release-Verantwortung betroffene Digests, verfügbare
 Korrekturen und die Entscheidung zu verbleibenden Befunden in das Dossier.
 Das Upload-Artefakt fordert 90 Tage Aufbewahrung an.
+
+Für **CVE-2025-68121** gilt genau ein Befund als `not_affected`. Die technische
+Prüfung ergab, dass die von GO-2026-4337 betroffenen Funktionen aus `crypto/tls`
+im geprüften gosu 1.20 fehlen. Der Scan vergleicht den SHA-256 der Datei im
+Image mit dem geprüften Binärnachweis. [Go-Advisory](https://pkg.go.dev/vuln/GO-2026-4337) · [Analyse des ausgelieferten Programms](../reviews/2026-11-21-nachpruefung-imagepflege-und-codeabbau.md#nachtrag-zur-gosu-sicherheitsrichtlinie-am-21-november)
+
+| Merkmal                 | Geprüfter Wert                                                                                   |
+| ----------------------- | ------------------------------------------------------------------------------------------------ |
+| Image                   | `postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0` |
+| Plattform               | `linux/amd64`                                                                                    |
+| Datei und SHA-256       | `/usr/local/bin/gosu`, `b1892636c281590f34bc63c1118f058cd9de66c4ea463772e3909672d8b302ac`        |
+| Trivy-Paket und Version | `stdlib`, `v1.24.6`                                                                              |
+
+Beim geprüften Einzelbefund steht in der Zusammenfassung `criticalWithFix: 1`
+und `blockingCriticalWithFix: 0`. Unter `assessments` stehen die CVE, der Status
+`not_affected`, die Begründung `vulnerable_code_not_present`, Pfad und Hash sowie
+die Verweise auf Advisory und Binärnachweis. `observedGosuSha256` enthält den
+am Image gemessenen Hash. Weicht er ab, sperrt der Treffer. Ein neuer
+Image-Digest erfordert eine neue Bewertung. Beim separaten Scan der Web- und
+Worker-Releaseimages sperrt weiterhin jeder behebbare CRITICAL-Befund.
 
 Für den ClamAV-Digest führt derselbe Job `clamscan --version` isoliert aus.
 Er vergleicht Binary und Tag und prüft die veröffentlichten stabilen Patches

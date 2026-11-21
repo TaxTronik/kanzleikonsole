@@ -925,6 +925,7 @@
         ".forgejo/workflows/release.yml",
         ".forgejo/workflows/security.yml",
         "scripts/ci/scan-service-images.mjs",
+        "scripts/ci/postgres-gosu-assessment.mjs",
         "scripts/ci/clamav-advisories.mjs",
         "scripts/ci/setup-trivy.sh",
         "scripts/release/check-release-gates.mjs",
@@ -943,6 +944,7 @@
         "apps/web/src/server/update/__tests__/manifest.test.ts",
         "scripts/release/tests/check-release-gates.test.mjs",
         "scripts/tests/service-image-security.test.mjs",
+        "scripts/tests/postgres-gosu-assessment.test.mjs",
         "scripts/release/tests/smoke-preflight.test.mjs",
         "scripts/release/tests/verify-release-config.test.mjs"
       ],

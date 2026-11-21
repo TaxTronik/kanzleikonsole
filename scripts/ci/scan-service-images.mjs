@@ -1,10 +1,16 @@
 // Security-Workflow. Inventar und Befunde beziehen sich auf dieselben
 // unveränderlichen Linux-amd64-Manifeste wie die produktive Compose-Konfiguration.
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { applyAdvisories, nvdUrl } from './clamav-advisories.mjs';
+import {
+  assessPostgresGosu,
+  gosuPath,
+  reviewedPostgresImage,
+} from './postgres-gosu-assessment.mjs';
 
 const platform = 'linux/amd64';
 const releasesUrl = 'https://api.github.com/repos/Cisco-Talos/clamav/releases?per_page=100';
@@ -200,6 +206,56 @@ function save(directory, name, value) {
   writeFileSync(join(directory, name), JSON.stringify(value, null, 2) + '\n');
 }
 
+function runImageCommand(image, entrypoint, args) {
+  return execFileSync(
+    'docker',
+    [
+      'run',
+      '--rm',
+      '--platform',
+      platform,
+      '--network',
+      'none',
+      '--read-only',
+      '--user',
+      '65534:65534',
+      '--cap-drop',
+      'ALL',
+      '--security-opt',
+      'no-new-privileges',
+      '--pids-limit',
+      '32',
+      '--memory',
+      '128m',
+      '--entrypoint',
+      entrypoint,
+      image,
+      ...args,
+    ],
+    { timeout: 180_000, maxBuffer: 8 * 1024 * 1024 },
+  );
+}
+
+function readGosuHash(image) {
+  return createHash('sha256')
+    .update(runImageCommand(image, '/bin/cat', [gosuPath]))
+    .digest('hex');
+}
+
+export function serviceImageDecision(image, report, counts, readHash = readGosuHash) {
+  const checkGosu = image === reviewedPostgresImage && counts.criticalWithFix > 0;
+  const binarySha256 = checkGosu ? readHash(image) : undefined;
+  const assessment = checkGosu
+    ? assessPostgresGosu({ image, platform, report, binarySha256 })
+    : null;
+  const assessments = assessment ? [assessment] : [];
+  return {
+    blockingCriticalWithFix: counts.criticalWithFix - assessments.length,
+    assessments,
+    ...(checkGosu ? { observedGosuSha256: binarySha256 } : {}),
+  };
+}
+
 function runScan(directory) {
   mkdirSync(directory, { recursive: true });
   const inventory = productionInventory();
@@ -208,32 +264,8 @@ function runScan(directory) {
   // 0 bestanden, 1 fachlicher Befund, 2 technisch unvollständiger Scan.
   let exitCode = 0;
   try {
-    const version = execFileSync(
-      'docker',
-      [
-        'run',
-        '--rm',
-        '--platform',
-        platform,
-        '--network',
-        'none',
-        '--read-only',
-        '--user',
-        '65534:65534',
-        '--cap-drop',
-        'ALL',
-        '--security-opt',
-        'no-new-privileges',
-        '--pids-limit',
-        '32',
-        '--memory',
-        '128m',
-        '--entrypoint',
-        '/usr/bin/clamscan',
-        inventory.clamav,
-        '--version',
-      ],
-      { encoding: 'utf8', timeout: 180_000 },
+    const version = runImageCommand(inventory.clamav, '/usr/bin/clamscan', ['--version']).toString(
+      'utf8',
     );
     const readSource = (url) =>
       execFileSync(
@@ -301,6 +333,7 @@ function runScan(directory) {
   save(directory, 'trivy-db.json', database);
   for (const { image, digest, services } of inventory.images) {
     const file = digest.slice('sha256:'.length) + '.json';
+    const summary = { image, services, platform };
     try {
       runTrivy([
         'image',
@@ -327,14 +360,18 @@ function runScan(directory) {
       ]);
       const report = JSON.parse(readFileSync(join(directory, file), 'utf8'));
       const counts = packageFindings(report);
-      const status = counts.criticalWithFix ? 'fix-required' : 'passed';
-      summaries.push({ image, services, platform, file, status, ...counts });
+      Object.assign(summary, { file, ...counts });
+      const decision = serviceImageDecision(image, report, counts);
+      const status = decision.blockingCriticalWithFix ? 'fix-required' : 'passed';
+      summaries.push({ ...summary, status, ...decision });
       console.log(
-        `${image} HIGH=${counts.high} CRITICAL=${counts.critical} CRITICAL mit Fix=${counts.criticalWithFix}`,
+        `${image} HIGH=${counts.high} CRITICAL=${counts.critical} CRITICAL mit Fix=${counts.criticalWithFix} blockierend=${decision.blockingCriticalWithFix}`,
       );
-      if (counts.criticalWithFix) exitCode = Math.max(exitCode, 1);
+      for (const assessment of decision.assessments)
+        console.log(assessment.cve, assessment.status, assessment.binarySha256);
+      if (decision.blockingCriticalWithFix) exitCode = Math.max(exitCode, 1);
     } catch (error) {
-      summaries.push({ image, services, platform, status: 'error', error: error.message });
+      summaries.push({ ...summary, status: 'error', error: error.message });
       console.error(`${image}: Scannen fehlgeschlagen: ${error.message}`);
       exitCode = 2;
     }

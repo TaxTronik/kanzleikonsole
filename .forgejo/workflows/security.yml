@@ -36,7 +36,7 @@ jobs:
         with:
           node-version-file: .nvmrc
       - name: Prüfe Scanregeln und Image-Inventar
-        run: node --test scripts/tests/service-image-security.test.mjs
+        run: node --test scripts/tests/service-image-security.test.mjs scripts/tests/postgres-gosu-assessment.test.mjs
       - name: Digest-gepinnten Trivy-Scanner bereitstellen
         run: bash scripts/ci/setup-trivy.sh
       - name: Produktive Fremdimages und Herstellerstand der ClamAV-Engine prüfen
