@@ -87,3 +87,39 @@ führt alle versionierten E2E-Fälle gegen die gebaute Anwendung aus.
 - [ ] Der produktive Bestand gespeicherter Schutzfristen ist vor Freigabe mit
       den Akten abzugleichen. Die ursprüngliche Checkliste benennt die
       Zuständigkeit und den nächsten Schritt. [Offene fachliche Prüfungen](2026-11-21-berliner-kalendertag.md#bestehende-utc-konventionen-und-offene-punkte)
+
+## Nachtrag zum ersten Forgejo-Lauf
+
+Am 21. November bestanden auf `c7770862` die neue UI-Matrix mit 36 von 36
+und die vollständige Browsersuite mit 256 von 256 Fällen in Forgejo ohne
+Wiederholung. Zwei unabhängige Tests auf demselben
+Runner überschritten in derselben halben Minute jeweils ihr 20-Sekunden-Limit.
+Der Portal-Kalender benötigte 21,34 s, die erste S3-XML-Antwort 20,71 s.
+Zur gleichen Zeit sammelte der E2E-Produktionsbuild mit 31 Node-Prozessen
+Seitendaten. Auch der Web-Image-Build startete später 31 Prozesse. Genaue
+Hostmetriken zur Ursache der Verzögerung liegen für diesen Lauf nicht vor.
+[UI-Bericht](https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/actions/runs/1286/jobs/1/attempt/1) ·
+[Vollständiger Browserlauf](https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/actions/runs/1286/jobs/5/attempt/1) ·
+[Datenbanklauf](https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/actions/runs/1286/jobs/2/attempt/1) ·
+[Unit-Lauf](https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/actions/runs/1286/jobs/10/attempt/1)
+
+- [x] **Kalenderfeed und S3.** Mit frischer PostgreSQL-18.4-Datenbank und
+      derselben App-Rolle bestanden unter Linux alle drei iCal-Fälle. Der
+      erste erfolgreiche Abruf dauerte im Test 51 ms. Alle sechs S3-Fälle
+      bestanden lokal zusammen in 37 ms. Beide Prüfreihen behalten ihre
+      ursprünglichen Assertions und Zeitlimits.
+- [x] **Prozesszahl des Web-Builds.** Die gemeinsame Next-Konfiguration
+      berücksichtigt die verfügbaren CPUs und begrenzt die Seitengenerierung
+      auf vier Prozesse. Die neue Gegenprobe scheiterte auf `c7770862`.
+      Mit der Begrenzung bestanden die fünf Prüfungen der Build-Konfiguration
+      und Workspace-Transpilierung. Zwei Linux-Produktionsbuilds mit der
+      aktuellen Next-Konfiguration erzeugten je 102 statische Seiten.
+      Bei sechs zugewiesenen CPUs renderten vier Prozesse die Seiten, bei
+      einer CPU ein einziger. Die Prozess-IDs in allen 100 Messseiten
+      bestätigten die im Next-Protokoll angegebene Zahl.
+      [Regressionstest](../../apps/web/src/__tests__/next-build-typecheck.test.ts)
+- [ ] **Runner-Kapazität im Betrieb.** Die Protokolle desselben Quality-Runners
+      zeigen vier gleichzeitig aktive Jobs. Das Betriebsverfahren sieht einen
+      Job pro Runner vor. Der Betreiberabgleich der wirksamen
+      `runner.capacity` und der Zuordnung zu den Docker-Daemons steht aus.
+      [Betriebsverfahren](../development/entwicklungsverfahren.md)

@@ -175,7 +175,8 @@ laufen gegen Mocks und ersetzen keinen Abnahmetest des produktiven Speichers.
 Der S3-Vertragstest schickt typische XML-Antworten durch den echten AWS-Client und
 ersetzt nur die Netzwerkschicht: Versionslisten mit Entitäten im Schlüssel,
 Object-Lock-Frist und Bucket-Konfiguration, Abschluss eines Multipart-Uploads und
-die abgewiesene Löschung einer gesperrten Fassung. Er belegt für den im
-Dependency-Audit vom 17.11.2026 erzwungenen Stand von fast-xml-parser, dass diese
-Antworten wie zuvor ausgewertet werden. Einen Abnahmetest gegen den produktiven
-Speicher ersetzt er nicht. Die Regel selbst ändert sich dadurch nicht.
+die abgewiesene Löschung einer gesperrten Fassung. Im Dependency-Audit
+vom 17.11.2026 liefen diese Fälle mit dem damals erzwungenen fast-xml-parser.
+Am 21.11.2026 bestanden alle sechs Fälle mit dem SDK-eigenen XML-Parser aus
+`@aws-sdk/xml-builder` 3.972.43. Die Abnahme des produktiven Speichers
+erfolgt weiterhin im Deployment.

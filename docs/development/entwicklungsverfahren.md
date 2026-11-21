@@ -169,7 +169,12 @@ tsconfig, dieselben Dateien und Optionen; der Build blendet zusätzlich Befunde
 in Testdateien aus). Pakete, die nur TypeScript-Quellen exportieren, haben kein
 `build`-Skript. Der Produktions-Build im Job `e2e-paranoid` startet parallel
 zum Job `typecheck` und prüft die Typen deshalb selbst, wie Image-Builds und
-lokale Builds. Den Schalter `TAXTRONIK_SKIP_BUILD_TYPECHECK=1` in
+lokale Builds. Für das Sammeln der Seitendaten und das Erzeugen statischer
+Seiten nutzen diese Builds bis zu vier verfügbare CPUs. Im Quality-Lauf 1286
+hatten sich dabei 31 Prozesse den Runner mit Datenbank- und Unit-Tests geteilt.
+[Nachprüfung der Build-Parallelität](../reviews/2026-11-21-ci-bedienpruefung.md#nachtrag-zum-ersten-forgejo-lauf)
+
+Den Schalter `TAXTRONIK_SKIP_BUILD_TYPECHECK=1` in
 `next.config.mjs` setzt kein Workflow mehr (bis 2026-11 nutzte ihn der
 E2E-Build, als sein Job noch nach `quality` lief). In Turbo hängen
 `typecheck` und `test` über den leeren Task `transit`

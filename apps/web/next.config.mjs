@@ -3,6 +3,7 @@
 // =============================================================================
 
 import { existsSync, readFileSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -215,6 +216,9 @@ const nextConfig = {
   },
 
   experimental: {
+    // Build und Image laufen neben Datenbank- und Browsertests. Next startete
+    // für 35 statische Seiten auf dem Runner jeweils 31 Node-Prozesse.
+    cpus: Math.min(4, availableParallelism()),
     serverActions: {
       // F-09: Upload-Actions erhalten Dateien als File in FormData. Das Limit
       // ist die größte Upload-Art plus Multipart-Overhead (26 MiB) und kommt

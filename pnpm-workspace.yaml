@@ -183,10 +183,8 @@ overrides:
   # 11.0.4 liegt noch in der Mindestreife.
   minimatch@10: '11.0.3'
   # fast-xml-parser <=5.11.2 braucht quadratische Zeit fuer nicht geschlossene
-  # Stop-Node-Tags (GHSA-474x-hrwr-fgx4). Direkt in @taxtronik/tax (EU-
-  # Sanktionsliste), transitiv ueber @aws-sdk/xml-builder 3.972.25, das 5.7.3
-  # exakt pinnt (S3-Antworten). Keiner der beiden nutzt stopNodes; exakter Pin
-  # wie bei fast-uri, s3-xml-compat.test.ts prueft die S3-Antworten.
+  # Stop-Node-Tags (GHSA-474x-hrwr-fgx4). @taxtronik/tax liest damit die
+  # EU-Sanktionsliste. Der Override entspricht dem exakten Pin im Tax-Paket.
   fast-xml-parser: '5.12.0'
 
 # Workspace-Pakete werden per Symlink nur im node_modules ihrer deklarierten

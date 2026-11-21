@@ -1,13 +1,9 @@
 // =============================================================================
-// S3-Antworten durch den echten AWS-Client (Dependency-Audit 2026-11-17).
+// DOC-OBJECT-LOCK-001: XML-Antworten des Object Stores im AWS-S3-Client.
 //
-// @aws-sdk/xml-builder liest jede XML-Antwort des Object Stores mit
-// fast-xml-parser. pnpm-workspace.yaml erzwingt dafür einen anderen Stand als den,
-// den das SDK pinnt (Override fast-xml-parser). Dieser Test ersetzt nur die
-// Netzwerkschicht und schickt typische Antworten von SeaweedFS/S3 durch den
-// echten Client: Versionen mit Entitäten im Schlüssel, Object-Lock-Frist und
-// -Konfiguration, Abschluss eines Multipart-Uploads und die Fehler, an denen die
-// Löschsperre hängt. Ändert ein späteres Update die Auswertung, fällt es hier auf.
+// Der AWS-Client verarbeitet die XML-Antworten mit @aws-sdk/xml-builder.
+// Der Request-Handler liefert feste S3-Antworten für Versionslisten,
+// Object Lock, Multipart-Uploads und die abgewiesene Löschung einer Version.
 // =============================================================================
 
 import { Readable } from 'node:stream';
@@ -43,7 +39,7 @@ function clientAnswering(statusCode: number, xml: string): S3Client {
   });
 }
 
-describe('S3-Antworten mit dem erzwungenen fast-xml-parser', () => {
+describe('S3-Client wertet XML-Antworten des Object Stores aus', () => {
   it('liest Versionen samt Entitäten im Schlüssel, Zahlen, Wahrheitswerten und Löschmarken', async () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <ListVersionsResult ${NS}><Name>gobd</Name><Prefix>t/1/</Prefix><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated>

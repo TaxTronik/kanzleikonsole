@@ -1,5 +1,21 @@
 ---
 exceptions:
+  - id: FK-EXC-20261121-002
+    date: '2026-11-21'
+    paths:
+      - apps/web/next.config.mjs
+    rule_ids:
+      - MAIL-INBOX-001
+    reason: >-
+      Die gemeinsame Next-Konfiguration begrenzt die Parallelität der
+      Seitengenerierung beim Build. Die externe Einbindung der
+      Anhangsparser, das Standalone-Paket und die Prüfung eingehender
+      Anhänge verwenden weiter ihre bestehenden Einstellungen.
+    tests:
+      - apps/web/src/__tests__/next-build-typecheck.test.ts
+      - apps/web/src/__tests__/next-workspace-transpilation.test.ts
+      - packages/mail/src/__tests__/attachments.test.ts
+    reviewer: Codex (technischer Konfigurationsabgleich)
   - id: FK-EXC-20261121-001
     date: '2026-11-21'
     paths:
@@ -6025,6 +6041,7 @@ Löschung.
 
 ## Einträge
 
+- `FK-EXC-20261121-002` — begrenzte Prozesszahl bei der Seitengenerierung.
 - `FK-EXC-20261121-001` — eindeutige Hauptbereiche und schmale Detailansichten.
 
 - 21.11.2026 · `TCMS-DIENST-001`. Der gemeinsame Formularbaustein

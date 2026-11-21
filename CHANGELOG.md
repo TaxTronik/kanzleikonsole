@@ -448,7 +448,9 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   Terminen und Anforderungen zusätzlich in Chromium und Firefox mit
   unterschiedlichen Zeitzonen und Fensterbreiten. Der Lint-Lauf erkennt
   UTC-Tages- und Jahresvorgaben in neuen Datumsfeldern. Bei einem
-  fehlgeschlagenen Unit-Test laufen unabhängige Pakete weiter.
+  fehlgeschlagenen Unit-Test laufen unabhängige Pakete weiter. Web- und
+  Image-Build starten für die Seitengenerierung jeweils höchstens vier
+  Prozesse, damit parallele Tests Rechenzeit behalten.
 - Prüf- und Änderungsaufträge übernehmen einschlägige Befunde aus früheren
   Berichten in eine Checkliste. Abgehakte Punkte verweisen auf ausgeführte
   Prüfungen, offene Punkte auf den nächsten Prüfschritt.

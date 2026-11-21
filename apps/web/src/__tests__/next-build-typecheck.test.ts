@@ -17,6 +17,7 @@
 
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { availableParallelism } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -50,6 +51,11 @@ async function ignoreBuildErrors(value: string | undefined): Promise<boolean> {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+});
+
+it('begrenzt die Build-Prozesse auf die verfügbaren CPUs und höchstens vier', async () => {
+  const { default: config } = await import('../../next.config.mjs');
+  expect(config.experimental?.cpus).toBe(Math.min(4, availableParallelism()));
 });
 
 describe('Typprüfung im next build', () => {
