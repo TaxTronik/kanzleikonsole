@@ -58,6 +58,7 @@ import { DEMO } from '@/__tests__/tcms-fixtures';
 import { renderServerMarkup } from '@/__tests__/render-helpers';
 import { createVerifiedLegalEntityGwgFixture } from '../../../../../../packages/db/src/__tests__/gwg-test-fixture';
 import { tcmsLesen, tcmsMandantSeite, tcmsPortalSeite } from '../seite';
+import { pruefeDurchfuehrungsformulare } from './durchfuehrungsformulare-live';
 import { TCMS_KEIN_RECHT } from '../zustand';
 import { erwarteAnwendungsfehler } from '@taxtronik/db/testing/db-fehler';
 
@@ -199,6 +200,14 @@ const ZEIT = 60_000;
     }
   }, ZEIT);
 
+  pruefeDurchfuehrungsformulare((person) => {
+    sitzung.staff =
+      person === 'murat'
+        ? null
+        : staffSitzung(DEMO[person], person === 'anna' ? ['ADMIN'] : ['EMPLOYEE']);
+    sitzung.portal = person === 'murat' ? portalSitzung(DEMO.murat) : null;
+  }, rendern);
+
   /** Ereignis-ID zur Vorgangsnummer aus der Liste des Dienstes. */
   async function ereignisId(nummer: string): Promise<string> {
     const seite = await tcmsMandantSeite(DEMO.talwind);
@@ -243,11 +252,19 @@ const ZEIT = 60_000;
         await aktionen.ereignisVerwerfenBeantragenAction(DEMO.talwind, id, null, begruendung),
       ).toMatchObject({ ok: true });
       try {
+        const seite = await tcmsMandantSeite(DEMO.talwind);
+        if (!seite.ok) throw new Error(seite.zustand.art);
+        const detail = await tcmsLesen(seite, ENDPUNKTE.ereignisLesen, {
+          params: { ereignisId: id },
+        });
+        if (!detail.ok) throw new Error(detail.zustand.art);
+        const gesehen = new FormData();
+        gesehen.set('antragId', detail.daten.verwerfenAntrag!.antragId);
         const selbst = await aktionen.ereignisVerwerfenBestaetigenAction(
           DEMO.talwind,
           id,
           null,
-          new FormData(),
+          gesehen,
         );
         expect(selbst).toMatchObject({ ok: false });
         expect(selbst.ok ? '' : selbst.error).toBe(TCMS_KEIN_RECHT.VIER_AUGEN);

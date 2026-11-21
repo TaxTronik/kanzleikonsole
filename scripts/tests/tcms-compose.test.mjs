@@ -276,7 +276,7 @@ test('verwaltet: Haertung, Nicht-root, Healthchecks und Startreihenfolge', dynam
     ),
     'tcms-migrate tmpfs /var/lib/postgresql',
   );
-  assert.match(model.services['tcms-db'].image, /^postgres:18-alpine@sha256:[0-9a-f]{64}$/);
+  assert.match(model.services['tcms-db'].image, /^postgres:18-alpine3\.23@sha256:[0-9a-f]{64}$/);
   assert.deepEqual(model.services['tcms-db'].healthcheck.test, [
     'CMD-SHELL',
     'pg_isready -U tcms -d tcms',

@@ -5,8 +5,9 @@ import { Save, ArrowLeft, ArrowRight, AlertCircle } from 'lucide-react';
 import { fmtEURRound } from '@/lib/fmt';
 import type { BwaPlanBasis } from '@/server/bwa/plan-basis';
 
-export type PlanAxis =
-  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
+import { PlanSummary } from './plan-summary';
+import { BWA_PLAN_AXES, PLAN_AXIS_LABELS, planTotals, type PlanAxis } from '@/lib/bwa-plan';
+export type { PlanAxis } from '@/lib/bwa-plan';
 
 export interface CreatePlanInput {
   name: string;
@@ -28,36 +29,15 @@ type Base = BwaPlanBasis & {
   periodType: 'YEAR' | 'QUARTER' | 'MONTH';
 };
 
-type Axis =
-  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
-
-const AXIS_LABELS: Record<Axis, string> = {
-  REVENUE: 'Erlöse',
-  PERSONNEL: 'Personalkosten',
-  OTHER_COSTS: 'Sonstige Kosten',
-  DEPRECIATION: 'Abschreibungen',
-  MATERIAL: 'Material-/Wareneinkauf',
-  OTHER_INCOME: 'Sonstige Erträge',
-  TAXES: 'Steuern (GewSt/KSt/ESt)',
-};
-const ALL_AXES: Axis[] = [
-  'REVENUE',
-  'OTHER_INCOME',
-  'PERSONNEL',
-  'MATERIAL',
-  'DEPRECIATION',
-  'OTHER_COSTS',
-  'TAXES',
-];
-const REVENUE_AXES: Axis[] = ['REVENUE', 'OTHER_INCOME'];
-const COST_AXES: Axis[] = ['PERSONNEL', 'OTHER_COSTS', 'DEPRECIATION', 'MATERIAL'];
+const REVENUE_AXES: PlanAxis[] = ['REVENUE', 'OTHER_INCOME'];
+const COST_AXES: PlanAxis[] = ['PERSONNEL', 'OTHER_COSTS', 'DEPRECIATION', 'MATERIAL'];
 
 interface LineState {
   amount: number;
   note: string;
 }
 
-function emptyLines(): Record<Axis, LineState> {
+function emptyLines(): Record<PlanAxis, LineState> {
   return {
     REVENUE: { amount: 0, note: '' },
     PERSONNEL: { amount: 0, note: '' },
@@ -94,7 +74,7 @@ export function PlanWizard({
   const [baseId, setBaseId] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [status, setStatus] = useState<'DRAFT' | 'FINAL'>('FINAL');
-  const [lines, setLines] = useState<Record<Axis, LineState>>(emptyLines);
+  const [lines, setLines] = useState<Record<PlanAxis, LineState>>(emptyLines);
   const [customPct, setCustomPct] = useState<string>('');
   const [lastAppliedPct, setLastAppliedPct] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -110,25 +90,19 @@ export function PlanWizard({
       selectedBase.personnelCost -
       selectedBase.depreciation -
       selectedBase.material;
-    const revenue = Math.round(selectedBase.revenue * factor);
-    const personnel = Math.round(selectedBase.personnelCost * factor);
-    const otherCost = Math.round(otherCosts * factor);
-    const depr = Math.round(selectedBase.depreciation * factor);
-    const material = Math.round(selectedBase.material * factor);
-    const otherIncome = Math.round(selectedBase.otherIncome * factor);
-    const resultBeforeTax = revenue + otherIncome - personnel - otherCost - depr - material;
-    setLines({
-      REVENUE: { amount: revenue, note: '' },
-      OTHER_INCOME: { amount: otherIncome, note: '' },
-      PERSONNEL: { amount: personnel, note: '' },
-      OTHER_COSTS: { amount: otherCost, note: '' },
-      DEPRECIATION: { amount: depr, note: '' },
-      MATERIAL: { amount: material, note: '' },
-      TAXES: {
-        amount: estimateTaxes(resultBeforeTax),
-        note: 'Schätzung ~30 % auf Ergebnis vor Steuern',
-      },
-    });
+    const updated = {
+      REVENUE: { amount: Math.round(selectedBase.revenue * factor), note: '' },
+      OTHER_INCOME: { amount: Math.round(selectedBase.otherIncome * factor), note: '' },
+      PERSONNEL: { amount: Math.round(selectedBase.personnelCost * factor), note: '' },
+      OTHER_COSTS: { amount: Math.round(otherCosts * factor), note: '' },
+      DEPRECIATION: { amount: Math.round(selectedBase.depreciation * factor), note: '' },
+      MATERIAL: { amount: Math.round(selectedBase.material * factor), note: '' },
+      TAXES: { amount: 0, note: 'Schätzung ~30 % auf Ergebnis vor Steuern' },
+    };
+    updated.TAXES.amount = estimateTaxes(
+      planTotals((axis) => updated[axis].amount).resultBeforeTax,
+    );
+    setLines(updated);
     setLastAppliedPct(percentageBump);
   }
 
@@ -138,19 +112,9 @@ export function PlanWizard({
     applyBase(n);
   }
 
-  const totals = useMemo(() => {
-    const revenue = lines.REVENUE.amount + lines.OTHER_INCOME.amount;
-    const costs =
-      lines.PERSONNEL.amount +
-      lines.OTHER_COSTS.amount +
-      lines.DEPRECIATION.amount +
-      lines.MATERIAL.amount;
-    const resultBeforeTax = revenue - costs;
-    const taxes = lines.TAXES.amount;
-    return { revenue, costs, resultBeforeTax, taxes, resultAfterTax: resultBeforeTax - taxes };
-  }, [lines]);
+  const totals = useMemo(() => planTotals((axis) => lines[axis].amount), [lines]);
 
-  function setAxis(a: Axis, patch: Partial<LineState>) {
+  function setAxis(a: PlanAxis, patch: Partial<LineState>) {
     setLines((s) => ({ ...s, [a]: { ...s[a], ...patch } }));
   }
 
@@ -163,7 +127,7 @@ export function PlanWizard({
         basePeriodId: baseId || null,
         notes: notes.trim() || null,
         status,
-        lines: ALL_AXES.map((a) => ({
+        lines: BWA_PLAN_AXES.map((a) => ({
           axis: a,
           amount: lines[a].amount,
           note: lines[a].note.trim() || null,
@@ -381,10 +345,7 @@ export function PlanWizard({
           </div>
 
           <div className="border-t border-default pt-3 mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-            <Total label="Erträge" value={totals.revenue} />
-            <Total label="Aufwendungen" value={totals.costs} />
-            <Total label="Ergebnis vor Steuern" value={totals.resultBeforeTax} accent />
-            <Total label="Ergebnis nach Steuern" value={totals.resultAfterTax} accent />
+            <PlanSummary totals={totals} />
           </div>
           <div className="flex justify-between">
             <button type="button" onClick={() => setStep(1)} className="btn-secondary">
@@ -487,14 +448,14 @@ function AxisRow({
   line,
   onChange,
 }: {
-  axis: Axis;
+  axis: PlanAxis;
   line: LineState;
   onChange: (patch: Partial<LineState>) => void;
 }) {
   return (
     <div className="grid min-w-0 items-center gap-2 border-b border-default pb-3 last:border-0 @xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] @xl:border-0 @xl:pb-0">
       <label className="text-sm text-secondary" htmlFor={`bwa-wizard-axis-${axis}-amount`}>
-        {AXIS_LABELS[axis]}
+        {PLAN_AXIS_LABELS[axis]}
       </label>
       <div className="relative">
         <input
@@ -518,7 +479,7 @@ function AxisRow({
         onChange={(e) => onChange({ note: e.target.value })}
         maxLength={300}
         placeholder="Annahme / Notiz (optional)"
-        aria-label={`Anmerkung zu ${AXIS_LABELS[axis]} (optional)`}
+        aria-label={`Anmerkung zu ${PLAN_AXIS_LABELS[axis]} (optional)`}
         className="input text-xs"
       />
     </div>
@@ -536,26 +497,6 @@ function Preview({ label, v, accent }: { label: string; v: number; accent?: bool
         }
       >
         {fmtEURRound(v)}
-      </p>
-    </div>
-  );
-}
-
-function Total({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div>
-      <p className="text-xs text-muted">{label}</p>
-      <p
-        className={
-          'text-lg font-bold font-mono ' +
-          (accent && value < 0
-            ? 'text-red-700'
-            : accent && value > 0
-              ? 'text-emerald-700'
-              : 'text-primary')
-        }
-      >
-        {fmtEURRound(value)}
       </p>
     </div>
   );

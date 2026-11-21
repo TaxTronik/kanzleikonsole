@@ -25,7 +25,8 @@ Der Tag-Push löst `.forgejo/workflows/release.yml` aus:
    `security.yml` auf genau diesem Tag-Commit auf. Damit sind Quality (Format,
    Guards, Fachkatalog), Lint, Typecheck, Unit-Tests, Ops-Skripte, DB/RLS,
    Backup→Restore, Upgrade-Pfad ab dem vorherigen Tag, die vollständige E2E-Suite,
-   KoSIT-XRechnung, Deploy-Readiness, Dependency-Audit und Gitleaks zwingende
+   KoSIT-XRechnung, Deploy-Readiness, Dependency-Audit, Gitleaks und der
+   Scan der produktiven Fremdimages einschließlich der ClamAV-Engine zwingende
    Promotion-Gates.
 3. Baut erst danach `web` + `worker` mit `APP_VERSION=0.2.1` und dem Commit-SHA als
    Build-Args (sichtbar in Admin-UI und `/api/health/detail`).
@@ -38,6 +39,56 @@ Der Tag-Push löst `.forgejo/workflows/release.yml` aus:
    publiziert.
 6. Ermittelt die Registry-Digests beider Images und publiziert erst danach das
    signierte Manifest mit Tag-Commit, Web-Digest und Worker-Digest.
+
+Der Security-Job `service-images` liest die im Produkt ausgelieferten
+Compose-Konfigurationen mit und ohne Traefik und TCMS. Er scannt jeden
+festen Drittanbieter-Digest einmal für `linux/amd64`. Das Artefakt
+`security-service-images` enthält die Zuordnung zu Diensten, den
+Trivy-Datenbankstand und die einzelnen Paketberichte. Jeder CRITICAL-Befund
+mit verfügbarer Korrektur blockiert. HIGH und ungefixte CRITICAL bleiben
+sichtbar. Image-, Datenbank- und Auswertungsfehler lassen den Job scheitern.
+Der nächste tägliche Lauf prüft offene Paketbefunde erneut. Für einen Release
+übernimmt die technische Release-Verantwortung betroffene Digests, verfügbare
+Korrekturen und die Entscheidung zu verbleibenden Befunden in das Dossier.
+Das Upload-Artefakt fordert 90 Tage Aufbewahrung an.
+
+Für den ClamAV-Digest führt derselbe Job `clamscan --version` isoliert aus.
+Er vergleicht Binary und Tag und prüft die veröffentlichten stabilen Patches
+der installierten Major-/Minor-Linie. Ein neuerer Patch blockiert, auch wenn
+der Release-Text keine CVE-ID nennt. Das Artefakt `clamav-engine.json`
+enthält die gefundenen neueren Versionen und ihre CVE-IDs. Trivy arbeitet
+zusätzlich auf dem Paketinventar. [ClamAV-Releases des Herstellers](https://github.com/Cisco-Talos/clamav/releases)
+
+Der Job liest für genau diese Linie auch das Ende der kritischen Patchpflege
+aus der Supportmatrix. Bei einer veröffentlichten Datumsgrenze sperrt er ab
+00:00 UTC dieses Tages. Bei regulären Linien berücksichtigt er die dort
+benannten Folgeversionen und die Frist in Kalendermonaten. Eine ältere LTS
+behält ihre eigene Frist. Fehlende oder unlesbare Herstellerangaben sperren
+den Lauf.
+
+Für die ausgeführte Version fragt der Job die NVD-CVE-API mit der konkreten
+CPE `a:clamav:clamav` und `isVulnerable` ab. Ein eigenständig zutreffender
+Versionsbereich sperrt auch beim jüngsten Patch einer weiter unterstützten
+Linie. Im Engine-Bericht enthält `nvd.affected` die passenden Bedingungen.
+Braucht ein Treffer zusätzlich ein anderes Produkt, etwa die Cisco-Appliance
+bei CVE-2016-1405, bleiben die Bedingungen unter `nvd.conditional` sichtbar.
+Unvollständige Antworten oder ein ausgefallener Abruf ergeben einen
+technischen Fehler. [NVD-CVE-API](https://nvd.nist.gov/developers/vulnerabilities)
+
+Die NVD kann neue Veröffentlichungen erst später einer CPE zuordnen.
+`crossLineReview` sammelt CVEs aus anderen stabilen Herstellerlinien
+seit Erscheinen der installierten Linie, die in den Release-Hinweisen ihrer
+eigenen Linie fehlen und für die der Job keinen eindeutigen NVD-Treffer hat.
+Das verfügbare Fenster umfasst die jüngsten 100 Herstellerreleases.
+Die technische Release-Verantwortung prüft solche Hinweise und Meldungen
+vor einem Patch im Cisco-Advisory, hält betroffene Versionsbereiche und
+Rückportierungen fest und verknüpft die Entscheidung mit dem konkreten
+Digest im Dossier. Für CVE-2026-76417 führt der strukturierte Cisco-CNA-Eintrag
+Cisco Secure Endpoint als Produkt. Die ClamAV-Releasenotizen liefern die
+Angaben für die eigenständige Engine. [CVE-Register](https://www.cve.org/CVERecord?id=CVE-2026-76417)
+
+Die Images für ERiC und Signal wählt der Betreiber selbst und prüft sie für
+seine Installation. [ClamAV-Supportmatrix](https://docs.clamav.net/faq/faq-eol.html#version-support-matrix) · [Cisco Security Advisories](https://sec.cloudapps.cisco.com/security/center/publicationListing.x)
 
 Tax-CMS-Images (`tcms-api`, `tcms-migrate`) baut das TCMS-Repository. Ein
 Release gibt sie über `infra/compose/tcms-release.env` im Tag-Commit frei; das

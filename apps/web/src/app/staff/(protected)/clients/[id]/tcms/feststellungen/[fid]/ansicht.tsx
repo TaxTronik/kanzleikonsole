@@ -876,6 +876,7 @@ function VerwerfenAntrag({ l }: { l: Lage }) {
       <div className="mt-2 flex flex-wrap items-start gap-2">
         <AktionsKnopf
           action={l.binden(verwerfenBestaetigenAction)}
+          felder={{ antragId: antrag.antragId, auswirkung: f.auswirkung }}
           className="btn-danger-outline text-xs py-1"
           disabled={bestaetigenSperre !== null}
           title={bestaetigenSperre ?? undefined}

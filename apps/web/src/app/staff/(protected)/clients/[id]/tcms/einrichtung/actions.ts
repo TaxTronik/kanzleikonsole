@@ -48,6 +48,11 @@ import { tcmsZustaendigkeitTx } from '@/server/tcms/programm/zustaendigkeit';
 const MAX_DATEN = 400_000;
 
 const Formular = z.object({
+  gesehen: z
+    .string()
+    .regex(/^(0|[1-9]\d*)$/)
+    .transform(Number)
+    .pipe(z.int().min(0).max(1_000_000_000)),
   schritt: z.coerce.number().int().min(1).max(5),
   ziel: z.enum(['speichern', 'weiter', 'zurueck', 'anlegen']),
   daten: z.string().min(2).max(MAX_DATEN),
@@ -66,7 +71,7 @@ type Schritt =
   | { schritt: 4; daten: Risiken }
   | { schritt: 5; daten: Kontrollen };
 
-type Eingabe = Schritt & { ziel: 'speichern' | 'weiter' | 'zurueck' | 'anlegen' };
+type Eingabe = Schritt & { gesehen: number; ziel: 'speichern' | 'weiter' | 'zurueck' | 'anlegen' };
 
 const SCHEMA = {
   1: TeilbereichSchrittSchema,
@@ -79,7 +84,7 @@ const SCHEMA = {
 function eingabeAus(formData: FormData): ActionParseResult<Eingabe> {
   const basis = parseFormData(Formular, formData);
   if (!basis.ok) return basis;
-  const { schritt, ziel, daten } = basis.data;
+  const { schritt, ziel, daten, gesehen } = basis.data;
   if (ziel === 'anlegen' && schritt !== 5) {
     return {
       ok: false,
@@ -98,7 +103,7 @@ function eingabeAus(formData: FormData): ActionParseResult<Eingabe> {
   }
   const geprueft = parseActionInput(SCHEMA[schritt as Schritt['schritt']], json.wert);
   if (!geprueft.ok) return geprueft;
-  return { ok: true, data: { schritt, ziel, daten: geprueft.data } as Eingabe };
+  return { ok: true, data: { schritt, ziel, gesehen, daten: geprueft.data } as Eingabe };
 }
 
 /** Ziel der Weiterleitung nach Erfolg (null: auf der Seite bleiben). */
@@ -160,11 +165,13 @@ export async function einrichtungSpeichernAction(
             };
           }
         }
-        await dienst.rufe(ENDPUNKTE.programmAnlegen, { body: { daten: e.daten, personen } });
+        await dienst.rufe(ENDPUNKTE.programmAnlegen, {
+          body: { daten: e.daten, personen, gesehen: e.gesehen },
+        });
         return { ...weiter, meldung: 'Version 1 des Tax-CMS ist angelegt.' };
       }
       const { daten } = await dienst.rufe(ENDPUNKTE.einrichtungEntwurfSpeichern, {
-        body: { schritt: e.schritt, ziel: e.ziel, daten: e.daten, personen } as never,
+        body: { ...e, ziel: e.ziel, personen },
       });
       return {
         ...weiter,

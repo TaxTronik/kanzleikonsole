@@ -19,6 +19,7 @@ import { z } from 'zod';
 import {
   DurchfuehrungBegruendungBodySchema,
   DurchfuehrungIdSchema,
+  DurchfuehrungEinreichenBodySchema,
   ENDPUNKTE,
   NachweisIdSchema,
 } from '@taxtronik/tcms-contract';
@@ -53,7 +54,10 @@ const Anlage = z.object({ durchfuehrungId: DurchfuehrungIdSchema, nachweisId: Na
 
 /** Felder `schritt_<i>_erledigt|kommentar`, `wert_<key>`, `bemerkung_<key>`, `erklaert_<key>`, `ergebnis`, `ergebnisKommentar`. */
 const SpeichernFormular = z
-  .object({ absicht: z.enum(['speichern', 'einreichen']) })
+  .object({
+    ...DurchfuehrungEinreichenBodySchema.shape,
+    absicht: z.enum(['speichern', 'einreichen']),
+  })
   .catchall(z.string().max(4000));
 
 export async function portalAufgabeSpeichernAction(
@@ -73,7 +77,12 @@ export async function portalAufgabeSpeichernAction(
       const p = parseActionInput(Aufgabe, { durchfuehrungId }, NICHT_GEFUNDEN);
       if (!p.ok) return p;
       const f = parseFormData(SpeichernFormular, formData);
-      return f.ok ? { ok: true, data: { ...p.data, formular: f.data as AufgabeFormular } } : f;
+      return f.ok
+        ? {
+            ok: true,
+            data: { ...p.data, bisher: f.data.bisher, formular: f.data as AufgabeFormular },
+          }
+        : f;
     },
     aufruf: async (dienst, d): Promise<Lauf> => {
       const params = { durchfuehrungId: d.durchfuehrungId };
@@ -83,7 +92,7 @@ export async function portalAufgabeSpeichernAction(
       if (!koerper.ok) return koerper;
       const { daten: s } = await dienst.rufe(ENDPUNKTE.portalAufgabeSpeichern, {
         params,
-        body: koerper.body,
+        body: { ...koerper.body, bisher: d.bisher },
       });
       if (d.formular['absicht'] !== 'einreichen') return { meldung: 'Entwurf gespeichert.' };
       // Übermitteln nur, wenn die Prüfung des gespeicherten Stands (Dienst) keine Mängel
@@ -93,7 +102,7 @@ export async function portalAufgabeSpeichernAction(
           warnung: `Entwurf gespeichert, aber noch nicht übermittelt: ${s.pruefung.maengel.join(' · ')}.`,
         };
       }
-      await dienst.rufe(ENDPUNKTE.portalAufgabeEinreichen, { params });
+      await dienst.rufe(ENDPUNKTE.portalAufgabeEinreichen, { params, body: { bisher: s.inhalt } });
       return {
         meldung: a.kontrolle.gegenzeichnungMandant
           ? 'Übermittelt. Eine zweite Person bei Ihnen bestätigt nun die Vollständigkeit.'

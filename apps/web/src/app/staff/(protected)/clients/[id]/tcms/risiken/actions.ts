@@ -15,7 +15,7 @@
 // gesetzliche Vertreterin ist, prüft der Dienst an ihrer Rolle.
 // =============================================================================
 
-import { ENDPUNKTE } from '@taxtronik/tcms-contract';
+import { ENDPUNKTE, RisikenFreigebenBodySchema } from '@taxtronik/tcms-contract';
 import {
   GOVERNANCE_TYPEN,
   KLASSE_LABEL,
@@ -24,7 +24,7 @@ import {
   WAHRSCHEINLICHKEITEN,
 } from '@taxtronik/tcms-domain';
 import { z } from 'zod';
-import { parseFormData } from '@/server/actions/form-data';
+import { parseActionInput, parseFormData } from '@/server/actions/form-data';
 import type { TcmsAktionsErgebnis } from '@/components/tcms/bereich-b/ergebnis';
 import {
   BegruendungFeld,
@@ -224,7 +224,9 @@ const MAX_RISIKEN_JE_SCHRITT = 200;
 const Schritt = z.enum(['einreichen', 'freigeben']);
 const SchrittFeld = z.object({ schritt: Schritt });
 
-const FreigabeSchrittFormular = z.object({
+// Die Bewertungsstände tragen den Feldnamen stand_<risikoId>. Nur für die
+// ausgewählten IDs übernehmen und anschließend gegen das Dienstschema prüfen.
+const FreigabeSchrittFormular = z.looseObject({
   schritt: Schritt,
   // Fehler am Feld `risikoIds` (nicht je Eintrag), damit die Auswahl ihn zeigt.
   risikoIds: z
@@ -253,11 +255,18 @@ export async function risikenFreigabeSchrittAction(
         absentAsNull: true,
       }),
     aufruf: async (dienst, d) => {
-      const endpunkt =
-        d.schritt === 'freigeben'
-          ? ENDPUNKTE.risikenFreigeben
-          : ENDPUNKTE.risikenFreigabeEinreichen;
-      const { daten } = await dienst.rufe(endpunkt, { body: { risikoIds: d.risikoIds } });
+      const risiken = d.risikoIds.map((risikoId) => ({
+        risikoId,
+        standId: d['stand_' + risikoId],
+      }));
+      const freigabe = parseActionInput(RisikenFreigebenBodySchema, { risiken });
+      if (d.schritt === 'freigeben' && !freigabe.ok) return freigabe;
+      const { daten } =
+        d.schritt === 'freigeben' && freigabe.ok
+          ? await dienst.rufe(ENDPUNKTE.risikenFreigeben, { body: freigabe.data })
+          : await dienst.rufe(ENDPUNKTE.risikenFreigabeEinreichen, {
+              body: { risikoIds: d.risikoIds },
+            });
       const was = d.schritt === 'freigeben' ? 'freigegeben' : 'zur Freigabe eingereicht';
       const wer =
         daten.bearbeitet.length === 1

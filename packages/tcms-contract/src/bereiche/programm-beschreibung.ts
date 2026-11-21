@@ -25,14 +25,13 @@ import { ProfilAntwortenGespeichertSchema, ProfilAntwortenSchema } from './risik
 import { FreigabeZustellungSchema, NachrichtUnzustellbarGrundSchema } from './zustellung';
 
 const uuid = z.uuid();
-/** ID eines Tax-CMS-Objekts (cuid). */
+/** ID eines Tax-CMS-Objekts (cuid2, ältere Objekte cuid v1). */
 const objektId = z
   .string()
   .min(1)
   .max(64)
   .regex(/^[A-Za-z0-9_-]+$/);
 const isoZeit = z.string().max(40);
-const isoTag = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const klasse = z.enum(['GERING', 'MITTEL', 'HOCH', 'KRITISCH']);
 const governanceTyp = z.enum(['FP', 'FF', 'IN']);
 const turnus = z.enum(['KEIN', 'JAEHRLICH', 'QUARTALSWEISE', 'MONATLICH']);
@@ -264,7 +263,12 @@ const katalogCode = z
   .regex(/^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/);
 /** Einträge der Ein- und Ausschlüsse: einzeilig (Kanäle bzw. Grenzen im Snapshot, RT4-T-03). */
 const kurz = einzeilig(0, 200);
-const tagOderLeer = isoTag.or(z.literal(''));
+// Zwischengespeicherte Eingabefelder bleiben bis zum Abschluss editierbar;
+// der Service prüft die tatsächlichen Tage vor „Weiter“ und beim Anlegen.
+const tagOderLeer = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .or(z.literal(''));
 
 export const TeilbereichSchrittSchema = z
   .object({
@@ -367,6 +371,12 @@ export const SetupEntwurfSchema = z
     freigabe: ZieleSchrittSchema.shape.freigabe,
     risiken: z.record(katalogCode, EntwurfRisikoGespeichertSchema),
     kontrollen: KontrollenSchrittSchema.shape.kontrollen,
+    /**
+     * Zähler der Speicherungen (TS-05): Speichern und Anlegen nennen ihn als `gesehen`;
+     * weicht er ab, hat inzwischen jemand anderes gespeichert (`KONFLIKT`). Fehlt er
+     * (Entwurf aus der Zeit davor), gilt 0.
+     */
+    stand: z.number().int().min(0).optional(),
     /** Person (ID), die zuletzt gespeichert hat. */
     gespeichertVon: uuid.nullable().optional(),
     gespeichertAm: isoZeit.nullable().optional(),
@@ -412,9 +422,20 @@ export type EinrichtungLesenEingabe = z.infer<typeof EinrichtungLesenEingabeSche
 
 const ZielAktion = z.enum(['speichern', 'weiter', 'zurueck']);
 
+/**
+ * Gesehener Stand des Entwurfs (`entwurf.stand` aus dem Lesen; 0, solange nichts
+ * gespeichert ist). Unter der Programmsperre verglichen: Hat inzwischen jemand
+ * anderes gespeichert, antwortet der Dienst `KONFLIKT` (neu laden), statt die
+ * Änderung zu überschreiben bzw. einen nie gesehenen Entwurf als Version 1
+ * anzulegen. Optional für bestehende Aufrufer; ohne Angabe kein Abgleich.
+ */
+const gesehen = z.number().int().min(0).max(1_000_000_000).optional();
+
 function entwurfVarianten<M extends z.ZodRawShape>(basis: M) {
   const v = <S extends z.ZodRawShape>(s: S) =>
-    z.object({ ...basis, ziel: ZielAktion, personen: EinrichtungPersonenSchema, ...s }).strict();
+    z
+      .object({ ...basis, ziel: ZielAktion, personen: EinrichtungPersonenSchema, gesehen, ...s })
+      .strict();
   return z.discriminatedUnion('schritt', [
     v({ schritt: z.literal(1), daten: TeilbereichSchrittSchema }),
     v({ schritt: z.literal(2), daten: ProfilSchrittSchema }),
@@ -436,13 +457,15 @@ export const EntwurfSpeichernErgebnisSchema = z
     angelegt: z.boolean(),
     abgeschlossen: z.number().int().min(0).max(5),
     geaendert: z.boolean(),
+    /** Neuer Stand des Entwurfs (für das nächste `gesehen`). */
+    stand: z.number().int().min(0),
   })
   .strict();
 export type EntwurfSpeichernErgebnis = z.infer<typeof EntwurfSpeichernErgebnisSchema>;
 
 /** Version 1 anlegen: Zuständigkeiten aus Schritt 5 und Personen (wie beim Speichern). */
 export const ProgrammAnlegenBodySchema = z
-  .object({ daten: KontrollenSchrittSchema, personen: EinrichtungPersonenSchema })
+  .object({ daten: KontrollenSchrittSchema, personen: EinrichtungPersonenSchema, gesehen })
   .strict();
 export const ProgrammAnlegenEingabeSchema = ProgrammAnlegenBodySchema.extend({
   mandantId: uuid,
@@ -468,7 +491,10 @@ const FrequenzSchema = z.object({ turnus, anlass: z.boolean() }).strict();
 export const PlanViewSchema = z
   .object({
     appetit: klasse,
-    zeitraum: z.object({ stichtag: isoTag, ab: isoTag, bis: isoTag }).strict().nullable(),
+    zeitraum: z
+      .object({ stichtag: StandSchema, ab: StandSchema, bis: StandSchema })
+      .strict()
+      .nullable(),
     risiken: z.array(
       z
         .object({
@@ -822,6 +848,12 @@ export const BeschreibungVersionViewSchema = z
     /** Status zum Stichtag (aus den Zeitstempeln abgeleitet; aktuell = status) */
     anzeige: beschreibungStatus,
     abschnitte: z.array(BeschreibungAbschnittSchema),
+    /**
+     * Nur im historischen Stand `true`: Die Abschnitte wurden nach dem Stichtag geändert;
+     * `abschnitte` zeigt den heutigen Text (der Text eines Entwurfs zum Stichtag ist nicht
+     * gespeichert). Eingefrorene Inhalte zum Stichtag stehen im `snapshot`.
+     */
+    abschnitteSpaeterGeaendert: z.boolean(),
     createdAt: isoZeit,
     erstelltVon: z.string().nullable(),
     reviewAngefordertVon: z.string().nullable(),
@@ -835,8 +867,18 @@ export const BeschreibungVersionViewSchema = z
     snapshotSha256: z.string().nullable(),
     /** SHA-256 des Snapshots stimmt (null: nichts zu prüfen). */
     snapshotGeprueft: z.boolean().nullable(),
-    /** Letzte bearbeitende Person (Vier-Augen der Kanzlei-Review). */
+    /** Letzte bearbeitende Person (Anzeige). */
     letzteBearbeitung: z.string().nullable(),
+    /**
+     * Alle Personen, die Abschnitte dieser Version geändert haben (ohne Änderung: wer sie
+     * angelegt hat). Keine von ihnen schließt die Kanzlei-Review ab (Vier-Augen).
+     */
+    bearbeitende: z.array(z.string()),
+    /**
+     * SHA-256 der Abschnitte, wie sie die Antwort zeigt (kanonisches JSON). Der Abschluss der
+     * Kanzlei-Review nennt ihn als gesehenen Stand (TS-05); im historischen Stand `null`.
+     */
+    abschnitteSha256: z.string().nullable(),
   })
   .strict();
 export type BeschreibungVersionView = z.infer<typeof BeschreibungVersionViewSchema>;
@@ -874,7 +916,7 @@ export type BeschreibungLesenEingabe = z.infer<typeof BeschreibungLesenEingabeSc
 export const BeschreibungViewSchema = z
   .object({
     programmId: z.string().nullable(),
-    stand: isoTag,
+    stand: StandSchema,
     historisch: z.boolean(),
     versionen: z.array(BeschreibungVersionViewSchema),
     freigaben: z.array(BeschreibungFreigabeViewSchema),
@@ -923,6 +965,18 @@ export const BeschreibungVersionAktionEingabeSchema = z.object(versionPfad).stri
 export type BeschreibungVersionAktionEingabe = z.infer<
   typeof BeschreibungVersionAktionEingabeSchema
 >;
+/**
+ * Kanzlei-Review abschließen: SHA-256 der gesehenen Abschnitte (`abschnitteSha256` aus dem
+ * Lesen). Unter der Sperre der Version verglichen; weicht der Text ab (z. B. zurückgewiesen,
+ * geändert und erneut zur Review gegeben), antwortet der Dienst `KONFLIKT`.
+ */
+export const ReviewAbschliessenBodySchema = z
+  .object({ abschnitteSha256: z.string().regex(/^[0-9a-f]{64}$/) })
+  .strict();
+export const ReviewAbschliessenEingabeSchema =
+  ReviewAbschliessenBodySchema.extend(versionPfad).strict();
+export type ReviewAbschliessenEingabe = z.infer<typeof ReviewAbschliessenEingabeSchema>;
+
 export const BeschreibungVersionAktionErgebnisSchema = z
   .object({ versionId: z.string(), nummer: z.string(), status: beschreibungStatus })
   .strict();
@@ -992,6 +1046,27 @@ export const FreigabeNeuadressierungErgebnisSchema = z
   .object({ freigabeId: z.string(), vorherId: z.string(), empfaengerId: z.string() })
   .strict();
 
+/**
+ * Freigabe der Compliance-Ziele nach Version 1 anfordern (z. B. wenn bei der
+ * Einrichtung noch keine gesetzliche Vertretung erfasst war): an eine aktive
+ * gesetzliche Vertretung (ID), für alle noch nicht freigegebenen Ziele; höchstens
+ * eine offene Ziele-Freigabe je Programm (sonst `KONFLIKT`, neu adressieren).
+ */
+export const ZieleFreigabeAnfordernBodySchema = z.object({ empfaengerId: uuid }).strict();
+export const ZieleFreigabeAnfordernEingabeSchema = ZieleFreigabeAnfordernBodySchema.extend({
+  mandantId: uuid,
+}).strict();
+export type ZieleFreigabeAnfordernEingabe = z.infer<typeof ZieleFreigabeAnfordernEingabeSchema>;
+export const ZieleFreigabeAnfordernErgebnisSchema = z
+  .object({
+    freigabeId: z.string(),
+    teilbereichId: z.string(),
+    /** Zahl der Ziele, die zur Freigabe vorliegen. */
+    ziele: z.number().int().min(1),
+  })
+  .strict();
+export type ZieleFreigabeAnfordernErgebnis = z.infer<typeof ZieleFreigabeAnfordernErgebnisSchema>;
+
 export const PortalFreigabenEingabeSchema = z.object({ mandantId: uuid }).strict();
 export type PortalFreigabenEingabe = z.infer<typeof PortalFreigabenEingabeSchema>;
 
@@ -1058,7 +1133,7 @@ export const PortalFreigabenViewSchema = z
         .strict(),
     ),
     /** Lebende Bausteine, falls eine offene Beschreibung noch ohne Snapshot vorliegt. */
-    live: z.object({ stand: isoTag, bausteine: BausteinSatzSchema }).strict().nullable(),
+    live: z.object({ stand: StandSchema, bausteine: BausteinSatzSchema }).strict().nullable(),
     gesetzlicheVertreter: z.array(z.string()),
     istGesetzlicherVertreter: z.boolean(),
     kannPortalLesen: z.boolean(),
@@ -1142,7 +1217,7 @@ export const FreigabeHistorieZeileSchema = z
 export type FreigabeHistorieZeile = z.infer<typeof FreigabeHistorieZeileSchema>;
 export const FreigabenHistorieSchema = z
   .object({
-    stand: isoTag,
+    stand: StandSchema,
     historisch: z.boolean(),
     freigaben: z.array(FreigabeHistorieZeileSchema),
   })

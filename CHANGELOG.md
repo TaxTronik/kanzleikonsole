@@ -444,6 +444,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- **[BWA]** Plananlage, Editor und beide Vergleichsansichten verwenden denselben Planrechner.
+  Er weist Umsatzerlöse und Gesamterträge getrennt aus. Liquidität, Projektion und Planvergleich
+  zählen die abgedeckten Kalendermonate gemeinsam (BWA-PROJECTION-001, BWA-IMPORT-MAPPING-001).
+- **[TCMS]** Die Risikodetails beziehen ihre Mindestfrequenz aus derselben Domain wie die TCMS-Demo.
+  Kanzlei und Portal binden Einreichungen, Anträge und Reviews an den angezeigten Stand.
+  Auch Länderwerte, Risikofreigaben und die Einrichtung behalten die gelesene Fassung bei
+  (TCMS-DIENST-001). Beide Anwendungen benötigen den zusammengehörigen Vertragsstand.
+
 - Die CI prüft Formularvorbelegungen und das Absenden von Rechnungen,
   Terminen und Anforderungen zusätzlich in Chromium und Firefox mit
   unterschiedlichen Zeitzonen und Fensterbreiten. Der Lint-Lauf erkennt
@@ -1352,6 +1360,13 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   nicht länger als bereits erbrachte Nachweise.
 
 ### Behoben
+
+- **[BWA]** Der Planvergleich addiert in Cent. Vier Kostenpositionen mit zusammen 0,50 Euro
+  werden auch an der Halbeurogrenze mit 1 Euro angezeigt. Die Rechnung folgt der
+  Speichergenauigkeit der einzelnen Planpositionen (BWA-PROJECTION-001).
+- **[TCMS]** Bei einer Bestätigungsrückfrage bleibt der beim ersten Klick angezeigte
+  Stand gebunden, auch wenn sich das Formular während des Dialogs aktualisiert
+  (TCMS-DIENST-001).
 
 - Personenübersicht, Ausweisdetail und Bestätigung prüfen das Ablaufdatum
   gemeinsam nach Berliner Zeit. Der Personalfragebogen lässt den heutigen
@@ -2318,6 +2333,17 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   die Cookie-Löschung (`0c1f8174`).
 
 ### Sicherheit
+
+- **[Scope]** ClamAV ist auf 1.5.5 gepinnt. Renovate prüft ClamAV-Patches und -Digests täglich.
+  Die Security-CI scannt die sieben fest gepinnten Fremdimages im produktiven Compose-Stack,
+  prüft die tatsächliche ClamAV-Engine gegen Herstellerreleases, Supportfristen und die
+  NVD-Versionsbereiche und bewahrt die Scanberichte auf.
+  Behebbare kritische Paketbefunde und technische Scanfehler sperren die Freigabe
+  (ASSURANCE-RELEASE-EVIDENCE-001).
+- PostgreSQL 18.7 (Alpine 3.23), n8n 2.48.7, SeaweedFS 4.54 und Traefik 3.7.19
+  schließen die meisten kritischen Paketbefunde der bisherigen Serviceimages. Mit
+  Redis 7.4.12 und AWS-CLI 2.42.1 entfallen dort weitere 216 HIGH-Paketbefunde.
+  Der verbliebene PostgreSQL-Befund ist in der [Image-Nachprüfung](docs/reviews/2026-11-21-nachpruefung-imagepflege-und-codeabbau.md) erfasst.
 
 - Nach dem Zurückspielen eines älteren Redis-Stands oder einem Failover waren
   bereits abgemeldete Sitzungen bis zum Ende ihrer 24-Stunden-Lebensdauer

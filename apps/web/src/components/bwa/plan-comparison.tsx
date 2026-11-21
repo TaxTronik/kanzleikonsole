@@ -6,27 +6,15 @@ import { fmtDateTimeShort, fmtEURRound } from '@/lib/fmt';
 import { ActorBadge } from '@/components/bwa/actor-badge';
 import type { ProjectionSnapshot } from '@/components/bwa/projection-snapshot';
 
-type Axis =
-  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
+import {
+  BWA_PLAN_AXES,
+  PLAN_AXIS_LABELS,
+  planLineAmount,
+  savedPlanTotals,
+  type PlanAxis,
+} from '@/lib/bwa-plan';
 
-const AXIS_LABELS: Record<Axis, string> = {
-  REVENUE: 'Erlöse',
-  OTHER_INCOME: 'Sonstige Erträge',
-  PERSONNEL: 'Personalkosten',
-  MATERIAL: 'Material',
-  DEPRECIATION: 'Abschreibungen',
-  OTHER_COSTS: 'Sonstige Kosten',
-  TAXES: 'Steuern',
-};
-const ORDER: Axis[] = [
-  'REVENUE',
-  'OTHER_INCOME',
-  'PERSONNEL',
-  'MATERIAL',
-  'DEPRECIATION',
-  'OTHER_COSTS',
-  'TAXES',
-];
+const SHORT_LABELS = { ...PLAN_AXIS_LABELS, MATERIAL: 'Material', TAXES: 'Steuern' };
 
 export interface PlanForCompare {
   id: string;
@@ -37,24 +25,6 @@ export interface PlanForCompare {
   createdByType?: 'STAFF' | 'CLIENT_CONTACT';
   updatedByType?: 'STAFF' | 'CLIENT_CONTACT' | null;
   lines: Array<{ axis: string; amount: number }>;
-}
-
-function lineValue(plan: PlanForCompare, axis: Axis): number {
-  const l = plan.lines.find((x) => x.axis === axis);
-  return l ? l.amount : 0;
-}
-
-function totals(plan: PlanForCompare) {
-  const revenue = lineValue(plan, 'REVENUE') + lineValue(plan, 'OTHER_INCOME');
-  const costs =
-    lineValue(plan, 'PERSONNEL') +
-    lineValue(plan, 'MATERIAL') +
-    lineValue(plan, 'DEPRECIATION') +
-    lineValue(plan, 'OTHER_COSTS');
-  const taxes = lineValue(plan, 'TAXES');
-  const resultBeforeTax = revenue - costs;
-  const resultAfterTax = resultBeforeTax - taxes;
-  return { revenue, costs, resultBeforeTax, taxes, resultAfterTax };
 }
 
 export function PlanListWithCompare({
@@ -131,8 +101,8 @@ export function PlanListWithCompare({
                     <ActorBadge createdByType={p.createdByType} updatedByType={p.updatedByType} />
                   </p>
                   <p className="text-xs text-secondary">
-                    Erg. nach Steuern: {fmtEURRound(totals(p).resultAfterTax)} · zuletzt geändert{' '}
-                    {fmtDateTimeShort(p.updatedAt)}
+                    Erg. nach Steuern: {fmtEURRound(savedPlanTotals(p).resultAfterTax)} · zuletzt
+                    geändert {fmtDateTimeShort(p.updatedAt)}
                   </p>
                 </div>
                 {p.status === 'FINAL' ? (
@@ -185,12 +155,12 @@ function ComparisonTable({
   plans: PlanForCompare[];
   projection: ProjectionSnapshot | null;
 }) {
-  const sums = plans.map(totals);
+  const sums = plans.map(savedPlanTotals);
 
   // Hochrechnung als Pseudo-Spalte aufbereiten — chronologisch einsortiert.
   const projTotals = projection
     ? {
-        revenue:
+        totalIncome:
           projection.revenue !== null && projection.otherIncome !== null
             ? projection.revenue + projection.otherIncome
             : null,
@@ -209,10 +179,7 @@ function ComparisonTable({
     cols.sort((a, b) => a.year - b.year);
   }
 
-  function cellPlan(axis: Axis, p: PlanForCompare) {
-    return lineValue(p, axis);
-  }
-  function cellProjection(axis: Axis): number | null {
+  function cellProjection(axis: PlanAxis): number | null {
     if (!projection) return null;
     switch (axis) {
       case 'REVENUE':
@@ -276,16 +243,16 @@ function ComparisonTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-border-subtle">
-            {ORDER.map((axis) => (
+            {BWA_PLAN_AXES.map((axis) => (
               <tr key={axis}>
-                <td className="px-4 py-1.5 text-secondary">{AXIS_LABELS[axis]}</td>
+                <td className="px-4 py-1.5 text-secondary">{SHORT_LABELS[axis]}</td>
                 {cols.map((c, i) =>
                   c.kind === 'plan' ? (
                     <td
                       key={`p-${c.plan.id}-${axis}`}
                       className="px-4 py-1.5 text-right font-mono tabular-nums text-primary"
                     >
-                      {fmtEURRound(cellPlan(axis, c.plan))}
+                      {fmtEURRound(planLineAmount(c.plan, axis))}
                     </td>
                   ) : (
                     <td
@@ -301,7 +268,7 @@ function ComparisonTable({
           </tbody>
           <tfoot className="border-t-2 border-default">
             {[
-              { label: 'Erträge', key: 'revenue' as const, accent: false },
+              { label: 'Erträge', key: 'totalIncome' as const, accent: false },
               { label: 'Aufwendungen', key: 'costs' as const, accent: false },
               {
                 label: 'Ergebnis vor Steuern',

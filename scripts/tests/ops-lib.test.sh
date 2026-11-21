@@ -1575,7 +1575,8 @@ test_traefik_dynamic_route_and_compose_contract_are_socketless() {
   assert_contains "$bad_out" "drei getrennte Domains"
 
   local overlay="$REPO_ROOT/infra/compose/docker-compose.traefik.yml"
-  assert_contains "$overlay" "traefik:v3.7.9@sha256:"
+  grep -Eq '^[[:space:]]*image:[[:space:]]+traefik:v3\.[0-9]+\.[0-9]+@sha256:[0-9a-f]{64}[[:space:]]*$' "$overlay" ||
+    test_fail "Traefik v3 requires a complete version and image digest"
   assert_contains "$overlay" "--providers.file.filename=/etc/traefik/dynamic.yml"
   assert_contains "$overlay" "--providers.file.watch=true"
   assert_contains "$overlay" "'80:80'"

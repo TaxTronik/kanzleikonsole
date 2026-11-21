@@ -16,7 +16,7 @@
 // dieselben Werte wie in der Kanzlei.
 // =============================================================================
 
-import { useId, useState, type ReactNode } from 'react';
+import { Fragment, useId, useState, type ReactNode } from 'react';
 import { Send, Save, TriangleAlert, Check } from 'lucide-react';
 import { fmtEur } from '@taxtronik/tcms-domain';
 import { FieldError, fieldErrorProps } from '@/components/form-errors';
@@ -204,8 +204,21 @@ function WerteKarte({
   );
 }
 
+/** Bei einer neuen Fassung gelten die Schritte der gelesenen Aufgabe. */
+function useSchritte(bisher: string, schritte: readonly EditorSchritt[]) {
+  const [eingabe, setEingabe] = useState<{ bisher: string; erledigt: boolean[] } | null>(null);
+  const erledigt = eingabe?.bisher === bisher ? eingabe.erledigt : schritte.map((s) => s.erledigt);
+  function setzeSchritt(index: number, wert: boolean) {
+    const naechste = [...erledigt];
+    naechste[index] = wert;
+    setEingabe({ bisher, erledigt: naechste });
+  }
+  return { erledigt, setzeSchritt };
+}
+
 export function AufgabeEditor({
   aktion,
+  bisher,
   bearbeitbar,
   sperrGrund,
   schritte,
@@ -223,6 +236,7 @@ export function AufgabeEditor({
 }: {
   /** Speichern/Übermitteln (gebunden an die Aufgabe); null: keine Bearbeitung. */
   aktion: TcmsFormAktion | null;
+  bisher: string;
   bearbeitbar: boolean;
   /** Grund laut Dienst, warum nicht bearbeitet werden kann. */
   sperrGrund: string | null;
@@ -245,7 +259,7 @@ export function AufgabeEditor({
   const formId = useId();
   const kannSenden = bearbeitbar && aktion !== null;
   const f = kannSenden ? formId : undefined;
-  const [erledigt, setErledigt] = useState(() => schritte.map((s) => s.erledigt));
+  const { erledigt, setzeSchritt } = useSchritte(bisher, schritte);
   const {
     ergebnis: antwort,
     laeuft,
@@ -259,7 +273,7 @@ export function AufgabeEditor({
   const alleErledigt = schritte.length > 0 && anzahlErledigt === schritte.length;
 
   return (
-    <>
+    <Fragment key={bisher}>
       <section className="card" aria-labelledby={`${formId}-schritte`}>
         <div className="card-header">
           <h2 id={`${formId}-schritte`} className="text-sm font-semibold text-primary">
@@ -286,9 +300,7 @@ export function AufgabeEditor({
                     className="mt-1"
                     checked={erledigt[i] ?? false}
                     disabled={!kannSenden}
-                    onChange={(e) =>
-                      setErledigt((alt) => alt.map((x, j) => (j === i ? e.target.checked : x)))
-                    }
+                    onChange={(e) => setzeSchritt(i, e.target.checked)}
                   />
                   <label htmlFor={`${formId}-schritt-${i}`} className="grow">
                     <span className="block text-sm font-medium text-primary">
@@ -394,6 +406,7 @@ export function AufgabeEditor({
         <div className="space-y-2">
           <TcmsErgebnisMeldung ergebnis={antwort} titel="Nicht gespeichert." />
           <form id={formId} onSubmit={onSubmit} className="form-actions flex-wrap">
+            <input type="hidden" name="bisher" value={bisher} />
             <button
               type="submit"
               name="absicht"
@@ -424,6 +437,6 @@ export function AufgabeEditor({
           ) : null}
         </div>
       ) : null}
-    </>
+    </Fragment>
   );
 }

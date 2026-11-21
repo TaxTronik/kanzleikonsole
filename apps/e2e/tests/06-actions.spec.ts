@@ -4,7 +4,7 @@
 import { test, expect } from '@playwright/test';
 import { loginAsAdmin } from './helpers/auth';
 import { chooseClient } from './helpers/client-combobox';
-import { gotoReady } from './helpers/page-ready';
+import { expectServerActionResponse, gotoReady } from './helpers/page-ready';
 import { expectPortalDashboardReady, loginAsMandant } from './helpers/portal-auth';
 import { anyVisible, firstVisibleCandidate, PAGE_READY_TIMEOUT } from './helpers/visibility';
 import { psql } from './helpers/postgres';
@@ -689,47 +689,30 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     const ctx = await browser.newContext({ storageState: STAFF_AUTH });
     const page = await ctx.newPage();
 
-    await page.goto('/staff/time');
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(2000);
-    expect(page.url()).not.toContain('/staff/login');
-
-    // Stop any running timer first. Ob ein Timer läuft, ist Zustand: erst auf
-    // die Seitenüberschrift warten (gleicher Server-Render wie die Timer-Karte),
-    // dann verzweigen.
-    await expect(page.getByRole('heading', { level: 1, name: 'Zeiterfassung' })).toBeVisible({
-      timeout: PAGE_READY_TIMEOUT,
-    });
-    const stopBtn = page.getByRole('button', { name: /Stoppen/ });
-    if (await stopBtn.isVisible().catch(() => false)) {
-      await stopBtn.click();
-      // Warten bis der Stopp verarbeitet ist: der „Stoppen"-Button verschwindet.
-      await stopBtn.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
-      await page.reload({ waitUntil: 'domcontentloaded' });
+    const titel = page.getByRole('heading', { level: 1, name: 'Zeiterfassung' });
+    await gotoReady(page, '/staff/time', titel);
+    const start = page.getByRole('button', { name: 'Timer starten' });
+    const stoppen = page.getByRole('button', { name: 'Stoppen' });
+    if (await stoppen.isVisible()) {
+      await expectServerActionResponse(page, () => stoppen.click());
+      await expect(start).toBeVisible();
     }
 
-    const descInput = page.locator('#description');
-    await expect(descInput).toBeVisible({ timeout: 5000 });
-    await descInput.fill('E2E Test Zeiterfassung');
+    const beschreibung = `E2E Test Zeiterfassung ${randomUUID()}`;
+    await page.getByRole('textbox', { name: 'Was wird gemacht?' }).fill(beschreibung);
     await chooseClient(page, page.locator('#clientId'), 'Mustermann GmbH');
-    const startBtn = page.getByRole('button', { name: /Timer starten/ });
-    await expect(startBtn).toBeVisible({ timeout: 5000 });
-    await startBtn.click();
+    await expectServerActionResponse(page, () => start.click());
 
-    const stopBtn2 = page.getByRole('button', { name: /Stoppen/ });
-    await expect(stopBtn2).toBeVisible({ timeout: 5000 });
-    await stopBtn2.click();
-    // FIX 2: Statt body-visible — nach Stoppen muss der Timer beendet sein:
-    // der „Timer starten"-Button ist wieder sichtbar und der erfasste Eintrag
-    // taucht in der Zeiterfassungs-Liste auf.
-    await expect(
-      page.getByRole('button', { name: /Timer starten/ }),
-      'Nach Stoppen muss „Timer starten" wieder verfügbar sein',
-    ).toBeVisible({ timeout: 5000 });
-    await expect(
-      page.getByText('E2E Test Zeiterfassung').first(),
-      'Gestoppter Zeiteintrag muss in der Liste erscheinen',
-    ).toBeVisible({ timeout: 5000 });
+    const eintrag = page.getByRole('listitem').filter({
+      has: page.getByText(beschreibung, { exact: true }),
+    });
+    const laufend = eintrag.getByText('Läuft', { exact: true });
+    await expect(laufend).toBeVisible();
+    await expectServerActionResponse(page, () => stoppen.click());
+    await expect(start).toBeVisible();
+    await expect(eintrag).toHaveCount(1);
+    await expect(laufend).toHaveCount(0);
+    await expect(eintrag.getByRole('button', { name: 'Löschen' })).toBeVisible();
     await ctx.close();
   });
 

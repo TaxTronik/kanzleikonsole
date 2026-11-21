@@ -8,17 +8,13 @@
 
 import type { RisikoEintrag } from '@taxtronik/tcms-contract';
 import {
-  frequenzLabel,
   KLASSE_LABEL,
-  MATRIX_ZEILEN,
-  matrixFrequenz,
   WAHRSCHEINLICHKEIT_LABEL,
   WAHRSCHEINLICHKEITEN,
-  type GovernanceTyp,
   type Klasse,
-  type Turnus,
   type Wahrscheinlichkeit,
 } from '@taxtronik/tcms-domain';
+export { matrixZelle, mindestfrequenzText } from '@taxtronik/tcms-domain';
 import type { BadgeKlasse } from '../ton';
 
 export type RisikoFreigabe = RisikoEintrag['freigabe'];
@@ -146,29 +142,6 @@ export function risikoAuditPersonen(detail: Readonly<Record<string, unknown>>): 
     const wert = text(detail[k]);
     return wert ? [wert] : [];
   });
-}
-
-/** Text der Matrixzelle GT × Bruttoklasse (Fachkonzept Abschnitt 6, Startwerte). */
-export function matrixZelle(gt: GovernanceTyp, brutto: Klasse): string {
-  const z = MATRIX_ZEILEN.find((m) => m.gt === gt);
-  if (!z) return '—';
-  return brutto === 'KRITISCH' || brutto === 'HOCH'
-    ? z.hoch
-    : brutto === 'MITTEL'
-      ? z.mittel
-      : z.gering;
-}
-
-/**
- * Anzeige-Vorschau „FF · kritisch → monatlich + bei Auslösung“: abgeleitete
- * Mindestfrequenz nach der Häufigkeitsmatrix aus @taxtronik/tcms-domain. Die
- * maßgebliche Frequenz einer Kontrolle berechnet der Dienst (`ableitung`).
- */
-export function mindestfrequenzText(gt: GovernanceTyp, brutto: Klasse, turnus: Turnus): string {
-  const f = matrixFrequenz(gt, brutto, turnus);
-  const zelle = matrixZelle(gt, brutto);
-  const konkret = zelle.includes('Periode') ? ` (${frequenzLabel(f)})` : '';
-  return `${gt} · ${KLASSE_LABEL[brutto]} → ${zelle}${konkret}`;
 }
 
 /** „StB Dr. Anna Roth“ → „Dr. Roth“, „Leon Brandt“ → „L. Brandt“ (Tabellen; voller Name im Tooltip). */

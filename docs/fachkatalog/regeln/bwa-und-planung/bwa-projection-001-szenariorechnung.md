@@ -27,6 +27,11 @@ sources:
     checked_at: '2026-11-20'
     primary: true
 code_refs:
+  - apps/web/src/lib/bwa-plan.ts
+  - apps/web/src/server/bwa/period.ts
+  - apps/web/src/server/bwa/plans.ts
+  - apps/web/src/components/bwa/plan-wizard.tsx
+  - apps/web/src/components/bwa/plan-summary.tsx
   - apps/web/src/components/bwa/projection-snapshot.ts
   - apps/web/src/components/bwa/bwa-dashboard.tsx
   - apps/web/src/components/bwa/plan-comparison.tsx
@@ -39,6 +44,8 @@ code_refs:
   - apps/web/src/server/bwa/projection.ts
   - apps/web/src/server/bwa/plan-basis.ts
 test_refs:
+  - apps/web/src/components/bwa/__tests__/plan-totals.test.tsx
+  - apps/web/src/server/bwa/__tests__/plans.test.ts
   - apps/web/src/components/bwa/__tests__/dashboard-projection.test.tsx
   - apps/web/src/components/bwa/__tests__/plan-page-basis.test.tsx
   - apps/web/src/components/bwa/__tests__/projection-snapshot.test.ts
@@ -199,6 +206,17 @@ werden.
   von einer fachlich geprüften Steuerrechnung ersetzt werden?
 
 ## Technische Nachweise
+
+Der gemeinsame Planrechner hält Umsatzerlöse, Gesamterträge und Ergebnis
+getrennt. Der Test `plan-totals.test.tsx` prüft diese Beträge beim Anlegen,
+Bearbeiten, Vergleichen und in der Gegenüberstellung mit der Hochrechnung.
+Die Planrechnung übernimmt die Speicherskala der einzelnen Positionen
+(`BwaPlanLine.amount`, DECIMAL(14,2)). Bei positiven und negativen
+Halbcentbeträgen rundet sie vom Nullpunkt weg. Alle Summen entstehen aus
+ganzzahligen Cent. Vier Aufwendungen von 0,01, 0,18, 0,29 und 0,02 Euro
+ergeben genau 0,50 Euro, die ganzzahlige Anzeige zeigt 1 Euro. Für die
+gespiegelten Beträge zeigt sie −1 Euro. Eine Änderung der Additionsreihenfolge
+hat damit keinen Einfluss auf die Rundung der Anzeige.
 
 `dashboard-projection.test.tsx` führt ADDISON-CSV durch den echten Parser
 bis zur gerenderten gemeinsamen Kanzlei- und Portalansicht. Die Tests

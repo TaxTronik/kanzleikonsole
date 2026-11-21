@@ -5,7 +5,8 @@
 # hat. Die Regeln stehen in renovate.json im Repository-Root: npm frühestens
 # 7 Tage nach Veröffentlichung (wie minimumReleaseAge in pnpm-workspace.yaml),
 # digest-gepinnte Container-Images und SHA-gepinnte Actions, gruppiert,
-# montags vor 7 Uhr (Europe/Berlin). Majors sowie Node-/pnpm-Laufzeitpins erst
+# montags vor 7 Uhr (Europe/Berlin), ClamAV-Patches und -Digests täglich.
+# Majors sowie Node-/pnpm-Laufzeitpins erst
 # nach Freigabe im Dependency Dashboard (Issue im Repository).
 #
 # Einmalige Einrichtung in Forgejo (Admin):
@@ -23,14 +24,14 @@
 #   5. Repository-Variable RENOVATE_ENABLED=true setzen. Ohne sie wird der Job
 #      übersprungen, statt ohne Bot-Konto rot zu laufen.
 # Manuell starten (workflow_dispatch) verarbeitet u. a. Freigaben aus dem
-# Dependency Dashboard sofort statt erst am nächsten Montag.
+# Dependency Dashboard entsprechend den Paketregeln.
 # =============================================================================
 name: Renovate
 
 on:
   schedule:
-    # Montags 03:23 UTC (04:23 MEZ / 05:23 MESZ) und damit im Renovate-Zeitfenster.
-    - cron: '23 3 * * 1'
+    # Täglich 03:23 UTC, auch montags im regulären Updatefenster.
+    - cron: '23 3 * * *'
   workflow_dispatch:
 
 permissions:

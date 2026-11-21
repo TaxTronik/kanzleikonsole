@@ -47,6 +47,7 @@ vi.mock('next/navigation', () => ({
 
 import type { PrismaClient } from '@taxtronik/db';
 import { ENDPUNKTE } from '@taxtronik/tcms-contract';
+import { berlinYmd } from '@/lib/fmt';
 import { DEMO } from '@/__tests__/tcms-fixtures';
 import { renderServerMarkup } from '@/__tests__/render-helpers';
 import { TCMS_KEIN_RECHT } from '@/server/tcms/zustand';
@@ -303,7 +304,11 @@ let F_VERTRAULICH = '';
         await aktionen.durchfuehrungBeginnenAction(DEMO.talwind, K_EC_06, null, new FormData()),
       ).toEqual({ ok: true, meldung: 'Durchführung begonnen.' });
     }
+    const { container } = await seite();
+    const bisher = container.querySelector<HTMLInputElement>('input[name="bisher"]')!.value;
+    expect(bisher).toMatch(/^[a-f0-9]{64}$/);
     const entwurf = new FormData();
+    entwurf.set('bisher', bisher);
     entwurf.set('schritt_0_erledigt', 'on');
     entwurf.set('schritt_0_kommentar', 'Live-Test Bereich C');
     entwurf.set('absicht', 'speichern');
@@ -465,6 +470,104 @@ let F_VERTRAULICH = '';
       expect(await setzen('0')).toMatchObject({ ok: true });
     }
   });
+
+  it.each(['Feststellung', 'Ereignis'] as const)(
+    '%s: bestätigt nur den am Bildschirm gelesenen Antrag',
+    async (art) => {
+      const { tcmsKanzleiAktion } = await import('@/server/tcms/aktion');
+      const f = await import('@/app/staff/(protected)/clients/[id]/tcms/feststellungen/actions');
+      const e = await import('@/app/staff/(protected)/clients/[id]/tcms/ereignisse/actions');
+      const mandantId = DEMO.talwind;
+      const istFeststellung = art === 'Feststellung';
+      anna();
+      const angelegt = await tcmsKanzleiAktion({
+        mandantId,
+        aufruf: async (dienst) => {
+          if (istFeststellung) {
+            const antwort = await dienst.rufe(ENDPUNKTE.feststellungErfassen, {
+              body: {
+                titel: 'Manuelle Feststellung im Integrationstest',
+                sachverhalt: 'Synthetische Prüfung des Antragswechsels.',
+                quelle: 'STICHPROBE',
+                quelleText: 'Integrationstest',
+                klasse: 'HINWEIS',
+                schwere: 'GERING',
+                auswirkung: 'NEIN',
+              },
+            });
+            return { id: antwort.daten.id };
+          }
+          const antwort = await dienst.rufe(ENDPUNKTE.ereignisErfassen, {
+            body: {
+              typ: 'T-01',
+              quelle: 'MANUELL',
+              titel: 'Manuelles Ereignis im Integrationstest',
+              beschreibung: 'Synthetische Prüfung des Antragswechsels.',
+              datum: berlinYmd(new Date()),
+            },
+          });
+          return { id: antwort.daten.id };
+        },
+      });
+      if (!angelegt.ok) throw new Error(angelegt.error);
+      const id = angelegt.id;
+      const beantragen = istFeststellung
+        ? f.verwerfenBeantragenAction
+        : e.ereignisVerwerfenBeantragenAction;
+      const ablehnen = istFeststellung
+        ? f.verwerfenAblehnenAction
+        : e.ereignisVerwerfenAblehnenAction;
+      const bestaetigen = istFeststellung
+        ? f.verwerfenBestaetigenAction
+        : e.ereignisVerwerfenBestaetigenAction;
+      async function beantrage(text: string) {
+        leon();
+        const fd = new FormData();
+        fd.set('begruendung', text);
+        expect(await beantragen(mandantId, id, null, fd)).toMatchObject({ ok: true });
+      }
+      async function formularLesen() {
+        anna();
+        const { container } = istFeststellung
+          ? await rendern(
+              (
+                await import('@/app/staff/(protected)/clients/[id]/tcms/feststellungen/[fid]/page')
+              ).default({
+                params: Promise.resolve({ id: mandantId, fid: id }),
+                searchParams: Promise.resolve({}),
+              }),
+            )
+          : await rendern(
+              (await import('@/app/staff/(protected)/clients/[id]/tcms/ereignisse/page')).default({
+                params: Promise.resolve({ id: mandantId }),
+                searchParams: Promise.resolve({ e: id }),
+              }),
+            );
+        const form = container.querySelector<HTMLInputElement>('input[name="antragId"]')?.form;
+        if (!form) throw new Error('Bestätigungsformular für den Antrag fehlt');
+        const fd = new FormData();
+        for (const hidden of form.querySelectorAll<HTMLInputElement>('input[type=hidden][name]'))
+          fd.set(hidden.name, hidden.value);
+        expect(fd.get('antragId')).toMatch(/^[a-f0-9-]{36}$/);
+        if (istFeststellung) expect(fd.get('auswirkung')).toBe('NEIN');
+        return fd;
+      }
+      await beantrage('Erster Antrag auf Verwerfen für die synthetische Integrationsprüfung.');
+      const erster = await formularLesen();
+      leon();
+      expect(await ablehnen(mandantId, id, null, new FormData())).toMatchObject({ ok: true });
+      await beantrage('Zweiter Antrag mit einer sachlich geänderten Begründung zur Prüfung.');
+      anna();
+      expect(await bestaetigen(mandantId, id, null, erster)).toMatchObject({
+        ok: false,
+        errorCode: 'CONFLICT',
+      });
+      const zweiter = await formularLesen();
+      expect(zweiter.get('antragId')).not.toBe(erster.get('antragId'));
+      expect(await bestaetigen(mandantId, id, null, zweiter)).toMatchObject({ ok: true });
+    },
+    60_000,
+  );
 
   it('Arbeitskorb: Aufgaben des Dienstes, Namen der kanzleikonsole', async () => {
     anna();

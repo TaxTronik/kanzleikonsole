@@ -26,7 +26,7 @@ services:
     build:
       context: ../scripts
       dockerfile_inline: |
-        FROM postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+        FROM postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0
         COPY postgres-init.sh /docker-entrypoint-initdb.d/01-init.sh
         RUN chmod 0555 /docker-entrypoint-initdb.d/01-init.sh
     image: ${TAXTRONIK_SMOKE_POSTGRES_IMAGE:-taxtronik-postgres-ci:latest}
@@ -37,7 +37,7 @@ services:
     build:
       context: ../scripts
       dockerfile_inline: |
-        FROM chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d
+        FROM chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
         COPY seaweedfs-s3.template.json /etc/seaweedfs/s3.template.json
         COPY seaweedfs-entrypoint.sh /usr/local/bin/taxtronik-seaweedfs-entrypoint.sh
         RUN chmod 0555 /usr/local/bin/taxtronik-seaweedfs-entrypoint.sh
@@ -49,7 +49,7 @@ services:
     build:
       context: ../scripts
       dockerfile_inline: |
-        FROM amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150
+        FROM amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846
         COPY init-storage.sh /init-storage.sh
     image: taxtronik-awscli-ci:latest
     volumes: !override []
@@ -58,7 +58,7 @@ services:
     build:
       context: ../clamav
       dockerfile_inline: |
-        FROM clamav/clamav:stable@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777
+        FROM clamav/clamav:1.5.5@sha256:12177441d1b40cef3c47b44c4090d59d4babc4c67bedd5af0fa315e603aa6dd8
         COPY clamd.conf /etc/clamav/clamd.conf
     image: taxtronik-clamav-ci:latest
     volumes: !override
@@ -68,7 +68,7 @@ services:
     build:
       context: ../n8n
       dockerfile_inline: |
-        FROM n8nio/n8n:2.33.7@sha256:3989d9b8ebb77b4ee8f604519eb73e44f4384bfaa689526e0104eed79a237d30
+        FROM n8nio/n8n:2.48.7@sha256:fabce3e9678a07d2dde83bd8f5124017f3ec457d0a3fc6b63bb4cec465d63861
         COPY --chown=node:node workflows /workflows
     image: ${TAXTRONIK_SMOKE_N8N_IMAGE:-taxtronik-n8n-ci:latest}
     volumes: !override

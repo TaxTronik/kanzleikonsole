@@ -9,8 +9,8 @@ on:
     # Taeglich statt woechentlich: Advisories erscheinen jederzeit, und ein
     # 7-Tage-Fenster war laenger als die Reaktionszeit, die wir uns geben
     # wollen. Die Update-PRs liefert das selbst gehostete Renovate
-    # (renovate.yml, montags; renovate.json), dieser Lauf liefert die Kenntnis.
-    # Ein hier gemeldeter Fix juenger als 7 Tage braucht die dokumentierte
+    # (renovate.yml, ClamAV täglich, die übrigen Gruppen montags).
+    # Ein npm-Fix juenger als 7 Tage braucht die dokumentierte
     # minimumReleaseAgeExclude-Ausnahme in pnpm-workspace.yaml.
     - cron: '17 3 * * *'
 
@@ -26,6 +26,30 @@ env:
   GITLEAKS_LINUX_X64_SHA256: 39e07ad810336fd0ae80d0bd61c60d0521f628173e7583583b5df4a38738522c
 
 jobs:
+  service-images:
+    name: Produktionsimages und ClamAV-Engine
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+      - name: Prüfe Scanregeln und Image-Inventar
+        run: node --test scripts/tests/service-image-security.test.mjs
+      - name: Digest-gepinnten Trivy-Scanner bereitstellen
+        run: bash scripts/ci/setup-trivy.sh
+      - name: Produktive Fremdimages und Herstellerstand der ClamAV-Engine prüfen
+        run: node scripts/ci/scan-service-images.mjs security-images
+      - name: Imageberichte und betroffene Engine-Stände sichern
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3.2.1
+        with:
+          name: security-service-images
+          retention-days: 90
+          path: security-images/
+          if-no-files-found: error
+
   dependencies:
     name: Dependency Audit
     runs-on: ubuntu-latest

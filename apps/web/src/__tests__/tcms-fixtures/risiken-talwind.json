@@ -435,7 +435,10 @@
           "beantragtVon": "b1000000-0000-4000-8000-000000000001",
           "beantragtAm": "2026-10-19T13:04:41.548Z",
           "entschiedenVon": null,
-          "entschiedenAm": null
+          "entschiedenAm": null,
+          "aufgehobenVon": null,
+          "aufgehobenAm": null,
+          "ueberholt": false
         }
       ],
       "offeneEreignisse": 0,
@@ -520,7 +523,10 @@
           "beantragtVon": "b1000000-0000-4000-8000-000000000001",
           "beantragtAm": "2026-10-19T13:04:41.370Z",
           "entschiedenVon": "b1000000-0000-4000-8000-000000000002",
-          "entschiedenAm": "2026-10-19T13:04:41.480Z"
+          "entschiedenAm": "2026-10-19T13:04:41.480Z",
+          "aufgehobenVon": null,
+          "aufgehobenAm": null,
+          "ueberholt": false
         }
       ],
       "offeneEreignisse": 1,
@@ -841,7 +847,8 @@
           "empfaengerId": "b1000000-0000-4000-8000-000000000011",
           "anmerkung": null,
           "erledigtAm": null,
-          "zustellung": null
+          "zustellung": null,
+          "ueberholt": false
         }
       ]
     }

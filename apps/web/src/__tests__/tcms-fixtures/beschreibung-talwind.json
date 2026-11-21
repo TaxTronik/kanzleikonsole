@@ -246,7 +246,10 @@
       },
       "snapshotSha256": "35dfab816a06e6bb11e44dcc2700de7e3d5562b7ae6a3bd29010a97dc01f9358",
       "snapshotGeprueft": true,
-      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002"
+      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002",
+      "abschnitteSpaeterGeaendert": false,
+      "bearbeitende": ["b1000000-0000-4000-8000-000000000002"],
+      "abschnitteSha256": null
     },
     {
       "id": "cmvf9k8mh0092g87dguwfvkyx",
@@ -491,7 +494,10 @@
       },
       "snapshotSha256": "2039b321d61b16d443509ca47c837785d5dfbd246b5d1b57adadfa25195445b2",
       "snapshotGeprueft": true,
-      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002"
+      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002",
+      "abschnitteSpaeterGeaendert": false,
+      "bearbeitende": ["b1000000-0000-4000-8000-000000000002"],
+      "abschnitteSha256": null
     },
     {
       "id": "cmvf9k8n20093g87donaw4i34",
@@ -736,7 +742,10 @@
       },
       "snapshotSha256": "85050466cd367af859c683d047f4797ec64f2a757f31e84e1a4089ad34d808d3",
       "snapshotGeprueft": true,
-      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002"
+      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002",
+      "abschnitteSpaeterGeaendert": false,
+      "bearbeitende": ["b1000000-0000-4000-8000-000000000002"],
+      "abschnitteSha256": null
     },
     {
       "id": "cmvf9k8n80094g87dcb19jjso",
@@ -866,7 +875,10 @@
       "snapshot": null,
       "snapshotSha256": null,
       "snapshotGeprueft": null,
-      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002"
+      "letzteBearbeitung": "b1000000-0000-4000-8000-000000000002",
+      "abschnitteSpaeterGeaendert": false,
+      "bearbeitende": ["b1000000-0000-4000-8000-000000000002"],
+      "abschnitteSha256": null
     }
   ],
   "freigaben": [

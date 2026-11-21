@@ -3,32 +3,32 @@
   "quelle": {
     "repo": "tcms",
     "pfad": "packages/contract/src",
-    "commit": "2cafc99667f0b49c6c98caf50bddabe7f7ab1c6a"
+    "commit": "de4c489e1f3a7c6f345734b2e416263a37405213"
   },
   "dateien": [
     {
       "pfad": "akteur.ts",
-      "sha256": "0acdc3029092f9613c0435fbb7e4ee420d06d05c99343e19e9d88a629cd82cd3"
+      "sha256": "da2b4c875e1eadf3999bb5589dd9598a5f248fa0cfbd9329f2ae07bb66dea3e2"
     },
     {
       "pfad": "bereiche/durchfuehrung.ts",
-      "sha256": "471c246135795479babca73de8a516ff20135cd882d3bb8a5de28add60651929"
+      "sha256": "14033cf723eb09dca8c74e5d820e86b312ce574d1f2429e13a9e4a09e39dbedf"
     },
     {
       "pfad": "bereiche/feststellungen-ereignisse.ts",
-      "sha256": "be8619634c860a97e65bd3ce691b43859a035bc686a2a35ca0fe2127198c4606"
+      "sha256": "f4b17b8bdd039ef7d906d953f38d8b1141ab9c5304646ad2a73dd094837016a4"
     },
     {
       "pfad": "bereiche/lesepfade.ts",
-      "sha256": "2daa8a8c0701ee791fe73ca06f0f0bbbd9c29b190470c8760d6c116bbc55ab0b"
+      "sha256": "3001dcb2601d7696d6a82bde5e7cbee75242a836a56ded4b14cdaadc34bb1f97"
     },
     {
       "pfad": "bereiche/programm-beschreibung.ts",
-      "sha256": "eca55ec39fb8498e08767af220b177cbbf54e04fe56d959cd4b1fc8fe1528c0f"
+      "sha256": "318c44b442cedd948918d398ca63fb9fd635ac4fc19bde66dc4c041ea5f2dffa"
     },
     {
       "pfad": "bereiche/risiken-kontrollen.ts",
-      "sha256": "2c0b3e5ed202a857e3dce3632e3b52c441c098b18c56ff19eaf3a1e4ba05e4a7"
+      "sha256": "76dc5cb106891ca35ce8b9e08e0289bc420dd197ff19cff1a729fc33240cce0b"
     },
     {
       "pfad": "bereiche/zustellung.ts",
@@ -36,11 +36,11 @@
     },
     {
       "pfad": "endpunkte.ts",
-      "sha256": "5a8d4bf65e9498b83405ea8cb29ddaeaf6fd724c88e385ad6fa3b271bcbf9c85"
+      "sha256": "7f4f006a36c734d32364c3b471e6873c192ac589072ea39e7266bff1138f3ea2"
     },
     {
       "pfad": "fehler.ts",
-      "sha256": "1942ba065033c22529ed082d28d940b70d9a3772570e80e8103b955f1131ac1e"
+      "sha256": "6e86f46c5f4a5d9ced61297d516b732cad41bf4f2828490288ae40db0d208711"
     },
     {
       "pfad": "index.ts",
@@ -53,6 +53,10 @@
     {
       "pfad": "signatur.ts",
       "sha256": "046752a90e5a83fc2f60ad614e54bfcb0a3556b29d07f0936b4fa2e2a38c44b5"
+    },
+    {
+      "pfad": "zeichen.ts",
+      "sha256": "c49dfafe1a75e1312d6669399d6c8369d200b47bab2bddf84489d495e44e64f3"
     }
   ]
 }

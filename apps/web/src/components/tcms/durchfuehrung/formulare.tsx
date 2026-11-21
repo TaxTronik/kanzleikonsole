@@ -298,11 +298,13 @@ function BegruendungsInhalt({
 export function EntwurfFormular({
   action,
   formId,
+  bisher,
   einreichen,
   links,
 }: {
   action: TcmsFormAktion;
   formId: string;
+  bisher: string;
   einreichen: string;
   links?: ReactNode;
 }) {
@@ -315,6 +317,7 @@ export function EntwurfFormular({
       <div className="form-actions flex-wrap">
         {links}
         <form id={formId} {...formular} className="flex items-center gap-2">
+          <input type="hidden" name="bisher" value={bisher} />
           <button
             type="submit"
             name="absicht"

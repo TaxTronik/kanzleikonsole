@@ -26,14 +26,15 @@ import type { TcmsQuery } from './ziel';
 
 type Eingabe<S> = S extends z.ZodType ? z.input<S> : never;
 
-export interface TcmsEndpunktEingabe<E extends Endpunkt> {
+export type TcmsBody<S> = S extends z.ZodType ? { body: z.input<S> } : { body?: never };
+
+export type TcmsEndpunktEingabe<E extends Endpunkt> = TcmsBody<E['bodySchema']> & {
   params: z.input<E['paramsSchema']>;
   query?: Eingabe<E['querySchema']>;
-  body?: Eingabe<E['bodySchema']>;
   akteur: TcmsAkteurAngaben;
   zeitlimitMs?: number;
   maxAntwortBytes?: number;
-}
+};
 
 function lokal(feld: string, grund: string): TcmsUngueltig {
   return new TcmsUngueltig({ [feld]: [grund] }, { lokal: true });
@@ -60,7 +61,7 @@ function pfadParameter(endpunkt: Endpunkt, params: unknown): Record<string, stri
 export async function rufeEndpunkt<E extends Endpunkt>(
   client: TcmsClient,
   endpunkt: E,
-  eingabe: TcmsEndpunktEingabe<E>,
+  eingabe: TcmsEndpunktEingabe<NoInfer<E>>,
 ): Promise<TcmsErgebnis<z.output<E['antwortSchema']>>> {
   if (!endpunkt.akteur) throw lokal('endpunkt', 'ohne Akteur nur über health()');
   // `akteure` ist die einzige Quelle der Zulassung (ADR 0001 §7); `portal` ist abgeleitet.

@@ -51,6 +51,7 @@ type VierAugenArt = Korb['vierAugen'][number]['art'];
 const VIER_AUGEN: Readonly<Record<VierAugenArt, { label: string; icon: LucideIcon }>> = {
   UEBERSTEUERUNG: { label: 'Übersteuerung', icon: Pencil },
   FREQUENZ: { label: 'Frequenzabweichung', icon: CalendarClock },
+  ENTFALLEN: { label: 'Entfallen', icon: CalendarClock },
   VERWERFEN: { label: 'Verwerfen', icon: Ban },
   RISIKOFREIGABE: { label: 'Inventarfreigabe', icon: UserCheck },
 };
@@ -68,6 +69,8 @@ function vierAugenHref(v: Korb['vierAugen'][number]): string {
       return objekt ? `${b}/kontrollen?kontrolle=${objekt}` : `${b}/kontrollen`;
     case 'VERWERFEN':
       return objekt ? `${b}/feststellungen/${objekt}` : `${b}/feststellungen`;
+    case 'ENTFALLEN':
+      return objekt ? `${b}/durchfuehrungen/${objekt}` : `${b}/durchfuehrungen`;
     case 'RISIKOFREIGABE':
       return `${b}/risiken`;
   }

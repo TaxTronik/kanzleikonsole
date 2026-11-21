@@ -4,15 +4,18 @@ import { z } from 'zod';
 import { ActionError } from '@/server/actions/action-error';
 import { evidenceService } from '@/server/container';
 
-export const BWA_PLAN_AXES = [
-  'REVENUE',
-  'PERSONNEL',
-  'OTHER_COSTS',
-  'DEPRECIATION',
-  'MATERIAL',
-  'OTHER_INCOME',
-  'TAXES',
-] as const;
+import { BWA_PLAN_AXES } from '@/lib/bwa-plan';
+export { BWA_PLAN_AXES } from '@/lib/bwa-plan';
+
+const planLinesSchema = z
+  .array(
+    z.object({
+      axis: z.enum(BWA_PLAN_AXES),
+      amount: z.number(),
+      note: z.string().max(300).nullable().optional(),
+    }),
+  )
+  .max(20);
 
 export const CreateBwaPlanSchema = z.object({
   name: z.string().min(1).max(120),
@@ -20,15 +23,7 @@ export const CreateBwaPlanSchema = z.object({
   basePeriodId: z.string().uuid().nullable().optional(),
   notes: z.string().max(5000).nullable().optional(),
   status: z.enum(['DRAFT', 'FINAL']).default('FINAL'),
-  lines: z
-    .array(
-      z.object({
-        axis: z.enum(BWA_PLAN_AXES),
-        amount: z.number(),
-        note: z.string().max(300).nullable().optional(),
-      }),
-    )
-    .max(20),
+  lines: planLinesSchema,
 });
 
 export const UpdateBwaPlanSchema = z.object({
@@ -36,15 +31,7 @@ export const UpdateBwaPlanSchema = z.object({
   name: z.string().min(1).max(120),
   notes: z.string().max(5000).nullable().optional(),
   status: z.enum(['DRAFT', 'FINAL']),
-  lines: z
-    .array(
-      z.object({
-        axis: z.enum(BWA_PLAN_AXES),
-        amount: z.number(),
-        note: z.string().max(300).nullable().optional(),
-      }),
-    )
-    .max(20),
+  lines: planLinesSchema,
 });
 
 export const DeleteBwaPlanSchema = z.object({ planId: z.string().uuid() });

@@ -43,6 +43,10 @@
 //     (Jana Weller), `gegenzeichnungMandant` der lebenden Bausteine (K-EC-23
 //     dabei ohne die frühere Endung „ (Mandant)“ im Namen, wie der Dienst sie
 //     seit s7 lebend liefert).
+// Für die älteren Antwortbeispiele dienen synthetische SHA-256-Werte als
+// Merkmale des gesehenen Stands. Bei den damaligen Risiko- und Beschreibungs-
+// Beispielen wird ein Stand ohne nachträgliche Aufhebung oder Änderung angenommen.
+// Die tatsächlichen Merkmale liefert der Dienst in den Live-Prüfungen.
 // Neue Fixtures: Antwort mit dem Demo-Akteur abrufen, kürzen, hier mit dem
 // Schema des Endpunkts laden (ENDPUNKTE.<name>.antwortSchema).
 // =============================================================================

@@ -245,6 +245,7 @@ function zusammenfassungDaten(m: EinrichtungModell): ZusammenfassungDaten {
 function SchrittInhalt({ m }: { m: EinrichtungModell }) {
   const { entwurf, plan, rollen, namen } = m;
   const basis = {
+    gesehen: entwurf.stand ?? 0,
     mandantId: m.seite.mandantId,
     darf: m.e.darfBearbeiten,
     gesperrtGrund: TCMS_KEIN_RECHT.BEARBEITEN,
@@ -434,7 +435,7 @@ function Stufen({ m }: { m: EinrichtungModell }) {
         s.nr === m.schritt ? (
           <StufeOffen key={s.nr} nr={s.nr} titel={stufenTitel(s.nr, s.titel)}>
             <OffenePunkte m={m} />
-            <SchrittInhalt m={m} />
+            <SchrittInhalt key={m.entwurf.stand ?? 0} m={m} />
           </StufeOffen>
         ) : (
           <StufeZu

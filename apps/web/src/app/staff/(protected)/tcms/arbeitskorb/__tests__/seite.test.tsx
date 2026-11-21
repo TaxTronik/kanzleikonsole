@@ -106,6 +106,29 @@ describe('Arbeitskorb', () => {
     ).not.toEqual([]);
   });
 
+  it('TCMS-DIENST-001: Entfallen-Antrag führt zur betroffenen Durchführung', async () => {
+    const korb = tcmsFixtures.arbeitskorbAnna();
+    const d = korb.durchfuehrungen[0]!;
+    korb.vierAugen.push({
+      art: 'ENTFALLEN',
+      key: d.id,
+      objektId: d.id,
+      mandant: d.mandant,
+      titel: 'K-EC-24 · November',
+      detail: 'Entfallen der Durchführung',
+      begruendung: 'Im Zeitraum sind keine entsprechenden Umsätze angefallen.',
+      beantragtVon: [DEMO.leon],
+      beantragtAm: '2026-10-19T13:00:00.000Z',
+    });
+    h.lesen.mockResolvedValue({ ok: true, daten: korb, requestId: 'r' });
+    await renderServer(TcmsArbeitskorbPage());
+    const region = screen.getByRole('region', { name: 'Vier-Augen-Bestätigungen' });
+    const link = within(region).getByRole('link', { name: /K-EC-24/ });
+    expect(link.getAttribute('href')).toBe(
+      '/staff/clients/' + d.mandant.id + '/tcms/durchfuehrungen/' + d.id,
+    );
+  });
+
   it('vertrauliche Feststellung im Korb ohne Titel', async () => {
     const korb = tcmsFixtures.arbeitskorbAnna();
     const titel = korb.p153[1]!.titel;

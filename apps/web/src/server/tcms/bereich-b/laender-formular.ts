@@ -9,10 +9,10 @@
 // passt oder ein Land im Monitor ist, prüft der Dienst.
 // =============================================================================
 
-import { MAX_LAND_EUR } from '@taxtronik/tcms-contract';
+import { LandStaendeBodySchema, MAX_LAND_EUR } from '@taxtronik/tcms-contract';
 import { z } from 'zod';
 import type { ActionParseResult } from '@/server/actions/action-runner';
-import { germanFieldError, validationFailure } from '@/server/actions/form-data';
+import { germanFieldError, parseActionInput, validationFailure } from '@/server/actions/form-data';
 
 const LAND = /^[A-Z]{2}$/;
 const MONAT = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -147,4 +147,17 @@ export function laenderAusFormular(
   );
   if (issues.length > 0 || datenstand === null) return validationFailure(issues);
   return { ok: true, data: { datenstand, laender: laender as LandEingabeFormular[] } };
+}
+
+/** Bestehende Länder werden auf dem beim Öffnen gesehenen Stand fortgeschrieben. */
+export function landStaendeAusFormular(formData: FormData, sammel: boolean) {
+  const eingabe = laenderAusFormular(formData, { praefix: sammel });
+  if (!eingabe.ok) return eingabe;
+  return parseActionInput(LandStaendeBodySchema, {
+    datenstand: eingabe.data.datenstand,
+    laender: eingabe.data.laender.map((land) => ({
+      ...land,
+      gesehenerStandId: feld(formData, (sammel ? land.land + '.' : '') + 'gesehenerStandId'),
+    })),
+  });
 }

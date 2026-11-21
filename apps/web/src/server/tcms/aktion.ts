@@ -34,7 +34,12 @@ import 'server-only';
 import { revalidatePath } from 'next/cache';
 import { withTenantContext } from '@taxtronik/db/tenant-context';
 import type { TxClient } from '@taxtronik/db';
-import { rufeEndpunkt, type TcmsAkteurAngaben, type TcmsErgebnis } from '@taxtronik/tcms-client';
+import {
+  rufeEndpunkt,
+  type TcmsAkteurAngaben,
+  type TcmsErgebnis,
+  type TcmsBody,
+} from '@taxtronik/tcms-client';
 import { MandantenListeSchema, type Endpunkt } from '@taxtronik/tcms-contract';
 import type { z } from 'zod';
 import type {
@@ -51,17 +56,18 @@ import { aktionsFehlerAus, protokolliereTcmsFehler, type TcmsAktionsAbbildung } 
 type Eingabe<S> = S extends z.ZodType ? z.input<S> : never;
 
 /** Eingabe eines Dienstaufrufs in einer Aktion; `mandantId` setzt der Helfer. */
-export interface TcmsAktionsEingabe<E extends Endpunkt> {
+export type TcmsAktionsEingabe<E extends Endpunkt> = TcmsBody<E['bodySchema']> & {
   params?: Omit<z.input<E['paramsSchema']>, 'mandantId'>;
   query?: Eingabe<E['querySchema']>;
-  body?: Eingabe<E['bodySchema']>;
-}
+};
 
 /** An den Akteur und Mandanten der Aktion gebundener Aufruf. */
 export interface TcmsDienst {
   rufe<E extends Endpunkt>(
     endpunkt: E,
-    eingabe?: TcmsAktionsEingabe<E>,
+    ...args: null extends E['bodySchema']
+      ? [eingabe?: TcmsAktionsEingabe<NoInfer<E>>]
+      : [eingabe: TcmsAktionsEingabe<NoInfer<E>>]
   ): Promise<TcmsErgebnis<z.output<E['antwortSchema']>>>;
 }
 
@@ -84,7 +90,7 @@ interface Bindung {
 
 function dienstFuer(bindung: Bindung): TcmsDienst {
   return {
-    async rufe(endpunkt, eingabe = {}) {
+    async rufe(endpunkt, ...[eingabe]) {
       // TCMS Stufe 4: Zulassung nur aus `akteure` des Registers (`portal` ist abgeleitet);
       // Kanzlei-Aktionen erreichen damit auch die Nachrichten-Endpunkte des Systemakteurs nicht.
       if (!endpunkt.akteure.includes(bindung.portal ? 'MANDANT' : 'KANZLEI')) {
@@ -106,13 +112,13 @@ function dienstFuer(bindung: Bindung): TcmsDienst {
       if (!client) throw new TcmsInaktivError();
       bindung.zuletzt.name = endpunkt.name;
       const params = {
-        ...(eingabe.params ?? {}),
+        ...(eingabe?.params ?? {}),
         ...(bindung.mandantId === null ? {} : { mandantId: bindung.mandantId }),
       };
       return rufeEndpunkt(client, endpunkt, {
         params,
-        ...(eingabe.query === undefined ? {} : { query: eingabe.query }),
-        ...(eingabe.body === undefined ? {} : { body: eingabe.body }),
+        ...(eingabe?.query === undefined ? {} : { query: eingabe.query }),
+        ...(eingabe?.body === undefined ? {} : { body: eingabe.body }),
         akteur: bindung.akteur,
       } as never) as Promise<TcmsErgebnis<z.output<(typeof endpunkt)['antwortSchema']>>>;
     },

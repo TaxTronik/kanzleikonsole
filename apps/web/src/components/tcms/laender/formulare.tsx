@@ -24,6 +24,7 @@ export type LandHinzufuegenAktion = (
 ) => Promise<LandHinzufuegenErgebnis>;
 
 export interface LandWerte {
+  id: string;
   land: string;
   fernverkaeufeLfdEur: number;
   fernverkaeufeVorjahrEur: number;
@@ -119,7 +120,7 @@ function LandFelder({
   praefix = '',
 }: {
   id: string;
-  w: Omit<LandWerte, 'land'>;
+  w: Omit<LandWerte, 'land' | 'id'>;
   heute: string;
   fehler: Fehler;
   praefix?: string;
@@ -206,6 +207,7 @@ export function LandStandFormular({
   return (
     <form {...formular} className="space-y-3" aria-label={`Neuen Stand für ${land.land} erfassen`}>
       <input type="hidden" name="land" value={land.land} />
+      <input type="hidden" name="gesehenerStandId" value={land.id} />
       <Ergebnis ergebnis={ergebnis} titel="Stand nicht gespeichert." />
       <TextFeld
         id={id}
@@ -218,7 +220,7 @@ export function LandStandFormular({
         required
         fehler={fehler}
       />
-      <LandFelder id={id} w={land} heute={heute} fehler={fehler} />
+      <LandFelder key={land.id} id={id} w={land} heute={heute} fehler={fehler} />
       <div className="form-actions items-center justify-between">
         <span className="text-xs text-muted">
           Der bisherige Stand bleibt unverändert in der Historie.
@@ -271,14 +273,12 @@ export function SammelErfassung({
       </div>
       <div className="p-4 space-y-4">
         {laender.map((l) => (
-          <fieldset
-            key={l.land}
-            className="border-t border-default pt-3 first:border-t-0 first:pt-0"
-          >
+          <fieldset key={l.id} className="border-t border-default pt-3 first:border-t-0 first:pt-0">
             <legend className="text-sm font-semibold text-primary">
               {l.land} · {LAND_NAME[l.land] ?? l.land}
             </legend>
             <input type="hidden" name="land" value={l.land} />
+            <input type="hidden" name={l.land + '.gesehenerStandId'} value={l.id} />
             <LandFelder
               id={`${id}-${l.land}`}
               w={l}

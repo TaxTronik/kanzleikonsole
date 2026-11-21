@@ -201,18 +201,20 @@ function ZurueckDialog({ m }: { m: BeschreibungModell }) {
 }
 
 function ReviewAbschliessen({ m }: { m: BeschreibungModell }) {
-  const selbst = m.v.letzteBearbeitung !== null && m.v.letzteBearbeitung.toLowerCase() === m.me;
-  // Anzeige: Wer zuletzt bearbeitet hat, bekommt den Abschluss nicht angeboten;
+  const selbst = m.v.bearbeitende.some((id) => id.toLowerCase() === m.me);
+  // Wer an dieser Fassung mitgeschrieben hat, darf sie nicht gegenzeichnen;
   // entscheidend bleibt der Dienst (Vier-Augen-Prinzip unter Zeilensperre).
   const grund = !m.b.darfBearbeiten
     ? grundOhneRecht(m.b)
     : selbst
-      ? 'Die Review schließt eine zweite Person ab – Sie haben den Text zuletzt bearbeitet.'
-      : undefined;
+      ? 'Die Review erfordert eine unabhängige Person. Sie haben an dieser Fassung mitgeschrieben.'
+      : !m.v.abschnitteSha256
+        ? 'Bitte laden Sie die Fassung neu.'
+        : undefined;
   return (
     <TcmsKnopfAktion
       aktion={reviewAbschliessenAction.bind(null, m.mandantId)}
-      versteckt={{ versionId: m.v.id }}
+      versteckt={{ versionId: m.v.id, abschnitteSha256: m.v.abschnitteSha256 ?? '' }}
       erfolg="Kanzlei-Review abgeschlossen."
       deaktiviert={grund !== undefined}
       {...(grund ? { deaktiviertGrund: grund } : {})}
@@ -531,7 +533,9 @@ function fussText(m: BeschreibungModell): string {
       ? `Änderungen werden in v${m.v.nummer} gespeichert und protokolliert.`
       : 'Änderungen erzeugen eine neue Version.';
   return m.b.historisch && !m.eingefroren
-    ? `${basis} Freitext im aktuellen Bearbeitungsstand; Entwürfe werden nicht je Tag versioniert.`
+    ? m.v.abschnitteSpaeterGeaendert
+      ? `${basis} Nach dem Stichtag geändert. Der Freitext zeigt den aktuellen Bearbeitungsstand.`
+      : `${basis} Freitext unverändert seit dem Stichtag.`
     : basis;
 }
 

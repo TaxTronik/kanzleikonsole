@@ -1,0 +1,282 @@
+{
+  "platform": "linux/amd64",
+  "trivy": "0.71.0",
+  "db": {
+    "Version": 2,
+    "NextUpdate": "2026-11-22T13:02:47.203212226Z",
+    "UpdatedAt": "2026-11-21T13:02:47.203212637Z",
+    "DownloadedAt": "2026-11-21T14:10:36.189950156Z"
+  },
+  "package_gate_exit": 1,
+  "services": [
+    {
+      "image": "clamav/clamav:1.5.5@sha256:12177441d1b40cef3c47b44c4090d59d4babc4c67bedd5af0fa315e603aa6dd8",
+      "services": ["clamav"],
+      "high": 1,
+      "critical": 0,
+      "criticalWithFix": 0,
+      "report_sha256": "1ddf36f09d17a680db9d87cf1d2795971cad44c62009c33a027a203e72fddaa2"
+    },
+    {
+      "image": "n8nio/n8n:2.48.7@sha256:fabce3e9678a07d2dde83bd8f5124017f3ec457d0a3fc6b63bb4cec465d63861",
+      "services": ["n8n"],
+      "high": 20,
+      "critical": 0,
+      "criticalWithFix": 0,
+      "report_sha256": "ba174e847de2ba6df3b9bd903c2e3b745ef3e304baf1e81b021117a6a22e0044"
+    },
+    {
+      "image": "postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0",
+      "services": ["postgres", "tcms-db"],
+      "high": 26,
+      "critical": 1,
+      "criticalWithFix": 1,
+      "report_sha256": "8827192a112225ec7836d390f923a2da1827684954f3e279d3d8925be4cd7269"
+    },
+    {
+      "image": "redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe",
+      "services": ["redis"],
+      "high": 0,
+      "critical": 0,
+      "criticalWithFix": 0,
+      "report_sha256": "62075ba92cacb49f9e00999acd6ee3bdcb9ae6df80fb8c93db065e27703c721d"
+    },
+    {
+      "image": "chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15",
+      "services": ["seaweedfs"],
+      "high": 0,
+      "critical": 0,
+      "criticalWithFix": 0,
+      "report_sha256": "f2619f84eca6b69aaab85541970dfe179aac95c8dc76b0c898234849d6fb7295"
+    },
+    {
+      "image": "amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846",
+      "services": ["seaweedfs-init"],
+      "high": 0,
+      "critical": 0,
+      "criticalWithFix": 0,
+      "report_sha256": "a993c86bb752e28a2a6b7b77193478d4974b25d1979c9b63ba5aa622916e3c32"
+    },
+    {
+      "image": "traefik:v3.7.19@sha256:a6c0194dda77bcb804824580f36fa7edc56e315b1acfe933366c8b52844a78a4",
+      "services": ["traefik"],
+      "high": 0,
+      "critical": 0,
+      "criticalWithFix": 0,
+      "report_sha256": "ac6e7401950dc6ef0af289920390ff350e4029326a730fa99defa94c851ce97b"
+    }
+  ],
+  "clamav_candidate": {
+    "image": "clamav/clamav:1.5.5@sha256:12177441d1b40cef3c47b44c4090d59d4babc4c67bedd5af0fa315e603aa6dd8",
+    "actual": "1.5.5",
+    "status": "passed",
+    "support": {
+      "source": "https://raw.githubusercontent.com/Cisco-Talos/clamav-documentation/main/src/faq/faq-eol.md",
+      "latest": "1.5.5",
+      "limit": "1.6 + 4 months, or 1.7",
+      "until": null,
+      "expired": false
+    },
+    "newer": [],
+    "nvd_source": "https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName=cpe%3A2.3%3Aa%3Aclamav%3Aclamav%3A1.5.5%3A*%3A*%3A*%3A*%3A*%3A*%3A*&resultsPerPage=2000&isVulnerable",
+    "nvd_checked_utc": "2026-11-21T14:10:26.236",
+    "nvd_affected": [],
+    "nvd_conditional": ["CVE-2016-1405"],
+    "cross_line_review": [],
+    "report_sha256": "115691301e2cdf7ce11cc2ff394af873296ecf625e062af74465672724bfbc3e"
+  },
+  "clamav_previous": {
+    "image": "clamav/clamav:1.5.2@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777",
+    "actual": "1.5.2",
+    "status": "update-required",
+    "support": {
+      "source": "https://raw.githubusercontent.com/Cisco-Talos/clamav-documentation/main/src/faq/faq-eol.md",
+      "latest": "1.5.5",
+      "limit": "1.6 + 4 months, or 1.7",
+      "until": null,
+      "expired": false
+    },
+    "newer": [
+      {
+        "version": "1.5.3",
+        "patch": 3,
+        "cves": [
+          "CVE-2026-20213",
+          "CVE-2026-20214",
+          "CVE-2026-20215",
+          "CVE-2026-20216",
+          "CVE-2026-20217",
+          "CVE-2026-20243",
+          "CVE-2026-20244",
+          "CVE-2026-41676"
+        ]
+      },
+      {
+        "version": "1.5.4",
+        "patch": 4,
+        "cves": [
+          "CVE-2025-8088",
+          "CVE-2026-20337",
+          "CVE-2026-20338",
+          "CVE-2026-20339",
+          "CVE-2026-20345",
+          "CVE-2026-20346",
+          "CVE-2026-20347",
+          "CVE-2026-20348"
+        ]
+      },
+      {
+        "version": "1.5.5",
+        "patch": 5,
+        "cves": [
+          "CVE-2026-76411",
+          "CVE-2026-76414",
+          "CVE-2026-76415",
+          "CVE-2026-76416",
+          "CVE-2026-76417",
+          "CVE-2026-76421",
+          "CVE-2026-76422",
+          "CVE-2026-76430",
+          "CVE-2026-76515",
+          "CVE-2026-76516"
+        ]
+      }
+    ],
+    "nvd_source": "https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName=cpe%3A2.3%3Aa%3Aclamav%3Aclamav%3A1.5.2%3A*%3A*%3A*%3A*%3A*%3A*%3A*&resultsPerPage=2000&isVulnerable",
+    "nvd_checked_utc": "2026-11-21T13:53:57.245",
+    "nvd_affected": [
+      "CVE-2026-20213",
+      "CVE-2026-20214",
+      "CVE-2026-20215",
+      "CVE-2026-20216",
+      "CVE-2026-20217",
+      "CVE-2026-20243",
+      "CVE-2026-20244"
+    ],
+    "nvd_conditional": ["CVE-2016-1405"],
+    "cross_line_review": [],
+    "report_sha256": "1f52dc37b94daebdbf1ce726c4dbd53e924968b341eb7ae46b3353b770ae33d7"
+  },
+  "gosu_binary": {
+    "image": "postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0",
+    "target": "/usr/local/bin/gosu",
+    "binary_sha256": "b1892636c281590f34bc63c1118f058cd9de66c4ea463772e3909672d8b302ac",
+    "release_url": "https://github.com/tianon/gosu/releases/download/1.20/gosu-amd64",
+    "release_sha256": "b1892636c281590f34bc63c1118f058cd9de66c4ea463772e3909672d8b302ac",
+    "config": {
+      "protocol_version": "v1.0.0",
+      "scanner_name": "govulncheck",
+      "scanner_version": "v1.10.0",
+      "db": "https://vuln.go.dev",
+      "db_last_modified": "2026-11-11T02:51:11Z",
+      "scan_level": "symbol",
+      "scan_mode": "binary"
+    },
+    "official_advisory": "https://vuln.go.dev/ID/GO-2026-4337.json",
+    "trivy_id": "CVE-2025-68121",
+    "findings": [
+      {
+        "osv": "GO-2026-4337",
+        "fixed_version": "v1.24.13",
+        "trace": [
+          {
+            "module": "stdlib",
+            "version": "v1.24.6"
+          }
+        ]
+      }
+    ],
+    "has_vulnerable_package_or_symbol": false
+  },
+  "clamav_lts_control": {
+    "image": "clamav/clamav:1.4.7@sha256:b7357e2c1c59480628839df301b0d27923561389b36cf341911e1dd9e02cdd05",
+    "actual": "1.4.7",
+    "status": "passed",
+    "support": {
+      "source": "https://raw.githubusercontent.com/Cisco-Talos/clamav-documentation/main/src/faq/faq-eol.md",
+      "latest": "1.4.7",
+      "limit": "Aug-15 2027 (3 years)",
+      "until": "2027-08-15T00:00:00.000Z",
+      "expired": false
+    },
+    "newer": [],
+    "nvd_source": "https://services.nvd.nist.gov/rest/json/cves/2.0?cpeName=cpe%3A2.3%3Aa%3Aclamav%3Aclamav%3A1.4.7%3A*%3A*%3A*%3A*%3A*%3A*%3A*&resultsPerPage=2000&isVulnerable",
+    "nvd_checked_utc": "2026-11-21T13:55:10.925",
+    "nvd_affected": [],
+    "nvd_conditional": ["CVE-2016-1405"],
+    "cross_line_review": [
+      {
+        "tag": "clamav-1.5.4",
+        "cves": ["CVE-2026-20337", "CVE-2026-20338"]
+      },
+      {
+        "tag": "clamav-1.5.3",
+        "cves": ["CVE-2026-41676"]
+      }
+    ],
+    "report_sha256": "7ff34c112937a27c3aaf69a74cde25f2217834cffeee10379ca97619bb08b238"
+  },
+  "before": {
+    "db_updated_utc": "2026-11-21T13:02:47.203212637Z",
+    "services": [
+      {
+        "image": "clamav/clamav:1.5.2@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777",
+        "services": ["clamav"],
+        "high": 23,
+        "critical": 1,
+        "criticalWithFix": 1,
+        "report_sha256": "9a38b5ed137cfeea13e49d8d3010ddac0b37fa33f3affc6b44895ac3e5910843",
+        "configured_image": "clamav/clamav:stable@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777"
+      },
+      {
+        "image": "n8nio/n8n:2.33.7@sha256:3989d9b8ebb77b4ee8f604519eb73e44f4384bfaa689526e0104eed79a237d30",
+        "services": ["n8n"],
+        "high": 157,
+        "critical": 42,
+        "criticalWithFix": 42,
+        "report_sha256": "849ae30c5ed0d8cc2f2abe6418a14f4358d9acb32118a0a4f5829b56a3fe7033"
+      },
+      {
+        "image": "postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88",
+        "services": ["postgres", "tcms-db"],
+        "high": 71,
+        "critical": 2,
+        "criticalWithFix": 2,
+        "report_sha256": "200864ddbc67139123bf3dab8b748c6cfe19758e687d4787e580c597fc3cfc7e"
+      },
+      {
+        "image": "redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99",
+        "services": ["redis"],
+        "high": 7,
+        "critical": 0,
+        "criticalWithFix": 0,
+        "report_sha256": "26e6529e7f3724b51da70dc756c7ab85fd2e0f44d720c78c791b3693712a21aa"
+      },
+      {
+        "image": "chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d",
+        "services": ["seaweedfs"],
+        "high": 27,
+        "critical": 1,
+        "criticalWithFix": 1,
+        "report_sha256": "d974ab7b2e46014b2c6146ab6254f0f7317a6bdfd3ffdd6bf2023044deb5bb9b"
+      },
+      {
+        "image": "amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150",
+        "services": ["seaweedfs-init"],
+        "high": 209,
+        "critical": 0,
+        "criticalWithFix": 0,
+        "report_sha256": "6fc37724626faefca3eac6d338a68aad94f4809b59a833bd8d2fe1f0aae727a4"
+      },
+      {
+        "image": "traefik:v3.7.9@sha256:652929a140a32d7cafafb13c6cdfab5376cfeff800f51397b87b524501ed02a8",
+        "services": ["traefik"],
+        "high": 34,
+        "critical": 1,
+        "criticalWithFix": 1,
+        "report_sha256": "ffea2245df3788f806b6426a05e3b11c1a276551fbf1c24cc26596c979f35cba"
+      }
+    ],
+    "source_commit": "61f39d644e8b85664cc459cd9a164505b894ea5a"
+  }
+}

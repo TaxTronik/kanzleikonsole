@@ -66,6 +66,7 @@ export const metadata = { title: 'Tax-CMS – Länder-Monitor' };
 /** Formularwerte aus dem jüngsten Stand der Historie (Kalendertage wie im Vertrag). */
 function werteAus(stand: LandStand): LandWerte {
   return {
+    id: stand.id,
     land: stand.land,
     fernverkaeufeLfdEur: stand.fernverkaeufeLfdEur,
     fernverkaeufeVorjahrEur: stand.fernverkaeufeVorjahrEur,

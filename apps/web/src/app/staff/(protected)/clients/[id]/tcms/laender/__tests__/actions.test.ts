@@ -64,6 +64,7 @@ describe('landStaendeSpeichernAction', () => {
       formular([
         ['datenstand', '2026-09-30'],
         ['land', 'FR'],
+        ['gesehenerStandId', 'cfrstand00000000001'],
         ['fernverkaeufeLfdEur', '12.345,67 €'],
         ['fernverkaeufeVorjahrEur', ''],
         ['oss', 'on'],
@@ -82,7 +83,10 @@ describe('landStaendeSpeichernAction', () => {
     }));
     const ergebnis = (await s.aufruf({ rufe }, parsed.data, undefined)) as { meldung: string };
     expect(rufe).toHaveBeenCalledWith(ENDPUNKTE.landStaendeSpeichern, {
-      body: { datenstand: '2026-09-30', laender: [FR] },
+      body: {
+        datenstand: '2026-09-30',
+        laender: [{ ...FR, gesehenerStandId: 'cfrstand00000000001' }],
+      },
     });
     expect(ergebnis.meldung).toBe(
       'Neuer Stand für FR gespeichert; der bisherige Stand bleibt in der Historie. Ereignis E-2026-014 im Ereigniseingang angelegt.',
@@ -98,6 +102,8 @@ describe('landStaendeSpeichernAction', () => {
         ['datenstand', '2026-09-30'],
         ['land', 'FR'],
         ['land', 'IT'],
+        ['FR.gesehenerStandId', 'cfrstand00000000001'],
+        ['IT.gesehenerStandId', 'citstand00000000001'],
         ['FR.fernverkaeufeLfdEur', '12345,67'],
         ['FR.oss', 'on'],
         ['IT.fernverkaeufeLfdEur', '800'],
@@ -118,9 +124,10 @@ describe('landStaendeSpeichernAction', () => {
       body: {
         datenstand: '2026-09-30',
         laender: [
-          FR,
+          { ...FR, gesehenerStandId: 'cfrstand00000000001' },
           {
             ...FR,
+            gesehenerStandId: 'citstand00000000001',
             land: 'IT',
             fernverkaeufeLfdEur: 800,
             oss: false,

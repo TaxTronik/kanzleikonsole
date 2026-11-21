@@ -717,7 +717,7 @@ jobs:
     services:
       postgres:
         # Wie in Produktion (Alpine/musl, gleiche Kollation) statt Debian.
-        image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+        image: postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -733,7 +733,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
       redis:
-        image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+        image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
         ports:
           - 6379:6379
         options: >-
@@ -749,7 +749,7 @@ jobs:
           - 1025:1025
       # ClamAV für EICAR-Test
       clamav:
-        image: clamav/clamav:stable@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777
+        image: clamav/clamav:1.5.5@sha256:12177441d1b40cef3c47b44c4090d59d4babc4c67bedd5af0fa315e603aa6dd8
         ports:
           - 3310:3310
         options: >-
@@ -858,7 +858,7 @@ jobs:
           # `start`en. Topologie-unabhaengig (DinD/Socket/act-runner).
           docker create --name seaweedfs-ci \
             -p 8333:8333 -p 9333:9333 \
-            chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d \
+            chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15 \
             server -dir=/data -master.volumeSizeLimitMB=2048 \
             -volume.max=0 -s3 -s3.config=/etc/seaweedfs/s3.json \
             -s3.port=8333 -master.port=9333 -filer
@@ -913,7 +913,7 @@ jobs:
             -e AWS_DEFAULT_REGION=us-east-1 \
             -e S3_ENDPOINT=http://localhost:8333 \
             --entrypoint /bin/sh \
-            amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 -s < "$INIT_STORAGE"
+            amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846 -s < "$INIT_STORAGE"
 
       - name: Verify S3 buckets and Object-Lock
         run: |
@@ -922,7 +922,7 @@ jobs:
             -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
             -e AWS_DEFAULT_REGION=us-east-1 \
             --entrypoint /bin/sh \
-            amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 -ec '
+            amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846 -ec '
               AWS="aws --endpoint-url http://localhost:8333"
               assert_lock() {
                 bucket="$1"

@@ -141,6 +141,8 @@ describe('parseFormData-Migrationsrest', () => {
     // parseFormData (+1).
     expect(direct).toHaveLength(2);
     expect(direct.filter((call) => !call.exact)).toHaveLength(1);
-    expect(shared).toBe(177);
+    // TCMS-DIENST-001: Gesehene Stände für Durchführung, Entfallen, Feststellung
+    // und Ereignis werden vor dem Dienstaufruf über dieselbe Formularprüfung gelesen.
+    expect(shared).toBe(181);
   });
 });

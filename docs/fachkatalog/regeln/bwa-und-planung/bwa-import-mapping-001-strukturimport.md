@@ -47,6 +47,7 @@ code_refs:
   - apps/web/src/server/bwa/datev-parser.ts
   - apps/web/src/server/bwa/addison-parser.ts
   - apps/web/src/server/bwa/plan-basis.ts
+  - apps/web/src/server/bwa/period.ts
   - apps/web/src/server/bwa/liquidity.ts
   - apps/web/src/lib/xlsx/read-xlsx.ts
   - apps/web/src/lib/xlsx/xml.ts

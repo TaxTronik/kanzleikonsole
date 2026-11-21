@@ -182,9 +182,11 @@ und Bausteinen (Teilbereich, Ziele, Risikoinventar, Kontrollmatrix,
 Verantwortung, Länder, Feststellungen), die das Tax-CMS automatisch füllt.
 
 - **Ablauf:** Entwurf → „Zur Kanzlei-Review einreichen“ → „Review
-  abschließen“ (eine zweite Person; wer zuletzt bearbeitet hat, bekommt den
-  Abschluss nicht angeboten) oder „Zurück in den Entwurf“ mit Begründung
+  abschließen“ (durch eine Person, die an dieser Fassung nicht mitgeschrieben
+  hat) oder „Zurück in den Entwurf“ mit Begründung
   (mindestens 30 Zeichen) → „Freigabe beim Mandanten anfordern“.
+  Beim Abschluss prüft der Dienst, ob die angezeigten Abschnitte seither
+  geändert wurden. In diesem Fall die Fassung neu laden und erneut prüfen.
 - **Freigabe anfordern** friert den Inhalt ein und bindet ihn mit SHA-256.
   Empfänger ist eine gesetzliche Vertretung dieses Mandanten mit aktivem
   Portalzugang (Abschnitt 5); sie gibt im Mandanten-Portal mit E-Mail-Code

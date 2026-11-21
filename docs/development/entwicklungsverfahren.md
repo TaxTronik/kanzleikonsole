@@ -38,7 +38,9 @@ aktueller Einarbeitungs- und Übergabepfad in
   (`.forgejo/workflows/renovate.yml`, Regeln in `renovate.json`) öffnet
   montags gruppierte Update-PRs für npm (frühestens 7 Tage nach
   Veröffentlichung, wie `minimumReleaseAge` in `pnpm-workspace.yaml`),
-  digest-gepinnte Container-Images und SHA-gepinnte Actions. Major-Updates und
+  digest-gepinnte Container-Images und SHA-gepinnte Actions. Der Bot läuft
+  täglich. ClamAV-Patches und -Digestwechsel erhalten einen priorisierten
+  eigenen PR ohne Montagsfenster. Major-Updates und
   die Node-/pnpm-Laufzeitpins entstehen erst nach Freigabe im Dependency
   Dashboard, weil sie mit `scripts/ops-lib.sh` und den Guards synchron bleiben
   müssen. Voraussetzungen (Bot-Konto, Secret `RENOVATE_TOKEN`, Variable
@@ -128,7 +130,7 @@ CI-Pipeline (`.forgejo/workflows/ci.yml`), läuft bei Pull Requests, Pushes auf
 | `upgrade-path`     | Migrationsstand des letzten Releases → aktuelle Migrationen → RLS-Tests (simuliert das Kunden-Update); unabhängig vom Tag Altbestandstests vor Datenmigrationen (`scripts/ci/migration-cutoff.sh`)                                                         |
 | `ui-browser`       | Zusätzliche Formularprüfungen in Chromium und Firefox bei unterschiedlichen Browserzeiten und Fensterbreiten. Vorbelegung vor Eingabe, Bedienung und übergebene Werte werden am echten Formular geprüft.                                                   |
 | `e2e-paranoid`     | vollständige Playwright-Suite (inkl. Smoke) gegen die gebaute App: Auth/RBAC, Tenant-Isolation, Compliance, Differential, Concurrency und Upload-Fuzz                                                                                                      |
-| `security.yml`     | täglich, bei Pull Requests und Pushes auf `main`/`develop`: Dependency-Audit (blockierend prod/high, zusätzlich nicht-blockierender Vollauf über den gesamten Graphen inkl. Dev), Secret-Scanning (gitleaks), Logs als Artefakte                           |
+| `security.yml`     | täglich, bei PRs und Pushes auf `main`/`develop`: Dependency-Audit (prod/high blockiert, Vollbericht inkl. Dev), Gitleaks, produktive Fremdimages (CRITICAL mit Fix blockiert), ClamAV-Engine gegen Herstellerreleases, Berichte als Artefakte             |
 | `build-images.yml` | Validierung der Produktions-Image-Builds                                                                                                                                                                                                                   |
 
 Alle Jobs von `ci.yml` starten ohne `needs` sofort und parallel. Ein

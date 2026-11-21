@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import type { PlanForCompare } from './plan-comparison';
+import { savedPlanTotals } from '@/lib/bwa-plan';
 import { fmtEURRound } from '@/lib/fmt';
 
 interface ProjectedKpis {
@@ -13,23 +14,6 @@ interface ProjectedKpis {
   resultBeforeTax: number | null;
   taxes: number | null;
   resultAfterTax: number | null;
-}
-
-function plannedTotals(p: PlanForCompare) {
-  const get = (axis: string) => p.lines.find((l) => l.axis === axis)?.amount ?? 0;
-  const revenue = get('REVENUE');
-  const personnelCost = get('PERSONNEL');
-  const costs = get('PERSONNEL') + get('MATERIAL') + get('DEPRECIATION') + get('OTHER_COSTS');
-  const taxes = get('TAXES');
-  const resultBeforeTax = revenue + get('OTHER_INCOME') - costs;
-  return {
-    revenue,
-    costs,
-    personnelCost,
-    resultBeforeTax,
-    taxes,
-    resultAfterTax: resultBeforeTax - taxes,
-  };
 }
 
 export function PlanVsProjection({
@@ -55,7 +39,7 @@ export function PlanVsProjection({
 
   if (plans.length === 0) return null;
 
-  const plan = selectedPlan ? plannedTotals(selectedPlan) : null;
+  const plan = selectedPlan ? savedPlanTotals(selectedPlan) : null;
 
   const rows: Array<{
     label: string;

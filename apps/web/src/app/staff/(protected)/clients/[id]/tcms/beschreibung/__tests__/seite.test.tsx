@@ -291,17 +291,23 @@ describe('CMS-Beschreibung', () => {
     [DEMO.anna, true],
     [DEMO.leon, false],
   ])(
-    'Kanzlei-Review: wer zuletzt bearbeitet hat (%s), bekommt den Abschluss nicht angeboten',
+    'Kanzlei-Review: wer mitgearbeitet hat (%s), bekommt den Abschluss nicht angeboten',
     async (letzte, gesperrt) => {
       const { b } = daten();
       Object.assign(b.versionen.at(-1)!, {
         status: 'KANZLEI_REVIEW',
         anzeige: 'KANZLEI_REVIEW',
-        letzteBearbeitung: letzte,
+        letzteBearbeitung: DEMO.leon,
+        bearbeitende: [letzte, DEMO.leon],
+        abschnitteSha256: 'c'.repeat(64),
       });
       await rendern();
       const knopf = screen.getByRole('button', { name: /Review abschließen/ });
       expect(knopf).toHaveProperty('disabled', gesperrt);
+      expect(
+        knopf.closest('form')?.querySelector<HTMLInputElement>('input[name="abschnitteSha256"]')
+          ?.value,
+      ).toBe('c'.repeat(64));
       expect(screen.getByRole('button', { name: /Zurück in den Entwurf/ })).toBeTruthy();
       expect(
         screen.queryByRole('button', { name: /Freigabe beim Mandanten anfordern/ }),

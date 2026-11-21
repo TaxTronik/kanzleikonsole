@@ -15,7 +15,10 @@ import { z } from 'zod';
 import type { TcmsAktionsErgebnis } from '@/components/tcms/bereich-b/ergebnis';
 import { formFlag, parseFormData } from '@/server/actions/form-data';
 import { tcmsKanzleiAktion } from '@/server/tcms/aktion';
-import { laenderAusFormular } from '@/server/tcms/bereich-b/laender-formular';
+import {
+  laenderAusFormular,
+  landStaendeAusFormular,
+} from '@/server/tcms/bereich-b/laender-formular';
 
 /** Feldpfade des Dienstes → Formular (übrige: nur die Sammelmeldung). */
 const FELDER = { datenstand: 'datenstand', land: 'land' } as const;
@@ -42,7 +45,7 @@ export async function landStaendeSpeichernAction(
     mandantId,
     keinRecht: 'BEARBEITEN',
     felder: FELDER,
-    parse: () => laenderAusFormular(formData, { praefix: sammel }),
+    parse: () => landStaendeAusFormular(formData, sammel),
     aufruf: async (dienst, d) => {
       const { daten } = await dienst.rufe(ENDPUNKTE.landStaendeSpeichern, {
         body: { datenstand: d.datenstand, laender: d.laender },

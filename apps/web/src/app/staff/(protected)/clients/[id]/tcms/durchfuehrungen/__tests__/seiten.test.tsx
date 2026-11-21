@@ -204,6 +204,7 @@ describe('Kontrolldurchführung', () => {
       },
     ];
     const { container } = await detail(d.id);
+    expect(container.querySelector<HTMLInputElement>('input[name="bisher"]')?.value).toBe(d.inhalt);
     expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(
       'K-EC-03 · Bestellstichprobe Steuerausweis',
     );

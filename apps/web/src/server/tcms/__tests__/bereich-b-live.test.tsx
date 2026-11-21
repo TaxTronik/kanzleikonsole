@@ -298,11 +298,13 @@ const BEGRUENDUNG = 'Live-Test Bereich B: Bewertung und Frequenz mit der Kanzlei
     if (!land) throw new Error('Keine Länder in den Demo-Daten');
     const { default: Seite } =
       await import('@/app/staff/(protected)/clients/[id]/tcms/laender/page');
-    const { screen } = await rendern(Seite(mit({ land: land.land })));
+    const { screen, container } = await rendern(Seite(mit({ land: land.land })));
     expect(screen.getByRole('table', { name: /^Länder im Monitor/ })).toBeTruthy();
 
     const aktionen = await import('@/app/staff/(protected)/clients/[id]/tcms/laender/actions');
     const werte: Record<string, string> = {
+      gesehenerStandId: container.querySelector<HTMLInputElement>('input[name="gesehenerStandId"]')!
+        .value,
       datenstand: ctx.heute.slice(0, 10),
       land: land.land,
       fernverkaeufeLfdEur: String(land.fernverkaeufeLfdEur),

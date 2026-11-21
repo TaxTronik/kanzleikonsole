@@ -194,6 +194,7 @@ export function RisikoTabelle({
               >
                 {optionen.mitAuswahl ? (
                   <td className="px-3 py-2">
+                    <input type="hidden" name={`stand_${r.id}`} value={r.standId} />
                     <input
                       type="checkbox"
                       name="risikoIds"
@@ -270,13 +271,19 @@ export function RisikoTabelle({
                     <span
                       className="inline-flex items-center gap-1 text-red-700"
                       title={`Netto ${massgeblich} ${KLASSE_LABEL[r.netto]} über Risikoappetit ${KLASSE_LABEL[appetit]}${
-                        akzeptanz ? ` · ${AKZEPTANZ_STATUS_LABEL[akzeptanz.status]}` : ''
+                        akzeptanz
+                          ? ` · ${akzeptanz.ueberholt ? 'Akzeptanz der früheren Bewertung' : AKZEPTANZ_STATUS_LABEL[akzeptanz.status]}`
+                          : ''
                       }`}
                     >
                       <Flag className="h-3.5 w-3.5" aria-hidden="true" />
                       <span className="sr-only">über Appetit</span>
                       {akzeptanz ? (
-                        <span className="text-xs">{AKZEPTANZ_STATUS_KURZ[akzeptanz.status]}</span>
+                        <span className="text-xs">
+                          {akzeptanz.ueberholt
+                            ? 'überholt'
+                            : AKZEPTANZ_STATUS_KURZ[akzeptanz.status]}
+                        </span>
                       ) : null}
                     </span>
                   ) : (

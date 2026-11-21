@@ -269,6 +269,8 @@ describe('risikenFreigabeSchrittAction', () => {
         null,
         formular([
           ['schritt', schritt],
+          ['stand_EC-UST-01', 'stand-1'],
+          ['stand_EC-UST-02', 'stand-2'],
           ['risikoIds', 'EC-UST-01'],
           ['risikoIds', 'EC-UST-02'],
           ['risikoIds', 'EC-UST-01'],
@@ -282,7 +284,15 @@ describe('risikenFreigabeSchrittAction', () => {
         uebersprungen: [{ code: 'EC-UST-02', grund: 'selbst eingereicht' }],
       });
       expect(d.rufe).toHaveBeenCalledWith(endpunkt, {
-        body: { risikoIds: ['EC-UST-01', 'EC-UST-02'] },
+        body:
+          schritt === 'einreichen'
+            ? { risikoIds: ['EC-UST-01', 'EC-UST-02'] }
+            : {
+                risiken: [
+                  { risikoId: 'EC-UST-01', standId: 'stand-1' },
+                  { risikoId: 'EC-UST-02', standId: 'stand-2' },
+                ],
+              },
       });
       expect((ergebnis as { meldung: string }).meldung).toBe(
         `EC-UST-01 ${was}. Übersprungen: EC-UST-02 (selbst eingereicht).`,

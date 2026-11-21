@@ -42,6 +42,10 @@ code_refs:
   - scripts/check-paranoid-e2e.mjs
   - apps/web/src/server/update/manifest.ts
   - .forgejo/workflows/release.yml
+  - .forgejo/workflows/security.yml
+  - scripts/ci/scan-service-images.mjs
+  - scripts/ci/clamav-advisories.mjs
+  - scripts/ci/setup-trivy.sh
   - scripts/release/check-release-gates.mjs
   - scripts/release/smoke-release-images.sh
   - scripts/release/verify-release-config.mjs
@@ -56,6 +60,7 @@ test_refs:
   - packages/db/src/__tests__/drift-shadow-identity.test.ts
   - apps/web/src/server/update/__tests__/manifest.test.ts
   - scripts/release/tests/check-release-gates.test.mjs
+  - scripts/tests/service-image-security.test.mjs
   - scripts/release/tests/smoke-preflight.test.mjs
   - scripts/release/tests/verify-release-config.test.mjs
 feature_refs:
@@ -178,6 +183,20 @@ IDW-PS-880-Erfüllung, Zertifizierung oder Softwarebescheinigung.
   und regelmäßig wiederhergestellt?
 
 ## Technische Nachweise
+
+Der Security-Job ordnet die produktiven Dienste den tatsächlich gescannten
+Image-Digests für `linux/amd64` zu. Er archiviert den Datenbankstand,
+HIGH- und CRITICAL-Paketbefunde und den Vergleich der ausgeführten
+ClamAV-Engine mit den Herstellerreleases und dem Ende der kritischen
+Patchpflege ihrer Wartungslinie. Die NVD-Abfrage zur ausgeführten Version
+dokumentiert eigenständige Engine-Treffer und zusätzliche Produktbedingungen.
+CVEs aus anderen Herstellerlinien ohne eindeutigen Treffer oder Nachweis
+in der eigenen Linie erscheinen zur Nachprüfung. Eindeutige NVD-Treffer,
+behebbare CRITICAL-Befunde, ausstehende
+Engine-Patches, abgelaufene Patchpflege und technisch
+unvollständige Prüfungen sperren die Promotion. Die zugehörigen Tests
+prüfen auch voneinander abweichende Compose-Varianten, fehlende
+Paketabdeckung und einen fehlenden Herstellerbeleg.
 
 Der Quality-Workflow führt die Formularprüfungen in Chromium und Firefox mit
 schmalem und breitem Fenster und festgelegten Browserzeitzonen aus. Der

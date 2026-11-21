@@ -273,6 +273,7 @@ describe('portalAufgabeSpeichernAction', () => {
       null,
       formular([
         ['absicht', 'speichern'],
+        ['bisher', 'a'.repeat(64)],
         ['schritt_0_erledigt', 'on'],
         ['schritt_0_kommentar', ' exportiert '],
         ['schritt_1_kommentar', ''],
@@ -291,6 +292,7 @@ describe('portalAufgabeSpeichernAction', () => {
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.portalAufgabeSpeichern, {
       params: { durchfuehrungId: AUFGABE },
       body: {
+        bisher: 'a'.repeat(64),
         schritte: [
           { erledigt: true, kommentar: 'exportiert' },
           { erledigt: false, kommentar: '' },
@@ -305,7 +307,14 @@ describe('portalAufgabeSpeichernAction', () => {
 
   it('Übermitteln mit Mängeln laut Dienst: gespeichert, nicht eingereicht, Mängel als Hinweis', async () => {
     const aufgabe = tcmsFixtures.portalAufgabeK23Murat();
-    await portalAufgabeSpeichernAction(AUFGABE, null, formular([['absicht', 'einreichen']]));
+    await portalAufgabeSpeichernAction(
+      AUFGABE,
+      null,
+      formular([
+        ['absicht', 'einreichen'],
+        ['bisher', 'a'.repeat(64)],
+      ]),
+    );
     const ablauf: string[] = [];
     const { r } = await lauf(
       { portalAufgabeLesen: aufgabe, portalAufgabeSpeichern: aufgabe },
@@ -319,13 +328,28 @@ describe('portalAufgabeSpeichernAction', () => {
 
   it('Übermitteln ohne Mängel: einreichen nach dem Speichern', async () => {
     const aufgabe = tcmsFixtures.portalAufgabeK23Murat();
-    const gespeichert = { ...aufgabe, pruefung: { ...aufgabe.pruefung, maengel: [] } };
-    await portalAufgabeSpeichernAction(AUFGABE, null, formular([['absicht', 'einreichen']]));
+    const gespeichert = {
+      ...aufgabe,
+      inhalt: 'b'.repeat(64),
+      pruefung: { ...aufgabe.pruefung, maengel: [] },
+    };
+    await portalAufgabeSpeichernAction(
+      AUFGABE,
+      null,
+      formular([
+        ['absicht', 'einreichen'],
+        ['bisher', 'a'.repeat(64)],
+      ]),
+    );
     const ablauf: string[] = [];
-    const { r } = await lauf(
+    const { d, r } = await lauf(
       { portalAufgabeLesen: aufgabe, portalAufgabeSpeichern: gespeichert },
       ablauf,
     );
+    expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.portalAufgabeEinreichen, {
+      params: { durchfuehrungId: AUFGABE },
+      body: { bisher: gespeichert.inhalt },
+    });
     expect(ablauf).toEqual([
       'portalAufgabeLesen',
       'portalAufgabeSpeichern',
@@ -346,6 +370,7 @@ describe('portalAufgabeSpeichernAction', () => {
       null,
       formular([
         ['absicht', 'speichern'],
+        ['bisher', 'a'.repeat(64)],
         ['wert_umsatz', '12,3,4'],
       ]),
     );

@@ -923,6 +923,10 @@
         "scripts/check-paranoid-e2e.mjs",
         "apps/web/src/server/update/manifest.ts",
         ".forgejo/workflows/release.yml",
+        ".forgejo/workflows/security.yml",
+        "scripts/ci/scan-service-images.mjs",
+        "scripts/ci/clamav-advisories.mjs",
+        "scripts/ci/setup-trivy.sh",
         "scripts/release/check-release-gates.mjs",
         "scripts/release/smoke-release-images.sh",
         "scripts/release/verify-release-config.mjs"
@@ -938,6 +942,7 @@
         "packages/db/src/__tests__/drift-shadow-identity.test.ts",
         "apps/web/src/server/update/__tests__/manifest.test.ts",
         "scripts/release/tests/check-release-gates.test.mjs",
+        "scripts/tests/service-image-security.test.mjs",
         "scripts/release/tests/smoke-preflight.test.mjs",
         "scripts/release/tests/verify-release-config.test.mjs"
       ],
@@ -1395,6 +1400,7 @@
         "apps/web/src/server/bwa/datev-parser.ts",
         "apps/web/src/server/bwa/addison-parser.ts",
         "apps/web/src/server/bwa/plan-basis.ts",
+        "apps/web/src/server/bwa/period.ts",
         "apps/web/src/server/bwa/liquidity.ts",
         "apps/web/src/lib/xlsx/read-xlsx.ts",
         "apps/web/src/lib/xlsx/xml.ts"
@@ -1444,6 +1450,11 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/lib/bwa-plan.ts",
+        "apps/web/src/server/bwa/period.ts",
+        "apps/web/src/server/bwa/plans.ts",
+        "apps/web/src/components/bwa/plan-wizard.tsx",
+        "apps/web/src/components/bwa/plan-summary.tsx",
         "apps/web/src/components/bwa/projection-snapshot.ts",
         "apps/web/src/components/bwa/bwa-dashboard.tsx",
         "apps/web/src/components/bwa/plan-comparison.tsx",
@@ -1457,6 +1468,8 @@
         "apps/web/src/server/bwa/plan-basis.ts"
       ],
       "test_refs": [
+        "apps/web/src/components/bwa/__tests__/plan-totals.test.tsx",
+        "apps/web/src/server/bwa/__tests__/plans.test.ts",
         "apps/web/src/components/bwa/__tests__/dashboard-projection.test.tsx",
         "apps/web/src/components/bwa/__tests__/plan-page-basis.test.tsx",
         "apps/web/src/components/bwa/__tests__/projection-snapshot.test.ts",
@@ -6730,11 +6743,19 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/portal/(protected)/tcms/aufgaben/[id]/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/schritte.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/actions.ts",
+        "apps/web/src/components/tcms/risiken/detail.tsx",
         "apps/web/src/server/tcms/zustand.ts",
         "apps/web/src/server/tcms/seite.ts",
         "apps/web/src/server/tcms/aktion.ts",
         "apps/web/src/components/tcms/durchfuehrung/editor.tsx",
         "apps/web/src/components/tcms/formular.ts",
+        "apps/web/src/server/tcms/bereich-b/laender-formular.ts",
         "apps/web/src/components/tcms/feststellung.tsx",
         "apps/web/src/components/tcms/disclaimer.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/cockpit.tsx",
@@ -6774,6 +6795,12 @@
         "apps/web/src/app/staff/(protected)/tcms/audit/actions.ts"
       ],
       "test_refs": [
+        "apps/web/src/server/tcms/__tests__/bereich-b-live.test.tsx",
+        "apps/web/src/server/tcms/__tests__/bereich-c-live.test.tsx",
+        "apps/web/src/server/tcms/__tests__/bereich-d-live.test.tsx",
+        "apps/web/src/server/tcms/__tests__/durchfuehrungsformulare-live.ts",
+        "packages/tcms-client/src/__tests__/vertrag.contract.test.ts",
+        "apps/web/src/server/tcms/programm/__tests__/programm-live.test.tsx",
         "apps/web/src/components/tcms/__tests__/formular.test.tsx",
         "apps/web/src/server/tcms/__tests__/zustand.test.ts",
         "apps/web/src/server/tcms/__tests__/seite.test.ts",

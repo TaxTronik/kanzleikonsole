@@ -16,6 +16,8 @@
 // keine Bilanzkennzahlen und ersetzen keine Liquiditätsplanung.
 // =============================================================================
 
+import { monthsCovered, type PeriodInput } from './period';
+export type { PeriodInput } from './period';
 import { computeBwaKpis } from './addison-parser';
 
 // Pos 3100 in Addison = Abschreibungen (DATEV: 1240)
@@ -31,22 +33,6 @@ export interface LiquidityKpis {
   marginTrend: 'up' | 'down' | 'flat' | null;
   personnelTrend: 'up' | 'down' | 'flat' | null;
   warning: string | null; // z. B. Hinweis auf Liquiditätsrisiko
-}
-
-export interface PeriodInput {
-  periodKey: string;
-  periodType: 'YEAR' | 'QUARTER' | 'MONTH';
-  fromDate: Date;
-  toDate: Date;
-  positions: Array<{ number: number; amount: number | { toString(): string } }>;
-}
-
-function monthsCovered(p: PeriodInput): number {
-  const from = p.fromDate.getUTCMonth() + 1;
-  const to = p.toDate.getUTCMonth() + 1;
-  const fromY = p.fromDate.getUTCFullYear();
-  const toY = p.toDate.getUTCFullYear();
-  return (toY - fromY) * 12 + (to - from) + 1;
 }
 
 function depreciation(positions: PeriodInput['positions']): number | null {

@@ -175,6 +175,7 @@ describe('Ereigniseingang', () => {
 
   it('Vier-Augen: eigener Antrag ohne „Verwerfen bestätigen“, nur Zurückziehen', async () => {
     ereignis.verwerfenAntrag = {
+      antragId: '01234567-aaaa-4444-8444-0123456789ab',
       vonId: DEMO.leon,
       am: '2026-10-19T09:00:00.000Z',
       begruendung: BEGRUENDUNG,
@@ -187,6 +188,7 @@ describe('Ereigniseingang', () => {
 
   it('Vier-Augen: Antrag einer anderen Person kann bestätigt oder abgelehnt werden', async () => {
     ereignis.verwerfenAntrag = {
+      antragId: '01234567-aaaa-4444-8444-0123456789ab',
       vonId: DEMO.anna,
       am: '2026-10-19T09:00:00.000Z',
       begruendung: BEGRUENDUNG,
@@ -196,6 +198,12 @@ describe('Ereigniseingang', () => {
     expect(
       (screen.getByRole('button', { name: 'Verwerfen bestätigen' }) as HTMLButtonElement).disabled,
     ).toBe(false);
+    expect(
+      screen
+        .getByRole('button', { name: 'Verwerfen bestätigen' })
+        .closest('form')
+        ?.querySelector<HTMLInputElement>('input[name="antragId"]')?.value,
+    ).toBe(ereignis.verwerfenAntrag.antragId);
     expect(screen.getByRole('button', { name: 'Ablehnen' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Antrag zurückziehen' })).toBeNull();
   });
@@ -216,6 +224,7 @@ describe('Ereigniseingang', () => {
     ereignis.rechte.abschliessen = { erlaubt: false, verweigerung: 'BEARBEITEN' };
     ereignis.rechte.verwerfen.beantragen = { erlaubt: false, verweigerung: 'BEARBEITEN' };
     ereignis.verwerfenAntrag = {
+      antragId: '01234567-aaaa-4444-8444-0123456789ab',
       vonId: DEMO.anna,
       am: '2026-10-19T09:00:00.000Z',
       begruendung: BEGRUENDUNG,

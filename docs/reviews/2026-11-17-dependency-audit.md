@@ -113,3 +113,8 @@ Nicht nachgewiesen und dem anschließenden CI-Lauf vorbehalten sind die
 Compose-Tests von `test:ops`, die datenbankgestützten Integrationsjobs und die
 vollständige Playwright-Suite. Ein Deployment wird aus diesem Prüfstand nicht
 behauptet.
+
+**Nachtrag vom 21. November 2026.** Der erneute Abgleich mit dem
+Renovate-Dashboard enthält die beiden Lockfile-Audits und die gesondert
+gemessenen Paket- und Engine-Befunde für das ClamAV-Image.
+[Nachprüfung von Renovate und Container-Images](2026-11-21-tcms-integration-und-imagepflege.md#renovate-und-container)

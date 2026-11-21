@@ -41,11 +41,19 @@ sources:
     checked_at: '2026-10-19'
     primary: false
 code_refs:
+  - apps/web/src/app/portal/(protected)/tcms/aufgaben/[id]/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/beschreibung/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/durchfuehrungen/[did]/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/einrichtung/schritte.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/tcms/feststellungen/actions.ts
+  - apps/web/src/components/tcms/risiken/detail.tsx
   - apps/web/src/server/tcms/zustand.ts
   - apps/web/src/server/tcms/seite.ts
   - apps/web/src/server/tcms/aktion.ts
   - apps/web/src/components/tcms/durchfuehrung/editor.tsx
   - apps/web/src/components/tcms/formular.ts
+  - apps/web/src/server/tcms/bereich-b/laender-formular.ts
   - apps/web/src/components/tcms/feststellung.tsx
   - apps/web/src/components/tcms/disclaimer.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/cockpit.tsx
@@ -84,6 +92,12 @@ code_refs:
   - apps/web/src/components/tcms/portal/freigabe-formulare.tsx
   - apps/web/src/app/staff/(protected)/tcms/audit/actions.ts
 test_refs:
+  - apps/web/src/server/tcms/__tests__/bereich-b-live.test.tsx
+  - apps/web/src/server/tcms/__tests__/bereich-c-live.test.tsx
+  - apps/web/src/server/tcms/__tests__/bereich-d-live.test.tsx
+  - apps/web/src/server/tcms/__tests__/durchfuehrungsformulare-live.ts
+  - packages/tcms-client/src/__tests__/vertrag.contract.test.ts
+  - apps/web/src/server/tcms/programm/__tests__/programm-live.test.tsx
   - apps/web/src/components/tcms/__tests__/formular.test.tsx
   - apps/web/src/server/tcms/__tests__/zustand.test.ts
   - apps/web/src/server/tcms/__tests__/seite.test.ts
@@ -177,6 +191,13 @@ kanzleikonsole. Nicht erfasst ist das Modul „Subsumtion / TCMS“ (Modul
 | Modul an, Dienst nicht konfiguriert                              | kein Menüpunkt; Seiten zeigen „nicht eingerichtet“                                                                                | Betrieb entscheidet über die Anbindung                            |
 | Kennzahlen, Phasen, Klassen, Fälligkeiten                        | Anzeige aus der Antwort; die Oberfläche filtert und sortiert nur                                                                  | keine zweite Berechnung neben dem Dienst                          |
 
+Schreibende Bestätigungen beziehen sich auf den angezeigten Inhalt, Antrag,
+Bewertungsstand oder die Entwurfsrevision. Eine zwischenzeitliche Änderung
+erfordert eine neue Prüfung durch die Person. Bei der Sammelfreigabe von
+Risiken weist der Dienst übersprungene Einträge mit Grund aus. Beim
+Beschreibungsreview ist jede Person, die an den geprüften Abschnitten
+mitgeschrieben hat, vom Abschluss ausgeschlossen.
+
 ## Ausnahmen und Grenzfälle
 
 Die Oberfläche blendet Aktionen nach den Rechte-Kennzeichen des Dienstes aus
@@ -224,9 +245,19 @@ maskierte Einträge, zeigt die Seite nur deren Felder, die Akteursart als festen
 Text und „vertraulich“, Hashes ab der ersten maskierten Position als „nicht
 angezeigt“ (TCMS s11, kk-tcms-s11). Gleiche Antwortfelder
 zeigen Kanzlei und Portal mit denselben Bausteinen (Nachweisliste,
-Beschreibung, Formular-Baustein `useTcmsFormular`). Während eine Aktion
-läuft, blockiert das Formular weitere Übermittlungen. Sobald die Oberfläche das
+Beschreibung, Formular-Baustein `useTcmsFormular`). Der erste Klick hält Felder und auslösenden Knopf fest. Bei einer Rückfrage
+bleibt dieser Stand auch dann verbindlich, wenn die Seite im Hintergrund
+neu rendert. Eine offene Rückfrage und die laufende Aktion blockieren weitere
+Übermittlungen. Sobald die Oberfläche das
 Ergebnis zeigt und das Formular freigibt, kann die nächste Eingabe gesendet werden.
+
+Kanzlei und Portal übertragen beim Speichern den Hash aus dem Formular und
+beim unmittelbaren Einreichen den neuen Hash der eigenen Speicherantwort.
+Freigaben übertragen die angezeigte Antragskennung, bei Feststellungen auch
+die Auswirkung, im Review den Abschnittshash. Länder und Risiken übermitteln
+die angezeigte Stand-ID je Eintrag. Der Assistent sendet die vor der
+Bearbeitung gelesene Revisionsnummer. Die Risikohistorie kennzeichnet
+Übersteuerungen und Akzeptanzen, die der Dienst als überholt zurückgibt.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -256,5 +287,12 @@ die Anwendung in Seiten und Aktionen. Die Render-Tests der Seiten zeigen die
 maskierte Feststellung ohne Titel, Zustände statt Daten und die Übernahme der
 Rechte-Kennzeichen des Dienstes. Der Rendertest der Durchführungen prüft auch
 die übertragbare Liste am Übergang vom Server zum interaktiven Editor.
-Der Formulartest prüft sowohl den Doppelklick während der laufenden Aktion
-als auch das erneute Absenden unmittelbar nach der angezeigten Rückmeldung.
+Der Formulartest öffnet die Rückfrage, aktualisiert den sichtbaren Antrag
+und bestätigt den alten Stand. Er prüft dies auch beim Anlegen von Version 1,
+außerdem Doppelklick, Abbruch und erneutes Absenden nach der Rückmeldung.
+
+Die Aktions- und Rendertests der TCMS-Bereiche prüfen die Bindung an die
+Formulardaten und die Kennzeichnung überholter Bewertungen. Die Live-Tests
+in `bereich-b-live.test.tsx`, `bereich-c-live.test.tsx`,
+`bereich-d-live.test.tsx` und `programm-live.test.tsx` verwenden den
+signierten Transport und die Antwort des echten Dienstes.

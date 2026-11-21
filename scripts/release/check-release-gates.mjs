@@ -129,7 +129,7 @@ function requireAskpass(block, name) {
   );
 }
 
-export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
+export function checkReleaseGates({ release, ci, security, smoke, composeCi, trivySetup }) {
   const initStorage = smoke.match(/^"\$\{COMPOSE\[@\]\}" run --rm --no-deps seaweedfs-init$/m);
   const startApps = smoke.match(/^"\$\{COMPOSE\[@\]\}" up [^\n]* app worker n8n$/m);
   invariant(
@@ -201,7 +201,20 @@ export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
   // Fehlschlag seines Vorgaengers uebersprungen und fehlte damit als Nachweis;
   // der Release verlangt ohnehin den gesamten Workflow.
   invariant(!/^ {4}needs:/m.test(ci), 'ci.yml: CI-Jobs duerfen nicht per needs aufeinander warten');
-  for (const job of ['dependencies', 'secrets']) jobBlock(security, job);
+  for (const job of ['dependencies', 'secrets', 'service-images']) jobBlock(security, job);
+  const serviceImages = jobBlock(security, 'service-images');
+  forbidJobBypass(serviceImages, 'service-images');
+  const imageScanStep = serviceImages
+    .split(/^ {6}- /m)
+    .find((step) =>
+      /^ {8}run: node scripts\/ci\/scan-service-images\.mjs security-images$/m.test(step),
+    );
+  invariant(
+    /^ {8}run: bash scripts\/ci\/setup-trivy\.sh$/m.test(serviceImages) &&
+      imageScanStep &&
+      !/^ {8}if:/m.test(imageScanStep),
+    'Security muss die produktiven Service-Images und die Engine prüfen',
+  );
   invariant(
     !/^\s+continue-on-error:/m.test(ci) && !/^\s+continue-on-error:/m.test(security),
     'wiederverwendbare Gate-Workflows duerfen continue-on-error nicht verwenden',
@@ -264,7 +277,7 @@ export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
 
   invariant(/worker_digest:/.test(publish), 'release exportiert keinen Worker-Digest');
   const runtimeSmoke = publish.indexOf('smoke-release-images.sh');
-  const trivyProvision = publish.indexOf('docker cp "$TRIVY_CONTAINER:/usr/local/bin/trivy"');
+  const trivyProvision = publish.indexOf('run: bash scripts/ci/setup-trivy.sh');
   const trivyScan = publish.indexOf('Trivy-Scan (CRITICAL mit Fix blockt den Push)');
   const sbomGeneration = publish.indexOf('--format cyclonedx');
   const sbomUpload = publish.indexOf('release-sbom-${{ steps.meta.outputs.version }}');
@@ -279,6 +292,8 @@ export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
   invariant(
     trivyProvision >= 0 &&
       trivyProvision < trivyScan &&
+      /^TRIVY_IMAGE=aquasec\/trivy:[^\s@]+@sha256:[0-9a-f]{64}$/m.test(trivySetup) &&
+      trivySetup.includes('docker cp "$TRIVY_CONTAINER:/usr/local/bin/trivy" "$TRIVY_BIN"') &&
       (publish.match(/--docker-host "\$TRIVY_DOCKER_HOST"/g) ?? []).length >= 3 &&
       !/docker run --rm[\s\S]*?aquasec\/trivy/.test(publish.slice(trivyScan, sbomUpload)),
     'Trivy muss im Forgejo-Job nativ und gegen exakt denselben Docker-Daemon laufen',
@@ -341,6 +356,7 @@ function main() {
       release: readFileSync('.forgejo/workflows/release.yml', 'utf8'),
       ci: readFileSync('.forgejo/workflows/ci.yml', 'utf8'),
       security: readFileSync('.forgejo/workflows/security.yml', 'utf8'),
+      trivySetup: readFileSync('scripts/ci/setup-trivy.sh', 'utf8'),
       smoke: readFileSync('scripts/release/smoke-release-images.sh', 'utf8'),
       composeCi: readFileSync('infra/compose/docker-compose.ci.yml', 'utf8'),
     });

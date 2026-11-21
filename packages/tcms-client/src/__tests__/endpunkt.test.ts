@@ -88,6 +88,18 @@ describe('rufeEndpunkt', () => {
     expect(pruefeEmpfangen(anfrage!, s)).toMatchObject({ ok: true });
   });
 
+  it('verlangt beim Einreichen den gesehenen Stand vor dem Transport', async () => {
+    const fetchImpl = vi.fn();
+    const client = new TcmsClient(
+      clientOptionen('http://127.0.0.1:9', neueSchluessel(), { fetchImpl }),
+    );
+    const ohneStand = { params: { mandantId: MANDANT, durchfuehrungId: PERSON }, akteur: KANZLEI };
+    // @ts-expect-error Der frühere körperlose Aufruf muss schon beim Typecheck scheitern.
+    const anfrage = rufeEndpunkt(client, ENDPUNKTE.durchfuehrungEinreichen, ohneStand);
+    await expect(anfrage).rejects.toBeInstanceOf(TcmsUngueltig);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
   it('prüft die Antwort gegen das Antwortschema des Registers', async () => {
     const srv = await starteServer((_a, res) =>
       json(res, 200, { ok: true, daten: { ...ICH, zusatz: 1 } }),
@@ -302,7 +314,7 @@ describe('Konfliktgründe je Endpunkt (TCMS s10)', () => {
     const fremd = KONFLIKT_GRUENDE.filter(
       (g) => !ENDPUNKTE.portalFreigabeErteilen.konflikte.includes(g),
     );
-    expect(fremd).toEqual(['ZU_VIELE_CODES', 'IDEMPOTENZ_ABWEICHUNG']);
+    expect(fremd).toEqual(['ZU_VIELE_CODES', 'IDEMPOTENZ_ABWEICHUNG', 'ZU_VIELE_MELDUNGEN']);
     for (const grund of fremd) {
       const f = await konfliktVon(ENDPUNKTE.portalFreigabeErteilen, {
         code: 'KONFLIKT',

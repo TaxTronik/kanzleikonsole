@@ -93,6 +93,7 @@ function dienst(antwort: unknown = {}) {
 function formular(schritt: number | string, ziel: string, daten: unknown): FormData {
   const fd = new FormData();
   fd.set('schritt', String(schritt));
+  fd.set('gesehen', '7');
   fd.set('ziel', ziel);
   fd.set('daten', typeof daten === 'string' ? daten : JSON.stringify(daten));
   // Versuch, Mandant und Personen über das Formular unterzuschieben: ignoriert.
@@ -144,7 +145,7 @@ describe('einrichtungSpeichernAction', () => {
       meldung: 'Entwurf gespeichert.',
     });
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.einrichtungEntwurfSpeichern, {
-      body: { schritt: 1, ziel: 'speichern', daten, personen },
+      body: { schritt: 1, ziel: 'speichern', daten, personen, gesehen: 7 },
     });
     // „speichern“ bleibt auf der Seite.
     expect(h.redirect).not.toHaveBeenCalled();
@@ -240,7 +241,10 @@ describe('einrichtungSpeichernAction', () => {
     // kk-tcms-s11: zuerst den Entwurf lesen (Empfänger der Zielfreigabe), dann anlegen.
     expect(d.rufe.mock.calls).toEqual([
       [ENDPUNKTE.einrichtungLesen, { query: {} }],
-      [ENDPUNKTE.programmAnlegen, { body: { daten: { kontrollen }, personen: v.personen } }],
+      [
+        ENDPUNKTE.programmAnlegen,
+        { body: { daten: { kontrollen }, personen: v.personen, gesehen: 7 } },
+      ],
     ]);
     // Ohne angeforderte Freigabe im Entwurf: keine erneute Prüfung.
     expect(h.vorAnlegen).not.toHaveBeenCalled();

@@ -16,7 +16,7 @@
 
 import { z } from 'zod';
 import { VERWEIGERUNG_GRUENDE } from '../fehler';
-import { DATEINAME_UNZULAESSIG, einzeilig, mitTextBasis, StandSchema } from './lesepfade';
+import { einzeilig, gueltigerDateiname, mitTextBasis, StandSchema } from './lesepfade';
 
 // ---------------------------------------------------------------------------
 // Grenzen und Bausteine
@@ -36,8 +36,12 @@ export const DF_MAX_ERGEBNIS_KOMMENTAR = 4000;
 export const DF_MAX_BETRAG = 1e12;
 /** Obergrenze `groesse` eines Nachweises (Spalte INTEGER). */
 export const DF_MAX_NACHWEIS_BYTES = 2_147_483_647;
+/** Höchstzahl aktiver Nachweise je Durchführung (unter der Zeilensperre geprüft). */
+export const DF_MAX_NACHWEISE = 50;
+/** Höchstzahl der Verweise je Durchführung einschließlich entfernter (Anhängen/Entfernen in Schleife). */
+export const DF_MAX_NACHWEIS_VERWEISE = 200;
 
-/** Objekt-IDs des Tax-CMS (cuid): nur Kleinbuchstaben und Ziffern. */
+/** Objekt-IDs des Tax-CMS (cuid2, ältere Objekte cuid v1): nur Kleinbuchstaben und Ziffern. */
 const OBJEKT_ID = /^[a-z0-9]{1,64}$/;
 const objektId = () => z.string().regex(OBJEKT_ID, 'Ungültige ID');
 
@@ -61,6 +65,9 @@ const ziel = {
   mandantId: MandantIdSchema,
   durchfuehrungId: DurchfuehrungIdSchema,
 };
+
+/** SHA-256 (hex, klein) eines gesehenen Stands (Inhalt bzw. Antrag, TS-05). */
+const GesehenSchema = z.string().regex(/^[0-9a-f]{64}$/, 'Ungültiges Stand-Merkmal');
 
 // ---------------------------------------------------------------------------
 // Lesen
@@ -129,11 +136,36 @@ export const NachweiseJeDokumentSchema = z
 export type NachweiseJeDokument = z.infer<typeof NachweiseJeDokumentSchema>;
 
 // ---------------------------------------------------------------------------
-// Operationen ohne Body (beginnen, einreichen, bestätigen, Entfallen freigeben)
+// Ziel ohne Body (beginnen, bestätigen); Einreichen und Entfallen freigeben mit gesehenem Stand
 // ---------------------------------------------------------------------------
 
 export const DurchfuehrungZielSchema = z.object(ziel).strict();
 export type DurchfuehrungZiel = z.infer<typeof DurchfuehrungZielSchema>;
+
+/**
+ * Einreichen (Kanzlei) bzw. Übermitteln (Portal): `bisher` ist das Merkmal
+ * `inhalt` des gespeicherten Stands, den die Person gesehen hat (Detail,
+ * Kontrollaufgabe oder Ergebnis des Speicherns). Hat eine andere Person
+ * inzwischen gespeichert → `409` (TS-05), statt deren Stand einzureichen.
+ */
+const einreichenFelder = { bisher: GesehenSchema };
+export const DurchfuehrungEinreichenBodySchema = z.object(einreichenFelder).strict();
+export const DurchfuehrungEinreichenEingabeSchema = z
+  .object({ ...ziel, ...einreichenFelder })
+  .strict();
+export type DurchfuehrungEinreichenEingabe = z.infer<typeof DurchfuehrungEinreichenEingabeSchema>;
+
+/**
+ * Entfallen freigeben: `antrag` ist das Merkmal `entfallenAntrag` des Antrags
+ * (antragstellende Person und Begründung), den die freigebende Person gesehen
+ * hat. Wurde er inzwischen zurückgezogen und neu gestellt → `409` (TS-05).
+ */
+const entfallenFreigebenFelder = { antrag: GesehenSchema };
+export const EntfallenFreigebenBodySchema = z.object(entfallenFreigebenFelder).strict();
+export const EntfallenFreigebenEingabeSchema = z
+  .object({ ...ziel, ...entfallenFreigebenFelder })
+  .strict();
+export type EntfallenFreigebenEingabe = z.infer<typeof EntfallenFreigebenEingabeSchema>;
 
 // ---------------------------------------------------------------------------
 // Speichern (Schritte, Werte, Ergebnisvorschlag)
@@ -168,6 +200,12 @@ const speichernFelder = {
     .refine((w) => new Set(w.map((x) => x.key)).size === w.length, 'Kennzahl doppelt'),
   ergebnis: DurchfuehrungErgebnisSchema.nullable(),
   ergebnisKommentar: mitTextBasis(z.string().trim().max(DF_MAX_ERGEBNIS_KOMMENTAR)).nullable(),
+  /**
+   * Merkmal `inhalt` des gespeicherten Stands, auf dem die Eingabe beruht.
+   * Hat eine andere Person inzwischen gespeichert → `409` statt eines stillen
+   * Überschreibens (TS-05).
+   */
+  bisher: GesehenSchema,
 };
 
 export const DurchfuehrungSpeichernBodySchema = z.object(speichernFelder).strict();
@@ -181,19 +219,12 @@ export type DurchfuehrungSpeichernEingabe = z.infer<typeof DurchfuehrungSpeicher
 // ---------------------------------------------------------------------------
 
 const MIME = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
-// Steuer-, Richtungs-, Nullbreiten- und Füllzeichen, Pfadtrenner
-// (Dateinamen-Spoofing): eine Regel für alle Dateinamen (lesepfade.ts).
-const DATEINAME_VERBOTEN = DATEINAME_UNZULAESSIG;
-
-/** Gültiger Dateiname eines Verweises (strenger als `pruefeVerweis`, nie lockerer). */
+/**
+ * Gültiger Dateiname eines Verweises: die eine Regel für alle Dateinamen
+ * (`gueltigerDateiname`, zeichen.ts; ebenso Ereignis-Anlagen und `pruefeVerweis`).
+ */
 export function gueltigerNachweisDateiname(name: string): boolean {
-  return (
-    name.trim().length > 0 &&
-    name.length <= 255 &&
-    !DATEINAME_VERBOTEN.test(name) &&
-    name !== '.' &&
-    name !== '..'
-  );
+  return gueltigerDateiname(name);
 }
 
 /**
@@ -478,10 +509,24 @@ const aufgabeFelder = {
   periodeVon: Tag,
   periodeBis: Tag,
   faelligAm: Tag,
+  /** Gespeicherter (aktueller) Status, auch im historischen Stand; zum Stichtag gilt `anzeige`. */
   status: DurchfuehrungStatusSchema,
   /** Status zum Stichtag inkl. abgeleitet Fällig/Überfällig. */
   anzeige: DurchfuehrungAnzeigeSchema,
   ausserplanmaessig: z.boolean(),
+  /**
+   * Merkmal des gespeicherten Inhalts (SHA-256 über Kontrollstand, Schritte,
+   * Werte, Ergebnis und Kommentar; immer der aktuelle Stand) – `bisher` beim
+   * Speichern und Einreichen.
+   */
+  inhalt: z.string(),
+  /**
+   * Schritte, Werte, Ergebnis und Kommentar: zuletzt gespeicherte Fassung
+   * (Zwischenstände werden nicht versioniert). Im historischen Stand nur, wenn
+   * die Durchführung zum Stichtag begonnen war, sonst leer; ebenso
+   * `durchgefuehrtVon`. Zurückweisung und Entfallen-Begründung im historischen
+   * Stand nach dem Audit zum Stichtag.
+   */
   schritte: z.array(DurchfuehrungSchrittSchema),
   werte: z.array(DurchfuehrungWertSchema),
   ergebnis: DurchfuehrungErgebnisSchema.nullable(),
@@ -496,6 +541,10 @@ const aufgabeFelder = {
   zurueckgewiesenVon: PersonId.nullable(),
   zurueckgewiesenAm: Zeitpunkt.nullable(),
   zurueckweisungsgrund: z.string().nullable(),
+  /**
+   * Begründung des Entfallens; im Portal nur bei entfallener Durchführung, in
+   * der Kanzlei zusätzlich die eines offenen Antrags (Kanzlei-Vorgang).
+   */
   entfallenBegruendung: z.string().nullable(),
   entfallenAm: Zeitpunkt.nullable(),
   createdAt: Zeitpunkt,
@@ -528,6 +577,8 @@ export const DurchfuehrungDetailSchema = z
       .strict(),
     anlass: z.string().nullable(),
     entfallenVon: PersonId.nullable(),
+    /** Merkmal des offenen Entfallen-Antrags (`antrag` beim Freigeben); sonst `null`. */
+    entfallenAntrag: z.string().nullable(),
     entfallenFreigegebenVon: PersonId.nullable(),
     nachtragZuId: z.string().nullable(),
     /**
@@ -613,6 +664,8 @@ export const DurchfuehrungSpeichernErgebnisSchema = z
   .object({
     durchfuehrungId: z.string(),
     status: DurchfuehrungStatusSchema,
+    /** Merkmal des nun gespeicherten Inhalts (`bisher` beim nächsten Speichern bzw. Einreichen). */
+    inhalt: z.string(),
     /** Prüfung des gespeicherten Stands für das Einreichen. */
     pruefung: EinreichPruefungSchema,
   })

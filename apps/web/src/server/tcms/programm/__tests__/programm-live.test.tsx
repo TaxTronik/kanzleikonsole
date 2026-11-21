@@ -222,17 +222,18 @@ function formular(felder: Record<string, string | string[]>): FormData {
       expect(container.querySelector('[aria-current="step"]')?.textContent).toContain(String(n));
       expect(container.textContent).not.toContain('Unbekannte Person');
       const daten = (container.querySelector('input[name="daten"]') as HTMLInputElement).value;
-      return { screen, daten: JSON.parse(daten) as Record<string, unknown> };
+      const gesehen = container.querySelector<HTMLInputElement>('input[name="gesehen"]')!.value;
+      return { screen, gesehen, daten: JSON.parse(daten) as Record<string, unknown> };
     };
-    const weiter = async (n: number, daten: unknown, ziel = 'weiter') =>
+    const weiter = async (n: number, gesehen: string, daten: unknown, ziel = 'weiter') =>
       einrichtungSpeichernAction(
         M,
         null,
-        formular({ schritt: String(n), ziel, daten: JSON.stringify(daten) }),
+        formular({ schritt: String(n), gesehen, ziel, daten: JSON.stringify(daten) }),
       ).catch((e: unknown) => erwarteAnwendungsfehler(e, /^NEXT_REDIRECT:/).message);
 
     const s1 = await schritt(1);
-    expect(await weiter(1, s1.daten)).toBe(
+    expect(await weiter(1, s1.gesehen, s1.daten)).toBe(
       `NEXT_REDIRECT:/staff/clients/${M}/tcms/einrichtung?schritt=2`,
     );
     const s2 = await schritt(2);
@@ -241,7 +242,7 @@ function formular(felder: Record<string, string | string[]>): FormData {
     Object.assign(profil.p4!, { warengruppen: [{ name: 'Kaffee', abweichenderSatz: true }] });
     Object.assign(profil.p6!, { zahlungswege: ['PayPal'] });
     Object.assign(profil.p7!, { gutscheine: true });
-    expect(await weiter(2, { profil })).toBe(
+    expect(await weiter(2, s2.gesehen, { profil })).toBe(
       `NEXT_REDIRECT:/staff/clients/${M}/tcms/einrichtung?schritt=3`,
     );
     const s3 = await schritt(3);
@@ -253,20 +254,23 @@ function formular(felder: Record<string, string | string[]>): FormData {
       );
     const ziele = { ...s3.daten, freigabe: { anfordern: true, empfaengerId: gerda } };
     expect(
-      await weiter(3, { ...ziele, freigabe: { anfordern: true, empfaengerId: neuerKontakt } }),
+      await weiter(3, s3.gesehen, {
+        ...ziele,
+        freigabe: { anfordern: true, empfaengerId: neuerKontakt },
+      }),
     ).toMatchObject({
       ok: false,
       error: 'Der gewählte Kontakt gehört nicht zu diesem Mandanten.',
     });
     // kk-tcms-s11 Punkt 4: Kontakt dieses Mandanten ohne Portalzugang – abgewiesen.
     expect(
-      await weiter(3, { ...ziele, freigabe: { anfordern: true, empfaengerId: otto } }),
+      await weiter(3, s3.gesehen, { ...ziele, freigabe: { anfordern: true, empfaengerId: otto } }),
     ).toMatchObject({ ok: false, error: TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL });
-    expect(await weiter(3, ziele)).toBe(
+    expect(await weiter(3, s3.gesehen, ziele)).toBe(
       `NEXT_REDIRECT:/staff/clients/${M}/tcms/einrichtung?schritt=4`,
     );
     const s4 = await schritt(4);
-    expect(await weiter(4, s4.daten)).toBe(
+    expect(await weiter(4, s4.gesehen, s4.daten)).toBe(
       `NEXT_REDIRECT:/staff/clients/${M}/tcms/einrichtung?schritt=5`,
     );
 
@@ -280,11 +284,11 @@ function formular(felder: Record<string, string | string[]>): FormData {
       kontrollen: Record<string, { gegenzeichnerId: string | null }>;
     };
     Object.values(fremd.kontrollen)[0]!.gegenzeichnerId = neuerKontakt;
-    expect(await weiter(5, fremd, 'speichern')).toMatchObject({
+    expect(await weiter(5, s5.gesehen, fremd, 'speichern')).toMatchObject({
       ok: false,
       error: 'Die gewählte Person hat keinen Zugriff auf diesen Mandanten.',
     });
-    expect(await weiter(5, s5.daten, 'speichern')).toMatchObject({
+    expect(await weiter(5, s5.gesehen, s5.daten, 'speichern')).toMatchObject({
       ok: true,
       ziel: 'speichern',
       schritt: 5,
@@ -295,12 +299,12 @@ function formular(felder: Record<string, string | string[]>): FormData {
     // des Dienstes.
     const gerdaLogin = { where: { id: gerda } } as const;
     await owner.clientContact.update({ ...gerdaLogin, data: { lastLoginAt: null } });
-    expect(await weiter(5, s5.daten, 'anlegen')).toMatchObject({
+    expect(await weiter(5, (await schritt(5)).gesehen, s5.daten, 'anlegen')).toMatchObject({
       ok: false,
       error: `Schritt 3 (Freigabe der Ziele): ${TCMS_PERSON_UNZULAESSIG_TEXTE.PORTAL}`,
     });
     await owner.clientContact.update({ ...gerdaLogin, data: { lastLoginAt: new Date() } });
-    expect(await weiter(5, s5.daten, 'anlegen')).toBe(
+    expect(await weiter(5, (await schritt(5)).gesehen, s5.daten, 'anlegen')).toBe(
       `NEXT_REDIRECT:/staff/clients/${M}/tcms/einrichtung`,
     );
 
@@ -377,19 +381,74 @@ function formular(felder: Record<string, string | string[]>): FormData {
       await aktionen.zurReviewAction(DEMO.talwind, null, formular({ versionId })),
     ).toMatchObject({ ok: true });
 
-    // Anna hat zuletzt bearbeitet: Vier-Augen-Prinzip (feste Meldung, kein Text des Dienstes).
+    const abschnitteSha256 = (await lesen()).versionen.find(
+      (x) => x.id === versionId,
+    )!.abschnitteSha256!;
+    // Anna hat mitgearbeitet: Vier-Augen-Prinzip (feste Meldung, kein Text des Dienstes).
     expect(
-      await aktionen.reviewAbschliessenAction(DEMO.talwind, null, formular({ versionId })),
+      await aktionen.reviewAbschliessenAction(
+        DEMO.talwind,
+        null,
+        formular({ versionId, abschnitteSha256 }),
+      ),
     ).toEqual({
       ok: false,
       error: 'Vier-Augen-Prinzip: Diesen Schritt muss eine andere Person ausführen.',
       errorCode: 'FORBIDDEN',
     });
+    const reviewFormular = async () => {
+      const { default: Seite } =
+        await import('@/app/staff/(protected)/clients/[id]/tcms/beschreibung/page');
+      const { screen } = await rendern(
+        Seite({
+          params: Promise.resolve({ id: DEMO.talwind }),
+          searchParams: Promise.resolve({ version: versionId }),
+        }),
+      );
+      const form = screen.getByRole('button', { name: /Review abschließen/ }).closest('form');
+      const hash = form?.querySelector<HTMLInputElement>('input[name=abschnitteSha256]')?.value;
+      expect(hash).toMatch(/^[a-f0-9]{64}$/);
+      return formular({ versionId, abschnitteSha256: hash! });
+    };
+    sitzung.staff = staffSitzung(DEMO.leon, ['EMPLOYEE']);
+    const gesehen = await reviewFormular();
+    alsAnna();
+    expect(
+      await aktionen.reviewZurueckweisenAction(
+        DEMO.talwind,
+        null,
+        formular({
+          versionId,
+          begruendung: 'Für die Nachprüfung ändern wir den Text vor der zweiten Einreichung.',
+        }),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await aktionen.abschnittSpeichernAction(
+        DEMO.talwind,
+        null,
+        formular({
+          versionId,
+          key: 'kultur',
+          struktur: '[{"typ":"text"}]',
+          text: text + ' Nachtrag zur Review.',
+        }),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await aktionen.zurReviewAction(DEMO.talwind, null, formular({ versionId })),
+    ).toMatchObject({ ok: true });
     sitzung.staff = staffSitzung(DEMO.leon, ['EMPLOYEE']);
     try {
-      expect(
-        await aktionen.reviewAbschliessenAction(DEMO.talwind, null, formular({ versionId })),
-      ).toMatchObject({ ok: true });
+      expect(await aktionen.reviewAbschliessenAction(DEMO.talwind, null, gesehen)).toMatchObject({
+        ok: false,
+        errorCode: 'CONFLICT',
+      });
+      const aktuell = await reviewFormular();
+      expect(aktuell.get('abschnitteSha256')).not.toBe(gesehen.get('abschnitteSha256'));
+      expect(await aktionen.reviewAbschliessenAction(DEMO.talwind, null, aktuell)).toMatchObject({
+        ok: true,
+      });
     } finally {
       alsAnna();
     }

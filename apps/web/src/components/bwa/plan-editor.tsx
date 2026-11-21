@@ -3,11 +3,12 @@
 import { useState, useTransition, useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Save, Trash2 } from 'lucide-react';
-import { fmtEURRound, fmtTimeMedium } from '@/lib/fmt';
+import { fmtTimeMedium } from '@/lib/fmt';
 import { confirmDialog } from '@/components/ui/modal';
 
-export type PlanAxis =
-  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
+import { PlanSummary } from './plan-summary';
+import { BWA_PLAN_AXES, PLAN_AXIS_LABELS, planTotals, type PlanAxis } from '@/lib/bwa-plan';
+export type { PlanAxis } from '@/lib/bwa-plan';
 
 export type UpdatePlanFn = (input: {
   planId: string;
@@ -19,30 +20,8 @@ export type UpdatePlanFn = (input: {
 
 export type DeletePlanFn = (input: { planId: string }) => Promise<{ ok: boolean; error?: string }>;
 
-type Axis =
-  'REVENUE' | 'PERSONNEL' | 'OTHER_COSTS' | 'DEPRECIATION' | 'MATERIAL' | 'OTHER_INCOME' | 'TAXES';
-
-const AXIS_LABELS: Record<Axis, string> = {
-  REVENUE: 'Erlöse',
-  PERSONNEL: 'Personalkosten',
-  OTHER_COSTS: 'Sonstige Kosten',
-  DEPRECIATION: 'Abschreibungen',
-  MATERIAL: 'Material-/Wareneinkauf',
-  OTHER_INCOME: 'Sonstige Erträge',
-  TAXES: 'Steuern (GewSt/KSt/ESt)',
-};
-const ALL_AXES: Axis[] = [
-  'REVENUE',
-  'OTHER_INCOME',
-  'PERSONNEL',
-  'MATERIAL',
-  'DEPRECIATION',
-  'OTHER_COSTS',
-  'TAXES',
-];
-
 interface Line {
-  axis: Axis;
+  axis: PlanAxis;
   amount: number;
   note: string;
 }
@@ -66,10 +45,10 @@ export function PlanEditor({
   const [name, setName] = useState(initial.name);
   const [notes, setNotes] = useState(initial.notes);
   const [status, setStatus] = useState<'DRAFT' | 'FINAL'>(initial.status);
-  const [lines, setLines] = useState<Record<Axis, Line>>(() => {
+  const [lines, setLines] = useState<Record<PlanAxis, Line>>(() => {
     const initialMap = new Map(initial.lines.map((l) => [l.axis, l]));
-    const out = {} as Record<Axis, Line>;
-    for (const a of ALL_AXES) {
+    const out = {} as Record<PlanAxis, Line>;
+    for (const a of BWA_PLAN_AXES) {
       out[a] = initialMap.get(a) ?? { axis: a, amount: 0, note: '' };
     }
     return out;
@@ -78,19 +57,9 @@ export function PlanEditor({
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [isPending, start] = useTransition();
 
-  const totals = useMemo(() => {
-    const revenue = lines.REVENUE.amount + lines.OTHER_INCOME.amount;
-    const costs =
-      lines.PERSONNEL.amount +
-      lines.OTHER_COSTS.amount +
-      lines.DEPRECIATION.amount +
-      lines.MATERIAL.amount;
-    const resultBeforeTax = revenue - costs;
-    const taxes = lines.TAXES.amount;
-    return { revenue, costs, resultBeforeTax, taxes, resultAfterTax: resultBeforeTax - taxes };
-  }, [lines]);
+  const totals = useMemo(() => planTotals((axis) => lines[axis].amount), [lines]);
 
-  function setAxis(a: Axis, patch: Partial<{ amount: number; note: string }>) {
+  function setAxis(a: PlanAxis, patch: Partial<{ amount: number; note: string }>) {
     setLines((s) => ({ ...s, [a]: { ...s[a], ...patch } }));
   }
 
@@ -102,7 +71,7 @@ export function PlanEditor({
         name: name.trim(),
         notes: notes.trim() || null,
         status,
-        lines: ALL_AXES.map((a) => ({
+        lines: BWA_PLAN_AXES.map((a) => ({
           axis: a,
           amount: lines[a].amount,
           note: lines[a].note.trim() || null,
@@ -172,13 +141,13 @@ export function PlanEditor({
         <fieldset className="min-w-0">
           <legend className="label">Achsen</legend>
           <div className="space-y-2">
-            {ALL_AXES.map((a) => (
+            {BWA_PLAN_AXES.map((a) => (
               <div
                 key={a}
                 className="grid min-w-0 items-center gap-2 border-b border-default pb-3 last:border-0 @xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] @xl:border-0 @xl:pb-0"
               >
                 <label className="text-sm text-secondary" htmlFor={`bwa-axis-${a}-amount`}>
-                  {AXIS_LABELS[a]}
+                  {PLAN_AXIS_LABELS[a]}
                 </label>
                 <div className="relative">
                   <input
@@ -202,7 +171,7 @@ export function PlanEditor({
                   onChange={(e) => setAxis(a, { note: e.target.value })}
                   maxLength={300}
                   placeholder="Annahme / Notiz (optional)"
-                  aria-label={`Anmerkung zu ${AXIS_LABELS[a]} (optional)`}
+                  aria-label={`Anmerkung zu ${PLAN_AXIS_LABELS[a]} (optional)`}
                   className="input text-xs"
                 />
               </div>
@@ -211,10 +180,7 @@ export function PlanEditor({
         </fieldset>
 
         <div className="border-t border-default pt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-          <Total label="Erträge" value={totals.revenue} />
-          <Total label="Aufwendungen" value={totals.costs} />
-          <Total label="Ergebnis vor Steuern" value={totals.resultBeforeTax} accent />
-          <Total label="Ergebnis nach Steuern" value={totals.resultAfterTax} accent />
+          <PlanSummary totals={totals} />
         </div>
 
         <div>
@@ -259,26 +225,6 @@ export function PlanEditor({
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-function Total({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div>
-      <p className="text-xs text-muted">{label}</p>
-      <p
-        className={
-          'text-lg font-bold font-mono ' +
-          (accent && value < 0
-            ? 'text-red-700'
-            : accent && value > 0
-              ? 'text-emerald-700'
-              : 'text-primary')
-        }
-      >
-        {fmtEURRound(value)}
-      </p>
     </div>
   );
 }

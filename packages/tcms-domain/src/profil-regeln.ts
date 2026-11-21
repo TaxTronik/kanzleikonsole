@@ -6,8 +6,8 @@
 // nutzen dieselbe Quelle.
 // =============================================================================
 
-import { bewerteSchwelle } from './schwelle';
-import { fmtEurGanz, fmtMonatJahr } from './format';
+import { bewerteSchwelle, inCent } from './schwelle';
+import { fmtEur, fmtEurGanz, fmtMonatJahr } from './format';
 import { ereignistyp } from './katalog/ereignisse';
 import {
   PROFIL_FRAGEN,
@@ -83,6 +83,14 @@ export function pruefeProfil(p: Geschaeftsprofil): string[] {
 const jn = (b: boolean) => (b ? 'ja' : 'nein');
 const liste = (xs: readonly string[], leer = '—') => (xs.length ? xs.join(', ') : leer);
 
+type System = Geschaeftsprofil['p8']['systeme'][number];
+/** Art eines Systems (P8); ohne Angabe „System" – in Anzeige und Vergleich gleich. */
+const systemArt = (s: System) => s.art || 'System';
+/** Version eines Systems (P8); „—" heißt wie leer „ohne Version". */
+const systemVersion = (s: System) => (s.version && s.version !== '—' ? s.version : '');
+/** Betrag auf den Cent; ganze Euro ohne Nachkommastellen. */
+const betrag = (n: number) => (inCent(n) % 100 === 0 ? fmtEurGanz(n) : fmtEur(n));
+
 /** Lesbare Zeilen je Profilfrage (Anzeige, Diff, Ereignistexte). */
 export function profilZeilen(p: Geschaeftsprofil): Record<FrageKey, string[]> {
   return {
@@ -125,8 +133,7 @@ export function profilZeilen(p: Geschaeftsprofil): Record<FrageKey, string[]> {
     ],
     p8: p.p8.systeme.length
       ? p.p8.systeme.map(
-          (s) =>
-            `${s.art || 'System'}: ${s.name}${s.version && s.version !== '—' ? ` ${s.version}` : ''}`,
+          (s) => `${systemArt(s)}: ${s.name}${systemVersion(s) ? ` ${systemVersion(s)}` : ''}`,
         )
       : ['Keine Systeme erfasst'],
     p9: [
@@ -136,9 +143,9 @@ export function profilZeilen(p: Geschaeftsprofil): Record<FrageKey, string[]> {
       `Dauerfristverlängerung: ${jn(p.p9.dauerfrist)}`,
     ],
     p10: [
-      `Vorjahresumsatz: ${fmtEurGanz(p.p10.vorjahresumsatzEur)}`,
-      `EU-Fernverkäufe Vorjahr: ${fmtEurGanz(p.p10.euFernverkaeufeVorjahrEur)}`,
-      `EU-Fernverkäufe laufendes Jahr: ${fmtEurGanz(p.p10.euFernverkaeufeLfdEur)}`,
+      `Vorjahresumsatz: ${betrag(p.p10.vorjahresumsatzEur)}`,
+      `EU-Fernverkäufe Vorjahr: ${betrag(p.p10.euFernverkaeufeVorjahrEur)}`,
+      `EU-Fernverkäufe laufendes Jahr: ${betrag(p.p10.euFernverkaeufeLfdEur)}`,
     ],
     p11: p.p11.vorhanden
       ? [`Ausländische Leistende: ${liste(p.p11.anbieter)}`]
@@ -188,11 +195,51 @@ export function inhaltGleich(x: unknown, y: unknown): boolean {
   return stabil(x) === stabil(y);
 }
 
-/** Ereignistypen, die eine Profiländerung auslöst (dedupliziert, Reihenfolge P1 → P12). */
+/** Mengenartige Liste: ohne Duplikate, stabil sortiert (Reihenfolge ohne Bedeutung). */
+function menge<T>(xs: readonly T[]): T[] {
+  const je = new Map(xs.map((x) => [stabil(x), x] as const));
+  return [...je.keys()].sort().map((k) => je.get(k)!);
+}
+
+/**
+ * Vergleichsform eines Profils für `gleichesProfil` und `ereignisseFuerAenderung`:
+ * bereinigt, ohne Angaben ohne Wirkung (Shopsystem ohne eigenen Shop,
+ * Zollabwicklung ohne Drittlandimport), Listen als Mengen, Platzhalter der
+ * Systeme (P8) wie in der Anzeige vereinheitlicht und Beträge (P10) auf den Cent.
+ * Verglichen werden Werte, nie die gerundeten Anzeigezeilen (`profilZeilen`).
+ */
+export function vergleichsProfil(p: Geschaeftsprofil): Geschaeftsprofil {
+  const v = bereinigeProfil(p);
+  v.p1.marktplaetze = menge(v.p1.marktplaetze);
+  v.p2.lager = menge(v.p2.lager);
+  v.p3.laender = menge(v.p3.laender);
+  v.p4.warengruppen = menge(v.p4.warengruppen);
+  v.p5.laender = menge(v.p5.laender);
+  if (!v.p5.drittlandImport) v.p5.zollabwicklung = '';
+  v.p6.zahlungswege = menge(v.p6.zahlungswege);
+  v.p8.systeme = menge(
+    v.p8.systeme.map((s) => ({ art: systemArt(s), name: s.name, version: systemVersion(s) })),
+  );
+  v.p9.lokaleUstNr = menge(v.p9.lokaleUstNr);
+  v.p10 = {
+    vorjahresumsatzEur: inCent(v.p10.vorjahresumsatzEur) / 100,
+    euFernverkaeufeVorjahrEur: inCent(v.p10.euFernverkaeufeVorjahrEur) / 100,
+    euFernverkaeufeLfdEur: inCent(v.p10.euFernverkaeufeLfdEur) / 100,
+  };
+  v.p11.anbieter = menge(v.p11.anbieter);
+  return v;
+}
+
+/**
+ * Ereignistypen, die eine Profiländerung auslöst (dedupliziert, Reihenfolge P1 → P12),
+ * verglichen auf der Vergleichsform (`vergleichsProfil`).
+ */
 export function ereignisseFuerAenderung(
-  alt: Geschaeftsprofil,
-  neu: Geschaeftsprofil,
+  altEingabe: Geschaeftsprofil,
+  neuEingabe: Geschaeftsprofil,
 ): { typ: string; frage: FrageKey; stichwort?: string }[] {
+  const alt = vergleichsProfil(altEingabe);
+  const neu = vergleichsProfil(neuEingabe);
   const out: { typ: string; frage: FrageKey; stichwort?: string }[] = [];
   const add = (typ: string, frage: FrageKey, stichwort?: string) => {
     if (!out.some((o) => o.typ === typ)) out.push({ typ, frage, stichwort });
@@ -258,6 +305,12 @@ export function neuZuBewerten(
   return out;
 }
 
+/**
+ * Kein Unterschied in den Werten (Vergleichsform `vergleichsProfil`). Die
+ * Anzeigezeilen (`profilDiff`) runden und fassen zusammen; sie dienen nur der
+ * Anzeige, nie als Sperre (eine Änderung unter 1 € über die Schwelle ist eine
+ * Änderung).
+ */
 export function gleichesProfil(a: Geschaeftsprofil, b: Geschaeftsprofil): boolean {
-  return profilDiff(a, b).length === 0;
+  return inhaltGleich(vergleichsProfil(a), vergleichsProfil(b));
 }

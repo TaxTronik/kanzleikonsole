@@ -26,6 +26,7 @@ import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { getTcmsConfig, type TcmsConfig } from '@taxtronik/config/env-schema';
 import {
   AKTEUR_HEADER,
+  ENDPUNKTE,
   ENDPUNKT_LISTE,
   KontextAntwortSchema,
   KontextQuerySchema,
@@ -46,6 +47,7 @@ import {
   TcmsProtokollFehler,
   TcmsUngueltig,
 } from '../fehler';
+import { ergaenzeTestnachweise, neuerNachtrag } from './durchfuehrung-fixture';
 import { starteServer, type TestServer } from './testserver';
 
 const enabled = process.env.TCMS_CONTRACT_TESTS === '1';
@@ -290,6 +292,140 @@ async function fehlerVon(p: Promise<unknown>): Promise<TcmsFehler> {
     );
     expect(f).toBeInstanceOf(TcmsProtokollFehler);
     expect(f).toMatchObject({ grund: 'ANTWORT_ZU_GROSS' });
+  });
+
+  describe('Gesehener Stand einer Durchführung (TCMS-DIENST-001)', () => {
+    const anna = mitMandant(TALWIND);
+    const leon: TcmsAkteurAngaben = {
+      ...KANZLEI,
+      sub: 'b1000000-0000-4000-8000-000000000002',
+      nam: 'Leon Brandt',
+      rol: { adm: false, bt: false },
+      cli: { id: TALWIND, bt: false, hb: true },
+    };
+    const murat: TcmsAkteurAngaben = {
+      ...PORTAL,
+      sub: 'b1000000-0000-4000-8000-000000000012',
+      nam: 'Murat Yilmaz',
+    };
+
+    it.each([
+      [
+        'Kanzlei',
+        'K-EC-13',
+        leon,
+        ENDPUNKTE.durchfuehrungLesen,
+        ENDPUNKTE.durchfuehrungSpeichern,
+        ENDPUNKTE.nachweisAnhaengen,
+        ENDPUNKTE.durchfuehrungEinreichen,
+      ],
+      [
+        'Portal',
+        'K-EC-02',
+        murat,
+        ENDPUNKTE.portalAufgabeLesen,
+        ENDPUNKTE.portalAufgabeSpeichern,
+        ENDPUNKTE.portalAnlageAnhaengen,
+        ENDPUNKTE.portalAufgabeEinreichen,
+      ],
+    ] as const)(
+      '%s reicht nur den vollständig gesehenen Stand ein',
+      async (_kanal, code, akteur, lesen, speichern, anhaengen, einreichen) => {
+        const params = await neuerNachtrag(client, code, TALWIND, leon);
+        const ziel = { params, akteur };
+        const { daten: aufgabe } = await rufeEndpunkt(client, lesen, ziel);
+        expect(aufgabe.rechte.bearbeiten.erlaubt).toBe(true);
+        await ergaenzeTestnachweise(client, ziel, aufgabe.pruefung.mindestNachweise, anhaengen);
+        // Die erste Anlage beginnt eine geplante Aufgabe und initialisiert die Schritte.
+        const { daten: vorSpeichern } = await rufeEndpunkt(client, lesen, ziel);
+        const eingabe = {
+          schritte: vorSpeichern.schritte.map(() => ({ erledigt: true, kommentar: '' })),
+          werte: vorSpeichern.kontrolle.kennzahlen
+            .filter((k) => !k.differenzAus)
+            .map((k) => ({ key: k.key, wert: k.sollEur ?? 0, erklaert: false, bemerkung: '' })),
+          ergebnis: 'OHNE_BEFUND' as const,
+        };
+        const { daten: erster } = await rufeEndpunkt(client, speichern, {
+          ...ziel,
+          body: { ...eingabe, bisher: vorSpeichern.inhalt, ergebnisKommentar: 'Erster Stand.' },
+        });
+        expect(erster.pruefung.maengel).toEqual([]);
+        const { daten: neuer } = await rufeEndpunkt(client, speichern, {
+          ...ziel,
+          body: { ...eingabe, bisher: erster.inhalt, ergebnisKommentar: 'Ergänzter Stand.' },
+        });
+        expect(neuer.pruefung.maengel).toEqual([]);
+        expect(neuer.inhalt).not.toBe(erster.inhalt);
+
+        await expect(
+          rufeEndpunkt(client, einreichen, { ...ziel, body: { bisher: erster.inhalt } }),
+        ).rejects.toMatchObject({ status: 409, code: 'KONFLIKT' });
+        const { daten: aktuell } = await rufeEndpunkt(client, lesen, ziel);
+        expect(aktuell).toMatchObject({
+          status: 'IN_DURCHFUEHRUNG',
+          inhalt: neuer.inhalt,
+          ergebnisKommentar: 'Ergänzter Stand.',
+        });
+        const erfolg = await rufeEndpunkt(client, einreichen, {
+          ...ziel,
+          body: { bisher: aktuell.inhalt },
+        });
+        expect(erfolg).toMatchObject({ status: 200, daten: { status: 'ZUR_GEGENZEICHNUNG' } });
+        const abgeschlossen = await rufeEndpunkt(client, ENDPUNKTE.durchfuehrungGegenzeichnen, {
+          params,
+          akteur: anna,
+          body: {},
+        });
+        expect(abgeschlossen.daten.status).toBe('OHNE_BEFUND');
+      },
+    );
+
+    it('gibt nur den gesehenen Entfallen-Antrag durch eine zweite Person frei', async () => {
+      const params = await neuerNachtrag(client, 'K-EC-06', TALWIND, leon);
+      const beantragen = (begruendung: string) =>
+        rufeEndpunkt(client, ENDPUNKTE.entfallenBeantragen, {
+          params,
+          akteur: leon,
+          body: { begruendung },
+        });
+      const lesen = () =>
+        rufeEndpunkt(client, ENDPUNKTE.durchfuehrungLesen, { params, akteur: anna });
+      const freigeben = (antrag: string) =>
+        rufeEndpunkt(client, ENDPUNKTE.entfallenFreigeben, {
+          params,
+          akteur: anna,
+          body: { antrag },
+        });
+
+      await beantragen('Die geplante Kontrolle wurde im Berichtszeitraum bereits durchgeführt.');
+      const { daten: erster } = await lesen();
+      expect(erster.rechte.entfallenFreigeben.erlaubt).toBe(true);
+      expect(erster.entfallenAntrag).toMatch(/^[a-f0-9]{64}$/);
+      await rufeEndpunkt(client, ENDPUNKTE.entfallenAblehnen, { params, akteur: leon, body: {} });
+      await beantragen(
+        'Die ergänzende Kontrolle fällt aufgrund der vollständig belegten Betriebspause aus.',
+      );
+      const { daten: neuer } = await lesen();
+      expect(neuer.entfallenAntrag).toMatch(/^[a-f0-9]{64}$/);
+      expect(neuer.entfallenAntrag).not.toBe(erster.entfallenAntrag);
+
+      await expect(freigeben(erster.entfallenAntrag!)).rejects.toMatchObject({
+        status: 409,
+        code: 'KONFLIKT',
+      });
+      expect((await lesen()).daten).toMatchObject({
+        status: 'GEPLANT',
+        entfallenAntrag: neuer.entfallenAntrag,
+      });
+      expect(await freigeben(neuer.entfallenAntrag!)).toMatchObject({
+        status: 200,
+        daten: { status: 'ENTFALLEN' },
+      });
+      expect((await lesen()).daten).toMatchObject({
+        status: 'ENTFALLEN',
+        entfallenFreigegebenVon: ANNA,
+      });
+    });
   });
 
   describe('Antwort über dem Größenlimit (Testserver, nicht TCMS)', () => {

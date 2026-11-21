@@ -5,6 +5,7 @@
 // =============================================================================
 
 import type { BetriebsStand } from './bewertung';
+import { nachTag } from './kalender';
 
 /** Gespeicherter Status einer Kontrolldurchführung. */
 export type DurchfuehrungStatus =
@@ -57,43 +58,51 @@ export interface DurchfuehrungZeit {
   periodeBis: Date;
   faelligAm: Date;
   begonnenAm?: Date | null;
+  /** Letzte Einreichung (eine erneute Einreichung überschreibt sie). */
   eingereichtAm?: Date | null;
+  /**
+   * Letzte Zurückweisung; bleibt nach erneuter Einreichung stehen. `null` bei
+   * Durchführungen ohne Zurückweisung und bei Zurückweisungen, die vor der
+   * Spalte entstanden sind (dann gilt die Zurückweisung ab `eingereichtAm`).
+   */
+  zurueckgewiesenAm: Date | null;
   abgeschlossenAm?: Date | null;
   entfallenAm?: Date | null;
 }
 
 const OFFEN: readonly DurchfuehrungStatus[] = ['GEPLANT', 'IN_DURCHFUEHRUNG', 'ZURUECKGEWIESEN'];
 
-function tag(d: Date): number {
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-}
-
-/** true, wenn `a` (Tag) nach `b` (Tag) liegt. */
-export function nachTag(a: Date, b: Date): boolean {
-  return tag(a) > tag(b);
-}
-
 /**
  * Status, wie er zum Stichtag `stand` galt. Für den aktuellen Stand ist
- * `stand` = heute. Abgeschlossene Zustände gelten ab ihrem Zeitstempel.
+ * `stand` = heute. Zustände gelten ab dem Kalendertag (Europe/Berlin) ihres
+ * Zeitstempels (`kalendertagVon`).
+ *
+ * Grenze: Gespeichert sind nur die letzte Einreichung und die letzte
+ * Zurückweisung. Für Stichtage vor der letzten Zurückweisung einer erneut
+ * eingereichten Durchführung (frühere Prüfrunden) gilt der Stand vor der
+ * Einreichung (in Durchführung bzw. überfällig).
  */
 export function statusAm(d: DurchfuehrungZeit, stand: Date): AnzeigeStatus {
-  const vor = (x: Date | null | undefined) => x != null && tag(x) <= tag(stand);
+  const vor = (x: Date | null | undefined) => x != null && !nachTag(x, stand);
   if ((d.status === 'OHNE_BEFUND' || d.status === 'MIT_BEFUND') && vor(d.abgeschlossenAm)) {
     return d.status;
   }
   if (d.status === 'ENTFALLEN' && vor(d.entfallenAm)) return 'ENTFALLEN';
-  const eingereicht =
-    vor(d.eingereichtAm) &&
-    (d.status === 'ZUR_GEGENZEICHNUNG' || d.status === 'OHNE_BEFUND' || d.status === 'MIT_BEFUND');
-  if (eingereicht) return 'ZUR_GEGENZEICHNUNG';
-  if (d.status === 'ZURUECKGEWIESEN' && vor(d.eingereichtAm)) {
-    return nachTag(stand, d.faelligAm) ? 'UEBERFAELLIG' : 'ZURUECKGEWIESEN';
+  const zurueckgewiesen = () => (nachTag(stand, d.faelligAm) ? 'UEBERFAELLIG' : 'ZURUECKGEWIESEN');
+  if (d.status === 'ZURUECKGEWIESEN') {
+    // Zurückgewiesen ab der Zurückweisung, davor (ab der Einreichung) zur Gegenzeichnung.
+    if (vor(d.zurueckgewiesenAm ?? d.eingereichtAm)) return zurueckgewiesen();
+    if (vor(d.eingereichtAm)) return 'ZUR_GEGENZEICHNUNG';
   }
+  const eingereicht =
+    d.status === 'ZUR_GEGENZEICHNUNG' || d.status === 'OHNE_BEFUND' || d.status === 'MIT_BEFUND';
+  if (eingereicht && vor(d.eingereichtAm)) return 'ZUR_GEGENZEICHNUNG';
+  // Erneut eingereicht: zwischen Zurückweisung und erneuter Einreichung zurückgewiesen.
+  if (eingereicht && vor(d.zurueckgewiesenAm)) return zurueckgewiesen();
   if (nachTag(stand, d.faelligAm)) return 'UEBERFAELLIG';
   const begonnen = vor(d.begonnenAm) && d.status !== 'GEPLANT';
   if (begonnen) return 'IN_DURCHFUEHRUNG';
-  return tag(stand) >= tag(d.periodeBis) ? 'FAELLIG' : 'GEPLANT';
+  return nachTag(d.periodeBis, stand) ? 'GEPLANT' : 'FAELLIG';
 }
 
 export function istOffen(s: AnzeigeStatus): boolean {
@@ -106,24 +115,50 @@ export function istAbgeschlossen(s: AnzeigeStatus): boolean {
   return s === 'OHNE_BEFUND' || s === 'MIT_BEFUND';
 }
 
-/** Tage zwischen zwei Daten (Kalendertage, b − a). */
-export function tageZwischen(a: Date, b: Date): number {
-  return Math.round((tag(b) - tag(a)) / 86_400_000);
+/** Durchführung mit den Feldern, die ihre Reihenfolge im Betriebsstand festlegen. */
+export interface DurchfuehrungImBetrieb extends DurchfuehrungZeit {
+  id: string;
+  periodeVon: Date;
+  /** Durchführung, die dieser Nachtrag korrigiert (AGENTS.md Regel 3), sonst `null`. */
+  nachtragZuId: string | null;
+  /** Zeitpunkt der Anlage. */
+  angelegtAm: Date;
 }
 
 /**
  * Betriebsstand einer Kontrolle für Netto (Betrieb): maßgeblich ist die
  * jüngste Durchführung, die entweder abgeschlossen oder überfällig ist.
  * Eingereichte, noch nicht fällige Durchführungen werden übersprungen.
+ * „Jüngste" = späteste Periode; in derselben Periode geht ein Nachtrag seinem
+ * Original vor (Korrektur, AGENTS.md Regel 3; auch Nachträge zu Nachträgen),
+ * danach die zuletzt angelegte, zuletzt die ID – das Ergebnis hängt nie von der
+ * Reihenfolge der Eingabe ab.
  */
 export function betriebsStand(
-  durchfuehrungen: readonly (DurchfuehrungZeit & { periodeVon: Date })[],
+  durchfuehrungen: readonly DurchfuehrungImBetrieb[],
   stand: Date,
 ): BetriebsStand {
+  const jeId = new Map(durchfuehrungen.map((d) => [d.id, d]));
+  /** Zahl der Nachtragsstufen bis zum Original (begrenzt, falls Daten einen Kreis bilden). */
+  const stufe = (d: DurchfuehrungImBetrieb): number => {
+    let n = 0;
+    for (let x = d; x.nachtragZuId && n < jeId.size; n++) {
+      const original = jeId.get(x.nachtragZuId);
+      if (!original) return n + 1;
+      x = original;
+    }
+    return n;
+  };
   const relevante = durchfuehrungen
-    .map((d) => ({ d, s: statusAm(d, stand) }))
+    .map((d) => ({ d, s: statusAm(d, stand), stufe: stufe(d) }))
     .filter(({ s }) => s === 'OHNE_BEFUND' || s === 'MIT_BEFUND' || s === 'UEBERFAELLIG')
-    .sort((a, b) => b.d.periodeVon.getTime() - a.d.periodeVon.getTime());
+    .sort(
+      (a, b) =>
+        b.d.periodeVon.getTime() - a.d.periodeVon.getTime() ||
+        b.stufe - a.stufe ||
+        b.d.angelegtAm.getTime() - a.d.angelegtAm.getTime() ||
+        (a.d.id < b.d.id ? 1 : a.d.id > b.d.id ? -1 : 0),
+    );
   const letzte = relevante[0];
   if (!letzte) return 'KEINE';
   if (letzte.s === 'OHNE_BEFUND') return 'OK';
@@ -215,6 +250,36 @@ export const P153_LABEL: Record<Paragraph153Entscheidung, string> = {
 
 export function p153Erforderlich(a: Auswirkung): boolean {
   return a === 'JA' || a === 'UNKLAR';
+}
+
+/** Eine Entscheidung „weitere Klärung" ist nicht abschließend und erlaubt eine Folgeentscheidung. */
+export function p153Abschliessend(e: string | null | undefined): boolean {
+  return e != null && e !== 'WEITERE_KLAERUNG';
+}
+
+/**
+ * §-153-Würdigung offen zum Stichtag `ende`: Steuerwirkung nicht
+ * ausgeschlossen, nicht verworfen und bis zum Stichtag keine abschließende
+ * Entscheidung („weitere Klärung" lässt sie offen). Eine abschließende
+ * Entscheidung ist endgültig; liegt sie nach dem Stichtag, war die Würdigung
+ * zum Stichtag offen. Einzige Regel für Listen, Kontext, Länder-Monitor und
+ * Arbeitskorb (wie `naechsterFeststellungsschritt`).
+ */
+export function p153Offen(
+  f: {
+    auswirkung: Auswirkung;
+    status: FeststellungStatus;
+    p153Entscheidung: string | null;
+    p153EntschiedenAm: Date | null;
+  },
+  ende: Date,
+): boolean {
+  if (!p153Erforderlich(f.auswirkung) || f.status === 'VERWORFEN') return false;
+  const abschliessend =
+    p153Abschliessend(f.p153Entscheidung) &&
+    f.p153EntschiedenAm != null &&
+    f.p153EntschiedenAm.getTime() <= ende.getTime();
+  return !abschliessend;
 }
 
 export interface FeststellungFakten {

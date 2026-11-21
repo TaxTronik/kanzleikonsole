@@ -232,11 +232,20 @@ describe('Weiterschalten, Verwerfen, Vertraulichkeit', () => {
       params: { feststellungId: FID },
       body: { begruendung: BEGRUENDUNG },
     });
-    await aktionen.verwerfenBestaetigenAction(MANDANT, FID, null, formular([]));
+    await aktionen.verwerfenBestaetigenAction(
+      MANDANT,
+      FID,
+      null,
+      formular([
+        ['antragId', MANDANT],
+        ['auswirkung', 'UNKLAR'],
+      ]),
+    );
     expect(spec().keinRecht).toBe('VERWERFEN_BESTAETIGEN');
     d = dienst({ id: FID, nummer: 'F', status: 'VERWORFEN' });
-    await spec().aufruf(d, undefined, undefined);
+    await spec().aufruf(d, geparst(), undefined);
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.feststellungVerwerfenBestaetigen, {
+      body: { antragId: MANDANT, auswirkung: 'UNKLAR' },
       params: { feststellungId: FID },
     });
     await aktionen.verwerfenAblehnenAction(MANDANT, FID, null, formular([]));

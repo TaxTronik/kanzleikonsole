@@ -80,6 +80,21 @@
       "groupName": "Container-Images"
     },
     {
+      "description": "Den Patch der installierten ClamAV-Linie auch dann ermitteln, wenn gleichzeitig ein Minor-Upgrade verfügbar ist.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["clamav/clamav"],
+      "separateMinorPatch": true
+    },
+    {
+      "description": "ClamAV-Patches und Neubauten der eingesetzten Engine-Linie täglich als eigenen PR anbieten.",
+      "matchDatasources": ["docker"],
+      "matchPackageNames": ["clamav/clamav"],
+      "matchUpdateTypes": ["patch", "digest"],
+      "schedule": ["at any time"],
+      "groupName": "ClamAV",
+      "prPriority": 20
+    },
+    {
       "description": "Major-Updates nur nach Freigabe im Dependency Dashboard (z. B. actions/upload-artifact v3: Forgejo-Artefakt-Protokoll prüfen).",
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true

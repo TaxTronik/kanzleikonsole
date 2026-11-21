@@ -51,7 +51,7 @@ services:
   tcms-db:
     <<: [*hardening, *logging]
     # Dasselbe digest-gepinnte Image wie die kanzleikonsole-Datenbank.
-    image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+    image: postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0
     container_name: taxtronik-tcms-db
     restart: unless-stopped
     profiles: ['tcms']

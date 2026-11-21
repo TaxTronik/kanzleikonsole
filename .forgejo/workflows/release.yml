@@ -174,29 +174,7 @@ jobs:
       # digest-gepinnten Image kopiert und direkt im Job ausgefuehrt. `docker cp`
       # streamt auch bei einem entfernten DOCKER_HOST sicher zum Job-Dateisystem.
       - name: Digest-gepinnten Trivy-Scanner bereitstellen
-        env:
-          TRIVY_IMAGE: aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015
-        run: |
-          set -euo pipefail
-          TRIVY_BIN="$RUNNER_TEMP/trivy"
-          TRIVY_CONTAINER="$(docker create "$TRIVY_IMAGE")"
-          trap 'docker rm -f "$TRIVY_CONTAINER" >/dev/null 2>&1 || true' EXIT
-          docker cp "$TRIVY_CONTAINER:/usr/local/bin/trivy" "$TRIVY_BIN"
-          chmod 0755 "$TRIVY_BIN"
-          docker rm "$TRIVY_CONTAINER" >/dev/null
-          trap - EXIT
-
-          if [ -n "${DOCKER_HOST:-}" ]; then
-            TRIVY_DOCKER_HOST="$DOCKER_HOST"
-          else
-            TRIVY_DOCKER_HOST="$(docker context inspect "$(docker context show)" --format '{{.Endpoints.docker.Host}}')"
-          fi
-          test -n "$TRIVY_DOCKER_HOST"
-          "$TRIVY_BIN" --version
-          {
-            echo "TRIVY_BIN=$TRIVY_BIN"
-            echo "TRIVY_DOCKER_HOST=$TRIVY_DOCKER_HOST"
-          } >> "$GITHUB_ENV"
+        run: bash scripts/ci/setup-trivy.sh
 
       # push: false + load: true — die Release-Images werden erst nach dem
       # Trivy-Gate publiziert. Dieser Job beginnt erst nach allen Same-run-Gates.

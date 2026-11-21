@@ -25,6 +25,7 @@ import {
   ENDPUNKTE,
   parseJsonStrikt,
   REVIEW_MIN_BEGRUENDUNG,
+  ReviewAbschliessenBodySchema,
 } from '@taxtronik/tcms-contract';
 import { BAUSTEIN_LABEL, type BausteinArt } from '@taxtronik/tcms-domain';
 import type { TcmsAktionsErgebnis } from '@/components/tcms/programm/dialog';
@@ -210,10 +211,12 @@ export async function reviewAbschliessenAction(
     mandantId,
     // 403 hier: Vier-Augen-Prinzip (letzte Bearbeitung) oder fehlendes Recht.
     keinRecht: 'VIER_AUGEN',
-    parse: () => parseFormData(VersionFormular, formData),
-    aufruf: async (dienst, { versionId }) => {
+    parse: () =>
+      parseFormData(VersionFormular.extend(ReviewAbschliessenBodySchema.shape), formData),
+    aufruf: async (dienst, { versionId, abschnitteSha256 }) => {
       const { daten } = await dienst.rufe(ENDPUNKTE.beschreibungsreviewAbschliessen, {
         params: { versionId },
+        body: { abschnitteSha256 },
       });
       return { meldung: `Kanzlei-Review für Version ${daten.nummer} abgeschlossen.` };
     },

@@ -11,7 +11,7 @@
 // Oberfläche rechnet nichts nach. „Weiter“ prüft den Schritt im Dienst.
 // =============================================================================
 
-import { useActionState, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import {
   ArrowLeft,
   CheckCheck,
@@ -51,7 +51,7 @@ import {
   type ProfilPerson,
 } from '@/components/tcms/programm/profil-formular';
 import { profilFeldBezeichnung } from '@/components/tcms/programm/profil-fehler';
-import { confirmFormSubmission } from '@/components/ui/modal';
+import { useTcmsFormular } from '@/components/tcms/formular';
 import { einrichtungSpeichernAction } from './actions';
 import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
 import {
@@ -66,6 +66,7 @@ export interface Person {
 }
 
 interface Basis {
+  gesehen: number;
   mandantId: string;
   /** Bearbeitungsrecht laut Dienst (`darfBearbeiten`). */
   darf: boolean;
@@ -210,6 +211,7 @@ const ANLEGEN_TEXT =
   'Version 1 wird mit Risiken, Kontrollen und geplanten Durchführungen angelegt. Danach ist der Assistent geschlossen; Änderungen erfolgen in Profil, Risiken und Kontrollen.';
 
 function SchrittFormular({
+  gesehen,
   mandantId,
   darf,
   gesperrtGrund,
@@ -227,24 +229,25 @@ function SchrittFormular({
   fieldIds?: Record<string, string>;
   children: (fieldErrors: Record<string, string[]> | undefined) => ReactNode;
 }) {
-  const [ergebnis, aktion, laeuft] = useActionState<TcmsAktionsErgebnis | null, FormData>(
+  const { ergebnis, laeuft, formular } = useTcmsFormular(
     einrichtungSpeichernAction.bind(null, mandantId),
-    null,
+    {
+      zuruecksetzen: false,
+      bestaetigung: (submitter) =>
+        submitter instanceof HTMLButtonElement && submitter.value === 'anlegen'
+          ? {
+              text: ANLEGEN_TEXT,
+              titel: 'Tax-CMS Version 1 anlegen?',
+              bestaetigen: 'Version 1 anlegen',
+            }
+          : null,
+    },
   );
   const fieldErrors = ergebnis && !ergebnis.ok ? ergebnis.fieldErrors : undefined;
 
-  function bestaetigen(event: FormEvent<HTMLFormElement>) {
-    const submitter = (event.nativeEvent as SubmitEvent).submitter;
-    if (submitter instanceof HTMLButtonElement && submitter.value === 'anlegen') {
-      confirmFormSubmission(event, ANLEGEN_TEXT, {
-        title: 'Tax-CMS Version 1 anlegen?',
-        confirmLabel: 'Version 1 anlegen',
-      });
-    }
-  }
-
   return (
-    <form action={aktion} onSubmit={bestaetigen} aria-busy={laeuft || undefined}>
+    <form {...formular}>
+      <input type="hidden" name="gesehen" value={gesehen} />
       <input type="hidden" name="schritt" value={schritt} />
       <input type="hidden" name="daten" value={JSON.stringify(daten)} />
       <SchrittMeldung ergebnis={ergebnis} labels={labels} fieldIds={fieldIds} />

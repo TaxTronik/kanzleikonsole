@@ -313,6 +313,7 @@ describe('tcmsPortalAktion', () => {
       aufruf: async (dienst) => {
         await dienst.rufe(ENDPUNKTE.portalAufgabeEinreichen, {
           params: { durchfuehrungId: 'd1' },
+          body: { bisher: 'a'.repeat(64) },
         });
         return { eingereicht: true };
       },
@@ -329,6 +330,7 @@ describe('tcmsPortalAktion', () => {
     ]);
     expect(m.rufe.mock.calls[0]![2]).toEqual({
       params: { durchfuehrungId: 'd1', mandantId: MANDANT },
+      body: { bisher: 'a'.repeat(64) },
       akteur: PORTAL_AKTEUR,
     });
   });

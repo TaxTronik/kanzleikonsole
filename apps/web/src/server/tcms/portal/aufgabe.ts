@@ -23,7 +23,7 @@ export const BETRAG_FORMAT = 'Bitte einen Betrag im Format 1.234,56 angeben.';
 export function koerperAusFormular(
   a: Pick<Kontrollaufgabe, 'schritte' | 'kontrolle'>,
   f: AufgabeFormular,
-): { ok: true; body: SpeichernBody } | ActionFailure {
+): { ok: true; body: Omit<SpeichernBody, 'bisher'> } | ActionFailure {
   const fieldErrors: Record<string, string[]> = {};
   // Freitexte: Basisregel des Vertrags (TCMS s8) als Feldfehler, nie still geändert.
   const freitext = (feld: string): string => {

@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { z } from 'zod';
+import { einzeilig } from './zeichen';
 
 export const AKTEUR_HEADER = 'x-tcms-akteur';
 export const AKTEUR_TYP = 'tcms-akteur+jwt';
@@ -32,6 +33,30 @@ export const AKTEUR_ARTEN = ['KANZLEI', 'MANDANT', 'SYSTEM'] as const;
 export type AkteurArt = (typeof AKTEUR_ARTEN)[number];
 
 const uuid = z.uuid();
+/** Nil-UUID: als Tenant nie gültig (wie `pruefeTenantId` in `@tcms/db`). */
+const NIL_UUID = '00000000-0000-0000-0000-000000000000';
+/**
+ * Tenant der Bestätigung: UUID, aber nie die Nil-UUID (typischer Standardwert
+ * eines nicht gesetzten Tenants). Der Dienst nimmt sie nie an (`mitTenant`);
+ * ohne diese Regel verbrauchte sie die `jti` und endete erst dort als
+ * `500 INTERN` statt `401`, und `signiereAkteur` erzeugte ein Token, das der
+ * Dienst abweisen muss.
+ */
+const TenantSchema = uuid.refine((s) => s !== NIL_UUID, 'Nil-UUID ist kein Tenant');
+
+/**
+ * Anzeigename des Akteurs (`nam`): 1–200 Zeichen mit derselben Zeichenregel
+ * wie jeder einzeilige Name einer Eingabe (`einzeilig`). Er steht als
+ * `actorName` im Audit (Hashkette, Inhalt mit Beweiswert) und im Rückfalltext
+ * von Nachrichten: kein Zeilenumbruch, keine Richtungs-, Steuer- oder
+ * unsichtbaren Zeichen, kein einzelnes Surrogat (das der Treiber als U+FFFD
+ * speicherte – der gespeicherte Eintrag passte dann nicht mehr zu seinem Hash).
+ * `signiereAkteur` und `pruefeAkteur` weisen gleich ab (`CLAIMS`), der Dienst
+ * prüft den Namen jedes Akteurs zusätzlich mit demselben Schema
+ * (`normalisiereAkteur`).
+ */
+export const AkteurNameSchema = einzeilig(1, 200);
+
 const base64url = (min: number, max: number) =>
   z
     .string()
@@ -69,10 +94,10 @@ export const AkteurClaimsSchema = z
     iat: z.number().int().positive(),
     exp: z.number().int().positive(),
     jti: base64url(22, 64),
-    tnt: uuid,
+    tnt: TenantSchema,
     sub: uuid,
     knd: z.enum(AKTEUR_ARTEN),
-    nam: z.string().trim().min(1).max(200),
+    nam: AkteurNameSchema,
     rol: z.object({ adm: z.boolean(), bt: z.boolean() }).strict().optional(),
     cli: z.object({ id: uuid, bt: z.boolean(), hb: z.boolean() }).strict().optional(),
     req: AnfrageBindungSchema,

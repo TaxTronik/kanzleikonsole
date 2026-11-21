@@ -83,7 +83,8 @@
         "empfaengerId": "b1000000-0000-4000-8000-000000000011",
         "anmerkung": null,
         "erledigtAm": null,
-        "zustellung": null
+        "zustellung": null,
+        "ueberholt": false
       }
     ]
   },

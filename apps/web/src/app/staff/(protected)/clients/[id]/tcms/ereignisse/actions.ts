@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { TcmsNichtGefunden } from '@taxtronik/tcms-client';
 import {
   ENDPUNKTE,
+  EreignisVerwerfenBestaetigenBodySchema,
   EreignisErfassenBodySchema,
   FolgeAnlegenSchema,
   FolgeHinzufuegenBodySchema,
@@ -349,19 +350,26 @@ export async function ereignisVerwerfenBestaetigenAction(
   mandantId: string,
   ereignisId: string,
   _vorher: Ergebnis | null,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<Ergebnis> {
   return tcmsKanzleiAktion({
     mandantId,
     // Vier-Augen: Ablehnung des Dienstes (dieselbe Person) mit festem Text.
     keinRecht: 'VIER_AUGEN',
-    parse: () => ids(Ids, { ereignisId }),
+    parse: () => {
+      const ziel = ids(Ids, { ereignisId });
+      if (!ziel.ok) return ziel;
+      return parseFormData(z.object(EreignisVerwerfenBestaetigenBodySchema.shape), formData);
+    },
     vorbereiten: async (_tx, k) => k.g.ctx,
-    aufruf: async (dienst, p, ctx) => {
-      const { daten: r } = await dienst.rufe(ENDPUNKTE.ereignisVerwerfenBestaetigen, { params: p });
+    aufruf: async (dienst, body, ctx) => {
+      const { daten: r } = await dienst.rufe(ENDPUNKTE.ereignisVerwerfenBestaetigen, {
+        params: { ereignisId },
+        body,
+      });
       // Anlagen einer Portal-Meldung erst nach der eindeutigen Antwort freigeben
       // (TCMS-NACHWEIS-001); der Mandant ist der gebundene der Aktion.
-      await meldungsAnlagenNachVerwerfen(ctx, { mandantId, ereignisId: p.ereignisId }, r);
+      await meldungsAnlagenNachVerwerfen(ctx, { mandantId, ereignisId: ereignisId }, r);
       return { meldung: `Ereignis ${r.nummer} verworfen.` };
     },
   });

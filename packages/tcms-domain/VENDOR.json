@@ -3,7 +3,7 @@
   "quelle": {
     "repo": "tcms",
     "pfad": "packages/domain/src",
-    "commit": "2cafc99667f0b49c6c98caf50bddabe7f7ab1c6a"
+    "commit": "de4c489e1f3a7c6f345734b2e416263a37405213"
   },
   "dateien": [
     {
@@ -16,11 +16,11 @@
     },
     {
       "pfad": "format.ts",
-      "sha256": "9dd15f09eba26dd13f9d364eaff1ca72573ee7969cc41f82298d2f9f4eeefc28"
+      "sha256": "bfe94a66ffd96560171008aa707cb65712812a5dabb2026362d2a8d9adf1a53b"
     },
     {
       "pfad": "frequenz.ts",
-      "sha256": "5e025ba0287be3ab61b47546a11c3f41c6066719e585f9d4995414309a488047"
+      "sha256": "82e45ee8ea426e33e1f6948f9a110711dc19c816c69cf4d3345146060a355e26"
     },
     {
       "pfad": "grundelemente.ts",
@@ -28,7 +28,11 @@
     },
     {
       "pfad": "index.ts",
-      "sha256": "cb65f32e1908adde3ecc7a50cfced0fd770796dde6c860895347e4b8579429a6"
+      "sha256": "d11d7b9452c1a11031a0f7f88390eafbdc342928d13a9069caea8e075560457a"
+    },
+    {
+      "pfad": "kalender.ts",
+      "sha256": "56032ec99f6b8316079f84ffe216c1097883ddee127feebab613acd9f72b4578"
     },
     {
       "pfad": "katalog/ereignisse.ts",
@@ -51,16 +55,20 @@
       "sha256": "444463e49ade82db029ad02ff79ff659d479cb494f51ec77b966e5b4e039ba12"
     },
     {
+      "pfad": "kennzahlen.ts",
+      "sha256": "03ffd872429d2cbb16aded3244404b9d6e7ce4f063069e5726c0cdcb2edd66e2"
+    },
+    {
       "pfad": "perioden.ts",
-      "sha256": "e417af09cac2a75bcd1e1666cb8754148370e3907eae5077db8f415d6da435f7"
+      "sha256": "0e705315ab8829422d66ce1492bb38e0e0f95200dcff43e553c030816cfd7388"
     },
     {
       "pfad": "phasen.ts",
-      "sha256": "ae030d234aee79200f796d3b5fac335564ffc9540b12b17b19136078455d3ae8"
+      "sha256": "ddce95c7b950a18b20119132a521298ccaf47f4ad6b1d1061459d5b12eb5b62a"
     },
     {
       "pfad": "profil-regeln.ts",
-      "sha256": "92220fd8ad962f5d7ddedd720bf0e00c1e18ed742444302f2a52f0a2c54cff65"
+      "sha256": "d6392f0eed4089c9a0b6ff2f87f05b6a590ff466514c8050d74117f2923a69d3"
     },
     {
       "pfad": "prueflast.ts",
@@ -68,11 +76,11 @@
     },
     {
       "pfad": "schwelle.ts",
-      "sha256": "d9e6fbd3f51c12cd32154f4856eb5b42e891310e0fe65164d5e43cfcff7b4cdc"
+      "sha256": "bf26edfd7b5513ecccc6918a17dd10ca2120224f7c1e5f6a477f3f7f7d17a79a"
     },
     {
       "pfad": "status.ts",
-      "sha256": "0fca001caa73027e4afdecfa4808a438e03816febceae27494241464c18c7b68"
+      "sha256": "c448ef5168676be55108b6fb04760c2cfeccecf74a3c62acf020a9c93ec608a6"
     },
     {
       "pfad": "types.ts",

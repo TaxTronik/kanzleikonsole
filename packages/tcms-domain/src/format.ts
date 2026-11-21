@@ -1,4 +1,8 @@
-// Formatierung in de-DE (ohne Zeitzonen-Überraschungen: Daten sind UTC-Tage).
+// Formatierung in de-DE. Datumsangaben nennen den Kalendertag (Europe/Berlin,
+// `kalendertagVon`): Kalendertage (UTC-Mitternacht) bleiben derselbe Tag,
+// Zeitpunkte zählen zu dem Berliner Tag, an dem sie liegen.
+
+import { kalendertag, kalendertagVon, ZEITZONE } from './kalender';
 
 const EUR = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' });
 const EUR_GANZ = new Intl.NumberFormat('de-DE', {
@@ -7,6 +11,14 @@ const EUR_GANZ = new Intl.NumberFormat('de-DE', {
   maximumFractionDigits: 0,
 });
 const ZAHL = new Intl.NumberFormat('de-DE');
+const DATUM_ZEIT = new Intl.DateTimeFormat('de-DE', {
+  timeZone: ZEITZONE,
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
 
 export function fmtEur(n: number | null | undefined): string {
   return n == null ? '—' : EUR.format(n);
@@ -26,25 +38,19 @@ function p2(n: number): string {
 
 export function fmtDatum(d: Date | null | undefined): string {
   if (!d) return '—';
-  return `${p2(d.getUTCDate())}.${p2(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}`;
+  const t = kalendertagVon(d);
+  return `${p2(t.getUTCDate())}.${p2(t.getUTCMonth() + 1)}.${t.getUTCFullYear()}`;
 }
 
 export function fmtDatumKurz(d: Date | null | undefined): string {
   if (!d) return '—';
-  return `${p2(d.getUTCDate())}.${p2(d.getUTCMonth() + 1)}.`;
+  const t = kalendertagVon(d);
+  return `${p2(t.getUTCDate())}.${p2(t.getUTCMonth() + 1)}.`;
 }
 
 /** Zeitstempel in Europe/Berlin. */
 export function fmtDatumZeit(d: Date | null | undefined): string {
-  if (!d) return '—';
-  return new Intl.DateTimeFormat('de-DE', {
-    timeZone: 'Europe/Berlin',
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(d);
+  return d ? DATUM_ZEIT.format(d) : '—';
 }
 
 export function fmtMonatJahr(seit: string | null | undefined): string {
@@ -53,8 +59,9 @@ export function fmtMonatJahr(seit: string | null | undefined): string {
   return m && j ? `${m}/${j}` : seit;
 }
 
+/** Kalendertag (Europe/Berlin) als `YYYY-MM-DD`. */
 export function isoDatum(d: Date): string {
-  return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`;
+  return kalendertag(d);
 }
 
 export function kurzHash(hash: string): string {

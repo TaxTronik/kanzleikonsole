@@ -21,7 +21,7 @@ export {
   type TcmsMethode,
 } from './client';
 export type { TcmsErgebnis } from './antwort';
-export { rufeEndpunkt, type TcmsEndpunktEingabe } from './endpunkt';
+export { rufeEndpunkt, type TcmsBody, type TcmsEndpunktEingabe } from './endpunkt';
 export {
   holeOffeneNachrichten,
   meldeNachrichtUnzustellbar,

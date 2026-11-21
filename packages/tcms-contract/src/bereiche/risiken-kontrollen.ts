@@ -42,7 +42,7 @@ const MAX_BEGRUENDUNG_ZEICHEN = 2000;
 export const MAX_RISIKEN_JE_SCHRITT = 200;
 
 const mandantId = z.uuid();
-/** ID eines Tax-CMS-Objekts (cuid). Nur harmlose Zeichen, begrenzte Länge. */
+/** ID eines Tax-CMS-Objekts (cuid2, ältere cuid v1). Nur harmlose Zeichen, begrenzte Länge. */
 const ObjektIdSchema = z
   .string()
   .min(1)
@@ -163,6 +163,13 @@ export const UebersteuerungEntscheidenSchema = z
   .strict()
   .superRefine(ablehnungBegruendet);
 
+/** Hebt eine freigegebene Übersteuerung auf; danach gilt der berechnete Wert (Regel 2). */
+const uebersteuerungAufheben = { begruendung: BegruendungSchema };
+export const UebersteuerungAufhebenBodySchema = z.object(uebersteuerungAufheben).strict();
+export const UebersteuerungAufhebenSchema = z
+  .object({ mandantId, uebersteuerungId: ObjektIdSchema, ...uebersteuerungAufheben })
+  .strict();
+
 /** Risiken zur Freigabe einreichen bzw. freigeben (Auswahl, ohne Dubletten). */
 const freigabeSchritt = {
   risikoIds: z
@@ -173,6 +180,24 @@ const freigabeSchritt = {
 };
 export const RisikenFreigabeSchrittBodySchema = z.object(freigabeSchritt).strict();
 export const RisikenFreigabeSchrittSchema = z.object({ mandantId, ...freigabeSchritt }).strict();
+
+/**
+ * Freigeben: je Risiko der gesehene Risikostand (TS-05, Befund 20). Die zweite
+ * Person gibt nur die Bewertung frei, die sie gesehen hat; ist inzwischen ein
+ * anderer Stand gültig, überspringt der Dienst das Risiko.
+ */
+const freigeben = {
+  risiken: z
+    .array(z.object({ risikoId: ObjektIdSchema, standId }).strict())
+    .min(1)
+    .max(MAX_RISIKEN_JE_SCHRITT)
+    .refine(
+      (rs) => new Set(rs.map((r) => r.risikoId)).size === rs.length,
+      'Risiko doppelt ausgewählt',
+    ),
+};
+export const RisikenFreigebenBodySchema = z.object(freigeben).strict();
+export const RisikenFreigebenSchema = z.object({ mandantId, ...freigeben }).strict();
 
 const zurueckweisen = { begruendung: BegruendungSchema };
 export const RisikoZurueckweisenBodySchema = z.object(zurueckweisen).strict();
@@ -442,7 +467,9 @@ export type RisikoNeuBewerten = z.infer<typeof RisikoNeuBewertenSchema>;
 export type RisikoBestaetigen = z.infer<typeof RisikoBestaetigenSchema>;
 export type UebersteuerungBeantragen = z.infer<typeof UebersteuerungBeantragenSchema>;
 export type UebersteuerungEntscheiden = z.infer<typeof UebersteuerungEntscheidenSchema>;
+export type UebersteuerungAufheben = z.infer<typeof UebersteuerungAufhebenSchema>;
 export type RisikenFreigabeSchritt = z.infer<typeof RisikenFreigabeSchrittSchema>;
+export type RisikenFreigeben = z.infer<typeof RisikenFreigebenSchema>;
 export type RisikoZurueckweisen = z.infer<typeof RisikoZurueckweisenSchema>;
 export type RisikoakzeptanzAnfordern = z.infer<typeof RisikoakzeptanzAnfordernSchema>;
 export type DesignBeurteilen = z.infer<typeof DesignBeurteilenSchema>;
@@ -560,6 +587,14 @@ export const UebersteuerungEintragSchema = z
     beantragtAm: zeitpunkt,
     entschiedenVon: personRef,
     entschiedenAm: zeitpunkt.nullable(),
+    aufgehobenVon: personRef,
+    aufgehobenAm: zeitpunkt.nullable(),
+    /**
+     * Freigegeben, aber gegen einen anderen berechneten Wert als den heutigen
+     * (Neubewertung, Designbeurteilung, Betrieb der Kontrollen): nicht wirksam,
+     * es gilt der berechnete Wert (Befund 4).
+     */
+    ueberholt: z.boolean(),
   })
   .strict();
 
@@ -583,6 +618,11 @@ export const RisikoakzeptanzEintragSchema = z
     empfaengerId: z.string(),
     anmerkung: z.string().nullable(),
     erledigtAm: zeitpunkt.nullable(),
+    /**
+     * Erteilt vor der heute gültigen Bewertung des Risikos: Die Akzeptanz galt
+     * laut Text nur bis zur nächsten Neubewertung (Befund 61).
+     */
+    ueberholt: z.boolean(),
     /** Zustellung der jüngsten Nachricht an den aktuellen Empfänger (historisch: null). */
     zustellung: FreigabeZustellungSchema.nullable(),
   })
@@ -721,6 +761,14 @@ export const UebersteuerungEntschiedenSchema = z
     uebersteuerungId: z.string(),
     risikoId: z.string(),
     status: z.enum(['FREIGEGEBEN', 'ABGELEHNT']),
+  })
+  .strict();
+
+export const UebersteuerungAufgehobenSchema = z
+  .object({
+    uebersteuerungId: z.string(),
+    risikoId: z.string(),
+    status: z.literal('AUFGEHOBEN'),
   })
   .strict();
 
@@ -1022,6 +1070,7 @@ export type RisikoDetail = z.infer<typeof RisikoDetailSchema>;
 export type NeuBewertungErgebnis = z.infer<typeof NeuBewertungErgebnisSchema>;
 export type UebersteuerungBeantragt = z.infer<typeof UebersteuerungBeantragtSchema>;
 export type UebersteuerungEntschieden = z.infer<typeof UebersteuerungEntschiedenSchema>;
+export type UebersteuerungAufgehoben = z.infer<typeof UebersteuerungAufgehobenSchema>;
 export type FreigabeSchrittErgebnis = z.infer<typeof FreigabeSchrittErgebnisSchema>;
 export type RisikoZurueckgewiesen = z.infer<typeof RisikoZurueckgewiesenSchema>;
 export type RisikoakzeptanzAngefordert = z.infer<typeof RisikoakzeptanzAngefordertSchema>;

@@ -420,6 +420,17 @@ describe('Risikoinventar – Detail', () => {
     expect(knopf.title).toBe(KEIN_EMPFAENGER_MIT_PORTALZUGANG);
   });
 
+  it('TCMS-DIENST-001: überholte Freigaben gelten nicht für die aktuelle Bewertung', async () => {
+    const d = tcmsFixtures.risikoEcUst02();
+    d.risiko.uebersteuerungen[0]!.ueberholt = true;
+    liste.risiken.find((r) => r.id === d.risiko.id)!.uebersteuerungen[0]!.ueberholt = true;
+    antworten({ detail: { [d.risiko.id]: ok(d) } });
+    await renderServer(TcmsRisikenPage(mit({ risiko: d.risiko.id })));
+    const region = screen.getByRole('region', { name: /^EC-UST-02 · / });
+    expect(within(region).getByText('überholt')).toBeTruthy();
+    expect(within(region).queryByText('gilt')).toBeNull();
+  });
+
   it('offene Akzeptanz: kein zweites Anfordern, Grund mit Namen aus der kanzleikonsole', async () => {
     await renderServer(TcmsRisikenPage(mit({ risiko: idVon('EC-VER-01') })));
     const detail = screen.getByRole('region', { name: /^EC-VER-01 · / });

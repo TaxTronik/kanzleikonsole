@@ -79,7 +79,10 @@
         "beantragtVon": "b1000000-0000-4000-8000-000000000001",
         "beantragtAm": "2026-10-19T13:04:41.548Z",
         "entschiedenVon": null,
-        "entschiedenAm": null
+        "entschiedenAm": null,
+        "aufgehobenVon": null,
+        "aufgehobenAm": null,
+        "ueberholt": false
       }
     ],
     "offeneEreignisse": 0,

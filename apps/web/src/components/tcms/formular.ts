@@ -12,10 +12,10 @@
 //   - zurückgesetzt wird nur nach Erfolg und nur mit `zuruecksetzen`
 //     (Standard; Formulare, die nach Erfolg schließen oder weiterleiten,
 //     schalten es ab);
-//   - eine laufende Übermittlung wird nicht wiederholt (Doppelklick);
+//   - eine offene Rückfrage und die laufende Übermittlung blockieren Doppelklicks;
 //   - optional fragt der Gefahrendialog der kanzleikonsole vorher nach
 //     (`bestaetigung`, auch abhängig vom auslösenden Knopf);
-//   - `nachLesen(form)` läuft direkt nach dem Lesen der Formulardaten (z. B. ein
+//   - `nachLesen(form)` läuft unmittelbar vor dem Senden (z. B. ein
 //     Codefeld leeren, damit der Wert nicht im Formular stehen bleibt).
 // `action` bleibt am Formular, damit die Server Action ohne JavaScript per POST
 // erreichbar ist.
@@ -76,10 +76,10 @@ export function useTcmsFormular<E extends TcmsAktionsErgebnis = TcmsAktionsErgeb
     if (unterwegs.current) return;
     const form = event.currentTarget;
     const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    // Snapshot vor der Rückfrage: ein Refresh kann Anträge und Formularwerte ersetzen.
+    const formData = formDataWithSubmitter(form, submitter);
+    unterwegs.current = true;
     const senden = () => {
-      if (unterwegs.current) return;
-      unterwegs.current = true;
-      const formData = formDataWithSubmitter(form, submitter);
       optionen.nachLesen?.(form);
       startTransition(() => ausfuehren(formData));
     };
@@ -97,6 +97,7 @@ export function useTcmsFormular<E extends TcmsAktionsErgebnis = TcmsAktionsErgeb
       danger: b.gefahr ?? false,
     }).then((ok) => {
       if (ok && form.isConnected) senden();
+      else unterwegs.current = false;
     });
   }
 

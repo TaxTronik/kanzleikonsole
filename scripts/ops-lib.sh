@@ -54,7 +54,7 @@ TCMS_CODE_KEY_ROTATION_STATE="$ROOT/.taxtronik.tcms-code-key-rotation"
 # Letzte erfolgreiche TCMS-Sicherung (Zeitpunkt, Dateiname; kk-tcms-s11), fuer
 # doctor; keine Geheimnisse.
 TCMS_BACKUP_STAMP="$ROOT/.taxtronik.tcms-backup-stamp"
-AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150"
+AWS_CLI_IMAGE_DEFAULT="amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846"
 ALPINE_BACKUP_IMAGE_DEFAULT="alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 # Der Wert wird zusammen mit einem TaxTronik-Release getestet und angehoben.
 # `SIGNAL_IMAGE=auto` folgt genau diesem Pin; ein externer/nativer Dienst wird

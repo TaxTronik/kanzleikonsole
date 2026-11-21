@@ -12,6 +12,7 @@
 // Fachkatalog: TCMS-DIENST-001
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useLayoutEffect } from 'react';
+import { confirmDialog } from '@/components/ui/modal';
 import { describe, expect, it, vi } from 'vitest';
 import type { TcmsAktionsErgebnis } from '../ergebnis';
 import { useTcmsFormular, type TcmsFormularOptionen } from '../formular';
@@ -28,15 +29,21 @@ vi.mock('@/app/staff/(protected)/clients/[id]/tcms/kontakte/actions', () => ({
   kontaktRollenSetzenAction: vi.fn(),
 }));
 
+vi.mock('@/app/staff/(protected)/clients/[id]/tcms/einrichtung/actions', () => ({
+  einrichtungSpeichernAction: vi.fn(),
+}));
+
 type Aktion = (vorher: TcmsAktionsErgebnis | null, fd: FormData) => Promise<TcmsAktionsErgebnis>;
 
 function Formular({
   aktion,
   optionen,
   nachErfolg,
+  antrag = 'alt',
 }: {
   aktion: Aktion;
   optionen?: TcmsFormularOptionen;
+  antrag?: string;
   nachErfolg?: (form: HTMLFormElement) => void;
 }) {
   const { ergebnis, laeuft, formular } = useTcmsFormular(aktion, optionen);
@@ -46,6 +53,7 @@ function Formular({
   }, [ergebnis, laeuft, nachErfolg, ref]);
   return (
     <form {...formular} aria-label="Testformular">
+      <input type="hidden" name="antrag" value={antrag} />
       <label htmlFor="titel">Titel</label>
       <input id="titel" name="titel" defaultValue="" />
       <label htmlFor="code">Code</label>
@@ -61,9 +69,9 @@ function Formular({
   );
 }
 
-function deferred() {
-  let resolve!: (e: TcmsAktionsErgebnis) => void;
-  const promise = new Promise<TcmsAktionsErgebnis>((r) => {
+function deferred<T = TcmsAktionsErgebnis>() {
+  let resolve!: (e: T) => void;
+  const promise = new Promise<T>((r) => {
     resolve = r;
   });
   return { promise, resolve };
@@ -154,6 +162,48 @@ describe('useTcmsFormular', () => {
     expect(h.fragen).toHaveLength(2);
   });
 
+  it('TCMS-DIENST-001: offene Rückfrage bestätigt genau den angezeigten Antrag und Submitter', async () => {
+    const frage = deferred<boolean>();
+    const dialog = vi.mocked(confirmDialog);
+    dialog.mockClear();
+    dialog.mockReturnValueOnce(frage.promise);
+    const aktion = vi.fn<Aktion>().mockResolvedValue({ ok: true });
+    const optionen = { bestaetigung: { text: 'Antrag bestätigen?' } };
+    const { rerender } = render(<Formular aktion={aktion} optionen={optionen} antrag="alt" />);
+    fireEvent.change(feld('Titel'), { target: { value: 'geprüft' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    expect(dialog).toHaveBeenCalledTimes(1);
+    expect(aktion).not.toHaveBeenCalled();
+    rerender(<Formular aktion={aktion} optionen={optionen} antrag="neu" />);
+    fireEvent.change(feld('Titel'), { target: { value: 'geändert' } });
+    await act(async () => frage.resolve(true));
+    await waitFor(() => expect(aktion).toHaveBeenCalledOnce());
+    expect(Object.fromEntries(aktion.mock.calls[0]![1])).toMatchObject({
+      antrag: 'alt',
+      titel: 'geprüft',
+      absicht: 'loeschen',
+    });
+  });
+
+  it('nach Abbruch kann die nächste Rückfrage den inzwischen sichtbaren Antrag bestätigen', async () => {
+    const frage = deferred<boolean>();
+    vi.mocked(confirmDialog).mockReturnValueOnce(frage.promise).mockResolvedValueOnce(true);
+    const aktion = vi.fn<Aktion>().mockResolvedValue({ ok: true });
+    const optionen = { bestaetigung: { text: 'Bestätigen?' } };
+    const { rerender } = render(<Formular aktion={aktion} optionen={optionen} antrag="alt" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Löschen' }));
+    rerender(<Formular aktion={aktion} optionen={optionen} antrag="neu" />);
+    await act(async () => frage.resolve(false));
+    expect(aktion).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(aktion).toHaveBeenCalledOnce());
+    expect(Object.fromEntries(aktion.mock.calls[0]![1])).toMatchObject({
+      antrag: 'neu',
+      absicht: 'speichern',
+    });
+  });
+
   it('nachLesen läuft nach dem Lesen der Daten (Code geht mit, Feld ist danach leer)', async () => {
     const aktion = vi.fn<Aktion>().mockResolvedValue({ ok: false, error: 'falsch' });
     render(
@@ -176,6 +226,36 @@ describe('useTcmsFormular', () => {
 });
 
 describe('Formulare der Bereiche mit dem gemeinsamen Baustein', () => {
+  it('TCMS-DIENST-001: Version 1 legt den beim Öffnen der Rückfrage geprüften Entwurf vor', async () => {
+    const { einrichtungSpeichernAction } =
+      await import('@/app/staff/(protected)/clients/[id]/tcms/einrichtung/actions');
+    const { SchrittKontrollen } =
+      await import('@/app/staff/(protected)/clients/[id]/tcms/einrichtung/schritte');
+    const aktion = vi.mocked(einrichtungSpeichernAction).mockResolvedValue({ ok: true });
+    const frage = deferred<boolean>();
+    vi.mocked(confirmDialog).mockReturnValueOnce(frage.promise);
+    const props = {
+      mandantId: 'm',
+      darf: true,
+      gesperrtGrund: '',
+      gruppen: [],
+      start: {},
+      kanzlei: [],
+      mandant: [],
+      zusammenfassung: null,
+    };
+    const { rerender } = render(<SchrittKontrollen {...props} gesehen={3} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Tax-CMS Version 1 anlegen' }));
+    rerender(<SchrittKontrollen {...props} gesehen={4} />);
+    await act(async () => frage.resolve(true));
+    await waitFor(() => expect(aktion).toHaveBeenCalledOnce());
+    expect(Object.fromEntries(aktion.mock.calls[0]![2])).toMatchObject({
+      gesehen: '3',
+      ziel: 'anlegen',
+      schritt: '5',
+    });
+  });
+
   it('Bereich C, Feststellung erfassen: abgewiesene Eingaben bleiben im Dialog stehen', async () => {
     const { ErfassenDialog } = await import('../feststellungen/formulare');
     const aktion = vi.fn<Aktion>().mockResolvedValue({

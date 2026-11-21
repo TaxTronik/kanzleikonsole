@@ -3,6 +3,8 @@
 // wird aus den Daten berechnet: aktiv ist die erste Phase mit offenem Gate.
 // =============================================================================
 
+import { fmtDatum } from './format';
+
 export const PHASEN = [
   'Aufbau',
   'Risikoanalyse',
@@ -46,10 +48,6 @@ export interface PhasenInfo {
   name: string;
   bedingungen: GateBedingung[];
   erfuellt: boolean;
-}
-
-function fmt(d: Date): string {
-  return `${String(d.getUTCDate()).padStart(2, '0')}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${d.getUTCFullYear()}`;
 }
 
 export function bewertePhasen(f: PhasenFakten): { phasen: PhasenInfo[]; aktiv: number } {
@@ -104,7 +102,7 @@ export function bewertePhasen(f: PhasenFakten): { phasen: PhasenInfo[]; aktiv: n
     [
       {
         text: f.angemessenheitStichtag
-          ? `Angemessenheit zum Stichtag ${fmt(f.angemessenheitStichtag)} dokumentiert`
+          ? `Angemessenheit zum Stichtag ${fmtDatum(f.angemessenheitStichtag)} dokumentiert`
           : 'Nachweispaket zum Stichtag dokumentiert',
         erfuellt: f.angemessenheitStichtag != null,
       },

@@ -37,6 +37,7 @@ describe('LandStandFormular', () => {
         aktion={aktion}
         heute="2026-10-19"
         land={{
+          id: 'frlandstand000000001',
           land: 'FR',
           fernverkaeufeLfdEur: 241900,
           fernverkaeufeVorjahrEur: 0,
@@ -58,6 +59,7 @@ describe('LandStandFormular', () => {
     fireEvent.submit(form);
     await waitFor(() => expect(aktion).toHaveBeenCalledOnce());
     expect(aktion.mock.calls[0]![1].get('land')).toBe('FR');
+    expect(aktion.mock.calls[0]![1].get('gesehenerStandId')).toBe('frlandstand000000001');
     expect(await screen.findByRole('alert')).toBeTruthy();
     expect(lfd.value).toBe('1,234.56');
     expect(lfd.getAttribute('aria-invalid')).toBe('true');

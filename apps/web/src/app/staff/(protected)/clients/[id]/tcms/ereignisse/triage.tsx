@@ -373,6 +373,7 @@ function VerwerfenAntragBlock({
           <>
             <TcmsAktionsKnopf
               aktion={ereignisVerwerfenBestaetigenAction.bind(null, mandantId, e.id)}
+              felder={{ antragId: antrag.antragId }}
               className="btn-danger-outline text-xs py-1"
               gesperrt={
                 sperre ??
@@ -612,7 +613,12 @@ export function TriagePanel({
         {e.meldung ? (
           <span className="text-xs font-mono text-muted">
             Ereignis im Audit: <TcmsText>{e.meldung.aktion}</TcmsText> · {isoZeitText(e.meldung.at)}{' '}
-            · Hash <HashKurz wert={e.meldung.hash} />
+            {e.meldung.hash && (
+              <>
+                {' '}
+                · Hash <HashKurz wert={e.meldung.hash} />
+              </>
+            )}
           </span>
         ) : (
           <span className="text-xs text-muted">Kein Meldungseintrag im Audit.</span>

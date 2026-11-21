@@ -120,3 +120,5 @@ Store, der Supply-Chain-Guard und die Betriebsskripttests sind in
 **Nachtrag vom 21. November 2026.** Die CI prüft die Formularwerte nun in
 Chromium und Firefox. Die Gegenproben mit dem früheren Quellstand und die
 zugehörigen Prüffälle stehen in der [CI-Nachprüfung](2026-11-21-ci-bedienpruefung.md).
+
+**Nachtrag vom 21. November 2026 zur BWA.** Die Berliner Jahreswechseltests für Dashboard und neue Planung wurden nach Zusammenlegung der Berechnungen erneut ausgeführt. [Nachprüfung von Imagepflege und Codeabbau](2026-11-21-nachpruefung-imagepflege-und-codeabbau.md#codeabbau-und-vertragswechsel)

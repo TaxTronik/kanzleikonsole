@@ -36,12 +36,14 @@ import { FehlerSchema, KONFLIKT_GRUENDE, type KonfliktGrund } from './fehler';
 import {
   DurchfuehrungBegruendungBodySchema,
   DurchfuehrungDetailSchema,
+  DurchfuehrungEinreichenBodySchema,
   DurchfuehrungSpeichernBodySchema,
   DurchfuehrungSpeichernErgebnisSchema,
   DurchfuehrungStandQuerySchema,
   DurchfuehrungUebergangSchema,
   DurchfuehrungZielSchema,
   EntfallenAblehnenBodySchema,
+  EntfallenFreigebenBodySchema,
   GegenzeichnenBodySchema,
   GegenzeichnenErgebnisSchema,
   KontrollaufgabeSchema,
@@ -60,6 +62,7 @@ import {
 import {
   AnlageGespeichertSchema,
   EreignisAktionSchema,
+  EreignisVerwerfenBestaetigenBodySchema,
   EreignisAnlageLesenSchema,
   EreignisAnlagenJeDokumentPfadSchema,
   EreignisAnlagenJeDokumentQuerySchema,
@@ -72,6 +75,7 @@ import {
   ErklaerungBodySchema,
   ErklaerungErgebnisSchema,
   FeststellungAktionSchema,
+  FeststellungVerwerfenBestaetigenBodySchema,
   FeststellungDetailSchema,
   FeststellungErfassenBodySchema,
   FeststellungErfasstSchema,
@@ -156,7 +160,10 @@ import {
   PortalKenntnisnahmeErgebnisSchema,
   ProgrammAnlegenBodySchema,
   ProgrammAnlegenErgebnisSchema,
+  ReviewAbschliessenBodySchema,
   ReviewZurueckweisenBodySchema,
+  ZieleFreigabeAnfordernBodySchema,
+  ZieleFreigabeAnfordernErgebnisSchema,
 } from './bereiche/programm-beschreibung';
 import {
   AbweichungAufhebenBodySchema,
@@ -173,6 +180,7 @@ import {
   ProfilDatenSchema,
   ProfilGeaendertSchema,
   RisikenFreigabeSchrittBodySchema,
+  RisikenFreigebenBodySchema,
   RisikenKontrollenQuerySchema,
   RisikenListeSchema,
   RisikoakzeptanzAngefordertSchema,
@@ -185,6 +193,8 @@ import {
   RisikoPfadSchema,
   RisikoZurueckgewiesenSchema,
   RisikoZurueckweisenBodySchema,
+  UebersteuerungAufgehobenSchema,
+  UebersteuerungAufhebenBodySchema,
   UebersteuerungBeantragenBodySchema,
   UebersteuerungBeantragtSchema,
   UebersteuerungEntscheidenBodySchema,
@@ -587,6 +597,7 @@ export const ENDPUNKTE = register({
     methode: 'POST',
     pfad: `${D}/einreichen`,
     params: DurchfuehrungZielSchema,
+    body: DurchfuehrungEinreichenBodySchema,
     antwort: DurchfuehrungUebergangSchema,
   },
   nachweisAnhaengen: {
@@ -628,6 +639,7 @@ export const ENDPUNKTE = register({
     methode: 'POST',
     pfad: `${D}/entfallen/freigeben`,
     params: DurchfuehrungZielSchema,
+    body: EntfallenFreigebenBodySchema,
     antwort: DurchfuehrungUebergangSchema,
   },
   entfallenAblehnen: {
@@ -689,6 +701,7 @@ export const ENDPUNKTE = register({
     pfad: `${P}/:durchfuehrungId/einreichen`,
     akteure: NUR_MANDANT,
     params: DurchfuehrungZielSchema,
+    body: DurchfuehrungEinreichenBodySchema,
     antwort: DurchfuehrungUebergangSchema,
   },
   portalAnlageAnhaengen: {
@@ -774,6 +787,13 @@ export const ENDPUNKTE = register({
     body: UebersteuerungEntscheidenBodySchema,
     antwort: UebersteuerungEntschiedenSchema,
   },
+  uebersteuerungAufheben: {
+    methode: 'POST',
+    pfad: `${M}/uebersteuerungen/:uebersteuerungId/aufheben`,
+    params: UebersteuerungPfadSchema,
+    body: UebersteuerungAufhebenBodySchema,
+    antwort: UebersteuerungAufgehobenSchema,
+  },
   risikenFreigabeEinreichen: {
     methode: 'POST',
     pfad: `${M}/risiken-freigabe/einreichen`,
@@ -785,7 +805,7 @@ export const ENDPUNKTE = register({
     methode: 'POST',
     pfad: `${M}/risiken-freigabe/freigeben`,
     params: MandantPfadSchema,
-    body: RisikenFreigabeSchrittBodySchema,
+    body: RisikenFreigebenBodySchema,
     antwort: FreigabeSchrittErgebnisSchema,
   },
   risikoZurueckweisen: {
@@ -958,6 +978,7 @@ export const ENDPUNKTE = register({
     methode: 'POST',
     pfad: `${F}/verwerfen/bestaetigen`,
     params: FeststellungAktionSchema,
+    body: FeststellungVerwerfenBestaetigenBodySchema,
     antwort: FeststellungErgebnisSchema,
   },
   feststellungVerwerfenAblehnen: {
@@ -1075,6 +1096,7 @@ export const ENDPUNKTE = register({
     methode: 'POST',
     pfad: `${E}/verwerfen/bestaetigen`,
     params: EreignisAktionSchema,
+    body: EreignisVerwerfenBestaetigenBodySchema,
     antwort: EreignisErgebnisSchema,
   },
   ereignisVerwerfenAblehnen: {
@@ -1099,7 +1121,7 @@ export const ENDPUNKTE = register({
     antwort: PortalMeldungErgebnisSchema,
     status: 201,
     // Jedes 409 mit Grund (meldeEreignis, packages/service; tcms-s10).
-    konflikte: ['IDEMPOTENZ_ABWEICHUNG', 'ZWISCHENZEITLICH_GEAENDERT'],
+    konflikte: ['IDEMPOTENZ_ABWEICHUNG', 'ZWISCHENZEITLICH_GEAENDERT', 'ZU_VIELE_MELDUNGEN'],
   },
 
   // ---- Länder-Monitor ---------------------------------------------------------
@@ -1208,6 +1230,7 @@ export const ENDPUNKTE = register({
     methode: 'POST',
     pfad: `${VERSION}/review/abschliessen`,
     params: BeschreibungVersionAktionEingabeSchema,
+    body: ReviewAbschliessenBodySchema,
     antwort: BeschreibungVersionAktionErgebnisSchema,
   },
   beschreibungsreviewZurueckweisen: {
@@ -1227,6 +1250,14 @@ export const ENDPUNKTE = register({
   },
 
   // ---- Freigaben ----------------------------------------------------------------
+  zieleFreigabeAnfordern: {
+    methode: 'POST',
+    pfad: `${M}/ziele/freigabe`,
+    params: MandantPfadSchema,
+    body: ZieleFreigabeAnfordernBodySchema,
+    antwort: ZieleFreigabeAnfordernErgebnisSchema,
+    status: 201,
+  },
   freigabeNeuadressieren: {
     methode: 'POST',
     pfad: `${M}/freigaben/:freigabeId/neuadressierung`,

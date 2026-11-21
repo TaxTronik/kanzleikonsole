@@ -9,7 +9,7 @@
 
 services:
   traefik:
-    image: traefik:v3.7.9@sha256:652929a140a32d7cafafb13c6cdfab5376cfeff800f51397b87b524501ed02a8
+    image: traefik:v3.7.19@sha256:a6c0194dda77bcb804824580f36fa7edc56e315b1acfe933366c8b52844a78a4
     container_name: taxtronik-traefik
     init: true
     restart: unless-stopped

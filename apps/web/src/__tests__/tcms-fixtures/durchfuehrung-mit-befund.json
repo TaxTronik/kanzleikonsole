@@ -322,5 +322,7 @@
       "system": true
     }
   ],
-  "beteiligte": ["b1000000-0000-4000-8000-000000000002"]
+  "beteiligte": ["b1000000-0000-4000-8000-000000000002"],
+  "inhalt": "e78d56027688f0e5167b2d9f3b4347ce5abd03627d237ee1c1a88ee3a327b8f9",
+  "entfallenAntrag": null
 }

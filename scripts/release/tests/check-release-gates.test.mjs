@@ -7,11 +7,43 @@ const workflows = {
   release: readFileSync('.forgejo/workflows/release.yml', 'utf8'),
   ci: readFileSync('.forgejo/workflows/ci.yml', 'utf8'),
   security: readFileSync('.forgejo/workflows/security.yml', 'utf8'),
+  trivySetup: readFileSync('scripts/ci/setup-trivy.sh', 'utf8'),
   smoke: readFileSync('scripts/release/smoke-release-images.sh', 'utf8'),
   composeCi: readFileSync('infra/compose/docker-compose.ci.yml', 'utf8'),
 };
 
 assert.equal(checkReleaseGates(workflows), true);
+
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      trivySetup: workflows.trivySetup.replace('docker cp', 'echo'),
+    }),
+  /Trivy muss im Forgejo-Job nativ/,
+);
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      security: workflows.security.replace(
+        'scan-service-images.mjs security-images',
+        'scan-service-images.mjs security-images || true',
+      ),
+    }),
+  /Security muss die produktiven Service-Images/,
+);
+assert.throws(
+  () =>
+    checkReleaseGates({
+      ...workflows,
+      security: workflows.security.replace(
+        '        run: node scripts/ci/scan-service-images',
+        '        if: failure()\n        run: node scripts/ci/scan-service-images',
+      ),
+    }),
+  /Security muss die produktiven Service-Images/,
+);
 
 assert.throws(
   () =>
@@ -265,4 +297,4 @@ assert.throws(
   /Object Store vor App und Worker initialisieren/,
 );
 
-process.stdout.write('24 release-gate structure tests passed.\n');
+process.stdout.write('Release-gate structure tests passed.\n');

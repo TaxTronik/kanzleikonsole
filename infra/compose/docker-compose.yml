@@ -48,8 +48,8 @@ services:
   postgres:
     <<: [*hardening, *logging]
     # Pin per Digest (Reproduzierbarkeit/Audit). Tag bleibt als Klartext-Hinweis.
-    # Neu auflösen: docker buildx imagetools inspect postgres:18-alpine --format '{{.Manifest.Digest}}'
-    image: postgres:18-alpine@sha256:96d56f7f57c6aacd1fcb908bc83b345ec5f83231ee486dd66a1baadce274db88
+    # Neu auflösen: docker buildx imagetools inspect postgres:18-alpine3.23 --format '{{.Manifest.Digest}}'
+    image: postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0
     container_name: taxtronik-postgres
     restart: unless-stopped
     # P2-20: Ressourcen-Limit + Basis-Tuning (Alpine-Default shared_buffers 128 MB
@@ -126,7 +126,7 @@ services:
 
   redis:
     <<: [*hardening, *logging]
-    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    image: redis:7-alpine@sha256:7f7d30b7fdd09467bac58198a1f166dd69789d348d4fe859cccb20e0cf287fbe
     container_name: taxtronik-redis
     restart: unless-stopped
     # P2-20: Ressourcen-Limit (OOM-Kill + Restart statt Host-OOM). BEWUSST KEIN
@@ -162,7 +162,7 @@ services:
   # für die Kanzlei-Größe (10–500 Mitarbeiter) reicht der Single-Node-Setup.
   seaweedfs:
     <<: [*hardening, *logging]
-    image: chrislusf/seaweedfs:4.41@sha256:43b768cd62b00d132439cda881b93fd1adebf1b315e996e794087743821d771d
+    image: chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
     container_name: taxtronik-seaweedfs
     restart: unless-stopped
     mem_limit: ${SEAWEED_MEM_LIMIT:-1g}
@@ -227,7 +227,7 @@ services:
   # AWS-CLI spricht den S3-Standard nativ.
   seaweedfs-init:
     <<: [*hardening, *logging]
-    image: amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150
+    image: amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846
     container_name: taxtronik-seaweedfs-init
     depends_on:
       seaweedfs:
@@ -244,7 +244,7 @@ services:
 
   clamav:
     <<: [*hardening, *logging]
-    image: clamav/clamav:stable@sha256:d4000290254603e7ee45d4904425c7d98c015af727f402756198fe41a31e7777
+    image: clamav/clamav:1.5.5@sha256:12177441d1b40cef3c47b44c4090d59d4babc4c67bedd5af0fa315e603aa6dd8
     container_name: taxtronik-clamav
     restart: unless-stopped
     # ClamAV hält die Signatur-DB im RAM (~2-3 GB) — Limit großzügig.

@@ -393,7 +393,7 @@ docker run --rm --network taxtronik \
   -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
   -e AWS_DEFAULT_REGION="${S3_REGION:-us-east-1}" \
   -v "$PWD/backups/object-store/20260618-013000:/backup:ro" \
-  amazon/aws-cli:latest@sha256:c95ab0642137f55a12b95b6956dd03cefdbd73e760e0e7b870afc9b47f9c8150 \
+  amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846 \
   --endpoint-url http://seaweedfs:8333 s3 sync /backup/gobd s3://gobd --only-show-errors
 ```
 

@@ -1,5 +1,9 @@
 # Vollprüfung der Kanzleikonsole vom 20. November 2026
 
+**Nachtrag vom 21. November 2026.** Die Vertragsprüfung gegen den neueren
+TCMS-Quellstand und der Vergleich der ClamAV-Images haben eigene Nachweise.
+[Nachprüfung für TCMS und Imagepflege](2026-11-21-tcms-integration-und-imagepflege.md)
+
 Höchste Priorität hat der Bestandsschutz am Jahreswechsel. Bei Ereignissen
 zwischen 23:00 und 24:00 UTC am 31. Dezember konnten einige Pfade den
 Fristbeginn dem falschen Kalenderjahr zuordnen und

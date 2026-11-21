@@ -236,7 +236,7 @@ describe('abschnittSpeichernAction', () => {
 });
 
 describe('Review', () => {
-  it('zur Review geben und Review abschließen senden nur die Version', async () => {
+  it('Abschluss bestätigt die gelesenen Abschnitte dieser Version', async () => {
     await zurReviewAction(MANDANT, null, formular([['versionId', VERSION]]));
     let s = spec();
     expect(s.keinRecht).toBe('BEARBEITEN');
@@ -246,7 +246,14 @@ describe('Review', () => {
       params: { versionId: VERSION },
     });
 
-    await reviewAbschliessenAction(MANDANT, null, formular([['versionId', VERSION]]));
+    await reviewAbschliessenAction(
+      MANDANT,
+      null,
+      formular([
+        ['versionId', VERSION],
+        ['abschnitteSha256', 'a'.repeat(64)],
+      ]),
+    );
     s = spec();
     // 403 heißt hier Vier-Augen-Prinzip: eigene Meldung statt „kein Recht“.
     expect(s.keinRecht).toBe('VIER_AUGEN');
@@ -255,6 +262,7 @@ describe('Review', () => {
       meldung: 'Kanzlei-Review für Version 1.3 abgeschlossen.',
     });
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.beschreibungsreviewAbschliessen, {
+      body: { abschnitteSha256: 'a'.repeat(64) },
       params: { versionId: VERSION },
     });
   });

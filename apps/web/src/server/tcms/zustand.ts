@@ -220,6 +220,8 @@ export const TCMS_AKTION_TEXTE = {
  * ergänzt, nie umformuliert (Test: zustand.test.ts).
  */
 const KONFLIKT_JE_GRUND = {
+  ZU_VIELE_MELDUNGEN:
+    'Es wurden innerhalb einer Stunde zu viele Meldungen übermittelt. Bitte versuchen Sie es später erneut.',
   /** Freigabe nicht mehr offen (erteilt, abgelehnt oder gegenstandslos). */
   BEREITS_ERLEDIGT:
     'Diese Anforderung ist bereits erledigt oder nicht mehr offen. Bitte laden Sie die Seite neu.',

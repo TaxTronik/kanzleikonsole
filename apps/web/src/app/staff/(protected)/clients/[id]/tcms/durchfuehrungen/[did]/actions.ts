@@ -18,7 +18,9 @@ import { redirect } from 'next/navigation';
 import {
   DF_MAX_BEGRUENDUNG,
   DF_MIN_BEGRUENDUNG,
+  DurchfuehrungEinreichenBodySchema,
   DurchfuehrungIdSchema,
+  EntfallenFreigebenBodySchema,
   ENDPUNKTE,
   NachweisIdSchema,
 } from '@taxtronik/tcms-contract';
@@ -110,7 +112,8 @@ export async function durchfuehrungSpeichernAction(
     mandantId,
     keinRecht: 'DURCHFUEHREN',
     felder: {},
-    aufruf: async (dienst): Promise<Ausgang> => {
+    parse: () => parseFormData(z.object(DurchfuehrungEinreichenBodySchema.shape), formData),
+    aufruf: async (dienst, gesehen): Promise<Ausgang> => {
       const id = durchfuehrung(durchfuehrungId);
       const { daten: d } = await dienst.rufe(ENDPUNKTE.durchfuehrungLesen, {
         params: { durchfuehrungId: id },
@@ -119,11 +122,14 @@ export async function durchfuehrungSpeichernAction(
       if (!formular.ok) return formular;
       const { daten: gespeichert } = await dienst.rufe(ENDPUNKTE.durchfuehrungSpeichern, {
         params: { durchfuehrungId: id },
-        body: formular.eingabe,
+        body: { ...formular.eingabe, bisher: gesehen.bisher },
       });
       if (!formular.einreichen) return { meldung: 'Entwurf gespeichert.' };
       try {
-        await dienst.rufe(ENDPUNKTE.durchfuehrungEinreichen, { params: { durchfuehrungId: id } });
+        await dienst.rufe(ENDPUNKTE.durchfuehrungEinreichen, {
+          params: { durchfuehrungId: id },
+          body: { bisher: gespeichert.inhalt },
+        });
       } catch (fehler) {
         if (!(fehler instanceof TcmsUngueltig) || fehler.lokal) throw fehler;
         // Gespeichert, aber vom Dienst nicht zum Einreichen angenommen: Mängel aus
@@ -360,14 +366,16 @@ export async function entfallenFreigebenAction(
   mandantId: string,
   durchfuehrungId: string,
   _vorher: TcmsErgebnis | null,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<TcmsErgebnis> {
   return tcmsKanzleiAktion({
     mandantId,
     keinRecht: 'VIER_AUGEN',
-    aufruf: async (dienst) => {
+    parse: () => parseFormData(EntfallenFreigebenBodySchema, formData),
+    aufruf: async (dienst, body) => {
       await dienst.rufe(ENDPUNKTE.entfallenFreigeben, {
         params: { durchfuehrungId: durchfuehrung(durchfuehrungId) },
+        body,
       });
       return { meldung: 'Entfallen freigegeben. Die Durchführung zählt nicht als „ohne Befund“.' };
     },

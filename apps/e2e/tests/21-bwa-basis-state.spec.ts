@@ -235,6 +235,26 @@ test.describe('BWA-IMPORT-MAPPING-001 / BWA-PROJECTION-001: fehlende Werte bleib
     }
   });
 
+  test('Planvergleich zeigt bei gegenläufigen Halbeurobeträgen genau 1 und −1 Euro', async ({
+    page,
+  }) => {
+    const klein = {
+      ...plan,
+      lines: [
+        { axis: 'PERSONNEL', amount: 0.01 },
+        { axis: 'MATERIAL', amount: 0.18 },
+        { axis: 'DEPRECIATION', amount: 0.29 },
+        { axis: 'OTHER_COSTS', amount: 0.02 },
+      ],
+    };
+    await mountBwa(page, 'comparison', { plans: [klein], projection: emptyProjection });
+    await page.getByRole('checkbox', { name: 'Testplanung zum Vergleich auswählen' }).check();
+    const row = (label: string) =>
+      page.getByRole('row').filter({ has: page.getByRole('cell', { name: label, exact: true }) });
+    await expect(row('Aufwendungen').getByRole('cell').nth(1)).toHaveText('1 €');
+    await expect(row('Ergebnis nach Steuern').getByRole('cell').nth(1)).toHaveText('-1 €');
+  });
+
   test('echtes Dashboard reicht fehlende Ergebnisse bis in beide Vergleichsansichten durch', async ({
     page,
   }) => {

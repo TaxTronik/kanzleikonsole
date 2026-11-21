@@ -69,8 +69,14 @@ Quell-Commit und je Datei den SHA-256 fest.
   dasselbe `VENDOR.json` (gleiche Paketliste, Ausschlüsse und Beschreibung).
   Das gehört zum Review jeder Änderung unter `packages/tcms-contract` und
   `packages/tcms-domain`.
-- **Stand:** Vertrag und Domain aus TCMS `main` `bfdfdd2` (s11; davor
-  `92a1211` s10, `f146a78` s9, `4752652` s7/s8, `7a900b1`). Stufe 4: Akteursarten `KANZLEI`, `MANDANT`, `SYSTEM` mit
+- Der genaue Quell-Commit steht in den Manifesten von
+  [Vertrag](../../packages/tcms-contract/VENDOR.json) und
+  [Domain](../../packages/tcms-domain/VENDOR.json). Beide Pakete und die
+  eingesetzte Dienstversion müssen zusammenpassen. Die hier beschriebenen
+  Formulare integrieren die Vertragsänderungen bis zum Quellstand
+  `de4c489e`. Eine Dienstbereitstellung benötigt ein aus demselben Stand
+  gebautes und gemeinsam geprüftes Image. Der Quellstand bezeichnet keine
+  freigegebene Image-Version. Stufe 4: Akteursarten `KANZLEI`, `MANDANT`, `SYSTEM` mit
   `akteure` je Endpunkt, strukturierter Postausgang; Härtungen s5/s6:
   Portal-Endpunkte nur für `MANDANT`, maschinenlesbarer Grund `fehler.grund`
   jedes 403, Rechte-Kennzeichen für Stammdaten und Kontaktrollen,
@@ -105,6 +111,18 @@ Quell-Commit und je Datei den SHA-256 fest.
   ausrollen: Die Schemas sind strikt, ein 403 ohne Grund ist für diesen
   Vertrag ein Protokollfehler. Die Zeichenregel folgt der Unicode-Version der
   Laufzeit: kanzleikonsole und Dienst auf derselben Node-Hauptversion (24).
+
+Schreibende Formulare bringen das beim Anzeigen gelesene Merkmal mit.
+Durchführungen in Kanzlei und Portal speichern mit dem ursprünglichen
+Inhaltshash. Beim anschließenden Einreichen senden sie den Hash aus der
+erfolgreichen Speicherantwort. Die Freigabe des Entfallens bestätigt den
+konkreten Antrag. Das Verwerfen bestätigt die Antrags-ID und bei
+Feststellungen zusätzlich die gesehene Auswirkung. Der Beschreibungsreview
+bestätigt den Hash der geprüften Abschnitte. Der Länder-Monitor gibt die
+betrachtete Stand-ID je Land mit, die Risikofreigabe die Bewertungs-ID je
+ausgewähltem Risiko und der Assistent die angezeigte Entwurfsrevision. Der
+Dienst entscheidet über den Konflikt. Das Formular darf einen veralteten
+Stand beim Absenden nicht durch erneutes Lesen ersetzen.
 
 ## 2. Konfiguration
 

@@ -11,9 +11,10 @@
 //     in Lesern (`StandSchema`).
 //   - §-153-Würdigung: vier gleichrangige Optionen ohne Standardwert und ohne
 //     Empfehlung (AGENTS.md Regel 5); die Entscheidung ist Pflichtfeld.
-//   - Personen: nur IDs der kanzleikonsole. Wo ein Anzeigename fachlich in
-//     einen Text eingeht (Benachrichtigung der Kanzlei), liefert ihn die
-//     kanzleikonsole ausdrücklich mit; er begründet nie ein Recht.
+//   - Personen: nur IDs der kanzleikonsole; Anzeigenamen löst die
+//     kanzleikonsole selbst auf. Ein Name in einer Eingabe begründet nie ein
+//     Recht und adressiert nie (Portal-Meldung: `benachrichtigen.name` ohne
+//     Wirkung).
 //   - Antworten: Datumswerte als ISO-Strings (`YYYY-MM-DD` für Kalendertage,
 //     ISO-8601 mit Zeit für Zeitpunkte), Listen statt Map/Set.
 // =============================================================================
@@ -23,9 +24,9 @@ import { VERWEIGERUNG_GRUENDE } from '../fehler';
 import {
   BearbeitenRechteSchema,
   DATEINAME_GESPEICHERT_UNZULAESSIG,
-  DATEINAME_UNZULAESSIG,
   einzeilig,
   freitext,
+  gueltigerDateiname,
   StandSchema,
 } from './lesepfade';
 
@@ -33,7 +34,7 @@ import {
 // Bausteine
 // ---------------------------------------------------------------------------
 
-/** IDs von Tax-CMS-Objekten (cuid, Kleinbuchstaben und Ziffern). */
+/** IDs von Tax-CMS-Objekten (cuid2, ältere Objekte cuid v1; Kleinbuchstaben und Ziffern). */
 export const ObjektIdSchema = z.string().regex(/^[a-z0-9]{16,40}$/, 'Ungültige ID');
 
 /** Kalendertag `YYYY-MM-DD` (nur gültige Tage). */
@@ -214,8 +215,18 @@ export const NachkontrolleSchema = NachkontrolleBodySchema.extend(feststellung).
 export const VerwerfenBeantragenBodySchema = z.object({ begruendung: freitext(30, 2000) }).strict();
 export const FeststellungVerwerfenBeantragenSchema =
   VerwerfenBeantragenBodySchema.extend(feststellung).strict();
-/** Bestätigen, Ablehnen: nur Pfadparameter. */
+/** Ablehnen (und weitere Schritte ohne Body): nur Pfadparameter. */
 export const FeststellungAktionSchema = z.object(feststellung).strict();
+/**
+ * Bestätigen: gebunden an den gesehenen Antrag (`verwerfen.antragId` im Detail)
+ * und die gesehene steuerliche Auswirkung. Wurde der Antrag zurückgezogen und
+ * neu gestellt oder die Auswirkung geändert, antwortet der Dienst `409`.
+ */
+export const FeststellungVerwerfenBestaetigenBodySchema = z
+  .object({ antragId: z.uuid(), auswirkung: AuswirkungSchema })
+  .strict();
+export const FeststellungVerwerfenBestaetigenSchema =
+  FeststellungVerwerfenBestaetigenBodySchema.extend(feststellung).strict();
 
 // ---- Vertraulich ----
 export const VertraulichBodySchema = z.object({ vertraulich: z.boolean() }).strict();
@@ -392,6 +403,8 @@ export const FeststellungDetailSchema = z.discriminatedUnion('maskiert', [
           begruendung: z.string(),
           beantragtVon: z.string(),
           bestaetigtVon: z.string().nullable(),
+          /** Kennung des Antrags; die Bestätigung nennt sie (`antragId`). */
+          antragId: z.string(),
         })
         .strict()
         .nullable(),
@@ -533,6 +546,13 @@ export const FolgeVerwerfenSchema = VerwerfenBeantragenBodySchema.extend(folge).
 // ---- Verwerfen des Ereignisses (Vier-Augen) ----
 export const EreignisVerwerfenBeantragenSchema =
   VerwerfenBeantragenBodySchema.extend(ereignis).strict();
+/**
+ * Bestätigen: gebunden an den gesehenen Antrag (`verwerfenAntrag.antragId` im
+ * Detail); wurde er zurückgezogen und neu gestellt, antwortet der Dienst `409`.
+ */
+export const EreignisVerwerfenBestaetigenBodySchema = z.object({ antragId: z.uuid() }).strict();
+export const EreignisVerwerfenBestaetigenSchema =
+  EreignisVerwerfenBestaetigenBodySchema.extend(ereignis).strict();
 
 // ---- Ereignis erfassen (Kanzlei) ----
 export const EreignisErfassenBodySchema = z
@@ -553,20 +573,29 @@ export const PORTAL_ANLAGE_MIME =
 export const PORTAL_MAX_ANLAGEN = 5;
 export const PORTAL_MAX_ANLAGE_BYTES = 10 * 1024 * 1024;
 const SHA256 = /^[0-9a-f]{64}$/;
-// Wie `pruefeVerweis` (@tcms/service) und Nachweise: eine Regel für Dateinamen
-// (Steuer-, Richtungs-, Nullbreiten- und Füllzeichen, Pfadtrenner; lesepfade.ts).
-const DATEINAME_VERBOTEN = DATEINAME_UNZULAESSIG;
 
 export const Sha256Schema = z.string().regex(SHA256, 'Ungültiger SHA-256');
 
-/** Dateiname einer Anlage; `verboten` ist die Zeichenregel (neu bzw. gespeichert). */
-const anlageDateiname = (verboten: RegExp) =>
+/**
+ * Dateiname einer neuen Anlage: eine Regel mit Nachweisen und `pruefeVerweis`
+ * (@tcms/service), `gueltigerDateiname` (zeichen.ts) – Zeichenregel, Pfadtrenner,
+ * Rand, Länge in UTF-16-Einheiten, sichtbarer Inhalt.
+ */
+const anlageDateiname = () =>
+  z.string().min(1).max(255).refine(gueltigerDateiname, 'Ungültiger Dateiname');
+
+/**
+ * Dateiname einer gespeicherten Anlage (Antworten): die frühere Regel (Länge in
+ * Code Points, nicht leer, nicht `.`/`..`, `DATEINAME_GESPEICHERT_UNZULAESSIG`),
+ * damit Namen aus dem unveränderlichen Meldungs-Audit lesbar bleiben.
+ */
+const gespeicherterAnlageDateiname = () =>
   z
     .string()
     .min(1)
     .max(255)
     .refine((s) => s.trim().length > 0 && s !== '.' && s !== '..', 'Ungültiger Dateiname')
-    .refine((s) => !verboten.test(s), 'Ungültiger Dateiname');
+    .refine((s) => !DATEINAME_GESPEICHERT_UNZULAESSIG.test(s), 'Ungültiger Dateiname');
 
 /**
  * Verweis auf eine Anlage, die die kanzleikonsole angenommen hat (Virenscan,
@@ -582,7 +611,7 @@ export const AnlageVerweisSchema = z
       .max(200)
       .regex(/^[A-Za-z0-9._:-]+(?:\/[A-Za-z0-9._:-]+)*$/)
       .refine((s) => !s.split('/').some((t) => t === '.' || t === '..'), 'Ungültige Dokument-ID'),
-    dateiname: anlageDateiname(DATEINAME_VERBOTEN),
+    dateiname: anlageDateiname(),
     mime: z.string().max(127).regex(PORTAL_ANLAGE_MIME, 'Dateityp nicht zulässig'),
     groesse: z.number().int().min(1).max(PORTAL_MAX_ANLAGE_BYTES),
     sha256: Sha256Schema,
@@ -597,7 +626,7 @@ export const AnlageVerweisSchema = z
  * Namen bleiben so lesbar. Neue Verweise prüft `AnlageVerweisSchema`.
  */
 export const AnlageGespeichertSchema = AnlageVerweisSchema.extend({
-  dateiname: anlageDateiname(DATEINAME_GESPEICHERT_UNZULAESSIG),
+  dateiname: gespeicherterAnlageDateiname(),
 }).strict();
 
 // ---- Portal: Ereignis melden ----
@@ -615,10 +644,12 @@ export const PortalMeldungBodySchema = z
     zusageAenderungen: z.boolean(),
     /**
      * Wen die Kanzlei benachrichtigen soll (Zuständigkeit der kanzleikonsole,
-     * nur für den Postausgang; begründet kein Recht).
+     * nur für den Postausgang; begründet kein Recht). Adressiert wird nur über
+     * die ID; `name` ist ohne Wirkung (weder im Text der Nachricht noch im
+     * Inhalts-Hash der Idempotenz) und nur noch aus Verträglichkeit zulässig.
      */
     benachrichtigen: z
-      .object({ id: z.uuid(), name: einzeilig(1, 200) })
+      .object({ id: z.uuid(), name: einzeilig(1, 200).optional() })
       .strict()
       .nullable()
       .optional(),
@@ -771,9 +802,24 @@ export const EreignisDetailSchema = EreignisListenEintragSchema.omit({ folgen: t
       .strict(),
     folgen: z.array(FolgeDetailSchema),
     anlagen: z.array(AnlageSchema),
-    meldung: z.object({ aktion: z.string(), at: iso, hash: z.string() }).strict().nullable(),
+    /**
+     * Meldungs-Eintrag im Audit. `hash` (Ketten-Hash) nur für die Kanzleileitung,
+     * die das Audit liest (wie die Audit-Liste, ADR 0001 §5.1/§10.2); für alle
+     * anderen `null`: Ein ungeschlüsselter Ketten-Hash ließe fremde, auch maskierte
+     * Einträge zwischen zwei eigenen Meldungen offline bestätigen.
+     */
+    meldung: z
+      .object({ aktion: z.string(), at: iso, hash: z.string().nullable() })
+      .strict()
+      .nullable(),
     verwerfenAntrag: z
-      .object({ vonId: z.string().nullable(), am: iso, begruendung: z.string() })
+      .object({
+        vonId: z.string().nullable(),
+        am: iso,
+        begruendung: z.string(),
+        /** Kennung des Antrags; die Bestätigung nennt sie (`antragId`). */
+        antragId: z.string(),
+      })
       .strict()
       .nullable(),
     verwerfen: z
@@ -901,6 +947,16 @@ export const LandEingabeSchema = z
 export const LaenderLesenSchema = z.object(lesen).strict();
 
 /**
+ * Neuer Stand eines Landes im Monitor: `gesehenerStandId` ist die ID des
+ * jüngsten Stands, den der Aufrufer gesehen hat (`historie[].staende[0].id`).
+ * Ist inzwischen ein anderer Stand der jüngste, antwortet der Dienst `409`
+ * (keine Stände auf veralteter Grundlage, TS-05).
+ */
+export const LandStandEingabeSchema = LandEingabeSchema.extend({
+  gesehenerStandId: ObjektIdSchema,
+}).strict();
+
+/**
  * Neue Länderstände (Historie bleibt). `datenstand` ist das fachliche Datum der
  * erfassten Werte (nicht nach heute), kein Lese-Stichtag (TS-07).
  */
@@ -908,7 +964,7 @@ export const LandStaendeBodySchema = z
   .object({
     datenstand: TagSchema,
     laender: z
-      .array(LandEingabeSchema)
+      .array(LandStandEingabeSchema)
       .min(1)
       .max(40)
       .refine((l) => new Set(l.map((x) => x.land)).size === l.length, 'Land doppelt angegeben'),
@@ -1015,6 +1071,9 @@ export type MassnahmeErledigenEingabe = z.infer<typeof MassnahmeErledigenSchema>
 export type NachkontrolleEingabe = z.infer<typeof NachkontrolleSchema>;
 export type FeststellungVerwerfenBeantragen = z.infer<typeof FeststellungVerwerfenBeantragenSchema>;
 export type FeststellungAktion = z.infer<typeof FeststellungAktionSchema>;
+export type FeststellungVerwerfenBestaetigen = z.infer<
+  typeof FeststellungVerwerfenBestaetigenSchema
+>;
 export type VertraulichEingabe = z.infer<typeof VertraulichSchema>;
 export type FeststellungErfassen = z.infer<typeof FeststellungErfassenSchema>;
 export type PersonZuweisung = z.infer<typeof PersonZuweisungSchema>;
@@ -1041,6 +1100,7 @@ export type FolgeHinzufuegen = z.infer<typeof FolgeHinzufuegenSchema>;
 export type FolgeAktion = z.infer<typeof FolgeAktionSchema>;
 export type FolgeVerwerfen = z.infer<typeof FolgeVerwerfenSchema>;
 export type EreignisVerwerfenBeantragen = z.infer<typeof EreignisVerwerfenBeantragenSchema>;
+export type EreignisVerwerfenBestaetigen = z.infer<typeof EreignisVerwerfenBestaetigenSchema>;
 export type EreignisErfassen = z.infer<typeof EreignisErfassenSchema>;
 export type AnlageVerweis = z.infer<typeof AnlageVerweisSchema>;
 export type PortalMeldung = z.infer<typeof PortalMeldungSchema>;
@@ -1060,6 +1120,7 @@ export type PortalMeldungErgebnis = z.infer<typeof PortalMeldungErgebnisSchema>;
 export type PortalMeldungen = z.infer<typeof PortalMeldungenSchema>;
 
 export type LandEingabe = z.infer<typeof LandEingabeSchema>;
+export type LandStandEingabe = z.infer<typeof LandStandEingabeSchema>;
 export type LaenderLesen = z.infer<typeof LaenderLesenSchema>;
 export type LandStaendeEingabe = z.infer<typeof LandStaendeSchema>;
 export type LandHinzufuegenEingabe = z.infer<typeof LandHinzufuegenSchema>;

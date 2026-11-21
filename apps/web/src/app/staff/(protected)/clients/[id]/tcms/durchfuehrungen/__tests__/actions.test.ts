@@ -162,6 +162,22 @@ describe('Beginnen, Entfallen, Zurückweisen, Gegenzeichnen', () => {
     }
   });
 
+  it('Entfallen freigeben bestätigt das gesehene Antragsmerkmal', async () => {
+    const antrag = 'c'.repeat(64);
+    await aktionen.entfallenFreigebenAction(MANDANT, DID, null, formular([['antrag', antrag]]));
+    const d = dienst();
+    await spec().aufruf(d, await geparst(), undefined);
+    expect(d.rufe.mock.calls).toEqual([
+      [
+        ENDPUNKTE.entfallenFreigeben,
+        {
+          params: { durchfuehrungId: DID },
+          body: { antrag },
+        },
+      ],
+    ]);
+  });
+
   it('Entfallen ablehnen mit Begründung, zurückziehen ohne', async () => {
     await aktionen.entfallenAblehnenAction(MANDANT, DID, null, formular([]));
     let d = dienst();
@@ -316,15 +332,16 @@ describe('Speichern und Einreichen', () => {
       ['ergebnis', 'OHNE_BEFUND'],
       ['ergebnisKommentar', ''],
       ['absicht', absicht],
+      ['bisher', 'a'.repeat(64)],
     ]);
 
   it('Struktur aus dem Dienst, Eingaben aus dem Formular', async () => {
     await aktionen.durchfuehrungSpeichernAction(MANDANT, DID, null, eingabe('speichern'));
     const d = dienst({
       durchfuehrungLesen: lesen(),
-      durchfuehrungSpeichern: { pruefung: { maengel: [] } },
+      durchfuehrungSpeichern: { inhalt: 'b'.repeat(64), pruefung: { maengel: [] } },
     });
-    await expect(spec().aufruf(d, undefined, undefined)).resolves.toEqual({
+    await expect(spec().aufruf(d, await geparst(), undefined)).resolves.toEqual({
       meldung: 'Entwurf gespeichert.',
     });
     expect(d.rufe.mock.calls.map((c) => (c[0] as { name: string }).name)).toEqual([
@@ -334,6 +351,7 @@ describe('Speichern und Einreichen', () => {
     expect(d.rufe.mock.calls[1]![1]).toEqual({
       params: { durchfuehrungId: DID },
       body: {
+        bisher: 'a'.repeat(64),
         schritte: [
           { erledigt: true, kommentar: 'geprüft' },
           { erledigt: false, kommentar: '' },
@@ -353,7 +371,7 @@ describe('Speichern und Einreichen', () => {
   it('unlesbarer Betrag: Feldfehler, nichts gespeichert', async () => {
     await aktionen.durchfuehrungSpeichernAction(MANDANT, DID, null, eingabe('speichern', '12x'));
     const d = dienst({ durchfuehrungLesen: lesen() });
-    const r = (await spec().aufruf(d, undefined, undefined)) as Record<string, unknown>;
+    const r = (await spec().aufruf(d, await geparst(), undefined)) as Record<string, unknown>;
     expect(r).toMatchObject({ ok: false, fieldErrors: { wert_saldo: [expect.any(String)] } });
     expect(d.rufe).toHaveBeenCalledTimes(1);
   });
@@ -362,22 +380,28 @@ describe('Speichern und Einreichen', () => {
     await aktionen.durchfuehrungSpeichernAction(MANDANT, DID, null, eingabe('einreichen'));
     let d = dienst({
       durchfuehrungLesen: lesen(),
-      durchfuehrungSpeichern: { pruefung: { maengel: [] } },
+      durchfuehrungSpeichern: { inhalt: 'b'.repeat(64), pruefung: { maengel: [] } },
     });
-    await expect(spec().aufruf(d, undefined, undefined)).resolves.toEqual({
+    await expect(spec().aufruf(d, await geparst(), undefined)).resolves.toEqual({
       meldung: 'Zur Gegenzeichnung eingereicht. Die Nachweise sind jetzt gesperrt.',
     });
-    expect(d.rufe.mock.calls[2]![0]).toBe(ENDPUNKTE.durchfuehrungEinreichen);
+    expect(d.rufe.mock.calls[2]).toEqual([
+      ENDPUNKTE.durchfuehrungEinreichen,
+      { params: { durchfuehrungId: DID }, body: { bisher: 'b'.repeat(64) } },
+    ]);
 
     d = dienst({
       durchfuehrungLesen: lesen(),
-      durchfuehrungSpeichern: { pruefung: { maengel: ['2 von 3 Schritten offen'] } },
+      durchfuehrungSpeichern: {
+        inhalt: 'b'.repeat(64),
+        pruefung: { maengel: ['2 von 3 Schritten offen'] },
+      },
       durchfuehrungEinreichen: new TcmsUngueltig(
         { maengel: ['Text des Dienstes'] },
         { status: 400 },
       ),
     });
-    await expect(spec().aufruf(d, undefined, undefined)).resolves.toEqual({
+    await expect(spec().aufruf(d, await geparst(), undefined)).resolves.toEqual({
       ok: false,
       errorCode: 'VALIDATION_ERROR',
       error: 'Entwurf gespeichert, aber noch nicht eingereicht: 2 von 3 Schritten offen.',
@@ -388,10 +412,10 @@ describe('Speichern und Einreichen', () => {
     const aus = new TcmsNichtVerfuegbar('ZEITLIMIT');
     d = dienst({
       durchfuehrungLesen: lesen(),
-      durchfuehrungSpeichern: { pruefung: { maengel: [] } },
+      durchfuehrungSpeichern: { inhalt: 'b'.repeat(64), pruefung: { maengel: [] } },
       durchfuehrungEinreichen: aus,
     });
-    await expect(spec().aufruf(d, undefined, undefined)).rejects.toBe(aus);
+    await expect(spec().aufruf(d, await geparst(), undefined)).rejects.toBe(aus);
   });
 });
 

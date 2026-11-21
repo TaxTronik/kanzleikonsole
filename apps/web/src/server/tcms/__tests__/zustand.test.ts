@@ -161,6 +161,8 @@ describe('aktionsFehlerAus', () => {
     }
     // Feste Texte (nie umformulieren, nur ergänzen); jeder Grund hat einen eigenen Text.
     expect(TCMS_KONFLIKT_TEXTE).toEqual({
+      ZU_VIELE_MELDUNGEN:
+        'Es wurden innerhalb einer Stunde zu viele Meldungen übermittelt. Bitte versuchen Sie es später erneut.',
       BEREITS_ERLEDIGT:
         'Diese Anforderung ist bereits erledigt oder nicht mehr offen. Bitte laden Sie die Seite neu.',
       CODE_GESPERRT:

@@ -704,6 +704,7 @@ function AppetitAbschnitt({ t }: { t: Teil }) {
                 </span>
                 <span className={AKZEPTANZ_STATUS_BADGE[a.status]}>
                   {AKZEPTANZ_STATUS_LABEL[a.status]}
+                  {a.ueberholt ? ' (überholt)' : ''}
                 </span>
                 {a.zustellung ? (
                   <div className="basis-full">
@@ -775,6 +776,7 @@ function UebersteuerungenAbschnitt({ t }: { t: Teil }) {
   const { r, namen } = t;
   const offen = r.uebersteuerungen.filter((u) => u.status === 'BEANTRAGT');
   const wirksam = (u: Uebersteuerung) =>
+    !u.ueberholt &&
     r.uebersteuerungen.find((x) => x.sicht === u.sicht && x.status === 'FREIGEGEBEN')?.id === u.id;
   return (
     <Abschnitt
@@ -806,7 +808,7 @@ function UebersteuerungenAbschnitt({ t }: { t: Teil }) {
                   </span>
                   {u.status === 'FREIGEGEBEN' ? (
                     <span className={wirksam(u) ? 'badge-brand' : 'badge-gray'}>
-                      {wirksam(u) ? 'gilt' : 'abgelöst'}
+                      {u.ueberholt ? 'überholt' : wirksam(u) ? 'gilt' : 'abgelöst'}
                     </span>
                   ) : null}
                 </span>
@@ -894,7 +896,7 @@ function FreigabeBedienung({ t }: { t: Teil }) {
     <div className="flex flex-wrap items-start gap-2">
       <AktionsKnopf
         aktion={t.aktionen.freigabeSchritt}
-        felder={{ risikoIds: r.id, schritt: 'freigeben' }}
+        felder={{ risikoIds: r.id, ['stand_' + r.id]: r.standId, schritt: 'freigeben' }}
         beschriftung={
           <>
             <CheckCheck className="h-3.5 w-3.5" aria-hidden="true" /> Freigeben

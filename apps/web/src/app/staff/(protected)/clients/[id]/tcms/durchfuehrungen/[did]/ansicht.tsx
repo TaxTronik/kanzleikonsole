@@ -408,6 +408,7 @@ function AntragKnoepfe({ l }: { l: Lage }) {
       )}
       <AktionsKnopf
         action={l.binden(entfallenFreigebenAction)}
+        felder={{ antrag: l.d.entfallenAntrag ?? '' }}
         className="btn-primary text-xs py-1"
         disabled={!r.entfallenFreigeben.erlaubt}
         title={r.entfallenFreigeben.grund ?? 'Als zweite Person freigeben'}
@@ -619,7 +620,7 @@ function Hauptspalte({
   const mandant = encodeURIComponent(d.mandantId);
   return (
     <DurchfuehrungEditor
-      key={JSON.stringify([d.stand, l.bearbeitbar, schritte, werte, ergebnis, kommentar])}
+      key={JSON.stringify([d.stand, l.bearbeitbar, d.inhalt])}
       formId={FORM_ID}
       bearbeitbar={l.bearbeitbar}
       sperrGrund={l.bearbeitbar ? null : d.rechte.bearbeiten.grund}
@@ -811,6 +812,7 @@ function Fussleiste({ l }: { l: Lage }) {
     return (
       <EntwurfFormular
         action={l.binden(durchfuehrungSpeichernAction)}
+        bisher={d.inhalt}
         formId={FORM_ID}
         einreichen="Zur Gegenzeichnung einreichen"
         links={<EntfallenDialog l={l} />}

@@ -286,12 +286,18 @@ describe('Verwerfen mit Vier-Augen', () => {
       body: { begruendung: BEGRUENDUNG },
     });
 
-    await ereignisVerwerfenBestaetigenAction(MANDANT, EREIGNIS, null, new FormData());
+    await ereignisVerwerfenBestaetigenAction(
+      MANDANT,
+      EREIGNIS,
+      null,
+      formular([['antragId', MANDANT]]),
+    );
     expect(spec().keinRecht).toBe('VIER_AUGEN');
     expect(spec().mandantId).toBe(MANDANT);
     const verworfen = { id: EREIGNIS, nummer: '2026-T-0345', status: 'VERWORFEN' };
     ({ d } = await lauf(verworfen));
     expect(d.rufe).toHaveBeenCalledWith(ENDPUNKTE.ereignisVerwerfenBestaetigen, {
+      body: { antragId: MANDANT },
       params: { ereignisId: EREIGNIS },
     });
     // Anlagen der Meldung: Freigabe mit der Antwort, nur dieses Ereignis des

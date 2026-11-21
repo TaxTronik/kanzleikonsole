@@ -19,6 +19,8 @@
 // nebeneinander an und der Mandant kann sich seine Meinung bilden.
 // =============================================================================
 
+import { monthsCovered, type PeriodInput } from './period';
+export type { PeriodInput } from './period';
 import { berlinYmd } from '@/lib/fmt';
 import { computeBwaKpis, type BwaKpis } from './addison-parser';
 
@@ -66,25 +68,9 @@ function subtractRange(a: ProjectionRange, b: ProjectionRange): ProjectionRange 
   };
 }
 
-export interface PeriodInput {
-  periodKey: string;
-  periodType: 'YEAR' | 'QUARTER' | 'MONTH';
-  fromDate: Date;
-  toDate: Date;
-  positions: Array<{ number: number; amount: number | { toString(): string } }>;
-}
-
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
-
-function monthsCovered(p: PeriodInput): number {
-  const from = p.fromDate.getUTCMonth() + 1;
-  const to = p.toDate.getUTCMonth() + 1;
-  const fromY = p.fromDate.getUTCFullYear();
-  const toY = p.toDate.getUTCFullYear();
-  return (toY - fromY) * 12 + (to - from) + 1;
-}
 
 function safeKpi(p: PeriodInput): BwaKpis {
   return computeBwaKpis(p.positions);

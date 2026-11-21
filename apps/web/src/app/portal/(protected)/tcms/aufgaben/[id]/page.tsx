@@ -262,6 +262,7 @@ function Bearbeitung({
   return (
     <AufgabeEditor
       aktion={bearbeitbar ? portalAufgabeSpeichernAction.bind(null, d.id) : null}
+      bisher={d.inhalt}
       bearbeitbar={bearbeitbar}
       sperrGrund={lage.historisch ? 'Historischer Stand – nur Lesen.' : d.rechte.bearbeiten.grund}
       schritte={

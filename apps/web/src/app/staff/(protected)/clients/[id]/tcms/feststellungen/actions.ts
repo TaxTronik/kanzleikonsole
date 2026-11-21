@@ -13,6 +13,7 @@ import { TcmsKonflikt, TcmsUngueltig } from '@taxtronik/tcms-client';
 import {
   AuswirkungSchema,
   ENDPUNKTE,
+  FeststellungVerwerfenBestaetigenBodySchema,
   ErklaerungBodySchema,
   FeststellungErfassenBodySchema,
   FeststellungKlasseSchema,
@@ -403,14 +404,16 @@ export async function verwerfenBestaetigenAction(
   mandantId: string,
   feststellungId: string,
   _vorher: TcmsErgebnis | null,
-  _formData: FormData,
+  formData: FormData,
 ): Promise<TcmsErgebnis> {
   return tcmsKanzleiAktion({
     mandantId,
     keinRecht: 'VERWERFEN_BESTAETIGEN',
-    aufruf: async (dienst) => {
+    parse: () => parseFormData(FeststellungVerwerfenBestaetigenBodySchema, formData),
+    aufruf: async (dienst, body) => {
       await dienst.rufe(ENDPUNKTE.feststellungVerwerfenBestaetigen, {
         params: { feststellungId: objekt(feststellungId) },
+        body,
       });
       return { meldung: 'Feststellung verworfen.' };
     },

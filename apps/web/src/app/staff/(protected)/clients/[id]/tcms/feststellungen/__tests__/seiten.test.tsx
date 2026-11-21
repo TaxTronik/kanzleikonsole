@@ -264,6 +264,7 @@ describe('Feststellung – Detail', () => {
     const f = tcmsFixtures.feststellungP153();
     if (f.maskiert) throw new Error('Fixture');
     f.verwerfen = {
+      antragId: '01234567-aaaa-4444-8444-0123456789ab',
       begruendung: 'Doppelt erfasst, siehe F-2026-005 mit demselben Sachverhalt.',
       beantragtVon: DEMO.anna,
       bestaetigtVon: null,
@@ -278,6 +279,13 @@ describe('Feststellung – Detail', () => {
     await detail(f);
     const zweite = screen.getAllByRole('button', { name: 'Verwerfen bestätigen' }).at(-1)!;
     expect((zweite as HTMLButtonElement).disabled).toBe(false);
+    const form = zweite.closest('form')!;
+    expect(form.querySelector<HTMLInputElement>('input[name="antragId"]')?.value).toBe(
+      f.verwerfen.antragId,
+    );
+    expect(form.querySelector<HTMLInputElement>('input[name="auswirkung"]')?.value).toBe(
+      f.auswirkung,
+    );
     expect(screen.getAllByRole('button', { name: 'Ablehnen' }).length).toBe(1);
   });
 

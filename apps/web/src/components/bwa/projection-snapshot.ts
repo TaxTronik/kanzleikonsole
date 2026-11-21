@@ -1,5 +1,6 @@
+import { monthsCovered, type PeriodInput } from '@/server/bwa/period';
 import { computeBwaPlanBasis } from '@/server/bwa/plan-basis';
-import type { PeriodInput, ProjectionRange, YearProjection } from '@/server/bwa/projection';
+import type { ProjectionRange, YearProjection } from '@/server/bwa/projection';
 
 /** Hochrechnung in Planachsen, Vergleichsbasis für Planungsliste und Plan↔Hochrechnung. */
 export interface ProjectionSnapshot {
@@ -22,15 +23,6 @@ type SourcePeriod = PeriodInput & { source: 'DATEV' | 'ADDISON' | 'MANUAL' };
 
 function estimate(range: ProjectionRange | null): number | null {
   return range?.estimate ?? null;
-}
-
-function monthsCovered(period: PeriodInput): number {
-  return (
-    (period.toDate.getUTCFullYear() - period.fromDate.getUTCFullYear()) * 12 +
-    period.toDate.getUTCMonth() -
-    period.fromDate.getUTCMonth() +
-    1
-  );
 }
 
 /** BWA-PROJECTION-001: Bekannte Teilachsen ergänzen; fehlende Werte und die

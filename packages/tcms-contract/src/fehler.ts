@@ -14,6 +14,12 @@ export const FEHLER_STATUS = {
   KONFLIKT: 409,
   ZU_GROSS: 413,
   INTERN: 500,
+  /**
+   * Die Datenbank hat die Anfrage nach ihrem Zeitlimit abgebrochen (zu lange
+   * auf eine Sperre gewartet oder Anweisung zu lange; ADR 0001 §4). Nichts
+   * wurde geändert (Rollback); später erneut versuchen.
+   */
+  ZEITLIMIT: 503,
 } as const;
 
 export type FehlerCode = keyof typeof FEHLER_STATUS;
@@ -89,6 +95,8 @@ export type VerweigerungGrund = (typeof VERWEIGERUNG_GRUENDE)[number];
  *                              Schreibkonflikt der Datenbank)
  *   IDEMPOTENZ_ABWEICHUNG      Portal-Meldung: derselbe Idempotenzschlüssel
  *                              derselben Person mit anderem Inhalt (24 h)
+ *   ZU_VIELE_MELDUNGEN         Portal-Meldung: Höchstzahl der Meldungen je
+ *                              Person und Mandant in einer Stunde erreicht
  *
  * Wie `grund` nur für sichtbare Objekte: Fremdes und Unbekanntes bleibt
  * `NICHT_GEFUNDEN` ohne Grund (kein Existenz-Orakel).
@@ -103,6 +111,7 @@ export const KONFLIKT_GRUENDE = [
   'INHALT_VERAENDERT',
   'ZWISCHENZEITLICH_GEAENDERT',
   'IDEMPOTENZ_ABWEICHUNG',
+  'ZU_VIELE_MELDUNGEN',
 ] as const;
 
 export type KonfliktGrund = (typeof KONFLIKT_GRUENDE)[number];
@@ -146,6 +155,13 @@ export function antwortSchema<T extends z.ZodType>(daten: T) {
 export const MAX_BODY_BYTES = 256 * 1024;
 /** Höchste Zahl Mandanten-IDs in mandantenübergreifenden Lesepfaden. */
 export const MAX_MANDANTEN_JE_ANFRAGE = 5000;
+/**
+ * Höchste Zahl aller Einträge einer Mandantenliste (`mandantIds` + `bt` + `hb`):
+ * Jede UUID belegt in kompaktem JSON 39 Bytes, 6 700 Einträge passen also
+ * sicher in `MAX_BODY_BYTES`. Größere Zuständigkeitslisten teilt die
+ * kanzleikonsole auf mehrere Anfragen auf (je Teilliste ihre `bt`/`hb`).
+ */
+export const MAX_LISTENEINTRAEGE_JE_ANFRAGE = 6700;
 
 /**
  * Fachlicher bzw. technischer Fehler, den der Dienst in den Antwortumschlag
