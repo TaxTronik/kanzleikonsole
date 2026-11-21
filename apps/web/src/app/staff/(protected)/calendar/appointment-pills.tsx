@@ -63,15 +63,17 @@ export function AppointmentPills({
   appointments,
   staffOptions,
   limit,
+  offset = 0,
 }: {
   appointments: readonly CalendarAppointment[];
   staffOptions: readonly AppointmentStaffOption[];
-  limit: number;
+  limit?: number;
+  offset?: number;
 }) {
   return (
     <>
       {sortCancelledLast(appointments)
-        .slice(0, limit)
+        .slice(offset, limit === undefined ? undefined : offset + limit)
         .map((appointment) => {
           const time = fmtTimeShort(appointment.startsAt);
           const label = `${time} – ${fmtTimeShort(appointment.endsAt)}: ${appointment.title}${appointment.client ? ' · ' + appointment.client.name : ''}`;

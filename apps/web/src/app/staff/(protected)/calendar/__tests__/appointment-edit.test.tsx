@@ -175,6 +175,11 @@ describe('Terminpillen im Kanzleikalender', () => {
     );
     expect(html.match(/data-appointment-edit=/g)).toHaveLength(3);
     expect(html).not.toContain('cal-pill-cancelled');
+    const overflow = renderToStaticMarkup(
+      <AppointmentPills appointments={appointments} staffOptions={STAFF} offset={3} />,
+    );
+    expect(overflow).toContain('cal-pill-cancelled');
+    expect(overflow).not.toContain('data-appointment-edit=');
   });
 
   it('übergibt dem Dialog die Berlin-Wanduhrzeit und die Herkunft aus einer Terminanfrage', () => {

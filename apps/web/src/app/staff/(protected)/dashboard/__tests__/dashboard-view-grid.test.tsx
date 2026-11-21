@@ -51,7 +51,7 @@ describe('Dashboard-Leseansicht als serverseitiges CSS-Grid (P-24)', () => {
     expect(html.match(/class="dashboard-view-item"/g)).toHaveLength(DEFAULT_LAYOUT.widgets.length);
     expect(html).not.toContain('visibility');
     expect(html).not.toContain('react-grid');
-    expect(html).toContain('--dg-col:1 / span 3;--dg-row:1 / span 3;--dg-h:3');
+    expect(html).toContain('--dg-col:1 / span 4;--dg-row:1 / span 6;--dg-h:6');
   });
 
   it('zeigt gespeicherte Layouts an denselben Positionen wie der Editor (RGL-Kompaktierung)', () => {
@@ -103,7 +103,7 @@ describe('Dashboard-Leseansicht als serverseitiges CSS-Grid (P-24)', () => {
     expect(order).toEqual(['y', 'z', 'x']);
   });
 
-  it('stapelt unter 640px Containerbreite einspaltig und behält die gespeicherte Höhe', () => {
+  it('gibt schmalen Listen die volle Breite und fasst Kennzahlen paarweise zusammen', () => {
     const root = parse(source('../../../../globals.css'));
     const container = root.nodes.find(
       (node): node is AtRule =>
@@ -117,12 +117,16 @@ describe('Dashboard-Leseansicht als serverseitiges CSS-Grid (P-24)', () => {
       return Object.fromEntries(rule!.nodes.map((node) => [String(node), node]));
     };
     expect(Object.keys(decls('.dashboard-view-grid'))).toEqual([
-      'grid-template-columns: minmax(0, 1fr)',
+      'grid-template-columns: repeat(2, minmax(0, 1fr))',
+      'grid-auto-rows: auto',
+      'gap: 12px',
     ]);
     expect(Object.keys(decls('.dashboard-view-item'))).toEqual([
       'grid-column: 1 / -1',
-      'grid-row: auto / span var(--dg-h)',
+      'grid-row: auto',
+      'height: calc(var(--dg-h) * 46px - 16px)',
     ]);
+    expect(Object.keys(decls('.dashboard-view-item[data-kpi]'))).toContain('grid-column: span 1');
     expect(source('../../../../globals.css')).toContain('container-type: inline-size');
   });
 

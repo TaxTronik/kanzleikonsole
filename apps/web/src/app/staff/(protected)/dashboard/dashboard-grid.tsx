@@ -20,6 +20,7 @@ import {
 import { createDashboardMutationQueue, snapshotForQueuedDashboardAdd } from './mutation-queue';
 import { dashboardRenderMap, type RenderedWidget } from './dashboard-render-state';
 import { confirmDialog } from '@/components/ui/modal';
+import { mergePointerLayout } from '@/components/ui/grid-layout-geometry';
 import { DashboardLayoutControls } from './dashboard-layout-controls';
 import {
   adjustDashboardWidget,
@@ -183,31 +184,15 @@ export function DashboardGrid({
     persist();
   }
 
-  function onLayoutChange(next: Layout) {
-    if (resettingRef.current) return;
+  function applyPointerLayout(layout: Layout) {
+    if (!editMode || resettingRef.current) return;
     const current = widgetsRef.current;
-    const byId = new Map(current.map((w) => [w.id, w]));
-    const updated: LayoutWidget[] = [];
-    for (const l of next) {
-      const w = byId.get(l.i);
-      if (!w) continue;
-      updated.push({ ...w, x: l.x, y: l.y, w: l.w, h: l.h });
-    }
-    const same =
-      updated.length === current.length &&
-      updated.every((u, i) => {
-        const c = current[i];
-        return c && c.id === u.id && c.x === u.x && c.y === u.y && c.w === u.w && c.h === u.h;
-      });
-    if (same) return;
-    widgetsRef.current = updated;
-    setWidgets(updated);
-    // Keep effects (save and live feedback) out of React state updater
-    // callbacks, which React may replay. Passive rendering never saves.
-    if (editMode) {
-      layoutDescription.current = '';
-      persist();
-    }
+    const next = mergePointerLayout(current, layout);
+    if (next === current) return;
+    widgetsRef.current = next;
+    setWidgets(next);
+    layoutDescription.current = '';
+    persist();
   }
 
   function add(type: WidgetType) {
@@ -263,7 +248,7 @@ export function DashboardGrid({
   function remove(id: string) {
     if (resettingRef.current) return;
     const current = widgetsRef.current;
-    const next = current.filter((w) => w.id !== id);
+    const next = compactDashboardWidgets(current.filter((w) => w.id !== id));
     widgetsRef.current = next;
     setWidgets(next);
     setOptimisticRenderedWidgets((rendered) => rendered.filter((entry) => entry.widget.id !== id));
@@ -371,7 +356,7 @@ export function DashboardGrid({
           <DashboardGridEditor
             widgets={visible}
             renderById={renderById}
-            onLayoutChange={onLayoutChange}
+            onPointerLayout={applyPointerLayout}
             onRemove={remove}
           />
         </EditorFallback>

@@ -7,6 +7,7 @@ import { hasStaffPermission } from '@/server/auth/rbac';
 import { withTenantContext } from '@taxtronik/db';
 import { BillingForm } from './billing-form';
 import { fmtDateShort } from '@/lib/fmt';
+import { initialInvoiceDates } from '@/server/invoicing/date-defaults';
 
 export default async function ClientBillingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: clientId } = await params;
@@ -148,7 +149,11 @@ export default async function ClientBillingPage({ params }: { params: Promise<{ 
           {client.allowActive && hasStaffPermission(session, 'INVOICE_MANAGE') && (
             <div className="card p-6">
               <h2 className="text-sm font-medium text-primary mb-3">Rechnung erstellen</h2>
-              <BillingForm clientId={client.id} totalHours={totalHours} />
+              <BillingForm
+                clientId={client.id}
+                totalHours={totalHours}
+                {...initialInvoiceDates('IN_APP')}
+              />
             </div>
           )}
         </>

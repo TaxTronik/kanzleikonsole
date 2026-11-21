@@ -14,7 +14,7 @@ import {
   Undo2,
   ChevronUp,
 } from 'lucide-react';
-import { fmtDateShort } from '@/lib/fmt';
+import { berlinYmd, fmtDateShort } from '@/lib/fmt';
 import { FieldError, FormErrorSummary, fieldErrorProps } from '@/components/form-errors';
 import { parseDelegationNotes } from '@/server/risk/delegate-notes';
 import { onNotificationsGrew } from '@/lib/live-events';
@@ -188,8 +188,7 @@ export function RemindersBlock({
   const rows = live ?? initial;
   const open_items = rows.filter((r) => !r.doneAt && !r.archivedAt);
   const done_items = rows.filter((r) => r.doneAt && !r.archivedAt);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayYmd = berlinYmd(new Date());
 
   return (
     <div className="card overflow-hidden">
@@ -242,7 +241,7 @@ export function RemindersBlock({
                 name="dueDate"
                 aria-label="Fällig"
                 className="input text-sm"
-                min={new Date().toISOString().slice(0, 10)}
+                min={todayYmd}
                 required
                 {...errorProps('dueDate')}
               />
@@ -331,7 +330,7 @@ export function RemindersBlock({
         <ul className="divide-y divide-border-subtle">
           {open_items.map((r) => {
             const due = new Date(r.dueDate);
-            const overdue = due.getTime() < today.getTime();
+            const overdue = r.dueDate.slice(0, 10) < todayYmd;
             // Delegation = Recherche-Auftrag an jemand anderen. „an mich" wird
             // hervorgehoben, „von mir an X" nur benannt — sonst sieht jede
             // Wiedervorlage gleich aus und der Auftrag geht in der Liste unter.

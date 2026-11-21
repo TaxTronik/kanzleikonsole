@@ -27,6 +27,19 @@ function toLocalIsoMinute(d: Date): string {
   return local.toISOString().slice(0, 16);
 }
 
+function needsNativeWallTime(
+  value: string | null | undefined,
+  serialized: string,
+  output: 'local' | 'utc',
+  editing: boolean,
+): boolean {
+  if (output !== 'local' || value === undefined) return false;
+  return (
+    editing ||
+    Boolean(value && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value) && value !== serialized)
+  );
+}
+
 export function DateTimePicker({
   id,
   name,
@@ -62,6 +75,7 @@ export function DateTimePicker({
 }) {
   const generatedId = useId();
   const inputId = id ?? generatedId;
+  const [editingNativeTime, setEditingNativeTime] = useState(false);
   const [internalDate, setInternalDate] = useState<Date | null>(() => {
     if (!defaultValue) return null;
     return typeof defaultValue === 'string' ? new Date(defaultValue) : defaultValue;
@@ -71,10 +85,38 @@ export function DateTimePicker({
   const date = controlled ? controlledDate : internalDate;
   const serialized = date ? (output === 'utc' ? date.toISOString() : toLocalIsoMinute(date)) : '';
 
+  // Ein lokales Date verschiebt z. B. 02:30 nach 03:30 während der amerikanischen
+  // Frühjahrsumstellung, obwohl die Berliner Vorlagenzeit existiert. Das native
+  // datetime-local-Feld kann genau diese Uhrzeit anzeigen und unverändert übermitteln.
+  const inputProps = {
+    id: inputId,
+    className: 'input text-sm w-full ' + (className ?? ''),
+    disabled,
+    required,
+    autoComplete: 'off',
+  };
+  if (needsNativeWallTime(value, serialized, output, editingNativeTime)) {
+    return (
+      <input
+        {...inputProps}
+        name={name}
+        type="datetime-local"
+        value={value ?? ''}
+        onChange={(event) => onChange?.(event.target.value)}
+        onFocus={() => setEditingNativeTime(true)}
+        onBlur={() => setEditingNativeTime(false)}
+        min={minDate ? toLocalIsoMinute(minDate) : undefined}
+        aria-required={required ? 'true' : undefined}
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+      />
+    );
+  }
+
   return (
     <div className="relative">
       <DatePicker
-        id={inputId}
+        {...inputProps}
         selected={date}
         onChange={(next: Date | null) => {
           if (!controlled) setInternalDate(next ?? null);
@@ -88,10 +130,6 @@ export function DateTimePicker({
         locale="de"
         minDate={minDate}
         placeholderText="Datum + Uhrzeit auswählen"
-        className={'input text-sm w-full ' + (className ?? '')}
-        autoComplete="off"
-        disabled={disabled}
-        required={required}
         aria-required={required ? 'true' : undefined}
         ariaInvalid={ariaInvalid ? 'true' : undefined}
         ariaDescribedBy={ariaDescribedBy}

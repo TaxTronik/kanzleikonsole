@@ -40,9 +40,10 @@ import { AppointmentPills } from './appointment-pills';
 import { RequestDecision, type RequestRow } from './request-decision';
 import { DecidedRequests } from './decided-requests';
 import { AppointmentMails } from './appointment-mails';
-import { fmtMonthYear, berlinYmd, berlinTodayUtcMidnight } from '@/lib/fmt';
+import { fmtDateShort, fmtMonthYear, berlinYmd, berlinTodayUtcMidnight } from '@/lib/fmt';
 import { CalendarModeSwitch } from '@/components/calendar-mode-switch';
-import { CalendarMonthGrid, MoreEntries, TaxDeadlinePills } from '@/components/calendar-month-grid';
+import { MoreEntries } from '@/components/calendar-more-entries';
+import { CalendarMonthGrid, TaxDeadlinePills } from '@/components/calendar-month-grid';
 
 interface Search {
   month?: string;
@@ -445,12 +446,25 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
                 scope="all"
               />
               <MoreEntries
+                dateLabel={fmtDateShort(cell.date)}
                 count={
                   Math.max(0, appts.length - 3) +
                   Math.max(0, dlArr.length - 3) +
                   Math.max(0, absentToday.length - 2)
                 }
-              />
+              >
+                {absentToday.slice(2).map((label, idx) => (
+                  <span key={idx} className="cal-pill cal-pill-absence">
+                    {label}
+                  </span>
+                ))}
+                <AppointmentPills appointments={appts} staffOptions={data.staffList} offset={3} />
+                <TaxDeadlinePills
+                  groups={dlArr.slice(3)}
+                  doneClassName="cal-pill cal-pill-done"
+                  scope="all"
+                />
+              </MoreEntries>
             </>
           );
         }}

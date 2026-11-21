@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import type { ClientBlockKey, ClientGridItem } from '@/server/settings/client-layout-shared';
 
 /**
@@ -34,7 +34,7 @@ export function CockpitGrid({
 
   return (
     <div
-      className="grid gap-4"
+      className="client-cockpit-grid grid gap-4"
       style={{
         gridTemplateColumns: 'repeat(12, minmax(0, 1fr))',
         gridAutoFlow: 'row dense',
@@ -43,9 +43,8 @@ export function CockpitGrid({
       {visible.map((it) => (
         <div
           key={it.id}
-          style={{
-            gridColumn: `${it.x + 1} / span ${it.w}`,
-          }}
+          className="min-w-0"
+          style={{ '--cockpit-column': `${it.x + 1} / span ${it.w}` } as CSSProperties}
         >
           {blocks[it.id]}
         </div>

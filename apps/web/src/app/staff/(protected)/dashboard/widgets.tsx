@@ -9,6 +9,8 @@ import type { ReactNode } from 'react';
  */
 
 import { Users, Inbox, FileText, Phone, IdCard, Workflow } from 'lucide-react';
+import { parseRequestListFilters, requestListWhere } from '@/server/requests/list-filters';
+import { pendingMasterChangesWhere } from '@/server/clients/pending-master-changes';
 import type { WidgetType } from '@/server/dashboard/widgets';
 import { kpi, type RenderCtx } from './widgets/_shared';
 import {
@@ -63,8 +65,15 @@ export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<Re
         ctx,
         Inbox,
         'Offene Anforderungen',
-        '/staff/requests?status=OPEN',
-        (t) => t.request.count({ where: { status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
+        '/staff/requests?status=OUTSTANDING',
+        (t) =>
+          t.request.count({
+            where: requestListWhere(
+              parseRequestListFilters({ status: 'OUTSTANDING' }),
+              ctx.staffId,
+              ctx.clientAccess ?? {},
+            ),
+          }),
         'yellow',
       );
     case 'kpi_documents':
@@ -85,8 +94,9 @@ export async function renderWidget(type: WidgetType, ctx: RenderCtx): Promise<Re
         ctx,
         IdCard,
         'Offene Stammdaten-Anträge',
-        '/staff/dashboard',
-        (t) => t.clientMasterChangeRequest.count({ where: { status: 'PENDING' } }),
+        '/staff/clients/change-requests',
+        (t) =>
+          t.clientMasterChangeRequest.count({ where: pendingMasterChangesWhere(ctx.clientAccess) }),
         'yellow',
       );
     case 'kpi_open_workflows':

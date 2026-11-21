@@ -174,7 +174,7 @@ export function PlanWizard({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="@container space-y-4">
       <div className="flex items-center gap-2 mb-4">
         {[1, 2, 3].map((s) => (
           <div
@@ -187,7 +187,7 @@ export function PlanWizard({
       {step === 1 && (
         <div className="card p-6 space-y-4">
           <h2 className="text-sm font-medium text-primary">Schritt 1: Eckdaten</h2>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 @md:grid-cols-2">
             <div>
               <label className="label" htmlFor="bwa-plan-wizard-name">
                 Name der Planung
@@ -492,7 +492,7 @@ function AxisRow({
   onChange: (patch: Partial<LineState>) => void;
 }) {
   return (
-    <div className="grid grid-cols-[1fr_180px_2fr] gap-2 items-center">
+    <div className="grid min-w-0 items-center gap-2 border-b border-default pb-3 last:border-0 @xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] @xl:border-0 @xl:pb-0">
       <label className="text-sm text-secondary" htmlFor={`bwa-wizard-axis-${axis}-amount`}>
         {AXIS_LABELS[axis]}
       </label>

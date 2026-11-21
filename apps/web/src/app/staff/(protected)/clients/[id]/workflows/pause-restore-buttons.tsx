@@ -1,9 +1,10 @@
 ﻿'use client';
 
-import { useState, useTransition, type MouseEvent } from 'react';
+import { useState, useTransition, type FormEvent, type MouseEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Pause, Play, RotateCcw, X } from 'lucide-react';
 import { confirmDialog, Modal, noticeDialog } from '@/components/ui/modal';
+import { berlinYmd } from '@/lib/fmt';
 import { pauseInstanceAction, resumeInstanceAction, restoreInstanceAction } from './actions';
 
 // ----------------------------------------------------------------------------
@@ -24,7 +25,8 @@ export function PauseWorkflowButton({
   const [error, setError] = useState<string | null>(null);
   const [isPending, start] = useTransition();
 
-  function submit() {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError(null);
     start(async () => {
       const r = await pauseInstanceAction({
@@ -47,79 +49,80 @@ export function PauseWorkflowButton({
     <Modal
       title="Workflow pausieren"
       onClose={() => setOpen(false)}
-      panelClassName="card w-full max-w-md p-5 space-y-3"
+      panelClassName="card w-full max-w-md p-5"
       showCloseButton={false}
       closeDisabled={isPending}
     >
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-primary inline-flex items-center gap-1.5">
-          <Pause className="h-4 w-4 text-amber-600" />
-          Workflow pausieren
-        </h2>
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          className="text-disabled hover:text-secondary"
-          aria-label="Dialog schließen"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-      <p className="text-xs text-secondary">
-        <strong>{instanceName}</strong> wird angehalten. Offene Schritte bleiben sichtbar, werden
-        aber nicht mehr in den „Mein Tag"-Listen geführt.
-      </p>
-      <div>
-        <label className="label" htmlFor={`pause-workflow-${instanceId}-until`}>
-          Wiederaufnahme am (optional)
-        </label>
-        <input
-          id={`pause-workflow-${instanceId}-until`}
-          type="date"
-          value={until}
-          onChange={(e) => setUntil(e.target.value)}
-          min={new Date().toISOString().slice(0, 10)}
-          className="input text-sm"
-          aria-describedby={`pause-workflow-${instanceId}-until-hint`}
-        />
-        <p id={`pause-workflow-${instanceId}-until-hint`} className="text-[10px] text-muted mt-1">
-          Wenn gesetzt, wird der Workflow ab diesem Tag automatisch wieder aktiv. Leer = unbefristet
-          pausiert, muss manuell fortgesetzt werden.
-        </p>
-      </div>
-      <div>
-        <label className="label" htmlFor={`pause-workflow-${instanceId}-reason`}>
-          Grund (optional)
-        </label>
-        <textarea
-          id={`pause-workflow-${instanceId}-reason`}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          rows={2}
-          maxLength={2000}
-          placeholder='z. B. „Mandant im Urlaub", „warten auf Unterlagen"'
-          className="input text-sm"
-        />
-      </div>
-      {error && (
-        <div className="alert-error-sm text-xs p-2" role="alert">
-          {error}
+      <form className="space-y-3" onSubmit={submit}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-primary inline-flex items-center gap-1.5">
+            <Pause className="h-4 w-4 text-amber-600" />
+            Workflow pausieren
+          </h2>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="text-disabled hover:text-secondary"
+            aria-label="Dialog schließen"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
-      )}
-      <div className="form-actions">
-        <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
-          Abbrechen
-        </button>
-        <button
-          type="button"
-          onClick={submit}
-          disabled={isPending}
-          className="text-sm font-medium inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
-        >
-          <Pause className="h-3.5 w-3.5" />
-          {isPending ? 'Pausiere…' : 'Pausieren'}
-        </button>
-      </div>
+        <p className="text-xs text-secondary">
+          <strong>{instanceName}</strong> wird angehalten. Offene Schritte bleiben sichtbar, werden
+          aber nicht mehr in den „Mein Tag"-Listen geführt.
+        </p>
+        <div>
+          <label className="label" htmlFor={`pause-workflow-${instanceId}-until`}>
+            Wiederaufnahme am (optional)
+          </label>
+          <input
+            id={`pause-workflow-${instanceId}-until`}
+            type="date"
+            value={until}
+            onChange={(e) => setUntil(e.target.value)}
+            min={berlinYmd(new Date())}
+            className="input text-sm"
+            aria-describedby={`pause-workflow-${instanceId}-until-hint`}
+          />
+          <p id={`pause-workflow-${instanceId}-until-hint`} className="text-[10px] text-muted mt-1">
+            Wenn gesetzt, wird der Workflow ab diesem Tag automatisch wieder aktiv. Leer =
+            unbefristet pausiert, muss manuell fortgesetzt werden.
+          </p>
+        </div>
+        <div>
+          <label className="label" htmlFor={`pause-workflow-${instanceId}-reason`}>
+            Grund (optional)
+          </label>
+          <textarea
+            id={`pause-workflow-${instanceId}-reason`}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            rows={2}
+            maxLength={2000}
+            placeholder='z. B. „Mandant im Urlaub", „warten auf Unterlagen"'
+            className="input text-sm"
+          />
+        </div>
+        {error && (
+          <div className="alert-error-sm text-xs p-2" role="alert">
+            {error}
+          </div>
+        )}
+        <div className="form-actions">
+          <button type="button" onClick={() => setOpen(false)} className="btn-secondary text-sm">
+            Abbrechen
+          </button>
+          <button
+            type="submit"
+            disabled={isPending}
+            className="text-sm font-medium inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50"
+          >
+            <Pause className="h-3.5 w-3.5" />
+            {isPending ? 'Pausiere…' : 'Pausieren'}
+          </button>
+        </div>
+      </form>
     </Modal>
   ) : null;
 

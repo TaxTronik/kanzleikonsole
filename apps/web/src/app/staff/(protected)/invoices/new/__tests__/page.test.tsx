@@ -1,7 +1,9 @@
-// Fachkatalog: ACCESS-CLIENT-MODE-001, ACCESS-STAFF-PERMISSION-001
+// @vitest-environment jsdom
+// Fachkatalog: ACCESS-CLIENT-MODE-001, ACCESS-STAFF-PERMISSION-001, INV-NUMBER-ALLOCATION-001
 import type { StaffSession } from '@/server/auth/staff';
+import { render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fixture = vi.hoisted(() => ({
   session: {} as StaffSession,
@@ -28,14 +30,18 @@ vi.mock('@taxtronik/db', () => ({
 }));
 // Die Formulare suchen Mandanten selbst serverseitig (ClientCombobox); die
 // Seite übergibt keinen Bestand mehr.
-vi.mock('../form', () => ({
-  NewInvoiceForm: (props: Record<string, unknown>) =>
-    'Rechnungsformular' + (Object.keys(props).length ? ' mit Props' : ''),
+vi.mock('../form', { spy: true });
+vi.mock('../external-form', { spy: true });
+vi.mock('../../actions', () => ({
+  createInvoiceAction: vi.fn(),
+  uploadExternalInvoiceAction: vi.fn(),
 }));
-vi.mock('../external-form', () => ({
-  ExternalInvoiceForm: (props: Record<string, unknown>) =>
-    'Uploadformular: ' + Object.keys(props).join(','),
+vi.mock('next/navigation', async (original) => ({
+  ...(await original<typeof import('next/navigation')>()),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
+import { NewInvoiceForm } from '../form';
+import { ExternalInvoiceForm } from '../external-form';
 import NewInvoicePage from '../page';
 
 beforeEach(() => {
@@ -53,6 +59,8 @@ beforeEach(() => {
   fixture.firstClient = null;
   fixture.findFirst.mockImplementation(async () => fixture.firstClient);
 });
+
+afterEach(() => vi.useRealTimers());
 
 // Gleiche Zugriffsregel wie die Suche: Tenant + accessibleClientsWhereFor + allowActive.
 const where = (access: Record<string, unknown>) => ({
@@ -77,7 +85,7 @@ describe('Rechnungsanlage — ACCESS-CLIENT-MODE-001', () => {
       expect(html).toContain('Kein auswählbarer Mandant');
       expect(html).toContain('href="/staff/clients"');
       expect(html).not.toContain('/staff/clients/onboarding/new');
-      expect(html).not.toContain('formular:');
+      expect(html).not.toContain('id="issueDate"');
       expect(html).not.toContain('Keine aktiven Mandanten vorhanden');
     },
   );
@@ -106,17 +114,44 @@ describe('Rechnungsanlage — ACCESS-CLIENT-MODE-001', () => {
   });
 
   it.each([
-    ['IN_APP', 'Rechnungsformular'],
-    ['EXTERNAL', 'Uploadformular: categories'],
+    ['IN_APP', NewInvoiceForm],
+    ['EXTERNAL', ExternalInvoiceForm],
   ])(
     'zeigt bei zugänglichen Mandanten weiterhin das %s-Formular ohne vorgeladenen Bestand',
     async (mode, form) => {
       fixture.mode = mode;
       fixture.firstClient = { id: 'visible' };
       const html = renderToStaticMarkup(await NewInvoicePage());
-      expect(html).toContain(form);
-      expect(html).not.toContain('mit Props');
+      expect(html).toContain('id="issueDate"');
+      const props = vi.mocked(form).mock.lastCall?.[0];
+      expect(Object.keys(props ?? {}).sort()).toEqual(
+        mode === 'IN_APP'
+          ? ['initialDueDate', 'initialIssueDate']
+          : ['categories', 'initialDueDate', 'initialIssueDate'],
+      );
       expect(html).not.toContain('Kein auswählbarer Mandant');
+    },
+  );
+});
+
+describe('Datumsfelder bei der Rechnungsanlage (INV-NUMBER-ALLOCATION-001)', () => {
+  it.each([
+    ['IN_APP', '2026-03-28T23:30:00Z', '2026-03-29', '2026-04-28'],
+    ['EXTERNAL', '2026-03-28T23:30:00Z', '2026-03-29', '2026-04-12'],
+    ['IN_APP', '2026-10-24T22:30:00Z', '2026-10-25', '2026-11-24'],
+    ['EXTERNAL', '2026-10-24T22:30:00Z', '2026-10-25', '2026-11-08'],
+    ['IN_APP', '2026-12-31T23:30:00Z', '2027-01-01', '2027-01-31'],
+    ['EXTERNAL', '2026-12-31T23:30:00Z', '2027-01-01', '2027-01-15'],
+  ])(
+    'zeigt in %s um %s Rechnungsdatum und Fälligkeit vor der Eingabe',
+    async (mode, now, issue, due) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date(now));
+      fixture.mode = mode;
+      fixture.firstClient = { id: 'visible' };
+      render(await NewInvoicePage());
+      expect(screen.getByLabelText<HTMLInputElement>(/^Rechnungsdatum/).value).toBe(issue);
+      expect(screen.getByLabelText<HTMLInputElement>(/^Fällig am/).value).toBe(due);
     },
   );
 });

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Profiler } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { ActionResult } from '@/server/actions/types';
@@ -139,5 +140,34 @@ describe('ActionForm', () => {
     await waitFor(() => expect(form.hasAttribute('aria-busy')).toBe(false));
     fireEvent.submit(form);
     await waitFor(() => expect(action).toHaveBeenCalledTimes(2));
+  });
+
+  it('übermittelt die erste Korrektur sofort, wenn der Fehler angezeigt wird', async () => {
+    const action = vi
+      .fn<(prev: ActionResult | null, data: FormData) => Promise<ActionResult>>()
+      .mockResolvedValueOnce({ ok: false, error: 'Zeitraum korrigieren.' })
+      .mockResolvedValueOnce({ ok: true });
+    let korrigiert = false;
+    render(
+      <Profiler
+        id="Bescheid"
+        onRender={() => {
+          if (korrigiert || !screen.queryByText('Zeitraum korrigieren.')) return;
+          const form = screen.getByRole<HTMLFormElement>('form', { name: 'Bescheid' });
+          if (form.hasAttribute('aria-busy')) return;
+          korrigiert = true;
+          screen.getByRole<HTMLInputElement>('textbox').value = '2026';
+          form.requestSubmit();
+        }}
+      >
+        <ActionForm action={action} aria-label="Bescheid">
+          <input name="period" defaultValue="2030" aria-label="Zeitraum" />
+          <button type="submit">Speichern</button>
+        </ActionForm>
+      </Profiler>,
+    );
+    await act(async () => screen.getByRole('button', { name: 'Speichern' }).click());
+    expect(action).toHaveBeenCalledTimes(2);
+    expect(action.mock.calls[1]![1].get('period')).toBe('2026');
   });
 });

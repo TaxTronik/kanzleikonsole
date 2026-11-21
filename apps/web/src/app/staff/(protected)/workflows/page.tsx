@@ -105,16 +105,16 @@ export default async function ActiveWorkflowsPage({
     0,
   );
 
-  function filterLink(value: 'all' | 'mine' | 'mineStart'): string {
+  function filterLink(value: 'all' | 'mine' | 'mineStart', clientId = clientFilterId): string {
     const params = new URLSearchParams();
     if (value !== 'all') params.set('filter', value);
-    if (clientFilterId) params.set('clientId', clientFilterId);
+    if (clientId) params.set('clientId', clientId);
     const qs = params.toString();
     return '/staff/workflows' + (qs ? '?' + qs : '');
   }
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <div className="mb-3">
         <h1 className="page-title">
           <Workflow className="h-6 w-6 text-brand-600" />
@@ -126,7 +126,7 @@ export default async function ActiveWorkflowsPage({
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="grid gap-2 sm:grid-cols-3 sm:gap-3 mb-4">
         <KpiCard label="Laufende Workflows" value={totalCount} icon={Activity} />
         <KpiCard
           label="Mir zugewiesen, offen"
@@ -152,14 +152,19 @@ export default async function ActiveWorkflowsPage({
           active={filter === 'mineStart'}
           label="Von mir gestartet"
         />
-        {(filterClients || filterClient) && (
-          <form action="/staff/workflows" method="get" className="ml-2 flex items-center gap-1">
+        {(filterClients || filterClient || clientFilterId) && (
+          <form
+            action="/staff/workflows"
+            method="get"
+            className="flex w-full flex-wrap items-center gap-2 sm:w-auto"
+          >
             {filter !== 'all' && <input type="hidden" name="filter" value={filter} />}
             <label htmlFor="workflow-client-filter" className="sr-only">
               Nach Mandant filtern
             </label>
-            <div className="min-w-[14rem]">
+            <div className="w-full sm:w-56">
               <ClientCombobox
+                key={clientFilterId}
                 id="workflow-client-filter"
                 name="clientId"
                 filters={['activeWorkflow']}
@@ -172,8 +177,11 @@ export default async function ActiveWorkflowsPage({
               Filtern
             </button>
             {clientFilterId && (
-              <Link href={filterLink(filter)} className="text-xs text-muted hover:underline ml-1">
-                ×
+              <Link
+                href={filterLink(filter, '')}
+                className="text-xs text-brand-700 hover:underline"
+              >
+                Mandantenfilter entfernen
               </Link>
             )}
           </form>
@@ -301,12 +309,10 @@ function KpiCard({
         ? 'text-brand-700 dark:text-brand-300'
         : 'text-disabled';
   return (
-    <div className="card p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <Icon className={`h-4 w-4 ${accent}`} />
-        <p className="text-[11px] font-medium text-muted uppercase tracking-wide truncate">
-          {label}
-        </p>
+    <div className="card flex items-center justify-between gap-2 px-4 py-2 sm:block sm:p-4">
+      <div className="flex items-center gap-2 sm:mb-1">
+        <Icon className={`h-4 w-4 shrink-0 ${accent}`} />
+        <p className="text-[11px] font-medium text-muted uppercase tracking-wide">{label}</p>
       </div>
       <p
         className={`text-2xl font-bold ${tone === 'red' && highlight ? 'text-red-700 dark:text-red-400' : 'text-primary'}`}

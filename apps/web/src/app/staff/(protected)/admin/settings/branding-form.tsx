@@ -147,7 +147,7 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
             accept="image/png,image/jpeg,image/webp"
             onSelect={(f) => readLogo(f, setLogoError, setLogo)}
           >
-            Logo auswählen
+            Logo für helle Ansicht auswählen
           </FileButton>
         </div>
         <input type="hidden" name="logoDataUrl" value={logo ?? ''} />
@@ -183,7 +183,7 @@ export function BrandingForm({ initial }: { initial: BrandingInfo }) {
             accept="image/png,image/jpeg,image/webp"
             onSelect={(f) => readLogo(f, setLogoDarkError, setLogoDark)}
           >
-            Dark-Logo auswählen
+            Logo für dunkle Ansicht auswählen
           </FileButton>
         </div>
         <input type="hidden" name="logoDataUrlDark" value={logoDark ?? ''} />

@@ -22,7 +22,8 @@ import {
   werteZeilen,
   type KennzahlDef,
   type KennzahlPruefung,
-  type Werte,
+  werteAusListe,
+  type WertEintrag,
   type WertZeile,
 } from './werte';
 import { TCMS_TEXT_ISOLIERT, TcmsText } from '@/components/tcms/text';
@@ -192,7 +193,7 @@ export function DurchfuehrungEditor({
   sperrGrund,
   schritte,
   kennzahlen,
-  werte,
+  werte: gespeicherteWerte,
   pruefung,
   toleranzEur,
   periodeKurz,
@@ -207,7 +208,7 @@ export function DurchfuehrungEditor({
   sperrGrund?: string | null;
   schritte: EditorSchritt[];
   kennzahlen: KennzahlDef[];
-  werte: Werte;
+  werte: readonly (WertEintrag & { key: string })[];
   /** Berechnete Werte des Dienstes für den gespeicherten Stand (`pruefung.kennzahlen`). */
   pruefung: readonly KennzahlPruefung[];
   toleranzEur: number | null;
@@ -218,6 +219,7 @@ export function DurchfuehrungEditor({
   ergebnisZusatz?: ReactNode;
   minBefund: number;
 }) {
+  const werte = werteAusListe(gespeicherteWerte);
   const f = bearbeitbar ? formId : undefined;
   const titel = bearbeitbar ? undefined : (sperrGrund ?? undefined);
   const [erledigt, setErledigt] = useState(() => schritte.map((s) => s.erledigt));

@@ -25,10 +25,13 @@ sources:
     checked_at: '2026-08-31'
     primary: true
 code_refs:
+  - apps/web/src/app/staff/(protected)/mandate-expansion/vdb/page.tsx
+  - apps/web/src/server/mandate-expansion/model.ts
   - apps/web/src/server/mandate-expansion/vdb.ts
   - packages/db/prisma/migrations/20260831120000_mandate_expansion/migration.sql
   - packages/db/prisma/migrations/20260831200000_mandate_history_integrity/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/mandate-expansion/__tests__/calendar-dates.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/service.test.ts
 feature_refs:
   - docs/development/module/mandate-expansion.md
@@ -81,6 +84,8 @@ Der Arbeitsstand hat sich zwischen Anzeige und Bestätigung geändert oder ein e
 
 ## Umsetzung in TaxTronik
 
+Das Formular schlägt den aktuellen Kalendertag in Europe/Berlin als Nachweisdatum vor. Die Eingabe und die serverseitige Prüfung erlauben einen gültigen Kalendertag bis einschließlich heute. Der Datensatz kodiert das gewählte Datum wie bisher mit 00:00 UTC in `recordedAt`. Der Erstellungszeitpunkt steht getrennt in `createdAt`.
+
 VdbRecord referenziert Mandant, Vollmacht, optional konkrete Dokumentversion und Mitarbeiter über echte Fremdschlüssel. Scope-Trigger und Tenant-RLS schützen die Zuordnung; revisionsweise Einträge und Audit halten den Verlauf fest. Der Exportbutton ist ohne aktivierte reale Formatspezifikation gesperrt.
 
 ## Bekannte Abweichungen und Grenzen
@@ -92,5 +97,7 @@ Kein offizielles Importformat, keine VDB-/ELSTER-Übermittlung, keine automatisc
 Welche konkrete Meldestrecke nutzt die Kanzlei, und welche autorisierte Spezifikation steht zur Verfügung? Welche Nachweise belegen Einreichung, Rückmeldung und Rücknahme? Wer prüft Umfang, Vertretungsmacht und Form?
 
 ## Technische Nachweise
+
+Der Seitentest prüft den Vorschlag und die native Datumsobergrenze vor und ab Berliner Mitternacht. Der Servicetest prüft an der Sommer-Mitternacht die Annahme des neuen Tages und den an die Speicherung übergebenen Datumwert. Ein zukünftiger Tag, der 30. Februar und eine Uhrzeit statt eines Datums werden vor dem Anlegen des Nachweises abgewiesen.
 
 Tests prüfen unzulässige Statussprünge, erneute Vorbereitung nach Zurückweisung, veraltete Revisionen und den mandatsgebundenen Dokumentnachweis. Sie belegen keine externe Meldung oder Behördenentscheidung.

@@ -3,7 +3,7 @@
 import { useActionState } from 'react';
 import { FolderInput } from 'lucide-react';
 
-import { fmtDateShort } from '@/lib/fmt';
+import { berlinYmd, fmtDateShort } from '@/lib/fmt';
 import { confirmDialog } from '@/components/ui/modal';
 import type { ActionResult } from '@/server/actions/staff-action';
 
@@ -55,13 +55,11 @@ export function BindersBlock({ clientId, initial }: { clientId: string; initial:
     createBinderAction,
     null,
   );
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const isOverdue = (binder: Binder) => {
-    const due = binder.expectedReturnAt ? new Date(binder.expectedReturnAt) : null;
-    return binder.status === 'WITH_CLIENT' && due !== null && due.getTime() < today.getTime();
-  };
+  const todayYmd = berlinYmd(new Date());
+  const isOverdue = (binder: Binder) =>
+    binder.status === 'WITH_CLIENT' &&
+    binder.expectedReturnAt !== null &&
+    binder.expectedReturnAt.slice(0, 10) < todayYmd;
 
   return (
     <ClientStatusFlowCard<BinderStatus, Binder>
@@ -99,7 +97,7 @@ export function BindersBlock({ clientId, initial }: { clientId: string; initial:
               type="date"
               name="expectedReturnAt"
               className="input text-sm"
-              min={new Date().toISOString().slice(0, 10)}
+              min={berlinYmd(new Date())}
               title="Erwartete Rückgabe"
             />
           </div>

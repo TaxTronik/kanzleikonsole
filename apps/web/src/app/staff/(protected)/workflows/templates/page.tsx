@@ -34,7 +34,7 @@ export default async function WorkflowsPage() {
   );
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-8 max-w-5xl">
       <Link href="/staff/admin" className="back-link mb-3">
         <ArrowLeft className="h-3 w-3" />
         Administration
@@ -72,74 +72,53 @@ export default async function WorkflowsPage() {
           </p>
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-default">
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
-                  Vorlage
-                </th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
-                  Schritte
-                </th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
-                  Bereich
-                </th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
-                  Instanzen
-                </th>
-                <th className="text-left px-6 py-3 text-xs font-medium text-muted uppercase">
-                  Status
-                </th>
-                <th className="text-right px-6 py-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {templates.map((t) => (
-                <tr key={t.id} className={t.active ? 'hover:bg-gray-50' : 'opacity-60'}>
-                  <td className="px-6 py-3">
-                    <Link
-                      href={`/staff/workflows/templates/${t.id}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {t.name}
-                    </Link>
-                    {t.description && (
-                      <p className="text-xs text-muted mt-0.5 truncate max-w-md">{t.description}</p>
-                    )}
-                  </td>
-                  <td className="px-6 py-3 text-secondary">{t._count.steps}</td>
-                  <td className="px-6 py-3 text-xs text-secondary">
-                    {t.defaultSkill?.label ?? '—'}
-                  </td>
-                  <td className="px-6 py-3 text-secondary">{t._count.instances}</td>
-                  <td className="px-6 py-3">
-                    {t.active ? (
-                      <span className="badge-green">Aktiv</span>
-                    ) : (
-                      <span className="badge-gray">Deaktiviert</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {t.active && t._count.steps > 0 && (
-                        <QuickStartButton templateId={t.id} templateName={t.name} />
-                      )}
-                      <Link
-                        href={`/staff/workflows/templates/${t.id}`}
-                        className="text-xs text-brand-700 hover:underline"
-                      >
-                        Bearbeiten
-                      </Link>
-                      <ToggleActiveForm id={t.id} active={t.active} />
-                      <DeleteTemplateForm id={t.id} name={t.name} instances={t._count.instances} />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ul className="card divide-y divide-border-subtle">
+          {templates.map((t) => (
+            <li key={t.id} className="space-y-3 p-4 sm:p-5">
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-1">
+                <Link
+                  href={`/staff/workflows/templates/${t.id}`}
+                  className="min-w-0 break-words font-medium text-primary hover:underline"
+                >
+                  {t.name}
+                </Link>
+                <span className={t.active ? 'badge-green' : 'badge-gray'}>
+                  {t.active ? 'Aktiv' : 'Deaktiviert'}
+                </span>
+              </div>
+              {t.description && <p className="break-words text-sm text-muted">{t.description}</p>}
+              <dl className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-secondary">
+                <div className="flex gap-1">
+                  <dt>Schritte</dt>
+                  <dd>{t._count.steps}</dd>
+                </div>
+                <div className="flex gap-1">
+                  <dt>Instanzen</dt>
+                  <dd>{t._count.instances}</dd>
+                </div>
+                {t.defaultSkill && (
+                  <div className="flex gap-1">
+                    <dt>Bereich</dt>
+                    <dd>{t.defaultSkill.label}</dd>
+                  </div>
+                )}
+              </dl>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                {t.active && t._count.steps > 0 && (
+                  <QuickStartButton templateId={t.id} templateName={t.name} />
+                )}
+                <Link
+                  href={`/staff/workflows/templates/${t.id}`}
+                  className="text-xs text-brand-700 hover:underline"
+                >
+                  Bearbeiten
+                </Link>
+                <ToggleActiveForm id={t.id} active={t.active} />
+                <DeleteTemplateForm id={t.id} name={t.name} instances={t._count.instances} />
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

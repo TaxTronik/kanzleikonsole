@@ -224,7 +224,7 @@ export default async function TcmsPortfolioPage({ searchParams }: { searchParams
             </Link>
           </TcmsLeer>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-sm">
               <caption className="sr-only">Tax-CMS-Portfolio</caption>
               <thead>

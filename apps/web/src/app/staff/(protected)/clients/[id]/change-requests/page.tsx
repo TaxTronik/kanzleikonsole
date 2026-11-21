@@ -13,6 +13,7 @@ import { ArrowLeft, CheckCircle2, Clock, XCircle } from 'lucide-react';
 import { requireClientPageAccess } from '@/server/auth/client-page-access';
 import { withTenantContext } from '@taxtronik/db';
 import { ChangeRequestRow } from './row';
+import { isUuid } from '@/lib/uuid';
 import { fmtDateTimeShort } from '@/lib/fmt';
 import { summarizeTaxMasterData } from '@/lib/tax-registration';
 import { loadTaxMasterDataTx } from '@/server/tax-master-data/service';
@@ -31,11 +32,15 @@ const FIELD_LABELS: Record<string, string> = {
 
 export default async function ClientChangeRequestsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ request?: string }>;
 }) {
   const { id: clientId } = await params;
   const session = await requireClientPageAccess(clientId);
+  const requestId = (await searchParams).request;
+  if (requestId !== undefined && !isUuid(requestId)) notFound();
   const { tenantId, staffId } = session.user;
 
   const result = await withTenantContext(
@@ -57,7 +62,7 @@ export default async function ClientChangeRequestsPage({
       });
       if (!client) return null;
       const requests = await tx.clientMasterChangeRequest.findMany({
-        where: { clientId },
+        where: { clientId, ...(requestId ? { id: requestId } : {}) },
         orderBy: { createdAt: 'desc' },
         include: {
           contact: { select: { fullName: true, email: true } },
@@ -67,14 +72,17 @@ export default async function ClientChangeRequestsPage({
       return { client, requests, taxData: await loadTaxMasterDataTx(tx, tenantId, clientId) };
     },
   );
-  if (!result) notFound();
+  if (!result || (requestId && result.requests.length === 0)) notFound();
   const { client, requests, taxData } = result;
 
   return (
     <div className="p-8 max-w-4xl">
-      <Link href={`/staff/clients/${client.id}`} className="back-link mb-3">
+      <Link
+        href={requestId ? '/staff/clients/change-requests' : `/staff/clients/${client.id}`}
+        className="back-link mb-3"
+      >
         <ArrowLeft className="h-3 w-3" />
-        Mandant
+        {requestId ? 'Offene Stammdaten-Anträge' : 'Mandant'}
       </Link>
       <h1 className="text-2xl font-bold text-primary mb-1">Stammdaten-Änderungen</h1>
       <p className="text-muted text-sm mb-6">{client.name}</p>

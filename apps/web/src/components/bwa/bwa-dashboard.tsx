@@ -303,23 +303,31 @@ function ProjectionCard({ p, title }: { p: YearProjection | null; title: string 
         <h3 className="text-sm font-medium text-primary">{title}</h3>
         <span className="text-xs text-disabled">{p.basis}</span>
       </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-xs text-muted">
-            <th className="text-left py-1 font-normal">KPI</th>
-            <th className="text-right py-1 font-normal">Erwartung</th>
-            <th className="text-right py-1 font-normal">Spanne</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-50">
-          <ProjectionRow label="Erlöse" v={p.revenue} />
-          <ProjectionRow label="Kosten" v={p.costs} />
-          <ProjectionRow label="Personalkosten" v={p.personnelCost} />
-          <ProjectionRow label="Ergebnis vor Steuern" v={p.result} accent />
-          <ProjectionRow label="Steuern (~30 %)" v={p.taxes} />
-          <ProjectionRow label="Ergebnis nach Steuern" v={p.resultAfterTax} accent strong />
-        </tbody>
-      </table>
+      <div
+        className="overflow-x-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
+        role="region"
+        aria-label={title}
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Tastaturzugriff auf horizontal scrollbare Tabellenspalten.
+        tabIndex={0}
+      >
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs text-muted">
+              <th className="text-left py-1 font-normal">KPI</th>
+              <th className="text-right py-1 font-normal">Erwartung</th>
+              <th className="text-right py-1 font-normal">Spanne</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-50">
+            <ProjectionRow label="Erlöse" v={p.revenue} />
+            <ProjectionRow label="Kosten" v={p.costs} />
+            <ProjectionRow label="Personalkosten" v={p.personnelCost} />
+            <ProjectionRow label="Ergebnis vor Steuern" v={p.result} accent />
+            <ProjectionRow label="Steuern (~30 %)" v={p.taxes} />
+            <ProjectionRow label="Ergebnis nach Steuern" v={p.resultAfterTax} accent strong />
+          </tbody>
+        </table>
+      </div>
       <p className="text-[10px] text-disabled mt-2">
         Steuern als Pauschale 25–35 % auf positives Ergebnis vor Steuern.
       </p>
@@ -370,7 +378,13 @@ function HistorySection({
   return (
     <section>
       <h2 className="text-lg font-semibold text-primary mb-3">{title}</h2>
-      <div className="card overflow-hidden">
+      <div
+        className="card overflow-x-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
+        role="region"
+        aria-label={title}
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Tastaturzugriff auf horizontal scrollbare Tabellenspalten.
+        tabIndex={0}
+      >
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-default">

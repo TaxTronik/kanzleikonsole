@@ -446,7 +446,7 @@ function SubsumtionReviewWorkspace({
       />
 
       {/* View-Umschalter: Subsumtion ⇆ Recherche-Hub */}
-      <div className="inline-flex rounded-md border border-default overflow-hidden text-xs">
+      <div className="inline-flex max-w-full flex-wrap rounded-md border border-default overflow-hidden text-xs">
         <button
           type="button"
           onClick={() => setView('subsumtion')}

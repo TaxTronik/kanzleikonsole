@@ -221,11 +221,10 @@ export function EmbeddedView({
   }
 
   return (
-    // minmax(0,1fr): sonst wächst die Spalte auf die Mindestbreite der Tabelle und
-    // schiebt Datum, Aktionen und „Gelöschte anzeigen“ aus dem sichtbaren Bereich.
-    <div className="grid grid-cols-[240px_minmax(0,1fr)] gap-4">
+    // Schmale Einbettungen zeigen den Ordnerbaum über der lokal scrollbaren Liste.
+    <div className="flex flex-wrap gap-4">
       {/* ---- Ordnerbaum ---- */}
-      <div className="card p-2 self-start">
+      <div className="card min-w-0 flex-[1_1_15rem] self-start p-2">
         <div className="flex items-center justify-between px-2 py-1.5 mb-1">
           <span className="text-xs font-semibold text-muted uppercase tracking-wide">Ordner</span>
           <button
@@ -285,9 +284,9 @@ export function EmbeddedView({
       </div>
 
       {/* ---- Dokumentenliste ---- */}
-      <div>
+      <div className="min-w-0 flex-[4_1_26rem]">
         <div className="flex flex-wrap items-center gap-3 mb-3">
-          <form role="search" onSubmit={submitSearch} className="relative flex-1 min-w-[200px]">
+          <form role="search" onSubmit={submitSearch} className="relative min-w-0 flex-[1_1_12rem]">
             <Search className="h-4 w-4 text-disabled absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               value={q}

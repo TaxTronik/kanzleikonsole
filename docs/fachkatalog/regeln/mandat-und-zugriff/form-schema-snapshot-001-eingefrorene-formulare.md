@@ -25,6 +25,8 @@ sources:
     checked_at: '2026-08-31'
     primary: true
 code_refs:
+  - apps/web/src/app/portal/(protected)/forms/[id]/filler.tsx
+  - apps/web/src/server/forms/validate-answers.ts
   - apps/web/src/server/forms/schema-snapshot.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/page.tsx
@@ -36,6 +38,7 @@ code_refs:
   - packages/db/prisma/migrations/20260831280000_form_submission_revisions/migration.sql
   - packages/db/prisma/migrations/20260831300000_form_revision_source_guard/migration.sql
 test_refs:
+  - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/filler.test.tsx
   - apps/web/src/server/forms/__tests__/schema-snapshot.test.ts
   - apps/web/src/server/forms/__tests__/revision-download.test.ts
   - apps/web/src/server/workflows/__tests__/year-end-return.test.ts
@@ -82,6 +85,11 @@ Fehlender Zugriff, ungültiger oder veränderter Quellstand und geschlossene Vor
 Ein berechtigter Mitarbeiter bereitet den beschriebenen Vorgang vor und prüft seine Auswahl. Ein zweiter Kontakt erhält dadurch keine zusätzlichen Rechte; ein später geänderter Quellstand wird nicht still als ursprüngliche Grundlage dargestellt.
 
 ## Umsetzung in TaxTronik
+
+Die Portalansicht ordnet die Beschriftungen und Hilfetexte des Feldstands den
+Eingaben zu. Vor dem Bestätigungsdialog prüft sie die Antworten mit derselben
+Validierung wie die Abgabe auf dem Server. Der Komponententest prüft unter
+anderem, dass der Dialog erst nach dem Setzen einer Pflichtbestätigung öffnet.
 
 Personenbezogene Fachdaten gehören zum privaten Workflowbestand des bestehenden Löschkonzepts. Diese Regel begründet keine neue Aufbewahrungsdauer. Unveränderliche Evidenz enthält IDs und knappe Statusmerkmale, keine Nachrichtentexte. Vor einer produktiven Nutzung sind Datenbankmigration, negative Zugriffsprüfungen und organisatorische Zuständigkeiten abzunehmen.
 

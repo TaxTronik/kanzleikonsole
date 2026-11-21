@@ -14,9 +14,11 @@ export interface RequestListParams {
 export function parseRequestListFilters(params: RequestListParams) {
   const rawStatus = first(params.status);
   const status =
-    rawStatus && Object.hasOwn(REQUEST_STATUS_LABELS, rawStatus)
-      ? (rawStatus as keyof typeof REQUEST_STATUS_LABELS)
-      : null;
+    rawStatus === 'OUTSTANDING'
+      ? rawStatus
+      : rawStatus && Object.hasOwn(REQUEST_STATUS_LABELS, rawStatus)
+        ? (rawStatus as keyof typeof REQUEST_STATUS_LABELS)
+        : null;
   const rawSort = first(params.sort);
   const sort =
     rawSort === 'due' || rawSort === 'client' || rawSort === 'datev' || rawSort === 'addison'
@@ -42,7 +44,7 @@ export function requestListWhere(
     access,
     mine ? { responsibilities: { some: { staffId } } } : undefined,
   );
-  if (status) where.status = status;
+  if (status) where.status = status === 'OUTSTANDING' ? { in: ['OPEN', 'IN_PROGRESS'] } : status;
   if (q) {
     const contains = { contains: q, mode: 'insensitive' } as const;
     where.OR = [

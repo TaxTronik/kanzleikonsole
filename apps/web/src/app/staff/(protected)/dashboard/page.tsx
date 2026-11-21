@@ -96,7 +96,7 @@ export default async function DashboardPage() {
   const setup: SetupStatus | null = isAdmin ? await getSetupStatus(ctx) : null;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-primary">Dashboard</h1>
         <p className="text-muted mt-1">Willkommen, {session.user.fullName}</p>

@@ -1,4 +1,4 @@
-// Fachkatalog: ACCESS-CLIENT-MODE-001
+// Fachkatalog: ACCESS-CLIENT-MODE-001, REQ-LIFECYCLE-001
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -43,6 +43,19 @@ describe('Anforderungsliste', () => {
     );
     expect(html).toContain('Letzter Treffer');
     expect(html).toContain('51–51 von 51');
+  });
+
+  it('übernimmt vom Dashboard offene und in Bearbeitung befindliche Anforderungen bis zum CSV-Export', async () => {
+    request.count.mockResolvedValue(0);
+    request.findMany.mockResolvedValue([]);
+    const html = renderToStaticMarkup(
+      await RequestsOverviewPage({ searchParams: Promise.resolve({ status: 'OUTSTANDING' }) }),
+    );
+    const where = { status: { in: ['OPEN', 'IN_PROGRESS'] } };
+    expect(request.count).toHaveBeenLastCalledWith({ where });
+    expect(request.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where }));
+    expect(html).toContain('href="/api/staff/requests/export?status=OUTSTANDING"');
+    expect(html).toContain('Offen und in Bearbeitung');
   });
 
   it('liefert für einen leeren gefilterten Bestand Offset null', async () => {

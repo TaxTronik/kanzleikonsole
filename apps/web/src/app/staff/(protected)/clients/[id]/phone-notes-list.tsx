@@ -4,7 +4,7 @@ import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Check, RotateCcw, UserPlus, CalendarClock, X, Building2, Eye } from 'lucide-react';
-import { fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
+import { berlinYmd, berlinYmdAfterDays, fmtDateShort, fmtDateTimeShort } from '@/lib/fmt';
 import {
   phoneNoteReminderStatus,
   type PhoneNoteReminderStatus,
@@ -219,9 +219,6 @@ function PhoneNoteRow({
   staffOptions: StaffOption[];
 }) {
   const forwarded_to = note.forwardToStaff ? staffName.get(note.forwardToStaff) : null;
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const defaultDue = tomorrow.toISOString().slice(0, 10);
 
   return (
     <li className="px-6 py-3">
@@ -345,14 +342,7 @@ function PhoneNoteRow({
               }}
               className="mt-2 p-2 rounded bg-surface-raised border border-default grid grid-cols-3 gap-2"
             >
-              <input
-                type="date"
-                name="dueDate"
-                defaultValue={defaultDue}
-                min={new Date().toISOString().slice(0, 10)}
-                className="input text-xs"
-                required
-              />
+              <ReminderDueDateInput />
               <select
                 name="assignee"
                 defaultValue={note.forwardToStaff ?? currentStaffId}
@@ -386,6 +376,21 @@ function PhoneNoteRow({
         </div>
       </div>
     </li>
+  );
+}
+
+function ReminderDueDateInput() {
+  const now = new Date();
+  return (
+    <input
+      type="date"
+      name="dueDate"
+      aria-label="Fällig"
+      defaultValue={berlinYmdAfterDays(now, 1)}
+      min={berlinYmd(now)}
+      className="input text-xs"
+      required
+    />
   );
 }
 

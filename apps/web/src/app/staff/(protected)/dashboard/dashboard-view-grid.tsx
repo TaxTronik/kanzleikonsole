@@ -9,7 +9,7 @@ import { compactDashboardWidgets } from './dashboard-layout-adjustment';
  * Hydration, kein react-grid-layout (das lädt erst der Editor).
  *
  * Position und Größe stammen aus dem gespeicherten Layout, kompaktiert wie im
- * Editor, und gehen als CSS-Variablen an das Item; die Breakpoints (einspaltig
+ * Editor, und gehen als CSS-Variablen an das Item; die Breakpoints (kompakte Kennzahlen
  * unter 640px Containerbreite) stehen in globals.css (`.dashboard-view*`). Die
  * DOM-Reihenfolge folgt Zeile, dann Spalte — so stimmen Tab- und Lesereihenfolge
  * auch in der gestapelten Ansicht.
@@ -29,6 +29,7 @@ export function DashboardViewGrid({
           <div
             key={widget.id}
             className="dashboard-view-item"
+            data-kpi={widget.type.startsWith('kpi_') || undefined}
             style={
               {
                 '--dg-col': `${widget.x + 1} / span ${widget.w}`,

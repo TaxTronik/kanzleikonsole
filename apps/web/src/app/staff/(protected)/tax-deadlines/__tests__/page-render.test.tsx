@@ -1,6 +1,8 @@
+// @vitest-environment jsdom
 // Fachkatalog: ACCESS-SEARCH-SCOPE-001
 // Rendert /staff/tax-deadlines mit Fixtures gegen eine nachgebildete Tenant-Tx.
 
+import { fireEvent, render as mount, screen, within } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { ReactNode } from 'react';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -296,7 +298,17 @@ describe('Steuertermine — Monatsansicht (P-20)', () => {
     expect(pills[0]![3]).toBe(
       '/staff/tax-deadlines/group?kind=USTA_MONATLICH&amp;period=2026-02&amp;scope=mine&amp;q=M%C3%BCller',
     );
-    expect(html).toContain('<div class="text-[10px] text-muted">+1 weitere</div>');
+    expect(html).toContain('aria-label="+1 weitere Einträge am 10.3.2026"');
+    mount(
+      await TaxDeadlinesPage({
+        searchParams: Promise.resolve({ month: '2026-03', scope: 'mine', q: 'Müller' }),
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: '+1 weitere Einträge am 10.3.2026' }));
+    const dialog = within(screen.getByRole('dialog', { name: 'Weitere Einträge am 10.3.2026' }));
+    expect(dialog.getByRole('link').getAttribute('href')).toBe(
+      '/staff/tax-deadlines/group?kind=GEWST_VZ&period=2026-Q1&scope=mine&q=M%C3%BCller',
+    );
     expect(html).toContain(
       '<div class="self-start font-bold text-brand-700 bg-brand-50 px-1.5 py-0.5 rounded">10</div>',
     );

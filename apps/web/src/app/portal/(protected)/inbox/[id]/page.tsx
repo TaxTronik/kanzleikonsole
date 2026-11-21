@@ -35,7 +35,7 @@ export default async function PortalInboxThreadPage({
   if (!thread) notFound();
 
   return (
-    <main className="p-4 sm:p-8">
+    <div className="p-4 sm:p-8">
       <MarkInboxThreadRead
         threadId={thread.id}
         lastMessageAt={thread.lastMessageAt.toISOString()}
@@ -133,6 +133,6 @@ export default async function PortalInboxThreadPage({
           </section>
         )}
       </div>
-    </main>
+    </div>
   );
 }

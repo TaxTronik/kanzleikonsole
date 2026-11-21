@@ -31,6 +31,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -77,10 +78,11 @@ export function SettingsForm({
   const formRef = useRef<HTMLFormElement>(null);
   const submitted = useRef<string | null>(null);
   const settle = useContext(SettingsSaveResult);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (pending || result === null || submitted.current === null) return;
-    if (formRef.current) settle?.(formRef.current, result.ok ? submitted.current : null);
+    const snapshot = submitted.current;
     submitted.current = null;
+    if (formRef.current) settle?.(formRef.current, result.ok ? snapshot : null);
   }, [pending, result, settle]);
 
   function submit(event: FormEvent<HTMLFormElement>) {

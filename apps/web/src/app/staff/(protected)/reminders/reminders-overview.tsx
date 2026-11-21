@@ -14,7 +14,7 @@ import {
   Archive,
   ArchiveRestore,
 } from 'lucide-react';
-import { fmtDateShort } from '@/lib/fmt';
+import { berlinYmd, fmtDateShort } from '@/lib/fmt';
 import {
   PRIORITY_BADGE,
   PRIORITY_LABEL,
@@ -52,8 +52,7 @@ export function RemindersOverview({
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [undoBar, setUndoBar] = useState<{ id: string; subject: string } | null>(null);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayYmd = berlinYmd(new Date());
   function run(action: () => Promise<{ ok: boolean; error?: string }>, onSuccess?: () => void) {
     setError(null);
     start(async () => {
@@ -133,7 +132,7 @@ export function RemindersOverview({
             const done = Boolean(row.doneAt);
             const canSteer = canPrioritizeAll || row.createdByStaff === currentStaffId;
             const badge = PRIORITY_BADGE[row.priority];
-            const overdue = !done && !archived && new Date(row.dueDate) < today;
+            const overdue = !done && !archived && row.dueDate.slice(0, 10) < todayYmd;
             return (
               <li key={row.id} className="p-4 flex gap-3 items-start">
                 {!done && !archived ? (

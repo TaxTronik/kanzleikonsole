@@ -66,7 +66,7 @@ export function TaxDeadlinePills({
   q,
 }: {
   groups: readonly TaxDeadlineDayGroup[];
-  limit: number;
+  limit?: number;
   /** Klasse einer Gruppe ohne offene Termine. */
   doneClassName: string;
   scope: 'mine' | 'all';
@@ -96,10 +96,4 @@ export function TaxDeadlinePills({
       ))}
     </>
   );
-}
-
-/** „+N weitere" für Einträge, die über die Pillen-Limits einer Zelle hinausgehen. */
-export function MoreEntries({ count }: { count: number }) {
-  if (count <= 0) return null;
-  return <div className="text-[10px] text-muted">+{count} weitere</div>;
 }

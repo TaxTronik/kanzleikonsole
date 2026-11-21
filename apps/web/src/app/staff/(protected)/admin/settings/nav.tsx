@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { ResponsiveSectionNav } from '@/components/responsive-section-nav';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -81,35 +82,43 @@ const SECTIONS: SectionLink[] = [
 
 export function SettingsNav() {
   const pathname = usePathname();
+  const current = SECTIONS.find((s) => pathname === s.href || pathname?.startsWith(s.href + '/'));
   return (
-    <nav className="space-y-1">
-      {SECTIONS.map((s) => {
-        const active = pathname === s.href || pathname?.startsWith(s.href + '/');
-        const Icon = s.icon;
-        return (
-          <Link
-            key={s.href}
-            href={s.href}
-            className={
-              active
-                ? 'flex items-start gap-3 px-3 py-2.5 rounded-md bg-brand-50 dark:bg-brand-900/30 text-brand-800 dark:text-brand-200 border-l-2 border-brand-600'
-                : 'flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-gray-100 text-secondary border-l-2 border-transparent'
-            }
-          >
-            <Icon
+    <ResponsiveSectionNav
+      key={pathname}
+      label="Einstellungsbereiche"
+      current={current?.label ?? 'Einstellungen'}
+    >
+      <div className="space-y-1">
+        {SECTIONS.map((s) => {
+          const active = s === current;
+          const Icon = s.icon;
+          return (
+            <Link
+              key={s.href}
+              href={s.href}
+              aria-current={active ? 'page' : undefined}
               className={
                 active
-                  ? 'h-4 w-4 mt-0.5 text-brand-700 dark:text-brand-300 shrink-0'
-                  : 'h-4 w-4 mt-0.5 text-disabled shrink-0'
+                  ? 'flex items-start gap-3 px-3 py-2.5 rounded-md bg-brand-50 dark:bg-brand-900/30 text-brand-800 dark:text-brand-200 border-l-2 border-brand-600'
+                  : 'flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-gray-100 text-secondary border-l-2 border-transparent'
               }
-            />
-            <div className="min-w-0">
-              <div className="text-sm font-medium">{s.label}</div>
-              <div className="text-xs text-muted truncate">{s.description}</div>
-            </div>
-          </Link>
-        );
-      })}
-    </nav>
+            >
+              <Icon
+                className={
+                  active
+                    ? 'h-4 w-4 mt-0.5 text-brand-700 dark:text-brand-300 shrink-0'
+                    : 'h-4 w-4 mt-0.5 text-disabled shrink-0'
+                }
+              />
+              <div className="min-w-0">
+                <div className="text-sm font-medium">{s.label}</div>
+                <div className="text-xs text-muted truncate">{s.description}</div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </ResponsiveSectionNav>
   );
 }

@@ -31,14 +31,22 @@ code_refs:
   - apps/web/src/server/invoicing/number.ts
   - packages/db/prisma/schema.prisma
   - apps/web/src/server/invoicing/create-draft.ts
+  - apps/web/src/server/invoicing/date-defaults.ts
   - apps/web/src/app/staff/(protected)/invoices/actions.ts
+  - apps/web/src/app/staff/(protected)/invoices/new/page.tsx
+  - apps/web/src/app/staff/(protected)/invoices/new/form.tsx
+  - apps/web/src/app/staff/(protected)/invoices/new/external-form.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/billing/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/billing/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/billing/billing-form.tsx
   - apps/web/src/app/staff/(protected)/stbvv/actions.ts
 test_refs:
   - apps/web/src/server/invoicing/__tests__/number.test.ts
   - packages/db/src/__tests__/invoice-festschreibung.test.ts
   - apps/web/src/server/invoicing/__tests__/create-draft.test.ts
   - apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts
+  - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/billing/__tests__/billing-form-dates.test.tsx
   - apps/web/src/app/staff/(protected)/stbvv/__tests__/actions.test.ts
 feature_refs:
   - docs/development/module/fakturierung.md
@@ -130,6 +138,14 @@ verwendeten Zählerwert erhalten.
 
 ## Umsetzung in TaxTronik
 
+Bei der manuellen Rechnungsanlage und bei der Stundenabrechnung aus der
+Mandantenakte schlägt das Formular den aktuellen Berliner Kalendertag als
+Rechnungsdatum vor. Die Fälligkeit liegt für In-App-Rechnungen einschließlich
+Stundenabrechnungen 30 und für externe Rechnungen 14 Kalendertage danach.
+Der Server bestimmt beide Werte beim Seitenaufruf. Der vorgeschlagene Betreff
+der Stundenabrechnung verwendet den Monat dieses Rechnungsdatums. Beide Daten
+lassen sich vor der Anlage bearbeiten.
+
 `allocateInvoiceNumber()` sperrt den Schlüssel aus Kanzlei-Tenant und Jahr,
 initialisiert `invoice_number_seq` gegebenenfalls aus dem Bestand, erhöht den
 Zähler und formatiert die Nummer. Das Prisma-Schema erzwingt einen Zähler je
@@ -172,6 +188,15 @@ DB-Regressionstest für parallele Vergabe und Rollback des Zählers.
   und Wiederverwendung geschützt werden?
 
 ## Technische Nachweise
+
+Der Seitentest der zentralen Rechnungsanlage liest Rechnungsdatum und
+Fälligkeit vor der ersten Eingabe aus den gerenderten Datumsfeldern in beiden
+Rechnungsmodi. Er prüft die Vorschläge jeweils kurz nach Berliner Mitternacht
+am Jahreswechsel und an beiden Zeitumstellungstagen.
+Der Test der Stundenabrechnung prüft an denselben Übergängen das gerenderte
+Formular. Bei einer abweichenden Browseruhr bleiben die serverseitigen
+Vorgaben und der Betreffmonat erhalten. Beim Absenden übernimmt die Action
+die im Formular geänderten Daten.
 
 Der Unit-Test prüft Formatierung und Wachstum der Nummer. Die Tests des
 Anlageservice und der Actions prüfen je Pfad (manuell, Stundenabrechnung,

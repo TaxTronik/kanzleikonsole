@@ -25,6 +25,8 @@ sources:
     checked_at: '2026-08-31'
     primary: true
 code_refs:
+  - apps/web/src/app/staff/(protected)/mandate-expansion/offboarding/page.tsx
+  - apps/web/src/server/mandate-expansion/model.ts
   - apps/web/src/server/mandate-expansion/offboarding.ts
   - apps/web/src/server/mandate-expansion/artifacts.ts
   - apps/web/src/server/mandate-expansion/pdf.ts
@@ -33,6 +35,7 @@ code_refs:
   - packages/db/prisma/migrations/20260831180000_mandate_artifacts/migration.sql
   - packages/db/prisma/migrations/20260831200000_mandate_history_integrity/migration.sql
 test_refs:
+  - apps/web/src/app/staff/(protected)/mandate-expansion/__tests__/calendar-dates.test.tsx
   - apps/web/src/server/mandate-expansion/__tests__/model.test.ts
   - apps/web/src/server/mandate-expansion/__tests__/service.test.ts
   - apps/web/src/server/mandate-expansion/__tests__/pdf.test.ts
@@ -96,6 +99,8 @@ Ein gemischter Umfang enthält Rechnungen, Personal- und GwG-Unterlagen. Ohne zu
 
 ## Umsetzung in TaxTronik
 
+Beim Öffnen der Vorbereitung schlägt das Formular den aktuellen Kalendertag in Europe/Berlin als tatsächliches Mandatsende vor. Ein bereits vorbereiteter Endtag hat Vorrang. Formular und Server akzeptieren einen gültigen Kalendertag bis einschließlich heute in derselben Zeitzone. Das gewählte Enddatum wird weiterhin als Datenbanktyp DATE gespeichert. Den Zeitpunkt der Vorbereitung zeigt die Seite unter seinem Berliner Kalendertag an.
+
 Vorbereitung, Empfänger und einzelne Freigaben sind tenantgebunden gespeichert; Fassungen besitzen echte DocumentVersion-Fremdschlüssel. MandateArtifact und MandateArtifactSource binden Ausgaben und Quellen. Restriktive Dokument-RLS schützt auch generische Downloads; SQL-Trigger sichern Schutzklasse, interne Ablage und unveränderliche Nachweise. FK-getriebene Nullsetzung nach Vernichtung ist eng begrenzt. Der Abschluss serialisiert am Mandanten und prüft den Ausgangsstand erneut. Grenzen: 200 Dokumente, zusammen 100 MiB, je Fassung und ZIP-Quellenumfang 24 MiB. Quellobjekte werden weder gelöscht noch verschoben. Aufbewahrungsprüfung und Beendigung bleiben verschiedene Entscheidungen.
 
 ## Bekannte Abweichungen und Grenzen
@@ -107,5 +112,7 @@ Der Vollständigkeitsumfang ist begrenzt: andere Fachbestände sind nicht pausch
 Welche Unterlagen müssen im konkreten Fall herausgegeben werden? Wer überwacht offene Fristen nach der Übergabe? Welche zusätzlichen Aufbewahrungsgründe und Fristanker bestehen?
 
 ## Technische Nachweise
+
+Der Seitentest prüft den letzten Moment vor Berliner Mitternacht, die Sommer-Mitternacht und den Jahreswechsel an den sichtbaren Datumsfeldern einschließlich ihrer Obergrenze. Ein eigener Fall öffnet einen vorhandenen Entwurf mit historischem Endtag. Der Modelltest prüft an denselben Tageswechseln die Annahme des aktuellen Datums, seine DATE-Kodierung und die Ablehnung des Folgetags.
 
 Tests prüfen echte Kalenderdaten, Zukunftsausschluss, PDF-Paginierung sowie die Ausgangsstand-, Rollen- und Umfangsgrenzen. Der technische Hash ersetzt keine fachliche Entscheidung.

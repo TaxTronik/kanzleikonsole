@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { berlinYmd } from '@/lib/fmt';
 
 export const StructureSchema = z
   .object({
@@ -107,16 +108,16 @@ export function dependencyReady(
     )
   );
 }
+const calendarDay = z.iso.date();
+
+export function isCalendarDayThroughToday(value: string, now = new Date()): boolean {
+  return calendarDay.safeParse(value).success && value <= berlinYmd(now);
+}
+
 export function parseEndDate(value: string, now = new Date()): Date {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error('Ein gültiges Mandatsende angeben.');
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (
-    !Number.isFinite(date.getTime()) ||
-    date.toISOString().slice(0, 10) !== value ||
-    value > now.toISOString().slice(0, 10)
-  )
+  if (!isCalendarDayThroughToday(value, now))
     throw new Error('Mandatsende muss ein bestehendes Datum bis heute sein.');
-  return date;
+  return new Date(`${value}T00:00:00.000Z`);
 }
 export const VDB_STATES = ['PREPARED', 'REPORTED', 'CONFIRMED', 'REJECTED', 'WITHDRAWN'] as const;
 export const VDB_LABELS: Record<string, string> = {

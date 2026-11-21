@@ -71,7 +71,7 @@ export function WorkflowSection({
                 key={inst.id}
                 className={`card overflow-hidden ${inst.status === 'PAUSED' ? 'opacity-80' : ''}`}
               >
-                <div className="px-6 py-4 border-b border-default flex items-center justify-between gap-3">
+                <div className="px-6 py-4 border-b border-default flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Link
@@ -122,7 +122,7 @@ export function WorkflowSection({
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex flex-wrap items-center gap-2">
                     {inst.status === 'ACTIVE' && (
                       <>
                         <PauseWorkflowButton instanceId={inst.id} instanceName={inst.name} />

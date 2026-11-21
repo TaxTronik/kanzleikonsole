@@ -6,6 +6,7 @@ import type { FormFieldType } from '@prisma/client';
 import { fmtTimeMedium } from '@/lib/fmt';
 import { confirmDialog } from '@/components/ui/modal';
 import { MAX_UPLOAD_BYTES_BY_KIND, formatUploadLimit } from '@/lib/upload-limits.mjs';
+import { FormAnswersError, validateFormAnswers } from '@/server/forms/validate-answers';
 import {
   discardFormFileAction,
   saveSubmissionDraftAction,
@@ -72,23 +73,6 @@ export function PortalFormFiller({
     setAnswers((a) => ({ ...a, [key]: value }));
   }
 
-  function validate(): string | null {
-    for (const f of fields) {
-      if (!f.required || f.type === 'INFO_TEXT') continue;
-      const v = answers[f.key];
-      if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) {
-        return `Pflichtfeld nicht ausgefüllt: ${f.label}`;
-      }
-      if (f.type === 'FILE') {
-        const fv = v as FileAnswer;
-        if (typeof fv !== 'object' || !fv.documentId) {
-          return `Pflichtfeld nicht ausgefüllt: ${f.label}`;
-        }
-      }
-    }
-    return null;
-  }
-
   function saveDraft() {
     setError(null);
     start(async () => {
@@ -103,9 +87,11 @@ export function PortalFormFiller({
 
   async function send() {
     setError(null);
-    const ve = validate();
-    if (ve) {
-      setError(ve);
+    try {
+      validateFormAnswers(fields, answers, { requireRequired: true });
+    } catch (validationError) {
+      if (!(validationError instanceof FormAnswersError)) throw validationError;
+      setError(validationError.message);
       return;
     }
     if (
@@ -138,28 +124,57 @@ export function PortalFormFiller({
           );
         }
         const v = answers[f.key] ?? null;
+        const grouped = f.type === 'MULTISELECT' || f.type === 'FILE';
+        const helpId = f.helpText ? `${f.id}-help` : undefined;
+        const Label = grouped ? 'span' : 'label';
         return (
-          <div key={f.id} className="card p-4">
-            <label className="block text-sm font-medium text-primary mb-1">
+          <div
+            key={f.id}
+            className="card p-4"
+            role={grouped ? 'group' : undefined}
+            aria-labelledby={grouped ? `${f.id}-label` : undefined}
+            aria-describedby={grouped ? helpId : undefined}
+          >
+            <Label
+              id={`${f.id}-label`}
+              htmlFor={grouped ? undefined : f.id}
+              className="block text-sm font-medium text-primary mb-1"
+            >
               {f.label}
-              {f.required && <span className="text-red-700 ml-1">*</span>}
-            </label>
-            {f.helpText && <p className="text-xs text-muted mb-2">{f.helpText}</p>}
+              {f.required && (
+                <>
+                  <span aria-hidden="true" className="text-red-700 ml-1">
+                    *
+                  </span>
+                  <span className="sr-only"> (Pflichtfeld)</span>
+                </>
+              )}
+            </Label>
+            {f.helpText && (
+              <p id={helpId} className="text-xs text-muted mb-2">
+                {f.helpText}
+              </p>
+            )}
             {renderField(
               f,
               v,
               (next) => setVal(f.key, next),
               submitted || requestClosed,
               submissionId,
+              helpId,
             )}
           </div>
         );
       })}
 
-      {error && <div className="alert-error-sm">{error}</div>}
+      {error && (
+        <div role="alert" className="alert-error-sm">
+          {error}
+        </div>
+      )}
 
       {!submitted && !requestClosed && (
-        <div className="flex items-center gap-3 sticky bottom-4 bg-surface border border-default rounded-lg p-3 shadow-lg">
+        <div className="flex flex-wrap items-center gap-3 sticky bottom-4 bg-surface border border-default rounded-lg p-3 shadow-lg">
           <button type="button" onClick={saveDraft} disabled={isPending} className="btn-secondary">
             {isPending ? 'Speichert…' : 'Entwurf speichern'}
           </button>
@@ -195,13 +210,16 @@ function renderField(
   set: (next: AnswerValue) => void,
   disabled: boolean,
   submissionId: string,
+  helpId?: string,
 ): ReactNode {
+  const control = { id: f.id, 'aria-describedby': helpId };
   switch (f.type) {
     case 'TEXT':
     case 'EMAIL':
     case 'PHONE':
       return (
         <input
+          {...control}
           type={f.type === 'EMAIL' ? 'email' : f.type === 'PHONE' ? 'tel' : 'text'}
           value={(v as string | undefined) ?? ''}
           onChange={(e) => set(e.target.value)}
@@ -212,6 +230,7 @@ function renderField(
     case 'TEXTAREA':
       return (
         <textarea
+          {...control}
           value={(v as string | undefined) ?? ''}
           onChange={(e) => set(e.target.value)}
           disabled={disabled}
@@ -222,6 +241,7 @@ function renderField(
     case 'NUMBER':
       return (
         <input
+          {...control}
           type="number"
           value={(v as number | string | undefined) ?? ''}
           min={f.minValue ?? undefined}
@@ -235,6 +255,7 @@ function renderField(
       return (
         <div className="relative">
           <input
+            {...control}
             type="number"
             step="0.01"
             value={(v as number | string | undefined) ?? ''}
@@ -250,6 +271,7 @@ function renderField(
     case 'DATE':
       return (
         <input
+          {...control}
           type="date"
           value={(v as string | undefined) ?? ''}
           min={f.minValue ?? undefined}
@@ -262,6 +284,7 @@ function renderField(
     case 'SELECT':
       return (
         <select
+          {...control}
           value={(v as string | undefined) ?? ''}
           onChange={(e) => set(e.target.value)}
           disabled={disabled}
@@ -304,6 +327,8 @@ function renderField(
       return (
         <label className="flex items-center gap-2 text-sm">
           <input
+            {...control}
+            aria-labelledby={`${f.id}-label`}
             type="checkbox"
             checked={Boolean(v)}
             onChange={(e) => set(e.target.checked)}
@@ -316,6 +341,8 @@ function renderField(
     case 'FILE':
       return (
         <FileUploadField
+          fieldId={f.id}
+          helpId={helpId}
           fieldKey={f.key}
           submissionId={submissionId}
           value={v as FileAnswer | null}
@@ -333,12 +360,16 @@ const MAX_FILE_BYTES = MAX_UPLOAD_BYTES_BY_KIND.portalFormFile;
 const MAX_FILE_LABEL = formatUploadLimit(MAX_FILE_BYTES);
 
 function FileUploadField({
+  fieldId,
+  helpId,
   fieldKey,
   submissionId,
   value,
   set,
   disabled,
 }: {
+  fieldId: string;
+  helpId?: string;
   fieldKey: string;
   submissionId: string;
   value: FileAnswer | null;
@@ -426,7 +457,11 @@ function FileUploadField({
           )}
           {removing && <span className="text-xs text-muted">Wird entfernt…</span>}
         </div>
-        {uploadError && <div className="text-xs text-red-700">{uploadError}</div>}
+        {uploadError && (
+          <div role="alert" className="text-xs text-red-700">
+            {uploadError}
+          </div>
+        )}
       </div>
     );
   }
@@ -434,16 +469,29 @@ function FileUploadField({
   return (
     <div className="space-y-2">
       <label
-        className={`inline-flex items-center gap-2 cursor-pointer btn-secondary ${
+        className={`relative inline-flex items-center gap-2 cursor-pointer btn-secondary focus-within:ring-2 focus-within:ring-focus ${
           disabled || uploading ? 'opacity-50 cursor-not-allowed' : ''
         }`}
       >
         <Upload className="h-4 w-4" />
-        {uploading ? 'Lädt hoch…' : 'Datei auswählen'}
-        <input type="file" className="hidden" onChange={onPick} disabled={disabled || uploading} />
+        <span id={`${fieldId}-pick`}>{uploading ? 'Lädt hoch…' : 'Datei auswählen'}</span>
+        <input
+          type="file"
+          className="sr-only"
+          aria-labelledby={`${fieldId}-label ${fieldId}-pick`}
+          aria-describedby={[helpId, `${fieldId}-limit`].filter(Boolean).join(' ')}
+          onChange={onPick}
+          disabled={disabled || uploading}
+        />
       </label>
-      {uploadError && <div className="text-xs text-red-700">{uploadError}</div>}
-      <p className="text-xs text-muted">Max. {MAX_FILE_LABEL}.</p>
+      {uploadError && (
+        <div role="alert" className="text-xs text-red-700">
+          {uploadError}
+        </div>
+      )}
+      <p id={`${fieldId}-limit`} className="text-xs text-muted">
+        Max. {MAX_FILE_LABEL}.
+      </p>
     </div>
   );
 }

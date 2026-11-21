@@ -18,6 +18,13 @@ Produktivmigration. Der Arbeitsstand wurde weder veröffentlicht noch nach
 Forgejo gepusht. Die dokumentierten CI-Befehle wurden lokal ausgeführt.
 Ein gehosteter CI-Lauf für diesen Änderungsstand steht aus.
 
+**Nachtrag vom 21. November 2026.** Der am Jahreswechsel festgestellte
+Unterschied zwischen UTC und Berliner Kalenderdatum betraf auch Vorbelegungen
+und Feldgrenzen in der Oberfläche. Der damalige Wiedervorlagentest leerte das
+Fälligkeitsfeld, bevor er den vorgeschlagenen Tag geprüft hatte. Die Folgeprüfung
+dokumentiert die betroffenen Einstiege und ihre einzelnen Nachweise.
+[Checkliste zum Berliner Kalendertag](2026-11-21-berliner-kalendertag.md)
+
 ## Sicherheit und Bedienabläufe
 
 - **Mandantentrennung.** Der privilegierte Zugriff auf einen einzelnen Mandanten

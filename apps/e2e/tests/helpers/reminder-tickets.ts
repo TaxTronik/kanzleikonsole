@@ -16,6 +16,7 @@ import {ReminderDetailView} from './src/app/staff/(protected)/reminders/[id]/rem
 import {RemindersOverview} from './src/app/staff/(protected)/reminders/reminders-overview';
 import {NewReminderForm} from './src/app/staff/(protected)/reminders/new-reminder-form';
 import {RemindersBlock} from './src/app/staff/(protected)/clients/[id]/reminders/reminders-block';
+import {PhoneNotesList} from './src/app/staff/(protected)/clients/[id]/phone-notes-list';
 globalThis.__calls=[];
 globalThis.__router={push:url=>globalThis.__calls.push({name:'push',input:url}),refresh:()=>globalThis.__calls.push({name:'refresh'})};
 globalThis.__action=async(name,input)=>{
@@ -29,6 +30,7 @@ function Fixture(){
  if(globalThis.__mode==='overview')return <RemindersOverview {...props}/>;
  if(globalThis.__mode==='new')return <NewReminderForm {...props}/>;
  if(globalThis.__mode==='client')return <RemindersBlock {...props}/>;
+ if(globalThis.__mode==='phone')return <PhoneNotesList {...props}/>;
  return <ReminderDetailView {...props}/>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);`,
@@ -50,10 +52,13 @@ createRoot(document.getElementById('root')).render(<Fixture/>);`,
             path,
             namespace: 'fixture',
           }));
-          builder.onResolve({ filter: /(?:\/reminders\/actions|^\.\/actions)$/ }, () => ({
-            path: 'actions',
-            namespace: 'fixture',
-          }));
+          builder.onResolve(
+            { filter: /(?:\/(?:reminders|phone-notes)\/actions|^\.\/actions)$/ },
+            () => ({
+              path: 'actions',
+              namespace: 'fixture',
+            }),
+          );
           builder.onResolve(
             { filter: /^@\/components\/document-(upload-button|actions)$/ },
             ({ path }) => ({ path, namespace: 'fixture' }),
@@ -77,6 +82,11 @@ createRoot(document.getElementById('root')).render(<Fixture/>);`,
                 'restoreReminderAction',
                 'createReminderAction',
                 'submitResearchResultAction',
+                'markNoteReadAction',
+                'markPhoneNoteDoneAction',
+                'undoPhoneNoteDoneAction',
+                'forwardPhoneNoteAction',
+                'phoneNoteToReminderAction',
               ]
                 .map(
                   (name) =>
@@ -100,7 +110,7 @@ createRoot(document.getElementById('root')).render(<Fixture/>);`,
 
 export async function mountReminderTickets(
   page: Page,
-  mode: 'detail' | 'overview' | 'new' | 'client',
+  mode: 'detail' | 'overview' | 'new' | 'client' | 'phone',
   props: Record<string, unknown>,
 ) {
   const source = await ticketBundle();

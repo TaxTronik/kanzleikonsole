@@ -124,6 +124,22 @@ beforeEach(() => {
 });
 
 describe('Portal-Startseite — Zähler gekappter Listen', () => {
+  it.each([
+    ['OPEN', 'Offen'],
+    ['IN_PROGRESS', 'In Bearbeitung'],
+    ['RESPONDED', 'Beantwortet'],
+    ['CLOSED', 'Geschlossen'],
+    ['CANCELLED', 'Abgebrochen'],
+  ])(
+    'zeigt unter Aktuelle Anforderungen den Status %s als %s (REQ-LIFECYCLE-001)',
+    async (status, label) => {
+      h.tx.request.findMany.mockImplementation(async ({ take }) =>
+        take === 5 ? [{ id: 'recent', title: 'Aktuelle Anforderung', status, dueAt: null }] : [],
+      );
+      expect(renderToStaticMarkup(await PortalDashboardPage())).toContain(`>${label}</p>`);
+    },
+  );
+
   it('zählt „offen“ vollständig und verweist auf die vollständigen Listen', async () => {
     const html = renderToStaticMarkup(await PortalDashboardPage());
 

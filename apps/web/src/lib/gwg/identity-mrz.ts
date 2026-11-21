@@ -5,7 +5,7 @@
  *
  * Tesseract liest die Füllzeichen `<` häufig als K, L, S, C oder E und
  * verwechselt T/7, Z/2, G/6, O/0, I/1, S/5, B/8. Daher:
- * - Zeilen werden an ihren festen Positionen gelesen; Füllbereiche zählen nicht.
+ * - Zeilen werden an festen Positionen gelesen; Füllzeichen begrenzen die Nummer.
  * - Ziffernfelder (Datum, Prüfziffer) werden auf Ziffern abgebildet.
  * - Die Ausweisnummer wird nur korrigiert, wenn genau eine Lesart ihre eigene
  *   Prüfziffer (und, falls lesbar, die Gesamtprüfziffer) erfüllt.
@@ -161,8 +161,8 @@ function readSecondLine(
 }
 
 /**
- * Ausweisnummer aus Zeile 1. Vorrang hat, was auch die Gesamtprüfziffer
- * erfüllt, dann die eigene Prüfziffer; jeweils die Lesart mit den wenigsten
+ * Ausweisnummer aus Zeile 1. Die eigene und jede lesbare Gesamtprüfziffer
+ * müssen stimmen. Unter diesen Lesarten gewinnt die mit den wenigsten
  * Änderungen (die gelesene Fassung zuerst). Bleibt es mehrdeutig: keine.
  */
 function readDocumentNumber(
@@ -170,23 +170,31 @@ function readDocumentNumber(
   second: string,
   dates: Pick<IdentityMrz, 'birthDate' | 'expiryDate'>,
 ): { documentNumber?: string; compositeValid: boolean } {
+  // Beim deutschen TD1 folgen der Nummernprüfziffer 15 Füllzeichen. Eine
+  // weitere Ziffer dort kann durch ein eingefügtes OCR-Zeichen verrutscht sein.
+  if (/[^<KLSCE]/.test(first.slice(15, 30))) return { compositeValid: false };
   const documentCheck = digits(first[14] ?? '');
   const valid = documentCandidates(first.slice(5, 14)).filter(
     ({ value }) => /^[0-9A-Z]{9}$/.test(value) && mrzCheckDigit(value) === documentCheck,
   );
   // Gesamtprüfziffer (TD1): Zeile 1 ab Nummer, Daten mit Prüfziffern,
   // Zusatzdaten. Beim deutschen Ausweis sind die Zusatzdaten in Zeile 1 leer.
-  const readable = second.length === 30 && dates.birthDate && dates.expiryDate;
-  const compositeOf = (number: string) =>
-    Boolean(readable) &&
-    mrzCheckDigit(
-      `${number}${documentCheck}${'<'.repeat(15)}${dates.birthDate}${digits(second[6]!)}${dates.expiryDate}${digits(second[14]!)}${second.slice(18, 29).replace(/[KLSCE]/g, '<')}`,
-    ) === digits(second[29] ?? '');
-  const chosen =
-    fewestChanges(valid.filter(({ value }) => compositeOf(value))) ?? fewestChanges(valid);
-  return chosen
-    ? { documentNumber: chosen, compositeValid: compositeOf(chosen) }
-    : { compositeValid: false };
+  const optionalData = second.slice(18, 29).replace(/[KLSCE]/g, '<');
+  const compositeCheck = digits(second[29] ?? '');
+  if (
+    second.length !== 30 ||
+    !dates.birthDate ||
+    !dates.expiryDate ||
+    !/^\d$/.test(compositeCheck) ||
+    !/^[A-Z0-9<]{11}$/.test(optionalData)
+  ) {
+    return { documentNumber: fewestChanges(valid), compositeValid: false };
+  }
+  const rest = `${documentCheck}${'<'.repeat(15)}${dates.birthDate}${digits(second[6]!)}${dates.expiryDate}${digits(second[14]!)}${optionalData}`;
+  const chosen = fewestChanges(
+    valid.filter(({ value }) => mrzCheckDigit(value + rest) === compositeCheck),
+  );
+  return { documentNumber: chosen, compositeValid: Boolean(chosen) };
 }
 
 /**

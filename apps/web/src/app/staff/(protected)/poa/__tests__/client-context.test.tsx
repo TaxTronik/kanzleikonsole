@@ -4,9 +4,10 @@
 // (Link mit clientId und from=onboarding) prüft zusätzlich
 // clients/onboarding/__tests__/onboarding-page.test.tsx.
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { renderToString } from 'react-dom/server';
 import { renderServer } from '@/__tests__/render-helpers';
-import { DEFAULT_MODULES } from '@/server/settings/modules';
+import { DEFAULT_MODULES, readModules } from '@/server/settings/modules';
 import { resolveClientNavigation } from '@/lib/navigation-registry';
 
 const CLIENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -122,7 +123,35 @@ beforeEach(() => {
   h.tx.powerOfAttorney.findMany.mockResolvedValue([]);
 });
 
+afterEach(() => vi.useRealTimers());
+
 describe('Vollmachten im Mandantenkontext', () => {
+  it.each(['MARKDOWN_OTP', 'PDF_TEMPLATE'] as const)(
+    'POA-LIFECYCLE-001: übergibt den bearbeitbaren Berliner Gültigkeitsbeginn im Modus %s',
+    async (poaMode) => {
+      vi.mocked(readModules).mockResolvedValueOnce({ ...DEFAULT_MODULES, poaMode });
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-12-31T23:15:00Z'));
+      const page = await NewPoaPage({
+        searchParams: Promise.resolve({ clientId: CLIENT_ID, uploadIntentId: DOCUMENT_ID }),
+      });
+      const container = document.createElement('div');
+      container.innerHTML = renderToString(page);
+      expect(container.querySelector<HTMLInputElement>('#validFrom')?.value).toBe('2027-01-01');
+
+      vi.setSystemTime(new Date('2027-01-02T10:00:00Z'));
+      document.body.appendChild(container);
+      render(page, { container, hydrate: true });
+      const start = screen.getByLabelText<HTMLInputElement>('Gültig ab');
+      expect(start.value).toBe('2027-01-01');
+      expect(screen.getByLabelText<HTMLInputElement>('Gültig bis (optional)').value).toBe('');
+      fireEvent.change(start, { target: { value: '2027-01-04' } });
+      await act(async () => fireEvent.submit(start.form!));
+      const submitted = h.createPoa.mock.calls[0]![1] as FormData;
+      expect(submitted.get('validFrom')).toBe('2027-01-04');
+    },
+  );
+
   it('übernimmt den Mandanten aus dem Onboarding gesperrt in das Anlageformular', async () => {
     await renderNew({ clientId: CLIENT_ID, from: 'onboarding' });
     // Nur der angeforderte Mandant wird geladen: mit Zugriffsprüfung, nie

@@ -90,8 +90,8 @@ export default async function AuditEntryPage({ params }: { params: Promise<{ id:
   const diffLines = beforeStr || afterStr ? renderDiff(beforeStr, afterStr) : [];
 
   return (
-    <div className="p-8 max-w-4xl">
-      <div className="flex items-start gap-4 mb-6">
+    <div className="max-w-4xl p-4 sm:p-8">
+      <div className="mb-6 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
         <Link
           href="/staff/admin/audit"
           aria-label="Zurück"
@@ -99,7 +99,7 @@ export default async function AuditEntryPage({ params }: { params: Promise<{ id:
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div className="flex-1">
+        <div className="min-w-0">
           <div className="flex items-center gap-3 mb-1 flex-wrap">
             <h1 className="text-2xl font-bold text-primary">Audit-Eintrag #{String(entry.id)}</h1>
             {intact ? (
@@ -114,12 +114,12 @@ export default async function AuditEntryPage({ params }: { params: Promise<{ id:
               </span>
             )}
           </div>
-          <p className="text-muted text-sm font-mono">
+          <p className="break-all text-muted text-sm font-mono">
             {entry.action} · {entry.resourceType}
             {entry.resourceId ? `:${entry.resourceId}` : ''}
           </p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="col-span-full flex flex-wrap items-center gap-1 lg:col-span-1">
           {prev && (
             <Link
               href={`/staff/admin/audit/${prev.id}`}
@@ -145,7 +145,7 @@ export default async function AuditEntryPage({ params }: { params: Promise<{ id:
 
       {/* Header-Felder */}
       <div className="card p-6 mb-6">
-        <dl className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
           <div>
             <dt className="text-xs text-muted uppercase tracking-wide">Zeitpunkt</dt>
             <dd className="text-primary font-mono">{fmtDateTimeSeconds(entry.occurredAt)}</dd>
@@ -166,7 +166,7 @@ export default async function AuditEntryPage({ params }: { params: Promise<{ id:
               )}
             </dd>
           </div>
-          <div className="col-span-2">
+          <div className="col-span-full min-w-0">
             <dt className="text-xs text-muted uppercase tracking-wide">Quelle</dt>
             <dd className="text-secondary text-xs">
               {entry.ip && <span className="font-mono">IP: {entry.ip}</span>}
@@ -175,9 +175,9 @@ export default async function AuditEntryPage({ params }: { params: Promise<{ id:
               {!entry.ip && !entry.userAgent && <span className="text-disabled">—</span>}
             </dd>
           </div>
-          <div className="col-span-2">
+          <div className="col-span-full min-w-0">
             <dt className="text-xs text-muted uppercase tracking-wide">Hash-Chain</dt>
-            <dd className="text-xs font-mono space-y-1 mt-1">
+            <dd className="mt-1 space-y-1 break-all font-mono text-xs">
               <p>
                 <span className="text-muted">prev:</span>{' '}
                 <span className="text-secondary">

@@ -12,6 +12,7 @@ import { hasClientPickerOptionTx } from '@/server/clients/picker';
 import type { ClientPickerFilter } from '@/lib/client-picker';
 import { ClientPrerequisiteEmptyState } from '@/components/client-prerequisite-empty-state';
 import { isUuid } from '@/lib/uuid';
+import { berlinYmd } from '@/lib/fmt';
 import { resolveInitialPoaClientId } from './client-selection';
 import { parsePoaCreateReturnContext } from './return-context';
 
@@ -126,6 +127,7 @@ export default async function NewPoaPage({
       ) : (
         <NewPoaForm
           poaMode={modules.poaMode}
+          initialValidFrom={berlinYmd(new Date())}
           initialClient={initialClient}
           initialPendingDocumentId={pendingDocumentId}
           uploadIntentId={uploadIntentId}

@@ -17,6 +17,22 @@ const h = vi.hoisted(() => ({
   aktion: () => vi.fn(async () => ({ ok: true })),
 }));
 
+// Der DOM-Renderer überschreitet keine echte RSC-Grenze. Prüfe deshalb an der
+// Übergabestelle dieselbe Werteliste, die React im Browser transportieren muss.
+vi.mock('@/components/tcms/durchfuehrung/editor', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/components/tcms/durchfuehrung/editor')>();
+  return {
+    ...original,
+    DurchfuehrungEditor: (props: Parameters<typeof original.DurchfuehrungEditor>[0]) => {
+      expect(
+        Array.isArray(props.werte),
+        'TCMS-DIENST-001: übertragbare Liste der Editorwerte',
+      ).toBe(true);
+      return <original.DurchfuehrungEditor {...props} />;
+    },
+  };
+});
+
 vi.mock('server-only', () => ({}));
 vi.mock('@/server/auth/staff', () => ({ staffAuth: async () => null }));
 vi.mock('@/server/auth/portal', () => ({ portalAuth: async () => null }));

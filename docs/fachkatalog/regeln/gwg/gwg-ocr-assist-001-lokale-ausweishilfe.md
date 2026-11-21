@@ -136,6 +136,14 @@ Drehung. Die Hilfe verarbeitet höchstens 25 MiB und 100 PDF-Seiten; der
 
 ## Ausnahmen und Grenzfälle
 
+Beim deutschen Personalausweis folgen der Prüfziffer der Dokumentnummer
+15 Füllzeichen. Enthält dieser Bereich andere Zeichen als Füllzeichen oder
+deren bekannte OCR-Lesarten, bleibt die Nummer aus der MRZ offen. Dasselbe
+gilt bei einer lesbaren, widersprechenden Gesamtprüfziffer. Ist die
+Gesamtprüfziffer unlesbar, genügt bei plausibler Feldgrenze die eigene
+Prüfziffer der Nummer. Die Datumsfelder werden mit ihren eigenen Prüfziffern
+ausgewertet.
+
 Ein Jahrhundert wird nicht aus einer zweistelligen MRZ-Jahreszahl erraten.
 Beim auf dem Ausweis zweistellig gedruckten Ausstellungsdatum (TT.MM.JJ) wird das
 Jahr nur ergänzt, wenn genau eine Lesart nicht in der Zukunft liegt und höchstens
@@ -221,6 +229,9 @@ Testgrundlage sind echte Tesseract-Ausgaben des veröffentlichten Musterausweise
 (nur Text, kein Bild) sowie gelesene Füllzeichen, Ziffernverwechslungen,
 mehrdeutige Lesarten mit gleicher Prüfziffer und das zweispaltige Layout. Eine
 synthetische Rückseite mit MRZ läuft als Browserfall durch den echten Worker.
+Der Regressionstest verwendet die Linux-OCR-Ausgabe dieser Rückseite mit einer
+zusätzlich erkannten Ziffer. Er prüft, dass ein Prüfzifferhinweis erscheint,
+die Ausweisnummer offen bleibt und die separat gelesenen Angaben erhalten bleiben.
 Mit dem Muster lieferte die Hilfe im Browser vorher ein falsches Ablaufdatum und
 PLZ/Ort, danach Name und Ablaufdatum (Vorderseite) sowie Behörde, PLZ, Ort,
 Ausweisnummer, Staatsangehörigkeit und Name (Rückseite) ohne Widerspruch. Eine

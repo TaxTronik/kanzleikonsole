@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { mountBwa, plan, missingBase } from './helpers/bwa';
+import { addBwaStyles, mountBwa, plan, missingBase } from './helpers/bwa';
 
 const completeBase = {
   ...missingBase,
@@ -80,6 +80,7 @@ test.describe('BWA-IMPORT-MAPPING-001 / BWA-PROJECTION-001: fehlende Werte bleib
   test('Planumsatz wird getrennt von sonstigen Erträgen mit der Hochrechnung verglichen', async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 320, height: 800 });
     await mountBwa(page, 'versus', {
       plans: [plan],
       projection: {
@@ -92,15 +93,38 @@ test.describe('BWA-IMPORT-MAPPING-001 / BWA-PROJECTION-001: fehlende Werte bleib
       },
       projectionLabel: 'Synthetische BWA',
     });
+    await addBwaStyles(page);
     const row = page
       .getByRole('row')
-      .filter({ has: page.getByRole('cell', { name: 'Erlöse', exact: true }) });
-    await expect(row.getByRole('cell').nth(1)).toContainText('1.000');
-    await expect(row.getByRole('cell').nth(3)).toContainText('0');
+      .filter({ has: page.getByRole('rowheader', { name: 'Erlöse', exact: true }) });
+    await expect(row.getByRole('cell').first()).toContainText('1.000');
+    await expect(row.getByRole('cell').nth(2)).toContainText('0');
     const result = page
       .getByRole('row')
-      .filter({ has: page.getByRole('cell', { name: 'Ergebnis vor Steuern', exact: true }) });
-    await expect(result.getByRole('cell').nth(1)).toContainText('400');
+      .filter({ has: page.getByRole('rowheader', { name: 'Ergebnis vor Steuern', exact: true }) });
+    await expect(result.getByRole('cell').first()).toContainText('400');
+    const region = page.getByRole('region', { name: 'Plan vs. Hochrechnung' });
+    expect(
+      await region.evaluate((el) => {
+        el.scrollLeft = el.scrollWidth;
+        return el.scrollLeft;
+      }),
+    ).toBeGreaterThan(0);
+    const label = await row.getByRole('rowheader').boundingBox();
+    const percent = await row.getByRole('cell').last().boundingBox();
+    await expect(row.getByRole('rowheader')).toBeInViewport({ ratio: 1 });
+    const textRight = await row
+      .getByRole('cell')
+      .last()
+      .evaluate((cell) => {
+        const range = document.createRange();
+        range.selectNodeContents(cell);
+        return range.getBoundingClientRect().right;
+      });
+    expect(textRight).toBeLessThanOrEqual(320);
+    expect(label!.x).toBeGreaterThanOrEqual(0);
+    expect(label!.x + label!.width).toBeLessThanOrEqual(percent!.x);
+    expect(percent!.x + percent!.width).toBeLessThanOrEqual(321);
   });
 
   test('gesperrte Basis verhindert keinen manuell erfassten und gespeicherten Plan', async ({
@@ -242,9 +266,9 @@ test.describe('BWA-IMPORT-MAPPING-001 / BWA-PROJECTION-001: fehlende Werte bleib
     await expect(
       versus
         .getByRole('row')
-        .filter({ has: page.getByRole('cell', { name: 'Ergebnis vor Steuern', exact: true }) })
+        .filter({ has: page.getByRole('rowheader', { name: 'Ergebnis vor Steuern', exact: true }) })
         .getByRole('cell')
-        .nth(2),
+        .nth(1),
     ).toHaveText('—');
     await page.getByRole('checkbox', { name: 'Testplanung zum Vergleich auswählen' }).check();
     const comparison = page

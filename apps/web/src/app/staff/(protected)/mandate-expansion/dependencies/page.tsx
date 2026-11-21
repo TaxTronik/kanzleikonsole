@@ -24,7 +24,7 @@ export default async function DependenciesPage() {
     ...new Set([...data.dependencies.map((d) => d.successorItemId), ...data.blockedTargets]),
   ];
   return (
-    <main className="p-6 space-y-6">
+    <div className="p-6 space-y-6">
       <ExpansionNavigation />
       <h1 className="text-2xl font-semibold">Mandatsübergreifende Workflow-Abhängigkeiten</h1>
       <p>
@@ -146,6 +146,6 @@ export default async function DependenciesPage() {
           );
         })
       )}
-    </main>
+    </div>
   );
 }

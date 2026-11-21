@@ -13,11 +13,13 @@ export function PayrollActionForm({
   label,
   children,
   resumeId,
+  onSuccess,
 }: {
   action: (data: FormData) => Promise<PayrollActionResult>;
   label: string;
   children: React.ReactNode;
   resumeId?: string;
+  onSuccess?: () => void;
 }) {
   const router = useRouter();
   const [result, setResult] = useState<PayrollActionResult | null>(null);
@@ -32,7 +34,10 @@ export function PayrollActionForm({
         try {
           const next = await action(data);
           setResult(next);
-          if (next.ok) router.refresh();
+          if (next.ok) {
+            if (onSuccess) onSuccess();
+            else router.refresh();
+          }
         } catch {
           setResult({ ok: false, error: 'Aktion fehlgeschlagen. Bitte erneut versuchen.' });
         } finally {

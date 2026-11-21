@@ -45,6 +45,19 @@ describe('zentrale Navigation', () => {
     );
   });
 
+  it('KNOWLEDGE-CONTEXT-001: bietet die Leitfadenverwaltung nur Admin und Partner bei aktivem Modul an', () => {
+    const hrefs = (isAdmin: boolean, enabled: boolean) =>
+      items(
+        resolveStaffNavigation({
+          modules: moduleConfig({ knowledge: true, knowledgeContext: enabled }),
+          isAdmin,
+        }),
+      ).map((item) => item.href);
+    expect(hrefs(false, true)).not.toContain('/staff/knowledge/context');
+    expect(hrefs(true, false)).not.toContain('/staff/knowledge/context');
+    expect(hrefs(true, true)).toContain('/staff/knowledge/context');
+  });
+
   it('zeigt den Offboarding-Hub und Administration nur Admins', () => {
     const employee = resolveStaffNavigation({
       modules: moduleConfig({ mandateOffboarding: true }),

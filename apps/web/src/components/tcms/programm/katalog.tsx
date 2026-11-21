@@ -84,7 +84,7 @@ function Tabelle({
 }) {
   return (
     <section className="card overflow-hidden" aria-label={beschriftung}>
-      <div className="overflow-x-auto">
+      <div className="relative overflow-x-auto">
         <table className="w-full text-sm">
           <caption className="sr-only">{beschriftung}</caption>
           <thead>

@@ -26,7 +26,7 @@ export default async function TcmsMandantLayout({
   const { id } = await params;
   const seite = await tcmsMandantSeite(id);
   return (
-    <div className="p-8">
+    <div className="tcms-content min-w-0 p-4 sm:p-8">
       <Link href={`/staff/clients/${encodeURIComponent(id)}`} className="back-link">
         <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Zur Mandantenakte
       </Link>

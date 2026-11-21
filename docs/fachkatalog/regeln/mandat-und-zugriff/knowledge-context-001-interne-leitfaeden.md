@@ -25,6 +25,7 @@ sources:
     checked_at: '2026-08-31'
     primary: true
 code_refs:
+  - apps/web/src/lib/navigation-registry.ts
   - apps/web/src/app/staff/(protected)/knowledge/context/actions.ts
   - apps/web/src/app/staff/(protected)/knowledge/context/editor.tsx
   - apps/web/src/components/knowledge-context.tsx
@@ -32,6 +33,7 @@ code_refs:
   - apps/web/src/server/workflows/execute-step.ts
   - packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql
 test_refs:
+  - apps/web/src/lib/__tests__/navigation-registry.test.ts
   - apps/e2e/tests/knowledge-context-state.spec.ts
   - apps/web/src/server/workflows/__tests__/execute-step.test.ts
 feature_refs:
@@ -74,6 +76,9 @@ Fehlender Zugriff, ungültiger oder veränderter Quellstand und geschlossene Vor
 Ein berechtigter Mitarbeiter bereitet den beschriebenen Vorgang vor und prüft seine Auswahl. Ein zweiter Kontakt erhält dadurch keine zusätzlichen Rechte; ein später geänderter Quellstand wird nicht still als ursprüngliche Grundlage dargestellt.
 
 ## Umsetzung in TaxTronik
+
+Seitenmenü und globale Suche bieten die Leitfadenverwaltung bei aktivierten
+Modulen nur ADMIN und PARTNER an. Die Zielseite prüft dieselbe Rolle.
 
 Der Editor zeigt die unveränderte Grenze von zehn Artikeln mit Auswahlzähler
 und begrenzt weitere Markierungen, ohne das Abwählen zu sperren. Nicht

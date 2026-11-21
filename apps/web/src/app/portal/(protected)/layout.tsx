@@ -125,8 +125,10 @@ export default async function PortalLayout({ children }: { children: ReactNode }
               <span className="text-sm font-medium text-secondary">{branding.displayName}</span>
             </div>
             <div className="flex items-center gap-1">
-              <UiModeToggle />
-              <ThemeToggle />
+              <div className="hidden items-center gap-1 md:flex">
+                <UiModeToggle />
+                <ThemeToggle />
+              </div>
               <span className="topbar-divider" aria-hidden />
               <UserMenu
                 name={session.user.fullName}

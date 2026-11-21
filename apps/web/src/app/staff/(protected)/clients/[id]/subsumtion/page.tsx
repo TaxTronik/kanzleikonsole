@@ -34,8 +34,8 @@ export default async function SubsumtionListPage({ params }: { params: Promise<{
   const analyses = alle.filter((a) => !a.vertraulich || beteiligt.has(a.id));
 
   return (
-    <div className="p-8">
-      <div className="flex items-start gap-4 mb-6">
+    <div className="p-4 sm:p-8">
+      <div className="mb-6 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
         <Link
           href={`/staff/clients/${id}`}
           aria-label="Zurück"
@@ -43,7 +43,7 @@ export default async function SubsumtionListPage({ params }: { params: Promise<{
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div className="flex-1">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
             <FileSearch className="h-6 w-6 text-disabled" />
             Subsumtion / TCMS
@@ -52,7 +52,10 @@ export default async function SubsumtionListPage({ params }: { params: Promise<{
             Sachverhalte analysieren, Risiken markieren und bewerten, Recherche delegieren.
           </p>
         </div>
-        <Link href={`/staff/clients/${id}/subsumtion/new`} className="btn-primary text-sm shrink-0">
+        <Link
+          href={`/staff/clients/${id}/subsumtion/new`}
+          className="btn-primary col-span-full justify-self-start text-sm lg:col-span-1"
+        >
           <Plus className="h-4 w-4" />
           Neue Subsumtion
         </Link>
@@ -81,7 +84,7 @@ export default async function SubsumtionListPage({ params }: { params: Promise<{
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-primary truncate inline-flex items-center gap-2">
+                      <p className="text-sm font-medium text-primary flex flex-wrap items-center gap-2 [overflow-wrap:anywhere]">
                         {a.title || 'Subsumtion'}
                         {a.vertraulich && (
                           <span className="badge-gray text-[10px] inline-flex items-center gap-1">

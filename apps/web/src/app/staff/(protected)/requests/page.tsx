@@ -88,6 +88,7 @@ export default async function RequestsOverviewPage({
 
   const tabs: Array<{ key: string; label: string }> = [
     { key: '', label: 'Alle' },
+    { key: 'OUTSTANDING', label: 'Offen und in Bearbeitung' },
     { key: 'OPEN', label: 'Offen' },
     { key: 'IN_PROGRESS', label: 'In Bearbeitung' },
     { key: 'RESPONDED', label: 'Beantwortet' },
@@ -138,6 +139,7 @@ export default async function RequestsOverviewPage({
               <Link
                 key={t.key}
                 href={tabHref(t.key)}
+                aria-current={active ? 'page' : undefined}
                 className={
                   active
                     ? 'border-b-2 border-brand-600 text-brand-700 px-1 py-2 text-sm font-medium'

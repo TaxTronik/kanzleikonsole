@@ -411,17 +411,20 @@ html:has([data-accessible-display='true']) .widget-shell > a.card .truncate {
     margin-inline-start: auto;
   }
 
-  /* Dashboard-Leseansicht: das CSS-Raster ist hier bereits einspaltig
-   * (globals.css, .dashboard-view*). Mit größerer Schrift wachsen die Karten
+  /* Dashboard-Leseansicht: mit vergrößerter Schrift bekommen auch Kennzahlen die volle
+   * Zeilenbreite. Die Karten wachsen
    * zusätzlich mit ihrem Inhalt statt in der festen Rasterhöhe. Nur die
    * Anzeige ändert sich, nicht das gespeicherte Layout; Bearbeitungsmodus
    * und ACP-Layout-Editor (react-grid-layout) bleiben unberührt. */
   html:has([data-accessible-display='true']) .dashboard-view-grid {
+    grid-template-columns: minmax(0, 1fr);
     grid-auto-rows: auto;
     gap: 1rem;
   }
 
   html:has([data-accessible-display='true']) .dashboard-view-item {
+    height: auto;
+    grid-column: 1 / -1;
     grid-row: auto;
   }
 

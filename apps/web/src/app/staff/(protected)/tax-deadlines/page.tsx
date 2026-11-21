@@ -23,7 +23,8 @@ import {
 import Link from 'next/link';
 import { SavedViews } from '@/components/saved-views';
 import { OffsetPagination } from '@/components/offset-pagination';
-import { CalendarMonthGrid, MoreEntries, TaxDeadlinePills } from '@/components/calendar-month-grid';
+import { MoreEntries } from '@/components/calendar-more-entries';
+import { CalendarMonthGrid, TaxDeadlinePills } from '@/components/calendar-month-grid';
 import { CalendarDays, AlertTriangle, ListChecks, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { StaffSession } from '@/server/auth/staff';
 import { requireStaffPage } from '@/server/auth/staff-page';
@@ -198,7 +199,17 @@ async function renderMonth(
                 scope={scope}
                 q={q}
               />
-              <MoreEntries count={groups.length - MONTH_CELL_PILLS} />
+              <MoreEntries
+                count={groups.length - MONTH_CELL_PILLS}
+                dateLabel={fmtDateShort(cell.date)}
+              >
+                <TaxDeadlinePills
+                  groups={groups.slice(MONTH_CELL_PILLS)}
+                  doneClassName="cal-pill cal-pill-appointment"
+                  scope={scope}
+                  q={q}
+                />
+              </MoreEntries>
             </>
           );
         }}

@@ -96,14 +96,14 @@ export function PlanVsProjection({
 
   return (
     <section className="mb-8">
-      <div className="flex items-end justify-between gap-3 mb-3">
+      <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
         <div>
           <h2 className="text-lg font-semibold text-primary">Plan vs. Hochrechnung</h2>
           <p className="text-xs text-muted">
             Wo stehen Sie aktuell gegenüber Ihrer Planung? Basis: {projectionLabel}
           </p>
         </div>
-        <div>
+        <div className="max-w-full">
           <label className="text-xs text-muted block mb-1" htmlFor="plan-vs-projection-plan">
             Planung
           </label>
@@ -128,33 +128,44 @@ export function PlanVsProjection({
           Bitte eine Planung auswählen.
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 border-b border-default">
-                <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
-                  Position
-                </th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">
-                  Plan
-                </th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">
-                  Hochrechnung
-                </th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">
-                  Δ absolut
-                </th>
-                <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">
-                  Δ %
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle">
-              {rows.map((r) => (
-                <Row key={r.label} {...r} />
-              ))}
-            </tbody>
-          </table>
+        <div className="card">
+          <div
+            className="overflow-x-auto rounded-t-lg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-600"
+            role="region"
+            aria-label="Plan vs. Hochrechnung"
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Tastaturzugriff auf horizontal scrollbare Tabellenspalten.
+            tabIndex={0}
+          >
+            <table className="w-full border-separate border-spacing-0 text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-default">
+                  <th
+                    scope="col"
+                    className="sticky left-0 z-10 min-w-32 max-w-36 border-r border-default bg-surface-raised px-3 py-2 text-left text-xs font-medium text-muted uppercase sm:max-w-52"
+                  >
+                    Position
+                  </th>
+                  <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">
+                    Plan
+                  </th>
+                  <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">
+                    Hochrechnung
+                  </th>
+                  <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">
+                    Δ absolut
+                  </th>
+                  <th className="text-right px-4 py-2 text-xs font-medium text-muted uppercase">
+                    Δ %
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border-subtle">
+                {rows.map((r) => (
+                  <Row key={r.label} {...r} />
+                ))}
+              </tbody>
+            </table>
+          </div>
           {selectedPlan && (
             <div className="px-4 py-2 border-t border-default text-xs text-muted">
               <Link
@@ -215,7 +226,12 @@ function Row({
 
   return (
     <tr>
-      <td className="px-4 py-2 text-secondary">{label}</td>
+      <th
+        scope="row"
+        className="sticky left-0 z-10 min-w-32 max-w-36 hyphens-auto border-r border-default bg-surface px-3 py-2 text-left font-normal text-secondary sm:max-w-52"
+      >
+        {label}
+      </th>
       <td className={valCls(plan)}>{plan === null ? '—' : fmtEURRound(plan)}</td>
       <td className={valCls(actual)}>{actual === null ? '—' : fmtEURRound(actual)}</td>
       <td className="px-4 py-2 text-right font-mono tabular-nums">
@@ -231,7 +247,7 @@ function Row({
           </span>
         )}
       </td>
-      <td className="px-4 py-2 text-right font-mono tabular-nums text-xs text-muted">
+      <td className="whitespace-nowrap px-4 py-2 text-right font-mono tabular-nums text-xs text-muted">
         {deltaPct === null ? '—' : `${deltaPct > 0 ? '+' : ''}${deltaPct.toFixed(1)} %`}
       </td>
     </tr>

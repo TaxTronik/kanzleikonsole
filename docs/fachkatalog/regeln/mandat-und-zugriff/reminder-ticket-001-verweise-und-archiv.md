@@ -42,12 +42,15 @@ code_refs:
   - apps/worker/src/jobs/reminder-done-notify.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts
   - apps/web/src/app/staff/(protected)/phone-notes/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/phone-notes-list.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/_data.ts
   - apps/web/src/server/risk/delegate.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts
   - apps/web/src/server/documents/reminder-upload-guard.ts
   - apps/web/src/app/api/staff/documents/commit/route.ts
   - apps/web/src/app/api/staff/clients/[id]/reminders/route.ts
+  - apps/web/src/app/staff/(protected)/reminders/new-reminder-form.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/reminders/reminders-block.tsx
   - apps/web/src/app/staff/(protected)/reminders/page.tsx
   - apps/web/src/app/staff/(protected)/reminders/reminders-overview.tsx
   - apps/web/src/app/staff/(protected)/reminders/ticket-text.tsx
@@ -163,12 +166,21 @@ ihr weder den Titel noch die Inhalte von #12. Der selbst geschriebene Text in
 
 ## Umsetzung in TaxTronik
 
+Die globale Ticketanlage schlägt den aktuellen Kalendertag in Europe/Berlin als
+Fälligkeit vor. Im Mandantenformular richtet sich die Untergrenze nach demselben
+Kalendertag. Beim Öffnen der Wiedervorlage aus einer Telefonnotiz ist der Berliner
+Folgetag vorgeschlagen und der aktuelle Berliner Kalendertag die Untergrenze.
+Die Mandantenakte und die globale Übersicht kennzeichnen offene Tickets mit
+einem Fälligkeitstag vor dem heutigen Berliner Kalendertag als überfällig.
+Für Kopien und verknüpfte Tickets zählt die Vorbelegung ab dem
+Berliner Heute vierzehn Kalendertage weiter. Die Kanzlei kann die Fälligkeit im
+Anlageformular anpassen.
+
 Bei Anlage, Kopie und Übernahme einer Telefonnotiz prüft der Server die
 Fälligkeit als echten Kalendertag. Die frühere Musterprüfung ließ etwa
 den 29. Februar 2026 zu, den die Datumskonvertierung anschließend auf den
-
-1. März verschob. Die Action-Tests grenzen diese Eingabe und den
-2. April vom gültigen 29. Februar 2024 ab.
+ersten März verschob. Die Action-Tests grenzen den 29. Februar 2026 und
+den 31. April 2024 vom gültigen 29. Februar 2024 ab.
 
 Nummern werden in der Datenbank für alle Producer vergeben. Tenantgebundene
 Fremdschlüssel sichern Referenzen ab. Der Server löst explizite Nummern in
@@ -222,6 +234,18 @@ fachliche Ergebnisprüfung oder organisatorische Fristenkontrolle.
 - Welche zusätzlichen Quellen sollen künftig ausdrücklich verknüpft werden?
 
 ## Technische Nachweise
+
+Die Browserfälle in `22-reminder-tickets.spec.ts` prüfen das voreingestellte
+Datum nach Berliner Mitternacht und bei einer Verknüpfung über den
+Sommerzeitwechsel hinweg. Im US-Browser öffnet die Telefonnotiz den
+Fälligkeitsvorschlag am Berliner 29. März 2026 mit dem 30. März als Folgetag.
+Die Mandantenakte erlaubt ab Berliner Mitternacht am 20. November den 20. als
+frühestes Datum und weist den 19. als zu früh aus. Getrennte Anzeigetests
+prüfen in der Mandantenakte und der globalen Übersicht an offenen Tickets für
+den 19., 20. und 21. November, dass am Berliner 20. November allein das Ticket
+vom Vortag überfällig ist.
+Die Kommentarauswahl für @-Personen ist auch
+mit Tab und Eingabetaste bedienbar.
 
 Parserregressionen prüfen Nummerngrenzen, Deduplizierung und unveränderte
 Texterhaltung. Uploadregressionen prüfen interne Beteiligung, Mandantenrechte

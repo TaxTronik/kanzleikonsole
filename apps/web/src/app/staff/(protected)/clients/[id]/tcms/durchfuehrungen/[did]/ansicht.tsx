@@ -52,7 +52,7 @@ import {
   RisikenKarte,
   VerlaufKarte,
 } from '@/components/tcms/durchfuehrung/karten';
-import { periodeKurz, werteAusListe } from '@/components/tcms/durchfuehrung/werte';
+import { periodeKurz } from '@/components/tcms/durchfuehrung/werte';
 import { FeststellungBezeichnung } from '@/components/tcms/feststellung';
 import { isoDatumText, isoZeitText } from '@/components/tcms/format';
 import { TcmsKopf, type TcmsKopfDaten } from '@/components/tcms/kopf';
@@ -625,7 +625,7 @@ function Hauptspalte({
       sperrGrund={l.bearbeitbar ? null : d.rechte.bearbeiten.grund}
       schritte={schritte}
       kennzahlen={k.kennzahlen}
-      werte={werteAusListe(werte)}
+      werte={werte}
       pruefung={leer ? [] : d.pruefung.kennzahlen}
       toleranzEur={k.toleranzEur}
       periodeKurz={periodeKurz(d.periodeLabel)}

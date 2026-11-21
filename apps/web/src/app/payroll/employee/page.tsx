@@ -15,7 +15,7 @@ export default async function EmployeePayrollPage() {
   return (
     <main className="mx-auto max-w-4xl p-6 space-y-6">
       <h1 className="text-2xl font-bold">Persönlicher Personalfragebogen</h1>
-      <EmployeeEntry hasSession={!!item} />
+      <EmployeeEntry />
       {!item ? (
         <p>
           Für einen abgelaufenen oder bereits verwendeten Link bitte einen neuen Link anfordern.

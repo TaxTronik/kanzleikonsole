@@ -26,6 +26,9 @@ sources:
     checked_at: '2026-08-31'
     primary: true
 code_refs:
+  - apps/web/src/app/payroll/employee/entry.tsx
+  - apps/web/src/app/payroll/employee/page.tsx
+  - apps/web/src/components/payroll-action-form.tsx
   - apps/web/src/server/payroll/definition.ts
   - apps/web/src/server/payroll/capability.ts
   - apps/web/src/server/payroll/service.ts
@@ -46,6 +49,7 @@ code_refs:
   - packages/db/prisma/migrations/20260831230000_payroll_submission_guards/migration.sql
   - packages/db/prisma/migrations/20260831240000_payroll_pending_sources/migration.sql
 test_refs:
+  - apps/e2e/tests/17-expansion.spec.ts
   - apps/web/src/server/payroll/__tests__/definition.test.ts
   - apps/web/src/lib/__tests__/fmt.test.ts
   - apps/web/src/server/payroll/__tests__/pdf.test.ts
@@ -100,6 +104,11 @@ Ein abgelaufener, widerrufener, deaktivierter oder beendeter Vorgang sperrt Gast
 Ein ausgewählter Arbeitgeberkontakt bestätigt Arbeitsbeginn und Vergütung. Ein zweiter Kontakt desselben Mandanten sieht den Vorgang nicht. Die beschäftigte Person trägt über ihren Link IBAN und Versicherungsnummer ein; diese Antworten und Anlagen bleiben dem Arbeitgeber verborgen. Nach beiderseitiger Abgabe erzeugt die Kanzlei einen geprüften PDF-Stand. Trotz bestätigter DATEV-Nummern bleibt der DATEV-Import ohne reale Formatabnahme gesperrt.
 
 ## Umsetzung in TaxTronik
+
+Nach erfolgreicher Einlösung öffnet der Browser den Fragebogen mit der
+erteilten Einzelsitzung unter der Adresse `/payroll/employee`. Die
+Einladungskennung im URL-Fragment und der Öffnen-Knopf entfallen.
+Der Browsertest prüft die Ansicht und das Speichern nach diesem Übergang.
 
 Bei der Anlage wird die Ablaufzeit auf 23:59:59,999 Uhr des ausgewählten
 Berliner Kalendertags gesetzt. Die frühere Offsetberechnung addierte die

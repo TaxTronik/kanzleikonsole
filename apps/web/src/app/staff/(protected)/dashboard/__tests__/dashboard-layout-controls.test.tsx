@@ -123,9 +123,7 @@ describe('Dashboard: Speicherweg der Alternative', () => {
     await openEditor();
     applyHeight(4);
     const expected = adjustDashboardWidget(compactDashboardWidgets(DEFAULT_LAYOUT.widgets), 'w-1', {
-      x: 0,
-      y: 0,
-      w: 3,
+      ...DEFAULT_LAYOUT.widgets[0]!,
       h: 4,
     });
     if (!expected.ok) throw new Error('Testannahme verletzt');
@@ -155,13 +153,14 @@ describe('Dashboard: Speicherweg der Alternative', () => {
       await vi.advanceTimersByTimeAsync(600);
     });
     const first = adjustDashboardWidget(compactDashboardWidgets(DEFAULT_LAYOUT.widgets), 'w-1', {
-      x: 0,
-      y: 0,
-      w: 3,
+      ...DEFAULT_LAYOUT.widgets[0]!,
       h: 4,
     });
     if (!first.ok) throw new Error('Testannahme verletzt');
-    const second = adjustDashboardWidget(first.widgets, 'w-2', { x: 3, y: 0, w: 3, h: 5 });
+    const second = adjustDashboardWidget(first.widgets, 'w-2', {
+      ...first.widgets.find((item) => item.id === 'w-2')!,
+      h: 5,
+    });
     if (!second.ok) throw new Error('Testannahme verletzt');
     // Debounce: nur der letzte Stand wird gespeichert, mit beiden Änderungen.
     expect(h.save).toHaveBeenCalledExactlyOnceWith({ version: 2, widgets: second.widgets });

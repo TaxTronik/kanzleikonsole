@@ -24,7 +24,7 @@
 import {
   startTransition,
   useActionState,
-  useEffect,
+  useLayoutEffect,
   useRef,
   type FormEvent,
   type ReactNode,
@@ -62,11 +62,12 @@ export function useTcmsFormular<E extends TcmsAktionsErgebnis = TcmsAktionsErgeb
   const [ergebnis, ausfuehren, laeuft] = useActionState<E | null, FormData>(aktion, null);
   const zuruecksetzen = optionen.zuruecksetzen ?? true;
 
-  useEffect(() => {
+  // Sobald das Formular wieder bedienbar erscheint, darf der nächste Klick absenden.
+  useLayoutEffect(() => {
     if (!laeuft) unterwegs.current = false;
-  }, [laeuft]);
+  }, [laeuft, ergebnis]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (zuruecksetzen && ergebnis?.ok) ref.current?.reset();
   }, [ergebnis, zuruecksetzen]);
 

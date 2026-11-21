@@ -92,6 +92,7 @@ code_refs:
   - packages/gwg/src/check-lifecycle.ts
   - apps/web/src/server/gwg/identity-pdf-pages.ts
 test_refs:
+  - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/add-id-doc-form.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/identity-document-review-state.test.ts
   - apps/web/src/server/gwg/__tests__/identity-source.test.ts
@@ -334,6 +335,10 @@ Der Implementierungsstatus ist deshalb **teilweise**.
   ausreichend?
 
 ## Technische Nachweise
+
+Der Formulartest ordnet zwei Rechtsträgerbelege nacheinander zu. Während der
+ersten Speicherung bleibt die Auswahl gesperrt. Mit der sichtbaren Bestätigung
+nimmt das Formular die Auswahl des zweiten Belegs beim ersten Klick an.
 
 Die Verifikationsregression prüft für Sommer- und Winterzeit jeweils den letzten
 gültigen Zeitpunkt vor Berliner Mitternacht und den ersten abgelaufenen

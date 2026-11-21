@@ -43,6 +43,8 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/poa/new/page.tsx
+  - apps/web/src/app/staff/(protected)/poa/new/form.tsx
   - apps/web/src/app/staff/(protected)/poa/actions.ts
   - apps/web/src/app/staff/(protected)/poa/sign-actions.ts
   - apps/worker/src/jobs/poa-expiry-check.ts
@@ -52,6 +54,7 @@ code_refs:
   - apps/web/src/server/poa/send-for-signature.ts
   - apps/web/src/server/poa/revoke-poa.ts
 test_refs:
+  - apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.tsx
   - apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts
   - apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts
   - apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts
@@ -143,6 +146,8 @@ die Kanzlei muss die fehlende Zuständigkeit organisatorisch nachhalten.
 
 ## Umsetzung in TaxTronik
 
+Für einen neuen Entwurf schlägt das Anlageformular den aktuellen Berliner Kalendertag als Gültigkeitsbeginn vor. Der Server liefert denselben bearbeitbaren Wert für das Markdown- und das PDF-Verfahren. Das optionale Gültigkeitsende bleibt eine gesonderte Eingabe.
+
 Staff-Actions legen Entwürfe an, versenden und widerrufen; die öffentliche
 Sign-Action beansprucht ausschließlich einen noch signierbaren SENT-Datensatz.
 Der Datenbanktrigger erlaubt nur die definierte Vorwärtsmatrix, friert
@@ -180,6 +185,8 @@ Wirksamkeit, Fortbestand oder Form einer konkreten Vollmacht ab.
 - Wer kontrolliert, ob das zugrunde liegende Rechtsverhältnis fortbesteht?
 
 ## Technische Nachweise
+
+Der Formulartest öffnet beide Anlageverfahren am 31. Dezember um 23:15 UTC. Er prüft den vorgeschlagenen 1. Januar im serverseitigen HTML und im interaktiven Formular sowie die Übergabe eines manuell geänderten Gültigkeitsbeginns.
 
 Ein ergänzender isolierter PostgreSQL-18-Test am 07.09.2026 belegt vier Fälle
 mit echtem Worker-Prozessor und nativen Transaktionen: SQL-Fehler nach dem

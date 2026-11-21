@@ -78,7 +78,7 @@ export default async function StaffInboxPage({
   if (scope !== 'mine') baseQs.set('scope', scope);
 
   return (
-    <main className="space-y-5">
+    <div className="space-y-5">
       <header>
         <h1 className="text-2xl font-semibold text-primary">Mandantenpost</h1>
         <p className="mt-1 text-sm text-muted">
@@ -204,6 +204,6 @@ export default async function StaffInboxPage({
         )}
         <ListFooter data={data} baseQs={baseQs} />
       </section>
-    </main>
+    </div>
   );
 }

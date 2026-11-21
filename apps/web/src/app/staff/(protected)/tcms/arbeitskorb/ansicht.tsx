@@ -304,7 +304,7 @@ function Durchfuehrungen({ korb, mandant, ueberfaellig }: Teil & { ueberfaellig:
           text="Keine fälligen oder überfälligen Durchführungen in Ihrer Verantwortung."
         />
       ) : (
-        <div className="overflow-x-auto">
+        <div className="relative overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr>

@@ -6,7 +6,7 @@
 > „Umgesetzt“ bedeutet nicht „fachlich freigegeben“.
 > `approved` authentifiziert die eingetragene Person nur mit separater Repository-Governance oder signierter Attestation.
 
-Aktive Regeln insgesamt: 87
+Aktive Regeln insgesamt: 88
 
 ## Audit und Software-Assurance
 
@@ -342,7 +342,7 @@ Aktive Regeln im Fachbereich: 12
 
 ## Mandat und Zugriff
 
-Aktive Regeln im Fachbereich: 21
+Aktive Regeln im Fachbereich: 22
 
 ### [ACCESS-CLIENT-MODE-001 — Kanzleiweiten Mandantenzugriff nach OPEN, RESTRICTED und Vertraulichkeit steuern](regeln/mandat-und-zugriff/access-client-mode-001-zugriffsmodus.md)
 
@@ -378,6 +378,13 @@ Aktive Regeln im Fachbereich: 21
 - Umsetzung: **Umgesetzt und getestet**
 - Geltung: nicht eingegrenzt
 - Kurzfassung: Anwendungszugriffe auf Tenantdaten laufen in einer Transaktion mit gesetztem Tenant-, Akteur- und Akteurtyp-Kontext. PostgreSQL erzwingt auf den erfassten Tabellen Row-Level-Security auch für den Tabellenowner der App-Rolle. Die Schicht ist ein technischer Backstop gegen Cross-Tenant-Zugriffe, kein Ersatz für Objektberechtigungen innerhalb einer Kanzlei.
+
+### [APPT-BERLIN-WALLCLOCK-001 — Kanzleitermine und Terminwünsche in Berliner Ortszeit erfassen](regeln/mandat-und-zugriff/appt-berlin-wallclock-001-berliner-terminzeiten.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Umgesetzt und getestet**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Für Start, Ende und Terminwünsche gilt die Zeitzone Europe/Berlin. Das gilt auch für die bearbeitbaren Vorschläge beim Öffnen des Formulars.
 
 ### [CLIENT-FEEDBACK-001 — Freiwillige Service-Rückmeldungen begrenzt und persönlich einholen](regeln/mandat-und-zugriff/client-feedback-001-freiwillige-service-rueckmeldung.md)
 

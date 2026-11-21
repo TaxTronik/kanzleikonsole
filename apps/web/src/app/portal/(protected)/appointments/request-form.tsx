@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { Plus, X, CalendarPlus, Trash2 } from 'lucide-react';
+import { berlinYmd, berlinYmdAfterDays } from '@/lib/fmt';
 import {
   FieldError,
   FormErrorSummary,
@@ -39,27 +40,6 @@ interface StaffOption {
   fullName: string;
 }
 
-/** Lokaler `YYYY-MM-DDTHH:MM`-Stempel für <input type="datetime-local">. */
-function toLocalIsoMinute(d: Date): string {
-  const off = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - off * 60_000);
-  return local.toISOString().slice(0, 16);
-}
-
-function defaultStartFor(slotIndex: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1 + slotIndex);
-  d.setHours(10, 0, 0, 0);
-  return toLocalIsoMinute(d);
-}
-
-function defaultEndFor(slotIndex: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1 + slotIndex);
-  d.setHours(11, 0, 0, 0);
-  return toLocalIsoMinute(d);
-}
-
 export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOption[] }) {
   const router = useRouter();
   const [slotCount, setSlotCount] = useState(1);
@@ -76,6 +56,13 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
     }
     return result;
   }, null);
+
+  const now = new Date();
+  // react-datepicker erwartet die Untergrenze als Kalendertag im lokalen Date-Objekt.
+  const minDate = new Date(`${berlinYmd(now)}T00:00`);
+  const slotDays = Array.from({ length: slotCount }, (_, index) =>
+    berlinYmdAfterDays(now, index + 1),
+  );
 
   return (
     <div className="card overflow-hidden">
@@ -163,7 +150,7 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
 
           <fieldset className="space-y-3">
             <legend className="label">Wunschtermine (bis zu 3)</legend>
-            {Array.from({ length: slotCount }).map((_, i) => (
+            {slotDays.map((day, i) => (
               <div
                 key={i}
                 className="rounded-md border border-default p-3 space-y-2 bg-gray-50/40 dark:bg-gray-900/30"
@@ -192,9 +179,9 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                     <DateTimePicker
                       id={`appointment-slot-${i}-starts`}
                       name={`slot${i}_starts`}
-                      defaultValue={defaultStartFor(i)}
+                      defaultValue={`${day}T10:00`}
                       required
-                      minDate={new Date()}
+                      minDate={minDate}
                       ariaInvalid={Boolean(state?.fieldErrors?.[`slot${i}_starts`]?.length)}
                       ariaDescribedBy={
                         state?.fieldErrors?.[`slot${i}_starts`]?.length
@@ -217,9 +204,9 @@ export function AppointmentRequestForm({ staffOptions }: { staffOptions: StaffOp
                     <DateTimePicker
                       id={`appointment-slot-${i}-ends`}
                       name={`slot${i}_ends`}
-                      defaultValue={defaultEndFor(i)}
+                      defaultValue={`${day}T11:00`}
                       required
-                      minDate={new Date()}
+                      minDate={minDate}
                       ariaInvalid={Boolean(state?.fieldErrors?.[`slot${i}_ends`]?.length)}
                       ariaDescribedBy={
                         state?.fieldErrors?.[`slot${i}_ends`]?.length

@@ -90,6 +90,19 @@ describe('GWG-OCR-ASSIST-001 maschinenlesbare Zone (TD1)', () => {
     expect(parseGermanTd1(['PERSONALAUSWEIS', 'ERIKA MUSTERMANN'])).toBeNull();
   });
 
+  it.each([
+    [
+      'Ziffer im Füllfeld bei fehlender Gesamtprüfziffer',
+      LINE1.slice(0, 15) + '1' + '<'.repeat(14),
+      LINE2.slice(0, 29),
+    ],
+    ['lesbare, widersprechende Gesamtprüfziffer', LINE1, LINE2.slice(0, 29) + '4'],
+  ])('hält die Nummer trotz gültiger Einzelprüfziffer zurück: %s', (_fall, first, second) => {
+    const mrz = parseGermanTd1([first, second]);
+    expect(mrz).toMatchObject({ birthDate: '830812', expiryDate: '340501', compositeValid: false });
+    expect(mrz?.documentNumber).toBeUndefined();
+  });
+
   it('nimmt den Namen nur aus der Zeile nach Zeile 2, nicht aus der Nummernzeile darüber', () => {
     const mrz = parseGermanTd1([
       'VENEN<<MUSTERMANN<<ERIKA<<<<<<<<<<<<<',

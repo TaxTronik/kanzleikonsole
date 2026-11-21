@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { Item } from '@radix-ui/react-dropdown-menu';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Sparkles, Square } from 'lucide-react';
 
@@ -64,7 +65,7 @@ function subscribeUiMode(onChange: () => void) {
   };
 }
 
-export function UiModeToggle() {
+export function UiModeToggle({ menuItem = false }: { menuItem?: boolean } = {}) {
   const storedMode = useSyncExternalStore(subscribeUiMode, readPref, () => null);
   const [localChoice, setLocalChoice] = useState<{ stored: UiMode; value: UiMode } | null>(null);
   const mode = localChoice?.stored === storedMode ? localChoice.value : (storedMode ?? 'classic');
@@ -97,6 +98,24 @@ export function UiModeToggle() {
       ? 'Modernes UI — klicken für Klassik (für schwache Geräte)'
       : 'Klassisches UI — klicken für Modern (für leistungsfähige Geräte)';
 
+  if (menuItem)
+    return (
+      <Item
+        className="ud-item"
+        aria-label={
+          mode === 'modern'
+            ? 'Oberfläche · Modern – zu Klassik wechseln'
+            : 'Oberfläche · Klassik – zu Modern wechseln'
+        }
+        onSelect={(event) => {
+          event.preventDefault();
+          toggle();
+        }}
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        {'Oberfläche · ' + (mode === 'modern' ? 'Modern' : 'Klassik')}
+      </Item>
+    );
   return (
     <button type="button" onClick={toggle} title={title} aria-label={title} className="icon-action">
       <Icon className="h-5 w-5" />

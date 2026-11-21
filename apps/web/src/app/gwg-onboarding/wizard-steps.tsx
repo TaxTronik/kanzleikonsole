@@ -186,14 +186,12 @@ export function MasterDataStep({
         Bitte prüfen und ergänzen Sie die Daten Ihres Unternehmens.
       </p>
       <Field label="Firma / Name" value={companyName} onChange={onCompanyNameChange} required />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Straße + Hausnr." value={street} onChange={onStreetChange} required />
-      </div>
-      <div className="grid grid-cols-3 gap-3">
+      <Field label="Straße + Hausnr." value={street} onChange={onStreetChange} required />
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3">
         <Field label="PLZ" value={postalCode} onChange={onPostalCodeChange} required />
         <Field label="Ort" value={city} onChange={onCityChange} required />
-        <CountrySelect label="Land" value={countryIso} onChange={onCountryIsoChange} required />
       </div>
+      <CountrySelect label="Land" value={countryIso} onChange={onCountryIsoChange} required />
     </div>
   );
 }

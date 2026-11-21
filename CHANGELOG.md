@@ -444,6 +444,14 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Prüf- und Änderungsaufträge übernehmen einschlägige Befunde aus früheren
+  Berichten in eine Checkliste. Abgehakte Punkte verweisen auf ausgeführte
+  Prüfungen, offene Punkte auf den nächsten Prüfschritt.
+- In der mobilen Mandantenakte und den Kanzleieinstellungen lassen sich die
+  Fachbereiche über „Bereich wechseln“ öffnen. Auf kleinen Bildschirmen stehen
+  Farbschema und Oberflächenstil im Kontomenü. Die Dashboard-Standardansicht
+  beginnt mit fälligen Anforderungen, Kennzahlen teilen sich mobil eine Zeile.
+
 - Der Webserver im Compose-Betrieb hält ungenutzte HTTP-Verbindungen standardmäßig
   95 Sekunden offen. Damit können nginx (60 Sekunden) und Traefik (90 Sekunden)
   Verbindungen zuerst aus ihrem Pool nehmen. Der Wert lässt sich für andere
@@ -1337,6 +1345,60 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
   nicht länger als bereits erbrachte Nachweise.
 
 ### Behoben
+
+- Datumsvorschläge der Telefonnotiz und der Stundenabrechnung folgen dem
+  Berliner Kalendertag. Wiedervorlagen in Akte und Übersicht werden ab dem
+  Folgetag als überfällig angezeigt. Die neue BWA-Planung wechselt in Kanzlei
+  und Portal rechtzeitig auf das nächste Planjahr (REMINDER-TICKET-001,
+  INV-NUMBER-ALLOCATION-001, BWA-PROJECTION-001).
+- Kanzleitermine, Terminwünsche und Anforderungsvorlagen zeigen und
+  übermitteln Berliner Ortszeiten auch in Browsern mit anderer Zeitzone
+  (APPT-BERLIN-WALLCLOCK-001, REQ-LIFECYCLE-001). Workflowpausen und
+  Pendelordner prüfen den frühesten Tag beim Absenden (WORKFLOW-LIFECYCLE-001,
+  TAX-CONTROL-STATUS-001).
+- Das Vollmachtsformular schlägt den aktuellen Berliner Tag vor. In
+  VDB-Nachweisen und beim Mandatsende nehmen Formular und Server diesen Tag
+  ab Berliner Mitternacht an (POA-LIFECYCLE-001, VDB-PREPARATION-001,
+  CLIENT-OFFBOARDING-001, CLIENT-MANDATE-LIFECYCLE-001).
+- **[Scope] [TCMS]** Kontrolldurchführungen öffnen ihren Editor auch mit
+  gespeicherten Werten. Breite Kontroll- und Risikotabellen scrollen innerhalb
+  der Karte. Die Leitfadenverwaltung erscheint für Admin und Partner bei
+  freigeschaltetem Modul (TCMS-DIENST-001, KNOWLEDGE-CONTEXT-001).
+- Allgemeine Aktionsformulare, Tax-CMS-Formulare und die GwG-Nachweiserfassung
+  nehmen die nächste Eingabe an, sobald das Ergebnis der vorherigen sichtbar ist.
+  Ein Doppelklick während des Sendens bleibt gesperrt
+  (TCMS-DIENST-001, GWG-IDENTIFICATION-EVIDENCE-001).
+- Nach einem Speicherfehler in den Kanzleieinstellungen gibt die zentrale
+  Speichern-Schaltfläche das Formular mit den vorhandenen Eingaben wieder frei.
+- Im Dashboard und im Editor für die Mandantenakte bleiben per Tastatur
+  übernommene Größen und Positionen erhalten. Beim Verschieben oder
+  Vergrößern einer Kachel werden auch die ausgewichenen Nachbarkacheln gespeichert.
+  Eine vollständig verlinkte Dashboard-Kachel lässt sich im Editor verschieben,
+  ohne dass der Browser dabei den Link öffnet.
+- Die lokale Ausweiserfassung hält einen Nummernvorschlag zurück, wenn ein
+  zusätzlich gelesenes Zeichen die Feldgrenze der maschinenlesbaren Zone
+  verschiebt oder die lesbare Gesamtprüfziffer widerspricht (GWG-OCR-ASSIST-001).
+- Kalender zeigen alle Einträge dichter Tage. Workflow-Vorlagen behalten
+  Start- und Bearbeitungsaktionen auf kleinen Bildschirmen, Kennzahlen bleiben
+  lesbar und Mandantenfilter lassen sich zurücksetzen. Beide Dashboard-Kacheln
+  führen zur gezählten Auswahl an Anforderungen oder offenen Stammdaten-Anträgen
+  (REQ-LIFECYCLE-001, ACCESS-CLIENT-MODE-001).
+- Abgebrochene Anforderungen sind auf der Portalstartseite erkennbar. Pflichtbelege,
+  Logo-Uploads, Dokumentaktionen und Ticket-Erwähnungen sind per Tastatur
+  erreichbar. Die Dokumentenablage hat eine Seitenüberschrift und die
+  Mandantenpost einen eindeutigen Hauptbereich. Die RSS-Verwaltung öffnet sich
+  unabhängig von der Kachelgröße (FORM-PRESUBMIT-UPLOAD-001, REMINDER-TICKET-001).
+- **[Scope]** Beide Rechnungsmasken zeigen auf dem Handy vollständige Positions-
+  und Steuerfelder. Datums-Vorbelegungen für Rechnungen und Wiedervorlagen
+  verwenden den Berliner Kalendertag. BWA-Vergleiche, Audit-Hashes, Kopfaktionen
+  der Mandantenakte und die Länderauswahl im GwG-Einstieg bleiben mobil lesbar.
+  Auch die Bearbeitungsfelder für BWA-Planungen, das Dokumentenregal der Akte
+  und die Ansichtenwahl im Subsumtionseditor passen in die mobile Ansicht.
+  In den Steuerunterlagen, bei den Workflow-Schritten und beim Widerruf einer
+  Vollmacht erhalten die Eingaben und Aktionen auf dem Handy eigene Zeilen.
+  Der Personalfragebogen bietet einen eingelösten Einstieg kein zweites Mal an
+  (INV-NUMBER-ALLOCATION-001, BWA-PROJECTION-001, GWG-SELF-ONBOARDING-001,
+  PAYROLL-INTAKE-001).
 
 - Eine Umklassifizierung (Retag) senkte das gespeicherte Aufbewahrungsende
   einer GoBD-Akte, wenn eine spätere Version es bereits angehoben hatte. Die

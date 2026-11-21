@@ -122,15 +122,20 @@ async function restorePortalMode(
 }
 
 async function selectTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  const mobile = await page.evaluate(() => matchMedia('(max-width: 767.98px)').matches);
   const currentName =
-    theme === 'dark' ? 'Dunkel — klicken für System' : 'Hell — klicken für Dunkel';
-  const toggle = page.getByRole('button', { name: /^(Dunkel|Hell|System) — klicken für / });
+    (mobile ? 'Farbschema · ' : '') +
+    (theme === 'dark' ? 'Dunkel — klicken für System' : 'Hell — klicken für Dunkel');
+  const name = /^(Farbschema · )?(Dunkel|Hell|System) — klicken für /;
+  if (mobile) await page.getByRole('button', { name: 'Konto-Menü öffnen' }).click();
+  const toggle = page.getByRole(mobile ? 'menuitem' : 'button', { name });
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await expect(toggle).toBeVisible();
     if ((await toggle.getAttribute('aria-label')) === currentName) break;
     await toggle.click();
   }
   await expect(toggle).toHaveAttribute('aria-label', currentName);
+  if (mobile) await page.keyboard.press('Escape');
   if (theme === 'dark') {
     await expect(page.locator('html')).toHaveClass(/dark/);
   } else {
@@ -239,7 +244,10 @@ async function expectShortViewportMenu(page: Page, context: string): Promise<voi
   });
   await page.keyboard.press('Home');
   await expect(menu.getByRole('menuitem').first()).toBeFocused();
-  await page.keyboard.press('ArrowDown');
+  for (const item of (await menu.getByRole('menuitem').all()).slice(1)) {
+    await page.keyboard.press('ArrowDown');
+    await expect(item).toBeFocused();
+  }
   await expect(lastItem).toBeFocused();
   // Nicht ausloggen: nur den letzten Eintrag erreichen und Fokus zurückgeben.
   await page.keyboard.press('Escape');

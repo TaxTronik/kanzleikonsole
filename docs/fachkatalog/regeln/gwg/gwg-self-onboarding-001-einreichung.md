@@ -200,6 +200,10 @@ Einreichung ab und überschreibt weder Personen noch Dokumentzuordnungen.
 
 ## Umsetzung in TaxTronik
 
+Im Schritt Stammdaten haben Straße und Länderauswahl jeweils eine eigene
+Zeile. Postleitzahl und Ort teilen sich die verfügbare Breite. Die Auswahl
+übermittelt weiterhin den ISO-Ländercode.
+
 Die Staff-Einladung ist ein eigener Darstellungsabschnitt mit unveränderten Statussperren und vorhandenen Kontakten/Einladungen. Die Seite verwendet direkt die tatsächlich sichtbaren Angaben der jüngsten Einladung; ein zuvor nur für eine ungenutzte Zusammenfassungsprojektion ausgeführter zusätzlicher Dokumentabruf entfällt.
 
 Die Kanzleiansicht zeigt den wirksamen Status einer Einladung: Eine offene

@@ -47,7 +47,7 @@ export default async function PortalInboxPage({
   if (filters.attention) baseQs.set('attention', filters.attention);
 
   return (
-    <main className="p-4 sm:p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-primary">Nachrichten</h1>
@@ -158,6 +158,6 @@ export default async function PortalInboxPage({
           totalCount={data.total}
         />
       </section>
-    </main>
+    </div>
   );
 }

@@ -6,8 +6,8 @@
  * Maßen wie das Edit-Raster (12 Spalten, 30px-Zeilen, 16px Abstand). Position
  * und Größe kommen als Variablen am Item (dashboard-view-grid.tsx), damit der
  * schmale Container sie ohne !important überschreiben kann. Unter 640px
- * Containerbreite (Smartphone, Tablet hochkant mit Sidebar) einspaltig in
- * Lesereihenfolge; die gespeicherte Höhe bleibt. react-grid-layout und sein
+ * Containerbreite (Smartphone, Tablet hochkant mit Sidebar) in Lesereihenfolge.
+ * Kennzahlen teilen sich eine Zeile, Listen wachsen bis zur Vorschauhöhe. react-grid-layout und sein
  * CSS laden erst im Bearbeitungsmodus (components/ui/grid-layout-edit.css).
  */
 .dashboard-view {
@@ -27,11 +27,52 @@
 }
 @container (max-width: 639.98px) {
   .dashboard-view-grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: auto;
+    gap: 12px;
   }
   .dashboard-view-item {
     grid-column: 1 / -1;
-    grid-row: auto / span var(--dg-h);
+    grid-row: auto;
+    height: calc(var(--dg-h) * 46px - 16px);
+  }
+  .dashboard-view-item[data-kpi] {
+    grid-column: span 1;
+    height: auto;
+  }
+  .dashboard-view-item[data-kpi] .card {
+    min-height: 5rem;
+    gap: 0.25rem;
+  }
+  .dashboard-view-item:has(.dashboard-widget-list) {
+    height: auto;
+  }
+  .dashboard-widget-list {
+    max-height: min(60dvh, 26rem);
+  }
+}
+
+.client-cockpit {
+  container-type: inline-size;
+}
+.client-cockpit-grid > div {
+  grid-column: var(--cockpit-column);
+}
+@container (max-width: 639.98px) {
+  .client-cockpit-grid > div {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Die unsichtbaren Tabellenbeschriftungen gehören zum lokalen Scrollbereich. */
+.client-cockpit .overflow-x-auto,
+.tcms-content .overflow-x-auto {
+  position: relative;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .group:not(:hover):not(:focus-within) .explorer-row-actions {
+    opacity: 0;
   }
 }
 
@@ -1186,6 +1227,8 @@
    */
   .stepper {
     display: flex;
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
     align-items: flex-start;
     margin: 0;
     padding: 0;
@@ -1195,8 +1238,8 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    flex: 1;
-    min-width: 0;
+    flex: 1 1 auto;
+    min-width: min-content;
     position: relative;
   }
   .step-line {

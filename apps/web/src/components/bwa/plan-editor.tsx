@@ -136,10 +136,10 @@ export function PlanEditor({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="@container space-y-4">
       {actorInfo}
       <div className="card p-6 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 @md:grid-cols-2">
           <div>
             <label className="label" htmlFor="bwa-plan-name">
               Name
@@ -169,11 +169,14 @@ export function PlanEditor({
           </div>
         </div>
 
-        <fieldset>
+        <fieldset className="min-w-0">
           <legend className="label">Achsen</legend>
           <div className="space-y-2">
             {ALL_AXES.map((a) => (
-              <div key={a} className="grid grid-cols-[1fr_180px_2fr] gap-2 items-center">
+              <div
+                key={a}
+                className="grid min-w-0 items-center gap-2 border-b border-default pb-3 last:border-0 @xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,2fr)] @xl:border-0 @xl:pb-0"
+              >
                 <label className="text-sm text-secondary" htmlFor={`bwa-axis-${a}-amount`}>
                   {AXIS_LABELS[a]}
                 </label>

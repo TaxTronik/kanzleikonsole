@@ -98,7 +98,7 @@ export function BrowserView({
 
   return (
     <div
-      className="p-8 relative"
+      className="relative min-w-0 p-4 sm:p-8"
       onContextMenu={(e) => {
         if (dialogs.contextMenu) e.preventDefault();
       }}
@@ -112,18 +112,23 @@ export function BrowserView({
         </div>
       )}
       {/* Breadcrumb (Ordner-Crumbs sind Drop-Ziele) */}
-      <nav className="flex items-center flex-wrap gap-1 text-sm text-muted mb-4">
+      <nav
+        aria-label="Ordnerpfad"
+        className="flex items-center flex-wrap gap-1 text-sm text-muted mb-4"
+      >
         {crumbs.map((c, i) => (
-          <span key={c.href} className="flex items-center gap-1">
+          <div key={c.href} className="flex min-w-0 items-center gap-1 [overflow-wrap:anywhere]">
             {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-disabled" />}
             {i === crumbs.length - 1 ? (
-              <span className="font-semibold text-primary">{c.label}</span>
+              <h1 aria-current="page" className="text-xl font-semibold text-primary">
+                {c.label}
+              </h1>
             ) : (
               <Link href={c.href} className="hover:text-brand-700 hover:underline">
                 {c.label}
               </Link>
             )}
-          </span>
+          </div>
         ))}
       </nav>
 

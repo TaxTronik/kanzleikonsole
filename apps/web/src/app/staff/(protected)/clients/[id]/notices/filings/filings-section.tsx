@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -80,7 +80,7 @@ export function FilingsSection({ clientId, filings }: { clientId: string; filing
 
   return (
     <div className="card overflow-hidden mb-6">
-      <div className="px-5 py-3 border-b border-default flex items-center justify-between">
+      <div className="px-5 py-3 border-b border-default flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-medium text-primary">Steuererklärungen / Vor-Bescheide</h2>
           <p className="text-xs text-muted mt-0.5">
@@ -114,119 +114,121 @@ export function FilingsSection({ clientId, filings }: { clientId: string; filing
           Noch keine Erklärungen erfasst.
         </p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 border-b border-default">
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
-                Erklärung
-              </th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
-                Eingereicht
-              </th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
-                Erwartet (festges.)
-              </th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
-                Saldo
-              </th>
-              <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
-                Portal
-              </th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border-subtle">
-            {filings.map((f) => {
-              const saldo = f.expectedRefund ?? (f.expectedPay !== null ? -f.expectedPay : null);
-              const busy = busyId === f.id && isPending;
-              return (
-                <tr key={f.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-primary">
-                      {NOTICE_KIND_LABELS[f.kind as Kind] ?? f.kind}
-                    </div>
-                    <div className="text-xs text-muted">{f.period}</div>
-                    {f.document && (
-                      <Link
-                        href={`/api/staff/documents/${f.document.id}/download`}
-                        className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1 mt-1"
-                      >
-                        <FileText className="h-3 w-3" />
-                        Berechnung
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-secondary">
-                    {f.filingDate ? fmtDateShort(f.filingDate) : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-primary font-medium">
-                    {fmtEUR(f.expectedAssessed)}
-                  </td>
-                  <td
-                    className={
-                      'px-4 py-3 font-medium ' +
-                      (saldo !== null && saldo < 0 ? 'text-red-700' : 'text-emerald-700')
-                    }
-                  >
-                    {saldo !== null ? fmtEUR(saldo) : '—'}
-                    {f.matchedNoticeId && (
-                      <Link
-                        href={`/staff/clients/${clientId}/notices`}
-                        className="block text-xs text-brand-700 hover:underline mt-1 inline-flex items-center gap-1"
-                      >
-                        <ArrowRight className="h-3 w-3" /> Bescheid erfasst
-                      </Link>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    {f.sharedWithClient ? (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-default">
+                <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                  Erklärung
+                </th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                  Eingereicht
+                </th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                  Erwartet (festges.)
+                </th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                  Saldo
+                </th>
+                <th className="text-left px-4 py-2 text-xs font-medium text-muted uppercase">
+                  Portal
+                </th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border-subtle">
+              {filings.map((f) => {
+                const saldo = f.expectedRefund ?? (f.expectedPay !== null ? -f.expectedPay : null);
+                const busy = busyId === f.id && isPending;
+                return (
+                  <tr key={f.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-primary">
+                        {NOTICE_KIND_LABELS[f.kind as Kind] ?? f.kind}
+                      </div>
+                      <div className="text-xs text-muted">{f.period}</div>
+                      {f.document && (
+                        <Link
+                          href={`/api/staff/documents/${f.document.id}/download`}
+                          className="text-xs text-brand-700 hover:underline inline-flex items-center gap-1 mt-1"
+                        >
+                          <FileText className="h-3 w-3" />
+                          Berechnung
+                        </Link>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-secondary">
+                      {f.filingDate ? fmtDateShort(f.filingDate) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-primary font-medium">
+                      {fmtEUR(f.expectedAssessed)}
+                    </td>
+                    <td
+                      className={
+                        'px-4 py-3 font-medium ' +
+                        (saldo !== null && saldo < 0 ? 'text-red-700' : 'text-emerald-700')
+                      }
+                    >
+                      {saldo !== null ? fmtEUR(saldo) : '—'}
+                      {f.matchedNoticeId && (
+                        <Link
+                          href={`/staff/clients/${clientId}/notices`}
+                          className="block text-xs text-brand-700 hover:underline mt-1 inline-flex items-center gap-1"
+                        >
+                          <ArrowRight className="h-3 w-3" /> Bescheid erfasst
+                        </Link>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {f.sharedWithClient ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleShare(f, false)}
+                          disabled={busy}
+                          className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:underline"
+                          title={`Freigegeben am ${f.sharedAt ? fmtDateShort(f.sharedAt) : '—'}`}
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Sichtbar
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => toggleShare(f, true)}
+                          disabled={busy}
+                          className="inline-flex items-center gap-1 text-xs text-muted hover:text-primary"
+                        >
+                          <EyeOff className="h-3.5 w-3.5" />
+                          Privat
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        onClick={() => toggleShare(f, false)}
+                        onClick={() => setEditing(f)}
                         disabled={busy}
-                        className="inline-flex items-center gap-1 text-xs text-emerald-700 hover:underline"
-                        title={`Freigegeben am ${f.sharedAt ? fmtDateShort(f.sharedAt) : '—'}`}
+                        className="text-disabled hover:text-primary p-1"
+                        title="Bearbeiten"
                       >
-                        <Eye className="h-3.5 w-3.5" />
-                        Sichtbar
+                        <Pencil className="h-4 w-4" />
                       </button>
-                    ) : (
                       <button
                         type="button"
-                        onClick={() => toggleShare(f, true)}
+                        onClick={() => remove(f)}
                         disabled={busy}
-                        className="inline-flex items-center gap-1 text-xs text-muted hover:text-primary"
+                        className="text-disabled hover:text-red-700 p-1"
+                        title="Löschen"
                       >
-                        <EyeOff className="h-3.5 w-3.5" />
-                        Privat
+                        <Trash2 className="h-4 w-4" />
                       </button>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setEditing(f)}
-                      disabled={busy}
-                      className="text-disabled hover:text-primary p-1"
-                      title="Bearbeiten"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => remove(f)}
-                      disabled={busy}
-                      className="text-disabled hover:text-red-700 p-1"
-                      title="Löschen"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -298,7 +300,7 @@ function FilingForm({
 
   return (
     <div className="px-5 py-4 border-b border-default bg-brand-50/30 space-y-3">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         <div>
           <label className="label" htmlFor="tax-filing-kind">
             Steuerart
@@ -346,7 +348,7 @@ function FilingForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Money
           id="tax-filing-expected-assessed"
           label="Festgesetzte Steuer (Soll)"

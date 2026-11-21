@@ -2,7 +2,7 @@ import type { TxClient } from '@taxtronik/db';
 import type { StaffSession } from '@/server/auth/staff';
 import { ActionError, assertClientAccessTx } from '@/server/auth/rbac';
 import { evidenceService } from '@/server/container';
-import { vdbTransitionAllowed } from './model';
+import { isCalendarDayThroughToday, vdbTransitionAllowed } from './model';
 import { isPoaExpired } from '@/server/poa/signing-snapshot';
 
 export async function recordVdbStateTx(
@@ -45,9 +45,8 @@ export async function recordVdbStateTx(
     throw new ActionError(
       'Für die Vorbereitung/Meldung muss die Vollmacht technisch bestätigt und nach dem erfassten Datum noch gültig sein. Das ersetzt keine Formprüfung.',
     );
-  const recordedAt = new Date(input.recordedAt);
-  if (!Number.isFinite(recordedAt.getTime()) || recordedAt > new Date())
-    throw new ActionError('Das Nachweisdatum darf nicht in der Zukunft liegen.');
+  if (!isCalendarDayThroughToday(input.recordedAt))
+    throw new ActionError('Das Nachweisdatum muss ein gültiger Kalendertag bis heute sein.');
   if (input.status !== 'PREPARED' && !input.evidenceVersionId)
     throw new ActionError('Für externe Statusangaben eine belegte Dokumentfassung auswählen.');
   if (input.evidenceVersionId) {
@@ -80,7 +79,7 @@ export async function recordVdbStateTx(
       externalReference: input.externalReference,
       evidenceVersionId: input.evidenceVersionId,
       note: input.note,
-      recordedAt,
+      recordedAt: new Date(`${input.recordedAt}T00:00:00.000Z`),
       createdBy: session.user.staffId,
     },
   });

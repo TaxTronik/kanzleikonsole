@@ -27,13 +27,19 @@ sources:
     checked_at: '2026-08-24'
     primary: true
 code_refs:
+  - apps/web/src/server/requests/list-filters.ts
+  - apps/web/src/app/staff/(protected)/dashboard/widgets.tsx
   - apps/web/src/app/portal/(protected)/requests/page.tsx
   - apps/web/src/app/portal/(protected)/requests/[id]/actions.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/actions.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts
   - apps/web/src/components/requests/new-request-form.tsx
+  - apps/web/src/components/datetime-picker.tsx
   - apps/web/src/lib/fmt.ts
 test_refs:
+  - apps/web/src/components/__tests__/berlin-form-defaults.test.tsx
+  - apps/web/src/app/staff/(protected)/requests/__tests__/list-pagination.test.tsx
+  - apps/web/src/app/staff/(protected)/dashboard/__tests__/my-work-basket.test.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
 feature_refs:
@@ -120,6 +126,10 @@ unverändert.
 
 ## Umsetzung in TaxTronik
 
+Die Kennzahl „Offene Anforderungen“ umfasst die sichtbaren Anforderungen in
+`OPEN` und `IN_PROGRESS`. Ihr Link öffnet die gemeinsame Statusauswahl „Offen
+und in Bearbeitung“. Beim CSV-Export gilt dieselbe Auswahl.
+
 Portal- und Staff-Actions verwenden Zeilensperren beziehungsweise
 Compare-and-set-Updates, sodass paralleles Antworten, Schließen und Einreichen
 nicht zu einem falschen Audit führt. Statuswechsel und Evidence-Einträge
@@ -131,6 +141,11 @@ Ortszeit vor dem Schreiben. Ein unmöglicher Kalendertag oder eine fehlende
 Stunde beim Wechsel auf Sommerzeit ergibt einen Feldfehler. In der doppelten
 Herbststunde gilt für die Eingabe das spätere Vorkommen. Neuanlage,
 Wiederholungsprüfung und Mandantenmail verwenden denselben Zeitpunkt.
+Beim Anwenden einer Vorlage zählen die eingestellten Tage ab dem aktuellen
+Berliner Kalendertag. Die Berliner Uhrzeit bleibt im Vorschlag erhalten. Fällt
+sie in die fehlende Frühjahrsstunde, rückt der Vorschlag um eine Stunde vor.
+Eine in Berlin gültige Uhrzeit bleibt auch dann im Feld bearbeitbar, wenn die
+Zeitzone des Browsers diese Stunde überspringt.
 
 ## Bekannte Abweichungen und Grenzen
 
@@ -148,8 +163,13 @@ bewertet weder fachliche Vollständigkeit noch Fristgerechtigkeit einer Antwort.
 
 ## Technische Nachweise
 
+Die Dashboard- und Listentests prüfen den gemeinsamen Statusfilter für
+Kennzahl, Zielliste und Exportlink.
+
 Die Staff-Tests belegen erlaubte Ausgangsstatus, exakte CAS-Übergänge, Audit,
 CANCELLED und den GwG-Konflikt. Formular-Tests belegen atomaren Submit,
 Request-Bindung und fail-closed Verhalten bei parallelem Abschluss.
 Der Anlagetest prüft, dass die fehlende Frühjahrsstunde als Feldfehler vor
 der Transaktion zurückkommt.
+Der Vorlagentest prüft den sichtbaren und den übertragenen Zieltermin an der
+Berliner Tagesgrenze, über die Zeitumstellung hinweg und in der Frühjahrslücke.

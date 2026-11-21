@@ -40,6 +40,11 @@ deaktiviert das Modul.
 
 ## Verarbeitung / Schnittstellen
 
+- **Datumsvorschläge bei manueller Anlage (`INV-NUMBER-ALLOCATION-001`):**
+  Das Rechnungsdatum ist mit dem Berliner Kalendertag vorbelegt, die Fälligkeit
+  im Modus `IN_APP` mit 30 und im Modus `EXTERNAL` mit 14 Kalendertagen danach.
+  Die Stundenabrechnung aus der Mandantenakte verwendet denselben Stichtag
+  und das Zahlungsziel von 30 Kalendertagen. Die Datumsfelder sind editierbar.
 - **E-Rechnung:** XRechnung (UN/CEFACT CII, Profil XRechnung 3.0.2,
   `server/invoicing/xrechnung.ts`) und ZUGFeRD (PDF mit eingebettetem
   Factur-X-XML, EN 16931, `zugferd.ts`); Steuerblock je Satz-Gruppe (BG-23),

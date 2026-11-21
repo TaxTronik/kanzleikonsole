@@ -1,4 +1,4 @@
-﻿import { notFound } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
@@ -53,9 +53,9 @@ export default async function PoaDetailPage({ params }: { params: Promise<{ id: 
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-2xl font-bold text-primary">{poa.subject}</h1>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <h1 className="min-w-0 break-words text-2xl font-bold text-primary">{poa.subject}</h1>
             {poa.status === 'DRAFT' && (
               <span className="badge-gray">{statusLabels[poa.status]}</span>
             )}
@@ -72,7 +72,7 @@ export default async function PoaDetailPage({ params }: { params: Promise<{ id: 
               <span className="badge-red">{statusLabels[poa.status]}</span>
             )}
           </div>
-          <p className="text-muted text-sm">
+          <p className="break-words text-muted text-sm">
             <Link href={`/staff/clients/${poa.client.id}`} className="hover:underline">
               {poa.client.name}
             </Link>
@@ -154,7 +154,7 @@ export default async function PoaDetailPage({ params }: { params: Promise<{ id: 
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:flex-wrap sm:items-start">
         {canManagePoa && !expiredByDate && (poa.status === 'DRAFT' || poa.status === 'SENT') && (
           <SendPoaForm
             poaId={poa.id}

@@ -31,12 +31,16 @@ code_refs:
   - apps/web/src/components/bwa/bwa-dashboard.tsx
   - apps/web/src/components/bwa/plan-comparison.tsx
   - apps/web/src/components/bwa/plan-vs-projection.tsx
+  - apps/web/src/components/bwa/plan-editor.tsx
   - apps/web/src/app/portal/(protected)/bwa/page.tsx
+  - apps/web/src/app/portal/(protected)/bwa/plan/new/page.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx
   - apps/web/src/server/bwa/projection.ts
   - apps/web/src/server/bwa/plan-basis.ts
 test_refs:
   - apps/web/src/components/bwa/__tests__/dashboard-projection.test.tsx
+  - apps/web/src/components/bwa/__tests__/plan-page-basis.test.tsx
   - apps/web/src/components/bwa/__tests__/projection-snapshot.test.ts
   - apps/e2e/tests/21-bwa-basis-state.spec.ts
   - apps/web/src/server/bwa/__tests__/projection.test.ts
@@ -133,11 +137,22 @@ verwendet werden.
 
 ## Umsetzung in TaxTronik
 
+Hochrechnung, historische Übersicht und Planvergleich besitzen jeweils einen
+benannten Tabellenbereich. Auf schmalen Bildschirmen lässt sich die Tabelle
+auch mit der Tastatur horizontal bis zu den absoluten und prozentualen
+Abweichungen des Plans verschieben.
+Die Positionsnamen im Planvergleich bleiben beim Scrollen sichtbar.
+Im Planeditor passen sich die Eingaben für Betrag und Notiz an die verfügbare
+Breite an. Der Browsertest prüft bei 320 Pixeln, dass die letzte
+Abweichungsspalte und die zugehörige Zeilenbeschriftung gemeinsam sichtbar sind.
+
 Früher genügte für die lineare Hochrechnung der Beginn im Zieljahr. Dadurch
 konnte ein Import von November bis Februar die Zahlen des Folgejahrs in die
 angezeigte Jahreserwartung einrechnen. Das Dashboard wechselte außerdem sein
 Zieljahr erst um UTC-Mitternacht. Jetzt bestimmen beide Grenzen der
 gespeicherten Kalenderperiode ihre Eignung und die Berliner Uhr das Zieljahr.
+Bei einer neuen Planung schlagen Kanzlei und Portal das Folgejahr des Berliner
+Kalendertags vor. Das Planjahr und der vorgeschlagene Name sind editierbar.
 
 `linearSeasonalProjection` wählt die jüngste unterjährige Periode des
 Zieljahrs, zählt UTC-Kalendermonate und rechnet jede vorhandene Kennzahl linear
@@ -190,6 +205,8 @@ bis zur gerenderten gemeinsamen Kanzlei- und Portalansicht. Die Tests
 belegen die Auswahl der passenden Halbjahresperiode bei einem überlappenden
 jahresübergreifenden Import, die fehlende Run-rate ohne geeignete
 Periode und den Wechsel der Jahresüberschrift genau um Berliner Mitternacht.
+`plan-page-basis.test.tsx` öffnet beide Planungsseiten vor und ab Berliner
+Mitternacht zum 1. Januar 2027. Planjahr und Name wechseln von 2027 auf 2028.
 
 Der referenzierte Test belegt für synthetische DATEV-Werte, dass die
 Vorsteuerposition projiziert, die Steuerpauschale nur einmal abgezogen und die

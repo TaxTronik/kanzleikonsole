@@ -7,6 +7,7 @@ import { hasClientPickerOptionTx } from '@/server/clients/picker';
 import { ClientPrerequisiteEmptyState } from '@/components/client-prerequisite-empty-state';
 import { withTenantContext } from '@taxtronik/db';
 import { requireModulePage } from '@/server/settings/module-page';
+import { initialInvoiceDates } from '@/server/invoicing/date-defaults';
 import { NewInvoiceForm } from './form';
 import { ExternalInvoiceForm } from './external-form';
 
@@ -41,6 +42,7 @@ export default async function NewInvoicePage() {
   // lückenlos beim Anlegen — der frühere clientseitige Vorschlag entfällt.
   // EXTERNAL trägt weiterhin die Nummer des Fremdsystems (manuell).
   const isExternal = modules.invoiceMode === 'EXTERNAL';
+  const initialDates = initialInvoiceDates(isExternal ? 'EXTERNAL' : 'IN_APP');
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl">
@@ -69,9 +71,9 @@ export default async function NewInvoicePage() {
           canCreateClient={hasStaffPermission(session, 'CLIENT_CREATE')}
         />
       ) : isExternal ? (
-        <ExternalInvoiceForm categories={categories} />
+        <ExternalInvoiceForm categories={categories} {...initialDates} />
       ) : (
-        <NewInvoiceForm />
+        <NewInvoiceForm {...initialDates} />
       )}
     </div>
   );

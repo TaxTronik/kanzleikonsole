@@ -60,7 +60,7 @@ export function ListShell({
   footer?: ReactNode;
 }) {
   return (
-    <div className="card h-full flex flex-col">
+    <div className="dashboard-widget-list card h-full flex flex-col">
       <div className="px-5 py-3 border-b border-default flex items-center gap-2 shrink-0">
         {Icon && <Icon className="h-4 w-4 text-muted" />}
         <h2 className="text-sm font-medium text-primary">{title}</h2>
@@ -125,7 +125,7 @@ export async function kpi(
         />
       </div>
       <div>
-        <p className="text-xs font-medium text-muted uppercase tracking-wide truncate">{label}</p>
+        <p className="text-xs font-medium text-muted [overflow-wrap:anywhere]">{label}</p>
         <p className="text-2xl font-bold text-primary tabular-nums">
           <CountUp value={value} />
         </p>

@@ -23,7 +23,7 @@
 import {
   startTransition,
   useActionState,
-  useEffect,
+  useLayoutEffect,
   useRef,
   type ComponentPropsWithoutRef,
   type FormEvent,
@@ -125,11 +125,11 @@ export function ActionForm({
     null,
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!pending) inFlight.current = false;
-  }, [pending]);
+  }, [pending, state]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     // Erfolg: wie zuvor auf die (ggf. neu gerenderten) Ausgangswerte zurücksetzen.
     if (state?.ok) formRef.current?.reset();
   }, [state]);

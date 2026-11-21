@@ -75,7 +75,7 @@ export function RevokePoaForm({ poaId, subject }: { poaId: string; subject: stri
   }
 
   return (
-    <div className="min-w-0 flex-1">
+    <div className="min-w-0 sm:flex-[1_1_24rem]">
       <label className="label" htmlFor={reasonId}>
         Widerrufsgrund
       </label>

@@ -1,5 +1,5 @@
 // Fachkatalog: ACCESS-STAFF-PERMISSION-001, ACCESS-TENANT-RLS-001,
-// ACCESS-SEARCH-SCOPE-001, PORTAL-INBOX-SUBMISSION-001
+// ACCESS-SEARCH-SCOPE-001, PORTAL-INBOX-SUBMISSION-001, ACCESS-CLIENT-MODE-001, REQ-LIFECYCLE-001
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_BOOLEAN_TENANT_MODULES } from '@taxtronik/db/tenant-modules';
@@ -43,6 +43,8 @@ const clientAccess = { responsibilities: { some: { staffId: 'staff-a' } } };
 
 function context() {
   const db = {
+    request: { count: vi.fn().mockResolvedValue(2) },
+    clientMasterChangeRequest: { count: vi.fn().mockResolvedValue(5) },
     workflowItem: { findMany: vi.fn().mockResolvedValue([]) },
     clientReminder: { findMany: vi.fn().mockResolvedValue([]) },
     appointment: { findMany: vi.fn().mockResolvedValue([]) },
@@ -235,5 +237,25 @@ describe('Mein Arbeitskorb im Dashboard', () => {
     );
     expect(html).not.toContain('Telefonzettel 19');
     expect(db.phoneNote.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 100 }));
+  });
+});
+
+describe('Dashboard-Kennzahlen für sichtbare offene Vorgänge', () => {
+  it('verlinkt die gezählten offenen und in Bearbeitung befindlichen Anforderungen', async () => {
+    const { ctx, db } = context();
+    const html = renderToStaticMarkup(await renderWidget('kpi_open_requests', ctx));
+    expect(db.request.count).toHaveBeenCalledWith({
+      where: { status: { in: ['OPEN', 'IN_PROGRESS'] }, client: clientAccess },
+    });
+    expect(html).toContain('href="/staff/requests?status=OUTSTANDING"');
+  });
+
+  it('öffnet die Liste offener Stammdaten-Anträge und zählt nur sichtbare Mandate', async () => {
+    const { ctx, db } = context();
+    const html = renderToStaticMarkup(await renderWidget('kpi_pending_change_requests', ctx));
+    expect(db.clientMasterChangeRequest.count).toHaveBeenCalledWith({
+      where: { status: 'PENDING', client: clientAccess },
+    });
+    expect(html).toContain('href="/staff/clients/change-requests"');
   });
 });

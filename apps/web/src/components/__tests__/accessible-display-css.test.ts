@@ -194,15 +194,23 @@ describe('persönlicher Anzeigemodus: CSS-Vertrag, keine Konformitätsprüfung',
         node.type === 'atrule' && node.name === 'media' && node.params === '(max-width: 640px)',
     );
     expect(mobile).toBeDefined();
-    // Die Leseansicht ist ein CSS-Grid (globals.css stapelt sie schon einspaltig);
+    // Auch Kennzahlen erhalten im persönlichen Anzeigemodus die volle Breite;
     // react-grid-layout gibt es nur im Bearbeitungsmodus und wird nicht angefasst.
     const selectors = rules().flatMap((rule) => rule.selectors);
     expect(selectors.filter((selector) => /react-grid|dashboard-edit/.test(selector))).toEqual([]);
     const gridRules = rules().filter((rule) => rule.selector.includes('.dashboard-view'));
     expect(gridRules).toHaveLength(5);
     for (const rule of gridRules) expect(rule.parent).toBe(mobile);
-    expect(declarations(gridRules[0]!)).toEqual({ 'grid-auto-rows': 'auto', gap: '1rem' });
-    expect(declarations(gridRules[1]!)).toEqual({ 'grid-row': 'auto' });
+    expect(declarations(gridRules[0]!)).toEqual({
+      'grid-template-columns': 'minmax(0, 1fr)',
+      'grid-auto-rows': 'auto',
+      gap: '1rem',
+    });
+    expect(declarations(gridRules[1]!)).toEqual({
+      height: 'auto',
+      'grid-column': '1 / -1',
+      'grid-row': 'auto',
+    });
     expect(declarations(gridRules[2]!)).toEqual({ height: 'auto' });
     expect(declarations(gridRules[3]!)).toEqual({ 'min-height': '9rem' });
     expect(declarations(gridRules[4]!)).toEqual({ 'max-height': '32rem' });

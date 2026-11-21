@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
 import { FormErrorSummary } from '@/components/form-errors';
 import { Modal } from '@/components/ui/modal';
+import { berlinWallClock } from '@/lib/fmt';
 import { createAppointmentAction, type AppointmentActionResult } from './actions';
 import {
   AppointmentFormFields,
@@ -36,12 +37,6 @@ export function NewAppointmentDialog({
   );
   const fieldErrors = state?.fieldErrors;
   const actionError = state?.error;
-
-  const nowLocal = (() => {
-    const d = new Date();
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().slice(0, 16);
-  })();
 
   return (
     <>
@@ -82,7 +77,10 @@ export function NewAppointmentDialog({
             <AppointmentFormFields
               idPrefix="new-appointment"
               staffOptions={staffOptions}
-              defaults={{ ownerStaffId: currentStaffId, startsAt: defaultStart ?? nowLocal }}
+              defaults={{
+                ownerStaffId: currentStaffId,
+                startsAt: defaultStart ?? berlinWallClock(new Date()),
+              }}
               fieldErrors={fieldErrors}
             />
             <div className="flex justify-end gap-2 pt-2">

@@ -35,7 +35,9 @@ import { GridLayoutControls } from '@/components/ui/grid-layout-controls';
 import {
   GRID_COLUMNS,
   GRID_MAX_HEIGHT,
+  compactGridItems,
   gridGeometryDescription,
+  mergePointerLayout,
   type GridGeometry,
 } from '@/components/ui/grid-layout-geometry';
 import '@/components/ui/grid-layout-edit.css';
@@ -94,7 +96,7 @@ function findFreeSlot(
 export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
   const router = useRouter();
   const [editMode, setEditMode] = useState(false);
-  const [items, setItems] = useState<ClientGridItem[]>(initial.items);
+  const [items, setItems] = useState<ClientGridItem[]>(() => compactGridItems(initial.items));
   // Synchroner Spiegel: Click-Handler sehen die aktuellste Liste auch bei
   // schnellen Mehrfach-Klicks (vor dem nächsten Render).
   const itemsRef = useRef(items);
@@ -141,29 +143,15 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
     }, 600);
   }
 
-  function onLayoutChange(next: Layout) {
-    if (resettingRef.current) return;
+  function applyPointerLayout(layout: Layout) {
+    if (!editMode || resettingRef.current) return;
     const current = itemsRef.current;
-    const byId = new Map(current.map((it) => [it.id, it]));
-    const updated: ClientGridItem[] = [];
-    for (const l of next) {
-      const it = byId.get(l.i as ClientBlockKey);
-      if (!it) continue;
-      updated.push({ ...it, x: l.x, y: l.y, w: l.w, h: l.h });
-    }
-    const same =
-      updated.length === current.length &&
-      updated.every((u, i) => {
-        const c = current[i];
-        return c && c.id === u.id && c.x === u.x && c.y === u.y && c.w === u.w && c.h === u.h;
-      });
-    if (same) return;
-    itemsRef.current = updated;
-    setItems(updated);
-    if (editMode) {
-      layoutDescription.current = '';
-      persist(updated);
-    }
+    const next = mergePointerLayout(current, layout);
+    if (next === current) return;
+    itemsRef.current = next;
+    setItems(next);
+    layoutDescription.current = '';
+    persist(next);
   }
 
   function applyGeometry(id: string, geometry: GridGeometry) {
@@ -202,7 +190,7 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
       setError('Mindestens ein Block muss erhalten bleiben.');
       return;
     }
-    const next = current.filter((it) => it.id !== key);
+    const next = compactGridItems(current.filter((it) => it.id !== key));
     itemsRef.current = next;
     setItems(next);
     layoutDescription.current = 'Block entfernt.';
@@ -381,7 +369,8 @@ export function ClientLayoutForm({ initial }: { initial: ClientLayoutConfig }) {
                 enabled: editMode,
                 handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'],
               }}
-              onLayoutChange={onLayoutChange}
+              onDragStop={applyPointerLayout}
+              onResizeStop={applyPointerLayout}
             >
               {items.map((it) => {
                 const Icon = ICONS[it.id];

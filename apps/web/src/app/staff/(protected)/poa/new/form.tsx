@@ -92,18 +92,19 @@ const NO_CONTACTS: ContactsState = { contacts: [], loading: false, error: null }
 
 export function NewPoaForm({
   poaMode,
+  initialValidFrom,
   initialClient,
   initialPendingDocumentId,
   uploadIntentId,
   returnContext,
 }: {
   poaMode: 'MARKDOWN_OTP' | 'PDF_TEMPLATE';
+  initialValidFrom: string;
   initialClient?: Client;
   initialPendingDocumentId?: string;
   uploadIntentId?: string;
   returnContext?: PoaCreateReturnContext;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
   const [state, formAction, isPending] = useActionState<ActionResult | null, FormData>(
     createPoaAction,
     null,
@@ -267,7 +268,7 @@ export function NewPoaForm({
             name="validFrom"
             type="date"
             className="input"
-            defaultValue={today}
+            defaultValue={initialValidFrom}
             required
           />
         </div>

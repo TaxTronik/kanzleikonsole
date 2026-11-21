@@ -1,5 +1,7 @@
 'use client';
 
+import { berlinYmd } from '@/lib/fmt';
+
 import { useActionState, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, X } from 'lucide-react';
@@ -110,7 +112,7 @@ export function NewReminderForm({
               type="date"
               name="dueDate"
               required
-              defaultValue={new Date().toISOString().slice(0, 10)}
+              defaultValue={berlinYmd(new Date())}
               className="input text-sm w-full mt-0.5"
               {...errorProps('dueDate')}
             />

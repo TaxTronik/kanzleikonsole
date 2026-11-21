@@ -22,7 +22,7 @@ export default async function EmployerPayrollPage() {
     return { rows, attachments };
   });
   return (
-    <main className="p-6 max-w-5xl space-y-6">
+    <div className="p-6 max-w-5xl space-y-6">
       <h1 className="text-2xl font-bold">Personalfragebogen für Arbeitgeber</h1>
       <p>
         Hier sehen Sie ausschließlich die ausdrücklich für Sie freigegebenen Vorgänge.
@@ -137,6 +137,6 @@ export default async function EmployerPayrollPage() {
           </section>
         );
       })}
-    </main>
+    </div>
   );
 }

@@ -149,8 +149,10 @@ export default async function StaffLayout({ children }: { children: ReactNode })
               />
             </div>
             <div className="flex items-center gap-1">
-              <UiModeToggle />
-              <ThemeToggle />
+              <div className="hidden items-center gap-1 md:flex">
+                <UiModeToggle />
+                <ThemeToggle />
+              </div>
               <NotificationsBell
                 initialUnread={notifications.unread}
                 initialLatestUnreadAt={notifications.latestUnreadAt}

@@ -15,6 +15,25 @@ export interface GridGeometry {
   w: number;
   h: number;
 }
+
+/** RGL liefert die sichtbaren Elemente samt ausgewichenen Nachbarn. Der
+ * aktuelle Anwendungsstand bestimmt weiterhin Reihenfolge und Mitgliedschaft. */
+export function mergePointerLayout<T extends GridGeometry & { id: string }>(
+  current: T[],
+  layout: readonly LayoutItem[],
+): T[] {
+  const positions = new Map(layout.map((item) => [item.i, item]));
+  let changed = false;
+  const next = current.map((item) => {
+    const position = positions.get(item.id);
+    if (!position) return item;
+    const { x, y, w, h } = position;
+    if (item.x === x && item.y === y && item.w === w && item.h === h) return item;
+    changed = true;
+    return { ...item, x, y, w, h };
+  });
+  return changed ? next : current;
+}
 export type GridAdjustmentResult<T> =
   { ok: true; items: T[]; item: T } | { ok: false; error: string };
 

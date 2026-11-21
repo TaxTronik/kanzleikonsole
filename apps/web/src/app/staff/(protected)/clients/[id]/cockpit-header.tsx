@@ -13,6 +13,7 @@ import { isElsterConfigured } from '@taxtronik/elster';
 import { computeOnboardingStatus, resumeStep } from '@/server/onboarding/status';
 import { isRiskLayerAvailable } from '@/server/risk/availability';
 import type { resolveClientNavigation } from '@/lib/navigation-registry';
+import { ResponsiveSectionNav } from '@/components/responsive-section-nav';
 import { QuickRequestDialog } from '@/components/quick-request-dialog';
 import { createQuickRequestAction } from '@/app/staff/(protected)/clients/[id]/requests/actions';
 import { CLIENT_KIND_LABELS, domainLabel } from '@/lib/domain-labels';
@@ -41,7 +42,7 @@ export function ClientCockpitHeader({ header }: { header: ClientCockpitHeaderDat
   const { client, requestTemplates, requestFormTemplates, templatesLimited, formTemplatesLimited } =
     header;
   return (
-    <div className="flex items-start gap-4 mb-8">
+    <div className="mb-6 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-4 xl:grid-cols-[auto_minmax(0,1fr)_auto]">
       <Link
         href="/staff/clients"
         aria-label="Zurück"
@@ -49,8 +50,8 @@ export function ClientCockpitHeader({ header }: { header: ClientCockpitHeaderDat
       >
         <ArrowLeft className="h-5 w-5" />
       </Link>
-      <div className="flex-1">
-        <div className="flex items-center gap-3 mb-1">
+      <div className="min-w-0 [overflow-wrap:anywhere]">
+        <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="text-2xl font-bold text-primary">{client.name}</h1>
           {client.allowActive ? (
             <span className="badge-green">Aktiv</span>
@@ -65,7 +66,7 @@ export function ClientCockpitHeader({ header }: { header: ClientCockpitHeaderDat
         />
         <ClientResponsibilities responsibilities={client.responsibilities} />
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="col-span-full flex flex-wrap items-center gap-2 xl:col-span-1">
         <QuickRequestDialog
           createAction={createQuickRequestAction}
           requestId={randomUUID()}
@@ -80,9 +81,9 @@ export function ClientCockpitHeader({ header }: { header: ClientCockpitHeaderDat
           formTemplates={requestFormTemplates}
           templatesLimited={templatesLimited}
           formTemplatesLimited={formTemplatesLimited}
-          buttonClassName="btn-secondary text-xs py-1.5"
+          buttonClassName="btn-primary text-xs py-1.5"
         />
-        <Link href={`/staff/clients/${client.id}/edit`} className="btn-primary text-xs py-1.5">
+        <Link href={`/staff/clients/${client.id}/edit`} className="btn-secondary text-xs py-1.5">
           Stammdaten bearbeiten
         </Link>
       </div>
@@ -280,26 +281,30 @@ export function ClientCockpitNav({
     },
   ];
   return (
-    <nav aria-label="Bereiche der Mandantenakte" className="mb-6 flex flex-wrap gap-x-6 gap-y-2">
-      {groups.map((group) => {
-        const links = group.links.filter(Boolean);
-        if (links.length === 0) return null;
-        const labelId = `client-nav-${group.id}`;
-        return (
-          <div
-            key={group.id}
-            role="group"
-            aria-labelledby={labelId}
-            className="flex flex-wrap items-center gap-x-0.5 gap-y-1"
-          >
-            <span id={labelId} className="eyebrow mb-0 mr-1.5">
-              {group.label}
-            </span>
-            {links}
-          </div>
-        );
-      })}
-    </nav>
+    <div className="mb-6">
+      <ResponsiveSectionNav label="Bereiche der Mandantenakte" current="Übersicht">
+        <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:gap-x-6">
+          {groups.map((group) => {
+            const links = group.links.filter(Boolean);
+            if (links.length === 0) return null;
+            const labelId = `client-nav-${group.id}`;
+            return (
+              <div
+                key={group.id}
+                role="group"
+                aria-labelledby={labelId}
+                className="flex flex-wrap items-center gap-x-0.5 gap-y-1"
+              >
+                <span id={labelId} className="eyebrow mb-0 mr-1.5">
+                  {group.label}
+                </span>
+                {links}
+              </div>
+            );
+          })}
+        </div>
+      </ResponsiveSectionNav>
+    </div>
   );
 }
 

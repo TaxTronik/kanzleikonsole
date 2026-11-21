@@ -1,6 +1,7 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { isUuid } from '@/lib/uuid';
+import { berlinYmd } from '@/lib/fmt';
 import { visibleMandateTx } from '@/server/mandate-expansion/service';
 import { VDB_STATES, VDB_LABELS, vdbTransitionAllowed } from '@/server/mandate-expansion/model';
 import { expansionPage, ExpansionNavigation, ClientSelect } from '../common';
@@ -45,6 +46,7 @@ export default async function VdbPage({
         }),
       }))
     : null;
+  const today = berlinYmd(new Date());
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl space-y-6">
       <ExpansionNavigation />
@@ -98,8 +100,8 @@ export default async function VdbPage({
                     className="input"
                     type="date"
                     name="recordedAt"
-                    defaultValue={new Date().toISOString().slice(0, 10)}
-                    max={new Date().toISOString().slice(0, 10)}
+                    defaultValue={today}
+                    max={today}
                     required
                   />
                 </label>

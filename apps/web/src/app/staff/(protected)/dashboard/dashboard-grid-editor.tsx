@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { GridLayout, useContainerWidth, type Layout, type LayoutItem } from 'react-grid-layout';
 import { X } from 'lucide-react';
 import { DEFAULT_SIZE, WIDGET_BY_TYPE, type LayoutWidget } from '@/server/dashboard/widgets';
@@ -22,12 +22,12 @@ import '@/components/ui/grid-layout-edit.css';
 export function DashboardGridEditor({
   widgets,
   renderById,
-  onLayoutChange,
+  onPointerLayout,
   onRemove,
 }: {
   widgets: readonly LayoutWidget[];
   renderById: ReadonlyMap<string, ReactNode>;
-  onLayoutChange: (next: Layout) => void;
+  onPointerLayout: (next: Layout) => void;
   onRemove: (id: string) => void;
 }) {
   // settled=false beim ersten Paint → das Raster bleibt per Inline-Style
@@ -40,6 +40,7 @@ export function DashboardGridEditor({
   // Danach auf true → Drag/Resize animieren wieder normal. Die Leseansicht
   // braucht das alles nicht mehr: sie ist ein statisches CSS-Grid.
   const [settled, setSettled] = useState(false);
+  const dragged = useRef(false);
   const { width, containerRef, mounted } = useContainerWidth();
 
   useEffect(() => {
@@ -109,7 +110,11 @@ export function DashboardGridEditor({
                 enabled: true,
                 handles: ['se', 'sw', 'ne', 'nw', 'e', 'w', 's', 'n'],
               }}
-              onLayoutChange={onLayoutChange}
+              onDrag={() => {
+                dragged.current = true;
+              }}
+              onDragStop={onPointerLayout}
+              onResizeStop={onPointerLayout}
             >
               {widgets.map((w) => (
                 <div key={w.id} className="relative ring-2 ring-brand-300 rounded-xl">
@@ -123,7 +128,28 @@ export function DashboardGridEditor({
                   >
                     <X className="h-3 w-3" />
                   </button>
-                  <div className="h-full widget-shell">
+                  <div
+                    className="h-full widget-shell"
+                    onPointerDownCapture={() => {
+                      dragged.current = false;
+                    }}
+                    onDragStartCapture={(event) => {
+                      // Native Link- und Bild-Drags würden den Raster-Drag abbrechen.
+                      if (event.target instanceof Element && event.target.closest('a, img')) {
+                        event.preventDefault();
+                      }
+                    }}
+                    onClickCapture={(event) => {
+                      if (
+                        dragged.current &&
+                        event.detail > 0 &&
+                        event.target instanceof Element &&
+                        event.target.closest('a')
+                      ) {
+                        event.preventDefault();
+                      }
+                    }}
+                  >
                     {renderById.get(w.id) ?? <WidgetLoading />}
                   </div>
                 </div>

@@ -72,7 +72,7 @@ export default async function StaffInboxThreadPage({
   const { thread } = data;
 
   return (
-    <main className="space-y-6">
+    <div className="space-y-6">
       <Link
         href="/staff/inbox"
         className="inline-flex items-center gap-2 text-sm text-brand-700 hover:underline"
@@ -170,6 +170,6 @@ export default async function StaffInboxThreadPage({
           </article>
         ))}
       </section>
-    </main>
+    </div>
   );
 }

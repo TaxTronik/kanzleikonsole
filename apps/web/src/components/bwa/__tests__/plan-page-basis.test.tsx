@@ -1,6 +1,8 @@
+// @vitest-environment jsdom
+import { render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { BwaPlanBasis } from '@/server/bwa/plan-basis';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PlanWizard } from '@/components/bwa/plan-wizard';
 
 const fixture = vi.hoisted(() => ({
   periods: [] as Array<{
@@ -10,7 +12,6 @@ const fixture = vi.hoisted(() => ({
     source: 'DATEV' | 'ADDISON' | 'MANUAL';
     positions: Array<{ number: number; amount: number }>;
   }>,
-  bases: [] as Array<BwaPlanBasis & { id: string }>,
   taxProps: null as { resultBeforeTax: number | null } | null,
   withTenantContext: vi.fn(),
   findMany: vi.fn(),
@@ -36,12 +37,7 @@ vi.mock('@/app/portal/(protected)/bwa/plan/actions', () => ({ createPlanAction: 
 vi.mock('@/app/staff/(protected)/clients/[id]/bwa/plans/actions', () => ({
   createStaffPlanAction: vi.fn(),
 }));
-vi.mock('@/components/bwa/plan-wizard', () => ({
-  PlanWizard: ({ bases }: { bases: typeof fixture.bases }) => {
-    fixture.bases = bases;
-    return null;
-  },
-}));
+vi.mock('@/components/bwa/plan-wizard', { spy: true });
 vi.mock('@/app/staff/(protected)/clients/[id]/bwa/[periodId]/tax-estimator-card', () => ({
   TaxEstimatorCard: (props: typeof fixture.taxProps) => {
     fixture.taxProps = props;
@@ -81,7 +77,6 @@ const addison = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  fixture.bases = [];
   fixture.taxProps = null;
   fixture.periods = [
     { id: 'datev', periodKey: '2025', periodType: 'YEAR', source: 'DATEV', positions: datev },
@@ -104,15 +99,31 @@ beforeEach(() => {
   );
 });
 
+afterEach(() => vi.useRealTimers());
+
 describe('BWA-IMPORT-MAPPING-001 / BWA-PROJECTION-001: beide Planseiten verwenden validierte Quellachsen', () => {
   for (const mode of ['portal', 'staff'] as const) {
-    it(`${mode}: DATEV, Addison und unvollständige Perioden bis zum echten Wizard-Vertrag`, async () => {
-      renderToStaticMarkup(
-        await (mode === 'portal'
-          ? PortalNewPlanPage()
-          : StaffNewPlanPage({ params: Promise.resolve({ id: 'client-test' }) })),
+    const openPage = () =>
+      mode === 'portal'
+        ? PortalNewPlanPage()
+        : StaffNewPlanPage({ params: Promise.resolve({ id: 'client-test' }) });
+
+    it.each([
+      ['2026-12-31T22:59:59Z', '2027'],
+      ['2026-12-31T23:00:00Z', '2028'],
+    ])(`${mode}: Vorbelegung des nächsten Planjahres um %s`, async (instant, expectedYear) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(instant));
+      render(await openPage());
+      expect(screen.getByLabelText<HTMLInputElement>('Planjahr').value).toBe(expectedYear);
+      expect(screen.getByLabelText<HTMLInputElement>('Name der Planung').value).toBe(
+        `Planung ${expectedYear}`,
       );
-      expect(fixture.bases).toMatchObject([
+    });
+
+    it(`${mode}: DATEV, Addison und unvollständige Perioden bis zum echten Wizard-Vertrag`, async () => {
+      renderToStaticMarkup(await openPage());
+      expect(vi.mocked(PlanWizard).mock.lastCall?.[0].bases).toMatchObject([
         {
           id: 'datev',
           canApply: true,

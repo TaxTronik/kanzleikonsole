@@ -1,4 +1,4 @@
-﻿// =============================================================================
+// =============================================================================
 // /staff/clients/:id/notices — Bescheid-Postfach pro Mandant
 //
 // Listet alle Bescheide mit Soll/Ist-Vergleich, Einspruchsfrist-Hinweis
@@ -65,7 +65,7 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
         <ArrowLeft className="h-4 w-4" /> Zurück
       </Link>
 
-      <div className="flex items-end justify-between mb-6">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary mb-1">Steuerunterlagen</h1>
           <p className="text-muted text-sm">{client.name}</p>
@@ -105,7 +105,7 @@ export default async function ClientNoticesPage({ params }: { params: Promise<{ 
           <p className="text-sm text-disabled">Keine Bescheide erfasst.</p>
         </div>
       ) : (
-        <div className="card overflow-hidden">
+        <div className="card overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 border-b border-default">

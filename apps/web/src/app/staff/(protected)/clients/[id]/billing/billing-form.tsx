@@ -8,17 +8,18 @@ import { fmtEUR, fmtMonthYear } from '@/lib/fmt';
 interface Props {
   clientId: string;
   totalHours: number;
+  initialIssueDate: string;
+  initialDueDate: string;
 }
 
-export function BillingForm({ clientId, totalHours }: Props) {
+export function BillingForm({ clientId, totalHours, initialIssueDate, initialDueDate }: Props) {
   const router = useRouter();
-  const [initialDate] = useState(() => new Date());
 
-  const [subject, setSubject] = useState(() => `Beratungsleistungen ${fmtMonthYear(initialDate)}`);
-  const [issueDate, setIssueDate] = useState(() => initialDate.toISOString().slice(0, 10));
-  const [dueDate, setDueDate] = useState(() =>
-    new Date(initialDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+  const [subject, setSubject] = useState(
+    () => `Beratungsleistungen ${fmtMonthYear(new Date(initialIssueDate))}`,
   );
+  const [issueDate, setIssueDate] = useState(initialIssueDate);
+  const [dueDate, setDueDate] = useState(initialDueDate);
   const [vatRate, setVatRate] = useState(19);
   const [hourlyRate, setHourlyRate] = useState(120);
   const [strategy, setStrategy] = useState<'one-line' | 'per-entry'>('one-line');

@@ -76,6 +76,7 @@ sources:
     primary: false
 code_refs:
   - apps/web/src/app/staff/(protected)/clients/[id]/binders/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/binders/binders-block.tsx
   - packages/db/prisma/schema.prisma
   - apps/web/src/server/fristen/eintrag.ts
   - apps/web/src/server/fristen/kontrollbuch.ts
@@ -103,6 +104,7 @@ code_refs:
   - packages/db/prisma/migrations/20261007110000_tax_notice_berlin_filing_day/migration.sql
   - packages/db/prisma/sql/functions/app.tax_notice_require_progress_evidence().sql
 test_refs:
+  - apps/e2e/tests/client-operational-dates.spec.ts
   - apps/web/src/server/actions/__tests__/calendar-date-input.test.ts
   - apps/e2e/tests/12-accessibility.spec.ts
   - packages/db/src/__tests__/tax-notice-evidence.test.ts
@@ -329,6 +331,13 @@ Rückgabetag, bevor er zur Fristenüberwachung gespeichert wird. Die frühere
 Musterprüfung ließ den 31. April als 1. Mai erscheinen. Ein Action-Test
 unterscheidet solche Eingaben von einem gültigen Schalttag.
 
+Das geöffnete Pendelordnerformular bietet Rückgabetage ab dem aktuellen
+Berliner Kalendertag an. Das Feld darf leer bleiben. Die Untergrenze gilt für
+die Eingabe im Browser. Die Server-Action akzeptiert gültige historische Tage.
+Die Mandantenakte kennzeichnet einen Ordner als überfällig, wenn er beim
+Mandanten liegt (`WITH_CLIENT`) und sein erwarteter Rückgabetag vor dem
+heutigen Berliner Kalendertag liegt.
+
 Die Kontrollübersicht verwendet auf schmalen Bildschirmen kleinere Seitenabstände
 und eine umbrechende Kopfzeile. Breite Fristentabellen sind innerhalb einer
 benannten, per Tastatur erreichbaren Region horizontal scrollbar. Die
@@ -461,6 +470,15 @@ Der Implementierungsstatus ist deshalb **teilweise**.
   reproduziert werden?
 
 ## Technische Nachweise
+
+Der Chromium-Test in `client-operational-dates.spec.ts` öffnet das
+Pendelordnerformular in einem US-Browser am 20. November 2026 um 00:30 Uhr
+Berliner Zeit. Der 19. November wird beim Absenden abgewiesen, der 20. und
+das leere Feld werden übergeben. Ein separater Anzeigetest prüft an diesem
+Berliner Tag ausgegebene Ordner mit Rückgabe am 19., 20. und 21. November
+oder ohne Datum sowie einen vorbereiteten und einen zurückerhaltenen Ordner
+mit früherem Rückgabetag. Allein der ausgegebene Ordner vom 19. erhält die
+Überfällig-Markierung.
 
 Die referenzierten Tests prüfen die Quell-Wahrheitstabellen mit Zeit und Person,
 den Berliner Kalendertag der Einlegung (Sommer und Winter, 22:30/23:30 Uhr und

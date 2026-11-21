@@ -67,6 +67,31 @@ test.describe.serial('Staff: Core-Flows', () => {
     await expect(page.getByText('Mustermann GmbH').first()).toBeVisible();
   });
 
+  test('entfernt den Workflow-Mandantenfilter einschließlich des angezeigten Namens', async ({
+    page,
+  }) => {
+    await page.goto('/staff/clients');
+    const client = page
+      .getByRole('main')
+      .getByRole('link', { name: /Mustermann GmbH/i })
+      .first();
+    const href = await client.getAttribute('href');
+    expect(href).toMatch(/^\/staff\/clients\/[0-9a-f-]{36}$/);
+    await page.goto(`/staff/workflows?filter=mineStart&clientId=${href!.split('/').at(-1)}`);
+    const field = page.getByRole('combobox', { name: 'Nach Mandant filtern' });
+    await expect(field).toHaveValue('Mustermann GmbH');
+    await page.getByRole('link', { name: 'Mandantenfilter entfernen' }).click();
+    await expect(page).toHaveURL(/\/staff\/workflows\?filter=mineStart$/);
+    // Ohne aktive Workflows entfällt die Auswahl nach dem Zurücksetzen ganz.
+    await expect
+      .poll(() =>
+        field.evaluateAll((inputs) =>
+          inputs.map((input) => (input as HTMLInputElement).value).join(''),
+        ),
+      )
+      .toBe('');
+  });
+
   test('Mandanten-Detail: Cockpit-Blöcke', async ({ page }) => {
     await page.goto('/staff/clients');
     await page

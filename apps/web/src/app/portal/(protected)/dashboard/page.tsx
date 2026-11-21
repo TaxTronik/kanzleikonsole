@@ -15,6 +15,7 @@ import {
 import { portalAuth } from '@/server/auth/portal';
 import { withTenantContext } from '@taxtronik/db';
 import { fmtDateShort, fmtEUR } from '@/lib/fmt';
+import { REQUEST_STATUS_LABELS } from '@/lib/domain-labels';
 import { readModules, type ModuleConfig } from '@/server/settings/modules';
 import { portalDashboardVisibility } from '@/server/dashboard/portal-visibility';
 import { readPortalFeatures } from '@/server/settings/portal-features';
@@ -392,7 +393,7 @@ export default async function PortalDashboardPage() {
                   <span className="font-medium text-primary">{r.title}</span>
                 </Link>
                 <p className="text-xs text-muted mt-1">
-                  {r.status === 'OPEN' || r.status === 'IN_PROGRESS' ? 'Offen' : 'Erledigt'}
+                  {REQUEST_STATUS_LABELS[r.status]}
                   {r.dueAt ? ` · fällig ${fmtDateShort(r.dueAt)}` : ''}
                 </p>
               </li>

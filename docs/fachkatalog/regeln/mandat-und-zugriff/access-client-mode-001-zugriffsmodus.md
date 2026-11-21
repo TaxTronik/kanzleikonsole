@@ -55,6 +55,10 @@ code_refs:
   - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts
   - apps/web/src/server/auth/client-page-access.ts
   - apps/web/src/server/auth/client-access-filter.ts
+  - apps/web/src/app/staff/(protected)/dashboard/widgets.tsx
+  - apps/web/src/app/staff/(protected)/clients/change-requests/page.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/change-requests/page.tsx
+  - apps/web/src/server/clients/pending-master-changes.ts
   - apps/web/src/server/requests/list-filters.ts
   - apps/web/src/app/staff/(protected)/requests/page.tsx
   - apps/web/src/app/api/staff/requests/export/route.ts
@@ -70,6 +74,9 @@ test_refs:
   - apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx
   - apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx
   - apps/web/src/server/auth/__tests__/invoice-selection-ci.test.ts
+  - apps/web/src/app/staff/(protected)/dashboard/__tests__/my-work-basket.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/change-requests/__tests__/page.test.tsx
+  - apps/web/src/app/staff/(protected)/clients/[id]/change-requests/__tests__/selected-request.test.tsx
   - apps/web/src/app/staff/(protected)/requests/__tests__/list-pagination.test.tsx
   - apps/web/src/app/staff/(protected)/clients/__tests__/list-document-count.test.tsx
   - apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/__tests__/route.test.ts
@@ -159,6 +166,11 @@ Hauptbearbeiterin zugeordnet wird. Eine ADMIN-Rolle bleibt berechtigt.
 
 ## Umsetzung in TaxTronik
 
+Die Dashboard-Zähler für offene Anforderungen und Stammdaten-Anträge und ihre
+Ziellisten berücksichtigen dieselbe aktuelle Mandantensichtbarkeit. Die
+Kanzlei erhält bei Stammdaten-Anträgen eine Zeile pro offenem Antrag und kann
+den einzelnen Antrag in der zugehörigen Mandantenakte aufrufen.
+
 `decideClientAccess` enthält die Wahrheitstabelle. Die Datenbank-Helfer laden
 nur aktive Mitarbeiter, die Kanzleipolicy, das Vertraulichkeitsflag und bei
 Bedarf Verantwortungen. `rbac.ts` stellt Einzel-, Batch- und Prisma-Filter für
@@ -226,6 +238,9 @@ Beschäftigtenverpflichtung und Kollisionskontrollen organisatorisch festlegen.
 - Soll ein ungültiges Setting weiterhin auf OPEN statt RESTRICTED fallen?
 
 ## Technische Nachweise
+
+Widget- und Seitentests prüfen Status- und Mandantenfilter, die Verknüpfung zum
+Einzelantrag und die Seitennavigation der offenen Stammdaten-Anträge.
 
 Wahrheits- und Property-Tests belegen Admin-Override, OPEN, RESTRICTED,
 Vertraulichkeit und Zuordnung. RBAC-Tests belegen Einzel- und Batchfilter. Sie

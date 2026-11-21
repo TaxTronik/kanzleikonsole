@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { useActionState } from 'react';
+import { Profiler, useActionState } from 'react';
 import { expect, it, vi } from 'vitest';
 import { SettingsForm, SettingsFormGuard } from '../settings-form-guard';
 
@@ -57,6 +57,35 @@ it('bewahrt bei Serverfehlern Eingaben und ermöglicht das erneute Speichern', a
   await screen.findByText('Gespeichert');
   expect(save.mock.calls.map(([, data]) => data.get('name'))).toEqual(['Änderung', 'Änderung']);
   expect(fireEvent(window, new Event('beforeunload', { cancelable: true }))).toBe(true);
+});
+
+it('nimmt das erste erneute Absenden im abgeschlossenen Fehlerzustand an', async () => {
+  const save = vi
+    .fn<Action>()
+    .mockResolvedValueOnce({ ok: false })
+    .mockResolvedValueOnce({ ok: true });
+  let erneutGesendet = false;
+  render(
+    <Profiler
+      id="Einstellungen"
+      onRender={() => {
+        if (erneutGesendet || !screen.queryByRole('alert')) return;
+        const eingabe = screen.getByRole<HTMLInputElement>('textbox', { name: 'Name' });
+        const form = eingabe.form!;
+        if (form.hasAttribute('aria-busy')) return;
+        erneutGesendet = true;
+        form.requestSubmit();
+      }}
+    >
+      <SettingsFormGuard>
+        <Example save={save} />
+      </SettingsFormGuard>
+    </Profiler>,
+  );
+  fireEvent.input(screen.getByRole('textbox'), { target: { value: 'Änderung' } });
+  await act(async () => screen.getByRole('button', { name: 'Speichern' }).click());
+  expect(save.mock.calls.map(([, data]) => data.get('name'))).toEqual(['Änderung', 'Änderung']);
+  expect(await screen.findByText('Gespeichert')).toBeTruthy();
 });
 
 it('lässt während des Speicherns eingegebene Änderungen offen', async () => {

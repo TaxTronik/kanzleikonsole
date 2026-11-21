@@ -10,7 +10,7 @@ import {
   resetRssFeedDefaultsAction,
   type ActionResult,
 } from './rss-feed-actions';
-import { confirmDialog } from '@/components/ui/modal';
+import { Modal, confirmDialog } from '@/components/ui/modal';
 
 export interface FeedRow {
   id: string;
@@ -72,7 +72,8 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
     <>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
         className="text-disabled hover:text-primary p-1"
         aria-label="Feeds verwalten"
         title="Feeds verwalten"
@@ -81,7 +82,12 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-30 w-[420px] max-w-[90vw] rounded-lg border border-default bg-surface shadow-lg p-4 space-y-3">
+        <Modal
+          title="Feeds verwalten"
+          onClose={() => setOpen(false)}
+          panelClassName="card w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-4 sm:p-6 space-y-3"
+        >
+          <h2 className="pr-8 text-lg font-semibold">Feeds verwalten</h2>
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-primary inline-flex items-center gap-2">
               <Rss className="h-4 w-4 text-disabled" />
@@ -95,7 +101,7 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
               title="BMF + BFH wieder hinzufügen"
             >
               <RefreshCw className="h-3 w-3" />
-              Defaults
+              Standardfeeds laden
             </button>
           </div>
 
@@ -107,6 +113,7 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
                 <li key={f.id} className="px-1 py-2 flex items-center gap-2">
                   <input
                     type="checkbox"
+                    aria-label={`Feed ${f.name} aktiv`}
                     checked={f.active}
                     onChange={(e) => toggle(f.id, e.target.checked)}
                     disabled={isMutating}
@@ -129,6 +136,7 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
                     onClick={() => remove(f.id)}
                     disabled={isMutating}
                     className="text-disabled hover:text-red-700 p-1 shrink-0"
+                    aria-label={`${f.name} entfernen`}
                     title="Entfernen"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -144,12 +152,13 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
               <input
                 type="text"
                 name="name"
+                aria-label="Name des Feeds"
                 placeholder="Name (z. B. FG Köln)"
                 maxLength={80}
                 required
                 className="input text-xs col-span-2"
               />
-              <select name="color" className="input text-xs">
+              <select name="color" aria-label="Farbe des Feeds" className="input text-xs">
                 {COLOR_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
@@ -160,6 +169,7 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
             <input
               type="url"
               name="url"
+              aria-label="RSS-Feed-URL"
               placeholder="https://… RSS-Feed-URL"
               maxLength={500}
               required
@@ -177,7 +187,7 @@ export function RssReaderManage({ feeds }: { feeds: FeedRow[] }) {
               </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
     </>
   );

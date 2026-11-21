@@ -267,7 +267,7 @@ export default async function TcmsAuditPage({ searchParams }: { searchParams: Pr
         </p>
       ) : null}
 
-      <section className="card overflow-x-auto" aria-labelledby="tcms-audit-liste">
+      <section className="card relative overflow-x-auto" aria-labelledby="tcms-audit-liste">
         <h2 id="tcms-audit-liste" className="sr-only">
           Einträge
         </h2>

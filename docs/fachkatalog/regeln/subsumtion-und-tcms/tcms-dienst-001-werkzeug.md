@@ -44,6 +44,8 @@ code_refs:
   - apps/web/src/server/tcms/zustand.ts
   - apps/web/src/server/tcms/seite.ts
   - apps/web/src/server/tcms/aktion.ts
+  - apps/web/src/components/tcms/durchfuehrung/editor.tsx
+  - apps/web/src/components/tcms/formular.ts
   - apps/web/src/components/tcms/feststellung.tsx
   - apps/web/src/components/tcms/disclaimer.tsx
   - apps/web/src/app/staff/(protected)/clients/[id]/tcms/cockpit.tsx
@@ -82,6 +84,7 @@ code_refs:
   - apps/web/src/components/tcms/portal/freigabe-formulare.tsx
   - apps/web/src/app/staff/(protected)/tcms/audit/actions.ts
 test_refs:
+  - apps/web/src/components/tcms/__tests__/formular.test.tsx
   - apps/web/src/server/tcms/__tests__/zustand.test.ts
   - apps/web/src/server/tcms/__tests__/seite.test.ts
   - apps/web/src/server/tcms/__tests__/aktion.test.ts
@@ -221,17 +224,20 @@ maskierte Einträge, zeigt die Seite nur deren Felder, die Akteursart als festen
 Text und „vertraulich“, Hashes ab der ersten maskierten Position als „nicht
 angezeigt“ (TCMS s11, kk-tcms-s11). Gleiche Antwortfelder
 zeigen Kanzlei und Portal mit denselben Bausteinen (Nachweisliste,
-Beschreibung, Formular-Baustein `useTcmsFormular`).
+Beschreibung, Formular-Baustein `useTcmsFormular`). Während eine Aktion
+läuft, blockiert das Formular weitere Übermittlungen. Sobald die Oberfläche das
+Ergebnis zeigt und das Formular freigibt, kann die nächste Eingabe gesendet werden.
 
 ## Bekannte Abweichungen und Grenzen
 
 Die fachliche Freigabe steht aus. Die Demo-Oberfläche des TCMS-Repos ist kein
 Produkt. Die Anzeige historischer Stände (`?stand=`) übernimmt die Angaben des
-Dienstes ohne eigene Prüfung. Der Editor der Durchführung (Kanzlei) zeigt
-Differenzen und die Toleranzlage bei der Eingabe als Vorschau; maßgeblich ist
-die Prüfung des gespeicherten Stands durch den Dienst (`pruefung.ausserhalb`),
-die die Kontrollaufgabe im Portal allein anzeigt. Berechnete Differenzen in
-der Antwort des Dienstes sind als Änderungsvorschlag an das TCMS offen.
+Dienstes ohne eigene Prüfung. Die frühere Beschreibung einer im Browser
+berechneten Vorschau widersprach dem eingebundenen Dienstvertrag und dem
+Editor. Der Dienst liefert die Prüfung des gespeicherten Stands einschließlich
+Differenzen und Toleranzlage in `pruefung.kennzahlen`. Die Seite übergibt die
+gespeicherten Eingabewerte als Liste an den Editor. Dort werden sie für die
+Anzeige nach Schlüssel erschlossen.
 
 ## Fachliche Prüffragen
 
@@ -248,4 +254,7 @@ konfigurierten Dienst fehlen. `zustand.test.ts` belegt jede Abbildung einschlie�
 fehlender Rohtexte in Meldung und Log; `seite.test.ts` und `aktion.test.ts`
 die Anwendung in Seiten und Aktionen. Die Render-Tests der Seiten zeigen die
 maskierte Feststellung ohne Titel, Zustände statt Daten und die Übernahme der
-Rechte-Kennzeichen des Dienstes.
+Rechte-Kennzeichen des Dienstes. Der Rendertest der Durchführungen prüft auch
+die übertragbare Liste am Übergang vom Server zum interaktiven Editor.
+Der Formulartest prüft sowohl den Doppelklick während der laufenden Aktion
+als auch das erneute Absenden unmittelbar nach der angezeigten Rückmeldung.

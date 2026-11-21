@@ -85,6 +85,18 @@ describe('WORKFLOW-DEPENDENCY-001 cycles and readiness', () => {
   });
 });
 describe('CLIENT-OFFBOARDING-001 actual mandate end', () => {
+  it.each([
+    ['2026-06-30T21:59:59Z', '2026-06-30', '2026-07-01'],
+    ['2026-06-30T22:00:00Z', '2026-07-01', '2026-07-02'],
+    ['2026-12-31T23:00:00Z', '2027-01-01', '2027-01-02'],
+  ])(
+    'accepts the Berlin day, rejects tomorrow and preserves DATE encoding at %s',
+    (instant, today, tomorrow) => {
+      expect(parseEndDate(today, new Date(instant)).toISOString()).toBe(`${today}T00:00:00.000Z`);
+      expect(() => parseEndDate(tomorrow, new Date(instant))).toThrow('Mandatsende');
+    },
+  );
+
   it('accepts a historical date without rolling invalid dates into the next month', () => {
     expect(parseEndDate('2026-02-28', new Date('2026-08-31Z')).toISOString()).toBe(
       '2026-02-28T00:00:00.000Z',

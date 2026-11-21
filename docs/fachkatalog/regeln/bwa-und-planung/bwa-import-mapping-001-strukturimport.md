@@ -176,6 +176,10 @@ erst nach manueller Zuordnung und Plausibilisierung verwendet werden.
 
 ## Umsetzung in TaxTronik
 
+Beim Erfassen der Planachsen im Assistenten stehen Beschriftung, Betrag und
+Notiz auf schmalen Bildschirmen untereinander. Die belegten Achsen und ihre
+Übernahme aus der gewählten BWA-Basis bleiben dabei erhalten.
+
 `datev-parser.ts` sucht das strukturierte DATEV-Layout, liest Periodenspalten
 und importiert numerische Hauptpositionen. `addison-parser.ts` verarbeitet das
 ausführliche und ein kompaktes Addison-CSV-Format. `computeBwaKpis` bildet nur

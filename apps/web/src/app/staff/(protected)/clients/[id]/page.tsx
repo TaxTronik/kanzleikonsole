@@ -74,7 +74,7 @@ export default async function ClientDetailPage({
   const isAdmin = isStaffAdmin(session);
 
   return (
-    <div className="p-8">
+    <div className="client-cockpit min-w-0 p-4 sm:p-8">
       <RecordClientVisit tenantId={tenantId} staffId={staffId} id={client.id} />
       <ClientCockpitHeader header={header.data} />
       <ClientOnboardingBanner client={client} />

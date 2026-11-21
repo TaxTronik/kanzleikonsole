@@ -85,6 +85,10 @@ test.describe('isolated opt-in expansion browser integration', () => {
       await personal.goto(link!);
       await personal.getByRole('button', { name: 'Persönlichen Vorgang öffnen' }).click();
       await expect(personal.getByLabel('Vorname', { exact: false })).toBeVisible();
+      await expect.poll(() => new URL(personal.url()).hash.length).toBe(0);
+      await expect(
+        personal.getByRole('button', { name: 'Persönlichen Vorgang öffnen' }),
+      ).toHaveCount(0);
       expect((await guest.cookies()).some((c) => c.name.includes('staff_session'))).toBe(false);
       await expect(
         personal.getByLabel('Vereinbarte Bruttovergütung in EUR', { exact: false }),

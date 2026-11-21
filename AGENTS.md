@@ -1,3 +1,31 @@
+# Prüfberichte als Checklisten
+
+1. Zu Beginn jedes Prüf- oder Änderungsauftrags die einschlägigen früheren
+   Prüf- und Nachberichte lesen. Ihre Befunde, offenen Punkte und zugesagten
+   Nachprüfungen in die aktuelle Checkliste übernehmen und die Herkunft
+   verlinken. Bei Änderungen an einem früher behobenen Fehler dessen
+   Regressionstest erneut ausführen.
+   Bei einem begrenzten Auftrag ausdrücklich festhalten, welche Punkte offen bleiben.
+2. Zu jedem Fehler seine Ursache benennen und nach weiteren betroffenen
+   Einstiegspunkten suchen. Bei einer falschen Datumsvorgabe gehören dazu
+   auch die Anlage aus der Mandantenakte, verknüpfte Vorgänge und Feldgrenzen
+   wie Mindest- und Höchstdatum. Für jeden anwendbaren Fall den Sollwert aus
+   der Fachregel oder dem bestätigten Produktverhalten ableiten.
+3. Einen Punkt erst abhaken, wenn ein tatsächlich ausgeführter Test oder eine
+   dokumentierte Bedienprobe den Sollwert am betroffenen Einstieg bestätigt.
+   Vorbelegungen vor der ersten Eingabe prüfen. Bei Tagesgrenzen die Uhr auf
+   einen Zeitpunkt stellen, an dem UTC und Kanzleizeit verschiedene Daten
+   ergeben. Ein Test der Pflichtfeldvalidierung belegt nur die Validierung.
+4. Vor Abschluss jeden übernommenen Punkt mit dem Bericht abgleichen.
+   Abgehakte Punkte erhalten einen konkreten Nachweis und den geprüften
+   Stand. Offene Punkte behalten den Grund und die ausstehende Prüfung.
+   Solange ein anwendbarer Punkt offen ist, bleibt der betreffende Bereich offen.
+   Ist ein ähnlich aussehender Fall ausgenommen, die abweichende Regel belegen.
+   Spätere Ergebnisse als datierten Nachtrag verlinken, damit erkennbar bleibt,
+   was im ursprünglichen Lauf bekannt und geprüft war.
+   Die Checkliste unter `docs/reviews/` im Repository ablegen, damit die
+   nächste Aufgabe Befunde, Belege und offene Fragen wiederfindet.
+
 # Arbeitsregeln für fachliche Logik
 
 Diese Regeln gelten für Änderungen an steuerlicher, rechtlicher,

@@ -11,7 +11,7 @@ export default async function SettingsLayout({ children }: { children: ReactNode
   // Bewusst ohne max-w: die Einstellungsseiten (v. a. n8n) sind formular- und
   // rasterlastig — mehr Breite = weniger Scrollen.
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-start gap-4 mb-6">
         <Link
           href="/staff/admin"
@@ -29,7 +29,7 @@ export default async function SettingsLayout({ children }: { children: ReactNode
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[16rem_minmax(0,1fr)] gap-6">
         <aside className="lg:sticky lg:top-6 self-start">
           <SettingsNav />
         </aside>

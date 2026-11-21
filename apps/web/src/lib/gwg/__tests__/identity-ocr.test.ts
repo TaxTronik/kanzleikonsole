@@ -54,6 +54,18 @@ describe('GWG-OCR-ASSIST-001 local unverified suggestions', () => {
       ]),
     );
   });
+  it('warnt nach einer von der OCR eingefügten Ziffer, statt eine andere Ausweisnummer vorzuschlagen', () => {
+    // Echter Linux-OCR-Text der synthetischen Rückseite: vor T steht ein zusätzliches 7.
+    const result = parseGermanIdentityText(
+      'IDD<<LO1X007T471<<<<<<<<<<<<<<<\n6408125<3012316D<<<<<<<<<<<<<2\nMUSTERMANN<<ERIKA<<<<<<<<<<<<<',
+    );
+    expect(result.fields.idNumber).toBeUndefined();
+    expect(result.fields.nationality).toBe('DEUTSCH');
+    expect(result.mrz).toEqual({ birthDate: '640812', expiryDate: '301231' });
+    expect(result.warnings).toContainEqual(
+      expect.objectContaining({ code: 'mrz-number-invalid', field: 'idNumber' }),
+    );
+  });
   it('gives a manual fallback for illegible input', () => {
     expect(parseGermanIdentityText('???')).toEqual({
       fields: {},

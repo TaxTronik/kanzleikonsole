@@ -12,7 +12,7 @@
 // FileReader-Vorschau.
 // =============================================================================
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Upload } from 'lucide-react';
 
 export function FileButton({
@@ -35,33 +35,27 @@ export function FileButton({
   className?: string;
   disabled?: boolean;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string | null>(null);
 
-  // Wenn der Caller die Datei per FileReader verarbeitet und ein Fehler
-  // auftritt, kann er den Input zurücksetzen (leerer Wert) — wir followen
-  // das via eines einfachen Effekts auf den value. Der Einfachheit halber
-  // wird hier nur der Anzeige-Name gepurgt, wenn onChange ohne Datei feuert.
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <label
         htmlFor={id}
         className={
           (className ?? 'btn-secondary') +
-          ' cursor-pointer inline-flex items-center gap-2' +
+          ' relative cursor-pointer inline-flex items-center gap-2 focus-within:ring-2 focus-within:ring-focus' +
           (disabled ? ' opacity-60 pointer-events-none' : '')
         }
       >
         <Upload className="h-4 w-4" />
         {children}
         <input
-          ref={inputRef}
           id={id}
           name={name}
           type="file"
           accept={accept}
           disabled={disabled}
-          className="hidden"
+          className="sr-only"
           onChange={(e) => {
             const f = e.target.files?.[0];
             if (!f) {

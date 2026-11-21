@@ -2,7 +2,7 @@
 // Fachkatalog: WORKFLOW-DEPENDENCY-001
 // Fachkatalog: CLIENT-OFFBOARDING-001
 // Fachkatalog: VDB-PREPARATION-001
-import { beforeEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import type { TxClient } from '@taxtronik/db';
 import type { StaffSession } from '@/server/auth/staff';
 const mocks = vi.hoisted(() => ({ access: vi.fn(), audit: vi.fn(), admin: vi.fn() }));
@@ -127,6 +127,7 @@ describe('WORKFLOW-DEPENDENCY-001 access at mutation', () => {
   });
 });
 describe('VDB-PREPARATION-001 evidence and concurrent status', () => {
+  afterEach(() => vi.useRealTimers());
   const input = {
     poaId: a,
     expectedRevision: 1,
@@ -147,6 +148,34 @@ describe('VDB-PREPARATION-001 evidence and concurrent status', () => {
       documentVersion: { findFirst: vi.fn().mockResolvedValue(null) },
     };
   }
+  it('records the Berlin calendar day at summer midnight using the existing date encoding', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-06-30T22:00:00Z'));
+    const db = tx();
+    db.documentVersion.findFirst.mockResolvedValue({ id: b });
+    db.vdbRecord.create.mockResolvedValue({ id: a, revision: 2, status: 'REPORTED' });
+    await recordVdbStateTx(db as unknown as TxClient, session, {
+      ...input,
+      recordedAt: '2026-07-01',
+    });
+    expect(db.vdbRecord.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ recordedAt: new Date('2026-07-01T00:00:00Z') }),
+    });
+  });
+  it.each(['2027-01-02', '2026-02-30', '2026-12-31T12:00:00Z'])(
+    'rejects a future or malformed calendar day (%s) before appending evidence',
+    async (recordedAt) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-12-31T23:00:00Z'));
+      const db = tx();
+      db.documentVersion.findFirst.mockResolvedValue({ id: b });
+      await expect(
+        recordVdbStateTx(db as unknown as TxClient, session, { ...input, recordedAt }),
+      ).rejects.toThrow('Nachweisdatum');
+      expect(db.vdbRecord.create).not.toHaveBeenCalled();
+      expect(mocks.audit).not.toHaveBeenCalled();
+    },
+  );
   it('rejects stale external state without writing an event', async () => {
     const db = tx({ status: 'REPORTED', revision: 2 });
     await expect(recordVdbStateTx(db as unknown as TxClient, session, input)).rejects.toThrow(

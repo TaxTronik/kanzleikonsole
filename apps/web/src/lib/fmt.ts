@@ -344,6 +344,13 @@ export function berlinYmd(d: Date): string {
   return ymdBerlinFormatter.format(d); // en-CA liefert bereits `YYYY-MM-DD`
 }
 
+/** Berliner Kalendertag nach einer Anzahl ganzer Tage, unabhängig von Zeitumstellungen. */
+export function berlinYmdAfterDays(now: Date, days: number): string {
+  const date = new Date(`${berlinYmd(now)}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 // --- Dauer ---------------------------------------------------------------------
 
 /** Minuten → `2h 15m` oder `15m`. */

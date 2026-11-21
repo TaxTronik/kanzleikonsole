@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
@@ -300,7 +300,7 @@ export function WorkflowItemRow(p: Props) {
   const canUpload = isUpload;
 
   return (
-    <li className="px-4 py-3 flex items-start gap-3">
+    <li className="px-4 py-3 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 sm:flex">
       <ItemCompletionButton
         done={done}
         isTaskLike={isTaskLike}
@@ -317,7 +317,7 @@ export function WorkflowItemRow(p: Props) {
       />
 
       {/* Rechte Spalte: Action-Button + Assignee */}
-      <div className="shrink-0 flex items-center gap-2">
+      <div className="col-start-2 flex max-w-full flex-wrap items-center gap-2">
         {canExecute && (
           <button
             type="button"
@@ -345,8 +345,9 @@ export function WorkflowItemRow(p: Props) {
         <User className="h-3.5 w-3.5 text-disabled" />
         <select
           value={assignee}
+          aria-label={`Zuständig für ${p.title}`}
           onChange={(e) => changeAssignee(e.target.value)}
-          className="text-xs border border-default rounded px-2 py-1 bg-surface"
+          className="max-w-full text-xs border border-default rounded px-2 py-1 bg-surface"
           disabled={isPending}
         >
           <option value="">— niemand —</option>

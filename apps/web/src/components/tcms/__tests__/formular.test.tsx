@@ -10,7 +10,8 @@
 //   - `nachLesen` läuft nach dem Lesen der Formulardaten (Code-Feld leeren).
 // Dazu die Formulare der Bereiche C und 3a, die vorher Eingaben verloren.
 // Fachkatalog: TCMS-DIENST-001
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import type { TcmsAktionsErgebnis } from '../ergebnis';
 import { useTcmsFormular, type TcmsFormularOptionen } from '../formular';
@@ -29,8 +30,20 @@ vi.mock('@/app/staff/(protected)/clients/[id]/tcms/kontakte/actions', () => ({
 
 type Aktion = (vorher: TcmsAktionsErgebnis | null, fd: FormData) => Promise<TcmsAktionsErgebnis>;
 
-function Formular({ aktion, optionen }: { aktion: Aktion; optionen?: TcmsFormularOptionen }) {
+function Formular({
+  aktion,
+  optionen,
+  nachErfolg,
+}: {
+  aktion: Aktion;
+  optionen?: TcmsFormularOptionen;
+  nachErfolg?: (form: HTMLFormElement) => void;
+}) {
   const { ergebnis, laeuft, formular } = useTcmsFormular(aktion, optionen);
+  const { ref } = formular;
+  useLayoutEffect(() => {
+    if (ergebnis?.ok && !laeuft && ref.current) nachErfolg?.(ref.current);
+  }, [ergebnis, laeuft, nachErfolg, ref]);
   return (
     <form {...formular} aria-label="Testformular">
       <label htmlFor="titel">Titel</label>
@@ -46,21 +59,6 @@ function Formular({ aktion, optionen }: { aktion: Aktion; optionen?: TcmsFormula
       <p data-testid="stand">{laeuft ? 'läuft' : ergebnis ? String(ergebnis.ok) : 'leer'}</p>
     </form>
   );
-}
-
-/**
- * Klickt `knopf`, bis die Aktion zum `n`-ten Mal aufgerufen wurde. Ein Klick,
- * während die Übermittlung noch als laufend gilt, wird vom Baustein verworfen.
- */
-async function klickenBisAngenommen(
-  knopf: HTMLElement,
-  aktion: { mock: { calls: unknown[] } },
-  n: number,
-) {
-  await waitFor(() => {
-    if (aktion.mock.calls.length < n) fireEvent.click(knopf);
-    expect(aktion.mock.calls).toHaveLength(n);
-  });
 }
 
 function deferred() {
@@ -88,11 +86,7 @@ describe('useTcmsFormular', () => {
     expect(feld('Titel').value).toBe('Abstimmung September');
     expect(aktion.mock.calls[0]![1].get('absicht')).toBe('speichern');
 
-    // Die Sperre gegen Doppelübermittlung löst ein Effekt nach dem Rendern des
-    // Ergebnisses; unter Last kommt ein sofortiger zweiter Klick davor an und
-    // wird (richtig) verworfen. Deshalb klicken, bis der Baustein die zweite
-    // Übermittlung annimmt – die Sperre verhindert dabei jede dritte (kk-tcms-qual).
-    await klickenBisAngenommen(screen.getByRole('button', { name: 'Speichern' }), aktion, 2);
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }));
     await waitFor(() => expect(screen.getByTestId('stand').textContent).toBe('true'));
     await waitFor(() => expect(feld('Titel').value).toBe(''));
     expect(aktion).toHaveBeenCalledTimes(2);
@@ -107,19 +101,27 @@ describe('useTcmsFormular', () => {
     expect(feld('Titel').value).toBe('bleibt');
   });
 
-  it('keine Doppelübermittlung, solange eine läuft', async () => {
+  it('blockiert den Doppelklick während der Aktion und nimmt direkt nach der Rückmeldung den nächsten Submit an', async () => {
     const d = deferred();
-    const aktion = vi.fn<Aktion>().mockReturnValue(d.promise);
-    render(<Formular aktion={aktion} />);
+    const aktion = vi
+      .fn<Aktion>()
+      .mockReturnValueOnce(d.promise)
+      .mockResolvedValueOnce({ ok: false, error: 'Bitte prüfen.' });
+    const sofortErneutSenden = vi.fn((form: HTMLFormElement) => {
+      expect(form.hasAttribute('aria-busy')).toBe(false);
+      expect(within(form).getByTestId('stand').textContent).toBe('true');
+      fireEvent.submit(form);
+    });
+    render(<Formular aktion={aktion} nachErfolg={sofortErneutSenden} />);
     const form = screen.getByRole('form', { name: 'Testformular' });
     fireEvent.submit(form);
     fireEvent.submit(form);
     await waitFor(() => expect(screen.getByTestId('stand').textContent).toBe('läuft'));
     expect(aktion).toHaveBeenCalledOnce();
-    d.resolve({ ok: true });
-    await waitFor(() => expect(screen.getByTestId('stand').textContent).toBe('true'));
-    fireEvent.submit(form);
-    await waitFor(() => expect(aktion).toHaveBeenCalledTimes(2));
+    await act(async () => d.resolve({ ok: true }));
+    expect(sofortErneutSenden).toHaveBeenCalledOnce();
+    expect(aktion).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('stand').textContent).toBe('false');
   });
 
   it('Bestätigung je Knopf: ohne Zustimmung kein Aufruf, mit Zustimmung genau einer', async () => {

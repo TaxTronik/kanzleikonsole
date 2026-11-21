@@ -1,5 +1,42 @@
 ---
 exceptions:
+  - id: FK-EXC-20261121-001
+    date: '2026-11-21'
+    paths:
+      - apps/web/src/app/portal/(protected)/inbox/[id]/page.tsx
+      - apps/web/src/app/portal/(protected)/inbox/page.tsx
+      - apps/web/src/app/staff/(protected)/admin/audit/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/notices/filings/filings-section.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/page.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/subsumtion-workspace.tsx
+      - apps/web/src/app/staff/(protected)/dashboard/page.tsx
+      - apps/web/src/app/staff/(protected)/inbox/page.tsx
+      - apps/web/src/app/staff/(protected)/mandate-expansion/dependencies/page.tsx
+      - apps/web/src/app/staff/(protected)/poa/[id]/page.tsx
+      - apps/web/src/app/staff/(protected)/poa/[id]/revoke-poa-form.tsx
+    rule_ids:
+      - ACCESS-CLIENT-MODE-001
+      - AUDIT-HASH-CHAIN-001
+      - PORTAL-INBOX-SUBMISSION-001
+      - RISK-ARCHIVE-SNAPSHOT-001
+      - WORKFLOW-DEPENDENCY-001
+    reason: >-
+      Das äußere Layout bezeichnet den Hauptinhalt der Post und der Abhängigkeitsansicht.
+      Die inneren Container gruppieren die Seiteninhalte. Kopfaktionen und Hashwerte
+      umbrechen auf schmalen Bildschirmen. Am Dashboard wurde der Seitenabstand angepasst.
+      In den Steuerunterlagen, bei Workflow-Schritten und beim Vollmachtswiderruf
+      passen sich Formulare, Tabellen und Aktionsgruppen an die verfügbare Breite an.
+      Diese Änderungen betreffen ausschließlich Markup und CSS. Die Seiten benutzen
+      dieselben Datenabfragen, Zugriffsprüfungen, Aktionen und Hashberechnungen.
+    tests:
+      - apps/e2e/tests/13-accessible-display.spec.ts
+      - apps/web/src/app/staff/(protected)/admin/audit/__tests__/entry-actor.test.tsx
+      - apps/web/src/app/__tests__/protected-layouts.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/__tests__/workspace-views.test.tsx
+      - apps/web/src/app/staff/(protected)/clients/[id]/workflows/__tests__/workflow-section.test.tsx
+      - apps/web/src/app/staff/(protected)/__tests__/destructive-action-confirmations.test.tsx
+    reviewer: Codex (technische UI-Prüfung ohne fachliche Freigabe)
   - id: FK-EXC-20261120-007
     date: '2026-11-20'
     paths:
@@ -5987,6 +6024,19 @@ bei Ablösung mit Status `superseded` erhalten; das Diff-Gate verbietet ihre
 Löschung.
 
 ## Einträge
+
+- `FK-EXC-20261121-001` — eindeutige Hauptbereiche und schmale Detailansichten.
+
+- 21.11.2026 · `TCMS-DIENST-001`. Der gemeinsame Formularbaustein
+  lässt die nächste Eingabe zu, sobald das Ergebnis der vorherigen Aktion
+  sichtbar ist. Der Regressionstest löst beide Eingaben im selben Formular
+  aus und prüft zugleich, dass ein Doppelklick während des Sendens blockiert bleibt.
+
+- 21.11.2026 · `GWG-OCR-ASSIST-001`. Eine zusätzliche OCR-Ziffer kann die
+  Felder der maschinenlesbaren Zone verschieben. Trotz zufällig passender
+  Einzelprüfziffer hält die Erfassung bei widersprüchlicher Feldgrenze oder
+  lesbarer widersprechender Gesamtprüfziffer den Nummernvorschlag zurück.
+  Regressionen decken auch die synthetische Rückseite aus dem Browsertest ab.
 
 - 20.11.2026 · `ASSURANCE-RELEASE-EVIDENCE-001`. Der Stack-Smoke bricht bei
   belegter Umgebung oder fehlgeschlagener Bestandsabfrage vor jeder

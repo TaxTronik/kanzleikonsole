@@ -4,8 +4,8 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:3e1b065338befc6e7a7282c658d054c8073ee04ff29a6b7962482d9f5ee3f55a",
-    "expected_active_rule_count": 87,
+    "definition_sha256": "sha256:a5566571fe19d210090180d25f466af7979dbeab1607ab7f5b4d2fd4d307418a",
+    "expected_active_rule_count": 88,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
       "ACCESS-CLIENT-MODE-001",
@@ -13,6 +13,7 @@
       "ACCESS-SEARCH-SCOPE-001",
       "ACCESS-STAFF-PERMISSION-001",
       "ACCESS-TENANT-RLS-001",
+      "APPT-BERLIN-WALLCLOCK-001",
       "ASSURANCE-PROFESSIONAL-REVIEW-001",
       "ASSURANCE-RELEASE-EVIDENCE-001",
       "AUDIT-ARCHIVE-001",
@@ -108,8 +109,8 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 87,
-  "active_rule_count": 87,
+  "rule_count": 88,
+  "active_rule_count": 88,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
@@ -177,6 +178,10 @@
         "apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/route.ts",
         "apps/web/src/server/auth/client-page-access.ts",
         "apps/web/src/server/auth/client-access-filter.ts",
+        "apps/web/src/app/staff/(protected)/dashboard/widgets.tsx",
+        "apps/web/src/app/staff/(protected)/clients/change-requests/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/change-requests/page.tsx",
+        "apps/web/src/server/clients/pending-master-changes.ts",
         "apps/web/src/server/requests/list-filters.ts",
         "apps/web/src/app/staff/(protected)/requests/page.tsx",
         "apps/web/src/app/api/staff/requests/export/route.ts",
@@ -193,6 +198,9 @@
         "apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx",
         "apps/web/src/server/auth/__tests__/invoice-selection-db.test.tsx",
         "apps/web/src/server/auth/__tests__/invoice-selection-ci.test.ts",
+        "apps/web/src/app/staff/(protected)/dashboard/__tests__/my-work-basket.test.tsx",
+        "apps/web/src/app/staff/(protected)/clients/change-requests/__tests__/page.test.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/change-requests/__tests__/selected-request.test.tsx",
         "apps/web/src/app/staff/(protected)/requests/__tests__/list-pagination.test.tsx",
         "apps/web/src/app/staff/(protected)/clients/__tests__/list-document-count.test.tsx",
         "apps/web/src/app/api/staff/clients/[id]/subsumtion/[analysisId]/export/__tests__/route.test.ts"
@@ -377,6 +385,7 @@
         "apps/web/src/app/staff/(protected)/inbox/page.tsx"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx",
         "apps/e2e/tests/recent-clients-state.spec.ts",
         "apps/e2e/tests/saved-views-state.spec.ts",
         "apps/web/src/components/__tests__/browser-storage.test.tsx",
@@ -730,6 +739,52 @@
       "tags": ["rls", "tenant-isolation", "defense-in-depth"],
       "path": "docs/fachkatalog/regeln/mandat-und-zugriff/access-tenant-rls-001-tenant-isolation.md",
       "summary": "Anwendungszugriffe auf Tenantdaten laufen in einer Transaktion mit gesetztem Tenant-, Akteur- und Akteurtyp-Kontext. PostgreSQL erzwingt auf den erfassten Tabellen Row-Level-Security auch für den Tabellenowner der App-Rolle. Die Schicht ist ein technischer Backstop gegen Cross-Tenant-Zugriffe, kein Ersatz für Objektberechtigungen innerhalb einer Kanzlei."
+    },
+    {
+      "id": "APPT-BERLIN-WALLCLOCK-001",
+      "title": "Kanzleitermine und Terminwünsche in Berliner Ortszeit erfassen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Der Termindialog zeigt als Startvorschlag die aktuelle Berliner Uhrzeit. Das Portal bietet ab dem nächsten Berliner Kalendertag bearbeitbare Terminwünsche an. Beide Serveraktionen lesen die Eingaben als Berliner Ortszeit."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Anwenderdokumentation Kalender, Abschnitt 1 „Kanzleikalender und Terminanfragen“",
+          "path": "docs/anwenderdoku/kalender-fristen-bescheide.md",
+          "checked_at": "2026-11-21",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/lib/fmt.ts",
+        "apps/web/src/app/staff/(protected)/calendar/new-appointment-dialog.tsx",
+        "apps/web/src/app/staff/(protected)/calendar/actions.ts",
+        "apps/web/src/app/portal/(protected)/appointments/request-form.tsx",
+        "apps/web/src/app/portal/(protected)/appointments/actions.ts"
+      ],
+      "test_refs": [
+        "apps/web/src/components/__tests__/berlin-form-defaults.test.tsx",
+        "apps/web/src/app/staff/(protected)/calendar/__tests__/appointment-actions.test.tsx",
+        "apps/web/src/app/portal/(protected)/appointments/__tests__/page.test.tsx",
+        "apps/web/src/lib/__tests__/fmt.test.ts"
+      ],
+      "feature_refs": ["docs/anwenderdoku/kalender-fristen-bescheide.md"],
+      "related_rules": [],
+      "tags": ["kalender", "terminuebernahme", "ortszeit"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/appt-berlin-wallclock-001-berliner-terminzeiten.md",
+      "summary": "Für Start, Ende und Terminwünsche gilt die Zeitzone Europe/Berlin. Das gilt auch für die bearbeitbaren Vorschläge beim Öffnen des Formulars."
     },
     {
       "id": "ASSURANCE-PROFESSIONAL-REVIEW-001",
@@ -1348,13 +1403,17 @@
         "apps/web/src/components/bwa/bwa-dashboard.tsx",
         "apps/web/src/components/bwa/plan-comparison.tsx",
         "apps/web/src/components/bwa/plan-vs-projection.tsx",
+        "apps/web/src/components/bwa/plan-editor.tsx",
         "apps/web/src/app/portal/(protected)/bwa/page.tsx",
+        "apps/web/src/app/portal/(protected)/bwa/plan/new/page.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/bwa/plans/new/page.tsx",
         "apps/web/src/server/bwa/projection.ts",
         "apps/web/src/server/bwa/plan-basis.ts"
       ],
       "test_refs": [
         "apps/web/src/components/bwa/__tests__/dashboard-projection.test.tsx",
+        "apps/web/src/components/bwa/__tests__/plan-page-basis.test.tsx",
         "apps/web/src/components/bwa/__tests__/projection-snapshot.test.ts",
         "apps/e2e/tests/21-bwa-basis-state.spec.ts",
         "apps/web/src/server/bwa/__tests__/projection.test.ts",
@@ -1679,6 +1738,7 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/mandate-expansion/offboarding/page.tsx",
         "packages/config/src/retention-calendar.ts",
         "apps/web/src/app/api/portal/ical/[token]/route.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts",
@@ -1692,6 +1752,7 @@
         "apps/web/src/server/poa/create-poa.ts"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/mandate-expansion/__tests__/calendar-dates.test.tsx",
         "apps/web/src/app/api/portal/ical/[token]/__tests__/route.test.ts",
         "apps/web/src/server/auth/__tests__/session-renewal.test.ts",
         "apps/web/src/server/auth/__tests__/portal-session-email.test.ts",
@@ -1740,6 +1801,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/mandate-expansion/offboarding/page.tsx",
+        "apps/web/src/server/mandate-expansion/model.ts",
         "apps/web/src/server/mandate-expansion/offboarding.ts",
         "apps/web/src/server/mandate-expansion/artifacts.ts",
         "apps/web/src/server/mandate-expansion/pdf.ts",
@@ -1749,6 +1812,7 @@
         "packages/db/prisma/migrations/20260831200000_mandate_history_integrity/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/mandate-expansion/__tests__/calendar-dates.test.tsx",
         "apps/web/src/server/mandate-expansion/__tests__/model.test.ts",
         "apps/web/src/server/mandate-expansion/__tests__/service.test.ts",
         "apps/web/src/server/mandate-expansion/__tests__/pdf.test.ts",
@@ -2603,7 +2667,8 @@
       ],
       "test_refs": [
         "packages/db/src/__tests__/form-upload-discard-rls.test.ts",
-        "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts"
+        "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts",
+        "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/filler.test.tsx"
       ],
       "feature_refs": ["FEATURES.md"],
       "related_rules": [
@@ -2644,6 +2709,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/portal/(protected)/forms/[id]/filler.tsx",
+        "apps/web/src/server/forms/validate-answers.ts",
         "apps/web/src/server/forms/schema-snapshot.ts",
         "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
         "apps/web/src/app/portal/(protected)/forms/[id]/page.tsx",
@@ -2656,6 +2723,7 @@
         "packages/db/prisma/migrations/20260831300000_form_revision_source_guard/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/filler.test.tsx",
         "apps/web/src/server/forms/__tests__/schema-snapshot.test.ts",
         "apps/web/src/server/forms/__tests__/revision-download.test.ts",
         "apps/web/src/server/workflows/__tests__/year-end-return.test.ts",
@@ -3048,6 +3116,7 @@
         "apps/web/src/server/gwg/identity-pdf-pages.ts"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/add-id-doc-form.test.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/page-render.test.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/gwg/__tests__/identity-document-review-state.test.ts",
         "apps/web/src/server/gwg/__tests__/identity-source.test.ts",
@@ -3980,8 +4049,14 @@
         "apps/web/src/server/invoicing/number.ts",
         "packages/db/prisma/schema.prisma",
         "apps/web/src/server/invoicing/create-draft.ts",
+        "apps/web/src/server/invoicing/date-defaults.ts",
         "apps/web/src/app/staff/(protected)/invoices/actions.ts",
+        "apps/web/src/app/staff/(protected)/invoices/new/page.tsx",
+        "apps/web/src/app/staff/(protected)/invoices/new/form.tsx",
+        "apps/web/src/app/staff/(protected)/invoices/new/external-form.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/billing/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/billing/page.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/billing/billing-form.tsx",
         "apps/web/src/app/staff/(protected)/stbvv/actions.ts"
       ],
       "test_refs": [
@@ -3989,6 +4064,8 @@
         "packages/db/src/__tests__/invoice-festschreibung.test.ts",
         "apps/web/src/server/invoicing/__tests__/create-draft.test.ts",
         "apps/web/src/server/invoicing/__tests__/invoice-actions.test.ts",
+        "apps/web/src/app/staff/(protected)/invoices/new/__tests__/page.test.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/billing/__tests__/billing-form-dates.test.tsx",
         "apps/web/src/app/staff/(protected)/stbvv/__tests__/actions.test.ts"
       ],
       "feature_refs": [
@@ -4290,6 +4367,7 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/lib/navigation-registry.ts",
         "apps/web/src/app/staff/(protected)/knowledge/context/actions.ts",
         "apps/web/src/app/staff/(protected)/knowledge/context/editor.tsx",
         "apps/web/src/components/knowledge-context.tsx",
@@ -4298,6 +4376,7 @@
         "packages/db/prisma/migrations/20260831110000_workflow_expansion/migration.sql"
       ],
       "test_refs": [
+        "apps/web/src/lib/__tests__/navigation-registry.test.ts",
         "apps/e2e/tests/knowledge-context-state.spec.ts",
         "apps/web/src/server/workflows/__tests__/execute-step.test.ts"
       ],
@@ -4592,6 +4671,9 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/payroll/employee/entry.tsx",
+        "apps/web/src/app/payroll/employee/page.tsx",
+        "apps/web/src/components/payroll-action-form.tsx",
         "apps/web/src/server/payroll/definition.ts",
         "apps/web/src/server/payroll/capability.ts",
         "apps/web/src/server/payroll/service.ts",
@@ -4613,6 +4695,7 @@
         "packages/db/prisma/migrations/20260831240000_payroll_pending_sources/migration.sql"
       ],
       "test_refs": [
+        "apps/e2e/tests/17-expansion.spec.ts",
         "apps/web/src/server/payroll/__tests__/definition.test.ts",
         "apps/web/src/lib/__tests__/fmt.test.ts",
         "apps/web/src/server/payroll/__tests__/pdf.test.ts",
@@ -4683,6 +4766,8 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/poa/new/page.tsx",
+        "apps/web/src/app/staff/(protected)/poa/new/form.tsx",
         "apps/web/src/app/staff/(protected)/poa/actions.ts",
         "apps/web/src/app/staff/(protected)/poa/sign-actions.ts",
         "apps/worker/src/jobs/poa-expiry-check.ts",
@@ -4693,6 +4778,7 @@
         "apps/web/src/server/poa/revoke-poa.ts"
       ],
       "test_refs": [
+        "apps/web/src/app/staff/(protected)/poa/__tests__/client-context.test.tsx",
         "apps/worker/src/jobs/__tests__/poa-expiry-atomicity.test.ts",
         "apps/web/src/app/staff/(protected)/poa/__tests__/actions.test.ts",
         "apps/worker/src/jobs/__tests__/poa-expiry-check.test.ts",
@@ -5098,12 +5184,15 @@
         "apps/worker/src/jobs/reminder-done-notify.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/reminders/actions.ts",
         "apps/web/src/app/staff/(protected)/phone-notes/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/phone-notes-list.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/_data.ts",
         "apps/web/src/server/risk/delegate.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/subsumtion/actions.ts",
         "apps/web/src/server/documents/reminder-upload-guard.ts",
         "apps/web/src/app/api/staff/documents/commit/route.ts",
         "apps/web/src/app/api/staff/clients/[id]/reminders/route.ts",
+        "apps/web/src/app/staff/(protected)/reminders/new-reminder-form.tsx",
+        "apps/web/src/app/staff/(protected)/clients/[id]/reminders/reminders-block.tsx",
         "apps/web/src/app/staff/(protected)/reminders/page.tsx",
         "apps/web/src/app/staff/(protected)/reminders/reminders-overview.tsx",
         "apps/web/src/app/staff/(protected)/reminders/ticket-text.tsx",
@@ -5231,14 +5320,20 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/server/requests/list-filters.ts",
+        "apps/web/src/app/staff/(protected)/dashboard/widgets.tsx",
         "apps/web/src/app/portal/(protected)/requests/page.tsx",
         "apps/web/src/app/portal/(protected)/requests/[id]/actions.ts",
         "apps/web/src/app/portal/(protected)/forms/[id]/actions.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/requests/actions.ts",
         "apps/web/src/components/requests/new-request-form.tsx",
+        "apps/web/src/components/datetime-picker.tsx",
         "apps/web/src/lib/fmt.ts"
       ],
       "test_refs": [
+        "apps/web/src/components/__tests__/berlin-form-defaults.test.tsx",
+        "apps/web/src/app/staff/(protected)/requests/__tests__/list-pagination.test.tsx",
+        "apps/web/src/app/staff/(protected)/dashboard/__tests__/my-work-basket.test.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/requests/__tests__/actions.test.ts",
         "apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts"
       ],
@@ -5694,6 +5789,7 @@
       ],
       "code_refs": [
         "apps/web/src/app/staff/(protected)/clients/[id]/binders/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/binders/binders-block.tsx",
         "packages/db/prisma/schema.prisma",
         "apps/web/src/server/fristen/eintrag.ts",
         "apps/web/src/server/fristen/kontrollbuch.ts",
@@ -5722,6 +5818,7 @@
         "packages/db/prisma/sql/functions/app.tax_notice_require_progress_evidence().sql"
       ],
       "test_refs": [
+        "apps/e2e/tests/client-operational-dates.spec.ts",
         "apps/web/src/server/actions/__tests__/calendar-date-input.test.ts",
         "apps/e2e/tests/12-accessibility.spec.ts",
         "packages/db/src/__tests__/tax-notice-evidence.test.ts",
@@ -6591,6 +6688,8 @@
         "apps/web/src/server/tcms/zustand.ts",
         "apps/web/src/server/tcms/seite.ts",
         "apps/web/src/server/tcms/aktion.ts",
+        "apps/web/src/components/tcms/durchfuehrung/editor.tsx",
+        "apps/web/src/components/tcms/formular.ts",
         "apps/web/src/components/tcms/feststellung.tsx",
         "apps/web/src/components/tcms/disclaimer.tsx",
         "apps/web/src/app/staff/(protected)/clients/[id]/tcms/cockpit.tsx",
@@ -6630,6 +6729,7 @@
         "apps/web/src/app/staff/(protected)/tcms/audit/actions.ts"
       ],
       "test_refs": [
+        "apps/web/src/components/tcms/__tests__/formular.test.tsx",
         "apps/web/src/server/tcms/__tests__/zustand.test.ts",
         "apps/web/src/server/tcms/__tests__/seite.test.ts",
         "apps/web/src/server/tcms/__tests__/aktion.test.ts",
@@ -6936,11 +7036,16 @@
         }
       ],
       "code_refs": [
+        "apps/web/src/app/staff/(protected)/mandate-expansion/vdb/page.tsx",
+        "apps/web/src/server/mandate-expansion/model.ts",
         "apps/web/src/server/mandate-expansion/vdb.ts",
         "packages/db/prisma/migrations/20260831120000_mandate_expansion/migration.sql",
         "packages/db/prisma/migrations/20260831200000_mandate_history_integrity/migration.sql"
       ],
-      "test_refs": ["apps/web/src/server/mandate-expansion/__tests__/service.test.ts"],
+      "test_refs": [
+        "apps/web/src/app/staff/(protected)/mandate-expansion/__tests__/calendar-dates.test.tsx",
+        "apps/web/src/server/mandate-expansion/__tests__/service.test.ts"
+      ],
       "feature_refs": ["docs/development/module/mandate-expansion.md"],
       "related_rules": [
         "POA-LIFECYCLE-001",
@@ -7031,11 +7136,13 @@
         "apps/web/src/server/workflows/execute-step.ts",
         "apps/web/src/server/workflows/auto-resume.ts",
         "apps/web/src/app/staff/(protected)/clients/[id]/workflows/actions.ts",
+        "apps/web/src/app/staff/(protected)/clients/[id]/workflows/pause-restore-buttons.tsx",
         "apps/web/src/app/staff/(protected)/interactions/actions.ts",
         "apps/worker/src/jobs/workflow-feedback.ts",
         "apps/worker/src/jobs/workflow-auto-resume.ts"
       ],
       "test_refs": [
+        "apps/e2e/tests/client-operational-dates.spec.ts",
         "apps/web/src/server/actions/__tests__/calendar-date-input.test.ts",
         "apps/web/src/app/staff/(protected)/interactions/__tests__/feedback-configure.test.ts",
         "packages/db/src/__tests__/workflow-lifecycle.test.ts",

@@ -285,6 +285,7 @@ const NAVIGATION: readonly NavDefinition[] = [
     searchAliases: ['Wiki im Bearbeitungskontext', 'Kanzleileitfäden'],
     icon: 'BookOpen',
     module: 'knowledgeContext',
+    availableWhen: one({ admin: true }),
   },
   {
     id: 'staff-year-end',

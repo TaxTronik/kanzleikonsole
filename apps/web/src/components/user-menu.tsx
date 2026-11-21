@@ -2,9 +2,20 @@
 
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import Link from 'next/link';
-import { useRef } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
 import { LogOut, UserRound } from 'lucide-react';
 import { useActionMenu } from './ui/use-action-menu';
+
+import { ThemeToggle } from './theme-toggle';
+import { UiModeToggle } from './ui-mode-toggle';
+
+const mobileQuery = '(max-width: 767.98px)';
+
+function subscribeMobile(onChange: () => void) {
+  const media = window.matchMedia?.(mobileQuery);
+  media?.addEventListener('change', onChange);
+  return () => media?.removeEventListener('change', onChange);
+}
 
 interface Props {
   name: string | null;
@@ -37,6 +48,11 @@ function initialsOf(name: string | null): string {
  * Tastatur-Highlight läuft über [data-highlighted] (siehe globals.css).
  */
 export function UserMenu({ name, email, profileHref, profileLabel, logoutAction }: Props) {
+  const mobile = useSyncExternalStore(
+    subscribeMobile,
+    () => window.matchMedia?.(mobileQuery).matches ?? false,
+    () => false,
+  );
   const initials = initialsOf(name);
   const logoutFormRef = useRef<HTMLFormElement>(null);
   const { open, onOpenChange, triggerRef, onKeyDownCapture, onCloseAutoFocus } = useActionMenu();
@@ -79,6 +95,12 @@ export function UserMenu({ name, email, profileHref, profileLabel, logoutAction 
                 {profileLabel}
               </Link>
             </DropdownMenu.Item>
+            {mobile && (
+              <>
+                <UiModeToggle menuItem />
+                <ThemeToggle menuItem />
+              </>
+            )}
             <DropdownMenu.Item asChild onSelect={() => logoutFormRef.current?.requestSubmit()}>
               <button type="button" className="ud-item ud-item-danger">
                 <LogOut className="h-4 w-4" />

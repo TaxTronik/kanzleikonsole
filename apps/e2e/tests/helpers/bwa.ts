@@ -1,9 +1,22 @@
 import { createRequire } from 'node:module';
-import { dirname } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import type { Page } from '@playwright/test';
 const webRequire = createRequire(new URL('../../../web/package.json', import.meta.url));
 const { build } = createRequire(webRequire.resolve('tsx'))('esbuild') as typeof import('esbuild');
 const webRoot = dirname(webRequire.resolve('./package.json'));
+export async function addBwaStyles(page: Page) {
+  const postcss = webRequire('postcss') as typeof import('postcss').default;
+  const tailwind = webRequire(
+    '@tailwindcss/postcss',
+  ) as typeof import('@tailwindcss/postcss').default;
+  const from = join(webRoot, 'src/app/globals.css');
+  const { css } = await postcss([tailwind({ base: webRoot })]).process(
+    await readFile(from, 'utf8'),
+    { from },
+  );
+  await page.addStyleTag({ content: css });
+}
 let bundle: Promise<string> | undefined;
 function bwaBundle() {
   bundle ??= build({

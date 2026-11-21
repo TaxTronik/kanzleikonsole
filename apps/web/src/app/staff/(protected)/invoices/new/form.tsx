@@ -28,18 +28,21 @@ const newPosition = (id: string): PositionRow => ({
   vatRate: 19,
 });
 
-export function NewInvoiceForm() {
+export function NewInvoiceForm({
+  initialIssueDate,
+  initialDueDate,
+}: {
+  initialIssueDate: string;
+  initialDueDate: string;
+}) {
   const router = useRouter();
-  const [initialDate] = useState(() => new Date());
 
   // Keine stille Vorauswahl des alphabetisch ersten Mandanten mehr.
   const [client, setClient] = useState<ClientComboboxValue | null>(null);
   const clientId = client?.id ?? '';
   const [subject, setSubject] = useState('');
-  const [issueDate, setIssueDate] = useState(() => initialDate.toISOString().slice(0, 10));
-  const [dueDate, setDueDate] = useState(() =>
-    new Date(initialDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-  );
+  const [issueDate, setIssueDate] = useState(initialIssueDate);
+  const [dueDate, setDueDate] = useState(initialDueDate);
   const [format, setFormat] = useState<'XRECHNUNG' | 'ZUGFERD'>('XRECHNUNG');
   const [servicePeriodStart, setServicePeriodStart] = useState('');
   const [servicePeriodEnd, setServicePeriodEnd] = useState('');
@@ -118,9 +121,9 @@ export function NewInvoiceForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="@container space-y-6">
       <div className="card p-6 space-y-4">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 @lg:grid-cols-2">
           <div>
             <label className="label" htmlFor="clientId">
               Mandant
@@ -159,7 +162,7 @@ export function NewInvoiceForm() {
           />
         </div>
 
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid gap-4 @md:grid-cols-2 @2xl:grid-cols-3">
           <div>
             <label className="label" htmlFor="issueDate">
               Rechnungsdatum
@@ -278,8 +281,11 @@ export function NewInvoiceForm() {
 
         <div className="space-y-3">
           {positions.map((p, i) => (
-            <div key={p.id} className="grid grid-cols-12 gap-2 items-end">
-              <div className="col-span-4">
+            <div
+              key={p.id}
+              className="grid grid-cols-2 items-end gap-3 border-b border-default pb-3 last:border-0 last:pb-0 @2xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)_5rem_auto]"
+            >
+              <div className="col-span-full @2xl:col-span-1">
                 <label className="label" htmlFor={`pos-${i}-description`}>
                   Beschreibung
                 </label>
@@ -292,7 +298,7 @@ export function NewInvoiceForm() {
                   required
                 />
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="label" htmlFor={`pos-${i}-quantity`}>
                   Menge
                 </label>
@@ -307,7 +313,7 @@ export function NewInvoiceForm() {
                   required
                 />
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="label" htmlFor={`pos-${i}-unit`}>
                   Einheit
                 </label>
@@ -319,7 +325,7 @@ export function NewInvoiceForm() {
                   onChange={(e) => setPosField(i, 'unit', e.target.value)}
                 />
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="label" htmlFor={`pos-${i}-unitPrice`}>
                   Einzelpreis €
                 </label>
@@ -334,7 +340,7 @@ export function NewInvoiceForm() {
                   required
                 />
               </div>
-              <div className="col-span-1">
+              <div>
                 <label className="label" htmlFor={`pos-${i}-vatRate`}>
                   USt %
                 </label>
@@ -350,7 +356,7 @@ export function NewInvoiceForm() {
                   <option value={0}>0</option>
                 </select>
               </div>
-              <div className="col-span-1 pb-2 text-right">
+              <div className="col-span-full text-right @2xl:col-span-1">
                 <button
                   type="button"
                   onClick={() => removePosition(i)}

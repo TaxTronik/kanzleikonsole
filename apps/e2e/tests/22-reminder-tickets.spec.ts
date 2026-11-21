@@ -1,6 +1,98 @@
 import { test, expect } from '@playwright/test';
 import { mountReminderTickets, ticketDetail, ticketProps } from './helpers/reminder-tickets';
 
+test.describe('REMINDER-TICKET-001 – Berliner Kalendertag in einem US-Browser', () => {
+  test.use({ timezoneId: 'America/Los_Angeles' });
+
+  test('Telefonnotiz: Beim Öffnen ist der Berliner Folgetag vorgeschlagen und heute zulässig', async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(new Date('2026-03-28T22:59:59Z'));
+    await mountReminderTickets(page, 'phone', {
+      currentStaffId: 'staff-a',
+      staffOptions: ticketProps.staffOptions,
+      todayYmd: '2026-03-28',
+      notes: [
+        {
+          id: 'anruf',
+          subject: 'Rückruf',
+          callerName: 'Frau Baum',
+          callerPhone: null,
+          body: '',
+          forwardToStaff: null,
+          doneAt: null,
+          readAt: null,
+          createdAt: '2026-03-27T12:00:00Z',
+          takenByStaff: 'staff-a',
+          clientId: 'mandant',
+          reminders: [],
+        },
+      ],
+    });
+    await page.clock.setFixedTime(new Date('2026-03-28T23:30:00Z'));
+    await page.getByRole('button', { name: 'Wiedervorlage', exact: true }).click();
+    const due = page.locator('input[name="dueDate"]');
+    await expect(due).toHaveValue('2026-03-30');
+    await expect(due).toHaveAttribute('min', '2026-03-29');
+  });
+
+  test('Mandantenakte: Das früheste Fälligkeitsdatum ist der Berliner Tag beim Öffnen', async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(new Date('2026-11-19T23:30:00Z'));
+    await mountReminderTickets(page, 'client', {
+      clientId: 'mandant',
+      currentStaffId: 'staff-a',
+      staffOptions: ticketProps.staffOptions,
+      initial: [],
+    });
+    await page.getByRole('button', { name: 'Neues Ticket', exact: true }).click();
+    const due = page.getByLabel('Fällig', { exact: true });
+    await expect(due).toHaveAttribute('min', '2026-11-20');
+    await due.fill('2026-11-19');
+    expect(await due.evaluate((field: HTMLInputElement) => field.validity.rangeUnderflow)).toBe(
+      true,
+    );
+    await due.fill('2026-11-20');
+    expect(await due.evaluate((field: HTMLInputElement) => field.validity.valid)).toBe(true);
+  });
+
+  for (const [mode, title] of [
+    ['client', 'Mandantenakte'],
+    ['overview', 'Globale Übersicht'],
+  ] as const) {
+    test(`${title}: Nur das gestern fällige offene Ticket ist überfällig`, async ({ page }) => {
+      await page.clock.setFixedTime(new Date('2026-11-20T08:30:00Z'));
+      const days = ['2026-11-19', '2026-11-20', '2026-11-21'];
+      const tickets = days.map((day, index) => ({
+        ...ticketDetail,
+        id: day,
+        ticketNumber: index + 1,
+        subject: day,
+        dueDate: day + 'T00:00:00.000Z',
+        assigneeStaffIds: [],
+        assigneeNames: [],
+      }));
+      await mountReminderTickets(page, mode, {
+        currentStaffId: 'staff-a',
+        ...(mode === 'client'
+          ? { clientId: 'mandant', staffOptions: ticketProps.staffOptions, initial: tickets }
+          : { scope: 'mir', status: 'open', rows: tickets }),
+      });
+      const rows = page.getByRole('listitem');
+      for (const [index, day] of days.entries()) {
+        const row = rows.filter({
+          has: page.getByRole('link', { name: '#' + (index + 1) + ' ' + day, exact: true }),
+        });
+        await expect(row).toBeVisible();
+        await expect(row.getByText('überfällig', { exact: false })).toHaveCount(
+          index === 0 ? 1 : 0,
+        );
+      }
+    });
+  }
+});
+
 test.describe('REMINDER-TICKET-001 – Ticketbedienung im tatsächlichen Renderer', () => {
   test('verlinkt nur aufgelöste Ticketnummern in Beschreibung und Unterhaltung und zeigt Backlinks', async ({
     page,
@@ -89,8 +181,10 @@ test.describe('REMINDER-TICKET-001 – Ticketbedienung im tatsächlichen Rendere
   test('legt optional ein verknüpftes Ticket mit eigenem Titel und Pflichtfälligkeit ohne Nachfragekette an', async ({
     page,
   }) => {
+    await page.clock.setFixedTime(new Date('2026-03-19T23:30:00Z'));
     await mountReminderTickets(page, 'detail', ticketProps);
     await page.getByRole('button', { name: 'Neues verknüpftes Ticket', exact: true }).click();
+    await expect(page.getByLabel('Fällig', { exact: true })).toHaveValue('2026-04-03');
     await page.getByLabel('Titel', { exact: true }).fill('Weitere Belege prüfen');
     await page.getByLabel('Fällig', { exact: true }).fill('2026-09-21');
     await page
@@ -113,6 +207,24 @@ test.describe('REMINDER-TICKET-001 – Ticketbedienung im tatsächlichen Rendere
         subject: 'Weitere Belege prüfen',
         dueDate: '2026-09-21',
       });
+  });
+
+  test('übernimmt einen @-Vorschlag nach dem Wechsel per Tab auch per Eingabetaste', async ({
+    page,
+  }) => {
+    await mountReminderTickets(page, 'detail', ticketProps);
+    const comment = page.getByRole('textbox', { name: 'Kommentar', exact: true });
+    await comment.fill('Bitte @Be');
+    await comment.press('Tab');
+    const anna = page.getByRole('button', { name: '@Anna Beispiel' });
+    await expect(anna).toBeFocused();
+    await anna.press('Tab');
+    const bert = page.getByRole('button', { name: '@Bert Beispiel' });
+    await expect(bert).toBeFocused();
+    await bert.press('Enter');
+    await expect(comment).toHaveValue('Bitte @Bert Beispiel ');
+    await expect(comment).toBeFocused();
+    await expect(bert).toHaveCount(0);
   });
 
   test('behält einen während des Sendens weitergeschriebenen Kommentar', async ({ page }) => {
@@ -257,13 +369,17 @@ test.describe('REMINDER-TICKET-001 – Ticketbedienung im tatsächlichen Rendere
       .toEqual([{ name: 'reopenReminderAction', input: { id: ticketDetail.id } }]);
   });
 
-  test('verlangt beim neuen Ticket weiterhin Titel und Fälligkeit', async ({ page }) => {
+  test('setzt den Berliner Kalendertag als Fälligkeit und verlangt Titel und Datum', async ({
+    page,
+  }) => {
+    await page.clock.setFixedTime(new Date('2026-11-19T23:30:00Z'));
     await mountReminderTickets(page, 'new', {
       staffOptions: ticketProps.staffOptions,
     });
     await page.getByRole('button', { name: 'Neues Ticket', exact: true }).click();
     const title = page.getByRole('textbox', { name: 'Titel', exact: true });
     const due = page.getByLabel('Fällig', { exact: true });
+    await expect(due).toHaveValue('2026-11-20');
     await expect(title).toHaveAttribute('required', '');
     await expect(due).toHaveAttribute('required', '');
     await title.fill('Lokales Testticket');

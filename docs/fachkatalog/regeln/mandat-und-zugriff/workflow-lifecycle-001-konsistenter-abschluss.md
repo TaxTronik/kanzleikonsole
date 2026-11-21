@@ -32,10 +32,12 @@ code_refs:
   - apps/web/src/server/workflows/execute-step.ts
   - apps/web/src/server/workflows/auto-resume.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/workflows/actions.ts
+  - apps/web/src/app/staff/(protected)/clients/[id]/workflows/pause-restore-buttons.tsx
   - apps/web/src/app/staff/(protected)/interactions/actions.ts
   - apps/worker/src/jobs/workflow-feedback.ts
   - apps/worker/src/jobs/workflow-auto-resume.ts
 test_refs:
+  - apps/e2e/tests/client-operational-dates.spec.ts
   - apps/web/src/server/actions/__tests__/calendar-date-input.test.ts
   - apps/web/src/app/staff/(protected)/interactions/__tests__/feedback-configure.test.ts
   - packages/db/src/__tests__/workflow-lifecycle.test.ts
@@ -94,6 +96,15 @@ eingetragene Tage vor der Statusänderung. Die frühere Musterprüfung ließ
 ein unmögliches Datum wie den 31. April als 1. Mai speichern. Die
 Action-Tests prüfen die Ablehnung und einen gültigen Schalttag.
 
+Beim Öffnen des Pausendialogs ist der Wiederaufnahmetag leer. Die Datumauswahl
+beginnt mit dem aktuellen Berliner Kalendertag. Beim Absenden prüft der
+Browser die Untergrenze und gibt für eine unbefristete Pause einen leeren
+Termin als `null` weiter. Die Server-Action prüft das Datumsformat und erlaubt
+auch gültige historische Tage. Ein eingetragener Wiederaufnahmetag wird als
+00:00 Uhr UTC gespeichert. Der Worker berücksichtigt ihn ab diesem Zeitpunkt
+bei seinem Fünf-Minuten-Lauf, in Berlin also im Winter ab 01:00 Uhr und im
+Sommer ab 02:00 Uhr.
+
 Die Forward-Migration installiert gemeinsame Sperr- und Reconcile-Trigger. Der Webadapter verwendet dieselbe Sperrreihenfolge für das atomare Statusgate. Die gespeicherten Felder feedbackPendingAt und feedbackProcessedAt bilden eine begrenzte interne Dispatch-Queue; der minütliche Worker revalidiert Kontakt, Mandat, Modul und aktuellen Zugriff des Workflow-Erstellers. Technische Fehler bleiben mit verzögertem erneutem Versuch offen, ohne spätere Vorgänge dauerhaft zu blockieren.
 
 ## Bekannte Abweichungen und Grenzen
@@ -107,5 +118,10 @@ Keine fachliche Freigabe. Der technische Abschluss ersetzt keine Kanzleiprüfung
 Welche Schritte bilden den beabsichtigten Arbeitsvorgang vollständig ab? Welche Kontrollen müssen vor manueller Erledigung erfolgen? Welche Zuständigkeit überwacht Antworten während einer Pause und entscheidet über Fortsetzen oder Abbruch?
 
 ## Technische Nachweise
+
+Der Chromium-Test in `client-operational-dates.spec.ts` öffnet den Dialog
+mit der Browserzeitzone Los Angeles am 2. Juli 2026 um 00:30 Uhr Berliner Zeit.
+Der 1. Juli bleibt beim Absenden im Formular. Der 2. Juli erreicht die
+Action als `2026-07-02`, die unbefristete Pause als `null`.
 
 Die referenzierten PostgreSQL-Tests mit getrenntem Owner-/App-Zugang prüfen parallele letzte Schritte, Abbruchgrenzen, Request- und Portal-Formulartrigger, Fortsetzen sowie Feedback-Idempotenz, Mindestabstand und Rollback bei Evidence-Fehlern. Unit-Tests prüfen manuelle Statusgates und Resume-CAS. Diese Nachweise sind keine fachliche Freigabe.

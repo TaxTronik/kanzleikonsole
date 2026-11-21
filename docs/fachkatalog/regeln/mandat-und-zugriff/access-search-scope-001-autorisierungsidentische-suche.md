@@ -56,6 +56,7 @@ code_refs:
   - apps/web/src/app/portal/(protected)/inbox/page.tsx
   - apps/web/src/app/staff/(protected)/inbox/page.tsx
 test_refs:
+  - apps/web/src/app/staff/(protected)/tax-deadlines/__tests__/page-render.test.tsx
   - apps/e2e/tests/recent-clients-state.spec.ts
   - apps/e2e/tests/saved-views-state.spec.ts
   - apps/web/src/components/__tests__/browser-storage.test.tsx
@@ -155,6 +156,10 @@ eines anderen Kontakts desselben Mandanten bleibt ebenfalls unsichtbar.
 
 ## Umsetzung in TaxTronik
 
+Der Tagesdialog im Steuerkalender zeigt die weiteren Gruppen aus derselben
+gefilterten Monatsabfrage. Die Links zur Gruppenansicht übernehmen den
+gewählten Mandantenbereich und den Suchbegriff.
+
 Die Navigationshilfe „Zuletzt“ speichert ausschließlich Mandanten-IDs in einem
 versionierten, tenant- und mitarbeitergebundenen Browser-Schlüssel. Alte,
 ungebundene Einträge mit gespeicherten Namen werden verworfen. Angezeigt werden
@@ -237,6 +242,10 @@ Bestandteil von Version 0.3.
 - Welche zukünftigen Inhaltsindizes würden eine neue Datenschutz- und Berechtigungsprüfung auslösen?
 
 ## Technische Nachweise
+
+Der Seitentest für den Steuerkalender prüft den Mandantenzugriffsfilter der
+Monatsabfrage und die Weitergabe von Bereich und Suchtext an den Gruppenlink
+auch beim Öffnen der fünften Gruppe im Tagesdialog.
 
 `recent-clients-state.spec.ts` prüft im echten Browser die Ablösung alter
 Namenscaches, Tenant-/Mitarbeiterwechsel, ausschließlich gespeicherte IDs,

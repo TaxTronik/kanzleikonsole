@@ -417,14 +417,17 @@ test.describe.serial('Staff Actions and Data Integrity', () => {
     await page.waitForLoadState('domcontentloaded');
     expect(page.url()).not.toContain('/staff/login');
 
-    const templateRow = page.locator('table tbody tr').filter({
-      has: page.getByRole('link', { name: workflowName, exact: true }),
-    });
+    const template = page
+      .getByRole('main')
+      .getByRole('listitem')
+      .filter({
+        has: page.getByRole('link', { name: workflowName, exact: true }),
+      });
     await expect(
-      templateRow,
+      template,
       'Eindeutig erzeugte Workflow-Vorlage muss in der Liste stehen',
     ).toHaveCount(1);
-    const startBtn = templateRow.getByRole('button', { name: /Starten/ });
+    const startBtn = template.getByRole('button', { name: 'Starten', exact: true });
     await expect(
       startBtn,
       'No active workflow templates — Paranoid-E2E seed must include at least one startable workflow template',

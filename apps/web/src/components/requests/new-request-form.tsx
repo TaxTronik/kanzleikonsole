@@ -1,6 +1,7 @@
 'use client';
 
 import { DateTimePicker } from '@/components/datetime-picker';
+import { berlinWallClock, berlinWallClockToUtc, berlinYmdAfterDays } from '@/lib/fmt';
 
 import { useActionState, useEffect, useId, useState } from 'react';
 import { FileText, Sparkles } from 'lucide-react';
@@ -74,10 +75,13 @@ interface Props {
   ) => void;
 }
 
-function isoLocalForDate(d: Date): string {
-  // Liefert den lokalen Picker-Wert im Format YYYY-MM-DDTHH:mm.
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+function templateDueAt(days: number): string {
+  const now = new Date();
+  const wall = berlinYmdAfterDays(now, days) + berlinWallClock(now).slice(10);
+  if (berlinWallClockToUtc(wall)) return wall;
+  // In der fehlenden Berliner Frühjahrsstunde wie bei der bisherigen Vorbelegung
+  // eines Berliner Browsers um die Länge des Zeitsprungs vorrücken.
+  return new Date(Date.parse(`${wall}Z`) + 3_600_000).toISOString().slice(0, 16);
 }
 
 function RequestFieldError({ name, fieldErrors }: { name: string; fieldErrors?: FieldErrors }) {
@@ -149,13 +153,7 @@ export function NewRequestForm({
     setTitle(t.title);
     setDescription(t.description);
     setPriority(t.priority);
-    if (t.dueAfterDays !== null) {
-      const due = new Date();
-      due.setDate(due.getDate() + t.dueAfterDays);
-      setDueAt(isoLocalForDate(due));
-    } else {
-      setDueAt('');
-    }
+    setDueAt(t.dueAfterDays === null ? '' : templateDueAt(t.dueAfterDays));
     setFormTemplateId(t.formTemplateId ?? '');
   }
 

@@ -16,7 +16,15 @@ interface CategoryOption {
   name: string;
 }
 
-export function ExternalInvoiceForm({ categories }: { categories: CategoryOption[] }) {
+export function ExternalInvoiceForm({
+  categories,
+  initialIssueDate,
+  initialDueDate,
+}: {
+  categories: CategoryOption[];
+  initialIssueDate: string;
+  initialDueDate: string;
+}) {
   const router = useRouter();
   const [isPending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -61,16 +69,9 @@ export function ExternalInvoiceForm({ categories }: { categories: CategoryOption
     });
   }
 
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const dueIso = (() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toISOString().slice(0, 10);
-  })();
-
   return (
-    <form onSubmit={submit} className="card p-6 space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+    <form onSubmit={submit} className="card @container p-6 space-y-4">
+      <div className="grid gap-4 @md:grid-cols-2">
         <div>
           <label className="label" htmlFor="clientId">
             Mandant <span className="text-red-600">*</span>
@@ -92,7 +93,7 @@ export function ExternalInvoiceForm({ categories }: { categories: CategoryOption
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid gap-4 @xl:grid-cols-3">
         <div>
           <label className="label" htmlFor="number">
             Rechnungsnummer <span className="text-red-600">*</span>
@@ -118,7 +119,7 @@ export function ExternalInvoiceForm({ categories }: { categories: CategoryOption
             name="issueDate"
             type="date"
             required
-            defaultValue={todayIso}
+            defaultValue={initialIssueDate}
             className="input"
           />
         </div>
@@ -131,13 +132,13 @@ export function ExternalInvoiceForm({ categories }: { categories: CategoryOption
             name="dueDate"
             type="date"
             required
-            defaultValue={dueIso}
+            defaultValue={initialDueDate}
             className="input"
           />
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid gap-4 @md:grid-cols-2 @2xl:grid-cols-4">
         <div>
           <label className="label" htmlFor="totalAmount">
             Betrag (Brutto, €) <span className="text-red-600">*</span>
@@ -163,7 +164,7 @@ export function ExternalInvoiceForm({ categories }: { categories: CategoryOption
             <option value="0">0 % (steuerfrei / RC)</option>
           </select>
         </div>
-        <div className="col-span-2">
+        <div className="@md:col-span-2">
           <label className="label" htmlFor="subject">
             Betreff <span className="text-red-600">*</span>
           </label>

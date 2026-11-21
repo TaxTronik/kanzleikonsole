@@ -9,7 +9,7 @@
 // Eingabehilfe, keine zweite Wahrheit.
 // =============================================================================
 
-import { useRef, useState } from 'react';
+import { useRef, useState, type KeyboardEvent } from 'react';
 
 interface Option {
   id: string;
@@ -61,6 +61,14 @@ export function MentionTextarea({
     setVorschlaege(passend.length > 0 ? passend : null);
   }
 
+  function closeOnEscape(event: KeyboardEvent) {
+    if (event.key === 'Escape' && vorschlaege) {
+      event.preventDefault();
+      setVorschlaege(null);
+      ref.current?.focus();
+    }
+  }
+
   function uebernehmen(s: Option) {
     const el = ref.current;
     const caret = el?.selectionStart ?? value.length;
@@ -76,13 +84,18 @@ export function MentionTextarea({
   }
 
   return (
-    <div className="relative flex-1">
+    <div
+      className="relative flex-1"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setVorschlaege(null);
+      }}
+    >
       <textarea
         ref={ref}
+        onKeyDown={closeOnEscape}
         aria-label={ariaLabel}
         value={value}
         onChange={(e) => aktualisiere(e.target.value, e.target.selectionStart)}
-        onBlur={() => window.setTimeout(() => setVorschlaege(null), 150)}
         rows={rows}
         maxLength={maxLength}
         placeholder={placeholder}
@@ -94,11 +107,9 @@ export function MentionTextarea({
             <li key={s.id}>
               <button
                 type="button"
-                onMouseDown={(e) => {
-                  // mousedown statt click: läuft vor dem Blur des Textfelds.
-                  e.preventDefault();
-                  uebernehmen(s);
-                }}
+                onKeyDown={closeOnEscape}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => uebernehmen(s)}
                 className="w-full text-left px-3 py-1.5 text-sm text-secondary hover:bg-gray-50 dark:hover:bg-gray-900/40"
               >
                 @{s.fullName}

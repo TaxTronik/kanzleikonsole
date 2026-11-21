@@ -5,12 +5,11 @@ import {
   cloneReminderAction,
   setReminderAssigneesAction,
 } from '../../clients/[id]/reminders/actions';
+import { berlinYmdAfterDays } from '@/lib/fmt';
 import { StaffPicker } from '../staff-picker';
 
 export function inZweiWochen(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 14);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  return berlinYmdAfterDays(new Date(), 14);
 }
 
 type FormProps = {

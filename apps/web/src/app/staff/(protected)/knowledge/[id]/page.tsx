@@ -57,8 +57,8 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
   if (!article) notFound();
 
   return (
-    <div className="mx-auto max-w-6xl p-8">
-      <div className="flex items-start gap-4 mb-6">
+    <div className="mx-auto max-w-6xl p-4 sm:p-8">
+      <div className="mb-6 grid grid-cols-[auto_minmax(0,1fr)] items-start gap-3 lg:grid-cols-[auto_minmax(0,1fr)_auto]">
         <Link
           href="/staff/knowledge"
           aria-label="Zurück"
@@ -66,8 +66,8 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-1">
+        <div className="min-w-0 [overflow-wrap:anywhere]">
+          <div className="flex flex-wrap items-center gap-3 mb-1">
             <h1 className="text-2xl font-bold text-primary">{article.title}</h1>
             {!article.published && <span className="badge-gray">Entwurf</span>}
           </div>
@@ -85,7 +85,7 @@ export default async function KbArticlePage({ params }: { params: Promise<{ id: 
             <span>{article.viewCount} Aufrufe</span>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="col-span-full flex flex-wrap gap-2 lg:col-span-1">
           <Link
             href={`/staff/knowledge/${article.id}/edit`}
             className="btn-secondary text-xs py-1.5"

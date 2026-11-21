@@ -1,33 +1,38 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { PayrollActionForm } from '@/components/payroll-action-form';
 import { enterEmployeeAction } from './actions';
-export function EmployeeEntry({ hasSession = false }: { hasSession?: boolean }) {
-  const input = useRef<HTMLInputElement>(null);
-  const wrapper = useRef<HTMLDivElement>(null);
+export function EmployeeEntry() {
+  const [invite, setInvite] = useState('');
   useEffect(() => {
-    const params = new URLSearchParams(window.location.hash.slice(1));
-    const token = params.get('invite');
-    if (token && input.current) input.current.value = token;
-    if (wrapper.current) wrapper.current.hidden = hasSession && !token;
-    window.history.replaceState(null, '', window.location.pathname);
-  }, [hasSession]);
+    function readInvite() {
+      const { hash, pathname, search } = window.location;
+      const token = new URLSearchParams(hash.slice(1)).get('invite');
+      if (token) {
+        setInvite(token);
+        window.history.replaceState(null, '', pathname + search);
+      }
+    }
+    readInvite();
+    window.addEventListener('hashchange', readInvite);
+    return () => window.removeEventListener('hashchange', readInvite);
+  }, []);
+
+  if (!invite) return null;
   return (
-    <div ref={wrapper} hidden={hasSession}>
-      <PayrollActionForm
-        action={async (data) => {
-          const result = await enterEmployeeAction(data);
-          if (result.ok && wrapper.current) wrapper.current.hidden = true;
-          return result;
-        }}
-        label="Persönlichen Vorgang öffnen"
-      >
-        <p>
-          Dieser Einmallink öffnet ausschließlich Ihren Personalfragebogen. Er schafft keinen
-          Mandantenzugang. Bitte den Link nicht weitergeben.
-        </p>
-        <input ref={input} type="hidden" name="token" />
-      </PayrollActionForm>
-    </div>
+    <PayrollActionForm
+      action={enterEmployeeAction}
+      onSuccess={() => {
+        setInvite('');
+        window.location.replace('/payroll/employee');
+      }}
+      label="Persönlichen Vorgang öffnen"
+    >
+      <p>
+        Dieser Einmallink öffnet ausschließlich Ihren Personalfragebogen. Er schafft keinen
+        Mandantenzugang. Bitte den Link nicht weitergeben.
+      </p>
+      <input type="hidden" name="token" value={invite} />
+    </PayrollActionForm>
   );
 }

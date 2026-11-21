@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState, useEffect, useMemo, useRef, useState } from 'react';
+import { useActionState, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileSearch, Loader2, X } from 'lucide-react';
 import { addIdDocumentAction } from './id-document-actions';
@@ -123,9 +123,9 @@ export function AddIdDocumentForm({
     // Route nicht mehr — sonst hing die Transition bis zum nächsten Klick).
     router.refresh();
   }, [initialType, router, state]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isPending) submittingRef.current = false;
-  }, [isPending]);
+  }, [isPending, state]);
 
   const documentSearch = useUnlinkedGwgDocumentSearch({
     checkId,

@@ -40,6 +40,7 @@ code_refs:
 test_refs:
   - packages/db/src/__tests__/form-upload-discard-rls.test.ts
   - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/actions.test.ts
+  - apps/web/src/app/portal/(protected)/forms/[id]/__tests__/filler.test.tsx
 feature_refs:
   - FEATURES.md
 related_rules:
@@ -121,6 +122,10 @@ Zeilenlock serialisiert beide Vorgänge; gewinnt der Close, weist die
 Datenbankfunktion den späteren Discard als nicht mehr verwerfbar zurück.
 
 ## Umsetzung in TaxTronik
+
+Der native Dateiwähler lässt sich mit der Tastatur fokussieren und auslösen.
+Feldname, Hilfetext und Größenlimit sind ihm programmatisch zugeordnet. Der
+Komponententest prüft diese Zuordnung auch für ein Pflichtdateifeld.
 
 Die Portal-Action sperrt die Submission, validiert Feld, Dokument und Version,
 journalisiert den Storage-Cleanup über eine eng gebundene

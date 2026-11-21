@@ -1,6 +1,7 @@
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
 import { isUuid } from '@/lib/uuid';
+import { berlinYmd } from '@/lib/fmt';
 import { visibleMandateTx } from '@/server/mandate-expansion/service';
 import {
   offboardingSourceTx,
@@ -39,6 +40,7 @@ export default async function OffboardingPage({
       }))
     : null;
   const draft = data?.runs.find((r) => !r.completedAt);
+  const today = berlinYmd(new Date());
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-7xl space-y-6">
       <ExpansionNavigation />
@@ -109,11 +111,8 @@ export default async function OffboardingPage({
                   className="input max-w-xs"
                   type="date"
                   name="endDate"
-                  max={new Date().toISOString().slice(0, 10)}
-                  defaultValue={
-                    draft?.endDate.toISOString().slice(0, 10) ??
-                    new Date().toISOString().slice(0, 10)
-                  }
+                  max={today}
+                  defaultValue={draft?.endDate.toISOString().slice(0, 10) ?? today}
                   required
                 />
               </label>
@@ -204,8 +203,8 @@ export default async function OffboardingPage({
             </ActionForm>
           ) : (
             <p className="card p-4">
-              Mandat beendet seit {data.source.client.mandateEndedAt.toISOString().slice(0, 10)}.
-              Eine Wiederaufnahme ist eine separate administrative Entscheidung.
+              Mandat beendet seit {berlinYmd(data.source.client.mandateEndedAt)}. Eine
+              Wiederaufnahme ist eine separate administrative Entscheidung.
             </p>
           )}
           <section className="space-y-4">
@@ -223,9 +222,8 @@ export default async function OffboardingPage({
               return (
                 <article className="card p-5 space-y-3" key={run.id}>
                   <h3 className="font-semibold">
-                    {run.createdAt.toISOString().slice(0, 10)} ·{' '}
-                    {run.completedAt ? 'Abgeschlossen' : 'Vorbereitet'} · {run.documents.length}{' '}
-                    freigegebene Fassungen
+                    {berlinYmd(run.createdAt)} · {run.completedAt ? 'Abgeschlossen' : 'Vorbereitet'}{' '}
+                    · {run.documents.length} freigegebene Fassungen
                   </h3>
                   <p>
                     Empfänger:{' '}

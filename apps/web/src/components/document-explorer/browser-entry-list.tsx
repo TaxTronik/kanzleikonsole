@@ -208,7 +208,7 @@ function BrowserEntryRow({
         <FileRowActions file={e} scope={scope} busy={busy} ops={ops} handlers={handlers} />
       )}
       {e.kind === 'folder' && (
-        <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100">
+        <div className="flex items-center gap-0.5 shrink-0 explorer-row-actions">
           <a
             href={documentsDownloadUrl([], [e.id])}
             className="text-disabled hover:text-primary p-1.5 inline-flex items-center"
@@ -283,7 +283,7 @@ function FileRowActions({
   handlers: BrowserEntryHandlers;
 }) {
   return (
-    <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100">
+    <div className="flex items-center gap-0.5 shrink-0 explorer-row-actions">
       <a
         href={`/api/staff/documents/${e.id}/download`}
         className="text-disabled hover:text-primary p-1.5 inline-flex items-center"

@@ -17,7 +17,7 @@ export default async function NewPortalInboxThreadPage() {
   if (!features.clientInbox) notFound();
 
   return (
-    <main className="p-4 sm:p-8">
+    <div className="p-4 sm:p-8">
       <Link
         href="/portal/inbox"
         className="mb-5 inline-flex items-center gap-2 text-sm text-brand-700 hover:underline"
@@ -33,6 +33,6 @@ export default async function NewPortalInboxThreadPage() {
           <InboxComposer mode={{ kind: 'new' }} allowAttachments={features.documentUpload} />
         </section>
       </div>
-    </main>
+    </div>
   );
 }

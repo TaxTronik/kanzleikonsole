@@ -7,6 +7,7 @@ import { withTenantContext } from '@taxtronik/db';
 import { readPortalFeatures } from '@/server/settings/portal-features';
 import { computeBwaPlanBasis } from '@/server/bwa/plan-basis';
 import { PlanWizard } from '@/components/bwa/plan-wizard';
+import { berlinTodayUtcMidnight } from '@/lib/fmt';
 import { createPlanAction } from '../actions';
 
 export default async function NewPlanPage() {
@@ -39,7 +40,7 @@ export default async function NewPlanPage() {
     ...computeBwaPlanBasis(p.positions, p.source),
   }));
 
-  const currentYear = new Date().getUTCFullYear();
+  const currentYear = berlinTodayUtcMidnight().getUTCFullYear();
 
   return (
     <div className="p-8 max-w-3xl">

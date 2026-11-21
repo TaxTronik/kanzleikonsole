@@ -1,7 +1,9 @@
+// @vitest-environment jsdom
 // Kanzleikalender als Render-Test gegen eine nachgebildete Tenant-Tx (B-08,
 // Welle 15) statt Quelltextprüfung der Seite: Monatsabfragen (P-20,
 // Europe/Berlin-Grenzen, abgesagte Termine), entschiedene Terminanfragen mit
 // Zustellstatus (C4) und der Ansichtsschalter zu /staff/tax-deadlines.
+import { fireEvent, render as mount, screen, within } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { berlinMonthBoundsUtc } from '@/lib/tax-calendar';
@@ -161,6 +163,42 @@ describe('Kalender-Termine: Europe/Berlin-Monatsgrenzen', () => {
       if (missingLink) expect(html).not.toContain(`aria-label="${missingLink}"`);
     },
   );
+
+  it('öffnet die zusätzlichen Abwesenheiten, Termine und Steuergruppen des Tages gemeinsam', async () => {
+    const day = new Date('2026-03-10T00:00:00Z');
+    h.tx.appointment.findMany.mockResolvedValue(
+      Array.from({ length: 4 }, (_, i) => ({ ...appointment, id: `appt-${i}` })),
+    );
+    h.tx.absence.findMany.mockResolvedValue(
+      ['Anna', 'Bert', 'Carla'].map((fullName) => ({
+        startDate: day,
+        endDate: day,
+        staff: { fullName },
+      })),
+    );
+    h.loadDayGroups.mockResolvedValue(
+      new Map([
+        [
+          '2026-03-10',
+          ['USTA_MONATLICH', 'LSTA_MONATLICH', 'EST_VZ', 'KST_VZ'].map((kind) => ({
+            kind,
+            period: '2026-Q1',
+            total: 1,
+            open: 1,
+            overdue: false,
+          })),
+        ],
+      ]),
+    );
+    mount(await CalendarPage({ searchParams: Promise.resolve({ month: '2026-03' }) }));
+    const more = screen.getByRole('button', { name: '+3 weitere Einträge am 10.3.2026' });
+    expect(screen.queryByText('Carla abw.')).toBeNull();
+    fireEvent.click(more);
+    const dialog = within(screen.getByRole('dialog', { name: 'Weitere Einträge am 10.3.2026' }));
+    expect(dialog.getByText('Carla abw.')).toBeDefined();
+    expect(dialog.getByRole('link').getAttribute('href')).toContain('kind=KST_VZ');
+    expect(h.pills.at(-1)).toMatchObject({ offset: 3, staffOptions: STAFF_LIST });
+  });
 
   it('wendet die halb-offenen Berlin-Grenzen auf die Terminabfrage an und lädt Absagen mit', async () => {
     await render();

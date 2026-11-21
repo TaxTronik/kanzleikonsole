@@ -265,12 +265,12 @@ export const DEFAULT_SIZE: Record<
 export const DEFAULT_LAYOUT: DashboardLayout = {
   version: 2,
   widgets: [
-    { id: 'w-1', type: 'kpi_clients', x: 0, y: 0, w: 3, h: 3 },
-    { id: 'w-2', type: 'kpi_open_requests', x: 3, y: 0, w: 3, h: 3 },
-    { id: 'w-3', type: 'kpi_documents', x: 6, y: 0, w: 3, h: 3 },
-    { id: 'w-4', type: 'kpi_unread_notes', x: 9, y: 0, w: 3, h: 3 },
-    { id: 'w-5', type: 'recent_activity', x: 0, y: 3, w: 8, h: 10 },
-    { id: 'w-6', type: 'upcoming_requests', x: 8, y: 3, w: 4, h: 10 },
+    { id: 'w-1', type: 'kpi_clients', x: 4, y: 0, w: 4, h: 3 },
+    { id: 'w-2', type: 'kpi_open_requests', x: 8, y: 0, w: 4, h: 3 },
+    { id: 'w-3', type: 'kpi_documents', x: 4, y: 3, w: 4, h: 3 },
+    { id: 'w-4', type: 'kpi_unread_notes', x: 8, y: 3, w: 4, h: 3 },
+    { id: 'w-5', type: 'recent_activity', x: 0, y: 6, w: 12, h: 10 },
+    { id: 'w-6', type: 'upcoming_requests', x: 0, y: 0, w: 4, h: 6 },
   ],
 };
 

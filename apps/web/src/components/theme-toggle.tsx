@@ -1,5 +1,6 @@
 ﻿'use client';
 
+import { Item } from '@radix-ui/react-dropdown-menu';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { Sun, Moon, Monitor } from 'lucide-react';
 import { applyTheme, readThemePref, setThemePref, THEME_EVENT, type ThemePref } from '@/lib/theme';
@@ -13,7 +14,7 @@ function subscribeTheme(onChange: () => void) {
   };
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ menuItem = false }: { menuItem?: boolean } = {}) {
   const storedPref = useSyncExternalStore(subscribeTheme, readThemePref, () => null);
   const [localChoice, setLocalChoice] = useState<{ stored: ThemePref; value: ThemePref } | null>(
     null,
@@ -61,6 +62,20 @@ export function ThemeToggle() {
         ? 'Hell — klicken für Dunkel'
         : 'System — klicken für Hell';
 
+  if (menuItem)
+    return (
+      <Item
+        className="ud-item"
+        aria-label={`Farbschema · ${title}`}
+        onSelect={(event) => {
+          event.preventDefault();
+          cycle();
+        }}
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+        {'Farbschema · ' + (pref === 'light' ? 'Hell' : pref === 'dark' ? 'Dunkel' : 'System')}
+      </Item>
+    );
   return (
     <button type="button" onClick={cycle} title={title} aria-label={title} className="icon-action">
       <Icon className="h-5 w-5" />

@@ -261,14 +261,14 @@ function GlobalSearchForPath({ navItems }: { navItems: SearchNavItem[] }) {
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
           onKeyDown={handleKeyDown}
-          placeholder="Mandanten, Anforderungen, Seiten…  (Strg+K)"
-          className="w-full pl-9 pr-12 py-2 text-sm border border-default rounded-md bg-gray-50 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-focus focus:border-transparent"
+          placeholder="Suche"
+          className="w-full pl-9 pr-2 md:pr-20 py-2 text-sm border border-default rounded-md bg-gray-50 focus:bg-surface focus:outline-none focus:ring-2 focus:ring-focus focus:border-transparent"
         />
         <kbd
           aria-hidden="true"
           className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-disabled bg-surface border border-default rounded px-1.5 py-0.5 hidden md:block"
         >
-          ⌘K
+          Strg/⌘ K
         </kbd>
       </div>
 

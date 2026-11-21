@@ -38,6 +38,7 @@ sources:
     checked_at: '2026-08-24'
     primary: false
 code_refs:
+  - apps/web/src/app/staff/(protected)/mandate-expansion/offboarding/page.tsx
   - packages/config/src/retention-calendar.ts
   - apps/web/src/app/api/portal/ical/[token]/route.ts
   - apps/web/src/app/staff/(protected)/clients/[id]/edit/actions.ts
@@ -50,6 +51,7 @@ code_refs:
   - packages/db/prisma/migrations/20260723000000_iter73_client_mandate_ended_at/migration.sql
   - apps/web/src/server/poa/create-poa.ts
 test_refs:
+  - apps/web/src/app/staff/(protected)/mandate-expansion/__tests__/calendar-dates.test.tsx
   - apps/web/src/app/api/portal/ical/[token]/__tests__/route.test.ts
   - apps/web/src/server/auth/__tests__/session-renewal.test.ts
   - apps/web/src/server/auth/__tests__/portal-session-email.test.ts
@@ -140,6 +142,8 @@ Für die Fristberechnung zählt das Kalenderjahr des gespeicherten Mandatsendes
 in Europe/Berlin. Die Zeit der Bedienhandlung kann kurz vor UTC-Mitternacht
 bereits zum neuen deutschen Jahr gehören. Der DATE-Wert aus dem Offboarding
 bezeichnet nach Übernahme um 00:00 UTC denselben Berliner Kalendertag.
+Die Übergabeseite zeigt auch ein über die Stammdatenaktion gesetztes Mandatsende
+mit seinem Berliner Kalendertag an.
 
 Auch bestehende, von Portal-Cookies unabhängige iCal-Abonnements prüfen
 `mandateEndedAt` vor jeder Datenabfrage. Ein beendetes Mandat erhält dieselbe
@@ -173,6 +177,9 @@ Retentionmaßnahmen. `ADMIN/PARTNER` beweist keine Berufsträgerqualifikation.
 - Wann ist eine Wiederaufnahme trotz Retention- oder Redaktionsschritten zulässig?
 
 ## Technische Nachweise
+
+Der Seitentest öffnet einen beendeten Mandanten mit gespeichertem Zeitpunkt
+am 30. Juni um 22:00 UTC und prüft das angezeigte Enddatum 1. Juli.
 
 Die Retention-Tests belegen die Stichtagsberechnung mit und ohne Mandatsende.
 PoA-Actiontests belegen ein konkretes Neuanlage-Gate und dessen
