@@ -444,6 +444,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Geändert
 
+- Die CI prüft Formularvorbelegungen und das Absenden von Rechnungen,
+  Terminen und Anforderungen zusätzlich in Chromium und Firefox mit
+  unterschiedlichen Zeitzonen und Fensterbreiten. Der Lint-Lauf erkennt
+  UTC-Tages- und Jahresvorgaben in neuen Datumsfeldern. Bei einem
+  fehlgeschlagenen Unit-Test laufen unabhängige Pakete weiter.
 - Prüf- und Änderungsaufträge übernehmen einschlägige Befunde aus früheren
   Berichten in eine Checkliste. Abgehakte Punkte verweisen auf ausgeführte
   Prüfungen, offene Punkte auf den nächsten Prüfschritt.
@@ -1346,6 +1351,11 @@ Pilotentscheidungen bleiben gesondert zu dokumentieren.
 
 ### Behoben
 
+- Personenübersicht, Ausweisdetail und Bestätigung prüfen das Ablaufdatum
+  gemeinsam nach Berliner Zeit. Der Personalfragebogen lässt den heutigen
+  Berliner Tag als Geburtstag zu. Der Abwesenheitskalender wechselt pünktlich
+  am Montag auf die neue Woche und zeigt offene Abwesenheiten bis einschließlich
+  heute (GWG-IDENTIFICATION-EVIDENCE-001, PAYROLL-INTAKE-001, ABSENCE-CALENDAR-001).
 - Datumsvorschläge der Telefonnotiz und der Stundenabrechnung folgen dem
   Berliner Kalendertag. Wiedervorlagen in Akte und Übersicht werden ab dem
   Folgetag als überfällig angezeigt. Die neue BWA-Planung wechselt in Kanzlei

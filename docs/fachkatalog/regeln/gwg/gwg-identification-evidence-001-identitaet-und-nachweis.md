@@ -234,6 +234,9 @@ Reisepassdateien werden nach `documentSetId` gruppiert, auf konsistente
 Metadaten, genau eine Rollenreferenz, Bestätigung, Gültigkeit und einen sauberen
 Dateinachweis geprüft. Für die Tagesgültigkeit wird der Prüfzeitpunkt einmalig
 in den Berliner Kalendertag umgerechnet, wie bereits im Ausweis-Ablaufworker.
+Auch die Personenübersicht, die Detailkarte und die serverseitige Bestätigung
+der Personenzuordnung prüfen den gespeicherten Ablauftag gegen diesen
+Berliner Kalendertag.
 Bei einer ausdrücklich verknüpften Doppelrolle gilt der
 bestätigte Ausweissatz der wirtschaftlich berechtigten Person zugleich als
 Vertreternachweis; maßgeblich sind ausschließlich die stabilen Owner- und
@@ -344,6 +347,12 @@ Die Verifikationsregression prüft für Sommer- und Winterzeit jeweils den letzt
 gültigen Zeitpunkt vor Berliner Mitternacht und den ersten abgelaufenen
 Zeitpunkt unmittelbar danach. Der Ausweis bleibt damit den vollständigen
 Ablauftag gültig; eine Freigabe am Folgetag wird auch vor UTC-Mitternacht gesperrt.
+Die gerenderte Staff-Seite bietet für einen bis zum 1. Juli 2026 gültigen
+Ausweis um 23:59:59,999 Uhr Berliner Zeit noch „Als geprüft markieren“ an.
+Ab Mitternacht des 2. Juli zeigen Übersicht und Detail „Ausweis abgelaufen“,
+und die Aktion entfällt. Der Test der Serveraktion bestätigt einen Satz mit
+dem Ablaufdatum 1. Januar 2035 unmittelbar vor Berliner Mitternacht und weist
+die Bestätigung ab Mitternacht ohne Schreibzugriff auf den Ausweissatz zurück.
 
 `page-render.test.tsx`: Der SSR-Nachweis prüft Personen-/Nachweisreihenfolge, verknüpfte Doppelrolle, historischen Ausweissatz und neun nicht verfügbare Dokumentzustände. Der ergänzende Modellnachweis vergleicht die Gruppenrevision mit den unveränderten gespeicherten Viewport-Daten.
 

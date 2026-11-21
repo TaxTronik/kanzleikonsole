@@ -11,6 +11,7 @@
 // =============================================================================
 
 import type { TxClient } from '@taxtronik/db';
+import { berlinCalendarDate } from '@taxtronik/tax';
 import { resolveNotificationsTx } from '@taxtronik/db/notification';
 import { identityViewports } from '@/lib/gwg/identity-viewport';
 import { ActionError } from '@/server/actions/action-error';
@@ -66,8 +67,7 @@ export type IdentityDocumentSetUpdateResult = {
 
 function isDateOnOrAfterToday(value: string, now: Date = new Date()): boolean {
   const date = new Date(`${value}T00:00:00.000Z`);
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return Number.isFinite(date.getTime()) && date.getTime() >= today;
+  return date.getTime() >= berlinCalendarDate(now).getTime();
 }
 
 const IDENTITY_SET_SELECT = {

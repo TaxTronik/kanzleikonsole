@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { berlinYmd } from '@/lib/fmt';
 import { validWorkflowCalendarDate } from '@/server/workflows/interaction-policy';
 export type PayrollField = {
   key: string;
@@ -149,7 +150,7 @@ function validateEmployeeGeneralAnswers(answers: Record<string, string>): string
   if (
     answers.birthDate &&
     validWorkflowCalendarDate(answers.birthDate) &&
-    answers.birthDate > new Date().toISOString().slice(0, 10)
+    answers.birthDate > berlinYmd(new Date())
   )
     errors.push('Geburtsdatum liegt in der Zukunft.');
   if (answers.email && !z.email().safeParse(answers.email).success)

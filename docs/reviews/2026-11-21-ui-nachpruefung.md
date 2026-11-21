@@ -14,6 +14,10 @@ Der lokale HTML-Bericht mit Screenshots und Rohprotokollen liegt im Verzeichnis
 `.codex-run/ui-nachpruefung-20261121/`. Die Protokollnamen in den Einträgen
 beziehen sich auf dessen Unterordner `intern/`.
 
+**Nachtrag vom 21. November 2026.** Für beide Rechnungsmasken gibt es jetzt
+eine wiederholbare Prüfung mit dem produktiven Stylesheet in Chromium und
+Firefox. [CI-Nachprüfung mit historischer Gegenprobe](2026-11-21-ci-bedienpruefung.md)
+
 - [x] **Tax-CMS · Kontrolldurchführung.** Fünf Einträge mit unterschiedlichem Status
       öffnen ihre Detailansicht mit Schritten, Nachweisen und Ergebnis.
       Chromium (`tcms-browser.json`)

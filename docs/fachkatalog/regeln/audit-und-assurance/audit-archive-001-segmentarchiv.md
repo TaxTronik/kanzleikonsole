@@ -240,7 +240,11 @@ und die Einordnung von Bestandssegmenten nach vorhandenem Token. Der
 TSA-Port-Test belegt die Auswahlreihenfolge und die Auflösbarkeitsprüfung vor
 dem Stempeln.
 Die Worker-Regressionen zu `AUDIT-ARCHIVE-001` rechnen echte gültige und
-manipulierte Quellzeilen nach. Sie verweigern Recovery bei verändertem Inhalt,
+manipulierte Quellzeilen nach. Für zwei gültige Zeilen prüfen sie die einmalige
+Registrierung mit dem ersten Vorgängerhash und dem letzten Ereignishash. Wird
+die Aktion der zweiten Zeile nach dem Hashen geändert, bricht der Worker vor
+dem ersten Storage-Zugriff und der Registrierung ab.
+Die Tests verweigern Recovery bei verändertem Inhalt,
 abweichender Header-Größe oder einem überlangen Stream, ohne einen
 Archivdatensatz oder ein Ersatzobjekt zu erzeugen.
 Die Schlüsselregressionen prüfen zusätzlich den verlustfreien Export, die

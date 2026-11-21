@@ -62,6 +62,24 @@ pnpm --filter @taxtronik/e2e e2e:ui
 pnpm --filter @taxtronik/e2e e2e:headed
 ```
 
+## Formularprüfung in Chromium und Firefox
+
+Der CI-Job `ui-browser` führt alle Specs unter `tests/ui/` in beiden
+Browsern aus. Die vollständige E2E-Suite entdeckt denselben Ordner. In den
+UI-Tests laufen die produktiven Bedienelemente mit synthetischen Daten. Der
+Test liest Vorbelegungen vor dem Bearbeiten und kontrolliert die Werte beim
+Absenden an die Serveraktion. Für Layoutprüfungen wird das Web-Stylesheet
+aus dem aktuellen Checkout kompiliert.
+
+```bash
+pnpm --filter @taxtronik/e2e exec playwright install --with-deps chromium firefox
+pnpm --filter @taxtronik/e2e exec playwright test --config=playwright.ui.config.ts
+```
+
+Chromium prüft den breiten Bildschirm in UTC, Firefox in Berliner Zeit.
+Beide prüfen die schmale Ansicht bei 390 Pixeln in New Yorker Zeit.
+Bei einem Fehler enthält der HTML-Bericht den Fall, das Profil und den Trace.
+
 ## Auth-Tests
 
 Die Auth-Tests in `02-auth.spec.ts` laufen im CI mit `DEV_SKIP_TOTP=true` und

@@ -6,7 +6,7 @@
 > „Umgesetzt“ bedeutet nicht „fachlich freigegeben“.
 > `approved` authentifiziert die eingetragene Person nur mit separater Repository-Governance oder signierter Attestation.
 
-Aktive Regeln insgesamt: 88
+Aktive Regeln insgesamt: 89
 
 ## Audit und Software-Assurance
 
@@ -342,7 +342,14 @@ Aktive Regeln im Fachbereich: 12
 
 ## Mandat und Zugriff
 
-Aktive Regeln im Fachbereich: 22
+Aktive Regeln im Fachbereich: 23
+
+### [ABSENCE-CALENDAR-001 — Die aktuelle Woche und offene Abwesenheiten im Wandkalender nach Berliner Kalendertag anzeigen](regeln/mandat-und-zugriff/absence-calendar-001-wochenfenster.md)
+
+- Fachprüfung: **Ungeprüfter Entwurf**
+- Umsetzung: **Umgesetzt und getestet**
+- Geltung: nicht eingegrenzt
+- Kurzfassung: Der Wandkalender zur Teamabsprache beginnt am Montag der aktuellen Woche in Europe/Berlin. Ein laufender Eintrag ohne Enddatum markiert die Tage vom gemeldeten Beginn bis einschließlich des aktuellen Berliner Tages.
 
 ### [ACCESS-CLIENT-MODE-001 — Kanzleiweiten Mandantenzugriff nach OPEN, RESTRICTED und Vertraulichkeit steuern](regeln/mandat-und-zugriff/access-client-mode-001-zugriffsmodus.md)
 

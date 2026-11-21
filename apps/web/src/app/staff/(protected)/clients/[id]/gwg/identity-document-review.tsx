@@ -16,6 +16,7 @@ import {
 import { DocumentPreviewButton } from '@/components/document-preview';
 import { DocumentUploadButton } from '@/components/document-upload-button';
 import { SavedIdentityViews } from '@/components/gwg/saved-identity-views';
+import { berlinYmd } from '@/lib/fmt';
 import type { IdentityViewport } from '@/lib/gwg/identity-viewport';
 import { Modal } from '@/components/ui/modal';
 import {
@@ -1069,12 +1070,9 @@ function IdentityReviewCard({
   const displayedNumber = fields.number;
   const displayedExpiryDate = fields.expiryDate;
   const hasUnsavedChanges = identityReviewHasUnsavedChanges(localState, serverState, state);
-  const expired = Boolean(
-    displayedExpiryDate && displayedExpiryDate < new Date().toISOString().slice(0, 10),
-  );
+  const expired = Boolean(displayedExpiryDate && displayedExpiryDate < berlinYmd(new Date()));
   const persistedConfirmation =
     currentRevision === group.revision &&
-    !expired &&
     group.subjectKey !== null &&
     attachedDocuments.length === group.documents.length &&
     group.documents.every(
@@ -1094,7 +1092,8 @@ function IdentityReviewCard({
     );
   const confirmed =
     grandfathered ||
-    (!invalidated &&
+    (!expired &&
+      !invalidated &&
       !hasUnsavedChanges &&
       (localState.confirmedRevision === localState.revision || persistedConfirmation));
   const canConfirmDirectly = canConfirmIdentityReview({

@@ -141,6 +141,41 @@ jobs:
       - name: Migration ledger unit tests
         run: pnpm --filter @taxtronik/db test:migration-ledger
 
+  ui-browser:
+    name: UI in Chromium und Firefox
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: UTC
+      PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: Workspace installieren
+        run: bash scripts/ci/setup.sh install
+      - name: Browser-Cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          # pnpm setzt INIT_CWD auf den Checkout. Beide Browser verwenden diesen Pfad.
+          path: .cache/ms-playwright
+          key: playwright-chromium-firefox-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
+      - name: Chromium und Firefox installieren
+        run: pnpm --filter @taxtronik/e2e exec playwright install --with-deps chromium firefox
+      - name: Bedienabläufe in allen UI-Profilen prüfen
+        run: pnpm --filter @taxtronik/e2e exec playwright test --config=playwright.ui.config.ts
+      - name: Browserbericht mit Fehlerbildern und Traces hochladen
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3.2.1
+        with:
+          name: playwright-report-ui
+          retention-days: 90
+          path: apps/e2e/ui-contract/playwright-report/
+          if-no-files-found: error
+
   # Forgejo `act_runner` startet Services eines wiederverwendeten Workflows im
   # Host-Netz. Jeder Job mit PostgreSQL-Service nutzt deshalb einen eigenen
   # Port (PGPORT des Service = Host-Port = PGPORT/DATABASE_URL im Job-env),
@@ -758,10 +793,8 @@ jobs:
       S3_BUCKET_BACKUPS: backups
       NODE_ENV: test
       # B-03: fester Browser-Ort für Installation, Tests und Cache-Schritt
-      # (ohne Wert hängt er von HOME/XDG_CACHE_HOME des Runners ab). Relativ:
-      # Playwright löst ihn gegen das Arbeitsverzeichnis auf, bei
-      # `pnpm --filter @taxtronik/e2e exec` also apps/e2e/.cache/ms-playwright,
-      # innerhalb des Job-Workspace.
+      # Playwright löst den relativen Pfad bei pnpm exec gegen INIT_CWD auf.
+      # Der Aufruf startet am Checkout-Root.
       PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -947,8 +980,8 @@ jobs:
       - name: Playwright-Browser-Cache
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
-          path: apps/e2e/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
+          path: .cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}
 
       - name: Install Playwright browser
         run: pnpm --filter @taxtronik/e2e exec playwright install chromium --with-deps
@@ -1348,9 +1381,13 @@ jobs:
       # turbo direkt aufrufen: `pnpm test -- --filter=…` würde den Filter an
       # vitest durchreichen statt an turbo (Paket-Scope bliebe ungefiltert).
       - name: Unit tests (alle Pakete ohne DB-Bedarf)
+        env:
+          # Turbo und Vitest parallelisieren auf zwei Ebenen. Unter gleichzeitigen
+          # Builds überschritt bereits das Laden des ersten Archivtests sein Zeitlimit.
+          VITEST_MAX_WORKERS: '4'
         run: |
           set -o pipefail
-          pnpm exec turbo run test --filter='!@taxtronik/db' 2>&1 | tee testbericht-unit.log
+          pnpm exec turbo run test --concurrency=2 --continue=dependencies-successful --filter='!@taxtronik/db' 2>&1 | tee testbericht-unit.log
 
       - name: Testnachweis hochladen
         if: always()

@@ -38,12 +38,17 @@ code_refs:
   - packages/db/scripts/verify-drift.ts
   - packages/db/scripts/drift-shadow.ts
   - .forgejo/workflows/ci.yml
+  - apps/e2e/playwright.ui.config.ts
+  - scripts/check-paranoid-e2e.mjs
   - apps/web/src/server/update/manifest.ts
   - .forgejo/workflows/release.yml
   - scripts/release/check-release-gates.mjs
   - scripts/release/smoke-release-images.sh
   - scripts/release/verify-release-config.mjs
 test_refs:
+  - scripts/tests/check-paranoid-e2e.test.mjs
+  - apps/e2e/tests/ui/berlin-form-defaults.spec.ts
+  - apps/e2e/tests/ui/invoice-form-layout.spec.ts
   - apps/e2e/unit/postgres.test.ts
   - apps/e2e/unit/redis.test.ts
   - apps/e2e/tests/inbox-composer-state.spec.ts
@@ -173,6 +178,13 @@ IDW-PS-880-Erfüllung, Zertifizierung oder Softwarebescheinigung.
   und regelmäßig wiederhergestellt?
 
 ## Technische Nachweise
+
+Der Quality-Workflow führt die Formularprüfungen in Chromium und Firefox mit
+schmalem und breitem Fenster und festgelegten Browserzeitzonen aus. Der
+Playwright-Bericht ordnet jeden ausgeführten Fall seinem Browserprofil zu.
+Die Fälle prüfen Bedienelemente, Feldwerte und übergebene Formulardaten an
+der Grenze zur Serveraktion. Der gesonderte vollständige E2E-Lauf verwendet
+die gebaute Anwendung mit den angeschlossenen Diensten.
 
 Die PostgreSQL-Gegenproben der Browsertests gleichen den konfigurierten
 Datenbanknamen mit der Anwendungs-URL ab. Der Fixture-Test erfasst auch

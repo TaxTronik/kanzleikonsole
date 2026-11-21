@@ -183,6 +183,7 @@ export function checkReleaseGates({ release, ci, security, smoke, composeCi }) {
   );
   const ciJobs = [
     'quality',
+    'ui-browser',
     'db',
     'restore',
     'upgrade-path',

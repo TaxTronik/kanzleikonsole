@@ -8,6 +8,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./archive": "./src/archive.ts",
+    "./chain": "./src/chain.ts",
     "./service": "./src/service.ts",
     "./canonical-json": "./src/canonical-json.ts",
     "./ports/timestamp": "./src/ports/timestamp.ts"

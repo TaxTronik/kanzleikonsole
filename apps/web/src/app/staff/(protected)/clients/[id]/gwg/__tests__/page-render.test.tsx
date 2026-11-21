@@ -443,6 +443,29 @@ describe('GWG-RISK-REVIEW-001 / GWG-SELF-ONBOARDING-001: page workflow and revie
 });
 
 describe('GWG-IDENTIFICATION-EVIDENCE-001 / GWG-BENEFICIAL-OWNERS-001 / GWG-REPRESENTATIVE-AUTHORITY-001: evidence projection', () => {
+  it('zeigt den Ausweis bis Berliner Mitternacht als prüfbar, danach in Übersicht und Detail als abgelaufen', async () => {
+    const snapshot = check({
+      status: 'DRAFT',
+      reviewSubmittedAt: null,
+      idDocuments: [
+        evidence({
+          issueDate: new Date('2024-07-01'),
+          expiryDate: new Date('2026-07-01'),
+          verifiedAt: null,
+          identityAssignmentConfirmedAt: null,
+          identityAssignmentConfirmedBy: null,
+        }),
+      ],
+    });
+    vi.setSystemTime(new Date('2026-07-01T21:59:59.999Z'));
+    const before = await renderPage(snapshot);
+    expect(before).toContain('Als geprüft markieren');
+    expect(before).not.toContain('Ausweis abgelaufen');
+    vi.setSystemTime(new Date('2026-07-01T22:00:00Z'));
+    const after = await renderPage(snapshot);
+    expect(after).not.toContain('Als geprüft markieren');
+    expect(after.match(/>Ausweis abgelaufen</g)).toHaveLength(2);
+  });
   it('shows linked owner evidence under the single representative/owner person and preserves raw CAS revisions', async () => {
     mocks.client.mockResolvedValue({ id: clientId, tenantId, name: 'Test GmbH', kind: 'JURPERS' });
     const doc = evidence({

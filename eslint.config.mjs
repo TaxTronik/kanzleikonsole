@@ -6,6 +6,7 @@ import nextPlugin from '@next/eslint-plugin-next';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { complexityPlugin, readBaseline } from './scripts/eslint/complexity-baseline.mjs';
+import { berlinCalendarPlugin } from './scripts/eslint/berlin-calendar.mjs';
 
 // isStaffAdmin statt Rollen-Literalen; gilt für alle TS-Dateien.
 const ROLE_CHECK_SELECTORS = [
@@ -238,6 +239,12 @@ export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
   { languageOptions: { parserOptions: { tsconfigRootDir: import.meta.dirname } } },
+  {
+    files: ['apps/web/src/**/*.tsx'],
+    ignores: ['**/__tests__/**', '**/*.test.tsx'],
+    plugins: { calendar: berlinCalendarPlugin },
+    rules: { 'calendar/no-utc-today-in-form': 'error' },
+  },
   {
     files: ['**/*.{ts,tsx}'],
     plugins: { taxtronik: complexityPlugin },

@@ -12,6 +12,9 @@ export default class ParanoidDiscoveryReporter {
         maxFailures: config.maxFailures,
         projects: config.projects.map((project) => ({
           name: project.name,
+          browserName: project.use.browserName ?? project.use.defaultBrowserType,
+          viewport: project.use.viewport,
+          timezoneId: project.use.timezoneId,
           retries: project.retries,
           testDir: project.testDir,
           testMatch: project.testMatch,

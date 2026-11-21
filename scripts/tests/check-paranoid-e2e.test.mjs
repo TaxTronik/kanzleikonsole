@@ -12,11 +12,29 @@ import {
   checkWorkflow,
   scanTestSources,
   checkDiscovery,
+  checkUiProfiles,
   discoverTests,
 } from '../check-paranoid-e2e.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const e2eRequire = createRequire(resolve(ROOT, 'apps/e2e/package.json'));
+
+test('die UI-Matrix entdeckt fehlende Browser, schmale Ansichten und Zeitzonen', () => {
+  const projects = [
+    { browserName: 'chromium', timezoneId: 'UTC', viewport: { width: 1440 } },
+    { browserName: 'firefox', timezoneId: 'Europe/Berlin', viewport: { width: 1440 } },
+    { browserName: 'chromium', timezoneId: 'America/New_York', viewport: { width: 390 } },
+    { browserName: 'firefox', timezoneId: 'America/New_York', viewport: { width: 390 } },
+  ];
+  const check = (entries, expectedStatus = 'passed') =>
+    checkUiProfiles({ config: { projects: entries }, tests: [{ expectedStatus }] });
+  check(projects);
+  for (const project of projects) {
+    assert.throws(() => check(projects.filter((entry) => entry !== project)), /UI-Matrix/);
+  }
+  assert.throws(() => check(projects.map((p) => ({ ...p, timezoneId: 'UTC' }))), /UI-Matrix/);
+  assert.throws(() => check(projects, 'failed'), /erfolgreichen Test/);
+});
 
 function workflow() {
   return {

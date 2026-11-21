@@ -6,9 +6,10 @@
 // Schlüssel an den Dateien hängt, die den Inhalt bestimmen: Lockfile (Turbo,
 // Next) bzw. browsers.json des installierten playwright-core (Browser-Revision).
 import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
@@ -64,42 +65,74 @@ test('Next-Cache liegt unter apps/web/.next/cache und kommt vor dem Build', () =
   assert.ok(existsSync(join(ROOT, 'apps/web/next.config.mjs')));
 });
 
-test('Playwright-Cache: fester Browser-Ort, Schlüssel aus browsers.json', () => {
-  const e2e = workflow.jobs['e2e-paranoid'];
-  const browsersPath = e2e.env?.PLAYWRIGHT_BROWSERS_PATH;
-  assert.equal(browsersPath, '.cache/ms-playwright');
-  // Playwright löst einen relativen Pfad gegen das Arbeitsverzeichnis auf; beide
-  // Aufrufe laufen per `pnpm --filter @taxtronik/e2e exec` in apps/e2e.
-  const install = 'pnpm --filter @taxtronik/e2e exec playwright install chromium --with-deps';
-  const run = 'pnpm --filter @taxtronik/e2e exec playwright test';
-  for (const step of [install, run]) indexOfRun('e2e-paranoid', step);
-  for (const step of e2e.steps) {
-    if (
-      /\bplaywright\b/.test(step.run ?? '') &&
-      !/^pnpm --filter @taxtronik\/e2e exec playwright /.test(step.run.trim())
-    ) {
-      assert.fail(`Playwright-Aufruf außerhalb von apps/e2e: ${step.run.trim()}`);
+const e2eExec = 'pnpm --filter @taxtronik/e2e exec';
+const browserManifest = 'node_modules/playwright-core/browsers.json';
+const browserCacheVersion =
+  "${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}";
+const browserJobs = [
+  { job: 'e2e-paranoid', engines: ['chromium'], install: 'chromium --with-deps', run: 'test' },
+  {
+    job: 'ui-browser',
+    engines: ['chromium', 'firefox'],
+    install: '--with-deps chromium firefox',
+    run: 'test --config=playwright.ui.config.ts',
+  },
+];
+
+for (const { job, engines, install, run } of browserJobs) {
+  test(`${job}: Installer und Browserstart verwenden die gecachten Revisionen`, () => {
+    const { env, steps } = workflow.jobs[job];
+    assert.equal(env.PLAYWRIGHT_BROWSERS_PATH, '.cache/ms-playwright');
+    const cache = steps.filter(
+      (step) => step.uses === CACHE_ACTION && step.with?.key.includes(browserManifest),
+    );
+    assert.equal(cache.length, 1, `${job}: genau ein Browser-Cache`);
+    const [step] = cache;
+    const setup = steps.findIndex((item) =>
+      /scripts\/ci\/setup\.sh install\b/.test(item.run ?? ''),
+    );
+    const restore = steps.indexOf(step);
+    const download = indexOfRun(job, `${e2eExec} playwright install ${install}`);
+    const tests = indexOfRun(job, `${e2eExec} playwright ${run}`);
+    assert.ok(setup >= 0 && setup < restore && restore < download && download < tests);
+    for (const item of steps.filter((item) => /\bplaywright\b/.test(item.run ?? ''))) {
+      assert.ok(item.run.trim().startsWith(`${e2eExec} playwright `), item.run);
     }
-  }
-  const step = cacheStep('e2e-paranoid', 'apps/e2e/.cache/ms-playwright');
-  assert.equal(resolve(ROOT, 'apps/e2e', browsersPath), join(ROOT, step.with.path));
-  assert.equal(
-    step.with.key,
-    "playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/browsers.json') }}",
-  );
-  // Nach der Installation (browsers.json existiert erst dann), vor dem Download.
-  const setup = e2e.steps.findIndex((item) =>
-    /scripts\/ci\/setup\.sh install\b/.test(item.run ?? ''),
-  );
-  assert.ok(setup >= 0 && setup < e2e.steps.indexOf(step));
-  assert.ok(e2e.steps.indexOf(step) < indexOfRun('e2e-paranoid', install));
-  // Die E2E-Suite löst genau das playwright-core auf, dessen browsers.json den Schlüssel bildet.
-  const fromE2e = createRequire(join(ROOT, 'apps/e2e/package.json'));
-  const playwright = fromE2e.resolve('playwright/package.json');
-  const core = createRequire(playwright).resolve('playwright-core/package.json');
-  assert.equal(core, join(ROOT, 'node_modules/playwright-core/package.json'));
-  const browsers = JSON.parse(
-    readFileSync(join(ROOT, 'node_modules/playwright-core/browsers.json'), 'utf8'),
-  ).browsers;
-  assert.ok(browsers.some((browser) => browser.name === 'chromium' && browser.revision));
-});
+
+    // pnpm setzt INIT_CWD bei diesem Aufruf selbst. Der Installer gibt mit
+    // --dry-run seine tatsächlichen Zielpfade aus, ohne Browser zu laden.
+    const childEnv = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: env.PLAYWRIGHT_BROWSERS_PATH };
+    delete childEnv.INIT_CWD;
+    const opts = { cwd: ROOT, env: childEnv, encoding: 'utf8' };
+    const plan = execSync(`${e2eExec} playwright install --dry-run ${engines.join(' ')}`, opts);
+    const destinations = Array.from(plan.matchAll(/^\s*Install location:\s*(.+)$/gm), (match) =>
+      match[1].trim(),
+    );
+    const cacheDir = resolve(ROOT, step.with.path);
+    assert.deepEqual(
+      [...new Set(destinations.map(dirname))],
+      [cacheDir],
+      'CLI-Installationsziele im Cache',
+    );
+    const lookup = JSON.parse(
+      execSync(
+        `${e2eExec} node -p "JSON.stringify({chromium: require('playwright').chromium.executablePath(), firefox: require('playwright').firefox.executablePath()})"`,
+        opts,
+      ),
+    );
+
+    const fromE2e = createRequire(join(ROOT, 'apps/e2e/package.json'));
+    const playwright = fromE2e.resolve('playwright/package.json');
+    const core = createRequire(playwright).resolve('playwright-core/package.json');
+    assert.equal(join(dirname(core), 'browsers.json'), join(ROOT, browserManifest));
+    const { browsers } = JSON.parse(readFileSync(join(ROOT, browserManifest), 'utf8'));
+    for (const name of engines) {
+      const { revision } = browsers.find((item) => item.name === name);
+      assert.ok(revision);
+      const directory = join(cacheDir, `${name}-${revision}`);
+      assert.ok(destinations.includes(directory), `Installationsrevision für ${name}`);
+      assert.ok(lookup[name].startsWith(directory + sep), `Browserstart aus ${directory}`);
+    }
+    assert.equal(step.with.key, `playwright-${engines.join('-')}-${browserCacheVersion}`);
+  });
+}

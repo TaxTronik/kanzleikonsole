@@ -4,10 +4,11 @@
   "scope": {
     "manifest_version": 1,
     "definition_path": "docs/fachkatalog/SCOPE.md",
-    "definition_sha256": "sha256:a5566571fe19d210090180d25f466af7979dbeab1607ab7f5b4d2fd4d307418a",
-    "expected_active_rule_count": 88,
+    "definition_sha256": "sha256:c33caa21f2c62ffbcc931de1cf6e76c5828a69353c57bb50358e08f3268bff7c",
+    "expected_active_rule_count": 89,
     "expected_reserved_rule_count": 8,
     "active_rule_ids": [
+      "ABSENCE-CALENDAR-001",
       "ACCESS-CLIENT-MODE-001",
       "ACCESS-NOTIFICATION-RECIPIENT-001",
       "ACCESS-SEARCH-SCOPE-001",
@@ -109,11 +110,50 @@
     ],
     "completeness": "Vollständig nur für die als aktiv bezeichnete Produktlogik; keine Vollständigkeit eines Rechtsgebiets und keine fachliche Freigabe."
   },
-  "rule_count": 88,
-  "active_rule_count": 88,
+  "rule_count": 89,
+  "active_rule_count": 89,
   "historical_rule_count": 0,
   "warning": "Fachliche Freigabe und technischer Umsetzungsstand sind getrennt. approved authentifiziert ohne Repository-Governance oder signierte Attestation keine Person; KI darf keine fachliche Freigabe erteilen.",
   "rules": [
+    {
+      "id": "ABSENCE-CALENDAR-001",
+      "title": "Die aktuelle Woche und offene Abwesenheiten im Wandkalender nach Berliner Kalendertag anzeigen",
+      "domain": "mandat-und-zugriff",
+      "rule_type": "product_rule",
+      "jurisdiction": "DE",
+      "validity": { "valid_from": null, "valid_until": null },
+      "professional_owner_role": "Berufsträger Kanzleiorganisation",
+      "professional_review": {
+        "status": "unreviewed",
+        "reviewer": null,
+        "reviewed_at": null,
+        "reviewed_content_hash": null
+      },
+      "implementation": {
+        "status": "implemented",
+        "summary": "Der Wandkalender beginnt mit dem Montag der laufenden Berliner Woche. Dasselbe Tagesdatum begrenzt die Markierung einer offenen Abwesenheit."
+      },
+      "sources": [
+        {
+          "kind": "product_documentation",
+          "citation": "Funktionskatalog zu Abwesenheiten und Wandkalender",
+          "path": "FEATURES.md",
+          "checked_at": "2026-11-21",
+          "primary": true
+        }
+      ],
+      "code_refs": [
+        "apps/web/src/app/staff/(protected)/absences/calendar/page.tsx",
+        "apps/web/src/app/staff/(protected)/calendar/page.tsx",
+        "apps/web/src/server/absences/coverage.ts"
+      ],
+      "test_refs": ["apps/web/src/app/staff/(protected)/absences/calendar/__tests__/page.test.tsx"],
+      "feature_refs": ["FEATURES.md"],
+      "related_rules": [],
+      "tags": ["kalender", "abwesenheit", "wochenbeginn"],
+      "path": "docs/fachkatalog/regeln/mandat-und-zugriff/absence-calendar-001-wochenfenster.md",
+      "summary": "Der Wandkalender zur Teamabsprache beginnt am Montag der aktuellen Woche in Europe/Berlin. Ein laufender Eintrag ohne Enddatum markiert die Tage vom gemeldeten Beginn bis einschließlich des aktuellen Berliner Tages."
+    },
     {
       "id": "ACCESS-CLIENT-MODE-001",
       "title": "Kanzleiweiten Mandantenzugriff nach OPEN, RESTRICTED und Vertraulichkeit steuern",
@@ -879,6 +919,8 @@
         "packages/db/scripts/verify-drift.ts",
         "packages/db/scripts/drift-shadow.ts",
         ".forgejo/workflows/ci.yml",
+        "apps/e2e/playwright.ui.config.ts",
+        "scripts/check-paranoid-e2e.mjs",
         "apps/web/src/server/update/manifest.ts",
         ".forgejo/workflows/release.yml",
         "scripts/release/check-release-gates.mjs",
@@ -886,6 +928,9 @@
         "scripts/release/verify-release-config.mjs"
       ],
       "test_refs": [
+        "scripts/tests/check-paranoid-e2e.test.mjs",
+        "apps/e2e/tests/ui/berlin-form-defaults.spec.ts",
+        "apps/e2e/tests/ui/invoice-form-layout.spec.ts",
         "apps/e2e/unit/postgres.test.ts",
         "apps/e2e/unit/redis.test.ts",
         "apps/e2e/tests/inbox-composer-state.spec.ts",

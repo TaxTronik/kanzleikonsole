@@ -2153,7 +2153,9 @@ describe('atomare GwG-Bearbeitung', () => {
     expect(m.lockCleanGwgDocuments).not.toHaveBeenCalled();
   });
 
-  it('GWG-IDENTIFICATION-EVIDENCE-001: speichert Korrekturen unbestätigt und bestätigt erst danach den exakten gespeicherten Ausweissatz', async () => {
+  it('GWG-IDENTIFICATION-EVIDENCE-001: speichert Korrekturen unbestätigt und bestätigt den exakten Ausweissatz bis zum Ende des Berliner Ablauftags', async ({
+    onTestFinished,
+  }) => {
     const frontId = '77777777-7777-4777-8777-777777777777';
     const backId = '88888888-8888-4888-8888-888888888888';
     const documentSetId = '99999999-9999-4999-8999-999999999999';
@@ -2282,6 +2284,11 @@ describe('atomare GwG-Bearbeitung', () => {
     });
     data.set('intent', 'confirm');
     data.set('expectedRevision', gwgIdentityDocumentSetRevision(savedDocuments));
+    vi.useFakeTimers({ toFake: ['Date'] });
+    onTestFinished(() => {
+      vi.useRealTimers();
+    });
+    vi.setSystemTime(new Date('2035-01-01T22:59:59.999Z'));
     expect(await updateIdDocumentsAction(null, data)).toMatchObject({
       ok: true,
       verified: true,
@@ -2295,6 +2302,13 @@ describe('atomare GwG-Bearbeitung', () => {
         verifiedAt: expect.any(Date),
       }),
     });
+    vi.setSystemTime(new Date('2035-01-01T23:00:00.000Z'));
+    tx.gwgIdDocument.updateMany.mockClear();
+    expect(await updateIdDocumentsAction(null, data)).toMatchObject({
+      ok: false,
+      error: expect.stringContaining('Der Ausweis ist abgelaufen'),
+    });
+    expect(tx.gwgIdDocument.updateMany).not.toHaveBeenCalled();
   });
   it('F-05 GWG-IDENTIFICATION-EVIDENCE-001: meldet einen S3-Lesefehler beim Bestätigen als Speicherfehler statt „Nachweis neu erfassen“', async () => {
     const frontId = '77777777-7777-4777-8777-777777777771';

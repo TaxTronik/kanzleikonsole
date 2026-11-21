@@ -6,6 +6,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { load } from 'js-yaml';
 
 export const FULL_E2E_COMMAND = 'pnpm --filter @taxtronik/e2e exec playwright test';
+const UI_CONFIG = 'playwright.ui.config.ts';
+const UI_COMMAND = `${FULL_E2E_COMMAND} --config=${UI_CONFIG}`;
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const REPORTER = resolve(ROOT, 'scripts/paranoid-e2e-reporter.mjs');
 
@@ -21,17 +23,16 @@ function requireBlocking(scope, label) {
   );
 }
 
-export function checkWorkflow(source) {
-  const workflow = load(source);
-  const job = workflow?.jobs?.['e2e-paranoid'];
-  requireThat(job && Array.isArray(job.steps), 'CI-Job e2e-paranoid mit Steps fehlt.');
-  requireBlocking(job, 'e2e-paranoid');
+function requiredRun(workflow, name, command) {
+  const job = workflow?.jobs?.[name];
+  requireThat(job && Array.isArray(job.steps), `CI-Job ${name} mit Steps fehlt.`);
+  requireBlocking(job, name);
   const runs = job.steps.filter((step) => typeof step.run === 'string');
   // Exact executable scalar, not a comment, step name, echoed command or partial run.
-  const fullRuns = runs.filter((step) => step.run.trim() === FULL_E2E_COMMAND);
+  const fullRuns = runs.filter((step) => step.run.trim() === command);
   requireThat(
     fullRuns.length === 1,
-    `e2e-paranoid muss genau einmal unbeschränkt ausführen: ${FULL_E2E_COMMAND}`,
+    `${name} muss genau einmal unbeschränkt ausführen: ${command}`,
   );
   const testStep = fullRuns[0];
   requireBlocking(testStep, 'Vollständiger E2E-Lauf');
@@ -47,6 +48,19 @@ export function checkWorkflow(source) {
     );
   }
 
+  const env = { CI: 'true', ...workflow.env, ...job.env, ...testStep.env };
+  for (const [key, value] of Object.entries(env)) {
+    requireThat(
+      ['string', 'number', 'boolean'].includes(typeof value) && !String(value).includes('${{'),
+      `E2E-Umgebung ${key} kann für die Discovery nicht eindeutig aufgelöst werden.`,
+    );
+    env[key] = String(value);
+  }
+  return { runs, env };
+}
+
+export function checkWorkflow(source) {
+  const { runs, env } = requiredRun(load(source), 'e2e-paranoid', FULL_E2E_COMMAND);
   // Keep the existing Mode/Years and query protections for both archive buckets.
   const lockSteps = runs.filter((step) => /assert_lock\s+(gobd|gwg)\s/.test(step.run));
   lockSteps.forEach((step) => requireBlocking(step, 'Object-Lock-Prüfung'));
@@ -71,14 +85,6 @@ export function checkWorkflow(source) {
     'Object-Lock-Query muss bei ObjectLockConfiguration.Rule beginnen und Mode/Years prüfen.',
   );
 
-  const env = { CI: 'true', ...workflow.env, ...job.env, ...testStep.env };
-  for (const [key, value] of Object.entries(env)) {
-    requireThat(
-      ['string', 'number', 'boolean'].includes(typeof value) && !String(value).includes('${{'),
-      `E2E-Umgebung ${key} kann für die Discovery nicht eindeutig aufgelöst werden.`,
-    );
-    env[key] = String(value);
-  }
   return env;
 }
 
@@ -190,10 +196,12 @@ export function checkDiscovery(report, specs, testDir) {
   return { specs: specs.length, tests: report.tests.length };
 }
 
-export function discoverTests(e2eDir, env, cliPath) {
+export function discoverTests(e2eDir, env, cliPath, configFile) {
   const cli =
     cliPath ?? createRequire(resolve(e2eDir, 'package.json')).resolve('@playwright/test/cli');
-  const result = spawnSync(process.execPath, [cli, 'test', '--list', `--reporter=${REPORTER}`], {
+  const args = [cli, 'test', '--list', `--reporter=${REPORTER}`];
+  if (configFile) args.push(`--config=${configFile}`);
+  const result = spawnSync(process.execPath, args, {
     cwd: e2eDir,
     env: { ...process.env, ...env },
     encoding: 'utf8',
@@ -211,19 +219,48 @@ export function discoverTests(e2eDir, env, cliPath) {
   }
 }
 
+export function checkUiProfiles(report) {
+  requireThat(
+    report.tests.every((test) => test.expectedStatus === 'passed'),
+    'Die UI-Matrix muss für jeden Bedienfall einen erfolgreichen Test erwarten.',
+  );
+  const projects = report.config.projects;
+  for (const browser of ['chromium', 'firefox']) {
+    const uses = projects.filter((p) => p.browserName === browser);
+    requireThat(
+      uses.some((p) => p.viewport?.width <= 390 && p.timezoneId === 'America/New_York') &&
+        uses.some((p) => p.viewport?.width >= 1024),
+      `UI-Matrix: Schmaler New-York-Browser oder Desktop für ${browser} fehlt.`,
+    );
+  }
+  for (const zone of ['UTC', 'Europe/Berlin']) {
+    requireThat(
+      projects.some((p) => p.timezoneId === zone),
+      `UI-Matrix: Zeitzone ${zone} fehlt.`,
+    );
+  }
+}
+
 export function checkParanoidE2e(root = ROOT) {
-  const env = checkWorkflow(readFileSync(resolve(root, '.forgejo/workflows/ci.yml'), 'utf8'));
+  const source = readFileSync(resolve(root, '.forgejo/workflows/ci.yml'), 'utf8');
+  const env = checkWorkflow(source);
   const e2eDir = resolve(root, 'apps/e2e');
   const testDir = resolve(e2eDir, 'tests');
   const specs = scanTestSources(testDir);
-  return checkDiscovery(discoverTests(e2eDir, env), specs, testDir);
+  const all = checkDiscovery(discoverTests(e2eDir, env), specs, testDir);
+  const uiDir = resolve(testDir, 'ui');
+  const uiEnv = requiredRun(load(source), 'ui-browser', UI_COMMAND).env;
+  const ui = discoverTests(e2eDir, uiEnv, undefined, UI_CONFIG);
+  const counts = checkDiscovery(ui, scanTestSources(uiDir), uiDir);
+  checkUiProfiles(ui);
+  return { ...all, uiTests: counts.tests, uiProfiles: ui.config.projects.length };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {
     const result = checkParanoidE2e();
     console.log(
-      `OK: Vollständiger CI-Aufruf, Object-Lock-Checks und Playwright-Discovery (${result.tests} Tests in ${result.specs} Specs). Kein E2E-Ausführungsnachweis.`,
+      `OK: CI-Aufrufe, Object-Lock-Checks und Discovery: ${result.tests} Tests in ${result.specs} Specs, zusätzlich ${result.uiTests} UI-Prüfungen in ${result.uiProfiles} Profilen. Kein E2E-Ausführungsnachweis.`,
     );
   } catch (error) {
     console.error(

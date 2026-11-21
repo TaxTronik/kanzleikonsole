@@ -24,6 +24,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHash } from 'node:crypto';
 import { Readable } from 'node:stream';
+import { parseArchive, serializeArchive, verifyArchiveChain } from '@taxtronik/evidence/archive';
+import { eventHash } from '@taxtronik/evidence/chain';
 
 const h = vi.hoisted(() => {
   const prismaOwner = {
@@ -330,16 +332,14 @@ describe('N-8: Forward-Recovery nach Crash zwischen PUT und DB-Insert', () => {
 
 describe('AUDIT-ARCHIVE-001: Segment vor Upload und Recovery vollständig prüfen', () => {
   it.each([false, true])('prüft reale Kettenzeilen (manipuliert: %s)', async (tampered) => {
-    const actual =
-      await vi.importActual<typeof import('@taxtronik/evidence')>('@taxtronik/evidence');
-    h.serializeArchive.mockImplementation(actual.serializeArchive);
-    h.parseArchive.mockImplementation(actual.parseArchive);
-    h.verifyArchiveChain.mockImplementation(actual.verifyArchiveChain);
+    h.serializeArchive.mockImplementation(serializeArchive);
+    h.parseArchive.mockImplementation(parseArchive);
+    h.verifyArchiveChain.mockImplementation(verifyArchiveChain);
     const first = auditRow(6n);
-    first.thisHash = Buffer.from(actual.eventHash(first.prevHash, first));
+    first.thisHash = Buffer.from(eventHash(first.prevHash, first));
     const second = auditRow(7n);
     second.prevHash = first.thisHash;
-    second.thisHash = Buffer.from(actual.eventHash(second.prevHash, second));
+    second.thisHash = Buffer.from(eventHash(second.prevHash, second));
     if (tampered) second.action = 'tampered.action';
     h.prismaOwner.auditLog.findMany.mockResolvedValue([first, second]);
 
@@ -349,7 +349,13 @@ describe('AUDIT-ARCHIVE-001: Segment vor Upload und Recovery vollständig prüfe
       expect(h.prismaOwner.auditArchive.create).not.toHaveBeenCalled();
     } else {
       await expect(run()).resolves.toEqual(ROTATED);
-      expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledTimes(1);
+      expect(h.prismaOwner.auditArchive.create).toHaveBeenCalledExactlyOnceWith({
+        data: expect.objectContaining({
+          entryCount: 2,
+          firstPrevHash: Uint8Array.from(first.prevHash),
+          lastThisHash: Uint8Array.from(second.thisHash),
+        }),
+      });
     }
   });
 

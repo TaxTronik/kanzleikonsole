@@ -96,6 +96,7 @@
     },
     "test": {
       "dependsOn": ["transit"],
+      "passThroughEnv": ["VITEST_MAX_WORKERS"],
       "cache": false
     }
   }

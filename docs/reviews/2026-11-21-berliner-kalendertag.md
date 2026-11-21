@@ -116,3 +116,7 @@ Die lokalen Protokolle des Schlusslaufs liegen unter
 `regressionen-final.log`. Der frische Linux-Installationslauf mit leerem
 Store, der Supply-Chain-Guard und die Betriebsskripttests sind in
 `linux-debian-final.log` protokolliert.
+
+**Nachtrag vom 21. November 2026.** Die CI prüft die Formularwerte nun in
+Chromium und Firefox. Die Gegenproben mit dem früheren Quellstand und die
+zugehörigen Prüffälle stehen in der [CI-Nachprüfung](2026-11-21-ci-bedienpruefung.md).

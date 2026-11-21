@@ -115,6 +115,11 @@ Berliner Kalendertags gesetzt. Die frühere Offsetberechnung addierte die
 Millisekunden zweimal und ließ den Vorgang bis in den Folgetag reichen.
 Die Zeitgrenzentests prüfen die Tage beider Uhrenwechsel.
 
+Beim Speichern und Abgeben vergleicht der Arbeitnehmerfragebogen das
+Geburtsdatum mit dem aktuellen Berliner Kalendertag. Dieser Tag ist als
+Geburtsdatum zulässig. Ein Datum danach liefert die Meldung „Geburtsdatum
+liegt in der Zukunft.“
+
 Die Kanzleiansicht begrenzt die Formularspalten auf schmalen Bildschirmen und
 bricht lange Feldbezeichnungen um. Externe Prüfung, Nachweis, Dateiauswahl,
 Prüfentscheidung und Exportformat besitzen zugeordnete sichtbare Beschriftungen.
@@ -132,5 +137,10 @@ Der DATEV-Import ist bewusst nicht implementiert. Die Anwendung ersetzt keine Lo
 Welche Felder und Nachweise sind für den konkreten Beschäftigungsfall erforderlich und zulässig? Wer bestätigt Arbeitgeberangaben und prüft externe Meldungen? Wie werden Links sicher zugestellt und falsche Adressierungen korrigiert? Welche Aufbewahrungs- und Löschgründe gelten für den gesamten privaten Vorgang? Welche installierte DATEV-Version und reale Importprobe erlauben später eine Formatabnahme?
 
 ## Technische Nachweise
+
+Der Eingabetest prüft die Sommergrenze zum 2. Juli 2026 und die Wintergrenze
+zum 20. November 2026. Ab Berliner Mitternacht werden der jeweils neue Tag
+akzeptiert und der Folgetag als zukünftig abgewiesen. Am Abend des 1. Juli
+ist der 2. Juli bis zum Tageswechsel noch eine zukünftige Eingabe.
 
 Die referenzierten Tests prüfen Plausibilitätsgrenzen, Revisionsbindung, Arbeitgebertrennung, Gastisolation, einmalige Einlösung, Widerruf und das gesperrte DATEV-Gate. Datenbanktests benötigen getrennte Owner-/App-Verbindungen einer isolierten Testdatenbank; ein übersprungener Test ist kein erfolgreicher Nachweis. Storage- und Bedienabnahme sowie fachliche Freigabe sind davon getrennt zu dokumentieren.

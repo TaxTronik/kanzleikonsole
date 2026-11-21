@@ -1,8 +1,32 @@
 // Fachkatalog: PAYROLL-INTAKE-001
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PAYROLL_SCHEMA, validIban, validSvNumber, validatePayrollAnswers } from '../definition';
 
 describe('PAYROLL-INTAKE-001 deliberately bounded plausibility', () => {
+  it.each([
+    ['2026-07-01T21:59:59.999Z', '2026-07-01', '2026-07-02'],
+    ['2026-07-01T22:00:00.000Z', '2026-07-02', '2026-07-03'],
+    ['2026-11-19T23:00:00.000Z', '2026-11-20', '2026-11-21'],
+  ])(
+    'lässt beim Speichern und Abgeben Geburtsdaten bis zum Berliner Heute zu (%s)',
+    (instant, today, tomorrow) => {
+      const schema = PAYROLL_SCHEMA.employee.filter((field) => field.key === 'birthDate');
+      vi.useFakeTimers({ toFake: ['Date'] });
+      try {
+        vi.setSystemTime(new Date(instant));
+        for (const submit of [false, true]) {
+          expect(validatePayrollAnswers('employee', { birthDate: today }, submit, schema)).toEqual(
+            [],
+          );
+          expect(
+            validatePayrollAnswers('employee', { birthDate: tomorrow }, submit, schema),
+          ).toEqual(['Geburtsdatum liegt in der Zukunft.']);
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
   it('permits incomplete drafts but requires a frozen historic field on submission', () => {
     expect(validatePayrollAnswers('employer', {}, false, PAYROLL_SCHEMA.employer)).toEqual([]);
     const historic = [

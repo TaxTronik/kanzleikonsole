@@ -1,3 +1,5 @@
+import { berlinYmd } from '@/lib/fmt';
+
 export type PersonIdentityEvidenceStatus =
   'bestaetigt' | 'mehrfach' | 'abgelaufen' | 'offen' | 'fehlt';
 
@@ -18,10 +20,6 @@ export function isSupersededEvidence(evidence: EvidenceWithSupersession): boolea
   return evidence.supersededAt !== null && evidence.supersededAt !== undefined;
 }
 
-function utcDateKey(value: Date): string {
-  return value.toISOString().slice(0, 10);
-}
-
 /**
  * Reiner Anzeigestatus. Die eigentliche Freigabeentscheidung bleibt im
  * serverseitigen GwG-Gate; hier wird insbesondere „abgelaufen“ nicht als
@@ -34,7 +32,7 @@ export function personIdentityEvidenceStatus(
   if (groups.length === 0) return 'fehlt';
   if (groups.length > 1) return 'mehrfach';
 
-  const today = utcDateKey(now);
+  const today = berlinYmd(now);
   const validGroups = groups.filter(
     (group) =>
       group.documents.length > 0 &&

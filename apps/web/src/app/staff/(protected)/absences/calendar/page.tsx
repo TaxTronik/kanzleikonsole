@@ -11,7 +11,13 @@ import Link from 'next/link';
 import { Plane } from 'lucide-react';
 import { requireStaffPage } from '@/server/auth/staff-page';
 import { withTenantContext } from '@taxtronik/db';
-import { fmtDateMedium, fmtDay, fmtMonthShort, fmtWeekdayShort } from '@/lib/fmt';
+import {
+  berlinTodayUtcMidnight,
+  fmtDateMedium,
+  fmtDay,
+  fmtMonthShort,
+  fmtWeekdayShort,
+} from '@/lib/fmt';
 
 function startOfDayUTC(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -35,7 +41,7 @@ export default async function AbsencesCalendarPage({
   const { tenantId, staffId } = session.user;
 
   // Start: Montag der aktuellen Woche
-  const today = startOfDayUTC(new Date());
+  const today = berlinTodayUtcMidnight();
   const dayOfWeek = (today.getUTCDay() + 6) % 7; // 0=Mo
   const start = new Date(today.getTime() - dayOfWeek * 24 * 60 * 60 * 1000);
   const end = new Date(start.getTime() + (totalDays - 1) * 24 * 60 * 60 * 1000);
@@ -93,10 +99,9 @@ export default async function AbsencesCalendarPage({
   // Offene Abwesenheiten (kein Enddatum) laufen bis HEUTE, nicht bis zum Ende
   // des angezeigten Fensters — sonst erschiene die Person über alle künftigen
   // Wochen abwesend. Identische Konvention wie im Kanzleikalender.
-  const todayCell = startOfDayUTC(new Date());
   for (const a of absences) {
     const s = startOfDayUTC(a.startDate);
-    const e = a.endDate ? startOfDayUTC(a.endDate) : todayCell;
+    const e = a.endDate ? startOfDayUTC(a.endDate) : today;
     for (let d = s; d.getTime() <= e.getTime(); d = new Date(d.getTime() + 86400000)) {
       setCell(a.staffId, d, 'A');
     }
