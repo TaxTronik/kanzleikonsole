@@ -123,3 +123,21 @@ Hostmetriken zur Ursache der Verzögerung liegen für diesen Lauf nicht vor.
       Job pro Runner vor. Der Betreiberabgleich der wirksamen
       `runner.capacity` und der Zuordnung zu den Docker-Daemons steht aus.
       [Betriebsverfahren](../development/entwicklungsverfahren.md)
+
+## Nachprüfung auf Forgejo am 21. November 2026
+
+Geprüfter Stand ist `d3fb6594`. Der E2E- und der Image-Build meldeten im
+echten Lauf beim Sammeln der Seitendaten und beim Erzeugen der Seiten jeweils
+vier Worker. Die drei iCal-Datenbankfälle bestanden zusammen in 1,007 s, die
+sechs S3-Vertragsfälle in 0,132 s. Das Datenbank-Gate einschließlich der
+nachgelagerten Drift-Prüfungen und alle 16 Turbo-Aufgaben im Unit-Gate liefen
+erfolgreich durch. [Datenbanklauf](https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/actions/runs/1289/jobs/2/attempt/1) ·
+[Unit-Lauf](https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/actions/runs/1289/jobs/10/attempt/1) ·
+[Web-Image](https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/actions/runs/1288/jobs/0/attempt/1)
+
+Alle 16 Commit-Prüfungen waren erfolgreich. Die gespeicherten
+Playwright-Berichte weisen 256 bestandene Fälle in der vollständigen Suite
+und 36 in der Browsermatrix aus. Beide Läufe hatten null übersprungene und
+null nach einem Fehlversuch wiederholte Fälle.
+[Vollständiger Browserlauf](https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/actions/runs/1289/jobs/5/attempt/1) ·
+[Browsermatrix](https://git.hirschmann-koxha.de/TaxTronik/kanzleikonsole/actions/runs/1289/jobs/1/attempt/1)
