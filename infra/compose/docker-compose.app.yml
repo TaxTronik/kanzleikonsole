@@ -460,7 +460,7 @@ services:
     <<: [*hardening, *logging]
     # Versionierter, self-contained Signal-Release. Runtime, Graph, Katalog und
     # manifestiertes Offline-Modell sind gemeinsam gebunden; kein `latest`.
-    image: ${SIGNAL_IMAGE:-git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0}
+    image: ${SIGNAL_IMAGE:-git.hirschmann-koxha.de/taxtronik/risk-layer-engine:v0.1.0@sha256:6a6f97da248a1c84fecf34b970c6b3bdf1e70039e09778c73ac26b56ec9f803f}
     container_name: taxtronik-risk-layer
     restart: unless-stopped
     profiles: ['risk-layer']
