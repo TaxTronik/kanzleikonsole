@@ -244,7 +244,7 @@ services:
 
   clamav:
     <<: [*hardening, *logging]
-    image: clamav/clamav:1.5.5@sha256:12177441d1b40cef3c47b44c4090d59d4babc4c67bedd5af0fa315e603aa6dd8
+    image: clamav/clamav:1.5.5@sha256:64e30c0bf976198024deb3dc6d5cfe2485fb969c0f73549ba0fdb364b9469614
     container_name: taxtronik-clamav
     restart: unless-stopped
     # ClamAV hält die Signatur-DB im RAM (~2-3 GB) — Limit großzügig.
