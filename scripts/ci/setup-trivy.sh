@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Derselbe gepinnte Scanner für Service- und Release-Images.
 set -euo pipefail
-TRIVY_IMAGE=aquasec/trivy:latest@sha256:2a335d3a73d4e1d52d73c8ef417ab0f91f86ba0a912caf8227665b988a6f4015
+TRIVY_IMAGE=aquasec/trivy:latest@sha256:6fa071ef8daa2e58b90cbf1710bedca91adbb3bf98693533226f442035b836a6
 TRIVY_BIN="$RUNNER_TEMP/trivy"
 TRIVY_CONTAINER="$(docker create "$TRIVY_IMAGE")"
 trap 'docker rm -fv "$TRIVY_CONTAINER" >/dev/null 2>&1 || true' EXIT

@@ -194,7 +194,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
+        image: postgres:18@sha256:ec003ee60c23d320d1b81868f255a6fc724ac06d8f1ced4468532f7d8593f357
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -435,7 +435,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
+        image: postgres:18@sha256:ec003ee60c23d320d1b81868f255a6fc724ac06d8f1ced4468532f7d8593f357
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -562,7 +562,7 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18@sha256:c27c01f74af25bde5f4f0f69d01944c4fc7f0376ea53c72aa1180dd593ce1d52
+        image: postgres:18@sha256:ec003ee60c23d320d1b81868f255a6fc724ac06d8f1ced4468532f7d8593f357
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -717,7 +717,7 @@ jobs:
     services:
       postgres:
         # Wie in Produktion (Alpine/musl, gleiche Kollation) statt Debian.
-        image: postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0
+        image: postgres:18-alpine3.23@sha256:339a86bf416979bb4d3d2e30a1f9e096e7302564faff4151b804cf53463059d5
         env:
           POSTGRES_USER: taxtronik
           POSTGRES_PASSWORD: taxtronik
@@ -858,7 +858,7 @@ jobs:
           # `start`en. Topologie-unabhaengig (DinD/Socket/act-runner).
           docker create --name seaweedfs-ci \
             -p 8333:8333 -p 9333:9333 \
-            chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15 \
+            chrislusf/seaweedfs:4.55@sha256:7ca46aeae2f223b37e5d91593c17ab37738eec6df6ab69b48a0487f7643342b9 \
             server -dir=/data -master.volumeSizeLimitMB=2048 \
             -volume.max=0 -s3 -s3.config=/etc/seaweedfs/s3.json \
             -s3.port=8333 -master.port=9333 -filer
@@ -913,7 +913,7 @@ jobs:
             -e AWS_DEFAULT_REGION=us-east-1 \
             -e S3_ENDPOINT=http://localhost:8333 \
             --entrypoint /bin/sh \
-            amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846 -s < "$INIT_STORAGE"
+            amazon/aws-cli:latest@sha256:6c24ad4e8cdf12defd41c7e6d2ed836e73da9cbfecc1e9d7fd148bb9f4ea5eb2 -s < "$INIT_STORAGE"
 
       - name: Verify S3 buckets and Object-Lock
         run: |
@@ -922,7 +922,7 @@ jobs:
             -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
             -e AWS_DEFAULT_REGION=us-east-1 \
             --entrypoint /bin/sh \
-            amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846 -ec '
+            amazon/aws-cli:latest@sha256:6c24ad4e8cdf12defd41c7e6d2ed836e73da9cbfecc1e9d7fd148bb9f4ea5eb2 -ec '
               AWS="aws --endpoint-url http://localhost:8333"
               assert_lock() {
                 bucket="$1"

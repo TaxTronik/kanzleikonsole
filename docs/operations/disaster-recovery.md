@@ -317,7 +317,7 @@ ein bestehendes Produktivvolume schreiben:
 docker run --rm \
   -v <leeres-seaweed-volume>:/target \
   -v /restore/<id>/volumes:/backup:ro \
-  alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 \
+  alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf \
   sh -ec 'test -z "$(ls -A /target)"; tar -xzf /backup/seaweedfs-data.tar.gz -C /target'
 ```
 
@@ -393,7 +393,7 @@ docker run --rm --network taxtronik \
   -e AWS_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
   -e AWS_DEFAULT_REGION="${S3_REGION:-us-east-1}" \
   -v "$PWD/backups/object-store/20260618-013000:/backup:ro" \
-  amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846 \
+  amazon/aws-cli:latest@sha256:6c24ad4e8cdf12defd41c7e6d2ed836e73da9cbfecc1e9d7fd148bb9f4ea5eb2 \
   --endpoint-url http://seaweedfs:8333 s3 sync /backup/gobd s3://gobd --only-show-errors
 ```
 

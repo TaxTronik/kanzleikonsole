@@ -49,7 +49,7 @@ services:
     <<: [*hardening, *logging]
     # Pin per Digest (Reproduzierbarkeit/Audit). Tag bleibt als Klartext-Hinweis.
     # Neu auflösen: docker buildx imagetools inspect postgres:18-alpine3.23 --format '{{.Manifest.Digest}}'
-    image: postgres:18-alpine3.23@sha256:f3ee138d5fce80ffaeb315b8bea7610f0c4f2304fb2aceb4ec8e457b92fc41a0
+    image: postgres:18-alpine3.23@sha256:339a86bf416979bb4d3d2e30a1f9e096e7302564faff4151b804cf53463059d5
     container_name: taxtronik-postgres
     restart: unless-stopped
     # P2-20: Ressourcen-Limit + Basis-Tuning (Alpine-Default shared_buffers 128 MB
@@ -162,7 +162,7 @@ services:
   # für die Kanzlei-Größe (10–500 Mitarbeiter) reicht der Single-Node-Setup.
   seaweedfs:
     <<: [*hardening, *logging]
-    image: chrislusf/seaweedfs:4.54@sha256:4b42c212543a0acd4c0e675215ecdcaf62a186ef98def76c7e12701871222d15
+    image: chrislusf/seaweedfs:4.55@sha256:7ca46aeae2f223b37e5d91593c17ab37738eec6df6ab69b48a0487f7643342b9
     container_name: taxtronik-seaweedfs
     restart: unless-stopped
     mem_limit: ${SEAWEED_MEM_LIMIT:-1g}
@@ -227,7 +227,7 @@ services:
   # AWS-CLI spricht den S3-Standard nativ.
   seaweedfs-init:
     <<: [*hardening, *logging]
-    image: amazon/aws-cli:latest@sha256:b0102d2269f87d8531d931c1a59e248101ace586886e6c077058d94c1c37b846
+    image: amazon/aws-cli:latest@sha256:6c24ad4e8cdf12defd41c7e6d2ed836e73da9cbfecc1e9d7fd148bb9f4ea5eb2
     container_name: taxtronik-seaweedfs-init
     depends_on:
       seaweedfs:
